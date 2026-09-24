@@ -41,12 +41,152 @@
         </el-form-item>
       </el-form>
     </div>
+    <!-- dev-20260924-024：三张卡（待处理明细 / 处置单历史 / 供应商返工单）合并为「一张表 + Tab」；
+         批次溯源由常驻卡改为行内「谱系」抽屉 -->
     <el-card class="card">
-      <template #header>批次溯源</template>
-      <el-table v-loading="batchLoading" :data="batchRows" border>
-        <el-table-column prop="batchNo" label="批次" width="190" />
-        <el-table-column prop="parentBatchNo" label="父批次" width="190" />
-        <el-table-column label="类型" width="120">
+      <template #header>
+        <div class="card-title">
+          <span>来料不合格处置</span>
+          <span class="card-tip"
+            >处置方式只有四种：让步接收（特采） / 退货 / 返工 / 报废。「剩余数量」减到 0
+            才算结清，状态才会变成已让步接收 / 已退货 / 已返工 / 已报废。</span
+          >
+        </div>
+      </template>
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="待处理" name="pending">
+          <el-table v-loading="loading" :data="rows" border>
+            <el-table-column prop="inboundNo" label="入库单号" width="180" />
+            <el-table-column prop="supplierName" label="供应商" min-width="150" />
+            <el-table-column prop="materialCode" label="物料编码" width="150" />
+            <el-table-column prop="materialName" label="物料名称" min-width="170" />
+            <el-table-column prop="batchNo" label="批次" width="160" />
+            <el-table-column
+              prop="defectReason"
+              label="缺陷原因"
+              min-width="180"
+              show-overflow-tooltip
+            />
+            <el-table-column label="原始数量" width="105" align="right">
+              <template #default="{ row }">{{ num(row.quantity) }}</template>
+            </el-table-column>
+            <el-table-column label="已处置" width="100" align="right">
+              <template #default="{ row }">{{ num(disposedQuantity(row)) }}</template>
+            </el-table-column>
+            <el-table-column label="剩余数量" width="105" align="right">
+              <template #default="{ row }">
+                <span :class="{ danger: Number(row.remainingQuantity) > 0 }">{{
+                  num(row.remainingQuantity)
+                }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="130">
+              <template #default="{ row }">
+                <el-tag :type="IqcQuarantineStatusEnum.getTagProps(row.status).type">{{
+                  IqcQuarantineStatusEnum.getLabel(row.status)
+                }}</el-tag>
+                <el-tag v-if="isPartial(row)" class="partial" size="small" type="warning" effect="plain"
+                  >部分处置</el-tag
+                >
+              </template>
+            </el-table-column>
+            <el-table-column prop="createTime" label="建立时间" width="170" />
+            <el-table-column label="操作" width="190" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="
+                    canDispose &&
+                    row.status === IqcQuarantineStatus.PENDING &&
+                    Number(row.remainingQuantity) > 0
+                  "
+                  type="primary"
+                  link
+                  @click="openDisposition(row)"
+                  >处置</el-button
+                >
+                <el-button link type="primary" @click="openLineage(row)">谱系</el-button>
+                <el-tooltip
+                  v-if="!canDispose"
+                  content="当前账号无「隔离处置」权限，请联系品质主管授权"
+                >
+                  <span class="no-perm">无处置权限</span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-pagination
+            v-model:current-page="query.pageNum"
+            v-model:page-size="query.pageSize"
+            class="pagination"
+            :page-sizes="[10, 20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            :total="total"
+            @size-change="search"
+            @current-change="load"
+          />
+        </el-tab-pane>
+        <el-tab-pane label="已处置" name="history">
+          <el-table v-loading="ordersLoading" :data="orders" border>
+            <el-table-column prop="dispositionNo" label="处置单号" width="210" />
+            <el-table-column label="类型" width="120">
+              <template #default="{ row }">{{ actionLabel(row.action) }}</template>
+            </el-table-column>
+            <el-table-column prop="materialCode" label="物料" width="160" />
+            <el-table-column prop="quantity" label="数量" width="100" />
+            <el-table-column prop="operatorName" label="操作人" width="110" />
+            <el-table-column prop="createTime" label="时间" />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="返工单" name="rework">
+          <el-table v-loading="reworkLoading" :data="reworkOrders" border>
+            <el-table-column prop="reworkNo" label="返工单号" width="220" />
+            <el-table-column prop="materialCode" label="物料" width="160" />
+            <el-table-column prop="batchNo" label="父批次" width="180" />
+            <el-table-column prop="childBatchNo" label="复检子批次" width="190" />
+            <el-table-column prop="quantity" label="数量" width="100" />
+            <el-table-column label="状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="IqcReworkStatusEnum.getTagProps(row.status).type">{{
+                  IqcReworkStatusEnum.getLabel(row.status)
+                }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150">
+              <template #default="{ row }">
+                <el-button
+                  v-if="canDispose && row.status === IqcReworkStatus.CREATED"
+                  type="primary"
+                  link
+                  @click="completeRework(row)"
+                  >完成返工</el-button
+                >
+                <el-button
+                  v-if="canInspect && row.status === IqcReworkStatus.PENDING_REINSPECTION"
+                  type="primary"
+                  link
+                  @click="goReinspect(row)"
+                  >去复检</el-button
+                >
+                <span
+                  v-if="
+                    row.status !== IqcReworkStatus.CREATED &&
+                    row.status !== IqcReworkStatus.PENDING_REINSPECTION
+                  "
+                  >-</span
+                >
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
+    </el-card>
+
+    <el-drawer v-model="lineageVisible" title="批次溯源" size="640px" append-to-body>
+      <div class="lineage-tip">当前批次：{{ lineageBatchNo || '-' }}</div>
+      <el-table v-loading="batchLoading" :data="lineageRows" border size="small">
+        <el-table-column prop="batchNo" label="批次" width="180" />
+        <el-table-column prop="parentBatchNo" label="父批次" width="180" />
+        <el-table-column label="类型" width="110">
           <template #default="{ row }">{{ batchTypeLabel(row.batchType) }}</template>
         </el-table-column>
         <el-table-column prop="quantity" label="批次数量" width="100" />
@@ -60,136 +200,8 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
-    <el-card class="card">
-      <template #header>
-        <div class="card-title">
-          <span>待处理明细</span>
-          <span class="card-tip"
-            >来料检验判定为不合格的物料会进这张台账；处置方式只有四种：让步接收（特采） / 退货 /
-            返工 / 报废。「剩余数量」减到 0 才算结清，状态才会变成已让步接收/已退货/已返工/已报废。</span
-          >
-        </div>
-      </template>
-      <el-table v-loading="loading" :data="rows" border>
-        <el-table-column prop="inboundNo" label="入库单号" width="180" />
-        <el-table-column prop="supplierName" label="供应商" min-width="150" />
-        <el-table-column prop="materialCode" label="物料编码" width="150" />
-        <el-table-column prop="materialName" label="物料名称" min-width="170" />
-        <el-table-column prop="batchNo" label="批次" width="160" />
-        <el-table-column prop="defectReason" label="缺陷原因" min-width="180" show-overflow-tooltip />
-        <el-table-column label="原始隔离" width="105" align="right">
-          <template #default="{ row }">{{ num(row.quantity) }}</template>
-        </el-table-column>
-        <el-table-column label="已处置" width="100" align="right">
-          <template #default="{ row }">{{ num(disposedQuantity(row)) }}</template>
-        </el-table-column>
-        <el-table-column label="剩余数量" width="105" align="right">
-          <template #default="{ row }">
-            <span :class="{ danger: Number(row.remainingQuantity) > 0 }">{{
-              num(row.remainingQuantity)
-            }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="130">
-          <template #default="{ row }">
-            <el-tag :type="IqcQuarantineStatusEnum.getTagProps(row.status).type">{{
-              IqcQuarantineStatusEnum.getLabel(row.status)
-            }}</el-tag>
-            <el-tag v-if="isPartial(row)" class="partial" size="small" type="warning" effect="plain"
-              >部分处置</el-tag
-            >
-          </template>
-        </el-table-column>
-        <el-table-column prop="createTime" label="建立时间" width="170" />
-        <el-table-column label="操作" width="130" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              v-if="
-                canDispose &&
-                row.status === IqcQuarantineStatus.PENDING &&
-                Number(row.remainingQuantity) > 0
-              "
-              type="primary"
-              link
-              @click="openDisposition(row)"
-              >处置</el-button
-            >
-            <el-tooltip v-else-if="!canDispose" content="当前账号无「隔离处置」权限，请联系品质主管授权">
-              <span class="no-perm">无处置权限</span>
-            </el-tooltip>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
-        v-model:current-page="query.pageNum"
-        v-model:page-size="query.pageSize"
-        class="pagination"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        @size-change="search"
-        @current-change="load"
-      />
-    </el-card>
-    <el-card class="card"
-      ><template #header>供应商返工单</template
-      ><el-table v-loading="reworkLoading" :data="reworkOrders" border
-        ><el-table-column prop="reworkNo" label="返工单号" width="220" /><el-table-column
-          prop="materialCode"
-          label="物料"
-          width="160"
-        /><el-table-column prop="batchNo" label="父批次" width="180" /><el-table-column
-          prop="childBatchNo"
-          label="复检子批次"
-          width="190"
-        /><el-table-column prop="quantity" label="数量" width="100" /><el-table-column
-          label="状态"
-          width="120"
-          ><template #default="{ row }"
-            ><el-tag :type="IqcReworkStatusEnum.getTagProps(row.status).type">{{
-              IqcReworkStatusEnum.getLabel(row.status)
-            }}</el-tag></template
-          ></el-table-column
-        ><el-table-column label="操作" width="150"
-          ><template #default="{ row }"
-            ><el-button
-              v-if="canDispose && row.status === IqcReworkStatus.CREATED"
-              type="primary"
-              link
-              @click="completeRework(row)"
-              >完成返工</el-button
-            ><el-button
-              v-if="canInspect && row.status === IqcReworkStatus.PENDING_REINSPECTION"
-              type="primary"
-              link
-              @click="goReinspect(row)"
-              >去复检</el-button
-            ><span
-              v-if="
-                row.status !== IqcReworkStatus.CREATED &&
-                row.status !== IqcReworkStatus.PENDING_REINSPECTION
-              "
-              >-</span
-            ></template
-          ></el-table-column
-        ></el-table
-      ></el-card
-    >
-    <el-card class="card">
-      <template #header>处置单历史（本页已执行的每一次处置）</template>
-      <el-table v-loading="ordersLoading" :data="orders" border>
-        <el-table-column prop="dispositionNo" label="处置单号" width="210" />
-        <el-table-column label="类型" width="120">
-          <template #default="{ row }">{{ actionLabel(row.action) }}</template>
-        </el-table-column>
-        <el-table-column prop="materialCode" label="物料" width="160" />
-        <el-table-column prop="quantity" label="数量" width="100" />
-        <el-table-column prop="operatorName" label="操作人" width="110" />
-        <el-table-column prop="createTime" label="时间" />
-      </el-table>
-    </el-card>
+    </el-drawer>
+
     <IqcQuarantineDialog
       v-model:visible="dispositionVisible"
       :inbound-id="activeInboundId"
@@ -238,6 +250,10 @@ const loading = ref(false)
 const ordersLoading = ref(false)
 const reworkLoading = ref(false)
 const batchLoading = ref(false)
+const activeTab = ref<'pending' | 'history' | 'rework'>('pending')
+const lineageVisible = ref(false)
+const lineageRows = ref<any[]>([])
+const lineageBatchNo = ref('')
 const dispositionVisible = ref(false)
 const activeInboundId = ref<number>()
 const activeInboundNo = ref<string>()
@@ -252,6 +268,16 @@ const disposedQuantity = (row: any) =>
 const isPartial = (row: any) =>
   Number(row.remainingQuantity || 0) > 0 && disposedQuantity(row) > 0
 const batchTypeLabel = (value?: string) => (value ? IqcBatchTypeEnum.getLabel(value) : '-')
+/** dev-20260924-024：行内「谱系」——按该行批次过滤溯源链（自身 + 以其为父批次的子批次） */
+function openLineage(row: any) {
+  lineageBatchNo.value = row?.batchNo || ''
+  const all = batchRows.value || []
+  const mine = all.filter(
+    (b: any) => b.batchNo === row?.batchNo || b.parentBatchNo === row?.batchNo
+  )
+  lineageRows.value = mine.length ? mine : all
+  lineageVisible.value = true
+}
 const actionLabel = (value?: string) => (value ? IqcQuarantineActionEnum.getLabel(value) : '-')
 
 async function load() {
@@ -332,6 +358,11 @@ onMounted(load)
 .scope-tip__pop {
   max-width: 420px;
   line-height: 1.6;
+}
+.lineage-tip {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
 }
 .filter-bar {
   padding: 10px 12px 0;
