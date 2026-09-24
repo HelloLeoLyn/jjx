@@ -13,6 +13,8 @@ export interface OutboundQueryParams {
   status?: string
   sourceType?: string
   sourceTypeNe?: string
+  /** dev-20260923-025：按补料来源类型筛选 */
+  supplementReasonType?: string
   createTimeStart?: string
   createTimeEnd?: string
   outboundTimeStart?: string
@@ -33,6 +35,12 @@ export interface OutboundVO {
   sourceType?: string
   sourceId?: string
   sourceNo?: string
+  /** dev-20260923-025：补料来源（超耗/报废补产/试制调机/来料不良；空=普通领料） */
+  supplementReasonType?: string
+  supplementReasonTypeName?: string
+  supplementReason?: string
+  supplementNcrId?: number
+  supplementProductionQuantity?: number
   totalQuantity: number
   totalAmount: number
   status: number

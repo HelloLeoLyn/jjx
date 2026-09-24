@@ -256,6 +256,12 @@ export const qualityNcrApi = {
     return request.get<R<Record<string, any>[]>>(`/quality/ncr/${ncrId}/pieces`)
   },
   /**
+   * 按工单反查不良（dev-20260923-025：报废处置行发起补料时选不良单用）
+   */
+  byOrder(orderId: number, executionId?: number) {
+    return request.get<R<QualityNcr[]>>('/quality/ncr/by-order', { params: { orderId, executionId } })
+  },
+  /**
    * 隔离台账（dev-20260924-007 一期）：在隔离的货 = 未处置不良（不良 − 已处置），含件级汇总。
    * 口径：一期只做标识，不动库存（库存只装良品）。
    */

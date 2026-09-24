@@ -35,6 +35,23 @@ public class OutboundVO {
     private String statusName;
     private String approveStatus;
     private String remark;
+
+    // ==================== 补料留痕（dev-20260924-002 / dev-20260923-025） ====================
+
+    /** 补料来源类型（PRODUCTION_OVERUSE/SCRAP_REPLENISHMENT/TRIAL_ADJUSTMENT/INCOMING_DEFECT；空=普通领料） */
+    private String supplementReasonType;
+
+    /** 补料来源类型中文名（派生展示） */
+    private String supplementReasonTypeName;
+
+    /** 补料原因说明 */
+    private String supplementReason;
+
+    /** 关联质量不良单ID */
+    private Long supplementNcrId;
+
+    /** 本次补料关联的补产成品数量 */
+    private java.math.BigDecimal supplementProductionQuantity;
     private String createBy;
     private String createByName;
     private LocalDateTime createTime;

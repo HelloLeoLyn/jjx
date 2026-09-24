@@ -19,6 +19,8 @@ public class OutboundQueryDTO extends Page<Object> {
     private Long warehouseId;
     private String sourceType;
     private String sourceTypeNe; // DEV-659：排除指定来源类型（出库单入口排除领料单 work_order）
+    /** dev-20260923-025：按补料来源类型筛选（PRODUCTION_OVERUSE/SCRAP_REPLENISHMENT/TRIAL_ADJUSTMENT/INCOMING_DEFECT） */
+    private String supplementReasonType;
     private String sourceNo;
     private String orderStatus;
     private String approveStatus;

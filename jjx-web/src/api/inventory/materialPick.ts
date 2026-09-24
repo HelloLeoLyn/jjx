@@ -30,7 +30,8 @@ export const materialPickApi = {
   },
 
   createProductionSupplement(workOrderId: number, payload: {
-    reasonType: 'PRODUCTION_OVERUSE' | 'SCRAP_REPLENISHMENT'
+    /** dev-20260923-025：四类补料来源（生产超耗/报废补产/试制调机/来料不良） */
+    reasonType: string
     reason: string
     ncrId?: number
     productionQuantity: number

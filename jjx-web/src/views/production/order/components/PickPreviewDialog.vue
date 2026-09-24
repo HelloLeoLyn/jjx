@@ -24,10 +24,28 @@
               <el-select v-model="reasonType" style="width: 260px">
                 <el-option label="生产超耗/现场缺料" value="PRODUCTION_OVERUSE" />
                 <el-option label="报废后补产" value="SCRAP_REPLENISHMENT" />
+                <!-- dev-20260923-025：补料来源三类补齐（原因口径与「不良原因」分开，各管一段） -->
+                <el-option label="试制调机" value="TRIAL_ADJUSTMENT" />
+                <el-option label="来料不良" value="INCOMING_DEFECT" />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="reasonType === 'SCRAP_REPLENISHMENT'" label="质量不良单ID" required>
-              <el-input-number v-model="ncrId" :min="1" :precision="0" />
+            <el-form-item v-if="reasonType === 'SCRAP_REPLENISHMENT'" label="质量不良单" required>
+              <!-- dev-20260923-025：从「手输 ID」改为下拉选未结不良单（显示单号/产品/待处置量），选中即预填补产数量 -->
+              <el-select
+                v-model="ncrId"
+                filterable
+                clearable
+                placeholder="选择该工单的未结不良单"
+                style="width: 320px"
+                @change="onNcrChange"
+              >
+                <el-option
+                  v-for="n in ncrOptions"
+                  :key="n.ncrId"
+                  :label="`${n.ncrNo} · ${n.productName || n.materialName || '-'} · 待处置 ${fmtNum(pendingOf(n))}`"
+                  :value="n.ncrId"
+                />
+              </el-select>
             </el-form-item>
             <el-form-item label="补产数量" required>
               <el-input-number v-model="supplementQuantity" :min="0.01" :precision="2" />
@@ -125,6 +143,10 @@ const props = withDefaults(
     plannedQuantity?: number
     // 2026-09-08 部分领料修正：first=首张领料单(createFromProduction)；append=追加补领(createProductionPick，按剩余需求)
     mode?: 'first' | 'append' | 'supplement'
+    /** dev-20260923-025：由处置行发起时预填（报废后补产 + 指定不良单 + 建议补产数量） */
+    presetReasonType?: string
+    presetNcrId?: number
+    presetProductionQuantity?: number
   }>(),
   { mode: 'first' },
 )
@@ -136,10 +158,29 @@ const emit = defineEmits<{
 
 const isAppend = computed(() => props.mode === 'append')
 const isSupplement = computed(() => props.mode === 'supplement')
-const reasonType = ref<'PRODUCTION_OVERUSE' | 'SCRAP_REPLENISHMENT'>('PRODUCTION_OVERUSE')
+const reasonType = ref<string>('PRODUCTION_OVERUSE')
 const supplementReason = ref('')
 const ncrId = ref<number>()
 const supplementQuantity = ref<number>()
+/** 未结不良单选项（报废补产必选）—— dev-20260923-025 */
+const ncrOptions = ref<any[]>([])
+const pendingOf = (n: any) => Number(n?.defectQuantity || 0) - Number(n?.disposedQuantity || 0)
+const loadNcrOptions = async () => {
+  try {
+    const { qualityNcrApi } = await import('@/api/quality/lot')
+    const res: any = await qualityNcrApi.byOrder(props.workOrderId)
+    const list = (res?.data || []) as any[]
+    ncrOptions.value = list.filter((n) => Number(pendingOf(n)) > 0)
+  } catch {
+    ncrOptions.value = []
+  }
+}
+const onNcrChange = () => {
+  const hit = ncrOptions.value.find((n) => Number(n.ncrId) === Number(ncrId.value))
+  if (hit && !supplementQuantity.value) {
+    supplementQuantity.value = Number(pendingOf(hit)) || undefined
+  }
+}
 const dialogTitle = computed(() =>
   isSupplement.value ? '申请补料 - 超耗/报废补产' : isAppend.value ? '追加领料单 - 按剩余需求补领（预览确认）' : '生成领料单 - 预览确认',
 )
@@ -186,7 +227,20 @@ async function loadPreview() {
 watch(
   () => props.modelValue,
   (v) => {
-    if (v) loadPreview()
+    if (v) {
+      loadPreview()
+      // dev-20260923-025：处置行发起时预填来源/不良单/建议补产数量
+      if (isSupplement.value && props.presetReasonType) {
+        reasonType.value = props.presetReasonType
+      }
+      if (isSupplement.value && props.presetNcrId) {
+        ncrId.value = props.presetNcrId
+      }
+      if (isSupplement.value && props.presetProductionQuantity) {
+        supplementQuantity.value = props.presetProductionQuantity
+      }
+      if (isSupplement.value) loadNcrOptions()
+    }
   },
   // 2026-08-18：immediate——组件首次挂载时 modelValue 已是 true，无变化事件，不加会漏首次加载
   { immediate: true },

@@ -109,6 +109,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (query.getSourceType() != null && !query.getSourceType().isEmpty()) wrapper.eq(InventoryOutboundOrder::getSourceType, query.getSourceType());
         if (query.getSourceTypeNe() != null && !query.getSourceTypeNe().isEmpty()) wrapper.ne(InventoryOutboundOrder::getSourceType, query.getSourceTypeNe());
         if (query.getSourceNo() != null && !query.getSourceNo().isEmpty()) wrapper.like(InventoryOutboundOrder::getSourceNo, query.getSourceNo());
+        // dev-20260923-025：补料来源筛选
+        if (query.getSupplementReasonType() != null && !query.getSupplementReasonType().isEmpty()) {
+            wrapper.eq(InventoryOutboundOrder::getSupplementReasonType, query.getSupplementReasonType());
+        }
         if (query.getOrderStatus() != null && !query.getOrderStatus().isEmpty()) wrapper.eq(InventoryOutboundOrder::getOrderStatus, query.getOrderStatus());
         if (query.getApproveStatus() != null && !query.getApproveStatus().isEmpty()) wrapper.eq(InventoryOutboundOrder::getApproveStatus, query.getApproveStatus());
         if (query.getOutboundDateStart() != null) wrapper.ge(InventoryOutboundOrder::getOutboundDate, query.getOutboundDateStart());
@@ -1254,23 +1258,24 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     public Long createProductionSupplement(Long workOrderId, String reasonType, String reason, Long ncrId,
                                            BigDecimal productionQuantity,
                                            java.util.List<java.util.Map<String, Object>> items) {
-        if (!"PRODUCTION_OVERUSE".equals(reasonType) && !"SCRAP_REPLENISHMENT".equals(reasonType)) {
-            throw new BusinessException("Invalid production supplement reason type");
+        if (com.jjx.inventory.enums.ProductionSupplementReasonEnum.getByCode(reasonType) == null) {
+            throw new BusinessException("不支持的补料来源类型：" + reasonType
+                    + "（支持：生产超耗/现场缺料、报废后补产、试制调机、来料不良）");
         }
         if (reason == null || reason.isBlank()) throw new BusinessException("Supplement reason is required");
         if (productionQuantity == null || productionQuantity.signum() <= 0) {
             throw new BusinessException("Supplement production quantity must be greater than zero");
         }
-        if ("SCRAP_REPLENISHMENT".equals(reasonType) && ncrId == null) {
-            throw new BusinessException("Scrap replenishment requires a quality NCR reference");
+        if (com.jjx.inventory.enums.ProductionSupplementReasonEnum.requiresNcr(reasonType) && ncrId == null) {
+            throw new BusinessException("报废补产必须关联质量不良单（dev-20260923-025）");
         }
         Long outboundId = createProductionPickInternal(workOrderId, items, reasonType, reason.trim(), ncrId);
         InventoryOutboundOrder supplement = outboundOrderMapper.selectById(outboundId);
         supplement.setSupplementProductionQuantity(productionQuantity);
         outboundOrderMapper.updateById(supplement);
         // dev-20260924-002（剩余半张）：报废补产在同一事务里生成补产任务（挂工单末道工序，独立派工/报工）。
-        // 超耗（PRODUCTION_OVERUSE）只补料、不补产 —— 货已经做出来了，没有要补做的数量。
-        if ("SCRAP_REPLENISHMENT".equals(reasonType)) {
+        // 其它来源（超耗/试制调机/来料不良）只补料、不补产 —— 货已经做出来了，没有要补做的数量。
+        if (com.jjx.inventory.enums.ProductionSupplementReasonEnum.requiresNcr(reasonType)) {
             productionTaskService.createSupplementTask(workOrderId, productionQuantity, ncrId, outboundId,
                     supplement.getOutboundNo(), reason.trim());
         }
@@ -1792,6 +1797,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 设置类型名称与状态名称
         OutboundTypeEnum typeEnum = OutboundTypeEnum.getByCode(order.getOutboundType());
         vo.setOutboundTypeName(typeEnum != null ? typeEnum.getLabel() : order.getOutboundType());
+        // dev-20260923-025：补料来源展示（三类来源补齐：超耗 / 报废补产 / 试制调机 / 来料不良）
+        if (order.getSupplementReasonType() != null && !order.getSupplementReasonType().isBlank()) {
+            vo.setSupplementReasonTypeName(
+                    com.jjx.inventory.enums.ProductionSupplementReasonEnum.labelOf(order.getSupplementReasonType()));
+        }
         InventoryOrderStatusEnum statusEnum = InventoryOrderStatusEnum.getByValue(order.getOrderStatus());
         vo.setStatus(order.getOrderStatus());
         if (statusEnum != null) {

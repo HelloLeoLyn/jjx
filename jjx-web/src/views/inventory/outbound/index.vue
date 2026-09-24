@@ -55,6 +55,20 @@
             <el-option label="已取消" :value="9" />
           </el-select>
         </el-form-item>
+        <el-form-item label="补料来源">
+          <!-- dev-20260923-025：按补料来源类型筛选（含试制调机/来料不良两类新增） -->
+          <el-select
+            v-model="queryParams.supplementReasonType"
+            placeholder="全部 / 仅补料"
+            clearable
+            style="width: 170px"
+          >
+            <el-option label="生产超耗/现场缺料" value="PRODUCTION_OVERUSE" />
+            <el-option label="报废后补产" value="SCRAP_REPLENISHMENT" />
+            <el-option label="试制调机" value="TRIAL_ADJUSTMENT" />
+            <el-option label="来料不良" value="INCOMING_DEFECT" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleQuery">搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
@@ -105,6 +119,12 @@
         <el-table-column label="来源" width="150" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.outboundType === 'production' ? (row.sourceNo || '-') : (row.customerName || '-') }}
+            <!-- dev-20260923-025：补料来源展示（超耗 / 报废补产 / 试制调机 / 来料不良） -->
+            <el-tooltip v-if="row.supplementReasonType" :content="row.supplementReason || ''" placement="top">
+              <el-tag type="warning" size="small" effect="plain" style="margin-left: 4px">
+                补料·{{ row.supplementReasonTypeName || row.supplementReasonType }}
+              </el-tag>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="总数量" prop="totalQuantity" width="100" align="right">
@@ -272,6 +292,8 @@ const queryParams = reactive<OutboundQueryParams>({
   outboundType: '',
   warehouseId: '',
   status: '',
+  // dev-20260923-025：补料来源筛选
+  supplementReasonType: '',
 })
 
 // 响应式数据

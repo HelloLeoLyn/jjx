@@ -177,6 +177,19 @@
       </template>
     </el-dialog>
 
+    <!-- 报废处置行发起补料（dev-20260923-025）：复用领料预览弹窗的补料模式 -->
+    <PickPreviewDialog
+      v-if="supplementOrderId"
+      v-model="supplementDialogVisible"
+      :work-order-id="supplementOrderId"
+      :order-no="supplementOrderNo"
+      mode="supplement"
+      preset-reason-type="SCRAP_REPLENISHMENT"
+      :preset-ncr-id="supplementNcrId"
+      :preset-production-quantity="supplementPresetQty"
+      @success="onSupplementSuccess"
+    />
+
     <!-- 隔离台账（dev-20260924-007 一期） -->
     <el-dialog v-model="quarantineVisible" title="隔离台账（在隔离的货）" width="960px" append-to-body>
       <el-alert
@@ -340,6 +353,15 @@
               @click="openSupplement(row)"
               >补料</el-button
             >
+            <!-- dev-20260923-025：报废处置行可发起补料（报废补产场景；来源/不良单/建议补产数量预填） -->
+            <el-button
+              v-if="row.actionType === NcrActionType.SCRAP && current?.orderId"
+              link
+              type="warning"
+              size="small"
+              @click="openSupplementFromDispose()"
+              >申请补料</el-button
+            >
             <!-- dev-20260924-005：报废授权 —— 超阈值的报废待审批，品质主管「通过 / 驳回」（审批人≠提交人） -->
             <el-button
               v-if="can(row, 'NCR_SCRAP_APPROVE')"
@@ -423,6 +445,8 @@ import {
   QualityNcrStatusEnum,
 } from '@/enums/quality'
 import { qualityNcrApi, type QualityNcr, type QualityNcrAction } from '@/api/quality/lot'
+// dev-20260923-025：报废处置行发起补料（复用领料预览弹窗的补料模式）
+import PickPreviewDialog from '@/views/production/order/components/PickPreviewDialog.vue'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
 import { outboundApi } from '@/api/inventory/outbound'
@@ -559,6 +583,31 @@ const goDispose = (row: any) => {
   quarantineVisible.value = false
   const target = rows.value.find((r) => Number(r.ncrId) === Number(row.ncrId))
   if (target) openDispose(target)
+}
+
+// ============ 报废处置行发起补料（dev-20260923-025） ============
+const supplementDialogVisible = ref(false)
+const supplementOrderId = ref<number>()
+const supplementOrderNo = ref('')
+const supplementNcrId = ref<number>()
+const supplementPresetQty = ref<number>()
+const openSupplementFromDispose = () => {
+  const ncr = current.value
+  if (!ncr?.orderId) {
+    ElMessage.warning('该不良单未关联生产工单，无法发起补料')
+    return
+  }
+  supplementOrderId.value = Number(ncr.orderId)
+  supplementOrderNo.value = ncr.orderNo || ''
+  supplementNcrId.value = ncr.ncrId
+  // 建议补产数量默认取待处置量（工人可改）
+  supplementPresetQty.value = Number(pending(ncr)) || undefined
+  supplementDialogVisible.value = true
+}
+const onSupplementSuccess = () => {
+  supplementDialogVisible.value = false
+  ElMessage.success('补料单已生成（报废补产已同时生成补产任务，请到「生产管理 → 派工管理」派工）')
+  load()
 }
 
 const piecesVisible = ref(false)
