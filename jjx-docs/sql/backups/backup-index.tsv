@@ -50,3 +50,6 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-24 17:23:32	guard	inventory_inbound_item_reason_sanitize_20260924-1723.sql	3d9d40547d22be59df04fe0e8cd8e0d2	6043	1	hermes-agent	dev-20260924-029
 2026-09-24 17:24:10	guard	sys_task_register_cost-accounting_20260924-1723-guard.sql	3818eb16422c2b64d6acba6dfa614185	1218630	3	大黄(OpenClaw)	dev-20260924-032
 2026-09-24 17:28:46	guard	sys_task_029_closeout_20260924-1728_guard.sql	778ad2f4580ebe76ea3a7714911e6f7b	1221325	1	hermes-agent	dev-20260924-029
+2026-09-24 18:08:44	full	jjx_erp_db_backup_20260924-1808_manual-1808.sql	a2cf9a6f64fbd93f8cc3cdb9dae59539	5854722	115	dahuang	dev-20260924-033
+2026-09-24 18:08:59	guard	sys_task_register_dev-20260924-033_20260924-1808-guard.sql	c38986b232e60547ac5ab432d8661373	1221328	1	大黄(OpenClaw)	dev-20260924-033
+2026-09-24 18:08:59	delete	jjx_erp_db_backup_20260924-1636_before-defect-reason-correct.sql	a91e69e80ea6fe2335c8de465df1c83f	5842239	115	db-backup.sh 每日只留最新一份全库快照（18:08 备份时去重）	dev-20260924-033
