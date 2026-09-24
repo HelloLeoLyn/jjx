@@ -332,6 +332,17 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         if (!qualityLotService.listBySource("WORK_REPORT", r.getReportId()).isEmpty()) {
             return;
         }
+        // dev-20260923-014（建批路径收敛·口径C）：返工复检批要与原批**同链**（版本化），
+        // 且与「推进返工闭环」互相幂等 —— 同一返工只出一条复检批，不再各自建一条。
+        Long parentLotId = null;
+        if (rework) {
+            parentLotId = sourceLotIdOfNcrNo(reworkNcrNo);
+            if (parentLotId != null && hasChildLot(parentLotId)) {
+                log.info("返工复检批已存在（闭环已先建），跳过报工自动建批: 报工={} ncrNo={} 原批={}",
+                        r.getReportNo(), reworkNcrNo, parentLotId);
+                return;
+            }
+        }
         com.jjx.quality.dto.QualityLotCreateDTO dto = new com.jjx.quality.dto.QualityLotCreateDTO();
         dto.setLotType("FQC");
         dto.setSourceType("WORK_REPORT");
@@ -339,6 +350,11 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         dto.setSourceItemId(r.getExecutionId());
         dto.setOrderId(r.getOrderId());
         dto.setExecutionId(r.getExecutionId());
+        if (parentLotId != null) {
+            // 返工复检批与原批同链（有效批 = 无子批；被取代 = 有子批），与 022 换代口径一致
+            dto.setParentLotId(parentLotId);
+            dto.setVersion(nextVersionOf(parentLotId));
+        }
         dto.setLotQuantity(lotQuantity);
         dto.setRemark(rework
                 ? "返工复检（源自 " + reworkNcrNo + "）：" + (r.getReportNo() == null ? "" : r.getReportNo())
@@ -377,6 +393,44 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
 
     private static BigDecimal safe(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    /** 不良单来源批（返工复检批的父批）—— dev-20260923-014 */
+    private Long sourceLotIdOfNcrNo(String ncrNo) {
+        if (ncrNo == null || ncrNo.isBlank()) {
+            return null;
+        }
+        try {
+            return jdbcTemplate.queryForObject(
+                    "SELECT lot_id FROM quality_ncr WHERE ncr_no = ? AND del_flag = 0 ORDER BY ncr_id DESC LIMIT 1",
+                    Long.class, ncrNo);
+        } catch (Exception e) {
+            log.warn("返工复检：未找到不良单 {} 的来源批，按独立批降级建（dev-20260923-014）: {}", ncrNo, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 该批是否已有后继版本（有子批 = 已被取代 / 复检批已存在）—— dev-20260923-014 互相幂等判据 */
+    private boolean hasChildLot(Long lotId) {
+        try {
+            Integer n = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM quality_lot WHERE parent_lot_id = ? AND del_flag = 0", Integer.class, lotId);
+            return n != null && n > 0;
+        } catch (Exception e) {
+            log.warn("复检批存在性检查失败，按不存在处理: lotId={} err={}", lotId, e.getMessage());
+            return false;
+        }
+    }
+
+    /** 下一个版本号（父批版本 + 1） */
+    private Integer nextVersionOf(Long parentLotId) {
+        try {
+            Integer v = jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(version, 1) + 1 FROM quality_lot WHERE lot_id = ?", Integer.class, parentLotId);
+            return v == null ? 2 : v;
+        } catch (Exception e) {
+            return 2;
+        }
     }
 
     /** 审批事务内按报工 task_id 直达任务；自动完成失败只告警，不改变报工审批语义。 */

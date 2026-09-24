@@ -606,6 +606,19 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         return StringUtils.isBlank(action.getOperatorName()) ? action.getCreateBy() : action.getOperatorName();
     }
 
+    /** 原批是否已有后继版本（子批）—— dev-20260923-014 建批路径互相幂等的判据 */
+    private Long findChildLotId(Long parentLotId) {
+        if (parentLotId == null) {
+            return null;
+        }
+        QualityLot child = qualityLotMapper.selectOne(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getParentLotId, parentLotId)
+                .eq(QualityLot::getDelFlag, 0)
+                .orderByDesc(QualityLot::getLotId)
+                .last("LIMIT 1"));
+        return child == null ? null : child.getLotId();
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public QualityNcrAction approveScrap(Long actionId, String remark, String operatorName) {
@@ -862,6 +875,17 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
                 throw new BusinessException("返工工序尚未完成报工，不能进入复检结案");
             }
             if (action.getReinspectionLotId() == null) {
+                // dev-20260923-014（口径C）：报工审批可能已自动建过返工复检批（同链子批）→ 复用，不再新建第二条
+                Long existingChild = findChildLotId(ncr.getLotId());
+                if (existingChild != null) {
+                    action.setReinspectionLotId(existingChild);
+                    action.setResultRemark("返工复检批已由报工自动创建（同链子批 #" + existingChild
+                            + "），闭环直接复用，不重复建版（dev-20260923-014）");
+                    actionMapper.updateById(action);
+                    log.info("返工闭环复用已建复检批: actionId={} 原批={} 复检批={}",
+                            actionId, ncr.getLotId(), existingChild);
+                    return action;
+                }
                 QualityFinishService qualityFinishService = qualityFinishServiceProvider.getIfAvailable();
                 if (qualityFinishService == null) {
                     throw new BusinessException("成品复检服务不可用，暂不能生成返工复检批");
