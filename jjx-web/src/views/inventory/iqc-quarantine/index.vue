@@ -1,14 +1,19 @@
 <template>
   <div class="iqc-ledger">
-    <el-alert type="info" :closable="false" show-icon class="scope-guide">
-      <template #title>
-        <div class="scope-guide__content">
-          <span>本页只处理来料检验产生的隔离品：让步接收（特采）、退货、供应商返工或报废。</span>
-          <el-button link type="primary" @click="router.push('/quality/ncr')">查看产品不良台账</el-button>
-        </div>
-      </template>
-    </el-alert>
-    <el-card>
+    <!-- dev-20260924-024：说明不再占一整条 alert，收成一行小字 + hover 展开 -->
+    <div class="scope-tip">
+      <el-tooltip placement="bottom-start">
+        <template #content>
+          <div class="scope-tip__pop">
+            本页只处理来料检验判定不合格后的处置：让步接收（特采） / 退货 / 返工 / 报废。<br />
+            「剩余数量」减到 0 才算结清，状态才会变成已让步接收 / 已退货 / 已返工 / 已报废。
+          </div>
+        </template>
+        <span class="scope-tip__text">❓ 本页处理来料不合格处置（让步接收 / 退货 / 返工 / 报废）</span>
+      </el-tooltip>
+      <el-button link type="primary" @click="router.push('/quality/ncr')">查看产品不良台账</el-button>
+    </div>
+    <div class="filter-bar">
       <el-form inline @submit.prevent>
         <el-form-item label="入库单号">
           <el-input v-model="query.inboundNo" clearable placeholder="输入入库单号" />
@@ -35,7 +40,7 @@
           <el-button @click="resetQuery">重置</el-button>
         </el-form-item>
       </el-form>
-    </el-card>
+    </div>
     <el-card class="card">
       <template #header>批次谱系</template>
       <el-table v-loading="batchLoading" :data="batchRows" border>
@@ -311,6 +316,29 @@ async function goReinspect(row: any) {
 onMounted(load)
 </script>
 <style scoped>
+/* dev-20260924-024：说明收成一行 + 筛选工具条（不再各占一张卡片） */
+.scope-tip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #909399;
+}
+.scope-tip__text {
+  cursor: help;
+  border-bottom: 1px dashed var(--el-border-color);
+}
+.scope-tip__pop {
+  max-width: 420px;
+  line-height: 1.6;
+}
+.filter-bar {
+  padding: 10px 12px 0;
+  margin-bottom: 12px;
+  background: var(--el-fill-color-lighter);
+  border-radius: 4px;
+}
 .iqc-ledger {
   padding: 20px;
 }
