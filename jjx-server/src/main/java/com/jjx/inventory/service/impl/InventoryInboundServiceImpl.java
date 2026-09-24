@@ -107,6 +107,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     /** IQC 不合格统一写 NCR；延迟获取避免 inventory/quality 构造器循环。 */
     private final org.springframework.beans.factory.ObjectProvider<com.jjx.quality.service.QualityNcrService> qualityNcrServiceProvider;
     private final com.jjx.quality.mapper.QualityLotMapper qualityLotMapper;
+    /** dev-20260923-043：返工退料 —— 读补料出库明细（原发料批次）与不良单号 */
+    private final com.jjx.inventory.mapper.InventoryOutboundOrderMapper outboundOrderMapper;
+    private final com.jjx.inventory.mapper.InventoryOutboundItemMapper outboundItemMapper;
+    private final com.jjx.quality.mapper.QualityNcrMapper qualityNcrMapper;
 
     /**
      * 入库类事件统一发布（2026-09-21 dev-20260921-013 库存批）：
@@ -2312,6 +2316,187 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         log.info("生产完工入库完成: workOrderId={}, inboundId={}", workOrderId, order.getInboundId());
         publishInboundEvent("inventory.inbound.created_from_production", order.getInboundId());
         return order.getInboundId();
+    }
+
+    // ==================== dev-20260923-043：返工退料（净耗 = 补料 − 退料） ====================
+
+    @Override
+    public List<java.util.Map<String, Object>> returnPreview(Long ncrId) {
+        List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+        if (ncrId == null) {
+            return rows;
+        }
+        java.util.Map<String, java.util.Map<String, Object>> byKey = new java.util.LinkedHashMap<>();
+        // ① 补料明细（该不良单的补料出库单：supplement_ncr_id = ncrId，未取消）
+        try {
+            List<com.jjx.inventory.domain.InventoryOutboundOrder> suppOrders = outboundOrderMapper.selectList(
+                    new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryOutboundOrder>()
+                            .eq(com.jjx.inventory.domain.InventoryOutboundOrder::getSupplementNcrId, ncrId)
+                            .ne(com.jjx.inventory.domain.InventoryOutboundOrder::getOrderStatus,
+                                    InventoryOrderStatusEnum.CANCELLED.getValue()));
+            for (com.jjx.inventory.domain.InventoryOutboundOrder so : suppOrders) {
+                for (com.jjx.inventory.domain.InventoryOutboundItem it : outboundItemMapper.selectList(
+                        new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryOutboundItem>()
+                                .eq(com.jjx.inventory.domain.InventoryOutboundItem::getOutboundId, so.getOutboundId()))) {
+                    String key = (it.getMaterialCode() == null ? "" : it.getMaterialCode())
+                            + "|" + (it.getBatchNo() == null ? "" : it.getBatchNo());
+                    java.util.Map<String, Object> row = byKey.computeIfAbsent(key, k -> {
+                        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                        m.put("materialId", it.getMaterialId());
+                        m.put("inventoryItemId", it.getInventoryItemId());
+                        m.put("materialCode", it.getMaterialCode());
+                        m.put("materialName", it.getMaterialName());
+                        m.put("unit", it.getUnit());
+                        m.put("batchNo", it.getBatchNo());
+                        m.put("supplementQty", BigDecimal.ZERO);
+                        m.put("returnedQty", BigDecimal.ZERO);
+                        m.put("returnableQty", BigDecimal.ZERO);
+                        return m;
+                    });
+                    row.put("supplementQty", ((BigDecimal) row.get("supplementQty")).add(nzQty(it.getQuantity())));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("返工退料预览：读补料明细失败 ncrId={} err={}", ncrId, e.getMessage());
+        }
+        // ② 已退（本不良单的退料入库单：source_type=QUALITY_NCR）
+        try {
+            List<InventoryInboundOrder> rtnOrders = inboundOrderMapper.selectList(
+                    new LambdaQueryWrapper<InventoryInboundOrder>()
+                            .eq(InventoryInboundOrder::getSourceType, "QUALITY_NCR")
+                            .eq(InventoryInboundOrder::getSourceId, ncrId)
+                            .ne(InventoryInboundOrder::getOrderStatus, InventoryOrderStatusEnum.CANCELLED.getValue()));
+            for (InventoryInboundOrder ro : rtnOrders) {
+                for (InventoryInboundItem it : inboundItemMapper.selectList(
+                        new LambdaQueryWrapper<InventoryInboundItem>()
+                                .eq(InventoryInboundItem::getInboundId, ro.getInboundId()))) {
+                    for (java.util.Map<String, Object> row : byKey.values()) {
+                        if (java.util.Objects.equals(row.get("materialCode"), it.getMaterialCode())) {
+                            row.put("returnedQty", ((BigDecimal) row.get("returnedQty")).add(nzQty(it.getQuantity())));
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("返工退料预览：读已退量失败 ncrId={} err={}", ncrId, e.getMessage());
+        }
+        for (java.util.Map<String, Object> row : byKey.values()) {
+            BigDecimal returnable = ((BigDecimal) row.get("supplementQty"))
+                    .subtract((BigDecimal) row.get("returnedQty")).max(BigDecimal.ZERO);
+            row.put("returnableQty", returnable);
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createProductionReturnInbound(Long orderId, Long ncrId,
+                                              List<java.util.Map<String, Object>> items, String reason) {
+        if (orderId == null || ncrId == null) {
+            throw new BusinessException("返工退料必须关联生产工单与质量不良单");
+        }
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("退料明细不能为空");
+        }
+        com.jjx.quality.domain.entity.QualityNcr ncr = qualityNcrMapper.selectById(ncrId);
+        if (ncr == null) {
+            throw new BusinessException("不良台账不存在: " + ncrId);
+        }
+        ProductionOrder order = productionOrderMapper.selectById(orderId);
+        if (order == null) {
+            throw new BusinessException("生产工单不存在: " + orderId);
+        }
+        // 净耗口径：可退 = 补料 − 已退（逐物料）
+        java.util.Map<String, BigDecimal> canReturn = new java.util.HashMap<>();
+        for (java.util.Map<String, Object> r : returnPreview(ncrId)) {
+            canReturn.put(String.valueOf(r.get("materialCode")), (BigDecimal) r.get("returnableQty"));
+        }
+        String prefix = "RTN-" + order.getOrderNo() + "-" + ncr.getNcrNo() + "-";
+        Long existed = inboundOrderMapper.selectCount(
+                new LambdaQueryWrapper<InventoryInboundOrder>().likeRight(InventoryInboundOrder::getInboundNo, prefix));
+        String inboundNo = prefix + ((existed == null ? 0 : existed) + 1);
+
+        InventoryInboundOrder io = new InventoryInboundOrder();
+        io.setInboundNo(inboundNo);
+        io.setInboundType("PRODUCTION_RETURN");
+        io.setSourceType("QUALITY_NCR");
+        io.setSourceId(ncrId);
+        io.setSourceNo(ncr.getNcrNo());
+        io.setInboundDate(LocalDate.now());
+        try {
+            InventoryWarehouse wh = warehouseMapper.selectOne(new LambdaQueryWrapper<InventoryWarehouse>()
+                    .eq(InventoryWarehouse::getStatus, 1).orderByAsc(InventoryWarehouse::getWarehouseId).last("LIMIT 1"));
+            if (wh != null) {
+                io.setWarehouseId(wh.getWarehouseId());
+            }
+        } catch (Exception e) {
+            log.warn("返工退料：获取默认仓库失败 {}", e.getMessage());
+        }
+        io.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue());
+        io.setRemark("返工退料（工单 " + order.getOrderNo() + " / 不良单 " + ncr.getNcrNo()
+                + (reason == null || reason.isBlank() ? "" : "，原因：" + reason.trim()) + "）");
+        inboundOrderMapper.insert(io);
+
+        BigDecimal totalQty = BigDecimal.ZERO;
+        int sort = 1;
+        for (java.util.Map<String, Object> row : items) {
+            BigDecimal qty = row.get("quantity") == null ? BigDecimal.ZERO
+                    : new BigDecimal(String.valueOf(row.get("quantity")));
+            if (qty.signum() <= 0) {
+                continue;
+            }
+            String materialCode = row.get("materialCode") == null ? null : String.valueOf(row.get("materialCode"));
+            BigDecimal allow = canReturn.getOrDefault(materialCode, BigDecimal.ZERO);
+            if (allow.signum() <= 0) {
+                throw new BusinessException("物料[" + materialCode + "]没有补料记录（或已全部退回），不能退料");
+            }
+            if (qty.compareTo(allow) > 0) {
+                throw new BusinessException("物料[" + materialCode + "]退料量 " + qty.toPlainString()
+                        + " 超过可退量 " + allow.toPlainString() + "（净耗 = 补料 − 已退）");
+            }
+            Long materialId = row.get("materialId") == null ? null : Long.valueOf(String.valueOf(row.get("materialId")));
+            Long inventoryItemId = row.get("inventoryItemId") == null ? null
+                    : Long.valueOf(String.valueOf(row.get("inventoryItemId")));
+            if (inventoryItemId == null) {
+                if (materialId == null) {
+                    throw new BusinessException("物料[" + materialCode + "]缺少物料ID，无法退料");
+                }
+                com.jjx.inventory.domain.InventoryItem inventoryItem = inventoryItemService.ensure(
+                        InventoryItemTypeEnum.MATERIAL,
+                        materialId, materialCode, String.valueOf(row.get("materialName")),
+                        null, row.get("unit") == null ? "PCS" : String.valueOf(row.get("unit")));
+                inventoryItemId = inventoryItem.getInventoryItemId();
+            }
+            InventoryInboundItem item = new InventoryInboundItem();
+            item.setInboundId(io.getInboundId());
+            item.setInventoryItemId(inventoryItemId);
+            item.setMaterialId(materialId);
+            item.setMaterialCode(materialCode);
+            item.setMaterialName(row.get("materialName") == null ? null : String.valueOf(row.get("materialName")));
+            item.setUnit(row.get("unit") == null ? null : String.valueOf(row.get("unit")));
+            item.setQuantity(qty);
+            // A 方案：批次回**原发料批次**（可追溯；由 returnPreview 带回）
+            item.setBatchNo(row.get("batchNo") == null ? null : String.valueOf(row.get("batchNo")));
+            item.setSortOrder(sort++);
+            inboundItemMapper.insert(item);
+            totalQty = totalQty.add(qty);
+        }
+        if (sort == 1) {
+            throw new BusinessException("没有可退的退料明细（数量都为 0）");
+        }
+        io.setTotalQuantity(totalQty);
+        io.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        inboundOrderMapper.updateById(io);
+        approve(io.getInboundId(), null, null, "返工退料");
+        confirm(io.getInboundId(), null, "返工退料");
+        log.info("返工退料完成: inboundNo={} 工单={} 不良单={} 数量={}", inboundNo,
+                order.getOrderNo(), ncr.getNcrNo(), totalQty.toPlainString());
+        return io.getInboundId();
+    }
+
+    private static BigDecimal nzQty(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     /**

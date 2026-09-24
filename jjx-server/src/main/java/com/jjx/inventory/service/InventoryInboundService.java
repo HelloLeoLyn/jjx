@@ -120,6 +120,24 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     Long createSalesRejectInbound(Long deliveryId);
 
     /**
+     * 返工退料预览（dev-20260923-043）：该不良单的补料明细 + 已退量 + 可退量（净耗口径：可退 = 补料 − 已退）。
+     * 每行含原发料批次（退料默认回原批次）。
+     */
+    List<java.util.Map<String, Object>> returnPreview(Long ncrId);
+
+    /**
+     * 返工退料入库（dev-20260923-043）：返工/补料剩余料退回仓库。
+     *
+     * <p>单号 RTN-&lt;工单号&gt;-&lt;NCR号&gt;-&lt;序号&gt;；source_type=QUALITY_NCR；
+     * 批次默认回**原发料批次**（补料出库明细上的批次）；自动审批 + 过账（仓库无需手工建单）。
+     * 数量不得超过净耗可退量。</p>
+     *
+     * @return 退料入库单ID
+     */
+    Long createProductionReturnInbound(Long orderId, Long ncrId,
+                                       List<java.util.Map<String, Object>> items, String reason);
+
+    /**
      * 完工入库差额同步（dev-20260917-007）：把工单完工入库数量对齐到 targetQuantity（= 该工单成品检验批累计合格数），只做差额。
      * - 未过账：直接改入库单明细数量；
      * - 已过账：调整库存（+/-delta）并写 ADJUST 流水（带 lotId 可追）；

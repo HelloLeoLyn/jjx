@@ -102,6 +102,13 @@ class InventoryInboundConcurrencyGuardTest {
     @SuppressWarnings("unchecked")
     private final ObjectProvider<QualityNcrService> qualityNcrServiceProvider = mock(ObjectProvider.class);
     private final QualityLotMapper qualityLotMapper = mock(QualityLotMapper.class);
+    /** dev-20260923-043：返工退料读补料出库明细（并发护栏测试不涉及退料） */
+    private final com.jjx.inventory.mapper.InventoryOutboundOrderMapper outboundOrderMapper =
+            mock(com.jjx.inventory.mapper.InventoryOutboundOrderMapper.class);
+    private final com.jjx.inventory.mapper.InventoryOutboundItemMapper outboundItemMapper =
+            mock(com.jjx.inventory.mapper.InventoryOutboundItemMapper.class);
+    private final com.jjx.quality.mapper.QualityNcrMapper qualityNcrMapper =
+            mock(com.jjx.quality.mapper.QualityNcrMapper.class);
 
     private final InventoryInboundServiceImpl service = new InventoryInboundServiceImpl(
             inboundOrderMapper, inboundItemMapper, stockItemMapper, stockMapper, transactionMapper,
@@ -110,7 +117,7 @@ class InventoryInboundConcurrencyGuardTest {
             salesOrderMapper, salesDeliveryMapper, salesDeliveryItemMapper, iqcQuarantineMapper,
             iqcDispositionOrderMapper, iqcReturnOrderMapper, iqcReworkOrderMapper, iqcBatchMapper,
             iqcScrapOrderMapper, redisSequenceService, qualityLotServiceProvider, qualityNcrServiceProvider,
-            qualityLotMapper);
+            qualityLotMapper, outboundOrderMapper, outboundItemMapper, qualityNcrMapper);
 
     // ==================== 并发确认（正常过账） ====================
 

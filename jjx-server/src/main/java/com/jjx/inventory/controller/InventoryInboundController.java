@@ -76,6 +76,21 @@ public class InventoryInboundController {
         return Result.success(inboundService.confirm(inboundId, operatorId, operatorName));
     }
 
+    @GetMapping("/return-preview/{ncrId}")
+    @Operation(summary = "返工退料预览（dev-20260923-043：该不良单的补料明细 / 已退 / 可退；含原发料批次）")
+    public Result<java.util.List<java.util.Map<String, Object>>> returnPreview(@PathVariable Long ncrId) {
+        return Result.success(inboundService.returnPreview(ncrId));
+    }
+
+    @PostMapping("/production-return")
+    @Operation(summary = "返工退料入库（dev-20260923-043：单号 RTN-工单-NCR-序号；批次回原发料批次；自动审批+过账）")
+    @SaCheckPermission("inventory:outbound:rework-return")
+    public Result<Long> productionReturn(@RequestParam Long orderId, @RequestParam Long ncrId,
+                                         @RequestParam(required = false) String reason,
+                                         @RequestBody java.util.List<java.util.Map<String, Object>> items) {
+        return Result.success(inboundService.createProductionReturnInbound(orderId, ncrId, items, reason));
+    }
+
     @PostMapping("/cancel/{inboundId}")
     @Operation(summary = "取消入库单")
     @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).CANCELLED.getLabel()", action = LogActions.INBOUND_CANCEL)

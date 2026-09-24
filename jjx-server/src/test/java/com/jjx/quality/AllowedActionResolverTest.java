@@ -106,7 +106,9 @@ class AllowedActionResolverTest {
 
     @Test
     void processingReworkCanSupplementButNotAfterDone() {
-        assertEquals(List.of(AllowedActionEnum.NCR_REWORK_COMPLETE, AllowedActionEnum.NCR_REWORK_SUPPLEMENT),
+        // dev-20260923-043：返工退料落地后，在制返工再下发「返工退料」（净耗 = 补料 − 退料）
+        assertEquals(List.of(AllowedActionEnum.NCR_REWORK_COMPLETE, AllowedActionEnum.NCR_REWORK_SUPPLEMENT,
+                        AllowedActionEnum.NCR_REWORK_RETURN),
                 AllowedActionResolver.forNcrAction("REWORK", "PROCESSING"));
         assertTrue(AllowedActionResolver.forNcrAction("REWORK", "DONE").isEmpty());
     }

@@ -27,6 +27,20 @@ export const inboundApi = {
   },
 
   // 分页查询入库单列表
+  /**
+   * 返工退料预览（dev-20260923-043）：该不良单的补料明细 / 已退 / 可退（净耗口径），含原发料批次
+   */
+  returnPreview(ncrId: number) {
+    return request.get<R<Record<string, any>[]>>(`/inventory/inbound/return-preview/${ncrId}`)
+  },
+  /**
+   * 返工退料入库（dev-20260923-043）：单号 RTN-工单-NCR-序号；批次回原发料批次；自动审批+过账
+   */
+  productionReturn(orderId: number, ncrId: number, reason: string, items: Record<string, any>[]) {
+    return request.post<R<number>>('/inventory/inbound/production-return', items, {
+      params: { orderId, ncrId, reason },
+    })
+  },
   list(params: InboundQueryParams) {
     return request.get<R<PageResult<InboundVO>>>('/inventory/inbound/list', {
       params,

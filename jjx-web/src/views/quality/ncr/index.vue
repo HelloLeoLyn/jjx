@@ -177,6 +177,59 @@
       </template>
     </el-dialog>
 
+    <!-- 返工退料（dev-20260923-043）：净耗 = 补料 − 退料，批次回原发料批次 -->
+    <el-dialog v-model="returnVisible" title="返工退料" width="760px" append-to-body>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="口径：可退 = 补料 − 已退（净耗）；批次默认回原发料批次；提交即生成退料入库单 RTN-工单-NCR-序号并自动过账回冲库存。"
+        style="margin-bottom: 10px"
+      />
+      <el-table v-loading="returnLoading" :data="returnRows" border size="small">
+        <template #empty><el-empty description="该不良单没有补料记录，无需退料" /></template>
+        <el-table-column label="物料" min-width="180">
+          <template #default="{ row }">
+            {{ row.materialCode || '-' }}
+            <span class="sub">{{ row.materialName || '' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="原发料批次" prop="batchNo" width="140" />
+        <el-table-column label="补料" width="85" align="right">
+          <template #default="{ row }">{{ num(row.supplementQty) }}</template>
+        </el-table-column>
+        <el-table-column label="已退" width="85" align="right">
+          <template #default="{ row }">{{ num(row.returnedQty) }}</template>
+        </el-table-column>
+        <el-table-column label="可退" width="85" align="right">
+          <template #default="{ row }">{{ num(row.returnableQty) }}</template>
+        </el-table-column>
+        <el-table-column label="本次退料" width="130">
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.quantity"
+              :min="0"
+              :max="Number(row.returnableQty || 0)"
+              :precision="4"
+              size="small"
+            />
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-form label-width="90px" style="margin-top: 10px">
+        <el-form-item label="退料原因" required>
+          <el-input v-model="returnReason" maxlength="200" show-word-limit placeholder="如：返工结束剩余料退回" />
+        </el-form-item>
+      </el-form>
+      <div class="sub">
+        本次退料合计 {{ num(returnTotal) }}；净耗 = 补料 − 退料（退料后净耗自动下降）
+      </div>
+      <template #footer>
+        <el-button @click="returnVisible = false">取消</el-button>
+        <el-button type="primary" :loading="returnSubmitting" @click="submitReworkReturn">提交退料</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 报废处置行发起补料（dev-20260923-025）：复用领料预览弹窗的补料模式 -->
     <PickPreviewDialog
       v-if="supplementOrderId"
@@ -352,6 +405,15 @@
               size="small"
               @click="openSupplement(row)"
               >补料</el-button
+            >
+            <!-- dev-20260923-043：返工退料（净耗 = 补料 − 退料；批次回原发料批次） -->
+            <el-button
+              v-if="can(row, 'NCR_REWORK_RETURN') && current?.orderId"
+              link
+              type="info"
+              size="small"
+              @click="openReworkReturn()"
+              >返工退料</el-button
             >
             <!-- dev-20260923-025：报废处置行可发起补料（报废补产场景；来源/不良单/建议补产数量预填） -->
             <el-button
@@ -586,6 +648,56 @@ const goDispose = (row: any) => {
 }
 
 // ============ 报废处置行发起补料（dev-20260923-025） ============
+// ============ 返工退料（dev-20260923-043） ============
+const returnVisible = ref(false)
+const returnLoading = ref(false)
+const returnSubmitting = ref(false)
+const returnReason = ref('')
+const returnRows = ref<any[]>([])
+const returnTotal = computed(() =>
+  returnRows.value.reduce((s, r) => s + Number(r.quantity || 0), 0)
+)
+const openReworkReturn = async () => {
+  const ncr = current.value
+  if (!ncr?.orderId) {
+    ElMessage.warning('该不良单未关联生产工单，无法退料')
+    return
+  }
+  returnReason.value = ''
+  returnRows.value = []
+  returnVisible.value = true
+  returnLoading.value = true
+  try {
+    const { inboundApi } = await import('@/api/inventory/inbound')
+    const res: any = await inboundApi.returnPreview(ncr.ncrId)
+    returnRows.value = (res?.data || []).map((r: any) => ({ ...r, quantity: 0 }))
+  } catch (e: any) {
+    ElMessage.error(e?.message || '退料预览加载失败')
+  } finally {
+    returnLoading.value = false
+  }
+}
+const submitReworkReturn = async () => {
+  const ncr = current.value
+  if (!ncr?.orderId) return
+  const items = returnRows.value.filter((r) => Number(r.quantity || 0) > 0)
+  if (!items.length) return ElMessage.warning('请填写本次退料数量')
+  if (!returnReason.value.trim()) return ElMessage.warning('退料原因必填（留痕）')
+  returnSubmitting.value = true
+  try {
+    const { inboundApi } = await import('@/api/inventory/inbound')
+    await inboundApi.productionReturn(Number(ncr.orderId), ncr.ncrId, returnReason.value.trim(), items)
+    ElMessage.success('退料已入库（RTN 单已生成并过账）')
+    returnVisible.value = false
+    load()
+    if (current.value) await openActions(current.value)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '退料失败')
+  } finally {
+    returnSubmitting.value = false
+  }
+}
+
 const supplementDialogVisible = ref(false)
 const supplementOrderId = ref<number>()
 const supplementOrderNo = ref('')

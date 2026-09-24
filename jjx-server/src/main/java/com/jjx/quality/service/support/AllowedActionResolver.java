@@ -138,10 +138,11 @@ public final class AllowedActionResolver {
             actions.add(AllowedActionEnum.NCR_SCRAP_APPROVE);
             actions.add(AllowedActionEnum.NCR_SCRAP_REJECT);
         }
-        // 返工：在制中可补料；退料在 dev-20260923-043 落地后再放开（避免出现点不动的按钮）
+        // 返工：在制中可补料 + 退料（dev-20260923-043 已落地：净耗 = 补料 − 退料）
         if ("REWORK".equals(type) && ("PENDING".equals(status) || "PROCESSING".equals(status))) {
             actions.add(AllowedActionEnum.NCR_REWORK_COMPLETE);
             actions.add(AllowedActionEnum.NCR_REWORK_SUPPLEMENT);
+            actions.add(AllowedActionEnum.NCR_REWORK_RETURN);
         }
         return actions;
     }
