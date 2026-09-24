@@ -68,6 +68,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final SalesDeliveryMapper salesDeliveryMapper;
     private final SalesDeliveryItemMapper salesDeliveryItemMapper;
     private final com.jjx.quality.service.QualityLotService qualityLotService;
+    /** dev-20260921-042：出货检验建批口径（按批量挂 OQC 抽样方案 + 预填检验项目） */
+    private final com.jjx.quality.service.QualityOqcService qualityOqcService;
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void submitReview(Long orderId) {
@@ -666,6 +668,8 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
             oqc.setBatchNo(record.getDeliveryNo());
             oqc.setLotQuantity(BigDecimal.valueOf(line.getQuantity()));
             oqc.setRemark("发货单 " + record.getDeliveryNo() + " 出货检验");
+            // dev-20260921-042：按批量挂 OQC 抽样方案（AQL）+ 预填检验项目（复制该产品最近 FQC 项目）
+            qualityOqcService.prepareLot(oqc);
             qualityLotService.createLot(oqc);
         }
 
