@@ -748,7 +748,75 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                         fqc == null ? zero : fqc.getScrappedTotal(),
                         planned));
         vo.setShortfallQuantity(result.shortfallQuantity());
+        fillReconciliation(vo, order.getOrderId(), planned);
         setStage(vo, result.stage(), result.label(), result.nextAction());
+    }
+
+    /**
+     * 数量对账栏（dev-20260923-024）：计划 / 已报工(投入) / 良品 / 报废 / 返工在制 / 让步 / 在制 / 差数。
+     *
+     * <p>口径（045 §1 术语表）：工单「完成」= 良品累计；差数 = max(0, 计划 − 良品)，必须由
+     * 补产 / 返工回收 / 让步 三者之一填平，否则不允许关闭工单。全部实时汇总，不落冗余列。</p>
+     *
+     * <p>说明：良品/报废 与 VO 既有字段 qualifiedQuantity/scrappedQuantity **同定义**
+     * （有效 FQC 批 pass 合计 / SCRAP DONE 合计），此处独立汇总是为了让对账栏在任何阶段都可读
+     * （既有字段受「已到 FQC 阶段」门控，仅用于阶段判定）。</p>
+     */
+    private void fillReconciliation(com.jjx.production.domain.vo.OrderCompletionStatusVO vo, Long orderId,
+                                    java.math.BigDecimal planned) {
+        java.math.BigDecimal zero = java.math.BigDecimal.ZERO;
+        if (orderId == null) {
+            return;
+        }
+        java.math.BigDecimal reported = zero;
+        java.math.BigDecimal good = zero;
+        java.math.BigDecimal scrap = zero;
+        java.math.BigDecimal reworkWip = zero;
+        java.math.BigDecimal concession = zero;
+        java.math.BigDecimal inspected = zero;
+        try {
+            reported = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(IFNULL(qualified_quantity,0) + IFNULL(defective_quantity,0)),0)"
+                            + " FROM production_work_report WHERE order_id = ? AND report_status = 'APPROVED'",
+                    java.math.BigDecimal.class, orderId));
+            good = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(l.pass_quantity),0) FROM quality_lot l"
+                            + " WHERE l.order_id = ? AND l.lot_type = 'FQC' AND l.del_flag = 0"
+                            + " AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)",
+                    java.math.BigDecimal.class, orderId));
+            inspected = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(IFNULL(l.inspected_quantity,0)),0) FROM quality_lot l"
+                            + " WHERE l.order_id = ? AND l.lot_type = 'FQC' AND l.del_flag = 0",
+                    java.math.BigDecimal.class, orderId));
+            scrap = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(a.quantity),0) FROM quality_ncr_action a JOIN quality_ncr n ON n.ncr_id = a.ncr_id"
+                            + " WHERE n.order_id = ? AND n.del_flag = 0 AND a.del_flag = 0"
+                            + " AND a.action_type = 'SCRAP' AND a.status = 'DONE'",
+                    java.math.BigDecimal.class, orderId));
+            reworkWip = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(a.quantity),0) FROM quality_ncr_action a JOIN quality_ncr n ON n.ncr_id = a.ncr_id"
+                            + " WHERE n.order_id = ? AND n.del_flag = 0 AND a.del_flag = 0"
+                            + " AND a.action_type = 'REWORK' AND a.status IN ('PENDING','PROCESSING')",
+                    java.math.BigDecimal.class, orderId));
+            concession = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(a.quantity),0) FROM quality_ncr_action a JOIN quality_ncr n ON n.ncr_id = a.ncr_id"
+                            + " WHERE n.order_id = ? AND n.del_flag = 0 AND a.del_flag = 0"
+                            + " AND a.action_type = 'CONCESSION' AND a.status = 'DONE'",
+                    java.math.BigDecimal.class, orderId));
+        } catch (Exception e) {
+            log.warn("数量对账栏汇总失败（降级为 0，不影响阶段判定）: orderId={} err={}", orderId, e.getMessage());
+        }
+        vo.setReportedQuantity(reported);
+        vo.setGoodQuantity(good);
+        vo.setScrapQuantity(scrap);
+        vo.setReworkWipQuantity(reworkWip);
+        vo.setConcessionQuantity(concession);
+        vo.setWipQuantity(reported.subtract(inspected).max(zero));
+        vo.setDiffQuantity((planned == null ? zero : planned).subtract(good).max(zero));
+    }
+
+    private static java.math.BigDecimal nz(java.math.BigDecimal value) {
+        return value == null ? java.math.BigDecimal.ZERO : value;
     }
 
     private void setStage(com.jjx.production.domain.vo.OrderCompletionStatusVO vo,

@@ -70,4 +70,29 @@ public class OrderCompletionStatusVO {
 
     /** 缺口 = max(0, 计划数量 − 合格累计)；&gt;0 且阶段=待补产时即为「还需补产多少件」—— dev-20260923-028 */
     private BigDecimal shortfallQuantity = BigDecimal.ZERO;
+
+    // ==================== 数量对账栏（dev-20260923-024，口径见 design 045 §1） ====================
+    // 口径：工单「完成」= 良品累计；差额必须由 补产 / 返工回收 / 让步 三者之一填平，否则不允许关闭工单。
+    // 数据来源全部实时汇总（不落冗余列）；报废/返工/让步 的件级下钻见 dev-20260924-004（不良件列表）。
+
+    /** 已报工（投入）= Σ 审批通过的报工 qualified + defective */
+    private BigDecimal reportedQuantity = BigDecimal.ZERO;
+
+    /** 良品（= 合格累计，与 qualifiedQuantity 同源，独立字段便于对账栏直读） */
+    private BigDecimal goodQuantity = BigDecimal.ZERO;
+
+    /** 报废合计（= scrappedQuantity 同源） */
+    private BigDecimal scrapQuantity = BigDecimal.ZERO;
+
+    /** 返工在制 = Σ 处置单 REWORK（PENDING/PROCESSING） */
+    private BigDecimal reworkWipQuantity = BigDecimal.ZERO;
+
+    /** 让步接收合计 = Σ 处置单 CONCESSION（DONE） */
+    private BigDecimal concessionQuantity = BigDecimal.ZERO;
+
+    /** 在制 = max(0, 报工投入 − 已判定量)；已报工但尚未判定/未入库 */
+    private BigDecimal wipQuantity = BigDecimal.ZERO;
+
+    /** 差数 = max(0, 计划 − 良品)；与 shortfallQuantity 同口径（对账栏展示用） */
+    private BigDecimal diffQuantity = BigDecimal.ZERO;
 }

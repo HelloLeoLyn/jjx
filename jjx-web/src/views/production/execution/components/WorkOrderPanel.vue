@@ -36,6 +36,12 @@
       <el-table-column label="完工数量" width="120" align="right">
         <template #default="{ row }">{{ fmtQty(row.completedQuantity) }}</template>
       </el-table-column>
+      <!-- dev-20260923-024：数量对账栏（计划/投入/良品/报废/返工在制/让步/在制/差数），口径唯一出处 -->
+      <el-table-column label="对账" width="90" align="center">
+        <template #default="{ row }">
+          <el-button link size="small" @click.stop="openRecon(row)">数量对账</el-button>
+        </template>
+      </el-table-column>
       <el-table-column prop="planEndDate" label="计划交期" width="130" />
       <el-table-column label="阶段" width="130">
         <template #default="{ row }">
@@ -71,6 +77,28 @@
         <el-empty :description="scope === 'mine' ? '我的范围暂无工单' : '暂无工单'" />
       </template>
     </el-table>
+
+    <!-- 数量对账（dev-20260923-024）：口径 045 §1；报废/返工/让步 的件级下钻见 dev-20260924-004 -->
+    <el-dialog v-model="reconVisible" title="工单数量对账" width="620px" append-to-body>
+      <div class="recon-head">
+        工单 {{ reconRow?.orderNo || '-' }} · 产品 {{ reconRow?.productName || '-' }}
+      </div>
+      <el-table :data="reconRows" border size="small">
+        <el-table-column label="项目" width="130">
+          <template #default="{ row }">{{ row.item }}</template>
+        </el-table-column>
+        <el-table-column label="数量" width="110" align="right">
+          <template #default="{ row }">{{ fmtQty(row.value) }}</template>
+        </el-table-column>
+        <el-table-column label="来源 / 说明">
+          <template #default="{ row }">{{ row.note }}</template>
+        </el-table-column>
+      </el-table>
+      <div class="recon-tip">
+        口径：工单「完成」= 良品累计；差数必须由 补产 / 返工回收 / 让步 三者之一填平，否则不允许关闭工单。
+        报废 / 返工 / 让步 的数字可在「质量管理 → 产品不良台账」按工单查看件级明细（不良件）。
+      </div>
+    </el-dialog>
 
     <div class="pagination-wrap">
       <el-pagination
@@ -162,6 +190,27 @@ const STAGE_TAG: Record<string, 'primary' | 'success' | 'warning' | 'danger' | '
   CANCELLED: 'info',
 }
 /** 阶段优先，取不到（接口未回）时回落到工单原始状态 */
+// ============ 数量对账（dev-20260923-024） ============
+const reconVisible = ref(false)
+const reconRow = ref<ProductionOrderVO | null>(null)
+const reconRows = ref<Array<{ item: string; value: number; note: string }>>([])
+/** 对账栏口径（045 §1）：工单完成 = 良品累计；差数由 补产/返工回收/让步 填平 */
+const openRecon = (row: ProductionOrderVO) => {
+  const st: any = completionMap.value[String(row.orderId)] || {}
+  reconRow.value = row
+  reconRows.value = [
+    { item: '计划量', value: Number(st.plannedQuantity || row.plannedQuantity || 0), note: 'production_order.planned_quantity' },
+    { item: '已报工(投入)', value: Number(st.reportedQuantity || 0), note: '审批通过的报工：合格 + 不良 合计' },
+    { item: '良品', value: Number(st.goodQuantity || 0), note: '有效 FQC 批合格累计（工单「完成」的判据）' },
+    { item: '报废', value: Number(st.scrapQuantity || 0), note: '处置单 SCRAP 已完成（件级明细见「不良件」）' },
+    { item: '返工在制', value: Number(st.reworkWipQuantity || 0), note: '处置单 REWORK 待执行/执行中' },
+    { item: '让步接收', value: Number(st.concessionQuantity || 0), note: '处置单 CONCESSION 已完成（需客户确认）' },
+    { item: '在制', value: Number(st.wipQuantity || 0), note: '已报工 − 已判定（尚未判定 / 未入库）' },
+    { item: '差数', value: Number(st.diffQuantity || st.shortfallQuantity || 0), note: 'max(0, 计划 − 良品)；必须由 补产 / 返工回收 / 让步 填平' },
+  ]
+  reconVisible.value = true
+}
+
 const stageOf = (row: ProductionOrderVO) => {
   const st = completionMap.value[String(row.orderId)]
   return {
