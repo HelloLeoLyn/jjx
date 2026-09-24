@@ -1218,7 +1218,19 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             lotService.applyJudgement(item.getLotId(), inspected, q, f,
                     "PASS".equals(itemResult) ? "pass" : "fail", SecurityUtils.getDisplayName());
             // dev-20260924-013：审核通过时固化「不合格原因」= 检验项目派生 + 补充说明
-            String derivedReason = deriveIqcDefectReason(lotService.listItems(item.getLotId()), item.getRejectReason());
+            java.util.List<com.jjx.quality.domain.entity.QualityLotItem> lotItems =
+                    lotService.listItems(item.getLotId());
+            String derivedReason = deriveIqcDefectReason(lotItems, item.getRejectReason());
+            // dev-20260924-013（Hermes 2026-09-24 复核指出）：旧写法传 (0, f, 0) 会把来料不良
+            // 全记成 MA 级（台账误读）。改为按该批检验项的 ΣCR/ΣMA/ΣMI 上报；无归因时全 0（与边界 A 一致）
+            BigDecimal crSum = BigDecimal.ZERO, maSum = BigDecimal.ZERO, miSum = BigDecimal.ZERO;
+            if (lotItems != null) {
+                for (com.jjx.quality.domain.entity.QualityLotItem li : lotItems) {
+                    crSum = crSum.add(nvl(li.getCrQuantity()));
+                    maSum = maSum.add(nvl(li.getMaQuantity()));
+                    miSum = miSum.add(nvl(li.getMiQuantity()));
+                }
+            }
             com.jjx.quality.domain.entity.QualityLot lotCurrent = qualityLotMapper.selectById(item.getLotId());
             if (lotCurrent != null && !java.util.Objects.equals(lotCurrent.getDefectReason(), derivedReason)) {
                 lotCurrent.setDefectReason(derivedReason);
@@ -1228,7 +1240,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 com.jjx.quality.service.QualityNcrService ncrService = qualityNcrServiceProvider.getIfAvailable();
                 if (ncrService == null) throw new BusinessException("不良台账服务不可用，IQC 审核已回滚");
                 com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(item.getLotId());
-                ncrService.syncFromLot(lot, f, BigDecimal.ZERO, f, BigDecimal.ZERO,
+                ncrService.syncFromLot(lot, f, crSum, maSum, miSum,
                         derivedReason, SecurityUtils.getDisplayName());
             }
     }
