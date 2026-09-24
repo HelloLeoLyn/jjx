@@ -53,3 +53,4 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-24 18:08:44	full	jjx_erp_db_backup_20260924-1808_manual-1808.sql	a2cf9a6f64fbd93f8cc3cdb9dae59539	5854722	115	dahuang	dev-20260924-033
 2026-09-24 18:08:59	guard	sys_task_register_dev-20260924-033_20260924-1808-guard.sql	c38986b232e60547ac5ab432d8661373	1221328	1	大黄(OpenClaw)	dev-20260924-033
 2026-09-24 18:08:59	delete	jjx_erp_db_backup_20260924-1636_before-defect-reason-correct.sql	a91e69e80ea6fe2335c8de465df1c83f	5842239	115	db-backup.sh 每日只留最新一份全库快照（18:08 备份时去重）	dev-20260924-033
+2026-09-24 18:12:05	guard	sys_task_register_dev-20260924-034_20260924-1812-guard.sql	1863a3474747986eee3573cdc64df03c	1222740	1	大黄(OpenClaw)	dev-20260924-034

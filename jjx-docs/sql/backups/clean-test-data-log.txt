@@ -1,0 +1,1 @@
+2026-09-24 15:12 清理测试数据 由 Hermes Agent 执行 | 库 jjx_erp_db | 脚本 00_clean_test_data.sql | TRUNCATE 83 张(868 行) + DELETE 71 条 | 备份 jjx_erp_db_backup_20260924-1512_before-clean-test-data.sql md5=85671a47c5466e041379615ffaae7995
