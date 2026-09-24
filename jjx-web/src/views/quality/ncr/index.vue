@@ -87,6 +87,8 @@
               >处置</el-button
             >
             <el-button link size="small" @click="openActions(row)">处置记录</el-button>
+            <!-- dev-20260924-004：不良件级明细（件号/主缺陷/实测值/状态）—— 件是处置的最小单位 -->
+            <el-button link size="small" @click="openPieces(row)">不良件</el-button>
             <!-- dev-20260923-040：随批作废（正式入口）—— 仅「来源批已被后继复检版本取代」的悬空单会下发该动作 -->
             <el-button
               v-if="can(row, 'NCR_VOID_SUPERSEDED')"
@@ -158,6 +160,53 @@
         <el-button @click="disposeVisible = false">取消</el-button>
         <el-button type="primary" :loading="disposing" @click="submitDispose">提交处置</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 不良件级明细（dev-20260924-004） -->
+    <el-dialog v-model="piecesVisible" title="不良件（件级追溯）" width="900px" append-to-body>
+      <div class="piece-tip">
+        件号 {{ piecesNcr?.ncrNo }}-D…；件只做身份与追溯，不参与库存数量计算。处置按件生效（一件一个决定）。
+      </div>
+      <el-table :data="pieces" border size="small" row-key="pieceId">
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div class="piece-defects">
+              <div v-for="(d, i) in row.defects || []" :key="i" class="piece-defect-row">
+                <el-tag :type="levelTag(d.defectLevel)" size="small" effect="plain">{{ d.defectLevel || '其他' }}</el-tag>
+                <span>{{ d.checkItem }}</span>
+                <el-tag v-if="d.isMain === 1" type="warning" size="small" effect="plain">主缺陷</el-tag>
+                <span v-if="d.remark" class="piece-defect-remark">{{ d.remark }}</span>
+              </div>
+              <div v-if="!(row.defects || []).length" class="piece-defect-remark">无缺陷记录</div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="件号" prop="pieceNo" min-width="180" />
+        <el-table-column label="主缺陷" min-width="150">
+          <template #default="{ row }">
+            <span v-if="row.mainCheckItem">{{ row.mainCheckItem }}</span>
+            <span v-else>-</span>
+            <el-tag v-if="row.mainDefectLevel" :type="levelTag(row.mainDefectLevel)" size="small" effect="plain" style="margin-left: 4px">
+              {{ row.mainDefectLevel }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="实测值" width="120">
+          <template #default="{ row }">{{ row.actualValue || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">{{ row.statusLabel || row.status }}</template>
+        </el-table-column>
+        <el-table-column label="处置" width="100">
+          <template #default="{ row }">{{ row.disposeType ? actionLabel(row.disposeType) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="工单 / 批" min-width="160">
+          <template #default="{ row }">
+            <span class="piece-sub">{{ row.workOrderNo || '-' }} / {{ row.lotNo || '-' }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="!pieces.length" class="piece-tip">该不良单暂无不良件（本功能上线前登记的老单不追溯件级）</div>
     </el-dialog>
 
     <!-- 处置记录 -->
@@ -397,6 +446,24 @@ const supplementVisible = ref(false)
 const supplementing = ref(false)
 const supplementAction = ref<QualityNcrAction | null>(null)
 const supplementItems = ref<Array<PickPreviewRow & { quantity: number }>>([])
+// ============ 不良件级明细（dev-20260924-004） ============
+const piecesVisible = ref(false)
+const pieces = ref<any[]>([])
+const piecesNcr = ref<QualityNcr | null>(null)
+const openPieces = async (row: QualityNcr) => {
+  piecesNcr.value = row
+  try {
+    const res: any = await qualityNcrApi.pieces(row.ncrId)
+    pieces.value = res?.data || []
+  } catch {
+    pieces.value = []
+  }
+  piecesVisible.value = true
+}
+/** 分级标签色：CR 致命=红 / MA 严重=橙 / MI 轻微=灰 */
+const levelTag = (level?: string) =>
+  level === 'CR' ? 'danger' : level === 'MA' ? 'warning' : 'info'
+
 const openActions = async (row: QualityNcr) => {
   current.value = row
   try {

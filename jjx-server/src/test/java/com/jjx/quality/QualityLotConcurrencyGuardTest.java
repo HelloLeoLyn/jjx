@@ -52,8 +52,12 @@ class QualityLotConcurrencyGuardTest {
     private final QualityLotMapper lotMapper = mock(QualityLotMapper.class);
     private final InventoryInboundService inventoryInboundService = mock(InventoryInboundService.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+    /** dev-20260924-004：不良件级服务（联动校验用；并发护栏测试不涉及件级写入） */
+    private final com.jjx.quality.service.QualityNcrPieceService qualityNcrPieceService =
+            mock(com.jjx.quality.service.QualityNcrPieceService.class);
     private final QualityFinishServiceImpl finishService = new QualityFinishServiceImpl(
-            qualityLotService, qualityNcrService, lotMapper, inventoryInboundService, jdbcTemplate);
+            qualityLotService, qualityNcrService, lotMapper, inventoryInboundService, jdbcTemplate,
+            qualityNcrPieceService);
 
     private final com.jjx.quality.mapper.QualityLotItemMapper lotItemMapper =
             mock(com.jjx.quality.mapper.QualityLotItemMapper.class);

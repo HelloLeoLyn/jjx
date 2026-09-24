@@ -36,6 +36,8 @@ public class QualityFinishServiceImpl implements QualityFinishService {
     private final QualityLotMapper lotMapper;
     private final InventoryInboundService inventoryInboundService;
     private final JdbcTemplate jdbcTemplate;
+    /** dev-20260924-004：不良数量 N 与检验项目不合格合计 Σ 的联动校验 */
+    private final com.jjx.quality.service.QualityNcrPieceService qualityNcrPieceService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -47,6 +49,30 @@ public class QualityFinishServiceImpl implements QualityFinishService {
         BigDecimal inspected = nz(dto.getInspectedQuantity());
         BigDecimal pass = nz(dto.getPassQuantity());
         BigDecimal fail = nz(dto.getFailQuantity());
+        // dev-20260924-004（方案 §5）：不良数量 N 与「检验项目不合格合计 Σ」联动校验 ——
+        //   Σ>0 且 N>Σ → 拒绝（不允许无因不良：还有 K 件没归因，先补录检验项目的不合格数）
+        //   Σ>0 且 N<Σ → 需勾选确认 + 填说明（留痕），否则拒绝
+        //   Σ=0（检验单未录项目级不合格数）→ 放行，件级按「其他」兜底归因（不留白）
+        BigDecimal defectSum = qualityNcrPieceService.sumLotItemDefects(lotId);
+        if (defectSum == null) {
+            defectSum = BigDecimal.ZERO;
+        }
+        if (fail.signum() > 0 && defectSum.signum() > 0) {
+            if (fail.compareTo(defectSum) > 0) {
+                throw new BusinessException("不良数量 " + fail.stripTrailingZeros().toPlainString()
+                        + " 大于检验项目不合格合计 " + defectSum.stripTrailingZeros().toPlainString()
+                        + "：还有 " + fail.subtract(defectSum).stripTrailingZeros().toPlainString()
+                        + " 件未归因 —— 请先在「检验录入」补录检验项目的不合格数（CR/MA/MI）后再判定");
+            }
+            boolean partial = fail.compareTo(defectSum) < 0;
+            boolean confirmed = Boolean.TRUE.equals(dto.getPartialConfirmed())
+                    && dto.getPartialReason() != null && !dto.getPartialReason().isBlank();
+            if (partial && !confirmed) {
+                throw new BusinessException("不良数量 " + fail.stripTrailingZeros().toPlainString()
+                        + " 小于检验项目不合格合计 " + defectSum.stripTrailingZeros().toPlainString()
+                        + "：如确属调整后结论，请勾选「确认」并填写说明（留痕）");
+            }
+        }
         if (lot.getParentLotId() != null && inspected.compareTo(nz(lot.getLotQuantity())) != 0) {
             throw new BusinessException("复检必须覆盖整个检验批，检验数量应为 "
                     + nz(lot.getLotQuantity()).stripTrailingZeros().toPlainString());

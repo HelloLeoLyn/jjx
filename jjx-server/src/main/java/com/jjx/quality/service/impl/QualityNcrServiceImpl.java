@@ -62,6 +62,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     private final org.springframework.beans.factory.ObjectProvider<com.jjx.inventory.service.InventoryInboundService> inventoryInboundServiceProvider;
     private final RedisSequenceService redisSequenceService;
 
+    /** dev-20260924-004：不良件级追溯（发号 / 件级处置 / 撤销回退 / 随批作废） */
+    private final com.jjx.quality.service.QualityNcrPieceService qualityNcrPieceService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public QualityNcr createFromLot(QualityLot lot, BigDecimal defectQuantity, BigDecimal crQuantity,
@@ -97,6 +100,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ncr.setInspector(inspector);
         ncr.setDelFlag(0);
         ncrMapper.insert(ncr);
+        // dev-20260924-004：判定出 N 件不良 → 按件发号（件号 <不良单号>-D<序号>）+ 落缺陷记录（件×项目×分级）
+        qualityNcrPieceService.issuePieces(ncr);
         log.info("不良台账已建立: ncrNo={} 批={} 不良={}", ncr.getNcrNo(), lot.getLotNo(), defect.toPlainString());
         return ncr;
     }
@@ -132,6 +137,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         open.setStatus(canClose ? "CLOSED"
                 : (disposed.signum() > 0 ? "DISPOSING" : "PENDING"));
         ncrMapper.updateById(open);
+        // dev-20260924-004：更正后按新不良数量补齐/回收件（幂等：只补差额，超出部分作废待处置件）
+        qualityNcrPieceService.issuePieces(open);
         log.info("不良台账同步（更正）: ncrNo={} 不良={}", open.getNcrNo(), defect.toPlainString());
         return open;
     }
@@ -377,6 +384,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         } else {
             applyStockEffect(ncr, action, actionType, quantity, dto);
         }
+        // dev-20260924-004：件级处置 —— 按序号把「待处置」件挂到本次处置单（件数 = 处置数量，一件一个决定）
+        qualityNcrPieceService.attachPieces(ncr.getNcrId(), action.getActionId(), actionType, quantity);
         log.info("不良处置登记: ncrNo={} 方式={} 数量={} 已处置={}/{}", ncr.getNcrNo(), actionType,
                 quantity.toPlainString(), disposed.toPlainString(), nz(ncr.getDefectQuantity()).toPlainString());
         return action;
@@ -480,6 +489,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ncr.setStatus("VOID");
         ncr.setRemark(appendRemark(ncr.getRemark(), tail));
         ncrMapper.updateById(ncr);
+        // dev-20260924-004：随批作废 → 未处置/返工中的件一并置 VOID（禁止再处置）
+        qualityNcrPieceService.voidOpenPieces(ncr.getNcrId());
     }
 
     /** 备注追加（留痕用；截断保护，remark 列 500） */
@@ -544,6 +555,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         } catch (Exception e) {
             log.warn("撤销处置后回写检验批已处置量失败（不阻断撤销）: lotId={} err={}", ncr.getLotId(), e.getMessage());
         }
+        // dev-20260924-004：撤销后件回到「待处置」（与处置单撤销同事务，保证件与单一致）
+        qualityNcrPieceService.releasePieces(actionId);
         log.info("处置已撤销: actionId={} ncrNo={} 类型={} 数量={} 原因={} 操作人={}", actionId, ncr.getNcrNo(),
                 type, qty.toPlainString(), reason.trim(), operatorName);
         return action;

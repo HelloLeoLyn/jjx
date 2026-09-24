@@ -42,6 +42,15 @@ public class QualityNcrAction {
     private String resultRemark;
     private String operatorName;
 
+    /** dev-20260924-004：本次处置的主缺陷检验项目（件级口径） */
+    private String mainCheckItem;
+
+    /** dev-20260924-004：本次处置的主缺陷分级 CR/MA/MI */
+    private String mainDefectLevel;
+
+    /** dev-20260924-004：本次处置件数（与 quality_ncr_piece 对账） */
+    private Integer pieceCount;
+
     private String createBy;
     private LocalDateTime createTime;
     private String updateBy;

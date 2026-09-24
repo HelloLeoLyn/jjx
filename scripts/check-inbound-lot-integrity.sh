@@ -278,6 +278,60 @@ echo "-- ⑨ 有效 FQC 批缺入库单（pass>0 且无后继版本，却查不�
                        JOIN inventory_inbound_order o ON o.inbound_id = ii.inbound_id
                       WHERE ii.lot_id = l.lot_id AND o.order_status <> 9);"
 
+# ⑩ 不良件级三查（dev-20260924-004，**提示模式**：只报不拦，跑 5 个工作日后转 strict）
+#   ⑩-1 件数守恒：有件的不良单，件数必须等于不良数量（向下取整）
+#   ⑩-2 缺陷归因守恒：非作废件每件至少 1 条缺陷记录，且恰有 1 条主缺陷（is_main=1）
+#   ⑩-3 处置对账：处置单 piece_count 必须等于该单挂的件数
+piece_count_drift=$(M "
+SELECT COUNT(*) FROM (
+  SELECT n.ncr_id, COUNT(p.piece_id) AS pieces
+    FROM quality_ncr n
+    JOIN quality_ncr_piece p ON p.ncr_id = n.ncr_id AND p.del_flag = 0
+   WHERE n.del_flag = 0
+   GROUP BY n.ncr_id, n.defect_quantity
+  HAVING COUNT(p.piece_id) <> FLOOR(n.defect_quantity)
+) d;" 2>/dev/null || echo "ERR")
+
+piece_attribution_gap=$(M "
+SELECT COUNT(*) FROM (
+  SELECT p.piece_id
+    FROM quality_ncr_piece p
+    LEFT JOIN quality_ncr_piece_defect d ON d.piece_id = p.piece_id
+   WHERE p.del_flag = 0 AND p.status <> 'VOID'
+   GROUP BY p.piece_id
+  HAVING COUNT(d.defect_id) = 0 OR SUM(CASE WHEN d.is_main = 1 THEN 1 ELSE 0 END) <> 1
+) d;" 2>/dev/null || echo "ERR")
+
+action_piece_mismatch=$(M "
+SELECT COUNT(*) FROM quality_ncr_action a
+ WHERE a.del_flag = 0 AND a.piece_count IS NOT NULL
+   AND a.piece_count <> (SELECT COUNT(*) FROM quality_ncr_piece p WHERE p.action_id = a.action_id AND p.del_flag = 0);" 2>/dev/null || echo "ERR")
+
+echo
+echo "-- ⑩ 不良件级三查【提示模式】件数守恒：$piece_count_drift / 缺陷归因：$piece_attribution_gap / 处置对账：$action_piece_mismatch（期望各 0）"
+[ "$piece_count_drift" -gt 0 ] && M "
+  SELECT n.ncr_no, n.defect_quantity AS 不良数量, COUNT(p.piece_id) AS 已发件数
+    FROM quality_ncr n
+    JOIN quality_ncr_piece p ON p.ncr_id = n.ncr_id AND p.del_flag = 0
+   WHERE n.del_flag = 0
+   GROUP BY n.ncr_id, n.ncr_no, n.defect_quantity
+  HAVING COUNT(p.piece_id) <> FLOOR(n.defect_quantity);"
+[ "$piece_attribution_gap" -gt 0 ] && M "
+  SELECT p.piece_no, p.status, COUNT(d.defect_id) AS 缺陷条数,
+         SUM(CASE WHEN d.is_main = 1 THEN 1 ELSE 0 END) AS 主缺陷条数
+    FROM quality_ncr_piece p
+    LEFT JOIN quality_ncr_piece_defect d ON d.piece_id = p.piece_id
+   WHERE p.del_flag = 0 AND p.status <> 'VOID'
+   GROUP BY p.piece_id, p.piece_no, p.status
+  HAVING COUNT(d.defect_id) = 0 OR SUM(CASE WHEN d.is_main = 1 THEN 1 ELSE 0 END) <> 1;"
+[ "$action_piece_mismatch" -gt 0 ] && M "
+  SELECT a.action_id, a.action_type, a.quantity AS 处置数量, a.piece_count AS 记录件数,
+         (SELECT COUNT(*) FROM quality_ncr_piece p WHERE p.action_id = a.action_id AND p.del_flag = 0) AS 实际件数
+    FROM quality_ncr_action a
+   WHERE a.del_flag = 0 AND a.piece_count IS NOT NULL
+     AND a.piece_count <> (SELECT COUNT(*) FROM quality_ncr_piece p WHERE p.action_id = a.action_id AND p.del_flag = 0);"
+
+# 注：⑩ 三查为提示模式，**不计入 total**（不拦 --strict）；稳定后再并入 total
 total=$((missing_lot + double_lot + posted_drift + judge_conservation + ncr_conservation + upper_bound_drift + finish_recalc + stored_over_pass + has_inbound_doc))
 echo
 if [ "$total" -eq 0 ]; then

@@ -61,7 +61,15 @@ public class QualityNcr {
     private BigDecimal maQuantity;
     private BigDecimal miQuantity;
 
+    /** 不良原因（文本补充说明；结构化原因见 mainCheckItem + mainDefectLevel 与件级缺陷记录） */
     private String defectReason;
+
+    /** dev-20260924-004：首因检验项目（来自检验单项目，台账按 项目×分级 筛选统计） */
+    private String mainCheckItem;
+
+    /** dev-20260924-004：首因分级 CR/MA/MI（CR 致命 > MA 严重 > MI 轻微） */
+    private String mainDefectLevel;
+
     /** PENDING/DISPOSING/CLOSED */
     private String status;
     /** 已处置数量 */

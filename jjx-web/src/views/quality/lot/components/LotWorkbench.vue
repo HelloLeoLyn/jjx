@@ -276,12 +276,41 @@
         <el-form-item label="不良数量" required>
           <el-input-number v-model="judgeForm.failQuantity" :min="0" />
         </el-form-item>
+        <!-- dev-20260924-004：不良件级发号预告 + N 与检验项目不合格合计 Σ 的联动提示 -->
+        <el-alert
+          v-if="Number(judgeForm.failQuantity || 0) > 0"
+          :type="judgeDefectType"
+          :closable="false"
+          show-icon
+          class="judge-defect-tip"
+        >
+          <template #title>
+            按 <b>{{ Math.floor(Number(judgeForm.failQuantity || 0)) }}</b> 件发号（{{ current?.lotNo }}-D…，件级只做追溯、不动库存）
+            <span v-if="itemDefectSum > 0">；检验项目不合格合计 Σ = <b>{{ num(itemDefectSum) }}</b></span>
+          </template>
+          <div v-if="judgeDefectType === 'error'">
+            不良数量大于 Σ：还有 {{ num(Number(judgeForm.failQuantity || 0) - itemDefectSum) }} 件未归因 —— 请先到「检验录入」补录检验项目的不合格数（CR/MA/MI）
+          </div>
+          <div v-else-if="judgeDefectType === 'warning'">
+            不良数量小于 Σ：如确属调整后结论，请勾选下方「确认调整」并填写说明（留痕）
+          </div>
+        </el-alert>
         <el-form-item v-if="Number(judgeForm.failQuantity || 0) > 0" label="不良原因">
           <el-input
             v-model="judgeForm.defectReason"
             type="textarea"
             :rows="2"
             placeholder="不合格原因"
+          />
+        </el-form-item>
+        <el-form-item v-if="judgeDefectType === 'warning'" label="确认调整" required>
+          <el-checkbox v-model="judgeForm.partialConfirmed">
+            确认按 {{ num(judgeForm.failQuantity) }} 件判定（与检验项目不合格合计 Σ 不一致）
+          </el-checkbox>
+          <el-input
+            v-model="judgeForm.partialReason"
+            placeholder="说明（必填，留痕）"
+            style="margin-top: 6px"
           />
         </el-form-item>
         <div class="judge-tip">
@@ -513,6 +542,9 @@ const judgeForm = reactive({
   passQuantity: 0,
   failQuantity: 0,
   defectReason: '',
+  /** dev-20260924-004：N < Σ 时的确认与说明（留痕） */
+  partialConfirmed: false,
+  partialReason: '',
 })
 /**
  * dev-20260923-021 一期：判定护栏（可判合格上界）
@@ -550,7 +582,11 @@ const openJudge = async (row: QualityLot, prefill?: { failQuantity?: number }) =
   judgeForm.failQuantity = fail
   judgeForm.passQuantity = Math.max(0, inspected - fail)
   judgeForm.defectReason = ''
+  judgeForm.partialConfirmed = false
+  judgeForm.partialReason = ''
   judgeVisible.value = true
+  // dev-20260924-004：先取检验项目不合格合计 Σ（与不良数量 N 联动校验的基准）
+  await loadItemDefectSum(Number(row.lotId))
   // 护栏：链上有不可回收量时按上限预填（优先级高于录入预填）
   await loadGuard(Number(row.lotId))
   if (guardInfo.value && guardInfo.value.needWarning) {
@@ -559,6 +595,31 @@ const openJudge = async (row: QualityLot, prefill?: { failQuantity?: number }) =
     judgeForm.failQuantity = Number(guardInfo.value.suggestedFail || 0)
   }
 }
+/** dev-20260924-004：检验项目不合格合计 Σ（= 各项目 CR+MA+MI 之和），判定 N 联动校验的基准 */
+const itemDefectSum = ref(0)
+const loadItemDefectSum = async (lotId: number) => {
+  try {
+    const res: any = await qualityLotApi.items(lotId)
+    const rows = (res?.data || []) as any[]
+    itemDefectSum.value = rows.reduce(
+      (sum, r) =>
+        sum + Number(r.crQuantity || 0) + Number(r.maQuantity || 0) + Number(r.miQuantity || 0),
+      0
+    )
+  } catch {
+    itemDefectSum.value = 0
+  }
+}
+
+/** 判定提示类型：N>Σ 错误（拦提交）、N<Σ 警告（需确认）、相等成功、Σ=0 普通（兜底「其他」） */
+const judgeDefectType = computed(() => {
+  const fail = Number(judgeForm.failQuantity || 0)
+  if (fail <= 0 || itemDefectSum.value <= 0) return 'info'
+  if (fail > itemDefectSum.value) return 'error'
+  if (fail < itemDefectSum.value) return 'warning'
+  return 'success'
+})
+
 const submitJudge = async () => {
   if (!current.value) return
   const inspected = Number(judgeForm.inspectedQuantity || 0)
@@ -569,6 +630,21 @@ const submitJudge = async () => {
   if (fail > 0 && !judgeForm.defectReason.trim())
     return ElMessage.warning('有不良时必须填写不良原因')
   // dev-20260923-021：提交前先拦一道（后端同样校验，双保险）
+  // dev-20260924-004：N 与「检验项目不合格合计 Σ」联动（后端同样校验，双保险）
+  if (fail > 0 && itemDefectSum.value > 0) {
+    if (fail > itemDefectSum.value) {
+      return ElMessage.warning(
+        `不良数量大于检验项目不合格合计 ${num(itemDefectSum.value)}：还有 ${num(
+          fail - itemDefectSum.value
+        )} 件未归因，请先在「检验录入」补录检验项目的不合格数`
+      )
+    }
+    if (fail < itemDefectSum.value && (!judgeForm.partialConfirmed || !judgeForm.partialReason.trim())) {
+      return ElMessage.warning(
+        `不良数量小于检验项目不合格合计 ${num(itemDefectSum.value)}：请勾选「确认调整」并填写说明`
+      )
+    }
+  }
   if (guardInfo.value && guardInfo.value.needWarning && pass > Number(guardInfo.value.upperBound || 0)) {
     return ElMessage.warning(
       `本批可判合格上限 ${num(guardInfo.value.upperBound)}（已扣减已报废 ${num(

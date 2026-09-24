@@ -25,6 +25,8 @@ import java.util.List;
 public class QualityNcrController {
 
     private final QualityNcrService ncrService;
+    /** dev-20260924-004：不良件级明细（件号/主缺陷/实测值/状态 + 缺陷记录） */
+    private final com.jjx.quality.service.QualityNcrPieceService ncrPieceService;
 
     @Operation(summary = "不良台账分页（类型/状态/工单/物料/批次过滤）")
     @GetMapping("/page")
@@ -55,6 +57,12 @@ public class QualityNcrController {
     @GetMapping("/{ncrId}/actions")
     public Result<List<QualityNcrAction>> actions(@PathVariable Long ncrId) {
         return Result.success(ncrService.listActions(ncrId));
+    }
+
+    @Operation(summary = "不良件级明细（件号 / 主缺陷 / 实测值 / 状态 + 全部缺陷记录）（dev-20260924-004）")
+    @GetMapping("/{ncrId}/pieces")
+    public Result<List<com.jjx.quality.dto.vo.QualityNcrPieceVO>> pieces(@PathVariable Long ncrId) {
+        return Result.success(ncrPieceService.listPieces(ncrId));
     }
 
     @Operation(summary = "登记处置（返工/让步接收/报废；让步接收需客户确认）")

@@ -248,6 +248,13 @@ export const qualityNcrApi = {
   actions(ncrId: number) {
     return request.get<R<QualityNcrAction[]>>(`/quality/ncr/${ncrId}/actions`)
   },
+  /**
+   * 不良件级明细（dev-20260924-004）：件号 / 主缺陷（检验项目+分级）/ 实测值 / 状态 + 全部缺陷记录。
+   * 口径：件只做身份与追溯，不参与库存数量计算。
+   */
+  pieces(ncrId: number) {
+    return request.get<R<Record<string, any>[]>>(`/quality/ncr/${ncrId}/pieces`)
+  },
   dispose(ncrId: number, data: Record<string, unknown>) {
     return request.post<R<QualityNcrAction>>(`/quality/ncr/${ncrId}/dispose`, data)
   },
