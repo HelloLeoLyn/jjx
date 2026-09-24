@@ -7,7 +7,11 @@
 #
 # 与 check-stock-summary.sh 同口径（只读 / fail-open / --strict）。原有三查 + 2026-09-23（dev-20260923-023）补「数量守恒」五查：
 #   ① 入库明细 lot_id 覆盖率：生产来源、未取消单据的明细里 lot_id 为空的数量（期望 0）
-#   ② 同一 lot 被多张单重复计账：按 lot_id 汇总「未取消单据明细数量」应 ≤ 该批 pass_quantity
+#   ② 同一 lot 被多张单重复计账：按 lot_id 汇总「未取消单据明细数量」应 ≤ 该批上限
+#      上限按来源分叉（dev-20260924-027 修采购含不良误报）：
+#        · 生产来源(PRODUCTION)：≤ pass_quantity（成品重复入库检测，保留强度）
+#        · 其它来源(如 PURCHASE)：≤ lot_quantity（采购明细含不良，收货量必然 > 合格量）
+#      反例说明：若统一用 lot_quantity，会漏掉「合格量<批量时两单合计不超批量却超合格量」的重复计账。
 #      （红冲单数量为负、作废单 order_status=9 排除，故正常换代后净额为 0）
 #   ③ 已过账生产入库明细的 posted_quantity 合计（按 inventory_item_id + batch_no）
 #      应等于该批「入库侧流水」合计（INBOUND + ADJUST；红冲走 ADJUST 负额）
@@ -80,7 +84,7 @@ SELECT COUNT(*)
    AND UPPER(IFNULL(o.source_type,'')) = 'PRODUCTION'
    AND ii.lot_id IS NULL${SINCE_FILTER};" 2>/dev/null || echo "ERR")
 
-# ② 同一 lot 被重复计账（未取消单据明细数量合计 > 该批合格量）
+# ② 同一 lot 被重复计账（未取消单据明细数量合计 > 该批上限；上限按来源分叉，见文件头说明）
 double_lot=$(M "
 SELECT COUNT(*) FROM (
   SELECT ii.lot_id
@@ -89,8 +93,9 @@ SELECT COUNT(*) FROM (
     JOIN quality_lot l ON l.lot_id = ii.lot_id
    WHERE o.order_status <> 9
      AND ii.lot_id IS NOT NULL
-   GROUP BY ii.lot_id, l.pass_quantity
-  HAVING SUM(ii.quantity) > l.pass_quantity
+   GROUP BY ii.lot_id, o.source_type, l.pass_quantity, l.lot_quantity
+  HAVING SUM(ii.quantity) > IF(UPPER(IFNULL(o.source_type, '')) = 'PRODUCTION',
+                               l.pass_quantity, l.lot_quantity)
 ) d;" 2>/dev/null || echo "ERR")
 
 # ③ 已过账明细 posted_quantity 合计 vs 入库侧流水合计
@@ -178,7 +183,7 @@ echo "-- ① 生产来源入库明细 lot_id 为空：$missing_lot（期望 0）
    ORDER BY o.inbound_id DESC, ii.item_id;"
 
 echo
-echo "-- ② 同一 lot 被多张单重复计账（明细合计 > 批合格量）：$double_lot（期望 0）"
+echo "-- ② 同一 lot 被多张单重复计账（明细合计 > 该批上限：生产比合格量/采购比批量）：$double_lot（期望 0）"
 [ "$double_lot" -gt 0 ] && M "
   SELECT ii.lot_id, l.lot_no, SUM(ii.quantity) AS 单据明细合计, l.pass_quantity AS 批合格量,
          SUM(ii.quantity) - l.pass_quantity AS 超出
