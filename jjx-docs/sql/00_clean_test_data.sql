@@ -1,7 +1,20 @@
 -- =====================================================
--- 清理测试数据脚本（v17）
+-- 清理测试数据脚本（v18）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v18 变更（2026-09-24，任务 dev-20260924-018；用户 14:49 问「是不是要更新升级了」→ 14:51「照上面改」）：
+--   起因：库 117 张基础表中 4 张无归宿 → scripts/db-clean-test-data.sh「④ 覆盖率校验」直接 die，清理已跑不起来。
+--   1. 【新增清理】3 张今天的业务表（此前遗漏，不在 TRUNCATE 也不在保留白名单）：
+--      quality_scrap_order（迁移 217，dev-20260924-006 成品报废单，引用 ncr_action.action_id / ncr_id / lot_id / order_id）、
+--      quality_ncr_piece_defect（迁移 215，件×项目×分级 子表）、
+--      quality_ncr_piece（迁移 215，dev-20260924-004 不良件件级追溯，主表）——按「引用表→子表→主表」前置到质量块最前。
+--      不做则残留孤儿（即 v15 inventory_iqc_batch 踩过的坑：批次残留 + 明细 id 复用后错挂新单）。
+--   2. 【转保留】sys_event_last_payload（事件最近一次 payload 缓存，事件配置页试渲染用；09-23 建，无对应迁移）
+--      —— 与 sys_event_config 同类的基建/缓存状态，非业务数据 → 计入第 12 节保留清单，本脚本不清。
+--   3. 核验段（第 13 节）补 3 项应为 0；scripts/db-clean-test-data.sh 的 RETAINED_TABLES 同步加 sys_event_last_payload。
+--   4. 本脚本 09-23（commit 038a553a，删 sales_order_review 死表，迁移 208）改过内容但 header 未升版 → 本次一并补上版本号。
+--   现状：上述 3 张表当前均为 0 行，清不清都不影响现有数据——本次是「闸门 + 孤儿预防」，非数据事故。
+--
 -- v17 变更（2026-09-22，任务 dev-20260922-002；用户 10:24 指令「把这三张表都删除了」）：
 --   1. 【移除】production_quality_inspection(_item)：已由迁移 182 归档后 DROP，旧表不存在，
 --      保留 TRUNCATE 会在执行时报 ERROR 1146 并中断后续清理 → 删除该两项清理与核验项。
@@ -318,6 +331,16 @@ TRUNCATE review_flow;
 TRUNCATE quality_template_print_log;
 
 -- v14 新增：质量重构新模型业务表（此前遗漏，易与 sales_sample_order 同类残留）
+-- 【新增 2026-09-24 v18】质量新表的子表/引用表必须先清：
+--   quality_scrap_order 引用 quality_ncr_action.action_id（UNIQUE）+ ncr_id / lot_id / order_id →
+--   quality_ncr_piece_defect 引用 quality_ncr_piece.piece_id →
+--   quality_ncr_piece 引用 ncr_id / lot_id / action_id / order_id
+TRUNCATE quality_scrap_order;
+
+TRUNCATE quality_ncr_piece_defect;
+
+TRUNCATE quality_ncr_piece;
+
 -- 【新增 2026-09-22】quality_capa（迁移 180 新建的 CAPA 纠正预防措施台账，业务表；先于 quality_ncr 清）
 TRUNCATE quality_capa;
 
@@ -348,6 +371,7 @@ TRUNCATE sales_sample_order;
 -- 权限：sys_user / sys_role / sys_menu / sys_role_menu / sys_user_role / sys_dept
 --       sys_dept 已按 83_rebuild_sys_dept_org.sql 新组织架构重建（16 部门），本脚本不清
 -- 配置：sys_config / sys_dict / sys_dict_item / sys_event_config
+-- 事件基建：sys_event_last_payload（事件最近一次 payload 缓存，事件配置页试渲染用；v18 起保留，与 sys_event_config 同类）
 -- 质量模板：quality_template_registry
 -- 质量配置：quality_sampling_plan（AQL 抽样方案，v14 起保留）
 -- 生产基础资料：engineering_standard_process
@@ -384,6 +408,9 @@ UNION ALL SELECT 'quality_lot_item', COUNT(*) FROM quality_lot_item
 UNION ALL SELECT 'quality_ncr', COUNT(*) FROM quality_ncr
 UNION ALL SELECT 'quality_ncr_action', COUNT(*) FROM quality_ncr_action
 UNION ALL SELECT 'quality_capa', COUNT(*) FROM quality_capa
+UNION ALL SELECT 'quality_ncr_piece', COUNT(*) FROM quality_ncr_piece
+UNION ALL SELECT 'quality_ncr_piece_defect', COUNT(*) FROM quality_ncr_piece_defect
+UNION ALL SELECT 'quality_scrap_order', COUNT(*) FROM quality_scrap_order
 UNION ALL SELECT 'engineering_archive_import', COUNT(*) FROM engineering_archive_import
 UNION ALL SELECT 'sys_number_sequence', COUNT(*) FROM sys_number_sequence
 UNION ALL SELECT 'review_flow', COUNT(*) FROM review_flow
