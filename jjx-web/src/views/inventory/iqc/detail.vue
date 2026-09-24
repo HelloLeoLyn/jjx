@@ -154,6 +154,7 @@ import {
   QualityReviewStatus,
   QualityReviewStatusEnum,
 } from '@/enums/quality/InspectionEnum'
+import { sanitize } from '@/utils/reasonSanitizer'
 
 type FlowKey = 'ALL' | 'UNINSPECTED' | 'REVIEW' | 'APPROVED' | 'COMPLETED'
 type WorkRow = {
@@ -436,7 +437,7 @@ async function loadInboundDetail(row: IqcPendingVO) {
               ? InboundInspectionResultEnum.PASS.value
               : item.inspectionResult || InboundInspectionResultEnum.PASS.value,
           disposition: isReinspection ? undefined : item.disposition,
-          rejectReason: isReinspection ? '' : item.rejectReason || '',
+          rejectReason: isReinspection ? '' : sanitize(item.rejectReason),
           reviewStatus: quality?.reviewStatus,
           isReinspection,
           reinspectionQuantity,
@@ -458,6 +459,18 @@ async function loadInboundDetail(row: IqcPendingVO) {
     detailLoading.value = false
   }
 }
+watch(
+  workRows,
+  (rows) => {
+    rows.forEach((row) => {
+      if (row.rejectReason.length > 200) {
+        row.rejectReason = row.rejectReason.slice(0, 200)
+        ElMessage.warning('不合格补充说明最多 200 字，已截断')
+      }
+    })
+  },
+  { deep: true }
+)
 function handleResultChange(row: WorkRow) {
   if (row.inspectionResult === InboundInspectionResultEnum.PASS.value) {
     row.disposition = undefined

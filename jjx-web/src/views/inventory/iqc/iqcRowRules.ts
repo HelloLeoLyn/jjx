@@ -10,6 +10,7 @@
  */
 import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
 import { InspectionResult } from '@/enums/quality/InspectionEnum'
+import { isValidSupplement } from '@/utils/reasonSanitizer'
 
 /** 处置方式联动接收数量：全检口径下接收数量恒等于合格数量 */
 export function syncIqcDisposition(row: any) {
@@ -67,7 +68,7 @@ export function iqcRowProblems(row: any): string[] {
     const hasFailItem = (row.inspectionItems || []).some(
       (check: any) => String(check?.result || '').toUpperCase() === 'FAIL'
     )
-    if (!hasFailItem && !String(row.rejectReason || '').trim()) {
+    if (!hasFailItem && !isValidSupplement(row.rejectReason, deriveIqcReasonText(row))) {
       problems.push('判定不合格但未录入不合格检验项，请填写补充说明或补录检验项目')
     }
   }

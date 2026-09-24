@@ -96,6 +96,7 @@ import {
   QualityReviewStatusEnum,
 } from '@/enums/quality/InspectionEnum'
 import { formatNumber } from '@/utils/format'
+import { sanitize } from '@/utils/reasonSanitizer'
 import type { InboundVO } from '@/types/inventory/inbound'
 import MaterialChecksDialog from '@/views/inventory/iqc/components/MaterialChecksDialog.vue'
 import { deriveIqcReasonText, iqcRowProblems } from '@/views/inventory/iqc/iqcRowRules'
@@ -185,7 +186,7 @@ watch(
               ? InspectionResultEnum.PASS.value
               : item.inspectionResult || InspectionResultEnum.PASS.value,
             disposition: isReinspection ? undefined : item.disposition,
-            rejectReason: isReinspection ? '' : item.rejectReason || '',
+            rejectReason: isReinspection ? '' : sanitize(item.rejectReason),
             reviewStatus: quality?.reviewStatus,
             locked: quality?.reviewStatus === QualityReviewStatus.APPROVED,
             inspectionItems: quality?.items?.length
@@ -198,6 +199,19 @@ watch(
       loading.value = false
     }
   }
+)
+
+watch(
+  () => form.items,
+  (items) => {
+    items.forEach((row) => {
+      if (row.rejectReason.length > 200) {
+        row.rejectReason = row.rejectReason.slice(0, 200)
+        ElMessage.warning('不合格补充说明最多 200 字，已截断')
+      }
+    })
+  },
+  { deep: true }
 )
 
 /** 行内检验项完成度（已给结论的项数） */

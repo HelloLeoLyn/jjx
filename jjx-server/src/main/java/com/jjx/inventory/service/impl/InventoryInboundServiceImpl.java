@@ -24,6 +24,7 @@ import com.jjx.inventory.dto.vo.IqcQuarantineLedgerPageVO;
 import com.jjx.inventory.dto.vo.IqcQuarantineLedgerRowVO;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.utils.ReasonSanitizer;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.domain.entity.ProductionOrder;
@@ -1053,11 +1054,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 // dev-20260924-013：检验侧不再要求选择「处置方式」——处置统一在「来料不合格处置」页做，
                 // 这里只登记原因，且原因改为**由检验项目派生**（见 deriveIqcDefectReason）。
                 // 边界 A（用户 2026-09-24 拍板）：判定不合格但没有任何不合格检验项时，必须填「补充说明」，否则驳回。
+                String sanitizedRejectReason = ReasonSanitizer.sanitize(submitted.getRejectReason());
+                if (sanitizedRejectReason != null && sanitizedRejectReason.isEmpty()) {
+                    sanitizedRejectReason = null;
+                }
                 boolean hasFailCheckItem = submitted.getInspectionItems() != null
                         && submitted.getInspectionItems().stream()
                                 .anyMatch(chk -> "FAIL".equals(chk.getResult()));
                 if ("FAIL".equals(itemResult) && !hasFailCheckItem
-                        && org.apache.commons.lang3.StringUtils.isBlank(submitted.getRejectReason())) {
+                        && !ReasonSanitizer.isValidSupplement(sanitizedRejectReason, "")) {
                     throw new BusinessException("物料" + item.getMaterialCode()
                             + "判定不合格但未录入不合格检验项，请填写补充说明或补录检验项目");
                 }
@@ -1101,10 +1106,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 item.setQualifiedQuantity(qualified);
                 item.setRejectedQuantity(rejected);
                 item.setAcceptedQuantity(accepted);
-                item.setRejectReason(submitted.getRejectReason());
+                item.setRejectReason(sanitizedRejectReason);
                 // 026：IQC 检验事实同步落 quality_lot（expand：新模型落库，旧路径暂留）
                 Long iqcLotId = syncIqcLot(order.getInboundId(), item, itemResult, qualified, rejected,
-                        submitted.getRejectReason(), submitted.getInspectionItems());
+                        sanitizedRejectReason, submitted.getInspectionItems());
                 if (iqcLotId != null) {
                     item.setLotId(iqcLotId);
                 }
