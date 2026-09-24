@@ -360,7 +360,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         }
 
         // dev-20260924-005：报废授权分档 —— 超过阈值进入「待审批」，审批通过才计入台账/检验批/件级
-        boolean scrapPendingApproval = "SCRAP".equals(actionType)
+        // dev-20260924-028：成品侧口径**不套来料** —— 来料报废走它自己的报废单（IQS-）与审批，不参与成品阈值/成品报废单
+        boolean scrapGovernance = scrapGovernanceApplies(ncr);
+        boolean scrapPendingApproval = "SCRAP".equals(actionType) && scrapGovernance
                 && quantity.compareTo(scrapApprovalThreshold()) > 0;
         QualityNcrAction action = new QualityNcrAction();
         action.setNcrId(ncrId);
@@ -409,8 +411,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         }
         // dev-20260924-004：件级处置 —— 按序号把「待处置」件挂到本次处置单（件数 = 处置数量，一件一个决定）
         qualityNcrPieceService.attachPieces(ncr.getNcrId(), action.getActionId(), actionType, quantity);
-        if ("SCRAP".equals(actionType)) {
-            // dev-20260924-006：报废生效 → 出成品报废单（谁报废/多少/哪几件/谁批；库存不受影响）
+        if ("SCRAP".equals(actionType) && scrapGovernance) {
+            // dev-20260924-006 + dev-20260924-028：报废生效 → 出**成品**报废单（来料走自己的 IQS 单，不套成品单）
             qualityScrapOrderService.createForAction(action, ncr);
         }
         log.info("不良处置登记: ncrNo={} 方式={} 数量={} 已处置={}/{}", ncr.getNcrNo(), actionType,
@@ -610,6 +612,17 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         return new BigDecimal("5");
     }
 
+    /**
+     * 成品报废口径是否适用（dev-20260924-028）：**来料（IQC）不套成品口径**。
+     * 来料报废走它自己的报废单（IQS-…）与审批链；成品侧的「超阈值待审批」与「成品报废单」只对非 IQC 生效。
+     */
+    static boolean scrapGovernanceApplies(QualityNcr ncr) {
+        if (ncr == null) {
+            return false;
+        }
+        return !"IQC".equalsIgnoreCase(ncr.getLotType() == null ? "" : ncr.getLotType());
+    }
+
     private String submitterOf(QualityNcrAction action) {
         if (action == null) {
             return null;
@@ -678,8 +691,10 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ncrMapper.updateById(ncr);
         qualityLotService.addDisposedQuantity(ncr.getLotId(), qty);
         int attached = qualityNcrPieceService.attachPieces(ncr.getNcrId(), actionId, "SCRAP", qty);
-        // dev-20260924-006：审批通过即出成品报废单（凭据；库存不动）
-        qualityScrapOrderService.createForAction(action, ncr);
+        // dev-20260924-006 + dev-20260924-028：审批通过即出成品报废单（凭据；库存不动；来料不套此口径）
+        if (scrapGovernanceApplies(ncr)) {
+            qualityScrapOrderService.createForAction(action, ncr);
+        }
         log.info("报废审批通过: actionId={} ncrNo={} 数量={} 审批人={} 已处置={}/{}", actionId, ncr.getNcrNo(),
                 qty.toPlainString(), approver, disposed.toPlainString(),
                 nz(ncr.getDefectQuantity()).toPlainString());
