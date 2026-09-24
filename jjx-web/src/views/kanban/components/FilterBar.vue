@@ -2,7 +2,7 @@
   <div class="filter-bar">
     <el-input
       v-model="localFilter.keyword"
-      placeholder="搜索工单号/任务名/负责人..."
+      placeholder="搜索任务码/标题/描述/负责人..."
       clearable
       style="width: 260px"
       @input="onFilterChange"

@@ -92,6 +92,7 @@ public class BoardTaskController {
         // 关键字：标题/描述 模糊匹配
         if (StringUtils.hasText(keyword)) {
             wrapper.and(w -> w.like(SysTask::getTitle, keyword)
+                    .or().like(SysTask::getTaskCode, keyword)
                     .or().like(SysTask::getDescription, keyword));
         }
         // 负责人模糊匹配
