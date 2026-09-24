@@ -185,11 +185,11 @@
             ><span v-else>未检</span></template
           ></el-table-column
         >
-        <el-table-column label="处置/原因" min-width="190"
+        <el-table-column label="不合格原因" min-width="220" show-overflow-tooltip
           ><template #default="{ row }"
-            ><template v-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value"
-              ><div>{{ IqcDispositionEnum.getLabel(row.disposition) }}</div>
-              <small>{{ row.rejectReason || '-' }}</small></template
+            ><span v-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value">{{
+              deriveIqcReasonText(row) || '-'
+            }}</span
             ><span v-else>-</span></template
           ></el-table-column
         >
@@ -292,13 +292,13 @@ import InspectionStageBar from '@/components/InspectionStageBar.vue'
 import {
   batchPassIqcRow,
   copyIqcChecks,
+  deriveIqcReasonText,
   iqcRowProblems,
   syncIqcRowFromChecks,
 } from './iqcRowRules'
 import {
   InboundOrderStatusEnum,
   InspectionResultEnum as InboundInspectionResultEnum,
-  IqcDispositionEnum,
 } from '@/enums/inventory/InboundEnum'
 import {
   InspectionResult as QualityInspectionResult,

@@ -27,7 +27,7 @@
       </el-table-column>
       <el-table-column label="处置" width="120">
         <template #default="{ row }">{{
-          row.disposition ? IqcDispositionEnum.getLabel(row.disposition) : '-'
+          row.disposition ? IqcQuarantineActionEnum.getLabel(row.disposition) : '-'
         }}</template>
       </el-table-column>
     </el-table>
@@ -45,7 +45,7 @@ import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
 import { useUserStore } from '@/store/modules/user'
-import { IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
+import { IqcQuarantineActionEnum } from '@/enums/inventory/IqcQuarantineEnum'
 import type { InboundItemVO } from '@/types/inventory/inbound'
 
 const props = defineProps<{ visible: boolean; inboundId?: number; inboundNo?: string }>()

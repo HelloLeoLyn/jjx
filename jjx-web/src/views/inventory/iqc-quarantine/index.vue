@@ -96,9 +96,6 @@
             >
           </template>
         </el-table-column>
-        <el-table-column label="IQC处置建议" width="140">
-          <template #default="{ row }">{{ dispositionLabel(row.disposition) }}</template>
-        </el-table-column>
         <el-table-column prop="createTime" label="建立时间" width="170" />
         <el-table-column label="操作" width="130" fixed="right">
           <template #default="{ row }">
@@ -210,7 +207,6 @@ import {
 } from '@/enums/inventory/IqcQuarantineEnum'
 import { IqcReworkStatus, IqcReworkStatusEnum } from '@/enums/inventory/IqcReworkEnum'
 import { IqcBatchStatusEnum, IqcBatchTypeEnum } from '@/enums/inventory/IqcBatchEnum'
-import { IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
 import { hasPermi } from '@/directives'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 const router = useRouter()
@@ -250,7 +246,6 @@ const disposedQuantity = (row: any) =>
   Number(row.quantity || 0) - Number(row.remainingQuantity || 0)
 const isPartial = (row: any) =>
   Number(row.remainingQuantity || 0) > 0 && disposedQuantity(row) > 0
-const dispositionLabel = (value?: string) => (value ? IqcDispositionEnum.getLabel(value) : '-')
 const batchTypeLabel = (value?: string) => (value ? IqcBatchTypeEnum.getLabel(value) : '-')
 const actionLabel = (value?: string) => (value ? IqcQuarantineActionEnum.getLabel(value) : '-')
 

@@ -49,7 +49,7 @@
       </el-table-column>
       <el-table-column label="处置" width="120">
         <template #default="{ row }">{{
-          row.disposition ? IqcDispositionEnum.getLabel(row.disposition) : '-'
+          row.disposition ? IqcQuarantineActionEnum.getLabel(row.disposition) : '-'
         }}</template>
       </el-table-column>
       <el-table-column label="允收数量" prop="acceptedQuantity" width="100" align="right" />
@@ -117,7 +117,8 @@ import { inboundApi } from '@/api/inventory/inbound'
 import { qualityApi, type QualityVO } from '@/api/production/quality'
 import { useUserStore } from '@/store/modules/user'
 import { hasPermi } from '@/directives'
-import { InspectionResultEnum, IqcDispositionEnum, InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
+import { InspectionResultEnum, InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
+import { IqcQuarantineActionEnum } from '@/enums/inventory/IqcQuarantineEnum'
 import { QualityReviewStatus, QualityReviewStatusEnum } from '@/enums/quality/InspectionEnum'
 import type { InboundItemVO } from '@/types/inventory/inbound'
 

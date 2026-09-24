@@ -102,28 +102,15 @@
       </div>
       <div v-if="isFail" class="rv-reason">
         <template v-if="!readonly">
-          <el-select
-            v-model="row.disposition"
-            placeholder="处置方式（必选）"
-            @change="syncDisposition(row)"
-          >
-            <el-option
-              v-for="option in IqcDispositionEnum.items"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </el-select>
           <el-input
             v-model="row.rejectReason"
             maxlength="500"
-            placeholder="不合格原因（必填）"
+            placeholder="补充说明（可选）：不合格原因已由检验项目自动汇总"
             class="reason-input"
           />
         </template>
         <template v-else>
-          <span class="rv-item">处置方式：{{ IqcDispositionEnum.getLabel(row.disposition) }}</span>
-          <span class="rv-item">不合格原因：{{ row.rejectReason || '-' }}</span>
+          <span class="rv-item">不合格原因：{{ deriveIqcReasonText(row) || '-' }}</span>
         </template>
       </div>
     </div>
@@ -148,14 +135,11 @@ import {
   InspectionResult as QualityInspectionResult,
   InspectionResultEnum as QualityInspectionResultEnum,
 } from '@/enums/quality/InspectionEnum'
-import {
-  InspectionResultEnum as InboundInspectionResultEnum,
-  IqcDispositionEnum,
-} from '@/enums/inventory/InboundEnum'
+import { InspectionResultEnum as InboundInspectionResultEnum } from '@/enums/inventory/InboundEnum'
 import {
   batchPassIqcRow,
+  deriveIqcReasonText,
   iqcRowProblems,
-  syncIqcDisposition,
   syncIqcRowFromChecks,
 } from '../iqcRowRules'
 
@@ -170,9 +154,6 @@ const checkResultOptions = QualityInspectionResultEnum.items.filter(
   (item) => item.value !== QualityInspectionResult.PENDING
 )
 
-function syncDisposition(row: any) {
-  syncIqcDisposition(row)
-}
 /** 本行判定是否不合格（由检验项目汇总而来） */
 const isFail = computed(
   () => props.row?.inspectionResult === InboundInspectionResultEnum.FAIL.value

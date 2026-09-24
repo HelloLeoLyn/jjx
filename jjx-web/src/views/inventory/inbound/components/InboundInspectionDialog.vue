@@ -45,15 +45,14 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="不合格处置" width="140">
+        <el-table-column label="不合格原因" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
             <span v-if="row.inspectionResult === InspectionResultEnum.FAIL.value">{{
-              IqcDispositionEnum.getLabel(row.disposition)
+              deriveIqcReasonText(row) || '-'
             }}</span>
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="总体缺陷说明" prop="rejectReason" min-width="160" show-overflow-tooltip />
       </el-table>
       <el-form label-width="90px">
         <el-form-item label="检验备注"
@@ -89,7 +88,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
 import { qualityApi } from '@/api/production/quality'
-import { InspectionResultEnum, IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
+import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
 import {
   InspectionResult as QualityInspectionResult,
   InspectionResultEnum as QualityInspectionResultEnum,
@@ -99,7 +98,7 @@ import {
 import { formatNumber } from '@/utils/format'
 import type { InboundVO } from '@/types/inventory/inbound'
 import MaterialChecksDialog from '@/views/inventory/iqc/components/MaterialChecksDialog.vue'
-import { iqcRowProblems } from '@/views/inventory/iqc/iqcRowRules'
+import { deriveIqcReasonText, iqcRowProblems } from '@/views/inventory/iqc/iqcRowRules'
 
 const props = defineProps<{ visible: boolean; inboundId?: number; itemId?: number }>()
 const emit = defineEmits<{ (e: 'update:visible', value: boolean): void; (e: 'success'): void }>()

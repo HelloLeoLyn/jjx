@@ -61,7 +61,8 @@ import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { inboundApi } from '@/api/inventory/inbound'
 import { qualityApi } from '@/api/production/quality'
-import { InspectionResultEnum, IqcDispositionEnum } from '@/enums/inventory/InboundEnum'
+import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
+import { IqcQuarantineActionEnum } from '@/enums/inventory/IqcQuarantineEnum'
 import { QualityReviewStatus, QualityReviewStatusEnum } from '@/enums/quality/InspectionEnum'
 import type { InboundItemVO } from '@/types/inventory/inbound'
 
@@ -97,7 +98,7 @@ watch(
 )
 
 function dispositionLabel(value?: string) {
-  return value ? IqcDispositionEnum.getLabel(value) : '-'
+  return value ? IqcQuarantineActionEnum.getLabel(value) : '-'
 }
 
 function openPrint(row: InboundItemVO) {

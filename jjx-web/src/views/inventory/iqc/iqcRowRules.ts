@@ -62,8 +62,14 @@ export function iqcRowProblems(row: any): string[] {
     problems.push('合格数量与不良数量之和必须等于收货数量')
   }
   if (row.inspectionResult === InspectionResultEnum.FAIL.value) {
-    if (!row.disposition) problems.push('整批判定不合格时必须选择处置方式')
-    if (!String(row.rejectReason || '').trim()) problems.push('不合格必须填写不合格原因')
+    // dev-20260924-013：检验侧不再要求处置方式；不合格原因由检验项目派生。
+    // 边界 A（用户拍板）：无任何不合格检验项时，必须填「补充说明」。
+    const hasFailItem = (row.inspectionItems || []).some(
+      (check: any) => String(check?.result || '').toUpperCase() === 'FAIL'
+    )
+    if (!hasFailItem && !String(row.rejectReason || '').trim()) {
+      problems.push('判定不合格但未录入不合格检验项，请填写补充说明或补录检验项目')
+    }
   }
   // dev-20260916-009：不良品不得计入允收入库（否则隔离数量=0，不良品当良品入库）
   const accepted = Number(row.acceptedQuantity || 0)
@@ -83,6 +89,30 @@ export function iqcRowProblems(row: any): string[] {
     problems.push(`请判定检测项目「${undecided.checkItem}」合格或不合格（实测记录可留空）`)
   }
   return problems
+}
+
+/**
+ * dev-20260924-013：由检验项目派生「不合格原因」文本（只读展示用）。
+ * ⚠️ 与后端 deriveIqcDefectReason（InventoryInboundServiceImpl）保持同一格式，两处需同步改动。
+ * 格式：外观：CR 2（实测「有划痕」）；尺寸：MA 1；补充：外箱压痕
+ */
+export function deriveIqcReasonText(row: any): string {
+  const parts: string[] = []
+  for (const check of row?.inspectionItems || []) {
+    if (String(check?.result || '').toUpperCase() !== 'FAIL') continue
+    const levels = ([['CR', check.crQuantity], ['MA', check.maQuantity], ['MI', check.miQuantity]] as [string, any][])
+      .filter(([, v]) => Number(v) > 0)
+      .map(([k, v]) => `${k} ${Number(v)}`)
+    const actual = String(check?.actualValue || '').trim()
+    parts.push(
+      `${check.checkItem}：${levels.length ? levels.join('/') : '不合格'}${actual ? `（实测「${actual}」）` : ''}`
+    )
+  }
+  const sup = String(row?.rejectReason || '').trim()
+  if (sup) parts.push(`补充：${sup}`)
+  if (!parts.length) return ''
+  const text = parts.join('；')
+  return text.length > 500 ? `${text.slice(0, 496)}…等项` : text
 }
 
 /** 批量合格：整批判合格、实测记录留空、缺陷数归零、合格/接收=收货数 */
