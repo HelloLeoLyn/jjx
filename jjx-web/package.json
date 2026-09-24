@@ -23,7 +23,8 @@
     "check:lot": "bash ../scripts/check-inbound-lot-integrity.sh",
     "check:lot:strict": "bash ../scripts/check-inbound-lot-integrity.sh --strict",
     "check:doc-no": "bash ../scripts/check-doc-no.sh",
-    "validate": "npm run check:status-enums && npm run check:docs && npm run check:collation:strict && npm run check:stock:strict && npm run check:lot:strict && npm run check:doc-no && vue-tsc --noEmit"
+    "check:notnull": "python3 ../scripts/check-notnull-writes.py --strict",
+    "validate": "npm run check:status-enums && npm run check:docs && npm run check:collation:strict && npm run check:notnull && npm run check:stock:strict && npm run check:lot:strict && npm run check:doc-no && vue-tsc --noEmit"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

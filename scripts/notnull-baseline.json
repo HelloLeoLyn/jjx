@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "note": "scripts/check-notnull-writes.py ① 判据（实体缺 NOT NULL 无默认值列 → insert 必漏列）的存量基线。只许缩小：修好一处删一行；新增违规不得写进基线。②③ 两档判据只提示、不作门禁（DTO/JSON 注入与运行期守卫会产生误报）。",
+  "missing": [
+    "sys_task.task_type"
+  ]
+}
