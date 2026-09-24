@@ -42,3 +42,5 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-24 16:06:06	guard	sys_task_register_dev-20260924-025-027_20260924-guard.sql	a410739df8ee0edf0c86714c55f2bf0e	1200996	3	大黄(OpenClaw)	dev-20260924-025
 2026-09-24 16:06:34	guard	inventory_transaction_iqc_bypass_cleanup_20260924-1606.sql	22161775c2c1e19e07f4e89e426edf20	5960	1	大黄(OpenClaw)	dev-20260924-026
 2026-09-24 16:31:40	guard	inventory_transaction_iqc_bypass_cleanup2_20260924-1631.sql	1bb653edb494489520b09cdd6e50bec2	6231	1	大黄(OpenClaw)	dev-20260924-026
+2026-09-24 16:36:35	full	jjx_erp_db_backup_20260924-1636_before-defect-reason-correct.sql	a91e69e80ea6fe2335c8de465df1c83f	5842239	115	dahuang	dev-20260924-013
+2026-09-24 16:36:42	data	quality_ncr_lot_defect_reason_correct_20260924-1636.sql	d5801051d6c5c4f48b84a91c9630e52a	11431	2	大黄(OpenClaw)	dev-20260924-013
