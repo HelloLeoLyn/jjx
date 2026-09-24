@@ -95,4 +95,23 @@ public class OrderCompletionStatusVO {
 
     /** 差数 = max(0, 计划 − 良品)；与 shortfallQuantity 同口径（对账栏展示用） */
     private BigDecimal diffQuantity = BigDecimal.ZERO;
+
+    // ==================== 物料侧（dev-20260923-026 / -027：BOM应领 / 已领 / 补料 / 退料 / 超领率） ====================
+    // 口径：BOM 定额是基准不是天花板 —— 正常领料 ≤ 剩余定额；超出部分走补料通道（原因 + 授权 + 留痕）。
+    // 超领率 = max(0, 已领 + 补料 − BOM应领) / BOM应领（数量口径；金额口径待单价数据源，见 dev-20260924-010）。
+
+    /** BOM 应领量 = Σ(BOM 单耗 × 计划量) */
+    private BigDecimal materialRequired = BigDecimal.ZERO;
+
+    /** 已领量（正常领料出库，未取消） */
+    private BigDecimal materialIssued = BigDecimal.ZERO;
+
+    /** 补料量（补料出库，未取消） */
+    private BigDecimal materialSupplement = BigDecimal.ZERO;
+
+    /** 退料量（返工退料入库 RTN，已过账） */
+    private BigDecimal materialReturned = BigDecimal.ZERO;
+
+    /** 超领率（%）= max(0, 已领 + 补料 − 应领) / 应领 × 100；应领=0 时为 0 */
+    private BigDecimal overPickRate = BigDecimal.ZERO;
 }

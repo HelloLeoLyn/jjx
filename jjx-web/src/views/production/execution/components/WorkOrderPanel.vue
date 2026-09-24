@@ -207,6 +207,16 @@ const openRecon = (row: ProductionOrderVO) => {
     { item: '让步接收', value: Number(st.concessionQuantity || 0), note: '处置单 CONCESSION 已完成（需客户确认）' },
     { item: '在制', value: Number(st.wipQuantity || 0), note: '已报工 − 已判定（尚未判定 / 未入库）' },
     { item: '差数', value: Number(st.diffQuantity || st.shortfallQuantity || 0), note: 'max(0, 计划 − 良品)；必须由 补产 / 返工回收 / 让步 填平' },
+    // dev-20260923-026 / -027：物料侧（定额是基准不是天花板；超领走补料通道）
+    { item: 'BOM应领', value: Number(st.materialRequired || 0), note: 'Σ(BOM 单耗 ×(1+损耗率) × 计划量)' },
+    { item: '已领', value: Number(st.materialIssued || 0), note: '正常领料出库（未取消）' },
+    { item: '补料', value: Number(st.materialSupplement || 0), note: '补料出库（超耗/报废补产/试制调机/来料不良）' },
+    { item: '退料', value: Number(st.materialReturned || 0), note: '返工退料入库（RTN 单，已过账）' },
+    {
+      item: '超领率',
+      value: Number(st.overPickRate || 0),
+      note: 'max(0, 已领 + 补料 − BOM应领) / BOM应领 × 100（%）；金额口径待单价数据源（见 010）',
+    },
   ]
   reconVisible.value = true
 }

@@ -1621,10 +1621,12 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     }
 
     /**
-     * dev-20260923（补报入口）：已完成任务的可补报额度（0=不可补报）。
-     * 口径与 WorkReportActionServiceImpl.validateSupplementReport 一致：取
-     * 「工序投料量 ×(1+损耗率) − 该工序累计报工」与「工单计划量 ×(1+损耗率) − 该工单累计报工」的较小剩余。
-     * 损耗率取 sys_config.production.report.overrun-rate（缺省 5%）。
+     * dev-20260923（补报入口）/ dev-20260923-027（额度改按缺口）：已完成任务的可补报额度（0=不可补报）。
+     *
+     * <p>口径（027 定稿）：**可补量 = 缺口 = 工单计划量 − 工单良品累计（已合格产出）**，下限 0；<br>
+     * 「超产容差（计划量 ×(1+损耗率)）」不再混进可补量语义 —— 它只是
+     * {@code WorkReportActionServiceImpl.validateSupplementReport} 里的**硬上限**（防无限超报），
+     * 两者语义分开：可补量告诉你"还缺多少"，容差只负责"最多能报多少"。</p>
      */
     private BigDecimal supplementAllowance(ProductionTask task) {
         if (task == null || task.getExecutionId() == null) {
@@ -1635,19 +1637,9 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         if (exec == null) {
             return BigDecimal.ZERO;
         }
-        BigDecimal rate = new BigDecimal("0.05");
-        try {
-            String v = jdbcTemplate.queryForObject(
-                    "SELECT config_value FROM sys_config WHERE config_key = 'production.report.overrun-rate'", String.class);
-            if (v != null && !v.isBlank()) {
-                rate = new BigDecimal(v.trim());
-            }
-        } catch (Exception ignored) {
-        }
-        BigDecimal factor = BigDecimal.ONE.add(rate);
         BigDecimal allowance = null;
-        // 2026-09-23 修正：额度基准 = 工单计划量 ×(1+损耗率) − 工单「已合格产出」(finished_quantity)。
-        // 原用「工序投料量/任务合计 − 报工累计」会被多次派工重复报工顶穿（实测计划 200、报工累计 400 → 额度恒 0）。
+        // 2026-09-23 修正保留：额度基准 = 工单「已合格产出」(finished_quantity)，
+        // 不能用「报工累计」当基准（同一工序多次派工/重复报工会把额度顶穿）。
         if (exec.getOrderId() != null) {
             try {
                 BigDecimal orderPlan = jdbcTemplate.queryForObject(
@@ -1657,7 +1649,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                         "SELECT COALESCE(finished_quantity, 0) FROM production_order WHERE order_id = ?",
                         BigDecimal.class, exec.getOrderId());
                 if (orderPlan != null && orderPlan.signum() > 0) {
-                    allowance = orderPlan.multiply(factor).subtract(floorCompletionZero(finished));
+                    allowance = orderPlan.subtract(floorCompletionZero(finished));
                 }
             } catch (Exception ignored) {
             }

@@ -813,6 +813,59 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         vo.setConcessionQuantity(concession);
         vo.setWipQuantity(reported.subtract(inspected).max(zero));
         vo.setDiffQuantity((planned == null ? zero : planned).subtract(good).max(zero));
+        // dev-20260923-026 / -027：物料侧（BOM应领 / 已领 / 补料 / 退料 / 超领率）
+        fillMaterialReconciliation(vo, orderId, planned);
+    }
+
+    /**
+     * 物料侧对账（dev-20260923-026 / -027）：BOM 应领 / 已领 / 补料 / 退料 / 超领率。
+     *
+     * <p>口径：BOM 定额（单耗 ×(1+损耗率) × 计划量）是**基准不是天花板** —— 正常领料 ≤ 剩余定额，
+     * 超出部分只能走补料通道（原因 + 授权 + 留痕）；超领率用来考核。</p>
+     */
+    private void fillMaterialReconciliation(com.jjx.production.domain.vo.OrderCompletionStatusVO vo, Long orderId,
+                                            java.math.BigDecimal planned) {
+        java.math.BigDecimal zero = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal required = zero;
+        java.math.BigDecimal issued = zero;
+        java.math.BigDecimal supplement = zero;
+        java.math.BigDecimal returned = zero;
+        try {
+            required = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(i.quantity * (1 + IFNULL(i.loss_rate, 0))), 0) * IFNULL(o.planned_quantity, 0)"
+                            + " FROM production_order o LEFT JOIN engineering_bom_item i ON i.bom_id = o.bom_id"
+                            + " WHERE o.order_id = ?",
+                    java.math.BigDecimal.class, orderId));
+            issued = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(ii.quantity), 0) FROM inventory_outbound_item ii"
+                            + " JOIN inventory_outbound_order o ON o.outbound_id = ii.outbound_id"
+                            + " WHERE o.order_status <> 9 AND o.source_type = 'work_order' AND o.source_id = ?"
+                            + "   AND o.supplement_reason_type IS NULL",
+                    java.math.BigDecimal.class, orderId));
+            supplement = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(ii.quantity), 0) FROM inventory_outbound_item ii"
+                            + " JOIN inventory_outbound_order o ON o.outbound_id = ii.outbound_id"
+                            + " WHERE o.order_status <> 9 AND o.source_type = 'work_order' AND o.source_id = ?"
+                            + "   AND o.supplement_reason_type IS NOT NULL",
+                    java.math.BigDecimal.class, orderId));
+            returned = nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(ii.quantity), 0) FROM inventory_inbound_item ii"
+                            + " JOIN inventory_inbound_order o ON o.inbound_id = ii.inbound_id"
+                            + " WHERE o.order_status <> 9 AND o.inbound_type = 'PRODUCTION_RETURN'"
+                            + "   AND o.source_id IN (SELECT ncr_id FROM quality_ncr WHERE order_id = ?)",
+                    java.math.BigDecimal.class, orderId));
+        } catch (Exception e) {
+            log.warn("物料侧对账汇总失败（降级为 0）: orderId={} err={}", orderId, e.getMessage());
+        }
+        vo.setMaterialRequired(required);
+        vo.setMaterialIssued(issued);
+        vo.setMaterialSupplement(supplement);
+        vo.setMaterialReturned(returned);
+        vo.setOverPickRate(required.signum() > 0
+                ? issued.add(supplement).subtract(required).max(zero)
+                        .multiply(new java.math.BigDecimal("100"))
+                        .divide(required, 2, java.math.RoundingMode.HALF_UP)
+                : zero);
     }
 
     private static java.math.BigDecimal nz(java.math.BigDecimal value) {

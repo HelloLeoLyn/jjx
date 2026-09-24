@@ -667,6 +667,10 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
      *   工序维度：该工序累计报工（合格+不良）+ 本次 ≤ 工序计划量 ×(1+损耗率)
      *   工单维度：该工单累计报工 + 本次 ≤ 工单计划量 ×(1+损耗率)
      * 损耗率取 sys_config.production.report.overrun-rate，缺省 0.05（5%）。
+     *
+     * <p>dev-20260923-027 语义收口：这里是"**能报多少**"的硬上限（防无限超报）；
+     * "**还缺多少**"（可补量/缺口 = 计划量 − 已合格产出）由 ProductionTaskServiceImpl.supplementAllowance 下发，
+     * 两者语义分开，不再混成一个数。</p>
      */
     private void validateSupplementReport(ProductionOperationExecution exec, BigDecimal reportQuantity) {
         // 补报额度基准 = 工单计划量 ×(1+损耗率) − 工单「已合格产出」(finished_quantity)。
