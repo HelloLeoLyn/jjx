@@ -76,15 +76,65 @@
         ></el-table-column
       >
     </el-table>
+    <!-- dev-20260924-017：本行结论由检验项目自动汇总（数量/判定不手填，与成品检验同口径）；
+         不合格时才需要选处置方式 + 填不合格原因 -->
+    <div v-if="row" class="row-verdict">
+      <div class="rv-head">
+        本行结论（由检验项目自动汇总）
+        <span class="rv-hint">逐项给结论即可，数量与判定自动算出</span>
+      </div>
+      <div class="rv-body">
+        <span class="rv-item">收货数量 <b>{{ row.quantity }}</b></span>
+        <span class="rv-item">合格 <b>{{ row.qualifiedQuantity ?? 0 }}</b></span>
+        <span class="rv-item">不良 <b>{{ row.rejectedQuantity ?? 0 }}</b></span>
+        <span class="rv-item"
+          >判定
+          <el-tag
+            v-if="row.inspectionResult"
+            :type="InboundInspectionResultEnum.getTagProps(row.inspectionResult).type"
+            size="small"
+            >{{ InboundInspectionResultEnum.getLabel(row.inspectionResult) }}</el-tag
+          >
+          <span v-else>未检</span>
+        </span>
+        <span class="rv-item">接收数量 <b>{{ row.acceptedQuantity ?? 0 }}</b></span>
+      </div>
+      <div v-if="isFail" class="rv-reason">
+        <template v-if="!readonly">
+          <el-select
+            v-model="row.disposition"
+            placeholder="处置方式（必选）"
+            @change="syncDisposition(row)"
+          >
+            <el-option
+              v-for="option in IqcDispositionEnum.items"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+          <el-input
+            v-model="row.rejectReason"
+            maxlength="500"
+            placeholder="不合格原因（必填）"
+            class="reason-input"
+          />
+        </template>
+        <template v-else>
+          <span class="rv-item">处置方式：{{ IqcDispositionEnum.getLabel(row.disposition) }}</span>
+          <span class="rv-item">不合格原因：{{ row.rejectReason || '-' }}</span>
+        </template>
+      </div>
+    </div>
     <template #footer>
       <div class="dialog-footer">
         <el-button v-if="!readonly" @click="batchPassRow">整批合格（本行）</el-button>
-        <span class="footer-tip">实测记录可留空；Tab 移动、Enter 保存</span>
+        <span class="footer-tip">实测可留空 · Tab 移动 · Enter 保存本行 · 键盘录入更快</span>
         <el-button @click="opened = false">取消</el-button>
         <el-button v-if="!readonly && nextLabel" @click="saveAndNext"
           >保存并下一行（{{ nextLabel }}）</el-button
         >
-        <el-button v-if="!readonly" type="primary" @click="save">保存</el-button>
+        <el-button v-if="!readonly" type="primary" @click="save">保存本行</el-button>
       </div>
     </template>
   </el-dialog>
@@ -98,7 +148,12 @@ import {
   InspectionResultEnum as QualityInspectionResultEnum,
 } from '@/enums/quality/InspectionEnum'
 import {
+  InspectionResultEnum as InboundInspectionResultEnum,
+  IqcDispositionEnum,
+} from '@/enums/inventory/InboundEnum'
+import {
   batchPassIqcRow,
+  iqcRowProblems,
   syncIqcDisposition,
   syncIqcRowFromChecks,
 } from '../iqcRowRules'
@@ -116,6 +171,19 @@ const checkResultOptions = QualityInspectionResultEnum.items.filter(
 
 function syncDisposition(row: any) {
   syncIqcDisposition(row)
+}
+/** 本行判定是否不合格（由检验项目汇总而来） */
+const isFail = computed(
+  () => props.row?.inspectionResult === InboundInspectionResultEnum.FAIL.value
+)
+/** 保存前校验（与列表「提交检验」同一处规则：iqcRowProblems） */
+function canSave(): boolean {
+  const problems = iqcRowProblems(props.row)
+  if (problems.length) {
+    ElMessage.warning(problems.join('；'))
+    return false
+  }
+  return true
 }
 /** 本行"整批合格"：结论合格 + 实测记录留空 + 缺陷数归零 + 合格/接收=收货数（全检口径） */
 function batchPassRow() {
@@ -139,12 +207,14 @@ function removeCheck(check: any) {
 }
 function save() {
   syncRow()
+  if (!canSave()) return
   emit('saved')
   opened.value = false
 }
 /** 保存本行并直接切到下一可编辑行（弹窗不关闭，连续录入，dev-20260916-008） */
 function saveAndNext() {
   syncRow()
+  if (!canSave()) return
   emit('saved')
   emit('next')
 }
@@ -167,5 +237,41 @@ function saveAndNext() {
   text-align: left;
   color: #909399;
   font-size: 12px;
+}
+
+/* dev-20260924-017：本行结论区（数量/判定只读展示 + 不合格时补处置/原因） */
+.row-verdict {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  background: var(--el-fill-color-lighter);
+}
+
+.rv-head {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.rv-hint {
+  margin-left: 8px;
+  font-weight: 400;
+  color: #909399;
+  font-size: 12px;
+}
+
+.rv-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+
+.rv-reason {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 </style>

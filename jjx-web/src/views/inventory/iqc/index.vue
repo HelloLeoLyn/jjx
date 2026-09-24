@@ -156,6 +156,7 @@
         :data="workRows"
         border
         class="material-table"
+        :row-class-name="rowClassName"
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="46" fixed="left" :selectable="rowCanEdit" />
@@ -164,44 +165,16 @@
           label="材料名称"
           min-width="150"
         /><el-table-column prop="quantity" label="收货数量" width="90" />
-        <el-table-column label="合格" width="130"
-          ><template #default="{ row }"
-            ><el-input-number
-              v-if="rowCanEdit(row)"
-              v-model="row.qualifiedQuantity"
-              :min="0"
-              :max="row.isReinspection ? row.reinspectionQuantity : row.quantity"
-              controls-position="right"
-              @change="recalRow(row)"
-            /><span v-else>{{ row.qualifiedQuantity }}</span></template
-          ></el-table-column
+        <el-table-column label="合格" width="90"
+          ><template #default="{ row }">{{ row.qualifiedQuantity }}</template></el-table-column
         >
-        <el-table-column label="不良" width="130"
-          ><template #default="{ row }"
-            ><el-input-number
-              v-if="rowCanEdit(row)"
-              v-model="row.rejectedQuantity"
-              :min="0"
-              :max="row.isReinspection ? row.reinspectionQuantity : row.quantity"
-              controls-position="right"
-              @change="recalRow(row)"
-            /><span v-else>{{ row.rejectedQuantity }}</span></template
-          ></el-table-column
+        <el-table-column label="不良" width="90"
+          ><template #default="{ row }">{{ row.rejectedQuantity }}</template></el-table-column
         >
-        <el-table-column label="判定" width="115"
+        <el-table-column label="判定" width="100"
           ><template #default="{ row }"
-            ><el-select
-              v-if="rowCanEdit(row)"
-              v-model="row.inspectionResult"
-              placeholder="待判定"
-              @change="handleResultChange(row)"
-              ><el-option
-                v-for="option in rowResultOptions"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value" /></el-select
             ><el-tag
-              v-else-if="row.inspectionResult"
+              v-if="row.inspectionResult"
               :type="InboundInspectionResultEnum.getTagProps(row.inspectionResult).type"
               >{{ InboundInspectionResultEnum.getLabel(row.inspectionResult) }}</el-tag
             ><span v-else>未检</span></template
@@ -209,25 +182,7 @@
         >
         <el-table-column label="处置/原因" min-width="190"
           ><template #default="{ row }"
-            ><template
-              v-if="
-                rowCanEdit(row) && row.inspectionResult === InboundInspectionResultEnum.FAIL.value
-              "
-              ><el-select
-                v-model="row.disposition"
-                placeholder="处置方式（必选）"
-                @change="syncDisposition(row)"
-                ><el-option
-                  v-for="option in IqcDispositionEnum.items"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value" /></el-select
-              ><el-input
-                v-model="row.rejectReason"
-                maxlength="500"
-                placeholder="不合格原因（必填）"
-                class="reason-input" /></template
-            ><template v-else-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value"
+            ><template v-if="row.inspectionResult === InboundInspectionResultEnum.FAIL.value"
               ><div>{{ IqcDispositionEnum.getLabel(row.disposition) }}</div>
               <small>{{ row.rejectReason || '-' }}</small></template
             ><span v-else>-</span></template
@@ -319,7 +274,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { hasPermi } from '@/directives'
@@ -332,6 +287,7 @@ import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
 import {
   batchPassIqcRow,
   copyIqcChecks,
+  iqcRowProblems,
   syncIqcRowFromChecks,
 } from './iqcRowRules'
 import {
@@ -415,9 +371,11 @@ const activeWorkRow = ref<WorkRow>(),
   activeInboundId = ref<number>(),
   activeInboundNo = ref(''),
   activeItemId = ref<string>()
-const rowResultOptions = InboundInspectionResultEnum.items.filter(
-  (item) => item.value !== InboundInspectionResultEnum.OTHER.value
-)
+/** dev-20260924-017：校验未通过的行（行级红标，提交时一次提示 + 定位第一处） */
+const problemRowIds = ref<Set<number>>(new Set())
+function rowClassName({ row }: { row: WorkRow }) {
+  return problemRowIds.value.has(Number(row.itemId)) ? 'iqc-problem-row' : ''
+}
 const isApproved = computed(
   () => selectedInbound.value?.orderStatus === InboundOrderStatusEnum.APPROVED.value
 )
@@ -748,6 +706,7 @@ function openMaterialChecks(row?: WorkRow) {
 }
 function handleChecksSaved() {
   if (activeWorkRow.value && rowCanEdit(activeWorkRow.value)) recalRow(activeWorkRow.value)
+  if (activeWorkRow.value) problemRowIds.value.delete(Number(activeWorkRow.value.itemId))
 }
 function activateSelected() {
   activeInboundId.value = Number(selectedInbound.value?.inboundId)
@@ -776,36 +735,33 @@ async function handleFlowSuccess() {
 }
 async function submitInspection() {
   if (!selectedInbound.value) return
+  // dev-20260924-017：校验从"发现一处就 return"改为"收集全部问题 + 行级红标 + 一次性提示"
+  const problems: string[] = []
+  const badRowIds = new Set<number>()
   for (const item of workRows.value) {
     if (!rowCanEdit(item)) continue
     item.acceptedQuantity = Number(item.qualifiedQuantity || 0)
-    const inspectionQuantity = item.isReinspection ? item.reinspectionQuantity : item.quantity
-    if (Number(item.qualifiedQuantity) + Number(item.rejectedQuantity) !== inspectionQuantity) {
-      ElMessage.warning(`${item.materialCode}：合格数量与不良数量之和必须等于收货数量`)
-      return
+    const rowIssues = iqcRowProblems(item)
+    if (rowIssues.length) {
+      problems.push(`${item.materialCode}：${rowIssues.join('；')}`)
+      badRowIds.add(Number(item.itemId))
     }
-    if (item.inspectionResult === InboundInspectionResultEnum.FAIL.value && !item.disposition) {
-      ElMessage.warning(`${item.materialCode}：整批判定不合格时必须选择处置方式`)
-      return
-    }
-    if (
-      item.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
-      !String(item.rejectReason || '').trim()
-    ) {
-      ElMessage.warning(`${item.materialCode}：不合格必须填写不合格原因`)
-      return
-    }
-    // 2026-09-16 dev-20260916-008：实测记录允许留空（配合"整批合格"口径），仅要求逐项给出合格/不合格结论
-    const undecidedCheck = item.inspectionItems.find(
-      (check: any) =>
-        ![QualityInspectionResult.PASS, QualityInspectionResult.FAIL].includes(check.result)
-    )
-    if (undecidedCheck) {
-      ElMessage.warning(
-        `${item.materialCode}：请判定检测项目「${undecidedCheck.checkItem}」合格或不合格（实测记录可留空）`
-      )
-      return
-    }
+  }
+  problemRowIds.value = badRowIds
+  if (problems.length) {
+    await nextTick()
+    document
+      .querySelector('.iqc-problem-row')
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const esc = (text: string) => text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    await ElMessageBox.alert(
+      `<div style="max-height:320px;overflow:auto">${problems
+        .map((p) => `<div>· ${esc(p)}</div>`)
+        .join('')}</div>`,
+      `还有 ${badRowIds.size} 行需要处理`,
+      { dangerouslyUseHTMLString: true, confirmButtonText: '知道了' }
+    ).catch(() => undefined)
+    return
   }
   const undecided = workRows.value.filter(
     (item) => rowCanEdit(item) && !item.inspectionResult
@@ -881,6 +837,10 @@ onBeforeUnmount(clearSelection)
 <style scoped>
 .iqc-page {
   padding: 20px;
+}
+/* dev-20260924-017：校验未通过的行 → 红底标记，便于提交时定位 */
+:deep(.iqc-problem-row) > td {
+  background: var(--el-color-danger-light-9) !important;
 }
 .header,
 .guide-content {

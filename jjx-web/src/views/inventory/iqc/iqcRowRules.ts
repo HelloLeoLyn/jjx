@@ -49,6 +49,33 @@ export function syncIqcRowFromChecks(row: any) {
   }
 }
 
+/**
+ * 行级校验（列表提交 与 录入弹窗保存 共用；唯一出处，避免两处漂移）
+ * dev-20260924-017：从"发现一个问题就 return"改为"返回全部问题"，
+ * 供页面一次性提示 + 行级红标定位。
+ */
+export function iqcRowProblems(row: any): string[] {
+  if (!row) return []
+  const problems: string[] = []
+  const quantity = Number(row.isReinspection ? row.reinspectionQuantity : row.quantity || 0)
+  if (Number(row.qualifiedQuantity || 0) + Number(row.rejectedQuantity || 0) !== quantity) {
+    problems.push('合格数量与不良数量之和必须等于收货数量')
+  }
+  if (row.inspectionResult === InspectionResultEnum.FAIL.value) {
+    if (!row.disposition) problems.push('整批判定不合格时必须选择处置方式')
+    if (!String(row.rejectReason || '').trim()) problems.push('不合格必须填写不合格原因')
+  }
+  // dev-20260916-008：实测记录允许留空，仅要求逐项给出合格/不合格结论
+  const undecided = (row.inspectionItems || []).find(
+    (check: any) =>
+      ![InspectionResult.PASS, InspectionResult.FAIL].includes(check?.result)
+  )
+  if (undecided) {
+    problems.push(`请判定检测项目「${undecided.checkItem}」合格或不合格（实测记录可留空）`)
+  }
+  return problems
+}
+
 /** 批量合格：整批判合格、实测记录留空、缺陷数归零、合格/接收=收货数 */
 export function batchPassIqcRow(row: any) {
   if (!row) return
