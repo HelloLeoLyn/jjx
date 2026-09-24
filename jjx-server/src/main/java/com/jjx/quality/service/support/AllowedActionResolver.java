@@ -133,6 +133,11 @@ public final class AllowedActionResolver {
         if ("SCRAP".equals(type) && "DONE".equals(status)) {
             actions.add(AllowedActionEnum.NCR_REVOKE);
         }
+        // dev-20260924-005：报废授权 —— 待审批的报废可「审批通过 / 驳回」（权限点 quality:ncr:scrap-approve）
+        if ("SCRAP".equals(type) && "PENDING_APPROVAL".equals(status)) {
+            actions.add(AllowedActionEnum.NCR_SCRAP_APPROVE);
+            actions.add(AllowedActionEnum.NCR_SCRAP_REJECT);
+        }
         // 返工：在制中可补料；退料在 dev-20260923-043 落地后再放开（避免出现点不动的按钮）
         if ("REWORK".equals(type) && ("PENDING".equals(status) || "PROCESSING".equals(status))) {
             actions.add(AllowedActionEnum.NCR_REWORK_COMPLETE);

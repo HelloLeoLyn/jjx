@@ -43,6 +43,8 @@ export const NcrActionTypeEnum = createEnum<string>({
 export const NcrActionStatus = {
   PENDING: 'PENDING',
   PROCESSING: 'PROCESSING',
+  /** dev-20260924-005：超阈值的报废待品质主管审批（未计入台账，件级也不动） */
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
   DONE: 'DONE',
   VOID: 'VOID',
 } as const
@@ -51,6 +53,7 @@ export const NcrActionStatusEnum = createEnum<string>({
   items: [
     { value: NcrActionStatus.PENDING, label: '待执行', tagProps: { type: 'info' } },
     { value: NcrActionStatus.PROCESSING, label: '执行中', tagProps: { type: 'warning' } },
+    { value: NcrActionStatus.PENDING_APPROVAL, label: '待审批', tagProps: { type: 'warning' } },
     { value: NcrActionStatus.DONE, label: '已完成', tagProps: { type: 'success' } },
     { value: NcrActionStatus.VOID, label: '已作废', tagProps: { type: 'info' } },
   ],

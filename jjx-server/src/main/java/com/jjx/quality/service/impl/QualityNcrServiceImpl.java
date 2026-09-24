@@ -65,6 +65,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
     /** dev-20260924-004：不良件级追溯（发号 / 件级处置 / 撤销回退 / 随批作废） */
     private final com.jjx.quality.service.QualityNcrPieceService qualityNcrPieceService;
 
+    /** dev-20260924-005：报废审批阈值读取（sys_config: quality.ncr.scrap.approval-threshold） */
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public QualityNcr createFromLot(QualityLot lot, BigDecimal defectQuantity, BigDecimal crQuantity,
@@ -353,11 +356,14 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
             throw new BusinessException("让步接收必须先取得客户确认");
         }
 
+        // dev-20260924-005：报废授权分档 —— 超过阈值进入「待审批」，审批通过才计入台账/检验批/件级
+        boolean scrapPendingApproval = "SCRAP".equals(actionType)
+                && quantity.compareTo(scrapApprovalThreshold()) > 0;
         QualityNcrAction action = new QualityNcrAction();
         action.setNcrId(ncrId);
         action.setActionType(actionType);
         action.setQuantity(quantity);
-        action.setStatus("PENDING");
+        action.setStatus(scrapPendingApproval ? "PENDING_APPROVAL" : "PENDING");
         action.setCustomerConfirmed(Boolean.TRUE.equals(dto.getCustomerConfirmed()) ? 1 : 0);
         if (Boolean.TRUE.equals(dto.getCustomerConfirmed())) {
             action.setCustomerConfirmTime(LocalDateTime.now());
@@ -368,6 +374,20 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         action.setOperatorName(dto.getOperatorName());
         action.setDelFlag(0);
         actionMapper.insert(action);
+
+        if (scrapPendingApproval) {
+            // 待审批：台账已处置量 / 检验批已处置量 / 件级状态 / 库存【全部不动】，等品质主管审批（dev-20260924-005）
+            action.setApprovedBy(null);
+            action.setApprovedTime(null);
+            action.setResultRemark(appendRemark(action.getResultRemark(),
+                    "待审批：报废 " + quantity.stripTrailingZeros().toPlainString() + " 件 超过阈值 "
+                            + scrapApprovalThreshold().stripTrailingZeros().toPlainString()
+                            + " 件，需品质主管审批（dev-20260924-005）"));
+            actionMapper.updateById(action);
+            log.info("报废待审批: actionId={} ncrNo={} 数量={} 提交人={}",
+                    action.getActionId(), ncr.getNcrNo(), quantity.toPlainString(), submitterOf(action));
+            return action;
+        }
 
         BigDecimal disposed = nz(ncr.getDisposedQuantity()).add(quantity);
         ncr.setDisposedQuantity(disposed);
@@ -559,6 +579,111 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         qualityNcrPieceService.releasePieces(actionId);
         log.info("处置已撤销: actionId={} ncrNo={} 类型={} 数量={} 原因={} 操作人={}", actionId, ncr.getNcrNo(),
                 type, qty.toPlainString(), reason.trim(), operatorName);
+        return action;
+    }
+
+    // ==================== dev-20260924-005：报废授权（审批通过 / 驳回） ====================
+
+    /** 报废审批阈值（≤阈值一步到底；>阈值需审批）。缺省 5；配置不可读时按缺省，不阻断业务。 */
+    private BigDecimal scrapApprovalThreshold() {
+        try {
+            String v = jdbcTemplate.queryForObject(
+                    "SELECT config_value FROM sys_config WHERE config_key = 'quality.ncr.scrap.approval-threshold'"
+                            + " AND is_active = 1", String.class);
+            if (v != null && !v.isBlank()) {
+                return new BigDecimal(v.trim());
+            }
+        } catch (Exception ignored) {
+            // 配置缺失/不可读 → 缺省阈值
+        }
+        return new BigDecimal("5");
+    }
+
+    private String submitterOf(QualityNcrAction action) {
+        if (action == null) {
+            return null;
+        }
+        return StringUtils.isBlank(action.getOperatorName()) ? action.getCreateBy() : action.getOperatorName();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityNcrAction approveScrap(Long actionId, String remark, String operatorName) {
+        if (actionId == null) {
+            throw new BusinessException("处置单ID不能为空");
+        }
+        QualityNcrAction action = actionMapper.selectById(actionId);
+        if (action == null) {
+            throw new BusinessException("处置单不存在: " + actionId);
+        }
+        String type = action.getActionType() == null ? "" : action.getActionType().toUpperCase();
+        if (!"SCRAP".equals(type)) {
+            throw new BusinessException("仅「报废」处置需要审批（当前：" + type + "）");
+        }
+        if (!"PENDING_APPROVAL".equals(action.getStatus())) {
+            throw new BusinessException("该处置不在待审批状态（当前：" + action.getStatus() + "），无需审批");
+        }
+        QualityNcr ncr = ncrMapper.selectById(action.getNcrId());
+        if (ncr == null) {
+            throw new BusinessException("不良台账不存在: " + action.getNcrId());
+        }
+        // 审批人 ≠ 提交人（超管可代，留痕）—— 045 §4 职责分离
+        String approver = StringUtils.isBlank(operatorName)
+                ? com.jjx.system.utils.SecurityUtils.getUsername() : operatorName;
+        String submitter = submitterOf(action);
+        if (!StringUtils.isBlank(approver) && approver.equals(submitter)
+                && !com.jjx.system.utils.SecurityUtils.hasRole("admin")) {
+            throw new BusinessException("审批人不能是提交人（提交人：" + submitter + "）—— 请由品质主管审批");
+        }
+        BigDecimal qty = nz(action.getQuantity());
+        // 生效：与登记同口径（台账已处置量 + 检验批已处置量 + 件级挂钩）；库存：口径A 报废不产生扣减
+        action.setStatus("DONE");
+        action.setApprovedBy(approver);
+        action.setApprovedTime(LocalDateTime.now());
+        action.setResultRemark(appendRemark(action.getResultRemark(),
+                "【审批通过】" + (StringUtils.isBlank(remark) ? "" : "备注：" + remark.trim() + "；")
+                        + "审批人：" + (approver == null ? "-" : approver)
+                        + "；时间：" + LocalDateTime.now().withNano(0) + "（dev-20260924-005）"));
+        actionMapper.updateById(action);
+        BigDecimal disposed = nz(ncr.getDisposedQuantity()).add(qty);
+        ncr.setDisposedQuantity(disposed);
+        boolean canClose = canCloseNcr(disposed, ncr.getDefectQuantity(), capaService.countOpen(ncr.getNcrId(), null));
+        ncr.setStatus(canClose ? "CLOSED" : "DISPOSING");
+        ncr.setRemark(appendRemark(ncr.getRemark(), "【报废审批通过】"
+                + qty.stripTrailingZeros().toPlainString() + " 件（审批人：" + (approver == null ? "-" : approver) + "）"));
+        ncrMapper.updateById(ncr);
+        qualityLotService.addDisposedQuantity(ncr.getLotId(), qty);
+        qualityNcrPieceService.attachPieces(ncr.getNcrId(), actionId, "SCRAP", qty);
+        log.info("报废审批通过: actionId={} ncrNo={} 数量={} 审批人={} 已处置={}/{}", actionId, ncr.getNcrNo(),
+                qty.toPlainString(), approver, disposed.toPlainString(),
+                nz(ncr.getDefectQuantity()).toPlainString());
+        return action;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityNcrAction rejectScrap(Long actionId, String reason, String operatorName) {
+        if (actionId == null) {
+            throw new BusinessException("处置单ID不能为空");
+        }
+        if (StringUtils.isBlank(reason)) {
+            throw new BusinessException("驳回必须填写原因（留痕要求）");
+        }
+        QualityNcrAction action = actionMapper.selectById(actionId);
+        if (action == null) {
+            throw new BusinessException("处置单不存在: " + actionId);
+        }
+        if (!"PENDING_APPROVAL".equals(action.getStatus())) {
+            throw new BusinessException("该处置不在待审批状态（当前：" + action.getStatus() + "），无法驳回");
+        }
+        String approver = StringUtils.isBlank(operatorName)
+                ? com.jjx.system.utils.SecurityUtils.getUsername() : operatorName;
+        action.setStatus("VOID");
+        action.setResultRemark(appendRemark(action.getResultRemark(),
+                "【审批驳回】原因：" + reason.trim() + "；审批人：" + (approver == null ? "-" : approver)
+                        + "；时间：" + LocalDateTime.now().withNano(0) + "（dev-20260924-005）"));
+        actionMapper.updateById(action);
+        log.info("报废审批驳回: actionId={} 原因={} 审批人={}", actionId, reason.trim(), approver);
         return action;
     }
 

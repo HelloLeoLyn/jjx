@@ -95,6 +95,15 @@ class AllowedActionResolverTest {
         assertTrue(AllowedActionResolver.forNcrAction("CONCESSION", "DONE").isEmpty());
     }
 
+    /** dev-20260924-005：超阈值的报废进入待审批 → 下发「审批通过 / 驳回」；非报废/非待审批不下发 */
+    @Test
+    void scrapPendingApprovalOffersApproveAndReject() {
+        assertEquals(List.of(AllowedActionEnum.NCR_SCRAP_APPROVE, AllowedActionEnum.NCR_SCRAP_REJECT),
+                AllowedActionResolver.forNcrAction("SCRAP", "PENDING_APPROVAL"));
+        assertTrue(AllowedActionResolver.forNcrAction("REWORK", "PENDING_APPROVAL").isEmpty());
+        assertTrue(AllowedActionResolver.forNcrAction("CONCESSION", "PENDING_APPROVAL").isEmpty());
+    }
+
     @Test
     void processingReworkCanSupplementButNotAfterDone() {
         assertEquals(List.of(AllowedActionEnum.NCR_REWORK_COMPLETE, AllowedActionEnum.NCR_REWORK_SUPPLEMENT),

@@ -261,6 +261,18 @@ export const qualityNcrApi = {
   completeAction(actionId: number, params?: Record<string, unknown>) {
     return request.post<R<QualityNcrAction>>(`/quality/ncr/action/${actionId}/complete`, null, { params })
   },
+  /** dev-20260924-005：报废审批通过（待审批 → 生效；审批人≠提交人，超管可代） */
+  approveScrap(actionId: number, remark?: string) {
+    return request.post<R<QualityNcrAction>>(`/quality/ncr/action/${actionId}/scrap/approve`, null, {
+      params: { remark },
+    })
+  },
+  /** dev-20260924-005：报废驳回（待审批 → 作废，必填原因，留痕） */
+  rejectScrap(actionId: number, reason: string) {
+    return request.post<R<QualityNcrAction>>(`/quality/ncr/action/${actionId}/scrap/reject`, null, {
+      params: { reason },
+    })
+  },
   /**
    * 撤销已生效的处置（dev-20260923-022 二期）：受控动作 —— 必填原因，留痕；本期支持报废(SCRAP)
    */

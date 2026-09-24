@@ -29,6 +29,9 @@ public enum AllowedActionEnum {
 
     // ==================== 处置动作（quality_ncr_action） ====================
     NCR_REVOKE("NCR_REVOKE", "处置撤销", Domain.QUALITY, "quality:ncr:revoke"),
+    /** dev-20260924-005：报废授权 —— 超阈值的报废需品质主管审批（审批人≠提交人，超管可代） */
+    NCR_SCRAP_APPROVE("NCR_SCRAP_APPROVE", "报废审批", Domain.QUALITY, "quality:ncr:scrap-approve"),
+    NCR_SCRAP_REJECT("NCR_SCRAP_REJECT", "报废驳回", Domain.QUALITY, "quality:ncr:scrap-approve"),
     NCR_REWORK_COMPLETE("NCR_REWORK_COMPLETE", "推进返工闭环", Domain.QUALITY, "quality:ncr:dispose"),
     /** 发起类动作放在质量页、权限点归库存域 —— 方案 §4.2 明确授权的唯一例外 */
     NCR_REWORK_SUPPLEMENT("NCR_REWORK_SUPPLEMENT", "返工补料", Domain.INVENTORY, "inventory:outbound:rework-supplement"),

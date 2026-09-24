@@ -15,3 +15,5 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-24 11:04:50	guard	sys_task_register_dev-20260924-008_20260924-guard.sql	34946a589d7031c3305bae0dd239828c	1180038	2	大黄(OpenClaw)	dev-20260924-008
 2026-09-24 11:37:36	full	jjx_erp_db_backup_20260924-1137_before-215.sql	8d1af6c50fde910b5972c21cd5f3bee2	5931971	113	hermes-agent	dev-20260924-004
 2026-09-24 11:37:43	full	jjx_erp_db_backup_20260924-1137_before-215.sql	f916550e7c0456e2ca6400762e55f423	5937337	115	hermes-agent	dev-20260924-004
+2026-09-24 11:48:00	table	jjx_table_backup_20260924-1148_before-216.sql	3feaf79338ffd0b76526161fe2737af1	88655	3	hermes-agent	dev-20260924-005
+2026-09-24 11:48:06	table	jjx_table_backup_20260924-1148_before-216.sql	10b7c523c95bdc19aa891a495cf5ed3a	89149	3	hermes-agent	dev-20260924-005

@@ -127,6 +127,15 @@
             <el-option label="报废" value="SCRAP" />
           </el-select>
         </el-form-item>
+        <!-- dev-20260924-005：报废授权分档提示（阈值 sys_config: quality.ncr.scrap.approval-threshold，缺省 5） -->
+        <el-alert
+          v-if="disposeForm.actionType === NcrActionType.SCRAP && Number(disposeForm.quantity || 0) > 5"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="报废超过阈值（缺省 5 件）：提交后进入「待审批」，需品质主管审批通过才计入台账与件级（审批人不得为提交人）"
+          style="margin-bottom: 12px"
+        />
         <el-form-item label="处置数量" required>
           <el-input-number v-model="disposeForm.quantity" :min="1" :max="current ? pending(current) : 0" />
         </el-form-item>
@@ -265,6 +274,23 @@
               size="small"
               @click="openSupplement(row)"
               >补料</el-button
+            >
+            <!-- dev-20260924-005：报废授权 —— 超阈值的报废待审批，品质主管「通过 / 驳回」（审批人≠提交人） -->
+            <el-button
+              v-if="can(row, 'NCR_SCRAP_APPROVE')"
+              link
+              type="primary"
+              size="small"
+              @click="handleScrapApprove(row)"
+              >审批通过</el-button
+            >
+            <el-button
+              v-if="can(row, 'NCR_SCRAP_REJECT')"
+              link
+              type="danger"
+              size="small"
+              @click="handleScrapReject(row)"
+              >驳回</el-button
             >
             <!-- dev-20260923-022 二期：已生效报废可受控撤销（需权限点 + 填原因，留痕） -->
             <el-button
@@ -521,6 +547,48 @@ async function handleVoidSuperseded(row: QualityNcr) {
     await load()
   } catch (e: any) {
     ElMessage.error(e?.message || '随批作废失败')
+  }
+}
+
+// ============ 报废审批（dev-20260924-005） ============
+const handleScrapApprove = async (row: QualityNcrAction) => {
+  try {
+    await ElMessageBox.confirm(
+      `确认通过这笔报废（${num(row.quantity)} 件）？通过后会计入台账已处置量、检验批已处置量与件级状态（报废无库存扣减）。`,
+      '报废审批通过',
+      { type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await qualityNcrApi.approveScrap(row.actionId)
+    ElMessage.success('已审批通过')
+    load()
+    if (current.value) await openActions(current.value)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '审批失败')
+  }
+}
+
+const handleScrapReject = async (row: QualityNcrAction) => {
+  let reason = ''
+  try {
+    const res: any = await ElMessageBox.prompt('驳回必须填写原因（留痕）', '报废驳回', {
+      inputPlaceholder: '驳回原因',
+      inputValidator: (v: string) => (v && v.trim() ? true : '请填写驳回原因'),
+    })
+    reason = res?.value || ''
+  } catch {
+    return
+  }
+  try {
+    await qualityNcrApi.rejectScrap(row.actionId, reason)
+    ElMessage.success('已驳回')
+    load()
+    if (current.value) await openActions(current.value)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '驳回失败')
   }
 }
 

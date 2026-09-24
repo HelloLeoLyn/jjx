@@ -50,11 +50,23 @@ public interface QualityNcrService {
     int voidOpenDispositionsBySupersededLot(Long lotId, String reason);
 
     /**
-     * 随批作废（单张，**正式动作** —— dev-20260923-040）：仅当**来源检验批已被后继复检版本取代**且该单仍开着时可用；
-     * 需权限点 quality:ncr:void-superseded + 必填原因 + 留痕；已 VOID 时幂等返回 0。
-     * 口径与批量入口 {@link #voidOpenDispositionsBySupersededLot(Long, String)} 共用同一内核。
-     */
-    int voidSupersededNcr(Long ncrId, String reason, String operatorName);
+     /** 随批作废（单张，**正式动作** —— dev-20260923-040）：仅当**来源检验批已被后继复检版本取代**且该单仍开着时可用；
+      * 需权限点 quality:ncr:void-superseded + 必填原因 + 留痕；已 VOID 时幂等返回 0。
+      * 口径与批量入口 {@link #voidOpenDispositionsBySupersededLot(Long, String)} 共用同一内核。
+      */
+     int voidSupersededNcr(Long ncrId, String reason, String operatorName);
+
+     /**
+      * 报废审批通过（dev-20260924-005）：仅「待审批(PENDING_APPROVAL)」的报废处置可审批；
+      * 审批人不能是提交人（超管可代）；通过后才计入台账已处置量、检验批已处置量与件级状态。
+      * 超阈值的报废在登记时进入待审批（阈值见 sys_config: quality.ncr.scrap.approval-threshold）。
+      */
+     QualityNcrAction approveScrap(Long actionId, String remark, String operatorName);
+
+     /**
+      * 报废驳回（dev-20260924-005）：待审批 → VOID（必填原因）；台账/检验批/件级均不动（从未计入）。
+      */
+     QualityNcrAction rejectScrap(Long actionId, String reason, String operatorName);
 
     /**
      * 登记处置（返工/让步接收/报废）

@@ -87,6 +87,23 @@ public class QualityNcrController {
                 com.jjx.system.utils.SecurityUtils.getDisplayName()));
     }
 
+    @Operation(summary = "报废审批通过（dev-20260924-005：待审批→生效；审批人≠提交人，超管可代；通过才计入台账与件级）")
+    @SaCheckPermission("quality:ncr:scrap-approve")
+    @PostMapping("/action/{actionId}/scrap/approve")
+    public Result<QualityNcrAction> approveScrap(@PathVariable Long actionId,
+                                                 @RequestParam(required = false) String remark) {
+        return Result.success(ncrService.approveScrap(actionId, remark,
+                com.jjx.system.utils.SecurityUtils.getDisplayName()));
+    }
+
+    @Operation(summary = "报废驳回（dev-20260924-005：待审批→作废，必填原因，留痕；台账/件级不动）")
+    @SaCheckPermission("quality:ncr:scrap-approve")
+    @PostMapping("/action/{actionId}/scrap/reject")
+    public Result<QualityNcrAction> rejectScrap(@PathVariable Long actionId, @RequestParam String reason) {
+        return Result.success(ncrService.rejectScrap(actionId, reason,
+                com.jjx.system.utils.SecurityUtils.getDisplayName()));
+    }
+
     @Operation(summary = "随批作废不良单（dev-20260923-040：来源批已被后继复检版本取代时的**正式入口**；需权限+必填原因+留痕，幂等）")
     @SaCheckPermission("quality:ncr:void-superseded")
     @PostMapping("/{ncrId}/void-superseded")
