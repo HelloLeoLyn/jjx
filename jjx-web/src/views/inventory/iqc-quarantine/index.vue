@@ -42,7 +42,7 @@
       </el-form>
     </div>
     <el-card class="card">
-      <template #header>批次谱系</template>
+      <template #header>批次溯源</template>
       <el-table v-loading="batchLoading" :data="batchRows" border>
         <el-table-column prop="batchNo" label="批次" width="190" />
         <el-table-column prop="parentBatchNo" label="父批次" width="190" />
@@ -64,7 +64,7 @@
     <el-card class="card">
       <template #header>
         <div class="card-title">
-          <span>隔离台账（待处置明细）</span>
+          <span>待处理明细</span>
           <span class="card-tip"
             >来料检验判定为不合格的物料会进这张台账；处置方式只有四种：让步接收（特采） / 退货 /
             返工 / 报废。「剩余数量」减到 0 才算结清，状态才会变成已让步接收/已退货/已返工/已报废。</span
