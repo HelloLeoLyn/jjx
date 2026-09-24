@@ -449,28 +449,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             iqcQuarantineMapper.insert(quarantine);
             createdCount++;
 
-            InventoryTransaction tx = new InventoryTransaction();
-            tx.setMaterialId(item.getMaterialId());
-            tx.setMaterialCode(item.getMaterialCode());
-            tx.setMaterialName(item.getMaterialName());
-            tx.setWarehouseId(order.getWarehouseId());
-            tx.setLocationId(item.getLocationId());
-            tx.setTransactionType("IQC_QUARANTINE");
-            tx.setSourceType("INBOUND_IQC");
-            tx.setSourceId(order.getInboundId());
-            tx.setSourceNo(order.getInboundNo());
-            tx.setBatchNo(item.getBatchNo());
-            tx.setIqcBatchId(batch.getBatchId());
-            tx.setQuantity(quarantineQty);
-            tx.setBeforeQuantity(BigDecimal.ZERO);
-            tx.setAfterQuantity(quarantineQty);
-            tx.setUnitCost(item.getUnitPrice());
-            tx.setAmount(item.getUnitPrice() == null ? null : item.getUnitPrice().multiply(quarantineQty));
-            tx.setTransactionTime(LocalDateTime.now());
-            tx.setOperatorId(quarantine.getOperatorId());
-            tx.setOperatorName(quarantine.getOperatorName());
-            tx.setRemark("IQC 不合格品隔离");
-            transactionMapper.insert(tx);
+            // dev-20260924-026：不再旁路写库存流水。隔离品是「不良品」，从未进过可用库存，
+            // 这里伪造 before=0/after=N 的流水既不准确（无批次行、inventory_item_id 为 NULL），
+            // 也绕过了 CONVENTIONS §13 的变动唯一入口 applyDelta → 门禁⑤ 常红。
+            // 留痕由 inventory_iqc_quarantine（隔离量/状态/操作人/时间）+ quality_lot + quality_ncr 承载。
+
         }
         return createdCount;
     }
@@ -538,23 +521,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (quarantine.getRemainingQuantity().signum() == 0) quarantine.setStatus(status);
         iqcQuarantineMapper.updateById(quarantine);
 
-        if (!release) {
-            InventoryTransaction tx = new InventoryTransaction();
-            InventoryInboundItem inboundItem = inboundItemMapper.selectById(quarantine.getInboundItemId());
-            InventoryInboundOrder inboundOrder = inboundOrderMapper.selectById(quarantine.getInboundId());
-            tx.setMaterialId(quarantine.getMaterialId()); tx.setMaterialCode(quarantine.getMaterialCode());
-            tx.setMaterialName(quarantine.getMaterialName()); tx.setTransactionType("IQC_" + actionCode);
-            tx.setWarehouseId(inboundOrder == null ? null : inboundOrder.getWarehouseId());
-            tx.setLocationId(inboundItem == null ? null : inboundItem.getLocationId());
-            tx.setSourceType("INBOUND_IQC"); tx.setSourceId(quarantine.getInboundId());
-            tx.setBatchNo(quarantine.getBatchNo()); tx.setIqcBatchId(quarantine.getIqcBatchId()); tx.setQuantity(quantity);
-            tx.setBeforeQuantity(quarantine.getRemainingQuantity().add(quantity));
-            tx.setAfterQuantity(quarantine.getRemainingQuantity());
-            tx.setTransactionTime(LocalDateTime.now());
-            tx.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
-            tx.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
-            tx.setRemark(action.getRemark()); transactionMapper.insert(tx);
-        }
+        // dev-20260924-026：此处原先为「非 RELEASE 处置动作」旁路写库存流水，已移除（原因同 createIqcQuarantine）。
+        // 处置留痕：inventory_iqc_disposition_order（处置单）+ 隔离表状态/剩余量 + quality_ncr 处置记录。
         updateBatchAfterDisposition(quarantine.getIqcBatchId(), actionCode, quantity);
         return true;
     }
