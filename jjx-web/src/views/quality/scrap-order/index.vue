@@ -54,6 +54,16 @@
           </template>
         </el-table-column>
         <el-table-column prop="pieceRange" label="件号区间" min-width="170" />
+        <!-- dev-20260924-010：损失金额（材料/工时分开；口径快照见详情） -->
+        <el-table-column label="材料损失" width="100" align="right">
+          <template #default="{ row }">{{ money(row.lossMaterial) }}</template>
+        </el-table-column>
+        <el-table-column label="工时损失" width="100" align="right">
+          <template #default="{ row }">{{ money(row.lossLabor) }}</template>
+        </el-table-column>
+        <el-table-column label="损失合计" width="100" align="right">
+          <template #default="{ row }">{{ money(row.lossTotal) }}</template>
+        </el-table-column>
         <el-table-column label="申请人 / 审批人" min-width="140">
           <template #default="{ row }">
             {{ row.applicant || '-' }}
@@ -90,6 +100,10 @@
           {{ detail?.defectItem || '-' }} {{ detail?.defectLevel || '' }}
         </el-descriptions-item>
         <el-descriptions-item label="件号区间" :span="2">{{ detail?.pieceRange || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="材料损失">{{ money(detail?.lossMaterial) }}</el-descriptions-item>
+        <el-descriptions-item label="工时损失">{{ money(detail?.lossLabor) }}</el-descriptions-item>
+        <el-descriptions-item label="损失合计" :span="2">{{ money(detail?.lossTotal) }}</el-descriptions-item>
+        <el-descriptions-item label="损失口径" :span="2">{{ detail?.lossBasis || '-' }}</el-descriptions-item>
         <el-descriptions-item label="原因说明" :span="2">{{ detail?.reason || '-' }}</el-descriptions-item>
         <el-descriptions-item label="申请人">{{ detail?.applicant || '-' }}</el-descriptions-item>
         <el-descriptions-item label="审批人">{{ detail?.approver || '-' }}</el-descriptions-item>
@@ -123,6 +137,9 @@ const num = (value?: number | null) =>
   value == null ? '-' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
 /** 分级标签色：CR 致命=红 / MA 严重=橙 / MI 轻微=灰 */
 const levelTag = (level?: string) => (level === 'CR' ? 'danger' : level === 'MA' ? 'warning' : 'info')
+/** 金额展示（dev-20260924-010）：空值显示 -，不把"没算"伪装成 0 */
+const money = (value?: number | null) =>
+  value == null ? '-' : Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const load = async () => {
   loading.value = true

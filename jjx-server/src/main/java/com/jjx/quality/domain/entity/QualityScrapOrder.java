@@ -77,6 +77,20 @@ public class QualityScrapOrder {
 
     private String remark;
 
+    // ==================== 损失金额（dev-20260924-010：材料/工时分开 + 口径快照） ====================
+
+    /** 材料损失金额 = 报废数量 × 单位材料标准成本 */
+    private BigDecimal lossMaterial;
+
+    /** 工时损失金额 = 报废数量 × 单位工时标准成本 */
+    private BigDecimal lossLabor;
+
+    /** 损失合计 = 材料 + 工时 */
+    private BigDecimal lossTotal;
+
+    /** 损失口径快照：单价来源/工价/无价与工时缺失项（可审计） */
+    private String lossBasis;
+
     private String createBy;
 
     private LocalDateTime createTime;

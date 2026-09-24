@@ -29,6 +29,11 @@ export interface QualityScrapOrder {
   approveTime?: string
   remark?: string
   createTime?: string
+  /** dev-20260924-010：损失金额（材料/工时分开 + 口径快照） */
+  lossMaterial?: number
+  lossLabor?: number
+  lossTotal?: number
+  lossBasis?: string
 }
 
 export const qualityScrapOrderApi = {
