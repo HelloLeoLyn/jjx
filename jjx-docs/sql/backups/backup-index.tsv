@@ -47,3 +47,5 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-24 16:36:35	full	jjx_erp_db_backup_20260924-1636_before-defect-reason-correct.sql	a91e69e80ea6fe2335c8de465df1c83f	5842239	115	dahuang	dev-20260924-013
 2026-09-24 16:36:42	data	quality_ncr_lot_defect_reason_correct_20260924-1636.sql	d5801051d6c5c4f48b84a91c9630e52a	11431	2	大黄(OpenClaw)	dev-20260924-013
 2026-09-24 16:47:37	table	jjx_table_backup_20260924-1647_before-219.sql	ca96a8485b0b49764aedf001ade1d859	5050	1	hermes-agent	dev-20260924-010
+2026-09-24 17:23:32	guard	inventory_inbound_item_reason_sanitize_20260924-1723.sql	3d9d40547d22be59df04fe0e8cd8e0d2	6043	1	hermes-agent	dev-20260924-029
+2026-09-24 17:24:10	guard	sys_task_register_cost-accounting_20260924-1723-guard.sql	3818eb16422c2b64d6acba6dfa614185	1218630	3	大黄(OpenClaw)	dev-20260924-031
