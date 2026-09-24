@@ -60,8 +60,23 @@ export const NcrActionStatusEnum = createEnum<string>({
   defaultTag: { type: 'info' },
 })
 
+/** quality_scrap_order.status —— 成品报废单状态（dev-20260924-006） */
+export const ScrapOrderStatus = {
+  DONE: 'DONE',
+  VOID: 'VOID',
+} as const
+
+export const ScrapOrderStatusEnum = createEnum<string>({
+  items: [
+    { value: ScrapOrderStatus.DONE, label: '已生效', tagProps: { type: 'success' } },
+    { value: ScrapOrderStatus.VOID, label: '已作废', tagProps: { type: 'info' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
 export const NcrEnum = {
   status: QualityNcrStatusEnum,
   actionType: NcrActionTypeEnum,
   actionStatus: NcrActionStatusEnum,
+  scrapOrderStatus: ScrapOrderStatusEnum,
 }

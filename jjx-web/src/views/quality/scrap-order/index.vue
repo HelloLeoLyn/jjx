@@ -62,8 +62,8 @@
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'VOID' ? 'info' : 'success'" size="small">
-              {{ row.status === 'VOID' ? '已作废' : '已生效' }}
+            <el-tag :type="ScrapOrderStatusEnum.getTagProps(row.status).type" size="small">
+              {{ ScrapOrderStatusEnum.getLabel(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -78,7 +78,7 @@
     <el-dialog v-model="detailVisible" title="成品报废单详情" width="640px" append-to-body>
       <el-descriptions :column="2" border size="small">
         <el-descriptions-item label="报废单号">{{ detail?.scrapNo || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ detail?.status === 'VOID' ? '已作废' : '已生效' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ detail?.status ? ScrapOrderStatusEnum.getLabel(detail.status) : '-' }}</el-descriptions-item>
         <el-descriptions-item label="不良单号">{{ detail?.ncrNo || '-' }}</el-descriptions-item>
         <el-descriptions-item label="来源处置单">#{{ detail?.actionId || '-' }}</el-descriptions-item>
         <el-descriptions-item label="工单">{{ detail?.orderNo || '-' }}</el-descriptions-item>
@@ -107,6 +107,8 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { qualityScrapOrderApi, type QualityScrapOrder } from '@/api/quality/scrapOrder'
+// dev-20260924-006：报废单状态用命名枚举（门禁禁止状态字面量比较）
+import { ScrapOrderStatusEnum } from '@/enums/quality'
 
 defineOptions({ name: 'QualityScrapOrderList' })
 
