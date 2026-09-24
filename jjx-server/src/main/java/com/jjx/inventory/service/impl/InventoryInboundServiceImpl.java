@@ -26,7 +26,6 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.production.mapper.ProductionOrderMapper;
-import com.jjx.production.enums.QualityDispositionEnum;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.purchase.mapper.PurchaseOrderMapper;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
@@ -1051,14 +1050,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     }
                     throw new BusinessException("物料" + item.getMaterialCode() + "：合格数量与不良数量之和必须等于收货数量");
                 }
-                QualityDispositionEnum disposition = QualityDispositionEnum.fromCode(submitted.getDisposition());
-                if ("FAIL".equals(itemResult) && disposition == null) {
-                    throw new BusinessException("物料" + item.getMaterialCode() + "不合格时必须选择处置方式");
-                }
-                // dev-20260908-019（合并 1568+1591）：可删除本批不检项目；保留项目仍校验，物料判定不合格须说明原因。
-                if ("FAIL".equals(itemResult)
+                // dev-20260924-013：检验侧不再要求选择「处置方式」——处置统一在「来料不合格处置」页做，
+                // 这里只登记原因，且原因改为**由检验项目派生**（见 deriveIqcDefectReason）。
+                // 边界 A（用户 2026-09-24 拍板）：判定不合格但没有任何不合格检验项时，必须填「补充说明」，否则驳回。
+                boolean hasFailCheckItem = submitted.getInspectionItems() != null
+                        && submitted.getInspectionItems().stream()
+                                .anyMatch(chk -> "FAIL".equals(chk.getResult()));
+                if ("FAIL".equals(itemResult) && !hasFailCheckItem
                         && org.apache.commons.lang3.StringUtils.isBlank(submitted.getRejectReason())) {
-                    throw new BusinessException("物料" + item.getMaterialCode() + "不合格必须填写不合格原因");
+                    throw new BusinessException("物料" + item.getMaterialCode()
+                            + "判定不合格但未录入不合格检验项，请填写补充说明或补录检验项目");
                 }
                 if ("FAIL".equals(itemResult) && rejected.signum() <= 0) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "判定不合格时不良数量必须大于0");
@@ -1095,7 +1096,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 item.setSampledQuantity(inspectionQuantity);
                 item.setInspectionId(null);
                 item.setInspectionResult(itemResult);
-                item.setDisposition(disposition == null ? null : disposition.getCode());
+                // dev-20260924-013：检验侧不再写入处置方式（字段保留，兼容历史数据与既有报表）
+                item.setDisposition(null);
                 item.setQualifiedQuantity(qualified);
                 item.setRejectedQuantity(rejected);
                 item.setAcceptedQuantity(accepted);
@@ -1190,7 +1192,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             lotService.saveItems(lot.getLotId(), lotItems);
             lot.setReviewStatus("PENDING");
             lot.setInspector(SecurityUtils.getDisplayName());
-            lot.setDefectReason(defectReason);
+            // dev-20260924-013：不合格原因不在提交时固化（审核通过时按检验项目派生，见 judgeIqcLot）
+            lot.setDefectReason(null);
             lot.setRemark(itemResult + "：合格 " + qualified + "，不良 " + rejected);
             qualityLotMapper.updateById(lot);
             // 判定不在提交时做：IQC 有独立审核环节，审核通过时再判。
@@ -1214,13 +1217,68 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             }
             lotService.applyJudgement(item.getLotId(), inspected, q, f,
                     "PASS".equals(itemResult) ? "pass" : "fail", SecurityUtils.getDisplayName());
+            // dev-20260924-013：审核通过时固化「不合格原因」= 检验项目派生 + 补充说明
+            String derivedReason = deriveIqcDefectReason(lotService.listItems(item.getLotId()), item.getRejectReason());
+            com.jjx.quality.domain.entity.QualityLot lotCurrent = qualityLotMapper.selectById(item.getLotId());
+            if (lotCurrent != null && !java.util.Objects.equals(lotCurrent.getDefectReason(), derivedReason)) {
+                lotCurrent.setDefectReason(derivedReason);
+                qualityLotMapper.updateById(lotCurrent);
+            }
             if (f.signum() > 0) {
                 com.jjx.quality.service.QualityNcrService ncrService = qualityNcrServiceProvider.getIfAvailable();
                 if (ncrService == null) throw new BusinessException("不良台账服务不可用，IQC 审核已回滚");
                 com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(item.getLotId());
                 ncrService.syncFromLot(lot, f, BigDecimal.ZERO, f, BigDecimal.ZERO,
-                        item.getRejectReason(), SecurityUtils.getDisplayName());
+                        derivedReason, SecurityUtils.getDisplayName());
             }
+    }
+
+    /**
+     * dev-20260924-013（用户 2026-09-24 拍板）：IQC「不合格原因」= 检验项目派生 + 可选补充说明。
+     * 格式：外观：CR 2（实测「有划痕」）；尺寸：MA 1；补充：外箱压痕
+     * ⚠️ 与前端 iqcRowRules.ts 的派生展示保持一致（两处需同步改动）。
+     * 上限 500（quality_lot.defect_reason 为 varchar(500)），超长截断并标「…等 N 项」。
+     */
+    private static String deriveIqcDefectReason(List<com.jjx.quality.domain.entity.QualityLotItem> items,
+                                               String supplement) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        if (items != null) {
+            for (com.jjx.quality.domain.entity.QualityLotItem it : items) {
+                if (!"FAIL".equalsIgnoreCase(String.valueOf(it.getResult()))) continue;
+                StringBuilder lv = new StringBuilder();
+                appendLevel(lv, "CR", it.getCrQuantity());
+                appendLevel(lv, "MA", it.getMaQuantity());
+                appendLevel(lv, "MI", it.getMiQuantity());
+                StringBuilder part = new StringBuilder();
+                part.append(it.getCheckItem()).append("：").append(lv.length() == 0 ? "不合格" : lv);
+                String actual = it.getActualValue() == null ? "" : it.getActualValue().trim();
+                if (!actual.isEmpty()) part.append("（实测「").append(actual).append("」）");
+                parts.add(part.toString());
+            }
+        }
+        String sup = supplement == null ? "" : supplement.trim();
+        if (!sup.isEmpty()) parts.add("补充：" + sup);
+        if (parts.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.size(); i++) {
+            String candidate = sb.length() == 0 ? parts.get(i) : sb + "；" + parts.get(i);
+            if (candidate.length() > 500) {
+                String suffix = "…等" + (parts.size() - i) + "项";
+                int keep = Math.max(0, 500 - suffix.length());
+                String head = sb.length() == 0 ? "" : sb.toString();
+                return (head.length() > keep ? head.substring(0, keep) : head) + suffix;
+            }
+            sb.setLength(0);
+            sb.append(candidate);
+        }
+        return sb.toString();
+    }
+
+    private static void appendLevel(StringBuilder sb, String label, BigDecimal qty) {
+        BigDecimal v = qty == null ? BigDecimal.ZERO : qty;
+        if (v.signum() <= 0) return;
+        if (sb.length() > 0) sb.append("/");
+        sb.append(label).append(" ").append(v.stripTrailingZeros().toPlainString());
     }
 
     private static void validateIqcInspectionItems(InventoryInboundItem inboundItem,
