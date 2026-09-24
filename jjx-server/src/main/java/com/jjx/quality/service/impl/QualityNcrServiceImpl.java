@@ -677,13 +677,15 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
                 + qty.stripTrailingZeros().toPlainString() + " 件（审批人：" + (approver == null ? "-" : approver) + "）"));
         ncrMapper.updateById(ncr);
         qualityLotService.addDisposedQuantity(ncr.getLotId(), qty);
-        qualityNcrPieceService.attachPieces(ncr.getNcrId(), actionId, "SCRAP", qty);
+        int attached = qualityNcrPieceService.attachPieces(ncr.getNcrId(), actionId, "SCRAP", qty);
         // dev-20260924-006：审批通过即出成品报废单（凭据；库存不动）
         qualityScrapOrderService.createForAction(action, ncr);
         log.info("报废审批通过: actionId={} ncrNo={} 数量={} 审批人={} 已处置={}/{}", actionId, ncr.getNcrNo(),
                 qty.toPlainString(), approver, disposed.toPlainString(),
                 nz(ncr.getDefectQuantity()).toPlainString());
-        return action;
+        // 返回库里最新状态（attachPieces 会回填 piece_count/主缺陷，直接返回旧对象会丢这两项）
+        QualityNcrAction latest = actionMapper.selectById(actionId);
+        return latest == null ? action : latest;
     }
 
     @Override
