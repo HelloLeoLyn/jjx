@@ -832,7 +832,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         java.math.BigDecimal returned = zero;
         try {
             required = nz(jdbcTemplate.queryForObject(
-                    "SELECT IFNULL(SUM(i.quantity * (1 + IFNULL(i.loss_rate, 0))), 0) * IFNULL(o.planned_quantity, 0)"
+                    // 损耗率口径：loss_rate 存百分数（5 = 5%）→ 单耗 ×(1 + loss_rate/100)，与
+                    // EngineeringBomServiceImpl:680 / OrderMaterialReserveServiceImpl:266 / InventoryOutboundServiceImpl:1150 一致
+                    "SELECT IFNULL(SUM(i.quantity * (1 + IFNULL(i.loss_rate, 0) / 100)), 0) * IFNULL(o.planned_quantity, 0)"
                             + " FROM production_order o LEFT JOIN engineering_bom_item i ON i.bom_id = o.bom_id"
                             + " WHERE o.order_id = ?",
                     java.math.BigDecimal.class, orderId));
