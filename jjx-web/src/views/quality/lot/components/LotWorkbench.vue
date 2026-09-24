@@ -317,13 +317,18 @@
             不良数量小于 Σ：如确属调整后结论，请勾选下方「确认调整」并填写说明（留痕）
           </div>
         </el-alert>
-        <el-form-item v-if="Number(judgeForm.failQuantity || 0) > 0" label="不良原因">
+        <!-- dev-20260924-014：原因不再手打，结构化原因（不合格项目 + CR/MA/MI）由检验录入汇总；
+             这里只收一句可选的补充说明 -->
+        <el-form-item v-if="Number(judgeForm.failQuantity || 0) > 0" label="补充说明">
           <el-input
             v-model="judgeForm.defectReason"
             type="textarea"
             :rows="2"
-            placeholder="不合格原因"
+            placeholder="可选：结构化原因已由检验项目自动汇总，此处仅补充说明"
           />
+          <div class="judge-reason-tip">
+            结构化原因 = 检验项目的「不合格项目 + CR/MA/MI」，见不良台账「主缺陷」列
+          </div>
         </el-form-item>
         <el-form-item v-if="judgeDefectType === 'warning'" label="确认调整" required>
           <el-checkbox v-model="judgeForm.partialConfirmed">
@@ -650,8 +655,9 @@ const submitJudge = async () => {
   const fail = Number(judgeForm.failQuantity || 0)
   if (inspected <= 0) return ElMessage.warning('检验数量必须大于 0')
   if (pass + fail !== inspected) return ElMessage.warning('合格数量 + 不良数量必须等于检验数量')
-  if (fail > 0 && !judgeForm.defectReason.trim())
-    return ElMessage.warning('有不良时必须填写不良原因')
+  // dev-20260924-014：不再强制手写原因；仅当 Σ=0（检验项无任何不合格数）时要求补充说明（与后端同口径=方案 A）
+  if (fail > 0 && itemDefectSum.value === 0 && !judgeForm.defectReason.trim())
+    return ElMessage.warning('检验项目未录任何不合格数（CR/MA/MI）：请先在「检验录入」补录，或填写补充说明')
   // dev-20260923-021：提交前先拦一道（后端同样校验，双保险）
   // dev-20260924-004：N 与「检验项目不合格合计 Σ」联动（后端同样校验，双保险）
   if (fail > 0 && itemDefectSum.value > 0) {
@@ -773,6 +779,12 @@ onMounted(() => load(1))
 </script>
 
 <style scoped>
+.judge-reason-tip {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
 /* dev-20260924-017：本批结论条（只读） + 弹窗页脚 */
 .lot-verdict {
   display: flex;

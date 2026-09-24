@@ -82,7 +82,14 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="defectReason" label="不良原因" min-width="140" show-overflow-tooltip />
+        <!-- dev-20260924-014：本列语义按域分——来料(IQC)=检验项目派生的不合格原因；成品(FQC/OQC)=可选补充说明
+             （结构化原因见「主缺陷」列：不合格项目 + CR/MA/MI） -->
+        <el-table-column
+          prop="defectReason"
+          label="原因 / 补充说明"
+          min-width="140"
+          show-overflow-tooltip
+        />
         <el-table-column label="操作" width="170" fixed="right">
           <template #default="{ row }">
             <!-- dev-20260923-039：按钮只按后端下发的 allowedActions 渲染（前端不再写状态条件） -->

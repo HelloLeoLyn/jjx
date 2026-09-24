@@ -52,7 +52,8 @@ public class QualityFinishServiceImpl implements QualityFinishService {
         // dev-20260924-004（方案 §5）：不良数量 N 与「检验项目不合格合计 Σ」联动校验 ——
         //   Σ>0 且 N>Σ → 拒绝（不允许无因不良：还有 K 件没归因，先补录检验项目的不合格数）
         //   Σ>0 且 N<Σ → 需勾选确认 + 填说明（留痕），否则拒绝
-        //   Σ=0（检验单未录项目级不合格数）→ 放行，件级按「其他」兜底归因（不留白）
+        //   Σ=0（检验单未录项目级不合格数）→ dev-20260924-014（用户 2026-09-24 定 A）：
+        //   与来料 013「边界 A」一致 —— **必须填补充说明**才放行（fail-closed，不留“无因不良”）
         BigDecimal defectSum = qualityNcrPieceService.sumLotItemDefects(lotId);
         if (defectSum == null) {
             defectSum = BigDecimal.ZERO;
@@ -77,6 +78,13 @@ public class QualityFinishServiceImpl implements QualityFinishService {
             throw new BusinessException("复检必须覆盖整个检验批，检验数量应为 "
                     + nz(lot.getLotQuantity()).stripTrailingZeros().toPlainString());
         }
+        // dev-20260924-014（用户 2026-09-24 定 A）：Σ=0 时要求补充说明（与来料 013 边界 A 同口径；
+        // 件级结构化归因仍由 004 链路负责，但不放行“无因不良”）
+        if (fail.signum() > 0 && defectSum.signum() == 0
+                && (dto.getDefectReason() == null || dto.getDefectReason().isBlank())) {
+            throw new BusinessException("不良数量 " + fail.stripTrailingZeros().toPlainString()
+                    + "：检验项目未录任何不合格数（CR/MA/MI）—— 请先在「检验录入」补录不合格数，或填写补充说明");
+        }
         String result = dto.getResult();
         if (result == null || result.isBlank()) {
             result = fail.signum() > 0 ? "fail" : "pass";
@@ -95,7 +103,11 @@ public class QualityFinishServiceImpl implements QualityFinishService {
                 ma = ma.add(nz(item.getMaQuantity()));
                 mi = mi.add(nz(item.getMiQuantity()));
             }
-            qualityNcrService.syncFromLot(lot, fail, cr, ma, mi, dto.getDefectReason(), inspector);
+            // dev-20260924-014：defectReason 降级为「补充说明」——空白落 NULL（不造空串）；
+            // 结构化原因（项目 + CR/MA/MI + 首因）由 004 链路负责
+            String supplement = dto.getDefectReason() == null ? null : dto.getDefectReason().trim();
+            if (supplement != null && supplement.isEmpty()) supplement = null;
+            qualityNcrService.syncFromLot(lot, fail, cr, ma, mi, supplement, inspector);
         }
         if ("FQC".equals(lot.getLotType()) && lot.getOrderId() != null) {
             syncFinishInbound(lot.getOrderId(), "成品检验批判定：" + lot.getLotNo());
