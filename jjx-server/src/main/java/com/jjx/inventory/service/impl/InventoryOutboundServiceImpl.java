@@ -1313,10 +1313,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 continue;
             }
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new BusinessException("物料[" + item.get("materialCode") + "]剩余可领量为0，不能追加领料");
+                // dev-20260923-026（超领口径）：定额是基准不是天花板 —— 超出定额走「补料通道」（原因+授权+留痕），
+                // 正常领料仍按剩余定额硬卡；此处只把"去哪办"说清楚，不做静默放行。
+                throw new BusinessException("物料[" + item.get("materialCode") + "]剩余可领量为0（已按 BOM 定额领满）："
+                        + "如确需超领/补料，请到「生产管理 → 生产订单 → 申请补料」走补料通道（需填原因，报废补产需关联不良单）");
             }
             if (qty.compareTo(remaining) > 0) {
-                throw new BusinessException("物料[" + item.get("materialCode") + "]本次领料" + qty + "超过剩余可领量" + remaining);
+                throw new BusinessException("物料[" + item.get("materialCode") + "]本次领料" + qty + "超过剩余可领量" + remaining
+                        + "（BOM 定额 − 已领；超领请走「申请补料」通道，带原因与来源单据）");
             }
             validItems.add(item);
         }
