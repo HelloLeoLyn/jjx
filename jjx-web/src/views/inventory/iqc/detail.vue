@@ -152,9 +152,11 @@ type FlowKey = 'ALL' | 'UNINSPECTED' | 'REVIEW' | 'APPROVED' | 'COMPLETED'
 type WorkRow = {
   itemId: string
   inspectionId?: number
+  lotId?: number
   materialCode: string
   materialName: string
   batchNo?: string
+  remainingDispositionQuantity: number
   quantity: number
   qualifiedQuantity: number
   rejectedQuantity: number
@@ -386,7 +388,18 @@ async function loadInboundDetail(row: IqcPendingVO) {
   inspectionRemark.value = ''
   detailLoading.value = true
   try {
-    const { data } = await inboundApi.getById(String(requestedId))
+    const [{ data }, quarantineResult] = await Promise.all([
+      inboundApi.getById(String(requestedId)),
+      inboundApi.listQuarantine(String(requestedId)),
+    ])
+    const remainingByItemLot = new Map<string, number>()
+    ;(quarantineResult.data || []).forEach((record: any) => {
+      const key = `${record.inboundItemId}:${record.lotId || ''}`
+      remainingByItemLot.set(
+        key,
+        (remainingByItemLot.get(key) || 0) + Number(record.remainingQuantity || 0)
+      )
+    })
     const loadedRows = await Promise.all(
       (data?.items || []).map(async (item: any): Promise<WorkRow> => {
         // dev-20260922-009：新模型检验批在 lotId（inspectionId 已置空），优先取 lotId，回退旧字段
@@ -406,14 +419,17 @@ async function loadInboundDetail(row: IqcPendingVO) {
         return {
           itemId: String(item.inboundItemId || item.itemId),
           inspectionId: quality?.inspectionId,
+          lotId: lotRef,
           materialCode: item.materialCode,
           materialName: item.materialName,
           batchNo: item.batchNo,
+          remainingDispositionQuantity:
+            remainingByItemLot.get(`${item.inboundItemId || item.itemId}:${lotRef || ''}`) || 0,
           quantity: Number(item.quantity || 0),
           qualifiedQuantity: fresh
             ? 0
             : isReinspection
-              ? reinspectionQuantity
+              ? Number(quality?.passQty || 0)
               : Number(item.qualifiedQuantity ?? item.quantity ?? 0),
           rejectedQuantity: fresh ? 0 : isReinspection ? 0 : Number(item.rejectedQuantity || 0),
           acceptedQuantity: fresh
@@ -424,7 +440,11 @@ async function loadInboundDetail(row: IqcPendingVO) {
           inspectionResult: fresh
             ? ''
             : isReinspection
-              ? InboundInspectionResultEnum.PASS.value
+              ? quality?.result === QualityInspectionResult.PENDING
+                ? ''
+                : quality?.result === QualityInspectionResult.FAIL
+                  ? InboundInspectionResultEnum.FAIL.value
+                  : InboundInspectionResultEnum.PASS.value
               : item.inspectionResult || InboundInspectionResultEnum.PASS.value,
           disposition: isReinspection ? undefined : item.disposition,
           rejectReason: isReinspection ? '' : sanitize(item.rejectReason),
@@ -662,6 +682,7 @@ async function submitInspection() {
       items: workRows.value.map(
         ({
           itemId,
+          lotId,
           inspectionResult,
           disposition,
           qualifiedQuantity,
@@ -671,6 +692,7 @@ async function submitInspection() {
           inspectionItems,
         }) => ({
           itemId,
+          lotId,
           inspectionResult,
           disposition,
           qualifiedQuantity,

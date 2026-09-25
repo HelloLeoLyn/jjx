@@ -76,6 +76,8 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
     List<com.jjx.inventory.domain.InventoryIqcDispositionOrder> listDispositionOrders(Long inboundId);
     List<com.jjx.inventory.domain.InventoryIqcQuarantine> listAllQuarantine(String status);
     IqcQuarantineLedgerPageVO pageIqcQuarantineLedger(IqcQuarantineLedgerQueryDTO query);
+    com.jjx.common.core.page.PageResult<com.jjx.inventory.dto.vo.IqcDispositionLedgerRowVO>
+        pageIqcDispositionLedger(IqcQuarantineLedgerQueryDTO query);
     List<com.jjx.inventory.domain.InventoryIqcDispositionOrder> listAllDispositionOrders(String action);
     com.jjx.inventory.domain.InventoryIqcDispositionOrder getDispositionOrder(Long dispositionId);
     List<com.jjx.inventory.domain.InventoryIqcReturnOrder> listIqcReturnOrders(Long inboundId);

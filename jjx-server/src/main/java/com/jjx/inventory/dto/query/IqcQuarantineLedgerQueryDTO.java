@@ -12,5 +12,6 @@ public class IqcQuarantineLedgerQueryDTO extends PageQuery {
     private String materialKeyword;
     private String batchNo;
     private String inboundNo;
+    private String sourceNo;
     private String supplierName;
 }

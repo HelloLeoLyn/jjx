@@ -85,11 +85,15 @@ export interface InboundItemVO {
   specification: string
   unit: string
   batchNo?: string
+  originalBatchNo?: string
+  iqcBatchId?: number
+  originalIqcBatchId?: number
   quantity: number
   sampledQuantity?: number
   inspectionId?: string
   /** 检验批 ID（新模型 quality_lot；inspectionId 已置空，取检验批请优先用它；dev-20260922-009） */
   lotId?: number
+  originalLotId?: number
   inspectionResult?: string
   disposition?: string
   qualifiedQuantity?: number
@@ -173,6 +177,7 @@ export interface InboundApproveParams {
   approverId: string
   approverName: string
   remark?: string
+  lotId?: number
 }
 
 // 入库单驳回参数
@@ -181,6 +186,7 @@ export interface InboundRejectParams {
   approverId: string
   approverName: string
   remark: string
+  lotId?: number
 }
 
 // 入库单仪表板数据
@@ -207,6 +213,7 @@ export interface InboundInspectionSubmitParams {
   inspectionRemark?: string
   items: Array<{
     itemId: string
+    lotId?: number
     sampledQuantity?: number
     inspectionResult: string
     disposition?: string

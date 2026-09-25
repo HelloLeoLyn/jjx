@@ -9,6 +9,8 @@ export const IqcBatchStatus = {
   SCRAPPED: 'SCRAPPED',
   RETURNED: 'RETURNED',
   RELEASED: 'RELEASED',
+  PARTIALLY_DISPOSED: 'PARTIALLY_DISPOSED',
+  DISPOSED: 'DISPOSED',
 } as const
 
 export const IqcBatchStatusEnum = createEnum({
@@ -21,6 +23,12 @@ export const IqcBatchStatusEnum = createEnum({
     { value: IqcBatchStatus.SCRAPPED, label: '已报废', tagProps: { type: 'danger' } },
     { value: IqcBatchStatus.RETURNED, label: '已退货', tagProps: { type: 'warning' } },
     { value: IqcBatchStatus.RELEASED, label: '已放行', tagProps: { type: 'success' } },
+    {
+      value: IqcBatchStatus.PARTIALLY_DISPOSED,
+      label: '部分处置',
+      tagProps: { type: 'warning' },
+    },
+    { value: IqcBatchStatus.DISPOSED, label: '处置完成', tagProps: { type: 'info' } },
   ],
   defaultTag: { type: 'info' },
 })

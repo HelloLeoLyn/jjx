@@ -414,12 +414,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private int createIqcQuarantine(InventoryInboundOrder order, Long operatorId, String operatorName) {
         int createdCount = 0;
         for (InventoryInboundItem item : inboundItemMapper.selectByInboundId(order.getInboundId())) {
+            IqcWorkContext context = currentIqcContext(item);
             // 2026-09-21（dev-20260921-004）：隔离数量口径 = 该明细当前检验记录的净不良量。
             // 原公式「收货数量 − 允收数量」在复检/返工后必然算错：明细行被改写成子批次、允收量
             // 随之变成子批次数量 → 100−5=95 件良品被当成隔离（PO202609210001-3 实例）。
             BigDecimal quarantineQty = BigDecimal.ZERO;
-            if (item.getLotId() != null) {
-                com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(item.getLotId());
+            if (context.lotId() != null) {
+                com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(context.lotId());
                 if (lot != null && lot.getFailQuantity() != null) {
                     quarantineQty = lot.getFailQuantity();
                 }
@@ -427,19 +428,20 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             if (quarantineQty.signum() <= 0) continue;
             Long count = iqcQuarantineMapper.selectCount(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcQuarantine>()
                     .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getInboundItemId, item.getItemId())
-                    .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getLotId, item.getLotId()));
+                    .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getLotId, context.lotId()));
             if (count != null && count > 0) continue;
             com.jjx.inventory.domain.InventoryIqcQuarantine quarantine = new com.jjx.inventory.domain.InventoryIqcQuarantine();
             quarantine.setInboundId(order.getInboundId());
             quarantine.setInboundItemId(item.getItemId());
             quarantine.setInspectionId(null);
-            quarantine.setLotId(item.getLotId());
+            quarantine.setLotId(context.lotId());
             quarantine.setMaterialId(item.getMaterialId());
             quarantine.setMaterialCode(item.getMaterialCode());
             quarantine.setMaterialName(item.getMaterialName());
-            quarantine.setBatchNo(item.getBatchNo());
-            InventoryIqcBatch batch = ensureOriginalBatch(item);
-            quarantine.setIqcBatchId(batch.getBatchId());
+            quarantine.setBatchNo(context.batchNo());
+            InventoryIqcBatch batch = context.rework() == null
+                    ? ensureOriginalBatch(item) : iqcBatchMapper.selectById(context.batchId());
+            quarantine.setIqcBatchId(batch == null ? context.batchId() : batch.getBatchId());
             quarantine.setQuantity(quarantineQty);
             quarantine.setRemainingQuantity(quarantineQty);
             quarantine.setDisposition(item.getDisposition());
@@ -478,6 +480,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             throw new BusinessException("处置数量必须大于 0 且不能超过隔离剩余数量");
         }
         String actionCode = action.getAction();
+        boolean scrap = "SCRAP".equals(actionCode);
         String status;
         boolean release = "RELEASE".equals(actionCode);
         if (release) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.RELEASED.getCode();
@@ -490,9 +493,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (ncrService == null) {
             throw new BusinessException("质量不良台账服务不可用，已取消 IQC 处置");
         }
-        ncrService.syncIqcDisposition(quarantine.getLotId(), actionCode, quantity,
-                action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName(),
-                action.getRemark());
+        if (!scrap) {
+            ncrService.syncIqcDisposition(quarantine.getLotId(), actionCode, quantity,
+                    action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName(),
+                    action.getRemark());
+        }
 
         if (release) addReleasedQuarantineStock(quarantine, quantity, action);
         var dispositionOrder = new com.jjx.inventory.domain.InventoryIqcDispositionOrder();
@@ -510,7 +515,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         dispositionOrder.setBatchNo(quarantine.getBatchNo());
         dispositionOrder.setIqcBatchId(quarantine.getIqcBatchId());
         dispositionOrder.setRemark(action.getRemark());
-        dispositionOrder.setStatus("COMPLETED");
+        dispositionOrder.setStatus(scrap ? "PENDING_APPROVAL" : "COMPLETED");
         dispositionOrder.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
         dispositionOrder.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
         iqcDispositionOrderMapper.insert(dispositionOrder);
@@ -518,12 +523,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if ("REWORK".equals(actionCode)) createIqcReworkOrder(quarantine, dispositionOrder, action);
         if ("SCRAP".equals(actionCode)) createIqcScrapOrder(quarantine, dispositionOrder, action);
         quarantine.setRemainingQuantity(quarantine.getRemainingQuantity().subtract(quantity));
-        if (quarantine.getRemainingQuantity().signum() == 0) quarantine.setStatus(status);
+        if (!scrap && quarantine.getRemainingQuantity().signum() == 0) quarantine.setStatus(status);
         iqcQuarantineMapper.updateById(quarantine);
 
         // dev-20260924-026：此处原先为「非 RELEASE 处置动作」旁路写库存流水，已移除（原因同 createIqcQuarantine）。
         // 处置留痕：inventory_iqc_disposition_order（处置单）+ 隔离表状态/剩余量 + quality_ncr 处置记录。
-        updateBatchAfterDisposition(quarantine.getIqcBatchId(), actionCode, quantity);
+        if (!scrap) updateBatchAfterDisposition(quarantine.getIqcBatchId(), actionCode, quantity);
         return true;
     }
 
@@ -534,19 +539,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // 2026-09-21：处置量写单独的 disposed_quantity，不再复用 processed_quantity
         //（后者今后只表示「检验/处理量」，由 updateIqcBatchResult 写入，避免一列两义）
         batch.setDisposedQuantity(nvl(batch.getDisposedQuantity()).add(quantity));
-        BigDecimal remaining = nvl(batch.getRemainingQuantity()).subtract(quantity).max(BigDecimal.ZERO);
-        batch.setRemainingQuantity(remaining);
         if ("SCRAP".equals(actionCode)) {
-            batch.setScrappedQuantity(nvl(batch.getScrappedQuantity()).add(quantity));
-            batch.setStatus("SCRAPPED");
-        } else if ("RETURN".equals(actionCode)) {
-            batch.setStatus("RETURNED");
-        } else if ("REWORK".equals(actionCode)) {
-            batch.setStatus("REWORKED");
+            // 报废数量在审批通过时累计；申请阶段不得提前形成已报废事实。
         } else if ("RELEASE".equals(actionCode)) {
             batch.setAcceptedQuantity(nvl(batch.getAcceptedQuantity()).add(quantity));
-            batch.setStatus("RELEASED");
         }
+        BigDecimal rejected = nvl(batch.getRejectedQuantity());
+        batch.setStatus(nvl(batch.getDisposedQuantity()).compareTo(rejected) >= 0
+                ? "DISPOSED" : "PARTIALLY_DISPOSED");
         iqcBatchMapper.updateById(batch);
     }
 
@@ -559,6 +559,30 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private static BigDecimal nvl(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
+
+    /**
+     * 当前 IQC 工作上下文。原入库明细永远保留首次收货批次/检验批；返工复检的当前指针
+     * 由返工单持有，避免把 150 件原单改写成 4 件子批。
+     */
+    private IqcWorkContext currentIqcContext(InventoryInboundItem item) {
+        if (item == null) return new IqcWorkContext(null, null, null, null);
+        var rework = iqcReworkOrderMapper.selectOne(
+                new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcReworkOrder>()
+                        .eq(com.jjx.inventory.domain.InventoryIqcReworkOrder::getInboundItemId, item.getItemId())
+                        .isNotNull(com.jjx.inventory.domain.InventoryIqcReworkOrder::getLotId)
+                        .in(com.jjx.inventory.domain.InventoryIqcReworkOrder::getStatus,
+                                "PENDING_REINSPECTION", "COMPLETED")
+                        .orderByDesc(com.jjx.inventory.domain.InventoryIqcReworkOrder::getReworkId)
+                        .last("LIMIT 1"));
+        if (rework != null) {
+            return new IqcWorkContext(rework.getLotId(), rework.getChildBatchId(),
+                    rework.getChildBatchNo(), rework);
+        }
+        return new IqcWorkContext(item.getLotId(), item.getIqcBatchId(), item.getBatchNo(), null);
+    }
+
+    private record IqcWorkContext(Long lotId, Long batchId, String batchNo,
+                                  com.jjx.inventory.domain.InventoryIqcReworkOrder rework) {}
 
     private void createIqcReturnOrder(com.jjx.inventory.domain.InventoryIqcQuarantine quarantine,
                                       com.jjx.inventory.domain.InventoryIqcDispositionOrder disposition,
@@ -647,10 +671,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             response.setBatches(List.of());
             return response;
         }
-        response.setDispositionOrders(iqcDispositionOrderMapper.selectList(
-                new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcDispositionOrder>()
-                        .in(com.jjx.inventory.domain.InventoryIqcDispositionOrder::getInboundId, inboundIds)
-                        .orderByDesc(com.jjx.inventory.domain.InventoryIqcDispositionOrder::getDispositionId)));
+        // 已处置历史使用独立分页接口，不再错误依赖“待处理”当前页的 inboundIds。
+        response.setDispositionOrders(List.of());
         response.setReworkOrders(iqcReworkOrderMapper.selectList(
                 new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcReworkOrder>()
                         .in(com.jjx.inventory.domain.InventoryIqcReworkOrder::getInboundId, inboundIds)
@@ -659,6 +681,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 .in(InventoryIqcBatch::getSourceInboundId, inboundIds)
                 .orderByAsc(InventoryIqcBatch::getBatchId)));
         return response;
+    }
+
+    @Override
+    public com.jjx.common.core.page.PageResult<com.jjx.inventory.dto.vo.IqcDispositionLedgerRowVO>
+            pageIqcDispositionLedger(IqcQuarantineLedgerQueryDTO query) {
+        Page<com.jjx.inventory.dto.vo.IqcDispositionLedgerRowVO> page =
+                new Page<>(query.getPageNum(), query.getPageSize());
+        Page<com.jjx.inventory.dto.vo.IqcDispositionLedgerRowVO> result =
+                iqcDispositionOrderMapper.selectLedgerPage(page, query);
+        return PageResult.of(result, result.getRecords());
     }
 
     @Override
@@ -712,15 +744,46 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         var scrap = iqcScrapOrderMapper.selectById(scrapId);
         if (scrap == null) throw new BusinessException("IQC 报废单不存在");
         if (!"PENDING_APPROVAL".equals(scrap.getStatus())) throw new BusinessException("该报废单已处理");
+        var disposition = iqcDispositionOrderMapper.selectById(scrap.getDispositionId());
+        var quarantine = iqcQuarantineMapper.selectById(scrap.getQuarantineId());
+        if (disposition == null || quarantine == null) throw new BusinessException("报废审批关联的处置记录不存在");
         if (approval == null || !approval.isApproved()) {
             scrap.setStatus("REJECTED");
+            disposition.setStatus("REJECTED");
+            quarantine.setRemainingQuantity(nvl(quarantine.getRemainingQuantity()).add(scrap.getQuantity()));
+            quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode());
         } else {
+            com.jjx.quality.service.QualityNcrService ncrService = qualityNcrServiceProvider.getIfAvailable();
+            if (ncrService == null) throw new BusinessException("质量不良台账服务不可用，报废审批已取消");
+            ncrService.syncIqcDisposition(quarantine.getLotId(), "SCRAP", scrap.getQuantity(),
+                    approval.getApproverName() != null ? approval.getApproverName() : SecurityUtils.getDisplayName(),
+                    scrap.getReason());
             scrap.setStatus("APPROVED");
+            disposition.setStatus("COMPLETED");
+            if (nvl(quarantine.getRemainingQuantity()).signum() == 0
+                    && com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode().equals(quarantine.getStatus())) {
+                quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.SCRAPPED.getCode());
+            }
+            approveBatchScrap(scrap.getIqcBatchId(), scrap.getQuantity());
         }
         scrap.setApproverId(approval == null ? SecurityUtils.getUserId() : approval.getApproverId());
         scrap.setApproverName(approval == null ? SecurityUtils.getDisplayName() : approval.getApproverName());
         iqcScrapOrderMapper.updateById(scrap);
+        iqcDispositionOrderMapper.updateById(disposition);
+        iqcQuarantineMapper.updateById(quarantine);
         return true;
+    }
+
+    private void approveBatchScrap(Long batchId, BigDecimal quantity) {
+        if (batchId == null || quantity == null) return;
+        InventoryIqcBatch batch = iqcBatchMapper.selectById(batchId);
+        if (batch == null) return;
+        batch.setDisposedQuantity(nvl(batch.getDisposedQuantity()).add(quantity));
+        batch.setScrappedQuantity(nvl(batch.getScrappedQuantity()).add(quantity));
+        BigDecimal rejected = nvl(batch.getRejectedQuantity());
+        batch.setStatus(nvl(batch.getDisposedQuantity()).compareTo(rejected) >= 0
+                ? "DISPOSED" : "PARTIALLY_DISPOSED");
+        iqcBatchMapper.updateById(batch);
     }
 
     @Override
@@ -734,7 +797,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
         if (rework.getInboundItemId() == null) throw new BusinessException("返工单缺少来料明细");
         var item = inboundItemMapper.selectById(rework.getInboundItemId());
-        if (item == null || item.getLotId() == null) throw new BusinessException("找不到原 IQC 检验批");
+        IqcWorkContext context = currentIqcContext(item);
+        Long sourceLotId = rework.getLotId() != null ? rework.getLotId() : context.lotId();
+        if (item == null || sourceLotId == null) throw new BusinessException("找不到原 IQC 检验批");
         if (!rework.getInboundItemId().equals(item.getItemId())
                 || (rework.getInboundId() != null && !rework.getInboundId().equals(item.getInboundId()))) {
             throw new BusinessException("返工单与来料明细不匹配");
@@ -743,7 +808,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 .eq(com.jjx.inventory.domain.InventoryIqcReworkOrder::getInboundItemId, item.getItemId())
                 .eq(com.jjx.inventory.domain.InventoryIqcReworkOrder::getStatus, "PENDING_REINSPECTION"));
         if (pendingCount != null && pendingCount > 0) throw new BusinessException("该材料已有待复检返工单");
-        var old = qualityLotMapper.selectById(item.getLotId());
+        var old = qualityLotMapper.selectById(sourceLotId);
         if (old == null || !"APPROVED".equals(old.getReviewStatus()) || !"fail".equals(old.getResult())) {
             throw new BusinessException("只有已审核的不合格检验记录可以发起返工复检");
         }
@@ -753,18 +818,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
         String childBatchNo = createIqcChildBatch(rework, item, null, "REWORK");
         Long newLotId = createIqcReinspectionLot(item, old, rework.getQuantity(), childBatchNo);
-        item.setInspectionId(null);
-        item.setLotId(newLotId);
-        item.setBatchNo(childBatchNo);
-        item.setSampledQuantity(rework.getQuantity());
-        item.setInspectionResult(null);
-        item.setDisposition(null);
-        item.setQualifiedQuantity(BigDecimal.ZERO);
-        item.setRejectedQuantity(BigDecimal.ZERO);
-        item.setRejectReason(null);
-        inboundItemMapper.updateById(item);
         rework.setStatus("PENDING_REINSPECTION");
         rework.setChildBatchNo(childBatchNo);
+        rework.setLotId(newLotId);
         iqcReworkOrderMapper.updateById(rework);
         var inbound = inboundOrderMapper.selectById(item.getInboundId());
         if (inbound != null) {
@@ -831,8 +887,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             parent.setSourceInboundId(item.getInboundId());
             parent.setSourceInspectionId(null);
             parent.setQuantity(item.getQuantity());
-            parent.setRemainingQuantity(item.getQuantity());
-            parent.setStatus("SOURCE");
+            com.jjx.quality.domain.entity.QualityLot original = item.getLotId() == null
+                    ? null : qualityLotMapper.selectById(item.getLotId());
+            BigDecimal pass = original == null ? BigDecimal.ZERO : nvl(original.getPassQuantity());
+            BigDecimal fail = original == null ? BigDecimal.ZERO : nvl(original.getFailQuantity());
+            parent.setProcessedQuantity(pass.add(fail));
+            parent.setAcceptedQuantity(pass);
+            parent.setRejectedQuantity(fail);
+            parent.setRemainingQuantity(nvl(item.getQuantity()).subtract(pass.add(fail)).max(BigDecimal.ZERO));
+            parent.setStatus(fail.signum() > 0 ? "FAILED" : pass.signum() > 0 ? "QUALIFIED" : "SOURCE");
             iqcBatchMapper.insert(parent);
         }
         if (!Objects.equals(item.getIqcBatchId(), parent.getBatchId())) {
@@ -878,8 +941,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             iqcBatchMapper.insert(child);
         }
         rework.setChildBatchId(child.getBatchId());
-        item.setIqcBatchId(child.getBatchId());
-        inboundItemMapper.updateById(item);
         return child.getBatchNo();
     }
 
@@ -947,8 +1008,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         boolean pendingReinspection = isPurchaseInbound(order)
                 && InventoryOrderStatusEnum.COMPLETED.getValue().equals(status)
                 && inboundItemMapper.selectByInboundId(inboundId).stream().anyMatch(item -> {
-                    if (item.getLotId() == null) return false;
-                    com.jjx.quality.domain.entity.QualityLot current = qualityLotMapper.selectById(item.getLotId());
+                    Long lotId = currentIqcContext(item).lotId();
+                    if (lotId == null) return false;
+                    com.jjx.quality.domain.entity.QualityLot current = qualityLotMapper.selectById(lotId);
                     return current != null
                             && "pending".equals(current.getResult())
                             && "DRAFT".equals(current.getReviewStatus());
@@ -1001,10 +1063,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
         for (InventoryInboundItem item : items) {
-            if (item.getLotId() == null) {
+            Long lotId = currentIqcContext(item).lotId();
+            if (lotId == null) {
                 return false;
             }
-            com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(item.getLotId());
+            com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(lotId);
             if (lot == null || !"PENDING".equals(lot.getReviewStatus())) {
                 return false;
             }
@@ -1025,8 +1088,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         for (InboundInspectionSubmitDTO.Item submitted : inspection.getItems()) {
                 InventoryInboundItem item = existing.get(submitted.getItemId());
                 if (item == null) throw new BusinessException("入库明细不存在: " + submitted.getItemId());
-                com.jjx.quality.domain.entity.QualityLot previous = item.getLotId() == null
-                        ? null : qualityLotMapper.selectById(item.getLotId());
+                IqcWorkContext context = currentIqcContext(item);
+                Long requestedLotId = submitted.getLotId() == null ? context.lotId() : submitted.getLotId();
+                com.jjx.quality.domain.entity.QualityLot previous = requestedLotId == null
+                        ? null : qualityLotMapper.selectById(requestedLotId);
+                if (previous != null && !item.getItemId().equals(previous.getSourceItemId())) {
+                    throw new BusinessException("检验批与入库明细不匹配");
+                }
                 if (previous != null && "APPROVED".equals(previous.getReviewStatus())) {
                     // 整单重提时，已审核项目以数据库事实为准，既不要求客户端重复填写，也禁止覆盖。
                     allPass = allPass && "PASS".equalsIgnoreCase(item.getInspectionResult());
@@ -1098,22 +1166,26 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                             + "），不良品请走隔离处置");
                 }
 
-                item.setSampledQuantity(inspectionQuantity);
-                item.setInspectionId(null);
-                item.setInspectionResult(itemResult);
-                // dev-20260924-013：检验侧不再写入处置方式（字段保留，兼容历史数据与既有报表）
-                item.setDisposition(null);
-                item.setQualifiedQuantity(qualified);
-                item.setRejectedQuantity(rejected);
-                item.setAcceptedQuantity(accepted);
-                item.setRejectReason(sanitizedRejectReason);
+                InventoryInboundItem workflowItem = new InventoryInboundItem();
+                BeanUtils.copyProperties(item, workflowItem);
+                workflowItem.setLotId(requestedLotId);
+                workflowItem.setBatchNo(context.batchNo());
+                workflowItem.setIqcBatchId(context.batchId());
                 // 026：IQC 检验事实同步落 quality_lot（expand：新模型落库，旧路径暂留）
-                Long iqcLotId = syncIqcLot(order.getInboundId(), item, itemResult, qualified, rejected,
+                Long iqcLotId = syncIqcLot(order.getInboundId(), workflowItem, itemResult, qualified, rejected,
                         sanitizedRejectReason, submitted.getInspectionItems());
-                if (iqcLotId != null) {
-                    item.setLotId(iqcLotId);
+                if (!reinspection) {
+                    item.setSampledQuantity(inspectionQuantity);
+                    item.setInspectionId(null);
+                    item.setInspectionResult(itemResult);
+                    item.setDisposition(null);
+                    item.setQualifiedQuantity(qualified);
+                    item.setRejectedQuantity(rejected);
+                    item.setAcceptedQuantity(accepted);
+                    item.setRejectReason(sanitizedRejectReason);
+                    if (iqcLotId != null) item.setLotId(iqcLotId);
+                    inboundItemMapper.updateById(item);
                 }
-                inboundItemMapper.updateById(item);
                 allPass = allPass && "PASS".equals(itemResult);
         }
         order.setInspectionResult(allPass ? "PASS" : "OTHER");
@@ -1196,9 +1268,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             }
             lotService.saveItems(lot.getLotId(), lotItems);
             lot.setReviewStatus("PENDING");
+            lot.setInspectedQuantity(qualified.add(rejected));
+            lot.setPassQuantity(qualified);
+            lot.setFailQuantity(rejected);
             lot.setInspector(SecurityUtils.getDisplayName());
-            // dev-20260924-013：不合格原因不在提交时固化（审核通过时按检验项目派生，见 judgeIqcLot）
-            lot.setDefectReason(null);
+            // 提交阶段只暂存补充说明；审核时与检验项目合并成最终结构化原因。
+            lot.setDefectReason(defectReason);
             lot.setRemark(itemResult + "：合格 " + qualified + "，不良 " + rejected);
             qualityLotMapper.updateById(lot);
             // 判定不在提交时做：IQC 有独立审核环节，审核通过时再判。
@@ -1206,8 +1281,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     }
 
     /** IQC 审核通过后，把最终判定写入 quality_lot（dev-20260918-026 expand 阶段，容错） */
-    private void judgeIqcLot(InventoryInboundItem item, String itemResult, BigDecimal qualified, BigDecimal rejected) {
-            if (item == null || item.getLotId() == null) {
+    private void judgeIqcLot(Long lotId, String itemResult, BigDecimal qualified, BigDecimal rejected) {
+            if (lotId == null) {
                 throw new BusinessException("IQC 检验批不存在，不能审核");
             }
             com.jjx.quality.service.QualityLotService lotService = qualityLotServiceProvider.getIfAvailable();
@@ -1220,12 +1295,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             if (inspected.signum() <= 0) {
                 return;
             }
-            lotService.applyJudgement(item.getLotId(), inspected, q, f,
+            lotService.applyJudgement(lotId, inspected, q, f,
                     "PASS".equals(itemResult) ? "pass" : "fail", SecurityUtils.getDisplayName());
             // dev-20260924-013：审核通过时固化「不合格原因」= 检验项目派生 + 补充说明
             java.util.List<com.jjx.quality.domain.entity.QualityLotItem> lotItems =
-                    lotService.listItems(item.getLotId());
-            String derivedReason = deriveIqcDefectReason(lotItems, item.getRejectReason());
+                    lotService.listItems(lotId);
+            com.jjx.quality.domain.entity.QualityLot pendingLot = qualityLotMapper.selectById(lotId);
+            String supplement = pendingLot == null ? null : pendingLot.getDefectReason();
+            String derivedReason = deriveIqcDefectReason(lotItems, supplement);
             // dev-20260924-013（Hermes 2026-09-24 复核指出）：旧写法传 (0, f, 0) 会把来料不良
             // 全记成 MA 级（台账误读）。改为按该批检验项的 ΣCR/ΣMA/ΣMI 上报；无归因时全 0（与边界 A 一致）
             BigDecimal crSum = BigDecimal.ZERO, maSum = BigDecimal.ZERO, miSum = BigDecimal.ZERO;
@@ -1236,7 +1313,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     miSum = miSum.add(nvl(li.getMiQuantity()));
                 }
             }
-            com.jjx.quality.domain.entity.QualityLot lotCurrent = qualityLotMapper.selectById(item.getLotId());
+            com.jjx.quality.domain.entity.QualityLot lotCurrent = qualityLotMapper.selectById(lotId);
             if (lotCurrent != null && !java.util.Objects.equals(lotCurrent.getDefectReason(), derivedReason)) {
                 lotCurrent.setDefectReason(derivedReason);
                 qualityLotMapper.updateById(lotCurrent);
@@ -1244,7 +1321,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             if (f.signum() > 0) {
                 com.jjx.quality.service.QualityNcrService ncrService = qualityNcrServiceProvider.getIfAvailable();
                 if (ncrService == null) throw new BusinessException("不良台账服务不可用，IQC 审核已回滚");
-                com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(item.getLotId());
+                com.jjx.quality.domain.entity.QualityLot lot = qualityLotMapper.selectById(lotId);
                 ncrService.syncFromLot(lot, f, crSum, maSum, miSum,
                         derivedReason, SecurityUtils.getDisplayName());
             }
@@ -1338,9 +1415,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
         if (order == null) throw new BusinessException("入库单不存在");
         InventoryInboundItem item = inboundItemMapper.selectByIdForUpdate(itemId);
-        if (item == null || item.getLotId() == null) throw new BusinessException("入库明细尚未提交 IQC 检验");
-        com.jjx.quality.domain.entity.QualityLot quality = qualityLotMapper.selectForUpdate(item.getLotId());
+        IqcWorkContext context = currentIqcContext(item);
+        Long lotId = review != null && review.getLotId() != null ? review.getLotId() : context.lotId();
+        if (item == null || lotId == null) throw new BusinessException("入库明细尚未提交 IQC 检验");
+        com.jjx.quality.domain.entity.QualityLot quality = qualityLotMapper.selectForUpdate(lotId);
         if (quality == null) throw new BusinessException("IQC 检验批不存在");
+        if (!itemId.equals(quality.getSourceItemId())) throw new BusinessException("检验批与入库明细不匹配");
         // 幂等：已审核的记录重复提交（重复点击/并发重放）不再重复判级、不重复发事件，
         // 但仍重跑一次单据状态判定，让历史卡在待审批、明细却已全部审核的单据能收尾。
         if ("APPROVED".equals(quality.getReviewStatus())) {
@@ -1350,7 +1430,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (!"PENDING".equals(quality.getReviewStatus())) {
             throw new BusinessException("仅待审核的 IQC 记录可以审核");
         }
-        judgeIqcLot(item, item.getInspectionResult(), item.getQualifiedQuantity(), item.getRejectedQuantity());
+        BigDecimal pass = nvl(quality.getPassQuantity());
+        BigDecimal fail = nvl(quality.getFailQuantity());
+        String result = fail.signum() > 0 ? "FAIL" : "PASS";
+        judgeIqcLot(lotId, result, pass, fail);
         quality = qualityLotMapper.selectById(quality.getLotId());
         quality.setReviewStatus("APPROVED");
         quality.setReviewRemark(review == null ? null : review.getRemark());
@@ -1370,7 +1453,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 iqcReworkOrderMapper.updateById(rework);
             }
         }
-        updateIqcBatchResult(item.getIqcBatchId(), quality);
+        updateIqcBatchResult(context.batchId(), quality);
         // order 就是方法开头锁住的那一行（同一事务内内容未变），直接复用，不再重复查
         publishIqcEventAfterCommit("quality.iqc.item.approved", iqcPayload(order, item,
                 order.getInspectorId(), order.getInspectorName()));
@@ -1400,8 +1483,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             throw new BusinessException("驳回时必须填写审核意见");
         }
         InventoryInboundItem item = inboundItemMapper.selectById(itemId);
-        if (item == null || item.getLotId() == null) throw new BusinessException("入库明细尚未提交 IQC 检验");
-        com.jjx.quality.domain.entity.QualityLot quality = qualityLotMapper.selectById(item.getLotId());
+        IqcWorkContext context = currentIqcContext(item);
+        Long lotId = review != null && review.getLotId() != null ? review.getLotId() : context.lotId();
+        if (item == null || lotId == null) throw new BusinessException("入库明细尚未提交 IQC 检验");
+        com.jjx.quality.domain.entity.QualityLot quality = qualityLotMapper.selectById(lotId);
+        if (quality != null && !itemId.equals(quality.getSourceItemId())) {
+            throw new BusinessException("检验批与入库明细不匹配");
+        }
         if (quality == null || !"PENDING".equals(quality.getReviewStatus())) {
             throw new BusinessException("仅待审核的 IQC 记录可以驳回");
         }
@@ -1421,8 +1509,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     @Transactional(rollbackFor = Exception.class)
     public Long reinspectItem(Long itemId) {
         InventoryInboundItem item = inboundItemMapper.selectById(itemId);
-        if (item == null || item.getLotId() == null) throw new BusinessException("入库明细尚无可复检的 IQC 记录");
-        com.jjx.quality.domain.entity.QualityLot old = qualityLotMapper.selectById(item.getLotId());
+        IqcWorkContext context = currentIqcContext(item);
+        if (item == null || context.lotId() == null) throw new BusinessException("入库明细尚无可复检的 IQC 记录");
+        com.jjx.quality.domain.entity.QualityLot old = qualityLotMapper.selectById(context.lotId());
         if (old == null || !"APPROVED".equals(old.getReviewStatus())) {
             throw new BusinessException("只有已审核的 IQC 记录可以发起复检");
         }
@@ -1434,23 +1523,26 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 .eq(com.jjx.inventory.domain.InventoryIqcReworkOrder::getStatus, "PENDING_REINSPECTION"));
         if (pendingRework != null && pendingRework > 0) throw new BusinessException("该材料已有待复检返工单");
         var directReinspection = new com.jjx.inventory.domain.InventoryIqcReworkOrder();
-        directReinspection.setReworkId(-old.getLotId());
-        directReinspection.setReworkNo("REINSPECT-" + old.getLotId());
-        directReinspection.setBatchNo(item.getBatchNo());
+        directReinspection.setReworkNo(redisSequenceService.generateBusinessNumberByType(
+                "iqc_rework", "IQW", "yyMMdd", 3));
+        directReinspection.setInboundId(item.getInboundId());
         directReinspection.setInboundItemId(item.getItemId());
+        directReinspection.setLotId(old.getLotId());
+        directReinspection.setMaterialId(item.getMaterialId());
+        directReinspection.setMaterialCode(item.getMaterialCode());
+        directReinspection.setMaterialName(item.getMaterialName());
+        directReinspection.setBatchNo(context.batchNo());
+        directReinspection.setIqcBatchId(context.batchId());
         directReinspection.setQuantity(old.getFailQuantity());
+        directReinspection.setStatus("CREATED");
+        directReinspection.setOperatorId(SecurityUtils.getUserId());
+        directReinspection.setOperatorName(SecurityUtils.getDisplayName());
+        iqcReworkOrderMapper.insert(directReinspection);
         String childBatchNo = createIqcChildBatch(directReinspection, item, null, "REINSPECTION");
         Long newId = createIqcReinspectionLot(item, old, old.getFailQuantity(), childBatchNo);
-        item.setInspectionId(null);
-        item.setLotId(newId);
-        item.setBatchNo(childBatchNo);
-        item.setSampledQuantity(old.getFailQuantity());
-        item.setQualifiedQuantity(BigDecimal.ZERO);
-        item.setRejectedQuantity(BigDecimal.ZERO);
-        item.setInspectionResult(null);
-        item.setDisposition(null);
-        item.setRejectReason(null);
-        inboundItemMapper.updateById(item);
+        directReinspection.setLotId(newId);
+        directReinspection.setStatus("PENDING_REINSPECTION");
+        iqcReworkOrderMapper.updateById(directReinspection);
         InventoryInboundOrder order = inboundOrderMapper.selectById(item.getInboundId());
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
         inboundOrderMapper.updateById(order);
@@ -1470,8 +1562,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (order == null) return;
         List<InventoryInboundItem> items = inboundItemMapper.selectByInboundIdForUpdate(inboundId);
         boolean allApproved = !items.isEmpty() && items.stream().allMatch(item -> {
-            if (item.getLotId() == null) return false;
-            com.jjx.quality.domain.entity.QualityLot quality = qualityLotMapper.selectForUpdate(item.getLotId());
+            Long lotId = currentIqcContext(item).lotId();
+            if (lotId == null) return false;
+            com.jjx.quality.domain.entity.QualityLot quality = qualityLotMapper.selectForUpdate(lotId);
             return quality != null && "APPROVED".equals(quality.getReviewStatus());
         });
         if (allApproved) {
@@ -3140,7 +3233,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         };
     }
 
-    private static List<InboundItemVO> convertToItemVOList(List<InventoryInboundItem> items) {
+    private List<InboundItemVO> convertToItemVOList(List<InventoryInboundItem> items) {
         if (items == null || items.isEmpty()) {
             return new ArrayList<>();
         }
@@ -3152,7 +3245,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         return result;
     }
 
-    private static InboundItemVO convertToItemVO(InventoryInboundItem item) {
+    private InboundItemVO convertToItemVO(InventoryInboundItem item) {
         if (item == null) {
             return null;
         }
@@ -3169,12 +3262,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         vo.setSampledQuantity(item.getSampledQuantity());
         vo.setInspectionId(item.getInspectionId());
         // dev-20260922-009：新模型下检验批存 lot_id（inspection_id 已置空），必须同时吐给前端
-        vo.setLotId(item.getLotId());
+        IqcWorkContext context = currentIqcContext(item);
+        vo.setOriginalLotId(item.getLotId());
+        vo.setLotId(context.lotId());
         vo.setInspectionResult(item.getInspectionResult());
         vo.setDisposition(item.getDisposition());
         vo.setUnitPrice(item.getUnitPrice());
         vo.setAmount(item.getAmount());
-        vo.setBatchNo(item.getBatchNo());
+        vo.setOriginalBatchNo(item.getBatchNo());
+        vo.setBatchNo(context.batchNo());
+        vo.setOriginalIqcBatchId(item.getIqcBatchId());
+        vo.setIqcBatchId(context.batchId());
         vo.setProductionDate(item.getProductionDate());
         vo.setExpiryDate(item.getExpiryDate());
         vo.setLocationId(item.getLocationId());

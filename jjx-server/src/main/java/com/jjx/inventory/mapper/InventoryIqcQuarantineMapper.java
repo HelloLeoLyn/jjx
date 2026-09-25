@@ -37,6 +37,9 @@ public interface InventoryIqcQuarantineMapper extends BaseMapper<InventoryIqcQua
                 <if test="query.inboundNo != null and query.inboundNo != ''">
                     AND inbound.inbound_no LIKE CONCAT('%', #{query.inboundNo}, '%')
                 </if>
+                <if test="query.sourceNo != null and query.sourceNo != ''">
+                    AND inbound.source_no LIKE CONCAT('%', #{query.sourceNo}, '%')
+                </if>
                 <if test="query.supplierName != null and query.supplierName != ''">
                     AND inbound.supplier_name LIKE CONCAT('%', #{query.supplierName}, '%')
                 </if>

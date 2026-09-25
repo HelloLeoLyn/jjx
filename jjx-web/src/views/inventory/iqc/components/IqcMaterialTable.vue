@@ -65,8 +65,9 @@
           >打印</el-button
         ><el-button
           v-if="
-            canDispose &&
-            row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
+                canDispose &&
+                Number(row.remainingDispositionQuantity || 0) > 0 &&
+                row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
             (row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted)
           "
           link

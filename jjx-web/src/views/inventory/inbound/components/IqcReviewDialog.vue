@@ -183,11 +183,12 @@ async function load() {
   }
 }
 
-function reviewer(remark?: string) {
+function reviewer(remark?: string, lotId?: number) {
   return {
     approverId: String(userStore.userId || ''),
     approverName: String(userStore.nickName || userStore.userName || ''),
     remark,
+    lotId,
   }
 }
 
@@ -205,7 +206,10 @@ async function approve(row: (typeof rows.value)[number]) {
       }
     )
     submittingId.value = row.itemId
-    await inboundApi.approveInspectionItem(row.itemId, reviewer(value?.trim() || undefined))
+    await inboundApi.approveInspectionItem(
+      row.itemId,
+      reviewer(value?.trim() || undefined, Number(row.lotId ?? row.inspectionId))
+    )
     ElMessage.success('审核通过')
     await load()
     emit('success')
@@ -225,7 +229,10 @@ async function reject(row: (typeof rows.value)[number]) {
       { inputValidator: (value) => !!value?.trim() || '驳回原因不能为空' }
     )
     submittingId.value = row.itemId
-    await inboundApi.rejectInspectionItem(row.itemId, { ...reviewer(value), remark: value })
+    await inboundApi.rejectInspectionItem(row.itemId, {
+      ...reviewer(value, Number(row.lotId ?? row.inspectionId)),
+      remark: value,
+    })
     ElMessage.success('已驳回')
     await load()
     emit('success')

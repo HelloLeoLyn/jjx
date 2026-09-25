@@ -22,6 +22,9 @@
         <el-form-item label="入库单号">
           <el-input v-model="query.inboundNo" clearable placeholder="输入入库单号" />
         </el-form-item>
+        <el-form-item label="采购单号">
+          <el-input v-model="query.sourceNo" clearable placeholder="输入采购单号" />
+        </el-form-item>
         <el-form-item label="物料">
           <el-input v-model="query.materialKeyword" clearable placeholder="编码或名称" />
         </el-form-item>
@@ -61,6 +64,7 @@
         <el-tab-pane label="待处理" name="pending">
           <el-table v-loading="loading" :data="rows" border>
             <el-table-column prop="inboundNo" label="入库单号" width="180" />
+            <el-table-column prop="sourceNo" label="采购单号" width="180" />
             <el-table-column prop="supplierName" label="供应商" min-width="150" />
             <el-table-column prop="materialCode" label="物料编码" width="150" />
             <el-table-column prop="materialName" label="物料名称" min-width="170" />
@@ -137,14 +141,31 @@
         <el-tab-pane label="已处置" name="history">
           <el-table v-loading="ordersLoading" :data="orders" border>
             <el-table-column prop="dispositionNo" label="处置单号" width="210" />
+            <el-table-column prop="sourceNo" label="采购单号" width="180" />
+            <el-table-column prop="inboundNo" label="入库单号" width="180" />
+            <el-table-column prop="supplierName" label="供应商" min-width="150" />
             <el-table-column label="类型" width="120">
               <template #default="{ row }">{{ actionLabel(row.action) }}</template>
             </el-table-column>
             <el-table-column prop="materialCode" label="物料" width="160" />
+            <el-table-column prop="batchNo" label="批次" width="170" />
             <el-table-column prop="quantity" label="数量" width="100" />
+            <el-table-column label="处理状态" width="110">
+              <template #default="{ row }">{{ row.status || '-' }}</template>
+            </el-table-column>
             <el-table-column prop="operatorName" label="操作人" width="110" />
             <el-table-column prop="createTime" label="时间" />
           </el-table>
+          <el-pagination
+            v-model:current-page="historyPageNum"
+            v-model:page-size="historyPageSize"
+            class="pagination"
+            :page-sizes="[10, 20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            :total="historyTotal"
+            @size-change="loadDispositionHistory"
+            @current-change="loadDispositionHistory"
+          />
         </el-tab-pane>
         <el-tab-pane label="返工单" name="rework">
           <el-table v-loading="reworkLoading" :data="reworkOrders" border>
@@ -249,11 +270,15 @@ const query = ref({
   materialKeyword: '',
   batchNo: '',
   inboundNo: '',
+  sourceNo: '',
   supplierName: '',
 })
 const total = ref(0)
 const rows = ref<any[]>([])
 const orders = ref<any[]>([])
+const historyPageNum = ref(1)
+const historyPageSize = ref(20)
+const historyTotal = ref(0)
 const reworkOrders = ref<any[]>([])
 const batchRows = ref<any[]>([])
 const loading = ref(false)
@@ -295,10 +320,18 @@ async function load() {
   try {
     reworkLoading.value = true
     batchLoading.value = true
-    const { data } = await inboundApi.pageIqcQuarantine(query.value)
+    const [{ data }, historyResult] = await Promise.all([
+      inboundApi.pageIqcQuarantine(query.value),
+      inboundApi.pageIqcDisposition({
+        ...query.value,
+        pageNum: historyPageNum.value,
+        pageSize: historyPageSize.value,
+      }),
+    ])
     rows.value = data?.page?.records || []
     total.value = data?.page?.total || 0
-    orders.value = data?.dispositionOrders || []
+    orders.value = historyResult.data?.records || []
+    historyTotal.value = historyResult.data?.total || 0
     reworkOrders.value = data?.reworkOrders || []
     batchRows.value = data?.batches || []
   } finally {
@@ -310,6 +343,7 @@ async function load() {
 }
 function search() {
   query.value.pageNum = 1
+  historyPageNum.value = 1
   return load()
 }
 function resetQuery() {
@@ -320,9 +354,24 @@ function resetQuery() {
     materialKeyword: '',
     batchNo: '',
     inboundNo: '',
+    sourceNo: '',
     supplierName: '',
   }
   return load()
+}
+async function loadDispositionHistory() {
+  ordersLoading.value = true
+  try {
+    const { data } = await inboundApi.pageIqcDisposition({
+      ...query.value,
+      pageNum: historyPageNum.value,
+      pageSize: historyPageSize.value,
+    })
+    orders.value = data?.records || []
+    historyTotal.value = data?.total || 0
+  } finally {
+    ordersLoading.value = false
+  }
 }
 async function openDisposition(row: any) {
   activeInboundId.value = Number(row.inboundId)

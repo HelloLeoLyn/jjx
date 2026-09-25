@@ -599,7 +599,13 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         vo.setConcessionPendingQuantity(BigDecimal.ZERO);
         vo.setGuardAvailable(true);
         try {
-            List<Long> chainIds = chainLotIds(lot);
+            // IQC 返工/复检子批的 lot_quantity 已经是从父批不良中分出的净复检数量，
+            // 不得再次扣父批历史报废/让步量；否则“原批5、报废1、子批4”会被算成上限3。
+            // FQC/OQC 的换代批仍代表整批版本，继续沿父链累计不可回收量。
+            List<Long> chainIds = "IQC".equalsIgnoreCase(lot.getLotType())
+                    && lot.getParentLotId() != null
+                    ? List.of(lot.getLotId())
+                    : chainLotIds(lot);
             BigDecimal scrap = BigDecimal.ZERO;
             BigDecimal concessionPending = BigDecimal.ZERO;
             if (!chainIds.isEmpty()) {

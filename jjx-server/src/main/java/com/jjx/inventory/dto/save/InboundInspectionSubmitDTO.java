@@ -14,6 +14,8 @@ public class InboundInspectionSubmitDTO {
     @Data
     public static class Item {
         private Long itemId;
+        /** 当前检验批；返工复检时指向子批，原入库明细 lot_id 保持不变。 */
+        private Long lotId;
         /** 当前表无抽检数量列，仅用于校验，不落库。 */
         private BigDecimal sampledQuantity;
         private String inspectionResult;

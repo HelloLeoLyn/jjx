@@ -177,6 +177,14 @@ public class InventoryInboundController {
         return Result.success(inboundService.pageIqcQuarantineLedger(query));
     }
 
+    @GetMapping("/iqc-disposition-orders/page")
+    @Operation(summary = "独立分页查询 IQC 已处置历史")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
+    public Result<com.jjx.common.core.page.PageResult<com.jjx.inventory.dto.vo.IqcDispositionLedgerRowVO>>
+            pageIqcDispositionLedger(IqcQuarantineLedgerQueryDTO query) {
+        return Result.success(inboundService.pageIqcDispositionLedger(query));
+    }
+
     @GetMapping("/iqc-disposition-orders/list")
     @Operation(summary = "查询全部 IQC 处置单")
     @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)

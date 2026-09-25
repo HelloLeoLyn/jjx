@@ -118,6 +118,7 @@ export const inboundApi = {
     materialKeyword?: string
     batchNo?: string
     inboundNo?: string
+    sourceNo?: string
     supplierName?: string
   }) {
     return request.get<
@@ -128,6 +129,19 @@ export const inboundApi = {
         batches: any[]
       }>
     >('/inventory/inbound/iqc-quarantine/page', { params })
+  },
+  pageIqcDisposition(params: {
+    pageNum: number
+    pageSize: number
+    materialKeyword?: string
+    batchNo?: string
+    inboundNo?: string
+    sourceNo?: string
+    supplierName?: string
+  }) {
+    return request.get<R<PageResult<any>>>('/inventory/inbound/iqc-disposition-orders/page', {
+      params,
+    })
   },
   listAllDispositionOrders(action?: string) {
     return request.get<R<any[]>>('/inventory/inbound/iqc-disposition-orders/list', {
