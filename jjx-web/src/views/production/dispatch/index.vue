@@ -23,7 +23,7 @@
       type="info"
       :closable="false"
       show-icon
-      :title="`已收窄到工单 #${selectedOrderId} 的任务（清空上表选择可看全部工单）`"
+      :title="`已筛选工单 #${selectedOrderId} 的任务（清空选择后任务列表将清空）`"
     />
 
     <!-- 顶部统计（当前页 First Task 数据） -->
@@ -475,7 +475,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import {
   candidateName,
   candidateRoles,
@@ -592,9 +592,6 @@ const {
   openCompletionDetails,
 } = useCompletionDetail()
 
-onMounted(() => {
-  getList()
-})
 </script>
 
 <style scoped>

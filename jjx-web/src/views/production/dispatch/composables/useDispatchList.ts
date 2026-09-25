@@ -30,25 +30,38 @@ export function useDispatchList() {
       ? Number(route.query.orderId)
       : null
   )
+  let listRequestVersion = 0
+  let hasHandledOrderSelection = false
 
   const getList = async () => {
+    const requestVersion = ++listRequestVersion
+    const orderId = selectedOrderId.value
+    if (!orderId) {
+      firstLevelRows.value = []
+      total.value = 0
+      loading.value = false
+      return
+    }
+
     loading.value = true
     try {
       const res: any = await getTaskTreePage({
         ...queryParams,
         keyword: filterForm.keyword.trim() || undefined,
         status: filterForm.status || undefined,
-        orderId: selectedOrderId.value || undefined,
+        orderId,
       })
+      if (requestVersion !== listRequestVersion || selectedOrderId.value !== orderId) return
       const page: PageResult<TaskTreeRow> | null = res?.data
       firstLevelRows.value = (page?.records || []).map((r) => initRow(r))
       total.value = page?.total || 0
     } catch (e: any) {
+      if (requestVersion !== listRequestVersion || selectedOrderId.value !== orderId) return
       ElMessage.error(e?.message || '任务加载失败')
       firstLevelRows.value = []
       total.value = 0
     } finally {
-      loading.value = false
+      if (requestVersion === listRequestVersion) loading.value = false
     }
   }
 
@@ -69,7 +82,10 @@ export function useDispatchList() {
   }
   /** 顶部工单面板选中/清除工单 → 收窄下面的派工列表 */
   const handleOrderSelected = (order: { orderId?: number | string } | null) => {
-    selectedOrderId.value = order?.orderId ? Number(order.orderId) : null
+    const nextOrderId = order?.orderId ? Number(order.orderId) : null
+    if (hasHandledOrderSelection && selectedOrderId.value === nextOrderId) return
+    hasHandledOrderSelection = true
+    selectedOrderId.value = nextOrderId
     queryParams.pageNum = 1
     getList()
   }
