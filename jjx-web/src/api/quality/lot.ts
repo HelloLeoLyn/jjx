@@ -49,6 +49,12 @@ export interface QualityLot {
   sourceType?: string
   sourceId?: number
   sourceItemId?: number
+  sourceNo?: string
+  orderNo?: string
+  salesOrderNo?: string
+  processName?: string
+  upstreamSourceNo?: string
+  stockProduction?: boolean
   orderId?: number
   executionId?: number
   materialId?: number

@@ -18,6 +18,8 @@ public class QualityLotQueryDTO {
     /** PENDING/INSPECTING/JUDGED/CLOSED，空=全部 */
     private String status;
     private String lotNo;
+    /** 报工单、生产工单、销售单、入库单或发货单号。 */
+    private String businessNo;
     private Long orderId;
     private Long executionId;
     private Long materialId;

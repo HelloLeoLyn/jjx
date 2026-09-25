@@ -91,6 +91,20 @@ public class QualityLot {
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean superseded;
 
+    /** 面向用户的业务关联字段（列表/详情展示，不落库）。 */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String sourceNo;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String orderNo;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String salesOrderNo;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String processName;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String upstreamSourceNo;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Boolean stockProduction;
+
     /**
      * 允许动作（唯一出处下发，不落库）—— dev-20260923-039：
      * 由 {@code AllowedActionResolver.forLot(状态, 是否失效, 是否有未处置不良)} 算出，

@@ -67,8 +67,63 @@ class QualityLotConcurrencyGuardTest {
             mock(com.jjx.quality.mapper.QualityNcrActionMapper.class);
     private final com.jjx.framework.common.RedisSequenceService redisSequenceService =
             mock(com.jjx.framework.common.RedisSequenceService.class);
+    private final com.jjx.production.mapper.ProductionWorkReportMapper workReportMapper =
+            mock(com.jjx.production.mapper.ProductionWorkReportMapper.class);
+    private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper =
+            mock(com.jjx.production.mapper.ProductionOrderMapper.class);
+    private final com.jjx.production.mapper.ProductionOperationExecutionMapper executionMapper =
+            mock(com.jjx.production.mapper.ProductionOperationExecutionMapper.class);
+    private final com.jjx.inventory.mapper.InventoryInboundOrderMapper inboundOrderMapper =
+            mock(com.jjx.inventory.mapper.InventoryInboundOrderMapper.class);
+    private final com.jjx.sales.mapper.SalesDeliveryMapper salesDeliveryMapper =
+            mock(com.jjx.sales.mapper.SalesDeliveryMapper.class);
+    private final com.jjx.sales.mapper.OrderMapper salesOrderMapper =
+            mock(com.jjx.sales.mapper.OrderMapper.class);
     private final QualityLotServiceImpl lotService = new QualityLotServiceImpl(
-            lotMapper, lotItemMapper, ncrMapper, ncrActionMapper, redisSequenceService);
+            lotMapper, lotItemMapper, ncrMapper, ncrActionMapper, redisSequenceService,
+            workReportMapper, productionOrderMapper, executionMapper, inboundOrderMapper,
+            salesDeliveryMapper, salesOrderMapper);
+
+    @Test
+    void pageLotsFillsReadableBusinessReferencesWithBatchQueries() throws Exception {
+        QualityLot lot = new QualityLot();
+        lot.setLotId(6L);
+        lot.setLotType("FQC");
+        lot.setSourceType("WORK_REPORT");
+        lot.setSourceId(1L);
+        lot.setOrderId(2L);
+        lot.setExecutionId(3L);
+        com.jjx.production.domain.entity.ProductionWorkReport report =
+                new com.jjx.production.domain.entity.ProductionWorkReport();
+        report.setReportId(1L);
+        report.setReportNo("WR-20260925-0001");
+        when(workReportMapper.selectBatchIds(any())).thenReturn(List.of(report));
+        com.jjx.production.domain.entity.ProductionOrder order =
+                new com.jjx.production.domain.entity.ProductionOrder();
+        order.setOrderId(2L);
+        order.setOrderNo("WO260925001");
+        order.setSalesOrderNo("SO260925001");
+        when(productionOrderMapper.selectBatchIds(any())).thenReturn(List.of(order));
+        com.jjx.production.domain.entity.ProductionOperationExecution execution =
+                new com.jjx.production.domain.entity.ProductionOperationExecution();
+        execution.setExecutionId(3L);
+        execution.setProcessName("成型包装");
+        when(executionMapper.selectBatchIds(any())).thenReturn(List.of(execution));
+
+        Method fill = QualityLotServiceImpl.class.getDeclaredMethod("fillBusinessReferences", List.class);
+        fill.setAccessible(true);
+        fill.invoke(lotService, List.of(lot));
+
+        assertEquals("WR-20260925-0001", lot.getSourceNo());
+        assertEquals("WO260925001", lot.getOrderNo());
+        assertEquals("SO260925001", lot.getSalesOrderNo());
+        assertEquals("成型包装", lot.getProcessName());
+        assertEquals(Boolean.FALSE, lot.getStockProduction());
+        verify(workReportMapper, times(1)).selectBatchIds(any());
+        verify(productionOrderMapper, times(1)).selectBatchIds(any());
+        verify(executionMapper, times(1)).selectBatchIds(any());
+        verifyNoInteractions(inboundOrderMapper, salesDeliveryMapper, salesOrderMapper);
+    }
 
     // ==================== ① 同批并发复检 ====================
 

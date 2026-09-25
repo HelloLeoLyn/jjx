@@ -22,6 +22,18 @@ import com.jjx.quality.mapper.QualityNcrMapper;
 import com.jjx.quality.mapper.QualityNcrActionMapper;
 import com.jjx.quality.service.QualityLotService;
 import com.jjx.quality.service.support.AllowedActionResolver;
+import com.jjx.inventory.domain.InventoryInboundOrder;
+import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
+import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.domain.entity.ProductionOrder;
+import com.jjx.production.domain.entity.ProductionWorkReport;
+import com.jjx.production.mapper.ProductionOperationExecutionMapper;
+import com.jjx.production.mapper.ProductionOrderMapper;
+import com.jjx.production.mapper.ProductionWorkReportMapper;
+import com.jjx.sales.domain.entity.SalesDelivery;
+import com.jjx.sales.domain.entity.SalesOrder;
+import com.jjx.sales.mapper.SalesDeliveryMapper;
+import com.jjx.sales.mapper.OrderMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -33,6 +45,10 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.Set;
 
 /**
@@ -48,6 +64,12 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     private final QualityNcrMapper ncrMapper;
     private final QualityNcrActionMapper ncrActionMapper;
     private final RedisSequenceService redisSequenceService;
+    private final ProductionWorkReportMapper workReportMapper;
+    private final ProductionOrderMapper productionOrderMapper;
+    private final ProductionOperationExecutionMapper executionMapper;
+    private final InventoryInboundOrderMapper inboundOrderMapper;
+    private final SalesDeliveryMapper salesDeliveryMapper;
+    private final OrderMapper salesOrderMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -124,6 +146,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         }
         // dev-20260923-039：详情也下发 allowedActions（列表/详情同一口径）
         fillReinspectInfo(new ArrayList<>(List.of(lot)));
+        fillBusinessReferences(new ArrayList<>(List.of(lot)));
         return lot;
     }
 
@@ -154,6 +177,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 .orderByAsc(QualityLot::getVersion)
                 .orderByAsc(QualityLot::getLotId));
         fillReinspectInfo(lots);
+        fillBusinessReferences(lots);
         return lots;
     }
 
@@ -164,6 +188,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 .eq(executionId != null, QualityLot::getExecutionId, executionId)
                 .orderByAsc(QualityLot::getLotId));
         fillReinspectInfo(lots);
+        fillBusinessReferences(lots);
         return lots;
     }
 
@@ -181,12 +206,103 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 .eq(q.getProductId() != null, QualityLot::getProductId, q.getProductId())
                 .eq(StringUtils.isNotBlank(q.getBatchNo()), QualityLot::getBatchNo, q.getBatchNo())
                 .orderByDesc(QualityLot::getLotId);
+        if (StringUtils.isNotBlank(q.getBusinessNo())) {
+            String businessNo = q.getBusinessNo().trim();
+            wrapper.and(w -> w
+                    .apply("EXISTS (SELECT 1 FROM production_work_report wr WHERE wr.report_id = quality_lot.source_id "
+                            + "AND quality_lot.source_type = 'WORK_REPORT' AND wr.report_no LIKE CONCAT('%', {0}, '%'))", businessNo)
+                    .or().apply("EXISTS (SELECT 1 FROM production_order po WHERE po.order_id = quality_lot.order_id "
+                            + "AND (po.order_no LIKE CONCAT('%', {0}, '%') OR po.sales_order_no LIKE CONCAT('%', {0}, '%')))", businessNo)
+                    .or().apply("EXISTS (SELECT 1 FROM inventory_inbound_order io WHERE io.inbound_id = quality_lot.source_id "
+                            + "AND quality_lot.source_type IN ('INBOUND', 'INBOUND_ITEM') "
+                            + "AND (io.inbound_no LIKE CONCAT('%', {0}, '%') OR io.source_no LIKE CONCAT('%', {0}, '%')))", businessNo)
+                    .or().apply("EXISTS (SELECT 1 FROM sales_delivery sd WHERE sd.delivery_id = quality_lot.source_id "
+                            + "AND quality_lot.source_type = 'SALES_DELIVERY' AND (sd.delivery_no LIKE CONCAT('%', {0}, '%') "
+                            + "OR EXISTS (SELECT 1 FROM sales_order so WHERE so.order_id = sd.order_id "
+                            + "AND so.order_no LIKE CONCAT('%', {0}, '%'))))", businessNo)
+                    .or().like(QualityLot::getLotNo, businessNo));
+        }
         if (Boolean.TRUE.equals(q.getHasPendingDefect())) {
             wrapper.apply("fail_quantity > disposed_quantity");
         }
         IPage<QualityLot> page = lotMapper.selectPage(new Page<>(q.getPageNum(), q.getPageSize()), wrapper);
         fillReinspectInfo(page.getRecords());
+        fillBusinessReferences(page.getRecords());
         return page;
+    }
+
+    /**
+     * 批量补齐业务可读字段。每类关联至多一次批量查询，避免列表逐行 N+1。
+     */
+    private void fillBusinessReferences(List<QualityLot> lots) {
+        if (lots == null || lots.isEmpty()) {
+            return;
+        }
+        Set<Long> reportIds = idsOf(lots, lot -> "WORK_REPORT".equals(lot.getSourceType()) ? lot.getSourceId() : null);
+        Set<Long> productionOrderIds = idsOf(lots, lot ->
+                !QualityLotTypeEnum.OQC.getCode().equals(lot.getLotType()) ? lot.getOrderId() : null);
+        Set<Long> executionIds = idsOf(lots, QualityLot::getExecutionId);
+        Set<Long> inboundIds = idsOf(lots, lot ->
+                "INBOUND".equals(lot.getSourceType()) || "INBOUND_ITEM".equals(lot.getSourceType())
+                        ? lot.getSourceId() : null);
+        Set<Long> deliveryIds = idsOf(lots, lot ->
+                "SALES_DELIVERY".equals(lot.getSourceType()) ? lot.getSourceId() : null);
+
+        Map<Long, ProductionWorkReport> reports = reportIds.isEmpty() ? new HashMap<>()
+                : byId(workReportMapper.selectBatchIds(reportIds), ProductionWorkReport::getReportId);
+        Map<Long, ProductionOrder> orders = productionOrderIds.isEmpty() ? new HashMap<>()
+                : byId(productionOrderMapper.selectBatchIds(productionOrderIds), ProductionOrder::getOrderId);
+        Map<Long, ProductionOperationExecution> executions = executionIds.isEmpty() ? new HashMap<>()
+                : byId(executionMapper.selectBatchIds(executionIds), ProductionOperationExecution::getExecutionId);
+        Map<Long, InventoryInboundOrder> inbounds = inboundIds.isEmpty() ? new HashMap<>()
+                : byId(inboundOrderMapper.selectBatchIds(inboundIds), InventoryInboundOrder::getInboundId);
+        Map<Long, SalesDelivery> deliveries = deliveryIds.isEmpty() ? new HashMap<>()
+                : byId(salesDeliveryMapper.selectBatchIds(deliveryIds), SalesDelivery::getDeliveryId);
+        Set<Long> salesOrderIds = deliveries.values().stream().map(SalesDelivery::getOrderId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, SalesOrder> salesOrders = salesOrderIds.isEmpty() ? new HashMap<>()
+                : byId(salesOrderMapper.selectBatchIds(salesOrderIds), SalesOrder::getOrderId);
+
+        for (QualityLot lot : lots) {
+            ProductionWorkReport report = reports.get(lot.getSourceId());
+            if (report != null) {
+                lot.setSourceNo(report.getReportNo());
+            }
+            ProductionOrder order = orders.get(lot.getOrderId());
+            if (order != null) {
+                lot.setOrderNo(order.getOrderNo());
+                lot.setSalesOrderNo(order.getSalesOrderNo());
+                lot.setStockProduction(StringUtils.isBlank(order.getSalesOrderNo()));
+            }
+            ProductionOperationExecution execution = executions.get(lot.getExecutionId());
+            if (execution != null) {
+                lot.setProcessName(execution.getProcessName());
+            }
+            InventoryInboundOrder inbound = inbounds.get(lot.getSourceId());
+            if (inbound != null) {
+                lot.setSourceNo(inbound.getInboundNo());
+                lot.setUpstreamSourceNo(inbound.getSourceNo());
+            }
+            SalesDelivery delivery = deliveries.get(lot.getSourceId());
+            if (delivery != null) {
+                lot.setSourceNo(delivery.getDeliveryNo());
+                SalesOrder salesOrder = salesOrders.get(delivery.getOrderId());
+                if (salesOrder != null) {
+                    lot.setSalesOrderNo(salesOrder.getOrderNo());
+                }
+            }
+        }
+    }
+
+    private static Set<Long> idsOf(List<QualityLot> lots, Function<QualityLot, Long> getter) {
+        return lots.stream().map(getter).filter(Objects::nonNull).collect(Collectors.toSet());
+    }
+
+    private static <T> Map<Long, T> byId(List<T> rows, Function<T, Long> getter) {
+        if (rows == null || rows.isEmpty()) {
+            return new HashMap<>();
+        }
+        return rows.stream().collect(Collectors.toMap(getter, Function.identity(), (left, right) -> left));
     }
 
     /**

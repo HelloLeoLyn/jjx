@@ -25,6 +25,13 @@
               style="width: 170px"
               @keyup.enter="load(1)"
             />
+            <el-input
+              v-model="query.businessNo"
+              clearable
+              placeholder="报工/工单/销售/入库/发货单号"
+              style="width: 250px"
+              @keyup.enter="load(1)"
+            />
             <el-button type="primary" @click="load(1)">查询</el-button>
             <el-button @click="load()">刷新</el-button>
           </div>
@@ -66,8 +73,11 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="来源" min-width="150">
-          <template #default="{ row }">{{ sourceLabel(row) }}</template>
+        <el-table-column label="业务来源" min-width="250">
+          <template #default="{ row }">
+            <div>{{ sourceLabel(row) }}</div>
+            <div v-if="sourceContext(row)" class="sub">{{ sourceContext(row) }}</div>
+          </template>
         </el-table-column>
         <el-table-column label="物料/产品" min-width="170">
           <template #default="{ row }">
@@ -385,7 +395,7 @@ const needSync = (row: QualityLot) =>
 const loading = ref(false)
 const rows = ref<QualityLot[]>([])
 const total = ref(0)
-const query = reactive({ pageNum: 1, pageSize: 10, lotType, status: '', lotNo: '' })
+const query = reactive({ pageNum: 1, pageSize: 10, lotType, status: '', lotNo: '', businessNo: '' })
 const current = ref<QualityLot | null>(null)
 
 /**
@@ -417,12 +427,26 @@ const pendingDefect = (row: QualityLot) =>
 const sourceLabel = (row: QualityLot) => {
   const map: Record<string, string> = {
     WORK_REPORT: '报工批',
-    INBOUND_ITEM: '收货行',
+    INBOUND: '入库单',
+    INBOUND_ITEM: '入库单',
     EXECUTION: '工序',
     SALES_DELIVERY: '发货单',
   }
   const key = row.sourceType || ''
-  return `${map[key] || key}${row.sourceId ? ' #' + row.sourceId : ''}`
+  if (row.sourceNo) return `${map[key] || key} ${row.sourceNo}`
+  return map[key] || key || '来源未登记'
+}
+const sourceContext = (row: QualityLot) => {
+  if (row.lotType === 'IQC') {
+    return row.upstreamSourceNo ? `采购来源 ${row.upstreamSourceNo}` : '采购来源未登记'
+  }
+  if (row.lotType === 'OQC') {
+    return row.salesOrderNo ? `销售单 ${row.salesOrderNo}` : '销售来源未登记'
+  }
+  const parts = [row.orderNo ? `工单 ${row.orderNo}` : '生产工单未登记']
+  if (row.processName) parts.push(`工序 ${row.processName}`)
+  parts.push(row.stockProduction ? '备库生产（无销售订单）' : row.salesOrderNo ? `销售单 ${row.salesOrderNo}` : '销售来源未登记')
+  return parts.join(' · ')
 }
 const statusLabel = (status?: string) =>
   // dev-20260922-011（G6）：INSPECTING 由「保存录入」推进 → 语义是"已录入、待判定"
