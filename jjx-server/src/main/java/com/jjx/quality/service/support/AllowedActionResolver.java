@@ -30,12 +30,6 @@ public final class AllowedActionResolver {
      * @param hasOpenDefect 是否还有未处置不良（有则引导去不良台账，不给批级动作）
      */
     public static List<AllowedActionEnum> forLot(String status, boolean superseded, boolean hasOpenDefect) {
-        return forLot(status, superseded, hasOpenDefect, true);
-    }
-
-    /** Rework inspection must wait for its linked rework execution to complete. */
-    public static List<AllowedActionEnum> forLot(String status, boolean superseded, boolean hasOpenDefect,
-                                                  boolean reworkExecutionComplete) {
         if (superseded) {
             // 失效批一律只读（034 的教训：界面不能给注定失败的动作）
             return List.of();
@@ -48,10 +42,8 @@ public final class AllowedActionResolver {
         String s = status == null ? "" : status.trim().toUpperCase();
         switch (s) {
             case "PENDING", "INSPECTING" -> {
-                if (reworkExecutionComplete) {
-                    actions.add(AllowedActionEnum.LOT_INSPECT);
-                    actions.add(AllowedActionEnum.LOT_JUDGE);
-                }
+                actions.add(AllowedActionEnum.LOT_INSPECT);
+                actions.add(AllowedActionEnum.LOT_JUDGE);
             }
             case "JUDGED" -> actions.add(AllowedActionEnum.LOT_REINSPECT);
             case "CLOSED" -> actions.add(AllowedActionEnum.LOT_REOPEN);
@@ -69,14 +61,6 @@ public final class AllowedActionResolver {
 
     /** 同上，含「有未处置不良」分支（dev-20260923-039 第二片：批级动作让位给不良台账） */
     public static String lotBlockReason(String status, boolean superseded, boolean hasOpenDefect) {
-        return lotBlockReason(status, superseded, hasOpenDefect, true);
-    }
-
-    public static String lotBlockReason(String status, boolean superseded, boolean hasOpenDefect,
-                                        boolean reworkExecutionComplete) {
-        if (!reworkExecutionComplete) {
-            return "返工工序尚未完工，请先到「生产管理 → 工序执行」完成返工工序，再判定复检批";
-        }
         if (superseded) {
             return "该批已被后续复检版本取代（已失效），只能查看/打印——请对最新版本操作";
         }

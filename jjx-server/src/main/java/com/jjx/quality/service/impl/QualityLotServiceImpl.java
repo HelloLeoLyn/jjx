@@ -28,7 +28,6 @@ import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionWorkReport;
-import com.jjx.production.enums.ExecutionStatusEnum;
 import com.jjx.production.enums.ExecutionTypeEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
@@ -207,14 +206,6 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
 
     private boolean isReworkInspection(QualityLot lot) {
         return reworkExecutionOf(lot) != null;
-    }
-
-    private boolean isReworkExecutionComplete(QualityLot lot) {
-        ProductionOperationExecution execution = reworkExecutionOf(lot);
-        if (execution == null) {
-            return true;
-        }
-        return execution != null && ExecutionStatusEnum.COMPLETED.getValue().equals(execution.getExecutionStatus());
     }
 
     @Override
@@ -412,13 +403,10 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         }
         for (QualityLot lot : lots) {
             boolean isSuperseded = superseded.contains(lot.getLotId());
-            boolean reworkExecutionComplete = isReworkExecutionComplete(lot);
             lot.setSuperseded(isSuperseded);
-            lot.setReworkInspectionBlocked(!reworkExecutionComplete);
             // dev-20260923-039（第二片）：allowedActions 由唯一出处算好下发，前端只按它渲染
             lot.setAllowedActions(AllowedActionEnum.codesOf(AllowedActionResolver.forLot(
-                    lot.getStatus(), isSuperseded, withOpenDefect.contains(lot.getLotId()),
-                    reworkExecutionComplete)));
+                    lot.getStatus(), isSuperseded, withOpenDefect.contains(lot.getLotId()))));
         }
     }
 
@@ -886,12 +874,11 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         }
         boolean superseded = lot.getLotId() != null && !isLatestVersion(lot.getLotId());
         boolean openDefect = hasOpenDefect(lot.getLotId());
-        boolean reworkExecutionComplete = isReworkExecutionComplete(lot);
         List<AllowedActionEnum> allowed = AllowedActionResolver.forLot(
-                lot.getStatus(), superseded, openDefect, reworkExecutionComplete);
+                lot.getStatus(), superseded, openDefect);
         if (!allowed.contains(action)) {
             throw new BusinessException(AllowedActionResolver.lotBlockReason(
-                    lot.getStatus(), superseded, openDefect, reworkExecutionComplete));
+                    lot.getStatus(), superseded, openDefect));
         }
     }
 }

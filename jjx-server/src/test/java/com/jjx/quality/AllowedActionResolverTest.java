@@ -116,15 +116,6 @@ class AllowedActionResolverTest {
     }
 
     @Test
-    void incompleteReworkExecutionBlocksInspectionAndJudgement() {
-        assertTrue(AllowedActionResolver.forLot("INSPECTING", false, false, false).isEmpty());
-        assertTrue(AllowedActionResolver.lotBlockReason("INSPECTING", false, false, false)
-                .contains("工序执行"));
-        assertTrue(AllowedActionResolver.forLot("INSPECTING", false, false, true)
-                .contains(AllowedActionEnum.LOT_JUDGE));
-    }
-
-    @Test
     void productionTaskActionsComeFromResolver() {
         assertEquals(List.of(AllowedActionEnum.TASK_FLOW, AllowedActionEnum.TASK_ASSIGN,
                         AllowedActionEnum.TASK_RETURN, AllowedActionEnum.TASK_RECALL),

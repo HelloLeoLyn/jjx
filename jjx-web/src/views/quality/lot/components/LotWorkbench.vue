@@ -130,9 +130,6 @@
         <el-table-column prop="inspector" label="检验员" width="100" />
         <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
-            <div v-if="row.reworkInspectionBlocked" class="rework-block-hint">
-              返工工序尚未完工。请先到「生产管理 → 工序执行」完成返工工序，再回来判定复检批。
-            </div>
             <el-button
               v-if="canInspect && can(row, 'LOT_INSPECT')"
               link
@@ -891,13 +888,6 @@ onMounted(() => load(1))
 .no-action {
   color: #c0c4cc;
   font-size: 12px;
-}
-.rework-block-hint {
-  max-width: 275px;
-  margin-bottom: 4px;
-  color: var(--el-color-warning-dark-2);
-  font-size: 12px;
-  line-height: 1.5;
 }
 .page-help {
   margin-bottom: 12px;
