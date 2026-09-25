@@ -22,11 +22,14 @@ import com.jjx.quality.mapper.QualityNcrMapper;
 import com.jjx.quality.mapper.QualityNcrActionMapper;
 import com.jjx.quality.service.QualityLotService;
 import com.jjx.quality.service.support.AllowedActionResolver;
+import com.jjx.quality.service.support.QualityLotLineagePolicy;
 import com.jjx.inventory.domain.InventoryInboundOrder;
 import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionWorkReport;
+import com.jjx.production.enums.ExecutionStatusEnum;
+import com.jjx.production.enums.ExecutionTypeEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
@@ -164,6 +167,54 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         Long children = lotMapper.selectCount(new LambdaQueryWrapper<QualityLot>()
                 .eq(QualityLot::getParentLotId, lotId));
         return children == null || children == 0;
+    }
+
+    @Override
+    public Set<Long> effectiveSupersededLotIds(List<QualityLot> lots) {
+        if (lots == null || lots.isEmpty()) {
+            return Set.of();
+        }
+        Map<Long, ProductionOperationExecution> executions = executionMapForLots(lots);
+        Set<Long> reworkExecutionIds = executions.values().stream()
+                .filter(execution -> ExecutionTypeEnum.REWORK.getCode().equals(execution.getExecutionType()))
+                .map(ProductionOperationExecution::getExecutionId)
+                .collect(Collectors.toSet());
+        return QualityLotLineagePolicy.effectiveSupersededLotIds(lots, reworkExecutionIds);
+    }
+
+    private Map<Long, ProductionOperationExecution> executionMapForLots(List<QualityLot> lots) {
+        Set<Long> executionIds = lots.stream()
+                .map(QualityLot::getExecutionId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (executionIds.isEmpty()) {
+            return Map.of();
+        }
+        return executionMapper.selectBatchIds(executionIds).stream()
+                .filter(execution -> execution.getExecutionId() != null)
+                .collect(Collectors.toMap(ProductionOperationExecution::getExecutionId, Function.identity()));
+    }
+
+    private ProductionOperationExecution reworkExecutionOf(QualityLot lot) {
+        if (lot == null || lot.getExecutionId() == null
+                || !QualityLotTypeEnum.FQC.getCode().equalsIgnoreCase(lot.getLotType())) {
+            return null;
+        }
+        ProductionOperationExecution execution = executionMapper.selectById(lot.getExecutionId());
+        return execution != null && ExecutionTypeEnum.REWORK.getCode().equals(execution.getExecutionType())
+                ? execution : null;
+    }
+
+    private boolean isReworkInspection(QualityLot lot) {
+        return reworkExecutionOf(lot) != null;
+    }
+
+    private boolean isReworkExecutionComplete(QualityLot lot) {
+        ProductionOperationExecution execution = reworkExecutionOf(lot);
+        if (execution == null) {
+            return true;
+        }
+        return execution != null && ExecutionStatusEnum.COMPLETED.getValue().equals(execution.getExecutionStatus());
     }
 
     @Override
@@ -361,10 +412,13 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         }
         for (QualityLot lot : lots) {
             boolean isSuperseded = superseded.contains(lot.getLotId());
+            boolean reworkExecutionComplete = isReworkExecutionComplete(lot);
             lot.setSuperseded(isSuperseded);
+            lot.setReworkInspectionBlocked(!reworkExecutionComplete);
             // dev-20260923-039（第二片）：allowedActions 由唯一出处算好下发，前端只按它渲染
             lot.setAllowedActions(AllowedActionEnum.codesOf(AllowedActionResolver.forLot(
-                    lot.getStatus(), isSuperseded, withOpenDefect.contains(lot.getLotId()))));
+                    lot.getStatus(), isSuperseded, withOpenDefect.contains(lot.getLotId()),
+                    reworkExecutionComplete)));
         }
     }
 
@@ -569,12 +623,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         }
         summary.setHasLot(true);
         // 被后继复检版本取代的批：parent_lot_id 命中任一批即视为失效（与 syncFinishInbound 同口径）
-        Set<Long> superseded = new HashSet<>();
-        for (QualityLot lot : lots) {
-            if (lot.getParentLotId() != null) {
-                superseded.add(lot.getParentLotId());
-            }
-        }
+        Set<Long> superseded = effectiveSupersededLotIds(lots);
         BigDecimal qualified = BigDecimal.ZERO;
         BigDecimal undisposed = BigDecimal.ZERO;
         BigDecimal disposedTotal = BigDecimal.ZERO;
@@ -649,12 +698,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (lots.isEmpty()) {
             return 0;
         }
-        Set<Long> superseded = new HashSet<>();
-        for (QualityLot lot : lots) {
-            if (lot.getParentLotId() != null) {
-                superseded.add(lot.getParentLotId());
-            }
-        }
+        Set<Long> superseded = effectiveSupersededLotIds(lots);
         int changed = 0;
         for (QualityLot lot : lots) {
             if (superseded.contains(lot.getLotId())) {
@@ -718,8 +762,9 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
             // IQC 返工/复检子批的 lot_quantity 已经是从父批不良中分出的净复检数量，
             // 不得再次扣父批历史报废/让步量；否则“原批5、报废1、子批4”会被算成上限3。
             // FQC/OQC 的换代批仍代表整批版本，继续沿父链累计不可回收量。
-            List<Long> chainIds = "IQC".equalsIgnoreCase(lot.getLotType())
-                    && lot.getParentLotId() != null
+            boolean isolatedReworkSubLot = isReworkInspection(lot);
+            List<Long> chainIds = isolatedReworkSubLot || ("IQC".equalsIgnoreCase(lot.getLotType())
+                    && lot.getParentLotId() != null)
                     ? List.of(lot.getLotId())
                     : chainLotIds(lot);
             BigDecimal scrap = BigDecimal.ZERO;
@@ -841,11 +886,12 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         }
         boolean superseded = lot.getLotId() != null && !isLatestVersion(lot.getLotId());
         boolean openDefect = hasOpenDefect(lot.getLotId());
+        boolean reworkExecutionComplete = isReworkExecutionComplete(lot);
         List<AllowedActionEnum> allowed = AllowedActionResolver.forLot(
-                lot.getStatus(), superseded, openDefect);
+                lot.getStatus(), superseded, openDefect, reworkExecutionComplete);
         if (!allowed.contains(action)) {
             throw new BusinessException(AllowedActionResolver.lotBlockReason(
-                    lot.getStatus(), superseded, openDefect));
+                    lot.getStatus(), superseded, openDefect, reworkExecutionComplete));
         }
     }
 }

@@ -9,6 +9,7 @@ import com.jjx.quality.dto.QualityLotQueryDTO;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 检验批服务 —— dev-20260917-001
@@ -49,6 +50,9 @@ public interface QualityLotService {
 
     /** 是否为该来源的最新版本（无后继复检版本）——评定/录入/复检只允许作用于最新版 */
     boolean isLatestVersion(Long lotId);
+
+    /** Effective FQC rollup exclusions: full-lot replacements and earlier rework sub-batches replaced by a later full revision. */
+    Set<Long> effectiveSupersededLotIds(List<QualityLot> lots);
 
     /**
      * 判定落数：写 已检/合格/不良/判定/检验员，并推进状态

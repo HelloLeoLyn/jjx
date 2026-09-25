@@ -779,11 +779,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                     "SELECT IFNULL(SUM(IFNULL(qualified_quantity,0) + IFNULL(defective_quantity,0)),0)"
                             + " FROM production_work_report WHERE order_id = ? AND report_status = 'APPROVED'",
                     java.math.BigDecimal.class, orderId));
-            good = nz(jdbcTemplate.queryForObject(
-                    "SELECT IFNULL(SUM(l.pass_quantity),0) FROM quality_lot l"
-                            + " WHERE l.order_id = ? AND l.lot_type = 'FQC' AND l.del_flag = 0"
-                            + " AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)",
-                    java.math.BigDecimal.class, orderId));
+            good = nz(qualityLotService.summarizeEffectiveFqc(orderId).getQualifiedTotal());
             inspected = nz(jdbcTemplate.queryForObject(
                     "SELECT IFNULL(SUM(IFNULL(l.inspected_quantity,0)),0) FROM quality_lot l"
                             + " WHERE l.order_id = ? AND l.lot_type = 'FQC' AND l.del_flag = 0",

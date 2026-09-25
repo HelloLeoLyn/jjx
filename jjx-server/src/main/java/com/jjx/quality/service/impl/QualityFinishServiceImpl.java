@@ -46,6 +46,8 @@ public class QualityFinishServiceImpl implements QualityFinishService {
             throw new BusinessException("判定参数不能为空");
         }
         QualityLot lot = qualityLotService.getLot(lotId);
+        // Fail early: do not validate or mutate a rework inspection before the linked operation completes.
+        qualityLotService.assertAction(lot, com.jjx.common.enums.AllowedActionEnum.LOT_JUDGE);
         BigDecimal inspected = nz(dto.getInspectedQuantity());
         BigDecimal pass = nz(dto.getPassQuantity());
         BigDecimal fail = nz(dto.getFailQuantity());

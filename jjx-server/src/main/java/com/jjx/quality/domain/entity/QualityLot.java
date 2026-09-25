@@ -90,6 +90,8 @@ public class QualityLot {
     private String parentLotNo;
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private Boolean superseded;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Boolean reworkInspectionBlocked;
 
     /** 面向用户的业务关联字段（列表/详情展示，不落库）。 */
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
