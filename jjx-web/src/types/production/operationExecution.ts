@@ -211,11 +211,18 @@ export interface ReworkTraceVO {
   reworkQuantity?: number
   executionId?: number
   processName?: string
+  taskId?: number
+  taskNo?: string
+  taskStatus?: string
+  taskAssigneeName?: string
+  hasWorkerTasks?: boolean
   executionStatus?: number
   reworkRequirement?: string
   reportedQuantity?: number
   reinspectionLotId?: number
   reinspectionLotNo?: string
+  reinspectionStatus?: string
+  reinspectionResult?: string
   recoveredQuantity?: number
   /** 一句人话：现在到哪一步、下一步做什么 */
   statusText?: string

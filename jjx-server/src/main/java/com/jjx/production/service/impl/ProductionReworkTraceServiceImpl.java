@@ -4,8 +4,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.domain.entity.ProductionTask;
 import com.jjx.production.domain.vo.ReworkTraceVO;
+import com.jjx.production.enums.ExecutionStatusEnum;
+import com.jjx.production.enums.ProductionTaskStatus;
+import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
+import com.jjx.production.mapper.ProductionTaskMapper;
 import com.jjx.production.mapper.ProductionWorkReportMapper;
 import com.jjx.production.service.ProductionReworkTraceService;
 import com.jjx.quality.domain.entity.QualityLot;
@@ -16,6 +21,8 @@ import com.jjx.quality.mapper.QualityNcrActionMapper;
 import com.jjx.quality.mapper.QualityNcrMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -37,9 +44,11 @@ public class ProductionReworkTraceServiceImpl implements ProductionReworkTraceSe
     private final QualityNcrActionMapper ncrActionMapper;
     private final QualityNcrMapper ncrMapper;
     private final ProductionOperationExecutionMapper executionMapper;
+    private final ProductionTaskMapper taskMapper;
     private final ProductionWorkReportMapper workReportMapper;
     private final QualityLotMapper qualityLotMapper;
     private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     public List<ReworkTraceVO> trace(Long orderId, Long executionId, Long ncrId) {
@@ -98,20 +107,62 @@ public class ProductionReworkTraceServiceImpl implements ProductionReworkTraceSe
             vo.setExecutionStatus(execution.getExecutionStatus());
             vo.setReworkRequirement(reworkRequirementOf(execution));
             vo.setReportedQuantity(reportedQuantity(execution.getExecutionId()));
+            attachTaskProgress(vo, execution.getExecutionId());
         }
 
-        QualityLot lot = action.getReinspectionLotId() == null
-                ? null : qualityLotMapper.selectById(action.getReinspectionLotId());
+        QualityLot lot = reinspectionLotOf(action, ncr);
         if (lot != null) {
             vo.setReinspectionLotId(lot.getLotId());
             vo.setReinspectionLotNo(lot.getLotNo());
+            vo.setReinspectionStatus(lot.getStatus());
+            vo.setReinspectionResult(lot.getResult());
             vo.setRecoveredQuantity(nz(lot.getPassQuantity()));
         }
 
-        vo.setStatusText(buildStatusText(action.getStatus(),
-                execution == null ? null : execution.getExecutionStatus(),
-                vo.getReworkQuantity(), vo.getReportedQuantity(), vo.getRecoveredQuantity(), lot != null));
+        vo.setStatusText(buildStatusText(action.getStatus(), vo.getExecutionStatus(),
+                vo.getReworkQuantity(), vo.getReportedQuantity(), vo.getRecoveredQuantity(), lot,
+                vo.getTaskNo(), vo.getTaskStatus(), vo.getTaskAssigneeName(),
+                Boolean.TRUE.equals(vo.getHasWorkerTasks())));
         return vo;
+    }
+
+    private void attachTaskProgress(ReworkTraceVO vo, Long executionId) {
+        List<ProductionTask> tasks = taskMapper.selectList(new LambdaQueryWrapper<ProductionTask>()
+                .eq(ProductionTask::getExecutionId, executionId)
+                .orderByAsc(ProductionTask::getTaskId));
+        ProductionTask root = tasks.stream()
+                .filter(task -> task.getParentTaskId() == null)
+                .findFirst()
+                .orElse(null);
+        if (root == null) {
+            vo.setHasWorkerTasks(false);
+            return;
+        }
+        vo.setTaskId(root.getTaskId());
+        vo.setTaskNo(root.getTaskNo());
+        vo.setTaskStatus(root.getStatus());
+        if (root.getAssigneeId() != null) {
+            vo.setTaskAssigneeName(jdbcTemplate.query(
+                    "SELECT COALESCE(NULLIF(nick_name, ''), user_name) FROM sys_user WHERE user_id = ?",
+                    (ResultSetExtractor<String>) rs -> rs.next() ? rs.getString(1) : null,
+                    root.getAssigneeId()));
+        }
+        vo.setHasWorkerTasks(tasks.stream().anyMatch(task -> root.getTaskId().equals(task.getParentTaskId())
+                && !ProductionTaskStatus.CANCELLED.getCode().equals(task.getStatus())));
+    }
+
+    private QualityLot reinspectionLotOf(QualityNcrAction action, QualityNcr ncr) {
+        if (action.getReinspectionLotId() != null) {
+            return qualityLotMapper.selectById(action.getReinspectionLotId());
+        }
+        if (ncr == null || ncr.getLotId() == null) {
+            return null;
+        }
+        return qualityLotMapper.selectOne(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getParentLotId, ncr.getLotId())
+                .eq(QualityLot::getDelFlag, 0)
+                .orderByDesc(QualityLot::getLotId)
+                .last("LIMIT 1"));
     }
 
     /** 该返工工序已审批通过的报工量（合格+不良，即实际修了多少件） */
@@ -154,6 +205,14 @@ public class ProductionReworkTraceServiceImpl implements ProductionReworkTraceSe
     public static String buildStatusText(String actionStatus, Integer executionStatus, BigDecimal reworkQuantity,
                                          BigDecimal reportedQuantity, BigDecimal recoveredQuantity,
                                          boolean hasReinspectionLot) {
+        return buildStatusText(actionStatus, executionStatus, reworkQuantity, reportedQuantity, recoveredQuantity,
+                hasReinspectionLot ? new QualityLot() : null, null, null, null, false);
+    }
+
+    public static String buildStatusText(String actionStatus, Integer executionStatus, BigDecimal reworkQuantity,
+                                         BigDecimal reportedQuantity, BigDecimal recoveredQuantity, QualityLot lot,
+                                         String taskNo, String taskStatus, String taskAssigneeName,
+                                         boolean hasWorkerTasks) {
         BigDecimal qty = nz(reworkQuantity);
         String quota = plain(qty);
         if ("DONE".equals(actionStatus)) {
@@ -164,29 +223,59 @@ public class ProductionReworkTraceServiceImpl implements ProductionReworkTraceSe
             return "返工复检合格 " + plain(recovered) + "/" + quota + " 件，还差 "
                     + plain(qty.subtract(recovered)) + " 件（走让步接收或报废）";
         }
-        int status = executionStatus == null ? -1 : executionStatus;
-        switch (status) {
-            case 0:
-            case 1:
-                return "把报废/不良的 " + quota + " 件修回来——先开工这道返工工序";
-            case 2:
-                return nz(reportedQuantity).signum() > 0
-                        ? "返工进行中，已报 " + plain(reportedQuantity) + "/" + quota + " 件"
-                        : "返工进行中，尚未报工";
-            case 3:
-                return "返工已暂停，恢复后继续报工";
-            case 4:
-                return hasReinspectionLot
-                        ? "返工已完工，去成品检验判定复检批并回收"
-                        : "返工已完工，去成品检验判定并复检（复检合格才算回收）";
-            case 5:
-            case 6:
-                return "返工工序已跳过/取消——需另走让步接收或报废";
-            default:
-                return status < 0
-                        ? "返工处置已登记，返工工序待生成"
-                        : "返工在制（工序状态 " + status + "）";
+        if (executionStatus == null) {
+            return "返工处置已登记，返工工序待生成";
         }
+        if (ExecutionStatusEnum.PENDING.getValue().equals(executionStatus)
+                || ExecutionStatusEnum.PREPARING.getValue().equals(executionStatus)) {
+            if (!hasWorkerTasks) {
+                String owner = taskAssigneeName == null || taskAssigneeName.isBlank()
+                        ? "一级负责人" : "一级负责人「" + taskAssigneeName + "」";
+                return "返工任务「" + displayTaskNo(taskNo) + "」（" + quota + " 件，"
+                        + taskStatusLabel(taskStatus) + "）"
+                        + "；请" + owner + "到「生产管理 → 派工管理」分配给实际执行人";
+            }
+            return "返工任务「" + displayTaskNo(taskNo) + "」已派给执行人，请先开工，再提交报工并完成审批";
+        }
+        if (ExecutionStatusEnum.EXECUTING.getValue().equals(executionStatus)) {
+            return "返工进行中，已审批报工 " + plain(nz(reportedQuantity)) + "/" + quota + " 件";
+        }
+        if (ExecutionStatusEnum.PAUSED.getValue().equals(executionStatus)) {
+            return "返工已暂停，由执行人恢复后继续报工";
+        }
+        if (ExecutionStatusEnum.COMPLETED.getValue().equals(executionStatus)) {
+            if (lot == null) {
+                return "返工已完工，待生成或关联 FQC 复检批";
+            }
+            if (QualityInspectionResultEnum.PASS.getCode().equalsIgnoreCase(lot.getResult())) {
+                return "复检批「" + displayLotNo(lot.getLotNo()) + "」已合格，可回到不良台账推进返工闭环";
+            }
+            if (QualityInspectionResultEnum.FAIL.getCode().equalsIgnoreCase(lot.getResult())) {
+                return "复检批「" + displayLotNo(lot.getLotNo()) + "」判定不合格，请按复检处置完成后再推进闭环";
+            }
+            return "返工已完工，复检批「" + displayLotNo(lot.getLotNo()) + "」待检；请到成品检验录入并判定";
+        }
+        if (ExecutionStatusEnum.SKIPPED.getValue().equals(executionStatus)
+                || ExecutionStatusEnum.CANCELLED.getValue().equals(executionStatus)) {
+            return "返工工序已跳过或取消——需另走让步接收或报废";
+        }
+        ExecutionStatusEnum status = ExecutionStatusEnum.getByValue(executionStatus);
+        return status == null ? "返工工序状态待核对" : "返工工序「" + status.getLabel() + "」";
+    }
+
+    private static String displayTaskNo(String taskNo) {
+        return taskNo == null || taskNo.isBlank() ? "待生成任务号" : taskNo;
+    }
+
+    private static String displayLotNo(String lotNo) {
+        return lotNo == null || lotNo.isBlank() ? "待生成批号" : lotNo;
+    }
+
+    private static String taskStatusLabel(String taskStatus) {
+        if (ProductionTaskStatus.PENDING.getCode().equals(taskStatus)) return "待派工";
+        if (ProductionTaskStatus.ACTIVE.getCode().equals(taskStatus)) return "进行中";
+        if (ProductionTaskStatus.COMPLETED.getCode().equals(taskStatus)) return "已完成";
+        return "";
     }
 
     private static BigDecimal nz(BigDecimal value) {

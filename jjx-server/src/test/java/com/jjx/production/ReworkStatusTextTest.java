@@ -1,6 +1,7 @@
 package com.jjx.production;
 
 import com.jjx.production.service.impl.ProductionReworkTraceServiceImpl;
+import com.jjx.quality.domain.entity.QualityLot;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -26,19 +27,32 @@ class ReworkStatusTextTest {
                 bd(reworkQty), bd(reportedQty), bd(recoveredQty), hasLot);
     }
 
+    private static String pendingTaskText(String taskStatus, boolean hasWorkerTasks) {
+        return ProductionReworkTraceServiceImpl.buildStatusText("PROCESSING", 0, bd("2"), bd("0"), bd("0"),
+                null, "WO-1-P03-T01", taskStatus, "一级负责人", hasWorkerTasks);
+    }
+
     @Test
     void waitingToStartTellsWorkerWhatToDo() {
-        String s = text("PROCESSING", 0, "2", "0", "0", false);
-        assertTrue(s.contains("修回来"), s);
-        assertTrue(s.contains("先开工"), s);
+        String s = pendingTaskText("PENDING", false);
+        assertTrue(s.contains("WO-1-P03-T01"), s);
+        assertTrue(s.contains("派工"), s);
         assertTrue(s.contains("2"), s);
     }
 
     @Test
+    void dispatchedTaskPointsWorkerToStartAndReport() {
+        String s = pendingTaskText("ACTIVE", true);
+        assertTrue(s.contains("已派给执行人"), s);
+        assertTrue(s.contains("开工"), s);
+        assertTrue(s.contains("报工并完成审批"), s);
+    }
+
+    @Test
     void executingShowsReportedProgress() {
-        assertTrue(text("PROCESSING", 2, "2", "0", null, false).contains("尚未报工"));
+        assertTrue(text("PROCESSING", 2, "2", "0", null, false).contains("0/2"));
         String half = text("PROCESSING", 2, "2", "1", null, false);
-        assertTrue(half.contains("已报 1/2"), half);
+        assertTrue(half.contains("1/2"), half);
     }
 
     @Test
@@ -49,7 +63,18 @@ class ReworkStatusTextTest {
     @Test
     void finishedReworkPointsToReinspection() {
         assertTrue(text("PROCESSING", 4, "2", "2", "0", false).contains("复检"));
-        assertTrue(text("PROCESSING", 4, "2", "2", "0", true).contains("判定复检批"));
+        assertTrue(text("PROCESSING", 4, "2", "2", "0", true).contains("待检"));
+    }
+
+    @Test
+    void passedReinspectionPointsBackToNcrClosure() {
+        QualityLot lot = new QualityLot();
+        lot.setLotNo("FQC-1");
+        lot.setResult("pass");
+        String s = ProductionReworkTraceServiceImpl.buildStatusText("PROCESSING", 4,
+                bd("2"), bd("2"), bd("2"), lot, "WO-1-P03-T01", "COMPLETED", "负责人", true);
+        assertTrue(s.contains("FQC-1"), s);
+        assertTrue(s.contains("推进返工闭环"), s);
     }
 
     @Test
@@ -75,6 +100,9 @@ class ReworkStatusTextTest {
 
     @Test
     void quantityFormattingHasNoTrailingZeros() {
-        assertEquals("把报废/不良的 2 件修回来——先开工这道返工工序", text("PROCESSING", 0, "2.0000", "0", "0", false));
+        String s = ProductionReworkTraceServiceImpl.buildStatusText("PROCESSING", 0,
+                bd("2.0000"), bd("0"), bd("0"), null, "WO-1-P03-T01", "PENDING", "负责人", false);
+        assertTrue(s.contains("2 件"), s);
+        assertTrue(!s.contains("2.0000"), s);
     }
 }

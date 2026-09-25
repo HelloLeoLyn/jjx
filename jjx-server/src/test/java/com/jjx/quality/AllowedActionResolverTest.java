@@ -106,10 +106,12 @@ class AllowedActionResolverTest {
 
     @Test
     void processingReworkCanSupplementButNotAfterDone() {
-        // dev-20260923-043：返工退料落地后，在制返工再下发「返工退料」（净耗 = 补料 − 退料）
+        // 在制返工保留补料/退料；工序未完成时不提供注定失败的闭环动作。
+        assertEquals(List.of(AllowedActionEnum.NCR_REWORK_SUPPLEMENT, AllowedActionEnum.NCR_REWORK_RETURN),
+                AllowedActionResolver.forNcrAction("REWORK", "PROCESSING"));
         assertEquals(List.of(AllowedActionEnum.NCR_REWORK_COMPLETE, AllowedActionEnum.NCR_REWORK_SUPPLEMENT,
                         AllowedActionEnum.NCR_REWORK_RETURN),
-                AllowedActionResolver.forNcrAction("REWORK", "PROCESSING"));
+                AllowedActionResolver.forNcrAction("REWORK", "PROCESSING", true));
         assertTrue(AllowedActionResolver.forNcrAction("REWORK", "DONE").isEmpty());
     }
 

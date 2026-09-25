@@ -198,6 +198,9 @@ export interface QualityNcrAction {
   customerConfirmed?: number
   approvedBy?: string
   resultRemark?: string
+  operatorName?: string
+  createBy?: string
+  createTime?: string
   reworkExecutionId?: number
   reinspectionLotId?: number
 }

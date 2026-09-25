@@ -126,6 +126,15 @@ public final class AllowedActionResolver {
      * @param actionStatus  PENDING / PROCESSING / DONE / VOID
      */
     public static List<AllowedActionEnum> forNcrAction(String actionType, String actionStatus) {
+        return forNcrAction(actionType, actionStatus, false);
+    }
+
+    /**
+     * 返工推进动作需同时满足返工工序已完成，且复检批不存在（可生成/关联）或已经合格。
+     * 在返工进行中或复检未完成时，仅保留补料/退料动作，避免页面提供必然失败的「推进闭环」。
+     */
+    public static List<AllowedActionEnum> forNcrAction(String actionType, String actionStatus,
+                                                        boolean reworkAdvanceReady) {
         List<AllowedActionEnum> actions = new ArrayList<>();
         String type = actionType == null ? "" : actionType.trim().toUpperCase();
         String status = actionStatus == null ? "" : actionStatus.trim().toUpperCase();
@@ -138,9 +147,11 @@ public final class AllowedActionResolver {
             actions.add(AllowedActionEnum.NCR_SCRAP_APPROVE);
             actions.add(AllowedActionEnum.NCR_SCRAP_REJECT);
         }
-        // 返工：在制中可补料 + 退料（dev-20260923-043 已落地：净耗 = 补料 − 退料）
+        // 返工：在制中可补料 + 退料；推进闭环须通过执行完工/复检结果门禁。
         if ("REWORK".equals(type) && ("PENDING".equals(status) || "PROCESSING".equals(status))) {
-            actions.add(AllowedActionEnum.NCR_REWORK_COMPLETE);
+            if (reworkAdvanceReady) {
+                actions.add(AllowedActionEnum.NCR_REWORK_COMPLETE);
+            }
             actions.add(AllowedActionEnum.NCR_REWORK_SUPPLEMENT);
             actions.add(AllowedActionEnum.NCR_REWORK_RETURN);
         }

@@ -56,3 +56,4 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-24 18:12:05	guard	sys_task_register_dev-20260924-034_20260924-1812-guard.sql	1863a3474747986eee3573cdc64df03c	1222740	1	大黄(OpenClaw)	dev-20260924-034
 2026-09-24 22:48:43	guard	inventory_inbound_item_iqc_lineage_IN260924001_20260924-2248.sql	a9290b53e1d96f655695fe24fab9dfe6	2052	1	Codex	dev-20260924-037
 2026-09-24 22:48:43	guard	inventory_iqc_batch_iqc_lineage_IN260924001_20260924-2248.sql	7ab1a62bfb5942c4185d3a4b29bbc740	1922	1	Codex	dev-20260924-037
+2026-09-25 19:10:41	guard	sys_task_register_20260925-20260925-1910_guard.sql	a69b061047971745c9a79a2e0e5c7ef9	1238609	3	Codex	dev-20260925-001

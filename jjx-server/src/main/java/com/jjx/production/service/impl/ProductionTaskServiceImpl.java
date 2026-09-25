@@ -242,6 +242,9 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     + "WHERE oe.execution_id = production_task.execution_id AND oe.order_id = {0})",
                     queryDTO.getOrderId());
         }
+        if (queryDTO != null && queryDTO.getExecutionId() != null) {
+            wrapper.eq(ProductionTask::getExecutionId, queryDTO.getExecutionId());
+        }
         wrapper.last("ORDER BY (SELECT CASE WHEN oe2.execution_type = 'REWORK' THEN 1 ELSE 0 END "
                 + "FROM production_operation_execution oe2 WHERE oe2.execution_id = production_task.execution_id) DESC, "
                 + "production_task.task_id ASC");

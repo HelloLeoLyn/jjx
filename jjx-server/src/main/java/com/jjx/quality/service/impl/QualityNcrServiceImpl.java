@@ -262,9 +262,36 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         for (QualityNcrAction action : actions) {
             action.setAllowedActions(com.jjx.common.enums.AllowedActionEnum.codesOf(
                     com.jjx.quality.service.support.AllowedActionResolver
-                            .forNcrAction(action.getActionType(), action.getStatus())));
+                            .forNcrAction(action.getActionType(), action.getStatus(),
+                                    reworkAdvanceReady(action))));
         }
         return actions;
+    }
+
+    private boolean reworkAdvanceReady(QualityNcrAction action) {
+        if (!"REWORK".equals(action.getActionType()) || !"PROCESSING".equals(action.getStatus())
+                || action.getReworkExecutionId() == null) {
+            return false;
+        }
+        ProductionOperationExecution execution = executionMapper.selectById(action.getReworkExecutionId());
+        if (execution == null || !com.jjx.production.enums.ExecutionStatusEnum.COMPLETED.getValue()
+                .equals(execution.getExecutionStatus())) {
+            return false;
+        }
+        QualityNcr ncr = ncrMapper.selectById(action.getNcrId());
+        if (ncr == null) {
+            return false;
+        }
+        Long reinspectionLotId = action.getReinspectionLotId();
+        if (reinspectionLotId == null) {
+            reinspectionLotId = findChildLotId(ncr.getLotId());
+        }
+        if (reinspectionLotId == null) {
+            return true;
+        }
+        QualityLot reinspectionLot = qualityLotMapper.selectById(reinspectionLotId);
+        return reinspectionLot != null && com.jjx.production.enums.QualityInspectionResultEnum.PASS.getCode()
+                .equalsIgnoreCase(reinspectionLot.getResult());
     }
 
     @Override

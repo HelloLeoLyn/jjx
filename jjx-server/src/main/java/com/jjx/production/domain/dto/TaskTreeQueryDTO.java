@@ -24,4 +24,7 @@ public class TaskTreeQueryDTO {
 
     @Schema(description = "工单过滤（dev-20260923-035：派工管理「上工单、下派工」用；可空=全部）")
     private Long orderId;
+
+    @Schema(description = "工序执行过滤（从返工进度直达派工时使用；可空=该工单全部任务）")
+    private Long executionId;
 }

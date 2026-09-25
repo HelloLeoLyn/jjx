@@ -23,7 +23,7 @@
       type="info"
       :closable="false"
       show-icon
-      :title="`已筛选工单 #${selectedOrderId} 的任务（清空选择后任务列表将清空）`"
+      :title="`已筛选工单 #${selectedOrderId} 的任务${selectedExecutionId ? `，并精准定位返工工序 #${selectedExecutionId}` : ''}（清空选择后任务列表将清空）`"
     />
 
     <!-- 顶部统计（当前页 First Task 数据） -->
@@ -519,6 +519,7 @@ const {
   queryParams,
   filterForm,
   selectedOrderId,
+  selectedExecutionId,
   handleOrderSelected,
   getList,
   statUnassigned,

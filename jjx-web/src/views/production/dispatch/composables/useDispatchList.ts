@@ -30,6 +30,11 @@ export function useDispatchList() {
       ? Number(route.query.orderId)
       : null
   )
+  const selectedExecutionId = ref<number | null>(
+    typeof route.query.executionId === 'string' && Number(route.query.executionId) > 0
+      ? Number(route.query.executionId)
+      : null
+  )
   let listRequestVersion = 0
   let hasHandledOrderSelection = false
 
@@ -50,6 +55,7 @@ export function useDispatchList() {
         keyword: filterForm.keyword.trim() || undefined,
         status: filterForm.status || undefined,
         orderId,
+        executionId: selectedExecutionId.value || undefined,
       })
       if (requestVersion !== listRequestVersion || selectedOrderId.value !== orderId) return
       const page: PageResult<TaskTreeRow> | null = res?.data
@@ -84,6 +90,7 @@ export function useDispatchList() {
   const handleOrderSelected = (order: { orderId?: number | string } | null) => {
     const nextOrderId = order?.orderId ? Number(order.orderId) : null
     if (hasHandledOrderSelection && selectedOrderId.value === nextOrderId) return
+    if (selectedOrderId.value !== nextOrderId) selectedExecutionId.value = null
     hasHandledOrderSelection = true
     selectedOrderId.value = nextOrderId
     queryParams.pageNum = 1
@@ -144,6 +151,7 @@ export function useDispatchList() {
     queryParams,
     filterForm,
     selectedOrderId,
+    selectedExecutionId,
     handleOrderSelected,
     getList,
     statUnassigned,

@@ -42,6 +42,21 @@ public class ReworkTraceVO {
     @Schema(description = "返工工序名称")
     private String processName;
 
+    @Schema(description = "返工任务ID")
+    private Long taskId;
+
+    @Schema(description = "返工任务编号")
+    private String taskNo;
+
+    @Schema(description = "一级责任人名下的返工任务状态")
+    private String taskStatus;
+
+    @Schema(description = "返工任务一级责任人")
+    private String taskAssigneeName;
+
+    @Schema(description = "返工任务是否已向实际执行人分派子任务")
+    private Boolean hasWorkerTasks;
+
     @Schema(description = "返工工序状态（ExecutionStatusEnum 值：0待执行/1准备中/2执行中/3已暂停/4已完成/5已跳过/6已取消）")
     private Integer executionStatus;
 
@@ -56,6 +71,12 @@ public class ReworkTraceVO {
 
     @Schema(description = "复检批号")
     private String reinspectionLotNo;
+
+    @Schema(description = "复检批状态")
+    private String reinspectionStatus;
+
+    @Schema(description = "复检结果")
+    private String reinspectionResult;
 
     @Schema(description = "已回收良品数（复检批合格量）")
     private BigDecimal recoveredQuantity;
