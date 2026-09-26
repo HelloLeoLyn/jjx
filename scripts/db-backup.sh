@@ -11,7 +11,7 @@
 #   bash scripts/db-backup.sh --help
 #
 # 危险等级：🟡 只读数据库 + 写备份文件（不写库、不改库内数据）；--dry-run 为 🟢 纯预览
-# 前置：mysqldump 可用；数据库可达；JJX_BACKUP_DIR 可写（默认仓库内 jjx-docs/sql/backups/，2026-09-23 恢复入库口径）
+# 前置：mysql/mysqldump 可用；数据库可达；JJX_BACKUP_DIR 可写（默认仓库内 jjx-docs/sql/backups/，2026-09-23 恢复入库口径）
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
 #
 # 定位（与其它脚本的关系，别用错）：
@@ -25,7 +25,7 @@
 #   保留策略：超过 --keep-days（默认 14 天）删除；并自动做“每日只留最新一份”去重。
 #   备份默认落仓库内 jjx-docs/sql/backups/（**默认排除人事档案表 hr_employee**），随任务提交推送；
 #   索引同目录 backup-index.tsv（时间/类型/文件/md5/字节/表数/执行人/任务码）。
-# 环境覆盖：DB_HOST DB_PORT DB_USER DB_PASS DB_NAME / JJX_BACKUP_DIR / AI_AGENT
+# 环境覆盖：DB_HOST DB_PORT DB_USER DB_PASS DB_NAME / MYSQL_BIN_DIR / JJX_BACKUP_DIR / AI_AGENT
 # ============================================================================
 set -uo pipefail
 
@@ -59,7 +59,8 @@ usage() {
   cat <<'EOF'
 用途: 立刻做一份全库备份（只读库，不动任何库内数据），产物落在 JJX_BACKUP_DIR
 危险等级: 🟡 只读数据库 + 写备份文件；--dry-run 为 🟢 纯预览（不落盘）
-前置: mysqldump 可用；数据库可达；JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）可写
+前置: mysql/mysqldump 可用；数据库可达；JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）可写
+客户端: Linux/WSL2 安装 mysql-client；Windows Git Bash 可将 MySQL bin 目录加入 PATH，或设置 MYSQL_BIN_DIR
 产物入库: 备份文件默认落在仓库内 jjx-docs/sql/backups/，**默认排除 hr_employee**，随任务提交推送
 用法:
   bash scripts/db-backup.sh [选项]
@@ -70,6 +71,7 @@ usage() {
   --reason <text>    自定义"原因"文案（默认按 tag 自动生成）
   --exclude-table <表名>  导出时排除该表（可重复），内部转 mysqldump --ignore-table；默认已排除 hr_employee
   --out-dir <dir>    指定输出目录（覆盖 JJX_BACKUP_DIR；默认仓库内 jjx-docs/sql/backups/）
+  MYSQL_BIN_DIR      mysql/mysqldump 所在目录（Windows 示例：C:/Program Files/MySQL/MySQL Server 8.0/bin）
   --keep-days <N>    过期清理阈值，默认 14 天
   --no-clean         本次不清理过期备份
   --dry-run          只打印将写入的路径与将清理的文件，不真正备份
@@ -123,10 +125,49 @@ for t in ${EXCLUDES[@]+${EXCLUDES[@]}}; do
   IGNORE_ARGS+=(--ignore-table="${DB_NAME}.${t}")
 done
 
-command -v mysqldump >/dev/null 2>&1 || die "找不到 mysqldump（Debian/Ubuntu: apt install mysql-client）"
+# 可选指定客户端目录。Git Bash 下兼容 C:/... 和 C:\\... 形式。
+if [ -n "${MYSQL_BIN_DIR:-}" ]; then
+  if command -v cygpath >/dev/null 2>&1; then
+    MYSQL_BIN_DIR="$(cygpath -u "$MYSQL_BIN_DIR" 2>/dev/null || printf '%s' "$MYSQL_BIN_DIR")"
+  fi
+  [ -d "$MYSQL_BIN_DIR" ] && PATH="$MYSQL_BIN_DIR:$PATH"
+fi
+
+# Windows Git Bash 常见安装位置。WSL2 继续只使用 WSL 内的客户端。
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*)
+    for pf in "${PROGRAMFILES:-}" "$(printenv 'PROGRAMFILES(X86)' 2>/dev/null || true)" "/c/Program Files" "/c/Program Files (x86)"; do
+      [ -n "$pf" ] || continue
+      if command -v cygpath >/dev/null 2>&1; then
+        pf="$(cygpath -u "$pf" 2>/dev/null || printf '%s' "$pf")"
+      fi
+      for bin_dir in "$pf"/MySQL/MySQL\ Server\ */bin "$pf"/MariaDB\ */bin; do
+        [ -d "$bin_dir" ] && PATH="$bin_dir:$PATH"
+      done
+    done
+    [ -d /c/xampp/mysql/bin ] && PATH="/c/xampp/mysql/bin:$PATH"
+    ;;
+esac
+export PATH
+
+MYSQL_BIN="$(command -v mysql 2>/dev/null || true)"
+MYSQLDUMP_BIN="$(command -v mysqldump 2>/dev/null || true)"
+if [ -z "$MYSQL_BIN" ] || [ -z "$MYSQLDUMP_BIN" ]; then
+  missing=()
+  [ -n "$MYSQL_BIN" ] || missing+=(mysql)
+  [ -n "$MYSQLDUMP_BIN" ] || missing+=(mysqldump)
+  case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*)
+      die "找不到 ${missing[*]}；请安装 MySQL Client，并将其 bin 目录加入 PATH，或设置 MYSQL_BIN_DIR"
+      ;;
+    *)
+      die "找不到 ${missing[*]}（Debian/Ubuntu: sudo apt install mysql-client；Windows Git Bash 请设置 MYSQL_BIN_DIR）"
+      ;;
+  esac
+fi
 
 export MYSQL_PWD="$DB_PASS"
-if ! mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --connect-timeout=5 -N -B \
+if ! "$MYSQL_BIN" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --connect-timeout=5 -N -B \
       -e "SELECT 1" "$DB_NAME" >/dev/null 2>&1; then
   die "连不上数据库 ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}（库没起/账号密码不对？）"
 fi
@@ -174,10 +215,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
   warn "--dry-run：未写任何文件，未动数据库"
 else
   RAW="${TARGET}.raw"
-  if ! mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 \
+  RESULT_FILE="$RAW"
+  case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*) command -v cygpath >/dev/null 2>&1 && RESULT_FILE="$(cygpath -w "$RAW")" ;;
+  esac
+  if ! "$MYSQLDUMP_BIN" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 \
         --single-transaction --set-gtid-purged=OFF --no-tablespaces \
-        ${IGNORE_ARGS[@]+"${IGNORE_ARGS[@]}"} "$DB_NAME" \
-        > "$RAW" 2>"${RAW}.err"; then
+        ${IGNORE_ARGS[@]+"${IGNORE_ARGS[@]}"} --result-file="$RESULT_FILE" "$DB_NAME" \
+        2>"${RAW}.err"; then
     sed 's/^/    /' "${RAW}.err" >&2; rm -f "$RAW" "${RAW}.err"
     die "备份失败——未产出文件"
   fi
