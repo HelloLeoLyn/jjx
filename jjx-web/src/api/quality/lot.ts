@@ -176,6 +176,9 @@ export interface QualityNcr {
   defectReason?: string
   status: string
   disposedQuantity?: number
+  completedScrapQuantity?: number
+  requestedReplacementQuantity?: number
+  remainingReplacementQuantity?: number
   inspector?: string
   /** 展示用：检验批号 —— dev-20260923-036（台账列表不再显示「批 #11」） */
   lotNo?: string

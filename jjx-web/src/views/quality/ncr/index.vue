@@ -404,7 +404,7 @@
                 <span v-else-if="row.actionType === NcrActionType.REWORK" class="rework-tip">{{ reworkOf(row)?.statusText || '请先完成返工工序，再进行复检' }}</span>
                 <el-button v-if="canNcrAction(row, 'NCR_REWORK_SUPPLEMENT') && current?.orderId" link type="warning" size="small" @click="openSupplement(row)">补料</el-button>
                 <el-button v-if="canNcrAction(row, 'NCR_REWORK_RETURN') && current?.orderId" link type="info" size="small" @click="openReworkReturn()">返工退料</el-button>
-                <el-button v-if="row.actionType === NcrActionType.SCRAP && current?.orderId" link type="warning" size="small" @click="openSupplementFromDispose(row)">申请补产物料</el-button>
+                <el-button v-if="row.actionType === NcrActionType.SCRAP && row.status === NcrActionStatus.DONE && current?.orderId && Number(current?.remainingReplacementQuantity || 0) > 0" link type="warning" size="small" @click="openSupplementFromDispose(row)">申请补产物料</el-button>
                 <el-button v-if="canNcrAction(row, 'NCR_SCRAP_APPROVE')" link type="primary" size="small" @click="handleScrapApprove(row)">审批通过</el-button>
                 <el-button v-if="canNcrAction(row, 'NCR_SCRAP_REJECT')" link type="danger" size="small" @click="handleScrapReject(row)">驳回</el-button>
                 <el-button v-if="canNcrAction(row, 'NCR_REVOKE')" link type="danger" size="small" @click="openRevoke(row)">撤销</el-button>
@@ -703,8 +703,9 @@ const openSupplementFromDispose = (action: any) => {
   supplementOrderId.value = Number(ncr.orderId)
   supplementOrderNo.value = ncr.orderNo || ''
   supplementNcrId.value = ncr.ncrId
-  // 建议补产数量默认取待处置量（工人可改）
-  supplementPresetQty.value = Number(action?.quantity) || undefined
+  // 建议量不得超过该NCR尚未申请替补的已报废余额
+  const remaining = Number(ncr.remainingReplacementQuantity || 0)
+  supplementPresetQty.value = Math.min(Number(action?.quantity) || remaining, remaining) || undefined
   supplementDialogVisible.value = true
 }
 const onSupplementSuccess = () => {

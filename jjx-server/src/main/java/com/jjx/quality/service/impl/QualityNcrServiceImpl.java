@@ -155,6 +155,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         if (ncr == null) {
             throw new BusinessException("不良台账不存在: " + ncrId);
         }
+        populateReplacementAccounting(ncr);
         return ncr;
     }
 
@@ -240,10 +241,32 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
 
     @Override
     public List<QualityNcr> listByOrder(Long orderId, Long executionId) {
-        return ncrMapper.selectList(new LambdaQueryWrapper<QualityNcr>()
+        List<QualityNcr> ncrs = ncrMapper.selectList(new LambdaQueryWrapper<QualityNcr>()
                 .eq(orderId != null, QualityNcr::getOrderId, orderId)
                 .eq(executionId != null, QualityNcr::getExecutionId, executionId)
                 .orderByAsc(QualityNcr::getNcrId));
+        ncrs.forEach(this::populateReplacementAccounting);
+        return ncrs;
+    }
+
+    private void populateReplacementAccounting(QualityNcr ncr) {
+        if (ncr == null || ncr.getNcrId() == null) return;
+        BigDecimal scrap = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(quantity),0) FROM quality_ncr_action "
+                        + "WHERE ncr_id=? AND del_flag=0 AND action_type='SCRAP' AND status='DONE'",
+                BigDecimal.class, ncr.getNcrId());
+        BigDecimal requested = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(supplement_production_quantity),0) FROM inventory_outbound_order "
+                        + "WHERE supplement_ncr_id=? AND supplement_reason_type='SCRAP_REPLENISHMENT' "
+                        + "AND order_status NOT IN (3,9)",
+                BigDecimal.class, ncr.getNcrId());
+        ncr.setCompletedScrapQuantity(nz(scrap));
+        ncr.setRequestedReplacementQuantity(nz(requested));
+        ncr.setRemainingReplacementQuantity(remainingReplacementQuantity(scrap, requested));
+    }
+
+    static BigDecimal remainingReplacementQuantity(BigDecimal completedScrap, BigDecimal requested) {
+        return nz(completedScrap).subtract(nz(requested)).max(BigDecimal.ZERO);
     }
 
     @Override

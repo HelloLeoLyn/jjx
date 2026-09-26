@@ -158,3 +158,4 @@
 | dev-20260926-001 | supplement-production-flow-dev-20260926-001.md | 补产主流程闭环与追溯修复：物料出库确认后按原路线生成补产任务，补报/补产分流并修正工单对账 |
 | dev-20260926-002 | supplement-report-guardrails-dev-20260926-002.md | 补产报工按任务剩余额度、NCR已完成报废量及已确认发料来源校验，移除旧末道入口 |
 | dev-20260926-005 | fqc-rework-child-integrity-dev-20260926-005.md | FQC返工子批纳入严格巡检口径：可判上限、工单有效合格累计和入库检查统一按批次谱系计算 |
+| dev-20260926-007 | scrap-replacement-balance-dev-20260926-007.md | 报废补产候选按已完成报废量扣减有效替补申请量，两个入口统一显示剩余可补额 |

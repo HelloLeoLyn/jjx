@@ -77,6 +77,14 @@ public class QualityNcr {
     /** 报废金额（预留，口径A暂不启用） */
     private BigDecimal scrappedAmount;
 
+    /** Non-persistent replacement accounting for the production supplement picker. */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private BigDecimal completedScrapQuantity;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private BigDecimal requestedReplacementQuantity;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private BigDecimal remainingReplacementQuantity;
+
     private String inspector;
     private String remark;
 

@@ -50,13 +50,18 @@
                 <el-option
                   v-for="n in ncrOptions"
                   :key="n.ncrId"
-                  :label="`${n.ncrNo} · ${n.productName || n.materialName || '-'} · 待处置 ${fmtNum(pendingOf(n))}`"
+                  :label="`${n.ncrNo} · 已报废 ${fmtNum(n.completedScrapQuantity)} · 已申请 ${fmtNum(n.requestedReplacementQuantity)} · 可补 ${fmtNum(n.remainingReplacementQuantity)}`"
                   :value="n.ncrId"
                 />
               </el-select>
             </el-form-item>
             <el-form-item label="补产数量" required>
-              <el-input-number v-model="supplementQuantity" :min="0.01" :precision="2" />
+              <el-input-number
+                v-model="supplementQuantity"
+                :min="0.01"
+                :max="reasonType === 'SCRAP_REPLENISHMENT' ? selectedNcr?.remainingReplacementQuantity : undefined"
+                :precision="2"
+              />
             </el-form-item>
             <el-form-item label="补料原因" required>
               <el-input v-model="supplementReason" maxlength="255" show-word-limit />
@@ -140,7 +145,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { QualityNcrStatus } from '@/enums/quality/NcrEnum'
 
 const props = withDefaults(
   defineProps<{
@@ -173,22 +177,33 @@ const ncrId = ref<number>()
 const supplementQuantity = ref<number>()
 /** 未结不良单选项（报废补产必选）—— dev-20260923-025 */
 const ncrOptions = ref<any[]>([])
-const pendingOf = (n: any) => Number(n?.defectQuantity || 0) - Number(n?.disposedQuantity || 0)
+const selectedNcr = computed(() => ncrOptions.value.find((n) => Number(n.ncrId) === Number(ncrId.value)))
 const loadNcrOptions = async () => {
   try {
     const { qualityNcrApi } = await import('@/api/quality/lot')
     const res: any = await qualityNcrApi.byOrder(props.workOrderId)
     const list = (res?.data || []) as any[]
-    ncrOptions.value = list.filter((n) => Number(pendingOf(n)) > 0
-      || (n.status === QualityNcrStatus.CLOSED && Number(n.disposedQuantity || 0) > 0))
+    ncrOptions.value = list.filter((n) => Number(n.remainingReplacementQuantity || 0) > 0)
+    if (ncrId.value) {
+      const selected = ncrOptions.value.find((n) => Number(n.ncrId) === Number(ncrId.value))
+      if (!selected) {
+        ncrId.value = undefined
+        supplementQuantity.value = undefined
+      } else if (supplementQuantity.value) {
+        supplementQuantity.value = Math.min(Number(supplementQuantity.value), Number(selected.remainingReplacementQuantity))
+      }
+    }
   } catch {
     ncrOptions.value = []
   }
 }
 const onNcrChange = () => {
   const hit = ncrOptions.value.find((n) => Number(n.ncrId) === Number(ncrId.value))
-  if (hit && !supplementQuantity.value) {
-    supplementQuantity.value = Number(pendingOf(hit)) || undefined
+  if (hit) {
+    const available = Number(hit.remainingReplacementQuantity || 0)
+    supplementQuantity.value = props.presetProductionQuantity
+      ? Math.min(Number(props.presetProductionQuantity), available)
+      : available || undefined
   }
 }
 const dialogTitle = computed(() =>
