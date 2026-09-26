@@ -160,3 +160,5 @@
 | dev-20260926-005 | fqc-rework-child-integrity-dev-20260926-005.md | FQC返工子批纳入严格巡检口径：可判上限、工单有效合格累计和入库检查统一按批次谱系计算 |
 | dev-20260926-007 | scrap-replacement-balance-dev-20260926-007.md | 报废补产候选按已完成报废量扣减有效替补申请量，两个入口统一显示剩余可补额 |
 | dev-20260926-006 | work-order-reconciliation-dev-20260926-006.md | 工单数量对账区分各工序计划投入/审批产出、末道产出、补产、FQC良品和待检批次，不再将报工差额标为实物在制 |
+| dev-20260926-008 | work-order-overproduction-boundary-dev-20260926-008.md | 核查普通工单计划200产出210的报工/FQC/入库限制，提出工单级授权上限与超计划库存口径供确认 |
+| dev-20260926-009 | operation-overrun-reporting-dev-20260926-009.md | 正常工序超计划实绩评估：统一工单授权上限、逐工序展示、排除串行重复累计且不伪造实物WIP |
