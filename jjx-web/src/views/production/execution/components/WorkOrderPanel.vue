@@ -79,7 +79,7 @@
     </el-table>
 
     <!-- 数量对账（dev-20260923-024）：口径 045 §1；报废/返工/让步 的件级下钻见 dev-20260924-004 -->
-    <el-dialog v-model="reconVisible" title="工单数量对账" width="620px" append-to-body>
+    <el-dialog v-model="reconVisible" title="工单数量对账" width="760px" append-to-body>
       <div class="recon-head">
         工单 {{ reconRow?.orderNo || '-' }} · 产品 {{ reconRow?.productName || '-' }}
       </div>
@@ -94,8 +94,23 @@
           <template #default="{ row }">{{ row.note }}</template>
         </el-table-column>
       </el-table>
+      <div class="recon-section-title">工序投入与已审批产出（不跨串行工序相加）</div>
+      <el-table :data="completionMap[String(reconRow?.orderId)]?.operationQuantities || []" border size="small">
+        <el-table-column label="工序" min-width="150">
+          <template #default="{ row }">{{ row.processName || `工序 ${row.processOrder ?? '-'}` }}</template>
+        </el-table-column>
+        <el-table-column label="计划投入" width="110" align="right">
+          <template #default="{ row }">{{ fmtQty(row.plannedInputQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="已审批产出" width="120" align="right">
+          <template #default="{ row }">{{ fmtQty(row.approvedOutputQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="工序段" width="80" align="center">
+          <template #default="{ row }">{{ row.finalOperation ? '末道' : '中间' }}</template>
+        </el-table-column>
+      </el-table>
       <div class="recon-tip">
-        口径：工单「完成」= 良品累计；差数必须由 补产 / 返工回收 / 让步 三者之一填平，否则不允许关闭工单。
+        口径：各工序计划投入与已审批报工分开展示；工单报工量取标准路线单道工序最大产出，不跨串行工序累加；末道产出、补产报工和有效FQC合格分别展示。普通工序实物在制无法从现有数据可靠推算，因此不以报工减FQC差额代替在制；这里只单列返工在制和待检FQC批次数。
         报废 / 返工 / 让步 的数字可在「质量管理 → 产品不良台账」按工单查看件级明细（不良件）。
       </div>
     </el-dialog>
@@ -200,12 +215,14 @@ const openRecon = (row: ProductionOrderVO) => {
   reconRow.value = row
   reconRows.value = [
     { item: '计划量', value: Number(st.plannedQuantity || row.plannedQuantity || 0), note: 'production_order.planned_quantity' },
-    { item: '单道工序报工量', value: Number(st.reportedQuantity || 0), note: '取各工序累计报工的最大值，避免串行工序重复相加' },
+    { item: '标准路线报工量', value: Number(st.reportedQuantity || 0), note: '各正常工序已审批产出的最大值，不把串行工序重复相加' },
+    { item: '末道工序产出', value: Number(st.finalOperationOutputQuantity || 0), note: '末道正常工序的已审批合格+不良数量' },
+    { item: '补产报工', value: Number(st.supplementReportedQuantity || 0), note: '补产来源任务按补料单分组，跨工序取最大产出后合计' },
     { item: '良品', value: Number(st.goodQuantity || 0), note: '有效 FQC 批合格累计（工单「完成」的判据）' },
     { item: '报废', value: Number(st.scrapQuantity || 0), note: '处置单 SCRAP 已完成（件级明细见「不良件」）' },
     { item: '返工在制', value: Number(st.reworkWipQuantity || 0), note: '处置单 REWORK 待执行/执行中' },
     { item: '让步接收', value: Number(st.concessionQuantity || 0), note: '处置单 CONCESSION 已完成（需客户确认）' },
-    { item: '报工检验差额', value: Number(st.wipQuantity || 0), note: '单道工序报工量 − FQC检验量，仅作差额估算，不代表实物在制或未入库量' },
+    { item: '待检FQC批次', value: Number(st.fqcPendingCount || 0), note: '有效FQC批次中尚未判定的批次数（不是件数）' },
     { item: '差数', value: Number(st.diffQuantity || st.shortfallQuantity || 0), note: 'max(0, 计划 − 良品)；必须由 补产 / 返工回收 / 让步 填平' },
     // dev-20260923-026 / -027：物料侧（定额是基准不是天花板；超领走补料通道）
     { item: 'BOM应领', value: Number(st.materialRequired || 0), note: 'Σ(BOM 单耗 ×(1+损耗率) × 计划量)' },

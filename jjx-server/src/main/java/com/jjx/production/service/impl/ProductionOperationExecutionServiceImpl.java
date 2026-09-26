@@ -753,7 +753,7 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
     }
 
     /**
-     * 数量对账栏（dev-20260923-024）：计划 / 已报工(投入) / 良品 / 报废 / 返工在制 / 让步 / 在制 / 差数。
+     * 数量对账栏：计划 / 标准路线报工 / 末道产出 / FQC良品 / 报废 / 返工在制 / 让步 / 待检批次 / 差数。
      *
      * <p>口径（045 §1 术语表）：工单「完成」= 良品累计；差数 = max(0, 计划 − 良品)，必须由
      * 补产 / 返工回收 / 让步 三者之一填平，否则不允许关闭工单。全部实时汇总，不落冗余列。</p>
@@ -773,19 +773,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         java.math.BigDecimal scrap = zero;
         java.math.BigDecimal reworkWip = zero;
         java.math.BigDecimal concession = zero;
-        java.math.BigDecimal inspected = zero;
         try {
-            reported = nz(jdbcTemplate.queryForObject(
-                    "SELECT IFNULL(MAX(operation_reported),0) FROM ("
-                            + " SELECT execution_id, SUM(IFNULL(qualified_quantity,0) + IFNULL(defective_quantity,0)) operation_reported"
-                            + " FROM production_work_report WHERE order_id = ? AND report_status = 'APPROVED' GROUP BY execution_id"
-                            + ") operation_totals",
-                    java.math.BigDecimal.class, orderId));
+            fillOperationQuantities(vo, orderId);
+            reported = maxStandardOperationOutput(vo.getOperationQuantities());
             good = nz(qualityLotService.summarizeEffectiveFqc(orderId).getQualifiedTotal());
-            inspected = nz(jdbcTemplate.queryForObject(
-                    "SELECT IFNULL(SUM(IFNULL(l.inspected_quantity,0)),0) FROM quality_lot l"
-                            + " WHERE l.order_id = ? AND l.lot_type = 'FQC' AND l.del_flag = 0",
-                    java.math.BigDecimal.class, orderId));
             scrap = nz(jdbcTemplate.queryForObject(
                     "SELECT IFNULL(SUM(a.quantity),0) FROM quality_ncr_action a JOIN quality_ncr n ON n.ncr_id = a.ncr_id"
                             + " WHERE n.order_id = ? AND n.del_flag = 0 AND a.del_flag = 0"
@@ -805,14 +796,72 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             log.warn("数量对账栏汇总失败（降级为 0，不影响阶段判定）: orderId={} err={}", orderId, e.getMessage());
         }
         vo.setReportedQuantity(reported);
+        vo.setSupplementReportedQuantity(supplementReportedQuantity(orderId));
         vo.setGoodQuantity(good);
         vo.setScrapQuantity(scrap);
         vo.setReworkWipQuantity(reworkWip);
         vo.setConcessionQuantity(concession);
-        vo.setWipQuantity(reported.subtract(inspected).max(zero));
         vo.setDiffQuantity((planned == null ? zero : planned).subtract(good).max(zero));
         // dev-20260923-026 / -027：物料侧（BOM应领 / 已领 / 补料 / 退料 / 超领率）
         fillMaterialReconciliation(vo, orderId, planned);
+    }
+
+    private java.math.BigDecimal supplementReportedQuantity(Long orderId) {
+        try {
+            return nz(jdbcTemplate.queryForObject(
+                    "SELECT IFNULL(SUM(outbound_output),0) FROM ("
+                            + " SELECT source_outbound_id, MAX(operation_output) outbound_output FROM ("
+                            + "  SELECT t.source_outbound_id, e.execution_id, "
+                            + "   SUM(IFNULL(wr.qualified_quantity,0) + IFNULL(wr.defective_quantity,0)) operation_output"
+                            + "  FROM production_task t"
+                            + "  JOIN production_operation_execution e ON e.execution_id=t.execution_id"
+                            + "  JOIN production_work_report wr ON wr.task_id=t.task_id AND wr.report_status=?"
+                            + "  WHERE e.order_id=? AND t.task_type=? AND t.source_outbound_id IS NOT NULL"
+                            + "  GROUP BY t.source_outbound_id,e.execution_id"
+                            + " ) operation_totals GROUP BY source_outbound_id"
+                            + ") outbound_totals",
+                    java.math.BigDecimal.class,
+                    com.jjx.production.enums.WorkReportStatusEnum.APPROVED.getCode(), orderId,
+                    com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode()));
+        } catch (Exception e) {
+            log.warn("补产报工数量汇总失败: orderId={} err={}", orderId, e.getMessage());
+            return java.math.BigDecimal.ZERO;
+        }
+    }
+
+    private void fillOperationQuantities(com.jjx.production.domain.vo.OrderCompletionStatusVO vo, Long orderId) {
+        List<com.jjx.production.domain.vo.OrderCompletionStatusVO.OperationQuantity> operations = jdbcTemplate.query(
+                "SELECT e.process_order, e.process_name, IFNULL(e.input_quantity,0) planned_input, "
+                        + "IFNULL(SUM(IFNULL(wr.qualified_quantity,0) + IFNULL(wr.defective_quantity,0)),0) approved_output "
+                        + "FROM production_operation_execution e "
+                        + "LEFT JOIN production_work_report wr ON wr.execution_id=e.execution_id AND wr.report_status=? "
+                        + "WHERE e.order_id=? AND (e.execution_type IS NULL OR e.execution_type=?) AND e.execution_status<>? "
+                        + "GROUP BY e.execution_id,e.process_order,e.process_name,e.input_quantity "
+                        + "ORDER BY e.process_order,e.execution_id",
+                (rs, rowNum) -> {
+                    var operation = new com.jjx.production.domain.vo.OrderCompletionStatusVO.OperationQuantity();
+                    operation.setProcessOrder(rs.getObject("process_order", Integer.class));
+                    operation.setProcessName(rs.getString("process_name"));
+                    operation.setPlannedInputQuantity(nz(rs.getBigDecimal("planned_input")));
+                    operation.setApprovedOutputQuantity(nz(rs.getBigDecimal("approved_output")));
+                    return operation;
+                }, com.jjx.production.enums.WorkReportStatusEnum.APPROVED.getCode(), orderId,
+                com.jjx.production.enums.ExecutionTypeEnum.NORMAL.getCode(), ExecutionStatusEnum.CANCELLED.getValue());
+        if (!operations.isEmpty()) {
+            operations.get(operations.size() - 1).setFinalOperation(true);
+            vo.setFinalOperationOutputQuantity(operations.get(operations.size() - 1).getApprovedOutputQuantity());
+        }
+        vo.setOperationQuantities(operations);
+    }
+
+    static java.math.BigDecimal maxStandardOperationOutput(
+            List<com.jjx.production.domain.vo.OrderCompletionStatusVO.OperationQuantity> operations) {
+        if (operations == null) return java.math.BigDecimal.ZERO;
+        return operations.stream()
+                .map(com.jjx.production.domain.vo.OrderCompletionStatusVO.OperationQuantity::getApprovedOutputQuantity)
+                .map(ProductionOperationExecutionServiceImpl::nz)
+                .max(java.math.BigDecimal::compareTo)
+                .orElse(java.math.BigDecimal.ZERO);
     }
 
     /**

@@ -3,6 +3,8 @@ package com.jjx.production.domain.vo;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 工单级完工（统一收口）状态投影。
@@ -75,8 +77,17 @@ public class OrderCompletionStatusVO {
     // 口径：工单「完成」= 良品累计；差额必须由 补产 / 返工回收 / 让步 三者之一填平，否则不允许关闭工单。
     // 数据来源全部实时汇总（不落冗余列）；报废/返工/让步 的件级下钻见 dev-20260924-004（不良件列表）。
 
-    /** 已报工（投入）= Σ 审批通过的报工 qualified + defective */
+    /** 工单标准路线报工量 = 各正常工序已审批产出的最大值，避免串行工序重复累计。 */
     private BigDecimal reportedQuantity = BigDecimal.ZERO;
+
+    /** Ordered standard-route operation quantities; approved report output is not summed across serial steps. */
+    private List<OperationQuantity> operationQuantities = new ArrayList<>();
+
+    /** Approved output of the last standard-route operation. */
+    private BigDecimal finalOperationOutputQuantity = BigDecimal.ZERO;
+
+    /** Approved output from supplemental-production task groups, de-duplicated across route operations. */
+    private BigDecimal supplementReportedQuantity = BigDecimal.ZERO;
 
     /** 良品（= 合格累计，与 qualifiedQuantity 同源，独立字段便于对账栏直读） */
     private BigDecimal goodQuantity = BigDecimal.ZERO;
@@ -89,9 +100,6 @@ public class OrderCompletionStatusVO {
 
     /** 让步接收合计 = Σ 处置单 CONCESSION（DONE） */
     private BigDecimal concessionQuantity = BigDecimal.ZERO;
-
-    /** 在制 = max(0, 报工投入 − 已判定量)；已报工但尚未判定/未入库 */
-    private BigDecimal wipQuantity = BigDecimal.ZERO;
 
     /** 差数 = max(0, 计划 − 良品)；与 shortfallQuantity 同口径（对账栏展示用） */
     private BigDecimal diffQuantity = BigDecimal.ZERO;
@@ -114,4 +122,15 @@ public class OrderCompletionStatusVO {
 
     /** 超领率（%）= max(0, 已领 + 补料 − 应领) / 应领 × 100；应领=0 时为 0 */
     private BigDecimal overPickRate = BigDecimal.ZERO;
+
+    @Data
+    public static class OperationQuantity {
+        private Integer processOrder;
+        private String processName;
+        /** Planned operation input, not measured physical WIP. */
+        private BigDecimal plannedInputQuantity = BigDecimal.ZERO;
+        /** Sum of approved qualified and defective reports for this operation. */
+        private BigDecimal approvedOutputQuantity = BigDecimal.ZERO;
+        private boolean finalOperation;
+    }
 }

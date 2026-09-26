@@ -191,6 +191,17 @@ export interface OrderCompletionStatusVO {
   plannedQuantity?: number
   /** 已登记报废合计（有效批 SCRAP DONE）—— dev-20260923-028 */
   scrappedQuantity?: number
+  /** Per-operation planned input and approved output, in route order. */
+  operationQuantities?: Array<{
+    processOrder?: number
+    processName?: string
+    plannedInputQuantity?: number
+    approvedOutputQuantity?: number
+    finalOperation?: boolean
+  }>
+  finalOperationOutputQuantity?: number
+  /** Approved supplement output, counted once per source outbound despite multiple route operations. */
+  supplementReportedQuantity?: number
   /** 缺口 = max(0, 计划 − 合格累计)；阶段=待补产时即「还需补产多少件」—— dev-20260923-028 */
   shortfallQuantity?: number
 }
