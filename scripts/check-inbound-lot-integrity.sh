@@ -22,9 +22,9 @@
 #   ④ 判定数量守恒：已判定批 pass + fail = inspected ≤ lot_quantity
 #   ⑤ 不良台账守恒：批 fail = Σ NCR defect_quantity；未作废处置量 ≤ NCR 不良量
 #   ⑥ 有效批合格量 ≤ 可判上限（批量 − 该批自身已报废未回收 − 让步未确认）—— 与判定护栏（dev-20260923-021）同口径
-#      注：按「有效批自身」而非整条批链聚合 —— 本系统是"整批重判(差额)"模型，每个新版本都会重新声明整批不良，
-#          链级聚合会重复计入（实测：同一物理 2 件在两次复检里各记一次报废）。链级/件级守恒需更细追溯字段，另有待议。
-#   ⑦ 工单完工数 = 有效批合格累计（防"复检换代不重算"复发，dev-20260923-018）
+#      FQC整批复检子批取代父批；返工局部复检子批是增量，与原批同时有效（dev-20260926-005）。
+#      处置仍按有效批自身聚合，避免整批复检的历史处置重复扣减。
+#   ⑦ 工单完工数 = 有效批合格累计（整批复检替代、返工局部复检累加；防"复检换代不重算"复发）
 #   ⑧ 入库/放行累计 stored_quantity ≤ pass_quantity
 #   ⑨（2026-09-23 补，看板 2250）有效 FQC 批必有入库单：pass>0 且无后继版本的检验批，
 #      必须存在挂在其 lot_id 上、未取消(order_status<>9)的生产入库明细 —— 兜住「FI 序号定长导致静默不出单」类问题，
@@ -71,6 +71,27 @@ SINCE_FILTER=""
 if [ -n "$SINCE" ]; then
   SINCE_FILTER=" AND o.create_time >= '${SINCE} 00:00:00'"
 fi
+
+# Effective FQC lineage, kept in sync with QualityLotLineagePolicy:
+# whole-lot children replace their parent, while a partial rework-inspection child
+# is additive. If a later whole-lot revision is created from the same parent, it
+# supersedes both that parent and any earlier partial rework child.
+EFFECTIVE_FQC_FILTER="
+   AND NOT EXISTS (
+       SELECT 1 FROM quality_lot c
+       LEFT JOIN production_operation_execution ce ON ce.execution_id = c.execution_id
+        WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0
+          AND NOT (c.lot_type = 'FQC' AND IFNULL(ce.execution_type, '') = 'REWORK'))
+   AND NOT (
+       l.parent_lot_id IS NOT NULL
+       AND EXISTS (SELECT 1 FROM production_operation_execution le
+                    WHERE le.execution_id = l.execution_id AND le.execution_type = 'REWORK')
+       AND EXISTS (
+           SELECT 1 FROM quality_lot r
+           LEFT JOIN production_operation_execution re ON re.execution_id = r.execution_id
+            WHERE r.parent_lot_id = l.parent_lot_id AND r.lot_id > l.lot_id AND r.del_flag = 0
+              AND NOT (r.lot_type = 'FQC' AND IFNULL(re.execution_type, '') = 'REWORK')))
+"
 
 echo "== 入库单/检验批巡检：$(date '+%F %T')  入库明细 lot_id  →  同 lot 重复计账  →  已过账 vs 入库侧流水 =="
 [ -n "$SINCE" ] && echo "   ① 只巡检 ${SINCE} 之后创建的入库单（JJX_LOTID_CHECK_SINCE）"
@@ -140,17 +161,19 @@ SELECT COUNT(*) FROM quality_lot l
       FROM quality_ncr n LEFT JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id AND a.del_flag = 0
      WHERE n.del_flag = 0 GROUP BY n.lot_id) s ON s.lot_id = l.lot_id
  WHERE l.del_flag = 0 AND l.inspected_quantity > 0
-   AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)
+   AND ((l.lot_type = 'FQC' ${EFFECTIVE_FQC_FILTER})
+        OR (l.lot_type <> 'FQC' AND NOT EXISTS (
+              SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)))
    AND IFNULL(l.pass_quantity, 0) > GREATEST(0, IFNULL(l.lot_quantity, 0) - IFNULL(s.scrap, 0) - IFNULL(s.conc, 0));" 2>/dev/null || echo "ERR")
 
 finish_recalc=$(M "
 SELECT COUNT(*) FROM production_order o
  WHERE o.order_type = 'WORK_ORDER'
    AND EXISTS (SELECT 1 FROM quality_lot l WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0)
-   AND IFNULL(o.completed_quantity, 0) <> (
+  AND IFNULL(o.completed_quantity, 0) <> (
         SELECT IFNULL(SUM(l.pass_quantity), 0) FROM quality_lot l
          WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0
-           AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0));" 2>/dev/null || echo "ERR")
+           ${EFFECTIVE_FQC_FILTER});" 2>/dev/null || echo "ERR")
 
 stored_over_pass=$(M "
 SELECT COUNT(*) FROM quality_lot
@@ -159,7 +182,7 @@ SELECT COUNT(*) FROM quality_lot
 has_inbound_doc=$(M "
 SELECT COUNT(*) FROM quality_lot l
  WHERE l.del_flag = 0 AND l.lot_type = 'FQC' AND IFNULL(l.pass_quantity, 0) > 0
-   AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)
+   ${EFFECTIVE_FQC_FILTER}
    AND NOT EXISTS (SELECT 1 FROM inventory_inbound_item ii
                      JOIN inventory_inbound_order o ON o.inbound_id = ii.inbound_id
                     WHERE ii.lot_id = l.lot_id AND o.order_status <> 9);" 2>/dev/null || echo "ERR")
@@ -248,7 +271,9 @@ echo "-- ⑥ 有效批合格量 > 可判上限（批量−已报废−让步未�
         FROM quality_ncr n LEFT JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id AND a.del_flag = 0
        WHERE n.del_flag = 0 GROUP BY n.lot_id) s ON s.lot_id = l.lot_id
    WHERE l.del_flag = 0 AND l.inspected_quantity > 0
-     AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)
+     AND ((l.lot_type = 'FQC' ${EFFECTIVE_FQC_FILTER})
+          OR (l.lot_type <> 'FQC' AND NOT EXISTS (
+                SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)))
      AND IFNULL(l.pass_quantity, 0) > GREATEST(0, IFNULL(l.lot_quantity, 0) - IFNULL(s.scrap, 0) - IFNULL(s.conc, 0));"
 
 echo
@@ -257,14 +282,14 @@ echo "-- ⑦ 工单完工 ≠ 有效批合格累计（换代不重算会命中�
   SELECT o.order_no, o.planned_quantity AS 计划, o.completed_quantity AS 工单完工,
          (SELECT IFNULL(SUM(l.pass_quantity), 0) FROM quality_lot l
            WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0
-             AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)) AS 有效批合格累计
+             ${EFFECTIVE_FQC_FILTER}) AS 有效批合格累计
     FROM production_order o
    WHERE o.order_type = 'WORK_ORDER'
      AND EXISTS (SELECT 1 FROM quality_lot l WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0)
      AND IFNULL(o.completed_quantity, 0) <> (
           SELECT IFNULL(SUM(l.pass_quantity), 0) FROM quality_lot l
            WHERE l.order_id = o.order_id AND l.lot_type = 'FQC' AND l.del_flag = 0
-             AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0));"
+             ${EFFECTIVE_FQC_FILTER});"
 
 echo
 echo "-- ⑧ 入库/放行累计 > 合格量：$stored_over_pass（期望 0）"
@@ -278,7 +303,7 @@ echo "-- ⑨ 有效 FQC 批缺入库单（pass>0 且无后继版本，却查不�
   SELECT l.lot_id, l.lot_no, l.status, l.pass_quantity, l.stored_quantity, l.order_id
     FROM quality_lot l
    WHERE l.del_flag = 0 AND l.lot_type = 'FQC' AND IFNULL(l.pass_quantity, 0) > 0
-     AND NOT EXISTS (SELECT 1 FROM quality_lot c WHERE c.parent_lot_id = l.lot_id AND c.del_flag = 0)
+     ${EFFECTIVE_FQC_FILTER}
      AND NOT EXISTS (SELECT 1 FROM inventory_inbound_item ii
                        JOIN inventory_inbound_order o ON o.inbound_id = ii.inbound_id
                       WHERE ii.lot_id = l.lot_id AND o.order_status <> 9);"
@@ -356,5 +381,9 @@ if [ "$STRICT" = true ] && [ "$total" -gt 0 ]; then
   exit 1
 fi
 echo
-echo "== 巡检完成：咨询模式，退出码 0（加 --strict 可当门禁）=="
+if [ "$STRICT" = true ]; then
+  echo "== 巡检完成：严格模式通过，退出码 0 =="
+else
+  echo "== 巡检完成：咨询模式，退出码 0（加 --strict 可当门禁）=="
+fi
 exit 0
