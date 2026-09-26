@@ -33,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -70,6 +71,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     /** dev-20260924-002：报废补产在同一事务里生成补产任务（挂工单末道工序） */
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
+    private final JdbcTemplate jdbcTemplate;
     private final com.jjx.product.mapper.EngineeringBomMapper productBomMapper;
     private final com.jjx.product.mapper.EngineeringBomItemMapper productBomItemMapper;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
@@ -455,6 +457,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
         boolean updated = outboundOrderMapper.updateById(order) > 0;
+        if (updated && "work_order".equals(order.getSourceType())
+                && com.jjx.inventory.enums.ProductionSupplementReasonEnum.requiresNcr(order.getSupplementReasonType())) {
+            productionTaskService.createSupplementRouteTasks(order.getSourceId(),
+                    order.getSupplementProductionQuantity(), order.getSupplementNcrId(), order.getOutboundId(),
+                    order.getOutboundNo(), order.getSupplementReason());
+        }
 
         // 生产领料单确认发料后，同步更新工单领料状态（2026-08-18 多次领料修正：
         // 还有未完成发料的领料单 → 保持领料中(1)；全部确认发料 → 已领料(2)，不再确认一张就置 2）
@@ -1269,17 +1277,38 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (com.jjx.inventory.enums.ProductionSupplementReasonEnum.requiresNcr(reasonType) && ncrId == null) {
             throw new BusinessException("报废补产必须关联质量不良单（dev-20260923-025）");
         }
+        if (com.jjx.inventory.enums.ProductionSupplementReasonEnum.requiresNcr(reasonType)) {
+            Long ncrOrderId = jdbcTemplate.query("SELECT order_id FROM quality_ncr WHERE ncr_id = ? AND del_flag = 0",
+                    rs -> rs.next() ? rs.getLong(1) : null, ncrId);
+            if (ncrOrderId == null || !ncrOrderId.equals(workOrderId)) {
+                throw new BusinessException("所选不良单不存在或不属于当前工单");
+            }
+            BigDecimal scrapQty = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(quantity),0) FROM quality_ncr_action WHERE ncr_id=? AND del_flag=0 AND action_type='SCRAP' AND status='DONE'",
+                    BigDecimal.class, ncrId);
+            BigDecimal requestedQty = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(supplement_production_quantity),0) FROM inventory_outbound_order"
+                            + " WHERE supplement_ncr_id=? AND supplement_reason_type='SCRAP_REPLENISHMENT' AND order_status NOT IN (3,9)",
+                    BigDecimal.class, ncrId);
+            BigDecimal allowance = replacementAllowance(scrapQty, requestedQty);
+            if (scrapQty == null || scrapQty.signum() <= 0 || productionQuantity.compareTo(allowance) > 0) {
+                throw new BusinessException("补产量超过该不良单已完成报废且尚未申请替补的数量，可申请 "
+                        + allowance.stripTrailingZeros().toPlainString());
+            }
+        }
         Long outboundId = createProductionPickInternal(workOrderId, items, reasonType, reason.trim(), ncrId);
         InventoryOutboundOrder supplement = outboundOrderMapper.selectById(outboundId);
         supplement.setSupplementProductionQuantity(productionQuantity);
         outboundOrderMapper.updateById(supplement);
         // dev-20260924-002（剩余半张）：报废补产在同一事务里生成补产任务（挂工单末道工序，独立派工/报工）。
         // 其它来源（超耗/试制调机/来料不良）只补料、不补产 —— 货已经做出来了，没有要补做的数量。
-        if (com.jjx.inventory.enums.ProductionSupplementReasonEnum.requiresNcr(reasonType)) {
-            productionTaskService.createSupplementTask(workOrderId, productionQuantity, ncrId, outboundId,
-                    supplement.getOutboundNo(), reason.trim());
-        }
         return outboundId;
+    }
+
+    static BigDecimal replacementAllowance(BigDecimal completedScrap, BigDecimal activeOrCompletedRequests) {
+        return (completedScrap == null ? BigDecimal.ZERO : completedScrap)
+                .subtract(activeOrCompletedRequests == null ? BigDecimal.ZERO : activeOrCompletedRequests)
+                .max(BigDecimal.ZERO);
     }
 
     private Long createProductionPickInternal(Long workOrderId,

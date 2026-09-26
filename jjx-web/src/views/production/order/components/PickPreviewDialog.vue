@@ -9,6 +9,14 @@
   >
     <div v-loading="loading" class="preview-body">
       <el-alert
+        v-if="isSupplement && reasonType === 'SCRAP_REPLENISHMENT'"
+        type="info"
+        :closable="false"
+        show-icon
+        title="这是补产物料申请。仓库确认发料后，系统才会按原工单工艺路线生成补产任务；申请或驳回不会创建任务。"
+        style="margin-bottom: 12px"
+      />
+      <el-alert
         v-if="errorMsg"
         type="error"
         :closable="false"
@@ -132,6 +140,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { QualityNcrStatus } from '@/enums/quality/NcrEnum'
 
 const props = withDefaults(
   defineProps<{
@@ -170,7 +179,8 @@ const loadNcrOptions = async () => {
     const { qualityNcrApi } = await import('@/api/quality/lot')
     const res: any = await qualityNcrApi.byOrder(props.workOrderId)
     const list = (res?.data || []) as any[]
-    ncrOptions.value = list.filter((n) => Number(pendingOf(n)) > 0)
+    ncrOptions.value = list.filter((n) => Number(pendingOf(n)) > 0
+      || (n.status === QualityNcrStatus.CLOSED && Number(n.disposedQuantity || 0) > 0))
   } catch {
     ncrOptions.value = []
   }

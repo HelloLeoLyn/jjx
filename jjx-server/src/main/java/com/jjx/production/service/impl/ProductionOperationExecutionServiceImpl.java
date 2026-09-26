@@ -776,8 +776,10 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
         java.math.BigDecimal inspected = zero;
         try {
             reported = nz(jdbcTemplate.queryForObject(
-                    "SELECT IFNULL(SUM(IFNULL(qualified_quantity,0) + IFNULL(defective_quantity,0)),0)"
-                            + " FROM production_work_report WHERE order_id = ? AND report_status = 'APPROVED'",
+                    "SELECT IFNULL(MAX(operation_reported),0) FROM ("
+                            + " SELECT execution_id, SUM(IFNULL(qualified_quantity,0) + IFNULL(defective_quantity,0)) operation_reported"
+                            + " FROM production_work_report WHERE order_id = ? AND report_status = 'APPROVED' GROUP BY execution_id"
+                            + ") operation_totals",
                     java.math.BigDecimal.class, orderId));
             good = nz(qualityLotService.summarizeEffectiveFqc(orderId).getQualifiedTotal());
             inspected = nz(jdbcTemplate.queryForObject(
@@ -837,15 +839,15 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             issued = nz(jdbcTemplate.queryForObject(
                     "SELECT IFNULL(SUM(ii.quantity), 0) FROM inventory_outbound_item ii"
                             + " JOIN inventory_outbound_order o ON o.outbound_id = ii.outbound_id"
-                            + " WHERE o.order_status <> 9 AND o.source_type = 'work_order' AND o.source_id = ?"
+                            + " WHERE o.order_status = ? AND o.source_type = 'work_order' AND o.source_id = ?"
                             + "   AND o.supplement_reason_type IS NULL",
-                    java.math.BigDecimal.class, orderId));
+                    java.math.BigDecimal.class, com.jjx.inventory.enums.InventoryOrderStatusEnum.COMPLETED.getValue(), orderId));
             supplement = nz(jdbcTemplate.queryForObject(
                     "SELECT IFNULL(SUM(ii.quantity), 0) FROM inventory_outbound_item ii"
                             + " JOIN inventory_outbound_order o ON o.outbound_id = ii.outbound_id"
-                            + " WHERE o.order_status <> 9 AND o.source_type = 'work_order' AND o.source_id = ?"
+                            + " WHERE o.order_status = ? AND o.source_type = 'work_order' AND o.source_id = ?"
                             + "   AND o.supplement_reason_type IS NOT NULL",
-                    java.math.BigDecimal.class, orderId));
+                    java.math.BigDecimal.class, com.jjx.inventory.enums.InventoryOrderStatusEnum.COMPLETED.getValue(), orderId));
             returned = nz(jdbcTemplate.queryForObject(
                     "SELECT IFNULL(SUM(ii.quantity), 0) FROM inventory_inbound_item ii"
                             + " JOIN inventory_inbound_order o ON o.inbound_id = ii.inbound_id"

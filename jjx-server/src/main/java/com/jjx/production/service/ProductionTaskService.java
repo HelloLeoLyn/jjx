@@ -53,6 +53,10 @@ public interface ProductionTaskService {
     Long createSupplementTask(Long workOrderId, BigDecimal quantity, Long ncrId, Long sourceOutboundId,
                               String outboundNo, String reason);
 
+    /** Create one supplemental task per standard operation after material issue is confirmed. */
+    Long createSupplementRouteTasks(Long workOrderId, BigDecimal quantity, Long ncrId, Long sourceOutboundId,
+                                    String outboundNo, String reason);
+
     /**
      * 第一层分页查询（parent_task_id IS NULL）
      * 生产全局角色 → 全部；普通用户 → assignee_id = 当前用户

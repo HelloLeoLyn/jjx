@@ -200,12 +200,12 @@ const openRecon = (row: ProductionOrderVO) => {
   reconRow.value = row
   reconRows.value = [
     { item: '计划量', value: Number(st.plannedQuantity || row.plannedQuantity || 0), note: 'production_order.planned_quantity' },
-    { item: '已报工(投入)', value: Number(st.reportedQuantity || 0), note: '审批通过的报工：合格 + 不良 合计' },
+    { item: '单道工序报工量', value: Number(st.reportedQuantity || 0), note: '取各工序累计报工的最大值，避免串行工序重复相加' },
     { item: '良品', value: Number(st.goodQuantity || 0), note: '有效 FQC 批合格累计（工单「完成」的判据）' },
     { item: '报废', value: Number(st.scrapQuantity || 0), note: '处置单 SCRAP 已完成（件级明细见「不良件」）' },
     { item: '返工在制', value: Number(st.reworkWipQuantity || 0), note: '处置单 REWORK 待执行/执行中' },
     { item: '让步接收', value: Number(st.concessionQuantity || 0), note: '处置单 CONCESSION 已完成（需客户确认）' },
-    { item: '在制', value: Number(st.wipQuantity || 0), note: '已报工 − 已判定（尚未判定 / 未入库）' },
+    { item: '报工检验差额', value: Number(st.wipQuantity || 0), note: '单道工序报工量 − FQC检验量，仅作差额估算，不代表实物在制或未入库量' },
     { item: '差数', value: Number(st.diffQuantity || st.shortfallQuantity || 0), note: 'max(0, 计划 − 良品)；必须由 补产 / 返工回收 / 让步 填平' },
     // dev-20260923-026 / -027：物料侧（定额是基准不是天花板；超领走补料通道）
     { item: 'BOM应领', value: Number(st.materialRequired || 0), note: 'Σ(BOM 单耗 ×(1+损耗率) × 计划量)' },

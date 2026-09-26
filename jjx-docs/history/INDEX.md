@@ -155,3 +155,4 @@
 | dev-20260921-047 | die-data-import-dev-20260921-047.md | 刀模老台账导入：28 张表 / 19,373 行 → 去重 12,134 条入 engineering_die（状态映射、跨表合并、库位规范化修正） |
 | dev-20260921-050 | frame-data-import-dev-20260921-050.md | 网版老台账导入：6 张表 7,291 个网框 → engineering_screen_frame + 4,503 个 ACTIVE 版面（空框 2,788 EMPTY） |
 | dev-20260924-023 | notnull-write-path-audit-dev-20260924-023.md | NOT NULL 写入路径同类问题审计（`Field 'xxx' doesn't have a default value`）：全库 360 个候选列扫描——真雷仅 IQC 单 inspection_id 一类 5 处（迁移 220/221 已修）；另留 1 处错映射必炸接口与 2 处门禁口径冲突待拍板 |
+| dev-20260926-001 | supplement-production-flow-dev-20260926-001.md | 补产主流程闭环与追溯修复：物料出库确认后按原路线生成补产任务，补报/补产分流并修正工单对账 |

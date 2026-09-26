@@ -404,7 +404,7 @@
                 <span v-else-if="row.actionType === NcrActionType.REWORK" class="rework-tip">{{ reworkOf(row)?.statusText || '请先完成返工工序，再进行复检' }}</span>
                 <el-button v-if="canNcrAction(row, 'NCR_REWORK_SUPPLEMENT') && current?.orderId" link type="warning" size="small" @click="openSupplement(row)">补料</el-button>
                 <el-button v-if="canNcrAction(row, 'NCR_REWORK_RETURN') && current?.orderId" link type="info" size="small" @click="openReworkReturn()">返工退料</el-button>
-                <el-button v-if="row.actionType === NcrActionType.SCRAP && current?.orderId" link type="warning" size="small" @click="openSupplementFromDispose()">申请补料</el-button>
+                <el-button v-if="row.actionType === NcrActionType.SCRAP && current?.orderId" link type="warning" size="small" @click="openSupplementFromDispose(row)">申请补产物料</el-button>
                 <el-button v-if="canNcrAction(row, 'NCR_SCRAP_APPROVE')" link type="primary" size="small" @click="handleScrapApprove(row)">审批通过</el-button>
                 <el-button v-if="canNcrAction(row, 'NCR_SCRAP_REJECT')" link type="danger" size="small" @click="handleScrapReject(row)">驳回</el-button>
                 <el-button v-if="canNcrAction(row, 'NCR_REVOKE')" link type="danger" size="small" @click="openRevoke(row)">撤销</el-button>
@@ -694,7 +694,7 @@ const supplementOrderId = ref<number>()
 const supplementOrderNo = ref('')
 const supplementNcrId = ref<number>()
 const supplementPresetQty = ref<number>()
-const openSupplementFromDispose = () => {
+const openSupplementFromDispose = (action: any) => {
   const ncr = current.value
   if (!ncr?.orderId) {
     ElMessage.warning('该不良单未关联生产工单，无法发起补料')
@@ -704,12 +704,12 @@ const openSupplementFromDispose = () => {
   supplementOrderNo.value = ncr.orderNo || ''
   supplementNcrId.value = ncr.ncrId
   // 建议补产数量默认取待处置量（工人可改）
-  supplementPresetQty.value = Number(pending(ncr)) || undefined
+  supplementPresetQty.value = Number(action?.quantity) || undefined
   supplementDialogVisible.value = true
 }
 const onSupplementSuccess = () => {
   supplementDialogVisible.value = false
-  ElMessage.success('补料单已生成（报废补产已同时生成补产任务，请到「生产管理 → 派工管理」派工）')
+  ElMessage.success('补产物料申请已提交；仓库确认发料后，补产工序任务会进入派工管理')
   load()
 }
 

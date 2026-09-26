@@ -184,6 +184,55 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     }
 
     /** 按补料单找补产任务（幂等键：source_outbound_id）。 */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createSupplementRouteTasks(Long workOrderId, BigDecimal quantity, Long ncrId,
+                                           Long sourceOutboundId, String outboundNo, String reason) {
+        if (workOrderId == null || sourceOutboundId == null || quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException("Supplement task requires work order, confirmed outbound and positive quantity");
+        }
+        List<com.jjx.production.domain.entity.ProductionOperationExecution> route =
+                productionOperationExecutionMapper.selectList(Wrappers.<com.jjx.production.domain.entity.ProductionOperationExecution>lambdaQuery()
+                        .eq(com.jjx.production.domain.entity.ProductionOperationExecution::getOrderId, workOrderId)
+                        .and(w -> w.isNull(com.jjx.production.domain.entity.ProductionOperationExecution::getExecutionType)
+                                .or().ne(com.jjx.production.domain.entity.ProductionOperationExecution::getExecutionType,
+                                        com.jjx.production.enums.ExecutionTypeEnum.REWORK.getCode()))
+                        .orderByAsc(com.jjx.production.domain.entity.ProductionOperationExecution::getProcessOrder)
+                        .orderByAsc(com.jjx.production.domain.entity.ProductionOperationExecution::getExecutionId));
+        if (route.isEmpty()) throw new BusinessException("No standard operations exist for this work order");
+        Long firstTaskId = null;
+        for (com.jjx.production.domain.entity.ProductionOperationExecution execution : route) {
+            ProductionTask task = productionTaskMapper.selectOne(Wrappers.<ProductionTask>lambdaQuery()
+                    .eq(ProductionTask::getSourceOutboundId, sourceOutboundId)
+                    .eq(ProductionTask::getExecutionId, execution.getExecutionId()).last("LIMIT 1"));
+            if (task == null) {
+                task = new ProductionTask();
+                task.setTaskNo(nextTaskNo(execution.getExecutionId(), false, 'S'));
+                task.setExecutionId(execution.getExecutionId());
+                task.setParentTaskId(null);
+                task.setAssigneeId(null);
+                task.setTaskQuantity(quantity);
+                task.setStatus(STATUS_PENDING);
+                task.setVersion(0);
+                task.setTaskType(com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode());
+                task.setSupplementGroupNo(outboundNo);
+                task.setSupplementReason(reason);
+                task.setSourceNcrId(ncrId);
+                task.setSourceOutboundId(sourceOutboundId);
+                try {
+                    productionTaskMapper.insert(task);
+                } catch (DuplicateKeyException e) {
+                    task = productionTaskMapper.selectOne(Wrappers.<ProductionTask>lambdaQuery()
+                            .eq(ProductionTask::getSourceOutboundId, sourceOutboundId)
+                            .eq(ProductionTask::getExecutionId, execution.getExecutionId()).last("LIMIT 1"));
+                    if (task == null) throw e;
+                }
+            }
+            if (firstTaskId == null) firstTaskId = task.getTaskId();
+        }
+        return firstTaskId;
+    }
+
     private ProductionTask findSupplementTask(Long sourceOutboundId) {
         return productionTaskMapper.selectOne(Wrappers.<ProductionTask>lambdaQuery()
                 .eq(ProductionTask::getSourceOutboundId, sourceOutboundId)
@@ -1539,9 +1588,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             vo.setSourceOutboundId(t.getSourceOutboundId());
             // dev-20260923（补报入口 · 对应后端 dev-20260922-032）：已完成的任务/工序若仍落在
             // 「计划量 ×(1+损耗率)」额度内，回填可补报额度，前端据此显示"补报"入口
-            if ("COMPLETED".equals(t.getStatus())) {
-                vo.setSupplementAllowance(supplementAllowance(t));
-            }
+            // Finished standard work cards are not an implicit replacement-production order.
+            // Any new output must use a material-backed SUPPLEMENT route.
             vo.setStatusLabel(statusLabel(t.getStatus()));
             vo.setHasChildren(childParentIds.contains(t.getTaskId()));
             vo.setChildren(new ArrayList<>());

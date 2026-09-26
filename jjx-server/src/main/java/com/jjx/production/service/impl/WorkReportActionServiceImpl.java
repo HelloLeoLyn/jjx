@@ -127,8 +127,8 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             // dev-20260922-032（用户拍板 A · 补报/补产）：任务已完成 或 工序已完成 时不再一律拒绝 ——
             // 检验判不良/报废造成的净损失需要补做，此时按「计划量 ×(1+损耗率)」的额度上限放行补报；
             // 其它非执行中状态（未开始/已跳过/已取消等）仍照原样拒绝。
-            boolean supplement = "COMPLETED".equals(task.getStatus())
-                    || ExecutionStatusEnum.COMPLETED.getValue().equals(exec.getExecutionStatus());
+            boolean supplement = com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode()
+                    .equals(task.getTaskType());
             if (!supplement) {
                 throw new BusinessException("工序未处于执行中状态，不能报工");
             }
@@ -161,9 +161,20 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
 
         // 数量 gate：唯一额度边界 = Task.remainingQuantity（已排除 assigned/pending/completed）
         BigDecimal remaining = productionTaskService.remainingQuantity(task.getTaskId());
-        boolean supplementReport = "COMPLETED".equals(task.getStatus())
-                || ExecutionStatusEnum.COMPLETED.getValue().equals(exec.getExecutionStatus());
+        boolean supplementReport = com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode()
+                .equals(task.getTaskType());
         if (supplementReport) {
+            Integer earlierIncomplete = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM production_task t JOIN production_operation_execution e ON e.execution_id=t.execution_id"
+                            + " JOIN production_operation_execution current_e ON current_e.execution_id=?"
+                            + " WHERE t.source_outbound_id=? AND t.task_type=?"
+                            + " AND COALESCE(e.process_order,0)<COALESCE(current_e.process_order,0) AND t.status<>?",
+                    Integer.class, exec.getExecutionId(), task.getSourceOutboundId(),
+                    com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode(),
+                    com.jjx.production.enums.ProductionTaskStatus.COMPLETED.getCode());
+            if (earlierIncomplete != null && earlierIncomplete > 0) {
+                throw new BusinessException("补产必须按工艺路线顺序报工，请先完成前一道补产工序");
+            }
             // 补报：任务额度已用满（remaining=0），额度改由「工序/工单 计划量 ×(1+损耗率)」把关
             validateSupplementReport(exec, reportQuantity);
         } else if (reportQuantity.compareTo(remaining) > 0) {

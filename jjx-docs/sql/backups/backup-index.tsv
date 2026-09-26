@@ -1,2 +1,3 @@
 time	kind	file	md5	bytes	tables	agent	task
 2026-09-26 08:55:11	full	jjx_erp_db_backup_20260926-0855.sql	451be0b4d5101753cd1216c132480dab	5959591	120	dahuang	无
+2026-09-26 09:56:15	guard	sys_task_register_20260926-20260926-0956_guard.sql	c269e039fbf424288535abbb99326804	1246812	3	codex	dev-20260926-001
