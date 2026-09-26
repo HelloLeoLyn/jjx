@@ -131,66 +131,13 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         }
     }
 
-    // ==================== 补产（dev-20260924-002 剩余半张） ====================
+    // ==================== 补产（仅保留发料确认后的工艺路线入口） ====================
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public Long createSupplementTask(Long workOrderId, BigDecimal quantity, Long ncrId, Long sourceOutboundId,
-                                     String outboundNo, String reason) {
-        if (workOrderId == null) {
-            throw new BusinessException("补产任务必须关联生产工单");
-        }
-        if (sourceOutboundId == null) {
-            throw new BusinessException("补产任务必须关联补料单");
-        }
-        if (quantity == null || quantity.signum() <= 0) {
-            throw new BusinessException("补产数量必须大于 0");
-        }
-        // 幂等：同一张补料单只建一条补产任务（重复提交/并发都返回既有任务）
-        ProductionTask existing = findSupplementTask(sourceOutboundId);
-        if (existing != null) {
-            return existing.getTaskId();
-        }
-        com.jjx.production.domain.entity.ProductionOperationExecution target = lastStandardExecution(workOrderId);
-        if (target == null) {
-            throw new BusinessException("工单还没有工序，无法生成补产任务（请先在派工管理生成工序）");
-        }
-        ProductionTask task = new ProductionTask();
-        task.setTaskNo(nextTaskNo(target.getExecutionId(), false, 'S'));
-        task.setExecutionId(target.getExecutionId());
-        task.setParentTaskId(null);
-        task.setAssigneeId(null);
-        task.setTaskQuantity(quantity);
-        task.setStatus(STATUS_PENDING);
-        task.setVersion(0);
-        task.setTaskType(com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode());
-        task.setSupplementGroupNo(outboundNo);
-        task.setSupplementReason(reason);
-        task.setSourceNcrId(ncrId);
-        task.setSourceOutboundId(sourceOutboundId);
-        try {
-            productionTaskMapper.insert(task);
-            log.info("补产任务已生成: taskNo={} 工单={} 数量={} 补料单={}",
-                    task.getTaskNo(), workOrderId, quantity.toPlainString(), outboundNo);
-            return task.getTaskId();
-        } catch (DuplicateKeyException e) {
-            log.warn("补产任务已存在（并发或重复提交），补料单={}", outboundNo);
-            ProductionTask dup = findSupplementTask(sourceOutboundId);
-            if (dup == null) {
-                throw e;
-            }
-            return dup.getTaskId();
-        }
-    }
-
-    /** 按补料单找补产任务（幂等键：source_outbound_id）。 */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSupplementRouteTasks(Long workOrderId, BigDecimal quantity, Long ncrId,
                                            Long sourceOutboundId, String outboundNo, String reason) {
-        if (workOrderId == null || sourceOutboundId == null || quantity == null || quantity.signum() <= 0) {
-            throw new BusinessException("Supplement task requires work order, confirmed outbound and positive quantity");
-        }
+        validateSupplementSource(workOrderId, quantity, ncrId, sourceOutboundId, true);
         List<com.jjx.production.domain.entity.ProductionOperationExecution> route =
                 productionOperationExecutionMapper.selectList(Wrappers.<com.jjx.production.domain.entity.ProductionOperationExecution>lambdaQuery()
                         .eq(com.jjx.production.domain.entity.ProductionOperationExecution::getOrderId, workOrderId)
@@ -233,23 +180,57 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         return firstTaskId;
     }
 
-    private ProductionTask findSupplementTask(Long sourceOutboundId) {
-        return productionTaskMapper.selectOne(Wrappers.<ProductionTask>lambdaQuery()
-                .eq(ProductionTask::getSourceOutboundId, sourceOutboundId)
-                .orderByAsc(ProductionTask::getTaskId)
-                .last("LIMIT 1"));
+    @Override
+    @Transactional(readOnly = true)
+    public void validateSupplementTaskSource(Long workOrderId, ProductionTask task) {
+        if (task == null || !com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode()
+                .equals(task.getTaskType())) {
+            throw new BusinessException("补产报工任务来源无效");
+        }
+        validateSupplementSource(workOrderId, task.getTaskQuantity(), task.getSourceNcrId(),
+                task.getSourceOutboundId(), false);
     }
 
-    /** 工单「标准末道工序」：排除返工/补产这类附加工序（execution_type != REWORK）。 */
-    private com.jjx.production.domain.entity.ProductionOperationExecution lastStandardExecution(Long workOrderId) {
-        return productionOperationExecutionMapper.selectOne(
-                Wrappers.<com.jjx.production.domain.entity.ProductionOperationExecution>lambdaQuery()
-                        .eq(com.jjx.production.domain.entity.ProductionOperationExecution::getOrderId, workOrderId)
-                        .and(w -> w.isNull(com.jjx.production.domain.entity.ProductionOperationExecution::getExecutionType)
-                                .or().ne(com.jjx.production.domain.entity.ProductionOperationExecution::getExecutionType,
-                                        com.jjx.production.enums.ExecutionTypeEnum.REWORK.getCode()))
-                        .orderByDesc(com.jjx.production.domain.entity.ProductionOperationExecution::getProcessOrder)
-                        .last("LIMIT 1"));
+    void validateSupplementSource(Long workOrderId, BigDecimal quantity, Long ncrId,
+                                  Long sourceOutboundId, boolean lockNcr) {
+        if (workOrderId == null || sourceOutboundId == null || ncrId == null
+                || quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException("补产必须关联工单、已确认发料单和不良单，且数量必须大于0");
+        }
+        String ncrSql = "SELECT order_id FROM quality_ncr WHERE ncr_id = ? AND del_flag = 0"
+                + (lockNcr ? " FOR UPDATE" : "");
+        List<Long> ncrOrders = jdbcTemplate.query(ncrSql,
+                (rs, rowNum) -> rs.getLong("order_id"), ncrId);
+        if (ncrOrders.isEmpty() || !workOrderId.equals(ncrOrders.get(0))) {
+            throw new BusinessException("补产不良单不属于当前生产工单");
+        }
+        Integer outboundMatches = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM inventory_outbound_order"
+                        + " WHERE outbound_id = ? AND source_type = 'work_order' AND source_id = ?"
+                        + " AND order_status = ? AND supplement_reason_type = ? AND supplement_ncr_id = ?"
+                        + " AND COALESCE(supplement_production_quantity, 0) >= ?",
+                Integer.class, sourceOutboundId, workOrderId,
+                com.jjx.inventory.enums.InventoryOrderStatusEnum.COMPLETED.getValue(),
+                com.jjx.inventory.enums.ProductionSupplementReasonEnum.SCRAP_REPLENISHMENT.getCode(),
+                ncrId, quantity);
+        if (outboundMatches == null || outboundMatches == 0) {
+            throw new BusinessException("补产来源必须是当前工单已确认且关联同一不良单的报废补料单");
+        }
+        BigDecimal scrapQuantity = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(quantity), 0) FROM quality_ncr_action"
+                        + " WHERE ncr_id = ? AND action_type = 'SCRAP' AND status = 'DONE' AND del_flag = 0",
+                BigDecimal.class, ncrId);
+        BigDecimal requestedQuantity = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(SUM(supplement_production_quantity), 0) FROM inventory_outbound_order"
+                        + " WHERE source_type = 'work_order' AND source_id = ? AND order_status = ?"
+                        + " AND supplement_reason_type = ? AND supplement_ncr_id = ?",
+                BigDecimal.class, workOrderId,
+                com.jjx.inventory.enums.InventoryOrderStatusEnum.COMPLETED.getValue(),
+                com.jjx.inventory.enums.ProductionSupplementReasonEnum.SCRAP_REPLENISHMENT.getCode(), ncrId);
+        if (scrapQuantity == null || scrapQuantity.signum() <= 0
+                || requestedQuantity == null || requestedQuantity.compareTo(scrapQuantity) > 0) {
+            throw new BusinessException("报废补产申请量超过该不良单已完成报废数量");
+        }
     }
 
     /**
@@ -839,6 +820,11 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             child.setTaskQuantity(item.getQuantity());
             child.setStatus(STATUS_ACTIVE);
             child.setVersion(0);
+            child.setTaskType(task.getTaskType());
+            child.setSupplementGroupNo(task.getSupplementGroupNo());
+            child.setSupplementReason(task.getSupplementReason());
+            child.setSourceNcrId(task.getSourceNcrId());
+            child.setSourceOutboundId(task.getSourceOutboundId());
             productionTaskMapper.insert(child);
             recordEvent(taskId, child.getTaskId(), ACTION_ASSIGN, task.getAssigneeId(), item.getAssigneeId(),
                     item.getQuantity(), task.getTaskQuantity(), task.getTaskQuantity(), dto.getRemark());
@@ -1675,9 +1661,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
      * dev-20260923（补报入口）/ dev-20260923-027（额度改按缺口）：已完成任务的可补报额度（0=不可补报）。
      *
      * <p>口径（027 定稿）：**可补量 = 缺口 = 工单计划量 − 工单良品累计（已合格产出）**，下限 0；<br>
-     * 「超产容差（计划量 ×(1+损耗率)）」不再混进可补量语义 —— 它只是
-     * {@code WorkReportActionServiceImpl.validateSupplementReport} 里的**硬上限**（防无限超报），
-     * 两者语义分开：可补量告诉你"还缺多少"，容差只负责"最多能报多少"。</p>
+     * 「超产容差」不再混进可补量语义；可补量只回答"还缺多少"，报工上限由任务剩余额度统一校验。</p>
      */
     private BigDecimal supplementAllowance(ProductionTask task) {
         if (task == null || task.getExecutionId() == null) {
