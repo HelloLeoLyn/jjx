@@ -9,8 +9,8 @@
 
 | 场景 | 固定位置 | 说明 |
 |---|---|---|
-| DB 全量备份 | `JJX_BACKUP_DIR`（**2026-09-22 起默认仓库外 `~/jjx-backups/`**；仓库内只留索引 `jjx-docs/sql/backups/backup-index.tsv`） | 改库前**按风险**必做（§2）：破坏性/批量 DML/表结构变更强制；低风险配置/字典新增由用户决定；备份产物不入库 |
-| DB 表级/行级 guard 备份 | `JJX_BACKUP_DIR`（默认同上，仓库外） | 清理/修复特定表前；完成后在 `backup-index.tsv` 追加一行 |
+| DB 全量备份 | **仓库外** `~/jjx-backups/`（`JJX_BACKUP_DIR` 可覆盖；**只保留最新一份**） | 只有三类必做（§2）：迁移/表结构变更、清库、批量 UPDATE/DELETE 或脏数据订正；**由用户手工做**，agent/脚本不再自动生成、不入库 |
+| DB 表级/行级 guard 备份 | 同上（仓库外） | 仅**批量/破坏性订正**前做；登记任务/改一行状态**免做**；不写 `backup-index.tsv` |
 | DB 迁移/上线脚本 | `jjx-docs/sql/migrations/`（仓库内只留未应用/最新；已应用的成批移出仓库，见 §3） | 序号 `NN_<描述>.sql`；NN 取「applied 最大号与目录最大号的较大者 +1」；幂等优先 |
 | 当时怎么做的（分析/方案/测试计划/报告/实施记录） | `jjx-docs/history/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 `history/INDEX.md`；UTF-8 **带 BOM**。**默认按历史快照看待**，不保证反映当前实现 |
 | **现行真相（各模块当前状态）** | `jjx-docs/modules/<模块>.md` | 一个模块只允许一篇，不带日期；命名 `<模块>.md`；会过期、需定期复核；历史指针留在文末 |
@@ -29,7 +29,12 @@
 
 ---
 
-## 2. 数据库备份规范（按风险分级；2026-09-23 恢复入库口径）
+## 2. 数据库备份规范（按风险分级）
+
+**2026-09-28 用户口径（覆盖本节下方所有"落仓库内 / 入库并推送 / 索引 backup-index.tsv / 脚本自动备份与自动清理"的表述）**：
+备份只落**仓库外** `~/jjx-backups/`、**由用户手工执行、只保留最新一份**（生成新份即删旧份）；agent 与脚本**不再自动生成备份文件、不再写索引**。
+需要备份的只有三类——迁移/表结构变更、清库、批量 UPDATE/DELETE 或脏数据订正；**任务登记、单行 status/remark、幂等配置/字典新增一律免备份**。
+脚本侧由「自动备份」改为「**校验手工备份存在才放行**」（`db-migrate.sh` / `db-clean-test-data.sh` 的自动备份逻辑另行改造）。
 
 **触发时机**：破坏性操作、批量 UPDATE/DELETE、表结构变更、修复疑似脏数据、跨环境导数据前必须备份。
 
@@ -142,7 +147,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
   SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(task_code,'-',-1) AS UNSIGNED)),0)+1
   FROM sys_task WHERE task_code LIKE CONCAT('dev-',DATE_FORMAT(NOW(),'%Y%m%d'),'-%');
   ```
-  登记（插入前先做 sys_task 表级 guard 备份）：
+  登记（**免备份**；登记/改状态/写 remark 属单行可逆写入）：
   ```sql
   INSERT INTO sys_task (task_code,task_type,kanban_module,title,status,priority,create_by)
   VALUES ('dev-YYYYMMDD-NNN','DEV','dev','<标题>',0,'P3','<agent>');
@@ -206,7 +211,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 | 资源面 | 谁可写 | 强制手段 | 强度 |
 |---|---|---|---|
-| 数据库 `jjx_erp_db` 写（迁移 / 表结构变更 / 批量 DML） | 仅本机执行者，且必须走 `scripts/db-migrate.sh` | 入口脚本强制"先全库备份 → 再执行 → 写版本号"；不备份执行不了 | 半硬（root 仍可直连绕过） |
+| 数据库 `jjx_erp_db` 写（迁移 / 表结构变更 / 批量 DML） | 仅本机执行者，且必须走 `scripts/db-migrate.sh` | 入口脚本强制"**校验手工备份存在** → 再执行 → 写版本号"；无备份执行不了（2026-09-28：脚本不再代做备份，备份由用户手工放置在 `~/jjx-backups/`） | 半硬（root 仍可直连绕过） |
 | 数据库 `jjx_erp_db` 写（低风险配置/字典新增，范围见 §2 低风险清单） | 用户点头后可由执行者直连 `mysql` 执行 | 脚本管不到：不做备份、不写 `ops.schema.version`，只留执行记录 → 事后人审 | 审计型 |
 | 数据库**只读查看** | 任何人 → 用只读账号 `jjx_ro` | MySQL 授权（仅 SELECT；写操作返回 1142） | **硬** |
 | `jjx-docs/sql/**`（`backups/` 除外）、`jjx-docs/standards/**` 的删除/移出 | 无人（需用户批准） | `pre-commit` 拦截 | **硬** |
