@@ -62,13 +62,13 @@
         </el-table-column>
         <el-table-column prop="batchNo" label="批次" min-width="120" />
         <el-table-column label="不良数量" width="95" align="right">
-          <template #default="{ row }">{{ num(row.defectQuantity) }}</template>
+          <template #default="{ row }">{{ num(row.trace?.defectiveQuantity ?? row.defectQuantity) }}</template>
         </el-table-column>
         <el-table-column label="CR/MA/MI" width="110" align="center">
           <template #default="{ row }">{{ num(row.crQuantity) }}/{{ num(row.maQuantity) }}/{{ num(row.miQuantity) }}</template>
         </el-table-column>
         <el-table-column label="已处置" width="90" align="right">
-          <template #default="{ row }">{{ num(row.disposedQuantity) }}</template>
+          <template #default="{ row }">{{ num(row.trace?.disposedQuantity ?? row.disposedQuantity) }}</template>
         </el-table-column>
         <el-table-column label="待处置" width="120" align="right">
           <template #default="{ row }">
@@ -284,14 +284,14 @@
         </el-table-column>
         <el-table-column prop="batchNo" label="批次" width="110" />
         <el-table-column label="不良" width="80" align="right">
-          <template #default="{ row }">{{ num(row.defectQuantity) }}</template>
+          <template #default="{ row }">{{ num(row.trace?.defectiveQuantity ?? row.defectQuantity) }}</template>
         </el-table-column>
         <el-table-column label="已处置" width="85" align="right">
-          <template #default="{ row }">{{ num(row.disposedQuantity) }}</template>
+          <template #default="{ row }">{{ num(row.trace?.disposedQuantity ?? row.disposedQuantity) }}</template>
         </el-table-column>
         <el-table-column label="隔离中" width="85" align="right">
           <template #default="{ row }">
-            <el-tag type="warning" size="small" effect="plain">{{ num(row.quarantineQuantity) }}</el-tag>
+            <el-tag type="warning" size="small" effect="plain">{{ num(row.trace?.remainingDispositionQuantity ?? row.quarantineQuantity) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="件（待处置/总）" width="130" align="center">
@@ -503,7 +503,7 @@ const pending = (row: QualityNcr) =>
   String(row.status) === QualityNcrStatus.VOID ||
   String(row.status) === QualityNcrStatus.CLOSED
     ? 0
-    : Math.max(0, Number(row.defectQuantity || 0) - Number(row.disposedQuantity || 0))
+    : Number(row.trace?.remainingDispositionQuantity ?? Math.max(0, Number(row.defectQuantity || 0) - Number(row.disposedQuantity || 0)))
 /**
  * 主列表按钮按前端状态/数量与权限显示；服务端仍校验实际操作。
  */

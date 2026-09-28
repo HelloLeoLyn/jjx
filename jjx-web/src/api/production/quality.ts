@@ -1,6 +1,11 @@
 import type { PageResult, R } from '@/types'
 import { InspectionResult } from '@/enums/quality'
-import { qualityLotApi, toQualityLotView, type QualityLotItem } from '@/api/quality/lot'
+import {
+  qualityLotApi,
+  toQualityLotView,
+  type QualityLotItem,
+  type QualityTraceView,
+} from '@/api/quality/lot'
 
 export interface QualityQuery {
   pageNum: number
@@ -74,6 +79,7 @@ export interface QualityVO {
   reviewRemark?: string
   createTime?: string
   items?: InspectionItemVO[]
+  trace?: QualityTraceView
 }
 
 export interface QualityJudgePayload {

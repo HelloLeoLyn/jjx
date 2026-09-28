@@ -157,6 +157,11 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         }
         refreshEffectiveDisposed(ncr);
         populateReplacementAccounting(ncr);
+        QualityLot lot = ncr.getLotId() == null ? null : qualityLotMapper.selectById(ncr.getLotId());
+        if (lot != null) {
+            lot.setDisposedQuantity(nz(ncr.getDisposedQuantity()));
+            ncr.setTrace(qualityLotService.buildTrace(lot));
+        }
         return ncr;
     }
 
@@ -217,6 +222,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
             if (lot != null) {
                 row.setLotNo(lot.getLotNo());
                 row.setLotSuperseded(superseded.contains(lot.getLotId()));
+                lot.setDisposedQuantity(nz(actionMapper.sumEffectiveQuantityByLotId(lot.getLotId())));
+                row.setTrace(qualityLotService.buildTrace(lot));
             }
             if (row.getOrderId() != null) {
                 row.setOrderNo(orderNoMap.get(row.getOrderId()));
@@ -855,6 +862,13 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
                         vo.setStatus(rs.getString("status"));
                         vo.setPieceTotal(rs.getInt("piece_total"));
                         vo.setPiecePending(rs.getInt("piece_pending"));
+                        if (vo.getLotId() != null) {
+                            QualityLot lot = qualityLotMapper.selectById(vo.getLotId());
+                            if (lot != null) {
+                                lot.setDisposedQuantity(nz(disposed));
+                                vo.setTrace(qualityLotService.buildTrace(lot));
+                            }
+                        }
                         rows.add(vo);
                     });
         } catch (Exception e) {

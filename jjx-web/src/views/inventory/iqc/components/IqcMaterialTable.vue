@@ -39,8 +39,8 @@
           </div>
         </div>
         <div v-else class="quantity-context">
-          <div>已处置 {{ disposedQuantity(row) }} 件</div>
-          <div>剩余可处置 {{ row.remainingDispositionQuantity ?? 0 }} 件</div>
+          <div>已处置 {{ row.trace?.disposedQuantity ?? disposedQuantity(row) }} 件</div>
+          <div>剩余可处置 {{ row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity ?? 0 }} 件</div>
         </div>
       </template></el-table-column
     >
@@ -92,7 +92,7 @@
         ><el-button
           v-if="
                 canDispose &&
-                Number(row.remainingDispositionQuantity || 0) > 0 &&
+                Number((row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity) || 0) > 0 &&
                 row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
             (row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted)
           "
@@ -135,6 +135,7 @@ const emit = defineEmits<{
 }>()
 
 function disposedQuantity(row: any) {
+  if (row.trace?.disposedQuantity != null) return Number(row.trace.disposedQuantity)
   return Math.max(
     0,
     Number(row.rejectedQuantity || 0) - Number(row.remainingDispositionQuantity || 0)

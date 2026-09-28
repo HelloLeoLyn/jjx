@@ -119,7 +119,7 @@
         </template>
         <template v-else>
           已处置 <b>{{ disposedQuantity(row) }}</b> 件；剩余可处置
-          <b>{{ row.remainingDispositionQuantity ?? 0 }}</b> 件
+          <b>{{ row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity ?? 0 }}</b> 件
         </template>
       </div>
       <div v-if="isFail" class="rv-reason">
@@ -177,6 +177,7 @@ const checkResultOptions = QualityInspectionResultEnum.items.filter(
 )
 
 function disposedQuantity(row: any) {
+  if (row.trace?.disposedQuantity != null) return Number(row.trace.disposedQuantity)
   return Math.max(
     0,
     Number(row.rejectedQuantity || 0) - Number(row.remainingDispositionQuantity || 0)

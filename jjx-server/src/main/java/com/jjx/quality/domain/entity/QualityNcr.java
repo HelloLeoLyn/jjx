@@ -34,6 +34,10 @@ public class QualityNcr {
     @com.baomidou.mybatisplus.annotation.TableField(exist = false)
     private java.util.List<String> allowedActions;
 
+    /** 统一质量链路只读视图，不落库。 */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private com.jjx.quality.dto.vo.QualityTraceView trace;
+
     @TableId(type = IdType.AUTO)
     private Long ncrId;
 

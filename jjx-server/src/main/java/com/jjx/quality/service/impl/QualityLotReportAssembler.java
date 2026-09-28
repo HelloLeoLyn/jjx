@@ -33,9 +33,11 @@ public class QualityLotReportAssembler {
     private final QualityNcrMapper ncrMapper;
     private final com.jjx.quality.service.QualitySamplingPlanService samplingPlanService;
     private final JdbcTemplate jdbcTemplate;
+    private final com.jjx.quality.service.QualityLotService qualityLotService;
 
     public QualityLotReportVO build(Long lotId) {
-        QualityLot lot = lotMapper.selectById(lotId);
+        // 报告也走统一读模型入口，确保已处置量来自有效处置动作而非旧缓存列。
+        QualityLot lot = qualityLotService.getLot(lotId);
         if (lot == null) {
             throw new BusinessException("检验批不存在: " + lotId);
         }
@@ -61,6 +63,7 @@ public class QualityLotReportAssembler {
         vo.setInspectTime(lot.getInspectTime());
         vo.setRemark(lot.getRemark());
         vo.setVersion(lot.getVersion() == null ? "1" : String.valueOf(lot.getVersion()));
+        vo.setTrace(qualityLotService.buildTrace(lot));
 
         // 抽样信息（来料按批量匹配方案兜底）
         vo.setSampleQuantity(lot.getSampleQuantity() != null ? lot.getSampleQuantity() : lot.getInspectedQuantity());
@@ -119,6 +122,8 @@ public class QualityLotReportAssembler {
             } catch (Exception ignored) {
             }
         }
+        // 来源单号补齐后再生成一次只读链路，避免打印页出现内部 ID 或空来源号。
+        vo.setTrace(qualityLotService.buildTrace(lot));
 
         // 检验项（逐件实测 + CR/MA/MI）
         List<QualityLotReportVO.Item> items = new ArrayList<>();

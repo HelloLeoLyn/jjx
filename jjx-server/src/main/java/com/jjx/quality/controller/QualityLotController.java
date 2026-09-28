@@ -43,6 +43,13 @@ public class QualityLotController {
         return Result.success(qualityLotService.getLot(lotId));
     }
 
+    @Operation(summary = "检验批统一质量链路只读视图")
+    @SaCheckPermission("quality:lot:view")
+    @GetMapping("/{lotId}/trace")
+    public Result<com.jjx.quality.dto.vo.QualityTraceView> trace(@PathVariable Long lotId) {
+        return Result.success(qualityLotService.buildTrace(qualityLotService.getLot(lotId)));
+    }
+
     @Operation(summary = "检验项列表")
     @SaCheckPermission("quality:lot:view")
     @GetMapping("/{lotId}/items")

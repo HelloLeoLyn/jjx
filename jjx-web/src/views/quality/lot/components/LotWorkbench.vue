@@ -86,33 +86,33 @@
           </template>
         </el-table-column>
         <el-table-column prop="batchNo" label="批次" min-width="130" />
-        <el-table-column label="批量" width="90" align="right">
+        <el-table-column label="本批检验批量" width="105" align="right">
           <template #default="{ row }">{{ num(row.lotQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="已检" width="90" align="right">
-          <template #default="{ row }">{{ num(row.inspectedQuantity) }}</template>
+        <el-table-column label="整批已检" width="95" align="right">
+          <template #default="{ row }">{{ num(row.trace?.inspectedQuantity ?? row.inspectedQuantity) }}</template>
         </el-table-column>
         <el-table-column label="待检" width="90" align="right">
           <template #default="{ row }">
             <span :class="{ warn: remaining(row) > 0 }">{{ num(remaining(row)) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="合格" width="80" align="right">
-          <template #default="{ row }">{{ num(row.passQuantity) }}</template>
+        <el-table-column label="整批合格" width="95" align="right">
+          <template #default="{ row }">{{ num(row.trace?.qualifiedQuantity ?? row.passQuantity) }}</template>
         </el-table-column>
-        <el-table-column label="不良" width="80" align="right">
-          <template #default="{ row }">{{ num(row.failQuantity) }}</template>
+        <el-table-column label="整批不良" width="95" align="right">
+          <template #default="{ row }">{{ num(row.trace?.defectiveQuantity ?? row.failQuantity) }}</template>
         </el-table-column>
         <!-- dev-20260922-011（G4）：可见"合格量进库了没"，解决"到底要不要点同步入库" -->
         <el-table-column label="已入库" width="90" align="right">
           <template #default="{ row }">
-            <span :class="{ 'stored-missing': needSync(row) }">{{ num(row.storedQuantity) }}</span>
+            <span :class="{ 'stored-missing': needSync(row) }">{{ num(row.trace?.confirmedInboundQuantity ?? row.storedQuantity) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="待处置" width="90" align="right">
           <template #default="{ row }">
             <el-tag v-if="pendingDefect(row) > 0" type="danger" size="small">{{
-              num(pendingDefect(row))
+              num(row.trace?.remainingDispositionQuantity ?? pendingDefect(row))
             }}</el-tag>
             <span v-else>-</span>
           </template>
@@ -419,7 +419,7 @@ const props = withDefaults(defineProps<{ lotType?: string }>(), { lotType: 'FQC'
 const title = props.lotType === 'IQC' ? '来料检验' : props.lotType === 'OQC' ? '出货检验' : '成品检验'
 const lotType = props.lotType
 const needSync = (row: QualityLot) =>
-  lotType === 'FQC' && Number(row.storedQuantity || 0) < Number(row.passQuantity || 0)
+  lotType === 'FQC' && Number(row.trace?.confirmedInboundQuantity ?? row.storedQuantity ?? 0) < Number(row.trace?.qualifiedQuantity ?? row.passQuantity ?? 0)
 const loading = ref(false)
 const rows = ref<QualityLot[]>([])
 const total = ref(0)
@@ -455,7 +455,7 @@ const num = (value?: number | null) =>
 const remaining = (row: QualityLot) =>
   Number(row.lotQuantity || 0) - Number(row.inspectedQuantity || 0)
 const pendingDefect = (row: QualityLot) =>
-  Number(row.failQuantity || 0) - Number(row.disposedQuantity || 0)
+  Number(row.trace?.remainingDispositionQuantity ?? (Number(row.failQuantity || 0) - Number(row.disposedQuantity || 0)))
 const sourceLabel = (row: QualityLot) => {
   const map: Record<string, string> = {
     WORK_REPORT: '报工批',

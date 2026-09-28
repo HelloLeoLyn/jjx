@@ -21,6 +21,26 @@ export interface QualityLotItem {
   sortOrder?: number
 }
 
+export interface QualityTraceView {
+  lotId?: number
+  lotNo?: string
+  lotType?: string
+  sourceNo?: string
+  upstreamSourceNo?: string
+  parentLotNo?: string
+  relationshipMode?: string
+  scopeQuantity?: number
+  receivedQuantity?: number
+  inspectedQuantity?: number
+  qualifiedQuantity?: number
+  defectiveQuantity?: number
+  reinspectionQuantity?: number
+  disposedQuantity?: number
+  remainingDispositionQuantity?: number
+  confirmedInboundQuantity?: number
+  dispositionStatus?: string
+}
+
 /**
  * 判定护栏（dev-20260923-021 一期）：可判合格上界与预填建议
  * guardAvailable=false 表示护栏降级（查询异常），前端应退回原行为、不阻塞
@@ -96,6 +116,7 @@ export interface QualityLot {
   inspectTime?: string
   remark?: string
   createTime?: string
+  trace?: QualityTraceView
 }
 
 export interface QualityLotHistory {
@@ -198,6 +219,7 @@ export interface QualityNcr {
   lotSuperseded?: boolean
   /** 允许动作（后端唯一出处下发）—— dev-20260923-039：前端只按它渲染按钮 */
   allowedActions?: string[]
+  trace?: QualityTraceView
 }
 
 export interface QualityNcrAction {
@@ -263,6 +285,9 @@ export const qualityLotApi = {
   },
   report(lotId: number) {
     return request.get<R<Record<string, any>>>(`/quality/lot/${lotId}/report`)
+  },
+  trace(lotId: number) {
+    return request.get<R<QualityTraceView>>(`/quality/lot/${lotId}/trace`)
   },
 }
 

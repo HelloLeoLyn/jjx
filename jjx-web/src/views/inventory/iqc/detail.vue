@@ -124,6 +124,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { hasPermi } from '@/directives'
 import { qualityApi } from '@/api/production/quality'
+import type { QualityTraceView } from '@/api/quality/lot'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
@@ -172,6 +173,7 @@ type WorkRow = {
   baseAcceptedQuantity: number
   locked: boolean
   inspectionItems: any[]
+  trace?: QualityTraceView
 }
 const router = useRouter()
 const route = useRoute()
@@ -462,6 +464,7 @@ async function loadInboundDetail(row: IqcPendingVO) {
           inspectionItems: quality?.items?.length
             ? quality.items.map(normalizeInspectionItem)
             : defaultInspectionItems(),
+          trace: quality?.trace,
         }
       })
     )

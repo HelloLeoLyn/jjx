@@ -13,6 +13,9 @@ import java.util.List;
 @Data
 public class QualityLotReportVO {
 
+    /** 与检验批工作台/NCR/隔离台账一致的只读数量口径。 */
+    private com.jjx.quality.dto.vo.QualityTraceView trace;
+
     /** 表单编号：JJX-QR-037 / JJX-QR-039 */
     private String recordNo;
     private String reportTitle;

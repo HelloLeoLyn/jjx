@@ -28,6 +28,8 @@ import com.jjx.quality.service.QualityLotService;
 import com.jjx.quality.service.support.AllowedActionResolver;
 import com.jjx.quality.service.support.QualityLotLineagePolicy;
 import com.jjx.inventory.domain.InventoryInboundOrder;
+import com.jjx.inventory.domain.InventoryInboundItem;
+import com.jjx.inventory.mapper.InventoryInboundItemMapper;
 import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionOrder;
@@ -75,6 +77,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     private final ProductionWorkReportMapper workReportMapper;
     private final ProductionOrderMapper productionOrderMapper;
     private final ProductionOperationExecutionMapper executionMapper;
+    private final InventoryInboundItemMapper inboundItemMapper;
     private final InventoryInboundOrderMapper inboundOrderMapper;
     private final SalesDeliveryMapper salesDeliveryMapper;
     private final OrderMapper salesOrderMapper;
@@ -356,6 +359,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                     lot.setSalesOrderNo(salesOrder.getOrderNo());
                 }
             }
+            lot.setDisposedQuantity(nz(ncrActionMapper.sumEffectiveQuantityByLotId(lot.getLotId())));
+            lot.setTrace(buildTrace(lot));
         }
     }
 
@@ -435,6 +440,9 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
             // dev-20260923-039（第二片）：allowedActions 由唯一出处算好下发，前端只按它渲染
             lot.setAllowedActions(AllowedActionEnum.codesOf(AllowedActionResolver.forLot(
                     lot.getStatus(), isSuperseded, withOpenDefect.contains(lot.getLotId()))));
+            // 统一展示口径：已处置从有效处置动作派生，兼容列不作为历史真源。
+            lot.setDisposedQuantity(nz(ncrActionMapper.sumEffectiveQuantityByLotId(lot.getLotId())));
+            lot.setTrace(buildTrace(lot));
         }
     }
 
@@ -451,6 +459,44 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         return historyMapper.selectList(new LambdaQueryWrapper<QualityLotHistory>()
                 .eq(QualityLotHistory::getLotId, lotId)
                 .orderByDesc(QualityLotHistory::getHistoryId));
+    }
+
+    @Override
+    public com.jjx.quality.dto.vo.QualityTraceView buildTrace(QualityLot lot) {
+        if (lot == null) {
+            return null;
+        }
+        BigDecimal fail = nz(lot.getFailQuantity());
+        BigDecimal disposed = nz(lot.getDisposedQuantity());
+        com.jjx.quality.dto.vo.QualityTraceView trace = new com.jjx.quality.dto.vo.QualityTraceView();
+        trace.setLotId(lot.getLotId());
+        trace.setLotNo(lot.getLotNo());
+        trace.setLotType(lot.getLotType());
+        trace.setSourceNo(lot.getSourceNo());
+        trace.setUpstreamSourceNo(lot.getUpstreamSourceNo());
+        trace.setParentLotNo(lot.getParentLotNo());
+        trace.setRelationshipMode(lot.getRelationshipMode());
+        trace.setScopeQuantity(lot.getScopeQuantity());
+        BigDecimal received = nz(lot.getLotQuantity());
+        if (lot.getSourceItemId() != null) {
+            InventoryInboundItem item = inboundItemMapper.selectById(lot.getSourceItemId());
+            if (item != null && item.getQuantity() != null) {
+                received = item.getQuantity();
+            }
+        }
+        trace.setReceivedQuantity(received);
+        trace.setInspectedQuantity(nz(lot.getInspectedQuantity()));
+        trace.setQualifiedQuantity(nz(lot.getPassQuantity()));
+        trace.setDefectiveQuantity(fail);
+        trace.setReinspectionQuantity(lot.getParentLotId() == null
+                ? BigDecimal.ZERO : nz(lot.getScopeQuantity()).signum() > 0
+                ? lot.getScopeQuantity() : nz(lot.getLotQuantity()));
+        trace.setDisposedQuantity(disposed);
+        trace.setRemainingDispositionQuantity(fail.subtract(disposed).max(BigDecimal.ZERO));
+        trace.setConfirmedInboundQuantity(nz(lot.getStoredQuantity()));
+        trace.setDispositionStatus(fail.signum() == 0 ? "NONE"
+                : trace.getRemainingDispositionQuantity().signum() > 0 ? "PENDING" : "COMPLETED");
+        return trace;
     }
 
     @Override

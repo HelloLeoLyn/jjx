@@ -16,6 +16,9 @@ import java.math.BigDecimal;
 @Schema(description = "隔离台账行：未处置不良（隔离中）")
 public class QuarantineRowVO {
 
+    /** 统一质量链路只读视图，不落库。 */
+    private QualityTraceView trace;
+
     private Long ncrId;
 
     private String ncrNo;

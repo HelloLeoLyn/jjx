@@ -43,6 +43,9 @@ public interface QualityLotService {
     /** 检验批快照历史；历史字段缺失不伪造。 */
     List<QualityLotHistory> listHistory(Long lotId);
 
+    /** 构造统一质量链路只读视图，不改变任何业务数据。 */
+    com.jjx.quality.dto.vo.QualityTraceView buildTrace(QualityLot lot);
+
     /** 记录检验批审核事件；审核入口由库存域调用，历史只追加不覆盖。 */
     void recordReview(QualityLot lot, String reviewStatus, String operatorName, String remark);
 
