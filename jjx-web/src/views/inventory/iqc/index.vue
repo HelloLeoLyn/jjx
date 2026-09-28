@@ -3,8 +3,7 @@
     <el-card>
       <template #header
         ><div class="header">
-          <span>来料批次</span
-          ><el-button :loading="listLoading" @click="loadList">刷新</el-button>
+          <span>来料批次</span><el-button :loading="listLoading" @click="loadList">刷新</el-button>
         </div></template
       >
       <el-form inline>
@@ -36,15 +35,15 @@
           prop="sourceNo"
           label="采购单号"
           min-width="180"
-        /><el-table-column
-          prop="supplierName"
-          label="供应商"
-          min-width="150"
-        /><el-table-column prop="createTime" label="到货时间" width="180" /><el-table-column
-          prop="totalQuantity"
-          label="整批收货量"
-          width="105"
-        /><el-table-column prop="materialCount" label="材料数" width="85" />
+        /><el-table-column prop="supplierName" label="供应商" min-width="150" /><el-table-column
+          prop="createTime"
+          label="到货时间"
+          width="180"
+        /><el-table-column prop="totalQuantity" label="整批收货量" width="105" /><el-table-column
+          prop="materialCount"
+          label="材料数"
+          width="85"
+        />
         <el-table-column label="状态" width="105"
           ><template #default="{ row }"
             ><el-tag :type="iqcBatchActions(row).length ? 'warning' : InboundOrderStatusEnum.getTagProps(row.orderStatus).type">{{
@@ -65,17 +64,14 @@
             ><span v-else>-</span></template
           ></el-table-column
         >
-        <el-table-column label="操作" min-width="240" fixed="right">
-          <template #default="{ row }">
-            <div class="batch-actions">
-              <el-button v-for="action in availableActions(row)" :key="action.key" link type="primary"
-                @click="runAction(row, action.key)">{{ action.label }}</el-button>
-              <span v-if="!availableActions(row).length" class="list-tip">
-                {{ iqcBatchActions(row).length ? '待对应岗位处理' : '暂无待办' }}
-              </span>
-            </div>
+        <TableActionColumn :actions="iqcBatchActionColumns" :min-width="240" display="text"
+          @action="runAction">
+          <template #after="{ row }">
+            <span v-if="!availableActions(row).length" class="list-tip">
+              {{ iqcBatchActions(row).length ? '待对应岗位处理' : '暂无待办' }}
+            </span>
           </template>
-        </el-table-column>
+        </TableActionColumn>
       </el-table>
       <div class="pager">
         <el-pagination
@@ -87,6 +83,7 @@
           @size-change="handlePageChange"
         />
       </div>
+    </el-card>
     <IqcReviewDialog v-model:visible="reviewVisible" :inbound-id="Number(actionRow?.inboundId)"
       :inbound-no="actionRow?.inboundNo" @success="loadList" />
     <IqcQuarantineDialog v-model:visible="dispositionVisible" :inbound-id="Number(actionRow?.inboundId)"
@@ -96,18 +93,9 @@
         <el-table-column prop="dispositionNo" label="处置单号" min-width="180" />
         <el-table-column prop="materialCode" label="材料" min-width="140" />
         <el-table-column prop="quantity" label="本次处置量" width="110" />
-        <el-table-column label="操作" width="190">
-          <template #default="{ row }">
-            <template v-if="taskAction === 'scrap'">
-              <el-button link type="success" :disabled="taskLoading" @click="finishTask(row, true)">通过</el-button>
-              <el-button link type="danger" :disabled="taskLoading" @click="finishTask(row, false)">驳回</el-button>
-            </template>
-            <el-button v-else link type="primary" :disabled="taskLoading" @click="finishTask(row, true)">确认返工完成</el-button>
-          </template>
-        </el-table-column>
+        <TableActionColumn :actions="taskActions" :width="190" display="text" @action="handleTaskAction" />
       </el-table>
     </el-dialog>
-    </el-card>
   </div>
 </template>
 
@@ -118,15 +106,17 @@
  */
 import { onActivated, onDeactivated, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { inboundApi } from '@/api/inventory/inbound'
 import { iqcApi } from '@/api/inventory/iqc'
 import { hasPermi } from '@/directives'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
-import { iqcBatchActions, type IqcBatchAction } from './iqcBatchActions'
+import { iqcBatchActions, iqcBatchActionColumns } from './iqcBatchActions'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import { IqcQuarantineAction, IqcDispositionOrderStatus } from '@/enums/inventory/IqcQuarantineEnum'
 import { IqcReworkStatus } from '@/enums/inventory/IqcReworkEnum'
-import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
 import { InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
 
@@ -140,27 +130,30 @@ const flowOptions: Array<{
   fillInspection?: boolean
 }> = [
   { key: 'ALL', label: '全部' },
-  { key: 'UNINSPECTED', label: '待检验', orderStatus: InboundOrderStatusEnum.PENDING.value, fillInspection: false },
-  { key: 'REVIEW', label: '待审核', orderStatus: InboundOrderStatusEnum.PENDING.value, fillInspection: true },
+  {
+    key: 'UNINSPECTED',
+    label: '待检验',
+    orderStatus: InboundOrderStatusEnum.PENDING.value,
+    fillInspection: false,
+  },
+  {
+    key: 'REVIEW',
+    label: '待审核',
+    orderStatus: InboundOrderStatusEnum.PENDING.value,
+    fillInspection: true,
+  },
   { key: 'APPROVED', label: '已批准', orderStatus: InboundOrderStatusEnum.APPROVED.value },
   { key: 'COMPLETED', label: '已完成', orderStatus: InboundOrderStatusEnum.COMPLETED.value },
 ]
-const listQuery = reactive({ pageNum: 1, pageSize: 10, inboundNo: '', flowStatus: 'ALL' as FlowKey })
+const listQuery = reactive({
+  pageNum: 1,
+  pageSize: 10,
+  inboundNo: '',
+  flowStatus: 'ALL' as FlowKey,
+})
 const inboundRows = ref<IqcPendingVO[]>([])
 const listTotal = ref(0)
 const listLoading = ref(false)
-function selectedFlowOption() {
-  return flowOptions.find((option) => option.key === listQuery.flowStatus) || flowOptions[0]
-}
-function orderStatusLabel(row: IqcPendingVO) {
-  return row.orderStatus === InboundOrderStatusEnum.PENDING.value
-    ? '检验处理中'
-    : InboundOrderStatusEnum.getLabel(row.orderStatus)
-}
-async function loadList() {
-  listLoading.value = true
-  try {
-    const filter = selectedFlowOption()
 let returningToList = false
 onDeactivated(() => { returningToList = true })
 onActivated(() => {
@@ -176,9 +169,17 @@ const taskVisible = ref(false)
 const taskLoading = ref(false)
 const taskAction = ref<'scrap' | 'rework'>('scrap')
 const taskRows = ref<any[]>([])
+const taskActions: TableAction[] = [
+  { key: 'approve', label: '通过', type: 'success', permission: 'quality:ncr:dispose',
+    visible: () => taskAction.value === 'scrap', disabled: () => taskLoading.value },
+  { key: 'reject', label: '驳回', type: 'danger', permission: 'quality:ncr:dispose',
+    visible: () => taskAction.value === 'scrap', disabled: () => taskLoading.value },
+  { key: 'complete', label: '确认返工完成', permission: 'quality:ncr:dispose',
+    visible: () => taskAction.value === 'rework', disabled: () => taskLoading.value },
+]
 const availableActions = (row: IqcPendingVO) => iqcBatchActions(row).filter(action => hasPermi(action.permission))
 
-async function runAction(row: IqcPendingVO, action: IqcBatchAction) {
+async function runAction(action: string, row: IqcPendingVO) {
   if (!availableActions(row).some(item => item.key === action)) return
   actionRow.value = row
   if (action === 'dispose') dispositionVisible.value = true
@@ -190,6 +191,11 @@ async function runAction(row: IqcPendingVO, action: IqcBatchAction) {
     taskVisible.value = true
     await loadTasks()
   } else await router.push({ path: `/inventory/iqc-detail/${row.inboundId}`, query: { action } })
+}
+function handleTaskAction(action: string, row: any) {
+  if (!hasPermi('quality:ncr:dispose') || taskLoading.value) return
+  if (action === 'approve' || action === 'complete') return finishTask(row, true)
+  if (action === 'reject') return finishTask(row, false)
 }
 async function loadTasks() {
   if (!actionRow.value) return
@@ -222,16 +228,28 @@ async function finishTask(row: any, approved: boolean) {
     await Promise.all([loadTasks(), loadList()])
   } finally { taskLoading.value = false }
 }
-    const result = await inboundApi.iqcList({
-      pageNum: listQuery.pageNum,
-      pageSize: listQuery.pageSize,
-      inboundNo: listQuery.inboundNo || undefined,
+function selectedFlowOption() {
+  return flowOptions.find((option) => option.key === listQuery.flowStatus) || flowOptions[0]
+}
+function orderStatusLabel(row: IqcPendingVO) {
   if (Number(row.remainingDispositionQuantity) > 0) return '待处置'
   if (Number(row.pendingScrapCount) > 0) return '待报废审批'
   if (Number(row.pendingReworkCount) > 0) return '待返工'
   if (Number(row.pendingReviewCount) > 0) return '待审核'
   if (Number(row.pendingReinspectionCount) > 0) return '待复检'
   if (Number(row.pendingInspectionCount) > 0) return '待检验'
+  return row.orderStatus === InboundOrderStatusEnum.PENDING.value
+    ? '检验处理中'
+    : InboundOrderStatusEnum.getLabel(row.orderStatus)
+}
+async function loadList() {
+  listLoading.value = true
+  try {
+    const filter = selectedFlowOption()
+    const result = await inboundApi.iqcList({
+      pageNum: listQuery.pageNum,
+      pageSize: listQuery.pageSize,
+      inboundNo: listQuery.inboundNo || undefined,
       orderStatus: filter.orderStatus,
       fillInspection: filter.fillInspection,
     })
@@ -277,8 +295,6 @@ onMounted(() => {
 }
 .list-tip,
 .check-progress {
-.batch-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.batch-actions .el-button { margin-left: 0; }
   color: #909399;
   font-size: 12px;
 }
