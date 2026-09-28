@@ -83,6 +83,47 @@
         @print="printRow"
         @go-disposition="goDisposition"
       />
+      <el-card class="workbench-section" shadow="never">
+        <template #header>
+          <div class="section-header">
+            <span>不良处置与复检链路</span>
+            <span class="section-tip">处置记录属于当前来料批次；数量均为本次动作口径</span>
+          </div>
+        </template>
+        <el-table :data="dispositionRows" border size="small">
+          <el-table-column prop="dispositionNo" label="处置单号" width="180" />
+          <el-table-column label="类型" width="140">
+            <template #default="{ row }">
+              <el-tag :type="IqcQuarantineActionEnum.getTagProps(row.action).type">
+                {{ IqcQuarantineActionEnum.getLabel(row.action) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="materialCode" label="物料" min-width="150" />
+          <el-table-column label="数量口径" width="130">
+            <template #default="{ row }">本次处置量：{{ num(row.quantity) }}</template>
+          </el-table-column>
+          <el-table-column label="复检关系" min-width="220">
+            <template #default="{ row }">
+              <template v-if="row.action === 'REWORK'">
+                <div>原批：{{ row.batchNo || '-' }}</div>
+                <span class="muted">复检批：{{ row.childBatchNo || '待生成' }}</span>
+                <div class="emphasis">该批只针对 {{ num(row.quantity) }} 件</div>
+              </template>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="130">
+            <template #default="{ row }">
+              <el-tag :type="IqcDispositionOrderStatusEnum.getTagProps(row.status).type">
+                {{ IqcDispositionOrderStatusEnum.getLabel(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createTime" label="时间" width="170" />
+        </el-table>
+        <el-empty v-if="!dispositionRows.length" description="当前暂无不良处置记录" />
+      </el-card>
       <template v-if="hasEditableRows"
         ><el-form label-width="90px" class="remark-form"
           ><el-form-item label="整单备注"
@@ -115,6 +156,13 @@
       :inbound-no="activeInboundNo"
       @success="handleFlowSuccess"
     />
+    <IqcQuarantineDialog
+      v-model:visible="dispositionVisible"
+      :inbound-id="activeInboundId"
+      :inbound-no="activeInboundNo"
+      :item-id="activeItemId"
+      @success="handleFlowSuccess"
+    />
   </div>
 </template>
 
@@ -128,6 +176,7 @@ import type { QualityTraceView } from '@/api/quality/lot'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
+import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
 import IqcMaterialTable from './components/IqcMaterialTable.vue'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
@@ -147,6 +196,10 @@ import {
   QualityReviewStatus,
   QualityReviewStatusEnum,
 } from '@/enums/quality/InspectionEnum'
+import {
+  IqcDispositionOrderStatusEnum,
+  IqcQuarantineActionEnum,
+} from '@/enums/inventory/IqcQuarantineEnum'
 import { sanitize } from '@/utils/reasonSanitizer'
 
 type FlowKey = 'ALL' | 'UNINSPECTED' | 'REVIEW' | 'APPROVED' | 'COMPLETED'
@@ -215,14 +268,19 @@ const inboundRows = ref<IqcPendingVO[]>([]),
   detailLoading = ref(false)
 const selectedInboundId = ref<string | number>(''),
   selectedInbound = ref<IqcPendingVO>(),
-  workRows = ref<WorkRow[]>([])
+  workRows = ref<WorkRow[]>([]),
+  dispositionRows = ref<any[]>([])
 const inspectionRemark = ref(''),
   submitting = ref(false),
   checksVisible = ref(false),
-  reviewVisible = ref(false)
+  reviewVisible = ref(false),
+  dispositionVisible = ref(false)
 const activeWorkRow = ref<WorkRow>(),
   activeInboundId = ref<number>(),
-  activeInboundNo = ref('')
+  activeInboundNo = ref(''),
+  activeItemId = ref<string>()
+const num = (value?: number | string | null) =>
+  value == null || value === '' ? '-' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
 /** dev-20260924-017：校验未通过的行（行级红标，提交时一次提示 + 定位第一处） */
 const problemRowIds = ref<Set<number>>(new Set())
 function rowClassName({ row }: { row: WorkRow }) {
@@ -343,6 +401,7 @@ function clearSelection() {
   selectedInboundId.value = ''
   selectedInbound.value = undefined
   workRows.value = []
+  dispositionRows.value = []
   inspectionRemark.value = ''
   activeWorkRow.value = undefined
 }
@@ -392,10 +451,12 @@ async function loadInboundDetail(row: IqcPendingVO) {
   inspectionRemark.value = ''
   detailLoading.value = true
   try {
-    const [{ data }, quarantineResult] = await Promise.all([
+    const [{ data }, quarantineResult, dispositionResult] = await Promise.all([
       inboundApi.getById(String(requestedId)),
       inboundApi.listQuarantine(String(requestedId)),
+      inboundApi.listDispositionOrders(String(requestedId)),
     ])
+    dispositionRows.value = dispositionResult.data || []
     const remainingByItemLot = new Map<string, number>()
     ;(quarantineResult.data || []).forEach((record: any) => {
       const key = `${record.inboundItemId}:${record.lotId || ''}`
@@ -617,14 +678,10 @@ function openReview() {
   reviewVisible.value = true
 }
 function goDisposition(row: WorkRow) {
-  router.push({
-    path: '/inventory/iqc-quarantine',
-    query: {
-      inboundNo: selectedInbound.value?.inboundNo,
-      materialKeyword: row.materialCode,
-      batchNo: row.batchNo || undefined,
-    },
-  })
+  activeInboundId.value = Number(selectedInbound.value?.inboundId)
+  activeInboundNo.value = selectedInbound.value?.inboundNo || ''
+  activeItemId.value = row.itemId
+  dispositionVisible.value = true
 }
 function printRow(row: WorkRow) {
   router.push({
@@ -778,6 +835,27 @@ onBeforeUnmount(clearSelection)
 }
 .detail-card {
   margin-top: 16px;
+}
+.workbench-section {
+  margin-top: 16px;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+}
+.section-tip,
+.muted {
+  color: #909399;
+  font-size: 12px;
+  font-weight: 400;
+}
+.emphasis {
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+  font-weight: 600;
 }
 .posting-guide {
   margin-top: 16px;
