@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>来料检验 · 原型 v3（采购订单 → 来料批次 → 材料 → 检验 → 处置）</title>
+<style>
+  :root{--pri:#409eff;--pri-l:#ecf5ff;--txt:#303133;--sub:#909399;--bd:#dcdfe6;--bd-l:#ebeef5;
+        --ok:#67c23a;--warn:#e6a23c;--danger:#f56c6c;--bg:#f5f7fa}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:1500px;margin:0 auto;padding:16px}
+  .banner{background:#eef7ff;border:1px solid #b3d8ff;color:#2b6cb0;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px}
+  .card{background:#fff;border:1px solid var(--bd-l);border-radius:6px;margin-bottom:12px}
+  .card-h{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--bd-l);font-weight:600}
+  .card-h .hint{font-weight:400;color:var(--sub);font-size:12px}
+  .toolbar{padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+  .fld{display:flex;align-items:center;gap:6px;font-size:12px;color:#606266}
+  .inp{border:1px solid var(--bd);border-radius:4px;height:28px;padding:0 8px;background:#fff;color:var(--sub);min-width:132px;font-size:12px}
+  .btn{border:1px solid var(--bd);background:#fff;border-radius:4px;height:28px;padding:0 12px}
+  .btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}
+  .crumb{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:10px 14px;background:#fff;border:1px solid var(--bd-l);border-radius:6px;margin-bottom:12px;font-size:12.5px}
+  .crumb a{color:var(--pri);text-decoration:none}
+  .crumb .sep{color:var(--sub)}
+  .crumb .cur{color:var(--txt);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{border-bottom:1px solid var(--bd-l);padding:8px 10px;text-align:left;vertical-align:middle}
+  th{background:#fafafa;color:#606266;font-weight:600;white-space:nowrap}
+  tbody tr:hover{background:#fafcff}
+  tr.sel{background:var(--pri-l)}
+  tr.demo{color:#a8abb2;font-style:italic}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .tag{display:inline-block;border-radius:3px;padding:0 6px;font-size:11.5px;line-height:18px;border:1px solid}
+  .t-ok{color:var(--ok);border-color:#c2e7b0;background:#f0f9eb}
+  .t-info{color:var(--sub);border-color:var(--bd);background:#f4f4f5}
+  .t-warn{color:var(--warn);border-color:#f5dab1;background:#fdf6ec}
+  .t-danger{color:var(--danger);border-color:#fab6b6;background:#fef0f0}
+  .t-pri{color:var(--pri);border-color:#b3d8ff;background:var(--pri-l)}
+  .qty{color:var(--sub);font-size:11.5px}
+  .qty b{color:var(--txt)}
+  .op a{color:var(--pri);text-decoration:none;margin-right:10px;white-space:nowrap}
+  .note{color:var(--sub);font-size:12px;padding:10px 14px;background:#fafafa;border-top:1px solid var(--bd-l)}
+  .sec{padding:8px 14px;font-weight:600;background:#fafcff;border-bottom:1px solid var(--bd-l)}
+  .sec span{font-weight:400;color:var(--sub);font-size:12px;margin-left:8px}
+  .grid2{display:grid;grid-template-columns:1fr 300px;gap:12px;align-items:start}
+  .side ol{margin:6px 0 0 18px;padding:0}
+  .side li{margin:5px 0;color:#606266;font-size:12px}
+  .tree{font:12px/1.9 ui-monospace,Consolas,monospace;color:#606266;padding:10px 14px}
+  .tree b{color:var(--txt)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="banner">
+    <b>原型 v3（静态）</b> —— 链路清楚版：<b>采购订单 → 来料批次 → 材料 → 检验批 → 处置</b>。
+    检验按「来料批次」展开；材料在第二层；处置一张表。数据取自 2026-09-28 实测。
+  </div>
+
+  <div class="crumb">
+    <a>采购订单 PO260928002</a><span class="sep">›</span>
+    <span class="cur">来料批次 IN260928003</span><span class="sep">›</span>
+    <span>材料 RM001572</span><span class="sep">›</span>
+    <span>检验批 QL260928006</span><span class="sep">›</span>
+    <span>处置单 IQD260928008（报废·待审批）</span>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><span>① 来料批次</span><span class="hint">一次到货 = 一个来料批次（可含多种材料）；同一采购订单可分多次到货</span></div>
+    <div class="toolbar">
+      <label class="fld">采购单号<input class="inp" placeholder="PO260928002"></label>
+      <label class="fld">来料批次<input class="inp" placeholder="IN260928003"></label>
+      <label class="fld">供应商<input class="inp" placeholder="名称"></label>
+      <label class="fld">状态<input class="inp" placeholder="全部"></label>
+      <button class="btn pri">查询</button><button class="btn">重置</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>来料批次</th><th>采购单号</th><th>供应商</th><th>到货日期</th>
+          <th class="num">材料数</th><th class="num">来料数量</th>
+          <th>检验进度</th><th>处置进度</th><th>状态</th><th style="width:90px">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="sel">
+          <td><b>IN260928003</b></td><td>PO260928002</td><td>新晟精密工業有限公司</td><td>2026-09-28</td>
+          <td class="num">2</td><td class="num">300</td>
+          <td><span class="qty">已检 <b>2</b>/2 · 已审 <b>2</b></span></td>
+          <td><span class="qty">已处置 <b>10</b>/10 <span class="tag t-warn">待审批 5</span></span></td>
+          <td><span class="tag t-warn">处置中</span></td>
+          <td class="op"><a>展开</a></td>
+        </tr>
+        <tr>
+          <td><b>IN260928005</b></td><td>PO260928002</td><td>新晟精密工業有限公司</td><td>2026-09-28</td>
+          <td class="num">1</td><td class="num">50</td>
+          <td><span class="qty">已检 <b>0</b>/1</span></td>
+          <td><span class="qty">—</span></td>
+          <td><span class="tag t-warn">待检验</span></td>
+          <td class="op"><a>展开</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><span>② IN260928003 · 材料明细</span><span class="hint">检验以材料为单位录入（检验批 = 每材料一个）</span></div>
+    <table>
+      <thead>
+        <tr>
+          <th>材料</th><th class="num">来料数量</th><th>检验批号</th>
+          <th>检验</th><th class="num">合格</th><th class="num">不良</th>
+          <th>处置</th><th>完结</th><th style="width:190px">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>RM001572</b><div class="qty">FR83 0.175（LJ-084客供） · 批次 IN260928003-1</div></td>
+          <td class="num">200</td><td>QL260928006</td>
+          <td><span class="tag t-danger">不合格</span> <span class="tag t-ok">已审核</span></td>
+          <td class="num">190</td><td class="num">10</td>
+          <td><span class="qty">已处置 10 / 剩余 0</span></td>
+          <td><span class="tag t-danger">未完结</span></td>
+          <td class="op"><a>检验录入</a><a>审核</a><a>处置</a><a>批次溯源</a></td>
+        </tr>
+        <tr>
+          <td><b>RM001592</b><div class="qty">CY50W 样品 (新亚洲) · 批次 IN260928003-2</div></td>
+          <td class="num">100</td><td>QL260928007</td>
+          <td><span class="tag t-danger">不合格</span> <span class="tag t-ok">已审核</span></td>
+          <td class="num">90</td><td class="num">10</td>
+          <td><span class="qty">已处置 10 / 剩余 0</span></td>
+          <td><span class="tag t-danger">未完结</span></td>
+          <td class="op"><a>检验录入</a><a>审核</a><a>处置</a><a>批次溯源</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="sec">③ IN260928003 · 处置明细<span>所有类型一张表；未处置的也在里面</span></div>
+      <table>
+        <thead>
+          <tr><th>处置单号</th><th>类型</th><th>材料</th><th>批次</th><th class="num">数量</th><th>状态</th><th>下一步</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>IQD260928005</td><td><span class="tag t-ok">让步接收</span></td><td>RM001592</td><td>IN260928003-2</td><td class="num">5</td><td><span class="tag t-pri">待确认入库</span></td><td class="op"><a>去确认入库</a></td></tr>
+          <tr><td>IQD260928006</td><td><span class="tag t-pri">返工</span></td><td>RM001592</td><td>IN260928003-2</td><td class="num">5</td><td><span class="tag t-warn">返工中</span></td><td class="op"><a>完成返工</a></td></tr>
+          <tr><td>IQD260928007</td><td><span class="tag t-warn">退货</span></td><td>RM001572</td><td>IN260928003-1</td><td class="num">5</td><td><span class="tag t-ok">已完成</span></td><td class="qty">—</td></tr>
+          <tr><td>IQD260928008</td><td><span class="tag t-danger">报废</span></td><td>RM001572</td><td>IN260928003-1</td><td class="num">5</td><td><span class="tag t-warn">待审批</span></td><td class="op"><a>去审批</a></td></tr>
+        </tbody>
+      </table>
+      <div class="note">「处置明细」默认是<b>这一批的</b>（也可切换成「全部待处置」跨批查看）。未处置的行会以「处置单号空 + 待处置 + 去处置」出现在同一张表里。</div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <div class="card-h">链路（这一页要体现的）</div>
+        <div class="tree">
+          <b>PO260928002</b> 采购订单<br>
+          &nbsp;└─ <b>IN260928003</b> 来料批次（300）<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;├─ RM001572（200）→ 检验批 <b>QL260928006</b><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└─ 处置 IQD260928007（退货5）/ IQD260928008（报废5）<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;└─ RM001592（100）→ 检验批 <b>QL260928007</b><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ 处置 IQD260928005（让步5）/ IQD260928006（返工5）
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h">跟 v2 的区别</div>
+        <div style="padding:10px 14px" class="side">
+          <div>① 第一层是<b>来料批次</b>（一次到货），不是"材料批次"</div>
+          <div>② 材料下沉到第二层，带<b>检验批号</b></div>
+          <div>③ 顶部有<b>链路面包屑</b>，点哪层跳哪层</div>
+          <div>④ 处置收敛成<b>一张表</b>，未处置行同表可见</div>
+          <div>⑤ 全页无 Tab、无抽屉</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

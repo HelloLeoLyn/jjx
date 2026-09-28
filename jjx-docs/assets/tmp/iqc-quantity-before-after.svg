@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760">
+  <rect width="1400" height="760" fill="#f5f7fa"/>
+  <style>
+    .title { font: 700 28px sans-serif; fill: #303133; }
+    .subtitle { font: 600 20px sans-serif; fill: #606266; }
+    .body { font: 18px sans-serif; fill: #303133; }
+    .small { font: 16px sans-serif; fill: #606266; }
+    .bad { fill: #fef0f0; stroke: #f56c6c; stroke-width: 2; }
+    .good { fill: #f0f9eb; stroke: #67c23a; stroke-width: 2; }
+    .card { fill: white; stroke: #dcdfe6; stroke-width: 2; }
+  </style>
+  <text x="60" y="58" class="title">来料检验数量口径：修改前 / 修改后</text>
+
+  <rect x="50" y="90" width="625" height="610" rx="10" class="card"/>
+  <text x="80" y="135" class="subtitle">修改前：数字并列，口径不明</text>
+  <rect x="80" y="170" width="565" height="170" rx="8" class="bad"/>
+  <text x="110" y="215" class="body">收货 500　合格 492　不良 8</text>
+  <text x="110" y="260" class="body">剩余可处置 5　复检 1</text>
+  <text x="110" y="305" class="small">容易误会为：8 件都要复检</text>
+  <text x="80" y="400" class="subtitle">原批 / 复检批关系不可见</text>
+  <text x="110" y="450" class="body">QL260928003　　 RW-IQW260928001</text>
+  <text x="110" y="500" class="small">没有“只针对 1 件”的提示</text>
+
+  <rect x="725" y="90" width="625" height="610" rx="10" class="card"/>
+  <text x="755" y="135" class="subtitle">修改后：每个数量带口径</text>
+  <rect x="755" y="170" width="565" height="205" rx="8" class="good"/>
+  <text x="785" y="215" class="body">整批收货 500　整批合格 492</text>
+  <text x="785" y="258" class="body">整批不良 8</text>
+  <text x="785" y="301" class="body">已处置 3　剩余可处置 5</text>
+  <text x="785" y="344" class="body">本批复检 1（该批只针对 1 件）</text>
+  <text x="755" y="440" class="subtitle">复检关系明确</text>
+  <text x="785" y="490" class="body">原批 QL260928003 ↔ 复检批</text>
+  <text x="785" y="530" class="body">RW-IQW260928001</text>
+  <text x="785" y="590" class="small">仅调整前端展示文案与展示字段，不改业务逻辑和数据</text>
+</svg>
