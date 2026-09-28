@@ -161,6 +161,8 @@
 - 退出码：0=通过；1=任一项不通过。
 - ⚠️ 与单号方案（`design/doc-no-rules-dev-20260922-023.md`）联动：新增/改名业务域后，脚本里的 `required` 列表与 `sys_config` 必须同步，否则误报。
 
+- `scripts/check-result-case.mjs`：检查 PASS/FAIL 结果比较是否统一且大小写安全；退出码 `0`=绿、`1`=红。
+
 ## 10b. scripts/task-register.sh —— 开发任务登记唯一入口（2026-09-24 立，任务 dev-20260924-032 同批）
 
 - **用途**：登记 `dev-YYYYMMDD-NNN` 任务到 `sys_task`。**禁止再手写取号 SQL**（并行会话各自 `MAX+1` 必然撞号，且手写 SQL 出过两类事故：`LPAD(@base+n,3,'0')` 被当小数产出畸形码 `dev-YYYYMMDD-14.`；`INSERT…SELECT…FROM sys_task` 少聚合 → 插多行 → 整条回滚）。

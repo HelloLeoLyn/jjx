@@ -9,7 +9,7 @@
  * - 复制上一行：只带 检验标准/方法/设备/结论，不带实测值与缺陷数（避免误判）
  */
 import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
-import { InspectionResult } from '@/enums/quality/InspectionEnum'
+import { InspectionResult, isResultFail } from '@/enums/quality/InspectionEnum'
 import { isValidSupplement } from '@/utils/reasonSanitizer'
 
 /** 处置方式联动接收数量：全检口径下接收数量恒等于合格数量 */
@@ -31,7 +31,7 @@ export function syncIqcRowFromChecks(row: any) {
   // dev-20260928-003：检验项 CR/MA/MI>0 ⇒ 结论必须=不合格（避免"数值判不合格、结论说合格"导致原因文本丢项）。
   items.forEach((check: any) => {
     const defect = Number(check?.crQuantity || 0) + Number(check?.maQuantity || 0) + Number(check?.miQuantity || 0)
-    if (defect > 0 && String(check?.result || '').toUpperCase() !== 'FAIL') {
+    if (defect > 0 && !isResultFail(check?.result)) {
       check.result = InspectionResult.FAIL
     }
   })
@@ -73,7 +73,7 @@ export function iqcRowProblems(row: any): string[] {
     // dev-20260924-013：检验侧不再要求处置方式；不合格原因由检验项目派生。
     // 边界 A（用户拍板）：无任何不合格检验项时，必须填「补充说明」。
     const hasFailItem = (row.inspectionItems || []).some(
-      (check: any) => String(check?.result || '').toUpperCase() === 'FAIL'
+      (check: any) => isResultFail(check?.result)
     )
     if (!hasFailItem && !isValidSupplement(row.rejectReason, deriveIqcReasonText(row))) {
       problems.push('判定不合格但未录入不合格检验项，请填写补充说明或补录检验项目')
@@ -98,7 +98,7 @@ export function iqcRowProblems(row: any): string[] {
   }
   ;(row.inspectionItems || []).forEach((check: any) => {
     const defect = Number(check?.crQuantity || 0) + Number(check?.maQuantity || 0) + Number(check?.miQuantity || 0)
-    if (String(check?.result || '').toUpperCase() === 'FAIL' && defect === 0) {
+    if (isResultFail(check?.result) && defect === 0) {
       problems.push(`检测项目「${check.checkItem}」判不合格但 CR/MA/MI 全为 0，请填写缺陷数或把该项改为合格`)
     }
   })
@@ -113,7 +113,7 @@ export function iqcRowProblems(row: any): string[] {
 export function deriveIqcReasonText(row: any): string {
   const parts: string[] = []
   for (const check of row?.inspectionItems || []) {
-    if (String(check?.result || '').toUpperCase() !== 'FAIL') continue
+    if (!isResultFail(check?.result)) continue
     const levels = ([['CR', check.crQuantity], ['MA', check.maQuantity], ['MI', check.miQuantity]] as [string, any][])
       .filter(([, v]) => Number(v) > 0)
       .map(([k, v]) => `${k} ${Number(v)}`)

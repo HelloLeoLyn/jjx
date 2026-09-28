@@ -32,6 +32,16 @@ export const InspectionResultEnum = createEnum<string>({
   defaultTag: { type: 'info' },
 })
 
+/** dev-20260928-006：唯一真源；结果比较统一走这里，大小写不敏感且 null 安全。 */
+export function isResultPass(value?: string | null): boolean {
+  return (value || '').trim().toUpperCase() === InspectionResult.PASS.toUpperCase()
+}
+
+/** dev-20260928-006：唯一真源；结果比较统一走这里，大小写不敏感且 null 安全。 */
+export function isResultFail(value?: string | null): boolean {
+  return (value || '').trim().toUpperCase() === InspectionResult.FAIL.toUpperCase()
+}
+
 /** quality_lot.status：统一检验批流程状态。 */
 export const QualityLotStatus = {
   PENDING: 'PENDING',

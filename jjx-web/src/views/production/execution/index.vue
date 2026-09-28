@@ -1387,7 +1387,7 @@ const submitQc = async () => {
   }
   if (!qcCurrentRow?.executionId) return
   try {
-    const checkResult = qcForm.result === 'pass' ? 'PASS' : 'FAIL'
+    const checkResult = qcForm.result === 'pass' ? 'PASS' : 'FAIL' // case-gate-allow：qcForm.result 是本页表单内部值域（'pass'/'fail'），不属跨层结果比较
     const checkItems = `抽检${qcForm.checkQty}件/合格${qcForm.passQty}件${qcForm.defectDesc ? '/' + qcForm.defectDesc : ''}`
     await operationExecutionApi.qualityCheck(
       qcCurrentRow.executionId,
@@ -1398,7 +1398,7 @@ const submitQc = async () => {
     )
     ElMessage.success('质检完成')
     qcVisible.value = false
-    if (qcForm.result === 'fail') ElMessage.warning('不合格，工序已自动暂停，请排查问题！')
+    if (qcForm.result === 'fail') ElMessage.warning('不合格，工序已自动暂停，请排查问题！') // case-gate-allow：qcForm.result 是本页表单内部值域（'pass'/'fail'），不属跨层结果比较
     getList()
   } catch (e: any) {
     ElMessage.error(e?.message || '质检提交失败')

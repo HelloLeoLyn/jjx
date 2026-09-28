@@ -80,6 +80,7 @@ import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 import { operationExecutionApi } from '@/api/production/operationExecution'
 import type { OperationExecutionVO } from '@/types/production/operationExecution'
+import { isResultFail, isResultPass } from '@/enums/quality/InspectionEnum'
 import { dateTime, display, logTemplatePrint } from './shared'
 import './print-common.css'
 interface CheckRecord {
@@ -112,8 +113,8 @@ const isPrint = computed(() => execution.value?.majorCategory?.toUpperCase() ===
 const recordNo = computed(() => (isPrint.value ? 'JJX-QR-082' : 'JJX-QR-083'))
 const title = computed(() => (isPrint.value ? '印刷首件检查表' : '冲型首件检查表'))
 const resultLabel = computed(() => {
-  const r = (firstCheck.value?.result || firstCheck.value?.checkResult || '').toUpperCase()
-  return r === 'PASS' ? '合格' : r === 'FAIL' ? '不合格' : '-'
+  const r = firstCheck.value?.result || firstCheck.value?.checkResult
+  return isResultPass(r) ? '合格' : isResultFail(r) ? '不合格' : '-'
 })
 const checkItems = computed(() => {
   const v = firstCheck.value?.checkItems

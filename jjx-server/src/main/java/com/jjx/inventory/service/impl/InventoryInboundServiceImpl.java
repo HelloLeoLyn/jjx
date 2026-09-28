@@ -28,6 +28,7 @@ import com.jjx.common.utils.ReasonSanitizer;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.production.mapper.ProductionOrderMapper;
 import com.jjx.production.domain.entity.ProductionOrder;
+import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.purchase.mapper.PurchaseOrderMapper;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
@@ -1131,15 +1132,15 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                                 // dev-20260928-004：检验项结论规范值为小写 fail（QualityInspectionResultEnum.FAIL.getCode()），
                                 // 原用大写且大小写敏感比较 → 用户录了不合格项仍被误判「未录入」（阻塞 IQC 提交）。
                                 .anyMatch(chk -> "FAIL".equalsIgnoreCase(chk.getResult()));
-                if ("FAIL".equals(itemResult) && !hasFailCheckItem
+                if (QualityInspectionResultEnum.isFail(itemResult) && !hasFailCheckItem
                         && !ReasonSanitizer.isValidSupplement(sanitizedRejectReason, "")) {
                     throw new BusinessException("物料" + item.getMaterialCode()
                             + "判定不合格但未录入不合格检验项，请填写补充说明或补录检验项目");
                 }
-                if ("FAIL".equals(itemResult) && rejected.signum() <= 0) {
+                if (QualityInspectionResultEnum.isFail(itemResult) && rejected.signum() <= 0) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "判定不合格时不良数量必须大于0");
                 }
-                if ("PASS".equals(itemResult) && rejected.signum() > 0) {
+                if (QualityInspectionResultEnum.isPass(itemResult) && rejected.signum() > 0) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "存在不良数量时不能判定合格");
                 }
                 validateIqcInspectionItems(item, submitted.getInspectionItems());
@@ -1153,7 +1154,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 if (accepted.signum() < 0 || accepted.compareTo(item.getQuantity()) > 0) {
                     throw new BusinessException("物料" + item.getMaterialCode() + "允收入库数量必须在收货数量范围内");
                 }
-                if (!reinspection && "PASS".equals(itemResult) && accepted.compareTo(item.getQuantity()) != 0) {
+                if (!reinspection && QualityInspectionResultEnum.isPass(itemResult) && accepted.compareTo(item.getQuantity()) != 0) {
                     throw new BusinessException("RM001599：整批判定合格时接收数量须等于收货数量（物料"
                             + item.getMaterialCode() + "）");
                 }
@@ -1162,7 +1163,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 // 不良品就会被当良品入库（PO202609160003 / RM001563 实例）。
                 // 因此接收数量上限 = 收货数量 - 不良数量 = 良品数量。
                 BigDecimal maxAccepted = item.getQuantity().subtract(rejected);
-                if ("FAIL".equals(itemResult) && accepted.compareTo(maxAccepted) > 0) {
+                if (QualityInspectionResultEnum.isFail(itemResult) && accepted.compareTo(maxAccepted) > 0) {
                     throw new BusinessException("物料" + item.getMaterialCode()
                             + "允收入库数量不能超过良品数量（收货数量 - 不良数量 = " + maxAccepted.stripTrailingZeros().toPlainString()
                             + "），不良品请走隔离处置");
@@ -1302,7 +1303,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 return;
             }
             lotService.applyJudgement(lotId, inspected, q, f,
-                    "PASS".equals(itemResult) ? "pass" : "fail", SecurityUtils.getDisplayName());
+                    QualityInspectionResultEnum.isPass(itemResult)
+                            ? QualityInspectionResultEnum.PASS.getCode()
+                            : QualityInspectionResultEnum.FAIL.getCode(), SecurityUtils.getDisplayName());
             // dev-20260924-013：审核通过时固化「不合格原因」= 检验项目派生 + 补充说明
             java.util.List<com.jjx.quality.domain.entity.QualityLotItem> lotItems =
                     lotService.listItems(lotId);

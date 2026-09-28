@@ -21,6 +21,16 @@ public enum QualityInspectionResultEnum {
         this.label = label;
     }
 
+    /** dev-20260928-006：唯一真源；比较一律走这里，别再写字面量。 */
+    public static boolean isPass(String code) {
+        return PASS.code.equalsIgnoreCase(code == null ? "" : code.trim());
+    }
+
+    /** dev-20260928-006：唯一真源；比较一律走这里，别再写字面量。 */
+    public static boolean isFail(String code) {
+        return FAIL.code.equalsIgnoreCase(code == null ? "" : code.trim());
+    }
+
     /** 未知历史值返回 null（展示层原样回显，不抛异常） */
     public static QualityInspectionResultEnum fromCode(String code) {
         if (code == null) return null;
