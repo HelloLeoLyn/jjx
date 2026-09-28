@@ -17,6 +17,8 @@ public class InventoryIqcDispositionOrder {
 
     /** IQC 归一（dev-20260918-026）：关联 quality_lot 主键 */
     private Long lotId;
+    /** 统一处置事实关联的质量域动作，审批/重试必须复用该动作，禁止重复记账。 */
+    private Long qualityActionId;
     private String action;
     private BigDecimal quantity;
     private String materialCode;

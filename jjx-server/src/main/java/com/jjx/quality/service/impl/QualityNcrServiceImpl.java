@@ -376,10 +376,16 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         dto.setCustomerConfirmed("CONCESSION".equals(actionType));
         dto.setOperatorName(operatorName);
         dto.setResultRemark(remark);
-        return disposeInternal(ncr, dto, true);
+        // IQC 报废统一走 inventory_iqc_scrap_order 审批；申请事实先落库，审批再推进同一动作。
+        return disposeInternal(ncr, dto, true, "SCRAP".equals(actionType));
     }
 
     private QualityNcrAction disposeInternal(QualityNcr ncr, QualityNcrDisposeDTO dto, boolean iqcInventoryManaged) {
+        return disposeInternal(ncr, dto, iqcInventoryManaged, false);
+    }
+
+    private QualityNcrAction disposeInternal(QualityNcr ncr, QualityNcrDisposeDTO dto,
+                                             boolean iqcInventoryManaged, boolean forceScrapApproval) {
         Long ncrId = ncr.getNcrId();
         if (dto == null || StringUtils.isBlank(dto.getActionType())) {
             throw new BusinessException("请选择处置方式（返工/让步接收/报废）");
@@ -412,8 +418,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         // dev-20260924-005：报废授权分档 —— 超过阈值进入「待审批」，审批通过才计入台账/检验批/件级
         // dev-20260924-028：成品侧口径**不套来料** —— 来料报废走它自己的报废单（IQS-）与审批，不参与成品阈值/成品报废单
         boolean scrapGovernance = scrapGovernanceApplies(ncr);
-        boolean scrapPendingApproval = "SCRAP".equals(actionType) && scrapGovernance
-                && quantity.compareTo(scrapApprovalThreshold()) > 0;
+        boolean scrapPendingApproval = "SCRAP".equals(actionType)
+                && (forceScrapApproval || (scrapGovernance
+                && quantity.compareTo(scrapApprovalThreshold()) > 0));
         QualityNcrAction action = new QualityNcrAction();
         action.setNcrId(ncrId);
         action.setActionType(actionType);

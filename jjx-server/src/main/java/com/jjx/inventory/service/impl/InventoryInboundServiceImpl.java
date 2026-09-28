@@ -501,16 +501,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         else if ("SCRAP".equals(actionCode)) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.SCRAPPED.getCode();
         else throw new BusinessException("不支持的隔离处置方式");
 
-        com.jjx.quality.service.QualityNcrService ncrService = qualityNcrServiceProvider.getIfAvailable();
-        if (ncrService == null) {
-            throw new BusinessException("质量不良台账服务不可用，已取消 IQC 处置");
-        }
-        if (!scrap) {
-            ncrService.syncIqcDisposition(quarantine.getLotId(), actionCode, quantity,
-                    action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName(),
-                    action.getRemark());
-        }
-
         var dispositionOrder = new com.jjx.inventory.domain.InventoryIqcDispositionOrder();
         dispositionOrder.setDispositionNo(redisSequenceService.generateBusinessNumberByType(
                 "iqc_disposition", "IQD", "yyMMdd", 3));
@@ -534,6 +524,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         dispositionOrder.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
         dispositionOrder.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
         iqcDispositionOrderMapper.insert(dispositionOrder);
+        // 质量域与库存域共用同一处置事实：先登记统一处置单，再把质量动作 ID 回写到该单。
+        // 报废申请也必须先进入质量域 PENDING_APPROVAL；审批只能推进这条动作，不能再次 sync。
+        com.jjx.quality.service.QualityNcrService ncrService = qualityNcrServiceProvider.getIfAvailable();
+        if (ncrService == null) {
+            throw new BusinessException("质量不良台账服务不可用，已取消 IQC 处置");
+        }
+        var qualityAction = ncrService.syncIqcDisposition(quarantine.getLotId(), actionCode, quantity,
+                action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName(),
+                action.getRemark());
+        dispositionOrder.setQualityActionId(qualityAction.getActionId());
+        iqcDispositionOrderMapper.updateById(dispositionOrder);
         if (release) {
             Long inboundId = createIqcReleaseInboundOrder(quarantine, quantity, action, dispositionOrder);
             log.info("IQC 让步接收处置单{}生成待确认入库单{}", dispositionOrder.getDispositionNo(), inboundId);
@@ -561,7 +562,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if ("SCRAP".equals(actionCode)) {
             // 报废数量在审批通过时累计；申请阶段不得提前形成已报废事实。
         } else if ("RELEASE".equals(actionCode)) {
-            batch.setAcceptedQuantity(nvl(batch.getAcceptedQuantity()).add(quantity));
+            // accepted_quantity 是质量判定的合格量，不是处置申请量；确认入库前不得提前增加。
         }
         BigDecimal rejected = nvl(batch.getRejectedQuantity());
         batch.setStatus(nvl(batch.getDisposedQuantity()).compareTo(rejected) >= 0
@@ -767,16 +768,27 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         var quarantine = iqcQuarantineMapper.selectById(scrap.getQuarantineId());
         if (disposition == null || quarantine == null) throw new BusinessException("报废审批关联的处置记录不存在");
         if (approval == null || !approval.isApproved()) {
+            if (disposition.getQualityActionId() == null) {
+                throw new BusinessException("报废处置缺少质量动作关联，禁止驳回");
+            }
+            var ncrService = qualityNcrServiceProvider.getIfAvailable();
+            if (ncrService == null) throw new BusinessException("质量不良台账服务不可用，报废审批已取消");
+            ncrService.rejectScrap(disposition.getQualityActionId(),
+                    approval == null || approval.getRemark() == null || approval.getRemark().isBlank()
+                            ? "未通过报废审批" : approval.getRemark(),
+                    approval == null ? SecurityUtils.getDisplayName() : approval.getApproverName());
             scrap.setStatus("REJECTED");
             disposition.setStatus("REJECTED");
             quarantine.setRemainingQuantity(nvl(quarantine.getRemainingQuantity()).add(scrap.getQuantity()));
             quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode());
         } else {
-            com.jjx.quality.service.QualityNcrService ncrService = qualityNcrServiceProvider.getIfAvailable();
+            var ncrService = qualityNcrServiceProvider.getIfAvailable();
             if (ncrService == null) throw new BusinessException("质量不良台账服务不可用，报废审批已取消");
-            ncrService.syncIqcDisposition(quarantine.getLotId(), "SCRAP", scrap.getQuantity(),
-                    approval.getApproverName() != null ? approval.getApproverName() : SecurityUtils.getDisplayName(),
-                    scrap.getReason());
+            if (disposition.getQualityActionId() == null) {
+                throw new BusinessException("报废处置缺少质量动作关联，禁止审批补记");
+            }
+            ncrService.approveScrap(disposition.getQualityActionId(), scrap.getReason(),
+                    approval.getApproverName() != null ? approval.getApproverName() : SecurityUtils.getDisplayName());
             scrap.setStatus("APPROVED");
             disposition.setStatus("COMPLETED");
             if (nvl(quarantine.getRemainingQuantity()).signum() == 0
