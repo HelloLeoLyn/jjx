@@ -13,3 +13,4 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-28 11:23:33	guard	sys_task_register_20260928-1123_guard.sql	2ce572b74e1fe6c0c3a2280d34ff94d1	1250000	1	dahuang	dev-20260928-002/003
 2026-09-28 11:30:34	guard	inventory_inbound_IN260928001_amount_20260928-1130_guard.sql	8d827562c9a75ef05de19a6363191b86	17649	3	hermes	dev-20260928-002
 2026-09-28 11:33:08	guard	sys_task_register_20260928-1133_guard.sql	23aed5fe15e2a78ff2317b84af4930d5	1254639	1	dahuang	dev-20260928-004
+2026-09-28 11:36:56	guard	sys_task_register_20260928-1136_guard.sql	2fec081923f88d2aead5de38d4328c49	1258191	1	dahuang	dev-20260928-005/006
