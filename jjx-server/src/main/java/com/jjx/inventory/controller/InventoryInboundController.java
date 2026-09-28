@@ -150,6 +150,7 @@ public class InventoryInboundController {
 
     @PostMapping("/iqc-quarantine/{quarantineId}/action")
     @Operation(summary = "执行 IQC 隔离品处置")
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE, action = LogActions.IQC_QUARANTINE_DISPOSE)
     @SaCheckPermission(value = {"inventory:inbound:edit", "quality:ncr:dispose"}, mode = SaMode.OR)
     public Result<Boolean> handleQuarantine(@PathVariable Long quarantineId,
                                             @RequestBody IqcQuarantineActionDTO action) {

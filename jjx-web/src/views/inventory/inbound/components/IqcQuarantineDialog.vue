@@ -145,7 +145,7 @@ async function submit(row: any) {
   const isRelease = row.action === IqcQuarantineAction.RELEASE
   await ElMessageBox.confirm(
     `确认对 ${row.materialCode} 执行【${label}】${num(quantity)} 个？影响：${effect}`,
-    isRelease ? '让步接收确认（隔离品将计入可用库存）' : '隔离品处置确认',
+    isRelease ? '让步接收确认（将生成待确认入库单，由仓库在「入库作业」确认后入库）' : '隔离品处置确认',
     {
       type: isRelease ? 'warning' : 'info',
       confirmButtonText: '确认执行',

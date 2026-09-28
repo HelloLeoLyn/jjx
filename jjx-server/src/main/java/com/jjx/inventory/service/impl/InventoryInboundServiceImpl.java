@@ -373,6 +373,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
         addStock(order, operatorId, operatorName, "确认入库");
+        if ("IQC_RELEASE".equals(order.getSourceType()) && order.getSourceId() != null) {
+            completeIqcReleaseDisposition(order);
+        }
         if ("PRODUCTION".equals(order.getSourceType())) {
             reducePostedStock(order, operatorId, operatorName, netDeltaThisTime);
             writebackProducedQuantity(order, netDeltaThisTime);
@@ -500,7 +503,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     action.getRemark());
         }
 
-        if (release) addReleasedQuarantineStock(quarantine, quantity, action);
         var dispositionOrder = new com.jjx.inventory.domain.InventoryIqcDispositionOrder();
         dispositionOrder.setDispositionNo(redisSequenceService.generateBusinessNumberByType(
                 "iqc_disposition", "IQD", "yyMMdd", 3));
@@ -516,15 +518,23 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         dispositionOrder.setBatchNo(quarantine.getBatchNo());
         dispositionOrder.setIqcBatchId(quarantine.getIqcBatchId());
         dispositionOrder.setRemark(action.getRemark());
-        dispositionOrder.setStatus(scrap ? "PENDING_APPROVAL" : "COMPLETED");
+        dispositionOrder.setStatus(scrap
+                ? com.jjx.inventory.enums.IqcDispositionOrderStatusEnum.PENDING_APPROVAL.getCode()
+                : release
+                ? com.jjx.inventory.enums.IqcDispositionOrderStatusEnum.PENDING_INBOUND.getCode()
+                : com.jjx.inventory.enums.IqcDispositionOrderStatusEnum.COMPLETED.getCode());
         dispositionOrder.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
         dispositionOrder.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
         iqcDispositionOrderMapper.insert(dispositionOrder);
+        if (release) {
+            Long inboundId = createIqcReleaseInboundOrder(quarantine, quantity, action, dispositionOrder);
+            log.info("IQC 让步接收处置单{}生成待确认入库单{}", dispositionOrder.getDispositionNo(), inboundId);
+        }
         if ("RETURN".equals(actionCode)) createIqcReturnOrder(quarantine, dispositionOrder, action);
         if ("REWORK".equals(actionCode)) createIqcReworkOrder(quarantine, dispositionOrder, action);
         if ("SCRAP".equals(actionCode)) createIqcScrapOrder(quarantine, dispositionOrder, action);
         quarantine.setRemainingQuantity(quarantine.getRemainingQuantity().subtract(quantity));
-        if (!scrap && quarantine.getRemainingQuantity().signum() == 0) quarantine.setStatus(status);
+        if (!scrap && !release && quarantine.getRemainingQuantity().signum() == 0) quarantine.setStatus(status);
         iqcQuarantineMapper.updateById(quarantine);
 
         // dev-20260924-026：此处原先为「非 RELEASE 处置动作」旁路写库存流水，已移除（原因同 createIqcQuarantine）。
@@ -964,6 +974,63 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         tx.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
         tx.setRemark(action.getRemark() == null ? "IQC 隔离品释放" : action.getRemark());
         stockMutationService.applyDelta(stock, quantity, tx);
+    }
+
+    private Long createIqcReleaseInboundOrder(com.jjx.inventory.domain.InventoryIqcQuarantine quarantine,
+                                              BigDecimal quantity,
+                                              com.jjx.inventory.dto.save.IqcQuarantineActionDTO action,
+                                              com.jjx.inventory.domain.InventoryIqcDispositionOrder dispositionOrder) {
+        InventoryInboundOrder originalOrder = inboundOrderMapper.selectById(quarantine.getInboundId());
+        if (originalOrder == null) throw new BusinessException("找不到原入库单，无法生成让步接收入库单");
+        InventoryInboundItem originalItem = inboundItemMapper.selectById(quarantine.getInboundItemId());
+
+        InventoryInboundOrder order = new InventoryInboundOrder();
+        order.setInboundNo(nextInboundNo());
+        order.setInboundType(com.jjx.inventory.enums.InboundTypeEnum.IQC_RELEASE.getCode());
+        order.setSourceType("IQC_RELEASE");
+        order.setSourceId(dispositionOrder.getDispositionId());
+        order.setSourceNo(dispositionOrder.getDispositionNo());
+        order.setWarehouseId(originalOrder.getWarehouseId());
+        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        order.setInboundDate(LocalDate.now());
+        order.setSupplierId(originalOrder.getSupplierId());
+        order.setSupplierName(originalOrder.getSupplierName());
+        order.setRemark("IQC 让步接收自动生成（待仓库确认入库）");
+        try {
+            order.setCreateBy(SecurityUtils.getUsername());
+        } catch (Exception ignore) { }
+        order.setTotalQuantity(quantity);
+        inboundOrderMapper.insert(order);
+
+        InventoryInboundItem item = new InventoryInboundItem();
+        item.setInboundId(order.getInboundId());
+        item.setMaterialId(quarantine.getMaterialId());
+        item.setMaterialCode(quarantine.getMaterialCode());
+        item.setMaterialName(quarantine.getMaterialName());
+        item.setQuantity(quantity);
+        item.setUnitPrice(originalItem == null ? null : originalItem.getUnitPrice());
+        item.setBatchNo(quarantine.getBatchNo());
+        item.setLotId(quarantine.getLotId());
+        item.setIqcBatchId(quarantine.getIqcBatchId());
+        item.setSortOrder(1);
+        inboundItemMapper.insert(item);
+        return order.getInboundId();
+    }
+
+    private void completeIqcReleaseDisposition(InventoryInboundOrder order) {
+        try {
+            var dispositionOrder = iqcDispositionOrderMapper.selectById(order.getSourceId());
+            if (dispositionOrder == null) return;
+            dispositionOrder.setStatus(com.jjx.inventory.enums.IqcDispositionOrderStatusEnum.COMPLETED.getCode());
+            iqcDispositionOrderMapper.updateById(dispositionOrder);
+            var quarantine = iqcQuarantineMapper.selectById(dispositionOrder.getQuarantineId());
+            if (quarantine != null) {
+                quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.RELEASED.getCode());
+                iqcQuarantineMapper.updateById(quarantine);
+            }
+        } catch (Exception e) {
+            log.warn("IQC 让步接收确认后回写处置状态失败: inboundId={}, message={}", order.getInboundId(), e.getMessage());
+        }
     }
 
     @Override

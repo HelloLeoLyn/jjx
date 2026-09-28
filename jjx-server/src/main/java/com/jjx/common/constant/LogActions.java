@@ -39,6 +39,7 @@ public final class LogActions {
     public static final String ALERT_BATCH_PROCESS = "批量处理预警";
     public static final String INBOUND_CREATE = "创建入库单";
     public static final String INBOUND_CONFIRM = "确认入库";
+    public static final String IQC_QUARANTINE_DISPOSE = "来料不合格处置";
     public static final String INBOUND_CANCEL = "取消入库单";
     public static final String INBOUND_SUBMIT = "提交入库审批";
     public static final String INBOUND_APPROVE = "入库审批通过";
