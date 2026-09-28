@@ -49,7 +49,7 @@
       </el-form>
     </div>
     <!-- dev-20260924-024：三张卡（待处理明细 / 处置单历史 / 供应商返工单）合并为「一张表 + Tab」；
-         批次溯源由常驻卡改为行内「谱系」抽屉 -->
+         批次溯源由常驻卡改为行内抽屉（dev-20260928-016：底部全宽 + 限高滚动） -->
     <el-card class="card">
       <template #header>
         <div class="card-title">
@@ -117,7 +117,7 @@
                   @click="openDisposition(row)"
                   >处置</el-button
                 >
-                <el-button link type="primary" @click="openLineage(row)">谱系</el-button>
+                <el-button link type="primary" @click="openLineage(row)">批次溯源</el-button>
                 <el-tooltip
                   v-if="!canDispose"
                   content="当前账号无「隔离处置」权限，请联系品质主管授权"
@@ -211,18 +211,33 @@
       </el-tabs>
     </el-card>
 
-    <el-drawer v-model="lineageVisible" title="批次溯源" size="640px" append-to-body>
-      <div class="lineage-tip">当前批次：{{ lineageBatchNo || '-' }}</div>
-      <el-table v-loading="batchLoading" :data="lineageRows" border size="small">
-        <el-table-column prop="batchNo" label="批次" width="180" />
-        <el-table-column prop="parentBatchNo" label="父批次" width="180" />
-        <el-table-column label="类型" width="110">
+    <el-drawer
+      v-model="lineageVisible"
+      title="批次溯源"
+      direction="btt"
+      size="45vh"
+      append-to-body
+    >
+      <div class="lineage-tip">
+        当前批次：{{ lineageBatchNo || '-' }}
+        <span class="lineage-count">共 {{ lineageRows.length }} 个批次</span>
+      </div>
+      <el-table
+        v-loading="batchLoading"
+        :data="lineageRows"
+        border
+        size="small"
+        max-height="calc(45vh - 120px)"
+      >
+        <el-table-column prop="batchNo" label="批次" width="200" />
+        <el-table-column prop="parentBatchNo" label="父批次" width="200" />
+        <el-table-column label="类型" width="120">
           <template #default="{ row }">{{ batchTypeLabel(row.batchType) }}</template>
         </el-table-column>
-        <el-table-column prop="quantity" label="批次数量" width="100" />
-        <el-table-column prop="acceptedQuantity" label="合格数量" width="100" />
-        <el-table-column prop="rejectedQuantity" label="不良数量" width="100" />
-        <el-table-column label="状态" width="110">
+        <el-table-column prop="quantity" label="批次数量" width="90" />
+        <el-table-column prop="acceptedQuantity" label="合格数量" width="90" />
+        <el-table-column prop="rejectedQuantity" label="不良数量" width="90" />
+        <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="IqcBatchStatusEnum.getTagProps(row.status).type">{{
               IqcBatchStatusEnum.getLabel(row.status)
@@ -426,6 +441,12 @@ onMounted(() => {
 .lineage-tip {
   margin-bottom: 10px;
   font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+/* dev-20260928-016：底部全宽抽屉内显示总条数，表格限高竖向滚动 */
+.lineage-count {
+  margin-left: 12px;
   color: var(--el-text-color-secondary);
 }
 .filter-bar {
