@@ -2104,9 +2104,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundItem.setMaterialName(item.getMaterialName());
             inboundItem.setQuantity(toIn);
             inboundItem.setUnitPrice(item.getUnitPrice());
+            // 金额=行金额×本次收货数÷采购数量，中间不提前舍入，最终 2 位。
             BigDecimal itemAmt = (item.getAmount() == null || item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) == 0)
                     ? null
-                    : item.getAmount().multiply(toIn.divide(item.getQuantity(), 4, java.math.RoundingMode.HALF_UP));
+                    : item.getAmount().multiply(toIn).divide(item.getQuantity(), 2, java.math.RoundingMode.HALF_UP);
             inboundItem.setAmount(itemAmt);
             inboundItem.setBatchNo(order.getInboundNo() + "-" + sort); // 批次号=入库单号-行序号（2026-08-11 修复：原 PO-单号-行序号 在多凭证时重复，凭证↔批次断链）
             inboundItem.setSortOrder(sort++);
