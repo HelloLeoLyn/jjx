@@ -103,7 +103,7 @@ public class InventoryInboundController {
     @PostMapping("/submit-approve/{inboundId}")
     @Operation(summary = "提交审批")
     @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).PENDING.getLabel()", action = LogActions.INBOUND_SUBMIT)
-    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:lot:inspect"}, mode = SaMode.OR)
+    @SaCheckPermission("quality:lot:inspect")
     public Result<Boolean> submitApprove(@PathVariable Long inboundId,
                                          @RequestBody(required = false) InboundInspectionSubmitDTO inspection) {
         return Result.success(inboundService.submitApprove(inboundId, inspection));
@@ -111,7 +111,7 @@ public class InventoryInboundController {
 
     @PostMapping("/inspection-item/{itemId}/approve")
     @Operation(summary = "单项 IQC 审核通过（不执行库存过账）")
-    @SaCheckPermission(value = {"inventory:inbound:approve", "quality:lot:judge"}, mode = SaMode.OR)
+    @SaCheckPermission("quality:lot:judge")
     public Result<Boolean> approveInspectionItem(@PathVariable Long itemId,
                                                   @RequestBody InboundInspectionReviewDTO review) {
         return Result.success(inboundService.approveInspectionItem(itemId, review));
@@ -121,14 +121,14 @@ public class InventoryInboundController {
     @Operation(summary = "重算入库单审核状态（明细已全部审核但单据状态未推进时收尾，幂等）")
     @Log(module = "入库管理", businessType = BusinessType.UPDATE, bizType = "'inbound'", bizId = "#inboundId",
             action = LogActions.INBOUND_SYNC_REVIEW_STATUS)
-    @SaCheckPermission(value = {"inventory:inbound:approve", "quality:lot:judge"}, mode = SaMode.OR)
+    @SaCheckPermission("quality:lot:judge")
     public Result<Boolean> syncReviewStatus(@PathVariable Long inboundId) {
         return Result.success(inboundService.syncReviewStatus(inboundId));
     }
 
     @PostMapping("/inspection-item/{itemId}/reject")
     @Operation(summary = "单项 IQC 审核驳回")
-    @SaCheckPermission(value = {"inventory:inbound:approve", "quality:lot:judge"}, mode = SaMode.OR)
+    @SaCheckPermission("quality:lot:judge")
     public Result<Boolean> rejectInspectionItem(@PathVariable Long itemId,
                                                  @RequestBody InboundInspectionReviewDTO review) {
         return Result.success(inboundService.rejectInspectionItem(itemId, review));
@@ -136,7 +136,7 @@ public class InventoryInboundController {
 
     @PostMapping("/inspection-item/{itemId}/reinspect")
     @Operation(summary = "单项 IQC 发起复检")
-    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:lot:inspect"}, mode = SaMode.OR)
+    @SaCheckPermission("quality:lot:inspect")
     public Result<Long> reinspectItem(@PathVariable Long itemId) {
         return Result.success(inboundService.reinspectItem(itemId));
     }

@@ -175,8 +175,8 @@ type WorkRow = {
 }
 const router = useRouter()
 const route = useRoute()
-const canInspect = computed(() => hasPermi(['quality:lot:inspect', 'inventory:inbound:edit']))
-const canJudge = computed(() => hasPermi(['quality:lot:judge', 'inventory:inbound:approve']))
+const canInspect = computed(() => hasPermi('quality:lot:inspect'))
+const canJudge = computed(() => hasPermi('quality:lot:judge'))
 const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
 const canConfirmInbound = computed(() => hasPermi('inventory:inbound:confirm'))
 const flowOptions: Array<{

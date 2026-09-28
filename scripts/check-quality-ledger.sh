@@ -56,17 +56,63 @@ LEFT JOIN quality_lot child ON child.lot_id = r.lot_id AND child.parent_lot_id I
 WHERE r.status IN ('PENDING_REINSPECTION', 'COMPLETED')
   AND (child.lot_id IS NULL OR child.lot_quantity <> r.quantity);")
 
+lot_balance_drift=$(M "
+SELECT COUNT(*) FROM (
+  SELECT l.lot_id,
+         COALESCE(l.fail_quantity, 0) fail_quantity,
+         COALESCE((
+           SELECT SUM(a.quantity)
+             FROM quality_ncr n
+             JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id
+            WHERE n.lot_id = l.lot_id
+              AND n.status <> 'VOID'
+              AND a.status IN ('DONE', 'PROCESSING')
+         ), 0) action_disposed,
+         COALESCE((
+           SELECT SUM(q.remaining_quantity)
+             FROM inventory_iqc_quarantine q
+            WHERE q.lot_id = l.lot_id
+         ), 0) quarantine_remaining
+    FROM quality_lot l
+   WHERE l.lot_type = 'IQC'
+  HAVING fail_quantity <> action_disposed + quarantine_remaining
+) x;")
+
 echo "== 质量/IQC 跨表一致性巡检：$(date '+%F %T') =="
 echo "1) IQC 批不良量 vs NCR 不良总量：$lot_ncr_drift（期望 0）"
 echo "2) 检验批已处置量 vs 有效 NCR 处置动作：$lot_action_drift（期望 0）"
 echo "3) 返工量 vs 复检子批数量：$rework_lot_drift（期望 0）"
+echo "4) 不良量 vs 有效处置 + 隔离剩余：$lot_balance_drift（期望 0）"
+
+if [ "$lot_balance_drift" -gt 0 ]; then
+  echo "-- 4) 不良量恒等式差异明细（lot_id / fail / 有效处置 / 隔离剩余）"
+  M "
+  SELECT l.lot_id,
+         COALESCE(l.fail_quantity, 0) AS fail_quantity,
+         COALESCE((
+           SELECT SUM(a.quantity)
+             FROM quality_ncr n
+             JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id
+            WHERE n.lot_id = l.lot_id
+              AND n.status <> 'VOID'
+              AND a.status IN ('DONE', 'PROCESSING')
+         ), 0) AS action_disposed,
+         COALESCE((
+           SELECT SUM(q.remaining_quantity)
+             FROM inventory_iqc_quarantine q
+            WHERE q.lot_id = l.lot_id
+         ), 0) AS quarantine_remaining
+    FROM quality_lot l
+   WHERE l.lot_type = 'IQC'
+  HAVING fail_quantity <> action_disposed + quarantine_remaining;"
+fi
 
 stock_exit=0
 if ! bash "$(dirname "$0")/check-stock-summary.sh" --strict; then
   stock_exit=1
 fi
 
-if [ "$STRICT" = true ] && { [ "$lot_ncr_drift" -gt 0 ] || [ "$lot_action_drift" -gt 0 ] || [ "$rework_lot_drift" -gt 0 ] || [ "$stock_exit" -ne 0 ]; }; then
+if [ "$STRICT" = true ] && { [ "$lot_ncr_drift" -gt 0 ] || [ "$lot_action_drift" -gt 0 ] || [ "$rework_lot_drift" -gt 0 ] || [ "$lot_balance_drift" -gt 0 ] || [ "$stock_exit" -ne 0 ]; }; then
   exit 1
 fi
 exit 0

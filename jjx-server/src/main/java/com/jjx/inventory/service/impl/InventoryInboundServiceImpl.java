@@ -760,7 +760,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean approveIqcScrap(Long scrapId, com.jjx.inventory.dto.save.IqcScrapApproveDTO approval) {
-        var scrap = iqcScrapOrderMapper.selectById(scrapId);
+        var scrap = iqcScrapOrderMapper.selectByIdForUpdate(scrapId);
         if (scrap == null) throw new BusinessException("IQC 报废单不存在");
         if (!"PENDING_APPROVAL".equals(scrap.getStatus())) throw new BusinessException("该报废单已处理");
         var disposition = iqcDispositionOrderMapper.selectById(scrap.getDispositionId());

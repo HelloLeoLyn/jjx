@@ -128,12 +128,8 @@ const emit = defineEmits<{
   (event: 'success'): void
 }>()
 const userStore = useUserStore()
-const canJudge = computed(() =>
-  hasPermi(['quality:lot:judge', 'inventory:inbound:approve'])
-)
-const canInspect = computed(() =>
-  hasPermi(['quality:lot:inspect', 'inventory:inbound:edit'])
-)
+const canJudge = computed(() => hasPermi('quality:lot:judge'))
+const canInspect = computed(() => hasPermi('quality:lot:inspect'))
 const loading = ref(false)
 const submittingId = ref('')
 /**

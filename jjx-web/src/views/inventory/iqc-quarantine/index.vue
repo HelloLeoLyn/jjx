@@ -202,7 +202,7 @@ const route = useRoute()
 // 只认 quality:ncr:dispose；无权限时显示「无处置权限」提示而不是留白。
 const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
 const canApproveScrap = computed(() => hasPermi(['quality:ncr:dispose']))
-const canInspect = computed(() => hasPermi(['quality:lot:inspect', 'inventory:inbound:edit']))
+const canInspect = computed(() => hasPermi('quality:lot:inspect'))
 const query = ref({
   pageNum: 1,
   pageSize: 20,
