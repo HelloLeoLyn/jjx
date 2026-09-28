@@ -63,7 +63,7 @@
       <el-tabs v-model="activeTab">
         <el-tab-pane label="待处理" name="pending">
           <el-table v-loading="loading" :data="rows" border>
-            <el-table-column prop="inboundNo" label="入库单号" width="180" />
+            <el-table-column prop="inboundNo" label="来料单号" width="180" />
             <el-table-column prop="sourceNo" label="采购单号" width="180" />
             <el-table-column prop="supplierName" label="供应商" min-width="150" />
             <el-table-column prop="materialCode" label="物料编码" width="150" />
@@ -75,13 +75,13 @@
               min-width="180"
               show-overflow-tooltip
             />
-            <el-table-column label="原始数量" width="105" align="right">
+            <el-table-column label="整批不良" width="105" align="right">
               <template #default="{ row }">{{ num(row.quantity) }}</template>
             </el-table-column>
             <el-table-column label="已处置" width="100" align="right">
               <template #default="{ row }">{{ num(disposedQuantity(row)) }}</template>
             </el-table-column>
-            <el-table-column label="剩余数量" width="105" align="right">
+            <el-table-column label="剩余可处置" width="105" align="right">
               <template #default="{ row }">
                 <span :class="{ danger: Number(row.remainingQuantity) > 0 }">{{
                   num(row.remainingQuantity)
@@ -166,6 +166,35 @@
             @size-change="loadDispositionHistory"
             @current-change="loadDispositionHistory"
           />
+        </el-tab-pane>
+        <el-tab-pane label="报废审批" name="scrap">
+          <el-table v-loading="scrapLoading" :data="scrapOrders" border>
+            <el-table-column prop="inboundNo" label="来料单号" width="180" />
+            <el-table-column prop="sourceNo" label="采购单号" width="180" />
+            <el-table-column prop="scrapNo" label="报废单号" width="180" />
+            <el-table-column prop="materialCode" label="物料编码" width="150" />
+            <el-table-column prop="batchNo" label="批次" width="180" />
+            <el-table-column label="本次报废申请" width="120" align="right">
+              <template #default="{ row }">{{ num(row.quantity) }}</template>
+            </el-table-column>
+            <el-table-column prop="reason" label="申请原因" min-width="180" show-overflow-tooltip />
+            <el-table-column label="审批状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="IqcScrapOrderStatusEnum.getTagProps(row.status).type">
+                  {{ IqcScrapOrderStatusEnum.getLabel(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="180" fixed="right">
+              <template #default="{ row }">
+                <template v-if="canApproveScrap && row.status === IqcScrapOrderStatus.PENDING_APPROVAL">
+                  <el-button link type="primary" @click="approveScrap(row, true)">通过</el-button>
+                  <el-button link type="danger" @click="approveScrap(row, false)">驳回</el-button>
+                </template>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+          </el-table>
         </el-tab-pane>
         <el-tab-pane label="返工单" name="rework">
           <el-table v-loading="reworkLoading" :data="reworkOrders" border>
@@ -264,6 +293,8 @@ import { inboundApi } from '@/api/inventory/inbound'
 import { iqcApi } from '@/api/inventory/iqc'
 import {
   IqcQuarantineActionEnum,
+  IqcScrapOrderStatus,
+  IqcScrapOrderStatusEnum,
   IqcQuarantineStatus,
   IqcQuarantineStatusEnum,
 } from '@/enums/inventory/IqcQuarantineEnum'
@@ -277,6 +308,7 @@ const route = useRoute()
 // 收回 INVENTORY 业务操作(23)/审核员(24) 的处置入口后，本页与来料检验页的处置按钮
 // 只认 quality:ncr:dispose；无权限时显示「无处置权限」提示而不是留白。
 const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
+const canApproveScrap = computed(() => hasPermi(['quality:ncr:dispose']))
 const canInspect = computed(() => hasPermi(['quality:lot:inspect', 'inventory:inbound:edit']))
 const query = ref({
   pageNum: 1,
@@ -300,7 +332,9 @@ const loading = ref(false)
 const ordersLoading = ref(false)
 const reworkLoading = ref(false)
 const batchLoading = ref(false)
-const activeTab = ref<'pending' | 'history' | 'rework'>('pending')
+const scrapLoading = ref(false)
+const scrapOrders = ref<any[]>([])
+const activeTab = ref<'pending' | 'history' | 'rework' | 'scrap'>('pending')
 const lineageVisible = ref(false)
 const lineageRows = ref<any[]>([])
 const lineageBatchNo = ref('')
@@ -349,12 +383,51 @@ async function load() {
     historyTotal.value = historyResult.data?.total || 0
     reworkOrders.value = data?.reworkOrders || []
     batchRows.value = data?.batches || []
+    await loadScrapOrders()
   } finally {
     loading.value = false
     ordersLoading.value = false
     reworkLoading.value = false
     batchLoading.value = false
   }
+}
+
+async function loadScrapOrders() {
+  scrapLoading.value = true
+  try {
+    const inboundIds = [...new Set(rows.value.map((row: any) => Number(row.inboundId)).filter(Boolean))]
+    const results = await Promise.all(
+      inboundIds.map((inboundId) => iqcApi.listScrapOrders(String(inboundId)))
+    )
+    const rowMeta = new Map(rows.value.map((row: any) => [Number(row.inboundId), row]))
+    scrapOrders.value = results.flatMap((result: any, index) => {
+      const meta = rowMeta.get(inboundIds[index]) || {}
+      return (result.data || []).map((scrap: any) => ({
+        ...scrap,
+        inboundNo: meta.inboundNo,
+        sourceNo: meta.sourceNo,
+      }))
+    })
+  } finally {
+    scrapLoading.value = false
+  }
+}
+
+async function approveScrap(row: any, approved: boolean) {
+  const result = await ElMessageBox.prompt(
+    approved ? '审批意见（可选）' : '请输入驳回意见',
+    approved ? '通过报废审批' : '驳回报废审批',
+    {
+      inputPlaceholder: approved ? '可填写审批意见' : '请说明驳回原因',
+      inputValidator: (value) => (approved || value.trim() ? true : '驳回时必须填写意见'),
+    }
+  )
+  await iqcApi.approveScrap(String(row.scrapId), {
+    approved,
+    remark: result.value,
+  })
+  ElMessage.success(approved ? '报废审批已通过' : '报废审批已驳回')
+  await load()
 }
 function search() {
   query.value.pageNum = 1

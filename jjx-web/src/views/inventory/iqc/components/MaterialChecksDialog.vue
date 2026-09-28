@@ -2,8 +2,7 @@
   <el-dialog
     v-model="opened"
     :title="`${row?.materialCode || ''} ${row?.materialName || ''} 检测项目`"
-    min-width="900px"
-    max-width="1200px"
+    width="1200px"
     destroy-on-close
     append-to-body
     :close-on-click-modal="false"
@@ -85,9 +84,19 @@
         <span class="rv-hint">逐项给结论即可，数量与判定自动算出</span>
       </div>
       <div class="rv-body">
-        <span class="rv-item">收货数量 <b>{{ row.quantity }}</b></span>
-        <span class="rv-item">合格 <b>{{ row.qualifiedQuantity ?? 0 }}</b></span>
-        <span class="rv-item">不良 <b>{{ row.rejectedQuantity ?? 0 }}</b></span>
+        <span class="rv-item"
+          >{{ row.isReinspection ? '本批复检' : '整批收货' }} <b>{{
+            row.isReinspection ? row.reinspectionQuantity ?? 0 : row.quantity
+          }}</b></span
+        >
+        <span class="rv-item"
+          >{{ row.isReinspection ? '本批合格' : '整批合格' }}
+          <b>{{ row.qualifiedQuantity ?? 0 }}</b></span
+        >
+        <span class="rv-item"
+          >{{ row.isReinspection ? '本批不良' : '整批不良' }}
+          <b>{{ row.rejectedQuantity ?? 0 }}</b></span
+        >
         <span class="rv-item"
           >判定
           <el-tag
@@ -98,7 +107,20 @@
           >
           <span v-else>未检</span>
         </span>
-        <span class="rv-item">接收数量 <b>{{ row.acceptedQuantity ?? 0 }}</b></span>
+        <span class="rv-item"
+          >本批允收入库 <b>{{ row.acceptedQuantity ?? 0 }}</b></span
+        >
+      </div>
+      <div class="rv-context">
+        <template v-if="row.isReinspection">
+          原批 {{ row.parentQualityLotNo || '-' }} ↔ 复检批
+          {{ row.qualityLotNo || row.batchNo || '-' }}；该批只针对
+          <b>{{ row.reinspectionQuantity ?? 0 }}</b> 件
+        </template>
+        <template v-else>
+          已处置 <b>{{ disposedQuantity(row) }}</b> 件；剩余可处置
+          <b>{{ row.remainingDispositionQuantity ?? 0 }}</b> 件
+        </template>
       </div>
       <div v-if="isFail" class="rv-reason">
         <template v-if="!readonly">
@@ -153,6 +175,13 @@ const opened = computed({ get: () => props.visible, set: (value) => emit('update
 const checkResultOptions = QualityInspectionResultEnum.items.filter(
   (item) => item.value !== QualityInspectionResult.PENDING
 )
+
+function disposedQuantity(row: any) {
+  return Math.max(
+    0,
+    Number(row.rejectedQuantity || 0) - Number(row.remainingDispositionQuantity || 0)
+  )
+}
 
 /** 本行判定是否不合格（由检验项目汇总而来） */
 const isFail = computed(
@@ -255,5 +284,11 @@ function saveAndNext() {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+.rv-context {
+  margin-top: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 </style>

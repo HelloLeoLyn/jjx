@@ -20,7 +20,7 @@ import java.util.List;
 public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInboundOrder> {
 
     @Select("<script>" +
-            "SELECT o.inbound_id, o.inbound_no, o.supplier_name, o.total_quantity, " +
+            "SELECT o.inbound_id, o.inbound_no, o.source_no, o.supplier_name, o.total_quantity, " +
             "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id) AS material_count, " +
             "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.lot_id IS NOT NULL) AS inspected_count, " +
             "(SELECT COUNT(*) FROM inventory_inbound_item i JOIN quality_lot q ON q.lot_id = i.lot_id WHERE i.inbound_id = o.inbound_id AND q.review_status = 'PENDING') AS pending_review_count, " +

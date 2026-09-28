@@ -44,6 +44,8 @@ public class QualityLotCreateDTO {
     /** 复检：来源批 + 版本 */
     private Long parentLotId;
     private Integer version;
+    private String relationshipMode;
+    private BigDecimal scopeQuantity;
 
     private String remark;
 

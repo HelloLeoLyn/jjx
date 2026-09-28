@@ -24,14 +24,14 @@ public class InventoryInboundItem extends BaseEntity {
     @TableId(type = IdType.AUTO)
     private Long itemId;
 
-    /** 审计字段：inventory_inbound_item 表无审计列，排除父类字段避免 INSERT 报 Unknown column */
+    /** 审计字段：当前仅落库 update_time；其余父类审计字段保持排除。 */
     @TableField(exist = false)
     private String createBy;
     @TableField(exist = false)
     private java.time.LocalDateTime createTime;
     @TableField(exist = false)
     private String updateBy;
-    @TableField(exist = false)
+    @TableField(fill = FieldFill.INSERT_UPDATE)
     private java.time.LocalDateTime updateTime;
 
     /** 入库单ID */

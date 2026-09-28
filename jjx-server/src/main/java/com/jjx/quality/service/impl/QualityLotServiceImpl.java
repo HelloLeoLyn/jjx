@@ -4,11 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.enums.AllowedActionEnum;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.quality.domain.entity.QualityLot;
 import com.jjx.quality.domain.entity.QualityLotItem;
+import com.jjx.quality.domain.entity.QualityLotHistory;
 import com.jjx.quality.domain.entity.QualityNcr;
 import com.jjx.quality.dto.FqcCompletionSummary;
 import com.jjx.quality.dto.QualityLotCreateDTO;
@@ -17,6 +20,7 @@ import com.jjx.quality.dto.QualityLotQueryDTO;
 import com.jjx.quality.enums.QualityLotStatusEnum;
 import com.jjx.quality.enums.QualityLotTypeEnum;
 import com.jjx.quality.mapper.QualityLotItemMapper;
+import com.jjx.quality.mapper.QualityLotHistoryMapper;
 import com.jjx.quality.mapper.QualityLotMapper;
 import com.jjx.quality.mapper.QualityNcrMapper;
 import com.jjx.quality.mapper.QualityNcrActionMapper;
@@ -63,6 +67,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
 
     private final QualityLotMapper lotMapper;
     private final QualityLotItemMapper itemMapper;
+    private final QualityLotHistoryMapper historyMapper;
+    private final ObjectMapper objectMapper;
     private final QualityNcrMapper ncrMapper;
     private final QualityNcrActionMapper ncrActionMapper;
     private final RedisSequenceService redisSequenceService;
@@ -128,6 +134,10 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         lot.setStatus(QualityLotStatusEnum.PENDING.getCode());
         lot.setParentLotId(dto.getParentLotId());
         lot.setVersion(version);
+        lot.setRelationshipMode(dto.getParentLotId() == null ? null
+                : (StringUtils.isBlank(dto.getRelationshipMode()) ? "REPLACE" : dto.getRelationshipMode().toUpperCase()));
+        lot.setScopeQuantity(dto.getParentLotId() == null ? null
+                : (dto.getScopeQuantity() == null ? lotQty : dto.getScopeQuantity()));
         lot.setRemark(dto.getRemark());
         lot.setDelFlag(0);
         lotMapper.insert(lot);
@@ -404,6 +414,11 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         for (QualityLot lot : lots) {
             boolean isSuperseded = superseded.contains(lot.getLotId());
             lot.setSuperseded(isSuperseded);
+            BigDecimal lotQuantity = lot.getLotQuantity() == null ? BigDecimal.ZERO : lot.getLotQuantity();
+            // effectiveQuantity 是查询派生值，不落库：局部追加与原批并存，整批替代则只保留最新批。
+            lot.setEffectiveQuantity("INCREMENT".equalsIgnoreCase(lot.getRelationshipMode())
+                    ? lotQuantity
+                    : (isSuperseded ? BigDecimal.ZERO : lotQuantity));
             // dev-20260923-039（第二片）：allowedActions 由唯一出处算好下发，前端只按它渲染
             lot.setAllowedActions(AllowedActionEnum.codesOf(AllowedActionResolver.forLot(
                     lot.getStatus(), isSuperseded, withOpenDefect.contains(lot.getLotId()))));
@@ -416,6 +431,13 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 .eq(QualityLotItem::getLotId, lotId)
                 .orderByAsc(QualityLotItem::getSortOrder)
                 .orderByAsc(QualityLotItem::getItemId));
+    }
+
+    @Override
+    public List<QualityLotHistory> listHistory(Long lotId) {
+        return historyMapper.selectList(new LambdaQueryWrapper<QualityLotHistory>()
+                .eq(QualityLotHistory::getLotId, lotId)
+                .orderByDesc(QualityLotHistory::getHistoryId));
     }
 
     @Override
@@ -467,6 +489,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
             lot.setStatus(QualityLotStatusEnum.INSPECTING.getCode());
             lotMapper.updateById(lot);
         }
+        recordHistory(lot, "ITEMS_SAVED", items, "检验项目保存");
     }
 
     @Override
@@ -511,7 +534,25 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         lot.setInspectTime(java.time.LocalDateTime.now());
         lot.setStatus(QualityLotStatusEnum.JUDGED.getCode());
         lotMapper.updateById(lot);
+        recordHistory(lot, "JUDGED", listItems(lotId), "检验批判定");
         return lot;
+    }
+
+    private void recordHistory(QualityLot lot, String eventType, Object items, String remark) {
+        QualityLotHistory history = new QualityLotHistory();
+        history.setLotId(lot.getLotId());
+        history.setEventType(eventType);
+        try {
+            java.util.Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+            snapshot.put("lot", lot);
+            snapshot.put("items", items);
+            history.setSnapshotJson(objectMapper.writeValueAsString(snapshot));
+        } catch (JsonProcessingException e) {
+            throw new BusinessException("检验批历史快照生成失败");
+        }
+        history.setOperatorName(lot.getInspector());
+        history.setRemark(remark);
+        historyMapper.insert(history);
     }
 
     @Override

@@ -34,13 +34,17 @@
         @current-change="openDetail"
       >
         <template #empty><el-empty description="暂无 IQC 采购入库单" /></template>
-        <el-table-column prop="inboundNo" label="入库单号" min-width="180" /><el-table-column
+        <el-table-column prop="inboundNo" label="来料批次" min-width="180" /><el-table-column
+          prop="sourceNo"
+          label="采购单号"
+          min-width="180"
+        /><el-table-column
           prop="supplierName"
           label="供应商"
           min-width="150"
         /><el-table-column prop="createTime" label="到货时间" width="180" /><el-table-column
           prop="totalQuantity"
-          label="来料批量"
+          label="整单收货"
           width="105"
         /><el-table-column prop="materialCount" label="材料数" width="85" />
         <el-table-column label="状态" width="105"

@@ -25,6 +25,7 @@
 | 清理测试数据 | `bash scripts/db-clean-test-data.sh --execute` | 🔴 |
 | 库存三本账对账 | `bash scripts/check-stock-summary.sh` | 🟢 |
 | 入库单/检验批+数量守恒巡检 | `bash scripts/check-inbound-lot-integrity.sh` | 🟢 |
+| IQC/质量处置跨表对账 | `bash scripts/check-quality-ledger.sh` | 🟢 |
 | 业务单号规则巡检 | `bash scripts/check-doc-no.sh` | 🟢 |
 | 改完代码/文档自查 | `cd jjx-web && npm run validate` | 🟢 |
 

@@ -82,6 +82,12 @@ public class QualityLot {
     /** 复检来源批 + 版本 */
     private Long parentLotId;
     private Integer version;
+    /** 复检关系：REPLACE=整批替代，INCREMENT=局部追加。历史旧数据为空表示不可完全恢复。 */
+    private String relationshipMode;
+    /** 本次复检明确针对的数量；effectiveQuantity 由读模型按关系和状态计算。 */
+    private BigDecimal scopeQuantity;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private BigDecimal effectiveQuantity;
     /**
      * 列表展示用的非持久化字段（dev-20260922-012 G5）：
      * parentLotNo = 复检来源批号；superseded = 本批已有后继复检版本（已失效，不可再录入/判定）。

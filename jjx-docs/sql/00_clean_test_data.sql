@@ -350,6 +350,9 @@ TRUNCATE quality_capa;
 
 TRUNCATE quality_ncr_action;
 
+-- 【新增 2026-09-28】quality_lot_history（检验批事实快照，随质量测试数据清理）
+TRUNCATE quality_lot_history;
+
 TRUNCATE quality_ncr;
 
 TRUNCATE quality_lot_item;
@@ -416,6 +419,7 @@ UNION ALL SELECT 'inventory_iqc_disposition_order', COUNT(*) FROM inventory_iqc_
 UNION ALL SELECT 'production_order', COUNT(*) FROM production_order
 UNION ALL SELECT 'quality_lot', COUNT(*) FROM quality_lot
 UNION ALL SELECT 'quality_lot_item', COUNT(*) FROM quality_lot_item
+UNION ALL SELECT 'quality_lot_history', COUNT(*) FROM quality_lot_history
 UNION ALL SELECT 'quality_ncr', COUNT(*) FROM quality_ncr
 UNION ALL SELECT 'quality_ncr_action', COUNT(*) FROM quality_ncr_action
 UNION ALL SELECT 'quality_capa', COUNT(*) FROM quality_capa

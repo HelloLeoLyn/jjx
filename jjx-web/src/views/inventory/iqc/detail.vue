@@ -17,7 +17,7 @@
         ><el-descriptions-item label="供应商">{{
           selectedInbound.supplierName || '-'
         }}</el-descriptions-item
-        ><el-descriptions-item label="来料批量">{{
+        ><el-descriptions-item label="整单收货">{{
           selectedInbound.totalQuantity
         }}</el-descriptions-item>
         <el-descriptions-item label="状态"
@@ -167,6 +167,8 @@ type WorkRow = {
   reviewStatus?: string
   isReinspection: boolean
   reinspectionQuantity: number
+  qualityLotNo?: string
+  parentQualityLotNo?: string
   baseAcceptedQuantity: number
   locked: boolean
   inspectionItems: any[]
@@ -423,6 +425,8 @@ async function loadInboundDetail(row: IqcPendingVO) {
           materialCode: item.materialCode,
           materialName: item.materialName,
           batchNo: item.batchNo,
+          qualityLotNo: quality?.inspectionNo,
+          parentQualityLotNo: previousQuality?.inspectionNo,
           remainingDispositionQuantity:
             remainingByItemLot.get(`${item.inboundItemId || item.itemId}:${lotRef || ''}`) || 0,
           quantity: Number(item.quantity || 0),

@@ -50,6 +50,13 @@ public class QualityLotController {
         return Result.success(qualityLotService.listItems(lotId));
     }
 
+    @Operation(summary = "检验批历史快照")
+    @SaCheckPermission("quality:lot:view")
+    @GetMapping("/{lotId}/history")
+    public Result<?> history(@PathVariable Long lotId) {
+        return Result.success(qualityLotService.listHistory(lotId));
+    }
+
     @Operation(summary = "同一来源的所有批次（分批/复检历史）")
     @SaCheckPermission("quality:lot:view")
     @GetMapping("/by-source")

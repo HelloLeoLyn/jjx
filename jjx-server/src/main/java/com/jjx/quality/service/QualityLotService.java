@@ -3,6 +3,7 @@ package com.jjx.quality.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.jjx.quality.domain.entity.QualityLot;
 import com.jjx.quality.domain.entity.QualityLotItem;
+import com.jjx.quality.domain.entity.QualityLotHistory;
 import com.jjx.quality.dto.QualityLotCreateDTO;
 import com.jjx.quality.dto.QualityLotItemDTO;
 import com.jjx.quality.dto.QualityLotQueryDTO;
@@ -38,6 +39,9 @@ public interface QualityLotService {
     IPage<QualityLot> pageLots(QualityLotQueryDTO query);
 
     List<QualityLotItem> listItems(Long lotId);
+
+    /** 检验批快照历史；历史字段缺失不伪造。 */
+    List<QualityLotHistory> listHistory(Long lotId);
 
     /** 覆盖式保存检验项（录入/补录） */
     void saveItems(Long lotId, List<QualityLotItemDTO> items);

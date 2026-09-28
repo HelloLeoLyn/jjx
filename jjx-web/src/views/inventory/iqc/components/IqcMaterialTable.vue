@@ -11,12 +11,38 @@
       prop="materialName"
       label="材料名称"
       min-width="150"
-    /><el-table-column prop="quantity" label="收货数量" width="90" />
-    <el-table-column label="合格" width="90"
-      ><template #default="{ row }">{{ row.qualifiedQuantity }}</template></el-table-column
+    /><el-table-column label="数量" width="105"
+      ><template #default="{ row }">{{ row.isReinspection ? '本批复检' : '整批收货' }} {{
+        row.isReinspection ? row.reinspectionQuantity ?? 0 : row.quantity
+      }}</template></el-table-column
     >
-    <el-table-column label="不良" width="90"
-      ><template #default="{ row }">{{ row.rejectedQuantity }}</template></el-table-column
+    <el-table-column label="判定数量" width="105"
+      ><template #default="{ row }">{{ row.isReinspection ? '本批合格' : '整批合格' }} {{
+        row.qualifiedQuantity ?? 0
+      }}</template></el-table-column
+    >
+    <el-table-column label="不良数量" width="105"
+      ><template #default="{ row }">{{ row.isReinspection ? '本批不良' : '整批不良' }} {{
+        row.rejectedQuantity ?? 0
+      }}</template></el-table-column
+    >
+    <el-table-column label="数量口径" min-width="290"
+      ><template #default="{ row }">
+        <div v-if="row.isReinspection" class="quantity-context">
+          <div>
+            原批 {{ row.parentQualityLotNo || '-' }} ↔ 复检批
+            {{ row.qualityLotNo || row.batchNo || '-' }}
+          </div>
+          <div class="quantity-context__emphasis">
+            本批复检 {{ row.reinspectionQuantity ?? 0 }} 件（该批只针对
+            {{ row.reinspectionQuantity ?? 0 }} 件）
+          </div>
+        </div>
+        <div v-else class="quantity-context">
+          <div>已处置 {{ disposedQuantity(row) }} 件</div>
+          <div>剩余可处置 {{ row.remainingDispositionQuantity ?? 0 }} 件</div>
+        </div>
+      </template></el-table-column
     >
     <el-table-column label="检验结论" width="100"
       ><template #default="{ row }"
@@ -107,4 +133,23 @@ const emit = defineEmits<{
   (e: 'print', row: any): void
   (e: 'go-disposition', row: any): void
 }>()
+
+function disposedQuantity(row: any) {
+  return Math.max(
+    0,
+    Number(row.rejectedQuantity || 0) - Number(row.remainingDispositionQuantity || 0)
+  )
+}
 </script>
+
+<style scoped>
+.quantity-context {
+  line-height: 1.6;
+  white-space: normal;
+}
+
+.quantity-context__emphasis {
+  color: var(--el-color-warning-dark-2);
+  font-weight: 600;
+}
+</style>

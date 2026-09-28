@@ -38,6 +38,21 @@ export const IqcQuarantineStatusEnum = createEnum({
   defaultTag: { type: 'info' },
 })
 
+export const IqcScrapOrderStatus = {
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const
+
+export const IqcScrapOrderStatusEnum = createEnum({
+  items: [
+    { value: IqcScrapOrderStatus.PENDING_APPROVAL, label: '待审批', tagProps: { type: 'warning' } },
+    { value: IqcScrapOrderStatus.APPROVED, label: '已通过', tagProps: { type: 'success' } },
+    { value: IqcScrapOrderStatus.REJECTED, label: '已驳回', tagProps: { type: 'info' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
 /**
  * 处置方式对应的业务后果说明（界面提示用，与后端 handleQuarantine 的实际行为一致）。
  * 集中放这里而不是各页面自己写文案，避免两页面对同一动作的说法不一致。

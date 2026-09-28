@@ -360,6 +360,8 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
             // 返工复检批与原批同链（有效批 = 无子批；被取代 = 有子批），与 022 换代口径一致
             dto.setParentLotId(parentLotId);
             dto.setVersion(nextVersionOf(parentLotId));
+            dto.setRelationshipMode(rework ? "INCREMENT" : "REPLACE");
+            dto.setScopeQuantity(lotQuantity);
         }
         dto.setLotQuantity(lotQuantity);
         dto.setRemark(rework

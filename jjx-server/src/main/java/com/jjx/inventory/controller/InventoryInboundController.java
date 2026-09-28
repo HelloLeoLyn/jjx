@@ -151,7 +151,7 @@ public class InventoryInboundController {
     @PostMapping("/iqc-quarantine/{quarantineId}/action")
     @Operation(summary = "执行 IQC 隔离品处置")
     @Log(module = "入库管理", businessType = BusinessType.UPDATE, action = LogActions.IQC_QUARANTINE_DISPOSE)
-    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:ncr:dispose"}, mode = SaMode.OR)
+    @SaCheckPermission("quality:ncr:dispose")
     public Result<Boolean> handleQuarantine(@PathVariable Long quarantineId,
                                             @RequestBody IqcQuarantineActionDTO action) {
         return Result.success(inboundService.handleQuarantine(quarantineId, action));
@@ -230,7 +230,9 @@ public class InventoryInboundController {
 
     @PostMapping("/iqc-scrap-orders/{scrapId}/approve")
     @Operation(summary = "审批 IQC 报废单")
-    @SaCheckPermission(value = {"inventory:inbound:approve", "quality:ncr:dispose"}, mode = SaMode.OR)
+    @Log(module = "来料质量", businessType = BusinessType.APPROVE,
+            bizType = "'iqc_scrap'", bizId = "#scrapId", action = LogActions.IQC_QUARANTINE_DISPOSE)
+    @SaCheckPermission("quality:ncr:dispose")
     public Result<Boolean> approveIqcScrap(@PathVariable Long scrapId,
                                            @RequestBody com.jjx.inventory.dto.save.IqcScrapApproveDTO approval) {
         return Result.success(inboundService.approveIqcScrap(scrapId, approval));
@@ -238,7 +240,7 @@ public class InventoryInboundController {
 
     @PostMapping("/iqc-rework-orders/{reworkId}/complete")
     @Operation(summary = "完成 IQC 返工并发起复检")
-    @SaCheckPermission(value = {"inventory:inbound:edit", "quality:ncr:dispose"}, mode = SaMode.OR)
+    @SaCheckPermission("quality:ncr:dispose")
     public Result<Long> completeIqcRework(@PathVariable Long reworkId) {
         return Result.success(inboundService.completeIqcRework(reworkId));
     }

@@ -12,6 +12,7 @@ public class IqcPendingVO {
 
     private Long inboundId;
     private String inboundNo;
+    private String sourceNo;
     private String supplierName;
     private BigDecimal totalQuantity;
     private Long materialCount;

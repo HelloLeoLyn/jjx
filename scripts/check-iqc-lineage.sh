@@ -51,10 +51,25 @@ WHERE (EXISTS (SELECT 1 FROM inventory_iqc_rework_order r WHERE r.inbound_item_i
 batch_drift=$(M "
 SELECT COUNT(*) FROM inventory_iqc_batch b
 JOIN quality_lot l ON l.batch_no = b.batch_no AND l.lot_type = 'IQC'
-WHERE (b.processed_quantity <> b.accepted_quantity + b.rejected_quantity
+WHERE (b.processed_quantity <> b.accepted_quantity + b.rejected_quantity - COALESCE((
+        SELECT SUM(a.quantity)
+          FROM quality_ncr_action a
+          JOIN quality_ncr n ON n.ncr_id = a.ncr_id
+         WHERE n.lot_id = l.lot_id
+           AND a.action_type = 'CONCESSION'
+           AND a.status IN ('DONE', 'PROCESSING')
+    ), 0)
     OR b.remaining_quantity <> GREATEST(0, b.quantity - b.processed_quantity)
     OR b.processed_quantity <> l.inspected_quantity
-    OR b.accepted_quantity <> l.pass_quantity
+    -- 批次 accepted 包含 IQC 让步接收，不能只与检验批 pass 比较。
+    OR b.accepted_quantity <> l.pass_quantity + COALESCE((
+        SELECT SUM(a.quantity)
+          FROM quality_ncr_action a
+          JOIN quality_ncr n ON n.ncr_id = a.ncr_id
+         WHERE n.lot_id = l.lot_id
+           AND a.action_type = 'CONCESSION'
+           AND a.status IN ('DONE', 'PROCESSING')
+    ), 0)
     OR b.rejected_quantity <> l.fail_quantity);")
 
 echo "IQC source lineage mismatches: $source_drift (expected 0)"

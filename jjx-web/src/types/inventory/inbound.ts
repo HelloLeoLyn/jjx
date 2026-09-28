@@ -24,6 +24,7 @@ export interface InboundQueryParams {
 export interface IqcPendingVO {
   inboundId: string
   inboundNo: string
+  sourceNo?: string
   supplierName?: string
   totalQuantity: number
   materialCount: number
