@@ -136,3 +136,91 @@ M5    收尾：历史/权限/打印/报表 + 旧表只读归档
 6. 批次溯源改为**弹窗**（不用抽屉）。
 
 **原型（静态，供参考）**：`/mnt/d/openclaw-workspace/iqc-workbench-mock-v3.html`（Windows：`D:\openclaw-workspace\iqc-workbench-mock-v3.html`）。
+
+---
+
+## 6. 核查清单（逐条 · 可直接照此核查）
+
+> 用法：逐行核查 → 把「状态」改成 `已修(commit)` / `未修` / `证明不成立`；「核查方法」给出可直接执行的读码/查库/跑脚本动作。
+> 时间基准：**2026-09-28 16:59**（`a6191c71` 之后；部分条目停留在提交说明、**未逐条验证**，故标「待验收」）。
+
+### A 账目与数量口径
+
+| ID | 问题 | 核查方法 | 期望结果 | 卡号 | 状态 |
+|---|---|---|---|---|---|
+| A1 | 报废处置不同步 NCR，缺口永久存在 | 读 `InventoryInboundServiceImpl.handleQuarantine`（`if (!scrap)` 跳过 `syncIqcDisposition`）+ `approveIqcScrap`；查 `inventory_iqc_quarantine.remaining` 与 `quality_ncr` + `quality_lot.disposed` 三者是否一致 | 三处口径一致；报废路径有明确的生效时点 | 010 | 未修（报废审批入口已补） |
+| A2 | 「已处置」量四处各自持久化、靠双写 | 查 `quality_lot.disposed_quantity` / `quality_ncr.disposed_quantity` / `quarantine.remaining_quantity` / `disposition_order` 汇总是否可互推 | 有唯一事实来源，其余可重算 | 010 | 未修 |
+| A3 | 恒等式只在单批自洽，跨表不成立 | 跑对账 SQL：`fail = disposed + 待处置` 按批比对 | 跨表一致或已标注差异 | 010 | 未修 |
+| A4 | `iqc_batch.accepted_quantity` 处置时提前累加 | 读 `updateBatchAfterDisposition`（RELEASE → `accepted += qty`）；查 `inventory_iqc_batch`：`quantity = accepted + rejected`？ | 恒等式成立；accepted 只受确认入库影响 | 010 | 未修 |
+| A5 | 采购确认入库不回写 `quality_lot.stored_quantity` | 读 `confirm()` 中 `syncQualityLotStored` 的调用条件；查确认入库后 `quality_lot.stored_quantity` 是否 = pass | 采购确认后 `stored = pass`；可达成 CLOSED | 010 | 未修 |
+| A6 | 隔离/退货/返工/报废 无库存流水 | 查 `inventory_transaction` 是否有对应类型流水（让步确认入库应有 `IQC_RELEASE`） | 口径明确：只有改变可用库存才写流水，且可追 | 009 遗留 + 021 | 部分（让步已走确认入库） |
+| A7 | 缺跨表「已处置」对账 | 跑 `scripts/check-quality-ledger.sh --strict`、`check-stock-summary.sh --strict`、`check-iqc-lineage.sh --strict` | 三条巡检通过且覆盖 A1~A5 | 010 | 部分（脚本在，未覆盖本项） |
+
+### B 流程断点
+
+| ID | 问题 | 核查方法 | 期望结果 | 卡号 | 状态 |
+|---|---|---|---|---|---|
+| B1 | 报废单无前端审批入口 | 看 `iqc-quarantine/index.vue` 是否有报废审批入口并调用 `approveScrap`；重复/并发调用 `approveIqcScrap` 是否幂等 | 可审批通过/驳回；幂等只生效一次 | 011 | 已补入口（a6191c71），待验收 |
+| B2 | 让步接收直接过账 | 确认 `addReleasedQuarantineStock` 无调用方（死代码）；前置：生成待确认入库单 | 无直连过账 | 009 | ✅ 已修（`7fae973e`） |
+| B3 | 复检合格品无入库出口 | 读 `confirm()` 的 `IQC_REWORK` 分支 `syncQualityLotStored` + `completeIqcRework`；E2E 跑一遍 | 生成待确认入库单，确认后库存 +N | 012 | 已实现（a6191c71），待 E2E |
+| B4 | 复检提交覆盖单据级结果 | 查 `submitApprove` 结尾 `order.setInspectionResult(allPass ? PASS : OTHER)` 是否只按本次提交行计算 | 复检不覆盖原批结论 | 014 | 已修（a6191c71），待验收 |
+| B5 | 报废状态死结（处置单待审批 vs 隔离状态） | 处置后查 `disposition_order.status` 与 `quarantine.status`、`scrap_order.status` 的一致性 | 审批后隔离状态推进到「已报废」 | 011 | 待验收 |
+
+### C 权限与审批
+
+| ID | 问题 | 核查方法 | 期望结果 | 卡号 | 状态 |
+|---|---|---|---|---|---|
+| C1 | 处置接口权限 OR 语义 vs 前端单权限 | 读 `InventoryInboundController.handleQuarantine` 的 `@SaCheckPermission`；用 INVENTORY 角色账号越权调用 | 接口与前端一致，越权被拒 | 015 | 已收紧（待验收） |
+| C2 | 处置动作无操作日志 | 读 `handleQuarantine` 是否带 `@Log(IQC_QUARANTINE_DISPOSE)`；查 `sys_oper_log` | 处置动作可查日志 | 009/013 | ✅ 已修（`7fae973e`） |
+| C3 | 权限矩阵未定 | 对照本文件/处置报告 §9 矩阵逐接口核对（发起处置 / 报废审批 / 让步确认入库 / 复检判定 / 退货确认） | 前后端都符合矩阵 | 015 + 021 | 待拍板 |
+| C4 | 报废审批阈值两处口径不一 | 查 `sys_config.quality.ncr.scrap.approval-threshold` 与 IQC 报废单触发条件 | 统一或写明差异 | 021 | 未统一 |
+
+### D 字段语义与审计
+
+| ID | 问题 | 核查方法 | 期望结果 | 卡号 | 状态 |
+|---|---|---|---|---|---|
+| D1 | `inspection_result` 三义混用 | 查该列取值分布 + 代码里 `setInspectionResult` 全部写入点 | 枚举化、语义唯一 | 014 | 未完全 |
+| D2 | `approve_status` 冗余恒 1 | 查该列分布 + 全部消费者 | 停写或明确语义 | 014 | 未修 |
+| D3 | 明细缺 `update_time` | 查 `inventory_inbound_item` 是否有该列（迁移 222）；覆盖所有写入路径 | 列存在且随变更刷新 | 014 | 已加列（待验收） |
+| D4 | `update_time` 不刷新（entity 回写） | 改动一条记录后回查 `update_time`（单据/检验批/隔离） | 随变更刷新 | 013 | 部分解决，待验收 |
+| D5 | 无判定/检验项版本历史 | 读 `saveItems`（删+插）与 `applyJudgement`（覆盖） | 有版本/事件快照 | 013 | 部分（有基础） |
+| D6 | 复检 REPLACE/INCREMENT 无字段 | 查 `quality_lot` 是否新增关系字段并在页面可辨 | 可辨识替代/追加 | 013 | 已加字段（待验收） |
+| D7 | `reject_reason` 两处实现须同源 | 比对 `iqcRowRules.deriveIqcReasonText` 与 `deriveIqcDefectReason` 输出格式 | 两处一致 | 021 | 未确认 |
+
+### E 前端展示与术语
+
+| ID | 问题 | 核查方法 | 期望结果 | 卡号 | 状态 |
+|---|---|---|---|---|---|
+| E1 | 检验项结论大小写比对 | 查 `hasFailCheckItem` 是否 `equalsIgnoreCase` | 小写 `fail` 可通过 | 004 | ✅ 已修 |
+| E2 | 质量报表恒 0 | 查 `ProductionReportController` 是否用枚举比较 | 报表数值正确 | 005 | ✅ 已修 |
+| E3 | CR/MA/MI 未透传 | 查 `syncIqcLot` 是否 `setCr/Ma/MiQuantity` | 分级落库 | 007 | ✅ 已修 |
+| E4 | 洞 A/B（两链依据不一致） | 查 `iqcRowRules` 是否双向对齐 + `iqcRowProblems` | 判定与原因同源 | 003 | ✅ 已修 |
+| E5 | 「谱系」/「批次溯源」双名 | 查按钮与标题文案是否一致 | 命名统一 | 016/019 | 已统一（`a477a2a8`） |
+| E6 | 来料检验页缺采购单号/检验批号 | 看列表列（应含采购单号；检验批号在明细） | 有采购单号；明细有检验批号 | 016/019 | 待开工 |
+| E7 | 数量无口径标注 | 看列名/副标题是否带口径（原始/处置/库存） | 数量带口径 | 016/019 | 待开工 |
+| E8 | 处置页多 Tab | 看 `iqc-quarantine/index.vue` 是否仍有 ≥2 个 Tab | 单表无 Tab | 019 | 待开工（现 4 Tab） |
+| E9 | 抽屉不受接受 | 查是否仍有 `el-drawer` | 改弹窗/页内 | 019 | 待开工（现 btt 抽屉） |
+| E10 | 跨页字段名/口径不一致 | 查是否存在统一读模型 `QualityTraceView` 且各页共用 | 单一读模型 | 021 | 待开工 |
+| E11 | 来料检验批无独立入口 | 看检验批工作台菜单/类型过滤 | 可通过类型进入 IQC 批 | 016 | 待开工 |
+| E12 | 行金额舍入偏差 | 读 `createInboundRecordFromPurchase` 金额公式 | 单价×数量=金额 | 002 | ✅ 已修 |
+| E13 | `createFromPurchase` 金额口径 | 同文件对照 002 口径 | 一致 | 008 | ✅ 已修 |
+| E14 | 页面主语错位（以入库单组织） | 全文检索页面是否出现「入库单号/来料单号」作为主列 | 主语=来料批次+检验批 | 019 | 待开工 |
+
+### F 模型与规范
+
+| ID | 问题 | 核查方法 | 期望结果 | 卡号 | 状态 |
+|---|---|---|---|---|---|
+| F1 | 类型变体拆表（6 张 `inventory_iqc_*` + `quality_scrap_order` 等） | 跑 `scripts/check-model-baseline.sh`；看基线白名单 | 存量登记、新增受闸；迁收入 021 | 020/021 | 未处理（已登记基线） |
+| F2 | 缺建表规范/闸 | 查 `CONVENTIONS.md §15` 是否存在；`check-model-baseline.sh` + `check:model-baseline` 是否挂 validate | §15 + 基线 + 门禁齐备 | 020 | ✅ 已实现（未提交，待评审） |
+| F3 | 页面按底层表拆 Tab | **人工评审项**（脚本扫不准） | 页面不按表拆 | 019/021 | 待开工 |
+
+### 已确认不成立 / 已关闭（避免重复核查）
+
+| 项 | 结论 |
+|---|---|
+| B2 让步直连过账 | 009 已改为生成待确认入库单；`addReleasedQuarantineStock` 当前无调用方（死代码待清，见 013 承接项） |
+| C2 处置无日志 | 009 已补 `@Log` |
+| E1~E4 / E12 / E13 | 均已修（`31e8e83d` / `3be76282` / `96319954` / `79c1c85e`） |
+| 老数据 CR/MA/MI 分级缺失 | 不补造；按「历史不可完全恢复」处理 |
+
+> 备注：`a6191c71` 之后 011~016 有多项标「待验收」——它们的**实现说明来自提交信息，尚未逐行读码验证**，核查时应逐条落实。
