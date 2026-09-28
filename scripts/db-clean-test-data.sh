@@ -108,6 +108,15 @@ if [ "$EXECUTE" -eq 1 ] && [ ! -t 0 ]; then
   die "真执行需要人工确认：请在终端里手工运行本脚本（agent/管道调用一律拒绝）"
 fi
 
+# ── 0b. 输入 SQL 预检：MySQL 只认 '-- '（连字符后必须跟空格），
+#     '---- 变更说明' 这种 3 个以上连字符开头的行会被当作 SQL → ERROR 1064 并中断整轮清理
+#     （2026-09-28 实测：00_clean_test_data.sql 里一行 '----' 让 --execute 直接失败）。
+BAD_COMMENT="$(grep -n '^-\{3,\}' "$SQL_FILE" || true)"
+if [ -n "$BAD_COMMENT" ]; then
+  printf '%s\n' "$BAD_COMMENT" >&2
+  die "清理 SQL 存在非法注释行（见上，3 个以上连字符开头，MySQL 会报 1064）：修正后再执行（本次未备份、未写库）"
+fi
+
 if [ -n "$MYSQL_BIN_DIR" ]; then
   if command -v cygpath >/dev/null 2>&1; then
     MYSQL_BIN_DIR="$(cygpath -u "$MYSQL_BIN_DIR" 2>/dev/null || printf '%s' "$MYSQL_BIN_DIR")"
