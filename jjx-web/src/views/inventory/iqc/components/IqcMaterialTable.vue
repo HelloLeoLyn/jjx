@@ -77,33 +77,37 @@
         ><el-tag v-else type="info">未检</el-tag></template
       ></el-table-column
     >
-    <el-table-column label="操作" width="205" fixed="right"
-      ><template #default="{ row }"
-        ><el-button v-if="canEdit(row)" link type="primary" @click="emit('edit', row)"
-          >检验录入</el-button
-        ><el-button
-          v-if="canJudge && row.reviewStatus === QualityReviewStatus.PENDING"
+    <el-table-column label="操作" width="170" fixed="right">
+      <template #default="{ row }">
+        <el-button v-if="canEdit(row)" link type="primary" @click="emit('edit', row)">
+          检验录入
+        </el-button>
+        <el-button
+          v-else-if="canJudge && row.reviewStatus === QualityReviewStatus.PENDING"
           link
           type="success"
-          @click="emit('review')"
-          >审核/驳回</el-button
-        ><el-button v-if="row.inspectionId" link type="primary" @click="emit('print', row)"
-          >打印</el-button
-        ><el-button v-if="row.lotId" link type="info" @click="emit('history', row)"
-          >质量历史</el-button
-        ><el-button
-          v-if="
-                canDispose &&
-                Number((row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity) || 0) > 0 &&
-                row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
-            (row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted)
-          "
+          @click="emit('review')">
+          审核
+        </el-button>
+        <el-button
+          v-else-if="canDispose && canDisposeRow(row)"
           link
           type="warning"
-          @click="emit('go-disposition', row)"
-          >去处置</el-button
-        ></template
-      ></el-table-column
+          @click="emit('go-disposition', row)">
+          不良处置
+        </el-button>
+        <span v-else class="operation-muted">无待办</span>
+        <el-dropdown v-if="row.inspectionId || row.lotId" trigger="click" @command="(command: string) => handleMore(command, row)">
+          <el-button link type="primary">更多</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-if="row.inspectionId" command="print">打印检验报告</el-dropdown-item>
+              <el-dropdown-item v-if="row.lotId" command="history">查看质量历史</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </template>
+    </el-table-column>
     >
   </el-table>
 </template>
@@ -118,7 +122,7 @@ import { InspectionResultEnum as InboundInspectionResultEnum } from '@/enums/inv
 import { QualityReviewStatus, QualityReviewStatusEnum } from '@/enums/quality/InspectionEnum'
 import { deriveIqcReasonText } from '../iqcRowRules'
 
-defineProps<{
+const { isCompleted } = defineProps<{
   rows: any[]
   canEdit: (row: any) => boolean
   rowClass: (ctx: { row: any }) => string
@@ -144,6 +148,19 @@ function disposedQuantity(row: any) {
     Number(row.rejectedQuantity || 0) - Number(row.remainingDispositionQuantity || 0)
   )
 }
+
+function canDisposeRow(row: any) {
+  return (
+    Number((row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity) || 0) > 0 &&
+    row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
+    (row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted)
+  )
+}
+
+function handleMore(command: string, row: any) {
+  if (command === 'print') emit('print', row)
+  if (command === 'history') emit('history', row)
+}
 </script>
 
 <style scoped>
@@ -155,5 +172,9 @@ function disposedQuantity(row: any) {
 .quantity-context__emphasis {
   color: var(--el-color-warning-dark-2);
   font-weight: 600;
+}
+.operation-muted {
+  color: var(--el-text-color-placeholder);
+  font-size: 12px;
 }
 </style>
