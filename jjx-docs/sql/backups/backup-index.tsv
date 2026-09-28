@@ -34,3 +34,4 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-28 17:09:47	guard	sys_task_register_20260928-1709_guard.sql	160070058f47c9d4150437ce86cf13ba	1310067	1	dahuang	dev-20260928-022~038
 2026-09-28 17:36:53	guard	sys_task_register_20260928-1736_guard.sql	d95f7c4710ad059c804f7a4f68fec670	1323353	1	hermes	dev-20260928-039
 2026-09-28 17:43:59	table	jjx_table_backup_20260928-1743_before-223.sql	3a3326567bebb2118c9970bfed2a25f4	3899	1	agent	dev-20260928-022
+2026-09-28 19:09:31	full	jjx_erp_db_backup_20260928-1909_before-iqc-workbench-menu.sql	4f568945544a7e42ece6db49217eed1e	6032802	122	dahuang	dev-20260928-038

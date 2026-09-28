@@ -185,7 +185,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeMount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { inboundApi } from '@/api/inventory/inbound'
@@ -205,6 +205,9 @@ import { hasPermi } from '@/directives'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 const router = useRouter()
 const route = useRoute()
+onBeforeMount(() => {
+  router.replace({ path: '/inventory/iqc', query: route.query })
+})
 // 2026-09-21 用户定口径 B（隔离处置只给品质主管一侧，见迁移 167）：
 // 收回 INVENTORY 业务操作(23)/审核员(24) 的处置入口后，本页与来料检验页的处置按钮
 // 只认 quality:ncr:dispose；无权限时显示「无处置权限」提示而不是留白。
@@ -426,6 +429,7 @@ async function goReinspect(row: any) {
   })
 }
 onMounted(() => {
+  if (route.path === '/inventory/iqc-quarantine') return
   query.value.inboundNo = typeof route.query.inboundNo === 'string' ? route.query.inboundNo : ''
   query.value.materialKeyword =
     typeof route.query.materialKeyword === 'string' ? route.query.materialKeyword : ''
