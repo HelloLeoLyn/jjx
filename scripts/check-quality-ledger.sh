@@ -41,32 +41,43 @@ lot_action_drift=$(M "
 SELECT COUNT(*) FROM (
   SELECT l.lot_id,
          COALESCE(l.disposed_quantity, 0) lot_disposed,
-         COALESCE(SUM(CASE WHEN a.status IN ('DONE', 'PROCESSING') THEN a.quantity ELSE 0 END), 0) action_disposed
+         COALESCE(SUM(CASE WHEN d.status NOT IN ('REJECTED', 'CANCELLED') THEN d.quantity ELSE 0 END), 0) action_disposed
     FROM quality_lot l
-    LEFT JOIN quality_ncr n ON n.lot_id = l.lot_id AND n.status <> 'VOID'
-    LEFT JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id
+    LEFT JOIN inventory_iqc_disposition_order d ON d.lot_id = l.lot_id
    WHERE l.lot_type = 'IQC'
    GROUP BY l.lot_id, l.disposed_quantity
   HAVING lot_disposed <> action_disposed
 ) x;")
 
 rework_lot_drift=$(M "
-SELECT COUNT(*) FROM inventory_iqc_rework_order r
+SELECT COUNT(*) FROM inventory_iqc_disposition_order r
 LEFT JOIN quality_lot child ON child.lot_id = r.lot_id AND child.parent_lot_id IS NOT NULL
-WHERE r.status IN ('PENDING_REINSPECTION', 'COMPLETED')
+WHERE r.action = 'REWORK'
+  AND r.status IN ('PENDING_REINSPECTION', 'COMPLETED')
   AND (child.lot_id IS NULL OR child.lot_quantity <> r.quantity);")
+
+disposition_ncr_drift=$(M "
+SELECT COUNT(*) FROM inventory_iqc_disposition_order d
+LEFT JOIN quality_ncr_action a ON a.action_id = d.quality_action_id
+WHERE d.quality_action_id IS NULL
+   OR a.action_id IS NULL
+   OR a.quantity <> d.quantity
+   OR a.action_type <> CASE d.action
+       WHEN 'RELEASE' THEN 'CONCESSION'
+       WHEN 'RETURN' THEN 'RETURN'
+       WHEN 'REWORK' THEN 'REWORK'
+       WHEN 'SCRAP' THEN 'SCRAP'
+     END;")
 
 lot_balance_drift=$(M "
 SELECT COUNT(*) FROM (
   SELECT l.lot_id,
          COALESCE(l.fail_quantity, 0) fail_quantity,
          COALESCE((
-           SELECT SUM(a.quantity)
-             FROM quality_ncr n
-             JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id
-            WHERE n.lot_id = l.lot_id
-              AND n.status <> 'VOID'
-              AND a.status IN ('DONE', 'PROCESSING')
+           SELECT SUM(d.quantity)
+             FROM inventory_iqc_disposition_order d
+            WHERE d.lot_id = l.lot_id
+              AND d.status NOT IN ('REJECTED', 'CANCELLED')
          ), 0) action_disposed,
          COALESCE((
            SELECT SUM(q.remaining_quantity)
@@ -83,6 +94,7 @@ echo "1) IQC 批不良量 vs NCR 不良总量：$lot_ncr_drift（期望 0）"
 echo "2) 检验批已处置量 vs 有效 NCR 处置动作：$lot_action_drift（期望 0）"
 echo "3) 返工量 vs 复检子批数量：$rework_lot_drift（期望 0）"
 echo "4) 不良量 vs 有效处置 + 隔离剩余：$lot_balance_drift（期望 0）"
+echo "5) 统一处置事实 vs NCR 动作关联：$disposition_ncr_drift（期望 0）"
 
 if [ "$lot_balance_drift" -gt 0 ]; then
   echo "-- 4) 不良量恒等式差异明细（lot_id / fail / 有效处置 / 隔离剩余）"
@@ -112,7 +124,7 @@ if ! bash "$(dirname "$0")/check-stock-summary.sh" --strict; then
   stock_exit=1
 fi
 
-if [ "$STRICT" = true ] && { [ "$lot_ncr_drift" -gt 0 ] || [ "$lot_action_drift" -gt 0 ] || [ "$rework_lot_drift" -gt 0 ] || [ "$lot_balance_drift" -gt 0 ] || [ "$stock_exit" -ne 0 ]; }; then
+if [ "$STRICT" = true ] && { [ "$lot_ncr_drift" -gt 0 ] || [ "$lot_action_drift" -gt 0 ] || [ "$rework_lot_drift" -gt 0 ] || [ "$lot_balance_drift" -gt 0 ] || [ "$disposition_ncr_drift" -gt 0 ] || [ "$stock_exit" -ne 0 ]; }; then
   exit 1
 fi
 exit 0
