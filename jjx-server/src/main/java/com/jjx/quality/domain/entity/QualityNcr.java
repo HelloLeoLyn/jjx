@@ -91,6 +91,7 @@ public class QualityNcr {
     private String createBy;
     private LocalDateTime createTime;
     private String updateBy;
+    @com.baomidou.mybatisplus.annotation.TableField(fill = com.baomidou.mybatisplus.annotation.FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
 
     @TableLogic

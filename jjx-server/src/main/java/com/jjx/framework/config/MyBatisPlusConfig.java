@@ -44,8 +44,9 @@ public class MyBatisPlusConfig implements MetaObjectHandler {
 
     @Override
     public void updateFill(MetaObject metaObject) {
-        strictUpdateFill(metaObject, "updateTime", LocalDateTime.class, LocalDateTime.now());
-        strictUpdateFill(metaObject, "updateBy", String.class, getCurrentUsername());
+        // 实体从数据库读出旧时间后，strictUpdateFill 不会覆盖它，导致审计时间停滞。
+        setFieldValByName("updateTime", LocalDateTime.now(), metaObject);
+        setFieldValByName("updateBy", getCurrentUsername(), metaObject);
     }
 
     /**
