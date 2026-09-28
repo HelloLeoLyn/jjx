@@ -3,17 +3,17 @@
 -- 统一 IQC 处置事实表：扩展既有父表承载退货/返工/报废元数据；旧类型表保留为历史兼容读取，不再作为新写模型。
 
 ALTER TABLE inventory_iqc_disposition_order
-    ADD COLUMN IF NOT EXISTS material_id BIGINT NULL COMMENT '物料主键' AFTER lot_id,
-    ADD COLUMN IF NOT EXISTS supplier_id BIGINT NULL COMMENT '供应商主键' AFTER material_id,
-    ADD COLUMN IF NOT EXISTS supplier_name VARCHAR(128) NULL COMMENT '供应商名称' AFTER supplier_id,
-    ADD COLUMN IF NOT EXISTS action_no VARCHAR(64) NULL COMMENT '处置动作业务编号' AFTER supplier_name,
-    ADD COLUMN IF NOT EXISTS child_batch_id BIGINT NULL COMMENT '返工复检子批次主键' AFTER action_no,
-    ADD COLUMN IF NOT EXISTS child_batch_no VARCHAR(128) NULL COMMENT '返工复检子批次号' AFTER child_batch_id,
-    ADD COLUMN IF NOT EXISTS reason VARCHAR(500) NULL COMMENT '处置原因/说明' AFTER child_batch_no,
-    ADD COLUMN IF NOT EXISTS applicant_id BIGINT NULL COMMENT '报废申请人' AFTER reason,
-    ADD COLUMN IF NOT EXISTS applicant_name VARCHAR(64) NULL COMMENT '报废申请人名称' AFTER applicant_id,
-    ADD COLUMN IF NOT EXISTS approver_id BIGINT NULL COMMENT '审批人' AFTER applicant_name,
-    ADD COLUMN IF NOT EXISTS approver_name VARCHAR(64) NULL COMMENT '审批人名称' AFTER approver_id;
+    ADD COLUMN material_id BIGINT NULL COMMENT '物料主键' AFTER lot_id,
+    ADD COLUMN supplier_id BIGINT NULL COMMENT '供应商主键' AFTER material_id,
+    ADD COLUMN supplier_name VARCHAR(128) NULL COMMENT '供应商名称' AFTER supplier_id,
+    ADD COLUMN action_no VARCHAR(64) NULL COMMENT '处置动作业务编号' AFTER supplier_name,
+    ADD COLUMN child_batch_id BIGINT NULL COMMENT '返工复检子批次主键' AFTER action_no,
+    ADD COLUMN child_batch_no VARCHAR(128) NULL COMMENT '返工复检子批次号' AFTER child_batch_id,
+    ADD COLUMN reason VARCHAR(500) NULL COMMENT '处置原因/说明' AFTER child_batch_no,
+    ADD COLUMN applicant_id BIGINT NULL COMMENT '报废申请人' AFTER reason,
+    ADD COLUMN applicant_name VARCHAR(64) NULL COMMENT '报废申请人名称' AFTER applicant_id,
+    ADD COLUMN approver_id BIGINT NULL COMMENT '审批人' AFTER applicant_name,
+    ADD COLUMN approver_name VARCHAR(64) NULL COMMENT '审批人名称' AFTER approver_id;
 
 UPDATE inventory_iqc_disposition_order d
 JOIN inventory_iqc_return_order r ON r.disposition_id = d.disposition_id
