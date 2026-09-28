@@ -133,7 +133,7 @@
       "taskCode": "dev-20260928-044",
       "date": "2026-09-28",
       "proposalLink": "jjx-docs/history/event-var-registry-automation-review-dev-20260923-037.md",
-      "reason": "事件变量累积表（二期）：写入 upsert + 读取合并；037 评审定「累积表留二期」，044 落地。事后补登记（dev-20260928-046）"
+      "reason": "事件变量累积表（二期）：写入 upsert + 读取合并；037 评审定「累积表留二期」，044 落地。事后补登记（dev-20260928-046）；用户 2026-09-28 拍板确认"
     }
   ],
   "typeSuffixAllowlist": [

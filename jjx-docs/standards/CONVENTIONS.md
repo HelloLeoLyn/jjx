@@ -351,7 +351,7 @@ bash scripts/agent-preflight.sh
 
 | 表 | 任务码 | 日期 | 提案链接 | 说明 |
 |---|---|---|---|---|
-| `sys_event_var` | dev-20260928-044 | 2026-09-28 | `jjx-docs/history/event-var-registry-automation-review-dev-20260923-037.md` | 事件变量累积表（二期）；事后补登记（dev-20260928-046） |
+| `sys_event_var` | dev-20260928-044 | 2026-09-28 | `jjx-docs/history/event-var-registry-automation-review-dev-20260923-037.md` | 事件变量累积表（二期）；事后补登记（dev-20260928-046），**用户 2026-09-28 拍板确认** |
 
 ### 15.4 字段级闸
 
