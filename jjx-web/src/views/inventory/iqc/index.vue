@@ -228,14 +228,11 @@ async function handleExpandChange(row: IqcPendingVO, expanded: IqcPendingVO[]) {
   if (expanded.some((item) => item.inboundId === row.inboundId) && !workspaceByInbound[row.inboundId]) {
     workspaceLoading[row.inboundId] = true
     try {
-      const [{ data }, quarantineResult, dispositionResult] = await Promise.all([
-        inboundApi.getById(String(row.inboundId)),
-        inboundApi.listQuarantine(String(row.inboundId)),
-        inboundApi.listDispositionOrders(String(row.inboundId)),
-      ])
-      const quarantines = quarantineResult.data || []
-      const dispositions = dispositionResult.data || []
-      const materials = (data?.items || []).map((item: any) => {
+      const { data } = await inboundApi.getIqcWorkbench(String(row.inboundId))
+      const inbound = data?.inbound
+      const quarantines = data?.quarantines || []
+      const dispositions = data?.dispositions || []
+      const materials = (inbound?.items || []).map((item: any) => {
         const itemQuarantines = quarantines.filter((q: any) => String(q.inboundItemId) === String(item.inboundItemId || item.itemId))
         const itemDispositions = dispositions.filter((d: any) => String(d.inboundItemId) === String(item.inboundItemId || item.itemId))
         const rework = itemDispositions.find((d: any) => d.action === 'REWORK' && d.childBatchNo)

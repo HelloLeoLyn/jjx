@@ -51,6 +51,9 @@ export const inboundApi = {
   getById(inboundId: string) {
     return request.get<R<InboundVO>>(`/inventory/inbound/${inboundId}`)
   },
+  getIqcWorkbench(inboundId: string) {
+    return request.get<R<any>>(`/inventory/inbound/iqc-workbench/${inboundId}`)
+  },
 
   // 创建入库单
   create(data: InboundCreateParams) {

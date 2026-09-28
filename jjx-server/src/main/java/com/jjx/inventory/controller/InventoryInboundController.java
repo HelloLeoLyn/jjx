@@ -9,6 +9,7 @@ import com.jjx.inventory.dto.query.IqcQuarantineLedgerQueryDTO;
 import com.jjx.inventory.dto.vo.InboundVO;
 import com.jjx.inventory.dto.vo.IqcPendingVO;
 import com.jjx.inventory.dto.vo.IqcQuarantineLedgerPageVO;
+import com.jjx.inventory.dto.vo.IqcWorkbenchVO;
 import com.jjx.inventory.service.InventoryInboundService;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
@@ -56,6 +57,13 @@ public class InventoryInboundController {
     @SaCheckPermission(value = {"inventory:inbound:view", "quality:lot:view"}, mode = SaMode.OR)
     public Result<InboundVO> getById(@PathVariable Long inboundId) {
         return Result.success(inboundService.getDetail(inboundId));
+    }
+
+    @GetMapping("/iqc-workbench/{inboundId}")
+    @Operation(summary = "获取 IQC 单页工作台只读聚合")
+    @SaCheckPermission(value = {"inventory:inbound:view", "quality:lot:view", "quality:ncr:view"}, mode = SaMode.OR)
+    public Result<IqcWorkbenchVO> getIqcWorkbench(@PathVariable Long inboundId) {
+        return Result.success(inboundService.getIqcWorkbench(inboundId));
     }
 
     @PostMapping("/create")

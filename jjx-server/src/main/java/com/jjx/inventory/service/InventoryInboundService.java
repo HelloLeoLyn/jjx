@@ -13,6 +13,7 @@ import com.jjx.inventory.domain.InventoryIqcQuarantine;
 import com.jjx.inventory.dto.vo.InboundVO;
 import com.jjx.inventory.dto.vo.IqcPendingVO;
 import com.jjx.inventory.dto.vo.IqcQuarantineLedgerPageVO;
+import com.jjx.inventory.dto.vo.IqcWorkbenchVO;
 
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,9 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
      * 获取入库单详情
      */
     InboundVO getDetail(Long inboundId);
+
+    /** IQC 单页工作台只读聚合：一次返回来料、隔离、处置和批次链路。 */
+    IqcWorkbenchVO getIqcWorkbench(Long inboundId);
 
     /**
      * 创建入库单

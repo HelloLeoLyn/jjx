@@ -20,6 +20,7 @@ import com.jjx.inventory.dto.save.InboundInspectionSubmitDTO;
 import com.jjx.inventory.dto.vo.InboundItemVO;
 import com.jjx.inventory.dto.vo.InboundVO;
 import com.jjx.inventory.dto.vo.IqcPendingVO;
+import com.jjx.inventory.dto.vo.IqcWorkbenchVO;
 import com.jjx.inventory.dto.vo.IqcQuarantineLedgerPageVO;
 import com.jjx.inventory.dto.vo.IqcQuarantineLedgerRowVO;
 import com.jjx.common.core.page.PageResult;
@@ -257,6 +258,17 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             vo.setItems(convertToItemVOList(items));
         }
         return vo;
+    }
+
+    @Override
+    public IqcWorkbenchVO getIqcWorkbench(Long inboundId) {
+        if (inboundId == null) throw new BusinessException("来料批次不能为空");
+        IqcWorkbenchVO workbench = new IqcWorkbenchVO();
+        workbench.setInbound(getDetail(inboundId));
+        workbench.setQuarantines(listQuarantine(inboundId));
+        workbench.setDispositions(listDispositionOrders(inboundId));
+        workbench.setBatches(listIqcBatches(inboundId));
+        return workbench;
     }
 
     @Override
