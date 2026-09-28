@@ -501,6 +501,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
         String actionCode = action.getAction();
         boolean scrap = "SCRAP".equals(actionCode);
+        boolean rework = "REWORK".equals(actionCode);
         String status;
         boolean release = "RELEASE".equals(actionCode);
         if (release) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.RELEASED.getCode();
@@ -525,10 +526,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         dispositionOrder.setBatchNo(quarantine.getBatchNo());
         dispositionOrder.setIqcBatchId(quarantine.getIqcBatchId());
         dispositionOrder.setRemark(action.getRemark());
+        // dev-20260928-047：返工单必须停在「待返工(CREATED)」，由「完成返工」(completeIqcRework) 再建
+        // 返工子批次与复检检验批；原实现把 REWORK 与 RETURN 一起落 COMPLETED，导致返工无任何后续入口（断头）。
         dispositionOrder.setStatus(scrap
                 ? com.jjx.inventory.enums.IqcDispositionOrderStatusEnum.PENDING_APPROVAL.getCode()
                 : release
                 ? com.jjx.inventory.enums.IqcDispositionOrderStatusEnum.PENDING_INBOUND.getCode()
+                : rework
+                ? "CREATED"
                 : com.jjx.inventory.enums.IqcDispositionOrderStatusEnum.COMPLETED.getCode());
         dispositionOrder.setOperatorId(action.getOperatorId() != null ? action.getOperatorId() : SecurityUtils.getUserId());
         dispositionOrder.setOperatorName(action.getOperatorName() != null ? action.getOperatorName() : SecurityUtils.getDisplayName());
