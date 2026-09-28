@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.common.core.result.Result;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
+import com.jjx.production.enums.QualityInspectionResultEnum;
 import com.jjx.quality.domain.entity.QualityLot;
 import com.jjx.quality.mapper.QualityLotMapper;
 import com.jjx.production.mapper.ProductionOrderMapper;
@@ -120,11 +121,12 @@ public class ProductionReportController {
                         .last("LIMIT 500"));
 
         long total = inspections.size();
+        // dev-20260928-005：质量结果按 QualityInspectionResultEnum 的 code 口径（小写 pass/fail）统计。
         long passed = inspections.stream()
-                .filter(i -> "PASS".equals(i.getResult()))
+                .filter(i -> QualityInspectionResultEnum.PASS.getCode().equalsIgnoreCase(i.getResult()))
                 .count();
         long failed = inspections.stream()
-                .filter(i -> "FAIL".equals(i.getResult()))
+                .filter(i -> QualityInspectionResultEnum.FAIL.getCode().equalsIgnoreCase(i.getResult()))
                 .count();
 
         Map<String, Object> result = new HashMap<>();

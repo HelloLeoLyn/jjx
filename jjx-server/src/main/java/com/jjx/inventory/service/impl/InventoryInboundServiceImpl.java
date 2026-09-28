@@ -1265,6 +1265,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 target.setActualValue(source.getActualValue());
                 target.setResult(source.getResult());
                 target.setRemark(source.getRemark());
+                // dev-20260928-007：提交时把检验项 CR/MA/MI 一并落库，否则不合格分级/原因文本/NCR 主缺陷失真。
+                target.setCrQuantity(source.getCrQuantity());
+                target.setMaQuantity(source.getMaQuantity());
+                target.setMiQuantity(source.getMiQuantity());
                 target.setSortOrder(++sort);
                 lotItems.add(target);
             }
