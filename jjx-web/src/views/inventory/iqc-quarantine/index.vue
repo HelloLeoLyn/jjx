@@ -71,10 +71,17 @@
             <span class="muted">采购：{{ row.sourceNo || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="检验批号 / 批次" min-width="190">
+        <el-table-column label="检验批关系" min-width="240">
           <template #default="{ row }">
-            <div>{{ row.lotNo || row.childBatchNo || '-' }}</div>
-            <span class="muted">批次：{{ row.batchNo || '-' }}</span>
+            <template v-if="row.kind === 'rework'">
+              <div>原批：{{ row.batchNo || '-' }}</div>
+              <span class="muted">复检批：{{ row.childBatchNo || '-' }}</span>
+              <div class="quantity-context__emphasis">该批只针对 {{ num(row.quantity) }} 件</div>
+            </template>
+            <template v-else>
+              <div>{{ row.lotNo || row.batchNo || '-' }}</div>
+              <span class="muted">业务批次：{{ row.batchNo || '-' }}</span>
+            </template>
           </template>
         </el-table-column>
         <el-table-column label="物料" min-width="170">
@@ -86,7 +93,7 @@
         <el-table-column label="数量口径" width="145" align="right">
           <template #default="{ row }">
             <div>{{ row.quantityLabel }}：{{ num(row.quantity) }}</div>
-            <span v-if="row.kind === 'quarantine'" class="muted">整批不良：{{ num(row.totalFail) }}</span>
+            <span v-if="row.kind === 'quarantine'" class="muted">整批不良量：{{ num(row.totalFail) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="135">
@@ -268,7 +275,7 @@ const workbenchRows = computed(() => {
     actionLabel: '待处置',
     lotNo: row.lotNo || row.batchNo,
     quantity: row.remainingQuantity,
-    quantityLabel: '剩余可处置',
+    quantityLabel: '剩余可处置量',
     totalFail: row.quantity,
     statusLabel: IqcQuarantineStatusEnum.getLabel(row.status),
     statusType: IqcQuarantineStatusEnum.getTagProps(row.status).type,
@@ -278,7 +285,7 @@ const workbenchRows = computed(() => {
     ...row,
     kind: 'disposition',
     actionLabel: actionLabel(row.action),
-    quantityLabel: '本次处置',
+    quantityLabel: '本次处置量',
     ...dispositionStatus(row.status),
     hasNextAction: false,
   }))
@@ -287,7 +294,7 @@ const workbenchRows = computed(() => {
     kind: 'scrap',
     dispositionNo: row.scrapNo || row.dispositionNo || '-',
     actionLabel: actionLabel(IqcQuarantineAction.SCRAP),
-    quantityLabel: '本次报废',
+    quantityLabel: '本次报废量',
     ...(() => {
       const props = IqcScrapOrderStatusEnum.getTagProps(row.status)
       return { statusLabel: IqcScrapOrderStatusEnum.getLabel(row.status), statusType: props.type }
@@ -299,7 +306,7 @@ const workbenchRows = computed(() => {
     kind: 'rework',
     dispositionNo: row.reworkNo || '-',
     actionLabel: actionLabel(IqcQuarantineAction.REWORK),
-    quantityLabel: '本批复检',
+    quantityLabel: '本批复检量',
     lotNo: row.childBatchNo || row.batchNo,
     ...(() => {
       const props = IqcReworkStatusEnum.getTagProps(row.status)
@@ -458,6 +465,11 @@ onMounted(() => {
 .muted {
   color: var(--el-text-color-secondary);
   font-size: 12px;
+}
+.quantity-context__emphasis {
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+  font-weight: 600;
 }
 .filter-bar {
   padding: 10px 12px 0;
