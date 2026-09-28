@@ -28,6 +28,13 @@ export function maxAcceptedIqcQuantity(row: any): number {
 export function syncIqcRowFromChecks(row: any) {
   if (!row) return
   const items: any[] = row.inspectionItems || []
+  // dev-20260928-003：检验项 CR/MA/MI>0 ⇒ 结论必须=不合格（避免"数值判不合格、结论说合格"导致原因文本丢项）。
+  items.forEach((check: any) => {
+    const defect = Number(check?.crQuantity || 0) + Number(check?.maQuantity || 0) + Number(check?.miQuantity || 0)
+    if (defect > 0 && String(check?.result || '').toUpperCase() !== 'FAIL') {
+      check.result = InspectionResult.FAIL
+    }
+  })
   const sum = (key: string) => items.reduce((total, check) => total + Number(check?.[key] || 0), 0)
   const total = sum('crQuantity') + sum('maQuantity') + sum('miQuantity')
 
@@ -89,6 +96,12 @@ export function iqcRowProblems(row: any): string[] {
   if (undecided) {
     problems.push(`请判定检测项目「${undecided.checkItem}」合格或不合格（实测记录可留空）`)
   }
+  ;(row.inspectionItems || []).forEach((check: any) => {
+    const defect = Number(check?.crQuantity || 0) + Number(check?.maQuantity || 0) + Number(check?.miQuantity || 0)
+    if (String(check?.result || '').toUpperCase() === 'FAIL' && defect === 0) {
+      problems.push(`检测项目「${check.checkItem}」判不合格但 CR/MA/MI 全为 0，请填写缺陷数或把该项改为合格`)
+    }
+  })
   return problems
 }
 

@@ -1399,6 +1399,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 throw new BusinessException("物料" + inboundItem.getMaterialCode() + "的检测项目“"
                         + check.getCheckItem() + "”必须判定合格或不合格");
             }
+            // dev-20260928-003：检验项 CR/MA/MI 与结论双向强约束，保证数值链与文本链等价。
+            BigDecimal defect = nvl(check.getCrQuantity()).add(nvl(check.getMaQuantity())).add(nvl(check.getMiQuantity()));
+            if ("fail".equals(result) && defect.signum() == 0) {
+                throw new BusinessException("物料" + inboundItem.getMaterialCode() + "的检测项目“" + check.getCheckItem()
+                        + "”判不合格但 CR/MA/MI 全为 0，请填写缺陷数或把该项改为合格");
+            }
+            if (!"fail".equals(result) && defect.signum() > 0) {
+                throw new BusinessException("物料" + inboundItem.getMaterialCode() + "的检测项目“" + check.getCheckItem()
+                        + "”已填缺陷数（CR/MA/MI），结论必须为不合格");
+            }
         }
     }
 

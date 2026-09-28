@@ -43,6 +43,50 @@ class PurchaseIqcValidationTest {
         assertInstanceOf(BusinessException.class, error.getCause());
     }
 
+    @Test
+    void iqcFailItemWithoutDefectNumbersIsRejected() throws Exception {
+        InventoryInboundItem inboundItem = new InventoryInboundItem();
+        inboundItem.setMaterialCode("M-004");
+        InspectionItemDTO check = new InspectionItemDTO();
+        check.setCheckItem("外观");
+        check.setResult("fail");
+
+        InvocationTargetException error = assertThrows(InvocationTargetException.class,
+                () -> iqcCheckValidator().invoke(null, inboundItem, List.of(check)));
+        assertInstanceOf(BusinessException.class, error.getCause());
+        org.junit.jupiter.api.Assertions.assertTrue(error.getCause().getMessage().contains("CR/MA/MI"));
+    }
+
+    @Test
+    void iqcPassItemWithDefectNumbersIsRejected() throws Exception {
+        InventoryInboundItem inboundItem = new InventoryInboundItem();
+        inboundItem.setMaterialCode("M-005");
+        InspectionItemDTO check = new InspectionItemDTO();
+        check.setCheckItem("外观");
+        check.setResult("pass");
+        check.setMaQuantity(BigDecimal.ONE);
+
+        InvocationTargetException error = assertThrows(InvocationTargetException.class,
+                () -> iqcCheckValidator().invoke(null, inboundItem, List.of(check)));
+        assertInstanceOf(BusinessException.class, error.getCause());
+        org.junit.jupiter.api.Assertions.assertTrue(error.getCause().getMessage().contains("必须为不合格"));
+    }
+
+    @Test
+    void iqcConsistentItemsPass() throws Exception {
+        InventoryInboundItem inboundItem = new InventoryInboundItem();
+        inboundItem.setMaterialCode("M-006");
+        InspectionItemDTO pass = new InspectionItemDTO();
+        pass.setCheckItem("外观");
+        pass.setResult("pass");
+        InspectionItemDTO fail = new InspectionItemDTO();
+        fail.setCheckItem("尺寸");
+        fail.setResult("fail");
+        fail.setCrQuantity(BigDecimal.ONE);
+
+        assertDoesNotThrow(() -> iqcCheckValidator().invoke(null, inboundItem, List.of(pass, fail)));
+    }
+
     private Method purchasePriceValidator() throws Exception {
         Method method = PurchaseOrderServiceImpl.class.getDeclaredMethod("validateOrderItemPrices", List.class);
         method.setAccessible(true);
