@@ -98,6 +98,16 @@ export interface QualityLot {
   createTime?: string
 }
 
+export interface QualityLotHistory {
+  historyId: number
+  lotId: number
+  eventType: string
+  snapshotJson?: string
+  operatorName?: string
+  remark?: string
+  createTime?: string
+}
+
 /**
  * 旧生产质检页面迁移期使用的展示模型。
  * 数据源统一为 quality_lot，但保留页面现有字段名，避免三个读口各写一套映射。
@@ -217,6 +227,9 @@ export const qualityLotApi = {
   },
   items(lotId: number) {
     return request.get<R<QualityLotItem[]>>(`/quality/lot/${lotId}/items`)
+  },
+  history(lotId: number) {
+    return request.get<R<QualityLotHistory[]>>(`/quality/lot/${lotId}/history`)
   },
   saveItems(lotId: number, items: QualityLotItem[]) {
     return request.put<R<boolean>>(`/quality/lot/${lotId}/items`, items)

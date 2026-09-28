@@ -168,6 +168,7 @@
               >重开</el-button
             >
             <el-button link size="small" @click="printReport(row)">打印</el-button>
+            <el-button link size="small" @click="openHistory(row)">历史</el-button>
             <!-- dev-20260922-012（G7）：把"无操作权限"说清是缺哪个权限，别让人干瞪眼 -->
             <span v-if="!canJudge && !canInspect" class="no-action">
               无操作权限：需要「检验录入」（录入）或「检验判定」（判定/复检）
@@ -362,6 +363,27 @@
         <el-button type="primary" :loading="judging" @click="submitJudge">提交判定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 当前值与历史事件分开：当前表格只展示现状，历史弹窗只读展示事件快照。 -->
+    <el-dialog v-model="historyVisible" title="检验批历史（只读）" width="820px" append-to-body>
+      <div v-if="historyLot" class="history-current">
+        当前快照：<b>{{ historyLot.lotNo }}</b> · 状态 {{ statusLabel(historyLot.status) }} ·
+        批量 {{ num(historyLot.lotQuantity) }} · 合格 {{ num(historyLot.passQuantity) }} ·
+        不良 {{ num(historyLot.failQuantity) }}
+      </div>
+      <el-table v-loading="historyLoading" :data="historyRows" border size="small" max-height="55vh">
+        <el-table-column prop="createTime" label="发生时间" width="170" />
+        <el-table-column prop="eventType" label="事件" width="170" />
+        <el-table-column prop="operatorName" label="操作人" width="110" />
+        <el-table-column prop="remark" label="说明" min-width="240" />
+        <el-table-column label="快照" width="90" fixed="right">
+          <template #default="{ row }">
+            <el-button link size="small" @click="showHistorySnapshot(row)">查看</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!historyLoading && !historyRows.length" description="该批暂无历史快照（旧数据不补造）" />
+    </el-dialog>
   </div>
 </template>
 
@@ -369,7 +391,13 @@
 import { reactive, ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { qualityLotApi, type QualityLot, type QualityLotItem, type JudgementGuardVO } from '@/api/quality/lot'
+import {
+  qualityLotApi,
+  type QualityLot,
+  type QualityLotItem,
+  type QualityLotHistory,
+  type JudgementGuardVO,
+} from '@/api/quality/lot'
 import { InspectionResult } from '@/enums/quality'
 import { hasPermi } from '@/directives'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
@@ -397,6 +425,10 @@ const rows = ref<QualityLot[]>([])
 const total = ref(0)
 const query = reactive({ pageNum: 1, pageSize: 10, lotType, status: '', lotNo: '', businessNo: '' })
 const current = ref<QualityLot | null>(null)
+const historyVisible = ref(false)
+const historyLoading = ref(false)
+const historyRows = ref<QualityLotHistory[]>([])
+const historyLot = ref<QualityLot | null>(null)
 
 /**
  * 功能说明（2026-09-21 dev-20260921-032 立；2026-09-22 dev-20260922-011 改为「谁做什么」口径）：
@@ -794,6 +826,34 @@ const handleReinspect = async (row: QualityLot) => {
     busyLotId.value = null
   }
 }
+
+const openHistory = async (row: QualityLot) => {
+  historyLot.value = row
+  historyRows.value = []
+  historyVisible.value = true
+  historyLoading.value = true
+  try {
+    const res: any = await qualityLotApi.history(Number(row.lotId))
+    historyRows.value = Array.isArray(res?.data) ? res.data : []
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载检验批历史失败')
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+const showHistorySnapshot = (row: QualityLotHistory) => {
+  let content = row.snapshotJson || '{}'
+  try {
+    content = JSON.stringify(JSON.parse(content), null, 2)
+  } catch {
+    // 兼容早期非 JSON 快照，原样只读展示。
+  }
+  ElMessageBox.alert(`<pre class="history-snapshot">${content.replace(/</g, '&lt;')}</pre>`, '历史快照（只读）', {
+    dangerouslyUseHTMLString: true,
+    confirmButtonText: '关闭',
+  })
+}
 /** 打印检验报告（QR-037 进料 / QR-039 成品，报告数据来自检验批） */
 const printReport = (row: QualityLot) => {
   router.push({ path: '/quality/print/lot-report', query: { lotId: row.lotId } })
@@ -808,6 +868,23 @@ onMounted(() => load(1))
   font-size: 12px;
   color: #909399;
   line-height: 1.5;
+}
+.history-current {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  color: var(--el-text-color-regular);
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  font-size: 13px;
+}
+:deep(.history-snapshot) {
+  max-height: 55vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  text-align: left;
+  font-size: 12px;
 }
 /* dev-20260924-017：本批结论条（只读） + 弹窗页脚 */
 .lot-verdict {

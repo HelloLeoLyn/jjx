@@ -145,6 +145,15 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (dto.getItems() != null && !dto.getItems().isEmpty()) {
             saveItems(lot.getLotId(), dto.getItems());
         }
+        if (lot.getParentLotId() != null) {
+            Map<String, Object> relation = new HashMap<>();
+            relation.put("parentLotId", lot.getParentLotId());
+            relation.put("relationshipMode", lot.getRelationshipMode());
+            relation.put("scopeQuantity", lot.getScopeQuantity());
+            relation.put("version", lot.getVersion());
+            recordHistory(lot, "REINSPECTION_CREATED", listItems(lot.getLotId()),
+                    "复检批已创建：原批ID=" + lot.getParentLotId(), relation, currentOperator());
+        }
         log.info("检验批已创建: lotNo={} type={} 批量={} 来源={}:{}", lot.getLotNo(), lot.getLotType(),
                 lotQty.toPlainString(), dto.getSourceType(), dto.getSourceId());
         return lot;
@@ -543,27 +552,61 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     }
 
     private void recordHistory(QualityLot lot, String eventType, Object items, String remark) {
+        recordHistory(lot, eventType, items, remark, null, null);
+    }
+
+    private void recordHistory(QualityLot lot, String eventType, Object items, String remark,
+                               Map<String, Object> metadata, String operatorName) {
         QualityLotHistory history = new QualityLotHistory();
         history.setLotId(lot.getLotId());
         history.setEventType(eventType);
         try {
             java.util.Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+            snapshot.put("eventType", eventType);
+            snapshot.put("eventAt", java.time.LocalDateTime.now());
+            snapshot.put("operatorName", StringUtils.defaultIfBlank(operatorName, currentOperator()));
             snapshot.put("lot", lot);
             snapshot.put("items", items);
+            if (metadata != null && !metadata.isEmpty()) {
+                snapshot.put("metadata", metadata);
+            }
             history.setSnapshotJson(objectMapper.writeValueAsString(snapshot));
         } catch (JsonProcessingException e) {
             throw new BusinessException("检验批历史快照生成失败");
         }
-        history.setOperatorName(lot.getInspector());
+        history.setOperatorName(StringUtils.defaultIfBlank(operatorName,
+                StringUtils.defaultIfBlank(lot.getInspector(), currentOperator())));
         history.setRemark(remark);
         historyMapper.insert(history);
+    }
+
+    @Override
+    public void recordReview(QualityLot lot, String reviewStatus, String operatorName, String remark) {
+        if (lot == null || lot.getLotId() == null) {
+            return;
+        }
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("reviewStatus", reviewStatus);
+        metadata.put("reviewRemark", remark);
+        recordHistory(lot, "REVIEWED", listItems(lot.getLotId()), "检验批审核：" + reviewStatus,
+                metadata, operatorName);
+    }
+
+    private String currentOperator() {
+        try {
+            return StringUtils.defaultIfBlank(
+                    com.jjx.system.utils.SecurityUtils.getDisplayName(), "system");
+        } catch (Exception e) {
+            return "system";
+        }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public QualityLot addStoredQuantity(Long lotId, BigDecimal delta) {
         QualityLot lot = getLot(lotId);
-        BigDecimal next = nz(lot.getStoredQuantity()).add(nz(delta));
+        BigDecimal before = nz(lot.getStoredQuantity());
+        BigDecimal next = before.add(nz(delta));
         // dev-20260923（022 收尾）：已入库数不允许为负 —— 红冲把净额冲回 0 即止（此前会写出 −98 这类异常值）
         if (next.signum() < 0) {
             log.warn("检验批已入库数将被写成负数，已按 0 收敛: lotNo={} 原值={} delta={}",
@@ -577,6 +620,13 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         lot.setStoredQuantity(next);
         closeIfSettled(lot);
         lotMapper.updateById(lot);
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("beforeStoredQuantity", before);
+        metadata.put("delta", nz(delta));
+        metadata.put("afterStoredQuantity", next);
+        recordHistory(lot, "INBOUND_CONFIRMED", listItems(lotId),
+                "确认入库数量变更：" + before.stripTrailingZeros().toPlainString() + " → "
+                        + next.stripTrailingZeros().toPlainString(), metadata, currentOperator());
         return lot;
     }
 
@@ -584,7 +634,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     @Transactional(rollbackFor = Exception.class)
     public QualityLot addDisposedQuantity(Long lotId, BigDecimal delta) {
         QualityLot lot = getLot(lotId);
-        BigDecimal next = nz(lot.getDisposedQuantity()).add(nz(delta));
+        BigDecimal before = nz(lot.getDisposedQuantity());
+        BigDecimal next = before.add(nz(delta));
         if (next.compareTo(nz(lot.getFailQuantity())) > 0) {
             throw new BusinessException("已处置数量不能超过不良数量（"
                     + nz(lot.getFailQuantity()).toPlainString() + "）");
@@ -592,6 +643,13 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         lot.setDisposedQuantity(next);
         closeIfSettled(lot);
         lotMapper.updateById(lot);
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("beforeDisposedQuantity", before);
+        metadata.put("delta", nz(delta));
+        metadata.put("afterDisposedQuantity", next);
+        recordHistory(lot, "DISPOSED", listItems(lotId),
+                "处置数量变更：" + before.stripTrailingZeros().toPlainString() + " → "
+                        + next.stripTrailingZeros().toPlainString(), metadata, currentOperator());
         return lot;
     }
 
@@ -600,6 +658,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 && nz(lot.getStoredQuantity()).compareTo(nz(lot.getPassQuantity())) >= 0
                 && nz(lot.getDisposedQuantity()).compareTo(nz(lot.getFailQuantity())) >= 0) {
             lot.setStatus(QualityLotStatusEnum.CLOSED.getCode());
+            recordHistory(lot, "CLOSED", listItems(lot.getLotId()),
+                    "合格量已全部入库且不良量已全部处置", null, currentOperator());
         }
     }
 
@@ -636,6 +696,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         String next = base.isEmpty() ? note : base + " ｜ " + note;
         lot.setRemark(next.length() > 500 ? next.substring(0, 500) : next);
         lotMapper.updateById(lot);
+        recordHistory(lot, "REOPENED", listItems(lotId), "检验批重开：" + r,
+                null, by);
         log.info("检验批已重开: lotNo={} 操作人={} 原因={}", lot.getLotNo(), by, r);
         return lot;
     }

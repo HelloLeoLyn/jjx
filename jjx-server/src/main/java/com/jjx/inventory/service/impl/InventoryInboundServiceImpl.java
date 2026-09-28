@@ -1593,6 +1593,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 ? SecurityUtils.getDisplayName() : review.getApproverName());
         quality.setReviewTime(LocalDateTime.now());
         qualityLotMapper.updateById(quality);
+        com.jjx.quality.service.QualityLotService historyLotService = qualityLotServiceProvider.getIfAvailable();
+        if (historyLotService != null) {
+            historyLotService.recordReview(quality, quality.getReviewStatus(), quality.getReviewerName(),
+                    quality.getReviewRemark());
+        }
         if (quality.getParentLotId() != null) {
             var rework = iqcReworkOrderMapper.selectOne(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcReworkOrder>()
                     .eq(com.jjx.inventory.domain.InventoryIqcReworkOrder::getInboundItemId, item.getItemId())
@@ -1653,6 +1658,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         quality.setReviewerName(review.getApproverName());
         quality.setReviewTime(LocalDateTime.now());
         qualityLotMapper.updateById(quality);
+        com.jjx.quality.service.QualityLotService historyLotService = qualityLotServiceProvider.getIfAvailable();
+        if (historyLotService != null) {
+            historyLotService.recordReview(quality, quality.getReviewStatus(), quality.getReviewerName(),
+                    quality.getReviewRemark());
+        }
         InventoryInboundOrder order = inboundOrderMapper.selectById(item.getInboundId());
         publishIqcEventAfterCommit("quality.iqc.item.rejected", iqcPayload(order, item,
                 order == null ? null : order.getInspectorId(), order == null ? null : order.getInspectorName()));

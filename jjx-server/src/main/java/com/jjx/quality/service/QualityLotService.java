@@ -43,6 +43,9 @@ public interface QualityLotService {
     /** 检验批快照历史；历史字段缺失不伪造。 */
     List<QualityLotHistory> listHistory(Long lotId);
 
+    /** 记录检验批审核事件；审核入口由库存域调用，历史只追加不覆盖。 */
+    void recordReview(QualityLot lot, String reviewStatus, String operatorName, String remark);
+
     /** 覆盖式保存检验项（录入/补录） */
     void saveItems(Long lotId, List<QualityLotItemDTO> items);
 
