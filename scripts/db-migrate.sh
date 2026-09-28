@@ -19,7 +19,7 @@
 #
 # 设计原则（CONVENTIONS §2/§3）：把"改库先备份"从"要求 agent 自觉"变成
 # "不备份这条路根本走不通"——本脚本是执行迁移的唯一入口，内部固定顺序：
-#   前置检查 → 校验手工备份(记 md5/表数) → 执行 → 记录已应用版本 → 输出摘要
+#   前置检查 → 校验手工备份(记 md5/表数) → 执行 → 记录已应用版本 → 建表闸复核(提示) → 输出摘要
 # 任何一步失败即中止，且**失败时不会执行/不会记录版本**。
 #
 # 环境覆盖（默认值即本机开发库，见 CONVENTIONS §2）：
@@ -326,6 +326,22 @@ if [ -n "$(q "SELECT 1 FROM information_schema.tables WHERE table_schema='$DB_NA
 else
   warn "本库没有 sys_config 表，跳过版本记录"
   newset=""
+fi
+
+# ── 4/4 建表闸复核（CONVENTIONS §15；只告警不阻断）───────────────────────────
+say ""
+say "── 4/4 建表闸复核 ──"
+GATE="$REPO_ROOT/scripts/check-model-baseline.sh"
+if [ -f "$GATE" ]; then
+  if gate_out="$(bash "$GATE" 2>&1)"; then
+    ok "建表闸通过（表数基线一致）"
+  else
+    warn "建表闸未通过——新表要先把登记进 scripts/model-baseline.json 的 approvedNewTables（§15.3/§15.7）"
+    printf '%s\n' "$gate_out" | grep -E '^(✘|  - )' | sed 's/^/    /'
+    warn "（本次迁移已执行并记账；此闸门仅提示，不阻断）"
+  fi
+else
+  warn "未找到 $(basename "$GATE")，跳过建表闸复核"
 fi
 
 say ""

@@ -55,7 +55,8 @@ Quick rules:
 - **Git gates (hooks)**: run `bash scripts/install-hooks.sh` **once per clone** (sets `core.hooksPath=scripts/hooks`).
   `pre-commit` blocks: deletions/moves under `jjx-docs/sql/` except `backups/`, deletions/moves under `jjx-docs/standards/`, and any expansion of `status-magic-baseline.json`. Backup cleanup is warned but allowed.
   `commit-msg` requires the task code `dev-YYYYMMDD-NNN` and verifies it really exists in `sys_task` (read-only check; fail-open when the DB is unreachable). Disable per clone: `git config jjx.requireTaskCode false` / `jjx.verifyTaskCode false`.
-  Single-commit bypass: `git commit --no-verify` — only when you have confirmed the consequences.
+  `pre-push` runs the table baseline gate (`scripts/check-model-baseline.sh`, CONVENTIONS §15) and blocks a red result; fail-open when the DB is unreachable.
+  Single-use bypass: `git commit --no-verify` / `git push --no-verify` — only when you have confirmed the consequences.
 
 ## Tool failure and recovery rules
 

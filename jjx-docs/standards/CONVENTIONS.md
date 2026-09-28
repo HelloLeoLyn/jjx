@@ -132,9 +132,10 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 - 严禁：`git reset --hard` / `git clean` / `git checkout .` / `git push -f`（force push 会从远端抹掉别人的提交）等会吞掉他人改动或历史的操作；确需回退先 `git stash` 并告知他人，恢复远端用正常 push 补回
 - **永久保护**：禁止删除/移动 `jjx-docs/sql/`（历史 `backups/` 除外）和 `jjx-docs/standards/`。`jjx-docs/sql/backups/` 存量文件可在用户确认后，以独立清理任务和独立提交删除；看到他人删除状态仍先问，不自动恢复或提交。
 - 推送：push 前先 fetch 确认无冲突；GitHub 走 `ssh://git@github.com/HelloLeoLyn/jjx.git dev`（本机 https 被全局改写，勿用默认 push）
-- **闸门（git hooks，每个 clone 装一次）**：`bash scripts/install-hooks.sh` → 设置 `core.hooksPath=scripts/hooks`。已启用两个：
+- **闸门（git hooks，每个 clone 装一次）**：`bash scripts/install-hooks.sh` → 设置 `core.hooksPath=scripts/hooks`。已启用三个：
   - `pre-commit` 拦：① `jjx-docs/sql/`（`backups/` 除外）和 `jjx-docs/standards/` 下的删除/移出；`backups/` 删除仅警告并允许 ② `status-magic-baseline.json` 新增条目或数值放大
   - `commit-msg` 拦：① 必须带任务码 `dev-YYYYMMDD-NNN`（关：`git config jjx.requireTaskCode false`）② 该码必须**真实存在于 sys_task**（用只读账号校验；关：`git config jjx.verifyTaskCode false`；库连不上时只提醒、不阻塞提交）
+  - `pre-push` 拦：建表闸（`scripts/check-model-baseline.sh`，表数基线 §15）红则拦；库/只读账号不可达时只提醒、不阻塞（跳过：`git push --no-verify`）
   - 单次跳过：`git commit --no-verify`（确认过后果再用）；卸载：`git config --unset core.hooksPath`
 
 ---
@@ -217,6 +218,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 | `jjx-docs/sql/**`（`backups/` 除外）、`jjx-docs/standards/**` 的删除/移出 | 无人（需用户批准） | `pre-commit` 拦截 | **硬** |
 | `jjx-docs/sql/backups/**` 历史存量清理 | 用户确认后，独立任务与独立提交 | `pre-commit` 警告并放行 | 审计型 |
 | `status-magic-baseline.json` 新增/放大 | 无人 | `pre-commit` 拦截（只许缩小） | **硬** |
+| 新表（建表闸 §15） | 须走 §15.3 五步：提案 → 拍板 → 登记 `approvedNewTables` → 同步基线 → `db-migrate` | `pre-push` 拦截 + `npm run check:model-baseline`（并入 `validate`）+ `db-migrate.sh` 执行后复核（仅提示） | 半硬（可 `--no-verify` 绕过） |
 | 文档规则（INDEX 登记 / BOM / 命名 / `current/` 一模块一篇） | 任何人，须过门禁 | `npm run check:docs`（已并入 `validate`） | 硬（需主动跑；建议开工自检） |
 | 提交信息任务码（且须真实登记） | 任何人 | `commit-msg` 默认硬拦：① 必须带码 ② 用只读账号查 `sys_task` 确认该码真实存在（库不可达时放行不阻塞）。开关 `jjx.requireTaskCode` / `jjx.verifyTaskCode`；单次跳过 `--no-verify` | **硬**（可自行关闭，弱化点） |
 | 业务代码文件 | Codex / Hermes / OpenClaw | 无（靠分工与评审） | 未强制 |
@@ -345,7 +347,11 @@ bash scripts/agent-preflight.sh
 4. 同步表数基线；
 5. 走 `db-migrate.sh`，并先备份。
 
-当前例外清单：暂无。
+当前例外清单：见 `scripts/model-baseline.json` 的 `approvedNewTables`（机器可读真源；每条必须带任务码/日期/提案链接，否则 `check-model-baseline.sh` 报红）。已登记：
+
+| 表 | 任务码 | 日期 | 提案链接 | 说明 |
+|---|---|---|---|---|
+| `sys_event_var` | dev-20260928-044 | 2026-09-28 | `jjx-docs/history/event-var-registry-automation-review-dev-20260923-037.md` | 事件变量累积表（二期）；事后补登记（dev-20260928-046） |
 
 ### 15.4 字段级闸
 

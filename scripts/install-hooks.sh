@@ -9,7 +9,7 @@ set -euo pipefail
 
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   cat <<'EOF'
-用途: 安装本仓库 git 闸门（pre-commit + commit-msg），每个 clone 跑一次
+用途: 安装本仓库 git 闸门（pre-commit + commit-msg + pre-push），每个 clone 跑一次
 危险等级: 🟡 只写本地 git 配置（core.hooksPath），不碰数据库，可卸载
 前置: 在仓库内执行；scripts/hooks/* 存在
 用法: bash scripts/install-hooks.sh
@@ -35,6 +35,7 @@ echo "闸门内容（详见 AGENTS.md / CONVENTIONS.md §5）:"
 echo "  pre-commit  拦：迁移/SQL正式资产/规范的删除移动；backups清理仅警告；状态魔法值基线禁止放大"
 echo "  commit-msg  拦：① 必须带任务码 dev-YYYYMMDD-NNN ② 该码必须真实存在于 sys_task（用只读账号 jjx_ro 校验；库不可达时只提醒不阻塞）"
 echo "                  关闭：git config jjx.requireTaskCode false ／ jjx.verifyTaskCode false"
+echo "  pre-push    拦：建表闸（scripts/check-model-baseline.sh，表数基线 §15）红则拦；库不可达时只提醒不阻塞"
 echo
 echo "临时跳过单次提交：git commit --no-verify"
 echo "关闭任务码硬拦截（本 clone）：git config jjx.requireTaskCode false"

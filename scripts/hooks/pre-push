@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# JJX pre-push 闸门 · 建表闸（表数基线，CONVENTIONS §15）
+#   推送前跑 scripts/check-model-baseline.sh；红则拦。
+#   库连不上 / 脚本缺失时只提醒、放行（不阻塞 push；与 commit-msg 同款 fail-open）。
+#   临时跳过单次：git push --no-verify       生效前提：core.hooksPath=scripts/hooks
+
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" 2>/dev/null || exit 0
+
+GATE="scripts/check-model-baseline.sh"
+[ -f "$GATE" ] || { printf '\n⚠ 提醒：未找到 %s，跳过建表闸\n\n' "$GATE"; exit 0; }
+
+RO_USER="${JJX_RO_USER:-jjx_ro}"
+RO_PASS="${JJX_RO_PASS:-jjx_ro_2026}"
+DB_HOST="${DB_HOST:-127.0.0.1}"
+DB_PORT="${DB_PORT:-3306}"
+DB_NAME="${DB_NAME:-jjx_erp_db}"
+
+if ! command -v mysql >/dev/null 2>&1; then
+  printf '\n⚠ 提醒：本机没有 mysql 客户端，跳过建表闸\n\n'
+  exit 0
+fi
+if ! MYSQL_PWD="$RO_PASS" mysql -h"$DB_HOST" -P"$DB_PORT" -u"$RO_USER" \
+       --connect-timeout=3 -N -B "$DB_NAME" -e "SELECT 1" >/dev/null 2>&1; then
+  printf '\n⚠ 提醒：连不上库/只读账号不可用，跳过建表闸（CONVENTIONS §15）\n\n'
+  exit 0
+fi
+
+out="$(bash "$GATE" 2>&1)"; rc=$?
+if [ "$rc" -ne 0 ]; then
+  printf '\n✘ 拦截：建表闸未通过（CONVENTIONS §15 表数基线）\n'
+  printf '%s\n' "$out" | sed 's/^/  /'
+  cat <<'EOF'
+
+  处理：新表先走 §15.3 五步（提案 → 拍板 → 登记 approvedNewTables → 同步基线 → db-migrate）
+       登记后重跑：bash scripts/check-model-baseline.sh
+  查看哪些表未批准：bash scripts/check-model-baseline.sh
+  临时跳过单次：git push --no-verify
+
+EOF
+  exit 1
+fi
+exit 0

@@ -87,7 +87,10 @@ for name in missing_baseline:
 if not missing_baseline:
     print("✓ 基线表均存在：无缺失")
 
-suffix_re = re.compile(r"_(scrap|rework|return|release)$")
+# 类型后缀闸：匹配「类型词」结尾，允许再带一段（_order/_item 等）。
+# 旧正则 `_(scrap|rework|return|release)$` 漏抓真凶——inventory_iqc_scrap_order / _rework_order /
+# _return_order 结尾是 _order，一个都不命中（全库只 sales_return 命中），等于闸门空转。
+suffix_re = re.compile(r"_(scrap|rework|return|release)(_order|_item)?$")
 suffix_bad = sorted(name for name in current if suffix_re.search(name) and name not in allow_names)
 if suffix_bad:
     failed = True
@@ -115,6 +118,23 @@ if quality_bad:
 else:
     print("✓ 白名单质量：通过")
 
+# 批准例外字段校验（CONVENTIONS §15.7）：每条必须带 任务码/日期/提案链接，否则例外机制形同虚设
+approved_bad = []
+for index, item in enumerate(approved, 1):
+    if not isinstance(item, dict):
+        approved_bad.append(f"第 {index} 条不是对象")
+        continue
+    for field in ("table", "taskCode", "date", "proposalLink"):
+        if not item.get(field):
+            approved_bad.append(f"第 {index} 条缺 {field}")
+if approved_bad:
+    failed = True
+    print("✘ 批准例外不合格（§15.7 要求带 任务码/日期/提案链接）：")
+    for message in approved_bad:
+        print(f"  - {message}")
+else:
+    print("✓ 批准例外：通过")
+
 groups = {}
 for name in current:
     parts = name.split("_")
@@ -134,12 +154,13 @@ if os.environ.get("WRITE") == "1":
         sys.exit(1)
     backup_path = baseline_path + ".bak"
     shutil.copy2(baseline_path, backup_path)
-    approved_in_db = {item["table"] for item in approved if item.get("table") in set(current)}
     new_baseline = dict(baseline)
     new_baseline["generatedAt"] = datetime.date.today().isoformat()
     new_baseline["tableCountBaseline"] = len(current)
     new_baseline["tables"] = current
-    new_baseline["approvedNewTables"] = [item for item in approved if item.get("table") not in approved_in_db]
+    # 例外台账长期保留（CONVENTIONS §15.7 留痕：任务码/日期/提案链接），不随入库而清除；
+    # 已入库的表会同时出现在 tables 与 approvedNewTables，属预期（可追溯谁批的）。
+    new_baseline["approvedNewTables"] = approved
     with open(baseline_path, "w", encoding="utf-8") as fh:
         json.dump(new_baseline, fh, ensure_ascii=False, indent=2)
         fh.write("\n")

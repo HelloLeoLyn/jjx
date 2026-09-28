@@ -182,6 +182,8 @@
 - **危险等级**：🟢 无参数/`--baseline`=只读数据库检查；`--write-baseline` 仅写基线文件（可回退），不改数据库。
 - **用法**：`bash scripts/check-model-baseline.sh`；`bash scripts/check-model-baseline.sh --write-baseline`；`bash scripts/check-model-baseline.sh --baseline <path>`；`bash scripts/check-model-baseline.sh --help`。
 - **退出码**：`0`=通过；`1`=检查失败、参数错误或数据库/文件读取失败。
+- **检查项**：①未批准新表（库有、基线+批准例外里没有）②批准例外在库（防登记后忘了建）③基线表都在（防静默删表）④类型后缀闸（`_scrap/_rework/_return/_release` + 可选 `_order/_item` 结尾，白名单外即红）⑤白名单质量（debt 必带 retireTask/target，false-positive 必带 reason）⑥**批准例外字段**（每条 `approvedNewTables` 必须带 任务码/日期/提案链接，§15.7）⑦同构表告警（仅提示）。
+- **接线（2026-09-28 复核补正 dev-20260928-045）**：`npm run validate`（`check:model-baseline`）+ `scripts/hooks/pre-push`（红则拦）+ `db-migrate.sh` 执行后复核（仅提示不阻断）。
 
 ## 11. 自动跑（不用手敲）
 
@@ -189,8 +191,9 @@
 |---|---|---|
 | `scripts/hooks/pre-commit` | 每次 `git commit` | `jjx-docs/sql/`（除 backups/）与 `jjx-docs/standards/` 下的删除/移动；`status-magic-baseline.json` 放大 |
 | `scripts/hooks/commit-msg` | 每次 `git commit` | 提交信息必须有任务码 `dev-YYYYMMDD-NNN`，且该码真实存在于 `sys_task`（用只读账号 `jjx_ro` 校验；库不可达时只提醒不阻塞） |
+| `scripts/hooks/pre-push` | 每次 `git push` | 建表闸（`scripts/check-model-baseline.sh`，表数基线 §15）红则拦；库不可达时只提醒不阻塞 |
 
-单次跳过：`git commit --no-verify`（确认后果再用）。
+单次跳过：`git commit --no-verify` / `git push --no-verify`（确认后果再用）。
 
 ## 12. npm 门禁（在 `jjx-web/` 下跑）
 
