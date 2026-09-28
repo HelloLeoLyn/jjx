@@ -43,11 +43,11 @@ Writing files is legitimate only as part of an executed task (backups / migratio
 Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.
 
 Quick rules:
-- **DB backup（2026-09-28 用户口径，覆盖此前的仓内/入库/索引要求）**: 只有三类需要备份——① 迁移/表结构变更 ② 清库 ③ 批量 UPDATE/DELETE 或脏数据订正；**任务登记、单行 status/remark、幂等配置/字典新增一律免备份**。备份落**仓库外** `~/jjx-backups/`（`JJX_BACKUP_DIR` 可覆盖），**由用户手工执行、只保留最新一份**（生成新份即删旧份）。agent 与脚本**不再自动生成备份文件、不再维护 `backup-index.tsv`**，仓库内 `jjx-docs/sql/backups/` 不再累积文件。全库导出**必须排除人事档案表 `hr_employee`**（仓库为公开，入库即永久留在 git 历史）。
+- **DB backup（2026-09-28 用户口径，覆盖此前的仓内/仓外/入库/索引要求）**: 只有三类需要备份——① 迁移/表结构变更 ② 清库 ③ 批量 UPDATE/DELETE 或脏数据订正；**任务登记、单行 status/remark、幂等配置/字典新增一律免备份**。备份放**仓库内** `jjx-docs/sql/backups/`（`JJX_BACKUP_DIR` 可覆盖），**由用户手工执行、只保留最新一份**（生成新份即删旧份，该目录内永远只有 1 份全库备份）。agent 与脚本**不再自动生成备份文件、不再维护 `backup-index.tsv`**，也不往仓库外放备份。全库导出**必须排除人事档案表 `hr_employee`**（仓库为公开，入库即永久留在 git 历史）。
 - Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql`（NN = `ops.schema.applied` 最大号与目录现存最大号的较大者 + 1；已应用的成批迁移在应用后移出仓库到 `~/jjx-backups/migrations-removed_YYYYMMDD-HHmm/`，故只看目录会撞号）。
 - Analysis / test-plan / design reports: `jjx-docs/history/<topic>-dev-YYYYMMDD-NNN.md`, register in `history/INDEX.md`, UTF-8 BOM.
   → gate it with `npm run check:docs` (run from `jjx-web/`); it is part of `npm run validate`. Existing debt lives in `scripts/docs-baseline.json` and may only shrink (`--write-baseline` to narrow).
-- 表级 guard 备份只在**批量/破坏性订正**前做（登记任务、改一行状态不做）：命名 `<表域>_<topic>_YYYYMMDD-HHmm.sql`、落 `~/jjx-backups/`、**只留最新一份**；不再维护 `backup-index.tsv`。
+- 表级 guard 备份只在**批量/破坏性订正**前做（登记任务、改一行状态不做）：命名 `<表域>_<topic>_YYYYMMDD-HHmm.sql`、放 `jjx-docs/sql/backups/`、**只留最新一份**；不再维护 `backup-index.tsv`。
 - Commit message: `type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`; never mix unrelated files.
 - **Task completion = auto-commit (2026-09-23 user rule, all agents)**: a finished task (code/scripts/docs, self-checks green) is **committed and pushed by its author without waiting for user approval** — the message must carry that task's code (hook-enforced) and contain only that task's files (no other session's WIP). **Right after the commit, set `sys_task.status=2` (待审核)** and record change list + commit hash + verification + leftovers in `remark`/`description`. Overrides only when the user explicitly says "don't commit / analysis only".
 - NEVER `git reset --hard` / `git clean` / `git push -f`. Files under `jjx-docs/sql/` (except legacy `backups/`) and `jjx-docs/standards/` must not be deleted or moved. Legacy tracked backups may be removed only in an explicit cleanup task.
