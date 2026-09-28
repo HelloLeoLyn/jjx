@@ -280,7 +280,7 @@ if [ "${#CROSS[@]}" -gt 0 ]; then
 elif [ "$MANIFEST_FOUND" -eq 1 ]; then
   say "③ 与初始化清单交叉：0 张（本次清理不涉及交付物 ${MANIFEST_COUNT} 表）"
 else
-  warn "③ 与初始化清单交叉：未找到初始化清单（$MANIFEST），跳过交叉检查——它会漏报「清理命中交付物」"
+  say "③ 与初始化清单交叉：跳过（init 目录已退役，无清单可比对）"
 fi
 
 # ── 覆盖率校验：库里每张表都必须有归宿（TRUNCATE / DELETE / 保留白名单）────────
@@ -330,7 +330,9 @@ else
 fi
 
 # ── 3. 顺带跑快照最新性校验（只读；不过不拦，只提醒）────────────────────────
-if [ -x "$REPO_ROOT/scripts/db-export-init-subset.sh" ]; then
+if [ ! -f "$MANIFEST" ]; then
+  say "快照校验：跳过（init 目录已退役，无清单/导出物）"
+elif [ -x "$REPO_ROOT/scripts/db-export-init-subset.sh" ]; then
   bash "$REPO_ROOT/scripts/db-export-init-subset.sh" --verify || warn "快照校验未通过（见上），不阻断清理"
 else
   warn "未找到 scripts/db-export-init-subset.sh，跳过快照校验"
@@ -339,7 +341,11 @@ fi
 if [ "$EXECUTE" -eq 0 ]; then
   say ""
   ok "体检完成，未写库、未执行清理"
-  say "   要真执行: bash scripts/db-clean-test-data.sh --execute（在终端手工输入库名确认）"
+  if [ "$DOMAIN_MODE" -eq 1 ]; then
+    say "   要真执行: bash scripts/db-clean-test-data.sh --domains $DOMAIN_LABEL --execute（在终端手工输入库名确认）"
+  else
+    say "   要真执行: bash scripts/db-clean-test-data.sh --execute（在终端手工输入库名确认）"
+  fi
   exit 0
 fi
 
