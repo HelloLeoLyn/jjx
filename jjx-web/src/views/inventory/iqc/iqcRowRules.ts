@@ -125,8 +125,17 @@ export function deriveIqcReasonText(row: any): string {
   const sup = String(row?.rejectReason || '').trim()
   if (sup) parts.push(`补充：${sup}`)
   if (!parts.length) return ''
-  const text = parts.join('；')
-  return text.length > 500 ? `${text.slice(0, 496)}…等项` : text
+  let text = ''
+  for (let index = 0; index < parts.length; index += 1) {
+    const candidate = text ? `${text}；${parts[index]}` : parts[index]
+    if (candidate.length > 500) {
+      const suffix = `…等${parts.length - index}项`
+      const keep = Math.max(0, 500 - suffix.length)
+      return `${text.slice(0, keep)}${suffix}`
+    }
+    text = candidate
+  }
+  return text
 }
 
 /** 批量合格：整批判合格、实测记录留空、缺陷数归零、合格/接收=收货数 */
