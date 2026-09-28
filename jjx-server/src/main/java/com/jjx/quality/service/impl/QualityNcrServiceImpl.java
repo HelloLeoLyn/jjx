@@ -155,6 +155,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         if (ncr == null) {
             throw new BusinessException("不良台账不存在: " + ncrId);
         }
+        refreshEffectiveDisposed(ncr);
         populateReplacementAccounting(ncr);
         return ncr;
     }
@@ -174,6 +175,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         // dev-20260923-036：台账列表补展示字段（检验批号 / 工单号 / 来源批是否已失效），
         // 原来页面只能显示「工单 #2 / 批 #11」这种裸 ID，看不出对的是哪张单、哪张批。
         fillDisplayFields(page.getRecords());
+        page.getRecords().forEach(this::refreshEffectiveDisposed);
         return page;
     }
 
@@ -239,13 +241,26 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         return left.signum() > 0 ? left : BigDecimal.ZERO;
     }
 
+    /** 已处置量由 quality_ncr_action 派生；quality_ncr.disposed_quantity 仅保留兼容缓存。 */
+    private BigDecimal refreshEffectiveDisposed(QualityNcr ncr) {
+        if (ncr == null || ncr.getNcrId() == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal effective = nz(actionMapper.sumEffectiveQuantityByNcrId(ncr.getNcrId()));
+        ncr.setDisposedQuantity(effective);
+        return effective;
+    }
+
     @Override
     public List<QualityNcr> listByOrder(Long orderId, Long executionId) {
         List<QualityNcr> ncrs = ncrMapper.selectList(new LambdaQueryWrapper<QualityNcr>()
                 .eq(orderId != null, QualityNcr::getOrderId, orderId)
                 .eq(executionId != null, QualityNcr::getExecutionId, executionId)
                 .orderByAsc(QualityNcr::getNcrId));
-        ncrs.forEach(this::populateReplacementAccounting);
+        ncrs.forEach(ncr -> {
+            refreshEffectiveDisposed(ncr);
+            populateReplacementAccounting(ncr);
+        });
         return ncrs;
     }
 
@@ -271,9 +286,11 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
 
     @Override
     public List<QualityNcr> listByLot(Long lotId) {
-        return ncrMapper.selectList(new LambdaQueryWrapper<QualityNcr>()
+        List<QualityNcr> ncrs = ncrMapper.selectList(new LambdaQueryWrapper<QualityNcr>()
                 .eq(QualityNcr::getLotId, lotId)
                 .orderByAsc(QualityNcr::getNcrId));
+        ncrs.forEach(this::refreshEffectiveDisposed);
+        return ncrs;
     }
 
     @Override
@@ -363,6 +380,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         if (ncr == null) {
             throw new BusinessException("IQC 不良台账不存在，禁止单独执行库存处置");
         }
+        refreshEffectiveDisposed(ncr);
         String actionType = switch (quarantineAction) {
             case "RELEASE" -> "CONCESSION";
             case "RETURN" -> "RETURN";
@@ -386,6 +404,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
 
     private QualityNcrAction disposeInternal(QualityNcr ncr, QualityNcrDisposeDTO dto,
                                              boolean iqcInventoryManaged, boolean forceScrapApproval) {
+        refreshEffectiveDisposed(ncr);
         Long ncrId = ncr.getNcrId();
         if (dto == null || StringUtils.isBlank(dto.getActionType())) {
             throw new BusinessException("请选择处置方式（返工/让步接收/报废）");
@@ -616,6 +635,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         if (ncr == null) {
             throw new BusinessException("不良台账不存在: " + action.getNcrId());
         }
+        refreshEffectiveDisposed(ncr);
         BigDecimal qty = nz(action.getQuantity());
         // 1) 处置单作废 + 留痕（谁/何时/为何）
         action.setStatus("VOID");
@@ -721,6 +741,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         if (ncr == null) {
             throw new BusinessException("不良台账不存在: " + action.getNcrId());
         }
+        refreshEffectiveDisposed(ncr);
         // 审批人 ≠ 提交人（超管可代，留痕）—— 045 §4 职责分离
         String approver = StringUtils.isBlank(operatorName)
                 ? com.jjx.system.utils.SecurityUtils.getUsername() : operatorName;

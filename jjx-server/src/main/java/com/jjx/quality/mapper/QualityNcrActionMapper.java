@@ -8,12 +8,27 @@ import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 import java.util.Map;
+import java.math.BigDecimal;
 
 /**
  * 不良处置单 Mapper —— dev-20260917-003
  */
 @Mapper
 public interface QualityNcrActionMapper extends BaseMapper<QualityNcrAction> {
+
+    /** 处置事实唯一派生口径：DONE/PROCESSING 有效，VOID/待审批不计。 */
+    @Select("SELECT COALESCE(SUM(a.quantity), 0) FROM quality_ncr_action a "
+            + "JOIN quality_ncr n ON n.ncr_id = a.ncr_id AND n.del_flag = 0 "
+            + "WHERE a.ncr_id = #{ncrId} AND a.del_flag = 0 "
+            + "AND a.status IN ('DONE', 'PROCESSING')")
+    BigDecimal sumEffectiveQuantityByNcrId(@Param("ncrId") Long ncrId);
+
+    /** 按检验批派生有效处置量，供 quality_lot 兼容汇总缓存刷新。 */
+    @Select("SELECT COALESCE(SUM(a.quantity), 0) FROM quality_ncr_action a "
+            + "JOIN quality_ncr n ON n.ncr_id = a.ncr_id AND n.del_flag = 0 "
+            + "WHERE n.lot_id = #{lotId} AND a.del_flag = 0 "
+            + "AND a.status IN ('DONE', 'PROCESSING')")
+    BigDecimal sumEffectiveQuantityByLotId(@Param("lotId") Long lotId);
 
     /**
      * 按批链汇总「已生效(DONE)」的处置量（dev-20260923-021 一期判定护栏用）。

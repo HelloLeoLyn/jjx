@@ -156,6 +156,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (lot == null) {
             throw new BusinessException("检验批不存在: " + lotId);
         }
+        // disposed_quantity 仅作兼容缓存，详情口径实时从质量处置动作派生。
+        lot.setDisposedQuantity(nz(ncrActionMapper.sumEffectiveQuantityByLotId(lotId)));
         // dev-20260923-039：详情也下发 allowedActions（列表/详情同一口径）
         fillReinspectInfo(new ArrayList<>(List.of(lot)));
         fillBusinessReferences(new ArrayList<>(List.of(lot)));
@@ -230,6 +232,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 .orderByAsc(QualityLot::getLotId));
         fillReinspectInfo(lots);
         fillBusinessReferences(lots);
+        lots.forEach(lot -> lot.setDisposedQuantity(
+                nz(ncrActionMapper.sumEffectiveQuantityByLotId(lot.getLotId()))));
         return lots;
     }
 
