@@ -31,8 +31,8 @@ public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInbound
             "WHERE o.source_type = #{sourceType} " +
             "<choose><when test='orderStatus != null'>AND o.order_status = #{orderStatus} </when>" +
             "<otherwise>AND o.order_status IN (#{pendingStatus}, #{approvedStatus}, #{completedStatus}) </otherwise></choose>" +
-            "<if test='fillInspection != null and fillInspection'>AND o.inspection_result IS NOT NULL AND o.inspection_result != '' </if>" +
-            "<if test='fillInspection != null and !fillInspection'>AND (o.inspection_result IS NULL OR o.inspection_result = '') </if>" +
+            "<if test='fillInspection != null and fillInspection'>AND o.inspection_result IS NOT NULL AND o.inspection_result NOT IN ('', 'PENDING') </if>" +
+            "<if test='fillInspection != null and !fillInspection'>AND (o.inspection_result IS NULL OR o.inspection_result = '' OR o.inspection_result = 'PENDING') </if>" +
             "<if test='inboundNo != null and inboundNo != &quot;&quot;'>" +
             "AND o.inbound_no LIKE CONCAT('%', #{inboundNo}, '%') " +
             "</if>" +

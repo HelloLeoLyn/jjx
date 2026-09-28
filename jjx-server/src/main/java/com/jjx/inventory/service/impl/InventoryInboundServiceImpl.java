@@ -34,6 +34,7 @@ import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchaseOrderItem;
 import com.jjx.inventory.enums.InventoryOrderStatusEnum;
+import com.jjx.inventory.enums.InspectionResultEnum;
 import com.jjx.inventory.enums.MaterialEnums;
 import com.jjx.inventory.mapper.InventoryInboundItemMapper;
 import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
@@ -1121,7 +1122,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return false;
         }
 
-        // 采购收货单创建即处于 PENDING；inspection_result 为空表示“待检验”，有值表示“待主管复核”。
+        // 采购收货单创建即处于 PENDING；inspection_result 使用明确枚举，PENDING=待检验。
         Integer status = order.getOrderStatus();
         boolean pendingPurchaseInspection = isPurchaseInbound(order)
                 && InventoryOrderStatusEnum.PENDING.getValue().equals(status);
@@ -1207,6 +1208,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             throw new BusinessException("必须逐项完成本次入库单的来料检验");
         }
         boolean allPass = true;
+        boolean allFail = true;
         boolean hasReinspection = false;
         for (InboundInspectionSubmitDTO.Item submitted : inspection.getItems()) {
                 InventoryInboundItem item = existing.get(submitted.getItemId());
@@ -1220,7 +1222,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 }
                 if (previous != null && "APPROVED".equals(previous.getReviewStatus())) {
                     // 整单重提时，已审核项目以数据库事实为准，既不要求客户端重复填写，也禁止覆盖。
-                    allPass = allPass && "PASS".equalsIgnoreCase(item.getInspectionResult());
+                    allPass = allPass && InspectionResultEnum.PASS.name().equalsIgnoreCase(item.getInspectionResult());
+                    allFail = allFail && InspectionResultEnum.FAIL.name().equalsIgnoreCase(item.getInspectionResult());
                     continue;
                 }
                 boolean reinspection = previous != null && previous.getParentLotId() != null
@@ -1312,12 +1315,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     if (iqcLotId != null) item.setLotId(iqcLotId);
                     inboundItemMapper.updateById(item);
                 }
-                allPass = allPass && "PASS".equals(itemResult);
+                allPass = allPass && InspectionResultEnum.PASS.name().equals(itemResult);
+                allFail = allFail && InspectionResultEnum.FAIL.name().equals(itemResult);
         }
         // 复检只代表原批的不良子集，不得用本次复检结果覆盖原入库单的整单结论。
         // 原单已有结论时保持不变；若是历史草稿且尚无结论，才按本次提交结果落值。
         if (!hasReinspection || order.getInspectionResult() == null || order.getInspectionResult().isBlank()) {
-            order.setInspectionResult(allPass ? "PASS" : "OTHER");
+            order.setInspectionResult(allPass ? InspectionResultEnum.PASS.name()
+                    : allFail ? InspectionResultEnum.FAIL.name() : InspectionResultEnum.PARTIAL.name());
         }
         order.setInspectionRemark(inspection.getInspectionRemark());
         order.setInspectorId(SecurityUtils.getUserId());
@@ -2128,6 +2133,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundItem.setMaterialCode(item.getMaterialCode());
             inboundItem.setMaterialName(item.getMaterialName());
             inboundItem.setQuantity(receiveQty);
+            inboundItem.setInspectionResult(InspectionResultEnum.PENDING.name());
             inboundItem.setUnitPrice(item.getUnitPrice());
             // dev-20260928-008：行金额与 :2109 同口径（金额×本次入库数÷采购数量，中间不提前舍入，最终 2 位）。
             BigDecimal itemAmt = (item.getAmount() == null || item.getQuantity() == null
@@ -2244,7 +2250,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setTraceId(po.getTraceId());
         order.setWarehouseId(resolvePurchaseWarehouseId(toInItems, toInQtys));
         order.setInboundDate(LocalDate.now());
-        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue()); // 同一待审批态：inspection_result 为空时表示待检验
+        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        order.setInspectionResult(InspectionResultEnum.PENDING.name());
         order.setRemark("采购收货自动入库（DEV-624）批次" + existingList.size());
         // 供应商/创建人从采购单带过来，避免列表页数据空白
         order.setSupplierId(po.getSupplierId());
@@ -2268,6 +2275,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundItem.setMaterialCode(item.getMaterialCode());
             inboundItem.setMaterialName(item.getMaterialName());
             inboundItem.setQuantity(toIn);
+            inboundItem.setInspectionResult(InspectionResultEnum.PENDING.name());
             inboundItem.setUnitPrice(item.getUnitPrice());
             // 金额=行金额×本次收货数÷采购数量，中间不提前舍入，最终 2 位。
             BigDecimal itemAmt = (item.getAmount() == null || item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) == 0)

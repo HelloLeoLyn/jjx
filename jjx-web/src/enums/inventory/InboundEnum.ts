@@ -20,9 +20,11 @@ export const InboundTypeEnum = createEnum({
  */
 export const InspectionResultEnum = createNamedEnum(
   {
+    PENDING: { value: 'PENDING', label: '待检', tagProps: { type: 'info' } },
     PASS: { value: 'PASS', label: '合格', tagProps: { type: 'success' } },
     FAIL: { value: 'FAIL', label: '不合格', tagProps: { type: 'danger' } },
-    OTHER: { value: 'OTHER', label: '其它', tagProps: { type: 'warning' } },
+    PARTIAL: { value: 'PARTIAL', label: '部分合格', tagProps: { type: 'warning' } },
+    REINSPECTION: { value: 'REINSPECTION', label: '复检中', tagProps: { type: 'primary' } },
   },
   { type: 'info' }
 )
