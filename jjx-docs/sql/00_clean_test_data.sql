@@ -1,10 +1,25 @@
+DELIMITER //
+DROP PROCEDURE IF EXISTS assert_clean_test_target//
+CREATE PROCEDURE assert_clean_test_target()
+BEGIN
+    IF DATABASE() IS NULL OR DATABASE() <> 'jjx_erp_db' THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Wrong database: cleanup is allowed only on jjx_erp_db';
+    END IF;
+END//
+CALL assert_clean_test_target()//
+DROP PROCEDURE assert_clean_test_target//
+DELIMITER ;
+
 -- =====================================================
--- 清理测试数据脚本（v19）
+-- 清理测试数据脚本（v20）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
 -- v19 变更（2026-09-24，任务 dev-20260924-021）：
 --   quality_sampling_plan 表已下线（迁移 219：8 条方案改由 sys_config(quality_config.quality.sampling_plan) JSON 承载，依据 CONVENTIONS §14）。
 --   因此：① 核验段删去该表的 COUNT（表不存在，不删会报 1146）；② 第 12 节保留声明同步删除。
+-- v20 变更（2026-09-26）：目标库保护过程移到文件开头，避免 mysql 客户端将前置注释缓冲后把 DELIMITER 当作 SQL；
+--   同步声明当前库仍存在的 5 张遗留表为保留，等待单独做结构退役决策。
 ---- v18 变更（2026-09-24，任务 dev-20260924-018；用户 14:49 问「是不是要更新升级了」→ 14:51「照上面改」）：
 --   起因：库 117 张基础表中 4 张无归宿 → scripts/db-clean-test-data.sh「④ 覆盖率校验」直接 die，清理已跑不起来。
 --   1. 【新增清理】3 张今天的业务表（此前遗漏，不在 TRUNCATE 也不在保留白名单）：
@@ -118,20 +133,6 @@
 --      保留 kanban_module='dev' 的开发任务（175 条）
 --   3. 移除死表 kanban_task 的 TRUNCATE（表已废弃）
 -- =====================================================
-
--- 防止误连其他数据库。清理操作不可回滚，目标库不匹配时立即终止。
-DELIMITER //
-DROP PROCEDURE IF EXISTS assert_clean_test_target//
-CREATE PROCEDURE assert_clean_test_target()
-BEGIN
-    IF DATABASE() IS NULL OR DATABASE() <> 'jjx_erp_db' THEN
-        SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = '拒绝执行：00_clean_test_data.sql 只能在 jjx_erp_db 数据库运行';
-    END IF;
-END//
-CALL assert_clean_test_target()//
-DROP PROCEDURE assert_clean_test_target//
-DELIMITER ;
 
 SET @OLD_FOREIGN_KEY_CHECKS = @@FOREIGN_KEY_CHECKS;
 SET FOREIGN_KEY_CHECKS = 0;
@@ -393,6 +394,12 @@ TRUNCATE sales_sample_order;
 -- （v16 曾声明保留 engineering_bom_backup_20260809；v17 已由迁移 192 DROP，此声明作废）
 -- 以上保留
 
+-- Legacy-table coverage decision (2026-09-26): preserve these still-present tables
+-- until a separate schema-retirement decision; do not TRUNCATE them here.
+-- archive_production_quality_inspection(_item), engineering_bom_backup_20260809,
+-- and sales_order_review are currently empty legacy/archive tables.
+-- quality_sampling_plan has 8 legacy rows; active sampling configuration is in sys_config.
+-- Keep synchronized with scripts/db-clean-test-data.sh RETAINED_TABLES.
 SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;
 
 -- ==================== 13. 执行结果核验 ====================

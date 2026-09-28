@@ -4,6 +4,7 @@
 #
 #   bash scripts/db-clean-test-data.sh                # 只读体检（默认，不写库）
 #   bash scripts/db-clean-test-data.sh --execute      # 真执行：须在终端手工输入库名确认
+#   MYSQL_BIN_DIR=/path/to/mysql/bin                  # 可选：指定 MySQL 客户端目录
 #
 # 固定顺序（不可跳过）：只读体检 → 全库备份 → 人工确认 → 才执行。
 # 人工确认 = 手工输入库名（jjx_erp_db）。非终端（agent/管道）一律拒绝执行——因为
@@ -26,6 +27,7 @@ DB_PORT="${DB_PORT:-${JJX_DB_PORT:-3306}}"
 DB_USER="${DB_USER:-${JJX_DB_USER:-root}}"
 DB_PASS="${DB_PASS:-${JJX_DB_PASSWORD:-123456}}"
 DB_NAME="${DB_NAME:-${JJX_DB_NAME:-jjx_erp_db}}"
+MYSQL_BIN_DIR="${MYSQL_BIN_DIR:-}"
 BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 SQL_FILE="$REPO_ROOT/jjx-docs/sql/00_clean_test_data.sql"
 MANIFEST="$REPO_ROOT/jjx-docs/sql/init/init-subset-tables.txt"
@@ -69,8 +71,36 @@ if [ "$EXECUTE" -eq 1 ] && [ ! -t 0 ]; then
   die "真执行需要人工确认：请在终端里手工运行本脚本（agent/管道调用一律拒绝）"
 fi
 
+if [ -n "$MYSQL_BIN_DIR" ]; then
+  if command -v cygpath >/dev/null 2>&1; then
+    MYSQL_BIN_DIR="$(cygpath -u "$MYSQL_BIN_DIR" 2>/dev/null || printf '%s' "$MYSQL_BIN_DIR")"
+  fi
+  [ -d "$MYSQL_BIN_DIR" ] && PATH="$MYSQL_BIN_DIR:$PATH"
+fi
+
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*)
+    for pf in "${PROGRAMFILES:-}" "$(printenv 'PROGRAMFILES(X86)' 2>/dev/null || true)" "/c/Program Files" "/c/Program Files (x86)"; do
+      [ -n "$pf" ] || continue
+      if command -v cygpath >/dev/null 2>&1; then
+        pf="$(cygpath -u "$pf" 2>/dev/null || printf '%s' "$pf")"
+      fi
+      for bin_dir in "$pf"/MySQL/MySQL\ Server\ */bin "$pf"/MariaDB\ */bin; do
+        [ -d "$bin_dir" ] && PATH="$bin_dir:$PATH"
+      done
+    done
+    [ -d /c/xampp/mysql/bin ] && PATH="/c/xampp/mysql/bin:$PATH"
+    ;;
+esac
+export PATH
+
+MYSQL_BIN="$(command -v mysql 2>/dev/null || true)"
+[ -n "$MYSQL_BIN" ] || die "找不到 mysql 客户端；请安装 MySQL Client 并加入 PATH，或设置 MYSQL_BIN_DIR（Windows Git Bash 示例：C:/Program Files/MySQL/MySQL Server 8.0/bin）"
+
 export MYSQL_PWD="$DB_PASS"
-MYSQL=(mysql -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 -N -B)
+MYSQL=("$MYSQL_BIN" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 -N -B)
+CONNECTION_ERROR="$("${MYSQL[@]}" --connect-timeout=5 -e "SELECT 1" "$DB_NAME" 2>&1)" || \
+  die "数据库连接失败 ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}：$CONNECTION_ERROR"
 "${MYSQL[@]}" -e "SELECT 1" >/dev/null 2>&1 \
   || die "连不上数据库 $DB_NAME@$DB_HOST:$DB_PORT（检查服务与账号）"
 
@@ -79,6 +109,7 @@ TRUNCATE_TABLES=()
 DELETE_TABLES=()
 DELETE_WHERES=()
 while IFS= read -r line; do
+  line="${line%$'\r'}"
   case "$line" in
     TRUNCATE*';')
       t="${line#TRUNCATE }"; t="${t%%;*}"; t="${t//[[:space:]]/}"
@@ -192,9 +223,12 @@ RETAINED_TABLES=(
   product product_category product_config_model product_config_option
   sys_tag sys_tag_rel hr_employee hr_dept_mapping
   engineering_die engineering_screen_frame engineering_screen_plate
+  # Legacy tables still present in this database; preserve their rows/schema until separately retired.
+  archive_production_quality_inspection archive_production_quality_inspection_item
+  engineering_bom_backup_20260809 quality_sampling_plan sales_order_review
 )
 DB_TABLES="$("${MYSQL[@]}" "$DB_NAME" -N -B -e \
-  "SELECT table_name FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'" 2>/dev/null | sort)"
+  "SELECT table_name FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'" 2>/dev/null | tr -d '\r' | sort)"
 DB_COUNT="$(printf '%s\n' "$DB_TABLES" | grep -c . || true)"
 UNCOVERED=()
 while IFS= read -r t; do
