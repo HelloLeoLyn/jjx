@@ -176,7 +176,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
             for (EngineeringBomItem item : items) {
                 if (item.getMaterialId() == null) continue;
-                BigDecimal need = getActualIssueQty(item).multiply(needProduce);
+                BigDecimal need = batchDemand(item, needProduce);
                 demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
                 codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
                 nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
@@ -400,7 +400,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                                 .eq(EngineeringBomItem::getBomId, bom.getBomId()));
                 for (EngineeringBomItem item : items) {
                     if (item.getMaterialId() == null) continue;
-                    BigDecimal need = getActualIssueQty(item).multiply(needProduce);
+                    BigDecimal need = batchDemand(item, needProduce);
                     demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
                     codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
                     nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
@@ -1053,6 +1053,21 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         BigDecimal quantity = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
         BigDecimal lossRate = BigDecimal.valueOf(item.getLossRate() != null ? item.getLossRate() : 0);
         return quantity.multiply(BigDecimal.ONE.add(lossRate.divide(BigDecimal.valueOf(100))));
+    }
+
+    /**
+     * 整批需求 = MAX( 向上取整( 单位投料 × 数量 ), 最低投料量 )
+     * 单位投料 = actual_issue_qty（BOM 保存时写入的含损耗单位应用料，不取整）
+     * 取整只在整批做一次；最低投料量作为下限（min_issue_qty>0 时生效，与物料类型无关）
+     */
+    private BigDecimal batchDemand(EngineeringBomItem item, BigDecimal quantity) {
+        BigDecimal qty = quantity != null ? quantity : BigDecimal.ZERO;
+        BigDecimal demand = getActualIssueQty(item).multiply(qty).setScale(0, java.math.RoundingMode.UP);
+        BigDecimal minIssue = item.getMinIssueQty();
+        if (minIssue != null && minIssue.compareTo(BigDecimal.ZERO) > 0 && demand.compareTo(minIssue) < 0) {
+            demand = minIssue;
+        }
+        return demand;
     }
 
     private List<AlertVO> convertToVOList(List<InventoryAlertLog> alerts) {

@@ -499,9 +499,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                             java.util.Map<Long, BigDecimal> pickedMap = sumPickedByMaterial(order.getSourceId());
                             for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
                                 if (!"buy".equals(bomItem.getSourceType())) continue;
-                                BigDecimal demand = getActualIssueQty(bomItem)
-                                        .multiply(prodOrder.getPlannedQuantity())
-                                        .setScale(0, java.math.RoundingMode.UP);
+                                BigDecimal demand = batchDemand(bomItem, prodOrder.getPlannedQuantity());
                                 BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
                                 if (demand.subtract(picked).compareTo(BigDecimal.ZERO) > 0) {
                                     hasGap = true;
@@ -790,9 +788,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         java.util.Map<Long, BigDecimal> pickedMap = sumPickedByMaterial(prodOrder.getOrderId());
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
-            BigDecimal demand = getActualIssueQty(bomItem)
-                    .multiply(prodOrder.getPlannedQuantity())
-                    .setScale(0, java.math.RoundingMode.UP);
+            BigDecimal demand = batchDemand(bomItem, prodOrder.getPlannedQuantity());
             BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
             BigDecimal remaining = demand.subtract(picked);
             if (remaining.compareTo(BigDecimal.ZERO) < 0) remaining = BigDecimal.ZERO;
@@ -954,9 +950,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
 
-            BigDecimal qtyNeeded = getActualIssueQty(bomItem)
-                    .multiply(prodOrder.getPlannedQuantity())
-                    .setScale(0, java.math.RoundingMode.UP);
+            BigDecimal qtyNeeded = batchDemand(bomItem, prodOrder.getPlannedQuantity());
 
             // 034/048定稿：首选料可用不足时，按 substitute_json 优先级尝试替代料（模数换算：替代需求量=原需求量×ratio）
             BigDecimal available = availableMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
@@ -1129,9 +1123,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
-            BigDecimal demand = getActualIssueQty(bomItem)
-                    .multiply(prodOrder.getPlannedQuantity())
-                    .setScale(0, java.math.RoundingMode.UP);
+            BigDecimal demand = batchDemand(bomItem, prodOrder.getPlannedQuantity());
             BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
             BigDecimal remaining = demand.subtract(picked);
             if (remaining.compareTo(BigDecimal.ZERO) < 0) remaining = BigDecimal.ZERO;
@@ -1156,6 +1148,21 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         BigDecimal quantity = bomItem.getQuantity() != null ? bomItem.getQuantity() : BigDecimal.ZERO;
         BigDecimal lossRate = BigDecimal.valueOf(bomItem.getLossRate() != null ? bomItem.getLossRate() : 0);
         return quantity.multiply(BigDecimal.ONE.add(lossRate.divide(BigDecimal.valueOf(100))));
+    }
+
+    /**
+     * 整批需求 = MAX( 向上取整( 单位投料 × 数量 ), 最低投料量 )
+     * 单位投料 = actual_issue_qty（BOM 保存时写入的含损耗单位应用料，不取整）
+     * 取整只在整批做一次；最低投料量作为下限（min_issue_qty>0 时生效，与物料类型无关）
+     */
+    private BigDecimal batchDemand(com.jjx.engineering.domain.entity.EngineeringBomItem bomItem, BigDecimal quantity) {
+        BigDecimal qty = quantity != null ? quantity : BigDecimal.ZERO;
+        BigDecimal demand = getActualIssueQty(bomItem).multiply(qty).setScale(0, java.math.RoundingMode.UP);
+        BigDecimal minIssue = bomItem.getMinIssueQty();
+        if (minIssue != null && minIssue.compareTo(BigDecimal.ZERO) > 0 && demand.compareTo(minIssue) < 0) {
+            demand = minIssue;
+        }
+        return demand;
     }
 
     /**

@@ -678,7 +678,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     /**
      * 计算应用料/实际投料：
      *  applied_qty = quantity × (1 + loss_rate/100)
-     *  actual_issue_qty：物料类型=R（板材/卷材）且 min_issue_qty>0 时 = CEIL(applied/min_issue)×min_issue，否则 = applied
+     *  actual_issue_qty：存单位应用料（含损耗、不取整）
+     *  整批取整与最低投料量下限由领料/缺料/预留侧按工单数量计算（对应各服务里的 batchDemand 方法）
      *  始终按公式重新计算
      */
     private void calculateAppliedIssue(EngineeringBomItem item) {
@@ -687,25 +688,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         Integer loss = item.getLossRate() != null ? item.getLossRate() : 0;
         item.setAppliedQty(qty.multiply(java.math.BigDecimal.valueOf(1 + loss / 100.0))
                 .setScale(4, java.math.RoundingMode.HALF_UP));
-        // 实际投料
-        java.math.BigDecimal applied = item.getAppliedQty() != null ? item.getAppliedQty() : java.math.BigDecimal.ZERO;
-        // 查物料类型：R=板材/卷材
-        boolean isSheet = false;
-        if (item.getMaterialId() != null) {
-            try {
-                com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectById(item.getMaterialId());
-                isSheet = mat != null && "R".equalsIgnoreCase(mat.getMaterialType());
-            } catch (Exception ignored) { }
-        }
-        java.math.BigDecimal minIssue = item.getMinIssueQty() != null ? item.getMinIssueQty() : java.math.BigDecimal.ZERO;
-        if (isSheet && minIssue.compareTo(java.math.BigDecimal.ZERO) > 0) {
-            // CEIL(applied / min_issue) × min_issue
-            java.math.BigDecimal ratio = applied.divide(minIssue, 10, java.math.RoundingMode.HALF_UP);
-            java.math.BigDecimal ceil = ratio.setScale(0, java.math.RoundingMode.CEILING);
-            item.setActualIssueQty(ceil.multiply(minIssue).setScale(4, java.math.RoundingMode.HALF_UP));
-        } else {
-            item.setActualIssueQty(applied.setScale(4, java.math.RoundingMode.HALF_UP));
-        }
+        // 实际投料保存单位应用料（含损耗、不取整）
+        item.setActualIssueQty(item.getAppliedQty());
     }
 
     private static @NonNull LambdaQueryWrapper<EngineeringBom> buildQueryWrapper(EngineeringBomQuery query) {

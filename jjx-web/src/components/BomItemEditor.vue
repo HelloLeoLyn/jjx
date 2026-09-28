@@ -163,20 +163,6 @@
         <template #default="scope">{{ formatQty(scope.row.appliedQty) }}</template>
       </el-table-column>
 
-      <!-- 实际投料（按最低投料向上取整，只读） -->
-      <el-table-column label="实际投料" prop="actualIssueQty" align="center" width="100">
-        <template #default="scope">
-          <span>{{ formatQty(scope.row.actualIssueQty) }}</span>
-          <el-tooltip
-            v-if="scope.row.materialType === 'R'"
-            content="板材/卷材，按最低投料量向上取整"
-            placement="top"
-          >
-            <span style="color: #e6a23c; cursor: help"> ⓘ</span>
-          </el-tooltip>
-        </template>
-      </el-table-column>
-
       <!-- 最低投料量 -->
       <el-table-column label="最低投料量" prop="minIssueQty" align="center" width="110">
         <template #default="scope">
@@ -482,20 +468,14 @@ const handleLossRateChange = (row: EngineeringBomItem) => {
 /**
  * 计算应用料/实际投料（前端预览，与后端一致）
  * 应用料 = 用量 × (1 + 损耗率/100)
- * 实际投料：板材/卷材(materialType=R)且最低投料>0 → CEIL(应用料/最低投料)×最低投料；否则=应用料
+ * 实际投料 = 单位应用料（含损耗、不取整）；整批取整与最低投料量下限由领料/缺料/预留侧按工单数量计算
  */
 const recalcAppliedIssue = (row: EngineeringBomItem) => {
   const qty = Number(row.quantity) || 0
   const loss = Number(row.lossRate) || 0
   const applied = qty * (1 + loss / 100)
   row.appliedQty = Number(applied.toFixed(4))
-  const minIssue = Number(row.minIssueQty) || 0
-  if (row.materialType === 'R' && minIssue > 0) {
-    const ceil = Math.ceil(applied / minIssue)
-    row.actualIssueQty = Number((ceil * minIssue).toFixed(4))
-  } else {
-    row.actualIssueQty = Number(applied.toFixed(4))
-  }
+  row.actualIssueQty = row.appliedQty
 }
 
 /** 数量格式化（只读列展示） */
