@@ -19,11 +19,23 @@ import java.util.List;
 @Mapper
 public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInboundOrder> {
 
+    // 与 currentIqcContext 一致：复检不覆盖原入库明细的 lot_id。
+    String CURRENT_IQC_LOT = "COALESCE((SELECT d.lot_id FROM inventory_iqc_disposition_order d " +
+            "WHERE d.inbound_item_id=i.item_id AND d.action='REWORK' AND d.lot_id IS NOT NULL " +
+            "AND d.status IN ('PENDING_REINSPECTION','COMPLETED') ORDER BY d.disposition_id DESC LIMIT 1), i.lot_id)";
+    String CURRENT_IQC_ROWS = " FROM inventory_inbound_item i LEFT JOIN quality_lot q ON q.lot_id=" +
+            CURRENT_IQC_LOT + " WHERE i.inbound_id=o.inbound_id ";
+
     @Select("<script>" +
             "SELECT o.inbound_id, o.inbound_no, o.source_no, o.supplier_name, o.total_quantity, " +
             "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id) AS material_count, " +
             "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.lot_id IS NOT NULL) AS inspected_count, " +
-            "(SELECT COUNT(*) FROM inventory_inbound_item i JOIN quality_lot q ON q.lot_id = i.lot_id WHERE i.inbound_id = o.inbound_id AND q.review_status = 'PENDING') AS pending_review_count, " +
+            "(SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND q.review_status='PENDING') AS pending_review_count, " +
+            "(SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NULL) AS pending_inspection_count, " +
+            "(SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NOT NULL) AS pending_reinspection_count, " +
+            "(SELECT COALESCE(SUM(q.remaining_quantity),0) FROM inventory_iqc_quarantine q WHERE q.inbound_id=o.inbound_id AND q.status='PENDING') AS remaining_disposition_quantity, " +
+            "(SELECT COUNT(*) FROM inventory_iqc_disposition_order d WHERE d.inbound_id=o.inbound_id AND d.action='SCRAP' AND d.status='PENDING_APPROVAL') AS pending_scrap_count, " +
+            "(SELECT COUNT(*) FROM inventory_iqc_disposition_order d WHERE d.inbound_id=o.inbound_id AND d.action='REWORK' AND d.status='CREATED') AS pending_rework_count, " +
             "(SELECT COUNT(*) FROM inventory_inbound_item i JOIN quality_lot q ON q.lot_id = i.lot_id WHERE i.inbound_id = o.inbound_id AND q.review_status = 'APPROVED') AS approved_count, " +
             "(SELECT COUNT(*) FROM inventory_inbound_item i WHERE i.inbound_id = o.inbound_id AND i.inspection_result = 'FAIL') AS fail_row_count, " +
             "o.order_status, o.inspection_result, o.create_time " +

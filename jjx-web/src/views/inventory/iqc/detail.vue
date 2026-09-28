@@ -1,7 +1,7 @@
 <template>
   <div class="iqc-page">
     <div class="detail-head">
-      <el-button link type="primary" @click="router.back()">← 返回列表</el-button>
+      <el-button link type="primary" @click="router.push('/inventory/iqc')">← 返回列表</el-button>
       <span class="detail-head__no">{{ selectedInbound?.inboundNo }}</span>
     </div>
 
@@ -459,8 +459,22 @@ function handlePageChange() {
 }
 async function refreshAll() {
   const id = selectedInboundId.value
-  await loadList(Boolean(id))
-  if (id && selectedInbound.value) await loadInboundDetail(selectedInbound.value)
+  if (id) await loadById(String(id))
+}
+async function loadById(id: string) {
+  const { data } = await inboundApi.getById(id)
+  if (!data) throw new Error('来料批次不存在或无权访问')
+  selectedInboundId.value = data.inboundId
+  selectedInbound.value = {
+    ...data,
+    materialCount: data.items?.length || 0,
+    inspectedCount: 0,
+    pendingReviewCount: 0,
+    approvedCount: 0,
+    failRowCount: 0,
+    orderStatus: Number(data.status),
+  }
+  await loadInboundDetail(selectedInbound.value)
 }
 async function selectInbound(row?: IqcPendingVO) {
   if (!row || (selectedInboundId.value === row.inboundId && workRows.value.length)) return
@@ -827,19 +841,18 @@ async function submitInspection() {
   }
 }
 onMounted(async () => {
-  // dev-20260924-024 刀2：独立子页——按路由单号加载（复用列表接口取单据行，再走原明细加载逻辑）
   const id = Number(route.params.inboundId)
   if (!id) {
     ElMessage.error('缺少单据 ID')
     return
   }
-  await loadList()
-  const row = inboundRows.value.find((r) => Number(r.inboundId) === id)
-  if (!row) {
-    ElMessage.error('单据不存在或不在当前可见范围内')
-    return
+  await loadById(String(id))
+  if (route.query.action === 'inspect' || route.query.action === 'reinspect') {
+    const reinspection = route.query.action === 'reinspect'
+    const target = workRows.value.find(row => rowCanEdit(row) && row.isReinspection === reinspection)
+    if (target) openMaterialChecks(target)
+    else ElMessage.info('该项待办已变化，请查看当前材料状态')
   }
-  await selectInbound(row)
 })
 onBeforeUnmount(clearSelection)
 </script>

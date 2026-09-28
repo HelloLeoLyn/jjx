@@ -20,6 +20,12 @@ public class IqcPendingVO {
     private Long pendingReviewCount;
     private Long approvedCount;
     private Long failRowCount;
+    /** 当前工作检验批待录入行数（含驳回，排除返工复检）。 */
+    private Long pendingInspectionCount;
+    private Long pendingReinspectionCount;
+    private BigDecimal remainingDispositionQuantity;
+    private Long pendingScrapCount;
+    private Long pendingReworkCount;
     private Integer orderStatus;
     private String inspectionResult;
 

@@ -36,6 +36,11 @@ export interface IqcPendingVO {
   approvedCount: number
   /** 检验结论为不合格的材料行数 */
   failRowCount: number
+  pendingInspectionCount?: number
+  pendingReinspectionCount?: number
+  remainingDispositionQuantity?: number
+  pendingScrapCount?: number
+  pendingReworkCount?: number
   /** 入库单流程状态 */
   orderStatus: number
   /** 单据级检验结论 */
