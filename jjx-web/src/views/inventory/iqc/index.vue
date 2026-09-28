@@ -1,7 +1,5 @@
 <template>
   <div class="iqc-page">
-    <el-tabs v-model="activeTab" class="iqc-workbench-tabs" @tab-change="handleTabChange">
-      <el-tab-pane label="来料检验" name="inspection">
     <el-card>
       <template #header
         ><div class="header">
@@ -34,8 +32,68 @@
         border
         highlight-current-row
         @current-change="openDetail"
+        @expand-change="handleExpandChange"
       >
         <template #empty><el-empty description="暂无 IQC 采购入库单" /></template>
+        <el-table-column type="expand" width="46">
+          <template #default="{ row }">
+            <div v-loading="workspaceLoading[row.inboundId]" class="workspace-detail">
+              <template v-if="workspaceByInbound[row.inboundId]">
+                <div class="workspace-section-title">
+                  {{ row.inboundNo }} · 材料明细
+                  <span>检验以材料为单位；处置统一在本批次内展示</span>
+                </div>
+                <el-table :data="workspaceByInbound[row.inboundId].materials" border size="small">
+                  <el-table-column prop="materialCode" label="材料" min-width="180">
+                    <template #default="{ row: material }">
+                      <b>{{ material.materialCode || '-' }}</b>
+                      <div class="muted">{{ material.materialName || '' }} · 业务批次 {{ material.batchNo || '-' }}</div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="lotNo" label="检验批号" width="170" />
+                  <el-table-column label="数量口径" min-width="260">
+                    <template #default="{ row: material }">
+                      <div>整批收货量：{{ num(material.quantity) }}</div>
+                      <div>整批合格量：{{ num(material.qualifiedQuantity) }}</div>
+                      <div>整批不良量：{{ num(material.rejectedQuantity) }}</div>
+                      <div>已处置量：{{ num(material.disposedQuantity) }} · 剩余可处置量：{{ num(material.remainingQuantity) }}</div>
+                      <div v-if="material.reworkChildNo" class="emphasis">
+                        原批 {{ material.batchNo || '-' }} ↔ 复检批 {{ material.reworkChildNo }}；该批只针对 {{ num(material.reworkQuantity) }} 件
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="检验状态" width="160">
+                    <template #default="{ row: material }">
+                      <el-tag v-if="material.inspectionResult" :type="InspectionResultEnum.getTagProps(material.inspectionResult).type">
+                        {{ InspectionResultEnum.getLabel(material.inspectionResult) }}
+                      </el-tag>
+                      <span v-else>待检验</span>
+                      <div class="muted">{{ reviewStatusLabel(material.reviewStatus) }}</div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="220" fixed="right">
+                    <template #default="{ row: material }">
+                      <el-button link type="primary" @click="openDetail(row)">检验处理</el-button>
+                      <el-button v-if="material.remainingQuantity > 0" link type="warning" @click="goDisposition(row, material)">去处置</el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+                <div class="workspace-section-title disposition-title">
+                  {{ row.inboundNo }} · 处置明细
+                  <span>所有处置类型统一展示；数量均为本次动作口径</span>
+                </div>
+                <el-table :data="workspaceByInbound[row.inboundId].dispositions" border size="small">
+                  <el-table-column prop="dispositionNo" label="处置单号" width="190" />
+                  <el-table-column prop="actionLabel" label="类型" width="110" />
+                  <el-table-column prop="materialCode" label="材料" width="150" />
+                  <el-table-column label="数量口径" width="150"><template #default="{ row: disposition }">本次处置量：{{ num(disposition.quantity) }}</template></el-table-column>
+                  <el-table-column prop="statusLabel" label="状态" width="130" />
+                  <el-table-column prop="createTime" label="时间" min-width="170" />
+                </el-table>
+              </template>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="inboundNo" label="来料批次" min-width="180" /><el-table-column
           prop="sourceNo"
           label="采购单号"
@@ -88,11 +146,6 @@
         />
       </div>
     </el-card>
-      </el-tab-pane>
-      <el-tab-pane label="不合格处置" name="disposition">
-        <IqcQuarantinePage />
-      </el-tab-pane>
-    </el-tabs>
   </div>
 </template>
 
@@ -105,13 +158,13 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
-import { InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
-import IqcQuarantinePage from '@/views/inventory/iqc-quarantine/index.vue'
+import { InboundOrderStatusEnum, InspectionResultEnum } from '@/enums/inventory/InboundEnum'
+import { IqcQuarantineActionEnum, IqcDispositionOrderStatusEnum } from '@/enums/inventory/IqcQuarantineEnum'
+import { QualityReviewStatusEnum } from '@/enums/quality/InspectionEnum'
 
 type FlowKey = 'ALL' | 'UNINSPECTED' | 'REVIEW' | 'APPROVED' | 'COMPLETED'
 const router = useRouter()
 const route = useRoute()
-const activeTab = ref<'inspection' | 'disposition'>('inspection')
 const flowOptions: Array<{
   key: FlowKey
   label: string
@@ -128,6 +181,10 @@ const listQuery = reactive({ pageNum: 1, pageSize: 10, inboundNo: '', flowStatus
 const inboundRows = ref<IqcPendingVO[]>([])
 const listTotal = ref(0)
 const listLoading = ref(false)
+const workspaceLoading = reactive<Record<string, boolean>>({})
+const workspaceByInbound = reactive<Record<string, { materials: any[]; dispositions: any[] }>>({})
+const num = (value?: number | string | null) =>
+  value == null || value === '' ? '-' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
 
 function selectedFlowOption() {
   return flowOptions.find((option) => option.key === listQuery.flowStatus) || flowOptions[0]
@@ -167,17 +224,58 @@ function openDetail(row?: IqcPendingVO) {
   if (!row) return
   router.push(`/inventory/iqc-detail/${row.inboundId}`)
 }
-function handleTabChange(name: string | number) {
-  if (name === 'disposition') {
-    router.replace({ path: '/inventory/iqc', query: { tab: 'disposition' } })
-  } else {
-    router.replace({ path: '/inventory/iqc', query: {} })
+async function handleExpandChange(row: IqcPendingVO, expanded: IqcPendingVO[]) {
+  if (expanded.some((item) => item.inboundId === row.inboundId) && !workspaceByInbound[row.inboundId]) {
+    workspaceLoading[row.inboundId] = true
+    try {
+      const [{ data }, quarantineResult, dispositionResult] = await Promise.all([
+        inboundApi.getById(String(row.inboundId)),
+        inboundApi.listQuarantine(String(row.inboundId)),
+        inboundApi.listDispositionOrders(String(row.inboundId)),
+      ])
+      const quarantines = quarantineResult.data || []
+      const dispositions = dispositionResult.data || []
+      const materials = (data?.items || []).map((item: any) => {
+        const itemQuarantines = quarantines.filter((q: any) => String(q.inboundItemId) === String(item.inboundItemId || item.itemId))
+        const itemDispositions = dispositions.filter((d: any) => String(d.inboundItemId) === String(item.inboundItemId || item.itemId))
+        const rework = itemDispositions.find((d: any) => d.action === 'REWORK' && d.childBatchNo)
+        return {
+          ...item,
+          lotNo: item.lotNo || item.qualityLotNo || item.inspectionNo || '-',
+          quantity: Number(item.quantity || 0),
+          qualifiedQuantity: Number(item.qualifiedQuantity || 0),
+          rejectedQuantity: Number(item.rejectedQuantity || 0),
+          disposedQuantity: itemQuarantines.reduce((sum: number, q: any) => sum + Number(q.quantity || 0) - Number(q.remainingQuantity || 0), 0),
+          remainingQuantity: itemQuarantines.reduce((sum: number, q: any) => sum + Number(q.remainingQuantity || 0), 0),
+          reworkChildNo: rework?.childBatchNo,
+          reworkQuantity: rework?.quantity,
+        }
+      })
+      workspaceByInbound[row.inboundId] = {
+        materials,
+        dispositions: dispositions.map((item: any) => ({
+          ...item,
+          actionLabel: IqcQuarantineActionEnum.getLabel(item.action),
+          statusLabel: IqcDispositionOrderStatusEnum.getLabel(item.status),
+        })),
+      }
+    } finally {
+      workspaceLoading[row.inboundId] = false
+    }
   }
+}
+function reviewStatusLabel(value?: string) {
+  return value ? QualityReviewStatusEnum.getLabel(value) : '未提交'
+}
+function goDisposition(row: IqcPendingVO, material: any) {
+  router.push({
+    path: '/inventory/iqc-quarantine',
+    query: { inboundNo: row.inboundNo, materialKeyword: material.materialCode, batchNo: material.batchNo || undefined },
+  })
 }
 onMounted(() => {
   const inboundNo = typeof route.query.inboundNo === 'string' ? route.query.inboundNo : ''
   if (inboundNo) listQuery.inboundNo = inboundNo
-  activeTab.value = route.query.tab === 'disposition' ? 'disposition' : 'inspection'
   loadList()
 })
 </script>
@@ -186,8 +284,32 @@ onMounted(() => {
 .iqc-page {
   padding: 20px;
 }
-.iqc-workbench-tabs :deep(.el-tabs__content) {
-  overflow: visible;
+.workspace-detail {
+  padding: 14px 18px 18px;
+  background: var(--el-fill-color-lighter);
+}
+.workspace-section-title {
+  margin: 4px 0 8px;
+  color: var(--el-text-color-primary);
+  font-weight: 600;
+}
+.workspace-section-title span {
+  margin-left: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+.disposition-title {
+  margin-top: 18px;
+}
+.muted {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.emphasis {
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+  font-weight: 600;
 }
 /* dev-20260924-017：校验未通过的行 → 红底标记，便于提交时定位 */
 :deep(.iqc-problem-row) > td {
