@@ -14,9 +14,10 @@ public interface InventoryIqcDispositionOrderMapper extends BaseMapper<Inventory
     @Select("""
             <script>
             SELECT d.*, inbound.inbound_no, inbound.source_no,
-                   inbound.supplier_id, inbound.supplier_name
+                   inbound.supplier_id, inbound.supplier_name, lot.lot_no
             FROM inventory_iqc_disposition_order d
             JOIN inventory_inbound_order inbound ON inbound.inbound_id = d.inbound_id
+            LEFT JOIN quality_lot lot ON lot.lot_id = d.lot_id
             <where>
                 <if test="query.materialKeyword != null and query.materialKeyword != ''">
                     AND (d.material_code LIKE CONCAT('%', #{query.materialKeyword}, '%')

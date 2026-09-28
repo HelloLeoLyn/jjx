@@ -19,6 +19,7 @@ public interface InventoryIqcQuarantineMapper extends BaseMapper<InventoryIqcQua
                    inbound.supplier_id,
                    inbound.supplier_name,
                    inbound.source_no,
+                   lot.lot_no,
                    COALESCE(NULLIF(lot.defect_reason, ''), lot.remark) AS defect_reason
             FROM inventory_iqc_quarantine q
             LEFT JOIN inventory_inbound_order inbound ON inbound.inbound_id = q.inbound_id

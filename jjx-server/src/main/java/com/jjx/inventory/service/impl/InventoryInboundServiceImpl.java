@@ -379,6 +379,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if ("IQC_REWORK".equals(order.getSourceType())) {
             syncQualityLotStored(order);
         }
+        if (isPurchaseInbound(order)) {
+            // 采购确认同样必须回写 IQC 检验批，否则 stored_quantity 永远为 0，检验批无法 CLOSED。
+            // 该回写属于采购入库事务的一部分，失败时回滚确认，避免库存账与质量账分叉。
+            syncQualityLotStoredStrict(order);
+        }
         if ("PRODUCTION".equals(order.getSourceType())) {
             reducePostedStock(order, operatorId, operatorName, netDeltaThisTime);
             writebackProducedQuantity(order, netDeltaThisTime);
@@ -1961,6 +1966,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
      * 失败不影响入库主流程（但会记 warn）。
      */
     private void syncQualityLotStored(InventoryInboundOrder order) {
+        syncQualityLotStored(order, false);
+    }
+
+    private void syncQualityLotStoredStrict(InventoryInboundOrder order) {
+        syncQualityLotStored(order, true);
+    }
+
+    private void syncQualityLotStored(InventoryInboundOrder order, boolean strict) {
         try {
             com.jjx.quality.service.QualityLotService lotService = qualityLotServiceProvider.getIfAvailable();
             if (lotService == null) {
@@ -2001,6 +2014,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             }
             log.info("完工入库回写检验批已入库数量: orderId={} 批数={}", order.getSourceId(), lots);
         } catch (Exception e) {
+            if (strict) {
+                throw new BusinessException("采购确认入库回写检验批失败，已回滚本次入库：" + e.getMessage());
+            }
             log.warn("回写 quality_lot.stored_quantity 失败（不影响入库）: orderId={} err={}", order.getSourceId(), e.getMessage());
         }
     }

@@ -12,5 +12,6 @@ public class IqcQuarantineLedgerRowVO extends InventoryIqcQuarantine {
     private Long supplierId;
     private String supplierName;
     private String sourceNo;
+    private String lotNo;
     private String defectReason;
 }

@@ -14,6 +14,7 @@
     "lint:check": "eslint . --ext .vue,.js,.ts,.jsx,.tsx",
     "format:check": "prettier --check .",
     "check:status-enums": "node scripts/check-status-magic-values.mjs",
+    "check:model-baseline": "bash ../scripts/check-model-baseline.sh",
     "check:result-case": "node scripts/check-result-case.mjs",
     "test:status-enums": "node scripts/check-status-magic-values.mjs --self-test",
     "check:docs": "node ../scripts/check-docs.mjs",
@@ -29,7 +30,7 @@
     "check:quality-ledger:strict": "bash ../scripts/check-quality-ledger.sh --strict",
     "check:doc-no": "bash ../scripts/check-doc-no.sh",
     "check:notnull": "python3 ../scripts/check-notnull-writes.py --strict",
-    "validate": "npm run check:status-enums && npm run check:result-case && npm run check:docs && npm run check:collation:strict && npm run check:notnull && npm run check:stock:strict && npm run check:lot:strict && npm run check:iqc-lineage:strict && npm run check:quality-ledger:strict && npm run check:doc-no && vue-tsc --noEmit"
+    "validate": "npm run check:status-enums && npm run check:model-baseline && npm run check:result-case && npm run check:docs && npm run check:collation:strict && npm run check:notnull && npm run check:stock:strict && npm run check:lot:strict && npm run check:iqc-lineage:strict && npm run check:quality-ledger:strict && npm run check:doc-no && vue-tsc --noEmit"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

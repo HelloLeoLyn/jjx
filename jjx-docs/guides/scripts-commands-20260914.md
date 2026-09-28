@@ -176,6 +176,13 @@
 - **退出码**：0=成功（stdout 打印 `task_code`）；1=参数/前置/登记失败
 - **注意**：撞号报错**不一定是别人抢先**——先看 SQL 是否插了多行；并发下以脚本回查结果为准（唯一约束是最后一道保险）
 
+## 10c. scripts/check-model-baseline.sh —— 表数基线门禁（2026-09-28，任务 dev-20260928-020）
+
+- **用途**：只读核对 `jjx_erp_db` 的实际表名清单、已批准新表和类型后缀白名单；`--write-baseline` 受控更新基线并先备份原文件。
+- **危险等级**：🟢 无参数/`--baseline`=只读数据库检查；`--write-baseline` 仅写基线文件（可回退），不改数据库。
+- **用法**：`bash scripts/check-model-baseline.sh`；`bash scripts/check-model-baseline.sh --write-baseline`；`bash scripts/check-model-baseline.sh --baseline <path>`；`bash scripts/check-model-baseline.sh --help`。
+- **退出码**：`0`=通过；`1`=检查失败、参数错误或数据库/文件读取失败。
+
 ## 11. 自动跑（不用手敲）
 
 | 钩子 | 什么时候跑 | 拦什么 |

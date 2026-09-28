@@ -19,8 +19,8 @@
     </div>
     <div class="filter-bar">
       <el-form inline @submit.prevent>
-        <el-form-item label="入库单号">
-          <el-input v-model="query.inboundNo" clearable placeholder="输入入库单号" />
+        <el-form-item label="来料批次">
+          <el-input v-model="query.inboundNo" clearable placeholder="输入来料批次" />
         </el-form-item>
         <el-form-item label="采购单号">
           <el-input v-model="query.sourceNo" clearable placeholder="输入采购单号" />
@@ -48,8 +48,7 @@
         </el-form-item>
       </el-form>
     </div>
-    <!-- dev-20260924-024：三张卡（待处理明细 / 处置单历史 / 供应商返工单）合并为「一张表 + Tab」；
-         批次溯源由常驻卡改为行内抽屉（dev-20260928-016：底部全宽 + 限高滚动） -->
+    <!-- dev-20260928-019：所有处置类型统一为一张工作台表；状态筛选代替按底层表拆 Tab。 -->
     <el-card class="card">
       <template #header>
         <div class="card-title">
@@ -60,191 +59,83 @@
           >
         </div>
       </template>
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="待处理" name="pending">
-          <el-table v-loading="loading" :data="rows" border>
-            <el-table-column prop="inboundNo" label="来料单号" width="180" />
-            <el-table-column prop="sourceNo" label="采购单号" width="180" />
-            <el-table-column prop="supplierName" label="供应商" min-width="150" />
-            <el-table-column prop="materialCode" label="物料编码" width="150" />
-            <el-table-column prop="materialName" label="物料名称" min-width="170" />
-            <el-table-column prop="batchNo" label="批次" width="160" />
-            <el-table-column
-              prop="defectReason"
-              label="缺陷原因"
-              min-width="180"
-              show-overflow-tooltip
-            />
-            <el-table-column label="整批不良" width="105" align="right">
-              <template #default="{ row }">{{ num(row.quantity) }}</template>
-            </el-table-column>
-            <el-table-column label="已处置" width="100" align="right">
-              <template #default="{ row }">{{ num(disposedQuantity(row)) }}</template>
-            </el-table-column>
-            <el-table-column label="剩余可处置" width="105" align="right">
-              <template #default="{ row }">
-                <span :class="{ danger: Number(row.remainingQuantity) > 0 }">{{
-                  num(row.remainingQuantity)
-                }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="处理状态" width="130">
-              <template #default="{ row }">
-                <el-tag :type="IqcQuarantineStatusEnum.getTagProps(row.status).type">{{
-                  IqcQuarantineStatusEnum.getLabel(row.status)
-                }}</el-tag>
-                <el-tag
-                  v-if="isPartial(row)"
-                  class="partial"
-                  size="small"
-                  type="warning"
-                  effect="plain"
-                  >部分处置</el-tag
-                >
-              </template>
-            </el-table-column>
-            <el-table-column prop="createTime" label="建立时间" width="170" />
-            <el-table-column label="操作" width="190" fixed="right">
-              <template #default="{ row }">
-                <el-button
-                  v-if="
-                    canDispose &&
-                    row.status === IqcQuarantineStatus.PENDING &&
-                    Number(row.remainingQuantity) > 0
-                  "
-                  type="primary"
-                  link
-                  @click="openDisposition(row)"
-                  >处置</el-button
-                >
-                <el-button link type="primary" @click="openLineage(row)">批次溯源</el-button>
-                <el-tooltip
-                  v-if="!canDispose"
-                  content="当前账号无「隔离处置」权限，请联系品质主管授权"
-                >
-                  <span class="no-perm">无处置权限</span>
-                </el-tooltip>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-pagination
-            v-model:current-page="query.pageNum"
-            v-model:page-size="query.pageSize"
-            class="pagination"
-            :page-sizes="[10, 20, 50, 100]"
-            layout="total, sizes, prev, pager, next, jumper"
-            :total="total"
-            @size-change="search"
-            @current-change="load"
-          />
-        </el-tab-pane>
-        <el-tab-pane label="已处置" name="history">
-          <el-table v-loading="ordersLoading" :data="orders" border>
-            <el-table-column prop="dispositionNo" label="处置单号" width="210" />
-            <el-table-column prop="sourceNo" label="采购单号" width="180" />
-            <el-table-column prop="inboundNo" label="入库单号" width="180" />
-            <el-table-column prop="supplierName" label="供应商" min-width="150" />
-            <el-table-column label="类型" width="120">
-              <template #default="{ row }">{{ actionLabel(row.action) }}</template>
-            </el-table-column>
-            <el-table-column prop="materialCode" label="物料" width="160" />
-            <el-table-column prop="batchNo" label="批次" width="170" />
-            <el-table-column prop="quantity" label="数量" width="100" />
-            <el-table-column label="处理状态" width="110">
-              <template #default="{ row }">{{ row.status || '-' }}</template>
-            </el-table-column>
-            <el-table-column prop="operatorName" label="操作人" width="110" />
-            <el-table-column prop="createTime" label="时间" />
-          </el-table>
-          <el-pagination
-            v-model:current-page="historyPageNum"
-            v-model:page-size="historyPageSize"
-            class="pagination"
-            :page-sizes="[10, 20, 50, 100]"
-            layout="total, sizes, prev, pager, next, jumper"
-            :total="historyTotal"
-            @size-change="loadDispositionHistory"
-            @current-change="loadDispositionHistory"
-          />
-        </el-tab-pane>
-        <el-tab-pane label="报废审批" name="scrap">
-          <el-table v-loading="scrapLoading" :data="scrapOrders" border>
-            <el-table-column prop="inboundNo" label="来料单号" width="180" />
-            <el-table-column prop="sourceNo" label="采购单号" width="180" />
-            <el-table-column prop="scrapNo" label="报废单号" width="180" />
-            <el-table-column prop="materialCode" label="物料编码" width="150" />
-            <el-table-column prop="batchNo" label="批次" width="180" />
-            <el-table-column label="本次报废申请" width="120" align="right">
-              <template #default="{ row }">{{ num(row.quantity) }}</template>
-            </el-table-column>
-            <el-table-column prop="reason" label="申请原因" min-width="180" show-overflow-tooltip />
-            <el-table-column label="审批状态" width="120">
-              <template #default="{ row }">
-                <el-tag :type="IqcScrapOrderStatusEnum.getTagProps(row.status).type">
-                  {{ IqcScrapOrderStatusEnum.getLabel(row.status) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
-              <template #default="{ row }">
-                <template v-if="canApproveScrap && row.status === IqcScrapOrderStatus.PENDING_APPROVAL">
-                  <el-button link type="primary" @click="approveScrap(row, true)">通过</el-button>
-                  <el-button link type="danger" @click="approveScrap(row, false)">驳回</el-button>
-                </template>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-tab-pane>
-        <el-tab-pane label="返工单" name="rework">
-          <el-table v-loading="reworkLoading" :data="reworkOrders" border>
-            <el-table-column prop="reworkNo" label="返工单号" width="220" />
-            <el-table-column prop="materialCode" label="物料" width="160" />
-            <el-table-column prop="batchNo" label="父批次" width="180" />
-            <el-table-column prop="childBatchNo" label="复检子批次" width="190" />
-            <el-table-column prop="quantity" label="数量" width="100" />
-            <el-table-column label="状态" width="120">
-              <template #default="{ row }">
-                <el-tag :type="IqcReworkStatusEnum.getTagProps(row.status).type">{{
-                  IqcReworkStatusEnum.getLabel(row.status)
-                }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="150">
-              <template #default="{ row }">
-                <el-button
-                  v-if="canDispose && row.status === IqcReworkStatus.CREATED"
-                  type="primary"
-                  link
-                  @click="completeRework(row)"
-                  >完成返工</el-button
-                >
-                <el-button
-                  v-if="canInspect && row.status === IqcReworkStatus.PENDING_REINSPECTION"
-                  type="primary"
-                  link
-                  @click="goReinspect(row)"
-                  >去复检</el-button
-                >
-                <span
-                  v-if="
-                    row.status !== IqcReworkStatus.CREATED &&
-                    row.status !== IqcReworkStatus.PENDING_REINSPECTION
-                  "
-                  >-</span
-                >
-              </template>
-            </el-table-column>
-          </el-table>
-        </el-tab-pane>
-      </el-tabs>
+      <el-table v-loading="loading || ordersLoading || scrapLoading || reworkLoading" :data="workbenchRows" border>
+        <el-table-column prop="dispositionNo" label="处置单号" width="190" />
+        <el-table-column label="类型" width="110">
+          <template #default="{ row }">{{ row.actionLabel }}</template>
+        </el-table-column>
+        <el-table-column label="来料批次 / 采购单号" min-width="190">
+          <template #default="{ row }">
+            <div>{{ row.inboundNo || '-' }}</div>
+            <span class="muted">采购：{{ row.sourceNo || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="检验批号 / 批次" min-width="190">
+          <template #default="{ row }">
+            <div>{{ row.lotNo || row.childBatchNo || '-' }}</div>
+            <span class="muted">批次：{{ row.batchNo || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="物料" min-width="170">
+          <template #default="{ row }">
+            <div>{{ row.materialCode || '-' }}</div>
+            <span class="muted">{{ row.materialName || '' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="数量口径" width="145" align="right">
+          <template #default="{ row }">
+            <div>{{ row.quantityLabel }}：{{ num(row.quantity) }}</div>
+            <span v-if="row.kind === 'quarantine'" class="muted">整批不良：{{ num(row.totalFail) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="135">
+          <template #default="{ row }">
+            <el-tag :type="row.statusType">{{ row.statusLabel }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="下一步" width="210" fixed="right">
+          <template #default="{ row }">
+            <template v-if="row.kind === 'quarantine'">
+              <el-button
+                v-if="canDispose && row.status === IqcQuarantineStatus.PENDING && Number(row.remainingQuantity) > 0"
+                type="primary"
+                link
+                @click="openDisposition(row)"
+                >去处置</el-button
+              >
+              <el-tooltip v-else-if="!canDispose" content="当前账号无隔离处置权限，请联系品质主管授权">
+                <span class="no-perm">无处置权限</span>
+              </el-tooltip>
+            </template>
+            <template v-else-if="row.kind === 'scrap' && row.status === IqcScrapOrderStatus.PENDING_APPROVAL">
+              <el-button v-if="canApproveScrap" link type="primary" @click="approveScrap(row, true)">通过</el-button>
+              <el-button v-if="canApproveScrap" link type="danger" @click="approveScrap(row, false)">驳回</el-button>
+            </template>
+            <template v-else-if="row.kind === 'rework'">
+              <el-button v-if="canDispose && row.status === IqcReworkStatus.CREATED" type="primary" link @click="completeRework(row)">完成返工</el-button>
+              <el-button v-if="canInspect && row.status === IqcReworkStatus.PENDING_REINSPECTION" type="primary" link @click="goReinspect(row)">去复检</el-button>
+            </template>
+            <el-button v-if="row.batchNo" link type="primary" @click="openLineage(row)">批次溯源</el-button>
+            <span v-if="!row.hasNextAction && !row.batchNo">-</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        v-model:current-page="query.pageNum"
+        v-model:page-size="query.pageSize"
+        class="pagination"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="total"
+        @size-change="search"
+        @current-change="load"
+      />
     </el-card>
 
-    <el-drawer
+    <el-dialog
       v-model="lineageVisible"
       title="批次溯源"
-      direction="btt"
-      size="45vh"
+      width="880px"
       append-to-body
     >
       <div class="lineage-tip">
@@ -256,7 +147,7 @@
         :data="lineageRows"
         border
         size="small"
-        max-height="calc(45vh - 120px)"
+        max-height="460px"
       >
         <el-table-column prop="batchNo" label="批次" width="200" />
         <el-table-column prop="parentBatchNo" label="父批次" width="200" />
@@ -274,7 +165,7 @@
           </template>
         </el-table-column>
       </el-table>
-    </el-drawer>
+    </el-dialog>
 
     <IqcQuarantineDialog
       v-model:visible="dispositionVisible"
@@ -292,9 +183,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { inboundApi } from '@/api/inventory/inbound'
 import { iqcApi } from '@/api/inventory/iqc'
 import {
+  IqcQuarantineAction,
   IqcQuarantineActionEnum,
   IqcScrapOrderStatus,
   IqcScrapOrderStatusEnum,
+  IqcDispositionOrderStatusEnum,
   IqcQuarantineStatus,
   IqcQuarantineStatusEnum,
 } from '@/enums/inventory/IqcQuarantineEnum'
@@ -323,9 +216,6 @@ const query = ref({
 const total = ref(0)
 const rows = ref<any[]>([])
 const orders = ref<any[]>([])
-const historyPageNum = ref(1)
-const historyPageSize = ref(20)
-const historyTotal = ref(0)
 const reworkOrders = ref<any[]>([])
 const batchRows = ref<any[]>([])
 const loading = ref(false)
@@ -334,7 +224,6 @@ const reworkLoading = ref(false)
 const batchLoading = ref(false)
 const scrapLoading = ref(false)
 const scrapOrders = ref<any[]>([])
-const activeTab = ref<'pending' | 'history' | 'rework' | 'scrap'>('pending')
 const lineageVisible = ref(false)
 const lineageRows = ref<any[]>([])
 const lineageBatchNo = ref('')
@@ -362,6 +251,65 @@ function openLineage(row: any) {
   lineageVisible.value = true
 }
 const actionLabel = (value?: string) => (value ? IqcQuarantineActionEnum.getLabel(value) : '-')
+const dispositionStatus = (value?: string) => {
+  const status = value as any
+  const props = IqcDispositionOrderStatusEnum.getTagProps(status)
+  return {
+    statusLabel: IqcDispositionOrderStatusEnum.getLabel(status),
+    statusType: props.type,
+  }
+}
+const workbenchRows = computed(() => {
+  const pending = rows.value.map((row: any) => ({
+    ...row,
+    kind: 'quarantine',
+    dispositionNo: '-',
+    actionLabel: '待处置',
+    lotNo: row.lotNo || row.batchNo,
+    quantity: row.remainingQuantity,
+    quantityLabel: '剩余可处置',
+    totalFail: row.quantity,
+    statusLabel: IqcQuarantineStatusEnum.getLabel(row.status),
+    statusType: IqcQuarantineStatusEnum.getTagProps(row.status).type,
+    hasNextAction: canDispose.value && row.status === IqcQuarantineStatus.PENDING,
+  }))
+  const history = orders.value.map((row: any) => ({
+    ...row,
+    kind: 'disposition',
+    actionLabel: actionLabel(row.action),
+    quantityLabel: '本次处置',
+    ...dispositionStatus(row.status),
+    hasNextAction: false,
+  }))
+  const scraps = scrapOrders.value.map((row: any) => ({
+    ...row,
+    kind: 'scrap',
+    dispositionNo: row.scrapNo || row.dispositionNo || '-',
+    actionLabel: actionLabel(IqcQuarantineAction.SCRAP),
+    quantityLabel: '本次报废',
+    ...(() => {
+      const props = IqcScrapOrderStatusEnum.getTagProps(row.status)
+      return { statusLabel: IqcScrapOrderStatusEnum.getLabel(row.status), statusType: props.type }
+    })(),
+    hasNextAction: canApproveScrap.value && row.status === IqcScrapOrderStatus.PENDING_APPROVAL,
+  }))
+  const reworks = reworkOrders.value.map((row: any) => ({
+    ...row,
+    kind: 'rework',
+    dispositionNo: row.reworkNo || '-',
+    actionLabel: actionLabel(IqcQuarantineAction.REWORK),
+    quantityLabel: '本批复检',
+    lotNo: row.childBatchNo || row.batchNo,
+    ...(() => {
+      const props = IqcReworkStatusEnum.getTagProps(row.status)
+      return { statusLabel: IqcReworkStatusEnum.getLabel(row.status), statusType: props.type }
+    })(),
+    hasNextAction:
+      (canDispose.value && row.status === IqcReworkStatus.CREATED) ||
+      (canInspect.value && row.status === IqcReworkStatus.PENDING_REINSPECTION),
+  }))
+  return [...pending, ...history, ...scraps, ...reworks]
+})
 
 async function load() {
   loading.value = true
@@ -373,14 +321,13 @@ async function load() {
       inboundApi.pageIqcQuarantine(query.value),
       inboundApi.pageIqcDisposition({
         ...query.value,
-        pageNum: historyPageNum.value,
-        pageSize: historyPageSize.value,
+        pageNum: query.value.pageNum,
+        pageSize: query.value.pageSize,
       }),
     ])
     rows.value = data?.page?.records || []
     total.value = data?.page?.total || 0
     orders.value = historyResult.data?.records || []
-    historyTotal.value = historyResult.data?.total || 0
     reworkOrders.value = data?.reworkOrders || []
     batchRows.value = data?.batches || []
     await loadScrapOrders()
@@ -431,7 +378,6 @@ async function approveScrap(row: any, approved: boolean) {
 }
 function search() {
   query.value.pageNum = 1
-  historyPageNum.value = 1
   return load()
 }
 function resetQuery() {
@@ -446,20 +392,6 @@ function resetQuery() {
     supplierName: '',
   }
   return load()
-}
-async function loadDispositionHistory() {
-  ordersLoading.value = true
-  try {
-    const { data } = await inboundApi.pageIqcDisposition({
-      ...query.value,
-      pageNum: historyPageNum.value,
-      pageSize: historyPageSize.value,
-    })
-    orders.value = data?.records || []
-    historyTotal.value = data?.total || 0
-  } finally {
-    ordersLoading.value = false
-  }
 }
 async function openDisposition(row: any) {
   activeInboundId.value = Number(row.inboundId)
@@ -521,6 +453,10 @@ onMounted(() => {
 .lineage-count {
   margin-left: 12px;
   color: var(--el-text-color-secondary);
+}
+.muted {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
 .filter-bar {
   padding: 10px 12px 0;

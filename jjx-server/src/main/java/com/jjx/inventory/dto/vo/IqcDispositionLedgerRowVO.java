@@ -12,4 +12,5 @@ public class IqcDispositionLedgerRowVO extends InventoryIqcDispositionOrder {
     private String sourceNo;
     private Long supplierId;
     private String supplierName;
+    private String lotNo;
 }

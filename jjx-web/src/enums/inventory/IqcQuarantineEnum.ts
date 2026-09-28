@@ -53,6 +53,23 @@ export const IqcScrapOrderStatusEnum = createEnum({
   defaultTag: { type: 'info' },
 })
 
+export const IqcDispositionOrderStatus = {
+  COMPLETED: 'COMPLETED',
+  PENDING_INBOUND: 'PENDING_INBOUND',
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  CANCELLED: 'CANCELLED',
+} as const
+
+export const IqcDispositionOrderStatusEnum = createEnum({
+  items: [
+    { value: IqcDispositionOrderStatus.COMPLETED, label: '已完成', tagProps: { type: 'success' } },
+    { value: IqcDispositionOrderStatus.PENDING_INBOUND, label: '待确认入库', tagProps: { type: 'warning' } },
+    { value: IqcDispositionOrderStatus.PENDING_APPROVAL, label: '待审批', tagProps: { type: 'warning' } },
+    { value: IqcDispositionOrderStatus.CANCELLED, label: '已取消', tagProps: { type: 'info' } },
+  ],
+  defaultTag: { type: 'info' },
+})
+
 /**
  * 处置方式对应的业务后果说明（界面提示用，与后端 handleQuarantine 的实际行为一致）。
  * 集中放这里而不是各页面自己写文案，避免两页面对同一动作的说法不一致。
