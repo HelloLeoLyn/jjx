@@ -1741,6 +1741,27 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 "iqc_disposition", "IQD", "yyMMdd", 3));
         directReinspection.setActionNo(directReinspection.getDispositionNo());
         directReinspection.setAction("REWORK");
+        Long quarantineId = context.rework() == null ? null : context.rework().getQuarantineId();
+        if (quarantineId == null) {
+            var quarantine = iqcQuarantineMapper.selectOne(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcQuarantine>()
+                    .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getInboundItemId, item.getItemId())
+                    .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getLotId, old.getLotId())
+                    .orderByDesc(com.jjx.inventory.domain.InventoryIqcQuarantine::getQuarantineId)
+                    .last("LIMIT 1"));
+            quarantineId = quarantine == null ? null : quarantine.getQuarantineId();
+        }
+        if (quarantineId == null && old.getParentLotId() != null) {
+            var parentQuarantine = iqcQuarantineMapper.selectOne(new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcQuarantine>()
+                    .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getInboundItemId, item.getItemId())
+                    .eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getLotId, old.getParentLotId())
+                    .orderByDesc(com.jjx.inventory.domain.InventoryIqcQuarantine::getQuarantineId)
+                    .last("LIMIT 1"));
+            quarantineId = parentQuarantine == null ? null : parentQuarantine.getQuarantineId();
+        }
+        if (quarantineId == null) {
+            throw new BusinessException("找不到该 IQC 检验批对应的隔离记录，无法创建复检处置单");
+        }
+        directReinspection.setQuarantineId(quarantineId);
         directReinspection.setInboundId(item.getInboundId());
         directReinspection.setInboundItemId(item.getItemId());
         directReinspection.setLotId(old.getLotId());
