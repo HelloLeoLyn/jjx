@@ -229,9 +229,10 @@
 
         <el-form-item label="可用变量">
           <div class="variable-panel">
-            <div v-if="!variables.length" class="variable-empty">该事件暂未登记专用变量，可使用通用变量。</div>
+            <div v-if="!variables.length && payloadSource === 'sample'" class="variable-empty">该事件还没有采集到变量（未触发过），可先使用通用变量。</div>
             <div v-for="item in variables" :key="item.key" class="variable-row">
               <el-tag size="small">{{ `{${item.key}}` }}</el-tag>
+              <el-tag size="small" type="info">{{ variableSourceLabel(item.source) }}</el-tag>
               <span>{{ item.description }}</span>
               <el-button link type="primary" @click="insertVariable('title', item.key)">插入标题</el-button>
               <el-button link type="primary" @click="insertVariable('content', item.key)">插入内容</el-button>
@@ -314,7 +315,13 @@ const eventList = ref<SysEventConfig[]>([])
 const ids = ref<number[]>([])
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增事件配置')
-const variables = ref<Array<{ key: string; description: string; example: string }>>([])
+const variables = ref<Array<{
+  key: string
+  description: string
+  example: string
+  source?: 'common' | 'manual' | 'collected'
+  lastSeenAt?: string
+}>>([])
 const latestNotification = ref<{ title?: string; content?: string; receiverName?: string; sendTime?: string }>()
 // 2026-09-23（dev-20260921-014）：最近一次真实 payload（试渲染用；缺失时回落样例值）
 const lastPayload = ref<Record<string, unknown> | null>(null)
@@ -475,6 +482,12 @@ function insertVariable(field: 'title' | 'content', key: string) {
   form[field] = `${form[field] || ''}{${key}}`
 }
 
+function variableSourceLabel(source?: 'common' | 'manual' | 'collected') {
+  if (source === 'common') return '通用'
+  if (source === 'collected') return '自动采集'
+  return '人工登记'
+}
+
 const placeholderKeys = computed(() => {
   const keys = new Set<string>()
   const text = `${form.title || ''}\n${form.content || ''}`
@@ -532,7 +545,7 @@ function handleSubmit() {
     if (unknownVariables.value.length) {
       try {
         await ElMessageBox.confirm(
-          `模板包含未登记变量：${unknownVariables.value.join('、')}。保存后可能渲染为空，仍要保存吗？`,
+          `模板包含未登记变量：${unknownVariables.value.join('、')}。该键从未在真实事件里出现过，保存后可能渲染为空，仍要保存吗？`,
           '变量校验提醒',
           { type: 'warning' }
         )
@@ -550,7 +563,7 @@ function handleSubmit() {
         // 后端模板键名校验告警（不阻断保存）：2026-09-23 dev-20260921-014
         const warnings: string[] = res.data?.warnings || []
         if (warnings.length) {
-          ElMessage.warning(`服务端提示：模板含未登记变量 ${warnings.join('、')}（已保存，可能渲染为空）`)
+          ElMessage.warning(`服务端提示：模板含未登记变量 ${warnings.join('、')}（该键从未在真实事件里出现过，保存后可能渲染为空）`)
         }
         dialogVisible.value = false
         getList()

@@ -19,7 +19,13 @@ export const eventConfigApi = {
   metadata(eventCode: string) {
     return request.get<
       R<{
-        variables: Array<{ key: string; description: string; example: string }>
+        variables: Array<{
+          key: string
+          description: string
+          example: string
+          source?: 'common' | 'manual' | 'collected'
+          lastSeenAt?: string
+        }>
         latest?: {
           title?: string
           content?: string

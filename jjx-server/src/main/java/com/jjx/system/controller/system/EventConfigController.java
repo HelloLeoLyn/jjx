@@ -31,6 +31,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.format.DateTimeFormatter;
 
 /**
  * 事件配置管理（通知/任务）
@@ -40,6 +41,8 @@ import java.util.Set;
 @RequestMapping("/system/event-config")
 @RequiredArgsConstructor
 public class EventConfigController extends BaseController {
+
+    private static final DateTimeFormatter PAYLOAD_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final SysEventConfigMapper eventConfigMapper;
     private final NotificationMapper notificationMapper;
@@ -100,14 +103,21 @@ public class EventConfigController extends BaseController {
                         .orderByDesc(Notification::getNotificationId)
                         .last("LIMIT 1"));
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("variables", EventVariableRegistry.variables(eventCode));
         result.put("latest", latest);
         // 2026-09-23（dev-20260921-014）：最近一次真实 payload —— 让「试渲染」用真实数据预览
         SysEventLastPayload lastPayload = eventLastPayloadMapper.selectById(eventCode);
-        result.put("lastPayload", lastPayload == null ? null : parsePayload(lastPayload.getPayload()));
-        result.put("lastPayloadTime", lastPayload == null ? null : lastPayload.getUpdateTime());
+        Map<String, Object> lastPayloadData = lastPayload == null ? null : parsePayload(lastPayload.getPayload());
+        String lastPayloadTime = formatPayloadTime(lastPayload);
+        result.put("variables", EventVariableRegistry.merge(eventCode, lastPayloadData, lastPayloadTime));
+        result.put("lastPayload", lastPayloadData);
+        result.put("lastPayloadTime", lastPayloadTime);
         result.put("payloadSource", lastPayload == null ? "sample" : "lastEvent");
         return Result.success(result);
+    }
+
+    private String formatPayloadTime(SysEventLastPayload lastPayload) {
+        return lastPayload == null || lastPayload.getUpdateTime() == null
+                ? null : lastPayload.getUpdateTime().format(PAYLOAD_TIME_FORMAT);
     }
 
     /** 解析 sys_event_last_payload.payload 的 JSON 文本；坏数据不报错，返回 null。 */
@@ -129,7 +139,9 @@ public class EventConfigController extends BaseController {
      */
     private List<String> validateTemplateVariables(SysEventConfig config) {
         Set<String> allowed = new LinkedHashSet<>();
-        EventVariableRegistry.variables(config.getEventCode())
+        SysEventLastPayload lastPayload = eventLastPayloadMapper.selectById(config.getEventCode());
+        Map<String, Object> lastPayloadData = lastPayload == null ? null : parsePayload(lastPayload.getPayload());
+        EventVariableRegistry.merge(config.getEventCode(), lastPayloadData, formatPayloadTime(lastPayload))
                 .forEach(variable -> allowed.add(variable.key()));
         LinkedHashSet<String> unknown = new LinkedHashSet<>();
         List<String> templates = new ArrayList<>();
