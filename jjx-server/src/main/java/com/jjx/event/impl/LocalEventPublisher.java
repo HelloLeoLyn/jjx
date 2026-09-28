@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.jjx.event.EventPublisher;
 import com.jjx.event.EventTemplateRenderer;
+import com.jjx.event.EventVariableRegistry;
 import com.jjx.kanban.enums.KanbanTaskStatusEnum;
 import com.jjx.notification.domain.dto.NotificationCreateDTO;
 import com.jjx.notification.domain.entity.Notification;
@@ -17,6 +18,7 @@ import com.jjx.system.domain.entity.SysUser;
 import com.jjx.system.domain.entity.SysUserRole;
 import com.jjx.system.mapper.SysEventConfigMapper;
 import com.jjx.system.mapper.SysEventLastPayloadMapper;
+import com.jjx.system.mapper.SysEventVarMapper;
 import com.jjx.system.mapper.SysTaskMapper;
 import com.jjx.system.mapper.SysUserMapper;
 import com.jjx.system.mapper.SysUserRoleMapper;
@@ -47,6 +49,7 @@ public class LocalEventPublisher implements EventPublisher {
     private final SysUserRoleMapper userRoleMapper;
     /** 2026-09-23（dev-20260921-014）：通知落「事件码」与收件人姓名用。 */
     private final SysEventLastPayloadMapper eventLastPayloadMapper;
+    private final SysEventVarMapper sysEventVarMapper;
     private final SysUserMapper sysUserMapper;
 
     @Override
@@ -247,6 +250,15 @@ public class LocalEventPublisher implements EventPublisher {
             eventLastPayloadMapper.upsert(eventCode,
                     cn.hutool.json.JSONUtil.toJsonStr(payload),
                     bizId == null ? null : String.valueOf(bizId));
+            payload.forEach((key, value) -> {
+                String example = value == null ? null : String.valueOf(value);
+                if (example != null && example.length() > 255) {
+                    example = example.substring(0, 255);
+                }
+                String description = EventVariableRegistry.descriptionOf(key);
+                sysEventVarMapper.upsertCollected(eventCode, key,
+                        description == null ? "（自动采集，暂无中文描述）" : description, example);
+            });
         } catch (Exception e) {
             log.warn("记录事件最近 payload 失败（不影响主流程）: eventCode={}, {}", eventCode, e.getMessage());
         }

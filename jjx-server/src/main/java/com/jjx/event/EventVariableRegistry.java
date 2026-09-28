@@ -5,7 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 事件模板变量目录，数据来源为 common/manual/collected；collected 来自 sys_event_last_payload，一期不做累积表。 */
+/** 事件模板变量目录，数据来源为 common/manual/collected；collected 来自累积表 sys_event_var（二期）。 */
 public final class EventVariableRegistry {
 
     public record Variable(String key, String description, String example, String source, String lastSeenAt) {
@@ -50,20 +50,33 @@ public final class EventVariableRegistry {
     private EventVariableRegistry() {}
 
     public static List<Variable> variables(String eventCode) {
-        return merge(eventCode, null, null);
+        return merge(eventCode, List.of(), null, null);
     }
 
     public static List<Variable> merge(String eventCode, Map<String, Object> lastPayload, String lastPayloadTime) {
+        return merge(eventCode, List.of(), lastPayload, lastPayloadTime);
+    }
+
+    public static List<Variable> merge(String eventCode, List<Variable> collected,
+                                       Map<String, Object> lastPayload, String lastPayloadTime) {
         Map<String, Variable> merged = new LinkedHashMap<>();
         COMMON.forEach(variable -> merged.put(variable.key(), new Variable(
                 variable.key(), variable.description(), variable.example(), "common", null)));
         EVENT_VARIABLES.getOrDefault(eventCode, List.of()).forEach(variable -> merged.put(variable.key(), new Variable(
                 variable.key(), variable.description(), variable.example(), "manual", null)));
+        if (collected != null) {
+            collected.forEach(variable -> {
+                if (variable != null && variable.key() != null && !merged.containsKey(variable.key())) {
+                    merged.put(variable.key(), new Variable(variable.key(), variable.description(), variable.example(),
+                            variable.source() == null ? "collected" : variable.source(), variable.lastSeenAt()));
+                }
+            });
+        }
         if (lastPayload != null) {
             lastPayload.forEach((key, value) -> {
-                if (!EVENT_VARIABLES.getOrDefault(eventCode, List.of()).stream().anyMatch(variable -> variable.key().equals(key))) {
+                if (!merged.containsKey(key)) {
                     merged.put(key, new Variable(key,
-                            MANUAL_DESCRIPTIONS.getOrDefault(key, "（自动采集，暂无中文描述）"),
+                            descriptionOf(key) == null ? "（自动采集，暂无中文描述）" : descriptionOf(key),
                             value == null || value instanceof String ? (String) value : String.valueOf(value),
                             "collected", lastPayloadTime));
                 }
@@ -73,6 +86,19 @@ public final class EventVariableRegistry {
                 .sorted(Comparator.comparingInt((Variable variable) -> sourceOrder(variable.source()))
                         .thenComparing(Variable::key))
                 .toList();
+    }
+
+    public static String descriptionOf(String key) {
+        String description = MANUAL_DESCRIPTIONS.get(key);
+        if (description != null) {
+            return description;
+        }
+        return EVENT_VARIABLES.values().stream()
+                .flatMap(List::stream)
+                .filter(variable -> variable.key().equals(key))
+                .map(Variable::description)
+                .findFirst()
+                .orElse(null);
     }
 
     private static int sourceOrder(String source) {

@@ -233,6 +233,9 @@
             <div v-for="item in variables" :key="item.key" class="variable-row">
               <el-tag size="small">{{ `{${item.key}}` }}</el-tag>
               <el-tag size="small" type="info">{{ variableSourceLabel(item.source) }}</el-tag>
+              <el-tooltip v-if="item.lastSeenAt" :content="`最近采集：${item.lastSeenAt}`" placement="top">
+                <span class="variable-last-seen">ⓘ</span>
+              </el-tooltip>
               <span>{{ item.description }}</span>
               <el-button link type="primary" @click="insertVariable('title', item.key)">插入标题</el-button>
               <el-button link type="primary" @click="insertVariable('content', item.key)">插入内容</el-button>

@@ -8,8 +8,10 @@ import com.jjx.system.annotation.Log;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.domain.entity.SysEventConfig;
 import com.jjx.system.domain.entity.SysEventLastPayload;
+import com.jjx.system.domain.entity.SysEventVar;
 import com.jjx.system.mapper.SysEventConfigMapper;
 import com.jjx.system.mapper.SysEventLastPayloadMapper;
+import com.jjx.system.mapper.SysEventVarMapper;
 import com.jjx.notification.domain.entity.Notification;
 import com.jjx.notification.mapper.NotificationMapper;
 import com.jjx.event.EventTemplateRenderer;
@@ -48,6 +50,7 @@ public class EventConfigController extends BaseController {
     private final NotificationMapper notificationMapper;
     /** 2026-09-23（dev-20260921-014）：最近一次真实 payload（试渲染）+ 模板键名校验用。 */
     private final SysEventLastPayloadMapper eventLastPayloadMapper;
+    private final SysEventVarMapper sysEventVarMapper;
     private final ObjectMapper objectMapper;
 
     /**
@@ -108,7 +111,7 @@ public class EventConfigController extends BaseController {
         SysEventLastPayload lastPayload = eventLastPayloadMapper.selectById(eventCode);
         Map<String, Object> lastPayloadData = lastPayload == null ? null : parsePayload(lastPayload.getPayload());
         String lastPayloadTime = formatPayloadTime(lastPayload);
-        result.put("variables", EventVariableRegistry.merge(eventCode, lastPayloadData, lastPayloadTime));
+        result.put("variables", EventVariableRegistry.merge(eventCode, collectedVariables(eventCode), lastPayloadData, lastPayloadTime));
         result.put("lastPayload", lastPayloadData);
         result.put("lastPayloadTime", lastPayloadTime);
         result.put("payloadSource", lastPayload == null ? "sample" : "lastEvent");
@@ -118,6 +121,16 @@ public class EventConfigController extends BaseController {
     private String formatPayloadTime(SysEventLastPayload lastPayload) {
         return lastPayload == null || lastPayload.getUpdateTime() == null
                 ? null : lastPayload.getUpdateTime().format(PAYLOAD_TIME_FORMAT);
+    }
+
+    private List<EventVariableRegistry.Variable> collectedVariables(String eventCode) {
+        return sysEventVarMapper.selectList(new LambdaQueryWrapper<SysEventVar>()
+                        .eq(SysEventVar::getEventCode, eventCode))
+                .stream()
+                .map(variable -> new EventVariableRegistry.Variable(variable.getVarKey(), variable.getDescription(),
+                        variable.getExample(), variable.getSource(), variable.getLastSeenAt() == null
+                        ? null : variable.getLastSeenAt().format(PAYLOAD_TIME_FORMAT)))
+                .toList();
     }
 
     /** 解析 sys_event_last_payload.payload 的 JSON 文本；坏数据不报错，返回 null。 */
@@ -141,7 +154,7 @@ public class EventConfigController extends BaseController {
         Set<String> allowed = new LinkedHashSet<>();
         SysEventLastPayload lastPayload = eventLastPayloadMapper.selectById(config.getEventCode());
         Map<String, Object> lastPayloadData = lastPayload == null ? null : parsePayload(lastPayload.getPayload());
-        EventVariableRegistry.merge(config.getEventCode(), lastPayloadData, formatPayloadTime(lastPayload))
+        EventVariableRegistry.merge(config.getEventCode(), collectedVariables(config.getEventCode()), lastPayloadData, formatPayloadTime(lastPayload))
                 .forEach(variable -> allowed.add(variable.key()));
         LinkedHashSet<String> unknown = new LinkedHashSet<>();
         List<String> templates = new ArrayList<>();
