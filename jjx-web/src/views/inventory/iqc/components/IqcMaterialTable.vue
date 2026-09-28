@@ -89,6 +89,8 @@
           >审核/驳回</el-button
         ><el-button v-if="row.inspectionId" link type="primary" @click="emit('print', row)"
           >打印</el-button
+        ><el-button v-if="row.lotId" link type="info" @click="emit('history', row)"
+          >质量历史</el-button
         ><el-button
           v-if="
                 canDispose &&
@@ -131,6 +133,7 @@ const emit = defineEmits<{
   (e: 'edit', row: any): void
   (e: 'review'): void
   (e: 'print', row: any): void
+  (e: 'history', row: any): void
   (e: 'go-disposition', row: any): void
 }>()
 

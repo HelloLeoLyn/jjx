@@ -81,6 +81,7 @@
         @edit="openMaterialChecks"
         @review="openReview"
         @print="printRow"
+        @history="openHistory"
         @go-disposition="goDisposition"
       />
       <el-card class="workbench-section" shadow="never">
@@ -123,6 +124,24 @@
           <el-table-column prop="createTime" label="时间" width="170" />
         </el-table>
         <el-empty v-if="!dispositionRows.length" description="当前暂无不良处置记录" />
+      </el-card>
+      <el-card v-if="historyLotId" class="workbench-section" shadow="never">
+        <template #header>
+          <div class="section-header">
+            <span>{{ historyLotNo }} · 质量历史</span>
+            <el-button link type="primary" @click="closeHistory">收起</el-button>
+          </div>
+        </template>
+        <el-timeline v-loading="historyLoading">
+          <el-timeline-item
+            v-for="item in historyRows"
+            :key="item.historyId"
+            :timestamp="item.createTime || '-'">
+            <div class="history-event">{{ historyEventLabel(item.eventType) }}</div>
+            <div class="muted">操作人：{{ item.operatorName || '-' }} · {{ item.remark || '无备注' }}</div>
+          </el-timeline-item>
+          <el-empty v-if="!historyLoading && !historyRows.length" description="暂无质量历史" />
+        </el-timeline>
       </el-card>
       <template v-if="hasEditableRows"
         ><el-form label-width="90px" class="remark-form"
@@ -172,7 +191,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { hasPermi } from '@/directives'
 import { qualityApi } from '@/api/production/quality'
-import type { QualityTraceView } from '@/api/quality/lot'
+import { qualityLotApi, type QualityLotHistory, type QualityTraceView } from '@/api/quality/lot'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
@@ -270,6 +289,10 @@ const selectedInboundId = ref<string | number>(''),
   selectedInbound = ref<IqcPendingVO>(),
   workRows = ref<WorkRow[]>([]),
   dispositionRows = ref<any[]>([])
+const historyRows = ref<QualityLotHistory[]>([])
+const historyLoading = ref(false)
+const historyLotId = ref<number>()
+const historyLotNo = ref('')
 const inspectionRemark = ref(''),
   submitting = ref(false),
   checksVisible = ref(false),
@@ -683,6 +706,34 @@ function goDisposition(row: WorkRow) {
   activeItemId.value = row.itemId
   dispositionVisible.value = true
 }
+async function openHistory(row: WorkRow) {
+  if (!row.lotId) return
+  historyLotId.value = row.lotId
+  historyLotNo.value = row.qualityLotNo || row.batchNo || `检验批 ${row.lotId}`
+  historyLoading.value = true
+  try {
+    const { data } = await qualityLotApi.history(row.lotId)
+    historyRows.value = data || []
+  } finally {
+    historyLoading.value = false
+  }
+}
+function closeHistory() {
+  historyLotId.value = undefined
+  historyLotNo.value = ''
+  historyRows.value = []
+}
+function historyEventLabel(value?: string) {
+  const labels: Record<string, string> = {
+    CREATED: '检验批创建',
+    ITEMS_SAVED: '检验项保存',
+    JUDGED: '检验批判定',
+    REVIEWED: '检验批审核',
+    REINSPECTED: '生成复检批',
+    REOPENED: '检验批重开',
+  }
+  return labels[value || ''] || value || '质量事件'
+}
 function printRow(row: WorkRow) {
   router.push({
     path: '/production/quality-print/iqc-report',
@@ -855,6 +906,9 @@ onBeforeUnmount(clearSelection)
 .emphasis {
   color: var(--el-color-warning-dark-2);
   font-size: 12px;
+  font-weight: 600;
+}
+.history-event {
   font-weight: 600;
 }
 .posting-guide {
