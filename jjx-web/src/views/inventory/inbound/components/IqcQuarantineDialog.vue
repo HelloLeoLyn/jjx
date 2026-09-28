@@ -133,18 +133,25 @@ async function load() {
   }
 }
 async function submit(row: any) {
-  if (!row.action) return ElMessage.warning('请先选择处置方式')
-  const quantity = Number(row.actionQuantity || 0)
-  const remaining = Number(row.remainingQuantity || 0)
+  const snapshot = {
+    quarantineId: String(row.quarantineId),
+    materialCode: String(row.materialCode || ''),
+    action: String(row.action || ''),
+    quantity: Number(row.actionQuantity || 0),
+    remaining: Number(row.remainingQuantity || 0),
+  }
+  if (!snapshot.action) return ElMessage.warning('请先选择处置方式')
+  const quantity = snapshot.quantity
+  const remaining = snapshot.remaining
   if (!(quantity > 0)) return ElMessage.warning('处置数量必须大于 0')
   if (quantity > remaining) {
     return ElMessage.warning(`处置数量不能超过剩余数量 ${num(remaining)}`)
   }
-  const label = IqcQuarantineActionEnum.getLabel(row.action)
-  const effect = IqcQuarantineActionEffect[row.action] || ''
-  const isRelease = row.action === IqcQuarantineAction.RELEASE
+  const label = IqcQuarantineActionEnum.getLabel(snapshot.action)
+  const effect = IqcQuarantineActionEffect[snapshot.action] || ''
+  const isRelease = snapshot.action === IqcQuarantineAction.RELEASE
   await ElMessageBox.confirm(
-    `确认对 ${row.materialCode} 执行【${label}】${num(quantity)} 个？影响：${effect}`,
+    `确认对 ${snapshot.materialCode} 执行【${label}】${num(quantity)} 个？影响：${effect}`,
     isRelease ? '让步接收确认（将生成待确认入库单，由仓库在「入库作业」确认后入库）' : '隔离品处置确认',
     {
       type: isRelease ? 'warning' : 'info',
@@ -152,13 +159,13 @@ async function submit(row: any) {
       cancelButtonText: '取消',
     }
   )
-  await inboundApi.handleQuarantine(String(row.quarantineId), {
-    action: row.action,
+  await inboundApi.handleQuarantine(snapshot.quarantineId, {
+    action: snapshot.action,
     quantity,
     operatorId: String(user.userId || ''),
     operatorName: String(user.nickName || user.userName || ''),
   })
-  ElMessage.success(`处置完成：【${label}】${num(quantity)} 个 ${row.materialCode}`)
+  ElMessage.success(`处置完成：【${label}】${num(quantity)} 个 ${snapshot.materialCode}`)
   await load()
   emit('success')
 }

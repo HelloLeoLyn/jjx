@@ -52,7 +52,7 @@
           在窗口内点「重算单据状态」收尾。</span
         >
       </div>
-      <div v-if="canInspect" class="batch-bar">
+      <div v-if="isInspectMode && canInspect" class="batch-bar">
         <el-button
           type="primary"
           :disabled="!selectedEditableRows.length"
@@ -64,6 +64,13 @@
         >
         <el-button :disabled="!selectedRows.length" @click="clearSelectedRows">清空选中</el-button>
         <el-button type="primary" plain @click="openWholeInboundChecks">整单检验录入</el-button>
+        <el-button
+          v-if="isInspectMode && hasEditableRows"
+          type="primary"
+          :loading="submitting"
+          @click="submitInspection"
+          >提交检验</el-button
+        >
         <span class="batch-tip"
           >勾选多行可整批合格；录入弹窗内 Tab 移动、Enter
           保存、可"保存并下一行"；实测记录可留空</span
@@ -136,29 +143,16 @@
           <el-timeline-item
             v-for="item in historyRows"
             :key="item.historyId"
-            :timestamp="item.createTime || '-'">
+            :timestamp="item.createTime || '-'"
+          >
             <div class="history-event">{{ historyEventLabel(item.eventType) }}</div>
-            <div class="muted">操作人：{{ item.operatorName || '-' }} · {{ item.remark || '无备注' }}</div>
+            <div class="muted">
+              操作人：{{ item.operatorName || '-' }} · {{ item.remark || '无备注' }}
+            </div>
           </el-timeline-item>
           <el-empty v-if="!historyLoading && !historyRows.length" description="暂无质量历史" />
         </el-timeline>
       </el-card>
-      <template v-if="hasEditableRows"
-        ><el-form label-width="90px" class="remark-form"
-          ><el-form-item label="整单备注"
-            ><el-input
-              v-model="inspectionRemark"
-              type="textarea"
-              :rows="3"
-              maxlength="500"
-              show-word-limit /></el-form-item
-        ></el-form>
-        <div class="detail-actions">
-          <el-button type="primary" :loading="submitting" @click="submitInspection"
-            >提交检验</el-button
-          >
-        </div></template
-      >
     </el-card>
     <el-empty v-else description="请选择上方一张采购入库单" />
     <MaterialChecksDialog
@@ -249,7 +243,12 @@ type WorkRow = {
 }
 const router = useRouter()
 const route = useRoute()
-const canInspect = computed(() => hasPermi('quality:lot:inspect'))
+const pageMode = computed(() => {
+  const action = route.query.action
+  return action === 'inspect' || action === 'reinspect' ? action : 'view'
+})
+const isInspectMode = computed(() => pageMode.value === 'inspect' || pageMode.value === 'reinspect')
+const canInspect = computed(() => isInspectMode.value && hasPermi('quality:lot:inspect'))
 const canJudge = computed(() => hasPermi('quality:lot:judge'))
 const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
 const canConfirmInbound = computed(() => hasPermi('inventory:inbound:confirm'))
@@ -303,14 +302,18 @@ const activeWorkRow = ref<WorkRow>(),
   activeInboundNo = ref(''),
   activeItemId = ref<string>()
 const num = (value?: number | string | null) =>
-  value == null || value === '' ? '-' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
+  value == null || value === ''
+    ? '-'
+    : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
 /** dev-20260924-017：校验未通过的行（行级红标，提交时一次提示 + 定位第一处） */
 const problemRowIds = ref<Set<number>>(new Set())
 function rowClassName({ row }: { row: WorkRow }) {
   return problemRowIds.value.has(Number(row.itemId)) ? 'iqc-problem-row' : ''
 }
 const isApproved = computed(
-  () => selectedInbound.value?.orderStatus === InboundOrderStatusEnum.APPROVED.value
+  () =>
+    workRows.value.length > 0 &&
+    workRows.value.every((row) => row.reviewStatus === QualityReviewStatus.APPROVED)
 )
 const isCompleted = computed(
   () => selectedInbound.value?.orderStatus === InboundOrderStatusEnum.COMPLETED.value
@@ -363,7 +366,7 @@ function orderStatusLabel(row: IqcPendingVO) {
     : InboundOrderStatusEnum.getLabel(row.orderStatus)
 }
 function rowCanEdit(row: WorkRow) {
-  if (!canInspect.value) return false
+  if (!isInspectMode.value || !canInspect.value) return false
   if (
     row.reviewStatus === QualityReviewStatus.APPROVED ||
     row.reviewStatus === QualityReviewStatus.PENDING
@@ -371,6 +374,8 @@ function rowCanEdit(row: WorkRow) {
     return false
   return (
     selectedInbound.value?.orderStatus === InboundOrderStatusEnum.PENDING.value ||
+    // 采购 IQC 的入库单先经采购审批后才进入检验，APPROVED 仍属于可录入阶段。
+    selectedInbound.value?.orderStatus === InboundOrderStatusEnum.APPROVED.value ||
     (selectedInbound.value?.orderStatus === InboundOrderStatusEnum.COMPLETED.value &&
       row.reviewStatus === QualityReviewStatus.DRAFT)
   )
@@ -762,6 +767,10 @@ async function handleFlowSuccess() {
 }
 async function submitInspection() {
   if (!selectedInbound.value) return
+  if (!isInspectMode.value) {
+    ElMessage.warning('当前为检验详情模式，不能提交检验')
+    return
+  }
   // dev-20260924-017：校验从"发现一处就 return"改为"收集全部问题 + 行级红标 + 一次性提示"
   const problems: string[] = []
   const badRowIds = new Set<number>()
@@ -849,7 +858,9 @@ onMounted(async () => {
   await loadById(String(id))
   if (route.query.action === 'inspect' || route.query.action === 'reinspect') {
     const reinspection = route.query.action === 'reinspect'
-    const target = workRows.value.find(row => rowCanEdit(row) && row.isReinspection === reinspection)
+    const target = workRows.value.find(
+      (row) => rowCanEdit(row) && row.isReinspection === reinspection
+    )
     if (target) openMaterialChecks(target)
     else ElMessage.info('该项待办已变化，请查看当前材料状态')
   }

@@ -1173,7 +1173,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // 采购收货单创建即处于 PENDING；inspection_result 使用明确枚举，PENDING=待检验。
         Integer status = order.getOrderStatus();
         boolean pendingPurchaseInspection = isPurchaseInbound(order)
-                && InventoryOrderStatusEnum.PENDING.getValue().equals(status);
+                && (InventoryOrderStatusEnum.PENDING.getValue().equals(status)
+                || InventoryOrderStatusEnum.APPROVED.getValue().equals(status));
         // 已完成入库单发生供应商返工后，需要允许提交新生成的 IQC 复检单；
         // 仅当明细当前指向一张待检草稿时放行，避免普通已完成入库单被重复提交。
         boolean pendingReinspection = isPurchaseInbound(order)
@@ -1202,7 +1203,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // 判定：采购来源 + 全部明细都已生成检验批且都处于待审核（PENDING）→ 已在待复核，直接拒绝。
         // 不拦的场景：明细还存在 REJECTED（被驳回待重录）/DRAFT（复检草稿）时 allowed=false，可正常重提。
         if (isPurchaseInbound(order)
-                && InventoryOrderStatusEnum.PENDING.getValue().equals(status)
+                && (InventoryOrderStatusEnum.PENDING.getValue().equals(status)
+                || InventoryOrderStatusEnum.APPROVED.getValue().equals(status))
                 && allItemsAwaitingReview(inboundId)) {
             throw new BusinessException("该入库单已提交来料检验、正在等待品质主管审核，请勿重复提交；如需修改请让品质主管先驳回对应明细");
         }

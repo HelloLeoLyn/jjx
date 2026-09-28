@@ -268,7 +268,7 @@ function handlePageChange() {
 }
 function openDetail(row?: IqcPendingVO) {
   if (!row) return
-  router.push(`/inventory/iqc-detail/${row.inboundId}`)
+  router.push({ path: `/inventory/iqc-detail/${row.inboundId}`, query: { action: 'view' } })
 }
 onMounted(() => {
   const inboundNo = typeof route.query.inboundNo === 'string' ? route.query.inboundNo : ''

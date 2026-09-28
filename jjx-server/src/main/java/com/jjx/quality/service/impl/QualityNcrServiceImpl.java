@@ -774,7 +774,11 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ncr.setRemark(appendRemark(ncr.getRemark(), "【报废审批通过】"
                 + qty.stripTrailingZeros().toPlainString() + " 件（审批人：" + (approver == null ? "-" : approver) + "）"));
         ncrMapper.updateById(ncr);
-        qualityLotService.addDisposedQuantity(ncr.getLotId(), qty);
+        // IQC 处置在登记时已经由库存域同步写入检验批已处置量；
+        // 审批这里只确认质量动作，不能再次累加，否则报废审批会把同一批处置量计两次。
+        if (!"IQC".equalsIgnoreCase(ncr.getLotType())) {
+            qualityLotService.addDisposedQuantity(ncr.getLotId(), qty);
+        }
         int attached = qualityNcrPieceService.attachPieces(ncr.getNcrId(), actionId, "SCRAP", qty);
         // dev-20260924-006 + dev-20260924-028：审批通过即出成品报废单（凭据；库存不动；来料不套此口径）
         if (scrapGovernanceApplies(ncr)) {
