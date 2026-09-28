@@ -563,10 +563,24 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         } else if ("RELEASE".equals(actionCode)) {
             // accepted_quantity 是质量判定的合格量，不是处置申请量；确认入库前不得提前增加。
         }
+        // dev-20260928-025：处置路径只登记处置事实，禁止借处置动作改变允收入库量。
+        // accepted_quantity 的唯一业务来源是 IQC 判定/确认入库链路；这里仅允许更新 disposed_quantity。
+        assertIqcBatchQuantityInvariant(batch);
         BigDecimal rejected = nvl(batch.getRejectedQuantity());
         batch.setStatus(nvl(batch.getDisposedQuantity()).compareTo(rejected) >= 0
                 ? "DISPOSED" : "PARTIALLY_DISPOSED");
         iqcBatchMapper.updateById(batch);
+    }
+
+    /** 防止处置路径再次制造 accepted_quantity > 收货量的第二本账。 */
+    private void assertIqcBatchQuantityInvariant(InventoryIqcBatch batch) {
+        BigDecimal quantity = nvl(batch.getQuantity());
+        BigDecimal accepted = nvl(batch.getAcceptedQuantity());
+        if (accepted.compareTo(quantity) > 0) {
+            throw new BusinessException("IQC 批次允收量不能超过收货量：批次 " + batch.getBatchNo()
+                    + "，收货 " + quantity.stripTrailingZeros().toPlainString()
+                    + "，允收 " + accepted.stripTrailingZeros().toPlainString());
+        }
     }
 
     /** 单号是否已被占用（dev-20260923-032 抽成方法，供号段防重循环用）。 */
