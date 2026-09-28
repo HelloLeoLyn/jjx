@@ -13,6 +13,7 @@
           >❓ 本页处理来料不合格处置（让步接收 / 退货 / 返工 / 报废）</span
         >
       </el-tooltip>
+      <el-button link type="primary" @click="router.push('/inventory/iqc')">返回来料检验</el-button>
       <el-button link type="primary" @click="router.push('/quality/ncr')"
         >查看产品不良台账</el-button
       >

@@ -1,5 +1,7 @@
 <template>
   <div class="iqc-page">
+    <el-tabs v-model="activeTab" class="iqc-workbench-tabs" @tab-change="handleTabChange">
+      <el-tab-pane label="来料检验" name="inspection">
     <el-card>
       <template #header
         ><div class="header">
@@ -86,6 +88,11 @@
         />
       </div>
     </el-card>
+      </el-tab-pane>
+      <el-tab-pane label="不合格处置" name="disposition">
+        <IqcQuarantinePage />
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -99,10 +106,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
 import { InboundOrderStatusEnum } from '@/enums/inventory/InboundEnum'
+import IqcQuarantinePage from '@/views/inventory/iqc-quarantine/index.vue'
 
 type FlowKey = 'ALL' | 'UNINSPECTED' | 'REVIEW' | 'APPROVED' | 'COMPLETED'
 const router = useRouter()
 const route = useRoute()
+const activeTab = ref<'inspection' | 'disposition'>('inspection')
 const flowOptions: Array<{
   key: FlowKey
   label: string
@@ -158,9 +167,17 @@ function openDetail(row?: IqcPendingVO) {
   if (!row) return
   router.push(`/inventory/iqc-detail/${row.inboundId}`)
 }
+function handleTabChange(name: string | number) {
+  if (name === 'disposition') {
+    router.replace({ path: '/inventory/iqc', query: { tab: 'disposition' } })
+  } else {
+    router.replace({ path: '/inventory/iqc', query: {} })
+  }
+}
 onMounted(() => {
   const inboundNo = typeof route.query.inboundNo === 'string' ? route.query.inboundNo : ''
   if (inboundNo) listQuery.inboundNo = inboundNo
+  activeTab.value = route.query.tab === 'disposition' ? 'disposition' : 'inspection'
   loadList()
 })
 </script>
@@ -168,6 +185,9 @@ onMounted(() => {
 <style scoped>
 .iqc-page {
   padding: 20px;
+}
+.iqc-workbench-tabs :deep(.el-tabs__content) {
+  overflow: visible;
 }
 /* dev-20260924-017：校验未通过的行 → 红底标记，便于提交时定位 */
 :deep(.iqc-problem-row) > td {
