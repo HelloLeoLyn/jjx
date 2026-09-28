@@ -180,9 +180,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             wrapper.eq(InventoryInboundOrder::getOrderStatus, query.getOrderStatus());
         }
 
-        if (query.getApproveStatus() != null && !query.getApproveStatus().isEmpty()) {
-            wrapper.eq(InventoryInboundOrder::getApproveStatus, query.getApproveStatus());
-        }
+        // approve_status 仅保留兼容读取；采购入库不走单据级审批，流程状态唯一以 order_status 为准。
 
         // 入库日期范围查询
         if (query.getInboundDateStart() != null) {
