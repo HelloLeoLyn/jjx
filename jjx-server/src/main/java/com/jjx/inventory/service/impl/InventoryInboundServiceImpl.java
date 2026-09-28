@@ -1128,7 +1128,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 }
                 boolean hasFailCheckItem = submitted.getInspectionItems() != null
                         && submitted.getInspectionItems().stream()
-                                .anyMatch(chk -> "FAIL".equals(chk.getResult()));
+                                // dev-20260928-004：检验项结论规范值为小写 fail（QualityInspectionResultEnum.FAIL.getCode()），
+                                // 原用大写且大小写敏感比较 → 用户录了不合格项仍被误判「未录入」（阻塞 IQC 提交）。
+                                .anyMatch(chk -> "FAIL".equalsIgnoreCase(chk.getResult()));
                 if ("FAIL".equals(itemResult) && !hasFailCheckItem
                         && !ReasonSanitizer.isValidSupplement(sanitizedRejectReason, "")) {
                     throw new BusinessException("物料" + item.getMaterialCode()
