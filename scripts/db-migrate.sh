@@ -3,15 +3,12 @@
 # JJX 迁移唯一执行通道
 #
 #   bash scripts/db-migrate.sh --status                                 查看已应用迁移 / 待执行清单
-#   bash scripts/db-migrate.sh <NN_desc.sql> --yes [--task dev-...] [--tag xxx]
+#   bash scripts/db-migrate.sh <NN_desc.sql> --yes [--task dev-...] [--tag xxx] [--backup <path>]
 #   bash scripts/db-migrate.sh --record <NN> --yes                      接管已有库，登记某号已应用
 #   bash scripts/db-migrate.sh --help
 #
-# 备份分级（CONVENTIONS §2，2026-09-22 改口径）：高风险迁移 → 全库快照；低风险 → 只备本次涉及的表；
-#   涉及表都还不存在时退化为「全库结构快照」；任何情况都不许零备份。
-#   迁移文件头可写 `-- risk: high|low` 显式覆盖自动判定（降级会打警告）。
-#   备份默认落仓库内 jjx-docs/sql/backups/（**默认排除人事档案表 hr_employee**），随任务提交推送；
-#   索引同目录 backup-index.tsv（2026-09-23 用户恢复入库口径）。
+# 迁移前必须有手工备份（`--backup` 指定或放今天的备份在 jjx-docs/sql/backups/）；
+#   脚本不代做备份、不写索引。
 # 危险等级：🔴 改数据库（执行迁移：备份→执行→记版本；备份失败即中止）／🟡 只写版本记录（--record）／🟢 只读（--status）
 # 前置：迁移文件在 jjx-docs/sql/migrations/；JJX_BACKUP_DIR 可写；动库必须带真实任务码
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
@@ -22,13 +19,13 @@
 #
 # 设计原则（CONVENTIONS §2/§3）：把"改库先备份"从"要求 agent 自觉"变成
 # "不备份这条路根本走不通"——本脚本是执行迁移的唯一入口，内部固定顺序：
-#   前置检查 → 按风险分级备份(记 md5/表数) → 执行 → 记录已应用版本 → 清理过期备份 → 输出摘要
+#   前置检查 → 校验手工备份(记 md5/表数) → 执行 → 记录已应用版本 → 输出摘要
 # 任何一步失败即中止，且**失败时不会执行/不会记录版本**。
 #
 # 环境覆盖（默认值即本机开发库，见 CONVENTIONS §2）：
 #   DB_HOST DB_PORT DB_USER DB_PASS DB_NAME
-#   JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/；2026-09-23 用户改口径：备份排除 hr_employee 并随任务提交）
-#   JJX_BACKUP_KEEP_DAYS（默认 14 天）
+#   JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）
+#   JJX_MIGRATE_BACKUP（可替代 --backup，指定手工备份文件）
 #   JJX_MIGRATIONS_DIR（默认 jjx-docs/sql/migrations；仅用于自测）
 # ============================================================================
 set -uo pipefail
@@ -41,8 +38,6 @@ DB_PASS="${DB_PASS:-123456}"
 DB_NAME="${DB_NAME:-jjx_erp_db}"
 BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 MIG_DIR="${JJX_MIGRATIONS_DIR:-$REPO_ROOT/jjx-docs/sql/migrations}"
-INDEX_FILE="${JJX_BACKUP_INDEX:-$REPO_ROOT/jjx-docs/sql/backups/backup-index.tsv}"
-KEEP_DAYS="${JJX_BACKUP_KEEP_DAYS:-14}"
 VERSION_KEY="ops.schema.version"
 APPLIED_KEY="ops.schema.applied"
 
@@ -56,7 +51,7 @@ die()  { printf '%s✘ %s%s\n' "$c_red" "$*" "$c_off" >&2; exit 1; }
 ok()   { printf '%s✓%s %s\n' "$c_grn" "$c_off" "$*"; }
 warn() { printf '%s⚠%s %s\n' "$c_yel" "$c_off" "$*"; }
 
-# ── 风险分级 + 备份粒度 + 索引（CONVENTIONS §2，2026-09-22 改口径）─────────────
+# ── 风险分级（仅用于迁移计划展示）───────────────────────────────────────────
 # 高风险 → 全库快照；低风险 → 只备份本次涉及的库表；涉及表都不存在 → 全库结构快照兜底。
 LOW_RISK_TABLES="sys_config sys_dict sys_dict_type sys_dict_item"
 RISK=""; RISK_SRC=""; RISK_TABLES=""
@@ -93,39 +88,6 @@ classify_risk() {  # $1=迁移文件 → RISK / RISK_SRC / RISK_TABLES
 }
 
 table_exists() { [ -n "$(q "SELECT 1 FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_name='$1' LIMIT 1")" ]; }
-
-index_append() {  # $1=kind $2=file $3=md5 $4=bytes $5=tables
-  # 2026-09-22：索引写失败不再静默丢弃（`|| true` 改为告警；索引是辅助记录，不值得中止迁移）
-  mkdir -p "$(dirname "$INDEX_FILE")" 2>/dev/null || { warn "备份索引目录不可写：$(dirname "$INDEX_FILE")"; return 0; }
-  [ -f "$INDEX_FILE" ] || printf 'time\tkind\tfile\tmd5\tbytes\ttables\tagent\ttask\n' >> "$INDEX_FILE"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$(basename "$2")" "$3" "$4" "$5" "${AI_AGENT:-agent}" "${TASK:-无}" >> "$INDEX_FILE" \
-    || warn "备份索引写入失败：$INDEX_FILE（请手工补一行：$1 $(basename "$2")）"
-}
-
-prune_backups() {  # 全库快照每日只留最新一份；三类快照超 KEEP_DAYS 天删除（只动本脚本产物）
-  [ "$PRUNE" -eq 1 ] || { say "  （--no-prune：跳过清理）"; return; }
-  local cur d b f n=0 seen=" "
-  cur="$(basename "${BK_FILE:-}")"
-  case "$cur" in
-    jjx_erp_db_backup_*)
-      d="$(printf '%s' "$cur" | sed -E 's/^jjx_erp_db_backup_([0-9]{8})-.*/\1/')"
-      seen=" $d "   # 本次产物当天的席位先占住，免得同日旧快照反而被留下
-      ;;
-  esac
-  while IFS= read -r f; do
-    [ -z "$f" ] && continue
-    b="$(basename "$f")"; [ "$b" = "$cur" ] && continue
-    d="$(printf '%s' "$b" | sed -E 's/^jjx_erp_db_backup_([0-9]{8})-.*/\1/')"
-    case "$seen" in *" $d "*) rm -f "$f" && { say "    同日旧快照已删: $b"; n=$((n+1)); } ;; *) seen="$seen$d " ;; esac
-  done < <(ls -1 "$BACKUP_DIR"/jjx_erp_db_backup_*.sql 2>/dev/null | sort -r)
-  while IFS= read -r f; do
-    [ -z "$f" ] && continue
-    [ "$(basename "$f")" = "$cur" ] && continue
-    rm -f "$f" && { say "    超期(${KEEP_DAYS}天)备份已删: $(basename "$f")"; n=$((n+1)); }
-  done < <(find "$BACKUP_DIR" -maxdepth 1 -type f \( -name 'jjx_erp_db_backup_*.sql' -o -name 'jjx_table_backup_*.sql' -o -name 'jjx_schema_snapshot_*.sql' \) -mtime +"$KEEP_DAYS" 2>/dev/null | sort)
-  [ "$n" -eq 0 ] && say "    无需清理"
-}
 
 # ── --status ───────────────────────────────────────────────────────────────
 max_migration() {
@@ -236,6 +198,7 @@ fi
 MIG_FILE=""
 TASK=""
 TAG=""
+BACKUP_ARG="${JJX_MIGRATE_BACKUP:-}"
 CONFIRMED=0
 RECORD=""
 while [ $# -gt 0 ]; do
@@ -244,8 +207,7 @@ while [ $# -gt 0 ]; do
     --record) RECORD="${2:-}"; shift ;;
     --task) TASK="${2:-}"; shift ;;
     --tag)  TAG="${2:-}"; shift ;;
-    --keep-days) KEEP_DAYS="${2:-}"; shift ;;
-    --no-prune)  PRUNE=0 ;;
+    --backup) BACKUP_ARG="${2:-}"; shift ;;
     -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) die "未知参数: $1" ;;
     *)  [ -z "$MIG_FILE" ] || die "只接受一个迁移文件参数" ; MIG_FILE="$1" ;;
@@ -257,19 +219,8 @@ done
 if [ -n "$RECORD" ]; then
   case "$RECORD" in ''|*[!0-9]*) die "--record 需要数字序号，如 --record 78" ;; esac
   "${MYSQL[@]}" -e "SELECT 1" >/dev/null 2>&1 || die "连不上数据库 $DB_NAME@$DB_HOST:$DB_PORT"
-  mkdir -p "$BACKUP_DIR" || die "无法创建备份目录 $BACKUP_DIR"
-  TS="$(date +%Y%m%d-%H%M)"
-  GUARD="$BACKUP_DIR/sys_config_record-version_${TS}.sql"
-  { printf -- "-- 备份人: %s\n-- 原因: 登记 %s（%s）前的 sys_config guard 备份\n-- 任务码: %s\n" \
-      "${AI_AGENT:-agent}" "$VERSION_KEY" "$RECORD" "${TASK:-无}"
-    mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 \
-      --single-transaction --set-gtid-purged=OFF --no-tablespaces "$DB_NAME" sys_config 2>/dev/null; } > "$GUARD"
-  G_MD5=$(md5sum "$GUARD" | cut -d' ' -f1); G_ROWS=$(grep -c '^INSERT INTO' "$GUARD" || true)
-  [ -s "$GUARD" ] || die "guard 备份为空，已中止"
   old="$(recorded_version)"
   say "── 登记已应用版本 ──"
-  say "  guard 备份: $GUARD（$(stat -c%s "$GUARD")B / INSERT ${G_ROWS} 段 / md5 ${G_MD5}）"
-  index_append "guard" "$GUARD" "$G_MD5" "$(stat -c%s "$GUARD")" "-"
   say "  已应用集合: $(applied_set)（追加 $RECORD）"
   [ "$CONFIRMED" -eq 1 ] || { say "  （未加 --yes：未写入）"; exit 0; }
   newset=$(record_applied "$RECORD") || die "登记失败（原因见上方；库中集合未改动）"
@@ -328,65 +279,23 @@ if [ "$CONFIRMED" -ne 1 ]; then
   exit 0
 fi
 
-# ── 1. 备份（按风险分级；失败则绝不执行迁移）───────────────────────────────
-mkdir -p "$BACKUP_DIR" || die "无法创建备份目录 $BACKUP_DIR"
-TS="$(date +%Y%m%d-%H%M)"
-TAG="${TAG:-before-${NN}}"
-BK_KIND=""; BK_FILE=""; BK_SIZE=0; BK_TABLES=0; BK_MD5=""; EXIST_T=""; MISS_T=""
+# ── 1. 校验手工备份（失败则绝不执行迁移）────────────────────────────────────
+BK_KIND="full"; BK_FILE=""; BK_SIZE=0; BK_TABLES=0; BK_MD5=""
 say ""
-say "── 1/4 备份（风险=$RISK）──"
-
-backup_dump() {  # $1=输出文件 $2=描述 $3..=mysqldump 参数（末尾是库名或“库名 表...”）
-  local out="$1" desc="$2" raw; shift 2
-  raw="$out.raw"
-  if ! mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 \
-        --single-transaction --set-gtid-purged=OFF --no-tablespaces "$@" > "$raw" 2>"$out.err"; then
-    rm -f "$raw"; sed 's/^/    /' "$out.err" >&2; rm -f "$out.err"
-    return 1
-  fi
-  rm -f "$out.err"
-  { printf -- '-- 备份人: %s\n-- 原因: 执行迁移 %s 前的%s备份\n-- 风险: %s（%s）\n-- 涉表: %s\n-- 任务码: %s\n' \
-      "${AI_AGENT:-agent}" "$BASE" "$desc" "$RISK" "$RISK_SRC" "${RISK_TABLES:-无}" "${TASK:-无}"; cat "$raw"; } > "$out"
-  rm -f "$raw"
-}
-
-if [ "$RISK" = high ]; then
-  BK_KIND="full"; BK_FILE="$BACKUP_DIR/jjx_erp_db_backup_${TS}_${TAG}.sql"
-  # 2026-09-23 用户口径：全库快照默认排除人事档案表（hr_employee：身份证密文/住址/电话），其余都入库
-  backup_dump "$BK_FILE" "全库" "--ignore-table=${DB_NAME}.hr_employee" "$DB_NAME" || die "全库备份失败——已中止，未执行任何迁移"
-  BK_TABLES=$(grep -c '^CREATE TABLE' "$BK_FILE" 2>/dev/null || echo 0)
-  BK_SIZE=$(stat -c%s "$BK_FILE" 2>/dev/null || echo 0)
-  if [ "$BK_SIZE" -lt 1024 ] || [ "$BK_TABLES" -lt 1 ]; then
-    die "全库备份产物异常（${BK_SIZE}B / ${BK_TABLES} 张表）——已中止，未执行迁移"
-  fi
+say "── 1/4 校验手工备份 ──"
+if [ -n "$BACKUP_ARG" ]; then
+  [ -f "$BACKUP_ARG" ] || die "指定的备份文件不存在: $BACKUP_ARG"
+  BK_FILE="$BACKUP_ARG"
 else
-  for t in $RISK_TABLES; do
-    if table_exists "$t"; then EXIST_T="$EXIST_T $t"; else MISS_T="$MISS_T $t"; fi
-  done
-  if [ -n "${EXIST_T# }" ]; then
-    BK_KIND="table"; BK_FILE="$BACKUP_DIR/jjx_table_backup_${TS}_${TAG}.sql"
-    # shellcheck disable=SC2086
-    backup_dump "$BK_FILE" "表级" "$DB_NAME" $EXIST_T || die "表级备份失败——已中止，未执行任何迁移"
-    BK_TABLES=$(grep -c '^CREATE TABLE' "$BK_FILE" 2>/dev/null || echo 0)
-    BK_SIZE=$(stat -c%s "$BK_FILE" 2>/dev/null || echo 0)
-    [ "$BK_TABLES" -ge 1 ] || die "表级备份产物异常（无 CREATE TABLE）——已中止，未执行迁移"
-  else
-    BK_KIND="schema"; BK_FILE="$BACKUP_DIR/jjx_schema_snapshot_${TS}_${TAG}.sql"
-    backup_dump "$BK_FILE" "全库结构" --no-data "$DB_NAME" || die "结构快照失败——已中止，未执行任何迁移"
-    BK_TABLES=$(grep -c '^CREATE TABLE' "$BK_FILE" 2>/dev/null || echo 0)
-    BK_SIZE=$(stat -c%s "$BK_FILE" 2>/dev/null || echo 0)
-    [ "$BK_TABLES" -ge 1 ] || die "结构快照异常（无 CREATE TABLE）——已中止，未执行迁移"
-  fi
+  BK_FILE="$(ls -1t "$BACKUP_DIR"/jjx_erp_db_backup_"$(date +%Y%m%d)"-*.sql 2>/dev/null | head -1)"
 fi
+[ -n "$BK_FILE" ] || die "未找到今天的备份。请先手工备份（只留最新一份）：mysqldump -h127.0.0.1 -P3306 -uroot --single-transaction --set-gtid-purged=OFF --no-tablespaces --ignore-table=jjx_erp_db.hr_employee jjx_erp_db > jjx-docs/sql/backups/jjx_erp_db_backup_$(date +%Y%m%d-%H%M)_before-<NN>.sql"
+BK_TABLES=$(grep -c '^CREATE TABLE' "$BK_FILE" 2>/dev/null || true)
+BK_SIZE=$(stat -c%s "$BK_FILE" 2>/dev/null || echo 0)
+[ "$BK_SIZE" -gt 1024 ] && [ "$BK_TABLES" -ge 1 ] || die "手工备份文件异常（${BK_SIZE}B / ${BK_TABLES} 张表）——已中止，未执行迁移"
 BK_MD5=$(md5sum "$BK_FILE" | cut -d' ' -f1)
-case "$BK_KIND" in
-  full)   ok "全库快照 $BK_FILE";;
-  table)  ok "表级备份（$(printf '%s' "$EXIST_T" | wc -w) 个表：${EXIST_T# }）$BK_FILE"
-          [ -n "${MISS_T# }" ] && say "    （新建、尚不存在无需备份: ${MISS_T# }）";;
-  schema) ok "全库结构快照（本次涉表都还不存在）$BK_FILE";;
-esac
+ok "手工全库备份 $BK_FILE"
 say "    ${BK_SIZE} 字节 / ${BK_TABLES} 张表 / md5 ${BK_MD5}"
-index_append "$BK_KIND" "$BK_FILE" "$BK_MD5" "$BK_SIZE" "$BK_TABLES"
 
 # ── 2. 执行迁移 ────────────────────────────────────────────────────────────
 say ""
@@ -420,17 +329,13 @@ else
 fi
 
 say ""
-say "── 4/4 清理过期备份 ──"
-prune_backups
-
 say ""
 say "════ 完成 ════"
 say "  迁移 : $BASE"
 say "  备份 : ${BK_KIND} → $BK_FILE  (md5 $BK_MD5)"
-say "  索引 : ${INDEX_FILE#$REPO_ROOT/}"
 say "  已应用: $APPLIED_KEY = ${newset:-$NN}"
 say ""
 say "  收尾提醒："
-say "   - 备份默认落仓库内 ${BACKUP_DIR#$REPO_ROOT/}（2026-09-23 用户改口径，全库快照排除 hr_employee）"
+say "   - 迁移前必须有手工备份（--backup 指定或放今天的备份在 ${BACKUP_DIR#$REPO_ROOT/}）"
 say "   - 在 sys_task 登记执行记录（时间/执行人/备份 md5）"
 say "   - 业务侧验证后再通知用户验收"
