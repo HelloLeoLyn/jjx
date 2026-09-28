@@ -3,15 +3,17 @@
 # JJX 清理测试数据唯一入口（jjx-docs/sql/00_clean_test_data.sql）
 #
 #   bash scripts/db-clean-test-data.sh                # 只读体检（默认，不写库）
+#   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality        # 只体检三域
 #   bash scripts/db-clean-test-data.sh --execute      # 真执行：须在终端手工输入库名确认
+#   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality --execute  # 真清理三域（仍须终端手输库名）
 #   MYSQL_BIN_DIR=/path/to/mysql/bin                  # 可选：指定 MySQL 客户端目录
 #
 # 固定顺序（不可跳过）：只读体检 → 全库备份 → 人工确认 → 才执行。
 # 人工确认 = 手工输入库名（jjx_erp_db）。非终端（agent/管道）一律拒绝执行——因为
 # 00_clean_test_data.sql 是整表 TRUNCATE，且它自己会清空 sys_oper_log，库里留不下痕迹。
 # 规范出处：jjx-docs/standards/CONVENTIONS.md §2（先备份再动库）/ §5。
-# 危险等级：🟢 无参数=只读体检（不写库）／🔴 --execute 真清理（固定顺序：体检 → 全库备份 → 人工确认 → 执行）
-# 前置：--execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手输库名 jjx_erp_db；JJX_BACKUP_DIR 可写
+# 危险等级：🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（固定顺序：体检 → 全库备份 → 人工确认 → 执行）
+# 前置：--execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手输库名 jjx_erp_db；JJX_BACKUP_DIR 可写；--domains 仅可取 purchase/inventory/quality
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
 # ============================================================================
 set -euo pipefail
@@ -32,6 +34,9 @@ BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 SQL_FILE="$REPO_ROOT/jjx-docs/sql/00_clean_test_data.sql"
 MANIFEST="$REPO_ROOT/jjx-docs/sql/init/init-subset-tables.txt"
 EXECUTE=0
+DOMAIN_MODE=0
+DOMAINS=()
+DOMAIN_LABEL=""
 
 c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'; c_off=$'\033[0m'
 say()  { printf '%s\n' "$*"; }
@@ -42,11 +47,14 @@ warn() { printf '%s⚠%s %s\n' "$c_yel" "$c_off" "$*"; }
 usage() {
   cat <<'EOF'
 用途: 清理测试数据（jjx-docs/sql/00_clean_test_data.sql 的唯一入口；整表 TRUNCATE + 1 条 DELETE，表清单以脚本实际解析为准）
-危险等级: 🟢 无参数=只读体检（不写库）／🔴 --execute 真清理（体检 → 全库备份 → 人工确认 → 执行）
+危险等级: 🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（体检 → 全库备份 → 人工确认 → 执行）
 前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）可写
+域参数: --domains <逗号分隔>，可选 purchase / inventory / quality；可组合，域模式不清理 sys_task
 用法:
   bash scripts/db-clean-test-data.sh             只读体检：打印本次将删除多少行 + 顺带跑快照校验
+  bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality        只体检三域
   bash scripts/db-clean-test-data.sh --execute   真执行（须在终端手输库名确认）
+  bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality --execute  真清理三域（仍须终端手输库名）
 退出码: 0=体检通过或清理成功  1=拒绝执行/中止/失败
 手册: jjx-docs/guides/scripts-commands-20260914.md
 EOF
@@ -59,9 +67,38 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     --execute) EXECUTE=1; shift ;;
+    --domains)
+      [ $# -ge 2 ] || die "--domains 缺少参数（可选值: purchase, inventory, quality）"
+      DOMAIN_MODE=1
+      IFS=',' read -r -a DOMAINS <<< "$2"
+      [ "${#DOMAINS[@]}" -gt 0 ] || die "--domains 不能为空（可选值: purchase, inventory, quality）"
+      for domain in "${DOMAINS[@]}"; do
+        case "$domain" in
+          purchase|inventory|quality) ;;
+          *) die "非法域: $domain（可选值: purchase, inventory, quality）" ;;
+        esac
+      done
+      DOMAIN_LABEL="$(IFS=,; printf '%s' "${DOMAINS[*]}")"
+      shift 2
+      ;;
     *) die "未知参数: $1（用法见 $0 --help）" ;;
   esac
 done
+
+domain_selected() {
+  local table="$1" domain
+  for domain in "${DOMAINS[@]}"; do
+    case "$domain" in
+      # purchase_ 是采购单据及其明细，采购供应商是保留主数据，不在清理清单中。
+      purchase) [[ "$table" == purchase_* ]] && return 0 ;;
+      # inventory_iqc_ 是来料检验台账，业务归属质量域而非库存账务域。
+      quality) [[ "$table" == quality_* || "$table" == inventory_iqc_* ]] && return 0 ;;
+      # inventory_ 是库存业务及流水；inventory_iqc_ 已归质量，主数据表由白名单保留。
+      inventory) [[ "$table" == inventory_* && "$table" != inventory_iqc_* ]] && return 0 ;;
+    esac
+  done
+  return 1
+}
 
 # ── 0. 前置守卫 ────────────────────────────────────────────────────────────
 # 2026-09-22 用户改口径：备份落仓库外 ~/jjx-backups/（仓库内只留索引 backup-index.tsv），原「必须在仓库外/内」的守卫不再需要
@@ -125,11 +162,36 @@ while IFS= read -r line; do
 done < "$SQL_FILE"
 [ "${#TRUNCATE_TABLES[@]}" -gt 0 ] || die "未能从 $SQL_FILE 解析出 TRUNCATE 目标，请核对脚本格式"
 
+ALL_TRUNCATE_TABLES=("${TRUNCATE_TABLES[@]}")
+ALL_DELETE_TABLES=("${DELETE_TABLES[@]}")
+ALL_DELETE_WHERES=("${DELETE_WHERES[@]}")
+if [ "$DOMAIN_MODE" -eq 1 ]; then
+  FILTERED_TRUNCATE_TABLES=()
+  for t in "${ALL_TRUNCATE_TABLES[@]}"; do
+    domain_selected "$t" && FILTERED_TRUNCATE_TABLES+=("$t")
+  done
+  TRUNCATE_TABLES=("${FILTERED_TRUNCATE_TABLES[@]}")
+  DELETE_TABLES=()
+  DELETE_WHERES=()
+  for t in "${TRUNCATE_TABLES[@]}"; do
+    found=0
+    for original in "${ALL_TRUNCATE_TABLES[@]}"; do
+      [ "$t" = "$original" ] && found=1 && break
+    done
+    [ "$found" -eq 1 ] || die "域过滤产生了不在清理清单中的表: $t"
+  done
+fi
+
 # ── 2. 只读体检 ────────────────────────────────────────────────────────────
 SQL_BYTES="$(stat -c%s "$SQL_FILE")"
 say "══ 清理体检（只读，未写库） ══"
 say "目标库: $DB_NAME@$DB_HOST:$DB_PORT"
 say "脚本  : jjx-docs/sql/00_clean_test_data.sql（$SQL_BYTES 字节）"
+if [ "$DOMAIN_MODE" -eq 1 ]; then
+  say "模式  : 仅清理域 $DOMAIN_LABEL"
+else
+  say "模式  : 全量清理"
+fi
 say ""
 
 say "① TRUNCATE 组：${#TRUNCATE_TABLES[@]} 张表将被清空"
@@ -178,6 +240,10 @@ if [ "${#DELETE_TABLES[@]}" -gt 0 ]; then
     say "      条件: WHERE $w"
   done
   say "   合计将删除 $DEL_TOTAL 条"
+  say ""
+elif [ "$DOMAIN_MODE" -eq 1 ]; then
+  say "② DELETE 组：按域模式跳过 sys_task 清理"
+  say "   （按域模式跳过 sys_task 清理）"
   say ""
 fi
 
@@ -231,10 +297,17 @@ DB_TABLES="$("${MYSQL[@]}" "$DB_NAME" -N -B -e \
   "SELECT table_name FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'" 2>/dev/null | tr -d '\r' | sort)"
 DB_COUNT="$(printf '%s\n' "$DB_TABLES" | grep -c . || true)"
 UNCOVERED=()
+if [ "$DOMAIN_MODE" -eq 1 ]; then
+  say "④ 按域排除 $((${#ALL_TRUNCATE_TABLES[@]} - ${#TRUNCATE_TABLES[@]})) 张（不清理）"
+fi
 while IFS= read -r t; do
   [ -n "$t" ] || continue
   hit=0
-  for x in "${TRUNCATE_TABLES[@]}" "${DELETE_TABLES[@]:-}" "${RETAINED_TABLES[@]}"; do
+  COVERAGE_TABLES=("${TRUNCATE_TABLES[@]}" "${DELETE_TABLES[@]:-}" "${RETAINED_TABLES[@]}")
+  if [ "$DOMAIN_MODE" -eq 1 ]; then
+    COVERAGE_TABLES+=("${ALL_TRUNCATE_TABLES[@]}" "${ALL_DELETE_TABLES[@]}")
+  fi
+  for x in "${COVERAGE_TABLES[@]}"; do
     if [ "$t" = "$x" ]; then hit=1; break; fi
   done
   [ "$hit" -eq 0 ] && UNCOVERED+=("$t")
@@ -297,11 +370,25 @@ fi
 say ""
 say "── 执行清理 ──"
 START="$(date +%s)"
-if ! "${MYSQL[@]}" "$DB_NAME" < "$SQL_FILE" 2> "$BACKUP.cleanerr"; then
+if [ "$DOMAIN_MODE" -eq 0 ]; then
+  CLEAN_SQL_INPUT="$SQL_FILE"
+else
+  DOMAIN_TABLE_CSV="$(IFS=,; printf '%s' "${TRUNCATE_TABLES[*]}")"
+  CLEAN_SQL_INPUT="$(mktemp)"
+  awk -v allowed="$DOMAIN_TABLE_CSV" '
+    BEGIN { n=split(allowed, a, ","); for (i=1; i<=n; i++) keep[a[i]]=1 }
+    /^TRUNCATE[[:space:]]/ { t=$2; sub(/;$/, "", t); if (!keep[t]) next }
+    /^DELETE[[:space:]]+FROM[[:space:]]/ { next }
+    { print }
+  ' "$SQL_FILE" > "$CLEAN_SQL_INPUT"
+fi
+if ! "${MYSQL[@]}" "$DB_NAME" < "$CLEAN_SQL_INPUT" 2> "$BACKUP.cleanerr"; then
   sed 's/^/    /' "$BACKUP.cleanerr" >&2; rm -f "$BACKUP.cleanerr"
+  [ "$DOMAIN_MODE" -eq 1 ] && rm -f "$CLEAN_SQL_INPUT"
   die "清理执行失败。回滚参考: mysql -h$DB_HOST -P$DB_PORT -u$DB_USER $DB_NAME < $BACKUP
     （备份 md5 $BK_MD5）"
 fi
+[ "$DOMAIN_MODE" -eq 1 ] && rm -f "$CLEAN_SQL_INPUT"
 rm -f "$BACKUP.cleanerr"
 ok "清理执行完成（$(($(date +%s) - START))s）"
 

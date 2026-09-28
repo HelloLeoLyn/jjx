@@ -70,11 +70,14 @@
 ## 4. scripts/db-clean-test-data.sh —— 清理测试数据入口
 
 - 用途：`jjx-docs/sql/00_clean_test_data.sql`（整表 TRUNCATE + 1 条 DELETE，表清单以脚本实际解析为准）的**唯一**入口。
-- 危险等级：🟢 无参数=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 全库备份 → 人工确认 → 执行）。
+- 危险等级：🟢 无参数/`--domains`=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 全库备份 → 人工确认 → 执行）。
 - 前置：`--execute` 必须**在终端手工执行**（agent/管道一律拒绝）；确认方式=手工输入库名 `jjx_erp_db`；`JJX_BACKUP_DIR` 可写。
+- 域参数：`--domains <逗号分隔>`，可选 `purchase` / `inventory` / `quality`，可组合；域模式跳过 `sys_task` 清理。
 - 命令：
   - 体检：`bash scripts/db-clean-test-data.sh`
+  - 只体检三域：`bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality`
   - 真清：`bash scripts/db-clean-test-data.sh --execute`
+  - 真清三域：`bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality --execute`（仍须终端手输库名）
 - 输出怎么读：① TRUNCATE 组（有数据的表逐条列出行数 + 合计）② DELETE 组（将删/保留条数）③ 与初始化清单交叉（非 0 要警惕）④ **覆盖率校验**（库表是否都有归宿：清理清单 ∪ 保留白名单；有未登记的表即**阻断清理**，提示是加进清理段还是补进保留清单/`RETAINED_TABLES`）→ 顺带自动跑一次快照校验 → 执行后打印备份路径/md5，并在 `$JJX_BACKUP_DIR/clean-test-data-log.txt` 留痕（脚本会清空 `sys_oper_log`，库里留不下痕迹）。
 - 退出码：0=体检通过或清理成功，1=拒绝执行/中止/失败。
 
