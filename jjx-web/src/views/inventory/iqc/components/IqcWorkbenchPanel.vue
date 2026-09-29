@@ -48,13 +48,13 @@
         ><span v-else-if="isApproved"> · 检验已批准，待确认入库</span
         ><span v-else-if="isCompleted"> · 入库流程已完成</span>
       </div>
-      <div v-if="canJudge" class="batch-bar">
+      <!-- <div v-if="canJudge" class="batch-bar">
         <el-button type="primary" plain @click="openReview">复核窗口</el-button>
         <span class="batch-tip"
           >逐项审核/驳回、发起复检；若明细已全部审核、单据却仍停在待审批（历史并发复核留下的状态），
           在窗口内点「重算单据状态」收尾。</span
         >
-      </div>
+      </div> -->
       <div v-if="isInspectMode && canInspect" class="batch-bar">
         <el-button
           type="primary"
@@ -62,11 +62,9 @@
           @click="batchPassSelected"
           >整批合格（已选 {{ selectedEditableRows.length }} 行）</el-button
         >
-        <el-button :disabled="!selectedEditableRows.length" @click="copyFromPreviousRow"
-          >复制上一行</el-button
-        >
+
         <el-button :disabled="!selectedRows.length" @click="clearSelectedRows">清空选中</el-button>
-        <el-button type="primary" plain @click="openWholeInboundChecks">整单检验录入</el-button>
+        <!-- <el-button type="primary" plain @click="openWholeInboundChecks">整单检验录入</el-button> -->
         <el-button
           v-if="isInspectMode && hasEditableRows"
           type="primary"
@@ -79,12 +77,7 @@
           保存、可"保存并下一行"；实测记录可留空</span
         >
       </div>
-      <div class="material-toolbar">
-        <el-checkbox v-model="onlyPending" label="只看待处置" />
-        <span class="batch-tip"
-          >待处置 = 已审定的不良还有剩余可处置量；处置入口就在该行操作栏（结清构成看「处置历史」）</span
-        >
-      </div>
+
       <IqcMaterialTable
         :rows="displayRows"
         :can-edit="rowCanEdit"
@@ -131,11 +124,7 @@
       :rows="historyRows"
       :loading="historyLoading"
     />
-    <BatchLineageDrawer
-      v-model:visible="lineageVisible"
-      :batch-no="''"
-      :batches="batchRows"
-    />
+    <BatchLineageDrawer v-model:visible="lineageVisible" :batch-no="''" :batches="batchRows" />
     <IqcQuarantineDialog
       v-model:visible="dispositionVisible"
       :inbound-id="activeInboundId"
@@ -551,67 +540,67 @@ async function loadInboundDetail(row: IqcPendingVO) {
           }
         : undefined
     const loadedRows = (data?.items || []).map((item: any): WorkRow => {
-        // dev-20260922-009：新模型检验批在 lotId（inspectionId 已置空），优先取 lotId，回退旧字段
-        const lotRef = item.lotId ?? item.inspectionId
-        const quality = lotRef ? toLotView(lotById.get(Number(lotRef))) : undefined
-        const previousQuality = quality?.previousInspectionId
-          ? toLotView(lotById.get(Number(quality.previousInspectionId)))
-          : undefined
-        const isReinspection = Boolean(
-            quality?.previousInspectionId && quality?.result === QualityInspectionResult.PENDING
-          ),
-          reinspectionQuantity = isReinspection
-            ? Number(quality?.totalQty || previousQuality?.failQty || 0)
-            : 0,
-          baseAcceptedQuantity = Number(item.acceptedQuantity || 0),
-          fresh = !quality
-        return {
-          itemId: String(item.inboundItemId || item.itemId),
-          inspectionId: quality?.inspectionId,
-          lotId: lotRef,
-          materialCode: item.materialCode,
-          materialName: item.materialName,
-          batchNo: item.batchNo,
-          qualityLotNo: quality?.inspectionNo,
-          parentQualityLotNo: previousQuality?.inspectionNo,
-          remainingDispositionQuantity:
-            remainingByItemLot.get(`${item.inboundItemId || item.itemId}:${lotRef || ''}`) || 0,
-          quantity: Number(item.quantity || 0),
-          qualifiedQuantity: fresh
-            ? 0
-            : isReinspection
-              ? Number(quality?.passQty || 0)
-              : Number(item.qualifiedQuantity ?? item.quantity ?? 0),
-          rejectedQuantity: fresh ? 0 : isReinspection ? 0 : Number(item.rejectedQuantity || 0),
-          acceptedQuantity: fresh
-            ? 0
-            : isReinspection
-              ? reinspectionQuantity
-              : Number(item.acceptedQuantity ?? item.quantity ?? 0),
-          inspectionResult: fresh
-            ? ''
-            : isReinspection
-              ? quality?.result === QualityInspectionResult.PENDING
-                ? ''
-                : quality?.result === QualityInspectionResult.FAIL
-                  ? InboundInspectionResultEnum.FAIL.value
-                  : InboundInspectionResultEnum.PASS.value
-              : item.inspectionResult || InboundInspectionResultEnum.PASS.value,
-          disposition: isReinspection ? undefined : item.disposition,
-          rejectReason: isReinspection ? '' : sanitize(item.rejectReason),
-          reviewStatus: quality?.reviewStatus,
-          isReinspection,
-          reinspectionQuantity,
-          baseAcceptedQuantity,
-          locked:
-            quality?.reviewStatus === QualityReviewStatus.PENDING ||
-            quality?.reviewStatus === QualityReviewStatus.APPROVED,
-          inspectionItems: quality?.items?.length
-            ? quality.items.map(normalizeInspectionItem)
-            : defaultInspectionItems(),
-          trace: quality?.trace,
-        }
-      })
+      // dev-20260922-009：新模型检验批在 lotId（inspectionId 已置空），优先取 lotId，回退旧字段
+      const lotRef = item.lotId ?? item.inspectionId
+      const quality = lotRef ? toLotView(lotById.get(Number(lotRef))) : undefined
+      const previousQuality = quality?.previousInspectionId
+        ? toLotView(lotById.get(Number(quality.previousInspectionId)))
+        : undefined
+      const isReinspection = Boolean(
+          quality?.previousInspectionId && quality?.result === QualityInspectionResult.PENDING
+        ),
+        reinspectionQuantity = isReinspection
+          ? Number(quality?.totalQty || previousQuality?.failQty || 0)
+          : 0,
+        baseAcceptedQuantity = Number(item.acceptedQuantity || 0),
+        fresh = !quality
+      return {
+        itemId: String(item.inboundItemId || item.itemId),
+        inspectionId: quality?.inspectionId,
+        lotId: lotRef,
+        materialCode: item.materialCode,
+        materialName: item.materialName,
+        batchNo: item.batchNo,
+        qualityLotNo: quality?.inspectionNo,
+        parentQualityLotNo: previousQuality?.inspectionNo,
+        remainingDispositionQuantity:
+          remainingByItemLot.get(`${item.inboundItemId || item.itemId}:${lotRef || ''}`) || 0,
+        quantity: Number(item.quantity || 0),
+        qualifiedQuantity: fresh
+          ? 0
+          : isReinspection
+            ? Number(quality?.passQty || 0)
+            : Number(item.qualifiedQuantity ?? item.quantity ?? 0),
+        rejectedQuantity: fresh ? 0 : isReinspection ? 0 : Number(item.rejectedQuantity || 0),
+        acceptedQuantity: fresh
+          ? 0
+          : isReinspection
+            ? reinspectionQuantity
+            : Number(item.acceptedQuantity ?? item.quantity ?? 0),
+        inspectionResult: fresh
+          ? ''
+          : isReinspection
+            ? quality?.result === QualityInspectionResult.PENDING
+              ? ''
+              : quality?.result === QualityInspectionResult.FAIL
+                ? InboundInspectionResultEnum.FAIL.value
+                : InboundInspectionResultEnum.PASS.value
+            : item.inspectionResult || InboundInspectionResultEnum.PASS.value,
+        disposition: isReinspection ? undefined : item.disposition,
+        rejectReason: isReinspection ? '' : sanitize(item.rejectReason),
+        reviewStatus: quality?.reviewStatus,
+        isReinspection,
+        reinspectionQuantity,
+        baseAcceptedQuantity,
+        locked:
+          quality?.reviewStatus === QualityReviewStatus.PENDING ||
+          quality?.reviewStatus === QualityReviewStatus.APPROVED,
+        inspectionItems: quality?.items?.length
+          ? quality.items.map(normalizeInspectionItem)
+          : defaultInspectionItems(),
+        trace: quality?.trace,
+      }
+    })
     if (selectedInboundId.value === requestedId) {
       workRows.value = loadedRows
       inspectionRemark.value = data?.inspectionRemark || ''
@@ -940,7 +929,8 @@ async function loadCurrent() {
   const id = Number(props.inboundId)
   if (!id) return
   await loadById(String(id))
-  if (props.mode !== 'handle' || (props.action !== 'inspect' && props.action !== 'reinspect')) return
+  if (props.mode !== 'handle' || (props.action !== 'inspect' && props.action !== 'reinspect'))
+    return
   const reinspection = props.action === 'reinspect'
   const target = workRows.value.find(
     (row) => rowCanEdit(row) && row.isReinspection === reinspection
@@ -1069,4 +1059,3 @@ onBeforeUnmount(clearSelection)
   justify-content: flex-end;
 }
 </style>
-
