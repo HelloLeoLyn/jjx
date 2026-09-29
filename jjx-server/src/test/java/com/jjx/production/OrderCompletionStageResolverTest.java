@@ -22,11 +22,20 @@ class OrderCompletionStageResolverTest {
                                                          String qualified, String undisposed, String scrapped,
                                                          String planned) {
         return new OrderCompletionStageResolver.Input(status, inboundPending, total, done, hasLot, fqcPending,
-                bd(qualified), bd(undisposed), bd(scrapped), bd(planned));
+                bd(qualified), bd(undisposed), bd(scrapped), bd("0"), bd(planned));
     }
 
     private static BigDecimal bd(String v) {
         return v == null ? null : new BigDecimal(v);
+    }
+
+    /** dev-20260929-024：带「让步放行」入参的构造器（已有用例走默认 0，不逐个改）。 */
+    private static OrderCompletionStageResolver.Input inWithConcession(Integer status, int total, int done,
+                                                                      String qualified, String undisposed,
+                                                                      String scrapped, String concession,
+                                                                      String planned) {
+        return new OrderCompletionStageResolver.Input(status, false, total, done, true, 0,
+                bd(qualified), bd(undisposed), bd(scrapped), bd(concession), bd(planned));
     }
 
     private static OrderCompletionStageResolver.Result running(String qualified, String undisposed, String scrapped,
@@ -150,6 +159,31 @@ class OrderCompletionStageResolverTest {
                         .stage());
         assertEquals(OrderCompletionStageResolver.UNKNOWN,
                 OrderCompletionStageResolver.resolve(in(null, false, 0, 0, false, 0, "0", "0", "0", "200")).stage());
+    }
+
+    /** dev-20260929-024：让步放行件客户已接受 → 不再算缺口；报废仍算缺口。 */
+    @Test
+    void concessionCoversPartOfShortfall() {
+        // 实测 WO260929001：计划 50 / 良品 45 / 让步 3 / 报废 2 → 缺口只剩报废的 2
+        OrderCompletionStageResolver.Result r = OrderCompletionStageResolver.resolve(
+                inWithConcession(ProductionOrderStatusEnum.IN_PROGRESS.getValue(), 2, 2,
+                        "45", "0", "2", "3", "50"));
+
+        assertEquals(OrderCompletionStageResolver.PENDING_SUPPLEMENT, r.stage());
+        assertEquals(0, new BigDecimal("2").compareTo(r.shortfallQuantity()));
+        assertTrue(r.nextAction().contains("让步放行 3"), r.nextAction());
+        assertTrue(r.nextAction().contains("还缺 2"), r.nextAction());
+    }
+
+    /** 良品 + 让步 = 计划 → 无缺口，可完工。 */
+    @Test
+    void concessionFillingPlanMeansReadyToComplete() {
+        OrderCompletionStageResolver.Result r = OrderCompletionStageResolver.resolve(
+                inWithConcession(ProductionOrderStatusEnum.IN_PROGRESS.getValue(), 2, 2,
+                        "45", "0", "0", "5", "50"));
+
+        assertEquals(OrderCompletionStageResolver.READY_TO_COMPLETE, r.stage());
+        assertEquals(0, BigDecimal.ZERO.compareTo(r.shortfallQuantity()));
     }
 
     @Test

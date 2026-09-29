@@ -814,6 +814,9 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         java.util.Set<Long> allNcrIds = new java.util.HashSet<>();
         int pending = 0;
         int effective = 0;
+        // dev-20260929-024（查询收敛）：原实现「逐批查不良单 + 逐批查返工动作」= N + ≤N 条；
+        // 改为「一次 IN 取该单全部不良单 + 一次 IN 取全部动作」，内存分组，单次调用从 3+2N 降到约 4 条。
+        java.util.List<Long> effectiveLotIds = new java.util.ArrayList<>();
         for (QualityLot lot : lots) {
             if (superseded.contains(lot.getLotId())) {
                 continue; // 已有复检新版本 → 不计账
@@ -824,47 +827,70 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 pending++;
                 continue;
             }
+            effectiveLotIds.add(lot.getLotId());
             qualified = qualified.add(nz(lot.getPassQuantity()));
             disposedTotal = disposedTotal.add(nz(lot.getDisposedQuantity()));
-            BigDecimal left = nz(lot.getFailQuantity()).subtract(nz(lot.getDisposedQuantity()));
-            // 返工登记时数量已被预占，但只有报工完成且复检合格才算真正处置完成。
-            // 将未完成返工动作加回完工门禁，防止 PROCESSING 状态绕过工单完工检查。
-            List<com.jjx.quality.domain.entity.QualityNcr> lotNcrs = ncrMapper.selectList(
+        }
+
+        // 一次取该单全部（有效批的）不良单，按 lotId 分组
+        java.util.Map<Long, Long> lotIdByNcr = new java.util.HashMap<>();
+        if (!effectiveLotIds.isEmpty()) {
+            List<com.jjx.quality.domain.entity.QualityNcr> allNcrs = ncrMapper.selectList(
                     new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcr>()
-                            .eq(com.jjx.quality.domain.entity.QualityNcr::getLotId, lot.getLotId()));
-            if (!lotNcrs.isEmpty()) {
-                List<Long> ncrIds = lotNcrs.stream().map(com.jjx.quality.domain.entity.QualityNcr::getNcrId).toList();
-                allNcrIds.addAll(ncrIds);
-                BigDecimal processingRework = ncrActionMapper.selectList(
-                                new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcrAction>()
-                                        .in(com.jjx.quality.domain.entity.QualityNcrAction::getNcrId, ncrIds)
-                                        .eq(com.jjx.quality.domain.entity.QualityNcrAction::getActionType, "REWORK")
-                                        .ne(com.jjx.quality.domain.entity.QualityNcrAction::getStatus, "DONE"))
-                        .stream().map(com.jjx.quality.domain.entity.QualityNcrAction::getQuantity)
-                        .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-                left = left.add(processingRework);
+                            .in(com.jjx.quality.domain.entity.QualityNcr::getLotId, effectiveLotIds));
+            for (com.jjx.quality.domain.entity.QualityNcr ncr : allNcrs) {
+                if (ncr.getNcrId() == null) continue;
+                lotIdByNcr.put(ncr.getNcrId(), ncr.getLotId());
+                allNcrIds.add(ncr.getNcrId());
             }
+        }
+
+        // 一次取全部动作（返工在制 / 报废 DONE / 让步 DONE），内存按类型分组
+        java.util.Map<Long, BigDecimal> processingReworkByLot = new java.util.HashMap<>();
+        BigDecimal scrapped = BigDecimal.ZERO;
+        BigDecimal concession = BigDecimal.ZERO;
+        if (!allNcrIds.isEmpty()) {
+            List<com.jjx.quality.domain.entity.QualityNcrAction> actions = ncrActionMapper.selectList(
+                    new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcrAction>()
+                            .in(com.jjx.quality.domain.entity.QualityNcrAction::getNcrId, allNcrIds));
+            for (com.jjx.quality.domain.entity.QualityNcrAction action : actions) {
+                if (action.getQuantity() == null) continue;
+                String type = action.getActionType() == null ? "" : action.getActionType().toUpperCase();
+                String status = action.getStatus() == null ? "" : action.getStatus();
+                if ("REWORK".equals(type) && !"DONE".equals(status)) {
+                    // 返工登记时数量已被预占，但只有报工完成且复检合格才算真正处置完成；
+                    // 把在途返工加回完工门禁，防止 PROCESSING 绕过工单完工检查。
+                    Long lotId = lotIdByNcr.get(action.getNcrId());
+                    if (lotId != null) {
+                        processingReworkByLot.merge(lotId, action.getQuantity(), BigDecimal::add);
+                    }
+                } else if ("SCRAP".equals(type) && "DONE".equals(status)) {
+                    scrapped = scrapped.add(action.getQuantity());
+                } else if ("CONCESSION".equals(type) && "DONE".equals(status)) {
+                    // dev-20260929-024：让步放行合计（客户已接受 → 不算工单缺口，但要在对账栏/汇总里可见）
+                    concession = concession.add(action.getQuantity());
+                }
+            }
+        }
+
+        // 未处置不良 = Σ max(0, fail − disposed + 在途返工)
+        for (Long lotId : effectiveLotIds) {
+            QualityLot lot = lots.stream().filter(l -> lotId.equals(l.getLotId())).findFirst().orElse(null);
+            if (lot == null) continue;
+            BigDecimal left = nz(lot.getFailQuantity()).subtract(nz(lot.getDisposedQuantity()))
+                    .add(nz(processingReworkByLot.get(lotId)));
             if (left.signum() > 0) {
                 undisposed = undisposed.add(left);
             }
         }
-        // dev-20260923-028：已登记报废合计（一句话原因用）——按本单全部不良单一次性汇总，避免逐批查询
-        BigDecimal scrapped = BigDecimal.ZERO;
-        if (!allNcrIds.isEmpty()) {
-            scrapped = ncrActionMapper.selectList(
-                            new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityNcrAction>()
-                                    .in(com.jjx.quality.domain.entity.QualityNcrAction::getNcrId, allNcrIds)
-                                    .eq(com.jjx.quality.domain.entity.QualityNcrAction::getActionType, "SCRAP")
-                                    .eq(com.jjx.quality.domain.entity.QualityNcrAction::getStatus, "DONE"))
-                    .stream().map(com.jjx.quality.domain.entity.QualityNcrAction::getQuantity)
-                    .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-        }
+
         summary.setEffectiveLotCount(effective);
         summary.setPendingCount(pending);
         summary.setQualifiedTotal(qualified);
         summary.setUndisposedFailQuantity(undisposed);
         summary.setDisposedFailTotal(disposedTotal);
         summary.setScrappedTotal(scrapped);
+        summary.setConcessionTotal(concession);
         return summary;
     }
 

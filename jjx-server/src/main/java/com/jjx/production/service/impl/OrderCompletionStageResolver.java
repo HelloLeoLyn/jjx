@@ -41,17 +41,27 @@ public final class OrderCompletionStageResolver {
                         BigDecimal qualifiedTotal,
                         BigDecimal undisposedFailQuantity,
                         BigDecimal scrappedTotal,
+                        BigDecimal concessionTotal,
                         BigDecimal plannedQuantity) {
     }
 
-    /** 判定结果：阶段码 / 中文名 / 下一步一句话 / 缺口（计划 − 良品累计，下限 0） */
+    /** 判定结果：阶段码 / 中文名 / 下一步一句话 / 缺口（计划 − 良品 − 让步放行，下限 0） */
     public record Result(String stage, String label, String nextAction, BigDecimal shortfallQuantity) {
     }
 
-    /** 缺口 = max(0, 计划 − 良品累计) */
+    /**
+     * 缺口 = max(0, 计划 − 良品累计 − 让步放行量)。
+     *
+     * <p>dev-20260929-024（用户口径）：**让步接收件客户已接受，需求已被满足**，不再算缺口；
+     * **报废仍算缺口**（货没到客户手里，由补产填平，或走显式「带缺口完工」出口）。
+     */
     public static BigDecimal shortfall(BigDecimal planned, BigDecimal qualifiedTotal) {
+        return shortfall(planned, qualifiedTotal, null);
+    }
+
+    public static BigDecimal shortfall(BigDecimal planned, BigDecimal qualifiedTotal, BigDecimal concessionTotal) {
         BigDecimal p = nz(planned);
-        BigDecimal q = nz(qualifiedTotal);
+        BigDecimal q = nz(qualifiedTotal).add(nz(concessionTotal));
         BigDecimal gap = p.subtract(q);
         return gap.signum() > 0 ? gap : BigDecimal.ZERO;
     }
@@ -65,7 +75,9 @@ public final class OrderCompletionStageResolver {
         BigDecimal planned = nz(in.plannedQuantity());
         BigDecimal qualified = nz(in.qualifiedTotal());
         BigDecimal scrap = nz(in.scrappedTotal());
-        BigDecimal gap = shortfall(planned, qualified);
+        BigDecimal concession = nz(in.concessionTotal());
+        // 缺口 = 计划 − 良品 − 让步放行（让步件客户已接受，不再算缺口）
+        BigDecimal gap = shortfall(planned, qualified, concession);
 
         if (ProductionOrderStatusEnum.CANCELLED.getValue().equals(status)
                 || ProductionOrderStatusEnum.CLOSED.getValue().equals(status)) {
@@ -98,12 +110,18 @@ public final class OrderCompletionStageResolver {
             return new Result(PENDING_DISPOSITION, "待不良处置", "返工/报废处置未清（生产/质检）", gap);
         }
         if (gap.signum() > 0) {
-            String reason = scrap.signum() > 0
-                    ? "检验报废 " + plain(scrap) + " 件已处置，良品 " + plain(qualified) + "/计划 " + plain(planned)
-                            + "，还缺 " + plain(gap) + " 件 → 到末道工序「补报」补产"
-                    : "完工检验合格累计 " + plain(qualified) + " 未达计划 " + plain(planned)
-                            + "，还缺 " + plain(gap) + " 件 → 到末道工序「补报」补产";
-            return new Result(PENDING_SUPPLEMENT, "待补产", reason, gap);
+            StringBuilder reason = new StringBuilder();
+            if (scrap.signum() > 0) {
+                reason.append("检验报废 ").append(plain(scrap)).append(" 件已处置");
+            }
+            if (concession.signum() > 0) {
+                if (reason.length() > 0) reason.append("、");
+                reason.append("让步放行 ").append(plain(concession)).append(" 件（客户已接受）");
+            }
+            if (reason.length() > 0) reason.append("，");
+            reason.append("良品 ").append(plain(qualified)).append("/计划 ").append(plain(planned))
+                    .append("，还缺 ").append(plain(gap)).append(" 件 → 到末道工序「补报」补产");
+            return new Result(PENDING_SUPPLEMENT, "待补产", reason.toString(), gap);
         }
         return new Result(READY_TO_COMPLETE, "待完工确认", "点「完工工单」收口（一级负责人）", zero);
     }

@@ -33,4 +33,10 @@ public class FqcCompletionSummary {
 
     /** 有效批关联不良单里「已登记报废」合计 = Σ SCRAP DONE 数量（dev-20260923-028） */
     private BigDecimal scrappedTotal = BigDecimal.ZERO;
+
+    /**
+     * 有效批关联不良单里「让步接收已放行」合计 = Σ CONCESSION DONE 数量（dev-20260929-024）。
+     * 用途：工单缺口判定（缺口 = 计划 − 良品 − 让步放行；客户已接受的让步件不再算缺口）。
+     */
+    private BigDecimal concessionTotal = BigDecimal.ZERO;
 }

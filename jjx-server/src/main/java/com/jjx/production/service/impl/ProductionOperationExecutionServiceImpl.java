@@ -738,6 +738,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
             vo.setScrappedQuantity(fqc.getScrappedTotal());
         }
 
+        // dev-20260929-024：先算对账栏（对账栏已含"让步"一栏），下面的缺口判定直接复用它的让步量 —— 不新增查询
+        fillReconciliation(vo, order.getOrderId(), planned);
         OrderCompletionStageResolver.Result result = OrderCompletionStageResolver.resolve(
                 new OrderCompletionStageResolver.Input(
                         status, inboundPending, total, done,
@@ -746,9 +748,9 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                         fqc == null ? zero : fqc.getQualifiedTotal(),
                         fqc == null ? zero : fqc.getUndisposedFailQuantity(),
                         fqc == null ? zero : fqc.getScrappedTotal(),
+                        vo.getConcessionQuantity() == null ? zero : vo.getConcessionQuantity(),
                         planned));
         vo.setShortfallQuantity(result.shortfallQuantity());
-        fillReconciliation(vo, order.getOrderId(), planned);
         setStage(vo, result.stage(), result.label(), result.nextAction());
     }
 
