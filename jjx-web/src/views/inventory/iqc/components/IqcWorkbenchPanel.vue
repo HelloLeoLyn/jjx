@@ -79,7 +79,7 @@
       </div>
 
       <IqcMaterialTable
-        :rows="displayRows"
+        :rows="workRows"
         :can-edit="rowCanEdit"
         :row-class="rowClassName"
         :progress="checkProgress"
@@ -318,13 +318,6 @@ const hasPendingRows = computed(() =>
   workRows.value.some((row) => row.reviewStatus === QualityReviewStatus.PENDING)
 )
 const hasEditableRows = computed(() => workRows.value.some(rowCanEdit))
-/** 「只看待处置」筛选：判据与材料表/处置入口同源（iqcRowRules.iqcNeedsDisposition） */
-const onlyPending = ref(false)
-const displayRows = computed(() =>
-  onlyPending.value
-    ? workRows.value.filter((row) => iqcNeedsDisposition(row, isCompleted.value))
-    : workRows.value
-)
 const decidedCount = computed(
   () => workRows.value.filter((row) => Boolean(row.inspectionResult)).length
 )
@@ -927,12 +920,6 @@ onBeforeUnmount(clearSelection)
 /* dev-20260929-007：合并「待处理明细」后，待处置行用淡黄底 + 行内「待处置」标签保证可见性 */
 :deep(.iqc-pending-row) > td {
   background: var(--el-color-warning-light-9) !important;
-}
-.material-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
 }
 .header,
 .guide-content {
