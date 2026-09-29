@@ -31,6 +31,7 @@ import com.jjx.inventory.domain.InventoryInboundOrder;
 import com.jjx.inventory.domain.InventoryInboundItem;
 import com.jjx.inventory.mapper.InventoryInboundItemMapper;
 import com.jjx.inventory.mapper.InventoryInboundOrderMapper;
+import com.jjx.inventory.mapper.InventoryIqcDispositionOrderMapper;
 import com.jjx.production.domain.entity.ProductionOperationExecution;
 import com.jjx.production.domain.entity.ProductionOrder;
 import com.jjx.production.domain.entity.ProductionWorkReport;
@@ -79,6 +80,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     private final ProductionOperationExecutionMapper executionMapper;
     private final InventoryInboundItemMapper inboundItemMapper;
     private final InventoryInboundOrderMapper inboundOrderMapper;
+    private final InventoryIqcDispositionOrderMapper iqcDispositionOrderMapper;
     private final SalesDeliveryMapper salesDeliveryMapper;
     private final OrderMapper salesOrderMapper;
 
@@ -678,35 +680,64 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public QualityLot addDisposedQuantity(Long lotId, BigDecimal delta) {
+    public QualityLot refreshDisposedQuantity(Long lotId) {
         QualityLot lot = getLot(lotId);
         BigDecimal before = nz(lot.getDisposedQuantity());
-        BigDecimal next = before.add(nz(delta));
-        if (next.compareTo(nz(lot.getFailQuantity())) > 0) {
-            throw new BusinessException("已处置数量不能超过不良数量（"
-                    + nz(lot.getFailQuantity()).toPlainString() + "）");
-        }
+        // 占用口径（DONE + PROCESSING）= "已安排处置量"，与 reading 侧刷新口径一致；
+        // 判据另用 sumSettledQuantityByLotId（DONE）与在途查询，见 closeIfSettled。
+        BigDecimal next = nz(ncrActionMapper.sumEffectiveQuantityByLotId(lotId));
         lot.setDisposedQuantity(next);
         closeIfSettled(lot);
         lotMapper.updateById(lot);
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("beforeDisposedQuantity", before);
-        metadata.put("delta", nz(delta));
-        metadata.put("afterDisposedQuantity", next);
-        recordHistory(lot, "DISPOSED", listItems(lotId),
-                "处置数量变更：" + before.stripTrailingZeros().toPlainString() + " → "
-                        + next.stripTrailingZeros().toPlainString(), metadata, currentOperator());
+        if (before.compareTo(next) != 0) {
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("beforeDisposedQuantity", before);
+            metadata.put("afterDisposedQuantity", next);
+            metadata.put("derivation", "quality_ncr_action(DONE+PROCESSING)");
+            recordHistory(lot, "DISPOSED", listItems(lotId),
+                    "处置数量重算：" + before.stripTrailingZeros().toPlainString() + " → "
+                            + next.stripTrailingZeros().toPlainString(), metadata, currentOperator());
+        }
         return lot;
     }
 
+    /**
+     * 批关闭判据（dev-20260929-004 根治）：
+     * ① 合格件已入库（stored 扣除"已确认入库的让步放行量"）≥ 合格量；
+     * ② 已终结处置量（DONE 派生）≥ 不良量；
+     * ③ 无在途：无未终结处置单 + 无在途质量动作 + 无未闭环复检子批。
+     *
+     * <p>原实现只比两个数字（stored ≥ pass、disposed ≥ fail），既让让步件替合格件凑数
+     * （IN260929005 lot1：45 ≥ 40 而合格只入库 40），也把"返工在途"当"已处置"
+     * （dev-20260928-047 返工两段式改造的遗留）。
+     */
     private void closeIfSettled(QualityLot lot) {
-        if (QualityLotStatusEnum.JUDGED.getCode().equals(lot.getStatus())
-                && nz(lot.getStoredQuantity()).compareTo(nz(lot.getPassQuantity())) >= 0
-                && nz(lot.getDisposedQuantity()).compareTo(nz(lot.getFailQuantity())) >= 0) {
+        if (lot == null || lot.getLotId() == null
+                || !QualityLotStatusEnum.JUDGED.getCode().equals(lot.getStatus())) {
+            return;
+        }
+        BigDecimal released = nz(iqcDispositionOrderMapper.sumConfirmedReleaseQuantityByLotId(lot.getLotId()));
+        boolean storedOk = nz(lot.getStoredQuantity()).subtract(released)
+                .compareTo(nz(lot.getPassQuantity())) >= 0;
+        BigDecimal settled = nz(ncrActionMapper.sumSettledQuantityByLotId(lot.getLotId()));
+        boolean disposedOk = settled.compareTo(nz(lot.getFailQuantity())) >= 0;
+        boolean noInFlight = iqcDispositionOrderMapper.countInFlightByLotId(lot.getLotId()) == 0
+                && nz(ncrActionMapper.sumInFlightQuantityByLotId(lot.getLotId())).signum() == 0
+                && openChildLotCount(lot.getLotId()) == 0;
+        if (storedOk && disposedOk && noInFlight) {
             lot.setStatus(QualityLotStatusEnum.CLOSED.getCode());
             recordHistory(lot, "CLOSED", listItems(lot.getLotId()),
-                    "合格量已全部入库且不良量已全部处置", null, currentOperator());
+                    "合格量已全部入库、不良处置已全部终结且无在途单据", null, currentOperator());
         }
+    }
+
+    /** 未闭环的复检子批数量：父批在子批关闭前不得关闭（返工复检链路必须整链闭环）。 */
+    private long openChildLotCount(Long lotId) {
+        Long count = lotMapper.selectCount(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getParentLotId, lotId)
+                .eq(QualityLot::getDelFlag, 0)
+                .ne(QualityLot::getStatus, QualityLotStatusEnum.CLOSED.getCode()));
+        return count == null ? 0L : count;
     }
 
     /**
@@ -850,15 +881,14 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 continue;
             }
             BigDecimal pass = nz(lot.getPassQuantity());
-            BigDecimal fail = nz(lot.getFailQuantity());
-            BigDecimal disposed = nz(lot.getDisposedQuantity());
-            if (nz(lot.getStoredQuantity()).compareTo(pass) < 0) {
-                lot.setStoredQuantity(pass);
+            // 让步放行件不属于"合格入库"桶：先扣出来再判（dev-20260929-004）
+            BigDecimal released = nz(iqcDispositionOrderMapper.sumConfirmedReleaseQuantityByLotId(lot.getLotId()));
+            BigDecimal storedTarget = pass.add(released);
+            if (nz(lot.getStoredQuantity()).compareTo(storedTarget) < 0) {
+                lot.setStoredQuantity(storedTarget);
             }
-            // 关闭：合格全部入库 + 不良全部处置
-            if (nz(lot.getStoredQuantity()).compareTo(pass) >= 0 && disposed.compareTo(fail) >= 0) {
-                lot.setStatus(QualityLotStatusEnum.CLOSED.getCode());
-            }
+            // 关闭判据统一收敛到 closeIfSettled（含"无在途"条件），不再就地重复一份
+            closeIfSettled(lot);
             lotMapper.updateById(lot);
             changed++;
         }

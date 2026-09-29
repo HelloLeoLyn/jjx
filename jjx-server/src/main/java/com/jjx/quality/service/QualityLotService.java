@@ -82,8 +82,13 @@ public interface QualityLotService {
      */
     QualityLot addStoredQuantity(Long lotId, BigDecimal delta);
 
-    /** 不良处置累计（返工/让步/报废都会调用） */
-    QualityLot addDisposedQuantity(Long lotId, BigDecimal delta);
+    /**
+     * 按唯一真源（quality_ncr_action）重算检验批「已处置量」缓存并重跑关批判据（dev-20260929-004）。
+     *
+     * <p>取代原先的增量写 {@code addDisposedQuantity(±delta)}：同一事实只允许一处派生，
+     * 各写路径不再各自累加（消除"申请即计 / 审批才计 / 审批被跳过"的多时机分叉）。
+     */
+    QualityLot refreshDisposedQuantity(Long lotId);
 
     /**
      * 工单完工口径汇总（dev-20260918-014）：有效 FQC 批（无后继复检版本）的 待检张数 / 合格累计 / 未处置不良。

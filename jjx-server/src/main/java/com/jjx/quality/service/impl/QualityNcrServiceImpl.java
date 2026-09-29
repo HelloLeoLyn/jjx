@@ -467,10 +467,14 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
             // 待审批：台账已处置量 / 检验批已处置量 / 件级状态 / 库存【全部不动】，等品质主管审批（dev-20260924-005）
             action.setApprovedBy(null);
             action.setApprovedTime(null);
+            // 送审原因有两种：超阈值（成品侧）/ 强制送审（来料 IQC 按单送审，阈值不适用）；
+            // 文案必须按原因分支，否则会出现"报废 3 件 超过阈值 5 件"这种自相矛盾的留痕（dev-20260929-004）
             action.setResultRemark(appendRemark(action.getResultRemark(),
-                    "待审批：报废 " + quantity.stripTrailingZeros().toPlainString() + " 件 超过阈值 "
-                            + scrapApprovalThreshold().stripTrailingZeros().toPlainString()
-                            + " 件，需品质主管审批（dev-20260924-005）"));
+                    "待审批：报废 " + quantity.stripTrailingZeros().toPlainString() + " 件"
+                            + (forceScrapApproval
+                                    ? "（强制送审：来料 IQC 报废按单送审，不适用阈值）"
+                                    : " 超过阈值 " + scrapApprovalThreshold().stripTrailingZeros().toPlainString() + " 件")
+                            + "，需品质主管审批（dev-20260924-005）"));
             actionMapper.updateById(action);
             log.info("报废待审批: actionId={} ncrNo={} 数量={} 提交人={}",
                     action.getActionId(), ncr.getNcrNo(), quantity.toPlainString(), submitterOf(action));
@@ -484,7 +488,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ncr.setStatus("REWORK".equals(actionType) ? "DISPOSING" : canClose ? "CLOSED" : "DISPOSING");
         ncrMapper.updateById(ncr);
         // 同步检验批的已处置数量（防超处置）
-        qualityLotService.addDisposedQuantity(ncr.getLotId(), quantity);
+        // 唯一真源派生重算（dev-20260929-004）：不再各自累加，也不再对 IQC 走特判
+        qualityLotService.refreshDisposedQuantity(ncr.getLotId());
         // 处置与库存联动（dev-20260917-008）
         if (iqcInventoryManaged) {
             action.setStatus("REWORK".equals(actionType) ? "PROCESSING" : "DONE");
@@ -664,7 +669,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ncrMapper.updateById(ncr);
         // 3) 检验批已处置量回落 → 判定上界随之上抬（可重新判定；若批已 CLOSED 需先「重开」）
         try {
-            qualityLotService.addDisposedQuantity(ncr.getLotId(), qty.negate());
+            qualityLotService.refreshDisposedQuantity(ncr.getLotId());
         } catch (Exception e) {
             log.warn("撤销处置后回写检验批已处置量失败（不阻断撤销）: lotId={} err={}", ncr.getLotId(), e.getMessage());
         }
@@ -774,11 +779,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         ncr.setRemark(appendRemark(ncr.getRemark(), "【报废审批通过】"
                 + qty.stripTrailingZeros().toPlainString() + " 件（审批人：" + (approver == null ? "-" : approver) + "）"));
         ncrMapper.updateById(ncr);
-        // IQC 处置在登记时已经由库存域同步写入检验批已处置量；
-        // 审批这里只确认质量动作，不能再次累加，否则报废审批会把同一批处置量计两次。
-        if (!"IQC".equalsIgnoreCase(ncr.getLotType())) {
-            qualityLotService.addDisposedQuantity(ncr.getLotId(), qty);
-        }
+        // dev-20260929-004：改为一律按唯一真源重算 —— 原「IQC 跳过」分支的理由（登记时已累加）
+        // 对报废不成立（IQC 报废登记走待审批分支，什么都没累加），会永久卡住批的关闭判定。
+        qualityLotService.refreshDisposedQuantity(ncr.getLotId());
         int attached = qualityNcrPieceService.attachPieces(ncr.getNcrId(), actionId, "SCRAP", qty);
         // dev-20260924-006 + dev-20260924-028：审批通过即出成品报废单（凭据；库存不动；来料不套此口径）
         if (scrapGovernanceApplies(ncr)) {
