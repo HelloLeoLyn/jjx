@@ -67,6 +67,15 @@ public interface QualityNcrService {
       * 报废驳回（dev-20260924-005）：待审批 → VOID（必填原因）；台账/检验批/件级均不动（从未计入）。
       */
      QualityNcrAction rejectScrap(Long actionId, String reason, String operatorName);
+
+    /**
+     * 返工终结（dev-20260929-012）：IQC 复检批准、返工处置单走完时，把对应处置动作定稿为 DONE。
+     *
+     * <p>在此之前该动作停在 PROCESSING（在途），会让父批的「已终结处置量」永远差返工这一笔，
+     * 父批即使子批全部闭环也无法关闭；同时按结案判据重算不良台账状态（够量且无未关闭 CAPA 即 CLOSED）。
+     * 幂等：已 DONE 直接返回。
+     */
+    QualityNcrAction settleReworkAction(Long actionId);
     /**
      * 隔离台账（dev-20260924-007 一期 / dev-20260924-031）：列「在隔离的货」—— 未处置不良（不良 − 已处置 &gt; 0）的清单，
      * 含件级汇总（件总数 / 待处置件数）。一期只做标识，**不动库存**。

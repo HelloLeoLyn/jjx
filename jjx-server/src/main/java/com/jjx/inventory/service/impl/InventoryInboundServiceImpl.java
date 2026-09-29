@@ -946,7 +946,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         rework.setLotId(newLotId);
         iqcDispositionOrderMapper.updateById(rework);
         var inbound = inboundOrderMapper.selectById(item.getInboundId());
-        if (inbound != null) {
+        // dev-20260929-013：原单已过账（已完成）时不得打回——否则已入库的采购单会被重置为「待审批」，
+        // 列表又冒出「确认入库」，引发重复确认。返工复检走子批 + 独立的 IQC_REWORK 入库单，不动原单。
+        if (inbound != null
+                && !InventoryOrderStatusEnum.COMPLETED.getValue().equals(inbound.getOrderStatus())) {
             inbound.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
             inboundOrderMapper.updateById(inbound);
         }
@@ -1702,6 +1705,16 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 iqcDispositionOrderMapper.updateById(rework);
                 if ("PASS".equalsIgnoreCase(result)) {
                     createIqcReworkInboundOrder(order, item, rework, quality);
+                }
+                // dev-20260929-012：复检批准即返工链走完 —— 把对应处置动作定稿为 DONE。
+                // 不修的话它永久停在 PROCESSING（在途），父批的「已终结处置量」永远差这一笔 → 父批永远关不掉；
+                // 父批仍受「无未闭环复检子批」约束，本步不会让它提前放行。
+                if (rework.getQualityActionId() != null) {
+                    com.jjx.quality.service.QualityNcrService reworkNcrService =
+                            qualityNcrServiceProvider.getIfAvailable();
+                    if (reworkNcrService != null) {
+                        reworkNcrService.settleReworkAction(rework.getQualityActionId());
+                    }
                 }
             }
         }
@@ -3525,18 +3538,30 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             } catch (Exception ignore) { }
         }
         // 审核状态名称（approve_status 为未维护的死字段，2026-08-11 起不再使用，统一以 order_status 为准）
+        // 允收量 / 已入库量合计（列表展示用，按明细汇总；dev-20260929-013）
+        BigDecimal acceptedSum = BigDecimal.ZERO;
+        BigDecimal postedSum = BigDecimal.ZERO;
+        for (InventoryInboundItem it : inboundItemMapper.selectByInboundId(order.getInboundId())) {
+            if (it.getAcceptedQuantity() != null) acceptedSum = acceptedSum.add(it.getAcceptedQuantity());
+            if (it.getPostedQuantity() != null) postedSum = postedSum.add(it.getPostedQuantity());
+        }
+        vo.setAcceptedQuantity(acceptedSum);
+        vo.setPostedQuantity(postedSum);
         return vo;
     }
 
     /** 入库类型显示名 */
     private static String inboundTypeName(String inboundType) {
         if (inboundType == null) return null;
-        return switch (inboundType) {
-            case "PURCHASE" -> "采购入库";
-            case "PRODUCTION_FINISH" -> "生产入库";
+        // 库内 inbound_type 存在大小写混用（PURCHASE / iqc_release），统一大写后判定（dev-20260929-013）
+        return switch (inboundType.toUpperCase()) {
+            case "PURCHASE", "PURCHASE_ORDER" -> "采购入库";
+            case "PRODUCTION", "PRODUCTION_FINISH" -> "生产入库";
             case "RETURN" -> "退货入库";
             case "TRANSFER" -> "调拨入库";
             case "OTHER" -> "其他入库";
+            case "IQC_RELEASE" -> "让步接收入库";
+            case "IQC_REWORK" -> "返工复检入库";
             default -> inboundType;
         };
     }

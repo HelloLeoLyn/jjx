@@ -487,9 +487,6 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         boolean canClose = canCloseNcr(disposed, ncr.getDefectQuantity(), capaService.countOpen(ncrId, null));
         ncr.setStatus("REWORK".equals(actionType) ? "DISPOSING" : canClose ? "CLOSED" : "DISPOSING");
         ncrMapper.updateById(ncr);
-        // 同步检验批的已处置数量（防超处置）
-        // 唯一真源派生重算（dev-20260929-004）：不再各自累加，也不再对 IQC 走特判
-        qualityLotService.refreshDisposedQuantity(ncr.getLotId());
         // 处置与库存联动（dev-20260917-008）
         if (iqcInventoryManaged) {
             action.setStatus("REWORK".equals(actionType) ? "PROCESSING" : "DONE");
@@ -497,6 +494,10 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         } else {
             applyStockEffect(ncr, action, actionType, quantity, dto);
         }
+        // dev-20260929-012（修 dev-20260929-004 的刷新时机）：检验批已处置量缓存必须在**动作状态落定之后**重算。
+        // 原实现先刷新（那时动作还是 PENDING）再置 DONE/PROCESSING → 缓存永远少算这一笔
+        //（实测：lot 缓存 2 而派生 4）。派生口径 = quality_ncr_action 的 DONE+PROCESSING。
+        qualityLotService.refreshDisposedQuantity(ncr.getLotId());
         // dev-20260924-004：件级处置 —— 按序号把「待处置」件挂到本次处置单（件数 = 处置数量，一件一个决定）
         qualityNcrPieceService.attachPieces(ncr.getNcrId(), action.getActionId(), actionType, quantity);
         if ("SCRAP".equals(actionType) && scrapGovernance) {
@@ -793,6 +794,41 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         // 返回库里最新状态（attachPieces 会回填 piece_count/主缺陷，直接返回旧对象会丢这两项）
         QualityNcrAction latest = actionMapper.selectById(actionId);
         return latest == null ? action : latest;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityNcrAction settleReworkAction(Long actionId) {
+        if (actionId == null) {
+            return null;
+        }
+        QualityNcrAction action = actionMapper.selectById(actionId);
+        if (action == null || !"REWORK".equals(action.getActionType())) {
+            return action;
+        }
+        if ("DONE".equals(action.getStatus())) {
+            return action;   // 幂等：重复调用不再改写留痕
+        }
+        action.setStatus("DONE");
+        action.setResultRemark(appendRemark(action.getResultRemark(),
+                "【返工终结】复检批处置单已完成，处置动作定稿（dev-20260929-012）"));
+        actionMapper.updateById(action);
+        QualityNcr ncr = ncrMapper.selectById(action.getNcrId());
+        if (ncr == null) {
+            return action;
+        }
+        // 动作定稿后重算台账：已处置量由动作派生，够量且无未关闭 CAPA 即结案
+        refreshEffectiveDisposed(ncr);
+        boolean canClose = canCloseNcr(nz(ncr.getDisposedQuantity()), ncr.getDefectQuantity(),
+                capaService.countOpen(ncr.getNcrId(), null));
+        ncr.setStatus(canClose ? "CLOSED" : "DISPOSING");
+        ncrMapper.updateById(ncr);
+        // 检验批缓存同样按派生重算，并重跑关批判据
+        qualityLotService.refreshDisposedQuantity(ncr.getLotId());
+        log.info("返工终结: actionId={} ncrNo={} 已处置={}/{} 台账状态={}", actionId, ncr.getNcrNo(),
+                nz(ncr.getDisposedQuantity()).toPlainString(), nz(ncr.getDefectQuantity()).toPlainString(),
+                ncr.getStatus());
+        return action;
     }
 
     @Override
