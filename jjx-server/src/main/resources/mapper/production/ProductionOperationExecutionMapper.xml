@@ -28,6 +28,7 @@
         <result column="actual_process_params" property="actualProcessParams"/>
         <result column="quality_check_result" property="qualityCheckResult"/>
         <result column="execution_status" property="executionStatus"/>
+        <result column="execution_type" property="executionType"/>
         <result column="create_time" property="createTime"/>
         <result column="update_time" property="updateTime"/>
     </resultMap>
