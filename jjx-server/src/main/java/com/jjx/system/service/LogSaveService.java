@@ -29,6 +29,10 @@ public class LogSaveService {
     private final com.jjx.inventory.mapper.InventoryInboundOrderMapper inboundOrderMapper;
     private final com.jjx.inventory.mapper.InventoryOutboundOrderMapper outboundOrderMapper;
     private final com.jjx.sales.mapper.OrderMapper orderMapper;
+    // dev-20260929-008：采购链路（收货/付款/发票/采购来源入库）→ 采购单 trace
+    private final com.jjx.purchase.mapper.PurchaseOrderMapper purchaseOrderMapper;
+    private final com.jjx.purchase.mapper.PurchasePaymentMapper purchasePaymentMapper;
+    private final com.jjx.purchase.mapper.PurchaseDocumentMapper purchaseDocumentMapper;
 
     @Async("logExecutor")
     public void saveOperLog(SysOperLog operLog) {
@@ -92,6 +96,19 @@ public class LogSaveService {
     public String findTraceIdBySource(String bizType, String bizId) {
         try {
             Long id = Long.valueOf(bizId);
+            // dev-20260929-008：采购链路（收货/付款/发票）统一挂到采购单 trace。
+            // 收货日志 bizId = 采购单 ID；付款 bizId = 付款单 ID；发票 bizId = 采购票据 ID（purchase_document）。
+            if ("purchase_receipt".equals(bizType)) {
+                return traceOfPurchaseOrder(id);
+            }
+            if ("purchase_payment".equals(bizType)) {
+                com.jjx.purchase.domain.entity.PurchasePayment payment = purchasePaymentMapper.selectById(id);
+                return payment == null ? null : traceOfPurchaseOrder(payment.getOrderId());
+            }
+            if ("purchase_invoice".equals(bizType)) {
+                com.jjx.purchase.domain.entity.PurchaseDocument doc = purchaseDocumentMapper.selectById(id);
+                return doc == null ? null : traceOfPurchaseOrder(doc.getOrderId());
+            }
             Long orderId = null;
             if ("bom".equals(bizType)) {
                 com.jjx.engineering.domain.entity.EngineeringBom bom = engineeringBomMapper.selectById(id);
@@ -101,7 +118,14 @@ public class LogSaveService {
                 if (routing != null) orderId = routing.getSourceSampleId();
             } else if ("inbound".equals(bizType)) {
                 com.jjx.inventory.domain.InventoryInboundOrder inbound = inboundOrderMapper.selectById(id);
-                if (inbound != null && inbound.getSourceId() != null) orderId = inbound.getSourceId();
+                if (inbound != null && inbound.getSourceId() != null) {
+                    // dev-20260929-008：采购来源入库挂到采购单 trace；其余（生产/销售）沿用销售订单反查
+                    if ("PURCHASE".equalsIgnoreCase(inbound.getSourceType())
+                            || "PURCHASE".equalsIgnoreCase(inbound.getInboundType())) {
+                        return traceOfPurchaseOrder(inbound.getSourceId());
+                    }
+                    orderId = inbound.getSourceId();
+                }
             } else if ("outbound".equals(bizType)) {
                 com.jjx.inventory.domain.InventoryOutboundOrder outbound = outboundOrderMapper.selectById(id);
                 if (outbound != null && outbound.getSourceId() != null) orderId = outbound.getSourceId();
@@ -116,6 +140,15 @@ public class LogSaveService {
             log.debug("血缘反查traceId失败: {}", e.getMessage());
             return null;
         }
+    }
+
+    /** 采购单 trace（采购来源单据统一锚点；dev-20260929-008） */
+    private String traceOfPurchaseOrder(Long orderId) {
+        if (orderId == null) {
+            return null;
+        }
+        com.jjx.purchase.domain.entity.PurchaseOrder po = purchaseOrderMapper.selectById(orderId);
+        return po == null ? null : po.getTraceId();
     }
 
     @Async("logExecutor")
