@@ -2091,6 +2091,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                             || InventoryOrderStatusEnum.CANCELLED.getValue().equals(liOrder.getOrderStatus())) {
                         continue;
                     }
+                    // dev-20260929-004：让步放行件（IQC_RELEASE）不计入「合格入库」桶 ——
+                    // stored_quantity 必须 ≤ pass_quantity（check-inbound-lot-integrity.sh 规则⑧）。
+                    // 让步件在库存侧由库存流水 + 处置单状态承载，不再重复计入检验批已入库量。
+                    if ("IQC_RELEASE".equalsIgnoreCase(liOrder.getSourceType())
+                            || "IQC_RELEASE".equalsIgnoreCase(liOrder.getInboundType())) {
+                        continue;
+                    }
                     net = net.add(Objects.requireNonNullElse(li.getPostedQuantity(), BigDecimal.ZERO));
                 }
                 com.jjx.quality.domain.entity.QualityLot lot = lotService.getLot(lotId);

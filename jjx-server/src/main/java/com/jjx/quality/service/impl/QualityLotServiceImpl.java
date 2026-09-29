@@ -716,9 +716,10 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 || !QualityLotStatusEnum.JUDGED.getCode().equals(lot.getStatus())) {
             return;
         }
-        BigDecimal released = nz(iqcDispositionOrderMapper.sumConfirmedReleaseQuantityByLotId(lot.getLotId()));
-        boolean storedOk = nz(lot.getStoredQuantity()).subtract(released)
-                .compareTo(nz(lot.getPassQuantity())) >= 0;
+        // stored 只统计「合格件入库」：让步放行件不计入（口径见 syncQualityLotStored 与
+        // check-inbound-lot-integrity.sh 规则⑧「入库/放行累计 ≤ 合格量」），
+        // 让步件是否已入库由「处置单是否还在途（PENDING_INBOUND）」判定。
+        boolean storedOk = nz(lot.getStoredQuantity()).compareTo(nz(lot.getPassQuantity())) >= 0;
         BigDecimal settled = nz(ncrActionMapper.sumSettledQuantityByLotId(lot.getLotId()));
         boolean disposedOk = settled.compareTo(nz(lot.getFailQuantity())) >= 0;
         boolean noInFlight = iqcDispositionOrderMapper.countInFlightByLotId(lot.getLotId()) == 0
@@ -881,11 +882,9 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 continue;
             }
             BigDecimal pass = nz(lot.getPassQuantity());
-            // 让步放行件不属于"合格入库"桶：先扣出来再判（dev-20260929-004）
-            BigDecimal released = nz(iqcDispositionOrderMapper.sumConfirmedReleaseQuantityByLotId(lot.getLotId()));
-            BigDecimal storedTarget = pass.add(released);
-            if (nz(lot.getStoredQuantity()).compareTo(storedTarget) < 0) {
-                lot.setStoredQuantity(storedTarget);
+            // stored 只统计「合格件入库」：让步放行件不计入（dev-20260929-004）
+            if (nz(lot.getStoredQuantity()).compareTo(pass) < 0) {
+                lot.setStoredQuantity(pass);
             }
             // 关闭判据统一收敛到 closeIfSettled（含"无在途"条件），不再就地重复一份
             closeIfSettled(lot);
