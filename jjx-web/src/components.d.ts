@@ -15,6 +15,7 @@ declare module 'vue' {
     BizDetailPanel: typeof import('./components/BizFlowDetail/BizDetailPanel.vue')['default']
     BizFlowDetail: typeof import('./components/BizFlowDetail/index.vue')['default']
     BomItemEditor: typeof import('./components/BomItemEditor.vue')['default']
+    BomMaterialSelector: typeof import('./components/Selector/BomMaterialSelector.vue')['default']
     CompactInput: typeof import('./components/CompactInput.vue')['default']
     CustomerSelector: typeof import('./components/Selector/CustomerSelector.vue')['default']
     DataScope: typeof import('./components/system/DataScope.vue')['default']

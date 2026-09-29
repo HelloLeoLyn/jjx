@@ -466,6 +466,8 @@ const submitForm = () => {
   bomFormRef.value.validate(async (valid) => {
     if (!valid) return
 
+    // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
+    formData.items = bomItemEditorRef.value.getItems()
     submitting.value = true
     try {
       if (formData.bomId !== undefined) {

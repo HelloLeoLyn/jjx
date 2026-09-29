@@ -39,31 +39,17 @@
       </el-table-column>
 
       <!-- 物料编码 -->
-      <el-table-column label="物料编码" prop="materialCode" width="170" fixed="left">
-        <template #header>
-          <div class="column-header">
-            <span>物料编码</span>
-            <el-button link type="primary" size="small" @click="handleBatchQueryMaterialCode"
-              >查询</el-button
-            >
-          </div>
-        </template>
-        <template #default="scope">
-          <MaterialCompleteSelector
-            v-model="scope.row.materialCode"
-            @material-select="(material) => handleMaterialSelect(material, scope.row)"
-          />
-        </template>
-      </el-table-column>
+      <el-table-column label="物料编码" prop="materialCode" width="170" fixed="left" />
 
       <!-- 物料名称 -->
-      <el-table-column label="物料名称" prop="materialName" width="120">
+      <el-table-column label="物料名称" prop="materialName" min-width="240">
         <template #default="scope">
-          <el-input
-            v-model="scope.row.materialName"
-            placeholder="请输入物料名称"
-            size="small"
-            clearable
+          <BomMaterialSelector
+            :material-id="scope.row.materialId"
+            :material-name="scope.row.materialName"
+            @select="(material) => handleMaterialSelect(material, scope.row)"
+            @clear="handleMaterialClear(scope.row)"
+            @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
           />
         </template>
       </el-table-column>
@@ -238,18 +224,15 @@
             >子物料</el-button
           >
           <el-button link type="primary" :icon="CopyDocument" @click="handleCopyItem(scope.row)" />
-          <el-button
-            v-if="scope.row.create"
-            link
-            type="warning"
-            size="small"
-            @click="handleCreateMaterial(scope.row)"
-            >建档</el-button
-          >
           <el-button link type="danger" :icon="Delete" @click="handleDeleteItem(scope.row)" />
         </template>
       </el-table-column>
     </el-table>
+    <MaterialFormDialog
+      v-model="materialFormVisible"
+      :preset-data="materialPreset"
+      @success="handleMaterialCreated"
+    />
   </div>
 </template>
 
@@ -260,8 +243,8 @@ import { Plus, Delete, Refresh, CopyDocument, Rank } from '@element-plus/icons-v
 import { debounce } from 'lodash-es'
 import type { EngineeringBomItem } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
-import MaterialCompleteSelector from '@/components/Selector/MaterialCompleteSelector.vue'
-import { materialApi } from '@/api/inventory/material'
+import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 
 // ==================== Props & Emits ====================
 
@@ -435,6 +418,7 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   row.specification = material.specification || ''
   row.unit = material.unit || 'PCS'
   row.materialType = material.materialType
+  row.create = false
   recalcAppliedIssue(row)
 }
 
@@ -663,99 +647,42 @@ const handleRefresh = async () => {
   }
 }
 
-// ==================== 批量查询物料编码 ====================
+// 物料建档：保存独立物料档案后回填当前行
+const materialFormVisible = ref(false)
+const materialPreset = ref({ materialName: '', specification: '', unit: 'PCS' })
+let creatingRow: EngineeringBomItem | null = null
 
-/**
- * 根据物料名称+规格型号批量查询物料编码
- * 遍历所有行，调用 materialApi.list 查询，找到唯一匹配则自动填充
- */
-const handleBatchQueryMaterialCode = async () => {
-  let matchCount = 0
-  let failCount = 0
-
-  const rows = flattenTree(items.value)
-  for (const item of rows) {
-    const materialName = item.materialName?.trim()
-    const specification = item.specification?.trim()
-    if (!materialName) {
-      failCount++
-      continue
-    }
-
-    try {
-      const params: any = { materialName }
-      if (specification) {
-        params.specification = specification
-      }
-
-      const res = await materialApi.list(params)
-      const records = res.data || []
-
-      if (records.length === 1) {
-        const material = records[0]
-        item.materialId = material.materialId || 0
-        item.materialCode = material.materialCode
-        item.materialName = material.materialName
-        item.specification = material.specification || ''
-        item.unit = material.unit || 'PCS'
-        matchCount++
-      } else {
-        failCount++
-        item.materialCode = records.length + ''
-        item.create = true
-      }
-    } catch (error) {
-      console.error('查询物料失败:', materialName, error)
-      failCount++
-    }
-  }
-
-  if (matchCount > 0) {
-    ElMessage.success(
-      `成功匹配 ${matchCount} 项物料${failCount > 0 ? `，${failCount} 项未匹配` : ''}`
-    )
-  } else {
-    ElMessage.warning('未匹配到任何物料，请检查物料名称和规格')
-  }
+const handleMaterialClear = (row: EngineeringBomItem) => {
+  row.materialId = 0
+  row.materialCode = ''
+  row.materialName = ''
+  row.specification = ''
+  row.unit = 'PCS'
+  row.materialType = undefined
+  row.create = false
 }
 
-// ==================== 物料建档 ====================
-
-/**
- * 快速建档：生成编码 → 新增物料 → 填充行
- */
-const handleCreateMaterial = async (row: EngineeringBomItem) => {
-  try {
-    // 1. 生成物料编码
-    const codeRes = await materialApi.generateCode()
-    const materialCode = codeRes.data || ''
-
-    // 2. 新增物料
-    const saveData = {
-      materialCode,
-      materialName: row.materialName || '',
-      materialType: 'R',
-      specification: row.specification || '',
-      unit: row.unit || 'PCS',
-      safeStock: 0,
-      maxStock: 0,
-      reorderPoint: 0,
-      batchControl: false,
-      expiryAlertDays: 30,
-    }
-    const addRes = await materialApi.add(saveData)
-    const newMaterialId = Number(addRes.data) || 0
-
-    // 3. 填充行
-    row.materialId = newMaterialId
-    row.materialCode = materialCode
-    row.create = false
-
-    ElMessage.success('物料建档成功')
-  } catch (error) {
-    ElMessage.error('物料建档失败')
-    console.error('建档失败:', error)
+const handleCreateMaterial = (row: EngineeringBomItem, keyword: string) => {
+  creatingRow = row
+  materialPreset.value = {
+    materialName: keyword,
+    specification: row.specification || '',
+    unit: row.unit || 'PCS',
   }
+  materialFormVisible.value = true
+}
+
+const handleMaterialCreated = (material: InventoryMaterial) => {
+  if (!material.materialId) {
+    ElMessage.warning('物料已建档，请按名称搜索后选择')
+    return
+  }
+  // 父表回填可能重建行对象，按稳定的明细ID找到当前行。
+  const row = creatingRow?.itemId == null
+    ? creatingRow
+    : findInTree(items.value, Number(creatingRow.itemId))
+  if (row) handleMaterialSelect(material, row)
+  creatingRow = null
 }
 
 // ==================== 表格事件 ====================
