@@ -26,8 +26,15 @@ export function useAssign(options: { onSuccess: (taskId: number) => Promise<void
   const afterAssign = computed(
     () => Number(assignTarget.value?.remainingQuantity || 0) - assignTotal.value
   )
+  // 平分后出现 0 的行（剩余 < 人数）不允许提交
+  const hasZeroQty = computed(
+    () =>
+      selectedRows.value.length > 0 &&
+      selectedRows.value.some((c) => Number(qtyMap[c.userId] || 0) <= 0)
+  )
   const submitDisabled = computed(() => {
     if (!selectedRows.value.length) return true
+    if (hasZeroQty.value) return true
     return assignTotal.value <= 0 || assignTotal.value > assignQuantityMax.value
   })
   const assignTitle = computed(() =>
@@ -67,15 +74,47 @@ export function useAssign(options: { onSuccess: (taskId: number) => Promise<void
     return count(candidateList.value)
   })
 
+  // 手改标记：被手动编辑过的行，选择变化时保留其值，不参与重新平分
+  const manualQty = ref<Set<number>>(new Set())
+  const markManualQty = (row: TaskCandidate) => {
+    manualQty.value.add(row.userId)
+  }
+
+  /**
+   * 平分数量：整数件 → 向下取整，除不尽的余数按顺序给前面的人（100/3 → 34,33,33）；
+   * 总量非整数 → 退化为两位小数平分（分给前面的人 1 分）
+   */
+  function splitEvenly(total: number, count: number): number[] {
+    if (count <= 0) return []
+    const isInt = Number.isInteger(total)
+    const scaled = isInt ? Math.round(total) : Math.round(total * 100)
+    const unit = isInt ? 1 : 100
+    const base = Math.floor(scaled / count)
+    const rem = scaled - base * count
+    return Array.from({ length: count }, (_, i) => (base + (i < rem ? 1 : 0)) / unit)
+  }
+
   // 统一多选树（父子独立勾选；根节点不可选，任意合法后代均可选）
+  // 勾选变化 → 按「剩余 - 手改合计」在未手改的行里平分（顺序 = 候选树显示顺序）
   const onTreeCheck = () => {
     const checked: TaskCandidate[] = candidateTreeRef.value?.getCheckedNodes(false) || []
     selectedRows.value = checked
-    // 默认数量 = 当前剩余（可编辑；合计超限时禁用提交并提示）
-    selectedRows.value.forEach((c) => {
-      if (qtyMap[c.userId] == null) {
-        qtyMap[c.userId] = Number(assignTarget.value?.remainingQuantity || 0)
-      }
+    const ids = new Set(checked.map((c) => c.userId))
+    // 丢弃已取消勾选行的数量 + 手改标记
+    Object.keys(qtyMap).forEach((k) => {
+      if (!ids.has(Number(k))) delete qtyMap[Number(k)]
+    })
+    ;[...manualQty.value].forEach((id) => {
+      if (!ids.has(id)) manualQty.value.delete(id)
+    })
+    // 手改行保留原值，其余行平分剩余
+    const manualRows = checked.filter((c) => manualQty.value.has(c.userId))
+    const freeRows = checked.filter((c) => !manualQty.value.has(c.userId))
+    const manualSum = manualRows.reduce((s, c) => s + Number(qtyMap[c.userId] || 0), 0)
+    const pool = Number(assignTarget.value?.remainingQuantity || 0) - manualSum
+    const parts = splitEvenly(pool > 0 ? pool : 0, freeRows.length)
+    freeRows.forEach((c, i) => {
+      qtyMap[c.userId] = parts[i]
     })
   }
 
@@ -83,6 +122,7 @@ export function useAssign(options: { onSuccess: (taskId: number) => Promise<void
     candidateTreeRef.value?.setChecked(row.userId, false)
     selectedRows.value = selectedRows.value.filter((n) => n.userId !== row.userId)
     delete qtyMap[row.userId]
+    manualQty.value.delete(row.userId)
   }
 
   const openAssignDialog = async (row: TreeRow) => {
@@ -91,6 +131,7 @@ export function useAssign(options: { onSuccess: (taskId: number) => Promise<void
     selectedRows.value = []
     assignedList.value = []
     Object.keys(qtyMap).forEach((k) => delete qtyMap[Number(k)])
+    manualQty.value.clear()
     assignOpen.value = true
     loadAssignedList(row.taskId)
     candidateLoading.value = true
@@ -153,6 +194,7 @@ export function useAssign(options: { onSuccess: (taskId: number) => Promise<void
     assignQuantityMax,
     assignTotal,
     afterAssign,
+    hasZeroQty,
     submitDisabled,
     assignTitle,
     assignedList,
@@ -161,6 +203,7 @@ export function useAssign(options: { onSuccess: (taskId: number) => Promise<void
     candidateTreeRef,
     totalCandidateCount,
     onTreeCheck,
+    markManualQty,
     removeAssignItem,
     openAssignDialog,
     handleAssignSubmit,

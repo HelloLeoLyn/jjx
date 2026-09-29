@@ -12,7 +12,7 @@
     <WorkOrderPanel
       :can-view-all="true"
       :initial-order-id="selectedOrderId"
-      :auto-select-first="false"
+      :auto-select-first="true"
       :allow-clear-selection="true"
       default-scope="all"
       @select="handleOrderSelected"
@@ -345,6 +345,7 @@
                 :step="1"
                 size="small"
                 style="width: 130px"
+                @change="markManualQty(row)"
               />
             </template>
           </el-table-column>
@@ -369,6 +370,9 @@
             }}</b></span
           >
           <span v-if="assignTotal > assignQuantityMax" class="text-danger">超出剩余，不能提交</span>
+          <span v-if="hasZeroQty" class="text-danger"
+            >剩余不足，无法平分给 {{ selectedRows.length }} 人</span
+          >
         </div>
       </template>
       <template #footer>
@@ -544,6 +548,7 @@ const {
   assignQuantityMax,
   assignTotal,
   afterAssign,
+  hasZeroQty,
   submitDisabled,
   assignTitle,
   assignedList,
@@ -551,6 +556,7 @@ const {
   candidateTreeRef,
   totalCandidateCount,
   onTreeCheck,
+  markManualQty,
   removeAssignItem,
   openAssignDialog,
   handleAssignSubmit,
