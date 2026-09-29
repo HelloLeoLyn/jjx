@@ -7,6 +7,9 @@
         <div class="m-report-process">{{ processName || '未命名工序' }}</div>
       </div>
 
+      <!-- dev-20260929-022：作业说明（返工要求/工序说明）—— 移动端报工也能看到要做什么 -->
+      <WorkInstructionPanel :params="instructionParams" />
+
       <template v-if="tasks.length">
         <div class="m-section-title">我的任务</div>
         <div
@@ -111,6 +114,8 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getMyTasks } from '@/api/production/task'
+import { operationExecutionApi } from '@/api/production/operationExecution'
+import WorkInstructionPanel from '@/views/production/execution/components/WorkInstructionPanel.vue'
 import { submitWorkReport } from '@/api/production/workReport'
 import type { TaskTreeRow } from '@/types/production/task'
 
@@ -124,6 +129,8 @@ const processName = computed(() => String(route.query.processName || ''))
 const loading = ref(false)
 const submitting = ref(false)
 const tasks = ref<TaskTreeRow[]>([])
+/** 该工序的作业说明（customProcessParams；本页只取任务列表，故单独补一次执行详情） */
+const instructionParams = ref<string>('')
 const selectedTaskId = ref<number | null>(null)
 
 const reportForm = ref({
@@ -149,6 +156,14 @@ async function loadTasks() {
     // 默认选中第一个有剩余额度的任务
     const first = tasks.value.find((t) => Number(t.remainingQuantity || 0) > 0)
     selectedTaskId.value = first?.taskId ?? tasks.value[0]?.taskId ?? null
+    // 作业说明：本页拿不到执行 VO，补一次按 executionId 收窄的详情（失败不影响报工）
+    instructionParams.value = ''
+    try {
+      const execRes: any = await operationExecutionApi.detail(executionId.value)
+      instructionParams.value = execRes?.data?.customProcessParams || ''
+    } catch {
+      instructionParams.value = ''
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || '加载任务失败')
   } finally {
