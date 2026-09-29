@@ -1086,6 +1086,21 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                 cursor = parentId; // 父已终态：继续看更上层
                 continue;
             }
+            if (isSupplementRoot(parent)) {
+                List<String> blockers = completionBlockers(parent);
+                if (!blockers.isEmpty()) {
+                    break;
+                }
+                int affected = productionTaskMapper.markCompleted(parentId, parent.getVersion());
+                if (affected == 1) {
+                    recordEvent(parentId, null, ACTION_COMPLETE, parent.getAssigneeId(), parent.getAssigneeId(),
+                            BigDecimal.ZERO, parent.getTaskQuantity(), parent.getTaskQuantity(),
+                            "补产工序下属任务全部完成后自动收口");
+                } else {
+                    log.warn("补产根任务自动收口未命中，留待刷新重试: taskId={}", parentId);
+                }
+                break;
+            }
             if (parent.getParentTaskId() == null) {
                 break; // 直接父即根任务：根任务留给工序「完工」按钮收口
             }
@@ -1109,6 +1124,11 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
      * 工序「完工」收口根任务（2026-09-09 Leo 定）：完整校验通过后把根任务置 COMPLETED 并留痕。
      * 幂等：根任务已终态直接返回；未就绪则抛错（调用方应先用 assertExecutionCompletable 校验）。
      */
+    static boolean isSupplementRoot(ProductionTask task) {
+        return task != null && task.getParentTaskId() == null
+                && com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode().equals(task.getTaskType());
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void completeRootForExecution(Long executionId) {

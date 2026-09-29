@@ -1,6 +1,8 @@
 package com.jjx.production.service.impl;
 
 import com.jjx.common.exception.BusinessException;
+import com.jjx.production.domain.entity.ProductionTask;
+import com.jjx.production.enums.ProductionTaskTypeEnum;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,6 +13,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
@@ -52,5 +56,22 @@ class ProductionTaskSupplementSourceTest {
 
         assertThrows(BusinessException.class, () -> service.validateSupplementSource(
                 21L, new BigDecimal("2"), 31L, 41L, false));
+    }
+
+    @Test
+    void onlySupplementRootTasksAutoCloseAfterTheirChildrenFinish() {
+        ProductionTask supplementRoot = new ProductionTask();
+        supplementRoot.setTaskType(ProductionTaskTypeEnum.SUPPLEMENT.getCode());
+
+        ProductionTask standardRoot = new ProductionTask();
+        standardRoot.setTaskType(ProductionTaskTypeEnum.STANDARD.getCode());
+
+        ProductionTask supplementChild = new ProductionTask();
+        supplementChild.setTaskType(ProductionTaskTypeEnum.SUPPLEMENT.getCode());
+        supplementChild.setParentTaskId(1L);
+
+        assertTrue(ProductionTaskServiceImpl.isSupplementRoot(supplementRoot));
+        assertFalse(ProductionTaskServiceImpl.isSupplementRoot(standardRoot));
+        assertFalse(ProductionTaskServiceImpl.isSupplementRoot(supplementChild));
     }
 }
