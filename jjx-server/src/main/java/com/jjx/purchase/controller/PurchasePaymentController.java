@@ -16,6 +16,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,8 @@ public class PurchasePaymentController extends BaseController {
 
     private final IPurchasePaymentService paymentService;
     private final IPurchaseOrderService purchaseOrderService;
+    /** 付款凭证（转账回单）挂统一附件表；dev-20260929-015 */
+    private final com.jjx.system.service.ISysAttachmentService attachmentService;
 
     /**
      * 查询采购付款列表
@@ -119,14 +122,15 @@ public class PurchasePaymentController extends BaseController {
     }
 
     /**
-     * 上传凭证
+     * 上传付款凭证（转账回单）——dev-20260929-015：挂统一附件表（bizType=purchase_payment / bizId=paymentId），
+     * 侧除原实现误调 confirmPayment（那等于把付款直接确认掉）。浏览/删除用通用附件接口。
      */
     @PostMapping("/upload-voucher")
-    @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId", action = LogActions.PUR_PAYMENT_UPLOAD_VOUCHER)
+    @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#paymentId", action = LogActions.PUR_PAYMENT_UPLOAD_VOUCHER)
     @SaCheckPermission("purchase:payment:edit")
-    public Result<Void> uploadVoucher(PurchasePaymentDTO dto) {
-        paymentService.confirmPayment(dto);
-        return Result.success();
+    public Result<Long> uploadVoucher(@RequestParam("paymentId") Long paymentId,
+                                      @RequestParam("file") MultipartFile file) {
+        return Result.success(attachmentService.uploadAttachment(file, "purchase_payment", paymentId, null));
     }
 
     /**

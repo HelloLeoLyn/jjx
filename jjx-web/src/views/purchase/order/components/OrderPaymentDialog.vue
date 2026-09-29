@@ -73,35 +73,7 @@
         />
       </el-form-item>
 
-      <el-divider content-position="left">付款凭证</el-divider>
-
-      <el-form-item label="上传凭证">
-        <el-upload
-          ref="uploadRef"
-          :auto-upload="true"
-          list-type="picture-card"
-          :file-list="imageList"
-          :http-request="handleImageUpload"
-          :on-preview="handleImagePreview"
-          :on-remove="handleImageRemove"
-          :before-upload="beforeImageUpload"
-          accept="image/jpeg,image/png,image/gif,image/bmp,image/webp"
-          multiple
-        >
-          <el-icon><Plus /></el-icon>
-          <template #tip>
-            <div class="el-upload__tip">支持 JPG/PNG/GIF/BMP/WebP 格式，单张不超过 10MB</div>
-          </template>
-        </el-upload>
-      </el-form-item>
     </el-form>
-
-    <!-- 图片预览对话框 -->
-    <el-image-viewer
-      v-if="previewVisible"
-      :url-list="[previewUrl]"
-      @close="previewVisible = false"
-    />
 
     <template #footer>
       <div class="dialog-footer">
@@ -115,16 +87,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules, UploadProps, UploadUserFile } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import { PaymentMethodEnum, PaymentStatusEnum } from '@/enums/purchase'
 import { addPayment, generatePaymentNo } from '@/api/purchase/payment'
 import type { PurchasePayment } from '@/types/purchase'
-import {
-  uploadTempReceiptFile,
-  getDiskReceiptFiles,
-  deleteTempReceiptFile,
-  confirmReceiptDocuments,
-} from '@/api/purchase/order'
 
 const props = defineProps<{
   visible: boolean
@@ -141,7 +107,6 @@ const emit = defineEmits<{
 }>()
 
 const formRef = ref<FormInstance>()
-const uploadRef = ref()
 const submitting = ref(false)
 
 const form = reactive({
@@ -152,11 +117,6 @@ const form = reactive({
   bankAccount: '',
   remark: '',
 })
-
-// 图片相关
-const imageList = ref<UploadUserFile[]>([])
-const previewVisible = ref(false)
-const previewUrl = ref('')
 
 const title = computed(() => `付款 - ${props.orderNo}`)
 
@@ -174,81 +134,11 @@ watch(
     if (val) {
       form.paymentDate = today()
       form.paymentAmount = Math.max(0, props.orderTotalAmount - props.paidAmount)
-      const [numberResult] = await Promise.all([generatePaymentNo(), loadImages()])
+      const numberResult = await generatePaymentNo()
       form.paymentNo = numberResult.data || ''
     }
   }
 )
-
-// 加载磁盘上的票据文件列表（扫描订单号目录）
-const loadImages = async () => {
-  if (!props.orderId) return
-  try {
-    const response = await getDiskReceiptFiles(Number(props.orderId))
-    const files: any[] = response.data || []
-    imageList.value = files.map((file: any, index: number) => ({
-      name: file.storageName || file.fileName,
-      url: file.fileUrl,
-      uid: index + 1,
-    }))
-  } catch (error) {
-    console.error('加载付款凭证失败:', error)
-  }
-}
-
-// 上传前校验
-const beforeImageUpload: UploadProps['beforeUpload'] = (file) => {
-  const isImage = ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'].includes(
-    file.type
-  )
-  if (!isImage) {
-    ElMessage.error('仅支持上传 JPG/PNG/GIF/BMP/WebP 格式的图片')
-    return false
-  }
-  const isLt10M = file.size / 1024 / 1024 < 10
-  if (!isLt10M) {
-    ElMessage.error('图片大小不能超过 10MB')
-    return false
-  }
-  return true
-}
-
-// 自定义上传（临时保存到磁盘，不插入数据库）
-const handleImageUpload = async (options: any) => {
-  const { file, onSuccess, onError } = options
-  try {
-    const response = await uploadTempReceiptFile(Number(props.orderId), file)
-    onSuccess(response, file)
-    ElMessage.success('凭证上传成功')
-    // 重新加载票据列表
-    await loadImages()
-  } catch (error) {
-    console.error('凭证上传失败:', error)
-    onError(error)
-    ElMessage.error('凭证上传失败')
-  }
-}
-
-// 图片预览
-const handleImagePreview: UploadProps['onPreview'] = (file) => {
-  previewUrl.value = file.url || ''
-  previewVisible.value = true
-}
-
-// 删除临时票据文件
-const handleImageRemove: UploadProps['onRemove'] = async (file) => {
-  try {
-    // 从文件列表中获取 fileUrl
-    const fileItem = imageList.value.find((item) => item.uid === file.uid)
-    if (fileItem && fileItem.url) {
-      await deleteTempReceiptFile(fileItem.url)
-      ElMessage.success('凭证删除成功')
-    }
-  } catch (error) {
-    console.error('凭证删除失败:', error)
-    ElMessage.error('凭证删除失败')
-  }
-}
 
 const handleSubmit = async () => {
   if (!formRef.value) return
@@ -272,16 +162,6 @@ const handleSubmit = async () => {
     await addPayment(payment)
     ElMessage.success('付款单已创建，等待审批')
 
-    // 2. 如果有上传的票据文件，确认插入数据库
-    if (imageList.value.length > 0) {
-      const files = imageList.value.map((item) => ({
-        fileName: item.name,
-        fileUrl: item.url,
-        fileSize: 0,
-      }))
-      await confirmReceiptDocuments(Number(props.orderId), 0, files)
-    }
-
     emit('success')
     handleClose()
   } catch (error) {
@@ -302,7 +182,6 @@ const handleClose = () => {
   form.paymentMethod = PaymentMethodEnum.items[0]?.value || 'bank'
   form.bankAccount = ''
   form.remark = ''
-  imageList.value = []
   emit('update:visible', false)
 }
 

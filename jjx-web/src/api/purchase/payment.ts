@@ -79,8 +79,11 @@ export function confirmPayment(data: FormData) {
   })
 }
 
-// 上传凭证
-export function uploadVoucher(data: FormData) {
+// 上传付款凭证（转账回单）——dev-20260929-015：挂附件表 bizType=purchase_payment / bizId=paymentId
+export function uploadVoucher(paymentId: number, file: File) {
+  const data = new FormData()
+  data.append('paymentId', String(paymentId))
+  data.append('file', file)
   return request({
     url: '/purchase/payment/upload-voucher',
     method: 'post',
