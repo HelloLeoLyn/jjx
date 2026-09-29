@@ -92,7 +92,7 @@
               link
               type="primary"
               size="small"
-              :disabled="!resolveJump(row.bizType || '', row.bizId)"
+              :disabled="!resolveJump(row.bizType || '', row.bizId, row.jumpPath)"
               @click.stop="handleRead(row)"
             >
               去处理
@@ -189,7 +189,7 @@ function resetQuery() {
 
 async function handleRead(row: NotificationVO) {
   await markAsRead(row.notificationId)
-  const target = await resolveJumpSafe(router, row.bizType || '', row.bizId)
+  const target = await resolveJumpSafe(router, row.bizType || '', row.bizId, undefined, row.jumpPath)
   if (target) {
     router.push(target)
   } else {

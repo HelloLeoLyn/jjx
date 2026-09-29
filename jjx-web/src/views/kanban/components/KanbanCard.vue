@@ -78,7 +78,7 @@ const router = useRouter()
 
 const jumpTarget = computed(() =>
   props.card.templateType === 'biz'
-    ? resolveJump(String(props.card.extraData?.sourceEvent || ''), props.card.extraData?.bizId as string | number | null)
+    ? resolveJump(String(props.card.extraData?.sourceEvent || ''), props.card.extraData?.bizId as string | number | null, props.card.extraData?.jumpPath as string | undefined)
     : null
 )
 
@@ -145,7 +145,9 @@ async function goToBiz() {
   const target = await resolveJumpSafe(
     router,
     String(props.card.extraData?.sourceEvent || ''),
-    props.card.extraData?.bizId as string | number | null
+    props.card.extraData?.bizId as string | number | null,
+    undefined,
+    props.card.extraData?.jumpPath as string | undefined
   )
   if (target) router.push(target)
 }

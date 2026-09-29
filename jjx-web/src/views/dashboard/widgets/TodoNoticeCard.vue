@@ -34,6 +34,7 @@ interface TodoItem {
   bizType?: string
   bizId?: number | string
   sourceEvent?: string
+  jumpPath?: string
   deadline?: string
   createTime?: string
 }
@@ -44,7 +45,7 @@ const data = reactive<{ unreadNotice: number; todoTotal: number; todos: TodoItem
   todos: [],
 })
 async function openTodo(item: TodoItem) {
-  const target = await resolveJumpSafe(router, item.sourceEvent || '', item.bizId, '/kanban/index')
+  const target = await resolveJumpSafe(router, item.sourceEvent || '', item.bizId, '/kanban/index', item.jumpPath)
   if (target) router.push(target)
 }
 onMounted(async () => {

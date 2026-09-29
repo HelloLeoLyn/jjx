@@ -137,7 +137,7 @@ async function handleRead(item: NotificationVO) {
   } catch {
     // 静默处理
   }
-  const target = await resolveJumpSafe(router, item.bizType || '', item.bizId)
+  const target = await resolveJumpSafe(router, item.bizType || '', item.bizId, undefined, item.jumpPath)
   if (target) {
     popoverVisible.value = false
     router.push(target)

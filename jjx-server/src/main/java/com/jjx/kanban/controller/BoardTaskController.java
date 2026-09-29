@@ -16,6 +16,7 @@ import com.jjx.system.domain.entity.SysTask;
 import com.jjx.system.domain.entity.SysRole;
 import com.jjx.system.mapper.SysRoleMapper;
 import com.jjx.system.mapper.SysTaskMapper;
+import com.jjx.system.service.EventJumpPathService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,7 @@ import java.util.stream.Collectors;
 public class BoardTaskController {
 
     private final SysTaskMapper sysTaskMapper;
+    private final EventJumpPathService eventJumpPathService;
     private final SysRoleMapper sysRoleMapper;
     private final ProductionOrderMapper productionOrderMapper;
     private final ProductionOperationExecutionMapper executionMapper;
@@ -103,7 +105,9 @@ public class BoardTaskController {
 
         // 兼容：不传 pageNum/pageSize 时返回全量数组（EventPanel 等调用方）
         if (pageNum == null || pageSize == null) {
-            return Result.success(sysTaskMapper.selectList(wrapper));
+            List<SysTask> tasks = sysTaskMapper.selectList(wrapper);
+            eventJumpPathService.populateTasks(tasks);
+            return Result.success(tasks);
         }
 
         // 分页
@@ -111,6 +115,7 @@ public class BoardTaskController {
                 new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize);
         com.baomidou.mybatisplus.core.metadata.IPage<SysTask> pageResult = sysTaskMapper.selectPage(page, wrapper);
 
+        eventJumpPathService.populateTasks(pageResult.getRecords());
         Map<String, Object> data = new java.util.HashMap<>();
         data.put("records", pageResult.getRecords());
         data.put("total", pageResult.getTotal());
@@ -208,6 +213,7 @@ public class BoardTaskController {
         if (task == null || !moduleMatches(module, task.getKanbanModule())) {
             return Result.error("任务不存在");
         }
+        eventJumpPathService.populateTasks(List.of(task));
         return Result.success(task);
     }
 

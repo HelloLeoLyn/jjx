@@ -10,6 +10,7 @@ import com.jjx.system.domain.entity.SysEventConfig;
 import com.jjx.system.domain.entity.SysEventLastPayload;
 import com.jjx.system.domain.entity.SysEventVar;
 import com.jjx.system.mapper.SysEventConfigMapper;
+import com.jjx.system.service.EventJumpPathService;
 import com.jjx.system.mapper.SysEventLastPayloadMapper;
 import com.jjx.system.mapper.SysEventVarMapper;
 import com.jjx.notification.domain.entity.Notification;
@@ -185,6 +186,7 @@ public class EventConfigController extends BaseController {
     public Result<Map<String, Object>> add(@Validated @RequestBody SysEventConfig config) {
         if (config.getIsEnabled() == null) config.setIsEnabled(1);
         if (config.getExcludeTrigger() == null) config.setExcludeTrigger(0);
+        EventJumpPathService.validateTemplate(config.getJumpPath());
         List<String> warnings = validateTemplateVariables(config);
         int rows = eventConfigMapper.insert(config);
         return rows > 0 ? Result.success(warningsData(warnings)) : Result.error("保存失败");
@@ -197,6 +199,7 @@ public class EventConfigController extends BaseController {
     @Log(module = "事件配置", businessType = BusinessType.UPDATE, action = LogActions.EVENT_CONFIG_EDIT)
     @SaCheckPermission("system:eventConfig:edit")
     public Result<Map<String, Object>> edit(@Validated @RequestBody SysEventConfig config) {
+        EventJumpPathService.validateTemplate(config.getJumpPath());
         List<String> warnings = validateTemplateVariables(config);
         int rows = eventConfigMapper.updateById(config);
         return rows > 0 ? Result.success(warningsData(warnings)) : Result.error("保存失败");

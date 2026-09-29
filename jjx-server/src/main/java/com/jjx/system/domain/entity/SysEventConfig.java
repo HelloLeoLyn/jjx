@@ -11,6 +11,8 @@ public class SysEventConfig {
     private Long eventId;
     private String eventCode;
     private String eventName;
+    /** 事件配置为模板，通知为生成时的路径快照。 */
+    private String jumpPath;
     private String bizModule;
     /** notification / task / both */
     private String eventType;

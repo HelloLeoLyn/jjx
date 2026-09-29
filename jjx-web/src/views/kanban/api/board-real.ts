@@ -119,7 +119,7 @@ async function fetchSysTaskBoardData(
       updatedAt: '',
       taskType: t.taskType || 'general',
       department: mapSysTaskDept(t),
-      extraData: { sourceEvent: t.sourceEvent, bizId: t.bizId, bizType: t.bizType },
+      extraData: { sourceEvent: t.sourceEvent, bizId: t.bizId, bizType: t.bizType, jumpPath: t.jumpPath },
     }))
 
     let filtered = cards
@@ -267,7 +267,7 @@ export async function fetchCardDetail(
         updatedAt: '',
         taskType: t.taskType || 'general',
         department: mapSysTaskDept(t),
-        extraData: { sourceEvent: t.sourceEvent, bizId: t.bizId, bizType: t.bizType },
+        extraData: { sourceEvent: t.sourceEvent, bizId: t.bizId, bizType: t.bizType, jumpPath: t.jumpPath },
       }
       return { code: 200, data: card, message: 'ok' }
     }

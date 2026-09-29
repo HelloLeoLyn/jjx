@@ -10,6 +10,8 @@ import com.jjx.notification.domain.entity.Notification;
 import com.jjx.notification.domain.vo.NotificationVO;
 import com.jjx.notification.mapper.NotificationMapper;
 import com.jjx.notification.service.NotificationService;
+import com.jjx.system.service.EventJumpPathService;
+import org.springframework.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -26,12 +28,15 @@ public class NotificationServiceImpl extends ServiceImpl<NotificationMapper, Not
         implements NotificationService {
 
     private final NotificationMapper notificationMapper;
+    private final EventJumpPathService eventJumpPathService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createNotification(NotificationCreateDTO dto) {
         Notification notif = new Notification();
         BeanUtils.copyProperties(dto, notif);
+        String eventCode = StringUtils.hasText(dto.getEventCode()) ? dto.getEventCode() : dto.getBizType();
+        notif.setJumpPath(eventJumpPathService.resolve(eventCode, dto.getBizId()));
         notif.setIsRead(0);
         notif.setStatus(0);
         notif.setSendTime(LocalDateTime.now());

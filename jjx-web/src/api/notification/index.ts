@@ -23,6 +23,7 @@ export interface NotificationCreateDTO {
 }
 
 export interface NotificationVO {
+  jumpPath?: string | null
   notificationId: number
   title: string
   content: string

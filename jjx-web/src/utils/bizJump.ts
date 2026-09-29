@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 export interface BizJumpTarget {
   path: string
   query?: Record<string, string | number>
+  hash?: string
 }
 
 const DIRECT_PATHS = new Set([
@@ -15,12 +16,20 @@ const DIRECT_PATHS = new Set([
 ])
 
 /**
- * 事件到业务列表页的唯一映射；实际跳转必须经过 resolveJumpSafe 校验当前账号路由。
+ * jumpPath 优先；下方前缀表冻结为旧通知 fallback，新事件一律配置于 sys_event_config。
+ * 实际跳转必须经过 resolveJumpSafe 校验当前账号路由。
  */
 export function resolveJump(
   eventCode: string,
-  bizId?: string | number | null
+  bizId?: string | number | null,
+  jumpPath?: string | null
 ): BizJumpTarget | null {
+  if (jumpPath?.trim()) {
+    // 不把已配置但不可达的路径偷偷换成旧映射，交由安全出口明确提示。
+    if (!/^\/(?!\/)[A-Za-z0-9_/-]+(?:\?[^#\s\\{}]*)?(?:#[^\s\\{}]*)?$/.test(jumpPath)) return null
+    const url = new URL(jumpPath, 'https://jump.local')
+    return { path: url.pathname, query: Object.fromEntries(url.searchParams), hash: url.hash }
+  }
   const mappings: Array<[predicate: (code: string) => boolean, path: string]> = [
     [(code) => code.startsWith('quotation.'), '/sales/quotation'],
     [(code) => code.startsWith('order.'), '/sales/order'],
@@ -99,9 +108,12 @@ export async function resolveJumpSafe(
   router: Router,
   eventCode: string,
   bizId?: string | number | null,
-  fallbackPath?: string | null
+  fallbackPath?: string | null,
+  jumpPath?: string | null
 ): Promise<BizJumpTarget | null> {
-  const target = resolveJump(eventCode, bizId) || (fallbackPath ? { path: fallbackPath } : null)
+  const target =
+    resolveJump(eventCode, bizId, jumpPath) ||
+    (!jumpPath?.trim() && fallbackPath ? { path: fallbackPath } : null)
   if (target && isReachable(router, target)) return target
 
   const fallback = [fallbackPath, '/dashboard/index']

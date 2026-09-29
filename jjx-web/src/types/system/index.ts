@@ -390,6 +390,7 @@ export type SysDict = SysDictType
 
 // 事件配置
 export interface SysEventConfig {
+  jumpPath?: string | null
   eventId?: number
   eventCode: string
   eventName: string

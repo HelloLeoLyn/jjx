@@ -39,6 +39,10 @@ public class SysTask {
 
     private String sourceEvent;
 
+    /** 从事件配置读取，不增加任务表第二份路径配置。 */
+    @TableField(exist = false)
+    private String jumpPath;
+
     private Long sourceId;
 
     private Long resultId;

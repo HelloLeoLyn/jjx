@@ -245,7 +245,7 @@ const jumpTarget = computed(() => {
   if (props.card?.templateType === 'dev') return null
   if (taskDetail.value) {
     return (
-      resolveJump(taskDetail.value.sourceEvent || '', taskDetail.value.bizId) ||
+      resolveJump(taskDetail.value.sourceEvent || '', taskDetail.value.bizId, taskDetail.value.jumpPath) ||
       (resolveModulePage(taskDetail.value.bizType || '')
         ? { path: resolveModulePage(taskDetail.value.bizType || '') as string }
         : null)
@@ -260,7 +260,8 @@ async function goToBiz() {
     router,
     taskDetail.value.sourceEvent || '',
     taskDetail.value.bizId,
-    resolveModulePage(taskDetail.value.bizType || '')
+    resolveModulePage(taskDetail.value.bizType || ''),
+    taskDetail.value.jumpPath
   )
   if (!target) return
   visible.value = false

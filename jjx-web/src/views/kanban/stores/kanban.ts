@@ -209,7 +209,7 @@ export const useKanbanStore = defineStore('kanban', () => {
       updatedAt: '',
       taskType: t.taskType || 'general',
       department: '',
-      extraData: { sourceEvent: t.sourceEvent, bizId: t.bizId, bizType: t.bizType },
+      extraData: { sourceEvent: t.sourceEvent, bizId: t.bizId, bizType: t.bizType, jumpPath: t.jumpPath },
     }
   }
 

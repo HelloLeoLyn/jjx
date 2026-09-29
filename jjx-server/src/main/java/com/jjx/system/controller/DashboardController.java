@@ -24,6 +24,7 @@ import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.domain.vo.SalesWorkbenchVO;
 import com.jjx.system.domain.entity.SysTask;
 import com.jjx.system.mapper.SysTaskMapper;
+import com.jjx.system.service.EventJumpPathService;
 import com.jjx.system.mapper.SysUserMapper;
 import com.jjx.system.utils.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -64,6 +65,7 @@ public class DashboardController {
     private final SalesWorkbenchMapper salesWorkbenchMapper;
     private final NotificationMapper notificationMapper;
     private final SysTaskMapper taskMapper;
+    private final EventJumpPathService eventJumpPathService;
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -102,15 +104,16 @@ public class DashboardController {
                 .ne(SysTask::getKanbanModule, "dev");
         Long todoTotal = taskMapper.selectCount(todoCondition);
 
-        List<Map<String, Object>> todos = taskMapper.selectList(new LambdaQueryWrapper<SysTask>()
+        List<SysTask> todoTasks = taskMapper.selectList(new LambdaQueryWrapper<SysTask>()
                         .eq(SysTask::getAssigneeId, userId)
                         .in(SysTask::getStatus, KanbanTaskStatusEnum.PENDING.getValue(),
                                 KanbanTaskStatusEnum.IN_PROGRESS.getValue())
                         .ne(SysTask::getTaskType, "DEV")
                         .ne(SysTask::getKanbanModule, "dev")
                         .orderByDesc(SysTask::getCreateTime)
-                        .last("LIMIT 10"))
-                .stream()
+                        .last("LIMIT 10"));
+        eventJumpPathService.populateTasks(todoTasks);
+        List<Map<String, Object>> todos = todoTasks.stream()
                 .map(task -> {
                     Map<String, Object> todo = new LinkedHashMap<>();
                     todo.put("taskId", task.getTaskId());
@@ -119,6 +122,7 @@ public class DashboardController {
                     todo.put("bizType", task.getBizType());
                     todo.put("bizId", task.getBizId());
                     todo.put("sourceEvent", task.getSourceEvent());
+                    todo.put("jumpPath", task.getJumpPath());
                     todo.put("deadline", task.getDeadline() == null ? null : task.getDeadline().format(DATE_FORMATTER));
                     todo.put("createTime", task.getCreateTime() == null ? null
                             : task.getCreateTime().format(DATE_TIME_FORMATTER));

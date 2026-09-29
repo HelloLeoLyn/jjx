@@ -211,6 +211,11 @@
           </el-col>
         </el-row>
 
+        <el-form-item label="处理页面" prop="jumpPath">
+          <el-input v-model="form.jumpPath" maxlength="512" placeholder="如 /sales/order?bizId={bizId}" />
+          <div class="variable-empty">填写站内页面路径；查询参数可使用 {bizId} 定位单据。</div>
+        </el-form-item>
+
         <el-form-item label="标题" prop="title">
           <el-input
             v-model="form.title"
@@ -335,6 +340,11 @@ const tableOptions: TableOptions[] = uiConfig.tableOptions.flatMap(column =>
   column.prop === 'title'
     ? [
         {
+          prop: 'jumpPath',
+          label: '处理页面',
+          minWidth: 240,
+        },
+        {
           prop: 'closeSourceEvents',
           label: '办结关闭事件',
           minWidth: 220,
@@ -369,6 +379,7 @@ const form = reactive({
   title: '',
   content: '',
   closeSourceEvents: '',
+  jumpPath: '',
   excludeTrigger: 0,
 })
 
@@ -399,6 +410,10 @@ function roleName(roleId: number): string {
 }
 
 const rules = {
+  jumpPath: [
+    { required: true, message: '请配置处理页面', trigger: 'blur' },
+    { pattern: /^\/(?!\/)[A-Za-z0-9_/-]+(?:\?[A-Za-z0-9_=&%.~{}-]+)?$/, message: '请输入站内绝对路径', trigger: 'blur' },
+  ],
   eventCode: [{ required: true, message: '事件编码不能为空', trigger: 'blur' }],
   eventName: [{ required: true, message: '事件名称不能为空', trigger: 'blur' }],
   eventType: [{ required: true, message: '请选择类型', trigger: 'change' }],
@@ -446,7 +461,7 @@ function handleToolbarClick(key: string) {
 // 新增
 function handleAdd() {
   dialogTitle.value = '新增事件配置'
-  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'biz', priority: 'normal', isEnabled: 1, targetRole: '', targetRoleList: [], title: '', content: '', closeSourceEvents: '', excludeTrigger: 0 })
+  assignExisting(form, { eventId: undefined, eventCode: '', eventName: '', bizModule: '', eventType: 'notification', kanbanModule: 'biz', priority: 'normal', isEnabled: 1, targetRole: '', targetRoleList: [], title: '', content: '', closeSourceEvents: '', jumpPath: '', excludeTrigger: 0 })
   variables.value = []
   latestNotification.value = undefined
   lastPayload.value = null

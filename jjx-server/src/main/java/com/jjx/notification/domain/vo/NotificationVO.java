@@ -11,6 +11,8 @@ public class NotificationVO {
     private String notificationType;
     private String bizType;
     private String bizId;
+    /** 事件配置为模板，通知为生成时的路径快照。 */
+    private String jumpPath;
     private Long senderId;
     private String senderName;
     private Long receiverId;
