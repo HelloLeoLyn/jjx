@@ -294,7 +294,7 @@ async function syncReviewStatus() {
   try {
     const { data } = await inboundApi.syncReviewStatus(String(props.inboundId))
     if (data) {
-      ElMessage.success('单据状态已推进为「已批准」，可以去确认入库')
+      ElMessage.success('单据状态已就绪（已批准 / 已完成），可继续确认入库；已入库则无需再操作')
     } else {
       ElMessage.warning('仍有明细未审核通过，单据状态未推进')
     }

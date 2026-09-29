@@ -1861,7 +1861,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             com.jjx.quality.domain.entity.QualityLot quality = qualityLotMapper.selectForUpdate(lotId);
             return quality != null && "APPROVED".equals(quality.getReviewStatus());
         });
-        if (allApproved) {
+        // dev-20260929-012（P4）：状态推进必须单向 —— 只允许 草稿/待审批 → 已批准，
+        // 禁止把 已完成(10) / 已取消(9) 改回去。
+        // 原实现只要「全部明细已审核」就无条件置 APPROVED：复检批准会再次调用本方法（:1725），
+        // 把刚确认入库过的原单从 10 打回 2（实测 IN260929004 posted 94/76 有流水却停在已批准），
+        // 并且每次都重复发一次 quality.iqc.approved 事件。
+        boolean advanceable = InventoryOrderStatusEnum.DRAFT.getValue().equals(order.getOrderStatus())
+                || InventoryOrderStatusEnum.PENDING.getValue().equals(order.getOrderStatus());
+        if (allApproved && advanceable) {
             order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
             inboundOrderMapper.updateById(order);
             int quarantineCount = createIqcQuarantine(order, SecurityUtils.getUserId(), SecurityUtils.getDisplayName());
@@ -1882,7 +1889,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // 幂等（createIqcQuarantine 按 明细+检验记录 去重），可重复调用。
         updateInboundReviewStatus(inboundId);
         InventoryInboundOrder order = inboundOrderMapper.selectById(inboundId);
-        return order != null && InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus());
+        // dev-20260929-012（P4）：已完成(10) 视为「已就绪」—— 守卫后不再推进它，
+        // 返回 false 会让前端把"已完成"误报成"仍有明细未审核通过"。
+        return order != null
+                && (InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus())
+                || InventoryOrderStatusEnum.COMPLETED.getValue().equals(order.getOrderStatus()));
     }
 
     /**
