@@ -172,6 +172,8 @@ const CUSTOMER_CATEGORIES = ['客供稿', '客户确认样品']
 
 const props = defineProps<{
   productCode: string
+  /** 只显示/只允许这些类别（不传=全部） */
+  categories?: string[]
   /** 选择模式：显示勾选框，勾选通过 selection-change 抛出 */
   selectable?: boolean
   /** 上传权限点（可选，提供则按权限控制） */
@@ -188,13 +190,16 @@ const emit = defineEmits<{
 const userStore = useUserStore()
 const { options: dictCategories } = useDict('product_file_category')
 
-/** 类别选项：优先字典，兜底内置列表 */
+/** 类别选项：优先字典，兜底内置列表；再用 categories 收窄 */
 const categoryOptions = computed<{ label: string; value: string }[]>(() => {
   const list = (dictCategories.value || [])
     .map((d: any) => ({ label: d.label || d.itemValue || d.item_value, value: d.itemValue || d.item_value }))
     .filter((o: any) => o.value)
-  if (list.length) return list
-  return FALLBACK_CATEGORIES.map((c) => ({ label: c, value: c }))
+  const all = list.length ? list : FALLBACK_CATEGORIES.map((c) => ({ label: c, value: c }))
+  if (props.categories && props.categories.length) {
+    return all.filter((o) => props.categories!.includes(o.value))
+  }
+  return all
 })
 
 const canUpload = computed(() =>
@@ -262,6 +267,9 @@ function previewImage(att: any) {
 const groups = computed(() => {
   const map = new Map<string, any[]>()
   for (const f of files.value) {
+    if (props.categories && props.categories.length && !props.categories.includes(f.category)) {
+      continue
+    }
     const key = f.category || '未分类'
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push(f)
