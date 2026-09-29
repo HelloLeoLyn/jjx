@@ -837,11 +837,13 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             suggestions.add(row);
         }
 
-        // 来源2：未处理的订单缺料预警（DEV-573 8-04 衔接齐套检查）
+        // 来源2：未处理的订单缺料 / 全局汇总缺料预警（DEV-573 8-04 衔接齐套检查）
         // 2026-08-18：含已上报(1)——已上报同样进采购待办（修复标记已读后从建议消失的断链）
+        // dev-20260929-025：**demand_shortage（全局汇总缺料）原先被漏掉** —— 齐套检查产生的
+        //   "多单汇总缺料"只会落 demand_shortage，而这里只捞 order_shortage ⇒ 采购计划永远看不到缺口。
         List<InventoryAlertLog> shortageAlerts = alertLogMapper.selectList(
                 new LambdaQueryWrapper<InventoryAlertLog>()
-                        .eq(InventoryAlertLog::getAlertType, "order_shortage")
+                        .in(InventoryAlertLog::getAlertType, "order_shortage", "demand_shortage")
                         .in(InventoryAlertLog::getStatus, 0, 1));
         for (InventoryAlertLog alert : shortageAlerts) {
             // 缺口 = 需求 - 可用，建议补货量取缺口（从 alertMessage 冗余在 suggestion 中，优先解析 suggestion）
@@ -869,7 +871,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             row.put("materialName", alert.getMaterialName());
             row.put("currentStock", alert.getCurrentStock() != null ? alert.getCurrentStock().doubleValue() : 0);
             row.put("suggestQuantity", gap.doubleValue());
-            row.put("reason", "订单[" + (alert.getOrderNo() != null ? alert.getOrderNo() : "") + "]缺料，建议补货");
+            // dev-20260929-025：demand_shortage（多单汇总缺料）没有单号，文案走兜底，别显示"订单[]缺料"
+            String reasonText = alert.getOrderNo() != null && !alert.getOrderNo().isBlank()
+                    ? "订单[" + alert.getOrderNo() + "]缺料，建议补货"
+                    : "多单汇总缺料，建议补货";
+            row.put("reason", reasonText);
             row.put("priority", "urgent");
             row.put("sourceAlertId", alert.getAlertId());
             if (supplierId != null) row.put("supplierId", supplierId);
