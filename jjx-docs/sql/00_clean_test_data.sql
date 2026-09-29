@@ -379,6 +379,7 @@ TRUNCATE sales_sample_order;
 --       sys_dept 已按 83_rebuild_sys_dept_org.sql 新组织架构重建（16 部门），本脚本不清
 -- 配置：sys_config / sys_dict / sys_dict_item / sys_event_config
 -- 事件基建：sys_event_last_payload（事件最近一次 payload 缓存，事件配置页试渲染用；v18 起保留，与 sys_event_config 同类）
+-- 事件基建：sys_event_var（事件变量累积表，键集合漂移收敛用；source=collected/manual，与 sys_event_config 同类，保留）
 -- 质量模板：quality_template_registry
 -- 质量配置：抽样方案（AQL）已于 2026-09-24 从 quality_sampling_plan 表迁入
 --             sys_config（group=quality_config, key=quality.sampling_plan，JSON 数组；迁移 219，dev-20260924-021）
