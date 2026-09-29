@@ -13,6 +13,7 @@ import com.jjx.production.domain.entity.ProductionTask;
 import com.jjx.production.domain.entity.ProductionWorkReport;
 import com.jjx.production.domain.vo.WorkReportVO;
 import com.jjx.production.enums.ExecutionStatusEnum;
+import com.jjx.production.enums.ExecutionTypeEnum;
 import com.jjx.production.enums.ProductionTaskStatus;
 import com.jjx.production.enums.WorkReportStatusEnum;
 import com.jjx.production.mapper.ProductionOperationExecutionMapper;
@@ -37,7 +38,10 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 生产报工动作服务实现（P3 WorkReport + Approval）
@@ -293,6 +297,8 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         ProductionWorkReport r = workReportMapper.selectById(reportId);
         if (r == null) throw new BusinessException("报工记录不存在");
         checkApprover(r, operatorId);
+        jdbcTemplate.queryForObject("SELECT order_id FROM production_order WHERE order_id = ? FOR UPDATE",
+                Long.class, r.getOrderId());
         int rows = transition(reportId, WorkReportStatusEnum.APPROVED,
                 dto == null ? null : dto.getReviewRemark(), operatorName, operatorId);
         if (rows == 0) {
@@ -306,7 +312,7 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
         projectionService.recalculate(r.getExecutionId());
         completeTaskWhenQualified(r, operatorName);
         compareProjectionAndWarn(r);
-        createFqcLotIfFinal(r);
+        createFqcLotForRouteDelta(r);
         log.info("审批通过 reportId={}, executionId={}, reviewer={}", reportId, r.getExecutionId(), operatorName);
         WorkReportVO result = readService.getById(reportId);
         result.setEventPublished(true);
@@ -387,6 +393,109 @@ public class WorkReportActionServiceImpl implements WorkReportActionService {
     }
 
     /** 该工序是否为返工工序；是则返回来源不良单号（否则 null）—— dev-20260923-033 */
+    private void createFqcLotForRouteDelta(ProductionWorkReport r) {
+        if (r.getExecutionId() == null) return;
+        if (reworkNcrNoOf(r.getExecutionId()) != null) {
+            createFqcLotIfFinal(r);
+            return;
+        }
+        List<ProductionOperationExecution> orderExecutions = executionMapper.selectByOrderId(r.getOrderId());
+        Map<Long, ProductionOperationExecution> executionById = new HashMap<>();
+        orderExecutions.forEach(e -> executionById.put(e.getExecutionId(), e));
+        List<ProductionOperationExecution> executions = orderExecutions.stream()
+                .filter(e -> e.getExecutionType() == null || ExecutionTypeEnum.NORMAL.getCode().equals(e.getExecutionType()))
+                .sorted(Comparator.comparing(ProductionOperationExecution::getProcessOrder,
+                        Comparator.nullsLast(Integer::compareTo)).thenComparing(ProductionOperationExecution::getExecutionId))
+                .toList();
+        if (executions.isEmpty()) {
+            createFqcLotIfFinal(r);
+            return;
+        }
+        Map<Long, BigDecimal[]> throughput = new HashMap<>();
+        jdbcTemplate.query("SELECT wr.execution_id, wr.qualified_quantity, wr.defective_quantity "
+                        + "FROM production_work_report wr JOIN production_operation_execution e "
+                        + "ON e.execution_id = wr.execution_id "
+                        + "WHERE wr.order_id = ? AND wr.report_status = ? "
+                        + "AND COALESCE(e.execution_type, 'NORMAL') = 'NORMAL' FOR UPDATE",
+                ps -> { ps.setLong(1, r.getOrderId()); ps.setString(2, WorkReportStatusEnum.APPROVED.getCode()); },
+                rs -> {
+                    Long executionId = rs.getLong("execution_id");
+                    BigDecimal[] totals = throughput.computeIfAbsent(executionId,
+                            ignored -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+                    BigDecimal qualified = rs.getBigDecimal("qualified_quantity");
+                    BigDecimal defective = rs.getBigDecimal("defective_quantity");
+                    qualified = qualified == null ? BigDecimal.ZERO : qualified;
+                    defective = defective == null ? BigDecimal.ZERO : defective;
+                    totals[0] = totals[0].add(qualified);
+                    totals[1] = totals[1].add(qualified).add(defective);
+                });
+        BigDecimal routeCap = null;
+        Long finalExecutionId = null;
+        for (int i = 0; i < executions.size(); i++) {
+            ProductionOperationExecution execution = executions.get(i);
+            BigDecimal[] totals = throughput.getOrDefault(execution.getExecutionId(),
+                    new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            BigDecimal stageCapacity = i == executions.size() - 1 ? totals[1] : totals[0];
+            routeCap = routeCap == null ? stageCapacity : routeCap.min(stageCapacity);
+            if (i == executions.size() - 1) finalExecutionId = execution.getExecutionId();
+        }
+        if (routeCap == null || finalExecutionId == null) return;
+
+        List<com.jjx.quality.domain.entity.QualityLot> lots = qualityLotService.listByOrder(r.getOrderId(), null);
+        java.util.Set<Long> superseded = qualityLotService.effectiveSupersededLotIds(lots);
+        List<com.jjx.quality.domain.entity.QualityLot> effectiveFqc = lots.stream()
+                .filter(lot -> "FQC".equals(lot.getLotType()) && !superseded.contains(lot.getLotId()))
+                .filter(lot -> lot.getExecutionId() == null || !executionById.containsKey(lot.getExecutionId())
+                        || !ExecutionTypeEnum.REWORK.getCode().equals(
+                        executionById.get(lot.getExecutionId()).getExecutionType()))
+                .sorted(Comparator.comparing(com.jjx.quality.domain.entity.QualityLot::getLotId).reversed())
+                .toList();
+        BigDecimal allocated = effectiveFqc.stream().map(lot -> safe(lot.getLotQuantity()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (allocated.compareTo(routeCap) > 0) {
+            BigDecimal excess = allocated.subtract(routeCap);
+            for (com.jjx.quality.domain.entity.QualityLot lot : effectiveFqc) {
+                if (excess.signum() <= 0) break;
+                if (!"PENDING".equals(lot.getStatus()) || safe(lot.getInspectedQuantity()).signum() > 0
+                        || safe(lot.getStoredQuantity()).signum() > 0) continue;
+                BigDecimal reduction = safe(lot.getLotQuantity()).min(excess);
+                qualityLotService.reconcilePendingFqcQuantity(lot.getLotId(),
+                        safe(lot.getLotQuantity()).subtract(reduction),
+                        "按工单串行工序累计产出交集调减；路线可流转=" + routeCap.toPlainString());
+                excess = excess.subtract(reduction);
+            }
+            if (excess.signum() > 0) {
+                throw new BusinessException("路线交集可流转量为 " + routeCap.toPlainString()
+                        + "，但已有已检/已入库 FQC 超出该数量，请先核查批次后再审批");
+            }
+            allocated = routeCap;
+        }
+        BigDecimal delta = routeCap.subtract(allocated);
+        if (delta.signum() <= 0) return;
+
+        com.jjx.quality.dto.QualityLotCreateDTO dto = new com.jjx.quality.dto.QualityLotCreateDTO();
+        dto.setLotType("FQC");
+        dto.setSourceType("WORK_REPORT");
+        dto.setSourceId(r.getReportId());
+        dto.setSourceItemId(finalExecutionId);
+        dto.setOrderId(r.getOrderId());
+        dto.setExecutionId(finalExecutionId);
+        dto.setLotQuantity(delta);
+        dto.setRemark("串行工序累计产出交集新增 FQC；路线可流转=" + routeCap.toPlainString()
+                + "，本次新增=" + delta.toPlainString() + "，触发报工=" + r.getReportNo());
+        jdbcTemplate.queryForObject(
+                "SELECT product_id, product_code, product_name FROM production_order WHERE order_id = ?",
+                (rs, rowNum) -> {
+                    dto.setProductId(rs.getLong("product_id"));
+                    dto.setProductCode(rs.getString("product_code"));
+                    dto.setProductName(rs.getString("product_name"));
+                    return null;
+                }, r.getOrderId());
+        com.jjx.quality.domain.entity.QualityLot lot = qualityLotService.createLot(dto);
+        log.info("串行路线交集新增 FQC lotNo={} orderId={} cap={} delta={}", lot.getLotNo(), r.getOrderId(),
+                routeCap.toPlainString(), delta.toPlainString());
+    }
+
     private String reworkNcrNoOf(Long executionId) {
         try {
             return jdbcTemplate.queryForObject(

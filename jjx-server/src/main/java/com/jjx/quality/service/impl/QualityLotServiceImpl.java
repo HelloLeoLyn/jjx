@@ -235,6 +235,31 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reconcilePendingFqcQuantity(Long lotId, BigDecimal newQuantity, String reason) {
+        if (newQuantity == null || newQuantity.signum() < 0) throw new BusinessException("路线交集数量不能为负数");
+        QualityLot lot = lockLot(lotId);
+        if (!QualityLotTypeEnum.FQC.getCode().equals(lot.getLotType())
+                || !QualityLotStatusEnum.PENDING.getCode().equals(lot.getStatus())
+                || nz(lot.getInspectedQuantity()).signum() > 0 || nz(lot.getPassQuantity()).signum() > 0
+                || nz(lot.getFailQuantity()).signum() > 0 || nz(lot.getStoredQuantity()).signum() > 0
+                || nz(lot.getDisposedQuantity()).signum() > 0) {
+            throw new BusinessException("检验批已检验或发生后续业务，不能按路线交集自动调减：" + lot.getLotNo());
+        }
+        BigDecimal oldQuantity = nz(lot.getLotQuantity());
+        if (newQuantity.compareTo(oldQuantity) > 0) throw new BusinessException("路线交集修正只允许调减检验批数量");
+        if (newQuantity.compareTo(oldQuantity) == 0) return;
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("oldQuantity", oldQuantity);
+        metadata.put("newQuantity", newQuantity);
+        metadata.put("reason", reason);
+        lot.setLotQuantity(newQuantity);
+        if (newQuantity.signum() == 0) lot.setDelFlag(1);
+        lotMapper.updateById(lot);
+        recordHistory(lot, "ROUTE_QUANTITY_RECONCILED", listItems(lotId), reason, metadata, currentOperator());
+    }
+
+    @Override
     public List<QualityLot> listBySource(String sourceType, Long sourceId) {
         if (StringUtils.isBlank(sourceType) || sourceId == null) {
             return new ArrayList<>();

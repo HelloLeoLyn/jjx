@@ -58,6 +58,9 @@ public interface QualityLotService {
      */
     QualityLot lockLot(Long lotId);
 
+    /** Reconcile an untouched pending FQC lot against the serial-route throughput cap, with an audit snapshot. */
+    void reconcilePendingFqcQuantity(Long lotId, BigDecimal newQuantity, String reason);
+
     /** 是否为该来源的最新版本（无后继复检版本）——评定/录入/复检只允许作用于最新版 */
     boolean isLatestVersion(Long lotId);
 
