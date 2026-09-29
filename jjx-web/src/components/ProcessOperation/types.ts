@@ -3,6 +3,7 @@ export interface ProcessOperationItem {
   icon?: string
   processName: string
   indexNumber?: number | null
+  hasIndex?: number
   hasWorkInstruction?: number
   workInstruction?: string
 }

@@ -473,6 +473,7 @@ function toOperationItems(items: EngineeringRoutingItemVO[]): ProcessOperationIt
     icon: item.icon,
     processName: item.processName,
     indexNumber: item.hasIndex === 1 ? item.indexNumber : null,
+    hasIndex: item.hasIndex,
     hasWorkInstruction: item.hasWorkInstruction,
     workInstruction: (item as EngineeringRoutingItemVO & { workInstruction?: string })
       .workInstruction,
@@ -667,19 +668,6 @@ const openInstructionDialog = (item: EngineeringRoutingItemVO) => {
   indexDialogVisible.value = true
 }
 
-// 确认下标数字：写入 item.indexNumber
-const confirmIndexDialog = () => {
-  if (pendingIndexItem && indexDialogValue.value != null && indexDialogValue.value > 0) {
-    // 注意：pendingIndexItem 是 push 前的原始对象引用，直接改属性不触发视图更新
-    // 用 reactive() 取回 Vue 包装的响应式代理再改（已 push 进 groups 的对象在 reactiveMap 有缓存）
-    const target = reactive(pendingIndexItem)
-    target.indexNumber = Math.floor(indexDialogValue.value)
-    syncToParent()
-  }
-  indexDialogVisible.value = false
-  pendingIndexItem = null
-}
-
 const confirmPrompt = () => {
   if (!pendingIndexItem) return
   const target = reactive(pendingIndexItem)
@@ -695,6 +683,10 @@ const confirmPrompt = () => {
   } else {
     return
   }
+  const groupIndex = groups.value.findIndex((group) =>
+    group.items.some((item) => item.itemId === target.itemId)
+  )
+  bumpGroupSyncToken(groupIndex)
   syncToParent()
   indexDialogVisible.value = false
   pendingIndexItem = null

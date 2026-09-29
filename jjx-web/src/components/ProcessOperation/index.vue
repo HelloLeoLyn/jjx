@@ -22,52 +22,18 @@
           <span v-if="index > 0" class="plus">+</span>
           <span class="drag-handle" title="拖动调整工序顺序或移动到其他组合">⋮⋮</span>
           <div class="icon-cell">
-            <el-popover
-              v-if="
-                editable && item.icon && (item.workInstruction || item.hasWorkInstruction === 1)
-              "
-              placement="bottom-start"
-              :teleported="false"
-              :fallback-placements="['bottom-start']"
-              :offset="4"
-              :width="300"
-              trigger="click"
-            >
-              <el-input
-                :model-value="item.workInstruction"
-                clearable
-                maxlength="80"
-                placeholder="作业说明，如：冲窗口灯孔"
-                @input="(value: string) => emit('update:work-instruction', index, value)"
-              />
-              <div class="common-work-instructions">
-                <span>常用：</span>
-                <button
-                  v-for="text in commonWorkInstructions"
-                  :key="text"
-                  type="button"
-                  @click="emit('update:work-instruction', index, text)"
-                >
-                  {{ text }}
-                </button>
-              </div>
-              <template #reference
-                ><IconStepBadge
-                  :icon="item.icon"
-                  :size="32"
-                  :index="item.workInstruction ? null : item.indexNumber"
-                  :work-instruction="item.workInstruction"
-                  :editable="false"
-              /></template>
-            </el-popover>
             <IconStepBadge
-              v-else-if="item.icon"
+              v-if="item.icon"
               :icon="item.icon"
               :size="32"
-              :index="item.indexNumber"
+              :index="item.hasIndex === 0 ? undefined : item.indexNumber"
               :work-instruction="item.workInstruction"
+              :edit-work-instruction="item.hasWorkInstruction === 1 || !!item.workInstruction"
               :editable="editable"
               @update:index="(value: number) => emit('update:index', index, value)"
+              @update:work-instruction="
+                (value: string) => emit('update:work-instruction', index, value)
+              "
             />
             <span v-else class="icon-placeholder">工</span>
           </div>
@@ -88,52 +54,18 @@
         <span v-if="index > 0" class="plus">+</span>
         <div class="operation-child" :data-item-index="index">
           <div class="icon-cell">
-            <el-popover
-              v-if="
-                editable && item.icon && (item.workInstruction || item.hasWorkInstruction === 1)
-              "
-              placement="bottom-start"
-              :teleported="false"
-              :fallback-placements="['bottom-start']"
-              :offset="4"
-              :width="300"
-              trigger="click"
-            >
-              <el-input
-                :model-value="item.workInstruction"
-                clearable
-                maxlength="80"
-                placeholder="作业说明，如：冲窗口灯孔"
-                @input="(value: string) => emit('update:work-instruction', index, value)"
-              />
-              <div class="common-work-instructions">
-                <span>常用：</span>
-                <button
-                  v-for="text in commonWorkInstructions"
-                  :key="text"
-                  type="button"
-                  @click="emit('update:work-instruction', index, text)"
-                >
-                  {{ text }}
-                </button>
-              </div>
-              <template #reference
-                ><IconStepBadge
-                  :icon="item.icon"
-                  :size="32"
-                  :index="item.workInstruction ? null : item.indexNumber"
-                  :work-instruction="item.workInstruction"
-                  :editable="false"
-              /></template>
-            </el-popover>
             <IconStepBadge
-              v-else-if="item.icon"
+              v-if="item.icon"
               :icon="item.icon"
               :size="32"
-              :index="item.indexNumber"
+              :index="item.hasIndex === 0 ? undefined : item.indexNumber"
               :work-instruction="item.workInstruction"
+              :edit-work-instruction="item.hasWorkInstruction === 1 || !!item.workInstruction"
               :editable="editable"
               @update:index="(value: number) => emit('update:index', index, value)"
+              @update:work-instruction="
+                (value: string) => emit('update:work-instruction', index, value)
+              "
             />
             <span v-else class="icon-placeholder">工</span>
           </div>
@@ -160,14 +92,6 @@ import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import type { ProcessOperationItem } from './types'
 
 type GroupKey = number | string
-const commonWorkInstructions = [
-  '线路外形',
-  '冲窗口灯孔',
-  '一车一模',
-  '一车二模',
-  '撕保护膜',
-  '贴保护膜',
-]
 const props = withDefaults(
   defineProps<{
     items: ProcessOperationItem[]
@@ -330,29 +254,6 @@ function onRemove(event: SortableEvent) {
   border-radius: 6px;
   font-size: 11px;
   line-height: 1;
-}
-.common-work-instructions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-.common-work-instructions button {
-  padding: 2px 6px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 3px;
-  background: var(--el-fill-color-lighter);
-  color: var(--el-text-color-regular);
-  font-size: 12px;
-  line-height: 18px;
-  cursor: pointer;
-}
-.common-work-instructions button:hover {
-  border-color: var(--el-color-primary);
-  color: var(--el-color-primary);
 }
 .remove-item {
   position: absolute;
