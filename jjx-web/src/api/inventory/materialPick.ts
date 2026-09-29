@@ -13,10 +13,11 @@ export const materialPickApi = {
   },
 
   // 领料预览（2026-08-18：BOM展开+可用量+替代料，生成前确认）
-  pickPreview(workOrderId: number): AxiosPromise<any[]> {
+  pickPreview(workOrderId: number, supplementQuantity?: number): AxiosPromise<any[]> {
     return request({
       url: `/inventory/outbound/pick-preview/${workOrderId}`,
       method: 'get',
+      params: supplementQuantity ? { supplementQuantity } : undefined,
     })
   },
 

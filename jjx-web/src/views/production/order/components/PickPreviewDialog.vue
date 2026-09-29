@@ -29,7 +29,7 @@
         <div v-if="isSupplement" class="supplement-fields">
           <el-form label-width="110px" size="small">
             <el-form-item label="补料来源">
-              <el-select v-model="reasonType" style="width: 260px">
+              <el-select v-model="reasonType" style="width: 260px" @change="onSupplementReasonChange">
                 <el-option label="生产超耗/现场缺料" value="PRODUCTION_OVERUSE" />
                 <el-option label="报废后补产" value="SCRAP_REPLENISHMENT" />
                 <!-- dev-20260923-025：补料来源三类补齐（原因口径与「不良原因」分开，各管一段） -->
@@ -61,6 +61,7 @@
                 :min="0.01"
                 :max="reasonType === 'SCRAP_REPLENISHMENT' ? selectedNcr?.remainingReplacementQuantity : undefined"
                 :precision="2"
+                @change="onSupplementQuantityChange"
               />
             </el-form-item>
             <el-form-item label="补料原因" required>
@@ -204,6 +205,7 @@ const onNcrChange = () => {
     supplementQuantity.value = props.presetProductionQuantity
       ? Math.min(Number(props.presetProductionQuantity), available)
       : available || undefined
+    loadPreview()
   }
 }
 const dialogTitle = computed(() =>
@@ -232,12 +234,21 @@ function fmtNum(v: any): string {
 }
 
 async function loadPreview() {
+  const scrapSupplement = isSupplement.value && reasonType.value === 'SCRAP_REPLENISHMENT'
+  if (scrapSupplement && (!supplementQuantity.value || supplementQuantity.value <= 0)) {
+    rows.value = []
+    errorMsg.value = ''
+    return
+  }
   loading.value = true
   errorMsg.value = ''
   rows.value = []
   try {
     const { materialPickApi } = await import('@/api/inventory/materialPick')
-    const res: any = await materialPickApi.pickPreview(props.workOrderId)
+    const res: any = await materialPickApi.pickPreview(
+      props.workOrderId,
+      scrapSupplement ? Number(supplementQuantity.value) : undefined,
+    )
     rows.value = (res?.data || []).map((r: any) => ({
       ...r,
       qtyPick: isSupplement.value ? 0 : Number(r.qtyPick),
@@ -249,12 +260,30 @@ async function loadPreview() {
   }
 }
 
+const onSupplementQuantityChange = () => {
+  if (isSupplement.value && props.modelValue) loadPreview()
+}
+
+const onSupplementReasonChange = async (value: string) => {
+  if (value === 'SCRAP_REPLENISHMENT') {
+    await loadNcrOptions()
+    await loadPreview()
+    return
+  }
+  ncrId.value = undefined
+  await loadPreview()
+}
+
 watch(
   () => props.modelValue,
-  (v) => {
+  async (v) => {
     if (v) {
-      loadPreview()
       // dev-20260923-025：处置行发起时预填来源/不良单/建议补产数量
+      if (isSupplement.value) {
+        reasonType.value = props.presetReasonType || 'PRODUCTION_OVERUSE'
+        ncrId.value = props.presetNcrId
+        supplementQuantity.value = props.presetProductionQuantity
+      }
       if (isSupplement.value && props.presetReasonType) {
         reasonType.value = props.presetReasonType
       }
@@ -264,7 +293,12 @@ watch(
       if (isSupplement.value && props.presetProductionQuantity) {
         supplementQuantity.value = props.presetProductionQuantity
       }
-      if (isSupplement.value) loadNcrOptions()
+      if (isSupplement.value) {
+        if (reasonType.value === 'SCRAP_REPLENISHMENT') await loadNcrOptions()
+        await loadPreview()
+      } else {
+        await loadPreview()
+      }
     }
   },
   // 2026-08-18：immediate——组件首次挂载时 modelValue 已是 true，无变化事件，不加会漏首次加载

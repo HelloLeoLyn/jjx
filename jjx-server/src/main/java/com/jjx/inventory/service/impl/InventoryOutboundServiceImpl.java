@@ -802,7 +802,16 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
      */
     @Override
     public java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId) {
+        return previewPick(workOrderId, null);
+    }
+
+    @Override
+    public java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId, BigDecimal supplementQuantity) {
         java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+        boolean supplementPreview = supplementQuantity != null;
+        if (supplementPreview && supplementQuantity.signum() <= 0) {
+            throw new BusinessException("补产数量必须大于0");
+        }
         // 1. 查工单
         com.jjx.production.domain.entity.ProductionOrder prodOrder = productionOrderMapper.selectById(workOrderId);
         if (prodOrder == null) {
@@ -845,11 +854,24 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 5. 逐物料生成预览行（主料 + 替代料）
         // 2026-09-08 部分领料修正：预览按剩余需求（BOM需求 − 该工单已开领料量合计），支持分批/追加领料；
         // demand/picked 一并返回供前端展示"整单需求/已领/本次需领"
-        java.util.Map<Long, BigDecimal> pickedMap = sumPickedByMaterial(prodOrder.getOrderId());
+        java.util.Map<Long, BigDecimal> pickedMap = supplementPreview
+                ? java.util.Collections.emptyMap() : sumPickedByMaterial(prodOrder.getOrderId());
+        java.util.Map<Long, com.jjx.engineering.domain.entity.EngineeringBomItem> previewBomItems = new java.util.LinkedHashMap<>();
+        java.util.Map<Long, BigDecimal> supplementDemandMap = supplementPreview
+                ? aggregateSupplementDemand(bomItems, supplementQuantity) : java.util.Collections.emptyMap();
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
+            if (!"buy".equals(bomItem.getSourceType()) || bomItem.getMaterialId() == null) continue;
+            previewBomItems.putIfAbsent(bomItem.getMaterialId(), bomItem);
+        }
+        java.util.List<com.jjx.engineering.domain.entity.EngineeringBomItem> rowsToPreview = supplementPreview
+                ? new java.util.ArrayList<>(previewBomItems.values()) : bomItems;
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : rowsToPreview) {
             if (!"buy".equals(bomItem.getSourceType())) continue;
-            BigDecimal demand = batchDemand(bomItem, prodOrder.getPlannedQuantity());
-            BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
+            BigDecimal demand = supplementPreview
+                    ? supplementDemandMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO)
+                    : batchDemand(bomItem, prodOrder.getPlannedQuantity());
+            BigDecimal picked = supplementPreview ? BigDecimal.ZERO
+                    : pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
             BigDecimal remaining = demand.subtract(picked);
             if (remaining.compareTo(BigDecimal.ZERO) < 0) remaining = BigDecimal.ZERO;
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
@@ -1199,7 +1221,20 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return result;
     }
 
-    private BigDecimal getActualIssueQty(
+    static java.util.Map<Long, BigDecimal> aggregateSupplementDemand(
+            List<com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems, BigDecimal supplementQuantity) {
+        java.util.Map<Long, BigDecimal> demandByMaterial = new java.util.LinkedHashMap<>();
+        if (bomItems == null || supplementQuantity == null || supplementQuantity.signum() <= 0) {
+            return demandByMaterial;
+        }
+        for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
+            if (bomItem == null || !"buy".equals(bomItem.getSourceType()) || bomItem.getMaterialId() == null) continue;
+            demandByMaterial.merge(bomItem.getMaterialId(), batchDemand(bomItem, supplementQuantity), BigDecimal::add);
+        }
+        return demandByMaterial;
+    }
+
+    private static BigDecimal getActualIssueQty(
             com.jjx.engineering.domain.entity.EngineeringBomItem bomItem) {
         if (bomItem.getActualIssueQty() != null) {
             return bomItem.getActualIssueQty();
@@ -1215,7 +1250,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
      * 单位投料 = actual_issue_qty（BOM 保存时写入的含损耗单位应用料，不取整）
      * 取整只在整批做一次；最低投料量作为下限（min_issue_qty>0 时生效，与物料类型无关）
      */
-    private BigDecimal batchDemand(com.jjx.engineering.domain.entity.EngineeringBomItem bomItem, BigDecimal quantity) {
+    private static BigDecimal batchDemand(com.jjx.engineering.domain.entity.EngineeringBomItem bomItem, BigDecimal quantity) {
         BigDecimal qty = quantity != null ? quantity : BigDecimal.ZERO;
         BigDecimal demand = getActualIssueQty(bomItem).multiply(qty).setScale(0, java.math.RoundingMode.UP);
         BigDecimal minIssue = bomItem.getMinIssueQty();

@@ -134,8 +134,10 @@ public class InventoryOutboundController {
     @GetMapping("/pick-preview/{workOrderId}")
     @Operation(summary = "生产领料预览（BOM展开+可用量+替代料，8-18）")
     @SaCheckPermission("inventory:outbound:view")
-    public Result<java.util.List<java.util.Map<String, Object>>> pickPreview(@PathVariable Long workOrderId) {
-        return Result.success(outboundService.previewPick(workOrderId));
+    public Result<java.util.List<java.util.Map<String, Object>>> pickPreview(
+            @PathVariable Long workOrderId,
+            @RequestParam(required = false) java.math.BigDecimal supplementQuantity) {
+        return Result.success(outboundService.previewPick(workOrderId, supplementQuantity));
     }
 
     @GetMapping("/sample-pick/preview/{sampleOrderId}")

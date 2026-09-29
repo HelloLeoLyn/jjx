@@ -72,6 +72,10 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      */
     java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId);
 
+    /** 报废补产领料预览：按本次补产数量展开BOM，不扣减原工单已领数量。 */
+    java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId,
+                                                              java.math.BigDecimal supplementQuantity);
+
     /**
      * 追加领料（033定稿：多次领料，去幂等）
      * 出库单号 PICK-{工单号}-{序号}；每次填本次领料数量，Σ累计领料 ≤ BOM需求量
