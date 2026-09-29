@@ -12,19 +12,22 @@
       label="材料名称"
       min-width="150"
     /><el-table-column label="数量" width="105"
-      ><template #default="{ row }">{{ row.isReinspection ? '本批复检' : '整批收货' }} {{
-        row.isReinspection ? row.reinspectionQuantity ?? 0 : row.quantity
-      }}</template></el-table-column
+      ><template #default="{ row }"
+        >{{ row.isReinspection ? '本批复检' : '整批收货' }}
+        {{ row.isReinspection ? (row.reinspectionQuantity ?? 0) : row.quantity }}</template
+      ></el-table-column
     >
     <el-table-column label="判定数量" width="105"
-      ><template #default="{ row }">{{ row.isReinspection ? '本批合格' : '整批合格' }} {{
-        row.qualifiedQuantity ?? 0
-      }}</template></el-table-column
+      ><template #default="{ row }"
+        >{{ row.isReinspection ? '本批合格' : '整批合格' }}
+        {{ row.qualifiedQuantity ?? 0 }}</template
+      ></el-table-column
     >
     <el-table-column label="不良数量" width="105"
-      ><template #default="{ row }">{{ row.isReinspection ? '本批不良' : '整批不良' }} {{
-        row.rejectedQuantity ?? 0
-      }}</template></el-table-column
+      ><template #default="{ row }"
+        >{{ row.isReinspection ? '本批不良' : '整批不良' }}
+        {{ row.rejectedQuantity ?? 0 }}</template
+      ></el-table-column
     >
     <el-table-column label="数量口径" min-width="290"
       ><template #default="{ row }">
@@ -40,7 +43,11 @@
         </div>
         <div v-else class="quantity-context">
           <div>已处置 {{ row.trace?.disposedQuantity ?? disposedQuantity(row) }} 件</div>
-          <div>剩余可处置 {{ row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity ?? 0 }} 件</div>
+          <div>
+            剩余可处置
+            {{ row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity ?? 0 }}
+            件
+          </div>
         </div>
       </template></el-table-column
     >
@@ -80,7 +87,7 @@
     <TableActionColumn
       :actions="materialActions"
       :min-width="170"
-      :max-visible="1"
+      :min-visible="3"
       display="text"
       @action="handleMaterialAction"
     >
@@ -133,7 +140,8 @@ function disposedQuantity(row: any) {
 
 function canDisposeRow(row: any) {
   return (
-    Number((row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity) || 0) > 0 &&
+    Number((row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity) || 0) >
+      0 &&
     row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
     (row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted)
   )
