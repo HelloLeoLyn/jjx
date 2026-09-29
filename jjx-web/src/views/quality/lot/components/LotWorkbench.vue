@@ -231,17 +231,29 @@
         </el-table-column>
         <el-table-column label="CR" width="80">
           <template #default="{ row }"
-            ><el-input-number v-model="row.crQuantity" :min="0" size="small"
+            ><el-input-number
+              v-model="row.crQuantity"
+              :min="0"
+              size="small"
+              @change="onDefectInput(row)"
           /></template>
         </el-table-column>
         <el-table-column label="MA" width="80">
           <template #default="{ row }"
-            ><el-input-number v-model="row.maQuantity" :min="0" size="small"
+            ><el-input-number
+              v-model="row.maQuantity"
+              :min="0"
+              size="small"
+              @change="onDefectInput(row)"
           /></template>
         </el-table-column>
         <el-table-column label="MI" width="80">
           <template #default="{ row }"
-            ><el-input-number v-model="row.miQuantity" :min="0" size="small"
+            ><el-input-number
+              v-model="row.miQuantity"
+              :min="0"
+              size="small"
+              @change="onDefectInput(row)"
           /></template>
         </el-table-column>
         <el-table-column label="结论" width="110">
@@ -510,6 +522,12 @@ const load = async (page?: number) => {
 // ============ 录入 ============
 const itemsVisible = ref(false)
 const itemRows = ref<QualityLotItem[]>([])
+/** dev-20260929-017：录入缺陷数（CR/MA/MI）任一 > 0 → 自动把该行结论置「不合格」（可再手动改回；仅在使用者改缺陷数时触发） */
+const onDefectInput = (row: any) => {
+  const sum =
+    Number(row.crQuantity || 0) + Number(row.maQuantity || 0) + Number(row.miQuantity || 0)
+  if (sum > 0) row.result = InspectionResult.FAIL
+}
 const saving = ref(false)
 const fqcLayout = [
   { category: '材 质', items: ['面板', '上线', '下线', '背胶'] },
