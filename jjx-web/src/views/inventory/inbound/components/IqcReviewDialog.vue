@@ -41,18 +41,20 @@
       </el-table-column>
       <el-table-column prop="materialCode" label="物料编码" width="140" />
       <el-table-column prop="materialName" label="物料名称" min-width="160" />
-      <el-table-column prop="batchNo" label="批次" width="140" />
+      <el-table-column label="批次" width="140">
+        <template #default="{ row }">{{ qualityBatchNo(row) }}</template>
+      </el-table-column>
       <el-table-column label="检验结论" width="100">
-        <template #default="{ row }">{{
-          InspectionResultEnum.getLabel(row.inspectionResult)
-        }}</template>
+        <template #default="{ row }">{{ qualityResultLabel(row) }}</template>
       </el-table-column>
       <el-table-column label="处置" width="120">
         <template #default="{ row }">{{
           row.disposition ? IqcQuarantineActionEnum.getLabel(row.disposition) : '-'
         }}</template>
       </el-table-column>
-      <el-table-column label="允收数量" prop="acceptedQuantity" width="100" align="right" />
+      <el-table-column label="允收数量" width="100" align="right">
+        <template #default="{ row }">{{ qualityAcceptedQty(row) ?? '-' }}</template>
+      </el-table-column>
       <el-table-column label="审核状态" width="100">
         <template #default="{ row }">
           <el-tag :type="QualityReviewStatusEnum.getTagProps(row.quality?.reviewStatus).type">
@@ -140,9 +142,28 @@ const submittingId = ref('')
 const busy = ref(false)
 /** 当前入库单状态：用于判断「明细已全部审核但单据还没推进」需要重算 */
 const inboundOrderStatus = ref<number>()
-const rows = ref<
-  Array<InboundItemVO & { itemId: string; quality?: QualityVO; history: QualityVO[] }>
->([])
+/** 审核弹窗行：入库明细 + 当前检验批(quality) + 检验历史 */
+type ReviewRow = InboundItemVO & { itemId: string; quality?: QualityVO; history: QualityVO[] }
+const rows = ref<ReviewRow[]>([])
+
+/**
+ * dev-20260929-001：返工/复检批的「结论 / 允收数量 / 批次」必须按当前检验批(quality)口径展示。
+ * 明细行(inventory_inbound_item)原值在返工/复检场景仍停留在原批（如原批 FAIL / 97 件），
+ * 直接用会让品质主管把原批结论当成复检批结论误判（复检批实际 3 件、PASS）。
+ * 口径与列表待办计数一致：以当前检验批为准；未关联检验批时才回退明细行原值。
+ */
+function qualityResultLabel(row: ReviewRow) {
+  if (row.quality) return row.quality.resultName || InspectionResultEnum.getLabel(row.quality.result)
+  return InspectionResultEnum.getLabel(row.inspectionResult ?? '')
+}
+
+function qualityAcceptedQty(row: ReviewRow): number | undefined {
+  return row.quality ? row.quality.passQty : row.acceptedQuantity
+}
+
+function qualityBatchNo(row: ReviewRow): string {
+  return (row.quality ? row.quality.batchNo : row.batchNo) || '-'
+}
 
 watch(
   () => [props.visible, props.inboundId] as const,
