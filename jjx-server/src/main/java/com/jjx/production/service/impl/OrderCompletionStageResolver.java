@@ -66,6 +66,13 @@ public final class OrderCompletionStageResolver {
         return gap.signum() > 0 ? gap : BigDecimal.ZERO;
     }
 
+    /** Completed output visible on a work order includes FQC-good and customer-accepted concession. */
+    public static BigDecimal completedQuantity(BigDecimal storedCompleted, BigDecimal qualifiedTotal,
+                                               BigDecimal concessionTotal) {
+        BigDecimal acceptedOutput = nz(qualifiedTotal).add(nz(concessionTotal));
+        return nz(storedCompleted).max(acceptedOutput);
+    }
+
     public static Result resolve(Input in) {
         BigDecimal zero = BigDecimal.ZERO;
         if (in == null || in.orderStatus() == null) {

@@ -201,6 +201,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         ProductionOrderVO vo = productionOrderConverter.toVO(order);
+        applyAcceptedConcessionCompletion(vo);
         // WP-E-BUG-01：计划剩余可下达 = 动态计算（计划数量 - 有效子工单）
         if (order != null && "PLAN".equals(order.getOrderType())) {
             vo.setRemainingQuantity(planRemainingQuota(order));
@@ -221,6 +222,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         ProductionOrderVO vo = productionOrderConverter.toVO(order);
+        applyAcceptedConcessionCompletion(vo);
         if (order != null && "PLAN".equals(order.getOrderType())) {
             vo.setRemainingQuantity(planRemainingQuota(order));
         }
@@ -236,6 +238,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         List<ProductionOrder> orders = list(wrapper);
         List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        applyAcceptedConcessionCompletion(vos);
         fillPlanRemainingQuota(vos);
         return vos;
     }
@@ -265,6 +268,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         // 转换为VO分页
         Page<ProductionOrderVO> voPage = new Page<>(orderPage.getCurrent(), orderPage.getSize(), orderPage.getTotal());
         List<ProductionOrderVO> voList = productionOrderConverter.toVOList(orderPage.getRecords());
+        applyAcceptedConcessionCompletion(voList);
         fillPlanRemainingQuota(voList);
         fillLatestMaterialOutbound(voList);
         voPage.setRecords(voList);
@@ -611,6 +615,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         List<ProductionOrder> orders = list(wrapper);
         List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        applyAcceptedConcessionCompletion(vos);
         fillPlanRemainingQuota(vos);
         return vos;
     }
@@ -625,6 +630,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         List<ProductionOrder> orders = list(wrapper);
         List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        applyAcceptedConcessionCompletion(vos);
         fillPlanRemainingQuota(vos);
         return vos;
     }
@@ -730,6 +736,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
         List<ProductionOrder> orders = list(wrapper);
         List<ProductionOrderVO> vos = productionOrderConverter.toVOList(orders);
+        applyAcceptedConcessionCompletion(vos);
         fillPlanRemainingQuota(vos);
         return vos;
     }
@@ -1367,6 +1374,32 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 if (plan != null) {
                     vo.setRemainingQuantity(planRemainingQuota(plan));
                 }
+            }
+        }
+    }
+
+    /** Project customer-accepted concession into work-order completion without changing the ledger row. */
+    private void applyAcceptedConcessionCompletion(List<ProductionOrderVO> vos) {
+        if (vos == null) return;
+        for (ProductionOrderVO vo : vos) {
+            applyAcceptedConcessionCompletion(vo);
+        }
+    }
+
+    private void applyAcceptedConcessionCompletion(ProductionOrderVO vo) {
+        if (vo == null || vo.getOrderId() == null || !"WORK_ORDER".equals(vo.getOrderType())) return;
+        com.jjx.quality.dto.FqcCompletionSummary fqc = qualityLotService.summarizeEffectiveFqc(vo.getOrderId());
+        BigDecimal completed = OrderCompletionStageResolver.completedQuantity(
+                vo.getCompletedQuantity(), fqc.getQualifiedTotal(), fqc.getConcessionTotal());
+        if (vo.getCompletedQuantity() != null && completed.compareTo(vo.getCompletedQuantity()) <= 0) return;
+
+        vo.setCompletedQuantity(completed);
+        BigDecimal planned = vo.getPlannedQuantity();
+        if (planned != null) {
+            vo.setRemainingQuantity(planned.subtract(completed).max(BigDecimal.ZERO));
+            if (planned.signum() > 0) {
+                vo.setCompletionPercentage(completed.divide(planned, 4, java.math.RoundingMode.HALF_UP)
+                        .multiply(BigDecimal.valueOf(100)));
             }
         }
     }

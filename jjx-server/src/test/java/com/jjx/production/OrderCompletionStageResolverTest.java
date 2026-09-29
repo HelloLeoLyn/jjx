@@ -187,6 +187,15 @@ class OrderCompletionStageResolverTest {
     }
 
     @Test
+    void completedQuantityIncludesAcceptedConcessionWithoutDoubleCounting() {
+        BigDecimal completed = OrderCompletionStageResolver.completedQuantity(bd("93"), bd("93"), bd("2"));
+        assertEquals(0, bd("95").compareTo(completed));
+
+        BigDecimal alreadyProjected = OrderCompletionStageResolver.completedQuantity(bd("95"), bd("93"), bd("2"));
+        assertEquals(0, bd("95").compareTo(alreadyProjected));
+    }
+
+    @Test
     void shortfallHelperClampsAtZero() {
         assertEquals(0, BigDecimal.ZERO.compareTo(OrderCompletionStageResolver.shortfall(null, new BigDecimal("5"))));
         assertEquals(0, new BigDecimal("2").compareTo(
