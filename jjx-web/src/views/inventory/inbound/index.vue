@@ -23,6 +23,8 @@
             <el-option label="退货入库" value="return" />
             <el-option label="调拨入库" value="transfer" />
             <el-option label="其他入库" value="other" />
+            <el-option label="让步接收入库" value="iqc_release" />
+            <el-option label="返工复检入库" value="iqc_rework" />
           </el-select>
         </el-form-item>
         <el-form-item label="仓库">
@@ -125,6 +127,12 @@
             {{ formatNumber(row.totalQuantity) }}
           </template>
         </el-table-column>
+        <!-- 已入库量：真正过账入库的数量（为 0 表示尚未确认入库），dev-20260929-013 -->
+        <el-table-column label="已入库量" width="100" align="right">
+          <template #default="{ row }">
+            {{ formatNumber(row.postedQuantity ?? 0) }}
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusTag(row.status)" size="small">{{
@@ -139,7 +147,7 @@
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
             <el-button
-              v-if="isPurchase(row) && row.status === InboundOrderStatusEnum.APPROVED.value"
+              v-if="isPurchase(row) && row.status === InboundOrderStatusEnum.APPROVED.value && !isPosted(row)"
               link
               type="primary"
               v-hasPermi="['inventory:inbound:confirm']"
@@ -416,6 +424,12 @@ const inboundTypeText = (row: InboundVO) =>
     fallbackName: row.inboundTypeName,
     reverse: isReverse(row),
   })
+/** 已过账（已入库量达到允收量）：不再显示「确认入库」，dev-20260929-013 */
+const isPosted = (row: InboundVO) => {
+  const posted = Number(row.postedQuantity ?? 0)
+  const accepted = Number(row.acceptedQuantity ?? 0)
+  return posted > 0 && posted >= accepted
+}
 function openPreview(opKey: string, row: InboundVO) {
   if (!row?.inboundId) return
   const op = getOperation(opKey)

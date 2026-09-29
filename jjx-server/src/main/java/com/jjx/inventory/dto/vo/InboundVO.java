@@ -38,6 +38,10 @@ public class InboundVO {
     private String inspectionRemark;
     private BigDecimal totalQuantity;
     private BigDecimal totalAmount;
+    /** 允收量合计（按明细 accepted_quantity 汇总；dev-20260929-013） */
+    private BigDecimal acceptedQuantity;
+    /** 已入库量合计（按明细 posted_quantity 汇总；dev-20260929-013） */
+    private BigDecimal postedQuantity;
     private String orderStatus;
     /** 状态码（与 orderStatus 同值，前端展示用） */
     private Integer status;

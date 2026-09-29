@@ -11,6 +11,9 @@ export const InboundTypeEnum = createEnum({
     { value: 'return', label: '退货入库', tagProps: { type: 'warning' } },
     { value: 'transfer', label: '调拨入库', tagProps: { type: 'info' } },
     { value: 'adjust', label: '盘盈入库', tagProps: { type: 'danger' } },
+    // IQC 处置联动自动生成的入库单（dev-20260929-013）
+    { value: 'iqc_release', label: '让步接收入库', tagProps: { type: 'warning' } },
+    { value: 'iqc_rework', label: '返工复检入库', tagProps: { type: 'warning' } },
   ],
   defaultTag: { type: 'info' },
 })
@@ -82,6 +85,8 @@ export const InboundSourceTypeEnum = createEnum({
 const INBOUND_TYPE_ALIASES: Record<string, string> = {
   PRODUCTION_FINISH: 'production',
   PURCHASE_ORDER: 'purchase',
+  IQC_RELEASE: 'iqc_release',
+  IQC_REWORK: 'iqc_rework',
 }
 
 /** 入库单文案上下文：来源与后端下发的名称（仅兜底用） */

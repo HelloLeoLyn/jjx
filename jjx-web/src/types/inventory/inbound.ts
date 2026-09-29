@@ -70,6 +70,10 @@ export interface InboundVO {
   sourceNo?: string
   totalQuantity: number
   totalAmount: number
+  /** 允收量合计（按明细汇总，dev-20260929-013） */
+  acceptedQuantity?: number
+  /** 已入库量合计（按明细 posted_quantity 汇总，dev-20260929-013） */
+  postedQuantity?: number
   status: number
   statusName: string
   remark?: string
