@@ -4,7 +4,8 @@
 > 类型：**核查报告 + 根治方案**（未改代码、未改数据；只读核查）
 > 实测对象：`IN260929005`（PO260929001，行1 RM001572 50 / 行2 RM001592 63）
 > 用户 2026-09-29 拍板口径：① 隔离单状态**删列 + 派生**（不加"处置中"过渡）；② 让步件**并入原批次**，不新建批次，只在文档写死口径
-> 关联：`quality-issues-disposition-proposal-20260928.md`（总处置建议，M1~M5）｜`quality-taskcards-review-20260928.md`（任务卡 dev-20260928-010~016 评审）｜`design/iqc-pages-industry-alignment-dev-20260924-024.md`（页面结构，本方案更新其 §2.2/§7 决策1，待用户确认）
+> 2026-09-29 追加拍板：③ `dev-20260928-010` **并入本卡**（010 置 status=4 核销，已交付 `a6191c71` 保留）；④ 024 §2.2/§7 决策1 **以本次为准**（列表+独立子页 → 单页上列表下明细）；⑤ 让步单行判定字段口径按本文 §4.6 定稿
+> 关联：`quality-issues-disposition-proposal-20260928.md`（总处置建议，M1~M5）｜`quality-taskcards-review-20260928.md`（任务卡 dev-20260928-010~016 评审）｜`design/iqc-pages-industry-alignment-dev-20260924-024.md`（页面结构；其 §2.2/§7 决策1 已由本方案 §6 取代，用户 2026-09-29 确认）
 
 ---
 
@@ -134,7 +135,14 @@
 
 > 让步接收件并入原批次，不新建批次；让步身份由处置单（`IQC_RELEASE` / `IQC_REWORK`）与让步入库单承载，追溯走 `lot_id` / `iqc_batch_id`。
 
-不改代码，只在本文与后续 `modules/` 文档中固化，避免后人重复解读为缺陷。
+> 不改代码，只在本文与后续 `modules/` 文档中固化，避免后人重复解读为缺陷。
+
+### 4.6 让步行（IQC_RELEASE / IQC_REWORK）判定字段口径（2026-09-29 定稿）
+
+- 规则：让步/返工放行入库行**不写判定三字段** —— `qualified_quantity` / `rejected_quantity` / `accepted_quantity` 一律 **NULL**（不再写 0）。该行的业务事实只有 `quantity`（本行放行量）与 `posted_quantity`（已过账量）；"这是放行、不是质量判定"由 `inbound_type` / `source_type` 表达。
+- 理由：写 0 会被任何 SUM / 报表读成"合格 0、允收 0"的**假事实**（第二真源那一族）；写放行量又会造出 `accepted > pass` 的跨桶混口径（正是 4️⃣ 那个病）。NULL + 类型区分是唯一不产生假事实的表达。
+- 同步门禁（写进巡检脚本，作为可自动发现项）：`inbound_type IN (IQC_RELEASE, IQC_REWORK)` 的行断言三字段为 NULL；`PURCHASE` 行断言 `qualified + rejected = quantity`。
+- 实施前清点消费者（入库明细读侧集中在）：`InboundDetail.vue`、`IqcPostingDialog.vue`、`InboundInspectionDialog.vue`、`inbound/print.vue`、`iqc/detail.vue`、`IqcMaterialTable.vue`、`IqcReviewDialog.vue`、`types/inventory/inbound.ts`；后端仅 `InventoryInboundServiceImpl`（7 处）。需确认前端把 NULL 渲染为"—"而不是 0。
 
 ---
 
@@ -142,7 +150,7 @@
 
 | 既有 | 关系 | 处理 |
 |---|---|---|
-| `dev-20260928-010`（四套「已处置」账分叉 + 巡检脚本，status=2 待审核） | 与本方案 §4.1/§4.2 **同一根因**，白名单文件重叠（QualityNcrServiceImpl / InventoryInboundServiceImpl） | 建议**并入 dev-20260929-003**，或由用户指定以哪张卡为唯一实施卡（避免两张卡改同一批文件） |
+| `dev-20260928-010`（四套「已处置」账分叉 + 巡检脚本，status=2 待审核） | 与本方案 §4.1/§4.2 **同一根因**，白名单文件重叠（QualityNcrServiceImpl / InventoryInboundServiceImpl） | **已并入本卡**（用户 2026-09-29 拍板）：010 置 status=4（核销·被覆盖），其已交付 `a6191c71` 保留有效；本卡为唯一实施卡 |
 | `dev-20260928-011`（报废审批前端入口） | 已实现于 `iqc-quarantine` 页 | 不重复；本卡只改后端口径 |
 | `dev-20260928-016`（前端口径与术语） | 与本方案 §6 工作台整合重叠（列名/数量口径/命名） | §6 作为 016 的结构化延伸，实施时以一张卡做（避免同一批前端文件两卡同改） |
 | `quality-issues-disposition-proposal-20260928.md`（M1~M5） | 本文 = 其 M1 的**细化 + 提前可执行部分**（关闭判据与真源） | 迁移路径（M2~M3 统一处置表）仍按该文推进，本文不与其冲突 |
@@ -158,7 +166,7 @@
 - 位置感与分页（照抄既有解）：明细区锁定批次后不分页；切批次用 `:key` 重建 + 常驻"当前批次"提示（`execution/index.vue:42`、`dispatch/index.vue:20-27`）。
 - 动作分配规则：多行决策 → 行内区块；单行填写+确认 → 弹窗（检验录入已有 `MaterialChecksDialog` 先例）。**处置弹窗必须带完整上下文**（不合格原因、检验项、供应商/采购单号/检验批号、已处置/剩余、该品历史），否则重演"信息太少判不了"。
 - 数据出口收敛：启用已存在但无人调用的 `getIqcWorkbench`（`jjx-web/src/api/inventory/inbound.ts:54`、后端 `InventoryInboundServiceImpl.java:265-271`）作为唯一读口；停用/删除瘦接口 `listQuarantine` 与 `IqcQuarantineDialog` 瘦表；禁 `listQuarantine` 直接返回主表实体。
-- **与 024 的冲突（需用户一句确认）**：024 §2.2/§7 决策1 定的是"列表页 → 独立子页详情"。本次改为单页上下列，需用户在文档层面确认"以本次为准"，本方案才据此修改 024 或在其上加注。
+- **与 024 的冲突（已确认，2026-09-29）**：024 §2.2/§7 决策1 原定"列表页 → 独立子页详情"，用户已确认**以本次为准**；024 文首与 §7 已加注指向本文件 §6，本方案据此实施。
 
 ---
 
@@ -177,12 +185,18 @@
 
 ---
 
-## 8. 待拍板 / 遗留
+## 8. 拍板结果与遗留
 
-1. 是否将 `dev-20260928-010` 并入本卡（同一批文件两卡同改的冲突要先解开）。
-2. 是否确认"以本次为准"覆盖 024 §2.2/§7 决策1（独立子页 → 单页上下列）。
-3. 附带观察（§2.6）：让步单行 `accepted_quantity=0 / qualified,rejected=NULL` 的字段语义是否补齐。
-4. 另有一张同 PO 的入库单 `IN260929007`（RM001572 × 100，`lot_id=3`，`iqc_batch_id` 未建）在途，回归时一并覆盖。
+已拍板（用户 2026-09-29）：
+
+1. `dev-20260928-010` **并入本卡**：010 置 status=4（核销·被覆盖），已交付 `a6191c71` 保留；本卡为唯一实施卡。
+2. 024 §2.2/§7 决策1 **以本次为准**（独立子页 → 单页上列表下明细）。
+3. 让步单行判定字段：按 §4.6 定稿（NULL + 类型区分 + 聚合门禁）。
+
+遗留：
+
+4. 同 PO 的另一张入库单 `IN260929007`（RM001572 × 100，`lot_id=3`，`iqc_batch_id` 未建）在途，回归时一并覆盖。
+5. 实施前消费者清点（§4.6 末）：确认前端 NULL 渲染与报表 SUM 过滤。
 
 ---
 
