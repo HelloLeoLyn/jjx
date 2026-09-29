@@ -3,6 +3,9 @@
     <div class="detail-head">
       <span class="detail-head__no">{{ selectedInbound?.inboundNo }}</span>
       <span class="detail-head__mode">{{ mode === 'handle' ? '· 处理模式' : '· 查看模式' }}</span>
+      <el-button v-if="batchRows.length" link type="primary" @click="lineageVisible = true"
+        >批次溯源</el-button
+      >
     </div>
 
     <el-card v-if="selectedInbound" v-loading="detailLoading" class="detail-card">
@@ -240,6 +243,11 @@
       :inbound-no="activeInboundNo"
       @success="handleFlowSuccess"
     />
+    <BatchLineageDrawer
+      v-model:visible="lineageVisible"
+      :batch-no="''"
+      :batches="batchRows"
+    />
     <IqcQuarantineDialog
       v-model:visible="dispositionVisible"
       :inbound-id="activeInboundId"
@@ -256,7 +264,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { hasPermi } from '@/directives'
-import { qualityApi } from '@/api/production/quality'
 import { iqcApi } from '@/api/inventory/iqc'
 import { qualityLotApi, type QualityLotHistory, type QualityTraceView } from '@/api/quality/lot'
 import { inboundApi } from '@/api/inventory/inbound'
@@ -265,6 +272,7 @@ import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialo
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 import MaterialChecksDialog from './MaterialChecksDialog.vue'
 import IqcMaterialTable from './IqcMaterialTable.vue'
+import BatchLineageDrawer from './BatchLineageDrawer.vue'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
 import {
   batchPassIqcRow,
@@ -374,6 +382,9 @@ const selectedInboundId = ref<string | number>(''),
   dispositionRows = ref<any[]>([])
 /** 隔离品（待处置/已处置）带上下文行 —— 与处置单历史同一读口（iqc-workbench）。 */
 const quarantines = ref<any[]>([])
+/** 该来料批次的批次链路（工作台一次带回，供「批次溯源」抽屉） */
+const batchRows = ref<any[]>([])
+const lineageVisible = ref(false)
 /** 当前正在处置的那一行隔离品（传给弹窗，避免弹窗只有瘦实体、判不了） */
 const activeQuarantine = ref<any>()
 const pendingRows = computed(() =>
@@ -589,6 +600,7 @@ async function loadInboundDetail(row: IqcPendingVO) {
     const data = workbench?.inbound
     quarantines.value = workbench?.quarantines || []
     dispositionRows.value = workbench?.dispositions || []
+    batchRows.value = workbench?.batches || []
     const remainingByItemLot = new Map<string, number>()
     quarantines.value.forEach((record: any) => {
       const key = `${record.inboundItemId}:${record.lotId || ''}`
@@ -597,13 +609,40 @@ async function loadInboundDetail(row: IqcPendingVO) {
         (remainingByItemLot.get(key) || 0) + Number(record.remainingQuantity || 0)
       )
     })
-    const loadedRows = await Promise.all(
-      (data?.items || []).map(async (item: any): Promise<WorkRow> => {
+    // dev-20260929-007（L1）：检验批与检验项由工作台一次带回，材料行不再逐行请求（原为 2 请求/行）。
+    // 字段口径与 api/production/quality.ts 的 toQualityVO 一致，避免出现第二套映射。
+    const lotById = new Map<number, any>(
+      (workbench?.lots || []).map((lot: any) => [Number(lot.lotId), lot])
+    )
+    const itemsByLot = new Map<number, any[]>()
+    ;(workbench?.lotItems || []).forEach((item: any) => {
+      const key = Number(item.lotId)
+      if (!itemsByLot.has(key)) itemsByLot.set(key, [])
+      itemsByLot.get(key)!.push(item)
+    })
+    const toLotView = (lot: any) =>
+      lot
+        ? {
+            inspectionId: lot.lotId,
+            inspectionNo: lot.lotNo,
+            result: String(lot.result || QualityInspectionResult.PENDING).toLowerCase(),
+            totalQty: lot.lotQuantity,
+            passQty: lot.passQuantity,
+            failQty: lot.failQuantity,
+            previousInspectionId: lot.parentLotId,
+            reviewStatus: lot.reviewStatus,
+            materialCode: lot.materialCode,
+            defectDesc: lot.defectReason,
+            items: (itemsByLot.get(Number(lot.lotId)) || []).map((it: any) => ({ ...it })),
+            trace: undefined as QualityTraceView | undefined,
+          }
+        : undefined
+    const loadedRows = (data?.items || []).map((item: any): WorkRow => {
         // dev-20260922-009：新模型检验批在 lotId（inspectionId 已置空），优先取 lotId，回退旧字段
         const lotRef = item.lotId ?? item.inspectionId
-        const quality = lotRef ? (await qualityApi.getById(Number(lotRef))).data : undefined
+        const quality = lotRef ? toLotView(lotById.get(Number(lotRef))) : undefined
         const previousQuality = quality?.previousInspectionId
-          ? (await qualityApi.getById(Number(quality.previousInspectionId))).data
+          ? toLotView(lotById.get(Number(quality.previousInspectionId)))
           : undefined
         const isReinspection = Boolean(
             quality?.previousInspectionId && quality?.result === QualityInspectionResult.PENDING
@@ -660,7 +699,6 @@ async function loadInboundDetail(row: IqcPendingVO) {
           trace: quality?.trace,
         }
       })
-    )
     if (selectedInboundId.value === requestedId) {
       workRows.value = loadedRows
       inspectionRemark.value = data?.inspectionRemark || ''

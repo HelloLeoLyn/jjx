@@ -3,6 +3,7 @@ package com.jjx.inventory.dto.vo;
 import com.jjx.inventory.domain.InventoryIqcBatch;
 import com.jjx.inventory.domain.InventoryIqcDispositionOrder;
 import com.jjx.quality.domain.entity.QualityLot;
+import com.jjx.quality.domain.entity.QualityLotItem;
 import lombok.Data;
 
 import java.util.List;
@@ -23,4 +24,9 @@ public class IqcWorkbenchVO {
      * 目的：材料行的检验结论/复核状态/数量口径由服务端一次带全，页面不再逐行请求（去 N+1）。
      */
     private List<QualityLot> lots;
+    /**
+     * 上述检验批的检验项（一次批量取回，按 lotId 分组）。
+     * 材料行的「检测项目」弹窗与提交前校验都依赖它 —— 放这里是为了让工作台一次到位、页面零额外请求。
+     */
+    private List<QualityLotItem> lotItems;
 }

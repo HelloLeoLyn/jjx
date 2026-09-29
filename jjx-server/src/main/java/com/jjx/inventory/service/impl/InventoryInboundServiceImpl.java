@@ -111,6 +111,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final com.jjx.inventory.mapper.InventoryOutboundOrderMapper outboundOrderMapper;
     private final com.jjx.inventory.mapper.InventoryOutboundItemMapper outboundItemMapper;
     private final com.jjx.quality.mapper.QualityNcrMapper qualityNcrMapper;
+    private final com.jjx.quality.mapper.QualityLotItemMapper qualityLotItemMapper;
 
     /**
      * 入库类事件统一发布（2026-09-21 dev-20260921-013 库存批）：
@@ -271,8 +272,29 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         workbench.setQuarantines(iqcQuarantineMapper.selectLedgerRowsByInboundId(inboundId));
         workbench.setDispositions(listDispositionOrders(inboundId));
         workbench.setBatches(listIqcBatches(inboundId));
-        workbench.setLots(loadWorkbenchLots(inbound));
+        List<com.jjx.quality.domain.entity.QualityLot> lots = loadWorkbenchLots(inbound);
+        workbench.setLots(lots);
+        workbench.setLotItems(loadWorkbenchLotItems(lots));
         return workbench;
+    }
+
+    /** 工作台检验批的检验项：一次 IN 查询批量取回（页面不再逐行请求）。 */
+    private List<com.jjx.quality.domain.entity.QualityLotItem> loadWorkbenchLotItems(
+            List<com.jjx.quality.domain.entity.QualityLot> lots) {
+        if (lots == null || lots.isEmpty()) {
+            return java.util.List.of();
+        }
+        java.util.Set<Long> lotIds = lots.stream()
+                .map(com.jjx.quality.domain.entity.QualityLot::getLotId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        if (lotIds.isEmpty()) {
+            return java.util.List.of();
+        }
+        return qualityLotItemMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityLotItem>()
+                        .in(com.jjx.quality.domain.entity.QualityLotItem::getLotId, lotIds)
+                        .orderByAsc(com.jjx.quality.domain.entity.QualityLotItem::getSortOrder));
     }
 
     /** 工作台材料行对应的检验批：本行 lotId + 其 parentLotId 上溯的原批（两跳封顶）。 */
