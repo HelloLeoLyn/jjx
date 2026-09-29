@@ -64,6 +64,8 @@ export interface StandardProcessItem {
   isEnabled: number
   isEnabledName: string
   isEnabledTagType: string
+  /** 系统内置：1=内置（禁编辑/禁删除，如返工「作业说明返修」）—— dev-20260929-020 */
+  isSystem?: number
   displayOrder: number
   createBy: string
   createTime: string

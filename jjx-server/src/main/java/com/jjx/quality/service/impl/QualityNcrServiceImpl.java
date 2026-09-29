@@ -70,6 +70,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
 
     /** dev-20260924-006：报废生效即出「成品报废单」（凭据；库存不动） */
     private final com.jjx.quality.service.QualityScrapOrderService qualityScrapOrderService;
+    /** 返工工序限定用：该成品当前生效路线的工序（dev-20260929-020） */
+    private final com.jjx.product.mapper.EngineeringRoutingItemMapper routingItemMapper;
+    private final org.springframework.beans.factory.ObjectProvider<com.jjx.product.service.IEngineeringRoutingService> routingServiceProvider;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -960,6 +963,85 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         }
     }
 
+    // ==================== 返工可选工序（dev-20260929-020） ====================
+
+    /** 内置"凭作业说明返修"工序编码（迁移 233 初始化）。 */
+    private static final String BUILTIN_REWORK_PROCESS_CODE = "REWORK_BY_NOTE";
+
+    @Override
+    public java.util.List<com.jjx.product.domain.entity.ProductStandardProcess> listReworkProcesses(Long ncrId) {
+        QualityNcr ncr = ncrId == null ? null : ncrMapper.selectById(ncrId);
+        java.util.List<com.jjx.product.domain.entity.ProductStandardProcess> result = new java.util.ArrayList<>();
+        if (ncr != null && ncr.getOrderId() != null) {
+            java.util.Set<Long> ids = routeProcessIdsOfOrder(ncr.getOrderId());
+            if (!ids.isEmpty()) {
+                java.util.Map<Long, com.jjx.product.domain.entity.ProductStandardProcess> byId =
+                        standardProcessMapper.selectBatchIds(ids).stream()
+                                .collect(java.util.stream.Collectors.toMap(
+                                        com.jjx.product.domain.entity.ProductStandardProcess::getProcessId,
+                                        p -> p, (a, b) -> a));
+                for (Long id : ids) {   // 保持工艺路线里的工序顺序
+                    com.jjx.product.domain.entity.ProductStandardProcess p = byId.get(id);
+                    if (p != null && Integer.valueOf(1).equals(p.getIsEnabled())) {
+                        result.add(p);
+                    }
+                }
+            }
+        }
+        com.jjx.product.domain.entity.ProductStandardProcess builtin = builtinReworkProcess();
+        if (builtin != null && result.stream()
+                .noneMatch(p -> builtin.getProcessId().equals(p.getProcessId()))) {
+            result.add(builtin);   // 内置项固定排最后
+        }
+        return result;
+    }
+
+    /** 该工单对应成品的当前生效路线工序 id（按路线顺序、去重）。读不到时返回空集合（下拉只剩内置项）。 */
+    private java.util.Set<Long> routeProcessIdsOfOrder(Long orderId) {
+        java.util.LinkedHashSet<Long> ids = new java.util.LinkedHashSet<>();
+        if (orderId == null) {
+            return ids;
+        }
+        com.jjx.product.service.IEngineeringRoutingService routingService = routingServiceProvider.getIfAvailable();
+        if (routingService == null) {
+            return ids;
+        }
+        try {
+            com.jjx.production.domain.entity.ProductionOrder order = productionOrderMapper.selectById(orderId);
+            if (order == null || order.getProductId() == null) {
+                return ids;
+            }
+            com.jjx.product.domain.vo.EngineeringRoutingVO routing =
+                    routingService.getCurrentByProductId(order.getProductId());
+            if (routing == null || routing.getRoutingId() == null) {
+                return ids;
+            }
+            for (var item : routingItemMapper.selectByRoutingId(routing.getRoutingId())) {
+                if (item != null && item.getProcessId() != null) {
+                    ids.add(item.getProcessId());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取成品当前工艺路线失败（返工工序下拉将只有内置项）: orderId={} err={}", orderId, e.getMessage());
+        }
+        return ids;
+    }
+
+    /** 内置「作业说明返修（不指定工序）」工序记录；迁移 233 未执行时返回 null。 */
+    private com.jjx.product.domain.entity.ProductStandardProcess builtinReworkProcess() {
+        return standardProcessMapper.selectOne(
+                new LambdaQueryWrapper<com.jjx.product.domain.entity.ProductStandardProcess>()
+                        .eq(com.jjx.product.domain.entity.ProductStandardProcess::getProcessCode,
+                                BUILTIN_REWORK_PROCESS_CODE)
+                        .last("LIMIT 1"));
+    }
+
+    private boolean isBuiltinReworkProcess(com.jjx.product.domain.entity.ProductStandardProcess process) {
+        return process != null
+                && (BUILTIN_REWORK_PROCESS_CODE.equals(process.getProcessCode())
+                || Integer.valueOf(1).equals(process.getIsSystem()));
+    }
+
     private void createReworkExecution(QualityNcr ncr, QualityNcrAction action, BigDecimal quantity,
                                        QualityNcrDisposeDTO dto) {
         if (ncr.getOrderId() == null) {
@@ -972,6 +1054,20 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
                 standardProcessMapper.selectById(dto.getStandardProcessId());
         if (process == null || !Integer.valueOf(1).equals(process.getIsEnabled())) {
             throw new BusinessException("所选返工工序不存在或已停用");
+        }
+        // dev-20260929-020：工序只能取「该成品当前生效工艺路线内的工序」，或内置「作业说明返修（不指定工序）」。
+        boolean builtinProcess = isBuiltinReworkProcess(process);
+        if (builtinProcess) {
+            // 内置项承载"确定不了具体工序"的返工 —— 内容以作业说明为准，故必填
+            if (StringUtils.isBlank(dto.getReworkRequirement())) {
+                throw new BusinessException("选择「作业说明返修（不指定工序）」时必须填写返工要求（返工内容以该说明为准）");
+            }
+        } else {
+            java.util.Set<Long> allowed = routeProcessIdsOfOrder(ncr.getOrderId());
+            if (!allowed.contains(process.getProcessId())) {
+                throw new BusinessException("所选工序「" + process.getProcessName()
+                        + "」不属于该成品当前工艺路线，请从返工工序下拉中选择（含内置的「作业说明返修」）");
+            }
         }
         Integer maxOrder = executionMapper.selectList(new LambdaQueryWrapper<ProductionOperationExecution>()
                         .eq(ProductionOperationExecution::getOrderId, ncr.getOrderId())

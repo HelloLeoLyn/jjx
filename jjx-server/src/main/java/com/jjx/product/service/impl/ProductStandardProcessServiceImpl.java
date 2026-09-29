@@ -110,6 +110,10 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         if (existing == null) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
+        // dev-20260929-020：系统内置工序（返工用「作业说明返修」）不允许编辑 —— 返工链依赖它存在
+        if (Integer.valueOf(1).equals(existing.getIsSystem())) {
+            throw new BusinessException("该工序为系统内置，不允许编辑");
+        }
 
         validateIcon(process.getIcon());
 
@@ -174,6 +178,10 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         ProductStandardProcess process = getById(processId);
         if (process == null) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
+        }
+        // dev-20260929-020：系统内置工序不允许删除（删了返工处置就没有"凭作业说明返修"的落点）
+        if (Integer.valueOf(1).equals(process.getIsSystem())) {
+            throw new BusinessException("该工序为系统内置，不允许删除");
         }
 
         // 检查是否可删除

@@ -100,6 +100,11 @@ public class ProductStandardProcess {
     private Integer isFinalProcess;
 
     /**
+     * 系统内置：1=内置（禁编辑/禁删除，如返工用的「作业说明返修」），0=普通工序 —— dev-20260929-020
+     */
+    private Integer isSystem;
+
+    /**
      * 创建者
      */
     @TableField(fill = FieldFill.INSERT)

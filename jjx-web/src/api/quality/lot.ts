@@ -299,6 +299,13 @@ export const qualityNcrApi = {
     return request.get<R<QualityNcrAction[]>>(`/quality/ncr/${ncrId}/actions`)
   },
   /**
+   * 返工可选工序（dev-20260929-020）：该成品**当前生效工艺路线**的工序（按路线顺序）+ 内置「作业说明返修（不指定工序）」。
+   * 内置项 isSystem=1，选中它时「返工要求」必填（返工内容以该说明为准）。
+   */
+  reworkProcesses(ncrId: number) {
+    return request.get<R<Record<string, any>[]>>(`/quality/ncr/${ncrId}/rework-processes`)
+  },
+  /**
    * 不良件级明细（dev-20260924-004）：件号 / 主缺陷（检验项目+分级）/ 实测值 / 状态 + 全部缺陷记录。
    * 口径：件只做身份与追溯，不参与库存数量计算。
    */

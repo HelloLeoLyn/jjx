@@ -66,6 +66,13 @@ public class QualityNcrController {
         return Result.success(ncrService.listActions(ncrId));
     }
 
+    @Operation(summary = "返工可选工序：该成品当前工艺路线工序 + 内置「作业说明返修（不指定工序）」（dev-20260929-020）")
+    @GetMapping("/{ncrId}/rework-processes")
+    public Result<List<com.jjx.product.domain.entity.ProductStandardProcess>> reworkProcesses(
+            @PathVariable Long ncrId) {
+        return Result.success(ncrService.listReworkProcesses(ncrId));
+    }
+
     @Operation(summary = "不良件级明细（件号 / 主缺陷 / 实测值 / 状态 + 全部缺陷记录）（dev-20260924-004）")
     @GetMapping("/{ncrId}/pieces")
     public Result<List<com.jjx.quality.dto.vo.QualityNcrPieceVO>> pieces(@PathVariable Long ncrId) {

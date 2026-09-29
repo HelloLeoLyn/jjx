@@ -157,17 +157,33 @@
         </el-form-item>
         <template v-if="disposeForm.actionType === NcrActionType.REWORK">
           <el-form-item label="返工工序" required>
-            <el-select v-model="disposeForm.standardProcessId" filterable style="width: 100%" placeholder="选择标准工序">
+            <el-select
+              v-model="disposeForm.standardProcessId"
+              filterable
+              style="width: 100%"
+              placeholder="选择该成品工艺路线中的工序"
+            >
               <el-option
-                v-for="process in standardProcesses"
+                v-for="process in reworkProcesses"
                 :key="process.processId"
-                :label="`${process.processCode || ''} ${process.processName}`.trim()"
+                :label="`${process.processCode || ''} ${process.processName}${process.isSystem === 1 ? '（不指定工序）' : ''}`.trim()"
                 :value="process.processId"
-              />
+              >
+                <span>{{ process.processName }}</span>
+                <span v-if="process.isSystem === 1" class="tip"> · 不指定工序，内容以返工要求为准</span>
+              </el-option>
             </el-select>
+            <span class="tip"
+              >工序取自该成品当前生效工艺路线；确实定不了具体工序时选「作业说明返修」</span
+            >
           </el-form-item>
-          <el-form-item label="返工要求">
-            <el-input v-model="disposeForm.reworkRequirement" type="textarea" :rows="3" placeholder="填写本次返工的特殊要求" />
+          <el-form-item label="返工要求" :required="isBuiltinProcessPicked">
+            <el-input
+              v-model="disposeForm.reworkRequirement"
+              type="textarea"
+              :rows="3"
+              :placeholder="isBuiltinProcessPicked ? '选「作业说明返修」时必填：写清返工内容与要求' : '填写本次返工的特殊要求'"
+            />
           </el-form-item>
         </template>
         <el-form-item v-if="disposeForm.actionType === NcrActionType.CONCESSION" label="客户已确认">
@@ -470,7 +486,6 @@ import {
 import { qualityNcrApi, type QualityNcr, type QualityNcrAction } from '@/api/quality/lot'
 // dev-20260923-025：报废处置行发起补料（复用领料预览弹窗的补料模式）
 import PickPreviewDialog from '@/views/production/order/components/PickPreviewDialog.vue'
-import { standardProcessApi } from '@/api/product/standardProcess'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
 import { outboundApi } from '@/api/inventory/outbound'
 import type { PickPreviewRow } from '@/types/inventory/outbound'
@@ -539,7 +554,16 @@ const load = async (page?: number) => {
 
 const disposeVisible = ref(false)
 const disposing = ref(false)
-const standardProcesses = ref<StandardProcessItem[]>([])
+/** 返工可选工序（dev-20260929-020）：按不良单实时取"该成品当前工艺路线工序 + 内置作业说明返修项" */
+const reworkProcesses = ref<StandardProcessItem[]>([])
+/** 是否选中了内置「作业说明返修（不指定工序）」—— 选中它时返工要求必填 */
+const isBuiltinProcessPicked = computed(
+  () =>
+    disposeForm.actionType === NcrActionType.REWORK &&
+    reworkProcesses.value.some(
+      (p: any) => p.processId === disposeForm.standardProcessId && Number(p.isSystem) === 1
+    )
+)
 const disposeForm = reactive({
   actionType: 'REWORK',
   quantity: 1,
@@ -548,7 +572,17 @@ const disposeForm = reactive({
   reworkRequirement: '',
   resultRemark: '',
 })
-const openDispose = (row: QualityNcr) => {
+const loadReworkProcesses = async (ncrId: number) => {
+  reworkProcesses.value = []
+  try {
+    const { data } = await qualityNcrApi.reworkProcesses(Number(ncrId))
+    reworkProcesses.value = (data || []) as any
+  } catch {
+    reworkProcesses.value = []
+    ElMessage.warning('返工工序加载失败，请刷新后重试')
+  }
+}
+const openDispose = async (row: QualityNcr) => {
   current.value = row
   disposeForm.actionType = 'REWORK'
   disposeForm.quantity = pending(row)
@@ -557,6 +591,8 @@ const openDispose = (row: QualityNcr) => {
   disposeForm.reworkRequirement = ''
   disposeForm.resultRemark = ''
   disposeVisible.value = true
+  // dev-20260929-020：工序选项依赖"该成品当前工艺路线"，按不良单实时取（不再用标准工序全量）
+  await loadReworkProcesses(row.ncrId)
 }
 const submitDispose = async () => {
   if (!current.value) return
@@ -565,6 +601,11 @@ const submitDispose = async () => {
   }
   if (disposeForm.actionType === NcrActionType.REWORK && !disposeForm.standardProcessId) {
     return ElMessage.warning('请选择返工工序')
+  }
+  // dev-20260929-020：选内置「作业说明返修」时，返工要求必填（返工内容以该说明为准）
+  if (disposeForm.actionType === NcrActionType.REWORK && isBuiltinProcessPicked.value
+      && !String(disposeForm.reworkRequirement || '').trim()) {
+    return ElMessage.warning('选择「作业说明返修（不指定工序）」时必须填写返工要求')
   }
   disposing.value = true
   try {
@@ -914,12 +955,6 @@ const completeAction = async (row: QualityNcrAction) => {
 
 onMounted(async () => {
   load(1)
-  try {
-    const res: any = await standardProcessApi.getEnabledProcesses()
-    standardProcesses.value = res?.data || []
-  } catch {
-    standardProcesses.value = []
-  }
 })
 </script>
 

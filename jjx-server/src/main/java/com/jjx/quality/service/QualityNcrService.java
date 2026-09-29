@@ -76,6 +76,14 @@ public interface QualityNcrService {
      * 幂等：已 DONE 直接返回。
      */
     QualityNcrAction settleReworkAction(Long actionId);
+
+    /**
+     * 返工可选工序（dev-20260929-020）：该成品**当前生效工艺路线**的工序（按路线顺序）+ 内置「作业说明返修（不指定工序）」项。
+     *
+     * <p>口径：工序只能取自该成品路线；确实定不了具体工序时选内置项，此时返工内容以处置时填写的「返工要求」为准。
+     * 返回顺序即界面展示顺序，内置项固定排在最后。
+     */
+    java.util.List<com.jjx.product.domain.entity.ProductStandardProcess> listReworkProcesses(Long ncrId);
     /**
      * 隔离台账（dev-20260924-007 一期 / dev-20260924-031）：列「在隔离的货」—— 未处置不良（不良 − 已处置 &gt; 0）的清单，
      * 含件级汇总（件总数 / 待处置件数）。一期只做标识，**不动库存**。
