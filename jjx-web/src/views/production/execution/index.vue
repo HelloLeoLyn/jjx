@@ -159,7 +159,7 @@
       </template>
 
       <!-- dev-20260929-022：作业说明（返工要求/工序说明）—— 工人点开工序就能看到要做什么 -->
-      <WorkInstructionPanel :params="detailForm?.customProcessParams" />
+      <WorkInstructionPanel :params="detailInstruction" />
 
       <div class="metric-grid">
         <div class="metric-card">
@@ -559,7 +559,7 @@
           }}</el-descriptions-item>
         </el-descriptions>
         <!-- dev-20260929-022：报工前先让工人看到作业说明（返工要求） -->
-        <WorkInstructionPanel :params="reportExec?.customProcessParams" />
+        <WorkInstructionPanel :params="reportTaskInstruction" />
         <el-alert
           v-if="Number(reportCompletion?.shortfallQuantity || 0) > 0"
           class="supplement-alert"
@@ -1415,6 +1415,23 @@ const submitQc = async () => {
 const reportOpen = ref(false)
 const reportLoading = ref(false)
 const reportExec = ref<OperationExecutionVO | null>(null)
+/**
+ * 作业说明来源（dev-20260929-022）：优先取工序执行 VO，缺失时回退到任务行（后端已把 customProcessParams 下发到任务行，
+ * 覆盖"从任务树点报工""抽屉里点报工"等只拿任务行的入口）。
+ */
+const reportTaskInstruction = computed(
+  () =>
+    (reportTasks.value.find((t: any) => t.taskId === reportTaskId.value)?.customProcessParams as string) ||
+    (reportExec.value as any)?.customProcessParams ||
+    ''
+)
+const detailInstruction = computed(() => {
+  const fromExec = (detailForm as any)?.customProcessParams as string
+  if (fromExec) return fromExec
+  const execId = Number((detailForm as any)?.executionId || 0)
+  const row = (taskList.value || []).find((t: any) => Number(t.executionId) === execId)
+  return (row?.customProcessParams as string) || ''
+})
 const reportTasks = ref<TaskTreeRow[]>([])
 const reportTaskLoading = ref(false)
 const reportTaskId = ref<number | null>(null)

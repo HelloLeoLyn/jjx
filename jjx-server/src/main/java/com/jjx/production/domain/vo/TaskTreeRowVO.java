@@ -60,6 +60,11 @@ public class TaskTreeRowVO {
 
     @Schema(description = "工序类型（NORMAL 正常 / REWORK 返工；dev-20260923-035 补，派工与任务列表据此给返工打标签并置顶）")
     private String executionType;
+    /**
+     * 工序的作业说明原始 JSON（含返工场景的 ncrNo / reworkRequirement）—— dev-20260929-022。
+     * 放在任务行上，是为了让「报工弹窗」「移动端报工页」这类只取任务列表的入口也能看到作业说明（无需再补执行详情请求）。
+     */
+    private String customProcessParams;
 
     @Schema(description = "工单编号（展示上下文）")
     private String orderNo;

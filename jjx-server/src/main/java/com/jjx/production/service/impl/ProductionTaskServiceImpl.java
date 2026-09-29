@@ -1345,7 +1345,7 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
             try {
                 jdbcTemplate.query("SELECT e.execution_id, e.order_id, e.process_id,"
                                 + " COALESCE(NULLIF(e.process_name,''),p.process_name) process_name, e.process_order,"
-                                + " e.execution_status, e.execution_type"
+                                + " e.execution_status, e.execution_type, e.custom_process_params"
                                 + " FROM production_operation_execution e"
                                 + " LEFT JOIN engineering_standard_process p ON p.process_id = e.process_id"
                                 + " WHERE e.execution_id IN (" + execIdStr + ")",
@@ -1357,7 +1357,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                                     rs.getString("process_name"),
                                     rs.getObject("process_order"),
                                     rs.getObject("execution_status"),
-                                    rs.getString("execution_type")});
+                                    rs.getString("execution_type"),
+                                    rs.getString("custom_process_params")});
                         });
             } catch (Exception e) {
                 log.warn("查询 execution 上下文失败: {}", e.getMessage());
@@ -1539,6 +1540,8 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                 vo.setExecutionStatus(exec[4] == null ? null : ((Number) exec[4]).intValue());
                 // dev-20260923-035：返工工序（REWORK）在派工/任务列表里要能识别
                 vo.setExecutionType(exec.length > 5 ? (String) exec[5] : null);
+                // dev-20260929-022：作业说明随任务行下发（报工弹窗/移动端报工页直接可读）
+                vo.setCustomProcessParams(exec.length > 6 ? (String) exec[6] : null);
             }
             vo.setAssigneeId(t.getAssigneeId());
             vo.setAssigneeName(t.getAssigneeId() == null ? null : userNameMap.get(t.getAssigneeId()));

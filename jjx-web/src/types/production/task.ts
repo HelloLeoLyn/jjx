@@ -71,6 +71,8 @@ export interface TaskTreeRow {
   taskNo?: string
   /** 工序类型（NORMAL / REWORK）—— dev-20260923-035：派工与任务列表据此给返工打标签 */
   executionType?: string
+  /** 作业说明原始 JSON（返工场景含 ncrNo / reworkRequirement）—— dev-20260929-022：报工弹窗/移动端据此展示 */
+  customProcessParams?: string
   /** 任务业务类型（STANDARD / SUPPLEMENT）—— dev-20260924-002：派工与任务列表据此给补产打标签 */
   taskType?: string
   /** 补产组号（= 补料出库单号）—— dev-20260924-002 */

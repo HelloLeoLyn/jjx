@@ -114,7 +114,6 @@ import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getMyTasks } from '@/api/production/task'
-import { operationExecutionApi } from '@/api/production/operationExecution'
 import WorkInstructionPanel from '@/views/production/execution/components/WorkInstructionPanel.vue'
 import { submitWorkReport } from '@/api/production/workReport'
 import type { TaskTreeRow } from '@/types/production/task'
@@ -129,8 +128,10 @@ const processName = computed(() => String(route.query.processName || ''))
 const loading = ref(false)
 const submitting = ref(false)
 const tasks = ref<TaskTreeRow[]>([])
-/** 该工序的作业说明（customProcessParams；本页只取任务列表，故单独补一次执行详情） */
-const instructionParams = ref<string>('')
+/** 作业说明（dev-20260929-022）：直接取所选任务的 customProcessParams（后端随任务行下发，无需额外请求） */
+const instructionParams = computed(
+  () => (tasks.value.find((t) => t.taskId === selectedTaskId.value)?.customProcessParams as string) || ''
+)
 const selectedTaskId = ref<number | null>(null)
 
 const reportForm = ref({
@@ -156,14 +157,7 @@ async function loadTasks() {
     // 默认选中第一个有剩余额度的任务
     const first = tasks.value.find((t) => Number(t.remainingQuantity || 0) > 0)
     selectedTaskId.value = first?.taskId ?? tasks.value[0]?.taskId ?? null
-    // 作业说明：本页拿不到执行 VO，补一次按 executionId 收窄的详情（失败不影响报工）
-    instructionParams.value = ''
-    try {
-      const execRes: any = await operationExecutionApi.detail(executionId.value)
-      instructionParams.value = execRes?.data?.customProcessParams || ''
-    } catch {
-      instructionParams.value = ''
-    }
+
   } catch (e: any) {
     ElMessage.error(e?.message || '加载任务失败')
   } finally {

@@ -21,10 +21,6 @@ export const operationExecutionApi = {
     )
   },
 
-  /** 单个工序执行详情（dev-20260929-022：移动端报工页取作业说明 customProcessParams） */
-  detail(executionId: number) {
-    return request.get<R<OperationExecutionVO>>(`/production/operation-execution/${executionId}`)
-  },
 
   /** 全部工序视角；后端仅允许生产全局范围用户访问。 */
   globalList(params: OperationExecutionQuery) {
