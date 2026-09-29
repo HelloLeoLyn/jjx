@@ -416,6 +416,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         if (!ACTION_TYPES.contains(actionType)) {
             throw new BusinessException("处置方式不合法：" + dto.getActionType() + "（仅支持 返工/让步接收/报废）");
         }
+        if (isFqcConcession(ncr, actionType) && (ncr.getOrderId() == null || ncr.getLotId() == null)) {
+            throw new BusinessException("成品让步特采必须关联生产工单和 FQC 检验批");
+        }
         // dev-20260923-022（看板 2205 / dev-20260922-029）：失效批禁止再处置 ——
         // 被复检换代取代的批（或已随批作废的 NCR）如果还能处置，点一次让步接收就会把"已经不存在的货"加进良品库存。
         if ("VOID".equals(ncr.getStatus())) {
@@ -480,8 +483,11 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         BigDecimal disposed = nz(ncr.getDisposedQuantity()).add(quantity);
         ncr.setDisposedQuantity(disposed);
         // dev-20260923-046：三条结案路径共用同一判据（处置量够 + 无未关闭 CAPA）
-        boolean canClose = canCloseNcr(disposed, ncr.getDefectQuantity(), capaService.countOpen(ncrId, null));
-        ncr.setStatus("REWORK".equals(actionType) ? "DISPOSING" : canClose ? "CLOSED" : "DISPOSING");
+        long openCapaCount = capaService.countOpen(ncrId, null);
+        boolean fqcConcessionPendingInbound = isFqcConcession(ncr, actionType);
+        ncr.setStatus("REWORK".equals(actionType) ? "DISPOSING"
+                : ncrStatusAfterDisposition(disposed, ncr.getDefectQuantity(), openCapaCount,
+                fqcConcessionPendingInbound));
         ncrMapper.updateById(ncr);
         // 处置与库存联动（dev-20260917-008）
         if (iqcInventoryManaged) {
@@ -495,7 +501,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         //（实测：lot 缓存 2 而派生 4）。派生口径 = quality_ncr_action 的 DONE+PROCESSING。
         qualityLotService.refreshDisposedQuantity(ncr.getLotId());
         // dev-20260924-004：件级处置 —— 按序号把「待处置」件挂到本次处置单（件数 = 处置数量，一件一个决定）
-        qualityNcrPieceService.attachPieces(ncr.getNcrId(), action.getActionId(), actionType, quantity);
+        if (!fqcConcessionPendingInbound) {
+            qualityNcrPieceService.attachPieces(ncr.getNcrId(), action.getActionId(), actionType, quantity);
+        }
         if ("SCRAP".equals(actionType) && scrapGovernance) {
             // dev-20260924-006 + dev-20260924-028：报废生效 → 出**成品**报废单（来料走自己的 IQS 单，不套成品单）
             qualityScrapOrderService.createForAction(action, ncr);
@@ -940,6 +948,14 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
             if (inboundService == null) {
                 throw new BusinessException("库存服务不可用，让步接收无法联动库存，已回滚处置");
             }
+            if (isFqcConcession(ncr, actionType)) {
+                Long inboundId = inboundService.createFqcConcessionInbound(action.getActionId(), ncr.getNcrId(),
+                        ncr.getOrderId(), ncr.getLotId(), quantity);
+                action.setStatus("PROCESSING");
+                action.setResultRemark("让步特采待仓库确认入库：入库单 #" + inboundId);
+                actionMapper.updateById(action);
+                return;
+            }
             inboundService.adjustFinishStock(ncr.getOrderId(), ncr.getLotId(), ncr.getNcrId(), quantity,
                     "让步接收（特采）转良品：不良 " + quantity.toPlainString() + " 件");
             action.setStatus("DONE");
@@ -954,6 +970,11 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
             action.setStatus("PROCESSING");
             actionMapper.updateById(action);
         }
+    }
+
+    private boolean isFqcConcession(QualityNcr ncr, String actionType) {
+        return ncr != null && "CONCESSION".equalsIgnoreCase(actionType)
+                && "FQC".equalsIgnoreCase(ncr.getLotType());
     }
 
     // ==================== 返工可选工序（dev-20260929-020） ====================
@@ -1190,6 +1211,10 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         if ("DONE".equals(action.getStatus())) {
             return action; // 幂等：已完成直接返回
         }
+        QualityNcr actionNcr = ncrMapper.selectById(action.getNcrId());
+        if (isFqcConcession(actionNcr, action.getActionType())) {
+            throw new BusinessException("成品让步特采必须由仓库确认关联入库单后完成处置");
+        }
         if ("REWORK".equals(action.getActionType())) {
             QualityNcr ncr = getNcr(action.getNcrId());
             Long executionId = action.getReworkExecutionId();
@@ -1239,6 +1264,58 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         return action;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public QualityNcrAction completeFqcConcessionInbound(Long actionId, String inboundNo) {
+        QualityNcrAction action = actionMapper.selectById(actionId);
+        if (action == null || !"CONCESSION".equals(action.getActionType())) {
+            throw new BusinessException("找不到待完成的成品让步处置动作");
+        }
+        if ("DONE".equals(action.getStatus())) {
+            return action;
+        }
+        QualityNcr ncr = ncrMapper.selectById(action.getNcrId());
+        if (!isFqcConcession(ncr, action.getActionType()) || !"PROCESSING".equals(action.getStatus())) {
+            throw new BusinessException("成品让步处置与待确认入库单状态不一致");
+        }
+        action.setStatus("DONE");
+        action.setResultRemark("仓库已确认入库 " + inboundNo + "，成品让步特采完成");
+        actionMapper.updateById(action);
+
+        BigDecimal disposed = nz(actionMapper.sumEffectiveQuantityByNcrId(ncr.getNcrId()));
+        ncr.setDisposedQuantity(disposed);
+        ncr.setStatus(ncrStatusAfterDisposition(disposed, ncr.getDefectQuantity(),
+                capaService.countOpen(ncr.getNcrId(), null), false));
+        ncrMapper.updateById(ncr);
+        qualityNcrPieceService.attachPieces(ncr.getNcrId(), action.getActionId(), "CONCESSION", action.getQuantity());
+        qualityLotService.refreshDisposedQuantity(ncr.getLotId());
+        return action;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void voidFqcConcessionInbound(Long actionId, String reason) {
+        QualityNcrAction action = actionMapper.selectById(actionId);
+        if (action == null || "VOID".equals(action.getStatus())) {
+            return;
+        }
+        QualityNcr ncr = ncrMapper.selectById(action.getNcrId());
+        if (!isFqcConcession(ncr, action.getActionType()) || !"PROCESSING".equals(action.getStatus())) {
+            throw new BusinessException("仅可释放待仓库确认的成品让步处置");
+        }
+        action.setStatus("VOID");
+        action.setResultRemark(appendRemark(action.getResultRemark(), "关联入库单已取消/驳回，处置占用已释放：" +
+                (StringUtils.isBlank(reason) ? "未填写原因" : reason)));
+        actionMapper.updateById(action);
+
+        BigDecimal disposed = nz(actionMapper.sumEffectiveQuantityByNcrId(ncr.getNcrId()));
+        ncr.setDisposedQuantity(disposed);
+        ncr.setStatus(canCloseNcr(disposed, ncr.getDefectQuantity(), capaService.countOpen(ncr.getNcrId(), null))
+                ? "CLOSED" : disposed.signum() > 0 ? "DISPOSING" : "PENDING");
+        ncrMapper.updateById(ncr);
+        qualityLotService.refreshDisposedQuantity(ncr.getLotId());
+    }
+
     private String generateNcrNo() {
         return redisSequenceService.generateBusinessNumberByType("quality_ncr", "NCR", "yyMMdd", 3);
     }
@@ -1253,6 +1330,11 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
      */
     static boolean canCloseNcr(BigDecimal disposed, BigDecimal defect, long openCapaCount) {
         return nz(disposed).compareTo(nz(defect)) >= 0 && openCapaCount == 0;
+    }
+
+    static String ncrStatusAfterDisposition(BigDecimal disposed, BigDecimal defect, long openCapaCount,
+                                            boolean awaitingInbound) {
+        return !awaitingInbound && canCloseNcr(disposed, defect, openCapaCount) ? "CLOSED" : "DISPOSING";
     }
 
     private static BigDecimal nz(BigDecimal value) {

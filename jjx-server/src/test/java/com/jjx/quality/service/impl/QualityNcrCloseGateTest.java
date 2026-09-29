@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -38,5 +39,15 @@ class QualityNcrCloseGateTest {
         assertTrue(QualityNcrServiceImpl.canCloseNcr(null, BigDecimal.ZERO, 0));
         assertFalse(QualityNcrServiceImpl.canCloseNcr(null, new BigDecimal("1"), 0));
         assertFalse(QualityNcrServiceImpl.canCloseNcr(new BigDecimal("1"), null, 1));
+    }
+
+    @Test
+    void keepsFullyDisposedNcrOpenUntilFqcConcessionInboundIsConfirmed() {
+        assertEquals("DISPOSING", QualityNcrServiceImpl.ncrStatusAfterDisposition(
+                new BigDecimal("5"), new BigDecimal("5"), 0, true));
+        assertEquals("CLOSED", QualityNcrServiceImpl.ncrStatusAfterDisposition(
+                new BigDecimal("5"), new BigDecimal("5"), 0, false));
+        assertEquals("DISPOSING", QualityNcrServiceImpl.ncrStatusAfterDisposition(
+                new BigDecimal("5"), new BigDecimal("5"), 1, false));
     }
 }

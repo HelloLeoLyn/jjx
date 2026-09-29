@@ -25,6 +25,7 @@
             <el-option label="其他入库" value="other" />
             <el-option label="让步接收入库" value="iqc_release" />
             <el-option label="返工复检入库" value="iqc_rework" />
+            <el-option label="成品让步特采入库" value="fqc_concession" />
           </el-select>
         </el-form-item>
         <el-form-item label="仓库">

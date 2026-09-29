@@ -111,6 +111,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final com.jjx.inventory.mapper.InventoryOutboundOrderMapper outboundOrderMapper;
     private final com.jjx.inventory.mapper.InventoryOutboundItemMapper outboundItemMapper;
     private final com.jjx.quality.mapper.QualityNcrMapper qualityNcrMapper;
+    private final com.jjx.quality.mapper.QualityNcrActionMapper qualityNcrActionMapper;
     private final com.jjx.quality.mapper.QualityLotItemMapper qualityLotItemMapper;
 
     /**
@@ -434,6 +435,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         addStock(order, operatorId, operatorName, "确认入库");
         if ("IQC_RELEASE".equals(order.getSourceType()) && order.getSourceId() != null) {
             completeIqcReleaseDisposition(order);
+        }
+        if ("FQC_CONCESSION".equals(order.getSourceType()) && order.getSourceId() != null) {
+            com.jjx.quality.service.QualityNcrService ncrService = qualityNcrServiceProvider.getIfAvailable();
+            if (ncrService == null) {
+                throw new BusinessException("质量不良台账服务不可用，无法完成成品让步处置");
+            }
+            ncrService.completeFqcConcessionInbound(order.getSourceId(), order.getInboundNo());
         }
         if ("IQC_REWORK".equals(order.getSourceType())) {
             syncQualityLotStored(order);
@@ -1200,6 +1208,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setRemark(reason);
         boolean updated = inboundOrderMapper.updateById(order) > 0;
         if (updated) {
+            voidFqcConcessionReservation(order, reason);
             publishInboundEvent("inventory.inbound.cancelled", inboundId);
         }
         return updated;
@@ -1213,6 +1222,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (order == null) {
             log.error("入库单不存在: inboundId={}", inboundId);
             return false;
+        }
+        if ("FQC_CONCESSION".equals(order.getSourceType())) {
+            throw new BusinessException("成品让步特采入库无需检验审批，请由仓库直接确认入库");
         }
 
         // 采购收货单创建即处于 PENDING；inspection_result 使用明确枚举，PENDING=待检验。
@@ -1908,6 +1920,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
         String sourceNo = order.getSourceNo();
         boolean hasSourceNo = sourceNo != null && !sourceNo.isBlank();
+        if ("FQC_CONCESSION".equals(order.getSourceType())) {
+            return "成品不良让步处置 " + (hasSourceNo ? sourceNo : "-");
+        }
         if ("PRODUCTION".equals(order.getSourceType())) {
             return "生产工单 " + (hasSourceNo ? sourceNo : "-");
         }
@@ -2038,9 +2053,21 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         order.setRemark(remark);
         boolean updated = inboundOrderMapper.updateById(order) > 0;
         if (updated) {
+            voidFqcConcessionReservation(order, remark);
             publishInboundEvent("inventory.inbound.rejected", inboundId);
         }
         return updated;
+    }
+
+    private void voidFqcConcessionReservation(InventoryInboundOrder order, String reason) {
+        if (order == null || !"FQC_CONCESSION".equals(order.getSourceType()) || order.getSourceId() == null) {
+            return;
+        }
+        com.jjx.quality.service.QualityNcrService ncrService = qualityNcrServiceProvider.getIfAvailable();
+        if (ncrService == null) {
+            throw new BusinessException("质量不良台账服务不可用，无法释放成品让步处置占用");
+        }
+        ncrService.voidFqcConcessionInbound(order.getSourceId(), reason);
     }
 
     /**
@@ -2116,6 +2143,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             tx.setBatchNo(item.getBatchNo());
             tx.setIqcBatchId(item.getIqcBatchId());
             tx.setLotId(item.getLotId());
+            if ("FQC_CONCESSION".equals(order.getSourceType())) {
+                var action = qualityNcrActionMapper.selectById(order.getSourceId());
+                if (action == null) {
+                    throw new BusinessException("成品让步入库单关联的处置动作不存在");
+                }
+                tx.setNcrId(action.getNcrId());
+            }
             tx.setUnitCost(item.getUnitPrice());
             tx.setTransactionTime(LocalDateTime.now());
             tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
@@ -3364,6 +3398,89 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long createFqcConcessionInbound(Long actionId, Long ncrId, Long orderId, Long lotId,
+                                           BigDecimal quantity) {
+        if (actionId == null || ncrId == null || orderId == null || lotId == null
+                || quantity == null || quantity.signum() <= 0) {
+            throw new BusinessException("成品让步待确认入库的关联信息和数量必须完整");
+        }
+        InventoryInboundOrder existing = inboundOrderMapper.selectBySource("FQC_CONCESSION", actionId);
+        if (existing != null) {
+            return existing.getInboundId();
+        }
+        var ncr = qualityNcrMapper.selectById(ncrId);
+        var action = qualityNcrActionMapper.selectById(actionId);
+        var lot = qualityLotMapper.selectById(lotId);
+        ProductionOrder productionOrder = productionOrderMapper.selectById(orderId);
+        if (ncr == null || action == null || lot == null || productionOrder == null
+                || !ncrId.equals(action.getNcrId()) || !lotId.equals(ncr.getLotId())
+                || !orderId.equals(ncr.getOrderId()) || !"FQC".equalsIgnoreCase(ncr.getLotType())
+                || !"CONCESSION".equals(action.getActionType())
+                || !"WORK_ORDER".equals(productionOrder.getOrderType())) {
+            throw new BusinessException("成品让步入库关联的工单、检验批或不良处置不一致");
+        }
+        if (quantity.compareTo(action.getQuantity()) != 0) {
+            throw new BusinessException("成品让步待入库数量必须与不良处置数量一致");
+        }
+
+        InventoryInboundItem sourceItem = inboundItemMapper.selectOne(new LambdaQueryWrapper<InventoryInboundItem>()
+                .eq(InventoryInboundItem::getLotId, lotId)
+                .orderByAsc(InventoryInboundItem::getItemId)
+                .last("LIMIT 1"));
+        InventoryInboundOrder sourceOrder = sourceItem == null ? null
+                : inboundOrderMapper.selectById(sourceItem.getInboundId());
+
+        InventoryInboundOrder inbound = new InventoryInboundOrder();
+        inbound.setInboundNo(nextInboundNo());
+        inbound.setInboundType(com.jjx.inventory.enums.InboundTypeEnum.FQC_CONCESSION.getCode());
+        inbound.setSourceType("FQC_CONCESSION");
+        inbound.setSourceId(actionId);
+        inbound.setSourceNo(ncr.getNcrNo());
+        inbound.setTraceId(productionOrder.getTraceId());
+        inbound.setWarehouseId(sourceOrder == null ? null : sourceOrder.getWarehouseId());
+        if (inbound.getWarehouseId() == null) {
+            InventoryWarehouse defaultWarehouse = warehouseMapper.selectOne(new LambdaQueryWrapper<InventoryWarehouse>()
+                    .eq(InventoryWarehouse::getStatus, 1)
+                    .orderByAsc(InventoryWarehouse::getWarehouseId)
+                    .last("LIMIT 1"));
+            if (defaultWarehouse == null) {
+                throw new BusinessException("没有可用仓库，无法生成成品让步待确认入库单");
+            }
+            inbound.setWarehouseId(defaultWarehouse.getWarehouseId());
+        }
+        inbound.setInboundDate(LocalDate.now());
+        inbound.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        inbound.setTotalQuantity(quantity);
+        inbound.setRemark("成品让步特采待仓库确认；工单=" + productionOrder.getOrderNo()
+                + "，检验批=" + lot.getLotNo() + "，NCR=" + ncr.getNcrNo() + "，处置动作=" + actionId);
+        try {
+            inbound.setCreateBy(SecurityUtils.getUsername());
+        } catch (Exception ignored) { }
+        inboundOrderMapper.insert(inbound);
+
+        InventoryInboundItem item = new InventoryInboundItem();
+        item.setInboundId(inbound.getInboundId());
+        item.setInventoryItemId(inventoryItemService.ensure(InventoryItemTypeEnum.PRODUCT,
+                productionOrder.getProductId(), productionOrder.getProductCode(),
+                productionOrder.getProductName(), null, "PCS").getInventoryItemId());
+        item.setMaterialCode(productionOrder.getProductCode());
+        item.setMaterialName(productionOrder.getProductName());
+        item.setLotId(lotId);
+        item.setQuantity(quantity);
+        item.setBatchNo(sourceItem != null && sourceItem.getBatchNo() != null
+                ? sourceItem.getBatchNo() : "BATCH-" + lot.getLotNo());
+        if (sourceItem != null) {
+            item.setLocationId(sourceItem.getLocationId());
+            item.setUnitPrice(sourceItem.getUnitPrice());
+        }
+        item.setSortOrder(1);
+        inboundItemMapper.insert(item);
+        publishInboundEvent("inventory.inbound.created", inbound.getInboundId());
+        return inbound.getInboundId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public BigDecimal adjustFinishStock(Long orderId, Long lotId, Long ncrId, BigDecimal deltaQuantity, String remark) {
         if (orderId == null || deltaQuantity == null || deltaQuantity.signum() == 0) {
             return BigDecimal.ZERO;
@@ -3573,6 +3690,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             case "OTHER" -> "其他入库";
             case "IQC_RELEASE" -> "让步接收入库";
             case "IQC_REWORK" -> "返工复检入库";
+            case "FQC_CONCESSION" -> "成品让步特采入库";
             default -> inboundType;
         };
     }

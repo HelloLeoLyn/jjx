@@ -14,6 +14,7 @@ export const InboundTypeEnum = createEnum({
     // IQC 处置联动自动生成的入库单（dev-20260929-013）
     { value: 'iqc_release', label: '让步接收入库', tagProps: { type: 'warning' } },
     { value: 'iqc_rework', label: '返工复检入库', tagProps: { type: 'warning' } },
+    { value: 'fqc_concession', label: '成品让步特采入库', tagProps: { type: 'warning' } },
   ],
   defaultTag: { type: 'info' },
 })
@@ -87,6 +88,7 @@ const INBOUND_TYPE_ALIASES: Record<string, string> = {
   PURCHASE_ORDER: 'purchase',
   IQC_RELEASE: 'iqc_release',
   IQC_REWORK: 'iqc_rework',
+  FQC_CONCESSION: 'fqc_concession',
 }
 
 /** 入库单文案上下文：来源与后端下发的名称（仅兜底用） */
@@ -107,6 +109,7 @@ export function isProductionInbound(
   return (
     source === 'PRODUCTION' ||
     source === 'PRODUCTION_FINISH' ||
+    source === 'FQC_CONCESSION' ||
     type === 'PRODUCTION' ||
     type === 'PRODUCTION_FINISH'
   )

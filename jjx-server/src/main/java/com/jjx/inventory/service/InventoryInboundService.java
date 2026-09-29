@@ -49,6 +49,10 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
      */
     boolean confirm(Long inboundId, Long operatorId, String operatorName);
 
+    /** 为 FQC NCR 让步处置创建与处置动作幂等关联的待确认成品入库单。 */
+    Long createFqcConcessionInbound(Long actionId, Long ncrId, Long orderId, Long lotId,
+                                    java.math.BigDecimal quantity);
+
     /**
      * 取消入库单
      */

@@ -111,4 +111,10 @@ public interface QualityNcrService {
 
     /** 处置执行完成（返工完工再检合格/报废已扣库存/让步已转良品后由 008 调用） */
     QualityNcrAction completeAction(Long actionId, String resultRemark, Long reworkExecutionId);
+
+    /** FQC 让步入库确认后完成对应处置与 NCR 闭环。 */
+    QualityNcrAction completeFqcConcessionInbound(Long actionId, String inboundNo);
+
+    /** 关联入库单被取消或驳回时释放待入库处置占用。 */
+    void voidFqcConcessionInbound(Long actionId, String reason);
 }
