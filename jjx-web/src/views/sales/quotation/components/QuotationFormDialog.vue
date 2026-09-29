@@ -294,6 +294,8 @@
       <ProductFileLibrary
         v-if="fileLibVisible"
         :product-code="fileLibProductCode"
+        upload-perm="product:edit"
+        delete-perm="product:delete"
         @success="onFileLibUpload"
       />
     </el-dialog>

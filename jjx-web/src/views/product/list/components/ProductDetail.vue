@@ -271,6 +271,8 @@
       <ProductFileLibrary
         v-if="productData.product?.productCode"
         :product-code="productData.product.productCode"
+        upload-perm="product:edit"
+        delete-perm="product:delete"
       />
 
       <el-divider content-position="left">业务流转附件</el-divider>
