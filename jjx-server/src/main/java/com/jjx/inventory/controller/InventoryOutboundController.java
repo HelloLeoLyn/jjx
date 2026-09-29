@@ -138,6 +138,22 @@ public class InventoryOutboundController {
         return Result.success(outboundService.previewPick(workOrderId));
     }
 
+    @GetMapping("/sample-pick/preview/{sampleOrderId}")
+    @Operation(summary = "打样领料预览（样品BOM展开+匹配物料+可用量；dev-20260929-023）")
+    @SaCheckPermission("inventory:outbound:view")
+    public Result<java.util.List<java.util.Map<String, Object>>> samplePickPreview(@PathVariable Long sampleOrderId) {
+        return Result.success(outboundService.previewSamplePick(sampleOrderId));
+    }
+
+    @PostMapping("/sample-pick/{sampleOrderId}")
+    @Operation(summary = "打样领料（从样品单创建，复用出库/预占/确认发料；单号 PICK-样品单号-序号）")
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#sampleOrderId", action = LogActions.OUTBOUND_PRODUCTION_PICK)
+    @SaCheckPermission("inventory:outbound:add")
+    public Result<Long> createSamplePick(@PathVariable Long sampleOrderId,
+                                         @RequestBody java.util.List<java.util.Map<String, Object>> items) {
+        return Result.success(outboundService.createSamplePick(sampleOrderId, items));
+    }
+
     @PostMapping("/create-production-pick/{workOrderId}")
     @Operation(summary = "追加领料（033多次领料：Σ累计领料≤BOM需求量，剩余量校验）")
     @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId", action = LogActions.OUTBOUND_PRODUCTION_PICK)

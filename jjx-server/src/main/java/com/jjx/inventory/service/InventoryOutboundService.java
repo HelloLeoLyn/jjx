@@ -95,6 +95,17 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     java.util.List<java.util.Map<String, Object>> getPickRemaining(Long workOrderId);
 
     /**
+     * 打样领料预览（样品 BOM 展开 + 匹配物料 + 可用量；dev-20260929-023）
+     */
+    java.util.List<java.util.Map<String, Object>> previewSamplePick(Long sampleOrderId);
+
+    /**
+     * 打样领料（从样品单创建；复用出库/预占/确认发料链路；单号 PICK-{样品单号}-{序号}）
+     * @param items 本次领料明细 [{materialId, materialCode, materialName, quantity}]（允许手工调整）
+     */
+    Long createSamplePick(Long sampleOrderId, java.util.List<java.util.Map<String, Object>> items);
+
+    /**
      * 销售出库（从销售订单创建）
      */
     Long createFromSales(Long salesOrderId);

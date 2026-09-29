@@ -11,6 +11,7 @@ import lombok.Getter;
 public enum OutboundTypeEnum {
 
     PRODUCTION("production", "生产领料"),
+    SAMPLE("sample", "打样领料"),
     SALES("sales", "销售出库"),
     RETURN("return", "退货出库"),
     SCRAP("scrap", "报废出库"),

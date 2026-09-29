@@ -17,5 +17,9 @@ public class PickOrderPrintVO {
     private LocalDate preparedDate;
     private String preparedBy;
     private String recordNo;
+    /** 打印抬头（生产领料单 / 打样领料单；dev-20260929-023） */
+    private String pickTitle;
+    /** 来源类型（work_order / sample） */
+    private String sourceType;
     private List<PickOrderPrintItemVO> items;
 }

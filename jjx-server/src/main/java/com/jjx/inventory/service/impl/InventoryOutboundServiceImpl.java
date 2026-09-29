@@ -77,6 +77,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final InventoryAlertService alertService;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
+    // 打样领料（dev-20260929-023）
+    private final com.jjx.sales.mapper.SalesSampleOrderMapper sampleOrderMapper;
+    private final com.jjx.sales.mapper.SalesSampleBomMapper sampleBomMapper;
     /** 2026-09-21 dev-20260921-039：分批发货——按发货单明细出库。 */
     private final com.jjx.sales.mapper.SalesDeliveryMapper salesDeliveryMapper;
     private final com.jjx.sales.mapper.SalesDeliveryItemMapper salesDeliveryItemMapper;
@@ -189,10 +192,15 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     public PickOrderPrintVO getPickOrderPrint(Long outboundId) {
         InventoryOutboundOrder order = outboundOrderMapper.selectById(outboundId);
         if (order == null) throw new BusinessException("出库单不存在");
-        if (!OutboundTypeEnum.PRODUCTION.getCode().equals(order.getOutboundType())) {
-            throw new BusinessException("只有生产领料出库单可以打印JJX-QR-031领料单");
+        boolean samplePick = OutboundTypeEnum.SAMPLE.getCode().equals(order.getOutboundType())
+                || "sample".equals(order.getSourceType());
+        if (!OutboundTypeEnum.PRODUCTION.getCode().equals(order.getOutboundType()) && !samplePick) {
+            throw new BusinessException("只有生产领料/打样领料出库单可以打印JJX-QR-031领料单");
         }
-        if (order.getSourceId() == null) throw new BusinessException("领料单未关联生产工单");
+        if (order.getSourceId() == null) throw new BusinessException("领料单未关联来源单据");
+        if (samplePick) {
+            return buildSamplePickPrint(order);
+        }
 
         com.jjx.production.domain.entity.ProductionOrder productionOrder = productionOrderMapper.selectById(order.getSourceId());
         if (productionOrder == null) throw new BusinessException("关联生产工单不存在");
@@ -243,6 +251,58 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         result.setPreparedDate(order.getOutboundDate() == null ? LocalDate.now() : order.getOutboundDate());
         result.setPreparedBy(order.getCreateBy());
         result.setRecordNo("JJX-QR-031");
+        result.setPickTitle("生产领料单");
+        result.setSourceType(order.getSourceType());
+        result.setItems(printItems);
+        return result;
+    }
+
+    /** 打样领料单打印数据（JJX-QR-031 抬头改「打样领料单」；dev-20260929-023） */
+    private PickOrderPrintVO buildSamplePickPrint(InventoryOutboundOrder order) {
+        com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectById(order.getSourceId());
+        if (sample == null) throw new BusinessException("关联样品单不存在");
+        java.util.Map<String, String> layerByName = new HashMap<>();
+        for (com.jjx.sales.domain.entity.SalesSampleBom b : sampleBomMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesSampleBom>()
+                        .eq(com.jjx.sales.domain.entity.SalesSampleBom::getOrderId, order.getSourceId()))) {
+            layerByName.putIfAbsent(b.getMaterialName(), b.getLayerName());
+        }
+        java.util.Map<Long, BigDecimal> stockSnapshots = new HashMap<>();
+        transactionMapper.selectList(new LambdaQueryWrapper<InventoryTransaction>()
+                        .eq(InventoryTransaction::getSourceId, order.getOutboundId())
+                        .eq(InventoryTransaction::getTransactionType, "OUTBOUND")
+                        .orderByAsc(InventoryTransaction::getTransactionId))
+                .forEach(tx -> stockSnapshots.put(tx.getMaterialId(), tx.getAfterQuantity()));
+        List<PickOrderPrintItemVO> printItems = new ArrayList<>();
+        int sequence = 1;
+        for (InventoryOutboundItem outboundItem : outboundItemMapper.selectByOutboundId(order.getOutboundId())) {
+            PickOrderPrintItemVO item = new PickOrderPrintItemVO();
+            item.setSequence(sequence++);
+            item.setMaterialName(outboundItem.getMaterialName());
+            item.setProjectName(layerByName.get(outboundItem.getMaterialName()));
+            item.setSpecification(outboundItem.getSpecification());
+            item.setUnit(outboundItem.getUnit());
+            item.setIssuedQuantity(outboundItem.getQuantity());
+            BigDecimal snapshot = stockSnapshots.get(outboundItem.getMaterialId());
+            if (snapshot == null) {
+                InventoryStock stock = stockMapper.selectByMaterialId(outboundItem.getMaterialId());
+                snapshot = stock == null ? BigDecimal.ZERO : stock.getTotalQuantity();
+            }
+            item.setStockQuantity(Objects.requireNonNullElse(snapshot, BigDecimal.ZERO));
+            item.setRemark(outboundItem.getRemark());
+            printItems.add(item);
+        }
+        PickOrderPrintVO result = new PickOrderPrintVO();
+        result.setOutboundId(order.getOutboundId());
+        result.setOutboundNo(order.getOutboundNo());
+        result.setMachineModel(sample.getProductCode());
+        result.setProductName(sample.getProductName());
+        result.setOrderQuantity(sample.getSampleQty() == null ? null : new BigDecimal(sample.getSampleQty()));
+        result.setPreparedDate(order.getOutboundDate() == null ? LocalDate.now() : order.getOutboundDate());
+        result.setPreparedBy(order.getCreateBy());
+        result.setRecordNo("JJX-QR-031");
+        result.setPickTitle("打样领料单");
+        result.setSourceType("sample");
         result.setItems(printItems);
         return result;
     }
@@ -1260,6 +1320,116 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         for (InventoryOutboundItem it : items) {
             releasePickStock(it.getMaterialId(), it.getQuantity());
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public java.util.List<java.util.Map<String, Object>> previewSamplePick(Long sampleOrderId) {
+        com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectById(sampleOrderId);
+        if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
+        // 已领数量（Σ 该样品单已生成的领料明细，按物料名称汇总）
+        java.util.Map<String, BigDecimal> issuedByName = new HashMap<>();
+        for (InventoryOutboundOrder o : outboundOrderMapper.selectList(
+                new LambdaQueryWrapper<InventoryOutboundOrder>()
+                        .eq(InventoryOutboundOrder::getSourceType, "sample")
+                        .eq(InventoryOutboundOrder::getSourceId, sampleOrderId))) {
+            for (InventoryOutboundItem it : outboundItemMapper.selectByOutboundId(o.getOutboundId())) {
+                issuedByName.merge(it.getMaterialName(),
+                        Objects.requireNonNullElse(it.getQuantity(), BigDecimal.ZERO), BigDecimal::add);
+            }
+        }
+        List<java.util.Map<String, Object>> result = new ArrayList<>();
+        for (com.jjx.sales.domain.entity.SalesSampleBom row : sampleBomMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesSampleBom>()
+                        .eq(com.jjx.sales.domain.entity.SalesSampleBom::getOrderId, sampleOrderId)
+                        .orderByAsc(com.jjx.sales.domain.entity.SalesSampleBom::getBomId))) {
+            java.util.Map<String, Object> m = new HashMap<>();
+            // 样品 BOM 只存物料名称 → 按名称匹配物料档案（匹配不到则留空，由用户手工选料）
+            com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectOne(
+                    new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                            .eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialName, row.getMaterialName())
+                            .last("LIMIT 1"));
+            m.put("materialId", mat == null ? null : mat.getMaterialId());
+            m.put("materialCode", mat == null ? null : mat.getMaterialCode());
+            m.put("materialName", row.getMaterialName());
+            m.put("specification", row.getSpecification());
+            m.put("unit", row.getUnit());
+            m.put("quantity", row.getQuantity());
+            m.put("issuedQuantity", issuedByName.getOrDefault(row.getMaterialName(), BigDecimal.ZERO));
+            BigDecimal available = BigDecimal.ZERO;
+            if (mat != null) {
+                InventoryStock stock = stockMapper.selectByMaterialId(mat.getMaterialId());
+                available = stock == null ? BigDecimal.ZERO
+                        : Objects.requireNonNullElse(stock.getAvailableQuantity(), BigDecimal.ZERO);
+            }
+            m.put("availableQuantity", available);
+            result.add(m);
+        }
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long createSamplePick(Long sampleOrderId, java.util.List<java.util.Map<String, Object>> items) {
+        com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectById(sampleOrderId);
+        if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
+        if (items == null || items.isEmpty()) throw new BusinessException("打样领料明细不能为空");
+        // 样品单号 = 关联订单号
+        com.jjx.sales.domain.entity.SalesOrder srcOrder = sample.getOrderId() == null ? null
+                : salesOrderMapper.selectById(sample.getOrderId());
+        String sampleNo = srcOrder != null && srcOrder.getOrderNo() != null
+                ? srcOrder.getOrderNo() : ("SP" + sampleOrderId);
+        final String pickPrefix = "PICK-" + sampleNo + "-";
+        final java.util.regex.Pattern pickPattern =
+                java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(pickPrefix) + "(\\d+)$");
+        long seq = outboundOrderMapper.selectList(new LambdaQueryWrapper<InventoryOutboundOrder>()
+                        .eq(InventoryOutboundOrder::getSourceType, "sample")
+                        .eq(InventoryOutboundOrder::getSourceId, sampleOrderId)
+                        .likeRight(InventoryOutboundOrder::getOutboundNo, pickPrefix))
+                .stream().map(InventoryOutboundOrder::getOutboundNo).filter(Objects::nonNull)
+                .map(pickPattern::matcher).filter(java.util.regex.Matcher::find)
+                .mapToLong(mm -> Long.parseLong(mm.group(1))).max().orElse(0L) + 1;
+        InventoryOutboundOrder order = new InventoryOutboundOrder();
+        order.setOutboundNo(pickPrefix + seq);
+        order.setOutboundType(OutboundTypeEnum.SAMPLE.getCode());
+        order.setSourceType("sample");
+        order.setSourceId(sampleOrderId);
+        order.setSourceNo(sampleNo);
+        order.setOutboundDate(LocalDate.now());
+        order.setWarehouseId(getDefaultWarehouseOrThrow().getWarehouseId());
+        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        outboundOrderMapper.insert(order);
+        int sort = 1;
+        BigDecimal totalQty = BigDecimal.ZERO;
+        for (java.util.Map<String, Object> item : items) {
+            if (item.get("materialId") == null) throw new BusinessException("领料明细缺少物料（请先选定物料）");
+            Long materialId = ((Number) item.get("materialId")).longValue();
+            BigDecimal qty = new BigDecimal(String.valueOf(item.get("quantity")));
+            if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
+            InventoryOutboundItem outItem = new InventoryOutboundItem();
+            outItem.setOutboundId(order.getOutboundId());
+            outItem.setMaterialId(materialId);
+            outItem.setMaterialCode((String) item.get("materialCode"));
+            outItem.setMaterialName((String) item.get("materialName"));
+            outItem.setQuantity(qty);
+            outItem.setSortOrder(sort++);
+            try {
+                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(materialId);
+                if (!fifoItems.isEmpty() && fifoItems.get(0).getLocationId() != null) {
+                    outItem.setLocationId(fifoItems.get(0).getLocationId());
+                }
+            } catch (Exception e) {
+                log.warn("打样领料推荐库位失败(跳过): materialId={}", materialId);
+            }
+            totalQty = totalQty.add(qty);
+            outboundItemMapper.insert(outItem);
+        }
+        if (totalQty.signum() <= 0) throw new BusinessException("打样领料明细数量均为 0");
+        order.setTotalQuantity(totalQty);
+        outboundOrderMapper.updateById(order);
+        reservePickItems(order.getOutboundId());
+        log.info("打样领料单已生成(待发料): sampleOrderId={}, outboundId={}, no={}", sampleOrderId, order.getOutboundId(), order.getOutboundNo());
+        return order.getOutboundId();
     }
 
     @Override
