@@ -604,15 +604,16 @@ const saveItems = async () => {
     // dev-20260922-011（G1/G2）：保存只存清单、不推进状态，真正"提交"是「判定」。
     // 这里直接把下一步接上，并用录入数据预填判定数量（不良 = 不合格项的 CR+MA+MI 合计）。
     const savedRow = current.value
-    const failItems = itemRows.value.filter((i) => i.result === InspectionResult.FAIL)
-    const defectQty = failItems.reduce(
+    // dev-20260929-017(B)：Σ 口径统一 —— 缺陷数合计 = 全部检验项的 CR+MA+MI 之和（与「判定」里的 Σ 同口径）
+    const defectQty = itemRows.value.reduce(
       (sum, i) =>
         sum + Number(i.crQuantity || 0) + Number(i.maQuantity || 0) + Number(i.miQuantity || 0),
       0
     )
+    const failItemCount = itemRows.value.filter((i) => i.result === InspectionResult.FAIL).length
     const tip =
-      failItems.length > 0
-        ? `已保存 ${itemRows.value.length} 项，其中 ${failItems.length} 项不合格（缺陷数合计 ${defectQty}）。`
+      defectQty > 0
+        ? `已保存 ${itemRows.value.length} 项，缺陷数合计 ${defectQty}（其中不合格 ${failItemCount} 项）。`
         : `已保存 ${itemRows.value.length} 项，全部合格。`
     try {
       await ElMessageBox.confirm(
@@ -621,7 +622,7 @@ const saveItems = async () => {
         {
           confirmButtonText: '现在判定',
           cancelButtonText: '稍后再说',
-          type: failItems.length > 0 ? 'warning' : 'success',
+          type: defectQty > 0 ? 'warning' : 'success',
         }
       )
     } catch {
@@ -729,6 +730,12 @@ const submitJudge = async () => {
   const fail = Number(judgeForm.failQuantity || 0)
   if (inspected <= 0) return ElMessage.warning('检验数量必须大于 0')
   if (pass + fail !== inspected) return ElMessage.warning('合格数量 + 不良数量必须等于检验数量')
+  // dev-20260929-017(B)：Σ>0 而不良=0 一律拦截（堵住"缺陷数录了却判合格"的静默口子）
+  if (itemDefectSum.value > 0 && fail === 0) {
+    return ElMessage.warning(
+      `检验项目已录缺陷数合计 Σ = ${num(itemDefectSum.value)}，不良数量不能为 0：请补填不良数量，或先到「检验录入」核对检验项`
+    )
+  }
   // dev-20260924-014：不再强制手写原因；仅当 Σ=0（检验项无任何不合格数）时要求补充说明（与后端同口径=方案 A）
   if (fail > 0 && itemDefectSum.value === 0 && !judgeForm.defectReason.trim())
     return ElMessage.warning('检验项目未录任何不合格数（CR/MA/MI）：请先在「检验录入」补录，或填写补充说明')

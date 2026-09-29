@@ -580,6 +580,17 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         if (pass.add(fail).compareTo(inspected) != 0) {
             throw new BusinessException("合格数量 + 不良数量必须等于检验数量");
         }
+        // dev-20260929-017(B)：检验项缺陷数合计 Σ>0 时，不良数量不得为 0（口径与前端 LotWorkbench 一致）。
+        // 堵住「录了 CR/MA/MI 却把批判成全部合格」的静默口子。
+        BigDecimal itemDefectSum = BigDecimal.ZERO;
+        for (QualityLotItem it : listItems(lotId)) {
+            itemDefectSum = itemDefectSum
+                    .add(nz(it.getCrQuantity())).add(nz(it.getMaQuantity())).add(nz(it.getMiQuantity()));
+        }
+        if (itemDefectSum.signum() > 0 && fail.signum() == 0) {
+            throw new BusinessException("检验项目已录缺陷数合计 " + itemDefectSum.stripTrailingZeros().toPlainString()
+                    + "，不良数量不能为 0；请补录不良数量或修正检验项结论");
+        }
         // 2026-09-23（dev-20260923-021 一期）：可判合格上界护栏 ——
         // 链上已报废（SCRAP DONE，未回收）/ 让步未客户确认的量，不得通过换版本重判回良品（业内数量守恒）。
         com.jjx.quality.dto.vo.JudgementGuardVO guard = buildJudgementGuard(lot);
