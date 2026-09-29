@@ -4,12 +4,21 @@ import type { AxiosPromise } from 'axios'
 // 通用附件API
 export const attachmentApi = {
   // 上传附件
-  upload(file: File, bizType: string, bizId: number, remark?: string): AxiosPromise<number> {
+  upload(
+    file: File,
+    bizType: string,
+    bizId: number,
+    remark?: string,
+    traceId?: string,
+    category?: string
+  ): AxiosPromise<number> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('bizType', bizType)
     formData.append('bizId', String(bizId))
     if (remark) formData.append('remark', remark)
+    if (traceId) formData.append('traceId', traceId)
+    if (category) formData.append('category', category)
     return request({
       url: '/system/attachment/upload',
       method: 'post',
