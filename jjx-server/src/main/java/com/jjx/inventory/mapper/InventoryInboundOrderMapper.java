@@ -33,7 +33,8 @@ public interface InventoryInboundOrderMapper extends BaseMapper<InventoryInbound
             "(SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND q.review_status='PENDING') AS pending_review_count, " +
             "(SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NULL) AS pending_inspection_count, " +
             "(SELECT COUNT(*)" + CURRENT_IQC_ROWS + "AND (q.review_status IS NULL OR q.review_status IN ('DRAFT','REJECTED')) AND q.parent_lot_id IS NOT NULL) AS pending_reinspection_count, " +
-            "(SELECT COALESCE(SUM(q.remaining_quantity),0) FROM inventory_iqc_quarantine q WHERE q.inbound_id=o.inbound_id AND q.status='PENDING') AS remaining_disposition_quantity, " +
+// dev-20260929-004: 隔离单 status 列已删除（迁移 228），剩余可处置量改由剩余量派生 —— 结清行 remaining=0 自然归零；GREATEST 兜住脏数据负值，避免把剩余量算小。
+            "(SELECT COALESCE(SUM(GREATEST(q.remaining_quantity, 0)),0) FROM inventory_iqc_quarantine q WHERE q.inbound_id=o.inbound_id) AS remaining_disposition_quantity, " +
             "(SELECT COUNT(*) FROM inventory_iqc_disposition_order d WHERE d.inbound_id=o.inbound_id AND d.action='SCRAP' AND d.status='PENDING_APPROVAL') AS pending_scrap_count, " +
             "(SELECT COUNT(*) FROM inventory_iqc_disposition_order d WHERE d.inbound_id=o.inbound_id AND d.action='REWORK' AND d.status='CREATED') AS pending_rework_count, " +
             "(SELECT COUNT(*) FROM inventory_inbound_item i JOIN quality_lot q ON q.lot_id = i.lot_id WHERE i.inbound_id = o.inbound_id AND q.review_status = 'APPROVED') AS approved_count, " +
