@@ -23,7 +23,6 @@ public class InventoryIqcQuarantine {
     private BigDecimal quantity;
     private BigDecimal remainingQuantity;
     private String disposition;
-    private String status;
     private Long operatorId;
     private String operatorName;
     @TableField(fill = FieldFill.INSERT) private LocalDateTime createTime;

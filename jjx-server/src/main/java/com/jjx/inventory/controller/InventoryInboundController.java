@@ -172,12 +172,6 @@ public class InventoryInboundController {
         return Result.success(inboundService.listDispositionOrders(inboundId));
     }
 
-    @GetMapping("/iqc-quarantine/list")
-    @Operation(summary = "查询全部 IQC 隔离台账")
-    @SaCheckPermission(value = {"inventory:inbound:view", "quality:ncr:view"}, mode = SaMode.OR)
-    public Result<List<InventoryIqcQuarantine>> listAllQuarantine(@RequestParam(required = false) String status) {
-        return Result.success(inboundService.listAllQuarantine(status));
-    }
 
     @GetMapping("/iqc-quarantine/page")
     @Operation(summary = "分页查询 IQC 隔离处置台账及当前页关联数据")

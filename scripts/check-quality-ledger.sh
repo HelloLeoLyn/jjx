@@ -41,12 +41,41 @@ lot_action_drift=$(M "
 SELECT COUNT(*) FROM (
   SELECT l.lot_id,
          COALESCE(l.disposed_quantity, 0) lot_disposed,
-         COALESCE(SUM(CASE WHEN d.status NOT IN ('REJECTED', 'CANCELLED') THEN d.quantity ELSE 0 END), 0) action_disposed
+         COALESCE((
+           SELECT SUM(a.quantity) FROM quality_ncr n
+             JOIN quality_ncr_action a ON a.ncr_id = n.ncr_id AND a.del_flag = 0
+            WHERE n.lot_id = l.lot_id AND n.del_flag = 0
+              AND a.status IN ('DONE', 'PROCESSING')
+         ), 0) derived_disposed
     FROM quality_lot l
-    LEFT JOIN inventory_iqc_disposition_order d ON d.lot_id = l.lot_id
    WHERE l.lot_type = 'IQC'
    GROUP BY l.lot_id, l.disposed_quantity
-  HAVING lot_disposed <> action_disposed
+  HAVING lot_disposed <> derived_disposed
+) x;")
+
+# dev-20260929-004 新增：① 放行类行判定字段必须为 NULL；② 采购行判定守恒；③ 隔离台账行恒等式
+release_field_drift=$(M "
+SELECT COUNT(*) FROM inventory_inbound_item i
+JOIN inventory_inbound_order o ON o.inbound_id = i.inbound_id
+WHERE (o.inbound_type IN ('IQC_RELEASE', 'IQC_REWORK') OR o.source_type IN ('IQC_RELEASE', 'IQC_REWORK'))
+  AND (i.qualified_quantity IS NOT NULL OR i.rejected_quantity IS NOT NULL OR i.accepted_quantity IS NOT NULL);")
+
+purchase_judgement_drift=$(M "
+SELECT COUNT(*) FROM inventory_inbound_item i
+JOIN inventory_inbound_order o ON o.inbound_id = i.inbound_id
+WHERE o.source_type = 'PURCHASE' AND i.qualified_quantity IS NOT NULL
+  AND COALESCE(i.qualified_quantity, 0) + COALESCE(i.rejected_quantity, 0) <> i.quantity;")
+
+quarantine_balance_drift=$(M "
+SELECT COUNT(*) FROM (
+  SELECT q.quarantine_id, q.quantity, q.remaining_quantity,
+         COALESCE((
+           SELECT SUM(d.quantity) FROM inventory_iqc_disposition_order d
+            WHERE d.quarantine_id = q.quarantine_id
+              AND d.status NOT IN ('REJECTED', 'CANCELLED')
+         ), 0) disposed
+    FROM inventory_iqc_quarantine q
+  HAVING remaining_quantity < 0 OR disposed <> quantity - remaining_quantity
 ) x;")
 
 rework_lot_drift=$(M "
@@ -91,10 +120,13 @@ SELECT COUNT(*) FROM (
 
 echo "== 质量/IQC 跨表一致性巡检：$(date '+%F %T') =="
 echo "1) IQC 批不良量 vs NCR 不良总量：$lot_ncr_drift（期望 0）"
-echo "2) 检验批已处置量 vs 有效 NCR 处置动作：$lot_action_drift（期望 0）"
+echo "2) 检验批已处置量缓存 vs 派生(DONE+PROCESSING)：$lot_action_drift（期望 0）"
 echo "3) 返工量 vs 复检子批数量：$rework_lot_drift（期望 0）"
 echo "4) 不良量 vs 有效处置 + 隔离剩余：$lot_balance_drift（期望 0）"
 echo "5) 统一处置事实 vs NCR 动作关联：$disposition_ncr_drift（期望 0）"
+echo "6) 放行类行判定字段必须为 NULL：$release_field_drift（期望 0；迁移 229 未执行时存量行会报）"
+echo "7) 采购行判定守恒(合格+不良=收货)：$purchase_judgement_drift（期望 0）"
+echo "8) 隔离台账行恒等式(隔离量-已处置=剩余)：$quarantine_balance_drift（期望 0）"
 
 if [ "$lot_balance_drift" -gt 0 ]; then
   echo "-- 4) 不良量恒等式差异明细（lot_id / fail / 有效处置 / 隔离剩余）"
@@ -124,7 +156,7 @@ if ! bash "$(dirname "$0")/check-stock-summary.sh" --strict; then
   stock_exit=1
 fi
 
-if [ "$STRICT" = true ] && { [ "$lot_ncr_drift" -gt 0 ] || [ "$lot_action_drift" -gt 0 ] || [ "$rework_lot_drift" -gt 0 ] || [ "$lot_balance_drift" -gt 0 ] || [ "$disposition_ncr_drift" -gt 0 ] || [ "$stock_exit" -ne 0 ]; }; then
+if [ "$STRICT" = true ] && { [ "$lot_ncr_drift" -gt 0 ] || [ "$lot_action_drift" -gt 0 ] || [ "$rework_lot_drift" -gt 0 ] || [ "$lot_balance_drift" -gt 0 ] || [ "$disposition_ncr_drift" -gt 0 ] || [ "$release_field_drift" -gt 0 ] || [ "$purchase_judgement_drift" -gt 0 ] || [ "$quarantine_balance_drift" -gt 0 ] || [ "$stock_exit" -ne 0 ]; }; then
   exit 1
 fi
 exit 0

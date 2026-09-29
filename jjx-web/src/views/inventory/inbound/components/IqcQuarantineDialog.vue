@@ -11,16 +11,17 @@
       <el-table-column prop="materialName" label="物料名称" min-width="160" />
       <el-table-column prop="quantity" label="原始隔离" width="100" />
       <el-table-column prop="remainingQuantity" label="剩余数量" width="100" />
-      <el-table-column label="状态" width="100"
+      <el-table-column label="处置状态" width="100"
         ><template #default="{ row }"
-          ><el-tag :type="IqcQuarantineStatusEnum.getTagProps(row.status).type">{{
-            IqcQuarantineStatusEnum.getLabel(row.status)
+          ><el-tag :type="Number(row.remainingQuantity) > 0 ? 'warning' : 'success'">{{
+            Number(row.remainingQuantity) > 0 ? '待处置' : '已处置'
           }}</el-tag></template
         ></el-table-column
       >
       <el-table-column label="处置" width="360">
         <template #default="{ row }">
-          <template v-if="canDispose && row.status === IqcQuarantineStatus.PENDING">
+          <!-- dev-20260929-004：状态列已删除，可处置与否只看剩余量 -->
+          <template v-if="canDispose && Number(row.remainingQuantity) > 0">
             <el-select
               v-model="row.action"
               placeholder="请选择处置方式（必选）"
@@ -80,8 +81,6 @@ import {
   IqcQuarantineAction,
   IqcQuarantineActionEffect,
   IqcQuarantineActionEnum,
-  IqcQuarantineStatus,
-  IqcQuarantineStatusEnum,
 } from '@/enums/inventory/IqcQuarantineEnum'
 const props = defineProps<{
   visible: boolean

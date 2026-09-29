@@ -6,7 +6,7 @@
         <template #content>
           <div class="scope-tip__pop">
             本页只处理来料检验判定不合格后的处置：让步接收（特采） / 退货 / 返工 / 报废。<br />
-            「剩余数量」减到 0 才算结清，状态才会变成已让步接收 / 已退货 / 已返工 / 已报废。
+            「剩余可处置量」减到 0 才算结清：结清后该行显示「已处置」，具体怎么处置的看处置单（让步 / 退货 / 返工 / 报废）。
           </div>
         </template>
         <span class="scope-tip__text"
@@ -35,13 +35,11 @@
         <el-form-item label="供应商">
           <el-input v-model="query.supplierName" clearable placeholder="输入供应商名称" />
         </el-form-item>
-        <el-form-item label="隔离状态"
-          ><el-select v-model="query.status" clearable style="width: 150px" @change="search"
-            ><el-option
-              v-for="item in IqcQuarantineStatusEnum.items"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value" /></el-select
+        <el-form-item label="处置状态"
+          ><el-select v-model="query.settlement" clearable style="width: 150px" @change="search"
+            ><el-option label="待处置" value="PENDING" /><el-option
+              label="已处置"
+              value="SETTLED" /></el-select
         ></el-form-item>
         <el-form-item>
           <el-button type="primary" @click="search">查询</el-button>
@@ -105,7 +103,7 @@
           <template #default="{ row }">
             <template v-if="row.kind === 'quarantine'">
               <el-button
-                v-if="canDispose && row.status === IqcQuarantineStatus.PENDING && Number(row.remainingQuantity) > 0"
+                v-if="canDispose && Number(row.remainingQuantity) > 0"
                 type="primary"
                 link
                 @click="openDisposition(row)"
@@ -196,8 +194,6 @@ import {
   IqcScrapOrderStatus,
   IqcScrapOrderStatusEnum,
   IqcDispositionOrderStatusEnum,
-  IqcQuarantineStatus,
-  IqcQuarantineStatusEnum,
 } from '@/enums/inventory/IqcQuarantineEnum'
 import { IqcReworkStatus, IqcReworkStatusEnum } from '@/enums/inventory/IqcReworkEnum'
 import { IqcBatchStatusEnum, IqcBatchTypeEnum } from '@/enums/inventory/IqcBatchEnum'
@@ -217,7 +213,7 @@ const canInspect = computed(() => hasPermi('quality:lot:inspect'))
 const query = ref({
   pageNum: 1,
   pageSize: 20,
-  status: undefined as string | undefined,
+  settlement: undefined as 'PENDING' | 'SETTLED' | undefined,
   materialKeyword: '',
   batchNo: '',
   inboundNo: '',
@@ -271,19 +267,23 @@ const dispositionStatus = (value?: string) => {
   }
 }
 const workbenchRows = computed(() => {
-  const pending = rows.value.map((row: any) => ({
-    ...row,
-    kind: 'quarantine',
-    dispositionNo: '-',
-    actionLabel: '待处置',
-    lotNo: row.lotNo || row.batchNo,
-    quantity: row.remainingQuantity,
-    quantityLabel: '剩余可处置量',
-    totalFail: row.quantity,
-    statusLabel: IqcQuarantineStatusEnum.getLabel(row.status),
-    statusType: IqcQuarantineStatusEnum.getTagProps(row.status).type,
-    hasNextAction: canDispose.value && row.status === IqcQuarantineStatus.PENDING,
-  }))
+  const pending = rows.value.map((row: any) => {
+    // dev-20260929-004：状态列已删除 —— 唯一状态来源是剩余可处置量
+    const settled = Number(row.remainingQuantity || 0) <= 0
+    return {
+      ...row,
+      kind: 'quarantine',
+      dispositionNo: '-',
+      actionLabel: settled ? '已处置' : '待处置',
+      lotNo: row.lotNo || row.batchNo,
+      quantity: row.remainingQuantity,
+      quantityLabel: '剩余可处置量',
+      totalFail: row.quantity,
+      statusLabel: settled ? '已处置' : '待处置',
+      statusType: settled ? 'success' : 'warning',
+      hasNextAction: canDispose.value && !settled,
+    }
+  })
   const history = orders.value.map((row: any) => ({
     ...row,
     kind: 'disposition',
@@ -322,6 +322,16 @@ const workbenchRows = computed(() => {
   return [...pending, ...history, ...scraps, ...reworks]
 })
 
+/** 隔离台账查询参数：状态筛选按剩余量派生（待处置 = remaining > 0 / 已处置 = remaining = 0，dev-20260929-004） */
+function quarantineParams() {
+  const { settlement, ...rest } = query.value
+  return {
+    ...rest,
+    pendingOnly: settlement === 'PENDING' || undefined,
+    settledOnly: settlement === 'SETTLED' || undefined,
+  }
+}
+
 async function load() {
   loading.value = true
   ordersLoading.value = true
@@ -329,7 +339,8 @@ async function load() {
     reworkLoading.value = true
     batchLoading.value = true
     const [{ data }, historyResult] = await Promise.all([
-      inboundApi.pageIqcQuarantine(query.value),
+      // 状态筛选改为「按剩余量」派生：待处置 = remaining > 0；已处置 = remaining = 0（dev-20260929-004）
+      inboundApi.pageIqcQuarantine(quarantineParams()),
       inboundApi.pageIqcDisposition({
         ...query.value,
         pageNum: query.value.pageNum,
@@ -395,7 +406,7 @@ function resetQuery() {
   query.value = {
     pageNum: 1,
     pageSize: query.value.pageSize,
-    status: undefined,
+    settlement: undefined,
     materialKeyword: '',
     batchNo: '',
     inboundNo: '',

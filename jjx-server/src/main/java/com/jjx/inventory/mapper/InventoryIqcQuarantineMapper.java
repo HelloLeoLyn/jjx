@@ -25,8 +25,11 @@ public interface InventoryIqcQuarantineMapper extends BaseMapper<InventoryIqcQua
             LEFT JOIN inventory_inbound_order inbound ON inbound.inbound_id = q.inbound_id
             LEFT JOIN quality_lot lot ON lot.lot_id = q.lot_id
             <where>
-                <if test="query.status != null and query.status != ''">
-                    AND q.status = #{query.status}
+                <if test="query.pendingOnly != null and query.pendingOnly">
+                    AND q.remaining_quantity &gt; 0
+                </if>
+                <if test="query.settledOnly != null and query.settledOnly">
+                    AND q.remaining_quantity &lt;= 0
                 </if>
                 <if test="query.materialKeyword != null and query.materialKeyword != ''">
                     AND (q.material_code LIKE CONCAT('%', #{query.materialKeyword}, '%')

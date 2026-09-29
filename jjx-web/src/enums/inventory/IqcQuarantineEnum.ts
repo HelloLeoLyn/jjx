@@ -19,25 +19,8 @@ export const IqcQuarantineActionEnum = createNamedEnum(
   },
   { type: 'info' }
 )
-export const IqcQuarantineStatus = {
-  PENDING: 'PENDING',
-  RELEASED: 'RELEASED',
-  RETURNED: 'RETURNED',
-  REWORKED: 'REWORKED',
-  SCRAPPED: 'SCRAPPED',
-} as const
-
-export const IqcQuarantineStatusEnum = createEnum({
-  items: [
-    { value: 'PENDING', label: '待处置', tagProps: { type: 'warning' } },
-    { value: IqcQuarantineStatus.RELEASED, label: '已让步接收', tagProps: { type: 'success' } },
-    { value: IqcQuarantineStatus.RETURNED, label: '已退货', tagProps: { type: 'info' } },
-    { value: IqcQuarantineStatus.REWORKED, label: '已返工', tagProps: { type: 'primary' } },
-    { value: IqcQuarantineStatus.SCRAPPED, label: '已报废', tagProps: { type: 'danger' } },
-  ],
-  defaultTag: { type: 'info' },
-})
-
+// dev-20260929-004：隔离单「状态列」已删除（一个格子装不下混合处置，谁最后写谁生效）。
+// 唯一状态来源 = 剩余可处置量：> 0 → 待处置；= 0 → 已处置；构成看处置单（让步/退货/返工/报废）。
 export const IqcScrapOrderStatus = {
   PENDING_APPROVAL: 'PENDING_APPROVAL',
   APPROVED: 'APPROVED',

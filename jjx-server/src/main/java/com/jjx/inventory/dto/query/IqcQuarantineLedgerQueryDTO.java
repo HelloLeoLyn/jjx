@@ -8,7 +8,10 @@ import lombok.EqualsAndHashCode;
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class IqcQuarantineLedgerQueryDTO extends PageQuery {
-    private String status;
+    /** 只看「待处置」＝剩余可处置量 &gt; 0（隔离单状态列已删除，唯一状态来源是剩余量，dev-20260929-004）。 */
+    private Boolean pendingOnly;
+    /** 只看「已处置」＝剩余可处置量 = 0。 */
+    private Boolean settledOnly;
     private String materialKeyword;
     private String batchNo;
     private String inboundNo;

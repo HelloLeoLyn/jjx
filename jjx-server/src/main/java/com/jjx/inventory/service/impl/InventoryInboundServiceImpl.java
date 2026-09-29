@@ -465,7 +465,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             quarantine.setQuantity(quarantineQty);
             quarantine.setRemainingQuantity(quarantineQty);
             quarantine.setDisposition(item.getDisposition());
-            quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode());
             quarantine.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
             quarantine.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
             iqcQuarantineMapper.insert(quarantine);
@@ -474,7 +473,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             // dev-20260924-026：不再旁路写库存流水。隔离品是「不良品」，从未进过可用库存，
             // 这里伪造 before=0/after=N 的流水既不准确（无批次行、inventory_item_id 为 NULL），
             // 也绕过了 CONVENTIONS §13 的变动唯一入口 applyDelta → 门禁⑤ 常红。
-            // 留痕由 inventory_iqc_quarantine（隔离量/状态/操作人/时间）+ quality_lot + quality_ncr 承载。
+            // 留痕由 inventory_iqc_quarantine（隔离量/剩余量/操作人/时间）+ quality_lot + quality_ncr 承载。
 
         }
         return createdCount;
@@ -492,8 +491,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     public boolean handleQuarantine(Long quarantineId, com.jjx.inventory.dto.save.IqcQuarantineActionDTO action) {
         var quarantine = iqcQuarantineMapper.selectById(quarantineId);
         if (quarantine == null) throw new BusinessException("隔离记录不存在");
-        if (!com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode().equals(quarantine.getStatus())) {
-            throw new BusinessException("该隔离记录已完成处置");
+        // dev-20260929-004：隔离单「状态列」已删除，唯一状态来源是剩余可处置量。
+        // 剩余 = 0 即已结清，不得再处置；报废驳回会回滚剩余量，处置能力自动恢复（不再依赖状态回写）。
+        if (nvl(quarantine.getRemainingQuantity()).signum() <= 0) {
+            throw new BusinessException("该隔离记录剩余可处置量为 0，已结清");
         }
         BigDecimal quantity = action == null || action.getQuantity() == null ? BigDecimal.ZERO : action.getQuantity();
         if (quantity.signum() <= 0 || quantity.compareTo(quarantine.getRemainingQuantity()) > 0) {
@@ -502,13 +503,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         String actionCode = action.getAction();
         boolean scrap = "SCRAP".equals(actionCode);
         boolean rework = "REWORK".equals(actionCode);
-        String status;
         boolean release = "RELEASE".equals(actionCode);
-        if (release) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.RELEASED.getCode();
-        else if ("RETURN".equals(actionCode)) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.RETURNED.getCode();
-        else if ("REWORK".equals(actionCode)) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.REWORKED.getCode();
-        else if ("SCRAP".equals(actionCode)) status = com.jjx.inventory.enums.IqcQuarantineStatusEnum.SCRAPPED.getCode();
-        else throw new BusinessException("不支持的隔离处置方式");
+        // 处置方式白名单校验（状态不再由本方法写入，见 closeIfSettled/台账读模型）
+        if (!release && !"RETURN".equals(actionCode) && !rework && !scrap) {
+            throw new BusinessException("不支持的隔离处置方式");
+        }
 
         var dispositionOrder = new com.jjx.inventory.domain.InventoryIqcDispositionOrder();
         dispositionOrder.setDispositionNo(redisSequenceService.generateBusinessNumberByType(
@@ -564,8 +563,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             Long inboundId = createIqcReleaseInboundOrder(quarantine, quantity, action, dispositionOrder);
             log.info("IQC 让步接收处置单{}生成待确认入库单{}", dispositionOrder.getDispositionNo(), inboundId);
         }
+        // 只维护剩余量：状态由「剩余可处置量 + 处置单构成」派生（dev-20260929-004）
         quarantine.setRemainingQuantity(quarantine.getRemainingQuantity().subtract(quantity));
-        if (!scrap && !release && quarantine.getRemainingQuantity().signum() == 0) quarantine.setStatus(status);
         iqcQuarantineMapper.updateById(quarantine);
 
         // dev-20260924-026：此处原先为「非 RELEASE 处置动作」旁路写库存流水，已移除（原因同 createIqcQuarantine）。
@@ -648,12 +647,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 .orderByDesc(com.jjx.inventory.domain.InventoryIqcDispositionOrder::getDispositionId));
     }
 
-    @Override
-    public List<com.jjx.inventory.domain.InventoryIqcQuarantine> listAllQuarantine(String status) {
-        var wrapper = new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryIqcQuarantine>();
-        if (status != null && !status.isBlank()) wrapper.eq(com.jjx.inventory.domain.InventoryIqcQuarantine::getStatus, status);
-        return iqcQuarantineMapper.selectList(wrapper.orderByDesc(com.jjx.inventory.domain.InventoryIqcQuarantine::getQuarantineId));
-    }
 
     @Override
     public IqcQuarantineLedgerPageVO pageIqcQuarantineLedger(IqcQuarantineLedgerQueryDTO query) {
@@ -828,8 +821,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     approval == null ? SecurityUtils.getDisplayName() : approval.getApproverName());
             scrap.setStatus("REJECTED");
             disposition.setStatus("REJECTED");
+            // 驳回只回滚剩余量 → 该隔离记录自动回到「待处置」（状态列已删除，dev-20260929-004）
             quarantine.setRemainingQuantity(nvl(quarantine.getRemainingQuantity()).add(scrap.getQuantity()));
-            quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode());
         } else {
             var ncrService = qualityNcrServiceProvider.getIfAvailable();
             if (ncrService == null) throw new BusinessException("质量不良台账服务不可用，报废审批已取消");
@@ -840,10 +833,6 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     approval.getApproverName() != null ? approval.getApproverName() : SecurityUtils.getDisplayName());
             scrap.setStatus("APPROVED");
             disposition.setStatus("COMPLETED");
-            if (nvl(quarantine.getRemainingQuantity()).signum() == 0
-                    && com.jjx.inventory.enums.IqcQuarantineStatusEnum.PENDING.getCode().equals(quarantine.getStatus())) {
-                quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.SCRAPPED.getCode());
-            }
             approveBatchScrap(scrap.getIqcBatchId(), scrap.getQuantity());
         }
         scrap.setApproverId(approval == null ? SecurityUtils.getUserId() : approval.getApproverId());
@@ -1117,8 +1106,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         item.setBatchNo(rework.getChildBatchNo() == null ? originalItem.getBatchNo() : rework.getChildBatchNo());
         item.setLotId(reinspectionLot.getLotId());
         item.setIqcBatchId(rework.getChildBatchId());
-        item.setQualifiedQuantity(quantity);
-        item.setAcceptedQuantity(quantity);
+        // dev-20260929-004（§4.6）：放行类行不是质量判定行 —— 判定三字段一律不写（保持 NULL）。
+        // 写 0 会被 SUM/报表读成「合格 0、允收 0」的假事实；写放行量会造出 accepted > pass 的跨桶混口径。
         item.setInspectionResult("PASS");
         item.setSortOrder(1);
         inboundItemMapper.insert(item);
@@ -1131,11 +1120,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             if (dispositionOrder == null) return;
             dispositionOrder.setStatus(com.jjx.inventory.enums.IqcDispositionOrderStatusEnum.COMPLETED.getCode());
             iqcDispositionOrderMapper.updateById(dispositionOrder);
-            var quarantine = iqcQuarantineMapper.selectById(dispositionOrder.getQuarantineId());
-            if (quarantine != null) {
-                quarantine.setStatus(com.jjx.inventory.enums.IqcQuarantineStatusEnum.RELEASED.getCode());
-                iqcQuarantineMapper.updateById(quarantine);
-            }
+            // dev-20260929-004：不再回写隔离单状态（原实现会把混合处置的隔离单无条件盖成 RELEASED，
+            // 与「5 让步 + 2 返工 + 3 退货」的事实相矛盾）；剩余量在处置登记时已扣减，此处无需再动。
         } catch (Exception e) {
             log.warn("IQC 让步接收确认后回写处置状态失败: inboundId={}, message={}", order.getInboundId(), e.getMessage());
         }

@@ -111,13 +111,11 @@ export const inboundApi = {
   listDispositionOrders(inboundId: string) {
     return request.get<R<any[]>>(`/inventory/inbound/${inboundId}/iqc-disposition-orders`)
   },
-  listAllQuarantine(status?: string) {
-    return request.get<R<any[]>>('/inventory/inbound/iqc-quarantine/list', { params: { status } })
-  },
   pageIqcQuarantine(params: {
     pageNum: number
     pageSize: number
-    status?: string
+    pendingOnly?: boolean
+    settledOnly?: boolean
     materialKeyword?: string
     batchNo?: string
     inboundNo?: string
