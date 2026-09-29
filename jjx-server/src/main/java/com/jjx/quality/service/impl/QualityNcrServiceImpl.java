@@ -1086,6 +1086,9 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         instructions.put("skillRequirement", process.getSkillRequirement());
         instructions.put("processParamTemplate", process.getProcessParamTemplate());
         instructions.put("reworkRequirement", dto.getReworkRequirement());
+        // dev-20260929-022：处置备注也带给车间 —— 备注里常有"给车间的话"（客户已确认、本批先用等），
+        // 工人端「作业说明」块按「返工要求（作业指令）/ 处置备注（品质补充）」分区显示，避免收了字段却无人可见。
+        instructions.put("disposeRemark", dto.getResultRemark());
         try {
             execution.setCustomProcessParams(objectMapper.writeValueAsString(instructions));
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {

@@ -54,6 +54,7 @@ const fields = computed(() => {
   }
   push('不良单号', p.ncrNo)
   push('返工要求', p.reworkRequirement)
+  push('处置备注', p.disposeRemark)
   push('质量标准', p.qualityStandard)
   push('技能要求', p.skillRequirement)
   push('工序说明', p.description)

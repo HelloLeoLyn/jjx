@@ -191,7 +191,12 @@
           <span class="tip">让步接收必须先取得客户确认</span>
         </el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="disposeForm.resultRemark" type="textarea" :rows="2" placeholder="可空" />
+          <el-input
+            v-model="disposeForm.resultRemark"
+            type="textarea"
+            :rows="2"
+            placeholder="可空；品质/审计留痕，返工时同步给车间（工人端「作业说明」显示为「处置备注」）"
+          />
         </el-form-item>
         <div class="tip block">
           返工：暂不影响库存，生成返工工序并在复检合格后入库；让步接收（特采）：影响库存，须客户确认后转良品库存；报废：不影响库存，只记台账（不良品未入良品库）
