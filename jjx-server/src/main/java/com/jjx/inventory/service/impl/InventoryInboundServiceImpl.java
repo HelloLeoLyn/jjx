@@ -264,11 +264,40 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     public IqcWorkbenchVO getIqcWorkbench(Long inboundId) {
         if (inboundId == null) throw new BusinessException("来料批次不能为空");
         IqcWorkbenchVO workbench = new IqcWorkbenchVO();
-        workbench.setInbound(getDetail(inboundId));
-        workbench.setQuarantines(listQuarantine(inboundId));
+        InboundVO inbound = getDetail(inboundId);
+        workbench.setInbound(inbound);
+        // dev-20260929-007：唯一读口 —— 隔离品带上下文（供应商/采购单号/检验批号/不合格原因），
+        // 材料行的检验批一次带全（去 N+1），页面不再自行拼接多路请求。
+        workbench.setQuarantines(iqcQuarantineMapper.selectLedgerRowsByInboundId(inboundId));
         workbench.setDispositions(listDispositionOrders(inboundId));
         workbench.setBatches(listIqcBatches(inboundId));
+        workbench.setLots(loadWorkbenchLots(inbound));
         return workbench;
+    }
+
+    /** 工作台材料行对应的检验批：本行 lotId + 其 parentLotId 上溯的原批（两跳封顶）。 */
+    private List<com.jjx.quality.domain.entity.QualityLot> loadWorkbenchLots(InboundVO inbound) {
+        java.util.Set<Long> lotIds = new java.util.HashSet<>();
+        if (inbound != null && inbound.getItems() != null) {
+            inbound.getItems().stream()
+                    .map(InboundItemVO::getLotId)
+                    .filter(java.util.Objects::nonNull)
+                    .forEach(lotIds::add);
+        }
+        if (lotIds.isEmpty()) {
+            return java.util.List.of();
+        }
+        List<com.jjx.quality.domain.entity.QualityLot> lots =
+                new java.util.ArrayList<>(qualityLotMapper.selectBatchIds(lotIds));
+        java.util.Set<Long> parents = lots.stream()
+                .map(com.jjx.quality.domain.entity.QualityLot::getParentLotId)
+                .filter(java.util.Objects::nonNull)
+                .filter(id -> !lotIds.contains(id))
+                .collect(java.util.stream.Collectors.toSet());
+        if (!parents.isEmpty()) {
+            lots.addAll(qualityLotMapper.selectBatchIds(parents));
+        }
+        return lots;
     }
 
     @Override
