@@ -121,6 +121,11 @@
             {{ inboundTypeText(row) }}
           </template>
         </el-table-column>
+        <el-table-column label="业务来源" min-width="210" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ inboundSourceText(row) }}
+          </template>
+        </el-table-column>
         <el-table-column label="仓库" prop="warehouseName" width="120" />
         <el-table-column label="供应商" prop="supplierName" width="150" show-overflow-tooltip />
         <el-table-column label="总数量" prop="totalQuantity" width="100" align="right">
@@ -236,6 +241,7 @@ import InboundDetail from './components/InboundDetail.vue'
 import IqcPostingDialog from './components/IqcPostingDialog.vue'
 import {
   InboundOrderStatusEnum,
+  inboundSourceLabel,
   inboundStatusLabel,
   inboundTypeLabel,
   isReverseInbound,
@@ -425,6 +431,7 @@ const inboundTypeText = (row: InboundVO) =>
     fallbackName: row.inboundTypeName,
     reverse: isReverse(row),
   })
+const inboundSourceText = (row: InboundVO) => inboundSourceLabel(row.sourceType, row.sourceNo)
 /** 已过账（已入库量达到允收量）：不再显示「确认入库」，dev-20260929-013 */
 const isPosted = (row: InboundVO) => {
   const posted = Number(row.postedQuantity ?? 0)

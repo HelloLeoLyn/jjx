@@ -70,13 +70,33 @@ export const ApproveStatusEnum = createEnum({
 export const InboundSourceTypeEnum = createEnum({
   items: [
     { value: 'purchase_order', label: '采购订单', tagProps: { type: 'primary' } },
+    { value: 'purchase', label: '采购订单', tagProps: { type: 'primary' } },
     { value: 'work_order', label: '生产工单', tagProps: { type: 'primary' } },
+    { value: 'production', label: '生产工单', tagProps: { type: 'primary' } },
+    { value: 'production_finish', label: '生产工单', tagProps: { type: 'primary' } },
     { value: 'sales_return', label: '销售退货', tagProps: { type: 'primary' } },
+    { value: 'fqc_concession', label: '成品让步处置', tagProps: { type: 'warning' } },
+    { value: 'iqc_release', label: '来料让步处置', tagProps: { type: 'warning' } },
+    { value: 'iqc_rework', label: '来料返工处置', tagProps: { type: 'warning' } },
+    { value: 'quality_ncr', label: '质量不良处置', tagProps: { type: 'warning' } },
     { value: 'transfer_order', label: '调拨单', tagProps: { type: 'primary' } },
+    { value: 'transfer', label: '调拨单', tagProps: { type: 'primary' } },
     { value: 'other', label: '其他', tagProps: { type: 'primary' } },
   ],
   defaultTag: { type: 'primary' },
 })
+
+/** 入库业务来源摘要：将来源类型翻译成人类可读名称，并带上来源单号。 */
+export function inboundSourceLabel(sourceType?: string | null, sourceNo?: string | null): string {
+  const normalizedType = (sourceType || '').trim().toLowerCase()
+  const sourceNumber = (sourceNo || '').trim()
+  if (!normalizedType) return sourceNumber ? `来源单 ${sourceNumber}` : '来源未登记'
+
+  const label = InboundSourceTypeEnum.canDo(normalizedType)
+    ? InboundSourceTypeEnum.getLabel(normalizedType)
+    : normalizedType
+  return sourceNumber ? `${label} ${sourceNumber}` : `${label}（来源单号未登记）`
+}
 
 /**
  * 入库类型取值归一（dev-20260923-012）
