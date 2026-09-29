@@ -111,13 +111,12 @@ import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vu
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import { deriveIqcReasonText } from '../iqcRowRules'
 
-const { canEdit, canJudge, canDispose, isCompleted } = defineProps<{
+const { canEdit, canJudge, isCompleted } = defineProps<{
   rows: any[]
   canEdit: (row: any) => boolean
   rowClass: (ctx: { row: any }) => string
   progress: (row: any) => number
   canJudge: boolean
-  canDispose: boolean
   isCompleted: boolean
 }>()
 
@@ -127,7 +126,6 @@ const emit = defineEmits<{
   (e: 'review'): void
   (e: 'print', row: any): void
   (e: 'history', row: any): void
-  (e: 'go-disposition', row: any): void
 }>()
 
 function disposedQuantity(row: any) {
@@ -138,23 +136,17 @@ function disposedQuantity(row: any) {
   )
 }
 
-function canDisposeRow(row: any) {
-  return (
-    Number((row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity) || 0) >
-      0 &&
-    row.inspectionResult === InboundInspectionResultEnum.FAIL.value &&
-    (row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted)
-  )
-}
-
 /**
- * 待办链按原优先级互斥取唯一一项：能录入 → 录入，否则待审 → 审核，否则可处置 → 不良处置。
+ * 待办链按原优先级互斥取唯一一项：能录入 → 录入，否则待审 → 审核。
+ *
+ * dev-20260929-007：材料行的「不良处置」入口已收敛 —— 处置统一走工作台/跨批次页的
+ * 「待处理明细」（那里带 供应商/采购单号/检验批号/不合格原因 等完整上下文），
+ * 避免同一动作两个入口、两套过滤口径。
  * 打印/历史属于只读附属入口，order 靠后 + max-visible=1，固定收进统一组件的「更多」。
  */
-function pendingActionKey(row: any): 'edit' | 'review' | 'go-disposition' | null {
+function pendingActionKey(row: any): 'edit' | 'review' | null {
   if (canEdit(row)) return 'edit'
   if (canJudge && row.reviewStatus === QualityReviewStatus.PENDING) return 'review'
-  if (canDispose && canDisposeRow(row)) return 'go-disposition'
   return null
 }
 
@@ -173,13 +165,6 @@ const materialActions: TableAction<any>[] = [
     order: 2,
     visible: ({ row }) => pendingActionKey(row) === 'review',
   },
-  {
-    key: 'go-disposition',
-    label: '不良处置',
-    type: 'warning',
-    order: 3,
-    visible: ({ row }) => pendingActionKey(row) === 'go-disposition',
-  },
   { key: 'print', label: '打印检验报告', order: 10, visible: ({ row }) => !!row.inspectionId },
   { key: 'history', label: '查看质量历史', order: 11, visible: ({ row }) => !!row.lotId },
 ]
@@ -189,7 +174,6 @@ function handleMaterialAction(key: string, row: any) {
   if (key === 'history') return emit('history', row)
   if (pendingActionKey(row) !== key) return
   if (key === 'edit') return emit('edit', row)
-  if (key === 'go-disposition') return emit('go-disposition', row)
   emit('review')
 }
 </script>

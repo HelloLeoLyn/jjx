@@ -4,7 +4,12 @@
       <template #header>
         <div class="header">
           <span>来料检验工作台</span>
-          <el-button :loading="listLoading" @click="loadList()">刷新</el-button>
+          <div class="header-actions">
+            <el-button link type="primary" @click="router.push('/inventory/iqc-quarantine')"
+              >跨批次待处置</el-button
+            >
+            <el-button :loading="listLoading" @click="loadList()">刷新</el-button>
+          </div>
         </div>
       </template>
       <el-form inline @submit.prevent>
@@ -264,6 +269,11 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 16px;
   font-weight: 600;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .list-tip,
 .pending-labels {

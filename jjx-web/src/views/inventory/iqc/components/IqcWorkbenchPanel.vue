@@ -85,14 +85,12 @@
         :row-class="rowClassName"
         :progress="checkProgress"
         :can-judge="canJudge"
-        :can-dispose="canDispose"
         :is-completed="isCompleted"
         @selection-change="handleSelectionChange"
         @edit="openMaterialChecks"
         @review="openReview"
         @print="printRow"
         @history="openHistory"
-        @go-disposition="goDisposition"
       />
       <el-card class="workbench-section" shadow="never">
         <template #header>
@@ -103,37 +101,12 @@
             >
           </div>
         </template>
-        <el-table v-loading="detailLoading" :data="pendingRows" border size="small">
-          <el-table-column prop="materialCode" label="物料" min-width="140" />
-          <el-table-column prop="materialName" label="物料名称" min-width="150" />
-          <el-table-column label="数量口径" width="180">
-            <template #default="{ row }">
-              <div>原始隔离：{{ num(row.quantity) }}</div>
-              <span class="muted">剩余可处置：{{ num(row.remainingQuantity) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="来料批次 / 采购单号" min-width="190">
-            <template #default="{ row }">
-              <div>{{ row.inboundNo || selectedInbound?.inboundNo || '-' }}</div>
-              <span class="muted">采购：{{ row.sourceNo || selectedInbound?.sourceNo || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="supplierName" label="供应商" min-width="140" />
-          <el-table-column label="检验批号" min-width="150">
-            <template #default="{ row }">{{ row.lotNo || '-' }}</template>
-          </el-table-column>
-          <el-table-column label="不合格原因" min-width="220" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.defectReason || '-' }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="110" fixed="right">
-            <template #default="{ row }">
-              <el-button v-if="canDispose" link type="warning" @click="openPendingDisposition(row)"
-                >处置</el-button
-              >
-              <span v-else class="muted">无处置权限</span>
-            </template>
-          </el-table-column>
-        </el-table>
+        <DispositionPendingTable
+          :rows="pendingRows"
+          :can-dispose="canDispose"
+          :loading="detailLoading"
+          @dispose="openPendingDisposition"
+        />
         <el-empty v-if="!pendingRows.length" description="当前没有待处置的隔离品" />
       </el-card>
       <el-card class="workbench-section" shadow="never">
@@ -272,6 +245,7 @@ import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialo
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 import MaterialChecksDialog from './MaterialChecksDialog.vue'
 import IqcMaterialTable from './IqcMaterialTable.vue'
+import DispositionPendingTable from './DispositionPendingTable.vue'
 import BatchLineageDrawer from './BatchLineageDrawer.vue'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
 import {
@@ -847,14 +821,6 @@ function openReview() {
   activateSelected()
   reviewVisible.value = true
 }
-function goDisposition(row: WorkRow) {
-  activeInboundId.value = Number(selectedInbound.value?.inboundId)
-  activeInboundNo.value = selectedInbound.value?.inboundNo || ''
-  activeItemId.value = row.itemId
-  activeQuarantine.value = undefined
-  dispositionVisible.value = true
-}
-
 /** 待处理明细行「处置」：带着这一行的完整上下文打开处置弹窗。 */
 function openPendingDisposition(row: any) {
   activeInboundId.value = Number(selectedInbound.value?.inboundId)
