@@ -183,7 +183,10 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         // dev-20260923-036：台账列表补展示字段（检验批号 / 工单号 / 来源批是否已失效），
         // 原来页面只能显示「工单 #2 / 批 #11」这种裸 ID，看不出对的是哪张单、哪张批。
         fillDisplayFields(page.getRecords());
-        page.getRecords().forEach(this::refreshEffectiveDisposed);
+        page.getRecords().forEach(ncr -> {
+            refreshEffectiveDisposed(ncr);
+            populateReplacementAccounting(ncr);
+        });
         return page;
     }
 
