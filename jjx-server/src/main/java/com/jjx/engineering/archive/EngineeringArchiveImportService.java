@@ -714,9 +714,12 @@ public class EngineeringArchiveImportService {
             long routingId = insert("INSERT INTO engineering_routing(routing_code,routing_name,product_id,product_code,product_name,routing_type,routing_version,version,is_current,approve_status,process_count,description,create_by,update_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     "RT-" + code, name + " 历史档案工艺", productId, code, name, ROUTING_TYPE, VERSION, VERSION, true,
                     ProductEnums.BomStatus.DRAFT.getValue(), countSteps(root), "来源历史档案 #" + id, user, user);
+            // dev-20260929-026：process_order 必须**整条路线内全局唯一**（engineering_routing_item.uk_routing_process_order
+            // = (routing_id, process_order)）。原实现在每个 workflow 内把 order 重置为 1，档案含多个 workflow（如上线/下线组）时
+            // 第二个 workflow 的第 1 道必然与第一个撞键 → Duplicate entry '1-1'。改为跨 workflow 连续递增。
+            int order = 1;
             for (JsonNode workflow : root.path("workflows")) {
                 String workflowType = defaultText(text(workflow, "workflowType"), "OTHER");
-                int order = 1;
                 for (JsonNode step : workflow.path("steps")) {
                     if ("EMPTY".equals(text(step, "contentType"))) continue;
                     boolean composite = "COMPOSITE".equals(text(step, "processStructure"));
