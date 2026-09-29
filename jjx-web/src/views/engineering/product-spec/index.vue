@@ -568,26 +568,10 @@ function openExport() {
 }
 
 function doPrint() {
-  const p: any = detail.value?.product || {}
-  const picked = exportSections.filter((s) => exportSelected.value.includes(s.key))
-  const win = window.open('', '_blank')
-  if (!win) {
-    ElMessage.warning('浏览器拦截了新窗口，请允许弹窗后重试')
-    return
-  }
-  const html = `
-    <html><head><title>产品作业规范 - ${p.productCode || ''}</title>
-    <style>body{font-family:sans-serif;padding:20px} h1{font-size:18px} h2{font-size:15px;margin-top:18px;border-bottom:1px solid #ccc} table{border-collapse:collapse;width:100%;font-size:12px} td,th{border:1px solid #999;padding:4px}</style>
-    </head><body>
-    <h1>产品作业规范（文档集勾选预览）</h1>
-    <div>产品编码：${p.productCode || '-'}　产品名称：${p.productName || '-'}　客户：${p.customerName || '-'}</div>
-    ${picked.map((s) => `<h2>${s.label}</h2>`).join('')}
-    <p style="color:#888;font-size:12px">（此处为勾选项预览；正式版式待接入打印中心/质量记录模板）</p>
-    </body></html>`
-  win.document.write(html)
-  win.document.close()
-  win.focus()
-  win.print()
+  const id = productId.value
+  if (!id) return
+  const sections = exportSelected.value.join(',')
+  window.open(`/print/product-spec/${id}?sections=${encodeURIComponent(sections)}`, '_blank')
   exportVisible.value = false
 }
 

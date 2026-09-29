@@ -256,6 +256,15 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/print/product-spec/:productId',
+    name: 'ProductSpecPrint',
+    component: () => import('@/views/engineering/product-spec/print.vue'),
+    meta: {
+      title: '产品作业规范文档集预览',
+      hidden: true,
+    },
+  },
+  {
     path: '/print/sample-order/:id',
     name: 'SampleOrderPrint',
     component: () => import('@/views/sales/sample-order/print.vue'),
