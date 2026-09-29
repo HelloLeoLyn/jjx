@@ -77,38 +77,17 @@
         ><el-tag v-else type="info">未检</el-tag></template
       ></el-table-column
     >
-    <el-table-column label="操作" width="170" fixed="right">
-      <template #default="{ row }">
-        <el-button v-if="canEdit(row)" link type="primary" @click="emit('edit', row)">
-          检验录入
-        </el-button>
-        <el-button
-          v-else-if="canJudge && row.reviewStatus === QualityReviewStatus.PENDING"
-          link
-          type="success"
-          @click="emit('review')">
-          审核
-        </el-button>
-        <el-button
-          v-else-if="canDispose && canDisposeRow(row)"
-          link
-          type="warning"
-          @click="emit('go-disposition', row)">
-          不良处置
-        </el-button>
-        <span v-else class="operation-muted">无待办</span>
-        <el-dropdown v-if="row.inspectionId || row.lotId" trigger="click" @command="(command: string) => handleMore(command, row)">
-          <el-button link type="primary">更多</el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-if="row.inspectionId" command="print">打印检验报告</el-dropdown-item>
-              <el-dropdown-item v-if="row.lotId" command="history">查看质量历史</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </template>
-    </el-table-column>
+    <TableActionColumn
+      :actions="materialActions"
+      :min-width="170"
+      :max-visible="1"
+      display="text"
+      @action="handleMaterialAction"
     >
+      <template #before="{ row }">
+        <span v-if="!pendingActionKey(row)" class="operation-muted">无待办</span>
+      </template>
+    </TableActionColumn>
   </el-table>
 </template>
 
@@ -116,13 +95,16 @@
 /**
  * 来料检验材料表（dev-20260924-024 刀1：从 iqc/index.vue 抽出的展示型子组件）
  * 只负责展示与事件上抛；数量/判定/原因均为只读派生结果（013 口径）。
+ * 操作栏复用统一组件 TableActionColumn（dev-20260928-038 口径：IQC 操作栏统一）。
  * 根节点就是 el-table，父页面针对 .material-table 的 scoped 样式仍然生效。
  */
 import { InspectionResultEnum as InboundInspectionResultEnum } from '@/enums/inventory/InboundEnum'
 import { QualityReviewStatus, QualityReviewStatusEnum } from '@/enums/quality/InspectionEnum'
+import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import { deriveIqcReasonText } from '../iqcRowRules'
 
-const { isCompleted } = defineProps<{
+const { canEdit, canJudge, canDispose, isCompleted } = defineProps<{
   rows: any[]
   canEdit: (row: any) => boolean
   rowClass: (ctx: { row: any }) => string
@@ -157,9 +139,50 @@ function canDisposeRow(row: any) {
   )
 }
 
-function handleMore(command: string, row: any) {
-  if (command === 'print') emit('print', row)
-  if (command === 'history') emit('history', row)
+/**
+ * 待办链按原优先级互斥取唯一一项：能录入 → 录入，否则待审 → 审核，否则可处置 → 不良处置。
+ * 打印/历史属于只读附属入口，order 靠后 + max-visible=1，固定收进统一组件的「更多」。
+ */
+function pendingActionKey(row: any): 'edit' | 'review' | 'go-disposition' | null {
+  if (canEdit(row)) return 'edit'
+  if (canJudge && row.reviewStatus === QualityReviewStatus.PENDING) return 'review'
+  if (canDispose && canDisposeRow(row)) return 'go-disposition'
+  return null
+}
+
+const materialActions: TableAction<any>[] = [
+  {
+    key: 'edit',
+    label: '检验录入',
+    type: 'primary',
+    order: 1,
+    visible: ({ row }) => pendingActionKey(row) === 'edit',
+  },
+  {
+    key: 'review',
+    label: '审核',
+    type: 'success',
+    order: 2,
+    visible: ({ row }) => pendingActionKey(row) === 'review',
+  },
+  {
+    key: 'go-disposition',
+    label: '不良处置',
+    type: 'warning',
+    order: 3,
+    visible: ({ row }) => pendingActionKey(row) === 'go-disposition',
+  },
+  { key: 'print', label: '打印检验报告', order: 10, visible: ({ row }) => !!row.inspectionId },
+  { key: 'history', label: '查看质量历史', order: 11, visible: ({ row }) => !!row.lotId },
+]
+
+function handleMaterialAction(key: string, row: any) {
+  if (key === 'print') return emit('print', row)
+  if (key === 'history') return emit('history', row)
+  if (pendingActionKey(row) !== key) return
+  if (key === 'edit') return emit('edit', row)
+  if (key === 'go-disposition') return emit('go-disposition', row)
+  emit('review')
 }
 </script>
 
