@@ -64,7 +64,7 @@
         >
 
         <el-button :disabled="!selectedRows.length" @click="clearSelectedRows">清空选中</el-button>
-        <!-- <el-button type="primary" plain @click="openWholeInboundChecks">整单检验录入</el-button> -->
+
         <el-button
           v-if="isInspectMode && hasEditableRows"
           type="primary"
@@ -156,7 +156,6 @@ import DispositionHistoryDialog from './DispositionHistoryDialog.vue'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
 import {
   batchPassIqcRow,
-  copyIqcChecks,
   deriveIqcReasonText,
   iqcRowProblems,
   iqcNeedsDisposition,
@@ -669,22 +668,6 @@ function batchPassSelected() {
   ElMessage.success(`已对 ${rows.length} 行按整批合格填充（实测记录留空）`)
 }
 
-/** 复制上一行：只带 检验标准/方法/设备/结论，不带实测值与缺陷数 */
-function copyFromPreviousRow() {
-  const rows = selectedEditableRows.value
-  if (!rows.length) return
-  let copied = 0
-  rows.forEach((row) => {
-    const index = workRows.value.indexOf(row)
-    const previous = index > 0 ? workRows.value[index - 1] : undefined
-    if (!previous || !rowCanEdit(row)) return
-    copyIqcChecks(previous, row)
-    copied++
-  })
-  if (copied) ElMessage.success(`已把上一行检验项复制到 ${copied} 行`)
-  else ElMessage.warning('选中的行没有可复制的上一行')
-}
-
 /** 清空选中行：检验项与行级结论复位（不改收货数量） */
 function clearSelectedRows() {
   selectedEditableRows.value.forEach((row) => {
@@ -720,16 +703,6 @@ function openNextEditableRow() {
     return
   }
   activeWorkRow.value = next
-}
-
-/** 整单检验录入：从第一个可编辑材料开始，逐行连续录入 */
-function openWholeInboundChecks() {
-  const first = workRows.value.find((row) => rowCanEdit(row))
-  if (!first) {
-    ElMessage.info('当前单据没有可编辑的材料行')
-    return
-  }
-  openMaterialChecks(first)
 }
 
 function openMaterialChecks(row?: WorkRow) {
