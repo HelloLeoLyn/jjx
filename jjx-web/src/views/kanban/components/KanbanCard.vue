@@ -68,7 +68,7 @@ import { computed } from 'vue'
 import type { TagType } from '@/types'
 import type { BoardCard } from '@/views/kanban/types/board'
 import { useRouter } from 'vue-router'
-import { resolveJump } from '@/utils/bizJump'
+import { resolveJump, resolveJumpSafe } from '@/utils/bizJump'
 import { Goods, Ticket, UserFilled, Warning, Clock, OfficeBuilding, Position } from '@element-plus/icons-vue'
 
 const props = defineProps<{
@@ -141,8 +141,13 @@ function onClick() {
   emit('click', props.card.id)
 }
 
-function goToBiz() {
-  if (jumpTarget.value) router.push(jumpTarget.value)
+async function goToBiz() {
+  const target = await resolveJumpSafe(
+    router,
+    String(props.card.extraData?.sourceEvent || ''),
+    props.card.extraData?.bizId as string | number | null
+  )
+  if (target) router.push(target)
 }
 </script>
 

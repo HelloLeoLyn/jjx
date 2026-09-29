@@ -25,7 +25,7 @@
 import { onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import request from '@/utils/request'
-import { resolveJump } from '@/utils/bizJump'
+import { resolveJumpSafe } from '@/utils/bizJump'
 import WidgetCard from '../components/WidgetCard.vue'
 interface TodoItem {
   taskId: number
@@ -43,9 +43,9 @@ const data = reactive<{ unreadNotice: number; todoTotal: number; todos: TodoItem
   todoTotal: 0,
   todos: [],
 })
-function openTodo(item: TodoItem) {
-  const target = resolveJump(item.sourceEvent || '', item.bizId)
-  router.push(target || '/kanban/index')
+async function openTodo(item: TodoItem) {
+  const target = await resolveJumpSafe(router, item.sourceEvent || '', item.bizId, '/kanban/index')
+  if (target) router.push(target)
 }
 onMounted(async () => {
   try {

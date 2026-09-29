@@ -129,7 +129,7 @@ import {
 import type { NotificationVO, NotificationQuery } from '@/api/notification'
 import { useUserStore } from '@/store/modules/user'
 import { useRouter } from 'vue-router'
-import { resolveJump } from '@/utils/bizJump'
+import { resolveJump, resolveJumpSafe } from '@/utils/bizJump'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -189,7 +189,7 @@ function resetQuery() {
 
 async function handleRead(row: NotificationVO) {
   await markAsRead(row.notificationId)
-  const target = resolveJump(row.bizType || '', row.bizId)
+  const target = await resolveJumpSafe(router, row.bizType || '', row.bizId)
   if (target) {
     router.push(target)
   } else {

@@ -71,7 +71,7 @@ import { ElMessage } from 'element-plus'
 import { getUnreadCount, getUnreadList, markAsRead, markAllAsRead } from '@/api/notification'
 import { useUserStore } from '@/store/modules/user'
 import type { NotificationVO } from '@/api/notification'
-import { resolveJump } from '@/utils/bizJump'
+import { resolveJumpSafe } from '@/utils/bizJump'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -137,7 +137,7 @@ async function handleRead(item: NotificationVO) {
   } catch {
     // 静默处理
   }
-  const target = resolveJump(item.bizType || '', item.bizId)
+  const target = await resolveJumpSafe(router, item.bizType || '', item.bizId)
   if (target) {
     popoverVisible.value = false
     router.push(target)

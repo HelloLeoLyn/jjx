@@ -1,3 +1,6 @@
+import type { Router, RouteLocationRaw } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+
 export interface BizJumpTarget {
   path: string
   query?: Record<string, string | number>
@@ -12,9 +15,7 @@ const DIRECT_PATHS = new Set([
 ])
 
 /**
- * 路径已按现有菜单、静态路由和 router.push 用法核对。
- * /product/route 是兼容入口，会由静态路由重定向到 /engineering/route；
- * 菲林、BOM 的菜单实际位于 /engineering/film、/engineering/bom。
+ * 事件到业务列表页的唯一映射；实际跳转必须经过 resolveJumpSafe 校验当前账号路由。
  */
 export function resolveJump(
   eventCode: string,
@@ -33,14 +34,24 @@ export function resolveJump(
     [(code) => code.startsWith('inventory.material.'), '/inventory/material'],
     [
       (code) => code.startsWith('inventory.warehouse.') || code.startsWith('storage_location.'),
-      '/inventory/warehouse',
+      '/inventory/warehouse/list',
     ],
     [
       (code) => code.startsWith('stock.') || code === 'inventory.alert.processed',
       '/inventory/alert',
     ],
-    [(code) => code.startsWith('product.routing.'), '/product/route'],
-    [(code) => code.startsWith('product.film.'), '/engineering/film'],
+    [(code) => code.startsWith('product.routing.'), '/engineering/route'],
+    [(code) => code.startsWith('product.film.'), '/engineering/resource/film'],
+    [(code) => code.startsWith('quality.iqc.'), '/inventory/iqc'],
+    ...(['iqc', 'fqc', 'oqc'] as const).map((type): [(code: string) => boolean, string] => [
+      (code) =>
+        code.startsWith('quality.lot.') &&
+        code.slice('quality.lot.'.length).split('.').includes(type),
+      `/quality/lot/${type}`,
+    ]),
+    [(code) => code.startsWith('quality.ncr.'), '/quality/ncr'],
+    [(code) => code.startsWith('quality.scrap.'), '/quality/scrap-order'],
+    [(code) => code.startsWith('quality.capa.'), '/quality/capa'],
     [(code) => code.startsWith('bom.'), '/engineering/bom'],
     [(code) => code.startsWith('product.'), '/product/list'],
     [(code) => code.startsWith('production.'), '/production/order'],
@@ -54,6 +65,66 @@ export function resolveJump(
     return { path, query: { bizId } }
   }
   return { path }
+}
+
+/** 检查最终页面，避免静态重定向、纯分组或 catch-all 被误判为有权限的业务页。 */
+function isReachable(router: Router, target: RouteLocationRaw): boolean {
+  const visited = new Set<string>()
+  for (let depth = 0; depth < 10; depth++) {
+    const route = router.resolve(target)
+    if (visited.has(route.fullPath)) return false
+    visited.add(route.fullPath)
+    const leaf = route.matched[route.matched.length - 1]
+    if (
+      !leaf ||
+      /:(?:pathMatch|catchAll)\b/.test(leaf.path) ||
+      ['/404', '/401', '/login'].includes(route.path)
+    )
+      return false
+    if (leaf.redirect) {
+      const redirect =
+        typeof leaf.redirect === 'function'
+          ? leaf.redirect(route, router.currentRoute.value)
+          : leaf.redirect
+      target = typeof redirect === 'string' ? redirect : { ...redirect }
+      continue
+    }
+    return Boolean(leaf.components && Object.keys(leaf.components).length)
+  }
+  return false
+}
+
+/** 无权访问时停留原页，由用户选择经过同样校验的落点。 */
+export async function resolveJumpSafe(
+  router: Router,
+  eventCode: string,
+  bizId?: string | number | null,
+  fallbackPath?: string | null
+): Promise<BizJumpTarget | null> {
+  const target = resolveJump(eventCode, bizId) || (fallbackPath ? { path: fallbackPath } : null)
+  if (target && isReachable(router, target)) return target
+
+  const fallback = [fallbackPath, '/dashboard/index']
+    .filter((path): path is string => Boolean(path) && path !== target?.path)
+    .find((path) => isReachable(router, { path }))
+  const message = '当前账号无该模块权限（或页面不存在）'
+  if (!fallback) {
+    ElMessage.warning(message)
+    return null
+  }
+  const label = fallback === '/dashboard/index' ? '首页' : '模块列表'
+  try {
+    await ElMessageBox.confirm(`${message}，可前往${label}。`, '无法跳转', {
+      type: 'warning',
+      confirmButtonText: `前往${label}`,
+      cancelButtonText: '留在当前页',
+    })
+    // 弹窗期间账号路由可能发生变化，确认后再次检查。
+    return isReachable(router, { path: fallback }) ? { path: fallback } : null
+  } catch (action) {
+    if (action !== 'cancel' && action !== 'close') throw action
+    return null
+  }
 }
 
 export function resolveModulePage(module: string): string | null {

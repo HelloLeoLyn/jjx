@@ -164,7 +164,7 @@ import type { TagType } from '@/types'
 import type { BoardCard } from '@/views/kanban/types/board'
 import http from '@/utils/request'
 import { useRouter } from 'vue-router'
-import { resolveJump, resolveModulePage } from '@/utils/bizJump'
+import { resolveJump, resolveJumpSafe, resolveModulePage } from '@/utils/bizJump'
 
 const props = defineProps<{
   visible: boolean
@@ -254,10 +254,17 @@ const jumpTarget = computed(() => {
   return null
 })
 
-function goToBiz() {
+async function goToBiz() {
   if (!jumpTarget.value) return
+  const target = await resolveJumpSafe(
+    router,
+    taskDetail.value.sourceEvent || '',
+    taskDetail.value.bizId,
+    resolveModulePage(taskDetail.value.bizType || '')
+  )
+  if (!target) return
   visible.value = false
-  router.push(jumpTarget.value)
+  router.push(target)
 }
 
 function priorityLabel(p?: string): string {
