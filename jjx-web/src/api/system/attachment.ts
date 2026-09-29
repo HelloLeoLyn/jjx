@@ -52,6 +52,14 @@ export const attachmentApi = {
     })
   },
 
+  // 客供资料归集：某产品关联的询价/报价附件（只读；dev-20260929-023）
+  customerDocs(productId: number): AxiosPromise<any[]> {
+    return request({
+      url: `/system/attachment/customer-docs/${productId}`,
+      method: 'get',
+    })
+  },
+
   // 设为现行版（产品文件库，同业务+同类别唯一）
   setCurrent(id: number): AxiosPromise<boolean> {
     return request({

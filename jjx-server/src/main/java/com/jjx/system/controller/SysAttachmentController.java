@@ -126,6 +126,12 @@ public class SysAttachmentController {
         return Result.success(attachmentService.setCurrentAttachment(id));
     }
 
+    @Operation(summary = "客供资料归集：某产品关联的询价/报价附件（只读）")
+    @GetMapping("/customer-docs/{productId}")
+    public Result<java.util.List<java.util.Map<String, Object>>> customerDocs(@PathVariable Long productId) {
+        return Result.success(attachmentService.customerDocs(productId));
+    }
+
     @Operation(summary = "下载/预览附件")
     @GetMapping("/download/{id}")
     public ResponseEntity<Resource> download(@PathVariable Long id) {

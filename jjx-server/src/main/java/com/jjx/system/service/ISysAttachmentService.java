@@ -112,6 +112,11 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
     String getAttachmentFilePath(Long id);
 
     /**
+     * 客供资料归集：某产品关联的询价/报价附件（dev-20260929-023）
+     */
+    java.util.List<java.util.Map<String, Object>> customerDocs(Long productId);
+
+    /**
      * 将附件设为「现行版」（同 bizType+bizId+category 下仅一个现行；dev-20260929-023）
      */
     boolean setCurrentAttachment(Long id);

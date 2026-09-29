@@ -426,6 +426,29 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         return count;
     }
 
+    /**
+     * 客供资料归集：某产品关联的询价/报价附件（只读引用；dev-20260929-023）
+     */
+    public List<Map<String, Object>> customerDocs(Long productId) {
+        if (productId == null) return List.of();
+        String sql = """
+                SELECT a.id,a.file_name,a.file_path,a.file_size,a.file_type,a.version,a.category,a.create_by,a.create_time,
+                       '询价单' AS sourceType,i.inquiry_no AS sourceNo
+                  FROM sales_inquiry i
+                  JOIN sys_attachment a ON a.biz_type='inquiry' AND a.biz_id=i.inquiry_id AND a.deleted=0
+                 WHERE i.product_id=?
+                UNION ALL
+                SELECT a.id,a.file_name,a.file_path,a.file_size,a.file_type,a.version,a.category,a.create_by,a.create_time,
+                       '报价单' AS sourceType,q.quotation_no AS sourceNo
+                  FROM sales_quotation_item qi
+                  JOIN sales_quotation q ON q.quotation_id=qi.quotation_id
+                  JOIN sys_attachment a ON a.biz_type='quotation' AND a.biz_id=q.quotation_id AND a.deleted=0
+                 WHERE qi.product_id=?
+                 ORDER BY create_time DESC
+                """;
+        return jdbcTemplate.queryForList(sql, productId, productId);
+    }
+
     @Override
     public String getAttachmentFilePath(Long id) {
         SysAttachment attachment = getById(id);
