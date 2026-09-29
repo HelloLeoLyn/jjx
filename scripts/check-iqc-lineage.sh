@@ -51,25 +51,14 @@ WHERE (EXISTS (SELECT 1 FROM inventory_iqc_rework_order r WHERE r.inbound_item_i
 batch_drift=$(M "
 SELECT COUNT(*) FROM inventory_iqc_batch b
 JOIN quality_lot l ON l.batch_no = b.batch_no AND l.lot_type = 'IQC'
-WHERE (b.processed_quantity <> b.accepted_quantity + b.rejected_quantity - COALESCE((
-        SELECT SUM(a.quantity)
-          FROM quality_ncr_action a
-          JOIN quality_ncr n ON n.ncr_id = a.ncr_id
-         WHERE n.lot_id = l.lot_id
-           AND a.action_type = 'CONCESSION'
-           AND a.status IN ('DONE', 'PROCESSING')
-    ), 0)
+WHERE (b.processed_quantity <> b.accepted_quantity + b.rejected_quantity
     OR b.remaining_quantity <> GREATEST(0, b.quantity - b.processed_quantity)
     OR b.processed_quantity <> l.inspected_quantity
-    -- 批次 accepted 包含 IQC 让步接收，不能只与检验批 pass 比较。
-    OR b.accepted_quantity <> l.pass_quantity + COALESCE((
-        SELECT SUM(a.quantity)
-          FROM quality_ncr_action a
-          JOIN quality_ncr n ON n.ncr_id = a.ncr_id
-         WHERE n.lot_id = l.lot_id
-           AND a.action_type = 'CONCESSION'
-           AND a.status IN ('DONE', 'PROCESSING')
-    ), 0)
+    -- dev-20260929-004 口径（承接 dev-20260928-025）：批次允收量只来自 IQC 判定/确认入库链路，
+    -- 不得被处置动作改写 —— 让步接收量不进 batch.accepted（原判据把 CONCESSION 加回来，
+    -- 与 025「禁止借处置动作改变允收入库量」相矛盾，会让该门禁恒红）。
+    -- 让步件由处置单（RELEASE/COMPLETED）与库存流水承载；检验批侧 stored 也只统计合格件入库。
+    OR b.accepted_quantity <> l.pass_quantity
     OR b.rejected_quantity <> l.fail_quantity);")
 
 echo "IQC source lineage mismatches: $source_drift (expected 0)"
