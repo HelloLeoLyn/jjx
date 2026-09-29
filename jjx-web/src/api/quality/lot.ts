@@ -305,6 +305,10 @@ export const qualityNcrApi = {
   reworkProcesses(ncrId: number) {
     return request.get<R<Record<string, any>[]>>(`/quality/ncr/${ncrId}/rework-processes`)
   },
+  /** 按检验批查不良单（dev-20260929-021：成品检验里看该批处置历史的入口） */
+  byLot(lotId: number) {
+    return request.get<R<QualityNcr[]>>(`/quality/ncr/by-lot/${lotId}`)
+  },
   /**
    * 不良件级明细（dev-20260924-004）：件号 / 主缺陷（检验项目+分级）/ 实测值 / 状态 + 全部缺陷记录。
    * 口径：件只做身份与追溯，不参与库存数量计算。

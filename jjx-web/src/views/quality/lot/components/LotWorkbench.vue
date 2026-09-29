@@ -377,24 +377,72 @@
     </el-dialog>
 
     <!-- 当前值与历史事件分开：当前表格只展示现状，历史弹窗只读展示事件快照。 -->
-    <el-dialog v-model="historyVisible" title="检验批历史（只读）" width="820px" append-to-body>
+    <el-dialog v-model="historyVisible" title="检验批历史（只读）" width="880px" append-to-body>
       <div v-if="historyLot" class="history-current">
         当前快照：<b>{{ historyLot.lotNo }}</b> · 状态 {{ statusLabel(historyLot.status) }} ·
         批量 {{ num(historyLot.lotQuantity) }} · 合格 {{ num(historyLot.passQuantity) }} ·
         不良 {{ num(historyLot.failQuantity) }}
       </div>
-      <el-table v-loading="historyLoading" :data="historyRows" border size="small" max-height="55vh">
-        <el-table-column prop="createTime" label="发生时间" width="170" />
-        <el-table-column prop="eventType" label="事件" width="170" />
-        <el-table-column prop="operatorName" label="操作人" width="110" />
-        <el-table-column prop="remark" label="说明" min-width="240" />
-        <el-table-column label="快照" width="90" fixed="right">
-          <template #default="{ row }">
-            <el-button link size="small" @click="showHistorySnapshot(row)">查看</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-empty v-if="!historyLoading && !historyRows.length" description="该批暂无历史快照（旧数据不补造）" />
+      <!-- dev-20260929-021：同一弹窗两个 Tab —— 检验批事件流 + 该批处置流水（只读；动作在台账做） -->
+      <el-tabs v-model="historyTab">
+        <el-tab-pane label="检验批历史" name="lot">
+          <el-table v-loading="historyLoading" :data="historyRows" border size="small" max-height="55vh">
+            <el-table-column prop="createTime" label="发生时间" width="170" />
+            <el-table-column prop="eventType" label="事件" width="170" />
+            <el-table-column prop="operatorName" label="操作人" width="110" />
+            <el-table-column prop="remark" label="说明" min-width="240" />
+            <el-table-column label="快照" width="90" fixed="right">
+              <template #default="{ row }">
+                <el-button link size="small" @click="showHistorySnapshot(row)">查看</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty
+            v-if="!historyLoading && !historyRows.length"
+            description="该批暂无历史快照（旧数据不补造）"
+          />
+        </el-tab-pane>
+        <el-tab-pane label="处置历史" name="disposition">
+          <div class="disposition-tip">
+            该批不良的处置流水（只读留痕）；发起处置请到「产品不良台账」。
+          </div>
+          <el-table
+            v-loading="dispositionLoading"
+            :data="dispositionRows"
+            border
+            size="small"
+            max-height="52vh"
+          >
+            <el-table-column prop="ncrNo" label="不良单号" width="150" />
+            <el-table-column label="处置方式" width="110">
+              <template #default="{ row }">
+                <el-tag :type="NcrActionTypeEnum.getTagProps(row.actionType).type">
+                  {{ NcrActionTypeEnum.getLabel(row.actionType) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="quantity" label="本次数量" width="95" align="right" />
+            <el-table-column label="状态" width="105">
+              <template #default="{ row }">
+                <el-tag :type="NcrActionStatusEnum.getTagProps(row.status).type">
+                  {{ NcrActionStatusEnum.getLabel(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="operatorName" label="操作人" width="100" />
+            <el-table-column prop="approvedBy" label="审批人" width="100" />
+            <el-table-column prop="resultRemark" label="说明" min-width="200" show-overflow-tooltip />
+            <el-table-column prop="createTime" label="时间" width="165" />
+          </el-table>
+          <el-empty
+            v-if="!dispositionLoading && !dispositionRows.length"
+            description="该批暂无处置记录"
+          />
+          <div class="disposition-actions">
+            <el-button type="primary" link @click="goNcrLedger">去台账处置</el-button>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
     </el-dialog>
   </div>
 </template>
@@ -405,12 +453,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import {
   qualityLotApi,
+  qualityNcrApi,
   type QualityLot,
   type QualityLotItem,
   type QualityLotHistory,
   type JudgementGuardVO,
 } from '@/api/quality/lot'
-import { InspectionResult } from '@/enums/quality'
+import { InspectionResult, NcrActionStatusEnum, NcrActionTypeEnum } from '@/enums/quality'
 import { hasPermi } from '@/directives'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
 
@@ -441,6 +490,10 @@ const historyVisible = ref(false)
 const historyLoading = ref(false)
 const historyRows = ref<QualityLotHistory[]>([])
 const historyLot = ref<QualityLot | null>(null)
+/** 历史弹窗的 Tab：检验批事件流 / 处置流水（dev-20260929-021） */
+const historyTab = ref<'lot' | 'disposition'>('lot')
+const dispositionLoading = ref(false)
+const dispositionRows = ref<any[]>([])
 
 /**
  * 功能说明（2026-09-21 dev-20260921-032 立；2026-09-22 dev-20260922-011 改为「谁做什么」口径）：
@@ -852,10 +905,43 @@ const handleReinspect = async (row: QualityLot) => {
   }
 }
 
+/** 处置历史（dev-20260929-021）：该批不良单的处置流水，只读；空则显示空态。 */
+const loadDispositions = async (row: QualityLot) => {
+  dispositionRows.value = []
+  if (!row?.lotId) return
+  dispositionLoading.value = true
+  try {
+    const { data: ncrs } = await qualityNcrApi.byLot(Number(row.lotId))
+    const groups = await Promise.all(
+      (ncrs || []).map(async (ncr: any) => {
+        const { data: acts } = await qualityNcrApi.actions(Number(ncr.ncrId))
+        return (acts || []).map((action: any) => ({ ...action, ncrNo: ncr.ncrNo }))
+      })
+    )
+    dispositionRows.value = groups
+      .flat()
+      .sort((a: any, b: any) => String(b.createTime || '').localeCompare(String(a.createTime || '')))
+  } catch {
+    dispositionRows.value = []
+  } finally {
+    dispositionLoading.value = false
+  }
+}
+
+/** 去台账处置：带上物料编码，台账页会按它筛选（与判定完成后的跳转同一约定）。 */
+const goNcrLedger = () => {
+  router.push({
+    path: '/quality/ncr',
+    query: { materialCode: historyLot.value?.materialCode || undefined },
+  })
+}
+
 const openHistory = async (row: QualityLot) => {
   historyLot.value = row
   historyRows.value = []
   historyVisible.value = true
+  historyTab.value = 'lot'
+  loadDispositions(row)
   historyLoading.value = true
   try {
     const res: any = await qualityLotApi.history(Number(row.lotId))
@@ -1005,5 +1091,16 @@ onMounted(() => load(1))
 
 .judge-guard-alert {
   margin: 0 0 12px;
+}
+/* dev-20260929-021：处置历史 Tab（只读流水） */
+.disposition-tip {
+  margin-bottom: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.disposition-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 </style>
