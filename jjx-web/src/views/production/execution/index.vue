@@ -158,6 +158,9 @@
         </div>
       </template>
 
+      <!-- dev-20260929-022：作业说明（返工要求/工序说明）—— 工人点开工序就能看到要做什么 -->
+      <WorkInstructionPanel :params="detailForm?.customProcessParams" />
+
       <div class="metric-grid">
         <div class="metric-card">
           <span>计划数量</span><strong>{{ fmtQty(detailForm.inputQuantity) }}</strong>
@@ -555,6 +558,8 @@
             reportCompletion ? fmtQty(reportCompletion.shortfallQuantity) : '-'
           }}</el-descriptions-item>
         </el-descriptions>
+        <!-- dev-20260929-022：报工前先让工人看到作业说明（返工要求） -->
+        <WorkInstructionPanel :params="reportExec?.customProcessParams" />
         <el-alert
           v-if="Number(reportCompletion?.shortfallQuantity || 0) > 0"
           class="supplement-alert"
@@ -856,6 +861,7 @@ import {
   WorkReportStatus,
 } from '@/enums/production'
 import TaskTreePanel from './components/TaskTreePanel.vue'
+import WorkInstructionPanel from './components/WorkInstructionPanel.vue'
 import WorkOrderPanel from './components/WorkOrderPanel.vue'
 import { fmtQty } from './utils'
 

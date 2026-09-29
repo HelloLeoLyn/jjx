@@ -1128,8 +1128,19 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         task.setCreateBy(action.getOperatorName());
         taskMapper.insert(task);
         action.setReworkExecutionId(execution.getExecutionId());
-        action.setResultRemark("已创建返工工序「" + process.getProcessName()
-                + "」和生产任务，完成报工后进入 FQC 复检");
+        // dev-20260929-022：原先这里直接赋值，会把用户填写的备注覆盖掉（处置流水只剩系统话）；
+        // 改为追加，并把「返工要求」一并写进处置记录 —— 品质侧与处置流水都能看到返工内容。
+        StringBuilder reworkTail = new StringBuilder("已创建返工工序「")
+                .append(process.getProcessName())
+                .append("」和生产任务，完成报工后进入 FQC 复检");
+        if (StringUtils.isNotBlank(dto.getReworkRequirement())) {
+            String requirement = dto.getReworkRequirement().trim();
+            if (requirement.length() > 200) {
+                requirement = requirement.substring(0, 200) + "…";
+            }
+            reworkTail.append("；返工要求：").append(requirement);
+        }
+        action.setResultRemark(appendRemark(action.getResultRemark(), reworkTail.toString()));
     }
 
     /**
