@@ -1024,8 +1024,17 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 restored = planned;
             }
             plan.setRemainingQuantity(restored);
-            // 计划恢复可下达 → 状态回退到已批准（可再次转工单）
-            plan.setOrderStatus(ProductionOrderStatusEnum.APPROVED.getValue());
+            Long salesOrderId = plan.getSalesOrderId() != null
+                    ? plan.getSalesOrderId() : cancelledWorkOrder.getSalesOrderId();
+            com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderId == null
+                    ? null : salesOrderMapper.selectById(salesOrderId);
+            boolean salesOrderCancelled = salesOrder != null
+                    && com.jjx.sales.enums.SalesOrderStatusEnum.CANCELLED.getValue()
+                    .equals(salesOrder.getOrderStatus());
+            // 已取消销售订单只回补历史计划额度，不得把父计划重新激活成可下达。
+            if (!salesOrderCancelled) {
+                plan.setOrderStatus(ProductionOrderStatusEnum.APPROVED.getValue());
+            }
             updateById(plan);
             log.info("取消工单{}释放计划占用：计划{} 可下达数量 {} -> {}",
                     cancelledWorkOrder.getOrderId(), plan.getOrderNo(),
