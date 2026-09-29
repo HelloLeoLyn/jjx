@@ -91,6 +91,7 @@
         @review="openReview"
         @print="printRow"
         @history="openHistory"
+        @disposition-history="openDispositionHistory"
       />
       <el-card class="workbench-section" shadow="never">
         <template #header>
@@ -109,77 +110,6 @@
         />
         <el-empty v-if="!pendingRows.length" description="当前没有待处置的隔离品" />
       </el-card>
-      <el-card class="workbench-section" shadow="never">
-        <template #header>
-          <div class="section-header">
-            <span>处置单历史</span>
-            <span class="section-tip"
-              >处置记录属于当前来料批次；数量均为本次动作口径；返工/报废在途时可在此就地处理</span
-            >
-          </div>
-        </template>
-        <el-table :data="dispositionRows" border size="small">
-          <el-table-column prop="dispositionNo" label="处置单号" width="180" />
-          <el-table-column label="类型" width="140">
-            <template #default="{ row }">
-              <el-tag :type="IqcQuarantineActionEnum.getTagProps(row.action).type">
-                {{ IqcQuarantineActionEnum.getLabel(row.action) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="materialCode" label="物料" min-width="150" />
-          <el-table-column label="数量口径" width="130">
-            <template #default="{ row }">本次处置量：{{ num(row.quantity) }}</template>
-          </el-table-column>
-          <el-table-column label="复检关系" min-width="220">
-            <template #default="{ row }">
-              <template v-if="row.action === 'REWORK'">
-                <div>原批：{{ row.batchNo || '-' }}</div>
-                <span class="muted">复检批：{{ row.childBatchNo || '待生成' }}</span>
-                <div class="emphasis">该批只针对 {{ num(row.quantity) }} 件</div>
-              </template>
-              <span v-else>-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="130">
-            <template #default="{ row }">
-              <el-tag :type="IqcDispositionOrderStatusEnum.getTagProps(row.status).type">
-                {{ IqcDispositionOrderStatusEnum.getLabel(row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="createTime" label="时间" width="170" />
-          <el-table-column label="操作" width="160" fixed="right">
-            <template #default="{ row }">
-              <template
-                v-if="row.action === 'SCRAP' && row.status === IqcDispositionOrderStatus.PENDING_APPROVAL"
-              >
-                <el-button v-if="canDispose" link type="primary" @click="approveScrapRow(row, true)"
-                  >通过</el-button
-                >
-                <el-button v-if="canDispose" link type="danger" @click="approveScrapRow(row, false)"
-                  >驳回</el-button
-                >
-                <span v-if="!canDispose" class="muted">待品质主管审批</span>
-              </template>
-              <template v-else-if="row.action === 'REWORK'">
-                <el-button
-                  v-if="row.status === IqcReworkStatus.CREATED && canDispose"
-                  link
-                  type="primary"
-                  @click="completeReworkRow(row)"
-                  >完成返工</el-button
-                >
-                <span v-else-if="row.status === IqcReworkStatus.CREATED" class="muted">待完成返工</span>
-                <span v-else class="muted">待复检</span>
-              </template>
-              <span v-else class="muted">-</span>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-empty v-if="!dispositionRows.length" description="当前暂无不良处置记录" />
-      </el-card>
-
     </el-card>
     <el-empty v-else description="未选择来料批次" />
     <MaterialChecksDialog
@@ -195,6 +125,14 @@
       :inbound-id="activeInboundId"
       :inbound-no="activeInboundNo"
       @success="handleFlowSuccess"
+    />
+    <DispositionHistoryDialog
+      v-model:visible="dispositionHistoryVisible"
+      :material-label="dispositionHistoryLabel"
+      :rows="dispositionHistoryRows"
+      :can-dispose="canDispose"
+      @approve="approveScrapRow"
+      @complete-rework="completeReworkRow"
     />
     <QualityHistoryDrawer
       v-model:visible="historyVisible"
@@ -234,6 +172,7 @@ import IqcMaterialTable from './IqcMaterialTable.vue'
 import DispositionPendingTable from './DispositionPendingTable.vue'
 import BatchLineageDrawer from './BatchLineageDrawer.vue'
 import QualityHistoryDrawer from './QualityHistoryDrawer.vue'
+import DispositionHistoryDialog from './DispositionHistoryDialog.vue'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
 import {
   batchPassIqcRow,
@@ -251,12 +190,6 @@ import {
   QualityReviewStatus,
   QualityReviewStatusEnum,
 } from '@/enums/quality/InspectionEnum'
-import {
-  IqcDispositionOrderStatus,
-  IqcDispositionOrderStatusEnum,
-  IqcQuarantineActionEnum,
-} from '@/enums/inventory/IqcQuarantineEnum'
-import { IqcReworkStatus } from '@/enums/inventory/IqcReworkEnum'
 import { sanitize } from '@/utils/reasonSanitizer'
 
 type FlowKey = 'ALL' | 'UNINSPECTED' | 'REVIEW' | 'APPROVED' | 'COMPLETED'
@@ -348,6 +281,26 @@ const batchRows = ref<any[]>([])
 const lineageVisible = ref(false)
 /** 当前正在处置的那一行隔离品（传给弹窗，避免弹窗只有瘦实体、判不了） */
 const activeQuarantine = ref<any>()
+/** 处置历史弹窗：当前查看的材料行（按 inbound_item_id 过滤该行的处置单） */
+const dispositionHistoryVisible = ref(false)
+const dispositionHistoryItem = ref<WorkRow>()
+const dispositionHistoryRows = computed(() => {
+  const item = dispositionHistoryItem.value
+  if (!item) return []
+  return dispositionRows.value.filter((row: any) => {
+    if (row.inboundItemId != null && item.itemId != null) {
+      return String(row.inboundItemId) === String(item.itemId)
+    }
+    // 兼容早期未写 inbound_item_id 的行：回退按检验批匹配
+    return item.lotId != null && String(row.lotId) === String(item.lotId)
+  })
+})
+const dispositionHistoryLabel = computed(() => {
+  const item = dispositionHistoryItem.value
+  if (!item) return ''
+  const lot = item.qualityLotNo ? ` · ${item.qualityLotNo}` : ''
+  return `${item.materialCode || '-'} ${item.materialName || ''}${lot}`.trim()
+})
 const pendingRows = computed(() =>
   quarantines.value.filter((row) => Number(row.remainingQuantity || 0) > 0)
 )
@@ -808,6 +761,13 @@ function openReview() {
   activateSelected()
   reviewVisible.value = true
 }
+/** 材料行「处置历史」：只看这一行材料的处置单（含 通过/驳回/完成返工）。 */
+function openDispositionHistory(row?: any) {
+  if (!row) return
+  dispositionHistoryItem.value = row as WorkRow
+  dispositionHistoryVisible.value = true
+}
+
 /** 待处理明细行「处置」：带着这一行的完整上下文打开处置弹窗。 */
 function openPendingDisposition(row: any) {
   activeInboundId.value = Number(selectedInbound.value?.inboundId)

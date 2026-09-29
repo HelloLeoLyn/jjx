@@ -126,6 +126,7 @@ const emit = defineEmits<{
   (e: 'review'): void
   (e: 'print', row: any): void
   (e: 'history', row: any): void
+  (e: 'disposition-history', row: any): void
 }>()
 
 function disposedQuantity(row: any) {
@@ -165,6 +166,12 @@ const materialActions: TableAction<any>[] = [
     order: 2,
     visible: ({ row }) => pendingActionKey(row) === 'review',
   },
+  {
+    key: 'disposition-history',
+    label: '处置历史',
+    order: 9,
+    visible: ({ row }) => !!row.lotId,
+  },
   { key: 'print', label: '打印检验报告', order: 10, visible: ({ row }) => !!row.inspectionId },
   { key: 'history', label: '查看质量历史', order: 11, visible: ({ row }) => !!row.lotId },
 ]
@@ -172,6 +179,8 @@ const materialActions: TableAction<any>[] = [
 function handleMaterialAction(key: string, row: any) {
   if (key === 'print') return emit('print', row)
   if (key === 'history') return emit('history', row)
+  // 只读+带操作的查看入口：不参与「待办互斥」，只要这一行有检验批就给（dev-20260929-007）
+  if (key === 'disposition-history') return emit('disposition-history', row)
   if (pendingActionKey(row) !== key) return
   if (key === 'edit') return emit('edit', row)
   emit('review')
