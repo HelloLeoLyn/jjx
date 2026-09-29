@@ -234,8 +234,8 @@ function fmtNum(v: any): string {
 }
 
 async function loadPreview() {
-  const scrapSupplement = isSupplement.value && reasonType.value === 'SCRAP_REPLENISHMENT'
-  if (scrapSupplement && (!supplementQuantity.value || supplementQuantity.value <= 0)) {
+  const supplementPreview = isSupplement.value
+  if (supplementPreview && (!supplementQuantity.value || supplementQuantity.value <= 0)) {
     rows.value = []
     errorMsg.value = ''
     return
@@ -247,7 +247,7 @@ async function loadPreview() {
     const { materialPickApi } = await import('@/api/inventory/materialPick')
     const res: any = await materialPickApi.pickPreview(
       props.workOrderId,
-      scrapSupplement ? Number(supplementQuantity.value) : undefined,
+      supplementPreview ? Number(supplementQuantity.value) : undefined,
     )
     rows.value = (res?.data || []).map((r: any) => ({
       ...r,
