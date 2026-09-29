@@ -41,18 +41,13 @@ function endProgress() {
 }
 export const constantRoutes: RouteRecordRaw[] = [
   {
-    // dev-20260924-024 刀2：来料检验单详情（独立子页，不出现在菜单/权限矩阵里）
+    // 2026-09-29（dev-20260929-007）：单页工作台后，旧「来料检验单」子页改为重定向 ——
+    // 历史链接/待办通知不失效，落到 /inventory/iqc 并自动选中该批次（附带原 action 参数）。
     path: '/inventory/iqc-detail/:inboundId',
-    component: () => import('@/layout/index.vue'),
-    meta: { hidden: true },
-    children: [
-      {
-        path: '',
-        name: 'IqcInspectionDetail',
-        component: () => import('@/views/inventory/iqc/detail.vue'),
-        meta: { title: '来料检验单', hidden: true },
-      },
-    ],
+    redirect: (to) => ({
+      path: '/inventory/iqc',
+      query: { ...to.query, inboundId: String(to.params.inboundId) },
+    }),
   },
   {
     path: '/login',

@@ -87,6 +87,11 @@ const props = defineProps<{
   inboundId?: number
   inboundNo?: string
   itemId?: string
+  /**
+   * 已带上下文的隔离品行（来料批次/供应商/采购单号/检验批号/不合格原因）。
+   * 传入时直接用这一行，不再回查瘦接口 —— 修「弹窗信息太少判不了」（dev-20260929-007）。
+   */
+  quarantineRow?: any
 }>()
 const emit = defineEmits<{
   (event: 'update:visible', value: boolean): void
@@ -99,7 +104,7 @@ const ordersLoading = ref(false)
 const user = useUserStore()
 const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
 watch(
-  () => [props.visible, props.inboundId, props.itemId] as const,
+  () => [props.visible, props.inboundId, props.itemId, props.quarantineRow] as const,
   ([visible]) => {
     if (visible) load()
   },
@@ -111,12 +116,14 @@ async function load() {
   ordersLoading.value = true
   try {
     const [quarantine, dispositionOrders] = await Promise.all([
-      inboundApi.listQuarantine(String(props.inboundId)),
+      props.quarantineRow
+        ? Promise.resolve({ data: [props.quarantineRow] } as any)
+        : inboundApi.listQuarantine(String(props.inboundId)),
       inboundApi.listDispositionOrders(String(props.inboundId)),
     ])
     rows.value = (quarantine.data || [])
-      .filter((row) => !props.itemId || String(row.inboundItemId) === props.itemId)
-      .map((row) => ({
+      .filter((row: any) => !props.itemId || String(row.inboundItemId) === props.itemId)
+      .map((row: any) => ({
         ...row,
         // 之前默认预选「释放入库」（把不良品计入可用库存）且数量默认全部，一确认就生效；
         // 改为必须人工选动作，数量仍默认全部（退货/报废通常就是整批）。

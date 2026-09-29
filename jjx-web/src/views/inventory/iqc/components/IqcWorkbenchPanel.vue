@@ -1,12 +1,12 @@
 <template>
   <div class="iqc-page">
     <div class="detail-head">
-      <el-button link type="primary" @click="router.push('/inventory/iqc')">← 返回列表</el-button>
       <span class="detail-head__no">{{ selectedInbound?.inboundNo }}</span>
+      <span class="detail-head__mode">{{ mode === 'handle' ? '· 处理模式' : '· 查看模式' }}</span>
     </div>
 
     <el-card v-if="selectedInbound" v-loading="detailLoading" class="detail-card">
-      <template #header><span>材料检验处理</span></template>
+      <template #header><span>来料检验单 · 材料检验</span></template>
       <InspectionStageBar
         :stages="['录入检验', '提交检验', '主管复核', '确认入库']"
         :current="stageIndex"
@@ -94,8 +94,52 @@
       <el-card class="workbench-section" shadow="never">
         <template #header>
           <div class="section-header">
-            <span>不良处置与复检链路</span>
-            <span class="section-tip">处置记录属于当前来料批次；数量均为本次动作口径</span>
+            <span>待处理明细</span>
+            <span class="section-tip"
+              >剩余可处置量 &gt; 0 才是待处置；处置后剩余减到 0 即结清（结清构成见下方处置单历史）</span
+            >
+          </div>
+        </template>
+        <el-table v-loading="detailLoading" :data="pendingRows" border size="small">
+          <el-table-column prop="materialCode" label="物料" min-width="140" />
+          <el-table-column prop="materialName" label="物料名称" min-width="150" />
+          <el-table-column label="数量口径" width="180">
+            <template #default="{ row }">
+              <div>原始隔离：{{ num(row.quantity) }}</div>
+              <span class="muted">剩余可处置：{{ num(row.remainingQuantity) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="来料批次 / 采购单号" min-width="190">
+            <template #default="{ row }">
+              <div>{{ row.inboundNo || selectedInbound?.inboundNo || '-' }}</div>
+              <span class="muted">采购：{{ row.sourceNo || selectedInbound?.sourceNo || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="supplierName" label="供应商" min-width="140" />
+          <el-table-column label="检验批号" min-width="150">
+            <template #default="{ row }">{{ row.lotNo || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="不合格原因" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.defectReason || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="110" fixed="right">
+            <template #default="{ row }">
+              <el-button v-if="canDispose" link type="warning" @click="openPendingDisposition(row)"
+                >处置</el-button
+              >
+              <span v-else class="muted">无处置权限</span>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty v-if="!pendingRows.length" description="当前没有待处置的隔离品" />
+      </el-card>
+      <el-card class="workbench-section" shadow="never">
+        <template #header>
+          <div class="section-header">
+            <span>处置单历史</span>
+            <span class="section-tip"
+              >处置记录属于当前来料批次；数量均为本次动作口径；返工/报废在途时可在此就地处理</span
+            >
           </div>
         </template>
         <el-table :data="dispositionRows" border size="small">
@@ -129,6 +173,33 @@
             </template>
           </el-table-column>
           <el-table-column prop="createTime" label="时间" width="170" />
+          <el-table-column label="操作" width="160" fixed="right">
+            <template #default="{ row }">
+              <template
+                v-if="row.action === 'SCRAP' && row.status === IqcDispositionOrderStatus.PENDING_APPROVAL"
+              >
+                <el-button v-if="canDispose" link type="primary" @click="approveScrapRow(row, true)"
+                  >通过</el-button
+                >
+                <el-button v-if="canDispose" link type="danger" @click="approveScrapRow(row, false)"
+                  >驳回</el-button
+                >
+                <span v-if="!canDispose" class="muted">待品质主管审批</span>
+              </template>
+              <template v-else-if="row.action === 'REWORK'">
+                <el-button
+                  v-if="row.status === IqcReworkStatus.CREATED && canDispose"
+                  link
+                  type="primary"
+                  @click="completeReworkRow(row)"
+                  >完成返工</el-button
+                >
+                <span v-else-if="row.status === IqcReworkStatus.CREATED" class="muted">待完成返工</span>
+                <span v-else class="muted">待复检</span>
+              </template>
+              <span v-else class="muted">-</span>
+            </template>
+          </el-table-column>
         </el-table>
         <el-empty v-if="!dispositionRows.length" description="当前暂无不良处置记录" />
       </el-card>
@@ -154,7 +225,7 @@
         </el-timeline>
       </el-card>
     </el-card>
-    <el-empty v-else description="请选择上方一张采购入库单" />
+    <el-empty v-else description="未选择来料批次" />
     <MaterialChecksDialog
       v-model:visible="checksVisible"
       :row="activeWorkRow"
@@ -174,24 +245,26 @@
       :inbound-id="activeInboundId"
       :inbound-no="activeInboundNo"
       :item-id="activeItemId"
+      :quarantine-row="activeQuarantine"
       @success="handleFlowSuccess"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { hasPermi } from '@/directives'
 import { qualityApi } from '@/api/production/quality'
+import { iqcApi } from '@/api/inventory/iqc'
 import { qualityLotApi, type QualityLotHistory, type QualityTraceView } from '@/api/quality/lot'
 import { inboundApi } from '@/api/inventory/inbound'
 import type { IqcPendingVO } from '@/types/inventory/inbound'
 import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialog.vue'
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
-import MaterialChecksDialog from './components/MaterialChecksDialog.vue'
-import IqcMaterialTable from './components/IqcMaterialTable.vue'
+import MaterialChecksDialog from './MaterialChecksDialog.vue'
+import IqcMaterialTable from './IqcMaterialTable.vue'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
 import {
   batchPassIqcRow,
@@ -199,7 +272,7 @@ import {
   deriveIqcReasonText,
   iqcRowProblems,
   syncIqcRowFromChecks,
-} from './iqcRowRules'
+} from '../iqcRowRules'
 import {
   InboundOrderStatusEnum,
   InspectionResultEnum as InboundInspectionResultEnum,
@@ -210,9 +283,11 @@ import {
   QualityReviewStatusEnum,
 } from '@/enums/quality/InspectionEnum'
 import {
+  IqcDispositionOrderStatus,
   IqcDispositionOrderStatusEnum,
   IqcQuarantineActionEnum,
 } from '@/enums/inventory/IqcQuarantineEnum'
+import { IqcReworkStatus } from '@/enums/inventory/IqcReworkEnum'
 import { sanitize } from '@/utils/reasonSanitizer'
 
 type FlowKey = 'ALL' | 'UNINSPECTED' | 'REVIEW' | 'APPROVED' | 'COMPLETED'
@@ -241,13 +316,22 @@ type WorkRow = {
   inspectionItems: any[]
   trace?: QualityTraceView
 }
+/**
+ * dev-20260929-007（单页工作台）：本组件不再自己读路由。
+ *   页面把「当前来料批次 + 模式」传下来：mode=view 只读；mode=handle 可按权限处理当前待办。
+ *   改动完成后 emit('changed')，由页面刷新左侧列表的待办列。
+ */
+const props = withDefaults(
+  defineProps<{
+    inboundId: number | string
+    mode?: 'view' | 'handle'
+    action?: 'inspect' | 'reinspect'
+  }>(),
+  { mode: 'view' }
+)
+const emit = defineEmits<{ (e: 'changed'): void }>()
 const router = useRouter()
-const route = useRoute()
-const pageMode = computed(() => {
-  const action = route.query.action
-  return action === 'inspect' || action === 'reinspect' ? action : 'view'
-})
-const isInspectMode = computed(() => pageMode.value === 'inspect' || pageMode.value === 'reinspect')
+const isInspectMode = computed(() => props.mode === 'handle')
 const canInspect = computed(() => isInspectMode.value && hasPermi('quality:lot:inspect'))
 const canJudge = computed(() => hasPermi('quality:lot:judge'))
 const canDispose = computed(() => hasPermi(['quality:ncr:dispose']))
@@ -288,6 +372,13 @@ const selectedInboundId = ref<string | number>(''),
   selectedInbound = ref<IqcPendingVO>(),
   workRows = ref<WorkRow[]>([]),
   dispositionRows = ref<any[]>([])
+/** 隔离品（待处置/已处置）带上下文行 —— 与处置单历史同一读口（iqc-workbench）。 */
+const quarantines = ref<any[]>([])
+/** 当前正在处置的那一行隔离品（传给弹窗，避免弹窗只有瘦实体、判不了） */
+const activeQuarantine = ref<any>()
+const pendingRows = computed(() =>
+  quarantines.value.filter((row) => Number(row.remainingQuantity || 0) > 0)
+)
 const historyRows = ref<QualityLotHistory[]>([])
 const historyLoading = ref(false)
 const historyLotId = ref<number>()
@@ -493,14 +584,13 @@ async function loadInboundDetail(row: IqcPendingVO) {
   inspectionRemark.value = ''
   detailLoading.value = true
   try {
-    const [{ data }, quarantineResult, dispositionResult] = await Promise.all([
-      inboundApi.getById(String(requestedId)),
-      inboundApi.listQuarantine(String(requestedId)),
-      inboundApi.listDispositionOrders(String(requestedId)),
-    ])
-    dispositionRows.value = dispositionResult.data || []
+    // dev-20260929-007：唯一读口 —— 单据头 / 隔离品(带上下文) / 处置单 一次取回，不再三路并发各自拼装
+    const { data: workbench } = await inboundApi.getIqcWorkbench(String(requestedId))
+    const data = workbench?.inbound
+    quarantines.value = workbench?.quarantines || []
+    dispositionRows.value = workbench?.dispositions || []
     const remainingByItemLot = new Map<string, number>()
-    ;(quarantineResult.data || []).forEach((record: any) => {
+    quarantines.value.forEach((record: any) => {
       const key = `${record.inboundItemId}:${record.lotId || ''}`
       remainingByItemLot.set(
         key,
@@ -723,7 +813,51 @@ function goDisposition(row: WorkRow) {
   activeInboundId.value = Number(selectedInbound.value?.inboundId)
   activeInboundNo.value = selectedInbound.value?.inboundNo || ''
   activeItemId.value = row.itemId
+  activeQuarantine.value = undefined
   dispositionVisible.value = true
+}
+
+/** 待处理明细行「处置」：带着这一行的完整上下文打开处置弹窗。 */
+function openPendingDisposition(row: any) {
+  activeInboundId.value = Number(selectedInbound.value?.inboundId)
+  activeInboundNo.value = selectedInbound.value?.inboundNo || ''
+  activeItemId.value = row.inboundItemId == null ? undefined : String(row.inboundItemId)
+  activeQuarantine.value = row
+  dispositionVisible.value = true
+}
+
+/** 处置单历史：报废审批（通过/驳回）—— 原先在列表页的独立弹窗，现就地对着处置单行处理。 */
+async function approveScrapRow(row: any, approved: boolean) {
+  if (!hasPermi('quality:ncr:dispose')) return
+  let remark: string | undefined
+  try {
+    const result = await ElMessageBox.prompt(
+      approved ? '审批意见（可选）' : '请填写驳回原因',
+      approved ? '通过报废审批' : '驳回报废审批',
+      { inputValidator: (value) => approved || Boolean(value?.trim()) || '请填写驳回原因' }
+    )
+    remark = result.value
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    throw error
+  }
+  await iqcApi.approveScrap(String(row.dispositionId), { approved, remark })
+  ElMessage.success('处理完成')
+  await handleFlowSuccess()
+}
+
+/** 处置单历史：确认返工完成（生成复检子批与待复检记录）。 */
+async function completeReworkRow(row: any) {
+  if (!hasPermi('quality:ncr:dispose')) return
+  try {
+    await ElMessageBox.confirm('确认返工已完成并生成待复检记录？', '完成返工')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    throw error
+  }
+  await iqcApi.completeRework(String(row.dispositionId))
+  ElMessage.success('处理完成')
+  await handleFlowSuccess()
 }
 async function openHistory(row: WorkRow) {
   if (!row.lotId) return
@@ -764,6 +898,7 @@ function goPosting() {
 }
 async function handleFlowSuccess() {
   await refreshAll()
+  emit('changed')
 }
 async function submitInspection() {
   if (!selectedInbound.value) return
@@ -844,27 +979,27 @@ async function submitInspection() {
     if (data) {
       ElMessage.success('检验已逐项提交，等待品质主管复核')
       await refreshAll()
+      emit('changed')
     } else ElMessage.error('检验提交未生效，请检查入库单状态或刷新后重试')
   } finally {
     submitting.value = false
   }
 }
-onMounted(async () => {
-  const id = Number(route.params.inboundId)
-  if (!id) {
-    ElMessage.error('缺少单据 ID')
-    return
-  }
+/** 载入当前批次；action=inspect/reinspect 时直接定位到对应可编辑行（原 URL 参数行为保持不变）。 */
+async function loadCurrent() {
+  const id = Number(props.inboundId)
+  if (!id) return
   await loadById(String(id))
-  if (route.query.action === 'inspect' || route.query.action === 'reinspect') {
-    const reinspection = route.query.action === 'reinspect'
-    const target = workRows.value.find(
-      (row) => rowCanEdit(row) && row.isReinspection === reinspection
-    )
-    if (target) openMaterialChecks(target)
-    else ElMessage.info('该项待办已变化，请查看当前材料状态')
-  }
-})
+  if (props.mode !== 'handle' || (props.action !== 'inspect' && props.action !== 'reinspect')) return
+  const reinspection = props.action === 'reinspect'
+  const target = workRows.value.find(
+    (row) => rowCanEdit(row) && row.isReinspection === reinspection
+  )
+  if (target) openMaterialChecks(target)
+  else ElMessage.info('该项待办已变化，请查看当前材料状态')
+}
+onMounted(loadCurrent)
+watch(() => props.inboundId, loadCurrent)
 onBeforeUnmount(clearSelection)
 </script>
 
