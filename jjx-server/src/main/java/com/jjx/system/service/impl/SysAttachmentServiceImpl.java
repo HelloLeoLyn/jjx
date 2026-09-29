@@ -434,4 +434,23 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         }
         return uploadBasePath + File.separator + attachment.getFilePath();
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean setCurrentAttachment(Long id) {
+        SysAttachment att = getById(id);
+        if (att == null) {
+            throw new BusinessException("附件不存在: " + id);
+        }
+        // 同业务 + 同类别下，先把全部置为非现行
+        update(Wrappers.<SysAttachment>lambdaUpdate()
+                .eq(SysAttachment::getBizType, att.getBizType())
+                .eq(SysAttachment::getBizId, att.getBizId())
+                .eq(SysAttachment::getCategory, att.getCategory())
+                .set(SysAttachment::getIsCurrent, 0));
+        // 目标附件置为现行
+        return update(Wrappers.<SysAttachment>lambdaUpdate()
+                .eq(SysAttachment::getId, id)
+                .set(SysAttachment::getIsCurrent, 1));
+    }
 }

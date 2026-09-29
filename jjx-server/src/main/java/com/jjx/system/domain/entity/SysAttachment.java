@@ -32,6 +32,9 @@ public class SysAttachment {
     @Schema(description = "版本号（产品文件用）")
     private String version;
 
+    @Schema(description = "是否现行版（产品文件库，同业务+同类别下仅一版现行；dev-20260929-023）")
+    private Integer isCurrent;
+
     @Schema(description = "链路追踪ID（关联单据链路）")
     private String traceId;
 

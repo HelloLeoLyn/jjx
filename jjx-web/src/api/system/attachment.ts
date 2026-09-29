@@ -52,6 +52,14 @@ export const attachmentApi = {
     })
   },
 
+  // 设为现行版（产品文件库，同业务+同类别唯一）
+  setCurrent(id: number): AxiosPromise<boolean> {
+    return request({
+      url: `/system/attachment/${id}/set-current`,
+      method: 'post',
+    })
+  },
+
   // 下载/预览附件
   downloadUrl(id: number): string {
     const base = (import.meta.env.VITE_BASE_API || '/api') as string

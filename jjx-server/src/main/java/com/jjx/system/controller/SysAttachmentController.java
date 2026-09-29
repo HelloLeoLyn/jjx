@@ -120,6 +120,12 @@ public class SysAttachmentController {
         return Result.success(attachmentService.deleteAttachmentsByBiz(bizType, bizId));
     }
 
+    @Operation(summary = "将附件设为现行版（同业务+同类别下仅一个现行；dev-20260929-023）")
+    @PostMapping("/{id}/set-current")
+    public Result<Boolean> setCurrent(@PathVariable Long id) {
+        return Result.success(attachmentService.setCurrentAttachment(id));
+    }
+
     @Operation(summary = "下载/预览附件")
     @GetMapping("/download/{id}")
     public ResponseEntity<Resource> download(@PathVariable Long id) {

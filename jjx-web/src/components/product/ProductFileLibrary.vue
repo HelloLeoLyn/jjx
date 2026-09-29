@@ -101,6 +101,9 @@
                   <el-tag size="small" :type="sourceTagType(att)" effect="plain" class="src-tag">{{
                     sourceLabel(att)
                   }}</el-tag>
+                  <el-tag v-if="att.isCurrent === 1" size="small" type="success" effect="dark" class="cur-tag"
+                    >现行</el-tag
+                  >
                   <span v-if="att.version" class="ver-tag">v{{ att.version }}</span>
                   <span class="type-tag">{{ fileTypeLabel(att.fileName) }}</span>
                   <span>{{ formatSize(att.fileSize) }}</span>
@@ -110,6 +113,9 @@
               </div>
             </div>
             <div class="file-actions">
+              <el-tooltip v-if="canUpload && att.isCurrent !== 1" content="设为现行版" placement="top">
+                <el-button link type="warning" @click="onSetCurrent(att)">设为现行</el-button>
+              </el-tooltip>
               <el-tooltip content="下载" placement="top">
                 <el-button
                   link
@@ -376,6 +382,16 @@ function downloadUrl(id: number): string {
   return attachmentApi.downloadUrl(id)
 }
 
+async function onSetCurrent(att: any) {
+  try {
+    await attachmentApi.setCurrent(att.id)
+    ElMessage.success('已设为现行版')
+    loadFiles()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '设置失败')
+  }
+}
+
 function windowOpen(url: string) {
   window.open(url, '_blank')
 }
@@ -499,6 +515,11 @@ function formatTime(t: string | null | undefined): string {
 }
 
 .src-tag {
+  height: 18px;
+  padding: 0 4px;
+}
+
+.cur-tag {
   height: 18px;
   padding: 0 4px;
 }

@@ -110,4 +110,9 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
      * 获取附件文件路径
      */
     String getAttachmentFilePath(Long id);
+
+    /**
+     * 将附件设为「现行版」（同 bizType+bizId+category 下仅一个现行；dev-20260929-023）
+     */
+    boolean setCurrentAttachment(Long id);
 }
