@@ -189,9 +189,18 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
 
     @Override
     public boolean isLatestVersion(Long lotId) {
-        Long children = lotMapper.selectCount(new LambdaQueryWrapper<QualityLot>()
-                .eq(QualityLot::getParentLotId, lotId));
-        return children == null || children == 0;
+        if (lotId == null) {
+            return true;
+        }
+        QualityLot lot = lotMapper.selectById(lotId);
+        if (lot == null) {
+            return true;
+        }
+        List<QualityLot> lineage = new ArrayList<>();
+        lineage.add(lot);
+        lineage.addAll(lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                .eq(QualityLot::getParentLotId, lotId)));
+        return !effectiveSupersededLotIds(lineage).contains(lotId);
     }
 
     @Override
@@ -432,13 +441,10 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
         Set<Long> superseded = new HashSet<>();
         if (!ids.isEmpty()) {
             List<QualityLot> children = lotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
-                    .select(QualityLot::getParentLotId)
                     .in(QualityLot::getParentLotId, ids));
-            for (QualityLot child : children) {
-                if (child.getParentLotId() != null) {
-                    superseded.add(child.getParentLotId());
-                }
-            }
+            List<QualityLot> lineage = new ArrayList<>(lots);
+            lineage.addAll(children);
+            superseded.addAll(effectiveSupersededLotIds(lineage));
         }
         // dev-20260923-039（第二片）：「有未处置不良」也算进动作判据（有则不给批级动作，引导去不良台账）
         Set<Long> withOpenDefect = new HashSet<>();

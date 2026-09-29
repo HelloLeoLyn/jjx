@@ -197,16 +197,14 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         java.util.Map<Long, QualityLot> lotMap = new java.util.HashMap<>();
         java.util.Set<Long> superseded = new java.util.HashSet<>();
         if (!lotIds.isEmpty()) {
-            for (QualityLot lot : qualityLotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
-                    .in(QualityLot::getLotId, lotIds))) {
+            java.util.List<QualityLot> lineage = qualityLotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                    .in(QualityLot::getLotId, lotIds));
+            for (QualityLot lot : lineage) {
                 lotMap.put(lot.getLotId(), lot);
             }
-            for (QualityLot child : qualityLotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
-                    .in(QualityLot::getParentLotId, lotIds))) {
-                if (child.getParentLotId() != null) {
-                    superseded.add(child.getParentLotId());
-                }
-            }
+            lineage.addAll(qualityLotMapper.selectList(new LambdaQueryWrapper<QualityLot>()
+                    .in(QualityLot::getParentLotId, lotIds)));
+            superseded.addAll(qualityLotService.effectiveSupersededLotIds(lineage));
         }
         java.util.Map<Long, String> orderNoMap = new java.util.HashMap<>();
         for (QualityNcr row : rows) {
@@ -367,12 +365,7 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
 
     /** 来源检验批是否已被后继复检版本取代（链上失效）—— dev-20260923-038 */
     private boolean isSourceLotSuperseded(Long lotId) {
-        if (lotId == null) {
-            return false;
-        }
-        Long children = qualityLotMapper.selectCount(new LambdaQueryWrapper<QualityLot>()
-                .eq(QualityLot::getParentLotId, lotId));
-        return children != null && children > 0;
+        return lotId != null && !qualityLotService.isLatestVersion(lotId);
     }
 
     @Override
