@@ -245,6 +245,21 @@ public class EngineeringResourceService {
         return jdbc.queryForList("SELECT r.product_id,p.product_code,p.product_name,r.purpose FROM engineering_resource_product_rel r JOIN product p ON p.product_id=r.product_id WHERE r.resource_type=? AND r.resource_id=? AND r.is_active=1 ORDER BY p.product_code", type, id);
     }
 
+    /**
+     * 反查：某产品关联的工程资源（含库位）——目前支持刀模 DIE（dev-20260929-023）。
+     */
+    public List<Map<String, Object>> resourcesByProduct(String type, Long productId) {
+        ResourceType rt = ResourceType.valueOf(type);
+        if (rt == ResourceType.DIE) {
+            return jdbc.queryForList("SELECT d.die_id AS resourceId,d.die_no AS resourceNo,d.die_name AS resourceName,"
+                    + " d.specification,d.version,d.location,d.status,r.purpose"
+                    + " FROM engineering_resource_product_rel r"
+                    + " JOIN engineering_die d ON d.die_id=r.resource_id AND d.del_flag='0'"
+                    + " WHERE r.resource_type='DIE' AND r.product_id=? AND r.is_active=1 ORDER BY d.die_no", productId);
+        }
+        return List.of();
+    }
+
     @Transactional
     public void replaceProducts(String type, Long id, Map<String, Object> body) {
         ResourceType resourceType = ResourceType.valueOf(type);

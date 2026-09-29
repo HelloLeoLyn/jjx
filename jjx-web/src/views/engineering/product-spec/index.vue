@@ -95,8 +95,36 @@
             </el-table>
             <div class="sec-note">工艺路线：{{ detail?.routing?.routingCode || '未配置' }} / {{ (detail?.routing as any)?.routingVersion || '-' }}</div>
 
-            <el-divider content-position="left">刀模（库位）/ 凹凸条件</el-divider>
-            <el-empty description="刀模库位关联、凹凸条件录入：待接入（工程侧）" :image-size="50" />
+            <el-divider content-position="left">刀模（库位）</el-divider>
+            <div style="margin-bottom: 6px">
+              <el-button type="primary" plain size="small" @click="openDieLink">关联刀模</el-button>
+            </div>
+            <el-table :data="productDies" size="small" border>
+              <el-table-column label="刀模编号" width="140">
+                <template #default="{ row }">{{ row.resourceNo || row.dieNo || row.die_no || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="刀模名称" min-width="150" show-overflow-tooltip>
+                <template #default="{ row }">{{ row.resourceName || row.dieName || row.die_name || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="规格" min-width="130" show-overflow-tooltip>
+                <template #default="{ row }">{{ row.specification || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="库位" width="110">
+                <template #default="{ row }">{{ row.location || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="110" align="center">
+                <template #default="{ row }">{{ row.status || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="90" align="center">
+                <template #default="{ row }">
+                  <el-button link type="danger" @click="unlinkDie(row)">解除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <el-empty v-if="!productDies.length" description="未关联刀模" :image-size="50" />
+
+            <el-divider content-position="left">凹凸条件</el-divider>
+            <el-empty description="凹凸条件录入：待工程侧字段确定后接入" :image-size="50" />
           </el-tab-pane>
 
           <!-- ③ 印刷规范 -->
@@ -193,6 +221,33 @@
         <el-button type="primary" @click="doPrint">打印</el-button>
       </template>
     </el-dialog>
+    <!-- 关联刀模 -->
+    <el-dialog v-model="dieVisible" title="关联刀模" width="760px" append-to-body>
+      <div style="margin-bottom: 8px">
+        <el-input v-model="dieKeyword" placeholder="刀模编号/名称/用途/库位" clearable style="width: 260px" @keyup.enter="searchDies" />
+        <el-button style="margin-left: 8px" @click="searchDies">查询</el-button>
+      </div>
+      <el-table v-loading="dieLoading" :data="dieOptions" size="small" border height="340">
+        <el-table-column label="刀模编号" width="140">
+          <template #default="{ row }">{{ row.die_no || row.dieNo }}-{{ row.die_name || row.dieName }}</template>
+        </el-table-column>
+        <el-table-column label="名称" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.die_name || row.dieName || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="库位" width="110">
+          <template #default="{ row }">{{ row.location || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="110" align="center">
+          <template #default="{ row }">{{ row.status || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="90" align="center">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="linkDie(row)">关联</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
     <!-- 打样领料：预览 + 改数量 -->
     <el-dialog v-model="pickVisible" :title="`打样领料 - ${pickSample?.orderNo || ''}`" width="780px" append-to-body>
       <el-table :data="pickRows" size="small" border>
@@ -232,6 +287,7 @@ import { ElMessage } from 'element-plus'
 import { listProductPage, getFullProduct } from '@/api/product'
 import { outboundApi } from '@/api/inventory/outbound'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { engineeringResourceApi } from '@/api/engineering/resource'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
 import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
@@ -251,6 +307,77 @@ const activeTab = ref('customer')
 const productCode = computed(() => detail.value?.product?.productCode || '')
 const bomItems = computed<any[]>(() => ((detail.value?.bom as any)?.items as any[]) || [])
 const routingItems = computed<any[]>(() => ((detail.value?.routing as any)?.items as any[]) || [])
+
+// ===== 刀模（库位）关联（②） =====
+const productDies = ref<any[]>([])
+const dieVisible = ref(false)
+const dieKeyword = ref('')
+const dieOptions = ref<any[]>([])
+const dieLoading = ref(false)
+
+const productId = computed(() => Number((detail.value?.product as any)?.productId || 0))
+
+async function loadProductDies() {
+  productDies.value = []
+  if (!productId.value) return
+  try {
+    const res: any = await engineeringResourceApi.byProduct('DIE', productId.value)
+    productDies.value = res?.data || []
+  } catch {
+    productDies.value = []
+  }
+}
+
+function openDieLink() {
+  dieVisible.value = true
+  searchDies()
+}
+
+async function searchDies() {
+  dieLoading.value = true
+  try {
+    const res: any = await engineeringResourceApi.dies({ keyword: dieKeyword.value || undefined, pageNum: 1, pageSize: 50 })
+    dieOptions.value = res?.data?.records || []
+  } catch {
+    dieOptions.value = []
+  } finally {
+    dieLoading.value = false
+  }
+}
+
+/** 关联：把该产品并入刀模的产品列表（保留已有） */
+async function linkDie(row: any) {
+  const dieId = Number(row.die_id || row.dieId)
+  if (!dieId || !productId.value) return
+  try {
+    const cur: any = await engineeringResourceApi.products('DIE', dieId)
+    const ids = (cur?.data || []).map((x: any) => Number(x.product_id ?? x.productId)).filter(Boolean)
+    if (!ids.includes(productId.value)) ids.push(productId.value)
+    await engineeringResourceApi.replaceProducts('DIE', dieId, ids)
+    ElMessage.success('已关联')
+    dieVisible.value = false
+    loadProductDies()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '关联失败')
+  }
+}
+
+/** 解除：从刀模的产品列表移除该产品 */
+async function unlinkDie(row: any) {
+  const dieId = Number(row.resourceId || row.die_id || row.dieId)
+  if (!dieId || !productId.value) return
+  try {
+    const cur: any = await engineeringResourceApi.products('DIE', dieId)
+    const ids = (cur?.data || [])
+      .map((x: any) => Number(x.product_id ?? x.productId))
+      .filter((x: number) => x && x !== productId.value)
+    await engineeringResourceApi.replaceProducts('DIE', dieId, ids)
+    ElMessage.success('已解除')
+    loadProductDies()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '解除失败')
+  }
+}
 
 // ===== 打样领料单（⑦） =====
 const sampleOrders = ref<any[]>([])
@@ -373,6 +500,7 @@ async function openSpec(row: any) {
   try {
     const res: any = await getFullProduct(Number(row.productId))
     detail.value = res?.data || null
+    loadProductDies()
   } catch (e: any) {
     ElMessage.error(e?.message || '加载作业规范失败')
   } finally {

@@ -70,6 +70,8 @@ public class EngineeringResourceController {
         return Result.success(service.importDies(rows));
     }
 
+    @GetMapping("/{type}/by-product/{productId}") @SaCheckPermission("engineering:resource:view")
+    public Result<List<Map<String,Object>>> resourcesByProduct(@PathVariable String type,@PathVariable Long productId){return Result.success(service.resourcesByProduct(type,productId));}
     @GetMapping("/{type}/{id}/products") @SaCheckPermission("engineering:resource:view")
     public Result<List<Map<String,Object>>> products(@PathVariable String type,@PathVariable Long id){return Result.success(service.products(type,id));}
     @PutMapping("/{type}/{id}/products") @SaCheckPermission("engineering:resource:edit")

@@ -28,6 +28,8 @@ export const engineeringResourceApi = {
     return request.post(`${base}/dies/import`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
   },
   products: (type: string, id: number) => request.get(`${base}/${type}/${id}/products`),
+  /** 反查：某产品关联的工程资源（目前支持 DIE 刀模；dev-20260929-023） */
+  byProduct: (type: string, productId: number) => request.get(`${base}/${type}/by-product/${productId}`),
   replaceProducts: (type: string, id: number, productIds: number[], purpose?: string) =>
     request.put(`${base}/${type}/${id}/products`, { productIds, purpose }),
   maintenance: (type: string, id: number) => request.get(`${base}/${type}/${id}/maintenance`),
