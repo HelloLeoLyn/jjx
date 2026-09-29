@@ -7,11 +7,15 @@
     @selection-change="(v: any[]) => emit('selection-change', v)"
   >
     <el-table-column type="selection" width="46" fixed="left" :selectable="canEdit" />
-    <el-table-column prop="materialCode" label="材料编码" min-width="125" /><el-table-column
-      prop="materialName"
-      label="材料名称"
-      min-width="150"
-    /><el-table-column label="数量" width="105"
+    <el-table-column prop="materialCode" label="材料编码" min-width="125" />
+    <el-table-column prop="materialName" label="材料名称" min-width="150" />
+    <el-table-column label="检验批号" min-width="150">
+      <template #default="{ row }">
+        <div>{{ row.qualityLotNo || '-' }}</div>
+        <span v-if="row.parentQualityLotNo" class="muted">原批：{{ row.parentQualityLotNo }}</span>
+      </template>
+    </el-table-column>
+    <el-table-column label="数量" width="105"
       ><template #default="{ row }"
         >{{ row.isReinspection ? '本批复检' : '整批收货' }}
         {{ row.isReinspection ? (row.reinspectionQuantity ?? 0) : row.quantity }}</template
@@ -48,6 +52,14 @@
             {{ row.trace?.remainingDispositionQuantity ?? row.remainingDispositionQuantity ?? 0 }}
             件
           </div>
+          <el-tag
+            v-if="needsDisposition(row)"
+            type="warning"
+            size="small"
+            effect="plain"
+            class="pending-tag"
+            >待处置</el-tag
+          >
         </div>
       </template></el-table-column
     >
@@ -91,9 +103,6 @@
       display="text"
       @action="handleMaterialAction"
     >
-      <template #before="{ row }">
-        <span v-if="!pendingActionKey(row)" class="operation-muted">无待办</span>
-      </template>
     </TableActionColumn>
   </el-table>
 </template>
@@ -104,19 +113,24 @@
  * 只负责展示与事件上抛；数量/判定/原因均为只读派生结果（013 口径）。
  * 操作栏复用统一组件 TableActionColumn（dev-20260928-038 口径：IQC 操作栏统一）。
  * 根节点就是 el-table，父页面针对 .material-table 的 scoped 样式仍然生效。
+ *
+ * dev-20260929-007：一行材料 = 它的数量、结论、原因、检验批号 + 全部动作。
+ *   原「待处理明细」独立表已下线，处置入口回到本表的「不良处置」（判据唯一出处 iqcRowRules.iqcNeedsDisposition）；
+ *   结清构成看「处置历史」，跨批次待处置看 /inventory/iqc-quarantine。
  */
 import { InspectionResultEnum as InboundInspectionResultEnum } from '@/enums/inventory/InboundEnum'
 import { QualityReviewStatus, QualityReviewStatusEnum } from '@/enums/quality/InspectionEnum'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
-import { deriveIqcReasonText } from '../iqcRowRules'
+import { deriveIqcReasonText, iqcNeedsDisposition } from '../iqcRowRules'
 
-const { canEdit, canJudge, isCompleted } = defineProps<{
+const { canEdit, canJudge, canDispose, isCompleted } = defineProps<{
   rows: any[]
   canEdit: (row: any) => boolean
   rowClass: (ctx: { row: any }) => string
   progress: (row: any) => number
   canJudge: boolean
+  canDispose: boolean
   isCompleted: boolean
 }>()
 
@@ -127,7 +141,13 @@ const emit = defineEmits<{
   (e: 'print', row: any): void
   (e: 'history', row: any): void
   (e: 'disposition-history', row: any): void
+  (e: 'dispose', row: any): void
 }>()
+
+/** 该行是否待处置（判据唯一出处：iqcRowRules.iqcNeedsDisposition） */
+function needsDisposition(row: any) {
+  return iqcNeedsDisposition(row, isCompleted)
+}
 
 function disposedQuantity(row: any) {
   if (row.trace?.disposedQuantity != null) return Number(row.trace.disposedQuantity)
@@ -140,10 +160,9 @@ function disposedQuantity(row: any) {
 /**
  * 待办链按原优先级互斥取唯一一项：能录入 → 录入，否则待审 → 审核。
  *
- * dev-20260929-007：材料行的「不良处置」入口已收敛 —— 处置统一走工作台/跨批次页的
- * 「待处理明细」（那里带 供应商/采购单号/检验批号/不合格原因 等完整上下文），
- * 避免同一动作两个入口、两套过滤口径。
- * 打印/历史属于只读附属入口，order 靠后 + max-visible=1，固定收进统一组件的「更多」。
+ * dev-20260929-007：处置（不良处置）与只读入口（处置历史/打印/质量历史）不进待办互斥 ——
+ * 它们按自身条件出现：处置看「已审定不良 + 剩余可处置量 > 0」，只读入口看有无检验批。
+ * 打印/历史属于只读附属入口，order 靠后，收进统一组件的「更多」。
  */
 function pendingActionKey(row: any): 'edit' | 'review' | null {
   if (canEdit(row)) return 'edit'
@@ -167,6 +186,13 @@ const materialActions: TableAction<any>[] = [
     visible: ({ row }) => pendingActionKey(row) === 'review',
   },
   {
+    key: 'dispose',
+    label: '不良处置',
+    type: 'warning',
+    order: 3,
+    visible: ({ row }) => canDispose && needsDisposition(row),
+  },
+  {
     key: 'disposition-history',
     label: '处置历史',
     order: 9,
@@ -179,8 +205,12 @@ const materialActions: TableAction<any>[] = [
 function handleMaterialAction(key: string, row: any) {
   if (key === 'print') return emit('print', row)
   if (key === 'history') return emit('history', row)
-  // 只读+带操作的查看入口：不参与「待办互斥」，只要这一行有检验批就给（dev-20260929-007）
   if (key === 'disposition-history') return emit('disposition-history', row)
+  // 处置入口：只按「已审定不良 + 剩余可处置量 > 0」判定，不参与待办互斥
+  if (key === 'dispose') {
+    if (canDispose && needsDisposition(row)) emit('dispose', row)
+    return
+  }
   if (pendingActionKey(row) !== key) return
   if (key === 'edit') return emit('edit', row)
   emit('review')
@@ -196,6 +226,13 @@ function handleMaterialAction(key: string, row: any) {
 .quantity-context__emphasis {
   color: var(--el-color-warning-dark-2);
   font-weight: 600;
+}
+.muted {
+  color: #909399;
+  font-size: 12px;
+}
+.pending-tag {
+  margin-top: 4px;
 }
 .operation-muted {
   color: var(--el-text-color-placeholder);

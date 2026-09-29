@@ -79,12 +79,19 @@
           保存、可"保存并下一行"；实测记录可留空</span
         >
       </div>
+      <div class="material-toolbar">
+        <el-checkbox v-model="onlyPending" label="只看待处置" />
+        <span class="batch-tip"
+          >待处置 = 已审定的不良还有剩余可处置量；处置入口就在该行操作栏（结清构成看「处置历史」）</span
+        >
+      </div>
       <IqcMaterialTable
-        :rows="workRows"
+        :rows="displayRows"
         :can-edit="rowCanEdit"
         :row-class="rowClassName"
         :progress="checkProgress"
         :can-judge="canJudge"
+        :can-dispose="canDispose"
         :is-completed="isCompleted"
         @selection-change="handleSelectionChange"
         @edit="openMaterialChecks"
@@ -92,24 +99,8 @@
         @print="printRow"
         @history="openHistory"
         @disposition-history="openDispositionHistory"
+        @dispose="openDispositionForMaterial"
       />
-      <el-card class="workbench-section" shadow="never">
-        <template #header>
-          <div class="section-header">
-            <span>待处理明细</span>
-            <span class="section-tip"
-              >剩余可处置量 &gt; 0 才是待处置；处置后剩余减到 0 即结清（结清构成看该材料行的「处置历史」）</span
-            >
-          </div>
-        </template>
-        <DispositionPendingTable
-          :rows="pendingRows"
-          :can-dispose="canDispose"
-          :loading="detailLoading"
-          @dispose="openPendingDisposition"
-        />
-        <el-empty v-if="!pendingRows.length" description="当前没有待处置的隔离品" />
-      </el-card>
     </el-card>
     <el-empty v-else description="未选择来料批次" />
     <MaterialChecksDialog
@@ -169,7 +160,7 @@ import IqcReviewDialog from '@/views/inventory/inbound/components/IqcReviewDialo
 import IqcQuarantineDialog from '@/views/inventory/inbound/components/IqcQuarantineDialog.vue'
 import MaterialChecksDialog from './MaterialChecksDialog.vue'
 import IqcMaterialTable from './IqcMaterialTable.vue'
-import DispositionPendingTable from './DispositionPendingTable.vue'
+
 import BatchLineageDrawer from './BatchLineageDrawer.vue'
 import QualityHistoryDrawer from './QualityHistoryDrawer.vue'
 import DispositionHistoryDialog from './DispositionHistoryDialog.vue'
@@ -179,6 +170,7 @@ import {
   copyIqcChecks,
   deriveIqcReasonText,
   iqcRowProblems,
+  iqcNeedsDisposition,
   syncIqcRowFromChecks,
 } from '../iqcRowRules'
 import {
@@ -301,9 +293,7 @@ const dispositionHistoryLabel = computed(() => {
   const lot = item.qualityLotNo ? ` · ${item.qualityLotNo}` : ''
   return `${item.materialCode || '-'} ${item.materialName || ''}${lot}`.trim()
 })
-const pendingRows = computed(() =>
-  quarantines.value.filter((row) => Number(row.remainingQuantity || 0) > 0)
-)
+
 const historyRows = ref<QualityLotHistory[]>([])
 const historyLoading = ref(false)
 const historyVisible = ref(false)
@@ -324,7 +314,9 @@ const num = (value?: number | string | null) =>
 /** dev-20260924-017：校验未通过的行（行级红标，提交时一次提示 + 定位第一处） */
 const problemRowIds = ref<Set<number>>(new Set())
 function rowClassName({ row }: { row: WorkRow }) {
-  return problemRowIds.value.has(Number(row.itemId)) ? 'iqc-problem-row' : ''
+  if (problemRowIds.value.has(Number(row.itemId))) return 'iqc-problem-row'
+  // dev-20260929-007：待处置行淡黄底（合并「待处理明细」后，待处置靠标签 + 底色保证可见性）
+  return iqcNeedsDisposition(row, isCompleted.value) ? 'iqc-pending-row' : ''
 }
 const isApproved = computed(
   () =>
@@ -338,6 +330,13 @@ const hasPendingRows = computed(() =>
   workRows.value.some((row) => row.reviewStatus === QualityReviewStatus.PENDING)
 )
 const hasEditableRows = computed(() => workRows.value.some(rowCanEdit))
+/** 「只看待处置」筛选：判据与材料表/处置入口同源（iqcRowRules.iqcNeedsDisposition） */
+const onlyPending = ref(false)
+const displayRows = computed(() =>
+  onlyPending.value
+    ? workRows.value.filter((row) => iqcNeedsDisposition(row, isCompleted.value))
+    : workRows.value
+)
 const decidedCount = computed(
   () => workRows.value.filter((row) => Boolean(row.inspectionResult)).length
 )
@@ -768,6 +767,22 @@ function openDispositionHistory(row?: any) {
   dispositionHistoryVisible.value = true
 }
 
+/** 材料行「不良处置」：按 (材料行 + 检验批) 找到该行的隔离品，带着完整上下文打开处置弹窗。 */
+function openDispositionForMaterial(row?: WorkRow) {
+  if (!row) return
+  const target = quarantines.value.find(
+    (record: any) =>
+      Number(record.remainingQuantity || 0) > 0 &&
+      String(record.inboundItemId) === String(row.itemId) &&
+      (row.lotId == null || String(record.lotId) === String(row.lotId))
+  )
+  if (!target) {
+    ElMessage.warning('该材料当前没有可处置的隔离品（可能已结清）')
+    return
+  }
+  openPendingDisposition(target)
+}
+
 /** 待处理明细行「处置」：带着这一行的完整上下文打开处置弹窗。 */
 function openPendingDisposition(row: any) {
   activeInboundId.value = Number(selectedInbound.value?.inboundId)
@@ -946,6 +961,16 @@ onBeforeUnmount(clearSelection)
 :deep(.iqc-problem-row) > td {
   background: var(--el-color-danger-light-9) !important;
 }
+/* dev-20260929-007：合并「待处理明细」后，待处置行用淡黄底 + 行内「待处置」标签保证可见性 */
+:deep(.iqc-pending-row) > td {
+  background: var(--el-color-warning-light-9) !important;
+}
+.material-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
 .header,
 .guide-content {
   display: flex;
@@ -1044,3 +1069,4 @@ onBeforeUnmount(clearSelection)
   justify-content: flex-end;
 }
 </style>
+

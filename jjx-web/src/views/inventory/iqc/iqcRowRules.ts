@@ -9,7 +9,7 @@
  * - 复制上一行：只带 检验标准/方法/设备/结论，不带实测值与缺陷数（避免误判）
  */
 import { InspectionResultEnum } from '@/enums/inventory/InboundEnum'
-import { InspectionResult, isResultFail } from '@/enums/quality/InspectionEnum'
+import { InspectionResult, QualityReviewStatus, isResultFail } from '@/enums/quality/InspectionEnum'
 import { isValidSupplement } from '@/utils/reasonSanitizer'
 
 /** 处置方式联动接收数量：全检口径下接收数量恒等于合格数量 */
@@ -174,6 +174,27 @@ export function copyIqcChecks(from: any, to: any) {
     }
   })
   syncIqcRowFromChecks(to)
+}
+
+/**
+ * 该材料行的「剩余可处置量」—— **唯一出处**。
+ * dev-20260929-007：处置入口合并到材料行后，材料表 / 工作台面板 / 只看待处置筛选 都读这一个函数，
+ * 避免三处各写一套判据（历史教训：同一动作两套口径）。
+ */
+export function iqcRemainingDisposition(row: any): number {
+  const value = row?.trace?.remainingDispositionQuantity ?? row?.remainingDispositionQuantity
+  return Math.max(0, Number(value || 0))
+}
+
+/**
+ * 该材料行是否需要处置：判定不合格 + 复核已通过（或批已完成）+ 还有剩余可处置量。
+ * 与隔离台账「待处置 = 剩余可处置量 > 0」同一口径，不依赖已删除的隔离单状态列。
+ */
+export function iqcNeedsDisposition(row: any, isCompleted = false): boolean {
+  if (!row) return false
+  if (row.inspectionResult !== InspectionResultEnum.FAIL.value) return false
+  if (iqcRemainingDisposition(row) <= 0) return false
+  return row.reviewStatus === QualityReviewStatus.APPROVED || isCompleted
 }
 
 /** 行内是否已录：实测值 / 缺陷数 / 备注 任一有值 */
