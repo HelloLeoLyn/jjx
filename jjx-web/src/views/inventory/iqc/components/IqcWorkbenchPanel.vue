@@ -98,7 +98,7 @@
           <div class="section-header">
             <span>待处理明细</span>
             <span class="section-tip"
-              >剩余可处置量 &gt; 0 才是待处置；处置后剩余减到 0 即结清（结清构成见下方处置单历史）</span
+              >剩余可处置量 &gt; 0 才是待处置；处置后剩余减到 0 即结清（结清构成看该材料行的「处置历史」）</span
             >
           </div>
         </template>
@@ -777,7 +777,7 @@ function openPendingDisposition(row: any) {
   dispositionVisible.value = true
 }
 
-/** 处置单历史：报废审批（通过/驳回）—— 原先在列表页的独立弹窗，现就地对着处置单行处理。 */
+/** 材料行「处置历史」弹窗：报废审批（通过/驳回）—— 动作由本组件执行，弹窗只上抛（dev-20260929-007）。 */
 async function approveScrapRow(row: any, approved: boolean) {
   if (!hasPermi('quality:ncr:dispose')) return
   let remark: string | undefined
