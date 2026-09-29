@@ -39,6 +39,7 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDate;
 import java.util.HexFormat;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -714,23 +715,26 @@ public class EngineeringArchiveImportService {
             long routingId = insert("INSERT INTO engineering_routing(routing_code,routing_name,product_id,product_code,product_name,routing_type,routing_version,version,is_current,approve_status,process_count,description,create_by,update_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     "RT-" + code, name + " 历史档案工艺", productId, code, name, ROUTING_TYPE, VERSION, VERSION, true,
                     ProductEnums.BomStatus.DRAFT.getValue(), countSteps(root), "来源历史档案 #" + id, user, user);
-            // dev-20260929-026：process_order 必须**整条路线内全局唯一**（engineering_routing_item.uk_routing_process_order
-            // = (routing_id, process_order)）。原实现在每个 workflow 内把 order 重置为 1，档案含多个 workflow（如上线/下线组）时
-            // 第二个 workflow 的第 1 道必然与第一个撞键 → Duplicate entry '1-1'。改为跨 workflow 连续递增。
-            int order = 1;
+            // dev-20260929-027（用户 2026-09-29 拍板 B）：工序序号按「组（workflow）」各自从 1 开始。
+            // workflow_seq = 组序号（只对真正产出工序的组递增），process_order = 组内序号（从 1）；
+            // 唯一键 engineering_routing_item.uk_routing_workflow_process = (routing_id, workflow_seq, process_order)。
+            int workflowSeq = 0;
             for (JsonNode workflow : root.path("workflows")) {
                 String workflowType = defaultText(text(workflow, "workflowType"), "OTHER");
+                List<JsonNode> steps = new ArrayList<>();
                 for (JsonNode step : workflow.path("steps")) {
                     if ("EMPTY".equals(text(step, "contentType"))) continue;
+                    steps.add(step);
+                }
+                if (steps.isEmpty()) continue; // 全空格组（如 6 格全 EMPTY 的上线组）不占组号，序号不跳号
+                int seq = ++workflowSeq;
+                int order = 1;
+                for (JsonNode step : steps) {
                     boolean composite = "COMPOSITE".equals(text(step, "processStructure"));
                     if (composite && step.path("components").isArray() && step.path("components").size() > 0) {
-                        String groupName = defaultText(text(step, "processName"), text(step, "rawText"));
-                        long parentId = insert("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark,group_id,group_order,group_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                                routingId, null, groupName, "ASSEMBLY", order++, workflowType,
-                                text(step, "rawText"), text(step, "workInstruction"), text(step, "operationRemark"),
-                                null, 0, groupName);
-                        long groupId = parentId;
-                        int groupOrder = 1;
+                        // 组名 = 子件名拼接（用户口径：「面板 + 下线跳」）；OCR 原文仍保留在 description
+                        List<Long> childProcessIds = new ArrayList<>();
+                        List<String> childNames = new ArrayList<>();
                         for (JsonNode component : step.path("components")) {
                             Long processId = component.path("processId").canConvertToLong()
                                     ? component.path("processId").longValue() : null;
@@ -741,11 +745,29 @@ public class EngineeringArchiveImportService {
                                 if (p.isEmpty()) processId = null;
                                 else processName = String.valueOf(p.getFirst().get("process_name"));
                             }
-                            Integer indexNumber = extractIndexNumber(component);
-                            jdbcTemplate.update("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark,group_id,group_order,group_name,parent_id,index_number) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                                    routingId, processId, processName, "ASSEMBLY", null, workflowType,
+                            childProcessIds.add(processId);
+                            childNames.add(processName);
+                        }
+                        StringBuilder joined = new StringBuilder();
+                        for (String childName : childNames) {
+                            if (childName == null || childName.isBlank()) continue;
+                            if (joined.length() > 0) joined.append(" + ");
+                            joined.append(childName.trim());
+                        }
+                        String groupName = joined.length() > 0 ? joined.toString()
+                                : defaultText(text(step, "processName"), text(step, "rawText"));
+                        long parentId = insert("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark,group_id,group_order,group_name,workflow_seq) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                routingId, null, groupName, "ASSEMBLY", order++, workflowType,
+                                text(step, "rawText"), text(step, "workInstruction"), text(step, "operationRemark"),
+                                null, 0, groupName, seq);
+                        int groupOrder = 1;
+                        for (int i = 0; i < childNames.size(); i++) {
+                            JsonNode component = step.path("components").get(i);
+                            jdbcTemplate.update("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark,group_id,group_order,group_name,parent_id,index_number,workflow_seq) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                    routingId, childProcessIds.get(i), childNames.get(i), "ASSEMBLY", null, workflowType,
                                     text(component, "text"), text(component, "workInstruction"),
-                                    text(step, "operationRemark"), groupId, groupOrder++, groupName, parentId, indexNumber);
+                                    text(step, "operationRemark"), parentId, groupOrder++, groupName, parentId,
+                                    extractIndexNumber(component), seq);
                         }
                     } else {
                         Long processId = step.path("processId").canConvertToLong() ? step.path("processId").longValue() : null;
@@ -754,9 +776,9 @@ public class EngineeringArchiveImportService {
                             List<Map<String,Object>> p = jdbcTemplate.queryForList("SELECT process_name FROM engineering_standard_process WHERE process_id=? AND is_enabled=1", processId);
                             if (p.isEmpty()) processId = null; else processName = String.valueOf(p.getFirst().get("process_name"));
                         }
-                        jdbcTemplate.update("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark) VALUES(?,?,?,?,?,?,?,?,?)",
+                        jdbcTemplate.update("INSERT INTO engineering_routing_item(routing_id,process_id,process_name,major_category,process_order,process_category,description,work_instruction,remark,workflow_seq) VALUES(?,?,?,?,?,?,?,?,?,?)",
                                 routingId, processId, processName, "ASSEMBLY", order++, workflowType,
-                                text(step, "rawText"), text(step, "workInstruction"), text(step, "operationRemark"));
+                                text(step, "rawText"), text(step, "workInstruction"), text(step, "operationRemark"), seq);
                     }
                 }
             }
@@ -1027,16 +1049,13 @@ public class EngineeringArchiveImportService {
     private String text(JsonNode node, String field) { JsonNode value = node == null ? null : node.get(field); return value == null || value.isNull() ? null : value.asText().trim(); }
     private String defaultText(String value, String fallback) { return value == null || value.isBlank() ? fallback : value; }
     private java.math.BigDecimal decimal(JsonNode node, String field, int fallback) { try { return node.path(field).isNumber() ? node.path(field).decimalValue() : new java.math.BigDecimal(node.path(field).asText()); } catch (Exception e) { return java.math.BigDecimal.valueOf(fallback); } }
+    /** 带号工序数（= 路线内带 process_order 的行数；组合工序按 1 道算，子件不占号）。 */
     private int countSteps(JsonNode root) {
         int count = 0;
         for (JsonNode workflow : root.path("workflows")) {
             for (JsonNode step : workflow.path("steps")) {
                 if ("EMPTY".equals(text(step, "contentType"))) continue;
-                if ("COMPOSITE".equals(text(step, "processStructure")) && step.path("components").isArray()) {
-                    count += step.path("components").size();
-                } else {
-                    count++;
-                }
+                count++;
             }
         }
         return count;

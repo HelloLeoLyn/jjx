@@ -13,6 +13,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 产品路线明细控制器
@@ -93,9 +94,14 @@ public class EngineeringRoutingItemController {
             @RequestParam @NotNull Long routingId,
             @RequestBody List<Long> detailIds) {
         List<EngineeringRoutingItem> items = routingItemMapper.selectByRoutingId(routingId);
+        // dev-20260929-027：序号是「组（workflow）内序号」，每组从 1 重新开始（唯一键 (routing_id, workflow_seq, process_order)）
+        Map<String, Integer> nextOrderByCategory = new java.util.HashMap<>();
         for (int i = 0; i < items.size(); i++) {
             EngineeringRoutingItem item = items.get(i);
-            item.setProcessOrder(i + 1);
+            if (item.getParentId() != null) continue; // 子件不占号
+            String category = item.getProcessCategory() == null || item.getProcessCategory().isBlank()
+                    ? "MAIN" : item.getProcessCategory();
+            item.setProcessOrder(nextOrderByCategory.merge(category, 1, Integer::sum));
             routingItemMapper.updateById(item);
         }
         return Result.success();

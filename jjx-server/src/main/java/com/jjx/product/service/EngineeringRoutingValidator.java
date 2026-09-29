@@ -297,9 +297,17 @@ public class EngineeringRoutingValidator {
             List<String> suggestions) {
 
         // 检查工序顺序是否连续
-        for (int i = 0; i < items.size(); i++) {
-            EngineeringRoutingItem item = items.get(i);
-            int expectedOrder = i + 1;
+        // dev-20260929-027：process_order 是「组（workflow）内序号」，每组从 1 重新开始；
+        // 明细已按 (workflow_seq, 组内序号) 返回；子件行（parent_id 非空）不占号，跳过。
+        Integer currentSeq = null;
+        int expectedOrder = 1;
+        for (EngineeringRoutingItem item : items) {
+            if (item.getParentId() != null) continue;
+            int seq = item.getWorkflowSeq() != null ? item.getWorkflowSeq() : 1;
+            if (currentSeq == null || currentSeq != seq) {
+                currentSeq = seq;
+                expectedOrder = 1;
+            }
 
             if (item.getProcessOrder() == null) {
                 errors.add(EngineeringRoutingValidationVO.ValidationError.builder()
@@ -314,12 +322,13 @@ public class EngineeringRoutingValidator {
             if (item.getProcessOrder() != expectedOrder) {
                 errors.add(EngineeringRoutingValidationVO.ValidationError.builder()
                         .code("ROUTING_013")
-                        .message(String.format("工序顺序不正确: 期望 %d，实际 %d", expectedOrder, item.getProcessOrder()))
+                        .message(String.format("工序顺序不正确: 组%d 期望 %d，实际 %d", seq, expectedOrder, item.getProcessOrder()))
                         .field("processOrder")
                         .suggestion("请按顺序排列工序")
                         .build());
                 break;
             }
+            expectedOrder++;
         }
 
         // 检查是否有明显的顺序问题（如印刷在组装之后）

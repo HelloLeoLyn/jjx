@@ -88,6 +88,11 @@ public class EngineeringRoutingItem {
      */
     private String processCategory;
 
+    /** 组（workflow）序号：同组内 process_order 从 1 递增，组按路线内出现顺序编号 1..N。
+     *  唯一键 uk_routing_workflow_process = (routing_id, workflow_seq, process_order)（2026-09-29 用户拍板 B）。 */
+    private Integer workflowSeq;
+
+
     /**
      * 大类：ASSEMBLY冲型组装/PRINT印刷（2026-08-12）
      */

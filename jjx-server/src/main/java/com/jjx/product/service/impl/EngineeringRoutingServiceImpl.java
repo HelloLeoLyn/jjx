@@ -631,11 +631,17 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
 
         // 2026-09-05 父子结构落库：每个 dto = 一道工序（父行），children = 组合作业项（子行）
         // 兼容旧平铺数据：无 children 的行作为单作业父行直接落（process_id 自带）
-        int order = 1;
+        // dev-20260929-027：工序序号按「组（process_category：面板/上线/下线）」各自从 1 开始；
+        // workflow_seq = 组的出现顺序（1..N），process_order = 组内序号 ⇒ 唯一键 (routing_id, workflow_seq, process_order)。
+        java.util.LinkedHashMap<String, Integer> workflowSeqByCategory = new java.util.LinkedHashMap<>();
+        java.util.HashMap<String, Integer> nextOrderByCategory = new java.util.HashMap<>();
         for (EngineeringRoutingItemDTO dto : itemDTOs) {
             // 父行（工序）
             EngineeringRoutingItem parent = buildItem(dto, routingId);
-            parent.setProcessOrder(order++); // 工序顺序 1..N
+            String category = parent.getProcessCategory();
+            int workflowSeq = workflowSeqByCategory.computeIfAbsent(category, key -> workflowSeqByCategory.size() + 1);
+            parent.setWorkflowSeq(workflowSeq);
+            parent.setProcessOrder(nextOrderByCategory.merge(category, 1, Integer::sum)); // 组内工序顺序 1..N
             parent.setParentId(null);
             parent.setGroupId(null);
             parent.setGroupName(null);
@@ -646,6 +652,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             if (dto.getChildren() != null && !dto.getChildren().isEmpty()) {
                 for (EngineeringRoutingItemDTO childDto : dto.getChildren()) {
                     EngineeringRoutingItem child = buildItem(childDto, routingId);
+                    child.setWorkflowSeq(workflowSeq);
                     child.setProcessOrder(null); // 子行无工序序号（列已允许 NULL）
                     child.setParentId(parent.getItemId());
                     child.setGroupId(null);

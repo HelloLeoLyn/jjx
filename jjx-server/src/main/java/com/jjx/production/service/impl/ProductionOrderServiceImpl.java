@@ -1389,9 +1389,12 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         }
 
         // 查询工艺路线下的所有工序
+        // dev-20260929-027：process_order 是「组内序号」（历史档案按 面板/上线/下线 分组各自从 1），
+        // 工序先后必须按 (workflow_seq, process_order) 排；execution 自己的 process_order 仍是整单连续序号（见下方 i + 1）。
         List<EngineeringRoutingItem> routingItems = productRoutingItemMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringRoutingItem>()
                         .eq(EngineeringRoutingItem::getRoutingId, routingId)
+                        .orderByAsc(EngineeringRoutingItem::getWorkflowSeq)
                         .orderByAsc(EngineeringRoutingItem::getProcessOrder)
         );
 
@@ -1462,7 +1465,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 params = merged.toString();
             }
             execution.setCustomProcessParams(params);
-            execution.setProcessOrder(item.getProcessOrder());
+            // 工单工序序号 = 整单连续序号（组内序号只用于工艺路线明细展示；报工「前道已完成」判定依赖整单递增）
+            execution.setProcessOrder(i + 1);
 
             // WP-E2E-BUG-01 修复：转工单生成的所有 Execution 一律 PENDING/待执行
             // 转工单不得自动启动首道工序；只有正式"开始"动作（startExecution）才能进入 EXECUTING

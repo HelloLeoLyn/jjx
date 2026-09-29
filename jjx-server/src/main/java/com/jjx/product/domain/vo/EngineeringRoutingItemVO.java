@@ -34,6 +34,8 @@ public class EngineeringRoutingItemVO {
     // ====================================================
 
     private Integer processOrder;
+    /** 组（workflow）序号：同组内 processOrder 从 1 递增（历史档案按 面板/上线/下线 分组，2026-09-29 用户拍板 B） */
+    private Integer workflowSeq;
     private BigDecimal customLaborHours;
     private BigDecimal customMachineHours;
     private String customProcessParams;

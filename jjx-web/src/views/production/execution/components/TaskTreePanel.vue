@@ -133,13 +133,13 @@
             @click="emit('start', row)"
             >开始工序</el-button
           >
-          <el-button
+          <!-- <el-button
             v-if="Number(row.pendingQuantity || 0) > 0"
             type="warning"
             link
             @click="emit('approval')"
             >去审批</el-button
-          >
+          > -->
           <el-button
             v-if="canReport(row)"
             type="primary"
@@ -147,7 +147,12 @@
             icon="EditPen"
             v-hasPermi="['production:work-report:add']"
             @click="emit('report', row)"
-            >{{ row.status === ProductionTaskStatus.COMPLETED && Number(row.supplementAllowance || 0) > 0 ? '补报' : '报工' }}</el-button
+            >{{
+              row.status === ProductionTaskStatus.COMPLETED &&
+              Number(row.supplementAllowance || 0) > 0
+                ? '补报'
+                : '报工'
+            }}</el-button
           >
           <el-button type="primary" link icon="View" @click="emit('detail', row)">详情</el-button>
         </template>

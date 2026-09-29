@@ -49,17 +49,30 @@
       <el-descriptions-item label="备注" :span="2">{{ detail.remark || '-' }}</el-descriptions-item>
     </el-descriptions>
     <el-divider content-position="left">工序明细</el-divider>
-    <el-table :data="groups" border stripe style="width: 100%">
-      <el-table-column label="序号" width="60" align="center">
-        <template #default="scope">{{ scope.row.groupOrder }}</template>
-      </el-table-column>
-      <el-table-column label="组合工序" min-width="300">
-        <template #default="scope">
-          <div class="group-items">
-            <ProcessOperation :items="operationItems(scope.row.items)" :remark="scope.row.remark" />
-          </div>
-        </template>
-      </el-table-column>
+    <template v-for="block in blocks" :key="block.key">
+      <el-divider content-position="left">
+        {{ block.label }}（{{ block.groups.length }} 道）
+      </el-divider>
+      <el-table :data="block.groups" border stripe style="width: 100%">
+        <el-table-column label="序号" width="70" align="center">
+          <template #default="scope">{{ scope.row.groupOrder }}</template>
+        </el-table-column>
+        <el-table-column label="组合工序" min-width="300">
+          <template #default="scope">
+            <div class="group-items">
+              <ProcessOperation :items="operationItems(scope.row.items)" :remark="scope.row.remark" />
+            </div>
+            <div v-if="scope.row.items.length > 1" class="sub-items">
+              <span
+                v-for="(item, subIndex) in scope.row.items"
+                :key="item.itemId ?? subIndex"
+                class="sub-item"
+              >
+                {{ scope.row.groupOrder }}.{{ subIndex + 1 }} {{ item.processName }}
+              </span>
+            </div>
+          </template>
+        </el-table-column>
       <el-table-column label="工序类别" width="120" align="center">
         <template #default="scope">
           <el-tag v-if="scope.row.processCategoryName" type="info" size="small">{{
@@ -87,16 +100,17 @@
           ><span>{{ scope.row.remark || '-' }}</span></template
         >
       </el-table-column>
-    </el-table>
+      </el-table>
+    </template>
     <slot name="extra" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { productRouteApi } from '@/api/product/routing'
 import type { EngineeringRoutingVO, EngineeringRoutingItemVO } from '@/types/product/routing'
-import { RouteStatusEnum } from '@/enums/product'
+import { RouteStatusEnum, ProcessCategoryEnum } from '@/enums/product'
 import { getDictLabel } from '@/utils/dict'
 import { useDict } from '@/composables/useDict'
 import ProcessOperation from '@/components/ProcessOperation/index.vue'
@@ -166,10 +180,43 @@ interface GroupDisplay {
   totalLaborHours: number
   totalMachineHours: number
   remark: string
+  /** 组（workflow）序号：同组内 groupOrder 从 1 递增（排序用） */
+  workflowSeq: number
+  /** 原始组标识（process_category：PANEL/UP_LINE/DOWN_LINE…） */
+  processCategory: string
   processCategoryName: string
 }
 
+/** 组（workflow）块：同一组的工序序号各自从 1 开始，界面按组分块显示 */
+interface BlockDisplay {
+  key: string
+  label: string
+  groups: GroupDisplay[]
+}
+
 const groups = ref<GroupDisplay[]>([])
+
+const blockLabel = (category: string): string =>
+  ProcessCategoryEnum.items.find((item) => item.value === category)?.label ||
+  category ||
+  '未分组'
+
+// 按组（process_category，按明细返回顺序的连续段）分块：面板 / 上线 / 下线 / 未分组
+const blocks = computed<BlockDisplay[]>(() => {
+  const built: BlockDisplay[] = []
+  const cats: string[] = []
+  groups.value.forEach((group) => {
+    const category = group.processCategory || ''
+    const last = built[built.length - 1]
+    if (last && cats[cats.length - 1] === category) {
+      last.groups.push(group)
+      return
+    }
+    cats.push(category)
+    built.push({ key: `block-${built.length}-${category}`, label: blockLabel(category), groups: [group] })
+  })
+  return built
+})
 
 const buildGroups = (items: EngineeringRoutingItemVO[]) => {
   if (!items || items.length === 0) {
@@ -197,10 +244,17 @@ const buildGroups = (items: EngineeringRoutingItemVO[]) => {
             0
           ),
           remark: parent.remark || '',
-          processCategoryName: groupItems[0]?.processCategoryName || '',
+          workflowSeq: parent.workflowSeq ?? 1,
+          processCategory: parent.processCategory || '',
+          processCategoryName:
+            getDictLabel(categoryOptions.value, parent.processCategory) ||
+            parent.processCategoryName ||
+            parent.processCategory ||
+            '',
         }
       })
-      .sort((a, b) => a.groupOrder - b.groupOrder)
+      // 排序键与后端明细一致：先组（workflow_seq）、再组内序号
+      .sort((a, b) => a.workflowSeq - b.workflowSeq || a.groupOrder - b.groupOrder)
   } else {
     const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
     items.forEach((item) => {
@@ -213,7 +267,10 @@ const buildGroups = (items: EngineeringRoutingItemVO[]) => {
       groupMap.get(key)!.push(item)
     })
     const sortedEntries = Array.from(groupMap.entries()).sort((a, b) => {
-      return (a[1][0].groupOrder || 0) - (b[1][0].groupOrder || 0)
+      return (
+        (a[1][0].workflowSeq ?? 1) - (b[1][0].workflowSeq ?? 1) ||
+        (a[1][0].groupOrder || 0) - (b[1][0].groupOrder || 0)
+      )
     })
     groups.value = sortedEntries.map(([, items]) => ({
       groupOrder: items[0].groupOrder || 0,
@@ -228,6 +285,8 @@ const buildGroups = (items: EngineeringRoutingItemVO[]) => {
         0
       ),
       remark: items[0]?.remark || '',
+      workflowSeq: items[0]?.workflowSeq ?? 1,
+      processCategory: items[0]?.processCategory || '',
       processCategoryName: getDictLabel(categoryOptions.value, items[0]?.processCategory) || '',
     }))
   }
@@ -283,5 +342,17 @@ defineExpose({ loadDetail, resetDetail })
   flex-wrap: wrap;
   gap: 6px;
   padding: 4px;
+}
+/* 组合工序的子件：不单独占号，显示成 4.1 / 4.2（dev-20260929-027） */
+.sub-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 4px 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+.sub-item {
+  white-space: nowrap;
 }
 </style>

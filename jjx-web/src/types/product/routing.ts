@@ -122,6 +122,8 @@ export interface EngineeringRoutingItemVO {
   itemId: number
   routingId: number
   processOrder: number
+  /** 组（workflow）序号：同组内 processOrder 从 1 递增（历史档案按 面板/上线/下线 分组） */
+  workflowSeq?: number
   customLaborHours?: number
   customMachineHours?: number
   customProcessParams?: string
