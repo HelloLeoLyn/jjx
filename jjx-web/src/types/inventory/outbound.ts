@@ -93,7 +93,34 @@ export interface PickOrderPrintVO {
   preparedDate?: string
   preparedBy?: string
   recordNo: string
+  /** 打印抬头（生产领料单 / 打样领料单；dev-20260929-023） */
+  pickTitle?: string
+  /** 来源类型（work_order / sample） */
+  sourceType?: string
   items: PickOrderPrintItemVO[]
+}
+
+// 打样领料预览行（样品BOM展开；dev-20260929-023）
+export interface SamplePickPreviewRow {
+  materialId?: number | null
+  materialCode?: string | null
+  materialName: string
+  specification?: string | null
+  unit?: string | null
+  /** 样品BOM需求量 */
+  quantity: number
+  /** 已领数量 */
+  issuedQuantity?: number
+  /** 当前可用量 */
+  availableQuantity?: number
+}
+
+// 打样领料提交明细
+export interface SamplePickItemPayload {
+  materialId: number
+  materialCode?: string
+  materialName?: string
+  quantity: number
 }
 
 // 出库单创建参数

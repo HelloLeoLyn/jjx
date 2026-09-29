@@ -17,7 +17,7 @@
         <PrintCompanyHeader variant="center" />
 
         <!-- 单据标题 -->
-        <div class="doc-title">{{ isPick ? '领 料 单' : '出 库 单' }}</div>
+        <div class="doc-title">{{ pickInfo?.pickTitle || (isPick ? '领 料 单' : '出 库 单') }}</div>
 
         <!-- 信息区 -->
         <div class="doc-info">
@@ -126,7 +126,7 @@ const pickInfo = ref<PickOrderPrintVO | null>(null)
 // 领料单（URL 带 pick=1 或类型为 production 时显示领料单标题）
 const isPick = computed(() => {
   const t = info.value?.outboundType
-  return t === 'production' || route.query.pick === '1'
+  return t === 'production' || t === 'sample' || route.query.pick === '1'
 })
 
 const itemsList = computed<any[]>(() => info.value?.items || [])
@@ -156,7 +156,7 @@ async function loadData() {
     const res: any = await outboundApi.getById(outboundId)
     if (res.code === 200 && res.data) {
       info.value = res.data
-      if (res.data.outboundType === 'production') {
+      if (res.data.outboundType === 'production' || res.data.outboundType === 'sample') {
         const pickRes = await outboundApi.getPickPrint(outboundId)
         pickInfo.value = pickRes.data || null
       }

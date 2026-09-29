@@ -7,7 +7,7 @@
         机种：<strong>{{ data.machineModel || '' }}</strong>
       </div>
       <div>订购数量：{{ formatNumber(data.orderQuantity) }}</div>
-      <div class="record-no">{{ data.recordNo || 'JJX-QR-031' }}</div>
+      <div class="record-no">{{ data.pickTitle || data.recordNo || 'JJX-QR-031' }}</div>
       <div>品名：{{ data.productName || '' }}</div>
       <div>交货日期：{{ data.deliveryDate || '' }}</div>
       <div>制表日期：{{ data.preparedDate || '' }}</div>

@@ -13,6 +13,8 @@ import type {
   PickRemainingRow,
   PickItemPayload,
   PickOrderPrintVO,
+  SamplePickPreviewRow,
+  SamplePickItemPayload,
 } from '@/types/inventory/outbound'
 
 // 出库管理API
@@ -31,6 +33,16 @@ export const outboundApi = {
 
   getPickPrint(outboundId: string) {
     return request.get<R<PickOrderPrintVO>>(`/inventory/outbound/${outboundId}/pick-print`)
+  },
+
+  // 打样领料预览（样品BOM展开+匹配物料+可用量；dev-20260929-023）
+  samplePickPreview(sampleOrderId: number) {
+    return request.get<R<SamplePickPreviewRow[]>>(`/inventory/outbound/sample-pick/preview/${sampleOrderId}`)
+  },
+
+  // 打样领料（从样品单创建）
+  createSamplePick(sampleOrderId: number, items: SamplePickItemPayload[]) {
+    return request.post<R<number>>(`/inventory/outbound/sample-pick/${sampleOrderId}`, items)
   },
 
   // 创建出库单
