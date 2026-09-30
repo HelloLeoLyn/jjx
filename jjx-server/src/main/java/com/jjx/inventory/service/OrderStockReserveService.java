@@ -33,4 +33,13 @@ public interface OrderStockReserveService {
      * 查询订单缺货量：productId -> 缺货量（订单量-预留量，无预留记录=全量）
      */
     Map<Long, BigDecimal> getShortageQty(Long orderId);
+
+    /**
+     * dev-20260930-020（P2b）：成品入库后，把等待中订单的「待生产」占用(reserve_type=2)
+     * 按订单优先级转成「实预留」(reserve_type=1)——先到的货归先占的单。
+     *
+     * @param inventoryItemId 该成品的统一库存物品ID
+     * @param productId       产品ID
+     */
+    void allocateArrivedStock(Long inventoryItemId, Long productId);
 }

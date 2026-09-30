@@ -247,6 +247,131 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
         return shortage;
     }
 
+    /**
+     * dev-20260930-020（P2b）：成品入库后，把等待中订单的「待生产」占用（type=2）
+     * 按订单优先级（加急 &gt; 先建单 &gt; order_id）转成「实预留」（type=1）。
+     */
+    @Override
+    @Transactional(propagation = Propagation.NESTED, rollbackFor = Exception.class)
+    public void allocateArrivedStock(Long inventoryItemId, Long productId) {
+        if (inventoryItemId == null || productId == null) {
+            return;
+        }
+        List<SalesOrderStockReserve> pendings = reserveMapper.selectList(
+                new LambdaQueryWrapper<SalesOrderStockReserve>()
+                        .eq(SalesOrderStockReserve::getProductId, productId)
+                        .eq(SalesOrderStockReserve::getReserveType, 2)
+                        .eq(SalesOrderStockReserve::getStatus, 0));
+        if (pendings == null || pendings.isEmpty()) {
+            return;
+        }
+        // 订单优先级：加急 > 先建单(create_time) > order_id
+        java.util.Set<Long> orderIds = new java.util.HashSet<>();
+        for (SalesOrderStockReserve r : pendings) {
+            if (r.getOrderId() != null) orderIds.add(r.getOrderId());
+        }
+        Map<Long, SalesOrder> orderMap = new HashMap<>();
+        if (!orderIds.isEmpty()) {
+            List<SalesOrder> os = orderMapper.selectBatchIds(orderIds);
+            if (os != null) {
+                for (SalesOrder o : os) orderMap.put(o.getOrderId(), o);
+            }
+        }
+        pendings.sort((x, y) -> compareOrderPriority(orderMap.get(x.getOrderId()), orderMap.get(y.getOrderId())));
+
+        int convertedRows = 0;
+        BigDecimal convertedQty = BigDecimal.ZERO;
+        for (SalesOrderStockReserve pending : pendings) {
+            BigDecimal pendingQty = pending.getReserveQuantity() == null ? BigDecimal.ZERO : pending.getReserveQuantity();
+            if (pendingQty.compareTo(BigDecimal.ZERO) <= 0) continue;
+            BigDecimal avail = availableBatchQty(inventoryItemId);
+            if (avail.compareTo(BigDecimal.ZERO) <= 0) break;
+            BigDecimal take = pendingQty.min(avail);
+            reserveBatchesFIFO(inventoryItemId, take);
+            if (take.compareTo(pendingQty) >= 0) {
+                // 整段转实预留
+                pending.setReserveType(1);
+                reserveMapper.updateById(pending);
+            } else {
+                // 部分转：原行留剩余待生产，新插入实预留行
+                pending.setReserveQuantity(pendingQty.subtract(take));
+                reserveMapper.updateById(pending);
+                SalesOrderStockReserve real = new SalesOrderStockReserve();
+                real.setOrderId(pending.getOrderId());
+                real.setOrderNo(pending.getOrderNo());
+                real.setInventoryItemId(pending.getInventoryItemId());
+                real.setProductId(pending.getProductId());
+                real.setMaterialId(pending.getMaterialId());
+                real.setMaterialCode(pending.getMaterialCode());
+                real.setMaterialName(pending.getMaterialName());
+                real.setReserveQuantity(take);
+                real.setReserveType(1);
+                real.setStatus(0);
+                reserveMapper.insert(real);
+            }
+            convertedQty = convertedQty.add(take);
+            convertedRows++;
+        }
+        if (convertedRows > 0) {
+            log.info("成品入库转实预留：inventoryItemId={}, productId={}, 涉及{}单，共{}件",
+                    inventoryItemId, productId, convertedRows, convertedQty);
+        }
+    }
+
+    /** 成品入库供给：该库存物品当前可占批次量（Σ quantity − reserved） */
+    private BigDecimal availableBatchQty(Long inventoryItemId) {
+        BigDecimal sum = BigDecimal.ZERO;
+        List<InventoryStockItem> items = stockItemMapper.selectFIFOAvailableByInventoryItemId(inventoryItemId);
+        if (items != null) {
+            for (InventoryStockItem s : items) {
+                BigDecimal q = s.getQuantity() == null ? BigDecimal.ZERO : s.getQuantity();
+                BigDecimal r = s.getReservedQuantity() == null ? BigDecimal.ZERO : s.getReservedQuantity();
+                BigDecimal free = q.subtract(r);
+                if (free.compareTo(BigDecimal.ZERO) > 0) sum = sum.add(free);
+            }
+        }
+        return sum;
+    }
+
+    /** 按 FIFO 占批次（与 reserveForOrder 同口径） */
+    private void reserveBatchesFIFO(Long inventoryItemId, BigDecimal quantity) {
+        BigDecimal left = quantity;
+        for (InventoryStockItem s : stockItemMapper.selectFIFOAvailableByInventoryItemId(inventoryItemId)) {
+            if (left.compareTo(BigDecimal.ZERO) <= 0) break;
+            BigDecimal q = s.getQuantity() == null ? BigDecimal.ZERO : s.getQuantity();
+            BigDecimal r = s.getReservedQuantity() == null ? BigDecimal.ZERO : s.getReservedQuantity();
+            BigDecimal free = q.subtract(r);
+            if (free.compareTo(BigDecimal.ZERO) <= 0) continue;
+            BigDecimal cur = left.min(free);
+            stockItemMapper.addReserved(s.getItemId(), cur);
+            left = left.subtract(cur);
+        }
+        if (left.compareTo(BigDecimal.ZERO) > 0) {
+            throw new IllegalStateException("成品入库转实预留并发冲突");
+        }
+        stockMapper.refreshSummaryByInventoryItemId(inventoryItemId);
+    }
+
+    /** 订单优先级：加急 > 先建单(create_time) > order_id 小（与齐套口径一致） */
+    private int compareOrderPriority(SalesOrder a, SalesOrder b) {
+        int ua = (a != null && a.getIsUrgent() != null) ? a.getIsUrgent() : 0;
+        int ub = (b != null && b.getIsUrgent() != null) ? b.getIsUrgent() : 0;
+        if (ua != ub) return ub - ua;
+        java.time.LocalDateTime ta = a != null ? a.getCreateTime() : null;
+        java.time.LocalDateTime tb = b != null ? b.getCreateTime() : null;
+        if (ta != null && tb != null) {
+            int c = ta.compareTo(tb);
+            if (c != 0) return c;
+        } else if (ta != null) {
+            return -1;
+        } else if (tb != null) {
+            return 1;
+        }
+        long ida = a != null ? a.getOrderId() : 0L;
+        long idb = b != null ? b.getOrderId() : 0L;
+        return Long.compare(ida, idb);
+    }
+
     private void releaseInventoryItemReserved(Long inventoryItemId, BigDecimal quantity) {
         if (inventoryItemId == null || quantity == null) return;
         BigDecimal remaining = quantity;

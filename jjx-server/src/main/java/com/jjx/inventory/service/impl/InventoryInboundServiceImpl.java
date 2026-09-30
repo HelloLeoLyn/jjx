@@ -95,6 +95,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final EventPublisher eventPublisher;
     private final InventoryAlertService alertService;
     private final InventoryItemService inventoryItemService;
+    private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
+    private final com.jjx.inventory.mapper.InventoryItemMapper inventoryItemMapper;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     /** 2026-09-21 dev-20260921-039：拒收回库按发货单明细回冲。 */
     private final com.jjx.sales.mapper.SalesDeliveryMapper salesDeliveryMapper;
@@ -458,6 +460,18 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             reducePostedStock(order, operatorId, operatorName, netDeltaThisTime);
             writebackProducedQuantity(order, netDeltaThisTime);
             syncQualityLotStored(order);
+            // dev-20260930-020（P2b）：成品入库后，把等待中订单的「待生产」占用按优先级转「实预留」
+            try {
+                for (InventoryInboundItem it : inboundItemMapper.selectByInboundId(inboundId)) {
+                    if (it.getInventoryItemId() == null) continue;
+                    com.jjx.inventory.domain.InventoryItem ii = inventoryItemMapper.selectById(it.getInventoryItemId());
+                    if (ii != null && "PRODUCT".equals(ii.getItemType())) {
+                        orderStockReserveService.allocateArrivedStock(ii.getInventoryItemId(), ii.getSourceId());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("成品入库后占用转实预留失败(不影响主流程): {}", e.getMessage());
+            }
         }
         // 幂等兜底：审核通过时已建，此处跳过重复，兼容历史数据及边界场景
         if (purchaseConfirmable) createIqcQuarantine(order, operatorId, operatorName);
