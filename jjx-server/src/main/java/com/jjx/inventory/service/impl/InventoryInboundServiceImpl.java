@@ -19,6 +19,8 @@ import com.jjx.inventory.dto.query.IqcQuarantineLedgerQueryDTO;
 import com.jjx.inventory.dto.save.InboundInspectionSubmitDTO;
 import com.jjx.inventory.dto.vo.InboundItemVO;
 import com.jjx.inventory.dto.vo.InboundVO;
+import com.jjx.inventory.dto.vo.InboundLotSummaryVO;
+import com.jjx.quality.enums.QualityLotTypeEnum;
 import com.jjx.inventory.dto.vo.IqcPendingVO;
 import com.jjx.inventory.dto.vo.IqcWorkbenchVO;
 import com.jjx.inventory.dto.vo.IqcQuarantineLedgerPageVO;
@@ -259,6 +261,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         if (items != null && !items.isEmpty()) {
             vo.setItems(convertToItemVOList(items));
         }
+        populateSourceLots(List.of(vo), true);
         return vo;
     }
 
@@ -3640,7 +3643,49 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         for (InventoryInboundOrder order : orders) {
             result.add(convertToVO(order));
         }
+        populateSourceLots(result, false);
         return result;
+    }
+
+    /** 列表一次查询来源批；详情额外批量查询关联单据，避免逐批查询。 */
+    private void populateSourceLots(List<InboundVO> orders, boolean includeDocuments) {
+        List<Long> ids = orders.stream().map(InboundVO::getInboundId).filter(Objects::nonNull).toList();
+        if (ids.isEmpty()) return;
+        List<InboundLotSummaryVO> rows = inboundItemMapper.selectSourceLots(ids, QualityLotTypeEnum.FQC.getCode());
+        Map<Long, List<InboundLotSummaryVO>> byOrder = rows.stream()
+                .collect(Collectors.groupingBy(InboundLotSummaryVO::getInboundId));
+        for (InboundVO order : orders) {
+            List<InboundLotSummaryVO> sources = byOrder.getOrDefault(order.getInboundId(), List.of());
+            List<InboundLotSummaryVO> lots = new ArrayList<>(sources.stream()
+                    .filter(lot -> lot.getLotId() != null)
+                    .collect(Collectors.toMap(InboundLotSummaryVO::getLotId, lot -> lot,
+                            (first, duplicate) -> first, LinkedHashMap::new)).values());
+            order.setSourceLots(lots);
+            // 缺少任一来源时不伪造总数，详情仍可查看已知批次。
+            if (!sources.isEmpty() && sources.stream().allMatch(lot -> lot.getLotId() != null
+                    && lot.getLotQuantity() != null && lot.getRejectedQuantity() != null)) {
+                order.setSourceLotQuantity(lots.stream().map(InboundLotSummaryVO::getLotQuantity)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add));
+                order.setSourceRejectedQuantity(lots.stream().map(InboundLotSummaryVO::getRejectedQuantity)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add));
+            }
+        }
+        if (!includeDocuments) return;
+        List<Long> lotIds = rows.stream().map(InboundLotSummaryVO::getLotId)
+                .filter(Objects::nonNull).distinct().toList();
+        if (lotIds.isEmpty()) return;
+        Map<Long, List<InboundLotSummaryVO.InboundDocument>> inbounds = inboundItemMapper
+                .selectLotInboundDocuments(lotIds).stream()
+                .collect(Collectors.groupingBy(InboundLotSummaryVO.InboundDocument::getLotId));
+        Map<Long, List<InboundLotSummaryVO.ScrapDocument>> scraps = inboundItemMapper
+                .selectLotScrapDocuments(lotIds).stream()
+                .collect(Collectors.groupingBy(InboundLotSummaryVO.ScrapDocument::getLotId));
+        for (InboundVO order : orders) {
+            for (InboundLotSummaryVO lot : order.getSourceLots()) {
+                lot.setInboundDocuments(inbounds.getOrDefault(lot.getLotId(), List.of()));
+                lot.setScrapDocuments(scraps.getOrDefault(lot.getLotId(), List.of()));
+            }
+        }
     }
 
     private InboundVO convertToVO(InventoryInboundOrder order) {

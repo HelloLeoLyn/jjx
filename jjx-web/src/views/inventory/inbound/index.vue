@@ -128,16 +128,22 @@
         </el-table-column>
         <el-table-column label="仓库" prop="warehouseName" width="120" />
         <el-table-column label="供应商" prop="supplierName" width="150" show-overflow-tooltip />
-        <el-table-column label="总数量" prop="totalQuantity" width="100" align="right">
+        <el-table-column label="来源批次数量" width="120" align="right">
+          <template #default="{ row }">{{ row.sourceLotQuantity == null ? '—' : formatNumber(row.sourceLotQuantity) }}</template>
+        </el-table-column>
+        <el-table-column label="本单数量" prop="totalQuantity" width="100" align="right">
           <template #default="{ row }">
             {{ formatNumber(row.totalQuantity) }}
           </template>
         </el-table-column>
         <!-- 已入库量：真正过账入库的数量（为 0 表示尚未确认入库），dev-20260929-013 -->
-        <el-table-column label="已入库量" width="100" align="right">
+        <el-table-column label="本单已入库" width="110" align="right">
           <template #default="{ row }">
             {{ formatNumber(row.postedQuantity ?? 0) }}
           </template>
+        </el-table-column>
+        <el-table-column label="来源批不合格" width="120" align="right">
+          <template #default="{ row }">{{ row.sourceRejectedQuantity == null ? '—' : formatNumber(row.sourceRejectedQuantity) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">

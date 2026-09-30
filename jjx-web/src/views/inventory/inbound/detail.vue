@@ -69,7 +69,16 @@
         <el-descriptions-item label="供应商">
           {{ inboundData.supplierName || '-' }}
         </el-descriptions-item>
-        <el-descriptions-item label="总数量">
+        <el-descriptions-item label="来源批次数量">
+          {{ inboundData.sourceLotQuantity == null ? '—' : formatNumber(inboundData.sourceLotQuantity) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="本单已入库">
+          {{ formatNumber(inboundData.postedQuantity ?? 0) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="来源批不合格">
+          {{ inboundData.sourceRejectedQuantity == null ? '—' : formatNumber(inboundData.sourceRejectedQuantity) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="本单数量">
           {{ formatNumber(inboundData.totalQuantity) }}
         </el-descriptions-item>
         <el-descriptions-item label="总金额">
@@ -96,6 +105,10 @@
       </el-descriptions>
     </el-card>
 
+    <el-card v-if="inboundData.sourceLots?.length" style="margin-bottom: 20px">
+      <InboundLotTrace :lots="inboundData.sourceLots" :inbound-id="inboundData.inboundId" />
+    </el-card>
+
     <!-- 入库明细 -->
     <el-card class="detail-card">
       <template #header>
@@ -103,7 +116,7 @@
           <h3>入库明细</h3>
           <div class="detail-summary">
             <span>物料种类：{{ inboundData.items?.length || 0 }}</span>
-            <span>总数量：{{ formatNumber(inboundData.totalQuantity) }}</span>
+            <span>本单数量：{{ formatNumber(inboundData.totalQuantity) }}</span>
             <span>总金额：¥ {{ formatCurrency(inboundData.totalAmount) }}</span>
           </div>
         </div>
@@ -120,7 +133,7 @@
         <el-table-column label="规格型号" prop="specification" width="120" show-overflow-tooltip />
         <el-table-column label="单位" prop="unit" width="80" align="center" />
         <el-table-column label="批次号" prop="batchNo" width="120" />
-        <el-table-column label="数量" prop="quantity" width="100" align="right">
+        <el-table-column label="本单数量" prop="quantity" width="100" align="right">
           <template #default="{ row }">
             {{ formatNumber(row.quantity) }}
           </template>
@@ -197,6 +210,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
+import InboundLotTrace from './components/InboundLotTrace.vue'
 import { getTransactionsByDocNo } from '@/api/inventory/transaction'
 import type { TransactionVO } from '@/api/inventory/transaction'
 import { formatCurrency, formatNumber } from '@/utils/format'

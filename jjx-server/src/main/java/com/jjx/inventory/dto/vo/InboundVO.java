@@ -37,6 +37,10 @@ public class InboundVO {
     private LocalDateTime inspectionTime;
     private String inspectionRemark;
     private BigDecimal totalQuantity;
+    /** 本单关联成品检验批去重后的原批数量；缺失关联时为 null。 */
+    private BigDecimal sourceLotQuantity;
+    private BigDecimal sourceRejectedQuantity;
+    private List<InboundLotSummaryVO> sourceLots;
     private BigDecimal totalAmount;
     /** 允收量合计（按明细 accepted_quantity 汇总；dev-20260929-013） */
     private BigDecimal acceptedQuantity;

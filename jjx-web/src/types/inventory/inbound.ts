@@ -48,6 +48,31 @@ export interface IqcPendingVO {
   createTime: string
 }
 
+// 成品检验批及关联单据（只读展示，来源缺失时不以本单数量兜底）
+export interface InboundLotSummaryVO {
+  inboundId: number | string
+  lotId: number
+  lotNo: string
+  lotQuantity: number
+  qualifiedQuantity: number
+  rejectedQuantity: number
+  inboundDocuments?: Array<{
+    lotId: number
+    inboundId: number | string
+    inboundNo: string
+    inboundType: string
+    status: number
+    quantity: number
+    postedQuantity: number
+  }>
+  scrapDocuments?: Array<{
+    lotId: number
+    scrapNo: string
+    quantity: number
+    status: string
+  }>
+}
+
 // 入库单VO
 export interface InboundVO {
   inboundId: string
@@ -68,6 +93,9 @@ export interface InboundVO {
   sourceType?: string
   sourceId?: string
   sourceNo?: string
+  sourceLotQuantity?: number | null
+  sourceRejectedQuantity?: number | null
+  sourceLots?: InboundLotSummaryVO[]
   totalQuantity: number
   totalAmount: number
   /** 允收量合计（按明细汇总，dev-20260929-013） */

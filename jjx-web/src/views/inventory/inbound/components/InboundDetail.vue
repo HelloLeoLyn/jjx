@@ -7,7 +7,10 @@
         <el-descriptions-item label="入库类型">{{ inboundTypeText }}</el-descriptions-item>
         <el-descriptions-item label="仓库">{{ inbound.warehouseName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="供应商">{{ inbound.supplierName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="总数量">{{ formatNumber(inbound.totalQuantity) }}</el-descriptions-item>
+        <el-descriptions-item label="来源批次数量">{{ inbound.sourceLotQuantity == null ? '—' : formatNumber(inbound.sourceLotQuantity) }}</el-descriptions-item>
+        <el-descriptions-item label="本单数量">{{ formatNumber(inbound.totalQuantity) }}</el-descriptions-item>
+        <el-descriptions-item label="本单已入库">{{ formatNumber(inbound.postedQuantity ?? 0) }}</el-descriptions-item>
+        <el-descriptions-item label="来源批不合格">{{ inbound.sourceRejectedQuantity == null ? '—' : formatNumber(inbound.sourceRejectedQuantity) }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="getStatusTag(inbound.status)" size="small">
             {{ inboundStatusText }}
@@ -28,6 +31,8 @@
         </el-descriptions>
       </template>
 
+      <InboundLotTrace :lots="inbound.sourceLots" :inbound-id="inbound.inboundId" />
+
       <!-- 入库明细 -->
       <el-divider content-position="left">入库明细</el-divider>
       <el-table :data="inbound.items || []" border style="width: 100%">
@@ -36,7 +41,7 @@
         <el-table-column label="规格型号" prop="specification" width="120" show-overflow-tooltip />
         <el-table-column label="单位" prop="unit" width="70" align="center" />
         <el-table-column label="批次号" prop="batchNo" width="150" />
-        <el-table-column label="数量" prop="quantity" width="100" align="right">
+        <el-table-column label="本单数量" prop="quantity" width="100" align="right">
           <template #default="{ row }">{{ formatNumber(row.quantity) }}</template>
         </el-table-column>
         <el-table-column v-if="isPurchaseSource" label="合格" prop="qualifiedQuantity" width="90" align="right" />
@@ -72,6 +77,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
+import InboundLotTrace from './InboundLotTrace.vue'
 import { getDiskReceiptFiles } from '@/api/purchase/order'
 import { formatNumber } from '@/utils/format'
 import type { InboundVO } from '@/types/inventory/inbound'
