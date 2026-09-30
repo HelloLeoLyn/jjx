@@ -68,7 +68,7 @@
                 :key="item.itemId ?? subIndex"
                 class="sub-item"
               >
-                {{ scope.row.groupOrder }}.{{ subIndex + 1 }} {{ item.processName }}
+                {{ subSeq(scope.row, subIndex) }} {{ item.processName }}
               </span>
             </div>
           </template>
@@ -146,6 +146,11 @@ function operationItems(items: EngineeringRoutingItemVO[]): ProcessOperationItem
     hasWorkInstruction: item.hasWorkInstruction,
     workInstruction: item.workInstruction,
   }))
+}
+
+/** 子件号：父工序号 + "." + 子件序（如 4.1 / 4.2） */
+function subSeq(row: { groupOrder?: number | string }, index: number | string): string {
+  return `${row?.groupOrder ?? ''}.${Number(index) + 1}`
 }
 
 const loading = ref(false)
