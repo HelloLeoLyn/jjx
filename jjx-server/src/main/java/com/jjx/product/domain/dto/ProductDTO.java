@@ -30,6 +30,12 @@ public class ProductDTO {
     /** 编码构成：线路特征 */
     private String circuitFeature;
 
+    /**
+     * 手填序号（1~3 位数字，不足补 0）：留空则后端自动取号（dev-20260929-028）。
+     * 仅参与编码拼接，不单独落库。
+     */
+    private String serialNo;
+
     /** 分类ID */
     private Long categoryId;
 

@@ -68,6 +68,8 @@ export interface ProductFormData {
   // 产品编码结构字段
   codeCustomerId?: number
   codeSerialNo?: string
+  /** 序号（1~3 位数字，手填；dev-20260929-028 新增时提交给后端拼码） */
+  serialNo?: string
 }
 
 export interface ProductAttachment {

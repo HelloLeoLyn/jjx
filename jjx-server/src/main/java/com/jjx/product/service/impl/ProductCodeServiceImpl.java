@@ -25,9 +25,6 @@ public class ProductCodeServiceImpl implements ProductCodeService {
 
     private final ProductMapper productMapper;
 
-    /** 匹配第一段 3 位连续数字（流水号段） */
-    private static final Pattern SERIAL_PATTERN = Pattern.compile("\\d{3}");
-
     @Override
     public String nextSerial(String customerShort) {
         String shortName = customerShort == null ? "" : customerShort.trim();
@@ -38,18 +35,21 @@ public class ProductCodeServiceImpl implements ProductCodeService {
         String likePrefix = shortName.substring(0, Math.min(3, shortName.length()));
 
         LambdaQueryWrapper<Product> wrapper = Wrappers.lambdaQuery();
+        wrapper.select(Product::getProductCode);
         wrapper.likeRight(Product::getProductCode, likePrefix);
-        wrapper.last("LIMIT 500");
+        // dev-20260929-028：① 去掉 LIMIT 500 —— 同客户产品超过 500 个时最大号会被漏看 → 取到重号；
+        //   ② 只认「前缀 + 紧邻 3 位数字」这个流水号段，避免把别人家的号算进来。
+        Pattern serialPattern = Pattern.compile("^" + Pattern.quote(likePrefix) + "(\\d{3})");
 
         int maxSerial = 0;
         try {
             List<Product> list = productMapper.selectList(wrapper);
             for (Product p : list) {
                 if (p.getProductCode() == null) continue;
-                Matcher m = SERIAL_PATTERN.matcher(p.getProductCode());
+                Matcher m = serialPattern.matcher(p.getProductCode());
                 if (m.find()) {
                     try {
-                        maxSerial = Math.max(maxSerial, Integer.parseInt(m.group()));
+                        maxSerial = Math.max(maxSerial, Integer.parseInt(m.group(1)));
                     } catch (NumberFormatException ignored) {
                     }
                 }
@@ -60,7 +60,9 @@ public class ProductCodeServiceImpl implements ProductCodeService {
 
         int next = maxSerial + 1;
         if (next > 999) {
-            next = 1;
+            // dev-20260929-028：不再回绕到 001（回绕必然与已用号撞），改由界面手动指定序号
+            throw new com.jjx.common.exception.BusinessException(
+                    "客户「" + shortName + "」的序号已用满 999，请在「序号」里手动指定一个未占用的号");
         }
         return String.format("%03d", next);
     }

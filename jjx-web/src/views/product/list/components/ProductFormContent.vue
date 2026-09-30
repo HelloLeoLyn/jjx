@@ -56,6 +56,29 @@
       </el-col>
     </el-row>
 
+    <!-- 序号（dev-20260929-028）：留空或点「取号」= 系统自动取下一个；可手填 1~3 位数字，不足补 0 -->
+    <el-row :gutter="20">
+      <el-col :span="12">
+        <el-form-item label="序号" prop="codeSerialNo">
+          <el-input
+            v-model="codeState.serialNo"
+            placeholder="点「取号」自动取，或手填 1~3 位数字"
+            maxlength="3"
+            :disabled="isEdit"
+            @input="onSerialInput"
+            @blur="normalizeSerialInput"
+          >
+            <template #append>
+              <el-button :icon="Refresh" :disabled="isEdit" @click="codeGenRef?.generate()"
+                >取号</el-button
+              >
+            </template>
+          </el-input>
+          <div class="form-tip">手填不足 3 位自动补 0（如 9 → 009）</div>
+        </el-form-item>
+      </el-col>
+    </el-row>
+
     <!-- 编码构成要素（客户选择 + 公共编码生成组件 2026-08-12） -->
     <el-row :gutter="20"> </el-row>
     <ProductCodeGenerator
@@ -256,6 +279,18 @@ function onCodeChange(data: string | ProductCodeResult) {
   }
 }
 
+/** 序号输入：只留数字、最多 3 位（dev-20260929-028） */
+function onSerialInput(value: string) {
+  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 3)
+  if (digits !== value) codeState.value.serialNo = digits
+}
+
+/** 失焦补零：9 → 009（固定 3 位） */
+function normalizeSerialInput() {
+  const digits = String(codeState.value.serialNo ?? '').replace(/\D/g, '')
+  codeState.value.serialNo = digits ? digits.padStart(3, '0').slice(-3) : ''
+}
+
 // 级联选择器配置
 const cascaderProps = {
   value: 'categoryId',
@@ -276,7 +311,10 @@ const rules = {
   productName: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
   codeCustomerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
   productType: [{ required: true, message: '请选择产品类型', trigger: 'change' }],
-  codeSerialNo: [{ required: true, message: '请选择客户后自动生成流水号', trigger: 'change' }],
+  codeSerialNo: [
+    { required: true, message: '请点「取号」自动取号，或手填 1~3 位序号', trigger: 'change' },
+    { pattern: /^\d{3}$/, message: '序号只能是 3 位数字（不足 3 位会自动补 0）', trigger: 'blur' },
+  ],
 }
 
 // 计算毛利率
@@ -465,6 +503,8 @@ const handleSubmit = async () => {
   }
   if (!isEdit.value) {
     delete submitData.productCode
+    // dev-20260929-028：把序号带给后端拼码（后端不再只按最大值自动取号）
+    submitData.serialNo = codeState.value.serialNo || undefined
   }
 
   submitting.value = true

@@ -553,10 +553,41 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         String circuitPart = nzStr(dto.getCircuitType()) + nzStr(dto.getCircuitFeature());
         if (panelPart.length() != 2) throw new BusinessException("请完整选择面板结构/特征");
         if (circuitPart.length() != 2) throw new BusinessException("请完整选择线路类型/特征");
-        String serial = productCodeService.nextSerial(short3);
-        dto.setProductCode(short3 + serial + panelPart + circuitPart);
+        // dev-20260929-028：序号可由界面手填（1~3 位数字，不足补 0）；留空则自动取号
+        boolean manualSerial = StringUtils.isNotBlank(dto.getSerialNo());
+        String serial = manualSerial ? normalizeSerial(dto.getSerialNo()) : productCodeService.nextSerial(short3);
+        String productCode = short3 + serial + panelPart + circuitPart;
+        // 手填序号撞号（整条编码重复）时，直接告诉他这个号被哪个产品占了
+        if (manualSerial && !checkProductCodeUnique(productCode, null)) {
+            throw new BusinessException("客户「" + short3 + "」下序号 " + serial + " 已被产品 "
+                    + describeProductByCode(productCode) + " 占用，请换一个序号");
+        }
+        dto.setProductCode(productCode);
         dto.setSpecJson(mergeCodeSpecJson(dto.getSpecJson(), serial,
                 dto.getPanelType(), dto.getPanelFeature(), dto.getCircuitType(), dto.getCircuitFeature()));
+    }
+
+    /** 手填序号规范化：只允许 1~3 位数字，不足补 0（如 9 → 009）（dev-20260929-028） */
+    private String normalizeSerial(String raw) {
+        String serial = raw == null ? "" : raw.trim();
+        if (!serial.matches("\\d{1,3}")) {
+            throw new BusinessException("序号只能是 1~3 位数字（当前：" + raw + "）");
+        }
+        return String.format("%03d", Integer.parseInt(serial));
+    }
+
+    /** 撞号提示用：该编码对应的产品（编码 + 名称），查不到就只说编码 */
+    private String describeProductByCode(String productCode) {
+        try {
+            LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(Product::getProductCode, productCode).last("LIMIT 1");
+            Product existed = productMapper.selectOne(wrapper);
+            if (existed != null) {
+                return existed.getProductCode() + "（" + nzStr(existed.getProductName()) + "）";
+            }
+        } catch (Exception ignored) {
+        }
+        return productCode;
     }
 
     private static String nzStr(String s) {
