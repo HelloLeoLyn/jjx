@@ -205,7 +205,7 @@ const onNcrChange = () => {
     supplementQuantity.value = props.presetProductionQuantity
       ? Math.min(Number(props.presetProductionQuantity), available)
       : available || undefined
-    loadPreview()
+    loadPreview(true)
   }
 }
 const dialogTitle = computed(() =>
@@ -216,6 +216,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const errorMsg = ref('')
 const rows = ref<any[]>([])
+let previewRequestId = 0
 
 // 主料行（可调整）
 const mainRows = computed(() => rows.value.filter((r) => !r.substitute))
@@ -233,30 +234,42 @@ function fmtNum(v: any): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2)
 }
 
-async function loadPreview() {
+async function loadPreview(preserveEditedQuantities = false) {
   const supplementPreview = isSupplement.value
   if (supplementPreview && (!supplementQuantity.value || supplementQuantity.value <= 0)) {
+    previewRequestId += 1
     rows.value = []
     errorMsg.value = ''
+    loading.value = false
     return
   }
+  const requestId = ++previewRequestId
+  const previousQtyByMaterial = new Map<number, number>(
+    rows.value
+      .filter((r) => !r.substitute && Number.isFinite(Number(r.materialId)))
+      .map((r) => [Number(r.materialId), Number(r.qtyPick)]),
+  )
   loading.value = true
   errorMsg.value = ''
-  rows.value = []
   try {
     const { materialPickApi } = await import('@/api/inventory/materialPick')
     const res: any = await materialPickApi.pickPreview(
       props.workOrderId,
       supplementPreview ? Number(supplementQuantity.value) : undefined,
     )
+    if (requestId !== previewRequestId) return
     rows.value = (res?.data || []).map((r: any) => ({
       ...r,
-      qtyPick: isSupplement.value ? 0 : Number(r.qtyPick),
+      qtyPick: isSupplement.value
+        ? preserveEditedQuantities && previousQtyByMaterial.has(Number(r.materialId))
+          ? previousQtyByMaterial.get(Number(r.materialId))
+          : Number(r.qtyNeeded) || 0
+        : Number(r.qtyPick),
     }))
   } catch (e: any) {
-    errorMsg.value = e?.message || '领料预览加载失败'
+    if (requestId === previewRequestId) errorMsg.value = e?.message || '领料预览加载失败'
   } finally {
-    loading.value = false
+    if (requestId === previewRequestId) loading.value = false
   }
 }
 
@@ -267,11 +280,11 @@ const onSupplementQuantityChange = () => {
 const onSupplementReasonChange = async (value: string) => {
   if (value === 'SCRAP_REPLENISHMENT') {
     await loadNcrOptions()
-    await loadPreview()
+    await loadPreview(true)
     return
   }
   ncrId.value = undefined
-  await loadPreview()
+  await loadPreview(true)
 }
 
 watch(
