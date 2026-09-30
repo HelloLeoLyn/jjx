@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-28",
-  "tableCountBaseline": 124,
+  "generatedAt": "2026-09-30",
+  "tableCountBaseline": 121,
   "tables": [
     "archive_production_quality_inspection",
     "archive_production_quality_inspection_item",
@@ -9,7 +9,6 @@
     "engineering_archive_import",
     "engineering_base",
     "engineering_bom",
-    "engineering_bom_backup_20260809",
     "engineering_bom_item",
     "engineering_die",
     "engineering_film",
@@ -109,7 +108,6 @@
     "sys_dict_item",
     "sys_error_log",
     "sys_event_config",
-    "sys_event_config_bak_20260814",
     "sys_event_last_payload",
     "sys_login_log",
     "sys_menu",

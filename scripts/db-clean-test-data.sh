@@ -291,7 +291,7 @@ fi
 # 白名单对应 00_clean_test_data.sql 第 12 节「保留」：新增/下线保留表时两边同步。
 RETAINED_TABLES=(
   sys_user sys_role sys_menu sys_role_menu sys_user_role sys_dept
-  sys_config sys_dict sys_dict_item sys_event_config sys_event_config_bak_20260814
+  sys_config sys_dict sys_dict_item sys_event_config
   sys_event_last_payload sys_event_var
   quality_template_registry
   engineering_standard_process engineering_process_icon_sample
@@ -302,7 +302,7 @@ RETAINED_TABLES=(
   engineering_die engineering_screen_frame engineering_screen_plate
   # Legacy tables still present in this database; preserve their rows/schema until separately retired.
   archive_production_quality_inspection archive_production_quality_inspection_item
-  engineering_bom_backup_20260809 quality_sampling_plan sales_order_review
+  quality_sampling_plan sales_order_review
 )
 DB_TABLES="$("${MYSQL[@]}" "$DB_NAME" -N -B -e \
   "SELECT table_name FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'" 2>/dev/null | tr -d '\r' | sort)"

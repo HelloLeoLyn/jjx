@@ -393,18 +393,17 @@ TRUNCATE sales_sample_order;
 -- 产品基础资料：product / product_category / product_config_model / product_config_option（v14 起保留）
 -- 标签：sys_tag / sys_tag_rel（v14 起保留）
 -- 人事基础档案：hr_employee（员工档案）/ hr_dept_mapping（导入部门映射）
--- 历史配置备份：sys_event_config_bak_20260814
+-- 历史配置备份：sys_event_config_bak_20260814（迁移 241 退役，当前 0 行）
 -- 工装台账（v16 起保留，非测试数据）：
 --   engineering_die（刀模实体，老台账 12,134 条）/ engineering_screen_frame（网框 7,291 条）
 --   engineering_screen_plate（网版当前版面 4,503 条；v15 曾误列清理清单，清理会清掉网版内容）
--- （v16 曾声明保留 engineering_bom_backup_20260809；v17 已由迁移 192 DROP，此声明作废）
+-- （engineering_bom_backup_20260809 当前 0 行且无代码/外键依赖，迁移 241 退役）
 -- 以上保留
 
--- Legacy-table coverage decision (2026-09-26): preserve these still-present tables
--- until a separate schema-retirement decision; do not TRUNCATE them here.
--- archive_production_quality_inspection(_item), engineering_bom_backup_20260809,
--- and sales_order_review are currently empty legacy/archive tables.
--- quality_sampling_plan has 8 legacy rows; active sampling configuration is in sys_config.
+-- Legacy-table coverage decision (2026-09-30): archive_production_quality_inspection(_item)
+-- and sales_order_review remain because application code still references them;
+-- quality_sampling_plan remains until its 8 legacy rows are compared with sys_config.
+-- engineering_bom_backup_20260809 and sys_event_config_bak_20260814 are retired by migration 241.
 -- Keep synchronized with scripts/db-clean-test-data.sh RETAINED_TABLES.
 SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;
 
