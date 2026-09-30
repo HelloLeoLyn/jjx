@@ -195,7 +195,7 @@
         </el-table-column>
         <TableActionColumn
           :actions="orderRowActions"
-          :min-width="210"
+          :min-width="270"
           display="text"
           @action="handleOrderRowAction"
         />
@@ -254,7 +254,13 @@
         show-icon
         style="margin-bottom: 12px"
       />
-      <el-table v-loading="shipLinesLoading" :data="shipLines" border size="small" style="margin-bottom: 12px">
+      <el-table
+        v-loading="shipLinesLoading"
+        :data="shipLines"
+        border
+        size="small"
+        style="margin-bottom: 12px"
+      >
         <el-table-column label="产品编码" prop="productCode" min-width="140" />
         <el-table-column label="产品名称" prop="productName" min-width="140" />
         <el-table-column label="订单数量" prop="ordered" width="90" align="center" />
@@ -319,7 +325,12 @@
                 default-first-option
                 style="width: 100%"
               >
-                <el-option v-for="addr in shipAddressOptions" :key="addr" :label="addr" :value="addr" />
+                <el-option
+                  v-for="addr in shipAddressOptions"
+                  :key="addr"
+                  :label="addr"
+                  :value="addr"
+                />
               </el-select>
               <div class="ship-hint">{{ shipAddressHint }}</div>
             </el-form-item>
@@ -350,17 +361,32 @@
           <template v-if="shipNeedCarrier">
             <el-col :span="8">
               <el-form-item label="运费">
-                <el-input-number v-model="shipForm.freightAmount" :min="0" :precision="2" style="width: 100%" />
+                <el-input-number
+                  v-model="shipForm.freightAmount"
+                  :min="0"
+                  :precision="2"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
             <el-col :span="8">
               <el-form-item label="保价费">
-                <el-input-number v-model="shipForm.insuranceAmount" :min="0" :precision="2" style="width: 100%" />
+                <el-input-number
+                  v-model="shipForm.insuranceAmount"
+                  :min="0"
+                  :precision="2"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
             <el-col :span="8">
               <el-form-item label="其他费用">
-                <el-input-number v-model="shipForm.otherCharges" :min="0" :precision="2" style="width: 100%" />
+                <el-input-number
+                  v-model="shipForm.otherCharges"
+                  :min="0"
+                  :precision="2"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
           </template>
@@ -472,31 +498,7 @@ const orderRowActions: TableAction<any>[] = [
     permission: 'sales:order:view',
     visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWED.value),
   },
-  {
-    key: 'printReview',
-    label: '打印合同评审',
-    type: 'info',
-    permission: 'sales:order:view',
-    visible: ({ row }) =>
-      ![
-        SalesOrderStatusEnum.DRAFT.value,
-        SalesOrderStatusEnum.PENDING_REVIEW.value,
-        SalesOrderStatusEnum.CANCELLED.value,
-      ].includes(row.orderStatus),
-  },
-  {
-    key: 'printChangeReview',
-    label: '打印更改评审',
-    type: 'info',
-    permission: 'sales:order:view',
-    visible: ({ row }) =>
-      [
-        SalesOrderStatusEnum.CONFIRMED.value,
-        SalesOrderStatusEnum.PRODUCING.value,
-        SalesOrderStatusEnum.SHIPPED.value,
-        SalesOrderStatusEnum.COMPLETED.value,
-      ].includes(row.orderStatus),
-  },
+
   {
     key: 'resubmit',
     label: '重新提交',
@@ -517,13 +519,7 @@ const orderRowActions: TableAction<any>[] = [
     permission: 'sales:order:view',
     visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CONFIRMED.value),
   },
-  {
-    key: 'producing',
-    label: '生产中',
-    type: 'info',
-    disabled: true,
-    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PRODUCING.value),
-  },
+
   {
     key: 'ship',
     label: '发货',
@@ -560,6 +556,31 @@ const orderRowActions: TableAction<any>[] = [
       [SalesOrderStatusEnum.DRAFT.value, SalesOrderStatusEnum.REJECTED.value].includes(
         row.orderStatus
       ),
+  },
+  {
+    key: 'printReview',
+    label: '打印合同评审',
+    type: 'info',
+    permission: 'sales:order:view',
+    visible: ({ row }) =>
+      ![
+        SalesOrderStatusEnum.DRAFT.value,
+        SalesOrderStatusEnum.PENDING_REVIEW.value,
+        SalesOrderStatusEnum.CANCELLED.value,
+      ].includes(row.orderStatus),
+  },
+  {
+    key: 'printChangeReview',
+    label: '打印更改评审',
+    type: 'info',
+    permission: 'sales:order:view',
+    visible: ({ row }) =>
+      [
+        SalesOrderStatusEnum.CONFIRMED.value,
+        SalesOrderStatusEnum.PRODUCING.value,
+        SalesOrderStatusEnum.SHIPPED.value,
+        SalesOrderStatusEnum.COMPLETED.value,
+      ].includes(row.orderStatus),
   },
   {
     key: 'cancel',
@@ -673,7 +694,9 @@ const parseExt = (raw: any) => {
 }
 /** 当前交货方式是否需要承运商（字典 ext_data.needCarrier，缺省需要） */
 const shipNeedCarrier = computed(() => {
-  const hit = (deliveryMethodDict.value || []).find((d: any) => d.itemValue === shipForm.deliveryMethod)
+  const hit = (deliveryMethodDict.value || []).find(
+    (d: any) => d.itemValue === shipForm.deliveryMethod
+  )
   return hit ? parseExt(hit.extData).needCarrier !== false : true
 })
 /** 承运商候选：按交货方式过滤（字典 ext_data.methods，缺省通用） */
@@ -987,7 +1010,8 @@ const loadShipLines = async (orderId: number) => {
       .forEach((d) => {
         ;(d.items || []).forEach((it: any) => {
           if (it.orderProductId != null && Number(it.quantity)) {
-            shippedMap[it.orderProductId] = (shippedMap[it.orderProductId] || 0) + Number(it.quantity)
+            shippedMap[it.orderProductId] =
+              (shippedMap[it.orderProductId] || 0) + Number(it.quantity)
           }
         })
       })
@@ -1027,7 +1051,9 @@ const submitShip = async () => {
     await orderStatusApi.shipOrder(shipOrderId.value, { ...shipForm, items })
     const partial = shipLines.value.some((l) => Number(l.quantity) < l.remaining)
     ElMessage.success(
-      partial ? '发货成功（部分发货，订单仍在生产中，可继续发货）' : '发货成功，订单已进入已发货状态'
+      partial
+        ? '发货成功（部分发货，订单仍在生产中，可继续发货）'
+        : '发货成功，订单已进入已发货状态'
     )
     shipDialogVisible.value = false
     shipLines.value = []
@@ -1237,7 +1263,6 @@ function handleReviewPrint(row: any, templateId: 47 | 53) {
     query: { orderId: row.orderId, templateId },
   })
 }
-
 </script>
 
 <style scoped lang="scss">
