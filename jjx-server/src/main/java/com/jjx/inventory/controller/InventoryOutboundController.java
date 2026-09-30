@@ -167,6 +167,7 @@ public class InventoryOutboundController {
 
     @PostMapping("/create-production-supplement/{workOrderId}")
     @Operation(summary = "创建通用工单补料单（超耗 / 报废补产）")
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId", action = LogActions.OUTBOUND_PRODUCTION_SUPPLEMENT)
     @SaCheckPermission("inventory:outbound:supplement")
     public Result<Long> createProductionSupplement(@PathVariable Long workOrderId,
                                                    @Valid @RequestBody ProductionSupplementPickDTO dto) {

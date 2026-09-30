@@ -68,6 +68,7 @@ public final class LogActions {
     public static final String OUTBOUND_REJECT = "出库审批驳回";
     public static final String OUTBOUND_FROM_PRODUCTION = "从生产工单创建出库单";
     public static final String OUTBOUND_PRODUCTION_PICK = "追加生产领料";
+    public static final String OUTBOUND_PRODUCTION_SUPPLEMENT = "工单补料申请";
     public static final String OUTBOUND_FROM_SALES = "从销售订单创建出库单";
     public static final String OUTBOUND_UPDATE_STATUS = "更新出库单状态";
     public static final String OUTBOUND_EXPORT_PDF = "导出出库单PDF";
