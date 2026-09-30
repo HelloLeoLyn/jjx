@@ -58,4 +58,7 @@ export const alertApi = {
   // 查询订单未处理缺料预警数（DEV-583）
   countUnprocessedShortage: (orderId: number) =>
     request.get(`/inventory/alert/count-unprocessed-shortage/${orderId}`),
+
+  // dev-20260930-024（P4b）：订单占用总览（全厂有效订单）
+  occupancyOverview: () => request.get('/inventory/alert/occupancy'),
 }

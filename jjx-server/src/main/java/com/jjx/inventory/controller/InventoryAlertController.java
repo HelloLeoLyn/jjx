@@ -35,6 +35,13 @@ public class InventoryAlertController {
         return Result.success(alertService.page(query));
     }
 
+    @GetMapping("/occupancy")
+    @Operation(summary = "订单占用总览（全厂有效订单：订单量/已占/待生产/还差/在制工单）")
+    @SaCheckPermission("inventory:alert:view")
+    public Result<List<Map<String, Object>>> occupancy() {
+        return Result.success(alertService.orderOccupancyOverview());
+    }
+
     @PostMapping("/execute-check")
     @Operation(summary = "执行预警检查")
     @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "'batch'", action = LogActions.ALERT_EXECUTE_CHECK)

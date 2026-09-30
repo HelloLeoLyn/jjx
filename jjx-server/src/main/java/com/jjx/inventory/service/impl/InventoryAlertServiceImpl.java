@@ -389,6 +389,57 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     }
 
     @Override
+    public java.util.List<java.util.Map<String, Object>> orderOccupancyOverview() {
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        List<SalesOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<SalesOrder>()
+                .in(SalesOrder::getOrderStatus, 4, 6, 7));
+        if (orders == null || orders.isEmpty()) {
+            return result;
+        }
+        orders.sort(this::compareOrderPriority);
+        for (SalesOrder o : orders) {
+            Map<Long, BigDecimal[]> occ = new java.util.HashMap<>();
+            try {
+                List<Map<String, Object>> occRows = salesOrderStockReserveMapper.sumActiveByProductAndType(o.getOrderId());
+                if (occRows != null) {
+                    for (Map<String, Object> r : occRows) {
+                        if (r.get("productId") == null) continue;
+                        long pid = ((Number) r.get("productId")).longValue();
+                        int type = r.get("reserveType") == null ? 1 : ((Number) r.get("reserveType")).intValue();
+                        BigDecimal q = toDecimal(r.get("qty"));
+                        BigDecimal[] arr = occ.computeIfAbsent(pid, k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+                        if (type == 2) arr[1] = arr[1].add(q); else arr[0] = arr[0].add(q);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("占用总览-查询占用失败: orderId={}, err={}", o.getOrderId(), e.getMessage());
+            }
+            List<SalesOrderProduct> ps = orderProductMapper.selectList(new LambdaQueryWrapper<SalesOrderProduct>()
+                    .eq(SalesOrderProduct::getOrderId, o.getOrderId()));
+            if (ps == null) continue;
+            for (SalesOrderProduct p : ps) {
+                if (p.getProductId() == null) continue;
+                BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
+                BigDecimal[] arr = occ.getOrDefault(p.getProductId(), new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+                Map<String, Object> row = new java.util.LinkedHashMap<>();
+                row.put("orderNo", o.getOrderNo());
+                row.put("orderStatus", o.getOrderStatus());
+                row.put("isUrgent", o.getIsUrgent());
+                row.put("productCode", p.getProductCode());
+                row.put("productName", p.getProductName());
+                row.put("orderQty", orderQty);
+                row.put("reservedQty", arr[0]);
+                row.put("pendingQty", arr[1]);
+                row.put("wipWorkOrderNo", productWipWorkOrderNos(o.getOrderId(), p.getProductId()));
+                BigDecimal remaining = orderQty.subtract(arr[0]).subtract(arr[1]);
+                row.put("remainingQty", remaining.compareTo(BigDecimal.ZERO) > 0 ? remaining : BigDecimal.ZERO);
+                result.add(row);
+            }
+        }
+        return result;
+    }
+
+    @Override
     public void checkGlobalShortage() {
         log.info("全局汇总缺料检查开始（082定稿：订单缺料预警主逻辑）");
         // 1. 在途订单：已审核(4)/已确认(6)/生产中(7)

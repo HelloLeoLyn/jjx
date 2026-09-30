@@ -129,8 +129,42 @@
             <el-icon><Download /></el-icon>导出
           </el-button>
         </el-col>
+        <el-col :span="1.5">
+          <el-button @click="handleOccupancy">
+            <el-icon><Histogram /></el-icon>订单占用总览
+          </el-button>
+        </el-col>
       </el-row>
     </el-card>
+
+    <!-- 订单占用总览（dev-20260930-024） -->
+    <el-dialog v-model="occupancyVisible" title="订单占用总览（全厂有效订单）" width="1000px" append-to-body>
+      <el-table v-loading="occupancyLoading" :data="occupancyList" border empty-text="暂无有效订单占用">
+        <el-table-column prop="orderNo" label="订单号" min-width="130" />
+        <el-table-column label="加急" width="70" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.isUrgent === 1" type="danger" size="small">急</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="productCode" label="产品编码" min-width="120" />
+        <el-table-column prop="productName" label="产品名称" min-width="140" />
+        <el-table-column label="订单量" width="90" align="right">
+          <template #default="{ row }">{{ row.orderQty }}</template>
+        </el-table-column>
+        <el-table-column label="已占(现货)" width="100" align="right">
+          <template #default="{ row }">{{ row.reservedQty }}</template>
+        </el-table-column>
+        <el-table-column label="待生产" width="90" align="right">
+          <template #default="{ row }">{{ row.pendingQty }}</template>
+        </el-table-column>
+        <el-table-column label="还差" width="90" align="right">
+          <template #default="{ row }">{{ row.remainingQty }}</template>
+        </el-table-column>
+        <el-table-column label="在制工单" min-width="150" align="center">
+          <template #default="{ row }">{{ row.wipWorkOrderNo || '-' }}</template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
 
     <!-- 预警列表 -->
     <el-card class="table-card">
@@ -232,7 +266,7 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Warning, Bell, InfoFilled, Clock, Refresh, Check, Download } from '@element-plus/icons-vue'
+import { Warning, Bell, InfoFilled, Clock, Refresh, Check, Download, Histogram } from '@element-plus/icons-vue'
 import { formatNumber } from '@/utils/format'
 import { alertApi } from '@/api/inventory/alert'
 import { AlertEnum } from '@/enums/inventory/AlertEnum'
@@ -276,6 +310,24 @@ const alertStats = ref({
 // 预警类型/级别选项（真实枚举，8-04 接真实接口）
 const alertTypeOptions = AlertEnum.type.items
 const alertLevelOptions = AlertEnum.level.items
+
+// dev-20260930-024（P4b）：订单占用总览
+const occupancyVisible = ref(false)
+const occupancyLoading = ref(false)
+const occupancyList = ref<any[]>([])
+const handleOccupancy = async () => {
+  occupancyVisible.value = true
+  occupancyLoading.value = true
+  try {
+    const res: any = await alertApi.occupancyOverview()
+    occupancyList.value = res.data || []
+  } catch (error) {
+    console.error('获取订单占用总览失败:', error)
+    ElMessage.error('获取订单占用总览失败')
+  } finally {
+    occupancyLoading.value = false
+  }
+}
 
 // 获取预警列表（真实接口）
 const getList = async () => {

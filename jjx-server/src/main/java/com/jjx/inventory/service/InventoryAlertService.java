@@ -53,6 +53,12 @@ public interface InventoryAlertService extends IService<InventoryAlertLog> {
     long countUnprocessedOrderShortage(Long orderId);
 
     /**
+     * dev-20260930-024（P4b）：订单占用总览（全厂有效订单 4/6/7）——
+     * 每单每产品：订单量 / 已占(实预留) / 待生产 / 还差 / 在制工单。
+     */
+    java.util.List<java.util.Map<String, Object>> orderOccupancyOverview();
+
+    /**
      * 检查单个物料的安全库存预警
      * 出库/入库确认后调用
      */
