@@ -43,6 +43,9 @@
           <el-table-column label="待生产(缺货段)" width="120" align="right">
             <template #default="{ row }">{{ fmtNum(row.pendingQty) }}</template>
           </el-table-column>
+          <el-table-column label="在制工单(来源)" width="150" align="center">
+            <template #default="{ row }">{{ row.wipWorkOrderNo || '-' }}</template>
+          </el-table-column>
           <el-table-column label="需生产(BOM展开)" width="150" align="right">
             <template #default="{ row }">{{ fmtNum(row.needProduce) }}</template>
           </el-table-column>

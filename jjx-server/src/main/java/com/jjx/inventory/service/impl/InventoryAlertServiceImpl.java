@@ -174,6 +174,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 continue;
             }
             BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
+            // dev-20260930-023（P4a pegging）：本单该产品的来源在制工单（需求追溯，派生）
+            String wipWoNo = productWipWorkOrderNos(orderId, p.getProductId());
 
             // dev-20260930-018（P1 口径解耦）：
             //   现货净可用 = max(0, 现货总量 − 优先级高于本单的有效订单未满足需求)
@@ -183,7 +185,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             BigDecimal materialGap = orderQty.subtract(productAvailable);
             if (materialGap.compareTo(BigDecimal.ZERO) <= 0) {
                 stockCoveredCount++;
-                productRows.add(createProductRow(p, orderQty, productAvailable, BigDecimal.ZERO, "stock-covered", occupancy.get(p.getProductId())));
+                productRows.add(createProductRow(p, orderQty, productAvailable, BigDecimal.ZERO, "stock-covered", occupancy.get(p.getProductId()), wipWoNo));
                 continue;
             }
             BigDecimal productionGap = orderQty.subtract(productAvailable.add(productWipRemaining(orderId, p.getProductId())));
@@ -197,11 +199,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     .eq(EngineeringBom::getApproveStatus, 3));
             if (bom == null) {
                 noBomCount++;
-                productRows.add(createProductRow(p, orderQty, productAvailable, productionGap, "no-bom", occupancy.get(p.getProductId())));
+                productRows.add(createProductRow(p, orderQty, productAvailable, productionGap, "no-bom", occupancy.get(p.getProductId()), wipWoNo));
                 continue;
             }
             productRows.add(createProductRow(p, orderQty, productAvailable, productionGap,
-                    productionGap.compareTo(BigDecimal.ZERO) > 0 ? "to-produce" : "wip-covered", occupancy.get(p.getProductId())));
+                    productionGap.compareTo(BigDecimal.ZERO) > 0 ? "to-produce" : "wip-covered", occupancy.get(p.getProductId()), wipWoNo));
             List<EngineeringBomItem> items = bomItemMapper.selectList(
                     new LambdaQueryWrapper<EngineeringBomItem>()
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
@@ -279,7 +281,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
     private Map<String, Object> createProductRow(SalesOrderProduct product, BigDecimal orderQty,
                                                   BigDecimal productAvailable, BigDecimal needProduce, String status,
-                                                  BigDecimal[] occupancy) {
+                                                  BigDecimal[] occupancy, String wipWorkOrderNo) {
         Map<String, Object> row = new java.util.LinkedHashMap<>();
         row.put("productId", product.getProductId());
         row.put("productCode", product.getProductCode());
@@ -293,6 +295,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         BigDecimal pending = (occupancy == null || occupancy[1] == null) ? BigDecimal.ZERO : occupancy[1];
         row.put("reservedQty", reserved);
         row.put("pendingQty", pending);
+        // dev-20260930-023（P4a pegging）：来源在制工单号
+        row.put("wipWorkOrderNo", wipWorkOrderNo);
         return row;
     }
 
@@ -670,6 +674,26 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             log.warn("查询本单在制失败(按0处理): orderId={}, productId={}, err={}",
                     salesOrderId, productId, e.getMessage());
             return BigDecimal.ZERO;
+        }
+    }
+
+    /** dev-20260930-023（P4a pegging）：本单在该成品上的来源在制工单号（逗号分隔，无则 null） */
+    private String productWipWorkOrderNos(Long salesOrderId, Long productId) {
+        if (salesOrderId == null || productId == null) return null;
+        try {
+            List<com.jjx.production.domain.entity.ProductionOrder> wos =
+                    productionOrderMapper.selectBySalesOrderId(salesOrderId);
+            if (wos == null || wos.isEmpty()) return null;
+            java.util.List<String> nos = new java.util.ArrayList<>();
+            for (com.jjx.production.domain.entity.ProductionOrder wo : wos) {
+                if (!productId.equals(wo.getProductId())) continue;
+                Integer st = wo.getOrderStatus();
+                if (st == null || (st != 2 && st != 4 && st != 5 && st != 6 && st != 7 && st != 11)) continue;
+                if (wo.getOrderNo() != null) nos.add(wo.getOrderNo());
+            }
+            return nos.isEmpty() ? null : String.join(",", nos);
+        } catch (Exception e) {
+            return null;
         }
     }
 
