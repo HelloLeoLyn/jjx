@@ -892,11 +892,25 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
     }
 
     /**
+     * 完工数量达标口径（A 案，dev-20260930-027）：合格累计 + 让步放行（客户已确认）≥ 计划。
+     * 让步件客户已接受 → 不算缺口（与 2026-09-29 拍板的缺口口径「计划 − 良品 − 让步」同源）。
+     * 报废件不算（永远补不上），计划为空由调用方 fail-closed 拦。
+     */
+    static boolean meetsCompletionQuantity(java.math.BigDecimal qualifiedTotal,
+                                           java.math.BigDecimal concessionTotal,
+                                           java.math.BigDecimal plannedQuantity) {
+        java.math.BigDecimal qualified = qualifiedTotal == null ? java.math.BigDecimal.ZERO : qualifiedTotal;
+        java.math.BigDecimal concession = concessionTotal == null ? java.math.BigDecimal.ZERO : concessionTotal;
+        java.math.BigDecimal planned = plannedQuantity == null ? java.math.BigDecimal.ZERO : plannedQuantity;
+        return qualified.add(concession).compareTo(planned) >= 0;
+    }
+
+    /**
      * 完工质检门（053定稿）：工单完工必须过质检门
      * ① 工单状态=进行中
      * ② 全部工序已完成（执行状态=COMPLETED/SKIPPED）
      * ③ 完工检验通过（dev-20260918-014：有效 FQC 检验批 quality_lot —— 无待检、无未处置不良）
-     * ④ 成品完工数量达标（口径Y：有效 FQC 批合格累计 QualifiedTotal ≥ 计划数量）
+     * ④ 成品完工数量达标（dev-20260930-027：合格累计 + 让步放行 ≥ 计划数量，与缺口口径同源）
      * 任一不满足拒绝完工；调用方拿失败原因提示用户
      */
     private void validateOrderCompletion(ProductionOrder order) {
@@ -943,11 +957,15 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             blockers.add("还有" + fqcSummary.getUndisposedFailQuantity().stripTrailingZeros().toPlainString()
                     + "件完工检验不良未处置");
         }
-        // ④ 成品完工数量达标（口径Y：有效 FQC 批合格累计 ≥ 计划数量）
+        // ④ 成品完工数量达标：口径 = 成品检验合格累计 + 让步放行（客户已确认）≥ 计划数量
+        //    dev-20260930-027（A 案）：与 2026-09-29 已拍板的缺口口径对齐（缺口 = 计划 − 良品 − 让步）；
+        //    让步件客户已接受、不再算缺口，旧的「只认合格」口径会把这类工单永远卡在完工门上。
         if (order.getPlannedQuantity() == null
-                || fqcSummary.getQualifiedTotal().compareTo(order.getPlannedQuantity()) < 0) {
-            log.warn("完工质检门[4/4]失败：工单{}成品合格累计未达计划", order.getOrderId());
+                || !meetsCompletionQuantity(fqcSummary.getQualifiedTotal(), fqcSummary.getConcessionTotal(),
+                        order.getPlannedQuantity())) {
+            log.warn("完工质检门[4/4]失败：工单{}成品合格+让步放行未达计划", order.getOrderId());
             blockers.add("成品检验合格累计（" + fqcSummary.getQualifiedTotal().stripTrailingZeros().toPlainString()
+                    + "）+ 让步放行（" + fqcSummary.getConcessionTotal().stripTrailingZeros().toPlainString()
                     + "）未达计划数量（" + (order.getPlannedQuantity() == null ? "0"
                     : order.getPlannedQuantity().stripTrailingZeros().toPlainString()) + "）");
         }
