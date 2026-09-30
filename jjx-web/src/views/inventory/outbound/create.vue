@@ -18,6 +18,10 @@
               <el-option label="调拨出库" value="transfer" />
               <el-option label="其他出库" value="other" />
             </el-select>
+            <!-- 2026-09-30 dev-20260930-040：讲清"选什么"——出库类型决定物品种类 -->
+            <div class="form-tip">
+              销售发货 = 出成品（产品）；生产领料 = 出原材料（物料）；明细里按仓库列出可用量
+            </div>
           </el-form-item>
         </el-col>
         <el-col :span="8">
@@ -63,13 +67,13 @@
       </el-row>
     </el-form>
 
-    <!-- 物料明细 -->
+    <!-- 出库明细（2026-09-30 dev-20260930-040：语义统一为「物品」＝库存物品，成品/原材料按出库类型决定） -->
     <div class="item-section">
       <div class="section-header">
         <h3>出库明细</h3>
         <div class="section-actions">
           <el-button type="primary" @click="handleAddItem" size="small">
-            <el-icon><Plus /></el-icon>添加物料
+            <el-icon><Plus /></el-icon>添加物品
           </el-button>
         </div>
       </div>
@@ -78,24 +82,24 @@
         <el-table-column label="序号" width="60" align="center">
           <template #default="{ $index }">{{ $index + 1 }}</template>
         </el-table-column>
-        <el-table-column label="物料" min-width="220">
+        <el-table-column label="物品" min-width="220">
           <template #default="{ row, $index }">
             <!-- 2026-09-30 dev-20260930-038：出库选的是「库存物品」（成品/原材料），不是物料主数据 -->
             <InventoryItemSelector
               v-model="row.inventoryItemId"
               :item-type="itemTypeForOutbound"
               :warehouse-id="formData.warehouseId"
-              placeholder="搜成品/物料（按出库类型过滤）"
+              :placeholder="itemPlaceholder"
               @change="(item: any) => handleItemChange(row, item)"
             />
           </template>
         </el-table-column>
-        <el-table-column label="物料编码" width="130">
+        <el-table-column label="物品编码" width="130">
           <template #default="{ row }">
             <el-input v-model="row.materialCode" placeholder="编码" readonly />
           </template>
         </el-table-column>
-        <el-table-column label="物料名称" width="150">
+        <el-table-column label="物品名称" width="150">
           <template #default="{ row }">
             <el-input v-model="row.materialName" placeholder="名称" readonly />
           </template>
@@ -189,7 +193,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
@@ -360,6 +364,38 @@ const itemTypeForOutbound = computed<'MATERIAL' | 'PRODUCT' | ''>(() => {
   return ''
 })
 
+// 语义提示（2026-09-30 dev-20260930-040）：本页选的是「库存物品」，出库类型决定是成品还是原材料
+const itemPlaceholder = computed(() => {
+  if (formData.outboundType === 'sales') return '搜成品（产品名称或编码）'
+  if (formData.outboundType === 'production') return '搜原材料（物料名称或编码）'
+  return '搜成品或原材料（名称或编码）'
+})
+
+const itemTypeHint = computed(() => {
+  if (formData.outboundType === 'sales') return '销售发货只能选成品（产品）'
+  if (formData.outboundType === 'production') return '生产领料只能选原材料（物料）'
+  return '请选成品或原材料'
+})
+
+// 切换出库类型 → 可选物品范围变了，清掉已选物品并提示（避免选到不属于该类型的库存物品）
+watch(
+  () => formData.outboundType,
+  (val, old) => {
+    if (!old || val === old) return
+    const selected = formData.items.filter((it) => it.inventoryItemId)
+    if (!selected.length) return
+    formData.items.forEach((it) => {
+      it.inventoryItemId = ''
+      it.materialId = ''
+      it.materialCode = ''
+      it.materialName = ''
+      it.specification = ''
+      it.unit = ''
+    })
+    ElMessage.info(`出库类型已改为「${val === 'sales' ? '销售发货' : val === 'production' ? '生产领料' : '其他'}」，明细物品已重置，请重新选择`)
+  }
+)
+
 // 添加物料行
 const handleAddItem = () => {
   formData.items.push({
@@ -391,16 +427,16 @@ const handleSubmit = async () => {
   if (!valid) return
 
   if (formData.items.length === 0) {
-    ElMessage.warning('请至少添加一条物料明细')
+    ElMessage.warning('请至少添加一条物品明细')
     return
   }
-  for (const item of formData.items) {
-    if (!item.materialId) {
-      ElMessage.warning('请选择物料')
+  for (const [index, item] of formData.items.entries()) {
+    if (!item.inventoryItemId) {
+      ElMessage.warning(`第 ${index + 1} 行还没选物品：${itemTypeHint.value}`)
       return
     }
     if (!item.quantity || item.quantity <= 0) {
-      ElMessage.warning('物料数量必须大于0')
+      ElMessage.warning(`第 ${index + 1} 行的数量必须大于 0`)
       return
     }
   }
@@ -450,6 +486,12 @@ const handleSubmit = async () => {
 </script>
 
 <style scoped>
+.form-tip {
+  margin-top: 4px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
 .outbound-create {
   padding: 20px;
 }
