@@ -271,10 +271,11 @@
 
             <!-- 产品编码（标准品选产品回填/样品生成器生成，均可改） -->
             <el-form-item label="产品编码">
+              <!-- 2026-09-30 dev-20260930-011：口径统一 —— 编码只能由「客户简称+序号+结构位」拼出，禁止整条手改 -->
               <el-input
                 v-model="form.productCode"
-                placeholder="标准品选产品自动带出；样品选编码要素自动生成，可手动修改"
-                maxlength="50"
+                placeholder="标准品选产品自动带出；样品由上方「序号 + 结构位」自动生成"
+                readonly
               >
               </el-input>
             </el-form-item>
@@ -718,6 +719,7 @@ function customerChanged(val: number) {
 // ==================== 编码生成器（公共组件 useProductCode，2026-08-12） ====================
 import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
+import { parseProductCode } from '@/composables/useProductCode'
 const codeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
 const codeState = ref<ProductCodeState>({
   serialNo: '',
@@ -768,15 +770,15 @@ function onProductSelect(val: number, product?: any) {
     // 标准品：编码/名称带出产品档案（可改），并反解编码构成要素供查看/修改
     form.productCode = product.productCode
     form.productName = product.productName
-    const code = product.productCode || ''
-    if (code.length >= 10) {
-      form.customerShortName = code.substring(0, 3)
+    const parsed = parseProductCode(product.productCode)
+    if (parsed) {
+      form.customerShortName = parsed.customerShort
       codeState.value = {
-        serialNo: code.substring(3, 6),
-        panelType: code.substring(6, 7),
-        panelFeature: code.substring(7, 8),
-        circuitType: code.substring(8, 9),
-        circuitFeature: code.substring(9, 10),
+        serialNo: parsed.serialNo,
+        panelType: parsed.panelType,
+        panelFeature: parsed.panelFeature,
+        circuitType: parsed.circuitType,
+        circuitFeature: parsed.circuitFeature,
       }
     }
   }
@@ -820,16 +822,16 @@ function handleUpdate(row?: any) {
       salesPersonId: data.salesPersonId,
       salesPersonName: data.salesPersonName,
     })
-    // 编码生成器回显：编码存在则反解构成要素（客户3/流水3/面板2/线路2）
-    const code = form.productCode || ''
-    if (code.length >= 10 && form.inquiryType === 2) {
-      form.customerShortName = code.substring(0, 3)
+    // 编码生成器回显：编码存在则反解构成要素（口径统一在 parseProductCode）
+    const parsed = parseProductCode(form.productCode)
+    if (parsed && form.inquiryType === 2) {
+      form.customerShortName = parsed.customerShort
       codeState.value = {
-        serialNo: code.substring(3, 6),
-        panelType: code.substring(6, 7),
-        panelFeature: code.substring(7, 8),
-        circuitType: code.substring(8, 9),
-        circuitFeature: code.substring(9, 10),
+        serialNo: parsed.serialNo,
+        panelType: parsed.panelType,
+        panelFeature: parsed.panelFeature,
+        circuitType: parsed.circuitType,
+        circuitFeature: parsed.circuitFeature,
       }
     }
   })

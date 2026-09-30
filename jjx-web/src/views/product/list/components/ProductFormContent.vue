@@ -56,30 +56,7 @@
       </el-col>
     </el-row>
 
-    <!-- 序号（dev-20260929-028）：留空或点「取号」= 系统自动取下一个；可手填 1~3 位数字，不足补 0 -->
-    <el-row :gutter="20">
-      <el-col :span="12">
-        <el-form-item label="序号" prop="codeSerialNo">
-          <el-input
-            v-model="codeState.serialNo"
-            placeholder="点「取号」自动取，或手填 1~3 位数字"
-            maxlength="3"
-            :disabled="isEdit"
-            @input="onSerialInput"
-            @blur="normalizeSerialInput"
-          >
-            <template #append>
-              <el-button :icon="Refresh" :disabled="isEdit" @click="codeGenRef?.generate()"
-                >取号</el-button
-              >
-            </template>
-          </el-input>
-          <div class="form-tip">手填不足 3 位自动补 0（如 9 → 009）</div>
-        </el-form-item>
-      </el-col>
-    </el-row>
-
-    <!-- 编码构成要素（客户选择 + 公共编码生成组件 2026-08-12） -->
+    <!-- 编码构成要素（客户选择 + 公共编码生成组件 2026-08-12；序号格在组件里，2026-09-30 dev-20260930-011） -->
     <el-row :gutter="20"> </el-row>
     <ProductCodeGenerator
       ref="codeGenRef"
@@ -89,6 +66,7 @@
       :emit-params="true"
       v-model:params="codeParams"
       hide-short-name
+      :serial-editable="!isEdit"
       @change="onCodeChange"
     />
 
@@ -177,7 +155,6 @@
 <script setup lang="ts">
 import { ref, computed, reactive, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
 import { productApi } from '@/api/product'
 import { ProductTypeEnum } from '@/enums'
 import type {
@@ -256,6 +233,7 @@ const formData = reactive<Partial<ProductFormData>>({
 // 编码生成器（公共组件 2026-08-12）
 import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
+import { parseProductCode } from '@/composables/useProductCode'
 const codeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
 const codeState = ref<ProductCodeState>({
   serialNo: '',
@@ -279,18 +257,6 @@ function onCodeChange(data: string | ProductCodeResult) {
   }
 }
 
-/** 序号输入：只留数字、最多 3 位（dev-20260929-028） */
-function onSerialInput(value: string) {
-  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 3)
-  if (digits !== value) codeState.value.serialNo = digits
-}
-
-/** 失焦补零：9 → 009（固定 3 位） */
-function normalizeSerialInput() {
-  const digits = String(codeState.value.serialNo ?? '').replace(/\D/g, '')
-  codeState.value.serialNo = digits ? digits.padStart(3, '0').slice(-3) : ''
-}
-
 // 级联选择器配置
 const cascaderProps = {
   value: 'categoryId',
@@ -305,15 +271,19 @@ const rules = {
   categoryId: [{ required: true, message: '请选择产品分类', trigger: 'change' }],
   productCode: [
     { required: true, message: '请生成产品编码', trigger: 'blur' },
-    // 2026-08-10 DEV-772 补漏：客户简称1-3位 → 编码9-10位（原硬编码10位导致2位简称保存失败）
-    { pattern: /^[A-Za-z0-9]{9,10}$/, message: '编码格式不正确，请重新生成', trigger: 'blur' },
+    // 2026-08-10 DEV-772 补漏：客户简称1-3位 → 编码 9-10 位；2026-09-30 dev-20260930-011：序号可 4 位 → 放宽到 9-12 位
+    { pattern: /^[A-Za-z0-9]{9,12}$/, message: '编码格式不正确，请重新生成', trigger: 'blur' },
   ],
   productName: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
   codeCustomerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
   productType: [{ required: true, message: '请选择产品类型', trigger: 'change' }],
   codeSerialNo: [
-    { required: true, message: '请点「取号」自动取号，或手填 1~3 位序号', trigger: 'change' },
-    { pattern: /^\d{3}$/, message: '序号只能是 3 位数字（不足 3 位会自动补 0）', trigger: 'blur' },
+    { required: true, message: '请点「取号」自动取号，或手填 1~4 位序号', trigger: 'change' },
+    {
+      pattern: /^\d{3,4}$/,
+      message: '序号只能是 3~4 位数字（1~2 位会自动补 0，超过 999 用 4 位）',
+      trigger: 'blur',
+    },
   ],
 }
 
@@ -386,38 +356,18 @@ const loadCategoryTree = async () => {
   categoryTree.value = res.data || []
 }
 
-// 从产品编码反解编码构成要素（2026-08-10：编辑回显面板/线路/流水号）
-// 编码 = 客户简称(1-3) + 流水号(3) + 面板结构(1) + 面板特征(1) + 线路类型(1) + 线路特征(1)，总长9-10位
+// 从产品编码反解编码构成要素（编辑回显）
+// 口径统一在 useProductCode.parseProductCode（2026-09-30 dev-20260930-011）：右起 4 位=结构位，其左连续数字=序号(3~4位)
 function parseCodeElements(code?: string | null) {
+  const parsed = parseProductCode(code)
   codeState.value = {
-    serialNo: '',
-    panelType: '',
-    panelFeature: '',
-    circuitType: '',
-    circuitFeature: '',
+    serialNo: parsed?.serialNo || '',
+    panelType: parsed?.panelType || '',
+    panelFeature: parsed?.panelFeature || '',
+    circuitType: parsed?.circuitType || '',
+    circuitFeature: parsed?.circuitFeature || '',
   }
-  formData.codeSerialNo = ''
-  if (!code) return
-  const c = code.trim()
-  if (c.length < 7 || c.length > 10) return // 长度不符，无法反解
-  // 面板结构合法值：M/S/P；面板特征：E/W/H/O；线路类型：O/M/P；线路特征：O/L/C/H
-  const panelType = c.charAt(c.length - 4)
-  const panelFeature = c.charAt(c.length - 3)
-  const circuitType = c.charAt(c.length - 2)
-  const circuitFeature = c.charAt(c.length - 1)
-  codeState.value = {
-    serialNo: '',
-    panelType: 'MSP'.includes(panelType) ? panelType : '',
-    panelFeature: 'EWHO'.includes(panelFeature) ? panelFeature : '',
-    circuitType: 'OMP'.includes(circuitType) ? circuitType : '',
-    circuitFeature: 'OLCH'.includes(circuitFeature) ? circuitFeature : '',
-  }
-  // 流水号：倒数第7~5位（3位数字）
-  const serial = c.slice(-7, -4)
-  if (/^\d{3}$/.test(serial)) {
-    codeState.value.serialNo = serial
-    formData.codeSerialNo = serial
-  }
+  formData.codeSerialNo = parsed?.serialNo || ''
 }
 
 // 加载产品详情

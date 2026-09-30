@@ -1,6 +1,6 @@
 // composables/useProductCode.ts
-// 产品编码生成统一逻辑（2026-08-12）
-// 格式：客户简称(1~3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)，如 JST001MEOL
+// 产品编码生成统一逻辑（2026-08-12；2026-09-30 dev-20260930-011 加 4 位序号与反解）
+// 格式：客户简称(1~3位) + 序号(默认3位，超过999给4位) + 面板结构(2位) + 线路结构(2位)，如 JST001MEOO / JST1000MEOO
 // 统一校验（简称1-3位放行），输出可配置：'code' 只返回编码字符串 / 'object' 返回完整参数对象
 import { ref } from 'vue'
 
@@ -28,6 +28,12 @@ export const CIRCUIT_FEATURE_OPTIONS = [
   { label: '有连接器及发光二极体', value: 'H' },
 ]
 
+/** 结构位合法值（拼码与反解共用同一份口径） */
+export const PANEL_TYPE_VALUES = 'MSP'
+export const PANEL_FEATURE_VALUES = 'EWHO'
+export const CIRCUIT_TYPE_VALUES = 'OMP'
+export const CIRCUIT_FEATURE_VALUES = 'OLCH'
+
 /** 编码构成状态（可 v-model 双向绑定，编辑回显时直接赋值） */
 export interface ProductCodeState {
   serialNo: string
@@ -45,10 +51,16 @@ export interface ProductCodeResult extends ProductCodeState {
   circuitPart: string
 }
 
+/** 反解结果：构成要素 + 客户简称（编辑回显用） */
+export interface ParsedProductCode extends ProductCodeState {
+  productCode: string
+  customerShort: string
+}
+
 export interface UseProductCodeOptions {
   /** 取客户简称（响应式 getter，页面提供） */
   customerShort: () => string
-  /** 取流水号（默认调统一接口 /product/code/next-serial） */
+  /** 取序号（默认调统一接口 /product/code/next-serial） */
   fetchSerial?: (short: string) => Promise<string>
   /** 输出模式：code=只返回编码字符串（默认），object=返回完整对象（含面板/线路参数） */
   output?: 'code' | 'object'
@@ -58,7 +70,17 @@ export interface UseProductCodeOptions {
   onError?: (msg: string) => void
 }
 
-/** 默认取流水号：统一接口（兼容1-3位简称） */
+/**
+ * 序号规范化（2026-09-30 dev-20260930-011）
+ * 只允许数字：1~3 位补零到 3 位（9 → 009），超过 999 给 4 位原样（1000 不补不回绕）；非法返回空串。
+ */
+export function normalizeSerial(raw?: string | number | null): string {
+  const digits = String(raw ?? '').trim()
+  if (!/^\d{1,4}$/.test(digits)) return ''
+  return digits.length <= 3 ? digits.padStart(3, '0') : digits
+}
+
+/** 默认取序号：统一接口（兼容1-3位简称） */
 export async function defaultFetchSerial(short: string): Promise<string> {
   const { default: request } = await import('@/utils/request')
   const res: any = await request.get('/product/code/next-serial', {
@@ -67,18 +89,18 @@ export async function defaultFetchSerial(short: string): Promise<string> {
   return res?.data || '001'
 }
 
-/** 拼接 + 校验（1-3位简称放行），缺段返回 null */
+/** 拼接 + 校验（1-3位简称放行，序号 1~4 位自动补零），缺段返回 null */
 export function composeProductCode(
   customerShort: string,
   state: ProductCodeState,
 ): ProductCodeResult | null {
   const short = (customerShort || '').trim()
-  const serialNo = (state.serialNo || '').trim()
+  const serialNo = normalizeSerial(state.serialNo)
   const panelPart = `${state.panelType || ''}${state.panelFeature || ''}`
   const circuitPart = `${state.circuitType || ''}${state.circuitFeature || ''}`
 
   if (short.length < 1 || short.length > 3) return null
-  if (serialNo.length !== 3) return null
+  if (!serialNo) return null
   if (panelPart.length !== 2) return null
   if (circuitPart.length !== 2) return null
 
@@ -95,14 +117,42 @@ export function composeProductCode(
   }
 }
 
+/**
+ * 从产品编码反解构成要素（编辑回显，2026-09-30 dev-20260930-011）
+ * 右起 4 位 = 面板结构/面板特征/线路类型/线路特征；其左侧连续数字段 = 序号（3~4 位）；
+ * 再左侧 = 客户简称（1~3 位字母，可带一个 “-”，兼容历史档案编码 JTT-092MHMO）。
+ * 4 位结构位只要有一位不在合法集合里就返回 null —— 调用方留空让人重选，不猜。
+ */
+export function parseProductCode(code?: string | null): ParsedProductCode | null {
+  const c = (code || '').trim()
+  const matched = /^([A-Za-z]{1,3})-?(\d{3,4})([A-Za-z]{4})$/.exec(c)
+  if (!matched) return null
+  const [, short, serial, tail] = matched
+  const [panelType, panelFeature, circuitType, circuitFeature] = tail.split('')
+  const pick = (value: string, allowed: string) => (allowed.includes(value) ? value : '')
+  const state: ParsedProductCode = {
+    customerShort: short,
+    productCode: c,
+    serialNo: normalizeSerial(serial),
+    panelType: pick(panelType, PANEL_TYPE_VALUES),
+    panelFeature: pick(panelFeature, PANEL_FEATURE_VALUES),
+    circuitType: pick(circuitType, CIRCUIT_TYPE_VALUES),
+    circuitFeature: pick(circuitFeature, CIRCUIT_FEATURE_VALUES),
+  }
+  if (!state.serialNo || !state.panelType || !state.panelFeature || !state.circuitType || !state.circuitFeature) {
+    return null
+  }
+  return state
+}
+
 /** 生成失败/缺段时的提示文案 */
 export function missingHint(customerShort: string, state: ProductCodeState): string {
   const short = (customerShort || '').trim()
   if (short.length < 1 || short.length > 3) return '请先选择客户（客户简称需1~3位）'
-  if (!(state.serialNo || '').trim()) return '请点击生成编码获取流水号'
+  if (!normalizeSerial(state.serialNo)) return '请点击「取号」获取序号，或手填 1~4 位数字'
   if (!state.panelType || !state.panelFeature) return '请选择面板结构/特征'
   if (!state.circuitType || !state.circuitFeature) return '请选择线路类型/特征'
-  return '编码格式：客户简称(1~3位) + 流水号(3位) + 面板结构(2位) + 线路结构(2位)'
+  return '编码格式：客户简称(1~3位) + 序号(3~4位) + 面板结构(2位) + 线路结构(2位)'
 }
 
 /**
@@ -130,10 +180,10 @@ export function useProductCode(options: UseProductCodeOptions) {
     try {
       const fetchSerial = options.fetchSerial ?? defaultFetchSerial
       const no = await fetchSerial(short)
-      state.value.serialNo = String(no || '001').padStart(3, '0').slice(0, 3)
+      state.value.serialNo = normalizeSerial(no) || '001'
       return emitResult()
     } catch (e: any) {
-      options.onError?.(e?.message || '流水号获取失败')
+      options.onError?.(e?.message || '序号获取失败')
       return null
     } finally {
       generating.value = false
@@ -161,6 +211,7 @@ export function useProductCode(options: UseProductCodeOptions) {
     generate,
     emitResult,
     compose: composeProductCode,
+    parse: parseProductCode,
     missingHint,
   }
 }

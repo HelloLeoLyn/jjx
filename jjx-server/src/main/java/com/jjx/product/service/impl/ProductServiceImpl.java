@@ -553,7 +553,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         String circuitPart = nzStr(dto.getCircuitType()) + nzStr(dto.getCircuitFeature());
         if (panelPart.length() != 2) throw new BusinessException("请完整选择面板结构/特征");
         if (circuitPart.length() != 2) throw new BusinessException("请完整选择线路类型/特征");
-        // dev-20260929-028：序号可由界面手填（1~3 位数字，不足补 0）；留空则自动取号
+        // dev-20260929-028 / dev-20260930-011：序号可由界面手填（1~4 位数字，≤3 位补 0）；留空则自动取号
         boolean manualSerial = StringUtils.isNotBlank(dto.getSerialNo());
         String serial = manualSerial ? normalizeSerial(dto.getSerialNo()) : productCodeService.nextSerial(short3);
         String productCode = short3 + serial + panelPart + circuitPart;
@@ -567,13 +567,13 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                 dto.getPanelType(), dto.getPanelFeature(), dto.getCircuitType(), dto.getCircuitFeature()));
     }
 
-    /** 手填序号规范化：只允许 1~3 位数字，不足补 0（如 9 → 009）（dev-20260929-028） */
+    /** 手填序号规范化：只允许 1~4 位数字，≤3 位补 0（9 → 009），4 位原样（1000）（dev-20260930-011） */
     private String normalizeSerial(String raw) {
         String serial = raw == null ? "" : raw.trim();
-        if (!serial.matches("\\d{1,3}")) {
-            throw new BusinessException("序号只能是 1~3 位数字（当前：" + raw + "）");
+        if (!serial.matches("\\d{1,4}")) {
+            throw new BusinessException("序号只能是 1~4 位数字（当前：" + raw + "）");
         }
-        return String.format("%03d", Integer.parseInt(serial));
+        return serial.length() <= 3 ? String.format("%03d", Integer.parseInt(serial)) : serial;
     }
 
     /** 撞号提示用：该编码对应的产品（编码 + 名称），查不到就只说编码 */

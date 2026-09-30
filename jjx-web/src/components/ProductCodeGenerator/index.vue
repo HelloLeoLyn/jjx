@@ -1,5 +1,32 @@
 <template>
   <div class="product-code-generator">
+    <!-- 序号（2026-09-30 dev-20260930-011）：默认自动取号，可手填 1~4 位（超过 999 给 4 位） -->
+    <el-row :gutter="16">
+      <el-col :span="12">
+        <el-form-item label="序号">
+          <el-input
+            v-model="state.serialNo"
+            placeholder="点「取号」自动取，或手填 1~4 位数字"
+            maxlength="4"
+            :disabled="disabled || !serialEditable"
+            @input="onSerialInput"
+            @blur="onSerialBlur"
+          >
+            <template v-if="!hideGenerate" #append>
+              <el-button
+                :icon="Refresh"
+                :loading="generating"
+                :disabled="disabled || !serialEditable"
+                @click="handleGenerate"
+                >取号</el-button
+              >
+            </template>
+          </el-input>
+          <div class="code-hint">不满 3 位自动补 0（9 → 009）；序号超过 999 直接给 4 位</div>
+        </el-form-item>
+      </el-col>
+    </el-row>
+
     <el-row :gutter="16">
       <el-col :span="12">
         <el-form-item label="面板结构" required>
@@ -87,26 +114,38 @@ import {
   composeProductCode,
   missingHint,
   defaultFetchSerial,
+  normalizeSerial,
   type ProductCodeState,
   type ProductCodeResult,
 } from '@/composables/useProductCode'
 
-const props = defineProps<{
-  /** 客户简称（页面提供，如选择客户后带出） */
-  customerShort?: string
-  /** 编码构成状态（v-model:state 双向绑定，编辑回显赋值） */
-  state?: ProductCodeState
-  /** 自定义取流水号函数（默认统一接口 /product/code/next-serial） */
-  fetchSerial?: (short: string) => Promise<string>
-  /** 是否输出完整参数对象（v-model:params），默认 false 只输出编码 */
-  emitParams?: boolean
-  /** 是否隐藏客户简称显示（页面已有客户选择时用） */
-  hideShortName?: boolean
-  /** 是否隐藏“生成编码”按钮（2026-09-02：四选全选后自动生成场景用） */
-  hideGenerate?: boolean
-  /** 禁用 */
-  disabled?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** 客户简称（页面提供，如选择客户后带出） */
+    customerShort?: string
+    /** 编码构成状态（v-model:state 双向绑定，编辑回显赋值） */
+    state?: ProductCodeState
+    /** 自定义取序号函数（默认统一接口 /product/code/next-serial） */
+    fetchSerial?: (short: string) => Promise<string>
+    /** 是否输出完整参数对象（v-model:params），默认 false 只输出编码 */
+    emitParams?: boolean
+    /** 是否隐藏客户简称显示（页面已有客户选择时用） */
+    hideShortName?: boolean
+    /** 是否隐藏“取号”按钮（2026-09-02：四选全选后自动生成场景用） */
+    hideGenerate?: boolean
+    /** 序号是否允许手填（默认 true；false = 只读，只能取号）（2026-09-30 dev-20260930-011） */
+    serialEditable?: boolean
+    /** 禁用 */
+    disabled?: boolean
+  }>(),
+  {
+    emitParams: false,
+    hideShortName: false,
+    hideGenerate: false,
+    serialEditable: true,
+    disabled: false,
+  },
+)
 
 const emit = defineEmits<{
   (e: 'update:state', v: ProductCodeState): void
@@ -181,14 +220,23 @@ async function handleGenerate() {
   try {
     const fetchSerial = props.fetchSerial ?? defaultFetchSerial
     const no = await fetchSerial(short.value)
-    state.value.serialNo = String(no || '001')
-      .padStart(3, '0')
-      .slice(0, 3)
+    state.value.serialNo = normalizeSerial(no) || '001'
   } catch (e: any) {
-    hint.value = e?.message || '流水号获取失败'
+    hint.value = e?.message || '序号获取失败'
   } finally {
     generating.value = false
   }
+}
+
+/** 序号输入：只留数字、最多 4 位（2026-09-30 dev-20260930-011） */
+function onSerialInput(value: string) {
+  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 4)
+  if (digits !== value) state.value.serialNo = digits
+}
+
+/** 序号失焦补零：不满 3 位补到 3 位（9 → 009），4 位原样 */
+function onSerialBlur() {
+  state.value.serialNo = normalizeSerial(state.value.serialNo)
 }
 
 defineExpose({

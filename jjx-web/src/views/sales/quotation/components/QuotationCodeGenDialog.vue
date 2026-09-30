@@ -41,9 +41,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
 import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
+import { normalizeSerial } from '@/composables/useProductCode'
 
 const props = defineProps<{
   modelValue: boolean
@@ -125,19 +125,14 @@ watch(
     if (!code || !codeState.serialNo) return
     const used = (props.usedSerials || []).filter(Boolean)
     if (!used.includes(codeState.serialNo)) return
-    // 撞号：自动 +1 直到不冲突（3位流水号，超出 999 回绕提示）
+    // 撞号：自动 +1 直到不冲突（序号 3~4 位：超过 999 直接给 4 位，不再回绕）（2026-09-30 dev-20260930-011）
     let next = Number(codeState.serialNo) + 1
     let guard = 0
-    while (used.includes(String(next).padStart(3, '0')) && guard < 100) {
+    while (used.includes(normalizeSerial(String(next))) && guard < 200) {
       next++
       guard++
     }
-    if (next > 999) {
-      codeParams.value = null
-      ElMessage.warning('流水号已用尽（001~999），请换客户或联系管理员')
-      return
-    }
-    codeState.serialNo = String(next).padStart(3, '0')
+    codeState.serialNo = normalizeSerial(String(next))
   }
 )
 

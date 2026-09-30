@@ -39,7 +39,7 @@ public class ProductCodeServiceImpl implements ProductCodeService {
         wrapper.likeRight(Product::getProductCode, likePrefix);
         // dev-20260929-028：① 去掉 LIMIT 500 —— 同客户产品超过 500 个时最大号会被漏看 → 取到重号；
         //   ② 只认「前缀 + 紧邻 3 位数字」这个流水号段，避免把别人家的号算进来。
-        Pattern serialPattern = Pattern.compile("^" + Pattern.quote(likePrefix) + "(\\d{3})");
+        Pattern serialPattern = Pattern.compile("^" + Pattern.quote(likePrefix) + "(\\d{3,})");
 
         int maxSerial = 0;
         try {
@@ -59,11 +59,7 @@ public class ProductCodeServiceImpl implements ProductCodeService {
         }
 
         int next = maxSerial + 1;
-        if (next > 999) {
-            // dev-20260929-028：不再回绕到 001（回绕必然与已用号撞），改由界面手动指定序号
-            throw new com.jjx.common.exception.BusinessException(
-                    "客户「" + shortName + "」的序号已用满 999，请在「序号」里手动指定一个未占用的号");
-        }
+        // dev-20260930-011：序号不再回绕 —— 超过 999 直接给 4 位（%03d 对 1000+ 自然输出 4 位）
         return String.format("%03d", next);
     }
 }

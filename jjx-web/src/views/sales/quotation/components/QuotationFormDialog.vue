@@ -313,6 +313,7 @@ import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import QuotationCodeGenDialog from './QuotationCodeGenDialog.vue'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
+import { parseProductCode } from '@/composables/useProductCode'
 
 const props = defineProps<{
   modelValue: boolean
@@ -645,28 +646,14 @@ function hasAnyCodeParam(state: Partial<ProductCodeState>): boolean {
   return !!(state.serialNo || state.panelType || state.panelFeature || state.circuitType || state.circuitFeature)
 }
 
-/** 从产品编码反解构成要素（编码 = 简称(1-3) + 流水(3) + 面板结构(1) + 面板特征(1) + 线路类型(1) + 线路特征(1)） */
+/** 从产品编码反解构成要素（口径统一在 useProductCode.parseProductCode，2026-09-30 dev-20260930-011） */
 function parseCodeFromProductCode(code?: string | null): Partial<ProductCodeState> {
-  const empty: Partial<ProductCodeState> = { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
-  if (!code) return empty
-  const c = code.trim()
-  if (c.length < 7 || c.length > 10) return empty
-  const panelType = c.charAt(c.length - 4)
-  const panelFeature = c.charAt(c.length - 3)
-  const circuitType = c.charAt(c.length - 2)
-  const circuitFeature = c.charAt(c.length - 1)
-  const result: Partial<ProductCodeState> = {
-    serialNo: '',
-    panelType: 'MSP'.includes(panelType) ? panelType : '',
-    panelFeature: 'EWHO'.includes(panelFeature) ? panelFeature : '',
-    circuitType: 'OMP'.includes(circuitType) ? circuitType : '',
-    circuitFeature: 'OLCH'.includes(circuitFeature) ? circuitFeature : '',
+  const parsed = parseProductCode(code)
+  if (!parsed) {
+    return { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
   }
-  const serial = c.slice(-7, -4)
-  if (/^\d{3}$/.test(serial)) {
-    result.serialNo = serial
-  }
-  return result
+  const { serialNo, panelType, panelFeature, circuitType, circuitFeature } = parsed
+  return { serialNo, panelType, panelFeature, circuitType, circuitFeature }
 }
 
 defineExpose({
