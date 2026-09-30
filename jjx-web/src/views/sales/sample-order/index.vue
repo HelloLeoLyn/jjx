@@ -136,6 +136,7 @@
             remote
             :remote-method="searchCustomers"
             :loading="customerSearching"
+            :disabled="!!createForm.quotationId"
             style="width: 100%"
             @change="onCustomerChange"
           >
@@ -150,7 +151,7 @@
         <el-form-item label="来源报价单" v-if="!createEditId">
           <el-select
             v-model="createForm.quotationId"
-            placeholder="可选：从报价单带出客户/产品明细"
+            placeholder="可选：从单产品报价单带出客户和产品"
             filterable
             clearable
             style="width: 100%"
@@ -164,74 +165,56 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="产品明细" prop="items">
-          <el-table
-            :data="createForm.items"
-            border
-            size="small"
-            max-height="220"
+        <el-form-item label="打样产品" required>
+          <el-select
+            v-if="!createForm.quotationId"
+            v-model="createForm.product.productId"
+            filterable
+            remote
+            :remote-method="searchProducts"
+            :loading="productSearching"
+            :disabled="!createForm.customerId"
+            placeholder="请先选择客户，再选择一个打样产品"
             style="width: 100%"
+            @change="onProductSelect"
           >
-            <el-table-column label="产品" min-width="210">
-              <template #default="scope">
-                <el-select
-                  v-model="scope.row.productId"
-                  filterable
-                  remote
-                  :remote-method="(q) => searchProducts(q, scope.row)"
-                  :loading="productSearching"
-                  :disabled="!createForm.customerId"
-                  placeholder="请先选择客户，再搜索该客户的产品"
-                  style="width: 100%"
-                  @change="onProductSelect(scope.row)"
-                >
-                  <el-option
-                    v-for="p in productOptions"
-                    :key="p.productId"
-                    :label="`${p.productCode} - ${p.productName}`"
-                    :value="p.productId"
-                  />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="编码" prop="productCode" width="110" />
-            <el-table-column
-              label="名称"
-              prop="productName"
-              min-width="120"
-              show-overflow-tooltip
+            <el-option
+              v-for="p in productOptions"
+              :key="p.productId"
+              :label="`${p.productCode} - ${p.productName}`"
+              :value="p.productId"
             />
-            <el-table-column label="数量" width="95">
-              <template #default="scope">
-                <el-input-number
-                  v-model="scope.row.quantity"
-                  :min="1"
-                  size="small"
-                  controls-position="right"
-                  style="width: 85px"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="单位" width="75">
-              <template #default="scope">
-                <el-input v-model="scope.row.unit" size="small" placeholder="PCS" />
-              </template>
-            </el-table-column>
-            <TableActionColumn width="55" align="center" :fixed="false">
-              <template #before="scope">
-                <el-button link type="danger" @click="removeItem(scope.$index)">删</el-button>
-              </template>
-            </TableActionColumn>
-          </el-table>
-          <el-button
-            size="small"
-            type="primary"
-            plain
-            icon="Plus"
-            style="margin-top: 6px"
-            @click="addItem"
-            >添加产品</el-button
-          >
+          </el-select>
+          <el-input
+            v-else
+            :model-value="createForm.product.productName"
+            readonly
+            placeholder="从来源报价单带入"
+          />
+          <div style="color: #909399; font-size: 12px">一张样品单对应一个成品，可打样多件。</div>
+          <el-alert
+            v-if="quotationProductError"
+            :title="quotationProductError"
+            type="warning"
+            :closable="false"
+          />
+        </el-form-item>
+        <el-form-item label="产品编码">
+          <el-input :model-value="createForm.product.productCode" readonly />
+        </el-form-item>
+        <el-form-item label="产品名称">
+          <el-input :model-value="createForm.product.productName" readonly />
+        </el-form-item>
+        <el-form-item label="打样数量" prop="product.quantity">
+          <el-input-number
+            v-model="createForm.product.quantity"
+            :min="1"
+            :precision="0"
+            controls-position="right"
+          />
+        </el-form-item>
+        <el-form-item label="单位">
+          <el-input v-model="createForm.product.unit" placeholder="PCS" />
         </el-form-item>
         <el-form-item label="期望交样日期">
           <el-date-picker
@@ -276,9 +259,13 @@
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitCreate" :loading="creating">{{
-          createEditId ? '保存' : '创建'
-        }}</el-button>
+        <el-button
+          type="primary"
+          @click="submitCreate"
+          :loading="creating"
+          :disabled="quotationProductLoading || !!quotationProductError"
+          >{{ createEditId ? '保存' : '创建' }}</el-button
+        >
       </template>
     </el-dialog>
 
@@ -642,10 +629,22 @@ const createFormRef = ref<FormInstance>()
 // 编辑模式：非空表示当前弹窗为编辑（锁定单号与来源报价关系）
 const createEditId = ref<number | null>(null)
 const createEditOrderNo = ref('')
+function emptySampleProduct() {
+  return {
+    productId: undefined as number | undefined,
+    productCode: '',
+    productName: '',
+    quantity: 1,
+    unit: 'PCS',
+  }
+}
+const quotationProductLoading = ref(false)
+const quotationProductError = ref('')
+let quotationRequestId = 0
 const createForm = reactive({
   customerId: undefined as number | undefined,
   quotationId: undefined as number | undefined,
-  items: [] as any[],
+  product: emptySampleProduct(),
   deliveryDate: '',
   contactPerson: '',
   contactPhone: '',
@@ -717,7 +716,7 @@ function showCreateDialog() {
   createVisible.value = true
   createForm.customerId = undefined
   createForm.quotationId = undefined
-  createForm.items = []
+  resetProductSelection()
   createForm.deliveryDate = ''
   createForm.contactPerson = ''
   createForm.contactPhone = ''
@@ -740,14 +739,12 @@ async function handleEdit(row: any) {
     const items: any[] = prodRes?.data || []
     createForm.customerId = order.customerId
     createForm.quotationId = undefined // 编辑模式不展示来源报价选择（来源报价关系锁定）
-    createForm.items = items.map((it: any) => ({
-      productId: it.productId ?? undefined,
-      productCode: it.productCode || '',
-      productName: it.productName || '',
-      quantity: it.quantity ?? 1,
-      unit: it.unit || 'PCS',
-    }))
-    if (createForm.items.length === 0) addItem()
+    if (items.length > 1) {
+      ElMessage.error('该历史样品单包含多个产品，请先按产品拆单，不能直接编辑覆盖')
+      return
+    }
+    resetProductSelection()
+    if (items.length === 1) fillSampleProduct(items[0])
     createForm.deliveryDate = order.deliveryDate || ''
     createForm.contactPerson = order.contactPerson || ''
     createForm.contactPhone = order.contactPhone || ''
@@ -790,86 +787,94 @@ function onCustomerChange(cid: number) {
     if (!createForm.contactPerson) createForm.contactPerson = c.contactPerson || ''
     if (!createForm.contactPhone) createForm.contactPhone = c.contactPhone || ''
   }
-  productOptions.value = []
-  createForm.items.forEach((item: any) => {
-    item.productId = undefined
-    item.productCode = ''
-    item.productName = ''
-  })
+  resetProductSelection()
 }
 
-// 选择报价单：带出客户 + 联系人/电话/交期 + 产品明细（可继续编辑）
-async function onQuotationChange(qid: number) {
+function resetProductSelection() {
+  quotationRequestId++
+  quotationProductLoading.value = false
+  quotationProductError.value = ''
+  productOptions.value = []
+  createForm.product = emptySampleProduct()
+}
+
+function fillSampleProduct(item: any) {
+  createForm.product = {
+    productId: item.productId ?? undefined,
+    productCode: item.productCode || '',
+    productName: item.productName || '',
+    quantity: item.quantity ?? 1,
+    unit: item.unit || 'PCS',
+  }
+  productOptions.value = item.productId ? [{ ...item }] : []
+}
+
+// 单产品报价直接带入；多产品报价保留整单拆分转换语义。
+async function onQuotationChange(qid?: number) {
+  resetProductSelection()
+  if (!qid) return
   const q = quotationOptions.value.find((x) => x.quotationId === qid)
   if (q) {
     createForm.customerId = q.customerId
     createForm.contactPerson = q.contactPerson || ''
     createForm.contactPhone = q.contactPhone || ''
     createForm.deliveryDate = q.validUntil || ''
-    onCustomerChange(q.customerId)
+    if (!customerOptions.value.some((c) => c.customerId === q.customerId)) {
+      customerOptions.value.push({ ...q })
+    }
   }
-  if (!qid) return
+  const requestId = quotationRequestId
+  quotationProductLoading.value = true
   try {
     const res: any = await quotationApi.getItems(qid)
-    const items: any[] = (res as any)?.data || []
-    createForm.items = items.map((it) => ({
-      productId: it.productId,
-      productCode: it.productCode || '',
-      productName: it.productName || '',
-      quantity: it.quantity || 1,
-      unit: it.unit || 'PCS',
-    }))
-    if (items.length === 0) addItem()
-  } catch {
-    createForm.items = []
-    addItem()
+    if (requestId !== quotationRequestId) return
+    const items: any[] = res?.data || []
+    if (items.length !== 1) {
+      quotationProductError.value =
+        items.length > 1
+          ? '该报价包含多个产品，请到「报价单」使用「转为样品单」，按产品分别生成样品单。'
+          : '该报价没有产品，请补充报价产品或清除来源报价后选择打样产品。'
+      return
+    }
+    fillSampleProduct(items[0])
+  } catch (e: any) {
+    if (requestId !== quotationRequestId) return
+    quotationProductError.value = e?.message || '加载报价产品失败，请重新选择来源报价单'
+  } finally {
+    if (requestId === quotationRequestId) quotationProductLoading.value = false
   }
 }
 
-// 产品搜索（明细行）
-async function searchProducts(keyword: string, row: any) {
+// 产品搜索：只展示当前客户的产品，并忽略切换客户后的旧请求。
+async function searchProducts(keyword: string) {
+  const customerId = createForm.customerId
+  const requestId = quotationRequestId
+  if (!customerId) return
   productSearching.value = true
   try {
-    if (!createForm.customerId) {
-      productOptions.value = []
-      return
-    }
-    const res: any = await searchProduct(keyword || '', createForm.customerId)
+    const res: any = await searchProduct(keyword || '', customerId)
+    if (requestId !== quotationRequestId || customerId !== createForm.customerId) return
     productOptions.value = res.data || []
-    if (row) row._options = productOptions.value
   } catch {
-    productOptions.value = []
+    if (requestId === quotationRequestId) productOptions.value = []
   } finally {
     productSearching.value = false
   }
 }
 
 // 选中产品：带出编码/名称/单位
-function onProductSelect(row: any) {
-  const p = productOptions.value.find((x) => x.productId === row.productId)
-  if (p) {
-    row.productCode = p.productCode
-    row.productName = p.productName
-    row.unit = p.unit || 'PCS'
+function onProductSelect(productId: number) {
+  const product = productOptions.value.find((p) => p.productId === productId)
+  if (product) {
+    createForm.product.productCode = product.productCode
+    createForm.product.productName = product.productName
+    createForm.product.unit = product.unit || 'PCS'
   }
 }
 
-function addItem() {
-  createForm.items.push({
-    productId: undefined,
-    productCode: '',
-    productName: '',
-    quantity: 1,
-    unit: 'PCS',
-  })
-}
-
-function removeItem(index: number) {
-  createForm.items.splice(index, 1)
-}
-
 function resetCreateForm() {
-  createFormRef.value?.resetFields()
+  resetProductSelection()
+  createFormRef.value?.clearValidate()
 }
 
 async function submitCreate() {
@@ -879,21 +884,23 @@ async function submitCreate() {
     ElMessage.warning('请选择客户')
     return
   }
-  const validItems = createForm.items.filter((i) => i.productId || i.productCode)
-  if (validItems.length === 0) {
-    ElMessage.warning('请至少添加一个产品明细')
+  if (quotationProductLoading.value || quotationProductError.value) {
+    ElMessage.warning(quotationProductError.value || '请等待报价产品加载完成')
+    return
+  }
+  const product = createForm.product
+  if (!product.productCode || !product.productName) {
+    ElMessage.warning('请选择一个打样产品')
+    return
+  }
+  if (!Number.isInteger(product.quantity) || product.quantity <= 0) {
+    ElMessage.warning('打样数量必须为大于零的整数')
     return
   }
   creating.value = true
   const payload = {
     customerId: createForm.customerId,
-    items: validItems.map((i) => ({
-      productId: i.productId || undefined,
-      productCode: i.productCode,
-      productName: i.productName,
-      quantity: i.quantity,
-      unit: i.unit || 'PCS',
-    })),
+    items: [{ ...product, unit: product.unit || 'PCS' }],
     deliveryDate: createForm.deliveryDate || undefined,
     contactPerson: createForm.contactPerson || undefined,
     contactPhone: createForm.contactPhone || undefined,

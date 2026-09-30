@@ -3,6 +3,8 @@ package com.jjx.sales.domain.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.List;
@@ -20,8 +22,9 @@ public class SampleOrderCreateDTO {
     /** 来源报价单ID（可选，提供则带出明细并回写报价单状态） */
     private Long quotationId;
 
-    /** 产品明细（可选；带报价单且为空时从报价单复制） */
+    /** 单个打样产品；省略或空列表时兼容从单产品报价单带入。 */
     @Valid
+    @Size(max = 1, message = "样品单只能关联一个产品")
     private List<Item> items;
 
     /** 期望交样日期 yyyy-MM-dd（可选，默认继承报价单交期） */
@@ -50,6 +53,7 @@ public class SampleOrderCreateDTO {
         private String productName;
 
         @NotNull(message = "产品数量不能为空")
+        @Positive(message = "打样数量必须大于0")
         private Integer quantity;
 
         private String unit;

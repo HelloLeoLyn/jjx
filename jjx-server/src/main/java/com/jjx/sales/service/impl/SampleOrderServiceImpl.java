@@ -494,15 +494,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (customer == null) {
             throw new BusinessException("客户不存在");
         }
-        // 明细校验：至少保留一条，数量必须有效
+        // 一单一成品：编辑与新增使用相同数量约束，写库前拦截多产品。
         java.util.List<com.jjx.sales.domain.dto.SampleOrderUpdateDTO.Item> items = dto.getItems();
-        if (items == null || items.isEmpty()) {
-            throw new BusinessException("请至少添加一个产品明细");
-        }
+        validateSingleSampleProduct(items);
         for (com.jjx.sales.domain.dto.SampleOrderUpdateDTO.Item it : items) {
-            if (it.getQuantity() == null || it.getQuantity() <= 0) {
-                throw new BusinessException("产品数量必须大于0");
-            }
+            validateSampleQuantity(it.getQuantity());
             if (it.getProductId() != null) {
                 productCustomerValidator.validateBelongsToCustomer(it.getProductId(), dto.getCustomerId());
             }
@@ -552,6 +548,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             addList.add(d);
         }
         orderProductService.batchAdd(addList);
+        syncSampleProductProfile(orderId);
 
         // DEV-806：total_quantity = 明细求和；sample_qty 同步（与创建/复制一致）
         updateTotalQuantityByItems(orderId);
@@ -634,6 +631,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     public SalesOrder createSample(com.jjx.sales.domain.dto.SampleOrderCreateDTO dto) {
         if (dto == null || dto.getCustomerId() == null) {
             throw new BusinessException("客户不能为空");
+        }
+        if (dto.getItems() != null && !dto.getItems().isEmpty()) {
+            validateSingleSampleProduct(dto.getItems());
+            validateSampleQuantity(dto.getItems().get(0).getQuantity());
+        } else if (dto.getQuotationId() == null) {
+            throw new BusinessException("请选择一个打样产品");
         }
         com.jjx.sales.domain.entity.SalesCustomer customer = customerMapper.selectById(dto.getCustomerId());
         if (customer == null) {
@@ -718,9 +721,6 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         // 明细：前端传 items 优先；带报价单且无 items 时从报价单复制
         java.util.List<com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item> items = dto.getItems();
         if (items != null && !items.isEmpty()) {
-            if (items.size() > 1) {
-                throw new BusinessException("样品单只能关联一个产品，请按产品分别创建样品单");
-            }
             java.util.List<com.jjx.sales.domain.dto.SalesOrderProductDTO> addList = new java.util.ArrayList<>();
             for (com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item it : items) {
                 if (it.getProductId() != null) {
@@ -773,6 +773,24 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         return order;
+    }
+
+    private void validateSingleSampleProduct(List<?> items) {
+        if (items == null || items.isEmpty()) {
+            throw new BusinessException("请选择一个打样产品");
+        }
+        if (items.size() != 1) {
+            throw new BusinessException("样品单只能关联一个产品，请按产品分别创建样品单");
+        }
+        if (items.get(0) == null) {
+            throw new BusinessException("打样产品不能为空");
+        }
+    }
+
+    private void validateSampleQuantity(Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new BusinessException("打样数量必须大于0");
+        }
     }
 
     @Override
@@ -3434,13 +3452,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         java.util.List<com.jjx.sales.domain.entity.SalesQuotationItem> items = quotationItemMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesQuotationItem>()
                         .eq(com.jjx.sales.domain.entity.SalesQuotationItem::getQuotationId, quotationId));
-        if (items == null || items.isEmpty()) {
-            log.warn("报价单[{}]无明细，未复制到订单[{}]", quotationId, targetOrderId);
-            return;
-        }
-        if (items.size() > 1) {
-            throw new BusinessException("报价单包含多个产品，样品单需按产品分别创建");
-        }
+        validateSingleSampleProduct(items);
+        validateSampleQuantity(items.get(0).getQuantity());
         java.util.List<com.jjx.sales.domain.dto.SalesOrderProductDTO> dtos = new java.util.ArrayList<>();
         for (com.jjx.sales.domain.entity.SalesQuotationItem it : items) {
             com.jjx.sales.domain.dto.SalesOrderProductDTO dto = new com.jjx.sales.domain.dto.SalesOrderProductDTO();

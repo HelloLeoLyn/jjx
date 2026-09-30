@@ -3,6 +3,8 @@ package com.jjx.sales.domain.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.List;
@@ -12,7 +14,7 @@ import java.util.List;
  *
  * 可编辑白名单：客户、联系人/电话、期望交样日期、技术要求、备注、产品明细。
  * 锁定字段（不可修改）：样品单号、来源报价单关联、状态、审核及工程字段、创建信息。
- * 明细采用事务内全量替换（至少保留一条，数量必须有效）。
+ * 产品采用事务内替换（必须且只能有一个产品，数量必须有效）。
  */
 @Data
 public class SampleOrderUpdateDTO {
@@ -21,9 +23,10 @@ public class SampleOrderUpdateDTO {
     @NotNull(message = "客户不能为空")
     private Long customerId;
 
-    /** 产品明细（必填，至少一条） */
+    /** 打样产品（必填且只能一条）。 */
     @Valid
     @NotNull(message = "产品明细不能为空")
+    @Size(min = 1, max = 1, message = "样品单必须且只能关联一个产品")
     private List<Item> items;
 
     /** 期望交样日期 yyyy-MM-dd（可选） */
@@ -52,6 +55,7 @@ public class SampleOrderUpdateDTO {
         private String productName;
 
         @NotNull(message = "产品数量不能为空")
+        @Positive(message = "打样数量必须大于0")
         private Integer quantity;
 
         private String unit;
