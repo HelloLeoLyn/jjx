@@ -9,6 +9,7 @@ import com.jjx.inventory.domain.InventoryAlertLog;
 import com.jjx.inventory.domain.InventoryStock;
 import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryStockItem;
+import com.jjx.inventory.domain.OrderShortageLedger;
 import com.jjx.inventory.dto.query.AlertQueryDTO;
 import com.jjx.inventory.dto.vo.AlertVO;
 import com.jjx.inventory.mapper.InventoryAlertLogMapper;
@@ -62,6 +63,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final com.jjx.purchase.mapper.PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
     private final com.jjx.inventory.mapper.SalesOrderStockReserveMapper salesOrderStockReserveMapper;
+    private final com.jjx.inventory.mapper.OrderShortageLedgerMapper orderShortageLedgerMapper;
 
     /**
      * 库存主数据/预警事件统一发布（2026-09-21 dev-20260921-013 库存批 3/3）：
@@ -442,6 +444,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     @Override
     public void checkGlobalShortage() {
         log.info("全局汇总缺料检查开始（082定稿：订单缺料预警主逻辑）");
+        // dev-20260930-026（P4d）：欠交台账重算（有效订单集合/供给变化时刷新）
+        rebuildOrderShortageLedger();
         // 1. 在途订单：已审核(4)/已确认(6)/生产中(7)
         List<SalesOrder> orders = orderMapper.selectList(
                 new LambdaQueryWrapper<SalesOrder>()
@@ -754,7 +758,23 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
      * 每单只背自己的需求缺口。返回 orderId → (materialId → 该单分摊缺口)。
      */
     private Map<Long, Map<Long, BigDecimal>> allocateMaterialShortageByOrder(java.util.Set<Long> extraOrderIds) {
+        Map<Long, Map<Long, BigDecimal[]>> full = allocateMaterialByOrder(extraOrderIds);
         Map<Long, Map<Long, BigDecimal>> result = new java.util.HashMap<>();
+        for (Map.Entry<Long, Map<Long, BigDecimal[]>> oe : full.entrySet()) {
+            Map<Long, BigDecimal> m = new java.util.HashMap<>();
+            for (Map.Entry<Long, BigDecimal[]> me : oe.getValue().entrySet()) {
+                if (me.getValue()[1].compareTo(BigDecimal.ZERO) > 0) m.put(me.getKey(), me.getValue()[1]);
+            }
+            result.put(oe.getKey(), m);
+        }
+        return result;
+    }
+
+    /**
+     * dev-20260930-026（P4d）：材料层分摊（含需求）——orderId → materialId → [毛需求, 缺口]。
+     */
+    private Map<Long, Map<Long, BigDecimal[]>> allocateMaterialByOrder(java.util.Set<Long> extraOrderIds) {
+        Map<Long, Map<Long, BigDecimal[]>> result = new java.util.HashMap<>();
         List<SalesOrder> all = new java.util.ArrayList<>();
         List<SalesOrder> effective = orderMapper.selectList(new LambdaQueryWrapper<SalesOrder>()
                 .in(SalesOrder::getOrderStatus, 4, 6, 7));
@@ -815,7 +835,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     }
                 }
             }
-            Map<Long, BigDecimal> shortage = new java.util.HashMap<>();
+            Map<Long, BigDecimal[]> needShort = new java.util.HashMap<>();
             for (Map.Entry<Long, BigDecimal> e : needByMat.entrySet()) {
                 Long mid = e.getKey();
                 BigDecimal need = e.getValue();
@@ -860,11 +880,100 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     }
                 }
                 BigDecimal s = need.subtract(take);
-                if (s.compareTo(BigDecimal.ZERO) > 0) shortage.put(mid, s);
+                needShort.put(mid, new BigDecimal[]{need, s});
             }
-            result.put(o.getOrderId(), shortage);
+            result.put(o.getOrderId(), needShort);
         }
         return result;
+    }
+
+    /**
+     * dev-20260930-026（P4d）：欠交台账重算——把「各有效订单各物料的未满足需求」落成台账，
+     * 缺口变小/清零→闭环(status=2)。基于 P3/P4c 的跨订单分摊结果。
+     */
+    private void rebuildOrderShortageLedger() {
+        try {
+            Map<Long, Map<Long, BigDecimal[]>> alloc = allocateMaterialByOrder(java.util.Collections.emptySet());
+            LocalDateTime now = LocalDateTime.now();
+            List<OrderShortageLedger> open = orderShortageLedgerMapper.selectList(
+                    new LambdaQueryWrapper<OrderShortageLedger>().in(OrderShortageLedger::getStatus, 0, 1));
+            Map<String, OrderShortageLedger> openMap = new java.util.HashMap<>();
+            if (open != null) {
+                for (OrderShortageLedger l : open) openMap.put(l.getOrderId() + "#" + l.getMaterialId(), l);
+            }
+            int upserted = 0, closed = 0;
+            for (Map.Entry<Long, Map<Long, BigDecimal[]>> oe : alloc.entrySet()) {
+                Long oid = oe.getKey();
+                SalesOrder o = orderMapper.selectById(oid);
+                for (Map.Entry<Long, BigDecimal[]> me : oe.getValue().entrySet()) {
+                    Long mid = me.getKey();
+                    BigDecimal need = me.getValue()[0];
+                    BigDecimal shortage = me.getValue()[1];
+                    String key = oid + "#" + mid;
+                    OrderShortageLedger exist = openMap.get(key);
+                    if (shortage.compareTo(BigDecimal.ZERO) > 0) {
+                        BigDecimal fulfilled = need.subtract(shortage);
+                        if (fulfilled.compareTo(BigDecimal.ZERO) < 0) fulfilled = BigDecimal.ZERO;
+                        int st = fulfilled.compareTo(BigDecimal.ZERO) > 0 ? 1 : 0;
+                        if (exist == null) {
+                            OrderShortageLedger l = new OrderShortageLedger();
+                            l.setOrderId(oid);
+                            l.setOrderNo(o != null ? o.getOrderNo() : null);
+                            l.setMaterialId(mid);
+                            fillLedgerMaterial(l, mid);
+                            l.setRequiredQty(need);
+                            l.setShortageQty(shortage);
+                            l.setFulfilledQty(fulfilled);
+                            l.setStatus(st);
+                            l.setDueDate(o != null ? o.getDeliveryDate() : null);
+                            l.setLastCheckedAt(now);
+                            l.setCreateBy("system");
+                            orderShortageLedgerMapper.insert(l);
+                        } else {
+                            exist.setRequiredQty(need);
+                            exist.setShortageQty(shortage);
+                            exist.setFulfilledQty(fulfilled);
+                            exist.setStatus(st);
+                            exist.setLastCheckedAt(now);
+                            orderShortageLedgerMapper.updateById(exist);
+                        }
+                        openMap.remove(key);
+                        upserted++;
+                    } else if (exist != null) {
+                        exist.setRequiredQty(need);
+                        exist.setShortageQty(BigDecimal.ZERO);
+                        exist.setFulfilledQty(need);
+                        exist.setStatus(2);
+                        exist.setLastCheckedAt(now);
+                        orderShortageLedgerMapper.updateById(exist);
+                        openMap.remove(key);
+                        closed++;
+                    }
+                }
+            }
+            for (OrderShortageLedger l : openMap.values()) {
+                l.setStatus(2);
+                l.setShortageQty(BigDecimal.ZERO);
+                l.setLastCheckedAt(now);
+                l.setRemark("订单不再有效/缺口消失，自动闭环");
+                orderShortageLedgerMapper.updateById(l);
+                closed++;
+            }
+            log.info("欠交台账重算完成：更新{}条，闭环{}条", upserted, closed);
+        } catch (Exception e) {
+            log.warn("欠交台账重算失败(不影响主流程): {}", e.getMessage());
+        }
+    }
+
+    private void fillLedgerMaterial(OrderShortageLedger l, Long materialId) {
+        try {
+            InventoryMaterial m = materialMapper.selectById(materialId);
+            if (m != null) {
+                l.setMaterialCode(m.getMaterialCode());
+                l.setMaterialName(m.getMaterialName());
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     /** dev-20260930-025（P4c）：材料库存可用余额（可用量 − 安全库存） */
