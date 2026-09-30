@@ -304,6 +304,10 @@ TRUNCATE inventory_stock;
 
 TRUNCATE inventory_storage_location;
 
+-- 孤儿库存身份：inventory_item 是保留主数据，但产品删除后遗留的 PRODUCT 身份不能继续占用编码。
+-- 仅清理来源产品已不存在且没有任何库存/单据引用的身份；有业务引用的行保留并由体检暴露。
+DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 FROM product p WHERE p.product_id = inventory_item.source_id) AND NOT EXISTS (SELECT 1 FROM inventory_stock s WHERE s.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_stock_item si WHERE si.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_transaction t WHERE t.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_inbound_item ib WHERE ib.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_outbound_item ob WHERE ob.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_stocktake_item st WHERE st.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_transfer_item tf WHERE tf.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM sales_order_stock_reserve r WHERE r.inventory_item_id = inventory_item.inventory_item_id);
+
 -- v8：仓库保留不清（基础档案，出库单创建依赖默认仓库）
 -- TRUNCATE inventory_warehouse;
 

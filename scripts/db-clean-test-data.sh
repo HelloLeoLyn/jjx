@@ -46,7 +46,7 @@ warn() { printf '%s⚠%s %s\n' "$c_yel" "$c_off" "$*"; }
 
 usage() {
   cat <<'EOF'
-用途: 清理测试数据（jjx-docs/sql/00_clean_test_data.sql 的唯一入口；整表 TRUNCATE + 1 条 DELETE，表清单以脚本实际解析为准）
+用途: 清理测试数据（jjx-docs/sql/00_clean_test_data.sql 的唯一入口；整表 TRUNCATE + 条件 DELETE，表清单以脚本实际解析为准）
 危险等级: 🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（体检 → 全库备份 → 人工确认 → 执行）
 前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）可写
 域参数: --domains <逗号分隔>，可选 purchase / inventory / quality；可组合，域模式不清理 sys_task
@@ -93,7 +93,7 @@ domain_selected() {
       purchase) [[ "$table" == purchase_* ]] && return 0 ;;
       # inventory_iqc_ 是来料检验台账，业务归属质量域而非库存账务域。
       quality) [[ "$table" == quality_* || "$table" == inventory_iqc_* ]] && return 0 ;;
-      # inventory_ 是库存业务及流水；inventory_iqc_ 已归质量，主数据表由白名单保留。
+  # inventory_ 是库存业务及流水；inventory_iqc_ 已归质量，主数据表由白名单保留。
       inventory) [[ "$table" == inventory_* && "$table" != inventory_iqc_* ]] && return 0 ;;
     esac
   done
@@ -180,15 +180,17 @@ if [ "$DOMAIN_MODE" -eq 1 ]; then
     domain_selected "$t" && FILTERED_TRUNCATE_TABLES+=("$t")
   done
   TRUNCATE_TABLES=("${FILTERED_TRUNCATE_TABLES[@]}")
-  DELETE_TABLES=()
-  DELETE_WHERES=()
-  for t in "${TRUNCATE_TABLES[@]}"; do
-    found=0
-    for original in "${ALL_TRUNCATE_TABLES[@]}"; do
-      [ "$t" = "$original" ] && found=1 && break
-    done
-    [ "$found" -eq 1 ] || die "域过滤产生了不在清理清单中的表: $t"
+  FILTERED_DELETE_TABLES=()
+  FILTERED_DELETE_WHERES=()
+  for i in "${!ALL_DELETE_TABLES[@]}"; do
+    t="${ALL_DELETE_TABLES[$i]}"
+    if domain_selected "$t"; then
+      FILTERED_DELETE_TABLES+=("$t")
+      FILTERED_DELETE_WHERES+=("${ALL_DELETE_WHERES[$i]}")
+    fi
   done
+  DELETE_TABLES=("${FILTERED_DELETE_TABLES[@]}")
+  DELETE_WHERES=("${FILTERED_DELETE_WHERES[@]}")
 fi
 
 # ── 2. 只读体检 ────────────────────────────────────────────────────────────
