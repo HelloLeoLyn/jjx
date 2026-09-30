@@ -323,6 +323,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             throw new BusinessException("请选择出库仓库");
         }
         order.setWarehouseId(Long.valueOf(params.get("warehouseId").toString()));
+        // dev-20260930-042：outbound_date 是 NOT NULL 且无默认值 —— 手动建单路径原先漏设，
+        // 插入直接报「Field 'outbound_date' doesn't have a default value」；没传就取今天
+        Object outboundDateVal = params.get("outboundDate");
+        if (outboundDateVal != null && !String.valueOf(outboundDateVal).isBlank()) {
+            order.setOutboundDate(LocalDate.parse(String.valueOf(outboundDateVal)));
+        } else {
+            order.setOutboundDate(LocalDate.now());
+        }
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
         outboundOrderMapper.insert(order);
 
@@ -409,6 +417,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     if (!(obj instanceof Map<?, ?> m)) continue;
                     InventoryOutboundItem item = new InventoryOutboundItem();
                     item.setOutboundId(outboundId);
+                    // dev-20260930-042：编辑保存同样要落库存物品ID（与 create 口径一致）
+                    if (m.get("inventoryItemId") != null) {
+                        item.setInventoryItemId(Long.valueOf(m.get("inventoryItemId").toString()));
+                    }
                     if (m.get("materialId") != null) item.setMaterialId(Long.valueOf(m.get("materialId").toString()));
                     item.setMaterialCode((String) m.get("materialCode"));
                     item.setMaterialName((String) m.get("materialName"));
