@@ -57,9 +57,20 @@ const emit = defineEmits<{
 
 const options = ref<StockVO[]>([])
 const loading = ref(false)
+/** 已取到的物品缓存：远程搜索会替换 options，选中项要能稳定回填（2026-09-30 dev-20260930-041） */
+const itemCache = new Map<string, StockVO>()
 const selectedValue = ref<string | undefined>(
   props.modelValue == null || props.modelValue === '' ? undefined : String(props.modelValue)
 )
+
+/** 把已选中的物品常驻到候选里，标签才不会变成裸 ID */
+function keepSelectedVisible() {
+  if (!selectedValue.value) return
+  const hit = itemCache.get(selectedValue.value)
+  if (hit && !options.value.some((o) => String(o.inventoryItemId) === selectedValue.value)) {
+    options.value = [hit, ...options.value]
+  }
+}
 
 watch(
   () => props.modelValue,
@@ -87,7 +98,10 @@ async function fetchOptions(keyword: string) {
       else params.materialName = kw
     }
     const res: any = await stockApi.list(params)
-    options.value = (res?.data?.records || []) as StockVO[]
+    const records = (res?.data?.records || []) as StockVO[]
+    records.forEach((r) => itemCache.set(String(r.inventoryItemId), r))
+    options.value = records
+    keepSelectedVisible()
   } catch (e) {
     console.error('加载库存物品失败:', e)
     options.value = []
@@ -100,9 +114,12 @@ const remoteSearch = debounce((kw: string) => {
   void fetchOptions(kw)
 }, 300)
 
-function handleChange() {
-  const found = options.value.find((o) => String(o.inventoryItemId) === selectedValue.value) || null
-  emit('update:modelValue', selectedValue.value)
+function handleChange(val: any) {
+  const key = val == null || val === '' ? undefined : String(val)
+  selectedValue.value = key
+  // 从缓存取（options 可能已被后续搜索替换），取不到也不清空 —— id 已通过 v-model 交回页面
+  const found = key ? itemCache.get(key) || options.value.find((o) => String(o.inventoryItemId) === key) || null : null
+  emit('update:modelValue', key)
   emit('change', found)
 }
 

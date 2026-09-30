@@ -96,22 +96,22 @@
         </el-table-column>
         <el-table-column label="物品编码" width="130">
           <template #default="{ row }">
-            <el-input v-model="row.materialCode" placeholder="编码" readonly />
+            <span class="cell-text">{{ row.materialCode || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="物品名称" width="150">
           <template #default="{ row }">
-            <el-input v-model="row.materialName" placeholder="名称" readonly />
+            <span class="cell-text">{{ row.materialName || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="规格型号" width="120">
           <template #default="{ row }">
-            <el-input v-model="row.specification" placeholder="规格" readonly />
+            <span class="cell-text">{{ row.specification || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="单位" width="70" align="center">
           <template #default="{ row }">
-            <el-input v-model="row.unit" placeholder="单位" readonly />
+            <span class="cell-text">{{ row.unit || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="批次号" width="120">
@@ -343,13 +343,11 @@ const handleWarehouseChange = async (warehouseId: string) => {
   await loadLocations(warehouseId)
 }
 
-// 选择库存物品后回填（dev-20260930-038：库存物品ID 必须落库，确认时按它扣减）
+// 选择库存物品后回填（dev-20260930-038/041：库存物品ID 必须落库，确认时按它扣减）
+// 注意：id 已由 v-model 交回（row.inventoryItemId），这里只回填展示字段，**不要**因取不到明细而清 id
 const handleItemChange = (row: OutboundItemRow, item: any) => {
-  if (!item) {
-    row.inventoryItemId = ''
-    return
-  }
-  row.inventoryItemId = String(item.inventoryItemId ?? '')
+  if (!item) return
+  row.inventoryItemId = String(item.inventoryItemId ?? row.inventoryItemId ?? '')
   row.materialId = item.materialId ? String(item.materialId) : ''
   row.materialCode = item.materialCode || ''
   row.materialName = item.materialName || ''
@@ -491,6 +489,11 @@ const handleSubmit = async () => {
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.4;
+}
+/* 只读展示字段（非输入框）：避免看着像要用户自己填（dev-20260930-041） */
+.cell-text {
+  color: var(--el-text-color-regular);
+  word-break: break-all;
 }
 .outbound-create {
   padding: 20px;
