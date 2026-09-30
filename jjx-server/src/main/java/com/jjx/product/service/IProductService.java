@@ -57,6 +57,11 @@ public interface IProductService extends IService<Product> {
     boolean obsoleteProduct(Long productId);
 
     /**
+     * 批量删除产品（仅「开发中」草稿且无业务引用时允许物理删除；级联清理档案残留）
+     */
+    void deleteProducts(List<Long> productIds);
+
+    /**
      * 根据分类获取产品列表
      */
     List<Product> getProductsByCategory(Long categoryId);

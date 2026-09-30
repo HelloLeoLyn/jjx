@@ -70,10 +70,12 @@ export function editProduct(data: ProductFormData) {
 }
 
 /**
- * 删除产品
+ * 删除产品（单条或批量）
+ * 后端：DELETE /product/batch，Body = [productId...]（仅「开发中」草稿且无引用可删）
  */
 export function removeProduct(productIds: number | number[]) {
-  return request.delete(`/product/${productIds}`)
+  const ids = Array.isArray(productIds) ? productIds : [productIds]
+  return request.delete('/product/batch', { data: ids })
 }
 
 /**

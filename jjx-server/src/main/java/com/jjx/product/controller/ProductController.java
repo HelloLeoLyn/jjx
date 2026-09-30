@@ -162,6 +162,22 @@ public class ProductController extends BaseController {
     }
 
     /**
+     * 批量删除产品（dev-20260930-011）
+     *
+     * <p>红线口径：正式产品只允许状态流转，仅「开发中」草稿可物理删除；
+     * 且必须无任何业务引用。删除时级联清理档案残留（草稿 BOM/工艺路线、PRODUCT 库存身份），
+     * 避免留下孤儿 inventory_item 行（编码复用时会撞 uk_inventory_item_code）。</p>
+     */
+    @DeleteMapping("/batch")
+    @Log(module = "产品管理", businessType = BusinessType.DELETE,
+         bizId = "#productIds[0]", bizType = "'product'", action = LogActions.PRODUCT_DELETE)
+    @SaCheckPermission("product:delete")
+    public Result<Void> batchRemove(@RequestBody List<Long> productIds) {
+        productService.deleteProducts(productIds);
+        return Result.success();
+    }
+
+    /**
      * 发布产品
      */
     @PutMapping("/release/{productId}")

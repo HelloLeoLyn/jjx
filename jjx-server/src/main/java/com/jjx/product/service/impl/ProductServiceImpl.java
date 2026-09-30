@@ -864,4 +864,148 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         return s != null && !s.isBlank();
     }
 
+    // ==================== 批量删除（dev-20260930-011） ====================
+
+    /**
+     * 阻断物理删除的引用来源（表 -> 中文名）。
+     * 口径：只有「开发中」草稿、且完全无业务引用时才允许物理删除。
+     * 不在此表内的「档案类」关联（草稿 BOM/工艺路线、PRODUCT 库存身份）走级联清理。
+     */
+    private static final String[][] PRODUCT_DELETE_BLOCKERS = {
+            {"sales_order_product", "销售订单明细"},
+            {"sales_order_stock_reserve", "销售订单产品预留"},
+            {"sales_delivery_item", "销售发货明细"},
+            {"sales_return_item", "销售退货明细"},
+            {"sales_inquiry", "客户询价单"},
+            {"sales_quotation_item", "报价单明细"},
+            {"sales_sample_order", "样品单"},
+            {"sales_sample_transfer", "样品转量产记录"},
+            {"production_order", "生产工单"},
+            {"production_trace_log", "生产追溯日志"},
+            {"quality_lot", "质量批次"},
+            {"quality_ncr", "质量异常单"},
+            {"archive_production_quality_inspection", "质量检验归档"},
+            {"engineering_film", "工程菲林"},
+            {"engineering_archive_import", "工程资料归档"},
+            {"engineering_resource_product_rel", "工程资源关联"},
+            {"product_instance", "产品实例"},
+            {"product_config_model", "产品配置模型"},
+            {"portal_product_display", "门户展示配置"},
+            {"inventory_material", "关联的专用物料"},
+    };
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteProducts(List<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return;
+        }
+        List<Long> ids = productIds.stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<Long, Product> productMap = listByIds(ids).stream()
+                .collect(Collectors.toMap(Product::getProductId, p -> p));
+
+        // 1) 状态守卫：正式产品只允许状态流转，仅「开发中」草稿可物理删除
+        List<String> blockedByStatus = new ArrayList<>();
+        for (Long id : ids) {
+            Product p = productMap.get(id);
+            if (p == null) {
+                continue; // 已不存在，幂等跳过
+            }
+            if (!ProductEnums.Status.DEVELOPING.getValue().equals(p.getProductStatus())) {
+                blockedByStatus.add(p.getProductCode() + "（"
+                        + ProductEnums.Status.fromValue(p.getProductStatus()).getLabel() + "）");
+            }
+        }
+        if (!blockedByStatus.isEmpty()) {
+            throw new BusinessException("仅「开发中」的产品草稿允许删除，以下产品不允许物理删除："
+                    + String.join("、", blockedByStatus));
+        }
+
+        // 2) 引用守卫：被业务单据/档案引用的一律拒绝
+        for (Long id : ids) {
+            Product p = productMap.get(id);
+            if (p == null) {
+                continue;
+            }
+            String ref = findProductReference(id);
+            if (ref != null) {
+                throw new BusinessException("产品[" + p.getProductCode() + "]已被「" + ref
+                        + "」引用，不允许删除；如需停用请走「取消/停产」状态流转");
+            }
+        }
+
+        // 3) 级联清理档案残留（草稿 BOM/工艺路线 + PRODUCT 库存身份）
+        for (Long id : ids) {
+            if (productMap.get(id) != null) {
+                cascadeDeleteProductDependents(id);
+            }
+        }
+
+        // 4) 删除产品行
+        removeByIds(ids);
+        log.info("产品批量删除完成：{}（级联清理档案残留）", ids);
+    }
+
+    /** 返回第一个阻断删除的引用来源描述；无引用返回 null。 */
+    private String findProductReference(Long productId) {
+        for (String[] blocker : PRODUCT_DELETE_BLOCKERS) {
+            Long count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM `" + blocker[0] + "` WHERE product_id = ?", Long.class, productId);
+            if (count != null && count > 0) {
+                return blocker[1];
+            }
+        }
+        // 已批准的 BOM / 工艺路线不可删（草稿态在级联清理里删掉）
+        Long approvedBom = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM engineering_bom WHERE product_id = ? AND approve_status = 3",
+                Long.class, productId);
+        if (approvedBom != null && approvedBom > 0) {
+            return "已批准的工程BOM";
+        }
+        Long approvedRoute = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM engineering_routing WHERE product_id = ? AND approve_status = 3",
+                Long.class, productId);
+        if (approvedRoute != null && approvedRoute > 0) {
+            return "已批准的工艺路线";
+        }
+        // 该产品的 PRODUCT 库存身份若已有实际库存 / 条码 / 流水 / 单据引用，不可删
+        Long stocked = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM inventory_item ii WHERE ii.item_type = 'PRODUCT' AND ii.source_id = ? "
+                        + "AND (EXISTS(SELECT 1 FROM inventory_stock s WHERE s.inventory_item_id = ii.inventory_item_id "
+                        + "AND (COALESCE(s.total_quantity,0) <> 0 OR COALESCE(s.total_reserved,0) <> 0)) "
+                        + "OR EXISTS(SELECT 1 FROM inventory_stock_item si WHERE si.inventory_item_id = ii.inventory_item_id) "
+                        + "OR EXISTS(SELECT 1 FROM inventory_transaction t WHERE t.inventory_item_id = ii.inventory_item_id) "
+                        + "OR EXISTS(SELECT 1 FROM inventory_inbound_item ib WHERE ib.inventory_item_id = ii.inventory_item_id) "
+                        + "OR EXISTS(SELECT 1 FROM inventory_outbound_item ob WHERE ob.inventory_item_id = ii.inventory_item_id) "
+                        + "OR EXISTS(SELECT 1 FROM inventory_stocktake_item st WHERE st.inventory_item_id = ii.inventory_item_id) "
+                        + "OR EXISTS(SELECT 1 FROM inventory_transfer_item tf WHERE tf.inventory_item_id = ii.inventory_item_id))",
+                Long.class, productId);
+        if (stocked != null && stocked > 0) {
+            return "库存/条码/库存流水";
+        }
+        return null;
+    }
+
+    /** 级联清理产品档案残留：草稿 BOM/工艺路线、PRODUCT 库存身份（含空壳库存行、残留预留）。 */
+    private void cascadeDeleteProductDependents(Long productId) {
+        // 草稿态 BOM / 工艺路线（已批准的在引用守卫里已拦截）
+        jdbcTemplate.update("DELETE bi FROM engineering_bom_item bi "
+                + "JOIN engineering_bom b ON b.bom_id = bi.bom_id WHERE b.product_id = ?", productId);
+        jdbcTemplate.update("DELETE FROM engineering_bom WHERE product_id = ?", productId);
+        jdbcTemplate.update("DELETE ri FROM engineering_routing_item ri "
+                + "JOIN engineering_routing r ON r.routing_id = ri.routing_id WHERE r.product_id = ?", productId);
+        jdbcTemplate.update("DELETE FROM engineering_routing WHERE product_id = ?", productId);
+        // PRODUCT 库存身份：先清引用方（预留/空壳库存行），再删身份本身，避免外键拦截与孤儿
+        jdbcTemplate.update("DELETE FROM sales_order_stock_reserve WHERE inventory_item_id IN "
+                + "(SELECT inventory_item_id FROM inventory_item WHERE item_type = 'PRODUCT' AND source_id = ?)",
+                productId);
+        jdbcTemplate.update("DELETE FROM inventory_stock WHERE inventory_item_id IN "
+                + "(SELECT inventory_item_id FROM inventory_item WHERE item_type = 'PRODUCT' AND source_id = ?)",
+                productId);
+        jdbcTemplate.update("DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND source_id = ?", productId);
+    }
+
 }
