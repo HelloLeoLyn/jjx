@@ -195,8 +195,6 @@ TRUNCATE product_instance;
 -- TRUNCATE product_category;
 -- TRUNCATE product;
 
--- 08-09 版本化改造前的数据备份表（无代码引用，历史脏数据）
-TRUNCATE product_backup_20260809;
 
 -- ==================== 4. 工程模块（v5 起标准工序保留，其余清） ====================
 TRUNCATE engineering_resource_maintenance;

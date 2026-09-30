@@ -66,7 +66,7 @@ def inspect(root):
                 errors.append(f"link outside kit: {relative} -> {href}")
             elif not target.exists():
                 errors.append(f"broken link: {relative} -> {href}")
-            elif path == root / "README.md":
+            elif path.name in {"README.md", "INDEX.md"}:
                 indexed.add(target)
     for path in files:
         if path != root / "README.md" and path.resolve() not in indexed:

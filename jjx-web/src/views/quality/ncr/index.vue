@@ -3,7 +3,9 @@
     <el-alert type="info" :closable="false" show-icon class="scope-guide">
       <template #title>
         <div class="scope-guide__content">
-          <span>本页处理「成品（FQC）」不良：返工、让步接收（特采）或报废；默认只看成品，可用上方「来源类型」切到「来料检验」。成品让步接收必须取得客户确认。</span>
+          <span
+            >本页处理「成品（FQC）」不良：返工、让步接收（特采）或报废；默认只看成品，可用上方「来源类型」切到「来料检验」。成品让步接收必须取得客户确认。</span
+          >
           <el-button link type="primary" @click="goIqcQuarantine">查看来料不合格处置</el-button>
         </div>
       </template>
@@ -13,16 +15,34 @@
         <div class="header">
           <span>产品不良台账</span>
           <div>
-            <el-select v-model="query.lotType" clearable placeholder="来源类型（默认成品）" style="width: 160px" @change="load(1)">
+            <el-select
+              v-model="query.lotType"
+              clearable
+              placeholder="来源类型（默认成品）"
+              style="width: 160px"
+              @change="load(1)"
+            >
               <el-option label="来料检验" value="IQC" />
               <el-option label="成品检验" value="FQC" />
             </el-select>
-            <el-select v-model="query.status" clearable placeholder="状态" style="width: 130px" @change="load(1)">
+            <el-select
+              v-model="query.status"
+              clearable
+              placeholder="状态"
+              style="width: 130px"
+              @change="load(1)"
+            >
               <el-option label="待处置" value="PENDING" />
               <el-option label="处置中" value="DISPOSING" />
               <el-option label="已结" value="CLOSED" />
             </el-select>
-            <el-input v-model="query.materialCode" clearable placeholder="物料编码" style="width: 160px" @keyup.enter="load(1)" />
+            <el-input
+              v-model="query.materialCode"
+              clearable
+              placeholder="物料编码"
+              style="width: 160px"
+              @keyup.enter="load(1)"
+            />
             <el-button type="primary" @click="load(1)">查询</el-button>
             <!-- dev-20260924-007：隔离台账（在隔离的货 = 未处置不良；只做标识，不动库存） -->
             <el-button type="warning" plain @click="openQuarantine">隔离台账</el-button>
@@ -33,10 +53,11 @@
 
       <el-table v-loading="loading" :data="rows" border size="small">
         <template #empty><el-empty description="暂无不良记录" /></template>
-        <el-table-column label="不良单号" min-width="150">
+        <el-table-column label="不良单号" min-width="110">
           <template #default="{ row }">
-            <span>{{ row.ncrNo }}</span>
-            <el-button link type="primary" size="small" @click="openActions(row)">详情</el-button>
+            <el-button link type="primary" size="small" @click="openActions(row)"
+              ><span>{{ row.ncrNo }}</span></el-button
+            >
           </template>
         </el-table-column>
         <el-table-column label="类型" width="90">
@@ -50,7 +71,9 @@
             <div v-else>{{ row.orderNo || (row.orderId ? '工单 #' + row.orderId : '-') }}</div>
             <div v-if="row.lotNo" class="sub">
               检验批 {{ row.lotNo }}
-              <el-tag v-if="row.lotSuperseded" size="small" type="info" effect="plain">已失效</el-tag>
+              <el-tag v-if="row.lotSuperseded" size="small" type="info" effect="plain"
+                >已失效</el-tag
+              >
             </div>
           </template>
         </el-table-column>
@@ -62,19 +85,33 @@
         </el-table-column>
         <el-table-column prop="batchNo" label="批次" min-width="120" />
         <el-table-column label="不良数量" width="95" align="right">
-          <template #default="{ row }">{{ num(row.trace?.defectiveQuantity ?? row.defectQuantity) }}</template>
+          <template #default="{ row }">{{
+            num(row.trace?.defectiveQuantity ?? row.defectQuantity)
+          }}</template>
         </el-table-column>
         <el-table-column label="CR/MA/MI" width="110" align="center">
-          <template #default="{ row }">{{ num(row.crQuantity) }}/{{ num(row.maQuantity) }}/{{ num(row.miQuantity) }}</template>
+          <template #default="{ row }"
+            >{{ num(row.crQuantity) }}/{{ num(row.maQuantity) }}/{{ num(row.miQuantity) }}</template
+          >
         </el-table-column>
         <el-table-column label="已处置" width="90" align="right">
-          <template #default="{ row }">{{ num(row.trace?.disposedQuantity ?? row.disposedQuantity) }}</template>
+          <template #default="{ row }">{{
+            num(row.trace?.disposedQuantity ?? row.disposedQuantity)
+          }}</template>
         </el-table-column>
         <el-table-column label="待处置" width="120" align="right">
           <template #default="{ row }">
-            <el-tag v-if="pending(row) > 0" type="danger" size="small">{{ num(pending(row)) }}</el-tag>
+            <el-tag v-if="pending(row) > 0" type="danger" size="small">{{
+              num(pending(row))
+            }}</el-tag>
             <!-- dev-20260924-007：待处置 = 隔离中（未处置的不良件视为在隔离；一期只做标识，不动库存） -->
-            <el-tag v-if="pending(row) > 0" type="warning" size="small" effect="plain" style="margin-left: 4px">
+            <el-tag
+              v-if="pending(row) > 0"
+              type="warning"
+              size="small"
+              effect="plain"
+              style="margin-left: 4px"
+            >
               隔离中
             </el-tag>
             <span v-if="pending(row) <= 0">-</span>
@@ -145,7 +182,9 @@
         </el-form-item>
         <!-- dev-20260924-005：报废授权分档提示（阈值 sys_config: quality.ncr.scrap.approval-threshold，缺省 5） -->
         <el-alert
-          v-if="disposeForm.actionType === NcrActionType.SCRAP && Number(disposeForm.quantity || 0) > 5"
+          v-if="
+            disposeForm.actionType === NcrActionType.SCRAP && Number(disposeForm.quantity || 0) > 5
+          "
           type="warning"
           :closable="false"
           show-icon
@@ -153,7 +192,11 @@
           style="margin-bottom: 12px"
         />
         <el-form-item label="处置数量" required>
-          <el-input-number v-model="disposeForm.quantity" :min="1" :max="current ? pending(current) : 0" />
+          <el-input-number
+            v-model="disposeForm.quantity"
+            :min="1"
+            :max="current ? pending(current) : 0"
+          />
         </el-form-item>
         <template v-if="disposeForm.actionType === NcrActionType.REWORK">
           <el-form-item label="返工工序" required>
@@ -166,11 +209,15 @@
               <el-option
                 v-for="process in reworkProcesses"
                 :key="process.processId"
-                :label="`${process.processCode || ''} ${process.processName}${process.isSystem === 1 ? '（不指定工序）' : ''}`.trim()"
+                :label="
+                  `${process.processCode || ''} ${process.processName}${process.isSystem === 1 ? '（不指定工序）' : ''}`.trim()
+                "
                 :value="process.processId"
               >
                 <span>{{ process.processName }}</span>
-                <span v-if="process.isSystem === 1" class="tip"> · 不指定工序，内容以返工要求为准</span>
+                <span v-if="process.isSystem === 1" class="tip">
+                  · 不指定工序，内容以返工要求为准</span
+                >
               </el-option>
             </el-select>
             <span class="tip"
@@ -182,7 +229,11 @@
               v-model="disposeForm.reworkRequirement"
               type="textarea"
               :rows="3"
-              :placeholder="isBuiltinProcessPicked ? '选「作业说明返修」时必填：写清返工内容与要求' : '填写本次返工的特殊要求'"
+              :placeholder="
+                isBuiltinProcessPicked
+                  ? '选「作业说明返修」时必填：写清返工内容与要求'
+                  : '填写本次返工的特殊要求'
+              "
             />
           </el-form-item>
         </template>
@@ -249,7 +300,12 @@
       </el-table>
       <el-form label-width="90px" style="margin-top: 10px">
         <el-form-item label="退料原因" required>
-          <el-input v-model="returnReason" maxlength="200" show-word-limit placeholder="如：返工结束剩余料退回" />
+          <el-input
+            v-model="returnReason"
+            maxlength="200"
+            show-word-limit
+            placeholder="如：返工结束剩余料退回"
+          />
         </el-form-item>
       </el-form>
       <div class="sub">
@@ -257,7 +313,9 @@
       </div>
       <template #footer>
         <el-button @click="returnVisible = false">取消</el-button>
-        <el-button type="primary" :loading="returnSubmitting" @click="submitReworkReturn">提交退料</el-button>
+        <el-button type="primary" :loading="returnSubmitting" @click="submitReworkReturn"
+          >提交退料</el-button
+        >
       </template>
     </el-dialog>
 
@@ -275,7 +333,12 @@
     />
 
     <!-- 隔离台账（dev-20260924-007 一期） -->
-    <el-dialog v-model="quarantineVisible" title="隔离台账（在隔离的货）" width="960px" append-to-body>
+    <el-dialog
+      v-model="quarantineVisible"
+      title="隔离台账（在隔离的货）"
+      width="960px"
+      append-to-body
+    >
       <el-alert
         type="info"
         :closable="false"
@@ -285,9 +348,19 @@
       />
       <!-- dev-20260924-031：默认只看成品侧；来料不良在「来料不合格处置」处理 -->
       <div class="quarantine-tools">
-        <el-switch v-model="quarantineIncludeIqc" active-text="含来料（IQC）" @change="loadQuarantine" />
+        <el-switch
+          v-model="quarantineIncludeIqc"
+          active-text="含来料（IQC）"
+          @change="loadQuarantine"
+        />
       </div>
-      <el-table v-loading="quarantineLoading" :data="quarantineRows" border size="small" max-height="56vh">
+      <el-table
+        v-loading="quarantineLoading"
+        :data="quarantineRows"
+        border
+        size="small"
+        max-height="56vh"
+      >
         <el-table-column prop="ncrNo" label="不良单号" min-width="140" />
         <el-table-column label="工单/批" min-width="180">
           <template #default="{ row }">
@@ -305,14 +378,20 @@
         </el-table-column>
         <el-table-column prop="batchNo" label="批次" width="110" />
         <el-table-column label="不良" width="80" align="right">
-          <template #default="{ row }">{{ num(row.trace?.defectiveQuantity ?? row.defectQuantity) }}</template>
+          <template #default="{ row }">{{
+            num(row.trace?.defectiveQuantity ?? row.defectQuantity)
+          }}</template>
         </el-table-column>
         <el-table-column label="已处置" width="85" align="right">
-          <template #default="{ row }">{{ num(row.trace?.disposedQuantity ?? row.disposedQuantity) }}</template>
+          <template #default="{ row }">{{
+            num(row.trace?.disposedQuantity ?? row.disposedQuantity)
+          }}</template>
         </el-table-column>
         <el-table-column label="隔离中" width="85" align="right">
           <template #default="{ row }">
-            <el-tag type="warning" size="small" effect="plain">{{ num(row.trace?.remainingDispositionQuantity ?? row.quarantineQuantity) }}</el-tag>
+            <el-tag type="warning" size="small" effect="plain">{{
+              num(row.trace?.remainingDispositionQuantity ?? row.quarantineQuantity)
+            }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="件（待处置/总）" width="130" align="center">
@@ -324,7 +403,13 @@
         <el-table-column label="主缺陷" min-width="130">
           <template #default="{ row }">
             <span v-if="row.mainCheckItem">{{ row.mainCheckItem }}</span>
-            <el-tag v-if="row.mainDefectLevel" :type="levelTag(row.mainDefectLevel)" size="small" effect="plain" style="margin-left: 4px">
+            <el-tag
+              v-if="row.mainDefectLevel"
+              :type="levelTag(row.mainDefectLevel)"
+              size="small"
+              effect="plain"
+              style="margin-left: 4px"
+            >
               {{ row.mainDefectLevel }}
             </el-tag>
             <span v-if="!row.mainCheckItem && !row.mainDefectLevel">-</span>
@@ -342,36 +427,76 @@
     <!-- 不良单详情：历史流水只读；需要继续办理的事项单独列示 -->
     <el-dialog v-model="actionsVisible" title="不良单详情" width="1080px" append-to-body>
       <div class="detail-summary">
-        <span>不良单号：<strong>{{ current?.ncrNo || '-' }}</strong></span>
-        <span>不良数量：<strong>{{ num(current?.defectQuantity) }}</strong></span>
-        <span>已处置：<strong>{{ num(current?.disposedQuantity) }}</strong></span>
-        <span>待处置：<strong>{{ num(current ? pending(current) : 0) }}</strong></span>
+        <span
+          >不良单号：<strong>{{ current?.ncrNo || '-' }}</strong></span
+        >
+        <span
+          >不良数量：<strong>{{ num(current?.defectQuantity) }}</strong></span
+        >
+        <span
+          >已处置：<strong>{{ num(current?.disposedQuantity) }}</strong></span
+        >
+        <span
+          >待处置：<strong>{{ num(current ? pending(current) : 0) }}</strong></span
+        >
       </div>
       <el-tabs v-model="detailTab">
         <el-tab-pane label="处置流水" name="actions">
           <div class="detail-hint">以下为已登记的处置历史，只读留痕。</div>
           <el-table :data="actions" border size="small">
-            <el-table-column label="处置方式" width="120"><template #default="{ row }">{{ actionLabel(row.actionType) }}</template></el-table-column>
-            <el-table-column label="处置数量" width="95" align="right"><template #default="{ row }">{{ num(row.quantity) }}</template></el-table-column>
-            <el-table-column label="客户确认" width="95" align="center"><template #default="{ row }">{{ row.customerConfirmed ? '是' : '-' }}</template></el-table-column>
-            <el-table-column label="处置状态" width="100"><template #default="{ row }">{{ actionStatusLabel(row.status) }}</template></el-table-column>
-            <el-table-column label="执行人" width="110"><template #default="{ row }">{{ row.operatorName || row.createBy || '-' }}</template></el-table-column>
-            <el-table-column label="记录时间" width="165"><template #default="{ row }">{{ row.createTime ? String(row.createTime).replace('T', ' ') : '-' }}</template></el-table-column>
+            <el-table-column label="处置方式" width="120"
+              ><template #default="{ row }">{{
+                actionLabel(row.actionType)
+              }}</template></el-table-column
+            >
+            <el-table-column label="处置数量" width="95" align="right"
+              ><template #default="{ row }">{{ num(row.quantity) }}</template></el-table-column
+            >
+            <el-table-column label="客户确认" width="95" align="center"
+              ><template #default="{ row }">{{
+                row.customerConfirmed ? '是' : '-'
+              }}</template></el-table-column
+            >
+            <el-table-column label="处置状态" width="100"
+              ><template #default="{ row }">{{
+                actionStatusLabel(row.status)
+              }}</template></el-table-column
+            >
+            <el-table-column label="执行人" width="110"
+              ><template #default="{ row }">{{
+                row.operatorName || row.createBy || '-'
+              }}</template></el-table-column
+            >
+            <el-table-column label="记录时间" width="165"
+              ><template #default="{ row }">{{
+                row.createTime ? String(row.createTime).replace('T', ' ') : '-'
+              }}</template></el-table-column
+            >
             <el-table-column label="返工 / 复检进度" min-width="240">
               <template #default="{ row }">
                 <div v-if="reworkOf(row)" class="rework-cell">
                   <el-tag type="danger" size="small" effect="plain">返工</el-tag>
-                  <span class="rework-tip">{{ reworkOf(row)?.processName || '返工工序' }} · {{ reworkOf(row)?.statusText || '' }}</span>
-                  <div v-if="reworkOf(row)?.reinspectionLotNo" class="rework-tip">复检批 {{ reworkOf(row)?.reinspectionLotNo }}</div>
+                  <span class="rework-tip"
+                    >{{ reworkOf(row)?.processName || '返工工序' }} ·
+                    {{ reworkOf(row)?.statusText || '' }}</span
+                  >
+                  <div v-if="reworkOf(row)?.reinspectionLotNo" class="rework-tip">
+                    复检批 {{ reworkOf(row)?.reinspectionLotNo }}
+                  </div>
                   <el-button
                     v-if="reworkOf(row)?.executionId && current?.orderId"
                     link
                     type="primary"
                     size="small"
                     @click="goToReworkTask(reworkOf(row)!)"
-                  >{{ reworkOf(row)?.hasWorkerTasks ? '去报工/复检进度' : '去派工（已定位返工工序）' }}</el-button>
+                    >{{
+                      reworkOf(row)?.hasWorkerTasks ? '去报工/复检进度' : '去派工（已定位返工工序）'
+                    }}</el-button
+                  >
                 </div>
-                <div v-else-if="row.reinspectionLotId" class="rework-tip">复检批 #{{ row.reinspectionLotId }}</div>
+                <div v-else-if="row.reinspectionLotId" class="rework-tip">
+                  复检批 #{{ row.reinspectionLotId }}
+                </div>
                 <span v-else>-</span>
               </template>
             </el-table-column>
@@ -388,12 +513,18 @@
               <template #default="{ row }">
                 <div class="piece-defects">
                   <div v-for="(d, i) in row.defects || []" :key="i" class="piece-defect-row">
-                    <el-tag :type="levelTag(d.defectLevel)" size="small" effect="plain">{{ d.defectLevel || '其他' }}</el-tag>
+                    <el-tag :type="levelTag(d.defectLevel)" size="small" effect="plain">{{
+                      d.defectLevel || '其他'
+                    }}</el-tag>
                     <span>{{ d.checkItem }}</span>
-                    <el-tag v-if="d.isMain === 1" type="warning" size="small" effect="plain">主缺陷</el-tag>
+                    <el-tag v-if="d.isMain === 1" type="warning" size="small" effect="plain"
+                      >主缺陷</el-tag
+                    >
                     <span v-if="d.remark" class="piece-defect-remark">{{ d.remark }}</span>
                   </div>
-                  <div v-if="!(row.defects || []).length" class="piece-defect-remark">无缺陷记录</div>
+                  <div v-if="!(row.defects || []).length" class="piece-defect-remark">
+                    无缺陷记录
+                  </div>
                 </div>
               </template>
             </el-table-column>
@@ -401,34 +532,127 @@
             <el-table-column label="主缺陷" min-width="150">
               <template #default="{ row }">
                 <span>{{ row.mainCheckItem || '-' }}</span>
-                <el-tag v-if="row.mainDefectLevel" :type="levelTag(row.mainDefectLevel)" size="small" effect="plain" style="margin-left: 4px">
+                <el-tag
+                  v-if="row.mainDefectLevel"
+                  :type="levelTag(row.mainDefectLevel)"
+                  size="small"
+                  effect="plain"
+                  style="margin-left: 4px"
+                >
                   {{ row.mainDefectLevel }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="实测值" width="120"><template #default="{ row }">{{ row.actualValue || '-' }}</template></el-table-column>
-            <el-table-column label="状态" width="100"><template #default="{ row }">{{ row.statusLabel || row.status }}</template></el-table-column>
-            <el-table-column label="处置方式" width="110"><template #default="{ row }">{{ row.disposeType ? actionLabel(row.disposeType) : '-' }}</template></el-table-column>
-            <el-table-column label="工单 / 批" min-width="160"><template #default="{ row }"><span class="piece-sub">{{ row.workOrderNo || '-' }} / {{ row.lotNo || '-' }}</span></template></el-table-column>
+            <el-table-column label="实测值" width="120"
+              ><template #default="{ row }">{{ row.actualValue || '-' }}</template></el-table-column
+            >
+            <el-table-column label="状态" width="100"
+              ><template #default="{ row }">{{
+                row.statusLabel || row.status
+              }}</template></el-table-column
+            >
+            <el-table-column label="处置方式" width="110"
+              ><template #default="{ row }">{{
+                row.disposeType ? actionLabel(row.disposeType) : '-'
+              }}</template></el-table-column
+            >
+            <el-table-column label="工单 / 批" min-width="160"
+              ><template #default="{ row }"
+                ><span class="piece-sub"
+                  >{{ row.workOrderNo || '-' }} / {{ row.lotNo || '-' }}</span
+                ></template
+              ></el-table-column
+            >
           </el-table>
-          <div v-if="!pieces.length" class="piece-tip">该不良单暂无件级数据（上线前登记的历史单据不追溯件级）</div>
+          <div v-if="!pieces.length" class="piece-tip">
+            该不良单暂无件级数据（上线前登记的历史单据不追溯件级）
+          </div>
         </el-tab-pane>
         <el-tab-pane label="待办理事项" name="todos">
           <div class="detail-hint">这些按钮办理关联业务，不会修改或删除处置流水。</div>
           <el-table :data="actionTodos" border size="small">
-            <el-table-column label="处置方式" width="130"><template #default="{ row }">{{ actionLabel(row.actionType) }}</template></el-table-column>
-            <el-table-column label="数量" width="90" align="right"><template #default="{ row }">{{ num(row.quantity) }}</template></el-table-column>
-            <el-table-column label="当前状态" width="120"><template #default="{ row }">{{ actionStatusLabel(row.status) }}</template></el-table-column>
+            <el-table-column label="处置方式" width="130"
+              ><template #default="{ row }">{{
+                actionLabel(row.actionType)
+              }}</template></el-table-column
+            >
+            <el-table-column label="数量" width="90" align="right"
+              ><template #default="{ row }">{{ num(row.quantity) }}</template></el-table-column
+            >
+            <el-table-column label="当前状态" width="120"
+              ><template #default="{ row }">{{
+                actionStatusLabel(row.status)
+              }}</template></el-table-column
+            >
             <el-table-column label="待办理" min-width="400">
               <template #default="{ row }">
-                <el-button v-if="canNcrAction(row, 'NCR_REWORK_COMPLETE')" link type="primary" size="small" @click="completeAction(row)">{{ reworkOf(row)?.reinspectionLotId ? '确认复检并推进闭环' : '生成/关联复检批' }}</el-button>
-                <span v-else-if="row.actionType === NcrActionType.REWORK" class="rework-tip">{{ reworkOf(row)?.statusText || '请先完成返工工序，再进行复检' }}</span>
-                <el-button v-if="canNcrAction(row, 'NCR_REWORK_SUPPLEMENT') && current?.orderId" link type="warning" size="small" @click="openSupplement(row)">补料</el-button>
-                <el-button v-if="canNcrAction(row, 'NCR_REWORK_RETURN') && current?.orderId" link type="info" size="small" @click="openReworkReturn()">返工退料</el-button>
-                <el-button v-if="row.actionType === NcrActionType.SCRAP && row.status === NcrActionStatus.DONE && current?.orderId && Number(current?.remainingReplacementQuantity || 0) > 0 && hasPermi(['inventory:outbound:supplement'])" link type="warning" size="small" @click="openSupplementFromDispose(row)">申请补产物料</el-button>
-                <el-button v-if="canNcrAction(row, 'NCR_SCRAP_APPROVE')" link type="primary" size="small" @click="handleScrapApprove(row)">审批通过</el-button>
-                <el-button v-if="canNcrAction(row, 'NCR_SCRAP_REJECT')" link type="danger" size="small" @click="handleScrapReject(row)">驳回</el-button>
-                <el-button v-if="canNcrAction(row, 'NCR_REVOKE')" link type="danger" size="small" @click="openRevoke(row)">撤销</el-button>
+                <el-button
+                  v-if="canNcrAction(row, 'NCR_REWORK_COMPLETE')"
+                  link
+                  type="primary"
+                  size="small"
+                  @click="completeAction(row)"
+                  >{{
+                    reworkOf(row)?.reinspectionLotId ? '确认复检并推进闭环' : '生成/关联复检批'
+                  }}</el-button
+                >
+                <span v-else-if="row.actionType === NcrActionType.REWORK" class="rework-tip">{{
+                  reworkOf(row)?.statusText || '请先完成返工工序，再进行复检'
+                }}</span>
+                <el-button
+                  v-if="canNcrAction(row, 'NCR_REWORK_SUPPLEMENT') && current?.orderId"
+                  link
+                  type="warning"
+                  size="small"
+                  @click="openSupplement(row)"
+                  >补料</el-button
+                >
+                <el-button
+                  v-if="canNcrAction(row, 'NCR_REWORK_RETURN') && current?.orderId"
+                  link
+                  type="info"
+                  size="small"
+                  @click="openReworkReturn()"
+                  >返工退料</el-button
+                >
+                <el-button
+                  v-if="
+                    row.actionType === NcrActionType.SCRAP &&
+                    row.status === NcrActionStatus.DONE &&
+                    current?.orderId &&
+                    Number(current?.remainingReplacementQuantity || 0) > 0 &&
+                    hasPermi(['inventory:outbound:supplement'])
+                  "
+                  link
+                  type="warning"
+                  size="small"
+                  @click="openSupplementFromDispose(row)"
+                  >申请补产物料</el-button
+                >
+                <el-button
+                  v-if="canNcrAction(row, 'NCR_SCRAP_APPROVE')"
+                  link
+                  type="primary"
+                  size="small"
+                  @click="handleScrapApprove(row)"
+                  >审批通过</el-button
+                >
+                <el-button
+                  v-if="canNcrAction(row, 'NCR_SCRAP_REJECT')"
+                  link
+                  type="danger"
+                  size="small"
+                  @click="handleScrapReject(row)"
+                  >驳回</el-button
+                >
+                <el-button
+                  v-if="canNcrAction(row, 'NCR_REVOKE')"
+                  link
+                  type="danger"
+                  size="small"
+                  @click="openRevoke(row)"
+                  >撤销</el-button
+                >
               </template>
             </el-table-column>
           </el-table>
@@ -444,10 +668,17 @@
         :closable="false"
       />
       <el-form label-width="90px" style="margin-top: 12px">
-        <el-form-item label="处置方式">{{ actionLabel(revokeTarget?.actionType || '') }}</el-form-item>
+        <el-form-item label="处置方式">{{
+          actionLabel(revokeTarget?.actionType || '')
+        }}</el-form-item>
         <el-form-item label="数量">{{ num(revokeTarget?.quantity) }}</el-form-item>
         <el-form-item label="撤销原因" required>
-          <el-input v-model="revokeReason" type="textarea" :rows="2" placeholder="例如：误判，复检合格需回填" />
+          <el-input
+            v-model="revokeReason"
+            type="textarea"
+            :rows="2"
+            placeholder="例如：误判，复检合格需回填"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -457,20 +688,31 @@
     </el-dialog>
 
     <el-dialog v-model="supplementVisible" title="返工补料" width="760px" append-to-body>
-      <el-alert title="补料不占 BOM 剩余定额；提交即记录当前用户为审批人，并生成待仓库发料单。" type="warning" :closable="false" />
+      <el-alert
+        title="补料不占 BOM 剩余定额；提交即记录当前用户为审批人，并生成待仓库发料单。"
+        type="warning"
+        :closable="false"
+      />
       <el-table :data="supplementItems" border size="small" style="margin-top: 12px">
         <el-table-column prop="materialCode" label="物料编码" width="140" />
         <el-table-column prop="materialName" label="物料名称" min-width="180" />
         <el-table-column prop="available" label="可用库存" width="100" align="right" />
         <el-table-column label="补料数量" width="150">
           <template #default="{ row }">
-            <el-input-number v-model="row.quantity" :min="0" :max="Number(row.available || 0)" :precision="4" />
+            <el-input-number
+              v-model="row.quantity"
+              :min="0"
+              :max="Number(row.available || 0)"
+              :precision="4"
+            />
           </template>
         </el-table-column>
       </el-table>
       <template #footer>
         <el-button @click="supplementVisible = false">取消</el-button>
-        <el-button type="primary" :loading="supplementing" @click="submitSupplement">确认并生成补料单</el-button>
+        <el-button type="primary" :loading="supplementing" @click="submitSupplement"
+          >确认并生成补料单</el-button
+        >
       </template>
     </el-dialog>
   </div>
@@ -520,10 +762,12 @@ const num = (value?: number | null) =>
  * （原来只算「不良 − 已处置」，作废单会算出 2 件待处置，与「已作废」状态自相矛盾）
  */
 const pending = (row: QualityNcr) =>
-  String(row.status) === QualityNcrStatus.VOID ||
-  String(row.status) === QualityNcrStatus.CLOSED
+  String(row.status) === QualityNcrStatus.VOID || String(row.status) === QualityNcrStatus.CLOSED
     ? 0
-    : Number(row.trace?.remainingDispositionQuantity ?? Math.max(0, Number(row.defectQuantity || 0) - Number(row.disposedQuantity || 0)))
+    : Number(
+        row.trace?.remainingDispositionQuantity ??
+          Math.max(0, Number(row.defectQuantity || 0) - Number(row.disposedQuantity || 0))
+      )
 /**
  * 主列表按钮按前端状态/数量与权限显示；服务端仍校验实际操作。
  */
@@ -608,8 +852,11 @@ const submitDispose = async () => {
     return ElMessage.warning('请选择返工工序')
   }
   // dev-20260929-020：选内置「作业说明返修」时，返工要求必填（返工内容以该说明为准）
-  if (disposeForm.actionType === NcrActionType.REWORK && isBuiltinProcessPicked.value
-      && !String(disposeForm.reworkRequirement || '').trim()) {
+  if (
+    disposeForm.actionType === NcrActionType.REWORK &&
+    isBuiltinProcessPicked.value &&
+    !String(disposeForm.reworkRequirement || '').trim()
+  ) {
     return ElMessage.warning('选择「作业说明返修（不指定工序）」时必须填写返工要求')
   }
   disposing.value = true
@@ -629,15 +876,17 @@ const actionsVisible = ref(false)
 const actions = ref<QualityNcrAction[]>([])
 const detailTab = ref('actions')
 const actionTodos = computed(() =>
-  actions.value.filter((row) =>
-    [
-      'NCR_REWORK_COMPLETE',
-      'NCR_REWORK_SUPPLEMENT',
-      'NCR_REWORK_RETURN',
-      'NCR_SCRAP_APPROVE',
-      'NCR_SCRAP_REJECT',
-      'NCR_REVOKE',
-    ].some((code) => canNcrAction(row, code)) || (row.actionType === NcrActionType.SCRAP && Boolean(current.value?.orderId))
+  actions.value.filter(
+    (row) =>
+      [
+        'NCR_REWORK_COMPLETE',
+        'NCR_REWORK_SUPPLEMENT',
+        'NCR_REWORK_RETURN',
+        'NCR_SCRAP_APPROVE',
+        'NCR_SCRAP_REJECT',
+        'NCR_REVOKE',
+      ].some((code) => canNcrAction(row, code)) ||
+      (row.actionType === NcrActionType.SCRAP && Boolean(current.value?.orderId))
   )
 )
 /** 返工链进度（按 actionId 索引）—— dev-20260923-031 */
@@ -723,7 +972,12 @@ const submitReworkReturn = async () => {
   returnSubmitting.value = true
   try {
     const { inboundApi } = await import('@/api/inventory/inbound')
-    await inboundApi.productionReturn(Number(ncr.orderId), ncr.ncrId, returnReason.value.trim(), items)
+    await inboundApi.productionReturn(
+      Number(ncr.orderId),
+      ncr.ncrId,
+      returnReason.value.trim(),
+      items
+    )
     ElMessage.success('退料已入库（RTN 单已生成并过账）')
     returnVisible.value = false
     load()
@@ -751,7 +1005,8 @@ const openSupplementFromDispose = (action: any) => {
   supplementNcrId.value = ncr.ncrId
   // 建议量不得超过该NCR尚未申请替补的已报废余额
   const remaining = Number(ncr.remainingReplacementQuantity || 0)
-  supplementPresetQty.value = Math.min(Number(action?.quantity) || remaining, remaining) || undefined
+  supplementPresetQty.value =
+    Math.min(Number(action?.quantity) || remaining, remaining) || undefined
   supplementDialogVisible.value = true
 }
 const onSupplementSuccess = () => {
@@ -914,11 +1169,15 @@ const submitRevoke = async () => {
   }
 }
 
-const openSupplement = async (action: QualityNcrAction) => {  if (!current.value?.orderId) return
+const openSupplement = async (action: QualityNcrAction) => {
+  if (!current.value?.orderId) return
   supplementAction.value = action
   try {
     const res: any = await outboundApi.pickPreview(current.value.orderId)
-    supplementItems.value = (res?.data || []).map((item: PickPreviewRow) => ({ ...item, quantity: 0 }))
+    supplementItems.value = (res?.data || []).map((item: PickPreviewRow) => ({
+      ...item,
+      quantity: 0,
+    }))
     supplementVisible.value = true
   } catch (e: any) {
     ElMessage.error(e?.message || '加载补料物料失败')
@@ -950,7 +1209,11 @@ const submitSupplement = async () => {
 const completeAction = async (row: QualityNcrAction) => {
   try {
     const res: any = await qualityNcrApi.completeAction(row.actionId)
-    ElMessage.success(res?.data?.status === NcrActionStatus.DONE ? '返工复检已合格，处置完成' : '返工报工已完成，已生成 FQC 复检批')
+    ElMessage.success(
+      res?.data?.status === NcrActionStatus.DONE
+        ? '返工复检已合格，处置完成'
+        : '返工报工已完成，已生成 FQC 复检批'
+    )
     if (current.value) openActions(current.value)
     load()
   } catch (e: any) {

@@ -14,7 +14,7 @@ python3 checks/check-docs.py
 python3 checks/check-docs.py --root /path/to/copied-kit
 ```
 
-检查范围：必需入口、Markdown UTF-8 解码、非空文件、围栏代码块闭合、行内相对文件链接、根 README 对所有 Markdown 的索引，以及文件链接是否逃逸资料包。
+检查范围：必需入口、Markdown UTF-8 解码、非空文件、围栏代码块闭合、行内相对文件链接、根 README 与各目录 README/INDEX 对所有 Markdown 的索引，以及文件链接是否逃逸资料包。
 
 支持本资料采用的行内链接形式；忽略代码块中的示例链接。外部 URL 不联网校验，页内锚点、HTML 链接、引用式链接和语义正确性不在检查范围。模板中的待填写内容合法，不代表实际项目已配置。
 

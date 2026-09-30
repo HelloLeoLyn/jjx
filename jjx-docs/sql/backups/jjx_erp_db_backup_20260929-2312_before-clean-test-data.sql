@@ -2292,47 +2292,7 @@ INSERT INTO `product` VALUES (21,'JTT-092MHMO','Fly Pro displayl',NULL,NULL,NULL
 /*!40000 ALTER TABLE `product` ENABLE KEYS */;
 UNLOCK TABLES;
 
---
--- Table structure for table `product_backup_20260809`
---
 
-DROP TABLE IF EXISTS `product_backup_20260809`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `product_backup_20260809` (
-  `product_id` bigint NOT NULL DEFAULT '0' COMMENT '产品ID',
-  `product_code` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '产品编码',
-  `product_name` varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '产品名称',
-  `category_id` bigint DEFAULT NULL COMMENT '分类ID',
-  `product_type` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'standard' COMMENT '类型：standard标准/custom定制',
-  `spec_json` json DEFAULT NULL COMMENT '规格参数',
-  `base_price` decimal(12,2) DEFAULT NULL COMMENT '基础售价',
-  `cost_price` decimal(12,2) DEFAULT NULL COMMENT '标准成本',
-  `min_order_qty` int DEFAULT '1' COMMENT '最小起订量',
-  `lead_time` int DEFAULT '15' COMMENT '标准交期(天)',
-  `product_status` bigint NOT NULL DEFAULT '1' COMMENT '状态',
-  `from_source` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '来源标记（inquiry询价建档/quotation报价建档，草稿清理用）',
-  `current_bom_id` bigint DEFAULT NULL COMMENT '当前BOM ID',
-  `current_route_id` bigint DEFAULT NULL COMMENT '当前工艺路线ID',
-  `create_by` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '创建者',
-  `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `update_by` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '' COMMENT '更新者',
-  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  `remark` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '备注',
-  `unit` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '单位',
-  `approve_remark` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT '' COMMENT '审核批注',
-  `current_bom_version` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'V1.0' COMMENT '当前BOM版本号',
-  `current_routing_version` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT 'V1.0' COMMENT '当前Routing版本号'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `product_backup_20260809`
---
-
-LOCK TABLES `product_backup_20260809` WRITE;
-/*!40000 ALTER TABLE `product_backup_20260809` DISABLE KEYS */;
-/*!40000 ALTER TABLE `product_backup_20260809` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --

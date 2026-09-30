@@ -42,10 +42,11 @@ leo-loose/
 | 标准 | [API 契约](docs/standards/api-contracts.md)、[前端组件](docs/standards/frontend-components.md)、[枚举与配置](docs/standards/enums-and-config.md) |
 | 标准 | [事务与副作用](docs/standards/transactions-and-effects.md)、[权限与可观测性](docs/standards/security-and-observability.md)、[验证与协作](docs/standards/engineering-quality.md) |
 | 指南 | [新项目启动](docs/how-to/start-a-project.md) |
-| AI 流程 | [启动](workflows/bootstrap.md)、[实施](workflows/implement.md)、[诊断](workflows/diagnose.md)、[审查](workflows/review.md)、[交接](workflows/handoff.md) |
+| AI 流程 | [启动](workflows/bootstrap.md)、[实施](workflows/implement.md)、[诊断](workflows/diagnose.md)、[审查](workflows/review.md)、[交接](workflows/handoff.md)、[教训提炼](workflows/lesson-extraction.md) |
 | 项目模板 | [项目约定](templates/project-profile.md)、[模块设计](templates/module-design.md)、[项目 AGENTS](templates/project-agents.md) |
-| 记录模板 | [架构决策](templates/architecture-decision.md)、[任务](templates/task.md)、[交接](templates/handoff.md) |
+| 记录模板 | [架构决策](templates/architecture-decision.md)、[任务](templates/task.md)、[交接](templates/handoff.md)、[教训](templates/lesson.md) |
 | 决策 | [AI 入口与多项目适配](docs/decisions/0001-ai-oriented-kit.md) |
+| 教训 | [教训索引](docs/lessons/INDEX.md)、[提炼方法](docs/lessons/README.md) |
 | 来源 | [实践来源与局限](docs/reference/source-map.md)、[公开规范映射](docs/reference/public-practices.md) |
 | 检查 | [用法与边界](checks/README.md)、[检查程序](checks/check-docs.py) |
 
