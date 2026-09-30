@@ -1,51 +1,60 @@
-﻿# leo-loose：软件工程与项目起步资料
+﻿# leo-loose：面向 AI 编程的多项目工程起步模板
 
-状态：第一版，可供新项目选用；具体规则在新项目确认采用后生效。
-来源任务：dev-20260930-036。
-被取代或取代：无；不替代来源项目的 AGENTS.md 或其他现行规范。
-适用场景：启动前后端分离应用、统一团队实现方式、评审公共技术设计。
-最后复核：2026-09-30。
+状态：第二版；任务 dev-20260930-038；最后复核 2026-09-30。
 
-## 这份资料包含什么
+适用：主要由 AI 编程代理实施、由人确定目标和关键约束的多种软件项目。语言、框架、界面、存储和部署按项目选择。本目录提供工程方法、工作流程和文档检查，不包含可启动的应用代码。
 
-本目录从一个 Spring Boot / Vue 应用中提炼可复用的软件工程模式，并补充形成完整标准所需的设计约定。重点是模块边界、接口、组件、可靠性和工程验证，不包含行业流程、业务状态值、运行数据、账号或部署凭据。
+## 两个入口
 
-这里交付的是文档与模板，尚未提供可以直接启动的代码脚手架，也不代表来源系统已满足全部建议。
+- 人：本页 → [新项目启动指南](docs/how-to/start-a-project.md)。
+- AI：[AGENTS.md](AGENTS.md) → 本次任务流程 → 必需的项目事实和标准。
 
-全文使用两种标记：
+```text
+leo-loose/
+├── README.md             人的入口与完整索引
+├── AGENTS.md             AI 的导航与本目录约束
+├── docs/
+│   ├── architecture/     可选架构模式
+│   ├── standards/        通用与按需采用的工程规则
+│   ├── decisions/        本资料包已采用的设计决策
+│   ├── how-to/           操作指南
+│   └── reference/        项目选型、来源与规范映射
+├── workflows/            启动、实施、诊断、审查、交接
+├── templates/            填写模板，不冒充项目事实
+└── checks/               独立文档检查器
+```
 
-- **实践提炼**：来源代码已存在相应机制，可借鉴其思路；不表示整个项目已统一采用或通过全面验证。
-- **建议基线**：为新项目补全的约定，需要在新项目中实现、验证和确认采用。
+## 带到新项目
 
-“必须”“禁止”等表述只约束已明确采用对应文档的新项目范围。新项目用户的明确要求优先；例外需要记录原因、影响和验证方式。
+1. 整体复制到新项目，例如 docs/engineering，保持内部结构。
+2. 填写[项目约定](templates/project-profile.md)，确定项目类型、技术栈、目录、实际命令和授权范围。
+3. 用[项目 AGENTS 模板](templates/project-agents.md)建立新项目根入口，替换示例路径；已有入口应合并必要导航，不直接覆盖。
+4. 项目事实、ADR、任务与交接记录放入新项目自己的文档或已有任务系统。资料包保持可复用，不混入客户事实与运行数据。
+5. 用一个符合项目类型的最小贯穿功能验证结构与命令，再扩展。
 
-## 阅读入口
+资料包 AGENTS.md 只约束其所在子树，不自动约束新项目整体。代理未自动识别入口时，需在配置或任务中明确加载项目根 AGENTS.md。
 
-| 分类 | 文档 | 解决的问题 |
-|---|---|---|
-| 架构 | [模块与分层](architecture/modular-monolith.md) | 代码放哪里、依赖谁、如何跨模块调用 |
-| 接口 | [API 与类型契约](standards/api-contracts.md) | 输入输出、错误、分页、兼容性 |
-| 前端 | [组件与页面组织](standards/frontend-components.md) | 公共组件、页面组合、异步交互 |
-| 定义 | [枚举、字典与配置](standards/enums-and-config.md) | 唯一声明、展示映射、配置生命周期 |
-| 可靠性 | [事务、并发与副作用](standards/transactions-and-effects.md) | 原子性、重试、幂等、文件与事件 |
-| 横切能力 | [权限、日志与追踪](standards/security-and-observability.md) | 授权边界、审计、请求关联 |
-| 工程 | [验证、变更与文档治理](standards/engineering-quality.md) | 测试、CI、迁移、协作、标准维护 |
-| 起步 | [新项目启动指南](guides/start-a-project.md) | 采用次序与阶段验收 |
-| 模板 | [项目约定](templates/project-profile.md) | 明确技术栈、规模、采用规则 |
-| 模板 | [模块设计](templates/module-design.md) | 定义一个模块的边界与接口 |
-| 模板 | [架构决策记录](templates/architecture-decision.md) | 记录选择、代价、退出条件 |
-| 溯源 | [来源与适用边界](reference/source-map.md) | 哪些有实现依据、哪些仍需补全 |
+## 完整索引
 
-## 如何带到新项目
+| 分类 | 文档 |
+|---|---|
+| 架构 | [项目类型矩阵](docs/reference/project-shapes.md)、[模块与分层示例](docs/architecture/modular-monolith.md) |
+| 标准 | [API 契约](docs/standards/api-contracts.md)、[前端组件](docs/standards/frontend-components.md)、[枚举与配置](docs/standards/enums-and-config.md) |
+| 标准 | [事务与副作用](docs/standards/transactions-and-effects.md)、[权限与可观测性](docs/standards/security-and-observability.md)、[验证与协作](docs/standards/engineering-quality.md) |
+| 指南 | [新项目启动](docs/how-to/start-a-project.md) |
+| AI 流程 | [启动](workflows/bootstrap.md)、[实施](workflows/implement.md)、[诊断](workflows/diagnose.md)、[审查](workflows/review.md)、[交接](workflows/handoff.md) |
+| 项目模板 | [项目约定](templates/project-profile.md)、[模块设计](templates/module-design.md)、[项目 AGENTS](templates/project-agents.md) |
+| 记录模板 | [架构决策](templates/architecture-decision.md)、[任务](templates/task.md)、[交接](templates/handoff.md) |
+| 决策 | [AI 入口与多项目适配](docs/decisions/0001-ai-oriented-kit.md) |
+| 来源 | [实践来源与局限](docs/reference/source-map.md)、[公开规范映射](docs/reference/public-practices.md) |
+| 检查 | [用法与边界](checks/README.md)、[检查程序](checks/check-docs.py) |
 
-1. 整体复制本目录，保留内部相对路径。文档阅读不依赖来源仓库。
-2. 按[启动指南](guides/start-a-project.md)填写项目约定；原始模板保留，填写后的文档放到新项目自己的文档目录。
-3. 逐项标注“采用、调整、暂不采用”，并选定实现与检查方式。不要把阅读完成当作标准落地。
-4. 先建立一个贯穿前端、接口、持久化和测试的最小功能，再扩展其他模块。
-5. 新项目的版本、部署路径、权限模型、备份策略和提交规则由新项目确认。本文不携带来源项目的专属运维政策。
+## 采用与维护
 
-## 维护方式
+实践提炼表示来源已有相应机制，不表示全项目完全统一或全面验证。建议基线表示新项目需要选择采用并实现。模板与可选方案不是项目事实。
 
-每条标准应说明适用边界、推荐实现、验证方式和例外。新增同类文档前先查本索引；一个主题维护一份现行标准，重要变更使用决策记录。公共代码只有在确定其依赖、测试与维护归属后，才适合加入未来的代码模板。
+规则只在明确采用范围内生效；当前用户指令与所在仓库上层约束优先。不默认授权建表、运行服务、部署或发布。
 
-本目录 Markdown 使用 UTF-8。来源仓库本次文件采用 UTF-8 BOM；复制到新项目后，编码约定可由该项目统一决定。
+CLI 不必采用 HTTP 分页，纯库不必引入用户系统或数据库。实际项目入口中的命令必须可核验；模板的待填写项可以保留。
+
+一个主题维护一个权威位置，工作流引用标准；ADR 保留理由，Git 保留历史正文。Markdown 使用 UTF-8，检查器兼容有无 BOM。
