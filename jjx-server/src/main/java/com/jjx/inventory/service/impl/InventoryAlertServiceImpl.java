@@ -230,6 +230,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         } catch (Exception e) {
             log.warn("查询在途采购量失败: {}", e.getMessage());
         }
+        // dev-20260930-021（P3）：本单材料缺口 = 跨订单分摊后分给本单的份额
+        java.util.Set<Long> allocScope = new java.util.HashSet<>();
+        allocScope.add(orderId);
+        java.util.Map<Long, BigDecimal> allocatedShortage =
+                allocateMaterialShortageByOrder(allocScope).getOrDefault(orderId, java.util.Collections.emptyMap());
         int shortageCount = 0;
         int coveredCount = 0;
         for (Map.Entry<Long, BigDecimal> entry : demandMap.entrySet()) {
@@ -242,7 +247,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             // 不再扣"材料预占"(order_material_reserve)——旧账按全额需求生成，与新缺口口径冲突，留待 P2 统一（停扣）
             available = available.subtract(safeStockOf(materialId));
             BigDecimal inTransit = inTransitMap.getOrDefault(materialId, BigDecimal.ZERO);
-            BigDecimal actualGap = demand.subtract(available).subtract(inTransit);
+            // dev-20260930-021（P3）：本单缺口取跨订单分摊后的份额（不再各单各算全量供给）
+            BigDecimal actualGap = allocatedShortage.getOrDefault(materialId, BigDecimal.ZERO);
             String status;
             if (actualGap.compareTo(BigDecimal.ZERO) <= 0) {
                 if (demand.subtract(available).compareTo(BigDecimal.ZERO) > 0) {
@@ -665,6 +671,110 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     salesOrderId, productId, e.getMessage());
             return BigDecimal.ZERO;
         }
+    }
+
+    /**
+     * dev-20260930-021（P3）：材料层「跨订单分摊」——按订单优先级（加急 &gt; 先建单 &gt; order_id）
+     * 把全厂供给（库存可用−安全库存 + 在途）依次分给所有有效订单(已审核4/已确认6/生产中7) + extra，
+     * 每单只背自己的需求缺口。返回 orderId → (materialId → 该单分摊缺口)。
+     */
+    private Map<Long, Map<Long, BigDecimal>> allocateMaterialShortageByOrder(java.util.Set<Long> extraOrderIds) {
+        Map<Long, Map<Long, BigDecimal>> result = new java.util.HashMap<>();
+        List<SalesOrder> all = new java.util.ArrayList<>();
+        List<SalesOrder> effective = orderMapper.selectList(new LambdaQueryWrapper<SalesOrder>()
+                .in(SalesOrder::getOrderStatus, 4, 6, 7));
+        if (effective != null) all.addAll(effective);
+        if (extraOrderIds != null) {
+            for (Long id : extraOrderIds) {
+                if (id == null) continue;
+                boolean present = false;
+                for (SalesOrder o : all) { if (id.equals(o.getOrderId())) { present = true; break; } }
+                if (!present) {
+                    SalesOrder o = orderMapper.selectById(id);
+                    if (o != null) all.add(o);
+                }
+            }
+        }
+        all.sort(this::compareOrderPriority);
+
+        // 全厂在途（按物料），分摊时作为供给
+        Map<Long, BigDecimal> inTransitAll = new java.util.HashMap<>();
+        try {
+            List<Map<String, Object>> rows = purchaseOrderItemMapper.selectInTransitByMaterial();
+            if (rows != null) for (Map<String, Object> r : rows) {
+                Object mid = r.get("material_id"); Object q = r.get("in_transit");
+                if (mid != null && q != null) inTransitAll.put(((Number) mid).longValue(), new BigDecimal(q.toString()));
+            }
+        } catch (Exception e) {
+            log.warn("P3-查询在途失败(按0处理): {}", e.getMessage());
+        }
+        Map<Long, BigDecimal> supply = new java.util.HashMap<>();
+
+        for (SalesOrder o : all) {
+            Map<Long, BigDecimal> needByMat = new java.util.HashMap<>();
+            List<SalesOrderProduct> ps = orderProductMapper.selectList(new LambdaQueryWrapper<SalesOrderProduct>()
+                    .eq(SalesOrderProduct::getOrderId, o.getOrderId()));
+            if (ps != null) {
+                for (SalesOrderProduct p : ps) {
+                    if (p.getProductId() == null) continue;
+                    BigDecimal qty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
+                    BigDecimal spot = productNetSpotAvailable(p.getProductId(), o.getOrderId());
+                    BigDecimal gap = qty.subtract(spot);
+                    if (gap.compareTo(BigDecimal.ZERO) <= 0) continue;
+                    EngineeringBom bom = bomMapper.selectOne(new LambdaQueryWrapper<EngineeringBom>()
+                            .eq(EngineeringBom::getProductId, p.getProductId())
+                            .eq(EngineeringBom::getIsCurrent, true)
+                            .eq(EngineeringBom::getApproveStatus, 3));
+                    if (bom == null) continue;
+                    List<EngineeringBomItem> items = bomItemMapper.selectList(new LambdaQueryWrapper<EngineeringBomItem>()
+                            .eq(EngineeringBomItem::getBomId, bom.getBomId()));
+                    for (EngineeringBomItem it : items) {
+                        if (it.getMaterialId() == null) continue;
+                        needByMat.merge(it.getMaterialId(), batchDemand(it, gap), BigDecimal::add);
+                    }
+                }
+            }
+            Map<Long, BigDecimal> shortage = new java.util.HashMap<>();
+            for (Map.Entry<Long, BigDecimal> e : needByMat.entrySet()) {
+                Long mid = e.getKey();
+                BigDecimal need = e.getValue();
+                BigDecimal sup = supply.get(mid);
+                if (sup == null) {
+                    InventoryStock stock = stockMapper.selectByMaterialId(mid);
+                    BigDecimal avail = (stock != null && stock.getAvailableQuantity() != null)
+                            ? stock.getAvailableQuantity() : BigDecimal.ZERO;
+                    avail = avail.subtract(safeStockOf(mid));
+                    sup = avail.add(inTransitAll.getOrDefault(mid, BigDecimal.ZERO));
+                    supply.put(mid, sup);
+                }
+                BigDecimal take = sup.compareTo(BigDecimal.ZERO) > 0 ? need.min(sup) : BigDecimal.ZERO;
+                supply.put(mid, sup.subtract(take));
+                BigDecimal s = need.subtract(take);
+                if (s.compareTo(BigDecimal.ZERO) > 0) shortage.put(mid, s);
+            }
+            result.put(o.getOrderId(), shortage);
+        }
+        return result;
+    }
+
+    /** 订单优先级：加急 &gt; 先建单(create_time) &gt; order_id 小（与占用/入库同口径） */
+    private int compareOrderPriority(SalesOrder a, SalesOrder b) {
+        int ua = (a != null && a.getIsUrgent() != null) ? a.getIsUrgent() : 0;
+        int ub = (b != null && b.getIsUrgent() != null) ? b.getIsUrgent() : 0;
+        if (ua != ub) return ub - ua;
+        LocalDateTime ta = a != null ? a.getCreateTime() : null;
+        LocalDateTime tb = b != null ? b.getCreateTime() : null;
+        if (ta != null && tb != null) {
+            int c = ta.compareTo(tb);
+            if (c != 0) return c;
+        } else if (ta != null) {
+            return -1;
+        } else if (tb != null) {
+            return 1;
+        }
+        long ida = a != null ? a.getOrderId() : 0L;
+        long idb = b != null ? b.getOrderId() : 0L;
+        return Long.compare(ida, idb);
     }
 
     @Override
