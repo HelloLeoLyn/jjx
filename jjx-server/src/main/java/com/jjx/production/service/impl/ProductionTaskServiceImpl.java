@@ -149,9 +149,13 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
         if (route.isEmpty()) throw new BusinessException("No standard operations exist for this work order");
         Long firstTaskId = null;
         for (com.jjx.production.domain.entity.ProductionOperationExecution execution : route) {
+            // dev-20260930-012：按 (出库单, 工序) 找的是**补产根任务**（parent_task_id 为空）——
+            // 派工后同一对下还有子任务，查询若不带 parent 条件会捞到子任务、把根任务漏判成"已存在"
             ProductionTask task = productionTaskMapper.selectOne(Wrappers.<ProductionTask>lambdaQuery()
                     .eq(ProductionTask::getSourceOutboundId, sourceOutboundId)
-                    .eq(ProductionTask::getExecutionId, execution.getExecutionId()).last("LIMIT 1"));
+                    .eq(ProductionTask::getExecutionId, execution.getExecutionId())
+                    .eq(ProductionTask::getTaskType, com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode())
+                    .isNull(ProductionTask::getParentTaskId).last("LIMIT 1"));
             if (task == null) {
                 task = new ProductionTask();
                 task.setTaskNo(nextTaskNo(execution.getExecutionId(), false, 'S'));
@@ -171,7 +175,9 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                 } catch (DuplicateKeyException e) {
                     task = productionTaskMapper.selectOne(Wrappers.<ProductionTask>lambdaQuery()
                             .eq(ProductionTask::getSourceOutboundId, sourceOutboundId)
-                            .eq(ProductionTask::getExecutionId, execution.getExecutionId()).last("LIMIT 1"));
+                            .eq(ProductionTask::getExecutionId, execution.getExecutionId())
+                            .eq(ProductionTask::getTaskType, com.jjx.production.enums.ProductionTaskTypeEnum.SUPPLEMENT.getCode())
+                            .isNull(ProductionTask::getParentTaskId).last("LIMIT 1"));
                     if (task == null) throw e;
                 }
             }
