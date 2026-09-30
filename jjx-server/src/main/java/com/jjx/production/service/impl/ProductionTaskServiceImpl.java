@@ -425,10 +425,12 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
                     .add(childPending.getOrDefault(child.getTaskId(), BigDecimal.ZERO)));
         }
         // 2026-09-09 完工按钮显隐（Leo 定）：仅该工序一级负责人（根任务负责人）或超级管理员可完工
+        // dev-20260930-022：只认标准根任务 —— 否则补产根任务（parent 为空）会覆盖 map 里的负责人
         boolean isSuperAdmin = SecurityUtils.hasRole("admin");
         Map<Long, Long> rootAssigneeByExecution = new HashMap<>();
         if (!executionIds.isEmpty()) {
             productionTaskMapper.selectList(Wrappers.<ProductionTask>lambdaQuery()
+                            .eq(ProductionTask::getTaskType, com.jjx.production.enums.ProductionTaskTypeEnum.STANDARD.getCode())
                             .isNull(ProductionTask::getParentTaskId)
                             .in(ProductionTask::getExecutionId, executionIds))
                     .forEach(t -> rootAssigneeByExecution.put(t.getExecutionId(), t.getAssigneeId()));
@@ -1224,10 +1226,21 @@ public class ProductionTaskServiceImpl implements ProductionTaskService {
     }
 
     private Long findFirstTask(Long executionId) {
-        ProductionTask first = productionTaskMapper.selectOne(Wrappers.<ProductionTask>lambdaQuery()
-                .eq(ProductionTask::getExecutionId, executionId)
-                .isNull(ProductionTask::getParentTaskId));
+        ProductionTask first = productionTaskMapper.selectOne(standardRootQuery(executionId));
         return first == null ? null : first.getTaskId();
+    }
+
+    /**
+     * 标准根任务查询（dev-20260930-022）：补产根任务（parent 为空 + task_type=SUPPLEMENT）同样满足
+     * 「parent IS NULL」，一个工序会有两个根任务 → selectOne 会抛 TooManyResultsException。
+     * First Task 只认标准根任务；补产任务按 (source_outbound_id, execution_id) 取（见 createSupplementRouteTasks）。
+     */
+    static com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<ProductionTask> standardRootQuery(
+            Long executionId) {
+        return Wrappers.<ProductionTask>lambdaQuery()
+                .eq(ProductionTask::getExecutionId, executionId)
+                .eq(ProductionTask::getTaskType, com.jjx.production.enums.ProductionTaskTypeEnum.STANDARD.getCode())
+                .isNull(ProductionTask::getParentTaskId);
     }
 
     /** 行锁：SELECT ... FOR UPDATE（写动作锁读取最新已提交状态） */

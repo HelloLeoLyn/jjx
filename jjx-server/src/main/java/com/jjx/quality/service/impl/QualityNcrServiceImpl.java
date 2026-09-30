@@ -1197,6 +1197,8 @@ public class QualityNcrServiceImpl extends ServiceImpl<QualityNcrMapper, Quality
         }
         List<ProductionTask> roots = taskMapper.selectList(new LambdaQueryWrapper<ProductionTask>()
                 .in(ProductionTask::getExecutionId, executionIds)
+                // dev-20260930-022：只认标准根任务 —— 补产根任务（parent 为空）不该当"工序负责人"来源
+                .eq(ProductionTask::getTaskType, com.jjx.production.enums.ProductionTaskTypeEnum.STANDARD.getCode())
                 .isNull(ProductionTask::getParentTaskId)
                 .isNotNull(ProductionTask::getAssigneeId)
                 .orderByDesc(ProductionTask::getTaskId)
