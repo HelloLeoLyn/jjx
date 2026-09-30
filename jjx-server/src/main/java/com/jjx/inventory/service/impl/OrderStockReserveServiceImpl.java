@@ -18,6 +18,7 @@ import com.jjx.sales.mapper.SalesOrderProductMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -48,7 +49,7 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
     private final SalesOrderProductMapper orderProductMapper;
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.NESTED, rollbackFor = Exception.class)
     public Map<Long, BigDecimal> reserveForOrder(Long orderId) {
         log.info("订单成品库存预留开始: orderId={}", orderId);
         SalesOrder order = orderMapper.selectById(orderId);
@@ -85,6 +86,10 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
             com.jjx.inventory.domain.InventoryItem inventoryItem = inventoryItemService.ensure(
                     com.jjx.inventory.enums.InventoryItemTypeEnum.PRODUCT, p.getProductId(),
                     p.getProductCode(), p.getProductName(), null, "PCS");
+            if (inventoryItem == null) {
+                // dev-20260930-010：ensure 不应返回 null；防御 + 明确报错，避免下游 NPE 后事务被标 rollback-only
+                throw new IllegalStateException("产品[" + p.getProductCode() + "]的库存身份创建失败（ensure 返回空）");
+            }
             InventoryStock pStock = stockMapper.selectByInventoryItemId(inventoryItem.getInventoryItemId());
             BigDecimal total = (pStock != null && pStock.getTotalQuantity() != null)
                     ? pStock.getTotalQuantity() : BigDecimal.ZERO;

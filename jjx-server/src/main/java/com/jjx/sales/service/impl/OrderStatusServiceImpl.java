@@ -176,6 +176,10 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
                 currentStatus.getValue(), targetStatus.getValue(), reviewDTO.getRemark(), reviewDTO.getAttachments());
 
         // 7. 审核通过联动（原客户确认环节的步骤前移到审核通过，2026-08-12 去掉客户确认后）
+        //    dev-20260930-010：以下均为「尽力而为」的联动，失败不应连坐审核。
+        //    注意：其中 reserveForOrder / confirmReserve 是 @Transactional(NESTED)——子事务失败只回滚到
+        //    savepoint，不会把本物理事务标 rollback-only；否则外层 catch 吞掉异常后，提交时会抛
+        //    UnexpectedRollbackException 把整个审核（含状态更新+审核记录）一起回滚。
         // 齐套检查（DEV-572）：按 BOM 算料，缺口生成 order_shortage 预警
         try {
             inventoryAlertService.checkOrderShortage(order.getOrderId());

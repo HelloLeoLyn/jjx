@@ -16,6 +16,7 @@ import com.jjx.product.mapper.EngineeringBomItemMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -141,7 +142,7 @@ public class OrderMaterialReserveServiceImpl implements OrderMaterialReserveServ
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.NESTED, rollbackFor = Exception.class)
     public void confirmReserve(Long orderId) {
         SalesOrder order = orderMapper.selectById(orderId);
         if (order == null) {
