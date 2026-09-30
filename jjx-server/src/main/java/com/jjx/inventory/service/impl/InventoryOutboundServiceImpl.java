@@ -337,6 +337,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 if (!(obj instanceof Map<?, ?> m)) continue;
                 InventoryOutboundItem item = new InventoryOutboundItem();
                 item.setOutboundId(order.getOutboundId());
+                // dev-20260930-038：前端选的是「库存物品」（成品/原材料），带上库存物品ID ——
+                // 有它就不必再靠 materialId 反查物料主数据（成品不在物料主数据里 → 会报"缺少有效的库存物品身份"）
+                if (m.get("inventoryItemId") != null) {
+                    item.setInventoryItemId(Long.valueOf(m.get("inventoryItemId").toString()));
+                }
                 if (m.get("materialId") != null) item.setMaterialId(Long.valueOf(m.get("materialId").toString()));
                 item.setMaterialCode((String) m.get("materialCode"));
                 item.setMaterialName((String) m.get("materialName"));

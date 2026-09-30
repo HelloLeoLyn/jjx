@@ -80,11 +80,13 @@
         </el-table-column>
         <el-table-column label="物料" min-width="220">
           <template #default="{ row, $index }">
-            <MaterialSelector
-              v-model="row.materialId"
-              value-type="materialId"
-              placeholder="搜索并选择材料"
-              @change="(val: any, material: any) => handleMaterialChange(row, material)"
+            <!-- 2026-09-30 dev-20260930-038：出库选的是「库存物品」（成品/原材料），不是物料主数据 -->
+            <InventoryItemSelector
+              v-model="row.inventoryItemId"
+              :item-type="itemTypeForOutbound"
+              :warehouse-id="formData.warehouseId"
+              placeholder="搜成品/物料（按出库类型过滤）"
+              @change="(item: any) => handleItemChange(row, item)"
             />
           </template>
         </el-table-column>
@@ -196,7 +198,7 @@ import { outboundApi } from '@/api/inventory/outbound'
 import { warehouseApi } from '@/api/inventory/warehouse'
 import { locationApi } from '@/api/inventory/location'
 import { formatCurrency, formatNumber } from '@/utils/format'
-import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
+import InventoryItemSelector from '@/components/Selector/InventoryItemSelector.vue'
 import type { InventoryWarehouse } from '@/types/inventory/warehouse'
 
 const router = useRouter()
@@ -209,6 +211,8 @@ const isEdit = computed(() => !!route.params.id)
 const outboundId = computed(() => String(route.params.id || ''))
 
 interface OutboundItemRow {
+  /** 库存物品ID（成品/原材料的库存身份，出库确认按它扣减）（dev-20260930-038） */
+  inventoryItemId: string
   materialId: string
   materialCode: string
   materialName: string
@@ -229,6 +233,7 @@ const formData = reactive({
   remark: '',
   items: [
     {
+      inventoryItemId: '',
       materialId: '',
       materialCode: '',
       materialName: '',
@@ -279,6 +284,7 @@ const loadDetail = async () => {
       const items: any[] = d.items || []
       if (items.length > 0) {
         formData.items = items.map((it) => ({
+          inventoryItemId: it.inventoryItemId ? String(it.inventoryItemId) : '',
           materialId: String(it.materialId ?? ''),
           materialCode: it.materialCode || '',
           materialName: it.materialName || '',
@@ -333,19 +339,31 @@ const handleWarehouseChange = async (warehouseId: string) => {
   await loadLocations(warehouseId)
 }
 
-// 选择物料后回填
-const handleMaterialChange = (row: OutboundItemRow, material: any) => {
-  if (!material) return
-  row.materialId = String(material.materialId ?? row.materialId)
-  row.materialCode = material.materialCode || ''
-  row.materialName = material.materialName || ''
-  row.specification = material.specification || ''
-  row.unit = material.unit || ''
+// 选择库存物品后回填（dev-20260930-038：库存物品ID 必须落库，确认时按它扣减）
+const handleItemChange = (row: OutboundItemRow, item: any) => {
+  if (!item) {
+    row.inventoryItemId = ''
+    return
+  }
+  row.inventoryItemId = String(item.inventoryItemId ?? '')
+  row.materialId = item.materialId ? String(item.materialId) : ''
+  row.materialCode = item.materialCode || ''
+  row.materialName = item.materialName || ''
+  row.specification = item.specification || ''
+  row.unit = item.unit || ''
 }
+
+// 出库类型 → 库存物品类型：销售发货=成品；生产领料=原材料；其余不限
+const itemTypeForOutbound = computed<'MATERIAL' | 'PRODUCT' | ''>(() => {
+  if (formData.outboundType === 'sales') return 'PRODUCT'
+  if (formData.outboundType === 'production') return 'MATERIAL'
+  return ''
+})
 
 // 添加物料行
 const handleAddItem = () => {
   formData.items.push({
+    inventoryItemId: '',
     materialId: '',
     materialCode: '',
     materialName: '',
@@ -399,6 +417,7 @@ const handleSubmit = async () => {
           sourceNo: formData.sourceNo || undefined,
           remark: formData.remark || undefined,
           items: formData.items.map((item) => ({
+            inventoryItemId: item.inventoryItemId || undefined,
             materialId: item.materialId,
             materialCode: item.materialCode,
             materialName: item.materialName,
