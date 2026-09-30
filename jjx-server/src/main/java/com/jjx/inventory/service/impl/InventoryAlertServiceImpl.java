@@ -772,18 +772,24 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         }
         all.sort(this::compareOrderPriority);
 
-        // 全厂在途（按物料），分摊时作为供给
-        Map<Long, BigDecimal> inTransitAll = new java.util.HashMap<>();
+        // dev-20260930-025（P4c 时间轴）：在途按预计到货日分档；每单只算 ≤ 本单交期的到货，先到先用
+        Map<Long, java.util.List<Object[]>> transitByMat = new java.util.HashMap<>();
         try {
-            List<Map<String, Object>> rows = purchaseOrderItemMapper.selectInTransitByMaterial();
-            if (rows != null) for (Map<String, Object> r : rows) {
-                Object mid = r.get("material_id"); Object q = r.get("in_transit");
-                if (mid != null && q != null) inTransitAll.put(((Number) mid).longValue(), new BigDecimal(q.toString()));
+            List<Map<String, Object>> rows = purchaseOrderItemMapper.selectInTransitByMaterialAndDate();
+            if (rows != null) {
+                for (Map<String, Object> r : rows) {
+                    Object mid = r.get("material_id");
+                    Object q = r.get("qty");
+                    if (mid == null || q == null) continue;
+                    java.util.Date d = toDate(r.get("expected_date"));
+                    transitByMat.computeIfAbsent(((Number) mid).longValue(), k -> new java.util.ArrayList<>())
+                            .add(new Object[]{d, new BigDecimal(q.toString())});
+                }
             }
         } catch (Exception e) {
-            log.warn("P3-查询在途失败(按0处理): {}", e.getMessage());
+            log.warn("P4c-查询在途(按到货日)失败(按0处理): {}", e.getMessage());
         }
-        Map<Long, BigDecimal> supply = new java.util.HashMap<>();
+        Map<Long, BigDecimal> stockRemaining = new java.util.HashMap<>();
 
         for (SalesOrder o : all) {
             Map<Long, BigDecimal> needByMat = new java.util.HashMap<>();
@@ -813,23 +819,60 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             for (Map.Entry<Long, BigDecimal> e : needByMat.entrySet()) {
                 Long mid = e.getKey();
                 BigDecimal need = e.getValue();
-                BigDecimal sup = supply.get(mid);
-                if (sup == null) {
-                    InventoryStock stock = stockMapper.selectByMaterialId(mid);
-                    BigDecimal avail = (stock != null && stock.getAvailableQuantity() != null)
-                            ? stock.getAvailableQuantity() : BigDecimal.ZERO;
-                    avail = avail.subtract(safeStockOf(mid));
-                    sup = avail.add(inTransitAll.getOrDefault(mid, BigDecimal.ZERO));
-                    supply.put(mid, sup);
+                java.util.Date cutoff = o.getDeliveryDate();
+                BigDecimal stockBal = stockRemaining.computeIfAbsent(mid, this::materialStockAvailable);
+                java.util.List<Object[]> trs = transitByMat.get(mid);
+                // 本单可用 = 库存余额 + 到货日 ≤ 本单交期的在途余额
+                BigDecimal avail = stockBal;
+                if (trs != null) {
+                    for (Object[] t : trs) {
+                        java.util.Date d = (java.util.Date) t[0];
+                        if (cutoff == null || d == null || !d.after(cutoff)) {
+                            avail = avail.add((BigDecimal) t[1]);
+                        }
+                    }
                 }
-                BigDecimal take = sup.compareTo(BigDecimal.ZERO) > 0 ? need.min(sup) : BigDecimal.ZERO;
-                supply.put(mid, sup.subtract(take));
+                BigDecimal take = avail.compareTo(BigDecimal.ZERO) > 0 ? need.min(avail) : BigDecimal.ZERO;
+                // 消耗：先扣库存余额，再按到货日升序扣在途余额
+                BigDecimal left = take;
+                BigDecimal fromStock = left.min(stockBal.compareTo(BigDecimal.ZERO) > 0 ? stockBal : BigDecimal.ZERO);
+                stockRemaining.put(mid, stockBal.subtract(fromStock));
+                left = left.subtract(fromStock);
+                if (left.compareTo(BigDecimal.ZERO) > 0 && trs != null) {
+                    java.util.List<Object[]> sorted = new java.util.ArrayList<>(trs);
+                    sorted.sort((x, y) -> {
+                        java.util.Date dx = (java.util.Date) x[0];
+                        java.util.Date dy = (java.util.Date) y[0];
+                        if (dx == null && dy == null) return 0;
+                        if (dx == null) return 1;
+                        if (dy == null) return -1;
+                        return dx.compareTo(dy);
+                    });
+                    for (Object[] t : sorted) {
+                        if (left.compareTo(BigDecimal.ZERO) <= 0) break;
+                        java.util.Date d = (java.util.Date) t[0];
+                        if (cutoff != null && d != null && d.after(cutoff)) continue;
+                        BigDecimal bal = (BigDecimal) t[1];
+                        if (bal.compareTo(BigDecimal.ZERO) <= 0) continue;
+                        BigDecimal cx = left.min(bal);
+                        t[1] = bal.subtract(cx);
+                        left = left.subtract(cx);
+                    }
+                }
                 BigDecimal s = need.subtract(take);
                 if (s.compareTo(BigDecimal.ZERO) > 0) shortage.put(mid, s);
             }
             result.put(o.getOrderId(), shortage);
         }
         return result;
+    }
+
+    /** dev-20260930-025（P4c）：材料库存可用余额（可用量 − 安全库存） */
+    private BigDecimal materialStockAvailable(Long materialId) {
+        InventoryStock stock = stockMapper.selectByMaterialId(materialId);
+        BigDecimal avail = (stock != null && stock.getAvailableQuantity() != null)
+                ? stock.getAvailableQuantity() : BigDecimal.ZERO;
+        return avail.subtract(safeStockOf(materialId));
     }
 
     /** 订单优先级：加急 &gt; 先建单(create_time) &gt; order_id 小（与占用/入库同口径） */

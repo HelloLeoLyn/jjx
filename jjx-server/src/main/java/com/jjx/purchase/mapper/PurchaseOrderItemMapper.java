@@ -134,6 +134,18 @@ public interface PurchaseOrderItemMapper extends BaseMapper<PurchaseOrderItem> {
     java.util.List<java.util.Map<String, Object>> selectInTransitByMaterialBefore(@Param("asOf") java.util.Date asOf);
 
     /**
+     * dev-20260930-025（P4c 时间轴）：在途采购量按 物料 × 预计到货日 汇总。
+     *
+     * @return 每行 material_id + expected_date(可空) + qty
+     */
+    @Select("SELECT i.material_id AS material_id, o.expected_delivery_date AS expected_date, " +
+            "SUM(i.quantity - IFNULL(i.received_quantity, 0)) AS qty " +
+            "FROM purchase_order_item i INNER JOIN purchase_order o ON o.order_id = i.order_id " +
+            "WHERE o.receipt_status = 0 AND o.approval_status IN (1, 3, 4) " +
+            "GROUP BY i.material_id, o.expected_delivery_date")
+    java.util.List<java.util.Map<String, Object>> selectInTransitByMaterialAndDate();
+
+    /**
      * 查询待询价的明细列表
      *
      * @return 待询价明细列表
