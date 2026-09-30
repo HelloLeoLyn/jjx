@@ -52,6 +52,9 @@ public class SalesOrderStockReserve implements Serializable {
     /** 状态：0=有效 1=已释放 */
     private Integer status;
 
+    /** 占用类型：1=实预留(占批次) 2=待生产(缺货段，占未来产出)。dev-20260930-019 */
+    private Integer reserveType;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 

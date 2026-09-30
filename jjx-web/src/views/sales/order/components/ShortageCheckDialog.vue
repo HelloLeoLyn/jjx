@@ -37,6 +37,12 @@
           <el-table-column label="成品可用" width="100" align="right">
             <template #default="{ row }">{{ fmtNum(row.productAvailable) }}</template>
           </el-table-column>
+          <el-table-column label="已占(现货预留)" width="120" align="right">
+            <template #default="{ row }">{{ fmtNum(row.reservedQty) }}</template>
+          </el-table-column>
+          <el-table-column label="待生产(缺货段)" width="120" align="right">
+            <template #default="{ row }">{{ fmtNum(row.pendingQty) }}</template>
+          </el-table-column>
           <el-table-column label="需生产(BOM展开)" width="150" align="right">
             <template #default="{ row }">{{ fmtNum(row.needProduce) }}</template>
           </el-table-column>

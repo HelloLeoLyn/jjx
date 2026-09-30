@@ -61,6 +61,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final EngineeringBomItemMapper bomItemMapper;
     private final com.jjx.purchase.mapper.PurchaseOrderItemMapper purchaseOrderItemMapper;
     private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
+    private final com.jjx.inventory.mapper.SalesOrderStockReserveMapper salesOrderStockReserveMapper;
 
     /**
      * 库存主数据/预警事件统一发布（2026-09-21 dev-20260921-013 库存批 3/3）：
@@ -146,6 +147,27 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         Map<Long, String> nameMap = new java.util.HashMap<>();
         int noBomCount = 0;
         int stockCoveredCount = 0; // 产品现货直接覆盖的明细数
+        // dev-20260930-019（P2）：本单占用台账（产品 → [0]=实预留 [1]=待生产），供预览展示"占了多少/还差多少"
+        Map<Long, BigDecimal[]> occupancy = new java.util.HashMap<>();
+        try {
+            List<Map<String, Object>> occRows = salesOrderStockReserveMapper.sumActiveByProductAndType(orderId);
+            if (occRows != null) {
+                for (Map<String, Object> r : occRows) {
+                    if (r.get("productId") == null) continue;
+                    long pid = ((Number) r.get("productId")).longValue();
+                    int type = r.get("reserveType") == null ? 1 : ((Number) r.get("reserveType")).intValue();
+                    BigDecimal q = toDecimal(r.get("qty"));
+                    BigDecimal[] arr = occupancy.computeIfAbsent(pid, k -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+                    if (type == 2) {
+                        arr[1] = arr[1].add(q);
+                    } else {
+                        arr[0] = arr[0].add(q);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("查询订单占用台账失败(展示按0处理): orderId={}, err={}", orderId, e.getMessage());
+        }
         for (SalesOrderProduct p : products) {
             if (p.getProductId() == null) {
                 log.info("订单{}明细产品ID为空，跳过", orderNo);
@@ -161,7 +183,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             BigDecimal materialGap = orderQty.subtract(productAvailable);
             if (materialGap.compareTo(BigDecimal.ZERO) <= 0) {
                 stockCoveredCount++;
-                productRows.add(createProductRow(p, orderQty, productAvailable, BigDecimal.ZERO, "stock-covered"));
+                productRows.add(createProductRow(p, orderQty, productAvailable, BigDecimal.ZERO, "stock-covered", occupancy.get(p.getProductId())));
                 continue;
             }
             BigDecimal productionGap = orderQty.subtract(productAvailable.add(productWipRemaining(orderId, p.getProductId())));
@@ -175,11 +197,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     .eq(EngineeringBom::getApproveStatus, 3));
             if (bom == null) {
                 noBomCount++;
-                productRows.add(createProductRow(p, orderQty, productAvailable, productionGap, "no-bom"));
+                productRows.add(createProductRow(p, orderQty, productAvailable, productionGap, "no-bom", occupancy.get(p.getProductId())));
                 continue;
             }
             productRows.add(createProductRow(p, orderQty, productAvailable, productionGap,
-                    productionGap.compareTo(BigDecimal.ZERO) > 0 ? "to-produce" : "wip-covered"));
+                    productionGap.compareTo(BigDecimal.ZERO) > 0 ? "to-produce" : "wip-covered", occupancy.get(p.getProductId())));
             List<EngineeringBomItem> items = bomItemMapper.selectList(
                     new LambdaQueryWrapper<EngineeringBomItem>()
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
@@ -250,7 +272,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     }
 
     private Map<String, Object> createProductRow(SalesOrderProduct product, BigDecimal orderQty,
-                                                  BigDecimal productAvailable, BigDecimal needProduce, String status) {
+                                                  BigDecimal productAvailable, BigDecimal needProduce, String status,
+                                                  BigDecimal[] occupancy) {
         Map<String, Object> row = new java.util.LinkedHashMap<>();
         row.put("productId", product.getProductId());
         row.put("productCode", product.getProductCode());
@@ -259,6 +282,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         row.put("productAvailable", productAvailable);
         row.put("needProduce", needProduce);
         row.put("status", status);
+        // dev-20260930-019（P2）：本单占用台账投影——实预留 / 待生产
+        BigDecimal reserved = (occupancy == null || occupancy[0] == null) ? BigDecimal.ZERO : occupancy[0];
+        BigDecimal pending = (occupancy == null || occupancy[1] == null) ? BigDecimal.ZERO : occupancy[1];
+        row.put("reservedQty", reserved);
+        row.put("pendingQty", pending);
         return row;
     }
 

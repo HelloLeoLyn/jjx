@@ -130,6 +130,20 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
             BigDecimal shortage = orderQty.subtract(reserveQty);
             if (shortage.compareTo(BigDecimal.ZERO) > 0) {
                 shortageMap.put(p.getProductId(), shortage);
+                // dev-20260930-019（P2）：缺货段登记为「待生产」占用（reserve_type=2），
+                // 使订单全额需求都进占用台账（此前"货到才算占用"，缺货段不登记→别的订单当现货无主）
+                SalesOrderStockReserve pending = new SalesOrderStockReserve();
+                pending.setOrderId(orderId);
+                pending.setOrderNo(order.getOrderNo());
+                pending.setProductId(p.getProductId());
+                pending.setInventoryItemId(inventoryItem.getInventoryItemId());
+                pending.setMaterialId(p.getProductId());
+                pending.setMaterialCode(p.getProductCode());
+                pending.setMaterialName(p.getProductName());
+                pending.setReserveQuantity(shortage);
+                pending.setReserveType(2);
+                pending.setStatus(0);
+                reserveMapper.insert(pending);
             }
         }
         log.info("订单{}成品库存预留完成（产品维度），缺货产品数: {}", order.getOrderNo(), shortageMap.size());
@@ -147,6 +161,12 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
             return;
         }
         for (SalesOrderStockReserve r : reserves) {
+            // dev-20260930-019：待生产占用(type=2)无批次可释放，直接置已释放；实预留(type=1)走批次释放
+            if (r.getReserveType() != null && r.getReserveType() == 2) {
+                r.setStatus(1);
+                reserveMapper.updateById(r);
+                continue;
+            }
             // 040：产品维度释放（material_id 暂存产品ID）
             releaseInventoryItemReserved(r.getInventoryItemId(), r.getReserveQuantity());
             r.setStatus(1);
@@ -167,6 +187,7 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
                 new LambdaQueryWrapper<SalesOrderStockReserve>()
                         .eq(SalesOrderStockReserve::getOrderId, orderId)
                         .eq(SalesOrderStockReserve::getInventoryItemId, inventoryItemId)
+                        .eq(SalesOrderStockReserve::getReserveType, 1)
                         .eq(SalesOrderStockReserve::getStatus, 0));
         if (reserves == null || reserves.isEmpty()) {
             return;
@@ -195,6 +216,7 @@ public class OrderStockReserveServiceImpl implements OrderStockReserveService {
         List<SalesOrderStockReserve> reserves = reserveMapper.selectList(
                 new LambdaQueryWrapper<SalesOrderStockReserve>()
                         .eq(SalesOrderStockReserve::getOrderId, orderId)
+                        .eq(SalesOrderStockReserve::getReserveType, 1)
                         .eq(SalesOrderStockReserve::getStatus, 0));
         if (reserves != null) {
             for (SalesOrderStockReserve r : reserves) {
