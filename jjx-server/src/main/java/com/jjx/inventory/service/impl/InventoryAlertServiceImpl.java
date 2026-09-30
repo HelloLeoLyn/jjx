@@ -60,6 +60,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     private final EngineeringBomMapper bomMapper;
     private final EngineeringBomItemMapper bomItemMapper;
     private final com.jjx.purchase.mapper.PurchaseOrderItemMapper purchaseOrderItemMapper;
+    private final com.jjx.production.mapper.ProductionOrderMapper productionOrderMapper;
 
     /**
      * 库存主数据/预警事件统一发布（2026-09-21 dev-20260921-013 库存批 3/3）：
@@ -152,13 +153,20 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             }
             BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
 
-            // 第一步：先扣产品库存（产品维度现货优先）
-            BigDecimal productAvailable = getProductAvailable(p.getProductId());
-            BigDecimal needProduce = orderQty.subtract(productAvailable);
-            if (needProduce.compareTo(BigDecimal.ZERO) <= 0) {
+            // dev-20260930-018（P1 口径解耦）：
+            //   现货净可用 = max(0, 现货总量 − 优先级高于本单的有效订单未满足需求)
+            //   有效可用   = 现货净可用 + 本单在制未完工（用于判断"是否还需投产"，避免重复排产）
+            //   BOM 展开缺口 = max(0, 需求 − 现货净可用)（不含在制——已开工的部分照样要料）
+            BigDecimal productAvailable = productNetSpotAvailable(p.getProductId(), orderId);
+            BigDecimal materialGap = orderQty.subtract(productAvailable);
+            if (materialGap.compareTo(BigDecimal.ZERO) <= 0) {
                 stockCoveredCount++;
                 productRows.add(createProductRow(p, orderQty, productAvailable, BigDecimal.ZERO, "stock-covered"));
                 continue;
+            }
+            BigDecimal productionGap = orderQty.subtract(productAvailable.add(productWipRemaining(orderId, p.getProductId())));
+            if (productionGap.compareTo(BigDecimal.ZERO) < 0) {
+                productionGap = BigDecimal.ZERO;
             }
 
             EngineeringBom bom = bomMapper.selectOne(new LambdaQueryWrapper<EngineeringBom>()
@@ -167,16 +175,17 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     .eq(EngineeringBom::getApproveStatus, 3));
             if (bom == null) {
                 noBomCount++;
-                productRows.add(createProductRow(p, orderQty, productAvailable, needProduce, "no-bom"));
+                productRows.add(createProductRow(p, orderQty, productAvailable, productionGap, "no-bom"));
                 continue;
             }
-            productRows.add(createProductRow(p, orderQty, productAvailable, needProduce, "to-produce"));
+            productRows.add(createProductRow(p, orderQty, productAvailable, productionGap,
+                    productionGap.compareTo(BigDecimal.ZERO) > 0 ? "to-produce" : "wip-covered"));
             List<EngineeringBomItem> items = bomItemMapper.selectList(
                     new LambdaQueryWrapper<EngineeringBomItem>()
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
             for (EngineeringBomItem item : items) {
                 if (item.getMaterialId() == null) continue;
-                BigDecimal need = batchDemand(item, needProduce);
+                BigDecimal need = batchDemand(item, materialGap);
                 demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
                 codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
                 nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
@@ -185,7 +194,10 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
         java.util.Map<Long, java.math.BigDecimal> inTransitMap = new java.util.HashMap<>();
         try {
-            java.util.List<java.util.Map<String, Object>> transitRows = purchaseOrderItemMapper.selectInTransitByMaterial();
+            // dev-20260930-018：在途只算"预计到货日 ≤ 本单交期"（本单无交期则不过滤）
+            java.util.List<java.util.Map<String, Object>> transitRows = (order.getDeliveryDate() != null)
+                    ? purchaseOrderItemMapper.selectInTransitByMaterialBefore(order.getDeliveryDate())
+                    : purchaseOrderItemMapper.selectInTransitByMaterial();
             for (java.util.Map<String, Object> row : transitRows) {
                 Object mid = row.get("material_id");
                 Object qty = row.get("in_transit");
@@ -204,15 +216,9 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             InventoryStock stock = stockMapper.selectByMaterialId(materialId);
             BigDecimal available = (stock != null && stock.getAvailableQuantity() != null)
                     ? stock.getAvailableQuantity() : BigDecimal.ZERO;
-            // 094：可用量口径 = 总量 - 预留 - 材料预占占用（所有在途订单预占都算）
-            try {
-                BigDecimal preReserve = orderMaterialReserveMapper.selectReserveByMaterial(materialId);
-                if (preReserve.compareTo(BigDecimal.ZERO) > 0) {
-                    available = available.subtract(preReserve);
-                }
-            } catch (Exception e) {
-                log.warn("扣除材料预占占用失败(跳过): materialId={}", materialId);
-            }
+            // dev-20260930-018（P1）：材料可用量 = 现货可用 − 安全库存(material.safe_stock)；
+            // 不再扣"材料预占"(order_material_reserve)——旧账按全额需求生成，与新缺口口径冲突，留待 P2 统一（停扣）
+            available = available.subtract(safeStockOf(materialId));
             BigDecimal inTransit = inTransitMap.getOrDefault(materialId, BigDecimal.ZERO);
             BigDecimal actualGap = demand.subtract(available).subtract(inTransit);
             String status;
@@ -379,12 +385,12 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 if (p.getProductId() == null) {
                     continue;
                 }
-                // 第一步：先扣产品库存（产品维度现货优先）
+                // dev-20260930-018：净现货（扣优先级更高订单的未满足需求）；BOM 按"现货缺口"展开（不含在制）
                 BigDecimal orderQty = BigDecimal.valueOf(p.getQuantity() == null ? 0 : p.getQuantity());
-                BigDecimal productAvailable = getProductAvailable(p.getProductId());
+                BigDecimal productAvailable = productNetSpotAvailable(p.getProductId(), order.getOrderId());
                 BigDecimal needProduce = orderQty.subtract(productAvailable);
                 if (needProduce.compareTo(BigDecimal.ZERO) <= 0) {
-                    continue; // 现货足够，无需生产
+                    continue; // 现货净可用足够，无需备料
                 }
                 // 第二步：还需生产量 BOM 展开
                 EngineeringBom bom = bomMapper.selectOne(new LambdaQueryWrapper<EngineeringBom>()
@@ -434,15 +440,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             InventoryStock stock = stockMapper.selectByMaterialId(materialId);
             BigDecimal available = (stock != null && stock.getAvailableQuantity() != null)
                     ? stock.getAvailableQuantity() : BigDecimal.ZERO;
-            // 094：可用量口径 = 总量 - 预留 - 材料预占占用（所有在途订单预占都算）
-            try {
-                BigDecimal preReserve = orderMaterialReserveMapper.selectReserveByMaterial(materialId);
-                if (preReserve.compareTo(BigDecimal.ZERO) > 0) {
-                    available = available.subtract(preReserve);
-                }
-            } catch (Exception e) {
-                log.warn("全局缺料-扣除材料预占占用失败(跳过): materialId={}", materialId);
-            }
+            // dev-20260930-018（P1）：可用量 = 现货可用 − 安全库存；不再扣材料预占（旧账留待 P2 统一）
+            available = available.subtract(safeStockOf(materialId));
             BigDecimal inTransit = inTransitMap.getOrDefault(materialId, BigDecimal.ZERO);
             BigDecimal actualGap = demand.subtract(available).subtract(inTransit);
             if (actualGap.compareTo(BigDecimal.ZERO) <= 0) {
@@ -527,6 +526,117 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         if (stock == null || stock.getTotalQuantity() == null) return BigDecimal.ZERO;
         return stock.getTotalQuantity().subtract(
                 stock.getTotalReserved() == null ? BigDecimal.ZERO : stock.getTotalReserved());
+    }
+
+    /**
+     * dev-20260930-018（P1）：材料安全库存（inventory_material.safe_stock），查不到按 0。
+     */
+    private BigDecimal safeStockOf(Long materialId) {
+        try {
+            InventoryMaterial material = materialMapper.selectById(materialId);
+            if (material != null && material.getSafeStock() != null) {
+                return material.getSafeStock();
+            }
+        } catch (Exception e) {
+            log.warn("查询安全库存失败(按0处理): materialId={}, err={}", materialId, e.getMessage());
+        }
+        return BigDecimal.ZERO;
+    }
+
+    /**
+     * dev-20260930-018（P1）：成品"净现货可用" =
+     * max(0, 现货总量 − Σ 优先级高于本单的有效订单(已审核4/已确认6/生产中7)未满足需求)。
+     * 优先级（先审先占的稳定代理）：加急(is_urgent=1)优先 &gt; 先建单(create_time)优先 &gt; order_id 小优先；
+     * 本单不扣自己（天然排除）。
+     */
+    private BigDecimal productNetSpotAvailable(Long productId, Long currentOrderId) {
+        BigDecimal onHand = getProductAvailable(productId);
+        if (currentOrderId == null) {
+            return onHand;
+        }
+        BigDecimal priorUnmet = BigDecimal.ZERO;
+        try {
+            SalesOrder current = orderMapper.selectById(currentOrderId);
+            List<Map<String, Object>> rows = orderProductMapper.selectEffectiveDemandByProduct(productId);
+            if (rows != null && current != null) {
+                for (Map<String, Object> row : rows) {
+                    Object oidObj = row.get("order_id");
+                    if (oidObj == null) continue;
+                    long oid = ((Number) oidObj).longValue();
+                    if (oid == currentOrderId) continue;
+                    if (isBeforeInAllocation(row, current)) {
+                        priorUnmet = priorUnmet.add(unmetDemand(row));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("计算成品净现货可用失败(按现货保守处理): productId={}, currentOrder={}, err={}",
+                    productId, currentOrderId, e.getMessage());
+        }
+        BigDecimal net = onHand.subtract(priorUnmet);
+        return net.compareTo(BigDecimal.ZERO) > 0 ? net : BigDecimal.ZERO;
+    }
+
+    private BigDecimal unmetDemand(Map<String, Object> row) {
+        BigDecimal unmet = toDecimal(row.get("demand")).subtract(toDecimal(row.get("shipped")));
+        return unmet.compareTo(BigDecimal.ZERO) > 0 ? unmet : BigDecimal.ZERO;
+    }
+
+    /** 排序键：row 是否排在 current 之前（加急 &gt; 先建单 &gt; order_id 小）。 */
+    private boolean isBeforeInAllocation(Map<String, Object> row, SalesOrder current) {
+        int rowUrgent = row.get("is_urgent") == null ? 0 : ((Number) row.get("is_urgent")).intValue();
+        int curUrgent = current.getIsUrgent() == null ? 0 : current.getIsUrgent();
+        if (rowUrgent != curUrgent) {
+            return rowUrgent > curUrgent;
+        }
+        java.util.Date rowTime = toDate(row.get("create_time"));
+        java.util.Date curTime = toDate(current.getCreateTime());
+        if (rowTime != null && curTime != null) {
+            int c = rowTime.compareTo(curTime);
+            if (c != 0) return c < 0;
+        } else if (rowTime != null) {
+            return true;
+        } else if (curTime != null) {
+            return false;
+        }
+        return ((Number) row.get("order_id")).longValue() < current.getOrderId();
+    }
+
+    private BigDecimal toDecimal(Object o) {
+        return o == null ? BigDecimal.ZERO : new BigDecimal(o.toString());
+    }
+
+    private java.util.Date toDate(Object o) {
+        if (o == null) return null;
+        if (o instanceof java.util.Date) return (java.util.Date) o;
+        if (o instanceof java.time.LocalDate) return java.sql.Date.valueOf((java.time.LocalDate) o);
+        if (o instanceof java.time.LocalDateTime) return java.sql.Timestamp.valueOf((java.time.LocalDateTime) o);
+        return null;
+    }
+
+    /**
+     * dev-20260930-018（P1）：本单在该成品上的在制未完工量（Σ production_order.remaining_quantity）。
+     * 在制未完工 = 已审核2/已计划4/待开始5/进行中6/已暂停7/已超期11。
+     */
+    private BigDecimal productWipRemaining(Long salesOrderId, Long productId) {
+        if (salesOrderId == null || productId == null) return BigDecimal.ZERO;
+        try {
+            List<com.jjx.production.domain.entity.ProductionOrder> wos =
+                    productionOrderMapper.selectBySalesOrderId(salesOrderId);
+            if (wos == null || wos.isEmpty()) return BigDecimal.ZERO;
+            BigDecimal sum = BigDecimal.ZERO;
+            for (com.jjx.production.domain.entity.ProductionOrder wo : wos) {
+                if (!productId.equals(wo.getProductId())) continue;
+                Integer st = wo.getOrderStatus();
+                if (st == null || (st != 2 && st != 4 && st != 5 && st != 6 && st != 7 && st != 11)) continue;
+                if (wo.getRemainingQuantity() != null) sum = sum.add(wo.getRemainingQuantity());
+            }
+            return sum;
+        } catch (Exception e) {
+            log.warn("查询本单在制失败(按0处理): orderId={}, productId={}, err={}",
+                    salesOrderId, productId, e.getMessage());
+            return BigDecimal.ZERO;
+        }
     }
 
     @Override

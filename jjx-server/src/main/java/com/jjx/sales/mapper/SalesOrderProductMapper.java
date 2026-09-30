@@ -43,4 +43,24 @@ public interface SalesOrderProductMapper extends BaseMapper<SalesOrderProduct> {
             "LEFT JOIN product_category pc ON pc.category_id = p.category_id " +
             "WHERE sop.order_id = #{orderId}")
     List<ProductValidationVO> selectProductValidationByOrderId(@Param("orderId") Long orderId);
+
+    /**
+     * dev-20260930-018（P1 齐套口径）：按产品汇总「有效订单（已审核4/已确认6/生产中7）」
+     * 的订单需求与行级已发（来自 sales_delivery_item）。用于计算成品"净现货可用"。
+     *
+     * @param productId 产品ID
+     * @return 每行：order_id / is_urgent / delivery_date / demand / shipped
+     */
+    @Select("SELECT sop.order_id AS order_id, so.is_urgent AS is_urgent, so.create_time AS create_time, " +
+            "       SUM(sop.quantity) AS demand, IFNULL(SUM(d.shipped), 0) AS shipped " +
+            "FROM sales_order_product sop " +
+            "INNER JOIN sales_order so ON so.order_id = sop.order_id " +
+            "LEFT JOIN (SELECT p2.id AS opid, SUM(sdi.quantity) AS shipped " +
+            "           FROM sales_delivery_item sdi " +
+            "           INNER JOIN sales_order_product p2 ON p2.id = sdi.order_product_id " +
+            "           INNER JOIN sales_delivery sd ON sd.delivery_id = sdi.delivery_id " +
+            "           WHERE sd.deleted = 0 GROUP BY p2.id) d ON d.opid = sop.id " +
+            "WHERE sop.product_id = #{productId} AND so.order_status IN (4, 6, 7) AND so.deleted = 0 " +
+            "GROUP BY sop.order_id, so.is_urgent, so.create_time")
+    List<java.util.Map<String, Object>> selectEffectiveDemandByProduct(@Param("productId") Long productId);
 }
