@@ -55,7 +55,16 @@ public class LocalEventPublisher implements EventPublisher {
     @Override
     public void fire(String eventCode, Map<String, Object> payload) {
         try {
-            applicationEventPublisher.publishEvent(payload);
+            // dev-20260930-028：本地 Spring 事件必须自带「事件名」——桥接类监听器用
+            // @EventListener(condition = "#payload?.eventCode == 'order.delivering'") 判断，
+            // 而 EventPublishSupport.payload 不带该键 → 条件恒 false、监听器静默不执行
+            // （发货不扣库存、完工不自动建入库单，当天日志两条桥均 0 次执行）。
+            // payload 可能是不可变 Map（Map.of），先复制再写。
+            Map<String, Object> eventPayload = payload == null
+                    ? new java.util.HashMap<>()
+                    : new java.util.HashMap<>(payload);
+            eventPayload.put("eventCode", eventCode);
+            applicationEventPublisher.publishEvent(eventPayload);
         } catch (Exception e) {
             log.warn("发布 Spring 本地事件失败，不影响后续通知逻辑: eventCode={}", eventCode, e);
         }

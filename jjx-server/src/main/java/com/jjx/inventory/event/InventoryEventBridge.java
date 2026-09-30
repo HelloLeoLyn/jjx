@@ -29,15 +29,22 @@ public class InventoryEventBridge {
     public void onProductionCompleted(Map<String, Object> payload) {
         log.info("🏭 生产完工联动入库: {}", payload);
         try {
+            // dev-20260930-028：关键业务键缺失时明确报错，不再拿空单号去建「无来源」入库单
+            Object orderNoVal = payload.get("orderNo");
+            String orderNo = orderNoVal == null ? "" : String.valueOf(orderNoVal).trim();
+            if (orderNo.isEmpty()) {
+                log.error("   ❌ 生产完工联动缺少 orderNo，未建完工入库单: payload={}", payload);
+                return;
+            }
             Map<String, Object> params = new HashMap<>();
             params.put("sourceType", "production");
-            params.put("sourceNo", payload.getOrDefault("orderNo", ""));
+            params.put("sourceNo", orderNo);
             params.put("inboundType", "production");
             params.put("remark", "生产完工自动入库");
             Long inboundId = inboundService.create(params);
             log.info("   ✅ 完工入库单已创建: inboundId={}", inboundId);
         } catch (Exception e) {
-            log.error("   ❌ 创建完工入库单失败: {}", e.getMessage());
+            log.error("   ❌ 创建完工入库单失败: {}", e.getMessage(), e);
         }
     }
 
@@ -67,15 +74,11 @@ public class InventoryEventBridge {
                 }
             }
 
-            // 兜底：使用通用方式创建
-            Map<String, Object> params = new HashMap<>();
-            params.put("sourceType", "sales");
-            params.put("sourceNo", payload.getOrDefault("orderNo", ""));
-            params.put("outboundType", "sales");
-            params.put("remark", "销售发货自动出库");
-            Long outboundId = outboundService.create(params);
-            outboundService.confirm(outboundId, null, "system");
-            log.info("   ✅ 销售出库单已创建并确认: outboundId={}", outboundId);
+            // dev-20260930-028：删掉原「通用兜底建单」（create(params)+confirm）——
+            // 它建出的出库单没有明细、没有来源单号，正是「账对不上」的第二个来源。
+            // 关键键缺失时明确报错（不再静默，也不造脏单）。
+            throw new IllegalStateException(
+                    "发货联动缺少 deliveryId / salesOrderId，未建销售出库单：payload=" + payload);
         } catch (Exception e) {
             log.error("   ❌ 创建销售出库单失败: {}", e.getMessage(), e);
         }
