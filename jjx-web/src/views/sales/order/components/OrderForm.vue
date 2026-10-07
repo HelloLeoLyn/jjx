@@ -293,7 +293,7 @@
 
     <!-- 金额汇总 -->
     <el-divider content-position="left">金额汇总</el-divider>
-    <el-row :gutter="20">
+    <el-row class="amount-summary" :gutter="20">
       <el-col :span="8">
         <el-form-item label="小计金额">
           <el-input v-model="form.subtotalAmount" readonly style="width: 100%">
@@ -323,7 +323,7 @@
         </el-form-item>
       </el-col>
     </el-row>
-    <el-row :gutter="20">
+    <el-row class="amount-summary" :gutter="20">
       <el-col :span="8">
         <el-form-item label="运费">
           <el-input-number
@@ -358,7 +358,7 @@
         </el-form-item>
       </el-col>
     </el-row>
-    <el-row :gutter="20" v-if="form.currency && form.currency !== 'CNY'">
+    <el-row class="amount-summary" :gutter="20" v-if="form.currency && form.currency !== 'CNY'">
       <el-col :span="8">
         <el-form-item :label="`外币总金额（${form.currency}）`">
           <el-input v-model="foreignCurrencyDisplay" readonly style="width: 100%">
@@ -827,6 +827,11 @@ defineExpose({
 </script>
 
 <style scoped>
+/* 金额汇总中的数字输入与只读金额统一左对齐。 */
+.amount-summary :deep(.el-input-number .el-input__inner) {
+  text-align: left;
+}
+
 /* 无边框输入框样式 */
 .borderless-input :deep(.el-input__wrapper) {
   box-shadow: none;
