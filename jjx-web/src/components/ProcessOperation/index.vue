@@ -1,7 +1,7 @@
 <template>
   <div class="process-operation" :class="{ 'is-composite': items.length > 1 }">
-    <draggable
-      v-if="draggable"
+    <VueDraggable
+      v-if="props.draggable"
       v-model="localItems"
       class="operation-children"
       item-key="key"
@@ -48,7 +48,7 @@
           </button>
         </div>
       </template>
-    </draggable>
+    </VueDraggable>
     <div v-else class="operation-children">
       <template v-for="(item, index) in items" :key="item.key ?? index">
         <span v-if="index > 0" class="plus">+</span>
@@ -86,7 +86,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import draggable from 'vuedraggable'
+import VueDraggable from 'vuedraggable'
 import type { SortableEvent } from 'sortablejs'
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import type { ProcessOperationItem } from './types'
