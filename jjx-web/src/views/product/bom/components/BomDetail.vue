@@ -38,18 +38,12 @@
         detail.approveRemark || '-'
       }}</el-descriptions-item>
     </el-descriptions>
-    <el-table :data="bomDetailList" border style="width: 100%" stripe>
-      <el-table-column label="序号" type="index" width="60" align="center" />
-      <el-table-column label="物料编码" prop="materialCode" width="180" />
-      <el-table-column label="物料名称" prop="materialName" width="180" />
-      <!-- <el-table-column label="规格型号" prop="specification" width="120" /> -->
-      <el-table-column label="单位" prop="unit" width="80" />
-      <el-table-column label="数量" prop="quantity" width="80" align="right" />
-      <el-table-column label="损耗率(%)" prop="lossRate" width="100" align="right" />
-      <el-table-column label="模数" prop="moduleQty" width="80" align="right" />
-      <el-table-column label="基数" prop="baseQty" width="80" align="right" />
-      <el-table-column label="备注" prop="remark" />
-    </el-table>
+    <BomDetailTable :items="bomDetailList" height="auto" stripe>
+      <template #extra-columns>
+        <el-table-column label="模数" prop="moduleQty" width="80" align="right" />
+        <el-table-column label="基数" prop="baseQty" width="80" align="right" />
+      </template>
+    </BomDetailTable>
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="visible = false">关闭</el-button>
@@ -65,6 +59,7 @@ import { productBomApi } from '@/api/product/bom'
 import { parseDate, parseTime } from '@/utils/format'
 import type { EngineeringBomItem, EngineeringBom } from '@/types/product/bom'
 import { BomStatusEnum } from '@/enums/product'
+import BomDetailTable from './BomDetailTable.vue'
 
 // Props
 const props = defineProps({
