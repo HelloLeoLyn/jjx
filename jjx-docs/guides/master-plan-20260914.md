@@ -52,7 +52,7 @@
 **已交付**（提交 `c6b98514` + `9918ebfd`）
 - 6 个手动脚本 + 2 个钩子 + 3 条 npm 门禁，全部在命令手册有条目
 - 统一契约：无参数＝只读体检；`--dry-run`；`--task dev-YYYYMMDD-NNN`；`--help` 齐；退出码 `0`=成功、`1`=失败或有差异；**危险等级 🟢 只读 / 🟡 写文件 / 🔴 改数据库**；每条声明前置
-- 新脚本：`db-export-init-subset.sh`（清单驱动 + `--verify` 只读校验）、`db-clean-test-data.sh`（体检 → 全库备份 → 手输库名确认 → 执行，非终端拒绝）
+- 新脚本：`db-export-init-subset.sh`（清单驱动 + `--verify` 只读校验）、`db-clean-test-data.sh`（体检 → 校验手工备份 → 手输库名确认 → 执行，非终端拒绝）
 
 **维持方式**：新增或修改 `scripts/` 下脚本，必须同步命令手册 + 补 `--help`/等级/前置（规则见 CONVENTIONS §1）。
 

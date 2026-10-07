@@ -5,6 +5,7 @@
 被取代 / 取代：无
 什么情况看这篇：要跑仓库里的脚本（迁移/备份/导出/清理/自检）时，先看这一页
 最后复核：2026-09-14
+（2026-10-07 复核：备份口径同步为 CONVENTIONS §2 2026-09-28 版——脚本不再自动备份，改为校验手工备份存在；见 §2/§4/§6）
 
 > 规则：**新增或修改 `scripts/` 下的脚本，必须同步更新这一页。**（规范见 `standards/CONVENTIONS.md`）
 > 危险等级：🟢 只读（随时可跑） / 🟡 写文件或本地配置（可回退） / 🔴 改数据库（必须走"备份 → 人工确认 → 执行"）
@@ -44,14 +45,14 @@
 
 ## 2. scripts/db-migrate.sh —— 迁移唯一执行通道
 
-- 用途：执行迁移的**唯一**入口（内部固定顺序：备份 → 执行 → 写 `sys_config.ops.schema.*`；备份失败或执行失败都不写版本）。
+- 用途：执行迁移的**唯一**入口（内部固定顺序：**校验手工备份** → 执行 → 写 `sys_config.ops.schema.*`；无手工备份或执行失败都不写版本）。
 - 危险等级：🔴 改数据库（执行迁移）／🟡 只写版本记录（`--record`）／🟢 只读（`--status`）。
-- 前置：迁移文件放在 `jjx-docs/sql/migrations/`（`NN_<描述>.sql`）；`JJX_BACKUP_DIR` 可写（2026-09-23 起默认**仓库内** `jjx-docs/sql/backups/`，全库快照默认排除 `hr_employee`）；要动库必须带真实任务码。备份按风险分级：高风险→全库快照，低风险→只备本次涉及的表（文件头 `-- risk: high|low` 可覆盖），任何情况都不许零备份；全库快照每日只留最新一份、超 `KEEP_DAYS`(默认14天)自动清理。
+- 前置：迁移文件放在 `jjx-docs/sql/migrations/`（`NN_<描述>.sql`）；**已有手工全库备份**（默认**仓库内** `jjx-docs/sql/backups/`，或 `--backup`/`JJX_MIGRATE_BACKUP` 指定）——2026-09-28 起脚本**不再自动备份**，只校验手工备份存在才放行；备份必须排除 `hr_employee`。要动库必须带真实任务码。
 - 命令：
   - 查版本：`bash scripts/db-migrate.sh --status`
   - 执行：`bash scripts/db-migrate.sh <NN_x.sql> --yes --task dev-YYYYMMDD-NNN`
   - 接管已有库只登记版本：`bash scripts/db-migrate.sh --record <NN> --yes`
-- 输出怎么读：三段 1/3 备份（给字节数/表数/md5）→ 2/3 执行 → 3/3 记录版本；中途报错即中止且不记版本。
+- 输出怎么读：四段 1/4 校验手工备份（给字节数/表数/md5）→ 2/4 执行迁移 → 3/4 记录已应用版本 → 4/4 建表闸复核（提示）；中途报错即中止且不记版本。
 - 退出码：0=成功，非 0=中止（未执行或未记版本）。
 - 注意：**不要直接 `mysql < 文件`** 绕过本脚本（等于没有备份、也没有版本记录）。
 
@@ -71,15 +72,16 @@
 ## 4. scripts/db-clean-test-data.sh —— 清理测试数据入口
 
 - 用途：`jjx-docs/sql/00_clean_test_data.sql`（整表 TRUNCATE + 1 条 DELETE，表清单以脚本实际解析为准）的**唯一**入口。
-- 危险等级：🟢 无参数/`--domains`=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 全库备份 → 人工确认 → 执行）。
-- 前置：`--execute` 必须**在终端手工执行**（agent/管道一律拒绝）；确认方式=手工输入库名 `jjx_erp_db`；`JJX_BACKUP_DIR` 可写。
+- 危险等级：🟢 无参数/`--domains`=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 校验手工备份 → 人工确认 → 执行）。
+- 前置：`--execute` 必须**在终端手工执行**（agent/管道一律拒绝）；确认方式=手工输入库名 `jjx_erp_db`；**已有今天的全库备份**（默认 `JJX_BACKUP_DIR`＝仓库内 `jjx-docs/sql/backups/`，或 `--backup`/`JJX_CLEAN_BACKUP` 指定）——2026-09-28 起脚本**不再自动备份**、只校验手工备份存在才放行；备份必须排除 `hr_employee`。
 - 域参数：`--domains <逗号分隔>`，可选 `purchase` / `inventory` / `quality`，可组合；域模式跳过 `sys_task` 清理。
 - 命令：
   - 体检：`bash scripts/db-clean-test-data.sh`
   - 只体检三域：`bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality`
-  - 真清：`bash scripts/db-clean-test-data.sh --execute`
+  - 真清：`bash scripts/db-clean-test-data.sh --execute`（用今天的全库备份；无备份即中止）
   - 真清三域：`bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality --execute`（仍须终端手输库名）
-- 输出怎么读：① TRUNCATE 组（有数据的表逐条列出行数 + 合计）② DELETE 组（将删/保留条数）③ 与初始化清单交叉（非 0 要警惕）④ **覆盖率校验**（库表是否都有归宿：清理清单 ∪ 保留白名单；有未登记的表即**阻断清理**，提示是加进清理段还是补进保留清单/`RETAINED_TABLES`）→ 顺带自动跑一次快照校验 → 执行后打印备份路径/md5，并在 `$JJX_BACKUP_DIR/clean-test-data-log.txt` 留痕（脚本会清空 `sys_oper_log`，库里留不下痕迹）。
+  - 指定备份：`bash scripts/db-clean-test-data.sh --execute --backup <手工全库备份.sql>`
+- 输出怎么读：① TRUNCATE 组（有数据的表逐条列出行数 + 合计）② DELETE 组（将删/保留条数）③ **覆盖率校验**（库表是否都有归宿：清理清单 ∪ 保留白名单；有未登记的表即**阻断清理**，提示是加进清理段还是补进保留清单/`RETAINED_TABLES`）→ `--execute` 时先**校验手工备份存在**并打印备份路径/md5 → 执行后在 `$JJX_BACKUP_DIR/clean-test-data-log.txt` 留痕（脚本会清空 `sys_oper_log`，库里留不下痕迹）。
 - 退出码：0=体检通过或清理成功，1=拒绝执行/中止/失败。
 
 ## 5. scripts/clean-archive-ocr-data.sh —— 清档案 OCR 测试数据（并行会话产出）
@@ -93,7 +95,7 @@
 ## 6. scripts/db-backup.sh —— 独立全库备份（2026-09-14 新增，任务 dev-20260914-027）
 
 - 用途：不触发任何库内变更，只想**立刻拿一份全库快照**时用（补上此前只能手敲 `mysqldump` = 绕过规范入口的缺口）。
-- 与其它脚本的边界：迁移/清测试数据各自**内部自带**全库备份（本脚本不替代它们）；`db-export-init-subset.sh` 出的是初始化交付物、**不是备份**。
+- 与其它脚本的边界：迁移/清测试数据脚本（§2/§4）**已不再内部自带备份**，都改为「校验手工备份存在才放行」（2026-09-28 口径）——本脚本仍是想立刻拿一份全库快照时的独立入口；`db-export-init-subset.sh` 出的是初始化交付物、**不是备份**。
 - 危险等级：🟡 只读数据库 + 写备份文件（可回退）；`--dry-run` 为 🟢 纯预览（不落盘）。
 - 前置：`mysqldump` 可用；数据库可达；`JJX_BACKUP_DIR`（2026-09-23 起默认**仓库内** `jjx-docs/sql/backups/`）可写。
 - 默认排除：导出**默认带 `--ignore-table=jjx_erp_db.hr_employee`**（人事档案表含身份证密文/住址/电话；2026-09-23 用户口径：只排除它，其余都能入库）；要包含用 `JJX_BACKUP_EXCLUDE_DEFAULT=` 显式覆盖。
