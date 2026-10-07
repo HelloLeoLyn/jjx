@@ -204,21 +204,23 @@
         </template>
       </el-table-column> -->
 
-      <!-- 项目（项目结构，字典 process_category） -->
-      <el-table-column label="项目" prop="projectCategory" width="120">
+      <!-- 项目（标准工序） -->
+      <el-table-column label="项目" prop="processName" width="160">
         <template #default="scope">
           <el-select
-            v-model="scope.row.projectCategory"
-            placeholder="请选择"
+            v-model="scope.row.processId"
+            placeholder="请选择标准工序"
             size="small"
+            filterable
             clearable
             style="width: 100%"
+            @change="(val: number | undefined) => handleProjectChange(scope.row, val)"
           >
             <el-option
-              v-for="item in projectCategoryOptions"
-              :key="item.itemValue"
-              :label="item.label"
-              :value="item.itemValue"
+              v-for="item in processOptions"
+              :key="item.processId"
+              :label="item.processName"
+              :value="item.processId"
             />
           </el-select>
         </template>
@@ -264,7 +266,8 @@ import { debounce } from 'lodash-es'
 import type { EngineeringBomItem } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
-import { useDict } from '@/composables/useDict'
+import { standardProcessApi } from '@/api/product/standardProcess'
+import type { StandardProcessItem } from '@/types/product/standardProcess'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 
 // ==================== Props & Emits ====================
@@ -300,8 +303,27 @@ const tableLoading = ref(false)
 const refreshLoading = ref(false)
 const tableHeight = ref(400)
 
-// 项目结构（字典 process_category：面板/上线/下线/其他）
-const { options: projectCategoryOptions } = useDict('process_category')
+// 项目（标准工序）选项：BOM 明细「项目」列取值 = 标准工序
+const processOptions = ref<StandardProcessItem[]>([])
+async function loadProcessOptions() {
+  try {
+    const res = await standardProcessApi.pageQuery({
+      pageNum: 1,
+      pageSize: 200,
+      isEnabled: 1,
+      orderByColumn: 'displayOrder',
+      isAsc: 'asc',
+    })
+    processOptions.value = res.data?.records || []
+  } catch (error) {
+    console.error('加载标准工序失败:', error)
+  }
+}
+
+const handleProjectChange = (row: EngineeringBomItem, processId: number | undefined) => {
+  const p = processOptions.value.find((x) => x.processId === processId)
+  row.processName = p ? p.processName : ''
+}
 
 // 单位选项
 const unitOptions = [
@@ -417,6 +439,7 @@ const calculateTableHeight = () => {
 
 onMounted(() => {
   calculateTableHeight()
+  loadProcessOptions()
   window.addEventListener('resize', calculateTableHeight)
   nextTick(() => {
     // 树形模式：拖拽排序已禁用

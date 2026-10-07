@@ -53,9 +53,14 @@ public class EngineeringBomItem {
     private String specification;
 
     /**
-     * 项目结构（process_category 字典：PANEL 面板 / UP_LINE 上线 / DOWN_LINE 下线 / OTHER 其他）
+     * 项目（标准工序）引用 engineering_standard_process.process_id
      */
-    private String projectCategory;
+    private Long processId;
+
+    /**
+     * 项目（标准工序）名称冗余
+     */
+    private String processName;
 
     /**
      * 单位

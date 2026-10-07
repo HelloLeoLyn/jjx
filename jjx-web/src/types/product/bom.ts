@@ -39,8 +39,10 @@ export interface EngineeringBomItem {
   materialCode: string
   materialName: string
   specification: string
-  /** 项目结构（process_category 字典：PANEL/UP_LINE/DOWN_LINE/OTHER） */
-  projectCategory?: string
+  /** 项目（标准工序）引用 process_id */
+  processId?: number
+  /** 项目（标准工序）名称冗余 */
+  processName?: string
   unit: string
   quantity: number
   /** 应用料（含损耗）= 用量×(1+损耗率/100) */

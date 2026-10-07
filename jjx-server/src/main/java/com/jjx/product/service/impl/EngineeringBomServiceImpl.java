@@ -656,7 +656,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         item.setMaterialCode(dto.getMaterialCode());
         item.setMaterialName(dto.getMaterialName());
         item.setSpecification(dto.getSpecification());
-        item.setProjectCategory(dto.getProjectCategory());
+        item.setProcessId(dto.getProcessId());
+        item.setProcessName(dto.getProcessName());
         item.setUnit(dto.getUnit());
         item.setQuantity(dto.getQuantity());
         item.setLossRate(dto.getLossRate());

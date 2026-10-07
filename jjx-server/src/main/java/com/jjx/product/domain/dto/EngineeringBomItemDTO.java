@@ -34,8 +34,11 @@ public class EngineeringBomItemDTO {
     /** 规格型号 */
     private String specification;
 
-    /** 项目结构（process_category 字典：PANEL/UP_LINE/DOWN_LINE/OTHER） */
-    private String projectCategory;
+    /** 项目（标准工序）引用 engineering_standard_process.process_id */
+    private Long processId;
+
+    /** 项目（标准工序）名称冗余 */
+    private String processName;
 
     /** 单位 */
     private String unit;
