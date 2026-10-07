@@ -10,6 +10,9 @@
       <el-table-column label="序号" type="index" width="60" align="center" />
       <el-table-column label="物料编码" prop="materialCode" width="120" />
       <el-table-column label="物料名称" prop="materialName" width="180" />
+      <el-table-column label="项目" prop="processName" width="160" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.processName || '-' }}</template>
+      </el-table-column>
       <el-table-column label="规格型号" prop="specification" width="120" />
       <el-table-column label="单位" prop="unit" width="80" />
       <el-table-column label="数量" prop="quantity" width="80" align="right">
