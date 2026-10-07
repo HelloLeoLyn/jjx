@@ -226,7 +226,7 @@ public final class ProductEnums {
         }
 
         public boolean isEditable() {
-            return this == DRAFT;
+            return this == DRAFT || this == REJECT;
         }
     }
 

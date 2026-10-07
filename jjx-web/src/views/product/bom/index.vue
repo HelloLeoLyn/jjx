@@ -70,7 +70,7 @@
             type="success"
             plain
             icon="Edit"
-            :disabled="single"
+            :disabled="!canEditSelected"
             @click="() => handleUpdate()"
             v-hasPermi="['engineering:bom:edit']"
             >修改</el-button
@@ -193,7 +193,7 @@ defineOptions({
   name: 'EngineeringBom',
 })
 
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
 import { parseTime, parseDate } from '@/utils/format'
@@ -205,9 +205,17 @@ import type { EngineeringBomQueryParams, EngineeringBom } from '@/types/product/
 import { BomStatusEnum, ProductEnum, ProductActions } from '@/enums/product'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
+const canEditBom = (bom?: EngineeringBom | null) =>
+  !!bom && BomStatusEnum.canDo(bom.approveStatus, ProductActions.EDIT)
+
 const bomActions: TableAction<EngineeringBom>[] = [
   { key: 'trace', label: '流水' },
-  { key: 'edit', label: '修改', permission: 'engineering:bom:edit' },
+  {
+    key: 'edit',
+    label: '修改',
+    permission: 'engineering:bom:edit',
+    visible: ({ row }) => canEditBom(row),
+  },
 
   {
     key: 'submit',
@@ -261,6 +269,7 @@ const open = ref(false)
 const bomDetailOpen = ref(false)
 const bomApproveOpen = ref(false)
 const selectedBom = ref<EngineeringBom | null>(null)
+const canEditSelected = computed(() => !single.value && canEditBom(selectedBom.value))
 const selectedBomId = ref<number | undefined>(undefined)
 const selectedBomForApprove = ref<number | undefined>(undefined)
 
@@ -337,8 +346,12 @@ const handleAdd = () => {
 
 // 修改按钮操作
 const handleUpdate = (row?: EngineeringBom) => {
-  const bomId = row?.bomId || ids.value[0]
-  selectedBomId.value = bomId
+  const bom = row || selectedBom.value
+  if (!bom || !canEditBom(bom)) {
+    ElMessage.warning('只有草稿或已驳回状态的BOM可以修改')
+    return
+  }
+  selectedBomId.value = bom.bomId
   open.value = true
 }
 
