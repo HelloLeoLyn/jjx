@@ -26,13 +26,13 @@
         </template>
       </el-table-column>
       <slot name="extra-columns" />
-      <el-table-column label="来源类型" prop="sourceType" width="100">
+      <!-- <el-table-column label="来源类型" prop="sourceType" width="100">
         <template #default="scope">
           <el-tag :type="SourceTypeEnum.getTagProps(scope.row.sourceType)?.type" size="small">
             {{ SourceTypeEnum.getLabel(scope.row.sourceType) }}
           </el-tag>
         </template>
-      </el-table-column>
+      </el-table-column> -->
 
       <el-table-column label="备注" prop="remark" />
     </el-table>
