@@ -105,9 +105,8 @@ public class PurchasePaymentController extends BaseController {
     @SaCheckPermission("purchase:payment:approve")
     public Result<Void> approve(@PathVariable Long paymentId,
                                 @RequestParam String approvalStatus,
-                                @RequestParam String approverName,
                                 @RequestParam(required = false) String approvalComment) {
-        paymentService.approvePayment(paymentId, approvalStatus, approverName, approvalComment);
+        paymentService.approvePayment(paymentId, approvalStatus, approvalComment);
         return Result.success();
     }
 
@@ -246,9 +245,8 @@ public class PurchasePaymentController extends BaseController {
         for (Map<String, Object> data : batchData) {
             Long paymentId = Long.valueOf(data.get("paymentId").toString());
             String approvalStatus = (String) data.get("approvalStatus");
-            String approverName = (String) data.get("approverName");
             String approvalComment = (String) data.get("approvalComment");
-            paymentService.approvePayment(paymentId, approvalStatus, approverName, approvalComment);
+            paymentService.approvePayment(paymentId, approvalStatus, approvalComment);
         }
         return Result.success();
     }

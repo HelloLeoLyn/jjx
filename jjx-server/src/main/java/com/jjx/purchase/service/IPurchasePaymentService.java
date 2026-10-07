@@ -44,7 +44,7 @@ public interface IPurchasePaymentService {
     /**
      * 审批付款
      */
-    int approvePayment(Long paymentId, String approvalStatus, String approverName, String approvalComment);
+    int approvePayment(Long paymentId, String approvalStatus, String approvalComment);
 
     /**
      * 确认付款

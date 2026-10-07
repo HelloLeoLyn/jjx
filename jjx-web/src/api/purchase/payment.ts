@@ -57,13 +57,12 @@ export function exportPayment(params?: Record<string, unknown>) {
 export function approvePayment(
   paymentId: number,
   approvalStatus: string,
-  approverName: string,
   approvalComment?: string
 ) {
   return request({
     url: `/purchase/payment/approve/${paymentId}`,
     method: 'put',
-    params: { approvalStatus, approverName, approvalComment },
+    params: { approvalStatus, approvalComment },
   })
 }
 
@@ -177,7 +176,7 @@ export function batchPayment(data: PurchasePayment[]) {
 
 // 批量审批
 export function batchApprove(
-  data: { paymentId: number; approvalStatus: string; approverName: string }[]
+  data: { paymentId: number; approvalStatus: string; approvalComment?: string }[]
 ) {
   return request({
     url: '/purchase/payment/batch-approve',

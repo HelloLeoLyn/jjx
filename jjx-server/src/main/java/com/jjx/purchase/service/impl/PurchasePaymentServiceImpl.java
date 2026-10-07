@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.enums.ApproveStatusEnum;
+import com.jjx.system.utils.SecurityUtils;
 import com.jjx.purchase.domain.vo.PurchasePaymentSummaryVO;
 import com.jjx.purchase.domain.dto.PurchasePaymentDTO;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
@@ -203,7 +204,13 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int approvePayment(Long paymentId, String approvalStatus, String approverName, String approvalComment) {
+    public int approvePayment(Long paymentId, String approvalStatus, String approvalComment) {
+        // 单笔、批量审批都从可信登录会话取身份，客户端不能指定审批人。
+        Long approverId = SecurityUtils.getUserId();
+        String approverName = SecurityUtils.getDisplayName();
+        if (approverId == null || StringUtils.isBlank(approverName)) {
+            throw new BusinessException("无法获取当前登录审批人，请重新登录");
+        }
         PurchasePayment payment = paymentMapper.selectById(paymentId);
         if (payment == null) {
             throw new BusinessException("付款记录不存在");

@@ -197,7 +197,7 @@
     <el-dialog v-model="approveVisible" title="付款审批" width="480px">
       <el-form :model="approveForm" label-width="90px">
         <el-form-item label="审批人"
-          ><el-input v-model="approveForm.approverName" placeholder="审批人姓名"
+          ><el-input :model-value="approverName" readonly
         /></el-form-item>
         <el-form-item label="备注"
           ><el-input v-model="approveForm.approvalComment" type="textarea" :rows="3"
@@ -299,7 +299,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useUserStore } from '@/store/modules/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import {
@@ -373,7 +374,9 @@ const rules = {
   paymentAmount: [{ required: true, message: '请输入金额', trigger: 'blur' }],
   paymentMethod: [{ required: true, message: '请选择付款方式', trigger: 'change' }],
 }
-const approveForm = reactive({ approverName: '', approvalComment: '' })
+const userStore = useUserStore()
+const approverName = computed(() => userStore.userInfo?.realName?.trim() || userStore.userName || '-')
+const approveForm = reactive({ approvalComment: '' })
 const confirmForm = reactive({ actualPaymentDate: '', voucherNo: '' })
 // 付款凭证（转账回单）：统一附件表 bizType=purchase_payment（dev-20260929-015）
 const voucherFiles = ref<any[]>([])
@@ -533,21 +536,16 @@ async function submitForm() {
 
 function openApprove(row: any) {
   approveTarget.value = row
-  Object.assign(approveForm, { approverName: '', approvalComment: '' })
+  Object.assign(approveForm, { approvalComment: '' })
   approveVisible.value = true
 }
 async function submitApprove(decision: string) {
   if (!approveTarget.value) return
-  if (!approveForm.approverName) {
-    ElMessage.warning('请填写审批人')
-    return
-  }
   submitting.value = true
   try {
     await approvePayment(
       approveTarget.value.paymentId,
       decision,
-      approveForm.approverName,
       approveForm.approvalComment
     )
     ElMessage.success(decision === PaymentApprovalStatus.APPROVED ? '审批通过' : '已驳回')
