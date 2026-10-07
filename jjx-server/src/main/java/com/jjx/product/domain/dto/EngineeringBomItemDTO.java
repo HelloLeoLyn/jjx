@@ -34,6 +34,9 @@ public class EngineeringBomItemDTO {
     /** 规格型号 */
     private String specification;
 
+    /** 项目结构（process_category 字典：PANEL/UP_LINE/DOWN_LINE/OTHER） */
+    private String projectCategory;
+
     /** 单位 */
     private String unit;
 

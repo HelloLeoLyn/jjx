@@ -204,6 +204,26 @@
         </template>
       </el-table-column> -->
 
+      <!-- 项目（项目结构，字典 process_category） -->
+      <el-table-column label="项目" prop="projectCategory" width="120">
+        <template #default="scope">
+          <el-select
+            v-model="scope.row.projectCategory"
+            placeholder="请选择"
+            size="small"
+            clearable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in projectCategoryOptions"
+              :key="item.itemValue"
+              :label="item.label"
+              :value="item.itemValue"
+            />
+          </el-select>
+        </template>
+      </el-table-column>
+
       <!-- 备注 -->
       <el-table-column label="备注" prop="remark" min-width="150">
         <template #default="scope">
@@ -244,6 +264,7 @@ import { debounce } from 'lodash-es'
 import type { EngineeringBomItem } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import { useDict } from '@/composables/useDict'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 
 // ==================== Props & Emits ====================
@@ -278,6 +299,9 @@ const selectedItems = ref<EngineeringBomItem[]>([])
 const tableLoading = ref(false)
 const refreshLoading = ref(false)
 const tableHeight = ref(400)
+
+// 项目结构（字典 process_category：面板/上线/下线/其他）
+const { options: projectCategoryOptions } = useDict('process_category')
 
 // 单位选项
 const unitOptions = [

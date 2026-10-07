@@ -53,6 +53,11 @@ public class EngineeringBomItem {
     private String specification;
 
     /**
+     * 项目结构（process_category 字典：PANEL 面板 / UP_LINE 上线 / DOWN_LINE 下线 / OTHER 其他）
+     */
+    private String projectCategory;
+
+    /**
      * 单位
      */
     private String unit;
