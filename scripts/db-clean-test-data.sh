@@ -5,15 +5,19 @@
 #   bash scripts/db-clean-test-data.sh                # 只读体检（默认，不写库）
 #   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality        # 只体检三域
 #   bash scripts/db-clean-test-data.sh --execute      # 真执行：须在终端手工输入库名确认
+#   bash scripts/db-clean-test-data.sh --execute --backup <file>   # 指定本次校验的手工全库备份
 #   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality --execute  # 真清理三域（仍须终端手输库名）
 #   MYSQL_BIN_DIR=/path/to/mysql/bin                  # 可选：指定 MySQL 客户端目录
 #
-# 固定顺序（不可跳过）：只读体检 → 全库备份 → 人工确认 → 才执行。
+# 固定顺序（不可跳过）：只读体检 → 校验手工备份存在 → 人工确认 → 才执行。
+# 备份由用户手工做（CONVENTIONS §2，2026-09-28 口径）：脚本不再自动备份，只校验
+# 「已存在今天的全库备份」才放行，找不到即中止。导出必须排除人事档案表 hr_employee
+# （仓库为公开，入库即永久留在 git 历史）。
 # 人工确认 = 手工输入库名（jjx_erp_db）。非终端（agent/管道）一律拒绝执行——因为
 # 00_clean_test_data.sql 是整表 TRUNCATE，且它自己会清空 sys_oper_log，库里留不下痕迹。
 # 规范出处：jjx-docs/standards/CONVENTIONS.md §2（先备份再动库）/ §5。
-# 危险等级：🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（固定顺序：体检 → 全库备份 → 人工确认 → 执行）
-# 前置：--execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手输库名 jjx_erp_db；JJX_BACKUP_DIR 可写；--domains 仅可取 purchase/inventory/quality
+# 危险等级：🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（固定顺序：体检 → 校验手工备份 → 人工确认 → 执行）
+# 前置：--execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手输库名 jjx_erp_db；BACKUP_DIR（默认仓内 jjx-docs/sql/backups/）里要有今天的全库备份，或用 --backup 指定；--domains 仅可取 purchase/inventory/quality
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
 # ============================================================================
 set -euo pipefail
@@ -32,8 +36,8 @@ DB_NAME="${DB_NAME:-${JJX_DB_NAME:-jjx_erp_db}}"
 MYSQL_BIN_DIR="${MYSQL_BIN_DIR:-}"
 BACKUP_DIR="${JJX_BACKUP_DIR:-$REPO_ROOT/jjx-docs/sql/backups}"
 SQL_FILE="$REPO_ROOT/jjx-docs/sql/00_clean_test_data.sql"
-MANIFEST="$REPO_ROOT/jjx-docs/sql/init/init-subset-tables.txt"
 EXECUTE=0
+BACKUP_ARG="${JJX_CLEAN_BACKUP:-}"
 DOMAIN_MODE=0
 DOMAINS=()
 DOMAIN_LABEL=""
@@ -47,13 +51,14 @@ warn() { printf '%s⚠%s %s\n' "$c_yel" "$c_off" "$*"; }
 usage() {
   cat <<'EOF'
 用途: 清理测试数据（jjx-docs/sql/00_clean_test_data.sql 的唯一入口；整表 TRUNCATE + 条件 DELETE，表清单以脚本实际解析为准）
-危险等级: 🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（体检 → 全库备份 → 人工确认 → 执行）
-前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；JJX_BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）可写
+危险等级: 🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（体检 → 校验手工备份 → 人工确认 → 执行）
+前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）里要有今天的全库备份（或用 --backup 指定）；备份必须排除 hr_employee
 域参数: --domains <逗号分隔>，可选 purchase / inventory / quality；可组合，域模式不清理 sys_task
 用法:
-  bash scripts/db-clean-test-data.sh             只读体检：打印本次将删除多少行 + 顺带跑快照校验
+  bash scripts/db-clean-test-data.sh             只读体检：打印本次将删除多少行
   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality        只体检三域
-  bash scripts/db-clean-test-data.sh --execute   真执行（须在终端手输库名确认）
+  bash scripts/db-clean-test-data.sh --execute   真执行（须在终端手输库名确认；用今天的全库备份）
+  bash scripts/db-clean-test-data.sh --execute --backup <file>   指定本次校验的手工全库备份
   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality --execute  真清理三域（仍须终端手输库名）
 退出码: 0=体检通过或清理成功  1=拒绝执行/中止/失败
 手册: jjx-docs/guides/scripts-commands-20260914.md
@@ -67,6 +72,9 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     --execute) EXECUTE=1; shift ;;
+    --backup)
+      [ $# -ge 2 ] || die "--backup 缺少参数（手工全库备份文件路径）"
+      BACKUP_ARG="$2"; shift 2 ;;
     --domains)
       [ $# -ge 2 ] || die "--domains 缺少参数（可选值: purchase, inventory, quality）"
       DOMAIN_MODE=1
@@ -101,7 +109,8 @@ domain_selected() {
 }
 
 # ── 0. 前置守卫 ────────────────────────────────────────────────────────────
-# 2026-09-22 用户改口径：备份落仓库外 ~/jjx-backups/（仓库内只留索引 backup-index.tsv），原「必须在仓库外/内」的守卫不再需要
+# 2026-09-28 用户口径（CONVENTIONS §2）：备份放仓内 jjx-docs/sql/backups/、由用户手工做、
+# 只留最新一份；脚本不再自动备份、不写索引 —— --execute 只校验「今天的全库备份存在」才放行。
 [ -f "$SQL_FILE" ] || die "清理脚本不存在: $SQL_FILE"
 [ "$DB_NAME" = "jjx_erp_db" ] || die "目标库必须是 jjx_erp_db（当前: $DB_NAME）——防误连"
 if [ "$EXECUTE" -eq 1 ] && [ ! -t 0 ]; then
@@ -258,33 +267,6 @@ elif [ "$DOMAIN_MODE" -eq 1 ]; then
   say ""
 fi
 
-# 与初始化清单交叉（交付物范围被清理 = 高风险，必须显式提醒）
-CROSS=()
-MANIFEST_COUNT=0
-MANIFEST_FOUND=0
-if [ -f "$MANIFEST" ]; then
-  MANIFEST_FOUND=1
-  MANIFEST_COUNT="$(grep -cvE '^[[:space:]]*(#.*)?$' "$MANIFEST" || true)"
-  while IFS= read -r l; do
-    [[ "$l" =~ ^[[:space:]]*$ ]] && continue
-    [[ "$l" =~ ^[[:space:]]*# ]] && continue
-    l="${l//[[:space:]]/}"
-    for t in "${TRUNCATE_TABLES[@]}" "${DELETE_TABLES[@]:-}"; do
-      if [ "$t" = "$l" ]; then
-        CROSS+=("$t")
-      fi
-    done
-  done < "$MANIFEST"
-fi
-if [ "${#CROSS[@]}" -gt 0 ]; then
-  warn "③ 与初始化清单交叉：${#CROSS[@]} 张（清理会影响到交付物范围）"
-  for t in "${CROSS[@]}"; do say "   - $t"; done
-elif [ "$MANIFEST_FOUND" -eq 1 ]; then
-  say "③ 与初始化清单交叉：0 张（本次清理不涉及交付物 ${MANIFEST_COUNT} 表）"
-else
-  say "③ 与初始化清单交叉：跳过（init 目录已退役，无清单可比对）"
-fi
-
 # ── 覆盖率校验：库里每张表都必须有归宿（TRUNCATE / DELETE / 保留白名单）────────
 # 起因：inventory_iqc_batch 由迁移 136 新建后未同步清理清单 → 清理时批次行残留成孤儿，
 # 明细 id 复用后又错挂到新单（2026-09-21，任务 dev-20260921-024）。
@@ -309,7 +291,7 @@ DB_TABLES="$("${MYSQL[@]}" "$DB_NAME" -N -B -e \
 DB_COUNT="$(printf '%s\n' "$DB_TABLES" | grep -c . || true)"
 UNCOVERED=()
 if [ "$DOMAIN_MODE" -eq 1 ]; then
-  say "④ 按域排除 $((${#ALL_TRUNCATE_TABLES[@]} - ${#TRUNCATE_TABLES[@]})) 张（不清理）"
+  say "③ 按域排除 $((${#ALL_TRUNCATE_TABLES[@]} - ${#TRUNCATE_TABLES[@]})) 张（不清理）"
 fi
 while IFS= read -r t; do
   [ -n "$t" ] || continue
@@ -324,20 +306,11 @@ while IFS= read -r t; do
   [ "$hit" -eq 0 ] && UNCOVERED+=("$t")
 done <<< "$DB_TABLES"
 if [ "${#UNCOVERED[@]}" -gt 0 ]; then
-  warn "④ 覆盖率校验：${#UNCOVERED[@]} 张表既不在清理清单、也不在保留白名单（清理后会残留脏数据）"
+  warn "③ 覆盖率校验：${#UNCOVERED[@]} 张表既不在清理清单、也不在保留白名单（清理后会残留脏数据）"
   for t in "${UNCOVERED[@]}"; do say "   - $t"; done
   die "覆盖率校验未通过，已中止。处理：业务表→加到 00_clean_test_data.sql 对应模块段；基础档案/配置→补进 SQL 第 12 节保留清单与本脚本 RETAINED_TABLES"
 else
-  say "④ 覆盖率校验：库 ${DB_COUNT} 张表均有归宿（清理清单 ∪ 保留白名单）"
-fi
-
-# ── 3. 顺带跑快照最新性校验（只读；不过不拦，只提醒）────────────────────────
-if [ ! -f "$MANIFEST" ]; then
-  say "快照校验：跳过（init 目录已退役，无清单/导出物）"
-elif [ -x "$REPO_ROOT/scripts/db-export-init-subset.sh" ]; then
-  bash "$REPO_ROOT/scripts/db-export-init-subset.sh" --verify || warn "快照校验未通过（见上），不阻断清理"
-else
-  warn "未找到 scripts/db-export-init-subset.sh，跳过快照校验"
+  say "③ 覆盖率校验：库 ${DB_COUNT} 张表均有归宿（清理清单 ∪ 保留白名单）"
 fi
 
 if [ "$EXECUTE" -eq 0 ]; then
@@ -351,39 +324,38 @@ if [ "$EXECUTE" -eq 0 ]; then
   exit 0
 fi
 
-# ── 4. 全库备份（失败则绝不执行清理）─────────────────────────────────────────
+# ── 3. 校验手工备份（CONVENTIONS §2：脚本不再自动备份，失败则绝不执行清理）────
+# 顺序：优先 --backup/JJX_CLEAN_BACKUP 指定；否则取 BACKUP_DIR 里「今天」的全库备份（最新一份）。
 mkdir -p "$BACKUP_DIR" || die "无法创建备份目录 $BACKUP_DIR"
-TS="$(date +%Y%m%d-%H%M)"
-BACKUP="$BACKUP_DIR/jjx_erp_db_backup_${TS}_before-clean-test-data.sql"
 say ""
-say "── 全库备份 ──"
-if ! mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 \
-      --single-transaction --set-gtid-purged=OFF --no-tablespaces "$DB_NAME" > "$BACKUP.raw" 2>"$BACKUP.err"; then
-  rm -f "$BACKUP.raw"; sed 's/^/    /' "$BACKUP.err" >&2; rm -f "$BACKUP.err"
-  die "备份失败——已中止，未执行任何清理"
+say "── 校验手工备份 ──"
+if [ -n "$BACKUP_ARG" ]; then
+  [ -f "$BACKUP_ARG" ] || die "指定的备份文件不存在: $BACKUP_ARG"
+  BK_FILE="$BACKUP_ARG"
+else
+  BK_FILE="$(ls -1t "$BACKUP_DIR"/jjx_erp_db_backup_"$(date +%Y%m%d)"-*.sql 2>/dev/null | head -1 || true)"
 fi
-rm -f "$BACKUP.err"
-{ printf -- '-- 备份人: %s\n-- 原因: 执行 00_clean_test_data.sql 清理测试数据前全库备份\n-- 脚本: scripts/db-clean-test-data.sh\n' \
-    "${AI_AGENT:-Hermes Agent}"; cat "$BACKUP.raw"; } > "$BACKUP"
-rm -f "$BACKUP.raw"
-BK_SIZE="$(stat -c%s "$BACKUP" 2>/dev/null || echo 0)"
-BK_TABLES="$(grep -c '^CREATE TABLE' "$BACKUP" 2>/dev/null || echo 0)"
-BK_MD5="$(md5sum "$BACKUP" | awk '{print $1}')"
-if [ "$BK_SIZE" -lt 1024 ] || [ "$BK_TABLES" -lt 1 ]; then
-  die "备份产物异常（${BK_SIZE}B / ${BK_TABLES} 张表）——已中止，未执行清理"
-fi
-ok "备份 $BACKUP"
+[ -n "$BK_FILE" ] || die "未找到今天的全库备份。请先手工备份（只留最新一份；导出必须排除 hr_employee）：
+  mysqldump -h127.0.0.1 -P3306 -uroot --single-transaction --set-gtid-purged=OFF --no-tablespaces --ignore-table=jjx_erp_db.hr_employee jjx_erp_db > jjx-docs/sql/backups/jjx_erp_db_backup_$(date +%Y%m%d-%H%M)_before-clean-test-data.sql"
+BK_SIZE="$(stat -c%s "$BK_FILE" 2>/dev/null || echo 0)"
+BK_TABLES="$(grep -c '^CREATE TABLE' "$BK_FILE" 2>/dev/null || true)"
+[ "$BK_SIZE" -gt 1024 ] && [ "$BK_TABLES" -ge 1 ] || die "手工备份文件异常（${BK_SIZE}B / ${BK_TABLES} 张表）——已中止，未执行清理"
+BK_MD5="$(md5sum "$BK_FILE" | awk '{print $1}')"
+ok "手工全库备份 $BK_FILE"
 say "    $BK_SIZE 字节 / $BK_TABLES 张表 / md5 $BK_MD5"
+if grep -q '^CREATE TABLE `hr_employee`' "$BK_FILE"; then
+  warn "备份含人事档案表 hr_employee（身份证密文/住址/电话）——仓库为公开，入库即永久留在 git 历史，请勿提交该文件（CONVENTIONS §2）"
+fi
 
-# ── 5. 人工确认（手输库名）───────────────────────────────────────────────────
+# ── 4. 人工确认（手输库名）───────────────────────────────────────────────────
 say ""
 printf '人工确认：请手工输入库名以执行清理 [%s]（其他任何输入=中止）: ' "$DB_NAME"
 read -r ANSWER || ANSWER=""
 if [ "$ANSWER" != "$DB_NAME" ]; then
-  die "确认失败（输入与库名不一致）——已中止，未执行清理。备份在 $BACKUP（md5 $BK_MD5）"
+  die "确认失败（输入与库名不一致）——已中止，未执行清理。备份在 $BK_FILE（md5 $BK_MD5）"
 fi
 
-# ── 6. 执行清理 ────────────────────────────────────────────────────────────
+# ── 5. 执行清理 ────────────────────────────────────────────────────────────
 say ""
 say "── 执行清理 ──"
 START="$(date +%s)"
@@ -399,22 +371,20 @@ else
     { print }
   ' "$SQL_FILE" > "$CLEAN_SQL_INPUT"
 fi
-if ! "${MYSQL[@]}" "$DB_NAME" < "$CLEAN_SQL_INPUT" 2> "$BACKUP.cleanerr"; then
-  sed 's/^/    /' "$BACKUP.cleanerr" >&2; rm -f "$BACKUP.cleanerr"
+CLEAN_ERR="$(mktemp)"
+if ! "${MYSQL[@]}" "$DB_NAME" < "$CLEAN_SQL_INPUT" 2> "$CLEAN_ERR"; then
+  sed 's/^/    /' "$CLEAN_ERR" >&2; rm -f "$CLEAN_ERR"
   [ "$DOMAIN_MODE" -eq 1 ] && rm -f "$CLEAN_SQL_INPUT"
-  die "清理执行失败。回滚参考: mysql -h$DB_HOST -P$DB_PORT -u$DB_USER $DB_NAME < $BACKUP
+  die "清理执行失败。回滚参考: mysql -h$DB_HOST -P$DB_PORT -u$DB_USER $DB_NAME < $BK_FILE
     （备份 md5 $BK_MD5）"
 fi
 [ "$DOMAIN_MODE" -eq 1 ] && rm -f "$CLEAN_SQL_INPUT"
-rm -f "$BACKUP.cleanerr"
+rm -f "$CLEAN_ERR"
 ok "清理执行完成（$(($(date +%s) - START))s）"
 
-# ── 7. 库外留痕（脚本会清空 sys_oper_log，库里留不下痕迹）───────────────────
+# ── 6. 库外留痕（脚本会清空 sys_oper_log，库里留不下痕迹）───────────────────
 LOG="$BACKUP_DIR/clean-test-data-log.txt"
 printf '%s 清理测试数据 由 %s 执行 | 库 %s | 脚本 00_clean_test_data.sql | TRUNCATE %s 张(%s 行) + DELETE %s 条 | 备份 %s md5=%s\n' \
   "$(date '+%Y-%m-%d %H:%M')" "${AI_AGENT:-Hermes Agent}" "$DB_NAME" \
-  "${#TRUNCATE_TABLES[@]}" "$TRUNC_TOTAL" "${DEL_TOTAL:-0}" "$(basename "$BACKUP")" "$BK_MD5" >> "$LOG"
+  "${#TRUNCATE_TABLES[@]}" "$TRUNC_TOTAL" "${DEL_TOTAL:-0}" "$(basename "$BK_FILE")" "$BK_MD5" >> "$LOG"
 ok "留痕: $LOG"
-
-say ""
-say "提示：清理后若初始化快照出现差异，按滚动机制重出（登记任务 → 确认 → bash scripts/db-export-init-subset.sh --task dev-YYYYMMDD-NNN）"
