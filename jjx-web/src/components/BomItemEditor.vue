@@ -39,7 +39,7 @@
       </el-table-column>
 
       <!-- 物料编码 -->
-      <el-table-column label="物料编码" prop="materialCode" width="170" fixed="left" />
+      <el-table-column label="物料编码" prop="materialCode" width="120" fixed="left" />
 
       <!-- 物料名称 -->
       <el-table-column label="物料名称" prop="materialName" min-width="240">
@@ -53,7 +53,26 @@
           />
         </template>
       </el-table-column>
-
+      <el-table-column label="项目" prop="processName" width="160">
+        <template #default="scope">
+          <el-select
+            v-model="scope.row.processId"
+            placeholder="请选择标准工序"
+            size="small"
+            filterable
+            clearable
+            style="width: 100%"
+            @change="(val: number | undefined) => handleProjectChange(scope.row, val)"
+          >
+            <el-option
+              v-for="item in processOptions"
+              :key="item.processId"
+              :label="item.processName"
+              :value="item.processId"
+            />
+          </el-select>
+        </template>
+      </el-table-column>
       <!-- 规格型号 -->
       <el-table-column label="规格型号" prop="specification" width="100">
         <template #default="scope">
@@ -112,7 +131,7 @@
       </el-table-column>
 
       <!-- 数量 -->
-      <el-table-column label="数量" prop="quantity" align="center">
+      <!-- <el-table-column label="数量" prop="quantity" align="center">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.quantity"
@@ -124,7 +143,7 @@
             @change="recalcAppliedIssue(scope.row)"
           />
         </template>
-      </el-table-column>
+      </el-table-column> -->
 
       <!-- 损耗率 -->
       <el-table-column label="损耗率(%)" prop="lossRate" align="center">
@@ -205,26 +224,6 @@
       </el-table-column> -->
 
       <!-- 项目（标准工序） -->
-      <el-table-column label="项目" prop="processName" width="160">
-        <template #default="scope">
-          <el-select
-            v-model="scope.row.processId"
-            placeholder="请选择标准工序"
-            size="small"
-            filterable
-            clearable
-            style="width: 100%"
-            @change="(val: number | undefined) => handleProjectChange(scope.row, val)"
-          >
-            <el-option
-              v-for="item in processOptions"
-              :key="item.processId"
-              :label="item.processName"
-              :value="item.processId"
-            />
-          </el-select>
-        </template>
-      </el-table-column>
 
       <!-- 备注 -->
       <el-table-column label="备注" prop="remark" min-width="150">
@@ -245,7 +244,7 @@
           <el-button link type="primary" size="small" @click="handleAddChildItem(scope.row)"
             >子物料</el-button
           >
-          <el-button link type="primary" :icon="CopyDocument" @click="handleCopyItem(scope.row)" />
+          <!-- <el-button link type="primary" :icon="CopyDocument" @click="handleCopyItem(scope.row)" /> -->
           <el-button link type="danger" :icon="Delete" @click="handleDeleteItem(scope.row)" />
         </template>
       </el-table-column>
@@ -341,6 +340,11 @@ const hasSelected = computed(() => selectedItems.value.length > 0)
 
 // ==================== 树形结构工具（2026-08-10） ====================
 
+// 新增/复制行分配的临时负数 id：唯一、稳定，供前端树结构与 el-table row-key 使用；
+// 提交后端时由 flattenTree() 剥离（新增行 itemId 仍为空，不改变接口约定）。
+let tempItemIdSeq = -1
+const nextTempItemId = () => tempItemIdSeq--
+
 /**
  * 平铺数组 → 树（按 parentMaterialId 构建，NULL=根）
  * 新行用临时负数 id 作为父引用（前端树形 row-key 需要稳定 id）
@@ -351,9 +355,8 @@ function buildTree(list: EngineeringBomItem[]): EngineeringBomItem[] {
     children: it.children ? [...it.children] : undefined,
   }))
   // 确保每行有稳定的 itemId（新行用临时负数）
-  let tmpId = -1
   arr.forEach((it) => {
-    if (it.itemId == null) it.itemId = tmpId--
+    if (it.itemId == null) it.itemId = nextTempItemId()
   })
   const map = new Map<number, EngineeringBomItem>()
   arr.forEach((it) => map.set(Number(it.itemId), it))
@@ -380,6 +383,9 @@ function flattenTree(tree: EngineeringBomItem[]): EngineeringBomItem[] {
     nodes.forEach((n) => {
       const copy = { ...n }
       delete copy.children
+      // 临时负数 id 仅用于前端树/row-key；提交时剥离，保证新增行 itemId 为空、父引用不悬空
+      if (copy.itemId != null && Number(copy.itemId) < 0) copy.itemId = undefined
+      if (copy.parentMaterialId != null && Number(copy.parentMaterialId) < 0) copy.parentMaterialId = null
       out.push(copy)
       if (n.children?.length) walk(n.children)
     })
@@ -546,7 +552,7 @@ const handleAddItem = () => {
   }
 
   const newItem: EngineeringBomItem = {
-    itemId: undefined,
+    itemId: nextTempItemId(),
     bomId: props.bomId,
     parentMaterialId: null, // 根节点
     materialId: 0,
@@ -578,7 +584,7 @@ const handleAddItem = () => {
  */
 const handleAddChildItem = (parent: EngineeringBomItem) => {
   const newItem: EngineeringBomItem = {
-    itemId: undefined,
+    itemId: nextTempItemId(),
     bomId: props.bomId,
     parentMaterialId: Number(parent.itemId),
     materialId: 0,
@@ -607,9 +613,8 @@ const handleCopyItem = (item: EngineeringBomItem) => {
   copyItem.itemId = undefined
   copyItem.parentMaterialId = item.parentMaterialId ?? null
   // 子树也重新生成临时 id
-  let tmpId = -1000000
   const reId = (n: any, parentNewId: number | null) => {
-    const newId = tmpId--
+    const newId = nextTempItemId()
     n.itemId = newId
     n.parentMaterialId = parentNewId
     ;(n.children || []).forEach((c: any) => reId(c, newId))
@@ -648,22 +653,33 @@ const handleDeleteItem = async (row: EngineeringBomItem) => {
         type: 'warning',
       }
     )
-    // 从树中移除（递归查找父节点并 splice）
-    removeFromTree(items.value, Number(row.itemId))
-    ElMessage.success('删除成功')
+    // 从树中移除（按对象引用优先、id 兜底；失败不谎报成功）
+    const removed = removeFromTree(items.value, Number(row.itemId), row)
+    if (removed) {
+      ElMessage.success('删除成功')
+    } else {
+      ElMessage.warning('该行已不在列表中，删除未生效')
+    }
   } catch {
     // 用户取消
   }
 }
 
 /** 从树中移除节点（含嵌套） */
-function removeFromTree(tree: EngineeringBomItem[], itemId: number): boolean {
+function removeFromTree(
+  tree: EngineeringBomItem[],
+  itemId: number,
+  row?: EngineeringBomItem
+): boolean {
   for (let i = 0; i < tree.length; i++) {
-    if (Number(tree[i].itemId) === itemId) {
+    // 对象引用优先（新增行 itemId 缺失/临时时也能命中），有限数字 id 兜底
+    const sameRow = row != null && tree[i] === row
+    const sameId = Number.isFinite(itemId) && Number(tree[i].itemId) === itemId
+    if (sameRow || sameId) {
       tree.splice(i, 1)
       return true
     }
-    if (tree[i].children?.length && removeFromTree(tree[i].children!, itemId)) {
+    if (tree[i].children?.length && removeFromTree(tree[i].children!, itemId, row)) {
       return true
     }
   }
@@ -725,9 +741,8 @@ const handleMaterialCreated = (material: InventoryMaterial) => {
     return
   }
   // 父表回填可能重建行对象，按稳定的明细ID找到当前行。
-  const row = creatingRow?.itemId == null
-    ? creatingRow
-    : findInTree(items.value, Number(creatingRow.itemId))
+  const row =
+    creatingRow?.itemId == null ? creatingRow : findInTree(items.value, Number(creatingRow.itemId))
   if (row) handleMaterialSelect(material, row)
   creatingRow = null
 }
