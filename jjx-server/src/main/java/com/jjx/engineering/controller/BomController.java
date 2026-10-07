@@ -118,6 +118,15 @@ public class BomController extends BaseController {
     }
 
     /**
+     * BOM 提交审核前数据完整性体检（只读，供前端提交前预检展示）
+     * 2026-10-07 dev-20261007-006
+     */
+    @GetMapping("/{bomId}/check")
+    public Result<List<com.jjx.product.domain.vo.BomCheckIssueVO>> checkBomForSubmit(@PathVariable Long bomId) {
+        return Result.success(productBomService.checkBomForSubmit(bomId));
+    }
+
+    /**
      * 获取产品已审批的BOM列表（用于产品新增/编辑时选择）
      */
     @GetMapping("/approved/{productId}")

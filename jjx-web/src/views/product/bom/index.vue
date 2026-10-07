@@ -421,9 +421,34 @@ const openTrace = (row: EngineeringBom) => {
   traceVisible.value = true
 }
 
+// BOM 数据完整性预检（提交审核前）——2026-10-07 dev-20261007-006
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] || c)
+
 // 提交BOM审核（草稿→审核中）
 const handleSubmitApprove = async (row: EngineeringBom) => {
   try {
+    // 先只读体检：不通过就把问题清单列给用户并中止，避免提交后才被后端拦
+    const checkRes = await productBomApi.checkEngineeringBom(row.bomId)
+    const issues = checkRes.data || []
+    if (issues.length > 0) {
+      const html = issues
+        .map((it) => {
+          const loc = it.materialCode || (it.itemId != null ? `行#${it.itemId}` : '主表')
+          return `· [${escapeHtml(loc)}] ${escapeHtml(it.message || '')}`
+        })
+        .join('<br/>')
+      await ElMessageBox.alert(
+        html,
+        `BOM [${escapeHtml(row.bomCode)}] 不满足提交审核条件（${issues.length} 项）`,
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '知道了',
+          type: 'warning',
+        }
+      )
+      return
+    }
     await ElMessageBox.confirm(`确定提交 BOM [${row.bomCode}] 审核吗？`, '提交审核', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
@@ -433,7 +458,8 @@ const handleSubmitApprove = async (row: EngineeringBom) => {
     ElMessage.success('提交审核成功')
     getList()
   } catch (e: any) {
-    if (e !== 'cancel') {
+    // confirm / alert 被取消或关闭（'cancel'/'close'）时不报错
+    if (e !== 'cancel' && e !== 'close') {
       ElMessage.error(e?.message || '提交审核失败')
     }
   }

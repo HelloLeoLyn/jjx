@@ -50,6 +50,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     /** 2026-09-21（dev-20260921-013）：BOM 事件改手写 payload（带 BOM 编码）。 */
     private final com.jjx.event.EventPublisher eventPublisher;
     private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
+    /** 2026-10-07 dev-20261007-006：提交审核体检用（项目=标准工序 引用完整性）。 */
+    private final com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
     public EngineeringBomServiceImpl(EngineeringBomMapper productBomMapper,
                                  EngineeringBomItemMapper productBomItemMapper,
                                  ProductMapper productMapper, EngineeringBomConverter bomConverter,
@@ -57,7 +59,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                                  com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper,
                                  ReviewFlowService reviewFlowService,
                                  com.jjx.event.EventPublisher eventPublisher,
-                                 com.jjx.system.service.OperLogChangeRecorder changeRecorder) {
+                                 com.jjx.system.service.OperLogChangeRecorder changeRecorder,
+                                 com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper) {
         this.productBomMapper = productBomMapper;
         this.productBomItemMapper = productBomItemMapper;
         this.productMapper = productMapper;
@@ -68,6 +71,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // 2026-09-21 dev-20260921-023：加字段时漏了构造函数赋值，全量编译不过（此错误此前被类型错掩盖）
         this.eventPublisher = eventPublisher;
         this.changeRecorder = changeRecorder;
+        this.standardProcessMapper = standardProcessMapper;
     }
 
     /**
@@ -582,6 +586,23 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         if (!productBomItemMapper.exists(checkItems)) {
             throw new BusinessException("BOM明细不能为空");
         }
+        // 2026-10-07 dev-20261007-006：提交前数据完整性体检（不通过即拦，前 10 条入提示）
+        List<com.jjx.product.domain.vo.BomCheckIssueVO> issues = checkBomForSubmit(bomId);
+        if (!issues.isEmpty()) {
+            StringBuilder sb = new StringBuilder("BOM 不满足提交审核条件：\n");
+            int max = Math.min(issues.size(), 10);
+            for (int i = 0; i < max; i++) {
+                com.jjx.product.domain.vo.BomCheckIssueVO v = issues.get(i);
+                String loc = v.getMaterialCode() != null && !v.getMaterialCode().isBlank()
+                        ? v.getMaterialCode()
+                        : (v.getItemId() != null ? ("行#" + v.getItemId()) : "主表");
+                sb.append("· [").append(loc).append("] ").append(v.getMessage()).append("\n");
+            }
+            if (issues.size() > max) {
+                sb.append("… 共 ").append(issues.size()).append(" 项");
+            }
+            throw new BusinessException(sb.toString());
+        }
         // 用 updateStatus 改为 PENDING
         UpdateBomStatusDTO dto = new UpdateBomStatusDTO();
         dto.setBomId(bomId);
@@ -692,6 +713,138 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 .setScale(4, java.math.RoundingMode.HALF_UP));
         // 实际投料保存单位应用料（含损耗、不取整）
         item.setActualIssueQty(item.getAppliedQty());
+    }
+
+    /**
+     * BOM 提交审核前数据完整性体检（只读）。
+     * 2026-10-07 dev-20261007-006（方案 A：纯校验，不动 DB）。
+     */
+    @Override
+    public List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBomForSubmit(Long bomId) {
+        List<com.jjx.product.domain.vo.BomCheckIssueVO> issues = new java.util.ArrayList<>();
+        EngineeringBom bom = productBomMapper.selectById(bomId);
+        if (bom == null) {
+            issues.add(issue(null, null, null, "bomId", "BOM不存在"));
+            return issues;
+        }
+        // 主表：产品必须存在
+        if (bom.getProductId() == null) {
+            issues.add(issue(null, null, null, "productId", "BOM未关联产品"));
+        } else if (productMapper.selectById(bom.getProductId()) == null) {
+            issues.add(issue(null, null, null, "productId", "关联产品不存在（product_id=" + bom.getProductId() + "）"));
+        }
+        // 主表：同一产品只能有一个当前版本
+        if (Boolean.TRUE.equals(bom.getIsCurrent()) && bom.getProductId() != null) {
+            Long currentCnt = productBomMapper.selectCount(new LambdaQueryWrapper<EngineeringBom>()
+                    .eq(EngineeringBom::getProductId, bom.getProductId())
+                    .eq(EngineeringBom::getIsCurrent, true));
+            if (currentCnt != null && currentCnt > 1) {
+                issues.add(issue(null, null, null, "isCurrent",
+                        "同一产品存在 " + currentCnt + " 个当前版本（is_current=1），请先修正"));
+            }
+        }
+        List<EngineeringBomItem> items = productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
+        if (items == null || items.isEmpty()) {
+            issues.add(issue(null, null, null, "items", "BOM明细不能为空"));
+            return issues;
+        }
+        java.util.Set<Long> ids = new java.util.HashSet<>();
+        for (EngineeringBomItem it : items) {
+            if (it.getItemId() != null) {
+                ids.add(it.getItemId());
+            }
+        }
+        boolean hasRoot = false;
+        for (EngineeringBomItem it : items) {
+            Long iid = it.getItemId();
+            String code = it.getMaterialCode();
+            String name = it.getMaterialName();
+            // 行归属：明细必须挂在本 BOM 下
+            if (!java.util.Objects.equals(it.getBomId(), bomId)) {
+                issues.add(issue(iid, code, name, "bomId", "明细不属于本BOM"));
+            }
+            // 物料
+            if (it.getMaterialId() == null || it.getMaterialId() <= 0) {
+                issues.add(issue(iid, code, name, "materialId", "未选择物料"));
+            } else if (inventoryMaterialMapper.selectById(it.getMaterialId()) == null) {
+                issues.add(issue(iid, code, name, "materialId", "物料不存在（material_id=" + it.getMaterialId() + "）"));
+            }
+            // 用量
+            if (it.getQuantity() == null || it.getQuantity().compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                issues.add(issue(iid, code, name, "quantity", "用量必须大于0"));
+            }
+            // 单位
+            if (org.apache.commons.lang3.StringUtils.isBlank(it.getUnit())) {
+                issues.add(issue(iid, code, name, "unit", "单位不能为空"));
+            }
+            // 损耗率
+            if (it.getLossRate() != null && (it.getLossRate() < 0 || it.getLossRate() > 100)) {
+                issues.add(issue(iid, code, name, "lossRate", "损耗率须在 0~100 之间"));
+            }
+            // 来源类型
+            if (it.getSourceType() != null && !"buy".equals(it.getSourceType()) && !"make".equals(it.getSourceType())) {
+                issues.add(issue(iid, code, name, "sourceType", "来源类型非法（应为 buy/make）"));
+            }
+            // 模数 / 基数（用户口径 2026-10-07：非空且 >=1）
+            if (it.getModuleQty() == null || it.getModuleQty().compareTo(java.math.BigDecimal.ONE) < 0) {
+                issues.add(issue(iid, code, name, "moduleQty", "模数不能为空且须 ≥1"));
+            }
+            if (it.getBaseQty() == null || it.getBaseQty().compareTo(java.math.BigDecimal.ONE) < 0) {
+                issues.add(issue(iid, code, name, "baseQty", "基数不能为空且须 ≥1"));
+            }
+            // 项目（标准工序）引用完整性
+            if (it.getProcessId() != null) {
+                com.jjx.product.domain.entity.ProductStandardProcess sp = standardProcessMapper.selectById(it.getProcessId());
+                if (sp == null) {
+                    issues.add(issue(iid, code, name, "processId", "项目（标准工序）不存在（process_id=" + it.getProcessId() + "）"));
+                } else if (sp.getIsEnabled() != null && sp.getIsEnabled() == 0) {
+                    issues.add(issue(iid, code, name, "processId", "项目（标准工序）「" + sp.getProcessName() + "」已停用"));
+                }
+            }
+            // 父引用
+            Long pid = it.getParentMaterialId();
+            if (pid == null) {
+                hasRoot = true;
+            } else if (pid.equals(iid)) {
+                issues.add(issue(iid, code, name, "parentMaterialId", "不能以自己为父节点"));
+            } else if (!ids.contains(pid)) {
+                issues.add(issue(iid, code, name, "parentMaterialId", "父节点不存在（悬空，parent_material_id=" + pid + "）"));
+            }
+        }
+        if (!hasRoot) {
+            issues.add(issue(null, null, null, "parentMaterialId", "必须至少有一行根节点（parent_material_id 为空）"));
+        }
+        // 环检测：沿父链上溯，重复出现即为环
+        java.util.Map<Long, EngineeringBomItem> byId = new java.util.HashMap<>();
+        for (EngineeringBomItem it : items) {
+            if (it.getItemId() != null) {
+                byId.put(it.getItemId(), it);
+            }
+        }
+        for (EngineeringBomItem it : items) {
+            java.util.Set<Long> seen = new java.util.HashSet<>();
+            Long cur = it.getItemId();
+            while (cur != null && byId.containsKey(cur)) {
+                if (!seen.add(cur)) {
+                    issues.add(issue(it.getItemId(), it.getMaterialCode(), it.getMaterialName(),
+                            "parentMaterialId", "父子关系存在环"));
+                    break;
+                }
+                cur = byId.get(cur).getParentMaterialId();
+            }
+        }
+        return issues;
+    }
+
+    private com.jjx.product.domain.vo.BomCheckIssueVO issue(Long itemId, String code, String name, String field, String message) {
+        com.jjx.product.domain.vo.BomCheckIssueVO v = new com.jjx.product.domain.vo.BomCheckIssueVO();
+        v.setItemId(itemId);
+        v.setMaterialCode(code);
+        v.setMaterialName(name);
+        v.setField(field);
+        v.setMessage(message);
+        return v;
     }
 
     private static @NonNull LambdaQueryWrapper<EngineeringBom> buildQueryWrapper(EngineeringBomQuery query) {

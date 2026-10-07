@@ -100,6 +100,13 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
     /** 提交审批：固定流转到 BomStatus.REVIEWING */
     boolean submitApprove(Long bomId);
 
+    /**
+     * BOM 提交审核前数据完整性体检（只读，不改任何数据）。
+     * 返回空列表 = 通过；非空 = 逐条问题（前端预检展示用）。
+     * 2026-10-07 dev-20261007-006
+     */
+    List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBomForSubmit(Long bomId);
+
     boolean updateStatus(UpdateBomStatusDTO dto);
 
     /** 审批驳回：固定流转到 BomStatus.REJECT */

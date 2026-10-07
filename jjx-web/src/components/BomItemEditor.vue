@@ -480,8 +480,10 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
  * 数量 = 基数 ÷ 模数
  */
 const handleModuleQtyChange = (row: EngineeringBomItem) => {
-  const moduleQty = Number(row.moduleQty) || 1
-  const baseQty = Number(row.baseQty) || 1
+  // 缺值/非法不参与计算（不再静默当 1），由提交审核前校验拦截
+  const moduleQty = Number(row.moduleQty)
+  const baseQty = Number(row.baseQty)
+  if (!Number.isFinite(moduleQty) || moduleQty <= 0 || !Number.isFinite(baseQty) || baseQty <= 0) return
   row.quantity = Number((baseQty / moduleQty).toFixed(4))
   recalcAppliedIssue(row)
 }
@@ -491,8 +493,10 @@ const handleModuleQtyChange = (row: EngineeringBomItem) => {
  * 数量 = 基数 ÷ 模数
  */
 const handleBaseQtyChange = (row: EngineeringBomItem) => {
-  const moduleQty = Number(row.moduleQty) || 1
-  const baseQty = Number(row.baseQty) || 1
+  // 缺值/非法不参与计算（不再静默当 1），由提交审核前校验拦截
+  const moduleQty = Number(row.moduleQty)
+  const baseQty = Number(row.baseQty)
+  if (!Number.isFinite(moduleQty) || moduleQty <= 0 || !Number.isFinite(baseQty) || baseQty <= 0) return
   row.quantity = Number((baseQty / moduleQty).toFixed(4))
   recalcAppliedIssue(row)
 }
@@ -564,6 +568,7 @@ const handleAddItem = () => {
     lossRate: 0,
     appliedQty: 0,
     actualIssueQty: 0,
+    moduleQty: 1,
     baseQty: 1,
     remark: '',
     sortOrder: items.value.length + 1,
@@ -596,6 +601,7 @@ const handleAddChildItem = (parent: EngineeringBomItem) => {
     lossRate: 0,
     appliedQty: 0,
     actualIssueQty: 0,
+    moduleQty: 1,
     baseQty: 1,
     remark: '',
     sortOrder: (parent.children?.length || 0) + 1,

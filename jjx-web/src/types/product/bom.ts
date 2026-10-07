@@ -66,6 +66,17 @@ export interface EngineeringBomItem {
   lengthMm?: number
   create?: boolean
 }
+export interface BomCheckIssue {
+  /** 明细ID（问题所在行；主表级问题为空） */
+  itemId?: number
+  materialCode?: string
+  materialName?: string
+  /** 字段名 */
+  field?: string
+  /** 问题描述 */
+  message?: string
+}
+
 export interface BomSimpleVo {
   bomId: number
   bomCode: string

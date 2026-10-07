@@ -5,6 +5,7 @@ import type {
   EngineeringBomFormData,
   EngineeringBomItem,
   BomSimpleVo,
+  BomCheckIssue,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
 // ==================== BomAPI ====================
@@ -59,6 +60,14 @@ export const productBomApi = {
    */
   listEngineeringBomItem(bomId: number) {
     return request.get(`/engineering/bom/items/${bomId}`)
+  },
+
+  /**
+   * 提交审核前数据完整性体检（只读预检）
+   * 2026-10-07 dev-20261007-006
+   */
+  checkEngineeringBom(bomId: number) {
+    return request.get<R<BomCheckIssue[]>>(`/engineering/bom/${bomId}/check`)
   },
 
   /**
