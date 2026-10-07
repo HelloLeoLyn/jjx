@@ -440,6 +440,7 @@ import { Search } from '@element-plus/icons-vue'
 import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessCategoryEnum } from '@/enums/product'
+import { ROUTE_STRUCTURE_TABS, routeStructureTabValue } from './routeProcessTabs'
 import EngineeringRoutingItem from '@/components/product/EngineeringRoutingItem.vue'
 import ProcessOperation from '@/components/ProcessOperation/index.vue'
 import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
@@ -496,28 +497,14 @@ const majorCategoryTab = ref<'ASSEMBLY' | 'PRINT'>('ASSEMBLY')
 const printRows = ref<EngineeringRoutingItemVO[]>([])
 
 /** 印刷子结构 Tabs（业务上印刷按结构分：面板/上线/下线/未分类，与打样一致，2026-08-12） */
-const PRINT_TABS = [
-  { value: 'PANEL', label: '面板' },
-  { value: 'UP_LINE', label: '上线' },
-  { value: 'DOWN_LINE', label: '下线' },
-  { value: '', label: '未分类' },
-]
+const PRINT_TABS = ROUTE_STRUCTURE_TABS
 const printActiveTab = ref('PANEL')
 
-const ASSEMBLY_TABS = [
-  { value: 'PANEL', label: '面板' },
-  { value: 'UP_LINE', label: '上线' },
-  { value: 'DOWN_LINE', label: '下线' },
-  { value: '', label: '未分类' },
-]
+const ASSEMBLY_TABS = ROUTE_STRUCTURE_TABS
 const assemblyActiveTab = ref('PANEL')
 
 function assemblyGroupsByTab(value: string) {
-  return groups.value.filter((group) => {
-    const category = group.processCategory || ''
-    if (value === '') return category === '' || category === 'OTHER'
-    return category === value
-  })
+  return groups.value.filter((group) => routeStructureTabValue(group.processCategory) === value)
 }
 
 function groupIndex(group: RouteItemGroup) {
@@ -525,12 +512,7 @@ function groupIndex(group: RouteItemGroup) {
 }
 
 function filteredPrintRows(value: string) {
-  // 2026-08-12：OTHER 归一显示到未分类（旧转移数据类别可能是 OTHER）
-  return printRows.value.filter((r) => {
-    const cat = r.processCategory || ''
-    if (value === '') return cat === '' || cat === 'OTHER'
-    return cat === value
-  })
+  return printRows.value.filter((row) => routeStructureTabValue(row.processCategory) === value)
 }
 
 /** 新增印刷空行（归属当前子结构 tab） */
