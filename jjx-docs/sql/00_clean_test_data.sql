@@ -12,9 +12,14 @@ DROP PROCEDURE assert_clean_test_target//
 DELIMITER ;
 
 -- =====================================================
--- 清理测试数据脚本（v20）
+-- 清理测试数据脚本（v21）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v21 变更（2026-10-07，任务 dev-20261007-002）：
+--   1. 【新增清理】order_shortage_ledger（迁移 239 建，dev-20260930-026 订单缺料「欠交台账」，齐套重算派生，
+--      挂在 sales_order 上）——此前既不在 TRUNCATE 也不在保留白名单 → 体检覆盖率闸门报无归宿。
+--      属派生业务数据 → 清；清了订单不台账会成孤儿。
+--   2. 配套：scripts/db-clean-test-data.sh 解析出的清理清单自动包含本表（无需再改 shell 白名单）。
 -- v19 变更（2026-09-24，任务 dev-20260924-021）：
 --   quality_sampling_plan 表已下线（迁移 219：8 条方案改由 sys_config(quality_config.quality.sampling_plan) JSON 承载，依据 CONVENTIONS §14）。
 --   因此：① 核验段删去该表的 COUNT（表不存在，不删会报 1146）；② 第 12 节保留声明同步删除。
@@ -279,6 +284,9 @@ TRUNCATE inventory_alert_log;
 
 TRUNCATE order_material_reserve;
 
+-- v21 新增：订单缺料欠交台账（齐套 P4d 派生，挂 sales_order；迁移 239）→ 属派生业务数据，清
+TRUNCATE order_shortage_ledger;
+
 
 TRUNCATE inventory_transaction;
 
@@ -411,6 +419,7 @@ SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;
 -- 下列业务表 count 均应为 0；sys_task 仅保留 kanban_module='dev'。
 SELECT 'biz_requirement' AS table_name, COUNT(*) AS remaining_rows FROM biz_requirement
 UNION ALL SELECT 'sales_order', COUNT(*) FROM sales_order
+UNION ALL SELECT 'order_shortage_ledger', COUNT(*) FROM order_shortage_ledger
 UNION ALL SELECT 'sales_return_item', COUNT(*) FROM sales_return_item
 UNION ALL SELECT 'purchase_order', COUNT(*) FROM purchase_order
 UNION ALL SELECT 'purchase_payment', COUNT(*) FROM purchase_payment
