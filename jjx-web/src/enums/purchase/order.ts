@@ -15,6 +15,13 @@ export const PurchaseOrderTypeEnum = createEnum({
   defaultTag: { type: 'info' },
 })
 
+/** 兼容历史数字编码；新建和保存继续使用现行字符串编码。 */
+export function normalizePurchaseOrderType(value: string | number | null | undefined): string {
+  const legacyTypes: Record<string, string> = { '0': 'normal', '1': 'urgent' }
+  const code = String(value ?? '')
+  return legacyTypes[code] ?? code
+}
+
 /**
  * 紧急标志枚举
  */

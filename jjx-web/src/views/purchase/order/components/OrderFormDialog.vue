@@ -25,6 +25,7 @@
               v-model="form.supplierId"
               placeholder="请选择供应商"
               :active-only="true"
+              :selected-name="form.supplierName"
               :show-code="true"
               @change="handleSupplierChange"
             />
@@ -271,6 +272,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { PurchaseOrderTypeEnum, CurrencyEnum } from '@/enums/purchase'
+import { normalizePurchaseOrderType } from '@/enums/purchase/order'
 import { materialApi } from '@/api/inventory/material'
 import { addOrder, updateOrder, generateOrderNo, getOrder } from '@/api/purchase/order'
 import type { InventoryMaterial } from '@/types/inventory/material'
@@ -409,12 +411,12 @@ const initForm = async () => {
       if (data) {
         form.orderId = Number(data.orderId)
         form.orderNo = data.orderNo
-        form.supplierId = data.supplierId
+        form.supplierId = data.supplierId == null ? undefined : String(data.supplierId)
         form.supplierName = data.supplierName
         form.orderDate = data.orderDate
         form.expectedDeliveryDate = data.expectedDeliveryDate
         form.currency = data.currency
-        form.orderType = data.orderType
+        form.orderType = normalizePurchaseOrderType(data.orderType)
         form.deliveryMethod = data.deliveryMethod || ''
         form.contractNo = data.contractNo || ''
         form.deliveryAddress = data.deliveryAddress || ''

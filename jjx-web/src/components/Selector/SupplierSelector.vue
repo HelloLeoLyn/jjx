@@ -2,7 +2,6 @@
   <!-- 供应商选择器 -->
   <el-select
     :model-value="selectedSupplierId"
-    @update:model-value="handleUpdateModelValue"
     :placeholder="placeholder"
     :disabled="disabledValue"
     :clearable="clearableValue"
@@ -12,13 +11,13 @@
     :loading="loadingValue"
     :style="width ? `width: ${width}` : ''"
     @change="handleChange"
-    @clear="handleClear"
   >
     <el-option
-      v-for="supplier in supplierList"
+      v-for="supplier in supplierOptions"
       :key="supplier.supplierId"
       :label="supplier.supplierName"
-      :value="supplier.supplierId"
+      :value="String(supplier.supplierId)"
+      :disabled="supplier.currentOnly"
     >
       <div class="supplier-option">
         <span class="supplier-name">{{ supplier.supplierName }}</span>
@@ -30,12 +29,14 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { getActiveSuppliers, listSupplier } from '@/api/purchase/supplier'
+import { getActiveSuppliers, listSupplier, getSupplier } from '@/api/purchase/supplier'
 import type { PurchaseSupplier } from '@/types/purchase'
 
 interface Props {
   /** 选中的供应商ID (v-model) */
   modelValue?: string | number
+  /** 已有单据供应商名称，用于列表加载前或失败时回显 */
+  selectedName?: string
   /** 占位文本 */
   placeholder?: string
   /** 是否禁用 */
@@ -61,6 +62,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: '',
+  selectedName: '',
   placeholder: '请选择供应商',
   disabled: false,
   clearable: true,
@@ -75,7 +77,40 @@ const emit = defineEmits<Emits>()
 
 const loading = ref(false)
 const supplierList = ref<PurchaseSupplier[]>([])
-const selectedSupplierId = ref<string | number>(props.modelValue)
+const normalizeId = (value: string | number | undefined) => value == null ? '' : String(value)
+const selectedSupplierId = computed(() => normalizeId(props.modelValue))
+const currentSupplier = ref<PurchaseSupplier | null>(null)
+const suppliersLoaded = ref(false)
+const supplierOptions = computed(() => {
+  const options = supplierList.value.map((supplier) => ({ ...supplier, currentOnly: false }))
+  const id = selectedSupplierId.value
+  if (id && !options.some((supplier) => normalizeId(supplier.supplierId) === id)) {
+    // 当前单据供应商可回显；不把列表之外的供应商开放为新的可选项。
+    const supplier = currentSupplier.value && normalizeId(currentSupplier.value.supplierId) === id
+      ? currentSupplier.value : null
+    options.push({
+      supplierCode: '',
+      supplierType: '',
+      ...(supplier || {}),
+      supplierId: Number(id),
+      supplierName: props.selectedName || supplier?.supplierName || id,
+      currentOnly: true,
+    })
+  }
+  return options
+})
+
+const ensureCurrentSupplier = async () => {
+  const id = selectedSupplierId.value
+  currentSupplier.value = null
+  if (!id || supplierList.value.some((supplier) => normalizeId(supplier.supplierId) === id)) return
+  try {
+    const res = await getSupplier(Number(id))
+    if (selectedSupplierId.value === id) currentSupplier.value = res.data || null
+  } catch (error) {
+    console.error('加载当前供应商失败:', error)
+  }
+}
 
 // 使用 computed 确保布尔值类型，避免 undefined 传递给 el-select
 const disabledValue = computed(() => props.disabled ?? false)
@@ -104,6 +139,8 @@ const loadSuppliers = async (keyword?: string) => {
     supplierList.value = []
   } finally {
     loading.value = false
+    suppliersLoaded.value = true
+    await ensureCurrentSupplier()
   }
 }
 
@@ -116,30 +153,19 @@ const remoteMethod = (query: string) => {
   }
 }
 
-// 更新 modelValue
-const handleUpdateModelValue = (value: any) => {
-  selectedSupplierId.value = value ?? ''
-  handleChange(value)
-}
-
-// 选择变化
-const handleChange = (value: any) => {
-  const supplier = supplierList.value.find((s) => s.supplierId === value) || null
-  emit('update:modelValue', value)
+// 用户选择才发送 change；补加载不会清空订单明细或覆盖名称。
+const handleChange = (value: string | number | undefined) => {
+  const id = normalizeId(value)
+  const supplier = supplierOptions.value.find((s) => normalizeId(s.supplierId) === id) || null
+  emit('update:modelValue', id ? (supplier?.supplierId ?? value) : undefined)
   emit('change', supplier)
-}
-
-// 清空
-const handleClear = () => {
-  emit('update:modelValue', undefined)
-  emit('change', null)
 }
 
 // 监听外部 modelValue 变化
 watch(
   () => props.modelValue,
-  (newVal) => {
-    selectedSupplierId.value = newVal ?? ''
+  () => {
+    if (suppliersLoaded.value) ensureCurrentSupplier()
   }
 )
 
