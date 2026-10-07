@@ -104,7 +104,7 @@
             v-hasPermi="['purchase:payment:add']"
             :disabled="!single || !selectedOrderPayable"
             @click="() => handlePayment()"
-            >付款</el-button
+            >申请付款</el-button
           >
         </el-col>
         <el-col :span="1.5">
@@ -766,7 +766,7 @@ const orderActions: TableAction<PurchaseOrderVO>[] = [
   },
   {
     key: 'payment',
-    label: '付款',
+    label: '申请付款',
     permission: 'purchase:payment:add',
     visible: ({ row }) => isOrderPayable(row.approvalStatus, row.paymentStatus),
     order: 80,

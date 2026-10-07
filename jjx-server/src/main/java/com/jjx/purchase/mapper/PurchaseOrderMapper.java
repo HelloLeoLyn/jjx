@@ -77,6 +77,12 @@ public interface PurchaseOrderMapper extends BaseMapper<PurchaseOrder> {
                          @Param("paidAmount") BigDecimal paidAmount,
                          @Param("paymentStatus") Integer paymentStatus);
 
+    /** 付款单派生汇总：绝对值覆盖，重复重算不累加。 */
+    @Update("UPDATE purchase_order SET paid_amount = #{paidAmount}, payment_status = #{paymentStatus}, update_time = NOW() WHERE order_id = #{orderId}")
+    int setPaymentSummary(@Param("orderId") Long orderId,
+                          @Param("paidAmount") BigDecimal paidAmount,
+                          @Param("paymentStatus") Integer paymentStatus);
+
     /**
      * 更新实际交货日期
      *
@@ -120,8 +126,10 @@ public interface PurchaseOrderMapper extends BaseMapper<PurchaseOrder> {
     /**
      * 查询待付款的订单列表
      */
-    @Select("SELECT * FROM purchase_order WHERE payment_status IN (0, 1) AND approval_status IN (4) ORDER BY order_date DESC")
-    List<PurchaseOrder> selectPendingPaymentOrders();
+    @Select("SELECT * FROM purchase_order WHERE payment_status IN (#{pending}, #{partial}) AND approval_status = #{approved} ORDER BY order_date DESC")
+    List<PurchaseOrder> selectPendingPaymentOrders(@Param("approved") Integer approved,
+                                                  @Param("pending") Integer pending,
+                                                  @Param("partial") Integer partial);
 
     /**
      * 查询紧急订单列表

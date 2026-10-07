@@ -69,7 +69,7 @@
           icon="Plus"
           v-hasPermi="['purchase:payment:add']"
           @click="openCreate"
-          >新增付款</el-button
+          >新增申请</el-button
         >
       </div>
       <el-table v-loading="loading" :data="rows" border>
@@ -117,7 +117,7 @@
 
     <el-dialog
       v-model="formVisible"
-      :title="isEdit ? '编辑付款' : '新增付款'"
+      :title="isEdit ? '编辑付款申请' : '新增付款申请'"
       width="560px"
       destroy-on-close
     >
@@ -141,9 +141,15 @@
             />
           </el-select>
         </el-form-item>
+        <PaymentAmountSummary
+          v-if="formVisible"
+          :order-id="form.orderId"
+          :excluded-payment-id="isEdit ? form.paymentId : undefined"
+          @loaded="handleSummaryLoaded"
+        />
         <el-row :gutter="16">
           <el-col :span="12"
-            ><el-form-item label="付款日期" prop="paymentDate"
+            ><el-form-item label="计划付款日" prop="paymentDate"
               ><el-date-picker
                 v-model="form.paymentDate"
                 type="date"
@@ -151,10 +157,12 @@
                 style="width: 100%" /></el-form-item
           ></el-col>
           <el-col :span="12"
-            ><el-form-item label="金额" prop="paymentAmount"
+            ><el-form-item label="申请金额" prop="paymentAmount"
               ><el-input-number
                 v-model="form.paymentAmount"
-                :min="0.01"
+                :min="Number(paymentSummary?.availableAmount || 0) > 0 ? 0.01 : 0"
+                :max="paymentSummary ? Number(paymentSummary.availableAmount) : undefined"
+                :disabled="!paymentSummary || Number(paymentSummary.availableAmount) <= 0"
                 :precision="2"
                 :controls="false"
                 style="width: 100%" /></el-form-item
@@ -180,7 +188,7 @@
       </el-form>
       <template #footer
         ><el-button @click="formVisible = false">取消</el-button
-        ><el-button type="primary" :loading="submitting" @click="submitForm"
+        ><el-button type="primary" :loading="submitting" :disabled="!paymentSummary || Number(paymentSummary.availableAmount) <= 0" @click="submitForm"
           >保存</el-button
         ></template
       >
@@ -314,6 +322,8 @@ import {
   PaymentMethodEnum,
 } from '@/enums/purchase/payment'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import PaymentAmountSummary from '@/views/purchase/components/PaymentAmountSummary.vue'
+import type { PurchasePaymentSummary } from '@/api/purchase/payment'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'PurchasePayment' })
@@ -321,7 +331,6 @@ defineOptions({ name: 'PurchasePayment' })
 interface PendingOrder {
   orderId: number
   orderNo: string
-  supplierId: number
   supplierName: string
 }
 
@@ -349,6 +358,14 @@ const query = reactive<any>({
   paymentMethod: undefined,
 })
 const form = reactive<any>({})
+const paymentSummary = ref<PurchasePaymentSummary | null>(null)
+function handleSummaryLoaded(summary: PurchasePaymentSummary | null) {
+  paymentSummary.value = summary
+  if (summary && !isEdit.value) form.paymentAmount = Number(summary.availableAmount)
+  if (summary && !pendingOrders.value.some((order) => String(order.orderId) === String(summary.orderId))) {
+    pendingOrders.value.push({ orderId: summary.orderId, orderNo: summary.orderNo, supplierName: summary.supplierName })
+  }
+}
 const rules = {
   paymentNo: [{ required: true, message: '请输入付款单号', trigger: 'blur' }],
   orderId: [{ required: true, message: '请选择采购订单', trigger: 'change' }],
@@ -459,6 +476,7 @@ async function loadPendingOrders() {
 function emptyForm() {
   return {
     paymentNo: '',
+    paymentId: undefined,
     orderId: undefined,
     paymentDate: today(),
     paymentAmount: undefined,
@@ -469,6 +487,8 @@ function emptyForm() {
 }
 
 async function openCreate() {
+  await loadPendingOrders()
+  paymentSummary.value = null
   isEdit.value = false
   Object.assign(form, emptyForm())
   try {
@@ -481,14 +501,19 @@ async function openCreate() {
 }
 
 async function openEdit(row: any) {
+  paymentSummary.value = null
   isEdit.value = true
   const res: any = await getPayment(row.paymentId)
-  Object.assign(form, res.data || {})
+  Object.assign(form, emptyForm(), res.data || {})
   formVisible.value = true
 }
 
 async function submitForm() {
-  if (!formRef.value || !(await formRef.value.validate().catch(() => false))) return
+  if (!formRef.value || !paymentSummary.value || !(await formRef.value.validate().catch(() => false))) return
+  if (Number(form.paymentAmount) <= 0 || Number(form.paymentAmount) > Number(paymentSummary.value.availableAmount)) {
+    ElMessage.warning('申请金额必须大于0且不超过可申请金额')
+    return
+  }
   submitting.value = true
   try {
     if (isEdit.value) {

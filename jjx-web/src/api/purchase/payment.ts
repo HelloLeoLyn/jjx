@@ -254,3 +254,20 @@ export function getSupplierPaymentAnalysis(supplierId?: number) {
     params: { supplierId },
   })
 }
+
+export interface PurchasePaymentSummary {
+  orderId: number
+  orderNo: string
+  supplierName: string
+  orderTotalAmount: number
+  paidAmount: number
+  pendingAmount: number
+  availableAmount: number
+  currency: string
+}
+
+export function getOrderPaymentSummary(orderId: number, excludedPaymentId?: number) {
+  return request.get<R<PurchasePaymentSummary>>(`/purchase/payment/order/${orderId}/summary`, {
+    params: { excludedPaymentId },
+  })
+}

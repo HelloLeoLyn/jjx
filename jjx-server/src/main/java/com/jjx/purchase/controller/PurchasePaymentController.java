@@ -2,6 +2,7 @@ package com.jjx.purchase.controller;
 
 import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.purchase.domain.dto.PurchasePaymentDTO;
@@ -149,6 +150,14 @@ public class PurchasePaymentController extends BaseController {
     @SaCheckPermission("purchase:payment:view")
     public Result<List<PurchasePayment>> getByOrder(@PathVariable Long orderId) {
         return Result.success(paymentService.selectByOrderId(orderId));
+    }
+
+    /** 申请额度与提交校验共用付款单统计；编辑可排除本单。 */
+    @GetMapping("/order/{orderId}/summary")
+    @SaCheckPermission(value = {"purchase:payment:view", "purchase:payment:add", "purchase:payment:edit"}, mode = SaMode.OR)
+    public Result<com.jjx.purchase.domain.vo.PurchasePaymentSummaryVO> orderSummary(
+            @PathVariable Long orderId, @RequestParam(required = false) Long excludedPaymentId) {
+        return Result.success(paymentService.getOrderPaymentSummary(orderId, excludedPaymentId));
     }
 
     /**

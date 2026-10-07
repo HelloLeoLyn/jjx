@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.enums.ApproveStatusEnum;
+import com.jjx.purchase.domain.vo.PurchasePaymentSummaryVO;
 import com.jjx.purchase.domain.dto.PurchasePaymentDTO;
 import com.jjx.purchase.domain.entity.PurchaseOrder;
 import com.jjx.purchase.domain.entity.PurchasePayment;
@@ -108,12 +110,8 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             throw new BusinessException("采购订单不存在");
         }
 
-        // 091定稿：已取消(2)/已拒绝(5)的订单不能付款
-        Integer approvalStatus = order.getApprovalStatus();
-        if (approvalStatus != null && (approvalStatus == 2 || approvalStatus == 5)) {
-            throw new BusinessException("订单已取消/已拒绝，不能付款");
-        }
-        validatePaymentAmount(dto.getOrderId(), null, dto.getPaymentAmount(), order);
+        requireApprovedOrder(order);
+        validatePaymentAmount(null, dto.getPaymentAmount(), order);
 
         PurchasePayment payment = new PurchasePayment();
         copyProperties(dto, payment);
@@ -153,7 +151,8 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         }
         PurchaseOrder order = orderMapper.selectById(dto.getOrderId());
         if (order == null) throw new BusinessException("采购订单不存在");
-        validatePaymentAmount(dto.getOrderId(), existing.getPaymentId(), dto.getPaymentAmount(), order);
+        requireApprovedOrder(order);
+        validatePaymentAmount(existing.getPaymentId(), dto.getPaymentAmount(), order);
 
         PurchasePayment payment = new PurchasePayment();
         copyProperties(dto, payment);
@@ -406,7 +405,7 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             paymentStatus = PurchasePaymentStatusEnum.PARTIALLY_PAID.getValue();
         }
 
-        orderMapper.updatePaymentInfo(orderId, totalPaid, paymentStatus);
+        orderMapper.setPaymentSummary(orderId, totalPaid, paymentStatus);
     }
 
     /**
@@ -426,25 +425,63 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         payment.setRemark(dto.getRemark());
     }
 
-    private void validatePaymentAmount(Long orderId, Long excludedPaymentId, BigDecimal amount, PurchaseOrder order) {
+    private void validatePaymentAmount(Long excludedPaymentId, BigDecimal amount, PurchaseOrder order) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException("付款金额必须大于0");
         }
-        LambdaQueryWrapper<PurchasePayment> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(PurchasePayment::getOrderId, orderId)
-                .ne(PurchasePayment::getApprovalStatus, PurchasePaymentApprovalStatusEnum.REJECTED.getCode());
-        if (excludedPaymentId != null) wrapper.ne(PurchasePayment::getPaymentId, excludedPaymentId);
-        BigDecimal committed = paymentMapper.selectList(wrapper).stream()
-                .map(PurchasePayment::getPaymentAmount)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal total = order.getOrderTotalAmount();
-        if (total != null && committed.add(amount).compareTo(total) > 0) {
+        PurchasePaymentSummaryVO summary = calculateOrderPaymentSummary(order, excludedPaymentId);
+        if (amount.compareTo(summary.getAvailableAmount()) > 0) {
             throw new BusinessException(PurchaseExceptionEnum.PAYMENT_AMOUNT_EXCEEDS,
                     PurchaseExceptionEnum.PAYMENT_AMOUNT_EXCEEDS.getMessage()
-                            + "（订单金额" + total.stripTrailingZeros().toPlainString()
-                            + "，已申请" + committed.stripTrailingZeros().toPlainString() + "）");
+                            + "（可申请" + summary.getAvailableAmount().stripTrailingZeros().toPlainString() + "）");
         }
+    }
+
+    private void requireApprovedOrder(PurchaseOrder order) {
+        if (!Objects.equals(ApproveStatusEnum.APPROVED.getValue(), order.getApprovalStatus())) {
+            throw new BusinessException("只有已批准的采购订单可以申请付款");
+        }
+    }
+
+    @Override
+    public PurchasePaymentSummaryVO getOrderPaymentSummary(Long orderId, Long excludedPaymentId) {
+        PurchaseOrder order = orderMapper.selectById(orderId);
+        if (order == null) throw new BusinessException("采购订单不存在");
+        if (excludedPaymentId != null) {
+            PurchasePayment payment = selectPaymentById(excludedPaymentId);
+            if (!Objects.equals(orderId, payment.getOrderId())
+                    || !PurchasePaymentApprovalStatusEnum.PENDING.getCode().equals(payment.getApprovalStatus())
+                    || !Objects.equals(PurchasePaymentStatusEnum.PENDING.getValue(), payment.getPaymentStatus())) {
+                throw new BusinessException("只能排除当前订单待审批且未付款的申请");
+            }
+        }
+        return calculateOrderPaymentSummary(order, excludedPaymentId);
+    }
+
+    private PurchasePaymentSummaryVO calculateOrderPaymentSummary(PurchaseOrder order, Long excludedPaymentId) {
+        if (order.getOrderTotalAmount() == null) throw new BusinessException("订单金额未确定，不能申请付款");
+        BigDecimal paid = BigDecimal.ZERO;
+        BigDecimal pending = BigDecimal.ZERO;
+        for (PurchasePayment payment : paymentMapper.selectByOrderId(order.getOrderId())) {
+            BigDecimal amount = payment.getPaymentAmount();
+            if (amount == null) continue;
+            if (Objects.equals(PurchasePaymentStatusEnum.COMPLETED.getValue(), payment.getPaymentStatus())) {
+                paid = paid.add(amount);
+            } else if (!Objects.equals(excludedPaymentId, payment.getPaymentId())
+                    && !PurchasePaymentApprovalStatusEnum.REJECTED.getCode().equals(payment.getApprovalStatus())) {
+                pending = pending.add(amount);
+            }
+        }
+        PurchasePaymentSummaryVO summary = new PurchasePaymentSummaryVO();
+        summary.setOrderId(order.getOrderId());
+        summary.setOrderNo(order.getOrderNo());
+        summary.setSupplierName(order.getSupplierName());
+        summary.setOrderTotalAmount(order.getOrderTotalAmount());
+        summary.setPaidAmount(paid);
+        summary.setPendingAmount(pending);
+        summary.setAvailableAmount(order.getOrderTotalAmount().subtract(paid).subtract(pending).max(BigDecimal.ZERO));
+        summary.setCurrency(order.getCurrency());
+        return summary;
     }
 
     @Override

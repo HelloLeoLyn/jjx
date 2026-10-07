@@ -66,6 +66,8 @@ public interface IPurchasePaymentService {
      */
     List<PurchasePayment> selectByOrderId(Long orderId);
 
+    com.jjx.purchase.domain.vo.PurchasePaymentSummaryVO getOrderPaymentSummary(Long orderId, Long excludedPaymentId);
+
     /**
      * 根据供应商ID查询付款记录
      */

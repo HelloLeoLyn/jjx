@@ -656,7 +656,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
     @Override
     public List<PurchaseOrderVO> selectPendingPaymentOrders() {
-        List<PurchaseOrder> orders = orderMapper.selectPendingPaymentOrders();
+        List<PurchaseOrder> orders = orderMapper.selectPendingPaymentOrders(ApproveStatusEnum.APPROVED.getValue(),
+                com.jjx.purchase.domain.enums.PurchasePaymentStatusEnum.PENDING.getValue(),
+                com.jjx.purchase.domain.enums.PurchasePaymentStatusEnum.PARTIALLY_PAID.getValue());
         return purchaseConverter.toVOList(orders);
     }
 
