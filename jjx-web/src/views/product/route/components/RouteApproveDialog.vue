@@ -10,22 +10,14 @@
     <RouteDetailView ref="detailViewRef">
       <template #extra>
         <el-divider content-position="left">审批意见</el-divider>
-        <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
-          <el-form-item label="审批结果">
-            <el-radio-group v-model="form.action">
-              <el-radio value="approve" :disabled="!canApprove">通过</el-radio>
-              <el-radio value="reject" :disabled="!canReject">驳回</el-radio>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item label="审批意见" prop="remark">
-            <el-input
-              v-model="form.remark"
-              type="textarea"
-              :rows="3"
-              :placeholder="form.action === 'approve' ? '请输入审批意见（可选）' : '请输入驳回原因'"
-            />
-          </el-form-item>
-        </el-form>
+        <ApprovalOpinionForm
+          ref="formRef"
+          v-model="form"
+          :can-approve="canApprove"
+          :can-reject="canReject"
+          :require-approve-remark="false"
+          :disabled="submitLoading"
+        />
       </template>
     </RouteDetailView>
 
@@ -46,8 +38,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick } from 'vue'
-import type { FormInstance, FormRules } from 'element-plus'
+import { ref, computed, nextTick } from 'vue'
+import ApprovalOpinionForm from '@/components/Approval/ApprovalOpinionForm.vue'
+import type { ApprovalOpinion } from '@/components/Approval/types'
+import { ApprovalResultEnum } from '@/enums/common/ApprovalEnum'
 import { hasPermi } from '@/directives'
 import RouteDetailView from './RouteDetailView.vue'
 
@@ -67,37 +61,23 @@ const visible = computed({
   set: (value) => emit('update:modelValue', value),
 })
 
-const formRef = ref<FormInstance>()
+const formRef = ref<InstanceType<typeof ApprovalOpinionForm>>()
 const submitLoading = ref(false)
 const detailViewRef = ref<InstanceType<typeof RouteDetailView>>()
 const canApprove = computed(() => hasPermi('engineering:routing:approve'))
 const canReject = computed(() => hasPermi('engineering:routing:reject'))
 
-const form = reactive({
-  action: 'approve' as 'approve' | 'reject',
-  remark: '',
-})
-
-const rules = reactive<FormRules<typeof form>>({
-  remark: [
-    {
-      validator: (_rule: any, value: string, callback: Function) => {
-        if (form.action === 'reject' && !value) {
-          callback(new Error('驳回时必须填写驳回原因'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur',
-    },
-  ],
-})
+const form = ref<ApprovalOpinion>({ result: ApprovalResultEnum.APPROVE, remark: '' })
 
 const handleOpened = () => {
-  if (form.action === 'approve' && !canApprove.value && canReject.value) {
-    form.action = 'reject'
-  } else if (form.action === 'reject' && !canReject.value && canApprove.value) {
-    form.action = 'approve'
+  if (form.value.result === ApprovalResultEnum.APPROVE && !canApprove.value && canReject.value) {
+    form.value.result = ApprovalResultEnum.REJECT
+  } else if (
+    form.value.result === ApprovalResultEnum.REJECT &&
+    !canReject.value &&
+    canApprove.value
+  ) {
+    form.value.result = ApprovalResultEnum.APPROVE
   }
 
   if (props.routingId) {
@@ -112,10 +92,10 @@ const handleSubmit = async () => {
   try {
     await formRef.value.validate()
     submitLoading.value = true
-    if (form.action === 'approve') {
-      emit('approve', form.remark || undefined)
+    if (form.value.result === ApprovalResultEnum.APPROVE) {
+      emit('approve', form.value.remark || undefined)
     } else {
-      emit('reject', form.remark)
+      emit('reject', form.value.remark)
     }
   } catch (error) {
     console.error('表单验证失败:', error)
@@ -126,10 +106,10 @@ const handleSubmit = async () => {
 
 const handleClose = () => {
   if (formRef.value) {
-    formRef.value.resetFields()
+    formRef.value.clearValidate()
   }
-  form.action = 'approve'
-  form.remark = ''
+  form.value.result = ApprovalResultEnum.APPROVE
+  form.value.remark = ''
   detailViewRef.value?.resetDetail()
 }
 </script>
