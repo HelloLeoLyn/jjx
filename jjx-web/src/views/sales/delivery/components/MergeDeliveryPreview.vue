@@ -16,7 +16,9 @@
       <div class="merge-main">
         <section class="recipient-panel">
           <div class="section-title">
-            <el-icon><Location /></el-icon>收货信息<span>同一客户 · 同一地址 · 同一币种</span>
+            <el-icon><Location /></el-icon>收货信息<span
+              >同一客户 · 同一地址 · 同一币种 · 同一交货方式</span
+            >
           </div>
           <el-form label-position="top" class="recipient-form">
             <el-form-item label="客户" required>
@@ -92,7 +94,7 @@
                   <div>
                     <el-tag size="small" effect="plain">交期 {{ order.dueDate }}</el-tag
                     ><el-tag v-if="!canSelectOrder(order)" type="info" size="small"
-                      >收货地址不同</el-tag
+                      >合并条件不同</el-tag
                     ><el-button
                       v-else
                       size="small"
@@ -362,9 +364,14 @@
           </div>
         </div>
         <div class="summary-divider" />
-        <div class="summary-row"><span>币种</span><strong>CNY</strong></div>
         <div class="summary-row">
-          <span>货品金额</span><strong>¥ {{ money(totalAmount) }}</strong>
+          <span>交货方式</span><strong>{{ form.deliveryMethod }}</strong>
+        </div>
+        <div class="summary-row">
+          <span>币种</span><strong>{{ form.currency }}</strong>
+        </div>
+        <div class="summary-row">
+          <span>货品金额</span><strong>{{ form.currency }} {{ money(totalAmount) }}</strong>
         </div>
         <div class="summary-row">
           <span>待检明细</span><strong>{{ pendingInspections }} 项</strong>
@@ -423,6 +430,8 @@ import {
   type MockMergedDelivery,
 } from './mergeDeliveryMock'
 
+const props = defineProps<{ orders?: MockDeliveryOrder[] }>()
+const sourceOrders = computed(() => props.orders ?? mockOrders)
 const emit = defineEmits<{ created: [delivery: MockMergedDelivery] }>()
 const visible = ref(false)
 const draft = ref<MockMergedDelivery | null>(null)
@@ -432,6 +441,8 @@ const selected = ref<MockMergedDelivery['lines']>([])
 const form = reactive({
   customerId: 1,
   addressId: 11,
+  currency: 'CNY',
+  deliveryMethod: '自送',
   deliveryDate: '2026-10-08',
   remark: '以上货品有不符问题，请在10天内通知，方便我司处理。',
   showAmount: false,
@@ -442,7 +453,7 @@ const customer = computed(
 )
 const address = computed(() => customer.value.addresses.find((item) => item.id === form.addressId))
 const customerOrders = computed(() =>
-  mockOrders.filter((item) => item.customerId === form.customerId)
+  sourceOrders.value.filter((item) => item.customerId === form.customerId)
 )
 const filteredOrders = computed(() =>
   customerOrders.value
@@ -458,7 +469,7 @@ const filteredOrders = computed(() =>
     .filter((order) => order.lines.length)
 )
 const selectedOrders = computed(() =>
-  mockOrders.filter((order) => selected.value.some((line) => line.orderId === order.id))
+  sourceOrders.value.filter((order) => selected.value.some((line) => line.orderId === order.id))
 )
 const totalQuantity = computed(() =>
   selected.value.reduce((sum, line) => sum + (line.sendQuantity || 0), 0)
@@ -480,7 +491,9 @@ const pages = computed(() => {
 const money = (value: number) =>
   value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const canSelectOrder = (order: MockDeliveryOrder) =>
-  order.addressId === form.addressId && order.currency === 'CNY'
+  order.addressId === form.addressId &&
+  order.currency === form.currency &&
+  order.deliveryMethod === form.deliveryMethod
 const isSelected = (id: number) => selected.value.some((line) => line.id === id)
 const invalidQuantity = (line: MockMergedDelivery['lines'][number]) =>
   !Number.isInteger(line.sendQuantity) ||
@@ -534,6 +547,8 @@ function open(delivery?: MockMergedDelivery) {
   Object.assign(form, {
     customerId: delivery?.customerId ?? 1,
     addressId: delivery?.addressId ?? 11,
+    currency: delivery?.currency ?? 'CNY',
+    deliveryMethod: delivery?.deliveryMethod ?? '自送',
     deliveryDate: delivery?.deliveryDate ?? '2026-10-08',
     remark: delivery?.remark ?? '以上货品有不符问题，请在10天内通知，方便我司处理。',
     showAmount: delivery?.showAmount ?? false,
@@ -543,7 +558,18 @@ function open(delivery?: MockMergedDelivery) {
   activeTab.value = delivery ? 'selected' : 'available'
   visible.value = true
 }
-defineExpose({ open })
+function openSelection(lines: MockDeliveryLine[], order: MockDeliveryOrder) {
+  open()
+  Object.assign(form, {
+    customerId: order.customerId,
+    addressId: order.addressId,
+    currency: order.currency,
+    deliveryMethod: order.deliveryMethod,
+  })
+  lines.forEach(addLine)
+  activeTab.value = 'selected'
+}
+defineExpose({ open, openSelection })
 </script>
 
 <style scoped>

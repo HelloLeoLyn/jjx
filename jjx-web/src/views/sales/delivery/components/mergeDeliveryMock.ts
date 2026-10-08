@@ -13,6 +13,7 @@ export interface MockDeliveryLine {
   shipped: number
   occupied: number
   unitPrice: number
+  stockAvailable: number
   unitWeight: number
   inspectionResult: string
 }
@@ -23,6 +24,7 @@ export interface MockDeliveryOrder {
   orderNo: string
   customerOrderNo: string
   dueDate: string
+  deliveryMethod: string
   currency: string
   lines: MockDeliveryLine[]
 }
@@ -31,6 +33,8 @@ export interface MockMergedDelivery {
   deliveryStatus: number
   customerId: number
   addressId: number
+  currency: string
+  deliveryMethod: string
   deliveryDate: string
   remark: string
   showAmount: boolean
@@ -92,6 +96,7 @@ const makeLines = (
       shipped: index === 0 ? 60 : 0,
       occupied: index === 0 ? 40 : 0,
       unitPrice: 2.5 + index * 0.35,
+      stockAvailable: index === 2 ? Math.floor(qty / 2) : qty,
       unitWeight: 8.2 + index * 0.4,
       inspectionResult: index === 2 ? InspectionResult.PENDING : InspectionResult.PASS,
     })
@@ -104,6 +109,7 @@ export const mockOrders: MockDeliveryOrder[] = [
     orderNo: 'JY260843X',
     customerOrderNo: 'PO26090213',
     dueDate: '2026-10-08',
+    deliveryMethod: '自送',
     currency: 'CNY',
     lines: makeLines(101, 'JY260843X', 'PO26090213', 1, 636),
   },
@@ -114,6 +120,7 @@ export const mockOrders: MockDeliveryOrder[] = [
     orderNo: 'JY260677X',
     customerOrderNo: 'PO26082193',
     dueDate: '2026-10-12',
+    deliveryMethod: '自送',
     currency: 'CNY',
     lines: makeLines(102, 'JY260677X', 'PO26082193', 5, 900),
   },
@@ -124,8 +131,31 @@ export const mockOrders: MockDeliveryOrder[] = [
     orderNo: 'JY260901X',
     customerOrderNo: 'PO26100008',
     dueDate: '2026-10-10',
+    deliveryMethod: '自送',
     currency: 'CNY',
     lines: makeLines(103, 'JY260901X', 'PO26100008', 8, 300),
+  },
+  {
+    id: 104,
+    customerId: 1,
+    addressId: 11,
+    orderNo: 'JY261004X',
+    customerOrderNo: 'PO-USD-1004',
+    dueDate: '2026-10-13',
+    currency: 'USD',
+    deliveryMethod: '自送',
+    lines: makeLines(104, 'JY261004X', 'PO-USD-1004', 11, 200),
+  },
+  {
+    id: 105,
+    customerId: 1,
+    addressId: 11,
+    orderNo: 'JY261005X',
+    customerOrderNo: 'PO-EXPRESS-1005',
+    dueDate: '2026-10-14',
+    currency: 'CNY',
+    deliveryMethod: '快递',
+    lines: makeLines(105, 'JY261005X', 'PO-EXPRESS-1005', 14, 150),
   },
   {
     id: 201,
@@ -134,6 +164,7 @@ export const mockOrders: MockDeliveryOrder[] = [
     orderNo: 'SO261008-DEMO',
     customerOrderNo: 'HX-PO-1008',
     dueDate: '2026-10-11',
+    deliveryMethod: '自送',
     currency: 'CNY',
     lines: makeLines(201, 'SO261008-DEMO', 'HX-PO-1008', 1, 200),
   },
