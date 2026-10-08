@@ -302,7 +302,7 @@ RETAINED_TABLES=(
   sys_event_last_payload sys_event_var
   quality_template_registry
   engineering_standard_process engineering_process_icon_sample
-  sales_customer purchase_supplier inventory_material inventory_material_category
+  sales_customer sales_customer_address purchase_supplier inventory_material inventory_material_category
   inventory_warehouse inventory_item
   product product_category product_config_model product_config_option
   sys_tag sys_tag_rel hr_employee hr_dept_mapping

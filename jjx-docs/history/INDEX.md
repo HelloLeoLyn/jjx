@@ -10,6 +10,8 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-08 (dev-029) | customer-shipping-address-book-dev-20261008-029.md | 客户收货地址簿：多收货地址 + 下单/发货默认链（含公司地址候选）（阶段一：DB+后端） |
+| 2026-10-08 (dev-024) | merged-delivery-real-data-dev-20261008-024.md | 发货管理接入真实数据 |
 | 2026-10-08 (dev-011) | sales-delivery-oqc-flow-dev-20261008-011.md | 销售发货 OQC 放行前置及签收流程修复 |
 | 2026-10-08 (dev-009) | qr026-excel-template-dev-20261008-009.md | QR-026 Excel 改为原模板填充 |
 | 2026-10-08 (dev-008) | mockito-maker-conflict-dev-20261008-008.md | 统一采购付款测试 Mock 模式，修复全量测试冲突 |

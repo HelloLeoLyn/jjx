@@ -406,6 +406,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 -- 业务基础资料：sales_customer / purchase_supplier / inventory_material /
 --               inventory_material_category / inventory_warehouse /
 --               inventory_item（统一库存物品主数据，由物料派生，与物料同级）
+--               sales_customer_address（客户收货地址簿，随客户档案保留；迁移 247，dev-20261008-029）
 -- 产品基础资料：product / product_category / product_config_model / product_config_option（v14 起保留）
 -- 标签：sys_tag / sys_tag_rel（v14 起保留）
 -- 人事基础档案：hr_employee（员工档案）/ hr_dept_mapping（导入部门映射）

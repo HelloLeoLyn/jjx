@@ -138,6 +138,13 @@
       "date": "2026-09-30",
       "proposalLink": "jjx-docs/history/shortage-alert-atp-phased-plan-dev-20260930-017.md",
       "reason": "订单缺料欠交台账：未满足需求落账并带生命周期（形成→补货→关闭）；用户 2026-09-30 拍板 A（新建表）"
+    },
+    {
+      "table": "sales_customer_address",
+      "taskCode": "dev-20261008-029",
+      "date": "2026-10-08",
+      "proposalLink": "jjx-docs/history/customer-shipping-address-book-dev-20261008-029.md",
+      "reason": "客户收货地址簿（一个客户多收货地址，含默认标记）：供下单/发货选择与默认链；用户 2026-10-08 拍板（按建议方案 + 公司地址可作候选并可设默认）"
     }
   ],
   "typeSuffixAllowlist": [
