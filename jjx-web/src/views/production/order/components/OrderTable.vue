@@ -27,6 +27,11 @@
         </template>
       </el-table-column>
 
+      <!-- dev-20261008-016：新增「销售单号」列，便于计划/工单溯源到销售订单 -->
+      <el-table-column prop="salesOrderNo" label="销售单号" width="150" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.salesOrderNo || '-' }}</template>
+      </el-table-column>
+
       <el-table-column prop="productName" label="产品信息" min-width="200">
         <template #default="{ row }">
           <div class="product-info">
