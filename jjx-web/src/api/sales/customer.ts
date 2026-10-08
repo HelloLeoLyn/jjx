@@ -7,6 +7,7 @@ import type {
   CustomerDetail,
   CustomerSearchVO,
   CustomerVO,
+  SalesCustomerAddress,
 } from '@/types/sales/customer'
 
 // 客户管理API
@@ -130,5 +131,31 @@ export const customerApi = {
     return request.get<R<boolean>>('/sales/customers/checkNameUnique', {
       params: { customerName, customerId },
     })
+  },
+
+  // ==================== 客户收货地址簿（dev-20261008-029） ====================
+  /** 查询客户收货地址列表（默认置顶） */
+  getCustomerAddresses(customerId: number) {
+    return request.get<R<SalesCustomerAddress[]>>(`/sales/customers/${customerId}/addresses`)
+  },
+
+  /** 新增客户收货地址 */
+  addCustomerAddress(customerId: number, data: SalesCustomerAddress) {
+    return request.post<R<number>>(`/sales/customers/${customerId}/addresses`, data)
+  },
+
+  /** 修改客户收货地址 */
+  updateCustomerAddress(customerId: number, addressId: number, data: SalesCustomerAddress) {
+    return request.put<R<void>>(`/sales/customers/${customerId}/addresses/${addressId}`, data)
+  },
+
+  /** 删除客户收货地址 */
+  deleteCustomerAddress(customerId: number, addressId: number) {
+    return request.delete<R<void>>(`/sales/customers/${customerId}/addresses/${addressId}`)
+  },
+
+  /** 设为默认收货地址 */
+  setDefaultCustomerAddress(customerId: number, addressId: number) {
+    return request.put<R<void>>(`/sales/customers/${customerId}/addresses/${addressId}/default`)
   },
 }

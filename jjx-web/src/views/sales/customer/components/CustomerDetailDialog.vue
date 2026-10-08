@@ -56,6 +56,7 @@
     <el-empty v-else description="暂无客户详情" />
 
     <template #footer>
+      <el-button @click="emit('address')">地址簿</el-button>
       <el-button @click="close">关闭</el-button>
     </template>
   </el-dialog>
@@ -77,6 +78,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'update:modelValue', value: boolean): void
+  (event: 'address'): void
 }>()
 
 const loading = ref(false)

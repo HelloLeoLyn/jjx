@@ -127,3 +127,23 @@ export interface CustomerVO {
   createTime: string
   updateTime: string
 }
+
+/** 客户收货地址（地址簿，dev-20261008-029） */
+export interface SalesCustomerAddress {
+  addressId?: number
+  customerId?: number
+  /** 地址标签，如 上海总部/东莞仓 */
+  label?: string
+  contactPerson?: string
+  contactPhone?: string
+  country?: string
+  province?: string
+  city?: string
+  /** 详细地址 */
+  address: string
+  postalCode?: string
+  /** 是否默认 0否 1是 */
+  isDefault?: number
+  remark?: string
+  updateTime?: string
+}

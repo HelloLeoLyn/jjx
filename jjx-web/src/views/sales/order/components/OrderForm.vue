@@ -140,6 +140,25 @@
       </el-col>
     </el-row>
     <el-divider content-position="left">收货信息</el-divider>
+    <el-row :gutter="10" style="margin-bottom: 8px">
+      <el-col :span="16">
+        <el-select
+          v-model="addressPick"
+          placeholder="从客户地址簿 / 公司地址选择（也可直接手填下方地址）"
+          clearable
+          filterable
+          style="width: 100%"
+          @change="onAddressPick"
+        >
+          <el-option v-for="o in addressOptions" :key="o.key" :label="o.label" :value="o.key" />
+        </el-select>
+      </el-col>
+      <el-col :span="8">
+        <el-button :disabled="!form.customerId" @click="addressDialogVisible = true"
+          >新增/维护地址</el-button
+        >
+      </el-col>
+    </el-row>
     <el-row>
       <el-col :span="24">
         <InternationalAddressEditor v-model="form.shippingAddress" prop-path="address" />
@@ -405,6 +424,15 @@
       @success="handleCustomerSuccess"
       @cancel="customerDialogVisible = false"
     />
+    <!-- 客户收货地址簿（新增/维护 + 选为本单地址） dev-20261008-029 -->
+    <CustomerAddressDialog
+      v-model="addressDialogVisible"
+      :customer-id="form.customerId"
+      :customer-name="form.customerName"
+      selectable
+      @select="onAddressPickedFromDialog"
+      @changed="loadCustomerAddresses"
+    />
   </el-form>
 </template>
 
@@ -424,7 +452,9 @@ import InternationalAddressEditor from '@/components/InternationalAddressEditor.
 import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
-import type { CustomerFormData } from '@/types/sales/customer'
+import type { CustomerFormData, SalesCustomerAddress } from '@/types/sales/customer'
+import { useCompanyConfig } from '@/composables/useCompanyConfig'
+import CustomerAddressDialog from '../../customer/components/CustomerAddressDialog.vue'
 
 interface Props {
   isEdit?: boolean
@@ -743,6 +773,107 @@ async function prefillFromSample(sampleId: number) {
   }
 }
 
+// ===== 收货地址选择：客户地址簿 + 公司地址（dev-20261008-029）=====
+const { company } = useCompanyConfig()
+const customerAddresses = ref<SalesCustomerAddress[]>([])
+const addressPick = ref('')
+const addressDialogVisible = ref(false)
+const COMPANY_KEY = 'company'
+
+const toInternational = (a: SalesCustomerAddress) => ({
+  country: a.country || '',
+  province: a.province || '',
+  city: a.city || '',
+  street: a.address || '',
+  zipCode: a.postalCode || '',
+})
+
+const addressOptions = computed(() => {
+  const opts = customerAddresses.value.map((a) => ({
+    key: `addr-${a.addressId}`,
+    label:
+      `${a.label || '地址'}｜` +
+      [a.country, a.province, a.city, a.address].filter(Boolean).join(' ') +
+      (a.isDefault === 1 ? '（默认）' : ''),
+  }))
+  if (company.address) {
+    opts.push({ key: COMPANY_KEY, label: `公司地址｜${company.address}` })
+  }
+  return opts
+})
+
+const applyAddress = (a: SalesCustomerAddress) => {
+  form.shippingAddress = serializeAddress(toInternational(a))
+  addressPick.value = `addr-${a.addressId}`
+}
+
+const applyCompany = () => {
+  form.shippingAddress = serializeAddress({
+    country: '',
+    province: '',
+    city: '',
+    street: company.address,
+    zipCode: '',
+  })
+  addressPick.value = COMPANY_KEY
+}
+
+const onAddressPick = (key: string) => {
+  if (key === COMPANY_KEY) {
+    applyCompany()
+    return
+  }
+  const id = Number(String(key).replace('addr-', ''))
+  const hit = customerAddresses.value.find((a) => a.addressId === id)
+  if (hit) applyAddress(hit)
+}
+
+const onAddressPickedFromDialog = (a: SalesCustomerAddress) => {
+  addressDialogVisible.value = false
+  if (a?.addressId) {
+    applyAddress(a)
+  }
+}
+
+const loadCustomerAddresses = async () => {
+  if (!form.customerId) {
+    customerAddresses.value = []
+    return
+  }
+  try {
+    const res = await customerApi.getCustomerAddresses(form.customerId)
+    customerAddresses.value = res?.data || []
+  } catch (e) {
+    console.error('加载客户收货地址失败', e)
+    customerAddresses.value = []
+  }
+}
+
+// 表单尚无地址时，优先带出客户默认地址
+const preferDefaultAddress = () => {
+  if (form.shippingAddress) return
+  const def = customerAddresses.value.find((a) => a.isDefault === 1) || customerAddresses.value[0]
+  if (def) applyAddress(def)
+}
+
+watch(
+  () => form.customerId,
+  async () => {
+    await loadCustomerAddresses()
+    preferDefaultAddress()
+  }
+)
+
+// 自提且无地址时，默认带出公司地址
+watch(
+  () => form.shippingMethod,
+  (m) => {
+    if (m === 'self_pickup' && !form.shippingAddress && company.address) {
+      applyCompany()
+    }
+  }
+)
+
 // 初始化
 onMounted(() => {
   resetForm()
@@ -751,6 +882,7 @@ onMounted(() => {
   if (props.sampleOrderId) {
     prefillFromSample(props.sampleOrderId)
   }
+  loadCustomerAddresses().then(() => preferDefaultAddress())
 })
 
 // 编辑模式：监听 orderId（父组件的 orderId 可能在 onMounted 之后才赋值）

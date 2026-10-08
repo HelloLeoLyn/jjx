@@ -207,7 +207,16 @@
       @cancel="handleFormCancel"
     />
 
-    <CustomerDetailDialog v-model="detailOpen" :customer-id="detailCustomerId" />
+    <CustomerDetailDialog
+      v-model="detailOpen"
+      :customer-id="detailCustomerId"
+      @address="openAddressForDetail"
+    />
+    <CustomerAddressDialog
+      v-model="addressOpen"
+      :customer-id="addressCustomer.id"
+      :customer-name="addressCustomer.name"
+    />
     <!-- 操作预览器 -->
     <OperationPreviewDialog
       v-model="previewVisible"
@@ -245,6 +254,7 @@ import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import { parseTime, download } from '@/utils/format'
 import CustomerFormDialog from './components/CustomerFormDialog.vue'
 import CustomerDetailDialog from './components/CustomerDetailDialog.vue'
+import CustomerAddressDialog from './components/CustomerAddressDialog.vue'
 import {
   CreditStartBasisEnum,
   CustomerTypeEnum,
@@ -260,12 +270,14 @@ const customerActions: TableAction<CustomerItem>[] = [
   { key: 'edit', label: '修改', permission: 'sales:customer:edit' },
   { key: 'delete', label: '删除', type: 'danger', permission: 'sales:customer:delete' },
   { key: 'status', label: '状态变更', type: 'warning' },
+  { key: 'address', label: '地址簿', type: 'primary', permission: 'sales:customer:edit' },
   { key: 'detail', label: '详情', type: 'info' },
 ]
 const handleCustomerAction = (key: string, row: CustomerItem) => {
   if (key === 'edit') handleUpdate(row)
   if (key === 'delete') handleDelete(row)
   if (key === 'status') handleChangeStatus(row)
+  if (key === 'address') handleAddress(row)
   if (key === 'detail') handleView(row)
 }
 
@@ -322,6 +334,8 @@ const title = ref('')
 const open = ref(false)
 const detailOpen = ref(false)
 const detailCustomerId = ref<number>()
+const addressOpen = ref(false)
+const addressCustomer = ref<{ id?: number; name?: string }>({})
 
 // 表格数据
 const customerList = ref<CustomerItem[]>([])
@@ -498,6 +512,19 @@ const handleView = (row: CustomerItem | MouseEvent) => {
   if (row instanceof MouseEvent) return
   detailCustomerId.value = row.customerId
   detailOpen.value = true
+}
+
+// 地址簿按钮操作
+const handleAddress = (row: CustomerItem) => {
+  addressCustomer.value = { id: row.customerId, name: row.customerName }
+  addressOpen.value = true
+}
+
+// 从客户详情弹窗打开地址簿
+const openAddressForDetail = () => {
+  const row = customerList.value.find((c) => c.customerId === detailCustomerId.value)
+  addressCustomer.value = { id: detailCustomerId.value, name: row?.customerName }
+  addressOpen.value = true
 }
 
 // 表单重置
