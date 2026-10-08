@@ -293,9 +293,22 @@
 
     <!-- 金额汇总 -->
     <el-divider content-position="left">金额汇总</el-divider>
+    <el-alert
+      v-if="!form.amountBreakdownConfirmed"
+      title="历史订单金额组成尚未确认，保留原金额。修改价格、数量或费用前，请核实运费和折扣后确认。"
+      type="warning"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 12px"
+    />
+    <el-checkbox
+      v-if="!form.amountBreakdownConfirmed"
+      v-model="form.amountBreakdownConfirmed"
+      @change="calculateTotalAmount"
+    >确认运费和折扣，重新计算金额</el-checkbox>
     <el-row class="amount-summary" :gutter="20">
       <el-col :span="8">
-        <el-form-item label="小计金额">
+        <el-form-item label="未税小计">
           <el-input v-model="form.subtotalAmount" readonly style="width: 100%">
             <template #append>元</template>
           </el-input>
@@ -325,7 +338,7 @@
     </el-row>
     <el-row class="amount-summary" :gutter="20">
       <el-col :span="8">
-        <el-form-item label="运费">
+        <el-form-item label="运费（不计税）">
           <el-input-number
             v-model="form.shippingFee"
             :min="0"
@@ -351,8 +364,8 @@
         </el-form-item>
       </el-col>
       <el-col :span="8">
-        <el-form-item label="总金额">
-          <el-input v-model="form.totalAmount" readonly style="width: 100%">
+        <el-form-item label="应付总额">
+          <el-input v-model="form.finalAmount" readonly style="width: 100%">
             <template #append>元</template>
           </el-input>
         </el-form-item>
@@ -535,9 +548,9 @@ const exchangeRateLoading = ref(false)
 
 // 外币总金额显示（订单选外币时，将人民币总金额折算成外币）
 const foreignCurrencyDisplay = computed(() => {
-  if (!form.exchangeRate || !form.totalAmount || form.currency === 'CNY') return 0
+  if (!form.exchangeRate || !form.finalAmount || form.currency === 'CNY') return 0
   // 汇率 = 1外币 = N人民币，所以外币金额 = 人民币总金额 / 汇率
-  const foreignAmount = form.totalAmount / form.exchangeRate
+  const foreignAmount = form.finalAmount / form.exchangeRate
   return foreignAmount.toFixed(2)
 })
 

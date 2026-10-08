@@ -60,7 +60,6 @@ public interface SalesOrderConverter {
     @Mapping(target = "unpaidAmount", ignore = true)
     @Mapping(target = "taxAmount", ignore = true)
     @Mapping(target = "totalAmountWithTax", ignore = true)
-    @Mapping(target = "discountAmount", ignore = true)
     @Mapping(target = "finalAmount", ignore = true)
     @Mapping(target = "deleted", ignore = true)
     @Mapping(target = "createTime", ignore = true)
@@ -100,7 +99,6 @@ public interface SalesOrderConverter {
     @Mapping(target = "unpaidAmount", ignore = true)
     @Mapping(target = "taxAmount", ignore = true)
     @Mapping(target = "totalAmountWithTax", ignore = true)
-    @Mapping(target = "discountAmount", ignore = true)
     @Mapping(target = "finalAmount", ignore = true)
     @Mapping(target = "deleted", ignore = true)
     @Mapping(target = "createTime", ignore = true)
@@ -113,7 +111,7 @@ public interface SalesOrderConverter {
      * 批量更新金额字段后的 Entity（用于计算完成后）
      */
     @AfterMapping
-    default void afterToEntity(@MappingTarget SalesOrder entity) {
+    default void afterToEntity(@MappingTarget SalesOrder entity, SalesOrderAddDTO addDTO) {
         if (entity != null) {
             // 设置默认状态
             if (entity.getOrderStatus() == null) {
@@ -141,22 +139,6 @@ public interface SalesOrderConverter {
             // 设置未付金额
             if (entity.getUnpaidAmount() == null && entity.getFinalAmount() != null) {
                 entity.setUnpaidAmount(entity.getFinalAmount());
-            }
-        }
-    }
-
-    /**
-     * 更新后处理
-     */
-    @AfterMapping
-    default void afterUpdateEntity(@MappingTarget SalesOrder entity, SalesOrderEditDTO editDTO) {
-        if (entity != null) {
-            // 重新计算金额
-            SalesOrderCalculator.fillOrderAmounts(entity);
-            
-            // 重新计算未付金额
-            if (entity.getFinalAmount() != null && entity.getPaidAmount() != null) {
-                entity.setUnpaidAmount(entity.getFinalAmount().subtract(entity.getPaidAmount()));
             }
         }
     }

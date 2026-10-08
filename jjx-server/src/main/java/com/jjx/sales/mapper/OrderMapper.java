@@ -62,6 +62,7 @@ public interface OrderMapper extends BaseMapper<SalesOrder> {
             "<if test='entity.deliveryTerms != null'>,o.delivery_terms=#{entity.deliveryTerms}</if> " +
             "<if test='entity.deliveryAddress != null'>,o.delivery_address=#{entity.deliveryAddress}</if> " +
             "<if test='entity.totalAmount != null'>,o.total_amount=#{entity.totalAmount}</if> " +
+            "<if test='entity.shippingFee != null'>,o.shipping_fee=#{entity.shippingFee}</if> " +
             "<if test='entity.taxRate != null'>,o.tax_rate=#{entity.taxRate}</if> " +
             "<if test='entity.taxAmount != null'>,o.tax_amount=#{entity.taxAmount}</if> " +
             "<if test='entity.totalAmountWithTax != null'>,o.total_amount_with_tax=#{entity.totalAmountWithTax}</if> " +

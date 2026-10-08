@@ -264,6 +264,9 @@ public class SalesOrder extends BaseEntity {
      */
     private BigDecimal totalAmount;
 
+    /** 运费；NULL 表示历史金额组成尚未确认，禁止推算补齐。 */
+    private BigDecimal shippingFee;
+
     /**
      * 税率
      */

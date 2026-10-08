@@ -93,6 +93,10 @@ public class SalesOrderEditDTO {
     @Schema(description = "总金额", requiredMode = Schema.RequiredMode.REQUIRED, example = "10000.00")
     private BigDecimal totalAmount;
 
+    /** 运费；NULL 表示历史金额组成尚未确认，禁止推算补齐。 */
+    @DecimalMin(value = "0", message = "运费不能为负数")
+    private BigDecimal shippingFee;
+
     @DecimalMin(value = "0", message = "税率不能为负数")
     @DecimalMax(value = "100", message = "税率不能大于100")
     @Schema(description = "税率(百分比，如 13 表示 13%)", example = "13")
@@ -102,6 +106,9 @@ public class SalesOrderEditDTO {
     @DecimalMax(value = "1", message = "折扣率不能大于1")
     @Schema(description = "折扣率", example = "0.05")
     private BigDecimal discountRate;
+
+    @DecimalMin(value = "0", message = "折扣金额不能为负数")
+    private BigDecimal discountAmount;
 
     @NotNull(message = "总数量不能为空")
     @Min(value = 1, message = "总数量至少为1")

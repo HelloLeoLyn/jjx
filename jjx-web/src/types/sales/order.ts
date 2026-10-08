@@ -63,7 +63,10 @@ export interface SalesOrderAddDTO {
   deliveryTerms?: string
   /** 交货地址 */
   deliveryAddress?: string
-  /** 总金额 */
+  /** 运费；null 表示历史金额组成未确认 */
+  shippingFee?: number | null
+  discountAmount?: number
+  /** 折扣前含税总额 */
   totalAmount: number
   /** 税率 */
   taxRate?: number
@@ -115,7 +118,10 @@ export interface SalesOrderEditDTO {
   deliveryTerms?: string
   /** 交货地址 */
   deliveryAddress?: string
-  /** 总金额 */
+  /** 运费；null 表示历史金额组成未确认 */
+  shippingFee?: number | null
+  discountAmount?: number
+  /** 折扣前含税总额 */
   totalAmount: number
   /** 税率 */
   taxRate?: number
@@ -235,7 +241,9 @@ export interface SalesOrderVO {
   deliveryTerms?: string
   /** 交货地址 */
   deliveryAddress?: string
-  /** 总金额 */
+  /** 运费；null 表示历史金额组成未确认 */
+  shippingFee?: number | null
+  /** 折扣前含税总额 */
   totalAmount: number
   /** 税率 */
   taxRate: number
@@ -376,6 +384,8 @@ export interface OrderFormData {
   taxRate: number
   taxAmount: number
   shippingFee: number
+  amountBreakdownConfirmed: boolean
+  finalAmount: number
   discountAmount: number
   totalAmount: number
   totalQuantity: number // 总数量

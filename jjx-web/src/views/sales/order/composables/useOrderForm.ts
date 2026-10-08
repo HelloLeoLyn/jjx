@@ -114,6 +114,8 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     taxRate: 0,
     taxAmount: 0,
     shippingFee: 0,
+    amountBreakdownConfirmed: true,
+    finalAmount: 0,
     discountAmount: 0,
     totalAmount: 0,
     totalQuantity: 0, // 总数量
@@ -362,24 +364,27 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
 
   // 计算明细金额
   const calculateItemAmount = (item: OrderItem) => {
-    item.amount = (item.quantity || 0) * (item.unitPrice || 0)
+    item.amount = roundMoney((item.quantity || 0) * (item.unitPrice || 0))
     calculateTotalAmount()
   }
 
-  // 计算总金额和总数量
+  const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
+  let originalPricing = ''
+  const pricingSnapshot = () => JSON.stringify({
+    taxRate: Number(form.taxRate || 0),
+    shippingFee: Number(form.shippingFee || 0),
+    discountAmount: Number(form.discountAmount || 0),
+    items: form.items.map((item) => [item.productId, Number(item.quantity), Number(item.unitPrice)]),
+  })
+
+  // 明细为未税价；运费单列；折扣只从含税总额扣一次。
   const calculateTotalAmount = () => {
-    // 计算小计金额
-    form.subtotalAmount = form.items.reduce((sum, item) => sum + (item.amount || 0), 0)
-
-    // 计算总数量
-    form.totalQuantity = form.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
-
-    // 计算税额
-    form.taxAmount = (form.subtotalAmount * (form.taxRate || 0)) / 100
-
-    // 计算总金额
-    form.totalAmount =
-      form.subtotalAmount + form.taxAmount + (form.shippingFee || 0) - (form.discountAmount || 0)
+    form.subtotalAmount = roundMoney(form.items.reduce((sum, item) => sum + Number(item.amount || 0), 0))
+    form.totalQuantity = form.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+    if (!form.amountBreakdownConfirmed) return
+    form.taxAmount = roundMoney((form.subtotalAmount * Number(form.taxRate || 0)) / 100)
+    form.totalAmount = roundMoney(form.subtotalAmount + form.taxAmount + Number(form.shippingFee || 0))
+    form.finalAmount = roundMoney(form.totalAmount - Number(form.discountAmount || 0))
   }
 
   // 添加明细
@@ -432,6 +437,8 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       taxRate: 0,
       taxAmount: 0,
       shippingFee: 0,
+    amountBreakdownConfirmed: true,
+    finalAmount: 0,
       discountAmount: 0,
       totalAmount: 0,
       totalQuantity: 0, // 总数量
@@ -465,6 +472,10 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       const orderResponse = await orderApi.getOrder(orderId)
       if (orderResponse.code === 200 && orderResponse.data) {
         Object.assign(form, orderResponse.data)
+        form.amountBreakdownConfirmed = orderResponse.data.shippingFee != null
+        form.shippingFee = Number(orderResponse.data.shippingFee ?? 0)
+        form.discountAmount = Number(orderResponse.data.discountAmount ?? 0)
+        form.finalAmount = Number(orderResponse.data.finalAmount ?? orderResponse.data.totalAmount ?? 0)
         // 订单类型固定标准单（2026-08-11）
         form.orderType = 1
         // 收货地址回显：后端 deliveryAddress（InternationalAddress JSON）→ 表单 shippingAddress
@@ -474,6 +485,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
         form.salesPersonName = orderResponse.data.salesManagerName
         // 3. 重新计算金额
         calculateTotalAmount()
+        originalPricing = pricingSnapshot()
       } else {
         ElMessage.error('加载订单数据失败')
         return false
@@ -498,6 +510,15 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     })
 
     if (!isValid) return false
+
+    if (!form.amountBreakdownConfirmed && originalPricing !== pricingSnapshot()) {
+      ElMessage.warning('请确认运费、折扣等金额组成后再修改金额或明细价格数量')
+      return false
+    }
+    if (form.amountBreakdownConfirmed && form.finalAmount < 0) {
+      ElMessage.warning('折扣金额不能超过含税总金额')
+      return false
+    }
 
     // 验证明细
     if (form.items.length === 0) {
@@ -539,6 +560,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       // 1. 构建提交数据，将表单字段映射为后端DTO字段
       const submitData = {
         ...form,
+        shippingFee: form.amountBreakdownConfirmed ? form.shippingFee : null,
         salesManagerId: form.salesPersonId,
         salesManagerName: form.salesPersonName,
         // 收货地址：前端表单字段 shippingAddress → 后端 DTO deliveryAddress
@@ -571,6 +593,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       // 1. 构建提交数据，将表单字段映射为后端DTO字段
       const submitData = {
         ...form,
+        shippingFee: form.amountBreakdownConfirmed ? form.shippingFee : null,
         salesManagerId: form.salesPersonId,
         salesManagerName: form.salesPersonName,
         // 收货地址：前端表单字段 shippingAddress → 后端 DTO deliveryAddress

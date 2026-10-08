@@ -22,6 +22,7 @@ import com.jjx.product.mapper.ProductMapper;
 import com.jjx.production.domain.dto.ProductionOrderCreateDTO;
 import com.jjx.production.service.ProductionOrderService;
 import com.jjx.sales.domain.converter.SalesOrderConverter;
+import com.jjx.sales.domain.converter.SalesOrderCalculator;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.domain.dto.SalesOrderEditDTO;
 import com.jjx.sales.domain.dto.SalesOrderProductDTO;
@@ -141,6 +142,9 @@ public class OrderServiceImpl implements IOrderService {
         }
         SalesOrder entity = orderConverter.toEntity(dto);
         entity.setOrderNo(orderNo);
+        // 新单统一从明细计算；未填写运费表示本次新单无运费，旧单不作此推断。
+        if (entity.getShippingFee() == null) entity.setShippingFee(BigDecimal.ZERO);
+        SalesOrderCalculator.fillFromItems(entity, dto.getItems());
         fillCustomerShortName(entity, dto.getCustomerId());
         // 链路追踪（DEV-568）：无上游 traceId 则生成 UUID
         String traceId = dto.getTraceId() != null && !dto.getTraceId().isEmpty()
@@ -214,11 +218,8 @@ public class OrderServiceImpl implements IOrderService {
         fillCustomerShortName(entity, dto.getCustomerId());
 
         // 2026-08-18 L3：修改前抓旧明细（用于字段级变更对比）
-        java.util.List<SalesOrderProductVO> oldItemVOs = null;
-        try {
-            oldItemVOs = orderProductService.getListByOrderId(dto.getOrderId());
-        } catch (Exception ignored) {
-        }
+        java.util.List<SalesOrderProductVO> oldItemVOs = orderProductService.getListByOrderId(dto.getOrderId());
+        SalesOrderCalculator.prepareEditAmounts(entity, existingOrder, dto, oldItemVOs);
 
         int insert = orderMapper.updateById(entity);
         orderProductService.deleteByOrderId(dto.getOrderId());
@@ -266,6 +267,10 @@ public class OrderServiceImpl implements IOrderService {
         changeRecorder.diff(changes, "交货地址", oldOrder.getDeliveryAddress(), dto.getDeliveryAddress());
         changeRecorder.diff(changes, "总金额", oldOrder.getTotalAmount(), dto.getTotalAmount());
         changeRecorder.diff(changes, "税率", oldOrder.getTaxRate(), dto.getTaxRate());
+        if (dto.getShippingFee() != null) {
+            changeRecorder.diff(changes, "运费", oldOrder.getShippingFee(), dto.getShippingFee());
+            changeRecorder.diff(changes, "折扣金额", oldOrder.getDiscountAmount(), dto.getDiscountAmount());
+        }
         changeRecorder.diff(changes, "折扣率", oldOrder.getDiscountRate(), dto.getDiscountRate());
         changeRecorder.diff(changes, "总数量", oldOrder.getTotalQuantity(), dto.getTotalQuantity());
         changeRecorder.diff(changes, "销售员", oldOrder.getSalesManagerName(), dto.getSalesManagerName());

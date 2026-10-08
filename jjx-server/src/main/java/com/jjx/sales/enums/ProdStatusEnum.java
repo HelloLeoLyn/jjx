@@ -19,6 +19,13 @@ public enum ProdStatusEnum implements BizStatusEnum {
     private final Integer value;
     private final String label;
 
+    /** 完工入库/红冲后，按净已产量同步订单生产状态。 */
+    public static ProdStatusEnum fromProducedQuantity(Integer produced, Integer required) {
+        if (produced == null || produced <= 0) return NONE;
+        if (required != null && required > 0 && produced >= required) return COMPLETED;
+        return PARTIAL_PRODUCING;
+    }
+
     public static ProdStatusEnum getByValue(Integer value) {
         if (value == null) {
             return null;

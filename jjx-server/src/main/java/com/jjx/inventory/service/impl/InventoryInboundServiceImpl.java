@@ -2258,10 +2258,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             }
             int produced = salesOrder.getProducedQuantity() != null ? salesOrder.getProducedQuantity() : 0;
             // dev-20260922-020（口径 B）：冲减时 postedQty 为负 → 这里会把订单已产数减回去，下限 0
-            salesOrder.setProducedQuantity(Math.max(0, produced + postedQty.intValue()));
-            salesOrderMapper.updateById(salesOrder);
+            com.jjx.sales.domain.entity.SalesOrder patch = new com.jjx.sales.domain.entity.SalesOrder();
+            patch.setOrderId(productionOrder.getSalesOrderId());
+            patch.setProducedQuantity(Math.max(0, produced + postedQty.intValueExact()));
+            patch.setProdStatus(com.jjx.sales.enums.ProdStatusEnum.fromProducedQuantity(
+                    patch.getProducedQuantity(), salesOrder.getTotalQuantity()).getValue());
+            salesOrderMapper.updateById(patch);
             log.info("完工入库回写订单 produced_quantity: orderId={}, 本次+{}，累计={}",
-                    productionOrder.getSalesOrderId(), postedQty, salesOrder.getProducedQuantity());
+                    productionOrder.getSalesOrderId(), postedQty, patch.getProducedQuantity());
         } catch (Exception e) {
             log.warn("完工入库回写订单 produced_quantity 失败（不影响入库主流程）: {}", e.getMessage());
         }

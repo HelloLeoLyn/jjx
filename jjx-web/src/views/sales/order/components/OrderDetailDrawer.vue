@@ -80,6 +80,10 @@
                 {{ formatCurrency(orderDetail.totalAmount) }} {{ orderDetail.currency }}
               </strong>
             </el-descriptions-item>
+            <el-descriptions-item label="运费（不计税）">
+              <span v-if="orderDetail.shippingFee == null">金额组成待确认</span>
+              <span v-else>{{ formatCurrency(orderDetail.shippingFee) }} {{ orderDetail.currency }}</span>
+            </el-descriptions-item>
             <el-descriptions-item label="税率">
               {{ (Number(orderDetail.taxRate) || 0).toFixed(2) }}%
             </el-descriptions-item>
