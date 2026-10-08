@@ -11,20 +11,20 @@
         </el-form>
         <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" show-icon style="margin-bottom: 12px" />
         <div class="scope-note">同客户、同收货地址、同币种可合并；本次交货方式在建单时统一选择。不同交期可合并。</div>
-        <el-table v-loading="loading" :data="rows" border max-height="360" row-key="id">
+        <el-table v-loading="loading" :data="rows" border max-height="360" row-key="id" :row-class-name="rowClass">
           <el-table-column width="55" align="center">
             <template #header><el-checkbox :model-value="allVisibleSelected" :indeterminate="someVisibleSelected && !allVisibleSelected" :disabled="!eligibleRows.length || loading" aria-label="选择当前可合并明细" @change="toggleAll" /></template>
             <template #default="{ row }"><el-checkbox :model-value="selected.some(item => item.id === row.id)" :disabled="!!blockedReason(row) || loading" :aria-label="`选择 ${row.orderNo} ${row.productCode}`" @change="toggleRow(row)" /></template>
           </el-table-column>
           <el-table-column label="客户 / 收货地址" min-width="210"><template #default="{ row }">{{ row.customerName }}<div class="secondary">{{ row.deliveryAddress || '建单时填写地址' }}</div></template></el-table-column>
-          <el-table-column prop="orderNo" label="销售单号" min-width="150" />
-          <el-table-column label="客户料号 / 品名" min-width="215"><template #default="{ row }">{{ row.customerMaterialNo || row.productName }}<div class="secondary">{{ row.productName }}</div></template></el-table-column>
+          <el-table-column label="来源订单 / 客户订单" min-width="175"><template #default="{ row }"><strong>{{ row.orderNo }}</strong><div v-if="row.customerOrderNo" class="secondary">{{ row.customerOrderNo }}</div></template></el-table-column>
+          <el-table-column label="客户料号 / 品名" min-width="215"><template #default="{ row }">{{ row.customerMaterialNo || row.productName }}<div v-if="row.customerMaterialNo && row.customerMaterialNo !== row.productName" class="secondary">{{ row.productName }}</div><div v-if="row.specification" class="secondary">{{ row.specification }}</div></template></el-table-column>
           <el-table-column prop="currency" label="币种" width="75" />
           <el-table-column prop="dueDate" label="交期" width="110" />
           <el-table-column prop="quantity" label="订单量" width="85" align="right" />
           <el-table-column prop="shipped" label="已发量" width="85" align="right" />
           <el-table-column prop="occupied" label="待发占用" width="95" align="right" />
-          <el-table-column prop="availableQuantity" label="本次可建单" width="105" align="right" />
+          <el-table-column label="本次可建单" width="105" align="right"><template #default="{ row }"><strong class="available-qty">{{ row.availableQuantity }}</strong></template></el-table-column>
           <el-table-column prop="orderRemainingQuantity" label="订单待安排" width="105" align="right" />
           <el-table-column prop="shortageQuantity" label="尚缺成品" width="95" align="right" />
           <el-table-column prop="stockAvailable" label="成品可用量" width="110" align="right" />
@@ -66,6 +66,7 @@ function blockedReason(row: DeliveryArrangeLine) {
   if (row.currency !== first.currency) return '币种不同'
   return ''
 }
+const rowClass = ({ row }: { row: DeliveryArrangeLine }) => blockedReason(row) ? 'unavailable-row' : ''
 const selectedOrderCount = computed(() => new Set(selected.value.map(line => line.orderId)).size)
 const differentDueDates = computed(() => new Set(selected.value.map(line => line.dueDate)).size > 1)
 const eligibleRows = computed(() => rows.value.filter(row => !blockedReason(row)))
@@ -113,5 +114,7 @@ defineExpose({ reload })
 .arrange-panel,.records-panel { margin-top:16px; }.scope-note { margin-bottom:12px; }.secondary { margin-top:4px; }
 .selection-bar { padding:14px 16px; background:#f1f5f9; border-radius:6px; margin-top:12px; font-size:13px; }
 .selection-bar strong { color:#2563eb; }.stock-note { margin:10px 0 0; line-height:1.6; }.due-warning { color:#b45309; margin-left:12px; }
+.available-qty { color:#2563eb; }
+:deep(.unavailable-row) { color:#94a3b8; background:#f8fafc; }
 @media(max-width:850px) { .section-heading > div,.selection-bar { align-items:flex-start; flex-direction:column; }.due-warning { display:block; margin:6px 0 0; } }
 </style>

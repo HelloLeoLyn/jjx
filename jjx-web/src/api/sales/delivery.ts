@@ -66,6 +66,10 @@ export interface SalesDeliveryItem {
   orderId?: number
   orderNo?: string
   customerMaterialNo?: string
+  /** 客户采购订单号；无真实来源时留空。 */
+  customerOrderNo?: string
+  /** 单重（g）；无真实来源时留空。 */
+  unitWeight?: number
   /** 本次发货数量 */
   quantity?: number
   unitPrice?: number
@@ -127,6 +131,10 @@ export interface DeliveryArrangeLine {
   productCode: string
   productName: string
   customerMaterialNo?: string
+  /** 客户采购订单号；无真实来源时留空。 */
+  customerOrderNo?: string
+  /** 单重（g）；无真实来源时留空。 */
+  unitWeight?: number
   specification?: string
   unit?: string
   quantity: number
@@ -158,8 +166,8 @@ export const deliveryApi = {
     return request.post<R<void>>(`/sales/deliveries/${deliveryId}/confirm-shipment`)
   },
   /** 可编辑送货单（本次发货快照，不增加打印次数） */
-  exportExcel(deliveryId: number) {
-    return request.get<Blob>(`/sales/deliveries/${deliveryId}/export-excel`, { responseType: 'blob' })
+  exportExcel(deliveryId: number, options?: { showAmount: boolean; showWeight: boolean }) {
+    return request.get<Blob>(`/sales/deliveries/${deliveryId}/export-excel`, { params: options, responseType: 'blob' })
   },
   /** 分页查询发货单 */
   list(params: SalesDeliveryQueryDTO) {

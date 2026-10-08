@@ -5,6 +5,7 @@ export interface CompanyConfig {
   name: string
   address: string
   phone: string
+  fax: string
   email: string
   taxNo: string
   bank: string
@@ -18,6 +19,7 @@ const configKeys: Record<keyof CompanyConfig, string> = {
   name: 'company_name',
   address: 'company_address',
   phone: 'company_phone',
+  fax: 'company_fax',
   email: 'company_email',
   taxNo: 'company_tax_no',
   bank: 'company_bank',
@@ -32,6 +34,7 @@ export function useCompanyConfig() {
     name: '',
     address: '',
     phone: '',
+    fax: '',
     email: '',
     taxNo: '',
     bank: '',

@@ -1,6 +1,6 @@
 ﻿# 发货管理接入真实数据（dev-20261008-024）
 
-日期：2026-10-08。状态：代码与专项测试完成；待审核。迁移、运行服务更新及真实业务验收待执行。
+日期：2026-10-08。状态：业务接入及视觉/打印续改代码完成；待审核。最新续改按用户要求未测试、未编译；迁移、运行服务更新及验收由用户执行。
 
 ## 业务与入口
 
@@ -38,6 +38,8 @@ OQC最新版本需要判定通过、已判定/已关闭、已检数量大于零�
 
 ## 验证结果与待办
 
+以下是视觉/打印续改之前的验证记录，不代表最新代码已经通过验证。
+
 - 41项后端专项测试、6项前端数量测试通过：DeliveryCapacityServiceTest 8、SalesDeliveryFlowTest 15、MergedDeliveryWorkflowTest 10、InventoryOutboundInvariantTest 4、SalesDeliveryExcelServiceTest 4。覆盖部分发货、占用、防超发、合并条件、逐行OQC来源、最新复检/复核拦截、实际仓库扣库顺序、重复出库、签收、Excel分页/格式。
 - 前端状态枚举门禁通过；本次6个Vue组件编译通过；全量vue-tsc通过。
 - 库存严格门禁五项全0通过（当前数据库只读检查，不替代迁移后的真实链路验收）。补跑NOT NULL、检验批完整性、IQC来源、质量台账及单号门禁均通过。
@@ -56,3 +58,19 @@ bash scripts/db-migrate.sh 246_link_sales_outbound_delivery_item.sql --yes --tas
 代码变更清单集中在销售发货查询/建单/状态服务、出库来源追溯与实际确认、OQC来源保护、销售工作台聚合、合并前端和原打印/Excel，以及相关专项测试与迁移；不包含其他会话的备份、清理、API场景测试方案文件。
 
 专项验证命令：`mvn -o -f /tmp/jjx-pom-024.xml -Dtest=DeliveryCapacityServiceTest,SalesDeliveryFlowTest,MergedDeliveryWorkflowTest,SalesDeliveryExcelServiceTest,InventoryOutboundInvariantTest -DargLine=-javaagent:<本机mockito-core.jar> test`（临时POM仅将编译产物隔离到/tmp，避免其他会话编译冲突；常规在jjx-server/pom.xml执行相同测试即可）；`node jjx-web/scripts/test-delivery-quantity.cjs`。
+
+
+## 2026-10-08 视觉与打印续改
+
+用户要求恢复此前mock视觉布局，并明确assets/tmp/微信图片_20261008164733_100_13.jpg是最新打印单依据；测试、编译与重跑交给用户。本次继续任务024，不运行npm检查、Maven、浏览器或打印验收，不迁移、不启停服务。
+
+- 恢复收货信息浅底分区、图标页签/明细数、蓝色可建量、右侧数量/订单数/金额分层概览、合并/交期提示与底部操作区。继续用真实API、部分数量、共享成品合计校验及OQC/出库流程；选择入口仍统一在主页面。
+- 建单预览、A4和241×140三联纸均复用Qr026DeliverySheet。按照片显示物料料号、品名规格、单位、数量、销售单号、客户订单号码、可选金额/单重；每六行一组，不足补空，逐来源订单，不用合并单主订单号覆盖明细。
+- 恢复“显示金额”“显示单重（g）”，默认金额隐藏/单重显示，与此前mock相同；选项在预览、打印和Excel导出之间共享，并保存浏览器偏好。公司名称/TEL/FAX只读系统配置，不写入照片中的示例公司/电话。照片没有二维码或单价/行备注栏，因此本送货单改用照片栏位。
+- Excel导出接受同一组显示选项，导出副本按最新照片排为六行、独立销售单号与客户订单号码，不修改仓库中的旧Excel模板资产。完整单价、金额、费用、收货地址仍保留在“发货数据”页。原Excel五行/旧模板版式测试断言已属于旧口径，用户后续验证需按最新六行照片版同步。
+- 真实sales_order/sales_order_product没有客户采购订单号字段，product没有单重字段；这两栏保留空白，不虚构值、不以系统销售单号冒充客户订单号。本次只增加前端可选字段，不建表、不加列；将来录入真实字段后再接入。
+- 缺少本次发货快照时提示核对，不从订单全量明细替代本次发货打印；实际打印继续走原打印留痕及公共打印工具栏。A4左右15mm、上下12mm以及三联纸241×140尺寸沿用现有口径，实机效果待用户试打。
+
+本次白名单：jjx-web/src/views/sales/delivery/{Qr026DeliverySheet.vue,print.vue,components/MergeDeliveryDialog.vue,components/MergeDeliveryWorkbench.vue,components/useDeliveryPrintOptions.ts}；jjx-web/src/api/sales/delivery.ts；jjx-web/src/composables/useCompanyConfig.ts（读取fax）；jjx-server/src/main/java/com/jjx/sales/{controller/SalesDeliveryController.java,service/SalesDeliveryExcelService.java}；本实施记录。仅这些文件进入本次提交。
+
+用户验收重点：真实明细→合并弹窗层次→部分数量变化→六行预览→金额/单重开关→正式A4/三联纸打印与Excel同栏位→超过六行逐页销售单号。以上为待执行项，不宣称已通过。

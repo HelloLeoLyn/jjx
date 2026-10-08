@@ -71,9 +71,12 @@ public class SalesDeliveryController {
     @Operation(summary = "导出可编辑的送货单Excel")
     @SaCheckPermission("sales:delivery:view")
     @GetMapping("/{deliveryId}/export-excel")
-    public void exportExcel(@PathVariable Long deliveryId, HttpServletResponse response) throws IOException {
+    public void exportExcel(@PathVariable Long deliveryId,
+                            @RequestParam(defaultValue = "false") boolean showAmount,
+                            @RequestParam(defaultValue = "true") boolean showWeight,
+                            HttpServletResponse response) throws IOException {
         SalesDeliveryVO delivery = excelService.getDelivery(deliveryId);
-        byte[] bytes = excelService.export(delivery);
+        byte[] bytes = excelService.export(delivery, showAmount, showWeight);
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         String filename = URLEncoder.encode("送货单_" + delivery.getDeliveryNo() + ".xlsx", StandardCharsets.UTF_8)
                 .replace("+", "%20");
