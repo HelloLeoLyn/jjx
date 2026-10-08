@@ -7,7 +7,7 @@
       <ApprovalOpinionForm
         ref="approveFormRef"
         v-model="approveForm"
-        :min-length="4"
+        :require-approve-remark="false"
         :max-length="500"
         :quick-opinions="['审核通过']"
         :disabled="submitting"
