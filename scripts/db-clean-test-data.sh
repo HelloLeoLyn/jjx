@@ -3,6 +3,7 @@
 # JJX 清理测试数据唯一入口（jjx-docs/sql/00_clean_test_data.sql）
 #
 #   bash scripts/db-clean-test-data.sh                # 只读体检（默认，不写库）
+#   bash scripts/db-clean-test-data.sh --include-products # 只读预览全量清理，含全部产品资料
 #   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality        # 只体检三域
 #   bash scripts/db-clean-test-data.sh --execute      # 真执行：须在终端手工输入库名确认
 #   bash scripts/db-clean-test-data.sh --execute --backup <file>   # 指定本次校验的手工全库备份
@@ -41,6 +42,11 @@ BACKUP_ARG="${JJX_CLEAN_BACKUP:-}"
 DOMAIN_MODE=0
 DOMAINS=()
 DOMAIN_LABEL=""
+INCLUDE_PRODUCTS=0
+PRODUCT_TABLES=(product_config_option product_config_model product product_category)
+PLAN_SQL=""
+cleanup_plan() { [ -z "$PLAN_SQL" ] || rm -f "$PLAN_SQL"; }
+trap cleanup_plan EXIT
 
 c_red=$'\033[31m'; c_grn=$'\033[32m'; c_yel=$'\033[33m'; c_off=$'\033[0m'
 say()  { printf '%s\n' "$*"; }
@@ -54,8 +60,11 @@ usage() {
 危险等级: 🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（体检 → 校验手工备份 → 人工确认 → 执行）
 前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）里要有今天的全库备份（或用 --backup 指定）；备份必须排除 hr_employee
 域参数: --domains <逗号分隔>，可选 purchase / inventory / quality；可组合，域模式不清理 sys_task
+产品参数: --include-products，仅限全量模式；同时清空所有产品、分类、配置模型和选项，清理无引用的产品库存身份。不是自动识别测试产品。
 用法:
   bash scripts/db-clean-test-data.sh             只读体检：打印本次将删除多少行
+  bash scripts/db-clean-test-data.sh --include-products  只读预览：全量清理包含全部产品资料
+  bash scripts/db-clean-test-data.sh --include-products --execute  含全部产品的全量清理（手工确认）
   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality        只体检三域
   bash scripts/db-clean-test-data.sh --execute   真执行（须在终端手输库名确认；用今天的全库备份）
   bash scripts/db-clean-test-data.sh --execute --backup <file>   指定本次校验的手工全库备份
@@ -72,6 +81,7 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     --execute) EXECUTE=1; shift ;;
+    --include-products) INCLUDE_PRODUCTS=1; shift ;;
     --backup)
       [ $# -ge 2 ] || die "--backup 缺少参数（手工全库备份文件路径）"
       BACKUP_ARG="$2"; shift 2 ;;
@@ -92,6 +102,7 @@ while [ $# -gt 0 ]; do
     *) die "未知参数: $1（用法见 $0 --help）" ;;
   esac
 done
+[ "$INCLUDE_PRODUCTS" -eq 0 ] || [ "$DOMAIN_MODE" -eq 0 ] || die "--include-products 不能与 --domains 混用；产品清理需要完整的业务关联清理范围"
 
 domain_selected() {
   local table="$1" domain
@@ -156,8 +167,22 @@ export MYSQL_PWD="$DB_PASS"
 MYSQL=("$MYSQL_BIN" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" --default-character-set=utf8mb4 -N -B)
 CONNECTION_ERROR="$("${MYSQL[@]}" --connect-timeout=5 -e "SELECT 1" "$DB_NAME" 2>&1)" || \
   die "数据库连接失败 ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}：$CONNECTION_ERROR"
-"${MYSQL[@]}" -e "SELECT 1" >/dev/null 2>&1 \
-  || die "连不上数据库 $DB_NAME@$DB_HOST:$DB_PORT（检查服务与账号）"
+
+# 先生成本次实际 SQL，预览与执行使用同一清单。直接运行原 SQL 仍保留产品。
+PLAN_SQL="$(mktemp)"
+awk -v include_products="$INCLUDE_PRODUCTS" '
+  /^-- INCLUDE_PRODUCTS: / {
+    if (include_products == 1) sub(/^-- INCLUDE_PRODUCTS: /, ""); else next
+  }
+  { print }
+' "$SQL_FILE" > "$PLAN_SQL"
+
+db_count() {
+  local count
+  count="$("${MYSQL[@]}" "$DB_NAME" -e "$1")" || die "数据库计数失败，流程已中止"
+  [[ "$count" =~ ^[0-9]+$ ]] || die "数据库计数返回异常，流程已中止：$count"
+  printf '%s' "$count"
+}
 
 # ── 1. 解析清理目标（只认整行语句，注释掉的忽略）──────────────────────────────
 TRUNCATE_TABLES=()
@@ -177,7 +202,7 @@ while IFS= read -r line; do
       [ -n "$t" ] && { DELETE_TABLES+=("$t"); DELETE_WHERES+=("$w"); }
       ;;
   esac
-done < "$SQL_FILE"
+done < "$PLAN_SQL"
 [ "${#TRUNCATE_TABLES[@]}" -gt 0 ] || die "未能从 $SQL_FILE 解析出 TRUNCATE 目标，请核对脚本格式"
 
 ALL_TRUNCATE_TABLES=("${TRUNCATE_TABLES[@]}")
@@ -212,17 +237,18 @@ if [ "$DOMAIN_MODE" -eq 1 ]; then
 else
   say "模式  : 全量清理"
 fi
+if [ "$INCLUDE_PRODUCTS" -eq 1 ]; then
+  warn "产品  : 同时清空全部产品资料（含产品分类、配置模型和选项）；不是仅删除测试产品"
+else
+  say "产品  : 保留产品、分类、配置模型和选项"
+fi
 say ""
 
 say "① TRUNCATE 组：${#TRUNCATE_TABLES[@]} 张表将被清空"
 TRUNC_TOTAL=0
 TRUNC_NONZERO=0
 for t in "${TRUNCATE_TABLES[@]}"; do
-  n="$("${MYSQL[@]}" "$DB_NAME" -e "SELECT COUNT(*) FROM \`$t\`;" 2>/dev/null || echo "")"
-  if ! [[ "$n" =~ ^[0-9]+$ ]]; then
-    warn "   $t: 读取失败（表可能不存在，执行时会报错）"
-    continue
-  fi
+  n="$(db_count "SELECT COUNT(*) FROM \`$t\`;")" || exit 1
   TRUNC_TOTAL=$((TRUNC_TOTAL + n))
   if [ "$n" -gt 0 ]; then
     say "   $t: $n 行"
@@ -235,6 +261,9 @@ else
   say "   —— 有数据的 $TRUNC_NONZERO 张，其余 $((${#TRUNCATE_TABLES[@]} - TRUNC_NONZERO)) 张为 0 行"
 fi
 say "   合计将清空 $TRUNC_TOTAL 行"
+if [ "$INCLUDE_PRODUCTS" -eq 1 ]; then
+  say "   产品专项范围：${PRODUCT_TABLES[*]}（含零行表）"
+fi
 say ""
 
 if [ "${#DELETE_TABLES[@]}" -gt 0 ]; then
@@ -243,18 +272,14 @@ if [ "${#DELETE_TABLES[@]}" -gt 0 ]; then
   for i in "${!DELETE_TABLES[@]}"; do
     t="${DELETE_TABLES[$i]}"
     w="${DELETE_WHERES[$i]}"
-    n="$("${MYSQL[@]}" "$DB_NAME" -e "SELECT COUNT(*) FROM \`$t\` WHERE $w;" 2>/dev/null || echo "")"
-    all="$("${MYSQL[@]}" "$DB_NAME" -e "SELECT COUNT(*) FROM \`$t\`;" 2>/dev/null || echo "")"
-    if ! [[ "$n" =~ ^[0-9]+$ ]]; then
-      warn "   $t: 条件计数失败 → 执行时会由 MySQL 报错"
-      continue
+    if [ "$INCLUDE_PRODUCTS" -eq 1 ] && [ "$t" = "inventory_item" ]; then
+      # 产品及库存业务表稍后都将清空，按完整计划计算，不只统计当前孤儿。
+      n="$(db_count "SELECT COUNT(*) FROM inventory_item WHERE item_type = 'PRODUCT';")" || exit 1
+      say "   inventory_item 产品身份：按关联业务和产品清空后的计划计数；执行仍保留全部引用保护"
+    else
+      n="$(db_count "SELECT COUNT(*) FROM \`$t\` WHERE $w;")" || exit 1
     fi
-    if ! [[ "$all" =~ ^[0-9]+$ ]]; then
-      warn "   $t: 总数读取失败，仅报将删 $n 条"
-      say "   $t: 将删 $n 条"
-      DEL_TOTAL=$((DEL_TOTAL + n))
-      continue
-    fi
+    all="$(db_count "SELECT COUNT(*) FROM \`$t\`;")" || exit 1
     DEL_TOTAL=$((DEL_TOTAL + n))
     say "   $t: 将删 $n 条（保留 $((all - n)) 条）"
     say "      条件: WHERE $w"
@@ -287,7 +312,7 @@ RETAINED_TABLES=(
   quality_sampling_plan sales_order_review
 )
 DB_TABLES="$("${MYSQL[@]}" "$DB_NAME" -N -B -e \
-  "SELECT table_name FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'" 2>/dev/null | tr -d '\r' | sort)"
+  "SELECT table_name FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'" | tr -d '\r' | sort)"
 DB_COUNT="$(printf '%s\n' "$DB_TABLES" | grep -c . || true)"
 UNCOVERED=()
 if [ "$DOMAIN_MODE" -eq 1 ]; then
@@ -313,11 +338,46 @@ else
   say "③ 覆盖率校验：库 ${DB_COUNT} 张表均有归宿（清理清单 ∪ 保留白名单）"
 fi
 
+check_retained_product_refs() {
+  [ "$INCLUDE_PRODUCTS" -eq 1 ] || return 0
+  local refs t column n clear x blocked=0
+  refs="$("${MYSQL[@]}" "$DB_NAME" -e "SELECT c.table_name,c.column_name FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name WHERE c.table_schema='$DB_NAME' AND t.table_type='BASE TABLE' AND c.column_name IN ('product_id','product_code') ORDER BY c.table_name,c.column_name;")" || die "读取产品引用结构失败，未执行清理"
+  while IFS=$'\t' read -r t column; do
+    [ -n "$t" ] || continue
+    [[ "$t" =~ ^[a-zA-Z0-9_]+$ && "$column" =~ ^[a-zA-Z0-9_]+$ ]] || die "产品引用字段名异常"
+    clear=0
+    for x in "${TRUNCATE_TABLES[@]}"; do
+      [ "$t" != "$x" ] || { clear=1; break; }
+    done
+    [ "$clear" -eq 0 ] || continue
+    if [ "$column" = "product_id" ]; then
+      n="$(db_count "SELECT COUNT(*) FROM \`$t\` WHERE product_id IS NOT NULL AND product_id <> 0;")" || exit 1
+    else
+      n="$(db_count "SELECT COUNT(*) FROM \`$t\` WHERE product_code IS NOT NULL AND TRIM(product_code) <> '';")" || exit 1
+    fi
+    if [ "$n" -gt 0 ]; then
+      warn "   保留表 $t.$column 有 $n 条产品引用（包含已有悬空引用），不能清空产品"
+      blocked=1
+    fi
+  done <<< "$refs"
+  # 通用标签关系没有 product_id 字段；保留标签配置，不悄悄删除关系。
+  n="$(db_count "SELECT COUNT(*) FROM sys_tag_rel WHERE biz_type IN ('product','product_config_model','product_config_option','product_category');")" || exit 1
+  if [ "$n" -gt 0 ]; then
+    warn "   保留表 sys_tag_rel 有 $n 条产品相关标签关系，需先处理关联"
+    blocked=1
+  fi
+  [ "$blocked" -eq 0 ] || die "保留表的产品引用检查未通过，未执行清理；请先核对以上关联"
+  ok "产品引用检查通过：保留表无产品引用"
+}
+check_retained_product_refs
+
 if [ "$EXECUTE" -eq 0 ]; then
   say ""
   ok "体检完成，未写库、未执行清理"
   if [ "$DOMAIN_MODE" -eq 1 ]; then
     say "   要真执行: bash scripts/db-clean-test-data.sh --domains $DOMAIN_LABEL --execute（在终端手工输入库名确认）"
+  elif [ "$INCLUDE_PRODUCTS" -eq 1 ]; then
+    say "   要真执行: bash scripts/db-clean-test-data.sh --include-products --execute（清空所有产品，须终端手工确认）"
   else
     say "   要真执行: bash scripts/db-clean-test-data.sh --execute（在终端手工输入库名确认）"
   fi
@@ -354,13 +414,14 @@ read -r ANSWER || ANSWER=""
 if [ "$ANSWER" != "$DB_NAME" ]; then
   die "确认失败（输入与库名不一致）——已中止，未执行清理。备份在 $BK_FILE（md5 $BK_MD5）"
 fi
+check_retained_product_refs
 
 # ── 5. 执行清理 ────────────────────────────────────────────────────────────
 say ""
 say "── 执行清理 ──"
 START="$(date +%s)"
 if [ "$DOMAIN_MODE" -eq 0 ]; then
-  CLEAN_SQL_INPUT="$SQL_FILE"
+  CLEAN_SQL_INPUT="$PLAN_SQL"
 else
   DOMAIN_TABLE_CSV="$(IFS=,; printf '%s' "${TRUNCATE_TABLES[*]}")"
   CLEAN_SQL_INPUT="$(mktemp)"
@@ -369,7 +430,7 @@ else
     /^TRUNCATE[[:space:]]/ { t=$2; sub(/;$/, "", t); if (!keep[t]) next }
     /^DELETE[[:space:]]+FROM[[:space:]]/ { next }
     { print }
-  ' "$SQL_FILE" > "$CLEAN_SQL_INPUT"
+  ' "$PLAN_SQL" > "$CLEAN_SQL_INPUT"
 fi
 CLEAN_ERR="$(mktemp)"
 if ! "${MYSQL[@]}" "$DB_NAME" < "$CLEAN_SQL_INPUT" 2> "$CLEAN_ERR"; then
@@ -384,7 +445,21 @@ ok "清理执行完成（$(($(date +%s) - START))s）"
 
 # ── 6. 库外留痕（脚本会清空 sys_oper_log，库里留不下痕迹）───────────────────
 LOG="$BACKUP_DIR/clean-test-data-log.txt"
-printf '%s 清理测试数据 由 %s 执行 | 库 %s | 脚本 00_clean_test_data.sql | TRUNCATE %s 张(%s 行) + DELETE %s 条 | 备份 %s md5=%s\n' \
+printf '%s 清理测试数据 由 %s 执行 | 库 %s | 脚本 00_clean_test_data.sql | TRUNCATE %s 张(%s 行) + DELETE %s 条 | 备份 %s md5=%s | include_products=%s domains=%s\n' \
   "$(date '+%Y-%m-%d %H:%M')" "${AI_AGENT:-Hermes Agent}" "$DB_NAME" \
-  "${#TRUNCATE_TABLES[@]}" "$TRUNC_TOTAL" "${DEL_TOTAL:-0}" "$(basename "$BK_FILE")" "$BK_MD5" >> "$LOG"
+  "${#TRUNCATE_TABLES[@]}" "$TRUNC_TOTAL" "${DEL_TOTAL:-0}" "$(basename "$BK_FILE")" "$BK_MD5" "$INCLUDE_PRODUCTS" "${DOMAIN_LABEL:-all}" >> "$LOG"
 ok "留痕: $LOG"
+
+if [ "$INCLUDE_PRODUCTS" -eq 1 ]; then
+  REMAINING=0
+  for t in "${PRODUCT_TABLES[@]}"; do
+    n="$(db_count "SELECT COUNT(*) FROM \`$t\`;")" || exit 1
+    say "产品清理核验 $t: $n 行（期望 0）"
+    REMAINING=$((REMAINING + n))
+  done
+  n="$(db_count "SELECT COUNT(*) FROM inventory_item WHERE item_type = 'PRODUCT';")" || exit 1
+  say "产品清理核验 inventory_item/PRODUCT: $n 行（期望 0）"
+  REMAINING=$((REMAINING + n))
+  [ "$REMAINING" -eq 0 ] || die "清理已执行，但产品残留核验失败；请检查引用保护保留的记录。执行记录见 $LOG"
+  ok "产品清理核验通过：产品资料及产品库存身份均为零"
+fi

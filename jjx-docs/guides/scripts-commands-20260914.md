@@ -71,12 +71,16 @@
 
 ## 4. scripts/db-clean-test-data.sh —— 清理测试数据入口
 
-- 用途：`jjx-docs/sql/00_clean_test_data.sql`（整表 TRUNCATE + 1 条 DELETE，表清单以脚本实际解析为准）的**唯一**入口。
+- 用途：`jjx-docs/sql/00_clean_test_data.sql`（整表 TRUNCATE + 条件 DELETE，表清单以脚本实际解析为准）的**唯一**入口。
 - 危险等级：🟢 无参数/`--domains`=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 校验手工备份 → 人工确认 → 执行）。
 - 前置：`--execute` 必须**在终端手工执行**（agent/管道一律拒绝）；确认方式=手工输入库名 `jjx_erp_db`；**已有今天的全库备份**（默认 `JJX_BACKUP_DIR`＝仓库内 `jjx-docs/sql/backups/`，或 `--backup`/`JJX_CLEAN_BACKUP` 指定）——2026-09-28 起脚本**不再自动备份**、只校验手工备份存在才放行；备份必须排除 `hr_employee`。
 - 域参数：`--domains <逗号分隔>`，可选 `purchase` / `inventory` / `quality`，可组合；域模式跳过 `sys_task` 清理。
+- 产品参数：`--include-products` 仅限全量清理，不能与 `--domains` 混用。默认保留产品；显式启用才清空 `product_config_option`、`product_config_model`、`product`、`product_category`，随后清理无业务引用的 PRODUCT 库存身份，MATERIAL 身份保留。此选项清空所有产品资料，不能自动区分正式产品和测试产品，也不是仅清理产品的独立模式。
+- 产品关联保护：预览及人工确认后检查保留表的 `product_id` / `product_code` 和产品相关标签关系，存在引用（含已有悬空引用）即中止；关联业务表先清，产品资料后清。查询失败即中止，显示数据库错误。启用后清理完核验四张产品表及 PRODUCT 库存身份均为零，并在执行日志记录 `include_products` / `domains`。
 - 命令：
   - 体检：`bash scripts/db-clean-test-data.sh`
+  - 含产品的全量预览：`bash scripts/db-clean-test-data.sh --include-products`
+  - 含产品的全量清理：`bash scripts/db-clean-test-data.sh --include-products --execute`（须手工备份、终端输入库名；会清空全部产品）
   - 只体检三域：`bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality`
   - 真清：`bash scripts/db-clean-test-data.sh --execute`（用今天的全库备份；无备份即中止）
   - 真清三域：`bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality --execute`（仍须终端手输库名）

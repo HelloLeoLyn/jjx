@@ -312,10 +312,6 @@ TRUNCATE inventory_stock;
 
 TRUNCATE inventory_storage_location;
 
--- 孤儿库存身份：inventory_item 是保留主数据，但产品删除后遗留的 PRODUCT 身份不能继续占用编码。
--- 仅清理来源产品已不存在且没有任何库存/单据引用的身份；有业务引用的行保留并由体检暴露。
-DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 FROM product p WHERE p.product_id = inventory_item.source_id) AND NOT EXISTS (SELECT 1 FROM inventory_stock s WHERE s.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_stock_item si WHERE si.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_transaction t WHERE t.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_inbound_item ib WHERE ib.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_outbound_item ob WHERE ob.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_stocktake_item st WHERE st.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_transfer_item tf WHERE tf.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM sales_order_stock_reserve r WHERE r.inventory_item_id = inventory_item.inventory_item_id);
-
 -- v8：仓库保留不清（基础档案，出库单创建依赖默认仓库）
 -- TRUNCATE inventory_warehouse;
 
@@ -383,6 +379,18 @@ TRUNCATE sys_error_log;
 TRUNCATE sys_number_sequence;
 
 TRUNCATE sales_sample_order;
+
+-- 产品清理为显式选项，默认仍遵守 v14 基础档案保留规则。
+-- 以下标记仅由 db-clean-test-data.sh --include-products 激活，直接运行本 SQL 不会清产品。
+-- 关联业务表清理完成后，先选项、模型，再产品和分类；物料与工装继续保留。
+-- INCLUDE_PRODUCTS: TRUNCATE product_config_option;
+-- INCLUDE_PRODUCTS: TRUNCATE product_config_model;
+-- INCLUDE_PRODUCTS: TRUNCATE product;
+-- INCLUDE_PRODUCTS: TRUNCATE product_category;
+
+-- 孤儿库存身份：inventory_item 是保留主数据，但产品删除后遗留的 PRODUCT 身份不能继续占用编码。
+-- 仅清理来源产品已不存在且没有任何库存/单据引用的身份；有业务引用的行保留并由体检暴露。
+DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 FROM product p WHERE p.product_id = inventory_item.source_id) AND NOT EXISTS (SELECT 1 FROM inventory_stock s WHERE s.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_stock_item si WHERE si.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_transaction t WHERE t.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_inbound_item ib WHERE ib.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_outbound_item ob WHERE ob.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_stocktake_item st WHERE st.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM inventory_transfer_item tf WHERE tf.inventory_item_id = inventory_item.inventory_item_id) AND NOT EXISTS (SELECT 1 FROM sales_order_stock_reserve r WHERE r.inventory_item_id = inventory_item.inventory_item_id);
 
 -- ==================== 12. 基础资料 + 系统权限/配置（全部保留，不动） ====================
 -- 权限：sys_user / sys_role / sys_menu / sys_role_menu / sys_user_role / sys_dept
