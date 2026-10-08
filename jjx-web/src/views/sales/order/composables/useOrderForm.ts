@@ -102,6 +102,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     { value: 'express', label: '快递' },
     { value: 'logistics', label: '物流' },
     { value: 'self_pickup', label: '自提' },
+    { value: 'delivery', label: '送货上门' },
   ])
 
   // 表单数据
