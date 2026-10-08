@@ -91,7 +91,7 @@ const pages = computed(() => {
   width: 210mm;
   min-height: 297mm;
   box-sizing: border-box;
-  padding: 11mm 18mm 11mm 8mm;
+  padding: 12mm 15mm;
   margin: 0 auto 6mm;
   background: #fff;
   box-shadow: 0 2px 12px #0002;
@@ -161,7 +161,7 @@ const pages = computed(() => {
 .qr026-signatures > div { display: flex; align-items: baseline; white-space: nowrap; }
 .qr026-signatures span { flex: 1; min-width: 12mm; height: 5mm; border-bottom: .25mm solid #000; }
 .qr026-continuation { margin-top: 3mm; text-align: right; }
-@page qr026Delivery { size: A4 portrait; margin: 11mm 18mm 11mm 8mm; }
+@page qr026Delivery { size: A4 portrait; margin: 12mm 15mm; }
 @media print {
   .qr026-sheet {
     page: qr026Delivery;
