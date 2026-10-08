@@ -9,6 +9,9 @@
             placeholder="付款单号"
             style="width: 180px"
         /></el-form-item>
+        <el-form-item label="采购订单号">
+          <el-input v-model="query.orderNo" clearable placeholder="采购订单号" style="width: 180px" @keyup.enter="search" />
+        </el-form-item>
         <el-form-item label="状态">
           <el-select
             v-model="query.paymentStatus"
@@ -74,7 +77,13 @@
       </div>
       <el-table v-loading="loading" :data="rows" border>
         <el-table-column prop="paymentNo" label="付款单号" min-width="150" />
-        <el-table-column prop="orderId" label="订单ID" width="90" />
+        <el-table-column prop="orderNo" label="采购订单号" min-width="160">
+          <template #default="{ row }">
+            <el-link v-if="row.orderNo && row.orderId && userStore.hasPermission('purchase:order:view')" type="primary" @click="openSourceOrder(row)">{{ row.orderNo }}</el-link>
+            <span v-else>{{ row.orderNo || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="supplierName" label="供应商" min-width="180" show-overflow-tooltip />
         <el-table-column prop="paymentDate" label="付款日期" width="110" />
         <el-table-column prop="paymentAmount" label="金额" width="110" align="right">
           <template #default="{ row }">{{ money(row.paymentAmount) }}</template>
@@ -114,6 +123,8 @@
         @change="load"
       />
     </el-card>
+
+    <OrderDetailDialog v-model:visible="sourceOrderVisible" :order-id="sourceOrderId" />
 
     <el-dialog
       v-model="formVisible"
@@ -324,6 +335,7 @@ import {
 } from '@/enums/purchase/payment'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
 import PaymentAmountSummary from '@/views/purchase/components/PaymentAmountSummary.vue'
+import OrderDetailDialog from '@/views/purchase/order/components/OrderDetailDialog.vue'
 import type { PurchasePaymentSummary } from '@/api/purchase/payment'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
@@ -341,6 +353,13 @@ const rows = ref<any[]>([])
 const total = ref(0)
 const pendingOrders = ref<PendingOrder[]>([])
 const formVisible = ref(false)
+const sourceOrderVisible = ref(false)
+const sourceOrderId = ref<number>()
+function openSourceOrder(row: any) {
+  if (!row.orderId || !userStore.hasPermission('purchase:order:view')) return
+  sourceOrderId.value = Number(row.orderId)
+  sourceOrderVisible.value = true
+}
 const isEdit = ref(false)
 const detailVisible = ref(false)
 const approveVisible = ref(false)
@@ -354,6 +373,7 @@ const query = reactive<any>({
   pageNum: 1,
   pageSize: 10,
   paymentNo: '',
+  orderNo: '',
   paymentStatus: undefined,
   approvalStatus: undefined,
   paymentMethod: undefined,
@@ -464,6 +484,7 @@ function reset() {
     pageNum: 1,
     pageSize: 10,
     paymentNo: '',
+    orderNo: '',
     paymentStatus: undefined,
     approvalStatus: undefined,
     paymentMethod: undefined,

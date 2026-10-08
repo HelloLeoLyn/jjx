@@ -112,6 +112,8 @@ export interface PurchaseDocument {
 
 // 采购付款类型
 export interface PurchasePayment {
+  orderNo?: string
+  supplierName?: string
   paymentId?: number
   paymentNo: string
   orderId: number

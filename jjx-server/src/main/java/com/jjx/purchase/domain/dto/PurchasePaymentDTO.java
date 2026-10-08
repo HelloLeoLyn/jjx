@@ -32,6 +32,9 @@ public class PurchasePaymentDTO {
     @NotNull(message = "采购订单ID不能为空")
     private Long orderId;
 
+    /** 列表按采购订单号模糊查询。 */
+    private String orderNo;
+
     /**
      * 票据ID
      */

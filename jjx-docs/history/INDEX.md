@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-08 (dev-001) | purchase-payment-source-dev-20261008-001.md | 采购付款列表来源订单追溯 |
 | 2026-10-07 (dev-016) | purchase-payment-approver-dev-20261007-016.md | 采购付款审批人由登录身份获取 |
 | 2026-10-07 (dev-015) | purchase-payment-flow-dev-20261007-015.md | 采购付款入口与申请金额口径统一 |
 | 2026-10-07 (dev-014) | purchase-order-echo-dev-20261007-014.md | 采购订单供应商与订单类型回显修复 |

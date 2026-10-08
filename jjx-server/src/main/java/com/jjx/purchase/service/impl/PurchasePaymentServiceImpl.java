@@ -64,6 +64,19 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         LambdaQueryWrapper<PurchasePayment> wrapper = buildPaymentQuery(query);
         Page<PurchasePayment> page = new Page<>(query.getPageNum(), query.getPageSize());
         Page<PurchasePayment> result = paymentMapper.selectPage(page, wrapper);
+        List<Long> orderIds = result.getRecords().stream().map(PurchasePayment::getOrderId)
+                .filter(Objects::nonNull).distinct().toList();
+        if (!orderIds.isEmpty()) {
+            Map<Long, PurchaseOrder> sourceOrders = orderMapper.selectBatchIds(orderIds).stream()
+                    .collect(java.util.stream.Collectors.toMap(PurchaseOrder::getOrderId, order -> order));
+            for (PurchasePayment payment : result.getRecords()) {
+                PurchaseOrder order = sourceOrders.get(payment.getOrderId());
+                if (order != null) {
+                    payment.setOrderNo(order.getOrderNo());
+                    payment.setSupplierName(order.getSupplierName());
+                }
+            }
+        }
         return PageResult.of(result, result.getRecords());
     }
 
@@ -71,6 +84,13 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
         LambdaQueryWrapper<PurchasePayment> wrapper = Wrappers.lambdaQuery();
         if (StringUtils.isNotEmpty(dto.getPaymentNo())) {
             wrapper.like(PurchasePayment::getPaymentNo, dto.getPaymentNo());
+        }
+        if (StringUtils.isNotBlank(dto.getOrderNo())) {
+            List<Long> orderIds = orderMapper.selectList(Wrappers.<PurchaseOrder>lambdaQuery()
+                    .like(PurchaseOrder::getOrderNo, dto.getOrderNo().trim())).stream()
+                    .map(PurchaseOrder::getOrderId).toList();
+            if (orderIds.isEmpty()) wrapper.apply("1 = 0");
+            else wrapper.in(PurchasePayment::getOrderId, orderIds);
         }
         if (dto.getOrderId() != null) {
             wrapper.eq(PurchasePayment::getOrderId, dto.getOrderId());

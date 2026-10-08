@@ -33,6 +33,12 @@ public class PurchasePayment {
      */
     private Long orderId;
 
+    /** 列表来源信息，按关联订单查询，不存入付款表。 */
+    @TableField(exist = false)
+    private String orderNo;
+    @TableField(exist = false)
+    private String supplierName;
+
     /**
      * 票据ID
      */
