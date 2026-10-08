@@ -132,7 +132,7 @@ def main():
         return
     ensure_bom(pid, code)
     ensure_route(pid, code)
-    if status != "RELEASED":
+    if str(status).upper() not in ("RELEASED", "6"):
         release_product(pid)
     log(f">>> 模块1 用它：export JJX_TST_PRODUCT_ID={pid}")
     summary()

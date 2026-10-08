@@ -10,6 +10,7 @@
 import os
 import sys
 import datetime
+from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import call, get, get_list, find_first, try_call, log, summary, TST  # noqa: E402
@@ -77,8 +78,40 @@ def receive_po(oid):
         log("（无明细可收货）")
 
 
+def confirm_inbound(po_no):
+    """采购收货会自动生成采购入库单（待审批）；这里提交审批 + 确认入库，把原料过账进库存。"""
+    if not po_no:
+        return
+    row = find_first("/inventory/inbound/list", {"pageNum": 1, "pageSize": 50},
+                     lambda r: r.get("sourceNo") == po_no)
+    if not row:
+        log("（该采购单暂无入库单）")
+        return
+    iid = row.get("inboundId")
+    detail = get(f"/inventory/inbound/{iid}")
+    items = detail.get("items") if isinstance(detail, dict) else None
+    items = items if isinstance(items, list) else []
+    # ① 逐项完成来料检验（IQC 审核通过）
+    for it in items:
+        item_id = it.get("inboundItemId")
+        if item_id:
+            try_call("POST", f"/inventory/inbound/inspection-item/{item_id}/approve",
+                     {"approverId": 1, "approverName": "系统管理员", "remark": f"{TST} 来料检验合格"},
+                     f"IQC项审核通过(item={item_id})")
+    # ② 提交入库审批（带判定）
+    iqc = [{"itemId": it.get("inboundItemId"), "sampledQuantity": it.get("quantity"),
+            "inspectionResult": "pass", "qualifiedQuantity": it.get("quantity"),
+            "acceptedQuantity": it.get("quantity"), "rejectedQuantity": 0,
+            "disposition": "ACCEPT"} for it in items if it.get("inboundItemId")]
+    try_call("POST", f"/inventory/inbound/submit-approve/{iid}", {"items": iqc}, "提交入库审批（IQC合格）")
+    # ③ 确认入库（过账）
+    try_call("POST", f"/inventory/inbound/confirm/{iid}?operatorId=1&operatorName={quote('系统管理员')}",
+             None, "确认入库（过账）")
+    log(f"入库单 id={iid} 处理完成")
+
+
 def main():
-    log("=== 模块3 采购 造数（订单建/审批 → 收货）===")
+    log("=== 模块3 采购 造数（订单建/审批 → 收货 → 确认入库）===")
     sid, sname = get_supplier()
     if not sid:
         summary()
@@ -92,6 +125,8 @@ def main():
     if st != 3:
         approve_po(oid)
     receive_po(oid)
+    po = get(f"/purchase/order/{oid}")
+    confirm_inbound(po.get("orderNo") if isinstance(po, dict) else None)
     log("=== 完成 ===")
     summary()
 
