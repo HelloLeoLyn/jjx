@@ -311,6 +311,7 @@ import { outboundApi } from '@/api/inventory/outbound'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { engineeringResourceApi } from '@/api/engineering/resource'
 import { attachmentApi } from '@/api/system/attachment'
+import { InboundOrderStatusEnum } from '@/enums/inventory'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
 import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
@@ -428,11 +429,14 @@ const pickRows = ref<(SamplePickPreviewRow & { pickQty: number })[]>([])
 const pickSubmitting = ref(false)
 const unmatchedCount = computed(() => pickRows.value.filter((r) => !r.materialId).length)
 
-const OUTBOUND_STATUS: Record<number, string> = {
-  0: '草稿', 1: '待审批', 2: '已批准', 3: '已驳回', 4: '处理中', 5: '已确认',
-  6: '已出库', 7: '已入库', 8: '已关闭', 9: '已取消', 10: '已完成', 11: '已处理', 12: '调拨中',
-}
-const outboundStatusText = (s?: number) => (s === undefined || s === null ? '-' : OUTBOUND_STATUS[s] || String(s))
+// dev-20261008-014：改用现成的单据状态枚举 InboundOrderStatusEnum（0草稿…12调拨中），
+// 不再自造本地 OUTBOUND_STATUS 映射（AGENTS 状态枚举铁律）。
+const outboundStatusText = (s?: number) =>
+  s === undefined || s === null
+    ? '-'
+    : InboundOrderStatusEnum.canDo(s)
+      ? InboundOrderStatusEnum.getLabel(s)
+      : String(s)
 
 async function loadSampleData() {
   sampleOrders.value = []
