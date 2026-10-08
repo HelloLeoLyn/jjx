@@ -82,7 +82,7 @@ def main():
         if recv:
             step("采购收货", create=lambda: call("POST", f"/purchase/order/{po_id}/receive", {"items": recv}, "采购收货"))
 
-    # 入库（IQC → 确认入库）
+    # 入库（IQC：一次提交本单全部明细 + 逐项检测项 → 确认入库）
     inb = find_first("/inventory/inbound/list", {"pageNum": 1, "pageSize": 50},
                      lambda r: r.get("sourceNo") == po.get("orderNo"))
     if inb and str(inb.get("orderStatus")) != "10":
@@ -90,20 +90,21 @@ def main():
         detail = get(f"/inventory/inbound/{iid}")
         items = detail.get("items") if isinstance(detail, dict) else None
         items = items if isinstance(items, list) else []
-        # 逐项：提交检验 → 审核
+        iqc_items = [{
+            "itemId": it.get("inboundItemId"), "sampledQuantity": it.get("quantity"),
+            "inspectionResult": "pass", "qualifiedQuantity": it.get("quantity"),
+            "acceptedQuantity": it.get("quantity"), "rejectedQuantity": 0, "disposition": "ACCEPT",
+            "inspectionItems": [{"checkItem": "外观", "standard": "无缺陷", "result": "pass", "actualValue": "OK"}],
+        } for it in items if it.get("inboundItemId")]
+        step("IQC提交检验+审批(item数=%d)" % len(iqc_items), create=lambda: call(
+            "POST", f"/inventory/inbound/submit-approve/{iid}", {"items": iqc_items}, "IQC提交检验+审批"))
+        # 品质主管逐项审核 → 单据状态推进到已审批(2) → 才能确认过账
         for it in items:
             item_id = it.get("inboundItemId")
-            if not item_id:
-                continue
-            step(f"IQC提交检验(item={item_id})", create=lambda item_id=item_id: call(
-                "POST", f"/inventory/inbound/submit-approve/{iid}",
-                {"items": [{"itemId": item_id, "sampledQuantity": it.get("quantity"),
-                            "inspectionResult": "pass", "qualifiedQuantity": it.get("quantity"),
-                            "acceptedQuantity": it.get("quantity"), "rejectedQuantity": 0,
-                            "disposition": "ACCEPT"}]}, "提交检验"))
-            step(f"IQC审核通过(item={item_id})", create=lambda item_id=item_id: call(
-                "POST", f"/inventory/inbound/inspection-item/{item_id}/approve",
-                {"approverId": 1, "approverName": "系统管理员", "remark": f"{TST} 合格"}, "IQC审核"))
+            if item_id:
+                step(f"IQC项审核(item={item_id})", create=lambda item_id=item_id: call(
+                    "POST", f"/inventory/inbound/inspection-item/{item_id}/approve",
+                    {"approverId": 1, "approverName": "系统管理员", "remark": f"{TST} 合格"}, "IQC项审核"))
         step("确认入库（过账）", create=lambda: call(
             "POST", f"/inventory/inbound/confirm/{iid}?operatorId=1&operatorName={quote('系统管理员')}",
             None, "确认入库"))
