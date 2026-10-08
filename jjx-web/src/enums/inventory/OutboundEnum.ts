@@ -8,7 +8,9 @@ import { ApproveStatusEnum } from './InboundEnum'
 export const OutboundTypeEnum = createEnum({
   items: [
     { value: 'production', label: '生产领料', tagProps: { type: 'primary' } },
+    { value: 'sample', label: '打样领料', tagProps: { type: 'primary' } },
     { value: 'sales', label: '销售出库', tagProps: { type: 'success' } },
+    { value: 'SALES_SHIP', label: '销售发货出库', tagProps: { type: 'success' } },
     { value: 'return', label: '退货出库', tagProps: { type: 'warning' } },
     { value: 'scrap', label: '报废出库', tagProps: { type: 'danger' } },
     { value: 'transfer', label: '调拨出库', tagProps: { type: 'info' } },

@@ -116,9 +116,9 @@
         </el-table-column>
         <el-table-column label="仓库" prop="warehouseName" width="120" />
         <!-- 2026-08-18：统一视图——生产领料显示来源工单，其他显示客户 -->
-        <el-table-column label="来源" width="150" show-overflow-tooltip>
+        <el-table-column label="来源" width="180" show-overflow-tooltip>
           <template #default="{ row }">
-            {{ row.outboundType === 'production' ? (row.sourceNo || '-') : (row.customerName || '-') }}
+            {{ sourceText(row) }}
             <!-- dev-20260923-025：补料来源展示（超耗 / 报废补产 / 试制调机 / 来料不良） -->
             <el-tooltip v-if="row.supplementReasonType" :content="row.supplementReason || ''" placement="top">
               <el-tag type="warning" size="small" effect="plain" style="margin-left: 4px">
@@ -432,13 +432,29 @@ const handleConfirm = (row: OutboundVO) => {
   }
   openPreview('outbound.confirm', row)
 }
+// dev-20261008-018：来源列统一显示「来源类型 + 来源单号」
+const SOURCE_TYPE_LABEL: Record<string, string> = {
+  work_order: '生产工单',
+  SALES: '销售订单',
+  sample: '样品单',
+  quality_ncr: '不良单',
+  purchase: '采购单',
+}
+const sourceText = (row: any): string => {
+  const label = SOURCE_TYPE_LABEL[row.sourceType] || row.sourceType || ''
+  const no = row.sourceNo || '-'
+  return label ? `${label} ${no}` : no
+}
+
 // 获取出库类型标签样式
 const getOutboundTypeTag = (
   type: string
 ): 'success' | 'warning' | 'info' | 'danger' | undefined => {
   const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
     sales: 'success',
+    SALES_SHIP: 'success',
     production: 'warning',
+    sample: 'warning',
     return: 'info',
     transfer: 'danger',
     other: undefined,

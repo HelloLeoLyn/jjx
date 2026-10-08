@@ -65,7 +65,7 @@ public class InventoryEventBridge {
             if (deliveryIdVal != null) {
                 Long deliveryId = Long.valueOf(deliveryIdVal.toString());
                 Long outboundId = outboundService.createFromSalesByDelivery(deliveryId);
-                log.info("   ✅ 销售出库单已按发货单明细创建并扣库存: deliveryId={}, outboundId={}", deliveryId, outboundId);
+                log.info("   ✅ 销售出库单已按发货单明细创建（待仓库确认出库）: deliveryId={}, outboundId={}", deliveryId, outboundId);
                 return;
             }
             // 先尝试使用更完善的 createFromSales 方式（含明细行 + 自动审批）

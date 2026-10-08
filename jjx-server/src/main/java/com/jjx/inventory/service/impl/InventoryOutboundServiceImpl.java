@@ -86,6 +86,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.service.InventoryItemService inventoryItemService;
     private final com.jjx.inventory.service.InventoryStockMutationService stockMutationService;
+    private final com.jjx.framework.common.RedisSequenceService redisSequenceService;
 
     /**
      * 出库类事件统一发布（2026-09-21 dev-20260921-013 库存批）：
@@ -313,7 +314,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     public Long create(Map<String, Object> params) {
         log.info("创建出库单: {}", params);
         InventoryOutboundOrder order = new InventoryOutboundOrder();
-        order.setOutboundNo((String) params.getOrDefault("outboundNo", "OUT-" + System.currentTimeMillis()));
+        order.setOutboundNo((String) params.getOrDefault("outboundNo",
+                redisSequenceService.generateBusinessNumberByType("outbound_manual", "OUT", "yyMMdd", 3)));
         order.setOutboundType((String) params.getOrDefault("outboundType", "sales"));
         order.setSourceType((String) params.get("sourceType"));
         if (params.get("sourceId") != null) order.setSourceId(Long.valueOf(params.get("sourceId").toString()));
@@ -1003,7 +1005,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         // 4. 创建出库单
-        String outboundNo = "PICK-" + prodOrder.getOrderNo();
+        // dev-20261008-018：出库单号标准化
+        String outboundNo = redisSequenceService.generateBusinessNumberByType("outbound_pick", "PICK", "yyMMdd", 3);
         // 检查是否已生成
         LambdaQueryWrapper<InventoryOutboundOrder> existCheck = new LambdaQueryWrapper<InventoryOutboundOrder>()
                 .eq(InventoryOutboundOrder::getOutboundNo, outboundNo);
@@ -1431,18 +1434,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 : salesOrderMapper.selectById(sample.getOrderId());
         String sampleNo = srcOrder != null && srcOrder.getOrderNo() != null
                 ? srcOrder.getOrderNo() : ("SP" + sampleOrderId);
-        final String pickPrefix = "PICK-" + sampleNo + "-";
-        final java.util.regex.Pattern pickPattern =
-                java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(pickPrefix) + "(\\d+)$");
-        long seq = outboundOrderMapper.selectList(new LambdaQueryWrapper<InventoryOutboundOrder>()
-                        .eq(InventoryOutboundOrder::getSourceType, "sample")
-                        .eq(InventoryOutboundOrder::getSourceId, sampleOrderId)
-                        .likeRight(InventoryOutboundOrder::getOutboundNo, pickPrefix))
-                .stream().map(InventoryOutboundOrder::getOutboundNo).filter(Objects::nonNull)
-                .map(pickPattern::matcher).filter(java.util.regex.Matcher::find)
-                .mapToLong(mm -> Long.parseLong(mm.group(1))).max().orElse(0L) + 1;
         InventoryOutboundOrder order = new InventoryOutboundOrder();
-        order.setOutboundNo(pickPrefix + seq);
+        // dev-20261008-018：出库单号标准化（打样领料 SPK + yyMMdd + 流水）
+        order.setOutboundNo(redisSequenceService.generateBusinessNumberByType("outbound_sample_pick", "SPK", "yyMMdd", 3));
         order.setOutboundType(OutboundTypeEnum.SAMPLE.getCode());
         order.setSourceType("sample");
         order.setSourceId(sampleOrderId);
@@ -1585,26 +1579,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (validItems.isEmpty()) {
             throw new BusinessException("没有可领的物料明细");
         }
-        // 出库单号 PICK-{工单号}-{序号}；dev-20260923-029（第 5 批）：序号由 COUNT+1 改为「最大后缀+1」
-        // （COUNT+1 在红冲/删除后会与存量号撞车 → 唯一索引报错；与工单号 V1 修复同口径）
-        final String pickPrefix = "PICK-" + prodOrder.getOrderNo() + "-";
-        final java.util.regex.Pattern pickPattern =
-                java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(pickPrefix) + "(\\d+)$");
-        List<InventoryOutboundOrder> pickOrders = outboundOrderMapper.selectList(
-                new LambdaQueryWrapper<InventoryOutboundOrder>()
-                        .eq(InventoryOutboundOrder::getSourceType, "work_order")
-                        .eq(InventoryOutboundOrder::getSourceId, workOrderId)
-                        .likeRight(InventoryOutboundOrder::getOutboundNo, pickPrefix));
-        long seq = pickOrders.stream()
-                .map(InventoryOutboundOrder::getOutboundNo)
-                .filter(Objects::nonNull)
-                .map(pickPattern::matcher)
-                .filter(java.util.regex.Matcher::find)
-                .mapToLong(matcher -> Long.parseLong(matcher.group(1)))
-                .max().orElse(0L) + 1;
-        String outboundNo = pickPrefix + seq;
+        // dev-20261008-018：出库单号标准化（追加领料 PICK + yyMMdd + 流水，走统一序列）
         InventoryOutboundOrder order = new InventoryOutboundOrder();
-        order.setOutboundNo(outboundNo);
+        order.setOutboundNo(redisSequenceService.generateBusinessNumberByType("outbound_pick", "PICK", "yyMMdd", 3));
         order.setOutboundType(OutboundTypeEnum.PRODUCTION.getCode());
         order.setSourceType("work_order");
         order.setSourceId(workOrderId);
@@ -1650,7 +1627,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         productionOrderMapper.updateById(prodOrder);
         // DEV-20260909-001 方案A：追加领料单生成即按 FIFO 预占库存
         reservePickItems(order.getOutboundId());
-        log.info("追加领料单已生成(待发料): workOrderId={}, outboundId={}, no={}", workOrderId, order.getOutboundId(), outboundNo);
+        log.info("追加领料单已生成(待发料): workOrderId={}, outboundId={}, no={}", workOrderId, order.getOutboundId(), order.getOutboundNo());
         return order.getOutboundId();
     }
 
@@ -1673,7 +1650,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 .eq(InventoryOutboundOrder::getSourceType, "quality_ncr")
                 .eq(InventoryOutboundOrder::getSourceId, ncrId)) + 1;
         InventoryOutboundOrder order = new InventoryOutboundOrder();
-        order.setOutboundNo("SUPP-" + prodOrder.getOrderNo() + "-" + ncrId + "-" + seq);
+        order.setOutboundNo(redisSequenceService.generateBusinessNumberByType("outbound_supplement", "SUPP", "yyMMdd", 3));
         order.setOutboundType(OutboundTypeEnum.PRODUCTION.getCode());
         order.setSourceType("quality_ncr");
         order.setSourceId(ncrId);
@@ -1743,15 +1720,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             throw new BusinessException("销售订单无产品明细，无法出库");
         }
 
-        // 3. 创建出库单（073分批：去掉 SHIP-{orderNo} 唯一限制，改为 SHIP-{orderNo}-{序号}，支持多张出库单累计不超订单量）
-        long shipSeq = outboundOrderMapper.selectCount(
-                new LambdaQueryWrapper<InventoryOutboundOrder>()
-                        .eq(InventoryOutboundOrder::getSourceType, "SALES")
-                        .eq(InventoryOutboundOrder::getSourceId, salesOrderId)) + 1;
-        String outboundNo = "SHIP-" + salesOrder.getOrderNo() + "-" + shipSeq;
-
+        // 3. 创建出库单（dev-20261008-018：单号标准化 前缀+yyMMdd+流水）
         InventoryOutboundOrder order = new InventoryOutboundOrder();
-        order.setOutboundNo(outboundNo);
+        order.setOutboundNo(redisSequenceService.generateBusinessNumberByType("outbound_ship", "SHIP", "yyMMdd", 3));
         order.setOutboundType("SALES_SHIP");
         order.setSourceType("SALES");
         order.setSourceId(salesOrderId);
@@ -1872,12 +1843,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             throw new BusinessException("销售订单不存在: " + salesOrderId);
         }
 
-        long shipSeq = outboundOrderMapper.selectCount(
-                new LambdaQueryWrapper<InventoryOutboundOrder>()
-                        .eq(InventoryOutboundOrder::getSourceType, "SALES")
-                        .eq(InventoryOutboundOrder::getSourceId, salesOrderId)) + 1;
         InventoryOutboundOrder order = new InventoryOutboundOrder();
-        order.setOutboundNo("SHIP-" + salesOrder.getOrderNo() + "-" + shipSeq);
+        // dev-20261008-018：出库单号标准化（前缀+yyMMdd+流水，走统一序列）
+        order.setOutboundNo(redisSequenceService.generateBusinessNumberByType("outbound_ship", "SHIP", "yyMMdd", 3));
         order.setOutboundType("SALES_SHIP");
         order.setSourceType("SALES");
         order.setSourceId(salesOrderId);
@@ -1893,11 +1861,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         Map<Long, BigDecimal> ownReserved = orderStockReserveService.getReservedQty(salesOrderId);
         Map<Long, BigDecimal> remainingAvailable = new java.util.HashMap<>();
         int sort = 1;
+        BigDecimal totalQty = BigDecimal.ZERO;
         for (com.jjx.sales.domain.entity.SalesDeliveryItem item : deliveryItems) {
             BigDecimal requirement = BigDecimal.valueOf(item.getQuantity() == null ? 0 : item.getQuantity());
             if (requirement.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
+            totalQty = totalQty.add(requirement);
             com.jjx.inventory.domain.InventoryItem inventoryItem = inventoryItemService.ensure(
                     com.jjx.inventory.enums.InventoryItemTypeEnum.PRODUCT, item.getProductId(),
                     item.getProductCode(), item.getProductName(), null,
@@ -1939,22 +1909,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             outboundItemMapper.insert(outItem);
         }
 
-        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        // dev-20261008-018：改为「仓库确认出库」——建单停在「已批准·待确认出库」，
+        // 由仓库在出库管理点「确认出库」才扣库存 + 回写订单已发数量（与生产领料对齐）。
+        order.setTotalQuantity(totalQty);
+        order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue());
         outboundOrderMapper.updateById(order);
-        if (!approve(order.getOutboundId(), null, null, "销售发货出库（" + delivery.getDeliveryNo() + "）")) {
-            throw new BusinessException("销售出库审批失败，未确认发货");
-        }
-        try {
-            if (!confirm(order.getOutboundId(), null, "销售发货出库")) {
-                throw new BusinessException("销售出库确认未完成");
-            }
-            log.info("销售发货出库已自动确认并扣库存: outboundId={}, deliveryNo={}",
-                    order.getOutboundId(), delivery.getDeliveryNo());
-        } catch (Exception e) {
-            log.error("销售发货出库自动确认失败（需人工处理）: outboundId={}, err={}",
-                    order.getOutboundId(), e.getMessage());
-            throw new BusinessException("销售发货出库确认失败：" + e.getMessage());
-        }
+        log.info("销售发货出库已创建（待仓库确认出库）: outboundId={}, deliveryNo={}, 数量={}",
+                order.getOutboundId(), delivery.getDeliveryNo(), totalQty);
         publishOutboundEvent("inventory.outbound.created_from_sales", order.getOutboundId());
         return order.getOutboundId();
     }
@@ -2052,7 +2013,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return Map.of("code", 404, "message", "出库单不存在");
     }
 
-    private static List<OutboundVO> convertToVOList(List<InventoryOutboundOrder> orders) {
+    private List<OutboundVO> convertToVOList(List<InventoryOutboundOrder> orders) {
         List<OutboundVO> result = new ArrayList<>();
         for (InventoryOutboundOrder order : orders) {
             result.add(convertToVO(order));
@@ -2060,13 +2021,22 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return result;
     }
 
-    private static OutboundVO convertToVO(InventoryOutboundOrder order) {
+    private OutboundVO convertToVO(InventoryOutboundOrder order) {
         if (order == null) {
             return null;
         }
 
         OutboundVO vo = new OutboundVO();
         BeanUtils.copyProperties(order, vo);
+
+        // dev-20261008-018：补填仓库名（原来只 copy warehouseId，列表"仓库"列恒空）
+        if (order.getWarehouseId() != null) {
+            com.jjx.inventory.domain.InventoryWarehouse wh =
+                    outboundWarehouseMapper.selectById(order.getWarehouseId());
+            if (wh != null) {
+                vo.setWarehouseName(wh.getWarehouseName());
+            }
+        }
 
         // 设置类型名称与状态名称
         OutboundTypeEnum typeEnum = OutboundTypeEnum.getByCode(order.getOutboundType());
@@ -2102,7 +2072,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private static boolean isPickOrder(OutboundVO vo) {
         if (vo == null) return false;
         if (OutboundTypeEnum.PRODUCTION.getCode().equals(vo.getOutboundType())) return true;
-        return vo.getOutboundNo() != null && vo.getOutboundNo().startsWith("PICK-");
+        return vo.getOutboundNo() != null && vo.getOutboundNo().startsWith("PICK");
     }
 
     private static List<OutboundItemVO> convertToItemVOList(List<InventoryOutboundItem> items, com.jjx.inventory.mapper.InventoryStorageLocationMapper locMapper) {
