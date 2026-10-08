@@ -129,7 +129,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="receiveVisible" title="发货单签收" width="480px">
+    <el-dialog v-model="receiveVisible" title="发货单签收" width="560px">
       <el-form :model="receiveForm" label-width="110px">
         <el-form-item label="签收人"><el-input v-model="receiveForm.receiverName" /></el-form-item>
         <el-form-item label="联系电话"><el-input v-model="receiveForm.receiverPhone" /></el-form-item>
@@ -138,6 +138,22 @@
         </el-form-item>
         <el-form-item label="签收备注"><el-input v-model="receiveForm.receiveRemark" type="textarea" :rows="3" /></el-form-item>
       </el-form>
+      <el-divider content-position="left">回签件（结算依据）</el-divider>
+      <div class="attach-row">
+        <el-upload :show-file-list="false" :before-upload="(f) => beforeUploadReturn(f, receiveDeliveryId)" accept="image/*,.pdf">
+          <el-button type="primary" size="small" icon="Upload">上传回签件</el-button>
+        </el-upload>
+        <span v-if="!returnFiles.length" class="muted">未上传；月结/自送客户建议上传</span>
+      </div>
+      <el-table v-if="returnFiles.length" :data="returnFiles" border style="margin-top: 10px" size="small">
+        <el-table-column prop="fileName" label="文件名" min-width="200" />
+        <el-table-column label="操作" width="140">
+          <template #default="{ row }">
+            <el-link type="primary" :href="attachmentApi.downloadUrl(row.id)" target="_blank">下载</el-link>
+            <el-link type="danger" style="margin-left: 8px" @click="removeReturnFile(row)">删除</el-link>
+          </template>
+        </el-table-column>
+      </el-table>
       <template #footer><el-button @click="receiveVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitReceive">确认签收</el-button></template>
     </el-dialog>
   </div>
@@ -255,12 +271,14 @@ async function submitReject() {
 /** 回签件（口径 D2）：bizType=sales_delivery + bizId=deliveryId，标记「结算依据」 */
 const RETURN_BIZ_TYPE = 'sales_delivery'
 const returnFiles = ref<any[]>([])
+const returnFilesDeliveryId = ref<number | null>(null)
 async function loadReturnFiles(deliveryId: number) {
+  returnFilesDeliveryId.value = deliveryId
   const res = await attachmentApi.list(RETURN_BIZ_TYPE, deliveryId)
   returnFiles.value = res.data || []
 }
-async function beforeUploadReturn(file: File) {
-  const deliveryId = current.value?.deliveryId
+async function beforeUploadReturn(file: File, deliveryIdArg?: number) {
+  const deliveryId = deliveryIdArg ?? current.value?.deliveryId
   if (!deliveryId) return false
   try {
     await attachmentApi.upload(file, RETURN_BIZ_TYPE, deliveryId, '结算依据')
@@ -275,12 +293,12 @@ async function removeReturnFile(row: any) {
   try {
     await attachmentApi.remove(row.id)
     ElMessage.success('已删除')
-    if (current.value?.deliveryId) await loadReturnFiles(current.value.deliveryId)
+    if (returnFilesDeliveryId.value) await loadReturnFiles(returnFilesDeliveryId.value)
   } catch (e: any) {
     ElMessage.error(e?.message || '删除失败')
   }
 }
-function openReceive(row: SalesDeliveryVO) { receiveDeliveryId.value = row.deliveryId; Object.assign(receiveForm, { receiverName: '', receiverPhone: '', customerReceiveDate: '', receiveRemark: '' }); receiveVisible.value = true }
+function openReceive(row: SalesDeliveryVO) { receiveDeliveryId.value = row.deliveryId; Object.assign(receiveForm, { receiverName: '', receiverPhone: '', customerReceiveDate: '', receiveRemark: '' }); returnFiles.value = []; void loadReturnFiles(row.deliveryId); receiveVisible.value = true }
 async function submitReceive() {
   if (!receiveDeliveryId.value) return
   submitting.value = true
