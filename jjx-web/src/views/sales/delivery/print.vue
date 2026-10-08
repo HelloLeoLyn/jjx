@@ -10,79 +10,13 @@
       </template>
     </PrintToolbar>
 
-    <A4Canvas v-if="info && layout === 'qr026'" :padding-mm="15">
-      <PrintQrCode :text="info.deliveryNo || ''" :size="64" />
-
-      <section class="qr026-layout">
-        <header class="qr026-company-header">
-          <div class="qr026-company-name">{{ company.name || '-' }}</div>
-        </header>
-        <div class="qr026-title-row">
-          <div class="qr026-title">送&nbsp;&nbsp;货&nbsp;&nbsp;单</div>
-          <div class="qr026-title-address">地址：{{ company.address || '-' }}</div>
-          <div class="qr026-document-info">
-            <div>NO: {{ info.deliveryNo || '-' }}</div>
-            <div>DATE: {{ info.deliveryDate || '-' }}</div>
-          </div>
-        </div>
-        <div class="qr026-recipient">
-          <div>TO: {{ info.customerName || '-' }}</div>
-          <div>
-            Attm: {{ info.contactPerson || '-'
-            }}<span v-if="info.contactPhone">&nbsp;&nbsp;{{ info.contactPhone }}</span>
-          </div>
-        </div>
-        <table class="qr026-items">
-          <thead>
-            <tr>
-              <th style="width: 5%">NO</th>
-              <th style="width: 18%">品名(料号)</th>
-              <th style="width: 14%">规格</th>
-              <th style="width: 7%">单位</th>
-              <th style="width: 9%">数量</th>
-              <th style="width: 10%">单价</th>
-              <th style="width: 11%">金额</th>
-              <th style="width: 15%">订单号码</th>
-              <th style="width: 11%">备注</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, index) in items" :key="item.id">
-              <td class="center">{{ index + 1 }}</td>
-              <td>{{ item.productName || item.productCode || '-' }}</td>
-              <td>{{ item.specification || '-' }}</td>
-              <td class="center">{{ item.unit || '-' }}</td>
-              <td class="right">{{ item.quantity ?? '-' }}</td>
-              <td class="right">{{ money(item.unitPrice) }}</td>
-              <td class="right">{{ money(item.amount) }}</td>
-              <td>{{ orderNo || '-' }}</td>
-              <td>{{ item.remark || item.lineRemark || '-' }}</td>
-            </tr>
-            <tr v-if="!items.length">
-              <td colspan="9" class="center">无订单明细</td>
-            </tr>
-            <tr v-if="info.freightAmount" class="qr026-total-row">
-              <td colspan="6"></td>
-              <th>运费：</th>
-              <td colspan="2" class="right">{{ money(info.freightAmount) }}</td>
-            </tr>
-            <tr class="qr026-total-row">
-              <td colspan="6"></td>
-              <th>合计金额：</th>
-              <td colspan="2" class="right">{{ money(info.totalAmount) }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="qr026-terms">
-          如上列貨品有不符问题，请在10天内通知。方便我司处理，过期恕不负责。
-        </div>
-        <div class="qr026-signatures">
-          <div>送货单位经手人：<span class="qr026-sign-line"></span></div>
-          <div>收货单位经手人：<span class="qr026-sign-line"></span></div>
-        </div>
-        <div class="qr026-footer-company">{{ company.name || '-' }}</div>
-      </section>
-    </A4Canvas>
+    <Qr026DeliverySheet
+      v-if="info && layout === 'qr026'"
+      :info="info"
+      :items="items"
+      :order-no="orderNo"
+      :company="company"
+    />
     <main v-else-if="info && layout === 'triplicate'" class="triplicate-pages">
       <article v-for="(pageItems, pageIndex) in triplicatePages" :key="pageIndex" class="triplicate-page">
         <div class="triplicate-company-name">{{ company.name || '-' }}</div>
@@ -145,11 +79,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import A4Canvas from '@/components/A4Canvas/index.vue'
-import PrintQrCode from '@/components/print/PrintQrCode.vue'
+import Qr026DeliverySheet from './Qr026DeliverySheet.vue'
 import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import { deliveryApi, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { orderApi } from '@/api/sales/order'
@@ -183,6 +116,8 @@ function handleLayoutChange(value: string | number | boolean | undefined) {
   if (value === 'qr026' || value === 'triplicate') setLayout(value)
 }
 async function print() {
+  await nextTick()
+  await document.fonts.ready
   // 口径 D3：打印必留痕（谁/何时/第几次/哪张单）；留痕失败不阻断打印本身
   try {
     await deliveryApi.printLog(deliveryId)
@@ -227,149 +162,11 @@ onMounted(async () => {
   background: #eef0f3;
   padding: 20px;
 }
-.print-page :deep(.a4-canvas) {
-  position: relative;
-}
-h1 {
-  text-align: center;
-  letter-spacing: 12px;
-  border-bottom: 2px solid var(--doc-theme, #2b5aa7);
-  padding-bottom: 10px;
-}
-.info {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  font-size: 11px;
-  margin: 14px 0;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-}
-th,
-td {
-  border: 1px solid #bbb;
-  padding: 7px;
-}
-th {
-  background: var(--doc-theme, #2b5aa7);
-  color: #fff;
-}
-.right {
-  text-align: right;
-}
-.center {
-  text-align: center;
-}
-.amount {
-  text-align: right;
-  margin-top: 16px;
-}
-.sign {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 65px;
-  font-size: 12px;
-}
-.qr026-layout {
-  position: relative;
-  color: #000;
-  font-family: SimSun, '宋体', serif;
-  font-size: 11px;
-}
-.qr026-company-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  min-height: 30px;
-  line-height: 1.4;
-}
-.qr026-company-name {
-  font-size: 16px;
-  font-weight: 700;
-}
-.qr026-title-row {
-  position: relative;
-  min-height: 47px;
-  margin-top: 4px;
-}
-.qr026-title-address {
-  position: absolute;
-  right: 0;
-  top: 0;
-  max-width: 42%;
-  text-align: right;
-  font-size: 12px;
-  line-height: 1.4;
-}
-.qr026-title {
-  padding-top: 6px;
-  text-align: center;
-  font-size: 22px;
-  font-weight: 700;
-}
-.qr026-document-info {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 185px;
-  font-size: 12px;
-  line-height: 1.55;
-}
-.qr026-recipient {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin: 5px 0;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.qr026-items {
-  table-layout: fixed;
-  font-size: 10px;
-}
-.qr026-items th,
-.qr026-items td {
-  height: 23px;
-  padding: 3px 4px;
-  border: 1px solid #000;
-  color: #000;
-  background: transparent;
-  overflow-wrap: anywhere;
-}
-.qr026-items th {
-  text-align: center;
-  font-size: 11px;
-  font-weight: 700;
-}
-.qr026-total-row th,
-.qr026-total-row td {
-  height: 25px;
-}
-.qr026-terms {
-  margin-top: 8px;
-  font-size: 11px;
-  line-height: 1.5;
-}
-.qr026-signatures {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 30px;
-  font-size: 12px;
-}
-.qr026-sign-line {
-  display: inline-block;
-  width: 100px;
-  border-bottom: 1px solid #000;
-}
-.qr026-footer-company {
-  margin-top: 28px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 700;
-}
+table { width: 100%; border-collapse: collapse; font-size: 11px; }
+th, td { border: 1px solid #bbb; padding: 7px; }
+th { background: var(--doc-theme, #2b5aa7); color: #fff; }
+.center { text-align: center; }
+.right { text-align: right; }
 .triplicate-pages {
   color: #000;
 }

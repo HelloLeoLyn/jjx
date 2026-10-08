@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-08 (dev-004) | qr026-print-layout-dev-20261008-004.md | QR-026 纸版送货单位置与字体优化 |
 | 2026-10-08 (dev-002) | sales-order-integrity-dev-20261008-002.md | 销售订单金额组成、编辑保护及完工状态同步 |
 | 2026-10-08 (dev-001) | purchase-payment-source-dev-20261008-001.md | 采购付款列表来源订单追溯 |
 | 2026-10-07 (dev-016) | purchase-payment-approver-dev-20261007-016.md | 采购付款审批人由登录身份获取 |
