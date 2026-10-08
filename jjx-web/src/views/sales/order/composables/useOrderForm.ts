@@ -9,6 +9,7 @@ import type { CustomerSearchVO } from '@/types/sales/customer'
 import type { OrderFormData, OrderItem, UseOrderFormOptions } from '@/types/sales/order'
 import { formatCurrency } from '@/utils/format'
 import { productApi } from '@/api/product'
+import { useDict } from '@/composables/useDict'
 
 /** 历史单金额保护基线（dev-20261008-015）：未确认时汇总冻结为原单值，取消改动即回退。 */
 type ProtectedAmountBaseline = {
@@ -98,12 +99,15 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     { value: 'net60', label: '月结60天' },
   ])
 
-  const shippingMethodOptions = ref([
-    { value: 'express', label: '快递' },
-    { value: 'logistics', label: '物流' },
-    { value: 'self_pickup', label: '自提' },
-    { value: 'delivery', label: '送货上门' },
-  ])
+  // 运输方式统一取系统字典 sales_delivery_method（销售交货方式，与发货弹窗同一真源）
+  // value 用 item_key（code 口径，兼容存量单 express/logistics/self_pickup）
+  const { options: shippingMethodDict } = useDict('sales_delivery_method')
+  const shippingMethodOptions = computed(() =>
+    (shippingMethodDict.value || []).map((d) => ({
+      value: d.itemKey,
+      label: d.label || d.itemValue,
+    })),
+  )
 
   // 表单数据
   const form = reactive<OrderFormData>({
