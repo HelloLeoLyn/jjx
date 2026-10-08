@@ -103,7 +103,19 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="交货方式" prop="deliveryMethod">
-            <el-input v-model="form.deliveryMethod" placeholder="请输入交货方式" maxlength="100" />
+            <el-select
+              v-model="form.deliveryMethod"
+              placeholder="请选择交货方式"
+              clearable
+              style="width: 100%"
+            >
+              <el-option
+                v-for="dict in DeliveryMethodEnum.items"
+                :key="dict.value"
+                :label="dict.label"
+                :value="dict.value"
+              />
+            </el-select>
           </el-form-item>
         </el-col>
       </el-row>
@@ -271,7 +283,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { PurchaseOrderTypeEnum, CurrencyEnum } from '@/enums/purchase'
+import { PurchaseOrderTypeEnum, CurrencyEnum, DeliveryMethodEnum } from '@/enums/purchase'
 import { normalizePurchaseOrderType } from '@/enums/purchase/order'
 import { materialApi } from '@/api/inventory/material'
 import { addOrder, updateOrder, generateOrderNo, getOrder } from '@/api/purchase/order'

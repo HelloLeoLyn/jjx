@@ -32,7 +32,9 @@
             orderDetail.contractNo || '-'
           }}</el-descriptions-item>
           <el-descriptions-item label="交货方式">{{
-            orderDetail.deliveryMethod || '-'
+            orderDetail.deliveryMethod
+              ? PurchaseEnum.deliveryMethod.getLabel(orderDetail.deliveryMethod)
+              : '-'
           }}</el-descriptions-item>
           <el-descriptions-item label="交货地址" :span="2">{{
             orderDetail.deliveryAddress || '-'
