@@ -1,5 +1,21 @@
 <template>
   <div class="app-container">
+    <div class="merge-preview-entry">
+      <div><strong>发货管理</strong><span>按客户合并订单，一次安排送货</span></div>
+      <el-button type="primary" icon="Plus" @click="mergePreview?.open()">新建合并发货（预览）</el-button>
+    </div>
+    <el-card v-if="mockDeliveries.length" shadow="never" style="margin-bottom: 12px">
+      <template #header><span>演示单据 · 仅当前页面保留</span></template>
+      <el-table :data="mockDeliveries" size="small">
+        <el-table-column prop="deliveryNo" label="发货单号" width="170" />
+        <el-table-column label="客户" min-width="220"><template #default="{ row }">{{ mockCustomers.find(item => item.id === row.customerId)?.name }}</template></el-table-column>
+        <el-table-column label="关联订单" min-width="180"><template #default="{ row }">{{ [...new Set(row.lines.map((line: MockDeliveryLine) => line.orderNo))].join('、') }}</template></el-table-column>
+        <el-table-column label="本次数量" width="110" align="right"><template #default="{ row }">{{ row.lines.reduce((sum: number, line: MockMergedDelivery['lines'][number]) => sum + (line.sendQuantity || 0), 0) }}</template></el-table-column>
+        <el-table-column label="状态" width="110"><template #default="{ row }"><el-tag :type="DeliveryStatusEnum.getTagProps(row.deliveryStatus).type" size="small">{{ DeliveryStatusEnum.getLabel(row.deliveryStatus) }}</el-tag></template></el-table-column>
+        <el-table-column label="操作" width="110"><template #default="{ row }"><el-button type="primary" link @click="mergePreview?.open(row)">查看演示详情</el-button></template></el-table-column>
+      </el-table>
+    </el-card>
+    <MergeDeliveryPreview ref="mergePreview" @created="mockDeliveries.unshift($event)" />
     <el-alert title="待发货单须先完成出货检验（OQC），再确认发货并出库；客户收货后登记签收。" type="info" :closable="false" show-icon style="margin-bottom: 12px" />
     <el-card shadow="never" class="search-card">
       <el-form :model="query" inline>
@@ -169,6 +185,11 @@ import { orderApi } from '@/api/sales/order'
 import { attachmentApi } from '@/api/system/attachment'
 import { DeliveryStatusEnum } from '@/enums/sales/DeliveryEnum'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
+import MergeDeliveryPreview from './components/MergeDeliveryPreview.vue'
+import { mockCustomers, type MockDeliveryLine, type MockMergedDelivery } from './components/mergeDeliveryMock'
+
+const mergePreview = ref<InstanceType<typeof MergeDeliveryPreview>>()
+const mockDeliveries = ref<MockMergedDelivery[]>([])
 
 const deliveryActions: TableAction<SalesDeliveryVO>[] = [
   { key: 'detail', label: '详情' },
@@ -342,4 +363,11 @@ function printDelivery(row: SalesDeliveryVO) { router.push({ path: '/sales/deliv
 onMounted(load)
 </script>
 
-<style scoped>.search-card{margin-bottom:16px}.muted{color:#909399;font-size:12px}.attach-row{display:flex;align-items:center;gap:12px}</style>
+<style scoped>
+.merge-preview-entry { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.merge-preview-entry > div { display: flex; align-items: center; gap: 14px; }
+.merge-preview-entry strong { color: #334155; font-size: 18px; }
+.merge-preview-entry span { color: #64748b; font-size: 13px; }
+@media (max-width: 720px) { .merge-preview-entry > div { flex-direction: column; align-items: flex-start; gap: 4px; } }
+.search-card{margin-bottom:16px}.muted{color:#909399;font-size:12px}.attach-row{display:flex;align-items:center;gap:12px}
+</style>
