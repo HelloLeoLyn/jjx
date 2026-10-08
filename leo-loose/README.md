@@ -41,6 +41,7 @@ leo-loose/
 | 架构 | [项目类型矩阵](docs/reference/project-shapes.md)、[模块与分层示例](docs/architecture/modular-monolith.md) |
 | 标准 | [API 契约](docs/standards/api-contracts.md)、[前端组件](docs/standards/frontend-components.md)、[枚举与配置](docs/standards/enums-and-config.md) |
 | 标准 | [事务与副作用](docs/standards/transactions-and-effects.md)、[权限与可观测性](docs/standards/security-and-observability.md)、[验证与协作](docs/standards/engineering-quality.md) |
+| 标准 | [测试层级与类型](docs/standards/testing-levels.md) |
 | 指南 | [新项目启动](docs/how-to/start-a-project.md) |
 | AI 流程 | [启动](workflows/bootstrap.md)、[实施](workflows/implement.md)、[诊断](workflows/diagnose.md)、[审查](workflows/review.md)、[交接](workflows/handoff.md)、[教训提炼](workflows/lesson-extraction.md) |
 | 项目模板 | [项目约定](templates/project-profile.md)、[模块设计](templates/module-design.md)、[项目 AGENTS](templates/project-agents.md) |
