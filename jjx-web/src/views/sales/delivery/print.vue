@@ -6,6 +6,7 @@
           <el-radio-button value="qr026">纸版(QR-026)</el-radio-button>
           <el-radio-button value="triplicate">三联纸(241×140)</el-radio-button>
         </el-radio-group>
+        <el-button icon="Download" :loading="exporting" :disabled="!info" @click="exportExcel">导出Excel</el-button>
         <el-button type="primary" icon="Printer" @click="print">打印</el-button>
       </template>
     </PrintToolbar>
@@ -88,6 +89,7 @@ import { deliveryApi, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { orderApi } from '@/api/sales/order'
 import { useCompanyConfig } from '@/composables/useCompanyConfig'
 import { usePrintLayout } from '@/composables/usePrint'
+import { download } from '@/utils/format'
 
 type PrintLayout = 'qr026' | 'triplicate'
 type DeliveryItem = Record<string, any>
@@ -98,6 +100,7 @@ const route = useRoute()
 const info = ref<SalesDeliveryVO>()
 const items = ref<DeliveryItem[]>([])
 const orderNo = ref('')
+const exporting = ref(false)
 const deliveryId = Number(route.query.deliveryId)
 const { company } = useCompanyConfig()
 const { layout, setLayout } = usePrintLayout<PrintLayout>('delivery-print-layout', [
@@ -114,6 +117,26 @@ const triplicatePages = computed(() => {
 
 function handleLayoutChange(value: string | number | boolean | undefined) {
   if (value === 'qr026' || value === 'triplicate') setLayout(value)
+}
+async function exportExcel() {
+  if (!info.value || exporting.value) return
+  exporting.value = true
+  try {
+    const blob = await deliveryApi.exportExcel(deliveryId)
+    // 全局拦截器直接透传 Blob；业务错误可能仍是 HTTP 200 的 JSON，不能下载成损坏的 Excel。
+    if (blob.type.includes('json')) {
+      const error = JSON.parse(await blob.text())
+      throw new Error(error.msg || '送货单导出失败')
+    }
+    if (!blob.size) throw new Error('导出文件为空，请重试')
+    const deliveryNo = info.value.deliveryNo.replace(/[\\/:*?"<>|]/g, '_')
+    download(blob, `送货单_${deliveryNo}.xlsx`)
+    ElMessage.success('Excel已导出，可自行调整格式和打印设置')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '送货单导出失败')
+  } finally {
+    exporting.value = false
+  }
 }
 async function print() {
   await nextTick()

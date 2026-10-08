@@ -8,6 +8,11 @@ import com.jjx.sales.domain.dto.SalesDeliveryQueryDTO;
 import com.jjx.sales.domain.vo.SalesDeliveryVO;
 import com.jjx.sales.domain.entity.SalesDelivery;
 import com.jjx.sales.service.ISalesDeliveryService;
+import com.jjx.sales.service.SalesDeliveryExcelService;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +32,20 @@ import java.util.List;
 public class SalesDeliveryController {
 
     private final ISalesDeliveryService salesDeliveryService;
+    private final SalesDeliveryExcelService excelService;
+
+    @Operation(summary = "导出可编辑的送货单Excel")
+    @SaCheckPermission("sales:delivery:view")
+    @GetMapping("/{deliveryId}/export-excel")
+    public void exportExcel(@PathVariable Long deliveryId, HttpServletResponse response) throws IOException {
+        SalesDeliveryVO delivery = excelService.getDelivery(deliveryId);
+        byte[] bytes = excelService.export(delivery);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        String filename = URLEncoder.encode("送货单_" + delivery.getDeliveryNo() + ".xlsx", StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + filename);
+        response.getOutputStream().write(bytes);
+    }
 
     @Operation(summary = "分页查询发货单")
     @SaCheckPermission("sales:delivery:view")

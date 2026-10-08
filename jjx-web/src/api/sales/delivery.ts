@@ -103,6 +103,10 @@ export interface SalesDeliveryCreateDTO {
 }
 
 export const deliveryApi = {
+  /** 可编辑送货单（本次发货快照，不增加打印次数） */
+  exportExcel(deliveryId: number) {
+    return request.get<Blob>(`/sales/deliveries/${deliveryId}/export-excel`, { responseType: 'blob' })
+  },
   /** 分页查询发货单 */
   list(params: SalesDeliveryQueryDTO) {
     return request.get<R<{ records: SalesDeliveryVO[]; total: number }>>('/sales/deliveries', { params })
