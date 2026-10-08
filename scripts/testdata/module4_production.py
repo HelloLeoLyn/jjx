@@ -12,6 +12,7 @@
 import os
 import sys
 import datetime
+from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (call, get, get_list, find_first, step, remember, remembered,  # noqa: E402
@@ -96,6 +97,24 @@ def judge_fqc(wo_id, qty):
                      "FQC判定合格"))
 
 
+def confirm_finish_inbound(wo_no):
+    """完工入库单（工单完成时生成）→ 确认入库，成品过账。"""
+    if not wo_no:
+        return
+    inb = find_first("/inventory/inbound/list", {"pageNum": 1, "pageSize": 50},
+                     lambda r: r.get("sourceNo") == wo_no and r.get("inboundType") == "PRODUCTION_FINISH")
+    if not inb:
+        rec("blocked", "完工入库确认（成品过账）", "未找到完工入库单")
+        return
+    if str(inb.get("orderStatus")) == "10":
+        rec("exists", "完工入库确认（成品过账）", "已完成")
+        return
+    iid = inb.get("inboundId")
+    step("完工入库确认（成品过账）", create=lambda: call(
+        "POST", f"/inventory/inbound/confirm/{iid}?operatorId=1&operatorName={quote('系统管理员')}",
+        None, "确认入库"))
+
+
 def main():
     log("=== 模块4 生产 造数（状态机）===")
     so_id = resolve_order()
@@ -143,6 +162,7 @@ def main():
     step("工单完成（触发完工入库）", pre=lambda: (str(wo.get("orderStatus")) in ("6",),
                                             f"工单状态={wo.get('orderStatus')}（非进行中）"),
          create=lambda: call("PUT", f"/production/order/{wo_id}/complete", None, "完成生产工单"))
+    confirm_finish_inbound(wo.get("orderNo"))
     report()
 
 
