@@ -2,3 +2,5 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-09-30 15:04:32	full	jjx_erp_db_backup_20260930-1504_before-238-reserve-type.sql	62524d8d10ebdd0d9a109cd8c5f47bd4	6397979	121	dahuang	dev-20260930-019
 2026-09-30 15:35:49	full	jjx_erp_db_backup_20260930-1535_before-239-ledger.sql	d874336c972b5fb670e627496bd32dde	6469002	121	dahuang	dev-20260930-026
 2026-10-07 10:39:49	full	jjx_erp_db_backup_20261007-1039.sql	e679f3972634e4efe246dfac9f56cea6	6525753	120	dahuang	无
+2026-10-08 12:52:06	full	jjx_erp_db_backup_20261008-1252.sql	6b37e4bc2f44126f1f5a037d2851b972	6647302	120	dahuang	无
+2026-10-08 13:10:32	guard	sys_task_register_20261008-20261008-1310_guard.sql	9432671d54daddf10d1ccdbfd07b75f6	1519302	3	dahuang	dev-20261008-010
