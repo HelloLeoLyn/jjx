@@ -21,8 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class PurchasePaymentFlowTest {
-    private final PurchaseOrderMapper orders = mock(PurchaseOrderMapper.class, withSettings().mockMaker("mock-maker-subclass"));
-    private final PurchasePaymentMapper payments = mock(PurchasePaymentMapper.class, withSettings().mockMaker("mock-maker-subclass"));
+    private final PurchaseOrderMapper orders = mock(PurchaseOrderMapper.class);
+    private final PurchasePaymentMapper payments = mock(PurchasePaymentMapper.class);
     private final PurchasePaymentServiceImpl service = new PurchasePaymentServiceImpl(payments, null, orders);
 
     private PurchaseOrder order() {
