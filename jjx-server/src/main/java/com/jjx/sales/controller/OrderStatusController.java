@@ -170,9 +170,9 @@ public class OrderStatusController {
     /**
      * 发货（025：生产中→已发货）
      */
-    @Operation(summary = "发货（生产中→已发货，联动创建销售出库单并扣产品库存）")
-    @Log(module = "订单状态管理", businessType = BusinessType.UPDATE, bizType = "'order'", bizId = "#orderId", bizStatus = "T(com.jjx.sales.enums.SalesOrderStatusEnum).SHIPPED.getLabel()",
-            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('订单状态：生产中 → 已发货'))", action = LogActions.ORDER_STATUS_SHIP)
+    @Operation(summary = "创建待发货单并生成OQC检验批")
+    @Log(module = "订单状态管理", businessType = BusinessType.INSERT, bizType = "'order'", bizId = "#orderId",
+            detail = "T(com.jjx.system.utils.OperLogDetailBuilder).changes(T(java.util.List).of('创建待发货单，等待OQC放行'))", action = LogActions.ORDER_STATUS_SHIP)
     @SaCheckPermission("sales:order:edit")
     @PutMapping("/{orderId}/status/ship")
     public Result<Void> shipOrder(

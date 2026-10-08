@@ -60,7 +60,7 @@ public interface IOrderStatusService {
     }
 
     /**
-     * 发货并创建发货单；delivery 为空时使用订单默认交货信息。
+     * 创建待发货单及OQC检验批；delivery为空时使用订单默认交货信息，不直接出库。
      */
     void shipOrder(Long orderId, SalesDelivery delivery);
 

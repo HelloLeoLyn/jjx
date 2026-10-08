@@ -245,7 +245,7 @@
       @success="handleValidationSuccess"
       @cancel="handleValidationCancel"
     />
-    <el-dialog v-model="shipDialogVisible" title="订单发货" width="880px">
+    <el-dialog v-model="shipDialogVisible" title="创建待发货单" width="880px">
       <el-alert
         v-if="shipOrderInfo.orderNo"
         :title="`订单 ${shipOrderInfo.orderNo} · 客户 ${shipOrderInfo.customerName || '-'} · 订单数量 ${shipOrderInfo.totalQuantity ?? 0} · 金额 ${shipOrderInfo.totalAmount ?? 0}`"
@@ -264,9 +264,9 @@
         <el-table-column label="产品编码" prop="productCode" min-width="140" />
         <el-table-column label="产品名称" prop="productName" min-width="140" />
         <el-table-column label="订单数量" prop="ordered" width="90" align="center" />
-        <el-table-column label="已发" prop="shipped" width="80" align="center" />
-        <el-table-column label="未发" prop="remaining" width="80" align="center" />
-        <el-table-column label="本次发货数量" width="170">
+        <el-table-column label="已建单占用" prop="shipped" width="110" align="center" />
+        <el-table-column label="可建单" prop="remaining" width="90" align="center" />
+        <el-table-column label="本次建单数量" width="170">
           <template #default="{ row }">
             <el-input-number
               v-model="row.quantity"
@@ -408,7 +408,7 @@
       <template #footer
         ><el-button @click="shipDialogVisible = false">取消</el-button
         ><el-button type="primary" :loading="shipSubmitting" @click="submitShip"
-          >确认发货</el-button
+          >创建待发货单</el-button
         ></template
       >
     </el-dialog>
@@ -522,7 +522,7 @@ const orderRowActions: TableAction<any>[] = [
 
   {
     key: 'ship',
-    label: '发货',
+    label: '创建待发货单',
     type: 'warning',
     permission: 'sales:order:edit',
     visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PRODUCING.value),
@@ -993,7 +993,7 @@ const handleShip = async (row: any) => {
 }
 
 /**
- * 组装本次发货明细：订单数量 − Σ历史发货明细（排除已拒收）= 未发数量。
+ * 可建单数量：订单数量 − 待发货、已发货及已签收明细数量，避免待检期间重复占用。
  */
 const loadShipLines = async (orderId: number) => {
   if (!orderId) return
@@ -1006,7 +1006,7 @@ const loadShipLines = async (orderId: number) => {
     const deliveries: any[] = deliveryRes?.data || []
     const shippedMap: Record<number, number> = {}
     deliveries
-      .filter((d) => d.deliveryStatus !== DeliveryStatusEnum.REJECTED.value)
+      .filter((d) => [DeliveryStatusEnum.PENDING.value, DeliveryStatusEnum.SHIPPED.value, DeliveryStatusEnum.RECEIVED.value].includes(d.deliveryStatus))
       .forEach((d) => {
         ;(d.items || []).forEach((it: any) => {
           if (it.orderProductId != null && Number(it.quantity)) {
@@ -1049,39 +1049,34 @@ const submitShip = async () => {
   shipSubmitting.value = true
   try {
     await orderStatusApi.shipOrder(shipOrderId.value, { ...shipForm, items })
-    const partial = shipLines.value.some((l) => Number(l.quantity) < l.remaining)
-    ElMessage.success(
-      partial
-        ? '发货成功（部分发货，订单仍在生产中，可继续发货）'
-        : '发货成功，订单已进入已发货状态'
-    )
+    ElMessage.success('待发货单及OQC检验批已创建，检验合格后请在发货管理确认发货')
     shipDialogVisible.value = false
     shipLines.value = []
     getList()
-    await guideToPrint(shipOrderId.value)
+    await guideToDelivery(shipOrderId.value)
   } catch (e: any) {
-    ElMessage.error(e?.message || '发货失败')
+    ElMessage.error(e?.message || '待发货单创建失败')
   } finally {
     shipSubmitting.value = false
   }
 }
 
-/** 口径 D3：发货成功后引导去打印随货凭证（送货单）；取消或失败都不影响发货 */
-const guideToPrint = async (orderId: number) => {
+/** 待发货单创建后，引导至发货管理查看并完成后续发货 */
+const guideToDelivery = async (orderId: number) => {
   try {
     const res = await deliveryApi.listByOrderId(orderId)
     const latest = (res.data || [])[0]
     if (!latest) return
     await ElMessageBox.confirm(
-      `发货单 ${latest.deliveryNo} 已生成，是否现在打印随货凭证（交客户签字）？`,
-      '随货凭证',
+      `待发货单 ${latest.deliveryNo} 已生成。请先完成OQC检验，再确认发货。是否前往发货管理？`,
+      '待发货单',
       {
-        confirmButtonText: '去打印',
+        confirmButtonText: '发货管理',
         cancelButtonText: '稍后',
         type: 'info',
       }
     )
-    router.push({ path: '/sales/delivery/print', query: { deliveryId: latest.deliveryId } })
+    router.push({ path: '/sales/delivery' })
   } catch {
     // 用户选择"稍后"或查询失败：静默跳过，不打断发货
   }

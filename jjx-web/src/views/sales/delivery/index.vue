@@ -1,5 +1,6 @@
 <template>
   <div class="app-container">
+    <el-alert title="待发货单须先完成出货检验（OQC），再确认发货并出库；客户收货后登记签收。" type="info" :closable="false" show-icon style="margin-bottom: 12px" />
     <el-card shadow="never" class="search-card">
       <el-form :model="query" inline>
         <el-form-item label="发货单号"><el-input v-model="query.deliveryNo" clearable /></el-form-item>
@@ -40,7 +41,7 @@
             <span v-else class="muted">未打印</span>
           </template>
         </el-table-column>
-        <TableActionColumn :actions="deliveryActions" width="200" display="text" @action="handleDeliveryAction" />
+        <TableActionColumn :actions="deliveryActions" width="280" display="text" @action="handleDeliveryAction" />
       </el-table>
       <pagination v-show="total > 0" v-model:page="query.pageNum" v-model:limit="query.pageSize" :total="total" @pagination="load" />
     </el-card>
@@ -162,7 +163,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { deliveryApi, type SalesDeliveryQueryDTO, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { orderApi } from '@/api/sales/order'
 import { attachmentApi } from '@/api/system/attachment'
@@ -171,6 +172,15 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 
 const deliveryActions: TableAction<SalesDeliveryVO>[] = [
   { key: 'detail', label: '详情' },
+  {
+    key: 'oqc', label: '出货检验', permission: 'quality:lot:view',
+    visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.PENDING.value,
+  },
+  {
+    key: 'ship', label: '确认发货', type: 'primary', permission: 'sales:order:edit',
+    visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.PENDING.value,
+    disabled: () => confirmingDeliveryId.value != null,
+  },
   {
     key: 'receive',
     label: '签收',
@@ -194,6 +204,28 @@ const handleDeliveryAction = (key: string, row: SalesDeliveryVO) => {
   if (key === 'receive') openReceive(row)
   if (key === 'reject') void openReject(row)
   if (key === 'print') printDelivery(row)
+  if (key === 'oqc') void router.push({ path: '/quality/lot/oqc', query: { businessNo: row.deliveryNo } })
+  if (key === 'ship') void confirmShipment(row)
+}
+
+const confirmingDeliveryId = ref<number>()
+async function confirmShipment(row: SalesDeliveryVO) {
+  if (confirmingDeliveryId.value != null) return
+  try {
+    await ElMessageBox.confirm(`确认发货 ${row.deliveryNo}？系统将校验OQC放行结果并完成本次出库。`, '确认发货', { type: 'warning' })
+  } catch {
+    return
+  }
+  confirmingDeliveryId.value = row.deliveryId
+  try {
+    await deliveryApi.confirmShipment(row.deliveryId)
+    ElMessage.success('发货及出库已完成')
+    await load()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '确认发货失败')
+  } finally {
+    confirmingDeliveryId.value = undefined
+  }
 }
 
 defineOptions({ name: 'SalesDelivery' })

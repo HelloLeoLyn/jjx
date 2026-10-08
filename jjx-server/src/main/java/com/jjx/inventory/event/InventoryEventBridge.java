@@ -54,6 +54,11 @@ public class InventoryEventBridge {
     @EventListener(condition = "#payload?.eventCode == 'order.delivering'")
     public void onSalesDelivery(Map<String, Object> payload) {
         log.info("🚛 销售发货联动出库: {}", payload);
+        // 新流程已在确认发货事务中完成出库；事件仍用于通知，不可重复扣库存。
+        if (Boolean.TRUE.equals(payload.get("inventoryPosted"))) {
+            log.info("销售发货库存已过账，跳过重复出库: outboundId={}", payload.get("outboundId"));
+            return;
+        }
         try {
             // 2026-09-21 dev-20260921-039（分批发货）：优先按发货单明细出库，数量与发货单一致
             Object deliveryIdVal = payload.get("deliveryId");

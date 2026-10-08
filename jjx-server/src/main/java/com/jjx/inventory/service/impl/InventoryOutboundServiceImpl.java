@@ -1889,6 +1889,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setRemark("发货单 " + delivery.getDeliveryNo());
         outboundOrderMapper.insert(order);
 
+        // 本订单实预留可用于本订单发货；其他订单预留仍不可占用。
+        Map<Long, BigDecimal> ownReserved = orderStockReserveService.getReservedQty(salesOrderId);
+        Map<Long, BigDecimal> remainingAvailable = new java.util.HashMap<>();
         int sort = 1;
         for (com.jjx.sales.domain.entity.SalesDeliveryItem item : deliveryItems) {
             BigDecimal requirement = BigDecimal.valueOf(item.getQuantity() == null ? 0 : item.getQuantity());
@@ -1899,17 +1902,22 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     com.jjx.inventory.enums.InventoryItemTypeEnum.PRODUCT, item.getProductId(),
                     item.getProductCode(), item.getProductName(), null,
                     item.getUnit() == null || item.getUnit().isBlank() ? "PCS" : item.getUnit());
-            BigDecimal available = BigDecimal.ZERO;
-            InventoryStock stock = stockMapper.selectByInventoryItemId(inventoryItem.getInventoryItemId());
-            if (stock != null && stock.getTotalQuantity() != null) {
-                available = stock.getTotalQuantity().subtract(
-                        stock.getTotalReserved() == null ? BigDecimal.ZERO : stock.getTotalReserved());
+            BigDecimal available = remainingAvailable.get(inventoryItem.getInventoryItemId());
+            if (available == null) {
+                available = BigDecimal.ZERO;
+                InventoryStock stock = stockMapper.selectByInventoryItemId(inventoryItem.getInventoryItemId());
+                if (stock != null && stock.getTotalQuantity() != null) {
+                    BigDecimal reserved = stock.getTotalReserved() == null ? BigDecimal.ZERO : stock.getTotalReserved();
+                    BigDecimal owned = ownReserved.getOrDefault(item.getProductId(), BigDecimal.ZERO).min(reserved);
+                    available = stock.getTotalQuantity().subtract(reserved).add(owned);
+                }
             }
             if (available.compareTo(requirement) < 0) {
                 throw new BusinessException("产品[" + item.getProductCode() + "]库存不足，无法发货（需 "
                         + requirement.stripTrailingZeros().toPlainString() + "，可用 "
                         + available.stripTrailingZeros().toPlainString() + "）");
             }
+            remainingAvailable.put(inventoryItem.getInventoryItemId(), available.subtract(requirement));
             InventoryOutboundItem outItem = new InventoryOutboundItem();
             outItem.setOutboundId(order.getOutboundId());
             outItem.setInventoryItemId(inventoryItem.getInventoryItemId());
@@ -1933,9 +1941,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
         outboundOrderMapper.updateById(order);
-        approve(order.getOutboundId(), null, null, "销售发货出库（" + delivery.getDeliveryNo() + "）");
+        if (!approve(order.getOutboundId(), null, null, "销售发货出库（" + delivery.getDeliveryNo() + "）")) {
+            throw new BusinessException("销售出库审批失败，未确认发货");
+        }
         try {
-            confirm(order.getOutboundId(), null, "销售发货出库");
+            if (!confirm(order.getOutboundId(), null, "销售发货出库")) {
+                throw new BusinessException("销售出库确认未完成");
+            }
             log.info("销售发货出库已自动确认并扣库存: outboundId={}, deliveryNo={}",
                     order.getOutboundId(), delivery.getDeliveryNo());
         } catch (Exception e) {

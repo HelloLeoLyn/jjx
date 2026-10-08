@@ -448,9 +448,9 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import {
   qualityLotApi,
   qualityNcrApi,
@@ -459,11 +459,12 @@ import {
   type QualityLotHistory,
   type JudgementGuardVO,
 } from '@/api/quality/lot'
-import { InspectionResult, NcrActionStatusEnum, NcrActionTypeEnum } from '@/enums/quality'
+import { InspectionType, InspectionResult, NcrActionStatusEnum, NcrActionTypeEnum } from '@/enums/quality'
 import { hasPermi } from '@/directives'
 import InspectionStageBar from '@/components/InspectionStageBar.vue'
 
 const router = useRouter()
+const route = useRoute()
 
 // 2026-09-21（dev-20260921-030）：操作栏改为「按权限 + 按状态」渲染，并加行级忙碌锁防连点。
 // 原实现 5 个按钮无条件可点（判定后仍能改录入、待检批也能复检）。
@@ -484,7 +485,16 @@ const needSync = (row: QualityLot) =>
 const loading = ref(false)
 const rows = ref<QualityLot[]>([])
 const total = ref(0)
-const query = reactive({ pageNum: 1, pageSize: 10, lotType, status: '', lotNo: '', businessNo: '' })
+const query = reactive({ pageNum: 1, pageSize: 10, lotType, status: '', lotNo: '',
+  businessNo: lotType === InspectionType.OQC && typeof route.query.businessNo === 'string' ? route.query.businessNo : '',
+})
+// 从待发货单跳转时按业务单号定位；同一路由再次跳转也更新筛选。
+watch(() => route.query.businessNo, (businessNo) => {
+  if (lotType === InspectionType.OQC && route.path === '/quality/lot/oqc' && typeof businessNo === 'string') {
+    query.businessNo = businessNo
+    void load(1)
+  }
+})
 const current = ref<QualityLot | null>(null)
 const historyVisible = ref(false)
 const historyLoading = ref(false)

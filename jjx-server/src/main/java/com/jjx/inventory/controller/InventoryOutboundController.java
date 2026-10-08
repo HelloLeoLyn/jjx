@@ -193,11 +193,11 @@ public class InventoryOutboundController {
     }
 
     @PostMapping("/create-from-sales/{salesOrderId}")
-    @Operation(summary = "从销售订单创建出库单")
+    @Operation(summary = "旧销售出库入口（请从发货管理确认发货）")
     @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#salesOrderId", bizStatus = "T(com.jjx.inventory.enums.InventoryOrderStatusEnum).COMPLETED.getLabel()", action = LogActions.OUTBOUND_FROM_SALES)
     @SaCheckPermission("inventory:outbound:add")
     public Result<Long> createFromSales(@PathVariable Long salesOrderId) {
-        return Result.success(outboundService.createFromSales(salesOrderId));
+        throw new com.jjx.common.exception.BusinessException("销售出库请在发货管理中完成OQC放行后确认发货，不能按订单直接出库");
     }
 
     @GetMapping("/pending-approval")

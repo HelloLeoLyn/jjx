@@ -30,6 +30,9 @@ public interface ISalesDeliveryService {
     /** 签收发货单 */
     void receive(Long deliveryId, SalesDelivery receiveInfo);
 
+    /** OQC放行后确认发货，事务内完成出库与已发数量更新。 */
+    void confirmShipment(Long deliveryId);
+
     /**
      * 记录送货单打印留痕
      * 口径（D3）：biz_type='sales_delivery'、biz_id=deliveryId，写 quality_template_print_log

@@ -34,6 +34,16 @@ public class SalesDeliveryController {
     private final ISalesDeliveryService salesDeliveryService;
     private final SalesDeliveryExcelService excelService;
 
+    @Operation(summary = "OQC放行后确认发货并出库")
+    @SaCheckPermission("sales:order:edit")
+    @Log(module = "销售发货", businessType = BusinessType.UPDATE,
+            bizType = "'sales_delivery'", bizId = "#deliveryId", action = "确认发货")
+    @PostMapping("/{deliveryId}/confirm-shipment")
+    public Result<Void> confirmShipment(@PathVariable Long deliveryId) {
+        salesDeliveryService.confirmShipment(deliveryId);
+        return Result.success();
+    }
+
     @Operation(summary = "导出可编辑的送货单Excel")
     @SaCheckPermission("sales:delivery:view")
     @GetMapping("/{deliveryId}/export-excel")

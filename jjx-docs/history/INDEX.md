@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-08 (dev-011) | sales-delivery-oqc-flow-dev-20261008-011.md | 销售发货 OQC 放行前置及签收流程修复 |
 | 2026-10-08 (dev-009) | qr026-excel-template-dev-20261008-009.md | QR-026 Excel 改为原模板填充 |
 | 2026-10-08 (dev-008) | mockito-maker-conflict-dev-20261008-008.md | 统一采购付款测试 Mock 模式，修复全量测试冲突 |
 | 2026-10-08 (dev-006) | delivery-excel-export-dev-20261008-006.md | 送货单增加可编辑 Excel 导出 |

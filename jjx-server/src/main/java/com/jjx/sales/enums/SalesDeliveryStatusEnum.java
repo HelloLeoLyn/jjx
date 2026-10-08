@@ -15,4 +15,11 @@ public enum SalesDeliveryStatusEnum implements BizStatusEnum {
 
     private final Integer value;
     private final String label;
+
+    public static String labelOf(Integer value) {
+        for (SalesDeliveryStatusEnum status : values()) {
+            if (status.value.equals(value)) return status.label;
+        }
+        return "未知";
+    }
 }

@@ -11,6 +11,13 @@ import com.jjx.sales.domain.dto.SalesDeliveryQueryDTO;
 import com.jjx.sales.domain.entity.SalesDelivery;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.enums.SalesOrderStatusEnum;
+import com.jjx.sales.enums.SalesDeliveryStatusEnum;
+import com.jjx.quality.enums.QualityLotStatusEnum;
+import com.jjx.production.enums.QualityInspectionResultEnum;
+import com.jjx.production.enums.QualityReviewStatusEnum;
+import com.jjx.sales.domain.entity.SalesOrderProduct;
+import java.math.BigDecimal;
+import java.util.HashMap;
 import com.jjx.sales.domain.entity.SalesDeliveryItem;
 import com.jjx.sales.domain.vo.SalesDeliveryVO;
 import com.jjx.sales.mapper.SalesDeliveryItemMapper;
@@ -40,10 +47,6 @@ import java.util.stream.Collectors;
 @Slf4j 
 public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
 
-    /** 发货状态文案，下标即状态值（勿重排序！4/5 已被历史数据使用）。
-     *  2026-09-21 dev-20260921-039：下标 3「运输中」已退场（全链路无写入点），仅作占位保留。 */
-    private static final String[] DELIVERY_STATUS_DESC = {"未知", "待发货", "已发货", "运输中（已弃用）", "已签收", "已拒收"};
-
     private final SalesDeliveryMapper salesDeliveryMapper;
     /** 2026-09-21 dev-20260921-039（分批发货）：发货明细 */
     private final SalesDeliveryItemMapper salesDeliveryItemMapper;
@@ -57,6 +60,8 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
     private final QualityTemplatePrintLogMapper printLogMapper;
     private final QualityTemplateRegistryMapper templateRegistryMapper;
     private final com.jjx.quality.mapper.QualityLotMapper qualityLotMapper;
+    private final com.jjx.inventory.service.InventoryOutboundService outboundService;
+    private final com.jjx.sales.mapper.SalesOrderProductMapper orderProductMapper;
 
     private static final String PRINT_BIZ_TYPE = "sales_delivery";
     /** quality_template_registry.status：1=生效 */
@@ -118,18 +123,104 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         return vos;
     }
 
+    /** OQC放行、库存出库、发货状态与订单已发量同一事务完成。 */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void confirmShipment(Long deliveryId) {
+        SalesDelivery delivery = salesDeliveryMapper.selectByIdForUpdate(deliveryId);
+        if (delivery == null) throw new BusinessException("发货单不存在");
+        if (!SalesDeliveryStatusEnum.PENDING.getValue().equals(delivery.getDeliveryStatus())) {
+            throw new BusinessException("仅待发货单可确认发货，请刷新后重试");
+        }
+        SalesOrder order = orderMapper.selectByIdForUpdate(delivery.getOrderId());
+        if (order == null) throw new BusinessException("销售订单不存在");
+        if (!SalesOrderStatusEnum.IN_PRODUCTION.getValue().equals(order.getOrderStatus())) {
+            throw new BusinessException("订单当前状态不允许确认发货");
+        }
+        List<SalesDeliveryItem> lines = assertOqcPassed(deliveryId);
+        List<SalesDelivery> shipped = salesDeliveryMapper.selectList(new LambdaQueryWrapper<SalesDelivery>()
+                .eq(SalesDelivery::getOrderId, order.getOrderId())
+                .in(SalesDelivery::getDeliveryStatus, SalesDeliveryStatusEnum.SHIPPED.getValue(),
+                        SalesDeliveryStatusEnum.RECEIVED.getValue()));
+        Map<Long, Integer> quantities = new HashMap<>();
+        if (!shipped.isEmpty()) {
+            List<SalesDeliveryItem> previousLines = salesDeliveryItemMapper.selectList(new LambdaQueryWrapper<SalesDeliveryItem>()
+                    .in(SalesDeliveryItem::getDeliveryId, shipped.stream().map(SalesDelivery::getDeliveryId).toList()));
+            for (SalesDeliveryItem line : previousLines) {
+                if (line.getOrderProductId() == null || line.getQuantity() == null || line.getQuantity() <= 0) {
+                    throw new BusinessException("历史发货明细不完整，请先核对发货数量");
+                }
+                quantities.merge(line.getOrderProductId(), line.getQuantity(), Integer::sum);
+            }
+            for (SalesDelivery previous : shipped) {
+                int quantity = previousLines.stream().filter(line -> previous.getDeliveryId().equals(line.getDeliveryId()))
+                        .mapToInt(SalesDeliveryItem::getQuantity).sum();
+                if (quantity <= 0 || (previous.getTotalQuantity() != null && quantity != previous.getTotalQuantity())) {
+                    throw new BusinessException("历史发货单 " + previous.getDeliveryNo() + " 明细数量不完整，请先核对");
+                }
+            }
+        }
+        int currentQuantity = lines.stream().mapToInt(SalesDeliveryItem::getQuantity).sum();
+        if (delivery.getTotalQuantity() == null || currentQuantity != delivery.getTotalQuantity()) {
+            throw new BusinessException("本次发货明细数量与单据不一致");
+        }
+        for (SalesDeliveryItem line : lines) quantities.merge(line.getOrderProductId(), line.getQuantity(), Integer::sum);
+        List<SalesOrderProduct> products = orderProductMapper.selectList(new LambdaQueryWrapper<SalesOrderProduct>()
+                .eq(SalesOrderProduct::getOrderId, order.getOrderId()));
+        if (products.isEmpty()) throw new BusinessException("销售订单无明细");
+        for (SalesDeliveryItem line : lines) {
+            SalesOrderProduct product = products.stream().filter(p -> p.getId().equals(line.getOrderProductId())).findFirst().orElse(null);
+            if (product == null || line.getProductId() == null || !line.getProductId().equals(product.getProductId())) {
+                throw new BusinessException("发货产品与订单明细不一致");
+            }
+        }
+        boolean allShipped = true;
+        int total = 0;
+        for (SalesOrderProduct product : products) {
+            int quantity = quantities.getOrDefault(product.getId(), 0);
+            if (product.getQuantity() == null || quantity > product.getQuantity()) {
+                throw new BusinessException("产品[" + product.getProductCode() + "]累计发货数量超过订单数量");
+            }
+            allShipped &= quantity == product.getQuantity();
+            total += quantity;
+            quantities.remove(product.getId());
+        }
+        if (!quantities.isEmpty()) throw new BusinessException("发货明细不属于当前销售订单");
+        Long outboundId = outboundService.createFromSalesByDelivery(deliveryId);
+        if (outboundId == null) throw new BusinessException("销售出库未成功，不能确认发货");
+        SalesDelivery update = new SalesDelivery();
+        update.setDeliveryId(deliveryId);
+        update.setDeliveryStatus(SalesDeliveryStatusEnum.SHIPPED.getValue());
+        if (salesDeliveryMapper.updateById(update) <= 0) throw new BusinessException("发货单状态更新失败");
+        SalesOrder patch = new SalesOrder();
+        patch.setOrderId(order.getOrderId());
+        patch.setShippedQuantity(total);
+        if (allShipped) patch.setOrderStatus(SalesOrderStatusEnum.SHIPPED.getValue());
+        if (orderMapper.updateById(patch) <= 0) throw new BusinessException("订单已发货量更新失败");
+        Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("order", order.getOrderId(), order.getOrderNo());
+        payload.put("salesOrderId", order.getOrderId());
+        payload.put("orderNo", order.getOrderNo());
+        payload.put("deliveryId", deliveryId);
+        payload.put("deliveryNo", delivery.getDeliveryNo());
+        payload.put("customerName", order.getCustomerName());
+        payload.put("orderStatus", allShipped ? SalesOrderStatusEnum.SHIPPED.getValue() : order.getOrderStatus());
+        payload.put("deliverQuantity", delivery.getTotalQuantity());
+        payload.put("inventoryPosted", true);
+        payload.put("outboundId", outboundId);
+        com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "order.delivering", payload);
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     // 口径 D6：签收后发事件（收件角色与账期规则由 sys_event_config 配置，代码不写死）
     public void receive(Long deliveryId, SalesDelivery receiveInfo) {
-        SalesDelivery current = salesDeliveryMapper.selectById(deliveryId);
+        SalesDelivery current = salesDeliveryMapper.selectByIdForUpdate(deliveryId);
         if (current == null) {
             throw new BusinessException("发货单不存在");
         }
-        if (Integer.valueOf(4).equals(current.getDeliveryStatus())) {
-            throw new BusinessException("发货单已签收，请勿重复操作");
+        if (!SalesDeliveryStatusEnum.SHIPPED.getValue().equals(current.getDeliveryStatus())) {
+            throw new BusinessException("仅已发货单可登记客户签收");
         }
-        assertOqcPassed(deliveryId);
         SalesDelivery update = new SalesDelivery();
         update.setDeliveryId(deliveryId);
         update.setReceiverName(receiveInfo == null ? null : receiveInfo.getReceiverName());
@@ -141,7 +232,7 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         String receiveName = SecurityUtils.getRealName();
         update.setReceiveName(receiveName == null || receiveName.isBlank()
                 ? SecurityUtils.getUsername() : receiveName);
-        update.setDeliveryStatus(4);
+        update.setDeliveryStatus(SalesDeliveryStatusEnum.RECEIVED.getValue());
         if (salesDeliveryMapper.updateById(update) <= 0) {
             throw new BusinessException("签收失败，请刷新后重试");
         }
@@ -156,23 +247,36 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, "sales.delivery.received", payload);
     }
 
-    /** 每个发货明细的最新版 OQC 都必须判定合格，才能登记客户签收。 */
-    private void assertOqcPassed(Long deliveryId) {
+    /** 每个发货明细的最新版 OQC 都必须放行，才能确认发货。 */
+    private List<SalesDeliveryItem> assertOqcPassed(Long deliveryId) {
         List<SalesDeliveryItem> items = salesDeliveryItemMapper.selectList(
                 new LambdaQueryWrapper<SalesDeliveryItem>().eq(SalesDeliveryItem::getDeliveryId, deliveryId));
+        if (items.isEmpty()) throw new BusinessException("发货单缺少本次发货明细，不能确认发货");
         List<com.jjx.quality.domain.entity.QualityLot> lots = qualityLotMapper.selectList(
                 new LambdaQueryWrapper<com.jjx.quality.domain.entity.QualityLot>()
                         .eq(com.jjx.quality.domain.entity.QualityLot::getLotType, "OQC")
                         .eq(com.jjx.quality.domain.entity.QualityLot::getSourceType, "SALES_DELIVERY")
                         .eq(com.jjx.quality.domain.entity.QualityLot::getSourceId, deliveryId)
-                        .orderByDesc(com.jjx.quality.domain.entity.QualityLot::getVersion));
+                        .orderByDesc(com.jjx.quality.domain.entity.QualityLot::getVersion)
+                        .orderByDesc(com.jjx.quality.domain.entity.QualityLot::getLotId).last("FOR UPDATE"));
         for (SalesDeliveryItem item : items) {
+            if (item.getItemId() == null || item.getOrderProductId() == null || item.getQuantity() == null || item.getQuantity() <= 0) {
+                throw new BusinessException("发货明细不完整，不能确认发货");
+            }
             com.jjx.quality.domain.entity.QualityLot latest = lots.stream()
                     .filter(lot -> item.getItemId().equals(lot.getSourceItemId())).findFirst().orElse(null);
-            if (latest == null || !"pass".equalsIgnoreCase(latest.getResult())) {
-                throw new BusinessException("发货明细 " + item.getProductCode() + " 尚无合格 OQC 结果，不能签收");
+            if (latest == null || !QualityInspectionResultEnum.isPass(latest.getResult())
+                    || !(QualityLotStatusEnum.JUDGED.getCode().equals(latest.getStatus())
+                        || QualityLotStatusEnum.CLOSED.getCode().equals(latest.getStatus()))
+                    || latest.getInspectedQuantity() == null || latest.getInspectedQuantity().signum() <= 0
+                    || latest.getLotQuantity() == null || latest.getLotQuantity().compareTo(BigDecimal.valueOf(item.getQuantity())) < 0
+                    || (latest.getReviewStatus() != null && !latest.getReviewStatus().isBlank()
+                        && !QualityReviewStatusEnum.APPROVED.getCode().equals(latest.getReviewStatus()))) {
+                throw new BusinessException("发货明细 " + item.getProductCode() + " 尚无已放行的合格 OQC 结果，不能确认发货"
+                        + (latest == null ? "" : "（检验批 " + latest.getLotNo() + "）"));
             }
         }
+        return items;
     }
 
     /**
@@ -191,12 +295,11 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
         if (current == null) {
             throw new BusinessException("发货单不存在");
         }
-        if (Integer.valueOf(5).equals(current.getDeliveryStatus())) {
+        if (SalesDeliveryStatusEnum.REJECTED.getValue().equals(current.getDeliveryStatus())) {
             throw new BusinessException("发货单已是拒收状态，请勿重复操作");
         }
-        if (!Integer.valueOf(2).equals(current.getDeliveryStatus())) {
-            int idx = current.getDeliveryStatus() == null ? 0 : current.getDeliveryStatus();
-            String label = idx >= 0 && idx < DELIVERY_STATUS_DESC.length ? DELIVERY_STATUS_DESC[idx] : "未知";
+        if (!SalesDeliveryStatusEnum.SHIPPED.getValue().equals(current.getDeliveryStatus())) {
+            String label = SalesDeliveryStatusEnum.labelOf(current.getDeliveryStatus());
             throw new BusinessException("发货单当前状态[" + label + "]不能登记拒收（仅已发货(2)可拒收；已签收请走销售退货流程）");
         }
         if (reason == null || reason.isBlank()) {
@@ -205,7 +308,7 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
 
         SalesDelivery update = new SalesDelivery();
         update.setDeliveryId(deliveryId);
-        update.setDeliveryStatus(5);
+        update.setDeliveryStatus(SalesDeliveryStatusEnum.REJECTED.getValue());
         update.setRejectReason(reason);
         update.setRejectTime(new Date());
         update.setRejectBy(SecurityUtils.getUserId());
@@ -234,7 +337,7 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
                 List<SalesDelivery> remained = salesDeliveryMapper.selectList(
                         new LambdaQueryWrapper<SalesDelivery>()
                                 .eq(SalesDelivery::getOrderId, current.getOrderId())
-                                .ne(SalesDelivery::getDeliveryStatus, 5));
+                                .in(SalesDelivery::getDeliveryStatus, SalesDeliveryStatusEnum.SHIPPED.getValue(), SalesDeliveryStatusEnum.RECEIVED.getValue()));
                 if (!remained.isEmpty()) {
                     List<Long> ids = remained.stream().map(SalesDelivery::getDeliveryId).toList();
                     for (SalesDeliveryItem item : salesDeliveryItemMapper.selectList(
@@ -360,9 +463,8 @@ public class SalesDeliveryServiceImpl implements ISalesDeliveryService {
     private SalesDeliveryVO toVO(SalesDelivery entity) {
         SalesDeliveryVO vo = new SalesDeliveryVO();
         BeanUtils.copyProperties(entity, vo);
-        int idx = entity.getDeliveryStatus() != null ? entity.getDeliveryStatus() : 0;
-        if (idx >= 0 && idx < DELIVERY_STATUS_DESC.length) {
-            vo.setDeliveryStatusDesc(DELIVERY_STATUS_DESC[idx]);
+        if (entity.getDeliveryStatus() != null) {
+            vo.setDeliveryStatusDesc(SalesDeliveryStatusEnum.labelOf(entity.getDeliveryStatus()));
         }
         return vo;
     }

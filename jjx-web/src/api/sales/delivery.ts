@@ -103,6 +103,10 @@ export interface SalesDeliveryCreateDTO {
 }
 
 export const deliveryApi = {
+  /** OQC放行后确认发货并出库 */
+  confirmShipment(deliveryId: number) {
+    return request.post<R<void>>(`/sales/deliveries/${deliveryId}/confirm-shipment`)
+  },
   /** 可编辑送货单（本次发货快照，不增加打印次数） */
   exportExcel(deliveryId: number) {
     return request.get<Blob>(`/sales/deliveries/${deliveryId}/export-excel`, { responseType: 'blob' })

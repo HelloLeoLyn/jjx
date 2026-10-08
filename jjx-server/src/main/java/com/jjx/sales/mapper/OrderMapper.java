@@ -19,6 +19,10 @@ import java.io.Serializable;
 @Mapper
 public interface OrderMapper extends BaseMapper<SalesOrder> {
 
+    /** 发货建单/确认共用订单行锁，串行校验分批数量。 */
+    @Select("SELECT * FROM sales_order WHERE order_id=#{orderId} AND deleted=0 FOR UPDATE")
+    SalesOrder selectByIdForUpdate(@Param("orderId") Long orderId);
+
     /** 样品字段已拆至扩展表，查询时回填为领域对象，兼容现有样品服务。 */
     @Override
     @Select("SELECT o.*, s.sample_status, s.sample_round, s.sample_qty, s.engineering_note, " +
