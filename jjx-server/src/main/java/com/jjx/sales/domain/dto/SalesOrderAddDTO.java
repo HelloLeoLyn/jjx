@@ -104,10 +104,13 @@ public class SalesOrderAddDTO {
     private BigDecimal taxRate = BigDecimal.ZERO;
     private BigDecimal taxAmount;
 
+    @DecimalMin(value = "0", message = "折扣金额不能为负数")
+    @Schema(description = "折扣金额", example = "100.00")
+    private BigDecimal discountAmount;
+
     @DecimalMin(value = "0", message = "折扣率不能为负数")
     @DecimalMax(value = "1", message = "折扣率不能大于1")
     @Schema(description = "折扣率", example = "0.05")
-    private BigDecimal discountAmount;
     private BigDecimal discountRate = BigDecimal.ZERO;
 
     @NotNull(message = "总数量不能为空")
