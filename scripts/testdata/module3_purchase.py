@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-模块 3 · 采购 —— 场景测试数据运行器（dev-20261008-023）
+模块 3 · 采购 —— 场景测试数据运行器（状态机版，dev-20261008-023）
 
-流程：复用供应商 + 物料 → 采购订单（生成单号→建→提交→审批）→ 收货（含检验，走采购侧 receive）。
-口径：复用现有供应商/物料（不新建）；单号走系统规则（GET /purchase/order/generate-order-no）；[TST] 备注；幂等。
+认领：复用现有供应商/物料；本脚本造的采购订单用**记住的 id** 认领（不用"第一条匹配"）。
+每步"探测→决策→执行"，四态记结果。收货→IQC逐项检验→确认入库（原料过账）。
+
 用法：env JJX_BASE_URL/JJX_USER/JJX_PASS/JJX_TENANT；可选 JJX_TST_SUPPLIER_ID、JJX_TST_MATERIAL_ID
 """
 import os
@@ -13,122 +14,104 @@ import datetime
 from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import call, get, get_list, find_first, try_call, log, summary, TST  # noqa: E402
+from _common import (call, get, get_list, find_first, step, remember, remembered,  # noqa: E402
+                     rec, report, log, TST)
 
 TODAY = datetime.date.today().isoformat()
 DUE = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
 SUPPLIER_ID = int(os.environ.get("JJX_TST_SUPPLIER_ID", "1"))
 MATERIAL_ID = int(os.environ.get("JJX_TST_MATERIAL_ID", "1"))
-QTY = 100
-PRICE = 10
+QTY, PRICE = 100, 10
 
 
-def get_supplier():
-    row = get(f"/purchase/supplier/{SUPPLIER_ID}")
-    name = row.get("supplierName") if isinstance(row, dict) else None
-    log(f"使用供应商 id={SUPPLIER_ID} {name}")
-    return SUPPLIER_ID, name
+def get_my_po():
+    pid = remembered("m3.purchaseOrderId")
+    if not pid:
+        return None
+    try:
+        r = get(f"/purchase/order/{int(pid)}")
+    except Exception:
+        return None
+    return r if isinstance(r, dict) and r.get("orderId") else None
 
 
-def get_material():
-    m = get(f"/inventory/material/{MATERIAL_ID}")
-    return m if isinstance(m, dict) else {}
-
-
-def ensure_po(sid, sname, mat):
-    row = find_first("/purchase/order/list", {"pageNum": 1, "pageSize": 50, "supplierId": sid},
-                     lambda r: r.get("supplierId") == sid)
-    if row:
-        oid = row.get("orderId")
-        log(f"复用采购订单 id={oid} approvalStatus={row.get('approvalStatus')}")
-        return oid, row.get("approvalStatus")
+def create_po(sup_id, sup_name):
+    mat = get(f"/inventory/material/{MATERIAL_ID}") or {}
     order_no = get("/purchase/order/generate-order-no")
-    mcode, mname = mat.get("materialCode"), mat.get("materialName")
-    munit = mat.get("unit") or "M"
     amount = QTY * PRICE
-    body = {
-        "orderNo": order_no, "supplierId": sid, "supplierName": sname,
+    call("POST", "/purchase/order", {
+        "orderNo": order_no, "supplierId": sup_id, "supplierName": sup_name,
         "orderDate": TODAY, "expectedDeliveryDate": DUE,
         "orderAmount": amount, "orderTax": 0, "orderTotalAmount": amount, "currency": "CNY",
-        "items": [{"materialId": MATERIAL_ID, "materialCode": mcode, "materialName": mname,
-                   "unit": munit, "quantity": QTY, "unitPrice": PRICE, "amount": amount}],
-    }
-    call("POST", "/purchase/order", body, "新增采购订单")
-    r2 = find_first("/purchase/order/list", {"pageNum": 1, "pageSize": 50, "orderNo": order_no},
-                    lambda r: r.get("orderNo") == order_no)
-    oid = r2.get("orderId") if r2 else None
-    log(f"新增采购订单 id={oid} no={order_no}")
-    return oid, 1
-
-
-def approve_po(oid):
-    try_call("PUT", f"/purchase/order/submit/{oid}", None, "采购订单提交审批")
-    try_call("PUT", "/purchase/order/approve",
-             {"orderId": oid, "approverId": 1, "approverName": "系统管理员",
-              "approvalComment": f"{TST} 审批通过", "approvalStatus": 3}, "采购订单审批通过")
-
-
-def receive_po(oid):
-    items = get_list(f"/purchase/order/{oid}/items")
-    recv = [{"itemId": it.get("itemId"), "receivedQuantity": it.get("quantity")}
-            for it in items if it.get("itemId")]
-    if recv:
-        try_call("POST", f"/purchase/order/{oid}/receive", {"items": recv}, "采购收货（含检验）")
-    else:
-        log("（无明细可收货）")
-
-
-def confirm_inbound(po_no):
-    """采购收货会自动生成采购入库单（待审批）；这里提交审批 + 确认入库，把原料过账进库存。"""
-    if not po_no:
-        return
-    row = find_first("/inventory/inbound/list", {"pageNum": 1, "pageSize": 50},
-                     lambda r: r.get("sourceNo") == po_no)
-    if not row:
-        log("（该采购单暂无入库单）")
-        return
-    iid = row.get("inboundId")
-    detail = get(f"/inventory/inbound/{iid}")
-    items = detail.get("items") if isinstance(detail, dict) else None
-    items = items if isinstance(items, list) else []
-    # ① 逐项完成来料检验（IQC 审核通过）
-    for it in items:
-        item_id = it.get("inboundItemId")
-        if item_id:
-            try_call("POST", f"/inventory/inbound/inspection-item/{item_id}/approve",
-                     {"approverId": 1, "approverName": "系统管理员", "remark": f"{TST} 来料检验合格"},
-                     f"IQC项审核通过(item={item_id})")
-    # ② 提交入库审批（带判定）
-    iqc = [{"itemId": it.get("inboundItemId"), "sampledQuantity": it.get("quantity"),
-            "inspectionResult": "pass", "qualifiedQuantity": it.get("quantity"),
-            "acceptedQuantity": it.get("quantity"), "rejectedQuantity": 0,
-            "disposition": "ACCEPT"} for it in items if it.get("inboundItemId")]
-    try_call("POST", f"/inventory/inbound/submit-approve/{iid}", {"items": iqc}, "提交入库审批（IQC合格）")
-    # ③ 确认入库（过账）
-    try_call("POST", f"/inventory/inbound/confirm/{iid}?operatorId=1&operatorName={quote('系统管理员')}",
-             None, "确认入库（过账）")
-    log(f"入库单 id={iid} 处理完成")
+        "remark": f"{TST} 自动化造数",
+        "items": [{"materialId": MATERIAL_ID, "materialCode": mat.get("materialCode"),
+                   "materialName": mat.get("materialName"), "unit": mat.get("unit") or "M",
+                   "quantity": QTY, "unitPrice": PRICE, "amount": amount}],
+    }, "新增采购订单")
+    row = find_first("/purchase/order/list", {"pageNum": 1, "pageSize": 50, "orderNo": order_no},
+                     lambda r: r.get("orderNo") == order_no)
+    if row:
+        remember("m3.purchaseOrderId", row.get("orderId"))
+    return row
 
 
 def main():
-    log("=== 模块3 采购 造数（订单建/审批 → 收货 → 确认入库）===")
-    sid, sname = get_supplier()
-    if not sid:
-        summary()
+    log("=== 模块3 采购 造数（状态机）===")
+    sup = get(f"/purchase/supplier/{SUPPLIER_ID}")
+    sup_name = sup.get("supplierName") if isinstance(sup, dict) else None
+    po = step("采购订单", existing=get_my_po, create=lambda: create_po(SUPPLIER_ID, sup_name))
+    if not po:
+        report()
         return
-    mat = get_material()
-    oid, st = ensure_po(sid, sname, mat)
-    if not oid:
-        log("⚠ 未取到采购订单 ID")
-        summary()
-        return
-    if st != 3:
-        approve_po(oid)
-    receive_po(oid)
-    po = get(f"/purchase/order/{oid}")
-    confirm_inbound(po.get("orderNo") if isinstance(po, dict) else None)
-    log("=== 完成 ===")
-    summary()
+    po_id = po.get("orderId")
+
+    st = po.get("approvalStatus")
+    if str(st) != "3":
+        # 提交 + 审批
+        if str(st) == "1":
+            step("采购订单提交", create=lambda: call("PUT", f"/purchase/order/submit/{po_id}", None, "采购订单提交"))
+        step("采购订单审批通过", create=lambda: call("PUT", "/purchase/order/approve", {
+            "orderId": po_id, "approverId": 1, "approverName": "系统管理员",
+            "approvalComment": f"{TST} 审批通过", "approvalStatus": 3}, "采购订单审批通过"))
+
+    po = get(f"/purchase/order/{po_id}") or po
+    if str(po.get("receiptStatus")) != "2":
+        items = get_list(f"/purchase/order/{po_id}/items")
+        recv = [{"itemId": it.get("itemId"), "receivedQuantity": it.get("quantity")}
+                for it in items if it.get("itemId")]
+        if recv:
+            step("采购收货", create=lambda: call("POST", f"/purchase/order/{po_id}/receive", {"items": recv}, "采购收货"))
+
+    # 入库（IQC → 确认入库）
+    inb = find_first("/inventory/inbound/list", {"pageNum": 1, "pageSize": 50},
+                     lambda r: r.get("sourceNo") == po.get("orderNo"))
+    if inb and str(inb.get("orderStatus")) != "10":
+        iid = inb.get("inboundId")
+        detail = get(f"/inventory/inbound/{iid}")
+        items = detail.get("items") if isinstance(detail, dict) else None
+        items = items if isinstance(items, list) else []
+        # 逐项：提交检验 → 审核
+        for it in items:
+            item_id = it.get("inboundItemId")
+            if not item_id:
+                continue
+            step(f"IQC提交检验(item={item_id})", create=lambda item_id=item_id: call(
+                "POST", f"/inventory/inbound/submit-approve/{iid}",
+                {"items": [{"itemId": item_id, "sampledQuantity": it.get("quantity"),
+                            "inspectionResult": "pass", "qualifiedQuantity": it.get("quantity"),
+                            "acceptedQuantity": it.get("quantity"), "rejectedQuantity": 0,
+                            "disposition": "ACCEPT"}]}, "提交检验"))
+            step(f"IQC审核通过(item={item_id})", create=lambda item_id=item_id: call(
+                "POST", f"/inventory/inbound/inspection-item/{item_id}/approve",
+                {"approverId": 1, "approverName": "系统管理员", "remark": f"{TST} 合格"}, "IQC审核"))
+        step("确认入库（过账）", create=lambda: call(
+            "POST", f"/inventory/inbound/confirm/{iid}?operatorId=1&operatorName={quote('系统管理员')}",
+            None, "确认入库"))
+    elif inb:
+        rec("exists", "确认入库", "入库单已完成")
+    else:
+        rec("blocked", "确认入库", "未找到该采购单的入库单")
+    report()
 
 
 if __name__ == "__main__":

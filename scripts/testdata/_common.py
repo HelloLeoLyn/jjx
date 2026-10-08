@@ -188,3 +188,97 @@ def summary():
 
 def mask(name):
     return f"{TST}{name}"
+
+
+# ── 状态机框架（dev-20261008-023 重写）───────────────────────────────
+# 目标：每步"探测→决策→执行"，只补缺口；结果分四态；造出的实体用 [TST] 标签 + 状态文件认领，
+#       绝不再用"第一条匹配"去认领别人的数据。
+import json as _json
+
+_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".tst-state.json")
+
+
+def _load_state() -> dict:
+    try:
+        with open(_STATE_FILE, encoding="utf-8") as f:
+            return _json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_state(s: dict) -> None:
+    try:
+        with open(_STATE_FILE, "w", encoding="utf-8") as f:
+            _json.dump(s, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def remembered(key, default=None):
+    return _load_state().get(key, default)
+
+
+def remember(key, val) -> None:
+    s = _load_state()
+    s[key] = val
+    _save_state(s)
+
+
+_RPT = []
+
+
+def rec(cat, what, detail=""):
+    _RPT.append((cat, what, detail))
+    icon = {"done": "✔", "exists": "=", "blocked": "⏸", "failed": "✘"}.get(cat, "·")
+    log(f"{icon} [{cat}] {what}" + (f"  — {detail}" if detail else ""))
+
+
+def report():
+    print("\n===== 执行结果（四态）=====")
+    for cat in ("done", "exists", "blocked", "failed"):
+        rows = [r for r in _RPT if r[0] == cat]
+        if rows:
+            print(f"-- {cat} ({len(rows)}) --")
+            for _, what, detail in rows:
+                print(f"   {what}" + (f"  — {detail}" if detail else ""))
+    _RPT.clear()
+
+
+def step(what, existing=None, pre=None, create=None):
+    """
+    探测-决策-执行：
+      existing() -> 真值   ⇒ 已存在，跳过（exists）
+      pre()      -> (ok, reason) 不满足 ⇒ 被挡（blocked，带原因）
+      否则 create()        ⇒ 执行（done / failed）
+    """
+    if existing:
+        try:
+            v = existing()
+        except Exception:
+            v = None
+        if v:
+            rec("exists", what)
+            return v
+    if pre:
+        try:
+            ok, reason = pre()
+        except Exception as e:
+            ok, reason = False, f"前置检查异常: {e}"
+        if not ok:
+            rec("blocked", what, reason)
+            return None
+    if create:
+        try:
+            r = create()
+            rec("done", what)
+            return r
+        except ApiError as e:
+            rec("failed", what, str(e))
+            return None
+    return None
+
+
+def claim_list(path, params, key, tagmark=TST):
+    """只认领带 [TST] 标签的行（按 key 字段判定），不碰别人的数据。"""
+    from _common import get_list as _gl  # 兼容两种调用
+    return [r for r in _gl(path, params) if str(r.get(key, "")).startswith(tagmark)]
