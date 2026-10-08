@@ -72,7 +72,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     /** dev-20260924-002：报废补产在同一事务里生成补产任务（挂工单末道工序） */
     private final com.jjx.production.service.ProductionTaskService productionTaskService;
     private final JdbcTemplate jdbcTemplate;
-    private final com.jjx.product.mapper.EngineeringBomMapper productBomMapper;
+    private final com.jjx.production.service.ProductionBomResolver productionBomResolver;
     private final com.jjx.product.mapper.EngineeringBomItemMapper productBomItemMapper;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final InventoryAlertService alertService;
@@ -208,9 +208,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (productionOrder == null) throw new BusinessException("关联生产工单不存在");
 
         Map<Long, com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems = new HashMap<>();
-        if (productionOrder.getBomId() != null) {
+        // 历史未绑定单据不拿“当前版本”冒充原始 BOM，位号/模数继续留空。
+        com.jjx.engineering.domain.entity.EngineeringBom printBom = productionOrder.getBomId() == null
+                ? null : productionBomResolver.resolve(productionOrder);
+        if (printBom != null) {
             productBomItemMapper.selectList(new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
-                            .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, productionOrder.getBomId()))
+                            .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, printBom.getBomId()))
                     .forEach(item -> bomItems.putIfAbsent(item.getMaterialId(), item));
         }
 
@@ -478,6 +481,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
+        // 先校验绑定版本，再扣库存；避免缺口计算的兼容 catch 吞掉 BOM 关联错误。
+        com.jjx.engineering.domain.entity.EngineeringBom productionBom = null;
+        if ("work_order".equals(order.getSourceType()) && order.getSourceId() != null) {
+            com.jjx.production.domain.entity.ProductionOrder productionOrder =
+                    productionOrderMapper.selectById(order.getSourceId());
+            if (productionOrder != null) productionBom = productionBomResolver.resolve(productionOrder);
+        }
+
         // 库存操作统一发生在 confirm（DEV-651：confirm=审批+完成 单路径，approve 不再动库存）
         // 直接执行库存扣减（不经过 approve，避免状态不匹配）
         List<InventoryOutboundItem> outItems = outboundItemMapper.selectByOutboundId(outboundId);
@@ -573,14 +584,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     boolean hasUnfinished = unfinishedCnt != null && unfinishedCnt > 0;
                     boolean hasGap = false;
                     try {
-                        LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom> bomWrapper =
-                                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
-                                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, prodOrder.getProductId())
-                                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, 1)
-                                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getApproveStatus, 3)
-                                        .orderByDesc(com.jjx.engineering.domain.entity.EngineeringBom::getCreateTime)
-                                        .last("LIMIT 1");
-                        com.jjx.engineering.domain.entity.EngineeringBom bom = productBomMapper.selectOne(bomWrapper);
+                        com.jjx.engineering.domain.entity.EngineeringBom bom = productionBom;
                         if (bom != null) {
                             List<com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems = productBomItemMapper.selectList(
                                     new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
@@ -851,14 +855,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             throw new BusinessException("生产工单不存在: " + workOrderId);
         }
         validateProductionWorkOrder(prodOrder);
-        // 2. 查生效BOM
-        com.jjx.engineering.domain.entity.EngineeringBom bom = productBomMapper.selectOne(
-                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
-                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, prodOrder.getProductId())
-                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, 1)
-                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getApproveStatus, 3)
-                        .orderByDesc(com.jjx.engineering.domain.entity.EngineeringBom::getCreateTime)
-                        .last("LIMIT 1"));
+        // 2. 使用工单指定版本；未绑定版本的历史工单保持兼容取数。
+        com.jjx.engineering.domain.entity.EngineeringBom bom = productionBomResolver.resolve(prodOrder);
         if (bom == null) {
             throw new BusinessException("工单产品[" + prodOrder.getProductCode() + "]无已审批的当前BOM，无法领料");
         }
@@ -994,15 +992,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         validateProductionWorkOrder(prodOrder);
 
-        // 2. 查询当前生效BOM
-        LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom> bomWrapper =
-                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
-                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, prodOrder.getProductId())
-                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, 1)
-                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getApproveStatus, 3)
-                        .orderByDesc(com.jjx.engineering.domain.entity.EngineeringBom::getCreateTime)
-                        .last("LIMIT 1");
-        com.jjx.engineering.domain.entity.EngineeringBom bom = productBomMapper.selectOne(bomWrapper);
+        // 2. 与预览、打印使用同一个工单 BOM 版本。
+        com.jjx.engineering.domain.entity.EngineeringBom bom = productionBomResolver.resolve(prodOrder);
         if (bom == null) {
             log.warn("生产工单{}的产品{}无生效BOM，跳过自动领料", workOrderId, prodOrder.getProductCode());
             return null;
@@ -1204,15 +1195,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (prodOrder == null) {
             return result;
         }
-        // BOM 需求量
-        LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom> bomWrapper =
-                new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBom>()
-                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getProductId, prodOrder.getProductId())
-                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getIsCurrent, 1)
-                        .eq(com.jjx.engineering.domain.entity.EngineeringBom::getApproveStatus, 3)
-                        .orderByDesc(com.jjx.engineering.domain.entity.EngineeringBom::getCreateTime)
-                        .last("LIMIT 1");
-        com.jjx.engineering.domain.entity.EngineeringBom bom = productBomMapper.selectOne(bomWrapper);
+        // BOM 需求量必须与本工单生成领料单时的版本一致。
+        com.jjx.engineering.domain.entity.EngineeringBom bom = productionBomResolver.resolve(prodOrder);
         if (bom == null) {
             return result;
         }

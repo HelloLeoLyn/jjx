@@ -55,6 +55,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
 
     private final ProductionOrderMapper productionOrderMapper;
     private final ProductionOrderConverter productionOrderConverter;
+    private final com.jjx.production.service.ProductionBomResolver productionBomResolver;
 
     private final ProductionOperationExecutionMapper productionOperationExecutionMapper;
     private final EngineeringRoutingItemMapper productRoutingItemMapper;
@@ -1234,6 +1235,14 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (plan.getBomId() == null && plan.getRoutingId() == null) {
             throw new BusinessException("计划无BOM/工艺路线，无法转为工单");
         }
+        if (plan.getBomId() != null) {
+            productionBomResolver.resolve(plan);
+        }
+        for (ConvertPlanToWorkOrdersDTO.WorkOrderItem item : dto.getWorkOrders()) {
+            if (!java.util.Objects.equals(plan.getProductId(), item.getProductId())) {
+                throw new BusinessException("工单产品必须与来源计划一致，不能继承其他产品的BOM和工艺路线");
+            }
+        }
 
         List<Long> createdOrderIds = new ArrayList<>();
 
@@ -1266,7 +1275,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             workOrder.setDepartmentId(plan.getDepartmentId());
             workOrder.setDepartmentName(plan.getDepartmentName());
             workOrder.setRemark(item.getRemark());
-            // 复制工艺路线
+            // 继承计划指定的 BOM 版本和工艺路线；产品切换当前版本不改变本工单。
+            workOrder.setBomId(plan.getBomId());
             workOrder.setRoutingId(plan.getRoutingId());
             workOrder.setRoutingCode(plan.getRoutingCode());
 
