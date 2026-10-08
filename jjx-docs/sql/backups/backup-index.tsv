@@ -1,7 +1,5 @@
 time	kind	file	md5	bytes	tables	agent	task
-2026-09-30 15:04:32	full	jjx_erp_db_backup_20260930-1504_before-238-reserve-type.sql	62524d8d10ebdd0d9a109cd8c5f47bd4	6397979	121	dahuang	dev-20260930-019
-2026-09-30 15:35:49	full	jjx_erp_db_backup_20260930-1535_before-239-ledger.sql	d874336c972b5fb670e627496bd32dde	6469002	121	dahuang	dev-20260930-026
-2026-10-07 10:39:49	full	jjx_erp_db_backup_20261007-1039.sql	e679f3972634e4efe246dfac9f56cea6	6525753	120	dahuang	无
-2026-10-08 12:52:06	full	jjx_erp_db_backup_20261008-1252.sql	6b37e4bc2f44126f1f5a037d2851b972	6647302	120	dahuang	无
-2026-10-08 13:10:32	guard	sys_task_register_20261008-20261008-1310_guard.sql	9432671d54daddf10d1ccdbfd07b75f6	1519302	3	dahuang	dev-20261008-010
-2026-10-08 15:31:48	guard	sys_task_register_20261008-1528_guard.sql	080b6e47fcc38ebeaaa184f517986073	1526981	1	dahuang	dev-20261008-015
+2026-10-08 17:55:20	full	jjx_erp_db_backup_20261008-1755.sql	f51f5fe1d280cb0e1c08f5ae43f6e243	6203838	120	dahuang	无
+2026-10-08 18:29:04	guard	sys_task_register_20261008-1828_guard.sql	830b403959adeffee5ed87ac1fc25807	1530882	1	dahuang	dev-20261008-025
+2026-10-08 19:32:22	full	jjx_erp_db_backup_20261008-1932.sql	ede2cff2c5cbe790e312ff8f083a2fbc	6585623	120	dahuang	无
+2026-10-08 19:44:40	full	jjx_erp_db_backup_20261008-1944.sql	c5011114665adbd11fbcdbb45fda9a6f	6675317	120	dahuang	无
