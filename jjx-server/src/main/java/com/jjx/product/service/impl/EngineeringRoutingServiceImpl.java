@@ -382,6 +382,16 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         routing.setIsCurrent(1);
         updateById(routing);
 
+        // dev-20261008-023：同步产品表指针与版本。原 set-current 只改路由 is_current，
+        // 不同步 product.current_route_id / current_routing_version → 产品关联当前路线取不到；
+        // 此处与"编辑保存自动升版"(:312-318)统一口径。
+        com.jjx.product.domain.entity.Product product = productMapper.selectById(routing.getProductId());
+        if (product != null) {
+            product.setCurrentRouteId(routing.getRoutingId());
+            product.setCurrentRoutingVersion(routing.getRoutingVersion());
+            productMapper.updateById(product);
+        }
+
         log.info("设置当前版本成功: {} v{}", routing.getRoutingCode(), routing.getRoutingVersion());
         publishRoutingEvent("product.routing.version_changed", routing);
     }
