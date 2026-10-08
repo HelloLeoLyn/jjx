@@ -9,12 +9,12 @@ import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.system.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.List;
 
@@ -43,139 +43,113 @@ public class SalesDeliveryExcelService {
         return delivery;
     }
 
+    static final String TEMPLATE = "/templates/sales/qr026-delivery.xlsx";
+    private static final int ROWS_PER_SHEET = 5;
+
     static byte[] buildWorkbook(SalesDeliveryVO delivery, String orderNo,
                                 String companyName, String companyAddress) throws IOException {
-        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("送货单(QR-026)");
-            int[] widths = {6, 16, 13, 7, 9, 10, 11, 15, 10};
-            for (int i = 0; i < widths.length; i++) sheet.setColumnWidth(i, widths[i] * 256);
-            sheet.setDisplayGridlines(false);
-            sheet.setDefaultRowHeightInPoints(28);
-            CellStyle text = style(workbook, 11, false, HorizontalAlignment.LEFT, false, null);
-            CellStyle center = style(workbook, 11, false, HorizontalAlignment.CENTER, true, null);
-            CellStyle bordered = style(workbook, 11, false, HorizontalAlignment.LEFT, true, null);
-            CellStyle quantity = style(workbook, 11, false, HorizontalAlignment.RIGHT, true, "0");
-            CellStyle money = style(workbook, 11, false, HorizontalAlignment.RIGHT, true, "#,##0.00");
-            CellStyle heading = style(workbook, 11, true, HorizontalAlignment.CENTER, true, null);
-            merged(sheet, 0, 0, 8, companyName, style(workbook, 20, false, HorizontalAlignment.CENTER, false, null), 38);
-            merged(sheet, 1, 0, 8, "送　货　单", style(workbook, 16, true, HorizontalAlignment.CENTER, false, null), 30);
-            merged(sheet, 2, 0, 8, "公司地址：" + value(companyAddress), text, 32);
-            merged(sheet, 3, 0, 4, "客户：" + value(delivery.getCustomerName()), text, 30);
-            merged(sheet, 3, 5, 8, "送货单号：" + value(delivery.getDeliveryNo()), text, 30);
-            merged(sheet, 4, 0, 4, "联系人：" + value(delivery.getContactPerson()) + "　" + value(delivery.getContactPhone()), text, 30);
-            merged(sheet, 4, 5, 8, "日期：" + (delivery.getDeliveryDate() == null ? "" :
-                    new SimpleDateFormat("yyyy-MM-dd").format(delivery.getDeliveryDate())), text, 30);
-            merged(sheet, 5, 0, 8, "收货地址：" + value(delivery.getDeliveryAddress()), text, 40);
-            merged(sheet, 6, 0, 8, "承运商：" + value(delivery.getCarrier()) + "　物流单号：" + value(delivery.getTrackingNo()), text, 30);
-            String[] headers = {"NO", "品名(料号)", "规格", "单位", "数量", "单价", "金额", "订单号码", "备注"};
-            for (int col = 0; col < headers.length; col++) cell(sheet, 7, col, headers[col], heading);
-            List<SalesDeliveryItem> items = delivery.getItems() == null ? List.of() : delivery.getItems();
-            for (int i = 0; i < Math.max(5, items.size()); i++) {
-                int row = i + 8;
-                sheet.createRow(row).setHeightInPoints(48);
-                for (int col = 0; col < 9; col++) cell(sheet, row, col, "", bordered);
-                if (i >= items.size()) continue;
-                SalesDeliveryItem item = items.get(i);
-                cell(sheet, row, 0, i + 1, center);
-                String name = value(item.getProductName());
-                String code = value(item.getProductCode());
-                cell(sheet, row, 1, name.isBlank() ? code : name + (code.isBlank() || code.equals(name) ? "" : "\n" + code), bordered);
-                cell(sheet, row, 2, item.getSpecification(), bordered);
-                cell(sheet, row, 3, item.getUnit(), center);
-                cell(sheet, row, 4, item.getQuantity(), quantity);
-                cell(sheet, row, 5, item.getUnitPrice(), money);
-                cell(sheet, row, 6, item.getAmount(), money);
-                cell(sheet, row, 7, orderNo, bordered);
-                cell(sheet, row, 8, item.getRemark(), bordered);
-                // Excel 对换行单元格不会可靠地自动调整行高，预估长规格所需高度。
-                int lines = 1;
-                for (int col = 0; col < 9; col++) {
-                    Cell current = sheet.getRow(row).getCell(col);
-                    if (current.getCellType() == CellType.STRING) {
-                        lines = Math.max(lines, wrappedLines(current.getStringCellValue(), widths[col] - 1));
-                    }
+        try (InputStream template = SalesDeliveryExcelService.class.getResourceAsStream(TEMPLATE)) {
+            if (template == null) throw new IOException("QR-026送货单模板缺失");
+            try (XSSFWorkbook workbook = new XSSFWorkbook(template);
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                // 仅保留原表单；原模板中的空白工作表不参与导出。
+                while (workbook.getNumberOfSheets() > 1) workbook.removeSheetAt(1);
+                workbook.setSheetName(0, "送货单-1");
+                List<SalesDeliveryItem> items = delivery.getItems() == null ? List.of() : delivery.getItems();
+                int pages = Math.max(1, (items.size() + ROWS_PER_SHEET - 1) / ROWS_PER_SHEET);
+                // 在填值前复制空模板，避免上一页数据带入下一页。
+                for (int page = 1; page < pages; page++) {
+                    workbook.cloneSheet(0, "送货单-" + (page + 1));
                 }
-                sheet.getRow(row).setHeightInPoints(Math.min(409, Math.max(48, lines * 16 + 12)));
+                for (int page = 0; page < pages; page++) {
+                    Sheet sheet = workbook.getSheetAt(page);
+                    cell(sheet, 2, 0, companyName);
+                    cell(sheet, 4, 6, "地址:" + value(companyAddress));
+                    cell(sheet, 5, 1, delivery.getCustomerName());
+                    cell(sheet, 5, 2, "");
+                    cell(sheet, 5, 7, "N O:" + value(delivery.getDeliveryNo()));
+                    cell(sheet, 6, 0, "Attm:" + value(delivery.getContactPerson()) + "  " + value(delivery.getContactPhone()));
+                    cell(sheet, 6, 7, "DATE:" + (delivery.getDeliveryDate() == null ? "" :
+                            new SimpleDateFormat("yyyy-MM-dd").format(delivery.getDeliveryDate())));
+                    cell(sheet, 14, 2, delivery.getDeliveryPersonName());
+                    for (int line = 0; line < ROWS_PER_SHEET; line++) {
+                        int row = 8 + line;
+                        for (int col = 0; col < 9; col++) cell(sheet, row, col, null);
+                        int index = page * ROWS_PER_SHEET + line;
+                        if (index >= items.size()) continue;
+                        SalesDeliveryItem item = items.get(index);
+                        cell(sheet, row, 0, index + 1);
+                        // 模板的品名(料号)是一行料号，完整品名另存发货数据表。
+                        cell(sheet, row, 1, value(item.getProductCode()).isBlank() ? item.getProductName() : item.getProductCode());
+                        cell(sheet, row, 2, item.getSpecification());
+                        cell(sheet, row, 3, item.getUnit());
+                        cell(sheet, row, 4, item.getQuantity());
+                        cell(sheet, row, 5, item.getUnitPrice());
+                        cell(sheet, row, 6, item.getAmount());
+                        cell(sheet, row, 7, orderNo);
+                        cell(sheet, row, 8, item.getRemark());
+                    }
+                    // 原模板纸型为 WPS 自定义编号；统一可识别的 A4，沿用已确认的页边距。
+                    sheet.getPrintSetup().setPaperSize(PrintSetup.A4_PAPERSIZE);
+                    sheet.getPrintSetup().setLandscape(false);
+                    sheet.getPrintSetup().setFitWidth((short) 1);
+                    sheet.getPrintSetup().setFitHeight((short) 1);
+                    sheet.setFitToPage(true);
+                    sheet.setMargin(PageMargin.LEFT, 15d / 25.4);
+                    sheet.setMargin(PageMargin.RIGHT, 15d / 25.4);
+                    sheet.setMargin(PageMargin.TOP, 12d / 25.4);
+                    sheet.setMargin(PageMargin.BOTTOM, 12d / 25.4);
+                    workbook.setPrintArea(page, 0, 8, 0, 15);
+                }
+                addSourceData(workbook, delivery, items, orderNo, companyName, companyAddress);
+                workbook.setActiveSheet(0);
+                workbook.write(output);
+                return output.toByteArray();
             }
-            int row = 8 + Math.max(5, items.size());
-            String[] labels = {"单据合计金额（原值）", "运费", "保价费", "其他费用"};
-            Number[] amounts = {delivery.getTotalAmount(), delivery.getFreightAmount(), delivery.getInsuranceAmount(), delivery.getOtherCharges()};
-            for (int i = 0; i < labels.length; i++, row++) {
-                merged(sheet, row, 0, 5, labels[i], text, 26);
-                merged(sheet, row, 6, 8, "", money, 26);
-                cell(sheet, row, 6, amounts[i], money);
-            }
-            merged(sheet, row++, 0, 8, "备注：" + value(delivery.getRemark()), text, 40);
-            merged(sheet, row++, 0, 8, "如上列貨品有不符问题，请在10天内通知。方便我司处理，过期恕不负责。", text, 32);
-            merged(sheet, row, 0, 4, "送货单位经手人：________________", text, 40);
-            merged(sheet, row, 5, 8, "收货单位经手人：________________", text, 40);
-            sheet.createFreezePane(0, 8);
-            sheet.setRepeatingRows(new CellRangeAddress(0, 7, -1, -1));
-            workbook.setPrintArea(0, 0, 8, 0, row);
-            sheet.setFitToPage(true);
-            sheet.setHorizontallyCenter(true);
-            PrintSetup setup = sheet.getPrintSetup();
-            setup.setPaperSize(PrintSetup.A4_PAPERSIZE);
-            setup.setLandscape(false);
-            setup.setFitWidth((short) 1);
-            setup.setFitHeight((short) 0);
-            sheet.setMargin(PageMargin.LEFT, 15d / 25.4);
-            sheet.setMargin(PageMargin.RIGHT, 15d / 25.4);
-            sheet.setMargin(PageMargin.TOP, 12d / 25.4);
-            sheet.setMargin(PageMargin.BOTTOM, 12d / 25.4);
-            workbook.write(output);
-            return output.toByteArray();
         }
+    }
+
+    /** 模板外的业务数据单独保存，避免改变主表单布局或丢失费用、收货地址。 */
+    private static void addSourceData(XSSFWorkbook workbook, SalesDeliveryVO delivery, List<SalesDeliveryItem> items,
+                                      String orderNo, String companyName, String companyAddress) {
+        Sheet sheet = workbook.createSheet("发货数据");
+        Object[][] fields = {
+                {"公司", companyName}, {"公司地址", companyAddress},
+                {"送货单号", delivery.getDeliveryNo()}, {"源订单号", orderNo},
+                {"客户", delivery.getCustomerName()}, {"联系人", delivery.getContactPerson()},
+                {"联系电话", delivery.getContactPhone()}, {"收货地址", delivery.getDeliveryAddress()},
+                {"发货日期", delivery.getDeliveryDate() == null ? "" : new SimpleDateFormat("yyyy-MM-dd").format(delivery.getDeliveryDate())},
+                {"承运商", delivery.getCarrier()}, {"物流单号", delivery.getTrackingNo()},
+                {"单据合计金额（原值）", delivery.getTotalAmount()}, {"运费", delivery.getFreightAmount()},
+                {"保价费", delivery.getInsuranceAmount()}, {"其他费用", delivery.getOtherCharges()},
+                {"备注", delivery.getRemark()}, {"送货经手人", delivery.getDeliveryPersonName()}
+        };
+        for (int row = 0; row < fields.length; row++) {
+            cell(sheet, row, 0, fields[row][0]);
+            cell(sheet, row, 1, fields[row][1]);
+        }
+        int row = fields.length + 1;
+        String[] headers = {"序号", "料号", "品名", "规格", "单位", "数量", "单价", "金额", "订单号码", "备注"};
+        for (int col = 0; col < headers.length; col++) cell(sheet, row, col, headers[col]);
+        for (int i = 0; i < items.size(); i++) {
+            SalesDeliveryItem item = items.get(i);
+            Object[] values = {i + 1, item.getProductCode(), item.getProductName(), item.getSpecification(),
+                    item.getUnit(), item.getQuantity(), item.getUnitPrice(), item.getAmount(), orderNo, item.getRemark()};
+            for (int col = 0; col < values.length; col++) cell(sheet, row + i + 1, col, values[col]);
+        }
+        for (int col = 0; col < headers.length; col++) sheet.setColumnWidth(col, (col == 3 ? 36 : 22) * 256);
     }
 
     private static String value(String value) { return value == null ? "" : value; }
 
-    private static int wrappedLines(String text, int width) {
-        int lines = 0;
-        for (String part : text.split("\n", -1)) {
-            int units = part.codePoints().map(code -> code >= 0x2E80 ? 2 : 1).sum();
-            lines += Math.max(1, (units + width - 1) / width);
-        }
-        return lines;
-    }
-
-    private static CellStyle style(Workbook workbook, int size, boolean bold, HorizontalAlignment align,
-                                   boolean border, String numberFormat) {
-        CellStyle style = workbook.createCellStyle();
-        Font font = workbook.createFont();
-        font.setFontName("宋体");
-        font.setFontHeightInPoints((short) size);
-        font.setBold(bold);
-        style.setFont(font);
-        style.setAlignment(align);
-        style.setVerticalAlignment(VerticalAlignment.CENTER);
-        style.setWrapText(true);
-        if (border) {
-            style.setBorderTop(BorderStyle.THIN);
-            style.setBorderBottom(BorderStyle.THIN);
-            style.setBorderLeft(BorderStyle.THIN);
-            style.setBorderRight(BorderStyle.THIN);
-        }
-        if (numberFormat != null) style.setDataFormat(workbook.createDataFormat().getFormat(numberFormat));
-        return style;
-    }
-
-    private static void merged(Sheet sheet, int row, int firstCol, int lastCol, String value, CellStyle style, float height) {
-        Row existing = sheet.getRow(row);
-        if (existing == null) existing = sheet.createRow(row);
-        existing.setHeightInPoints(height);
-        for (int col = firstCol; col <= lastCol; col++) cell(sheet, row, col, "", style);
-        cell(sheet, row, firstCol, value, style);
-        sheet.addMergedRegion(new CellRangeAddress(row, row, firstCol, lastCol));
-    }
-
-    private static void cell(Sheet sheet, int rowIndex, int col, Object value, CellStyle style) {
+    /** 只更新内容，不替换模板已有的单元格样式。文本不会被解释为公式。 */
+    private static void cell(Sheet sheet, int rowIndex, int col, Object value) {
         Row row = sheet.getRow(rowIndex);
         if (row == null) row = sheet.createRow(rowIndex);
         Cell cell = row.getCell(col);
         if (cell == null) cell = row.createCell(col);
-        cell.setCellStyle(style);
         if (value instanceof Number number) cell.setCellValue(number.doubleValue());
-        else cell.setCellValue(value == null ? "" : value.toString());
+        else if (value == null) cell.setBlank();
+        else cell.setCellValue(value.toString());
     }
 }
