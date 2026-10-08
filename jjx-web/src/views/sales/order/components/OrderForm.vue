@@ -295,7 +295,7 @@
     <el-divider content-position="left">金额汇总</el-divider>
     <el-alert
       v-if="!form.amountBreakdownConfirmed"
-      title="历史订单金额组成尚未确认，保留原金额。修改价格、数量或费用前，请核实运费和折扣后确认。"
+      title="本单为历史订单，金额组成尚未确认，汇总暂按原金额冻结。修改价格、数量、运费或折扣时会提示确认，确认后按新组成重新计算。"
       type="warning"
       :closable="false"
       show-icon
@@ -321,7 +321,7 @@
             :min="0"
             :max="100"
             :precision="2"
-            @change="calculateTotalAmount"
+            @change="onPricingChange"
             style="width: 100%"
           >
             <template #append>%</template>
@@ -343,7 +343,7 @@
             v-model="form.shippingFee"
             :min="0"
             :precision="2"
-            @change="calculateTotalAmount"
+            @change="onPricingChange"
             style="width: 100%"
           >
             <template #append>元</template>
@@ -356,7 +356,7 @@
             v-model="form.discountAmount"
             :min="0"
             :precision="2"
-            @change="calculateTotalAmount"
+            @change="onPricingChange"
             style="width: 100%"
           >
             <template #append>元</template>
@@ -534,6 +534,7 @@ const {
   handleProductChange,
   calculateItemAmount,
   calculateTotalAmount,
+  onPricingChange,
   addItem,
   removeItem,
   resetForm,

@@ -1,5 +1,5 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { debounce } from 'lodash-es'
 import { orderApi } from '@/api/sales/order'
@@ -9,6 +9,18 @@ import type { CustomerSearchVO } from '@/types/sales/customer'
 import type { OrderFormData, OrderItem, UseOrderFormOptions } from '@/types/sales/order'
 import { formatCurrency } from '@/utils/format'
 import { productApi } from '@/api/product'
+
+/** 历史单金额保护基线（dev-20261008-015）：未确认时汇总冻结为原单值，取消改动即回退。 */
+type ProtectedAmountBaseline = {
+  taxRate: number
+  shippingFee: number
+  discountAmount: number
+  subtotalAmount: number
+  taxAmount: number
+  totalAmount: number
+  finalAmount: number
+  items: OrderItem[]
+}
 
 export function useOrderForm(options: UseOrderFormOptions = {}) {
   const { isEdit = false, initialData = {} } = options
@@ -365,7 +377,8 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   // 计算明细金额
   const calculateItemAmount = (item: OrderItem) => {
     item.amount = roundMoney((item.quantity || 0) * (item.unitPrice || 0))
-    calculateTotalAmount()
+    // 经价格变更入口：保护态下弹窗确认，非保护态直接重算（dev-20261008-015）
+    onPricingChange()
   }
 
   const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
@@ -377,14 +390,87 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     items: form.items.map((item) => [item.productId, Number(item.quantity), Number(item.unitPrice)]),
   })
 
+  // ===== 历史单金额保护（dev-20261008-015） =====
+  // 未确认时汇总整块冻结为原单值；用户一旦改动价格/数量/运费/折扣，弹窗确认后才切换为
+  // 「已确认」并按新组成重算，取消则回退基线。避免半新半旧的汇总，也避免静默改写历史金额。
+  let protectedBaseline: ProtectedAmountBaseline | null = null
+  let pricingConfirmPending = false
+
+  const captureProtectedBaseline = () => {
+    protectedBaseline = {
+      taxRate: Number(form.taxRate || 0),
+      shippingFee: Number(form.shippingFee || 0),
+      discountAmount: Number(form.discountAmount || 0),
+      subtotalAmount: Number(form.subtotalAmount || 0),
+      taxAmount: Number(form.taxAmount || 0),
+      totalAmount: Number(form.totalAmount || 0),
+      finalAmount: Number(form.finalAmount || 0),
+      items: form.items.map((item) => ({ ...item })),
+    }
+  }
+
+  const restoreProtectedBaseline = () => {
+    if (!protectedBaseline) return
+    form.taxRate = protectedBaseline.taxRate
+    form.shippingFee = protectedBaseline.shippingFee
+    form.discountAmount = protectedBaseline.discountAmount
+    form.items.splice(0, form.items.length, ...protectedBaseline.items.map((item) => ({ ...item })))
+    form.subtotalAmount = protectedBaseline.subtotalAmount
+    form.taxAmount = protectedBaseline.taxAmount
+    form.totalAmount = protectedBaseline.totalAmount
+    form.finalAmount = protectedBaseline.finalAmount
+    form.totalQuantity = form.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+  }
+
   // 明细为未税价；运费单列；折扣只从含税总额扣一次。
   const calculateTotalAmount = () => {
-    form.subtotalAmount = roundMoney(form.items.reduce((sum, item) => sum + Number(item.amount || 0), 0))
     form.totalQuantity = form.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
-    if (!form.amountBreakdownConfirmed) return
+    // 保护态：汇总整块冻结，不随明细联动
+    if (!form.amountBreakdownConfirmed) {
+      if (protectedBaseline) {
+        form.subtotalAmount = protectedBaseline.subtotalAmount
+        form.taxAmount = protectedBaseline.taxAmount
+        form.totalAmount = protectedBaseline.totalAmount
+        form.finalAmount = protectedBaseline.finalAmount
+      }
+      return
+    }
+    form.subtotalAmount = roundMoney(form.items.reduce((sum, item) => sum + Number(item.amount || 0), 0))
     form.taxAmount = roundMoney((form.subtotalAmount * Number(form.taxRate || 0)) / 100)
     form.totalAmount = roundMoney(form.subtotalAmount + form.taxAmount + Number(form.shippingFee || 0))
     form.finalAmount = roundMoney(form.totalAmount - Number(form.discountAmount || 0))
+  }
+
+  /**
+   * 价格相关输入变更入口（dev-20261008-015）：已确认直接重算；
+   * 保护态弹窗确认是否按新组成重算，确认则重算、取消则回退原单定价。
+   */
+  const onPricingChange = async () => {
+    if (form.amountBreakdownConfirmed) {
+      calculateTotalAmount()
+      return
+    }
+    if (pricingConfirmPending) return
+    pricingConfirmPending = true
+    try {
+      await ElMessageBox.confirm(
+        '当前订单的历史金额组成尚未确认，修改价格/数量/运费/折扣后将按新组成重新计算金额。是否继续？',
+        '确认重新计算',
+        {
+          type: 'warning',
+          confirmButtonText: '确认并重新计算',
+          cancelButtonText: '取消',
+        },
+      )
+      form.amountBreakdownConfirmed = true
+      protectedBaseline = null
+      calculateTotalAmount()
+    } catch {
+      restoreProtectedBaseline()
+      calculateTotalAmount()
+    } finally {
+      pricingConfirmPending = false
+    }
   }
 
   // 添加明细
@@ -403,12 +489,13 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       customRequirements: '',
       orderId: orderId,
     })
+    onPricingChange()
   }
 
   // 删除明细
   const removeItem = (index: number) => {
     form.items.splice(index, 1)
-    calculateTotalAmount()
+    onPricingChange()
   }
 
   // 重置表单
@@ -471,20 +558,49 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       // 1. 加载订单基本信息
       const orderResponse = await orderApi.getOrder(orderId)
       if (orderResponse.code === 200 && orderResponse.data) {
-        Object.assign(form, orderResponse.data)
-        form.amountBreakdownConfirmed = orderResponse.data.shippingFee != null
-        form.shippingFee = Number(orderResponse.data.shippingFee ?? 0)
-        form.discountAmount = Number(orderResponse.data.discountAmount ?? 0)
-        form.finalAmount = Number(orderResponse.data.finalAmount ?? orderResponse.data.totalAmount ?? 0)
+        const data = orderResponse.data
+        Object.assign(form, data)
         // 订单类型固定标准单（2026-08-11）
         form.orderType = 1
         // 收货地址回显：后端 deliveryAddress（InternationalAddress JSON）→ 表单 shippingAddress
-        form.shippingAddress = orderResponse.data.deliveryAddress || ''
+        form.shippingAddress = data.deliveryAddress || ''
         // 2. 将后端字段映射为表单字段
-        form.salesPersonId = orderResponse.data.salesManagerId
-        form.salesPersonName = orderResponse.data.salesManagerName
-        // 3. 重新计算金额
-        calculateTotalAmount()
+        form.salesPersonId = data.salesManagerId
+        form.salesPersonName = data.salesManagerName
+        // 3. 金额组成确认判定（dev-20261008-015）：
+        //    - 已写入运费（shippingFee != null）→ 已确认；
+        //    - 否则按「明细未税小计 + 税额 + 运费 - 折扣 == final_amount」判定金额自洽；
+        //      自洽（正常单）直接视为已确认、自动重算；不自洽（如历史单金额有差额）才进保护态。
+        const shippingFee = data.shippingFee != null ? Number(data.shippingFee) : 0
+        const discountAmount = Number(data.discountAmount ?? 0)
+        const taxRate = Number(data.taxRate ?? 0)
+        form.shippingFee = shippingFee
+        form.discountAmount = discountAmount
+        form.taxRate = taxRate
+        const dbFinal = Number(data.finalAmount ?? data.totalAmount ?? 0)
+        const itemsSum = roundMoney(
+          form.items.reduce(
+            (sum, item) =>
+              sum + Number(item.amount ?? Number(item.quantity || 0) * Number(item.unitPrice || 0)),
+            0,
+          ),
+        )
+        const computedFinal = roundMoney(
+          itemsSum + roundMoney((itemsSum * taxRate) / 100) + shippingFee - discountAmount,
+        )
+        const consistent = Math.abs(computedFinal - dbFinal) < 0.005
+        form.amountBreakdownConfirmed = data.shippingFee != null || consistent
+        if (form.amountBreakdownConfirmed) {
+          // 已确认：正常重算
+          calculateTotalAmount()
+        } else {
+          // 保护态：展示原单金额并冻结汇总，改动需用户确认后重算
+          form.subtotalAmount = itemsSum
+          form.taxAmount = Number(data.taxAmount ?? 0)
+          form.totalAmount = Number(data.totalAmount ?? dbFinal)
+          form.finalAmount = dbFinal
+        }
+        captureProtectedBaseline()
         originalPricing = pricingSnapshot()
       } else {
         ElMessage.error('加载订单数据失败')
@@ -655,6 +771,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     handleProductChange,
     calculateItemAmount,
     calculateTotalAmount,
+    onPricingChange,
     addItem,
     removeItem,
     resetForm,
