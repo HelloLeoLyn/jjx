@@ -650,7 +650,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         BigDecimal priorUnmet = BigDecimal.ZERO;
         try {
             SalesOrder current = orderMapper.selectById(currentOrderId);
-            List<Map<String, Object>> rows = orderProductMapper.selectEffectiveDemandByProduct(productId);
+            List<Map<String, Object>> rows = orderProductMapper.selectEffectiveDemandByProduct(productId, com.jjx.sales.enums.SalesDeliveryStatusEnum.PENDING.getValue(), com.jjx.sales.enums.SalesDeliveryStatusEnum.SHIPPED.getValue(), com.jjx.sales.enums.SalesDeliveryStatusEnum.RECEIVED.getValue());
             if (rows != null && current != null) {
                 for (Map<String, Object> row : rows) {
                     Object oidObj = row.get("order_id");

@@ -83,6 +83,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     /** 2026-09-21 dev-20260921-039：分批发货——按发货单明细出库。 */
     private final com.jjx.sales.mapper.SalesDeliveryMapper salesDeliveryMapper;
     private final com.jjx.sales.mapper.SalesDeliveryItemMapper salesDeliveryItemMapper;
+    private final com.jjx.sales.service.SalesDeliveryWorkflowService deliveryWorkflow;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.service.InventoryItemService inventoryItemService;
     private final com.jjx.inventory.service.InventoryStockMutationService stockMutationService;
@@ -398,6 +399,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             throw new com.jjx.common.exception.BusinessException("仅待处理状态的出库单可编辑");
         }
 
+        if (com.jjx.sales.service.SalesDeliveryWorkflowService.OUTBOUND_SOURCE.equals(order.getSourceType()))
+            throw new com.jjx.common.exception.BusinessException("发货生成的出库凭证不能修改来源和明细，请作废发货单后重新安排");
         // 更新单头
         if (params.get("outboundType") != null) order.setOutboundType((String) params.get("outboundType"));
         if (params.get("sourceType") != null) order.setSourceType((String) params.get("sourceType"));
@@ -460,6 +463,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Transactional(rollbackFor = Exception.class)
     public boolean confirm(Long outboundId, Long operatorId, String operatorName) {
         // DEV-651 方案A：行锁查询，锁住单据行直到事务提交，并发下第二个请求阻塞后状态校验失败，杜绝重复出入库
+        InventoryOutboundOrder peek = outboundOrderMapper.selectById(outboundId);
+        boolean deliverySource = peek != null && com.jjx.sales.service.SalesDeliveryWorkflowService.OUTBOUND_SOURCE.equals(peek.getSourceType());
+        if (deliverySource) deliveryWorkflow.prepareShipment(peek.getSourceId());
         InventoryOutboundOrder order = outboundOrderMapper.selectByIdForUpdate(outboundId);
         if (order == null) {
             log.error("出库单不存在: outboundId={}", outboundId);
@@ -475,6 +481,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 库存操作统一发生在 confirm（DEV-651：confirm=审批+完成 单路径，approve 不再动库存）
         // 直接执行库存扣减（不经过 approve，避免状态不匹配）
         List<InventoryOutboundItem> outItems = outboundItemMapper.selectByOutboundId(outboundId);
+        if (deliverySource) {
+            deliveryWorkflow.verifyOutbound(order.getSourceId(), outItems);
+            deliveryWorkflow.releaseOwnedReservations(outItems);
+        }
         // DEV-580：销售发货出库时，先同步释放该订单的成品预留（扣减前释放，FIFO才能扣到预留部分）
         if ("SALES".equals(order.getSourceType()) && order.getSourceId() != null) {
             for (InventoryOutboundItem item : outItems) {
@@ -667,6 +677,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             log.warn("销售出库回写订单 shipped_quantity 失败（不影响出库）: {}", e.getMessage());
         }
 
+        if (deliverySource) {
+            if (!updated) throw new BusinessException("出库状态更新失败");
+            deliveryWorkflow.completeShipment(order.getSourceId());
+        }
         publishOutboundEvent("inventory.outbound.confirmed", order.getOutboundId());
         return updated;
     }
@@ -675,7 +689,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                                     InventoryOutboundOrder order, InventoryOutboundItem item,
                                     Long operatorId, String operatorName) {
         InventoryTransaction tx = new InventoryTransaction();
-        tx.setTransactionType("OUTBOUND");
+        tx.setTransactionType(com.jjx.inventory.enums.TransactionTypeEnum.OUTBOUND.getCode());
         tx.setSourceType(order.getSourceType());
         tx.setSourceId(order.getOutboundId());
         tx.setSourceNo(order.getOutboundNo());
@@ -1826,30 +1840,24 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createFromSalesByDelivery(Long deliveryId) {
+        List<com.jjx.sales.domain.entity.SalesDeliveryItem> deliveryItems = deliveryWorkflow.prepareShipment(deliveryId);
         com.jjx.sales.domain.entity.SalesDelivery delivery = salesDeliveryMapper.selectById(deliveryId);
-        if (delivery == null) {
-            throw new BusinessException("发货单不存在: " + deliveryId);
-        }
-        List<com.jjx.sales.domain.entity.SalesDeliveryItem> deliveryItems = salesDeliveryItemMapper.selectList(
-                new LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesDeliveryItem>()
-                        .eq(com.jjx.sales.domain.entity.SalesDeliveryItem::getDeliveryId, deliveryId));
-        if (deliveryItems.isEmpty()) {
-            log.warn("发货单{}无明细（历史数据），回退按订单未发量出库", delivery.getDeliveryNo());
-            return createFromSales(delivery.getOrderId());
-        }
-        Long salesOrderId = delivery.getOrderId();
-        com.jjx.sales.domain.entity.SalesOrder salesOrder = salesOrderMapper.selectById(salesOrderId);
-        if (salesOrder == null) {
-            throw new BusinessException("销售订单不存在: " + salesOrderId);
-        }
+        List<InventoryOutboundOrder> existing = outboundOrderMapper.selectList(new LambdaQueryWrapper<InventoryOutboundOrder>()
+            .eq(InventoryOutboundOrder::getSourceType, com.jjx.sales.service.SalesDeliveryWorkflowService.OUTBOUND_SOURCE)
+            .eq(InventoryOutboundOrder::getSourceId, deliveryId)
+            .ne(InventoryOutboundOrder::getOrderStatus, InventoryOrderStatusEnum.CANCELLED.getValue()));
+        if (!existing.isEmpty()) return existing.get(0).getOutboundId();
+        Map<Long, com.jjx.sales.domain.entity.SalesOrder> sourceOrders = deliveryWorkflow.lockSourceOrders(deliveryItems);
+        com.jjx.sales.domain.entity.SalesOrder salesOrder = sourceOrders.values().iterator().next();
 
         InventoryOutboundOrder order = new InventoryOutboundOrder();
         // dev-20261008-018：出库单号标准化（前缀+yyMMdd+流水，走统一序列）
         order.setOutboundNo(redisSequenceService.generateBusinessNumberByType("outbound_ship", "SHIP", "yyMMdd", 3));
         order.setOutboundType("SALES_SHIP");
-        order.setSourceType("SALES");
-        order.setSourceId(salesOrderId);
-        order.setSourceNo(salesOrder.getOrderNo());
+        order.setSourceType(com.jjx.sales.service.SalesDeliveryWorkflowService.OUTBOUND_SOURCE);
+        order.setSourceId(deliveryId);
+        order.setSourceNo(delivery.getDeliveryNo());
+        order.setCustomerId(delivery.getCustomerId()); order.setCustomerName(delivery.getCustomerName());
         order.setTraceId(salesOrder.getTraceId());
         order.setOutboundDate(LocalDate.now());
         order.setWarehouseId(getDefaultWarehouseOrThrow().getWarehouseId());
@@ -1858,7 +1866,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         outboundOrderMapper.insert(order);
 
         // 本订单实预留可用于本订单发货；其他订单预留仍不可占用。
-        Map<Long, BigDecimal> ownReserved = orderStockReserveService.getReservedQty(salesOrderId);
+        Map<Long, BigDecimal> ownReserved = new java.util.HashMap<>();
+        for (Long sourceOrderId : sourceOrders.keySet())
+            orderStockReserveService.getReservedQty(sourceOrderId).forEach((productId, quantity) -> ownReserved.merge(productId, quantity, BigDecimal::add));
         Map<Long, BigDecimal> remainingAvailable = new java.util.HashMap<>();
         int sort = 1;
         BigDecimal totalQty = BigDecimal.ZERO;
@@ -1890,6 +1900,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             remainingAvailable.put(inventoryItem.getInventoryItemId(), available.subtract(requirement));
             InventoryOutboundItem outItem = new InventoryOutboundItem();
             outItem.setOutboundId(order.getOutboundId());
+            outItem.setDeliveryItemId(item.getItemId());
+            outItem.setUnit(item.getUnit()); outItem.setSpecification(item.getSpecification());
+            outItem.setAmount(item.getAmount());
             outItem.setInventoryItemId(inventoryItem.getInventoryItemId());
             outItem.setMaterialCode(inventoryItem.getItemCode());
             outItem.setMaterialName(inventoryItem.getItemName());

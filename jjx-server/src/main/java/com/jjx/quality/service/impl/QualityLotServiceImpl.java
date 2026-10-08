@@ -18,6 +18,7 @@ import com.jjx.quality.dto.QualityLotCreateDTO;
 import com.jjx.quality.dto.QualityLotItemDTO;
 import com.jjx.quality.dto.QualityLotQueryDTO;
 import com.jjx.quality.enums.QualityLotStatusEnum;
+import com.jjx.sales.enums.SalesDeliveryStatusEnum;
 import com.jjx.quality.enums.QualityLotTypeEnum;
 import com.jjx.quality.mapper.QualityLotItemMapper;
 import com.jjx.quality.mapper.QualityLotHistoryMapper;
@@ -180,6 +181,12 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
 
     @Override
     public QualityLot lockLot(Long lotId) {
+        QualityLot before = lotMapper.selectById(lotId);
+        if (before != null && "SALES_DELIVERY".equals(before.getSourceType())) {
+            SalesDelivery delivery = salesDeliveryMapper.selectByIdForUpdate(before.getSourceId());
+            if (delivery == null || !SalesDeliveryStatusEnum.PENDING.getValue().equals(delivery.getDeliveryStatus()))
+                throw new BusinessException("来源发货单已关闭，不能修改出货检验");
+        }
         QualityLot lot = lotMapper.selectForUpdate(lotId);
         if (lot == null) {
             throw new BusinessException("检验批不存在: " + lotId);
@@ -322,7 +329,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                             + "AND (io.inbound_no LIKE CONCAT('%', {0}, '%') OR io.source_no LIKE CONCAT('%', {0}, '%')))", businessNo)
                     .or().apply("EXISTS (SELECT 1 FROM sales_delivery sd WHERE sd.delivery_id = quality_lot.source_id "
                             + "AND quality_lot.source_type = 'SALES_DELIVERY' AND (sd.delivery_no LIKE CONCAT('%', {0}, '%') "
-                            + "OR EXISTS (SELECT 1 FROM sales_order so WHERE so.order_id = sd.order_id "
+                            + "OR EXISTS (SELECT 1 FROM sales_order so WHERE so.order_id = quality_lot.order_id "
                             + "AND so.order_no LIKE CONCAT('%', {0}, '%'))))", businessNo)
                     .or().like(QualityLot::getLotNo, businessNo));
         }
@@ -364,6 +371,7 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
                 : byId(salesDeliveryMapper.selectBatchIds(deliveryIds), SalesDelivery::getDeliveryId);
         Set<Long> salesOrderIds = deliveries.values().stream().map(SalesDelivery::getOrderId)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
+        lots.stream().filter(lot -> "SALES_DELIVERY".equals(lot.getSourceType())).map(QualityLot::getOrderId).filter(Objects::nonNull).forEach(salesOrderIds::add);
         Map<Long, SalesOrder> salesOrders = salesOrderIds.isEmpty() ? new HashMap<>()
                 : byId(salesOrderMapper.selectBatchIds(salesOrderIds), SalesOrder::getOrderId);
 
@@ -390,7 +398,8 @@ public class QualityLotServiceImpl extends ServiceImpl<QualityLotMapper, Quality
             SalesDelivery delivery = deliveries.get(lot.getSourceId());
             if (delivery != null) {
                 lot.setSourceNo(delivery.getDeliveryNo());
-                SalesOrder salesOrder = salesOrders.get(delivery.getOrderId());
+                if (!SalesDeliveryStatusEnum.PENDING.getValue().equals(delivery.getDeliveryStatus())) lot.setAllowedActions(List.of());
+                SalesOrder salesOrder = salesOrders.get(lot.getOrderId() == null ? delivery.getOrderId() : lot.getOrderId());
                 if (salesOrder != null) {
                     lot.setSalesOrderNo(salesOrder.getOrderNo());
                 }

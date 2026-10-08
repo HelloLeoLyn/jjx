@@ -33,8 +33,32 @@ public class SalesDeliveryController {
 
     private final ISalesDeliveryService salesDeliveryService;
     private final SalesDeliveryExcelService excelService;
+    private final com.jjx.sales.service.SalesDeliveryWorkflowService deliveryWorkflow;
 
-    @Operation(summary = "OQC放行后确认发货并出库")
+    @GetMapping("/available-lines")
+    @SaCheckPermission("sales:delivery:view")
+    @Operation(summary="待安排销售订单明细与派生数量")
+    public Result<com.baomidou.mybatisplus.core.metadata.IPage<com.jjx.sales.domain.vo.DeliveryArrangeLineVO>> available(
+            @jakarta.validation.Valid com.jjx.sales.domain.dto.DeliveryArrangeQueryDTO query) {
+        return Result.success(deliveryWorkflow.available(query));
+    }
+    @PostMapping
+    @SaCheckPermission("sales:order:edit")
+    @Operation(summary="创建合并待发货单并生成OQC")
+    @Log(module="销售发货", businessType=BusinessType.INSERT, bizType="'sales_delivery'", bizId="#result.data", action="创建合并发货单")
+    public Result<Long> create(@RequestBody SalesDelivery request) {
+        return Result.success(deliveryWorkflow.create(request));
+    }
+    @PostMapping("/{deliveryId}/void")
+    @SaCheckPermission("sales:order:edit")
+    @Operation(summary="作废待发货单并关闭关联OQC及未出库单")
+    @Log(module="销售发货", businessType=BusinessType.UPDATE, bizType="'sales_delivery'", bizId="#deliveryId", action="作废发货单")
+    public Result<Void> voidPending(@PathVariable Long deliveryId,@RequestBody java.util.Map<String,String> body) {
+        deliveryWorkflow.voidPending(deliveryId, body.get("reason")); return Result.success();
+    }
+
+
+    @Operation(summary = "OQC放行后安排仓库出库")
     @SaCheckPermission("sales:order:edit")
     @Log(module = "销售发货", businessType = BusinessType.UPDATE,
             bizType = "'sales_delivery'", bizId = "#deliveryId", action = "确认发货")

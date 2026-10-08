@@ -11,7 +11,8 @@ public enum SalesDeliveryStatusEnum implements BizStatusEnum {
     PENDING(1, "待发货"),
     SHIPPED(2, "已发货"),
     RECEIVED(4, "已签收"),
-    REJECTED(5, "已拒收");
+    REJECTED(5, "已拒收"),
+    VOIDED(6, "已作废");
 
     private final Integer value;
     private final String label;

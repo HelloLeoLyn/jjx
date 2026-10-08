@@ -79,14 +79,14 @@ public class SalesDeliveryExcelService {
                         if (index >= items.size()) continue;
                         SalesDeliveryItem item = items.get(index);
                         cell(sheet, row, 0, index + 1);
-                        // 模板的品名(料号)是一行料号，完整品名另存发货数据表。
-                        cell(sheet, row, 1, value(item.getProductCode()).isBlank() ? item.getProductName() : item.getProductCode());
+                        // 客户料号缺省用产品名称，完整产品编码/品名另存发货数据表。
+                        cell(sheet, row, 1, materialNo(item));
                         cell(sheet, row, 2, item.getSpecification());
                         cell(sheet, row, 3, item.getUnit());
                         cell(sheet, row, 4, item.getQuantity());
                         cell(sheet, row, 5, item.getUnitPrice());
                         cell(sheet, row, 6, item.getAmount());
-                        cell(sheet, row, 7, orderNo);
+                        cell(sheet, row, 7, value(item.getOrderNo()).isBlank() ? orderNo : item.getOrderNo());
                         cell(sheet, row, 8, item.getRemark());
                     }
                     // 原模板纸型为 WPS 自定义编号；统一可识别的 A4，沿用已确认的页边距。
@@ -115,7 +115,7 @@ public class SalesDeliveryExcelService {
         Sheet sheet = workbook.createSheet("发货数据");
         Object[][] fields = {
                 {"公司", companyName}, {"公司地址", companyAddress},
-                {"送货单号", delivery.getDeliveryNo()}, {"源订单号", orderNo},
+                {"送货单号", delivery.getDeliveryNo()}, {"源订单号", delivery.getOrderNos() == null || delivery.getOrderNos().isEmpty() ? orderNo : String.join("、", delivery.getOrderNos())},
                 {"客户", delivery.getCustomerName()}, {"联系人", delivery.getContactPerson()},
                 {"联系电话", delivery.getContactPhone()}, {"收货地址", delivery.getDeliveryAddress()},
                 {"发货日期", delivery.getDeliveryDate() == null ? "" : new SimpleDateFormat("yyyy-MM-dd").format(delivery.getDeliveryDate())},
@@ -129,16 +129,18 @@ public class SalesDeliveryExcelService {
             cell(sheet, row, 1, fields[row][1]);
         }
         int row = fields.length + 1;
-        String[] headers = {"序号", "料号", "品名", "规格", "单位", "数量", "单价", "金额", "订单号码", "备注"};
+        String[] headers = {"序号", "料号", "品名", "规格", "单位", "数量", "单价", "金额", "订单号码", "备注", "客户料号"};
         for (int col = 0; col < headers.length; col++) cell(sheet, row, col, headers[col]);
         for (int i = 0; i < items.size(); i++) {
             SalesDeliveryItem item = items.get(i);
             Object[] values = {i + 1, item.getProductCode(), item.getProductName(), item.getSpecification(),
-                    item.getUnit(), item.getQuantity(), item.getUnitPrice(), item.getAmount(), orderNo, item.getRemark()};
+                    item.getUnit(), item.getQuantity(), item.getUnitPrice(), item.getAmount(), value(item.getOrderNo()).isBlank() ? orderNo : item.getOrderNo(), item.getRemark(), materialNo(item)};
             for (int col = 0; col < values.length; col++) cell(sheet, row + i + 1, col, values[col]);
         }
         for (int col = 0; col < headers.length; col++) sheet.setColumnWidth(col, (col == 3 ? 36 : 22) * 256);
     }
+
+    private static String materialNo(SalesDeliveryItem item) { return value(item.getCustomerMaterialNo()).isBlank() ? item.getProductName() : item.getCustomerMaterialNo(); }
 
     private static String value(String value) { return value == null ? "" : value; }
 

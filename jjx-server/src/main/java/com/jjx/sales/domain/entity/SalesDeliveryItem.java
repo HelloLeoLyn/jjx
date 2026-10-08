@@ -29,6 +29,14 @@ public class SalesDeliveryItem extends BaseEntity {
     /** 销售订单明细ID（sales_order_product.id） */
     private Long orderProductId;
 
+    /** 由订单明细关系回填，不产生第二套来源关系。 */
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Long orderId;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String orderNo;
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private String customerMaterialNo;
+
     /** 产品ID */
     private Long productId;
 

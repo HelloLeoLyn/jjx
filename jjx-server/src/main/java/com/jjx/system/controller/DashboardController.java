@@ -211,7 +211,7 @@ public class DashboardController {
         vo.setQuotationReviewing(nvl(salesWorkbenchMapper.countQuotationReviewing(userId)));
         vo.setOrderReviewing(nvl(salesWorkbenchMapper.countOrderReviewing(userId)));
         vo.setOrderReadyProduction(nvl(salesWorkbenchMapper.countOrderReadyProduction(userId)));
-        vo.setDeliveryUnreceived(nvl(salesWorkbenchMapper.countDeliveryUnreceived(userId)));
+        vo.setDeliveryUnreceived(nvl(salesWorkbenchMapper.countDeliveryUnreceived(userId, com.jjx.sales.enums.SalesDeliveryStatusEnum.SHIPPED.getValue())));
         vo.setReceivableUnpaid(nvl(salesWorkbenchMapper.countReceivableUnpaid(userId)));
         // 本月业绩
         vo.setMonthQuotationAmount(nvl(salesWorkbenchMapper.sumMonthQuotation(userId, monthStart, today)));

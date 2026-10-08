@@ -41,6 +41,13 @@ public class SalesDeliveryVO {
     @Schema(description = "销售订单ID")
     private Long orderId;
 
+    private java.util.List<String> orderNos;
+    private String currency;
+    private Long outboundId;
+    private String outboundNo;
+    private Integer outboundStatus;
+    private Boolean oqcPassed;
+
     @Schema(description = "客户ID")
     private Long customerId;
 

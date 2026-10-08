@@ -436,6 +436,7 @@ const handleConfirm = (row: OutboundVO) => {
 const SOURCE_TYPE_LABEL: Record<string, string> = {
   work_order: '生产工单',
   SALES: '销售订单',
+  SALES_DELIVERY: '销售发货单',
   sample: '样品单',
   quality_ncr: '不良单',
   purchase: '采购单',

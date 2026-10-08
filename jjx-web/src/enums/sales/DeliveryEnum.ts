@@ -12,6 +12,7 @@ export const DeliveryStatusEnum = createNamedEnum(
     SHIPPED: { value: 2, label: '已发货', tagProps: { type: 'primary' } },
     RECEIVED: { value: 4, label: '已签收', tagProps: { type: 'success' } },
     REJECTED: { value: 5, label: '已拒收', tagProps: { type: 'danger' } },
+    VOIDED: { value: 6, label: '已作废', tagProps: { type: 'info' } },
   },
   { type: 'info' }
 )

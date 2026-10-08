@@ -24,6 +24,10 @@ public interface InventoryStockMapper extends BaseMapper<InventoryStock> {
     @Select("SELECT * FROM inventory_stock WHERE inventory_item_id = #{inventoryItemId}")
     InventoryStock selectByInventoryItemId(@Param("inventoryItemId") Long inventoryItemId);
 
+    /** 发货建单串行校验成品占用；只锁行，不写库存数量。 */
+    @Select("SELECT * FROM inventory_stock WHERE inventory_item_id = #{inventoryItemId} FOR UPDATE")
+    InventoryStock selectByInventoryItemIdForUpdate(@Param("inventoryItemId") Long inventoryItemId);
+
     @Update("INSERT INTO inventory_stock (inventory_item_id, material_id, material_code, material_name, total_quantity, total_reserved, earliest_expiry, location_id) " +
             "SELECT si.inventory_item_id, MAX(si.material_id), MAX(si.material_code), MAX(si.material_name), " +
             "COALESCE(SUM(si.quantity),0), COALESCE(SUM(si.reserved_quantity),0), MIN(si.expiry_date), " +

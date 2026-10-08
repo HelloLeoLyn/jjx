@@ -54,7 +54,7 @@ def _http(method, path, body=None, token=None):
         headers["token"] = token
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with _OPENER.open(req, timeout=30) as resp:
+        with _OPENER.open(req, timeout=90) as resp:
             raw = resp.read().decode("utf-8")
     except urllib.error.HTTPError as e:
         raise ApiError(f"HTTP {e.code} {method} {path}: {e.read().decode('utf-8', 'replace')[:300]}")

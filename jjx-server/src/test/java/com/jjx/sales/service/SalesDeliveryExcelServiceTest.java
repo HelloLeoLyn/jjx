@@ -64,7 +64,7 @@ class SalesDeliveryExcelServiceTest {
             assertEquals(CellType.STRING, sheet.getRow(5).getCell(1).getCellType());
             assertTrue(sheet.getRow(5).getCell(1).getStringCellValue().contains("=HYPERLINK"));
             assertTrue(sheet.getRow(6).getCell(0).getStringCellValue().contains("013800000001"));
-            assertEquals("JST003MEOO-0", sheet.getRow(8).getCell(1).getStringCellValue());
+            assertEquals("薄膜开关", sheet.getRow(8).getCell(1).getStringCellValue());
             assertEquals(CellType.NUMERIC, sheet.getRow(8).getCell(4).getCellType());
             assertEquals(2, sheet.getRow(8).getCell(4).getNumericCellValue());
             assertEquals(325, sheet.getRow(8).getCell(5).getNumericCellValue());
@@ -96,7 +96,7 @@ class SalesDeliveryExcelServiceTest {
             for (int i = 0; i < 12; i++) {
                 var sheet = workbook.getSheetAt(i / 5);
                 int row = 8 + i % 5;
-                assertEquals("JST003MEOO-" + i, sheet.getRow(row).getCell(1).getStringCellValue());
+                assertEquals("薄膜开关", sheet.getRow(row).getCell(1).getStringCellValue());
                 assertEquals(i + 1, sheet.getRow(row).getCell(0).getNumericCellValue());
                 assertEquals(27, sheet.getRow(row).getHeightInPoints());
                 assertEquals(workbook.getSheetAt(0).getMergedRegions(), sheet.getMergedRegions());
@@ -115,5 +115,19 @@ class SalesDeliveryExcelServiceTest {
         var service = new SalesDeliveryExcelService(null, null, null);
         BusinessException error = assertThrows(BusinessException.class, () -> service.export(delivery(0)));
         assertTrue(error.getMessage().contains("本次发货明细"));
+    }
+    @Test
+    void printsEachSourceOrderAndUsesProductNameOnlyWhenCustomerMaterialIsMissing() throws Exception {
+        SalesDeliveryVO d=delivery(2);
+        d.getItems().get(0).setOrderNo("SOURCE-A");d.getItems().get(1).setOrderNo("SOURCE-B");
+        d.getItems().get(1).setCustomerMaterialNo("CUSTOMER-PART");
+        try (XSSFWorkbook workbook=new XSSFWorkbook(new ByteArrayInputStream(SalesDeliveryExcelService.buildWorkbook(d,"LEAD-ORDER","公司","地址")))) {
+            var sheet=workbook.getSheetAt(0);
+            assertEquals("SOURCE-A",sheet.getRow(8).getCell(7).getStringCellValue());
+            assertEquals("SOURCE-B",sheet.getRow(9).getCell(7).getStringCellValue());
+            assertEquals("薄膜开关",sheet.getRow(8).getCell(1).getStringCellValue());
+            assertEquals("CUSTOMER-PART",sheet.getRow(9).getCell(1).getStringCellValue());
+            assertEquals("SOURCE-B",workbook.getSheet("发货数据").getRow(20).getCell(8).getStringCellValue());
+        }
     }
 }

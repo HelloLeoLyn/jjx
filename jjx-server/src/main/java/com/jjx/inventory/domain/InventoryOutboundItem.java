@@ -28,6 +28,9 @@ public class InventoryOutboundItem extends BaseEntity {
     /** 统一库存物品ID */
     private Long inventoryItemId;
 
+    /** 来源发货明细，合并发货按此释放所属订单预留并核验原始量。 */
+    private Long deliveryItemId;
+
     /** 物料ID */
     private Long materialId;
 

@@ -21,7 +21,7 @@ TODAY = datetime.date.today().isoformat()
 DUE = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
 SUPPLIER_ID = int(os.environ.get("JJX_TST_SUPPLIER_ID", "1"))
 MATERIAL_ID = int(os.environ.get("JJX_TST_MATERIAL_ID", "1"))
-QTY, PRICE = 100, 10
+QTY, PRICE = 2000, 10
 
 
 def get_my_po():

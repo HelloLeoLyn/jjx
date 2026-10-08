@@ -27,13 +27,13 @@
         <tbody>
           <tr v-for="(item, itemIndex) in pageItems" :key="item?.itemId ?? `${pageIndex}-${itemIndex}`" class="qr026-item-row">
             <td class="qr026-center">{{ item ? pageIndex * ROWS_PER_PAGE + itemIndex + 1 : '' }}</td>
-            <td>{{ item ? item.productName || item.productCode || '-' : '' }}</td>
+            <td>{{ item ? item.customerMaterialNo || item.productName || item.productCode || '-' : '' }}</td>
             <td>{{ item?.specification || '' }}</td>
             <td class="qr026-center">{{ item?.unit || '' }}</td>
             <td class="qr026-right">{{ item?.quantity ?? '' }}</td>
             <td class="qr026-right">{{ item ? money(item.unitPrice) : '' }}</td>
             <td class="qr026-right">{{ item ? money(item.amount) : '' }}</td>
-            <td>{{ item ? orderNo || '-' : '' }}</td>
+            <td>{{ item ? item.orderNo || orderNo || '-' : '' }}</td>
             <td>{{ item?.remark || item?.lineRemark || '' }}</td>
           </tr>
         </tbody>
@@ -62,7 +62,7 @@ import type { SalesDeliveryVO, SalesDeliveryItem } from '@/api/sales/delivery'
 
 type PrintableItem = SalesDeliveryItem & { lineRemark?: string }
 const props = defineProps<{
-  info: SalesDeliveryVO
+  info: Partial<SalesDeliveryVO>
   items: PrintableItem[]
   orderNo: string
   company: { name?: string; address?: string }

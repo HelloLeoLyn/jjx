@@ -5,6 +5,12 @@ export interface SalesDeliveryVO {
   deliveryId: number
   deliveryNo: string
   orderId: number
+  orderNos?: string[]
+  currency?: string
+  outboundId?: number
+  outboundNo?: string
+  outboundStatus?: number
+  oqcPassed?: boolean
   customerId: number
   customerName: string
   deliveryDate: string
@@ -57,6 +63,9 @@ export interface SalesDeliveryItem {
   productName?: string
   specification?: string
   unit?: string
+  orderId?: number
+  orderNo?: string
+  customerMaterialNo?: string
   /** 本次发货数量 */
   quantity?: number
   unitPrice?: number
@@ -102,7 +111,48 @@ export interface SalesDeliveryCreateDTO {
   deliveryDate?: string
 }
 
+export interface DeliveryArrangeLine {
+  id: number
+  orderId: number
+  orderNo: string
+  customerId: number
+  customerName: string
+  deliveryAddress: string
+  contactPerson?: string
+  contactPhone?: string
+  currency: string
+  deliveryMethod?: string
+  dueDate?: string
+  productId: number
+  productCode: string
+  productName: string
+  customerMaterialNo?: string
+  specification?: string
+  unit?: string
+  quantity: number
+  shipped: number
+  occupied: number
+  orderRemainingQuantity: number
+  availableQuantity: number
+  shortageQuantity: number
+  ownStockAvailable: number
+  sharedStockAvailable: number
+  productStockAvailable: number
+  unitPrice?: number
+  stockAvailable: number
+  blockedReason?: string
+}
+
 export const deliveryApi = {
+  availableLines(params: { keyword?: string; customerId?: number; orderId?: number; pageNum: number; pageSize: number }) {
+    return request.get<R<{ records: DeliveryArrangeLine[]; total: number }>>('/sales/deliveries/available-lines', { params })
+  },
+  create(data: SalesDeliveryCreateDTO) {
+    return request.post<R<number>>('/sales/deliveries', data)
+  },
+  voidPending(deliveryId: number, reason: string) {
+    return request.post<R<void>>(`/sales/deliveries/${deliveryId}/void`, { reason })
+  },
   /** OQC放行后确认发货并出库 */
   confirmShipment(deliveryId: number) {
     return request.post<R<void>>(`/sales/deliveries/${deliveryId}/confirm-shipment`)

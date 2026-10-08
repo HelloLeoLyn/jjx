@@ -59,8 +59,8 @@ public interface SalesOrderProductMapper extends BaseMapper<SalesOrderProduct> {
             "           FROM sales_delivery_item sdi " +
             "           INNER JOIN sales_order_product p2 ON p2.id = sdi.order_product_id " +
             "           INNER JOIN sales_delivery sd ON sd.delivery_id = sdi.delivery_id " +
-            "           WHERE sd.deleted = 0 GROUP BY p2.id) d ON d.opid = sop.id " +
+            "           WHERE sd.deleted = 0 AND sd.delivery_status IN (#{pending},#{shipped},#{received}) GROUP BY p2.id) d ON d.opid = sop.id " +
             "WHERE sop.product_id = #{productId} AND so.order_status IN (4, 6, 7) AND so.deleted = 0 " +
             "GROUP BY sop.order_id, so.is_urgent, so.create_time")
-    List<java.util.Map<String, Object>> selectEffectiveDemandByProduct(@Param("productId") Long productId);
+    List<java.util.Map<String, Object>> selectEffectiveDemandByProduct(@Param("productId") Long productId, @Param("pending") Integer pending, @Param("shipped") Integer shipped, @Param("received") Integer received);
 }

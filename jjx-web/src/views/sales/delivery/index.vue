@@ -1,7 +1,7 @@
 <template>
   <div class="app-container">
-    <MergeDeliveryWorkbench>
-    <el-alert title="待发货单须先完成出货检验（OQC），再确认发货并出库；客户收货后登记签收。" type="info" :closable="false" show-icon style="margin-bottom: 12px" />
+    <MergeDeliveryWorkbench ref="workbench" :order-id="sourceOrderId" :order-no="sourceOrderNo" @clear-order="clearOrderFilter" @created="load">
+    <el-alert title="待发货单先完成OQC，再安排出库；仓库确认出库后记为已发货，客户收货后登记签收。" type="info" :closable="false" show-icon style="margin-bottom: 12px" />
     <el-card shadow="never" class="search-card">
       <el-form :model="query" inline>
         <el-form-item label="发货单号"><el-input v-model="query.deliveryNo" clearable /></el-form-item>
@@ -21,7 +21,8 @@
     <el-card shadow="never">
       <el-table v-loading="loading" :data="records" border>
         <el-table-column prop="deliveryNo" label="单号" min-width="160" />
-        <el-table-column prop="orderId" label="订单ID" width="100" />
+        <el-table-column label="来源订单" min-width="160"><template #default="{ row }">{{ row.orderNos?.join('、') || row.orderId }}</template></el-table-column>
+        <el-table-column label="OQC / 出库" min-width="150"><template #default="{ row }">{{ row.oqcPassed ? 'OQC已放行' : 'OQC未放行' }}<div class="muted">{{ row.outboundNo || '未安排出库' }}</div></template></el-table-column>
         <el-table-column prop="customerName" label="客户" min-width="150" />
         <el-table-column prop="deliveryMethod" label="交货方式" width="110" />
         <el-table-column prop="deliveryDate" label="发货日期" width="120" />
@@ -71,6 +72,8 @@
         本次发货明细（{{ detailItems.length }} 项 · 共 {{ current?.totalQuantity ?? 0 }} 件）
       </el-divider>
       <el-table :data="detailItems" border>
+        <el-table-column prop="orderNo" label="来源订单" min-width="150" />
+        <el-table-column prop="customerMaterialNo" label="客户料号" min-width="150" />
         <el-table-column prop="productCode" label="产品编码" />
         <el-table-column prop="productName" label="产品名称" />
         <el-table-column prop="specification" label="规格" />
@@ -164,8 +167,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deliveryApi, type SalesDeliveryQueryDTO, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { orderApi } from '@/api/sales/order'
@@ -181,9 +184,9 @@ const deliveryActions: TableAction<SalesDeliveryVO>[] = [
     visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.PENDING.value,
   },
   {
-    key: 'ship', label: '确认发货', type: 'primary', permission: 'sales:order:edit',
+    key: 'ship', label: '安排出库', type: 'primary', permission: 'sales:order:edit',
     visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.PENDING.value,
-    disabled: () => confirmingDeliveryId.value != null,
+    disabled: ({ row }) => confirmingDeliveryId.value != null || !row.oqcPassed || !!row.outboundId,
   },
   {
     key: 'receive',
@@ -201,6 +204,8 @@ const deliveryActions: TableAction<SalesDeliveryVO>[] = [
     // 只有「已发货(2)」可拒收（已签收要走销售退货流程）
     visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.SHIPPED.value,
   },
+  { key: 'outbound', label: '出库单', permission: 'inventory:outbound:list', visible: ({ row }) => !!row.outboundId },
+  { key: 'void', label: '作废', type: 'danger', permission: 'sales:order:edit', visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.PENDING.value },
   { key: 'print', label: '打印' },
 ]
 const handleDeliveryAction = (key: string, row: SalesDeliveryVO) => {
@@ -210,23 +215,33 @@ const handleDeliveryAction = (key: string, row: SalesDeliveryVO) => {
   if (key === 'print') printDelivery(row)
   if (key === 'oqc') void router.push({ path: '/quality/lot/oqc', query: { businessNo: row.deliveryNo } })
   if (key === 'ship') void confirmShipment(row)
+  if (key === 'void') void voidPending(row)
+  if (key === 'outbound') void router.push({ path: '/inventory/outbound', query: { bizId: row.outboundId } })
 }
 
+const workbench = ref<InstanceType<typeof MergeDeliveryWorkbench>>()
+async function voidPending(row: SalesDeliveryVO) {
+  let reason: string
+  try { const result = await ElMessageBox.prompt(`作废 ${row.deliveryNo} 并释放本次待安排数量？`, '作废待发货单', { inputPlaceholder: '填写作废原因', inputValidator: value => !!value?.trim() && value.trim().length <= 200 || '请填写1～200字原因' }); reason = result.value.trim() } catch { return }
+  await deliveryApi.voidPending(row.deliveryId, reason)
+  ElMessage.success('已作废，保留原单及明细记录')
+  await Promise.all([load(), workbench.value?.reload()])
+}
 const confirmingDeliveryId = ref<number>()
 async function confirmShipment(row: SalesDeliveryVO) {
   if (confirmingDeliveryId.value != null) return
   try {
-    await ElMessageBox.confirm(`确认发货 ${row.deliveryNo}？系统将校验OQC放行结果并完成本次出库。`, '确认发货', { type: 'warning' })
+    await ElMessageBox.confirm(`安排出库 ${row.deliveryNo}？OQC通过后将生成出库单，仓库确认后才记为已发货。`, '安排出库', { type: 'warning' })
   } catch {
     return
   }
   confirmingDeliveryId.value = row.deliveryId
   try {
     await deliveryApi.confirmShipment(row.deliveryId)
-    ElMessage.success('发货及出库已完成')
-    await load()
+    ElMessage.success('已安排出库，请由仓库确认实际出库')
+    await Promise.all([load(), workbench.value?.reload()])
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '确认发货失败')
+    ElMessage.error(error instanceof Error ? error.message : '安排出库失败')
   } finally {
     confirmingDeliveryId.value = undefined
   }
@@ -234,11 +249,15 @@ async function confirmShipment(row: SalesDeliveryVO) {
 
 defineOptions({ name: 'SalesDelivery' })
 const router = useRouter()
+const route = useRoute()
+const sourceOrderId = computed(() => { const value = Number(route.query.orderId); return Number.isInteger(value) && value > 0 ? value : undefined })
+const sourceOrderNo = computed(() => typeof route.query.orderNo === 'string' ? route.query.orderNo : undefined)
+function clearOrderFilter() { const { orderId: _id, orderNo: _no, ...query } = route.query; void router.replace({ path: route.path, query }) }
 const loading = ref(false), submitting = ref(false), total = ref(0)
 const records = ref<SalesDeliveryVO[]>([]), items = ref<any[]>([])
 const dateRange = ref<string[]>([]), detailVisible = ref(false), receiveVisible = ref(false)
 const current = ref<SalesDeliveryVO>(), receiveDeliveryId = ref<number>()
-const query = reactive<SalesDeliveryQueryDTO>({ pageNum: 1, pageSize: 10 })
+const query = reactive<SalesDeliveryQueryDTO>({ pageNum: 1, pageSize: 10, orderId: sourceOrderId.value })
 const receiveForm = reactive({ receiverName: '', receiverPhone: '', customerReceiveDate: '', receiveRemark: '' })
 
 async function load() {
@@ -296,7 +315,7 @@ async function submitReject() {
     await deliveryApi.reject(row.deliveryId, rejectReason.value.trim())
     ElMessage.success('拒收已登记：库存已回冲，订单已可重新发货')
     rejectVisible.value = false
-    await load()
+    await Promise.all([load(), workbench.value?.reload()])
   } catch (e: any) {
     ElMessage.error(e?.message || '拒收登记失败')
   } finally {
@@ -343,6 +362,7 @@ async function submitReceive() {
   finally { submitting.value = false }
 }
 function printDelivery(row: SalesDeliveryVO) { router.push({ path: '/sales/delivery/print', query: { deliveryId: row.deliveryId } }) }
+watch(sourceOrderId, value => { query.orderId = value; query.pageNum = 1; void load() })
 onMounted(load)
 </script>
 

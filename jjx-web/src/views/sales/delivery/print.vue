@@ -46,13 +46,13 @@
           <tbody>
             <tr v-for="(item, itemIndex) in pageItems" :key="item.id || `${pageIndex}-${itemIndex}`">
               <td class="center">{{ pageIndex * 6 + itemIndex + 1 }}</td>
-              <td>{{ item.productName || item.productCode || '-' }}</td>
+              <td>{{ item.customerMaterialNo || item.productName || item.productCode || '-' }}</td>
               <td>{{ item.specification || '-' }}</td>
               <td class="center">{{ item.unit || '-' }}</td>
               <td class="right">{{ item.quantity ?? '-' }}</td>
               <td class="right">{{ money(item.unitPrice) }}</td>
               <td class="right">{{ money(item.amount) }}</td>
-              <td>{{ orderNo || '-' }}</td>
+              <td>{{ item.orderNo || orderNo || '-' }}</td>
               <td>{{ item.remark || item.lineRemark || '-' }}</td>
             </tr>
             <tr v-if="!items.length"><td colspan="9" class="center">无订单明细</td></tr>

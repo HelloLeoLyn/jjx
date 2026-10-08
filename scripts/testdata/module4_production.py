@@ -59,15 +59,14 @@ def convert(plan):
     return find_wo(plan.get("orderId"))
 
 
-def run_executions(wo_id):
-    d = get(f"/production/order/{wo_id}")
-    exs = d.get("operationExecutions") if isinstance(d, dict) else None
+def run_executions(wo_id, planned_qty):
+    exs = get_list("/production/operation-execution/list", {"orderId": wo_id})
     exs = exs if isinstance(exs, list) else []
     for ex in exs:
         eid = ex.get("executionId")
         if not eid:
             continue
-        qty = ex.get("plannedQuantity") or ex.get("outputQuantity")
+        qty = ex.get("plannedQuantity") or ex.get("outputQuantity") or planned_qty
         step(f"工序{eid} 开始", pre=lambda e=ex: (str(e.get("executionStatus")) in ("0", "1"),
                                                   f"工序状态={e.get('executionStatus')}（非法待执行态）"),
              create=lambda eid=eid: call("PUT", f"/production/operation-execution/{eid}/start", None, "开始工序"))
@@ -76,13 +75,25 @@ def run_executions(wo_id):
         if tid:
             r = step(f"工序{eid} 报工",
                      create=lambda eid=eid, tid=tid, qty=qty: call("POST", "/production/work-report",
-                                                                    {"executionId": eid, "taskId": tid,
+                                                                    {"executionId": eid, "taskId": tid, "reporterId": 1,
                                                                      "qualifiedQuantity": qty, "defectiveQuantity": 0,
                                                                      "remark": f"{TST} 自动化报工"}, "报工"))
             rid = r.get("reportId") if isinstance(r, dict) else None
             if rid:
                 step(f"报工{rid} 审批", create=lambda rid=rid: call("POST", f"/production/work-report/{rid}/approve", None, "报工审批"))
         step(f"工序{eid} 完成", create=lambda eid=eid: call("PUT", f"/production/operation-execution/{eid}/complete", None, "完成工序"))
+
+
+def judge_fqc(wo_id, qty):
+    lots = get_list("/quality/lot/page", {"pageNum": 1, "pageSize": 20, "orderId": wo_id, "lotType": "FQC"})
+    for lot in (lots if isinstance(lots, list) else []):
+        if str(lot.get("status", "")).upper() in ("PENDING", "0"):
+            lid = lot.get("lotId")
+            lq = lot.get("lotQuantity") or qty
+            step(f"完工检验FQC判定(lot={lid})",
+                 create=lambda lid=lid, lq=lq: call("POST", f"/quality/lot/{lid}/judge",
+                     {"inspectedQuantity": lq, "passQuantity": lq, "failQuantity": 0, "result": "pass"},
+                     "FQC判定合格"))
 
 
 def main():
@@ -127,7 +138,8 @@ def main():
             "/inventory/outbound/list", {"pageNum": 1, "pageSize": 50},
             lambda r: r.get("sourceType") == "work_order" and str(r.get("sourceId")) == str(wo_id)),
          create=lambda: call("POST", f"/inventory/outbound/create-from-production/{wo_id}", None, "从工单创建领料出库"))
-    run_executions(wo_id)
+    run_executions(wo_id, wo.get("plannedQuantity"))
+    judge_fqc(wo_id, wo.get("plannedQuantity"))
     step("工单完成（触发完工入库）", pre=lambda: (str(wo.get("orderStatus")) in ("6",),
                                             f"工单状态={wo.get('orderStatus')}（非进行中）"),
          create=lambda: call("PUT", f"/production/order/{wo_id}/complete", None, "完成生产工单"))
