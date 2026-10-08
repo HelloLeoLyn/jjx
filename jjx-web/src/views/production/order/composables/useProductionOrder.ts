@@ -91,6 +91,16 @@ export function useProductionOrder() {
             orderType: (order.orderType || '').toLowerCase(),
             priority: (order.priority || '').toLowerCase(),
           }
+          // dev-20261008-012：计划(PLAN)行「进度」列改按「已下达」口径。
+          // 计划本身不生产（completed_quantity 恒 0），用 完成/计划 会恒显示 0%，
+          // 与「已关闭（已下达完）」并排矛盾；故计划行进度 = 已下达/计划 =（计划 − 剩余可下达）/计划。
+          const isPlan = normalized.orderType === 'plan'
+          const plannedNum = Number(order.plannedQuantity || 0)
+          const planRemaining: number =
+            order.remainingQuantity != null && Number(order.remainingQuantity) >= 0
+              ? Number(order.remainingQuantity)
+              : plannedNum
+          const planIssued = Math.max(0, plannedNum - planRemaining)
           return {
             ...normalized,
             // 计算显示字段
@@ -104,8 +114,12 @@ export function useProductionOrder() {
             materialStatusLabel: getMaterialStatusLabel(order.materialStatus),
             planDateRange: formatDateRange(order.planStartDate, order.planEndDate),
             actualTimeRange: formatDateRange(order.actualStartDate, order.actualEndDate),
-            progress: calculateProgress(order.completedQuantity, order.plannedQuantity),
-            progressLabel: `${order.completedQuantity}/${order.plannedQuantity}`,
+            progress: isPlan
+              ? calculateProgress(planIssued, plannedNum)
+              : calculateProgress(order.completedQuantity, order.plannedQuantity),
+            progressLabel: isPlan
+              ? `已下达 ${planIssued}/${plannedNum}`
+              : `${order.completedQuantity}/${order.plannedQuantity}`,
             // 计划(PLAN)行：剩余可下达必须用后端动态 remainingQuantity（计划-有效已转工单），
             // 禁止用 planned-completed 覆盖（PLAN 的 completed 恒为 0，会把已转工单额度错显示回全量）。
             // 工单(WORK_ORDER)行：剩余 = 计划-完成（后端 persisted remaining 不随报工更新）。
