@@ -123,3 +123,4 @@ jjx-docs/assets/*.xlsx
 
 # testdata 运行器状态文件
 scripts/testdata/.tst-state.json
+scripts/testdata/__pycache__/
