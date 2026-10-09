@@ -316,6 +316,28 @@
                     />
                   </template>
                 </el-table-column>
+                <el-table-column label="菲林" width="170">
+                  <template #default="{ row }">
+                    <el-autocomplete
+                      :model-value="getPrintParam(row, 'filmNo')"
+                      size="small"
+                      style="width: 160px"
+                      :fetch-suggestions="suggestFilms"
+                      :trigger-on-focus="true"
+                      clearable
+                      placeholder="菲林编码"
+                      @select="(it: any) => setPrintParam(row, 'filmNo', it.value)"
+                      @input="(v: string | number) => setPrintParam(row, 'filmNo', String(v))"
+                    >
+                      <template #default="{ item }">
+                        <span>{{ item.value }}</span>
+                        <span style="float: right; color: #909399; font-size: 12px; margin-left: 8px">{{
+                          item.hint
+                        }}</span>
+                      </template>
+                    </el-autocomplete>
+                  </template>
+                </el-table-column>
                 <el-table-column label="网框编号" width="170">
                   <template #default="{ row }">
                     <el-autocomplete
@@ -464,6 +486,7 @@ import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessCategoryEnum } from '@/enums/product'
 import { suggestSampleColors, suggestSampleInks } from '@/api/sales/sampleOrder'
 import { engineeringResourceApi } from '@/api/engineering/resource'
+import { filmApi } from '@/api/product/film'
 import { ROUTE_STRUCTURE_TABS, routeStructureTabValue } from './routeProcessTabs'
 import EngineeringRoutingItem from '@/components/product/EngineeringRoutingItem.vue'
 import ProcessOperation from '@/components/ProcessOperation/index.vue'
@@ -645,6 +668,21 @@ function suggestFrames(query: string, cb: (items: any[]) => void) {
   cb(list.map((f: any) => ({ value: f.frameNo, statusLabel: frameStatusLabel(f.status) })))
 }
 watch(printActiveTab, () => ensureFrames(), { immediate: true })
+// 菲林联想（按关键字）
+async function suggestFilms(query: string, cb: (items: any[]) => void) {
+  try {
+    const res: any = await filmApi.list({ keyword: query || undefined })
+    const list: any[] = res?.data?.records || res?.data || []
+    cb(
+      list.slice(0, 20).map((f: any) => ({
+        value: f.filmCode,
+        hint: [f.filmName, f.filmTypeName, f.version].filter(Boolean).join(' '),
+      }))
+    )
+  } catch {
+    cb([])
+  }
+}
 
 function isFirstPrint(row: any) {
   return printRows.value.indexOf(row) <= 0

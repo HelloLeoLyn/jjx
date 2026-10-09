@@ -76,14 +76,44 @@
                 />
               </template>
             </el-table-column>
-            <el-table-column label="网框编号" width="160">
+            <el-table-column label="菲林" width="170">
               <template #default="{ row }">
-                <el-input
+                <el-autocomplete
+                  v-model="row.filmNo"
+                  size="small"
+                  style="width: 160px"
+                  :fetch-suggestions="suggestFilms"
+                  :trigger-on-focus="true"
+                  clearable
+                  placeholder="菲林编码"
+                >
+                  <template #default="{ item }">
+                    <span>{{ item.value }}</span>
+                    <span style="float: right; color: #909399; font-size: 12px; margin-left: 8px">{{
+                      item.hint
+                    }}</span>
+                  </template>
+                </el-autocomplete>
+              </template>
+            </el-table-column>
+            <el-table-column label="网框编号" width="170">
+              <template #default="{ row }">
+                <el-autocomplete
                   v-model="row.screenNo"
                   size="small"
+                  style="width: 160px"
+                  :fetch-suggestions="suggestFrames"
+                  :trigger-on-focus="true"
                   clearable
-                  placeholder="网框编号"
-                />
+                  placeholder="网框编号（带状态）"
+                >
+                  <template #default="{ item }">
+                    <span>{{ item.value }}</span>
+                    <span style="float: right; color: #909399; font-size: 12px; margin-left: 8px">{{
+                      item.statusLabel
+                    }}</span>
+                  </template>
+                </el-autocomplete>
               </template>
             </el-table-column>
             <el-table-column label="🧾 材料" min-width="180">
@@ -225,6 +255,8 @@ import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
 import { getProcessHistory, suggestSampleColors, suggestSampleInks } from '@/api/sales/sampleOrder'
 import { ProcessStatusEnum } from '@/enums/product/process'
+import { engineeringResourceApi } from '@/api/engineering/resource'
+import { filmApi } from '@/api/product/film'
 
 /**
  * 印刷工序面板（dev-20260811-009）
@@ -277,6 +309,52 @@ async function suggestInks(query: string, cb: (items: any[]) => void) {
     cb([])
   }
 }
+
+// ===== 网框联想（网框台账，带状态）dev-20261009-026 =====
+const frameCache = ref<any[]>([])
+const frameLoaded = ref(false)
+async function ensureFrames() {
+  if (frameLoaded.value) return
+  frameLoaded.value = true
+  try {
+    const res: any = await engineeringResourceApi.frames({ pageNum: 1, pageSize: 1000 })
+    frameCache.value = res?.data?.records || []
+  } catch {
+    frameCache.value = []
+  }
+}
+function frameStatusLabel(s: string): string {
+  const m: Record<string, string> = {
+    EMPTY: '空框',
+    PLATED: '已制版',
+    MAINTENANCE: '维护中',
+    SCRAPPED: '已报废',
+  }
+  return m[s] || s || ''
+}
+function suggestFrames(query: string, cb: (items: any[]) => void) {
+  const q = (query || '').trim().toLowerCase()
+  const list = frameCache.value
+    .filter((f: any) => !q || String(f.frameNo || '').toLowerCase().includes(q))
+    .slice(0, 20)
+  cb(list.map((f: any) => ({ value: f.frameNo, statusLabel: frameStatusLabel(f.status) })))
+}
+// ===== 菲林联想（按关键字）dev-20261009-026 =====
+async function suggestFilms(query: string, cb: (items: any[]) => void) {
+  try {
+    const res: any = await filmApi.list({ keyword: query || undefined })
+    const list: any[] = res?.data?.records || res?.data || []
+    cb(
+      list.slice(0, 20).map((f: any) => ({
+        value: f.filmCode,
+        hint: [f.filmName, f.filmTypeName, f.version].filter(Boolean).join(' '),
+      }))
+    )
+  } catch {
+    cb([])
+  }
+}
+watch(activeTab, () => ensureFrames(), { immediate: true })
 
 function onInkSelect(row: any, item: any) {
   // 点选联想项：文本 + 物料关联（若该文本命中 INK 物料）
