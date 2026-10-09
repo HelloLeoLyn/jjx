@@ -138,6 +138,13 @@ export function validationIssues(demands: Demand[], materials: Record<string, Ma
       )
         errors.push(`${d.original.name}：请填写有效的分配量、换算系数、损耗和取料步长`)
       if (!materials[a.materialId]) errors.push(`${d.original.name}：实际材料信息尚未加载`)
+      if (
+        a.materialId !== d.original.id &&
+        (!Number.isInteger(a.baseQty) || a.baseQty < 1 || !Number.isInteger(a.moduleQty) || a.moduleQty < 1)
+      )
+        errors.push(`${d.original.name}：平替材料基数和模数必须是正整数`)
+      if (materials[a.materialId]?.unit.trim().toLowerCase() === 'pcs' && !Number.isInteger(a.issueQuantity))
+        errors.push(`${d.original.name}：单位为 pcs 的领料量必须是整数`)
       if (a.materialId === d.original.id && (a.ratio !== 1 || a.loss !== 0))
         errors.push(`${d.original.name}：原料需求已包含BOM损耗，原规格保持1:1抵扣且不重复加损耗`)
     }

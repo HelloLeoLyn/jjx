@@ -72,14 +72,14 @@
               <small>{{ row.demand.original.code }} · {{ row.demand.original.spec || '未填规格' }}</small>
             </template>
             </el-table-column>
-            <el-table-column label="基数" width="72" align="center">
+            <el-table-column label="基数" width="96" align="center">
               <template #default="{ row }">
                 <template v-if="row.kind === 'bom'">{{ fmt(row.demand.baseQty) }}</template>
                 <el-input-number
                   v-else-if="row.allocation"
                   v-model="row.allocation.baseQty"
-                  :min="0"
-                  :precision="4"
+                  :min="1"
+                  :precision="0"
                   :controls="false"
                   size="small"
                   aria-label="平替材料基数"
@@ -87,14 +87,14 @@
                 />
               </template>
             </el-table-column>
-            <el-table-column label="模数" width="72" align="center">
+            <el-table-column label="模数" width="96" align="center">
               <template #default="{ row }">
                 <template v-if="row.kind === 'bom'">{{ fmt(row.demand.moduleQty) }}</template>
                 <el-input-number
                   v-else-if="row.allocation"
                   v-model="row.allocation.moduleQty"
-                  :min="0"
-                  :precision="4"
+                  :min="1"
+                  :precision="0"
                   :controls="false"
                   size="small"
                   aria-label="平替材料模数"
@@ -151,7 +151,7 @@
                 <el-input-number
                   v-model="row.allocation.issueQuantity"
                   :min="0"
-                  :precision="4"
+                  :precision="isPieceUnit(materials[row.allocation.materialId]?.unit) ? 0 : 4"
                   :controls="false"
                   size="small"
                   aria-label="本次实际材料领料数量"
@@ -605,9 +605,16 @@ function updateSubstitution(a: Allocation, d: Demand) {
   const originalRate = d.baseQty > 0 && d.moduleQty > 0 ? d.baseQty / d.moduleQty : 0
   const substituteRate = a.baseQty > 0 && a.moduleQty > 0 ? a.baseQty / a.moduleQty : 0
   a.ratio = originalRate > 0 && substituteRate > 0 ? Number((originalRate / substituteRate).toFixed(6)) : 0
-  a.issueQuantity = a.ratio > 0 && a.coverage > 0
-    ? Number((a.coverage * (1 + a.loss / 100) / a.ratio).toFixed(4))
+  const issueQuantity = a.ratio > 0 && a.coverage > 0
+    ? a.coverage * (1 + a.loss / 100) / a.ratio
     : 0
+  a.issueQuantity = isPieceUnit(materials[a.materialId]?.unit)
+    ? Math.ceil(issueQuantity - 1e-9)
+    : Number(issueQuantity.toFixed(4))
+  updateCoverage(a, d)
+}
+function isPieceUnit(unit?: string) {
+  return unit?.trim().toLowerCase() === 'pcs'
 }
 function allocationRemark(d: Demand, a: Allocation) {
   return a.materialId === d.original.id
@@ -1059,7 +1066,7 @@ p {
   font-size: 11px;
 }
 .allocation-table .el-input-number {
-  width: 62px;
+  width: 80px;
 }
 .quantity-cell {
   white-space: nowrap;

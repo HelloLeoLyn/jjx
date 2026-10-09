@@ -128,7 +128,8 @@
         <template #default="scope">
           <el-input-number
             v-model="scope.row.baseQty"
-            :min="0"
+            :min="1"
+            :precision="0"
             :step="1"
             size="small"
             controls-position="right"
