@@ -26,6 +26,22 @@ export function frameStatusLabel(s: string): string {
   return FRAME_STATUS_LABEL[s] || s || ''
 }
 
+// 网框状态标签（异常高亮，供工序行"变动可感知"）
+const FRAME_STATUS_TAG: Record<string, { label: string; type: 'success' | 'warning' | 'danger' | 'info' }> = {
+  EMPTY: { label: '未制版', type: 'warning' },
+  PLATED: { label: '已制版', type: 'success' },
+  MAINTENANCE: { label: '维护中', type: 'warning' },
+  SCRAPPED: { label: '已报废', type: 'danger' },
+}
+
+/** 按网框编号反查当前状态标签（未命中返回 null，兼容旧手输值） */
+export function frameStatusOf(frameNo: string): { label: string; type: string } | null {
+  if (!frameNo) return null
+  const f = frameCache.value.find((x: any) => x.frameNo === frameNo)
+  if (!f) return null
+  return FRAME_STATUS_TAG[f.status] || { label: frameStatusLabel(f.status), type: 'info' }
+}
+
 // 网框台账本地缓存（进程内复用）
 const frameCache = ref<any[]>([])
 const frameLoaded = ref(false)
