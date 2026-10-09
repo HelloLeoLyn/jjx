@@ -353,94 +353,110 @@ const parseExcelFile = (file: File) => {
 /**
  * 解析行数据为 EngineeringBomItem 数组
  *
- * Excel 列结构（从第3行开始为数据行）：
- * 序号 | 项目名称 | 材料名称 | 单位 | 宽度 | 规格(乘/跳) | 长度 | 模数 | 单用量 | 基数 | 应用料 | 预计不良 | 最低投料 | 实际投料
+ * 按【表头名】映射列（不再按固定列号）：文件里只要有「品名 / 规格 / 模数」三列即可导入，
+ * 其余列有就取、没有就留空（用户口径：必要的那几项有就行，其他按实际情况来）。
+ * 表头别名：品名=原料品名/材料名称/品名；品类=项目/项目名称；数量=单用量/实发数量/数量。
  */
 const parseRows = (rows: any[][]): EngineeringBomItem[] => {
   const items: EngineeringBomItem[] = []
   const missingRows: number[] = []
 
-  // 查找表头行（包含"序号"、"项目名称"等关键字的行）
+  const ALIAS: Record<string, string[]> = {
+    seq: ['项次', '序号'],
+    name: ['原料品名', '材料名称', '品名'],
+    item: ['项目', '项目名称'],
+    spec: ['规格'],
+    unit: ['单位'],
+    module: ['模数'],
+    qty: ['单用量', '实发数量', '数量'],
+    base: ['基数'],
+    applied: ['应用料'],
+    loss: ['预计不良'],
+    minIssue: ['最低投料'],
+    actualIssue: ['实际投料'],
+    width: ['宽度'],
+    length: ['长度'],
+    remark: ['备注'],
+  }
+  const matchKey = (cell: any): string | null => {
+    const t = String(cell ?? '').trim()
+    if (!t) return null
+    for (const key of Object.keys(ALIAS)) {
+      if (ALIAS[key].some((n) => t === n || t.includes(n))) return key
+    }
+    return null
+  }
+
+  // 找表头行：能同时匹配到 品名 + 规格 + 模数 的那一行
   let headerRowIndex = -1
+  let col: Record<string, number> = {}
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     if (!row || row.length === 0) continue
-
-    const rowStr = row.map(String).join('')
-    if (rowStr.includes('序号') && rowStr.includes('项目名称') && rowStr.includes('材料名称')) {
+    const m: Record<string, number> = {}
+    row.forEach((cell, idx) => {
+      const k = matchKey(cell)
+      if (k && m[k] === undefined) m[k] = idx
+    })
+    if (m.name !== undefined && m.spec !== undefined && m.module !== undefined) {
       headerRowIndex = i
+      col = m
       break
     }
   }
-
   if (headerRowIndex === -1) {
-    ElMessage.warning('未找到表头行（需要包含"序号、项目名称、材料名称"等列）')
+    ElMessage.warning('未找到表头行（至少需要「品名」「规格」「模数」三列）')
     return items
   }
 
-  // 从表头下一行开始解析数据
+  const cellOf = (row: any[], key: string): string => {
+    const idx = col[key]
+    return idx === undefined ? '' : String(row[idx] ?? '').trim()
+  }
+  const num = (s: string, dflt = 0): number => {
+    const v = parseFloat(String(s).replace(/[^\d.]/g, ''))
+    return Number.isNaN(v) ? dflt : v
+  }
+
   for (let i = headerRowIndex + 1; i < rows.length; i++) {
     const row = rows[i]
-    if (!row || row.length < 3) continue
+    if (!row || row.length === 0) continue
 
-    // 检查是否为空行
-    const materialName = String(row[2] || '').trim()
+    const materialName = cellOf(row, 'name')
     if (!materialName) continue
-
-    // 检查是否为汇总行（包含"合计"、"总计"等关键字）
     if (/合计|总计|小计/i.test(materialName)) continue
 
-    // 解析各列
-    // 列索引: 0=序号, 1=项目名称, 2=材料名称, 3=单位, 4=宽度, 5=规格(*/跳), 6=长度, 7=模数, 8=单用量, 9=基数, 10=应用料, 11=预计不良, 12=最低投料, 13=实际投料
-    const seq = parseInt(String(row[0] || '0').trim()) || 0
-    const itemName = String(row[1] || '').trim()
-    const unit = String(row[3] || '').trim()
-    // 第4/5/6列保留原始字符串，直接拼接为规格描述
-    const col4 = String(row[4] || '').trim()
-    const col5 = String(row[5] || '').trim()
-    const col6 = String(row[6] || '').trim()
-    const width = parseFloat(col4.replace(/[^\d.]/g, '')) || 0
-    const length = parseFloat(col6.replace(/[^\d.]/g, '')) || 0
-    const moduleQty = parseFloat(String(row[7] || '0').replace(/[^\d.]/g, '')) || 0
-    // 必填（用户口径）：材料名称 / 规格(索引5) / 模数(索引7)；缺任一则该行不导入
-    if (!col5 || !String(row[7] ?? '').trim()) {
+    // 必填：品名 / 规格 / 模数；缺任一则该行不导入
+    const spec = cellOf(row, 'spec')
+    const moduleRaw = cellOf(row, 'module')
+    if (!spec || !moduleRaw) {
       missingRows.push(i + 1)
       continue
     }
-    const quantity = parseFloat(String(row[8] || '0').replace(/[^\d.]/g, '')) || 0
-    const baseQty = parseFloat(String(row[9] || '1').replace(/[^\d.]/g, '')) || 1
-    // 应用料（第10列）：有值直读，无值留空由后端计算
-    const appliedRaw = String(row[10] ?? '').replace(/[^\d.]/g, '')
-    const appliedQty = appliedRaw ? parseFloat(appliedRaw) : undefined
-    // 预计不良：Excel中为小数（如0.1表示10%），转为百分制显示（如10）
-    const lossRate = (parseFloat(String(row[11] || '0').replace(/[^\d.]/g, '')) || 0) * 100
-    const minIssueQty = parseFloat(String(row[12] || '0').replace(/[^\d.]/g, '')) || 0
-    // 实际投料（第13列）：有值直读，无值留空由后端计算
-    const actualRaw = String(row[13] ?? '').replace(/[^\d.]/g, '')
-    const actualIssueQty = actualRaw ? parseFloat(actualRaw) : undefined
 
-    // 构建规格描述：第4/5/6列是什么就是什么，直接拼接
-    const specification = col4 + col5 + col6
+    const itemName = cellOf(row, 'item')
+    const appliedRaw = cellOf(row, 'applied')
+    const actualRaw = cellOf(row, 'actualIssue')
 
     const item: EngineeringBomItem = {
       itemId: undefined,
       bomId: undefined,
-      parentMaterialId: null, // 导入全部为根节点，层级由用户手动调整
+      parentMaterialId: null, // 导入全部为根节点，层级由页面「子物料」手动调整
       materialId: 0,
       materialCode: '',
-      materialName: materialName,
-      specification: specification,
-      unit: unit || 'PCS',
-      quantity: quantity,
-      appliedQty: appliedQty,
-      actualIssueQty: actualIssueQty,
-      lossRate: lossRate,
-      baseQty: baseQty || 1,
-      moduleQty: moduleQty || 1,
-      minIssueQty: minIssueQty,
-      widthMm: width,
-      lengthMm: length,
-      remark: itemName || '',
+      materialName,
+      specification: spec,
+      unit: cellOf(row, 'unit') || 'PCS',
+      quantity: num(cellOf(row, 'qty')),
+      appliedQty: appliedRaw ? num(appliedRaw) : undefined,
+      actualIssueQty: actualRaw ? num(actualRaw) : undefined,
+      lossRate: num(cellOf(row, 'loss')) * 100,
+      baseQty: num(cellOf(row, 'base'), 1) || 1,
+      moduleQty: num(moduleRaw, 1) || 1,
+      minIssueQty: num(cellOf(row, 'minIssue')),
+      widthMm: num(cellOf(row, 'width')),
+      lengthMm: num(cellOf(row, 'length')),
+      remark: cellOf(row, 'remark') || itemName || '',
       sortOrder: items.length + 1,
     }
 
@@ -448,11 +464,12 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
   }
 
   if (missingRows.length) {
-    ElMessage.warning(`有 ${missingRows.length} 行缺少必填项（材料名称/规格/模数），已跳过：第 ${missingRows.join('、')} 行`)
+    ElMessage.warning(`有 ${missingRows.length} 行缺少必填项（品名/规格/模数），已跳过：第 ${missingRows.join('、')} 行`)
   }
 
   return items
 }
+
 
 // ==================== 表单操作 ====================
 
