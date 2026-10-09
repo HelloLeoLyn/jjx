@@ -407,8 +407,10 @@ const handleSubmit = async () => {
         customMachineHours: item.customMachineHours,
         customProcessParams: item.customProcessParams,
         description: item.description,
+        remark: item.remark,
         processCategory: item.processCategory,
         majorCategory: item.majorCategory,
+        children: item.children,
       }))
       await productRouteApi.addProductRoute({ ...formData, items: itemDTOs as any })
       ElMessage.success('新增成功')

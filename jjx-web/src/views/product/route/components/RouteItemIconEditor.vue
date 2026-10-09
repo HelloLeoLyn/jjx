@@ -147,6 +147,17 @@
                   </template>
                 </el-table-column>
 
+                <el-table-column label="组合备注" width="380">
+                  <template #default="scope">
+                    <el-input
+                      v-model="scope.row.remark"
+                      size="small"
+                      placeholder="组合备注（存到第一条工序的说明中）"
+                      @input="syncToParent"
+                    />
+                  </template>
+                </el-table-column>
+
                 <el-table-column label="工艺参数" min-width="200">
                   <template #default="scope">
                     <el-input
@@ -190,16 +201,6 @@
                         (val: number | undefined) =>
                           handleGroupTotalChange(groupIndex(scope.row), 'machine', val)
                       "
-                    />
-                  </template>
-                </el-table-column>
-
-                <el-table-column label="组合备注" width="380">
-                  <template #default="scope">
-                    <el-input
-                      v-model="scope.row.remark"
-                      size="small"
-                      placeholder="组合备注（存到第一条工序的说明中）"
                     />
                   </template>
                 </el-table-column>
