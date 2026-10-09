@@ -30,6 +30,14 @@ export const materialPickApi = {
     })
   },
 
+  createCalculatedProductionPick(workOrderId: number, items: any[]): AxiosPromise<number> {
+    return request({
+      url: `/inventory/outbound/create-calculated-production-pick/${workOrderId}`,
+      method: 'post',
+      data: items,
+    })
+  },
+
   createProductionSupplement(workOrderId: number, payload: {
     /** dev-20260923-025：四类补料来源（生产超耗/报废补产/试制调机/来料不良） */
     reasonType: string

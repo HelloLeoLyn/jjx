@@ -55,199 +55,81 @@
       type="info"
       :closable="false"
       class="demo-notice"
-      title="本页读取真实需求、材料档案和库存。当前用于选料计算及预览，尚不保存方案到服务器、不生成领料单、不预占或扣库存。"
+      title="需求按工单绑定 BOM 计算；替代料抵扣关系随领料明细保存，生成领料单时预占库存，确认发料后再扣减。"
     />
     <template v-if="order && !loadError">
-      <div class="summary-grid">
-        <div>
-          <span>待安排材料项目</span><strong>{{ demands.length }}<small>项</small></strong>
-        </div>
-        <div class="accent">
-          <span>本次已配足</span><strong>{{ completeCount }}<small>项</small></strong>
-        </div>
-        <div :class="{ shortage: gapCount > 0 }">
-          <span>仍有需求缺口</span><strong>{{ gapCount }}<small>项</small></strong>
-        </div>
-        <div>
-          <span>选用实际材料</span
-          ><strong>{{ Object.keys(totals).length }}<small>种</small></strong>
-        </div>
-        <div :class="{ shortage: errors.length > 0 }">
-          <span>待处理校验</span><strong>{{ errors.length }}<small>项</small></strong>
-        </div>
-      </div>
+      <div class="summary-line">{{ demands.length }} 项 BOM 材料　·　{{ completeCount }} 项配齐　·　{{ gapCount }} 项仍有缺口</div>
       <el-empty
         v-if="!demands.length && !loading"
         description="当前工单没有剩余领料需求，或尚无可领BOM材料"
       />
-      <section v-for="(d, index) in demands" :key="d.id" class="demand-card">
-        <div class="demand-heading">
-          <div>
-            <el-tag effect="plain">{{ index + 1 }}</el-tag>
-            <h3>{{ d.original.name }}</h3>
-          </div>
-          <span>{{ d.original.code }} · 原始需求只读</span>
-        </div>
-        <div class="original-spec">
-          <b>原始工程规格：{{ d.original.spec || '未填写' }}</b
-          ><span>整单需求 {{ fmt(d.total) }} {{ d.original.unit }}</span
-          ><span>已开领料 {{ fmt(d.opened) }} {{ d.original.unit }}</span
-          ><b>本次可安排 {{ fmt(d.remaining) }} {{ d.original.unit }}</b>
-        </div>
-        <div class="demand-ledger">
-          <span
-            >原规格当前可用 <b>{{ fmt(materials[d.original.id]?.available || 0) }}</b>
-            {{ d.original.unit }}</span
-          ><span>已开领料沿用现有接口口径，包含待发占用，不等同已实际发料。</span>
-        </div>
-        <div class="allocation-title">
-          <b>本次实际用料</b><span>可同时选择多种材料，各自抵扣上方原需求</span
-          ><el-button type="primary" @click="openPicker(d)">＋ 从库存选择材料</el-button>
-        </div>
+      <section class="allocation-sheet">
         <div class="table-scroll">
           <table class="allocation-table">
             <thead>
               <tr>
-                <th>实际材料 / 当前档案规格</th>
-                <th>可用库存</th>
-                <th>抵扣原需求</th>
-                <th>换算系数</th>
-                <th>额外损耗 %</th>
-                <th>取料步长</th>
-                <th>本次需领</th>
-                <th></th>
+                <th>BOM 原材料 / 规格</th><th>基数</th><th>模数</th><th>损耗率</th>
+                <th>本次需求</th><th>本次安排材料</th><th>可用库存</th>
+                <th>本次领料量</th><th>抵扣原需求</th><th>操作</th>
               </tr>
             </thead>
-            <tbody v-for="a in d.allocations" :key="a.id">
-              <tr>
-                <td class="material-cell">
-                  <b>{{ materials[a.materialId]?.name }}</b
-                  ><small>{{ materials[a.materialId]?.code }}</small
-                  ><small>{{ materials[a.materialId]?.spec || '档案未填规格' }}</small
-                  ><el-tag v-if="a.materialId !== d.original.id" size="small" type="warning"
-                    >替换用料 · 需核对适用性</el-tag
-                  >
-                </td>
-                <td>
-                  <b>{{ fmt(materials[a.materialId]?.available || 0) }}</b>
-                  {{ materials[a.materialId]?.unit
-                  }}<el-button link type="primary" @click="showBatches(a.materialId)"
-                    >查看批次</el-button
-                  >
-                </td>
-                <td>
-                  <el-input-number
-                    v-model="a.coverage"
-                    :min="0"
-                    :precision="4"
-                    :controls="false"
-                    aria-label="抵扣原需求数量"
-                  /><small>{{ d.original.unit }}（原规格）</small>
-                </td>
-                <td>
-                  <el-input-number
-                    v-model="a.ratio"
-                    :disabled="a.materialId === d.original.id"
-                    :min="0"
-                    :precision="4"
-                    :controls="false"
-                    aria-label="原需求换算系数"
-                  /><small
-                    >1 {{ materials[a.materialId]?.unit }} 抵扣多少 {{ d.original.unit }}</small
-                  >
-                </td>
-                <td>
-                  <el-input-number
-                    v-model="a.loss"
-                    :disabled="a.materialId === d.original.id"
-                    :min="0"
-                    :max="100"
-                    :precision="2"
-                    :controls="false"
-                    aria-label="替换额外损耗率"
-                  />
-                </td>
-                <td>
-                  <el-input-number
-                    v-model="a.step"
-                    :min="0.0001"
-                    :precision="4"
-                    :controls="false"
-                    aria-label="实际取料步长"
-                  /><small>{{ materials[a.materialId]?.unit }}</small>
-                </td>
-                <td class="quantity-cell">
-                  <b>{{ fmt(quantity(a)) }}</b
-                  ><small>{{ materials[a.materialId]?.unit }}</small>
-                </td>
-                <td>
-                  <el-button
-                    link
-                    type="danger"
-                    @click="d.allocations = d.allocations.filter((x) => x.id !== a.id)"
-                    >移除</el-button
-                  >
-                </td>
+            <tbody v-for="d in demands" :key="d.id">
+              <tr v-if="!d.allocations.length">
+                <td class="bom-cell"><b>{{ d.original.name }}</b><small>{{ d.original.code }} · {{ d.original.spec || '未填规格' }}</small></td>
+                <td>{{ fmt(d.baseQty) }}</td><td>{{ fmt(d.moduleQty) }}</td><td>{{ d.lossRate }}%</td>
+                <td class="demand-amount"><b>{{ fmt(d.remaining) }} {{ d.original.unit }}</b><small>本次剩余需求</small></td>
+                <td colspan="5"><el-button link type="primary" @click="openPicker(d)">＋ 选择原料或替代料</el-button></td>
               </tr>
-              <tr class="basis-row">
-                <td colspan="8">
-                  <div>
-                    <span>{{ a.materialId === d.original.id ? '计算说明' : '换料依据 *' }}</span
-                    ><el-input
-                      v-model="a.reason"
-                      placeholder="填写规格变化、排料/模数换算依据；系统不自动认定材料可替代"
-                    /><small
-                      >需领 = {{ fmt(a.coverage) }} ÷ {{ fmt(a.ratio) }} × (1 +
-                      {{ fmt(a.loss) }}%)，按步长取整</small
-                    >
+              <tr v-for="(a, allocationIndex) in d.allocations" :key="a.id">
+                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1" class="bom-cell">
+                  <b>{{ d.original.name }}</b><small>{{ d.original.code }} · {{ d.original.spec || '未填规格' }}</small>
+                  <small>整单 {{ fmt(d.total) }}，已开 {{ fmt(d.opened) }} {{ d.original.unit }}</small>
+                </td>
+                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1">{{ fmt(d.baseQty) }}</td>
+                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1">{{ fmt(d.moduleQty) }}</td>
+                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1">{{ d.lossRate }}%</td>
+                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1" class="demand-amount">
+                  <b>{{ fmt(d.remaining) }} {{ d.original.unit }}</b><small>本次剩余需求</small>
+                </td>
+                <td class="material-cell">
+                  <b>{{ materials[a.materialId]?.name }}</b><small>{{ materials[a.materialId]?.code }} · {{ materials[a.materialId]?.spec || '未填规格' }}</small>
+                  <el-tag v-if="a.materialId !== d.original.id" size="small" type="warning">替代 {{ d.original.code }}</el-tag>
+                  <div v-if="a.materialId !== d.original.id" class="substitution-settings">
+                    <span>每单位抵扣</span><el-input-number v-model="a.ratio" :min="0" :precision="4" :controls="false" size="small" @change="updateCoverage(a, d)" />
+                    <span>{{ d.original.unit }}</span>
+                    <span>损耗%</span><el-input-number v-model="a.loss" :min="0" :max="100" :precision="2" :controls="false" size="small" @change="updateCoverage(a, d)" />
                   </div>
                 </td>
+                <td><b>{{ fmt(materials[a.materialId]?.available || 0) }}</b> {{ materials[a.materialId]?.unit }}</td>
+                <td class="quantity-cell"><el-input-number v-model="a.issueQuantity" :min="0" :precision="4" :controls="false" aria-label="本次实际材料领料数量" @change="updateCoverage(a, d)" /> {{ materials[a.materialId]?.unit }}</td>
+                <td><b class="coverage-value">{{ fmt(a.coverage) }} {{ d.original.unit }}</b></td>
+                <td>
+                  <el-button link type="primary" @click="showBatches(a.materialId)">批次</el-button>
+                  <el-button link type="danger" @click="d.allocations = d.allocations.filter((x) => x.id !== a.id)">移除</el-button>
+                  <el-input v-if="a.materialId !== d.original.id" v-model="a.reason" size="small" class="reason-input" maxlength="500" placeholder="替代依据（必填）" />
+                </td>
+              </tr>
+              <tr v-if="d.allocations.length" class="allocation-add-row">
+                <td colspan="4">
+                  <span>已抵扣 <b>{{ fmt(planned(d)) }}</b> / {{ fmt(d.remaining) }} {{ d.original.unit }}</span>
+                  <strong :class="{ 'warning-text': planned(d) < d.remaining - 0.00001 }">{{ planned(d) < d.remaining - 0.00001 ? '尚缺 ' + fmt(d.remaining - planned(d)) : '已配足' }}</strong>
+                </td>
+                <td class="add-cell"><el-button link type="primary" @click="openPicker(d)">＋ 添加材料</el-button></td>
               </tr>
             </tbody>
           </table>
-          <el-empty
-            v-if="!d.allocations.length"
-            description="原规格无可用库存，请从库存选择一种或多种材料"
-            :image-size="60"
-          />
         </div>
-        <div class="demand-footer">
-          <span
-            >本次抵扣 <b>{{ fmt(planned(d)) }}</b> / {{ fmt(d.remaining) }}
-            {{ d.original.unit }}</span
-          ><strong :class="{ 'warning-text': Math.abs(planned(d) - d.remaining) > 0.00001 }">{{
-            planned(d) > d.remaining
-              ? '分配超出剩余需求，请调整'
-              : planned(d) < d.remaining
-                ? '仍缺 ' + fmt(d.remaining - planned(d)) + ' ' + d.original.unit
-                : '本项需求已配足'
-          }}</strong>
-        </div>
+        <p class="formula-note">BOM 需求按工单数量 × 基数 ÷ 模数并计入 BOM 损耗。替代行输入实际领料量后，系统按“领料量 × 抵扣系数 ÷ (1 + 损耗率)”显示抵扣原需求；替代损耗默认复制 BOM，可调整。</p>
       </section>
       <section v-if="demands.length" class="stock-card">
-        <div class="section-heading">
-          <h3>实际材料合计校验</h3>
-          <span>同一材料跨项目合并检查可用库存，不合计不同材料的抵扣量</span>
-        </div>
-        <div class="stock-grid">
-          <div
-            v-for="(qty, id) in totals"
-            :key="id"
-            :class="{ 'stock-short': qty > (materials[id]?.available || 0) }"
-          >
-            <b>{{ materials[id]?.name }}</b
-            ><span>{{ materials[id]?.spec }}</span
-            ><span
-              >需领 {{ fmt(qty) }} / 可用 {{ fmt(materials[id]?.available || 0) }}
-              {{ materials[id]?.unit }}</span
-            ><strong>{{
-              qty > (materials[id]?.available || 0) ? '库存不足，请调整' : '当前库存足够'
-            }}</strong>
-          </div>
-        </div>
-        <p class="formula-note">
-          原需求包含BOM原损耗，原规格按1:1抵扣。替换系数由计算员根据模数/排料确认，不能只按尺寸比例自动判断；仅加本次替换额外损耗。再次预览会刷新需求与库存。
-        </p>
+        <div class="section-heading"><h3>所选材料库存合计</h3></div>
+        <el-table :data="stockSummaryRows" size="small" border>
+          <el-table-column prop="name" label="实际材料" min-width="220" />
+          <el-table-column prop="spec" label="规格" min-width="160" />
+          <el-table-column label="本次需领" width="140"><template #default="{ row }">{{ fmt(row.required) }} {{ row.unit }}</template></el-table-column>
+          <el-table-column label="可用库存" width="140"><template #default="{ row }">{{ fmt(row.available) }} {{ row.unit }}</template></el-table-column>
+          <el-table-column label="校验" width="110"><template #default="{ row }"><el-tag :type="row.required > row.available ? 'danger' : 'success'">{{ row.required > row.available ? '库存不足' : '充足' }}</el-tag></template></el-table-column>
+        </el-table>
         <el-alert v-if="errors.length" type="error" :closable="false"
           ><ul class="issue-list">
             <li v-for="error in errors" :key="error">{{ error }}</li>
@@ -257,14 +139,14 @@
       <div v-if="demands.length" class="action-bar">
         <div>
           <b>{{ gapCount ? gapCount + '项仍有缺口，可先预览部分用料' : '全部项目已安排' }}</b
-          ><small>页面调整尚未保存；刷新或切换工单后重新计算</small>
+          ><small>确认后生成领料单，并保存材料对应 BOM 项、抵扣量和替代依据</small>
         </div>
         <el-button
           type="primary"
           :disabled="loading || errors.length > 0"
           :loading="checking"
           @click="preview"
-          >刷新校验并预览本次用料</el-button
+          >校验并预览领料单</el-button
         >
       </div>
     </template>
@@ -348,7 +230,7 @@
       <p>收／发／结存来自库存流水聚合；这里查看库存来源，不锁定或分配发料批次。</p>
     </el-dialog>
 
-    <el-dialog v-model="previewVisible" title="本次用料计算结果 · 尚未生成领料单" width="92%">
+    <el-dialog v-model="previewVisible" title="确认本次领料安排" width="92%">
       <div class="preview-header">
         <h2>{{ order?.orderNo }} · {{ order?.productName }}</h2>
         <p>原始规格与本次实际选择并列；库存已重新读取。</p>
@@ -372,13 +254,9 @@
           width="120" /><el-table-column prop="reason" label="换算依据" min-width="190"
       /></el-table>
       <p v-if="gapCount">仍有 {{ gapCount }} 项未配足，缺口保留在原需求下。</p>
-      <el-alert
-        type="info"
-        :closable="false"
-        title="本次只预览计算结果；正式方案持久化和替换材料的领料抵扣接口尚未实施，因此此处不创建真实领料单。"
-      />
       <template #footer
-        ><el-button @click="previewVisible = false">返回继续调整</el-button></template
+        ><el-button @click="previewVisible = false">返回继续调整</el-button>
+        <el-button type="primary" :loading="submittingPick" @click="submitAllocations">确认生成领料单</el-button></template
       >
     </el-dialog>
   </div>
@@ -398,6 +276,7 @@ import {
   planned,
   quantity,
   validationIssues,
+  type Allocation,
   type Demand,
   type Material,
   type Order,
@@ -427,6 +306,14 @@ const message = (error: unknown) =>
 const fmt = (value: number) =>
   Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
 const totals = computed(() => materialTotals(demands.value))
+const stockSummaryRows = computed(() => Object.entries(totals.value).map(([id, required]) => ({
+  id,
+  name: materials[id]?.name || '材料信息加载中',
+  spec: materials[id]?.spec || '—',
+  unit: materials[id]?.unit || '',
+  required,
+  available: materials[id]?.available || 0,
+})))
 const errors = computed(() => validationIssues(demands.value, materials))
 const gapCount = computed(() => demands.value.filter((d) => planned(d) < d.remaining - 1e-8).length)
 const completeCount = computed(
@@ -602,6 +489,11 @@ async function selectMaterial(stock: StockVO) {
     const a = allocation(id, Math.max(0, d.remaining - planned(d)))
     // 替换材料的比例不根据尺寸或历史测试数据猜测，计算员必须明确填写。
     if (id !== d.original.id) a.ratio = 0
+    if (id !== d.original.id) {
+      a.loss = d.lossRate
+      a.issueQuantity = 0
+      a.coverage = 0
+    }
     d.allocations.push(a)
     pickerVisible.value = false
   } catch (error) {
@@ -609,6 +501,16 @@ async function selectMaterial(stock: StockVO) {
   } finally {
     pickerLoading.value = false
   }
+}
+function updateCoverage(a: Allocation, d: Demand) {
+  const issue = Number(a.issueQuantity) || 0
+  if (a.materialId === d.original.id) {
+    a.coverage = issue
+    return
+  }
+  a.coverage = a.ratio > 0
+    ? Number((issue * a.ratio / (1 + a.loss / 100)).toFixed(4))
+    : 0
 }
 
 const batchVisible = ref(false),
@@ -651,6 +553,7 @@ async function showBatches(id: string) {
   }
 }
 const previewVisible = ref(false)
+const submittingPick = ref(false)
 const previewRows = ref<
   {
     originalName: string
@@ -715,6 +618,34 @@ async function preview() {
     checking.value = false
   }
 }
+async function submitAllocations() {
+  if (!order.value || submittingPick.value) return
+  if (errors.value.length) {
+    ElMessage.warning('请先处理表格中的校验问题')
+    return
+  }
+  submittingPick.value = true
+  try {
+    const { materialPickApi } = await import('@/api/inventory/materialPick')
+    const items = demands.value.flatMap((d) => d.allocations.map((a) => ({
+      bomItemId: Number(d.bomItemId),
+      materialId: Number(a.materialId),
+      quantity: quantity(a),
+      coverageQuantity: Number(a.coverage),
+      allocationRatio: Number(a.ratio),
+      allocationLossRate: Number(a.loss),
+      allocationReason: a.reason.trim(),
+    })))
+    const response = await materialPickApi.createCalculatedProductionPick(Number(order.value.orderId), items)
+    ElMessage.success(`领料单已生成（出库单 ${response?.data}）`)
+    previewVisible.value = false
+    await load(String(order.value.orderId))
+  } catch (error: any) {
+    ElMessage.error(error?.message || '生成领料单失败')
+  } finally {
+    submittingPick.value = false
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -755,6 +686,11 @@ p {
 }
 .demo-notice {
   margin-bottom: 20px;
+}
+.summary-line {
+  margin: 8px 0 12px;
+  color: #6f7d8e;
+  font-size: 13px;
 }
 .workspace {
   display: grid;
@@ -983,9 +919,16 @@ p {
 .table-scroll {
   overflow-x: auto;
 }
+.allocation-sheet {
+  background: #fff;
+  border: 1px solid #e4e9f0;
+  border-radius: 10px;
+  margin-bottom: 18px;
+  overflow: hidden;
+}
 .allocation-table {
   width: 100%;
-  min-width: 880px;
+  min-width: 1420px;
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -998,15 +941,52 @@ p {
   white-space: nowrap;
 }
 .allocation-table td {
-  padding: 13px 10px 7px;
-  vertical-align: top;
+  padding: 10px 8px;
+  vertical-align: middle;
+  border-bottom: 1px solid #edf0f4;
 }
 .allocation-table th:first-child,
 .allocation-table td:first-child {
   padding-left: 20px;
 }
 .allocation-table .material-cell {
-  min-width: 235px;
+  min-width: 220px;
+}
+.bom-cell b,
+.material-cell b {
+  display: block;
+  color: #26384d;
+}
+.demand-amount b {
+  white-space: nowrap;
+  color: #26384d;
+}
+.substitution-settings {
+  display: grid;
+  grid-template-columns: auto 76px auto auto 76px;
+  align-items: center;
+  gap: 4px;
+  margin-top: 7px;
+  color: #778394;
+  font-size: 11px;
+}
+.substitution-settings .el-input-number {
+  width: 76px;
+}
+.allocation-add-row td {
+  background: #f8fafc;
+  color: #566477;
+  font-size: 12px;
+}
+.allocation-add-row strong {
+  margin-left: 8px;
+  color: #24734b;
+}
+.allocation-add-row .warning-text {
+  color: #bb6d16;
+}
+.allocation-add-row .add-cell {
+  text-align: right;
 }
 .material-cell .el-select {
   width: 100%;
@@ -1018,7 +998,11 @@ p {
   font-size: 11px;
 }
 .allocation-table .el-input-number {
-  width: 94px;
+  width: 108px;
+}
+.reason-input {
+  width: 180px;
+  margin-top: 5px;
 }
 .quantity-cell {
   white-space: nowrap;

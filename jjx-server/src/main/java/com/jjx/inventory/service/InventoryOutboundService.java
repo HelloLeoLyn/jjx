@@ -85,6 +85,9 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      */
     Long createProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items);
 
+    /** 创建用料计算页提交的原料/替代料分配，保留 BOM 对应项与需求抵扣量。 */
+    Long createCalculatedProductionPick(Long workOrderId, java.util.List<java.util.Map<String, Object>> items);
+
     Long createProductionSupplement(Long workOrderId, String reasonType, String reason, Long ncrId,
                                     java.math.BigDecimal productionQuantity,
                                     java.util.List<java.util.Map<String, Object>> items);

@@ -64,4 +64,20 @@ public class InventoryOutboundItem extends BaseEntity {
     /** 排序 */
     private Integer sortOrder;
 
+    /** 本次领料对应的BOM明细（替代料也指向被替代项） */
+    private Long sourceBomItemId;
+
+    /** 实际领料量折抵的原BOM需求量 */
+    private BigDecimal coverageQuantity;
+
+    /** 被替代的原BOM物料ID；原物料领料为空 */
+    private Long substituteOfMaterialId;
+
+    /** 本次替代换算系数及损耗率快照 */
+    private BigDecimal allocationRatio;
+    private BigDecimal allocationLossRate;
+
+    /** 本次替代依据 */
+    private String allocationReason;
+
 }

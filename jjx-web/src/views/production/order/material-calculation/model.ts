@@ -21,6 +21,10 @@ export interface PickRow {
   qtyNeeded: number
   available: number
   substitute: boolean
+  bomItemId?: string | number
+  baseQty?: number
+  moduleQty?: number
+  lossRate?: number
 }
 export interface Material {
   id: string
@@ -34,6 +38,7 @@ export interface Material {
 export interface Allocation {
   id: string
   materialId: string
+  issueQuantity: number
   coverage: number
   ratio: number
   loss: number
@@ -42,10 +47,14 @@ export interface Allocation {
 }
 export interface Demand {
   id: string
+  bomItemId: string
   original: Material
   total: number
   opened: number
   remaining: number
+  baseQty: number
+  moduleQty: number
+  lossRate: number
   allocations: Allocation[]
 }
 let allocationSequence = 0
@@ -54,6 +63,7 @@ export function allocation(materialId: string, coverage: number): Allocation {
   return {
     id: `allocation-${Date.now()}-${allocationSequence}`,
     materialId,
+    issueQuantity: coverage,
     coverage,
     ratio: 1,
     loss: 0,
@@ -66,7 +76,8 @@ export function buildDemands(rows: PickRow[]): Demand[] {
   return rows
     .filter((row) => !row.substitute)
     .map((row, index) => ({
-      id: `${row.materialId}-${index}`,
+      id: `${row.bomItemId ?? row.materialId}-${index}`,
+      bomItemId: String(row.bomItemId ?? row.materialId),
       original: {
         id: String(row.materialId),
         code: row.materialCode,
@@ -78,6 +89,9 @@ export function buildDemands(rows: PickRow[]): Demand[] {
       total: Number(row.demand),
       opened: Number(row.picked),
       remaining: Number(row.qtyNeeded),
+      baseQty: Number(row.baseQty ?? 1),
+      moduleQty: Number(row.moduleQty ?? 1),
+      lossRate: Number(row.lossRate ?? 0),
       allocations:
         row.available > 0
           ? [
@@ -93,6 +107,7 @@ export function planned(d: Demand) {
   return d.allocations.reduce((sum, a) => sum + (Number(a.coverage) || 0), 0)
 }
 export function quantity(a: Allocation) {
+  if (Number.isFinite(a.issueQuantity)) return Math.max(0, Number(a.issueQuantity))
   if (!(a.coverage > 0) || !(a.ratio > 0) || !(a.step > 0) || !(a.loss >= 0)) return 0
   return Number(
     (Math.ceil(((a.coverage / a.ratio) * (1 + a.loss / 100)) / a.step - 1e-9) * a.step).toFixed(4)
@@ -111,11 +126,13 @@ export function validationIssues(demands: Demand[], materials: Record<string, Ma
     if (planned(d) > d.remaining + 1e-8) errors.push(`${d.original.name}：本次分配超过剩余需求`)
     for (const a of d.allocations) {
       if (
-        ![a.coverage, a.ratio, a.loss, a.step].every(Number.isFinite) ||
+        ![a.issueQuantity, a.coverage, a.ratio, a.loss, a.step].every(Number.isFinite) ||
+        !(a.issueQuantity > 0) ||
         !(a.coverage > 0) ||
         !(a.ratio > 0) ||
         !(a.step > 0) ||
-        a.loss < 0
+        a.loss < 0 ||
+        a.loss > 100
       )
         errors.push(`${d.original.name}：请填写有效的分配量、换算系数、损耗和取料步长`)
       if (!materials[a.materialId]) errors.push(`${d.original.name}：实际材料信息尚未加载`)

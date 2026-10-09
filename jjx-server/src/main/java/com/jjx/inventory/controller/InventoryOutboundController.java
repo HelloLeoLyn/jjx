@@ -165,6 +165,15 @@ public class InventoryOutboundController {
         return Result.success(outboundService.createProductionPick(workOrderId, items));
     }
 
+    @PostMapping("/create-calculated-production-pick/{workOrderId}")
+    @Operation(summary = "按工单用料计算方案生成领料单，保留替代关系与抵扣量")
+    @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId", action = LogActions.OUTBOUND_PRODUCTION_PICK)
+    @SaCheckPermission("inventory:outbound:add")
+    public Result<Long> createCalculatedProductionPick(@PathVariable Long workOrderId,
+                                                        @RequestBody java.util.List<java.util.Map<String, Object>> items) {
+        return Result.success(outboundService.createCalculatedProductionPick(workOrderId, items));
+    }
+
     @PostMapping("/create-production-supplement/{workOrderId}")
     @Operation(summary = "创建通用工单补料单（超耗 / 报废补产）")
     @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#workOrderId", action = LogActions.OUTBOUND_PRODUCTION_SUPPLEMENT)
