@@ -189,15 +189,29 @@
         </div>
         <p class="formula-note">BOM 需求按工单数量 × 基数 ÷ 模数并计入 BOM 损耗。平替抵扣按领料量、基数/模数换算并计入损耗，最多抵扣该 BOM 剩余需求；最后一件材料可只抵扣剩余缺口。平替损耗默认复制 BOM，可调整。</p>
       </section>
-      <section v-if="demands.length" class="stock-card">
-        <div class="section-heading"><h3>所选材料库存合计</h3></div>
-        <el-table :data="stockSummaryRows" size="small" border>
-          <el-table-column prop="name" label="实际材料" min-width="220" />
-          <el-table-column prop="spec" label="规格" min-width="160" />
-          <el-table-column label="本次需领" width="140"><template #default="{ row }">{{ fmt(row.required) }} {{ row.unit }}</template></el-table-column>
-          <el-table-column label="可用库存" width="140"><template #default="{ row }">{{ fmt(row.available) }} {{ row.unit }}</template></el-table-column>
-          <el-table-column label="校验" width="110"><template #default="{ row }"><el-tag :type="row.required > row.available ? 'danger' : 'success'">{{ row.required > row.available ? '库存不足' : '充足' }}</el-tag></template></el-table-column>
+      <section v-if="demands.length" class="shortage-card">
+        <div class="section-heading">
+          <h3>未满足的 BOM 需求</h3>
+          <span>共 {{ gapCount }} 项</span>
+        </div>
+        <el-table v-if="shortageRows.length" :data="shortageRows" size="small" border>
+          <el-table-column label="原 BOM 材料" min-width="220">
+            <template #default="{ row }">
+              <b>{{ row.demand.original.name }}</b>
+              <small>{{ row.demand.original.code }} · {{ row.demand.original.spec || '未填规格' }}</small>
+            </template>
+          </el-table-column>
+          <el-table-column label="本次剩余需求" width="150" align="right">
+            <template #default="{ row }">{{ fmt(row.demand.remaining) }} {{ row.demand.original.unit }}</template>
+          </el-table-column>
+          <el-table-column label="本次已抵扣" width="150" align="right">
+            <template #default="{ row }">{{ fmt(row.covered) }} {{ row.demand.original.unit }}</template>
+          </el-table-column>
+          <el-table-column label="尚缺" width="150" align="right">
+            <template #default="{ row }"><b class="shortage-value">{{ fmt(row.gap) }} {{ row.demand.original.unit }}</b></template>
+          </el-table-column>
         </el-table>
+        <el-empty v-else description="所有 BOM 材料已配齐" :image-size="60" />
         <el-alert v-if="errors.length" type="error" :closable="false"
           ><ul class="issue-list">
             <li v-for="error in errors" :key="error">{{ error }}</li>
@@ -402,16 +416,13 @@ const message = (error: unknown) =>
 const fmt = (value: number) =>
   Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
 const totals = computed(() => materialTotals(demands.value))
-const stockSummaryRows = computed(() => Object.entries(totals.value).map(([id, required]) => ({
-  id,
-  name: materials[id]?.name || '材料信息加载中',
-  spec: materials[id]?.spec || '—',
-  unit: materials[id]?.unit || '',
-  required,
-  available: materials[id]?.available || 0,
-})))
 const errors = computed(() => validationIssues(demands.value, materials))
 const gapCount = computed(() => demands.value.filter((d) => planned(d) < d.remaining - 1e-8).length)
+const shortageRows = computed(() => demands.value.flatMap((d) => {
+  const covered = planned(d)
+  const gap = Math.max(0, d.remaining - covered)
+  return gap > 1e-8 ? [{ demand: d, covered, gap }] : []
+}))
 const completeCount = computed(
   () => demands.value.filter((d) => Math.abs(planned(d) - d.remaining) < 1e-8).length
 )
@@ -916,7 +927,7 @@ p {
 }
 .order-card,
 .demand-card,
-.stock-card,
+.shortage-card,
 .trace-card {
   background: #fff;
   border: 1px solid #e4e9f0;
@@ -1160,7 +1171,7 @@ p {
 .demand-footer .warning-text {
   color: #be7a1e;
 }
-.stock-card,
+.shortage-card,
 .trace-card {
   padding: 20px;
 }
@@ -1174,34 +1185,6 @@ p {
   font-size: 12px;
   color: #8893a3;
 }
-.stock-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-}
-.stock-grid > div {
-  border: 1px solid #e7edf3;
-  background: #fafcfe;
-  padding: 14px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-.stock-grid span {
-  display: block;
-  color: #8894a2;
-  margin: 8px 0;
-}
-.stock-grid strong {
-  color: #26816a;
-  font-weight: 500;
-}
-.stock-grid .stock-short {
-  background: #fff6f3;
-  border-color: #f5cdbf;
-}
-.stock-short strong {
-  color: #ce6247;
-}
 .formula-note {
   font-size: 12px;
   color: #8994a4;
@@ -1211,8 +1194,12 @@ p {
   padding-left: 18px;
   margin: 5px 0;
 }
-.stock-card .el-alert {
+.shortage-card .el-alert {
   margin-top: 12px;
+}
+.shortage-value {
+  color: #c45656;
+  font-weight: 700;
 }
 .trace-event {
   display: flex;
