@@ -446,7 +446,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import type { StandardProcessOption } from '@/types/product'
@@ -825,7 +825,8 @@ const setItemsFromData = (data: EngineeringRoutingItemVO[]) => {
 
 // ==================== 监听 ====================
 
-// 注意：必须放在 setItemsFromData 定义之后，否则 immediate 回调会触发 TDZ 报错
+// 说明：这里不能带 immediate——setup 期同步执行会撞上 setItemsFromData/updateGroupOrder 的 TDZ；
+// 初始加载改到 onMounted（此时所有定义均已就绪），watch 只负责后续 modelValue 变化。
 watch(
   () => props.modelValue,
   (val) => {
@@ -834,8 +835,15 @@ watch(
       setItemsFromData(val)
     }
   },
-  { immediate: true, deep: false }
+  { deep: false }
 )
+
+// 初始加载：等所有 const 定义完成、组件挂载后再组装
+onMounted(() => {
+  if (props.modelValue && props.modelValue.length > 0 && groups.value.length === 0) {
+    setItemsFromData(props.modelValue)
+  }
+})
 
 // ==================== 拖拽事件 ====================
 
