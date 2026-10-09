@@ -142,7 +142,7 @@ const frameActions:TableAction<any>[]=[
   {key:'edit',label:'编辑',permission:'engineering:resource:edit'},
   {key:'plate',label:'制版',type:'success',permission:'engineering:resource:edit',visible:({row})=>row.status===ScreenFrameStatusEnum.EMPTY.value},
   {key:'wash',label:'洗版',type:'warning',permission:'engineering:resource:maintain',visible:({row})=>row.status===ScreenFrameStatusEnum.PLATED.value},
-  {key:'history',label:'履历',permission:'engineering:resource:view'},
+  {key:'history',label:'履历',permission:'engineering:screen-resource:view'},
 ]
 const dieActions:TableAction<any>[]=[
   {key:'edit',label:'编辑',permission:'engineering:resource:edit'},

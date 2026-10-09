@@ -1,6 +1,7 @@
 package com.jjx.engineering.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import io.swagger.v3.oas.annotations.Operation;
 import com.jjx.common.core.result.Result;
 import com.jjx.engineering.service.EngineeringResourceService;
@@ -16,7 +17,7 @@ import java.util.Map;
 public class EngineeringResourceController {
     private final EngineeringResourceService service;
 
-    @GetMapping("/screen-frames") @SaCheckPermission("engineering:resource:view")
+    @GetMapping("/screen-frames") @SaCheckPermission("engineering:screen-resource:view")
     public Result<Map<String,Object>> frames(@RequestParam(required=false) String keyword,@RequestParam(required=false) String status,
             @RequestParam(required=false) Integer pageNum,@RequestParam(required=false) Integer pageSize){
         return Result.success(service.pageFrames(keyword,status,pageNum,pageSize));}
@@ -29,7 +30,7 @@ public class EngineeringResourceController {
     @PostMapping("/screen-frames/{id}/actions") @SaCheckPermission("engineering:resource:maintain")
     public Result<Void> frameAction(@PathVariable Long id,@RequestBody Map<String,Object> body){service.actOnFrame(id,body);return Result.success();}
 
-    @GetMapping("/dies") @SaCheckPermission("engineering:resource:view")
+    @GetMapping("/dies") @SaCheckPermission("engineering:die-resource:view")
     public Result<Map<String,Object>> dies(@RequestParam(required=false) String keyword,@RequestParam(required=false) String status,
             @RequestParam(required=false) Integer pageNum,@RequestParam(required=false) Integer pageSize){
         return Result.success(service.pageDies(keyword,status,pageNum,pageSize));}
@@ -70,12 +71,12 @@ public class EngineeringResourceController {
         return Result.success(service.importDies(rows));
     }
 
-    @GetMapping("/{type}/by-product/{productId}") @SaCheckPermission("engineering:resource:view")
+    @GetMapping("/{type}/by-product/{productId}") @SaCheckPermission(value={"engineering:die-resource:view","engineering:screen-resource:view"},mode=SaMode.OR)
     public Result<List<Map<String,Object>>> resourcesByProduct(@PathVariable String type,@PathVariable Long productId){return Result.success(service.resourcesByProduct(type,productId));}
-    @GetMapping("/{type}/{id}/products") @SaCheckPermission("engineering:resource:view")
+    @GetMapping("/{type}/{id}/products") @SaCheckPermission(value={"engineering:die-resource:view","engineering:screen-resource:view"},mode=SaMode.OR)
     public Result<List<Map<String,Object>>> products(@PathVariable String type,@PathVariable Long id){return Result.success(service.products(type,id));}
     @PutMapping("/{type}/{id}/products") @SaCheckPermission("engineering:resource:edit")
     public Result<Void> replaceProducts(@PathVariable String type,@PathVariable Long id,@RequestBody Map<String,Object> body){service.replaceProducts(type,id,body);return Result.success();}
-    @GetMapping("/{type}/{id}/maintenance") @SaCheckPermission("engineering:resource:view")
+    @GetMapping("/{type}/{id}/maintenance") @SaCheckPermission(value={"engineering:die-resource:view","engineering:screen-resource:view"},mode=SaMode.OR)
     public Result<List<Map<String,Object>>> maintenance(@PathVariable String type,@PathVariable Long id){return Result.success(service.maintenance(type,id));}
 }

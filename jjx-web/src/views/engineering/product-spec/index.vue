@@ -119,7 +119,7 @@
 
             <el-divider content-position="left">刀模（库位）</el-divider>
             <div style="margin-bottom: 6px">
-              <el-button type="primary" plain size="small" @click="openDieLink">关联刀模</el-button>
+              <el-button type="primary" plain size="small" v-hasPermi="['engineering:resource:edit']" @click="openDieLink">关联刀模</el-button>
             </div>
             <el-table :data="productDies" size="small" border>
               <el-table-column label="刀模编号" width="140">
@@ -139,7 +139,7 @@
               </el-table-column>
               <el-table-column label="操作" width="90" align="center">
                 <template #default="{ row }">
-                  <el-button link type="danger" @click="unlinkDie(row)">解除</el-button>
+                  <el-button link type="danger" v-hasPermi="['engineering:resource:edit']" @click="unlinkDie(row)">解除</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -264,7 +264,7 @@
         </el-table-column>
         <el-table-column label="操作" width="90" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" @click="linkDie(row)">关联</el-button>
+            <el-button link type="primary" v-hasPermi="['engineering:resource:edit']" @click="linkDie(row)">关联</el-button>
           </template>
         </el-table-column>
       </el-table>
