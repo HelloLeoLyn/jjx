@@ -66,7 +66,7 @@
               :class="{ 'drag-over': isDragOverTable }"
             >
               <el-table
-                :ref="(el: any) => (assemblyTableRefs.value[tab.value] = el)"
+                :ref="(el: any) => (assemblyTableRefs[tab.value] = el)"
                 :data="assemblyGroupsByTab(tab.value)"
                 border
                 stripe
