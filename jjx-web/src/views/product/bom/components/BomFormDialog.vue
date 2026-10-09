@@ -112,7 +112,7 @@
         <el-button link type="primary" @click="downloadImportTemplate">
           <el-icon><Download /></el-icon>下载导入模板（.xlsx）
         </el-button>
-        <span class="template-hint">列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜单用量｜基数｜应用料｜预计不良｜最低投料｜实际投料（首行表头，数据从第 2 行起；预计不良填小数，如 0.05＝5%）</span>
+        <span class="template-hint">必填：材料名称、规格（乘/跳）、模数；其余列可空。列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜单用量｜基数｜应用料｜预计不良｜最低投料｜实际投料（首行表头，数据从第 2 行起；预计不良填小数，如 0.05＝5%）</span>
       </div>
     </div>
 
@@ -287,8 +287,8 @@ const handleImportExceed = () => {
  */
 const downloadImportTemplate = () => {
   const header = [
-    '序号', '项目名称', '材料名称', '单位', '宽度', '规格（乘/跳）', '长度',
-    '模数', '单用量', '基数', '应用料', '预计不良', '最低投料', '实际投料',
+    '序号', '项目名称', '材料名称（必填）', '单位', '宽度', '规格（乘/跳）（必填）', '长度',
+    '模数（必填）', '单用量', '基数', '应用料', '预计不良', '最低投料', '实际投料',
   ]
   const sample = [
     [1, '示例-主体', '白卡纸 300g', '张', 787, '*', 1092, 1, 1, 1000, '', 0.05, '', ''],
@@ -356,6 +356,7 @@ const parseExcelFile = (file: File) => {
  */
 const parseRows = (rows: any[][]): EngineeringBomItem[] => {
   const items: EngineeringBomItem[] = []
+  const missingRows: number[] = []
 
   // 查找表头行（包含"序号"、"项目名称"等关键字的行）
   let headerRowIndex = -1
@@ -399,6 +400,11 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     const width = parseFloat(col4.replace(/[^\d.]/g, '')) || 0
     const length = parseFloat(col6.replace(/[^\d.]/g, '')) || 0
     const moduleQty = parseFloat(String(row[7] || '0').replace(/[^\d.]/g, '')) || 0
+    // 必填（用户口径）：材料名称 / 规格(索引5) / 模数(索引7)；缺任一则该行不导入
+    if (!col5 || !String(row[7] ?? '').trim()) {
+      missingRows.push(i + 1)
+      continue
+    }
     const quantity = parseFloat(String(row[8] || '0').replace(/[^\d.]/g, '')) || 0
     const baseQty = parseFloat(String(row[9] || '1').replace(/[^\d.]/g, '')) || 1
     // 应用料（第10列）：有值直读，无值留空由后端计算
@@ -437,6 +443,10 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     }
 
     items.push(item)
+  }
+
+  if (missingRows.length) {
+    ElMessage.warning(`有 ${missingRows.length} 行缺少必填项（材料名称/规格/模数），已跳过：第 ${missingRows.join('、')} 行`)
   }
 
   return items
