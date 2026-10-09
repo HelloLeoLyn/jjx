@@ -182,7 +182,7 @@
             </el-table-column>
           </el-table>
         </div>
-        <p class="formula-note">BOM 需求按工单数量 × 基数 ÷ 模数并计入 BOM 损耗。平替材料的基数、模数可输入，抵扣系数按原 BOM 单位需求 ÷ 平替材料单位需求自动计算；抵扣原需求 = 领料量 × 抵扣系数 ÷ (1 + 损耗率)。平替损耗默认复制 BOM，可调整。</p>
+        <p class="formula-note">BOM 需求按工单数量 × 基数 ÷ 模数并计入 BOM 损耗。平替抵扣按领料量、基数/模数换算并计入损耗，最多抵扣该 BOM 剩余需求；最后一件材料可只抵扣剩余缺口。平替损耗默认复制 BOM，可调整。</p>
       </section>
       <section v-if="demands.length" class="stock-card">
         <div class="section-heading"><h3>所选材料库存合计</h3></div>
@@ -596,9 +596,14 @@ function updateCoverage(a: Allocation, d: Demand) {
     a.coverage = issue
     return
   }
-  a.coverage = a.ratio > 0
+  const otherCoverage = d.allocations
+    .filter((item) => item.id !== a.id)
+    .reduce((sum, item) => sum + (Number(item.coverage) || 0), 0)
+  const remainingCoverage = Math.max(0, d.remaining - otherCoverage)
+  const calculatedCoverage = a.ratio > 0
     ? Number((issue * a.ratio / (1 + a.loss / 100)).toFixed(4))
     : 0
+  a.coverage = Math.min(calculatedCoverage, remainingCoverage)
 }
 function maxIssueQuantity(row: AllocationTableRow) {
   const a = row.allocation
@@ -621,10 +626,15 @@ function maxIssueQuantity(row: AllocationTableRow) {
     : a.ratio > 0
       ? coverageLimit * (1 + a.loss / 100) / a.ratio
       : 0
-  const limit = Math.max(0, Math.min(stockLimit, demandLimit))
-  return isPieceUnit(materials[a.materialId]?.unit)
-    ? Math.floor(limit + 1e-9)
-    : Math.floor(limit * 10000 + 1e-9) / 10000
+  const pieceUnit = isPieceUnit(materials[a.materialId]?.unit)
+  const stockCap = pieceUnit ? Math.floor(stockLimit + 1e-9) : stockLimit
+  const demandCap = pieceUnit
+    ? row.kind === 'substitute'
+      ? Math.ceil(demandLimit - 1e-9)
+      : Math.floor(demandLimit + 1e-9)
+    : demandLimit
+  const limit = Math.max(0, Math.min(stockCap, demandCap))
+  return pieceUnit ? Math.floor(limit + 1e-9) : Math.floor(limit * 10000 + 1e-9) / 10000
 }
 function updateSubstitution(a: Allocation, d: Demand) {
   const originalRate = d.baseQty > 0 && d.moduleQty > 0 ? d.baseQty / d.moduleQty : 0

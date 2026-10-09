@@ -1560,8 +1560,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             BigDecimal expectedCoverage = qty.multiply(ratio).divide(
                     BigDecimal.ONE.add(lossRate.divide(BigDecimal.valueOf(100), 12, java.math.RoundingMode.HALF_UP)),
                     8, java.math.RoundingMode.HALF_UP);
-            if (expectedCoverage.subtract(coverage).abs().compareTo(new BigDecimal("0.0001")) > 0)
-                throw new BusinessException("抵扣需求与实际领料量、换算系数及损耗率不一致，请重新计算");
+            if (coverage.subtract(expectedCoverage).compareTo(new BigDecimal("0.0001")) > 0)
+                throw new BusinessException("抵扣需求不能超过实际领料量按换算系数及损耗率计算的抵扣上限");
             com.jjx.engineering.domain.entity.EngineeringBomItem bi = bomById.get(bomItemId);
             if (bi == null || !"buy".equals(bi.getSourceType())) throw new BusinessException("BOM需求项已变化，请重新计算");
             requestedByMaterial.merge(materialId, qty, BigDecimal::add);
