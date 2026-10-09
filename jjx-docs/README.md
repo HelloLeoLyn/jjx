@@ -63,7 +63,7 @@
 - `guides/master-plan-20260914.md` —— 整体目标、现状进度、M0~M4 路线图、多 agent 协作规则 ✅
 
 ### 第 9 章 素材与数据（不是文档，按需查）
-`assets/` 图片素材｜`print_template/` 打印模板原件｜`requirements/` `sources/` 原始材料（含导入源数据）｜`tasks/` 历史任务导入｜`sql/` 迁移与数据脚本｜`accounts/` 账号（勿外传）｜`standards/` 规范（`CONVENTIONS.md` 唯一真源）
+`assets/` 图片素材｜`print_template/` 打印模板原件｜`requirements/` `sources/` 原始材料（含导入源数据）｜`tasks/` 历史任务导入｜`sql/` 迁移与数据脚本｜`accounts/` 账号（勿外传）｜`standards/` 规范（`CONVENTIONS.md` 唯一真源；另有《单据金额口径规范》）
 
 ## 导读（我是谁 / 我要干嘛 → 按顺序读）
 
@@ -78,6 +78,7 @@
 | 我要跑脚本 / 动数据库 | 第 2 章《脚本命令手册》 |
 | 我要查当时的来龙去脉 | 第 7 章 → `history/INDEX.md` 按文件名/主题搜 |
 | 我要看整体目标与进度 | 第 8 章《整体方案与路线》 |
+| 我要核对单据金额口径（报价 / 订单 / 采购 / 样品） | `standards/单据金额口径规范.md` |
 
 ## 维护标准（新文档必须遵守）
 
