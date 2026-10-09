@@ -273,6 +273,8 @@ const handleItemsChange = (items: EngineeringBomItem[]) => {
 const handleImportFileChange = (uploadFile: UploadFile) => {
   if (!uploadFile.raw) return
   parseExcelFile(uploadFile.raw)
+  // 解析后清空上传列表，避免 :limit=1 槽位被占用、再次上传触发 on-exceed（dev-20261009-034）
+  importUploadRef.value?.clearFiles()
 }
 
 /**
