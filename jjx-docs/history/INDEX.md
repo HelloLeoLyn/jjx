@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-09 (dev-20261009-041) | bom-import-quantity-source-dev-20261009-041.md | 修复BOM导入实发数量间接覆盖应用料 |
 | 2026-10-09 (dev-20261009-039) | bom-applied-quantity-dev-20261009-039.md | BOM应用料改为系统计算并移除Excel录入 |
 | 2026-10-09 (dev-20261009-029) | engineering-drawing-workspace-dev-20261009-029.md | 工程图纸操作优化与图纸版本、打印联动 |
 | 2026-10-09 (dev-20261009-024) | engineering-drawing-categories-dev-20261009-024.md | 工程图纸名称与上传图种分类统一 |

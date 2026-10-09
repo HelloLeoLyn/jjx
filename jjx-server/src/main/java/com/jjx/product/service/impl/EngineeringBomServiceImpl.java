@@ -356,7 +356,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 // 原只比 quantity 导致改模数/基数（含空→值、值→空）流水无记录；统一 diffDecimal 防 BigDecimal scale 误报
                 String label = matLabel(e.getValue());
                 changeRecorder.diffDecimal(changes, "用量(" + label + ")",
-                        oldIt.getQuantity(), e.getValue().getQuantity());
+                        oldIt.getQuantity(), calculatedUnitQuantity(e.getValue().getBaseQty(),
+                                e.getValue().getModuleQty(), e.getValue().getQuantity()));
                 changeRecorder.diffDecimal(changes, "基数(" + label + ")",
                         oldIt.getBaseQty(), e.getValue().getBaseQty());
                 changeRecorder.diffDecimal(changes, "模数(" + label + ")",
@@ -698,16 +699,27 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return item;
     }
 
+    private java.math.BigDecimal calculatedUnitQuantity(java.math.BigDecimal base, java.math.BigDecimal module,
+                                                       java.math.BigDecimal legacyQuantity) {
+        if (base != null && base.signum() > 0 && module != null && module.signum() > 0) {
+            return base.divide(module, 4, java.math.RoundingMode.HALF_UP);
+        }
+        // 缺少有效基数/模数的历史明细保留原用量，由既有审核校验处理。
+        return legacyQuantity != null ? legacyQuantity : java.math.BigDecimal.ZERO;
+    }
+
     /**
      * 计算应用料/实际投料：
-     *  applied_qty = quantity × (1 + loss_rate/100)
+     *  quantity = base_qty / module_qty（有效基数、模数下先重算）；applied_qty = quantity × (1 + loss_rate/100)
      *  actual_issue_qty：存单位应用料（含损耗、不取整）
      *  整批取整与最低投料量下限由领料/缺料/预留侧按工单数量计算（对应各服务里的 batchDemand 方法）
      *  始终按公式重新计算
      */
     private void calculateAppliedIssue(EngineeringBomItem item) {
+        // 与前端一致：有效基数、模数下先计算单位用量，不采用导入/旧客户端的实发数量。
+        java.math.BigDecimal qty = calculatedUnitQuantity(item.getBaseQty(), item.getModuleQty(), item.getQuantity());
+        item.setQuantity(qty);
         // 应用料
-        java.math.BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : java.math.BigDecimal.ZERO;
         Integer loss = item.getLossRate() != null ? item.getLossRate() : 0;
         item.setAppliedQty(qty.multiply(java.math.BigDecimal.valueOf(1 + loss / 100.0))
                 .setScale(4, java.math.RoundingMode.HALF_UP));

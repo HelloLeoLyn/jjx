@@ -112,7 +112,7 @@
         <el-button link type="primary" @click="downloadImportTemplate">
           <el-icon><Download /></el-icon>下载导入模板（.xlsx）
         </el-button>
-        <span class="template-hint">必填：材料名称、规格（乘/跳）、模数；其余列可空。列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜单用量｜基数｜预计不良｜最低投料｜实际投料（首行表头，数据从第 2 行起；预计不良填小数，如 0.05＝5%）。应用料由系统按用量及损耗计算，导入时忽略同名列。</span>
+        <span class="template-hint">必填：材料名称、规格（乘/跳）、模数；其余列可空。列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜基数｜预计不良｜最低投料｜实际投料（首行表头，数据从第 2 行起；预计不良填小数，如 0.05＝5%）。用量由基数÷模数计算，应用料再计入损耗；Excel的单用量、实发数量、数量、应用料列不作为计算输入。</span>
       </div>
     </div>
 
@@ -157,6 +157,7 @@ import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import type { EngineeringBomFormData, EngineeringBomItem } from '@/types/product/bom'
 import type { ProductItem } from '@/types/product'
 import * as XLSX from 'xlsx'
+import { calculateBomQuantity } from '@/utils/bomQuantity'
 
 interface Props {
   modelValue: boolean
@@ -290,11 +291,11 @@ const handleImportExceed = () => {
 const downloadImportTemplate = () => {
   const header = [
     '序号', '项目名称', '材料名称（必填）', '单位', '宽度', '规格（乘/跳）（必填）', '长度',
-    '模数（必填）', '单用量', '基数', '预计不良', '最低投料', '实际投料',
+    '模数（必填）', '基数', '预计不良', '最低投料', '实际投料',
   ]
   const sample = [
-    [1, '示例-主体', '白卡纸 300g', '张', 787, '*', 1092, 1, 1, 1000, 0.05, '', ''],
-    [2, '示例-内衬', '瓦楞纸板', '张', 500, '/', 700, 1, 2, 1000, 0.03, '', ''],
+    [1, '示例-主体', '白卡纸 300g', '张', 787, '*', 1092, 1, 1000, 0.05, '', ''],
+    [2, '示例-内衬', '瓦楞纸板', '张', 500, '/', 700, 1, 1000, 0.03, '', ''],
   ]
   const sheet = XLSX.utils.aoa_to_sheet([header, ...sample])
   sheet['!cols'] = header.map(() => ({ wch: 12 }))
@@ -354,8 +355,8 @@ const parseExcelFile = (file: File) => {
  * 解析行数据为 EngineeringBomItem 数组
  *
  * 按【表头名】映射列（不再按固定列号）：文件里只要有「品名 / 规格 / 模数」三列即可导入，
- * 应用料属于系统计算结果，不映射Excel列；其余列有就取、没有就留空（用户口径：必要的那几项有就行，其他按实际情况来）。
- * 表头别名：品名=原料品名/材料名称/品名；品类=项目/项目名称；数量=单用量/实发数量/数量。
+ * 用量、应用料属于系统计算结果，不映射Excel单用量/实发数量/数量/应用料列；其余列有就取、没有就留空（用户口径：必要的那几项有就行，其他按实际情况来）。
+ * 表头别名：品名=原料品名/材料名称/品名；品类=项目/项目名称。
  */
 const parseRows = (rows: any[][]): EngineeringBomItem[] => {
   const items: EngineeringBomItem[] = []
@@ -368,7 +369,6 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     spec: ['规格'],
     unit: ['单位'],
     module: ['模数'],
-    qty: ['单用量', '实发数量', '数量'],
     base: ['基数'],
     loss: ['预计不良'],
     minIssue: ['最低投料'],
@@ -435,6 +435,8 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
 
     const itemName = cellOf(row, 'item')
     const actualRaw = cellOf(row, 'actualIssue')
+    const baseQty = num(cellOf(row, 'base'), 1) || 1
+    const moduleQty = num(moduleRaw, 1) || 1
 
     const item: EngineeringBomItem = {
       itemId: undefined,
@@ -445,11 +447,11 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       materialName,
       specification: spec,
       unit: cellOf(row, 'unit') || 'PCS',
-      quantity: num(cellOf(row, 'qty')),
+      quantity: calculateBomQuantity(baseQty, moduleQty) ?? 0,
       actualIssueQty: actualRaw ? num(actualRaw) : undefined,
       lossRate: num(cellOf(row, 'loss')) * 100,
-      baseQty: num(cellOf(row, 'base'), 1) || 1,
-      moduleQty: num(moduleRaw, 1) || 1,
+      baseQty,
+      moduleQty,
       minIssueQty: num(cellOf(row, 'minIssue')),
       widthMm: num(cellOf(row, 'width')),
       lengthMm: num(cellOf(row, 'length')),

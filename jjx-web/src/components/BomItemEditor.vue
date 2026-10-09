@@ -106,8 +106,8 @@
         <template #default="scope">
           <el-input-number
             v-model="scope.row.moduleQty"
-            :min="0"
-            :precision="4"
+            :min="1"
+            :precision="0"
             :step="1"
             size="small"
             controls-position="right"
@@ -271,6 +271,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Refresh, CopyDocument, Rank } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
 import type { EngineeringBomItem } from '@/types/product/bom'
+import { calculateBomQuantity } from '@/utils/bomQuantity'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import { standardProcessApi } from '@/api/product/standardProcess'
@@ -488,11 +489,6 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
  * 数量 = 基数 ÷ 模数
  */
 const handleModuleQtyChange = (row: EngineeringBomItem) => {
-  // 缺值/非法不参与计算（不再静默当 1），由提交审核前校验拦截
-  const moduleQty = Number(row.moduleQty)
-  const baseQty = Number(row.baseQty)
-  if (!Number.isFinite(moduleQty) || moduleQty <= 0 || !Number.isFinite(baseQty) || baseQty <= 0) return
-  row.quantity = Number((baseQty / moduleQty).toFixed(4))
   recalcAppliedIssue(row)
 }
 
@@ -501,11 +497,6 @@ const handleModuleQtyChange = (row: EngineeringBomItem) => {
  * 数量 = 基数 ÷ 模数
  */
 const handleBaseQtyChange = (row: EngineeringBomItem) => {
-  // 缺值/非法不参与计算（不再静默当 1），由提交审核前校验拦截
-  const moduleQty = Number(row.moduleQty)
-  const baseQty = Number(row.baseQty)
-  if (!Number.isFinite(moduleQty) || moduleQty <= 0 || !Number.isFinite(baseQty) || baseQty <= 0) return
-  row.quantity = Number((baseQty / moduleQty).toFixed(4))
   recalcAppliedIssue(row)
 }
 
@@ -516,10 +507,13 @@ const handleLossRateChange = (row: EngineeringBomItem) => {
 
 /**
  * 计算应用料/实际投料（前端预览，与后端一致）
- * 应用料 = 用量 × (1 + 损耗率/100)
+ * 有效基数、模数下：用量 = 基数 ÷ 模数；应用料 = 用量 × (1 + 损耗率/100)
  * 实际投料 = 单位应用料（含损耗、不取整）；整批取整与最低投料量下限由领料/缺料/预留侧按工单数量计算
  */
 const recalcAppliedIssue = (row: EngineeringBomItem) => {
+  // 初始化/导入/参数变更走同一口径，不能沿用Excel实发数量或旧quantity。
+  const quantity = calculateBomQuantity(row.baseQty, row.moduleQty)
+  if (quantity !== undefined) row.quantity = quantity
   const qty = Number(row.quantity) || 0
   const loss = Number(row.lossRate) || 0
   const applied = qty * (1 + loss / 100)
@@ -541,12 +535,8 @@ watch(
     if (isUpdating) return
     if (JSON.stringify(newVal) !== JSON.stringify(flattenTree(items.value))) {
       items.value = buildTree(newVal)
-      // 应用料/实际投料：按公式重新计算预览（递归）
-      walkTree(items.value, (row) => {
-        if (row.quantity != null) {
-          recalcAppliedIssue(row)
-        }
-      })
+      // 初始化也先按当前基数/模数重算用量，再计算应用料（递归）。
+      walkTree(items.value, recalcAppliedIssue)
     }
   },
   { immediate: true, deep: true }
