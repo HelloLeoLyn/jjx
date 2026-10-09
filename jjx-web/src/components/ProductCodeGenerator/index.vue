@@ -1,32 +1,5 @@
 <template>
   <div class="product-code-generator">
-    <!-- 序号（2026-09-30 dev-20260930-011）：默认自动取号，可手填 1~4 位（超过 999 给 4 位） -->
-    <el-row :gutter="16">
-      <el-col :span="12">
-        <el-form-item label="序号">
-          <el-input
-            v-model="state.serialNo"
-            placeholder="点「取号」自动取，或手填 1~4 位数字"
-            maxlength="4"
-            :disabled="disabled || !serialEditable"
-            @input="onSerialInput"
-            @blur="onSerialBlur"
-          >
-            <template v-if="!hideGenerate" #append>
-              <el-button
-                :icon="Refresh"
-                :loading="generating"
-                :disabled="disabled || !serialEditable"
-                @click="handleGenerate"
-                >取号</el-button
-              >
-            </template>
-          </el-input>
-          <div class="code-hint">不满 3 位自动补 0（9 → 009）；序号超过 999 直接给 4 位</div>
-        </el-form-item>
-      </el-col>
-    </el-row>
-
     <el-row :gutter="16">
       <el-col :span="12">
         <el-form-item label="面板结构" required>
@@ -97,6 +70,43 @@
               :value="o.value"
             />
           </el-select>
+        </el-form-item>
+      </el-col>
+    </el-row>
+    <!-- 序号（2026-09-30 dev-20260930-011）：默认自动取号，可手填 1~4 位（超过 999 给 4 位） -->
+    <el-row :gutter="16">
+      <el-col :span="12">
+        <el-form-item label="序号">
+          <el-input
+            v-model="state.serialNo"
+            placeholder="点「取号」自动取，或手填 1~4 位数字"
+            maxlength="4"
+            :disabled="disabled || !serialEditable"
+            @input="onSerialInput"
+            @blur="onSerialBlur"
+          >
+            <template v-if="!hideGenerate" #append>
+              <el-button
+                :icon="Refresh"
+                :loading="generating"
+                :disabled="disabled || !serialEditable"
+                @click="handleGenerate"
+                >取号</el-button
+              >
+            </template>
+          </el-input>
+          <div class="code-hint">不满 3 位自动补 0（9 → 009）；序号超过 999 直接给 4 位</div>
+        </el-form-item>
+      </el-col>
+      <el-col :span="12">
+        <el-form-item label="产品编码">
+          <el-input
+            :model-value="preview?.productCode || ''"
+            placeholder="选择编码要素后自动生成"
+            readonly
+            class="code-preview"
+          />
+          <div v-if="hint" class="code-hint">{{ hint }}</div>
         </el-form-item>
       </el-col>
     </el-row>
@@ -248,13 +258,14 @@ defineExpose({
 </script>
 
 <style scoped>
-.code-preview {
-  margin-left: 12px;
-  font-size: 13px;
+.code-preview :deep(.el-input__inner) {
+  font-family: monospace;
   color: #67c23a;
 }
 .code-hint {
-  margin-left: 12px;
+  width: 100%;
+  margin-top: 4px;
+  line-height: 1.5;
   font-size: 12px;
   color: #909399;
 }
