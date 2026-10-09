@@ -48,8 +48,18 @@ export interface Demand {
   remaining: number
   allocations: Allocation[]
 }
+let allocationSequence = 0
 export function allocation(materialId: string, coverage: number): Allocation {
-  return { id: crypto.randomUUID(), materialId, coverage, ratio: 1, loss: 0, step: 1, reason: '' }
+  allocationSequence += 1
+  return {
+    id: `allocation-${Date.now()}-${allocationSequence}`,
+    materialId,
+    coverage,
+    ratio: 1,
+    loss: 0,
+    step: 1,
+    reason: '',
+  }
 }
 export function buildDemands(rows: PickRow[]): Demand[] {
   // 现有接口不返回BOM行ID：只作为本页分组键，不能当作落库需求ID。
