@@ -208,7 +208,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         if (productionOrder == null) throw new BusinessException("关联生产工单不存在");
 
         Map<Long, com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems = new HashMap<>();
-        // 历史未绑定单据不拿“当前版本”冒充原始 BOM，位号/模数继续留空。
+        // 历史未绑定单据不拿“当前版本”冒充原始 BOM，项目（工序）/模数继续留空。
         com.jjx.engineering.domain.entity.EngineeringBom printBom = productionOrder.getBomId() == null
                 ? null : productionBomResolver.resolve(productionOrder);
         if (printBom != null) {
@@ -231,7 +231,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             PickOrderPrintItemVO item = new PickOrderPrintItemVO();
             item.setSequence(sequence++);
             item.setMaterialName(outboundItem.getMaterialName());
-            item.setProjectName(bomItem == null ? null : bomItem.getPositionNo());
+            item.setProjectName(bomItem == null ? null : bomItem.getProcessName());
             item.setSpecification(outboundItem.getSpecification());
             item.setUnit(outboundItem.getUnit());
             item.setModuleQty(bomItem == null ? null : bomItem.getModuleQty());
