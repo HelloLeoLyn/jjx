@@ -13,6 +13,12 @@
 
     <!-- 批量操作 -->
     <div class="batch-print-action">
+      <el-button
+        v-hasPermi="['production:order:view']"
+        type="primary"
+        plain
+        @click="router.push('/production-material/calculation')"
+      >用料计算 · 场景演示</el-button>
       <el-button icon="Printer" @click="handleBatchPrint">打印指令单</el-button>
     </div>
     <OrderBatchActions
@@ -771,6 +777,12 @@ const handleDeleteOrder = (order: any) => {
 
 const handleMoreAction = (order: ProductionOrderVO, command: string) => {
   switch (command) {
+    case 'material-calculation':
+      router.push({
+        path: '/production-material/calculation',
+        query: { orderNo: order.orderNo, orderId: String(order.orderId) },
+      })
+      break
     case 'copy':
       handleCopyOrder(order)
       break

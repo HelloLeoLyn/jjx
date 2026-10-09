@@ -41,6 +41,19 @@ function endProgress() {
 }
 export const constantRoutes: RouteRecordRaw[] = [
   {
+    path: '/production-material',
+    component: () => import('@/layout/index.vue'),
+    meta: { hidden: true },
+    children: [
+      {
+        path: 'calculation',
+        name: 'WorkOrderMaterialCalculationPreview',
+        component: () => import('@/views/production/order/material-calculation/index.vue'),
+        meta: { hidden: true, title: '工单用料计算 · 演示', permission: 'production:order:view' },
+      },
+    ],
+  },
+  {
     // 2026-09-29（dev-20260929-007）：单页工作台后，旧「来料检验单」子页改为重定向 ——
     // 历史链接/待办通知不失效，落到 /inventory/iqc 并自动选中该批次（附带原 action 参数）。
     path: '/inventory/iqc-detail/:inboundId',

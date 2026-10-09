@@ -96,6 +96,12 @@
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item
+              command="material-calculation"
+              v-if="order.orderType === OrderType.WORK_ORDER && hasPermi(['production:order:view'])"
+            >
+              用料计算（UI预览）
+            </el-dropdown-item>
+            <el-dropdown-item
               command="submit-review"
               v-if="
                 order.orderStatus === ProductionOrderStatusEnum.DRAFT.value &&
