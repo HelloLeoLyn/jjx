@@ -34,6 +34,7 @@
                 <template v-if="groupIndex === 1">
                   <div class="block-title">产　品　结　构　图</div>
                   <div class="structure-image"><img v-if="structureImage" :src="structureImage" alt="产品结构图" /><span v-else class="blank-note">暂无产品结构图</span></div>
+                  <div v-if="structureImage && structureCaption" class="structure-caption">{{ structureCaption }}</div>
                 </template>
                 <table class="paper-grid flow-grid">
                   <colgroup><col style="width: 13%" /><col style="width: 65%" /><col style="width: 22%" /></colgroup>
@@ -75,7 +76,7 @@
           </template>
 
           <template v-else-if="page.kind === 'image'">
-            <div class="attachment-name">{{ page.file?.name }}</div>
+            <div class="attachment-name">{{ page.file ? documentFileCaption(page.file) : '' }}</div>
             <div class="attachment-artwork"><img :src="page.image?.url" :alt="page.file?.name" /></div>
           </template>
 
@@ -97,9 +98,9 @@
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import { InboundOrderStatusEnum } from '@/enums/inventory'
-import { plain, printParams, printCapacities, type DocsetData, type DocPage } from './docset'
+import { plain, printParams, printCapacities, documentFileCaption, type DocsetData, type DocPage } from './docset'
 
-defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string }>()
+defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string }>()
 const embossLabels = ['凹凸调机高度', '凹凸要求高度', '凹凸上模温度', '凹凸下模温度', '凹凸下压时间', '凹凸保持时间']
 function padded(rows: Record<string, any>[] = [], size = 10): (Record<string, any> | null)[] { return Array.from({ length: Math.max(size, rows.length) }, (_, i) => rows[i] || null) }
 function operations(row: Record<string, any>) { return row.children?.length ? row.children : [row] }
@@ -158,7 +159,8 @@ function materialSpec(row?: Record<string, any> | null): string {
 .operation-symbol sub { font-size:9px; }
 .operation-note { font-size:10px; }
 .flow-plus { font-family:Arial,sans-serif; }
-.structure-image { height:186px; display:flex; align-items:center; justify-content:center; padding:10px; box-sizing:border-box; }
+.structure-image { height:174px; display:flex; align-items:center; justify-content:center; padding:10px; box-sizing:border-box; }
+.structure-caption { height:12px; padding:0 6px; font-size:8px; line-height:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; box-sizing:border-box; }
 .structure-image img { width:100%; height:100%; object-fit:contain; }
 .hours-total { min-height:30px; border-top:1px solid #333; border-bottom:1px solid #333; padding:5px 10px; display:flex; gap:24px; align-items:center; box-sizing:border-box; }
 .issue-area { display:flex; min-height:90px; flex:1; }

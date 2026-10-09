@@ -74,8 +74,29 @@ public class SysAttachmentController {
     public Result<Long> uploadProduct(@RequestParam("file") MultipartFile file,
                                       @RequestParam("productCode") String productCode,
                                       @RequestParam("category") String category,
-                                      @RequestParam(required = false) String version) {
-        return Result.success(attachmentService.uploadProductFile(file, productCode, category, version));
+                                      @RequestParam(required = false) String version,
+                                      @RequestParam(required = false) String drawingNo,
+                                      @RequestParam(required = false) String drawingName,
+                                      @RequestParam(required = false) String fileRole) {
+        return Result.success(attachmentService.uploadProductFile(file, productCode, category, version,
+                drawingNo, drawingName, fileRole));
+    }
+
+    @lombok.Data
+    public static class DrawingMetadata {
+        private String drawingNo;
+        private String drawingName;
+        private String version;
+        private String fileRole;
+        private String category;
+    }
+
+    @Operation(summary = "补录或修改未下发图纸文件的编号、版本与用途")
+    @PutMapping("/{id}/drawing-metadata")
+    @cn.dev33.satoken.annotation.SaCheckPermission("product:edit")
+    public Result<Boolean> drawingMetadata(@PathVariable Long id, @RequestBody DrawingMetadata body) {
+        return Result.success(attachmentService.updateDrawingMetadata(id, body.getDrawingNo(),
+                body.getDrawingName(), body.getVersion(), body.getFileRole(), body.getCategory()));
     }
 
     @Operation(summary = "获取产品文件库（按产品编码）")
@@ -120,7 +141,7 @@ public class SysAttachmentController {
         return Result.success(attachmentService.deleteAttachmentsByBiz(bizType, bizId));
     }
 
-    @Operation(summary = "将附件设为现行版（同业务+同类别下仅一个现行；dev-20260929-023）")
+    @Operation(summary = "将图纸版本设为现行，同版本原稿与打印件同步")
     @PostMapping("/{id}/set-current")
     public Result<Boolean> setCurrent(@PathVariable Long id) {
         return Result.success(attachmentService.setCurrentAttachment(id));

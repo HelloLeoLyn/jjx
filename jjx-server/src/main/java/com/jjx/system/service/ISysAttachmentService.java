@@ -56,6 +56,12 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
      */
     Long uploadProductFile(MultipartFile file, String productCode, String category, String version);
 
+    Long uploadProductFile(MultipartFile file, String productCode, String category, String version,
+                           String drawingNo, String drawingName, String fileRole);
+
+    /** 补录历史文件的图纸关联；已下发版本需先撤回。 */
+    boolean updateDrawingMetadata(Long id, String drawingNo, String drawingName, String version, String fileRole, String category);
+
     /**
      * 获取产品文件库（按产品编码）
      */
@@ -117,7 +123,7 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
     java.util.List<java.util.Map<String, Object>> customerDocs(Long productId);
 
     /**
-     * 将附件设为「现行版」（同 bizType+bizId+category 下仅一个现行；dev-20260929-023）
+     * 将图纸版本设为现行（同产品+图纸编号；原稿和打印件按版本同步）
      */
     boolean setCurrentAttachment(Long id);
 

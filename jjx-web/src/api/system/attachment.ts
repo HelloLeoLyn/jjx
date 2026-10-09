@@ -1,6 +1,28 @@
 import request from '@/utils/request'
 import type { AxiosPromise } from 'axios'
 
+export interface DrawingMetadata {
+  drawingNo: string
+  drawingName?: string
+  version: string
+  fileRole: string
+  category?: string
+}
+export interface ProductDrawingFile extends Partial<DrawingMetadata> {
+  id: number
+  fileName: string
+  category: string
+  fileType?: string
+  fileSize?: number
+  isCurrent?: number
+  isControlled?: number
+  released?: number
+  releasedAt?: string
+  releasedBy?: string
+  createBy?: string
+  createTime?: string
+}
+
 // 通用附件API
 export const attachmentApi = {
   // 上传附件
@@ -60,7 +82,7 @@ export const attachmentApi = {
     })
   },
 
-  // 设为现行版（产品文件库，同业务+同类别唯一）
+  // 按图纸编号切换现行版本；同版本原稿和打印件同步
   setCurrent(id: number): AxiosPromise<boolean> {
     return request({
       url: `/system/attachment/${id}/set-current`,
@@ -84,24 +106,39 @@ export const attachmentApi = {
   },
 
   // 上传产品工程文件（产品文件库）
-  uploadProductFile(file: File, productCode: string, category: string, version?: string): AxiosPromise<number> {
+  uploadProductFile(file: File, productCode: string, category: string, version?: string,
+    drawing?: DrawingMetadata, onProgress?: (percent: number) => void): AxiosPromise<number> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('productCode', productCode)
     formData.append('category', category)
     if (version) formData.append('version', version)
+    if (drawing) {
+      formData.append('drawingNo', drawing.drawingNo)
+      formData.append('drawingName', drawing.drawingName || '')
+      formData.set('version', drawing.version)
+      formData.append('fileRole', drawing.fileRole)
+    }
     return request({
       url: '/system/attachment/upload-product',
       method: 'post',
       data: formData,
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+      onUploadProgress: (event) => {
+        if (event.total) onProgress?.(Math.round(event.loaded * 100 / event.total))
+      },
     })
+  },
+
+  updateDrawingMetadata(id: number, data: DrawingMetadata): AxiosPromise<boolean> {
+    return request({ url: `/system/attachment/${id}/drawing-metadata`, method: 'put', data })
   },
 
   // 获取产品文件库（按产品编码）
   productFiles(productCode: string): AxiosPromise<any[]> {
     return request({
-      url: `/system/attachment/product/${productCode}`,
+      url: `/system/attachment/product/${encodeURIComponent(productCode)}`,
       method: 'get',
     })
   },

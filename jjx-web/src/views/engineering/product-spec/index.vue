@@ -44,7 +44,7 @@
     </el-card>
 
     <!-- 作业规范详情 -->
-    <el-drawer v-model="specVisible" :title="`产品作业规范 - ${detail?.product?.productCode || ''}`" size="82%" destroy-on-close>
+    <el-drawer v-model="specVisible" :title="`产品作业规范 - ${detail?.product?.productCode || ''}`" size="82%" destroy-on-close :before-close="closeSpec">
       <div v-loading="detailLoading" class="spec-body">
         <div class="spec-head">
           <el-descriptions :column="3" border size="small">
@@ -153,12 +153,14 @@
           <el-tab-pane label="印刷规范" name="print">
             <el-alert type="info" :closable="false" class="tab-tip"
               title="印刷工序/油墨/网板为引用项；印刷指导图在此上传。油墨调配记录表字段待定（等样张）。" />
-            <ProductFileLibrary
+            <EngineeringDrawingLibrary
               v-if="productCode"
+              :key="`${productId}-print`"
+              :active="activeTab === 'print'"
               :product-code="productCode"
+              :product-name="detail?.product?.productName || ''"
               :categories="['印刷指导图']"
-              upload-perm="product:edit"
-              delete-perm="product:delete"
+              @busy="drawingBusy = $event"
             />
           </el-tab-pane>
 
@@ -166,12 +168,14 @@
           <el-tab-pane label="工程图集" name="atlas">
             <el-alert type="info" :closable="false" class="tab-tip"
               title="按图种归集工程图纸：结构图、外形尺寸图、面板图、线路图、组装图、包装图、印刷指导图等；上传时选择对应图种和版本。" />
-            <ProductFileLibrary
+            <EngineeringDrawingLibrary
               v-if="productCode"
+              :key="`${productId}-atlas`"
+              :active="activeTab === 'atlas'"
               :product-code="productCode"
+              :product-name="detail?.product?.productName || ''"
               :categories="ENGINEERING_DRAWING_VISIBLE_CATEGORIES"
-              upload-perm="product:edit"
-              delete-perm="product:delete"
+              @busy="drawingBusy = $event"
             />
           </el-tab-pane>
 
@@ -306,6 +310,7 @@ import { engineeringResourceApi } from '@/api/engineering/resource'
 import { attachmentApi } from '@/api/system/attachment'
 import { InboundOrderStatusEnum } from '@/enums/inventory'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
+import EngineeringDrawingLibrary from '../drawing/components/EngineeringDrawingLibrary.vue'
 import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
@@ -321,6 +326,11 @@ const total = ref(0)
 const query = reactive({ productCode: '', productName: '', current: 1, pageSize: 20 })
 
 const specVisible = ref(false)
+const drawingBusy = ref(false)
+function closeSpec(done: () => void) {
+  if (drawingBusy.value) { ElMessage.warning('请先完成或关闭图纸上传、关联窗口'); return }
+  done()
+}
 const detailLoading = ref(false)
 const detail = ref<ProductFullVO | null>(null)
 const activeTab = ref('customer')

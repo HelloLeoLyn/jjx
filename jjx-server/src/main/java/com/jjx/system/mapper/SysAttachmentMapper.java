@@ -16,6 +16,14 @@ import java.util.List;
 @Mapper
 public interface SysAttachmentMapper extends BaseMapper<SysAttachment> {
 
+    /** 版本操作使用当前读，避免等待产品锁后仍读取事务开始时的旧快照。 */
+    @Select("SELECT * FROM sys_attachment WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    SysAttachment selectActiveForUpdate(Long id);
+
+    @Select("SELECT * FROM sys_attachment WHERE biz_type = 'product' AND biz_id = #{productId} AND drawing_no = #{drawingNo} AND deleted = 0 FOR UPDATE")
+    List<SysAttachment> selectDrawingForUpdate(@org.apache.ibatis.annotations.Param("productId") Long productId,
+                                              @org.apache.ibatis.annotations.Param("drawingNo") String drawingNo);
+
     /**
      * 逻辑删除（软删进回收站，保留物理文件）
      */

@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.enums.YesNoEnum;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.system.domain.entity.SysAttachment;
@@ -264,6 +265,13 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long uploadProductFile(MultipartFile file, String productCode, String category, String version) {
+        return uploadProductFile(file, productCode, category, version, null, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long uploadProductFile(MultipartFile file, String productCode, String category, String version,
+                                  String drawingNo, String drawingName, String fileRole) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("上传文件不能为空");
         }
@@ -278,6 +286,23 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
                 new LambdaQueryWrapper<Product>().eq(Product::getProductCode, productCode.trim()));
         if (product == null) {
             throw new BusinessException("产品不存在: " + productCode);
+        }
+
+        lockProduct(product.getProductId());
+        drawingNo = optionalText(drawingNo, 80, "图纸编号");
+        drawingName = optionalText(drawingName, 120, "图纸名称");
+        version = optionalText(version, 50, "版本");
+        fileRole = optionalText(fileRole, 20, "文件用途");
+        List<SysAttachment> drawingFiles = new ArrayList<>();
+        if (drawingNo != null) {
+            drawingNo = drawingNo.toUpperCase(java.util.Locale.ROOT);
+            version = requiredText(version, 50, "版本").toUpperCase(java.util.Locale.ROOT);
+            fileRole = validateRole(fileRole, file);
+            drawingFiles = drawingFiles(product.getProductId(), drawingNo);
+            validateDrawingFile(drawingFiles, null, category.trim(), version, fileRole);
+            if (drawingName == null) drawingName = drawingFiles.isEmpty() ? drawingNo : drawingFiles.get(0).getDrawingName();
+        } else if (fileRole != null || drawingName != null) {
+            throw new BusinessException("填写图纸编号后才能关联文件用途及图纸名称");
         }
 
         // 存储：upload/product/{产品编码}/{类别}/{yyyy-MM-dd}/{原始文件名}（工程部习惯保留原名，重名加序号）
@@ -322,6 +347,12 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         attachment.setBizId(product.getProductId());
         attachment.setCategory(category.trim());
         attachment.setVersion(version);
+        attachment.setDrawingNo(drawingNo);
+        attachment.setDrawingName(drawingName);
+        attachment.setFileRole(fileRole);
+        final String uploadedVersion = version;
+        attachment.setIsCurrent(drawingFiles.stream().anyMatch(a -> sameVersion(a, uploadedVersion) && yes(a.getIsCurrent()))
+                ? YesNoEnum.YES.getCode() : YesNoEnum.NO.getCode());
         attachment.setFileName(originalName);
         attachment.setFilePath(relativePath);
         attachment.setFileSize(file.getSize());
@@ -357,6 +388,12 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         if (attachment == null) {
             throw new BusinessException("附件不存在: " + id);
         }
+        if ("product".equals(attachment.getBizType()) && attachment.getDrawingNo() != null) {
+            attachment = lockedProductFile(id);
+            if (yes(attachment.getIsCurrent()) || yes(attachment.getReleased())) {
+                throw new BusinessException("现行或已下发图纸不能删除，请先切换版本并撤回下发");
+            }
+        }
         // 软删除（DEV-737）：进回收站，保留物理文件，update_time 记录删除时间
         return attachmentMapper.logicalDelete(id) > 0;
     }
@@ -383,6 +420,16 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
                 .filter(a -> a.getId().equals(id)).findFirst().orElse(null);
         if (recycled == null) {
             throw new BusinessException("回收站中不存在该附件: " + id);
+        }
+        if ("product".equals(recycled.getBizType()) && recycled.getDrawingNo() != null) {
+            lockProduct(recycled.getBizId());
+            validateDrawingFile(drawingFiles(recycled.getBizId(), recycled.getDrawingNo()), null,
+                    recycled.getCategory(), recycled.getVersion(), recycled.getFileRole());
+            if (attachmentMapper.restore(id) <= 0) return false;
+            // 恢复文件不恢复现行/下发资格，需重新明确版本并下发。
+            return update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getId, id)
+                    .set(SysAttachment::getIsCurrent, YesNoEnum.NO.getCode()).set(SysAttachment::getReleased, YesNoEnum.NO.getCode())
+                    .set(SysAttachment::getReleasedAt, null).set(SysAttachment::getReleasedBy, null));
         }
         return attachmentMapper.restore(id) > 0;
     }
@@ -459,41 +506,139 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         return uploadBasePath + File.separator + attachment.getFilePath();
     }
 
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public boolean setCurrentAttachment(Long id) {
-        SysAttachment att = getById(id);
-        if (att == null) {
-            throw new BusinessException("附件不存在: " + id);
+    /** 产品行锁统一串行化同一产品的版本操作，避免并发产生两个现行版本。 */
+    private void lockProduct(Long productId) {
+        jdbcTemplate.queryForObject("SELECT product_id FROM product WHERE product_id = ? FOR UPDATE", Long.class, productId);
+    }
+
+    private SysAttachment lockedProductFile(Long id) {
+        SysAttachment file = getById(id);
+        if (file == null || !"product".equals(file.getBizType())) throw new BusinessException("产品文件不存在");
+        lockProduct(file.getBizId());
+        file = attachmentMapper.selectActiveForUpdate(id);
+        if (file == null) throw new BusinessException("产品文件已删除，请刷新");
+        return file;
+    }
+
+    private List<SysAttachment> drawingFiles(Long productId, String drawingNo) {
+        return attachmentMapper.selectDrawingForUpdate(productId, drawingNo);
+    }
+
+    private boolean yes(Integer value) { return YesNoEnum.YES.getCode().equals(value); }
+    private boolean sameVersion(SysAttachment file, String version) { return java.util.Objects.equals(file.getVersion(), version); }
+    private String optionalText(String value, int max, String label) {
+        if (value == null || value.trim().isEmpty()) return null;
+        String text = value.trim();
+        if (text.length() > max) throw new BusinessException(label + "不能超过" + max + "个字符");
+        return text;
+    }
+    private String requiredText(String value, int max, String label) {
+        String text = optionalText(value, max, label);
+        if (text == null) throw new BusinessException(label + "不能为空");
+        return text;
+    }
+    private String validateRole(String value, MultipartFile file) {
+        if (!"ORIGINAL".equals(value) && !"PRINT".equals(value)) throw new BusinessException("请选择原稿或预览打印件");
+        if ("PRINT".equals(value)) {
+            String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase(java.util.Locale.ROOT);
+            String mime = file.getContentType() == null ? "" : file.getContentType();
+            if (!(mime.startsWith("image/") || mime.equals("application/pdf") || name.matches(".*\\.(pdf|png|jpg|jpeg|gif|bmp|webp|svg)$"))) {
+                throw new BusinessException("预览打印件仅支持PDF或图片；其他格式请选择工程原稿");
+            }
         }
-        // 同业务 + 同类别下，先把全部置为非现行
-        update(Wrappers.<SysAttachment>lambdaUpdate()
-                .eq(SysAttachment::getBizType, att.getBizType())
-                .eq(SysAttachment::getBizId, att.getBizId())
-                .eq(SysAttachment::getCategory, att.getCategory())
-                .set(SysAttachment::getIsCurrent, 0));
-        // 目标附件置为现行
-        return update(Wrappers.<SysAttachment>lambdaUpdate()
-                .eq(SysAttachment::getId, id)
-                .set(SysAttachment::getIsCurrent, 1));
+        return value;
+    }
+    private void validateDrawingFile(List<SysAttachment> files, Long excludeId, String category, String version, String role) {
+        for (SysAttachment file : files) {
+            // 已下发版本不可追加、改关联，避免无需再次下发便改变生产资料。
+            if (sameVersion(file, version) && yes(file.getReleased())) throw new BusinessException("该版本已下发，请先撤回或上传新版本");
+            if (file.getId().equals(excludeId)) continue;
+            if (!java.util.Objects.equals(file.getCategory(), category)) throw new BusinessException("同一图纸编号的文件类别必须一致");
+            if (sameVersion(file, version) && java.util.Objects.equals(file.getFileRole(), role)) {
+                throw new BusinessException("该图纸版本已存在相同用途的文件，请使用新版本或先删除未下发的重复文件");
+            }
+        }
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateDrawingMetadata(Long id, String drawingNo, String drawingName, String version, String fileRole, String category) {
+        SysAttachment file = lockedProductFile(id);
+        category = optionalText(category, 50, "文件类别");
+        if (category == null) category = file.getCategory();
+        drawingNo = requiredText(drawingNo, 80, "图纸编号").toUpperCase(java.util.Locale.ROOT);
+        drawingName = optionalText(drawingName, 120, "图纸名称");
+        version = requiredText(version, 50, "版本").toUpperCase(java.util.Locale.ROOT);
+        if (!"ORIGINAL".equals(fileRole) && !"PRINT".equals(fileRole)) throw new BusinessException("请选择文件用途");
+        if ("PRINT".equals(fileRole)) {
+            String name = file.getFileName().toLowerCase(java.util.Locale.ROOT);
+            String mime = file.getFileType() == null ? "" : file.getFileType();
+            if (!(mime.startsWith("image/") || mime.equals("application/pdf") || name.matches(".*\\.(pdf|png|jpg|jpeg|gif|bmp|webp|svg)$"))) {
+                throw new BusinessException("预览打印件仅支持PDF或图片");
+            }
+        }
+        if (yes(file.getReleased())) throw new BusinessException("已下发文件请先撤回，再修改图纸关联");
+        if (file.getDrawingNo() != null && yes(file.getIsCurrent()) &&
+                (!file.getDrawingNo().equals(drawingNo) || !sameVersion(file, version) || !java.util.Objects.equals(file.getFileRole(), fileRole) || !java.util.Objects.equals(file.getCategory(), category))) {
+            throw new BusinessException("现行版本请上传新版本，不直接修改图纸关联");
+        }
+        List<SysAttachment> files = drawingFiles(file.getBizId(), drawingNo);
+        validateDrawingFile(files, id, category, version, fileRole);
+        final String targetVersion = version;
+        boolean otherVersionCurrent = files.stream().anyMatch(a -> !a.getId().equals(id) && yes(a.getIsCurrent()) && !sameVersion(a, targetVersion));
+        // 归集旧文件时，以目标图纸既有现行版本为准，不把旧文件的独立标记带入另一个版本。
+        boolean current = (yes(file.getIsCurrent()) && !otherVersionCurrent)
+                || files.stream().anyMatch(a -> sameVersion(a, targetVersion) && yes(a.getIsCurrent()));
+        // 同一版本的配套文件同步现行，避免绑定后只有原稿或只有PDF现行。
+        if (current) update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getBizType, "product")
+                .eq(SysAttachment::getBizId, file.getBizId()).eq(SysAttachment::getDrawingNo, drawingNo)
+                .eq(SysAttachment::getVersion, version).set(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode()));
+        return update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getId, id)
+                .set(SysAttachment::getDrawingNo, drawingNo).set(SysAttachment::getDrawingName, drawingName == null ? drawingNo : drawingName)
+                .set(SysAttachment::getCategory, category)
+                .set(SysAttachment::getVersion, version).set(SysAttachment::getFileRole, fileRole)
+                .set(SysAttachment::getIsCurrent, current ? YesNoEnum.YES.getCode() : YesNoEnum.NO.getCode()));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean setCurrentAttachment(Long id) {
+        SysAttachment file = lockedProductFile(id);
+        if (file.getDrawingNo() == null || file.getDrawingNo().isBlank()) {
+            // 未归集历史文件各自独立，不能再按类别清除其他图纸。
+            return update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getId, id)
+                    .set(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode()));
+        }
+        List<SysAttachment> files = drawingFiles(file.getBizId(), file.getDrawingNo());
+        boolean alreadyCurrent = files.stream().filter(a -> sameVersion(a, file.getVersion())).allMatch(a -> yes(a.getIsCurrent()));
+        if (alreadyCurrent) return true;
+        update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getBizType, "product")
+                .eq(SysAttachment::getBizId, file.getBizId()).eq(SysAttachment::getDrawingNo, file.getDrawingNo())
+                .set(SysAttachment::getIsCurrent, YesNoEnum.NO.getCode()));
+        // 恢复历史版本为现行也必须重新下发；其他历史版本保留原下发信息。
+        return update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getBizType, "product")
+                .eq(SysAttachment::getBizId, file.getBizId()).eq(SysAttachment::getDrawingNo, file.getDrawingNo())
+                .eq(SysAttachment::getVersion, file.getVersion()).set(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode())
+                .set(SysAttachment::getReleased, YesNoEnum.NO.getCode()).set(SysAttachment::getReleasedAt, null)
+                .set(SysAttachment::getReleasedBy, null));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean setReleased(Long id, boolean released) {
-        SysAttachment att = getById(id);
-        if (att == null) {
-            throw new BusinessException("附件不存在: " + id);
+        SysAttachment file = lockedProductFile(id);
+        List<SysAttachment> versionFiles = file.getDrawingNo() == null || file.getDrawingNo().isBlank()
+                ? java.util.Collections.singletonList(file)
+                : drawingFiles(file.getBizId(), file.getDrawingNo()).stream().filter(a -> sameVersion(a, file.getVersion())).toList();
+        if (released && versionFiles.stream().anyMatch(a -> !yes(a.getIsCurrent()))) {
+            throw new BusinessException("只有现行版本可以下发，请先设为现行");
         }
-        String operator = null;
-        try {
-            operator = cn.dev33.satoken.stp.StpUtil.getLoginIdAsString();
-        } catch (Exception ignore) {
-            // 非登录上下文（定时任务等）忽略
-        }
-        return update(Wrappers.<SysAttachment>lambdaUpdate()
-                .eq(SysAttachment::getId, id)
-                .set(SysAttachment::getReleased, released ? 1 : 0)
+        String operator = released ? String.valueOf(cn.dev33.satoken.stp.StpUtil.getLoginId()) : null;
+        List<Long> ids = versionFiles.stream().map(SysAttachment::getId).toList();
+        return update(Wrappers.<SysAttachment>lambdaUpdate().in(SysAttachment::getId, ids)
+                .set(SysAttachment::getReleased, released ? YesNoEnum.YES.getCode() : YesNoEnum.NO.getCode())
+                .set(SysAttachment::getIsControlled, YesNoEnum.YES.getCode())
                 .set(SysAttachment::getReleasedAt, released ? LocalDateTime.now() : null)
-                .set(SysAttachment::getReleasedBy, released ? operator : null));
+                .set(SysAttachment::getReleasedBy, operator));
     }
 }

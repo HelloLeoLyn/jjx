@@ -13,14 +13,17 @@
       <aside class="document-nav no-print">
         <div class="nav-heading"><strong>文档目录</strong><el-button link @click="selectAll">全选</el-button></div>
         <p class="nav-tip">勾选要预览和打印的文档</p>
+        <el-switch v-model="showHistory" size="small" active-text="查看原稿／全部版本" />
+        <p class="nav-tip">工程图纸默认选择现行已下发版的打印件；原稿、历史及待归集文件可手动勾选。</p>
+        <el-alert v-if="selectedDrafts.length" title="已手动选择非现行、未下发或待归集图纸，打印页会标注其状态。" type="warning" :closable="false" />
         <el-checkbox-group v-model="selectedSections">
           <div v-for="section in documentSections" :key="section.key" class="nav-section" :class="{ chosen: selectedSections.includes(section.key) }">
             <el-checkbox :value="section.key" :label="section.key"><span class="section-label">{{ section.label }}</span></el-checkbox>
             <div class="section-note" @click="jumpTo(section.key)">{{ section.note }}<span>{{ sectionPageCount(section.key) }} 页</span></div>
             <el-checkbox-group v-if="selectedSections.includes(section.key) && filesFor(section.key).length" v-model="selectedFiles" class="file-choices">
               <div v-for="file in filesFor(section.key)" :key="file.key" class="file-choice">
-                <el-checkbox :value="file.key" :label="file.key" :disabled="file.kind === 'other'"><span :title="file.name">{{ file.name }}</span></el-checkbox>
-                <div v-if="file.kind === 'other'" class="file-help"><span>此格式请使用原文件</span><el-link :href="attachmentApi.downloadUrl(file.id)" target="_blank" type="primary">打开</el-link></div>
+                <el-checkbox :value="file.key" :label="file.key" :disabled="file.kind === 'other'"><span :title="documentFileCaption(file)">{{ documentFileCaption(file) }}</span></el-checkbox>
+                <div v-if="file.kind === 'other'" class="file-help"><span>此格式请使用原文件</span><el-link type="primary" @click="downloadOriginal(file)">下载原文件</el-link></div>
                 <div v-if="fileErrors[file.key]" class="file-error">{{ fileErrors[file.key] }}</div>
               </div>
             </el-checkbox-group>
@@ -30,7 +33,7 @@
       </aside>
       <main class="paper-stage">
         <div v-if="pendingCount" class="render-progress no-print">正在展开附件，还有 {{ pendingCount }} 个文件…</div>
-        <div v-if="data && pages.length" class="paper-zoom" :style="{ zoom: `${zoom}%` }"><ProductSpecSheets :data="data" :pages="pages" :structure-image="structureImage" /></div>
+        <div v-if="data && pages.length" class="paper-zoom" :style="{ zoom: `${zoom}%` }"><ProductSpecSheets :data="data" :pages="pages" :structure-image="structureImage" :structure-caption="structureCaption" /></div>
         <el-empty v-else-if="!loading && !error" description="勾选左侧文档，查看纸张预览" />
       </main>
     </div>
@@ -41,9 +44,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import PrintToolbar from '@/components/print/PrintToolbar.vue'
-import { attachmentApi } from '@/api/system/attachment'
+import { downloadFile } from '@/components/product/productFilePreview'
 import ProductSpecSheets from './ProductSpecSheets.vue'
-import { documentSections, loadDocset, makePages, renderFile, type DocsetData, type DocFile, type FileImage } from './docset'
+import { documentSections, loadDocset, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, type DocsetData, type DocFile, type FileImage } from './docset'
+import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum } from '@/enums/product/drawing'
 
 const props = withDefaults(defineProps<{ productId: number; standalone?: boolean; autoPrint?: boolean; initialSections?: string[]; initialFiles?: string[] }>(), { standalone: false, autoPrint: false })
 const data = shallowRef<DocsetData>()
@@ -51,6 +55,7 @@ const loading = ref(false)
 const error = ref('')
 const selectedSections = ref<string[]>(props.initialSections ?? documentSections.map((section) => section.key))
 const selectedFiles = ref<string[]>([])
+const showHistory = ref(false)
 const images = shallowRef<Record<string, FileImage[]>>({})
 const fileErrors = ref<Record<string, string>>({})
 const zoom = ref(80)
@@ -60,7 +65,9 @@ let disposed = false
 let printPageStyle: HTMLStyleElement | undefined
 let autoPrinted = false
 
-const structureFile = computed(() => data.value?.files.find((file) => file.category === '结构图' && file.kind === 'image'))
+const structureFile = computed(() => data.value?.files.find((file) => file.category === '结构图' && file.kind !== 'other' && selectedFiles.value.includes(file.key)))
+const defaultFileKeys = computed(() => new Set(defaultDocumentFiles(data.value?.files || []).map(file => file.key)))
+const selectedDrafts = computed(() => requestedFiles.value.filter(file => isEngineeringFile(file) && (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value)))
 const visibleFiles = computed(() => (data.value?.files || []).filter((file) => selectedFiles.value.includes(file.key) && selectedSections.value.includes(file.section)))
 const requestedFiles = computed(() => {
   const files = [...visibleFiles.value]
@@ -70,7 +77,8 @@ const requestedFiles = computed(() => {
 const pendingCount = computed(() => requestedFiles.value.filter((file) => !images.value[file.key] && !fileErrors.value[file.key]).length)
 const pages = computed(() => data.value ? makePages(data.value, selectedSections.value, selectedFiles.value, images.value) : [])
 const structureImage = computed(() => structureFile.value ? images.value[structureFile.value.key]?.[0]?.url : '')
-const canPrint = computed(() => !!data.value && !loading.value && pages.value.length > 0 && pendingCount.value === 0 && !visibleFiles.value.some((file) => fileErrors.value[file.key]))
+const structureCaption = computed(() => structureFile.value ? documentFileCaption({ ...structureFile.value, name: '' }) : '')
+const canPrint = computed(() => !!data.value && !loading.value && pages.value.length > 0 && pendingCount.value === 0 && !requestedFiles.value.some((file) => fileErrors.value[file.key]))
 
 function releaseImages() { Object.values(images.value).flat().forEach((image) => URL.revokeObjectURL(image.url)); images.value = {} }
 async function load() {
@@ -84,7 +92,7 @@ async function load() {
     if (!props.productId) throw new Error('请先选择产品')
     const result = await loadDocset(props.productId)
     if (current !== generation || disposed) return
-    selectedFiles.value = result.files.filter((file) => file.kind !== 'other' && (!props.initialFiles || props.initialFiles.includes(file.key))).map((file) => file.key)
+    selectedFiles.value = (props.initialFiles ? result.files.filter(file => file.kind !== 'other' && props.initialFiles!.includes(file.key)) : defaultDocumentFiles(result.files)).map(file => file.key)
     data.value = result
   } catch (e) {
     if (current === generation && !disposed) error.value = e instanceof Error ? e.message : '文档加载失败'
@@ -108,8 +116,14 @@ async function expandFiles() {
     }
   } finally { queueRunning = false }
 }
-function filesFor(section: string): DocFile[] { return data.value?.files.filter((file) => file.section === section) || [] }
+function filesFor(section: string): DocFile[] {
+  return data.value?.files.filter(file => file.section === section && (showHistory.value || !isEngineeringFile(file) || defaultFileKeys.value.has(file.key) || selectedFiles.value.includes(file.key))) || []
+}
 function sectionPageCount(section: string) { return pages.value.filter((page) => page.section === section).length }
+async function downloadOriginal(file: DocFile) {
+  try { await downloadFile({ id: file.id, fileName: file.name }) }
+  catch (e) { ElMessage.error(e instanceof Error ? e.message : '下载失败') }
+}
 function selectAll() { selectedSections.value = documentSections.map((section) => section.key) }
 function jumpTo(section: string) {
   const i = pages.value.findIndex((page) => page.section === section)
@@ -131,7 +145,7 @@ async function printDocuments() {
 watch(() => props.productId, load, { immediate: true })
 watch(requestedFiles, expandFiles)
 watch(canPrint, (ready) => {
-  if (ready && props.standalone && props.autoPrint && !autoPrinted) {
+  if (ready && props.standalone && props.autoPrint && !autoPrinted && !selectedDrafts.value.length) {
     autoPrinted = true
     printDocuments()
   }

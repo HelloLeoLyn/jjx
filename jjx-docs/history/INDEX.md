@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-09 (dev-20261009-029) | engineering-drawing-workspace-dev-20261009-029.md | 工程图纸操作优化与图纸版本、打印联动 |
 | 2026-10-09 (dev-20261009-024) | engineering-drawing-categories-dev-20261009-024.md | 工程图纸名称与上传图种分类统一 |
 | 2026-10-09 (dev-20261009-010) | product-spec-preview-dev-20261009-010.md | 产品电子文档集前端预览与打印版式 |
 | 2026-10-09 (dev-20261009-009) | sales-order-shortage-permission-dev-20261009-009.md | 销售订单齐套检查统一专用权限 |

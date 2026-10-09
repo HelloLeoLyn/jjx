@@ -3,9 +3,11 @@ import { attachmentApi } from '@/api/system/attachment'
 import { engineeringResourceApi } from '@/api/engineering/resource'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { outboundApi } from '@/api/inventory/outbound'
-import request from '@/utils/request'
 import { ProcessCategoryEnum } from '@/enums/product'
-import { productFileCategoryLabel } from '@/components/product/productFileCategories'
+import { productFileCategoryLabel, ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
+import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum, DrawingFileRoleEnum } from '@/enums/product/drawing'
+import type { FileImage } from '@/components/product/productFilePreview'
+export { renderFile, type FileImage } from '@/components/product/productFilePreview'
 
 export const documentSections = [
   { key: 'customer', label: '客供资料', note: '客供稿 · 客户确认样品' },
@@ -24,6 +26,37 @@ export interface DocFile {
   category: string
   section: string
   kind: 'image' | 'pdf' | 'other'
+  productFile: boolean
+  drawingNo?: string
+  version?: string
+  fileRole?: string
+  isCurrent?: number
+  released?: number
+}
+
+export function isEngineeringFile(file: DocFile): boolean {
+  return file.productFile && (!!file.drawingNo || ENGINEERING_DRAWING_VISIBLE_CATEGORIES.includes(file.category))
+}
+/** 一个图纸版本仅默认选打印件；没有打印件时才允许可预览的原稿。 */
+export function defaultDocumentFiles(files: DocFile[]): DocFile[] {
+  return files.filter(file => {
+    if (file.kind === 'other') return false
+    if (!isEngineeringFile(file)) return true
+    if (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value) return false
+    if (file.fileRole === DrawingFileRoleEnum.PRINT.value) return true
+    return file.fileRole === DrawingFileRoleEnum.ORIGINAL.value && !files.some(other => other.productFile && other.drawingNo === file.drawingNo && other.version === file.version && other.fileRole === DrawingFileRoleEnum.PRINT.value)
+  })
+}
+export function documentFileCaption(file: DocFile): string {
+  const parts = file.name ? [file.name] : []
+  if (file.drawingNo) parts.push(file.drawingNo)
+  if (file.version) parts.push(`版本 ${file.version}`)
+  if (isEngineeringFile(file)) {
+    if (!file.drawingNo) parts.unshift('待归集')
+    if (file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value) parts.unshift('非现行')
+    if (file.released !== DrawingReleaseFlagEnum.RELEASED.value) parts.unshift('未下发')
+  }
+  return parts.join(' · ')
 }
 export interface DocsetData {
   product: Record<string, any>
@@ -34,7 +67,7 @@ export interface DocsetData {
   picks: Record<string, any>[]
   warnings: string[]
 }
-export interface FileImage { url: string; width: number; height: number }
+
 export interface DocPage {
   key: string
   section: string
@@ -97,49 +130,9 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
       ? 'image' : (mime.includes('pdf') || ext === 'pdf' ? 'pdf' : 'other')
     const section = customer || ['客供稿', '客户确认样品'].includes(category) ? 'customer'
       : category === '样品照片' ? 'sample' : category === '分色检查表' ? 'color' : 'atlas'
-    data.files.push({ key: String(id), id, name, category, kind, section })
+    data.files.push({ key: String(id), id, name, category, kind, section, productFile: !customer,
+      drawingNo: row.drawingNo, version: row.version, fileRole: row.fileRole, isCurrent: row.isCurrent, released: row.released })
   }
-}
-
-// 使用仓库已有 pdfjs；将 PDF 各页与图片统一成纸张内容，预览、打印共用。
-export async function renderFile(file: DocFile): Promise<FileImage[]> {
-  const blob = await request.get<Blob>(`/system/attachment/download/${file.id}`, { responseType: 'blob' })
-  if (!blob.size) throw new Error('文件内容为空')
-  if (blob.type.includes('json')) throw new Error('文件下载失败，请重新加载')
-  if (file.kind === 'image') {
-    const url = URL.createObjectURL(blob)
-    try {
-      const img = new Image()
-      img.src = url
-      await img.decode()
-      return [{ url, width: img.naturalWidth, height: img.naturalHeight }]
-    } catch (error) { URL.revokeObjectURL(url); throw error }
-  }
-  const pdfjs = await import('pdfjs-dist')
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
-  const task = pdfjs.getDocument({ data: await blob.arrayBuffer() })
-  const images: FileImage[] = []
-  try {
-    const pdf = await task.promise
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i)
-      const viewport = page.getViewport({ scale: 2 })
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.ceil(viewport.width)
-      canvas.height = Math.ceil(viewport.height)
-      const context = canvas.getContext('2d')
-      if (!context) throw new Error('无法显示 PDF 页面')
-      await page.render({ canvas, canvasContext: context, viewport }).promise
-      const pageBlob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('PDF 页面转换失败')), 'image/png'))
-      images.push({ url: URL.createObjectURL(pageBlob), width: canvas.width, height: canvas.height })
-      canvas.width = canvas.height = 0
-      page.cleanup()
-    }
-    return images
-  } catch (error) {
-    images.forEach((image) => URL.revokeObjectURL(image.url))
-    throw error
-  } finally { await task.destroy() }
 }
 
 export function makePages(data: DocsetData, sections: string[], fileIds: string[], images: Record<string, FileImage[]>): DocPage[] {

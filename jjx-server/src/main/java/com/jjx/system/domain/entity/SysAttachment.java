@@ -32,7 +32,16 @@ public class SysAttachment {
     @Schema(description = "版本号（产品文件用）")
     private String version;
 
-    @Schema(description = "是否现行版（产品文件库，同业务+同类别下仅一版现行；dev-20260929-023）")
+    @Schema(description = "图纸编号（同一产品内标识一张图纸，与类别、文件名无关）")
+    private String drawingNo;
+
+    @Schema(description = "图纸名称")
+    private String drawingName;
+
+    @Schema(description = "文件用途：ORIGINAL=工程原稿，PRINT=预览打印件")
+    private String fileRole;
+
+    @Schema(description = "是否现行版（同一图纸仅一个版本现行，该版本原稿和打印件同时现行）")
     private Integer isCurrent;
 
     @Schema(description = "是否受控（工程图/技术文档；dev-20261009-023）")
