@@ -1,72 +1,152 @@
 <template>
   <div class="app-container">
-    <MergeDeliveryWorkbench ref="workbench" :order-id="sourceOrderId" :order-no="sourceOrderNo" @clear-order="clearOrderFilter" @created="load">
-    <el-alert title="待发货单先完成OQC，再安排出库；仓库确认出库后记为已发货，客户收货后登记签收。" type="info" :closable="false" show-icon style="margin-bottom: 12px" />
-    <el-card shadow="never" class="search-card">
-      <el-form :model="query" inline>
-        <el-form-item label="发货单号"><el-input v-model="query.deliveryNo" clearable /></el-form-item>
-        <el-form-item label="客户名称"><el-input v-model="query.customerName" clearable /></el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.deliveryStatus" clearable style="width: 140px">
-            <el-option v-for="item in DeliveryStatusEnum.items" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="发货日期">
-          <el-date-picker v-model="dateRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" />
-        </el-form-item>
-        <el-form-item><el-button type="primary" @click="search">查询</el-button><el-button @click="reset">重置</el-button></el-form-item>
-      </el-form>
-    </el-card>
+    <MergeDeliveryWorkbench
+      ref="workbench"
+      :order-id="sourceOrderId"
+      :order-no="sourceOrderNo"
+      @clear-order="clearOrderFilter"
+      @created="load"
+    >
+      <el-alert
+        title="待发货单先完成OQC，再安排出库；仓库确认出库后记为已发货，客户收货后登记签收。"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px"
+      />
+      <el-card shadow="never" class="search-card">
+        <el-form :model="query" inline>
+          <el-form-item label="发货单号"
+            ><el-input v-model="query.deliveryNo" clearable
+          /></el-form-item>
+          <el-form-item label="客户名称"
+            ><el-input v-model="query.customerName" clearable
+          /></el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="query.deliveryStatus" clearable style="width: 140px">
+              <el-option
+                v-for="item in DeliveryStatusEnum.items"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="发货日期">
+            <el-date-picker
+              v-model="dateRange"
+              type="daterange"
+              value-format="YYYY-MM-DD"
+              range-separator="至"
+            />
+          </el-form-item>
+          <el-form-item
+            ><el-button type="primary" @click="search">查询</el-button
+            ><el-button @click="reset">重置</el-button></el-form-item
+          >
+        </el-form>
+      </el-card>
 
-    <el-card shadow="never">
-      <el-table v-loading="loading" :data="records" border>
-        <el-table-column prop="deliveryNo" label="单号" min-width="160" />
-        <el-table-column label="来源订单" min-width="160"><template #default="{ row }">{{ row.orderNos?.join('、') || row.orderId }}</template></el-table-column>
-        <el-table-column label="OQC / 出库" min-width="150"><template #default="{ row }">{{ row.oqcPassed ? 'OQC已放行' : 'OQC未放行' }}<div class="muted">{{ row.outboundNo || '未安排出库' }}</div></template></el-table-column>
-        <el-table-column prop="customerName" label="客户" min-width="150" />
-        <el-table-column prop="deliveryMethod" label="交货方式" width="110" />
-        <el-table-column prop="deliveryDate" label="发货日期" width="120" />
-        <el-table-column label="发货状态" width="100">
-          <template #default="{ row }"><el-tag :type="DeliveryStatusEnum.getTagProps(row.deliveryStatus).type">{{ DeliveryStatusEnum.getLabel(row.deliveryStatus) }}</el-tag></template>
-        </el-table-column>
-        <el-table-column label="本次数量" width="90">
-          <template #default="{ row }">{{ row.totalQuantity ?? '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="receiverName" label="签收人" width="110" />
-        <el-table-column prop="receiveTime" label="签收时间" width="170" />
-        <el-table-column label="打印" width="90">
-          <template #default="{ row }">{{ row.printCount ?? 0 }} 次</template>
-        </el-table-column>
-        <el-table-column label="最近打印" width="170">
-          <template #default="{ row }">
-            <span v-if="row.printCount">{{ row.lastPrintBy || '-' }}<br /><span class="muted">{{ row.lastPrintTime ? row.lastPrintTime.slice(0, 16) : '' }}</span></span>
-            <span v-else class="muted">未打印</span>
-          </template>
-        </el-table-column>
-        <TableActionColumn :actions="deliveryActions" width="280" display="text" @action="handleDeliveryAction" />
-      </el-table>
-      <pagination v-show="total > 0" v-model:page="query.pageNum" v-model:limit="query.pageSize" :total="total" @pagination="load" />
-    </el-card>
-
+      <el-card shadow="never">
+        <el-table v-loading="loading" :data="records" border>
+          <el-table-column prop="deliveryNo" label="单号" min-width="160" />
+          <!-- <el-table-column label="来源订单" min-width="160"><template #default="{ row }">{{ row.orderNos?.join('、') || row.orderId }}</template></el-table-column> -->
+          <el-table-column label="OQC / 出库" min-width="150"
+            ><template #default="{ row }"
+              >{{ row.oqcPassed ? 'OQC已放行' : 'OQC未放行' }}
+              <div class="muted">{{ row.outboundNo || '未安排出库' }}</div></template
+            ></el-table-column
+          >
+          <el-table-column prop="customerName" label="客户" min-width="150" />
+          <el-table-column prop="deliveryMethod" label="交货方式" width="110" />
+          <el-table-column prop="deliveryDate" label="发货日期" width="120" />
+          <el-table-column label="发货状态" width="100">
+            <template #default="{ row }"
+              ><el-tag :type="DeliveryStatusEnum.getTagProps(row.deliveryStatus).type">{{
+                DeliveryStatusEnum.getLabel(row.deliveryStatus)
+              }}</el-tag></template
+            >
+          </el-table-column>
+          <el-table-column label="本次数量" width="90">
+            <template #default="{ row }">{{ row.totalQuantity ?? '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="receiverName" label="签收人" width="110" />
+          <el-table-column prop="receiveTime" label="签收时间" width="170" />
+          <!-- <el-table-column label="打印" width="90">
+            <template #default="{ row }">{{ row.printCount ?? 0 }} 次</template>
+          </el-table-column>
+          <el-table-column label="最近打印" width="170">
+            <template #default="{ row }">
+              <span v-if="row.printCount"
+                >{{ row.lastPrintBy || '-' }}<br /><span class="muted">{{
+                  row.lastPrintTime ? row.lastPrintTime.slice(0, 16) : ''
+                }}</span></span
+              >
+              <span v-else class="muted">未打印</span>
+            </template>
+          </el-table-column> -->
+          <TableActionColumn
+            :actions="deliveryActions"
+            width="280"
+            display="text"
+            @action="handleDeliveryAction"
+          />
+        </el-table>
+        <pagination
+          v-show="total > 0"
+          v-model:page="query.pageNum"
+          v-model:limit="query.pageSize"
+          :total="total"
+          @pagination="load"
+        />
+      </el-card>
     </MergeDeliveryWorkbench>
 
     <el-drawer v-model="detailVisible" title="发货单详情" size="720px">
       <el-descriptions v-if="current" :column="2" border>
         <el-descriptions-item label="发货单号">{{ current.deliveryNo }}</el-descriptions-item>
         <el-descriptions-item label="客户">{{ current.customerName }}</el-descriptions-item>
-        <el-descriptions-item label="收货地址">{{ current.deliveryAddress || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="联系人">{{ current.contactPerson || '-' }} {{ current.contactPhone || '' }}</el-descriptions-item>
+        <el-descriptions-item label="收货地址">{{
+          current.deliveryAddress || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="联系人"
+          >{{ current.contactPerson || '-' }} {{ current.contactPhone || '' }}</el-descriptions-item
+        >
         <el-descriptions-item label="承运商">{{ current.carrier || '-' }}</el-descriptions-item>
         <el-descriptions-item label="运费">{{ current.freightAmount ?? 0 }}</el-descriptions-item>
-        <el-descriptions-item label="保价费">{{ current.insuranceAmount ?? 0 }}</el-descriptions-item>
-        <el-descriptions-item label="其他费用">{{ current.otherCharges ?? 0 }}</el-descriptions-item>
-        <el-descriptions-item label="物流单号">{{ current.trackingNo || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="签收人">{{ current.receiverName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="客户签收日期">{{ current.customerReceiveDate || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="签收时间（系统登记）">{{ current.receiveTime || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="签收备注" :span="2">{{ current.receiveRemark || '-' }}</el-descriptions-item>
-        <el-descriptions-item v-if="current.deliveryStatus === DeliveryStatusEnum.REJECTED.value" label="拒收原因" :span="2">{{ current.rejectReason || '-' }}</el-descriptions-item>
-        <el-descriptions-item v-if="current.deliveryStatus === DeliveryStatusEnum.REJECTED.value" label="拒收登记">{{ current.rejectTime ? current.rejectTime.slice(0, 16) : '-' }} / {{ current.rejectName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="保价费">{{
+          current.insuranceAmount ?? 0
+        }}</el-descriptions-item>
+        <el-descriptions-item label="其他费用">{{
+          current.otherCharges ?? 0
+        }}</el-descriptions-item>
+        <el-descriptions-item label="物流单号">{{
+          current.trackingNo || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="签收人">{{
+          current.receiverName || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="客户签收日期">{{
+          current.customerReceiveDate || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="签收时间（系统登记）">{{
+          current.receiveTime || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="签收备注" :span="2">{{
+          current.receiveRemark || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item
+          v-if="current.deliveryStatus === DeliveryStatusEnum.REJECTED.value"
+          label="拒收原因"
+          :span="2"
+          >{{ current.rejectReason || '-' }}</el-descriptions-item
+        >
+        <el-descriptions-item
+          v-if="current.deliveryStatus === DeliveryStatusEnum.REJECTED.value"
+          label="拒收登记"
+          >{{ current.rejectTime ? current.rejectTime.slice(0, 16) : '-' }} /
+          {{ current.rejectName || '-' }}</el-descriptions-item
+        >
       </el-descriptions>
       <el-divider content-position="left">
         本次发货明细（{{ detailItems.length }} 项 · 共 {{ current?.totalQuantity ?? 0 }} 件）
@@ -88,10 +168,17 @@
       <!-- 回签件（口径 D2）：客户签字送货单的回签归档，作为对账/开票/收款依据 -->
       <el-divider content-position="left">回签件（结算依据）</el-divider>
       <div class="attach-row">
-        <el-upload :show-file-list="false" :before-upload="beforeUploadReturn" accept="image/*,.pdf">
+        <el-upload
+          :show-file-list="false"
+          :before-upload="beforeUploadReturn"
+          accept="image/*,.pdf"
+        >
           <el-button type="primary" size="small" icon="Upload">上传回签件</el-button>
         </el-upload>
-        <span class="muted">客户签字的送货单回签件；月结/自送客户必须上传（分级强制待定：TODO 判"月结"用哪个字段需 Leo 确认）</span>
+        <span class="muted"
+          >客户签字的送货单回签件；月结/自送客户必须上传（分级强制待定：TODO 判"月结"用哪个字段需
+          Leo 确认）</span
+        >
       </div>
       <el-table :data="returnFiles" border style="margin-top: 10px" size="small">
         <el-table-column prop="fileName" label="文件名" min-width="200" />
@@ -99,8 +186,12 @@
         <el-table-column prop="createBy" label="上传人" width="110" />
         <el-table-column label="操作" width="140">
           <template #default="{ row }">
-            <el-link type="primary" :href="attachmentApi.downloadUrl(row.id)" target="_blank">下载</el-link>
-            <el-link type="danger" style="margin-left: 8px" @click="removeReturnFile(row)">删除</el-link>
+            <el-link type="primary" :href="attachmentApi.downloadUrl(row.id)" target="_blank"
+              >下载</el-link
+            >
+            <el-link type="danger" style="margin-left: 8px" @click="removeReturnFile(row)"
+              >删除</el-link
+            >
           </template>
         </el-table-column>
       </el-table>
@@ -116,52 +207,100 @@
       />
       <el-descriptions v-if="rejectRow" :column="2" border size="small" style="margin-bottom: 12px">
         <el-descriptions-item label="发货单号">{{ rejectRow.deliveryNo }}</el-descriptions-item>
-        <el-descriptions-item label="客户">{{ rejectRow.customerName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="发货日期">{{ rejectRow.deliveryDate || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="本次数量">{{ rejectRow.totalQuantity ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="客户">{{
+          rejectRow.customerName || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="发货日期">{{
+          rejectRow.deliveryDate || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="本次数量">{{
+          rejectRow.totalQuantity ?? '-'
+        }}</el-descriptions-item>
       </el-descriptions>
-      <el-table v-if="rejectRowItems.length" :data="rejectRowItems" border size="small" style="margin-bottom: 12px">
+      <el-table
+        v-if="rejectRowItems.length"
+        :data="rejectRowItems"
+        border
+        size="small"
+        style="margin-bottom: 12px"
+      >
         <el-table-column prop="productCode" label="产品编码" min-width="140" />
         <el-table-column prop="productName" label="产品名称" min-width="140" />
         <el-table-column prop="quantity" label="拒收数量" width="100" align="center" />
       </el-table>
       <el-form label-width="90px">
         <el-form-item label="拒收原因" required>
-          <el-input v-model="rejectReason" type="textarea" :rows="3" placeholder="如：外观不良 / 规格不符 / 客户取消订单" />
+          <el-input
+            v-model="rejectReason"
+            type="textarea"
+            :rows="3"
+            placeholder="如：外观不良 / 规格不符 / 客户取消订单"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="rejectVisible = false">取消</el-button>
-        <el-button type="danger" :loading="rejectSubmitting" @click="submitReject">确认拒收</el-button>
+        <el-button type="danger" :loading="rejectSubmitting" @click="submitReject"
+          >确认拒收</el-button
+        >
       </template>
     </el-dialog>
 
     <el-dialog v-model="receiveVisible" title="发货单签收" width="560px">
       <el-form :model="receiveForm" label-width="110px">
         <el-form-item label="签收人"><el-input v-model="receiveForm.receiverName" /></el-form-item>
-        <el-form-item label="联系电话"><el-input v-model="receiveForm.receiverPhone" /></el-form-item>
+        <el-form-item label="联系电话"
+          ><el-input v-model="receiveForm.receiverPhone"
+        /></el-form-item>
         <el-form-item label="客户签收日期">
-          <el-date-picker v-model="receiveForm.customerReceiveDate" type="date" value-format="YYYY-MM-DD" placeholder="纸质送货单上的签字日期" style="width: 100%" />
+          <el-date-picker
+            v-model="receiveForm.customerReceiveDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="纸质送货单上的签字日期"
+            style="width: 100%"
+          />
         </el-form-item>
-        <el-form-item label="签收备注"><el-input v-model="receiveForm.receiveRemark" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="签收备注"
+          ><el-input v-model="receiveForm.receiveRemark" type="textarea" :rows="3"
+        /></el-form-item>
       </el-form>
       <el-divider content-position="left">回签件（结算依据）</el-divider>
       <div class="attach-row">
-        <el-upload :show-file-list="false" :before-upload="(f) => beforeUploadReturn(f, receiveDeliveryId)" accept="image/*,.pdf">
+        <el-upload
+          :show-file-list="false"
+          :before-upload="(f) => beforeUploadReturn(f, receiveDeliveryId)"
+          accept="image/*,.pdf"
+        >
           <el-button type="primary" size="small" icon="Upload">上传回签件</el-button>
         </el-upload>
         <span v-if="!returnFiles.length" class="muted">未上传；月结/自送客户建议上传</span>
       </div>
-      <el-table v-if="returnFiles.length" :data="returnFiles" border style="margin-top: 10px" size="small">
+      <el-table
+        v-if="returnFiles.length"
+        :data="returnFiles"
+        border
+        style="margin-top: 10px"
+        size="small"
+      >
         <el-table-column prop="fileName" label="文件名" min-width="200" />
         <el-table-column label="操作" width="140">
           <template #default="{ row }">
-            <el-link type="primary" :href="attachmentApi.downloadUrl(row.id)" target="_blank">下载</el-link>
-            <el-link type="danger" style="margin-left: 8px" @click="removeReturnFile(row)">删除</el-link>
+            <el-link type="primary" :href="attachmentApi.downloadUrl(row.id)" target="_blank"
+              >下载</el-link
+            >
+            <el-link type="danger" style="margin-left: 8px" @click="removeReturnFile(row)"
+              >删除</el-link
+            >
           </template>
         </el-table-column>
       </el-table>
-      <template #footer><el-button @click="receiveVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitReceive">确认签收</el-button></template>
+      <template #footer
+        ><el-button @click="receiveVisible = false">取消</el-button
+        ><el-button type="primary" :loading="submitting" @click="submitReceive"
+          >确认签收</el-button
+        ></template
+      >
     </el-dialog>
   </div>
 </template>
@@ -180,11 +319,16 @@ import MergeDeliveryWorkbench from './components/MergeDeliveryWorkbench.vue'
 const deliveryActions: TableAction<SalesDeliveryVO>[] = [
   { key: 'detail', label: '详情' },
   {
-    key: 'oqc', label: '出货检验', permission: 'quality:lot:view',
+    key: 'oqc',
+    label: '出货检验',
+    permission: 'quality:lot:view',
     visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.PENDING.value,
   },
   {
-    key: 'ship', label: '安排出库', type: 'primary', permission: 'sales:order:edit',
+    key: 'ship',
+    label: '安排出库',
+    type: 'primary',
+    permission: 'sales:order:edit',
     visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.PENDING.value,
     disabled: ({ row }) => confirmingDeliveryId.value != null || !row.oqcPassed || !!row.outboundId,
   },
@@ -204,8 +348,19 @@ const deliveryActions: TableAction<SalesDeliveryVO>[] = [
     // 只有「已发货(2)」可拒收（已签收要走销售退货流程）
     visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.SHIPPED.value,
   },
-  { key: 'outbound', label: '出库单', permission: 'inventory:outbound:list', visible: ({ row }) => !!row.outboundId },
-  { key: 'void', label: '作废', type: 'danger', permission: 'sales:order:edit', visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.PENDING.value },
+  {
+    key: 'outbound',
+    label: '出库单',
+    permission: 'inventory:outbound:list',
+    visible: ({ row }) => !!row.outboundId,
+  },
+  {
+    key: 'void',
+    label: '作废',
+    type: 'danger',
+    permission: 'sales:order:edit',
+    visible: ({ row }) => row.deliveryStatus === DeliveryStatusEnum.PENDING.value,
+  },
   { key: 'print', label: '打印' },
 ]
 const handleDeliveryAction = (key: string, row: SalesDeliveryVO) => {
@@ -213,16 +368,31 @@ const handleDeliveryAction = (key: string, row: SalesDeliveryVO) => {
   if (key === 'receive') openReceive(row)
   if (key === 'reject') void openReject(row)
   if (key === 'print') printDelivery(row)
-  if (key === 'oqc') void router.push({ path: '/quality/lot/oqc', query: { businessNo: row.deliveryNo } })
+  if (key === 'oqc')
+    void router.push({ path: '/quality/lot/oqc', query: { businessNo: row.deliveryNo } })
   if (key === 'ship') void confirmShipment(row)
   if (key === 'void') void voidPending(row)
-  if (key === 'outbound') void router.push({ path: '/inventory/outbound', query: { bizId: row.outboundId } })
+  if (key === 'outbound')
+    void router.push({ path: '/inventory/outbound', query: { bizId: row.outboundId } })
 }
 
 const workbench = ref<InstanceType<typeof MergeDeliveryWorkbench>>()
 async function voidPending(row: SalesDeliveryVO) {
   let reason: string
-  try { const result = await ElMessageBox.prompt(`作废 ${row.deliveryNo} 并释放本次待安排数量？`, '作废待发货单', { inputPlaceholder: '填写作废原因', inputValidator: value => !!value?.trim() && value.trim().length <= 200 || '请填写1～200字原因' }); reason = result.value.trim() } catch { return }
+  try {
+    const result = await ElMessageBox.prompt(
+      `作废 ${row.deliveryNo} 并释放本次待安排数量？`,
+      '作废待发货单',
+      {
+        inputPlaceholder: '填写作废原因',
+        inputValidator: (value) =>
+          (!!value?.trim() && value.trim().length <= 200) || '请填写1～200字原因',
+      }
+    )
+    reason = result.value.trim()
+  } catch {
+    return
+  }
   await deliveryApi.voidPending(row.deliveryId, reason)
   ElMessage.success('已作废，保留原单及明细记录')
   await Promise.all([load(), workbench.value?.reload()])
@@ -231,7 +401,11 @@ const confirmingDeliveryId = ref<number>()
 async function confirmShipment(row: SalesDeliveryVO) {
   if (confirmingDeliveryId.value != null) return
   try {
-    await ElMessageBox.confirm(`安排出库 ${row.deliveryNo}？OQC通过后将生成出库单，仓库确认后才记为已发货。`, '安排出库', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `安排出库 ${row.deliveryNo}？OQC通过后将生成出库单，仓库确认后才记为已发货。`,
+      '安排出库',
+      { type: 'warning' }
+    )
   } catch {
     return
   }
@@ -250,15 +424,38 @@ async function confirmShipment(row: SalesDeliveryVO) {
 defineOptions({ name: 'SalesDelivery' })
 const router = useRouter()
 const route = useRoute()
-const sourceOrderId = computed(() => { const value = Number(route.query.orderId); return Number.isInteger(value) && value > 0 ? value : undefined })
-const sourceOrderNo = computed(() => typeof route.query.orderNo === 'string' ? route.query.orderNo : undefined)
-function clearOrderFilter() { const { orderId: _id, orderNo: _no, ...query } = route.query; void router.replace({ path: route.path, query }) }
-const loading = ref(false), submitting = ref(false), total = ref(0)
-const records = ref<SalesDeliveryVO[]>([]), items = ref<any[]>([])
-const dateRange = ref<string[]>([]), detailVisible = ref(false), receiveVisible = ref(false)
-const current = ref<SalesDeliveryVO>(), receiveDeliveryId = ref<number>()
-const query = reactive<SalesDeliveryQueryDTO>({ pageNum: 1, pageSize: 10, orderId: sourceOrderId.value })
-const receiveForm = reactive({ receiverName: '', receiverPhone: '', customerReceiveDate: '', receiveRemark: '' })
+const sourceOrderId = computed(() => {
+  const value = Number(route.query.orderId)
+  return Number.isInteger(value) && value > 0 ? value : undefined
+})
+const sourceOrderNo = computed(() =>
+  typeof route.query.orderNo === 'string' ? route.query.orderNo : undefined
+)
+function clearOrderFilter() {
+  const { orderId: _id, orderNo: _no, ...query } = route.query
+  void router.replace({ path: route.path, query })
+}
+const loading = ref(false),
+  submitting = ref(false),
+  total = ref(0)
+const records = ref<SalesDeliveryVO[]>([]),
+  items = ref<any[]>([])
+const dateRange = ref<string[]>([]),
+  detailVisible = ref(false),
+  receiveVisible = ref(false)
+const current = ref<SalesDeliveryVO>(),
+  receiveDeliveryId = ref<number>()
+const query = reactive<SalesDeliveryQueryDTO>({
+  pageNum: 1,
+  pageSize: 10,
+  orderId: sourceOrderId.value,
+})
+const receiveForm = reactive({
+  receiverName: '',
+  receiverPhone: '',
+  customerReceiveDate: '',
+  receiveRemark: '',
+})
 
 async function load() {
   loading.value = true
@@ -268,12 +465,32 @@ async function load() {
     const res = await deliveryApi.list(query)
     records.value = res.data?.records || []
     total.value = res.data?.total || 0
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 }
-function search() { query.pageNum = 1; load() }
-function reset() { Object.assign(query, { pageNum: 1, pageSize: 10, deliveryNo: undefined, customerName: undefined, deliveryStatus: undefined, deliveryDateStart: undefined, deliveryDateEnd: undefined }); dateRange.value = []; load() }
+function search() {
+  query.pageNum = 1
+  load()
+}
+function reset() {
+  Object.assign(query, {
+    pageNum: 1,
+    pageSize: 10,
+    deliveryNo: undefined,
+    customerName: undefined,
+    deliveryStatus: undefined,
+    deliveryDateStart: undefined,
+    deliveryDateEnd: undefined,
+  })
+  dateRange.value = []
+  load()
+}
 async function showDetail(row: SalesDeliveryVO) {
-  const [detail, order] = await Promise.all([deliveryApi.getById(row.deliveryId), orderApi.getOrder(row.orderId)])
+  const [detail, order] = await Promise.all([
+    deliveryApi.getById(row.deliveryId),
+    orderApi.getOrder(row.orderId),
+  ])
   current.value = detail.data || undefined
   items.value = order.data?.items || []
   detailVisible.value = true
@@ -281,7 +498,9 @@ async function showDetail(row: SalesDeliveryVO) {
 }
 
 /** 本次发货明细（分批发货）：优先用发货单自己的明细；历史单无明细时退回订单明细 */
-const detailItems = computed<any[]>(() => current.value?.items?.length ? current.value.items : items.value)
+const detailItems = computed<any[]>(() =>
+  current.value?.items?.length ? current.value.items : items.value
+)
 
 /** 拒收登记（2026-09-21 dev-20260921-039）：弹窗带出发货单与明细，只让填原因 */
 const rejectVisible = ref(false)
@@ -353,19 +572,54 @@ async function removeReturnFile(row: any) {
     ElMessage.error(e?.message || '删除失败')
   }
 }
-function openReceive(row: SalesDeliveryVO) { receiveDeliveryId.value = row.deliveryId; Object.assign(receiveForm, { receiverName: '', receiverPhone: '', customerReceiveDate: '', receiveRemark: '' }); returnFiles.value = []; void loadReturnFiles(row.deliveryId); receiveVisible.value = true }
+function openReceive(row: SalesDeliveryVO) {
+  receiveDeliveryId.value = row.deliveryId
+  Object.assign(receiveForm, {
+    receiverName: '',
+    receiverPhone: '',
+    customerReceiveDate: '',
+    receiveRemark: '',
+  })
+  returnFiles.value = []
+  void loadReturnFiles(row.deliveryId)
+  receiveVisible.value = true
+}
 async function submitReceive() {
   if (!receiveDeliveryId.value) return
   submitting.value = true
-  try { await deliveryApi.receive(receiveDeliveryId.value, receiveForm); ElMessage.success('签收成功'); receiveVisible.value = false; await load() }
-  catch (e: any) { ElMessage.error(e?.message || '签收失败') }
-  finally { submitting.value = false }
+  try {
+    await deliveryApi.receive(receiveDeliveryId.value, receiveForm)
+    ElMessage.success('签收成功')
+    receiveVisible.value = false
+    await load()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '签收失败')
+  } finally {
+    submitting.value = false
+  }
 }
-function printDelivery(row: SalesDeliveryVO) { router.push({ path: '/sales/delivery/print', query: { deliveryId: row.deliveryId } }) }
-watch(sourceOrderId, value => { query.orderId = value; query.pageNum = 1; void load() })
+function printDelivery(row: SalesDeliveryVO) {
+  router.push({ path: '/sales/delivery/print', query: { deliveryId: row.deliveryId } })
+}
+watch(sourceOrderId, (value) => {
+  query.orderId = value
+  query.pageNum = 1
+  void load()
+})
 onMounted(load)
 </script>
 
 <style scoped>
-.search-card{margin-bottom:16px}.muted{color:#909399;font-size:12px}.attach-row{display:flex;align-items:center;gap:12px}
+.search-card {
+  margin-bottom: 16px;
+}
+.muted {
+  color: #909399;
+  font-size: 12px;
+}
+.attach-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 </style>
