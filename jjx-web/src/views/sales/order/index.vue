@@ -353,6 +353,13 @@ const orderRowActions: TableAction<any>[] = [
     key: 'delivery',
     label: '查看发货',
     permission: 'sales:delivery:view',
+    // 与后端 SalesDeliveryWorkflowService 口径对齐：仅「生产中 / 已发货 / 已完成」可进入发货（已完成用于回看发货与签收记录）
+    visible: ({ row }) =>
+      [
+        SalesOrderStatusEnum.PRODUCING.value,
+        SalesOrderStatusEnum.SHIPPED.value,
+        SalesOrderStatusEnum.COMPLETED.value,
+      ].includes(row.orderStatus),
   },
   {
     key: 'complete',

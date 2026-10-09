@@ -29,7 +29,7 @@
           <el-table-column prop="shortageQuantity" label="尚缺成品" width="95" align="right" />
           <el-table-column prop="stockAvailable" label="成品可用量" width="110" align="right" />
           <el-table-column label="安排条件" min-width="145"><template #default="{ row }"><el-tag :type="blockedReason(row) ? 'info' : 'success'" size="small">{{ blockedReason(row) || (row.shortageQuantity > 0 ? '可部分发货' : '可选择') }}</el-tag></template></el-table-column>
-          <template #empty><el-empty :description="loadError ? '数据加载失败，请重试' : '暂无符合条件的待安排明细'" :image-size="65" /></template>
+          <template #empty><el-empty :description="emptyDescription" :image-size="65" /></template>
         </el-table>
         <pagination v-show="total > 0" v-model:page="query.pageNum" v-model:limit="query.pageSize" :total="total" @pagination="reload" />
         <div class="selection-bar"><div>已选 <strong>{{ selected.length }}</strong> 条明细 · <strong>{{ selectedOrderCount }}</strong> 张订单 <span v-if="differentDueDates" class="due-warning">交期不同，请核对统一送货日期</span></div><div><el-button :disabled="!selected.length" @click="selected = []">清空选择</el-button><el-button v-hasPermi="['sales:order:edit']" type="primary" :disabled="!selected.length || loading" @click="dialog?.open(selected)">合并发货</el-button></div></div>
@@ -51,6 +51,12 @@ const rows = ref<DeliveryArrangeLine[]>([])
 const selected = ref<DeliveryArrangeLine[]>([])
 const loading = ref(false)
 const loadError = ref('')
+// 带订单过滤打开时，空列表通常意味着该订单不在「生产中」；给出定向提示避免空白误导
+const emptyDescription = computed(() => {
+  if (loadError.value) return '数据加载失败，请重试'
+  if (props.orderId) return '该订单当前不在生产中，暂不能安排发货'
+  return '暂无符合条件的待安排明细'
+})
 const total = ref(0)
 const query = reactive({ keyword: '', orderId: props.orderId, pageNum: 1, pageSize: 30 })
 const expanded = ref(true)
