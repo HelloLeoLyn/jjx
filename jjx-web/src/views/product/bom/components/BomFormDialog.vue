@@ -108,12 +108,6 @@
           <div class="upload-tip">仅支持 .xlsx / .xls 格式，解析后自动填充到物料明细表格。<b>导入的物料全部为根节点</b>，如需层级结构请在页面上用「子物料」按钮手动调整</div>
         </template>
       </el-upload>
-      <div class="template-row">
-        <el-button link type="primary" @click="downloadImportTemplate">
-          <el-icon><Download /></el-icon>下载导入模板（.xlsx）
-        </el-button>
-        <span class="template-hint">列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜单用量｜基数｜应用料｜预计不良｜最低投料｜实际投料（首行表头，数据从第 2 行起；预计不良填小数，如 0.05＝5%）</span>
-      </div>
     </div>
 
     <BomItemEditor
@@ -149,7 +143,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules, UploadFile, UploadInstance } from 'element-plus'
-import { FullScreen, UploadFilled, Download } from '@element-plus/icons-vue'
+import { FullScreen, UploadFilled } from '@element-plus/icons-vue'
 import { productBomApi } from '@/api/product/bom'
 import BomItemEditor from '@/components/BomItemEditor.vue'
 import BomPrintPreview from './BomPrintPreview.vue'
@@ -280,26 +274,6 @@ const handleImportFileChange = (uploadFile: UploadFile) => {
  */
 const handleImportExceed = () => {
   ElMessage.warning('每次只能上传一个文件')
-}
-
-/**
- * 下载导入模板（前端直接生成，列顺序与 parseRows 解析器对齐）
- */
-const downloadImportTemplate = () => {
-  const header = [
-    '序号', '项目名称', '材料名称', '单位', '宽度', '规格（乘/跳）', '长度',
-    '模数', '单用量', '基数', '应用料', '预计不良', '最低投料', '实际投料',
-  ]
-  const sample = [
-    [1, '示例-主体', '白卡纸 300g', '张', 787, '*', 1092, 1, 1, 1000, '', 0.05, '', ''],
-    [2, '示例-内衬', '瓦楞纸板', '张', 500, '/', 700, 1, 2, 1000, '', 0.03, '', ''],
-  ]
-  const sheet = XLSX.utils.aoa_to_sheet([header, ...sample])
-  sheet['!cols'] = header.map(() => ({ wch: 12 }))
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, sheet, 'BOM明细')
-  XLSX.writeFile(wb, 'BOM领料单导入模板.xlsx')
-  ElMessage.success('模板已下载，按表头填写后拖回此处导入')
 }
 
 /**
