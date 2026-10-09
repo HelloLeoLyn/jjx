@@ -388,6 +388,8 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
                     + (current == null ? String.valueOf(order.getOrderStatus()) : current.getLabel()) + "）");
         }
 
+        validatePrintFrame(execution);
+
         bindStartEquipment(execution, equipmentId, scannedDeviceCode, confirmEquipmentChange);
 
         // 恢复时保留首次实际开始时间。当前字段模型没有暂停时长分段，
@@ -404,6 +406,47 @@ public class ProductionOperationExecutionServiceImpl extends ServiceImpl<Product
 
         log.info("工序执行开始成功, ID: {}", executionId);
         return true;
+    }
+
+    /**
+     * 印刷工序网框硬校验（dev-20261009-026）：
+     * 若工序参数（customProcessParams）带了网框编号，则要求其网框当前为「已制版(PLATED)」；
+     * 未制版/已洗版(EMPTY)、维护中(MAINTENANCE)、已报废(SCRAPPED) → 阻断开工，防用废/旧版印错。
+     * 未登记网框（旧/自由文本）不拦，保持兼容。
+     */
+    private void validatePrintFrame(ProductionOperationExecution execution) {
+        String raw = execution.getCustomProcessParams();
+        if (raw == null || raw.isBlank()) {
+            return;
+        }
+        String screenNo;
+        try {
+            com.fasterxml.jackson.databind.JsonNode node =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(raw);
+            screenNo = node.path("screenNo").asText(null);
+        } catch (Exception e) {
+            return; // 参数非 JSON，跳过
+        }
+        if (screenNo == null || screenNo.isBlank()) {
+            return;
+        }
+        List<String> statusList = jdbcTemplate.queryForList(
+                "SELECT status FROM engineering_screen_frame WHERE frame_no=? AND del_flag='0' LIMIT 1",
+                String.class, screenNo.trim());
+        if (statusList.isEmpty()) {
+            return; // 未登记网框，不拦
+        }
+        String status = statusList.get(0);
+        if (!"PLATED".equals(status)) {
+            String label = switch (status) {
+                case "EMPTY" -> "未制版/已洗版";
+                case "MAINTENANCE" -> "维护中";
+                case "SCRAPPED" -> "已报废";
+                default -> status;
+            };
+            throw new BusinessException("印刷工序网框【" + screenNo + "】当前为“" + label
+                    + "”，不能开工；请先制版或更换网框");
+        }
     }
 
     @Override
