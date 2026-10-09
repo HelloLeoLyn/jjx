@@ -51,69 +51,34 @@
             </el-table-column>
             <el-table-column label="色号" width="140">
               <template #default="{ row }">
-                <el-autocomplete
+                <PrintFieldAutocomplete
                   v-model="row.colorNo"
-                  size="small"
-                  :fetch-suggestions="suggestColors"
-                  :trigger-on-focus="true"
-                  clearable
+                  field="colorNo"
+                  width="130px"
                   placeholder="选择或手输色号"
                 />
               </template>
             </el-table-column>
             <el-table-column label="油墨" min-width="230">
               <template #default="{ row }">
-                <el-autocomplete
+                <PrintFieldAutocomplete
                   v-model="row.inkNo"
-                  size="small"
-                  :fetch-suggestions="suggestInks"
-                  :trigger-on-focus="true"
-                  clearable
+                  field="inkNo"
+                  width="220px"
                   placeholder="选择 INK 物料，或直接手输"
                   @select="(item: any) => onInkSelect(row, item)"
-                  @input="(val: string | number) => onInkInput(row, String(val ?? ''))"
-                  @clear="() => onInkClear(row)"
+                  @input="(val: string) => onInkInput(row, val)"
                 />
               </template>
             </el-table-column>
             <el-table-column label="菲林" width="170">
               <template #default="{ row }">
-                <el-autocomplete
-                  v-model="row.filmNo"
-                  size="small"
-                  style="width: 160px"
-                  :fetch-suggestions="suggestFilms"
-                  :trigger-on-focus="true"
-                  clearable
-                  placeholder="菲林编码"
-                >
-                  <template #default="{ item }">
-                    <span>{{ item.value }}</span>
-                    <span style="float: right; color: #909399; font-size: 12px; margin-left: 8px">{{
-                      item.hint
-                    }}</span>
-                  </template>
-                </el-autocomplete>
+                <PrintFieldAutocomplete v-model="row.filmNo" field="filmNo" width="160px" placeholder="菲林编码" />
               </template>
             </el-table-column>
             <el-table-column label="网框编号" width="170">
               <template #default="{ row }">
-                <el-autocomplete
-                  v-model="row.screenNo"
-                  size="small"
-                  style="width: 160px"
-                  :fetch-suggestions="suggestFrames"
-                  :trigger-on-focus="true"
-                  clearable
-                  placeholder="网框编号（带状态）"
-                >
-                  <template #default="{ item }">
-                    <span>{{ item.value }}</span>
-                    <span style="float: right; color: #909399; font-size: 12px; margin-left: 8px">{{
-                      item.statusLabel
-                    }}</span>
-                  </template>
-                </el-autocomplete>
+                <PrintFieldAutocomplete v-model="row.screenNo" field="screenNo" width="160px" />
               </template>
             </el-table-column>
             <el-table-column label="🧾 材料" min-width="180">
@@ -253,10 +218,9 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
-import { getProcessHistory, suggestSampleColors, suggestSampleInks } from '@/api/sales/sampleOrder'
+import { getProcessHistory } from '@/api/sales/sampleOrder'
 import { ProcessStatusEnum } from '@/enums/product/process'
-import { engineeringResourceApi } from '@/api/engineering/resource'
-import { filmApi } from '@/api/product/film'
+import PrintFieldAutocomplete from '@/components/print/PrintFieldAutocomplete.vue'
 
 /**
  * 印刷工序面板（dev-20260811-009）
@@ -286,76 +250,6 @@ const activeTab = ref('PANEL')
 // 印刷历史联想缓存（印刷名称仍沿用历史联想）
 const historyCache = ref<Record<string, string[]>>({ printNames: [], colorNos: [], inkNos: [] })
 
-// 色号联想（2026-09-04 搜索式下拉）：空输入 → 后端常用 TOP10；有输入 → 字典模糊搜
-async function suggestColors(query: string, cb: (items: { value: string }[]) => void) {
-  try {
-    const res: any = await suggestSampleColors(query || undefined, 10)
-    const list: string[] = res?.data || []
-    cb(list.map((value) => ({ value })))
-  } catch {
-    cb([])
-  }
-}
-
-// 油墨联想（2026-09-04 搜索式下拉，参考色号方案）：
-// 空输入 → 后端常用 TOP10（历史 inkNo 频次 + INK 物料补足）；有输入 → INK 物料+历史模糊搜。
-// 返回项带 materialId：点选物料自动关联；手输文本自动解除关联防错位。
-async function suggestInks(query: string, cb: (items: any[]) => void) {
-  try {
-    const res: any = await suggestSampleInks(query || undefined, 10)
-    const list: any[] = res?.data || []
-    cb(list.map((x) => ({ value: x.text, materialId: x.materialId ?? null })))
-  } catch {
-    cb([])
-  }
-}
-
-// ===== 网框联想（网框台账，带状态）dev-20261009-026 =====
-const frameCache = ref<any[]>([])
-const frameLoaded = ref(false)
-async function ensureFrames() {
-  if (frameLoaded.value) return
-  frameLoaded.value = true
-  try {
-    const res: any = await engineeringResourceApi.frames({ pageNum: 1, pageSize: 1000 })
-    frameCache.value = res?.data?.records || []
-  } catch {
-    frameCache.value = []
-  }
-}
-function frameStatusLabel(s: string): string {
-  const m: Record<string, string> = {
-    EMPTY: '空框',
-    PLATED: '已制版',
-    MAINTENANCE: '维护中',
-    SCRAPPED: '已报废',
-  }
-  return m[s] || s || ''
-}
-function suggestFrames(query: string, cb: (items: any[]) => void) {
-  const q = (query || '').trim().toLowerCase()
-  const list = frameCache.value
-    .filter((f: any) => !q || String(f.frameNo || '').toLowerCase().includes(q))
-    .slice(0, 20)
-  cb(list.map((f: any) => ({ value: f.frameNo, statusLabel: frameStatusLabel(f.status) })))
-}
-// ===== 菲林联想（按关键字）dev-20261009-026 =====
-async function suggestFilms(query: string, cb: (items: any[]) => void) {
-  try {
-    const res: any = await filmApi.list({ keyword: query || undefined })
-    const list: any[] = res?.data?.records || res?.data || []
-    cb(
-      list.slice(0, 20).map((f: any) => ({
-        value: f.filmCode,
-        hint: [f.filmName, f.filmTypeName, f.version].filter(Boolean).join(' '),
-      }))
-    )
-  } catch {
-    cb([])
-  }
-}
-watch(activeTab, () => ensureFrames(), { immediate: true })
-
 function onInkSelect(row: any, item: any) {
   // 点选联想项：文本 + 物料关联（若该文本命中 INK 物料）
   row._inkPickedText = item.value
@@ -367,11 +261,6 @@ function onInkInput(row: any, val: string) {
   if (row._inkPickedText !== val) {
     row.inkMaterialId = null
   }
-}
-
-function onInkClear(row: any) {
-  row._inkPickedText = ''
-  row.inkMaterialId = null
 }
 
 async function loadHistory() {

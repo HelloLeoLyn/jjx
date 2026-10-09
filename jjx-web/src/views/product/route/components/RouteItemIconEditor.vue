@@ -288,76 +288,42 @@
                 </el-table-column>
                 <el-table-column label="色号" width="150">
                   <template #default="{ row }">
-                    <el-autocomplete
+                    <PrintFieldAutocomplete
                       :model-value="getPrintParam(row, 'colorNo')"
-                      size="small"
-                      style="width: 140px"
-                      :fetch-suggestions="suggestColors"
-                      :trigger-on-focus="true"
-                      clearable
-                      placeholder="如 PANTONE 123C"
-                      @select="(it: any) => setPrintParam(row, 'colorNo', it.value)"
-                      @input="(v: string | number) => setPrintParam(row, 'colorNo', String(v))"
+                      field="colorNo"
+                      width="140px"
+                      @update:model-value="(v: string) => setPrintParam(row, 'colorNo', v)"
                     />
                   </template>
                 </el-table-column>
                 <el-table-column label="油墨编号" width="150">
                   <template #default="{ row }">
-                    <el-autocomplete
+                    <PrintFieldAutocomplete
                       :model-value="getPrintParam(row, 'inkNo')"
-                      size="small"
-                      style="width: 140px"
-                      :fetch-suggestions="suggestInks"
-                      :trigger-on-focus="true"
-                      clearable
-                      placeholder="油墨编号"
-                      @select="(it: any) => setPrintParam(row, 'inkNo', it.value)"
-                      @input="(v: string | number) => setPrintParam(row, 'inkNo', String(v))"
+                      field="inkNo"
+                      width="140px"
+                      @update:model-value="(v: string) => setPrintParam(row, 'inkNo', v)"
                     />
                   </template>
                 </el-table-column>
                 <el-table-column label="菲林" width="170">
                   <template #default="{ row }">
-                    <el-autocomplete
+                    <PrintFieldAutocomplete
                       :model-value="getPrintParam(row, 'filmNo')"
-                      size="small"
-                      style="width: 160px"
-                      :fetch-suggestions="suggestFilms"
-                      :trigger-on-focus="true"
-                      clearable
-                      placeholder="菲林编码"
-                      @select="(it: any) => setPrintParam(row, 'filmNo', it.value)"
-                      @input="(v: string | number) => setPrintParam(row, 'filmNo', String(v))"
-                    >
-                      <template #default="{ item }">
-                        <span>{{ item.value }}</span>
-                        <span style="float: right; color: #909399; font-size: 12px; margin-left: 8px">{{
-                          item.hint
-                        }}</span>
-                      </template>
-                    </el-autocomplete>
+                      field="filmNo"
+                      width="160px"
+                      @update:model-value="(v: string) => setPrintParam(row, 'filmNo', v)"
+                    />
                   </template>
                 </el-table-column>
                 <el-table-column label="网框编号" width="170">
                   <template #default="{ row }">
-                    <el-autocomplete
+                    <PrintFieldAutocomplete
                       :model-value="getPrintParam(row, 'screenNo')"
-                      size="small"
-                      style="width: 160px"
-                      :fetch-suggestions="suggestFrames"
-                      :trigger-on-focus="true"
-                      clearable
-                      placeholder="网框编号（带状态）"
-                      @select="(it: any) => setPrintParam(row, 'screenNo', it.value)"
-                      @input="(v: string | number) => setPrintParam(row, 'screenNo', String(v))"
-                    >
-                      <template #default="{ item }">
-                        <span>{{ item.value }}</span>
-                        <span style="float: right; color: #909399; font-size: 12px; margin-left: 8px">{{
-                          item.statusLabel
-                        }}</span>
-                      </template>
-                    </el-autocomplete>
+                      field="screenNo"
+                      width="160px"
+                      @update:model-value="(v: string) => setPrintParam(row, 'screenNo', v)"
+                    />
                   </template>
                 </el-table-column>
                 <el-table-column label="子结构" width="110">
@@ -484,9 +450,7 @@ import { Search } from '@element-plus/icons-vue'
 import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessCategoryEnum } from '@/enums/product'
-import { suggestSampleColors, suggestSampleInks } from '@/api/sales/sampleOrder'
-import { engineeringResourceApi } from '@/api/engineering/resource'
-import { filmApi } from '@/api/product/film'
+import PrintFieldAutocomplete from '@/components/print/PrintFieldAutocomplete.vue'
 import { ROUTE_STRUCTURE_TABS, routeStructureTabValue } from './routeProcessTabs'
 import EngineeringRoutingItem from '@/components/product/EngineeringRoutingItem.vue'
 import ProcessOperation from '@/components/ProcessOperation/index.vue'
@@ -616,71 +580,6 @@ function setPrintParam(row: any, key: string, val: string) {
     row.customProcessParams = JSON.stringify(o)
   } catch {
     row.customProcessParams = JSON.stringify({ [key]: val })
-  }
-}
-
-// ===== 印刷工序输入联想（对齐打样工作台 PrintProcessPanel，dev-20261009-026）=====
-// 色号联想：空→常用 TOP10，有输入→字典模糊搜
-async function suggestColors(query: string, cb: (items: { value: string }[]) => void) {
-  try {
-    const res: any = await suggestSampleColors(query || undefined, 10)
-    cb((res?.data || []).map((value: string) => ({ value })))
-  } catch {
-    cb([])
-  }
-}
-// 油墨联想：空→常用 TOP10（INK 物料+历史），有输入→模糊搜
-async function suggestInks(query: string, cb: (items: { value: string }[]) => void) {
-  try {
-    const res: any = await suggestSampleInks(query || undefined, 10)
-    cb((res?.data || []).map((x: any) => ({ value: x?.text ?? x })))
-  } catch {
-    cb([])
-  }
-}
-// 网框联想：从网框台账（带状态），一次性加载后本地过滤；保留手输以兼容旧数据
-const frameCache = ref<any[]>([])
-const frameLoaded = ref(false)
-async function ensureFrames() {
-  if (frameLoaded.value) return
-  frameLoaded.value = true
-  try {
-    const res: any = await engineeringResourceApi.frames({ pageNum: 1, pageSize: 1000 })
-    frameCache.value = res?.data?.records || []
-  } catch {
-    frameCache.value = []
-  }
-}
-function frameStatusLabel(s: string): string {
-  const m: Record<string, string> = {
-    EMPTY: '空框',
-    PLATED: '已制版',
-    MAINTENANCE: '维护中',
-    SCRAPPED: '已报废',
-  }
-  return m[s] || s || ''
-}
-function suggestFrames(query: string, cb: (items: any[]) => void) {
-  const q = (query || '').trim().toLowerCase()
-  const list = frameCache.value
-    .filter((f: any) => !q || String(f.frameNo || '').toLowerCase().includes(q))
-    .slice(0, 20)
-  cb(list.map((f: any) => ({ value: f.frameNo, statusLabel: frameStatusLabel(f.status) })))
-}
-watch(printActiveTab, () => ensureFrames(), { immediate: true })
-// 菲林联想（按关键字）
-async function suggestFilms(query: string, cb: (items: any[]) => void) {
-  try {
-    const res: any = await filmApi.list({ keyword: query || undefined })
-    const list: any[] = res?.data?.records || res?.data || []
-    cb(
-      list.slice(0, 20).map((f: any) => ({
-        value: f.filmCode,
-        hint: [f.filmName, f.filmTypeName, f.version].filter(Boolean).join(' '),
-      }))
-    )
-  } catch {
-    cb([])
   }
 }
 

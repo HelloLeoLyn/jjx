@@ -1,0 +1,99 @@
+import { ref } from 'vue'
+import { suggestSampleColors, suggestSampleInks } from '@/api/sales/sampleOrder'
+import { engineeringResourceApi } from '@/api/engineering/resource'
+import { filmApi } from '@/api/product/film'
+
+/**
+ * 印刷工序字段联想（公共）——dev-20261009-026
+ * 统一 色号 / 油墨 / 菲林 / 网框 的联想数据源，供 工艺路线·印刷工序、
+ * 打样工作台·印刷工序、产品作业规范③ 等复用，避免各处各写一份。
+ */
+export interface PrintSuggestItem {
+  value: string
+  hint?: string
+  statusLabel?: string
+  materialId?: number | null
+}
+
+const FRAME_STATUS_LABEL: Record<string, string> = {
+  EMPTY: '空框',
+  PLATED: '已制版',
+  MAINTENANCE: '维护中',
+  SCRAPPED: '已报废',
+}
+
+export function frameStatusLabel(s: string): string {
+  return FRAME_STATUS_LABEL[s] || s || ''
+}
+
+// 网框台账本地缓存（进程内复用）
+const frameCache = ref<any[]>([])
+const frameLoaded = ref(false)
+
+export async function ensureFrames() {
+  if (frameLoaded.value) return
+  frameLoaded.value = true
+  try {
+    const res: any = await engineeringResourceApi.frames({ pageNum: 1, pageSize: 1000 })
+    frameCache.value = res?.data?.records || []
+  } catch {
+    frameCache.value = []
+  }
+}
+
+export async function suggestColors(query: string, cb: (items: PrintSuggestItem[]) => void) {
+  try {
+    const res: any = await suggestSampleColors(query || undefined, 10)
+    cb((res?.data || []).map((value: string) => ({ value })))
+  } catch {
+    cb([])
+  }
+}
+
+export async function suggestInks(query: string, cb: (items: PrintSuggestItem[]) => void) {
+  try {
+    const res: any = await suggestSampleInks(query || undefined, 10)
+    cb((res?.data || []).map((x: any) => ({ value: x?.text ?? x, materialId: x?.materialId ?? null })))
+  } catch {
+    cb([])
+  }
+}
+
+export async function suggestFilms(query: string, cb: (items: PrintSuggestItem[]) => void) {
+  try {
+    const res: any = await filmApi.list({ keyword: query || undefined })
+    const list: any[] = res?.data?.records || res?.data || []
+    cb(
+      list.slice(0, 20).map((f: any) => ({
+        value: f.filmCode,
+        hint: [f.filmName, f.filmTypeName, f.version].filter(Boolean).join(' '),
+      }))
+    )
+  } catch {
+    cb([])
+  }
+}
+
+export function suggestFrames(query: string, cb: (items: PrintSuggestItem[]) => void) {
+  const q = (query || '').trim().toLowerCase()
+  const list = frameCache.value
+    .filter((f: any) => !q || String(f.frameNo || '').toLowerCase().includes(q))
+    .slice(0, 20)
+  cb(list.map((f: any) => ({ value: f.frameNo, statusLabel: frameStatusLabel(f.status) })))
+}
+
+export type PrintFieldKey = 'colorNo' | 'inkNo' | 'filmNo' | 'screenNo'
+
+export const PRINT_FIELD_SUGGESTERS: Record<
+  PrintFieldKey,
+  (q: string, cb: (items: PrintSuggestItem[]) => void) => void
+> = {
+  colorNo: suggestColors,
+  inkNo: suggestInks,
+  filmNo: suggestFilms,
+  screenNo: suggestFrames,
+}
+
+export function usePrintFieldSuggest() {
+  return { ensureFrames, suggestColors, suggestInks, suggestFilms, suggestFrames, frameStatusLabel }
+}
