@@ -436,14 +436,41 @@ const message = (error: unknown) =>
 const fmt = (value: number) =>
   Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
 const totals = computed(() => materialTotals(demands.value))
-const stockSummaryRows = computed(() => Object.entries(totals.value).map(([id, required]) => ({
-  id,
-  name: materials[id]?.name || '材料信息加载中',
-  spec: materials[id]?.spec || '—',
-  unit: materials[id]?.unit || '',
-  required,
-  available: materials[id]?.available || 0,
-})))
+const stockSummaryRows = computed(() => {
+  const rows: Array<{
+    id: string
+    name: string
+    spec: string
+    unit: string
+    required: number
+    available: number
+  }> = []
+  const rowByMaterial = new Map<string, (typeof rows)[number]>()
+
+  for (const row of allocationRows.value) {
+    const allocation = row.allocation
+    if (!allocation) continue
+
+    const existing = rowByMaterial.get(allocation.materialId)
+    if (existing) {
+      existing.required = Number((existing.required + quantity(allocation)).toFixed(4))
+      continue
+    }
+
+    const summaryRow = {
+      id: allocation.materialId,
+      name: materials[allocation.materialId]?.name || '材料信息加载中',
+      spec: materials[allocation.materialId]?.spec || '—',
+      unit: materials[allocation.materialId]?.unit || '',
+      required: quantity(allocation),
+      available: materials[allocation.materialId]?.available || 0,
+    }
+    rows.push(summaryRow)
+    rowByMaterial.set(allocation.materialId, summaryRow)
+  }
+
+  return rows
+})
 const errors = computed(() => validationIssues(demands.value, materials))
 const gapCount = computed(() => demands.value.filter((d) => planned(d) < d.remaining - 1e-8).length)
 const shortageRows = computed(() => demands.value.flatMap((d) => {
