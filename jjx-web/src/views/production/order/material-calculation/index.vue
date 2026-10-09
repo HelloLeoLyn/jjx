@@ -73,10 +73,34 @@
             </template>
             </el-table-column>
             <el-table-column label="基数" width="72" align="center">
-            <template #default="{ row }">{{ row.kind === 'bom' ? fmt(row.demand.baseQty) : '—' }}</template>
+              <template #default="{ row }">
+                <template v-if="row.kind === 'bom'">{{ fmt(row.demand.baseQty) }}</template>
+                <el-input-number
+                  v-else-if="row.allocation"
+                  v-model="row.allocation.baseQty"
+                  :min="0"
+                  :precision="4"
+                  :controls="false"
+                  size="small"
+                  aria-label="平替材料基数"
+                  @change="updateSubstitution(row.allocation, row.demand)"
+                />
+              </template>
             </el-table-column>
             <el-table-column label="模数" width="72" align="center">
-            <template #default="{ row }">{{ row.kind === 'bom' ? fmt(row.demand.moduleQty) : '—' }}</template>
+              <template #default="{ row }">
+                <template v-if="row.kind === 'bom'">{{ fmt(row.demand.moduleQty) }}</template>
+                <el-input-number
+                  v-else-if="row.allocation"
+                  v-model="row.allocation.moduleQty"
+                  :min="0"
+                  :precision="4"
+                  :controls="false"
+                  size="small"
+                  aria-label="平替材料模数"
+                  @change="updateSubstitution(row.allocation, row.demand)"
+                />
+              </template>
             </el-table-column>
             <el-table-column label="损耗率" width="100" align="center">
             <template #default="{ row }">
@@ -109,18 +133,7 @@
                 <small>{{ materials[row.allocation.materialId]?.code }} · {{ materials[row.allocation.materialId]?.spec || '未填规格' }}</small>
                 <template v-if="row.kind === 'substitute'">
                   <el-tag size="small" type="warning">替代 {{ row.demand.original.code }}</el-tag>
-                  <div class="ratio-field">
-                    <span>每单位抵扣</span>
-                    <el-input-number
-                      v-model="row.allocation.ratio"
-                      :min="0"
-                      :precision="4"
-                      :controls="false"
-                      size="small"
-                      @change="updateCoverage(row.allocation, row.demand)"
-                    />
-                    <span>{{ row.demand.original.unit }}</span>
-                  </div>
+                  <small>抵扣系数 {{ fmt(row.allocation.ratio) }} {{ row.demand.original.unit }}/{{ materials[row.allocation.materialId]?.unit }}</small>
                   <el-input
                     v-model="row.allocation.reason"
                     size="small"
@@ -175,7 +188,7 @@
             </el-table-column>
           </el-table>
         </div>
-        <p class="formula-note">BOM 需求按工单数量 × 基数 ÷ 模数并计入 BOM 损耗。替代行输入实际领料量后，系统按“领料量 × 抵扣系数 ÷ (1 + 损耗率)”显示抵扣原需求；替代损耗默认复制 BOM，可调整。</p>
+        <p class="formula-note">BOM 需求按工单数量 × 基数 ÷ 模数并计入 BOM 损耗。平替材料的基数、模数可输入，抵扣系数按原 BOM 单位需求 ÷ 平替材料单位需求自动计算；抵扣原需求 = 领料量 × 抵扣系数 ÷ (1 + 损耗率)。平替损耗默认复制 BOM，可调整。</p>
       </section>
       <section v-if="demands.length" class="stock-card">
         <div class="section-heading"><h3>所选材料库存合计</h3></div>
@@ -577,6 +590,7 @@ async function selectMaterial(stock: StockVO) {
       a.loss = d.lossRate
       a.issueQuantity = 0
       a.coverage = 0
+      updateSubstitution(a, d)
     }
     d.allocations.push(a)
     pickerVisible.value = false
@@ -595,6 +609,12 @@ function updateCoverage(a: Allocation, d: Demand) {
   a.coverage = a.ratio > 0
     ? Number((issue * a.ratio / (1 + a.loss / 100)).toFixed(4))
     : 0
+}
+function updateSubstitution(a: Allocation, d: Demand) {
+  const originalRate = d.baseQty > 0 && d.moduleQty > 0 ? d.baseQty / d.moduleQty : 0
+  const substituteRate = a.baseQty > 0 && a.moduleQty > 0 ? a.baseQty / a.moduleQty : 0
+  a.ratio = originalRate > 0 && substituteRate > 0 ? Number((originalRate / substituteRate).toFixed(6)) : 0
+  updateCoverage(a, d)
 }
 
 const batchVisible = ref(false),
@@ -1015,6 +1035,12 @@ p {
   min-width: 1420px;
   font-size: 12px;
 }
+function updateSubstitution(a: Allocation, d: Demand) {
+  const originalRate = d.baseQty > 0 && d.moduleQty > 0 ? d.baseQty / d.moduleQty : 0
+  const substituteRate = a.baseQty > 0 && a.moduleQty > 0 ? a.baseQty / a.moduleQty : 0
+  a.ratio = originalRate > 0 && substituteRate > 0 ? Number((originalRate / substituteRate).toFixed(6)) : 0
+  updateCoverage(a, d)
+}
 .allocation-table :deep(.el-table__header th) {
   background: #fafbfd;
   text-align: left;
@@ -1042,18 +1068,7 @@ p {
   font-size: 11px;
 }
 .allocation-table .el-input-number {
-  width: 108px;
-}
-.ratio-field {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 6px;
-  color: #778394;
-  white-space: nowrap;
-}
-.ratio-field .el-input-number {
-  width: 86px;
+  width: 62px;
 }
 .reason-input {
   width: 180px;

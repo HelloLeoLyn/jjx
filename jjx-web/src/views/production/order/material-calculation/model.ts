@@ -38,6 +38,8 @@ export interface Material {
 export interface Allocation {
   id: string
   materialId: string
+  baseQty: number
+  moduleQty: number
   issueQuantity: number
   coverage: number
   ratio: number
@@ -63,6 +65,8 @@ export function allocation(materialId: string, coverage: number): Allocation {
   return {
     id: `allocation-${Date.now()}-${allocationSequence}`,
     materialId,
+    baseQty: 1,
+    moduleQty: 1,
     issueQuantity: coverage,
     coverage,
     ratio: 1,
