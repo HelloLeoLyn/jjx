@@ -126,6 +126,14 @@ public class SysAttachmentController {
         return Result.success(attachmentService.setCurrentAttachment(id));
     }
 
+    @Operation(summary = "图纸/工程文件下发或撤回（受控文件；dev-20261009-023）")
+    @PostMapping("/{id}/release")
+    @cn.dev33.satoken.annotation.SaCheckPermission("engineering:drawing:release")
+    public Result<Boolean> release(@PathVariable Long id,
+                                   @RequestParam(required = false, defaultValue = "true") boolean released) {
+        return Result.success(attachmentService.setReleased(id, released));
+    }
+
     @Operation(summary = "客供资料归集：某产品关联的询价/报价附件（只读）")
     @GetMapping("/customer-docs/{productId}")
     public Result<java.util.List<java.util.Map<String, Object>>> customerDocs(@PathVariable Long productId) {

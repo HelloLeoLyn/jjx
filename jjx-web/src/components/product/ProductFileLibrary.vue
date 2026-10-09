@@ -104,6 +104,12 @@
                   <el-tag v-if="att.isCurrent === 1" size="small" type="success" effect="dark" class="cur-tag"
                     >现行</el-tag
                   >
+                  <el-tag v-if="att.isControlled === 1" size="small" type="warning" effect="dark" class="ctl-tag"
+                    >受控</el-tag
+                  >
+                  <el-tag v-if="att.released === 1" size="small" type="success" effect="dark" class="rel-tag"
+                    >已下发</el-tag
+                  >
                   <span v-if="att.version" class="ver-tag">v{{ att.version }}</span>
                   <span class="type-tag">{{ fileTypeLabel(att.fileName) }}</span>
                   <span>{{ formatSize(att.fileSize) }}</span>
@@ -113,6 +119,15 @@
               </div>
             </div>
             <div class="file-actions">
+              <el-tooltip v-if="canRelease" :content="att.released === 1 ? '撤回下发' : '下发图纸'" placement="top">
+                <el-button
+                  link
+                  :type="att.released === 1 ? 'info' : 'success'"
+                  @click="onToggleRelease(att)"
+                >
+                  {{ att.released === 1 ? '撤回' : '下发' }}
+                </el-button>
+              </el-tooltip>
               <el-tooltip v-if="canUpload && att.isCurrent !== 1" content="设为现行版" placement="top">
                 <el-button link type="warning" @click="onSetCurrent(att)">设为现行</el-button>
               </el-tooltip>
@@ -180,6 +195,8 @@ const props = defineProps<{
   uploadPerm?: string
   /** 删除权限点（可选，提供则按权限控制） */
   deletePerm?: string
+  /** 下发权限点（可选，提供才显示下发/撤回按钮；图纸管理用） */
+  releasePerm?: string
 }>()
 
 const emit = defineEmits<{
@@ -207,6 +224,9 @@ const canUpload = computed(() =>
 )
 const canDelete = computed(() =>
   props.deletePerm ? userStore.hasPermission(props.deletePerm) : true
+)
+const canRelease = computed(() =>
+  props.releasePerm ? userStore.hasPermission(props.releasePerm) : false
 )
 
 const category = ref('客供稿')
@@ -400,6 +420,22 @@ async function onSetCurrent(att: any) {
   }
 }
 
+async function onToggleRelease(att: any) {
+  const toRelease = att.released !== 1
+  try {
+    await ElMessageBox.confirm(
+      toRelease ? `确认下发图纸「${att.fileName || '-'}」？` : `确认撤回下发「${att.fileName || '-'}」？`,
+      '图纸下发',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+    )
+    await attachmentApi.release(att.id, toRelease)
+    ElMessage.success(toRelease ? '已下发' : '已撤回')
+    loadFiles()
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '操作失败')
+  }
+}
+
 function windowOpen(url: string) {
   window.open(url, '_blank')
 }
@@ -528,6 +564,12 @@ function formatTime(t: string | null | undefined): string {
 }
 
 .cur-tag {
+  height: 18px;
+  padding: 0 4px;
+}
+
+.ctl-tag,
+.rel-tag {
   height: 18px;
   padding: 0 4px;
 }

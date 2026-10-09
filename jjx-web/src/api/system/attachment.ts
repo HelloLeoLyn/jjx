@@ -68,6 +68,15 @@ export const attachmentApi = {
     })
   },
 
+  // 图纸/工程文件下发或撤回（受控文件；dev-20261009-023）
+  release(id: number, released = true): AxiosPromise<boolean> {
+    return request({
+      url: `/system/attachment/${id}/release`,
+      method: 'post',
+      params: { released },
+    })
+  },
+
   // 下载/预览附件
   downloadUrl(id: number): string {
     const base = (import.meta.env.VITE_BASE_API || '/api') as string

@@ -477,4 +477,23 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
                 .eq(SysAttachment::getId, id)
                 .set(SysAttachment::getIsCurrent, 1));
     }
+
+    @Override
+    public boolean setReleased(Long id, boolean released) {
+        SysAttachment att = getById(id);
+        if (att == null) {
+            throw new BusinessException("附件不存在: " + id);
+        }
+        String operator = null;
+        try {
+            operator = cn.dev33.satoken.stp.StpUtil.getLoginIdAsString();
+        } catch (Exception ignore) {
+            // 非登录上下文（定时任务等）忽略
+        }
+        return update(Wrappers.<SysAttachment>lambdaUpdate()
+                .eq(SysAttachment::getId, id)
+                .set(SysAttachment::getReleased, released ? 1 : 0)
+                .set(SysAttachment::getReleasedAt, released ? LocalDateTime.now() : null)
+                .set(SysAttachment::getReleasedBy, released ? operator : null));
+    }
 }

@@ -120,4 +120,12 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
      * 将附件设为「现行版」（同 bizType+bizId+category 下仅一个现行；dev-20260929-023）
      */
     boolean setCurrentAttachment(Long id);
+
+    /**
+     * 图纸/工程文件「下发 / 撤回」（受控文件；dev-20261009-023）
+     *
+     * @param id       附件ID
+     * @param released true=下发，false=撤回
+     */
+    boolean setReleased(Long id, boolean released);
 }

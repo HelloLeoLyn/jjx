@@ -35,6 +35,19 @@ public class SysAttachment {
     @Schema(description = "是否现行版（产品文件库，同业务+同类别下仅一版现行；dev-20260929-023）")
     private Integer isCurrent;
 
+    @Schema(description = "是否受控（工程图/技术文档；dev-20261009-023）")
+    private Integer isControlled;
+
+    @Schema(description = "是否已下发（受控文件；dev-20261009-023）")
+    private Integer released;
+
+    @Schema(description = "下发时间")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime releasedAt;
+
+    @Schema(description = "下发人")
+    private String releasedBy;
+
     @Schema(description = "链路追踪ID（关联单据链路）")
     private String traceId;
 
