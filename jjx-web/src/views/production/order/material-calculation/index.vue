@@ -65,59 +65,115 @@
       />
       <section class="allocation-sheet">
         <div class="table-scroll">
-          <table class="allocation-table">
-            <thead>
-              <tr>
-                <th>BOM 原材料 / 规格</th><th>基数</th><th>模数</th><th>损耗率</th>
-                <th>本次需求</th><th>本次安排材料</th><th>可用库存</th>
-                <th>本次领料量</th><th>抵扣原需求</th><th>操作</th>
-              </tr>
-            </thead>
-            <tbody v-for="d in demands" :key="d.id">
-              <tr v-if="!d.allocations.length">
-                <td class="bom-cell"><b>{{ d.original.name }}</b><small>{{ d.original.code }} · {{ d.original.spec || '未填规格' }}</small></td>
-                <td>{{ fmt(d.baseQty) }}</td><td>{{ fmt(d.moduleQty) }}</td><td>{{ d.lossRate }}%</td>
-                <td class="demand-amount"><b>{{ fmt(d.remaining) }} {{ d.original.unit }}</b><small>本次剩余需求</small></td>
-                <td colspan="5"><el-button link type="primary" @click="openPicker(d)">＋ 选择原料或替代料</el-button></td>
-              </tr>
-              <tr v-for="(a, allocationIndex) in d.allocations" :key="a.id">
-                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1" class="bom-cell">
-                  <b>{{ d.original.name }}</b><small>{{ d.original.code }} · {{ d.original.spec || '未填规格' }}</small>
-                  <small>整单 {{ fmt(d.total) }}，已开 {{ fmt(d.opened) }} {{ d.original.unit }}</small>
-                </td>
-                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1">{{ fmt(d.baseQty) }}</td>
-                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1">{{ fmt(d.moduleQty) }}</td>
-                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1">{{ d.lossRate }}%</td>
-                <td v-if="allocationIndex === 0" :rowspan="d.allocations.length + 1" class="demand-amount">
-                  <b>{{ fmt(d.remaining) }} {{ d.original.unit }}</b><small>本次剩余需求</small>
-                </td>
-                <td class="material-cell">
-                  <b>{{ materials[a.materialId]?.name }}</b><small>{{ materials[a.materialId]?.code }} · {{ materials[a.materialId]?.spec || '未填规格' }}</small>
-                  <el-tag v-if="a.materialId !== d.original.id" size="small" type="warning">替代 {{ d.original.code }}</el-tag>
-                  <div v-if="a.materialId !== d.original.id" class="substitution-settings">
-                    <span>每单位抵扣</span><el-input-number v-model="a.ratio" :min="0" :precision="4" :controls="false" size="small" @change="updateCoverage(a, d)" />
-                    <span>{{ d.original.unit }}</span>
-                    <span>损耗%</span><el-input-number v-model="a.loss" :min="0" :max="100" :precision="2" :controls="false" size="small" @change="updateCoverage(a, d)" />
+          <el-table :data="allocationRows" row-key="key" border class="allocation-table">
+            <el-table-column label="BOM 原材料 / 规格" min-width="200">
+            <template #default="{ row }">
+              <b>{{ row.kind === 'bom' ? row.demand.original.name : '↳ 平替 ' + row.demand.original.name }}</b>
+              <small>{{ row.demand.original.code }} · {{ row.demand.original.spec || '未填规格' }}</small>
+            </template>
+            </el-table-column>
+            <el-table-column label="基数" width="72" align="center">
+            <template #default="{ row }">{{ row.kind === 'bom' ? fmt(row.demand.baseQty) : '—' }}</template>
+            </el-table-column>
+            <el-table-column label="模数" width="72" align="center">
+            <template #default="{ row }">{{ row.kind === 'bom' ? fmt(row.demand.moduleQty) : '—' }}</template>
+            </el-table-column>
+            <el-table-column label="损耗率" width="100" align="center">
+            <template #default="{ row }">
+              <template v-if="row.kind === 'bom'">{{ row.demand.lossRate }}%</template>
+              <el-input-number
+                v-else-if="row.allocation"
+                v-model="row.allocation.loss"
+                :min="0"
+                :max="100"
+                :precision="2"
+                :controls="false"
+                size="small"
+                @change="updateCoverage(row.allocation, row.demand)"
+              />
+            </template>
+            </el-table-column>
+            <el-table-column label="本次需求" min-width="130">
+            <template #default="{ row }">
+              <template v-if="row.kind === 'bom'">
+                <b>{{ fmt(row.demand.remaining) }} {{ row.demand.original.unit }}</b>
+                <small>已抵扣 {{ fmt(planned(row.demand)) }} · 尚缺 {{ fmt(Math.max(0, row.demand.remaining - planned(row.demand))) }}</small>
+              </template>
+              <span v-else>同上</span>
+            </template>
+            </el-table-column>
+            <el-table-column label="本次安排材料" min-width="220">
+            <template #default="{ row }">
+              <template v-if="row.allocation">
+                <b>{{ materials[row.allocation.materialId]?.name }}</b>
+                <small>{{ materials[row.allocation.materialId]?.code }} · {{ materials[row.allocation.materialId]?.spec || '未填规格' }}</small>
+                <template v-if="row.kind === 'substitute'">
+                  <el-tag size="small" type="warning">替代 {{ row.demand.original.code }}</el-tag>
+                  <div class="ratio-field">
+                    <span>每单位抵扣</span>
+                    <el-input-number
+                      v-model="row.allocation.ratio"
+                      :min="0"
+                      :precision="4"
+                      :controls="false"
+                      size="small"
+                      @change="updateCoverage(row.allocation, row.demand)"
+                    />
+                    <span>{{ row.demand.original.unit }}</span>
                   </div>
-                </td>
-                <td><b>{{ fmt(materials[a.materialId]?.available || 0) }}</b> {{ materials[a.materialId]?.unit }}</td>
-                <td class="quantity-cell"><el-input-number v-model="a.issueQuantity" :min="0" :precision="4" :controls="false" aria-label="本次实际材料领料数量" @change="updateCoverage(a, d)" /> {{ materials[a.materialId]?.unit }}</td>
-                <td><b class="coverage-value">{{ fmt(a.coverage) }} {{ d.original.unit }}</b></td>
-                <td>
-                  <el-button link type="primary" @click="showBatches(a.materialId)">批次</el-button>
-                  <el-button link type="danger" @click="d.allocations = d.allocations.filter((x) => x.id !== a.id)">移除</el-button>
-                  <el-input v-if="a.materialId !== d.original.id" v-model="a.reason" size="small" class="reason-input" maxlength="500" placeholder="替代依据（必填）" />
-                </td>
-              </tr>
-              <tr v-if="d.allocations.length" class="allocation-add-row">
-                <td colspan="4">
-                  <span>已抵扣 <b>{{ fmt(planned(d)) }}</b> / {{ fmt(d.remaining) }} {{ d.original.unit }}</span>
-                  <strong :class="{ 'warning-text': planned(d) < d.remaining - 0.00001 }">{{ planned(d) < d.remaining - 0.00001 ? '尚缺 ' + fmt(d.remaining - planned(d)) : '已配足' }}</strong>
-                </td>
-                <td class="add-cell"><el-button link type="primary" @click="openPicker(d)">＋ 添加材料</el-button></td>
-              </tr>
-            </tbody>
-          </table>
+                  <el-input
+                    v-model="row.allocation.reason"
+                    size="small"
+                    class="reason-input"
+                    maxlength="500"
+                    placeholder="替代依据（必填）"
+                  />
+                </template>
+              </template>
+              <span v-else>—</span>
+            </template>
+            </el-table-column>
+            <el-table-column label="可用库存" width="120" align="right">
+            <template #default="{ row }">
+              <template v-if="row.allocation">{{ fmt(materials[row.allocation.materialId]?.available || 0) }} {{ materials[row.allocation.materialId]?.unit }}</template>
+              <span v-else>—</span>
+            </template>
+            </el-table-column>
+            <el-table-column label="本次领料量" width="170" align="right">
+            <template #default="{ row }">
+              <template v-if="row.allocation">
+                <el-input-number
+                  v-model="row.allocation.issueQuantity"
+                  :min="0"
+                  :precision="4"
+                  :controls="false"
+                  size="small"
+                  aria-label="本次实际材料领料数量"
+                  @change="updateCoverage(row.allocation, row.demand)"
+                />
+                {{ materials[row.allocation.materialId]?.unit }}
+              </template>
+              <span v-else>—</span>
+            </template>
+            </el-table-column>
+            <el-table-column label="抵扣原需求" width="130" align="right">
+            <template #default="{ row }">
+              <b v-if="row.allocation" class="coverage-value">{{ fmt(row.allocation.coverage) }} {{ row.demand.original.unit }}</b>
+              <span v-else>—</span>
+            </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right">
+            <template #default="{ row }">
+              <el-button v-if="row.kind === 'bom'" link type="primary" @click="openPicker(row.demand)">平替材料</el-button>
+              <el-button
+                v-if="row.allocation"
+                link
+                type="danger"
+                @click="row.demand.allocations = row.demand.allocations.filter((a: Allocation) => a.id !== row.allocation?.id)"
+              >移除</el-button>
+            </template>
+            </el-table-column>
+          </el-table>
         </div>
         <p class="formula-note">BOM 需求按工单数量 × 基数 ÷ 模数并计入 BOM 损耗。替代行输入实际领料量后，系统按“领料量 × 抵扣系数 ÷ (1 + 损耗率)”显示抵扣原需求；替代损耗默认复制 BOM，可调整。</p>
       </section>
@@ -291,6 +347,34 @@ const orders = ref<Order[]>([]),
   selectedId = ref('')
 const demands = ref<Demand[]>([]),
   materials = reactive<Record<string, Material>>({})
+interface AllocationTableRow {
+  key: string
+  kind: 'bom' | 'substitute'
+  demand: Demand
+  allocation?: Allocation
+}
+const allocationRows = computed<AllocationTableRow[]>(() =>
+  demands.value.flatMap((d) => {
+    const originalAllocation = d.allocations.find((a) => a.materialId === d.original.id)
+    const substituteRows = d.allocations
+      .filter((a) => a.materialId !== d.original.id)
+      .map((allocation) => ({
+        key: allocation.id,
+        kind: 'substitute' as const,
+        demand: d,
+        allocation,
+      }))
+    return [
+      {
+        key: `${d.id}-bom`,
+        kind: 'bom' as const,
+        demand: d,
+        allocation: originalAllocation,
+      },
+      ...substituteRows,
+    ]
+  })
+)
 const parentNo = ref(''),
   loadedAt = ref(''),
   loading = ref(false),
@@ -929,67 +1013,27 @@ p {
 .allocation-table {
   width: 100%;
   min-width: 1420px;
-  border-collapse: collapse;
   font-size: 12px;
 }
-.allocation-table th {
+.allocation-table :deep(.el-table__header th) {
   background: #fafbfd;
-  padding: 12px 10px;
   text-align: left;
   color: #7e8897;
   font-weight: 500;
   white-space: nowrap;
 }
-.allocation-table td {
-  padding: 10px 8px;
+.allocation-table :deep(.el-table__body td) {
   vertical-align: middle;
-  border-bottom: 1px solid #edf0f4;
 }
-.allocation-table th:first-child,
-.allocation-table td:first-child {
-  padding-left: 20px;
-}
-.allocation-table .material-cell {
-  min-width: 220px;
-}
-.bom-cell b,
-.material-cell b {
+.allocation-table b {
   display: block;
   color: #26384d;
 }
-.demand-amount b {
+.allocation-table :deep(.el-table__body .cell) {
+  line-height: 1.45;
+}
+.allocation-table :deep(.el-table__body .cell > b) {
   white-space: nowrap;
-  color: #26384d;
-}
-.substitution-settings {
-  display: grid;
-  grid-template-columns: auto 76px auto auto 76px;
-  align-items: center;
-  gap: 4px;
-  margin-top: 7px;
-  color: #778394;
-  font-size: 11px;
-}
-.substitution-settings .el-input-number {
-  width: 76px;
-}
-.allocation-add-row td {
-  background: #f8fafc;
-  color: #566477;
-  font-size: 12px;
-}
-.allocation-add-row strong {
-  margin-left: 8px;
-  color: #24734b;
-}
-.allocation-add-row .warning-text {
-  color: #bb6d16;
-}
-.allocation-add-row .add-cell {
-  text-align: right;
-}
-.material-cell .el-select {
-  width: 100%;
 }
 .allocation-table small {
   display: block;
@@ -999,6 +1043,17 @@ p {
 }
 .allocation-table .el-input-number {
   width: 108px;
+}
+.ratio-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  color: #778394;
+  white-space: nowrap;
+}
+.ratio-field .el-input-number {
+  width: 86px;
 }
 .reason-input {
   width: 180px;
