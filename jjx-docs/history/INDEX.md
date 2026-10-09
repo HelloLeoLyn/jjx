@@ -206,3 +206,5 @@
 | dev-20261008-021 | delivery-workbench-preview-dev-20261008-021.md | 发货管理上下分区前端样稿：主页面选明细、部分数量、下区演示发货记录及订单待发占用联动 |
 
 | dev-20261009-002 | product-code-generator-layout-dev-20261009-002.md | 公共产品编码组件三行两列：底部序号与只读实时产品编码并排；验证由用户执行 |
+
+| dev-20261009-007 | quotation-shipping-fee-dev-20261009-007.md | 报价单补运费字段（对齐销售订单口径）：sales_quotation 加 shipping_fee；total=未税小计+税额+运费、final=total-折扣；转订单透传运费；表单/详情/打印/Excel 增列 |

@@ -29,6 +29,7 @@ export interface QuotationBase {
   taxRate?: number
   taxAmount?: number
   totalAmount?: number
+  shippingFee?: number
   discountAmount?: number
   finalAmount?: number
   quotationStatus?: string

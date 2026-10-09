@@ -81,16 +81,19 @@
         <!-- 金额汇总 -->
         <el-divider content-position="left">金额汇总</el-divider>
         <el-row :gutter="20">
-          <el-col :span="6">
+          <el-col :span="4">
             <el-statistic title="小计金额" :value="detailData.subtotalAmount || 0" :precision="2" />
           </el-col>
-          <el-col :span="6">
+          <el-col :span="4">
             <el-statistic title="税额" :value="detailData.taxAmount || 0" :precision="2" />
           </el-col>
-          <el-col :span="6">
+          <el-col :span="4">
+            <el-statistic title="运费" :value="detailData.shippingFee || 0" :precision="2" />
+          </el-col>
+          <el-col :span="4">
             <el-statistic title="折扣金额" :value="detailData.discountAmount || 0" :precision="2" />
           </el-col>
-          <el-col :span="6">
+          <el-col :span="4">
             <el-statistic title="最终金额" :value="detailData.finalAmount || 0" :precision="2" />
           </el-col>
         </el-row>

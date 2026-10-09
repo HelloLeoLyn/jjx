@@ -217,6 +217,18 @@
       </el-row>
       <el-row class="amount-summary">
         <el-col :span="8">
+          <el-form-item label="运费(元)">
+            <el-input-number
+              v-model="formData.shippingFee"
+              :min="0"
+              :precision="2"
+              controls-position="right"
+              @change="calculateTotalAmount"
+              style="width: 100%"
+            />
+          </el-form-item>
+        </el-col>
+        <el-col :span="8">
           <el-form-item label="折扣金额(元)">
             <el-input-number
               v-model="formData.discountAmount"
@@ -233,6 +245,8 @@
             <el-input v-model="formData.totalAmount" readonly style="width: 100%" />
           </el-form-item>
         </el-col>
+      </el-row>
+      <el-row class="amount-summary">
         <el-col :span="8">
           <el-form-item label="最终金额(元)">
             <el-input v-model="formData.finalAmount" readonly style="width: 100%" />
@@ -586,7 +600,8 @@ const calculateTotalAmount = () => {
   const form = props.formData
   form.subtotalAmount = form.items.reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
   form.taxAmount = (form.subtotalAmount * (form.taxRate || 0)) / 100
-  form.totalAmount = form.subtotalAmount + form.taxAmount
+  // 运费单列、不计税；总金额为含税含运费，最终金额=总金额-折扣（对齐销售订单口径）
+  form.totalAmount = form.subtotalAmount + form.taxAmount + (form.shippingFee || 0)
   form.finalAmount = form.totalAmount - (form.discountAmount || 0)
 }
 

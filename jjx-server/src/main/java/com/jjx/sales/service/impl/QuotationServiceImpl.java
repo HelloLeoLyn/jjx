@@ -307,6 +307,10 @@ public class QuotationServiceImpl implements IQuotationService {
             quotation.setTotalAmount(java.math.BigDecimal.ZERO);
         }
 
+        if (quotation.getShippingFee() == null) {
+            quotation.setShippingFee(java.math.BigDecimal.ZERO);
+        }
+
         if (quotation.getFinalAmount() == null) {
             quotation.setFinalAmount(java.math.BigDecimal.ZERO);
         }
@@ -458,6 +462,7 @@ public class QuotationServiceImpl implements IQuotationService {
         changeRecorder.diff(changes, "币种", oldQuotation.getCurrency(), newQuotation.getCurrency());
         changeRecorder.diffDecimal(changes, "汇率", oldQuotation.getExchangeRate(), newQuotation.getExchangeRate());
         changeRecorder.diffDecimal(changes, "税率", oldQuotation.getTaxRate(), newQuotation.getTaxRate());
+        changeRecorder.diffDecimal(changes, "运费", oldQuotation.getShippingFee(), newQuotation.getShippingFee());
         changeRecorder.diffDecimal(changes, "折扣金额", oldQuotation.getDiscountAmount(), newQuotation.getDiscountAmount());
         changeRecorder.diff(changes, "备注", oldQuotation.getRemark(), newQuotation.getRemark());
         changeRecorder.diff(changes, "销售负责人", oldQuotation.getSalesPersonName(), newQuotation.getSalesPersonName());
@@ -529,7 +534,7 @@ public class QuotationServiceImpl implements IQuotationService {
 
     /**
      * 批量保存报价单明细（金额汇总参考销售订单口径：
-     * subtotal=行合计；tax=subtotal×税率÷100（税率存百分数）；total=subtotal+tax（含税）；final=total-折扣）
+     * subtotal=行合计；tax=subtotal×税率÷100（税率存百分数）；total=subtotal+tax+运费（含税）；final=total-折扣）
      */
     private void saveQuotationItems(Long quotationId, List<SalesQuotationItem> items,
                                     BigDecimal taxRate, BigDecimal discountAmount) {
@@ -569,13 +574,14 @@ public class QuotationServiceImpl implements IQuotationService {
             if (item.getItemOrder() == null) item.setItemOrder(0);
             quotationItemMapper.insert(item);
         }
-        // DEV-1116：统一走重算方法汇总表头金额（口径：subtotal=Σ行金额；tax=subtotal×税率%÷100；total=subtotal+tax；final=total-折扣≥0）
+        // DEV-1116：统一走重算方法汇总表头金额（口径：subtotal=Σ行金额；tax=subtotal×税率%÷100；total=subtotal+tax+运费；final=total-折扣≥0）
         recalcQuotationAmounts(quotationId);
     }
 
     /**
      * 按当前明细重算报价单表头金额（DEV-1116）
      * 提交审核/发送前兑底调用，保证明细有金额时表头金额一致，不再误报"报价金额必须大于0"
+     * 口径（对齐销售订单）：subtotal=Σ行金额；tax=subtotal×税率%÷100；total=subtotal+tax+运费；final=total-折扣≥0
      */
     @Override
     public void recalcQuotationAmounts(Long quotationId) {
@@ -599,7 +605,8 @@ public class QuotationServiceImpl implements IQuotationService {
             BigDecimal rate = q.getTaxRate() != null ? q.getTaxRate() : java.math.BigDecimal.ZERO;
             BigDecimal tax = subtotal.multiply(rate)
                     .divide(java.math.BigDecimal.valueOf(100), 2, java.math.RoundingMode.HALF_UP);
-            BigDecimal total = subtotal.add(tax); // 含税总价
+            BigDecimal shipping = q.getShippingFee() != null ? q.getShippingFee() : java.math.BigDecimal.ZERO;
+            BigDecimal total = subtotal.add(tax).add(shipping); // 含税总价（含运费）
             BigDecimal discount = q.getDiscountAmount() != null ? q.getDiscountAmount() : java.math.BigDecimal.ZERO;
             BigDecimal finalAmount = total.subtract(discount).max(java.math.BigDecimal.ZERO);
 
@@ -893,6 +900,7 @@ public class QuotationServiceImpl implements IQuotationService {
         if (quotation.getTaxRate() != null) orderDTO.setTaxRate(quotation.getTaxRate().divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
         if (quotation.getTaxAmount() != null) orderDTO.setTaxAmount(quotation.getTaxAmount());
         if (quotation.getDiscountAmount() != null) orderDTO.setDiscountAmount(quotation.getDiscountAmount());
+        if (quotation.getShippingFee() != null) orderDTO.setShippingFee(quotation.getShippingFee());
         // 币种/汇率透传（DEV-605：报价单选外币转订单时币种丢失，订单金额仍为 CNY 口径，币种/汇率仅记录溯源）
         if (quotation.getCurrency() != null) orderDTO.setCurrency(quotation.getCurrency());
         if (quotation.getExchangeRate() != null) orderDTO.setExchangeRate(quotation.getExchangeRate());
@@ -991,7 +999,8 @@ public class QuotationServiceImpl implements IQuotationService {
             // 汇总
             String[][] sums = {
                     {"小计", fmt(q.getSubtotalAmount(), df)}, {"税率(%)", q.getTaxRate() == null ? "" : df.format(q.getTaxRate())},
-                    {"税额", fmt(q.getTaxAmount(), df)}, {"折扣", fmt(q.getDiscountAmount(), df)},
+                    {"税额", fmt(q.getTaxAmount(), df)}, {"运费", fmt(q.getShippingFee(), df)},
+                    {"折扣", fmt(q.getDiscountAmount(), df)},
                     {"合计", fmt(q.getFinalAmount(), df)},
             };
             for (String[] s : sums) {
@@ -1102,6 +1111,7 @@ public class QuotationServiceImpl implements IQuotationService {
         copy.setTaxRate(original.getTaxRate());
         copy.setTaxAmount(original.getTaxAmount());
         copy.setTotalAmount(original.getTotalAmount());
+        copy.setShippingFee(original.getShippingFee());
         copy.setDiscountAmount(original.getDiscountAmount());
         copy.setFinalAmount(original.getFinalAmount());
         copy.setRemark("复制自报价单：" + original.getQuotationNo() + "\n" + original.getRemark());

@@ -141,6 +141,13 @@ public class SalesQuotationAddDTO {
     private BigDecimal totalAmount;
 
     /**
+     * 运费（单列，不计税；对齐销售订单 shipping_fee 口径）
+     */
+    @Schema(description = "运费")
+    @DecimalMin(value = "0", message = "运费不能为负数")
+    private BigDecimal shippingFee;
+
+    /**
      * 折扣金额
      */
     @Schema(description = "折扣金额")

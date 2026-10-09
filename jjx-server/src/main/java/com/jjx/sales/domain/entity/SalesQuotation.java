@@ -112,9 +112,14 @@ public class SalesQuotation extends BaseEntity {
     private BigDecimal taxAmount;
 
     /**
-     * 总金额
+     * 总金额（含税总金额 = 未税小计 + 税额 + 运费）
      */
     private BigDecimal totalAmount;
+
+    /**
+     * 运费（单列，不计税；对齐销售订单 shipping_fee 口径）
+     */
+    private BigDecimal shippingFee;
 
     /**
      * 折扣金额

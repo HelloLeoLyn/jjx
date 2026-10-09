@@ -63,6 +63,7 @@
         <div class="amount-row"><span>小计</span><span>{{ fmt(info.subtotalAmount) }}</span></div>
         <div class="amount-row"><span>税率 (%)</span><span>{{ info.taxRate ?? '' }}</span></div>
         <div class="amount-row"><span>税额</span><span>{{ fmt(info.taxAmount) }}</span></div>
+        <div class="amount-row"><span>运费</span><span>{{ fmt(info.shippingFee) }}</span></div>
         <div class="amount-row"><span>折扣</span><span>{{ fmt(info.discountAmount) }}</span></div>
         <div class="amount-row amount-total"><span>合计</span><span>{{ fmt(info.finalAmount) }}</span></div>
       </div>
