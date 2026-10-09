@@ -111,7 +111,7 @@ export const menuDict: Record<string, MenuDictItem> = {
   bom: { label: 'BOM管理', icon: 'Document', text: 'BOM' },
   route: { label: '工艺管理', icon: 'Guide', text: '工艺' },
   instance: { label: '实例管理', icon: 'DataAnalysis', text: '实例' },
-  drawing: { label: '图纸管理', icon: 'Picture', text: '图纸' },
+  drawing: { label: '工程图纸', icon: 'Picture', text: '图纸' },
   customer: { label: '客户管理', icon: 'User', text: '客户' },
   quotation: { label: '报价管理', icon: 'PriceTag', text: '报价' },
   tracking: { label: '跟踪管理', icon: 'Location', text: '跟踪' },

@@ -40,7 +40,7 @@
       <div v-for="g in groups" :key="g.category" class="group">
         <div class="group-title">
           <el-icon><FolderOpened /></el-icon>
-          <span>{{ g.category }}</span>
+          <span>{{ productFileCategoryLabel(g.category) }}</span>
           <el-tag size="small" type="info" style="margin-left: 6px">{{ g.files.length }}</el-tag>
           <el-checkbox
             v-if="selectable"
@@ -165,22 +165,7 @@ import { Upload, FolderOpened, Document, Download, Delete } from '@element-plus/
 import { attachmentApi } from '@/api/system/attachment'
 import { useDict } from '@/composables/useDict'
 import { useUserStore } from '@/store/modules/user'
-
-/** 兜底类别（字典 product_file_category 未配置时使用） */
-const FALLBACK_CATEGORIES = [
-  '客供稿',
-  '承认书',
-  '模具',
-  '确认图',
-  '菲林',
-  '规范',
-  '结构图',
-  '印刷指导图',
-  '产品图集',
-  '样品照片',
-  '客户确认样品',
-  '分色检查表',
-]
+import { LEGACY_PRODUCT_ATLAS_CATEGORY, PRODUCT_FILE_FALLBACK_CATEGORIES, productFileCategoryLabel } from './productFileCategories'
 
 /** 来源：客供类类别 */
 const CUSTOMER_CATEGORIES = ['客供稿', '客户确认样品']
@@ -195,7 +180,7 @@ const props = defineProps<{
   uploadPerm?: string
   /** 删除权限点（可选，提供则按权限控制） */
   deletePerm?: string
-  /** 下发权限点（可选，提供才显示下发/撤回按钮；图纸管理用） */
+  /** 下发权限点（可选，提供才显示下发/撤回按钮；工程图纸用） */
   releasePerm?: string
 }>()
 
@@ -212,9 +197,11 @@ const categoryOptions = computed<{ label: string; value: string }[]>(() => {
   const list = (dictCategories.value || [])
     .map((d: any) => ({ label: d.label || d.itemValue || d.item_value, value: d.itemValue || d.item_value }))
     .filter((o: any) => o.value)
-  const all = list.length ? list : FALLBACK_CATEGORIES.map((c) => ({ label: c, value: c }))
+  const all = (list.length ? list : PRODUCT_FILE_FALLBACK_CATEGORIES.map((c) => ({ label: c, value: c })))
+    .filter((option) => option.value !== LEGACY_PRODUCT_ATLAS_CATEGORY)
   if (props.categories && props.categories.length) {
     return all.filter((o) => props.categories!.includes(o.value))
+      .sort((a, b) => props.categories!.indexOf(a.value) - props.categories!.indexOf(b.value))
   }
   return all
 })
@@ -229,7 +216,10 @@ const canRelease = computed(() =>
   props.releasePerm ? userStore.hasPermission(props.releasePerm) : false
 )
 
-const category = ref('客供稿')
+const category = ref('')
+watch(categoryOptions, (options) => {
+  if (!options.some((option) => option.value === category.value)) category.value = options[0]?.value || ''
+}, { immediate: true })
 const version = ref('')
 const files = ref<any[]>([])
 const loading = ref(false)
@@ -358,7 +348,7 @@ function beforeUpload(file: File) {
 }
 
 async function doUpload(options: any) {
-  if (!category.value) {
+  if (!categoryOptions.value.some((option) => option.value === category.value)) {
     ElMessage.warning('请先选择文件类别')
     options.onError(new Error('no category'))
     return

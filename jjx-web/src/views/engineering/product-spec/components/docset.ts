@@ -5,12 +5,13 @@ import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { outboundApi } from '@/api/inventory/outbound'
 import request from '@/utils/request'
 import { ProcessCategoryEnum } from '@/enums/product'
+import { productFileCategoryLabel } from '@/components/product/productFileCategories'
 
 export const documentSections = [
   { key: 'customer', label: '客供资料', note: '客供稿 · 客户确认样品' },
   { key: 'spec', label: '产品作业规范', note: '材料 · 流程 · 结构图' },
   { key: 'print', label: '印刷规范', note: '印序 · 色号 · 油墨 · 网版' },
-  { key: 'atlas', label: '产品图集', note: '工程图纸 · 印刷指导图' },
+  { key: 'atlas', label: '工程图集', note: '工程图纸 · 印刷指导图' },
   { key: 'color', label: '分色检查表', note: '已上传的检查表' },
   { key: 'sample', label: '样品', note: '样品实物照片' },
   { key: 'pick', label: '打样领料单', note: '已有领料单汇总' },
@@ -163,7 +164,7 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
       for (let i = 0; i < Math.max(1, data.picks.length); i += 22) pages.push({ key: `pick-${i}`, section: 'pick', title: '打样领料单汇总', kind: 'pick', rows: data.picks.slice(i, i + 22) })
     } else {
       const files = data.files.filter((file) => file.section === section.key && fileIds.includes(file.key))
-      for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: section.key, title: `${section.label} · ${file.category}`, kind: 'image', file, image }))
+      for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: section.key, title: `${section.label} · ${productFileCategoryLabel(file.category)}`, kind: 'image', file, image }))
       if (!files.length) pages.push({ key: `${section.key}-empty`, section: section.key, title: section.label, kind: 'empty' })
     }
   }

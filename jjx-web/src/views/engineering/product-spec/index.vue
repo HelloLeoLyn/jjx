@@ -162,14 +162,14 @@
             />
           </el-tab-pane>
 
-          <!-- ④ 产品图集 -->
-          <el-tab-pane label="产品图集" name="atlas">
+          <!-- ④ 工程图集 -->
+          <el-tab-pane label="工程图集" name="atlas">
             <el-alert type="info" :closable="false" class="tab-tip"
-              title="工程上传的产品图纸（结构图/外形/面板/线路/菲林/网版/刀模…），标签可选；不强制分类。" />
+              title="按图种归集工程图纸：结构图、外形尺寸图、面板图、线路图、组装图、包装图、印刷指导图等；上传时选择对应图种和版本。" />
             <ProductFileLibrary
               v-if="productCode"
               :product-code="productCode"
-              :categories="['结构图', '印刷指导图', '产品图集', '确认图', '菲林', '模具']"
+              :categories="ENGINEERING_DRAWING_VISIBLE_CATEGORIES"
               upload-perm="product:edit"
               delete-perm="product:delete"
             />
@@ -306,6 +306,7 @@ import { engineeringResourceApi } from '@/api/engineering/resource'
 import { attachmentApi } from '@/api/system/attachment'
 import { InboundOrderStatusEnum } from '@/enums/inventory'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
+import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
 import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
