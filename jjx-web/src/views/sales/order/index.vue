@@ -338,7 +338,7 @@ const orderRowActions: TableAction<any>[] = [
     key: 'shortage',
     label: '齐套检查',
     type: 'info',
-    permission: 'sales:order:edit',
+    permission: 'sales:inventory:alert:check',
     visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.CONFIRMED.value),
   },
   {

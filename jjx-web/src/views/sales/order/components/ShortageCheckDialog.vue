@@ -100,7 +100,7 @@
     <template #footer>
       <el-button @click="emit('update:modelValue', false)">取消</el-button>
       <el-button
-        v-if="summary.shortageCount > 0"
+        v-if="summary.shortageCount > 0 && hasPermi('sales:inventory:alert:check')"
         type="primary"
         :loading="submitting"
         :disabled="!!errorMsg || loading"
@@ -116,6 +116,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { alertApi } from '@/api/inventory/alert'
+import { hasPermi } from '@/directives'
 
 interface Summary {
   shortageCount: number
