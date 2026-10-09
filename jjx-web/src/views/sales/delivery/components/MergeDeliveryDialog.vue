@@ -7,9 +7,40 @@
           <div class="section-title"><el-icon><Location /></el-icon>收货信息<span>同一客户 · 同一地址 · 同一币种</span></div>
           <el-form :disabled="submitting" label-position="top" class="recipient-form">
             <el-form-item label="客户" required><el-input :model-value="first?.customerName" readonly /></el-form-item>
-            <el-form-item label="收货地址" required><el-input v-model="form.deliveryAddress" :readonly="orderCount > 1 && lines.some(line => !!line.deliveryAddress?.trim())" maxlength="500" placeholder="填写本次统一收货地址" /></el-form-item>
+            <el-form-item label="收货地址" required>
+              <el-select
+                v-model="form.deliveryAddress"
+                filterable
+                allow-create
+                default-first-option
+                clearable
+                :disabled="addressLoading"
+                :loading="addressLoading"
+                maxlength="500"
+                placeholder="选择地址或手动填写"
+                @change="applyAddressContact"
+              >
+                <el-option v-for="option in addressOptions" :key="option.key" :label="option.label" :value="option.value" />
+              </el-select>
+            </el-form-item>
             <el-form-item label="送货日期" required><el-date-picker v-model="form.deliveryDate" type="date" value-format="YYYY-MM-DD" /></el-form-item>
           </el-form>
+          <el-alert
+            v-if="!addressLoading && !addressOptions.length"
+            title="没有找到可用地址，请手动填写本次收货地址。"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 10px"
+          />
+          <el-alert
+            v-if="addressLoadFailed"
+            title="客户地址簿暂不可用，可选择订单或公司地址，也可手动填写。"
+            type="warning"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 10px"
+          />
           <div class="recipient-line"><span>{{ form.deliveryAddress || '请填写本次收货地址' }}</span><span v-if="form.contactPerson || form.contactPhone">{{ form.contactPerson }} · {{ form.contactPhone }}</span></div>
         </section>
         <el-tabs v-model="activeTab" class="merge-tabs">
@@ -69,6 +100,9 @@ import { computed, reactive, ref } from 'vue'
 import dayjs from 'dayjs'
 import { ElMessage } from 'element-plus'
 import { deliveryApi, type DeliveryArrangeLine, type SalesDeliveryCreateDTO } from '@/api/sales/delivery'
+import { customerApi } from '@/api/sales/customer'
+import type { SalesCustomerAddress } from '@/types/sales/customer'
+import { deserializeAddress, getAddressDisplayText, serializeAddress } from '@/types/sales/address'
 import { Box, Calendar, Location, Printer, Van, Warning } from '@element-plus/icons-vue'
 import { useDeliveryPrintOptions } from './useDeliveryPrintOptions'
 import { useDict } from '@/composables/useDict'
@@ -84,8 +118,64 @@ const activeTab = ref('lines')
 const first = computed(() => lines.value[0])
 const form = reactive<SalesDeliveryCreateDTO>({})
 const { options: deliveryMethods } = useDict('sales_delivery_method')
-const { company } = useCompanyConfig()
+const { company, loadCompanyConfig } = useCompanyConfig()
 const { showAmount, showWeight } = useDeliveryPrintOptions()
+const customerAddresses = ref<SalesCustomerAddress[]>([])
+const addressLoading = ref(false)
+const addressLoadFailed = ref(false)
+let addressLoadSequence = 0
+type DeliveryAddressOption = {
+  key: string
+  label: string
+  value: string
+  contactPerson: string
+  contactPhone: string
+}
+const addressIdentity = (value: string) =>
+  getAddressDisplayText(deserializeAddress(value)).trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+const addressOptions = computed<DeliveryAddressOption[]>(() => {
+  const options: DeliveryAddressOption[] = []
+  const seen = new Set<string>()
+  const add = (option: DeliveryAddressOption) => {
+    const identity = addressIdentity(option.value)
+    if (!identity || seen.has(identity)) return
+    seen.add(identity)
+    options.push(option)
+  }
+  const orderAddress = first.value?.deliveryAddress?.trim()
+  if (orderAddress) {
+    add({
+      key: 'order',
+      label: `订单地址｜${getAddressDisplayText(deserializeAddress(orderAddress))}`,
+      value: orderAddress,
+      contactPerson: first.value?.contactPerson || '',
+      contactPhone: first.value?.contactPhone || '',
+    })
+  }
+  for (const [index, address] of customerAddresses.value.entries()) {
+    const international = {
+      country: address.country || '',
+      province: address.province || '',
+      city: address.city || '',
+      street: address.address || '',
+      zipCode: address.postalCode || '',
+    }
+    const value = serializeAddress(international)
+    const display = getAddressDisplayText(international)
+    add({
+      key: `customer-${address.addressId ?? index}`,
+      label: `${address.label || '客户地址'}｜${display}${address.isDefault === 1 ? '（默认）' : ''}`,
+      value,
+      contactPerson: address.contactPerson || '',
+      contactPhone: address.contactPhone || '',
+    })
+  }
+  if (company.address?.trim()) {
+    const value = serializeAddress({ country: '', province: '', city: '', street: company.address.trim(), zipCode: '' })
+    add({ key: 'company', label: `公司地址｜${company.address.trim()}`, value, contactPerson: '', contactPhone: '' })
+  }
+  return options
+})
 const deliveryMethodLabel = computed(() => {
   const option = deliveryMethods.value.find(item => item.itemValue === form.deliveryMethod)
   return option?.label || option?.itemKey || form.deliveryMethod
@@ -106,12 +196,60 @@ const invalidQuantity = (line: SelectedLine) => !Number.isInteger(line.sendQuant
 const quantityError = computed(() => deliveryQuantityError(lines.value))
 const canCreate = computed(() => !quantityError.value && !!form.deliveryAddress?.trim() && !submitting.value && !!form.deliveryMethod && !!form.deliveryDate && lines.value.length > 0 && lines.value.every(line => !invalidQuantity(line)))
 const preview = computed(() => ({ ...form, deliveryNo: '创建后生成', customerName: first.value?.customerName || '', totalQuantity: totalQuantity.value, totalAmount: totalAmount.value, items: lines.value.map(line => ({ ...line, orderProductId: line.id, quantity: line.sendQuantity, amount: (line.sendQuantity || 0) * (line.unitPrice || 0) })) }))
-function open(selected: DeliveryArrangeLine[]) {
+function applyAddressContact(value?: string) {
+  const option = addressOptions.value.find(item => item.value === value)
+  form.contactPerson = option?.contactPerson || ''
+  form.contactPhone = option?.contactPhone || ''
+}
+function preferredAddress() {
+  const orderAddress = first.value?.deliveryAddress?.trim()
+  if (orderAddress) return addressOptions.value.find(option => option.key === 'order')
+  const preferred = customerAddresses.value.find(address => address.isDefault === 1) || customerAddresses.value[0]
+  if (preferred) {
+    const value = serializeAddress({
+      country: preferred.country || '',
+      province: preferred.province || '',
+      city: preferred.city || '',
+      street: preferred.address || '',
+      zipCode: preferred.postalCode || '',
+    })
+    return addressOptions.value.find(option => option.value === value)
+  }
+  return addressOptions.value.find(option => option.key === 'company')
+}
+async function open(selected: DeliveryArrangeLine[]) {
   if (!selected.length || submitting.value) return
+  const sequence = ++addressLoadSequence
   const quantities = defaultDeliveryQuantities(selected)
   lines.value = selected.map((line, index) => ({ ...line, sendQuantity: quantities[index] }))
-  Object.assign(form, { deliveryAddress: selected[0]!.deliveryAddress, contactPerson: selected[0]!.contactPerson || '', contactPhone: selected[0]!.contactPhone || '', deliveryDate: dayjs().format('YYYY-MM-DD'), deliveryMethod: '', remark: '', carrier: '', trackingNo: '', freightAmount: 0, insuranceAmount: 0, otherCharges: 0 })
+  customerAddresses.value = []
+  addressLoadFailed.value = false
+  addressLoading.value = true
+  Object.assign(form, { deliveryAddress: selected[0]!.deliveryAddress || '', contactPerson: selected[0]!.contactPerson || '', contactPhone: selected[0]!.contactPhone || '', deliveryDate: dayjs().format('YYYY-MM-DD'), deliveryMethod: '', remark: '', carrier: '', trackingNo: '', freightAmount: 0, insuranceAmount: 0, otherCharges: 0 })
   activeTab.value = 'lines'; visible.value = true
+  const customerId = selected[0]!.customerId
+  try {
+    const [, addressResult] = await Promise.all([
+      loadCompanyConfig(),
+      customerId ? customerApi.getCustomerAddresses(customerId) : Promise.resolve(null),
+    ])
+    if (sequence !== addressLoadSequence) return
+    customerAddresses.value = addressResult?.data || []
+  } catch (error) {
+    if (sequence !== addressLoadSequence) return
+    addressLoadFailed.value = true
+    ElMessage.warning(error instanceof Error ? error.message : '客户地址簿加载失败')
+  } finally {
+    if (sequence === addressLoadSequence) addressLoading.value = false
+  }
+  if (sequence !== addressLoadSequence) return
+  const preferred = preferredAddress()
+  if (preferred) {
+    form.deliveryAddress = preferred.value
+    applyAddressContact(preferred.value)
+  } else {
+    form.deliveryAddress = ''
+  }
 }
 function beforeClose(done: () => void) { if (!submitting.value) done() }
 async function submit() {

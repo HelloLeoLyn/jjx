@@ -59,10 +59,12 @@ class MergedDeliveryWorkflowTest {
     }
     @Test void sameProductAcrossOrdersStaysSeparateAndCreatesOqcWithEachSourceOrder() {
         sources(order(2L));
+        SalesDelivery request = request();
+        request.setDeliveryAddress("客户地址簿选定的新地址");
         when(sequenceService.generateBusinessNumberByType(anyString(),anyString(),anyString(),anyInt())).thenReturn("DL-TEST");
         when(deliveryMapper.insert(any(SalesDelivery.class))).thenAnswer(i->{((SalesDelivery)i.getArgument(0)).setDeliveryId(20L);return 1;});
         when(itemMapper.insert(any(SalesDeliveryItem.class))).thenAnswer(i->{SalesDeliveryItem l=i.getArgument(0);l.setItemId(l.getOrderProductId()+20);return 1;});
-        try(MockedStatic<SecurityUtils> ignored=mockStatic(SecurityUtils.class)){assertEquals(20L,workflow.create(request()));}
+        try(MockedStatic<SecurityUtils> ignored=mockStatic(SecurityUtils.class)){assertEquals(20L,workflow.create(request));}
         ArgumentCaptor<SalesDeliveryItem> lines=ArgumentCaptor.forClass(SalesDeliveryItem.class);
         verify(itemMapper,times(2)).insert(lines.capture());
         assertEquals(List.of(10L,11L),lines.getAllValues().stream().map(SalesDeliveryItem::getOrderProductId).toList());
@@ -72,6 +74,7 @@ class MergedDeliveryWorkflowTest {
         assertEquals(List.of(1L,2L),lots.getAllValues().stream().map(QualityLotCreateDTO::getOrderId).toList());
         ArgumentCaptor<SalesDelivery> header=ArgumentCaptor.forClass(SalesDelivery.class);verify(deliveryMapper).insert(header.capture());
         assertEquals(5,header.getValue().getTotalQuantity());assertEquals(BigDecimal.valueOf(50),header.getValue().getTotalAmount());
+        assertEquals("客户地址簿选定的新地址", header.getValue().getDeliveryAddress());
         verify(orderMapper,never()).updateById(any(SalesOrder.class));
     }
     @Test void differentCustomerCannotMerge() {

@@ -103,14 +103,15 @@ public class SalesDeliveryWorkflowService {
         String customerAddress = customer == null ? null : customer.getAddress();
         String address = blank(request.getDeliveryAddress()) ? address(first, customerAddress) : request.getDeliveryAddress();
         if (blank(address)) throw new BusinessException("请填写收货地址");
+        String sourceAddress = address(first, customerAddress);
         for (SalesOrder order : orders.values()) {
             if (!SalesOrderStatusEnum.IN_PRODUCTION.getValue().equals(order.getOrderStatus()))
                 throw new BusinessException("订单 " + order.getOrderNo() + " 当前状态不能安排发货");
             if (!Objects.equals(first.getCustomerId(), order.getCustomerId()) || !currency(first).equals(currency(order)))
                 throw new BusinessException("只能合并同客户、同币种订单");
-            String sourceAddress = address(order, customerAddress);
-            if (orders.size() > 1 && !blank(sourceAddress) && !text(address).equals(text(sourceAddress)))
-                throw new BusinessException("合并订单的收货地址必须相同，请先完善订单资料");
+            String orderAddress = address(order, customerAddress);
+            if (orders.size() > 1 && !text(sourceAddress).equals(text(orderAddress)))
+                throw new BusinessException("来源订单的收货地址必须相同，不能合并不同地址的订单");
             if (nz(order.getTotalAmount()).signum() <= 0) throw new BusinessException("订单 " + order.getOrderNo() + " 金额为0，不能发货");
         }
         Map<Long, Integer> allocated = quantities(ids, List.of(SalesDeliveryStatusEnum.PENDING,

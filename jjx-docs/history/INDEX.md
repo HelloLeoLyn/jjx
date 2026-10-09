@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-09 (dev-20261008-030) | delivery-address-selection-dev-20261008-030.md | 发货建单接入客户地址簿与公司地址 |
 | 2026-10-09 (dev-20261008-013) | production-bom-version-dev-20261008-013.md | 工单继承计划 BOM，统一领料与打印版本取数，保留历史未绑定兼容 |
 | 2026-10-08 (dev-029) | customer-shipping-address-book-dev-20261008-029.md | 客户收货地址簿：多收货地址 + 下单/发货默认链（含公司地址候选）（阶段一：DB+后端） |
 | 2026-10-08 (dev-024) | merged-delivery-real-data-dev-20261008-024.md | 发货管理接入真实数据 |
