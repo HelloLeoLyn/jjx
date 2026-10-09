@@ -11,6 +11,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -223,14 +224,14 @@ public class RedisSequenceService {
         return bizNumber;
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public String generateBusinessNumberByType(String bizType, String fallbackPrefix,
                                                String fallbackDateFormat, int fallbackDigits) {
         BusinessNumberRule rule = loadRule(bizType, fallbackPrefix, fallbackDateFormat, fallbackDigits);
         return generateBusinessNumber(rule, LocalDate.now(), bizType);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public String generateBusinessNumberByTypeWithPrefix(String bizType, String dynamicPrefix,
                                                          String fallbackDateFormat, int fallbackDigits) {
         BusinessNumberRule configured = loadRule(bizType, dynamicPrefix, fallbackDateFormat, fallbackDigits);
