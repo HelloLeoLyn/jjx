@@ -121,7 +121,12 @@
             <template #default="{ row }">
               <template v-if="row.kind === 'bom'">
                 <b>{{ fmt(row.demand.remaining) }} {{ row.demand.original.unit }}</b>
-                <small>已抵扣 {{ fmt(planned(row.demand)) }} · 尚缺 {{ fmt(Math.max(0, row.demand.remaining - planned(row.demand))) }}</small>
+                <small>
+                  已抵扣 {{ fmt(planned(row.demand)) }} ·
+                  <span :class="{ 'shortage-text': row.demand.remaining - planned(row.demand) > 0.00001 }">
+                    尚缺 {{ fmt(Math.max(0, row.demand.remaining - planned(row.demand))) }}
+                  </span>
+                </small>
               </template>
               <span v-else>同上</span>
             </template>
@@ -1105,6 +1110,10 @@ p {
   color: #8b95a5;
   margin-top: 7px;
   font-size: 11px;
+}
+.allocation-table .shortage-text {
+  color: #c45656;
+  font-weight: 600;
 }
 .allocation-table .el-input-number {
   width: 80px;
