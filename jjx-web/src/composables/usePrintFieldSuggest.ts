@@ -99,8 +99,10 @@ export async function suggestFrames(query: string, cb: (items: PrintSuggestItem[
   const q = (query || '').trim()
   try {
     // 远端模糊搜索（dev-20261009-053）：台账 7291 条，本地只缓存了 1000 条，必须走接口
+    // 按「网框编号」精确模糊搜（frameNo → LIKE f.frame_no）；
+    // 不能用 keyword：keyword 是跨字段（frame_no/plate_no/content/remark），会命中 remark 而返回“不相关”的编号
     const res: any = await engineeringResourceApi.frames({
-      keyword: q || undefined,
+      frameNo: q || undefined,
       pageNum: 1,
       pageSize: 20,
     })
