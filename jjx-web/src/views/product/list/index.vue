@@ -307,8 +307,8 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 const productActions: TableAction<ProductVo>[] = [
   { key: 'trace', label: '流水', permission: 'product:list:view' },
 
-  // 两处入口（方案c）：产品侧跳工程侧现有「产品作业规范」页，不重复实现
-  { key: 'spec', label: '作业规范', permission: 'engineering:spec:view' },
+  // 产品侧入口：跳「产品作业规范」页（/product/spec，与工程侧 menu 404 共用组件，不重复实现）
+  { key: 'spec', label: '作业规范', permission: 'product:spec:view' },
 
   {
     key: 'edit',
