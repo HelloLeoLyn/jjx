@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-09 (dev-20261009-056) | work-order-material-calculation-dev-20261009-056.md | 工单用料计算与历史方案复用需求方案 |
 | 2026-10-09 (dev-20261009-044) | bom-project-name-dev-20261009-044.md | BOM项目导入归位并支持未匹配名称原样保存 |
 | 2026-10-09 (dev-20261009-041) | bom-import-quantity-source-dev-20261009-041.md | 修复BOM导入实发数量间接覆盖应用料 |
 | 2026-10-09 (dev-20261009-039) | bom-applied-quantity-dev-20261009-039.md | BOM应用料改为系统计算并移除Excel录入 |
