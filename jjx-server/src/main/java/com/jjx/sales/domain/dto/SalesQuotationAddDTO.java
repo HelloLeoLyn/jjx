@@ -121,15 +121,15 @@ public class SalesQuotationAddDTO {
     /**
      * 税率
      */
-    @Schema(description = "税率")
+    @Schema(description = "税率(百分比，如 13 表示 13%)")
     @DecimalMin(value = "0", message = "税率不能为负数")
+    @DecimalMax(value = "100", message = "税率不能大于100")
     private BigDecimal taxRate;
 
     /**
      * 税额
      */
     @Schema(description = "税额")
-    @DecimalMax(value = "100", message = "税率不能大于100")
     private BigDecimal taxAmount;
 
     /**

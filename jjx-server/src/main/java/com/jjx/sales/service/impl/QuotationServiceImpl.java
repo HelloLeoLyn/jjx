@@ -895,10 +895,9 @@ public class QuotationServiceImpl implements IQuotationService {
         orderDTO.setQuotationId(quotationId);
         // 透传链路追踪ID
         orderDTO.setTraceId(quotation.getTraceId());
-        // 金额信息传递（报价单→订单，税率百分数÷100 换算成订单小数口径，税/折扣继承报价）
+        // 金额信息传递（报价单→订单：税率同为百分数口径，直接透传；折扣/运费继承报价，税额由订单按明细重算）
         if (quotation.getSubtotalAmount() != null) orderDTO.setTotalAmount(quotation.getSubtotalAmount());
-        if (quotation.getTaxRate() != null) orderDTO.setTaxRate(quotation.getTaxRate().divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP));
-        if (quotation.getTaxAmount() != null) orderDTO.setTaxAmount(quotation.getTaxAmount());
+        if (quotation.getTaxRate() != null) orderDTO.setTaxRate(quotation.getTaxRate());
         if (quotation.getDiscountAmount() != null) orderDTO.setDiscountAmount(quotation.getDiscountAmount());
         if (quotation.getShippingFee() != null) orderDTO.setShippingFee(quotation.getShippingFee());
         // 币种/汇率透传（DEV-605：报价单选外币转订单时币种丢失，订单金额仍为 CNY 口径，币种/汇率仅记录溯源）

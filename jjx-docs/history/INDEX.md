@@ -210,3 +210,5 @@
 | dev-20261009-007 | quotation-shipping-fee-dev-20261009-007.md | 报价单补运费字段（对齐销售订单口径）：sales_quotation 加 shipping_fee；total=未税小计+税额+运费、final=total-折扣；转订单透传运费；表单/详情/打印/Excel 增列 |
 
 | dev-20261009-006 | product-price-permissions-dev-20261009-006.md | 产品模块独立价格维护：查看/修改权限、普通表单移除价格、并发保护与调价日志；验证由用户执行 |
+
+| dev-20261009-008 | quotation-order-taxrate-fix-dev-20261009-008.md | 报价税率注解归位（@DecimalMax(100) 从税额字段挪回税率）+ 报价转订单税率去÷100 直接透传；修正「新增报价报税率不能大于100」与「转单税额差100倍」 |
