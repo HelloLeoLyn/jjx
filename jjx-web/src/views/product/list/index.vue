@@ -307,6 +307,9 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 const productActions: TableAction<ProductVo>[] = [
   { key: 'trace', label: '流水', permission: 'product:list:view' },
 
+  // 两处入口（方案c）：产品侧跳工程侧现有「产品作业规范」页，不重复实现
+  { key: 'spec', label: '作业规范', permission: 'engineering:spec:view' },
+
   {
     key: 'edit',
     label: '编辑',
@@ -391,6 +394,7 @@ const handleProductAction = (key: string, row: ProductVo) => {
   if (key === 'publish') handlePublish(row)
   if (key === 'obsolete') handleObsolete(row)
   if (key === 'trace') openTrace(row)
+  if (key === 'spec') router.push(`/engineering/spec?productId=${row.productId}`)
 }
 
 const router = useRouter()

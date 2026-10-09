@@ -305,6 +305,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listProductPage, getFullProduct } from '@/api/product'
 import { outboundApi } from '@/api/inventory/outbound'
@@ -317,6 +318,8 @@ import type { ProductFullVO, ProductVo } from '@/types/product'
 import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
 
 defineOptions({ name: 'ProductSpec' })
+
+const route = useRoute()
 
 const loading = ref(false)
 const rows = ref<ProductVo[]>([])
@@ -579,7 +582,12 @@ function doPrint() {
   exportVisible.value = false
 }
 
-onMounted(load)
+// 支持从产品管理侧带 ?productId= 跳入（方案c 两处入口）：先载列表，再直接开该产品的作业规范抽屉
+onMounted(async () => {
+  await load()
+  const pid = Number(route.query.productId || 0)
+  if (pid) openSpec({ productId: pid })
+})
 </script>
 
 <style scoped>
