@@ -109,7 +109,9 @@
               />
             </el-select>
             <!-- 样品类型：编码由行内生成器生成，只读展示 -->
-            <span v-else-if="scope.row.productCode" class="sample-code">{{ scope.row.productCode }}</span>
+            <span v-else-if="scope.row.productCode" class="sample-code">{{
+              scope.row.productCode
+            }}</span>
             <span v-else class="sample-code-empty">（点击📝生成编码）</span>
           </template>
         </el-table-column>
@@ -634,7 +636,9 @@ const handleSubmit = () => {
           const code = (item.productCode || '').trim()
           if (!code) continue
           if (seen.has(code)) {
-            ElMessage.error(`明细产品编码重复：${code}（第${seen.get(code)}行与当前行），请重新生成`)
+            ElMessage.error(
+              `明细产品编码重复：${code}（第${seen.get(code)}行与当前行），请重新生成`
+            )
             return
           }
           seen.set(code, props.formData.items.indexOf(item) + 1)
@@ -658,7 +662,13 @@ const handleClose = () => {
 // 工具：编码参数反解/判断
 // ============================================================
 function hasAnyCodeParam(state: Partial<ProductCodeState>): boolean {
-  return !!(state.serialNo || state.panelType || state.panelFeature || state.circuitType || state.circuitFeature)
+  return !!(
+    state.serialNo ||
+    state.panelType ||
+    state.panelFeature ||
+    state.circuitType ||
+    state.circuitFeature
+  )
 }
 
 /** 从产品编码反解构成要素（口径统一在 useProductCode.parseProductCode，2026-09-30 dev-20260930-011） */

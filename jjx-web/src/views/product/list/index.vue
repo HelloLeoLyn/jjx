@@ -133,21 +133,27 @@
 
     <!-- 数据表格 -->
     <el-card class="table-card" shadow="never">
-      <el-table v-loading="loading" :data="productList" @selection-change="handleSelectionChange">
+      <el-table
+        v-loading="loading"
+        :data="productList"
+        @selection-change="handleSelectionChange"
+        border
+        stripe
+      >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="产品编码" align="center" prop="productCode" width="120">
+        <el-table-column label="产品编码" align="center" prop="productCode" width="140">
           <template #default="scope">
             <el-button link type="primary" @click="handleView(scope.row)">{{
               scope.row.productCode
             }}</el-button>
           </template>
         </el-table-column>
-        <el-table-column label="产品名称" align="center" prop="productName" width="120" />
-        <el-table-column label="产品分类" align="center" prop="categoryId" width="120">
+        <el-table-column label="产品名称" align="center" prop="productName" width="180" />
+        <!-- <el-table-column label="产品分类" align="center" prop="categoryId" width="80">
           <template #default="scope">
             {{ getCategoryName(scope.row.categoryId) }}
           </template>
-        </el-table-column>
+        </el-table-column> -->
 
         <el-table-column
           label="客户"
@@ -307,9 +313,6 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 const productActions: TableAction<ProductVo>[] = [
   { key: 'trace', label: '流水', permission: 'product:list:view' },
 
-  // 产品侧入口：跳「产品作业规范」页（/product/spec，与工程侧 menu 404 共用组件，不重复实现）
-  { key: 'spec', label: '作业规范', permission: 'product:spec:view' },
-
   {
     key: 'edit',
     label: '编辑',
@@ -380,6 +383,8 @@ const productActions: TableAction<ProductVo>[] = [
       Boolean(row.routeCode) &&
       ProductEnum.status.canDo(row.productStatus, ProductEnum.actions.EDIT),
   },
+  // 产品侧入口：跳「产品作业规范」页（/product/spec，与工程侧 menu 404 共用组件，不重复实现）
+  { key: 'spec', label: '作业规范', permission: 'product:spec:view' },
 ]
 
 const handleProductAction = (key: string, row: ProductVo) => {

@@ -4,16 +4,6 @@
     <el-divider content-position="left">订单基本信息</el-divider>
     <el-row :gutter="20">
       <el-col :span="12">
-        <el-form-item label="订单号" prop="orderNo">
-          <el-input
-            v-model="form.orderNo"
-            placeholder="提交时自动生成"
-            maxlength="50"
-            :readonly="true"
-          />
-        </el-form-item>
-      </el-col>
-      <el-col :span="10">
         <el-form-item label="客户" prop="customerId">
           <CustomerSelector
             v-model="form.customerId"
@@ -23,9 +13,18 @@
           />
         </el-form-item>
       </el-col>
-      <el-col :span="2"
-        ><el-button @click="goToCustomerAdd()" type="primary">新增客户</el-button></el-col
-      >
+      <el-col :span="12">
+        <el-form-item label="运输方式" prop="shippingMethod">
+          <el-select v-model="form.shippingMethod" placeholder="请选择运输方式" style="width: 100%">
+            <el-option
+              v-for="dict in shippingMethodOptions"
+              :key="dict.value"
+              :label="dict.label"
+              :value="dict.value"
+            />
+          </el-select>
+        </el-form-item>
+      </el-col>
     </el-row>
     <el-row :gutter="20">
       <el-col :span="12">
@@ -85,7 +84,12 @@
       </el-col>
       <el-col :span="12">
         <el-form-item label="币种" prop="currency">
-          <el-select v-model="form.currency" placeholder="请选择币种" style="width: 100%" @change="handleCurrencyChange">
+          <el-select
+            v-model="form.currency"
+            placeholder="请选择币种"
+            style="width: 100%"
+            @change="handleCurrencyChange"
+          >
             <el-option
               v-for="dict in currencyOptions"
               :key="dict.value"
@@ -125,22 +129,8 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20">
-      <el-col :span="12">
-        <el-form-item label="运输方式" prop="shippingMethod">
-          <el-select v-model="form.shippingMethod" placeholder="请选择运输方式" style="width: 100%">
-            <el-option
-              v-for="dict in shippingMethodOptions"
-              :key="dict.value"
-              :label="dict.label"
-              :value="dict.value"
-            />
-          </el-select>
-        </el-form-item>
-      </el-col>
-    </el-row>
     <el-divider content-position="left">收货信息</el-divider>
-    <el-row :gutter="10" style="margin-bottom: 8px">
+    <!-- <el-row :gutter="10" style="margin-bottom: 8px">
       <el-col :span="16">
         <el-select
           v-model="addressPick"
@@ -158,7 +148,7 @@
           >新增/维护地址</el-button
         >
       </el-col>
-    </el-row>
+    </el-row> -->
     <el-row>
       <el-col :span="24">
         <InternationalAddressEditor v-model="form.shippingAddress" prop-path="address" />
@@ -304,7 +294,7 @@
         biz-type="sales_order"
         :biz-id="form.orderId"
         :trace-id="(form as any)?.traceId"
-        :accept="['.pdf','.doc','.docx','.xls','.xlsx','.jpg','.jpeg','.png']"
+        :accept="['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']"
         button-text="上传附件"
         tip="支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB；新建订单时附件将在保存后自动上传"
       />
@@ -324,7 +314,8 @@
       v-if="!form.amountBreakdownConfirmed"
       v-model="form.amountBreakdownConfirmed"
       @change="calculateTotalAmount"
-    >确认运费和折扣，重新计算金额</el-checkbox>
+      >确认运费和折扣，重新计算金额</el-checkbox
+    >
     <el-row class="amount-summary" :gutter="20">
       <el-col :span="8">
         <el-form-item label="未税小计">
