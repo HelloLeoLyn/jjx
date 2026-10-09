@@ -5,6 +5,13 @@
       <el-tag v-if="isRework" type="danger" size="small" effect="plain">返工</el-tag>
     </div>
     <div v-if="isRework" class="work-instruction__hint">返工内容以本说明为准</div>
+    <div
+      v-if="frameTag"
+      class="work-instruction__warn"
+      :class="{ 'is-danger': frameTag.type === 'danger' }"
+    >
+      ⚠ 网框 {{ parsed.screenNo }}：{{ frameTag.label }}，生产前请确认
+    </div>
     <div v-for="field in fields" :key="field.label" class="work-instruction__row">
       <span class="work-instruction__label">{{ field.label }}</span>
       <span class="work-instruction__value">{{ field.value }}</span>
@@ -22,7 +29,8 @@
  *   · 普通工序：description（工序说明）/ qualityStandard / skillRequirement / processParamTemplate
  * 只读展示；无任何内容时整块不渲染（不占位、不显示空壳）。
  */
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
+import { ensureFrames, frameStatusOf } from '@/composables/usePrintFieldSuggest'
 
 const props = defineProps<{
   /** 后端返回的 customProcessParams（JSON 字符串，或已解析对象） */
@@ -45,6 +53,16 @@ const parsed = computed<Record<string, any>>(() => {
 
 const isRework = computed(() => Boolean(parsed.value.ncrNo || parsed.value.reworkRequirement))
 
+// 网框状态警示（软提示）：印刷工序若引用了网框，生产端提醒其当前状态（未制版/维护中/已报废）
+const frameTag = computed(() => {
+  const no = parsed.value.screenNo
+  return no ? frameStatusOf(String(no)) : null
+})
+
+onMounted(() => {
+  if (parsed.value.screenNo) ensureFrames()
+})
+
 const fields = computed(() => {
   const p = parsed.value
   const rows: Array<{ label: string; value: string }> = []
@@ -59,6 +77,12 @@ const fields = computed(() => {
   push('技能要求', p.skillRequirement)
   push('工序说明', p.description)
   push('工艺参数', p.processParamTemplate)
+  // 印刷工序参数（dev-20261009-026）
+  push('印刷名称', p.printName)
+  push('色号', p.colorNo)
+  push('油墨', p.inkNo)
+  push('菲林', p.filmNo)
+  push('网框', p.screenNo)
   return rows
 })
 </script>
@@ -76,6 +100,18 @@ const fields = computed(() => {
 .work-instruction__hint {
   color: var(--el-color-danger);
   font-size: 12px;
+}
+.work-instruction__warn {
+  margin: 2px 0;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
+}
+.work-instruction__warn.is-danger {
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
 }
 .work-instruction__row {
   display: flex;
