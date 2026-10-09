@@ -40,7 +40,7 @@
             <tbody>
               <tr v-for="(it, i) in materialList" :key="i">
                 <td class="c">{{ i + 1 }}</td>
-                <td>{{ it.remark || '-' }}</td>
+                <td>{{ it.processName || '-' }}</td>
                 <td>{{ it.materialName || '-' }}</td>
                 <td>{{ buildSpec(it) }}</td>
                 <td class="c">{{ fmt(it.quantity) }}</td>

@@ -362,6 +362,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                         oldIt.getBaseQty(), e.getValue().getBaseQty());
                 changeRecorder.diffDecimal(changes, "模数(" + label + ")",
                         oldIt.getModuleQty(), e.getValue().getModuleQty());
+                // 2026-10-09 dev-20261009-048：补 项目名称 与 关联标准工序(processId) 的变更记录
+                changeRecorder.diff(changes, "项目(" + label + ")",
+                        oldIt.getProcessName(), e.getValue().getProcessName());
+                if (!java.util.Objects.equals(oldIt.getProcessId(), e.getValue().getProcessId())) {
+                    changes.add("关联工序(" + label + "):"
+                            + procLabel(oldIt.getProcessId(), oldIt.getProcessName()) + "→"
+                            + procLabel(e.getValue().getProcessId(), e.getValue().getProcessName()));
+                }
             }
         }
         for (EngineeringBomItem oldIt : oldItems) {
@@ -369,6 +377,12 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 changes.add("移除物料:" + matLabel(oldIt));
             }
         }
+    }
+
+    /** 关联标准工序显示名（未关联→“未关联”；无名称→#id） */
+    private String procLabel(Long processId, String processName) {
+        if (processId == null) return "未关联";
+        return processName == null || processName.isBlank() ? ("#" + processId) : processName;
     }
 
     private String matLabel(EngineeringBomItem it) {

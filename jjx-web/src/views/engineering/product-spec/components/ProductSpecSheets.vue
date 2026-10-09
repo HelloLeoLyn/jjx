@@ -16,7 +16,7 @@
                 <thead><tr><th>序号</th><th>项目</th><th>材　料</th><th>规格及模数</th><th>刀模位置</th></tr></thead>
                 <tbody><tr v-for="(row, i) in padded(page.rows, 14)" :key="i">
                   <td class="center">{{ row ? (page.continuation || 0) * 14 + i + 1 : '' }}</td>
-                  <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="18" /></td>
+                  <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="18" /><span v-else>{{ plain(row?.processName) }}</span></td>
                   <td>{{ row?.materialName || row?.materialCode }}</td>
                   <td>{{ materialSpec(row) }}</td>
                   <td>{{ row?.dieLocation || '' }}</td>
