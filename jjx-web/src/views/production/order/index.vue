@@ -18,7 +18,7 @@
         type="primary"
         plain
         @click="router.push('/production-material/calculation')"
-      >用料计算 · 场景演示</el-button>
+      >工单用料计算</el-button>
       <el-button icon="Printer" @click="handleBatchPrint">打印指令单</el-button>
     </div>
     <OrderBatchActions

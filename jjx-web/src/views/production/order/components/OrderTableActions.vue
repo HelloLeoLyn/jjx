@@ -97,9 +97,9 @@
           <el-dropdown-menu>
             <el-dropdown-item
               command="material-calculation"
-              v-if="order.orderType === OrderType.WORK_ORDER && hasPermi(['production:order:view'])"
+              v-if="String(order.orderType).toUpperCase() === OrderType.WORK_ORDER.toUpperCase() && hasPermi(['production:order:view'])"
             >
-              用料计算（UI预览）
+              用料计算
             </el-dropdown-item>
             <el-dropdown-item
               command="submit-review"

@@ -49,7 +49,7 @@ export const constantRoutes: RouteRecordRaw[] = [
         path: 'calculation',
         name: 'WorkOrderMaterialCalculationPreview',
         component: () => import('@/views/production/order/material-calculation/index.vue'),
-        meta: { hidden: true, title: '工单用料计算 · 演示', permission: 'production:order:view' },
+        meta: { hidden: true, title: '工单用料计算', permission: 'production:order:view' },
       },
     ],
   },
