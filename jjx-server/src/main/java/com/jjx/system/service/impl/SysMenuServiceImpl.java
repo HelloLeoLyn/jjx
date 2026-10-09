@@ -11,6 +11,7 @@ import com.jjx.system.domain.entity.SysUserRole;
 import com.jjx.system.domain.vo.SysMenuVO;
 import com.jjx.system.mapper.SysMenuMapper;
 import com.jjx.system.service.ISysMenuService;
+import com.jjx.system.service.ISysRoleService;
 import com.jjx.system.service.ISysUserRoleService;
 import com.jjx.system.utils.SysMenuConverter;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ import java.util.*;
 public class SysMenuServiceImpl extends ServiceImpl<SysMenuMapper, SysMenu> implements ISysMenuService {
     private final SysMenuMapper menuMapper;
     private final ISysUserRoleService userRoleService;
+    private final ISysRoleService sysRoleService;
     private final SysMenuConverter menuConverter;
 
 
@@ -54,7 +56,7 @@ public class SysMenuServiceImpl extends ServiceImpl<SysMenuMapper, SysMenu> impl
         if(ObjectUtil.isEmpty(userId)){
             return Collections.emptySet();
         }else{
-            if (userId == 1L) {
+            if (isSuperAdmin(userId)) {
                 permissions.add("*:*:*"); // 通配符权限，拥有所有权限
                 return permissions;
             } else  {
@@ -68,6 +70,14 @@ public class SysMenuServiceImpl extends ServiceImpl<SysMenuMapper, SysMenu> impl
                 return menuMapper.selectMenusPermsByRoleIds(list);
             }
         }
+    }
+
+    /** 超级管理员：user_id=1 或 挂「admin」角色（让挂超级管理员角色的用户恒为全权限） */
+    private boolean isSuperAdmin(Long userId) {
+        if (userId == null) return false;
+        if (userId == 1L) return true;
+        List<String> keys = sysRoleService.selectRoleKeyByUsrId(userId);
+        return keys != null && keys.stream().anyMatch(k -> "admin".equals(k));
     }
 
     @Override
