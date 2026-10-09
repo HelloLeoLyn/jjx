@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # task-register.sh —— 开发任务登记唯一入口（sys_task）
 #
-# 用途: 原子取号 + 撞唯一约束自动重试 + 登记后回查格式/排序 + 改库前 sys_task 表级 guard 备份
+# 用途: 原子取号 + 撞唯一约束自动重试 + 登记后回查格式/排序（**默认不再做 guard 备份**，2026-10-09 起；需备份用 --backup）
 # 危险等级: 🔴 改数据库（INSERT sys_task） + 🟡 写备份文件/索引
 # 前置: mysql 可连（默认 -uroot -p123456，可用 JJX_DB_ARGS 覆盖）；在仓库任意目录运行
 #
@@ -33,7 +33,8 @@ usage() {
   --by <agent>         登记人，默认 dahuang
   --desc <文本>        描述（可选）
   --desc-file <文件>   从文件读描述（可选，优先于 --desc）
-  --no-backup          跳过 guard 备份（不推荐）
+  --backup             额外做 sys_task 表级 guard 备份（默认关闭：按 CONVENTIONS §2 任务登记免备份）
+  --no-backup          兼容旧参数（等价默认：不备份）
   --dry-run            只打印将执行的 SQL 与备份路径，不落库不写文件
   -h, --help           本帮助
 
@@ -48,7 +49,7 @@ usage() {
 EOF
 }
 
-TITLE=""; PRIORITY="P2"; MODULE="dev"; TYPE="DEV"; BY="dahuang"; DESC=""; NO_BACKUP=0; DRY=0
+TITLE=""; PRIORITY="P2"; MODULE="dev"; TYPE="DEV"; BY="dahuang"; DESC=""; DO_BACKUP=0; DRY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --title) TITLE="${2:-}"; shift 2 ;;
@@ -58,7 +59,8 @@ while [[ $# -gt 0 ]]; do
     --by) BY="${2:-}"; shift 2 ;;
     --desc) DESC="${2:-}"; shift 2 ;;
     --desc-file) DESC="$(cat "${2:-/dev/null}")"; shift 2 ;;
-    --no-backup) NO_BACKUP=1; shift ;;
+    --backup) DO_BACKUP=1; shift ;;
+    --no-backup) shift ;; # 兼容旧参数（默认即不备份）
     --dry-run) DRY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "未知参数: $1" >&2; usage; exit 1 ;;
@@ -76,15 +78,15 @@ SELECT CONCAT('${PREFIX}', LPAD(CAST(COALESCE(MAX(CAST(SUBSTRING_INDEX(task_code
 FROM sys_task WHERE task_code LIKE '${PREFIX}%';"
 
 if [[ $DRY -eq 1 ]]; then
-  echo "[dry-run] 备份路径: $BACKUP_DIR/sys_task_register_${DAY}-<HHMM>_guard.sql"
+  echo "[dry-run] guard 备份: 默认不做（加 --backup 才写 $BACKUP_DIR/sys_task_register_${DAY}-<HHMM>_guard.sql）"
   echo "[dry-run] 将执行:"; echo "$SQL"
   exit 0
 fi
 
 mysql_run() { mysql $DB_ARGS --batch --skip-column-names "$DB_NAME" -e "$1"; }
 
-# 1) 改库前 guard 备份
-if [[ $NO_BACKUP -eq 0 ]]; then
+# 1) 改库前 guard 备份（默认关闭，2026-10-09 起；按 CONVENTIONS §2 任务登记免备份）
+if [[ $DO_BACKUP -eq 1 ]]; then
   mkdir -p "$BACKUP_DIR"
   TS_FULL="$(date '+%Y-%m-%d %H:%M:%S')"; TS_MIN="$(date '+%Y%m%d-%H%M')"
   GF="$BACKUP_DIR/sys_task_register_${DAY}-${TS_MIN}_guard.sql"
@@ -122,7 +124,7 @@ if [[ "$CODE" != "$MAXCODE" ]]; then
 fi
 
 # 4) 追加索引（拿到真码后才写，保证索引准确）
-if [[ $NO_BACKUP -eq 0 && -n "${GF:-}" ]]; then
+if [[ $DO_BACKUP -eq 1 && -n "${GF:-}" ]]; then
   printf '%s\tguard\t%s\t%s\t%s\t%s\t%s\t%s\n' "$TS_FULL" "$(basename "$GF")" "$GMD" "$GSZ" "$GTC" "$BY" "$CODE" >> "$BACKUP_DIR/backup-index.tsv"
 fi
 
