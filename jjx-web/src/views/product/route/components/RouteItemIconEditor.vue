@@ -974,7 +974,7 @@ const addToNewGroup = (process: StandardProcessOption) => {
   groupSyncToken.value.push(0)
   updateGroupOrder()
   syncToParent()
-  scrollToAssemblyGroup(newGroup)
+  scrollToAssemblyIndex(assemblyGroupsByTab(assemblyActiveTab.value).length - 1)
   maybePromptIndex(newItem)
 }
 
@@ -985,7 +985,7 @@ const addToGroup = (groupIndex: number, process: StandardProcessOption) => {
   recalculateGroupHours(groupIndex)
   bumpGroupSyncToken(groupIndex)
   syncToParent()
-  scrollToAssemblyGroup(groups.value[groupIndex])
+  scrollToAssemblyIndex(assemblyGroupsByTab(assemblyActiveTab.value).indexOf(groups.value[groupIndex]))
   maybePromptIndex(newItem)
 }
 
@@ -1006,11 +1006,10 @@ function scrollRowIntoView(rowEl: HTMLElement) {
   rowEl.scrollIntoView({ block: 'nearest' })
 }
 
-// 拖拽落点后：滚动到目标组合并短暂高亮
-function scrollToAssemblyGroup(group: any) {
-  const tab = assemblyActiveTab.value
-  const idx = assemblyGroupsByTab(tab).indexOf(group)
+// 拖拽落点后：滚动到目标组合并短暂高亮（idx = 当前 tab 内的行下标，dev-20261009-052）
+function scrollToAssemblyIndex(idx: number) {
   if (idx < 0) return
+  const tab = assemblyActiveTab.value
   let tries = 0
   const run = () => {
     const t = assemblyTableRefs.value[tab]
@@ -1018,7 +1017,7 @@ function scrollToAssemblyGroup(group: any) {
     const rows = root?.querySelectorAll('.el-table__body .el-table__row')
     const rowEl = rows?.[idx] as HTMLElement | undefined
     if (!root || !rowEl) {
-      if (tries++ < 8) window.setTimeout(run, 70)
+      if (tries++ < 10) window.setTimeout(run, 60)
       return
     }
     scrollRowIntoView(rowEl)
@@ -1113,7 +1112,7 @@ const handleItemAdded = (payload: SortableMovePayload) => {
   updateGroupOrder()
   bumpGroupSyncToken(groups.value.indexOf(sourceGroup))
   bumpGroupSyncToken(currentTargetIndex)
-  scrollToAssemblyGroup(targetGroup)
+  scrollToAssemblyIndex(assemblyGroupsByTab(assemblyActiveTab.value).indexOf(targetGroup))
   syncToParent()
 }
 
