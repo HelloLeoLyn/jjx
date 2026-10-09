@@ -2,6 +2,7 @@ package com.jjx.inventory.controller;
 
 import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 
@@ -84,7 +85,7 @@ public class InventoryMaterialController extends BaseController {
     }
 
     @GetMapping("/tags")
-    @SaCheckPermission("inventory:material:view")
+    @SaCheckPermission(value = {"inventory:material:view", "engineering:bom:add", "engineering:bom:edit"}, mode = SaMode.OR)
     public Result<List<SysTag>> tags() {
         return Result.success(tagService.listTags("material_attribute", null, StatusEnum.NORMAL.getCode()));
     }
@@ -98,7 +99,7 @@ public class InventoryMaterialController extends BaseController {
      * 获取物料详情
      */
     @GetMapping("/{id:\\d+}")
-    @SaCheckPermission("inventory:material:view")
+    @SaCheckPermission(value = {"inventory:material:view", "engineering:bom:add", "engineering:bom:edit"}, mode = SaMode.OR)
     public Result<MaterialVO> getById(@PathVariable Long id) {
         MaterialVO material = materialService.getDetailById(id);
         if (material == null) {
@@ -112,7 +113,7 @@ public class InventoryMaterialController extends BaseController {
      */
     @PostMapping
     @Log(module = "物料管理", businessType = BusinessType.INSERT, bizType = "'material'", bizId = "#dto.materialId", action = LogActions.MATERIAL_CREATE)
-    @SaCheckPermission("inventory:material:add")
+    @SaCheckPermission(value = {"inventory:material:add", "engineering:bom:add", "engineering:bom:edit"}, mode = SaMode.OR)
     public Result<Void> add(@RequestBody MaterialSaveDTO dto) {
         // 检查物料编码是否已存在
         if (materialService.existsByCode(dto.getMaterialCode())) {
@@ -191,7 +192,7 @@ public class InventoryMaterialController extends BaseController {
      * 检查物料编码是否重复
      */
     @GetMapping("/check-code")
-    @SaCheckPermission("inventory:material:view")
+    @SaCheckPermission(value = {"inventory:material:view", "engineering:bom:add", "engineering:bom:edit"}, mode = SaMode.OR)
     public Result<Boolean> checkCode(@RequestParam String materialCode) {
         boolean exists = materialService.existsByCode(materialCode);
         return Result.success(!exists);
@@ -202,7 +203,7 @@ public class InventoryMaterialController extends BaseController {
      * 用于导入时校验物料是否已建档
      */
     @PostMapping("/check")
-    @SaCheckPermission("inventory:material:view")
+    @SaCheckPermission(value = {"inventory:material:view", "engineering:bom:add", "engineering:bom:edit"}, mode = SaMode.OR)
     public Result<MaterialVO> check(@RequestBody MaterialCheckDTO checkDTO) {
         MaterialVO material = materialService.checkMaterial(checkDTO);
         return Result.success(material);
@@ -212,7 +213,7 @@ public class InventoryMaterialController extends BaseController {
      * 查询物料简单列表（用于下拉框）
      */
     @GetMapping("/options")
-    @SaCheckPermission("inventory:material:view")
+    @SaCheckPermission(value = {"inventory:material:view", "engineering:bom:add", "engineering:bom:edit"}, mode = SaMode.OR)
     public Result<List<Map<String, Object>>> options(@RequestParam(required = false) String keyword) {
         List<Map<String, Object>> options = materialService.getOptions(keyword);
         return Result.success(options);
