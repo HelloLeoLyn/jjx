@@ -502,8 +502,10 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     /**
      * 生成物料编码
-     * 格式：物料类型前缀 + 6 位自增码，从 100001 开始。
-     * 例如：RM100001、INK100002（具体数字由全局流水决定）。
+     * 格式：物料类型前缀 + 6 位全局流水（RM/AUX/INK 等共享同一计数器，由
+     * sys_number_sequence 的 material 序列决定，非按类型独立）。
+     * 例如：RM001601、AUX001574。
+     * 注意：新增前该序列需已接续存量最大流水，否则会从 1 起致撞号（dev-20261009-032）。
      */
     private String generateMaterialCode(String materialType) {
         String prefix = resolveMaterialCodePrefix(materialType);
