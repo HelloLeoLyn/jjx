@@ -22,15 +22,18 @@
       <div class="notification-dropdown">
         <div class="dropdown-header">
           <span class="dropdown-title">消息通知</span>
-          <el-button
-            link
-            type="primary"
-            size="small"
-            :disabled="unreadCount === 0"
-            @click="handleMarkAllRead"
-          >
-            全部标为已读
-          </el-button>
+          <div class="header-actions">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              :disabled="unreadCount === 0"
+              @click="handleMarkAllRead"
+            >
+              全部标为已读
+            </el-button>
+            <el-icon class="close-btn" @click="handleClose"><Close /></el-icon>
+          </div>
         </div>
 
         <div class="dropdown-body" v-if="unreadList.length > 0">
@@ -66,7 +69,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell } from '@element-plus/icons-vue'
+import { Bell, Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getUnreadCount, getUnreadList, markAsRead, markAllAsRead } from '@/api/notification'
 import { useUserStore } from '@/store/modules/user'
@@ -124,6 +127,11 @@ function togglePopover() {
 
 // 关闭弹窗
 function handlePopoverHide() {
+  popoverVisible.value = false
+}
+
+// 点击右上角关闭按钮
+function handleClose() {
   popoverVisible.value = false
 }
 
@@ -271,6 +279,23 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 600;
   color: #303133;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.close-btn {
+  cursor: pointer;
+  color: #909399;
+  font-size: 16px;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #409eff;
 }
 
 .dropdown-body {
