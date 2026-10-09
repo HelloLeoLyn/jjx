@@ -151,6 +151,7 @@
                 <el-input-number
                   v-model="row.allocation.issueQuantity"
                   :min="0"
+                  :max="maxIssueQuantity(row)"
                   :precision="isPieceUnit(materials[row.allocation.materialId]?.unit) ? 0 : 4"
                   :controls="false"
                   size="small"
@@ -577,13 +578,11 @@ async function selectMaterial(stock: StockVO) {
     }
     materials[id] = m
     const a = allocation(id, Math.max(0, d.remaining - planned(d)))
-    // 替换材料的比例不根据尺寸或历史测试数据猜测，计算员必须明确填写。
-    if (id !== d.original.id) a.ratio = 0
+    d.allocations.push(a)
     if (id !== d.original.id) {
       a.loss = d.lossRate
       updateSubstitution(a, d)
     }
-    d.allocations.push(a)
     pickerVisible.value = false
   } catch (error) {
     pickerError.value = message(error)
@@ -601,6 +600,32 @@ function updateCoverage(a: Allocation, d: Demand) {
     ? Number((issue * a.ratio / (1 + a.loss / 100)).toFixed(4))
     : 0
 }
+function maxIssueQuantity(row: AllocationTableRow) {
+  const a = row.allocation
+  if (!a) return 0
+  const available = Number(materials[a.materialId]?.available) || 0
+  const otherMaterialIssues = demands.value.reduce(
+    (sum, demand) =>
+      sum + demand.allocations
+        .filter((item) => item.id !== a.id && item.materialId === a.materialId)
+        .reduce((subtotal, item) => subtotal + quantity(item), 0),
+    0
+  )
+  const stockLimit = Math.max(0, available - otherMaterialIssues)
+  const otherCoverage = row.demand.allocations
+    .filter((item) => item.id !== a.id)
+    .reduce((sum, item) => sum + (Number(item.coverage) || 0), 0)
+  const coverageLimit = Math.max(0, row.demand.remaining - otherCoverage)
+  const demandLimit = row.kind === 'bom'
+    ? coverageLimit
+    : a.ratio > 0
+      ? coverageLimit * (1 + a.loss / 100) / a.ratio
+      : 0
+  const limit = Math.max(0, Math.min(stockLimit, demandLimit))
+  return isPieceUnit(materials[a.materialId]?.unit)
+    ? Math.floor(limit + 1e-9)
+    : Math.floor(limit * 10000 + 1e-9) / 10000
+}
 function updateSubstitution(a: Allocation, d: Demand) {
   const originalRate = d.baseQty > 0 && d.moduleQty > 0 ? d.baseQty / d.moduleQty : 0
   const substituteRate = a.baseQty > 0 && a.moduleQty > 0 ? a.baseQty / a.moduleQty : 0
@@ -608,9 +633,15 @@ function updateSubstitution(a: Allocation, d: Demand) {
   const issueQuantity = a.ratio > 0 && a.coverage > 0
     ? a.coverage * (1 + a.loss / 100) / a.ratio
     : 0
-  a.issueQuantity = isPieceUnit(materials[a.materialId]?.unit)
+  const calculatedQuantity = isPieceUnit(materials[a.materialId]?.unit)
     ? Math.ceil(issueQuantity - 1e-9)
     : Number(issueQuantity.toFixed(4))
+  a.issueQuantity = Math.min(calculatedQuantity, maxIssueQuantity({
+    key: a.id,
+    kind: 'substitute',
+    demand: d,
+    allocation: a,
+  }))
   updateCoverage(a, d)
 }
 function isPieceUnit(unit?: string) {
