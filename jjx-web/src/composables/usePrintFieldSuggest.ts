@@ -95,10 +95,26 @@ export async function suggestFilms(query: string, cb: (items: PrintSuggestItem[]
   }
 }
 
-export function suggestFrames(query: string, cb: (items: PrintSuggestItem[]) => void) {
-  const q = (query || '').trim().toLowerCase()
+export async function suggestFrames(query: string, cb: (items: PrintSuggestItem[]) => void) {
+  const q = (query || '').trim()
+  try {
+    // 远端模糊搜索（dev-20261009-053）：台账 7291 条，本地只缓存了 1000 条，必须走接口
+    const res: any = await engineeringResourceApi.frames({
+      keyword: q || undefined,
+      pageNum: 1,
+      pageSize: 20,
+    })
+    const list: any[] = res?.data?.records || []
+    if (list.length || q) {
+      cb(list.map((f: any) => ({ value: frameNoOf(f), statusLabel: frameStatusLabel(f.status) })))
+      return
+    }
+  } catch {
+    // 接口异常时回退到本地缓存
+  }
+  const lq = q.toLowerCase()
   const list = frameCache.value
-    .filter((f: any) => !q || frameNoOf(f).toLowerCase().includes(q))
+    .filter((f: any) => !lq || frameNoOf(f).toLowerCase().includes(lq))
     .slice(0, 20)
   cb(list.map((f: any) => ({ value: frameNoOf(f), statusLabel: frameStatusLabel(f.status) })))
 }
