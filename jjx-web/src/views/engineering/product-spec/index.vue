@@ -56,7 +56,7 @@
             <el-descriptions-item label="规格">{{ (detail?.product as any)?.specification || '-' }}</el-descriptions-item>
           </el-descriptions>
           <div class="spec-head-actions">
-            <el-button type="primary" @click="openExport">生成文档集</el-button>
+            <el-button type="primary" icon="View" :disabled="detailLoading || !productId" @click="openExport">预览 / 打印文档集</el-button>
           </div>
         </div>
 
@@ -231,17 +231,9 @@
       </div>
     </el-drawer>
 
-    <!-- 生成文档集：预览 + 勾选 -->
-    <el-dialog v-model="exportVisible" title="生成文档集（预览并勾选要哪些）" width="620px" append-to-body>
-      <el-checkbox-group v-model="exportSelected" class="export-list">
-        <el-checkbox v-for="s in exportSections" :key="s.key" :value="s.key" :label="s.key" class="export-item">
-          {{ s.label }}
-        </el-checkbox>
-      </el-checkbox-group>
-      <template #footer>
-        <el-button @click="exportVisible = false">取消</el-button>
-        <el-button type="primary" @click="doPrint">打印</el-button>
-      </template>
+    <!-- 在线纸张预览：目录选择与打印共用同一版式 -->
+    <el-dialog v-model="exportVisible" title="产品电子文档集 · 在线预览" width="94%" top="4vh" append-to-body destroy-on-close>
+      <ProductSpecPreview v-if="exportVisible && productId" :product-id="productId" />
     </el-dialog>
     <!-- 关联刀模 -->
     <el-dialog v-model="dieVisible" title="关联刀模" width="760px" append-to-body>
@@ -314,6 +306,7 @@ import { engineeringResourceApi } from '@/api/engineering/resource'
 import { attachmentApi } from '@/api/system/attachment'
 import { InboundOrderStatusEnum } from '@/enums/inventory'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
+import ProductSpecPreview from './components/ProductSpecPreview.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
 import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
 
@@ -557,29 +550,9 @@ async function openSpec(row: any) {
   }
 }
 
-const exportSections = [
-  { key: 'customer', label: '客供资料' },
-  { key: 'spec', label: '产品作业规范（BOM/工艺路线/刀模/凹凸条件）' },
-  { key: 'print', label: '印刷规范（+油墨调配记录表）' },
-  { key: 'atlas', label: '产品图集' },
-  { key: 'color', label: '规范分色检查表' },
-  { key: 'sample', label: '样品' },
-  { key: 'pick', label: '打样领料单' },
-]
 const exportVisible = ref(false)
-const exportSelected = ref<string[]>(exportSections.map((s) => s.key))
-
 function openExport() {
-  exportSelected.value = exportSections.map((s) => s.key)
   exportVisible.value = true
-}
-
-function doPrint() {
-  const id = productId.value
-  if (!id) return
-  const sections = exportSelected.value.join(',')
-  window.open(`/print/product-spec/${id}?sections=${encodeURIComponent(sections)}`, '_blank')
-  exportVisible.value = false
 }
 
 // 支持从产品管理侧带 ?productId= 跳入（方案c 两处入口）：先载列表，再直接开该产品的作业规范抽屉
@@ -615,13 +588,5 @@ onMounted(async () => {
   color: #909399;
   font-size: 12px;
   margin: 6px 0 2px;
-}
-.export-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.export-item {
-  margin-right: 0;
 }
 </style>
