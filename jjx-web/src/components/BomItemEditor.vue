@@ -239,8 +239,16 @@
       </el-table-column>
 
       <!-- 操作列 -->
-      <el-table-column label="操作" width="170" align="center" fixed="right">
+      <el-table-column label="操作" width="220" align="center" fixed="right">
         <template #default="scope">
+          <el-button
+            v-if="!scope.row.materialId"
+            link
+            type="primary"
+            size="small"
+            @click="handleCreateMaterial(scope.row, scope.row.materialName || '')"
+            >建档</el-button
+          >
           <el-button link type="primary" size="small" @click="handleAddChildItem(scope.row)"
             >子物料</el-button
           >
