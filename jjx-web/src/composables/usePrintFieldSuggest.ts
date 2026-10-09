@@ -34,10 +34,15 @@ const FRAME_STATUS_TAG: Record<string, { label: string; type: 'success' | 'warni
   SCRAPPED: { label: '已报废', type: 'danger' },
 }
 
+/** 网框编号兼容读取：接口返回下划线 frame_no（旧代码误读驼峰 frameNo）。 */
+function frameNoOf(f: any): string {
+  return String(f?.frame_no ?? f?.frameNo ?? '')
+}
+
 /** 按网框编号反查当前状态标签（未命中返回 null，兼容旧手输值） */
 export function frameStatusOf(frameNo: string): { label: string; type: string } | null {
   if (!frameNo) return null
-  const f = frameCache.value.find((x: any) => x.frameNo === frameNo)
+  const f = frameCache.value.find((x: any) => frameNoOf(x) === frameNo)
   if (!f) return null
   return FRAME_STATUS_TAG[f.status] || { label: frameStatusLabel(f.status), type: 'info' }
 }
@@ -93,9 +98,9 @@ export async function suggestFilms(query: string, cb: (items: PrintSuggestItem[]
 export function suggestFrames(query: string, cb: (items: PrintSuggestItem[]) => void) {
   const q = (query || '').trim().toLowerCase()
   const list = frameCache.value
-    .filter((f: any) => !q || String(f.frameNo || '').toLowerCase().includes(q))
+    .filter((f: any) => !q || frameNoOf(f).toLowerCase().includes(q))
     .slice(0, 20)
-  cb(list.map((f: any) => ({ value: f.frameNo, statusLabel: frameStatusLabel(f.status) })))
+  cb(list.map((f: any) => ({ value: frameNoOf(f), statusLabel: frameStatusLabel(f.status) })))
 }
 
 export type PrintFieldKey = 'colorNo' | 'inkNo' | 'filmNo' | 'screenNo'
