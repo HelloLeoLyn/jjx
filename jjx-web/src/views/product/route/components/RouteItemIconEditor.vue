@@ -445,7 +445,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import type { StandardProcessOption } from '@/types/product'
@@ -951,17 +951,19 @@ const maybePromptIndex = (item: EngineeringRoutingItemVO) => {
 const addToNewGroup = (process: StandardProcessOption) => {
   const newItem = createItemVO(process)
   newItem.processCategory = assemblyActiveTab.value
-  groups.value.push({
+  const newGroup = {
     groupOrder: groups.value.length + 1,
     items: [newItem],
     totalLaborHours: process.standardLaborHours || 0,
     totalMachineHours: process.standardMachineHours || 0,
     remark: '',
     processCategory: assemblyActiveTab.value,
-  })
+  }
+  groups.value.push(newGroup)
   groupSyncToken.value.push(0)
   updateGroupOrder()
   syncToParent()
+  scrollToAssemblyGroup(newGroup)
   maybePromptIndex(newItem)
 }
 
@@ -972,7 +974,30 @@ const addToGroup = (groupIndex: number, process: StandardProcessOption) => {
   recalculateGroupHours(groupIndex)
   bumpGroupSyncToken(groupIndex)
   syncToParent()
+  scrollToAssemblyGroup(groups.value[groupIndex])
   maybePromptIndex(newItem)
+}
+
+// 拖拽落点后：滚动到目标组合并短暂高亮（dev-20261009-044）
+function scrollToAssemblyGroup(group: any) {
+  nextTick(() => {
+    const list = assemblyGroupsByTab(assemblyActiveTab.value)
+    const idx = list.indexOf(group)
+    if (idx < 0) return
+    const zones = Array.from(document.querySelectorAll('.table-drop-zone')) as HTMLElement[]
+    const zone = zones.find((z) => z.offsetParent !== null)
+    if (!zone) return
+    const rows = zone.querySelectorAll('.el-table__body .el-table__row')
+    const rowEl = rows[idx] as HTMLElement | undefined
+    if (!rowEl) return
+    rowEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    const mark = (c: string) => {
+      rowEl.style.backgroundColor = c
+      rowEl.querySelectorAll('td').forEach((td) => ((td as HTMLElement).style.backgroundColor = c))
+    }
+    mark('#fff5cc')
+    window.setTimeout(() => mark(''), 1500)
+  })
 }
 
 // 从组合中移除工序
@@ -1056,6 +1081,7 @@ const handleItemAdded = (payload: SortableMovePayload) => {
   updateGroupOrder()
   bumpGroupSyncToken(groups.value.indexOf(sourceGroup))
   bumpGroupSyncToken(currentTargetIndex)
+  scrollToAssemblyGroup(targetGroup)
   syncToParent()
 }
 
