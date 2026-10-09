@@ -269,12 +269,12 @@
               />
             </template>
 
-            <!-- 产品编码（标准品选产品回填/样品生成器生成，均可改） -->
-            <el-form-item label="产品编码">
+            <!-- 样品编码由公共生成组件展示；标准品保留选产品后回填的编码。 -->
+            <el-form-item v-else label="产品编码">
               <!-- 2026-09-30 dev-20260930-011：口径统一 —— 编码只能由「客户简称+序号+结构位」拼出，禁止整条手改 -->
               <el-input
                 v-model="form.productCode"
-                placeholder="标准品选产品自动带出；样品由上方「序号 + 结构位」自动生成"
+                placeholder="选择产品后自动带出"
                 readonly
               >
               </el-input>
