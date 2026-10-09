@@ -99,6 +99,7 @@
               command="material-calculation"
               v-if="String(order.orderType).toUpperCase() === OrderType.WORK_ORDER.toUpperCase() && hasPermi(['production:order:view'])"
             >
+              <el-icon><DataAnalysis /></el-icon>
               用料计算
             </el-dropdown-item>
             <el-dropdown-item

@@ -17,6 +17,7 @@
         v-hasPermi="['production:order:view']"
         type="primary"
         plain
+        icon="DataAnalysis"
         @click="router.push('/production-material/calculation')"
       >工单用料计算</el-button>
       <el-button icon="Printer" @click="handleBatchPrint">打印指令单</el-button>
