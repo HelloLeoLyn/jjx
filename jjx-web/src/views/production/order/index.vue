@@ -11,17 +11,6 @@
     <!-- 统计卡片 -->
     <OrderStatsCards :stats="stats" :loading="loading" @refresh="loadStats" />
 
-    <!-- 批量操作 -->
-    <div class="batch-print-action">
-      <el-button
-        v-hasPermi="['production:order:view']"
-        type="primary"
-        plain
-        icon="DataAnalysis"
-        @click="router.push('/production-material/calculation')"
-      >工单用料计算</el-button>
-      <el-button icon="Printer" @click="handleBatchPrint">打印指令单</el-button>
-    </div>
     <OrderBatchActions
       :selected-rows="selectedRows"
       :view-type="activeView"
@@ -32,6 +21,7 @@
       @refresh="refreshData"
       @export="handleExport"
       @batch-delete="handleBatchDelete"
+      @batch-print="handleBatchPrint"
       @batch-command="handleBatchCommand"
     />
 

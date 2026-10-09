@@ -53,7 +53,7 @@
 
       <el-button icon="Download" @click="handleExport"> 导出 </el-button>
 
-      
+      <el-button icon="Printer" @click="handleBatchPrint">打印指令单</el-button>
     </el-space>
 
     <div class="selection-info" v-if="selectedRows.length > 0">
@@ -87,6 +87,7 @@ interface Emits {
   (e: 'refresh'): void
   (e: 'export'): void
   (e: 'batch-delete'): void
+  (e: 'batch-print'): void
   (e: 'batch-command', command: string): void
 }
 
@@ -101,37 +102,27 @@ const emit = defineEmits<Emits>()
 // 计算属性
 const canBatchApprove = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every(
-    (row) => row.orderType === 'plan' && row.orderStatus === 1
-  )
+  return props.selectedRows.every((row) => row.orderType === 'plan' && row.orderStatus === 1)
 })
 
 const canBatchStart = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every(
-    (row) => row.orderType === 'work_order' && row.orderStatus === 4
-  )
+  return props.selectedRows.every((row) => row.orderType === 'work_order' && row.orderStatus === 4)
 })
 
 const canBatchComplete = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every(
-    (row) => row.orderType === 'work_order' && row.orderStatus === 6
-  )
+  return props.selectedRows.every((row) => row.orderType === 'work_order' && row.orderStatus === 6)
 })
 
 const canBatchCancel = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every(
-    (row) => row.orderStatus !== 8 && row.orderStatus !== 9
-  )
+  return props.selectedRows.every((row) => row.orderStatus !== 8 && row.orderStatus !== 9)
 })
 
 const canBatchDelete = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every(
-    (row) => row.orderStatus === 0 || row.orderStatus === 9
-  )
+  return props.selectedRows.every((row) => row.orderStatus === 0 || row.orderStatus === 9)
 })
 
 // 方法
@@ -145,6 +136,10 @@ const handleRefresh = () => {
 
 const handleExport = () => {
   emit('export')
+}
+
+const handleBatchPrint = () => {
+  emit('batch-print')
 }
 
 const handleBatchDelete = () => {
