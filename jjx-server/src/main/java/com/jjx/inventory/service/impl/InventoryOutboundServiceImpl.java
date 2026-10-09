@@ -1566,11 +1566,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             if (bi == null || !"buy".equals(bi.getSourceType())) throw new BusinessException("BOM需求项已变化，请重新计算");
             requestedByMaterial.merge(materialId, qty, BigDecimal::add);
             coverageByBom.merge(bomItemId, coverage, BigDecimal::add);
-            if (!materialId.equals(bi.getMaterialId())) {
-                Object reason = item.get("allocationReason");
-                if (org.apache.commons.lang3.StringUtils.isBlank(reason == null ? null : reason.toString()))
-                    throw new BusinessException("替代材料必须填写替代依据");
-            } else if (qty.subtract(coverage).abs().compareTo(new BigDecimal("0.0001")) > 0) {
+            if (materialId.equals(bi.getMaterialId())
+                    && qty.subtract(coverage).abs().compareTo(new BigDecimal("0.0001")) > 0) {
                 throw new BusinessException("原 BOM 材料按 1:1 抵扣，领料量必须与抵扣需求一致");
             }
         }
@@ -1610,7 +1607,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             out.setSubstituteOfMaterialId(materialId.equals(bi.getMaterialId()) ? null : bi.getMaterialId());
             out.setAllocationRatio(item.get("allocationRatio") == null ? BigDecimal.ONE : new BigDecimal(String.valueOf(item.get("allocationRatio"))));
             out.setAllocationLossRate(item.get("allocationLossRate") == null ? BigDecimal.ZERO : new BigDecimal(String.valueOf(item.get("allocationLossRate"))));
-            out.setAllocationReason(String.valueOf(item.getOrDefault("allocationReason", "")));
+            out.setAllocationReason(null);
             out.setRemark(materialId.equals(bi.getMaterialId()) ? null : "替代 BOM 材料 " + bi.getMaterialCode() + "；抵扣需求 " + coverage + " " + bi.getUnit());
             try {
                 List<InventoryStockItem> fifo = stockItemMapper.selectFIFOAvailable(materialId);

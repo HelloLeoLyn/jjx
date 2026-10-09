@@ -45,7 +45,6 @@ export interface Allocation {
   ratio: number
   loss: number
   step: number
-  reason: string
 }
 export interface Demand {
   id: string
@@ -72,7 +71,6 @@ export function allocation(materialId: string, coverage: number): Allocation {
     ratio: 1,
     loss: 0,
     step: 1,
-    reason: '',
   }
 }
 export function buildDemands(rows: PickRow[]): Demand[] {
@@ -140,8 +138,6 @@ export function validationIssues(demands: Demand[], materials: Record<string, Ma
       )
         errors.push(`${d.original.name}：请填写有效的分配量、换算系数、损耗和取料步长`)
       if (!materials[a.materialId]) errors.push(`${d.original.name}：实际材料信息尚未加载`)
-      if (a.materialId !== d.original.id && !a.reason.trim())
-        errors.push(`${d.original.name}：替换材料需要填写换算依据`)
       if (a.materialId === d.original.id && (a.ratio !== 1 || a.loss !== 0))
         errors.push(`${d.original.name}：原料需求已包含BOM损耗，原规格保持1:1抵扣且不重复加损耗`)
     }

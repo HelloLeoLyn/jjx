@@ -113,7 +113,7 @@
                 :precision="2"
                 :controls="false"
                 size="small"
-                @change="updateCoverage(row.allocation, row.demand)"
+                @change="updateSubstitution(row.allocation, row.demand)"
               />
             </template>
             </el-table-column>
@@ -134,13 +134,6 @@
                 <template v-if="row.kind === 'substitute'">
                   <el-tag size="small" type="warning">替代 {{ row.demand.original.code }}</el-tag>
                   <small>抵扣系数 {{ fmt(row.allocation.ratio) }} {{ row.demand.original.unit }}/{{ materials[row.allocation.materialId]?.unit }}</small>
-                  <el-input
-                    v-model="row.allocation.reason"
-                    size="small"
-                    class="reason-input"
-                    maxlength="500"
-                    placeholder="替代依据（必填）"
-                  />
                 </template>
               </template>
               <span v-else>—</span>
@@ -208,7 +201,7 @@
       <div v-if="demands.length" class="action-bar">
         <div>
           <b>{{ gapCount ? gapCount + '项仍有缺口，可先预览部分用料' : '全部项目已安排' }}</b
-          ><small>确认后生成领料单，并保存材料对应 BOM 项、抵扣量和替代依据</small>
+          ><small>确认后生成领料单，平替行备注会记录抵扣的原材料及数量</small>
         </div>
         <el-button
           type="primary"
@@ -320,7 +313,7 @@
           width="130" /><el-table-column
           prop="issue"
           label="本次需领"
-          width="120" /><el-table-column prop="reason" label="换算依据" min-width="190"
+          width="120" /><el-table-column prop="remark" label="领料单备注" min-width="260"
       /></el-table>
       <p v-if="gapCount">仍有 {{ gapCount }} 项未配足，缺口保留在原需求下。</p>
       <template #footer
@@ -588,8 +581,6 @@ async function selectMaterial(stock: StockVO) {
     if (id !== d.original.id) a.ratio = 0
     if (id !== d.original.id) {
       a.loss = d.lossRate
-      a.issueQuantity = 0
-      a.coverage = 0
       updateSubstitution(a, d)
     }
     d.allocations.push(a)
@@ -614,7 +605,14 @@ function updateSubstitution(a: Allocation, d: Demand) {
   const originalRate = d.baseQty > 0 && d.moduleQty > 0 ? d.baseQty / d.moduleQty : 0
   const substituteRate = a.baseQty > 0 && a.moduleQty > 0 ? a.baseQty / a.moduleQty : 0
   a.ratio = originalRate > 0 && substituteRate > 0 ? Number((originalRate / substituteRate).toFixed(6)) : 0
-  updateCoverage(a, d)
+  a.issueQuantity = a.ratio > 0 && a.coverage > 0
+    ? Number((a.coverage * (1 + a.loss / 100) / a.ratio).toFixed(4))
+    : 0
+}
+function allocationRemark(d: Demand, a: Allocation) {
+  return a.materialId === d.original.id
+    ? '原 BOM 材料'
+    : `替代 BOM 材料 ${d.original.code}；抵扣需求${fmt(a.coverage)} ${d.original.unit}`
 }
 
 const batchVisible = ref(false),
@@ -666,7 +664,7 @@ const previewRows = ref<
     actualSpec: string
     coverage: string
     issue: string
-    reason: string
+    remark: string
   }[]
 >([])
 async function preview() {
@@ -712,7 +710,7 @@ async function preview() {
         actualSpec: materials[a.materialId].spec || '未填写',
         coverage: fmt(a.coverage) + ' ' + d.original.unit,
         issue: fmt(quantity(a)) + ' ' + materials[a.materialId].unit,
-        reason: a.reason || '原规格按BOM需求领料',
+        remark: allocationRemark(d, a),
       }))
     )
     previewVisible.value = true
@@ -738,7 +736,6 @@ async function submitAllocations() {
       coverageQuantity: Number(a.coverage),
       allocationRatio: Number(a.ratio),
       allocationLossRate: Number(a.loss),
-      allocationReason: a.reason.trim(),
     })))
     const response = await materialPickApi.createCalculatedProductionPick(Number(order.value.orderId), items)
     ElMessage.success(`领料单已生成（出库单 ${response?.data}）`)
@@ -1063,10 +1060,6 @@ p {
 }
 .allocation-table .el-input-number {
   width: 62px;
-}
-.reason-input {
-  width: 180px;
-  margin-top: 5px;
 }
 .quantity-cell {
   white-space: nowrap;
