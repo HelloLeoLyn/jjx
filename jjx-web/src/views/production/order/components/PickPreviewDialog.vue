@@ -135,6 +135,15 @@
       </div>
     </div>
     <template #footer>
+      <el-button
+        v-if="!isSupplement"
+        plain
+        type="warning"
+        :disabled="submitting"
+        @click="emit('open-calculation')"
+      >
+        用料计算（缺料或需平替）
+      </el-button>
       <el-button @click="emit('update:modelValue', false)">取消</el-button>
       <el-button type="primary" :loading="submitting" :disabled="!!errorMsg" @click="handleConfirm">
         {{ isSupplement ? '提交补料申请' : isAppend ? '确认追加领料单' : '确认生成领料单' }}
@@ -168,6 +177,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:modelValue': [v: boolean]
   success: [outboundId: number]
+  'open-calculation': []
 }>()
 
 const isAppend = computed(() => props.mode === 'append')

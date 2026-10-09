@@ -48,11 +48,11 @@
             clearable
             style="width: 120px"
           >
-            <el-option label="待提交" :value="0" />
-            <el-option label="待审批" :value="1" />
-            <el-option label="已审批" :value="2" />
-            <el-option label="已出库" :value="6" />
-            <el-option label="已取消" :value="9" />
+            <el-option :label="OutboundOrderStatusEnum.DRAFT.label" :value="OutboundOrderStatusEnum.DRAFT.value" />
+            <el-option :label="OutboundOrderStatusEnum.PENDING.label" :value="OutboundOrderStatusEnum.PENDING.value" />
+            <el-option :label="OutboundOrderStatusEnum.APPROVED.label" :value="OutboundOrderStatusEnum.APPROVED.value" />
+            <el-option :label="OutboundOrderStatusEnum.OUT_CONFIRM.label" :value="OutboundOrderStatusEnum.OUT_CONFIRM.value" />
+            <el-option :label="OutboundOrderStatusEnum.CANCELLED.label" :value="OutboundOrderStatusEnum.CANCELLED.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="补料来源">
@@ -149,11 +149,27 @@
             <el-button link type="info" @click="showTrace(row)">流水</el-button>
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button link type="info" @click="handlePrint(row)">打印</el-button>
-            <el-button v-if="row.status === 0" link type="primary" v-hasPermi="['inventory:outbound:edit']" @click="handleEdit(row)"
+            <el-button v-if="row.status === OutboundOrderStatusEnum.DRAFT.value" link type="primary" v-hasPermi="['inventory:outbound:edit']" @click="handleEdit(row)"
               >编辑</el-button
             >
             <el-button
-              v-if="row.status === 1 || row.status === 2"
+              v-if="row.outboundType === 'production' && row.sourceType === 'work_order' && row.status === OutboundOrderStatusEnum.PENDING.value"
+              link
+              type="success"
+              v-hasPermi="['inventory:outbound:approve']"
+              @click="handleApprovePick(row)"
+              >审核通过</el-button
+            >
+            <el-button
+              v-if="row.outboundType === 'production' && row.sourceType === 'work_order' && row.status === OutboundOrderStatusEnum.PENDING.value"
+              link
+              type="danger"
+              v-hasPermi="['inventory:outbound:approve']"
+              @click="handleRejectPick(row)"
+              >驳回</el-button
+            >
+            <el-button
+              v-if="(row.status === OutboundOrderStatusEnum.APPROVED.value || (row.outboundType !== 'production' && row.status === OutboundOrderStatusEnum.PENDING.value))"
               link
               type="warning"
               v-hasPermi="['inventory:outbound:edit']"
@@ -259,7 +275,7 @@ defineOptions({
 
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Download, Refresh, Printer } from '@element-plus/icons-vue'
 import { outboundApi } from '@/api/inventory/outbound'
 import { getTransactionsByDocNo } from '@/api/inventory/transaction'
@@ -271,6 +287,8 @@ import { formatCurrency, formatNumber, download } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import type { OutboundQueryParams, OutboundVO } from '@/types/inventory/outbound'
 import { openLabelPrint } from '@/utils/labelPrint'
+import { OutboundOrderStatusEnum } from '@/enums/inventory/OutboundEnum'
+import { useUserStore } from '@/store/modules/user'
 
 // 查看流水（DEV-569）
 const traceDrawerVisible = ref(false)
@@ -282,6 +300,7 @@ function showTrace(row: OutboundVO) {
 
 const router = useRouter()
 const route = useRoute()
+const userStore = useUserStore()
 
 // 2026-08-18：统一出库管理视图（含生产领料单，按出库类型筛选/标签区分）
 // 查询参数
@@ -411,7 +430,12 @@ const previewVisible = ref(false)
 const previewOperation = ref<any>(null)
 const previewBizId = ref<number | null>(null)
 const previewBizNo = ref('')
-const outboundStatusTextMap: Record<number, string> = { 0: '草稿', 1: '待审批', 2: '已审批', 3: '已出库' }
+const outboundStatusTextMap: Record<number, string> = {
+  [OutboundOrderStatusEnum.DRAFT.value]: OutboundOrderStatusEnum.DRAFT.label,
+  [OutboundOrderStatusEnum.PENDING.value]: OutboundOrderStatusEnum.PENDING.label,
+  [OutboundOrderStatusEnum.APPROVED.value]: OutboundOrderStatusEnum.APPROVED.label,
+  [OutboundOrderStatusEnum.COMPLETED.value]: OutboundOrderStatusEnum.COMPLETED.label,
+}
 function openPreview(opKey: string, row: OutboundVO) {
   if (!row?.outboundId) return
   const op = getOperation(opKey)
@@ -431,6 +455,44 @@ const handleConfirm = (row: OutboundVO) => {
     return
   }
   openPreview('outbound.confirm', row)
+}
+async function handleApprovePick(row: OutboundVO) {
+  try {
+    await ElMessageBox.confirm(`确认审核通过领料单 ${row.outboundNo}？`, '领料单审核', {
+      type: 'warning',
+      confirmButtonText: '审核通过',
+      cancelButtonText: '取消',
+    })
+    await outboundApi.approve({
+      outboundId: String(row.outboundId),
+      approverId: String(userStore.userId || ''),
+      approverName: userStore.nickName || userStore.userName || '',
+    })
+    ElMessage.success('审核通过，仓库现在可以确认发料')
+    await getList()
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '审核失败')
+  }
+}
+async function handleRejectPick(row: OutboundVO) {
+  try {
+    const result = await ElMessageBox.prompt('请填写驳回原因', `驳回领料单 ${row.outboundNo}`, {
+      inputValidator: (value) => Boolean(value?.trim()) || '请填写驳回原因',
+      confirmButtonText: '确认驳回',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await outboundApi.reject({
+      outboundId: String(row.outboundId),
+      approverId: String(userStore.userId || ''),
+      approverName: userStore.nickName || userStore.userName || '',
+      remark: result.value.trim(),
+    })
+    ElMessage.success('已驳回并释放预占库存')
+    await getList()
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '驳回失败')
+  }
 }
 // dev-20261008-018：来源列统一显示「来源类型 + 来源单号」
 const SOURCE_TYPE_LABEL: Record<string, string> = {
@@ -465,19 +527,22 @@ const getOutboundTypeTag = (
 
 // 获取状态标签样式
 const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger' | undefined => {
-  const statusMap: Record<number, 'success' | 'warning' | 'info' | 'danger' | undefined> = {
-    0: 'info',    // draft
-    1: 'warning', // pending
-    2: 'success', // approved
-    4: 'warning', // processing
-    6: 'success', // out_confirm
-    9: 'danger',  // cancelled
-    10: 'success', // completed
-  }
-  return statusMap[status]
+  return OutboundOrderStatusEnum.getTagProps(status).type as
+    | 'success'
+    | 'warning'
+    | 'info'
+    | 'danger'
+    | undefined
 }
 
 onMounted(async () => {
+  if (typeof route.query.outboundType === 'string') {
+    queryParams.outboundType = route.query.outboundType
+  }
+  const routeStatus = Number(route.query.status)
+  if (OutboundOrderStatusEnum.canDo(routeStatus)) {
+    queryParams.status = String(routeStatus)
+  }
   await getList()
   const bizId = Number(route.query.bizId)
   if (!bizId) return

@@ -207,6 +207,7 @@
       :planned-quantity="pickPreviewOrder.plannedQuantity"
       :mode="pickMode"
       @success="handlePickCreated"
+      @open-calculation="handleOpenMaterialCalculation"
     />
   </div>
 </template>
@@ -231,6 +232,7 @@ import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import ProductionTraceDrawer from './components/ProductionTraceDrawer.vue'
 import ProductionWorkCard from './components/ProductionWorkCard.vue'
 import PickPreviewDialog from './components/PickPreviewDialog.vue'
+import { OutboundOrderStatusEnum } from '@/enums/inventory/OutboundEnum'
 import type {
   ProductionOrderVO,
   ProductionOrderQuery,
@@ -822,8 +824,8 @@ async function handlePickMaterial(order: any) {
 // 预览确认生成成功 → 引导去确认发料
 function handlePickCreated() {
   loadData()
-  ElMessageBox.confirm('领料单已生成，是否前往【出库管理→生产领料】确认发料？', '生成领料单', {
-    confirmButtonText: '去确认发料',
+  ElMessageBox.confirm('领料单已提交审核并预占库存；审核通过后，仓库才能确认发料。是否前往出库管理查看？', '领料单待审核', {
+    confirmButtonText: '查看领料单',
     cancelButtonText: '稍后',
     type: 'success',
   })
@@ -833,9 +835,22 @@ function handlePickCreated() {
         ElMessage.warning('你没有「库存管理 → 出库作业」的查看权限，请联系管理员开通后再确认发料')
         return
       }
-      router.push({ path: '/inventory/outbound', query: { outboundType: 'production' } })
+      router.push({
+        path: '/inventory/outbound',
+        query: { outboundType: 'production', status: String(OutboundOrderStatusEnum.PENDING.value) },
+      })
     })
     .catch(() => {})
+}
+
+function handleOpenMaterialCalculation() {
+  const currentOrder = pickPreviewOrder.value
+  pickPreviewVisible.value = false
+  if (!currentOrder) return
+  router.push({
+    path: '/production-material/calculation',
+    query: { orderNo: currentOrder.orderNo, orderId: String(currentOrder.orderId) },
+  })
 }
 
 const handleCopyOrder = (order: any) => {

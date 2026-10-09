@@ -488,6 +488,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             return false;
         }
 
+        if ("work_order".equals(order.getSourceType())
+                && !InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus())) {
+            throw new BusinessException("生产领料单需审核通过后才能确认发料");
+        }
         if (!InventoryOrderStatusEnum.PENDING.getValue().equals(order.getOrderStatus())
                 && !InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus())) {
             log.error("出库单状态不正确，无法确认: outboundId={}, status={}", outboundId, order.getOrderStatus());

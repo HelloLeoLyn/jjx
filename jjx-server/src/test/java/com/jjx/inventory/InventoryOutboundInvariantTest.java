@@ -47,6 +47,16 @@ class InventoryOutboundInvariantTest {
         verify(stockMutationService, never()).applyDelta(any(), any(), any());
     }
 
+    @Test void pendingProductionPickCannotBeIssuedBeforeApproval() {
+        InventoryOutboundOrder pendingPick = outbound(InventoryOrderStatusEnum.PENDING);
+        pendingPick.setSourceType("work_order");
+        when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(pendingPick);
+
+        assertThrows(BusinessException.class, () -> service.confirm(1L, 9L, "tester"));
+        verify(outboundItemMapper, never()).selectByOutboundId(any());
+        verify(stockMutationService, never()).applyDelta(any(), any(), any());
+    }
+
     @Test void insufficientStockDoesNotWriteTransactionOrTerminalStatus() {
         InventoryOutboundItem item = new InventoryOutboundItem();
         item.setMaterialId(11L);
