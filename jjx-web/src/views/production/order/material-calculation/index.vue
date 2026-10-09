@@ -1035,12 +1035,6 @@ p {
   min-width: 1420px;
   font-size: 12px;
 }
-function updateSubstitution(a: Allocation, d: Demand) {
-  const originalRate = d.baseQty > 0 && d.moduleQty > 0 ? d.baseQty / d.moduleQty : 0
-  const substituteRate = a.baseQty > 0 && a.moduleQty > 0 ? a.baseQty / a.moduleQty : 0
-  a.ratio = originalRate > 0 && substituteRate > 0 ? Number((originalRate / substituteRate).toFixed(6)) : 0
-  updateCoverage(a, d)
-}
 .allocation-table :deep(.el-table__header th) {
   background: #fafbfd;
   text-align: left;
