@@ -394,7 +394,7 @@ const handleProductAction = (key: string, row: ProductVo) => {
   if (key === 'publish') handlePublish(row)
   if (key === 'obsolete') handleObsolete(row)
   if (key === 'trace') openTrace(row)
-  if (key === 'spec') router.push(`/engineering/spec?productId=${row.productId}`)
+  if (key === 'spec') router.push(`/product/spec?productId=${row.productId}`)
 }
 
 const router = useRouter()
