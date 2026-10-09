@@ -19,8 +19,12 @@ public class EngineeringResourceController {
 
     @GetMapping("/screen-frames") @SaCheckPermission("engineering:screen-resource:view")
     public Result<Map<String,Object>> frames(@RequestParam(required=false) String keyword,@RequestParam(required=false) String status,
+            @RequestParam(required=false) String frameNo,@RequestParam(required=false) String frameType,
+            @RequestParam(required=false) String mesh,@RequestParam(required=false) String location,
+            @RequestParam(required=false) String plateNo,@RequestParam(required=false) String content,
+            @RequestParam(required=false) String productKeyword,
             @RequestParam(required=false) Integer pageNum,@RequestParam(required=false) Integer pageSize){
-        return Result.success(service.pageFrames(keyword,status,pageNum,pageSize));}
+        return Result.success(service.pageFrames(keyword,status,frameNo,frameType,mesh,location,plateNo,content,productKeyword,pageNum,pageSize));}
     @PostMapping("/screen-frames") @SaCheckPermission("engineering:resource:edit")
     public Result<Long> saveFrame(@RequestBody Map<String,Object> body){return Result.success(service.saveFrame(body));}
     @PostMapping("/screen-plates") @SaCheckPermission("engineering:resource:edit")

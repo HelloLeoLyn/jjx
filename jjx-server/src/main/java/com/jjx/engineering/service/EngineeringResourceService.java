@@ -32,7 +32,9 @@ public class EngineeringResourceService {
      * 老台账导入后网框 7,291 条，原实现全表返回 2.8MB JSON + 前端一次渲染上万行，页面卡死。
      * 现改为：分页 + 关键字/状态过滤 + 版面内容只回前 60 字（编辑/制版不依赖列表里的全文）。
      */
-    public Map<String, Object> pageFrames(String keyword, String status, Integer pageNum, Integer pageSize) {
+    public Map<String, Object> pageFrames(String keyword, String status, String frameNo, String frameType,
+                                          String mesh, String location, String plateNo, String content,
+                                          String productKeyword, Integer pageNum, Integer pageSize) {
         int pn = pageNum == null || pageNum < 1 ? 1 : pageNum;
         int ps = pageSize == null || pageSize < 1 ? 20 : Math.min(pageSize, 200);
         List<Object> args = new ArrayList<>();
@@ -41,6 +43,41 @@ public class EngineeringResourceService {
             extra.append(" AND (f.frame_no LIKE ? OR p.plate_no LIKE ? OR p.content LIKE ? OR f.remark LIKE ?)");
             String like = "%" + keyword.trim() + "%";
             args.add(like); args.add(like); args.add(like); args.add(like);
+        }
+        if (frameNo != null && !frameNo.isBlank()) {
+            extra.append(" AND f.frame_no LIKE ?");
+            args.add("%" + frameNo.trim() + "%");
+        }
+        if (frameType != null && !frameType.isBlank()) {
+            extra.append(" AND f.frame_type LIKE ?");
+            args.add("%" + frameType.trim() + "%");
+        }
+        if (mesh != null && !mesh.isBlank()) {
+            extra.append(" AND f.mesh LIKE ?");
+            args.add("%" + mesh.trim() + "%");
+        }
+        if (location != null && !location.isBlank()) {
+            extra.append(" AND f.location LIKE ?");
+            args.add("%" + location.trim() + "%");
+        }
+        if (plateNo != null && !plateNo.isBlank()) {
+            extra.append(" AND p.plate_no LIKE ?");
+            args.add("%" + plateNo.trim() + "%");
+        }
+        if (content != null && !content.isBlank()) {
+            extra.append(" AND p.content LIKE ?");
+            args.add("%" + content.trim() + "%");
+        }
+        if (productKeyword != null && !productKeyword.isBlank()) {
+            // 用 EXISTS 子查询按关联产品过滤，避免在 JOIN 上过滤而把「关联产品」列的 GROUP_CONCAT 截短
+            extra.append(" AND EXISTS (SELECT 1 FROM engineering_resource_product_rel r2"
+                    + " JOIN product d2 ON d2.product_id=r2.product_id"
+                    + " WHERE r2.resource_type=? AND r2.is_active=1 AND r2.resource_id=p.plate_id"
+                    + " AND (d2.product_code LIKE ? OR d2.product_name LIKE ?))");
+            args.add(ResourceType.SCREEN_PLATE.name());
+            String likeP = "%" + productKeyword.trim() + "%";
+            args.add(likeP);
+            args.add(likeP);
         }
         if (status != null && !status.isBlank()) {
             ScreenFrameStatus.valueOf(status);

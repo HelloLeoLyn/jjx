@@ -2,7 +2,7 @@
   <div class="resource-page">
     <el-card shadow="never">
       <template #header>
-        <div class="header"><span>{{ tab === 'SCREEN' ? '网版管理' : '刀模管理' }}</span><el-input v-model="keyword" clearable placeholder="编号/名称/内容" style="width:260px" @keyup.enter="search" @clear="search" /></div>
+        <div class="header"><span>{{ tab === 'SCREEN' ? '网版管理' : '刀模管理' }}</span><el-input v-if="tab !== 'SCREEN'" v-model="keyword" clearable placeholder="编号/名称/内容" style="width:260px" @keyup.enter="search" @clear="search" /></div>
       </template>
       <template v-if="false">
         <el-table :data="films" v-loading="loading" border>
@@ -16,6 +16,20 @@
       </template>
 
       <template v-else-if="tab === 'SCREEN'">
+        <el-form :inline="true" class="frame-search" @submit.prevent>
+          <el-form-item label="网框编号"><el-input v-model="frameQuery.frameNo" clearable style="width:130px" @keyup.enter="searchFrames" /></el-form-item>
+          <el-form-item label="型号"><el-input v-model="frameQuery.frameType" clearable style="width:110px" @keyup.enter="searchFrames" /></el-form-item>
+          <el-form-item label="目数"><el-input v-model="frameQuery.mesh" clearable style="width:90px" @keyup.enter="searchFrames" /></el-form-item>
+          <el-form-item label="状态"><el-select v-model="frameQuery.status" clearable placeholder="全部" style="width:120px"><el-option v-for="o in ScreenFrameStatusEnum.items" :key="o.value" :label="o.label" :value="o.value" /></el-select></el-form-item>
+          <el-form-item label="位置"><el-input v-model="frameQuery.location" clearable style="width:120px" @keyup.enter="searchFrames" /></el-form-item>
+          <el-form-item label="当前版面"><el-input v-model="frameQuery.plateNo" clearable style="width:130px" @keyup.enter="searchFrames" /></el-form-item>
+          <el-form-item label="版面内容"><el-input v-model="frameQuery.content" clearable style="width:140px" @keyup.enter="searchFrames" /></el-form-item>
+          <el-form-item label="关联产品"><el-input v-model="frameQuery.productKeyword" clearable placeholder="编码/名称" style="width:150px" @keyup.enter="searchFrames" /></el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="searchFrames">查询</el-button>
+            <el-button @click="resetFrameQuery">重置</el-button>
+          </el-form-item>
+        </el-form>
         <div class="toolbar">
           <el-button type="primary" v-hasPermi="['engineering:resource:edit']" @click="openFrame()">新增网框</el-button>
           <el-button v-hasPermi="['engineering:resource:edit']" @click="downloadFrameTemplate">下载导入模板</el-button>
@@ -201,11 +215,13 @@ function productText(list:any[]){return (list||[]).map(x=>`${x.product_code} ${x
 /** 分页（2026-09-21 性能改造）：老台账导入后网框 7,291 / 刀模 12,134，全表返 2.8~4.8MB 太慢 */
 const framePage=reactive({pageNum:1,pageSize:20,total:0})
 const diePage=reactive({pageNum:1,pageSize:20,total:0})
+/** 网版管理搜索表单（2026-10-09：编号/型号/目数/状态/位置/当前版面/版面内容/关联产品） */
+const frameQuery=reactive({frameNo:'',frameType:'',mesh:'',location:'',plateNo:'',content:'',productKeyword:'',status:''})
 async function load(){
   loading.value=true
   try{
     if(tab.value==='SCREEN'){
-      const r:any=await api.frames({keyword:keyword.value||undefined,pageNum:framePage.pageNum,pageSize:framePage.pageSize})
+      const r:any=await api.frames({frameNo:frameQuery.frameNo||undefined,frameType:frameQuery.frameType||undefined,mesh:frameQuery.mesh||undefined,location:frameQuery.location||undefined,plateNo:frameQuery.plateNo||undefined,content:frameQuery.content||undefined,productKeyword:frameQuery.productKeyword||undefined,status:frameQuery.status||undefined,pageNum:framePage.pageNum,pageSize:framePage.pageSize})
       frames.value=r?.data?.records||[]
       framePage.total=r?.data?.total||0
     }else{
@@ -217,6 +233,9 @@ async function load(){
 }
 /** 搜索/切 tab 回到第一页 */
 function search(){if(tab.value==='SCREEN')framePage.pageNum=1;else diePage.pageNum=1;load()}
+/** 网版管理搜索/重置 */
+function searchFrames(){framePage.pageNum=1;load()}
+function resetFrameQuery(){Object.assign(frameQuery,{frameNo:'',frameType:'',mesh:'',location:'',plateNo:'',content:'',productKeyword:'',status:''});framePage.pageNum=1;load()}
 function productLabel(p:any){return p.productCodeName||`${p.productCode||''} ${p.productName||''}`.trim()}
 function normalizeProduct(p:any){return {productId:Number(p.productId??p.product_id),productCode:p.productCode??p.product_code,productName:p.productName??p.product_name,productCodeName:p.productCodeName??p.product_code_name}}
 function mergeProducts(items:any[]){const merged=new Map(products.value.map(p=>[Number(p.productId),p]));items.map(normalizeProduct).filter(p=>Number.isFinite(p.productId)).forEach(p=>merged.set(p.productId,p));products.value=[...merged.values()]}
