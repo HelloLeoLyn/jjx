@@ -30,23 +30,25 @@
       <div v-if="failed">
         查询失败，<el-button link type="primary" @click="search(keyword)">重试</el-button>
       </div>
-      <el-button
-        v-else-if="searched && !loading && total === 0"
-        v-hasPermi="['inventory:material:add']"
-        link
-        type="primary"
-        @click="emit('create', keyword)"
-        >新建物料「{{ keyword }}」</el-button
-      >
-      <el-button v-else-if="options.length < total" link :loading="loading" @click="loadMore">
-        加载更多
-      </el-button>
+      <template v-else>
+        <el-button
+          v-if="showCreate"
+          v-hasPermi="BOM_MATERIAL_PERMS"
+          link
+          type="primary"
+          @click="emit('create', keyword)"
+          >新建物料「{{ keyword }}」</el-button
+        >
+        <el-button v-if="options.length < total" link :loading="loading" @click="loadMore">
+          加载更多
+        </el-button>
+      </template>
     </template>
   </el-select>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { materialApi } from '@/api/inventory/material'
 import type { InventoryMaterial } from '@/types/inventory/material'
 
@@ -56,12 +58,23 @@ const emit = defineEmits<{
   (e: 'clear'): void
   (e: 'create', keyword: string): void
 }>()
+// 建档入口权限：跟随 BOM 新增/修改权限（谁能编 BOM 谁就能顺手补材料）
+const BOM_MATERIAL_PERMS = ['engineering:bom:add', 'engineering:bom:edit']
+
 const options = ref<InventoryMaterial[]>([])
 const keyword = ref('')
 const loading = ref(false)
 const failed = ref(false)
 const searched = ref(false)
 const total = ref(0)
+
+// 显示「新建物料」入口：搜过 & 有非空关键字 & 结果里没有与关键字同名的物料
+const showCreate = computed(() => {
+  const kw = keyword.value.trim()
+  if (!searched.value || loading.value || !kw) return false
+  return !options.value.some((o) => (o.materialName || '').trim() === kw)
+})
+
 let page = 1
 let requestId = 0
 let timer: ReturnType<typeof setTimeout> | undefined
