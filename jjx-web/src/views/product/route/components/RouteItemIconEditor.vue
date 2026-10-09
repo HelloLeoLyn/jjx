@@ -66,6 +66,7 @@
               :class="{ 'drag-over': isDragOverTable }"
             >
               <el-table
+                :ref="(el: any) => (assemblyTableRefs.value[tab.value] = el)"
                 :data="assemblyGroupsByTab(tab.value)"
                 border
                 stripe
@@ -623,6 +624,7 @@ const groups = ref<RouteItemGroup[]>([])
 const isDragOverTable = ref(false)
 const dragOverGroupIndex = ref<number | null>(null)
 const groupSyncToken = ref<number[]>([])
+const assemblyTableRefs = ref<Record<string, any>>({})
 let syncSeq = 0
 
 // 拖拽数据
@@ -978,26 +980,47 @@ const addToGroup = (groupIndex: number, process: StandardProcessOption) => {
   maybePromptIndex(newItem)
 }
 
-// 拖拽落点后：滚动到目标组合并短暂高亮（dev-20261009-044）
+// 找到真正可滚动的祖先容器并把 rowEl 滚入视野（dev-20261009-044）
+function scrollRowIntoView(rowEl: HTMLElement) {
+  let el: HTMLElement | null = rowEl.parentElement
+  while (el) {
+    const st = window.getComputedStyle(el)
+    if (/(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 1) {
+      const delta = rowEl.getBoundingClientRect().top - el.getBoundingClientRect().top
+      const rh = rowEl.getBoundingClientRect().height
+      if (delta < 0) el.scrollTop += delta - 8
+      else if (delta + rh > el.clientHeight) el.scrollTop += delta + rh - el.clientHeight + 8
+      return
+    }
+    el = el.parentElement
+  }
+  rowEl.scrollIntoView({ block: 'nearest' })
+}
+
+// 拖拽落点后：滚动到目标组合并短暂高亮
 function scrollToAssemblyGroup(group: any) {
-  nextTick(() => {
-    const list = assemblyGroupsByTab(assemblyActiveTab.value)
-    const idx = list.indexOf(group)
-    if (idx < 0) return
-    const zones = Array.from(document.querySelectorAll('.table-drop-zone')) as HTMLElement[]
-    const zone = zones.find((z) => z.offsetParent !== null)
-    if (!zone) return
-    const rows = zone.querySelectorAll('.el-table__body .el-table__row')
-    const rowEl = rows[idx] as HTMLElement | undefined
-    if (!rowEl) return
-    rowEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  const tab = assemblyActiveTab.value
+  const idx = assemblyGroupsByTab(tab).indexOf(group)
+  if (idx < 0) return
+  let tries = 0
+  const run = () => {
+    const t = assemblyTableRefs.value[tab]
+    const root: HTMLElement | undefined = t?.$el
+    const rows = root?.querySelectorAll('.el-table__body .el-table__row')
+    const rowEl = rows?.[idx] as HTMLElement | undefined
+    if (!root || !rowEl) {
+      if (tries++ < 8) window.setTimeout(run, 70)
+      return
+    }
+    scrollRowIntoView(rowEl)
     const mark = (c: string) => {
       rowEl.style.backgroundColor = c
       rowEl.querySelectorAll('td').forEach((td) => ((td as HTMLElement).style.backgroundColor = c))
     }
     mark('#fff5cc')
-    window.setTimeout(() => mark(''), 1500)
-  })
+    window.setTimeout(() => mark(''), 1600)
+  }
+  nextTick(run)
 }
 
 // 从组合中移除工序
