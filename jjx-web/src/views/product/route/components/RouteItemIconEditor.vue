@@ -745,19 +745,6 @@ const groupedProcesses = computed(() => {
   return result
 })
 
-// ==================== 监听 ====================
-
-watch(
-  () => props.modelValue,
-  (val) => {
-    if (val && val.length > 0 && groups.value.length === 0) {
-      // 根据 groupId 重新组装为组合格式
-      setItemsFromData(val)
-    }
-  },
-  { immediate: true, deep: false }
-)
-
 // ==================== 数据组装 ====================
 
 /**
@@ -835,6 +822,20 @@ const setItemsFromData = (data: EngineeringRoutingItemVO[]) => {
   groupSyncToken.value = built.map(() => syncSeq)
   updateGroupOrder()
 }
+
+// ==================== 监听 ====================
+
+// 注意：必须放在 setItemsFromData 定义之后，否则 immediate 回调会触发 TDZ 报错
+watch(
+  () => props.modelValue,
+  (val) => {
+    if (val && val.length > 0 && groups.value.length === 0) {
+      // 根据 groupId 重新组装为组合格式
+      setItemsFromData(val)
+    }
+  },
+  { immediate: true, deep: false }
+)
 
 // ==================== 拖拽事件 ====================
 
