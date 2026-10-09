@@ -223,7 +223,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     path: '/sales/inquiry/print',
     name: 'SalesInquiryPrint',
     component: () => import('@/views/sales/inquiry/print.vue'),
-    meta: { title: '样品需求单打印', hidden: true },
+    meta: { title: '询价单打印', hidden: true },
   },
   {
     path: '/sales/order/review-print',

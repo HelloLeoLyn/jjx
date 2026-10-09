@@ -75,7 +75,6 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { inquiryApi, type InquiryBase } from '@/api/sales/inquiry'
-import { createQualityTemplatePrintLog } from '@/api/production/qualityTemplate'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 import PrintQrCode from '@/components/print/PrintQrCode.vue'
@@ -95,14 +94,10 @@ const contactText = computed(() => {
 const drawingText = computed(() => (info.value?.hasDrawing ? '有图纸' : '无图纸'))
 
 
-async function handlePrint() {
+function handlePrint() {
   if (!info.value) return
-  try {
-    await createQualityTemplatePrintLog(65, 'sales_inquiry', inquiryId)
-    window.print()
-  } catch {
-    ElMessage.error('打印留痕失败，请重试')
-  }
+  // 「样品需求单」(QR-065) 已屏蔽（2026-10-09，业务核查后再实现），询价单打印不再挂该模板留痕
+  window.print()
 }
 
 async function loadData() {
