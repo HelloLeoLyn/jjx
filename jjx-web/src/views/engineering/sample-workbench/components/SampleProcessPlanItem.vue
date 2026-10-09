@@ -124,7 +124,7 @@
                   v-model="row.materialId"
                   filterable
                   remote
-                  :remote-method="(q: string) => $emit('search-material', q, row)"
+                  :remote-method="(q: string) => onSearchMaterial(q, row)"
                   :loading="row.loading"
                   :popper-class="`material-popper-${row.uid}`"
                   placeholder="搜索物料档案"
@@ -159,6 +159,15 @@
                     style="text-align: center; color: #c0c4cc; font-size: 12px"
                     >已加载全部（共 {{ row.total }} 条）</el-option
                   >
+                  <template #footer>
+                    <el-button
+                      v-if="matShowCreate(row)"
+                      link
+                      type="primary"
+                      @click="matCreate(pc, row)"
+                      >新建物料「{{ row._matKw }}」</el-button
+                    >
+                  </template>
                 </el-select>
               </template>
               <template v-else>{{ row.name }}</template>
@@ -264,7 +273,7 @@ import { SampleProcessStatusEnum } from '@/enums/sales'
  * 自包含：状态/标准工序/材料/描述/编辑操作
  * 预留：卡片类型字段（标准/自定义），印刷工序后续扩展
  */
-defineProps<{
+const props = defineProps<{
   pc: any
   index: number
   batchMode: boolean
@@ -272,7 +281,24 @@ defineProps<{
   saveStateText: (pc: any) => string
   parseMaterials: (json?: string | null) => any[]
   readonly?: boolean
+  /** 材料行内建档回调（workbench 注入，dev-20261009-036） */
+  openMaterialCreate?: (pc: any, m: any) => void
 }>()
+
+// 行内材料建档：记录搜索关键字 + 无同名时出现「新建物料」（dev-20261009-036）
+function onSearchMaterial(q: string, row: any) {
+  row._matKw = q || ''
+  emit('search-material', q, row)
+}
+function matShowCreate(row: any): boolean {
+  const kw = (row._matKw || '').trim()
+  if (!kw || row.loading) return false
+  return !(row.options || []).some((o: any) => (o.materialName || '').trim() === kw)
+}
+function matCreate(pc: any, row: any) {
+  row.name = (row._matKw || '').trim()
+  props.openMaterialCreate?.(pc, row)
+}
 
 function operationItems(items: any[]): ProcessOperationItem[] {
   return (items || []).map((item, index) => ({
