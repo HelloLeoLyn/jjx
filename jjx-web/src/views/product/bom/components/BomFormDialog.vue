@@ -356,7 +356,7 @@ const parseExcelFile = (file: File) => {
  *
  * 按【表头名】映射列（不再按固定列号）：文件里只要有「品名 / 规格 / 模数」三列即可导入，
  * 用量、应用料属于系统计算结果，不映射Excel单用量/实发数量/数量/应用料列；其余列有就取、没有就留空（用户口径：必要的那几项有就行，其他按实际情况来）。
- * 表头别名：品名=原料品名/材料名称/品名；品类=项目/项目名称。
+ * 表头别名：品名=原料品名/材料名称/品名；项目=项目/项目名称，独立于备注。
  */
 const parseRows = (rows: any[][]): EngineeringBomItem[] => {
   const items: EngineeringBomItem[] = []
@@ -408,9 +408,10 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     return items
   }
 
-  const cellOf = (row: any[], key: string): string => {
+  const cellOf = (row: any[], key: string, trim = true): string => {
     const idx = col[key]
-    return idx === undefined ? '' : String(row[idx] ?? '').trim()
+    const value = idx === undefined ? '' : String(row[idx] ?? '')
+    return trim ? value.trim() : value
   }
   const num = (s: string, dflt = 0): number => {
     const v = parseFloat(String(s).replace(/[^\d.]/g, ''))
@@ -433,7 +434,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       continue
     }
 
-    const itemName = cellOf(row, 'item')
+    const itemName = cellOf(row, 'item', false)
     const actualRaw = cellOf(row, 'actualIssue')
     const baseQty = num(cellOf(row, 'base'), 1) || 1
     const moduleQty = num(moduleRaw, 1) || 1
@@ -445,6 +446,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       materialId: 0,
       materialCode: '',
       materialName,
+      processName: itemName, // 标准工序匹配由编辑器处理；未匹配名称原样保留。
       specification: spec,
       unit: cellOf(row, 'unit') || 'PCS',
       quantity: calculateBomQuantity(baseQty, moduleQty) ?? 0,
@@ -455,7 +457,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       minIssueQty: num(cellOf(row, 'minIssue')),
       widthMm: num(cellOf(row, 'width')),
       lengthMm: num(cellOf(row, 'length')),
-      remark: cellOf(row, 'remark') || itemName || '',
+      remark: cellOf(row, 'remark'),
       sortOrder: items.length + 1,
     }
 
@@ -522,6 +524,11 @@ const submitForm = () => {
 
     // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
     formData.items = bomItemEditorRef.value.getItems()
+    const longProject = formData.items.find((item) => (item.processName?.length || 0) > 200)
+    if (longProject) {
+      ElMessage.warning(`物料 "${longProject.materialName}" 的项目名称不能超过200个字符`)
+      return
+    }
     submitting.value = true
     try {
       if (formData.bomId !== undefined) {

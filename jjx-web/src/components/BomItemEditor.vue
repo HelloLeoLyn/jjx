@@ -56,14 +56,21 @@
       <el-table-column label="项目" prop="processName" width="160">
         <template #default="scope">
           <el-select
-            v-model="scope.row.processId"
-            placeholder="请选择标准工序"
+            :model-value="scope.row.processId ?? scope.row.processName"
+            placeholder="选择或输入项目名称"
             size="small"
             filterable
+            allow-create
+            default-first-option
             clearable
             style="width: 100%"
-            @change="(val: number | undefined) => handleProjectChange(scope.row, val)"
+            @change="(val: number | string | undefined) => handleProjectChange(scope.row, val)"
           >
+            <el-option
+              v-if="scope.row.processId == null && scope.row.processName"
+              :label="scope.row.processName"
+              :value="scope.row.processName"
+            />
             <el-option
               v-for="item in processOptions"
               :key="item.processId"
@@ -311,26 +318,36 @@ const tableLoading = ref(false)
 const refreshLoading = ref(false)
 const tableHeight = ref(400)
 
-// 项目（标准工序）选项：BOM 明细「项目」列取值 = 标准工序
+// 项目可关联启用的标准工序，也可只保存用户填写的名称。
 const processOptions = ref<StandardProcessItem[]>([])
 async function loadProcessOptions() {
   try {
-    const res = await standardProcessApi.pageQuery({
-      pageNum: 1,
-      pageSize: 200,
-      isEnabled: 1,
-      orderByColumn: 'displayOrder',
-      isAsc: 'asc',
-    })
-    processOptions.value = res.data?.records || []
+    const res = await standardProcessApi.getEnabledProcesses()
+    processOptions.value = res.data || []
+    walkTree(items.value, matchProjectByName)
   } catch (error) {
     console.error('加载标准工序失败:', error)
   }
 }
 
-const handleProjectChange = (row: EngineeringBomItem, processId: number | undefined) => {
-  const p = processOptions.value.find((x) => x.processId === processId)
-  row.processName = p ? p.processName : ''
+// 仅完整名称唯一匹配时关联ID；不存在或重名都保留原文，供用户手动选择。
+function matchProjectByName(row: EngineeringBomItem) {
+  if (row.processId != null || !row.processName) return
+  const matches = processOptions.value.filter((p) => p.processName === row.processName)
+  if (matches.length === 1) row.processId = matches[0].processId
+}
+
+const handleProjectChange = (row: EngineeringBomItem, value: number | string | undefined) => {
+  if (typeof value === 'number') {
+    const p = processOptions.value.find((x) => x.processId === value)
+    if (!p) return
+    row.processId = p.processId
+    row.processName = p.processName
+  } else {
+    row.processId = undefined
+    row.processName = value ?? ''
+    matchProjectByName(row)
+  }
 }
 
 // 单位选项
@@ -535,6 +552,7 @@ watch(
     if (isUpdating) return
     if (JSON.stringify(newVal) !== JSON.stringify(flattenTree(items.value))) {
       items.value = buildTree(newVal)
+      walkTree(items.value, matchProjectByName)
       // 初始化也先按当前基数/模数重算用量，再计算应用料（递归）。
       walkTree(items.value, recalcAppliedIssue)
     }

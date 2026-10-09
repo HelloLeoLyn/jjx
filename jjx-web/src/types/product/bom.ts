@@ -39,9 +39,9 @@ export interface EngineeringBomItem {
   materialCode: string
   materialName: string
   specification: string
-  /** 项目（标准工序）引用 process_id */
+  /** 项目关联的标准工序ID；未匹配或自填名称时可空 */
   processId?: number
-  /** 项目（标准工序）名称冗余 */
+  /** 项目名称；未匹配时原样保存用户填写的名称 */
   processName?: string
   unit: string
   quantity: number
