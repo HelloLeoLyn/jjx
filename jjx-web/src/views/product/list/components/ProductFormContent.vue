@@ -79,45 +79,8 @@
       </el-col>
     </el-row>
 
-    <!-- ==================== 价格与交期 ==================== -->
-    <el-divider content-position="left">价格与交期</el-divider>
-
-    <el-row :gutter="20">
-      <el-col :span="8">
-        <el-form-item label="基础售价">
-          <el-input-number
-            v-model="formData.basePrice"
-            :min="0"
-            :precision="2"
-            placeholder="基础售价"
-            style="width: 100%"
-          >
-            <template #prefix>¥</template>
-          </el-input-number>
-        </el-form-item>
-      </el-col>
-      <el-col :span="8">
-        <el-form-item label="标准成本">
-          <el-input-number
-            v-model="formData.costPrice"
-            :min="0"
-            :precision="2"
-            placeholder="标准成本"
-            style="width: 100%"
-          >
-            <template #prefix>¥</template>
-          </el-input-number>
-        </el-form-item>
-      </el-col>
-      <el-col :span="8">
-        <el-form-item label="毛利率">
-          <span class="margin-info">
-            {{ calcMargin }}%
-            <el-tag :type="marginType" size="small">{{ marginLevel }}</el-tag>
-          </span>
-        </el-form-item>
-      </el-col>
-    </el-row>
+    <!-- ==================== 订货与交期 ==================== -->
+    <el-divider content-position="left">订货与交期</el-divider>
 
     <el-row :gutter="20">
       <el-col :span="12">
@@ -217,8 +180,6 @@ const formData = reactive<Partial<ProductFormData>>({
   productType: undefined,
   productStatus: 1,
   unit: 'PCS',
-  basePrice: 0,
-  costPrice: 0,
   minOrderQty: 1,
   leadTime: 15,
   remark: '',
@@ -286,27 +247,6 @@ const rules = {
     },
   ],
 }
-
-// 计算毛利率
-const calcMargin = computed(() => {
-  if (!formData.basePrice || formData.basePrice === 0) return 0
-  const margin = ((formData.basePrice - (formData.costPrice || 0)) / formData.basePrice) * 100
-  return margin.toFixed(1)
-})
-
-const marginType = computed(() => {
-  const margin = Number(calcMargin.value)
-  if (margin >= 30) return 'success'
-  if (margin >= 15) return 'warning'
-  return 'danger'
-})
-
-const marginLevel = computed(() => {
-  const margin = Number(calcMargin.value)
-  if (margin >= 30) return '高毛利'
-  if (margin >= 15) return '中毛利'
-  return '低毛利'
-})
 
 // 客户选择变化 - 生成流水号（公共组件自动取号，2026-08-12）
 const handleCustomerChange = async (
@@ -451,6 +391,9 @@ const handleSubmit = async () => {
     circuitType: codeState.value.circuitType,
     circuitFeature: codeState.value.circuitFeature,
   }
+  // 详情可能带回价格，普通产品编辑始终不提交这两个字段。
+  delete submitData.basePrice
+  delete submitData.costPrice
   if (!isEdit.value) {
     delete submitData.productCode
     // dev-20260929-028：把序号带给后端拼码（后端不再只按最大值自动取号）
@@ -491,8 +434,6 @@ const resetForm = () => {
     productType: undefined,
     productStatus: 1,
     unit: 'PCS',
-    basePrice: 0,
-    costPrice: 0,
     minOrderQty: 1,
     leadTime: 15,
     remark: '',
@@ -593,14 +534,6 @@ onMounted(() => {
       gap: 16px;
       font-size: 13px;
     }
-  }
-
-  .margin-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: bold;
   }
 }
 

@@ -14,6 +14,8 @@ import com.jjx.product.domain.vo.ProductFullVO;
 import com.jjx.product.domain.vo.ProductVo;
 import com.jjx.product.service.IProductService;
 import com.jjx.product.service.ProductCodeService;
+import com.jjx.product.service.ProductPriceService;
+import com.jjx.common.exception.BusinessException;
 import com.jjx.product.service.impl.ProductServiceImpl;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
@@ -34,6 +36,7 @@ public class ProductController extends BaseController {
 
     private final IProductService productService;
     private final ProductCodeService productCodeService;
+    private final ProductPriceService priceService;
     private final ProductServiceImpl productServiceImpl;
 
     /**
@@ -50,6 +53,7 @@ public class ProductController extends BaseController {
     @GetMapping("/page")
     public Result<PageResult<ProductVo>> page(ProductQuery query) {
         PageResult<ProductVo> productPage = productService.getProductFullPage(query);
+        productPage.getRecords().forEach(priceService::filterPrices);
         return Result.success(productPage);
     }
 
@@ -59,6 +63,7 @@ public class ProductController extends BaseController {
     @GetMapping("/list")
     public Result<List<ProductVo>> list(ProductQuery query) {
         List<ProductVo> productList = productService.getProductList(query);
+        productList.forEach(priceService::filterPrices);
         return Result.success(productList);
     }
     /**
@@ -67,7 +72,7 @@ public class ProductController extends BaseController {
     @GetMapping("/{productId}")
     public Result<ProductVo> getInfo(@PathVariable Long productId) {
         ProductVo product = productService.getProductDetail(productId);
-        return Result.success(product);
+        return Result.success(priceService.filterPrices(product));
     }
     /**
      * 获取产品详情full
@@ -75,6 +80,7 @@ public class ProductController extends BaseController {
     @GetMapping("/{productId}/full")
     public Result<ProductFullVO> full(@PathVariable Long productId) {
         ProductFullVO product = productService.getFullProductDetail(productId);
+        priceService.filterPrices(product.getProduct());
         return Result.success(product);
     }
 
@@ -112,6 +118,7 @@ public class ProductController extends BaseController {
          bizId = "#result.data", bizType = "'product'", action = LogActions.PRODUCT_CREATE)
     @SaCheckPermission("product:create")
     public Result<Long> add(@Validated @RequestBody ProductDTO productDTO) {
+        rejectInlinePrices(productDTO);
         Long productId = productService.addProduct(productDTO);
         return productId != null ? Result.success(productId) : Result.error();
     }
@@ -125,6 +132,7 @@ public class ProductController extends BaseController {
          detail = "#result.data.detailMessage", action = LogActions.PRODUCT_EDIT)
     @SaCheckPermission("product:edit")
     public Result<ProductEditVO> edit(@Validated @RequestBody ProductDTO productDTO) {
+        rejectInlinePrices(productDTO);
         productService.validateEditable(productDTO.getProductId());
         if (!productService.checkProductCodeUnique(productDTO.getProductCode(), productDTO.getProductId())) {
             return Result.error("修改产品'" + productDTO.getProductName() + "'失败，产品编码已存在");
@@ -133,14 +141,7 @@ public class ProductController extends BaseController {
             return Result.error("修改产品'" + productDTO.getProductName() + "'失败，产品名称已存在");
         }
         Product product = new Product();
-        org.springframework.beans.BeanUtils.copyProperties(productDTO, product);
-        // Double → BigDecimal 手动转换（BeanUtils 跨类型不复制，价格会静默丢失）
-        if (productDTO.getBasePrice() != null) {
-            product.setBasePrice(java.math.BigDecimal.valueOf(productDTO.getBasePrice()));
-        }
-        if (productDTO.getCostPrice() != null) {
-            product.setCostPrice(java.math.BigDecimal.valueOf(productDTO.getCostPrice()));
-        }
+        org.springframework.beans.BeanUtils.copyProperties(productDTO, product, "basePrice", "costPrice");
         // 变更明细必须在 updateById 之前采集（此时库里还是旧值）
         String detailMessage = productService.buildEditDetail(productDTO);
         boolean result = productService.updateById(product);
@@ -251,6 +252,7 @@ public class ProductController extends BaseController {
     public Result<List<Product>> search(String keyword, Long customerId,
             @RequestParam(required = false) String scope) {
         List<Product> products = productService.searchProducts(keyword, customerId, scope);
+        products.forEach(priceService::filterPrices);
         return Result.success(products);
     }
 
@@ -260,6 +262,7 @@ public class ProductController extends BaseController {
     @GetMapping("/byCategory/{categoryId}")
     public Result<List<Product>> getByCategory(@PathVariable Long categoryId) {
         List<Product> products = productService.getProductsByCategory(categoryId);
+        products.forEach(priceService::filterPrices);
         return Result.success(products);
     }
 
@@ -287,4 +290,11 @@ public class ProductController extends BaseController {
     public Result<String> nextSerial(@RequestParam String customerShort) {
         return Result.success(productCodeService.nextSerial(customerShort));
     }
+    /** 价格必须走独立维护入口，普通建档/编辑不能携带价格修改。 */
+    private static void rejectInlinePrices(ProductDTO dto) {
+        if (dto.getBasePrice() != null || dto.getCostPrice() != null) {
+            throw new BusinessException("请在产品价格维护中调整售价和标准成本");
+        }
+    }
+
 }

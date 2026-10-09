@@ -208,3 +208,5 @@
 | dev-20261009-002 | product-code-generator-layout-dev-20261009-002.md | 公共产品编码组件三行两列：底部序号与只读实时产品编码并排；验证由用户执行 |
 
 | dev-20261009-007 | quotation-shipping-fee-dev-20261009-007.md | 报价单补运费字段（对齐销售订单口径）：sales_quotation 加 shipping_fee；total=未税小计+税额+运费、final=total-折扣；转订单透传运费；表单/详情/打印/Excel 增列 |
+
+| dev-20261009-006 | product-price-permissions-dev-20261009-006.md | 产品模块独立价格维护：查看/修改权限、普通表单移除价格、并发保护与调价日志；验证由用户执行 |

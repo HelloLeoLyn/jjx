@@ -69,11 +69,13 @@ public class Product {
     /**
      * 基础售价
      */
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private BigDecimal basePrice;
 
     /**
      * 标准成本
      */
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private BigDecimal costPrice;
 
     /**

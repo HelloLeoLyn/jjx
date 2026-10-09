@@ -773,8 +773,6 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
             changeRecorder.diff(changes, "分类",
                     categoryName(old.getCategoryId()), categoryName(dto.getCategoryId()));
             changeRecorder.diff(changes, "客户", old.getCustomerName(), dto.getCustomerName());
-            changeRecorder.diff(changes, "基准价", fmtDouble(old.getBasePrice()), fmtDouble(dto.getBasePrice()));
-            changeRecorder.diff(changes, "成本价", fmtDouble(old.getCostPrice()), fmtDouble(dto.getCostPrice()));
             changeRecorder.diff(changes, "最小起订量", old.getMinOrderQty(), dto.getMinOrderQty());
             changeRecorder.diff(changes, "交期天数", old.getLeadTime(), dto.getLeadTime());
             changeRecorder.diff(changes, "当前BOM", bomLabel(old.getCurrentBomId()), bomLabel(dto.getCurrentBomId()));

@@ -40,11 +40,11 @@
             {{ ProductEnum.status.getLabel(productData.product?.productStatus ?? 0) }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="基础售价">{{
-          productData.product?.basePrice ? '¥' + productData.product.basePrice : '-'
+        <el-descriptions-item v-if="hasPermi('product:price:view')" label="基础售价">{{
+          productData.product?.basePrice != null ? '¥' + Number(productData.product.basePrice).toFixed(2) : '-'
         }}</el-descriptions-item>
-        <el-descriptions-item label="标准成本">{{
-          productData.product?.costPrice ? '¥' + productData.product.costPrice : '-'
+        <el-descriptions-item v-if="hasPermi('product:price:view')" label="标准成本">{{
+          productData.product?.costPrice != null ? '¥' + Number(productData.product.costPrice).toFixed(2) : '-'
         }}</el-descriptions-item>
         <el-descriptions-item label="最小起订量">{{
           productData.product?.minOrderQty || '-'
@@ -330,6 +330,7 @@
 </template>
 
 <script setup lang="ts">
+import { hasPermi } from '@/directives'
 import { ref, computed, watch } from 'vue'
 import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
