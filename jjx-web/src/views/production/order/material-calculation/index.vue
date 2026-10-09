@@ -218,6 +218,26 @@
           </ul></el-alert
         >
       </section>
+      <section v-if="demands.length" class="stock-card">
+        <div class="section-heading"><h3>所选材料库存合计</h3></div>
+        <el-table :data="stockSummaryRows" size="small" border>
+          <el-table-column prop="name" label="实际材料" min-width="220" />
+          <el-table-column prop="spec" label="规格" min-width="160" />
+          <el-table-column label="本次需领" width="140">
+            <template #default="{ row }">{{ fmt(row.required) }} {{ row.unit }}</template>
+          </el-table-column>
+          <el-table-column label="可用库存" width="140">
+            <template #default="{ row }">{{ fmt(row.available) }} {{ row.unit }}</template>
+          </el-table-column>
+          <el-table-column label="校验" width="110">
+            <template #default="{ row }">
+              <el-tag :type="row.required > row.available ? 'danger' : 'success'">
+                {{ row.required > row.available ? '库存不足' : '充足' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </section>
       <div v-if="demands.length" class="action-bar">
         <div>
           <b>{{ gapCount ? gapCount + '项仍有缺口，可先预览部分用料' : '全部项目已安排' }}</b
@@ -416,6 +436,14 @@ const message = (error: unknown) =>
 const fmt = (value: number) =>
   Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
 const totals = computed(() => materialTotals(demands.value))
+const stockSummaryRows = computed(() => Object.entries(totals.value).map(([id, required]) => ({
+  id,
+  name: materials[id]?.name || '材料信息加载中',
+  spec: materials[id]?.spec || '—',
+  unit: materials[id]?.unit || '',
+  required,
+  available: materials[id]?.available || 0,
+})))
 const errors = computed(() => validationIssues(demands.value, materials))
 const gapCount = computed(() => demands.value.filter((d) => planned(d) < d.remaining - 1e-8).length)
 const shortageRows = computed(() => demands.value.flatMap((d) => {
@@ -927,6 +955,7 @@ p {
 }
 .order-card,
 .demand-card,
+.stock-card,
 .shortage-card,
 .trace-card {
   background: #fff;
@@ -1171,6 +1200,7 @@ p {
 .demand-footer .warning-text {
   color: #be7a1e;
 }
+.stock-card,
 .shortage-card,
 .trace-card {
   padding: 20px;
