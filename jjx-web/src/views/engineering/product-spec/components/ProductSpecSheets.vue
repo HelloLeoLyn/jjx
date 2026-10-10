@@ -35,10 +35,9 @@
             <div class="attachment-artwork"><img :src="page.image?.url" :alt="page.file?.name" /></div>
           </template>
 
-          <template v-else-if="page.kind === 'pick' || page.kind === 'flow'">
-            <table v-if="page.kind === 'pick'" class="paper-grid reference-grid"><thead><tr><th>领料单号</th><th>数量</th><th>状态</th><th>创建时间</th></tr></thead><tbody><tr v-for="row in page.rows" :key="row.outboundId"><td>{{ row.outboundNo }}</td><td>{{ row.totalQuantity }}</td><td>{{ outboundStatusText(row.orderStatus) }}</td><td>{{ row.createTime }}</td></tr></tbody></table>
-            <table v-else class="paper-grid reference-grid"><thead><tr><th>顺序</th><th>工序名称</th><th>作业说明</th><th>人工工时（h）</th></tr></thead><tbody><tr v-for="(row, i) in page.rows" :key="row.itemId || i"><td>{{ row.processOrder }}</td><td>{{ plain(row.processName) }}</td><td>{{ plain(row.workInstruction || row.description) }}</td><td>{{ labor(row) }}</td></tr></tbody></table>
-            <div v-if="!page.rows?.length" class="empty-paper">暂无{{ page.kind === 'pick' ? '打样领料单' : '工序记录' }}</div>
+          <template v-else-if="page.kind === 'flow'">
+            <table class="paper-grid reference-grid"><thead><tr><th>顺序</th><th>工序名称</th><th>作业说明</th><th>人工工时（h）</th></tr></thead><tbody><tr v-for="(row, i) in page.rows" :key="row.itemId || i"><td>{{ row.processOrder }}</td><td>{{ plain(row.processName) }}</td><td>{{ plain(row.workInstruction || row.description) }}</td><td>{{ labor(row) }}</td></tr></tbody></table>
+            <div v-if="!page.rows?.length" class="empty-paper">暂无工序记录</div>
           </template>
           <div v-else class="empty-paper"><div class="empty-paper-frame"><span>{{ page.title }}</span><p>暂无已选文件</p></div></div>
 
@@ -52,15 +51,10 @@
 <script setup lang="ts">
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import WorkSpecPaper from './WorkSpecPaper.vue'
-import { InboundOrderStatusEnum } from '@/enums/inventory'
 import { plain, printParams, printCapacities, documentFileCaption, type DocsetData, type DocPage } from './docset'
 
 defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string }>()
 function padded(rows: Record<string, any>[] = [], size = 10): (Record<string, any> | null)[] { return Array.from({ length: Math.max(size, rows.length) }, (_, i) => rows[i] || null) }
-function outboundStatusText(value: unknown): string {
-  const numeric = Number(value)
-  return value == null ? '' : InboundOrderStatusEnum.canDo(numeric) ? InboundOrderStatusEnum.getLabel(numeric) : String(value)
-}
 function labor(row?: Record<string, any> | null): string {
   if (!row) return ''
   if (row.children?.length) return totalLabor(row.children)
