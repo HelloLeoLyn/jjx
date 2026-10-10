@@ -417,6 +417,37 @@
       :order-no="convertRow?.orderNo"
       @success="getList"
     />
+
+    <!-- 打样领料：预览 + 改数量（JJX-QR-031 抬头「打样领料单」） -->
+    <el-dialog v-model="pickVisible" :title="`打样领料 - ${pickSample?.orderNo || ''}`" width="780px" append-to-body>
+      <el-table :data="pickRows" size="small" border>
+        <el-table-column label="物料名称" prop="materialName" min-width="160" show-overflow-tooltip />
+        <el-table-column label="匹配物料" width="130" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.materialId" size="small" type="success">{{ row.materialCode }}</el-tag>
+            <el-tag v-else size="small" type="danger">未匹配</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="BOM需求" prop="quantity" width="90" align="right" />
+        <el-table-column label="已领" width="80" align="right">
+          <template #default="{ row }">{{ row.issuedQuantity ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="可用" width="80" align="right">
+          <template #default="{ row }">{{ row.availableQuantity ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="本次领料" width="140">
+          <template #default="{ row }">
+            <el-input-number v-model="row.pickQty" :min="0" :disabled="!row.materialId" size="small" style="width: 120px" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-alert v-if="unmatchedCount > 0" type="warning" :closable="false" style="margin-top: 8px"
+        :title="`有 ${unmatchedCount} 条样品BOM物料未匹配到物料档案，暂不参与领料（可先在物料档案补建后再来）`" />
+      <template #footer>
+        <el-button @click="pickVisible = false">取消</el-button>
+        <el-button type="primary" :loading="pickSubmitting" @click="submitSamplePick">生成领料单</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -433,6 +464,8 @@ import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'
 import SalesOrderFormDialog from '@/views/sales/order/components/SalesOrderFormDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { outboundApi } from '@/api/inventory/outbound'
+import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
 import type { SampleOrderQueryParams } from '@/api/sales/sampleOrder'
 import { quotationApi } from '@/api/sales/quotation'
 import { customerApi } from '@/api/sales/customer'
@@ -1096,6 +1129,59 @@ function canCopy(row: any): boolean {
   return row?.sampleStatus != null
 }
 
+// ===== 打样领料单（按样品单生成；原在「产品作业规范」⑦ 页签，dev-20261010-013 挪到样品单页）=====
+const pickVisible = ref(false)
+const pickSample = ref<any>(null)
+const pickRows = ref<(SamplePickPreviewRow & { pickQty: number })[]>([])
+const pickSubmitting = ref(false)
+const unmatchedCount = computed(() => pickRows.value.filter((r) => !r.materialId).length)
+
+async function openSamplePick(row: any) {
+  pickSample.value = row
+  pickRows.value = []
+  try {
+    const res: any = await outboundApi.samplePickPreview(Number(row.sampleOrderId))
+    const rows: SamplePickPreviewRow[] = res?.data || []
+    pickRows.value = rows.map((r) => ({
+      ...r,
+      pickQty: Math.max(0, Number(r.quantity || 0) - Number(r.issuedQuantity || 0)),
+    }))
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载打样领料预览失败')
+    return
+  }
+  pickVisible.value = true
+}
+
+async function submitSamplePick() {
+  if (!pickSample.value) return
+  const items = pickRows.value
+    .filter((r) => r.materialId && Number(r.pickQty) > 0)
+    .map((r) => ({
+      materialId: Number(r.materialId),
+      materialCode: r.materialCode || undefined,
+      materialName: r.materialName,
+      quantity: Number(r.pickQty),
+    }))
+  if (!items.length) {
+    ElMessage.warning('请填写本次领料数量（至少一行、物料已匹配）')
+    return
+  }
+  pickSubmitting.value = true
+  try {
+    const res: any = await outboundApi.createSamplePick(Number(pickSample.value.sampleOrderId), items)
+    const outboundId = Number(res?.data || 0)
+    ElMessage.success('打样领料单已生成（待仓库确认发料后扣库存）')
+    pickVisible.value = false
+    // 生成后直接开打印页（JJX-QR-031 抬头「打样领料单」）；该单同时可在出库管理查看
+    if (outboundId) window.open(`/print/outbound/${outboundId}`, '_blank')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '生成失败')
+  } finally {
+    pickSubmitting.value = false
+  }
+}
+
 const sampleActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
   {
@@ -1181,10 +1267,13 @@ const sampleActions: TableAction<any>[] = [
     visible: ({ row }) => canCancel(row),
   },
 
+  { key: 'pick', label: '生成领料单', type: 'primary', permission: 'inventory:outbound:add' },
+
   { key: 'print', label: '打印', type: 'info' },
 ]
 const handleSampleAction = (key: string, row: any) => {
   const handlers: Record<string, () => void> = {
+    pick: () => void openSamplePick(row),
     print: () => handlePrint(row),
     trace: () => showTrace(row),
     copy: () => void handleCopySample(row),

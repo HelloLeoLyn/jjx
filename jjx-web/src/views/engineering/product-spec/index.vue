@@ -156,41 +156,6 @@
               delete-perm="product:delete"
             />
           </el-tab-pane>
-
-          <!-- ⑦ 打样领料单 -->
-          <el-tab-pane v-if="ENABLE_SAMPLE_PICK_SECTION" label="打样领料单" name="pick">
-            <el-alert type="info" :closable="false" class="tab-tip"
-              title="打样领料：按样品单生成领料单（复用生产领料链路，确认发料后扣库存）；打印 JJX-QR-031（抬头「打样领料单」）。" />
-            <el-divider content-position="left">该产品的样品单</el-divider>
-            <el-table :data="sampleOrders" size="small" border>
-              <el-table-column label="样品单号" prop="orderNo" min-width="150" />
-              <el-table-column label="产品编码" prop="productCode" width="140" />
-              <el-table-column label="打样数量" prop="sampleQty" width="100" align="right" />
-              <el-table-column label="轮次" prop="sampleRound" width="70" align="center" />
-              <el-table-column label="操作" width="130" align="center">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="openSamplePick(row)">生成领料单</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-if="!sampleOrders.length" description="暂无该产品的样品单" :image-size="50" />
-
-            <el-divider content-position="left">已有打样领料单</el-divider>
-            <el-table :data="samplePicks" size="small" border>
-              <el-table-column label="领料单号" prop="outboundNo" min-width="170" />
-              <el-table-column label="数量" prop="totalQuantity" width="90" align="right" />
-              <el-table-column label="状态" width="100" align="center">
-                <template #default="{ row }">{{ outboundStatusText(row.orderStatus) }}</template>
-              </el-table-column>
-              <el-table-column label="创建时间" prop="createTime" width="160" />
-              <el-table-column label="操作" width="100" align="center">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="printPick(row)">打印</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-if="!samplePicks.length" description="暂无打样领料单" :image-size="50" />
-          </el-tab-pane>
         </el-tabs>
       </div>
     </el-drawer>
@@ -198,36 +163,6 @@
     <!-- 在线纸张预览：目录选择与打印共用同一版式 -->
     <el-dialog v-model="exportVisible" title="产品电子文档集 · 在线预览" width="94%" top="4vh" append-to-body destroy-on-close>
       <ProductSpecPreview v-if="exportVisible && productId" :product-id="productId" />
-    </el-dialog>
-    <!-- 打样领料：预览 + 改数量 -->
-    <el-dialog v-model="pickVisible" :title="`打样领料 - ${pickSample?.orderNo || ''}`" width="780px" append-to-body>
-      <el-table :data="pickRows" size="small" border>
-        <el-table-column label="物料名称" prop="materialName" min-width="160" show-overflow-tooltip />
-        <el-table-column label="匹配物料" width="130" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.materialId" size="small" type="success">{{ row.materialCode }}</el-tag>
-            <el-tag v-else size="small" type="danger">未匹配</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="BOM需求" prop="quantity" width="90" align="right" />
-        <el-table-column label="已领" width="80" align="right">
-          <template #default="{ row }">{{ row.issuedQuantity ?? 0 }}</template>
-        </el-table-column>
-        <el-table-column label="可用" width="80" align="right">
-          <template #default="{ row }">{{ row.availableQuantity ?? 0 }}</template>
-        </el-table-column>
-        <el-table-column label="本次领料" width="140">
-          <template #default="{ row }">
-            <el-input-number v-model="row.pickQty" :min="0" :disabled="!row.materialId" size="small" style="width: 120px" />
-          </template>
-        </el-table-column>
-      </el-table>
-      <el-alert v-if="unmatchedCount > 0" type="warning" :closable="false" style="margin-top: 8px"
-        :title="`有 ${unmatchedCount} 条样品BOM物料未匹配到物料档案，暂不参与领料（可先在物料档案补建后再来）`" />
-      <template #footer>
-        <el-button @click="pickVisible = false">取消</el-button>
-        <el-button type="primary" :loading="pickSubmitting" @click="submitSamplePick">生成领料单</el-button>
-      </template>
     </el-dialog>
   </div>
 </template>
@@ -237,18 +172,13 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listProductPage, getFullProduct } from '@/api/product'
-import { outboundApi } from '@/api/inventory/outbound'
-import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { attachmentApi } from '@/api/system/attachment'
-import { InboundOrderStatusEnum } from '@/enums/inventory'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import EngineeringDrawingLibrary from '../drawing/components/EngineeringDrawingLibrary.vue'
 import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
-import { ENABLE_SAMPLE_PICK_SECTION } from './components/docset'
 import ProductWorkSpecPanel from './components/ProductWorkSpecPanel.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
-import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
 
 defineOptions({ name: 'ProductSpec' })
 
@@ -302,98 +232,7 @@ async function refreshSpecSources() {
   } catch (e) { ElMessage.error(e instanceof Error ? e.message : '产品资料刷新失败') }
 }
 
-// ===== 打样领料单（⑦） =====
-const sampleOrders = ref<any[]>([])
-const samplePicks = ref<any[]>([])
-const pickVisible = ref(false)
-const pickSample = ref<any>(null)
-const pickRows = ref<(SamplePickPreviewRow & { pickQty: number })[]>([])
-const pickSubmitting = ref(false)
-const unmatchedCount = computed(() => pickRows.value.filter((r) => !r.materialId).length)
-
-// dev-20261008-014：改用现成的单据状态枚举 InboundOrderStatusEnum（0草稿…12调拨中），
-// 不再自造本地 OUTBOUND_STATUS 映射（AGENTS 状态枚举铁律）。
-const outboundStatusText = (s?: number) =>
-  s === undefined || s === null
-    ? '-'
-    : InboundOrderStatusEnum.canDo(s)
-      ? InboundOrderStatusEnum.getLabel(s)
-      : String(s)
-
-async function loadSampleData() {
-  sampleOrders.value = []
-  samplePicks.value = []
-  const productId = (detail.value?.product as any)?.productId
-  const code = productCode.value
-  if (!productId && !code) return
-  try {
-    const res: any = await sampleOrderApi.page({ productId, productCode: code, pageNum: 1, pageSize: 100 } as any)
-    const records: any[] = res?.data?.records || []
-    // 兜底：按产品编码过滤（后端未过滤时）
-    sampleOrders.value = code ? records.filter((r) => !r.productCode || r.productCode === code) : records
-  } catch {
-    sampleOrders.value = []
-  }
-  try {
-    const ids = new Set(sampleOrders.value.map((r) => r.sampleOrderId))
-    const res: any = await outboundApi.list({ sourceType: 'sample', pageNum: 1, pageSize: 200 } as any)
-    const records: any[] = res?.data?.records || []
-    samplePicks.value = ids.size ? records.filter((r) => ids.has(Number(r.sourceId))) : []
-  } catch {
-    samplePicks.value = []
-  }
-}
-
-async function openSamplePick(row: any) {
-  pickSample.value = row
-  pickRows.value = []
-  try {
-    const res: any = await outboundApi.samplePickPreview(Number(row.sampleOrderId))
-    const rows: SamplePickPreviewRow[] = res?.data || []
-    pickRows.value = rows.map((r) => ({
-      ...r,
-      pickQty: Math.max(0, Number(r.quantity || 0) - Number(r.issuedQuantity || 0)),
-    }))
-  } catch (e: any) {
-    ElMessage.error(e?.message || '加载打样领料预览失败')
-    return
-  }
-  pickVisible.value = true
-}
-
-async function submitSamplePick() {
-  if (!pickSample.value) return
-  const items = pickRows.value
-    .filter((r) => r.materialId && Number(r.pickQty) > 0)
-    .map((r) => ({
-      materialId: Number(r.materialId),
-      materialCode: r.materialCode || undefined,
-      materialName: r.materialName,
-      quantity: Number(r.pickQty),
-    }))
-  if (!items.length) {
-    ElMessage.warning('请填写本次领料数量（至少一行、物料已匹配）')
-    return
-  }
-  pickSubmitting.value = true
-  try {
-    await outboundApi.createSamplePick(Number(pickSample.value.sampleOrderId), items)
-    ElMessage.success('打样领料单已生成（待仓库确认发料后扣库存）')
-    pickVisible.value = false
-    loadSampleData()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '生成失败')
-  } finally {
-    pickSubmitting.value = false
-  }
-}
-
-function printPick(row: any) {
-  window.open(`/print/outbound/${row.outboundId}`, '_blank')
-}
-
 watch(activeTab, (v) => {
-  if (v === 'pick') loadSampleData()
   if (v === 'customer') loadCustomerDocs()
 })
 

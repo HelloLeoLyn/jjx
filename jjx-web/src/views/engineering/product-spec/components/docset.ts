@@ -1,6 +1,4 @@
 import { attachmentApi } from '@/api/system/attachment'
-import { sampleOrderApi } from '@/api/sales/sampleOrder'
-import { outboundApi } from '@/api/inventory/outbound'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import { ProcessCategoryEnum } from '@/enums/product'
 import { productFileCategoryLabel, ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
@@ -9,12 +7,6 @@ import { productWorkSpecApi, normalizeWorkSpec, type ProductWorkSpec } from '@/a
 import type { FileImage } from '@/components/product/productFilePreview'
 export { renderFile, type FileImage } from '@/components/product/productFilePreview'
 
-/**
- * 打样领料单：暂从「产品作业规范」屏蔽（能力保留，后续另起任务把入口挪到合适的地方）。
- * 改回 true 即恢复页签与导出段；后端 sample-pick 接口、QR-031 打印不受影响。
- */
-export const ENABLE_SAMPLE_PICK_SECTION = false
-
 export const documentSections = [
   { key: 'customer', label: '客供资料', note: '客供稿 · 客户确认样品' },
   { key: 'spec', label: '产品作业规范', note: '材料 · 流程 · 结构图' },
@@ -22,7 +14,6 @@ export const documentSections = [
   { key: 'atlas', label: '工程图集', note: '工程图纸 · 印刷指导图' },
   { key: 'color', label: '分色检查表', note: '已上传的检查表' },
   { key: 'sample', label: '样品', note: '样品实物照片' },
-  ...(ENABLE_SAMPLE_PICK_SECTION ? [{ key: 'pick', label: '打样领料单', note: '已有领料单汇总' }] : []),
 ]
 
 export interface DocFile {
@@ -70,7 +61,6 @@ export interface DocsetData {
   routing: Record<string, any>
   workSpec: ProductWorkSpec
   files: DocFile[]
-  picks: Record<string, any>[]
   warnings: string[]
 }
 
@@ -78,7 +68,7 @@ export interface DocPage {
   key: string
   section: string
   title: string
-  kind: 'spec' | 'spec-details' | 'print' | 'image' | 'empty' | 'pick' | 'flow'
+  kind: 'spec' | 'spec-details' | 'print' | 'image' | 'empty' | 'flow'
   rows?: Record<string, any>[]
   groups?: { label: string; symbol: string; rows: Record<string, any>[] }[]
   image?: FileImage
@@ -162,7 +152,7 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
   const specification = await productWorkSpecApi.get(productId)
   const full = specification.data?.sourceData
   if (!full?.product) throw new Error('未找到产品资料')
-  const data: DocsetData = { product: full.product, bom: full.bom || {}, routing: full.routing || {}, workSpec: normalizeWorkSpec(specification.data || {}), files: [], picks: [], warnings: [] }
+  const data: DocsetData = { product: full.product, bom: full.bom || {}, routing: full.routing || {}, workSpec: normalizeWorkSpec(specification.data || {}), files: [], warnings: [] }
   const jobs = [
     { label: '材料项目图标', run: async () => {
       const ids = [...new Set(flatten(data.bom.items || []).map(row => Number(row.processId)).filter(Boolean))]
@@ -177,15 +167,6 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
     } },
     { label: '客供资料', run: async () => { const r: any = await attachmentApi.customerDocs(productId); appendFiles(data, r.data || [], true) } },
     { label: '产品文件', run: async () => { const r: any = await attachmentApi.productFiles(data.product.productCode); appendFiles(data, r.data || [], false) } },
-    { label: '打样领料单', run: async () => {
-      if (!ENABLE_SAMPLE_PICK_SECTION) return
-      const r: any = await sampleOrderApi.page({ productId, productCode: data.product.productCode, pageNum: 1, pageSize: 100 } as any)
-      const orders = (r.data?.records || []).filter((row: any) => Number(row.productId) === productId || row.productCode === data.product.productCode)
-      const ids = new Set(orders.map((row: any) => Number(row.sampleOrderId)))
-      if (!ids.size) return
-      const ob: any = await outboundApi.list({ sourceType: 'sample', pageNum: 1, pageSize: 200 } as any)
-      data.picks = (ob.data?.records || []).filter((row: any) => ids.has(Number(row.sourceId)))
-    } },
   ]
   const results = await Promise.allSettled(jobs.map((job) => job.run()))
   results.forEach((result, i) => {
@@ -231,8 +212,6 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
       const groups = [...flowGroups, { value: '', label: '未分类', symbol: '' }].map((group) => ({ ...group, rows: printRows.filter((row) => group.value ? row.processCategory === group.value : !flowGroups.some((g) => g.value === row.processCategory)) }))
       const count = Math.max(1, ...groups.map((group, j) => Math.ceil(group.rows.length / printCapacities[j])))
       for (let i = 0; i < count; i++) pages.push({ key: `print-${i}`, section: 'print', title: '印刷规范', kind: 'print', continuation: i, groups: groups.filter((group) => group.value || group.rows.length).map((group, j) => ({ label: group.label, symbol: group.symbol, rows: group.rows.slice(i * printCapacities[j], (i + 1) * printCapacities[j]) })) })
-    } else if (section.key === 'pick') {
-      for (let i = 0; i < Math.max(1, data.picks.length); i += 22) pages.push({ key: `pick-${i}`, section: 'pick', title: '打样领料单汇总', kind: 'pick', rows: data.picks.slice(i, i + 22) })
     } else {
       const files = data.files.filter((file) => file.section === section.key && fileIds.includes(file.key))
       for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: section.key, title: `${section.label} · ${productFileCategoryLabel(file.category)}`, kind: 'image', file, image }))
