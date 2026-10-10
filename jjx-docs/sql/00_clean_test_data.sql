@@ -12,9 +12,16 @@ DROP PROCEDURE assert_clean_test_target//
 DELIMITER ;
 
 -- =====================================================
--- 清理测试数据脚本（v21）
+-- 清理测试数据脚本（v22）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
+-- v22 变更（2026-10-10，任务 dev-20261010-004）：
+--   【口径修正】sys_attachment 原为整表 TRUNCATE，会连带清掉「配置/基础档案类上传资产」
+--   （工序图标 engineering_jjx_icon、公司 logo system_config、质量模板 quality_template、
+--    产品文件 product、物料 inventory_material、供应商 purchase_supplier 等），
+--   导致图标/logo/图纸断链（实测：标准工序「防水圈/撕贴保护膜/连接器」图标 404）。
+--   改为「默认保留、只清业务单据附件」：仅 DELETE 明确属于会被清空的业务单据的 biz_type；
+--   新增 bizType 默认保留，避免误删上传资产。名单见第 11 节 sys_attachment 处注释。
 -- v21 变更（2026-10-07，任务 dev-20261007-002）：
 --   1. 【新增清理】order_shortage_ledger（迁移 239 建，dev-20260930-026 订单缺料「欠交台账」，齐套重算派生，
 --      挂在 sales_order 上）——此前既不在 TRUNCATE 也不在保留白名单 → 体检覆盖率闸门报无归宿。
@@ -365,7 +372,12 @@ TRUNCATE quality_lot_item;
 
 TRUNCATE quality_lot;
 
-TRUNCATE sys_attachment;
+-- 【v22 修正】附件表：默认保留「配置/基础档案类上传资产」，只清业务单据/测试附件（dev-20261010-004）。
+--   保留（不清）：engineering_jjx_icon（工序图标）、system_config（公司 logo）、quality_template（质量模板）、
+--     product（产品文件）、inventory_material（物料附件）、purchase_supplier（供应商附件）
+--     —— 这些挂在清库后仍保留的主数据/配置上，清了会断链。
+--   清理：下方列出的业务单据类型（其主表本身会被清空，附件随之清空；含 bom/routing，工程 BOM/工艺会被清）。
+DELETE FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing');
 
 TRUNCATE sys_notification;
 
