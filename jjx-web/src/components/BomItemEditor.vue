@@ -65,13 +65,24 @@
       <!-- 物料名称 -->
       <el-table-column label="物料名称" prop="materialName" min-width="240">
         <template #default="scope">
-          <BomMaterialSelector
-            :material-id="scope.row.materialId"
-            :material-name="scope.row.materialName"
-            @select="(material) => handleMaterialSelect(material, scope.row)"
-            @clear="handleMaterialClear(scope.row)"
-            @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
-          />
+          <div class="material-name-cell">
+            <BomMaterialSelector
+              :material-id="scope.row.materialId"
+              :material-name="scope.row.materialName"
+              @select="(material) => handleMaterialSelect(material, scope.row)"
+              @clear="handleMaterialClear(scope.row)"
+              @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
+            />
+            <el-button
+              link
+              type="primary"
+              size="small"
+              :disabled="!scope.row.materialName && !scope.row.materialCode"
+              title="复制 物料名 · 规格 · 编码"
+              @click="copyMaterial(scope.row)"
+              >复制</el-button
+            >
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="项目" prop="processName" width="160">
@@ -883,6 +894,49 @@ const handleMaterialCreated = (material: InventoryMaterial) => {
   creatingRow = null
 }
 
+/**
+ * 复制 物料名 · 规格 · 编码 到剪贴板
+ * （物料名称是 el-select，文本选不中，给个显式复制）
+ */
+function copyMaterial(row: EngineeringBomItem) {
+  const text = [row.materialName, row.specification, row.materialCode]
+    .filter((v) => v != null && String(v).trim() !== '')
+    .join(' · ')
+  if (!text) {
+    ElMessage.warning('无内容可复制')
+    return
+  }
+  const done = () => ElMessage.success(`已复制：${text}`)
+  const clip = navigator.clipboard
+  if (clip && typeof clip.writeText === 'function') {
+    clip.writeText(text).then(done).catch(() => {
+      if (fallbackCopy(text)) done()
+      else ElMessage.warning('复制失败，请手动选择')
+    })
+  } else if (fallbackCopy(text)) {
+    done()
+  } else {
+    ElMessage.warning('复制失败，请手动选择')
+  }
+}
+
+/** 非安全上下文（http 内网）下 navigator.clipboard 不可用时的兜底 */
+function fallbackCopy(text: string): boolean {
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
 // ==================== 表格事件 ====================
 
 const handleSelectionChange = (selection: EngineeringBomItem[]) => {
@@ -1108,5 +1162,15 @@ defineExpose({
       justify-content: center;
     }
   }
+}
+
+.material-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.material-name-cell > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 </style>
