@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.dto.ProductWorkSpecDTO;
 import com.jjx.product.domain.dto.PrintSpecRemarksDTO;
+import com.jjx.product.domain.dto.ColorCheckDTO;
 import com.jjx.product.service.ProductWorkSpecService;
 import com.jjx.product.service.ProductWorkSpecChangeService;
 import com.jjx.system.annotation.BusinessType;
@@ -42,6 +43,12 @@ public class ProductWorkSpecController {
     @SaCheckPermission("product:edit")
     public Result<ObjectNode> printRemarksHistory(@PathVariable Long productId, @RequestParam(required = false) Long before) {
         return Result.success(service.printRemarksHistory(productId, before));
+    }
+
+    @PutMapping("/color-check")
+    @SaCheckPermission("product:edit")
+    public Result<ObjectNode> saveColorCheck(@PathVariable Long productId, @Validated @RequestBody ColorCheckDTO dto) {
+        return Result.success(service.saveColorCheck(productId, dto));
     }
 
     @PutMapping

@@ -6,7 +6,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.product.domain.dto.ProductWorkSpecDTO;
 import com.jjx.product.domain.dto.PrintSpecRemarksDTO;
+import com.jjx.product.domain.dto.ColorCheckDTO;
 import com.jjx.product.enums.ProcessCategoryEnum;
+import com.jjx.product.enums.ColorCheckItemEnum;
+import com.jjx.product.enums.ColorCheckResultEnum;
 import com.jjx.common.constant.LogActions;
 import com.jjx.common.enums.YesNoEnum;
 import com.jjx.system.annotation.BusinessType;
@@ -62,6 +65,8 @@ public class ProductWorkSpecService {
         oldContent.remove(java.util.List.of("confirmedBy", "confirmedAt", "confirmedSource"));
         // 整组备注由专用入口维护；旧客户端保存其他规范内容也不能覆盖它。
         if (oldContent.has("printRemarks")) next.set("printRemarks", oldContent.get("printRemarks").deepCopy());
+        // 分色检查表同样由专用入口维护；通用保存不得覆盖或清空。
+        if (oldContent.has("colorCheck")) next.set("colorCheck", oldContent.get("colorCheck").deepCopy());
         changeService.attachSources(id, oldContent, next);
         if (oldContent.equals(next)) return response(id, oldRaw);
         mapper.write(id, next.toString());
@@ -112,6 +117,76 @@ public class ProductWorkSpecService {
         // 与备注同事务，写日志失败即回滚，不走可丢失的异步通道。
         operLogs.insert(log);
         return response(id, mapper.read(id));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ObjectNode saveColorCheck(Long id, ColorCheckDTO dto) {
+        String oldRaw = raw(lock(id));
+        checkRevision(dto.getRevision(), oldRaw);
+        for (String key : dto.getItems().keySet())
+            if (!ColorCheckItemEnum.codes().contains(key)) throw new BusinessException("未知的分色检查项");
+        ObjectNode next = parse(oldRaw);
+        ObjectNode before = next.path("colorCheck").isObject() ? (ObjectNode) next.path("colorCheck") : json.createObjectNode();
+        ObjectNode items = json.createObjectNode();
+        List<String> changes = new ArrayList<>();
+        var fields = json.createArrayNode();
+        String operator = SecurityUtils.getUsername();
+        String now = LocalDateTime.now().toString();
+        // 固定按声明顺序遍历，保证无修改时不产生伪变更。
+        for (Map.Entry<String, String> entry : ColorCheckItemEnum.labels().entrySet()) {
+            String key = entry.getKey();
+            ColorCheckDTO.Item input = dto.getItems().get(key);
+            String result = input == null || input.getResult() == null ? "" : input.getResult().trim();
+            String reason = input == null || input.getReason() == null ? "" : input.getReason().trim();
+            if (!ColorCheckResultEnum.isValid(result)) throw new BusinessException("分色检查结论不合法");
+            if (ColorCheckResultEnum.INCORRECT.getCode().equals(result) && reason.isEmpty())
+                throw new BusinessException("选择“错误”的检查项必须填写原因");
+            if (!ColorCheckResultEnum.INCORRECT.getCode().equals(result)) reason = "";
+            String oldResult = before.path("items").path(key).path("result").asText("");
+            String oldReason = before.path("items").path(key).path("reason").asText("");
+            ObjectNode node = items.putObject(key);
+            node.put("result", result);
+            node.put("reason", reason);
+            if (!result.isEmpty()) { node.put("by", operator); node.put("at", now); }
+            if (!Objects.equals(oldResult, result) || !Objects.equals(oldReason, reason)) {
+                String label = entry.getValue();
+                changes.add(label + "：" + colorSummary(oldResult, oldReason) + " → " + colorSummary(result, reason));
+                fields.addObject().put("field", "colorCheck." + key).put("label", label)
+                        .put("before", colorSummary(oldResult, oldReason)).put("after", colorSummary(result, reason));
+            }
+        }
+        if (changes.isEmpty()) return response(id, oldRaw);
+        ObjectNode colorCheck = json.createObjectNode();
+        colorCheck.set("items", items);
+        colorCheck.put("updatedBy", operator);
+        colorCheck.put("updatedAt", now);
+        next.set("colorCheck", colorCheck);
+        next.remove(List.of("confirmedBy", "confirmedAt", "confirmedSource"));
+        mapper.write(id, next.toString());
+        SysOperLog log = new SysOperLog();
+        log.setModule("规范分色检查表");
+        log.setBusinessType(BusinessType.UPDATE.getCode());
+        log.setBizType("product");
+        log.setBizId(id.toString());
+        log.setAction(LogActions.WORK_SPEC_COLOR_CHECK_EDIT);
+        log.setOperUrl("/product/" + id + "/work-spec/color-check");
+        log.setOperParam("修改 " + changes.size() + " 项分色检查");
+        ObjectNode detail = parse(OperLogDetailBuilder.changes(changes));
+        detail.set("fields", fields);
+        log.setDetail(detail.toString());
+        log.setUserId(SecurityUtils.getUserId());
+        log.setUsername(SecurityUtils.getUsername());
+        log.setRealName(SecurityUtils.getRealName());
+        log.setCreateTime(LocalDateTime.now());
+        log.setStatus(YesNoEnum.YES.getCode());
+        // 与检查结果同事务，写日志失败即回滚，不走可丢失的异步通道。
+        operLogs.insert(log);
+        return response(id, mapper.read(id));
+    }
+
+    private String colorSummary(String result, String reason) {
+        String text = ColorCheckResultEnum.label(result);
+        return reason.isEmpty() ? text : text + "：" + reason;
     }
 
     public ObjectNode printRemarksHistory(Long id, Long before) {

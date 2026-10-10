@@ -14,6 +14,7 @@
             <div class="spec-detail-lines"><div v-for="(line, i) in page.detailLines" :key="i" :style="{ color: line.color }">{{ line.text }}</div></div>
           </template>
           <PrintSpecPaper v-else-if="page.kind === 'print'" ref="printPapers" :page="page" @overflow="emit('layout', page.key, $event)" />
+          <ColorCheckPaper v-else-if="page.kind === 'color'" :data="data" />
 
           <template v-else-if="page.kind === 'image'">
             <div class="attachment-name">{{ page.file ? documentFileCaption(page.file) : '' }}</div>
@@ -38,6 +39,7 @@ import { ref } from 'vue'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import WorkSpecPaper from './WorkSpecPaper.vue'
 import PrintSpecPaper from './PrintSpecPaper.vue'
+import ColorCheckPaper from './ColorCheckPaper.vue'
 import { plain, documentFileCaption, type DocsetData, type DocPage, type PaperTextLine } from './docset'
 
 defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string }>()

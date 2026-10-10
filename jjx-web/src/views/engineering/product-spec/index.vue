@@ -137,7 +137,13 @@
 
           <!-- ⑤ 分色检查表 -->
           <el-tab-pane label="分色检查表" name="color">
-            <el-empty description="规范分色检查表：待样张字段确定后，纳入「质量记录模板」体系（工程录入，暂不强制）" :image-size="60" />
+            <ProductColorCheckPanel
+              v-if="productId && activeTab === 'color'"
+              :key="`${productId}-color`"
+              :product-id="productId"
+              @busy="colorCheckBusy = $event"
+              @updated="refreshSpecSources"
+            />
           </el-tab-pane>
 
           <!-- ⑥ 样品 -->
@@ -175,6 +181,7 @@ import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/pro
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
 import ProductWorkSpecPanel from './components/ProductWorkSpecPanel.vue'
 import ProductPrintSpecPanel from './components/ProductPrintSpecPanel.vue'
+import ProductColorCheckPanel from './components/ProductColorCheckPanel.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
 
 defineOptions({ name: 'ProductSpec' })
@@ -190,12 +197,13 @@ const specVisible = ref(false)
 const drawingBusy = ref(false)
 const workSpecBusy = ref(false)
 const printSpecBusy = ref(false)
+const colorCheckBusy = ref(false)
 function closeSpec(done: () => void) {
-  if (drawingBusy.value || workSpecBusy.value || printSpecBusy.value) { ElMessage.warning('请先完成或关闭工程规范、印刷备注、图纸维护窗口'); return }
+  if (drawingBusy.value || workSpecBusy.value || printSpecBusy.value || colorCheckBusy.value) { ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口'); return }
   done()
 }
 function beforeSpecTabLeave() {
-  if (workSpecBusy.value || printSpecBusy.value) { ElMessage.warning('请先完成或关闭规范编辑窗口'); return false }
+  if (workSpecBusy.value || printSpecBusy.value || colorCheckBusy.value) { ElMessage.warning('请先完成或关闭规范编辑窗口'); return false }
   return true
 }
 const detailLoading = ref(false)

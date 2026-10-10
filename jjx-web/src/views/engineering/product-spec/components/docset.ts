@@ -13,7 +13,7 @@ export const documentSections = [
   { key: 'spec', label: '产品作业规范', note: '材料 · 流程 · 结构图' },
   { key: 'print', label: '印刷规范', note: '印刷明细 · 整组备注 · 印刷指导图' },
   { key: 'atlas', label: '工程图集', note: '结构图 · 面板图 · 线路图等' },
-  { key: 'color', label: '分色检查表', note: '已上传的检查表' },
+  { key: 'color', label: '分色检查表', note: '规范 · 面板菲林分色 · 线路 · 刀模治具' },
   { key: 'sample', label: '样品', note: '样品实物照片' },
 ]
 
@@ -39,6 +39,8 @@ export function isEngineeringFile(file: DocFile): boolean {
 export function defaultDocumentFiles(files: DocFile[]): DocFile[] {
   return files.filter(file => {
     if (file.kind === 'other') return false
+    // 分色检查表以工程录入的电子表为主；历史附件不默认选中，避免重复打印。
+    if (file.section === 'color') return false
     if (!isEngineeringFile(file)) return true
     if (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value) return false
     if (file.fileRole === DrawingFileRoleEnum.PRINT.value) return true
@@ -69,7 +71,7 @@ export interface DocPage {
   key: string
   section: string
   title: string
-  kind: 'spec' | 'spec-details' | 'print' | 'image' | 'empty' | 'flow'
+  kind: 'spec' | 'spec-details' | 'print' | 'color' | 'image' | 'empty' | 'flow'
   rows?: Record<string, any>[]
   groups?: { label: string; symbol: string; rows: Record<string, any>[]; value?: string; capacity?: number; remark?: string }[]
   showFilm?: boolean
@@ -219,6 +221,11 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
       // 指导图跟随印刷表，整套文档中不再在工程图集重复打印；仅允许现行已下发的预览件。
       const files = defaultDocumentFiles(data.files).filter(file => file.section === 'print' && fileIds.includes(file.key))
       for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: 'print', title: '印刷指导图', kind: 'image', file, image }))
+    } else if (section.key === 'color') {
+      // 分色检查表：电子表纸张固定一张（未填写也可预览空白），历史附件排其后。
+      pages.push({ key: 'color', section: 'color', title: '规范分色检查表', kind: 'color' })
+      const files = data.files.filter((file) => file.section === 'color' && fileIds.includes(file.key))
+      for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: 'color', title: `规范分色检查表 · ${documentFileCaption(file)}`, kind: 'image', file, image }))
     } else {
       const files = data.files.filter((file) => file.section === section.key && fileIds.includes(file.key))
       for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: section.key, title: `${section.label} · ${productFileCategoryLabel(file.category)}`, kind: 'image', file, image }))
