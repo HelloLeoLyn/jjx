@@ -219,13 +219,13 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
   for (const section of documentSections.filter((item) => sections.includes(item.key))) {
     if (section.key === 'spec') {
       const bom = flatten(data.bom.items || [])
-      const groups = flowGroups.map((group) => ({ ...group, rows: assembly.filter((row) => row.processCategory === group.value) }))
+      const groups = flowGroups.map((group) => ({ ...group, rows: assembly.filter((row: any) => row.processCategory === group.value) }))
       const capacities = [14, 6, 14]
       const text = specText(data)
       const count = Math.max(1, Math.ceil(bom.length / 14), ...groups.map((group, i) => Math.ceil(group.rows.length / capacities[i])))
       for (let i = 0; i < count; i++) pages.push({ key: `spec-${i}`, section: 'spec', title: '产品作业规范', kind: 'spec', continuation: i, engineeringNotes: text.engineeringNotes, diePosition: text.diePosition, changeLines: text.changeLines, rows: bom.slice(i * 14, (i + 1) * 14), groups: groups.map((group, j) => ({ label: group.label, symbol: group.symbol, rows: group.rows.slice(i * capacities[j], (i + 1) * capacities[j]) })) })
       for (let i = 0; i < text.details.length; i += 48) pages.push({ key: 'spec-details-' + i, section: 'spec', title: '产品作业规范 · 工程内容附页', kind: 'spec-details', detailLines: text.details.slice(i, i + 48) })
-      const uncategorized = assembly.filter((row) => !flowGroups.some((group) => group.value === row.processCategory))
+      const uncategorized = assembly.filter((row: any) => !flowGroups.some((group) => group.value === row.processCategory))
       for (let i = 0; i < uncategorized.length; i += 22) pages.push({ key: `flow-${i}`, section: 'spec', title: '产品作业规范 · 未分类工序', kind: 'flow', rows: uncategorized.slice(i, i + 22) })
     } else if (section.key === 'print') {
       const groups = [...flowGroups, { value: '', label: '未分类', symbol: '' }].map((group) => ({ ...group, rows: printRows.filter((row) => group.value ? row.processCategory === group.value : !flowGroups.some((g) => g.value === row.processCategory)) }))
