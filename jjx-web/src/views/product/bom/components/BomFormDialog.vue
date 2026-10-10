@@ -105,7 +105,10 @@
           <em>点击选择文件</em>
         </div>
         <template #tip>
-          <div class="upload-tip">仅支持 .xlsx / .xls 格式，解析后自动填充到物料明细表格。<b>导入的物料全部为根节点</b>，如需层级结构请在页面上用「子物料」按钮手动调整</div>
+          <div class="upload-tip">
+            仅支持 .xlsx / .xls
+            格式，解析后自动填充到物料明细表格。导入的物料<b>按行顺序追加到末尾</b>，可在表格中拖拽调整顺序
+          </div>
         </template>
       </el-upload>
       <div class="template-row">
@@ -337,7 +340,7 @@ const parseExcelFile = (file: File) => {
 
       // 将解析后的数据填充到 formData.items
       formData.items = [...formData.items, ...items]
-      ElMessage.success(`成功解析并添加 ${items.length} 项物料（全部为根节点，如需层级请用「子物料」按钮手动调整）`)
+      ElMessage.success(`成功解析并添加 ${items.length} 项物料，可在表格中拖拽调整顺序`)
     } catch (error) {
       console.error('解析 Excel 失败:', error)
       ElMessage.error('解析 Excel 文件失败，请检查文件格式')
@@ -442,7 +445,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     const item: EngineeringBomItem = {
       itemId: undefined,
       bomId: undefined,
-      parentMaterialId: null, // 导入全部为根节点，层级由页面「子物料」手动调整
+      parentMaterialId: null, // 平铺模式（2026-10-10 dev-20261010-017：取消“子物料”层级）
       materialId: 0,
       materialCode: '',
       materialName,

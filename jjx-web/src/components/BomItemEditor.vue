@@ -31,8 +31,6 @@
       border
       style="width: 100%"
       row-key="itemId"
-      :tree-props="{ children: 'children' }"
-      default-expand-all
       :height="tableHeight"
       @selection-change="handleSelectionChange"
       :row-class-name="rowClassName"
@@ -289,9 +287,6 @@
             @click="handleCreateMaterial(scope.row, scope.row.materialName || '')"
             >建档</el-button
           >
-          <el-button link type="primary" size="small" @click="handleAddChildItem(scope.row)"
-            >子物料</el-button
-          >
           <!-- <el-button link type="primary" :icon="CopyDocument" @click="handleCopyItem(scope.row)" /> -->
           <el-button link type="danger" :icon="Delete" @click="handleDeleteItem(scope.row)" />
         </template>
@@ -326,6 +321,7 @@ import { standardProcessApi } from '@/api/product/standardProcess'
 import { productBomApi } from '@/api/product/bom'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
+import Sortable from 'sortablejs'
 
 // ==================== Props & Emits ====================
 
@@ -406,60 +402,35 @@ const unitOptions = [
 
 const hasSelected = computed(() => selectedItems.value.length > 0)
 
-// ==================== 树形结构工具（2026-08-10） ====================
+// ======== 明细行工具（2026-10-10 dev-20261010-017：恢复平铺，取消子物料层级） ========
+// 说明：子物料（parent_material_id 树形）实测未使用、无下游依赖，已回退为平铺列表并恢复拖拽排序；
+// 后端 parent_material_id 字段与历史数据保留不动（此处统一按 null 写回）。
 
-// 新增/复制行分配的临时负数 id：唯一、稳定，供前端树结构与 el-table row-key 使用；
-// 提交后端时由 flattenTree() 剥离（新增行 itemId 仍为空，不改变接口约定）。
+// 新增/复制行分配的临时负数 id：唯一、稳定，供 el-table row-key 与拖拽使用；
+// 提交后端时由 toSubmitItems() 剥离（新增行 itemId 仍为空，不改变接口约定）。
 let tempItemIdSeq = -1
 const nextTempItemId = () => tempItemIdSeq--
 
-/**
- * 平铺数组 → 树（按 parentMaterialId 构建，NULL=根）
- * 新行用临时负数 id 作为父引用（前端树形 row-key 需要稳定 id）
- */
-function buildTree(list: EngineeringBomItem[]): EngineeringBomItem[] {
-  const arr = (list || []).map((it) => ({
-    ...it,
-    children: it.children ? [...it.children] : undefined,
-  }))
-  // 确保每行有稳定的 itemId（新行用临时负数）
-  arr.forEach((it) => {
-    if (it.itemId == null) it.itemId = nextTempItemId()
+/** 外部平铺数据 → 内部行（补稳定临时 id；强制无层级） */
+function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
+  return (list || []).map((it) => {
+    const copy: EngineeringBomItem = { ...it, parentMaterialId: null }
+    delete copy.children
+    if (copy.itemId == null) copy.itemId = nextTempItemId()
+    return copy
   })
-  const map = new Map<number, EngineeringBomItem>()
-  arr.forEach((it) => map.set(Number(it.itemId), it))
-  const roots: EngineeringBomItem[] = []
-  arr.forEach((it) => {
-    const pid = it.parentMaterialId
-    if (pid != null && map.has(Number(pid))) {
-      const parent = map.get(Number(pid))!
-      if (!parent.children) parent.children = []
-      parent.children.push(it)
-    } else {
-      roots.push(it)
-    }
-  })
-  return roots
 }
 
-/**
- * 树 → 平铺（深度优先，保持层级顺序）
- */
-function flattenTree(tree: EngineeringBomItem[]): EngineeringBomItem[] {
-  const out: EngineeringBomItem[] = []
-  const walk = (nodes: EngineeringBomItem[]) => {
-    nodes.forEach((n) => {
-      const copy = { ...n }
-      delete copy.children
-      // 临时负数 id 仅用于前端树/row-key；提交时剥离，保证新增行 itemId 为空、父引用不悬空
-      if (copy.itemId != null && Number(copy.itemId) < 0) copy.itemId = undefined
-      if (copy.parentMaterialId != null && Number(copy.parentMaterialId) < 0) copy.parentMaterialId = null
-      out.push(copy)
-      if (n.children?.length) walk(n.children)
-    })
-  }
-  walk(tree || [])
-  return out
+/** 内部行 → 提交/对外数据（保序、写回 sortOrder、剥离临时 id、强制无层级） */
+function toSubmitItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
+  return (list || []).map((it, idx) => {
+    const copy: EngineeringBomItem = { ...it }
+    delete copy.children
+    copy.parentMaterialId = null
+    copy.sortOrder = idx + 1
+    if (copy.itemId != null && Number(copy.itemId) < 0) copy.itemId = undefined
+    return copy
+  })
 }
 
 /** 遍历树（含所有层级） */
@@ -491,7 +462,7 @@ let isUpdating = false
 const emitChange = debounce(() => {
   if (isUpdating) return
   isUpdating = true
-  emit('update:modelValue', flattenTree(items.value))
+  emit('update:modelValue', toSubmitItems(items.value))
   nextTick(() => {
     isUpdating = false
   })
@@ -516,13 +487,14 @@ onMounted(() => {
   loadProcessOptions()
   window.addEventListener('resize', calculateTableHeight)
   nextTick(() => {
-    // 树形模式：拖拽排序已禁用
+    initSortable()
   })
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', calculateTableHeight)
   emitChange.cancel()
+  destroySortable()
 })
 
 // ==================== 物料选择处理 ====================
@@ -592,10 +564,10 @@ watch(
   () => props.modelValue,
   (newVal) => {
     if (isUpdating) return
-    if (JSON.stringify(newVal) !== JSON.stringify(flattenTree(items.value))) {
-      items.value = buildTree(newVal)
+    if (JSON.stringify(newVal) !== JSON.stringify(toSubmitItems(items.value))) {
+      items.value = toFlatItems(newVal)
       walkTree(items.value, matchProjectByName)
-      // 初始化也先按当前基数/模数重算用量，再计算应用料（递归）。
+      // 初始化也先按当前基数/模数重算用量，再计算应用料。
       walkTree(items.value, recalcAppliedIssue)
     }
   },
@@ -643,70 +615,22 @@ const handleAddItem = () => {
 }
 
 /**
- * 添加子物料（挂到当前节点下，树形结构）
- */
-const handleAddChildItem = (parent: EngineeringBomItem) => {
-  const newItem: EngineeringBomItem = {
-    itemId: nextTempItemId(),
-    bomId: props.bomId,
-    parentMaterialId: Number(parent.itemId),
-    materialId: 0,
-    materialCode: '',
-    materialName: '',
-    specification: '',
-    unit: 'PCS',
-    quantity: 0,
-    lossRate: 0,
-    appliedQty: 0,
-    actualIssueQty: 0,
-    moduleQty: 1,
-    baseQty: 1,
-    remark: '',
-    sortOrder: (parent.children?.length || 0) + 1,
-    create: false,
-  }
-  if (!parent.children) parent.children = []
-  parent.children.push(newItem)
-}
-
-/**
- * 复制物料（复制整棵子树，挂到同父节点下）
+ * 复制物料（平铺：复制为一行追加到末尾）
  */
 const handleCopyItem = (item: EngineeringBomItem) => {
-  const copyItem = JSON.parse(JSON.stringify(item))
-  copyItem.itemId = undefined
-  copyItem.parentMaterialId = item.parentMaterialId ?? null
-  // 子树也重新生成临时 id
-  const reId = (n: any, parentNewId: number | null) => {
-    const newId = nextTempItemId()
-    n.itemId = newId
-    n.parentMaterialId = parentNewId
-    ;(n.children || []).forEach((c: any) => reId(c, newId))
-  }
-  reId(copyItem, copyItem.parentMaterialId)
-  // 找到父节点插入
-  if (copyItem.parentMaterialId != null) {
-    const parent = findInTree(items.value, copyItem.parentMaterialId)
-    if (parent) {
-      if (!parent.children) parent.children = []
-      parent.children.push(copyItem)
-      ElMessage.success('复制成功')
-      return
-    }
-  }
+  const copyItem: EngineeringBomItem = JSON.parse(JSON.stringify(item))
+  delete copyItem.children
+  copyItem.itemId = nextTempItemId()
+  copyItem.parentMaterialId = null
+  copyItem.sortOrder = items.value.length + 1
   items.value.push(copyItem)
   ElMessage.success('复制成功')
 }
 
 /**
- * 删除物料（树形：有子节点时阻止删除）
+ * 删除物料（平铺列表）
  */
 const handleDeleteItem = async (row: EngineeringBomItem) => {
-  // 有子节点 → 阻止
-  if (row.children && row.children.length > 0) {
-    ElMessage.warning('请先删除子节点，再删除该物料')
-    return
-  }
   try {
     await ElMessageBox.confirm(
       `确定要删除物料 "${row.materialName || row.materialCode || ''}" 吗？`,
@@ -717,9 +641,11 @@ const handleDeleteItem = async (row: EngineeringBomItem) => {
         type: 'warning',
       }
     )
-    // 从树中移除（按对象引用优先、id 兜底；失败不谎报成功）
-    const removed = removeFromTree(items.value, Number(row.itemId), row)
-    if (removed) {
+    // 平铺列表：按行引用定位，失败兜底按 id（失败不谎报成功）
+    let idx = items.value.indexOf(row)
+    if (idx < 0) idx = items.value.findIndex((it) => Number(it.itemId) === Number(row.itemId))
+    if (idx >= 0) {
+      items.value.splice(idx, 1)
       ElMessage.success('删除成功')
     } else {
       ElMessage.warning('该行已不在列表中，删除未生效')
@@ -727,27 +653,6 @@ const handleDeleteItem = async (row: EngineeringBomItem) => {
   } catch {
     // 用户取消
   }
-}
-
-/** 从树中移除节点（含嵌套） */
-function removeFromTree(
-  tree: EngineeringBomItem[],
-  itemId: number,
-  row?: EngineeringBomItem
-): boolean {
-  for (let i = 0; i < tree.length; i++) {
-    // 对象引用优先（新增行 itemId 缺失/临时时也能命中），有限数字 id 兜底
-    const sameRow = row != null && tree[i] === row
-    const sameId = Number.isFinite(itemId) && Number(tree[i].itemId) === itemId
-    if (sameRow || sameId) {
-      tree.splice(i, 1)
-      return true
-    }
-    if (tree[i].children?.length && removeFromTree(tree[i].children!, itemId, row)) {
-      return true
-    }
-  }
-  return false
 }
 
 /**
@@ -759,8 +664,51 @@ const reorderItems = () => {
   })
 }
 
-// ==================== 拖拽排序 ====================
-// 2026-08-10：树形表格不支持平铺拖拽排序，已禁用（原 Sortable 实现移除）
+// ==================== 拖拽排序（2026-10-10 dev-20261010-017：平铺表恢复 Sortable） ====================
+
+let sortableInstance: Sortable | null = null
+
+/** 初始化拖拽排序（拖手柄 .drag-handle；拖动后重排 items 并回写 sortOrder） */
+const initSortable = () => {
+  const el = tableRef.value?.$el?.querySelector(
+    '.el-table__body-wrapper tbody'
+  ) as HTMLElement | null
+  if (!el) {
+    // 表格未渲染完成时延迟重试
+    setTimeout(() => initSortable(), 200)
+    return
+  }
+  destroySortable()
+  sortableInstance = Sortable.create(el, {
+    handle: '.drag-handle',
+    animation: 150,
+    easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
+    ghostClass: 'sortable-ghost',
+    dragClass: 'sortable-drag',
+    onStart: () => {
+      tableRef.value?.$el?.classList.add('is-dragging')
+    },
+    onEnd: (evt: Sortable.SortableEvent) => {
+      tableRef.value?.$el?.classList.remove('is-dragging')
+      const { oldIndex, newIndex } = evt
+      if (oldIndex === undefined || newIndex === undefined || oldIndex === newIndex) return
+      const newItems = [...items.value]
+      const [moved] = newItems.splice(oldIndex, 1)
+      newItems.splice(newIndex, 0, moved)
+      newItems.forEach((it, idx) => {
+        it.sortOrder = idx + 1
+      })
+      items.value = newItems
+    },
+  })
+}
+
+const destroySortable = () => {
+  if (sortableInstance) {
+    sortableInstance.destroy()
+    sortableInstance = null
+  }
+}
 
 /**
  * 刷新
@@ -978,7 +926,7 @@ const getQuantityStep = (unit: string) => {
 // ==================== 暴露方法 ====================
 
 defineExpose({
-  getItems: () => flattenTree(items.value),
+  getItems: () => toSubmitItems(items.value),
   clearItems: () => {
     items.value = []
     selectedItems.value = []
