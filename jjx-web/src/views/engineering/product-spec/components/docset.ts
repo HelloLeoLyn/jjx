@@ -97,41 +97,18 @@ function paperLines(value: string, width: number): string[] {
   })
 }
 function specText(data: DocsetData) {
-  const notes = paperLines(data.workSpec.engineeringRequirements, 14)
-  const die = paperLines(data.workSpec.dieLocation, 10)
-  const changes: PaperTextLine[] = [...data.workSpec.changes]
-    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-    .flatMap(change => [...paperLines((change.date ? change.date.slice(2) + '　' : '') + change.text, 38), '']
-      .map(text => ({ text, color: change.color })))
-  const details: PaperTextLine[] = []
-  if (notes.length > 7) details.push({ text: '加工要求（续）' }, ...notes.slice(7).map(text => ({ text, color: data.workSpec.requirementsColor })))
-  if (changes.length > 6) details.push({ text: '变更内容（续）' }, ...changes.slice(6))
-  flatten(data.bom.items || []).forEach((row, i) => {
-    const specification = workSpecMaterialSpec(row)
-    if (paperLines(row.materialName || row.materialCode || '', 13).length > 1
-      || paperLines(specification, 15).length > 1
-      || (!row.icon && paperLines(row.processName || '', 2).length > 1)) {
-      details.push({ text: '材料第' + (i + 1) + '项（完整内容）' },
-        ...paperLines([row.processName, row.materialName || row.materialCode, specification].filter(Boolean).join('；'), 44).map(text => ({ text })))
-    }
-  })
-  const counters = new Map<string, number>()
-  ;(data.routing.items || []).forEach((row: any) => {
-    const group = flowGroups.find(group => group.value === row.processCategory)?.label || '未分类'
-    const order = (counters.get(group) || 0) + 1
-    counters.set(group, order)
-    const operations = row.children?.length ? row.children : [row]
-    const texts = operations.map((item: any, i: number) => ['图标' + (i + 1), workSpecStepSubscript(item)].filter(Boolean).join(' '))
-    const note = workSpecOperationRemark(row)
-    if (operations.length > 3 || operations.some((item: any) => paperLines(workSpecStepSubscript(item), 4).length > 1) || paperLines(note, 8).length > 1)
-      details.push({ text: group + '第' + order + '道（完整作业说明）' }, ...paperLines(texts.join(' ＋ ') + (note ? '；' + note : ''), 44).map(text => ({ text })))
-  })
   return {
-    engineeringNotes: notes.slice(0, 7).join('\n') + (notes.length > 7 ? '\n（续见附页）' : ''),
-    diePositionRows: die,
-    changeLines: changes.slice(0, 6).concat(changes.length > 6 ? [{ text: '（续见附页）' }] : []),
-    details,
+    engineeringNotes: data.workSpec.engineeringRequirements,
+    diePositionRows: paperLines(data.workSpec.dieLocation, 10),
+    changeLines: [...data.workSpec.changes]
+      .filter(change => change.print && change.text.trim())
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+      .map(change => ({ text: (change.date ? change.date.slice(2) + '　' : '') + change.text, color: change.color })),
   }
+}
+/** 附页已由DOM确认需要，再按附页正文宽度分行；不用于判断主表是否溢出。 */
+export function detailTextLines(text: string, color?: string): PaperTextLine[] {
+  return paperLines(text, 44).map(line => ({ text: line, color }))
 }
 
 export function plain(value: unknown): string {
@@ -214,7 +191,7 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
   }
 }
 
-export function makePages(data: DocsetData, sections: string[], fileIds: string[], images: Record<string, FileImage[]>): DocPage[] {
+export function makePages(data: DocsetData, sections: string[], fileIds: string[], images: Record<string, FileImage[]>, overflow: Record<string, PaperTextLine[]> = {}): DocPage[] {
   const pages: DocPage[] = []
   const all = flatten(data.routing.items || [])
   const printRows = all.filter((row) => row.majorCategory === 'PRINT')
@@ -227,7 +204,8 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
       const text = specText(data)
       const count = Math.max(1, Math.ceil(bom.length / 14), Math.ceil(text.diePositionRows.length / 14), ...groups.map((group, i) => Math.ceil(group.rows.length / capacities[i])))
       for (let i = 0; i < count; i++) pages.push({ key: `spec-${i}`, section: 'spec', title: '产品作业规范', kind: 'spec', continuation: i, engineeringNotes: text.engineeringNotes, diePositionRows: text.diePositionRows.slice(i * 14, (i + 1) * 14), changeLines: text.changeLines, rows: bom.slice(i * 14, (i + 1) * 14), groups: groups.map((group, j) => ({ label: group.label, symbol: group.symbol, rows: group.rows.slice(i * capacities[j], (i + 1) * capacities[j]) })) })
-      for (let i = 0; i < text.details.length; i += 48) pages.push({ key: 'spec-details-' + i, section: 'spec', title: '产品作业规范 · 工程内容附页', kind: 'spec-details', detailLines: text.details.slice(i, i + 48) })
+      const details = pages.filter(page => page.kind === 'spec').flatMap(page => overflow[page.key] || [])
+      for (let i = 0; i < details.length; i += 48) pages.push({ key: 'spec-details-' + i, section: 'spec', title: '产品作业规范 · 工程内容附页', kind: 'spec-details', detailLines: details.slice(i, i + 48) })
       const uncategorized = assembly.filter((row: any) => !flowGroups.some((group) => group.value === row.processCategory))
       for (let i = 0; i < uncategorized.length; i += 22) pages.push({ key: `flow-${i}`, section: 'spec', title: '产品作业规范 · 未分类工序', kind: 'flow', rows: uncategorized.slice(i, i + 22) })
     } else if (section.key === 'print') {

@@ -34,7 +34,7 @@
       </aside>
       <main class="paper-stage">
         <div v-if="pendingCount" class="render-progress no-print">正在展开附件，还有 {{ pendingCount }} 个文件…</div>
-        <div v-if="data && pages.length" class="paper-zoom" :style="{ zoom: `${zoom}%` }"><ProductSpecSheets :data="data" :pages="pages" :structure-image="structureImage" :structure-caption="structureCaption" /></div>
+        <div v-if="data && pages.length" class="paper-zoom" :style="{ zoom: `${zoom}%` }"><ProductSpecSheets ref="sheets" @layout="onLayout" :data="data" :pages="pages" :structure-image="structureImage" :structure-caption="structureCaption" /></div>
         <el-empty v-else-if="!loading && !error" description="勾选左侧文档，查看纸张预览" />
       </main>
     </div>
@@ -47,7 +47,7 @@ import { ElMessage } from 'element-plus'
 import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import { downloadFile } from '@/components/product/productFilePreview'
 import ProductSpecSheets from './ProductSpecSheets.vue'
-import { documentSections, loadDocset, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, type DocsetData, type DocFile, type FileImage } from './docset'
+import { documentSections, loadDocset, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, type DocsetData, type DocFile, type FileImage, type PaperTextLine } from './docset'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum } from '@/enums/product/drawing'
 
 const props = withDefaults(defineProps<{ productId: number; standalone?: boolean; autoPrint?: boolean; paperOnly?: boolean; initialSections?: string[]; initialFiles?: string[] }>(), { standalone: false, autoPrint: false, paperOnly: false })
@@ -60,6 +60,11 @@ const selectedFiles = ref<string[]>([])
 const showHistory = ref(false)
 const images = shallowRef<Record<string, FileImage[]>>({})
 const fileErrors = ref<Record<string, string>>({})
+const sheets = ref<InstanceType<typeof ProductSpecSheets>>()
+const overflow = shallowRef<Record<string, PaperTextLine[]>>({})
+function onLayout(key: string, lines: PaperTextLine[]) {
+  if (JSON.stringify(overflow.value[key]) !== JSON.stringify(lines)) overflow.value = { ...overflow.value, [key]: lines }
+}
 const zoom = ref(props.paperOnly ? 100 : 80)
 let generation = 0
 let queueRunning = false
@@ -79,16 +84,18 @@ const requestedFiles = computed(() => {
   return files
 })
 const pendingCount = computed(() => requestedFiles.value.filter((file) => !images.value[file.key] && !fileErrors.value[file.key]).length)
-const pages = computed(() => data.value ? makePages(data.value, selectedSections.value, selectedFiles.value, images.value) : [])
+const pages = computed(() => data.value ? makePages(data.value, selectedSections.value, selectedFiles.value, images.value, overflow.value) : [])
 const structureImage = computed(() => structureFile.value ? images.value[structureFile.value.key]?.[0]?.url : '')
 const structureCaption = computed(() => structureFile.value ? documentFileCaption({ ...structureFile.value, name: '' }) : '')
-const canPrint = computed(() => !!data.value && !loading.value && !error.value && pages.value.length > 0 && pendingCount.value === 0 && !requestedFiles.value.some((file) => fileErrors.value[file.key]))
+const layoutReady = computed(() => pages.value.filter(page => page.kind === 'spec').every(page => overflow.value[page.key] !== undefined))
+const canPrint = computed(() => layoutReady.value && !!data.value && !loading.value && !error.value && pages.value.length > 0 && pendingCount.value === 0 && !requestedFiles.value.some((file) => fileErrors.value[file.key]))
 
 function releaseImages() { Object.values(images.value).flat().forEach((image) => URL.revokeObjectURL(image.url)); images.value = {} }
 async function load() {
   const current = ++generation
   releaseImages()
   data.value = undefined
+  overflow.value = {}
   fileErrors.value = {}
   error.value = ''
   loading.value = true
@@ -144,6 +151,8 @@ async function printDocuments() {
   }
   await nextTick()
   await document.fonts.ready
+  await sheets.value?.measureLayout()
+  await nextTick()
   const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.doc-sheets img'))
   try { await Promise.all(imgs.map((image) => image.decode())); window.print() }
   catch { ElMessage.error('图片尚未加载完成，请重新加载后打印') }

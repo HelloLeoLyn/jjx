@@ -1,5 +1,5 @@
 <template>
-  <article class="work-paper">
+  <article ref="paper" class="work-paper">
     <header class="work-title">产 品 作 业 规 范<span v-if="page.continuation">（续）</span></header>
     <table class="grid materials">
       <!-- 两张整宽表共用1/3边界：材料右边线与面板耗时右边线贯通。 -->
@@ -12,15 +12,15 @@
       <tbody>
         <tr v-for="(row, i) in padded(page.rows, 14)" :key="i">
           <td class="center">{{ '(' + ((page.continuation || 0) * 14 + i + 1) + ')' }}</td>
-          <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="18" /><span v-else class="cell-single" :title="plain(row?.processName)">{{ plain(row?.processName) }}</span></td>
-          <td><span class="material-name" :title="row?.materialName || row?.materialCode">{{ row?.materialName || row?.materialCode }}</span></td>
-          <td><span class="cell-single" :title="workSpecMaterialSpec(row)">{{ workSpecMaterialSpec(row) }}</span></td>
+          <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="18" /><span v-else class="cell-single" :data-overflow-title="materialLabel(i) + '项目'" :title="plain(row?.processName)">{{ plain(row?.processName) }}</span></td>
+          <td><span class="material-name" :data-overflow-title="materialLabel(i) + '材料'" :title="row?.materialName || row?.materialCode">{{ row?.materialName || row?.materialCode }}</span></td>
+          <td><span class="cell-single" :data-overflow-title="materialLabel(i) + '规格及模数'" :title="workSpecMaterialSpec(row)">{{ workSpecMaterialSpec(row) }}</span></td>
           <td class="die-position">{{ page.diePositionRows?.[i] }}</td>
           <template v-if="i < embossFields.length">
             <td class="emboss-label">{{ embossFields[i]?.label }}</td>
             <td class="center emboss-value">{{ embossValue(embossFields[i]?.key, embossFields[i]?.unit) }}</td>
           </template>
-          <td v-else-if="i === embossFields.length" :rowspan="14 - embossFields.length" colspan="2" class="engineering-notes" :style="{ color: data.workSpec.requirementsColor }">{{ page.engineeringNotes }}</td>
+          <td v-else-if="i === embossFields.length" :rowspan="14 - embossFields.length" colspan="2" class="engineering-notes"><div class="notes-content" data-overflow-title="加工要求" :data-overflow-repeat="page.continuation ? 'true' : undefined" :style="{ color: data.workSpec.requirementsColor }">{{ page.engineeringNotes }}</div></td>
         </tr>
       </tbody>
     </table>
@@ -43,17 +43,17 @@
             <template v-if="cell.column !== 1 || line.index >= 8">
               <td class="center">{{ '(' + cell.number + ')' }}</td>
               <td>
-                <div v-if="cell.item" class="operation">
-                  <div class="operation-symbols">
+                <div v-if="cell.item" class="operation" :data-overflow-title="cell.label + '第' + cell.number + '道作业说明'" :data-overflow-text="operationText(cell.item)">
+                  <div class="operation-symbols" data-overflow-part>
                     <template v-for="(item, j) in operations(cell.item)" :key="item.itemId || j">
                       <span v-if="j" class="plus">＋</span>
                       <span class="symbol">
                         <SvgIcon v-if="item.icon" :name="item.icon" :size="20" />
-                        <sub v-if="workSpecStepSubscript(item)">{{ workSpecStepSubscript(item) }}</sub>
+                        <sub v-if="workSpecStepSubscript(item)" data-overflow-part>{{ workSpecStepSubscript(item) }}</sub>
                       </span>
                     </template>
                   </div>
-                  <span v-if="workSpecOperationRemark(cell.item)" class="operation-remark" :title="workSpecOperationRemark(cell.item)">{{ workSpecOperationRemark(cell.item) }}</span>
+                  <span v-if="workSpecOperationRemark(cell.item)" class="operation-remark" data-overflow-part :title="workSpecOperationRemark(cell.item)">{{ workSpecOperationRemark(cell.item) }}</span>
                 </div>
               </td>
               <td class="center">{{ labor(cell.item) }}</td>
@@ -73,7 +73,7 @@
     <div class="hours"><span>合计工时</span><div>{{ totalLabor(allOperations) }}</div></div>
     <div class="issuance">
       <div class="vertical-label">变更内容</div>
-      <div class="changes"><div v-for="(line, i) in page.changeLines" :key="i" :style="{ color: line.color }">{{ line.text }}</div></div>
+      <div class="changes"><div class="changes-content" data-overflow-title="变更内容" :data-overflow-repeat="page.continuation ? 'true' : undefined"><div v-for="(line, i) in page.changeLines" :key="i" data-overflow-record :style="{ color: line.color }">{{ line.text }}</div></div></div>
       <div class="vertical-label">发行单位</div>
       <div class="issuer">
         <div v-if="data.workSpec.approved" class="approval"><div>{{ data.workSpec.issueUnit }}</div><div>{{ shortDate(data.workSpec.issueDate || data.workSpec.confirmedAt) }}</div><div>已批准</div></div>
@@ -85,12 +85,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import { embossFields } from '@/api/product/workSpec'
-import { flowGroups, plain, workSpecMaterialSpec, workSpecStepSubscript, workSpecOperationRemark, type DocsetData, type DocPage } from './docset'
+import { flowGroups, plain, workSpecMaterialSpec, workSpecStepSubscript, workSpecOperationRemark, type DocsetData, type DocPage, type PaperTextLine } from './docset'
+
+import { useWorkSpecOverflow } from './useWorkSpecOverflow'
 
 const props = defineProps<{ data: DocsetData; page: DocPage; pageIndex: number; pageCount: number; structureImage?: string; structureCaption?: string }>()
+const emit = defineEmits<{ overflow: [lines: PaperTextLine[]] }>()
+const paper = ref<HTMLElement>()
+const { measure } = useWorkSpecOverflow(paper, () => JSON.stringify([props.page.rows, props.page.groups, props.page.engineeringNotes, props.page.changeLines, props.page.continuation]), lines => emit('overflow', lines))
+defineExpose({ measure })
+function materialLabel(index: number) { return '材料第' + ((props.page.continuation || 0) * 14 + index + 1) + '项 · ' }
+function operationText(row: Record<string, any>) {
+  return operations(row).map((item: Record<string, any>, index: number) => '图标' + (index + 1) + ' ' + workSpecStepSubscript(item)).join(' ＋ ') + '；' + workSpecOperationRemark(row)
+}
 const allOperations = computed<Record<string, any>[]>(() => props.data.routing.items || [])
 const flowRows = computed(() => Array.from({ length: 14 }, (_, index) => ({
   index,
@@ -120,7 +130,7 @@ function shortDate(value?: string | null) { return value ? value.slice(2, 10) : 
 </script>
 
 <style scoped>
-.work-paper { height:1098px; display:flex; flex-direction:column; box-sizing:border-box; border:1.5px solid #222; color:#252525; font-family:SimSun,'Songti SC',serif; font-size:13px; }
+.work-paper { height:290mm; display:flex; flex-direction:column; box-sizing:border-box; border:1.5px solid #222; color:#252525; font-family:SimSun,'Songti SC',serif; font-size:13px; }
 .work-title { height:65px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:27px; letter-spacing:5px; border-bottom:1px solid #222; text-decoration:underline; text-underline-offset:7px; }
 .work-title span { font-size:13px; letter-spacing:0; }
 .grid { width:100%; border-collapse:collapse; table-layout:fixed; flex-shrink:0; }
@@ -137,7 +147,8 @@ function shortDate(value?: string | null) { return value ? value.slice(2, 10) : 
 .material-name { display:block; font-size:11px; line-height:10px; max-height:20px; overflow:hidden; overflow-wrap:anywhere; }
 .die-position { font-size:11px; white-space:pre-wrap; }
 .emboss-label,.emboss-value { font-size:12px; white-space:nowrap; padding:0 2px !important; }
-.materials td.engineering-notes { vertical-align:top; padding:8px 5px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; font-size:12px; }
+.materials td.engineering-notes { vertical-align:top; padding:8px 5px; }
+.notes-content { height:159px; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; line-height:18px; font-size:12px; }
 .flows { height:470px; }
 .flows tbody tr { height:29px; }
 .flows tbody td,.flows tbody th { height:29px; }
@@ -158,8 +169,11 @@ function shortDate(value?: string | null) { return value ? value.slice(2, 10) : 
 .hours div { flex:1; padding:4px 10px; }
 .issuance { flex:1; min-height:0; display:flex; }
 .vertical-label { width:38px; flex-shrink:0; border-right:1px solid #333; display:flex; justify-content:center; align-items:center; writing-mode:vertical-rl; letter-spacing:8px; font-size:17px; }
-.changes { flex:1; padding:9px 15px; border-right:1px solid #333; font-size:12px; line-height:1.6; overflow:hidden; }
-.changes div { white-space:pre-wrap; min-height:18px; line-height:18px; overflow-wrap:anywhere; }
+.changes { flex:1; min-width:0; padding:9px 15px; border-right:1px solid #333; font-size:12px; display:flex; flex-direction:column; overflow:hidden; }
+.changes-content { flex:1; min-height:0; overflow:hidden; }
+.changes-content > div { white-space:pre-wrap; min-height:18px; line-height:18px; overflow-wrap:anywhere; }
+[data-overflow-title] { position:relative; }
+[data-overflowing]::after { content:"续见附页"; position:absolute; right:0; bottom:0; max-width:100%; font-size:8px; line-height:10px; color:#555; background:#fff; white-space:nowrap; overflow:hidden; }
 .issuer { width:144px; display:flex; align-items:center; justify-content:center; padding:6px; box-sizing:border-box; text-align:center; }
 .approval { width:95px; height:95px; border:2px solid red; border-radius:50%; color:red; display:flex; flex-direction:column; justify-content:center; overflow:hidden; font-size:14px; }
 .approval div { padding:3px; }

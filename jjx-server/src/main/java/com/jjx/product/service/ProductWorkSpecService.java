@@ -31,6 +31,7 @@ public class ProductWorkSpecService {
     private final SysAttachmentMapper attachments;
     private final IProductService products;
     private final ObjectMapper json;
+    private final ProductWorkSpecChangeService changeService;
 
     public ObjectNode get(Long id) {
         return response(id, mapper.read(id));
@@ -46,6 +47,7 @@ public class ProductWorkSpecService {
         next.remove("revision");
         ObjectNode oldContent = parse(oldRaw).deepCopy();
         oldContent.remove(java.util.List.of("confirmedBy", "confirmedAt", "confirmedSource"));
+        changeService.attachSources(id, oldContent, next);
         if (oldContent.equals(next)) return response(id, oldRaw);
         mapper.write(id, next.toString());
         return response(id, mapper.read(id));

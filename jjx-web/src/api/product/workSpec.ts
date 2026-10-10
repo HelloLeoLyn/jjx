@@ -1,6 +1,15 @@
 import request from '@/utils/request'
 
-export interface WorkSpecChange { date?: string | null; text: string; color: string }
+export interface WorkSpecChangeSource { id: number; date: string; text: string; label: string }
+export interface WorkSpecChange {
+  date?: string | null
+  text: string
+  color: string
+  print: boolean
+  reason: string
+  sourceLogIds: number[]
+  sources?: WorkSpecChangeSource[]
+}
 export interface ProductWorkSpec {
   revision: string
   sourceRevision: string
@@ -35,7 +44,8 @@ export function normalizeWorkSpec(value: Partial<ProductWorkSpec> = {}): Product
     engineeringRequirements: value.engineeringRequirements || '',
     requirementsColor: value.requirementsColor || '#ed00df', dieLocation: value.dieLocation || '',
     structureFileId: value.structureFileId ?? null,
-    changes: (value.changes || []).map(row => ({ date: row.date || null, text: row.text || '', color: row.color || '#ed00df' })),
+    changes: (value.changes || []).map(row => ({ date: row.date || null, text: row.text || '', color: row.color || '#ed00df',
+      print: row.print !== false, reason: row.reason || '', sourceLogIds: row.sourceLogIds || [], sources: row.sources || [] })),
     issueUnit: value.issueUnit ?? '工程部', issueDate: value.issueDate || null,
     approved: value.approved === true, confirmedBy: value.confirmedBy, confirmedAt: value.confirmedAt,
   }
@@ -44,7 +54,7 @@ export function workSpecContent(value: ProductWorkSpec) {
   const { revision, sourceRevision, approved, confirmedBy, confirmedAt, ...content } = value
   return {
     ...content, structureFileId: value.structureFileId || null, issueDate: value.issueDate || null,
-    changes: value.changes.map(change => ({ ...change, date: change.date || null })),
+    changes: value.changes.map(({ sources, ...change }) => ({ ...change, date: change.date || null })),
     emboss: Object.fromEntries(embossFields.map(field => [field.key, (value.emboss[field.key] || '').trim()]).filter(([, item]) => item)),
   }
 }
@@ -52,4 +62,5 @@ export const productWorkSpecApi = {
   get: (id: number) => request.get('/product/' + id + '/work-spec'),
   save: (id: number, value: ProductWorkSpec) => request.put('/product/' + id + '/work-spec', { ...workSpecContent(value), revision: value.revision }),
   confirm: (id: number, revision: string, sourceRevision: string) => request.post('/product/' + id + '/work-spec/confirm', { revision, sourceRevision }),
+  changeSources: (id: number, before?: number) => request.get('/product/' + id + '/work-spec/change-sources', { params: { before } }),
 }

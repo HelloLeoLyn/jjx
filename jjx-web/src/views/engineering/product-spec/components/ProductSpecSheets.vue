@@ -2,8 +2,8 @@
   <div class="doc-sheets">
     <div v-for="(page, pageIndex) in pages" :key="page.key" :id="`doc-page-${pageIndex}`" class="sheet-slot">
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
-      <A4Canvas :padding-mm="page.kind === 'spec' ? 3 : 9" :scale="1">
-        <WorkSpecPaper v-if="page.kind === 'spec'" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" />
+      <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' }" :padding-mm="page.kind === 'spec' ? 3 : 9" :scale="1">
+        <WorkSpecPaper v-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" />
         <article v-else class="paper-form">
           <header class="paper-heading">
             <h1>{{ page.title }}<small v-if="page.continuation">（续）</small></h1>
@@ -49,11 +49,15 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import WorkSpecPaper from './WorkSpecPaper.vue'
-import { plain, printParams, printCapacities, documentFileCaption, type DocsetData, type DocPage } from './docset'
+import { plain, printParams, printCapacities, documentFileCaption, type DocsetData, type DocPage, type PaperTextLine } from './docset'
 
 defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string }>()
+const emit = defineEmits<{ layout: [key: string, lines: PaperTextLine[]] }>()
+const workPapers = ref<InstanceType<typeof WorkSpecPaper>[]>([])
+defineExpose({ measureLayout: () => Promise.all(workPapers.value.map(paper => paper.measure())) })
 function padded(rows: Record<string, any>[] = [], size = 10): (Record<string, any> | null)[] { return Array.from({ length: Math.max(size, rows.length) }, (_, i) => rows[i] || null) }
 function labor(row?: Record<string, any> | null): string {
   if (!row) return ''
@@ -70,6 +74,7 @@ function totalLabor(rows: Record<string, any>[]): string {
 
 <style scoped>
 .doc-sheets { display:flex; flex-direction:column; align-items:center; gap:24px; }
+.spec-canvas :deep(.a4-canvas) { width:210mm; border:0; }
 .sheet-slot { width:794px; scroll-margin-top:24px; }
 .page-caption { display:flex; justify-content:space-between; color:#798493; font-size:12px; padding:0 2px 8px; }
 .paper-form { min-height:1053px; box-sizing:border-box; display:flex; flex-direction:column; border:1.4px solid #262626; color:#252525; font-family:'SimSun','Songti SC',serif; }

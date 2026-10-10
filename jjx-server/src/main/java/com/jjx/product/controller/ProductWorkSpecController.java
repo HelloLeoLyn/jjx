@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.dto.ProductWorkSpecDTO;
 import com.jjx.product.service.ProductWorkSpecService;
+import com.jjx.product.service.ProductWorkSpecChangeService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,13 @@ import jakarta.validation.constraints.NotBlank;
 @RequiredArgsConstructor
 public class ProductWorkSpecController {
     private final ProductWorkSpecService service;
+    private final ProductWorkSpecChangeService changes;
+
+    @GetMapping("/change-sources")
+    @SaCheckPermission("product:edit")
+    public Result<ObjectNode> changeSources(@PathVariable Long productId, @RequestParam(required = false) Long before) {
+        return Result.success(changes.list(productId, before));
+    }
 
     @GetMapping
     @SaCheckLogin

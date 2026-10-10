@@ -28,5 +28,9 @@ public class ProductWorkSpecDTO {
         @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd") private LocalDate date;
         @Size(max = 1000) private String text;
         @Size(max = 20) private String color;
+        /** 旧记录未设置时保持原打印行为；新记录由前端显式传false。 */
+        private Boolean print;
+        @Size(max = 1000) private String reason;
+        @Size(max = 100) private List<Long> sourceLogIds = new ArrayList<>();
     }
 }
