@@ -96,17 +96,30 @@
             />
           </el-tab-pane>
 
-          <!-- ② 样品需求单（占位，位置：客供资料 与 产品作业规范 之间） -->
+          <!-- ② 样品需求单（占位） -->
           <el-tab-pane label="样品需求单" name="sample-requisition">
             <el-empty description="样品需求单：占位页，展示内容与数据来源待定（后续实现）" :image-size="60" />
           </el-tab-pane>
 
-          <!-- ③ 领料单（占位，位置：客供资料 与 产品作业规范 之间） -->
+          <!-- ③ 样品 -->
+          <el-tab-pane label="样品" name="sample">
+            <el-alert type="info" :closable="false" class="tab-tip"
+              title="样品实物照片 + 客户确认样品（工程上传）；与「客供资料」同一处理位置归集展示。" />
+            <ProductFileLibrary
+              v-if="productCode"
+              :product-code="productCode"
+              :categories="['样品照片', '客户确认样品']"
+              upload-perm="product:edit"
+              delete-perm="product:delete"
+            />
+          </el-tab-pane>
+
+          <!-- ④ 领料单（占位） -->
           <el-tab-pane label="领料单" name="pick-order">
             <el-empty description="领料单：占位页，展示内容与数据来源待定（后续实现）" :image-size="60" />
           </el-tab-pane>
 
-          <!-- ④ 产品作业规范 -->
+          <!-- ⑤ 产品作业规范 -->
           <el-tab-pane label="产品作业规范" name="spec">
             <ProductWorkSpecPanel
               v-if="productId && activeTab === 'spec'"
@@ -119,7 +132,7 @@
             />
           </el-tab-pane>
 
-          <!-- ⑤ 印刷规范 -->
+          <!-- ⑥ 印刷规范 -->
           <el-tab-pane label="印刷规范" name="print">
             <ProductPrintSpecPanel
               v-if="productId && activeTab === 'print'"
@@ -130,14 +143,14 @@
             />
           </el-tab-pane>
 
-          <!-- ⑥ 油墨调配记录表（位置：印刷规范 与 工程图集 之间） -->
+          <!-- ⑦ 油墨调配记录表（位置：印刷规范 与 工程图集 之间） -->
           <el-tab-pane label="油墨调配记录表" name="ink">
             <el-alert type="info" :closable="false" class="tab-tip"
               title="油墨调配记录表：按参考样张录入机种/色号/色样、原料名称、重量(g)、百分比、油墨罐号、调墨员、调墨日期、溶剂。" />
             <InkMixingForm v-if="productId && activeTab === 'ink'" :key="`${productId}-ink`" />
           </el-tab-pane>
 
-          <!-- ⑦ 工程图集 -->
+          <!-- ⑧ 工程图集 -->
           <el-tab-pane label="工程图集" name="atlas">
             <el-alert type="info" :closable="false" class="tab-tip"
               title="按图种归集工程图纸：结构图、外形尺寸图、面板图、线路图、组装图、包装图、印刷指导图等；上传时选择对应图种和版本。" />
@@ -152,7 +165,7 @@
             />
           </el-tab-pane>
 
-          <!-- ⑧ 分色检查表 -->
+          <!-- ⑨ 分色检查表 -->
           <el-tab-pane label="分色检查表" name="color">
             <ProductColorCheckPanel
               v-if="productId && activeTab === 'color'"
@@ -160,19 +173,6 @@
               :product-id="productId"
               @busy="colorCheckBusy = $event"
               @updated="refreshSpecSources"
-            />
-          </el-tab-pane>
-
-          <!-- ⑨ 样品 -->
-          <el-tab-pane label="样品" name="sample">
-            <el-alert type="info" :closable="false" class="tab-tip"
-              title="样品实物照片 + 客户确认样品（工程上传）；与「客供资料」同一处理位置归集展示。" />
-            <ProductFileLibrary
-              v-if="productCode"
-              :product-code="productCode"
-              :categories="['样品照片', '客户确认样品']"
-              upload-perm="product:edit"
-              delete-perm="product:delete"
             />
           </el-tab-pane>
         </el-tabs>
