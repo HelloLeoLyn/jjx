@@ -19,6 +19,7 @@ import com.jjx.product.service.IEngineeringBomService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -115,6 +116,18 @@ public class BomController extends BaseController {
     @GetMapping("/items/{bomId}")
     public Result<List<EngineeringBomItem>> getBomItems(@PathVariable Long bomId) {
         return Result.success(productBomService.getBomItems(bomId));
+    }
+
+    /**
+     * BOM 物料全量同步：批量按「名称+规格」匹配物料库（只读，回填未关联的导入行）。
+     * 2026-10-10 dev-20261010-002
+     */
+    @Operation(summary = "BOM物料全量同步匹配")
+    @PostMapping("/match-materials")
+    @SaCheckPermission(value = {"engineering:bom:add", "engineering:bom:edit"}, mode = SaMode.OR)
+    public Result<List<com.jjx.product.domain.vo.BomMaterialMatchResultVO>> matchMaterials(
+            @RequestBody List<com.jjx.product.domain.dto.BomMaterialMatchItemDTO> items) {
+        return Result.success(productBomService.matchMaterials(items));
     }
 
     /**

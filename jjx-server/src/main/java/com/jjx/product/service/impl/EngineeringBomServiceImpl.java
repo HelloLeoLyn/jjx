@@ -863,6 +863,77 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return issues;
     }
 
+    @Override
+    public List<com.jjx.product.domain.vo.BomMaterialMatchResultVO> matchMaterials(
+            List<com.jjx.product.domain.dto.BomMaterialMatchItemDTO> items) {
+        List<com.jjx.product.domain.vo.BomMaterialMatchResultVO> results = new java.util.ArrayList<>();
+        if (items == null || items.isEmpty()) {
+            return results;
+        }
+        // 一次性加载启用中的物料，归一化后按「名称+规格」建索引（物料档案量级有限，全量装载足够）
+        List<com.jjx.inventory.domain.InventoryMaterial> materials = inventoryMaterialMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                        .eq(com.jjx.inventory.domain.InventoryMaterial::getStatus,
+                                com.jjx.common.enums.StatusEnum.NORMAL.getCode()));
+        java.util.Map<String, List<com.jjx.inventory.domain.InventoryMaterial>> index = new java.util.HashMap<>();
+        if (materials != null) {
+            for (com.jjx.inventory.domain.InventoryMaterial m : materials) {
+                index.computeIfAbsent(matchKey(m.getMaterialName(), m.getSpecification()),
+                        k -> new java.util.ArrayList<>()).add(m);
+            }
+        }
+        for (com.jjx.product.domain.dto.BomMaterialMatchItemDTO item : items) {
+            com.jjx.product.domain.vo.BomMaterialMatchResultVO r = new com.jjx.product.domain.vo.BomMaterialMatchResultVO();
+            r.setIndex(item == null ? null : item.getIndex());
+            List<com.jjx.inventory.domain.InventoryMaterial> candidates = java.util.Collections.emptyList();
+            if (item != null) {
+                candidates = index.getOrDefault(matchKey(item.getName(), item.getSpec()),
+                        java.util.Collections.emptyList());
+            }
+            r.setMatchCount(candidates.size());
+            if (candidates.size() == 1) {
+                // 唯一命中：可自动回填
+                com.jjx.inventory.domain.InventoryMaterial m = candidates.get(0);
+                r.setStatus("MATCHED");
+                r.setMaterialId(m.getMaterialId());
+                r.setMaterialCode(m.getMaterialCode());
+                r.setUnit(m.getUnit());
+            } else if (candidates.size() > 1) {
+                // 多条同名同规格：不自动填，前端标黄提示手动选择
+                r.setStatus("AMBIGUOUS");
+            } else {
+                r.setStatus("NOT_FOUND");
+            }
+            results.add(r);
+        }
+        return results;
+    }
+
+    /**
+     * 匹配键：名称 + 规格 归一化（去空白、全角转半角、忽略大小写）后拼接。
+     * 归一化可避免「白卡纸 300g」与「白卡纸300g」这类空格/全角差异导致误判不中。
+     */
+    private static String matchKey(String name, String spec) {
+        return normalizeText(name) + "\u0001" + normalizeText(spec);
+    }
+
+    private static String normalizeText(String s) {
+        if (s == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(s.length());
+        for (char c : s.toCharArray()) {
+            if (Character.isWhitespace(c)) {
+                continue;
+            }
+            if (c >= 0xFF01 && c <= 0xFF5E) {
+                c = (char) (c - 0xFEE0);
+            }
+            sb.append(Character.toLowerCase(c));
+        }
+        return sb.toString();
+    }
+
     private com.jjx.product.domain.vo.BomCheckIssueVO issue(Long itemId, String code, String name, String field, String message) {
         com.jjx.product.domain.vo.BomCheckIssueVO v = new com.jjx.product.domain.vo.BomCheckIssueVO();
         v.setItemId(itemId);

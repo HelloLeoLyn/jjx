@@ -86,6 +86,27 @@ export interface BomSimpleVo {
   approveStatus: number
   materialCount: number
 }
+
+/** BOM 物料全量同步请求项（dev-20261010-002） */
+export interface BomMaterialMatchItem {
+  /** 行定位（前端回填用） */
+  index: number
+  /** 物料名称 */
+  name: string
+  /** 规格 */
+  spec: string
+}
+
+/** BOM 物料全量同步匹配结果（dev-20261010-002） */
+export interface BomMaterialMatchResult {
+  index: number
+  /** MATCHED 唯一命中 / AMBIGUOUS 多条待确认 / NOT_FOUND 未匹配 */
+  status: 'MATCHED' | 'AMBIGUOUS' | 'NOT_FOUND'
+  materialId?: number
+  materialCode?: string
+  unit?: string
+  matchCount: number
+}
 export interface EngineeringBom {
   bomId: number
   bomCode: string

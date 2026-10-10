@@ -107,6 +107,14 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
      */
     List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBomForSubmit(Long bomId);
 
+    /**
+     * BOM 物料全量同步：批量按「名称+规格」匹配物料库（只读，不改任何数据）。
+     * 供编辑器「全量同步」按钮回填未关联的导入行。
+     * 2026-10-10 dev-20261010-002
+     */
+    List<com.jjx.product.domain.vo.BomMaterialMatchResultVO> matchMaterials(
+            List<com.jjx.product.domain.dto.BomMaterialMatchItemDTO> items);
+
     boolean updateStatus(UpdateBomStatusDTO dto);
 
     /** 审批驳回：固定流转到 BomStatus.REJECT */

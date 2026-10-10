@@ -7,6 +7,15 @@
         <el-button type="info" :icon="Refresh" :loading="refreshLoading" @click="handleRefresh">
           刷新
         </el-button>
+        <el-button
+          v-if="!readonly"
+          type="warning"
+          :icon="Link"
+          :loading="syncLoading"
+          @click="handleSyncMaterials"
+        >
+          全量同步
+        </el-button>
       </div>
 
       <div class="header-right">
@@ -26,6 +35,7 @@
       default-expand-all
       :height="tableHeight"
       @selection-change="handleSelectionChange"
+      :row-class-name="rowClassName"
       class="bom-item-table"
     >
       <!-- 序号列 - 拖拽手柄 -->
@@ -39,7 +49,18 @@
       </el-table-column>
 
       <!-- 物料编码 -->
-      <el-table-column label="物料编码" prop="materialCode" width="120" fixed="left" />
+      <el-table-column label="物料编码" prop="materialCode" width="120" fixed="left">
+        <template #default="scope">
+          <span>{{ scope.row.materialCode }}</span>
+          <el-tooltip
+            v-if="syncReasonText(scope.row)"
+            :content="syncReasonText(scope.row)"
+            placement="top"
+          >
+            <el-icon class="sync-warn-icon"><WarningFilled /></el-icon>
+          </el-tooltip>
+        </template>
+      </el-table-column>
 
       <!-- 物料名称 -->
       <el-table-column label="物料名称" prop="materialName" min-width="240">
@@ -276,13 +297,22 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Refresh, CopyDocument, Rank } from '@element-plus/icons-vue'
+import {
+  Plus,
+  Delete,
+  Refresh,
+  CopyDocument,
+  Rank,
+  Link,
+  WarningFilled,
+} from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
-import type { EngineeringBomItem } from '@/types/product/bom'
+import type { EngineeringBomItem, BomMaterialMatchItem } from '@/types/product/bom'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import { standardProcessApi } from '@/api/product/standardProcess'
+import { productBomApi } from '@/api/product/bom'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 
@@ -733,6 +763,89 @@ const handleRefresh = async () => {
   }
 }
 
+// ==================== 全量同步（库存物料自动关联，dev-20261010-002） ====================
+// 仅对「未关联」行按【名称+规格】回查物料库：唯一命中自动回填 materialId/materialCode/单位；
+// 未匹配 / 多义行不进 item 对象，只记在 syncFlags，避免污染提交 payload。
+const syncLoading = ref(false)
+const syncFlags = ref<Record<string, 'AMBIGUOUS' | 'NOT_FOUND'>>({})
+
+/** 当前行未关联物料（无 materialId 或无 materialCode） */
+const isRowUnlinked = (row: EngineeringBomItem) =>
+  !row.materialId || Number(row.materialId) <= 0 || !row.materialCode?.trim()
+
+const handleSyncMaterials = async () => {
+  if (!items.value.length) {
+    ElMessage.warning('没有可同步的物料')
+    return
+  }
+  // 只收集未关联的行（已关联的不动）
+  const targets: EngineeringBomItem[] = []
+  walkTree(items.value, (row) => {
+    if (isRowUnlinked(row)) targets.push(row)
+  })
+  if (!targets.length) {
+    syncFlags.value = {}
+    ElMessage.info('没有未关联的物料，无需同步')
+    return
+  }
+
+  syncLoading.value = true
+  try {
+    const payload: BomMaterialMatchItem[] = targets.map((row, i) => ({
+      index: i,
+      name: row.materialName || '',
+      spec: row.specification || '',
+    }))
+    const res = await productBomApi.matchMaterials(payload)
+    const results = res.data || []
+
+    let matched = 0
+    let notFound = 0
+    let ambiguous = 0
+    const flags: Record<string, 'AMBIGUOUS' | 'NOT_FOUND'> = {}
+    results.forEach((r) => {
+      const row = targets[r.index]
+      if (!row) return
+      if (r.status === 'MATCHED' && r.materialId) {
+        // 唯一命中：回填 materialId / materialCode / 单位（名称保留 Excel 原文）
+        row.materialId = r.materialId
+        row.materialCode = r.materialCode || ''
+        if (r.unit) row.unit = r.unit
+        matched++
+      } else if (r.status === 'AMBIGUOUS') {
+        flags[String(row.itemId)] = 'AMBIGUOUS'
+        ambiguous++
+      } else {
+        flags[String(row.itemId)] = 'NOT_FOUND'
+        notFound++
+      }
+    })
+    syncFlags.value = flags
+    ElMessage.success(`同步完成：命中 ${matched}，未匹配 ${notFound}，多义待确认 ${ambiguous}`)
+  } catch (error) {
+    console.error('物料全量同步失败:', error)
+    ElMessage.error('物料全量同步失败')
+  } finally {
+    syncLoading.value = false
+  }
+}
+
+/** 行标黄：未匹配（浅黄） / 多义待确认（深黄） */
+const rowClassName = ({ row }: { row: EngineeringBomItem }) => {
+  const flag = syncFlags.value[String(row.itemId)]
+  if (flag === 'AMBIGUOUS') return 'bom-row-ambiguous'
+  if (flag === 'NOT_FOUND') return 'bom-row-unmatched'
+  return ''
+}
+
+/** 行标黄原因（悬浮提示） */
+const syncReasonText = (row: EngineeringBomItem): string => {
+  const flag = syncFlags.value[String(row.itemId)]
+  if (flag === 'AMBIGUOUS') return '库中存在多条同名同规格物料，请手动选择'
+  if (flag === 'NOT_FOUND') return '库中未匹配到同名同规格物料'
+  return ''
+}
+
 // 物料建档：保存独立物料档案后回填当前行
 const materialFormVisible = ref(false)
 const materialPreset = ref({ materialName: '', specification: '', unit: 'PCS' })
@@ -919,6 +1032,22 @@ defineExpose({
 
   :deep(.el-table__row:hover) {
     background-color: #f5f7fa;
+  }
+
+  // 全量同步：未匹配标浅黄 / 多义待确认标深黄（dev-20261010-002）
+  :deep(.el-table__body tr.bom-row-unmatched > td) {
+    background-color: #fdf6ec !important;
+  }
+
+  :deep(.el-table__body tr.bom-row-ambiguous > td) {
+    background-color: #ffe7ba !important;
+  }
+
+  .sync-warn-icon {
+    margin-left: 4px;
+    color: #e6a23c;
+    vertical-align: middle;
+    cursor: help;
   }
 
   // 表头列按钮样式

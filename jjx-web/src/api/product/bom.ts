@@ -6,6 +6,8 @@ import type {
   EngineeringBomItem,
   BomSimpleVo,
   BomCheckIssue,
+  BomMaterialMatchItem,
+  BomMaterialMatchResult,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
 // ==================== BomAPI ====================
@@ -60,6 +62,14 @@ export const productBomApi = {
    */
   listEngineeringBomItem(bomId: number) {
     return request.get(`/engineering/bom/items/${bomId}`)
+  },
+
+  /**
+   * BOM 物料全量同步：批量按「名称+规格」匹配物料库（只读）
+   * 2026-10-10 dev-20261010-002
+   */
+  matchMaterials(items: BomMaterialMatchItem[]) {
+    return request.post<R<BomMaterialMatchResult[]>>('/engineering/bom/match-materials', items)
   },
 
   /**
