@@ -16,6 +16,8 @@ public class SalesSampleOrder {
     @TableId(type = IdType.AUTO)
     private Long sampleOrderId;
     private Long orderId;
+    private String sourceType;
+    private String sourceNo;
     private Long productId;
     private String productCode;
     private String productName;

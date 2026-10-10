@@ -31,7 +31,8 @@ export interface SampleOrder {
   orderId: number
   traceId?: string
   orderNo: string
-  quotationId?: number
+  sourceType?: 'QUOTATION' | 'SALES_ORDER' | 'SAMPLE_ORDER'
+  sourceNo?: string
   customerId: number
   customerName: string
   customerShortName?: string
@@ -84,7 +85,8 @@ export interface SampleOrderItemInput {
 
 export interface SampleOrderCreateDTO {
   customerId: number
-  quotationId?: number
+  sourceType?: 'QUOTATION' | 'SALES_ORDER'
+  sourceNo?: string
   items?: SampleOrderItemInput[]
   deliveryDate?: string
   contactPerson?: string
@@ -93,7 +95,7 @@ export interface SampleOrderCreateDTO {
   remark?: string
 }
 
-export type SampleOrderUpdateDTO = Omit<SampleOrderCreateDTO, 'quotationId'>
+export type SampleOrderUpdateDTO = Omit<SampleOrderCreateDTO, 'sourceType' | 'sourceNo'>
 
 export interface SampleConvertItem {
   orderProductId: number

@@ -61,6 +61,10 @@
             }}</el-link>
           </template>
         </el-table-column>
+        <el-table-column label="来源类型" width="100">
+          <template #default="scope">{{ sourceTypeLabel(scope.row.sourceType) }}</template>
+        </el-table-column>
+        <el-table-column label="来源单号" prop="sourceNo" min-width="150" show-overflow-tooltip />
         <el-table-column label="样品状态" width="130">
           <template #default="scope">
             <el-tag :type="statusTagType(scope.row.sampleStatus)" size="small">
@@ -136,7 +140,7 @@
             remote
             :remote-method="searchCustomers"
             :loading="customerSearching"
-            :disabled="!!createForm.quotationId"
+            :disabled="createForm.sourceType === 'QUOTATION' && !!createForm.sourceNo"
             style="width: 100%"
             @change="onCustomerChange"
           >
@@ -148,10 +152,24 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="来源报价单" v-if="!createEditId">
+        <el-form-item label="来源类型">
           <el-select
-            v-model="createForm.quotationId"
-            placeholder="可选：从单产品报价单带出客户和产品"
+            v-model="createForm.sourceType"
+            placeholder="无来源"
+            clearable
+            :disabled="!!createEditId"
+            style="width: 100%"
+            @change="onSourceTypeChange"
+          >
+            <el-option label="报价单" value="QUOTATION" />
+            <el-option label="销售订单" value="SALES_ORDER" />
+            <el-option label="样品单" value="SAMPLE_ORDER" disabled />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="来源单号" v-if="createForm.sourceType === 'QUOTATION' && !createEditId">
+          <el-select
+            v-model="createForm.sourceNo"
+            placeholder="选择单产品报价单，带出客户和产品"
             filterable
             clearable
             style="width: 100%"
@@ -159,15 +177,18 @@
           >
             <el-option
               v-for="q in quotationOptions"
-              :key="q.quotationId"
+              :key="q.quotationNo"
               :label="`${q.quotationNo} - ${q.customerName} (${q.finalAmount}元)`"
-              :value="q.quotationId"
+              :value="q.quotationNo"
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="来源单号" v-else-if="createForm.sourceType">
+          <el-input v-model="createForm.sourceNo" :disabled="!!createEditId" placeholder="填写来源单号" />
+        </el-form-item>
         <el-form-item label="打样产品" required>
           <el-select
-            v-if="!createForm.quotationId"
+            v-if="createForm.sourceType !== 'QUOTATION' || !createForm.sourceNo"
             v-model="createForm.product.productId"
             filterable
             remote
@@ -285,6 +306,8 @@
           <el-descriptions-item label="客户名称">{{
             detailData.customerName
           }}</el-descriptions-item>
+          <el-descriptions-item label="来源类型">{{ sourceTypeLabel(detailData.sourceType) }}</el-descriptions-item>
+          <el-descriptions-item label="来源单号">{{ detailData.sourceNo || '-' }}</el-descriptions-item>
           <el-descriptions-item label="联系人">{{
             detailData.contactPerson || '-'
           }}</el-descriptions-item>
@@ -528,9 +551,17 @@ function showCustDetail(row: { customerId?: number }) {
   customerDetailVisible.value = true
 }
 
-function openQuotationDetail() {
-  quotationDetailId.value = previewData.value?.order?.quotationId
-  quotationDetailVisible.value = true
+async function openQuotationDetail() {
+  const order = previewData.value?.order
+  if (order?.sourceType !== 'QUOTATION' || !order?.sourceNo) return
+  try {
+    const summary: any = await sampleOrderApi.getSourceQuotationSummary(order.orderId)
+    if (!summary?.data?.quotationId) return
+    quotationDetailId.value = summary.data.quotationId
+    quotationDetailVisible.value = true
+  } catch (error: any) {
+    ElMessage.error(error?.message || '读取来源报价单失败')
+  }
 }
 
 // 当前用户是否工程角色（9=工程管理）
@@ -685,7 +716,8 @@ const quotationProductError = ref('')
 let quotationRequestId = 0
 const createForm = reactive({
   customerId: undefined as number | undefined,
-  quotationId: undefined as number | undefined,
+  sourceType: '' as '' | 'QUOTATION' | 'SALES_ORDER' | 'SAMPLE_ORDER',
+  sourceNo: '',
   product: emptySampleProduct(),
   deliveryDate: '',
   contactPerson: '',
@@ -709,6 +741,13 @@ function statusLabel(status: number): string {
 }
 function statusTagType(status: number): TagType {
   return (SampleOrderStatusEnum.getTagProps(status).type as TagType) || 'info'
+}
+
+function sourceTypeLabel(type?: string): string {
+  if (type === 'QUOTATION') return '报价单'
+  if (type === 'SALES_ORDER') return '销售订单'
+  if (type === 'SAMPLE_ORDER') return '样品单'
+  return '-'
 }
 
 // ==================== 接口 ====================
@@ -757,7 +796,8 @@ function showCreateDialog() {
   createEditOrderNo.value = ''
   createVisible.value = true
   createForm.customerId = undefined
-  createForm.quotationId = undefined
+  createForm.sourceType = ''
+  createForm.sourceNo = ''
   resetProductSelection()
   createForm.deliveryDate = ''
   createForm.contactPerson = ''
@@ -770,7 +810,7 @@ function showCreateDialog() {
 
 let openingFromOrder = false
 
-// 销售订单明细的便捷入口：只预填现有新建样品单弹窗，后续仍走原打样流程。
+// 销售订单列表的打样入口：预填客户、产品和来源单号。
 async function openCreateFromOrderQuery() {
   const sourceOrderId = route.query.sourceOrderId
   const sourceItemId = route.query.sourceItemId
@@ -798,6 +838,8 @@ async function openCreateFromOrderQuery() {
     }
     showCreateDialog()
     createForm.customerId = order.customerId
+    createForm.sourceType = 'SALES_ORDER'
+    createForm.sourceNo = order.orderNo
     createForm.contactPerson = order.contactPerson || ''
     createForm.contactPhone = order.contactPhone || ''
     fillSampleProduct({
@@ -807,7 +849,6 @@ async function openCreateFromOrderQuery() {
       quantity: 1,
       unit: item.unitDesc || 'PCS',
     })
-    createForm.remark = `来源销售订单：${order.orderNo}；产品：${item.productCode || item.productName}`
   } catch (error: any) {
     ElMessage.error(error?.message || '加载销售订单失败，请重试')
   } finally {
@@ -833,7 +874,8 @@ async function handleEdit(row: any) {
     const order = infoRes?.data || {}
     const items: any[] = prodRes?.data || []
     createForm.customerId = order.customerId
-    createForm.quotationId = undefined // 编辑模式不展示来源报价选择（来源报价关系锁定）
+    createForm.sourceType = order.sourceType || ''
+    createForm.sourceNo = order.sourceNo || ''
     if (items.length > 1) {
       ElMessage.error('该历史样品单包含多个产品，请先按产品拆单，不能直接编辑覆盖')
       return
@@ -877,11 +919,17 @@ async function searchCustomers(keyword: string) {
 
 // 选客户：带出联系人/电话
 function onCustomerChange(cid: number) {
+  if (createForm.sourceType === 'SALES_ORDER') createForm.sourceNo = ''
   const c = customerOptions.value.find((x) => x.customerId === cid)
   if (c) {
     if (!createForm.contactPerson) createForm.contactPerson = c.contactPerson || ''
     if (!createForm.contactPhone) createForm.contactPhone = c.contactPhone || ''
   }
+  resetProductSelection()
+}
+
+function onSourceTypeChange() {
+  createForm.sourceNo = ''
   resetProductSelection()
 }
 
@@ -905,23 +953,22 @@ function fillSampleProduct(item: any) {
 }
 
 // 单产品报价直接带入；多产品报价保留整单拆分转换语义。
-async function onQuotationChange(qid?: number) {
+async function onQuotationChange(quotationNo?: string) {
   resetProductSelection()
-  if (!qid) return
-  const q = quotationOptions.value.find((x) => x.quotationId === qid)
-  if (q) {
-    createForm.customerId = q.customerId
-    createForm.contactPerson = q.contactPerson || ''
-    createForm.contactPhone = q.contactPhone || ''
-    createForm.deliveryDate = q.validUntil || ''
-    if (!customerOptions.value.some((c) => c.customerId === q.customerId)) {
-      customerOptions.value.push({ ...q })
-    }
+  if (!quotationNo) return
+  const q = quotationOptions.value.find((x) => x.quotationNo === quotationNo)
+  if (!q) return
+  createForm.customerId = q.customerId
+  createForm.contactPerson = q.contactPerson || ''
+  createForm.contactPhone = q.contactPhone || ''
+  createForm.deliveryDate = q.validUntil || ''
+  if (!customerOptions.value.some((c) => c.customerId === q.customerId)) {
+    customerOptions.value.push({ ...q })
   }
   const requestId = quotationRequestId
   quotationProductLoading.value = true
   try {
-    const res: any = await quotationApi.getItems(qid)
+    const res: any = await quotationApi.getItems(q.quotationId)
     if (requestId !== quotationRequestId) return
     const items: any[] = res?.data || []
     if (items.length !== 1) {
@@ -979,6 +1026,10 @@ async function submitCreate() {
     ElMessage.warning('请选择客户')
     return
   }
+  if (createForm.sourceType && !createForm.sourceNo.trim()) {
+    ElMessage.warning('请填写来源单号')
+    return
+  }
   if (quotationProductLoading.value || quotationProductError.value) {
     ElMessage.warning(quotationProductError.value || '请等待报价产品加载完成')
     return
@@ -1004,13 +1055,14 @@ async function submitCreate() {
   }
   try {
     if (createEditId.value) {
-      // 编辑模式：走更新接口（不含 quotationId，来源报价关系锁定）
+      // 编辑模式：来源锁定，仅更新样品内容。
       await sampleOrderApi.update(createEditId.value, payload)
       ElMessage.success(`样品单${createEditOrderNo.value}已保存`)
     } else {
       const res = await sampleOrderApi.create({
         ...payload,
-        quotationId: createForm.quotationId || undefined,
+        sourceType: createForm.sourceType === 'SAMPLE_ORDER' ? undefined : createForm.sourceType || undefined,
+        sourceNo: createForm.sourceNo.trim() || undefined,
       })
       ElMessage.success(`样品单创建成功: ${res.data.orderNo}，可前往工程打样`)
     }

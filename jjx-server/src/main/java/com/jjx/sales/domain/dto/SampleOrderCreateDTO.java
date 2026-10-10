@@ -19,8 +19,11 @@ public class SampleOrderCreateDTO {
     @NotNull(message = "客户不能为空")
     private Long customerId;
 
-    /** 来源报价单ID（可选，提供则带出明细并回写报价单状态） */
-    private Long quotationId;
+    /** 来源类型：QUOTATION / SALES_ORDER；无来源时留空 */
+    private String sourceType;
+
+    /** 来源单号快照；与来源类型同时提供 */
+    private String sourceNo;
 
     /** 单个打样产品；省略或空列表时兼容从单产品报价单带入。 */
     @Valid

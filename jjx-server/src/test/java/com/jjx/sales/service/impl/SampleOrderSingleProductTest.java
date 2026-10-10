@@ -1,12 +1,14 @@
 package com.jjx.sales.service.impl;
 
 import com.jjx.common.exception.BusinessException;
+import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.product.service.ProductCustomerValidator;
 import com.jjx.sales.domain.dto.SampleOrderCreateDTO;
 import com.jjx.sales.domain.dto.SampleOrderUpdateDTO;
 import com.jjx.sales.domain.entity.*;
 import com.jjx.sales.domain.vo.SalesOrderProductVO;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
+import com.jjx.sales.enums.SalesOrderTypeEnum;
 import com.jjx.sales.mapper.*;
 import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.service.OperLogChangeRecorder;
@@ -31,6 +33,8 @@ class SampleOrderSingleProductTest {
     @Mock OrderMapper orderMapper;
     @Mock CustomerMapper customerMapper;
     @Mock SalesSampleOrderMapper sampleOrderMapper;
+    @Mock QuotationMapper quotationMapper;
+    @Mock RedisSequenceService redisSequenceService;
     @Mock SalesOrderProductMapper orderProductMapper;
     @Mock ISalesOrderProductService orderProductService;
     @Mock ProductCustomerValidator productCustomerValidator;
@@ -95,6 +99,67 @@ class SampleOrderSingleProductTest {
         dto.setItems(null);
         assertThrows(BusinessException.class, () -> service.createSample(dto));
         verifyNoOrderWrites();
+    }
+
+    @Test
+    void createRejectsIncompleteSourceBeforeWriting() {
+        var dto = createDto(2);
+        var customer = new SalesCustomer();
+        when(customerMapper.selectById(7L)).thenReturn(customer);
+        dto.setSourceType("SALES_ORDER");
+        assertThrows(BusinessException.class, () -> service.createSample(dto));
+        verifyNoOrderWrites();
+    }
+
+    @Test
+    void createRejectsProductOutsideSourceOrder() {
+        var dto = createDto(2);
+        dto.setSourceType("SALES_ORDER");
+        dto.setSourceNo("SO-100");
+        when(customerMapper.selectById(7L)).thenReturn(new SalesCustomer());
+        var source = new SalesOrder();
+        source.setOrderId(100L);
+        source.setCustomerId(7L);
+        source.setOrderType(SalesOrderTypeEnum.STANDARD.getCode());
+        when(orderMapper.selectOne(any())).thenReturn(source);
+        var otherProduct = new SalesOrderProductVO();
+        otherProduct.setProductId(99L);
+        when(orderProductService.getListByOrderId(100L)).thenReturn(List.of(otherProduct));
+
+        assertThrows(BusinessException.class, () -> service.createSample(dto));
+        verifyNoOrderWrites();
+    }
+
+    @Test
+    void createFromSalesOrderSavesTypeAndNumberWithoutQuotationId() {
+        var dto = createDto(2);
+        dto.setSourceType("SALES_ORDER");
+        dto.setSourceNo("SO-100");
+        var customer = new SalesCustomer();
+        customer.setCustomerId(7L);
+        when(customerMapper.selectById(7L)).thenReturn(customer);
+        var source = new SalesOrder();
+        source.setOrderId(100L);
+        source.setCustomerId(7L);
+        source.setOrderType(SalesOrderTypeEnum.STANDARD.getCode());
+        when(orderMapper.selectOne(any())).thenReturn(source);
+        var product = new SalesOrderProductVO();
+        product.setProductId(20L);
+        when(orderProductService.getListByOrderId(100L)).thenReturn(List.of(product));
+        when(redisSequenceService.generateBusinessNumberByType("sample_order", "SP", "yyMMdd", 3))
+                .thenReturn("SP-101");
+        doAnswer(invocation -> {
+            ((SalesOrder) invocation.getArgument(0)).setOrderId(101L);
+            return 1;
+        }).when(orderMapper).insert(any(SalesOrder.class));
+
+        var created = service.createSample(dto);
+
+        assertEquals("SALES_ORDER", created.getSourceType());
+        assertEquals("SO-100", created.getSourceNo());
+        assertNull(created.getQuotationId());
+        verify(sampleOrderMapper).insert(argThat((SalesSampleOrder profile) ->
+                "SALES_ORDER".equals(profile.getSourceType()) && "SO-100".equals(profile.getSourceNo())));
     }
 
     @ParameterizedTest

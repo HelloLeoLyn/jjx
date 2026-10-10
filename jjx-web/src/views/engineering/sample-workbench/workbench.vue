@@ -533,7 +533,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { useSampleWorkbench } from './composables/useSampleWorkbench'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
@@ -722,10 +723,17 @@ const inquiryDetailId = ref<number>()
 // 任务1438：无 sales:quotation:view / sales:inquiry:view（工程角色）→ 走按样品单收敛的来源单据摘要弹窗（服务端已剔敏感数据）
 const sourceDocVisible = ref(false)
 const sourceDocType = ref<'quotation' | 'inquiry'>('quotation')
-function openQuotationDetail() {
+async function openQuotationDetail() {
+  if (card.value?.sourceType !== 'QUOTATION' || !orderId.value) return
   if (hasPermi('sales:quotation:view')) {
-    quotationDetailId.value = card.value?.quotationId
-    quotationDetailVisible.value = true
+    try {
+      const summary: any = await sampleOrderApi.getSourceQuotationSummary(orderId.value)
+      if (!summary?.data?.quotationId) return
+      quotationDetailId.value = summary.data.quotationId
+      quotationDetailVisible.value = true
+    } catch (error: any) {
+      ElMessage.error(error?.message || '读取来源报价单失败')
+    }
   } else {
     sourceDocType.value = 'quotation'
     sourceDocVisible.value = true

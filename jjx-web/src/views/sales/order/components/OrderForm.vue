@@ -646,14 +646,16 @@ async function autoFillPriceFromQuotation(sample: any) {
   priceAutoFillWarning.value = false
   const hasZeroPrice = (form.items as any[]).some((it) => !Number(it.unitPrice))
   if (!hasZeroPrice) return
-  const quotationId = sample?.quotationId
-  if (!quotationId) {
+  if (sample?.sourceType !== 'QUOTATION' || !sample?.sourceNo) {
     priceAutoFillHint.value =
       '本样品单未关联报价单，请填写单价后再提交（金额为 0 的订单不允许发货）'
     priceAutoFillWarning.value = true
     return
   }
   try {
+    const summary: any = await sampleOrderApi.getSourceQuotationSummary(sample.orderId)
+    const quotationId = summary?.data?.quotationId
+    if (!quotationId) throw new Error('来源报价单不存在')
     const qRes: any = await quotationApi.getItems(quotationId)
     const qItems: any[] = qRes?.data || []
     let filled = 0
@@ -672,9 +674,9 @@ async function autoFillPriceFromQuotation(sample: any) {
     })
     calculateTotalAmount()
     if (filled > 0) {
-      priceAutoFillHint.value = `单价已按来源报价单【${sample.quotationNo || quotationId}】自动带出 ${filled} 行，可直接修改`
+      priceAutoFillHint.value = `单价已按来源报价单【${sample.sourceNo}】自动带出 ${filled} 行，可直接修改`
     } else {
-      priceAutoFillHint.value = `来源报价单【${sample.quotationNo || quotationId}】未带价，请填写单价后再提交（金额为 0 的订单不允许发货）`
+      priceAutoFillHint.value = `来源报价单【${sample.sourceNo}】未带价，请填写单价后再提交（金额为 0 的订单不允许发货）`
       priceAutoFillWarning.value = true
     }
   } catch {

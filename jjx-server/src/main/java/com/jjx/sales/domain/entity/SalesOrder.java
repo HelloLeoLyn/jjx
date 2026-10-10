@@ -377,20 +377,25 @@ public class SalesOrder extends BaseEntity {
     @TableField(exist = false)
     private LocalDateTime lastTransferTime;
 
-    /**
-     * 来源报价单号（非表字段，查询时按 quotation_id 关联填充，工作台来源单据展示）
-     */
+    /** 样品单来源类型、来源单号（存于 sales_sample_order）。 */
+    @TableField(exist = false)
+    private String sourceType;
+
+    @TableField(exist = false)
+    private String sourceNo;
+
+    /** 来源报价单号（兼容工作台报价摘要；由样品单来源单号填充）。 */
     @TableField(exist = false)
     private String quotationNo;
 
     /**
-     * 来源询价单ID（非表字段，查询时按 quotation_id → 询价单关联填充，来源单据查看入口用）
+     * 来源询价单ID（非表字段，按来源报价单反查，来源单据查看入口用）
      */
     @TableField(exist = false)
     private Long inquiryId;
 
     /**
-     * 来源询价单号（非表字段，查询时按 quotation_id → 询价单关联填充）
+     * 来源询价单号（非表字段，按来源报价单反查）
      */
     @TableField(exist = false)
     private String inquiryNo;

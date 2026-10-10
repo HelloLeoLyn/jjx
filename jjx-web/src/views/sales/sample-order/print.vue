@@ -118,7 +118,8 @@
         <div class="info-item"><span class="info-label">样品状态</span>{{ statusName }}</div>
         <div class="info-item"><span class="info-label">客户名称</span>{{ info.customerName || '-' }}</div>
         <div class="info-item"><span class="info-label">联系人</span>{{ info.contactPerson || '-' }}</div>
-        <div class="info-item"><span class="info-label">来源报价</span>{{ info.quotationNo || '-' }}</div>
+        <div class="info-item"><span class="info-label">来源类型</span>{{ info.sourceType === 'QUOTATION' ? '报价单' : info.sourceType === 'SALES_ORDER' ? '销售订单' : info.sourceType === 'SAMPLE_ORDER' ? '样品单' : '-' }}</div>
+        <div class="info-item"><span class="info-label">来源单号</span>{{ info.sourceNo || '-' }}</div>
         <div class="info-item"><span class="info-label">迭代轮次</span>Round {{ info.sampleRound || 1 }}</div>
         <div class="info-item"><span class="info-label">打样数量</span>{{ info.sampleQty || '-' }}</div>
         <div class="info-item"><span class="info-label">送样日期</span>{{ info.sampleSendDate || '-' }}</div>

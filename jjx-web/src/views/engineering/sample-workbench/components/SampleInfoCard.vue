@@ -52,11 +52,18 @@
       <span style="margin-left: 12px; color: #909399; font-size: 12px">接单后开始记录打样过程</span>
     </div>
 
-    <!-- 来源单据（工作台第一步优化：询价单/报价单展示 + 查看入口，弹窗查看不离开工作台） -->
+    <!-- 样品单来源以类型和单号展示；报价来源可继续查看询价/报价摘要。 -->
     <div class="source-docs">
       <div class="source-docs-label">来源单据</div>
       <div class="source-docs-row">
         <span class="source-docs-item">
+          <span class="source-docs-key">来源类型</span>
+          {{ card.sourceType === 'QUOTATION' ? '报价单' : card.sourceType === 'SALES_ORDER' ? '销售订单' : card.sourceType === 'SAMPLE_ORDER' ? '样品单' : '-' }}
+        </span>
+        <span class="source-docs-item">
+          <span class="source-docs-key">来源单号</span>{{ card.sourceNo || '-' }}
+        </span>
+        <span v-if="card.sourceType === 'QUOTATION'" class="source-docs-item">
           <span class="source-docs-key">询价单</span>
           <template v-if="card.inquiryNo">
             {{ card.inquiryNo }}
@@ -66,7 +73,7 @@
           </template>
           <span v-else>-</span>
         </span>
-        <span class="source-docs-item">
+        <span v-if="card.sourceType === 'QUOTATION'" class="source-docs-item">
           <span class="source-docs-key">报价单</span>
           <template v-if="card.quotationNo">
             {{ card.quotationNo }}

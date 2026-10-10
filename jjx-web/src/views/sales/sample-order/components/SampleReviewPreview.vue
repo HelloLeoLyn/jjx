@@ -5,11 +5,12 @@
       <el-descriptions :column="2" border size="small">
         <el-descriptions-item label="样品单号">{{ order.orderNo || '-' }}</el-descriptions-item>
         <el-descriptions-item label="客户">{{ order.customerName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="来源报价单">
-          <template v-if="order.quotationNo">
-            {{ order.quotationNo }}
+        <el-descriptions-item label="来源类型">{{ sourceTypeLabel(order.sourceType) }}</el-descriptions-item>
+        <el-descriptions-item label="来源单号">
+          <template v-if="order.sourceNo">
+            {{ order.sourceNo }}
             <el-button
-              v-if="order.quotationId"
+              v-if="order.sourceType === 'QUOTATION'"
               link
               type="primary"
               size="small"
@@ -52,11 +53,12 @@
         <el-descriptions-item label="当前状态">{{ statusLabel(order.sampleStatus) }}</el-descriptions-item>
         <el-descriptions-item label="客户">{{ order.customerName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="业务负责人">{{ order.salesManagerName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="来源报价单">
-          <template v-if="order.quotationNo">
-            {{ order.quotationNo }}
+        <el-descriptions-item label="来源类型">{{ sourceTypeLabel(order.sourceType) }}</el-descriptions-item>
+        <el-descriptions-item label="来源单号">
+          <template v-if="order.sourceNo">
+            {{ order.sourceNo }}
             <el-button
-              v-if="order.quotationId"
+              v-if="order.sourceType === 'QUOTATION'"
               link
               type="primary"
               size="small"
@@ -125,6 +127,13 @@ const props = withDefaults(
 function statusLabel(status: number | null | undefined): string {
   if (status == null) return '-'
   return SampleOrderStatus.getLabel(status) || String(status)
+}
+
+function sourceTypeLabel(type?: string): string {
+  if (type === 'QUOTATION') return '报价单'
+  if (type === 'SALES_ORDER') return '销售订单'
+  if (type === 'SAMPLE_ORDER') return '样品单'
+  return '-'
 }
 
 defineEmits<{
