@@ -377,6 +377,55 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 changes.add("移除物料:" + matLabel(oldIt));
             }
         }
+        // 明细顺序变更（2026-10-10 dev-20261010-019）：拖动排序后操作日志要可见。
+        // 按「新旧共同物料」的相对先后比较：仅纯增/删的记录上面已出，这里只补真实顺序被调整的情况。
+        java.util.List<Long> oldSeq = new java.util.ArrayList<>();
+        for (EngineeringBomItem it : oldItems) {
+            if (it.getMaterialId() != null && !oldSeq.contains(it.getMaterialId())) {
+                oldSeq.add(it.getMaterialId());
+            }
+        }
+        java.util.List<Long> newSeq = new java.util.ArrayList<>();
+        if (dto.getItems() != null) {
+            for (EngineeringBomItemDTO it : dto.getItems()) {
+                if (it.getMaterialId() != null && !newSeq.contains(it.getMaterialId())) {
+                    newSeq.add(it.getMaterialId());
+                }
+            }
+        }
+        java.util.List<Long> commonOld = new java.util.ArrayList<>();
+        for (Long id : oldSeq) {
+            if (newSeq.contains(id)) commonOld.add(id);
+        }
+        java.util.List<Long> commonNew = new java.util.ArrayList<>();
+        for (Long id : newSeq) {
+            if (oldSeq.contains(id)) commonNew.add(id);
+        }
+        if (commonOld.size() > 1 && !commonOld.equals(commonNew)) {
+            changes.add("明细顺序调整：" + seqLabel(commonOld, oldByMat, newByMat)
+                    + " → " + seqLabel(commonNew, oldByMat, newByMat));
+        }
+    }
+
+    /** 明细顺序展示：materialId 序列 → 物料编码序列（取新旧任一侧的编码） */
+    private String seqLabel(java.util.List<Long> ids,
+                            java.util.Map<Long, EngineeringBomItem> oldByMat,
+                            java.util.Map<Long, EngineeringBomItemDTO> newByMat) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) sb.append(" → ");
+            Long id = ids.get(i);
+            EngineeringBomItemDTO n = newByMat.get(id);
+            EngineeringBomItem o = oldByMat.get(id);
+            String code = null;
+            if (n != null) {
+                code = n.getMaterialCode() != null ? n.getMaterialCode() : n.getMaterialName();
+            } else if (o != null) {
+                code = o.getMaterialCode() != null ? o.getMaterialCode() : o.getMaterialName();
+            }
+            sb.append(code != null ? code : String.valueOf(id));
+        }
+        return sb.toString();
     }
 
     /** 关联标准工序显示名（未关联→“未关联”；无名称→#id） */
