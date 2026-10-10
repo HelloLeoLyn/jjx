@@ -231,18 +231,6 @@
               width="150"
               show-overflow-tooltip
             />
-            <el-table-column label="打样" width="100" align="center" fixed="right">
-              <template #default="{ row }">
-                <el-button
-                  v-hasPermi="['sales:sample:add']"
-                  link
-                  type="primary"
-                  @click="startSample(row)"
-                >
-                  发起打样
-                </el-button>
-              </template>
-            </el-table-column>
           </el-table>
 
           <div class="items-total">
@@ -320,7 +308,6 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import { ElMessage } from 'element-plus'
 import { orderApi } from '@/api/sales/order'
@@ -337,20 +324,6 @@ const props = defineProps<{
   modelValue: boolean
   orderId: number
 }>()
-
-const router = useRouter()
-
-function startSample(item: { id: number }) {
-  if (!orderDetail.value?.orderId || !item.id) return
-  drawerVisible.value = false
-  void router.push({
-    path: '/sales/sample-order',
-    query: {
-      sourceOrderId: String(orderDetail.value.orderId),
-      sourceItemId: String(item.id),
-    },
-  })
-}
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void

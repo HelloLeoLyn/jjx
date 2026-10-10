@@ -211,6 +211,24 @@
       />
     </el-card>
 
+    <el-dialog
+      v-model="sampleProductVisible"
+      :title="`选择打样产品 - ${sampleSourceOrder?.orderNo || ''}`"
+      width="600px"
+      destroy-on-close
+    >
+      <el-table :data="sampleSourceItems" border max-height="360">
+        <el-table-column prop="productCode" label="产品编码" width="150" />
+        <el-table-column prop="productName" label="产品名称" min-width="180" />
+        <el-table-column prop="quantity" label="订单数量" width="100" align="right" />
+        <el-table-column label="操作" width="100" align="center">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openSampleForItem(row.id)">选择</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
     <!-- 审核对话框 -->
     <ReviewDialog
       v-model="reviewDialogVisible"
@@ -277,7 +295,7 @@ import GeneratePlanDialog from './components/GeneratePlanDialog.vue'
 import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
 import ValidationDialog from './components/ValidationDialog.vue'
 import ShortageCheckDialog from './components/ShortageCheckDialog.vue'
-import type { SalesOrderQueryDTO } from '@/types/sales/order'
+import type { SalesOrderProductVO, SalesOrderQueryDTO, SalesOrderVO } from '@/types/sales/order'
 import { SalesOrderStatusEnum, PaymentStatusEnum, ProdStatusEnum } from '@/enums/sales/OrderEnum'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
@@ -289,6 +307,7 @@ const isPartialShipped = (row: any) =>
   Number(row.shippedQuantity || 0) < Number(row.totalQuantity || 0)
 const orderRowActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
+  { key: 'sample', label: '发起打样', permission: 'sales:sample:add' },
   {
     key: 'submit',
     label: '提交审核',
@@ -432,6 +451,7 @@ const orderRowActions: TableAction<any>[] = [
 const handleOrderRowAction = (key: string, row: any) => {
   const handlers: Record<string, () => void> = {
     trace: () => showTrace(row),
+    sample: () => void handleStartSample(row),
     submit: () => void handleSubmitReview(row),
     startReview: () => void handleStartReview(row),
     approve: () => handleApprove(row),
@@ -449,6 +469,46 @@ const handleOrderRowAction = (key: string, row: any) => {
     edit: () => handleUpdate(row),
   }
   handlers[key]?.()
+}
+
+const sampleProductVisible = ref(false)
+const sampleSourceOrder = ref<SalesOrderVO | null>(null)
+const sampleSourceItems = ref<SalesOrderProductVO[]>([])
+let sampleLoading = false
+
+async function handleStartSample(row: SalesOrderVO) {
+  if (!row.orderId || sampleLoading) return
+  sampleLoading = true
+  try {
+    const response = await orderApi.getOrder(row.orderId)
+    const order = response.data
+    const items = order?.items || []
+    if (!items.length) {
+      ElMessage.warning('该订单没有产品明细，无法发起打样')
+      return
+    }
+    sampleSourceOrder.value = order
+    sampleSourceItems.value = items
+    if (items.length === 1) {
+      openSampleForItem(items[0].id)
+    } else {
+      sampleProductVisible.value = true
+    }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载订单产品失败，请重试')
+  } finally {
+    sampleLoading = false
+  }
+}
+
+function openSampleForItem(itemId: number) {
+  const orderId = sampleSourceOrder.value?.orderId
+  if (!orderId || !itemId) return
+  sampleProductVisible.value = false
+  void router.push({
+    path: '/sales/sample-order',
+    query: { sourceOrderId: String(orderId), sourceItemId: String(itemId) },
+  })
 }
 
 // 查询参数
