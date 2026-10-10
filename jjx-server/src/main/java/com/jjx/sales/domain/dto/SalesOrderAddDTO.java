@@ -41,7 +41,7 @@ public class SalesOrderAddDTO {
     @Schema(description = "联系人", example = "张三")
     private String contactPerson;
 
-    @Pattern(regexp = "^1[3-9]\\d{9}$", message = "手机号码格式不正确")
+    @Pattern(regexp = "^(1[3-9]\\d{9}|(0\\d{2,3}-?)?\\d{7,8})$", message = "联系电话格式不正确")
     @Schema(description = "联系电话", example = "13800138000")
     private String contactPhone;
 
