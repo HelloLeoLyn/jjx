@@ -5,6 +5,8 @@
     append-to-body
     :fullscreen="isFullscreen"
     destroy-on-close
+    :close-on-click-modal="false"
+    :before-close="handleBeforeClose"
   >
     <template #header>
       <div class="dialog-header">
@@ -122,26 +124,26 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">确 定</el-button>
-        <el-button @click="visible = false">取 消</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="handleSave">保 存</el-button>
+        <el-button :loading="submitLoading" @click="handleSaveAndClose">保存并关闭</el-button>
+        <el-button @click="handleCloseClick">关 闭</el-button>
+        <el-tag v-if="isDirty" type="warning" size="small" effect="plain" style="margin-left: 8px">
+          未保存
+        </el-tag>
       </div>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { FullScreen } from '@element-plus/icons-vue'
 import { productRouteApi } from '@/api/product/routing'
 import { RouteStatusEnum } from '@/enums/product'
 import type { ProductItem, StandardProcessOption } from '@/types/product'
-import type {
-  ProductRouteFormData,
-  EngineeringRoutingItemDTO,
-  EngineeringRoutingItemVO,
-} from '@/types/product/routing'
+import type { ProductRouteFormData, EngineeringRoutingItemVO } from '@/types/product/routing'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import RouteItemIconEditor from './RouteItemIconEditor.vue'
 
@@ -165,7 +167,7 @@ const visible = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
-const isEdit = computed(() => props.routingId !== undefined)
+const isEdit = computed(() => activeRoutingId.value !== undefined)
 const title = computed(() => (isEdit.value ? '修改工艺路线' : '新增工艺路线'))
 const isFullscreen = ref(false)
 const loading = ref(false)
@@ -178,6 +180,12 @@ const changeNote = ref('')
 const hasChanges = ref(false)
 const currentApproveStatus = ref<number>()
 let initialItemsSnapshot = ''
+// 未保存检测：完整表单基线（基本信息 + 整棵工序树）。dev-20261010-009
+const activeRoutingId = ref<number | undefined>(props.routingId)
+const baseline = ref('')
+const isDirty = ref(false)
+// 内部主动关闭时置位，跳过离开拦截
+const suppressGuard = ref(false)
 
 // RouteStatusEnum 是位置式枚举（无具名成员），按 label 取「已批准」的值，避免直接写数字（AGENTS.md 状态枚举条款）
 const APPROVED_ROUTE_STATUS = RouteStatusEnum.items.find((item) => item.label === '已批准')?.value
@@ -307,6 +315,34 @@ function snapshotItems(items: any[]): string {
   return JSON.stringify((items || []).map(snapshotItem))
 }
 
+// —— 未保存状态：完整表单快照（基本信息 + 整棵工序树）dev-20261010-009 ——
+const fullFormSnapshot = (): string =>
+  JSON.stringify({
+    productId: formData.productId,
+    routingCode: text(formData.routingCode),
+    routingName: text(formData.routingName),
+    routingVersion: text(formData.routingVersion),
+    description: text(formData.description),
+    remark: text(formData.remark),
+    items: snapshotItems(editorRef.value?.getItems() || formData.items || []),
+  })
+
+const setBaseline = () => {
+  baseline.value = fullFormSnapshot()
+  isDirty.value = false
+}
+
+const recomputeDirty = () => {
+  if (!baseline.value) {
+    isDirty.value = false
+    return
+  }
+  isDirty.value = fullFormSnapshot() !== baseline.value
+}
+
+// 表单（含基本信息）任意变更都重算未保存状态；工序变更由 handleItemsUpdate 额外触发。
+watch(formData, recomputeDirty, { deep: true })
+
 const resetForm = () => {
   formRef.value?.resetFields()
   Object.assign(formData, {
@@ -327,6 +363,8 @@ const resetForm = () => {
   selectedProduct.value = null
   currentApproveStatus.value = undefined
   initialItemsSnapshot = ''
+  baseline.value = ''
+  isDirty.value = false
   hasChanges.value = false
   changeNote.value = ''
   editorRef.value?.setItems([])
@@ -358,15 +396,16 @@ const loadStandardProcesses = async () => {
   }
 }
 
-const loadRouteDetail = async () => {
-  if (props.routingId === undefined) return
+const loadRouteDetail = async (silentError = false) => {
+  const rid = activeRoutingId.value
+  if (rid === undefined) return
   loading.value = true
   try {
-    const response = await productRouteApi.getProductRouteInfo(props.routingId)
+    const response = await productRouteApi.getProductRouteInfo(rid)
     const detail = response.data
     if (!detail) {
-      ElMessage.error('加载工艺路线详情失败')
-      return
+      if (!silentError) ElMessage.error('加载工艺路线详情失败')
+      throw new Error('工艺路线详情为空')
     }
     const items = (detail.items || []).map(mapRouteItem)
     Object.assign(formData, {
@@ -384,6 +423,7 @@ const loadRouteDetail = async () => {
       remark: detail.remark,
       items,
     })
+    activeRoutingId.value = detail.routingId ?? rid
     currentApproveStatus.value = detail.approveStatus
     changeNote.value = ''
     await nextTick()
@@ -391,9 +431,11 @@ const loadRouteDetail = async () => {
     await nextTick()
     initialItemsSnapshot = snapshotItems(editorRef.value?.getItems() || [])
     hasChanges.value = false
+    setBaseline()
   } catch (error) {
     console.error('加载工艺路线详情失败:', error)
-    ElMessage.error('加载工艺路线详情失败')
+    if (!silentError) ElMessage.error('加载工艺路线详情失败')
+    throw error
   } finally {
     loading.value = false
   }
@@ -404,68 +446,187 @@ const handleItemsUpdate = (items: EngineeringRoutingItemVO[]) => {
   if (isEdit.value && initialItemsSnapshot) {
     hasChanges.value = snapshotItems(items) !== initialItemsSnapshot
   }
+  recomputeDirty()
 }
 
-const handleSubmit = async () => {
-  if (!formRef.value) return
+const toItemDTO = (item: EngineeringRoutingItemVO) => ({
+  itemId: item.itemId,
+  routingId: item.routingId,
+  groupId: item.groupId ?? undefined,
+  groupOrder: item.groupOrder ?? undefined,
+  groupName: item.groupName ?? undefined,
+  processId: item.processId,
+  processOrder: item.processOrder,
+  customLaborHours: item.customLaborHours,
+  customMachineHours: item.customMachineHours,
+  customProcessParams: item.customProcessParams,
+  description: item.description,
+  remark: item.remark,
+  processCategory: item.processCategory,
+  majorCategory: item.majorCategory,
+  children: item.children,
+})
+
+/** 校验 + 保存；成功返回 true。不负责关闭弹窗（关闭由调用方按需执行）。 */
+const doSave = async (): Promise<boolean> => {
+  if (!formRef.value) return false
   try {
     await formRef.value.validate()
-    const items = editorRef.value?.getItems() || []
-    if (!items.length) {
-      ElMessage.warning('请至少添加一道工序')
-      return
-    }
-    submitLoading.value = true
-    if (isEdit.value && props.routingId !== undefined) {
+  } catch {
+    return false
+  }
+  const items = editorRef.value?.getItems() || []
+  if (!items.length) {
+    ElMessage.warning('请至少添加一道工序')
+    return false
+  }
+  submitLoading.value = true
+  try {
+    if (activeRoutingId.value !== undefined) {
       const changed = snapshotItems(items) !== initialItemsSnapshot
       const isApproved = currentApproveStatus.value === APPROVED_ROUTE_STATUS
-      const payload: any = { ...formData, items, bumpVersion: changed && isApproved }
+      const payload: any = {
+        ...formData,
+        routingId: activeRoutingId.value,
+        items,
+        bumpVersion: changed && isApproved,
+      }
       if (changed && isApproved) payload.changeNote = changeNote.value.trim()
-      const res = await productRouteApi.editProductRoute(props.routingId, payload)
+      const res = await productRouteApi.editProductRoute(activeRoutingId.value, payload)
+      // 升版保存会新建版本，以接口返回的真实ID为准（否则后续会改错对象）
+      const returnedId = res?.data?.routingId
+      if (returnedId !== undefined && returnedId !== null) activeRoutingId.value = returnedId
       if (payload.bumpVersion === true) {
         ElMessage.success(
           `保存成功，已升级为 ${res?.data?.version || res?.data?.routingVersion || ''}（旧版本失效）`
         )
       } else {
-        ElMessage.success('修改成功')
+        ElMessage.success('保存成功')
       }
     } else {
-      const itemDTOs: EngineeringRoutingItemDTO[] = items.map((item: EngineeringRoutingItemVO) => ({
-        itemId: item.itemId,
-        routingId: item.routingId,
-        groupId: item.groupId,
-        groupOrder: item.groupOrder,
-        groupName: item.groupName,
-        processId: item.processId,
-        processOrder: item.processOrder,
-        customLaborHours: item.customLaborHours,
-        customMachineHours: item.customMachineHours,
-        customProcessParams: item.customProcessParams,
-        description: item.description,
-        remark: item.remark,
-        processCategory: item.processCategory,
-        majorCategory: item.majorCategory,
-        children: item.children,
-      }))
-      await productRouteApi.addProductRoute({ ...formData, items: itemDTOs as any })
+      const res = await productRouteApi.addProductRoute({
+        ...formData,
+        items: items.map(toItemDTO) as any,
+      })
+      const newId = res?.data?.routingId
       ElMessage.success('新增成功')
+      if (newId === undefined || newId === null) {
+        // 未拿到真实ID：关闭并刷新，避免继续以“新增”身份重复建单
+        emit('success')
+        suppressGuard.value = true
+        visible.value = false
+        return true
+      }
+      // 新增成功后切换为修改该路线（后续保存改同一条，不再重复新增）
+      activeRoutingId.value = newId
     }
+    // 保存后同步：以真实ID回读最新详情（真实父子明细ID/版本），重设基线
+    await reloadDetailAfterSave()
     emit('success')
-    visible.value = false
+    return true
   } catch (error) {
     console.error(isEdit.value ? '修改工艺路线失败:' : '新增工艺路线失败:', error)
+    ElMessage.error(isEdit.value ? '保存失败，请检查后重试' : '新增失败，请检查后重试')
+    return false
   } finally {
     submitLoading.value = false
   }
 }
 
+/** 保存成功后回读详情，取得真实父子明细ID与版本并重设基线 */
+const reloadDetailAfterSave = async () => {
+  try {
+    await loadRouteDetail(true)
+  } catch {
+    ElMessage.warning('已保存，但重新加载失败，请关闭后重新打开确认')
+  }
+}
+
+/** 未保存离开拦截：返回 true=允许离开，false=留在页面 */
+const resolveLeave = async (): Promise<boolean> => {
+  if (suppressGuard.value) return true
+  if (!isDirty.value) return true
+  try {
+    await ElMessageBox.confirm('当前工艺路线有未保存的修改。', '未保存提醒', {
+      distinguishCancelAndClose: true,
+      confirmButtonText: '保存并离开',
+      cancelButtonText: '放弃修改',
+      type: 'warning',
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
+    })
+    // 保存并离开：保存成功才离开；校验不过/失败则留在页面
+    return await doSave()
+  } catch (action) {
+    // 放弃修改 → 离开；X / Esc（close）→ 继续编辑
+    return action === 'cancel'
+  }
+}
+
+/** 弹窗关闭前拦截（× / Esc 触发） */
+const handleBeforeClose = async (done: () => void) => {
+  if (submitLoading.value) return
+  if (await resolveLeave()) {
+    suppressGuard.value = true
+    done()
+  }
+}
+
+const handleSave = () => {
+  void doSave()
+}
+
+const handleSaveAndClose = async () => {
+  const ok = await doSave()
+  if (ok) {
+    suppressGuard.value = true
+    visible.value = false
+  }
+}
+
+const handleCloseClick = async () => {
+  if (submitLoading.value) return
+  if (await resolveLeave()) {
+    suppressGuard.value = true
+    visible.value = false
+  }
+}
+
+/** 浏览器刷新/关闭标签页原生提醒（仅确有未保存修改时） */
+const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+  if (props.modelValue && isDirty.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
+onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload))
+
+// 供父级路由离开保护使用
+defineExpose({
+  formIsDirty: () => isDirty.value,
+  resolveLeave,
+})
+
 watch(
   () => props.modelValue,
   async (opened) => {
     if (!opened) return
+    activeRoutingId.value = props.routingId
+    suppressGuard.value = false
     resetForm()
     await loadStandardProcesses()
-    if (isEdit.value) await loadRouteDetail()
+    if (isEdit.value) {
+      try {
+        await loadRouteDetail()
+      } catch {
+        // 加载失败已在 loadRouteDetail 内提示
+      }
+    } else {
+      await nextTick()
+      setBaseline()
+    }
   }
 )
 </script>

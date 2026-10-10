@@ -95,7 +95,12 @@
     <!-- 详情对话框 -->
     <RouteDetailDialog v-model="detailDialogVisible" :routing-id="currentRoutingId" />
 
-    <RouteFormDialog v-model="formDialogVisible" :routing-id="formRoutingId" @success="loadData" />
+    <RouteFormDialog
+      ref="formDialogRef"
+      v-model="formDialogVisible"
+      :routing-id="formRoutingId"
+      @success="loadData"
+    />
 
     <!-- 版本对比对话框（DEV-768） -->
     <RouteVersionCompareDialog
@@ -134,6 +139,7 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { productRouteApi } from '@/api/product/routing'
@@ -245,6 +251,7 @@ interface ProductOption {
 const detailDialogVisible = ref(false)
 const formDialogVisible = ref(false)
 const formRoutingId = ref<number | undefined>(undefined)
+const formDialogRef = ref<InstanceType<typeof RouteFormDialog>>()
 const copyDialogVisible = ref(false)
 const approveDialogVisible = ref(false)
 
@@ -440,6 +447,15 @@ const handleApproveReject = async (remark: string) => {
 // ==================== 初始化 ====================
 onMounted(() => {
   loadData()
+})
+
+// ==================== 路由离开保护（dev-20261010-009） ====================
+// 弹窗打开且有未保存修改时，路由离开前走同一套「保存并离开 / 放弃修改 / 继续编辑」
+onBeforeRouteLeave(async () => {
+  if (!formDialogVisible.value) return true
+  const dialog = formDialogRef.value
+  if (!dialog?.formIsDirty()) return true
+  return await dialog.resolveLeave()
 })
 </script>
 
