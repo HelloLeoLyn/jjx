@@ -10,6 +10,7 @@ export const ENGINEERING_DRAWING_CATEGORIES = [
   '确认图',
   '菲林',
   '模具',
+  '刀模参数图',
   '其他工程图',
 ]
 
