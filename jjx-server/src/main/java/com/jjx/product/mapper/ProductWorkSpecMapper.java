@@ -25,9 +25,9 @@ public interface ProductWorkSpecMapper {
                CASE WHEN b.bom_id IS NOT NULL THEN CONCAT('BOM ', b.bom_code, ' / ', COALESCE(b.bom_version, ''))
                     ELSE CONCAT('工艺路线 ', r.routing_code, ' / ', COALESCE(r.routing_version, '')) END AS sourceLabel
         FROM sys_oper_log l
-        LEFT JOIN engineering_bom b ON l.biz_type = 'bom' AND l.biz_id = CAST(b.bom_id AS CHAR)
+        LEFT JOIN engineering_bom b ON l.biz_type = 'bom' AND l.biz_id = CAST(b.bom_id AS CHAR) COLLATE utf8mb4_unicode_ci
              AND b.product_id = #{productId} AND b.approve_status = #{bomApproved} AND l.action = #{bomAction}
-        LEFT JOIN engineering_routing r ON l.biz_type = 'routing' AND l.biz_id = CAST(r.routing_id AS CHAR)
+        LEFT JOIN engineering_routing r ON l.biz_type = 'routing' AND l.biz_id = CAST(r.routing_id AS CHAR) COLLATE utf8mb4_unicode_ci
              AND r.product_id = #{productId} AND r.approve_status = #{routeApproved} AND l.action = #{routeAction}
         WHERE (b.bom_id IS NOT NULL OR r.routing_id IS NOT NULL)
           AND l.status = #{success} AND l.detail IS NOT NULL
