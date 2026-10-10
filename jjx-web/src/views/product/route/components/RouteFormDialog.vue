@@ -235,6 +235,8 @@ function mapRouteItem(item: any): any {
     customMachineHours: item.customMachineHours || 0,
     customProcessParams: item.customProcessParams || '',
     description: item.description || '',
+    remark: item.remark || '',
+    workInstruction: item.workInstruction ?? null,
     processCategory: item.processCategory || '',
     majorCategory: item.majorCategory || 'ASSEMBLY',
     processName:
