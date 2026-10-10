@@ -2,7 +2,7 @@
   <div class="work-spec-panel">
     <div class="work-actions">
       <div class="engineering-actions">
-        <el-button v-if="canEdit" :disabled="!data" @click="edit('requirements')">工程要求</el-button>
+        <el-button v-if="canEdit" :disabled="!data" @click="edit('requirements')">凹凸条件与加工要求</el-button>
         <el-button v-if="canEdit" :disabled="!data" @click="edit('die')">刀模位置</el-button>
         <el-button v-if="canEdit" :disabled="!data" @click="edit('structure')">结构图</el-button>
         <el-button v-if="canEdit" :disabled="!data" @click="edit('changes')">变更与发行</el-button>
@@ -18,7 +18,7 @@
     <el-dialog v-model="editorVisible" title="工程维护 · 产品作业规范" width="1060px" append-to-body destroy-on-close :close-on-click-modal="false" :before-close="closeEditor">
       <div class="editor-product">{{ productName }}　{{ productCode }}</div>
       <el-tabs v-model="editorTab">
-        <el-tab-pane label="工程要求" name="requirements">
+        <el-tab-pane label="凹凸条件与加工要求" name="requirements">
           <el-form label-width="130px">
             <div class="emboss-fields"><el-form-item v-for="field in embossFields" :key="field.key" :label="field.label"><el-input v-model="draft.emboss[field.key]" placeholder="选填" maxlength="20"><template #append>{{ field.unit }}</template></el-input></el-form-item></div>
             <el-form-item label="加工要求"><el-input v-model="draft.engineeringRequirements" type="textarea" :rows="7" maxlength="2000" show-word-limit placeholder="选填；每项要求可单独换行" /></el-form-item>
@@ -26,7 +26,7 @@
           </el-form>
         </el-tab-pane>
         <el-tab-pane label="刀模位置" name="die">
-          <el-form label-width="100px"><el-form-item label="刀模位置"><el-input v-model="draft.dieLocation" type="textarea" :rows="8" maxlength="500" show-word-limit placeholder="工程独立填写位置，选填" /></el-form-item></el-form>
+          <el-form label-width="100px"><el-form-item label="刀模位置"><el-input v-model="draft.dieLocation" type="textarea" :rows="8" maxlength="500" show-word-limit placeholder="选填；每行填写一个位置，可留空行，与材料独立维护" /></el-form-item></el-form>
         </el-tab-pane>
         <el-tab-pane label="结构图" name="structure">
           <el-form label-width="100px"><el-form-item label="规范结构图"><el-select v-model="draft.structureFileId" clearable filterable placeholder="选填；选择这张规范单使用的图纸" style="width:100%"><el-option v-for="file in structureOptions" :key="file.id" :label="documentFileCaption(file)" :value="file.id" /></el-select></el-form-item></el-form>

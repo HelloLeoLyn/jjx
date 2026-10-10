@@ -1,55 +1,75 @@
 <template>
   <article class="work-paper">
     <header class="work-title">产 品 作 业 规 范<span v-if="page.continuation">（续）</span></header>
-    <div class="upper-section">
-      <table class="grid materials">
-        <colgroup><col style="width:7%" /><col style="width:7%" /><col style="width:31%" /><col style="width:35%" /><col style="width:20%" /></colgroup>
-        <thead><tr><th>序号</th><th>项目</th><th>材　料</th><th>规格及模数</th><th>刀模位置</th></tr></thead>
-        <tbody>
-          <tr v-for="(row, i) in padded(page.rows, 14)" :key="i">
-            <td class="center">{{ '(' + ((page.continuation || 0) * 14 + i + 1) + ')' }}</td>
-            <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="18" /><span v-else class="cell-single" :title="plain(row?.processName)">{{ plain(row?.processName) }}</span></td>
-            <td><span class="cell-single" :title="row?.materialName || row?.materialCode">{{ row?.materialName || row?.materialCode }}</span></td>
-            <td><span class="cell-single" :title="materialSpec(row)">{{ materialSpec(row) }}</span></td>
-            <td v-if="i === 0" rowspan="14" class="die-position">{{ page.diePosition }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div class="requirements">
-        <table class="grid emboss">
-          <colgroup><col style="width:62%" /><col style="width:38%" /></colgroup>
-          <thead><tr><th>凹凸条件</th><th></th></tr></thead>
-          <tbody><tr v-for="field in embossFields" :key="field.key"><td>{{ field.label }}</td><td class="center">{{ embossValue(field.key, field.unit) }}</td></tr></tbody>
-        </table>
-        <div class="engineering-notes" :style="{ color: data.workSpec.requirementsColor }">{{ page.engineeringNotes }}</div>
-      </div>
-    </div>
-    <div class="flows">
-      <section v-for="(group, column) in page.groups" :key="group.label" class="flow-column">
-        <div v-if="column === 1" class="structure">
-          <div class="structure-title">产 品 结 构 图</div>
-          <div class="structure-art"><img v-if="structureImage" :src="structureImage" alt="产品结构图" /></div>
-          <div v-if="structureCaption" class="structure-caption">{{ structureCaption }}</div>
-        </div>
-        <table class="grid flow">
-          <colgroup><col style="width:15%" /><col style="width:63%" /><col style="width:22%" /></colgroup>
-          <thead><tr><th>序号</th><th>{{ group.label }}作业流程</th><th>耗时(h)</th></tr></thead>
-          <tbody><tr v-for="(row, i) in padded(group.rows, column === 1 ? 6 : 14)" :key="i">
-            <td class="center">{{ '(' + ((page.continuation || 0) * (column === 1 ? 6 : 14) + i + 1) + ')' }}</td>
-            <td><div v-if="row" class="operation">
-              <template v-for="(item, j) in operations(row)" :key="item.itemId || j">
-                <span v-if="j" class="plus">＋</span>
-                <span class="symbol"><SvgIcon v-if="item.icon" :name="item.icon" :size="19" /><span v-else>{{ plain(item.processName) }}</span><sub v-if="item.indexNumber">{{ item.indexNumber }}</sub><small v-if="item.workInstruction || item.description">{{ plain(item.workInstruction || item.description) }}</small></span>
-              </template>
-              <small v-if="row.children?.length && (row.workInstruction || row.description)">{{ plain(row.workInstruction || row.description) }}</small>
-              <small v-if="row.remark">{{ plain(row.remark) }}</small>
-            </div></td>
-            <td class="center">{{ labor(row) }}</td>
-          </tr></tbody>
-          <tfoot><tr><td colspan="2">{{ group.label }}作业总耗时</td><td class="center">{{ totalLabor(fullGroup(group.label)) }}</td></tr></tfoot>
-        </table>
-      </section>
-    </div>
+    <table class="grid materials">
+      <!-- 两张整宽表共用1/3边界：材料右边线与面板耗时右边线贯通。 -->
+      <colgroup>
+        <col style="width:5%" /><col style="width:5%" /><col style="width:calc(100% / 3 - 10%)" />
+        <col style="width:calc(60% - 100% / 3)" /><col style="width:13%" />
+        <col style="width:16.74%" /><col style="width:10.26%" />
+      </colgroup>
+      <thead><tr><th>序号</th><th>项目</th><th>材　料</th><th>规格及模数</th><th>刀模位置</th><th>凹凸条件</th><th></th></tr></thead>
+      <tbody>
+        <tr v-for="(row, i) in padded(page.rows, 14)" :key="i">
+          <td class="center">{{ '(' + ((page.continuation || 0) * 14 + i + 1) + ')' }}</td>
+          <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="18" /><span v-else class="cell-single" :title="plain(row?.processName)">{{ plain(row?.processName) }}</span></td>
+          <td><span class="material-name" :title="row?.materialName || row?.materialCode">{{ row?.materialName || row?.materialCode }}</span></td>
+          <td><span class="cell-single" :title="workSpecMaterialSpec(row)">{{ workSpecMaterialSpec(row) }}</span></td>
+          <td class="die-position">{{ page.diePositionRows?.[i] }}</td>
+          <template v-if="i < embossFields.length">
+            <td class="emboss-label">{{ embossFields[i]?.label }}</td>
+            <td class="center emboss-value">{{ embossValue(embossFields[i]?.key, embossFields[i]?.unit) }}</td>
+          </template>
+          <td v-else-if="i === embossFields.length" :rowspan="14 - embossFields.length" colspan="2" class="engineering-notes" :style="{ color: data.workSpec.requirementsColor }">{{ page.engineeringNotes }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <!-- 三组流程使用同一表格行，结构图跨7行，上线表头占第8行。 -->
+    <table class="grid flows">
+      <colgroup>
+        <template v-for="group in page.groups" :key="group.label">
+          <col style="width:5%" /><col style="width:21%" /><col style="width:calc(100% / 3 - 26%)" />
+        </template>
+      </colgroup>
+      <thead><tr>
+        <template v-for="(group, column) in page.groups" :key="group.label">
+          <th v-if="column === 1" colspan="3" class="structure-title">产 品 结 构 图</th>
+          <template v-else><th>序号</th><th>{{ group.label }}作业流程</th><th>耗时(h)</th></template>
+        </template>
+      </tr></thead>
+      <tbody>
+        <tr v-for="line in flowRows" :key="line.index">
+          <template v-for="cell in line.cells" :key="cell.column">
+            <template v-if="cell.column !== 1 || line.index >= 8">
+              <td class="center">{{ '(' + cell.number + ')' }}</td>
+              <td>
+                <div v-if="cell.item" class="operation">
+                  <div class="operation-symbols">
+                    <template v-for="(item, j) in operations(cell.item)" :key="item.itemId || j">
+                      <span v-if="j" class="plus">＋</span>
+                      <span class="symbol">
+                        <SvgIcon v-if="item.icon" :name="item.icon" :size="20" />
+                        <sub v-if="workSpecStepSubscript(item)">{{ workSpecStepSubscript(item) }}</sub>
+                      </span>
+                    </template>
+                  </div>
+                  <span v-if="workSpecOperationRemark(cell.item)" class="operation-remark" :title="workSpecOperationRemark(cell.item)">{{ workSpecOperationRemark(cell.item) }}</span>
+                </div>
+              </td>
+              <td class="center">{{ labor(cell.item) }}</td>
+            </template>
+            <td v-else-if="line.index === 0" colspan="3" rowspan="7" class="structure">
+              <div class="structure-art"><img v-if="structureImage" :src="structureImage" alt="产品结构图" /></div>
+              <div v-if="structureCaption" class="structure-caption">{{ structureCaption }}</div>
+            </td>
+            <template v-else-if="line.index === 7"><th>序号</th><th>{{ cell.label }}作业流程</th><th>耗时(h)</th></template>
+          </template>
+        </tr>
+      </tbody>
+      <tfoot><tr>
+        <template v-for="group in page.groups" :key="group.label"><td colspan="2">{{ group.label }}作业总耗时</td><td class="center">{{ totalLabor(fullGroup(group.label)) }}</td></template>
+      </tr></tfoot>
+    </table>
     <div class="hours"><span>合计工时</span><div>{{ totalLabor(allOperations) }}</div></div>
     <div class="issuance">
       <div class="vertical-label">变更内容</div>
@@ -68,10 +88,17 @@
 import { computed } from 'vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import { embossFields } from '@/api/product/workSpec'
-import { flowGroups, plain, type DocsetData, type DocPage } from './docset'
+import { flowGroups, plain, workSpecMaterialSpec, workSpecStepSubscript, workSpecOperationRemark, type DocsetData, type DocPage } from './docset'
 
 const props = defineProps<{ data: DocsetData; page: DocPage; pageIndex: number; pageCount: number; structureImage?: string; structureCaption?: string }>()
 const allOperations = computed<Record<string, any>[]>(() => props.data.routing.items || [])
+const flowRows = computed(() => Array.from({ length: 14 }, (_, index) => ({
+  index,
+  cells: (props.page.groups || []).map((group, column) => {
+    const rowIndex = column === 1 ? index - 8 : index
+    return { column, label: group.label, number: (props.page.continuation || 0) * (column === 1 ? 6 : 14) + rowIndex + 1, item: group.rows[rowIndex] }
+  }),
+})))
 function fullGroup(label: string) { const category = flowGroups.find(group => group.label === label)?.value; return allOperations.value.filter(row => row.processCategory === category) }
 function padded(rows: Record<string, any>[] = [], length: number) { return Array.from({ length }, (_, i) => rows[i] || null) }
 function operations(row: Record<string, any>) { return row.children?.length ? row.children : [row] }
@@ -88,12 +115,7 @@ function totalLabor(rows: Record<string, any>[]) {
   const values = rows.map(hourValue).filter((value): value is number => value !== null)
   return values.length ? String(Number(values.reduce((sum, value) => sum + value, 0).toFixed(4))) : ''
 }
-function embossValue(key: string, unit: string) { const value = props.data.workSpec.emboss[key]; return value == null || value === '' ? '' : value + ' ' + unit }
-function materialSpec(row?: Record<string, any> | null) {
-  if (!row) return ''
-  const specification = row.widthMm != null && row.lengthMm != null ? row.widthMm + '×' + row.lengthMm + 'mm' : row.specification || ''
-  return specification + (row.moduleQty == null ? '' : '＝' + row.moduleQty + 'PCS')
-}
+function embossValue(key?: string, unit?: string) { const value = key ? props.data.workSpec.emboss[key] : ''; return value == null || value === '' ? '' : value + ' ' + (unit || '') }
 function shortDate(value?: string | null) { return value ? value.slice(2, 10) : '' }
 </script>
 
@@ -101,30 +123,33 @@ function shortDate(value?: string | null) { return value ? value.slice(2, 10) : 
 .work-paper { height:1098px; display:flex; flex-direction:column; box-sizing:border-box; border:1.5px solid #222; color:#252525; font-family:SimSun,'Songti SC',serif; font-size:13px; }
 .work-title { height:65px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:27px; letter-spacing:5px; border-bottom:1px solid #222; text-decoration:underline; text-underline-offset:7px; }
 .work-title span { font-size:13px; letter-spacing:0; }
-.grid { width:100%; border-collapse:collapse; table-layout:fixed; }
-.grid th,.grid td { border:1px solid #333; padding:2px 4px; line-height:1.2; box-sizing:border-box; font-weight:400; overflow-wrap:anywhere; }
+.grid { width:100%; border-collapse:collapse; table-layout:fixed; flex-shrink:0; }
+.grid th,.grid td { border:0; border-right:1px solid #333; border-bottom:1px solid #333; padding:2px 4px; line-height:1.2; box-sizing:border-box; font-weight:400; overflow-wrap:anywhere; }
+.grid tr > :last-child { border-right:0; }
 .grid th { height:32px; font-size:14px; white-space:nowrap; }
 .center { text-align:center; }
-.upper-section { height:340px; display:flex; flex-shrink:0; }
-.materials { width:73%; height:340px; }
-.materials td { height:22px; }
+.materials { height:340px; }
+.materials tbody tr { height:22px; }
+.materials td { height:22px; padding-top:0; padding-bottom:0; }
+/* 右侧要求跨行时，刀模单元格仍保留与要求区之间的边线。 */
+.materials tbody td.die-position { border-right:1px solid #333; }
 .cell-single { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.die-position { vertical-align:top; white-space:pre-wrap; padding-top:6px !important; }
-.requirements { width:27%; display:flex; flex-direction:column; }
-.emboss td { height:22px; font-size:12px; white-space:nowrap; padding:2px; }
-.engineering-notes { flex:1; padding:8px 5px; border:1px solid #333; border-top:0; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; font-size:12px; overflow:hidden; }
-.flows { display:flex; height:470px; flex-shrink:0; }
-.flow-column { width:33.333333%; min-width:0; }
-.flow th { height:32px; }
-.flow tbody td { height:29px; }
-.flow tfoot td { height:32px; font-size:13px; white-space:nowrap; }
-.operation { display:flex; align-items:center; flex-wrap:wrap; gap:2px; line-height:1.1; height:24px; overflow:hidden; }
-.symbol { display:inline-flex; align-items:center; gap:2px; }
-.symbol sub { font-size:9px; }
-.operation small { font-size:9px; }
+.material-name { display:block; font-size:11px; line-height:10px; max-height:20px; overflow:hidden; overflow-wrap:anywhere; }
+.die-position { font-size:11px; white-space:pre-wrap; }
+.emboss-label,.emboss-value { font-size:12px; white-space:nowrap; padding:0 2px !important; }
+.materials td.engineering-notes { vertical-align:top; padding:8px 5px; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; font-size:12px; }
+.flows { height:470px; }
+.flows tbody tr { height:29px; }
+.flows tbody td,.flows tbody th { height:29px; }
+.flows tfoot td { height:32px; border-bottom:0; font-size:13px; white-space:nowrap; }
+.operation { display:flex; align-items:center; justify-content:space-between; gap:5px; height:24px; line-height:1.1; overflow:hidden; }
+.operation-symbols { display:flex; align-items:center; flex-shrink:0; gap:2px; }
+.symbol { display:inline-flex; align-items:flex-end; }
+.symbol sub { font-size:8px; line-height:10px; margin-left:1px; transform:translateY(2px); max-width:40px; overflow-wrap:anywhere; }
+.operation-remark { margin-left:auto; min-width:0; text-align:right; font-size:12px; line-height:12px; max-height:24px; overflow:hidden; overflow-wrap:anywhere; }
 .plus { font-family:Arial,sans-serif; font-size:13px; }
-.structure { height:232px; position:relative; box-sizing:border-box; border:1px solid #333; }
-.structure-title { height:32px; display:flex; align-items:center; justify-content:center; border-bottom:1px solid #333; font-size:15px; }
+.flows td.structure { vertical-align:middle; padding:0; }
+.flows th.structure-title { font-size:15px; }
 .structure-art { height:184px; padding:8px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; }
 .structure-art img { max-width:100%; max-height:100%; object-fit:contain; }
 .structure-caption { font-size:8px; text-align:center; line-height:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; }

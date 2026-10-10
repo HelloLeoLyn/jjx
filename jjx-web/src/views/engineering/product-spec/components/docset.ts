@@ -5,6 +5,7 @@ import { productFileCategoryLabel, ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum, DrawingFileRoleEnum } from '@/enums/product/drawing'
 import { productWorkSpecApi, normalizeWorkSpec, type ProductWorkSpec } from '@/api/product/workSpec'
 import type { FileImage } from '@/components/product/productFilePreview'
+import { calculateBomQuantity } from '@/utils/bomQuantity'
 export { renderFile, type FileImage } from '@/components/product/productFilePreview'
 
 export const documentSections = [
@@ -75,7 +76,7 @@ export interface DocPage {
   file?: DocFile
   continuation?: number
   engineeringNotes?: string
-  diePosition?: string
+  diePositionRows?: string[]
   changeLines?: PaperTextLine[]
   detailLines?: PaperTextLine[]
 }
@@ -104,16 +105,14 @@ function specText(data: DocsetData) {
       .map(text => ({ text, color: change.color })))
   const details: PaperTextLine[] = []
   if (notes.length > 7) details.push({ text: '加工要求（续）' }, ...notes.slice(7).map(text => ({ text, color: data.workSpec.requirementsColor })))
-  if (die.length > 17) details.push({ text: '刀模位置（续）' }, ...die.slice(17).map(text => ({ text })))
   if (changes.length > 6) details.push({ text: '变更内容（续）' }, ...changes.slice(6))
   flatten(data.bom.items || []).forEach((row, i) => {
-    const specification = row.widthMm != null && row.lengthMm != null ? row.widthMm + '×' + row.lengthMm + 'mm' : row.specification || ''
-    const module = row.moduleQty == null ? '' : '＝' + row.moduleQty + 'PCS'
+    const specification = workSpecMaterialSpec(row)
     if (paperLines(row.materialName || row.materialCode || '', 13).length > 1
-      || paperLines(specification + module, 15).length > 1
-      || paperLines(row.processName || '', 2).length > 1) {
+      || paperLines(specification, 15).length > 1
+      || (!row.icon && paperLines(row.processName || '', 2).length > 1)) {
       details.push({ text: '材料第' + (i + 1) + '项（完整内容）' },
-        ...paperLines([row.processName, row.materialName || row.materialCode, specification + module].filter(Boolean).join('；'), 44).map(text => ({ text })))
+        ...paperLines([row.processName, row.materialName || row.materialCode, specification].filter(Boolean).join('；'), 44).map(text => ({ text })))
     }
   })
   const counters = new Map<string, number>()
@@ -122,14 +121,14 @@ function specText(data: DocsetData) {
     const order = (counters.get(group) || 0) + 1
     counters.set(group, order)
     const operations = row.children?.length ? row.children : [row]
-    const texts = operations.map((item: any) => [item.processName, item.indexNumber ? '(' + item.indexNumber + ')' : '', item.workInstruction || item.description, item.remark].filter(Boolean).join(' '))
-    const note = row.children?.length ? [row.workInstruction || row.description, row.remark].filter(Boolean).join(' ') : ''
-    if (operations.length > 3 || texts.some((text: string) => paperLines(text, 8).length > 1) || note.length > 8)
+    const texts = operations.map((item: any, i: number) => ['图标' + (i + 1), workSpecStepSubscript(item)].filter(Boolean).join(' '))
+    const note = workSpecOperationRemark(row)
+    if (operations.length > 3 || operations.some((item: any) => paperLines(workSpecStepSubscript(item), 4).length > 1) || paperLines(note, 8).length > 1)
       details.push({ text: group + '第' + order + '道（完整作业说明）' }, ...paperLines(texts.join(' ＋ ') + (note ? '；' + note : ''), 44).map(text => ({ text })))
   })
   return {
     engineeringNotes: notes.slice(0, 7).join('\n') + (notes.length > 7 ? '\n（续见附页）' : ''),
-    diePosition: die.slice(0, 17).join('\n') + (die.length > 17 ? '\n（续见附页）' : ''),
+    diePositionRows: die,
     changeLines: changes.slice(0, 6).concat(changes.length > 6 ? [{ text: '（续见附页）' }] : []),
     details,
   }
@@ -137,6 +136,29 @@ function specText(data: DocsetData) {
 
 export function plain(value: unknown): string {
   return String(value ?? '').replace(/<[^>]*>/g, '').trim()
+}
+/** 作业规范只组合BOM事实；尺寸0视为未填，计件材料使用不含损耗的单位用量。 */
+export function workSpecMaterialSpec(row?: Record<string, any> | null): string {
+  if (!row) return ''
+  const width = Number(row.widthMm), length = Number(row.lengthMm)
+  const hasWidth = Number.isFinite(width) && width > 0
+  const hasLength = Number.isFinite(length) && length > 0
+  const specification = hasWidth && hasLength ? width + '*' + length + 'mm' : plain(row.specification)
+  const module = Number(row.moduleQty)
+  if (specification) return specification + (Number.isFinite(module) && module > 0 ? '=' + module + 'PCS' : '')
+  const unit = plain(row.unit).toUpperCase()
+  if (!hasWidth && !hasLength && (unit === 'PCS' || unit === '个') && module === 1) {
+    const quantity = calculateBomQuantity(row.baseQty, row.moduleQty)
+    if (quantity !== undefined) return quantity + '个/PCS'
+  }
+  return ''
+}
+export function workSpecStepSubscript(item: Record<string, any>): string {
+  return [item.indexNumber == null ? '' : String(item.indexNumber), plain(item.workInstruction)].filter(Boolean).join(' ')
+}
+export function workSpecOperationRemark(row?: Record<string, any>): string {
+  if (!row) return ''
+  return [plain(row.remark), ...(row.children || []).map((item: Record<string, any>) => plain(item.remark))].filter(Boolean).join('；')
 }
 export function printParams(row: Record<string, any>): Record<string, any> {
   try { return JSON.parse(row.customProcessParams || '{}') || {} } catch { return {} }
@@ -203,8 +225,8 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
       const groups = flowGroups.map((group) => ({ ...group, rows: assembly.filter((row: any) => row.processCategory === group.value) }))
       const capacities = [14, 6, 14]
       const text = specText(data)
-      const count = Math.max(1, Math.ceil(bom.length / 14), ...groups.map((group, i) => Math.ceil(group.rows.length / capacities[i])))
-      for (let i = 0; i < count; i++) pages.push({ key: `spec-${i}`, section: 'spec', title: '产品作业规范', kind: 'spec', continuation: i, engineeringNotes: text.engineeringNotes, diePosition: text.diePosition, changeLines: text.changeLines, rows: bom.slice(i * 14, (i + 1) * 14), groups: groups.map((group, j) => ({ label: group.label, symbol: group.symbol, rows: group.rows.slice(i * capacities[j], (i + 1) * capacities[j]) })) })
+      const count = Math.max(1, Math.ceil(bom.length / 14), Math.ceil(text.diePositionRows.length / 14), ...groups.map((group, i) => Math.ceil(group.rows.length / capacities[i])))
+      for (let i = 0; i < count; i++) pages.push({ key: `spec-${i}`, section: 'spec', title: '产品作业规范', kind: 'spec', continuation: i, engineeringNotes: text.engineeringNotes, diePositionRows: text.diePositionRows.slice(i * 14, (i + 1) * 14), changeLines: text.changeLines, rows: bom.slice(i * 14, (i + 1) * 14), groups: groups.map((group, j) => ({ label: group.label, symbol: group.symbol, rows: group.rows.slice(i * capacities[j], (i + 1) * capacities[j]) })) })
       for (let i = 0; i < text.details.length; i += 48) pages.push({ key: 'spec-details-' + i, section: 'spec', title: '产品作业规范 · 工程内容附页', kind: 'spec-details', detailLines: text.details.slice(i, i + 48) })
       const uncategorized = assembly.filter((row: any) => !flowGroups.some((group) => group.value === row.processCategory))
       for (let i = 0; i < uncategorized.length; i += 22) pages.push({ key: `flow-${i}`, section: 'spec', title: '产品作业规范 · 未分类工序', kind: 'flow', rows: uncategorized.slice(i, i + 22) })
