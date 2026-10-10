@@ -66,14 +66,15 @@
         <el-icon class="el-icon--upload"><UploadFilled /></el-icon><div class="el-upload__text">拖入文件，或 <em>选择多个文件</em></div><template #tip><div class="el-upload__tip">每个文件不超过10MB。同一图纸的CAD原稿和PDF使用相同图纸编号、版本；文件用途不同。</div></template>
       </el-upload>
       <el-table :data="queue" max-height="340" class="upload-queue">
-        <el-table-column label="文件" min-width="175"><template #default="{ row }"><div>{{ row.file.name }}</div><span class="drawing-sub">{{ sizeLabel(row.file.size) }}</span></template></el-table-column>
+        <el-table-column label="预览" width="72" align="center"><template #default="{ row }"><el-image v-if="row.thumb" :src="row.thumb" :preview-src-list="[row.thumb]" :initial-index="0" fit="contain" preview-teleported class="queue-thumb" /><el-tag v-else size="small" effect="plain" type="info">{{ queueKindTag(row) }}</el-tag></template></el-table-column>
+        <el-table-column label="文件" min-width="160"><template #default="{ row }"><div>{{ row.file.name }}</div><span class="drawing-sub">{{ sizeLabel(row.file.size) }}</span></template></el-table-column>
         <el-table-column label="图种" width="145"><template #default="{ row }"><el-select v-model="row.category" :disabled="locked(row) || !!uploadDrawingNo"><el-option v-for="item in categoryOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></template></el-table-column>
         <el-table-column label="图纸编号" min-width="170"><template #default="{ row }"><el-input v-model="row.drawingNo" maxlength="80" placeholder="必填" :disabled="locked(row) || !!uploadDrawingNo" /></template></el-table-column>
         <el-table-column label="图纸名称" min-width="155"><template #default="{ row }"><el-input v-model="row.drawingName" maxlength="120" :disabled="locked(row)" /></template></el-table-column>
         <el-table-column label="版本" width="100"><template #default="{ row }"><el-input v-model="row.version" maxlength="50" :disabled="locked(row) || !!uploadFixedVersion" /></template></el-table-column>
         <el-table-column label="用途" width="145"><template #default="{ row }"><el-select v-model="row.fileRole" :disabled="locked(row)"><el-option v-for="item in DrawingFileRoleEnum.items" :key="item.value" :label="item.label" :value="item.value" :disabled="item.value === DrawingFileRoleEnum.PRINT.value && fileKind({ fileName: row.file.name, fileType: row.file.type }) === 'other'" /></el-select></template></el-table-column>
         <el-table-column label="进度" width="145"><template #default="{ row }"><el-progress v-if="row.status === DrawingUploadStatusEnum.UPLOADING.value" :percentage="row.progress" /><el-tag v-else size="small" :type="DrawingUploadStatusEnum.getTagProps(row.status).type">{{ DrawingUploadStatusEnum.getLabel(row.status) }}</el-tag><div v-if="row.error" class="queue-error">{{ row.error }}</div></template></el-table-column>
-        <el-table-column width="60"><template #default="{ row }"><el-button v-if="!locked(row)" link type="danger" @click="queue = queue.filter(item => item.uid !== row.uid)">移除</el-button></template></el-table-column>
+        <el-table-column width="60"><template #default="{ row }"><el-button v-if="!locked(row)" link type="danger" @click="removeQueueRow(row)">移除</el-button></template></el-table-column>
       </el-table>
       <p class="library-note">新图纸编号默认取文件名（去扩展名），请核对；不同版本必须使用同一个图纸编号。</p>
       <template #footer><span class="upload-summary">{{ queue.filter(item => item.status === DrawingUploadStatusEnum.SUCCESS.value).length }} / {{ queue.length }} 个已上传</span><el-button :disabled="uploading" @click="closeUpload()">关闭</el-button><el-button type="primary" :loading="uploading" :disabled="!pendingUploads.length" @click="submitUpload">上传待处理文件 / 重试失败项</el-button></template>
@@ -191,7 +192,7 @@ async function remove(file: ProductDrawingFile) {
   catch (e) { if (!cancelled(e)) ElMessage.error(e instanceof Error ? e.message : '删除失败') }
 }
 
-interface UploadRow extends DrawingMetadata { uid: number; file: File; category: string; status: string; progress: number; error: string }
+interface UploadRow extends DrawingMetadata { uid: number; file: File; category: string; status: string; progress: number; error: string; thumb?: string }
 const uploadVisible = ref(false)
 const uploading = ref(false)
 const uploadNewRevision = ref(false)
@@ -200,10 +201,18 @@ const uploadDrawingName = ref('')
 const uploadFixedVersion = ref('')
 const defaults = reactive({ category: '', version: 'A' })
 const queue = ref<UploadRow[]>([])
+/** 非图片行在预览列显示的标签（PDF / 扩展名） */
+function queueKindTag(row: UploadRow) { return extension(row.file.name) || '文件' }
+/** 释放单行缩略图 objectURL */
+function revokeThumb(row: UploadRow) { if (row.thumb) { URL.revokeObjectURL(row.thumb); row.thumb = '' } }
+/** 释放队列全部缩略图 objectURL */
+function revokeQueue() { queue.value.forEach(revokeThumb) }
+/** 移除待上传行（释放缩略图） */
+function removeQueueRow(row: UploadRow) { revokeThumb(row); queue.value = queue.value.filter(item => item.uid !== row.uid) }
 const pendingUploads = computed(() => queue.value.filter(row => row.status === DrawingUploadStatusEnum.QUEUED.value || row.status === DrawingUploadStatusEnum.FAILED.value))
 watch(categoryOptions, (options) => { if (!options.some(item => item.value === defaults.category)) defaults.category = options[0]?.value || '' }, { immediate: true })
 function openUpload(row?: RevisionRow, newRevision = false) {
-  queue.value = []; uploadNewRevision.value = newRevision; uploadDrawingNo.value = row?.drawingNo || ''; uploadDrawingName.value = row?.name || ''
+  revokeQueue(); queue.value = []; uploadNewRevision.value = newRevision; uploadDrawingNo.value = row?.drawingNo || ''; uploadDrawingName.value = row?.name || ''
   uploadFixedVersion.value = row && !newRevision ? row.version : ''; defaults.category = row?.category || categoryOptions.value[0]?.value || ''; defaults.version = row ? (newRevision ? '' : row.version) : 'A'
   uploadVisible.value = true
 }
@@ -212,7 +221,8 @@ function addFile(upload: UploadFile) {
   if (upload.raw.size > 10 * 1024 * 1024 || !upload.raw.size) { ElMessage.warning(`${upload.name}：文件须非空且不超过10MB`); return }
   if (queue.value.some(row => row.file.name === upload.name && row.file.size === upload.size && row.file.lastModified === upload.raw?.lastModified)) return
   const kind = fileKind({ fileName: upload.name, fileType: upload.raw.type })
-  queue.value.push({ uid: upload.uid, file: upload.raw, category: defaults.category, drawingNo: uploadDrawingNo.value || stem(upload.name).slice(0, 80), drawingName: uploadDrawingName.value || stem(upload.name).slice(0, 120), version: defaults.version,
+  const thumb = kind === 'image' ? URL.createObjectURL(upload.raw) : ''
+  queue.value.push({ uid: upload.uid, file: upload.raw, thumb, category: defaults.category, drawingNo: uploadDrawingNo.value || stem(upload.name).slice(0, 80), drawingName: uploadDrawingName.value || stem(upload.name).slice(0, 120), version: defaults.version,
     fileRole: kind === 'other' ? DrawingFileRoleEnum.ORIGINAL.value : DrawingFileRoleEnum.PRINT.value, status: DrawingUploadStatusEnum.QUEUED.value, progress: 0, error: '' })
 }
 function locked(row: UploadRow) { return uploading.value || row.status === DrawingUploadStatusEnum.SUCCESS.value }
@@ -246,7 +256,7 @@ async function closeUpload(done?: () => void) {
     try { await ElMessageBox.confirm('还有未上传文件，关闭后会清空这些待处理项。', '关闭上传', { type: 'warning' }) }
     catch (e) { if (!cancelled(e)) ElMessage.error('关闭失败'); return }
   }
-  uploadVisible.value = false; queue.value = []; done?.()
+  revokeQueue(); uploadVisible.value = false; queue.value = []; done?.()
 }
 const metadataVisible = ref(false)
 const metadataSaving = ref(false)
@@ -267,11 +277,11 @@ async function saveMetadata() {
 watch(() => uploadVisible.value || metadataVisible.value || uploading.value || metadataSaving.value || !!mutationId.value, value => emit('busy', value))
 watch(() => props.active, value => { if (value) loadFiles() })
 loadFiles()
-onBeforeUnmount(() => { disposed = true; generation++ })
+onBeforeUnmount(() => { disposed = true; generation++; revokeQueue() })
 </script>
 
 <style scoped>
 .library-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; }.library-heading { display:flex; align-items:center; gap:12px; }.library-heading strong { font-size:15px; }.library-heading span,.library-note { font-size:12px; color:#909baa; }.library-alert { margin-bottom:15px; }
 .filters { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:8px; }.category-tabs :deep(.el-tabs__header) { margin-bottom:16px; }.category-tabs :deep(.el-tabs__item) { font-size:13px; }.drawing-title { font-size:13px; font-weight:500; color:#35445a; }.drawing-sub { margin-top:4px; font-size:11px; color:#98a2af; }.status-tags { display:flex; flex-wrap:wrap; gap:5px; }.file-link { display:flex; align-items:center; gap:8px; margin:4px 0; }.file-link span { color:#99a2ae; font-size:10px; }.row-actions { display:flex; flex-wrap:wrap; gap:8px; }.row-actions :deep(.el-button+.el-button) { margin-left:0; }.revision-files { padding:12px 26px; background:#f8fafc; }.revision-file { display:flex; align-items:center; gap:12px; padding:9px 0; }.revision-file :deep(.el-link) { flex:1; justify-content:flex-start; }.file-info { color:#8a96a6; font-size:11px; }
-.upload-product { display:flex; gap:14px; align-items:center; background:#f2f6fc; border-radius:6px; padding:14px 18px; margin-bottom:18px; }.upload-product span { color:#77869b; font-size:13px; }.upload-defaults { display:flex; align-items:center; gap:12px; margin-bottom:14px; }.upload-defaults > span { color:#8895a5; font-size:12px; }.upload-queue { margin-top:18px; }.queue-error { color:#d95757; font-size:11px; margin-top:5px; }.upload-summary { float:left; color:#8896a8; font-size:12px; padding-top:10px; }.metadata-file { margin:0 0 20px; padding:12px; background:#f6f8fb; color:#69778a; }
+.upload-product { display:flex; gap:14px; align-items:center; background:#f2f6fc; border-radius:6px; padding:14px 18px; margin-bottom:18px; }.upload-product span { color:#77869b; font-size:13px; }.upload-defaults { display:flex; align-items:center; gap:12px; margin-bottom:14px; }.upload-defaults > span { color:#8895a5; font-size:12px; }.upload-queue { margin-top:18px; }.queue-thumb { width:42px; height:42px; border-radius:4px; border:1px solid #e3e8ee; background:#fff; cursor:zoom-in; }.queue-error { color:#d95757; font-size:11px; margin-top:5px; }.upload-summary { float:left; color:#8896a8; font-size:12px; padding-top:10px; }.metadata-file { margin:0 0 20px; padding:12px; background:#f6f8fb; color:#69778a; }
 </style>
