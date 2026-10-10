@@ -221,6 +221,9 @@ function printNameFromParams(json?: string): string {
   }
 }
 
+/** 空白字符串归一为空串（mapRouteItem / snapshotItems 共用）。dev-20261010-008 */
+const text = (value?: string) => (value?.trim() ? value : '')
+
 function mapRouteItem(item: any): any {
   return {
     itemId: item.itemId || 0,
@@ -282,7 +285,6 @@ function snapshotProcessParams(value?: string): unknown {
 }
 
 function snapshotItems(items: any[]): string {
-  const text = (value?: string) => (value?.trim() ? value : '')
   const snapshotItem = (item: any): any => ({
     processId: item.processId,
     stdProcessId: item.stdProcessId,
