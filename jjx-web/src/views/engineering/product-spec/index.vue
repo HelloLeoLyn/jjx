@@ -61,39 +61,9 @@
         </div>
 
         <el-tabs v-model="activeTab" class="spec-tabs" :before-leave="beforeSpecTabLeave">
-          <!-- ① 客供资料（+样品需求） -->
+          <!-- ① 客供资料 -->
           <el-tab-pane label="客供资料" name="customer">
-            <el-alert type="info" :closable="false" class="tab-tip"
-              title="客供资料 = 询价/报价里上传的客户附件（引用，只读）；产品文件库·客供稿 为工程侧上传。" />
-            <el-divider content-position="left">询价 / 报价附件（引用，只读）</el-divider>
-            <el-table :data="customerDocs" size="small" border>
-              <el-table-column label="来源" width="90" align="center">
-                <template #default="{ row }">{{ row.sourceType || row.sourcetype || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="单据号" width="170">
-                <template #default="{ row }">{{ row.sourceNo || row.sourceno || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="文件名" min-width="220" show-overflow-tooltip>
-                <template #default="{ row }">
-                  <el-link type="primary" @click="openDoc(row)">{{ row.file_name || row.fileName }}</el-link>
-                </template>
-              </el-table-column>
-              <el-table-column label="上传人" width="110">
-                <template #default="{ row }">{{ row.create_by || row.createBy || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="上传时间" width="160">
-                <template #default="{ row }">{{ row.create_time || row.createTime || '' }}</template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-if="!customerDocs.length" description="暂无询价/报价附件" :image-size="50" />
-            <el-divider content-position="left">产品文件库 · 客供稿（工程上传）</el-divider>
-            <ProductFileLibrary
-              v-if="productCode"
-              :product-code="productCode"
-              :categories="['客供稿']"
-              upload-perm="product:edit"
-              delete-perm="product:delete"
-            />
+            <CustomerDocPanel v-if="productId && productCode" :product-id="productId" :product-code="productCode" />
           </el-tab-pane>
 
           <!-- ② 样品需求单（占位） -->
@@ -191,8 +161,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listProductPage, getFullProduct } from '@/api/product'
-import { attachmentApi } from '@/api/system/attachment'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
+import CustomerDocPanel from '@/components/product/customer-doc/CustomerDocPanel.vue'
 import EngineeringDrawingLibrary from '../drawing/components/EngineeringDrawingLibrary.vue'
 import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
@@ -230,23 +200,6 @@ const activeTab = ref('customer')
 
 const productCode = computed(() => detail.value?.product?.productCode || '')
 
-// ===== 客供资料：询价/报价附件（①） =====
-const customerDocs = ref<any[]>([])
-async function loadCustomerDocs() {
-  customerDocs.value = []
-  if (!productId.value) return
-  try {
-    const res: any = await attachmentApi.customerDocs(productId.value)
-    customerDocs.value = res?.data || []
-  } catch {
-    customerDocs.value = []
-  }
-}
-function openDoc(row: any) {
-  const id = row.id
-  if (id) window.open(attachmentApi.downloadUrl(Number(id)), '_blank')
-}
-
 const productId = computed(() => Number((detail.value?.product as any)?.productId || 0))
 async function refreshSpecSources() {
   if (!productId.value) return
@@ -255,10 +208,6 @@ async function refreshSpecSources() {
     detail.value = response.data
   } catch (e) { ElMessage.error(e instanceof Error ? e.message : '产品资料刷新失败') }
 }
-
-watch(activeTab, (v) => {
-  if (v === 'customer') loadCustomerDocs()
-})
 
 async function load() {
   loading.value = true
@@ -290,7 +239,6 @@ async function openSpec(row: any) {
   try {
     const res: any = await getFullProduct(Number(row.productId))
     detail.value = res?.data || null
-    loadCustomerDocs()
   } catch (e: any) {
     ElMessage.error(e?.message || '加载作业规范失败')
   } finally {
