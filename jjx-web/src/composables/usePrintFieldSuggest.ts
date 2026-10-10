@@ -62,6 +62,11 @@ export async function ensureFrames() {
   }
 }
 
+/** 网框台账是否已加载（供联想组件判断要不要先等一次加载，避免首次聚焦空下拉） */
+export function framesLoaded(): boolean {
+  return frameLoaded.value
+}
+
 export async function suggestColors(query: string, cb: (items: PrintSuggestItem[]) => void) {
   try {
     const res: any = await suggestSampleColors(query || undefined, 10)
@@ -117,7 +122,7 @@ export async function suggestFrames(query: string, cb: (items: PrintSuggestItem[
   const lq = q.toLowerCase()
   const list = frameCache.value
     .filter((f: any) => !lq || frameNoOf(f).toLowerCase().includes(lq))
-    .slice(0, 20)
+    .slice(0, 10)
   cb(list.map((f: any) => ({ value: frameNoOf(f), statusLabel: frameStatusLabel(f.status) })))
 }
 

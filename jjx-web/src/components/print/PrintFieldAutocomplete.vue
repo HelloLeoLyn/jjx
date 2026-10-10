@@ -5,7 +5,7 @@
       size="small"
       :style="{ width: width || '160px' }"
       :fetch-suggestions="fetchSuggestions"
-      :trigger-on-focus="true"
+      :trigger-on-focus="false"
       clearable
       :placeholder="placeholder || defaultPlaceholder"
       @select="onSelect"
@@ -35,6 +35,7 @@
 import { computed, onMounted } from 'vue'
 import {
   ensureFrames,
+  framesLoaded,
   frameStatusOf,
   PRINT_FIELD_SUGGESTERS,
   type PrintFieldKey,
@@ -75,8 +76,18 @@ onMounted(() => {
 })
 
 function fetchSuggestions(query: string, cb: (items: PrintSuggestItem[]) => void) {
-  if (props.field === 'screenNo') ensureFrames()
-  PRINT_FIELD_SUGGESTERS[props.field](query, cb)
+  const q = (query || '').trim()
+  // 空关键字不联想（原聚焦即查、且空查会返回前 20 条网框，太吵）
+  if (!q) {
+    cb([])
+    return
+  }
+  // 网框台账尚未加载时，先等一次加载再给建议（修首次聚焦空下拉）
+  if (props.field === 'screenNo' && !framesLoaded()) {
+    ensureFrames().then(() => PRINT_FIELD_SUGGESTERS.screenNo(q, cb))
+    return
+  }
+  PRINT_FIELD_SUGGESTERS[props.field](q, cb)
 }
 
 function onSelect(item: any) {
