@@ -234,8 +234,8 @@ function mapRouteItem(item: any): any {
     customLaborHours: item.customLaborHours || 0,
     customMachineHours: item.customMachineHours || 0,
     customProcessParams: item.customProcessParams || '',
-    description: item.description || '',
-    remark: item.remark || '',
+    description: text(item.description),
+    remark: text(item.remark),
     workInstruction: item.workInstruction ?? null,
     processCategory: item.processCategory || '',
     majorCategory: item.majorCategory || 'ASSEMBLY',
@@ -248,30 +248,61 @@ function mapRouteItem(item: any): any {
     hasIndex: item.hasIndex ?? 0,
     hasWorkInstruction: item.hasWorkInstruction ?? 0,
     indexNumber: item.indexNumber ?? null,
+    precondition: item.precondition ?? null,
+    preconditionDisplay: item.preconditionDisplay ?? null,
+    isOptional: item.isOptional,
     children: (item.children || []).map(mapRouteItem),
   }
 }
 
+// JSON按字段排序，避免仅格式或键顺序变化被当作工艺内容修改。
+function snapshotProcessParams(value?: string): unknown {
+  if (!value?.trim()) return null
+  try {
+    const sortValue = (node: any): any => {
+      if (Array.isArray(node)) return node.map(sortValue)
+      if (node && typeof node === 'object') {
+        return Object.fromEntries(
+          Object.keys(node).sort().map((key) => [key, sortValue(node[key])])
+        )
+      }
+      return node
+    }
+    const parsed = JSON.parse(value)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const meaningful = Object.fromEntries(
+        Object.entries(parsed).filter(([, v]) => v != null && !(typeof v === 'string' && !v.trim()))
+      )
+      return Object.keys(meaningful).length ? sortValue(meaningful) : null
+    }
+    return sortValue(parsed)
+  } catch {
+    return value
+  }
+}
+
 function snapshotItems(items: any[]): string {
-  return JSON.stringify(
-    (items || []).map((item) => ({
-      processId: item.processId,
-      stdProcessId: item.stdProcessId,
-      processName: item.processName,
-      processCategory: item.processCategory,
-      processOrder: item.processOrder,
-      customLaborHours: item.customLaborHours,
-      customMachineHours: item.customMachineHours,
-      isOptional: item.isOptional,
-      indexNumber: item.indexNumber,
-      children: (item.children || []).map((child: any) => ({
-        processId: child.processId,
-        processName: child.processName,
-        customLaborHours: child.customLaborHours,
-        customMachineHours: child.customMachineHours,
-      })),
-    }))
-  )
+  const text = (value?: string) => (value?.trim() ? value : '')
+  const snapshotItem = (item: any): any => ({
+    processId: item.processId,
+    stdProcessId: item.stdProcessId,
+    processName: text(item.processName),
+    majorCategory: item.majorCategory,
+    processCategory: item.processCategory,
+    processOrder: item.processOrder,
+    customLaborHours: Number(item.customLaborHours) || 0,
+    customMachineHours: Number(item.customMachineHours) || 0,
+    customProcessParams: snapshotProcessParams(item.customProcessParams),
+    description: item.description || '',
+    remark: item.remark || '',
+    workInstruction: text(item.workInstruction),
+    isOptional: item.isOptional,
+    indexNumber: item.indexNumber,
+    precondition: text(item.precondition),
+    preconditionDisplay: text(item.preconditionDisplay),
+    children: (item.children || []).map(snapshotItem),
+  })
+  return JSON.stringify((items || []).map(snapshotItem))
 }
 
 const resetForm = () => {

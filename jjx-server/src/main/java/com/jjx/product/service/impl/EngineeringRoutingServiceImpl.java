@@ -1,6 +1,10 @@
 package com.jjx.product.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -37,6 +41,8 @@ import com.jjx.system.annotation.Event;
 @RequiredArgsConstructor
 public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutingMapper, EngineeringRouting>
         implements IEngineeringRoutingService {
+
+    private static final ObjectMapper ROUTING_DIFF_JSON = new ObjectMapper();
 
     private final EngineeringRoutingMapper routingMapper;
     /** 2026-09-21（dev-20260921-013）：工程事件改手写 payload（带业务编码）。 */
@@ -141,112 +147,218 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     }
 
     /**
-     * 工艺路线变更对比：主档字段 + 工序级增删/工时 diff（明细为全量替换，按工序键对比）。
-     * 键：processId != null → "p"+processId；组合壳/自定义行（processId 空）→ "n"+processName。
+     * 明细逐项匹配：先保留真实ID，再按完整工序身份及内容匹配无ID旧客户端。
+     * 每条旧明细只消费一次，重复工序不会被单值Map覆盖；顺序按实际保存口径比较。
      */
     private void buildRoutingDiff(List<String> changes, EngineeringRouting oldRouting, EngineeringRoutingDTO dto) {
-        changeRecorder.diff(changes, "路线名称", oldRouting.getRoutingName(), dto.getRoutingName());
-        changeRecorder.diff(changes, "路线编码", oldRouting.getRoutingCode(), dto.getRoutingCode());
-        changeRecorder.diff(changes, "说明", oldRouting.getDescription(), dto.getDescription());
-        changeRecorder.diff(changes, "备注", oldRouting.getRemark(), dto.getRemark());
+        diffText(changes, "路线名称", oldRouting.getRoutingName(), dto.getRoutingName());
+        diffText(changes, "路线编码", oldRouting.getRoutingCode(), dto.getRoutingCode());
+        diffText(changes, "说明", oldRouting.getDescription(), dto.getDescription());
+        diffText(changes, "备注", oldRouting.getRemark(), dto.getRemark());
 
         List<EngineeringRoutingItem> oldFlat = routingDetailMapper.selectByRoutingId(oldRouting.getRoutingId());
-        Map<String, EngineeringRoutingItem> oldParentByKey = new HashMap<>();
+        List<EngineeringRoutingItem> oldParents = new ArrayList<>();
         Map<Long, List<EngineeringRoutingItem>> oldChildByParent = new HashMap<>();
-        for (EngineeringRoutingItem it : oldFlat) {
-            if (it.getParentId() == null) {
-                oldParentByKey.put(parentKey(it), it);
+        for (EngineeringRoutingItem item : oldFlat) {
+            if (item.getParentId() == null) {
+                oldParents.add(item);
             } else {
-                oldChildByParent.computeIfAbsent(it.getParentId(), k -> new ArrayList<>()).add(it);
+                oldChildByParent.computeIfAbsent(item.getParentId(), key -> new ArrayList<>()).add(item);
             }
         }
-        Map<String, EngineeringRoutingItemDTO> newParentByKey = new HashMap<>();
-        if (dto.getItems() != null) {
-            for (EngineeringRoutingItemDTO it : dto.getItems()) {
-                newParentByKey.put(parentKeyDto(it), it);
+        List<EngineeringRoutingItemDTO> newParents = dto.getItems() == null ? List.of() : dto.getItems();
+        List<EngineeringRoutingItem> matches = matchRoutingItems(oldParents, newParents);
+        Set<EngineeringRoutingItem> retained = Collections.newSetFromMap(new IdentityHashMap<>());
+        Map<String, Integer> workflowSeqByCategory = new LinkedHashMap<>();
+        Map<String, Integer> nextOrderByCategory = new HashMap<>();
+        for (int i = 0; i < newParents.size(); i++) {
+            EngineeringRoutingItemDTO np = newParents.get(i);
+            EngineeringRoutingItem normalized = buildItem(np, oldRouting.getRoutingId());
+            String category = normalized.getProcessCategory();
+            int workflowSeq = workflowSeqByCategory.computeIfAbsent(category, key -> workflowSeqByCategory.size() + 1);
+            int order = nextOrderByCategory.merge(category, 1, Integer::sum);
+            EngineeringRoutingItem op = matches.get(i);
+            String label = routingItemLabel(np.getProcessName(), category, order);
+            if (op == null) {
+                changes.add("新增" + label + hoursSuffix(np));
+                continue;
             }
-        }
+            retained.add(op);
+            diffRoutingItemFields(changes, label, op, np);
+            changeRecorder.diff(changes, label + " 顺序", op.getProcessOrder(), order);
+            changeRecorder.diff(changes, label + " 分组顺序", op.getWorkflowSeq(), workflowSeq);
 
-        if (dto.getItems() != null) {
-            for (EngineeringRoutingItemDTO np : dto.getItems()) {
-                String key = parentKeyDto(np);
-                if (!oldParentByKey.containsKey(key)) {
-                    changes.add("新增工序:" + itemName(np) + hoursSuffix(np));
+            List<EngineeringRoutingItem> oldChildren = oldChildByParent.getOrDefault(op.getItemId(), List.of());
+            List<EngineeringRoutingItemDTO> newChildren = np.getChildren() == null ? List.of() : np.getChildren();
+            List<EngineeringRoutingItem> childMatches = matchRoutingItems(oldChildren, newChildren);
+            Set<EngineeringRoutingItem> retainedChildren = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (int j = 0; j < newChildren.size(); j++) {
+                EngineeringRoutingItemDTO nc = newChildren.get(j);
+                EngineeringRoutingItem oc = childMatches.get(j);
+                String childLabel = label + " 作业项:" + itemName(nc) + "（第" + (j + 1) + "项）";
+                if (oc == null) {
+                    changes.add(label + " 新增作业项:" + itemName(nc));
+                } else {
+                    retainedChildren.add(oc);
+                    diffRoutingItemFields(changes, childLabel, oc, nc);
+                    changeRecorder.diff(changes, childLabel + " 顺序", oldChildren.indexOf(oc) + 1, j + 1);
                 }
             }
-        }
-        for (Map.Entry<String, EngineeringRoutingItem> e : oldParentByKey.entrySet()) {
-            if (!newParentByKey.containsKey(e.getKey())) {
-                changes.add("移除工序:" + itemName(e.getValue()));
+            for (EngineeringRoutingItem oc : oldChildren) {
+                if (!retainedChildren.contains(oc)) changes.add(label + " 移除作业项:" + itemName(oc));
             }
         }
-        for (Map.Entry<String, EngineeringRoutingItemDTO> e : newParentByKey.entrySet()) {
-            EngineeringRoutingItemDTO np = e.getValue();
-            EngineeringRoutingItem op = oldParentByKey.get(e.getKey());
-            if (op == null) continue;
-            String parentName = itemName(np);
-            boolean newHasChildren = np.getChildren() != null && !np.getChildren().isEmpty();
-            List<EngineeringRoutingItem> oldChildren = oldChildByParent.get(op.getItemId());
-            if (newHasChildren || (oldChildren != null && !oldChildren.isEmpty())) {
-                Map<String, EngineeringRoutingItemDTO> newChildByKey = new HashMap<>();
-                for (EngineeringRoutingItemDTO c : np.getChildren() == null
-                        ? Collections.<EngineeringRoutingItemDTO>emptyList() : np.getChildren()) {
-                    newChildByKey.put(childKey(c), c);
-                }
-                Map<String, EngineeringRoutingItem> oldChildByKey = new HashMap<>();
-                for (EngineeringRoutingItem oc : oldChildren == null
-                        ? Collections.<EngineeringRoutingItem>emptyList() : oldChildren) {
-                    oldChildByKey.put(childKey(oc), oc);
-                }
-                for (Map.Entry<String, EngineeringRoutingItemDTO> ce : newChildByKey.entrySet()) {
-                    if (!oldChildByKey.containsKey(ce.getKey())) {
-                        changes.add("工序:" + parentName + " 新增作业项:" + itemName(ce.getValue()));
+        for (EngineeringRoutingItem op : oldParents) {
+            if (!retained.contains(op)) {
+                changes.add("移除" + routingItemLabel(op.getProcessName(), op.getProcessCategory(), op.getProcessOrder()));
+            }
+        }
+    }
+
+    private List<EngineeringRoutingItem> matchRoutingItems(List<EngineeringRoutingItem> oldItems,
+                                                           List<EngineeringRoutingItemDTO> newItems) {
+        List<EngineeringRoutingItem> matches = new ArrayList<>(Collections.nCopies(newItems.size(), null));
+        boolean[] used = new boolean[oldItems.size()];
+        // 先为所有带真实ID的明细保留旧行，再匹配无ID项，防止重复工序抢占别人的旧行。
+        for (int pass = 0; pass < 3; pass++) {
+            for (int n = 0; n < newItems.size(); n++) {
+                if (matches.get(n) != null) continue;
+                EngineeringRoutingItemDTO next = newItems.get(n);
+                for (int o = 0; o < oldItems.size(); o++) {
+                    if (used[o]) continue;
+                    EngineeringRoutingItem previous = oldItems.get(o);
+                    boolean match;
+                    if (pass == 0) {
+                        match = next.getItemId() != null && next.getItemId() > 0
+                                && Objects.equals(previous.getItemId(), next.getItemId());
                     } else {
-                        EngineeringRoutingItem oc = oldChildByKey.get(ce.getKey());
-                        changeRecorder.diffDecimal(changes, "工序:" + parentName + " 作业项:"
-                                + itemName(ce.getValue()) + " 人工工时",
-                                oc.getCustomLaborHours(), ce.getValue().getCustomLaborHours());
-                        changeRecorder.diffDecimal(changes, "工序:" + parentName + " 作业项:"
-                                + itemName(ce.getValue()) + " 机器工时",
-                                oc.getCustomMachineHours(), ce.getValue().getCustomMachineHours());
+                        match = sameRoutingItemIdentity(previous, next);
+                        if (match && pass == 1) {
+                            List<String> fieldChanges = new ArrayList<>();
+                            diffRoutingItemFields(fieldChanges, "", previous, next);
+                            match = fieldChanges.isEmpty();
+                        }
+                    }
+                    if (match) {
+                        matches.set(n, previous);
+                        used[o] = true;
+                        break;
                     }
                 }
-                for (String oldKey : oldChildByKey.keySet()) {
-                    if (!newChildByKey.containsKey(oldKey)) {
-                        changes.add("工序:" + parentName + " 移除作业项:" + itemName(oldChildByKey.get(oldKey)));
-                    }
-                }
-            } else {
-                changeRecorder.diffDecimal(changes, "工序:" + parentName + " 人工工时",
-                        op.getCustomLaborHours(), np.getCustomLaborHours());
-                changeRecorder.diffDecimal(changes, "工序:" + parentName + " 机器工时",
-                        op.getCustomMachineHours(), np.getCustomMachineHours());
             }
+        }
+        return matches;
+    }
+
+    private boolean sameRoutingItemIdentity(EngineeringRoutingItem oldItem, EngineeringRoutingItemDTO next) {
+        EngineeringRoutingItem newItem = buildItem(next, oldItem.getRoutingId());
+        if (!Objects.equals(textValue(oldItem.getMajorCategory()), textValue(newItem.getMajorCategory()))
+                || !Objects.equals(textValue(oldItem.getProcessCategory()), textValue(newItem.getProcessCategory()))) {
+            return false;
+        }
+        if (oldItem.getProcessId() != null || newItem.getProcessId() != null) {
+            return Objects.equals(oldItem.getProcessId(), newItem.getProcessId());
+        }
+        return Objects.equals(textValue(oldItem.getProcessName()), textValue(newItem.getProcessName()));
+    }
+
+    private void diffRoutingItemFields(List<String> changes, String label,
+                                       EngineeringRoutingItem oldItem, EngineeringRoutingItemDTO dto) {
+        // 对新值应用与保存一致的空值/无效工序ID规范化，不比较临时ID、时间戳或标准工序展示字段。
+        EngineeringRoutingItem next = buildItem(dto, oldItem.getRoutingId());
+        changeRecorder.diff(changes, label + " 关联标准工序", oldItem.getProcessId(), next.getProcessId());
+        diffText(changes, label + " 名称", oldItem.getProcessName(), next.getProcessName());
+        diffText(changes, label + " 大类", oldItem.getMajorCategory(), next.getMajorCategory());
+        diffText(changes, label + " 类别", oldItem.getProcessCategory(), next.getProcessCategory());
+        changeRecorder.diffDecimal(changes, label + " 人工工时", hoursValue(oldItem.getCustomLaborHours()), hoursValue(next.getCustomLaborHours()));
+        changeRecorder.diffDecimal(changes, label + " 机器工时", hoursValue(oldItem.getCustomMachineHours()), hoursValue(next.getCustomMachineHours()));
+        diffText(changes, label + " 说明", oldItem.getDescription(), next.getDescription());
+        diffText(changes, label + " 作业说明", oldItem.getWorkInstruction(), next.getWorkInstruction());
+        diffText(changes, label + " 备注", oldItem.getRemark(), next.getRemark());
+        changeRecorder.diff(changes, label + " 下标", oldItem.getIndexNumber(), next.getIndexNumber());
+        diffText(changes, label + " 前置依赖", oldItem.getPrecondition(), next.getPrecondition());
+        diffText(changes, label + " 前置依赖名称", oldItem.getPreconditionDisplay(), next.getPreconditionDisplay());
+        changeRecorder.diff(changes, label + " 可选", oldItem.getIsOptional(), next.getIsOptional());
+        diffRoutingParameters(changes, label, oldItem.getCustomProcessParams(), next.getCustomProcessParams());
+    }
+
+    private void diffRoutingParameters(List<String> changes, String label, String oldValue, String newValue) {
+        JsonNode oldNode = routingParameters(oldValue);
+        JsonNode newNode = routingParameters(newValue);
+        if (oldNode.isObject() && newNode.isObject()) {
+            Set<String> keys = new TreeSet<>();
+            oldNode.fieldNames().forEachRemaining(keys::add);
+            newNode.fieldNames().forEachRemaining(keys::add);
+            for (String key : keys) {
+                JsonNode before = oldNode.get(key);
+                JsonNode after = newNode.get(key);
+                if (!sameParameterValue(before, after)) {
+                    String name = switch (key) {
+                        case "printName" -> "印刷名称";
+                        case "colorNo" -> "色号";
+                        case "inkNo" -> "油墨编号";
+                        case "screenNo" -> "网框编号";
+                        default -> "工艺参数[" + key + "]";
+                    };
+                    changeRecorder.diff(changes, label + " " + name, parameterDisplay(before), parameterDisplay(after));
+                }
+            }
+        } else if (!sameParameterValue(oldNode, newNode)) {
+            changeRecorder.diff(changes, label + " 工艺参数", parameterDisplay(oldNode), parameterDisplay(newNode));
         }
     }
 
-    private String parentKey(EngineeringRoutingItem it) {
-        return it.getProcessId() != null ? "p" + it.getProcessId() : "n" + it.getProcessName();
+    private JsonNode routingParameters(String value) {
+        if (!StringUtils.hasText(value)) return ROUTING_DIFF_JSON.createObjectNode();
+        try {
+            JsonNode node = ROUTING_DIFF_JSON.readTree(value);
+            return node == null || node.isNull() ? ROUTING_DIFF_JSON.createObjectNode() : node;
+        } catch (JsonProcessingException e) {
+            // 兼容旧非JSON参数：原文比较，不因解析失败丢掉整次变更记录。
+            return TextNode.valueOf(value);
+        }
     }
 
-    private String parentKeyDto(EngineeringRoutingItemDTO it) {
-        return it.getProcessId() != null ? "p" + it.getProcessId() : "n" + it.getProcessName();
+    private boolean sameParameterValue(JsonNode before, JsonNode after) {
+        if (parameterDisplay(before) == null || parameterDisplay(after) == null) {
+            return parameterDisplay(before) == null && parameterDisplay(after) == null;
+        }
+        return before.equals((left, right) -> left.isNumber() && right.isNumber()
+                ? left.decimalValue().compareTo(right.decimalValue()) : left.equals(right) ? 0 : 1, after);
     }
 
-    private String childKey(EngineeringRoutingItem it) {
-        return parentKey(it);
+    private String parameterDisplay(JsonNode value) {
+        if (value == null || value.isNull() || (value.isTextual() && value.textValue().isBlank())) return null;
+        return value.isTextual() ? value.textValue() : value.toString();
     }
 
-    private String childKey(EngineeringRoutingItemDTO it) {
-        return parentKeyDto(it);
+    private void diffText(List<String> changes, String label, String before, String after) {
+        changeRecorder.diff(changes, label, textValue(before), textValue(after));
     }
 
-    private String itemName(EngineeringRoutingItemDTO it) {
-        return it.getProcessName() != null && !it.getProcessName().isEmpty() ? it.getProcessName() : "工序";
+    private String textValue(String value) {
+        return StringUtils.hasText(value) ? value : null;
     }
 
-    private String itemName(EngineeringRoutingItem it) {
-        return it.getProcessName() != null && !it.getProcessName().isEmpty() ? it.getProcessName() : "工序";
+    private BigDecimal hoursValue(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private String routingItemLabel(String name, String category, Integer order) {
+        String categoryName = Arrays.stream(com.jjx.product.enums.ProcessCategoryEnum.values())
+                .filter(item -> Objects.equals(item.getCode(), category))
+                .map(com.jjx.product.enums.ProcessCategoryEnum::getLabel)
+                .findFirst().orElse(StringUtils.hasText(category) ? category : "未分类");
+        return "工序:" + (StringUtils.hasText(name) ? name : "工序")
+                + "（" + categoryName + "第" + order + "道）";
+    }
+
+    private String itemName(EngineeringRoutingItemDTO item) {
+        return StringUtils.hasText(item.getProcessName()) ? item.getProcessName() : "工序";
+    }
+
+    private String itemName(EngineeringRoutingItem item) {
+        return StringUtils.hasText(item.getProcessName()) ? item.getProcessName() : "工序";
     }
 
     /** 新增工序后缀：custom 工时非空时带 （人工X/机器Y），否则空串 */

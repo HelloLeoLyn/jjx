@@ -464,6 +464,8 @@ import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 interface RouteItemGroup {
   groupOrder: number
   items: EngineeringRoutingItemVO[]
+  /** 回填的真实父工序，保留其ID和自身字段，不能借用第一个子项的ID。 */
+  parentItem?: EngineeringRoutingItemVO
   totalLaborHours: number
   totalMachineHours: number
   remark: string
@@ -773,6 +775,7 @@ const setItemsFromData = (data: EngineeringRoutingItemVO[]) => {
         const groupItems = kids.length ? kids.map((k) => ({ ...k })) : [{ ...parent }]
         built.push({
           items: groupItems,
+          parentItem: { ...parent, children: undefined },
           totalLaborHours: groupItems.reduce(
             (s, i) => s + (i.customLaborHours || i.standardLaborHours || 0),
             0
@@ -803,6 +806,7 @@ const setItemsFromData = (data: EngineeringRoutingItemVO[]) => {
       .forEach(([, items]) => {
         built.push({
           items: items.map((i) => ({ ...i })),
+          parentItem: items.length === 1 ? { ...items[0] } : undefined,
           totalLaborHours: items.reduce(
             (s, i) => s + (i.customLaborHours || i.standardLaborHours || 0),
             0
@@ -1261,8 +1265,8 @@ const toParentItems = (): any[] => {
     if (items.length === 1) {
       // 单作业工序：父行直接带作业
       const p = { ...items[0] }
-      p.itemId = p.itemId || 0
-      p.routingId = p.routingId || 0
+      p.itemId = group.parentItem?.itemId || p.itemId || 0
+      p.routingId = group.parentItem?.routingId || p.routingId || 0
       p.parentId = null
       p.processOrder = order
       p.groupId = null
@@ -1275,8 +1279,8 @@ const toParentItems = (): any[] => {
       out.push(p)
     } else {
       // 组合工序：父行壳（无 processId、名=作业连接名、工时=Σ 作业项）+ children
-      const parent: any = { ...items[0] }
-      parent.itemId = parent.itemId || 0
+      const parent: any = { ...(group.parentItem || items[0]) }
+      parent.itemId = group.parentItem?.itemId || 0
       parent.routingId = parent.routingId || 0
       parent.processId = undefined
       parent.processCode = ''
