@@ -118,6 +118,7 @@ public final class LogActions {
     public static final String PRODUCT_CANCEL = "取消产品";
     public static final String PRODUCT_CREATE = "新增产品";
     public static final String PRODUCT_EDIT = "修改产品";
+    public static final String PRINT_SPEC_REMARKS_EDIT = "修改印刷规范整组备注";
     public static final String PRODUCT_DELETE = "删除产品";
     public static final String PRODUCT_RELEASE = "发布产品";
     public static final String PRODUCT_SUBMIT = "提交产品审核";

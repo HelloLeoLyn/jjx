@@ -19,6 +19,17 @@ public interface ProductWorkSpecMapper {
     @Update("UPDATE product SET work_spec_json = #{json} WHERE product_id = #{id}")
     int write(@Param("id") Long id, @Param("json") String json);
 
+    @Select("""
+        SELECT id, COALESCE(NULLIF(real_name, ''), username) AS operatorName,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS changedAt, detail
+        FROM sys_oper_log
+        WHERE biz_type = 'product' AND biz_id = #{productId} AND action = #{action}
+          AND status = #{success} AND (#{before} IS NULL OR id < #{before})
+        ORDER BY id DESC LIMIT 51
+        """)
+    List<Map<String, Object>> printRemarksHistory(@Param("productId") String productId,
+            @Param("before") Long before, @Param("action") String action, @Param("success") Integer success);
+
     /** 只投影工程差异，不返回操作日志请求参数或用户隐私字段。 */
     @Select("""
         SELECT l.id, DATE_FORMAT(l.create_time, '%Y-%m-%d') AS changeDate, l.detail,

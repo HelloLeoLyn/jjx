@@ -1,6 +1,12 @@
 import request from '@/utils/request'
 
 export interface WorkSpecChangeSource { id: number; date: string; text: string; label: string }
+export interface PrintRemarkHistory {
+  id: number
+  operatorName: string
+  changedAt: string
+  fields: { field: string; label: string; before: string; after: string }[]
+}
 export interface WorkSpecChange {
   date?: string | null
   text: string
@@ -19,6 +25,7 @@ export interface ProductWorkSpec {
   dieLocation: string
   structureFileId: number | null
   changes: WorkSpecChange[]
+  printRemarks: Record<string, string>
   issueUnit: string
   issueDate: string | null
   approved: boolean
@@ -44,6 +51,7 @@ export function normalizeWorkSpec(value: Partial<ProductWorkSpec> = {}): Product
     engineeringRequirements: value.engineeringRequirements || '',
     requirementsColor: value.requirementsColor || '#ed00df', dieLocation: value.dieLocation || '',
     structureFileId: value.structureFileId ?? null,
+    printRemarks: { ...(value.printRemarks || {}) },
     changes: (value.changes || []).map(row => ({ date: row.date || null, text: row.text || '', color: row.color || '#ed00df',
       print: row.print !== false, reason: row.reason || '', sourceLogIds: row.sourceLogIds || [], sources: row.sources || [] })),
     issueUnit: value.issueUnit ?? '工程部', issueDate: value.issueDate || null,
@@ -51,7 +59,7 @@ export function normalizeWorkSpec(value: Partial<ProductWorkSpec> = {}): Product
   }
 }
 export function workSpecContent(value: ProductWorkSpec) {
-  const { revision, sourceRevision, approved, confirmedBy, confirmedAt, ...content } = value
+  const { revision, sourceRevision, approved, confirmedBy, confirmedAt, printRemarks, ...content } = value
   return {
     ...content, structureFileId: value.structureFileId || null, issueDate: value.issueDate || null,
     changes: value.changes.map(({ sources, ...change }) => ({ ...change, date: change.date || null })),
@@ -63,4 +71,6 @@ export const productWorkSpecApi = {
   save: (id: number, value: ProductWorkSpec) => request.put('/product/' + id + '/work-spec', { ...workSpecContent(value), revision: value.revision }),
   confirm: (id: number, revision: string, sourceRevision: string) => request.post('/product/' + id + '/work-spec/confirm', { revision, sourceRevision }),
   changeSources: (id: number, before?: number) => request.get('/product/' + id + '/work-spec/change-sources', { params: { before } }),
+  savePrintRemarks: (id: number, revision: string, remarks: Record<string, string>) => request.put('/product/' + id + '/work-spec/print-remarks', { revision, remarks }),
+  printRemarksHistory: (id: number, before?: number) => request.get('/product/' + id + '/work-spec/print-remarks/history', { params: { before } }),
 }

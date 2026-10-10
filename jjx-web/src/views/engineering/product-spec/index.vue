@@ -111,16 +111,12 @@
 
           <!-- ③ 印刷规范 -->
           <el-tab-pane label="印刷规范" name="print">
-            <el-alert type="info" :closable="false" class="tab-tip"
-              title="印刷工序/油墨/网板为引用项；印刷指导图在此上传。油墨调配记录表字段待定（等样张）。" />
-            <EngineeringDrawingLibrary
-              v-if="productCode"
+            <ProductPrintSpecPanel
+              v-if="productId && activeTab === 'print'"
               :key="`${productId}-print`"
-              :active="activeTab === 'print'"
-              :product-code="productCode"
-              :product-name="detail?.product?.productName || ''"
-              :categories="['印刷指导图']"
-              @busy="drawingBusy = $event"
+              :product-id="productId"
+              @busy="printSpecBusy = $event"
+              @updated="refreshSpecSources"
             />
           </el-tab-pane>
 
@@ -178,6 +174,7 @@ import EngineeringDrawingLibrary from '../drawing/components/EngineeringDrawingL
 import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
 import ProductWorkSpecPanel from './components/ProductWorkSpecPanel.vue'
+import ProductPrintSpecPanel from './components/ProductPrintSpecPanel.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
 
 defineOptions({ name: 'ProductSpec' })
@@ -192,12 +189,13 @@ const query = reactive({ productCode: '', productName: '', current: 1, pageSize:
 const specVisible = ref(false)
 const drawingBusy = ref(false)
 const workSpecBusy = ref(false)
+const printSpecBusy = ref(false)
 function closeSpec(done: () => void) {
-  if (drawingBusy.value || workSpecBusy.value) { ElMessage.warning('请先完成或关闭工程规范、图纸维护窗口'); return }
+  if (drawingBusy.value || workSpecBusy.value || printSpecBusy.value) { ElMessage.warning('请先完成或关闭工程规范、印刷备注、图纸维护窗口'); return }
   done()
 }
 function beforeSpecTabLeave() {
-  if (workSpecBusy.value) { ElMessage.warning('请先完成或关闭规范编辑窗口'); return false }
+  if (workSpecBusy.value || printSpecBusy.value) { ElMessage.warning('请先完成或关闭规范编辑窗口'); return false }
   return true
 }
 const detailLoading = ref(false)

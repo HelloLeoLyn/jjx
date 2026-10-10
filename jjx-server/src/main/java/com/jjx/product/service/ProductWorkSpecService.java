@@ -5,6 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.product.domain.dto.ProductWorkSpecDTO;
+import com.jjx.product.domain.dto.PrintSpecRemarksDTO;
+import com.jjx.product.enums.ProcessCategoryEnum;
+import com.jjx.common.constant.LogActions;
+import com.jjx.common.enums.YesNoEnum;
+import com.jjx.system.annotation.BusinessType;
+import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.mapper.SysOperLogMapper;
+import com.jjx.system.utils.OperLogDetailBuilder;
 import com.jjx.product.domain.vo.ProductFullVO;
 import com.jjx.product.mapper.ProductWorkSpecMapper;
 import com.jjx.system.domain.entity.SysAttachment;
@@ -21,6 +29,8 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.List;
+import java.util.ArrayList;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +42,9 @@ public class ProductWorkSpecService {
     private final IProductService products;
     private final ObjectMapper json;
     private final ProductWorkSpecChangeService changeService;
+    private final SysOperLogMapper operLogs;
+    private static final List<ProcessCategoryEnum> PRINT_GROUPS = List.of(
+            ProcessCategoryEnum.PANEL, ProcessCategoryEnum.UP_LINE, ProcessCategoryEnum.DOWN_LINE);
 
     public ObjectNode get(Long id) {
         return response(id, mapper.read(id));
@@ -47,10 +60,74 @@ public class ProductWorkSpecService {
         next.remove("revision");
         ObjectNode oldContent = parse(oldRaw).deepCopy();
         oldContent.remove(java.util.List.of("confirmedBy", "confirmedAt", "confirmedSource"));
+        // 整组备注由专用入口维护；旧客户端保存其他规范内容也不能覆盖它。
+        if (oldContent.has("printRemarks")) next.set("printRemarks", oldContent.get("printRemarks").deepCopy());
         changeService.attachSources(id, oldContent, next);
         if (oldContent.equals(next)) return response(id, oldRaw);
         mapper.write(id, next.toString());
         return response(id, mapper.read(id));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ObjectNode savePrintRemarks(Long id, PrintSpecRemarksDTO dto) {
+        String oldRaw = raw(lock(id));
+        checkRevision(dto.getRevision(), oldRaw);
+        if (dto.getRemarks().keySet().stream().anyMatch(key -> PRINT_GROUPS.stream().noneMatch(group -> group.getCode().equals(key))))
+            throw new BusinessException("仅支持面板、上线、下线的整组印刷备注");
+        ObjectNode next = parse(oldRaw);
+        ObjectNode remarks = json.createObjectNode();
+        List<String> changes = new ArrayList<>();
+        var fields = json.createArrayNode();
+        for (ProcessCategoryEnum group : PRINT_GROUPS) {
+            String key = group.getCode();
+            String before = next.path("printRemarks").path(key).asText("");
+            String after = dto.getRemarks().getOrDefault(key, "");
+            remarks.put(key, after);
+            if (!Objects.equals(before, after)) {
+                String label = group.getLabel() + "印刷整组备注";
+                changes.add(label + "：" + (before.isEmpty() ? "（空）" : before) + " → " + (after.isEmpty() ? "（空）" : after));
+                fields.addObject().put("field", "printRemarks." + key).put("label", label).put("before", before).put("after", after);
+            }
+        }
+        if (changes.isEmpty()) return response(id, oldRaw);
+        next.set("printRemarks", remarks);
+        next.remove(List.of("confirmedBy", "confirmedAt", "confirmedSource"));
+        mapper.write(id, next.toString());
+        SysOperLog log = new SysOperLog();
+        log.setModule("印刷规范");
+        log.setBusinessType(BusinessType.UPDATE.getCode());
+        log.setBizType("product");
+        log.setBizId(id.toString());
+        log.setAction(LogActions.PRINT_SPEC_REMARKS_EDIT);
+        log.setOperUrl("/product/" + id + "/work-spec/print-remarks");
+        log.setOperParam("修改 " + changes.size() + " 组印刷备注");
+        ObjectNode detail = parse(OperLogDetailBuilder.changes(changes));
+        detail.set("fields", fields);
+        log.setDetail(detail.toString());
+        log.setUserId(SecurityUtils.getUserId());
+        log.setUsername(SecurityUtils.getUsername());
+        log.setRealName(SecurityUtils.getRealName());
+        log.setCreateTime(LocalDateTime.now());
+        log.setStatus(YesNoEnum.YES.getCode());
+        // 与备注同事务，写日志失败即回滚，不走可丢失的异步通道。
+        operLogs.insert(log);
+        return response(id, mapper.read(id));
+    }
+
+    public ObjectNode printRemarksHistory(Long id, Long before) {
+        if (mapper.exists(id) == 0) throw new BusinessException("产品不存在");
+        var rows = mapper.printRemarksHistory(id.toString(), before, LogActions.PRINT_SPEC_REMARKS_EDIT, YesNoEnum.YES.getCode());
+        ObjectNode result = json.createObjectNode();
+        var items = result.putArray("items");
+        for (var row : rows.subList(0, Math.min(50, rows.size()))) {
+            ObjectNode item = items.addObject();
+            item.put("id", ((Number) row.get("id")).longValue());
+            item.put("operatorName", Objects.toString(row.get("operatorName"), ""));
+            item.put("changedAt", Objects.toString(row.get("changedAt"), ""));
+            item.set("fields", parse(Objects.toString(row.get("detail"), "{}")).path("fields"));
+        }
+        if (rows.size() > 50) result.put("nextBefore", ((Number) rows.get(49).get("id")).longValue());
+        return result;
     }
 
     @Transactional(rollbackFor = Exception.class)

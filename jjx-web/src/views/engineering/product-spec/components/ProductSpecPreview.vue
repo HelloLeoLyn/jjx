@@ -9,13 +9,15 @@
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="preview-message no-print" />
     <el-alert v-if="data?.warnings.length" :title="data.warnings.join('；')" type="warning" :closable="false" class="preview-message no-print" />
-    <el-alert v-if="paperOnly && structureFile && fileErrors[structureFile.key]" :title="'结构图展开失败：' + fileErrors[structureFile.key]" type="error" :closable="false" class="preview-message no-print" />
+    <template v-if="paperOnly">
+      <el-alert v-for="file in failedFiles" :key="file.key" :title="file.name + '：' + fileErrors[file.key]" type="error" :closable="false" class="preview-message no-print" />
+    </template>
     <div class="preview-layout" :class="{ 'paper-only': paperOnly }" v-loading="loading">
       <aside v-if="!paperOnly" class="document-nav no-print">
         <div class="nav-heading"><strong>文档目录</strong><el-button link @click="selectAll">全选</el-button></div>
         <p class="nav-tip">勾选要预览和打印的文档</p>
         <el-switch v-model="showHistory" size="small" active-text="查看原稿／全部版本" />
-        <p class="nav-tip">工程图纸默认选择现行已下发版的打印件；原稿、历史及待归集文件可手动勾选。</p>
+        <p class="nav-tip">印刷指导图仅引用现行已下发版；其他工程图纸默认选择现行打印件，可展开全部版本。</p>
         <el-alert v-if="selectedDrafts.length" title="已手动选择非现行、未下发或待归集图纸，打印页会标注其状态。" type="warning" :closable="false" />
         <el-checkbox-group v-model="selectedSections">
           <div v-for="section in documentSections" :key="section.key" class="nav-section" :class="{ chosen: selectedSections.includes(section.key) }">
@@ -77,17 +79,18 @@ const structureFile = computed(() => data.value?.workSpec.structureFileId
   : undefined)
 const defaultFileKeys = computed(() => new Set(defaultDocumentFiles(data.value?.files || []).map(file => file.key)))
 const selectedDrafts = computed(() => requestedFiles.value.filter(file => isEngineeringFile(file) && (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value)))
-const visibleFiles = computed(() => (data.value?.files || []).filter((file) => selectedFiles.value.includes(file.key) && selectedSections.value.includes(file.section)))
+const visibleFiles = computed(() => (data.value?.files || []).filter((file) => selectedFiles.value.includes(file.key) && selectedSections.value.includes(file.section) && (file.section !== 'print' || defaultFileKeys.value.has(file.key))))
 const requestedFiles = computed(() => {
   const files = [...visibleFiles.value]
   if (selectedSections.value.includes('spec') && structureFile.value && !files.some((file) => file.key === structureFile.value?.key)) files.push(structureFile.value)
   return files
 })
 const pendingCount = computed(() => requestedFiles.value.filter((file) => !images.value[file.key] && !fileErrors.value[file.key]).length)
+const failedFiles = computed(() => requestedFiles.value.filter(file => fileErrors.value[file.key]))
 const pages = computed(() => data.value ? makePages(data.value, selectedSections.value, selectedFiles.value, images.value, overflow.value) : [])
 const structureImage = computed(() => structureFile.value ? images.value[structureFile.value.key]?.[0]?.url : '')
 const structureCaption = computed(() => structureFile.value ? documentFileCaption({ ...structureFile.value, name: '' }) : '')
-const layoutReady = computed(() => pages.value.filter(page => page.kind === 'spec').every(page => overflow.value[page.key] !== undefined))
+const layoutReady = computed(() => pages.value.filter(page => page.kind === 'spec' || page.kind === 'print').every(page => overflow.value[page.key] !== undefined))
 const canPrint = computed(() => layoutReady.value && !!data.value && !loading.value && !error.value && pages.value.length > 0 && pendingCount.value === 0 && !requestedFiles.value.some((file) => fileErrors.value[file.key]))
 
 function releaseImages() { Object.values(images.value).flat().forEach((image) => URL.revokeObjectURL(image.url)); images.value = {} }
@@ -106,7 +109,7 @@ async function load() {
     selectedFiles.value = (props.initialFiles ? result.files.filter(file => file.kind !== 'other' && props.initialFiles!.includes(file.key)) : defaultDocumentFiles(result.files)).map(file => file.key)
     data.value = result
     emit('loaded', result)
-    if (result.workSpec.structureFileId && !structureFile.value) throw new Error('所选结构图已不可用，请在产品作业规范中重新选择')
+    if (selectedSections.value.includes('spec') && result.workSpec.structureFileId && !structureFile.value) throw new Error('所选结构图已不可用，请在产品作业规范中重新选择')
   } catch (e) {
     if (current === generation && !disposed) error.value = e instanceof Error ? e.message : '文档加载失败'
   } finally { if (current === generation && !disposed) loading.value = false }
@@ -130,7 +133,7 @@ async function expandFiles() {
   } finally { queueRunning = false }
 }
 function filesFor(section: string): DocFile[] {
-  return data.value?.files.filter(file => file.section === section && (showHistory.value || !isEngineeringFile(file) || defaultFileKeys.value.has(file.key) || selectedFiles.value.includes(file.key))) || []
+  return data.value?.files.filter(file => file.section === section && (section === 'print' ? defaultFileKeys.value.has(file.key) : (showHistory.value || !isEngineeringFile(file) || defaultFileKeys.value.has(file.key) || selectedFiles.value.includes(file.key)))) || []
 }
 function sectionPageCount(section: string) { return pages.value.filter((page) => page.section === section).length }
 async function downloadOriginal(file: DocFile) {

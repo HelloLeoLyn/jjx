@@ -2,7 +2,7 @@
   <div class="doc-sheets">
     <div v-for="(page, pageIndex) in pages" :key="page.key" :id="`doc-page-${pageIndex}`" class="sheet-slot">
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
-      <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' }" :padding-mm="page.kind === 'spec' ? 3 : 9" :scale="1">
+      <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print' }" :padding-mm="page.kind === 'spec' ? 3 : 9" :scale="1">
         <WorkSpecPaper v-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" />
         <article v-else class="paper-form">
           <header class="paper-heading">
@@ -13,22 +13,7 @@
           <template v-if="page.kind === 'spec-details'">
             <div class="spec-detail-lines"><div v-for="(line, i) in page.detailLines" :key="i" :style="{ color: line.color }">{{ line.text }}</div></div>
           </template>
-          <template v-else-if="page.kind === 'print'">
-            <div v-for="(group, groupIndex) in page.groups" :key="group.label" class="print-group">
-              <table class="paper-grid print-grid">
-                <colgroup><col style="width: 31%" /><col style="width: 17%" /><col style="width: 18%" /><col style="width: 18%" /><col style="width: 16%" /></colgroup>
-                <thead><tr><th>{{ group.symbol }} {{ group.label }}印序</th><th>色　号</th><th>油墨放置区</th><th>网版放置区</th><th>备　注</th></tr></thead>
-                <tbody><tr v-for="(row, i) in padded(group.rows, printCapacities[groupIndex])" :key="i">
-                  <td><span v-if="row" class="print-number">{{ (page.continuation || 0) * printCapacities[groupIndex] + i + 1 }}.</span>{{ row ? plain(printParams(row).printName || row.processName) : '' }}</td>
-                  <td>{{ row ? plain(printParams(row).colorNo) : '' }}</td>
-                  <td>{{ row ? plain(printParams(row).inkNo) : '' }}</td>
-                  <td>{{ row ? plain(printParams(row).screenNo) : '' }}</td>
-                  <td>{{ row ? plain(row.remark || row.description) : '' }}</td>
-                </tr></tbody>
-              </table>
-            </div>
-            <div class="print-signoff"><span>备注</span><div></div><span>发行单位</span><div></div></div>
-          </template>
+          <PrintSpecPaper v-else-if="page.kind === 'print'" ref="printPapers" :page="page" @overflow="emit('layout', page.key, $event)" />
 
           <template v-else-if="page.kind === 'image'">
             <div class="attachment-name">{{ page.file ? documentFileCaption(page.file) : '' }}</div>
@@ -52,13 +37,14 @@
 import { ref } from 'vue'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import WorkSpecPaper from './WorkSpecPaper.vue'
-import { plain, printParams, printCapacities, documentFileCaption, type DocsetData, type DocPage, type PaperTextLine } from './docset'
+import PrintSpecPaper from './PrintSpecPaper.vue'
+import { plain, documentFileCaption, type DocsetData, type DocPage, type PaperTextLine } from './docset'
 
 defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string }>()
 const emit = defineEmits<{ layout: [key: string, lines: PaperTextLine[]] }>()
 const workPapers = ref<InstanceType<typeof WorkSpecPaper>[]>([])
-defineExpose({ measureLayout: () => Promise.all(workPapers.value.map(paper => paper.measure())) })
-function padded(rows: Record<string, any>[] = [], size = 10): (Record<string, any> | null)[] { return Array.from({ length: Math.max(size, rows.length) }, (_, i) => rows[i] || null) }
+const printPapers = ref<InstanceType<typeof PrintSpecPaper>[]>([])
+defineExpose({ measureLayout: () => Promise.all([...workPapers.value, ...printPapers.value].map(paper => paper.measure())) })
 function labor(row?: Record<string, any> | null): string {
   if (!row) return ''
   if (row.children?.length) return totalLabor(row.children)
@@ -117,12 +103,6 @@ function totalLabor(rows: Record<string, any>[]): string {
 .vertical-label { width:28px; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; letter-spacing:7px; border-right:1px solid #333; padding:6px 0; }
 .change-note { flex:1; padding:9px; border-right:1px solid #333; font-size:11px; }
 .issue-blank { width:130px; }
-.print-group .paper-grid th { height:34px; font-size:14px; }
-.print-grid td { height:25px; }
-.print-number { font-size:10px; margin-right:4px; color:#666; }
-.print-signoff { flex:1; display:grid; grid-template-columns:28px 1fr 28px 130px; min-height:90px; }
-.print-signoff span { writing-mode:vertical-rl; text-align:center; letter-spacing:5px; padding:8px; border-right:1px solid #333; }
-.print-signoff div:first-of-type { border-right:1px solid #333; }
 .attachment-name { padding:8px 12px; font-size:11px; color:#555; overflow-wrap:anywhere; }
 .attachment-artwork { flex:1; height:870px; min-height:0; padding:10px 14px; display:flex; align-items:center; justify-content:center; box-sizing:border-box; }
 .attachment-artwork img { width:100%; height:100%; object-fit:contain; }

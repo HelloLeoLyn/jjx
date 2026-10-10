@@ -5,6 +5,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.dto.ProductWorkSpecDTO;
+import com.jjx.product.domain.dto.PrintSpecRemarksDTO;
 import com.jjx.product.service.ProductWorkSpecService;
 import com.jjx.product.service.ProductWorkSpecChangeService;
 import com.jjx.system.annotation.BusinessType;
@@ -30,6 +31,18 @@ public class ProductWorkSpecController {
     @GetMapping
     @SaCheckLogin
     public Result<ObjectNode> get(@PathVariable Long productId) { return Result.success(service.get(productId)); }
+
+    @PutMapping("/print-remarks")
+    @SaCheckPermission("product:edit")
+    public Result<ObjectNode> savePrintRemarks(@PathVariable Long productId, @Validated @RequestBody PrintSpecRemarksDTO dto) {
+        return Result.success(service.savePrintRemarks(productId, dto));
+    }
+
+    @GetMapping("/print-remarks/history")
+    @SaCheckPermission("product:edit")
+    public Result<ObjectNode> printRemarksHistory(@PathVariable Long productId, @RequestParam(required = false) Long before) {
+        return Result.success(service.printRemarksHistory(productId, before));
+    }
 
     @PutMapping
     @SaCheckPermission("product:edit")

@@ -11,8 +11,8 @@ export { renderFile, type FileImage } from '@/components/product/productFilePrev
 export const documentSections = [
   { key: 'customer', label: '客供资料', note: '客供稿 · 客户确认样品' },
   { key: 'spec', label: '产品作业规范', note: '材料 · 流程 · 结构图' },
-  { key: 'print', label: '印刷规范', note: '印序 · 色号 · 油墨 · 网版' },
-  { key: 'atlas', label: '工程图集', note: '工程图纸 · 印刷指导图' },
+  { key: 'print', label: '印刷规范', note: '印刷明细 · 整组备注 · 印刷指导图' },
+  { key: 'atlas', label: '工程图集', note: '结构图 · 面板图 · 线路图等' },
   { key: 'color', label: '分色检查表', note: '已上传的检查表' },
   { key: 'sample', label: '样品', note: '样品实物照片' },
 ]
@@ -71,7 +71,8 @@ export interface DocPage {
   title: string
   kind: 'spec' | 'spec-details' | 'print' | 'image' | 'empty' | 'flow'
   rows?: Record<string, any>[]
-  groups?: { label: string; symbol: string; rows: Record<string, any>[] }[]
+  groups?: { label: string; symbol: string; rows: Record<string, any>[]; value?: string; capacity?: number; remark?: string }[]
+  showFilm?: boolean
   image?: FileImage
   file?: DocFile
   continuation?: number
@@ -185,7 +186,7 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
     const kind = mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)
       ? 'image' : (mime.includes('pdf') || ext === 'pdf' ? 'pdf' : 'other')
     const section = customer || ['客供稿', '客户确认样品'].includes(category) ? 'customer'
-      : category === '样品照片' ? 'sample' : category === '分色检查表' ? 'color' : 'atlas'
+      : category === '印刷指导图' ? 'print' : category === '样品照片' ? 'sample' : category === '分色检查表' ? 'color' : 'atlas'
     data.files.push({ key: String(id), id, name, category, kind, section, productFile: !customer,
       drawingNo: row.drawingNo, version: row.version, fileRole: row.fileRole, isCurrent: row.isCurrent, released: row.released })
   }
@@ -209,9 +210,15 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
       const uncategorized = assembly.filter((row: any) => !flowGroups.some((group) => group.value === row.processCategory))
       for (let i = 0; i < uncategorized.length; i += 22) pages.push({ key: `flow-${i}`, section: 'spec', title: '产品作业规范 · 未分类工序', kind: 'flow', rows: uncategorized.slice(i, i + 22) })
     } else if (section.key === 'print') {
-      const groups = [...flowGroups, { value: '', label: '未分类', symbol: '' }].map((group) => ({ ...group, rows: printRows.filter((row) => group.value ? row.processCategory === group.value : !flowGroups.some((g) => g.value === row.processCategory)) }))
+      const groups = [...flowGroups, { value: '', label: '未分类', symbol: '' }].map((group, j) => ({ ...group, capacity: printCapacities[j]!, remark: data.workSpec.printRemarks[group.value] || '', rows: printRows.filter((row) => group.value ? row.processCategory === group.value : !flowGroups.some((g) => g.value === row.processCategory)) }))
       const count = Math.max(1, ...groups.map((group, j) => Math.ceil(group.rows.length / printCapacities[j])))
-      for (let i = 0; i < count; i++) pages.push({ key: `print-${i}`, section: 'print', title: '印刷规范', kind: 'print', continuation: i, groups: groups.filter((group) => group.value || group.rows.length).map((group, j) => ({ label: group.label, symbol: group.symbol, rows: group.rows.slice(i * printCapacities[j], (i + 1) * printCapacities[j]) })) })
+      const showFilm = printRows.some(row => String(printParams(row).filmNo ?? '').length > 0)
+      for (let i = 0; i < count; i++) pages.push({ key: `print-${i}`, section: 'print', title: '印刷规范', kind: 'print', continuation: i, showFilm, groups: groups.filter(group => group.value || group.rows.length).map(group => ({ ...group, rows: group.rows.slice(i * group.capacity, (i + 1) * group.capacity) })) })
+      const details = pages.filter(page => page.kind === 'print').flatMap(page => overflow[page.key] || [])
+      for (let i = 0; i < details.length; i += 48) pages.push({ key: 'print-details-' + i, section: 'print', title: '印刷规范 · 内容附页', kind: 'spec-details', detailLines: details.slice(i, i + 48) })
+      // 指导图跟随印刷表，整套文档中不再在工程图集重复打印；仅允许现行已下发的预览件。
+      const files = defaultDocumentFiles(data.files).filter(file => file.section === 'print' && fileIds.includes(file.key))
+      for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: 'print', title: '印刷指导图', kind: 'image', file, image }))
     } else {
       const files = data.files.filter((file) => file.section === section.key && fileIds.includes(file.key))
       for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: section.key, title: `${section.label} · ${productFileCategoryLabel(file.category)}`, kind: 'image', file, image }))
