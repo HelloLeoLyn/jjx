@@ -2,62 +2,17 @@
   <div class="doc-sheets">
     <div v-for="(page, pageIndex) in pages" :key="page.key" :id="`doc-page-${pageIndex}`" class="sheet-slot">
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
-      <A4Canvas :padding-mm="9" :scale="1">
-        <article class="paper-form">
+      <A4Canvas :padding-mm="page.kind === 'spec' ? 3 : 9" :scale="1">
+        <WorkSpecPaper v-if="page.kind === 'spec'" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" />
+        <article v-else class="paper-form">
           <header class="paper-heading">
             <h1>{{ page.title }}<small v-if="page.continuation">（续）</small></h1>
             <div class="paper-meta"><span>{{ data.product.productCode }}</span><span>{{ data.product.customerName || '' }}</span></div>
           </header>
 
-          <template v-if="page.kind === 'spec'">
-            <div class="material-area">
-              <table class="paper-grid material-grid">
-                <colgroup><col style="width: 8%" /><col style="width: 7%" /><col style="width: 30%" /><col style="width: 37%" /><col style="width: 18%" /></colgroup>
-                <thead><tr><th>序号</th><th>项目</th><th>材　料</th><th>规格及模数</th><th>刀模位置</th></tr></thead>
-                <tbody><tr v-for="(row, i) in padded(page.rows, 14)" :key="i">
-                  <td class="center">{{ row ? (page.continuation || 0) * 14 + i + 1 : '' }}</td>
-                  <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="18" /><span v-else>{{ plain(row?.processName) }}</span></td>
-                  <td>{{ row?.materialName || row?.materialCode }}</td>
-                  <td>{{ materialSpec(row) }}</td>
-                  <td>{{ row?.dieLocation || '' }}</td>
-                </tr></tbody>
-              </table>
-              <div class="conditions">
-                <div class="block-title">凹凸条件</div>
-                <table class="paper-grid"><tbody><tr v-for="label in embossLabels" :key="label"><td>{{ label }}</td><td class="condition-value"></td></tr></tbody></table>
-                <div class="die-locations"><strong>关联刀模 / 库位</strong><div v-for="die in data.dies" :key="die.resourceId">{{ die.resourceNo || die.die_no }}　{{ die.location || '未填写库位' }}</div><span v-if="!data.dies.length" class="blank-note">未关联刀模</span></div>
-              </div>
-            </div>
-
-            <div class="flow-area">
-              <div v-for="(group, groupIndex) in page.groups" :key="group.label" class="flow-column" :class="{ 'middle-flow': groupIndex === 1 }">
-                <template v-if="groupIndex === 1">
-                  <div class="block-title">产　品　结　构　图</div>
-                  <div class="structure-image"><img v-if="structureImage" :src="structureImage" alt="产品结构图" /><span v-else class="blank-note">暂无产品结构图</span></div>
-                  <div v-if="structureImage && structureCaption" class="structure-caption">{{ structureCaption }}</div>
-                </template>
-                <table class="paper-grid flow-grid">
-                  <colgroup><col style="width: 13%" /><col style="width: 65%" /><col style="width: 22%" /></colgroup>
-                  <thead><tr><th>序号</th><th>{{ group.label }}作业流程</th><th>工时(h)</th></tr></thead>
-                  <tbody><tr v-for="(row, i) in padded(group.rows, groupIndex === 1 ? 6 : 14)" :key="i">
-                    <td class="center">{{ row ? (page.continuation || 0) * (groupIndex === 1 ? 6 : 14) + i + 1 : '' }}</td>
-                    <td><div v-if="row" class="flow-operation">
-                      <template v-for="(operation, j) in operations(row)" :key="operation.itemId || j">
-                        <span v-if="j" class="flow-plus">+</span>
-                        <span class="operation-symbol"><SvgIcon v-if="operation.icon" :name="operation.icon" :size="21" /><span v-else>{{ plain(operation.processName) }}</span><sub v-if="operation.indexNumber">{{ operation.indexNumber }}</sub></span>
-                      </template>
-                      <span class="operation-note">{{ plain(row.workInstruction || row.description) }}</span>
-                    </div></td>
-                    <td class="center">{{ labor(row) }}</td>
-                  </tr></tbody>
-                  <tfoot><tr><td colspan="2">{{ group.label }}作业总耗时</td><td class="center">{{ totalLabor(group.rows) }}</td></tr></tfoot>
-                </table>
-              </div>
-            </div>
-            <div class="hours-total">本页合计人工工时（h）<span>{{ totalLabor((page.groups || []).flatMap(group => group.rows)) }}</span></div>
-            <div class="issue-area"><div class="vertical-label">变更内容</div><div class="change-note">{{ plain(data.routing.remark || '') }}</div><div class="vertical-label">发行单位</div><div class="issue-blank"></div></div>
+          <template v-if="page.kind === 'spec-details'">
+            <div class="spec-detail-lines"><div v-for="(line, i) in page.detailLines" :key="i" :style="{ color: line.color }">{{ line.text }}</div></div>
           </template>
-
           <template v-else-if="page.kind === 'print'">
             <div v-for="(group, groupIndex) in page.groups" :key="group.label" class="print-group">
               <table class="paper-grid print-grid">
@@ -96,14 +51,12 @@
 
 <script setup lang="ts">
 import A4Canvas from '@/components/A4Canvas/index.vue'
-import SvgIcon from '@/components/SvgIcon/index.vue'
+import WorkSpecPaper from './WorkSpecPaper.vue'
 import { InboundOrderStatusEnum } from '@/enums/inventory'
 import { plain, printParams, printCapacities, documentFileCaption, type DocsetData, type DocPage } from './docset'
 
 defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string }>()
-const embossLabels = ['凹凸调机高度', '凹凸要求高度', '凹凸上模温度', '凹凸下模温度', '凹凸下压时间', '凹凸保持时间']
 function padded(rows: Record<string, any>[] = [], size = 10): (Record<string, any> | null)[] { return Array.from({ length: Math.max(size, rows.length) }, (_, i) => rows[i] || null) }
-function operations(row: Record<string, any>) { return row.children?.length ? row.children : [row] }
 function outboundStatusText(value: unknown): string {
   const numeric = Number(value)
   return value == null ? '' : InboundOrderStatusEnum.canDo(numeric) ? InboundOrderStatusEnum.getLabel(numeric) : String(value)
@@ -118,11 +71,7 @@ function totalLabor(rows: Record<string, any>[]): string {
   if (!rows.some((row) => labor(row) !== '')) return ''
   return String(Number(rows.reduce((sum, row) => sum + Number(labor(row) || 0), 0).toFixed(2)))
 }
-function materialSpec(row?: Record<string, any> | null): string {
-  if (!row) return ''
-  const specification = row.specification || (row.widthMm && row.lengthMm ? `${row.widthMm}×${row.lengthMm}mm` : '')
-  return [specification, row.moduleQty != null ? `${row.moduleQty} PCS` : '', row.quantity != null ? `用量 ${row.quantity}${row.unit || ''}` : ''].filter(Boolean).join(' / ')
-}
+
 </script>
 
 <style scoped>
@@ -134,6 +83,8 @@ function materialSpec(row?: Record<string, any> | null): string {
 .paper-heading h1 { margin:0; font-weight:700; font-size:27px; letter-spacing:6px; text-align:center; line-height:1.6; }
 .paper-heading small { font-size:15px; letter-spacing:1px; }
 .paper-meta { display:flex; justify-content:space-between; margin-top:2px; font-size:11px; color:#555; }
+.spec-detail-lines { flex:1; padding:16px; font-size:13px; }
+.spec-detail-lines div { min-height:18px; line-height:18px; white-space:pre-wrap; overflow-wrap:anywhere; }
 .paper-grid { width:100%; border-collapse:collapse; table-layout:fixed; font-size:12px; }
 .paper-grid th,.paper-grid td { border:1px solid #343434; padding:3px 5px; line-height:1.4; overflow-wrap:anywhere; }
 .paper-grid th { font-weight:500; font-size:13px; height:29px; }

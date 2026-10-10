@@ -9,8 +9,9 @@
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="preview-message no-print" />
     <el-alert v-if="data?.warnings.length" :title="data.warnings.join('；')" type="warning" :closable="false" class="preview-message no-print" />
-    <div class="preview-layout" v-loading="loading">
-      <aside class="document-nav no-print">
+    <el-alert v-if="paperOnly && structureFile && fileErrors[structureFile.key]" :title="'结构图展开失败：' + fileErrors[structureFile.key]" type="error" :closable="false" class="preview-message no-print" />
+    <div class="preview-layout" :class="{ 'paper-only': paperOnly }" v-loading="loading">
+      <aside v-if="!paperOnly" class="document-nav no-print">
         <div class="nav-heading"><strong>文档目录</strong><el-button link @click="selectAll">全选</el-button></div>
         <p class="nav-tip">勾选要预览和打印的文档</p>
         <el-switch v-model="showHistory" size="small" active-text="查看原稿／全部版本" />
@@ -49,7 +50,8 @@ import ProductSpecSheets from './ProductSpecSheets.vue'
 import { documentSections, loadDocset, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, type DocsetData, type DocFile, type FileImage } from './docset'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum } from '@/enums/product/drawing'
 
-const props = withDefaults(defineProps<{ productId: number; standalone?: boolean; autoPrint?: boolean; initialSections?: string[]; initialFiles?: string[] }>(), { standalone: false, autoPrint: false })
+const props = withDefaults(defineProps<{ productId: number; standalone?: boolean; autoPrint?: boolean; paperOnly?: boolean; initialSections?: string[]; initialFiles?: string[] }>(), { standalone: false, autoPrint: false, paperOnly: false })
+const emit = defineEmits<{ loaded: [data: DocsetData] }>()
 const data = shallowRef<DocsetData>()
 const loading = ref(false)
 const error = ref('')
@@ -58,14 +60,16 @@ const selectedFiles = ref<string[]>([])
 const showHistory = ref(false)
 const images = shallowRef<Record<string, FileImage[]>>({})
 const fileErrors = ref<Record<string, string>>({})
-const zoom = ref(80)
+const zoom = ref(props.paperOnly ? 100 : 80)
 let generation = 0
 let queueRunning = false
 let disposed = false
 let printPageStyle: HTMLStyleElement | undefined
 let autoPrinted = false
 
-const structureFile = computed(() => data.value?.files.find((file) => file.category === '结构图' && file.kind !== 'other' && selectedFiles.value.includes(file.key)))
+const structureFile = computed(() => data.value?.workSpec.structureFileId
+  ? data.value.files.find(file => file.id === data.value?.workSpec.structureFileId && file.category === '结构图' && file.kind !== 'other')
+  : undefined)
 const defaultFileKeys = computed(() => new Set(defaultDocumentFiles(data.value?.files || []).map(file => file.key)))
 const selectedDrafts = computed(() => requestedFiles.value.filter(file => isEngineeringFile(file) && (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value)))
 const visibleFiles = computed(() => (data.value?.files || []).filter((file) => selectedFiles.value.includes(file.key) && selectedSections.value.includes(file.section)))
@@ -78,7 +82,7 @@ const pendingCount = computed(() => requestedFiles.value.filter((file) => !image
 const pages = computed(() => data.value ? makePages(data.value, selectedSections.value, selectedFiles.value, images.value) : [])
 const structureImage = computed(() => structureFile.value ? images.value[structureFile.value.key]?.[0]?.url : '')
 const structureCaption = computed(() => structureFile.value ? documentFileCaption({ ...structureFile.value, name: '' }) : '')
-const canPrint = computed(() => !!data.value && !loading.value && pages.value.length > 0 && pendingCount.value === 0 && !requestedFiles.value.some((file) => fileErrors.value[file.key]))
+const canPrint = computed(() => !!data.value && !loading.value && !error.value && pages.value.length > 0 && pendingCount.value === 0 && !requestedFiles.value.some((file) => fileErrors.value[file.key]))
 
 function releaseImages() { Object.values(images.value).flat().forEach((image) => URL.revokeObjectURL(image.url)); images.value = {} }
 async function load() {
@@ -94,6 +98,8 @@ async function load() {
     if (current !== generation || disposed) return
     selectedFiles.value = (props.initialFiles ? result.files.filter(file => file.kind !== 'other' && props.initialFiles!.includes(file.key)) : defaultDocumentFiles(result.files)).map(file => file.key)
     data.value = result
+    emit('loaded', result)
+    if (result.workSpec.structureFileId && !structureFile.value) throw new Error('所选结构图已不可用，请在产品作业规范中重新选择')
   } catch (e) {
     if (current === generation && !disposed) error.value = e instanceof Error ? e.message : '文档加载失败'
   } finally { if (current === generation && !disposed) loading.value = false }
@@ -143,6 +149,7 @@ async function printDocuments() {
   catch { ElMessage.error('图片尚未加载完成，请重新加载后打印') }
 }
 watch(() => props.productId, load, { immediate: true })
+defineExpose({ reload: load })
 watch(requestedFiles, expandFiles)
 watch(canPrint, (ready) => {
   if (ready && props.standalone && props.autoPrint && !autoPrinted && !selectedDrafts.value.length) {
@@ -170,6 +177,8 @@ onBeforeUnmount(() => { disposed = true; generation++; releaseImages(); printPag
 .preview-message { margin:8px 0; }
 .preview-layout { display:flex; background:#edf0f4; border:1px solid #e0e5ed; border-top:0; height:70vh; min-height:540px; overflow:hidden; }
 .standalone .preview-layout { height:calc(100vh - 150px); }
+.preview-layout.paper-only { height:auto; min-height:0; overflow:visible; }
+.paper-only .paper-stage { padding:20px; overflow:auto; }
 .document-nav { width:245px; flex-shrink:0; background:#fff; padding:20px 14px; border-right:1px solid #e1e6ed; overflow-y:auto; box-sizing:border-box; }
 .nav-heading { display:flex; align-items:center; justify-content:space-between; padding:0 6px; font-size:14px; }
 .nav-tip { margin:6px 6px 16px; font-size:11px; color:#98a1ad; }

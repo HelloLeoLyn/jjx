@@ -101,7 +101,7 @@ import { downloadFile, fileKind } from '@/components/product/productFilePreview'
 import ProductFilePreview from '@/components/product/ProductFilePreview.vue'
 
 const props = defineProps<{ productCode: string; productName: string; categories?: string[]; active?: boolean }>()
-const emit = defineEmits<{ busy: [value: boolean] }>()
+const emit = defineEmits<{ busy: [value: boolean]; loaded: [files: ProductDrawingFile[]] }>()
 const user = useUserStore()
 const canUpload = computed(() => user.hasPermission('product:edit'))
 const canDelete = computed(() => user.hasPermission('product:delete'))
@@ -153,7 +153,10 @@ async function loadFiles() {
   loading.value = true; error.value = ''
   try {
     const res: any = await attachmentApi.productFiles(props.productCode)
-    if (current === generation && !disposed) files.value = (res.data || []).filter((file: ProductDrawingFile) => allowedCategories.includes(file.category))
+    if (current === generation && !disposed) {
+      files.value = (res.data || []).filter((file: ProductDrawingFile) => allowedCategories.includes(file.category))
+      emit('loaded', files.value)
+    }
   } catch (e) { if (current === generation && !disposed) { files.value = []; error.value = e instanceof Error ? e.message : '文件加载失败，请刷新重试' } }
   finally { if (current === generation && !disposed) loading.value = false }
 }

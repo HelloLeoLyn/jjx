@@ -60,7 +60,7 @@
           </div>
         </div>
 
-        <el-tabs v-model="activeTab" class="spec-tabs">
+        <el-tabs v-model="activeTab" class="spec-tabs" :before-leave="beforeSpecTabLeave">
           <!-- ① 客供资料（+样品需求） -->
           <el-tab-pane label="客供资料" name="customer">
             <el-alert type="info" :closable="false" class="tab-tip"
@@ -98,55 +98,15 @@
 
           <!-- ② 产品作业规范 -->
           <el-tab-pane label="产品作业规范" name="spec">
-            <el-divider content-position="left">BOM（引用当前版本）</el-divider>
-            <el-table :data="bomItems" size="small" border>
-              <el-table-column label="物料编码" prop="materialCode" width="140" />
-              <el-table-column label="物料名称" prop="materialName" min-width="160" show-overflow-tooltip />
-              <el-table-column label="用量" prop="quantity" width="90" align="right" />
-              <el-table-column label="单位" prop="unit" width="70" align="center" />
-              <el-table-column label="损耗%" prop="lossRate" width="80" align="right" />
-            </el-table>
-            <div class="sec-note">BOM：{{ detail?.bom?.bomCode || '未配置' }} / {{ (detail?.bom as any)?.bomVersion || '-' }}</div>
-
-            <el-divider content-position="left">工艺路线（引用当前版本）</el-divider>
-            <el-table :data="routingItems" size="small" border>
-              <el-table-column label="工序顺序" prop="processOrder" width="90" align="center" />
-              <el-table-column label="工序名称" prop="processName" min-width="160" show-overflow-tooltip />
-              <el-table-column label="类别" prop="processCategory" width="100" align="center" />
-              <el-table-column label="说明" prop="description" min-width="180" show-overflow-tooltip />
-            </el-table>
-            <div class="sec-note">工艺路线：{{ detail?.routing?.routingCode || '未配置' }} / {{ (detail?.routing as any)?.routingVersion || '-' }}</div>
-
-            <el-divider content-position="left">刀模（库位）</el-divider>
-            <div style="margin-bottom: 6px">
-              <el-button type="primary" plain size="small" v-hasPermi="['engineering:resource:edit']" @click="openDieLink">关联刀模</el-button>
-            </div>
-            <el-table :data="productDies" size="small" border>
-              <el-table-column label="刀模编号" width="140">
-                <template #default="{ row }">{{ row.resourceNo || row.dieNo || row.die_no || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="刀模名称" min-width="150" show-overflow-tooltip>
-                <template #default="{ row }">{{ row.resourceName || row.dieName || row.die_name || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="规格" min-width="130" show-overflow-tooltip>
-                <template #default="{ row }">{{ row.specification || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="库位" width="110">
-                <template #default="{ row }">{{ row.location || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="状态" width="110" align="center">
-                <template #default="{ row }">{{ row.status || '-' }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="90" align="center">
-                <template #default="{ row }">
-                  <el-button link type="danger" v-hasPermi="['engineering:resource:edit']" @click="unlinkDie(row)">解除</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-if="!productDies.length" description="未关联刀模" :image-size="50" />
-
-            <el-divider content-position="left">凹凸条件</el-divider>
-            <el-empty description="凹凸条件录入：待工程侧字段确定后接入" :image-size="50" />
+            <ProductWorkSpecPanel
+              v-if="productId && activeTab === 'spec'"
+              :key="productId"
+              :product-id="productId"
+              :product-code="productCode"
+              :product-name="detail?.product?.productName || ''"
+              @busy="workSpecBusy = $event"
+              @updated="refreshSpecSources"
+            />
           </el-tab-pane>
 
           <!-- ③ 印刷规范 -->
@@ -239,33 +199,6 @@
     <el-dialog v-model="exportVisible" title="产品电子文档集 · 在线预览" width="94%" top="4vh" append-to-body destroy-on-close>
       <ProductSpecPreview v-if="exportVisible && productId" :product-id="productId" />
     </el-dialog>
-    <!-- 关联刀模 -->
-    <el-dialog v-model="dieVisible" title="关联刀模" width="760px" append-to-body>
-      <div style="margin-bottom: 8px">
-        <el-input v-model="dieKeyword" placeholder="刀模编号/名称/用途/库位" clearable style="width: 260px" @keyup.enter="searchDies" />
-        <el-button style="margin-left: 8px" @click="searchDies">查询</el-button>
-      </div>
-      <el-table v-loading="dieLoading" :data="dieOptions" size="small" border height="340">
-        <el-table-column label="刀模编号" width="140">
-          <template #default="{ row }">{{ row.die_no || row.dieNo }}-{{ row.die_name || row.dieName }}</template>
-        </el-table-column>
-        <el-table-column label="名称" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.die_name || row.dieName || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="库位" width="110">
-          <template #default="{ row }">{{ row.location || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="110" align="center">
-          <template #default="{ row }">{{ row.status || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="90" align="center">
-          <template #default="{ row }">
-            <el-button link type="primary" v-hasPermi="['engineering:resource:edit']" @click="linkDie(row)">关联</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
-
     <!-- 打样领料：预览 + 改数量 -->
     <el-dialog v-model="pickVisible" :title="`打样领料 - ${pickSample?.orderNo || ''}`" width="780px" append-to-body>
       <el-table :data="pickRows" size="small" border>
@@ -306,13 +239,13 @@ import { ElMessage } from 'element-plus'
 import { listProductPage, getFullProduct } from '@/api/product'
 import { outboundApi } from '@/api/inventory/outbound'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
-import { engineeringResourceApi } from '@/api/engineering/resource'
 import { attachmentApi } from '@/api/system/attachment'
 import { InboundOrderStatusEnum } from '@/enums/inventory'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import EngineeringDrawingLibrary from '../drawing/components/EngineeringDrawingLibrary.vue'
 import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
+import ProductWorkSpecPanel from './components/ProductWorkSpecPanel.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
 import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
 
@@ -327,17 +260,20 @@ const query = reactive({ productCode: '', productName: '', current: 1, pageSize:
 
 const specVisible = ref(false)
 const drawingBusy = ref(false)
+const workSpecBusy = ref(false)
 function closeSpec(done: () => void) {
-  if (drawingBusy.value) { ElMessage.warning('请先完成或关闭图纸上传、关联窗口'); return }
+  if (drawingBusy.value || workSpecBusy.value) { ElMessage.warning('请先完成或关闭工程规范、图纸维护窗口'); return }
   done()
+}
+function beforeSpecTabLeave() {
+  if (workSpecBusy.value) { ElMessage.warning('请先完成或关闭规范编辑窗口'); return false }
+  return true
 }
 const detailLoading = ref(false)
 const detail = ref<ProductFullVO | null>(null)
 const activeTab = ref('customer')
 
 const productCode = computed(() => detail.value?.product?.productCode || '')
-const bomItems = computed<any[]>(() => ((detail.value?.bom as any)?.items as any[]) || [])
-const routingItems = computed<any[]>(() => ((detail.value?.routing as any)?.items as any[]) || [])
 
 // ===== 客供资料：询价/报价附件（①） =====
 const customerDocs = ref<any[]>([])
@@ -356,75 +292,13 @@ function openDoc(row: any) {
   if (id) window.open(attachmentApi.downloadUrl(Number(id)), '_blank')
 }
 
-// ===== 刀模（库位）关联（②） =====
-const productDies = ref<any[]>([])
-const dieVisible = ref(false)
-const dieKeyword = ref('')
-const dieOptions = ref<any[]>([])
-const dieLoading = ref(false)
-
 const productId = computed(() => Number((detail.value?.product as any)?.productId || 0))
-
-async function loadProductDies() {
-  productDies.value = []
+async function refreshSpecSources() {
   if (!productId.value) return
   try {
-    const res: any = await engineeringResourceApi.byProduct('DIE', productId.value)
-    productDies.value = res?.data || []
-  } catch {
-    productDies.value = []
-  }
-}
-
-function openDieLink() {
-  dieVisible.value = true
-  searchDies()
-}
-
-async function searchDies() {
-  dieLoading.value = true
-  try {
-    const res: any = await engineeringResourceApi.dies({ keyword: dieKeyword.value || undefined, pageNum: 1, pageSize: 50 })
-    dieOptions.value = res?.data?.records || []
-  } catch {
-    dieOptions.value = []
-  } finally {
-    dieLoading.value = false
-  }
-}
-
-/** 关联：把该产品并入刀模的产品列表（保留已有） */
-async function linkDie(row: any) {
-  const dieId = Number(row.die_id || row.dieId)
-  if (!dieId || !productId.value) return
-  try {
-    const cur: any = await engineeringResourceApi.products('DIE', dieId)
-    const ids = (cur?.data || []).map((x: any) => Number(x.product_id ?? x.productId)).filter(Boolean)
-    if (!ids.includes(productId.value)) ids.push(productId.value)
-    await engineeringResourceApi.replaceProducts('DIE', dieId, ids)
-    ElMessage.success('已关联')
-    dieVisible.value = false
-    loadProductDies()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '关联失败')
-  }
-}
-
-/** 解除：从刀模的产品列表移除该产品 */
-async function unlinkDie(row: any) {
-  const dieId = Number(row.resourceId || row.die_id || row.dieId)
-  if (!dieId || !productId.value) return
-  try {
-    const cur: any = await engineeringResourceApi.products('DIE', dieId)
-    const ids = (cur?.data || [])
-      .map((x: any) => Number(x.product_id ?? x.productId))
-      .filter((x: number) => x && x !== productId.value)
-    await engineeringResourceApi.replaceProducts('DIE', dieId, ids)
-    ElMessage.success('已解除')
-    loadProductDies()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '解除失败')
-  }
+    const response = await getFullProduct(productId.value)
+    detail.value = response.data
+  } catch (e) { ElMessage.error(e instanceof Error ? e.message : '产品资料刷新失败') }
 }
 
 // ===== 打样领料单（⑦） =====
@@ -552,7 +426,6 @@ async function openSpec(row: any) {
   try {
     const res: any = await getFullProduct(Number(row.productId))
     detail.value = res?.data || null
-    loadProductDies()
     loadCustomerDocs()
   } catch (e: any) {
     ElMessage.error(e?.message || '加载作业规范失败')
