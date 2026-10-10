@@ -527,9 +527,11 @@ public class CustomerServiceImpl implements ICustomerService {
     @Override
     public String generateCustomerCode() {
         log.info("生成客户编码");
-        // 使用统一序列号服务生成客户编码
-        // 格式：CUST + 日期(yyMMdd) + 序列号(4位)
-        return redisSequenceService.generateBusinessNumberByType("customer", "CUS", "", 5);
+        // 使用统一序列号服务生成客户编码（CUS + 5 位全局流水）
+        // 存量兜底：清库/回滚会把 customer 序号清零，取「存量最大流水+1」作下限，避免从 1 撞存量
+        Long maxSeq = customerMapper.selectMaxCodeSequence();
+        long minSequence = (maxSeq == null || maxSeq <= 0) ? 0L : maxSeq + 1;
+        return redisSequenceService.generateBusinessNumberByType("customer", "CUS", "", 5, minSequence);
     }
 
     @Override

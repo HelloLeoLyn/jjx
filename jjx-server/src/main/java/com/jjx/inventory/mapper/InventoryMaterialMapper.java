@@ -22,6 +22,10 @@ public interface InventoryMaterialMapper extends BaseMapper<InventoryMaterial> {
     @Select("SELECT * FROM inventory_material WHERE material_code = #{materialCode}")
     InventoryMaterial selectByCode(@Param("materialCode") String materialCode);
 
+
+    /** 存量物料最大流水号（6 位数字段）；清库后兜底，避免新增从 1 撞存量（dev-20261010） */
+    @Select("SELECT COALESCE(MAX(CAST(RIGHT(material_code, 6) AS UNSIGNED)), 0) FROM inventory_material WHERE material_code REGEXP '^[A-Za-z]+[0-9]{6}$'")
+    Long selectMaxCodeSequence();
     /**
      * 查询库存预警物料（低于安全库存）
      */

@@ -227,17 +227,30 @@ public class RedisSequenceService {
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public String generateBusinessNumberByType(String bizType, String fallbackPrefix,
                                                String fallbackDateFormat, int fallbackDigits) {
+        return generateBusinessNumberByType(bizType, fallbackPrefix, fallbackDateFormat, fallbackDigits, 0L);
+    }
+
+    /** minSequence：存量兜底下限（清库/回滚把序号清空后，至少从该值起，避免从 1 撞存量）。 */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public String generateBusinessNumberByType(String bizType, String fallbackPrefix,
+                                               String fallbackDateFormat, int fallbackDigits, long minSequence) {
         BusinessNumberRule rule = loadRule(bizType, fallbackPrefix, fallbackDateFormat, fallbackDigits);
-        return generateBusinessNumber(rule, LocalDate.now(), bizType);
+        return generateBusinessNumber(rule, LocalDate.now(), bizType, minSequence);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public String generateBusinessNumberByTypeWithPrefix(String bizType, String dynamicPrefix,
                                                          String fallbackDateFormat, int fallbackDigits) {
+        return generateBusinessNumberByTypeWithPrefix(bizType, dynamicPrefix, fallbackDateFormat, fallbackDigits, 0L);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public String generateBusinessNumberByTypeWithPrefix(String bizType, String dynamicPrefix,
+                                                         String fallbackDateFormat, int fallbackDigits, long minSequence) {
         BusinessNumberRule configured = loadRule(bizType, dynamicPrefix, fallbackDateFormat, fallbackDigits);
         BusinessNumberRule effective = new BusinessNumberRule(dynamicPrefix, configured.dateFormat(),
                 configured.digits(), configured.startValue(), configured.resetCycle());
-        return generateBusinessNumber(effective, LocalDate.now(), bizType);
+        return generateBusinessNumber(effective, LocalDate.now(), bizType, minSequence);
     }
 
     BusinessNumberRule loadRule(String bizType, String fallbackPrefix,
@@ -265,12 +278,17 @@ public class RedisSequenceService {
     }
 
     String generateBusinessNumber(BusinessNumberRule rule, LocalDate date, String bizType) {
+        return generateBusinessNumber(rule, date, bizType, 0L);
+    }
+
+    /** minSequence：存量兜底下限（清库/回滚把序号清空后，至少从该值起，避免从 1 撞存量）。 */
+    String generateBusinessNumber(BusinessNumberRule rule, LocalDate date, String bizType, long minSequence) {
         BusinessNumberRule normalized = normalizeRule(rule);
         validateRule(normalized);
         String datePart = normalized.dateFormat().isBlank() ? ""
                 : date.format(DateTimeFormatter.ofPattern(normalizeDatePattern(normalized.dateFormat())));
         String periodKey = periodKey(normalized.resetCycle(), date);
-        long sequence = nextPersistentSequence(bizType, periodKey, normalized.startValue());
+        long sequence = nextPersistentSequence(bizType, periodKey, Math.max(normalized.startValue(), minSequence));
         long configuredMax = maxSequence(normalized.digits());
         if (sequence > configuredMax) {
             int actualDigits = Long.toString(sequence).length();

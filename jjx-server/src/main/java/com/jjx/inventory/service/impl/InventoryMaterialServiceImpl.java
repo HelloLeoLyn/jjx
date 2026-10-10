@@ -509,8 +509,11 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
      */
     private String generateMaterialCode(String materialType) {
         String prefix = resolveMaterialCodePrefix(materialType);
+        // 存量兜底：清库/回滚会把 material 序号清零，取「存量最大流水+1」作下限，避免从 1 撞存量
+        Long maxSeq = materialMapper.selectMaxCodeSequence();
+        long minSequence = (maxSeq == null || maxSeq <= 0) ? 0L : maxSeq + 1;
         return redisSequenceService.generateBusinessNumberByTypeWithPrefix(
-                "material", prefix, "", 6);
+                "material", prefix, "", 6, minSequence);
     }
 
     /**

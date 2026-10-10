@@ -13,7 +13,7 @@ public interface SysNumberSequenceMapper extends BaseMapper<SysNumberSequence> {
     @Insert("""
             INSERT INTO sys_number_sequence(sequence_key, period_key, current_value, create_time, update_time)
             VALUES(#{sequenceKey}, #{periodKey}, #{startValue}, NOW(), NOW())
-            ON DUPLICATE KEY UPDATE current_value = current_value + 1, update_time = NOW()
+            ON DUPLICATE KEY UPDATE current_value = GREATEST(current_value + 1, #{startValue}), update_time = NOW()
             """)
     int advance(@Param("sequenceKey") String sequenceKey,
                 @Param("periodKey") String periodKey,
