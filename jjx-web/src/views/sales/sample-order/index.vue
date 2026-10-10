@@ -471,6 +471,7 @@ import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'
 import SalesOrderFormDialog from '@/views/sales/order/components/SalesOrderFormDialog.vue'
 import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { orderApi } from '@/api/sales/order'
 import { outboundApi } from '@/api/inventory/outbound'
 import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
 import type { SampleOrderQueryParams } from '@/api/sales/sampleOrder'
@@ -765,6 +766,59 @@ function showCreateDialog() {
   createForm.remark = ''
   loadQuotationOptions()
   if (customerOptions.value.length === 0) searchCustomers('')
+}
+
+let openingFromOrder = false
+
+// 销售订单明细的便捷入口：只预填现有新建样品单弹窗，后续仍走原打样流程。
+async function openCreateFromOrderQuery() {
+  const sourceOrderId = route.query.sourceOrderId
+  const sourceItemId = route.query.sourceItemId
+  if (!sourceOrderId || !sourceItemId || openingFromOrder) return
+  openingFromOrder = true
+  try {
+    const orderId = Number(sourceOrderId)
+    const itemId = Number(sourceItemId)
+    if (!Number.isSafeInteger(orderId) || orderId <= 0 || !Number.isSafeInteger(itemId) || itemId <= 0) {
+      throw new Error('来源订单参数无效')
+    }
+    const response = await orderApi.getOrder(orderId)
+    const order = response.data
+    const item = order?.items?.find((candidate) => candidate.id === itemId)
+    if (!order?.customerId || !item) throw new Error('订单或产品明细不存在，请刷新销售订单后重试')
+
+    // 在打开弹窗前加入来源客户，避免异步客户搜索覆盖当前选项。
+    if (!customerOptions.value.some((customer) => customer.customerId === order.customerId)) {
+      customerOptions.value.push({
+        customerId: order.customerId,
+        customerName: order.customerName,
+        contactPerson: order.contactPerson,
+        contactPhone: order.contactPhone,
+      })
+    }
+    showCreateDialog()
+    createForm.customerId = order.customerId
+    createForm.contactPerson = order.contactPerson || ''
+    createForm.contactPhone = order.contactPhone || ''
+    fillSampleProduct({
+      productId: item.productId,
+      productCode: item.productCode,
+      productName: item.productName,
+      quantity: 1,
+      unit: item.unitDesc || 'PCS',
+    })
+    createForm.remark = `来源销售订单：${order.orderNo}；产品：${item.productCode || item.productName}`
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载销售订单失败，请重试')
+  } finally {
+    const remainingQuery = { ...route.query }
+    delete remainingQuery.sourceOrderId
+    delete remainingQuery.sourceItemId
+    if (route.path === '/sales/sample-order') {
+      await router.replace({ path: route.path, query: remainingQuery })
+    }
+    openingFromOrder = false
+  }
 }
 
 // 编辑样品单（驳回后编辑：仅 CREATED 状态入口；编辑前加载最新 getInfo + getProducts，不使用列表缓存）
@@ -1520,6 +1574,7 @@ function showTrace(row: any) {
 // ==================== 初始化 ====================
 onMounted(() => {
   getList()
+  void openCreateFromOrderQuery()
   statusOptions.value = SampleOrderStatusEnum.items.map((item) => ({
     value: item.value,
     label: item.label,
@@ -1529,6 +1584,7 @@ onMounted(() => {
 })
 onActivated(() => {
   getList()
+  void openCreateFromOrderQuery()
 })
 </script>
 
