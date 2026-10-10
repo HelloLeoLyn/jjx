@@ -9,6 +9,12 @@ import { productWorkSpecApi, normalizeWorkSpec, type ProductWorkSpec } from '@/a
 import type { FileImage } from '@/components/product/productFilePreview'
 export { renderFile, type FileImage } from '@/components/product/productFilePreview'
 
+/**
+ * 打样领料单：暂从「产品作业规范」屏蔽（能力保留，后续另起任务把入口挪到合适的地方）。
+ * 改回 true 即恢复页签与导出段；后端 sample-pick 接口、QR-031 打印不受影响。
+ */
+export const ENABLE_SAMPLE_PICK_SECTION = false
+
 export const documentSections = [
   { key: 'customer', label: '客供资料', note: '客供稿 · 客户确认样品' },
   { key: 'spec', label: '产品作业规范', note: '材料 · 流程 · 结构图' },
@@ -16,7 +22,7 @@ export const documentSections = [
   { key: 'atlas', label: '工程图集', note: '工程图纸 · 印刷指导图' },
   { key: 'color', label: '分色检查表', note: '已上传的检查表' },
   { key: 'sample', label: '样品', note: '样品实物照片' },
-  { key: 'pick', label: '打样领料单', note: '已有领料单汇总' },
+  ...(ENABLE_SAMPLE_PICK_SECTION ? [{ key: 'pick', label: '打样领料单', note: '已有领料单汇总' }] : []),
 ]
 
 export interface DocFile {
@@ -172,6 +178,7 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
     { label: '客供资料', run: async () => { const r: any = await attachmentApi.customerDocs(productId); appendFiles(data, r.data || [], true) } },
     { label: '产品文件', run: async () => { const r: any = await attachmentApi.productFiles(data.product.productCode); appendFiles(data, r.data || [], false) } },
     { label: '打样领料单', run: async () => {
+      if (!ENABLE_SAMPLE_PICK_SECTION) return
       const r: any = await sampleOrderApi.page({ productId, productCode: data.product.productCode, pageNum: 1, pageSize: 100 } as any)
       const orders = (r.data?.records || []).filter((row: any) => Number(row.productId) === productId || row.productCode === data.product.productCode)
       const ids = new Set(orders.map((row: any) => Number(row.sampleOrderId)))

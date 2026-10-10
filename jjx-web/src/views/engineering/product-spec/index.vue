@@ -158,7 +158,7 @@
           </el-tab-pane>
 
           <!-- ⑦ 打样领料单 -->
-          <el-tab-pane label="打样领料单" name="pick">
+          <el-tab-pane v-if="ENABLE_SAMPLE_PICK_SECTION" label="打样领料单" name="pick">
             <el-alert type="info" :closable="false" class="tab-tip"
               title="打样领料：按样品单生成领料单（复用生产领料链路，确认发料后扣库存）；打印 JJX-QR-031（抬头「打样领料单」）。" />
             <el-divider content-position="left">该产品的样品单</el-divider>
@@ -245,6 +245,7 @@ import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import EngineeringDrawingLibrary from '../drawing/components/EngineeringDrawingLibrary.vue'
 import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
+import { ENABLE_SAMPLE_PICK_SECTION } from './components/docset'
 import ProductWorkSpecPanel from './components/ProductWorkSpecPanel.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
 import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
