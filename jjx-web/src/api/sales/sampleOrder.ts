@@ -15,6 +15,9 @@ import type {
   SampleOrderListParams,
   SampleOrderQueryParams,
   SampleOrderUpdateDTO,
+  SampleDefectRecord,
+  SampleDefectRecordDTO,
+  SampleRequisitionSign,
   SampleProcess,
   SampleProcessPlanDTO,
   SampleProcessStatusDTO,
@@ -407,6 +410,44 @@ export const sampleOrderApi = {
     return request<R<SampleStatusOption[]>>({
       url: '/sales/sample-order/status-options',
       method: 'get',
+    })
+  },
+
+  // ===== 样品需求单会签 QR-065（dev-20261010-028）=====
+  // 会签记录
+  listRequisitionSigns(orderId: number) {
+    return request<R<SampleRequisitionSign[]>>({
+      url: `/sales/sample-order/${orderId}/requisition-signs`,
+      method: 'get',
+    })
+  },
+  // 会签（role=SALES/APPROVE/DEPT）
+  signRequisition(orderId: number, role: string, approved: boolean, comment?: string) {
+    return request<R<SampleRequisitionSign>>({
+      url: `/sales/sample-order/${orderId}/requisition-sign`,
+      method: 'put',
+      params: { role, approved, comment },
+    })
+  },
+
+  // ===== 打样不良原因及改善记录（dev-20261010-028）=====
+  listDefects(orderId: number) {
+    return request<R<SampleDefectRecord[]>>({
+      url: `/sales/sample-order/${orderId}/defects`,
+      method: 'get',
+    })
+  },
+  addDefect(orderId: number, data: SampleDefectRecordDTO) {
+    return request<R<SampleDefectRecord>>({
+      url: `/sales/sample-order/${orderId}/defects`,
+      method: 'post',
+      data,
+    })
+  },
+  deleteDefect(id: number) {
+    return request<R<void>>({
+      url: `/sales/sample-order/defects/${id}`,
+      method: 'delete',
     })
   },
 }

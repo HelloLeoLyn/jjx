@@ -348,3 +348,42 @@ export interface InkSuggestion {
 }
 
 export type SampleConvertDTO = Record<string, unknown>
+
+/** 样品需求单会签记录（dev-20261010-028） */
+export interface SampleRequisitionSign {
+  id: number
+  sampleOrderId: number
+  roundNo: number
+  /** SALES业务/APPROVE核准/DEPT部门主管 */
+  signRole: string
+  /** 1同意/0不同意 */
+  approveResult: number
+  comment?: string
+  signerId?: number
+  signerName?: string
+  signTime?: string
+}
+
+/** 打样不良原因及改善记录（dev-20261010-028） */
+export interface SampleDefectRecord {
+  id: number
+  sampleOrderId: number
+  roundNo: number
+  /** PRINT印刷/PUNCH加工冲型 */
+  craftType: string
+  defectReason: string
+  improvement?: string
+  recorderId?: number
+  recorderName?: string
+  recordDate?: string
+  createTime?: string
+}
+
+/** 新增打样不良记录入参 */
+export interface SampleDefectRecordDTO {
+  craftType: string
+  defectReason: string
+  improvement?: string
+  recordDate?: string
+  roundNo?: number
+}

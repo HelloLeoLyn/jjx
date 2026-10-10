@@ -309,6 +309,13 @@
       </div>
     </template>
 
+    <!-- 打样不良原因及改善记录（样品单级，dev-20261010-028） -->
+    <DefectRecordPanel
+      :readonly="readonlyMode"
+      :order-id="orderId"
+      :round-no="card.sampleRound || 1"
+    />
+
     <!-- 来源单据查看弹窗：有销售查看权限 → 复用询价/报价单列表页同一套详情组件；无权限（工程角色）→ 收敛摘要弹窗（任务1438，不离开工作台） -->
     <QuotationDetailDialog
       v-model="quotationDetailVisible"
@@ -540,6 +547,7 @@ import SampleProcessPlanEditor from './components/SampleProcessPlanEditor.vue'
 import ExecutionTimeline from './components/ExecutionTimeline.vue'
 import BomPanel from './components/BomPanel.vue'
 import NoteFilesPanel from './components/NoteFilesPanel.vue'
+import DefectRecordPanel from './components/DefectRecordPanel.vue'
 import PrintProcessPanel from './components/PrintProcessPanel.vue'
 import { SampleOrderStatusEnum } from '@/enums/sales'
 

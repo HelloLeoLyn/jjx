@@ -399,6 +399,13 @@
 
     <CustomerDetailDialog v-model="customerDetailVisible" :customer-id="customerDetailId" />
 
+    <!-- 样品需求单会签（QR-065）：业务/核准/部门主管，按权限 -->
+    <RequisitionSignDialog
+      v-model:visible="reqSignVisible"
+      :order-id="reqSignRow?.orderId"
+      :order-no="reqSignRow?.orderNo"
+    />
+
     <!-- 查看流水 -->
     <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
 
@@ -476,6 +483,7 @@ import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import QuotationDetailDialog from '@/views/sales/quotation/components/QuotationDetailDialog.vue'
 import CustomerDetailDialog from '@/views/sales/customer/components/CustomerDetailDialog.vue'
 import SampleReviewPreview from './components/SampleReviewPreview.vue'
+import RequisitionSignDialog from './components/RequisitionSignDialog.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'SalesSampleOrder' })
@@ -983,6 +991,15 @@ function handlePrint(row: any) {
   window.open(`/print/sample-order/${row.orderId}`, '_blank')
 }
 
+// 样品需求单会签（QR-065，dev-20261010-028）
+const reqSignVisible = ref(false)
+const reqSignRow = ref<any>(null)
+function openRequisitionSign(row: any) {
+  if (!row?.orderId) return
+  reqSignRow.value = row
+  reqSignVisible.value = true
+}
+
 function onDetailOpen() {
   // 每次打开再次加载最新数据
   if (detailData.value?.orderId) {
@@ -1269,12 +1286,20 @@ const sampleActions: TableAction<any>[] = [
 
   { key: 'pick', label: '生成领料单', type: 'primary', permission: 'inventory:outbound:add' },
 
+  {
+    key: 'reqsign',
+    label: '需求单签核',
+    type: 'primary',
+    permission: ['sales:sample:reqsign:sales', 'sales:sample:reqsign:approve', 'sales:sample:reqsign:dept'],
+  },
+
   { key: 'print', label: '打印', type: 'info' },
 ]
 const handleSampleAction = (key: string, row: any) => {
   const handlers: Record<string, () => void> = {
     pick: () => void openSamplePick(row),
     print: () => handlePrint(row),
+    reqsign: () => openRequisitionSign(row),
     trace: () => showTrace(row),
     copy: () => void handleCopySample(row),
     accept: () => void handleAcceptSample(row),

@@ -145,6 +145,20 @@
       "date": "2026-10-08",
       "proposalLink": "jjx-docs/history/customer-shipping-address-book-dev-20261008-029.md",
       "reason": "客户收货地址簿（一个客户多收货地址，含默认标记）：供下单/发货选择与默认链；用户 2026-10-08 拍板（按建议方案 + 公司地址可作候选并可设默认）"
+    },
+    {
+      "table": "sales_sample_requisition_sign",
+      "taskCode": "dev-20261010-028",
+      "date": "2026-10-10",
+      "proposalLink": "jjx-docs/history/sample-requisition-qr065-and-defect-record-dev-20261010-028.md",
+      "reason": "样品需求单会签记录（样品单级、三位签字、可多轮、纯留痕）；不复用 biz_requirement_approval（ECN 卡流程、属需求域，非同一对象）；用户 2026-10-10 拍板同意新建（甲方案：专表）"
+    },
+    {
+      "table": "sales_sample_defect_record",
+      "taskCode": "dev-20261010-028",
+      "date": "2026-10-10",
+      "proposalLink": "jjx-docs/history/sample-requisition-qr065-and-defect-record-dev-20261010-028.md",
+      "reason": "打样不良原因及改善记录（样品单级、多条、独立权限留痕）；process_note 粒度不符、quality_ncr 语义不符；用户 2026-10-10 拍板同意新建"
     }
   ],
   "typeSuffixAllowlist": [
