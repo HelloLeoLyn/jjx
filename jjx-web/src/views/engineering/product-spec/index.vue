@@ -120,6 +120,13 @@
             />
           </el-tab-pane>
 
+          <!-- 油墨调配记录表（位置：印刷规范 与 工程图集 之间） -->
+          <el-tab-pane label="油墨调配记录表" name="ink">
+            <el-alert type="info" :closable="false" class="tab-tip"
+              title="油墨调配记录表：按参考样张录入机种/色号/色样、原料名称、重量(g)、百分比、油墨罐号、调墨员、调墨日期、溶剂。" />
+            <InkMixingForm v-if="productId && activeTab === 'ink'" :key="`${productId}-ink`" />
+          </el-tab-pane>
+
           <!-- ④ 工程图集 -->
           <el-tab-pane label="工程图集" name="atlas">
             <el-alert type="info" :closable="false" class="tab-tip"
@@ -182,6 +189,7 @@ import ProductSpecPreview from './components/ProductSpecPreview.vue'
 import ProductWorkSpecPanel from './components/ProductWorkSpecPanel.vue'
 import ProductPrintSpecPanel from './components/ProductPrintSpecPanel.vue'
 import ProductColorCheckPanel from './components/ProductColorCheckPanel.vue'
+import InkMixingForm from './components/InkMixingForm.vue'
 import type { ProductFullVO, ProductVo } from '@/types/product'
 
 defineOptions({ name: 'ProductSpec' })
