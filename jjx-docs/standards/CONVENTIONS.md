@@ -122,6 +122,24 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
   - 提交信息必须**挂钩该任务码**（`commit-msg` 闸门强制校验），提交内容必须是**该任务的产物**（提交前 `git status` 核对，只 add 自己的文件；不混无关文件，也不提交他人在制品）；
   - 提交完成后**立刻**把对应 `sys_task.status` 置 `2`（待审核），并在 `remark`/`description` 写：改动清单 + **commit hash** + 验证结果 + 遗留项；
   - 例外：用户明确说“先别提交 / 只分析不改”时以用户指令为准；纯讨论与未落盘的方案不产生提交。
+- **完成后报告格式（2026-10-11 用户定，全 agent 统一）**：每次任务收尾的**对话报告**按下面 **6 行固定模板**输出，逐行可核对（**任务码 + commit hash 必在**）；报告只留这 6 行，**背景/推理/命令长输出/逐条清单等细节不放报告**，写进 `sys_task.remark`（≤500 `CHAR_LENGTH`，超出用 `description`）或 `jjx-docs/history/` 文档。
+  ```text
+  任务码：dev-YYYYMMDD-NNN
+  提交：<hash>（已 push）
+  改：<N 文件，一句话>
+  验：mvn / vue-tsc / check:docs / 基线 → 全过（没跑写未跑）
+  DB：<迁移NN / 表 / 权限>（无则写 无）
+  遗留：<一句话；无则写 无>
+  ```
+  示例：
+  ```text
+  任务码：dev-20261011-017
+  提交：8600503d（已 push）
+  改：3 文件（产品列表删「作业规范」行内动作；迁移 267 去重菜单入口；表级 guard 备份）
+  验：mvn / vue-tsc / check:docs / 基线 → 全过
+  DB：迁移 267 / sys_menu·sys_role_menu / 删 menu404+授权、405/406 重挂 407、补授 407 给 role16
+  遗留：工程/产品角色需重新登录刷新权限快照
+  ```
 - 分支：日常开发 `dev`；AI 个人分支按需（`ai/dahuang`）
 - message 格式：`type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`
   - type: `feat` `fix` `refactor` `docs` `style` `chore` `perf` `test`

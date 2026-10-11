@@ -58,6 +58,29 @@ Quick rules:
   `pre-push` runs the table baseline gate (`scripts/check-model-baseline.sh`, CONVENTIONS §15) and blocks a red result; fail-open when the DB is unreachable.
   Single-use bypass: `git commit --no-verify` / `git push --no-verify` — only when you have confirmed the consequences.
 
+## Task completion report format (all agents — full spec: `jjx-docs/standards/CONVENTIONS.md` §5)
+
+Every task's closing report in chat uses this fixed 6-line template, line-by-line verifiable (task code + commit hash mandatory). Keep the report terse: put background, reasoning, command output and per-file detail in `sys_task.remark` (≤500, else `description`) or a `jjx-docs/history/` doc — **not** in the report.
+
+```text
+任务码：dev-YYYYMMDD-NNN
+提交：<hash>（已 push）
+改：<N 文件，一句话>
+验：mvn / vue-tsc / check:docs / 基线 → 全过（没跑写未跑）
+DB：<迁移NN / 表 / 权限>（无则写 无）
+遗留：<一句话；无则写 无>
+```
+
+示例：
+```text
+任务码：dev-20261011-017
+提交：8600503d（已 push）
+改：3 文件（产品列表删「作业规范」行内动作；迁移 267 去重菜单入口；表级 guard 备份）
+验：mvn / vue-tsc / check:docs / 基线 → 全过
+DB：迁移 267 / sys_menu·sys_role_menu / 删 menu404+授权、405/406 重挂 407、补授 407 给 role16
+遗留：工程/产品角色需重新登录刷新权限快照
+```
+
 ## Tool failure and recovery rules
 
 - `sys_task.remark` is `varchar(500)`: check `CHAR_LENGTH` before writing and query it again afterward. Never suppress database errors with `2>/dev/null` or an empty catch.
