@@ -3,7 +3,7 @@
 - 日期：2026-10-11
 - 任务：dev-20261011-004
 - 状态：提案待拍板（本文件为 §15 第 1 步「提案」；未拍板前不建表、不改代码）
-- 依据：`JJX-产品作业规范版本与历史追溯设计方案.md`（设计 V1.0）、`product-work-spec-p0-audit-dev-20261011-003.md`（P0 只读核查）
+- 依据：`product-work-spec-version-trace-design-20261011.md`（设计 V1.0）、`product-work-spec-p0-audit-dev-20261011-003.md`（P0 只读核查）
 
 ## 一、本轮已拍板口径（用户 2026-10-11）
 

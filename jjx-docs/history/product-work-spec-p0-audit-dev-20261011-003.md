@@ -61,4 +61,4 @@ P1 端到端验收：P1 产品发布 V1 → S1 采用 V1 → S2 明确沿用 V1 
 
 - 新表/字段迁移属于结构变更，按 `CONVENTIONS.md` 先由用户手工生成符合规则的全库备份，再由后续实施任务走迁移脚本；P0 不执行迁移。
 - 任何新表按 `CONVENTIONS.md` §15 完成准入、清理归属和模型基线登记。
-- 仓库文档门禁当前被两篇既有草稿阻断：`JJX-产品作业规范版本与历史追溯设计方案.md`、`product-spec-layout-and-customer-docs-dev-20261010-032-V2.0.md` 未登记且缺 BOM，前者命名也不合规。本任务不修改这些既有草稿；本报告需单独满足命名、索引和 BOM 要求。
+- 仓库文档门禁当前被两篇既有草稿阻断：`product-work-spec-version-trace-design-20261011.md`、`product-spec-layout-and-customer-docs-dev-20261010-032-V2.0.md` 未登记且缺 BOM，前者命名也不合规。本任务不修改这些既有草稿；本报告需单独满足命名、索引和 BOM 要求。

@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-11 | product-work-spec-version-trace-design-20261011.md | JJX ERP 产品作业规范版本与历史追溯设计方案 |
 | 2026-10-11 (dev-20261011-004) | product-work-spec-p1-implementation-dev-20261011-004.md | 产品作业规范版本追溯 P1 实施拆解（含 §15 新表提案） |
 | 2026-10-11 (dev-20261011-003) | product-work-spec-p0-audit-dev-20261011-003.md | 产品作业规范版本追溯 P0：现状核查与最小闭环评估 |
 | 2026-10-10 (dev-20261010-032) | product-spec-layout-and-customer-docs-dev-20261010-032.md | 产品作业规范抽屉布局、组件化与客供资料（来源/类型）讨论结论 |
