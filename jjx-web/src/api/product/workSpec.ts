@@ -101,4 +101,7 @@ export const productWorkSpecApi = {
   // 任意两个已发布版本比较（dev-20261011-028）
   compareVersions: (versionA: number, versionB: number) =>
     request.get('/product/work-spec/compare', { params: { versionA, versionB } }),
+  // 停用 / 恢复发布版本（不硬删；dev-20261011-033）
+  retireVersion: (versionId: number) => request.post('/product/work-spec/versions/' + versionId + '/retire'),
+  restoreVersion: (versionId: number) => request.post('/product/work-spec/versions/' + versionId + '/restore'),
 }

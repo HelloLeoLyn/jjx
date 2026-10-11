@@ -144,6 +144,37 @@ public class ProductWorkSpecVersionService {
     }
 
     /**
+     * 停用版本（PUBLISHED → RETIRED；dev-20261011-033）。
+     * 停用后不再被「最新已发布版本」选中 → 新工单/新订单不能再绑该版；
+     * 已绑定该版的历史工单/订单不受影响（按持久化 versionId 读取）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ProductWorkSpecVersion retire(Long versionId) {
+        return changeStatus(versionId, "RETIRED", "该版本已停用");
+    }
+
+    /** 恢复版本（RETIRED → PUBLISHED；dev-20261011-033）。 */
+    @Transactional(rollbackFor = Exception.class)
+    public ProductWorkSpecVersion restore(Long versionId) {
+        return changeStatus(versionId, "PUBLISHED", "该版本已是启用状态");
+    }
+
+    /** 仅改 status；不做物理删除（保留版本与历史绑定）。 */
+    private ProductWorkSpecVersion changeStatus(Long versionId, String target, String alreadyMessage) {
+        ProductWorkSpecVersion version = versionMapper.selectById(versionId);
+        if (version == null) {
+            throw new BusinessException("发布版本不存在: " + versionId);
+        }
+        if (target.equals(version.getStatus())) {
+            throw new BusinessException(alreadyMessage);
+        }
+        version.setStatus(target);
+        version.setUpdateBy(displayName());
+        versionMapper.updateById(version);
+        return versionMapper.selectById(versionId);
+    }
+
+    /**
      * 发布版本（SPEC_JSON 快照）与当前工作态(work_spec_json)的字段级差异（dev-20261011-023）。
      * 只读预览，不改发布/绑定逻辑。
      */

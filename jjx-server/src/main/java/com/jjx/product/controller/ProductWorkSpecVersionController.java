@@ -38,6 +38,22 @@ public class ProductWorkSpecVersionController {
         return Result.success(service.list(productId));
     }
 
+    /** 停用版本（PUBLISHED → RETIRED，不硬删；dev-20261011-033）。 */
+    @PostMapping("/work-spec/versions/{versionId}/retire")
+    @SaCheckPermission("product:work-spec:publish")
+    @Log(module = "产品作业规范", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#result.data.productId")
+    public Result<ProductWorkSpecVersion> retire(@PathVariable Long versionId) {
+        return Result.success(service.retire(versionId));
+    }
+
+    /** 恢复版本（RETIRED → PUBLISHED；dev-20261011-033）。 */
+    @PostMapping("/work-spec/versions/{versionId}/restore")
+    @SaCheckPermission("product:work-spec:publish")
+    @Log(module = "产品作业规范", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#result.data.productId")
+    public Result<ProductWorkSpecVersion> restore(@PathVariable Long versionId) {
+        return Result.success(service.restore(versionId));
+    }
+
     @GetMapping("/work-spec/versions/{versionId}")
     @SaCheckPermission(value = {"product:spec:view", "engineering:spec:view", "sales:order:view", "production:order:view"}, mode = SaMode.OR)
     public Result<Map<String, Object>> detail(@PathVariable Long versionId) {

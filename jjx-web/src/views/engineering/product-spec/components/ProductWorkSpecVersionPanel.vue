@@ -21,16 +21,30 @@
       <el-table-column prop="versionNo" label="版本号" width="100" />
       <el-table-column label="状态" width="90" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="row.status === 'RETIRED' ? 'info' : 'success'">{{ statusLabel(row.status) }}</el-tag>
+          <el-tag size="small" v-bind="WorkSpecVersionStatus.getTagProps(row.status)">{{ WorkSpecVersionStatus.getLabel(row.status) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="changeSummary" label="修订说明" min-width="180" show-overflow-tooltip />
       <el-table-column prop="publishedBy" label="发布人" width="100" align="center" />
       <el-table-column prop="publishedAt" label="发布时间" width="160" align="center" />
-      <el-table-column label="操作" width="150" align="center">
+      <el-table-column label="操作" width="230" align="center">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">明细</el-button>
           <el-button v-if="showFullPage" link type="primary" @click="emit('openVersion', row.id)">整页查看</el-button>
+          <el-button
+            v-if="row.status === WorkSpecVersionStatus.RETIRED.value"
+            v-hasPermi="['product:work-spec:publish']"
+            link
+            type="primary"
+            @click="restoreVersion(row)"
+          >恢复</el-button>
+          <el-button
+            v-else
+            v-hasPermi="['product:work-spec:publish']"
+            link
+            type="danger"
+            @click="retireVersion(row)"
+          >停用</el-button>
         </template>
       </el-table-column>
       <template #empty>尚未发布版本</template>
@@ -39,7 +53,7 @@
     <el-dialog v-model="detailVisible" :title="`版本详情 ${detailVersion?.versionNo || ''}`" width="820px" append-to-body destroy-on-close>
       <el-descriptions :column="2" border size="small">
         <el-descriptions-item label="版本号">{{ detailVersion?.versionNo }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ statusLabel(detailVersion?.status) }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ detailVersion?.status ? WorkSpecVersionStatus.getLabel(detailVersion.status) : '-' }}</el-descriptions-item>
         <el-descriptions-item label="发布人">{{ detailVersion?.publishedBy || '-' }}</el-descriptions-item>
         <el-descriptions-item label="发布时间">{{ detailVersion?.publishedAt || '-' }}</el-descriptions-item>
         <el-descriptions-item label="修订说明" :span="2">{{ detailVersion?.changeSummary || '-' }}</el-descriptions-item>
@@ -80,6 +94,17 @@
           type="primary"
           @click="emit('openVersion', detailVersion.id)"
         >整页查看</el-button>
+        <el-button
+          v-if="detailVersion && detailVersion.status === WorkSpecVersionStatus.RETIRED.value"
+          v-hasPermi="['product:work-spec:publish']"
+          @click="restoreVersion(detailVersion)"
+        >恢复</el-button>
+        <el-button
+          v-else-if="detailVersion"
+          v-hasPermi="['product:work-spec:publish']"
+          type="danger"
+          @click="retireVersion(detailVersion)"
+        >停用</el-button>
       </template>
     </el-dialog>
 
@@ -126,6 +151,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productWorkSpecApi } from '@/api/product/workSpec'
+import { WorkSpecVersionStatus } from '@/enums/product/workSpec'
 
 const props = withDefaults(defineProps<{ productId: number; showFullPage?: boolean }>(), {
   showFullPage: false,
@@ -139,7 +165,6 @@ const RESOURCE_LABELS: Record<string, string> = {
   ROUTING: '工艺路线',
   DRAWING: '工程图/结构图',
 }
-const STATUS_LABELS: Record<string, string> = { PUBLISHED: '已发布', RETIRED: '已停用' }
 
 const versions = ref<any[]>([])
 const loading = ref(false)
@@ -183,9 +208,6 @@ async function runCompare() {
 function resourceLabel(code: string) {
   return RESOURCE_LABELS[code] || code
 }
-function statusLabel(code?: string) {
-  return code ? STATUS_LABELS[code] || code : '-'
-}
 
 async function load() {
   if (!props.productId) return
@@ -218,6 +240,42 @@ async function publish() {
     if (e !== 'cancel') ElMessage.error(e?.message || '发布失败')
   } finally {
     publishing.value = false
+  }
+}
+
+// 停用 / 恢复（dev-20261011-033）：只改 status、不硬删；停用后新工单/订单不能再绑该版，已绑工单不受影响
+async function retireVersion(row: any) {
+  try {
+    await ElMessageBox.confirm(
+      `停用版本 ${row.versionNo}？停用后新工单/新订单不能再绑定该版本；已绑定工单仍按原版本读取。`,
+      '停用版本',
+      { type: 'warning', confirmButtonText: '停用', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    const res: any = await productWorkSpecApi.retireVersion(row.id)
+    if (res?.code === 200) {
+      ElMessage.success('已停用')
+      detailVisible.value = false
+      await load()
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '停用失败')
+  }
+}
+
+async function restoreVersion(row: any) {
+  try {
+    const res: any = await productWorkSpecApi.restoreVersion(row.id)
+    if (res?.code === 200) {
+      ElMessage.success('已恢复')
+      detailVisible.value = false
+      await load()
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '恢复失败')
   }
 }
 
