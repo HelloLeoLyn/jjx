@@ -23,10 +23,10 @@
         <el-table-column label="产品名称" prop="productName" min-width="180" show-overflow-tooltip />
         <el-table-column label="客户" prop="customerName" min-width="150" show-overflow-tooltip />
         <el-table-column label="当前BOM版本" width="120" align="center">
-          <template #default="{ row }">{{ (row as any).currentBomVersion || '-' }}</template>
+          <template #default="{ row }">{{ (row as any).bomVersion || '-' }}</template>
         </el-table-column>
         <el-table-column label="当前路线版本" width="120" align="center">
-          <template #default="{ row }">{{ (row as any).currentRoutingVersion || '-' }}</template>
+          <template #default="{ row }">{{ (row as any).routeVersion || '-' }}</template>
         </el-table-column>
         <el-table-column label="当前规范版本" width="170" align="center">
           <template #default="{ row }">

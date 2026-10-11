@@ -15,15 +15,10 @@
 
     <!-- 内容展示 -->
     <div v-else>
-      <!-- 基本信息 -->
+      <!-- 基本信息（公共组件，dev-20261011-032：产品编码/名称/客户/当前BOM/当前路线/规格） -->
       <el-divider content-position="left">基本信息</el-divider>
-      <el-descriptions :column="3" border>
-        <el-descriptions-item label="产品编码">{{
-          productData.product?.productCode
-        }}</el-descriptions-item>
-        <el-descriptions-item label="产品名称">{{
-          productData.product?.productName
-        }}</el-descriptions-item>
+      <ProductBasicInfo :detail="productData" />
+      <el-descriptions :column="3" border style="margin-top: 8px">
         <el-descriptions-item label="产品分类">{{
           productData.category?.categoryName || productData.product?.categoryName
         }}</el-descriptions-item>
@@ -54,9 +49,6 @@
         }}</el-descriptions-item>
         <el-descriptions-item label="菲林数量">{{
           productData.product?.filmCount || 0
-        }}</el-descriptions-item>
-        <el-descriptions-item label="规格型号">{{
-          productData.product?.specJson ? '已配置' : '-'
         }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{
           parseTime(productData.product?.createTime)
@@ -338,6 +330,7 @@ import { ProductEnum, ProductTypeEnum, StepTypeEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
+import ProductBasicInfo from '@/components/product/ProductBasicInfo.vue'
 import { attachmentApi } from '@/api/system/attachment'
 import type { ProductBizAttachmentGroup } from '@/api/product'
 import { Document, Download } from '@element-plus/icons-vue'
