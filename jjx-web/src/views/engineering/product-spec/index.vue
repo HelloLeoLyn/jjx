@@ -44,7 +44,7 @@
     </el-card>
 
     <!-- 作业规范详情 -->
-    <el-drawer v-model="specVisible" :title="`产品作业规范 - ${detail?.product?.productCode || ''}`" size="82%" destroy-on-close :before-close="closeSpec">
+    <el-drawer v-model="specVisible" :title="`生产作业规范 - ${detail?.product?.productCode || ''}`" size="82%" destroy-on-close :before-close="closeSpec">
       <div v-loading="detailLoading" class="spec-body">
         <div class="spec-head">
           <el-descriptions :column="3" border size="small">
@@ -66,13 +66,11 @@
             <CustomerDocPanel v-if="productId && productCode" :product-id="productId" :product-code="productCode" />
           </el-tab-pane>
 
-          <!-- ② 样品需求单（占位） -->
-          <el-tab-pane label="样品需求单" name="sample-requisition">
-            <el-empty description="样品需求单：占位页，展示内容与数据来源待定（后续实现）" :image-size="60" />
-          </el-tab-pane>
-
-          <!-- ③ 样品 -->
+          <!-- ② 样品：需求单与实物/确认资料统一入口 -->
           <el-tab-pane label="样品" name="sample">
+            <h3 class="sample-section-title">样品需求单</h3>
+            <el-empty description="样品需求单尚未接入，展示内容与数据来源待定" :image-size="60" />
+            <h3 class="sample-section-title">样品资料</h3>
             <el-alert type="info" :closable="false" class="tab-tip"
               title="样品实物照片 + 客户确认样品（工程上传）；与「客供资料」同一处理位置归集展示。" />
             <ProductFileLibrary
@@ -279,6 +277,11 @@ onMounted(async () => {
 }
 .tab-tip {
   margin-bottom: 10px;
+}
+.sample-section-title {
+  margin: 16px 0 10px;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
 }
 .sec-note {
   color: #909399;
