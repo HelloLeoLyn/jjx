@@ -26,6 +26,7 @@
 | 批量补齐待执行迁移 | `bash scripts/db-migrate.sh --all --yes --task dev-YYYYMMDD-NNN --backup <备份.sql>` | 🔴 |
 | 补记账/归档（不重跑） | `bash scripts/db-migrate.sh --record <NN> --yes --task dev-YYYYMMDD-NNN` | 🟡 |
 | 迁移工具回归测试 | `python3 scripts/test-db-migrate.py` | 🟢 |
+| 阶段收尾自查（迁移+新表） | `bash scripts/wrapup-check.sh` | 🟢 |
 | 清理测试数据 | `bash scripts/db-clean-test-data.sh --execute` | 🔴 |
 | 库存三本账对账 | `bash scripts/check-stock-summary.sh` | 🟢 |
 | 入库单/检验批+数量守恒巡检 | `bash scripts/check-inbound-lot-integrity.sh` | 🟢 |
@@ -68,6 +69,14 @@
 - 前置：`python3`/`bash`/`git`/`flock`。
 - 命令：`python3 scripts/test-db-migrate.py`（20 条用例，覆盖预览无副作用、按号排序且补低号遗漏、SQL/记账/读取失败即停、只补归档续跑、另一库扫归档、重复号拒绝、备份/任务校验、缺账本不从最大号推断、连接/账本异常 fail-closed、指纹变更拒绝、同库锁、归档门禁同名放行/改内容拒绝）。
 - 退出码：0=全通过，非 0=有用例失败。
+
+## 2c. scripts/wrapup-check.sh —— 收尾自查（迁移 + 新表治理）（2026-10-11，任务 dev-20261011-018）
+
+- 用途：阶段收尾时跑一次，确认「有没有管」：① 迁移台账对平（待执行 0 / 待归档 0）；② 新表清理归属（覆盖率无「无归宿」）；③ 建表闸（无未批准新表）。
+- 危险等级：🟢 只读（只调用 `db-migrate.sh --status`、`db-clean-test-data.sh` 只读体检、`check-model-baseline.sh`）。
+- 前置：仓库内执行；数据库可连。
+- 命令：`bash scripts/wrapup-check.sh`
+- 退出码：0=无缺口；1=有缺口（逐项处理后重跑）。不常开进 `validate`（开发中途会因待记账/待归档一直红）。
 
 ## 3. scripts/db-export-init-subset.sh —— 初始化数据子集（滚动重出）
 
