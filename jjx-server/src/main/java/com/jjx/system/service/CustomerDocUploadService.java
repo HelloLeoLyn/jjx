@@ -64,9 +64,10 @@ public class CustomerDocUploadService {
         if (!extension.matches("\\.(pdf|dwg|dxf|jpg|jpeg|png|gif|webp|doc|docx|xls|xlsx|zip)"))
             throw new BusinessException("不支持的文件格式");
         Integer previous = jdbc.queryForObject("SELECT COALESCE(MAX(customer_doc_seq),0) FROM sys_attachment "
-                + "WHERE biz_type=? AND biz_id=? AND customer_doc_type=?", Integer.class, bizType, bizId, docType);
+                + "WHERE biz_type=? AND biz_id=? AND customer_product_code=? AND customer_doc_type=?",
+                Integer.class, bizType, bizId, product, docType);
         int sequence = (previous == null ? 0 : previous) + 1;
-        String displayName = SOURCE_NAMES.get(bizType) + "-" + TYPE_NAMES.get(docType)
+        String displayName = SOURCE_NAMES.get(bizType) + "-" + product + "-" + TYPE_NAMES.get(docType)
                 + "-" + String.format("%02d", sequence) + extension;
 
         Long id = attachments.uploadAttachment(file, bizType, bizId, traceId, null, null, null);

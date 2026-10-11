@@ -23,6 +23,7 @@ export interface DocFile {
   key: string
   id: number
   name: string
+  originalName?: string
   category: string
   section: string
   kind: 'image' | 'pdf' | 'other'
@@ -198,15 +199,16 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
   for (const row of rows) {
     const id = Number(row.id)
     if (!id || data.files.some((file) => file.id === id)) continue
-    const name = row.fileName || row.file_name || '未命名文件'
-    const category = row.category || (customer ? '询价／报价附件' : '其他')
+    const originalName = row.fileName || row.file_name || '未命名文件'
+    const name = row.displayName || row.display_name || originalName
+    const category = row.category || (customer ? '客供资料' : '其他')
     const ext = name.split('.').pop()?.toLowerCase()
     const mime = row.fileType || row.file_type || ''
     const kind = mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)
       ? 'image' : (mime.includes('pdf') || ext === 'pdf' ? 'pdf' : 'other')
     const section = customer || ['客供稿', '客户确认样品'].includes(category) ? 'customer'
       : category === '印刷指导图' ? 'print' : category === '样品照片' ? 'sample' : category === '分色检查表' ? 'color' : 'atlas'
-    data.files.push({ key: String(id), id, name, category, kind, section, productFile: !customer,
+    data.files.push({ key: String(id), id, name, originalName, category, kind, section, productFile: !customer,
       drawingNo: row.drawingNo, version: row.version, fileRole: row.fileRole, isCurrent: row.isCurrent, released: row.released })
   }
 }

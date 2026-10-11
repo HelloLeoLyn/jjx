@@ -550,27 +550,42 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         return count;
     }
 
-    /**
-     * 客供资料归集：某产品关联的询价/报价附件（只读引用；dev-20260929-023）
-     */
+    /** 客供资料按附件登记的产品归集；历史未登记产品归属的附件不能猜测归属。 */
     public List<Map<String, Object>> customerDocs(Long productId) {
         if (productId == null) return List.of();
         String sql = """
-                SELECT a.id,a.file_name,a.file_path,a.file_size,a.file_type,a.version,a.category,a.create_by,a.create_time,
-                       '询价单' AS sourceType,i.inquiry_no AS sourceNo
-                  FROM sales_inquiry i
-                  JOIN sys_attachment a ON a.biz_type='inquiry' AND a.biz_id=i.inquiry_id AND a.deleted=0
-                 WHERE i.product_id=?
-                UNION ALL
-                SELECT a.id,a.file_name,a.file_path,a.file_size,a.file_type,a.version,a.category,a.create_by,a.create_time,
-                       '报价单' AS sourceType,q.quotation_no AS sourceNo
-                  FROM sales_quotation_item qi
-                  JOIN sales_quotation q ON q.quotation_id=qi.quotation_id
-                  JOIN sys_attachment a ON a.biz_type='quotation' AND a.biz_id=q.quotation_id AND a.deleted=0
-                 WHERE qi.product_id=?
-                 ORDER BY create_time DESC
+                SELECT a.id,a.file_name,a.display_name,a.customer_product_code,a.customer_doc_type,
+                       a.file_path,a.file_size,a.file_type,a.version,a.category,a.create_by,a.create_time,
+                       CASE a.biz_type WHEN 'inquiry' THEN '询价单' WHEN 'quotation' THEN '报价单'
+                            WHEN 'sales_order' THEN '销售订单' WHEN 'sample' THEN '样品单' END AS sourceType,
+                       CASE a.biz_type WHEN 'inquiry' THEN i.inquiry_no WHEN 'quotation' THEN q.quotation_no
+                            ELSE o.order_no END AS sourceNo
+                  FROM sys_attachment a
+                  JOIN product p ON p.product_id=? AND p.product_code=a.customer_product_code
+                  LEFT JOIN sales_inquiry i ON a.biz_type='inquiry' AND a.biz_id=i.inquiry_id AND i.deleted=0
+                  LEFT JOIN sales_quotation q ON a.biz_type='quotation' AND a.biz_id=q.quotation_id AND q.deleted=0
+                  LEFT JOIN sales_order o ON a.biz_type IN ('sales_order','sample') AND a.biz_id=o.order_id AND o.deleted=0
+                  LEFT JOIN sales_sample_order so ON a.biz_type='sample' AND a.biz_id=so.order_id AND so.deleted=0
+                 WHERE a.deleted=0 AND (
+                       (i.inquiry_id IS NOT NULL AND i.product_code=p.product_code)
+                    OR (q.quotation_id IS NOT NULL AND EXISTS
+                        (SELECT 1 FROM sales_quotation_item qi WHERE qi.quotation_id=q.quotation_id AND qi.product_code=p.product_code))
+                    OR (a.biz_type='sales_order' AND o.order_id IS NOT NULL AND EXISTS
+                        (SELECT 1 FROM sales_order_product op WHERE op.order_id=o.order_id AND op.product_code=p.product_code))
+                    OR (so.order_id IS NOT NULL AND o.order_id IS NOT NULL AND so.product_code=p.product_code)
+                 )
+                 ORDER BY a.create_time DESC
                 """;
-        return jdbcTemplate.queryForList(sql, productId, productId);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, productId);
+        // 269 已上传的整理名缺产品编码；只调整返回值，不覆盖历史记录。
+        for (Map<String, Object> row : rows) {
+            String name = (String) row.get("display_name");
+            String code = (String) row.get("customer_product_code");
+            if (name == null || code == null || name.contains("-" + code + "-")) continue;
+            int separator = name.indexOf('-');
+            if (separator > 0) row.put("display_name", name.substring(0, separator + 1) + code + "-" + name.substring(separator + 1));
+        }
+        return rows;
     }
 
     @Override

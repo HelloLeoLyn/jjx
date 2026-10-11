@@ -97,8 +97,8 @@ function addFile(upload: UploadFile, productCode: string) {
 }
 function plannedName(row: PendingRow, index: number) {
   const type = docTypes.find(item => item.value === row.docType)?.label || '待选类型'
-  const sequence = String(rows.value.filter(item => item.docType === row.docType && item.key <= row.key).length).padStart(2, '0')
-  return `${sourceNames[props.bizType]}-${type}-预计${sequence}.${extension(row.file.name)}`
+  const sequence = String(rows.value.filter(item => item.productCode === row.productCode && item.docType === row.docType && item.key <= row.key).length).padStart(2, '0')
+  return `${sourceNames[props.bizType]}-${row.productCode}-${type}-预计${sequence}.${extension(row.file.name)}`
 }
 function removeRow(row: PendingRow) {
   if (row.previewUrl) URL.revokeObjectURL(row.previewUrl)

@@ -25,7 +25,7 @@
             <div class="section-note" @click="jumpTo(section.key)">{{ section.note }}<span>{{ sectionPageCount(section.key) }} 页</span></div>
             <el-checkbox-group v-if="selectedSections.includes(section.key) && filesFor(section.key).length" v-model="selectedFiles" class="file-choices">
               <div v-for="file in filesFor(section.key)" :key="file.key" class="file-choice">
-                <el-checkbox :value="file.key" :label="file.key" :disabled="file.kind === 'other'"><span :title="documentFileCaption(file)">{{ documentFileCaption(file) }}</span></el-checkbox>
+                <el-checkbox :value="file.key" :label="file.key" :disabled="file.kind === 'other'"><span :title="file.originalName && file.originalName !== file.name ? `原文件名：${file.originalName}` : documentFileCaption(file)">{{ documentFileCaption(file) }}</span></el-checkbox>
                 <div v-if="file.kind === 'other'" class="file-help"><span>此格式请使用原文件</span><el-link type="primary" @click="downloadOriginal(file)">下载原文件</el-link></div>
                 <div v-if="fileErrors[file.key]" class="file-error">{{ fileErrors[file.key] }}</div>
               </div>
@@ -139,7 +139,7 @@ function filesFor(section: string): DocFile[] {
 }
 function sectionPageCount(section: string) { return pages.value.filter((page) => page.section === section).length }
 async function downloadOriginal(file: DocFile) {
-  try { await downloadFile({ id: file.id, fileName: file.name }) }
+  try { await downloadFile({ id: file.id, fileName: file.originalName || file.name }) }
   catch (e) { ElMessage.error(e instanceof Error ? e.message : '下载失败') }
 }
 function selectAll() { selectedSections.value = documentSections.map((section) => section.key) }
