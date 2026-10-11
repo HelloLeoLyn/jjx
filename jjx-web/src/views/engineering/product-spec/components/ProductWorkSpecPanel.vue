@@ -13,6 +13,28 @@
     <el-alert v-if="data?.warnings.length" :title="data.warnings.join('；')" type="warning" :closable="false" class="data-message" />
     <div v-loading="loading" class="data-sections">
       <template v-if="data">
+        <section class="spec-top">
+          <div class="spec-top-col">
+            <div class="section-heading"><h3>结构图</h3></div>
+            <div class="structure-preview">
+              <img v-if="structureImage" :src="structureImage" :alt="`${productName || productCode} 结构图`" />
+              <span v-else class="empty-hint">未选择结构图</span>
+            </div>
+            <p v-if="structureCaption" class="structure-caption">{{ structureCaption }}</p>
+          </div>
+          <div class="spec-top-col">
+            <div class="section-heading"><h3>凹凸条件</h3><el-button v-if="canEdit" :disabled="loading" @click="edit('requirements')">编辑</el-button></div>
+            <el-descriptions :column="2" border>
+              <el-descriptions-item v-for="field in embossFields" :key="field.key" :label="field.label">
+                {{ data.workSpec.emboss[field.key] ? `${data.workSpec.emboss[field.key]} ${field.unit}` : '未填写' }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+          <div class="spec-top-col">
+            <div class="section-heading"><h3>备注</h3><el-button v-if="canEdit" :disabled="loading" @click="edit('requirements')">编辑</el-button></div>
+            <p class="multiline">{{ data.workSpec.engineeringRequirements || '未填写' }}</p>
+          </div>
+        </section>
         <section class="data-section">
           <div class="section-heading"><h3>BOM</h3><el-button v-if="canEditBom" :disabled="loading || !data.bom.bomId" @click="bomVisible = true">编辑</el-button></div>
           <el-table :data="data.bom.items || []" row-key="itemId" default-expand-all border size="small" empty-text="暂无 BOM 材料">
@@ -25,15 +47,6 @@
         <section class="data-section">
           <div class="section-heading"><h3>刀模位置</h3><el-button v-if="canEdit" :disabled="loading" @click="edit('die')">编辑</el-button></div>
           <p class="multiline">{{ data.workSpec.dieLocation || '未填写' }}</p>
-        </section>
-        <section class="data-section">
-          <div class="section-heading"><h3>凹凸条件</h3><el-button v-if="canEdit" :disabled="loading" @click="edit('requirements')">编辑</el-button></div>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item v-for="field in embossFields" :key="field.key" :label="field.label">
-              {{ data.workSpec.emboss[field.key] ? `${data.workSpec.emboss[field.key]} ${field.unit}` : '未填写' }}
-            </el-descriptions-item>
-          </el-descriptions>
-          <div class="requirements"><strong>加工要求</strong><p class="multiline">{{ data.workSpec.engineeringRequirements || '未填写' }}</p></div>
         </section>
         <section class="data-section">
           <div class="section-heading"><h3>作业流程</h3><el-button v-if="canEditRoute" :disabled="loading || !data.routing.routingId" @click="routeVisible = true">编辑</el-button></div>
@@ -75,10 +88,10 @@
     <el-dialog v-model="editorVisible" title="工程维护 · 产品作业规范" width="1060px" append-to-body destroy-on-close :close-on-click-modal="false" :before-close="closeEditor">
       <div class="editor-product">{{ productName }}　{{ productCode }}</div>
       <el-tabs v-model="editorTab">
-        <el-tab-pane label="凹凸条件与加工要求" name="requirements">
+        <el-tab-pane label="凹凸条件与备注" name="requirements">
           <el-form label-width="130px">
             <div class="emboss-fields"><el-form-item v-for="field in embossFields" :key="field.key" :label="field.label"><el-input v-model="draft.emboss[field.key]" placeholder="选填" maxlength="20"><template #append>{{ field.unit }}</template></el-input></el-form-item></div>
-            <el-form-item label="加工要求"><el-input v-model="draft.engineeringRequirements" type="textarea" :rows="7" maxlength="2000" show-word-limit placeholder="选填；每项要求可单独换行" /></el-form-item>
+            <el-form-item label="备注"><el-input v-model="draft.engineeringRequirements" type="textarea" :rows="7" maxlength="2000" show-word-limit placeholder="选填；整份规范的备注，每项可单独换行" /></el-form-item>
             <el-form-item label="文字颜色"><el-select v-model="draft.requirementsColor"><el-option v-for="color in workSpecColors" :key="color.value" :label="color.label" :value="color.value" /></el-select></el-form-item>
           </el-form>
         </el-tab-pane>
@@ -142,7 +155,7 @@ import { calculateBomQuantity } from '@/utils/bomQuantity'
 import EngineeringDrawingLibrary from '../../drawing/components/EngineeringDrawingLibrary.vue'
 import BomFormDialog from '@/views/product/bom/components/BomFormDialog.vue'
 import RouteFormDialog from '@/views/product/route/components/RouteFormDialog.vue'
-import { documentFileCaption, loadDocset, workSpecMaterialSpec, flowGroups, workSpecStepSubscript, workSpecOperationRemark, type DocsetData } from './docset'
+import { documentFileCaption, loadDocset, workSpecMaterialSpec, flowGroups, workSpecStepSubscript, workSpecOperationRemark, renderFile, type DocsetData } from './docset'
 
 const props = defineProps<{ productId: number; productCode: string; productName: string }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
@@ -178,6 +191,19 @@ const nextSourceBefore = ref<number>()
 const usedSourceIds = computed(() => new Set(draft.value.changes.flatMap(change => change.sourceLogIds)))
 const dirty = computed(() => JSON.stringify(workSpecContent(draft.value)) !== baseline.value)
 const structureOptions = computed(() => data.value?.files.filter(file => file.productFile && file.category === '结构图' && file.kind !== 'other') || [])
+const structureFile = computed(() => data.value?.workSpec.structureFileId
+  ? data.value.files.find(file => file.id === data.value?.workSpec.structureFileId && file.category === '结构图' && file.kind !== 'other')
+  : undefined)
+const structureImage = ref('')
+const structureCaption = computed(() => structureFile.value ? documentFileCaption({ ...structureFile.value, name: '' }) : '')
+async function loadStructureImage() {
+  if (structureImage.value) { URL.revokeObjectURL(structureImage.value); structureImage.value = '' }
+  const file = structureFile.value
+  if (!file) return
+  try { structureImage.value = (await renderFile(file))[0]?.url || '' }
+  catch (e) { console.error('结构图加载失败', e) }
+}
+watch(structureFile, () => { void loadStructureImage() })
 const editing = computed(() => editorVisible.value || bomVisible.value || routeVisible.value || printSpecBusy.value)
 async function loadData() {
   const generation = ++loadGeneration
@@ -283,7 +309,7 @@ async function sourcesSaved() { await loadData(); emit('updated') }
 async function refreshDrawings() { await loadData() }
 watch(() => editing.value || confirming.value, value => emit('busy', value))
 watch(() => props.productId, () => { data.value = undefined; previewVisible.value = false; void loadData() }, { immediate: true })
-onBeforeUnmount(() => { loadGeneration++; emit('busy', false) })
+onBeforeUnmount(() => { loadGeneration++; if (structureImage.value) URL.revokeObjectURL(structureImage.value); emit('busy', false) })
 </script>
 
 <style scoped>
@@ -295,8 +321,13 @@ onBeforeUnmount(() => { loadGeneration++; emit('busy', false) })
 .section-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
 .section-heading h3 { margin:0; font-size:15px; }
 .multiline { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; line-height:1.7; }
-.requirements { margin-top:16px; font-size:14px; }
-.requirements .multiline { margin-top:8px; }
+.spec-top { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; align-items:stretch; margin-bottom:20px; }
+.spec-top-col { display:flex; flex-direction:column; min-width:0; padding:16px; border:1px solid var(--el-border-color-light); border-radius:6px; }
+.spec-top-col .section-heading { margin-bottom:12px; }
+.structure-preview { flex:1; min-height:200px; display:flex; align-items:center; justify-content:center; padding:8px; border:1px dashed var(--el-border-color); border-radius:6px; }
+.structure-preview img { max-width:100%; max-height:320px; object-fit:contain; }
+.empty-hint { color:var(--el-text-color-secondary); font-size:13px; }
+.structure-caption { margin:8px 0 0; font-size:12px; color:#697586; text-align:center; }
 .workflow-operation { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .workflow-symbols { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
 .workflow-symbol { display:inline-flex; align-items:flex-end; }

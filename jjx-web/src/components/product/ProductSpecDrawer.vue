@@ -124,7 +124,7 @@
                   <el-descriptions-item label="修订说明" :span="2">{{ versionSnapshot.version.changeSummary || '-' }}</el-descriptions-item>
                 </el-descriptions>
                 <el-descriptions v-if="versionSnapshot?.spec" :column="1" border size="small" style="margin-top: 10px">
-                  <el-descriptions-item label="加工要求">{{ versionSnapshot.spec.engineeringRequirements || '-' }}</el-descriptions-item>
+                  <el-descriptions-item label="备注">{{ versionSnapshot.spec.engineeringRequirements || '-' }}</el-descriptions-item>
                   <el-descriptions-item label="刀模位置">{{ versionSnapshot.spec.dieLocation || '-' }}</el-descriptions-item>
                   <el-descriptions-item label="结构图ID">{{ versionSnapshot.spec.structureFileId ?? '-' }}</el-descriptions-item>
                   <el-descriptions-item label="凹凸条件">

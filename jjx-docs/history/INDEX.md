@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-11 (dev-20261011-040) | product-work-spec-top-three-column-layout-dev-20261011-040.md | 产品作业规范顶部三栏（结构图/凹凸条件/备注）与加工要求升格为备注 |
 | 2026-10-11 (dev-20261011-025) | customer-doc-controlled-p0-audit-dev-20261011-025.md | 客供资料受控库 P0：现状核查（4 清单） |
 | 2026-10-11 | product-work-spec-version-trace-design-20261011.md | JJX ERP 产品作业规范版本与历史追溯设计方案 |
 | 2026-10-11 (dev-20261011-004) | product-work-spec-p1-implementation-dev-20261011-004.md | 产品作业规范版本追溯 P1 实施拆解（含 §15 新表提案） |
