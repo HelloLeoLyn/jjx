@@ -254,7 +254,6 @@
 
     <!-- 添加或修改产品对话框组件 -->
     <ProductForm v-model="open" :product-id="selectedProductId" @success="() => {}" />
-    <ProductSpecDrawer ref="specDrawer" />
     <!-- 产品详情组件 -->
     <ProductDetailDialog v-model="detailOpen" :product-id="selectedProductId" />
     <RouteDetailDialog v-model="routeDetailDialogVisible" :routing-id="currentRoutingId" />
@@ -298,7 +297,6 @@ import ProductCategorySelect from '@/components/ProductCategorySelect.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import ProductForm from './components/ProductForm.vue'
 import ProductDetailDialog from './components/ProductDetailDialog.vue'
-import ProductSpecDrawer from '@/components/product/ProductSpecDrawer.vue'
 import BomDetail from '../bom/components/BomDetail.vue'
 import RouteDetailDialog from '../route/components/RouteDetailDialog.vue'
 import ProductConfigValidateDialog from './components/ProductConfigValidateDialog.vue'
@@ -385,8 +383,6 @@ const productActions: TableAction<ProductVo>[] = [
       Boolean(row.routeCode) &&
       ProductEnum.status.canDo(row.productStatus, ProductEnum.actions.EDIT),
   },
-  // 产品侧与工程侧共用抽屉，在当前列表打开。
-  { key: 'spec', label: '作业规范', permission: 'product:spec:view' },
 ]
 
 const handleProductAction = (key: string, row: ProductVo) => {
@@ -401,10 +397,8 @@ const handleProductAction = (key: string, row: ProductVo) => {
   if (key === 'publish') handlePublish(row)
   if (key === 'obsolete') handleObsolete(row)
   if (key === 'trace') openTrace(row)
-  if (key === 'spec') specDrawer.value?.open(Number(row.productId))
 }
 
-const specDrawer = ref<InstanceType<typeof ProductSpecDrawer>>()
 const router = useRouter()
 const { categoryList, fetchList } = useProductCategory()
 // 创建类别ID到名称的映射表（核心）
