@@ -262,7 +262,7 @@ async function refreshSpecSources() {
   }
 }
 
-async function open(id: number) {
+async function open(id: number, versionId?: number) {
   if (!Number.isFinite(id) || id <= 0) return
   if (drawingBusy.value || workSpecBusy.value || printSpecBusy.value || colorCheckBusy.value) {
     ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口')
@@ -280,7 +280,12 @@ async function open(id: number) {
     const response = await getFullProduct(id)
     if (version === requestVersion && specVisible.value) {
       detail.value = response.data
-      void loadVersionOptions()
+      await loadVersionOptions()
+      // 带版本号打开：定位到该发布版本只读（dev-20261011-029）
+      if (versionId && version === requestVersion && specVisible.value) {
+        selectedVersionId.value = versionId
+        activeTab.value = 'spec'
+      }
     }
   } catch (e) {
     if (version === requestVersion && specVisible.value) ElMessage.error(e instanceof Error ? e.message : '加载作业规范失败')

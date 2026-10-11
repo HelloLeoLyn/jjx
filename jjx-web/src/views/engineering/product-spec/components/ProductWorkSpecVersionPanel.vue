@@ -27,9 +27,10 @@
       <el-table-column prop="changeSummary" label="修订说明" min-width="180" show-overflow-tooltip />
       <el-table-column prop="publishedBy" label="发布人" width="100" align="center" />
       <el-table-column prop="publishedAt" label="发布时间" width="160" align="center" />
-      <el-table-column label="操作" width="90" align="center">
+      <el-table-column label="操作" width="150" align="center">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">明细</el-button>
+          <el-button v-if="showFullPage" link type="primary" @click="emit('openVersion', row.id)">整页查看</el-button>
         </template>
       </el-table-column>
       <template #empty>尚未发布版本</template>
@@ -72,6 +73,14 @@
       </el-table>
       <div class="wsv-tip">发布后内容不可改；此处为只读快照。BOM/工艺路线为「引用已批准版本」，工程图为「引用文件版本 + 哈希」。</div>
       <div class="wsv-tip">未纳入本次发布：{{ detailDiff.notIncluded.join('、') }}。</div>
+      <template #footer>
+        <el-button @click="detailVisible = false">关闭</el-button>
+        <el-button
+          v-if="showFullPage && detailVersion"
+          type="primary"
+          @click="emit('openVersion', detailVersion.id)"
+        >整页查看</el-button>
+      </template>
     </el-dialog>
 
     <el-dialog v-model="compareVisible" title="版本比较（已发布版本）" width="860px" append-to-body destroy-on-close>
@@ -118,7 +127,11 @@ import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 
-const props = defineProps<{ productId: number }>()
+const props = withDefaults(defineProps<{ productId: number; showFullPage?: boolean }>(), {
+  showFullPage: false,
+})
+// 整页查看（dev-20261011-029）：由父页打开作业规范抽屉并定位到该版本（只读）
+const emit = defineEmits<{ (e: 'openVersion', versionId: number): void }>()
 
 const RESOURCE_LABELS: Record<string, string> = {
   SPEC_JSON: '规范正文快照',

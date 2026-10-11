@@ -71,7 +71,12 @@
       append-to-body
       destroy-on-close
     >
-      <ProductWorkSpecVersionPanel v-if="versionsVisible && versionsRow" :product-id="Number(versionsRow.productId)" />
+      <ProductWorkSpecVersionPanel
+        v-if="versionsVisible && versionsRow"
+        :product-id="Number(versionsRow.productId)"
+        show-full-page
+        @open-version="openVersionFullPage"
+      />
     </el-dialog>
 
     <!-- 预览 / 打印文档集（复用现有 ProductSpecPreview；dev-20261011-028） -->
@@ -129,6 +134,12 @@ async function loadVersionsStatus() {
 function openVersions(row: any) {
   versionsRow.value = row
   versionsVisible.value = true
+}
+// 整页查看：关弹窗 → 打开作业规范抽屉并定位到该版本只读（dev-20261011-029）
+function openVersionFullPage(versionId: number) {
+  const productId = Number(versionsRow.value?.productId)
+  versionsVisible.value = false
+  if (productId && versionId) specDrawer.value?.open(productId, versionId)
 }
 // 预览 / 打印文档集（列表操作栏；dev-20261011-028）
 const previewVisible = ref(false)
