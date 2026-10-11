@@ -230,6 +230,20 @@
             <span>{{ parseTime(scope.row.createTime) }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="当前规范版本" align="center" width="170">
+          <template #default="scope">
+            <el-button link type="primary" @click="openVersions(scope.row)">
+              {{ versionInfoMap[Number(scope.row.productId)]?.latestVersionNo || '未发布' }}
+            </el-button>
+            <el-tag
+              v-if="versionInfoMap[Number(scope.row.productId)]?.hasUnpublishedChanges"
+              size="small"
+              type="warning"
+              effect="plain"
+              style="margin-left: 4px"
+            >未发布改动</el-tag>
+          </template>
+        </el-table-column>
         <TableActionColumn
           :actions="productActions"
           :maxVisible="3"
@@ -251,6 +265,18 @@
         />
       </div>
     </el-card>
+
+    <!-- 发布版本：列表「当前规范版本」列入口（dev-20261011-027） -->
+    <el-dialog
+      v-model="versionsVisible"
+      :title="`发布版本 - ${versionsRow?.productCode || ''}`"
+      width="900px"
+      top="6vh"
+      append-to-body
+      destroy-on-close
+    >
+      <ProductWorkSpecVersionPanel v-if="versionsVisible && versionsRow" :product-id="Number(versionsRow.productId)" />
+    </el-dialog>
 
     <!-- 添加或修改产品对话框组件 -->
     <ProductForm v-model="open" :product-id="selectedProductId" @success="() => {}" />
@@ -297,6 +323,8 @@ import ProductCategorySelect from '@/components/ProductCategorySelect.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import ProductForm from './components/ProductForm.vue'
 import ProductDetailDialog from './components/ProductDetailDialog.vue'
+import ProductWorkSpecVersionPanel from '@/views/engineering/product-spec/components/ProductWorkSpecVersionPanel.vue'
+import { productWorkSpecApi } from '@/api/product/workSpec'
 import BomDetail from '../bom/components/BomDetail.vue'
 import RouteDetailDialog from '../route/components/RouteDetailDialog.vue'
 import ProductConfigValidateDialog from './components/ProductConfigValidateDialog.vue'
@@ -397,6 +425,30 @@ const handleProductAction = (key: string, row: ProductVo) => {
   if (key === 'publish') handlePublish(row)
   if (key === 'obsolete') handleObsolete(row)
   if (key === 'trace') openTrace(row)
+}
+
+// 当前规范版本列（dev-20261011-027）
+const versionsVisible = ref(false)
+const versionsRow = ref<any>(null)
+const versionInfoMap = ref<Record<number, any>>({})
+function openVersions(row: any) {
+  versionsRow.value = row
+  versionsVisible.value = true
+}
+async function loadVersionsStatus() {
+  const ids = (productList.value || [])
+    .map((r) => Number(r.productId))
+    .filter((id) => !!id)
+  versionInfoMap.value = {}
+  if (!ids.length) return
+  try {
+    const res: any = await productWorkSpecApi.batchStatus(ids)
+    const map: Record<number, any> = {}
+    for (const item of res?.data || []) map[Number(item.productId)] = item
+    versionInfoMap.value = map
+  } catch {
+    /* 版本状态列失败不阻塞主列表 */
+  }
 }
 
 const router = useRouter()
@@ -506,6 +558,7 @@ const getList = async () => {
     const response = await productApi.page(queryParams)
     productList.value = response.data?.records || []
     total.value = response.data?.total || 0
+    await loadVersionsStatus()
   } catch (error) {
     console.error('获取产品列表失败:', error)
   } finally {

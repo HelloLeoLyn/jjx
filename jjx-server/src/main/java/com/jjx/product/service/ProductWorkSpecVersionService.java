@@ -153,8 +153,55 @@ public class ProductWorkSpecVersionService {
         if (version == null) {
             throw new BusinessException("发布版本不存在: " + versionId);
         }
+        List<Map<String, Object>> fields = buildDiffFields(version);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("versionId", version.getId());
+        result.put("versionNo", version.getVersionNo());
+        result.put("productId", version.getProductId());
+        result.put("changed", !fields.isEmpty());
+        result.put("fields", fields);
+        result.put("notIncluded", NOT_INCLUDED);
+        return result;
+    }
+
+    /**
+     * 列表用只读状态：每个产品的最新已发布版本 + 有无「未发布改动」（dev-20261011-027）。
+     * hasUnpublishedChanges 复用 diff() 的字段级比较口径；无发布版本时为 false（列表显示「未发布」）。
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> statuses(List<Long> productIds) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        if (productIds == null || productIds.isEmpty()) {
+            return out;
+        }
+        for (Long productId : productIds) {
+            if (productId == null) {
+                continue;
+            }
+            ProductWorkSpecVersion latest = versionMapper.selectLatestPublished(productId);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("productId", productId);
+            if (latest == null) {
+                row.put("latestVersionId", null);
+                row.put("latestVersionNo", null);
+                row.put("latestPublishedAt", null);
+                row.put("hasUnpublishedChanges", false);
+            } else {
+                row.put("latestVersionId", latest.getId());
+                row.put("latestVersionNo", latest.getVersionNo());
+                row.put("latestPublishedAt", latest.getPublishedAt());
+                row.put("hasUnpublishedChanges", !buildDiffFields(latest).isEmpty());
+            }
+            out.add(row);
+        }
+        return out;
+    }
+
+    /** 快照 vs 当前工作态的字段级差异（diff 与 statuses 共用）。 */
+    private List<Map<String, Object>> buildDiffFields(ProductWorkSpecVersion version) {
         String snapshot = null;
-        for (ProductWorkSpecItem item : itemMapper.selectByVersionId(versionId)) {
+        for (ProductWorkSpecItem item : itemMapper.selectByVersionId(version.getId())) {
             if (WorkSpecResourceType.SPEC_JSON.getCode().equals(item.getResourceType())) {
                 snapshot = item.getSnapshotJson();
                 break;
@@ -186,15 +233,7 @@ public class ProductWorkSpecVersionService {
         for (String key : unionKeys(scc, ccc)) {
             addDiff(fields, "分色检查·" + key, scc.path(key).get("result"), ccc.path(key).get("result"));
         }
-
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("versionId", version.getId());
-        result.put("versionNo", version.getVersionNo());
-        result.put("productId", version.getProductId());
-        result.put("changed", !fields.isEmpty());
-        result.put("fields", fields);
-        result.put("notIncluded", NOT_INCLUDED);
-        return result;
+        return fields;
     }
 
     /** 发布版本详情（版本 + 条目） */

@@ -28,6 +28,20 @@
         <el-table-column label="当前路线版本" width="120" align="center">
           <template #default="{ row }">{{ (row as any).currentRoutingVersion || '-' }}</template>
         </el-table-column>
+        <el-table-column label="当前规范版本" width="170" align="center">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openVersions(row)">
+              {{ versionInfoMap[Number(row.productId)]?.latestVersionNo || '未发布' }}
+            </el-button>
+            <el-tag
+              v-if="versionInfoMap[Number(row.productId)]?.hasUnpublishedChanges"
+              size="small"
+              type="warning"
+              effect="plain"
+              style="margin-left: 4px"
+            >未发布改动</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="260" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openSpec(row)">作业规范</el-button>
@@ -83,6 +97,21 @@ const query = reactive({ productCode: '', productName: '', current: 1, pageSize:
 // 发布版本（列表操作栏）
 const versionsVisible = ref(false)
 const versionsRow = ref<any>(null)
+// 当前规范版本列（dev-20261011-027）
+const versionInfoMap = ref<Record<number, any>>({})
+async function loadVersionsStatus() {
+  const ids = rows.value.map((r) => Number(r.productId)).filter((id) => !!id)
+  versionInfoMap.value = {}
+  if (!ids.length) return
+  try {
+    const res: any = await productWorkSpecApi.batchStatus(ids)
+    const map: Record<number, any> = {}
+    for (const item of res?.data || []) map[Number(item.productId)] = item
+    versionInfoMap.value = map
+  } catch {
+    /* 版本状态列失败不阻塞列表 */
+  }
+}
 function openVersions(row: any) {
   versionsRow.value = row
   versionsVisible.value = true
@@ -111,6 +140,7 @@ async function load() {
     const page = res?.data || {}
     rows.value = page.records || []
     total.value = page.total || 0
+    await loadVersionsStatus()
   } catch {
     rows.value = []
     total.value = 0

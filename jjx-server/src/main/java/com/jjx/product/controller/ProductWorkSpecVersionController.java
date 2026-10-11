@@ -50,4 +50,11 @@ public class ProductWorkSpecVersionController {
     public Result<Map<String, Object>> diff(@PathVariable Long versionId) {
         return Result.success(service.diff(versionId));
     }
+
+    /** 列表用：批量查「最新发布版本 + 有无未发布改动」（dev-20261011-027，只读）。 */
+    @GetMapping("/work-spec/status")
+    @SaCheckPermission(value = {"product:spec:view", "engineering:spec:view"}, mode = SaMode.OR)
+    public Result<List<Map<String, Object>>> statuses(@RequestParam("productIds") List<Long> productIds) {
+        return Result.success(service.statuses(productIds));
+    }
 }

@@ -95,4 +95,7 @@ export const productWorkSpecApi = {
   listVersions: (id: number) => request.get('/product/' + id + '/work-spec/versions'),
   getVersion: (versionId: number) => request.get('/product/work-spec/versions/' + versionId),
   versionDiff: (versionId: number) => request.get('/product/work-spec/versions/' + versionId + '/diff'),
+  // 列表用：批量查最新发布版本 + 有无未发布改动（dev-20261011-027）
+  batchStatus: (productIds: number[]) =>
+    request.get('/product/work-spec/status', { params: { productIds: productIds.join(',') } }),
 }
