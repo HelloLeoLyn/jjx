@@ -158,11 +158,13 @@
                   </el-table-column>
                 </el-table>
               </div>
+              <el-alert v-if="selectedVersionId && versionSnapshot?.routingError" :title="versionSnapshot.routingError" type="warning" :closable="false" class="tab-tip" />
               <ProductPrintSpecPanel
                 v-if="selectedVersionId && versionSnapshot?.spec && productId && activeTab === 'spec'"
                 :key="`${productId}-${selectedVersionId}-print`"
                 :product-id="productId"
                 :work-spec="versionSnapshot.spec"
+                :routing-items="versionSnapshot.routingItems"
                 read-only
               />
             </template>
@@ -233,6 +235,7 @@ import { OutboundTypeEnum, OutboundOrderStatusEnum } from '@/enums/inventory'
 import type { SampleOrder } from '@/types/sales/sampleOrder'
 import type { ProductPickRow } from '@/types/inventory/outbound'
 import { productWorkSpecApi, normalizeWorkSpec, embossFields } from '@/api/product/workSpec'
+import { productRouteApi } from '@/api/product/routing'
 
 const specVisible = ref(false)
 const drawingBusy = ref(false)
@@ -348,7 +351,7 @@ watch(activeTab, (tab) => {
 // ⑤ 产品作业规范：版本切换（只读快照；dev-20261011-027）
 const versionOptions = ref<any[]>([])
 const selectedVersionId = ref(0)
-const versionSnapshot = ref<{ version: any; spec: any; drawings: any[] } | null>(null)
+const versionSnapshot = ref<{ version: any; spec: any; drawings: any[]; routingItems: any[]; routingError: string } | null>(null)
 const versionLoading = ref(false)
 
 async function loadVersionOptions() {
@@ -366,10 +369,12 @@ async function loadVersionOptions() {
 
 async function applyVersionSelection() {
   versionSnapshot.value = null
+  versionLoading.value = false
   if (!selectedVersionId.value) return
   versionLoading.value = true
+  const requestedVersionId = selectedVersionId.value
   try {
-    const res: any = await productWorkSpecApi.getVersion(selectedVersionId.value)
+    const res: any = await productWorkSpecApi.getVersion(requestedVersionId)
     if (res?.code === 200) {
       const items = res?.data?.items || []
       const specItem = items.find((i: any) => i.resourceType === 'SPEC_JSON')
@@ -377,12 +382,26 @@ async function applyVersionSelection() {
       if (specItem?.snapshotJson) {
         try { spec = normalizeWorkSpec(JSON.parse(specItem.snapshotJson)) } catch { spec = null }
       }
-      versionSnapshot.value = { version: res?.data?.version, spec, drawings: drawingItems(items) }
+      let routingItems: any[] = []
+      let routingError = ''
+      const routingItem = items.find((item: any) => item.resourceType === 'ROUTING')
+      try {
+        const routingId = JSON.parse(routingItem?.snapshotJson || '{}').routingId
+        if (routingId) {
+          const routing = await productRouteApi.getProductRouteInfo(Number(routingId))
+          routingItems = routing.data?.items || []
+        }
+      } catch (error) {
+        console.error('读取发布版本印刷工序失败', error)
+        routingError = '该版本的印刷工序读取失败，请重新选择版本重试'
+      }
+      if (requestedVersionId !== selectedVersionId.value) return
+      versionSnapshot.value = { version: res?.data?.version, spec, drawings: drawingItems(items), routingItems, routingError }
     }
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '版本快照加载失败')
+    if (requestedVersionId === selectedVersionId.value) ElMessage.error(e instanceof Error ? e.message : '版本快照加载失败')
   } finally {
-    versionLoading.value = false
+    if (requestedVersionId === selectedVersionId.value) versionLoading.value = false
   }
 }
 

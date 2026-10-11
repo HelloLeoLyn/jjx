@@ -36,15 +36,36 @@
           <div class="requirements"><strong>加工要求</strong><p class="multiline">{{ data.workSpec.engineeringRequirements || '未填写' }}</p></div>
         </section>
         <section class="data-section">
-          <div class="section-heading"><h3>工艺路线</h3><el-button v-if="canEditRoute" :disabled="loading || !data.routing.routingId" @click="routeVisible = true">编辑</el-button></div>
-          <el-table :data="data.routing.items || []" row-key="itemId" default-expand-all border size="small" empty-text="暂无工艺路线">
-            <el-table-column prop="processOrder" label="顺序" width="100" />
-            <el-table-column prop="processName" label="工序" min-width="180" />
-            <el-table-column label="分组" width="110"><template #default="{ row }">{{ flowGroups.find(group => group.value === row.processCategory)?.label || '未分类' }}</template></el-table-column>
-            <el-table-column prop="workInstruction" label="作业说明" min-width="200" />
-          </el-table>
+          <div class="section-heading"><h3>作业流程</h3><el-button v-if="canEditRoute" :disabled="loading || !data.routing.routingId" @click="routeVisible = true">编辑</el-button></div>
+          <el-tabs v-model="workflowTab">
+            <el-tab-pane v-for="group in workflowGroups" :key="group.value" :name="group.value" :label="group.label">
+              <el-table :data="group.rows" border size="small" :empty-text="`暂无${group.label}冲型组装工序`">
+                <el-table-column type="index" label="序号" width="70" />
+                <el-table-column label="流程" min-width="220">
+                  <template #default="{ row }">
+                    <div class="workflow-operation">
+                      <div class="workflow-symbols">
+                        <template v-for="(item, i) in workflowOperations(row)" :key="item.itemId || i">
+                          <span v-if="i">＋</span>
+                          <span class="workflow-symbol">
+                            <SvgIcon v-if="item.icon" :name="item.icon" :size="24" />
+                            <span v-else>{{ item.processName || '-' }}</span>
+                            <sub v-if="workSpecStepSubscript(item)">{{ workSpecStepSubscript(item) }}</sub>
+                          </span>
+                        </template>
+                      </div>
+                      <span class="workflow-remark">{{ workSpecOperationRemark(row) }}</span>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="耗时(h)" width="100"><template #default="{ row }">{{ workflowLabor(row) }}</template></el-table-column>
+                <el-table-column label="工序名称" min-width="180"><template #default="{ row }">{{ workflowNames(row) }}</template></el-table-column>
+                <el-table-column label="备注" min-width="180"><template #default="{ row }"><span class="multiline">{{ workSpecOperationRemark(row) || '-' }}</span></template></el-table-column>
+              </el-table>
+            </el-tab-pane>
+          </el-tabs>
         </section>
-        <ProductPrintSpecPanel :product-id="productId" :work-spec="data.workSpec" :loading="loading" @busy="printSpecBusy = $event" @updated="printRemarksSaved" />
+        <ProductPrintSpecPanel :product-id="productId" :work-spec="data.workSpec" :routing-items="data.routing.items || []" :loading="loading" @busy="printSpecBusy = $event" @updated="printRemarksSaved" />
       </template>
     </div>
     <el-dialog v-model="previewVisible" title="作业规范 · 打印预览" width="92%" append-to-body destroy-on-close>
@@ -115,11 +136,13 @@ import { useUserStore } from '@/store/modules/user'
 import { normalizeWorkSpec, workSpecContent, productWorkSpecApi, embossFields, workSpecColors, type ProductWorkSpec, type WorkSpecChangeSource } from '@/api/product/workSpec'
 import ProductSpecPreview from './ProductSpecPreview.vue'
 import ProductPrintSpecPanel from './ProductPrintSpecPanel.vue'
+import SvgIcon from '@/components/SvgIcon/index.vue'
+import { processRowsForGroup, workflowOperations, workflowLabor, workflowNames } from './workSpecProcessRows'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import EngineeringDrawingLibrary from '../../drawing/components/EngineeringDrawingLibrary.vue'
 import BomFormDialog from '@/views/product/bom/components/BomFormDialog.vue'
 import RouteFormDialog from '@/views/product/route/components/RouteFormDialog.vue'
-import { documentFileCaption, loadDocset, workSpecMaterialSpec, flowGroups, type DocsetData } from './docset'
+import { documentFileCaption, loadDocset, workSpecMaterialSpec, flowGroups, workSpecStepSubscript, workSpecOperationRemark, type DocsetData } from './docset'
 
 const props = defineProps<{ productId: number; productCode: string; productName: string }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
@@ -134,6 +157,10 @@ const loadError = ref('')
 const printSpecBusy = ref(false)
 let loadGeneration = 0
 const data = shallowRef<DocsetData>()
+const workflowTab = ref(flowGroups[0]?.value || '')
+const workflowGroups = computed(() => flowGroups.map(group => ({
+  ...group, rows: processRowsForGroup(data.value?.routing.items || [], 'ASSEMBLY', group.value),
+})))
 const editorVisible = ref(false)
 const editorTab = ref('requirements')
 const drawingBusy = ref(false)
@@ -270,6 +297,11 @@ onBeforeUnmount(() => { loadGeneration++; emit('busy', false) })
 .multiline { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; line-height:1.7; }
 .requirements { margin-top:16px; font-size:14px; }
 .requirements .multiline { margin-top:8px; }
+.workflow-operation { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.workflow-symbols { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.workflow-symbol { display:inline-flex; align-items:flex-end; }
+.workflow-symbol sub { margin-left:2px; white-space:pre-wrap; }
+.workflow-remark { white-space:pre-wrap; overflow-wrap:anywhere; }
 .data-message { margin-bottom:12px; }
 .editor-product { margin-bottom:12px; color:#697586; }
 .emboss-fields { display:grid; grid-template-columns:1fr 1fr; gap:0 20px; }

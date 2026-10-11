@@ -20,7 +20,8 @@ export const PRODUCT_SPEC_TABS: ProductSpecTab[] = [
   {
     name: 'sample',
     label: '样品',
-    notIncluded: '未纳入本次发布：样品需求单仅为当前执行记录，不随发布版本快照（样品资料随版本发布）。',
+    notIncluded:
+      '未纳入本次发布：样品需求单仅为当前执行记录，不随发布版本快照（样品资料随版本发布）。',
   },
   {
     name: 'pick-order',
@@ -28,11 +29,11 @@ export const PRODUCT_SPEC_TABS: ProductSpecTab[] = [
     notIncluded: '未纳入本次发布：领料单为执行记录，不随发布版本快照。',
   },
   { name: 'spec', label: '作业规范' },
+  { name: 'atlas', label: '工程图集' },
   {
     name: 'ink',
     label: '油墨调配记录表',
     notIncluded: '未纳入本次发布：油墨调配记录为执行记录，不随发布版本快照。',
   },
-  { name: 'atlas', label: '工程图集' },
   { name: 'color', label: '分色检查表' },
 ]

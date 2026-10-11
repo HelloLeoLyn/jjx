@@ -4,10 +4,22 @@
       <h3>印刷规范</h3>
       <el-button v-if="canEdit" :disabled="loading" @click="editRemarks">编辑</el-button>
     </div>
-    <div v-for="group in flowGroups" :key="group.value" class="print-group">
-      <strong>{{ group.label }}</strong>
-      <p>{{ workSpec.printRemarks[group.value] || '未填写' }}</p>
-    </div>
+    <el-tabs v-model="printTab">
+      <el-tab-pane v-for="group in printGroups" :key="group.value" :name="group.value" :label="group.label">
+        <el-table :data="group.rows" border size="small" :empty-text="`暂无${group.label}印刷工序`">
+          <el-table-column :label="`${group.label}印序`" min-width="180"><template #default="{ row, $index }">{{ $index + 1 }}. {{ row.processName ?? printParams(row).printName ?? '' }}</template></el-table-column>
+          <el-table-column label="色号" min-width="100"><template #default="{ row }">{{ printParams(row).colorNo ?? '-' }}</template></el-table-column>
+          <el-table-column label="油墨编号" min-width="120"><template #default="{ row }">{{ printParams(row).inkNo ?? '-' }}</template></el-table-column>
+          <el-table-column v-if="showFilm" label="菲林" min-width="120"><template #default="{ row }">{{ printParams(row).filmNo ?? '-' }}</template></el-table-column>
+          <el-table-column label="网框编号" min-width="120"><template #default="{ row }">{{ printParams(row).screenNo ?? '-' }}</template></el-table-column>
+          <el-table-column label="网板编号" min-width="140">
+            <template #header><el-tooltip :content="readOnly ? '历史版本只显示工序中记录的网板编号' : '按网框台账当前有效版面读取网板编号'" placement="top"><span>网板编号</span></el-tooltip></template>
+            <template #default="{ row }">{{ plateNumber(row) }}</template>
+          </el-table-column>
+        </el-table>
+        <div class="print-group"><strong>{{ group.label }}备注</strong><p>{{ workSpec.printRemarks[group.value] || '未填写' }}</p></div>
+      </el-tab-pane>
+    </el-tabs>
     <el-button v-if="canEdit" link type="primary" @click="openHistory">备注修改记录</el-button>
 
     <el-dialog v-model="editorVisible" title="印刷规范 · 整组备注" width="720px" append-to-body destroy-on-close :close-on-click-modal="false" :before-close="closeEditor">
@@ -44,9 +56,11 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import { normalizeWorkSpec, productWorkSpecApi, type ProductWorkSpec, type PrintRemarkHistory } from '@/api/product/workSpec'
-import { flowGroups } from './docset'
+import { flowGroups, printParams } from './docset'
+import { engineeringResourceApi } from '@/api/engineering/resource'
+import { processRowsForGroup, currentPlateForFrame, type SpecProcessRow } from './workSpecProcessRows'
 
-const props = defineProps<{ productId: number; workSpec: ProductWorkSpec; loading?: boolean; readOnly?: boolean }>()
+const props = defineProps<{ productId: number; workSpec: ProductWorkSpec; routingItems?: SpecProcessRow[]; loading?: boolean; readOnly?: boolean }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [workSpec: ProductWorkSpec] }>()
 const user = useUserStore()
 const canEdit = computed(() => !props.readOnly && user.hasPermission('product:edit'))
@@ -62,6 +76,45 @@ const historyError = ref('')
 const history = ref<PrintRemarkHistory[]>([])
 const nextBefore = ref<number>()
 let disposed = false
+let plateGeneration = 0
+const printTab = ref(flowGroups[0]?.value || '')
+const printGroups = computed(() => flowGroups.map(group => ({
+  ...group, rows: processRowsForGroup(props.routingItems || [], 'PRINT', group.value),
+})))
+const printRows = computed(() => printGroups.value.flatMap(group => group.rows))
+const showFilm = computed(() => printRows.value.some(row => String(printParams(row).filmNo ?? '').length > 0))
+const frameNumbers = computed(() => [...new Set(printRows.value.map(row => String(printParams(row).screenNo || '').trim()).filter(Boolean))])
+const canReadFrames = computed(() => user.hasPermission('engineering:screen-resource:view'))
+const plateNumbers = ref<Record<string, string>>({})
+function plateNumber(row: SpecProcessRow): string {
+  const params = printParams(row)
+  if (params.plateNo) return String(params.plateNo)
+  if (props.readOnly) return '未记录'
+  const frameNo = String(params.screenNo || '').trim()
+  if (!frameNo) return '-'
+  if (!canReadFrames.value) return '无台账查看权限'
+  return plateNumbers.value[frameNo] ?? '读取中…'
+}
+async function loadPlates() {
+  const generation = ++plateGeneration
+  plateNumbers.value = {}
+  if (props.readOnly || !canReadFrames.value) return
+  // 按网框去重查询，避免同一网框在多组/多道印序中重复请求。
+  for (const frameNo of frameNumbers.value) {
+    if (generation !== plateGeneration || disposed) return
+    try {
+      const plate = await currentPlateForFrame(frameNo, async pageNum => {
+        const response = await engineeringResourceApi.frames({ frameNo, pageNum, pageSize: 200 })
+        return response.data || {}
+      })
+      if (generation === plateGeneration && !disposed) plateNumbers.value[frameNo] = plate || '-'
+    } catch (error) {
+      console.error('读取网板编号失败', frameNo, error)
+      if (generation === plateGeneration && !disposed) plateNumbers.value[frameNo] = '读取失败'
+    }
+  }
+}
+watch(() => [JSON.stringify(frameNumbers.value), props.productId, props.readOnly, canReadFrames.value], loadPlates, { immediate: true })
 
 function editRemarks() {
   if (!canEdit.value || props.loading) return
@@ -123,14 +176,14 @@ function beforeUnload(event: BeforeUnloadEvent) {
 watch(() => editorVisible.value || saving.value, value => emit('busy', value))
 onBeforeRouteLeave(allowLeave)
 onMounted(() => window.addEventListener('beforeunload', beforeUnload))
-onBeforeUnmount(() => { disposed = true; window.removeEventListener('beforeunload', beforeUnload); emit('busy', false) })
+onBeforeUnmount(() => { disposed = true; plateGeneration++; window.removeEventListener('beforeunload', beforeUnload); emit('busy', false) })
 </script>
 
 <style scoped>
 .print-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
 .print-spec-section { padding:16px; border:1px solid var(--el-border-color-light); border-radius:6px; margin-bottom:20px; }
 .print-actions h3 { margin:0; font-size:15px; }
-.print-group { margin-bottom:16px; font-size:14px; }
+.print-group { margin:16px 0; font-size:14px; }
 .print-group p { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; margin:8px 0 0; }
 .remark-history { max-height:60vh; overflow:auto; min-height:120px; }
 .history-item { padding:12px 0; border-bottom:1px solid #ebeef5; }
