@@ -23,9 +23,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -107,12 +109,38 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         attachment.setFilePath(relativePath);
         attachment.setFileSize(file.getSize());
         attachment.setFileType(file.getContentType());
+        attachment.setSha256(sha256OfFile(Paths.get(fullPath)));
 
         save(attachment);
         // 附件回填日志 detail：同事务提交，保证流水可见（2026-08-28）
         attachToLatestOperLog(traceId, attachment);
         log.info("附件上传成功: id={}, bizType={}, bizId={}, file={}", attachment.getId(), bizType, bizId, originalName);
         return attachment.getId();
+    }
+
+    /**
+     * 计算落盘文件的 SHA-256（服务端可信；发布版本引用不可变文件用）。
+     * 读已保存的物理文件，避免 MultipartFile 流被 transferTo 消耗的问题。失败返回 null（不阻断上传）。
+     */
+    private String sha256OfFile(Path path) {
+        if (path == null) return null;
+        try (InputStream in = Files.newInputStream(path)) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                md.update(buf, 0, n);
+            }
+            byte[] digest = md.digest();
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn("计算附件 SHA-256 失败: {} ({})", path, e.getMessage());
+            return null;
+        }
     }
 
     /**
@@ -357,6 +385,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         attachment.setFilePath(relativePath);
         attachment.setFileSize(file.getSize());
         attachment.setFileType(file.getContentType());
+        attachment.setSha256(sha256OfFile(target));
 
         save(attachment);
         log.info("产品文件上传成功: id={}, productCode={}, category={}, file={}",
@@ -387,6 +416,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         SysAttachment attachment = getById(id);
         if (attachment == null) {
             throw new BusinessException("附件不存在: " + id);
+        }
+        if (yes(attachment.getIsControlled())) {
+            throw new BusinessException("受控附件不能删除，请先解除受控");
         }
         if ("product".equals(attachment.getBizType()) && attachment.getDrawingNo() != null) {
             attachment = lockedProductFile(id);
@@ -442,6 +474,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         if (recycled == null) {
             throw new BusinessException("回收站中不存在该附件: " + id);
         }
+        if (yes(recycled.getIsControlled())) {
+            throw new BusinessException("受控附件不能物理删除");
+        }
         // 删物理文件 + 真删记录
         String fullPath = uploadBasePath + File.separator + recycled.getFilePath();
         try {
@@ -459,6 +494,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         List<SysAttachment> expired = attachmentMapper.selectRecycledBefore(cutoff);
         int count = 0;
         for (SysAttachment attachment : expired) {
+            if (yes(attachment.getIsControlled())) {
+                continue; // 受控附件不随回收站过期物理删除
+            }
             String fullPath = uploadBasePath + File.separator + attachment.getFilePath();
             try {
                 Files.deleteIfExists(Paths.get(fullPath));

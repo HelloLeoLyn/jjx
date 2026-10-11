@@ -72,6 +72,9 @@ public class SysAttachment {
     @Schema(description = "MIME类型")
     private String fileType;
 
+    @Schema(description = "SHA-256（实际文件字节，服务端计算；发布引用校验）")
+    private String sha256;
+
     @Schema(description = "排序号")
     private Integer sortOrder;
 
