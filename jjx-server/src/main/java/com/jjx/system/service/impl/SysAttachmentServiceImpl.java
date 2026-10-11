@@ -577,13 +577,17 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
                  ORDER BY a.create_time DESC
                 """;
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, productId);
-        // 269 已上传的整理名缺产品编码；只调整返回值，不覆盖历史记录。
+        // 已上传但尚未执行 270 回填的整理名：按当前来源单号和产品编码展示，不覆盖库中记录。
         for (Map<String, Object> row : rows) {
             String name = (String) row.get("display_name");
             String code = (String) row.get("customer_product_code");
-            if (name == null || code == null || name.contains("-" + code + "-")) continue;
-            int separator = name.indexOf('-');
-            if (separator > 0) row.put("display_name", name.substring(0, separator + 1) + code + "-" + name.substring(separator + 1));
+            String sourceNo = (String) row.get("sourceNo");
+            if (name == null || code == null || sourceNo == null || name.startsWith(sourceNo + "-" + code + "-")) continue;
+            int separator = name.startsWith(sourceNo + "-") ? sourceNo.length() : name.indexOf('-');
+            if (separator < 0) continue;
+            String suffix = name.substring(separator + 1);
+            if (suffix.startsWith(code + "-")) suffix = suffix.substring(code.length() + 1);
+            row.put("display_name", sourceNo + "-" + code + "-" + suffix);
         }
         return rows;
     }

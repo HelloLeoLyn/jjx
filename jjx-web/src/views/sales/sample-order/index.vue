@@ -373,7 +373,7 @@
           :trace-id="detailData.traceId"
         />
         <el-button type="primary" style="margin-top: 8px" @click="customerUploadVisible = true">上传客供资料</el-button>
-        <CustomerDocUpload v-model="customerUploadVisible" biz-type="sample" :biz-id="detailData.orderId"
+        <CustomerDocUpload v-model="customerUploadVisible" biz-type="sample" :biz-id="detailData.orderId" :source-no="detailData.orderNo"
           :trace-id="detailData.traceId" :products="detailProducts" />
       </template>
       <template #footer>

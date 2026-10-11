@@ -328,7 +328,7 @@
               style="margin-bottom: 10px"
             />
             <el-button type="primary" @click="customerUploadVisible = true">上传客供资料</el-button>
-            <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="inquiry" :biz-id="form.inquiryId"
+            <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="inquiry" :biz-id="form.inquiryId" :source-no="(form as any).inquiryNo"
               :trace-id="(form as any).traceId" :products="form.productCode ? [{ productCode: form.productCode }] : []"
               @success="onUploadSuccess" />
           </el-col>

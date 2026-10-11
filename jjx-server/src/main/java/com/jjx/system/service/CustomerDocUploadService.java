@@ -14,8 +14,6 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class CustomerDocUploadService {
-    private static final Map<String, String> SOURCE_NAMES = Map.of(
-            "inquiry", "询价单", "quotation", "报价单", "sales_order", "销售订单", "sample", "样品单");
     private static final Map<String, String> TYPE_NAMES = Map.of(
             "customer_drawing", "客户图纸", "specification", "技术规格书", "approval_sheet", "承认书",
             "inspection_standard", "检验标准", "change_notice", "变更通知", "golden_sample", "标准样品资料",
@@ -28,27 +26,24 @@ public class CustomerDocUploadService {
     public SysAttachment upload(MultipartFile file, String bizType, Long bizId, String productCode,
                                 String docType, String traceId) {
         if (file == null || file.isEmpty()) throw new BusinessException("请选择文件");
-        if (bizId == null || bizId <= 0 || !SOURCE_NAMES.containsKey(bizType))
+        if (bizId == null || bizId <= 0 || bizType == null
+                || !java.util.Set.of("inquiry", "quotation", "sales_order", "sample").contains(bizType))
             throw new BusinessException("不支持的来源单据");
         if (productCode == null || productCode.isBlank() || productCode.length() > 100)
             throw new BusinessException("请选择文件所属产品");
         if (!TYPE_NAMES.containsKey(docType)) throw new BusinessException("请选择资料类型");
 
         String product = productCode.trim();
-        String headerTable = switch (bizType) {
-            case "inquiry" -> "sales_inquiry";
-            case "quotation" -> "sales_quotation";
-            case "sales_order" -> "sales_order";
-            default -> "sales_sample_order";
+        String headerSql = switch (bizType) {
+            case "inquiry" -> "SELECT inquiry_no AS source_no FROM sales_inquiry WHERE inquiry_id=? FOR UPDATE";
+            case "quotation" -> "SELECT quotation_no AS source_no FROM sales_quotation WHERE quotation_id=? FOR UPDATE";
+            case "sales_order" -> "SELECT order_no AS source_no FROM sales_order WHERE order_id=? FOR UPDATE";
+            default -> "SELECT o.order_no AS source_no FROM sales_sample_order s JOIN sales_order o ON o.order_id=s.order_id WHERE s.order_id=? FOR UPDATE";
         };
-        String headerKey = switch (bizType) {
-            case "inquiry" -> "inquiry_id";
-            case "quotation" -> "quotation_id";
-            default -> "order_id";
-        };
-        var header = jdbc.queryForList("SELECT " + headerKey + " FROM " + headerTable
-                + " WHERE " + headerKey + "=? FOR UPDATE", bizId);
+        var header = jdbc.queryForList(headerSql, bizId);
         if (header.isEmpty()) throw new BusinessException("来源单据不存在");
+        String sourceNo = (String) header.get(0).get("source_no");
+        if (sourceNo == null || sourceNo.isBlank()) throw new BusinessException("来源单号为空，无法整理文件名");
         String membershipSql = switch (bizType) {
             case "inquiry" -> "SELECT COUNT(*) FROM sales_inquiry WHERE inquiry_id=? AND product_code=?";
             case "quotation" -> "SELECT COUNT(*) FROM sales_quotation_item WHERE quotation_id=? AND product_code=?";
@@ -67,7 +62,7 @@ public class CustomerDocUploadService {
                 + "WHERE biz_type=? AND biz_id=? AND customer_product_code=? AND customer_doc_type=?",
                 Integer.class, bizType, bizId, product, docType);
         int sequence = (previous == null ? 0 : previous) + 1;
-        String displayName = SOURCE_NAMES.get(bizType) + "-" + product + "-" + TYPE_NAMES.get(docType)
+        String displayName = sourceNo + "-" + product + "-" + TYPE_NAMES.get(docType)
                 + "-" + String.format("%02d", sequence) + extension;
 
         Long id = attachments.uploadAttachment(file, bizType, bizId, traceId, null, null, null);

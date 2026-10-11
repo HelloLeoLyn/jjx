@@ -301,7 +301,7 @@
     />
 
     <el-button type="primary" @click="customerUploadVisible = true">上传客供资料</el-button>
-    <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="quotation" :biz-id="props.formData.quotationId"
+    <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="quotation" :biz-id="props.formData.quotationId" :source-no="props.formData.quotationNo"
       :trace-id="props.formData.traceId" :products="props.formData.items || []" />
     <!-- 产品文件库弹窗（明细行资料） -->
     <el-dialog

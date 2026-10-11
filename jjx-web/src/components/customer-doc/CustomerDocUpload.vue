@@ -57,6 +57,7 @@ const props = defineProps<{
   modelValue: boolean
   bizType: 'inquiry' | 'quotation' | 'sales_order' | 'sample'
   bizId?: number | null
+  sourceNo?: string
   traceId?: string
   products: ProductOption[]
 }>()
@@ -69,9 +70,6 @@ const docTypes = [
   { value: 'packaging_spec', label: '包装规范' }, { value: 'compliance_report', label: '认证报告' },
   { value: 'other', label: '其他资料' },
 ] as const
-const sourceNames: Record<string, string> = {
-  inquiry: '询价单', quotation: '报价单', sales_order: '销售订单', sample: '样品单',
-}
 const uniqueProducts = computed(() => Array.from(new Map(
   props.products.filter(product => product.productCode).map(product => [product.productCode, product]),
 ).values()))
@@ -98,7 +96,7 @@ function addFile(upload: UploadFile, productCode: string) {
 function plannedName(row: PendingRow, index: number) {
   const type = docTypes.find(item => item.value === row.docType)?.label || '待选类型'
   const sequence = String(rows.value.filter(item => item.productCode === row.productCode && item.docType === row.docType && item.key <= row.key).length).padStart(2, '0')
-  return `${sourceNames[props.bizType]}-${row.productCode}-${type}-预计${sequence}.${extension(row.file.name)}`
+  return `${props.sourceNo || '待保存单号'}-${row.productCode}-${type}-预计${sequence}.${extension(row.file.name)}`
 }
 function removeRow(row: PendingRow) {
   if (row.previewUrl) URL.revokeObjectURL(row.previewUrl)

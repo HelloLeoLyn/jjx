@@ -302,7 +302,7 @@
         tip="支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB；新建订单时附件将在保存后自动上传"
       />
       <el-button type="primary" style="margin-top: 8px" @click="customerUploadVisible = true">上传客供资料</el-button>
-      <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="sales_order" :biz-id="form.orderId"
+      <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="sales_order" :biz-id="form.orderId" :source-no="form.orderNo"
         :trace-id="(form as any)?.traceId" :products="form.items" />
     </div>
 

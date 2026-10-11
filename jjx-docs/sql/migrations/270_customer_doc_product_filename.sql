@@ -3,14 +3,24 @@
 -- Existing file_name and stored file content remain unchanged.
 
 CREATE TEMPORARY TABLE tmp_customer_doc_renumber AS
-SELECT id,
+SELECT a.id,
        ROW_NUMBER() OVER (
-         PARTITION BY biz_type, biz_id, customer_product_code, customer_doc_type
-         ORDER BY create_time, id
-       ) AS new_seq
-  FROM sys_attachment
- WHERE customer_product_code IS NOT NULL
-   AND customer_doc_type IS NOT NULL;
+         PARTITION BY a.biz_type, a.biz_id, a.customer_product_code, a.customer_doc_type
+         ORDER BY a.create_time, a.id
+       ) AS new_seq,
+       CASE a.biz_type
+         WHEN 'inquiry' THEN i.inquiry_no
+         WHEN 'quotation' THEN q.quotation_no
+         WHEN 'sales_order' THEN o.order_no
+         WHEN 'sample' THEN IF(s.order_id IS NOT NULL, o.order_no, NULL)
+       END AS source_no
+  FROM sys_attachment a
+  LEFT JOIN sales_inquiry i ON a.biz_type='inquiry' AND a.biz_id=i.inquiry_id
+  LEFT JOIN sales_quotation q ON a.biz_type='quotation' AND a.biz_id=q.quotation_id
+  LEFT JOIN sales_order o ON a.biz_type IN ('sales_order','sample') AND a.biz_id=o.order_id
+  LEFT JOIN sales_sample_order s ON a.biz_type='sample' AND a.biz_id=s.order_id
+ WHERE a.customer_product_code IS NOT NULL
+   AND a.customer_doc_type IS NOT NULL;
 
 ALTER TABLE tmp_customer_doc_renumber ADD PRIMARY KEY (id);
 
@@ -18,12 +28,7 @@ UPDATE sys_attachment a
 JOIN tmp_customer_doc_renumber n ON n.id = a.id
    SET a.customer_doc_seq = n.new_seq,
        a.display_name = CONCAT(
-         CASE a.biz_type
-           WHEN 'inquiry' THEN '询价单'
-           WHEN 'quotation' THEN '报价单'
-           WHEN 'sales_order' THEN '销售订单'
-           WHEN 'sample' THEN '样品单'
-         END, '-', a.customer_product_code, '-',
+         n.source_no, '-', a.customer_product_code, '-',
          CASE a.customer_doc_type
            WHEN 'customer_drawing' THEN '客户图纸'
            WHEN 'specification' THEN '技术规格书'
@@ -38,6 +43,7 @@ JOIN tmp_customer_doc_renumber n ON n.id = a.id
          LOWER(SUBSTRING_INDEX(a.file_name, '.', -1))
        )
  WHERE a.biz_type IN ('inquiry', 'quotation', 'sales_order', 'sample')
+   AND n.source_no IS NOT NULL
    AND a.customer_doc_type IN ('customer_drawing', 'specification', 'approval_sheet',
        'inspection_standard', 'change_notice', 'golden_sample', 'packaging_spec',
        'compliance_report', 'other')
