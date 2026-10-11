@@ -141,6 +141,7 @@
     <!-- ============================================================ -->
     <SkeletonAction>
       <QuotationFormDialog
+        ref="quotationFormDialogRef"
         v-model="open"
         :title="title"
         :form-data="form"
@@ -576,6 +577,7 @@ const quotationStatusTextMap = computed(() => {
 // 11. 弹窗状态
 // ============================================================
 const open = ref(false)
+const quotationFormDialogRef = ref<InstanceType<typeof QuotationFormDialog>>()
 const title = ref('')
 const quotationDetailVisible = ref(false) // ✅ 新增
 const quotationDetailId = ref<number>(0) // ✅ 新增
@@ -677,6 +679,7 @@ const submitForm = async () => {
       await quotationApi.edit(form as any)
       const res: any = await quotationApi.getInfo(form.quotationId)
       Object.assign(form, res.data)
+      await quotationFormDialogRef.value?.flushCustomerDocs(form.quotationId)
       title.value = `修改报价单【${res.data?.quotationNo || ''}】`
       ElMessage.success('保存成功')
       getList()
@@ -688,6 +691,7 @@ const submitForm = async () => {
         form.quotationId = newId
         const info: any = await quotationApi.getInfo(newId)
         Object.assign(form, info.data)
+        await quotationFormDialogRef.value?.flushCustomerDocs(newId)
         title.value = `修改报价单【${info.data?.quotationNo || ''}】`
       }
       ElMessage.success('保存成功，可继续编辑')

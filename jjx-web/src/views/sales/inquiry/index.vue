@@ -327,29 +327,10 @@
               :biz-id="form.inquiryId"
               style="margin-bottom: 10px"
             />
-            <AttachmentUploader
-              ref="uploaderRef"
-              biz-type="inquiry"
-              :biz-id="form.inquiryId"
-              :trace-id="(form as any).traceId"
-              :accept="[
-                '.pdf',
-                '.doc',
-                '.docx',
-                '.xls',
-                '.xlsx',
-                '.jpg',
-                '.jpeg',
-                '.png',
-                '.dwg',
-                '.dxf',
-                '.zip',
-                '.md',
-              ]"
-              button-text="上传客户资料"
-              tip="支持客户资料(PDF/DWG/DXF/图片/Word/Excel/Markdown/ZIP)，单个文件不超过10MB；新增时文件保存后自动上传"
-              @success="onUploadSuccess"
-            />
+            <el-button type="primary" @click="customerUploadVisible = true">上传客供资料</el-button>
+            <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="inquiry" :biz-id="form.inquiryId"
+              :trace-id="(form as any).traceId" :products="form.productCode ? [{ productCode: form.productCode }] : []"
+              @success="onUploadSuccess" />
           </el-col>
         </el-row>
       </el-form>
@@ -397,7 +378,7 @@ import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import ProductPicker from '@/components/Selector/ProductPicker.vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
-import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
+import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
 import type { FormInstance } from 'element-plus'
 import { inquiryApi } from '@/api/sales/inquiry'
 import { InquiryStatusEnum } from '@/enums/sales'
@@ -611,7 +592,8 @@ function handleOpSuccess() {
 }
 
 // ==================== 附件管理（DEV-733 统一组件） ====================
-const uploaderRef = ref<InstanceType<typeof AttachmentUploader>>()
+const customerUploadVisible = ref(false)
+const customerDocUploadRef = ref<InstanceType<typeof CustomerDocUpload>>()
 const uploadedAttachmentIds = ref<number[]>([])
 
 function onUploadSuccess(id: number) {
@@ -992,14 +974,14 @@ async function submitForm() {
   try {
     if (form.inquiryId) {
       await inquiryApi.edit({ ...form, attachmentIds: uploadedAttachmentIds.value } as any)
+      if (await customerDocUploadRef.value?.flushPending(form.inquiryId) === false) return
       ElMessage.success('修改成功')
     } else {
       const res = await inquiryApi.add(form as any)
-      // 保存成功后用返回的新ID和traceId上传暂存的文件
+      // 新建单据保存后才有可用于客供资料上传的来源 ID。
       const newId = (res as any)?.data?.inquiryId || form.inquiryId || 0
-      const newTraceId = (res as any)?.data?.traceId || ''
       form.inquiryId = newId
-      await uploaderRef.value?.flushPending(newId, newTraceId)
+      if (await customerDocUploadRef.value?.flushPending(newId) === false) return
       ElMessage.success('新增成功')
     }
     dialogVisible.value = false
@@ -1017,7 +999,8 @@ function cancel() {
 
 // 关闭对话框后重置附件状态
 function handleClose() {
-  uploaderRef.value?.clearPending()
+  customerUploadVisible.value = false
+  customerDocUploadRef.value?.reset()
   uploadedAttachmentIds.value = []
 }
 

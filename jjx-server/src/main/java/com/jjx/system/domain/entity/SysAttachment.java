@@ -29,6 +29,18 @@ public class SysAttachment {
     @Schema(description = "文件类别（产品文件：客供稿/模具/确认图/菲林/规范等，业务附件可空）")
     private String category;
 
+    @Schema(description = "客供资料所属产品编码（一个附件只对应一个产品）")
+    private String customerProductCode;
+
+    @Schema(description = "客供资料类型编码")
+    private String customerDocType;
+
+    @Schema(description = "同来源单据和资料类型的序号")
+    private Integer customerDocSeq;
+
+    @Schema(description = "整理后的展示名称；fileName 保留原文件名")
+    private String displayName;
+
     @Schema(description = "版本号（产品文件用）")
     private String version;
 

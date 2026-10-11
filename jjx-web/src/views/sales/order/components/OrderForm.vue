@@ -301,6 +301,9 @@
         button-text="上传附件"
         tip="支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB；新建订单时附件将在保存后自动上传"
       />
+      <el-button type="primary" style="margin-top: 8px" @click="customerUploadVisible = true">上传客供资料</el-button>
+      <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="sales_order" :biz-id="form.orderId"
+        :trace-id="(form as any)?.traceId" :products="form.items" />
     </div>
 
     <!-- 金额汇总 -->
@@ -437,6 +440,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
+import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
 import { orderApi } from '@/api/sales/order'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { customerApi } from '@/api/sales/customer'
@@ -612,6 +616,10 @@ const handleCurrencyChange = async (val: string) => {
 
 // ===== 附件上传（DEV-733 统一组件） =====
 const uploaderRef = ref<InstanceType<typeof AttachmentUploader>>()
+const customerUploadVisible = ref(false)
+const customerDocUploadRef = ref<InstanceType<typeof CustomerDocUpload>>()
+const createdOrderId = ref<number>()
+const createdTraceId = ref<string>()
 
 /** 客户档案 payment_method(1预付/2货到付款/3月结30天/4月结60天) → 订单同值域枚举 */
 const PAYMENT_METHOD_TO_TERMS: Record<number, string> = {
@@ -899,6 +907,7 @@ const submitForm = async (): Promise<boolean> => {
     // 编辑模式：走原有逻辑（附件已直接上传）
     const success = await submitOrderForm()
     if (success) {
+      if (form.orderId && await customerDocUploadRef.value?.flushPending(form.orderId) === false) return false
       emit('success')
     }
     return success
@@ -906,6 +915,11 @@ const submitForm = async (): Promise<boolean> => {
 
   // 新增模式：手动提交，获取新订单ID后上传附件
   if (!orderFormRef.value) return false
+  if (createdOrderId.value) {
+    if (await customerDocUploadRef.value?.flushPending(createdOrderId.value, createdTraceId.value) === false) return false
+    emit('success')
+    return true
+  }
 
   // 先验证明细数量（独立于 element-plus 表单校验）
   if (form.items.length === 0) {
@@ -943,9 +957,15 @@ const submitForm = async (): Promise<boolean> => {
     const data = orderResponse.data!
     const newOrderId = data.orderId
     const newTraceId = data.traceId
+    createdOrderId.value = newOrderId
+    createdTraceId.value = newTraceId
 
     // 2. 上传待处理的附件
     await uploaderRef.value?.flushPending(newOrderId, newTraceId)
+    if (await customerDocUploadRef.value?.flushPending(newOrderId, newTraceId) === false) {
+      form.orderId = newOrderId
+      return false
+    }
 
     ElMessage.success(isSampleConvert ? '转量产成功，标准订单已生成' : '新增成功')
     emit('success')
@@ -958,11 +978,17 @@ const submitForm = async (): Promise<boolean> => {
 }
 
 // 暴露给父组件的方法和属性
+function resetOrderForm() {
+  customerDocUploadRef.value?.reset()
+  createdOrderId.value = undefined
+  createdTraceId.value = undefined
+  resetForm()
+}
 defineExpose({
   orderFormRef,
   form,
   submitting,
-  resetForm,
+  resetForm: resetOrderForm,
   generateOrderNo,
   loadOrderData,
   submitForm,
