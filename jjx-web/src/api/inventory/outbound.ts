@@ -15,6 +15,7 @@ import type {
   PickOrderPrintVO,
   SamplePickPreviewRow,
   SamplePickItemPayload,
+  ProductPickRow,
 } from '@/types/inventory/outbound'
 
 // 出库管理API
@@ -43,6 +44,11 @@ export const outboundApi = {
   // 打样领料（从样品单创建）
   createSamplePick(sampleOrderId: number, items: SamplePickItemPayload[]) {
     return request.post<R<number>>(`/inventory/outbound/sample-pick/${sampleOrderId}`, items)
+  },
+
+  // 某产品关联的领料记录（打样领料 + 生产领料；作业规范页只读，dev-20261011-026）
+  listPickByProduct(productId: number) {
+    return request.get<R<ProductPickRow[]>>(`/inventory/outbound/by-product/${productId}`)
   },
 
   // 创建出库单

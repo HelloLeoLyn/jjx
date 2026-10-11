@@ -206,9 +206,9 @@ public interface ISampleOrderService {
     java.util.Map<String, Object> remindTransfer(Long orderId);
 
     /**
-     * 样品单列表（DEV-526 打样平台：支持按是否已接单筛选）
+     * 样品单列表（DEV-526 打样平台：支持按是否已接单筛选；dev-20261011-026：支持按产品过滤）
      */
-    List<com.jjx.sales.domain.entity.SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor);
+    List<com.jjx.sales.domain.entity.SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor, Long productId);
 
     /** 样品单数据库条件分页查询。 */
     com.jjx.common.core.page.PageResult<com.jjx.sales.domain.entity.SalesOrder> pageSampleOrders(

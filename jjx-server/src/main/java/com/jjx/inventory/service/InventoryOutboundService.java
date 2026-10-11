@@ -137,6 +137,11 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
      */
     OutboundVO getBySource(String sourceType, Long sourceId);
 
+    /**
+     * 某产品关联的领料出库单（打样领料 source_type='sample' + 生产领料 source_type='work_order'）；只读（dev-20261011-026）。
+     */
+    java.util.List<java.util.Map<String, Object>> listPickByProduct(Long productId);
+
     /** 2026-09-08 部分领料修正：统计工单已有领料出库单数量（0=首张领料单；>0=追加补领） */
     long countPickOrders(Long workOrderId);
 

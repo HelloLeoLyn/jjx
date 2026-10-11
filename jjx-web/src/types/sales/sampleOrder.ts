@@ -25,6 +25,8 @@ export interface SampleOrderListParams {
   sampleStatus?: number
   salesPersonId?: number
   hasAcceptor?: boolean
+  /** 按产品过滤（作业规范页「样品需求单」只读列表；dev-20261011-026） */
+  productId?: number
 }
 
 export interface SampleOrder {

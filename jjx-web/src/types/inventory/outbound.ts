@@ -234,6 +234,21 @@ export interface PickRemainingRow {
   remaining: number
 }
 
+/** 某产品关联的领料记录行（作业规范页「领料单」只读；dev-20261011-026） */
+export interface ProductPickRow {
+  outboundId: number
+  outboundNo: string
+  /** 出库类型：production=生产领料 / sample=打样领料 */
+  outboundType?: string
+  /** 来源类型：sample / work_order */
+  sourceType?: string
+  sourceNo?: string
+  outboundDate?: string
+  totalQuantity?: number
+  orderStatus?: number
+  createTime?: string
+}
+
 /** 追加领料提交项 */
 export interface PickItemPayload {
   materialId: number

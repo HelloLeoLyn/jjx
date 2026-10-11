@@ -145,8 +145,10 @@ public class SampleOrderController extends BaseController {
             @RequestParam(required = false) Long customerId,
             @RequestParam(required = false) Integer sampleStatus,
             @RequestParam(required = false) Long salesPersonId,
-            @RequestParam(required = false) Boolean hasAcceptor) {
-        return Result.success(sampleOrderService.selectSampleList(customerId, sampleStatus, salesPersonId, hasAcceptor));
+            @RequestParam(required = false) Boolean hasAcceptor,
+            // dev-20261011-026：作业规范页「样品需求单」按产品只读过滤
+            @RequestParam(required = false) Long productId) {
+        return Result.success(sampleOrderService.selectSampleList(customerId, sampleStatus, salesPersonId, hasAcceptor, productId));
     }
 
     @Operation(summary = "样品单分页列表")

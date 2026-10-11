@@ -50,4 +50,22 @@ public interface InventoryOutboundOrderMapper extends BaseMapper<InventoryOutbou
             "WHERE outbound_id = #{outboundId}")
     int updateStatus(@Param("outboundId") Long outboundId, @Param("status") String status);
 
+    /**
+     * æäº§åå³èçé¢æåºåºåï¼ææ ·é¢æ source_type='sample' + çäº§é¢æ source_type='work_order'ï¼ï¼åªè¯»ã
+     */
+    @Select("SELECT o.outbound_id AS outboundId, o.outbound_no AS outboundNo, o.outbound_type AS outboundType, " +
+            "o.source_type AS sourceType, o.source_no AS sourceNo, o.outbound_date AS outboundDate, " +
+            "o.total_quantity AS totalQuantity, o.order_status AS orderStatus, o.create_time AS createTime " +
+            "FROM inventory_outbound_order o " +
+            "JOIN sales_sample_order ss ON o.source_type='sample' AND ss.sample_order_id=o.source_id AND ss.deleted=0 " +
+            "WHERE ss.product_id = #{productId} " +
+            "UNION ALL " +
+            "SELECT o.outbound_id, o.outbound_no, o.outbound_type, o.source_type, o.source_no, o.outbound_date, " +
+            "o.total_quantity, o.order_status, o.create_time " +
+            "FROM inventory_outbound_order o " +
+            "JOIN production_order po ON o.source_type='work_order' AND po.order_id=o.source_id " +
+            "WHERE po.product_id = #{productId} " +
+            "ORDER BY createTime DESC")
+    List<java.util.Map<String, Object>> selectPickByProduct(@Param("productId") Long productId);
+
 }

@@ -9,6 +9,7 @@ import com.jjx.inventory.dto.vo.PickOrderPrintVO;
 import com.jjx.inventory.service.InventoryOutboundService;
 import com.jjx.inventory.dto.request.ProductionSupplementPickDTO;
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
@@ -230,6 +231,13 @@ public class InventoryOutboundController {
     public Result<OutboundVO> getBySource(@RequestParam String sourceType,
                                           @RequestParam Long sourceId) {
         return Result.success(outboundService.getBySource(sourceType, sourceId));
+    }
+
+    @GetMapping("/by-product/{productId}")
+    @Operation(summary = "某产品关联的领料记录（打样领料 + 生产领料；作业规范页只读，dev-20261011-026）")
+    @SaCheckPermission(value = {"inventory:outbound:view", "product:spec:view"}, mode = SaMode.OR)
+    public Result<List<Map<String, Object>>> listPickByProduct(@PathVariable Long productId) {
+        return Result.success(outboundService.listPickByProduct(productId));
     }
 
     @PostMapping("/update-status/{outboundId}")

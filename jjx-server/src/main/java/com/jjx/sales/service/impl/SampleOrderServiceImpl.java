@@ -3772,17 +3772,18 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     @Override
     public List<SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId) {
-        return selectSampleList(customerId, sampleStatus, salesPersonId, null);
+        return selectSampleList(customerId, sampleStatus, salesPersonId, null, null);
     }
 
     @Override
-    public List<SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor) {
+    public List<SalesOrder> selectSampleList(Long customerId, Integer sampleStatus, Long salesPersonId, Boolean hasAcceptor, Long productId) {
         LambdaQueryWrapper<SalesOrder> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(SalesOrder::getOrderType, SalesOrderTypeEnum.SAMPLE.getCode())
                 .eq(SalesOrder::getDeleted, 0)
                 .eq(customerId != null, SalesOrder::getCustomerId, customerId)
                 .apply(sampleStatus != null, "EXISTS (SELECT 1 FROM sales_sample_order ss WHERE ss.order_id=sales_order.order_id AND ss.sample_status={0} AND ss.deleted=0)", sampleStatus)
-                .eq(salesPersonId != null, SalesOrder::getSalesManagerId, salesPersonId);
+                .eq(salesPersonId != null, SalesOrder::getSalesManagerId, salesPersonId)
+                .apply(productId != null, "EXISTS (SELECT 1 FROM sales_sample_order ss WHERE ss.order_id=sales_order.order_id AND ss.product_id={0} AND ss.deleted=0)", productId);
         if (Boolean.TRUE.equals(hasAcceptor)) {
             wrapper.apply("EXISTS (SELECT 1 FROM sales_sample_order ss WHERE ss.order_id=sales_order.order_id AND ss.engineering_acceptor IS NOT NULL AND ss.engineering_acceptor <> '' AND ss.deleted=0)");
         } else if (Boolean.FALSE.equals(hasAcceptor)) {

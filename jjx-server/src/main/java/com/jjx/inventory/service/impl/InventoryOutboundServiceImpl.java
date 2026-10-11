@@ -2097,6 +2097,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     }
 
     @Override
+    public java.util.List<java.util.Map<String, Object>> listPickByProduct(Long productId) {
+        if (productId == null) return java.util.List.of();
+        return outboundOrderMapper.selectPickByProduct(productId);
+    }
+
+    @Override
     public long countPickOrders(Long workOrderId) {
         return outboundOrderMapper.selectCount(
                 new LambdaQueryWrapper<InventoryOutboundOrder>()
