@@ -36,23 +36,46 @@
       <template v-if="data">
         <section class="spec-top">
           <div class="spec-top-col">
-            <div class="section-heading"><h3>结构图</h3></div>
-            <div class="structure-preview">
-              <img
-                v-if="structureImage"
-                :src="structureImage"
-                :alt="`${productName || productCode} 结构图`"
-              />
-              <span v-else class="empty-hint">未选择结构图</span>
+            <div class="section-heading">
+              <h3>结构图</h3>
+              <div v-if="structureDraft === undefined">
+                <el-button v-if="canEdit" :disabled="loading" @click="startStructureEdit">编辑</el-button>
+              </div>
+              <div v-else>
+                <el-button :disabled="savingInline" @click="structureDraft = null">取消</el-button>
+                <el-button type="primary" :loading="savingInline" @click="saveStructure">保存</el-button>
+              </div>
             </div>
-            <p v-if="structureCaption" class="structure-caption">{{ structureCaption }}</p>
+            <el-select
+              v-if="structureDraft !== undefined"
+              v-model="structureDraft"
+              clearable
+              filterable
+              placeholder="选择这张规范单使用的图纸"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="file in structureOptions"
+                :key="file.id"
+                :label="documentFileCaption(file)"
+                :value="file.id"
+              />
+            </el-select>
+            <template v-else>
+              <div class="structure-preview">
+                <img
+                  v-if="structureImage"
+                  :src="structureImage"
+                  :alt="`${productName || productCode} 结构图`"
+                />
+                <span v-else class="empty-hint">未选择结构图</span>
+              </div>
+              <p v-if="structureCaption" class="structure-caption">{{ structureCaption }}</p>
+            </template>
           </div>
           <div class="spec-top-col">
             <div class="section-heading">
               <h3>凹凸条件</h3>
-              <el-button v-if="canEdit" :disabled="loading" @click="edit('requirements')"
-                >编辑</el-button
-              >
             </div>
             <el-descriptions :column="1" border>
               <el-descriptions-item
@@ -60,18 +83,37 @@
                 :key="field.key"
                 :label="field.label"
               >
-                <el-input size="small" v-if="canEdit" v-model="data.workSpec.emboss[field.key]" />
+                <el-input
+                  v-if="canEdit"
+                  size="small"
+                  v-model="embossDraft[field.key]"
+                  @change="saveEmboss"
+                />
+                <span v-else>{{ embossDraft[field.key] || '-' }}</span>
               </el-descriptions-item>
             </el-descriptions>
           </div>
           <div class="spec-top-col">
             <div class="section-heading">
               <h3>备注</h3>
-              <el-button v-if="canEdit" :disabled="loading" @click="edit('requirements')"
-                >编辑</el-button
-              >
+              <div v-if="noteDraft === null">
+                <el-button v-if="canEdit" :disabled="loading" @click="startNoteEdit">编辑</el-button>
+              </div>
+              <div v-else>
+                <el-button :disabled="savingInline" @click="noteDraft = null">取消</el-button>
+                <el-button type="primary" :loading="savingInline" @click="saveNote">保存</el-button>
+              </div>
             </div>
-            <p class="multiline">{{ data.workSpec.engineeringRequirements || '未填写' }}</p>
+            <el-input
+              v-if="noteDraft !== null"
+              v-model="noteDraft"
+              type="textarea"
+              :rows="6"
+              maxlength="2000"
+              show-word-limit
+              placeholder="选填；整份规范的备注，每项可单独换行"
+            />
+            <p v-else class="multiline">{{ data.workSpec.engineeringRequirements || '未填写' }}</p>
           </div>
         </section>
         <section class="data-section">
@@ -277,14 +319,11 @@
               </el-table>
             </div>
             <div class="issuance-col">
-              <div class="issuance-head"><strong>发行单位</strong></div>
-              <el-input
-                v-if="issuanceDraft"
-                v-model="issuanceDraft.issueUnit"
-                maxlength="100"
-                placeholder="选填"
-              />
-              <p v-else class="multiline">{{ data.workSpec.issueUnit || '-' }}</p>
+              <div class="issuance-head"><strong>发行</strong></div>
+              <el-descriptions :column="1" border>
+                <el-descriptions-item label="发行单位">工程部</el-descriptions-item>
+                <el-descriptions-item label="发行日期">{{ publishedAt || '—' }}</el-descriptions-item>
+              </el-descriptions>
             </div>
           </div>
         </section>
@@ -304,110 +343,6 @@
       />
     </el-dialog>
 
-    <el-dialog
-      v-model="editorVisible"
-      title="工程维护 · 产品作业规范"
-      width="1060px"
-      append-to-body
-      destroy-on-close
-      :close-on-click-modal="false"
-      :before-close="closeEditor"
-    >
-      <div class="editor-product">{{ productName }}　{{ productCode }}</div>
-      <el-tabs v-model="editorTab">
-        <el-tab-pane label="凹凸条件与备注" name="requirements">
-          <el-form label-width="130px">
-            <div class="emboss-fields">
-              <el-form-item v-for="field in embossFields" :key="field.key" :label="field.label"
-                ><el-input v-model="draft.emboss[field.key]" placeholder="选填" maxlength="20"
-                  ><template #append>{{ field.unit }}</template></el-input
-                ></el-form-item
-              >
-            </div>
-            <el-form-item label="备注"
-              ><el-input
-                v-model="draft.engineeringRequirements"
-                type="textarea"
-                :rows="7"
-                maxlength="2000"
-                show-word-limit
-                placeholder="选填；整份规范的备注，每项可单独换行"
-            /></el-form-item>
-            <el-form-item label="文字颜色"
-              ><el-select v-model="draft.requirementsColor"
-                ><el-option
-                  v-for="color in workSpecColors"
-                  :key="color.value"
-                  :label="color.label"
-                  :value="color.value" /></el-select
-            ></el-form-item>
-          </el-form>
-        </el-tab-pane>
-        <el-tab-pane label="刀模位置" name="die">
-          <p class="change-tip">
-            按当前 BOM 明细行填写；key = 材料编码|层|工序，随 BOM 行对齐（刀模晚出也能补，不动 BOM
-            版本）。
-          </p>
-          <el-table :data="dieRows" border size="small" empty-text="暂无 BOM 材料">
-            <el-table-column prop="label" label="材料（层/工序）" min-width="240" />
-            <el-table-column label="刀模位置" min-width="200"
-              ><template #default="{ row }"
-                ><el-input
-                  v-model="draft.dieLocation[row.key]"
-                  maxlength="100"
-                  placeholder="选填" /></template
-            ></el-table-column>
-          </el-table>
-          <template v-if="draftDieUnmatched.length">
-            <p class="change-tip">未匹配（当前 BOM 无此材料，待清理）：</p>
-            <el-table :data="draftDieUnmatched" border size="small">
-              <el-table-column prop="key" label="key" min-width="240" />
-              <el-table-column label="位置" min-width="180"
-                ><template #default="{ row }"
-                  ><el-input v-model="draft.dieLocation[row.key]" maxlength="100" /></template
-              ></el-table-column>
-              <el-table-column label="操作" width="80" align="center"
-                ><template #default="{ row }"
-                  ><el-button link type="danger" @click="deleteDieKey(row.key)"
-                    >删除</el-button
-                  ></template
-                ></el-table-column
-              >
-            </el-table>
-          </template>
-        </el-tab-pane>
-        <el-tab-pane label="结构图" name="structure">
-          <el-form label-width="100px"
-            ><el-form-item label="规范结构图"
-              ><el-select
-                v-model="draft.structureFileId"
-                clearable
-                filterable
-                placeholder="选填；选择这张规范单使用的图纸"
-                style="width: 100%"
-                ><el-option
-                  v-for="file in structureOptions"
-                  :key="file.id"
-                  :label="documentFileCaption(file)"
-                  :value="file.id" /></el-select></el-form-item
-          ></el-form>
-          <EngineeringDrawingLibrary
-            :product-code="productCode"
-            :product-name="productName"
-            :categories="['结构图']"
-            :active="editorTab === 'structure'"
-            @busy="drawingBusy = $event"
-            @loaded="refreshDrawings"
-          />
-        </el-tab-pane>
-      </el-tabs>
-      <template #footer
-        ><el-button :disabled="saving || drawingBusy" @click="closeEditor()">关闭</el-button
-        ><el-button type="primary" :loading="saving" :disabled="drawingBusy || !dirty" @click="save"
-          >保存</el-button
-        ></template
-      >
-    </el-dialog>
     <BomFormDialog
       v-if="data?.bom.bomId"
       v-model="bomVisible"
@@ -424,7 +359,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import {
@@ -483,6 +418,11 @@ const workflowGroups = computed(() =>
   }))
 )
 const editorVisible = ref(false)
+const embossDraft = reactive<Record<string, string>>({})
+const noteDraft = ref<string | null>(null)
+const structureDraft = ref<number | null | undefined>(undefined)
+const savingInline = ref(false)
+const publishedAt = ref('')
 const editorTab = ref('requirements')
 const drawingBusy = ref(false)
 const bomVisible = ref(false)
@@ -631,7 +571,11 @@ async function loadData() {
   loadError.value = ''
   try {
     const result = await loadDocset(props.productId)
-    if (generation === loadGeneration) data.value = result
+    if (generation === loadGeneration) {
+      data.value = result
+      syncInline()
+    }
+    void loadPublishedAt()
   } catch (error) {
     if (generation === loadGeneration)
       loadError.value = error instanceof Error ? error.message : '作业规范加载失败，请重试'
@@ -774,6 +718,67 @@ async function confirmSpec() {
 async function printRemarksSaved(workSpec: ProductWorkSpec) {
   if (data.value) data.value = { ...data.value, workSpec }
   await sourcesSaved()
+}
+function syncInline() {
+  const spec = data.value?.workSpec
+  Object.keys(embossDraft).forEach((key) => delete embossDraft[key])
+  Object.entries(spec?.emboss || {}).forEach(([key, value]) => {
+    embossDraft[key] = value
+  })
+}
+function currentSpec(): ProductWorkSpec {
+  return normalizeWorkSpec(JSON.parse(JSON.stringify(data.value?.workSpec || {})))
+}
+async function persistSpec(next: ProductWorkSpec, message: string) {
+  if (savingInline.value) return
+  savingInline.value = true
+  try {
+    const response: any = await productWorkSpecApi.save(props.productId, next)
+    if (data.value) data.value = { ...data.value, workSpec: normalizeWorkSpec(response.data) }
+    ElMessage.success(message)
+    await sourcesSaved()
+  } catch (e) {
+    console.error(message, e)
+  } finally {
+    savingInline.value = false
+  }
+}
+async function saveEmboss() {
+  if (!data.value) return
+  await persistSpec(currentSpec(), '凹凸条件已保存')
+}
+function startNoteEdit() {
+  if (!data.value || !canEdit.value) return
+  noteDraft.value = data.value.workSpec.engineeringRequirements || ''
+}
+async function saveNote() {
+  if (noteDraft.value === null) return
+  const spec = currentSpec()
+  spec.engineeringRequirements = noteDraft.value
+  await persistSpec(spec, '备注已保存')
+  noteDraft.value = null
+}
+function startStructureEdit() {
+  if (!data.value || !canEdit.value) return
+  structureDraft.value = data.value.workSpec.structureFileId ?? null
+}
+async function saveStructure() {
+  const spec = currentSpec()
+  spec.structureFileId = structureDraft.value ?? null
+  await persistSpec(spec, '结构图已保存')
+  structureDraft.value = undefined
+}
+async function loadPublishedAt() {
+  try {
+    const response: any = await productWorkSpecApi.listVersions(props.productId)
+    const list: any[] = response?.data || []
+    const latest = list
+      .filter((item) => item?.publishedAt)
+      .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)))[0]
+    publishedAt.value = latest?.publishedAt || ''
+  } catch {
+    publishedAt.value = ''
+  }
 }
 async function sourcesSaved() {
   await loadData()
