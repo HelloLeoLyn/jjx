@@ -1,4 +1,5 @@
--- 261_attachment_sha256.sql
+-- 264_attachment_sha256.sql
+-- （原 261；与 codex 已提交的 261_sample_order_source 撞号，2026-10-11 dev-20261011-009 改号为 264）
 -- dev-20261011-007（2026-10-11）：sys_attachment 加 sha256
 -- 背景：产品作业规范发布版本要「引用不可变文件」，需服务端可信哈希 + 受控留存；
 --       现有 sys_attachment 无哈希列（有 is_controlled/released，无需新增）。
