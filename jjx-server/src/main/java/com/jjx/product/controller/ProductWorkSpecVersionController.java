@@ -57,4 +57,11 @@ public class ProductWorkSpecVersionController {
     public Result<List<Map<String, Object>>> statuses(@RequestParam("productIds") List<Long> productIds) {
         return Result.success(service.statuses(productIds));
     }
+
+    /** 任意两个已发布版本的字段级比较（dev-20261011-028，只读）。 */
+    @GetMapping("/work-spec/compare")
+    @SaCheckPermission(value = {"product:spec:view", "engineering:spec:view", "sales:order:view", "production:order:view"}, mode = SaMode.OR)
+    public Result<Map<String, Object>> compare(@RequestParam Long versionA, @RequestParam Long versionB) {
+        return Result.success(service.compare(versionA, versionB));
+    }
 }

@@ -198,18 +198,64 @@ public class ProductWorkSpecVersionService {
         return out;
     }
 
+    /**
+     * 任意两个已发布版本的字段级差异（dev-20261011-028）：比较两份 SPEC_JSON 快照。
+     * 只读展示，不改发布/绑定。
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> compare(Long versionIdA, Long versionIdB) {
+        ProductWorkSpecVersion a = versionMapper.selectById(versionIdA);
+        if (a == null) {
+            throw new BusinessException("发布版本不存在: " + versionIdA);
+        }
+        ProductWorkSpecVersion b = versionMapper.selectById(versionIdB);
+        if (b == null) {
+            throw new BusinessException("发布版本不存在: " + versionIdB);
+        }
+        if (!java.util.Objects.equals(a.getProductId(), b.getProductId())) {
+            throw new BusinessException("只能比较同一产品的发布版本");
+        }
+        List<Map<String, Object>> fields = compareSnapshots(
+                parseSafe(specSnapshot(a.getId())), parseSafe(specSnapshot(b.getId())));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("productId", a.getProductId());
+        result.put("changed", !fields.isEmpty());
+        result.put("fields", fields);
+        result.put("versionA", versionBrief(a));
+        result.put("versionB", versionBrief(b));
+        result.put("notIncluded", NOT_INCLUDED);
+        return result;
+    }
+
+    private Map<String, Object> versionBrief(ProductWorkSpecVersion version) {
+        Map<String, Object> brief = new LinkedHashMap<>();
+        brief.put("id", version.getId());
+        brief.put("versionNo", version.getVersionNo());
+        brief.put("publishedAt", version.getPublishedAt());
+        brief.put("publishedBy", version.getPublishedBy());
+        brief.put("changeSummary", version.getChangeSummary());
+        return brief;
+    }
+
     /** 快照 vs 当前工作态的字段级差异（diff 与 statuses 共用）。 */
     private List<Map<String, Object>> buildDiffFields(ProductWorkSpecVersion version) {
-        String snapshot = null;
-        for (ProductWorkSpecItem item : itemMapper.selectByVersionId(version.getId())) {
+        return compareSnapshots(parseSafe(specSnapshot(version.getId())),
+                parseSafe(workSpecMapper.read(version.getProductId())));
+    }
+
+    /** 取某发布版本的规范正文快照（SPEC_JSON 项）。 */
+    private String specSnapshot(Long versionId) {
+        for (ProductWorkSpecItem item : itemMapper.selectByVersionId(versionId)) {
             if (WorkSpecResourceType.SPEC_JSON.getCode().equals(item.getResourceType())) {
-                snapshot = item.getSnapshotJson();
-                break;
+                return item.getSnapshotJson();
             }
         }
-        JsonNode snap = parseSafe(snapshot);
-        JsonNode cur = parseSafe(workSpecMapper.read(version.getProductId()));
+        return null;
+    }
 
+    /** 两份规范正文快照的字段级差异（前一份 vs 后一份）。 */
+    private List<Map<String, Object>> compareSnapshots(JsonNode snap, JsonNode cur) {
         List<Map<String, Object>> fields = new ArrayList<>();
         addDiff(fields, "加工要求", snap.get("engineeringRequirements"), cur.get("engineeringRequirements"));
         addDiff(fields, "刀模位置", snap.get("dieLocation"), cur.get("dieLocation"));

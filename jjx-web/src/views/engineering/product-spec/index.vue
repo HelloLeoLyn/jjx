@@ -42,11 +42,12 @@
             >未发布改动</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="260" align="center" fixed="right">
+        <el-table-column label="操作" width="340" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openSpec(row)">作业规范</el-button>
             <el-button v-hasPermi="['product:work-spec:publish']" link type="primary" @click="publishVersion(row)">发布版本</el-button>
             <el-button link type="primary" @click="openVersions(row)">版本</el-button>
+            <el-button link type="primary" @click="openPreview(row)">预览/打印</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -72,6 +73,18 @@
     >
       <ProductWorkSpecVersionPanel v-if="versionsVisible && versionsRow" :product-id="Number(versionsRow.productId)" />
     </el-dialog>
+
+    <!-- 预览 / 打印文档集（复用现有 ProductSpecPreview；dev-20261011-028） -->
+    <el-dialog
+      v-model="previewVisible"
+      :title="`预览 / 打印文档集 - ${previewRow?.productCode || ''}`"
+      width="94%"
+      top="4vh"
+      append-to-body
+      destroy-on-close
+    >
+      <ProductSpecPreview v-if="previewVisible && previewRow" :product-id="Number(previewRow.productId)" />
+    </el-dialog>
   </div>
 </template>
 
@@ -83,6 +96,7 @@ import { listProductPage } from '@/api/product'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import ProductSpecDrawer from '@/components/product/ProductSpecDrawer.vue'
 import ProductWorkSpecVersionPanel from './components/ProductWorkSpecVersionPanel.vue'
+import ProductSpecPreview from './components/ProductSpecPreview.vue'
 import type { ProductVo } from '@/types/product'
 
 defineOptions({ name: 'ProductSpec' })
@@ -115,6 +129,13 @@ async function loadVersionsStatus() {
 function openVersions(row: any) {
   versionsRow.value = row
   versionsVisible.value = true
+}
+// 预览 / 打印文档集（列表操作栏；dev-20261011-028）
+const previewVisible = ref(false)
+const previewRow = ref<any>(null)
+function openPreview(row: any) {
+  previewRow.value = row
+  previewVisible.value = true
 }
 async function publishVersion(row: any) {
   const productId = Number(row?.productId)

@@ -11,6 +11,7 @@
             :loading="publishing"
             @click="publish"
           >发布新版本</el-button>
+          <el-button size="small" :disabled="versions.length < 2" @click="openCompare">版本比较</el-button>
           <el-button size="small" @click="load">刷新</el-button>
         </div>
       </div>
@@ -72,6 +73,43 @@
       <div class="wsv-tip">发布后内容不可改；此处为只读快照。BOM/工艺路线为「引用已批准版本」，工程图为「引用文件版本 + 哈希」。</div>
       <div class="wsv-tip">未纳入本次发布：{{ detailDiff.notIncluded.join('、') }}。</div>
     </el-dialog>
+
+    <el-dialog v-model="compareVisible" title="版本比较（已发布版本）" width="860px" append-to-body destroy-on-close>
+      <div class="wsv-compare-bar">
+        <el-select v-model="compareA" placeholder="版本A" style="width: 160px">
+          <el-option v-for="v in versions" :key="v.id" :label="v.versionNo" :value="v.id" />
+        </el-select>
+        <span class="wsv-vs">对比</span>
+        <el-select v-model="compareB" placeholder="版本B" style="width: 160px">
+          <el-option v-for="v in versions" :key="v.id" :label="v.versionNo" :value="v.id" />
+        </el-select>
+        <el-button
+          type="primary"
+          :loading="comparing"
+          :disabled="!compareA || !compareB || compareA === compareB"
+          @click="runCompare"
+        >比较</el-button>
+      </div>
+      <template v-if="compareResult">
+        <el-alert
+          :type="compareResult.changed ? 'warning' : 'success'"
+          :closable="false"
+          style="margin-top: 10px"
+          :title="compareResult.changed ? `发现 ${compareResult.fields.length} 处字段差异` : '两个版本内容一致'"
+        />
+        <el-table v-if="compareResult.changed" :data="compareResult.fields" size="small" border style="margin-top: 8px">
+          <el-table-column prop="label" label="字段" width="190" show-overflow-tooltip />
+          <el-table-column label="版本A" min-width="220">
+            <template #default="{ row }"><span class="wsv-snap">{{ row.before || '（空）' }}</span></template>
+          </el-table-column>
+          <el-table-column label="版本B" min-width="220">
+            <template #default="{ row }"><span class="wsv-snap">{{ row.after || '（空）' }}</span></template>
+          </el-table-column>
+        </el-table>
+        <div class="wsv-tip">仅比较规范正文快照；未纳入：{{ (compareResult.notIncluded || []).join('、') }}。</div>
+      </template>
+      <div v-else class="wsv-tip">选择两个已发布版本后点「比较」。A 为基准（左），B 为对照（右）。</div>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -101,6 +139,33 @@ const detailDiff = ref<{ changed: boolean; fields: any[]; notIncluded: string[] 
   fields: [],
   notIncluded: ['客供资料', '样品', '领料单', '油墨', '实际检测记录'],
 })
+
+// 版本比较（dev-20261011-028）：任意两个已发布版本
+const compareVisible = ref(false)
+const compareA = ref<number | null>(null)
+const compareB = ref<number | null>(null)
+const comparing = ref(false)
+const compareResult = ref<any>(null)
+
+function openCompare() {
+  compareA.value = versions.value[0]?.id ?? null
+  compareB.value = versions.value[1]?.id ?? null
+  compareResult.value = null
+  compareVisible.value = true
+}
+
+async function runCompare() {
+  if (!compareA.value || !compareB.value) return
+  comparing.value = true
+  try {
+    const res: any = await productWorkSpecApi.compareVersions(compareA.value, compareB.value)
+    if (res?.code === 200) compareResult.value = res.data
+  } catch (e: any) {
+    ElMessage.error(e?.message || '版本比较失败')
+  } finally {
+    comparing.value = false
+  }
+}
 
 function resourceLabel(code: string) {
   return RESOURCE_LABELS[code] || code
@@ -173,4 +238,6 @@ onMounted(load)
 .wsv-title { font-weight: 600; }
 .wsv-snap { white-space: pre-wrap; word-break: break-all; font-size: 12px; color: #555; }
 .wsv-tip { margin-top: 10px; font-size: 12px; color: #909399; }
+.wsv-compare-bar { display: flex; align-items: center; gap: 10px; }
+.wsv-vs { color: #909399; font-size: 13px; }
 </style>
