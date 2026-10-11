@@ -1,13 +1,14 @@
 <template>
-  <div>
+  <section class="print-spec-section">
     <div class="print-actions">
-      <span>印刷内容引用工艺路线；指导图统一在工程图集维护。</span>
-      <div v-if="canEdit">
-        <el-button :disabled="!data" @click="editRemarks">编辑整组备注</el-button>
-        <el-button @click="openHistory">备注修改记录</el-button>
-      </div>
+      <h3>印刷规范</h3>
+      <el-button v-if="canEdit" :disabled="loading" @click="editRemarks">编辑</el-button>
     </div>
-    <ProductSpecPreview ref="preview" :product-id="productId" paper-only :initial-sections="['print']" @loaded="data = $event" />
+    <div v-for="group in flowGroups" :key="group.value" class="print-group">
+      <strong>{{ group.label }}</strong>
+      <p>{{ workSpec.printRemarks[group.value] || '未填写' }}</p>
+    </div>
+    <el-button v-if="canEdit" link type="primary" @click="openHistory">备注修改记录</el-button>
 
     <el-dialog v-model="editorVisible" title="印刷规范 · 整组备注" width="720px" append-to-body destroy-on-close :close-on-click-modal="false" :before-close="closeEditor">
       <el-form label-position="top" :disabled="saving">
@@ -34,24 +35,21 @@
       </div>
       <template #footer><el-button v-if="historyError" :disabled="historyLoading" @click="loadHistory(nextBefore)">重试</el-button><el-button v-if="nextBefore" :loading="historyLoading" @click="loadHistory(nextBefore)">加载更早记录</el-button><el-button @click="historyVisible = false">关闭</el-button></template>
     </el-dialog>
-  </div>
+  </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
-import { normalizeWorkSpec, productWorkSpecApi, type PrintRemarkHistory } from '@/api/product/workSpec'
-import ProductSpecPreview from './ProductSpecPreview.vue'
-import { flowGroups, type DocsetData } from './docset'
+import { normalizeWorkSpec, productWorkSpecApi, type ProductWorkSpec, type PrintRemarkHistory } from '@/api/product/workSpec'
+import { flowGroups } from './docset'
 
-const props = defineProps<{ productId: number }>()
-const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
+const props = defineProps<{ productId: number; workSpec: ProductWorkSpec; loading?: boolean; readOnly?: boolean }>()
+const emit = defineEmits<{ busy: [value: boolean]; updated: [workSpec: ProductWorkSpec] }>()
 const user = useUserStore()
-const canEdit = computed(() => user.hasPermission('product:edit'))
-const preview = ref<InstanceType<typeof ProductSpecPreview>>()
-const data = shallowRef<DocsetData>()
+const canEdit = computed(() => !props.readOnly && user.hasPermission('product:edit'))
 const editorVisible = ref(false)
 const saving = ref(false)
 const draft = ref<Record<string, string>>({})
@@ -66,9 +64,9 @@ const nextBefore = ref<number>()
 let disposed = false
 
 function editRemarks() {
-  if (!data.value) return
-  draft.value = Object.fromEntries(flowGroups.map(group => [group.value, data.value!.workSpec.printRemarks[group.value] || '']))
-  revision.value = data.value.workSpec.revision
+  if (!canEdit.value || props.loading) return
+  draft.value = Object.fromEntries(flowGroups.map(group => [group.value, props.workSpec.printRemarks[group.value] || '']))
+  revision.value = props.workSpec.revision
   baseline.value = JSON.stringify(draft.value)
   editorVisible.value = true
 }
@@ -91,12 +89,10 @@ async function save() {
   try {
     const response = await productWorkSpecApi.savePrintRemarks(props.productId, revision.value, draft.value)
     if (disposed) return
-    if (data.value) data.value = { ...data.value, workSpec: normalizeWorkSpec(response.data) }
     baseline.value = JSON.stringify(draft.value)
     editorVisible.value = false
     ElMessage.success('整组备注已保存，修改记录已保留')
-    await preview.value?.reload()
-    emit('updated')
+    emit('updated', normalizeWorkSpec(response.data))
   } catch (error) { console.error('保存印刷整组备注失败', error) }
   finally { saving.value = false }
 }
@@ -132,7 +128,10 @@ onBeforeUnmount(() => { disposed = true; window.removeEventListener('beforeunloa
 
 <style scoped>
 .print-actions { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
-.print-actions > span { font-size:13px; color:#697586; }
+.print-spec-section { padding:16px; border:1px solid var(--el-border-color-light); border-radius:6px; margin-bottom:20px; }
+.print-actions h3 { margin:0; font-size:15px; }
+.print-group { margin-bottom:16px; font-size:14px; }
+.print-group p { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; margin:8px 0 0; }
 .remark-history { max-height:60vh; overflow:auto; min-height:120px; }
 .history-item { padding:12px 0; border-bottom:1px solid #ebeef5; }
 .history-heading { color:#697586; margin-bottom:10px; }

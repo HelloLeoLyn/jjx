@@ -158,13 +158,12 @@
                   </el-table-column>
                 </el-table>
               </div>
-              <el-divider content-position="left">印刷规范</el-divider>
               <ProductPrintSpecPanel
-                v-if="productId && activeTab === 'spec'"
-                :key="`${productId}-print`"
+                v-if="selectedVersionId && versionSnapshot?.spec && productId && activeTab === 'spec'"
+                :key="`${productId}-${selectedVersionId}-print`"
                 :product-id="productId"
-                @busy="printSpecBusy = $event"
-                @updated="refreshSpecSources"
+                :work-spec="versionSnapshot.spec"
+                read-only
               />
             </template>
 
@@ -238,16 +237,15 @@ import { productWorkSpecApi, normalizeWorkSpec, embossFields } from '@/api/produ
 const specVisible = ref(false)
 const drawingBusy = ref(false)
 const workSpecBusy = ref(false)
-const printSpecBusy = ref(false)
 const colorCheckBusy = ref(false)
 function closeSpec(done: () => void) {
-  if (drawingBusy.value || workSpecBusy.value || printSpecBusy.value || colorCheckBusy.value) { ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口'); return }
+  if (drawingBusy.value || workSpecBusy.value || colorCheckBusy.value) { ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口'); return }
   requestVersion++
   exportVisible.value = false
   done()
 }
 function beforeSpecTabLeave() {
-  if (workSpecBusy.value || printSpecBusy.value || colorCheckBusy.value) { ElMessage.warning('请先完成或关闭规范编辑窗口'); return false }
+  if (workSpecBusy.value || colorCheckBusy.value) { ElMessage.warning('请先完成或关闭规范编辑窗口'); return false }
   return true
 }
 const detailLoading = ref(false)
@@ -272,7 +270,7 @@ async function refreshSpecSources() {
 
 async function open(id: number, versionId?: number) {
   if (!Number.isFinite(id) || id <= 0) return
-  if (drawingBusy.value || workSpecBusy.value || printSpecBusy.value || colorCheckBusy.value) {
+  if (drawingBusy.value || workSpecBusy.value || colorCheckBusy.value) {
     ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口')
     return
   }

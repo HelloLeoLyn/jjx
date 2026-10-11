@@ -1,19 +1,55 @@
 <template>
   <div class="work-spec-panel">
     <div class="work-actions">
-      <div class="engineering-actions">
-        <el-button v-if="canEdit" :disabled="!data" @click="edit('requirements')">凹凸条件与加工要求</el-button>
-        <el-button v-if="canEdit" :disabled="!data" @click="edit('die')">刀模位置</el-button>
-        <el-button v-if="canEdit" :disabled="!data" @click="edit('structure')">结构图</el-button>
-        <el-button v-if="canEdit" :disabled="!data" @click="edit('changes')">变更与发行</el-button>
-      </div>
+      <strong>作业规范</strong>
       <div class="source-actions">
-        <el-button v-if="canEditBom" :disabled="!data?.bom.bomId" @click="bomVisible = true">修改 BOM</el-button>
-        <el-button v-if="canEditRoute" :disabled="!data?.routing.routingId" @click="routeVisible = true">修改工艺路线</el-button>
-        <el-button v-if="canConfirm" type="success" :disabled="!data || data.workSpec.approved" :loading="confirming" @click="confirmSpec">确认已批准</el-button>
+        <el-button :disabled="!data || loading || editing" @click="previewVisible = true">打印预览</el-button>
+        <el-button v-if="canConfirm" type="success" :disabled="!data || loading || editing || data.workSpec.approved" :loading="confirming" @click="confirmSpec">确认已批准</el-button>
       </div>
     </div>
-    <ProductSpecPreview ref="preview" :product-id="productId" paper-only :initial-sections="['spec']" @loaded="onLoaded" />
+    <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" class="data-message">
+      <el-button link type="primary" @click="loadData">重新加载</el-button>
+    </el-alert>
+    <el-alert v-if="data?.warnings.length" :title="data.warnings.join('；')" type="warning" :closable="false" class="data-message" />
+    <div v-loading="loading" class="data-sections">
+      <template v-if="data">
+        <section class="data-section">
+          <div class="section-heading"><h3>BOM</h3><el-button v-if="canEditBom" :disabled="loading || !data.bom.bomId" @click="bomVisible = true">编辑</el-button></div>
+          <el-table :data="data.bom.items || []" row-key="itemId" default-expand-all border size="small" empty-text="暂无 BOM 材料">
+            <el-table-column prop="materialName" label="材料" min-width="180" />
+            <el-table-column label="规格" min-width="180"><template #default="{ row }">{{ workSpecMaterialSpec(row) || '-' }}</template></el-table-column>
+            <el-table-column label="用量" width="120"><template #default="{ row }">{{ calculateBomQuantity(row.baseQty, row.moduleQty) ?? row.quantity ?? '-' }}</template></el-table-column>
+            <el-table-column prop="unit" label="单位" width="90" />
+          </el-table>
+        </section>
+        <section class="data-section">
+          <div class="section-heading"><h3>刀模位置</h3><el-button v-if="canEdit" :disabled="loading" @click="edit('die')">编辑</el-button></div>
+          <p class="multiline">{{ data.workSpec.dieLocation || '未填写' }}</p>
+        </section>
+        <section class="data-section">
+          <div class="section-heading"><h3>凹凸条件</h3><el-button v-if="canEdit" :disabled="loading" @click="edit('requirements')">编辑</el-button></div>
+          <el-descriptions :column="2" border>
+            <el-descriptions-item v-for="field in embossFields" :key="field.key" :label="field.label">
+              {{ data.workSpec.emboss[field.key] ? `${data.workSpec.emboss[field.key]} ${field.unit}` : '未填写' }}
+            </el-descriptions-item>
+          </el-descriptions>
+          <div class="requirements"><strong>加工要求</strong><p class="multiline">{{ data.workSpec.engineeringRequirements || '未填写' }}</p></div>
+        </section>
+        <section class="data-section">
+          <div class="section-heading"><h3>工艺路线</h3><el-button v-if="canEditRoute" :disabled="loading || !data.routing.routingId" @click="routeVisible = true">编辑</el-button></div>
+          <el-table :data="data.routing.items || []" row-key="itemId" default-expand-all border size="small" empty-text="暂无工艺路线">
+            <el-table-column prop="processOrder" label="顺序" width="100" />
+            <el-table-column prop="processName" label="工序" min-width="180" />
+            <el-table-column label="分组" width="110"><template #default="{ row }">{{ flowGroups.find(group => group.value === row.processCategory)?.label || '未分类' }}</template></el-table-column>
+            <el-table-column prop="workInstruction" label="作业说明" min-width="200" />
+          </el-table>
+        </section>
+        <ProductPrintSpecPanel :product-id="productId" :work-spec="data.workSpec" :loading="loading" @busy="printSpecBusy = $event" @updated="printRemarksSaved" />
+      </template>
+    </div>
+    <el-dialog v-model="previewVisible" title="作业规范 · 打印预览" width="92%" append-to-body destroy-on-close>
+      <ProductSpecPreview v-if="previewVisible" :product-id="productId" :initial-sections="['spec', 'print']" />
+    </el-dialog>
 
     <el-dialog v-model="editorVisible" title="工程维护 · 产品作业规范" width="1060px" append-to-body destroy-on-close :close-on-click-modal="false" :before-close="closeEditor">
       <div class="editor-product">{{ productName }}　{{ productCode }}</div>
@@ -78,10 +114,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import { normalizeWorkSpec, workSpecContent, productWorkSpecApi, embossFields, workSpecColors, type ProductWorkSpec, type WorkSpecChangeSource } from '@/api/product/workSpec'
 import ProductSpecPreview from './ProductSpecPreview.vue'
+import ProductPrintSpecPanel from './ProductPrintSpecPanel.vue'
+import { calculateBomQuantity } from '@/utils/bomQuantity'
 import EngineeringDrawingLibrary from '../../drawing/components/EngineeringDrawingLibrary.vue'
 import BomFormDialog from '@/views/product/bom/components/BomFormDialog.vue'
 import RouteFormDialog from '@/views/product/route/components/RouteFormDialog.vue'
-import { documentFileCaption, type DocsetData } from './docset'
+import { documentFileCaption, loadDocset, workSpecMaterialSpec, flowGroups, type DocsetData } from './docset'
 
 const props = defineProps<{ productId: number; productCode: string; productName: string }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
@@ -90,7 +128,11 @@ const canEdit = computed(() => user.hasPermission('product:edit'))
 const canConfirm = computed(() => user.hasPermission('product:status:approve'))
 const canEditBom = computed(() => user.hasPermission('engineering:bom:edit'))
 const canEditRoute = computed(() => user.hasPermission('engineering:routing:edit'))
-const preview = ref<InstanceType<typeof ProductSpecPreview>>()
+const previewVisible = ref(false)
+const loading = ref(false)
+const loadError = ref('')
+const printSpecBusy = ref(false)
+let loadGeneration = 0
 const data = shallowRef<DocsetData>()
 const editorVisible = ref(false)
 const editorTab = ref('requirements')
@@ -109,7 +151,20 @@ const nextSourceBefore = ref<number>()
 const usedSourceIds = computed(() => new Set(draft.value.changes.flatMap(change => change.sourceLogIds)))
 const dirty = computed(() => JSON.stringify(workSpecContent(draft.value)) !== baseline.value)
 const structureOptions = computed(() => data.value?.files.filter(file => file.productFile && file.category === '结构图' && file.kind !== 'other') || [])
-function onLoaded(value: DocsetData) { data.value = value }
+const editing = computed(() => editorVisible.value || bomVisible.value || routeVisible.value || printSpecBusy.value)
+async function loadData() {
+  const generation = ++loadGeneration
+  loading.value = true
+  loadError.value = ''
+  try {
+    const result = await loadDocset(props.productId)
+    if (generation === loadGeneration) data.value = result
+  } catch (error) {
+    if (generation === loadGeneration) loadError.value = error instanceof Error ? error.message : '作业规范加载失败，请重试'
+  } finally {
+    if (generation === loadGeneration) loading.value = false
+  }
+}
 function edit(tab: string) {
   if (!data.value) return
   draft.value = normalizeWorkSpec(JSON.parse(JSON.stringify(data.value.workSpec)))
@@ -193,16 +248,29 @@ async function confirmSpec() {
   } catch (e) { if (e !== 'cancel' && e !== 'close') console.error('工程确认失败', e) }
   finally { confirming.value = false }
 }
-async function sourcesSaved() { await preview.value?.reload(); emit('updated') }
-async function refreshDrawings() { await preview.value?.reload() }
-watch(() => editorVisible.value || bomVisible.value || routeVisible.value || confirming.value, value => emit('busy', value))
-onBeforeUnmount(() => emit('busy', false))
+async function printRemarksSaved(workSpec: ProductWorkSpec) {
+  if (data.value) data.value = { ...data.value, workSpec }
+  await sourcesSaved()
+}
+async function sourcesSaved() { await loadData(); emit('updated') }
+async function refreshDrawings() { await loadData() }
+watch(() => editing.value || confirming.value, value => emit('busy', value))
+watch(() => props.productId, () => { data.value = undefined; previewVisible.value = false; void loadData() }, { immediate: true })
+onBeforeUnmount(() => { loadGeneration++; emit('busy', false) })
 </script>
 
 <style scoped>
 .work-actions { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:12px; }
-.engineering-actions,.source-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.source-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .work-actions .el-button + .el-button { margin-left:0; }
+.data-sections { min-height:120px; }
+.data-section { margin-bottom:20px; padding:16px; border:1px solid var(--el-border-color-light); border-radius:6px; }
+.section-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
+.section-heading h3 { margin:0; font-size:15px; }
+.multiline { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; line-height:1.7; }
+.requirements { margin-top:16px; font-size:14px; }
+.requirements .multiline { margin-top:8px; }
+.data-message { margin-bottom:12px; }
 .editor-product { margin-bottom:12px; color:#697586; }
 .emboss-fields { display:grid; grid-template-columns:1fr 1fr; gap:0 20px; }
 .change-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
