@@ -67,6 +67,12 @@ public interface ISysAttachmentService extends IService<SysAttachment> {
      */
     List<SysAttachment> getProductFiles(String productCode);
 
+    /** 同内容候选：必须指定完整业务范围；产品范围为 product + 产品ID。 */
+    List<SysAttachment> findBySha256(String sha256, String bizType, Long bizId, Long excludeId);
+
+    /** 上传后的提示检测；失败只记日志，不影响已成功的上传。 */
+    int detectUploadedDuplicates(Long id);
+
     /**
      * 获取附件列表
      */

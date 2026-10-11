@@ -281,6 +281,35 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     }
 
     @Override
+    public List<SysAttachment> findBySha256(String sha256, String bizType, Long bizId, Long excludeId) {
+        if (sha256 == null || !sha256.matches("(?i)[0-9a-f]{64}")) {
+            throw new BusinessException("sha256 必须为64位十六进制哈希");
+        }
+        if (bizType == null || bizType.isBlank() || bizId == null || bizId <= 0) {
+            throw new BusinessException("必须指定完整的业务范围 bizType + bizId");
+        }
+        // MyBatis-Plus 逻辑删除过滤：回收站文件不作为可引用候选。
+        return attachmentMapper.selectList(new LambdaQueryWrapper<SysAttachment>()
+                .eq(SysAttachment::getSha256, sha256.toLowerCase(java.util.Locale.ROOT))
+                .eq(SysAttachment::getBizType, bizType.trim())
+                .eq(SysAttachment::getBizId, bizId)
+                .ne(excludeId != null, SysAttachment::getId, excludeId)
+                .orderByAsc(SysAttachment::getId));
+    }
+
+    @Override
+    public int detectUploadedDuplicates(Long id) {
+        try {
+            SysAttachment uploaded = getById(id);
+            if (uploaded == null || uploaded.getSha256() == null) return 0;
+            return findBySha256(uploaded.getSha256(), uploaded.getBizType(), uploaded.getBizId(), id).size();
+        } catch (Exception e) {
+            log.warn("上传后同内容检测失败，保留上传结果: id={}", id, e);
+            return 0;
+        }
+    }
+
+    @Override
     public List<SysAttachment> getAttachments(String bizType, Long bizId) {
         LambdaQueryWrapper<SysAttachment> wrapper = new LambdaQueryWrapper<SysAttachment>()
                 .eq(SysAttachment::getBizType, bizType)

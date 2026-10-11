@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -40,8 +41,10 @@ public class SysAttachmentController {
                                @RequestParam(required = false) String traceId,
                                @RequestParam(required = false) String category,
                                @RequestParam(required = false) String version,
-                               @RequestParam(required = false) String remark) {
+                               @RequestParam(required = false) String remark,
+                               HttpServletResponse response) {
         Long id = attachmentService.uploadAttachment(file, bizType, bizId, traceId, category, version, remark);
+        addDuplicateHint(response, List.of(id));
         return Result.success(id);
     }
 
@@ -51,8 +54,10 @@ public class SysAttachmentController {
                                           @RequestParam("bizType") String bizType,
                                           @RequestParam("bizId") Long bizId,
                                           @RequestParam(required = false) String category,
-                                          @RequestParam(required = false) String version) {
+                                          @RequestParam(required = false) String version,
+                                          HttpServletResponse response) {
         List<Long> ids = attachmentService.batchUploadAttachments(files, bizType, bizId, category, version);
+        addDuplicateHint(response, ids);
         return Result.success(ids);
     }
 
@@ -77,9 +82,34 @@ public class SysAttachmentController {
                                       @RequestParam(required = false) String version,
                                       @RequestParam(required = false) String drawingNo,
                                       @RequestParam(required = false) String drawingName,
-                                      @RequestParam(required = false) String fileRole) {
-        return Result.success(attachmentService.uploadProductFile(file, productCode, category, version,
-                drawingNo, drawingName, fileRole));
+                                      @RequestParam(required = false) String fileRole,
+                                      HttpServletResponse response) {
+        Long id = attachmentService.uploadProductFile(file, productCode, category, version,
+                drawingNo, drawingName, fileRole);
+        addDuplicateHint(response, List.of(id));
+        return Result.success(id);
+    }
+
+    private void addDuplicateHint(HttpServletResponse response, List<Long> ids) {
+        int count = ids.stream().mapToInt(attachmentService::detectUploadedDuplicates).sum();
+        response.setHeader("X-Attachment-Duplicate-Count", String.valueOf(count));
+    }
+
+    @Operation(summary = "按SHA-256检测同范围同内容附件（只读，不含回收站）")
+    @GetMapping("/by-sha256")
+    public Result<List<SysAttachment>> bySha256(@RequestParam String sha256,
+                                               @RequestParam(required = false) Long productId,
+                                               @RequestParam(required = false) String bizType,
+                                               @RequestParam(required = false) Long bizId,
+                                               @RequestParam(required = false) Long excludeId) {
+        if (productId != null) {
+            if (bizType != null || bizId != null) {
+                throw new com.jjx.common.exception.BusinessException("产品范围和业务范围只能选择一种");
+            }
+            bizType = "product";
+            bizId = productId;
+        }
+        return Result.success(attachmentService.findBySha256(sha256, bizType, bizId, excludeId));
     }
 
     @lombok.Data

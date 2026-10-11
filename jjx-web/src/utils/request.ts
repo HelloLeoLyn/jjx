@@ -98,6 +98,9 @@ service.interceptors.response.use(
 
       return Promise.reject(new Error(res.msg || 'Error'))
     } else {
+      if (Number(response.headers['x-attachment-duplicate-count']) > 0) {
+        ElMessage.info('内容已存在（可引用）')
+      }
       return res
     }
   },

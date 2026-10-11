@@ -49,6 +49,13 @@ export const attachmentApi = {
     })
   },
 
+  // 只读检测：产品ID或完整业务范围二选一，可排除刚上传的附件。
+  bySha256(sha256: string, scope: { productId: number; bizType?: never; bizId?: never } |
+    { productId?: never; bizType: string; bizId: number }, excludeId?: number): AxiosPromise<any[]> {
+    return request({ url: '/system/attachment/by-sha256', method: 'get',
+      params: { sha256, ...scope, excludeId } })
+  },
+
   // 获取附件列表
   list(bizType: string, bizId: number): AxiosPromise<any[]> {
     return request({
