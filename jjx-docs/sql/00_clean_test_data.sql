@@ -12,7 +12,7 @@ DROP PROCEDURE assert_clean_test_target//
 DELIMITER ;
 
 -- =====================================================
--- 清理测试数据脚本（v22）
+-- 清理测试数据脚本（v23）
 -- 只清理数据，不删除表结构
 -- 按业务模块顺序清理，先清子表再清主表
 -- v22 变更（2026-10-10，任务 dev-20261010-004）：
@@ -22,6 +22,11 @@ DELIMITER ;
 --   导致图标/logo/图纸断链（实测：标准工序「防水圈/撕贴保护膜/连接器」图标 404）。
 --   改为「默认保留、只清业务单据附件」：仅 DELETE 明确属于会被清空的业务单据的 biz_type；
 --   新增 bizType 默认保留，避免误删上传资产。名单见第 11 节 sys_attachment 处注释。
+-- v23 变更（2026-10-11，任务 dev-20261011-015）：
+--   补齐 5 张「无归宿」表的清理归属（清理覆盖率闸门报无归宿）——均业务表 → TRUNCATE：
+--     product_work_spec_version / product_work_spec_item（迁移 262 建，产品作业规范发布版本/条目）
+--     work_spec_usage（迁移 266 建，工单换版执行区间）
+--     sales_sample_requisition_sign / sales_sample_defect_record（迁移 259 建，样品需求单会签/打样不良记录；同一类缺口一并收口）
 -- v21 变更（2026-10-07，任务 dev-20261007-002）：
 --   1. 【新增清理】order_shortage_ledger（迁移 239 建，dev-20260930-026 订单缺料「欠交台账」，齐套重算派生，
 --      挂在 sales_order 上）——此前既不在 TRUNCATE 也不在保留白名单 → 体检覆盖率闸门报无归宿。
@@ -191,6 +196,11 @@ TRUNCATE sales_sample_round;
 
 TRUNCATE sales_sample_transfer;
 
+-- 【v23 新增 2026-10-11，dev-20261011-015】样品需求单会签/打样不良记录（迁移 259 建，业务表）
+TRUNCATE sales_sample_requisition_sign;
+
+TRUNCATE sales_sample_defect_record;
+
 -- ==================== 2. 需求管理模块 ====================
 -- 审批记录引用需求主表，必须先清审批记录
 TRUNCATE biz_requirement_approval;
@@ -200,6 +210,11 @@ TRUNCATE biz_requirement;
 -- ==================== 3. 产品模块（v14 起产品档案转为保留） ====================
 -- 产品实例属业务数据：清
 TRUNCATE product_instance;
+
+-- 【v23 新增 2026-10-11，dev-20261011-015】产品作业规范发布版本/条目（迁移 262 建，业务数据）
+TRUNCATE product_work_spec_item;
+
+TRUNCATE product_work_spec_version;
 
 -- v14（2026-09-17 用户确认）：产品档案 / 分类 / 配置模型 属基础档案与配置，保留不清
 -- TRUNCATE product_config_option;
@@ -281,6 +296,9 @@ TRUNCATE production_operation_record;
 TRUNCATE production_operation_execution;
 
 TRUNCATE production_trace_log;
+
+-- 【v23 新增 2026-10-11，dev-20261011-015】工单换版执行区间记录（迁移 266 建，业务表；先于 production_order）
+TRUNCATE work_spec_usage;
 
 TRUNCATE production_order;
 
