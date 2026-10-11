@@ -36,21 +36,14 @@
           </div>
         </section>
         <section class="data-section">
-          <div class="section-heading"><h3>BOM</h3><el-button v-if="canEditBom" :disabled="loading || !data.bom.bomId" @click="bomVisible = true">编辑</el-button></div>
-          <el-table :data="data.bom.items || []" row-key="itemId" default-expand-all border size="small" empty-text="暂无 BOM 材料">
-            <el-table-column prop="materialName" label="材料" min-width="180" />
-            <el-table-column label="规格" min-width="180"><template #default="{ row }">{{ workSpecMaterialSpec(row) || '-' }}</template></el-table-column>
-            <el-table-column label="用量" width="120"><template #default="{ row }">{{ calculateBomQuantity(row.baseQty, row.moduleQty) ?? row.quantity ?? '-' }}</template></el-table-column>
-            <el-table-column prop="unit" label="单位" width="90" />
+          <div class="section-heading"><h3>材料</h3><el-button v-if="canEditBom" :disabled="loading || !data.bom.bomId" @click="bomVisible = true">编辑</el-button></div>
+          <el-table :data="materialRows" border size="small" empty-text="暂无 BOM 材料">
+            <el-table-column label="序号" width="80"><template #default="{ row }"><span :class="{ 'pending-row': row.pending }">{{ row.pending ? '待清理' : row.index }}</span></template></el-table-column>
+            <el-table-column label="项目" min-width="120"><template #default="{ row }">{{ row.pending ? '-' : (plain(row.item?.processName) || '-') }}</template></el-table-column>
+            <el-table-column label="材料" min-width="160"><template #default="{ row }"><span :title="row.pending ? row.key : (row.item?.materialName || row.item?.materialCode)">{{ row.pending ? row.key : (row.item?.materialName || row.item?.materialCode || '-') }}</span></template></el-table-column>
+            <el-table-column label="规格及模数" min-width="160"><template #default="{ row }">{{ row.pending ? '-' : (workSpecMaterialSpec(row.item) || '-') }}</template></el-table-column>
+            <el-table-column label="刀模位置" min-width="200"><template #default="{ row }"><el-input v-model="dieDraft[row.key]" size="small" maxlength="100" :placeholder="row.pending ? '待清理' : '未填写'" :disabled="!canEdit || dieSaving" @change="saveDieLocation(row.key, $event)" /></template></el-table-column>
           </el-table>
-        </section>
-        <section class="data-section">
-          <div class="section-heading"><h3>刀模位置</h3><el-button v-if="canEdit" :disabled="loading" @click="edit('die')">编辑</el-button></div>
-          <el-table :data="dieRows" border size="small" empty-text="暂无 BOM 材料">
-            <el-table-column prop="label" label="材料（层/工序）" min-width="240" />
-            <el-table-column label="刀模位置" min-width="200"><template #default="{ row }">{{ (dieMap[row.key] || '').trim() || '未填写' }}</template></el-table-column>
-          </el-table>
-          <el-alert v-if="dieUnmatched.length" type="warning" :closable="false" class="die-alert" :title="`未匹配（当前 BOM 无此材料，待清理）：${dieUnmatched.map(item => item.key).join('；')}`" />
           <el-alert v-if="hasLegacyDie" type="info" :closable="false" class="die-alert" title="检测到旧版刀模位置文本（未按 BOM 行），可迁移到 BOM 行">
             <el-button link type="primary" :disabled="!canEdit" @click="migrateLegacyDie">迁移旧文本</el-button>
           </el-alert>
@@ -170,11 +163,10 @@ import ProductSpecPreview from './ProductSpecPreview.vue'
 import ProductPrintSpecPanel from './ProductPrintSpecPanel.vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import { processRowsForGroup, workflowOperations, workflowLabor, workflowNames } from './workSpecProcessRows'
-import { calculateBomQuantity } from '@/utils/bomQuantity'
 import EngineeringDrawingLibrary from '../../drawing/components/EngineeringDrawingLibrary.vue'
 import BomFormDialog from '@/views/product/bom/components/BomFormDialog.vue'
 import RouteFormDialog from '@/views/product/route/components/RouteFormDialog.vue'
-import { documentFileCaption, loadDocset, workSpecMaterialSpec, flowGroups, workSpecStepSubscript, workSpecOperationRemark, dieLocationKey, dieLocationLabel, flattenedBom, renderFile, type DocsetData } from './docset'
+import { documentFileCaption, loadDocset, workSpecMaterialSpec, flowGroups, plain, workSpecStepSubscript, workSpecOperationRemark, dieLocationKey, dieLocationLabel, flattenedBom, renderFile, type DocsetData } from './docset'
 
 const props = defineProps<{ productId: number; productCode: string; productName: string }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
@@ -223,10 +215,17 @@ async function loadStructureImage() {
   catch (e) { console.error('结构图加载失败', e) }
 }
 watch(structureFile, () => { void loadStructureImage() })
-const dieRows = computed(() => flattenedBom(data.value?.bom.items).map(row => ({ key: dieLocationKey(row), label: dieLocationLabel(row) })))
-const dieCurrentKeys = computed(() => new Set(dieRows.value.map(row => row.key)))
+const bomRows = computed(() => flattenedBom(data.value?.bom.items))
+const dieRows = computed(() => bomRows.value.map(row => ({ key: dieLocationKey(row), label: dieLocationLabel(row) })))
+const dieCurrentKeys = computed(() => new Set(bomRows.value.map(row => dieLocationKey(row))))
 const dieMap = computed<Record<string, string>>(() => data.value?.workSpec.dieLocation || {})
 const dieUnmatched = computed(() => Object.entries(dieMap.value).filter(([key, value]) => !dieCurrentKeys.value.has(key) && String(value || '').trim()).map(([key, value]) => ({ key, value })))
+const materialRows = computed(() => [
+  ...bomRows.value.map((item, index) => ({ key: dieLocationKey(item), index: index + 1, item, pending: false })),
+  ...dieUnmatched.value.map(({ key }) => ({ key, index: 0, item: null as Record<string, any> | null, pending: true })),
+])
+const dieDraft = ref<Record<string, string>>({})
+const dieSaving = ref(false)
 const hasLegacyDie = computed(() => !!String(data.value?.workSpec.dieLocationText || '').trim() && Object.keys(dieMap.value).length === 0)
 const draftDieUnmatched = computed(() => Object.entries(draft.value.dieLocation || {}).filter(([key]) => !dieCurrentKeys.value.has(key)).map(([key, value]) => ({ key, value })))
 function deleteDieKey(key: string) { delete draft.value.dieLocation[key] }
@@ -235,13 +234,27 @@ function migrateLegacyDie() {
   const spec = normalizeWorkSpec(JSON.parse(JSON.stringify(data.value.workSpec)))
   const lines = String(spec.dieLocationText || '').split(/\r?\n/)
   const map: Record<string, string> = {}
-  dieRows.value.forEach((row, index) => { const value = (lines[index] || '').trim(); if (value) map[row.key] = value })
+  bomRows.value.forEach((row, index) => { const value = (lines[index] || '').trim(); if (value) map[dieLocationKey(row)] = value })
   draft.value = { ...spec, dieLocation: map, dieLocationText: '' }
   baseline.value = JSON.stringify(workSpecContent(draft.value))
   editorTab.value = 'die'
   editorVisible.value = true
 }
-const editing = computed(() => editorVisible.value || bomVisible.value || routeVisible.value || printSpecBusy.value)
+async function saveDieLocation(key: string, value: string) {
+  const spec = data.value?.workSpec
+  if (!spec || dieSaving.value || !canEdit.value) return
+  const text = String(value ?? '').trim()
+  if (text === String(spec.dieLocation[key] || '').trim()) return
+  const next = normalizeWorkSpec(JSON.parse(JSON.stringify(spec)))
+  if (text) next.dieLocation = { ...next.dieLocation, [key]: text }
+  else { const copy = { ...next.dieLocation }; delete copy[key]; next.dieLocation = copy }
+  dieSaving.value = true
+  try { await productWorkSpecApi.save(props.productId, next); ElMessage.success('刀模位置已保存'); await sourcesSaved() }
+  catch (e) { console.error('保存刀模位置失败', e); ElMessage.error('刀模位置保存失败，请重试'); dieDraft.value = { ...dieMap.value } }
+  finally { dieSaving.value = false }
+}
+watch(dieMap, value => { dieDraft.value = { ...value } }, { immediate: true })
+const editing = computed(() => editorVisible.value || bomVisible.value || routeVisible.value || printSpecBusy.value || dieSaving.value)
 async function loadData() {
   const generation = ++loadGeneration
   loading.value = true
@@ -357,6 +370,8 @@ onBeforeUnmount(() => { loadGeneration++; if (structureImage.value) URL.revokeOb
 .data-section { margin-bottom:20px; padding:16px; border:1px solid var(--el-border-color-light); border-radius:6px; }
 .section-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
 .section-heading h3 { margin:0; font-size:15px; }
+.pending-row { color:var(--el-color-warning); font-weight:500; }
+.die-alert { margin-top:12px; }
 .multiline { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; line-height:1.7; }
 .spec-top { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; align-items:stretch; margin-bottom:20px; }
 .spec-top-col { display:flex; flex-direction:column; min-width:0; padding:16px; border:1px solid var(--el-border-color-light); border-radius:6px; }
