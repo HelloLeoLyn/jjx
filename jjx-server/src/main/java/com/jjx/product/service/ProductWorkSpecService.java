@@ -267,6 +267,25 @@ public class ProductWorkSpecService {
         }
     }
     private void validate(Long id, ProductWorkSpecDTO dto) {
+        JsonNode dieLocation = dto.getDieLocation();
+        if (dieLocation != null && !dieLocation.isNull()) {
+            if (dieLocation.isTextual()) {
+                if (dieLocation.textValue().length() > 500)
+                    throw new BusinessException("刀模位置旧版文本不能超过500字");
+            } else if (dieLocation.isObject()) {
+                if (dieLocation.size() > 1000)
+                    throw new BusinessException("刀模位置记录不能超过1000条");
+                var fields = dieLocation.fields();
+                while (fields.hasNext()) {
+                    var entry = fields.next();
+                    if (entry.getKey().isBlank() || entry.getKey().length() > 200
+                            || !entry.getValue().isTextual() || entry.getValue().textValue().length() > 100)
+                        throw new BusinessException("刀模位置记录格式错误或内容超过长度限制");
+                }
+            } else {
+                throw new BusinessException("刀模位置只能是旧版文本或按材料行填写的对象");
+            }
+        }
         if (dto.getEmboss() != null) dto.getEmboss().forEach((key, value) -> {
             if (!EMBOSS_KEYS.contains(key)) throw new BusinessException("未知凹凸参数");
             if (value != null && !value.isBlank() && (!value.matches("[+-]?\\d{1,12}(\\.\\d{1,6})?") || value.length() > 20))

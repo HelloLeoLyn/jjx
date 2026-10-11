@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,7 +18,8 @@ public class ProductWorkSpecDTO {
     @Size(max = 6) private Map<String, String> emboss = new LinkedHashMap<>();
     @Size(max = 2000) private String engineeringRequirements;
     @Size(max = 20) private String requirementsColor;
-    @Size(max = 500) private String dieLocation;
+    /** Legacy text or BOM-row keyed object; both must remain readable. */
+    private JsonNode dieLocation;
     private Long structureFileId;
     @Valid @Size(max = 100) private List<Change> changes = new ArrayList<>();
     @Size(max = 100) private String issueUnit;
