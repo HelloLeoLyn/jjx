@@ -46,7 +46,7 @@
     <el-table :data="visibleFiles" border size="small" row-key="key">
       <el-table-column label="文件名" min-width="240" show-overflow-tooltip>
         <template #default="{ row }">
-          <el-link type="primary" @click="openFile(row.id)">{{ row.fileName }}</el-link>
+          <el-link type="primary" :title="row.originalFileName !== row.fileName ? `原文件名：${row.originalFileName}` : row.fileName" @click="openFile(row.id)">{{ row.fileName }}</el-link>
         </template>
       </el-table-column>
       <el-table-column label="来源" width="110">
@@ -86,6 +86,7 @@ interface CustomerFile {
   key: string
   id: number
   fileName: string
+  originalFileName: string
   source: string
   sourceNo: string
   category: string
@@ -116,7 +117,7 @@ const visibleFiles = computed(() => {
   const term = keyword.value.trim().toLowerCase()
   return files.value.filter(file =>
     (!sourceFilter.value || file.source === sourceFilter.value)
-    && (!term || `${file.fileName} ${file.sourceNo}`.toLowerCase().includes(term))
+    && (!term || `${file.fileName} ${file.originalFileName} ${file.sourceNo}`.toLowerCase().includes(term))
   )
 })
 
@@ -151,7 +152,8 @@ async function loadFiles() {
       rows.push({
         key,
         id,
-        fileName: text(item.file_name ?? item.fileName),
+        fileName: text(item.display_name || item.displayName || item.file_name || item.fileName),
+        originalFileName: text(item.file_name ?? item.fileName),
         source,
         sourceNo: text(item.sourceNo ?? item.sourceno),
         category: text(item.category),
@@ -172,6 +174,7 @@ async function loadFiles() {
         key: `product-${id}`,
         id,
         fileName: text(item.fileName),
+        originalFileName: text(item.fileName),
         source: '工程上传',
         sourceNo: '-',
         category: text(item.category),
