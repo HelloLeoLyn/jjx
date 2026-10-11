@@ -359,6 +359,8 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   // 处理产品选择变化（2026-08-11：改用 ProductSelector 回传的产品对象，不再依赖共享数组反查）
   const handleProductChange = (item: OrderItem, val?: any, product?: any) => {
     if (product && product.productId) {
+      // 更换产品后旧采用版本不再适用，新版本由后端保存时选择。
+      if (item.productId !== product.productId) item.workSpecVersionId = null
       // 标准单：从 ProductSelector 回传的完整产品对象填充
       item.productCode = product.productCode
       item.productName = product.productName

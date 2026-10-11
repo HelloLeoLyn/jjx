@@ -222,13 +222,12 @@ public class OrderServiceImpl implements IOrderService {
         SalesOrderCalculator.prepareEditAmounts(entity, existingOrder, dto, oldItemVOs);
 
         int insert = orderMapper.updateById(entity);
-        orderProductService.deleteByOrderId(dto.getOrderId());
         if(insert>0){
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType(), dto.getCustomerId());
             ensureProductIds(dto.getItems(), dto.getOrderType());
             dto.getItems().forEach(i -> i.setOrderId(dto.getOrderId()));
-            boolean ok = orderProductService.batchAdd(dto.getItems());
+            boolean ok = orderProductService.replaceItems(dto.getOrderId(), dto.getItems());
             // 2026-08-18 L3：字段级变更对比日志（谁/何时/改了什么）
             saveOrderUpdateChangeLog(existingOrder, oldItemVOs, dto);
             return ok;
@@ -621,6 +620,8 @@ public class OrderServiceImpl implements IOrderService {
         if (order.getOrderStatus() != SalesOrderStatusEnum.APPROVED.getValue()) {
             throw new BusinessException("只有已审核的订单可以客户确认");
         }
+
+        orderProductService.validateAdoptedVersions(orderId);
 
         // 更新状态为已确认
         order.setOrderStatus(SalesOrderStatusEnum.CONFIRMED.getValue());

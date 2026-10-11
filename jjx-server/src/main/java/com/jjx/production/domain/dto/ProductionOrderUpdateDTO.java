@@ -32,6 +32,9 @@ public class ProductionOrderUpdateDTO {
     @Schema(description = "产品ID", example = "1")
     private Long productId;
 
+    /** 作业规范发布版本ID；历史空值不推断。 */
+    private Long workSpecVersionId;
+
     @Schema(description = "产品编码", example = "P001")
     @Size(max = 50, message = "产品编码长度不能超过50个字符")
     private String productCode;

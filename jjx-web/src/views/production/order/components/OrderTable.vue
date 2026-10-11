@@ -41,6 +41,9 @@
         </template>
       </el-table-column>
 
+      <el-table-column label="绑定版本" width="165">
+        <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" /></template>
+      </el-table-column>
       <el-table-column prop="quantity" label="数量" width="120">
         <template #default="{ row }">
           <div class="quantity-info">
@@ -138,6 +141,7 @@
 </template>
 
 <script setup lang="ts">
+import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
 import { ref, computed } from 'vue'
 import OrderTableActions from './OrderTableActions.vue'
 import type { ProductionOrderVO } from '@/types/production/order'

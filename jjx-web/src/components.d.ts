@@ -153,6 +153,7 @@ declare module 'vue' {
     UniversalIcon: typeof import('./components/UniversalIcon.vue')['default']
     UserSelect: typeof import('./components/system/UserSelect.vue')['default']
     WarehouseSelector: typeof import('./components/Selector/WarehouseSelector.vue')['default']
+    WorkSpecVersionLink: typeof import('./components/product/WorkSpecVersionLink.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

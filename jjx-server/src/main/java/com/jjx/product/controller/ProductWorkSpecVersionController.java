@@ -39,7 +39,7 @@ public class ProductWorkSpecVersionController {
     }
 
     @GetMapping("/work-spec/versions/{versionId}")
-    @SaCheckPermission(value = {"product:spec:view", "engineering:spec:view"}, mode = SaMode.OR)
+    @SaCheckPermission(value = {"product:spec:view", "engineering:spec:view", "sales:order:view", "production:order:view"}, mode = SaMode.OR)
     public Result<Map<String, Object>> detail(@PathVariable Long versionId) {
         return Result.success(service.detail(versionId));
     }

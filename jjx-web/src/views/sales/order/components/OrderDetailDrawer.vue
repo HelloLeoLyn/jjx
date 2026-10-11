@@ -205,6 +205,9 @@
               min-width="150"
               show-overflow-tooltip
             />
+      <el-table-column label="采用版本" width="165">
+        <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" /></template>
+      </el-table-column>
             <el-table-column label="产品编码" prop="productCode" width="120" />
             <el-table-column
               label="规格型号"
@@ -307,6 +310,7 @@
 </template>
 
 <script setup lang="ts">
+import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
 import { ref, computed, watch } from 'vue'
 import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
 import { ElMessage } from 'element-plus'

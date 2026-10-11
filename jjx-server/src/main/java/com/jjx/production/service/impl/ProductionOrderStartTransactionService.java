@@ -28,6 +28,7 @@ import java.time.LocalDateTime;
 public class ProductionOrderStartTransactionService {
 
     private final ProductionOrderMapper productionOrderMapper;
+    private final com.jjx.product.service.WorkSpecBindingService workSpecBindingService;
     private final OrderMapper salesOrderMapper;
     /** 2026-09-21（dev-20260921-013）：生产事件改手写 payload（带工单号）。 */
     private final com.jjx.event.EventPublisher eventPublisher;
@@ -37,7 +38,7 @@ public class ProductionOrderStartTransactionService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public boolean startOrder(Long orderId) {
-        ProductionOrder order = productionOrderMapper.selectById(orderId);
+        ProductionOrder order = productionOrderMapper.selectForUpdate(orderId);
         if (order == null) {
             throw new BusinessException("生产工单不存在: " + orderId);
         }
@@ -50,6 +51,7 @@ public class ProductionOrderStartTransactionService {
             throw new BusinessException("工单状态不允许启动");
         }
 
+        workSpecBindingService.requirePublished(order.getProductId(), order.getWorkSpecVersionId());
         order.setOrderStatus(ProductionOrderStatusEnum.IN_PROGRESS.getValue());
         order.setActualStartTime(LocalDateTime.now());
         if (productionOrderMapper.updateById(order) <= 0) {

@@ -198,6 +198,9 @@
           />
         </template>
       </el-table-column>
+      <el-table-column label="采用版本" width="165">
+        <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" /></template>
+      </el-table-column>
       <el-table-column label="规格型号" prop="specification" width="120">
         <template #default="scope">
           <el-input
@@ -428,6 +431,7 @@
 </template>
 
 <script setup lang="ts">
+import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
 import { onMounted, ref, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'

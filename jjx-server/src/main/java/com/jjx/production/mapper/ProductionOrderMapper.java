@@ -14,6 +14,9 @@ import java.util.List;
 @Mapper
 public interface ProductionOrderMapper extends BaseMapper<ProductionOrder> {
 
+    @org.apache.ibatis.annotations.Select("SELECT * FROM production_order WHERE order_id = #{id} FOR UPDATE")
+    ProductionOrder selectForUpdate(@Param("id") Long id);
+
     /**
      * 根据订单编号查询订单
      *

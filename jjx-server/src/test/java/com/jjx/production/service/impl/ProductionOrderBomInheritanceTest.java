@@ -25,6 +25,7 @@ class ProductionOrderBomInheritanceTest {
     @Mock ProductionOrderMapper productionOrderMapper;
     @Mock ProductionBomResolver productionBomResolver;
     @Mock RedisSequenceService redisSequenceService;
+    @Mock com.jjx.product.service.WorkSpecBindingService workSpecBindingService;
     @Spy @InjectMocks ProductionOrderServiceImpl service;
     ProductionOrder plan;
     ConvertPlanToWorkOrdersDTO dto;
@@ -40,6 +41,7 @@ class ProductionOrderBomInheritanceTest {
     }
 
     @Test void conversionPersistsPlanBomOnNewWorkOrder() {
+        when(workSpecBindingService.bindOnIssue(2L, null)).thenReturn(11L);
         when(redisSequenceService.generateBusinessNumberByType("production_order", "WO", "yyMMdd", 3)).thenReturn("WO-TEST");
         doAnswer(call -> { ProductionOrder workOrder = call.getArgument(0); workOrder.setOrderId(20L); return true; })
                 .when(service).save(any(ProductionOrder.class));
@@ -48,9 +50,19 @@ class ProductionOrderBomInheritanceTest {
         ArgumentCaptor<ProductionOrder> captured = ArgumentCaptor.forClass(ProductionOrder.class);
         verify(service).save(captured.capture());
         assertEquals(5L, captured.getValue().getBomId());
+        assertEquals(11L, captured.getValue().getWorkSpecVersionId());
         assertEquals(plan.getProductId(), captured.getValue().getProductId());
         assertEquals(plan.getOrderId(), captured.getValue().getParentOrderId());
         verify(productionBomResolver).resolve(plan);
+    }
+
+    @Test void invalidVersionStopsConversionBeforeSaving() {
+        dto.getWorkOrders().get(0).setWorkSpecVersionId(99L);
+        when(redisSequenceService.generateBusinessNumberByType("production_order", "WO", "yyMMdd", 3)).thenReturn("WO-TEST");
+        when(workSpecBindingService.bindOnIssue(2L, 99L)).thenThrow(new BusinessException("版本不可绑定"));
+        assertThrows(BusinessException.class, () -> service.convertPlanToWorkOrders(dto));
+        verify(service, never()).save(any(ProductionOrder.class));
+        verify(service, never()).updateById(any(ProductionOrder.class));
     }
 
     @Test void invalidPlanBomStopsConversionBeforeSaving() {

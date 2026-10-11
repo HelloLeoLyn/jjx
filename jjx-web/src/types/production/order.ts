@@ -52,6 +52,7 @@ export enum PlanType {
 
 // 统一的生产订单基础接口
 export interface ProductionOrderBase {
+  workSpecVersionId?: number | null
   // 标识信息
   orderId: string
   orderNo: string

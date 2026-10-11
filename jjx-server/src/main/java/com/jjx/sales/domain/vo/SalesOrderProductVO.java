@@ -28,6 +28,9 @@ public class SalesOrderProductVO {
     @Schema(description = "产品ID", example = "2001")
     private Long productId;
 
+    /** 作业规范发布版本ID；历史空值不推断。 */
+    private Long workSpecVersionId;
+
     @Schema(description = "单位", example = "PCS")
     private String unit;
 

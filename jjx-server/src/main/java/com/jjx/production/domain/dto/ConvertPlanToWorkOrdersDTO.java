@@ -38,6 +38,9 @@ public class ConvertPlanToWorkOrdersDTO {
         @NotNull(message = "产品ID不能为空")
         private Long productId;
 
+        /** 可指定实际版本；未指定时在本次下达选取当前已发布版本。 */
+        private Long workSpecVersionId;
+
         @Schema(description = "产品编码", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotBlank(message = "产品编码不能为空")
         private String productCode;

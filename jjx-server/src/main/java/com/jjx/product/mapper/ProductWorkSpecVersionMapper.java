@@ -12,6 +12,10 @@ import java.util.List;
 @Mapper
 public interface ProductWorkSpecVersionMapper extends BaseMapper<ProductWorkSpecVersion> {
 
+    @Select("SELECT * FROM product_work_spec_version WHERE product_id = #{productId} AND deleted = 0 "
+            + "AND status = 'PUBLISHED' ORDER BY published_at DESC, id DESC LIMIT 1")
+    ProductWorkSpecVersion selectLatestPublished(@Param("productId") Long productId);
+
     /** 某产品的全部发布版本（新→旧） */
     @Select("SELECT * FROM product_work_spec_version WHERE product_id = #{productId} AND deleted = 0 "
             + "ORDER BY id DESC")

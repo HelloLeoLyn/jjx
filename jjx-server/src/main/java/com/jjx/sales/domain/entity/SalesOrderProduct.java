@@ -40,6 +40,9 @@ public class SalesOrderProduct{
      */
     private Long productId;
 
+    /** 作业规范发布版本ID；历史空值不推断。 */
+    private Long workSpecVersionId;
+
     /**
      * 单位
      */

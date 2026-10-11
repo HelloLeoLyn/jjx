@@ -30,6 +30,7 @@ public class SalesOrderProductServiceImpl extends ServiceImpl<SalesOrderProductM
         implements ISalesOrderProductService {
 
     private final SalesOrderProductConverter orderProductConverter;
+    private final com.jjx.product.service.WorkSpecBindingService workSpecBindingService;
 
 
     @Override
@@ -66,6 +67,7 @@ public class SalesOrderProductServiceImpl extends ServiceImpl<SalesOrderProductM
     @Transactional(rollbackFor = Exception.class)
     public boolean add(SalesOrderProductDTO addDTO) {
         SalesOrderProduct entity = orderProductConverter.toEntity(addDTO);
+        entity.setWorkSpecVersionId(workSpecBindingService.latestPublishedId(entity.getProductId()));
         return save(entity);
     }
 
@@ -74,7 +76,52 @@ public class SalesOrderProductServiceImpl extends ServiceImpl<SalesOrderProductM
     public boolean batchAdd(List<SalesOrderProductDTO> addDTOList) {
         List<SalesOrderProduct> entityList = addDTOList.stream()
                 .map(orderProductConverter::toEntity).toList();
+        entityList.forEach(entity -> entity.setWorkSpecVersionId(workSpecBindingService.latestPublishedId(entity.getProductId())));
         return saveBatch(entityList);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean replaceItems(Long orderId, List<SalesOrderProductDTO> items) {
+        List<SalesOrderProduct> previous = baseMapper.selectList(Wrappers.<SalesOrderProduct>lambdaQuery()
+                .eq(SalesOrderProduct::getOrderId, orderId).orderByAsc(SalesOrderProduct::getId));
+        java.util.Map<Long, java.util.LinkedList<SalesOrderProduct>> byProduct = new java.util.HashMap<>();
+        previous.forEach(line -> byProduct.computeIfAbsent(line.getProductId(), k -> new java.util.LinkedList<>()).add(line));
+        List<SalesOrderProduct> replacements = new java.util.ArrayList<>();
+        for (SalesOrderProductDTO item : items) {
+            SalesOrderProduct entity = orderProductConverter.toEntity(item);
+            entity.setOrderId(orderId);
+            java.util.LinkedList<SalesOrderProduct> matches = byProduct.get(entity.getProductId());
+            SalesOrderProduct original = null;
+            if (item.getId() != null) {
+                original = previous.stream().filter(line -> item.getId().equals(line.getId())).findFirst()
+                        .orElseThrow(() -> new com.jjx.common.exception.BusinessException("原订单明细不存在，不能继承采用版本"));
+                if (!java.util.Objects.equals(original.getProductId(), entity.getProductId())) original = null;
+                if (original != null && (matches == null || !matches.remove(original))) {
+                    throw new com.jjx.common.exception.BusinessException("订单明细ID重复");
+                }
+            } else if (matches != null && !matches.isEmpty()) {
+                if (matches.stream().map(SalesOrderProduct::getWorkSpecVersionId).distinct().count() > 1) {
+                    throw new com.jjx.common.exception.BusinessException("同产品存在不同采用版本，请保留原明细ID后重试");
+                }
+                original = matches.removeFirst();
+            }
+            entity.setWorkSpecVersionId(original == null
+                    ? workSpecBindingService.latestPublishedId(entity.getProductId()) : original.getWorkSpecVersionId());
+            replacements.add(entity);
+        }
+        deleteByOrderId(orderId);
+        return replacements.isEmpty() || saveBatch(replacements);
+    }
+
+    @Override
+    public void validateAdoptedVersions(Long orderId) {
+        for (SalesOrderProduct line : baseMapper.selectList(Wrappers.<SalesOrderProduct>lambdaQuery()
+                .eq(SalesOrderProduct::getOrderId, orderId))) {
+            if (line.getWorkSpecVersionId() != null) {
+                workSpecBindingService.requirePublished(line.getProductId(), line.getWorkSpecVersionId());
+            }
+        }
     }
 
     @Override

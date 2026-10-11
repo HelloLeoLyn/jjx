@@ -53,6 +53,12 @@ public interface ISalesOrderProductService {
      */
     boolean batchAdd(List<SalesOrderProductDTO> addDTOList);
 
+    /** 编辑重建明细时保留原采用版本（含历史NULL）。 */
+    boolean replaceItems(Long orderId, List<SalesOrderProductDTO> items);
+
+    /** 确认只校验已采用版本，不推断历史空值。 */
+    void validateAdoptedVersions(Long orderId);
+
     /**
      * 修改订单产品明细
      *

@@ -54,6 +54,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         implements ProductionOrderService {
 
     private final ProductionOrderMapper productionOrderMapper;
+    private final com.jjx.product.service.WorkSpecBindingService workSpecBindingService;
     private final ProductionOrderConverter productionOrderConverter;
     private final com.jjx.production.service.ProductionBomResolver productionBomResolver;
 
@@ -102,6 +103,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             order.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
         }
         order.setOrderStatus(ProductionOrderStatusEnum.DRAFT.getValue());
+        if (order.getWorkSpecVersionId() != null) {
+            workSpecBindingService.requirePublished(order.getProductId(), order.getWorkSpecVersionId());
+        }
         // 保存到数据库
         boolean success = save(order);
         if (!success) {
@@ -118,13 +122,15 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         log.info("更新生产工单: {}", updateDTO);
 
         // 检查工单是否存在
-        ProductionOrder order = getById(updateDTO.getOrderId());
+        ProductionOrder order = productionOrderMapper.selectForUpdate(updateDTO.getOrderId());
         if (order == null) {
             throw new BusinessException("生产工单不存在: " + updateDTO.getOrderId());
         }
 
-        // 更新实体
+        ProductionOrder before = new ProductionOrder();
+        org.springframework.beans.BeanUtils.copyProperties(order, before);
         updateEntityFromUpdateDTO(order, updateDTO);
+        workSpecBindingService.prepareUpdate(before, order);
 
         // 更新到数据库
         boolean success = updateById(order);
@@ -700,6 +706,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
                 // 转换为实体并保存
                 ProductionOrder order = productionOrderConverter.toEntity(dto);
                 order.setOrderStatus(ProductionOrderStatusEnum.DRAFT.getValue());
+                if (order.getWorkSpecVersionId() != null) {
+                    workSpecBindingService.requirePublished(order.getProductId(), order.getWorkSpecVersionId());
+                }
                 save(order);
 
                 successCount++;
@@ -1091,6 +1100,9 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         if (updateDTO.getSalesOrderNo() != null) {
             order.setSalesOrderNo(updateDTO.getSalesOrderNo());
         }
+        if (updateDTO.getWorkSpecVersionId() != null) {
+            order.setWorkSpecVersionId(updateDTO.getWorkSpecVersionId());
+        }
         if (updateDTO.getProductId() != null) {
             order.setProductId(updateDTO.getProductId());
         }
@@ -1280,6 +1292,8 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             workOrder.setRoutingId(plan.getRoutingId());
             workOrder.setRoutingCode(plan.getRoutingCode());
 
+            workOrder.setWorkSpecVersionId(workSpecBindingService.bindOnIssue(
+                    workOrder.getProductId(), item.getWorkSpecVersionId()));
             save(workOrder);
             createdOrderIds.add(workOrder.getOrderId());
 
@@ -1315,7 +1329,7 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             throw new BusinessException("请使用生产订单完成操作完成工单（完工需通过工序完成/完工质检/数量校验）");
         }
 
-        ProductionOrder order = getById(orderId);
+        ProductionOrder order = productionOrderMapper.selectForUpdate(orderId);
         if (order == null) {
             throw new BusinessException("订单不存在: " + orderId);
         }
@@ -1324,7 +1338,10 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
         validateStatusTransition(order.getOrderStatus(), newStatus);
 
         Integer oldStatus = order.getOrderStatus();
+        ProductionOrder before = new ProductionOrder();
+        org.springframework.beans.BeanUtils.copyProperties(order, before);
         order.setOrderStatus(newStatus);
+        workSpecBindingService.prepareUpdate(before, order);
         if (remark != null) {
             order.setRemark(remark);
         }

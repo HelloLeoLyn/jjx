@@ -1,5 +1,6 @@
 // 订单明细
 export interface OrderItem {
+  workSpecVersionId?: number | null
   id?: number
   productId?: number | null
   orderId?: number
@@ -290,6 +291,7 @@ export interface SalesOrderVO {
 }
 // 订单产品明细VO类型
 export interface SalesOrderProductVO {
+  workSpecVersionId?: number | null
   id: number
   quantity: number
   amount: number

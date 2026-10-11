@@ -15,6 +15,8 @@ import java.math.BigDecimal;
 @Schema(description = "订单产品明细添加DTO")
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SalesOrderProductDTO {
+    /** 编辑时的原明细ID，仅用于保留采用版本。 */
+    private Long id;
     @NotNull(message = "产品数量不能为空")
     @Min(value = 1, message = "产品数量至少为1")
     @Schema(description = "产品数量", requiredMode = Schema.RequiredMode.REQUIRED, example = "10")
