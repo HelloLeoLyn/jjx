@@ -46,7 +46,14 @@
         </section>
         <section class="data-section">
           <div class="section-heading"><h3>刀模位置</h3><el-button v-if="canEdit" :disabled="loading" @click="edit('die')">编辑</el-button></div>
-          <p class="multiline">{{ data.workSpec.dieLocation || '未填写' }}</p>
+          <el-table :data="dieRows" border size="small" empty-text="暂无 BOM 材料">
+            <el-table-column prop="label" label="材料（层/工序）" min-width="240" />
+            <el-table-column label="刀模位置" min-width="200"><template #default="{ row }">{{ (dieMap[row.key] || '').trim() || '未填写' }}</template></el-table-column>
+          </el-table>
+          <el-alert v-if="dieUnmatched.length" type="warning" :closable="false" class="die-alert" :title="`未匹配（当前 BOM 无此材料，待清理）：${dieUnmatched.map(item => item.key).join('；')}`" />
+          <el-alert v-if="hasLegacyDie" type="info" :closable="false" class="die-alert" title="检测到旧版刀模位置文本（未按 BOM 行），可迁移到 BOM 行">
+            <el-button link type="primary" :disabled="!canEdit" @click="migrateLegacyDie">迁移旧文本</el-button>
+          </el-alert>
         </section>
         <section class="data-section">
           <div class="section-heading"><h3>作业流程</h3><el-button v-if="canEditRoute" :disabled="loading || !data.routing.routingId" @click="routeVisible = true">编辑</el-button></div>
@@ -96,7 +103,19 @@
           </el-form>
         </el-tab-pane>
         <el-tab-pane label="刀模位置" name="die">
-          <el-form label-width="100px"><el-form-item label="刀模位置"><el-input v-model="draft.dieLocation" type="textarea" :rows="8" maxlength="500" show-word-limit placeholder="选填；每行填写一个位置，可留空行，与材料独立维护" /></el-form-item></el-form>
+          <p class="change-tip">按当前 BOM 明细行填写；key = 材料编码|层|工序，随 BOM 行对齐（刀模晚出也能补，不动 BOM 版本）。</p>
+          <el-table :data="dieRows" border size="small" empty-text="暂无 BOM 材料">
+            <el-table-column prop="label" label="材料（层/工序）" min-width="240" />
+            <el-table-column label="刀模位置" min-width="200"><template #default="{ row }"><el-input v-model="draft.dieLocation[row.key]" maxlength="100" placeholder="选填" /></template></el-table-column>
+          </el-table>
+          <template v-if="draftDieUnmatched.length">
+            <p class="change-tip">未匹配（当前 BOM 无此材料，待清理）：</p>
+            <el-table :data="draftDieUnmatched" border size="small">
+              <el-table-column prop="key" label="key" min-width="240" />
+              <el-table-column label="位置" min-width="180"><template #default="{ row }"><el-input v-model="draft.dieLocation[row.key]" maxlength="100" /></template></el-table-column>
+              <el-table-column label="操作" width="80" align="center"><template #default="{ row }"><el-button link type="danger" @click="deleteDieKey(row.key)">删除</el-button></template></el-table-column>
+            </el-table>
+          </template>
         </el-tab-pane>
         <el-tab-pane label="结构图" name="structure">
           <el-form label-width="100px"><el-form-item label="规范结构图"><el-select v-model="draft.structureFileId" clearable filterable placeholder="选填；选择这张规范单使用的图纸" style="width:100%"><el-option v-for="file in structureOptions" :key="file.id" :label="documentFileCaption(file)" :value="file.id" /></el-select></el-form-item></el-form>
@@ -155,7 +174,7 @@ import { calculateBomQuantity } from '@/utils/bomQuantity'
 import EngineeringDrawingLibrary from '../../drawing/components/EngineeringDrawingLibrary.vue'
 import BomFormDialog from '@/views/product/bom/components/BomFormDialog.vue'
 import RouteFormDialog from '@/views/product/route/components/RouteFormDialog.vue'
-import { documentFileCaption, loadDocset, workSpecMaterialSpec, flowGroups, workSpecStepSubscript, workSpecOperationRemark, renderFile, type DocsetData } from './docset'
+import { documentFileCaption, loadDocset, workSpecMaterialSpec, flowGroups, workSpecStepSubscript, workSpecOperationRemark, dieLocationKey, dieLocationLabel, flattenedBom, renderFile, type DocsetData } from './docset'
 
 const props = defineProps<{ productId: number; productCode: string; productName: string }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
@@ -204,6 +223,24 @@ async function loadStructureImage() {
   catch (e) { console.error('结构图加载失败', e) }
 }
 watch(structureFile, () => { void loadStructureImage() })
+const dieRows = computed(() => flattenedBom(data.value?.bom.items).map(row => ({ key: dieLocationKey(row), label: dieLocationLabel(row) })))
+const dieCurrentKeys = computed(() => new Set(dieRows.value.map(row => row.key)))
+const dieMap = computed<Record<string, string>>(() => data.value?.workSpec.dieLocation || {})
+const dieUnmatched = computed(() => Object.entries(dieMap.value).filter(([key, value]) => !dieCurrentKeys.value.has(key) && String(value || '').trim()).map(([key, value]) => ({ key, value })))
+const hasLegacyDie = computed(() => !!String(data.value?.workSpec.dieLocationText || '').trim() && Object.keys(dieMap.value).length === 0)
+const draftDieUnmatched = computed(() => Object.entries(draft.value.dieLocation || {}).filter(([key]) => !dieCurrentKeys.value.has(key)).map(([key, value]) => ({ key, value })))
+function deleteDieKey(key: string) { delete draft.value.dieLocation[key] }
+function migrateLegacyDie() {
+  if (!data.value || !canEdit.value) return
+  const spec = normalizeWorkSpec(JSON.parse(JSON.stringify(data.value.workSpec)))
+  const lines = String(spec.dieLocationText || '').split(/\r?\n/)
+  const map: Record<string, string> = {}
+  dieRows.value.forEach((row, index) => { const value = (lines[index] || '').trim(); if (value) map[row.key] = value })
+  draft.value = { ...spec, dieLocation: map, dieLocationText: '' }
+  baseline.value = JSON.stringify(workSpecContent(draft.value))
+  editorTab.value = 'die'
+  editorVisible.value = true
+}
 const editing = computed(() => editorVisible.value || bomVisible.value || routeVisible.value || printSpecBusy.value)
 async function loadData() {
   const generation = ++loadGeneration

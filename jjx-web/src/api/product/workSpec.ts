@@ -22,13 +22,17 @@ export interface ColorCheck {
   updatedBy?: string
   updatedAt?: string
 }
+export type DieLocationMap = Record<string, string>
 export interface ProductWorkSpec {
   revision: string
   sourceRevision: string
   emboss: Record<string, string>
   engineeringRequirements: string
   requirementsColor: string
-  dieLocation: string
+  /** 刀模位置：key = 材料编码|层|工序（dev-20261011-039）。 */
+  dieLocation: DieLocationMap
+  /** 旧版多行文本（迁移前保留，保存时不丢）。 */
+  dieLocationText?: string
   structureFileId: number | null
   changes: WorkSpecChange[]
   printRemarks: Record<string, string>
@@ -59,12 +63,18 @@ export function normalizeColorCheck(value?: Partial<ColorCheck> | null): ColorCh
   }
   return { items, updatedBy: value?.updatedBy, updatedAt: value?.updatedAt }
 }
+function dieLocationMap(value: unknown): DieLocationMap {
+  if (!value || typeof value !== 'object') return {}
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, item == null ? '' : String(item)]))
+}
 export function normalizeWorkSpec(value: Partial<ProductWorkSpec> = {}): ProductWorkSpec {
   return {
     revision: value.revision || '', sourceRevision: value.sourceRevision || '',
     emboss: Object.fromEntries(Object.entries(value.emboss || {}).map(([key, item]) => [key, item ?? ''])),
     engineeringRequirements: value.engineeringRequirements || '',
-    requirementsColor: value.requirementsColor || '#ed00df', dieLocation: value.dieLocation || '',
+    requirementsColor: value.requirementsColor || '#ed00df',
+    dieLocation: dieLocationMap(value.dieLocation),
+    dieLocationText: typeof value.dieLocation === 'string' ? value.dieLocation : '',
     structureFileId: value.structureFileId ?? null,
     printRemarks: { ...(value.printRemarks || {}) },
     colorCheck: normalizeColorCheck(value.colorCheck),
@@ -75,9 +85,10 @@ export function normalizeWorkSpec(value: Partial<ProductWorkSpec> = {}): Product
   }
 }
 export function workSpecContent(value: ProductWorkSpec) {
-  const { revision, sourceRevision, approved, confirmedBy, confirmedAt, printRemarks, colorCheck, ...content } = value
+  const { revision, sourceRevision, approved, confirmedBy, confirmedAt, printRemarks, colorCheck, dieLocationText, ...content } = value
   return {
     ...content, structureFileId: value.structureFileId || null, issueDate: value.issueDate || null,
+    dieLocation: Object.keys(value.dieLocation || {}).length ? value.dieLocation : (dieLocationText || {}),
     changes: value.changes.map(({ sources, ...change }) => ({ ...change, date: change.date || null })),
     emboss: Object.fromEntries(embossFields.map(field => [field.key, (value.emboss[field.key] || '').trim()]).filter(([, item]) => item)),
   }

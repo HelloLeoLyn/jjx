@@ -3,7 +3,7 @@ import { standardProcessApi } from '@/api/product/standardProcess'
 import { ProcessCategoryEnum } from '@/enums/product'
 import { productFileCategoryLabel, ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum, DrawingFileRoleEnum } from '@/enums/product/drawing'
-import { productWorkSpecApi, normalizeWorkSpec, type ProductWorkSpec } from '@/api/product/workSpec'
+import { productWorkSpecApi, normalizeWorkSpec, type ProductWorkSpec, type DieLocationMap } from '@/api/product/workSpec'
 import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreview'
@@ -101,10 +101,25 @@ function paperLines(value: string, width: number): string[] {
     return result
   })
 }
+export function dieLocationKey(row: Record<string, any>): string {
+  return [row?.materialCode, row?.layer, row?.processName].map(value => String(value ?? '').trim()).join('|')
+}
+export function dieLocationLabel(row: Record<string, any>): string {
+  const extra = [row?.layer, row?.processName].map(value => String(value ?? '').trim()).filter(Boolean).join(' / ')
+  const base = String(row?.materialName ?? row?.materialCode ?? '').trim() || '-'
+  return extra ? `${base}（${extra}）` : base
+}
+export function flattenedBom(items?: Record<string, any>[] | null): Record<string, any>[] {
+  return flatten(items || [])
+}
+/** 刀模位置按 BOM 行（展平后）对齐取值，与纸张行序一致。 */
+export function dieLocationRows(map: DieLocationMap | undefined, items: Record<string, any>[] | null | undefined): string[] {
+  return flattenedBom(items).map(row => (map && map[dieLocationKey(row)]) || '')
+}
 function specText(data: DocsetData) {
   return {
     engineeringNotes: data.workSpec.engineeringRequirements,
-    diePositionRows: paperLines(data.workSpec.dieLocation, 10),
+    diePositionRows: dieLocationRows(data.workSpec.dieLocation, data.bom.items || []),
     changeLines: [...data.workSpec.changes]
       .filter(change => change.print && change.text.trim())
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''))

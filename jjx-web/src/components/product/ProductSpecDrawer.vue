@@ -125,7 +125,7 @@
                 </el-descriptions>
                 <el-descriptions v-if="versionSnapshot?.spec" :column="1" border size="small" style="margin-top: 10px">
                   <el-descriptions-item label="备注">{{ versionSnapshot.spec.engineeringRequirements || '-' }}</el-descriptions-item>
-                  <el-descriptions-item label="刀模位置">{{ versionSnapshot.spec.dieLocation || '-' }}</el-descriptions-item>
+                  <el-descriptions-item label="刀模位置">{{ dieText(versionSnapshot.spec) }}</el-descriptions-item>
                   <el-descriptions-item label="结构图ID">{{ versionSnapshot.spec.structureFileId ?? '-' }}</el-descriptions-item>
                   <el-descriptions-item label="凹凸条件">
                     <div v-for="f in embossFields" :key="f.key">{{ f.label }}：{{ versionSnapshot.spec.emboss[f.key] || '-' }}</div>
@@ -237,6 +237,10 @@ import type { ProductPickRow } from '@/types/inventory/outbound'
 import { productWorkSpecApi, normalizeWorkSpec, embossFields } from '@/api/product/workSpec'
 import { productRouteApi } from '@/api/product/routing'
 
+function dieText(spec: any): string {
+  const values = Object.values(spec?.dieLocation || {}).filter(Boolean)
+  return values.length ? values.join('；') : (spec?.dieLocationText || '-')
+}
 const specVisible = ref(false)
 const drawingBusy = ref(false)
 const workSpecBusy = ref(false)
