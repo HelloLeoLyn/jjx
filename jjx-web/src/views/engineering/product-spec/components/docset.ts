@@ -4,6 +4,8 @@ import { ProcessCategoryEnum } from '@/enums/product'
 import { productFileCategoryLabel, ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum, DrawingFileRoleEnum } from '@/enums/product/drawing'
 import { productWorkSpecApi, normalizeWorkSpec, type ProductWorkSpec } from '@/api/product/workSpec'
+import { productBomApi } from '@/api/product/bom'
+import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreview'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 export { renderFile, type FileImage } from '@/components/product/productFilePreview'
@@ -192,6 +194,55 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
     data.files.push({ key: String(id), id, name, category, kind, section, productFile: !customer,
       drawingNo: row.drawingNo, version: row.version, fileRole: row.fileRole, isCurrent: row.isCurrent, released: row.released })
   }
+}
+
+function parseSnapshot(value?: string | null): Record<string, any> {
+  if (!value) return {}
+  try { const parsed = JSON.parse(value); return parsed && typeof parsed === 'object' ? parsed : {} } catch { return {} }
+}
+function detectFileKind(name: string, mime = ''): 'image' | 'pdf' | 'other' {
+  const ext = (name.split('.').pop() || '').toLowerCase()
+  if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) return 'image'
+  if (mime.includes('pdf') || ext === 'pdf') return 'pdf'
+  return 'other'
+}
+
+/**
+ * 按【已发布版本】组装文档集（dev-20261011-036）：只读该版快照，不读当前态。
+ * - 规范正文：SPEC_JSON 条目快照；
+ * - BOM / 工艺路线：BOM/ROUTING 条目引用的已批准版本（按 id 取明细）；
+ * - 工程图：DRAWING 条目引用的结构图文件。
+ * 发布未纳入的（客供资料/样品/领料单/油墨/检测记录）本就不在该版，故不出。
+ */
+export async function loadDocsetForVersion(productId: number, versionId: number, productCode = '', productName = ''): Promise<DocsetData> {
+  const res: any = await productWorkSpecApi.getVersion(versionId)
+  const version = res?.data?.version
+  const items: Record<string, any>[] = res?.data?.items || []
+  if (!version) throw new Error('发布版本不存在')
+  const find = (type: string) => items.find((item) => item.resourceType === type)
+  const workSpec = normalizeWorkSpec(parseSnapshot(find('SPEC_JSON')?.snapshotJson) as Partial<ProductWorkSpec>)
+  const data: DocsetData = {
+    product: { productId, productCode: productCode || '', productName: productName || '' },
+    bom: {}, routing: {}, workSpec, files: [], warnings: [],
+  }
+  const bomRef = parseSnapshot(find('BOM')?.snapshotJson)
+  if (bomRef.bomId) {
+    try { const r: any = await productBomApi.getEngineeringBomInfo(Number(bomRef.bomId)); data.bom = r?.data || {} }
+    catch { data.warnings.push('该版 BOM 读取失败') }
+  }
+  const routeRef = parseSnapshot(find('ROUTING')?.snapshotJson)
+  if (routeRef.routingId) {
+    try { const r: any = await productRouteApi.getProductRouteInfo(Number(routeRef.routingId)); data.routing = r?.data || {} }
+    catch { data.warnings.push('该版工艺路线读取失败') }
+  }
+  const drawRef = parseSnapshot(find('DRAWING')?.snapshotJson)
+  const attId = Number(drawRef.attachmentId)
+  if (attId) {
+    const name = drawRef.fileName || '结构图'
+    data.files.push({ key: String(attId), id: attId, name, category: '结构图', section: 'atlas',
+      kind: detectFileKind(name), productFile: true, version: drawRef.version ? String(drawRef.version) : undefined })
+  }
+  return data
 }
 
 export function makePages(data: DocsetData, sections: string[], fileIds: string[], images: Record<string, FileImage[]>, overflow: Record<string, PaperTextLine[]> = {}): DocPage[] {

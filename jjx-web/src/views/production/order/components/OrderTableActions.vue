@@ -103,6 +103,13 @@
               用料计算
             </el-dropdown-item>
             <el-dropdown-item
+              command="print-work-spec"
+              v-if="order.orderType === OrderType.WORK_ORDER && hasPermi(['production:order:view'])"
+            >
+              <el-icon><Printer /></el-icon>
+              打印作业规范
+            </el-dropdown-item>
+            <el-dropdown-item
               command="work-spec-usage"
               v-if="order.orderType === OrderType.WORK_ORDER && hasPermi(['production:order:edit'])"
             >
@@ -349,9 +356,28 @@ const handleMoreActionCommand = (command: string) => {
   } else if (command === 'cancel') {
     // 2026-08-18：取消订单从行内移入下拉菜单
     openPreview('production.cancel')
+  } else if (command === 'print-work-spec') {
+    handlePrintWorkSpec()
   } else {
     emit('more-action', command)
   }
+}
+
+// 打印作业规范（dev-20261011-036）：按工单绑定的 work_spec_version_id 出纸；未绑版本不出当前态。
+function handlePrintWorkSpec() {
+  const versionId = Number((props.order as any).workSpecVersionId || 0)
+  if (!versionId) {
+    ElMessageBox.alert(
+      '该工单未绑定作业规范版本，历史未知——请先补版本（换版登记）后再打印。',
+      '打印作业规范',
+      { confirmButtonText: '知道了', type: 'warning' },
+    )
+    return
+  }
+  const params = new URLSearchParams({ versionId: String(versionId), print: '1' })
+  if (props.order.productCode) params.set('productCode', props.order.productCode)
+  if (props.order.productName) params.set('productName', props.order.productName)
+  window.open(`/print/product-spec/${props.order.productId}?${params.toString()}`, '_blank')
 }
 </script>
 

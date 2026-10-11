@@ -49,10 +49,10 @@ import { ElMessage } from 'element-plus'
 import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import { downloadFile } from '@/components/product/productFilePreview'
 import ProductSpecSheets from './ProductSpecSheets.vue'
-import { documentSections, loadDocset, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, type DocsetData, type DocFile, type FileImage, type PaperTextLine } from './docset'
+import { documentSections, loadDocset, loadDocsetForVersion, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, type DocsetData, type DocFile, type FileImage, type PaperTextLine } from './docset'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum } from '@/enums/product/drawing'
 
-const props = withDefaults(defineProps<{ productId: number; standalone?: boolean; autoPrint?: boolean; paperOnly?: boolean; initialSections?: string[]; initialFiles?: string[] }>(), { standalone: false, autoPrint: false, paperOnly: false })
+const props = withDefaults(defineProps<{ productId: number; versionId?: number; productCode?: string; productName?: string; standalone?: boolean; autoPrint?: boolean; paperOnly?: boolean; initialSections?: string[]; initialFiles?: string[] }>(), { standalone: false, autoPrint: false, paperOnly: false })
 const emit = defineEmits<{ loaded: [data: DocsetData] }>()
 const data = shallowRef<DocsetData>()
 const loading = ref(false)
@@ -104,7 +104,9 @@ async function load() {
   loading.value = true
   try {
     if (!props.productId) throw new Error('请先选择产品')
-    const result = await loadDocset(props.productId)
+    const result = props.versionId
+      ? await loadDocsetForVersion(props.productId, props.versionId, props.productCode, props.productName)
+      : await loadDocset(props.productId)
     if (current !== generation || disposed) return
     selectedFiles.value = (props.initialFiles ? result.files.filter(file => file.kind !== 'other' && props.initialFiles!.includes(file.key)) : defaultDocumentFiles(result.files)).map(file => file.key)
     data.value = result
@@ -160,7 +162,7 @@ async function printDocuments() {
   try { await Promise.all(imgs.map((image) => image.decode())); window.print() }
   catch { ElMessage.error('图片尚未加载完成，请重新加载后打印') }
 }
-watch(() => props.productId, load, { immediate: true })
+watch(() => [props.productId, props.versionId], load, { immediate: true })
 defineExpose({ reload: load })
 watch(requestedFiles, expandFiles)
 watch(canPrint, (ready) => {
