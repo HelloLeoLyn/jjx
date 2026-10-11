@@ -54,7 +54,23 @@
           <template #default="{ row }">{{ row.contentHash ? row.contentHash.slice(0, 12) + '…' : '-' }}</template>
         </el-table-column>
       </el-table>
+      <el-alert
+        :type="detailDiff.changed ? 'warning' : 'success'"
+        :closable="false"
+        style="margin-top: 10px"
+        :title="detailDiff.changed ? '当前工作态与本次发布已有差异' : '当前工作态与本次发布一致'"
+      />
+      <el-table v-if="detailDiff.changed" :data="detailDiff.fields" size="small" border style="margin-top: 8px">
+        <el-table-column prop="label" label="字段" width="190" show-overflow-tooltip />
+        <el-table-column label="发布版本" min-width="180">
+          <template #default="{ row }"><span class="wsv-snap">{{ row.before || '（空）' }}</span></template>
+        </el-table-column>
+        <el-table-column label="当前工作态" min-width="180">
+          <template #default="{ row }"><span class="wsv-snap">{{ row.after || '（空）' }}</span></template>
+        </el-table-column>
+      </el-table>
       <div class="wsv-tip">发布后内容不可改；此处为只读快照。BOM/工艺路线为「引用已批准版本」，工程图为「引用文件版本 + 哈希」。</div>
+      <div class="wsv-tip">未纳入本次发布：{{ detailDiff.notIncluded.join('、') }}。</div>
     </el-dialog>
   </el-card>
 </template>
@@ -80,6 +96,11 @@ const publishing = ref(false)
 const detailVisible = ref(false)
 const detailVersion = ref<any>(null)
 const detailItems = ref<any[]>([])
+const detailDiff = ref<{ changed: boolean; fields: any[]; notIncluded: string[] }>({
+  changed: false,
+  fields: [],
+  notIncluded: ['客供资料', '样品', '领料单', '油墨', '实际检测记录'],
+})
 
 function resourceLabel(code: string) {
   return RESOURCE_LABELS[code] || code
@@ -128,6 +149,18 @@ async function openDetail(row: any) {
     detailVersion.value = res.data?.version
     detailItems.value = res.data?.items || []
     detailVisible.value = true
+  }
+  try {
+    const dres: any = await productWorkSpecApi.versionDiff(row.id)
+    if (dres?.code === 200 && dres.data) {
+      detailDiff.value = {
+        changed: !!dres.data.changed,
+        fields: dres.data.fields || [],
+        notIncluded: dres.data.notIncluded || detailDiff.value.notIncluded,
+      }
+    }
+  } catch {
+    /* 差异预览失败不阻塞版本详情 */
   }
 }
 

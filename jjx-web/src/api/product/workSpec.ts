@@ -94,4 +94,5 @@ export const productWorkSpecApi = {
   publishVersion: (id: number, changeSummary?: string) => request.post('/product/' + id + '/work-spec/publish', null, { params: { changeSummary } }),
   listVersions: (id: number) => request.get('/product/' + id + '/work-spec/versions'),
   getVersion: (versionId: number) => request.get('/product/work-spec/versions/' + versionId),
+  versionDiff: (versionId: number) => request.get('/product/work-spec/versions/' + versionId + '/diff'),
 }

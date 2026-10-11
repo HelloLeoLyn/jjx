@@ -43,4 +43,11 @@ public class ProductWorkSpecVersionController {
     public Result<Map<String, Object>> detail(@PathVariable Long versionId) {
         return Result.success(service.detail(versionId));
     }
+
+    /** 版本差异预览：已发布快照 vs 当前工作态（dev-20261011-023）。 */
+    @GetMapping("/work-spec/versions/{versionId}/diff")
+    @SaCheckPermission(value = {"product:spec:view", "engineering:spec:view", "sales:order:view", "production:order:view"}, mode = SaMode.OR)
+    public Result<Map<String, Object>> diff(@PathVariable Long versionId) {
+        return Result.success(service.diff(versionId));
+    }
 }

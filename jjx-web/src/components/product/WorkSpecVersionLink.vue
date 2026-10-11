@@ -18,6 +18,22 @@
       </el-table-column>
       <el-table-column prop="contentHash" label="哈希" width="140" show-overflow-tooltip />
     </el-table>
+    <el-alert
+      :type="diff.changed ? 'warning' : 'success'"
+      :closable="false"
+      style="margin-top: 12px"
+      :title="diff.changed ? '当前工作态与本次发布已有差异' : '当前工作态与本次发布一致'"
+    />
+    <el-table v-if="diff.changed" :data="diff.fields" border size="small" style="margin-top: 8px">
+      <el-table-column prop="label" label="字段" width="180" show-overflow-tooltip />
+      <el-table-column label="发布版本" min-width="160">
+        <template #default="{ row }"><span class="snapshot">{{ row.before || '（空）' }}</span></template>
+      </el-table-column>
+      <el-table-column label="当前工作态" min-width="160">
+        <template #default="{ row }"><span class="snapshot">{{ row.after || '（空）' }}</span></template>
+      </el-table-column>
+    </el-table>
+    <div class="not-included">未纳入本次发布：{{ diff.notIncluded.join('、') }}。</div>
   </el-dialog>
 </template>
 
@@ -37,6 +53,11 @@ interface Version {
 }
 const version = ref<Version | null>(null)
 const items = ref<{ resourceType: string; snapshotJson: string; contentHash?: string }[]>([])
+const diff = ref<{ changed: boolean; fields: any[]; notIncluded: string[] }>({
+  changed: false,
+  fields: [],
+  notIncluded: ['客供资料', '样品', '领料单', '油墨', '实际检测记录'],
+})
 const visible = ref(false)
 const loading = ref(false)
 const failed = ref(false)
@@ -54,6 +75,18 @@ async function load() {
     if (current !== requestId) return
     version.value = response.data.version
     items.value = response.data.items || []
+    try {
+      const dres: any = await productWorkSpecApi.versionDiff(props.versionId)
+      if (current === requestId && dres?.code === 200 && dres.data) {
+        diff.value = {
+          changed: !!dres.data.changed,
+          fields: dres.data.fields || [],
+          notIncluded: dres.data.notIncluded || diff.value.notIncluded,
+        }
+      }
+    } catch {
+      /* 差异预览失败不阻塞版本详情 */
+    }
   } catch {
     if (current === requestId) failed.value = true
   } finally {
@@ -69,4 +102,5 @@ watch(() => props.versionId, () => { visible.value = false; load() }, { immediat
 
 <style scoped>
 .snapshot { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.not-included { margin-top: 10px; font-size: 12px; color: #909399; }
 </style>

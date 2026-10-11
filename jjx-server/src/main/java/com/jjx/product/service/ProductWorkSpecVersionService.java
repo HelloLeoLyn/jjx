@@ -27,8 +27,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -45,6 +48,17 @@ public class ProductWorkSpecVersionService {
     private final ProductWorkSpecVersionMapper versionMapper;
     private final ProductWorkSpecItemMapper itemMapper;
     private final ObjectMapper json;
+
+    /** 凹凸差异字段：内部键 → 中文名（dev-20261011-023）。 */
+    private static final Object[][] EMBOSS_DIFF_FIELDS = {
+            {"setupHeight", "调机高度"}, {"requiredHeight", "要求高度"},
+            {"upperTemperature", "上模温度"}, {"lowerTemperature", "下模温度"},
+            {"pressTime", "下压时间"}, {"holdTime", "保持时间"},
+    };
+
+    /** 发布时「未纳入」的子页签（固定提示，dev-20261011-023）。 */
+    private static final List<String> NOT_INCLUDED = List.of(
+            "客供资料", "样品", "领料单", "油墨", "实际检测记录");
 
     /** 发布新版本（产品内串行，避免并发产生重复版本号/混合快照）。 */
     @Transactional(rollbackFor = Exception.class)
@@ -129,6 +143,60 @@ public class ProductWorkSpecVersionService {
         return versionMapper.selectByProductId(productId);
     }
 
+    /**
+     * 发布版本（SPEC_JSON 快照）与当前工作态(work_spec_json)的字段级差异（dev-20261011-023）。
+     * 只读预览，不改发布/绑定逻辑。
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> diff(Long versionId) {
+        ProductWorkSpecVersion version = versionMapper.selectById(versionId);
+        if (version == null) {
+            throw new BusinessException("发布版本不存在: " + versionId);
+        }
+        String snapshot = null;
+        for (ProductWorkSpecItem item : itemMapper.selectByVersionId(versionId)) {
+            if (WorkSpecResourceType.SPEC_JSON.getCode().equals(item.getResourceType())) {
+                snapshot = item.getSnapshotJson();
+                break;
+            }
+        }
+        JsonNode snap = parseSafe(snapshot);
+        JsonNode cur = parseSafe(workSpecMapper.read(version.getProductId()));
+
+        List<Map<String, Object>> fields = new ArrayList<>();
+        addDiff(fields, "加工要求", snap.get("engineeringRequirements"), cur.get("engineeringRequirements"));
+        addDiff(fields, "刀模位置", snap.get("dieLocation"), cur.get("dieLocation"));
+        addDiff(fields, "结构图", snap.get("structureFileId"), cur.get("structureFileId"));
+        addDiff(fields, "变更", snap.get("changes"), cur.get("changes"));
+
+        JsonNode se = snap.path("emboss");
+        JsonNode ce = cur.path("emboss");
+        for (Object[] f : EMBOSS_DIFF_FIELDS) {
+            addDiff(fields, "凹凸·" + f[1], se.get((String) f[0]), ce.get((String) f[0]));
+        }
+
+        JsonNode spr = snap.path("printRemarks");
+        JsonNode cpr = cur.path("printRemarks");
+        for (String key : unionKeys(spr, cpr)) {
+            addDiff(fields, "印刷整组备注·" + key, spr.get(key), cpr.get(key));
+        }
+
+        JsonNode scc = snap.path("colorCheck").path("items");
+        JsonNode ccc = cur.path("colorCheck").path("items");
+        for (String key : unionKeys(scc, ccc)) {
+            addDiff(fields, "分色检查·" + key, scc.path(key).get("result"), ccc.path(key).get("result"));
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("versionId", version.getId());
+        result.put("versionNo", version.getVersionNo());
+        result.put("productId", version.getProductId());
+        result.put("changed", !fields.isEmpty());
+        result.put("fields", fields);
+        result.put("notIncluded", NOT_INCLUDED);
+        return result;
+    }
+
     /** 发布版本详情（版本 + 条目） */
     @Transactional(readOnly = true)
     public Map<String, Object> detail(Long versionId) {
@@ -143,6 +211,48 @@ public class ProductWorkSpecVersionService {
     }
 
     // ==================== 内部 ====================
+
+    private void addDiff(List<Map<String, Object>> out, String label, JsonNode before, JsonNode after) {
+        String b = nodeText(before);
+        String a = nodeText(after);
+        if (b.equals(a)) {
+            return;
+        }
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("label", label);
+        row.put("before", b);
+        row.put("after", a);
+        out.add(row);
+    }
+
+    private String nodeText(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return "";
+        }
+        return node.isValueNode() ? node.asText() : node.toString();
+    }
+
+    private JsonNode parseSafe(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return json.createObjectNode();
+        }
+        try {
+            return json.readTree(raw);
+        } catch (Exception e) {
+            return json.createObjectNode();
+        }
+    }
+
+    private Set<String> unionKeys(JsonNode a, JsonNode b) {
+        Set<String> keys = new TreeSet<>();
+        if (a != null && a.isObject()) {
+            a.fieldNames().forEachRemaining(keys::add);
+        }
+        if (b != null && b.isObject()) {
+            b.fieldNames().forEachRemaining(keys::add);
+        }
+        return keys;
+    }
 
     private ProductWorkSpecItem newItem(String type, Long sourceId, Long sourceVersionId, String operationRef,
                                         String snapshotJson, String contentHash, int sortOrder) {
