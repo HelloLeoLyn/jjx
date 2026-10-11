@@ -90,4 +90,8 @@ export const productWorkSpecApi = {
   savePrintRemarks: (id: number, revision: string, remarks: Record<string, string>) => request.put('/product/' + id + '/work-spec/print-remarks', { revision, remarks }),
   printRemarksHistory: (id: number, before?: number) => request.get('/product/' + id + '/work-spec/print-remarks/history', { params: { before } }),
   saveColorCheck: (id: number, revision: string, items: Record<string, ColorCheckItemValue>) => request.put('/product/' + id + '/work-spec/color-check', { revision, items }),
+  // 发布版本（dev-20261011-008）
+  publishVersion: (id: number, changeSummary?: string) => request.post('/product/' + id + '/work-spec/publish', null, { params: { changeSummary } }),
+  listVersions: (id: number) => request.get('/product/' + id + '/work-spec/versions'),
+  getVersion: (versionId: number) => request.get('/product/work-spec/versions/' + versionId),
 }
