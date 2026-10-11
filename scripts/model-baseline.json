@@ -159,6 +159,27 @@
       "date": "2026-10-10",
       "proposalLink": "jjx-docs/history/sample-requisition-qr065-and-defect-record-dev-20261010-028.md",
       "reason": "打样不良原因及改善记录（样品单级、多条、独立权限留痕）；process_note 粒度不符、quality_ncr 语义不符；用户 2026-10-10 拍板同意新建"
+    },
+    {
+      "table": "product_work_spec_version",
+      "taskCode": "dev-20261011-006",
+      "date": "2026-10-11",
+      "proposalLink": "jjx-docs/history/product-work-spec-p1-implementation-dev-20261011-004.md",
+      "reason": "产品作业规范发布版本表（不可变制造资料基线）；现有 product.work_spec_json 是工作态覆盖写、revision 只是并发校验摘要，无法重建旧版；用户 2026-10-11 授权按建议执行"
+    },
+    {
+      "table": "product_work_spec_item",
+      "taskCode": "dev-20261011-006",
+      "date": "2026-10-11",
+      "proposalLink": "jjx-docs/history/product-work-spec-p1-implementation-dev-20261011-004.md",
+      "reason": "发布条目表（一个版本多条目：规范快照/BOM/路线/图纸）；与 version 表 1:N，不对 resource_type 唯一；用户 2026-10-11 授权按建议执行"
+    },
+    {
+      "table": "work_spec_usage",
+      "taskCode": "dev-20261011-006",
+      "date": "2026-10-11",
+      "proposalLink": "jjx-docs/history/product-work-spec-p1-implementation-dev-20261011-004.md",
+      "reason": "工单执行区间记录（投产中途换版：哪段用哪版）；用户 2026-10-11 确认会中途换版（少见但可能）故提前 P0/P1；覆盖工单单一字段不足；用户授权按建议执行"
     }
   ],
   "typeSuffixAllowlist": [
