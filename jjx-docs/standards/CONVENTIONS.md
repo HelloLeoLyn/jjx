@@ -140,6 +140,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
   DB：迁移 267 / sys_menu·sys_role_menu / 删 menu404+授权、405/406 重挂 407、补授 407 给 role16
   遗留：工程/产品角色需重新登录刷新权限快照
   ```
+- **输出/沟通·层级编号规则（2026-10-11 用户定，全 agent 统一）**：凡**列选项 / 清单 / 层级 / 步骤**，一律按三级编号书写 —— **一级 `1）2）`；二级 `A) B)`；三级 `a) b)`**。要求：① 同级用同一种符号，不混用；② 不跳级（没有二级就不上三级）；③ 编号只用于「枚举/选项/步骤」，正文叙述与结论句**不编号**；④ 更细的层不再引入新符号（回到括号内文字或短横项）。与上面的「完成后报告格式」同处，沟通/输出一律照此。
 - 分支：日常开发 `dev`；AI 个人分支按需（`ai/dahuang`）
 - message 格式：`type(scope): 中文描述（任务码 dev-YYYYMMDD-NNN）`
   - type: `feat` `fix` `refactor` `docs` `style` `chore` `perf` `test`

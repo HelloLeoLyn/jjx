@@ -81,6 +81,8 @@ DB：迁移 267 / sys_menu·sys_role_menu / 删 menu404+授权、405/406 重挂 
 遗留：工程/产品角色需重新登录刷新权限快照
 ```
 
+Also for chat output (**unified 3-level numbering**, 2026-10-11): when listing options / checklists / hierarchy / steps, use level 1 `1）2）`, level 2 `A) B)`, level 3 `a) b)` — same symbol per level, no level skipping; numbering applies only to enumerations (options/steps), never to prose or conclusion sentences.
+
 ## Tool failure and recovery rules
 
 - `sys_task.remark` is `varchar(500)`: check `CHAR_LENGTH` before writing and query it again afterward. Never suppress database errors with `2>/dev/null` or an empty catch.
