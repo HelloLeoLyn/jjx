@@ -169,6 +169,7 @@ public class EngineeringArchiveImportService {
             attachment.setFilePath(relative);
             attachment.setFileSize((long) bytes.length);
             attachment.setFileType(contentType);
+            attachment.setSha256(hash);
             attachment.setRemark("历史档案录入原始文件");
             attachment.setCreateBy(user);
             attachment.setUpdateBy(user);

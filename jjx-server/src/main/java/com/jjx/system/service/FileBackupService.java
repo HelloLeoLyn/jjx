@@ -18,11 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -356,6 +358,7 @@ public class FileBackupService {
                         } catch (IOException ignore) {
                         }
                         att.setFileType(guessFileType(fileName));
+                        att.setSha256(sha256OfFile(dest));
                         attachmentMapper.insert(att);
                         successCount++;
                     }
@@ -374,6 +377,28 @@ public class FileBackupService {
     private boolean isSystemFile(String name) {
         String n = name.toLowerCase();
         return n.equals("thumbs.db") || n.equals(".ds_store") || n.equals("desktop.ini");
+    }
+
+    /** SHA-256（小写 hex），口径同 SysAttachmentServiceImpl.sha256OfFile；失败返回 null，不阻断迁移。 */
+    private String sha256OfFile(Path path) {
+        if (path == null) return null;
+        try (InputStream in = Files.newInputStream(path)) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                md.update(buf, 0, n);
+            }
+            byte[] digest = md.digest();
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn("[文件迁移] 计算附件 SHA-256 失败: {} ({})", path, e.getMessage());
+            return null;
+        }
     }
 
     private String guessFileType(String fileName) {
