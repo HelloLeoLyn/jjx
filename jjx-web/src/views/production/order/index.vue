@@ -191,6 +191,13 @@
     <!-- P4-C：生产履历（只读时间线） -->
     <ProductionTraceDrawer v-model:visible="prodTraceVisible" :order-id="prodTraceOrderId" />
 
+    <!-- 工单换版执行区间（dev-20261011-013） -->
+    <WorkSpecUsageDialog
+      v-model:visible="workSpecUsageVisible"
+      :order="workSpecUsageOrder"
+      @success="handleWorkSpecUsageSuccess"
+    />
+
     <!-- 生产随工单详情抽屉（2026-08-11） -->
     <el-drawer v-model="workCardVisible" title="生产随工单" size="860px" destroy-on-close>
       <ProductionWorkCard v-if="workCardOrderId" :order-id="workCardOrderId" />
@@ -232,6 +239,7 @@ import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import ProductionTraceDrawer from './components/ProductionTraceDrawer.vue'
 import ProductionWorkCard from './components/ProductionWorkCard.vue'
 import PickPreviewDialog from './components/PickPreviewDialog.vue'
+import WorkSpecUsageDialog from './components/WorkSpecUsageDialog.vue'
 import { OutboundOrderStatusEnum } from '@/enums/inventory/OutboundEnum'
 import type {
   ProductionOrderVO,
@@ -791,6 +799,9 @@ const handleMoreAction = (order: ProductionOrderVO, command: string) => {
     case 'supplement-material':
       handleSupplementMaterial(order)
       break
+    case 'work-spec-usage':
+      handleWorkSpecUsage(order)
+      break
     default:
       ElMessage.warning('暂不支持该操作')
   }
@@ -875,6 +886,18 @@ const prodTraceOrderId = ref<number | null>(null)
 const handleProductionTrace = (order: any) => {
   prodTraceOrderId.value = order?.orderId ?? null
   prodTraceVisible.value = true
+}
+
+// 工单换版执行区间（dev-20261011-013）
+const workSpecUsageVisible = ref(false)
+const workSpecUsageOrder = ref<ProductionOrderVO | null>(null)
+const handleWorkSpecUsage = (order: ProductionOrderVO) => {
+  workSpecUsageOrder.value = order
+  workSpecUsageVisible.value = true
+}
+const handleWorkSpecUsageSuccess = () => {
+  workSpecUsageVisible.value = false
+  refreshData()
 }
 
 // 生产随工单详情抽屉（2026-08-11）

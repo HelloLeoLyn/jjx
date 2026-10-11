@@ -103,6 +103,13 @@
               用料计算
             </el-dropdown-item>
             <el-dropdown-item
+              command="work-spec-usage"
+              v-if="order.orderType === OrderType.WORK_ORDER && hasPermi(['production:order:edit'])"
+            >
+              <el-icon><Switch /></el-icon>
+              换版登记
+            </el-dropdown-item>
+            <el-dropdown-item
               command="submit-review"
               v-if="
                 order.orderStatus === ProductionOrderStatusEnum.DRAFT.value &&
@@ -203,6 +210,7 @@ import {
   Check,
   CloseBold,
   Tickets,
+  Switch,
 } from '@element-plus/icons-vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
