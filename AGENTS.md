@@ -44,7 +44,7 @@ Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.
 
 Quick rules:
 - **DB backup（2026-09-28 用户口径，覆盖此前的仓内/仓外/入库/索引要求）**: 只有三类需要备份——① 迁移/表结构变更 ② 清库 ③ 批量 UPDATE/DELETE 或脏数据订正；**任务登记、单行 status/remark、幂等配置/字典新增一律免备份**。备份放**仓库内** `jjx-docs/sql/backups/`（`JJX_BACKUP_DIR` 可覆盖），**由用户手工执行、只保留最新一份**（生成新份即删旧份，该目录内永远只有 1 份全库备份）。agent 与脚本**不再自动生成备份文件、不再维护 `backup-index.tsv`**，也不往仓库外放备份。全库导出**必须排除人事档案表 `hr_employee`**（仓库为公开，入库即永久留在 git 历史）。
-- Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql`（NN = `ops.schema.applied` 最大号与目录现存最大号的较大者 + 1；已应用的成批迁移在应用后移出仓库到 `~/jjx-backups/migrations-removed_YYYYMMDD-HHmm/`，故只看目录会撞号）。
+- Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql`（NN = `ops.schema.applied` 最大号与目录现存最大号的较大者 + 1）；已应用的迁移留在仓库内 `migrations/applied/`（由 `db-migrate.sh` 记账回查成功后同名归档），**是否执行过以目标库账本为准，不看文件是否在 `applied/`**。
 - Analysis / test-plan / design reports: `jjx-docs/history/<topic>-dev-YYYYMMDD-NNN.md`, register in `history/INDEX.md`, UTF-8 BOM.
   → gate it with `npm run check:docs` (run from `jjx-web/`); it is part of `npm run validate`. Existing debt lives in `scripts/docs-baseline.json` and may only shrink (`--write-baseline` to narrow).
 - 表级 guard 备份只在**批量/破坏性订正**前做（登记任务、改一行状态不做）：命名 `<表域>_<topic>_YYYYMMDD-HHmm.sql`、放 `jjx-docs/sql/backups/`、**只留最新一份**；不再维护 `backup-index.tsv`。
@@ -53,7 +53,7 @@ Quick rules:
 - NEVER `git reset --hard` / `git clean` / `git push -f`. Files under `jjx-docs/sql/` (except legacy `backups/`) and `jjx-docs/standards/` must not be deleted or moved. Legacy tracked backups may be removed only in an explicit cleanup task.
 - Scratch/temp files: `/tmp` or repo `.tmp/` (gitignored), clean same day.
 - **Git gates (hooks)**: run `bash scripts/install-hooks.sh` **once per clone** (sets `core.hooksPath=scripts/hooks`).
-  `pre-commit` blocks: deletions/moves under `jjx-docs/sql/` except `backups/`, deletions/moves under `jjx-docs/standards/`, and any expansion of `status-magic-baseline.json`. Backup cleanup is warned but allowed.
+  `pre-commit` blocks: deletions/moves under `jjx-docs/sql/` except `backups/` and the same-name/unchanged `migrations/NN_x.sql → migrations/applied/NN_x.sql` archive move, deletions/moves under `jjx-docs/standards/`, and any expansion of `status-magic-baseline.json`. Backup cleanup is warned but allowed.
   `commit-msg` requires the task code `dev-YYYYMMDD-NNN` and verifies it really exists in `sys_task` (read-only check; fail-open when the DB is unreachable). Disable per clone: `git config jjx.requireTaskCode false` / `jjx.verifyTaskCode false`.
   `pre-push` runs the table baseline gate (`scripts/check-model-baseline.sh`, CONVENTIONS §15) and blocks a red result; fail-open when the DB is unreachable.
   Single-use bypass: `git commit --no-verify` / `git push --no-verify` — only when you have confirmed the consequences.

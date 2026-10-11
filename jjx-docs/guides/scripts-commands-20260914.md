@@ -22,7 +22,10 @@
 | 重出初始化数据子集 | `bash scripts/db-export-init-subset.sh --task dev-YYYYMMDD-NNN` | 🟡 |
 | 立刻拍一份全库快照 | `bash scripts/db-backup.sh --tag before-xxx --task dev-YYYYMMDD-NNN` | 🟡 |
 | 看全库备份会落哪/会清谁 | `bash scripts/db-backup.sh --dry-run` | 🟢 |
-| 执行一个迁移 | `bash scripts/db-migrate.sh <NN_x.sql> --yes --task dev-YYYYMMDD-NNN` | 🔴 |
+| 执行一个迁移 | `bash scripts/db-migrate.sh <NN_x.sql> --yes --task dev-YYYYMMDD-NNN --backup <备份.sql>` | 🔴 |
+| 批量补齐待执行迁移 | `bash scripts/db-migrate.sh --all --yes --task dev-YYYYMMDD-NNN --backup <备份.sql>` | 🔴 |
+| 补记账/归档（不重跑） | `bash scripts/db-migrate.sh --record <NN> --yes --task dev-YYYYMMDD-NNN` | 🟡 |
+| 迁移工具回归测试 | `python3 scripts/test-db-migrate.py` | 🟢 |
 | 清理测试数据 | `bash scripts/db-clean-test-data.sh --execute` | 🔴 |
 | 库存三本账对账 | `bash scripts/check-stock-summary.sh` | 🟢 |
 | 入库单/检验批+数量守恒巡检 | `bash scripts/check-inbound-lot-integrity.sh` | 🟢 |
@@ -43,18 +46,28 @@
 - 两类常见 ⚠：① 工作区有未提交改动（只是提醒你提交时别混别人的 WIP）② `jjx_ro` 不可用（只影响 commit-msg 的任务码真实性校验）。
 - 备注（2026-09-14 修复，任务 dev-20260914-012）：曾误报「库中未记录已应用版本」——原因是抓的字段名和 `db-migrate.sh --status` 实际输出（`已应用: 66,67,…`）对不上；现已按"取集合最大值 vs 目录最大号"比较，"首次登记前"才提示未记录，且只算 ⚠。
 
-## 2. scripts/db-migrate.sh —— 迁移唯一执行通道
+## 2. scripts/db-migrate.sh —— 迁移唯一执行通道（预览 → 备份校验 → 逐条执行/记账 → 同名归档）
 
-- 用途：执行迁移的**唯一**入口（内部固定顺序：**校验手工备份** → 执行 → 写 `sys_config.ops.schema.*`；无手工备份或执行失败都不写版本）。
-- 危险等级：🔴 改数据库（执行迁移）／🟡 只写版本记录（`--record`）／🟢 只读（`--status`）。
-- 前置：迁移文件放在 `jjx-docs/sql/migrations/`（`NN_<描述>.sql`）；**已有手工全库备份**（默认**仓库内** `jjx-docs/sql/backups/`，或 `--backup`/`JJX_MIGRATE_BACKUP` 指定）——2026-09-28 起脚本**不再自动备份**，只校验手工备份存在才放行；备份必须排除 `hr_employee`。要动库必须带真实任务码。
+- 用途：迁移的**唯一**入口。默认只预览；执行时按已应用集合补齐待办，**逐条执行、记账回查成功后把文件移入 `jjx-docs/sql/migrations/applied/`**。
+- 危险等级：🟢 默认/`--status`（只读）／🔴 `--all`/单文件/`--retry`（执行 SQL）／🟡 `--record`（补记账+归档）。
+- 前置：迁移文件放 `jjx-docs/sql/migrations/`（`NN_<描述>.sql`，含 `applied/`）；**已有手工全库备份**（默认仓库内 `jjx-docs/sql/backups/`，或 `--backup`/`JJX_MIGRATE_BACKUP` 指定）——2026-09-28 起脚本**不再自动备份**，只校验手工备份存在才放行；备份必须排除 `hr_employee`。写操作必须带真实任务码；需要 `bash`/`python3`/`mysql`/`flock`。
 - 命令：
-  - 查版本：`bash scripts/db-migrate.sh --status`
-  - 执行：`bash scripts/db-migrate.sh <NN_x.sql> --yes --task dev-YYYYMMDD-NNN`
-  - 接管已有库只登记版本：`bash scripts/db-migrate.sh --record <NN> --yes`
-- 输出怎么读：四段 1/4 校验手工备份（给字节数/表数/md5）→ 2/4 执行迁移 → 3/4 记录已应用版本 → 4/4 建表闸复核（提示）；中途报错即中止且不记版本。
-- 退出码：0=成功，非 0=中止（未执行或未记版本）。
-- 注意：**不要直接 `mysql < 文件`** 绕过本脚本（等于没有备份、也没有版本记录）。
+  - 查待执行/待归档：`bash scripts/db-migrate.sh --status`
+  - 批量执行待办：`bash scripts/db-migrate.sh --all --yes --task dev-YYYYMMDD-NNN --backup <备份.sql>`
+  - 执行单个：`bash scripts/db-migrate.sh <NN_x.sql> --yes --task dev-... --backup <备份.sql>`
+  - 人工核实已生效后补记账/归档（不重跑 SQL）：`bash scripts/db-migrate.sh --record <NN> --yes --task dev-...`
+  - 失败/中断后显式重试：`bash scripts/db-migrate.sh --retry <NN> --yes --task dev-... --backup <备份.sql>`
+- 输出怎么读：先列「待执行 / 已记账待归档 / 恢复记录」，再逐条执行；结尾「执行摘要」给成功 / 已记账未重跑 / 失败待恢复 / 未执行。
+- 退出码：0=成功，非 0=中止（**失败即停，SQL 可能部分生效，不自动回滚**）。
+- 注意：**不要直接 `mysql < 文件`**；失败/中断禁止自动重跑——用 `--record`（已生效）或 `--retry`（确需重试）。断点记录在仓库 `.tmp/db-migrate/`（按目标库隔离），未恢复前别清。
+
+## 2b. scripts/test-db-migrate.py —— 迁移工具隔离回归（2026-10-11，任务 dev-20261011-014）
+
+- 用途：`db-migrate.sh` + `pre-commit` 归档闸门的隔离回归（**不连库、不执行正式 SQL、不启服务**；用 mock mysql + 临时目录）。
+- 危险等级：🟢 只写临时目录。
+- 前置：`python3`/`bash`/`git`/`flock`。
+- 命令：`python3 scripts/test-db-migrate.py`（20 条用例，覆盖预览无副作用、按号排序且补低号遗漏、SQL/记账/读取失败即停、只补归档续跑、另一库扫归档、重复号拒绝、备份/任务校验、缺账本不从最大号推断、连接/账本异常 fail-closed、指纹变更拒绝、同库锁、归档门禁同名放行/改内容拒绝）。
+- 退出码：0=全通过，非 0=有用例失败。
 
 ## 3. scripts/db-export-init-subset.sh —— 初始化数据子集（滚动重出）
 

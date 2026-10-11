@@ -10,33 +10,41 @@ cd "$(git rev-parse --show-toplevel)" 2>/dev/null || exit 1
 fail=0
 say() { printf '%s\n' "$*"; }
 
-# ── 闸门 1：迁移/正式 SQL/规范禁止删除；历史备份清理仅警告 ──────────────
-deleted_all=$(git diff --cached --name-only --diff-filter=D)
-deleted=$(printf '%s\n' "$deleted_all" | grep -E '^(jjx-docs/sql/|jjx-docs/standards/)' | grep -v '^jjx-docs/sql/backups/' || true)
-backup_deleted=$(printf '%s\n' "$deleted_all" | grep -E '^jjx-docs/sql/backups/' || true)
-moved=$(git diff --cached --name-status --diff-filter=R | awk '
-  function protected(p) {
-    return p ~ /^jjx-docs\/standards\// || (p ~ /^jjx-docs\/sql\// && p !~ /^jjx-docs\/sql\/backups\//)
-  }
-  { if (protected($2) || protected($3)) print }
-')
+# ── 闸门 1：正式SQL/规范保护；只放行同名、原内容的applied归档 ────────
+if ! python3 - <<'PYHOOK'
+import pathlib, re, subprocess, sys
 
-if [ -n "$backup_deleted" ]; then
-  count=$(printf '%s\n' "$backup_deleted" | grep -c . || true)
-  say ""
-  say "⚠ 提醒：本次将清理 jjx-docs/sql/backups/ 下 ${count} 个历史备份"
-  say "  要求：用户已确认，且使用独立任务码与独立提交（CONVENTIONS §2/§5）"
-fi
-
-if [ -n "$deleted" ] || [ -n "$moved" ]; then
-  say ""
-  say "✘ 拦截：禁止删除/移动迁移、SQL 正式资产或规范文件"
-  say "  保护范围：jjx-docs/sql/（backups/ 除外）、jjx-docs/standards/"
-  while IFS= read -r f; do [ -n "$f" ] && say "  删除: $f"; done <<< "$deleted"
-  while IFS= read -r f; do [ -n "$f" ] && say "  移动: $f"; done <<< "$moved"
-  say "  恢复办法：git ls-files -d | xargs git restore"
-  fail=1
-fi
+def git(*args):
+    return subprocess.check_output(['git', *args])
+raw=git('diff','--cached','--no-renames','--name-status','-z').split(b'\0')
+changes={}
+for i in range(0,len(raw)-1,2):
+    changes[raw[i+1].decode()] = raw[i].decode()
+failures=[]
+for source,status in changes.items():
+    if status!='D': continue
+    if source.startswith('jjx-docs/sql/backups/'):
+        print(f'⚠ 历史备份清理须用户授权及独立任务：{source}')
+        continue
+    if not source.startswith(('jjx-docs/sql/','jjx-docs/standards/')): continue
+    name=pathlib.PurePosixPath(source).name
+    target='jjx-docs/sql/migrations/applied/'+name
+    allowed=(pathlib.PurePosixPath(source).parent.as_posix()=='jjx-docs/sql/migrations'
+             and re.fullmatch(r'[0-9]+_[A-Za-z0-9][A-Za-z0-9._-]*\.sql',name)
+             and changes.get(target)=='A')
+    if allowed:
+        # 用blob相等判定，不依赖Git相似度或rename配对猜测。
+        allowed=git('rev-parse','HEAD:'+source).strip()==git('rev-parse',':'+target).strip()
+    if allowed:
+        print(f'✓ 同名内容不变的迁移归档：{source} → {target}')
+    else:
+        failures.append(source)
+if failures:
+    print('✘ 禁止删除/移动正式SQL或规范；唯一新增例外为 migrations/NN_x.sql → migrations/applied/NN_x.sql，内容必须不变')
+    for p in failures: print('  '+p)
+    sys.exit(1)
+PYHOOK
+then fail=1; fi
 
 # ── 闸门 2：状态魔法值基线只许缩小（AGENTS.md：不许新增违规）──────────────
 BASE='jjx-web/scripts/status-magic-baseline.json'

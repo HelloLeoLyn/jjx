@@ -11,7 +11,7 @@
 |---|---|---|
 | DB 全量备份 | **仓库内** `jjx-docs/sql/backups/`（`JJX_BACKUP_DIR` 可覆盖；**目录内只留最新一份**） | 只有三类必做（§2）：迁移/表结构变更、清库、批量 UPDATE/DELETE 或脏数据订正；**由用户手工做**，agent/脚本不再自动生成 |
 | DB 表级/行级 guard 备份 | 同上（仓库内） | 仅**批量/破坏性订正**前做；登记任务/改一行状态**免做**；不写 `backup-index.tsv` |
-| DB 迁移/上线脚本 | `jjx-docs/sql/migrations/`（仓库内只留未应用/最新；已应用的成批移出仓库，见 §3） | 序号 `NN_<描述>.sql`；NN 取「applied 最大号与目录最大号的较大者 +1」；幂等优先 |
+| DB 迁移/上线脚本 | `jjx-docs/sql/migrations/`（待执行/最新）+ `jjx-docs/sql/migrations/applied/`（已执行，留仓库，见 §3） | 序号 `NN_<描述>.sql`；NN 取「applied 最大号与目录最大号的较大者 +1」；幂等优先 |
 | 当时怎么做的（分析/方案/测试计划/报告/实施记录） | `jjx-docs/history/` | `<主题>[-dev-YYYYMMDD-NNN].md`；登记 `history/INDEX.md`；UTF-8 **带 BOM**。**默认按历史快照看待**，不保证反映当前实现 |
 | **现行真相（各模块当前状态）** | `jjx-docs/modules/<模块>.md` | 一个模块只允许一篇，不带日期；命名 `<模块>.md`；会过期、需定期复核；历史指针留在文末 |
 | 手册 / 运维 / 排障（怎么干一件事） | `jjx-docs/guides/` | `<主题>-YYYYMMDD.md`；脚本命令手册也放这里 |
@@ -79,10 +79,10 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 ## 3. 迁移/上线 SQL 规范
 
 - 位置：`jjx-docs/sql/migrations/`（仓库内**只保留未应用/最新**的迁移，见下条瘦身口径）
-- **仓库瘦身口径（2026-09-22 用户指令，dev-20260922-005 落地）**：已应用的迁移在应用后**成批移出仓库**到 `~/jjx-backups/migrations-removed_YYYYMMDD-HHmm/`（非硬删、可捞回）；移出属“`jjx-docs/sql/` 下移动”，会被 pre-commit 闸门拦，须按 §5 用 `--no-verify` 并在提交信息/任务里留痕。
-  已知代价：**新环境建库不再能靠迁移链**，改走 `jjx-docs/sql/init/`（初始化数据出包）或全库 dump 恢复。
+- **归档口径（2026-10-11 用户指令，dev-20261011-014 落地；覆盖 2026-09-22「成批移出仓库」旧口径）**：已应用的迁移**留在仓库内**，由 `db-migrate.sh` 在记账回查成功后按**原文件名**移入 `jjx-docs/sql/migrations/applied/`；**是否执行过以目标库 `ops.schema.applied` 为准，不看文件是否在 `applied/`**（换到另一套数据库时，已归档文件仍按该库账本判定）。归档移动属“`jjx-docs/sql/` 下移动”，pre-commit 只放行「同名 + 内容不变」的 `migrations/NN_x.sql → migrations/applied/NN_x.sql`（见 §5），其余仍拦。
+  已知代价：已归档文件仍在仓库（可作链参考）；新环境建库仍推荐 `jjx-docs/sql/init/`（初始化数据出包）或全库 dump 恢复。
 - 命名：`NN_<描述>.sql`；NN = **max(`sys_config.ops.schema.applied` 最大号, 目录现存最大号) + 1**（不能只看目录——已应用的文件在仓库外，只看目录会撞号；实例：194 已应用但文件不在仓库，故下一个号取 195）；同批多阶段可 `NN_a_<desc>.sql / NN_b_<desc>.sql`（2026-09-07 决议 C1）
-- 台账：`sys_config.ops.schema.applied`（`db-migrate.sh` 自动维护，最大号同步到 `ops.schema.version`）+ 移出目录 `~/jjx-backups/migrations-removed_*` 清单；待执行清单用 `bash scripts/db-migrate.sh --status`
+- 台账：`sys_config.ops.schema.applied`（`db-migrate.sh` 自动维护，最大号同步到 `ops.schema.version`）+ 每文件指纹 `ops.schema.file.<NN>`；已应用文件留 `migrations/applied/`（真源仍是库账本）；待执行/待归档清单用 `bash scripts/db-migrate.sh --status`
 - 存量平铺 dated 文件（`jjx-docs/sql/2026*.sql`，含 20260906_unified_iqc_*）为历史遗留：不迁移、不重复；新迁移一律进 migrations/
 - 内容要求：
   - 幂等优先（`ADD COLUMN IF NOT EXISTS` 不可用时，先查 information_schema 或 `WHERE NOT EXISTS` 守卫）
@@ -94,11 +94,11 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 - **新表必须登记清理归属（2026-09-21 立，dev-20260921-024）**：任何新建业务表（`CREATE TABLE`）必须同步在 `jjx-docs/sql/00_clean_test_data.sql` 二选一登记 —— ① 加进对应模块段的 `TRUNCATE`；② 明确列入第 12 节「保留」清单，并在 `scripts/db-clean-test-data.sh` 的 `RETAINED_TABLES` 白名单里同步。
   门槛：`bash scripts/db-clean-test-data.sh`（只读体检）新增**覆盖率校验**，库表 − 清理清单 − 保留白名单 ≠ ∅ 直接中止清理。
   背景：`inventory_iqc_batch`（迁移 136 新建）未登记 → 清理时批次行残留成孤儿，明细 id 复用后又错挂到新单（2026-09-21 不合格品处置页「批次谱系」出现历史脏批次）。
-- **唯一执行通道**：`bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN`
-  按风险分级备份（§2，2026-09-22 改）：高风险迁移 → 全库快照；低风险 → 只备本次涉及的表/全库结构快照；任何情况不许零备份。内部固定顺序：前置检查 → 分级备份 → 执行 → 写 `sys_config.ops.schema.applied` → 清理过期备份 → 输出摘要。
+- **唯一执行通道**：`bash scripts/db-migrate.sh`（默认只预览；执行加 `--yes --task dev-YYYYMMDD-NNN --backup <手工备份.sql>`）。内部固定顺序：校验手工备份（脚本**不自动备份**，2026-09-28 起）→ 逐条执行 → 记账并回查 → 移入 `migrations/applied/`；失败即停、SQL 可能部分生效、**不自动回滚**；失败/中断用 `--record`（人工核实已生效后补记账）/ `--retry`（显式重试）恢复，**禁止自动重跑**；写模式取同库 + 同目录两把锁。
   **不要直接 `mysql < file`**——应通过入口执行并保留版本记录。
-  - 查看已应用版本 / 待执行迁移清单：`bash scripts/db-migrate.sh --status`
-  - 接管已有库、登记当前版本：`bash scripts/db-migrate.sh --record <NN> --yes`
+  - 查看待执行 / 待归档：`bash scripts/db-migrate.sh --status`
+  - 批量执行待办：`bash scripts/db-migrate.sh --all --yes --task dev-... --backup <备份.sql>`
+  - 人工核实已生效后补记账 / 归档：`bash scripts/db-migrate.sh --record <NN> --yes --task dev-...`
 
 ---
 
@@ -133,7 +133,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 - **永久保护**：禁止删除/移动 `jjx-docs/sql/`（历史 `backups/` 除外）和 `jjx-docs/standards/`。`jjx-docs/sql/backups/` 存量文件可在用户确认后，以独立清理任务和独立提交删除；看到他人删除状态仍先问，不自动恢复或提交。
 - 推送：push 前先 fetch 确认无冲突；GitHub 走 `ssh://git@github.com/HelloLeoLyn/jjx.git dev`（本机 https 被全局改写，勿用默认 push）
 - **闸门（git hooks，每个 clone 装一次）**：`bash scripts/install-hooks.sh` → 设置 `core.hooksPath=scripts/hooks`。已启用三个：
-  - `pre-commit` 拦：① `jjx-docs/sql/`（`backups/` 除外）和 `jjx-docs/standards/` 下的删除/移出；`backups/` 删除仅警告并允许 ② `status-magic-baseline.json` 新增条目或数值放大
+  - `pre-commit` 拦：① `jjx-docs/sql/`（`backups/` 除外）和 `jjx-docs/standards/` 下的删除/移出（**唯一新增例外**：`migrations/NN_x.sql → migrations/applied/NN_x.sql` 同名且内容不变的归档移动）；`backups/` 删除仅警告并允许 ② `status-magic-baseline.json` 新增条目或数值放大
   - `commit-msg` 拦：① 必须带任务码 `dev-YYYYMMDD-NNN`（关：`git config jjx.requireTaskCode false`）② 该码必须**真实存在于 sys_task**（用只读账号校验；关：`git config jjx.verifyTaskCode false`；库连不上时只提醒、不阻塞提交）
   - `pre-push` 拦：建表闸（`scripts/check-model-baseline.sh`，表数基线 §15）红则拦；库/只读账号不可达时只提醒、不阻塞（跳过：`git push --no-verify`）
   - 单次跳过：`git commit --no-verify`（确认过后果再用）；卸载：`git config --unset core.hooksPath`
@@ -215,7 +215,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 | 数据库 `jjx_erp_db` 写（迁移 / 表结构变更 / 批量 DML） | 仅本机执行者，且必须走 `scripts/db-migrate.sh` | 入口脚本强制"**校验手工备份存在** → 再执行 → 写版本号"；无备份执行不了（2026-09-28：脚本不再代做备份；备份由用户手工放在 `jjx-docs/sql/backups/`，只留最新一份） | 半硬（root 仍可直连绕过） |
 | 数据库 `jjx_erp_db` 写（低风险配置/字典新增，范围见 §2 低风险清单） | 用户点头后可由执行者直连 `mysql` 执行 | 脚本管不到：不做备份、不写 `ops.schema.version`，只留执行记录 → 事后人审 | 审计型 |
 | 数据库**只读查看** | 任何人 → 用只读账号 `jjx_ro` | MySQL 授权（仅 SELECT；写操作返回 1142） | **硬** |
-| `jjx-docs/sql/**`（`backups/` 除外）、`jjx-docs/standards/**` 的删除/移出 | 无人（需用户批准） | `pre-commit` 拦截 | **硬** |
+| `jjx-docs/sql/**`（`backups/` 除外）、`jjx-docs/standards/**` 的删除/移出（`migrations/applied/` 同名、内容不变的归档移动除外） | 无人（需用户批准） | `pre-commit` 拦截 | **硬** |
 | `jjx-docs/sql/backups/**` 历史存量清理 | 用户确认后，独立任务与独立提交 | `pre-commit` 警告并放行 | 审计型 |
 | `status-magic-baseline.json` 新增/放大 | 无人 | `pre-commit` 拦截（只许缩小） | **硬** |
 | 新表（建表闸 §15） | 须走 §15.3 五步：提案 → 拍板 → 登记 `approvedNewTables` → 同步基线 → `db-migrate` | `pre-push` 拦截 + `npm run check:model-baseline`（并入 `validate`）+ `db-migrate.sh` 执行后复核（仅提示） | 半硬（可 `--no-verify` 绕过） |
@@ -248,7 +248,7 @@ bash scripts/agent-preflight.sh
 
 1. **任务即锁**：动手前在 `sys_task` 登记任务（`dev-YYYYMMDD-NNN`），并在任务描述里写**白名单文件**；同一文件同一时间只允许一个任务在改——白名单外的文件只读。
 2. **提交纪律**：`git commit` 前先看 `git diff --cached --stat`，确认暂存区**只含本任务文件**；同一文件里混着别的任务/会话改动时，用 `git add -p` 精确挑 hunk；发现别人 staged 的内容先 `git restore --staged <file>` 再提交。
-3. **禁改清单**：`AGENTS.md`（写入需用户明确批准）、`jjx-docs/sql/`、`jjx-docs/standards/` 下的文件**禁删禁移**（pre-commit 拦）；别人的 `M/D/??` 一律**不还原**（还原前必须问用户）。
+3. **禁改清单**：`AGENTS.md`（写入需用户明确批准）、`jjx-docs/sql/`、`jjx-docs/standards/` 下的文件**禁删禁移**（pre-commit 拦；**例外**：`db-migrate.sh` 的 `migrations/NN_x.sql → migrations/applied/NN_x.sql` 同名、内容不变归档）；别人的 `M/D/??` 一律**不还原**（还原前必须问用户）。
 4. **归属只认基线**：任务开始时把 `git status --short` 存档为基线 —— 基线里已有的 `M/D/??` 是别人的，绝不动；开始后才出现的才是越界嫌疑，先取证（时间戳/进程/提交记录）再报告用户。
 
 配套：开工先跑 `bash scripts/agent-preflight.sh`；冲突仲裁口径＝**谁先提交谁算**，后来者 rebase 或让；整体路线见 `jjx-docs/guides/master-plan-20260914.md` 第 5 节。
