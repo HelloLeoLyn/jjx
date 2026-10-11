@@ -344,6 +344,8 @@ export interface ProductVo {
   productName: string
   categoryId?: number
   categoryName?: string
+  /** 客户名称（产品关联客户冗余；dev-20261010-032 补：旧代码读错 key） */
+  customerName?: string
   productType: string
   productStatus: number
   currentBomId?: number
