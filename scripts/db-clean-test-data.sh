@@ -344,6 +344,8 @@ check_retained_product_refs() {
   refs="$("${MYSQL[@]}" "$DB_NAME" -e "SELECT c.table_name,c.column_name FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name WHERE c.table_schema='$DB_NAME' AND t.table_type='BASE TABLE' AND c.column_name IN ('product_id','product_code') ORDER BY c.table_name,c.column_name;")" || die "读取产品引用结构失败，未执行清理"
   while IFS=$'\t' read -r t column; do
     [ -n "$t" ] || continue
+    # Windows mysql.exe emits CRLF; read -r leaves the trailing CR on column.
+    column="${column%$'\r'}"
     [[ "$t" =~ ^[a-zA-Z0-9_]+$ && "$column" =~ ^[a-zA-Z0-9_]+$ ]] || die "产品引用字段名异常"
     clear=0
     for x in "${TRUNCATE_TABLES[@]}"; do
