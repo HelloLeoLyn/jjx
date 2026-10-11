@@ -27,8 +27,7 @@ export const PRODUCT_SPEC_TABS: ProductSpecTab[] = [
     label: '领料单',
     notIncluded: '未纳入本次发布：领料单为执行记录，不随发布版本快照。',
   },
-  { name: 'spec', label: '产品作业规范' },
-  { name: 'print', label: '印刷规范' },
+  { name: 'spec', label: '作业规范' },
   {
     name: 'ink',
     label: '油墨调配记录表',

@@ -102,7 +102,7 @@
               </el-table>
             </template>
 
-            <!-- ⑤ 产品作业规范 -->
+            <!-- ⑤ 作业规范：产品作业规范 + 印刷规范 -->
             <template v-else-if="tab.name === 'spec'">
               <ProductWorkSpecPanel
                 v-if="!selectedVersionId && productId && activeTab === 'spec'"
@@ -158,12 +158,9 @@
                   </el-table-column>
                 </el-table>
               </div>
-            </template>
-
-            <!-- ⑥ 印刷规范 -->
-            <template v-else-if="tab.name === 'print'">
+              <el-divider content-position="left">印刷规范</el-divider>
               <ProductPrintSpecPanel
-                v-if="productId && activeTab === 'print'"
+                v-if="productId && activeTab === 'spec'"
                 :key="`${productId}-print`"
                 :product-id="productId"
                 @busy="printSpecBusy = $event"
