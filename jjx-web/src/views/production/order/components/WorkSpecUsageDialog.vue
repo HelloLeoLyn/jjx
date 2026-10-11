@@ -1,21 +1,21 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="换版登记（工单执行区间）"
+    title="换版记录"
     width="820px"
     append-to-body
     destroy-on-close
     @open="handleOpen"
   >
     <el-alert type="info" :closable="false" style="margin-bottom: 12px">
-      换版须绑定「同产品且已发布」的作业规范版本；登记后工单当前执行版本更新为新版本，历史段落在下方区间表中可追溯。
+      请选择同产品且已发布的作业规范版本；登记后工单的作业规范版本更新为新版本，历史变更可在下方换版记录中查看。
     </el-alert>
 
     <el-form :model="form" label-width="120px">
       <el-form-item label="工单">
         <span>{{ order?.orderNo }}（{{ order?.productName }} / {{ order?.productCode }}）</span>
       </el-form-item>
-      <el-form-item label="新版本" required>
+      <el-form-item label="作业规范版本" required>
         <el-select
           v-model="form.specVersionId"
           placeholder="选择已发布的作业规范版本"
@@ -75,9 +75,9 @@
       </el-form-item>
     </el-form>
 
-    <div class="usage-title">执行区间</div>
+    <div class="usage-title">换版记录</div>
     <el-table :data="usages" border size="small" v-loading="usagesLoading">
-      <el-table-column label="版本" min-width="120">
+      <el-table-column label="作业规范版本" min-width="120">
         <template #default="{ row }">
           {{ row.versionNo || `#${row.specVersionId}` }}
         </template>
@@ -238,7 +238,7 @@ function handleOpen() {
 async function handleSubmit() {
   if (!props.order?.orderId) return
   if (!form.specVersionId) {
-    ElMessage.warning('请选择要绑定的作业规范版本')
+    ElMessage.warning('请选择作业规范版本')
     return
   }
   if (form.qtyFrom != null && form.qtyTo != null && form.qtyFrom > form.qtyTo) {
@@ -270,8 +270,8 @@ async function handleSubmit() {
 
 async function handleDelete(row: WorkSpecUsageVO) {
   const confirmed = await ElMessageBox.confirm(
-    `确认删除版本 ${row.versionNo || '#' + row.specVersionId} 的执行区间记录？`,
-    '删除执行区间',
+    `确认删除版本 ${row.versionNo || '#' + row.specVersionId} 的换版记录？`,
+    '删除换版记录',
     { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
   ).catch(() => false)
   if (!confirmed) return
@@ -281,7 +281,7 @@ async function handleDelete(row: WorkSpecUsageVO) {
     await loadUsages()
     emit('success')
   } catch (error) {
-    console.error('删除执行区间失败:', error)
+    console.error('删除换版记录失败:', error)
   }
 }
 </script>

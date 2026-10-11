@@ -205,8 +205,8 @@
               min-width="150"
               show-overflow-tooltip
             />
-      <el-table-column label="采用版本" width="165">
-        <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" /></template>
+      <el-table-column label="作业规范版本" width="165">
+        <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" empty-text="未指定" /></template>
       </el-table-column>
             <el-table-column label="产品编码" prop="productCode" width="120" />
             <el-table-column

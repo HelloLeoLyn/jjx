@@ -41,8 +41,8 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="绑定版本" width="165">
-        <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" /></template>
+      <el-table-column label="作业规范版本" width="165">
+        <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" empty-text="未指定" /></template>
       </el-table-column>
       <el-table-column prop="quantity" label="数量" width="120">
         <template #default="{ row }">

@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 
-/** 工单换版执行区间（dev-20261011-013） */
+/** 工单换版记录（dev-20261011-013） */
 export interface WorkSpecUsageVO {
   id: number
   workOrderId: number

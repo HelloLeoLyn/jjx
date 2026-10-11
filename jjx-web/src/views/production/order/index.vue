@@ -191,7 +191,7 @@
     <!-- P4-C：生产履历（只读时间线） -->
     <ProductionTraceDrawer v-model:visible="prodTraceVisible" :order-id="prodTraceOrderId" />
 
-    <!-- 工单换版执行区间（dev-20261011-013） -->
+    <!-- 工单换版记录（dev-20261011-013） -->
     <WorkSpecUsageDialog
       v-model:visible="workSpecUsageVisible"
       :order="workSpecUsageOrder"
@@ -888,7 +888,7 @@ const handleProductionTrace = (order: any) => {
   prodTraceVisible.value = true
 }
 
-// 工单换版执行区间（dev-20261011-013）
+// 工单换版记录（dev-20261011-013）
 const workSpecUsageVisible = ref(false)
 const workSpecUsageOrder = ref<ProductionOrderVO | null>(null)
 const handleWorkSpecUsage = (order: ProductionOrderVO) => {
