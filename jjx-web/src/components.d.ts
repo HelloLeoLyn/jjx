@@ -127,6 +127,7 @@ declare module 'vue' {
     ProductFormDialog: typeof import('./components/product/ProductFormDialog.vue')['default']
     ProductPicker: typeof import('./components/Selector/ProductPicker.vue')['default']
     ProductSelector: typeof import('./components/Selector/ProductSelector.vue')['default']
+    ProductSpecDrawer: typeof import('./components/product/ProductSpecDrawer.vue')['default']
     ProductSpecForm: typeof import('./components/product/ProductSpecForm.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
