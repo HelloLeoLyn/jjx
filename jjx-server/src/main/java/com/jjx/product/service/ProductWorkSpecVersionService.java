@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.jjx.common.enums.YesNoEnum;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.utils.Sha256Utils;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.entity.ProductWorkSpecItem;
 import com.jjx.product.domain.entity.ProductWorkSpecVersion;
@@ -17,16 +19,15 @@ import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HexFormat;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +50,10 @@ public class ProductWorkSpecVersionService {
     private final ProductWorkSpecItemMapper itemMapper;
     private final ObjectMapper json;
 
+    /** 上传根目录（补算历史附件 sha256 用；dev-20261011-034）。 */
+    @Value("${file.upload.path:./upload}")
+    private String uploadBasePath;
+
     /** 凹凸差异字段：内部键 → 中文名（dev-20261011-023）。 */
     private static final Object[][] EMBOSS_DIFF_FIELDS = {
             {"setupHeight", "调机高度"}, {"requiredHeight", "要求高度"},
@@ -56,9 +61,17 @@ public class ProductWorkSpecVersionService {
             {"pressTime", "下压时间"}, {"holdTime", "保持时间"},
     };
 
-    /** 发布时「未纳入」的子页签（固定提示，dev-20261011-023）。 */
+    /** 工程图种（与前端 productFileCategories.ENGINEERING_DRAWING_CATEGORIES 对齐；dev-20261011-034）。 */
+    private static final List<String> DRAWING_CATEGORIES = List.of(
+            "结构图", "外形尺寸图", "面板图", "线路图", "组装图", "包装图",
+            "印刷指导图", "确认图", "菲林", "模具", "刀模参数图", "其他工程图", "产品图集");
+
+    /** 样品资料类别（dev-20261011-034）。 */
+    private static final List<String> SAMPLE_FILE_CATEGORIES = List.of("样品照片", "客户确认样品");
+
+    /** 发布时「未纳入」的子页签（固定提示；dev-20261011-034：工程图集/样品资料已纳入，去掉「样品」）。 */
     private static final List<String> NOT_INCLUDED = List.of(
-            "客供资料", "样品", "领料单", "油墨", "实际检测记录");
+            "客供资料", "领料单", "油墨", "实际检测记录");
 
     /** 发布新版本（产品内串行，避免并发产生重复版本号/混合快照）。 */
     @Transactional(rollbackFor = Exception.class)
@@ -99,18 +112,26 @@ public class ProductWorkSpecVersionService {
             items.add(newItem(WorkSpecResourceType.ROUTING.getCode(), product.getCurrentRouteId(), null, null,
                     ref.toString(), null, 2));
         }
-        // 结构图/工程图：引用附件 + 文件哈希（受控附件不可删）
+        // 结构图 + 工程图集 + 样品资料：逐条引用附件（记 attachmentId + 类别/图种 + 版本 + sha256）
+        // dev-20261011-034：由「单张结构图」扩为「多张 DRAWING 条目」，去重后按 id 升序。
+        int drawingOrder = 3;
+        Set<Long> usedDrawingIds = new HashSet<>();
         Long structureFileId = structureFileId(raw);
         if (structureFileId != null) {
-            SysAttachment att = attachmentMapper.selectById(structureFileId);
-            ObjectNode ref = json.createObjectNode();
-            ref.put("attachmentId", structureFileId);
-            if (att != null) {
-                if (att.getFileName() != null) ref.put("fileName", att.getFileName());
-                if (att.getVersion() != null) ref.put("version", att.getVersion());
+            SysAttachment structure = attachmentMapper.selectById(structureFileId);
+            if (structure != null && usedDrawingIds.add(structure.getId())) {
+                items.add(drawingItem(structure, "结构图", drawingOrder++));
             }
-            items.add(newItem(WorkSpecResourceType.DRAWING.getCode(), structureFileId, null, null,
-                    ref.toString(), att != null ? att.getSha256() : null, 3));
+        }
+        for (SysAttachment att : drawingAttachments(productId)) {
+            if (usedDrawingIds.add(att.getId())) {
+                items.add(drawingItem(att, att.getCategory(), drawingOrder++));
+            }
+        }
+        for (SysAttachment att : attachmentsByCategory(productId, SAMPLE_FILE_CATEGORIES)) {
+            if (usedDrawingIds.add(att.getId())) {
+                items.add(drawingItem(att, att.getCategory(), drawingOrder++));
+            }
         }
 
         String manifest = items.stream()
@@ -248,6 +269,7 @@ public class ProductWorkSpecVersionService {
         }
         List<Map<String, Object>> fields = compareSnapshots(
                 parseSafe(specSnapshot(a.getId())), parseSafe(specSnapshot(b.getId())));
+        addDrawingSetDiff(fields, a, b);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("productId", a.getProductId());
@@ -257,6 +279,31 @@ public class ProductWorkSpecVersionService {
         result.put("versionB", versionBrief(b));
         result.put("notIncluded", NOT_INCLUDED);
         return result;
+    }
+
+    /** 追加「工程图 / 样品资料」集合差异（按 图种|附件|哈希 归一比较；dev-20261011-034，支持多条目）。 */
+    private void addDrawingSetDiff(List<Map<String, Object>> fields, ProductWorkSpecVersion a, ProductWorkSpecVersion b) {
+        String sa = drawingSignature(a.getId());
+        String sb = drawingSignature(b.getId());
+        if (sa.equals(sb)) {
+            return;
+        }
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("label", "工程图 / 样品资料");
+        row.put("before", sa);
+        row.put("after", sb);
+        fields.add(row);
+    }
+
+    /** 某版本的 DRAWING 条目签名（图种|附件ID|哈希，排序后换行拼接）。 */
+    private String drawingSignature(Long versionId) {
+        return itemMapper.selectByVersionId(versionId).stream()
+                .filter(i -> WorkSpecResourceType.DRAWING.getCode().equals(i.getResourceType()))
+                .map(i -> (i.getOperationRef() == null ? "" : i.getOperationRef()) + "|"
+                        + (i.getSourceId() == null ? "" : i.getSourceId()) + "|"
+                        + (i.getContentHash() == null ? "" : i.getContentHash()))
+                .sorted()
+                .collect(Collectors.joining("\n"));
     }
 
     private Map<String, Object> versionBrief(ProductWorkSpecVersion version) {
@@ -397,12 +444,59 @@ public class ProductWorkSpecVersionService {
     }
 
     private String sha256(String text) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(md.digest((text == null ? "" : text).getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception e) {
+        return Sha256Utils.ofText(text);
+    }
+
+    /** 工程图集：产品文件库中类别∈工程图种，且现行(is_current)或已下发(released)的图纸附件。 */
+    private List<SysAttachment> drawingAttachments(Long productId) {
+        return attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
+                .eq(SysAttachment::getBizType, "product")
+                .eq(SysAttachment::getBizId, productId)
+                .in(SysAttachment::getCategory, DRAWING_CATEGORIES)
+                .and(w -> w.eq(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode())
+                        .or().eq(SysAttachment::getReleased, YesNoEnum.YES.getCode()))
+                .orderByAsc(SysAttachment::getId));
+    }
+
+    /** 产品文件库中指定类别的附件（样品资料等）。 */
+    private List<SysAttachment> attachmentsByCategory(Long productId, List<String> categories) {
+        return attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
+                .eq(SysAttachment::getBizType, "product")
+                .eq(SysAttachment::getBizId, productId)
+                .in(SysAttachment::getCategory, categories)
+                .orderByAsc(SysAttachment::getId));
+    }
+
+    /** 一条 DRAWING 引用条目：attachmentId + 类别/图种(operationRef) + 版本 + sha256（引用，不复制文件）。 */
+    private ProductWorkSpecItem drawingItem(SysAttachment att, String categoryOrRef, int sortOrder) {
+        String hash = attachmentSha256(att);
+        ObjectNode ref = json.createObjectNode();
+        ref.put("attachmentId", att.getId());
+        if (att.getFileName() != null) ref.put("fileName", att.getFileName());
+        if (att.getCategory() != null) ref.put("category", att.getCategory());
+        if (att.getVersion() != null) ref.put("version", att.getVersion());
+        if (att.getFileRole() != null) ref.put("fileRole", att.getFileRole());
+        ref.put("sha256", hash);
+        return newItem(WorkSpecResourceType.DRAWING.getCode(), att.getId(), null, categoryOrRef,
+                ref.toString(), hash, sortOrder);
+    }
+
+    /** 附件 sha256：优先取已存值；历史附件为空时按实际文件补算并回写（避免快照哈希悬空）。 */
+    private String attachmentSha256(SysAttachment att) {
+        if (att.getSha256() != null && !att.getSha256().isBlank()) {
+            return att.getSha256();
+        }
+        if (att.getFilePath() == null || att.getFilePath().isBlank()) {
             return null;
         }
+        String hash = Sha256Utils.ofFile(java.nio.file.Path.of(uploadBasePath).resolve(att.getFilePath()));
+        if (hash != null) {
+            SysAttachment patch = new SysAttachment();
+            patch.setId(att.getId());
+            patch.setSha256(hash);
+            attachmentMapper.updateById(patch);
+        }
+        return hash;
     }
 
     private String safeUsername() {

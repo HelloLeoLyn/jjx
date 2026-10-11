@@ -63,6 +63,9 @@
         <el-table-column label="条目" width="140">
           <template #default="{ row }">{{ resourceLabel(row.resourceType) }}</template>
         </el-table-column>
+        <el-table-column label="图种 / 类别" width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.operationRef || '-' }}</template>
+        </el-table-column>
         <el-table-column label="内容 / 引用" min-width="320">
           <template #default="{ row }"><span class="wsv-snap">{{ row.snapshotJson }}</span></template>
         </el-table-column>
@@ -175,7 +178,7 @@ const detailItems = ref<any[]>([])
 const detailDiff = ref<{ changed: boolean; fields: any[]; notIncluded: string[] }>({
   changed: false,
   fields: [],
-  notIncluded: ['客供资料', '样品', '领料单', '油墨', '实际检测记录'],
+  notIncluded: ['客供资料', '领料单', '油墨', '实际检测记录'],
 })
 
 // 版本比较（dev-20261011-028）：任意两个已发布版本

@@ -446,6 +446,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         if (attachment == null) {
             throw new BusinessException("附件不存在: " + id);
         }
+        if (referencedByWorkSpecVersion(id)) {
+            throw new BusinessException("该附件已被作业规范发布版本引用，不能删除；请先发布不含该附件的新版本");
+        }
         if (yes(attachment.getIsControlled())) {
             throw new BusinessException("受控附件不能删除，请先解除受控");
         }
@@ -503,6 +506,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         if (recycled == null) {
             throw new BusinessException("回收站中不存在该附件: " + id);
         }
+        if (referencedByWorkSpecVersion(id)) {
+            throw new BusinessException("该附件已被作业规范发布版本引用，不能物理删除");
+        }
         if (yes(recycled.getIsControlled())) {
             throw new BusinessException("受控附件不能物理删除");
         }
@@ -525,6 +531,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         for (SysAttachment attachment : expired) {
             if (yes(attachment.getIsControlled())) {
                 continue; // 受控附件不随回收站过期物理删除
+            }
+            if (referencedByWorkSpecVersion(attachment.getId())) {
+                continue; // 被发布版本引用的附件不随回收站过期物理删除（dev-20261011-034）
             }
             String fullPath = uploadBasePath + File.separator + attachment.getFilePath();
             try {
@@ -592,6 +601,18 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     }
 
     private boolean yes(Integer value) { return YesNoEnum.YES.getCode().equals(value); }
+
+    /** 是否被任一作业规范发布版本引用（DRAWING 条目的 source_id = 附件ID；dev-20261011-034）。 */
+    private boolean referencedByWorkSpecVersion(Long attachmentId) {
+        if (attachmentId == null) return false;
+        Long count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_work_spec_item i "
+                        + "JOIN product_work_spec_version v ON v.id = i.spec_version_id AND v.deleted = 0 "
+                        + "WHERE i.resource_type = 'DRAWING' AND i.source_id = ?",
+                Long.class, attachmentId);
+        return count != null && count > 0;
+    }
+
     private boolean sameVersion(SysAttachment file, String version) { return java.util.Objects.equals(file.getVersion(), version); }
     private String optionalText(String value, int max, String label) {
         if (value == null || value.trim().isEmpty()) return null;

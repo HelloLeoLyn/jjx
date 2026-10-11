@@ -12,7 +12,12 @@
       <el-descriptions-item label="修订说明" :span="2">{{ version.changeSummary || '-' }}</el-descriptions-item>
     </el-descriptions>
     <el-table :data="items" border style="margin-top: 12px">
-      <el-table-column prop="resourceType" label="条目类型" width="140" />
+      <el-table-column label="条目类型" width="140">
+        <template #default="{ row }">{{ resourceLabel(row.resourceType) }}</template>
+      </el-table-column>
+      <el-table-column label="图种 / 类别" width="120" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.operationRef || '-' }}</template>
+      </el-table-column>
       <el-table-column label="发布内容 / 引用">
         <template #default="{ row }"><pre class="snapshot">{{ row.snapshotJson }}</pre></template>
       </el-table-column>
@@ -52,12 +57,22 @@ interface Version {
   changeSummary?: string
 }
 const version = ref<Version | null>(null)
-const items = ref<{ resourceType: string; snapshotJson: string; contentHash?: string }[]>([])
+const items = ref<{ resourceType: string; operationRef?: string; snapshotJson: string; contentHash?: string }[]>([])
 const diff = ref<{ changed: boolean; fields: any[]; notIncluded: string[] }>({
   changed: false,
   fields: [],
-  notIncluded: ['客供资料', '样品', '领料单', '油墨', '实际检测记录'],
+  notIncluded: ['客供资料', '领料单', '油墨', '实际检测记录'],
 })
+
+const RESOURCE_LABELS: Record<string, string> = {
+  SPEC_JSON: '规范正文快照',
+  BOM: 'BOM',
+  ROUTING: '工艺路线',
+  DRAWING: '工程图/样品资料',
+}
+function resourceLabel(code: string) {
+  return RESOURCE_LABELS[code] || code
+}
 const visible = ref(false)
 const loading = ref(false)
 const failed = ref(false)

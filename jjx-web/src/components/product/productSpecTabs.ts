@@ -20,7 +20,7 @@ export const PRODUCT_SPEC_TABS: ProductSpecTab[] = [
   {
     name: 'sample',
     label: '样品',
-    notIncluded: '未纳入本次发布：样品需求单 / 样品资料仅为当前执行记录，不随发布版本快照。',
+    notIncluded: '未纳入本次发布：样品需求单仅为当前执行记录，不随发布版本快照（样品资料随版本发布）。',
   },
   {
     name: 'pick-order',

@@ -115,7 +115,7 @@
               />
               <div v-else-if="selectedVersionId" v-loading="versionLoading" class="version-snapshot">
                 <el-alert type="info" :closable="false" class="tab-tip"
-                  :title="`正在查看发布版本 ${versionSnapshot?.version?.versionNo || ''}（只读快照，不可编辑）；未纳入本次发布：客供资料、样品、领料单、油墨、实际检测记录。`" />
+                  :title="`正在查看发布版本 ${versionSnapshot?.version?.versionNo || ''}（只读快照，不可编辑）；未纳入本次发布：客供资料、领料单、油墨、实际检测记录。`" />
                 <el-descriptions v-if="versionSnapshot?.version" :column="2" border size="small">
                   <el-descriptions-item label="版本号">{{ versionSnapshot.version.versionNo }}</el-descriptions-item>
                   <el-descriptions-item label="发布人">{{ versionSnapshot.version.publishedBy || '-' }}</el-descriptions-item>
@@ -140,6 +140,23 @@
                   </el-descriptions-item>
                 </el-descriptions>
                 <el-alert v-else type="warning" :closable="false" style="margin-top: 10px" title="该版本无规范正文快照" />
+                <el-table
+                  :data="versionSnapshot?.drawings || []"
+                  size="small"
+                  border
+                  style="margin-top: 10px"
+                  empty-text="该版本未纳入工程图 / 样品资料"
+                >
+                  <el-table-column label="图种 / 类别" width="140">
+                    <template #default="{ row }">{{ row.ref || '-' }}</template>
+                  </el-table-column>
+                  <el-table-column label="文件" min-width="200" show-overflow-tooltip>
+                    <template #default="{ row }">{{ row.fileName || ('附件#' + row.id) }}</template>
+                  </el-table-column>
+                  <el-table-column label="SHA-256" min-width="240" show-overflow-tooltip>
+                    <template #default="{ row }">{{ row.hash || '-' }}</template>
+                  </el-table-column>
+                </el-table>
               </div>
             </template>
 
@@ -336,7 +353,7 @@ watch(activeTab, (tab) => {
 // ⑤ 产品作业规范：版本切换（只读快照；dev-20261011-027）
 const versionOptions = ref<any[]>([])
 const selectedVersionId = ref(0)
-const versionSnapshot = ref<{ version: any; spec: any } | null>(null)
+const versionSnapshot = ref<{ version: any; spec: any; drawings: any[] } | null>(null)
 const versionLoading = ref(false)
 
 async function loadVersionOptions() {
@@ -365,7 +382,7 @@ async function applyVersionSelection() {
       if (specItem?.snapshotJson) {
         try { spec = normalizeWorkSpec(JSON.parse(specItem.snapshotJson)) } catch { spec = null }
       }
-      versionSnapshot.value = { version: res?.data?.version, spec }
+      versionSnapshot.value = { version: res?.data?.version, spec, drawings: drawingItems(items) }
     }
   } catch (e) {
     ElMessage.error(e instanceof Error ? e.message : '版本快照加载失败')
@@ -375,6 +392,21 @@ async function applyVersionSelection() {
 }
 
 watch(selectedVersionId, () => { void applyVersionSelection() })
+
+/** 该版本的 DRAWING 条目（工程图 / 样品资料；多条目；dev-20261011-034）。 */
+function drawingItems(items: any[]) {
+  return items
+    .filter((i) => i?.resourceType === 'DRAWING')
+    .map((i) => {
+      let fileName: string | null = null
+      try {
+        fileName = JSON.parse(i.snapshotJson || '{}')?.fileName ?? null
+      } catch {
+        fileName = null
+      }
+      return { id: i.sourceId, ref: i.operationRef || '', hash: i.contentHash || '', fileName }
+    })
+}
 
 function openExport() {
   exportVisible.value = true
