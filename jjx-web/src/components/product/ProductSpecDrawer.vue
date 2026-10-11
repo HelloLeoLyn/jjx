@@ -45,7 +45,6 @@
 
           <!-- ⑤ 产品作业规范 -->
           <el-tab-pane label="产品作业规范" name="spec">
-            <ProductWorkSpecVersionPanel v-if="productId" :key="`${productId}-wsv`" :product-id="productId" />
             <ProductWorkSpecPanel
               v-if="productId && activeTab === 'spec'"
               :key="productId"
@@ -120,7 +119,6 @@ import EngineeringDrawingLibrary from '@/views/engineering/drawing/components/En
 import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from '@/views/engineering/product-spec/components/ProductSpecPreview.vue'
 import ProductWorkSpecPanel from '@/views/engineering/product-spec/components/ProductWorkSpecPanel.vue'
-import ProductWorkSpecVersionPanel from '@/views/engineering/product-spec/components/ProductWorkSpecVersionPanel.vue'
 import ProductPrintSpecPanel from '@/views/engineering/product-spec/components/ProductPrintSpecPanel.vue'
 import ProductColorCheckPanel from '@/views/engineering/product-spec/components/ProductColorCheckPanel.vue'
 import InkMixingForm from '@/views/engineering/product-spec/components/InkMixingForm.vue'

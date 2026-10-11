@@ -28,9 +28,11 @@
         <el-table-column label="当前路线版本" width="120" align="center">
           <template #default="{ row }">{{ (row as any).currentRoutingVersion || '-' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="160" align="center" fixed="right">
+        <el-table-column label="操作" width="260" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openSpec(row)">作业规范</el-button>
+            <el-button v-hasPermi="['product:work-spec:publish']" link type="primary" @click="publishVersion(row)">发布版本</el-button>
+            <el-button link type="primary" @click="openVersions(row)">版本</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -44,14 +46,29 @@
     </el-card>
 
     <ProductSpecDrawer ref="specDrawer" />
+
+    <!-- 发布版本：列表操作栏入口 -->
+    <el-dialog
+      v-model="versionsVisible"
+      :title="`发布版本 - ${versionsRow?.productCode || ''}`"
+      width="900px"
+      top="6vh"
+      append-to-body
+      destroy-on-close
+    >
+      <ProductWorkSpecVersionPanel v-if="versionsVisible && versionsRow" :product-id="Number(versionsRow.productId)" />
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { listProductPage } from '@/api/product'
+import { productWorkSpecApi } from '@/api/product/workSpec'
 import ProductSpecDrawer from '@/components/product/ProductSpecDrawer.vue'
+import ProductWorkSpecVersionPanel from './components/ProductWorkSpecVersionPanel.vue'
 import type { ProductVo } from '@/types/product'
 
 defineOptions({ name: 'ProductSpec' })
@@ -62,6 +79,30 @@ const loading = ref(false)
 const rows = ref<ProductVo[]>([])
 const total = ref(0)
 const query = reactive({ productCode: '', productName: '', current: 1, pageSize: 20 })
+
+// 发布版本（列表操作栏）
+const versionsVisible = ref(false)
+const versionsRow = ref<any>(null)
+function openVersions(row: any) {
+  versionsRow.value = row
+  versionsVisible.value = true
+}
+async function publishVersion(row: any) {
+  const productId = Number(row?.productId)
+  if (!productId) return
+  try {
+    const { value } = await ElMessageBox.prompt('填写本次修订说明（可空）', `发布版本 - ${row?.productCode || ''}`, {
+      inputPlaceholder: '如：冲型压力 80→85',
+      inputValue: '',
+      confirmButtonText: '发布',
+      cancelButtonText: '取消',
+    })
+    const res: any = await productWorkSpecApi.publishVersion(productId, value || undefined)
+    if (res?.code === 200) ElMessage.success(`已发布 ${res.data?.versionNo || ''}`)
+  } catch (e: any) {
+    if (e !== 'cancel') ElMessage.error(e?.message || '发布失败')
+  }
+}
 
 async function load() {
   loading.value = true
