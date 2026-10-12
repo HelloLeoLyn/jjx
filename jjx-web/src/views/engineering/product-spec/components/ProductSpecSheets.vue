@@ -2,7 +2,7 @@
   <div class="doc-sheets">
     <div v-for="(page, pageIndex) in pages" :key="page.key" :id="`doc-page-${pageIndex}`" class="sheet-slot">
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
-      <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print' }" :padding-mm="page.kind === 'spec' ? 3 : 9" :scale="1">
+      <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print' }" :padding-mm="9" :scale="1">
         <WorkSpecPaper v-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" />
         <InkMixingPaper v-else-if="page.kind === 'ink'" :product-code="data.product.productCode" />
         <article v-else class="paper-form">

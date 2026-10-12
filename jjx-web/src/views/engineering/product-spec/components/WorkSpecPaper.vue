@@ -130,7 +130,7 @@ function shortDate(value?: string | null) { return value ? value.slice(2, 10) : 
 </script>
 
 <style scoped>
-.work-paper { height:290mm; display:flex; flex-direction:column; box-sizing:border-box; border:1.5px solid #222; color:#252525; font-family:SimSun,'Songti SC',serif; font-size:13px; }
+.work-paper { width:100%; height:278mm; display:flex; flex-direction:column; box-sizing:border-box; border:1.5px solid #222; color:#252525; font-family:SimSun,'Songti SC',serif; font-size:13px; }
 .work-title { height:65px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:27px; letter-spacing:5px; border-bottom:1px solid #222; text-decoration:underline; text-underline-offset:7px; }
 .work-title span { font-size:13px; letter-spacing:0; }
 .grid { width:100%; border-collapse:collapse; table-layout:fixed; flex-shrink:0; }
@@ -179,5 +179,5 @@ function shortDate(value?: string | null) { return value ? value.slice(2, 10) : 
 .approval div { padding:3px; }
 .approval div:nth-child(2) { border-top:1px solid red; border-bottom:1px solid red; font-size:12px; }
 footer { height:27px; flex-shrink:0; border-top:1px solid #333; display:flex; align-items:center; justify-content:space-between; padding:0 4px; font-size:13px; white-space:nowrap; }
-@media print { .work-paper { height:290mm; } }
+@media print { .work-paper { width:100%; height:278mm; } }
 </style>
