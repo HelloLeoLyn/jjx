@@ -151,6 +151,11 @@ async function printDocuments() {
   if (!canPrint.value) return
   if (!props.standalone) {
     const params = new URLSearchParams({ sections: selectedSections.value.join(','), files: selectedFiles.value.join(','), print: '1' })
+    if (props.versionId) {
+      params.set('versionId', String(props.versionId))
+      params.set('productCode', props.productCode || '')
+      params.set('productName', props.productName || '')
+    }
     window.open(`/print/product-spec/${props.productId}?${params}`, '_blank')
     return
   }

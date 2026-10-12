@@ -208,7 +208,13 @@
 
     <!-- 在线纸张预览：目录选择与打印共用同一版式 -->
     <el-dialog v-model="exportVisible" title="产品电子文档集 · 在线预览" width="94%" top="4vh" append-to-body destroy-on-close>
-      <ProductSpecPreview v-if="exportVisible && productId" :product-id="productId" />
+      <ProductSpecPreview
+        v-if="exportVisible && productId"
+        :product-id="productId"
+        :version-id="selectedVersionId || undefined"
+        :product-code="productCode"
+        :product-name="detail?.product?.productName || ''"
+      />
     </el-dialog>
 </template>
 
