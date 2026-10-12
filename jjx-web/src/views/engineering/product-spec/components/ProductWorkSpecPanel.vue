@@ -177,69 +177,13 @@
             >
           </el-alert>
         </section>
-        <section class="data-section">
-          <div class="section-heading">
-            <h3>作业流程</h3>
-            <el-button
-              v-if="canEditRoute"
-              :disabled="loading || !data.routing.routingId"
-              @click="routeVisible = true"
-              >编辑</el-button
-            >
-          </div>
-          <el-tabs v-model="workflowTab">
-            <el-tab-pane
-              v-for="group in workflowGroups"
-              :key="group.value"
-              :name="group.value"
-              :label="group.label"
-            >
-              <el-table
-                :data="group.rows"
-                border
-                size="small"
-                :empty-text="`暂无${group.label}冲型组装工序`"
-              >
-                <el-table-column type="index" label="序号" width="70" />
-                <el-table-column label="流程" min-width="220">
-                  <template #default="{ row }">
-                    <div class="workflow-operation">
-                      <div class="workflow-symbols">
-                        <template
-                          v-for="(item, i) in workflowOperations(row)"
-                          :key="item.itemId || i"
-                        >
-                          <span v-if="i">＋</span>
-                          <span class="workflow-symbol">
-                            <SvgIcon v-if="item.icon" :name="item.icon" :size="24" />
-                            <span v-else>{{ item.processName || '-' }}</span>
-                            <sub v-if="workSpecStepSubscript(item)">{{
-                              workSpecStepSubscript(item)
-                            }}</sub>
-                          </span>
-                        </template>
-                      </div>
-                      <span class="workflow-remark">{{ workSpecOperationRemark(row) }}</span>
-                    </div>
-                  </template>
-                </el-table-column>
-                <el-table-column label="耗时(h)" width="100"
-                  ><template #default="{ row }">{{ workflowLabor(row) }}</template></el-table-column
-                >
-                <el-table-column label="工序名称" min-width="180"
-                  ><template #default="{ row }">{{ workflowNames(row) }}</template></el-table-column
-                >
-                <el-table-column label="备注" min-width="180"
-                  ><template #default="{ row }"
-                    ><span class="multiline">{{
-                      workSpecOperationRemark(row) || '-'
-                    }}</span></template
-                  ></el-table-column
-                >
-              </el-table>
-            </el-tab-pane>
-          </el-tabs>
-        </section>
+        <WorkSpecWorkflow
+          :items="data.routing.items || []"
+          :routing-id="Number(data.routing.routingId) || undefined"
+          :editable="canEditRoute"
+          :busy="loading"
+          @edit="routeVisible = true"
+        />
         <ProductPrintSpecPanel
           :product-id="productId"
           :work-spec="data.workSpec"
@@ -372,13 +316,7 @@ import {
 } from '@/api/product/workSpec'
 import ProductSpecPreview from './ProductSpecPreview.vue'
 import ProductPrintSpecPanel from './ProductPrintSpecPanel.vue'
-import SvgIcon from '@/components/SvgIcon/index.vue'
-import {
-  processRowsForGroup,
-  workflowOperations,
-  workflowLabor,
-  workflowNames,
-} from './workSpecProcessRows'
+import WorkSpecWorkflow from './WorkSpecWorkflow.vue'
 import EngineeringDrawingLibrary from '../../drawing/components/EngineeringDrawingLibrary.vue'
 import BomFormDialog from '@/views/product/bom/components/BomFormDialog.vue'
 import RouteFormDialog from '@/views/product/route/components/RouteFormDialog.vue'
@@ -386,10 +324,7 @@ import {
   documentFileCaption,
   loadDocset,
   workSpecMaterialSpec,
-  flowGroups,
   plain,
-  workSpecStepSubscript,
-  workSpecOperationRemark,
   dieLocationKey,
   dieLocationLabel,
   flattenedBom,
@@ -410,13 +345,6 @@ const loadError = ref('')
 const printSpecBusy = ref(false)
 let loadGeneration = 0
 const data = shallowRef<DocsetData>()
-const workflowTab = ref(flowGroups[0]?.value || '')
-const workflowGroups = computed(() =>
-  flowGroups.map((group) => ({
-    ...group,
-    rows: processRowsForGroup(data.value?.routing.items || [], 'ASSEMBLY', group.value),
-  }))
-)
 const editorVisible = ref(false)
 const embossDraft = reactive<Record<string, string>>({})
 const noteDraft = ref<string | null>(null)
@@ -902,30 +830,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: #697586;
   text-align: center;
-}
-.workflow-operation {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.workflow-symbols {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.workflow-symbol {
-  display: inline-flex;
-  align-items: flex-end;
-}
-.workflow-symbol sub {
-  margin-left: 2px;
-  white-space: pre-wrap;
-}
-.workflow-remark {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 .data-message {
   margin-bottom: 12px;
