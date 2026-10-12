@@ -32,25 +32,6 @@ public class SysAttachmentController {
     private final ISysAttachmentService attachmentService;
     private final com.jjx.system.service.AttachmentDownloadService downloads;
     private final com.jjx.system.service.AttachmentSourcePolicy sources;
-    private final com.jjx.system.service.CustomerDocUploadService customerDocUploadService;
-
-    @Operation(summary = "确认上传一行客供资料（一个文件对应一个产品）")
-    @PostMapping("/customer-doc-upload")
-    @Log(module = "附件", businessType = BusinessType.INSERT, bizType = "'sys_attachment'", bizId = "#result.data.id", action = "上传客供资料")
-    public Result<SysAttachment> uploadCustomerDoc(@RequestParam("file") MultipartFile file,
-            @RequestParam String bizType, @RequestParam Long bizId,
-            @RequestParam String productCode, @RequestParam String docType,
-            @RequestParam(required = false) String traceId) {
-        String permission = switch (bizType) {
-            case "inquiry" -> "sales:inquiry:edit";
-            case "quotation" -> "sales:quotation:edit";
-            case "sales_order" -> "sales:order:edit";
-            case "sample" -> "sales:sample:edit";
-            default -> throw new com.jjx.common.exception.BusinessException("不支持的来源单据");
-        };
-        StpUtil.checkPermission(permission);
-        return Result.success(customerDocUploadService.upload(file, bizType, bizId, productCode, docType, traceId));
-    }
 
     @Operation(summary = "上传附件")
     @PostMapping("/upload")

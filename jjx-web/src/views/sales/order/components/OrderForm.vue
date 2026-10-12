@@ -297,9 +297,6 @@
         edit-perm="sales:order:edit"
         style="margin-bottom: 10px"
       />
-      <el-button type="primary" style="margin-top: 8px" @click="customerUploadVisible = true">上传客供资料</el-button>
-      <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="sales_order" :biz-id="form.orderId" :source-no="form.orderNo"
-        :trace-id="(form as any)?.traceId" :products="form.items" />
     </div>
 
     <!-- 金额汇总 -->
@@ -435,7 +432,6 @@ import { onMounted, ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
-import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
 import { useUserStore } from '@/store/modules/user'
 import { orderApi } from '@/api/sales/order'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
@@ -612,8 +608,6 @@ const handleCurrencyChange = async (val: string) => {
 
 // ===== 附件上传（DEV-733 统一组件） =====
 const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
-const customerUploadVisible = ref(false)
-const customerDocUploadRef = ref<InstanceType<typeof CustomerDocUpload>>()
 /** 待绑定队列草稿标识（dev-20261012-028：照询价单策略——只在为空时生成，同一会话复用，保存成功后清空） */
 const draftId = ref('')
 const draftUserStore = useUserStore()
@@ -942,7 +936,6 @@ const submitForm = async (): Promise<boolean> => {
     // 编辑模式：走原有逻辑（附件已直接上传）
     const success = await submitOrderForm()
     if (success) {
-      if (form.orderId && await customerDocUploadRef.value?.flushPending(form.orderId) === false) return false
       emit('success')
     }
     return success
@@ -951,7 +944,6 @@ const submitForm = async (): Promise<boolean> => {
   // 新增模式：手动提交，获取新订单ID后上传附件
   if (!orderFormRef.value) return false
   if (createdOrderId.value) {
-    if (await customerDocUploadRef.value?.flushPending(createdOrderId.value, createdTraceId.value) === false) return false
     emit('success')
     return true
   }
@@ -1005,11 +997,6 @@ const submitForm = async (): Promise<boolean> => {
       console.error('附件绑定异常（订单已保存）:', e)
       ElMessage.warning('订单已保存，但部分附件绑定失败，可在附件区重试绑定')
     }
-    if (await customerDocUploadRef.value?.flushPending(newOrderId, newTraceId) === false) {
-      form.orderId = newOrderId
-      return false
-    }
-
     clearDraftId() // 保存成功：清空草稿标识
     ElMessage.success(isSampleConvert ? '转量产成功，标准订单已生成' : '新增成功')
     emit('success')
@@ -1023,7 +1010,6 @@ const submitForm = async (): Promise<boolean> => {
 
 // 暴露给父组件的方法和属性
 function resetOrderForm() {
-  customerDocUploadRef.value?.reset()
   createdOrderId.value = undefined
   createdTraceId.value = undefined
   resetForm()

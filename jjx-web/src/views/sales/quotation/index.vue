@@ -727,7 +727,6 @@ const submitForm = async () => {
       await quotationApi.edit(form as any)
       const res: any = await quotationApi.getInfo(form.quotationId)
       Object.assign(form, res.data)
-      await quotationFormDialogRef.value?.flushCustomerDocs(form.quotationId)
       await quotationFormDialogRef.value?.bindPendingAttachments()
       title.value = `修改报价单【${res.data?.quotationNo || ''}】`
       ElMessage.success('保存成功')
@@ -740,7 +739,6 @@ const submitForm = async () => {
         form.quotationId = newId
         const info: any = await quotationApi.getInfo(newId)
         Object.assign(form, info.data)
-        await quotationFormDialogRef.value?.flushCustomerDocs(newId)
         await quotationFormDialogRef.value?.bindPendingAttachments()
         clearDraftId() // 保存成功：清空草稿标识
         title.value = `修改报价单【${info.data?.quotationNo || ''}】`

@@ -331,10 +331,6 @@
               edit-perm="sales:inquiry:edit"
               style="margin-bottom: 10px"
             />
-            <el-button type="primary" @click="customerUploadVisible = true">上传客供资料（需选产品）</el-button>
-            <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="inquiry" :biz-id="form.inquiryId" :source-no="(form as any).inquiryNo"
-              :trace-id="(form as any).traceId" :products="form.productCode ? [{ productCode: form.productCode }] : []"
-              @success="onUploadSuccess" />
           </el-col>
         </el-row>
       </el-form>
@@ -382,7 +378,6 @@ import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import ProductPicker from '@/components/Selector/ProductPicker.vue'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
-import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
 import type { FormInstance } from 'element-plus'
 import { inquiryApi } from '@/api/sales/inquiry'
 import { useUserStore } from '@/store/modules/user'
@@ -597,9 +592,6 @@ function handleOpSuccess() {
 }
 
 // ==================== 附件管理（DEV-733 统一组件） ====================
-const customerUploadVisible = ref(false)
-const customerDocUploadRef = ref<InstanceType<typeof CustomerDocUpload>>()
-const uploadedAttachmentIds = ref<number[]>([])
 /** 公共附件中心（V1-A refs 通道）：待绑定队列按 draftId 隔离 */
 const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
 /** 新建草稿标识：同一张未保存询价单的生命周期内保持稳定（保存成功后清空） */
@@ -673,12 +665,6 @@ async function bindPendingAttachments() {
     // ② 异常隔离：询价单此时已保存成功，附件异常只能提示附件处理失败，不得冒泡成"整单保存失败"
     console.error('附件绑定异常（询价单已保存）:', e)
     ElMessage.error(`附件处理失败：${e?.message || '未知错误'}，可在附件区重试绑定`)
-  }
-}
-
-function onUploadSuccess(id: number) {
-  if (!uploadedAttachmentIds.value.includes(id)) {
-    uploadedAttachmentIds.value.push(id)
   }
 }
 
@@ -859,7 +845,6 @@ function handleUpdate(row?: any) {
   const id = row?.inquiryId || ids.value[0]
   if (!id) return
 
-  uploadedAttachmentIds.value = []
   draftId.value = ''             // 编辑已有单据：走 sourceId（inquiryId），无需 draftId
   dialogTitle.value = '修改询价单'
   dialogVisible.value = true
@@ -1055,16 +1040,13 @@ async function submitForm() {
   submitting.value = true
   try {
     if (form.inquiryId) {
-      await inquiryApi.edit({ ...form, attachmentIds: uploadedAttachmentIds.value } as any)
-      if (await customerDocUploadRef.value?.flushPending(form.inquiryId) === false) return
+      await inquiryApi.edit(form as any)
       await bindPendingAttachments()
       ElMessage.success('修改成功')
     } else {
       const res = await inquiryApi.add(form as any)
-      // 新建单据保存后才有可用于客供资料上传的来源 ID。
       const newId = (res as any)?.data?.inquiryId || form.inquiryId || 0
       form.inquiryId = newId
-      if (await customerDocUploadRef.value?.flushPending(newId) === false) return
       await bindPendingAttachments()
       ElMessage.success('新增成功')
     }
@@ -1084,9 +1066,6 @@ function cancel() {
 
 // 关闭对话框后重置附件状态
 function handleClose() {
-  customerUploadVisible.value = false
-  customerDocUploadRef.value?.reset()
-  uploadedAttachmentIds.value = []
 }
 
 // ==================== 初始化 ====================

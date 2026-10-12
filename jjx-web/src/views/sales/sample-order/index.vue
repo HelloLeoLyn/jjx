@@ -376,9 +376,6 @@
           edit-perm="sales:sample:edit"
           :locked="false"
         />
-        <el-button type="primary" style="margin-top: 8px" @click="customerUploadVisible = true">上传客供资料（需选产品）</el-button>
-        <CustomerDocUpload v-model="customerUploadVisible" biz-type="sample" :biz-id="detailData.orderId" :source-no="detailData.orderNo"
-          :trace-id="detailData.traceId" :products="detailProducts" />
       </template>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
@@ -496,7 +493,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
-import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'
 import SalesOrderFormDialog from '@/views/sales/order/components/SalesOrderFormDialog.vue'
@@ -588,7 +584,6 @@ function openWorkbench(row: any) {
 const detailData = ref<any>(null)
 // 详情产品明细（DEV-781）
 const detailProducts = ref<any[]>([])
-const customerUploadVisible = ref(false)
 
 // 加载样品单产品明细
 async function loadDetailProducts(orderId: number) {

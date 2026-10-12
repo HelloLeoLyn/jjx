@@ -25,18 +25,6 @@ export interface ProductDrawingFile extends Partial<DrawingMetadata> {
 
 // 通用附件API
 export const attachmentApi = {
-  uploadCustomerDoc(file: File, bizType: string, bizId: number, productCode: string,
-    docType: string, traceId?: string): AxiosPromise<any> {
-    const data = new FormData()
-    data.append('file', file)
-    data.append('bizType', bizType)
-    data.append('bizId', String(bizId))
-    data.append('productCode', productCode)
-    data.append('docType', docType)
-    if (traceId) data.append('traceId', traceId)
-    return request({ url: '/system/attachment/customer-doc-upload', method: 'post', data,
-      headers: { 'Content-Type': 'multipart/form-data' } })
-  },
   // 上传附件
   upload(
     file: File,

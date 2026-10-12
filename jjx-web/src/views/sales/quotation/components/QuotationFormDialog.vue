@@ -314,9 +314,6 @@
       @confirm="onCodeGenConfirm"
     />
 
-    <el-button type="primary" @click="customerUploadVisible = true">上传客供资料</el-button>
-    <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="quotation" :biz-id="props.formData.quotationId" :source-no="props.formData.quotationNo"
-      :trace-id="props.formData.traceId" :products="props.formData.items || []" />
     <!-- 产品文件库弹窗（明细行资料） -->
     <el-dialog
       v-model="fileLibVisible"
@@ -345,7 +342,6 @@ import { listProduct } from '@/api/product'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import QuotationCodeGenDialog from './QuotationCodeGenDialog.vue'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
-import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 import { parseProductCode } from '@/composables/useProductCode'
@@ -390,9 +386,6 @@ const usedSerialsForCodeGen = computed(() => {
 
 // 产品文件库
 const fileLibVisible = ref(false)
-const customerUploadVisible = ref(false)
-const customerDocUploadRef = ref<InstanceType<typeof CustomerDocUpload>>()
-function flushCustomerDocs(bizId: number, traceId?: string) { return customerDocUploadRef.value?.flushPending(bizId, traceId) }
 const fileLibProductCode = ref('')
 const uploadedAttachmentIds = ref<number[]>([])
 /** 公共附件中心（报价单通用附件；dev-20261012-047） */
@@ -705,7 +698,6 @@ const handleSubmit = () => {
 
 const handleClose = () => {
   uploadedAttachmentIds.value = []
-  customerDocUploadRef.value?.reset()
   visible.value = false
   emit('cancel')
 }
@@ -736,7 +728,6 @@ function parseCodeFromProductCode(code?: string | null): Partial<ProductCodeStat
 defineExpose({
   formRef,
   calculateTotalAmount,
-  flushCustomerDocs,
   bindPendingAttachments,
 })
 </script>
