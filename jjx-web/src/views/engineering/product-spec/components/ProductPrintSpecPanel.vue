@@ -1,9 +1,12 @@
 <template>
-  <section class="print-spec-section">
+  <section v-loading="loading || fetching" class="print-spec-section">
     <div class="print-actions">
       <h3>印刷规范</h3>
-      <el-button v-if="canEdit" :disabled="loading" @click="editRemarks">编辑</el-button>
+      <el-button v-if="canEdit" :disabled="loading || fetching" @click="editRemarks">编辑</el-button>
     </div>
+    <el-alert v-if="loadError" :title="loadError" type="error" :closable="false">
+      <el-button link type="primary" @click="loadData">重新加载</el-button>
+    </el-alert>
     <el-tabs v-model="printTab">
       <el-tab-pane v-for="group in printGroups" :key="group.value" :name="group.value" :label="group.label">
         <el-table :data="group.rows" border size="small" :empty-text="`暂无${group.label}印刷工序`">
@@ -17,7 +20,7 @@
             <template #default="{ row }">{{ plateNumber(row) }}</template>
           </el-table-column>
         </el-table>
-        <div class="print-group"><strong>{{ group.label }}备注</strong><p>{{ workSpec.printRemarks[group.value] || '未填写' }}</p></div>
+        <div class="print-group"><strong>{{ group.label }}备注</strong><p>{{ printRemarks[group.value] || '未填写' }}</p></div>
       </el-tab-pane>
     </el-tabs>
     <el-button v-if="canEdit" link type="primary" @click="openHistory">备注修改记录</el-button>
@@ -60,10 +63,19 @@ import { flowGroups, printParams } from './docset'
 import { engineeringResourceApi } from '@/api/engineering/resource'
 import { processRowsForGroup, currentPlateForFrame, type SpecProcessRow } from './workSpecProcessRows'
 
-const props = defineProps<{ productId: number; workSpec: ProductWorkSpec; routingItems?: SpecProcessRow[]; loading?: boolean; readOnly?: boolean }>()
+/** 同时传入 workSpec/routingItems 时直接展示；仅传 productId 时自主取数。 */
+const props = defineProps<{ productId: number; workSpec?: ProductWorkSpec; routingItems?: SpecProcessRow[]; loading?: boolean; readOnly?: boolean }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [workSpec: ProductWorkSpec] }>()
 const user = useUserStore()
-const canEdit = computed(() => !props.readOnly && user.hasPermission('product:edit'))
+const fetchedSpec = ref<ProductWorkSpec>()
+const fetchedRoutingItems = ref<SpecProcessRow[]>([])
+const fetching = ref(false)
+const loadError = ref('')
+let loadGeneration = 0
+const currentWorkSpec = computed(() => props.workSpec ?? fetchedSpec.value)
+const currentRoutingItems = computed(() => props.routingItems ?? fetchedRoutingItems.value)
+const printRemarks = computed(() => currentWorkSpec.value?.printRemarks || {})
+const canEdit = computed(() => !props.readOnly && !!currentWorkSpec.value && user.hasPermission('product:edit'))
 const editorVisible = ref(false)
 const saving = ref(false)
 const draft = ref<Record<string, string>>({})
@@ -79,7 +91,7 @@ let disposed = false
 let plateGeneration = 0
 const printTab = ref(flowGroups[0]?.value || '')
 const printGroups = computed(() => flowGroups.map(group => ({
-  ...group, rows: processRowsForGroup(props.routingItems || [], 'PRINT', group.value),
+  ...group, rows: processRowsForGroup(currentRoutingItems.value, 'PRINT', group.value),
 })))
 const printRows = computed(() => printGroups.value.flatMap(group => group.rows))
 const showFilm = computed(() => printRows.value.some(row => String(printParams(row).filmNo ?? '').length > 0))
@@ -117,9 +129,10 @@ async function loadPlates() {
 watch(() => [JSON.stringify(frameNumbers.value), props.productId, props.readOnly, canReadFrames.value], loadPlates, { immediate: true })
 
 function editRemarks() {
-  if (!canEdit.value || props.loading) return
-  draft.value = Object.fromEntries(flowGroups.map(group => [group.value, props.workSpec.printRemarks[group.value] || '']))
-  revision.value = props.workSpec.revision
+  const spec = currentWorkSpec.value
+  if (!canEdit.value || props.loading || fetching.value || !spec) return
+  draft.value = Object.fromEntries(flowGroups.map(group => [group.value, spec.printRemarks[group.value] || '']))
+  revision.value = spec.revision
   baseline.value = JSON.stringify(draft.value)
   editorVisible.value = true
 }
@@ -145,7 +158,9 @@ async function save() {
     baseline.value = JSON.stringify(draft.value)
     editorVisible.value = false
     ElMessage.success('整组备注已保存，修改记录已保留')
-    emit('updated', normalizeWorkSpec(response.data))
+    const updated = normalizeWorkSpec(response.data)
+    if (!props.workSpec) fetchedSpec.value = updated
+    emit('updated', updated)
   } catch (error) { console.error('保存印刷整组备注失败', error) }
   finally { saving.value = false }
 }
@@ -173,10 +188,39 @@ async function loadHistory(before?: number) {
 function beforeUnload(event: BeforeUnloadEvent) {
   if (saving.value || (editorVisible.value && dirty.value)) { event.preventDefault(); event.returnValue = '' }
 }
+async function loadData() {
+  const generation = ++loadGeneration
+  if (props.workSpec !== undefined && props.routingItems !== undefined) {
+    fetchedSpec.value = undefined
+    fetchedRoutingItems.value = []
+    loadError.value = ''
+    fetching.value = false
+    return
+  }
+  fetchedSpec.value = undefined
+  fetchedRoutingItems.value = []
+  fetching.value = true
+  loadError.value = ''
+  try {
+    const response = await productWorkSpecApi.get(props.productId)
+    if (generation !== loadGeneration || disposed) return
+    if (!response.data?.sourceData?.product) throw new Error('未找到产品资料')
+    fetchedSpec.value = normalizeWorkSpec(response.data)
+    fetchedRoutingItems.value = response.data.sourceData.routing?.items || []
+  } catch (error) {
+    if (generation === loadGeneration && !disposed) {
+      console.error('加载印刷规范失败', error)
+      loadError.value = error instanceof Error ? error.message : '印刷规范加载失败，请重试'
+    }
+  } finally {
+    if (generation === loadGeneration && !disposed) fetching.value = false
+  }
+}
+watch(() => [props.productId, props.workSpec, props.routingItems], () => { void loadData() }, { immediate: true })
 watch(() => editorVisible.value || saving.value, value => emit('busy', value))
 onBeforeRouteLeave(allowLeave)
 onMounted(() => window.addEventListener('beforeunload', beforeUnload))
-onBeforeUnmount(() => { disposed = true; plateGeneration++; window.removeEventListener('beforeunload', beforeUnload); emit('busy', false) })
+onBeforeUnmount(() => { disposed = true; loadGeneration++; plateGeneration++; window.removeEventListener('beforeunload', beforeUnload); emit('busy', false) })
 </script>
 
 <style scoped>
