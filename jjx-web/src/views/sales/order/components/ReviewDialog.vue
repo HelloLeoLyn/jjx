@@ -53,14 +53,15 @@
 
       <!-- 审核通过时上传确认书等资料（选填，2026-08-12） -->
       <el-form-item v-if="formData.result === 'approve'" label="确认书/资料">
-        <AttachmentUploader
-          biz-type="order"
-          :biz-id="props.orderId"
+        <AttachmentCenter
+          source-type="sales_order"
+          :source-id="props.orderId || null"
           :trace-id="orderDetail?.traceId"
-          button-text="上传确认书"
-          tip="选填：客户确认书/签字扫描件等，审核通过后随订单存档"
+          mode="upload-only"
           :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"
-          @success="onUploadSuccess"
+          view-perm="sales:order:view"
+          edit-perm="sales:order:edit"
+          @uploaded="(p: any) => onUploadSuccess(p.attachmentId)"
         />
       </el-form-item>
 
@@ -89,7 +90,7 @@ import { ElMessage } from 'element-plus'
 import { orderStatusApi } from '@/api/sales/orderStatus'
 import { orderApi } from '@/api/sales/order'
 import { useUserStore } from '@/store/modules/user'
-import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 
 const props = defineProps<{
   modelValue: boolean

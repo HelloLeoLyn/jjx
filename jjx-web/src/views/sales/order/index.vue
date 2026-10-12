@@ -247,13 +247,21 @@
       @success="getList"
     />
 
-    <!-- 确认凭证附件弹窗 -->
-    <AttachmentUploadDialog
+    <!-- 确认凭证附件弹窗（dev-20261012-028：换用公共 AttachmentCenter） -->
+    <el-dialog
       v-model="confirmAttachmentVisible"
-      biz-type="sales_order_confirmation"
-      :biz-id="confirmAttachmentOrderId"
-      :dialog-title="`确认凭证 - ${confirmAttachmentOrderNo}`"
-    />
+      :title="`确认凭证 - ${confirmAttachmentOrderNo}`"
+      width="720px"
+      append-to-body
+    >
+      <AttachmentCenter
+        source-type="sales_order"
+        :source-id="confirmAttachmentOrderId || null"
+        mode="panel"
+        view-perm="sales:order:view"
+        edit-perm="sales:order:edit"
+      />
+    </el-dialog>
 
     <!-- 验证对话框 -->
     <ValidationDialog
@@ -292,7 +300,7 @@ import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
 import GeneratePlanDialog from './components/GeneratePlanDialog.vue'
-import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import ValidationDialog from './components/ValidationDialog.vue'
 import ShortageCheckDialog from './components/ShortageCheckDialog.vue'
 import type { SalesOrderProductVO, SalesOrderQueryDTO, SalesOrderVO } from '@/types/sales/order'

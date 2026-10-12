@@ -286,20 +286,16 @@
     <!-- 附件上传（新建和编辑都显示） -->
     <el-divider content-position="left">订单附件</el-divider>
     <div class="attachment-section">
-      <AttachmentPanel
-        v-if="form.orderId"
-        biz-type="sales_order"
-        :biz-id="form.orderId"
-        style="margin-bottom: 10px"
-      />
-      <AttachmentUploader
-        ref="uploaderRef"
-        biz-type="sales_order"
-        :biz-id="form.orderId"
+      <AttachmentCenter
+        ref="attachmentCenterRef"
+        source-type="sales_order"
+        :source-id="form.orderId || null"
+        :draft-id="draftId"
         :trace-id="(form as any)?.traceId"
         :accept="['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']"
-        button-text="上传附件"
-        tip="支持 .pdf .doc .xls .jpg .png，单个文件不超过10MB；新建订单时附件将在保存后自动上传"
+        view-perm="sales:order:view"
+        edit-perm="sales:order:edit"
+        style="margin-bottom: 10px"
       />
       <el-button type="primary" style="margin-top: 8px" @click="customerUploadVisible = true">上传客供资料</el-button>
       <CustomerDocUpload ref="customerDocUploadRef" v-model="customerUploadVisible" biz-type="sales_order" :biz-id="form.orderId" :source-no="form.orderNo"
@@ -435,12 +431,12 @@
 
 <script setup lang="ts">
 import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
-import { onMounted, ref, reactive, computed, watch } from 'vue'
+import { onMounted, ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
-import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
+import { useUserStore } from '@/store/modules/user'
 import { orderApi } from '@/api/sales/order'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { customerApi } from '@/api/sales/customer'
@@ -615,9 +611,47 @@ const handleCurrencyChange = async (val: string) => {
 }
 
 // ===== 附件上传（DEV-733 统一组件） =====
-const uploaderRef = ref<InstanceType<typeof AttachmentUploader>>()
+const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
 const customerUploadVisible = ref(false)
 const customerDocUploadRef = ref<InstanceType<typeof CustomerDocUpload>>()
+/** 待绑定队列草稿标识（dev-20261012-028：照询价单策略——只在为空时生成，同一会话复用，保存成功后清空） */
+const draftId = ref('')
+const draftUserStore = useUserStore()
+let draftOwnerKey = ''
+const draftSessionKey = () => `attach-draft:v1:${draftUserStore.userId ?? 'anonymous'}:sales_order`
+function newDraftId() {
+  return `so-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+/** 空时才生成；sessionStorage 跨刷新保留（修复「保存前刷新后待绑定不可达」） */
+function ensureDraftId() {
+  const key = draftSessionKey()
+  if (draftOwnerKey !== key) {
+    draftId.value = ''
+    draftOwnerKey = key
+  }
+  if (!draftId.value) {
+    try {
+      draftId.value = sessionStorage.getItem(key) || ''
+    } catch (e) {
+      console.warn('读取订单草稿标识失败，刷新后可能无法恢复待绑定附件', e)
+    }
+    if (!draftId.value) draftId.value = newDraftId()
+  }
+  try {
+    sessionStorage.setItem(key, draftId.value)
+  } catch (e) {
+    console.warn('保存订单草稿标识失败，刷新后可能无法恢复待绑定附件', e)
+  }
+}
+function clearDraftId() {
+  if (!draftId.value) return // 编辑已有单据不清理另一张未保存草稿的会话标识。
+  try {
+    sessionStorage.removeItem(draftOwnerKey)
+  } catch (e) {
+    console.warn('清理已保存订单草稿标识失败', e)
+  }
+  draftId.value = ''
+}
 const createdOrderId = ref<number>()
 const createdTraceId = ref<string>()
 
@@ -882,6 +916,7 @@ watch(
 // 初始化
 onMounted(() => {
   resetForm()
+  if (!props.isEdit) ensureDraftId() // 新建：空时才生成草稿标识（刷新复用）
   loadSalesPersons()
   // 2026-09-07：不再预取单号（取消/失败会烧号导致跳号），改由后端提交落库时生成
   if (props.sampleOrderId) {
@@ -960,13 +995,22 @@ const submitForm = async (): Promise<boolean> => {
     createdOrderId.value = newOrderId
     createdTraceId.value = newTraceId
 
-    // 2. 上传待处理的附件
-    await uploaderRef.value?.flushPending(newOrderId, newTraceId)
+    // 2. 绑定待处理（TEMP）附件到新订单（dev-20261012-028）
+    form.orderId = newOrderId // 先回写 sourceId，等一次渲染后 bindPending 才能读到
+    await nextTick()
+    try {
+      await attachmentCenterRef.value?.bindPending()
+    } catch (e) {
+      // 附件失败不得冒泡成「整单保存失败」（订单此时已保存成功）
+      console.error('附件绑定异常（订单已保存）:', e)
+      ElMessage.warning('订单已保存，但部分附件绑定失败，可在附件区重试绑定')
+    }
     if (await customerDocUploadRef.value?.flushPending(newOrderId, newTraceId) === false) {
       form.orderId = newOrderId
       return false
     }
 
+    clearDraftId() // 保存成功：清空草稿标识
     ElMessage.success(isSampleConvert ? '转量产成功，标准订单已生成' : '新增成功')
     emit('success')
     return true

@@ -14,7 +14,7 @@
         :disabled="!draftReady"
         :max-size-m-b="maxSizeMB"
         :accept="accept"
-        :button-text="mode === 'upload-only' ? '上传附件' : '上传'"
+        :button-text="mode === 'upload-only' ? '上传附件' : '上传（通用附件）'"
         :tip="draftReady ? uploadTip : '请先保存单据或提供 draftId 后再上传（避免多个单据共用待绑定队列）'"
         @files="onFiles"
         @error="(m) => emit('error', { action: 'validate', message: m })"
@@ -50,6 +50,17 @@
         </el-tag>
         <span v-if="entry.error" class="ac-error">{{ entry.error }}</span>
         <span class="ac-spacer" />
+        <el-select
+          v-if="canEdit"
+          v-model="entry.documentType"
+          size="small"
+          clearable
+          placeholder="选择类型"
+          style="width: 150px"
+          @change="() => persist()"
+        >
+          <el-option v-for="t in selectableTypes" :key="t.item_key" :label="t.label" :value="t.item_key" />
+        </el-select>
         <el-button v-if="canEdit" link type="primary" @click="retryBind(entry)">重试绑定</el-button>
         <el-button v-if="canEdit" link type="danger" @click="removePending(entry.attachmentId)">移除</el-button>
       </div>
@@ -62,7 +73,7 @@
       <div v-for="row in refRows" :key="`ref-${row.id}`" class="ac-row">
         <el-icon class="ac-icon"><Document /></el-icon>
         <span class="ac-name" :title="row.displayName || ''">{{ displayNameOf(row) }}</span>
-        <el-tag v-if="row.documentType" size="small" type="primary">{{ docTypeLabel(row.documentType) }}</el-tag>
+        <el-tag size="small" :type="row.documentType ? 'primary' : 'info'">{{ docTypeLabel(row.documentType) }}</el-tag>
         <span class="ac-sub">{{ formatSize(row.fileSize) }}</span>
         <span v-if="row.createBy" class="ac-sub">· {{ row.createBy }}</span>
         <span class="ac-sub">· {{ formatTime(row.createTime) }}</span>
@@ -73,9 +84,7 @@
         <el-tooltip content="预览" placement="top">
           <el-button link type="primary" :icon="View" @click="previewRef(row)" />
         </el-tooltip>
-        <el-tooltip v-if="canEdit" content="分类/展示名/备注" placement="top">
-          <el-button link type="primary" :icon="EditPen" @click="openMeta(row)" />
-        </el-tooltip>
+        <el-button v-if="canEdit" link type="primary" @click="openMeta(row)">分类/命名</el-button>
         <el-tooltip v-if="canEdit" content="解除引用" placement="top">
           <el-button link type="danger" :icon="Close" @click="onUnbind(row)" />
         </el-tooltip>
@@ -140,7 +149,7 @@
  */
 import { computed, reactive, ref, toRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { FolderOpened, Document, Download, View, EditPen, Close, Clock } from '@element-plus/icons-vue'
+import { FolderOpened, Document, Download, View, Close, Clock } from '@element-plus/icons-vue'
 import { attachmentApi } from '@/api/system/attachment'
 import { attachmentRefApi, type AttachmentRefItem } from '@/api/system/attachmentRef'
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
@@ -221,6 +230,7 @@ const {
   updateMeta,
   checkDuplicate,
   removePending,
+  persist,
 } = refs
 
 const duplicateTip = ref('')
@@ -230,11 +240,27 @@ const uploadTip = computed(() =>
 
 /** A 段直接消费 refs 返回的文件元数据（后端 refs 查询链路已回填 fileName/fileSize/fileType） */
 function displayNameOf(row: AttachmentRefItem) {
-  return row.displayName || row.fileName || `附件 #${row.attachmentId}`
+  const base = row.displayName || row.fileName || `附件 #${row.attachmentId}`
+  // 展示层拼「二级类型 · 原名」（不写库）（dev-20261012-024）
+  if (!row.documentType) return base
+  const t = documentTypes.value.find(
+    (x) => x.item_key === row.documentType && x.dict_code === 'attachment_document_type',
+  )
+  return t ? `${t.label} · ${base}` : base
 }
+/** 「一级｜二级」（dev-20261012-024）：用真实字典，不硬编码中文；未知二级回退原编码；空值「未分类」 */
 function docTypeLabel(code?: string | null) {
-  if (!code) return ''
-  return documentTypes.value.find((t) => t.item_key === code)?.label || code
+  if (!code) return '未分类'
+  const t = documentTypes.value.find(
+    (x) => x.item_key === code && x.dict_code === 'attachment_document_type',
+  )
+  if (!t) return code
+  const ext = typeof t.ext_data === 'string' ? safeJson(t.ext_data) : t.ext_data
+  const parent = (ext as any)?.parent
+  const p = parent
+    ? documentTypes.value.find((x) => x.item_key === parent && x.dict_code === 'attachment_category')
+    : null
+  return p ? `${p.label}｜${t.label}` : t.label
 }
 const selectableTypes = computed(() =>
   documentTypes.value.filter((t) => {
@@ -278,7 +304,10 @@ async function onFiles(files: File[]) {
 
 async function retryBind(entry: PendingEntry) {
   try {
-    const refId = await bindPendingOne(entry)
+    const refId = await bindPendingOne(entry, {
+      documentType: entry.documentType ?? null,
+      displayName: entry.displayName ?? null,
+    })
     emit('bound', { refId, attachmentId: entry.attachmentId })
     await afterBound(entry)
   } catch (e: any) {

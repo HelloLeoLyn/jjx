@@ -290,10 +290,12 @@
           <template #header>
             <span>相关文档</span>
           </template>
-          <AttachmentPanel
+          <AttachmentCenter
             v-if="props.orderId"
-            biz-type="order"
-            :biz-id="props.orderId"
+            source-type="sales_order"
+            :source-id="props.orderId || null"
+            mode="readonly"
+            view-perm="sales:order:view"
           />
         </el-card>
       </template>
@@ -312,7 +314,7 @@
 <script setup lang="ts">
 import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
 import { ref, computed, watch } from 'vue'
-import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import { ElMessage } from 'element-plus'
 import { orderApi } from '@/api/sales/order'
 import { salesLogApi } from '@/api/sales/log'

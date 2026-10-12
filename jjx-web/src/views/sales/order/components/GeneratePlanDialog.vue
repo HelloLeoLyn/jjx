@@ -17,13 +17,14 @@
     <!-- 确认书上传（选填，2026-08-13：生成计划=确认动作，与确认凭证同分类，未传可后续补充） -->
     <div class="field-block">
       <div class="field-label">确认书（选填）</div>
-      <AttachmentUploader
-        biz-type="sales_order_confirmation"
-        :biz-id="order?.orderId"
+      <AttachmentCenter
+        source-type="sales_order"
+        :source-id="order?.orderId || null"
         :trace-id="order?.traceId"
-        button-text="上传确认书"
-        tip="选填：客户确认书/签字扫描件等，未上传可在订单【确认凭证】入口补充"
+        mode="upload-only"
         :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"
+        view-perm="sales:order:view"
+        edit-perm="sales:order:edit"
       />
     </div>
 
@@ -37,7 +38,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import { orderStatusApi } from '@/api/sales/orderStatus'
 
 interface Props {

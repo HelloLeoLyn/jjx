@@ -26,6 +26,10 @@ export interface PendingEntry {
   state: 'pending' | 'binding' | 'failed'
   error?: string
   createdAt: string
+  /** 待绑定期间预选的二级资料类型编码（绑定时随 documentType 提交；仅存编码，不存 File/Blob）（dev-20261012-024） */
+  documentType?: string | null
+  /** 预填展示名（可选）（dev-20261012-024） */
+  displayName?: string | null
 }
 
 export type BindStatus = 'document-not-saved' | 'all-ok' | 'partial' | 'all-failed'
@@ -193,6 +197,8 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
               state: 'pending' as const,
               error: e.error ? String(e.error) : undefined,
               createdAt: String(e.createdAt || ''),
+              documentType: e.documentType ? String(e.documentType) : null,
+              displayName: e.displayName ? String(e.displayName) : null,
             }))
         : []
     } catch {
@@ -277,6 +283,8 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
       sha256: sha,
       state: 'pending',
       createdAt: new Date().toISOString(),
+      documentType: null,
+      displayName: null,
     })
     persist()
     return attachmentId
@@ -336,7 +344,13 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     for (const entry of queue) {
       entry.state = 'binding'
       try {
-        const refId = await bindPendingOne(entry, meta)
+        // 每条待绑定行可各自预选类型（dev-20261012-024）：优先 entry 自身，其次批量 meta
+        const refId = await bindPendingOne(entry, {
+          documentType: meta?.documentType ?? entry.documentType ?? null,
+          displayName: meta?.displayName ?? entry.displayName ?? null,
+          remark: meta?.remark ?? null,
+          sortOrder: meta?.sortOrder ?? null,
+        })
         bound.push({ attachmentId: entry.attachmentId, refId })
       } catch (e: any) {
         entry.state = 'failed'
