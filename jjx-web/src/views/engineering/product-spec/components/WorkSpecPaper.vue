@@ -12,7 +12,7 @@
       <tbody>
         <tr v-for="(row, i) in padded(page.rows, 14)" :key="i">
           <td class="center">{{ '(' + ((page.continuation || 0) * 14 + i + 1) + ')' }}</td>
-          <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="18" /><span v-else class="cell-single" :data-overflow-title="materialLabel(i) + '项目'" :title="plain(row?.processName)">{{ plain(row?.processName) }}</span></td>
+          <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="20" /><span v-else class="cell-single" :data-overflow-title="materialLabel(i) + '项目'" :title="plain(row?.processName)">{{ plain(row?.processName) }}</span></td>
           <td><span class="material-name" :data-overflow-title="materialLabel(i) + '材料'" :title="row?.materialName || row?.materialCode">{{ row?.materialName || row?.materialCode }}</span></td>
           <td><span class="cell-single" :data-overflow-title="materialLabel(i) + '规格及模数'" :title="workSpecMaterialSpec(row)">{{ workSpecMaterialSpec(row) }}</span></td>
           <td class="die-position">{{ page.diePositionRows?.[i] }}</td>
