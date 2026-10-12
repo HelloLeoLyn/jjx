@@ -51,6 +51,14 @@
 - `check:status-enums` 报的 8 条为他会话新增文件（`usePrintFieldSuggest.ts`、`OrderBatchActions.vue`），与本任务无关。
 - 未打包、未重启、未点页面（遵循只做静态自查）。
 
+## 附. 复查修复（2026-10-12 16:0x）
+
+**现象**：Leo 实测 SP261012001 复制后打样 BOM 面板只有 3 条（少了 `RM001609` 3M9080）。
+
+**根因**：打样材料是**卡片级**模型——卡内各行共享一份材料（`savePlan` 把 `pc.materials` 写给卡内每一行；`loadBom`/`loadPlan` 只读组内首行材料）。而本任务后端按**工序行**逐行发材料，复制流水线 `makeCard({materials: first.materials})` 只取了**首行**材料 → 组合卡片（面板+面板背胶）里「面板背胶」的材料被「面板」的覆盖丢失。
+
+**修复**：`applyCopiedRows` 增 `mergeCardMaterials(rows)`——卡片材料 = 卡内各行材料的**并集**（按 `materialId|name|spec` 去重）。现有打样源数据卡内各行材料本就相同，并集=原值，不影响既有复制路径；成品方案带出组合卡片不再丢料。
+
 ## 6. 未做 / 遗留
 
 - 未自动落库、未改 `createSample`、未改资料转移（设计非目标）
