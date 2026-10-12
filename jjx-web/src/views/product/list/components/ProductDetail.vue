@@ -100,21 +100,7 @@
 
         <!-- BOM物料清单 -->
         <div v-if="productData.bom.items && productData.bom.items.length > 0" class="sub-table">
-          <div class="sub-table-title">物料清单（{{ productData.bom.items.length }} 项）</div>
-          <el-table :data="productData.bom.items" border size="small" max-height="300">
-            <el-table-column label="序号" type="index" width="60" />
-            <el-table-column label="物料编码" prop="materialCode" width="120" />
-            <el-table-column label="物料名称" prop="materialName" width="150" />
-            <el-table-column label="规格" prop="materialSpec" width="120" />
-            <el-table-column label="单位" prop="unit" width="60" />
-            <el-table-column label="数量" prop="quantity" width="80" />
-            <el-table-column label="损耗率(%)" prop="lossRate" width="100" />
-            <el-table-column label="净用量" prop="netQuantity" width="80" />
-            <el-table-column label="单价" prop="unitPrice" width="80" />
-            <el-table-column label="总价" prop="totalPrice" width="80" />
-            <el-table-column label="排序" prop="sortOrder" width="60" />
-            <el-table-column label="备注" prop="remark" min-width="100" />
-          </el-table>
+          <BomDetailTable :items="productData.bom.items" height="300" />
         </div>
         <div v-else class="empty-section">
           <el-empty description="暂无物料清单" :image-size="40" />
@@ -164,47 +150,9 @@
           }}</el-descriptions-item>
         </el-descriptions>
 
-        <!-- 工序明细（按组合工序分组展示） -->
-        <div v-if="routeGroups.length > 0" class="sub-table">
-          <div class="sub-table-title">工序明细（{{ productData.routing.items.length }} 道）</div>
-          <el-table :data="routeGroups" border size="small" max-height="400" style="width: 100%">
-            <el-table-column label="序号" width="60" align="center">
-              <template #default="scope">{{ scope.row.groupOrder }}</template>
-            </el-table-column>
-            <el-table-column label="组合工序" min-width="300">
-              <template #default="scope">
-                <div class="group-items">
-                  <el-tag
-                    v-for="item in scope.row.items"
-                    :key="item.processId"
-                    size="small"
-                    class="group-item-tag"
-                  >
-                    <span>{{ item.processName }}</span>
-                  </el-tag>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="工序类别" width="120" align="center">
-              <template #default="scope">
-                <el-tag v-if="scope.row.processCategoryName" type="info" size="small">{{
-                  scope.row.processCategoryName
-                }}</el-tag>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="总人工工时" width="120" align="right">
-              <template #default="scope">{{ scope.row.totalLaborHours }}</template>
-            </el-table-column>
-            <el-table-column label="总机器工时" width="120" align="right">
-              <template #default="scope">{{ scope.row.totalMachineHours }}</template>
-            </el-table-column>
-            <el-table-column label="组合备注" min-width="200">
-              <template #default="scope"
-                ><span>{{ scope.row.remark || '-' }}</span></template
-              >
-            </el-table-column>
-          </el-table>
+        <!-- 工序明细与工艺路线详情共用展示 -->
+        <div v-if="productData.routing.items?.length" class="sub-table">
+          <RouteProcessTable :items="productData.routing.items" />
         </div>
         <div v-else class="empty-section">
           <el-empty description="暂无工序明细" :image-size="40" />
@@ -323,14 +271,15 @@
 
 <script setup lang="ts">
 import { hasPermi } from '@/directives'
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
-import { ProductEnum, ProductTypeEnum, StepTypeEnum } from '@/enums'
+import { ProductEnum, ProductTypeEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
-import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import ProductBasicInfo from '@/components/product/ProductBasicInfo.vue'
+import BomDetailTable from '@/views/product/bom/components/BomDetailTable.vue'
+import RouteProcessTable from '@/views/product/route/components/RouteProcessTable.vue'
 import { attachmentApi } from '@/api/system/attachment'
 import type { ProductBizAttachmentGroup } from '@/api/product'
 import { Document, Download } from '@element-plus/icons-vue'
@@ -370,54 +319,6 @@ const getApproveStatusText = (status: number): string => {
   const map: Record<number, string> = { 1: '草稿', 2: '待审核', 3: '已批准', 4: '已驳回' }
   return map[status] || '未知'
 }
-
-// 组合工序分组展示接口
-interface GroupDisplay {
-  groupOrder: number
-  groupName: string
-  items: EngineeringRoutingItemVO[]
-  totalLaborHours: number
-  totalMachineHours: number
-  remark: string
-  processCategoryName: string
-}
-
-// 按组合工序分组
-const routeGroups = computed<GroupDisplay[]>(() => {
-  const items = productData.value.routing?.items
-  if (!items || items.length === 0) return []
-
-  const groupMap = new Map<string, EngineeringRoutingItemVO[]>()
-  items.forEach((item) => {
-    const key = item.groupId
-      ? 'group_' + item.groupId
-      : 'independent_' + (item.itemId || Math.random())
-    if (!groupMap.has(key)) {
-      groupMap.set(key, [])
-    }
-    groupMap.get(key)!.push(item)
-  })
-
-  const sortedEntries = Array.from(groupMap.entries()).sort((a, b) => {
-    return (a[1][0].groupOrder || 0) - (b[1][0].groupOrder || 0)
-  })
-
-  return sortedEntries.map(([, items]) => ({
-    groupOrder: items[0].groupOrder || 0,
-    groupName: items[0].groupName || '组合' + (items[0].groupOrder || ''),
-    items: items,
-    totalLaborHours: items.reduce(
-      (sum, i) => sum + (i.customLaborHours || i.standardLaborHours || 0),
-      0
-    ),
-    totalMachineHours: items.reduce(
-      (sum, i) => sum + (i.customMachineHours || i.standardMachineHours || 0),
-      0
-    ),
-    remark: items[0]?.description || '',
-    processCategoryName: StepTypeEnum.getLabel(Number(items[0]?.processCategory) || 0) || '',
-  }))
-})
 
 // 加载数据
 const loadData = async () => {
@@ -549,18 +450,6 @@ defineExpose({
   padding: 20px;
   text-align: center;
   color: #909399;
-}
-
-.group-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px;
-}
-
-.group-item-tag {
-  cursor: default;
-  user-select: none;
 }
 
 .biz-source-title {
