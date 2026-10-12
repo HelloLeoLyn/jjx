@@ -8,7 +8,7 @@
         <article v-else class="paper-form">
           <header v-if="page.section !== 'customer' && page.section !== 'atlas'" class="paper-heading">
             <h1>{{ page.title }}<small v-if="page.continuation">（续）</small></h1>
-            <div class="paper-meta"><span>{{ data.product.productCode }}</span><span>{{ data.product.customerName || '' }}</span></div>
+            <div v-if="page.section !== 'print'" class="paper-meta"><span>{{ data.product.productCode }}</span><span>{{ data.product.customerName || '' }}</span></div>
           </header>
 
           <template v-if="page.kind === 'spec-details'">
