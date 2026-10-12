@@ -170,13 +170,24 @@
       <TraceTimeline v-model="traceDialogVisible" :trace-id="currentTraceId" />
     </SkeletonAction>
     <SkeletonAction>
-      <AttachmentUploadDialog
+      <el-dialog
         v-model="attachmentDialogVisible"
-        biz-type="quotation"
-        :biz-id="attachmentQuotationId"
-        :trace-id="attachmentTraceId"
-        :dialog-title="attachmentQuotationNo"
-      />
+        :title="`${attachmentQuotationNo || '报价单'} · 附件`"
+        width="900px"
+        append-to-body
+        destroy-on-close
+      >
+        <AttachmentCenter
+          v-if="attachmentDialogVisible && attachmentQuotationId"
+          source-type="quotation"
+          :source-id="attachmentQuotationId"
+          :source-no="attachmentQuotationNo"
+          :trace-id="attachmentTraceId"
+          mode="dialog"
+          view-perm="sales:quotation:view"
+          edit-perm="sales:quotation:edit"
+        />
+      </el-dialog>
     </SkeletonAction>
     <SkeletonAction>
       <OperationPreviewDialog
@@ -251,7 +262,7 @@ import QuotationToolbar from './components/QuotationToolbar.vue'
 import QuotationFormDialog from './components/QuotationFormDialog.vue'
 import QuotationDetailDialog from './components/QuotationDetailDialog.vue' // ✅ 新增
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
-import AttachmentUploadDialog from '@/components/AttachmentUploadDialog/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
