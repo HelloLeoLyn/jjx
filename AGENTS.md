@@ -64,12 +64,12 @@ Quick rules:
 
 ## Task completion report format (all agents — full spec: `jjx-docs/standards/CONVENTIONS.md` §5)
 
-Every task's closing report in chat uses this fixed 6-line template, line-by-line verifiable (task code + commit hash mandatory). Keep the report terse: put background, reasoning, command output and per-file detail in `sys_task.remark` (≤500, else `description`) or a `jjx-docs/history/` doc — **not** in the report.
+Every task's closing report in chat uses this fixed 6-line template, line-by-line verifiable (task code + commit hash mandatory). The `改：N` line counts **business/source files only** — reports, `INDEX.md` lines, guideline/spec docs, auto-generated files (`components.d.ts` etc.), backups and migration SQL are excluded and listed separately (2026-10-12, dev-20261012-054). Keep the report terse: put background, reasoning, command output and per-file detail in `sys_task.remark` (≤500, else `description`) or a `jjx-docs/history/` doc — **not** in the report.
 
 ```text
 任务码：dev-YYYYMMDD-NNN
 提交：<hash>（已 push）
-改：<N 文件，一句话>
+改：<N 个源文件，一句话>
 验：mvn / vue-tsc / check:docs / 基线 → 全过（没跑写未跑）
 DB：<迁移NN / 表 / 权限>（无则写 无）
 遗留：<一句话；无则写 无>
@@ -79,7 +79,7 @@ DB：<迁移NN / 表 / 权限>（无则写 无）
 ```text
 任务码：dev-20261011-017
 提交：8600503d（已 push）
-改：3 文件（产品列表删「作业规范」行内动作；迁移 267 去重菜单入口；表级 guard 备份）
+改：1 个源文件（产品列表删「作业规范」行内动作）；另：迁移 267 + 表级 guard 备份 2 个非源文件
 验：mvn / vue-tsc / check:docs / 基线 → 全过
 DB：迁移 267 / sys_menu·sys_role_menu / 删 menu404+授权、405/406 重挂 407、补授 407 给 role16
 遗留：工程/产品角色需重新登录刷新权限快照

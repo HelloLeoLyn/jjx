@@ -128,16 +128,17 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
   ```text
   任务码：dev-YYYYMMDD-NNN
   提交：<hash>（已 push）
-  改：<N 文件，一句话>
+  改：<N 个源文件，一句话>
   验：mvn / vue-tsc / check:docs / 基线 → 全过（没跑写未跑）
   DB：<迁移NN / 表 / 权限>（无则写 无）
   遗留：<一句话；无则写 无>
   ```
+  **「改：N」口径（2026-10-12 用户定，dev-20261012-054）**：N **只数业务/代码源文件**（`.java` / `.vue` / `.ts` 等实现文件）。以下**不计入 N**，需要时另在半句或 DB 行说明：报告与 `INDEX.md` 登记行、指南/规范/设计等文档、**自动生成文件**（`components.d.ts` 等 `*.d.ts`、lock 文件）、备份文件、迁移 SQL。同一文件被多任务共改时，只计本任务的实际业务改动。
   示例：
   ```text
   任务码：dev-20261011-017
   提交：8600503d（已 push）
-  改：3 文件（产品列表删「作业规范」行内动作；迁移 267 去重菜单入口；表级 guard 备份）
+  改：1 个源文件（产品列表删「作业规范」行内动作）；另：迁移 267 + 表级 guard 备份 2 个非源文件
   验：mvn / vue-tsc / check:docs / 基线 → 全过
   DB：迁移 267 / sys_menu·sys_role_menu / 删 menu404+授权、405/406 重挂 407、补授 407 给 role16
   遗留：工程/产品角色需重新登录刷新权限快照
