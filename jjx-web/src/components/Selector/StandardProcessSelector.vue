@@ -14,6 +14,10 @@
     @change="onDropdownChange"
     @clear="onClear"
   >
+    <!-- 选中项目在输入框内显示图标 -->
+    <template #prefix>
+      <SvgIcon v-if="showIcon" :name="showIcon" :size="16" class="sps-prefix-icon" />
+    </template>
     <!-- 历史/新建的纯名称（未关联工序 ID）回显 -->
     <el-option v-if="fallbackName" :label="fallbackName" :value="fallbackName" hidden />
     <el-option-group v-for="g in groups" :key="g.value" :label="g.label">
@@ -289,6 +293,11 @@ defineExpose({ reload: loadProcesses, processes })
 .sps-option-name {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.sps-prefix-icon {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
 }
 
 /* 弹窗模式触发器：仿输入框 */
