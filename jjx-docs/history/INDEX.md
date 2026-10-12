@@ -265,3 +265,5 @@
 | dev-20261012-035 | att-v1b-10-status-enums-dev-20261012-035.md | ATT-V1B-10：清 check:status-enums 存量违规——usePrintFieldSuggest 本地映射改 ScreenFrameStatusEnum（保留 EMPTY 空框/未制版差异）；OrderBatchActions 5 处数字→ProductionOrderStatusEnum（plan/work_order 同词表已核）；基线 130→122 仅删 8 行；门禁/vue-tsc/check:docs 全 0 |
 
 | dev-20261012-040 | att-dict-01-dev-20261012-040.md | ATT-DICT-01：公共附件资料类型字典迁移脚本（一级5+二级24，编码定稿）产出；编号 274→275（274 已被 dev-20261012-039 占用）；关键适配：utf8mb4_unicode_ci 下 GENERAL=general 同键冲突→旧键改 general_legacy 停用；沙箱同 collation 连跑两遍幂等通过；未执行/未改库/未提交 |
+
+| dev-20261012-041 | att-dict-02-dev-20261012-041.md | ATT-DICT-02 收口：清 Redis 字典缓存（DEL system:dict:attachment_document_type=1，attachment_category 不存在；清后扫描空）；只读复核账本(version=275/含275)、字典(一级active=5/二级active=24/旧两项停用)、接口 /system/attachment/refs/document-types 返回新编码；未改库未提交 |
