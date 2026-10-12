@@ -238,7 +238,7 @@ function docTypeLabel(code?: string | null) {
 }
 const selectableTypes = computed(() =>
   documentTypes.value.filter((t) => {
-    if (t.dict_code !== 'attachment_document_type') return false
+    if (t.dict_code !== 'attachment_document_type' || t.is_active !== 1) return false
     const ext = typeof t.ext_data === 'string' ? safeJson(t.ext_data) : t.ext_data
     const sources = (ext as any)?.sources
     if (!Array.isArray(sources)) return true
