@@ -10,7 +10,17 @@
     <el-tabs v-model="printTab">
       <el-tab-pane v-for="group in printGroups" :key="group.value" :name="group.value" :label="group.label">
         <el-table :data="group.rows" border size="small" :empty-text="`暂无${group.label}印刷工序`">
-          <el-table-column :label="`${group.label}印序`" min-width="180"><template #default="{ row, $index }">{{ $index + 1 }}. {{ row.processName ?? printParams(row).printName ?? '' }}</template></el-table-column>
+          <el-table-column :label="routeView ? '印刷名称' : `${group.label}印序`" min-width="180">
+            <template #default="{ row, $index }">
+              <div v-if="routeView" class="route-print-name">
+                <ProcessOperation v-if="row.icon" :items="routeOperationItems(row)" />
+                <el-icon v-else class="route-print-icon" :size="24"><Printer /></el-icon>
+                <span>{{ row.processOrder || $index + 1 }}. {{ row.processName ?? printParams(row).printName ?? '' }}</span>
+              </div>
+              <template v-else>{{ $index + 1 }}. {{ row.processName ?? printParams(row).printName ?? '' }}</template>
+              <div v-if="routeView && row.workInstruction" class="route-instruction">{{ row.workInstruction }}</div>
+            </template>
+          </el-table-column>
           <el-table-column label="色号" min-width="100"><template #default="{ row }">{{ printParams(row).colorNo ?? '-' }}</template></el-table-column>
           <el-table-column label="油墨编号" min-width="120"><template #default="{ row }">{{ printParams(row).inkNo ?? '-' }}</template></el-table-column>
           <el-table-column v-if="showFilm" label="菲林" min-width="120"><template #default="{ row }">{{ printParams(row).filmNo ?? '-' }}</template></el-table-column>
@@ -19,8 +29,17 @@
             <template #header><el-tooltip :content="readOnly ? '历史版本只显示工序中记录的网板编号' : '按网框台账当前有效版面读取网板编号'" placement="top"><span>网板编号</span></el-tooltip></template>
             <template #default="{ row }">{{ plateNumber(row) }}</template>
           </el-table-column>
+          <el-table-column v-if="routeView" label="人工工时(h)" width="120" align="right">
+            <template #default="{ row }">{{ row.customLaborHours ?? row.standardLaborHours ?? 0 }}</template>
+          </el-table-column>
+          <el-table-column v-if="routeView" label="机器工时(h)" width="120" align="right">
+            <template #default="{ row }">{{ row.customMachineHours ?? row.standardMachineHours ?? 0 }}</template>
+          </el-table-column>
+          <el-table-column v-if="routeView" label="备注" min-width="180">
+            <template #default="{ row }">{{ row.remark || '-' }}</template>
+          </el-table-column>
         </el-table>
-        <div class="print-group"><strong>{{ group.label }}备注</strong><p>{{ printRemarks[group.value] || '未填写' }}</p></div>
+        <div v-if="!routeView" class="print-group"><strong>{{ group.label }}备注</strong><p>{{ printRemarks[group.value] || '未填写' }}</p></div>
       </el-tab-pane>
     </el-tabs>
     <el-button v-if="canEdit" link type="primary" @click="openHistory">备注修改记录</el-button>
@@ -55,16 +74,19 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Printer } from '@element-plus/icons-vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import { normalizeWorkSpec, productWorkSpecApi, type ProductWorkSpec, type PrintRemarkHistory } from '@/api/product/workSpec'
 import { flowGroups, printParams } from './docset'
 import { engineeringResourceApi } from '@/api/engineering/resource'
+import ProcessOperation from '@/components/ProcessOperation/index.vue'
+import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 import { processRowsForGroup, currentPlateForFrame, type SpecProcessRow } from './workSpecProcessRows'
 
 /** 同时传入 workSpec/routingItems 时直接展示；仅传 productId 时自主取数。 */
-const props = defineProps<{ productId: number; workSpec?: ProductWorkSpec; routingItems?: SpecProcessRow[]; loading?: boolean; readOnly?: boolean }>()
+const props = defineProps<{ productId?: number; workSpec?: ProductWorkSpec; routingItems?: SpecProcessRow[]; loading?: boolean; readOnly?: boolean; routeView?: boolean }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [workSpec: ProductWorkSpec] }>()
 const user = useUserStore()
 const fetchedSpec = ref<ProductWorkSpec>()
@@ -75,7 +97,7 @@ let loadGeneration = 0
 const currentWorkSpec = computed(() => props.workSpec ?? fetchedSpec.value)
 const currentRoutingItems = computed(() => props.routingItems ?? fetchedRoutingItems.value)
 const printRemarks = computed(() => currentWorkSpec.value?.printRemarks || {})
-const canEdit = computed(() => !props.readOnly && !!currentWorkSpec.value && user.hasPermission('product:edit'))
+const canEdit = computed(() => !props.routeView && !props.readOnly && !!props.productId && !!currentWorkSpec.value && user.hasPermission('product:edit'))
 const editorVisible = ref(false)
 const saving = ref(false)
 const draft = ref<Record<string, string>>({})
@@ -90,9 +112,41 @@ const nextBefore = ref<number>()
 let disposed = false
 let plateGeneration = 0
 const printTab = ref(flowGroups[0]?.value || '')
-const printGroups = computed(() => flowGroups.map(group => ({
-  ...group, rows: processRowsForGroup(currentRoutingItems.value, 'PRINT', group.value),
-})))
+const routeCategories = [...flowGroups, { value: '', label: '未分类', symbol: '' }]
+const normalizedRouteItems = computed(() => {
+  const known = new Set(flowGroups.map((group) => group.value))
+  const normalize = (rows: SpecProcessRow[]): SpecProcessRow[] =>
+    rows.map((row) => ({
+      ...row,
+      processCategory: known.has(row.processCategory) ? row.processCategory : '',
+      ...(row.children ? { children: normalize(row.children) } : {}),
+    }))
+  return normalize(currentRoutingItems.value)
+})
+const printGroups = computed(() => (props.routeView ? routeCategories : flowGroups).map(group => {
+  const rows = processRowsForGroup(props.routeView ? normalizedRouteItems.value : currentRoutingItems.value, 'PRINT', group.value)
+  if (props.routeView) rows.sort((a, b) => (a.workflowSeq ?? 1) - (b.workflowSeq ?? 1)
+    || (a.processOrder || 0) - (b.processOrder || 0))
+  return { ...group, rows }
+}))
+watch(
+  printGroups,
+  (groups) => {
+    if (props.routeView) printTab.value = groups.find((group) => group.rows.length)?.value ?? flowGroups[0]?.value ?? ''
+  },
+  { immediate: true }
+)
+function routeOperationItems(row: SpecProcessRow): ProcessOperationItem[] {
+  return [{
+    key: row.itemId || row.processId || row.processOrder,
+    icon: row.icon,
+    processName: row.processName,
+    hasIndex: row.hasIndex,
+    indexNumber: row.hasIndex === 1 ? row.indexNumber : null,
+    hasWorkInstruction: row.hasWorkInstruction,
+    workInstruction: row.workInstruction,
+  }]
+}
 const printRows = computed(() => printGroups.value.flatMap(group => group.rows))
 const showFilm = computed(() => printRows.value.some(row => String(printParams(row).filmNo ?? '').length > 0))
 const frameNumbers = computed(() => [...new Set(printRows.value.map(row => String(printParams(row).screenNo || '').trim()).filter(Boolean))])
@@ -101,7 +155,7 @@ const plateNumbers = ref<Record<string, string>>({})
 function plateNumber(row: SpecProcessRow): string {
   const params = printParams(row)
   if (params.plateNo) return String(params.plateNo)
-  if (props.readOnly) return '未记录'
+  if (props.readOnly || props.routeView) return '未记录'
   const frameNo = String(params.screenNo || '').trim()
   if (!frameNo) return '-'
   if (!canReadFrames.value) return '无台账查看权限'
@@ -110,7 +164,7 @@ function plateNumber(row: SpecProcessRow): string {
 async function loadPlates() {
   const generation = ++plateGeneration
   plateNumbers.value = {}
-  if (props.readOnly || !canReadFrames.value) return
+  if (props.readOnly || props.routeView || !canReadFrames.value) return
   // 按网框去重查询，避免同一网框在多组/多道印序中重复请求。
   for (const frameNo of frameNumbers.value) {
     if (generation !== plateGeneration || disposed) return
@@ -150,7 +204,7 @@ async function closeEditor(done?: () => void) {
   else editorVisible.value = false
 }
 async function save() {
-  if (saving.value || !dirty.value) return
+  if (saving.value || !dirty.value || !props.productId) return
   saving.value = true
   try {
     const response = await productWorkSpecApi.savePrintRemarks(props.productId, revision.value, draft.value)
@@ -172,7 +226,7 @@ async function openHistory() {
   await loadHistory()
 }
 async function loadHistory(before?: number) {
-  if (historyLoading.value) return
+  if (historyLoading.value || !props.productId) return
   historyLoading.value = true
   historyError.value = ''
   try {
@@ -190,7 +244,7 @@ function beforeUnload(event: BeforeUnloadEvent) {
 }
 async function loadData() {
   const generation = ++loadGeneration
-  if (props.workSpec !== undefined && props.routingItems !== undefined) {
+  if (props.routeView || (props.workSpec !== undefined && props.routingItems !== undefined) || !props.productId) {
     fetchedSpec.value = undefined
     fetchedRoutingItems.value = []
     loadError.value = ''
@@ -229,6 +283,9 @@ onBeforeUnmount(() => { disposed = true; loadGeneration++; plateGeneration++; wi
 .print-actions h3 { margin:0; font-size:15px; }
 .print-group { margin:16px 0; font-size:14px; }
 .print-group p { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; margin:8px 0 0; }
+.route-instruction { color:var(--el-text-color-secondary); font-size:12px; margin-top:4px; }
+.route-print-name { display:flex; align-items:center; gap:8px; }
+.route-print-icon { color:var(--el-color-primary); flex-shrink:0; }
 .remark-history { max-height:60vh; overflow:auto; min-height:120px; }
 .history-item { padding:12px 0; border-bottom:1px solid #ebeef5; }
 .history-heading { color:#697586; margin-bottom:10px; }
