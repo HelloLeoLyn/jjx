@@ -114,14 +114,15 @@ export function dieLocationLabel(row: Record<string, any>): string {
 export function flattenedBom(items?: Record<string, any>[] | null): Record<string, any>[] {
   return flatten(items || [])
 }
-/** 刀模位置按 BOM 行（展平后）对齐取值，与纸张行序一致。 */
-export function dieLocationRows(map: DieLocationMap | undefined, items: Record<string, any>[] | null | undefined): string[] {
-  return flattenedBom(items).map(row => (map && map[dieLocationKey(row)]) || '')
+/** 刀模位置按 BOM 行（展平后）对齐取值，与纸张行序一致。map 优先；该行无 map 值时回退旧版多行文本（dieLocationText，按行对齐）。 */
+export function dieLocationRows(map: DieLocationMap | undefined, items: Record<string, any>[] | null | undefined, legacyText?: string): string[] {
+  const legacy = legacyText ? legacyText.split(/\r?\n/) : []
+  return flattenedBom(items).map((row, index) => (map && map[dieLocationKey(row)]) || (legacy[index] || '').trim())
 }
 function specText(data: DocsetData) {
   return {
     engineeringNotes: data.workSpec.engineeringRequirements,
-    diePositionRows: dieLocationRows(data.workSpec.dieLocation, data.bom.items || []),
+    diePositionRows: dieLocationRows(data.workSpec.dieLocation, data.bom.items || [], data.workSpec.dieLocationText),
     changeLines: [...data.workSpec.changes]
       .filter(change => change.print && change.text.trim())
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
