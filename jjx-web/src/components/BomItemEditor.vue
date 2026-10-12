@@ -83,31 +83,15 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="项目" prop="processName" width="160">
+      <el-table-column label="项目" prop="processName" width="200">
         <template #default="scope">
-          <el-select
+          <StandardProcessSelector
+            :mode="PROJECT_PICKER_MODE"
             :model-value="scope.row.processId ?? scope.row.processName"
-            placeholder="选择或输入项目名称"
+            :process-name="scope.row.processName"
             size="small"
-            filterable
-            allow-create
-            default-first-option
-            clearable
-            style="width: 100%"
             @change="(val: number | string | undefined) => handleProjectChange(scope.row, val)"
-          >
-            <el-option
-              v-if="scope.row.processId == null && scope.row.processName"
-              :label="scope.row.processName"
-              :value="scope.row.processName"
-            />
-            <el-option
-              v-for="item in processOptions"
-              :key="item.processId"
-              :label="item.processName"
-              :value="item.processId"
-            />
-          </el-select>
+          />
         </template>
       </el-table-column>
       <!-- 规格型号 -->
@@ -317,6 +301,7 @@ import type { EngineeringBomItem, BomMaterialMatchItem } from '@/types/product/b
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import StandardProcessSelector from '@/components/Selector/StandardProcessSelector.vue'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import { productBomApi } from '@/api/product/bom'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
@@ -355,6 +340,10 @@ const selectedItems = ref<EngineeringBomItem[]>([])
 const tableLoading = ref(false)
 const refreshLoading = ref(false)
 const tableHeight = ref(400)
+
+// 项目选择器交互模式：'dropdown' 内联下拉 / 'dialog' 分组网格弹窗
+// （2026-10-12 两模式并存，实际效果对比后再定用哪个）
+const PROJECT_PICKER_MODE: 'dropdown' | 'dialog' = 'dropdown'
 
 // 项目可关联启用的标准工序，也可只保存用户填写的名称。
 const processOptions = ref<StandardProcessItem[]>([])
