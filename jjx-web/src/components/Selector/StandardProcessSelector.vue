@@ -2,7 +2,7 @@
   <!-- 模式一：下拉（el-select 分组 + 图标） -->
   <el-select
     v-if="mode === 'dropdown'"
-    :model-value="currentValue"
+    :model-value="innerValue"
     :placeholder="placeholder"
     :size="size"
     :disabled="disabled"
@@ -11,12 +11,15 @@
     :allow-create="allowCreate"
     default-first-option
     style="width: 100%"
-    @change="onDropdownChange"
+    @update:model-value="onUpdateValue"
     @clear="onClear"
   >
-    <!-- 选中项目在输入框内显示图标 -->
+    <!-- 选中项目：输入框内显示图标 + 名称 -->
     <template #prefix>
       <SvgIcon v-if="showIcon" :name="showIcon" :size="16" class="sps-prefix-icon" />
+    </template>
+    <template #label>
+      <span class="sps-selected-name">{{ showName }}</span>
     </template>
     <!-- 历史/新建的纯名称（未关联工序 ID）回显 -->
     <el-option v-if="fallbackName" :label="fallbackName" :value="fallbackName" hidden />
@@ -95,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { CircleClose, Plus, Search } from '@element-plus/icons-vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import { standardProcessApi } from '@/api/product/standardProcess'
@@ -190,28 +193,36 @@ const groups = computed(() => {
     .filter((g) => g.items.length > 0)
 })
 
-// ==================== 当前值回显 ====================
-const currentValue = computed<number | string | undefined>(() => props.modelValue ?? undefined)
+// ==================== 当前值（内部受控，保证选中即时回显）====================
+// el-select 单选的显示依赖 model-value 变化；这里维护内部值，选中即写入，不依赖父级回传。
+const innerValue = ref<number | string | undefined>(props.modelValue ?? undefined)
+watch(
+  () => props.modelValue,
+  (v) => {
+    innerValue.value = v ?? undefined
+  }
+)
+
 const currentId = computed<number | undefined>(() =>
-  typeof props.modelValue === 'number' ? props.modelValue : undefined
+  typeof innerValue.value === 'number' ? innerValue.value : undefined
 )
 const fallbackName = computed(() =>
-  typeof props.modelValue === 'string' && props.modelValue ? props.modelValue : ''
+  typeof innerValue.value === 'string' && innerValue.value ? innerValue.value : ''
 )
 
 /** 当前值命中的标准工序（用于取名称/图标） */
 const matched = computed<StandardProcessItem | undefined>(() => {
-  if (typeof props.modelValue === 'number') {
-    return processes.value.find((p) => p.processId === props.modelValue)
+  if (typeof innerValue.value === 'number') {
+    return processes.value.find((p) => p.processId === innerValue.value)
   }
-  const name = props.processName || (typeof props.modelValue === 'string' ? props.modelValue : '')
+  const name = props.processName || (typeof innerValue.value === 'string' ? innerValue.value : '')
   return name ? processes.value.find((p) => p.processName === name) : undefined
 })
 const showName = computed(
   () =>
     matched.value?.processName ||
     props.processName ||
-    (typeof props.modelValue === 'string' ? props.modelValue : '')
+    (typeof innerValue.value === 'string' ? innerValue.value : '')
 )
 const showIcon = computed(() => matched.value?.icon || '')
 
@@ -245,8 +256,10 @@ const canCreate = computed(() => {
 })
 
 function emitValue(value: number | string | undefined) {
-  emit('update:modelValue', value)
-  emit('change', value)
+  const v = value ?? undefined
+  innerValue.value = v
+  emit('update:modelValue', v)
+  emit('change', v)
 }
 
 function pick(p: StandardProcessItem) {
@@ -267,18 +280,19 @@ function onClear() {
   emitValue(undefined)
 }
 
-function onDropdownChange(val: number | string | undefined | null) {
-  if (typeof val === 'number') {
-    emitValue(val)
-    const item = processes.value.find((p) => p.processId === val)
+function onUpdateValue(val: number | string | undefined | null) {
+  emitValue(val ?? undefined)
+  const v = innerValue.value
+  if (typeof v === 'number') {
+    const item = processes.value.find((p) => p.processId === v)
     if (item) emit('select', item)
     return
   }
-  const name = val ?? ''
-  emitValue(name)
-  const exact = processes.value.find((p) => (p.processName || '').trim() === name)
-  if (exact) emit('select', exact)
-  else if (name) emit('create', name)
+  if (v) {
+    const exact = processes.value.find((p) => (p.processName || '').trim() === v)
+    if (exact) emit('select', exact)
+    else emit('create', v)
+  }
 }
 
 defineExpose({ reload: loadProcesses, processes })
@@ -298,6 +312,11 @@ defineExpose({ reload: loadProcesses, processes })
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
+}
+.sps-selected-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 弹窗模式触发器：仿输入框 */
