@@ -21,7 +21,6 @@ declare module 'vue' {
     BomMaterialSelector: typeof import('./components/Selector/BomMaterialSelector.vue')['default']
     CompactInput: typeof import('./components/CompactInput.vue')['default']
     CustomerDocPanel: typeof import('./components/product/customer-doc/CustomerDocPanel.vue')['default']
-    CustomerDocUpload: typeof import('./components/customer-doc/CustomerDocUpload.vue')['default']
     CustomerSelector: typeof import('./components/Selector/CustomerSelector.vue')['default']
     DataScope: typeof import('./components/system/DataScope.vue')['default']
     DataTable: typeof import('./components/common-ui/DataTable.vue')['default']
