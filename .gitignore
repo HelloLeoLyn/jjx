@@ -78,6 +78,8 @@ dist/
 .npm/
 .temp/
 .cache/
+# 自动生成的组件类型声明
+/jjx-web/src/components.d.ts
 
 # ====================
 # Docker 相关
