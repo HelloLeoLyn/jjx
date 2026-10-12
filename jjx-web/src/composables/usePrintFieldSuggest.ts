@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { suggestSampleColors, suggestSampleInks } from '@/api/sales/sampleOrder'
 import { engineeringResourceApi } from '@/api/engineering/resource'
 import { filmApi } from '@/api/product/film'
+import { ScreenFrameStatusEnum } from '@/enums/engineering/resource'
 
 /**
  * 印刷工序字段联想（公共）——dev-20261009-026
@@ -15,24 +16,14 @@ export interface PrintSuggestItem {
   materialId?: number | null
 }
 
-const FRAME_STATUS_LABEL: Record<string, string> = {
-  EMPTY: '空框',
-  PLATED: '已制版',
-  MAINTENANCE: '维护中',
-  SCRAPPED: '已报废',
-}
-
+// 网框状态文案统一走公共枚举（禁止页面内自建 STATUS_MAP，dev-20261012-035）。
+// 注意：EMPTY 在"网框编号"标签语境显示"未制版"，而枚举默认 label 为"空框"——该差异仅在
+// frameStatusOf（tag 语境）处显式覆盖；此处沿用枚举 label，未知值回退原值。
 export function frameStatusLabel(s: string): string {
-  return FRAME_STATUS_LABEL[s] || s || ''
+  return ScreenFrameStatusEnum.canDo(s) ? ScreenFrameStatusEnum.getLabel(s) : s || ''
 }
 
-// 网框状态标签（异常高亮，供工序行"变动可感知"）
-const FRAME_STATUS_TAG: Record<string, { label: string; type: 'success' | 'warning' | 'danger' | 'info' }> = {
-  EMPTY: { label: '未制版', type: 'warning' },
-  PLATED: { label: '已制版', type: 'success' },
-  MAINTENANCE: { label: '维护中', type: 'warning' },
-  SCRAPPED: { label: '已报废', type: 'danger' },
-}
+// 网框状态标签（异常高亮，供工序行"变动可感知"）：统一取公共枚举 ScreenFrameStatusEnum 的 label/tagProps。
 
 /** 网框编号兼容读取：接口返回下划线 frame_no（旧代码误读驼峰 frameNo）。 */
 function frameNoOf(f: any): string {
@@ -44,7 +35,17 @@ export function frameStatusOf(frameNo: string): { label: string; type: string } 
   if (!frameNo) return null
   const f = frameCache.value.find((x: any) => frameNoOf(x) === frameNo)
   if (!f) return null
-  return FRAME_STATUS_TAG[f.status] || { label: frameStatusLabel(f.status), type: 'info' }
+  // EMPTY 在本语境强调异常（"未制版"/warning）与枚举默认（"空框"/info）不同，显式覆盖以保持不变
+  if (f.status === ScreenFrameStatusEnum.EMPTY.value) {
+    return { label: '未制版', type: 'warning' }
+  }
+  if (ScreenFrameStatusEnum.canDo(f.status)) {
+    return {
+      label: ScreenFrameStatusEnum.getLabel(f.status),
+      type: String(ScreenFrameStatusEnum.getTagProps(f.status).type || 'info'),
+    }
+  }
+  return { label: frameStatusLabel(f.status), type: 'info' }
 }
 
 // 网框台账本地缓存（进程内复用）

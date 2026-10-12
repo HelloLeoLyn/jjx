@@ -73,6 +73,7 @@ import {
   Delete,
 } from '@element-plus/icons-vue'
 import type { ProductionOrderVO } from '@/types/production/order'
+import { ProductionOrderStatusEnum } from '@/enums/production/WorkOrderEnum'
 
 interface Props {
   selectedRows: ProductionOrderVO[]
@@ -102,27 +103,27 @@ const emit = defineEmits<Emits>()
 // 计算属性
 const canBatchApprove = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every((row) => row.orderType === 'plan' && row.orderStatus === 1)
+  return props.selectedRows.every((row) => row.orderType === 'plan' && row.orderStatus === ProductionOrderStatusEnum.PENDING_APPROVAL.value)
 })
 
 const canBatchStart = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every((row) => row.orderType === 'work_order' && row.orderStatus === 4)
+  return props.selectedRows.every((row) => row.orderType === 'work_order' && row.orderStatus === ProductionOrderStatusEnum.PLANNED.value)
 })
 
 const canBatchComplete = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every((row) => row.orderType === 'work_order' && row.orderStatus === 6)
+  return props.selectedRows.every((row) => row.orderType === 'work_order' && row.orderStatus === ProductionOrderStatusEnum.IN_PROGRESS.value)
 })
 
 const canBatchCancel = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every((row) => row.orderStatus !== 8 && row.orderStatus !== 9)
+  return props.selectedRows.every((row) => row.orderStatus !== ProductionOrderStatusEnum.COMPLETED.value && row.orderStatus !== ProductionOrderStatusEnum.CANCELLED.value)
 })
 
 const canBatchDelete = computed(() => {
   if (props.selectedRows.length === 0) return false
-  return props.selectedRows.every((row) => row.orderStatus === 0 || row.orderStatus === 9)
+  return props.selectedRows.every((row) => row.orderStatus === ProductionOrderStatusEnum.DRAFT.value || row.orderStatus === ProductionOrderStatusEnum.CANCELLED.value)
 })
 
 // 方法

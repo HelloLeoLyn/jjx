@@ -261,3 +261,5 @@
 | 2026-10-12 (dev-20261012-043) | att-dict-04-dev-20261012-043.md | ATT-DICT-04 停用资料类型单行过滤与历史兼容核查 |
 
 | 2026-10-12 (dev-20261012-027) | att-v1b-02-dev-20261012-027.md | ATT-V1B-02 报价列表公共附件接入与后续047范围交接 |
+
+| dev-20261012-035 | att-v1b-10-status-enums-dev-20261012-035.md | ATT-V1B-10：清 check:status-enums 存量违规——usePrintFieldSuggest 本地映射改 ScreenFrameStatusEnum（保留 EMPTY 空框/未制版差异）；OrderBatchActions 5 处数字→ProductionOrderStatusEnum（plan/work_order 同词表已核）；基线 130→122 仅删 8 行；门禁/vue-tsc/check:docs 全 0 |
