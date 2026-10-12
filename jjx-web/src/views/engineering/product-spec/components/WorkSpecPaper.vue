@@ -1,43 +1,14 @@
 <template>
   <article ref="paper" class="work-paper">
     <header class="work-title">产 品 作 业 规 范<span v-if="page.continuation">（续）</span></header>
-    <!-- 顶部三栏：结构图（左上）· 凹凸条件（居中）· 备注（右上），等高对齐。 -->
-    <table class="grid work-top">
-      <colgroup><col style="width:33.34%" /><col style="width:33.33%" /><col style="width:33.33%" /></colgroup>
-      <tbody>
-        <tr>
-          <td class="top-structure">
-            <div class="top-cell">
-              <div class="top-label">产 品 结 构 图</div>
-              <div class="structure-art"><img v-if="structureImage" :src="structureImage" alt="产品结构图" /></div>
-              <div v-if="structureCaption" class="structure-caption">{{ structureCaption }}</div>
-            </div>
-          </td>
-          <td class="top-emboss">
-            <div class="top-cell">
-              <div class="top-label">凹 凸 条 件</div>
-              <div class="emboss-grid">
-                <div v-for="field in embossFields" :key="field.key" class="emboss-item">
-                  <span class="emboss-key">{{ field.label }}</span>
-                  <span class="emboss-val">{{ embossValue(field.key, field.unit) }}</span>
-                </div>
-              </div>
-            </div>
-          </td>
-          <td class="top-remark">
-            <div class="top-cell">
-              <div class="top-label">备　注</div>
-              <div class="notes-content" data-overflow-title="备注" :data-overflow-repeat="page.continuation ? 'true' : undefined" :style="{ color: data.workSpec.requirementsColor }">{{ page.engineeringNotes }}</div>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
     <table class="grid materials">
+      <!-- 两张整宽表共用1/3边界：材料右边线与面板耗时右边线贯通。 -->
       <colgroup>
-        <col style="width:6%" /><col style="width:6%" /><col style="width:30%" /><col style="width:38%" /><col style="width:20%" />
+        <col style="width:5%" /><col style="width:5%" /><col style="width:calc(100% / 3 - 10%)" />
+        <col style="width:calc(60% - 100% / 3)" /><col style="width:13%" />
+        <col style="width:16.74%" /><col style="width:10.26%" />
       </colgroup>
-      <thead><tr><th>序号</th><th>项目</th><th>材　料</th><th>规格及模数</th><th>刀模位置</th></tr></thead>
+      <thead><tr><th>序号</th><th>项目</th><th>材　料</th><th>规格及模数</th><th>刀模位置</th><th>凹凸条件</th><th></th></tr></thead>
       <tbody>
         <tr v-for="(row, i) in padded(page.rows, 14)" :key="i">
           <td class="center">{{ '(' + ((page.continuation || 0) * 14 + i + 1) + ')' }}</td>
@@ -45,10 +16,15 @@
           <td><span class="material-name" :data-overflow-title="materialLabel(i) + '材料'" :title="row?.materialName || row?.materialCode">{{ row?.materialName || row?.materialCode }}</span></td>
           <td><span class="cell-single" :data-overflow-title="materialLabel(i) + '规格及模数'" :title="workSpecMaterialSpec(row)">{{ workSpecMaterialSpec(row) }}</span></td>
           <td class="die-position">{{ page.diePositionRows?.[i] }}</td>
+          <template v-if="i < embossFields.length">
+            <td class="emboss-label">{{ embossFields[i]?.label }}</td>
+            <td class="center emboss-value">{{ embossValue(embossFields[i]?.key, embossFields[i]?.unit) }}</td>
+          </template>
+          <td v-else-if="i === embossFields.length" :rowspan="14 - embossFields.length" colspan="2" class="engineering-notes"><div class="notes-content" data-overflow-title="加工要求" :data-overflow-repeat="page.continuation ? 'true' : undefined" :style="{ color: data.workSpec.requirementsColor }">{{ page.engineeringNotes }}</div></td>
         </tr>
       </tbody>
     </table>
-    <!-- 三组流程使用同一表格行，各占等宽一栏。 -->
+    <!-- 三组流程使用同一表格行，结构图跨7行，上线表头占第8行。 -->
     <table class="grid flows">
       <colgroup>
         <template v-for="group in page.groups" :key="group.label">
@@ -56,27 +32,37 @@
         </template>
       </colgroup>
       <thead><tr>
-        <template v-for="group in page.groups" :key="group.label"><th>序号</th><th>{{ group.label }}作业流程</th><th>耗时(h)</th></template>
+        <template v-for="(group, column) in page.groups" :key="group.label">
+          <th v-if="column === 1" colspan="3" class="structure-title">产 品 结 构 图</th>
+          <template v-else><th>序号</th><th>{{ group.label }}作业流程</th><th>耗时(h)</th></template>
+        </template>
       </tr></thead>
       <tbody>
         <tr v-for="line in flowRows" :key="line.index">
           <template v-for="cell in line.cells" :key="cell.column">
-            <td class="center">{{ '(' + cell.number + ')' }}</td>
-            <td>
-              <div v-if="cell.item" class="operation" :data-overflow-title="cell.label + '第' + cell.number + '道作业说明'" :data-overflow-text="operationText(cell.item)">
-                <div class="operation-symbols" data-overflow-part>
-                  <template v-for="(item, j) in operations(cell.item)" :key="item.itemId || j">
-                    <span v-if="j" class="plus">＋</span>
-                    <span class="symbol">
-                      <SvgIcon v-if="item.icon" :name="item.icon" :size="20" />
-                      <sub v-if="workSpecStepSubscript(item)" data-overflow-part>{{ workSpecStepSubscript(item) }}</sub>
-                    </span>
-                  </template>
+            <template v-if="cell.column !== 1 || line.index >= 8">
+              <td class="center">{{ '(' + cell.number + ')' }}</td>
+              <td>
+                <div v-if="cell.item" class="operation" :data-overflow-title="cell.label + '第' + cell.number + '道作业说明'" :data-overflow-text="operationText(cell.item)">
+                  <div class="operation-symbols" data-overflow-part>
+                    <template v-for="(item, j) in operations(cell.item)" :key="item.itemId || j">
+                      <span v-if="j" class="plus">＋</span>
+                      <span class="symbol">
+                        <SvgIcon v-if="item.icon" :name="item.icon" :size="20" />
+                        <sub v-if="workSpecStepSubscript(item)" data-overflow-part>{{ workSpecStepSubscript(item) }}</sub>
+                      </span>
+                    </template>
+                  </div>
+                  <span v-if="workSpecOperationRemark(cell.item)" class="operation-remark" data-overflow-part :title="workSpecOperationRemark(cell.item)">{{ workSpecOperationRemark(cell.item) }}</span>
                 </div>
-                <span v-if="workSpecOperationRemark(cell.item)" class="operation-remark" data-overflow-part :title="workSpecOperationRemark(cell.item)">{{ workSpecOperationRemark(cell.item) }}</span>
-              </div>
+              </td>
+              <td class="center">{{ labor(cell.item) }}</td>
+            </template>
+            <td v-else-if="line.index === 0" colspan="3" rowspan="7" class="structure">
+              <div class="structure-art"><img v-if="structureImage" :src="structureImage" alt="产品结构图" /></div>
+              <div v-if="structureCaption" class="structure-caption">{{ structureCaption }}</div>
             </td>
-            <td class="center">{{ labor(cell.item) }}</td>
+            <template v-else-if="line.index === 7"><th>序号</th><th>{{ cell.label }}作业流程</th><th>耗时(h)</th></template>
           </template>
         </tr>
       </tbody>
@@ -118,11 +104,10 @@ function operationText(row: Record<string, any>) {
 const allOperations = computed<Record<string, any>[]>(() => props.data.routing.items || [])
 const flowRows = computed(() => Array.from({ length: 14 }, (_, index) => ({
   index,
-  cells: (props.page.groups || []).map((group, column) => ({
-    column, label: group.label,
-    number: (props.page.continuation || 0) * 14 + index + 1,
-    item: group.rows[index],
-  })),
+  cells: (props.page.groups || []).map((group, column) => {
+    const rowIndex = column === 1 ? index - 8 : index
+    return { column, label: group.label, number: (props.page.continuation || 0) * (column === 1 ? 6 : 14) + rowIndex + 1, item: group.rows[rowIndex] }
+  }),
 })))
 function fullGroup(label: string) { const category = flowGroups.find(group => group.label === label)?.value; return allOperations.value.filter(row => row.processCategory === category) }
 function padded(rows: Record<string, any>[] = [], length: number) { return Array.from({ length }, (_, i) => rows[i] || null) }
@@ -146,44 +131,39 @@ function shortDate(value?: string | null) { return value ? value.slice(2, 10) : 
 
 <style scoped>
 .work-paper { height:290mm; display:flex; flex-direction:column; box-sizing:border-box; border:1.5px solid #222; color:#252525; font-family:SimSun,'Songti SC',serif; font-size:13px; }
-.work-title { height:60px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:26px; letter-spacing:5px; border-bottom:1px solid #222; text-decoration:underline; text-underline-offset:7px; }
+.work-title { height:65px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:27px; letter-spacing:5px; border-bottom:1px solid #222; text-decoration:underline; text-underline-offset:7px; }
 .work-title span { font-size:13px; letter-spacing:0; }
 .grid { width:100%; border-collapse:collapse; table-layout:fixed; flex-shrink:0; }
 .grid th,.grid td { border:0; border-right:1px solid #333; border-bottom:1px solid #333; padding:2px 4px; line-height:1.2; box-sizing:border-box; font-weight:400; overflow-wrap:anywhere; }
 .grid tr > :last-child { border-right:0; }
-.grid th { height:30px; font-size:14px; white-space:nowrap; }
+.grid th { height:32px; font-size:14px; white-space:nowrap; }
 .center { text-align:center; }
-/* 顶部三栏：结构图 / 凹凸条件 / 备注 */
-.work-top { height:176px; }
-.work-top td { vertical-align:top; padding:0; }
-.top-cell { height:176px; display:flex; flex-direction:column; }
-.top-label { height:27px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:14px; border-bottom:1px solid #333; }
-.structure-art { flex:1; min-height:0; padding:6px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; }
-.structure-art img { max-width:100%; max-height:100%; object-fit:contain; }
-.structure-caption { flex-shrink:0; height:14px; font-size:9px; text-align:center; line-height:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; box-sizing:border-box; }
-.emboss-grid { flex:1; min-height:0; display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:1fr; }
-.emboss-item { display:flex; align-items:center; justify-content:space-between; gap:4px; padding:0 6px; font-size:11px; border-bottom:1px solid #d5d5d5; box-sizing:border-box; overflow:hidden; }
-.emboss-item:nth-child(2n) { border-right:1px solid #d5d5d5; }
-.emboss-item:nth-last-child(-n+2) { border-bottom:0; }
-.emboss-key { color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.emboss-val { flex-shrink:0; white-space:nowrap; }
-.notes-content { flex:1; min-height:0; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; line-height:17px; font-size:11px; padding:6px; box-sizing:border-box; }
-.materials { height:300px; }
-.materials tbody tr { height:19px; }
-.materials td { height:19px; padding-top:0; padding-bottom:0; }
+.materials { height:340px; }
+.materials tbody tr { height:22px; }
+.materials td { height:22px; padding-top:0; padding-bottom:0; }
+/* 右侧要求跨行时，刀模单元格仍保留与要求区之间的边线。 */
+.materials tbody td.die-position { border-right:1px solid #333; }
 .cell-single { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.material-name { display:block; font-size:11px; line-height:19px; max-height:19px; overflow:hidden; overflow-wrap:anywhere; }
+.material-name { display:block; font-size:11px; line-height:10px; max-height:20px; overflow:hidden; overflow-wrap:anywhere; }
 .die-position { font-size:11px; white-space:pre-wrap; }
-.flows { height:372px; }
-.flows tbody tr { height:22px; }
-.flows tbody td,.flows tbody th { height:22px; }
-.flows tfoot td { height:28px; border-bottom:0; font-size:13px; white-space:nowrap; }
-.operation { display:flex; align-items:center; justify-content:space-between; gap:5px; height:20px; line-height:1.1; overflow:hidden; }
+.emboss-label,.emboss-value { font-size:12px; white-space:nowrap; padding:0 2px !important; }
+.materials td.engineering-notes { vertical-align:top; padding:8px 5px; }
+.notes-content { height:159px; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; line-height:18px; font-size:12px; }
+.flows { height:470px; }
+.flows tbody tr { height:29px; }
+.flows tbody td,.flows tbody th { height:29px; }
+.flows tfoot td { height:32px; border-bottom:0; font-size:13px; white-space:nowrap; }
+.operation { display:flex; align-items:center; justify-content:space-between; gap:5px; height:24px; line-height:1.1; overflow:hidden; }
 .operation-symbols { display:flex; align-items:center; flex-shrink:0; gap:2px; }
 .symbol { display:inline-flex; align-items:flex-end; }
 .symbol sub { font-size:8px; line-height:10px; margin-left:1px; transform:translateY(2px); max-width:40px; overflow-wrap:anywhere; }
-.operation-remark { margin-left:auto; min-width:0; text-align:right; font-size:12px; line-height:12px; max-height:20px; overflow:hidden; overflow-wrap:anywhere; }
+.operation-remark { margin-left:auto; min-width:0; text-align:right; font-size:12px; line-height:12px; max-height:24px; overflow:hidden; overflow-wrap:anywhere; }
 .plus { font-family:Arial,sans-serif; font-size:13px; }
+.flows td.structure { vertical-align:middle; padding:0; }
+.flows th.structure-title { font-size:15px; }
+.structure-art { height:184px; padding:8px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; }
+.structure-art img { max-width:100%; max-height:100%; object-fit:contain; }
+.structure-caption { font-size:8px; text-align:center; line-height:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; }
 .hours { display:flex; height:34px; flex-shrink:0; border-top:1px solid #333; border-bottom:1px solid #333; align-items:stretch; }
 .hours span { width:110px; border-right:1px solid #333; display:flex; align-items:center; justify-content:center; font-size:17px; }
 .hours div { flex:1; padding:4px 10px; }
