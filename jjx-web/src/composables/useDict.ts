@@ -3,6 +3,9 @@ import { useDictStore } from '@/store/modules/dict'
 import { dictApi } from '@/api/system/dict'
 import type { SysDictItem } from '@/types/system/dict'
 
+/** 并发去重：同一 dictCode 的在途请求只保留一个，避免多组件同时挂载时重复请求 */
+const inflight = new Map<string, Promise<void>>()
+
 /**
  * 字典数据获取 composable
  * 优先从 Pinia store 缓存获取，未命中则调用后端 API
@@ -23,21 +26,27 @@ export function useDict(dictCode: string) {
 
   /**
    * 加载字典数据
-   * 如果已有缓存则跳过
+   * 已有缓存则跳过；并发调用复用同一在途请求
    */
-  const load = async () => {
+  const load = async (): Promise<void> => {
     if (dictStore.hasItems(dictCode)) {
       return // 已有缓存，直接返回
     }
-    dictStore.setLoading(true)
-    try {
-      const res = await dictApi.getItems(dictCode)
-      dictStore.setItems(dictCode, res.data || [])
-    } catch (error) {
-      console.error(`加载字典数据失败 [${dictCode}]:`, error)
-    } finally {
-      dictStore.setLoading(false)
-    }
+    const existing = inflight.get(dictCode)
+    if (existing) return existing // 已有在途请求，复用之
+    const task = (async () => {
+      dictStore.setLoading(true)
+      try {
+        const res = await dictApi.getItems(dictCode)
+        dictStore.setItems(dictCode, res.data || [])
+      } catch (error) {
+        console.error(`加载字典数据失败 [${dictCode}]:`, error)
+      } finally {
+        dictStore.setLoading(false)
+      }
+    })().finally(() => inflight.delete(dictCode))
+    inflight.set(dictCode, task)
+    return task
   }
 
   /**

@@ -101,7 +101,7 @@
 import { computed, ref, watch } from 'vue'
 import { CircleClose, Plus, Search } from '@element-plus/icons-vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
-import { standardProcessApi } from '@/api/product/standardProcess'
+import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 import { useDict } from '@/composables/useDict'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
 
@@ -153,7 +153,8 @@ const emit = defineEmits<{
 }>()
 
 // ==================== 数据 ====================
-const processes = ref<StandardProcessItem[]>([])
+// 启用的标准工序：全局单例缓存，多实例只请求一次
+const { processes, reload: reloadProcesses } = useEnabledProcesses()
 const { options: categoryOptions } = useDict('process_category')
 
 const CATEGORY_FALLBACK: Record<string, string> = {
@@ -162,16 +163,6 @@ const CATEGORY_FALLBACK: Record<string, string> = {
   DOWN_LINE: '下线',
   OTHER: '其他',
 }
-
-async function loadProcesses() {
-  try {
-    const res = await standardProcessApi.getEnabledProcesses()
-    processes.value = res.data || []
-  } catch (error) {
-    console.error('加载标准工序失败:', error)
-  }
-}
-loadProcesses()
 
 /** 分组：优先按字典顺序，字典里没有的分类补在后面 */
 const groups = computed(() => {
@@ -295,7 +286,7 @@ function onUpdateValue(val: number | string | undefined | null) {
   }
 }
 
-defineExpose({ reload: loadProcesses, processes })
+defineExpose({ reload: reloadProcesses, processes })
 </script>
 
 <style scoped>

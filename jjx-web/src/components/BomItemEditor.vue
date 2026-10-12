@@ -302,9 +302,8 @@ import { calculateBomQuantity } from '@/utils/bomQuantity'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import StandardProcessSelector from '@/components/Selector/StandardProcessSelector.vue'
-import { standardProcessApi } from '@/api/product/standardProcess'
+import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 import { productBomApi } from '@/api/product/bom'
-import type { StandardProcessItem } from '@/types/product/standardProcess'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import Sortable from 'sortablejs'
 
@@ -345,17 +344,10 @@ const tableHeight = ref(400)
 // （2026-10-12 两模式并存，实际效果对比后再定用哪个）
 const PROJECT_PICKER_MODE: 'dropdown' | 'dialog' = 'dropdown'
 
-// 项目可关联启用的标准工序，也可只保存用户填写的名称。
-const processOptions = ref<StandardProcessItem[]>([])
-async function loadProcessOptions() {
-  try {
-    const res = await standardProcessApi.getEnabledProcesses()
-    processOptions.value = res.data || []
-    walkTree(items.value, matchProjectByName)
-  } catch (error) {
-    console.error('加载标准工序失败:', error)
-  }
-}
+// 项目可关联启用的标准工序（全局单例缓存，多实例只请求一次），也可只保存用户填写的名称。
+const { processes: processOptions } = useEnabledProcesses()
+// 工序加载完成后，为仅填了名称的明细行回填 processId
+watch(processOptions, () => walkTree(items.value, matchProjectByName))
 
 // 仅完整名称唯一匹配时关联ID；不存在或重名都保留原文，供用户手动选择。
 function matchProjectByName(row: EngineeringBomItem) {
@@ -473,7 +465,6 @@ const calculateTableHeight = () => {
 
 onMounted(() => {
   calculateTableHeight()
-  loadProcessOptions()
   window.addEventListener('resize', calculateTableHeight)
   nextTick(() => {
     initSortable()
