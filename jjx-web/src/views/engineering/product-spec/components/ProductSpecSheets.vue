@@ -6,7 +6,7 @@
         <WorkSpecPaper v-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" />
         <InkMixingPaper v-else-if="page.kind === 'ink'" :product-code="data.product.productCode" />
         <article v-else class="paper-form">
-          <header class="paper-heading">
+          <header v-if="page.section !== 'customer' && page.section !== 'atlas'" class="paper-heading">
             <h1>{{ page.title }}<small v-if="page.continuation">（续）</small></h1>
             <div class="paper-meta"><span>{{ data.product.productCode }}</span><span>{{ data.product.customerName || '' }}</span></div>
           </header>

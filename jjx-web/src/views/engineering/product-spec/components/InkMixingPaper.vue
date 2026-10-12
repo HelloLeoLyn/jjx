@@ -31,6 +31,7 @@
         </tr>
       </tbody>
     </table>
+    <div class="ink-remark">备注：过山洞和U形槽要注意湾形线路能不能穿过，防水结构要注意背胶U形槽大小。</div>
   </article>
 </template>
 
@@ -42,12 +43,13 @@ defineProps<{ productCode?: string }>()
 .ink-paper { height: 278mm; box-sizing: border-box; display: flex; flex-direction: column; color: #222; font-family: SimSun, 'Songti SC', serif; border: 1px solid #222; }
 header { height: 23mm; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 21px; letter-spacing: 2px; }
 h1 { margin: 0; font-size: 23px; font-weight: 400; line-height: 1.4; letter-spacing: 5px; }
-.ink-grid { width: 100%; height: 51mm; flex-shrink: 0; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.ink-grid { width: 100%; height: 48mm; flex-shrink: 0; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
 th, td { border: 1px solid #222; padding: 0 3px; box-sizing: border-box; font-weight: 400; line-height: 1.2; }
 th { text-align: center; white-space: nowrap; }
 .machine-row, .labels { height: 5.5mm; }
-.material-row { height: calc(40mm / 6); }
+.material-row { height: calc(37mm / 6); }
 .machine { overflow-wrap: anywhere; font-size: 12px; }
 .color-label { text-align: left; padding-left: 6px; vertical-align: middle; }
+.ink-remark { flex: 1; min-height: 0; border-top: 1px solid #222; padding: 2mm 3mm; box-sizing: border-box; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 @media print { .ink-paper { break-inside: avoid; } }
 </style>

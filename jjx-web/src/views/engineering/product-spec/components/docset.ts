@@ -12,12 +12,12 @@ export { renderFile, type FileImage } from '@/components/product/productFilePrev
 
 export const documentSections = [
   { key: 'customer', label: '客供资料', note: '客供稿 · 客户确认样品' },
+  { key: 'sample', label: '样品', note: '样品实物照片' },
   { key: 'spec', label: '产品作业规范', note: '材料 · 流程 · 结构图' },
   { key: 'print', label: '印刷规范', note: '印刷明细 · 整组备注 · 印刷指导图' },
   { key: 'atlas', label: '工程图集', note: '结构图 · 面板图 · 线路图等' },
-  { key: 'color', label: '分色检查表', note: '规范 · 面板菲林分色 · 线路 · 刀模治具' },
-  { key: 'sample', label: '样品', note: '样品实物照片' },
   { key: 'ink', label: '油墨调配记录表', note: '空白记录表 · 每页五组' },
+  { key: 'color', label: '分色检查表', note: '规范 · 面板菲林分色 · 线路 · 刀模治具' },
 ]
 
 export interface DocFile {
