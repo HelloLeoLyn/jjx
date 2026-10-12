@@ -15,256 +15,264 @@
 
     <!-- 内容展示 -->
     <div v-else>
-      <!-- 基本信息（公共组件，dev-20261011-032：产品编码/名称/客户/当前BOM/当前路线/规格） -->
-      <el-divider content-position="left">基本信息</el-divider>
-      <ProductBasicInfo :detail="productData" />
-      <el-descriptions :column="3" border style="margin-top: 8px">
-        <el-descriptions-item label="产品分类">{{
-          productData.category?.categoryName || productData.product?.categoryName
-        }}</el-descriptions-item>
-        <el-descriptions-item label="产品类型">{{
-          ProductTypeEnum.getLabel(Number(productData.product?.productType))
-        }}</el-descriptions-item>
-        <el-descriptions-item label="单位">{{
-          productData.product?.unit || '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="产品状态">
-          <el-tag
-            :type="ProductEnum.status.getTagProps(productData.product?.productStatus ?? 0).type"
-          >
-            {{ ProductEnum.status.getLabel(productData.product?.productStatus ?? 0) }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item v-if="hasPermi('product:price:view')" label="基础售价">{{
-          productData.product?.basePrice != null ? '¥' + Number(productData.product.basePrice).toFixed(2) : '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item v-if="hasPermi('product:price:view')" label="标准成本">{{
-          productData.product?.costPrice != null ? '¥' + Number(productData.product.costPrice).toFixed(2) : '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="最小起订量">{{
-          productData.product?.minOrderQty || '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="标准交期(天)">{{
-          productData.product?.leadTime || '-'
-        }}</el-descriptions-item>
-        <el-descriptions-item label="菲林数量">{{
-          productData.product?.filmCount || 0
-        }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{
-          parseTime(productData.product?.createTime)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="更新时间">{{
-          parseTime(productData.product?.updateTime)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="备注">{{
-          productData.product?.remark || '-'
-        }}</el-descriptions-item>
-      </el-descriptions>
-
-      <!-- BOM信息 -->
-      <el-divider content-position="left">
-        BOM配置
-        <el-tag
-          v-if="productData.bom"
-          size="small"
-          :type="productData.bom.approveStatus === 3 ? 'success' : 'warning'"
-          style="margin-left: 8px"
-        >
-          {{ getApproveStatusText(productData.bom.approveStatus) }}
-        </el-tag>
-      </el-divider>
-      <div v-if="productData.bom">
-        <el-descriptions :column="3" border>
-          <el-descriptions-item label="BOM编码">{{ productData.bom.bomCode }}</el-descriptions-item>
-          <el-descriptions-item label="BOM名称">{{ productData.bom.bomName }}</el-descriptions-item>
-          <el-descriptions-item label="版本">{{ productData.bom.bomVersion }}</el-descriptions-item>
-          <el-descriptions-item label="是否当前版本">
-            <el-tag :type="productData.bom.isCurrent ? 'success' : 'info'" size="small">
-              {{ productData.bom.isCurrent ? '是' : '否' }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="生效日期">{{
-            productData.bom.effectiveDate || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="失效日期">{{
-            productData.bom.expiryDate || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="创建人">{{ productData.bom.createBy }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{
-            parseTime(productData.bom.createTime)
-          }}</el-descriptions-item>
-          <el-descriptions-item label="备注">{{
-            productData.bom.remark || '-'
-          }}</el-descriptions-item>
-        </el-descriptions>
-
-        <!-- BOM物料清单 -->
-        <div v-if="productData.bom.items && productData.bom.items.length > 0" class="sub-table">
-          <BomDetailTable :items="productData.bom.items" height="300" />
-        </div>
-        <div v-else class="empty-section">
-          <el-empty description="暂无物料清单" :image-size="40" />
-        </div>
-      </div>
-      <div v-else class="empty-section">
-        <el-empty description="未配置BOM" :image-size="40" />
-      </div>
-
-      <!-- 工艺路线信息 -->
-      <el-divider content-position="left">
-        工艺路线
-        <el-tag v-if="productData.routing" size="small" type="primary" style="margin-left: 8px">
-          {{ ProductEnum.routeStatus.getLabel(productData.routing.approveStatus) }}
-        </el-tag>
-      </el-divider>
-      <div v-if="productData.routing">
-        <el-descriptions :column="3" border>
-          <el-descriptions-item label="路线编码">{{
-            productData.routing.routingCode
-          }}</el-descriptions-item>
-          <el-descriptions-item label="路线名称">{{
-            productData.routing.routingName
-          }}</el-descriptions-item>
-          <el-descriptions-item label="版本">{{
-            productData.routing.routingVersion
-          }}</el-descriptions-item>
-          <el-descriptions-item label="是否当前版本">
-            <el-tag :type="productData.routing.isCurrent === 1 ? 'success' : 'info'" size="small">
-              {{ productData.routing.isCurrentName }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="工序数量"
-            >{{ productData.routing.processCount }} 道</el-descriptions-item
-          >
-          <el-descriptions-item label="总工时(小时)">{{
-            productData.routing.totalLaborHours || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="总机时(小时)">{{
-            productData.routing.totalMachineHours || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="创建人">{{
-            productData.routing.createBy
-          }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{
-            parseTime(productData.routing.createTime)
-          }}</el-descriptions-item>
-        </el-descriptions>
-
-        <!-- 工序明细与工艺路线详情共用展示 -->
-        <div v-if="productData.routing.items?.length" class="sub-table">
-          <RouteProcessTable :items="productData.routing.items" />
-        </div>
-        <div v-else class="empty-section">
-          <el-empty description="暂无工序明细" :image-size="40" />
-        </div>
-      </div>
-      <div v-else class="empty-section">
-        <el-empty description="未配置工艺路线" :image-size="40" />
-      </div>
-
-      <!-- 菲林信息 -->
-      <el-divider content-position="left">
-        菲林配置
-        <el-tag
-          v-if="productData.films && productData.films.length > 0"
-          size="small"
-          type="primary"
-          style="margin-left: 8px"
-        >
-          {{ productData.films.length }} 个菲林
-        </el-tag>
-      </el-divider>
-      <div v-if="productData.films && productData.films.length > 0">
-        <el-table :data="productData.films" border size="small" max-height="400">
-          <el-table-column label="菲林编码" prop="filmCode" width="130" />
-          <el-table-column label="菲林名称" prop="filmName" width="150" />
-          <el-table-column label="菲林类型" prop="filmTypeName" width="100" />
-          <el-table-column label="版本" prop="version" width="80" />
-          <el-table-column label="当前版本" prop="isCurrentName" width="80" />
-          <el-table-column label="尺寸" prop="filmSize" width="120" />
-          <el-table-column label="厚度(mm)" prop="filmThickness" width="100" />
-          <el-table-column label="材料" prop="filmMaterial" width="100" />
-          <el-table-column label="颜色" prop="color" width="80" />
-          <el-table-column label="审核状态" prop="approveStatusName" width="100" />
-          <el-table-column label="设计人员" prop="designerName" width="100" />
-          <el-table-column label="是否下发" prop="isReleased" width="80">
-            <template #default="scope">
-              <el-tag :type="scope.row.isReleased === 1 ? 'success' : 'info'" size="small">
-                {{ scope.row.isReleased === 1 ? '已下发' : '未下发' }}
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="基本信息" name="basic">
+          <!-- 基本信息（公共组件，dev-20261011-032：产品编码/名称/客户/当前BOM/当前路线/规格） -->
+          <el-divider content-position="left">基本信息</el-divider>
+          <ProductBasicInfo :detail="productData" />
+          <el-descriptions :column="3" border style="margin-top: 8px">
+            <el-descriptions-item label="产品分类">{{
+              productData.category?.categoryName || productData.product?.categoryName
+            }}</el-descriptions-item>
+            <el-descriptions-item label="产品类型">{{
+              ProductTypeEnum.getLabel(Number(productData.product?.productType))
+            }}</el-descriptions-item>
+            <el-descriptions-item label="单位">{{
+              productData.product?.unit || '-'
+            }}</el-descriptions-item>
+            <el-descriptions-item label="产品状态">
+              <el-tag
+                :type="ProductEnum.status.getTagProps(productData.product?.productStatus ?? 0).type"
+              >
+                {{ ProductEnum.status.getLabel(productData.product?.productStatus ?? 0) }}
               </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="创建时间" prop="createTime" width="160">
-            <template #default="scope">
-              {{ parseTime(scope.row.createTime) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="备注" prop="remark" min-width="100" />
-        </el-table>
-      </div>
-      <div v-else class="empty-section">
-        <el-empty description="未配置菲林" :image-size="40" />
-      </div>
+            </el-descriptions-item>
+            <el-descriptions-item v-if="hasPermi('product:price:view')" label="基础售价">{{
+              productData.product?.basePrice != null ? '¥' + Number(productData.product.basePrice).toFixed(2) : '-'
+            }}</el-descriptions-item>
+            <el-descriptions-item v-if="hasPermi('product:price:view')" label="标准成本">{{
+              productData.product?.costPrice != null ? '¥' + Number(productData.product.costPrice).toFixed(2) : '-'
+            }}</el-descriptions-item>
+            <el-descriptions-item label="最小起订量">{{
+              productData.product?.minOrderQty || '-'
+            }}</el-descriptions-item>
+            <el-descriptions-item label="标准交期(天)">{{
+              productData.product?.leadTime || '-'
+            }}</el-descriptions-item>
+            <el-descriptions-item label="菲林数量">{{
+              productData.product?.filmCount || 0
+            }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{
+              parseTime(productData.product?.createTime)
+            }}</el-descriptions-item>
+            <el-descriptions-item label="更新时间">{{
+              parseTime(productData.product?.updateTime)
+            }}</el-descriptions-item>
+            <el-descriptions-item label="备注">{{
+              productData.product?.remark || '-'
+            }}</el-descriptions-item>
+          </el-descriptions>
 
-      <!-- 产品文件库（DEV-734） -->
-      <el-divider content-position="left">产品文件库</el-divider>
-      <ProductFileLibrary
-        v-if="productData.product?.productCode"
-        :product-code="productData.product.productCode"
-        upload-perm="product:edit"
-        delete-perm="product:delete"
-      />
+          <!-- 菲林信息 -->
+          <el-divider content-position="left">
+            菲林配置
+            <el-tag
+              v-if="productData.films && productData.films.length > 0"
+              size="small"
+              type="primary"
+              style="margin-left: 8px"
+            >
+              {{ productData.films.length }} 个菲林
+            </el-tag>
+          </el-divider>
+          <div v-if="productData.films && productData.films.length > 0">
+            <el-table :data="productData.films" border size="small" max-height="400">
+              <el-table-column label="菲林编码" prop="filmCode" width="130" />
+              <el-table-column label="菲林名称" prop="filmName" width="150" />
+              <el-table-column label="菲林类型" prop="filmTypeName" width="100" />
+              <el-table-column label="版本" prop="version" width="80" />
+              <el-table-column label="当前版本" prop="isCurrentName" width="80" />
+              <el-table-column label="尺寸" prop="filmSize" width="120" />
+              <el-table-column label="厚度(mm)" prop="filmThickness" width="100" />
+              <el-table-column label="材料" prop="filmMaterial" width="100" />
+              <el-table-column label="颜色" prop="color" width="80" />
+              <el-table-column label="审核状态" prop="approveStatusName" width="100" />
+              <el-table-column label="设计人员" prop="designerName" width="100" />
+              <el-table-column label="是否下发" prop="isReleased" width="80">
+                <template #default="scope">
+                  <el-tag :type="scope.row.isReleased === 1 ? 'success' : 'info'" size="small">
+                    {{ scope.row.isReleased === 1 ? '已下发' : '未下发' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="创建时间" prop="createTime" width="160">
+                <template #default="scope">
+                  {{ parseTime(scope.row.createTime) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="备注" prop="remark" min-width="100" />
+            </el-table>
+          </div>
+          <div v-else class="empty-section">
+            <el-empty description="未配置菲林" :image-size="40" />
+          </div>
 
-      <el-divider content-position="left">业务流转附件</el-divider>
-      <div v-loading="bizAttachmentsLoading" class="biz-attachments">
-        <el-collapse v-if="bizAttachmentGroups.length">
-          <el-collapse-item
-            v-for="group in bizAttachmentGroups"
-            :key="`${group.sourceType}-${group.sourceId}`"
-            :name="`${group.sourceType}-${group.sourceId}`"
-          >
-            <template #title>
-              <span class="biz-source-title">
-                {{ sourceTypeLabel(group.sourceType) }} {{ group.sourceNo || group.sourceId }}
-              </span>
-              <el-tag size="small" type="info">{{ group.files.length }}</el-tag>
-            </template>
-            <div class="biz-file-list">
-              <div v-for="file in group.files" :key="file.id" class="biz-file-item">
-                <div class="biz-file-info">
-                  <el-icon class="biz-file-icon"><Document /></el-icon>
-                  <div class="biz-file-meta">
-                    <el-link
-                      type="primary"
-                      :href="attachmentApi.downloadUrl(file.id)"
-                      :underline="false"
-                      target="_blank"
-                    >
-                      {{ file.fileName || '-' }}
-                    </el-link>
-                    <div class="biz-file-sub">
-                      <span>{{ formatFileSize(file.fileSize) }}</span>
-                      <span v-if="file.createBy">· {{ file.createBy }}</span>
-                      <span v-if="file.createTime">· {{ formatAttachmentTime(file.createTime) }}</span>
+          <!-- 产品文件库（DEV-734） -->
+          <el-divider content-position="left">产品文件库</el-divider>
+          <ProductFileLibrary
+            v-if="productData.product?.productCode"
+            :product-code="productData.product.productCode"
+            upload-perm="product:edit"
+            delete-perm="product:delete"
+          />
+
+          <el-divider content-position="left">业务流转附件</el-divider>
+          <div v-loading="bizAttachmentsLoading" class="biz-attachments">
+            <el-collapse v-if="bizAttachmentGroups.length">
+              <el-collapse-item
+                v-for="group in bizAttachmentGroups"
+                :key="`${group.sourceType}-${group.sourceId}`"
+                :name="`${group.sourceType}-${group.sourceId}`"
+              >
+                <template #title>
+                  <span class="biz-source-title">
+                    {{ sourceTypeLabel(group.sourceType) }} {{ group.sourceNo || group.sourceId }}
+                  </span>
+                  <el-tag size="small" type="info">{{ group.files.length }}</el-tag>
+                </template>
+                <div class="biz-file-list">
+                  <div v-for="file in group.files" :key="file.id" class="biz-file-item">
+                    <div class="biz-file-info">
+                      <el-icon class="biz-file-icon"><Document /></el-icon>
+                      <div class="biz-file-meta">
+                        <el-link
+                          type="primary"
+                          :href="attachmentApi.downloadUrl(file.id)"
+                          :underline="false"
+                          target="_blank"
+                        >
+                          {{ file.fileName || '-' }}
+                        </el-link>
+                        <div class="biz-file-sub">
+                          <span>{{ formatFileSize(file.fileSize) }}</span>
+                          <span v-if="file.createBy">· {{ file.createBy }}</span>
+                          <span v-if="file.createTime">· {{ formatAttachmentTime(file.createTime) }}</span>
+                        </div>
+                      </div>
                     </div>
+                    <el-button
+                      link
+                      type="primary"
+                      :icon="Download"
+                      @click="openAttachment(file.id)"
+                    />
                   </div>
                 </div>
-                <el-button
-                  link
-                  type="primary"
-                  :icon="Download"
-                  @click="openAttachment(file.id)"
-                />
-              </div>
+              </el-collapse-item>
+            </el-collapse>
+            <el-empty
+              v-else-if="!bizAttachmentsLoading"
+              description="暂无业务流转附件"
+              :image-size="60"
+            />
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="BOM" name="bom">
+          <!-- BOM信息 -->
+          <el-divider content-position="left">
+            BOM配置
+            <el-tag
+              v-if="productData.bom"
+              size="small"
+              :type="productData.bom.approveStatus === 3 ? 'success' : 'warning'"
+              style="margin-left: 8px"
+            >
+              {{ getApproveStatusText(productData.bom.approveStatus) }}
+            </el-tag>
+          </el-divider>
+          <div v-if="productData.bom">
+            <el-descriptions :column="3" border>
+              <el-descriptions-item label="BOM编码">{{ productData.bom.bomCode }}</el-descriptions-item>
+              <el-descriptions-item label="BOM名称">{{ productData.bom.bomName }}</el-descriptions-item>
+              <el-descriptions-item label="版本">{{ productData.bom.bomVersion }}</el-descriptions-item>
+              <el-descriptions-item label="是否当前版本">
+                <el-tag :type="productData.bom.isCurrent ? 'success' : 'info'" size="small">
+                  {{ productData.bom.isCurrent ? '是' : '否' }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="生效日期">{{
+                productData.bom.effectiveDate || '-'
+              }}</el-descriptions-item>
+              <el-descriptions-item label="失效日期">{{
+                productData.bom.expiryDate || '-'
+              }}</el-descriptions-item>
+              <el-descriptions-item label="创建人">{{ productData.bom.createBy }}</el-descriptions-item>
+              <el-descriptions-item label="创建时间">{{
+                parseTime(productData.bom.createTime)
+              }}</el-descriptions-item>
+              <el-descriptions-item label="备注">{{
+                productData.bom.remark || '-'
+              }}</el-descriptions-item>
+            </el-descriptions>
+
+            <!-- BOM物料清单 -->
+            <div v-if="productData.bom.items && productData.bom.items.length > 0" class="sub-table">
+              <BomDetailTable :items="productData.bom.items" height="300" />
             </div>
-          </el-collapse-item>
-        </el-collapse>
-        <el-empty
-          v-else-if="!bizAttachmentsLoading"
-          description="暂无业务流转附件"
-          :image-size="60"
-        />
-      </div>
+            <div v-else class="empty-section">
+              <el-empty description="暂无物料清单" :image-size="40" />
+            </div>
+          </div>
+          <div v-else class="empty-section">
+            <el-empty description="未配置BOM" :image-size="40" />
+          </div>
+
+        </el-tab-pane>
+        <el-tab-pane label="工艺路线" name="routing">
+          <!-- 工艺路线信息 -->
+          <el-divider content-position="left">
+            工艺路线
+            <el-tag v-if="productData.routing" size="small" type="primary" style="margin-left: 8px">
+              {{ ProductEnum.routeStatus.getLabel(productData.routing.approveStatus) }}
+            </el-tag>
+          </el-divider>
+          <div v-if="productData.routing">
+            <el-descriptions :column="3" border>
+              <el-descriptions-item label="路线编码">{{
+                productData.routing.routingCode
+              }}</el-descriptions-item>
+              <el-descriptions-item label="路线名称">{{
+                productData.routing.routingName
+              }}</el-descriptions-item>
+              <el-descriptions-item label="版本">{{
+                productData.routing.routingVersion
+              }}</el-descriptions-item>
+              <el-descriptions-item label="是否当前版本">
+                <el-tag :type="productData.routing.isCurrent === 1 ? 'success' : 'info'" size="small">
+                  {{ productData.routing.isCurrentName }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="工序数量"
+                >{{ productData.routing.processCount }} 道</el-descriptions-item
+              >
+              <el-descriptions-item label="总工时(小时)">{{
+                productData.routing.totalLaborHours || '-'
+              }}</el-descriptions-item>
+              <el-descriptions-item label="总机时(小时)">{{
+                productData.routing.totalMachineHours || '-'
+              }}</el-descriptions-item>
+              <el-descriptions-item label="创建人">{{
+                productData.routing.createBy
+              }}</el-descriptions-item>
+              <el-descriptions-item label="创建时间">{{
+                parseTime(productData.routing.createTime)
+              }}</el-descriptions-item>
+            </el-descriptions>
+
+            <!-- 工序明细与工艺路线详情共用展示 -->
+            <div v-if="productData.routing.items?.length" class="sub-table">
+              <RouteProcessTable :items="productData.routing.items" />
+            </div>
+            <div v-else class="empty-section">
+              <el-empty description="暂无工序明细" :image-size="40" />
+            </div>
+          </div>
+          <div v-else class="empty-section">
+            <el-empty description="未配置工艺路线" :image-size="40" />
+          </div>
+
+        </el-tab-pane>
+      </el-tabs>
     </div>
   </div>
 </template>
@@ -303,6 +311,7 @@ const emit = defineEmits<Emits>()
 
 // 响应式数据
 const loading = ref(false)
+const activeTab = ref('basic')
 const error = ref<string>('')
 const bizAttachmentsLoading = ref(false)
 const bizAttachmentGroups = ref<ProductBizAttachmentGroup[]>([])
@@ -327,6 +336,7 @@ const loadData = async () => {
     return
   }
 
+  activeTab.value = 'basic'
   loading.value = true
   error.value = ''
 
