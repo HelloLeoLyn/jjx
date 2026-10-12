@@ -24,6 +24,7 @@ const repoRoot = path.resolve(here, "..");
 const docsRoot = path.join(repoRoot, "jjx-docs");
 const historyDir = path.join(docsRoot, "history");
 const modulesDir = path.join(docsRoot, "modules");
+const taskDocsDir = path.join(docsRoot, "task-docs");
 const baselinePath = path.join(here, "docs-baseline.json");
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 
@@ -51,6 +52,24 @@ const badName = historyFiles.filter(
 const moduleFiles = listMd(modulesDir);
 const moduleBadName = moduleFiles.filter((f) => /(-\d{8}|-dev-)/.test(f));
 const moduleNoBom = moduleFiles.filter((f) => !hasBom(path.join(modulesDir, f)));
+
+// R5/R6/R7 task-docs/：任务四件套（分析/方案/完成/验收），扁平 dev-YYYYMMDD-NNN-<type>.md
+// README.md / INDEX.md 免登记与命名校验，但仍须带 BOM
+const taskDocsPresent = fs.existsSync(taskDocsDir);
+const taskDocsAll = taskDocsPresent ? listMd(taskDocsDir) : [];
+const taskDocsFiles = taskDocsAll.filter((f) => f !== "README.md" && f !== "INDEX.md");
+const tdRegistered = new Set(
+  taskDocsPresent
+    ? [...read(path.join(taskDocsDir, "INDEX.md")).toString("utf8").matchAll(
+        /\|\s*([A-Za-z0-9._-]+\.md)\s*\|/g,
+      )].map((m) => m[1])
+    : [],
+);
+const tdUnregistered = taskDocsFiles.filter((f) => !tdRegistered.has(f));
+const tdNoBom = taskDocsAll.filter((f) => !hasBom(path.join(taskDocsDir, f)));
+const tdBadName = taskDocsFiles.filter(
+  (f) => !/^dev-\d{8}-\d{3}-(analysis|plan|completion|acceptance)\.md$/.test(f),
+);
 
 // ── 基线 ──────────────────────────────────────────────────────────────
 const loadBaseline = () => {
@@ -114,6 +133,21 @@ fail(
    ...moduleNoBom.map((f) => `modules/${f} 缺 UTF-8 BOM`)],
   "一个模块只允许一篇现行真相；快照请放 history/",
 );
+fail(
+  `R5 task-docs 文档未登记 task-docs/INDEX.md（${tdUnregistered.length} 篇）`,
+  tdUnregistered,
+  "在 task-docs/INDEX.md 表格里补一行（| 任务码 | 文件 | 类型 | 标题 |）",
+);
+fail(
+  `R6 task-docs 文档缺 UTF-8 BOM（${tdNoBom.length} 篇）`,
+  tdNoBom,
+  'python3 -c "p=\'<file>\';d=open(p,\'rb\').read();open(p,\'wb\').write(b\'\\xef\\xbb\\xbf\'+d)"',
+);
+fail(
+  `R7 task-docs 命名不合规（${tdBadName.length} 篇）`,
+  tdBadName,
+  "命名须为 dev-YYYYMMDD-NNN-<analysis|plan|completion|acceptance>.md",
+);
 
 if (failed) {
   console.error("\n（判断为误报可复核后调整规则，不要直接放宽）\n");
@@ -124,6 +158,6 @@ const debt =
   `存量基线：缺 BOM ${noBom.length} 篇、命名不合规 ${badName.length} 篇`;
 const cleared = clearedNoBom.length + clearedBadName.length;
 console.log(
-  `文档门禁通过（history ${historyFiles.length} 篇 / modules ${moduleFiles.length} 篇；` +
+  `文档门禁通过（history ${historyFiles.length} 篇 / modules ${moduleFiles.length} 篇 / task-docs ${taskDocsFiles.length} 篇；` +
     `${debt}${cleared ? `，本次减少 ${cleared} 条，可执行 --write-baseline 收窄基线` : ""}）`,
 );

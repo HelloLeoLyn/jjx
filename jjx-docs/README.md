@@ -59,6 +59,8 @@
 ### 第 7 章 历史（`history/`）
 131 篇实施记录 / 方案 / 分析 / 核查报告 ⚠️ **默认按历史看，不保证反映当前实现**；清单见 `history/INDEX.md`。
 
+> 2026-10-12 起：**以任务为单位的四件套**（任务分析 / 任务方案 / 任务完成报告 / 任务验收报告）改放 `task-docs/`（扁平 `dev-YYYYMMDD-NNN-<类型>.md`，登记 `task-docs/INDEX.md`，门禁同 `history/`）；`history/` 存量不迁，入口见 `task-docs/README.md`。
+
 ### 第 8 章 总方案与路线
 - `guides/master-plan-20260914.md` —— 整体目标、现状进度、M0~M4 路线图、多 agent 协作规则 ✅
 
@@ -82,10 +84,10 @@
 
 ## 维护标准（新文档必须遵守）
 
-1. **先判类型**：现在是什么样 → `modules/`；当时怎么做的 → `history/`（**必须登记 `history/INDEX.md`**）；为什么这么设计 → `design/`；手册/排障/部署 → `guides/`；查事实 → `reference/`；决策 → `decisions/`；原始需求材料 → `requirements/`；DB 脚本 → `sql/`；过期 → `archive/YYYY/`。
-2. **命名**：`history/` `design/` `guides/` `reference/` `decisions/` 用 `<主题>-YYYYMMDD.md`（有任务码写 `<主题>-dev-YYYYMMDD-NNN.md`）；`modules/` 用 `<模块>.md` 不带日期；禁止 `final`/`new`/`copy` 后缀。
+1. **先判类型**：现在是什么样 → `modules/`；当时怎么做的 → `history/`（**必须登记 `history/INDEX.md`**）；**任务四件套（分析/方案/完成报告/验收报告）→ `task-docs/`**（登记 `task-docs/INDEX.md`）；为什么这么设计 → `design/`；手册/排障/部署 → `guides/`；查事实 → `reference/`；决策 → `decisions/`；原始需求材料 → `requirements/`；DB 脚本 → `sql/`；过期 → `archive/YYYY/`。
+2. **命名**：`history/` `design/` `guides/` `reference/` `decisions/` 用 `<主题>-YYYYMMDD.md`（有任务码写 `<主题>-dev-YYYYMMDD-NNN.md`）；`modules/` 用 `<模块>.md` 不带日期；`task-docs/` 用 `dev-YYYYMMDD-NNN-<类型>.md`（类型 `analysis`/`plan`/`completion`/`acceptance`）；禁止 `final`/`new`/`copy` 后缀。
 3. **头信息**（正文第一屏固定 5 行）：`状态` / `任务` / `被取代或取代` / `什么情况看这篇` / `最后复核`。
-4. **写完跑门禁**：`cd jjx-web && npm run check:docs`（R1 登记 INDEX、R2 UTF-8 BOM、R3 命名、R4 `modules/` 不带日期；存量基线只许缩小）。
+4. **写完跑门禁**：`cd jjx-web && npm run check:docs`（R1 登记 INDEX、R2 UTF-8 BOM、R3 命名、R4 `modules/` 不带日期、R5–R7 `task-docs/` 登记/BOM/命名；存量基线只许缩小）。
 5. **改名前先 `git grep` 全仓引用**（`sys_task.description`、脚本头注释、技能文档里的路径要同步）。
 6. **禁止**：根目录散文件、临时文件（`~$` 等）、双份备份（用 git）。
 
