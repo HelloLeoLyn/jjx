@@ -27,7 +27,7 @@ import request from '@/utils/request'
 /**
  * 统一内嵌附件上传组件（DEV-733）
  * 模式：有 bizId → 立即上传；无 bizId（新建单据）→ 暂存，保存后调 flushPending() 批量上传
- * 职责只做「上传」，列表展示请配合 AttachmentPanel / AttachmentUploadDialog
+ * 职责只做「上传」，列表展示请配合 AttachmentPanel
  */
 const props = withDefaults(defineProps<{
   bizType: string

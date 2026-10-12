@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-12 (dev-20261012-032) | att-v1b-07-old-attachment-retire-dev-20261012-032.md | 旧附件组件退役与代码清理（删无引用 AttachmentUploadDialog；Panel/Uploader 保留） |
 | 2026-10-12 (dev-20261012-031) | att-v1b-06-history-attachment-compat-dev-20261012-031.md | 公共附件历史兼容与迁移策略收口（A段 refs / B段 LEGACY） |
 | 2026-10-12 (dev-20261012-029) | att-v1b-04-sample-order-dev-20261012-029.md | 样品单接入公共附件中心与同链路只读展示 |
 | 2026-10-11 (dev-20261011-041) | product-work-spec-merge-bom-die-table-dev-20261011-041.md | 作业规范·合并 BOM 与刀模位置为一张表（末列就地编辑） |
