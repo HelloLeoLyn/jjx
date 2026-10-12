@@ -74,6 +74,25 @@
 | **工艺路线** | 已批准路线校验 | routingId/routingCode | ✅ (DEV-470) |
 | traceId | traceId | traceId | ✅ |
 
+### 6. 样品单 → 打样工序「成品方案」带出（打样台「复制打样方案」第三来源，dev-20261012-012）
+
+只读带出产品「当前已批准且现行」的 BOM + 工艺路线为打样工序行（**可编辑参考行，不落库、不自动继承**）。
+
+| 传承项 | 来源字段 | 目标字段 | 状态 |
+|---|---|---|---|
+| 工序 | engineering_routing_item.process_id | sales_sample_process.stdProcessId | ✅ 直传 |
+| 工序名 | engineering_routing_item.process_name | processName | ✅ |
+| 一级大类 | major_category | majorCategory | ✅（决定进印刷表/卡片） |
+| 工序顺序 | process_order（卡片分组按父行序号） | processOrder | ✅ |
+| 下标 | index_number | indexNumber | ✅ |
+| 定制参数 | custom_process_params | customProcessParams | ✅（印刷色号/油墨/网框） |
+| 说明 | description | processNote | ✅（description 优先） |
+| 备注 | remark + work_instruction | remark | ✅（work_instruction 并入 + 来源版本标记） |
+| 卡片分组 | 父行（parent_id=null）+ 子行 | 同一父行的行共享 processOrder → 一张卡片 | ✅ |
+| 材料 | engineering_bom_item（按 process_id 挂工序） | 工序 materials JSON | ✅ |
+| 材料编码 | material_id / material_code | JSON 键 materialId / materialCode | ✅（沿用现有键，**不改表结构**） |
+| 版本快照 | bom_version / routing_version | remark 来源标记 | ✅（产品后续升版不回灌） |
+
 ---
 
 ## 三、字段传承对照表（模板）
@@ -88,6 +107,8 @@
 | traceId | traceId | traceId | 直接复制（无则生成）|
 | 附件 | — | — | 不复制，靠 traceId 关联 |
 ```
+
+> **约束（dev-20261012-012 补）**：凡新增带出/继承入口，必须在 §二 登记 + §三 填字段传承对照表 + 补充验收用例，防止"做了不登记、登记了不同步"。
 
 ---
 
@@ -105,5 +126,5 @@
 | 缺口 | 影响 | 建议 |
 |---|---|---|
 | 报价单无 sourceInquiryId | 报价单看不出自哪个询价 | 加字段或靠 traceId 查询 |
-| 样品→量产不传承工艺路线 | 转量产只建 BOM，路线需手动 | DEV-457 只提醒，待补自动生成 |
+| 样品→量产不传承工艺路线 | ~~转量产只建 BOM，路线需手动~~ **已更正：2026-10-12** | 实际已传承：资料转移会建**版本化**工艺路线（`SampleOrderServiceImpl:1965-1984`，带 `source_sample_id`），本行原描述过期 |
 | 附件不物理复制 | 新单看不到附件（需点追溯）| 靠 AttachmentPanel traceId 展示（已做）|

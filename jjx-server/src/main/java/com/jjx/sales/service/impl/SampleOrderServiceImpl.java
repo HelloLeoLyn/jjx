@@ -19,6 +19,12 @@ import com.jjx.sales.mapper.SalesSampleProcessMapper;
 import com.jjx.sales.mapper.SalesSampleBomMapper;
 import com.jjx.sales.service.ISampleOrderService;
 import com.jjx.sales.service.ISalesOrderProductService;
+import com.jjx.engineering.domain.entity.EngineeringBom;
+import com.jjx.engineering.domain.entity.EngineeringBomItem;
+import com.jjx.engineering.domain.entity.EngineeringRouting;
+import com.jjx.product.domain.vo.EngineeringRoutingItemVO;
+import com.jjx.product.domain.vo.EngineeringRoutingVO;
+import com.jjx.sales.domain.vo.SampleProductPlanVO;
 import com.jjx.system.annotation.Event;
 import com.jjx.system.domain.entity.SysDictItem;
 import com.jjx.system.domain.entity.SysOperLog;
@@ -1419,6 +1425,161 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             return sampleProcessMapper.selectByOrderId(orderId);
         }
         return sampleProcessMapper.selectByOrderAndRound(orderId, roundNo);
+    }
+
+    /**
+     * 打样工作台「复制打样方案 → 成品方案」只读带出（dev-20261012-012）。
+     * 从该样品单产品的「当前已批准且现行」BOM + 工艺路线带出工序行（含材料），
+     * 直接产出打样工序行形状（SalesSampleProcess）的临时列表，不落库、不自动继承。
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public SampleProductPlanVO getProductPlan(Long orderId) {
+        SampleProductPlanVO vo = new SampleProductPlanVO();
+        vo.setRows(new ArrayList<>());
+        vo.setProcessCount(0);
+        vo.setMaterialCount(0);
+
+        SalesSampleOrder profile = sampleOrderMapper.selectByOrderId(orderId);
+        Long pid = profile != null ? profile.getProductId() : null;
+        if (pid == null) {
+            List<com.jjx.sales.domain.entity.SalesOrderProduct> prods = orderProductMapper.selectList(
+                    new LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesOrderProduct>()
+                            .eq(com.jjx.sales.domain.entity.SalesOrderProduct::getOrderId, orderId));
+            if (!prods.isEmpty()) pid = prods.get(0).getProductId();
+        }
+        if (profile != null) {
+            vo.setProductId(pid);
+            vo.setProductCode(profile.getProductCode());
+            vo.setProductName(profile.getProductName());
+        }
+        if (pid == null) {
+            vo.setEligible(false);
+            vo.setReason("该样品单产品未建档，无法带出成品方案");
+            return vo;
+        }
+
+        // 当前 + 已批准：判断口径与转量产就绪检查（convertCheck）一致
+        EngineeringBom bom = bomService.getOne(
+                new LambdaQueryWrapper<EngineeringBom>()
+                        .eq(EngineeringBom::getProductId, pid)
+                        .eq(EngineeringBom::getIsCurrent, true)
+                        .last("LIMIT 1"));
+        EngineeringRouting routing = routingService.getOne(
+                new LambdaQueryWrapper<EngineeringRouting>()
+                        .eq(EngineeringRouting::getProductId, pid)
+                        .eq(EngineeringRouting::getIsCurrent, 1)
+                        .last("LIMIT 1"));
+
+        String bomVersion = bom != null ? (bom.getVersion() != null ? bom.getVersion() : bom.getBomVersion()) : null;
+        String routingVersion = routing != null
+                ? (routing.getVersion() != null ? routing.getVersion() : routing.getRoutingVersion()) : null;
+        vo.setBomId(bom != null ? bom.getBomId() : null);
+        vo.setBomVersion(bomVersion);
+        vo.setBomApproveStatus(bom != null ? bom.getApproveStatus() : null);
+        vo.setRoutingId(routing != null ? routing.getRoutingId() : null);
+        vo.setRoutingVersion(routingVersion);
+        vo.setRoutingApproveStatus(routing != null ? routing.getApproveStatus() : null);
+
+        if (bom == null || bom.getApproveStatus() == null || bom.getApproveStatus() != 3) {
+            vo.setEligible(false);
+            vo.setReason(bom == null ? "该产品无 BOM，不能带出" : "成品 BOM 尚未批准，不能带出");
+            return vo;
+        }
+        if (routing == null || routing.getApproveStatus() == null || routing.getApproveStatus() != 3) {
+            vo.setEligible(false);
+            vo.setReason(routing == null ? "该产品无工艺路线，不能带出" : "成品工艺路线尚未批准，不能带出");
+            return vo;
+        }
+
+        // 工艺路线明细（父行 + 子行组树）；父行=卡片，子行=卡内工序
+        EngineeringRoutingVO rvo = routingService.getRoutingItems(routing.getRoutingId());
+        List<EngineeringRoutingItemVO> parents = (rvo != null && rvo.getItems() != null)
+                ? rvo.getItems() : new ArrayList<>();
+
+        // BOM 材料：按 process_id 挂到对应工序（未挂工序的材料不打样侧挂载，留人工）
+        List<EngineeringBomItem> bomItems = bomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bom.getBomId()));
+        Map<Long, List<EngineeringBomItem>> matsByProcess = new LinkedHashMap<>();
+        for (EngineeringBomItem bi : bomItems) {
+            if (bi.getProcessId() == null) continue;
+            matsByProcess.computeIfAbsent(bi.getProcessId(), k -> new ArrayList<>()).add(bi);
+        }
+
+        int roundNo = (profile != null && profile.getSampleRound() != null) ? profile.getSampleRound() : 1;
+        String stamp = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new Date());
+        String sourceTag = "[成品方案 BOM " + (bomVersion != null ? bomVersion : "")
+                + " / ROUTING " + (routingVersion != null ? routingVersion : "") + " @" + stamp + "]";
+
+        List<SalesSampleProcess> rows = new ArrayList<>();
+        int cardOrder = 0;
+        int materialCount = 0;
+        for (EngineeringRoutingItemVO parent : parents) {
+            List<EngineeringRoutingItemVO> cardItems =
+                    (parent.getChildren() != null && !parent.getChildren().isEmpty())
+                            ? parent.getChildren() : java.util.Collections.singletonList(parent);
+            cardOrder++;
+            for (EngineeringRoutingItemVO it : cardItems) {
+                SalesSampleProcess row = new SalesSampleProcess();
+                row.setOrderId(orderId);
+                row.setRoundNo(roundNo);
+                row.setMajorCategory(it.getMajorCategory() != null ? it.getMajorCategory() : "ASSEMBLY");
+                row.setProcessName(it.getProcessName());
+                row.setStdProcessId(it.getProcessId());
+                row.setHasIndex(it.getHasIndex() != null ? it.getHasIndex() : 0);
+                row.setIndexNumber(it.getIndexNumber());
+                // 同一卡片的子行共享同一 processOrder（前端按此分卡片）
+                row.setProcessOrder(cardOrder);
+                row.setProcessCategory(it.getProcessCategory());
+                row.setStatus(0);
+                // 材料 JSON：键名沿用打样侧现有约定（name/spec/qty/unit/materialId/materialCode）
+                String matsJson = null;
+                List<EngineeringBomItem> mats = matsByProcess.get(it.getProcessId());
+                if (mats != null && !mats.isEmpty()) {
+                    List<Map<String, Object>> arr = new ArrayList<>();
+                    for (EngineeringBomItem bi : mats) {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("name", bi.getMaterialName());
+                        m.put("spec", bi.getSpecification());
+                        m.put("qty", bi.getQuantity());
+                        m.put("unit", bi.getUnit());
+                        m.put("materialId", bi.getMaterialId());
+                        m.put("materialCode", bi.getMaterialCode());
+                        arr.add(m);
+                    }
+                    try {
+                        matsJson = objectMapper.writeValueAsString(arr);
+                    } catch (Exception e) {
+                        log.warn("成品方案带出-材料序列化失败 processId={}: {}", it.getProcessId(), e.getMessage());
+                    }
+                    materialCount += arr.size();
+                }
+                row.setMaterials(matsJson);
+                // 说明：description 优先；work_instruction 并入备注，并追加来源标记（快照可追溯）
+                row.setProcessNote(it.getDescription());
+                row.setRemark(joinNonEmpty(it.getRemark(), it.getWorkInstruction(), sourceTag));
+                // 印刷自定义参数原样透传（前端 makePrintRow 解析 printName/colorNo/inkNo/screenNo）
+                row.setCustomProcessParams(it.getCustomProcessParams());
+                rows.add(row);
+            }
+        }
+
+        vo.setRows(rows);
+        vo.setProcessCount(rows.size());
+        vo.setMaterialCount(materialCount);
+        vo.setEligible(true);
+        return vo;
+    }
+
+    /** 拼接非空片段（空格分隔），全空返回 null */
+    private static String joinNonEmpty(String... parts) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p == null || p.isBlank()) continue;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(p.trim());
+        }
+        return sb.length() == 0 ? null : sb.toString();
     }
 
     /**

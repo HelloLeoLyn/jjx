@@ -237,3 +237,5 @@
 | dev-20261009-008 | quotation-order-taxrate-fix-dev-20261009-008.md | 报价税率注解归位（@DecimalMax(100) 从税额字段挪回税率）+ 报价转订单税率去÷100 直接透传；修正「新增报价报税率不能大于100」与「转单税额差100倍」 |
 
 | dev-20261012-010 | sample-copy-plan-product-source-dev-20261012-010.md | 打样工作台「复制打样方案」新增第三来源「成品方案」设计稿：routing_item/bom_item→打样工序行的字段传承对照表、只带已批准且现行、追溯与快照、材料编码口径、权限与影响面、5项待拍板、8条验收用例与规范更新建议；不含实现 |
+
+| dev-20261012-012 | sample-copy-plan-product-source-dev-20261012-012.md | 打样工作台「复制打样方案」新增第三来源「成品方案」实现：后端只读接口 GET /sales/sample-order/{orderId}/product-plan（已批准现行 BOM+路线→打样工序行形状，卡片按路线父行分组、材料按 process_id 挂载）+ 前端第三 tab 与追加/覆盖单选（三来源共用 applyCopiedRows）；更正设计稿 4.5（工序 materials JSON 已含 materialId/materialCode，无需改结构）；mvn/vue-tsc 通过 |

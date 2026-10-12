@@ -476,17 +476,63 @@
             <el-table-column prop="orderDate" label="日期" width="110" />
           </el-table>
         </el-tab-pane>
+        <!-- 来源3：成品方案（该样品单产品的当前已批准现行 BOM + 工艺路线，只读带出） -->
+        <el-tab-pane label="成品方案" name="product">
+          <div v-loading="productPlanLoading" style="min-height: 80px">
+            <template v-if="productPlan && productPlan.eligible">
+              <el-descriptions :column="2" border size="small">
+                <el-descriptions-item label="产品">
+                  {{ productPlan.productCode || '-' }} {{ productPlan.productName || '' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="BOM">
+                  {{ productPlan.bomVersion || '-' }}
+                  <el-tag size="small" type="success">已批准</el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="工艺路线">
+                  {{ productPlan.routingVersion || '-' }}
+                  <el-tag size="small" type="success">已批准</el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="带出内容">
+                  工序 {{ productPlan.processCount || 0 }} 道 · 材料 {{ productPlan.materialCount || 0 }} 条
+                </el-descriptions-item>
+              </el-descriptions>
+              <div style="font-size: 12px; color: #909399; margin-top: 10px; line-height: 1.6">
+                带出的是<b>可编辑参考行</b>，保存后生效；产品后续升版不会自动同步。材料编码随行携带。
+              </div>
+            </template>
+            <el-alert
+              v-else-if="!productPlanLoading"
+              type="warning"
+              :closable="false"
+              show-icon
+              :title="productPlan?.reason || '该产品无已批准且现行的成品方案，不能带出'"
+            />
+          </div>
+        </el-tab-pane>
       </el-tabs>
       <template #footer>
+        <el-radio-group v-model="copyOverwrite" size="small" style="margin-right: 12px">
+          <el-radio-button :value="false">追加到现有</el-radio-button>
+          <el-radio-button :value="true">覆盖当前轮</el-radio-button>
+        </el-radio-group>
         <el-button @click="historyCopyVisible = false">取消</el-button>
         <el-button
-          v-if="copySourceTab === 'round' && (Number(card.sampleRound || 1)) > 1"
+          v-if="copySourceTab === 'round'"
           type="primary"
           :disabled="!historySelectedRound"
           :loading="copyPrevLoading"
           @click="copyRoundFrom(Number(historySelectedRound?.roundNo))"
         >
           复制选中轮到当前
+        </el-button>
+        <el-button
+          v-else-if="copySourceTab === 'product'"
+          type="primary"
+          :disabled="!productPlan?.eligible"
+          :loading="productPlanCopying"
+          @click="confirmProductPlanCopy"
+        >
+          复制方案到当前轮
         </el-button>
         <el-button
           v-else
@@ -606,6 +652,11 @@ const {
   copyRoundFrom,
   copyPrevLoading,
   historySelectedRound,
+  copyOverwrite,
+  productPlan,
+  productPlanLoading,
+  productPlanCopying,
+  confirmProductPlanCopy,
   clearCurrentRound,
   loadFrequentMaterials,
   addFrequentMaterial,
@@ -693,11 +744,11 @@ const {
   readonlyMode,
 } = useSampleWorkbench()
 
-// 复制打样方案弹窗：来源 tab（本单历史轮/其他样品单）
-const copySourceTab = ref<'round' | 'order'>('order')
+// 复制打样方案弹窗：来源 tab（本单历史轮/其他样品单/成品方案）
+const copySourceTab = ref<'round' | 'order' | 'product'>('order')
 function handleOpenCopy() {
-  // 当前轮>1（多轮迭代）默认进"本单历史轮"，单轮场景默认"其他样品单"
-  copySourceTab.value = (Number(card.value?.sampleRound || 1)) > 1 ? 'round' : 'order'
+  // 多轮迭代默认进"本单历史轮"；单轮场景默认进"成品方案"（成品已批准则最有用）
+  copySourceTab.value = (Number(card.value?.sampleRound || 1)) > 1 ? 'round' : 'product'
   openHistoryCopy()
 }
 

@@ -196,6 +196,24 @@ export interface SampleProcessStatusDTO {
   materials?: string | null
 }
 
+// 打样工作台「复制打样方案 → 成品方案」只读带出（dev-20261012-012）
+export interface SampleProductPlan {
+  eligible: boolean
+  reason?: string
+  productId?: number
+  productCode?: string
+  productName?: string
+  bomId?: number
+  bomVersion?: string
+  bomApproveStatus?: number
+  routingId?: number
+  routingVersion?: string
+  routingApproveStatus?: number
+  processCount?: number
+  materialCount?: number
+  rows: SampleProcess[]
+}
+
 export interface SampleBomItem {
   bomId?: number
   orderId?: number

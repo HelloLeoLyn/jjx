@@ -138,6 +138,12 @@ public interface ISampleOrderService {
     List<com.jjx.sales.domain.entity.SalesSampleBom> listSampleBom(Long orderId);
 
     /**
+     * 打样工作台「复制打样方案 → 成品方案」只读带出（dev-20261012-012）。
+     * 从样品单产品的当前已批准现行 BOM + 工艺路线，产出打样工序行形状的临时列表（不落库）。
+     */
+    com.jjx.sales.domain.vo.SampleProductPlanVO getProductPlan(Long orderId);
+
+    /**
      * 保存打样BOM物料（覆盖当前轮次）
      */
     List<com.jjx.sales.domain.entity.SalesSampleBom> saveSampleBom(Long orderId, Integer roundNo, List<com.jjx.sales.domain.entity.SalesSampleBom> items);

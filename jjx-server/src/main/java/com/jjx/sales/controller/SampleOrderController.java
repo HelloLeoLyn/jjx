@@ -401,6 +401,15 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.listSampleProcesses(orderId, roundNo));
     }
 
+    /**
+     * 打样工作台「复制打样方案 → 成品方案」只读带出（dev-20261012-012）
+     */
+    @Operation(summary = "打样工作台·成品方案只读带出（已批准现行 BOM+工艺路线）")
+    @GetMapping("/{orderId}/product-plan")
+    public Result<com.jjx.sales.domain.vo.SampleProductPlanVO> productPlan(@PathVariable Long orderId) {
+        return Result.success(sampleOrderService.getProductPlan(orderId));
+    }
+
     @Operation(summary = "打样汇总（总工时+材料成本估算）")
     @GetMapping("/summary/{orderId}")
     public Result<java.util.Map<String, Object>> summary(@PathVariable Long orderId) {

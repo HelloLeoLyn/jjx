@@ -181,6 +181,8 @@ export function useSampleWorkbench() {
 
   // 从历史打样复制
   const historyCopyVisible = ref(false)
+  // 追加/覆盖（dev-20261012-012：给用户选择，默认追加）
+  const copyOverwrite = ref(false)
   const historyOrders = ref<any[]>([])
   const historyLoading = ref(false)
   const historySelected = ref<any>(null)
@@ -189,7 +191,9 @@ export function useSampleWorkbench() {
     historyCopyVisible.value = true
     historySelected.value = null
     historySelectedRound.value = null
+    copyOverwrite.value = false
     historyLoading.value = true
+    loadProductPlan()
     try {
       // 2026-08-12 DEV-988：不再限已转量产(7)——查全部样品单（排除当前单），有工序即可复制
       const res: any = await sampleOrderApi.list({})
@@ -200,6 +204,63 @@ export function useSampleWorkbench() {
       historyLoading.value = false
     }
   }
+  // 共用：把「打样工序行形状」的列表应用到当前轮编辑区（追加或覆盖；印刷→印刷表、其余→卡片）
+  function applyCopiedRows(list: any[], overwrite = false) {
+    const sorted = [...list].sort(
+      (a: any, b: any) =>
+        (a.processOrder || 999) - (b.processOrder || 999) ||
+        (a.processId || 0) - (b.processId || 0)
+    )
+    // 2026-08-12 DEV-988：拆分印刷(PRINT)与冲型组装(ASSEMBLY)——印刷行进印刷表格
+    const printRows = sorted.filter((p: any) => p.majorCategory === 'PRINT')
+    const assemblyRows = sorted.filter((p: any) => p.majorCategory !== 'PRINT')
+    if (overwrite) {
+      planList.value = []
+      printList.value = []
+    }
+    // 按 processOrder 分组为卡片（不覆盖时追加到当前 planList 后面）
+    const groups = new Map<number, any[]>()
+    for (const p of assemblyRows) {
+      const k = p.processOrder || 999
+      if (!groups.has(k)) groups.set(k, [])
+      groups.get(k)!.push(p)
+    }
+    let added = 0
+    for (const [, rows] of groups) {
+      const first = rows[0]
+      const enriched = rows.map((r: any) => {
+        const src2 = allProcesses.value.find((x) => x.processId === r.stdProcessId)
+        return src2
+          ? {
+              ...r,
+              processType: src2.processType,
+              processCategory: src2.processCategory,
+              icon: src2.icon,
+            }
+          : r
+      })
+      const pc = makeCard(enriched, {
+        processOrder: 0, // 追加，保存时重新编号
+        category: first.processCategory || '',
+        status: 0,
+        operationRemark: first.remark || '',
+        materials: first.materials || null,
+      })
+      planList.value.push(pc)
+      added++
+    }
+    // 印刷行追加到 printList（参数色号/油墨/网框随行；重置待做状态 + uid 防 key 冲突）
+    let addedPrint = 0
+    for (const r of printRows) {
+      const row = makePrintRow(r, printList.value.length + 1)
+      row.status = 0
+      row.uid = `new-${genUid()}`
+      printList.value.push(row)
+      addedPrint++
+    }
+    return { added, addedPrint }
+  }
+
   async function confirmHistoryCopy() {
     if (readonlyMode.value) return
     const src = historySelected.value
@@ -207,61 +268,15 @@ export function useSampleWorkbench() {
     historyCopying.value = true
     try {
       const res = await sampleOrderApi.listProcesses(src.orderId)
-      const list: any[] = (res.data || []).sort(
-        (a: any, b: any) =>
-          (a.processOrder || 999) - (b.processOrder || 999) ||
-          (a.processId || 0) - (b.processId || 0)
-      )
+      const list: any[] = res.data || []
       if (!list.length) {
         ElMessage.warning('该样品单没有工序计划')
         return
       }
-      // 2026-08-12 DEV-988：拆分印刷(PRINT)与冲型组装(ASSEMBLY)——印刷行追加到印刷表格
-      const printRows = list.filter((p: any) => p.majorCategory === 'PRINT')
-      const assemblyRows = list.filter((p: any) => p.majorCategory !== 'PRINT')
-      // 按 processOrder 分组为卡片，追加到当前 planList 后面（不覆盖）
-      const groups = new Map<number, any[]>()
-      for (const p of assemblyRows) {
-        const k = p.processOrder || 999
-        if (!groups.has(k)) groups.set(k, [])
-        groups.get(k)!.push(p)
-      }
-      let added = 0
-      for (const [, rows] of groups) {
-        const first = rows[0]
-        const enriched = rows.map((r: any) => {
-          const src2 = allProcesses.value.find((x) => x.processId === r.stdProcessId)
-          return src2
-            ? {
-                ...r,
-                processType: src2.processType,
-                processCategory: src2.processCategory,
-                icon: src2.icon,
-              }
-            : r
-        })
-        const pc = makeCard(enriched, {
-          processOrder: 0, // 追加，保存时重新编号
-          category: first.processCategory || '',
-          status: 0,
-          operationRemark: first.remark || '',
-          materials: first.materials || null,
-        })
-        planList.value.push(pc)
-        added++
-      }
-      // 印刷行追加到 printList（参数色号/油墨/网框随行；重置待做状态 + uid 防 key 冲突）
-      let addedPrint = 0
-      for (const r of printRows) {
-        const row = makePrintRow(r, printList.value.length + 1)
-        row.status = 0
-        row.uid = `new-${genUid()}`
-        printList.value.push(row)
-        addedPrint++
-      }
+      const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
       historyCopyVisible.value = false
       ElMessage.success(
-        `已复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（追加到现有后，保存后生效）`
+        `已复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到现有后'}，保存后生效）`
       )
     } catch (e: any) {
       ElMessage.error(e?.message || '复制失败')
@@ -279,59 +294,15 @@ export function useSampleWorkbench() {
     copyPrevLoading.value = true
     try {
       const res: any = await sampleOrderApi.listProcesses(orderId.value, roundNo)
-      const list: any[] = (res.data || []).sort(
-        (a: any, b: any) =>
-          (a.processOrder || 999) - (b.processOrder || 999) ||
-          (a.processId || 0) - (b.processId || 0)
-      )
+      const list: any[] = res.data || []
       if (!list.length) {
         ElMessage.warning(`Round ${roundNo} 没有工序计划，无法复制`)
         return
       }
-      // 与跨单复制同语义：PRINT→印刷表，其余→按 processOrder 分组为卡片，追加不覆盖
-      const printRows = list.filter((p: any) => p.majorCategory === 'PRINT')
-      const assemblyRows = list.filter((p: any) => p.majorCategory !== 'PRINT')
-      const groups = new Map<number, any[]>()
-      for (const p of assemblyRows) {
-        const k = p.processOrder || 999
-        if (!groups.has(k)) groups.set(k, [])
-        groups.get(k)!.push(p)
-      }
-      let added = 0
-      for (const [, rows] of groups) {
-        const first = rows[0]
-        const enriched = rows.map((r: any) => {
-          const src2 = allProcesses.value.find((x: any) => x.processId === r.stdProcessId)
-          return src2
-            ? {
-                ...r,
-                processType: src2.processType,
-                processCategory: src2.processCategory,
-                icon: src2.icon,
-              }
-            : r
-        })
-        const pc = makeCard(enriched, {
-          processOrder: 0, // 追加，保存时重新编号
-          category: first.processCategory || '',
-          status: 0,
-          operationRemark: first.remark || '',
-          materials: first.materials || null,
-        })
-        planList.value.push(pc)
-        added++
-      }
-      let addedPrint = 0
-      for (const r of printRows) {
-        const row = makePrintRow(r, printList.value.length + 1)
-        // 复制到新轮：重置为待做（源轮可能已完成/进行中）+ uid 重新生成（防跨轮重复复制 key 冲突）
-        row.status = 0
-        row.uid = `new-${genUid()}`
-        printList.value.push(row)
-        addedPrint++
-      }
+      // 与跨单复制同语义：PRINT→印刷表，其余→按 processOrder 分组为卡片
+      const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
       ElMessage.success(
-        `已从 Round ${roundNo} 复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（追加到当前轮，保存后生效）`
+        `已从 Round ${roundNo} 复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到当前轮'}，保存后生效）`
       )
       historyCopyVisible.value = false
     } catch (e: any) {
@@ -346,6 +317,43 @@ export function useSampleWorkbench() {
     const cur = card.value?.sampleRound || 1
     if (cur <= 1) return
     await copyRoundFrom(cur - 1)
+  }
+
+  // ===== 复制打样方案：来源3「成品方案」（只读带出，dev-20261012-012）=====
+  const productPlan = ref<any>(null)
+  const productPlanLoading = ref(false)
+  const productPlanCopying = ref(false)
+  async function loadProductPlan() {
+    if (!orderId.value) return
+    productPlanLoading.value = true
+    try {
+      const res: any = await sampleOrderApi.getProductPlan(orderId.value)
+      productPlan.value = res?.data || null
+    } catch {
+      productPlan.value = null
+    } finally {
+      productPlanLoading.value = false
+    }
+  }
+  async function confirmProductPlanCopy() {
+    if (readonlyMode.value) return
+    const pp: any = productPlan.value
+    if (!pp?.eligible) return
+    const list: any[] = pp.rows || []
+    if (!list.length) {
+      ElMessage.warning('成品方案没有可带出的工序')
+      return
+    }
+    productPlanCopying.value = true
+    try {
+      const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
+      historyCopyVisible.value = false
+      ElMessage.success(
+        `已带出 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到现有后'}，保存后生效；产品后续升版不会自动同步）`
+      )
+    } finally {
+      productPlanCopying.value = false
+    }
   }
 
   // 清空当前轮次编辑区（未保存内容丢弃；需再次保存才同步后端覆盖，2026-09-05 用户提出）
@@ -1564,6 +1572,12 @@ export function useSampleWorkbench() {
     copyRoundFrom,
     copyPrevLoading,
     historySelectedRound,
+    copyOverwrite,
+    productPlan,
+    productPlanLoading,
+    productPlanCopying,
+    loadProductPlan,
+    confirmProductPlanCopy,
     clearCurrentRound,
     loadFrequentMaterials,
     addFrequentMaterial,

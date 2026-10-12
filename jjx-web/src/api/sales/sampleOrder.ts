@@ -21,6 +21,7 @@ import type {
   SampleProcess,
   SampleProcessPlanDTO,
   SampleProcessStatusDTO,
+  SampleProductPlan,
   SampleRound,
   SampleSourceInquiry,
   SampleSourceQuotation,
@@ -350,6 +351,14 @@ export const sampleOrderApi = {
   listBom(orderId: number) {
     return request<R<SampleBomItem[]>>({
       url: `/sales/sample-order/bom/${orderId}`,
+      method: 'get',
+    })
+  },
+
+  // 打样工作台「复制打样方案 → 成品方案」只读带出（dev-20261012-012）
+  getProductPlan(orderId: number) {
+    return request<R<SampleProductPlan>>({
+      url: `/sales/sample-order/${orderId}/product-plan`,
       method: 'get',
     })
   },
