@@ -94,6 +94,21 @@
           />
         </template>
       </el-table-column>
+      <!-- 整单通用（dev-20261012-039）：不挂工序的材料必须显式标记，否则提交审核被拦 -->
+      <el-table-column label="通用" width="64" align="center">
+        <template #default="scope">
+          <el-tooltip
+            :content="scope.row.isCommon ? '整单通用材料（不挂工序）' : '勾选=整单通用（不挂工序）'"
+            placement="top"
+          >
+            <el-checkbox
+              v-model="scope.row.isCommon"
+              :disabled="readonly"
+              @change="(v: any) => handleCommonChange(scope.row, v)"
+            />
+          </el-tooltip>
+        </template>
+      </el-table-column>
       <!-- 规格型号 -->
       <el-table-column label="规格型号" prop="specification" width="100">
         <template #default="scope">
@@ -362,10 +377,19 @@ const handleProjectChange = (row: EngineeringBomItem, value: number | string | u
     if (!p) return
     row.processId = p.processId
     row.processName = p.processName
+    row.isCommon = false // 选了工序即非通用（dev-20261012-039）
   } else {
     row.processId = undefined
     row.processName = value ?? ''
     matchProjectByName(row)
+  }
+}
+
+// 勾选「整单通用」→ 清空工序（通用材料不挂工序）（dev-20261012-039）
+const handleCommonChange = (row: EngineeringBomItem, val: any) => {
+  if (val) {
+    row.processId = undefined
+    row.processName = ''
   }
 }
 

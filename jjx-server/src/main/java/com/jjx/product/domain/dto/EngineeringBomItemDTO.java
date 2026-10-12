@@ -40,6 +40,9 @@ public class EngineeringBomItemDTO {
     /** 项目（标准工序）名称冗余 */
     private String processName;
 
+    /** 整单通用材料（不挂工序的合法标记）（dev-20261012-039） */
+    private Boolean isCommon;
+
     /** 单位 */
     private String unit;
 

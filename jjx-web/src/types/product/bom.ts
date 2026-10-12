@@ -43,6 +43,8 @@ export interface EngineeringBomItem {
   processId?: number
   /** 项目名称；未匹配时原样保存用户填写的名称 */
   processName?: string
+  /** 整单通用材料（不挂工序的合法标记）（dev-20261012-039） */
+  isCommon?: boolean
   unit: string
   quantity: number
   /** 应用料（含损耗）= 用量×(1+损耗率/100) */

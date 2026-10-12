@@ -63,6 +63,11 @@ public class EngineeringBomItem {
     private String processName;
 
     /**
+     * 整单通用材料（不挂工序的合法标记）：0否 1是（dev-20261012-039）
+     */
+    private Boolean isCommon;
+
+    /**
      * 单位
      */
     private String unit;

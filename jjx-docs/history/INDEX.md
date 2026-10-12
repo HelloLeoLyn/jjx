@@ -239,3 +239,5 @@
 | dev-20261012-010 | sample-copy-plan-product-source-dev-20261012-010.md | 打样工作台「复制打样方案」新增第三来源「成品方案」设计稿：routing_item/bom_item→打样工序行的字段传承对照表、只带已批准且现行、追溯与快照、材料编码口径、权限与影响面、5项待拍板、8条验收用例与规范更新建议；不含实现 |
 
 | dev-20261012-012 | sample-copy-plan-product-source-dev-20261012-012.md | 打样工作台「复制打样方案」新增第三来源「成品方案」实现：后端只读接口 GET /sales/sample-order/{orderId}/product-plan（已批准现行 BOM+路线→打样工序行形状，卡片按路线父行分组、材料按 process_id 挂载）+ 前端第三 tab 与追加/覆盖单选（三来源共用 applyCopiedRows）；更正设计稿 4.5（工序 materials JSON 已含 materialId/materialCode，无需改结构）；mvn/vue-tsc 通过 |
+
+| dev-20261012-039 | bom-item-common-material-dev-20261012-039.md | BOM 材料「整单通用」标记 + 源头校验：engineering_bom_item 增 is_common（迁移274·待应用）；未挂工序且未标通用→提交审核拦截（checkBomForSubmit）；前端「通用」列 + 导入后未匹配项目弹窗提示；不静默、不丢数据 |

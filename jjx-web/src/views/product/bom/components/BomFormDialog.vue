@@ -150,7 +150,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules, UploadFile, UploadInstance } from 'element-plus'
 import { FullScreen, UploadFilled, Download } from '@element-plus/icons-vue'
 import { productBomApi } from '@/api/product/bom'
@@ -341,6 +341,15 @@ const parseExcelFile = (file: File) => {
       // 将解析后的数据填充到 formData.items
       formData.items = [...formData.items, ...items]
       ElMessage.success(`成功解析并添加 ${items.length} 项物料，可在表格中拖拽调整顺序`)
+      // dev-20261012-039：不静默——导入后若有材料未匹配「项目」，明确提示处理方式（指定项目 或 勾选「通用」）
+      const noProject = items.filter((it) => it.processId == null && !it.isCommon).length
+      if (noProject > 0) {
+        ElMessageBox.alert(
+          `本次导入有 ${noProject} 行未匹配到「项目」（工序）。请在表格中为它们选择项目，或勾选「通用」（整单通用材料），否则无法提交审核。`,
+          '有物料未挂工序',
+          { confirmButtonText: '知道了', type: 'warning' }
+        ).catch(() => {})
+      }
     } catch (error) {
       console.error('解析 Excel 失败:', error)
       ElMessage.error('解析 Excel 文件失败，请检查文件格式')

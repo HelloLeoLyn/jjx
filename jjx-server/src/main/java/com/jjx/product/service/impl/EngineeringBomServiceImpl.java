@@ -743,6 +743,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         item.setSpecification(dto.getSpecification());
         item.setProcessId(dto.getProcessId());
         item.setProcessName(dto.getProcessName());
+        item.setIsCommon(dto.getIsCommon() == null ? Boolean.FALSE : dto.getIsCommon());
         item.setUnit(dto.getUnit());
         item.setQuantity(dto.getQuantity());
         item.setLossRate(dto.getLossRate());
@@ -876,6 +877,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 } else if (sp.getIsEnabled() != null && sp.getIsEnabled() == 0) {
                     issues.add(issue(iid, code, name, "processId", "项目（标准工序）「" + sp.getProcessName() + "」已停用"));
                 }
+            } else if (!Boolean.TRUE.equals(it.getIsCommon())) {
+                // dev-20261012-039：未挂工序必须显式标记「整单通用」，否则不静默丢弃、拦提交审核
+                issues.add(issue(iid, code, name, "processId", "未挂工序（请在「项目」选择工序，或勾选「整单通用」）"));
             }
             // 父引用
             Long pid = it.getParentMaterialId();
