@@ -190,6 +190,20 @@
         </el-col>
       </el-row>
 
+      <!-- 附件（dev-20261012-047：通用附件中心） -->
+      <el-divider content-position="left">附件</el-divider>
+      <div style="margin-bottom: 10px">
+        <AttachmentCenter
+          ref="attachmentCenterRef"
+          source-type="quotation"
+          :source-id="props.formData.quotationId || null"
+          :draft-id="props.draftId || ''"
+          :trace-id="props.formData.traceId"
+          view-perm="sales:quotation:view"
+          edit-perm="sales:quotation:edit"
+        />
+      </div>
+
       <!-- 金额汇总 -->
       <el-divider content-position="left">金额汇总</el-divider>
       <el-row class="amount-summary">
@@ -322,7 +336,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { formatCurrency } from '@/utils/format'
@@ -332,6 +346,7 @@ import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import QuotationCodeGenDialog from './QuotationCodeGenDialog.vue'
 import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 import { parseProductCode } from '@/composables/useProductCode'
 
@@ -340,6 +355,8 @@ const props = defineProps<{
   title: string
   formData: any
   currencyOptions: Array<{ value: string; label: string }>
+  /** 待绑定队列草稿标识（由父组件下发；新建未保存时报价单复用同一草稿）（dev-20261012-047） */
+  draftId?: string
 }>()
 
 const emit = defineEmits<{
@@ -378,6 +395,33 @@ const customerDocUploadRef = ref<InstanceType<typeof CustomerDocUpload>>()
 function flushCustomerDocs(bizId: number, traceId?: string) { return customerDocUploadRef.value?.flushPending(bizId, traceId) }
 const fileLibProductCode = ref('')
 const uploadedAttachmentIds = ref<number[]>([])
+/** 公共附件中心（报价单通用附件；dev-20261012-047） */
+const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
+/** 保存成功后把待绑定（TEMP）附件一次性绑定到本报价单（照询价单：nextTick + 异常隔离 + partial/all-failed 提示） */
+async function bindPendingAttachments() {
+  await nextTick()
+  try {
+    const result = await attachmentCenterRef.value?.bindPending()
+    if (!result) return
+    if (result.status === 'document-not-saved') {
+      ElMessage.warning('报价单尚未保存，附件仍为待绑定状态')
+      return
+    }
+    if (result.status === 'partial') {
+      ElMessage.warning(
+        `报价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`,
+      )
+    } else if (result.status === 'all-failed') {
+      ElMessage.error(
+        `报价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`,
+      )
+    }
+  } catch (e: any) {
+    // 异常隔离：报价单此时已保存成功，附件异常不得冒泡成「整单保存失败」
+    console.error('附件绑定异常（报价单已保存）:', e)
+    ElMessage.error(`附件处理失败：${e?.message || '未知错误'}，可在附件区重试绑定`)
+  }
+}
 
 const onFileLibUpload = (id: number) => {
   if (!uploadedAttachmentIds.value.includes(id)) {
@@ -693,6 +737,7 @@ defineExpose({
   formRef,
   calculateTotalAmount,
   flushCustomerDocs,
+  bindPendingAttachments,
 })
 </script>
 

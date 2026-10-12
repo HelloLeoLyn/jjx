@@ -98,6 +98,16 @@
           </el-col>
         </el-row>
       </template>
+
+      <!-- 附件（只读；dev-20261012-047） -->
+      <el-divider content-position="left">附件</el-divider>
+      <AttachmentCenter
+        v-if="props.quotationId"
+        source-type="quotation"
+        :source-id="props.quotationId"
+        mode="readonly"
+        view-perm="sales:quotation:view"
+      />
     </div>
 
     <template #footer>
@@ -117,6 +127,7 @@ import { ElMessage } from 'element-plus'
 import { quotationApi } from '@/api/sales/quotation'
 import { QuotationStatusEnum } from '@/enums/sales'
 import { formatCurrency } from '@/utils/format'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 
 const props = defineProps<{
   modelValue: boolean

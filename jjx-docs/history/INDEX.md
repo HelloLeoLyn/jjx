@@ -283,3 +283,5 @@
 | dev-20261012-024 | inquiry-attachment-type-and-display-dev-20261012-024.md | 询价单附件「可选类型/看类型/入口口径」实施：待绑定行加二级类型下拉(绑定时落 document_type)、docTypeLabel 改「一级｜二级」(真实字典/停用项过滤/未知回退/空=未分类)、展示名拼「二级类型 · 原名」、入口改文字按钮「分类/命名」、双入口文案区分；useAttachmentRefs PendingEntry 加类型+持久化；vue-tsc=0/门禁无新增；未 commit
 
 | dev-20261012-028 | att-v1b-03-sales-order-dev-20261012-028.md | ATT-V1B-03：销售订单通用附件接入 AttachmentCenter——OrderForm 换组件+draftId 策略+bindPending(异常隔离)、ReviewDialog/GeneratePlanDialog→upload-only、OrderDetailDrawer→readonly(CRLF 保持)、index 确认凭证弹窗→el-dialog 包 AttachmentCenter；vue-tsc/check:status-enums/check:docs 全 0；未 commit |
+
+| dev-20261012-047 | att-v1b-47-quotation-attachment-dev-20261012-047.md | 报价单附件闭环：QuotationFormDialog 加附件分节+AttachmentCenter+暴露 bindPendingAttachments、QuotationDetailDialog 加只读、index 加 draftId 并在 submitForm 保存成功后 bindPending（关键发现：保存收尾在 index.vue 非 handleSubmit，按卡先报告再改）；vue-tsc/门禁/check:docs 全 0；未 commit |

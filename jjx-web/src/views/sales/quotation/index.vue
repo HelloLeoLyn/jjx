@@ -146,6 +146,7 @@
         :title="title"
         :form-data="form"
         :currency-options="currencyOptions"
+        :draft-id="draftId"
         @submit="submitForm"
         @cancel="cancel"
       />
@@ -594,6 +595,42 @@ const quotationDetailVisible = ref(false) // ✅ 新增
 const quotationDetailId = ref<number>(0) // ✅ 新增
 const quotationDetailMode = ref<'view' | 'submitReview'>('view') // ✅ 新增
 const userStore = useUserStore()
+/** 待绑定队列草稿标识（dev-20261012-047：照询价单——只在为空时生成，同一会话复用，保存成功后清空） */
+const draftId = ref('')
+let draftOwnerKey = ''
+const draftSessionKey = () => `attach-draft:v1:${userStore.userId ?? 'anonymous'}:quotation`
+function newDraftId() {
+  return `qt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+function ensureDraftId() {
+  const key = draftSessionKey()
+  if (draftOwnerKey !== key) {
+    draftId.value = ''
+    draftOwnerKey = key
+  }
+  if (!draftId.value) {
+    try {
+      draftId.value = sessionStorage.getItem(key) || ''
+    } catch (e) {
+      console.warn('读取报价草稿标识失败，刷新后可能无法恢复待绑定附件', e)
+    }
+    if (!draftId.value) draftId.value = newDraftId()
+  }
+  try {
+    sessionStorage.setItem(key, draftId.value)
+  } catch (e) {
+    console.warn('保存报价草稿标识失败，刷新后可能无法恢复待绑定附件', e)
+  }
+}
+function clearDraftId() {
+  if (!draftId.value) return // 编辑已有单据不清理另一张未保存草稿的会话标识。
+  try {
+    sessionStorage.removeItem(draftOwnerKey)
+  } catch (e) {
+    console.warn('清理已保存报价草稿标识失败', e)
+  }
+  draftId.value = ''
+}
 
 // ============================================================
 // 12. 表单数据
@@ -691,6 +728,7 @@ const submitForm = async () => {
       const res: any = await quotationApi.getInfo(form.quotationId)
       Object.assign(form, res.data)
       await quotationFormDialogRef.value?.flushCustomerDocs(form.quotationId)
+      await quotationFormDialogRef.value?.bindPendingAttachments()
       title.value = `修改报价单【${res.data?.quotationNo || ''}】`
       ElMessage.success('保存成功')
       getList()
@@ -703,6 +741,8 @@ const submitForm = async () => {
         const info: any = await quotationApi.getInfo(newId)
         Object.assign(form, info.data)
         await quotationFormDialogRef.value?.flushCustomerDocs(newId)
+        await quotationFormDialogRef.value?.bindPendingAttachments()
+        clearDraftId() // 保存成功：清空草稿标识
         title.value = `修改报价单【${info.data?.quotationNo || ''}】`
       }
       ElMessage.success('保存成功，可继续编辑')
@@ -723,6 +763,7 @@ const cancel = () => {
 // ============================================================
 const handleAdd = () => {
   resetForm()
+  ensureDraftId() // 新建：空时才生成草稿标识（刷新复用）
   form.quotationDate = new Date().toISOString().split('T')[0]
   const validUntil = new Date()
   validUntil.setDate(validUntil.getDate() + 30)
