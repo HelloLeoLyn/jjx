@@ -366,13 +366,17 @@
 
         <!-- 相关文档 -->
         <el-divider content-position="left">相关文档</el-divider>
-        <AttachmentPanel
+        <AttachmentCenter
           v-if="detailData?.orderId"
-          biz-type="sample"
-          :biz-id="detailData.orderId"
+          :key="detailData.orderId"
+          source-type="sample"
+          :source-id="detailData.orderId"
           :trace-id="detailData.traceId"
+          view-perm="sales:sample:view"
+          edit-perm="sales:sample:edit"
+          :locked="false"
         />
-        <el-button type="primary" style="margin-top: 8px" @click="customerUploadVisible = true">上传客供资料</el-button>
+        <el-button type="primary" style="margin-top: 8px" @click="customerUploadVisible = true">上传客供资料（需选产品）</el-button>
         <CustomerDocUpload v-model="customerUploadVisible" biz-type="sample" :biz-id="detailData.orderId" :source-no="detailData.orderNo"
           :trace-id="detailData.traceId" :products="detailProducts" />
       </template>
@@ -491,7 +495,7 @@ import type { TagType } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, UploadProps, UploadRawFile } from 'element-plus'
 import request from '@/utils/request'
-import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import SampleConvertCheckDialog from './components/SampleConvertCheckDialog.vue'

@@ -68,7 +68,7 @@
     </div>
 
     <!-- A 段：引用（主键 refId，不同 refId 全部保留） -->
-    <el-empty v-if="!loading && !refRows.length" description="暂无附件" :image-size="60" />
+    <el-empty v-if="!loading && !traceLoading && !refRows.length && !legacyOnlyRows.length && !traceOnlyRows.length" description="暂无附件" :image-size="60" />
     <div v-else class="ac-list">
       <div v-for="row in refRows" :key="`ref-${row.id}`" class="ac-row">
         <el-icon class="ac-icon"><Document /></el-icon>
@@ -102,6 +102,25 @@
         <span class="ac-sub">· {{ formatTime(row.createTime) }}</span>
         <span class="ac-spacer" />
         <el-button link type="primary" :icon="Download" @click="openUrl(attachmentApi.downloadUrl(row.id))" />
+        <el-button link type="primary" :icon="View" @click="previewReadOnly(row, legacyOnlyRows)" />
+      </div>
+    </div>
+
+    <!-- 同链路段按 attachmentId 去重，只有预览/下载，不进入 refs 写入链路。 -->
+    <div v-if="traceLoading || traceError || traceOnlyRows.length" class="ac-legacy">
+      <div class="ac-legacy-title">同链路来源单据（只读）</div>
+      <div v-if="traceLoading" class="ac-hint">正在加载同链路文档…</div>
+      <el-alert v-if="traceError" :title="traceError" type="warning" :closable="false" />
+      <div v-for="row in traceOnlyRows" :key="`trace-${row.id}`" class="ac-row">
+        <el-icon class="ac-icon"><Document /></el-icon>
+        <span class="ac-name" :title="row.fileName">{{ row.fileName || `附件 #${row.id}` }}</span>
+        <el-tag size="small" type="info">{{ row.bizTypeName || row.bizType || '来源单据' }}</el-tag>
+        <span v-if="row.sourceNo || row.bizId" class="ac-sub">{{ row.sourceNo || `#${row.bizId}` }}</span>
+        <span class="ac-sub">{{ formatSize(row.fileSize) }}</span>
+        <span class="ac-sub">· {{ formatTime(row.createTime) }}</span>
+        <span class="ac-spacer" />
+        <el-button link type="primary" :icon="Download" @click="openUrl(attachmentApi.downloadUrl(row.id))" />
+        <el-button link type="primary" :icon="View" @click="previewReadOnly(row, traceOnlyRows)" />
       </div>
     </div>
 
@@ -142,12 +161,12 @@
 /**
  * 公共附件中心（V1-B WP2）
  * - 唯一入口：上传（TEMP）→ 绑定（refs）→ 列表/预览/下载/解绑/元数据/重复提示
- * - 列表两段式：A 段按 refId（同附件多条引用全部保留）；B 段按 attachmentId（历史只读）
+ * - A 段按 refId；B 段历史只读；traceId 存在时补同链路只读段，按 attachmentId 排除 A/B 已有附件
  * - readonly / locked 只是能力位，不定义业务规则；后端始终是权限最终裁决方
  * - 已知限制：GET /refs 不返回文件元数据，A 段文件名/大小靠本单据的 legacy 列表回填，
  *   取不到时展示「附件 #id」（建议后端后续在 refs 列表补 file_name/file_size）
  */
-import { computed, reactive, ref, toRef } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { FolderOpened, Document, Download, View, Close, Clock } from '@element-plus/icons-vue'
 import { attachmentApi } from '@/api/system/attachment'
@@ -220,6 +239,7 @@ const {
   draftReady,
   loading,
   error,
+  canView,
   canEdit,
   load,
   loadDocumentTypes,
@@ -232,6 +252,61 @@ const {
   removePending,
   persist,
 } = refs
+
+// by-trace 返回 AttachmentSourceVO[]：id 为附件 ID（不是 refId）。
+interface TraceAttachment {
+  id: number
+  fileName?: string
+  fileSize?: number
+  fileType?: string
+  createTime?: string
+  bizType?: string
+  bizTypeName?: string
+  bizId?: number
+  sourceNo?: string
+}
+const traceRows = ref<TraceAttachment[]>([])
+const traceLoading = ref(false)
+const traceError = ref('')
+let traceRequest = 0
+
+const traceOnlyRows = computed(() => {
+  const seen = new Set([
+    ...refRows.value.map((row) => Number(row.attachmentId)),
+    ...legacyOnlyRows.value.map((row) => Number(row.id)),
+  ])
+  return traceRows.value.filter((row) => {
+    const id = Number(row.id)
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+})
+
+async function loadTrace() {
+  const request = ++traceRequest
+  traceRows.value = []
+  traceError.value = ''
+  traceLoading.value = false
+  if (!canView.value || !props.traceId) return
+  traceLoading.value = true
+  try {
+    const res: any = await attachmentApi.listByTrace(props.traceId)
+    if (request !== traceRequest) return // 切换单据/链路后，旧请求不能回填。
+    if (!Array.isArray(res?.data)) throw new Error('同链路文档返回格式异常')
+    traceRows.value = res.data
+  } catch (e: any) {
+    if (request !== traceRequest) return
+    traceError.value = e?.message || '同链路文档加载失败'
+    emit('error', { action: 'trace', message: traceError.value })
+  } finally {
+    if (request === traceRequest) traceLoading.value = false
+  }
+}
+
+watch(() => [props.sourceType, props.sourceId, props.traceId, canView.value], () => loadTrace(), { immediate: true })
+watch(canView, (allowed) => { if (allowed) loadDocumentTypes() }, { immediate: true })
+onBeforeUnmount(() => { traceRequest++ })
 
 const duplicateTip = ref('')
 const uploadTip = computed(() =>
@@ -408,6 +483,16 @@ function previewRef(row: AttachmentRefItem) {
 function downloadUrlByRef(refId: number) {
   return attachmentRefApi.downloadUrlByRef(refId)
 }
+function previewReadOnly(row: TraceAttachment, rows: TraceAttachment[]) {
+  if (isImageName(row.fileName, row.fileType)) {
+    const images = rows.filter((item) => isImageName(item.fileName, item.fileType))
+    viewerList.value = images.map((item) => attachmentApi.downloadUrl(item.id))
+    viewerIndex.value = Math.max(0, images.findIndex((item) => item.id === row.id))
+    viewerVisible.value = true
+    return
+  }
+  openUrl(attachmentApi.downloadUrl(row.id))
+}
 function openUrl(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
@@ -423,7 +508,7 @@ function formatTime(t?: string | null) {
 }
 
 defineExpose({
-  refresh: () => load(),
+  refresh: () => Promise.all([load(), loadTrace()]),
   bindPending,
   pendingCount,
   pendingEntries: pending,

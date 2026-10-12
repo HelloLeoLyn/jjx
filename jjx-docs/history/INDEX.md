@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-12 (dev-20261012-029) | att-v1b-04-sample-order-dev-20261012-029.md | 样品单接入公共附件中心与同链路只读展示 |
 | 2026-10-11 (dev-20261011-041) | product-work-spec-merge-bom-die-table-dev-20261011-041.md | 作业规范·合并 BOM 与刀模位置为一张表（末列就地编辑） |
 | 2026-10-11 (dev-20261011-040) | product-work-spec-top-three-column-layout-dev-20261011-040.md | 产品作业规范顶部三栏（结构图/凹凸条件/备注）与加工要求升格为备注 |
 | 2026-10-11 (dev-20261011-025) | customer-doc-controlled-p0-audit-dev-20261011-025.md | 客供资料受控库 P0：现状核查（4 清单） |
@@ -257,6 +258,8 @@
 | dev-20261012-002 | common-attachment-v1b-wp3-inquiry-dev-20261012-002.md | 公共附件V1-B WP3 询价单试点+队列核查+加固：主表单 AttachmentPanel→AttachmentCenter（draftId 生命周期、保存后 bindPending、partial/all-failed 提示与队列保留、编辑直连）、详情弹窗 readonly；§8 只读时序核查认定无丢队列/重复绑定/误报保存失败缺陷（R1-R3 加固建议）；§9 已落 R1+R2（nextTick 保证 props 同步、绑定异常隔离不误报整单失败）与"新键持久化成功才清旧键"；R3 按指令未做；vue-tsc 通过，浏览器验收待人工 |
 
 | dev-20261012-002 | common-attachment-v1b-closeout-registration-dev-20261012-002.md | 任务包 JJX-COMMON-ATTACHMENT-V1B-CLOSEOUT 登记报告：12 条子任务已入 sys_task = ATT-V1B-01..12 / dev-20261012-026~037（01 置 READY，其余按依赖 REGISTERED）；含包内↔正式码映射、查重判定（002 总任务/011 仅关联不动状态/024 保留交互项并指针/025 为上游依赖/003 关联 031）、依赖顺序图、状态口径（DB 无 READY 故统一 status=0 + 包内状态记 description/remark）、未执行声明（未改代码/未测试/未重启/未提交）；建议下一项 ATT-V1B-01，注意 025 的 9 编码未定限制分类显示项 |
+
+| dev-20261012-030 | att-v1b-05-product-attachment-inventory-dev-20261012-030.md | ATT-V1B-05 产品附件入口盘点（只读）：产品模块无通用附件上传入口；唯一接入候选=产品详情「业务流转附件」只读聚合（前端 ProductDetail.vue:271-315/456-468 + 后端 ProductController:88 → ProductServiceImpl.getBizAttachments 走 legacy biz_type/biz_id）；不接入 5 项（ProductFileLibrary/CustomerDocPanel/菲林/作业规范文档集/ProductSpecDrawer）；待拍板 3 项（是否切 refs 含 refsByProduct 语义差异、是否新增通用上传入口、是否统一"一级｜二级"显示）；未改代码/库 |
 
 | dev-20261012-010 | sample-copy-plan-product-source-dev-20261012-010.md | 打样工作台「复制打样方案」新增第三来源「成品方案」设计稿：routing_item/bom_item→打样工序行的字段传承对照表、只带已批准且现行、追溯与快照、材料编码口径、权限与影响面、5项待拍板、8条验收用例与规范更新建议；不含实现 |
 
