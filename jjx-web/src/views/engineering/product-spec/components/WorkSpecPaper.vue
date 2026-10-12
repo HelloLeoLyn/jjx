@@ -144,8 +144,8 @@ function shortDate(value?: string | null) { return value ? value.slice(2, 10) : 
 /* 右侧要求跨行时，刀模单元格仍保留与要求区之间的边线。 */
 .materials tbody td.die-position { border-right:1px solid #333; }
 .cell-single { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.material-name { display:block; font-size:11px; line-height:10px; max-height:20px; overflow:hidden; overflow-wrap:anywhere; }
-.die-position { font-size:11px; white-space:pre-wrap; }
+.material-name { display:block; font-size:12px; line-height:10px; max-height:20px; overflow:hidden; overflow-wrap:anywhere; }
+.die-position { font-size:12px; white-space:pre-wrap; }
 .emboss-label,.emboss-value { font-size:12px; white-space:nowrap; padding:0 2px !important; }
 .materials td.engineering-notes { vertical-align:top; padding:8px 5px; }
 .notes-content { height:159px; overflow:hidden; white-space:pre-wrap; overflow-wrap:anywhere; line-height:18px; font-size:12px; }
