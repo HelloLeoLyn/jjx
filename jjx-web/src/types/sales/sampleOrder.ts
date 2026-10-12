@@ -211,7 +211,18 @@ export interface SampleProductPlan {
   routingApproveStatus?: number
   processCount?: number
   materialCount?: number
+  unlinkedMaterials?: SampleProductPlanMaterial[]
   rows: SampleProcess[]
+}
+
+// 成品方案带出的材料（工序 materials JSON 键名沿用）
+export interface SampleProductPlanMaterial {
+  name?: string
+  spec?: string
+  qty?: number
+  unit?: string
+  materialId?: number
+  materialCode?: string
 }
 
 export interface SampleBomItem {

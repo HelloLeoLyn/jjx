@@ -4,6 +4,7 @@ import com.jjx.sales.domain.entity.SalesSampleProcess;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 打样工作台「复制打样方案 → 成品方案」只读带出结果（dev-20261012-012）。
@@ -39,6 +40,9 @@ public class SampleProductPlanVO {
 
     /** 带出材料条数 */
     private Integer materialCount;
+
+    /** 未挂工序的 BOM 材料（不静默丢弃，前端提示/处理，dev-20261012-012） */
+    private List<Map<String, Object>> unlinkedMaterials;
 
     /** 打样工序行（形状复用 SalesSampleProcess，仅前端编辑用，不落库） */
     private List<SalesSampleProcess> rows;

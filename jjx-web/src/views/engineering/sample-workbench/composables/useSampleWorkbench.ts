@@ -352,15 +352,41 @@ export function useSampleWorkbench() {
     if (readonlyMode.value) return
     const pp: any = productPlan.value
     if (!pp?.eligible) return
-    const list: any[] = pp.rows || []
+    const list: any[] = (pp.rows || []).map((r: any) => ({ ...r }))
     if (!list.length) {
       ElMessage.warning('成品方案没有可带出的工序')
       return
+    }
+    // 未挂工序的 BOM 材料：不静默丢弃 —— 暂挂到首道工序（带出后可在工序里调整），并在结果里提示
+    const unlinked: any[] = pp.unlinkedMaterials || []
+    let unlinkedNote = ''
+    if (unlinked.length) {
+      const idx = list.findIndex((r: any) => r.majorCategory !== 'PRINT')
+      const ti = idx >= 0 ? idx : 0
+      const base = parseMaterials(list[ti].materials) || []
+      const add = unlinked.map((m: any) => ({
+        name: m.name,
+        spec: m.spec || '',
+        qty: m.qty ?? 1,
+        unit: m.unit || 'PCS',
+        materialId: m.materialId,
+        materialCode: m.materialCode || '',
+      }))
+      list[ti].materials = JSON.stringify([...base, ...add])
+      unlinkedNote = `；另有 ${unlinked.length} 条未挂工序材料（${unlinked
+        .map((m: any) => m.name)
+        .join('、')}）已暂挂到首道工序「${list[ti].processName}」，请核对归属`
     }
     productPlanCopying.value = true
     try {
       const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
       historyCopyVisible.value = false
+      if (unlinkedNote) {
+        ElMessageBox.alert(`${unlinkedNote.replace(/^；/, '')}`, '材料未挂工序提示', {
+          confirmButtonText: '知道了',
+          type: 'warning',
+        }).catch(() => {})
+      }
       ElMessage.success(
         `已带出 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到现有后'}，保存后生效；产品后续升版不会自动同步）`
       )

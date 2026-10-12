@@ -499,6 +499,19 @@
               <div style="font-size: 12px; color: #909399; margin-top: 10px; line-height: 1.6">
                 带出的是<b>可编辑参考行</b>，保存后生效；产品后续升版不会自动同步。材料编码随行携带。
               </div>
+              <el-alert
+                v-if="(productPlan.unlinkedMaterials?.length || 0) > 0"
+                type="warning"
+                :closable="false"
+                show-icon
+                style="margin-top: 10px"
+                :title="`有 ${productPlan.unlinkedMaterials?.length} 条材料未挂工序`"
+              >
+                <div style="font-size: 12px; line-height: 1.6">
+                  {{ (productPlan.unlinkedMaterials || []).map((m: any) => m.name).join('、') }}
+                  <br />带出时会暂放到首道工序，请在工序里核对归属（不会静默丢失）。
+                </div>
+              </el-alert>
             </template>
             <el-alert
               v-else-if="!productPlanLoading"

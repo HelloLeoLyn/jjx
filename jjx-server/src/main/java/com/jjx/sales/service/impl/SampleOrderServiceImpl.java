@@ -1439,6 +1439,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         vo.setRows(new ArrayList<>());
         vo.setProcessCount(0);
         vo.setMaterialCount(0);
+        vo.setUnlinkedMaterials(new ArrayList<>());
 
         SalesSampleOrder profile = sampleOrderMapper.selectByOrderId(orderId);
         Long pid = profile != null ? profile.getProductId() : null;
@@ -1501,8 +1502,20 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         List<EngineeringBomItem> bomItems = bomItemMapper.selectList(
                 new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bom.getBomId()));
         Map<Long, List<EngineeringBomItem>> matsByProcess = new LinkedHashMap<>();
+        List<Map<String, Object>> unlinked = new ArrayList<>();
         for (EngineeringBomItem bi : bomItems) {
-            if (bi.getProcessId() == null) continue;
+            if (bi.getProcessId() == null) {
+                // 未挂工序材料：不静默丢弃，单独返回由前端提示/处理
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("name", bi.getMaterialName());
+                m.put("spec", bi.getSpecification());
+                m.put("qty", bi.getQuantity());
+                m.put("unit", bi.getUnit());
+                m.put("materialId", bi.getMaterialId());
+                m.put("materialCode", bi.getMaterialCode());
+                unlinked.add(m);
+                continue;
+            }
             matsByProcess.computeIfAbsent(bi.getProcessId(), k -> new ArrayList<>()).add(bi);
         }
 
@@ -1567,6 +1580,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         vo.setRows(rows);
         vo.setProcessCount(rows.size());
         vo.setMaterialCount(materialCount);
+        vo.setUnlinkedMaterials(unlinked);
         vo.setEligible(true);
         return vo;
     }
