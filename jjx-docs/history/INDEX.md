@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-12 (dev-20261012-031) | att-v1b-06-history-attachment-compat-dev-20261012-031.md | 公共附件历史兼容与迁移策略收口（A段 refs / B段 LEGACY） |
 | 2026-10-12 (dev-20261012-029) | att-v1b-04-sample-order-dev-20261012-029.md | 样品单接入公共附件中心与同链路只读展示 |
 | 2026-10-11 (dev-20261011-041) | product-work-spec-merge-bom-die-table-dev-20261011-041.md | 作业规范·合并 BOM 与刀模位置为一张表（末列就地编辑） |
 | 2026-10-11 (dev-20261011-040) | product-work-spec-top-three-column-layout-dev-20261011-040.md | 产品作业规范顶部三栏（结构图/凹凸条件/备注）与加工要求升格为备注 |
