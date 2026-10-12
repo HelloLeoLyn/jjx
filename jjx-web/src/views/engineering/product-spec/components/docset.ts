@@ -17,6 +17,7 @@ export const documentSections = [
   { key: 'atlas', label: '工程图集', note: '结构图 · 面板图 · 线路图等' },
   { key: 'color', label: '分色检查表', note: '规范 · 面板菲林分色 · 线路 · 刀模治具' },
   { key: 'sample', label: '样品', note: '样品实物照片' },
+  { key: 'ink', label: '油墨调配记录表', note: '空白记录表 · 每页五组' },
 ]
 
 export interface DocFile {
@@ -74,7 +75,7 @@ export interface DocPage {
   key: string
   section: string
   title: string
-  kind: 'spec' | 'spec-details' | 'print' | 'color' | 'image' | 'empty' | 'flow'
+  kind: 'spec' | 'spec-details' | 'print' | 'color' | 'image' | 'empty' | 'flow' | 'ink'
   rows?: Record<string, any>[]
   groups?: { label: string; symbol: string; rows: Record<string, any>[]; value?: string; capacity?: number; remark?: string }[]
   showFilm?: boolean
@@ -289,6 +290,8 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
       // 指导图跟随印刷表，整套文档中不再在工程图集重复打印；仅允许现行已下发的预览件。
       const files = defaultDocumentFiles(data.files).filter(file => file.section === 'print' && fileIds.includes(file.key))
       for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: 'print', title: '印刷指导图', kind: 'image', file, image }))
+    } else if (section.key === 'ink') {
+      pages.push({ key: 'ink', section: 'ink', title: '油墨调配记录表', kind: 'ink' })
     } else if (section.key === 'color') {
       // 分色检查表：电子表纸张固定一张（未填写也可预览空白），历史附件排其后。
       pages.push({ key: 'color', section: 'color', title: '规范分色检查表', kind: 'color' })

@@ -4,6 +4,7 @@
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
       <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print' }" :padding-mm="page.kind === 'spec' ? 3 : 9" :scale="1">
         <WorkSpecPaper v-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" />
+        <InkMixingPaper v-else-if="page.kind === 'ink'" :product-code="data.product.productCode" />
         <article v-else class="paper-form">
           <header class="paper-heading">
             <h1>{{ page.title }}<small v-if="page.continuation">（续）</small></h1>
@@ -40,6 +41,7 @@ import A4Canvas from '@/components/A4Canvas/index.vue'
 import WorkSpecPaper from './WorkSpecPaper.vue'
 import PrintSpecPaper from './PrintSpecPaper.vue'
 import ColorCheckPaper from './ColorCheckPaper.vue'
+import InkMixingPaper from './InkMixingPaper.vue'
 import { plain, documentFileCaption, type DocsetData, type DocPage, type PaperTextLine } from './docset'
 
 defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string }>()
