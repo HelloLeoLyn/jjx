@@ -1,8 +1,22 @@
-cat > .gitattributes << 'EOF'
+# 统一行尾为 LF（跨 Linux/WSL 与 Windows：仓库内与工作区一致）
+# 2026-10-13 修正：原文件误被提交成生成脚本（heredoc），此处改为正确的属性规则
 * text=auto eol=lf
-*.vue text eol=lf
-*.ts text eol=lf
-*.js text eol=lf
-*.json text eol=lf
-*.md text eol=lf
-EOF
+
+# 二进制文件显式声明，避免被当作文本处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.bmp binary
+*.pdf binary
+*.zip binary
+*.xlsx binary
+*.xls binary
+*.docx binary
+*.doc binary
+*.pptx binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary

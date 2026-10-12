@@ -1,0 +1,7 @@
+# 统一编辑器/IDE 的行尾与编码（与 .gitattributes 配套，防复发）
+# 2026-10-13 新增（任务 dev-20261013-001）
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
