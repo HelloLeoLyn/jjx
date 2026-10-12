@@ -1,5 +1,9 @@
 # JJX Agent Engineering Rules
 
+## Agent 任务书入口（dev-20261012-045）
+
+编写、登记或交接 JJX 任务书前，必须读取 [任务书指南](jjx-docs/guides/agent-task-brief.md)（本机绝对路径：`/home/administrator/jjx/jjx-docs/guides/agent-task-brief.md`）。默认使用短任务卡，复杂内容按需补充；只引用该真源，不复制模板正文。已有会话尚未加载本规则时，在下一次出任务书前重新读取指南。通用规则仍遵循本文件与 CONVENTIONS，不以模板覆盖用户当次指令。
+
 ## Discuss vs execute — never write files while discussing (applies to ALL agents: OpenClaw / Hermes / Codex)
 
 Judge the request type BEFORE touching anything:
