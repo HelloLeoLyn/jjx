@@ -87,6 +87,16 @@ public class SysAttachment {
     @Schema(description = "SHA-256（实际文件字节，服务端计算；发布引用校验）")
     private String sha256;
 
+    private com.jjx.system.enums.AttachmentUploadState uploadState;
+
+    private LocalDateTime expiresAt;
+
+    /** Scoped upload retry key and authenticated owner; never used for physical deduplication. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String uploadKey;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String uploadOwner;
+
     @Schema(description = "排序号")
     private Integer sortOrder;
 

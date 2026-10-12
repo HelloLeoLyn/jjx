@@ -234,3 +234,8 @@
 | `npm run check:lot:strict` | 入库单/检验批 + 数量守恒巡检（= `scripts/check-inbound-lot-integrity.sh --strict`，九查） |
 | `npm run check:doc-no` | 业务单号规则巡检（= `scripts/check-doc-no.sh`：规则键缺失 / 当天用量达 80% 容量 / 时间戳式编号回归） |
 | `npm run validate` | 上面六条 + `vue-tsc --noEmit`（提交前自查跑这个） |
+
+
+### 公共附件 V1-A 清理保护（2026-10-12）
+
+`scripts/clean-archive-ocr-data.sh --yes` 和 `scripts/db-clean-test-data.sh --execute` 均在任何写入前拒绝执行：旧清理无法证明跨业务及历史硬引用安全。无执行参数仍可只读预览。V1-A仅通过 `POST /system/attachment/refs/cleanup-preview` 预演，不物理删除；迁移271另设数据库DELETE触发器兜底。迁移271、272需人工静态审查及备份后决定执行，本任务未执行。

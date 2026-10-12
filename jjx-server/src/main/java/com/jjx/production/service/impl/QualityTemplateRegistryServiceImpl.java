@@ -14,6 +14,7 @@ import com.jjx.production.service.QualityTemplateRegistryService;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
     private static final String CATEGORY_DATA = "data";
     private final QualityTemplateRegistryMapper mapper;
     private final QualityTemplatePrintLogMapper printLogMapper;
+    private final JdbcTemplate jdbc;
 
     @Override
     public PageResult<QualityTemplateRegistry> page(QualityTemplateQueryDTO query) {
@@ -80,7 +82,21 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
     }
 
     private void fillHasFile(QualityTemplateRegistry template) {
-        template.setHasFile(template.getFileId() != null);
+        // 有效性：file_id 指向的附件必须存在、未删除，且建档时间不晚于模板自身建档时间。
+        // 时间条件只是异常防护（挡住历史 ID 被后建附件复用造成的误认），不是附件身份证明——
+        // 身份一致需要绑定时的内容指纹（registry 未存 sha256），故仍需人工复核。
+        // 引用无效时置空 fileId，避免前端据 fileId 拼出错误下载链接（quality-template / quality-print 两页都用它）。
+        boolean valid = false;
+        if (template.getFileId() != null) {
+            LocalDateTime attachedAt = jdbc.query(
+                "SELECT create_time FROM sys_attachment WHERE id=? AND deleted=0",
+                rs -> rs.next() ? rs.getTimestamp("create_time").toLocalDateTime() : null,
+                template.getFileId());
+            valid = attachedAt != null
+                    && (template.getCreateTime() == null || !attachedAt.isAfter(template.getCreateTime()));
+            if (!valid) template.setFileId(null);
+        }
+        template.setHasFile(valid);
     }
 
     @Override

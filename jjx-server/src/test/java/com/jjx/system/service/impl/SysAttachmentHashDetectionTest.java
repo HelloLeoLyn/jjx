@@ -27,7 +27,7 @@ class SysAttachmentHashDetectionTest {
     void setup() {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), "test"), SysAttachment.class);
         mapper = mock(SysAttachmentMapper.class, withSettings().mockMaker(org.mockito.MockMakers.SUBCLASS));
-        service = new SysAttachmentServiceImpl(mapper, null, null, null, null);
+        service = new SysAttachmentServiceImpl(mapper, null, null, null, null, null, null, null);
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
     }
 
@@ -67,5 +67,30 @@ class SysAttachmentHashDetectionTest {
         when(mapper.selectById(2L)).thenThrow(new IllegalStateException("database unavailable"));
         assertEquals(0, service.detectUploadedDuplicates(2L));
         verify(mapper, never()).selectList(any());
+    }
+    @Test
+    void legacyPurgeEntrypointsCannotDeleteFilesOrRows() {
+        assertThrows(BusinessException.class, () -> service.permanentDelete(1L));
+        assertThrows(BusinessException.class, () -> service.permanentDeleteExpired(0));
+        verifyNoInteractions(mapper);
+    }
+
+    @Test
+    void controlledAndReleasedFilesRemainProtectedWithoutConsultingNewReferences() {
+        var access = new com.jjx.system.service.AttachmentAccessService(null, null, null);
+        SysAttachment file = new SysAttachment();
+        file.setIsControlled(com.jjx.common.enums.YesNoEnum.YES.getCode());
+        assertTrue(access.protectedFile(file));
+        assertThrows(BusinessException.class, () -> access.checkUnlink(file));
+        file.setIsControlled(com.jjx.common.enums.YesNoEnum.NO.getCode());
+        file.setReleased(com.jjx.common.enums.YesNoEnum.YES.getCode());
+        assertTrue(access.protectedFile(file));
+    }
+
+    @Test
+    void ordinaryFilesCanRemainUnclassified() {
+        var dictionary = new com.jjx.system.service.AttachmentDocumentTypeService(null, null);
+        assertDoesNotThrow(() -> dictionary.validate(null, "product"));
+        assertDoesNotThrow(() -> dictionary.validate(" ", "inquiry"));
     }
 }

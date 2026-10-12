@@ -9,11 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,9 +17,6 @@ import org.springframework.web.multipart.MultipartFile;
 import cn.dev33.satoken.stp.StpUtil;
 
 import jakarta.servlet.http.HttpServletResponse;
-import java.io.File;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -37,6 +30,8 @@ import java.util.List;
 public class SysAttachmentController {
 
     private final ISysAttachmentService attachmentService;
+    private final com.jjx.system.service.AttachmentDownloadService downloads;
+    private final com.jjx.system.service.AttachmentSourcePolicy sources;
     private final com.jjx.system.service.CustomerDocUploadService customerDocUploadService;
 
     @Operation(summary = "确认上传一行客供资料（一个文件对应一个产品）")
@@ -68,6 +63,7 @@ public class SysAttachmentController {
                                @RequestParam(required = false) String version,
                                @RequestParam(required = false) String remark,
                                HttpServletResponse response) {
+        sources.check(bizType, bizId, true);
         Long id = attachmentService.uploadAttachment(file, bizType, bizId, traceId, category, version, remark);
         addDuplicateHint(response, List.of(id));
         return Result.success(id);
@@ -82,6 +78,7 @@ public class SysAttachmentController {
                                           @RequestParam(required = false) String category,
                                           @RequestParam(required = false) String version,
                                           HttpServletResponse response) {
+        sources.check(bizType, bizId, true);
         List<Long> ids = attachmentService.batchUploadAttachments(files, bizType, bizId, category, version);
         addDuplicateHint(response, ids);
         return Result.success(ids);
@@ -91,13 +88,15 @@ public class SysAttachmentController {
     @GetMapping("/list")
     public Result<List<SysAttachment>> list(@RequestParam String bizType,
                                             @RequestParam Long bizId) {
+        sources.check(bizType, bizId, false);
         return Result.success(attachmentService.getAttachments(bizType, bizId));
     }
 
     @Operation(summary = "按链路追踪ID获取附件（含来源单据文档）")
     @GetMapping("/by-trace/{traceId}")
     public Result<List<com.jjx.system.domain.vo.AttachmentSourceVO>> listByTrace(@PathVariable String traceId) {
-        return Result.success(attachmentService.getAttachmentSourcesByTraceId(traceId));
+        return Result.success(attachmentService.getAttachmentSourcesByTraceId(traceId).stream()
+                .filter(a -> sources.canRead(a.getBizType(), a.getBizId())).toList());
     }
 
     @Operation(summary = "上传产品工程文件（产品文件库，DEV-734）")
@@ -111,6 +110,7 @@ public class SysAttachmentController {
                                       @RequestParam(required = false) String drawingName,
                                       @RequestParam(required = false) String fileRole,
                                       HttpServletResponse response) {
+        StpUtil.checkPermission("product:edit");
         Long id = attachmentService.uploadProductFile(file, productCode, category, version,
                 drawingNo, drawingName, fileRole);
         addDuplicateHint(response, List.of(id));
@@ -136,6 +136,7 @@ public class SysAttachmentController {
             bizType = "product";
             bizId = productId;
         }
+        sources.check(bizType, bizId, false);
         return Result.success(attachmentService.findBySha256(sha256, bizType, bizId, excludeId));
     }
 
@@ -160,6 +161,7 @@ public class SysAttachmentController {
     @Operation(summary = "获取产品文件库（按产品编码）")
     @GetMapping("/product/{productCode}")
     public Result<List<SysAttachment>> productFiles(@PathVariable String productCode) {
+        StpUtil.checkPermission("product:view");
         return Result.success(attachmentService.getProductFiles(productCode));
     }
 
@@ -173,6 +175,7 @@ public class SysAttachmentController {
     @Operation(summary = "回收站列表（已删除附件）")
     @GetMapping("/recycle-list")
     public Result<List<SysAttachment>> recycleList() {
+        StpUtil.checkRole("admin");
         return Result.success(attachmentService.getRecycled());
     }
 
@@ -180,6 +183,7 @@ public class SysAttachmentController {
     @PostMapping("/restore/{id}")
     @Log(module = "附件", businessType = BusinessType.UPDATE, bizType = "'sys_attachment'", bizId = "#id", action = "恢复附件")
     public Result<Boolean> restore(@PathVariable Long id) {
+        StpUtil.checkRole("admin");
         return Result.success(attachmentService.restoreAttachment(id));
     }
 
@@ -208,6 +212,7 @@ public class SysAttachmentController {
     @PostMapping("/{id}/set-current")
     @Log(module = "附件", businessType = BusinessType.UPDATE, bizType = "'sys_attachment'", bizId = "#id", action = "设为现行图纸版本")
     public Result<Boolean> setCurrent(@PathVariable Long id) {
+        StpUtil.checkPermission("product:edit");
         return Result.success(attachmentService.setCurrentAttachment(id));
     }
 
@@ -223,87 +228,14 @@ public class SysAttachmentController {
     @Operation(summary = "客供资料归集：某产品关联的询价/报价附件（只读）")
     @GetMapping("/customer-docs/{productId}")
     public Result<java.util.List<java.util.Map<String, Object>>> customerDocs(@PathVariable Long productId) {
-        return Result.success(attachmentService.customerDocs(productId));
+        sources.check("product", productId, false);
+        return Result.success(attachmentService.customerDocs(productId).stream().filter(row ->
+                sources.canRead((String) row.get("biz_type"), ((Number) row.get("biz_id")).longValue())).toList());
     }
 
     @Operation(summary = "下载/预览附件")
     @GetMapping("/download/{id}")
     public ResponseEntity<Resource> download(@PathVariable Long id) {
-        SysAttachment attachment = attachmentService.getById(id);
-        if (attachment == null) {
-            return ResponseEntity.notFound().build();
-        }
-
-        // 下载/内联预览鉴权：按 biz_type 映射权限点，未映射退回「仅登录」（dev-20261011-031）
-        String[] perms = requiredDownloadPerms(attachment.getBizType());
-        if (perms != null && perms.length > 0) {
-            boolean allowed = false;
-            for (String perm : perms) {
-                if (StpUtil.hasPermission(perm)) {
-                    allowed = true;
-                    break;
-                }
-            }
-            if (!allowed) {
-                log.warn("附件下载被拒绝（无权限）：id={}, bizType={}, need={}",
-                        id, attachment.getBizType(), String.join("/", perms));
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-            }
-        } else {
-            if (!StpUtil.isLogin()) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-            }
-            log.warn("附件 biz_type 无下载权限映射，暂仅登录可访问（待补）：bizType={}, id={}",
-                    attachment.getBizType(), id);
-        }
-
-        String filePath = attachmentService.getAttachmentFilePath(id);
-        File file = new File(filePath);
-        if (!file.exists()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        Resource resource = new FileSystemResource(file);
-        String encodedName = URLEncoder.encode(attachment.getFileName(), StandardCharsets.UTF_8)
-                .replace("+", "%20");
-
-        // 图片等可预览类型用对应 MIME，浏览器内联预览；其他保持 octet-stream 下载
-        MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
-        String fileType = attachment.getFileType();
-        if (fileType != null && fileType.startsWith("image/")) {
-            mediaType = MediaType.parseMediaType(fileType);
-        } else if (fileType != null && fileType.startsWith("application/pdf")) {
-            mediaType = MediaType.APPLICATION_PDF;
-        }
-
-        return ResponseEntity.ok()
-                .contentType(mediaType)
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename*=UTF-8''" + encodedName)
-                .body(resource);
-    }
-
-    /**
-     * 附件下载/预览的 biz_type → 所需权限点（任一命中即可）；未映射返回 null → 仅登录（dev-20261011-031）。
-     * 无映射的 biz_type 在服务端记 warn，并在任务 remark 记「待补权限点」。
-     */
-    private String[] requiredDownloadPerms(String bizType) {
-        if (bizType == null) {
-            return null;
-        }
-        switch (bizType) {
-            case "sales_order": return new String[] { "sales:order:view" };
-            case "quotation": return new String[] { "sales:quotation:view" };
-            case "inquiry": return new String[] { "sales:inquiry:view" };
-            case "sample": return new String[] { "sales:sample:view" };
-            case "product": return new String[] { "product:view" };
-            case "purchase_order": return new String[] { "purchase:order:view" };
-            case "production_order": return new String[] { "production:order:view" };
-            case "inbound_order": return new String[] { "inventory:inbound:view" };
-            case "outbound_order": return new String[] { "inventory:outbound:view" };
-            case "material": return new String[] { "inventory:material:view" };
-            case "drawing": return new String[] { "engineering:drawing:view" };
-            default: return null;
-        }
+        return downloads.byAttachment(id);
     }
 }

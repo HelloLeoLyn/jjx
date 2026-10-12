@@ -9,6 +9,8 @@ declare module 'vue' {
   export interface GlobalComponents {
     A4Canvas: typeof import('./components/A4Canvas/index.vue')['default']
     ApprovalOpinionForm: typeof import('./components/Approval/ApprovalOpinionForm.vue')['default']
+    AttachmentCenter: typeof import('./components/attachment/AttachmentCenter.vue')['default']
+    AttachmentTempUploader: typeof import('./components/attachment/AttachmentTempUploader.vue')['default']
     AttachmentPanel: typeof import('./components/AttachmentPanel/index.vue')['default']
     AttachmentUploadDialog: typeof import('./components/AttachmentUploadDialog/index.vue')['default']
     AttachmentUploader: typeof import('./components/AttachmentUploader/index.vue')['default']

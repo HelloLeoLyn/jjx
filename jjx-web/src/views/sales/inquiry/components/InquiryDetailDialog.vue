@@ -56,10 +56,12 @@
       </el-descriptions>
     </template>
     <el-divider content-position="left">相关文档</el-divider>
-    <AttachmentPanel
+    <AttachmentCenter
       v-if="detailData?.inquiryId"
-      biz-type="inquiry"
-      :biz-id="detailData.inquiryId"
+      source-type="inquiry"
+      :source-id="detailData.inquiryId"
+      mode="readonly"
+      view-perm="sales:inquiry:view"
     />
     <template #footer>
       <el-button @click="emitClose">关 闭</el-button>
@@ -71,7 +73,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { inquiryApi } from '@/api/sales/inquiry'
-import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 
 /**
  * 询价单详情弹窗（共享组件）

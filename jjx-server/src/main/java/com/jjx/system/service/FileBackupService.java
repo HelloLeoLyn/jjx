@@ -103,18 +103,7 @@ public class FileBackupService {
         }
     }
 
-    /** 每日 03:30 清理回收站中删除超过30天的附件（DEV-737） */
-    @Scheduled(cron = "0 30 3 * * ?")
-    public void recycleClean() {
-        try {
-            int count = attachmentService.permanentDeleteExpired(30);
-            if (count > 0) {
-                log.info("[回收站] 定时清理完成: {} 个附件", count);
-            }
-        } catch (Exception e) {
-            log.error("[回收站] 定时清理异常: {}", e.getMessage(), e);
-        }
-    }
+    // V1-A: recycle auto-deletion is disabled; administrators explicitly request an audited preview.
 
     // ==================== 手动入口（Controller 调用） ====================
 

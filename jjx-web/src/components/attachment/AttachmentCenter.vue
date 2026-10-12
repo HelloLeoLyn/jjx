@@ -1,0 +1,474 @@
+<template>
+  <div class="attachment-center">
+    <div class="ac-header">
+      <span class="ac-title">
+        <el-icon><FolderOpened /></el-icon>
+        {{ title }}
+      </span>
+      <el-tag v-if="refRows.length" size="small" type="info">{{ refRows.length }} 条引用</el-tag>
+      <el-tag v-if="pendingCount" size="small" type="warning">待绑定 {{ pendingCount }}</el-tag>
+      <span class="ac-spacer" />
+      <AttachmentTempUploader
+        v-if="mode !== 'readonly' && canEdit"
+        :multiple="true"
+        :disabled="!draftReady"
+        :max-size-m-b="maxSizeMB"
+        :accept="accept"
+        :button-text="mode === 'upload-only' ? '上传附件' : '上传'"
+        :tip="draftReady ? uploadTip : '请先保存单据或提供 draftId 后再上传（避免多个单据共用待绑定队列）'"
+        @files="onFiles"
+        @error="(m) => emit('error', { action: 'validate', message: m })"
+      />
+    </div>
+
+    <el-alert
+      v-if="!draftReady"
+      title="当前没有草稿标识（draftId）：新建单据场景必须传入唯一 draftId 才能上传附件，避免多个新建单据共用同一个待绑定队列。"
+      type="warning"
+      :closable="false"
+      class="ac-alert"
+    />
+
+    <el-alert v-if="error" :title="error" type="warning" :closable="false" class="ac-alert" />
+    <el-alert
+      v-if="duplicateTip"
+      :title="duplicateTip"
+      type="info"
+      :closable="true"
+      class="ac-alert"
+      @close="duplicateTip = ''"
+    />
+
+    <!-- 待绑定（TEMP）队列：仅当前单据草稿可见，刷新后可恢复 id 清单 -->
+    <div v-if="pending.length" class="ac-pending">
+      <div v-for="entry in pending" :key="entry.attachmentId" class="ac-row">
+        <el-icon><Clock /></el-icon>
+        <span class="ac-name">{{ entry.fileName || `附件 #${entry.attachmentId}` }}</span>
+        <span class="ac-sub">{{ formatSize(entry.fileSize) }}</span>
+        <el-tag size="small" :type="entry.state === 'failed' ? 'danger' : 'warning'">
+          {{ entry.state === 'failed' ? '绑定失败' : '待绑定' }}
+        </el-tag>
+        <span v-if="entry.error" class="ac-error">{{ entry.error }}</span>
+        <span class="ac-spacer" />
+        <el-button v-if="canEdit" link type="primary" @click="retryBind(entry)">重试绑定</el-button>
+        <el-button v-if="canEdit" link type="danger" @click="removePending(entry.attachmentId)">移除</el-button>
+      </div>
+      <div class="ac-hint">待绑定附件已上传到服务器（7 天有效），保存单据后自动建立引用。</div>
+    </div>
+
+    <!-- A 段：引用（主键 refId，不同 refId 全部保留） -->
+    <el-empty v-if="!loading && !refRows.length" description="暂无附件" :image-size="60" />
+    <div v-else class="ac-list">
+      <div v-for="row in refRows" :key="`ref-${row.id}`" class="ac-row">
+        <el-icon class="ac-icon"><Document /></el-icon>
+        <span class="ac-name" :title="row.displayName || ''">{{ displayNameOf(row) }}</span>
+        <el-tag v-if="row.documentType" size="small" type="primary">{{ docTypeLabel(row.documentType) }}</el-tag>
+        <span class="ac-sub">{{ formatSize(row.fileSize) }}</span>
+        <span v-if="row.createBy" class="ac-sub">· {{ row.createBy }}</span>
+        <span class="ac-sub">· {{ formatTime(row.createTime) }}</span>
+        <span class="ac-spacer" />
+        <el-tooltip content="下载" placement="top">
+          <el-button link type="primary" :icon="Download" @click="openUrl(downloadUrlByRef(row.id))" />
+        </el-tooltip>
+        <el-tooltip content="预览" placement="top">
+          <el-button link type="primary" :icon="View" @click="previewRef(row)" />
+        </el-tooltip>
+        <el-tooltip v-if="canEdit" content="分类/展示名/备注" placement="top">
+          <el-button link type="primary" :icon="EditPen" @click="openMeta(row)" />
+        </el-tooltip>
+        <el-tooltip v-if="canEdit" content="解除引用" placement="top">
+          <el-button link type="danger" :icon="Close" @click="onUnbind(row)" />
+        </el-tooltip>
+      </div>
+    </div>
+
+    <!-- B 段：历史附件（主键 attachmentId，只读；已建立引用的不再重复展示） -->
+    <div v-if="legacyOnlyRows.length" class="ac-legacy">
+      <div class="ac-legacy-title">历史附件（未建立引用，只读）</div>
+      <div v-for="row in legacyOnlyRows" :key="`att-${row.id}`" class="ac-row">
+        <el-icon class="ac-icon"><Document /></el-icon>
+        <span class="ac-name" :title="row.fileName">{{ row.fileName || `附件 #${row.id}` }}</span>
+        <el-tag size="small" type="info">历史附件</el-tag>
+        <span class="ac-sub">{{ formatSize(row.fileSize) }}</span>
+        <span class="ac-sub">· {{ formatTime(row.createTime) }}</span>
+        <span class="ac-spacer" />
+        <el-button link type="primary" :icon="Download" @click="openUrl(attachmentApi.downloadUrl(row.id))" />
+      </div>
+    </div>
+
+    <!-- 元数据编辑 -->
+    <el-dialog v-model="metaVisible" title="附件信息" width="460px" append-to-body destroy-on-close>
+      <el-form label-width="80px">
+        <el-form-item label="分类">
+          <el-select v-model="metaForm.documentType" clearable placeholder="选择资料类型" style="width: 100%">
+            <el-option v-for="t in selectableTypes" :key="t.item_key" :label="t.label" :value="t.item_key" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="展示名">
+          <el-input v-model="metaForm.displayName" maxlength="255" placeholder="留空使用默认展示" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="metaForm.remark" maxlength="500" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="metaForm.sortOrder" :min="0" :max="9999" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="metaVisible = false">取消</el-button>
+        <el-button type="primary" :loading="metaSaving" @click="saveMeta">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-image-viewer
+      v-if="viewerVisible"
+      :url-list="viewerList"
+      :initial-index="viewerIndex"
+      @close="viewerVisible = false"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+/**
+ * 公共附件中心（V1-B WP2）
+ * - 唯一入口：上传（TEMP）→ 绑定（refs）→ 列表/预览/下载/解绑/元数据/重复提示
+ * - 列表两段式：A 段按 refId（同附件多条引用全部保留）；B 段按 attachmentId（历史只读）
+ * - readonly / locked 只是能力位，不定义业务规则；后端始终是权限最终裁决方
+ * - 已知限制：GET /refs 不返回文件元数据，A 段文件名/大小靠本单据的 legacy 列表回填，
+ *   取不到时展示「附件 #id」（建议后端后续在 refs 列表补 file_name/file_size）
+ */
+import { computed, reactive, ref, toRef } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { FolderOpened, Document, Download, View, EditPen, Close, Clock } from '@element-plus/icons-vue'
+import { attachmentApi } from '@/api/system/attachment'
+import { attachmentRefApi, type AttachmentRefItem } from '@/api/system/attachmentRef'
+import AttachmentTempUploader from './AttachmentTempUploader.vue'
+import { useAttachmentRefs, type PendingEntry } from '@/composables/useAttachmentRefs'
+
+const props = withDefaults(
+  defineProps<{
+    sourceType: string
+    sourceId?: number | null
+    sourceNo?: string
+    /** 新建单据草稿标识：同一张未保存单据复用同一值（隔离待绑定队列） */
+    draftId?: string
+    title?: string
+    mode?: 'panel' | 'dialog' | 'upload-only' | 'readonly'
+    readonly?: boolean
+    locked?: boolean
+    viewPerm?: string
+    editPerm?: string
+    traceId?: string
+    maxSizeMB?: number
+    accept?: string[]
+    /** sourceId 有值时是否上传后立即绑定 */
+    autoBind?: boolean
+  }>(),
+  {
+    sourceId: null,
+    sourceNo: '',
+    draftId: '',
+    title: '附件',
+    mode: 'panel',
+    readonly: false,
+    locked: false,
+    viewPerm: '',
+    editPerm: '',
+    traceId: '',
+    maxSizeMB: 20,
+    accept: () => ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.zip'],
+    autoBind: true,
+  },
+)
+
+const emit = defineEmits<{
+  uploaded: [payload: { attachmentId: number; temp: boolean }]
+  bound: [payload: { refId: number; attachmentId: number }]
+  unbound: [payload: { refId: number; attachmentId: number }]
+  changed: [payload: { count: number }]
+  duplicate: [payload: { attachmentId: number; sha256: string; matches: number }]
+  error: [payload: { action: string; message: string }]
+}>()
+
+const refs = useAttachmentRefs({
+  sourceType: toRef(props, 'sourceType'),
+  sourceId: toRef(props, 'sourceId'),
+  draftId: toRef(props, 'draftId'),
+  traceId: toRef(props, 'traceId'),
+  readonly: toRef(props, 'readonly'),
+  locked: toRef(props, 'locked'),
+  viewPerm: toRef(props, 'viewPerm'),
+  editPerm: toRef(props, 'editPerm'),
+})
+
+const {
+  refRows,
+  legacyOnlyRows,
+  documentTypes,
+  pending,
+  pendingCount,
+  draftReady,
+  loading,
+  error,
+  canEdit,
+  load,
+  loadDocumentTypes,
+  uploadTemp,
+  bindPending,
+  bindPendingOne,
+  unbind,
+  updateMeta,
+  checkDuplicate,
+  removePending,
+} = refs
+
+const duplicateTip = ref('')
+const uploadTip = computed(() =>
+  `单个文件不超过 ${props.maxSizeMB}MB${props.accept.length ? '；支持 ' + props.accept.join(' ') : ''}`,
+)
+
+/** A 段直接消费 refs 返回的文件元数据（后端 refs 查询链路已回填 fileName/fileSize/fileType） */
+function displayNameOf(row: AttachmentRefItem) {
+  return row.displayName || row.fileName || `附件 #${row.attachmentId}`
+}
+function docTypeLabel(code?: string | null) {
+  if (!code) return ''
+  return documentTypes.value.find((t) => t.item_key === code)?.label || code
+}
+const selectableTypes = computed(() =>
+  documentTypes.value.filter((t) => {
+    if (t.dict_code !== 'attachment_document_type') return false
+    const ext = typeof t.ext_data === 'string' ? safeJson(t.ext_data) : t.ext_data
+    const sources = (ext as any)?.sources
+    if (!Array.isArray(sources)) return true
+    return sources.includes(props.sourceType)
+  }),
+)
+function safeJson(raw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return {}
+  }
+}
+
+// ==================== 上传 / 绑定 ====================
+async function onFiles(files: File[]) {
+  for (const file of files) {
+    try {
+      const attachmentId = await uploadTemp(file)
+      emit('uploaded', { attachmentId, temp: true })
+      if (props.autoBind && props.sourceId) {
+        const entry = pending.value.find((e) => e.attachmentId === attachmentId) as PendingEntry
+        const refId = await bindPendingOne(entry)
+        emit('bound', { refId, attachmentId })
+        await afterBound(entry)
+      } else {
+        ElMessage.success('已上传，保存单据后自动建立引用')
+      }
+      emit('changed', { count: pendingCount.value })
+    } catch (e: any) {
+      const message = e?.message || '附件上传失败'
+      ElMessage.error(message)
+      emit('error', { action: 'upload', message })
+    }
+  }
+}
+
+async function retryBind(entry: PendingEntry) {
+  try {
+    const refId = await bindPendingOne(entry)
+    emit('bound', { refId, attachmentId: entry.attachmentId })
+    await afterBound(entry)
+  } catch (e: any) {
+    const message = e?.message || '绑定失败'
+    ElMessage.error(message)
+    emit('error', { action: 'bind', message })
+  }
+}
+
+async function afterBound(entry: PendingEntry) {
+  await load()
+  emit('changed', { count: refRows.value.length })
+  await loadDocumentTypes()
+  const matches = await checkDuplicate(entry.sha256)
+  const others = matches.filter((m) => Number(m.attachmentId) !== entry.attachmentId)
+  if (others.length) {
+    duplicateTip.value = `本单据内已有 ${others.length} 份相同内容的附件（仅提示，不合并文件）`
+    emit('duplicate', { attachmentId: entry.attachmentId, sha256: entry.sha256 || '', matches: others.length })
+  }
+}
+
+// ==================== 解绑 / 元数据 ====================
+async function onUnbind(row: AttachmentRefItem) {
+  try {
+    await ElMessageBox.confirm('解除本单据对该附件的引用？仅解除引用，物理文件与其他单据的引用保留。', '解除引用', {
+      confirmButtonText: '确定解除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await unbind(row.id)
+    ElMessage.success('已解除引用')
+    emit('unbound', { refId: row.id, attachmentId: row.attachmentId })
+    emit('changed', { count: refRows.value.length })
+  } catch (e: any) {
+    if (e === 'cancel') return
+    const message = e?.message || '解除引用失败'
+    ElMessage.error(message)
+    emit('error', { action: 'unbind', message })
+  }
+}
+
+const metaVisible = ref(false)
+const metaSaving = ref(false)
+const metaForm = reactive({ refId: 0, documentType: '' as string | null, displayName: '', remark: '', sortOrder: 0 })
+
+function openMeta(row: AttachmentRefItem) {
+  metaForm.refId = row.id
+  metaForm.documentType = row.documentType || ''
+  metaForm.displayName = row.displayName || ''
+  metaForm.remark = row.remark || ''
+  metaForm.sortOrder = row.sortOrder || 0
+  metaVisible.value = true
+  loadDocumentTypes()
+}
+
+async function saveMeta() {
+  metaSaving.value = true
+  try {
+    await updateMeta(metaForm.refId, {
+      documentType: metaForm.documentType || null,
+      displayName: metaForm.displayName || null,
+      remark: metaForm.remark || null,
+      sortOrder: metaForm.sortOrder || 0,
+    })
+    ElMessage.success('已保存')
+    metaVisible.value = false
+  } catch (e: any) {
+    const message = e?.message || '保存失败'
+    ElMessage.error(message)
+    emit('error', { action: 'meta', message })
+  } finally {
+    metaSaving.value = false
+  }
+}
+
+// ==================== 预览 / 下载 ====================
+const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
+const viewerVisible = ref(false)
+const viewerList = ref<string[]>([])
+const viewerIndex = ref(0)
+
+function isImageName(name?: string, fileType?: string) {
+  if (fileType && fileType.startsWith('image/')) return true
+  const lower = String(name || '').toLowerCase()
+  return IMAGE_EXT.some((ext) => lower.endsWith(ext))
+}
+function previewRef(row: AttachmentRefItem) {
+  if (isImageName(row.fileName || undefined, row.fileType || undefined)) {
+    const images = refRows.value.filter((r) => isImageName(r.fileName || undefined, r.fileType || undefined))
+    viewerList.value = images.map((r) => attachmentRefApi.previewUrlByRef(r.id))
+    const idx = images.findIndex((r) => r.id === row.id)
+    viewerIndex.value = idx >= 0 ? idx : 0
+    viewerVisible.value = true
+    return
+  }
+  openUrl(attachmentRefApi.previewUrlByRef(row.id))
+}
+function downloadUrlByRef(refId: number) {
+  return attachmentRefApi.downloadUrlByRef(refId)
+}
+function openUrl(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+function formatSize(size?: number | null) {
+  if (!size) return ''
+  if (size < 1024) return `${size}B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
+  return `${(size / 1024 / 1024).toFixed(1)}MB`
+}
+function formatTime(t?: string | null) {
+  if (!t) return ''
+  return String(t).replace('T', ' ').slice(0, 16)
+}
+
+defineExpose({
+  refresh: () => load(),
+  bindPending,
+  pendingCount,
+  pendingEntries: pending,
+})
+</script>
+
+<style scoped>
+.attachment-center {
+  padding: 4px 0;
+}
+.ac-header,
+.ac-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ac-header {
+  margin-bottom: 8px;
+}
+.ac-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
+}
+.ac-spacer {
+  flex: 1;
+}
+.ac-alert {
+  margin-bottom: 8px;
+}
+.ac-list,
+.ac-pending,
+.ac-legacy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ac-row {
+  padding: 6px 10px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background: #fafafa;
+  font-size: 13px;
+}
+.ac-name {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ac-sub {
+  color: #909399;
+  font-size: 11px;
+}
+.ac-error {
+  color: #f56c6c;
+  font-size: 11px;
+}
+.ac-icon {
+  color: #409eff;
+  font-size: 18px;
+}
+.ac-legacy {
+  margin-top: 12px;
+}
+.ac-legacy-title {
+  font-size: 12px;
+  color: #909399;
+}
+.ac-hint {
+  font-size: 11px;
+  color: #909399;
+}
+</style>

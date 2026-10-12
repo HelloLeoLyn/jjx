@@ -1,0 +1,168 @@
+package com.jjx.system.service;
+
+import cn.dev33.satoken.stp.StpUtil;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.jjx.common.exception.BusinessException;
+import com.jjx.system.domain.dto.AttachmentRefDTO;
+import com.jjx.system.domain.dto.AttachmentRefMetadataDTO;
+import com.jjx.system.domain.entity.SysAttachment;
+import com.jjx.system.domain.entity.SysAttachmentRef;
+import com.jjx.system.enums.AttachmentUploadState;
+import com.jjx.system.mapper.SysAttachmentMapper;
+import com.jjx.system.mapper.SysAttachmentRefMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class AttachmentRefService {
+    private final SysAttachmentMapper files;
+    private final SysAttachmentRefMapper refs;
+    private final AttachmentSourcePolicy sources;
+    private final AttachmentAccessService access;
+    private final AttachmentDocumentTypeService types;
+    private final JdbcTemplate jdbc;
+
+    @Transactional(rollbackFor = Exception.class)
+    public Long create(AttachmentRefDTO request) {
+        String source = sources.canonical(request.getSourceType());
+        String sourceNo = sources.check(source, request.getSourceId(), true);
+        sources.checkProduct(source, request.getSourceId(), request.getProductId());
+        SysAttachment file = lock(request.getAttachmentId());
+        List<SysAttachmentRef> active = refs.lockActive(file.getId());
+        access.checkRead(file); // Both original read permission and target edit permission are required.
+        for (SysAttachmentRef ref : active) {
+            if (source.equals(ref.getSourceType()) && request.getSourceId().equals(ref.getSourceId())
+                    && Objects.equals(request.getProductId(), ref.getProductId())) return ref.getId();
+        }
+        String type = optional(request.getDocumentType(), 100);
+        types.validate(type, source);
+        SysAttachmentRef ref = new SysAttachmentRef();
+        ref.setAttachmentId(file.getId()); ref.setSourceType(source); ref.setSourceId(request.getSourceId());
+        ref.setSourceNo(sourceNo); ref.setProductId(request.getProductId()); ref.setDocumentType(type);
+        ref.setDisplayName(optional(request.getDisplayName(), 255)); ref.setRemark(optional(request.getRemark(), 500));
+        ref.setSortOrder(order(request.getSortOrder())); ref.setDeleted(false);
+        ref.setCreateBy(StpUtil.getLoginIdAsString()); ref.setCreateTime(LocalDateTime.now());
+        refs.insert(ref);
+        jdbc.update("UPDATE sys_attachment SET upload_state=?,expires_at=NULL WHERE id=?",
+            file.getUploadState() == AttachmentUploadState.LEGACY ? AttachmentUploadState.LEGACY.name() : AttachmentUploadState.BOUND.name(), file.getId());
+        return ref.getId();
+    }
+
+    public List<SysAttachmentRef> list(String source, Long id) {
+        source = sources.canonical(source);
+        sources.check(source, id, false);
+        List<SysAttachmentRef> rows = refs.selectList(Wrappers.<SysAttachmentRef>lambdaQuery().eq(SysAttachmentRef::getSourceType, source)
+            .eq(SysAttachmentRef::getSourceId, id).orderByAsc(SysAttachmentRef::getSortOrder, SysAttachmentRef::getId));
+        fillFileMetadata(rows);
+        return rows;
+    }
+
+    public List<SysAttachmentRef> product(Long id) {
+        sources.check("product", id, false);
+        List<SysAttachmentRef> rows = refs.selectList(Wrappers.<SysAttachmentRef>lambdaQuery().and(q -> q.eq(SysAttachmentRef::getProductId, id)
+            .or(w -> w.eq(SysAttachmentRef::getSourceType, "product").eq(SysAttachmentRef::getSourceId, id)))
+            .orderByAsc(SysAttachmentRef::getSortOrder, SysAttachmentRef::getId));
+        fillFileMetadata(rows);
+        return rows.stream().filter(r -> sources.canRead(r.getSourceType(), r.getSourceId())).toList();
+    }
+
+    /**
+     * 批量回填附件文件元数据（文件名/大小/类型）。
+     * 仅用于展示：一条 IN 查询，不改引用模型、不改权限判定、不写任何数据。
+     * 附件已软删时仍回填（历史行仍需展示原文件名），故直接查表而不用逻辑删除过滤的 Mapper。
+     */
+    private void fillFileMetadata(List<SysAttachmentRef> rows) {
+        if (rows == null || rows.isEmpty()) return;
+        List<Long> ids = rows.stream().map(SysAttachmentRef::getAttachmentId)
+            .filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) return;
+        String placeholders = ids.stream().map(i -> "?").collect(Collectors.joining(","));
+        Map<Long, Object[]> files = new HashMap<>();
+        jdbc.query("SELECT id,file_name,file_size,file_type FROM sys_attachment WHERE id IN (" + placeholders + ")",
+            (rs, rowNum) -> {
+                files.put(rs.getLong("id"), new Object[]{
+                    rs.getString("file_name"),
+                    rs.getObject("file_size") == null ? 0L : rs.getLong("file_size"),
+                    rs.getString("file_type")});
+                return null;
+            },
+            ids.toArray());
+        for (SysAttachmentRef ref : rows) {
+            Object[] meta = files.get(ref.getAttachmentId());
+            if (meta == null) continue;
+            ref.setFileName((String) meta[0]);
+            ref.setFileSize((Long) meta[1]);
+            ref.setFileType((String) meta[2]);
+        }
+    }
+
+    public List<java.util.Map<String, Object>> duplicates(String hash, String source, Long id) {
+        source = sources.canonical(source);
+        sources.check(source, id, false);
+        if (hash == null || !hash.matches("(?i)[0-9a-f]{64}")) throw new BusinessException("SHA-256必须为64位十六进制");
+        return jdbc.queryForList("SELECT r.id AS refId,a.id AS attachmentId,a.file_name,a.file_size,a.sha256 FROM sys_attachment_ref r JOIN sys_attachment a ON a.id=r.attachment_id AND a.deleted=0 WHERE r.source_type=? AND r.source_id=? AND r.deleted=0 AND a.sha256=? ORDER BY r.id",
+            source, id, hash.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    public SysAttachmentRef readable(Long id) {
+        SysAttachmentRef ref = refs.selectById(id);
+        if (ref == null) throw new BusinessException("附件引用不存在");
+        sources.check(ref.getSourceType(), ref.getSourceId(), false);
+        return ref;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void update(Long id, AttachmentRefMetadataDTO body) {
+        SysAttachmentRef initial = readable(id);
+        lock(initial.getAttachmentId());
+        SysAttachmentRef ref = refs.lockActive(initial.getAttachmentId()).stream().filter(r -> r.getId().equals(id))
+            .findFirst().orElseThrow(() -> new BusinessException("附件引用已解除"));
+        sources.check(ref.getSourceType(), ref.getSourceId(), true);
+        String type = optional(body.getDocumentType(), 100);
+        if (!Objects.equals(type, ref.getDocumentType())) types.validate(type, ref.getSourceType());
+        jdbc.update("UPDATE sys_attachment_ref SET document_type=?,display_name=?,remark=?,sort_order=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
+            type, optional(body.getDisplayName(), 255), optional(body.getRemark(), 500), order(body.getSortOrder()), StpUtil.getLoginIdAsString(), id);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void unlink(Long id) {
+        SysAttachmentRef ref = refs.includingDeleted(id);
+        if (ref == null) throw new BusinessException("附件引用不存在");
+        sources.check(ref.getSourceType(), ref.getSourceId(), true);
+        SysAttachment file = lock(ref.getAttachmentId());
+        List<SysAttachmentRef> active = refs.lockActive(file.getId());
+        if (active.stream().noneMatch(r -> r.getId().equals(id))) return; // Retry does not move the retention clock.
+        access.checkUnlink(file);
+        jdbc.update("UPDATE sys_attachment_ref SET deleted=1,deleted_at=NOW(),deleted_by=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
+            StpUtil.getLoginIdAsString(), StpUtil.getLoginIdAsString(), id);
+        if (active.size() == 1) {
+            jdbc.update("UPDATE sys_attachment SET upload_state=?,expires_at=? WHERE id=?",
+                file.getUploadState() == AttachmentUploadState.LEGACY ? AttachmentUploadState.LEGACY.name() : AttachmentUploadState.ORPHAN.name(),
+                LocalDateTime.now().plusDays(30), file.getId());
+        }
+    }
+
+    private SysAttachment lock(Long id) {
+        SysAttachment file = files.selectActiveForUpdate(id);
+        if (file == null) throw new BusinessException("附件不存在或已删除");
+        return file;
+    }
+    private int order(Integer value) {
+        if (value != null && value < 0) throw new BusinessException("排序号不能为负");
+        return value == null ? 0 : value;
+    }
+    private String optional(String value, int max) {
+        if (value == null || value.isBlank()) return null;
+        if (value.length() > max) throw new BusinessException("附件元数据超出长度限制");
+        return value.trim();
+    }
+}

@@ -16,7 +16,7 @@ CONFIRM=false
 
 usage() {
   echo "用法：bash scripts/clean-archive-ocr-data.sh [--yes] [--task dev-YYYYMMDD-NNN]"
-  echo "不带 --yes 时只显示待清理范围。"
+  echo "危险等级：🟢仅预览；V1-A禁用--yes。前置：mysql可读连接；不备份、不改库、不删文件。"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -27,6 +27,12 @@ while [[ $# -gt 0 ]]; do
     *) echo "未知参数：$1" >&2; usage >&2; exit 2 ;;
   esac
 done
+
+# V1-A: historical archive paths have unconfirmed hard references; execution is quarantined.
+if [[ "$CONFIRM" == true ]]; then
+  echo "V1-A：旧档案清理无法证明公共附件无历史引用，已禁用执行；仅允许不带--yes预览。" >&2
+  exit 3
+fi
 
 [[ "$TASK_CODE" =~ ^dev-[0-9]{8}-[0-9]{3}$ ]] || { echo "任务码格式错误：$TASK_CODE" >&2; exit 2; }
 # 2026-09-21 用户改口径：备份统一落仓库内 jjx-docs/sql/backups/，原「必须在仓库外」守卫已移除

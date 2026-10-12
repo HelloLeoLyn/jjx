@@ -2,7 +2,6 @@ package com.jjx.system.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.jjx.system.domain.entity.SysAttachment;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -36,11 +35,8 @@ public interface SysAttachmentMapper extends BaseMapper<SysAttachment> {
     @Update("UPDATE sys_attachment SET deleted = 0, update_time = NOW() WHERE id = #{id}")
     int restore(Long id);
 
-    /**
-     * 物理删除（真删记录，配合物理文件删除）
-     */
-    @Delete("DELETE FROM sys_attachment WHERE id = #{id}")
-    int physicalDelete(Long id);
+    @Select("SELECT * FROM sys_attachment WHERE id = #{id}")
+    SysAttachment selectIncludingDeleted(Long id);
 
     /**
      * 回收站列表（已删除附件）

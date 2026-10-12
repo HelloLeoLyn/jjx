@@ -56,6 +56,7 @@ warn() { printf '%s⚠%s %s\n' "$c_yel" "$c_off" "$*"; }
 
 usage() {
   cat <<'EOF'
+V1-A: --execute已禁用，历史硬引用未确认前仅允许只读体检。
 用途: 清理测试数据（jjx-docs/sql/00_clean_test_data.sql 的唯一入口；整表 TRUNCATE + 条件 DELETE，表清单以脚本实际解析为准）
 危险等级: 🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（体检 → 校验手工备份 → 人工确认 → 执行）
 前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）里要有今天的全库备份（或用 --backup 指定）；备份必须排除 hr_employee
@@ -124,6 +125,11 @@ domain_selected() {
 # 只留最新一份；脚本不再自动备份、不写索引 —— --execute 只校验「今天的全库备份存在」才放行。
 [ -f "$SQL_FILE" ] || die "清理脚本不存在: $SQL_FILE"
 [ "$DB_NAME" = "jjx_erp_db" ] || die "目标库必须是 jjx_erp_db（当前: $DB_NAME）——防误连"
+# V1-A: full cleanup can remove historical hard-reference owners and recycle source IDs.
+# Keep domain-only checks available, but no write mode until an attachment-aware cleanup is reviewed.
+if [ "$EXECUTE" -eq 1 ]; then
+  die "V1-A：历史硬引用清理策略未确认，旧清库执行已禁用；仅允许只读体检"
+fi
 if [ "$EXECUTE" -eq 1 ] && [ ! -t 0 ]; then
   die "真执行需要人工确认：请在终端里手工运行本脚本（agent/管道调用一律拒绝）"
 fi
@@ -299,6 +305,7 @@ fi
 RETAINED_TABLES=(
   sys_user sys_role sys_menu sys_role_menu sys_user_role sys_dept
   sys_config sys_dict sys_dict_item sys_event_config
+  sys_attachment_ref
   sys_event_last_payload sys_event_var
   quality_template_registry
   engineering_standard_process engineering_process_icon_sample

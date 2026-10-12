@@ -6,6 +6,7 @@ import { PermissionEnum } from './PermissionEnum'
 import { LogEnum } from './LogEnum'
 import { NoticeEnum } from './NoticeEnum'
 import { FileEnum } from './FileEnum'
+import { AttachmentUploadStateEnum, AttachmentSourceTypeEnum } from './AttachmentEnum'
 
 // 重新导出所有内容
 export * from './UserEnum'
@@ -15,6 +16,7 @@ export * from './PermissionEnum'
 export * from './LogEnum'
 export * from './NoticeEnum'
 export * from './FileEnum'
+export * from './AttachmentEnum'
 
 // 重新导出统一对象
 export {
@@ -25,6 +27,8 @@ export {
   LogEnum,
   NoticeEnum,
   FileEnum,
+  AttachmentUploadStateEnum,
+  AttachmentSourceTypeEnum,
 }
 
 /**

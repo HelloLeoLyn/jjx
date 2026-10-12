@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-30",
-  "tableCountBaseline": 121,
+  "generatedAt": "2026-10-12",
+  "tableCountBaseline": 130,
   "tables": [
     "archive_production_quality_inspection",
     "archive_production_quality_inspection_item",
@@ -46,6 +46,7 @@
     "inventory_transfer_order",
     "inventory_warehouse",
     "order_material_reserve",
+    "order_shortage_ledger",
     "portal_language_config",
     "portal_page_content",
     "portal_product_display",
@@ -54,6 +55,8 @@
     "product_config_model",
     "product_config_option",
     "product_instance",
+    "product_work_spec_item",
+    "product_work_spec_version",
     "production_equipment",
     "production_operation_execution",
     "production_operation_record",
@@ -82,6 +85,7 @@
     "quality_template_registry",
     "review_flow",
     "sales_customer",
+    "sales_customer_address",
     "sales_delivery",
     "sales_delivery_item",
     "sales_inquiry",
@@ -97,11 +101,14 @@
     "sales_return",
     "sales_return_item",
     "sales_sample_bom",
+    "sales_sample_defect_record",
     "sales_sample_order",
     "sales_sample_process",
+    "sales_sample_requisition_sign",
     "sales_sample_round",
     "sales_sample_transfer",
     "sys_attachment",
+    "sys_attachment_ref",
     "sys_config",
     "sys_dept",
     "sys_dict",
@@ -109,6 +116,7 @@
     "sys_error_log",
     "sys_event_config",
     "sys_event_last_payload",
+    "sys_event_var",
     "sys_login_log",
     "sys_menu",
     "sys_notification",
@@ -122,7 +130,8 @@
     "sys_user",
     "sys_user_role",
     "v_inventory_transaction",
-    "v_user_permissions"
+    "v_user_permissions",
+    "work_spec_usage"
   ],
   "approvedNewTables": [
     {
@@ -180,6 +189,13 @@
       "date": "2026-10-11",
       "proposalLink": "jjx-docs/history/product-work-spec-p1-implementation-dev-20261011-004.md",
       "reason": "工单执行区间记录（投产中途换版：哪段用哪版）；用户 2026-10-11 确认会中途换版（少见但可能）故提前 P0/P1；覆盖工单单一字段不足；用户授权按建议执行"
+    },
+    {
+      "table": "sys_attachment_ref",
+      "taskCode": "dev-20261012-002",
+      "date": "2026-10-12",
+      "proposalLink": "jjx-docs/history/common-attachment-v1a-20261012.md",
+      "reason": "公共附件 V1-A 业务引用表（迁移 271 新增，已执行并记账）：多态来源引用 + 软删审计 + 活动引用唯一键，解绑保留审计；用户 2026-10-12 授权登记 approvedNewTables"
     }
   ],
   "typeSuffixAllowlist": [

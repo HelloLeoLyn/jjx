@@ -11,6 +11,7 @@ import com.jjx.product.domain.entity.Product;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.enums.AttachmentUploadState;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import com.jjx.system.mapper.SysOperLogMapper;
 import com.jjx.system.service.ISysAttachmentService;
@@ -53,6 +54,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final SysOperLogMapper sysOperLogMapper;
     private final ObjectMapper objectMapper;
+    private final com.jjx.system.service.AttachmentAccessService attachmentAccess;
+    private final com.jjx.system.service.AttachmentSourcePolicy attachmentSources;
+    private final com.jjx.system.service.AttachmentRefService attachmentRefs;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -75,11 +79,13 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
             throw new BusinessException("上传文件不能为空");
         }
 
+        attachmentSources.check(bizType, bizId, true);
         // 生成存储路径：upload/{bizType}/{yyyy-MM-dd}/{uuid}.{ext}
         String originalName = file.getOriginalFilename();
         String ext = "";
         if (originalName != null && originalName.contains(".")) {
             ext = originalName.substring(originalName.lastIndexOf("."));
+            if (!ext.matches("\\.[A-Za-z0-9]{1,12}")) ext = "";
         }
         String storedName = UUID.randomUUID().toString() + ext;
         String dateDir = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
@@ -110,6 +116,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         attachment.setFileSize(file.getSize());
         attachment.setFileType(file.getContentType());
         attachment.setSha256(sha256OfFile(Paths.get(fullPath)));
+        // 新代码建档的附件标记为 BOUND（有业务归属/待建引用）；真历史行保持库默认 LEGACY 不动，
+        // 这样「解绑后进入 30 天保留期」只作用于新上传，历史行继续按人工复核处理。
+        attachment.setUploadState(AttachmentUploadState.BOUND);
 
         save(attachment);
         // 附件回填日志 detail：同事务提交，保证流水可见（2026-08-28）
@@ -314,6 +323,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         LambdaQueryWrapper<SysAttachment> wrapper = new LambdaQueryWrapper<SysAttachment>()
                 .eq(SysAttachment::getBizType, bizType)
                 .eq(SysAttachment::getBizId, bizId)
+                .apply("(NOT EXISTS (SELECT 1 FROM sys_attachment_ref r WHERE r.attachment_id=sys_attachment.id AND r.source_type={0} AND r.source_id={1}) OR EXISTS (SELECT 1 FROM sys_attachment_ref r WHERE r.attachment_id=sys_attachment.id AND r.source_type={0} AND r.source_id={1} AND r.deleted=0))", attachmentSources.canonical(bizType), bizId)
                 .orderByAsc(SysAttachment::getSortOrder)
                 .orderByAsc(SysAttachment::getCreateTime);
         return list(wrapper);
@@ -345,6 +355,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
             throw new BusinessException("产品不存在: " + productCode);
         }
 
+        attachmentSources.check("product", product.getProductId(), true);
         lockProduct(product.getProductId());
         drawingNo = optionalText(drawingNo, 80, "图纸编号");
         drawingName = optionalText(drawingName, 120, "图纸名称");
@@ -367,7 +378,11 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         if (originalName == null || originalName.trim().isEmpty()) {
             originalName = "unknown";
         }
-        String dateDir = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        for (String segment : List.of(productCode.trim(), category.trim(), originalName)) {
+            if (segment.contains("/") || segment.contains("\\") || segment.equals(".") || segment.equals(".."))
+                throw new BusinessException("文件名、产品编码或类别包含非法路径字符");
+        }
+        String dateDir = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + File.separator + UUID.randomUUID();
         String relativePath = "product" + File.separator + productCode.trim() + File.separator
                 + category.trim() + File.separator + dateDir + File.separator + originalName;
         String fullPath = uploadBasePath + File.separator + relativePath;
@@ -415,6 +430,8 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         attachment.setFileSize(file.getSize());
         attachment.setFileType(file.getContentType());
         attachment.setSha256(sha256OfFile(target));
+        // 同上：产品文件属新代码建档，标 BOUND，解绑后才会进入 30 天保留期。
+        attachment.setUploadState(AttachmentUploadState.BOUND);
 
         save(attachment);
         log.info("产品文件上传成功: id={}, productCode={}, category={}, file={}",
@@ -442,29 +459,34 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteAttachment(Long id) {
-        SysAttachment attachment = getById(id);
-        if (attachment == null) {
-            throw new BusinessException("附件不存在: " + id);
+        SysAttachment attachment = attachmentMapper.selectActiveForUpdate(id);
+        if (attachment == null) throw new BusinessException("附件不存在: " + id);
+        if (attachment.getBizType() == null || attachment.getBizType().isBlank() || attachment.getBizId() == null) {
+            // TEMP/未绑定业务来源（biz_type 可空，V1-A 起）：走引用接口解除，不按业务来源删除。
+            throw new BusinessException("附件未绑定业务来源（临时或仅引用），请通过 /system/attachment/refs/{refId} 解除: " + id);
         }
-        if (referencedByWorkSpecVersion(id)) {
-            throw new BusinessException("该附件已被作业规范发布版本引用，不能删除；请先发布不含该附件的新版本");
+        String source = attachmentSources.canonical(attachment.getBizType());
+        attachmentSources.check(source, attachment.getBizId(), true);
+        attachmentAccess.checkUnlink(attachment);
+        var active = jdbcTemplate.queryForList("SELECT id,source_type,source_id,product_id FROM sys_attachment_ref WHERE attachment_id=? AND deleted=0 FOR UPDATE", id);
+        if (!active.isEmpty()) {
+            var matching = active.stream().filter(r -> source.equals(r.get("source_type"))
+                && attachment.getBizId().equals(((Number) r.get("source_id")).longValue())).toList();
+            if (matching.size() != 1) throw new BusinessException("附件具有多个引用上下文，请使用refId解除指定引用");
+            attachmentRefs.unlink(((Number) matching.get(0).get("id")).longValue());
+            return true;
         }
-        if (yes(attachment.getIsControlled())) {
-            throw new BusinessException("受控附件不能删除，请先解除受控");
-        }
-        if ("product".equals(attachment.getBizType()) && attachment.getDrawingNo() != null) {
-            attachment = lockedProductFile(id);
-            if (yes(attachment.getIsCurrent()) || yes(attachment.getReleased())) {
-                throw new BusinessException("现行或已下发图纸不能删除，请先切换版本并撤回下发");
-            }
-        }
-        // 软删除（DEV-737）：进回收站，保留物理文件，update_time 记录删除时间
+        Long history = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref WHERE attachment_id=?", Long.class, id);
+        if (history != null && history > 0) return true;
+        // Not yet backfilled legacy rows retain old recycle semantics; physical deletion remains disabled.
+        jdbcTemplate.update("UPDATE sys_attachment SET expires_at=DATE_ADD(NOW(),INTERVAL 30 DAY) WHERE id=?", id);
         return attachmentMapper.logicalDelete(id) > 0;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteAttachmentsByBiz(String bizType, Long bizId) {
+        attachmentSources.check(bizType, bizId, true);
         List<SysAttachment> list = getAttachments(bizType, bizId);
         for (SysAttachment attachment : list) {
             deleteAttachment(attachment.getId());
@@ -480,11 +502,16 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean restoreAttachment(Long id) {
+        cn.dev33.satoken.stp.StpUtil.checkRole("admin");
         SysAttachment recycled = attachmentMapper.selectRecycled().stream()
                 .filter(a -> a.getId().equals(id)).findFirst().orElse(null);
         if (recycled == null) {
             throw new BusinessException("回收站中不存在该附件: " + id);
         }
+        if (recycled.getBizType() == null || recycled.getBizType().isBlank() || recycled.getBizId() == null) {
+            throw new BusinessException("回收站附件未绑定业务来源（临时或仅引用），不能按业务来源恢复: " + id);
+        }
+        attachmentSources.check(recycled.getBizType(), recycled.getBizId(), true);
         if ("product".equals(recycled.getBizType()) && recycled.getDrawingNo() != null) {
             lockProduct(recycled.getBizId());
             validateDrawingFile(drawingFiles(recycled.getBizId(), recycled.getDrawingNo()), null,
@@ -501,60 +528,19 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean permanentDelete(Long id) {
-        SysAttachment recycled = attachmentMapper.selectRecycled().stream()
-                .filter(a -> a.getId().equals(id)).findFirst().orElse(null);
-        if (recycled == null) {
-            throw new BusinessException("回收站中不存在该附件: " + id);
-        }
-        if (referencedByWorkSpecVersion(id)) {
-            throw new BusinessException("该附件已被作业规范发布版本引用，不能物理删除");
-        }
-        if (yes(recycled.getIsControlled())) {
-            throw new BusinessException("受控附件不能物理删除");
-        }
-        // 删物理文件 + 真删记录
-        String fullPath = uploadBasePath + File.separator + recycled.getFilePath();
-        try {
-            Files.deleteIfExists(Paths.get(fullPath));
-        } catch (IOException e) {
-            log.warn("删除物理文件失败: {}", fullPath);
-        }
-        return attachmentMapper.physicalDelete(id) > 0;
+        throw new BusinessException("V1-A仅允许清理预演；物理删除已禁用，请使用refs/cleanup-preview");
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public int permanentDeleteExpired(int days) {
-        LocalDateTime cutoff = LocalDateTime.now().minusDays(days);
-        List<SysAttachment> expired = attachmentMapper.selectRecycledBefore(cutoff);
-        int count = 0;
-        for (SysAttachment attachment : expired) {
-            if (yes(attachment.getIsControlled())) {
-                continue; // 受控附件不随回收站过期物理删除
-            }
-            if (referencedByWorkSpecVersion(attachment.getId())) {
-                continue; // 被发布版本引用的附件不随回收站过期物理删除（dev-20261011-034）
-            }
-            String fullPath = uploadBasePath + File.separator + attachment.getFilePath();
-            try {
-                Files.deleteIfExists(Paths.get(fullPath));
-            } catch (IOException e) {
-                log.warn("清理回收站物理文件失败: {}", fullPath);
-            }
-            attachmentMapper.physicalDelete(attachment.getId());
-            count++;
-        }
-        if (count > 0) {
-            log.info("[回收站] 清理过期附件 {} 个（{} 天前）", count, days);
-        }
-        return count;
+        throw new BusinessException("V1-A仅允许清理预演；旧过期清理入口已禁用");
     }
 
     /** 客供资料按附件登记的产品归集；历史未登记产品归属的附件不能猜测归属。 */
     public List<Map<String, Object>> customerDocs(Long productId) {
         if (productId == null) return List.of();
         String sql = """
-                SELECT a.id,a.file_name,a.display_name,a.customer_product_code,a.customer_doc_type,
+                SELECT a.id,a.biz_type,a.biz_id,a.file_name,a.display_name,a.customer_product_code,a.customer_doc_type,
                        a.file_path,a.file_size,a.file_type,a.version,a.category,a.create_by,a.create_time,
                        CASE a.biz_type WHEN 'inquiry' THEN '询价单' WHEN 'quotation' THEN '报价单'
                             WHEN 'sales_order' THEN '销售订单' WHEN 'sample' THEN '样品单' END AS sourceType,
@@ -598,6 +584,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         if (attachment == null) {
             throw new BusinessException("附件不存在: " + id);
         }
+        attachmentAccess.checkRead(attachment);
         return uploadBasePath + File.separator + attachment.getFilePath();
     }
 

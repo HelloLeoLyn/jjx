@@ -462,6 +462,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 -- quality_sampling_plan remains until its 8 legacy rows are compared with sys_config.
 -- engineering_bom_backup_20260809 and sys_event_config_bak_20260814 are retired by migration 241.
 -- Keep synchronized with scripts/db-clean-test-data.sh RETAINED_TABLES.
+-- sys_attachment_ref：保留业务引用及解绑审计；V1-A禁用旧清库执行，防止历史引用丢失/来源ID复用。
 SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;
 
 -- ==================== 13. 执行结果核验 ====================

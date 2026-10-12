@@ -321,10 +321,14 @@
         <el-divider content-position="left">附件</el-divider>
         <el-row>
           <el-col :span="24">
-            <AttachmentPanel
-              v-if="form.inquiryId"
-              biz-type="inquiry"
-              :biz-id="form.inquiryId"
+            <AttachmentCenter
+              ref="attachmentCenterRef"
+              source-type="inquiry"
+              :source-id="form.inquiryId || null"
+              :source-no="(form as any).inquiryNo || ''"
+              :draft-id="draftId"
+              view-perm="sales:inquiry:view"
+              edit-perm="sales:inquiry:edit"
               style="margin-bottom: 10px"
             />
             <el-button type="primary" @click="customerUploadVisible = true">上传客供资料</el-button>
@@ -377,7 +381,7 @@ import InquiryDetailDialog from './components/InquiryDetailDialog.vue'
 import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import ProductPicker from '@/components/Selector/ProductPicker.vue'
-import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
 import type { FormInstance } from 'element-plus'
 import { inquiryApi } from '@/api/sales/inquiry'
@@ -595,6 +599,45 @@ function handleOpSuccess() {
 const customerUploadVisible = ref(false)
 const customerDocUploadRef = ref<InstanceType<typeof CustomerDocUpload>>()
 const uploadedAttachmentIds = ref<number[]>([])
+/** 公共附件中心（V1-A refs 通道）：待绑定队列按 draftId 隔离 */
+const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
+/** 新建草稿标识：同一张未保存询价单的生命周期内保持稳定（保存成功后清空） */
+const draftId = ref('')
+
+function newDraftId() {
+  return `inq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/**
+ * 保存成功后把待绑定（TEMP）附件一次性绑定到本询价单。
+ * 结果区分：单据未保存 / 部分成功 / 全部失败；失败条目保留在待绑定队列，可在附件区重试。
+ * 不抛错、不阻断保存流程（询价单本身已保存成功）。
+ */
+async function bindPendingAttachments() {
+  // ① 先让 props 同步：form.inquiryId 刚回写，等一次渲染后再读 sourceId（不依赖微任务顺序）
+  await nextTick()
+  try {
+    const result = await attachmentCenterRef.value?.bindPending()
+    if (!result) return
+    if (result.status === 'document-not-saved') {
+      ElMessage.warning('询价单尚未保存，附件仍为待绑定状态')
+      return
+    }
+    if (result.status === 'partial') {
+      ElMessage.warning(
+        `询价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`,
+      )
+    } else if (result.status === 'all-failed') {
+      ElMessage.error(
+        `询价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`,
+      )
+    }
+  } catch (e: any) {
+    // ② 异常隔离：询价单此时已保存成功，附件异常只能提示附件处理失败，不得冒泡成"整单保存失败"
+    console.error('附件绑定异常（询价单已保存）:', e)
+    ElMessage.error(`附件处理失败：${e?.message || '未知错误'}，可在附件区重试绑定`)
+  }
+}
 
 function onUploadSuccess(id: number) {
   if (!uploadedAttachmentIds.value.includes(id)) {
@@ -770,6 +813,7 @@ function onProductSelect(val: number, product?: any) {
 function handleAdd() {
   dialogTitle.value = '新增询价单'
   dialogVisible.value = true
+  draftId.value = newDraftId()   // 新建草稿：生成唯一 draftId，待绑定附件队列据此隔离
   resetForm()
 }
 
@@ -779,6 +823,7 @@ function handleUpdate(row?: any) {
   if (!id) return
 
   uploadedAttachmentIds.value = []
+  draftId.value = ''             // 编辑已有单据：走 sourceId（inquiryId），无需 draftId
   dialogTitle.value = '修改询价单'
   dialogVisible.value = true
 
@@ -975,6 +1020,7 @@ async function submitForm() {
     if (form.inquiryId) {
       await inquiryApi.edit({ ...form, attachmentIds: uploadedAttachmentIds.value } as any)
       if (await customerDocUploadRef.value?.flushPending(form.inquiryId) === false) return
+      await bindPendingAttachments()
       ElMessage.success('修改成功')
     } else {
       const res = await inquiryApi.add(form as any)
@@ -982,8 +1028,10 @@ async function submitForm() {
       const newId = (res as any)?.data?.inquiryId || form.inquiryId || 0
       form.inquiryId = newId
       if (await customerDocUploadRef.value?.flushPending(newId) === false) return
+      await bindPendingAttachments()
       ElMessage.success('新增成功')
     }
+    draftId.value = ''
     dialogVisible.value = false
     getList()
   } catch (e) {

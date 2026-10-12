@@ -133,6 +133,9 @@ public class SysDictService {
             throw new BusinessException("字典类型不存在");
         }
 
+        if (AttachmentDocumentTypeService.isAttachmentDictionary(existing.getDictCode())
+                && dto.getDictCode() != null && !existing.getDictCode().equals(dto.getDictCode()))
+            throw new BusinessException("公共附件字典编码不可改名，请停用保留历史");
         // 检查编码唯一性（排除自身）
         if (StringUtils.isNotBlank(dto.getDictCode()) && !dto.getDictCode().equals(existing.getDictCode())) {
             checkDictCodeUnique(dto.getDictCode(), dto.getDictId());
@@ -156,6 +159,8 @@ public class SysDictService {
         // 查询所有要删除的字典编码
         List<SysDict> dicts = dictMapper.selectBatchIds(ids);
         for (SysDict dict : dicts) {
+            if (AttachmentDocumentTypeService.isAttachmentDictionary(dict.getDictCode()))
+                throw new BusinessException("公共附件字典不可删除，请停用保留历史");
             // 级联删除字典项并清除缓存
             clearDictCache(dict.getDictCode());
             LambdaQueryWrapper<SysDictItem> itemWrapper = Wrappers.lambdaQuery();
@@ -263,6 +268,10 @@ public class SysDictService {
             throw new BusinessException("字典项不存在");
         }
 
+        if (AttachmentDocumentTypeService.isAttachmentDictionary(existing.getDictCode())
+                && ((dto.getDictCode() != null && !existing.getDictCode().equals(dto.getDictCode()))
+                    || (dto.getItemKey() != null && !existing.getItemKey().equals(dto.getItemKey()))))
+            throw new BusinessException("公共附件字典项编码不可改名或移出字典，请停用保留历史");
         // 检查键唯一性（排除自身）
         if (StringUtils.isNotBlank(dto.getItemKey()) && !dto.getItemKey().equals(existing.getItemKey())) {
             checkItemKeyUnique(dto.getDictCode(), dto.getItemKey(), dto.getItemId());
@@ -287,6 +296,8 @@ public class SysDictService {
 
         // 先查询要删除的字典项，获取 dictCode 用于清除缓存
         List<SysDictItem> items = dictItemMapper.selectBatchIds(Arrays.asList(itemIds));
+        if (items.stream().anyMatch(item -> AttachmentDocumentTypeService.isAttachmentDictionary(item.getDictCode())))
+            throw new BusinessException("公共附件字典项不可删除，请停用保留历史");
         int result = dictItemMapper.deleteBatchIds(Arrays.asList(itemIds));
 
         // 清除缓存
