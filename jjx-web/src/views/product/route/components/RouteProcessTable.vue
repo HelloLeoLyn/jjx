@@ -3,10 +3,10 @@
     <el-divider content-position="left">工序明细</el-divider>
     <el-tabs v-model="majorCategoryTab">
       <el-tab-pane :label="`🛠 冲型组装（${assemblyCount}）`" name="ASSEMBLY">
-        <WorkSpecWorkflow :items="routeItems" route-view />
+        <WorkSpecWorkflow :items="routeItems" />
       </el-tab-pane>
       <el-tab-pane :label="`🖨️ 印刷（${printCount}）`" name="PRINT">
-        <ProductPrintSpecPanel :routing-items="routeItems" route-view read-only />
+        <ProductPrintSpecPanel :routing-items="routeItems" read-only />
       </el-tab-pane>
     </el-tabs>
   </div>

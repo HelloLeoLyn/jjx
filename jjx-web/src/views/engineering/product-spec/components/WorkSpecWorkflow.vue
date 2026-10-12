@@ -1,7 +1,7 @@
 <template>
   <section v-loading="busy || fetching" class="data-section">
     <div class="section-heading">
-      <h3>{{ routeView ? '冲型组装' : '作业流程' }}</h3>
+      <h3>作业流程</h3>
       <el-button
         v-if="editable"
         :disabled="busy || fetching || !currentRoutingId"
@@ -18,34 +18,7 @@
         :name="group.value"
         :label="group.label"
       >
-        <el-table v-if="routeView" :data="group.rows" border stripe max-height="500">
-          <el-table-column label="序号" width="70" align="center">
-            <template #default="{ row }">{{ row.groupOrder || row.processOrder || '-' }}</template>
-          </el-table-column>
-          <el-table-column label="组合工序" min-width="460">
-            <template #default="{ row }">
-              <ProcessOperation :items="routeOperationItems(row)" />
-              <div class="route-sub-items">
-                <span v-for="(item, index) in workflowOperations(row)" :key="item.itemId || index">
-                  {{ workflowOperations(row).length > 1 ? `${row.groupOrder || row.processOrder}.${index + 1}` : '' }}
-                  {{ item.processName || '-' }}
-                  <span v-if="item.workInstruction">：{{ item.workInstruction }}</span>
-                </span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="总人工工时(h)" width="140" align="right">
-            <template #default="{ row }">{{ routeHours(row, 'labor') }}</template>
-          </el-table-column>
-          <el-table-column label="总机器工时(h)" width="140" align="right">
-            <template #default="{ row }">{{ routeHours(row, 'machine') }}</template>
-          </el-table-column>
-          <el-table-column label="组合备注" min-width="180">
-            <template #default="{ row }">{{ row.remark || '-' }}</template>
-          </el-table-column>
-        </el-table>
         <el-table
-          v-else
           :data="group.rows"
           border
           size="small"
@@ -72,6 +45,9 @@
           <el-table-column label="耗时(h)" width="100">
             <template #default="{ row }">{{ workflowLabor(row) }}</template>
           </el-table-column>
+          <el-table-column v-if="hasMachineHours" label="机器工时(h)" width="110">
+            <template #default="{ row }">{{ machineHours(row) }}</template>
+          </el-table-column>
           <el-table-column label="工序名称" min-width="180">
             <template #default="{ row }">{{ workflowNames(row) }}</template>
           </el-table-column>
@@ -89,8 +65,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
-import ProcessOperation from '@/components/ProcessOperation/index.vue'
-import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import { flowGroups, workSpecOperationRemark, workSpecStepSubscript } from './docset'
 import {
@@ -108,8 +82,6 @@ const props = defineProps<{
   routingId?: number
   editable?: boolean
   busy?: boolean
-  /** 工艺路线详情/审核的完整字段视图，始终使用传入的路线明细。 */
-  routeView?: boolean
 }>()
 const emit = defineEmits<{ edit: [] }>()
 const workflowTab = ref(flowGroups[0]?.value || '')
@@ -130,8 +102,7 @@ const normalizedRouteItems = computed(() => {
       processCategory: known.has(row.processCategory) ? row.processCategory : '',
       ...(row.children ? { children: normalize(row.children) } : {}),
     }))
-  const rows = normalize(currentItems.value)
-  if (!props.routeView) return rows
+  const rows = normalize(currentItems.value).filter((row) => row.majorCategory !== 'PRINT')
   if (rows.some((row) => Array.isArray(row.children))) {
     return rows.sort((a, b) => (a.workflowSeq ?? 1) - (b.workflowSeq ?? 1)
       || (a.processOrder || 0) - (b.processOrder || 0))
@@ -152,39 +123,29 @@ const normalizedRouteItems = computed(() => {
     })
 })
 const workflowGroups = computed(() =>
-  (props.routeView ? routeCategories : flowGroups).map((group) => ({
+  routeCategories.map((group) => ({
     ...group,
-    rows: processRowsForGroup(props.routeView ? normalizedRouteItems.value : currentItems.value, 'ASSEMBLY', group.value),
+    rows: processRowsForGroup(normalizedRouteItems.value, 'ASSEMBLY', group.value),
   }))
 )
+function machineHours(row: SpecProcessRow): string {
+  const values = workflowOperations(row)
+    .map((item) => item.customMachineHours ?? item.standardMachineHours)
+    .filter((value) => value != null && value !== '')
+    .map(Number)
+    .filter(Number.isFinite)
+  return values.length ? String(Number(values.reduce((sum, value) => sum + value, 0).toFixed(4))) : '-'
+}
+const hasMachineHours = computed(() => workflowGroups.value.some((group) =>
+  group.rows.some((row) => machineHours(row) !== '-')
+))
 watch(
   workflowGroups,
   (groups) => {
-    if (props.routeView) workflowTab.value = groups.find((group) => group.rows.length)?.value ?? flowGroups[0]?.value ?? ''
+    workflowTab.value = groups.find((group) => group.rows.length)?.value ?? flowGroups[0]?.value ?? ''
   },
   { immediate: true }
 )
-
-function routeOperationItems(row: SpecProcessRow): ProcessOperationItem[] {
-  return workflowOperations(row).map((item, index) => ({
-    key: item.itemId || item.processId || index,
-    icon: item.icon,
-    processName: item.processName,
-    hasIndex: item.hasIndex,
-    indexNumber: item.hasIndex === 1 ? item.indexNumber : null,
-    hasWorkInstruction: item.hasWorkInstruction,
-    workInstruction: item.workInstruction,
-  }))
-}
-function routeHours(row: SpecProcessRow, kind: 'labor' | 'machine'): number {
-  const rows = workflowOperations(row)
-  return rows.reduce((total, item) => {
-    const value = kind === 'labor'
-      ? item.customLaborHours ?? item.standardLaborHours ?? 0
-      : item.customMachineHours ?? item.standardMachineHours ?? 0
-    return total + Number(value || 0)
-  }, 0)
-}
 
 async function loadRouting() {
   const requestId = ++generation
@@ -260,13 +221,5 @@ onBeforeUnmount(() => { generation++ })
 .multiline {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-.route-sub-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding-top: 4px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
 }
 </style>
