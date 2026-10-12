@@ -385,6 +385,7 @@ import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import CustomerDocUpload from '@/components/customer-doc/CustomerDocUpload.vue'
 import type { FormInstance } from 'element-plus'
 import { inquiryApi } from '@/api/sales/inquiry'
+import { useUserStore } from '@/store/modules/user'
 import { InquiryStatusEnum } from '@/enums/sales'
 import { customerApi } from '@/api/sales/customer'
 import { download } from '@/utils/format'
@@ -603,6 +604,42 @@ const uploadedAttachmentIds = ref<number[]>([])
 const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
 /** 新建草稿标识：同一张未保存询价单的生命周期内保持稳定（保存成功后清空） */
 const draftId = ref('')
+const draftUserStore = useUserStore()
+let draftOwnerKey = ''
+const draftSessionKey = () => `attach-draft:v1:${draftUserStore.userId ?? 'anonymous'}:inquiry`
+
+/** 同一标签页/用户复用未保存草稿ID；sessionStorage跨刷新保留，不能仅靠内存ref。 */
+function ensureDraftId() {
+  const key = draftSessionKey()
+  if (draftOwnerKey !== key) {
+    draftId.value = ''
+    draftOwnerKey = key
+  }
+  if (!draftId.value) {
+    try {
+      draftId.value = sessionStorage.getItem(key) || ''
+    } catch (error) {
+      console.warn('读取询价草稿标识失败，刷新后可能无法恢复待绑定附件', error)
+    }
+    if (!draftId.value) draftId.value = newDraftId()
+  }
+  try {
+    sessionStorage.setItem(key, draftId.value)
+  } catch (error) {
+    console.warn('保存询价草稿标识失败，刷新后可能无法恢复待绑定附件', error)
+  }
+}
+
+function clearDraftId() {
+  if (!draftId.value) return // 编辑已有单据不清理另一张未保存草稿的会话标识。
+  try {
+    sessionStorage.removeItem(draftOwnerKey)
+  } catch (error) {
+    console.warn('清理已保存询价草稿标识失败', error)
+  }
+  draftId.value = ''
+}
+
 
 function newDraftId() {
   return `inq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -813,7 +850,7 @@ function onProductSelect(val: number, product?: any) {
 function handleAdd() {
   dialogTitle.value = '新增询价单'
   dialogVisible.value = true
-  draftId.value = newDraftId()   // 新建草稿：生成唯一 draftId，待绑定附件队列据此隔离
+  ensureDraftId()               // 空时才生成，刷新后恢复本会话未保存草稿。
   resetForm()
 }
 
@@ -1031,7 +1068,7 @@ async function submitForm() {
       await bindPendingAttachments()
       ElMessage.success('新增成功')
     }
-    draftId.value = ''
+    clearDraftId()
     dialogVisible.value = false
     getList()
   } catch (e) {

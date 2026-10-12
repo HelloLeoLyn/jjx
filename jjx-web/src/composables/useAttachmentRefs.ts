@@ -150,7 +150,8 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   function persist(): boolean {
     if (!storageKey.value) return false
     try {
-      localStorage.setItem(storageKey.value, JSON.stringify(pending.value))
+      if (pending.value.length) localStorage.setItem(storageKey.value, JSON.stringify(pending.value))
+      else localStorage.removeItem(storageKey.value) // 空队列不留无用id/草稿键。
       return true
     } catch {
       /* 存储不可用不阻断上传；调用方据此保留旧键 */
@@ -190,6 +191,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
               fileSize: Number(e.fileSize || 0),
               sha256: e.sha256 ? String(e.sha256) : null,
               state: 'pending' as const,
+              error: e.error ? String(e.error) : undefined,
               createdAt: String(e.createdAt || ''),
             }))
         : []
@@ -291,15 +293,33 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   /** 绑定单条待上传附件（sourceId 有值时的即时绑定） */
   async function bindPendingOne(entry: PendingEntry, meta?: AttachmentRefMetadata): Promise<number> {
     if (!sourceId.value) throw new Error('单据尚未保存，无法建立引用')
-    return bindOne(entry, {
-      attachmentId: entry.attachmentId,
-      sourceType: sourceType.value,
-      sourceId: sourceId.value,
-      documentType: meta?.documentType ?? null,
-      displayName: meta?.displayName ?? null,
-      remark: meta?.remark ?? null,
-      sortOrder: meta?.sortOrder ?? null,
-    })
+    try {
+      return await bindOne(entry, {
+        attachmentId: entry.attachmentId,
+        sourceType: sourceType.value,
+        sourceId: sourceId.value,
+        documentType: meta?.documentType ?? null,
+        displayName: meta?.displayName ?? null,
+        remark: meta?.remark ?? null,
+        sortOrder: meta?.sortOrder ?? null,
+      })
+    } catch (error: any) {
+      const message = error?.message || '绑定失败'
+      if (/附件不存在|附件已删除|附件.*已过期/.test(message)) {
+        entry.error = `${message}；可能已过期或不存在，可移除后重新上传`
+        persist()
+        throw new Error(entry.error)
+      }
+      if (message === '无权查看附件或历史来源尚未确认') {
+        // 后端对过期TEMP也返回此读取拒绝，无法主动确认是否过期，保留权限可能性。
+        entry.error = `${message}；可能已过期或不存在，也可能缺少读取权限，确认后可移除并重新上传`
+        persist()
+        throw new Error(entry.error)
+      }
+      entry.error = message // 最新失败覆盖旧提示，避免残留上一次的过期猜测。
+      persist()
+      throw error // 编辑权限/网络等其他错误保留原义，不冒称附件过期。
+    }
   }
 
   /**
@@ -359,11 +379,23 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   watch(sourceId, () => load())
   /**
    * 键切换（新建草稿 draft-X → 保存后 id-N）时的处理：
-   * - 内存队列为空 → 先从新键恢复（页面刷新后打开单据仍能看到待绑定记录）；
+   * - 跨单据/用户/草稿切换只读取目标键，不携带旧内存队列；
    * - 把当前队列落到新键；**只有写入成功后**才清理旧键（写失败则保留旧键，避免丢失唯一副本）。
    */
   watch(storageKey, (key, previousKey) => {
-    if (!key) return
+    if (!key) {
+      pending.value = [] // 保留原键持久化副本，不把内存条目带到下一张单据。
+      return
+    }
+    const scope = key.slice(0, key.lastIndexOf(':') + 1)
+    const migratingDraft = !!explicitDraftId.value && !!sourceId.value
+      && previousKey === `${scope}${explicitDraftId.value}`
+    if (!migratingDraft) {
+      pending.value = []
+      restore() // 其他单据/用户/草稿切换只恢复自己的键，不迁移旧内存队列。
+      return
+    }
+    // 只有当前草稿保存成当前单据才迁移；落新键成功后清旧草稿键。
     if (!pending.value.length) restore()
     if (persist()) dropStoredKey(previousKey)
   })
