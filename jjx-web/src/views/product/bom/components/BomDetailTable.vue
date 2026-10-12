@@ -11,7 +11,9 @@
       <el-table-column label="物料编码" prop="materialCode" width="120" />
       <el-table-column label="物料名称" prop="materialName" width="180" />
       <el-table-column label="项目" prop="processName" width="160" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.processName || '-' }}</template>
+        <template #default="{ row }">
+          <ProcessName :process-id="row.processId" :name="row.processName" />
+        </template>
       </el-table-column>
       <el-table-column label="规格型号" prop="specification" width="120" />
       <el-table-column label="单位" prop="unit" width="80" />
@@ -40,6 +42,7 @@
 </template>
 <script setup lang="ts">
 import type { EngineeringBomItem } from '@/types/product/bom'
+import ProcessName from '@/components/ProcessName.vue'
 import { SourceTypeEnum } from '@/enums/product'
 withDefaults(
   defineProps<{ items: EngineeringBomItem[]; height?: number | string; stripe?: boolean }>(),
