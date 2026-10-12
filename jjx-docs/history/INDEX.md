@@ -253,3 +253,5 @@
 | dev-20261012-002 | v1a-hardref-precheck-dev-20261012-002.md | V1-A数据修复前只读核查：5~11为产品客供/工程图（含7~11现行受控图纸）、产品ID已漂移1→3；三份快照均无biz_type='quality_template'→19条模板file_id系seed占位（11重复）无恢复依据，建议全置空；两个独立决策+274a/274b逐行SQL草案+影响面（AUTO_INCREMENT/引用表/权限/触发器） |
 | dev-20261012-002 | v1a-runtime-p0-fix-dev-20261012-002.md | V1-A P0修复+运行时补验：迁移273放开biz_type/biz_id可空、旧上传建档标BOUND、保留期预演改判历史口径；273已执行、后端已重启，TEMP/BOUND/ORPHAN/RETENTION_PERIOD/旧接口5项补验PASS；硬引用19条误伤仍留待拍板 |
 | dev-20261012-002 | v1a-hardref-b-fix-dev-20261012-002.md | V1-A硬引用误伤修复（代码侧B）：质量模板硬引用加「附件建档时间≤模板建档时间」异常防护、hasFile改为有效性判定并置空无效fileId（防前端错误下载）；19条异常引用逐条对账（8文件缺失可恢复/11 ID碰撞/0仍有效）+数据侧A的SQL草案（未执行） |
+
+| 2026-10-12 (dev-20261012-033) | att-v1b-08-requestkey-dev-20261012-033.md | ATT-V1B-08 内容指纹requestKey与无WebCrypto回退 |

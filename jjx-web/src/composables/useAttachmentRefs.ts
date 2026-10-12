@@ -59,8 +59,21 @@ function unwrap<T>(value: Ref<T> | T | undefined, fallback: T): T {
     : (value as T)
 }
 
-/** 稳定 requestKey：同草稿 + 同文件（名/大小/最后修改）恒定 → 同内容重传幂等 */
-function buildRequestKey(draftKey: string, file: File): string {
+/** 稳定 requestKey：SHA-256(draftKey|文件SHA-256)；无内容指纹时保留旧元数据算法。 */
+async function buildRequestKey(draftKey: string, file: File, sha256: string | null): Promise<string> {
+  if (sha256 && globalThis.crypto?.subtle) {
+    try {
+      const raw = new TextEncoder().encode(`${draftKey}|${sha256}`)
+      const digest = await globalThis.crypto.subtle.digest('SHA-256', raw)
+      return Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+    } catch {
+      // 指纹键计算失败也不阻断上传，回退旧算法；回退键未含内容指纹。
+    }
+  }
+  // crypto.subtle不可用或文件指纹失败：保留旧算法，未含内容指纹。
+
   const raw = `${draftKey}|${file.name}|${file.size}|${file.lastModified}`
   let h1 = 0x811c9dc5
   let h2 = 0x1000193
@@ -243,8 +256,8 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     if (!draftReady.value) {
       throw new Error('缺少草稿标识（draftId）：新建单据必须提供唯一 draftId 才能上传附件，避免多个单据共用待绑定队列')
     }
-    const requestKey = buildRequestKey(draftKey.value, file)
     const sha = await sha256Of(file)
+    const requestKey = await buildRequestKey(draftKey.value, file, sha)
     const res: any = await attachmentRefApi.tempUpload(file, requestKey, onProgress)
     const attachmentId = Number(res?.data)
     if (!attachmentId) throw new Error(res?.msg || '临时上传失败')
