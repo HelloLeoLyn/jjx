@@ -665,7 +665,7 @@ function addIssuanceChange() {
     date,
     text: '',
     color: '#ed00df',
-    print: false,
+    print: true,
     reason: '',
     sourceLogIds: [],
     sources: [],
