@@ -29,6 +29,8 @@ public class AttachmentSourcePolicy {
             "SELECT COUNT(*) FROM production_order WHERE order_id=? AND product_id=?"),
         "purchase_order", new Source("purchase:order", "SELECT order_no FROM purchase_order WHERE order_id=?", null),
         "purchase_payment", new Source("purchase:payment", "SELECT payment_no FROM purchase_payment WHERE payment_id=?", null),
+        // 看板任务接口对已登录用户开放，暂无独立权限点；附件沿用同一边界并核验任务存在。
+        "task", new Source(null, "SELECT task_code FROM sys_task WHERE task_id=?", null),
         "material", new Source("inventory:material", "SELECT material_code FROM inventory_material WHERE material_id=?",
             "SELECT COUNT(*) FROM inventory_material WHERE material_id=? AND product_id=?")
     );
@@ -69,7 +71,9 @@ public class AttachmentSourcePolicy {
     public String check(String type, Long id, boolean write) {
         StpUtil.checkLogin();
         Source source = source(type);
-        StpUtil.checkPermission(source.permission() + (write ? ":edit" : ":view"));
+        if (source.permission() != null) {
+            StpUtil.checkPermission(source.permission() + (write ? ":edit" : ":view"));
+        }
         if (id == null || id <= 0) throw new BusinessException("业务来源ID无效");
         List<String> numbers = jdbc.queryForList(source.sql(), String.class, id);
         if (numbers.size() != 1) throw new BusinessException("业务来源不存在或不唯一");
@@ -79,7 +83,7 @@ public class AttachmentSourcePolicy {
     public boolean canRead(String type, Long id) {
         if (!StpUtil.isLogin() || type == null || id == null || id <= 0) return false;
         Source source = SOURCES.get(canonical(type));
-        return source != null && StpUtil.hasPermission(source.permission() + ":view")
+        return source != null && (source.permission() == null || StpUtil.hasPermission(source.permission() + ":view"))
             && jdbc.queryForList(source.sql(), String.class, id).size() == 1;
     }
 
