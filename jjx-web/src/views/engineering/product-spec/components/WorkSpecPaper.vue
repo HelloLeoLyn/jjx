@@ -1,5 +1,5 @@
 <template>
-  <article ref="paper" class="work-paper">
+  <article ref="paper" class="work-paper" :style="fontStyle">
     <header class="work-title">产 品 作 业 规 范<span v-if="page.continuation">（续）</span></header>
     <table class="grid materials">
       <!-- 两张整宽表共用1/3边界：材料右边线与面板耗时右边线贯通。 -->
@@ -91,8 +91,9 @@ import { embossFields } from '@/api/product/workSpec'
 import { flowGroups, plain, workSpecMaterialSpec, workSpecStepSubscript, workSpecOperationRemark, type DocsetData, type DocPage, type PaperTextLine } from './docset'
 
 import { useWorkSpecOverflow } from './useWorkSpecOverflow'
+import type { WorkSpecFontSettings } from './workSpecFont'
 
-const props = defineProps<{ data: DocsetData; page: DocPage; pageIndex: number; pageCount: number; structureImage?: string; structureCaption?: string }>()
+const props = defineProps<{ data: DocsetData; page: DocPage; pageIndex: number; pageCount: number; structureImage?: string; structureCaption?: string; fontSettings: WorkSpecFontSettings }>()
 const emit = defineEmits<{ overflow: [lines: PaperTextLine[]] }>()
 /**
  * 发行日期口径（dev-20261013-029）：优先 issueDate；未填且已批准回退 confirmedAt（批准即定稿发行）；未批准留空。
@@ -100,7 +101,14 @@ const emit = defineEmits<{ overflow: [lines: PaperTextLine[]] }>()
  */
 const effectiveIssueDate = computed<string | null>(() => props.data.workSpec.issueDate || (props.data.workSpec.approved ? props.data.workSpec.confirmedAt || null : null))
 const paper = ref<HTMLElement>()
-const { measure } = useWorkSpecOverflow(paper, () => JSON.stringify([props.page.rows, props.page.groups, props.page.engineeringNotes, props.page.changeLines, props.page.continuation]), lines => emit('overflow', lines))
+const fontStyle = computed(() => ({
+  '--font-title': `${props.fontSettings.title}px`,
+  '--font-materials': `${props.fontSettings.materials}px`,
+  '--font-flows': `${props.fontSettings.flows}px`,
+  '--font-notes': `${props.fontSettings.notes}px`,
+  '--font-footer': `${props.fontSettings.footer}px`,
+}))
+const { measure } = useWorkSpecOverflow(paper, () => JSON.stringify([props.page.rows, props.page.groups, props.page.engineeringNotes, props.page.changeLines, props.page.continuation, props.fontSettings]), lines => emit('overflow', lines))
 defineExpose({ measure })
 function materialLabel(index: number) { return '材料第' + ((props.page.continuation || 0) * 14 + index + 1) + '项 · ' }
 function operationText(row: Record<string, any>) {
@@ -184,5 +192,25 @@ function shortDate(value?: string | null) { return value ? value.slice(2, 10) : 
 .approval div { padding:3px; }
 .approval div:nth-child(2) { border-top:1px solid red; border-bottom:1px solid red; font-size:12px; }
 footer { height:27px; flex-shrink:0; border-top:1px solid #333; display:flex; align-items:center; justify-content:space-between; padding:0 4px; font-size:13px; white-space:nowrap; }
+/* Only type sizes change; the A4 frame and print margins remain fixed. */
+.work-title { font-size:calc(27px + var(--font-title)); }
+.work-title span { font-size:calc(13px + var(--font-title)); }
+.materials { font-size:calc(13px + var(--font-materials)); }
+.materials th { font-size:calc(14px + var(--font-materials)); }
+.materials .material-name,.materials .die-position,.materials .emboss-label,.materials .emboss-value { font-size:calc(12px + var(--font-materials)); }
+.materials .material-name { line-height:calc(10px + var(--font-materials)); }
+.flows { font-size:calc(13px + var(--font-flows)); }
+.flows th { font-size:calc(14px + var(--font-flows)); }
+.flows th.structure-title { font-size:calc(15px + var(--font-flows)); }
+.flows tfoot td,.plus { font-size:calc(13px + var(--font-flows)); }
+.flows .symbol sub { font-size:calc(8px + var(--font-flows)); }
+.flows .operation-remark { font-size:calc(12px + var(--font-flows)); }
+.flows .structure-caption { font-size:calc(8px + var(--font-flows)); }
+.notes-content,.changes { font-size:calc(12px + var(--font-notes)); }
+.changes-content > div { line-height:calc(18px + var(--font-notes)); }
+.hours span,.vertical-label { font-size:calc(17px + var(--font-notes)); }
+.approval { font-size:calc(14px + var(--font-notes)); }
+.approval div:nth-child(2) { font-size:calc(12px + var(--font-notes)); }
+footer { font-size:calc(13px + var(--font-footer)); }
 @media print { .work-paper { width:100%; height:278mm; } }
 </style>

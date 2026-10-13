@@ -6,6 +6,7 @@
     :product-name="productName"
     :initial-sections="initialSections"
     :initial-files="initialFiles"
+    :initial-font-settings="initialFontSettings"
     :auto-print="route.query.print === '1'"
     standalone
   />
@@ -25,4 +26,5 @@ const initialSections = route.query.sections == null
   ? documentSections.map((section) => section.key)
   : String(route.query.sections).split(',').filter(Boolean)
 const initialFiles = route.query.files == null ? undefined : String(route.query.files).split(',').filter(Boolean)
+const initialFontSettings = route.query.fonts == null ? undefined : String(route.query.fonts)
 </script>

@@ -40,9 +40,20 @@
       </aside>
       <main class="paper-stage">
         <div v-if="pendingCount" class="render-progress no-print">正在展开附件，还有 {{ pendingCount }} 个文件…</div>
-        <div v-if="data && pages.length" class="paper-zoom" :style="{ zoom: `${zoom}%` }"><ProductSpecSheets ref="sheets" @layout="onLayout" :data="data" :pages="pages" :structure-image="structureImage" :structure-caption="structureCaption" /></div>
+        <div v-if="data && pages.length" class="paper-zoom" :style="{ zoom: `${zoom}%` }"><ProductSpecSheets ref="sheets" @layout="onLayout" :data="data" :pages="pages" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" /></div>
         <el-empty v-else-if="!loading && !error" description="勾选左侧文档，查看纸张预览" />
       </main>
+      <aside v-if="!paperOnly && selectedSections.includes('spec')" class="font-panel no-print">
+        <strong>作业规范字号</strong>
+        <p>按区域调整；默认保持原字号。打印时使用当前设置。</p>
+        <label v-for="area in workSpecFontAreas" :key="area.key" class="font-control">
+          <span>{{ area.label }}</span>
+          <el-select v-model="fontSettings[area.key]" size="small" :aria-label="`${area.label}字号`">
+            <el-option v-for="option in workSpecFontOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
+        </label>
+        <el-button link type="primary" @click="resetFontSettings">恢复默认</el-button>
+      </aside>
     </div>
   </div>
 </template>
@@ -55,8 +66,9 @@ import { downloadFile } from '@/components/product/productFilePreview'
 import ProductSpecSheets from './ProductSpecSheets.vue'
 import { documentSections, loadDocset, loadDocsetForVersion, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, type DocsetData, type DocFile, type FileImage, type PaperTextLine } from './docset'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum } from '@/enums/product/drawing'
+import { defaultWorkSpecFontSettings, parseWorkSpecFontSettings, serializeWorkSpecFontSettings, workSpecFontAreas, workSpecFontOptions, type WorkSpecFontSettings } from './workSpecFont'
 
-const props = withDefaults(defineProps<{ productId: number; versionId?: number; productCode?: string; productName?: string; standalone?: boolean; autoPrint?: boolean; paperOnly?: boolean; initialSections?: string[]; initialFiles?: string[] }>(), { standalone: false, autoPrint: false, paperOnly: false })
+const props = withDefaults(defineProps<{ productId: number; versionId?: number; productCode?: string; productName?: string; standalone?: boolean; autoPrint?: boolean; paperOnly?: boolean; initialSections?: string[]; initialFiles?: string[]; initialFontSettings?: string }>(), { standalone: false, autoPrint: false, paperOnly: false })
 const emit = defineEmits<{ loaded: [data: DocsetData] }>()
 const data = shallowRef<DocsetData>()
 const loading = ref(false)
@@ -72,6 +84,8 @@ function onLayout(key: string, lines: PaperTextLine[]) {
   if (JSON.stringify(overflow.value[key]) !== JSON.stringify(lines)) overflow.value = { ...overflow.value, [key]: lines }
 }
 const zoom = ref(props.paperOnly ? 100 : 80)
+const fontSettings = ref<WorkSpecFontSettings>(parseWorkSpecFontSettings(props.initialFontSettings))
+function resetFontSettings() { fontSettings.value = defaultWorkSpecFontSettings() }
 let generation = 0
 let queueRunning = false
 let disposed = false
@@ -156,7 +170,7 @@ function jumpTo(section: string) {
 async function printDocuments() {
   if (!canPrint.value) return
   if (!props.standalone) {
-    const params = new URLSearchParams({ sections: selectedSections.value.join(','), files: selectedFiles.value.join(','), print: '1' })
+    const params = new URLSearchParams({ sections: selectedSections.value.join(','), files: selectedFiles.value.join(','), fonts: serializeWorkSpecFontSettings(fontSettings.value), print: '1' })
     if (props.versionId) {
       params.set('versionId', String(props.versionId))
       params.set('productCode', props.productCode || '')
@@ -176,6 +190,7 @@ async function printDocuments() {
 watch(() => [props.productId, props.versionId], load, { immediate: true })
 defineExpose({ reload: load })
 watch(requestedFiles, expandFiles)
+watch(fontSettings, () => { overflow.value = {} }, { deep: true })
 watch(canPrint, (ready) => {
   if (ready && props.standalone && props.autoPrint && !autoPrinted && !selectedDrafts.value.length) {
     autoPrinted = true
@@ -217,6 +232,11 @@ onBeforeUnmount(() => { disposed = true; generation++; releaseImages(); printPag
 .file-error { font-size:10px; color:#d75d52; margin-bottom:5px; }
 .nav-foot { font-size:11px; color:#8793a4; padding:14px 6px; margin-top:18px; border-top:1px solid #edf0f5; }
 .paper-stage { flex:1; overflow:auto; padding:26px 32px 40px; min-width:0; }
+.font-panel { width:185px; flex-shrink:0; background:#fff; padding:20px 14px; border-left:1px solid #e1e6ed; box-sizing:border-box; overflow-y:auto; }
+.font-panel p { color:#8793a4; font-size:11px; line-height:1.5; }
+.font-control { display:block; margin:12px 0; font-size:12px; }
+.font-control span { display:block; margin-bottom:5px; }
+.font-control .el-select { width:100%; }
 .paper-zoom { width:fit-content; margin:auto; }
 .render-progress { text-align:center; font-size:12px; color:#78879b; margin-bottom:16px; }
 @media (max-width:950px) { .document-nav { width:200px; }.preview-toolbar { flex-wrap:wrap; }.paper-stage { padding:18px; } }
