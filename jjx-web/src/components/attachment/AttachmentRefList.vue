@@ -3,9 +3,19 @@
     <!-- ===== 新：表格 + 勾选 + 批量（默认） ===== -->
     <template v-if="variant === 'table'">
       <div v-if="canEdit && rows.length" class="ar-batch">
-        <el-button size="small" :disabled="!selectedIds.length" @click="openBatchType">批量改类型</el-button>
-        <el-button size="small" :disabled="!selectedIds.length" @click="openBatchName">批量改名</el-button>
-        <el-button size="small" type="danger" plain :disabled="!selectedIds.length" @click="onBatchUnlink">
+        <el-button size="small" :disabled="!selectedIds.length" @click="openBatchType"
+          >批量改类型</el-button
+        >
+        <el-button size="small" :disabled="!selectedIds.length" @click="openBatchName"
+          >批量改名</el-button
+        >
+        <el-button
+          size="small"
+          type="danger"
+          plain
+          :disabled="!selectedIds.length"
+          @click="onBatchUnlink"
+        >
           批量移除
         </el-button>
         <span v-if="selectedIds.length" class="ar-sub">已选 {{ selectedIds.length }} 条</span>
@@ -20,16 +30,52 @@
       >
         <el-table-column v-if="canEdit" type="selection" width="42" />
         <el-table-column label="原文件名" min-width="180" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.fileName || `附件 #${row.attachmentId}` }}</template>
+          <template #default="{ row }">
+            <span class="ar-file" title="点击预览" @click="emit('preview', row)">
+              <el-icon class="ar-eye"><View /></el-icon>
+              {{ row.fileName || `附件 #${row.attachmentId}` }}
+            </span>
+          </template>
         </el-table-column>
-        <el-table-column label="展示文件名" min-width="180" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.displayName || row.fileName || `附件 #${row.attachmentId}` }}</template>
+        <el-table-column label="展示文件名" min-width="180">
+          <template #default="{ row }">
+            <el-input
+              v-if="canEdit"
+              :model-value="nameDraft(row)"
+              size="small"
+              maxlength="255"
+              placeholder="留空=用原文件名"
+              @update:model-value="(v: string) => setNameDraft(row, v)"
+              @change="() => saveDisplayName(row)"
+            />
+            <span v-else>{{ row.displayName || row.fileName || `附件 #${row.attachmentId}` }}</span>
+          </template>
         </el-table-column>
         <el-table-column label="一级类型" width="120" show-overflow-tooltip>
           <template #default="{ row }">{{ categoryLabelOf(row.documentType) }}</template>
         </el-table-column>
-        <el-table-column label="二级类型" width="120" show-overflow-tooltip>
-          <template #default="{ row }">{{ secondLabelOf(row.documentType) }}</template>
+        <el-table-column label="二级类型" width="180">
+          <template #default="{ row }">
+            <el-select
+              v-if="canEdit"
+              :model-value="row.documentType || ''"
+              size="small"
+              clearable
+              placeholder="选择类型"
+              :disabled="savingId === row.id"
+              @change="(v: string | null) => saveDocType(row, v)"
+            >
+              <el-option-group v-for="g in secondaryGroupsFor('')" :key="g.key" :label="g.label">
+                <el-option
+                  v-for="t in g.options"
+                  :key="t.item_key"
+                  :label="t.label"
+                  :value="t.item_key"
+                />
+              </el-option-group>
+            </el-select>
+            <span v-else>{{ secondLabelOf(row.documentType) }}</span>
+          </template>
         </el-table-column>
         <el-table-column label="大小" width="90">
           <template #default="{ row }">{{ formatSize(row.fileSize) }}</template>
@@ -40,11 +86,10 @@
         <el-table-column label="上传时间" width="140">
           <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="210" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="emit('preview', row)">预览</el-button>
             <el-button link type="primary" @click="emit('download', row)">下载</el-button>
-            <el-button v-if="canEdit" link type="primary" @click="emit('edit', row)">分类/命名</el-button>
+            <el-button v-if="canEdit" link type="primary" @click="emit('edit', row)">更多</el-button>
             <el-button v-if="canEdit" link type="danger" @click="emit('unbind', row)">移除</el-button>
           </template>
         </el-table-column>
@@ -58,12 +103,14 @@
           <el-icon class="ar-icon"><Document /></el-icon>
           <span class="ar-name" :title="row.displayName || ''">{{ legacyDisplayName(row) }}</span>
           <span class="ar-sub">{{ formatSize(row.fileSize) }}</span>
-          <span v-if="row.createBy" class="ar-sub">· {{ row.createBy }}</span>
+          <span class="ar-sub">· {{ row.createBy }}</span>
           <span class="ar-sub">· {{ formatTime(row.createTime) }}</span>
           <span class="ar-spacer" />
           <el-button link type="primary" @click="emit('preview', row)">预览</el-button>
           <el-button link type="primary" @click="emit('download', row)">下载</el-button>
-          <el-button v-if="canEdit" link type="primary" @click="emit('edit', row)">分类/命名</el-button>
+          <el-button v-if="canEdit" link type="primary" @click="emit('edit', row)"
+            >分类/命名</el-button
+          >
           <el-button v-if="canEdit" link type="danger" @click="emit('unbind', row)">移除</el-button>
         </div>
       </div>
@@ -72,12 +119,31 @@
     <!-- 批量改类型 -->
     <el-dialog v-model="batchTypeVisible" title="批量改类型" width="440px" append-to-body>
       <div class="ar-type-row">
-        <el-select v-model="batchCategory" clearable placeholder="一级类型" @change="onBatchCategoryChange">
-          <el-option v-for="c in selectableCategories" :key="c.key" :label="c.label" :value="c.key" />
+        <el-select
+          v-model="batchCategory"
+          clearable
+          placeholder="一级类型"
+          @change="onBatchCategoryChange"
+        >
+          <el-option
+            v-for="c in selectableCategories"
+            :key="c.key"
+            :label="c.label"
+            :value="c.key"
+          />
         </el-select>
         <el-select v-model="batchDocumentType" clearable placeholder="二级类型">
-          <el-option-group v-for="g in secondaryGroupsFor(batchCategory)" :key="g.key" :label="g.label">
-            <el-option v-for="t in g.options" :key="t.item_key" :label="t.label" :value="t.item_key" />
+          <el-option-group
+            v-for="g in secondaryGroupsFor(batchCategory)"
+            :key="g.key"
+            :label="g.label"
+          >
+            <el-option
+              v-for="t in g.options"
+              :key="t.item_key"
+              :label="t.label"
+              :value="t.item_key"
+            />
           </el-option-group>
         </el-select>
       </div>
@@ -86,7 +152,12 @@
       </div>
       <template #footer>
         <el-button @click="batchTypeVisible = false">取消</el-button>
-        <el-button type="primary" :loading="batchSaving" :disabled="!batchDocumentType" @click="applyBatchType">
+        <el-button
+          type="primary"
+          :loading="batchSaving"
+          :disabled="!batchDocumentType"
+          @click="applyBatchType"
+        >
           确定
         </el-button>
       </template>
@@ -94,8 +165,12 @@
 
     <!-- 批量改名 -->
     <el-dialog v-model="batchNameVisible" title="批量改名" width="560px" append-to-body>
-      <div class="ar-sub">命名规则：来源类型-来源Id-一级编码-二级编码-二级名称（产品段系统暂未提供，未纳入）。</div>
-      <div class="ar-sub" style="margin-top: 6px">共 {{ batchNameRows.length }} 条；示例（第 1 条）：</div>
+      <div class="ar-sub">
+        命名规则：来源类型-来源Id-一级编码-二级编码-二级名称（产品段系统暂未提供，未纳入）。
+      </div>
+      <div class="ar-sub" style="margin-top: 6px">
+        共 {{ batchNameRows.length }} 条；示例（第 1 条）：
+      </div>
       <div class="ar-preview">{{ batchNamePreview }}</div>
       <el-alert
         v-if="batchNameHasOverflow"
@@ -131,8 +206,12 @@
  */
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document } from '@element-plus/icons-vue'
-import { attachmentRefApi, type AttachmentDocumentTypeItem, type AttachmentRefItem } from '@/api/system/attachmentRef'
+import { Document, View } from '@element-plus/icons-vue'
+import {
+  attachmentRefApi,
+  type AttachmentDocumentTypeItem,
+  type AttachmentRefItem,
+} from '@/api/system/attachmentRef'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
 
 const props = withDefaults(
@@ -145,7 +224,7 @@ const props = withDefaults(
     documentTypes: AttachmentDocumentTypeItem[]
     sourceType: string
   }>(),
-  { variant: 'table' },
+  { variant: 'table' }
 )
 
 const emit = defineEmits<{
@@ -158,11 +237,16 @@ const emit = defineEmits<{
   error: [payload: { action: string; message: string }]
 }>()
 
-const { categoryKeyOfType, categoryLabelOf, secondLabelOf, selectableCategories, secondaryGroupsFor } =
-  useAttachmentDocTypes(
-    computed(() => props.documentTypes),
-    () => props.sourceType,
-  )
+const {
+  categoryKeyOfType,
+  categoryLabelOf,
+  secondLabelOf,
+  selectableCategories,
+  secondaryGroupsFor,
+} = useAttachmentDocTypes(
+  computed(() => props.documentTypes),
+  () => props.sourceType
+)
 
 // ==================== 勾选 ====================
 const selectedIds = ref<number[]>([])
@@ -175,8 +259,55 @@ watch(
   () => props.rows,
   () => {
     selectedIds.value = []
-  },
+    nameDrafts.value = {} // 父组件刷新列表后丢弃草稿，避免旧值覆盖新值
+  }
 )
+
+// ==================== 行内编辑（二级类型 / 展示文件名，改完即存）====================
+const savingId = ref<number | null>(null)
+/** 展示名草稿：key=refId；未编辑时回落到本行当前值 */
+const nameDrafts = ref<Record<number, string>>({})
+function nameDraft(row: AttachmentRefItem): string {
+  return nameDrafts.value[row.id] ?? row.displayName ?? ''
+}
+function setNameDraft(row: AttachmentRefItem, value: string) {
+  nameDrafts.value[row.id] = value
+}
+/**
+ * 行内改二级类型：走 /refs/batch 的「按行部分更新」，只带 documentType，
+ * 不会像单条 PUT（整条覆盖）那样把展示名/备注/排序清空；清空时传空串=清类型。
+ */
+async function saveDocType(row: AttachmentRefItem, value: string | null) {
+  const next = value ?? ''
+  if (next === (row.documentType ?? '')) return
+  await inlineSave(row, { documentType: next })
+}
+/** 行内改展示名：空串=清空（回落到原文件名） */
+async function saveDisplayName(row: AttachmentRefItem) {
+  const next = (nameDrafts.value[row.id] ?? '').trim()
+  if (next === (row.displayName ?? '')) return
+  const ok = await inlineSave(row, { displayName: next })
+  if (ok) delete nameDrafts.value[row.id]
+}
+async function inlineSave(
+  row: AttachmentRefItem,
+  patch: { documentType?: string; displayName?: string }
+): Promise<boolean> {
+  savingId.value = row.id
+  try {
+    await attachmentRefApi.batchUpdate([{ refId: row.id, ...patch }])
+    ElMessage.success('已保存')
+    emit('changed')
+    return true
+  } catch (e: any) {
+    const message = e?.message || '保存失败'
+    ElMessage.error(message)
+    emit('error', { action: 'inline-save', message })
+    return false
+  } finally {
+    savingId.value = null
+  }
+}
 
 // ==================== 批量改类型 ====================
 const batchTypeVisible = ref(false)
@@ -189,7 +320,10 @@ function openBatchType() {
   batchTypeVisible.value = true
 }
 function onBatchCategoryChange() {
-  if (batchDocumentType.value && categoryKeyOfType(batchDocumentType.value) !== batchCategory.value) {
+  if (
+    batchDocumentType.value &&
+    categoryKeyOfType(batchDocumentType.value) !== batchCategory.value
+  ) {
     batchDocumentType.value = null
   }
 }
@@ -198,7 +332,9 @@ async function applyBatchType() {
   if (!batchDocumentType.value || !ids.length) return
   batchSaving.value = true
   try {
-    await attachmentRefApi.batchUpdate(ids.map((refId) => ({ refId, documentType: batchDocumentType.value })))
+    await attachmentRefApi.batchUpdate(
+      ids.map((refId) => ({ refId, documentType: batchDocumentType.value }))
+    )
     ElMessage.success(`已批量设置 ${ids.length} 条类型`)
     batchTypeVisible.value = false
     emit('changed')
@@ -267,7 +403,7 @@ async function onBatchUnlink() {
     await ElMessageBox.confirm(
       `从本单据移除选中的 ${ids.length} 个附件？只解除本单据的引用，文件本身不删除；其他单据若引用不受影响。`,
       '批量移除',
-      { confirmButtonText: '确定移除', cancelButtonText: '取消', type: 'warning' },
+      { confirmButtonText: '确定移除', cancelButtonText: '取消', type: 'warning' }
     )
   } catch {
     return
@@ -311,6 +447,20 @@ function formatTime(t?: string | null) {
 .ar-sub {
   font-size: 12px;
   color: #909399;
+}
+/* 原文件名：可点击预览 */
+.ar-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #409eff;
+  cursor: pointer;
+}
+.ar-file:hover {
+  text-decoration: underline;
+}
+.ar-eye {
+  font-size: 14px;
 }
 .ar-preview {
   margin: 6px 0;
