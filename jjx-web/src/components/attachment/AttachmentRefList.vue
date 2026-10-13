@@ -1,7 +1,5 @@
 <template>
   <div class="ar-list">
-    <!-- ===== 新：表格 + 勾选 + 批量（默认） ===== -->
-    <template v-if="variant === 'table'">
       <div v-if="canEdit && rows.length" class="ar-batch">
         <el-button size="small" :disabled="!selectedIds.length" @click="openBatchType"
           >批量改类型</el-button
@@ -22,68 +20,71 @@
       </div>
 
       <el-table
-        :data="rows"
+        :data="tableRows"
         size="small"
-        row-key="id"
+        row-key="rowKey"
         style="width: 100%"
         @selection-change="onSelectionChange"
       >
-        <el-table-column v-if="canEdit" type="selection" width="42" />
+        <el-table-column v-if="canEdit && rows.length" type="selection" width="42" :selectable="(row: TableRow) => row.kind === 'ref'" />
+        <el-table-column label="状态" width="105">
+          <template #default="{ row }">
+            <el-tag size="small" :title="row.kind === 'pending' ? pendingOf(row).error : undefined" :type="row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? 'danger' : 'warning') : row.kind === 'ref' ? 'success' : 'info'">
+              {{ row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? '绑定失败' : '待绑定') : row.kind === 'ref' ? '已绑定' : row.kind === 'legacy' ? '历史' : '同链路' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column v-for="column in referenceColumns" :key="column.key"
           :label="column.label" :width="'width' in column ? column.width : undefined"
           :min-width="'minWidth' in column ? column.minWidth : undefined"
           :show-overflow-tooltip="column.render === 'preview' || column.render === 'category' || column.render === 'text'">
           <template #default="{ row }">
-            <span v-if="column.render === 'preview'" class="ar-file" title="点击预览" @click="emit('preview', row)">
-              <el-icon class="ar-eye"><View /></el-icon>{{ row.fileName || `附件 #${row.attachmentId}` }}
+            <span v-if="column.render === 'preview'" :class="{ 'ar-file': row.kind !== 'pending' }" :title="row.fileName" @click="previewRow(row)">
+              <el-icon v-if="row.kind !== 'pending'" class="ar-eye"><View /></el-icon>{{ row.fileName || `附件 #${row.attachmentId}` }}
             </span>
             <template v-else-if="column.render === 'displayName'">
-              <el-input v-if="canEdit" :model-value="nameDraft(row)" size="small" maxlength="255"
-                placeholder="留空=用原文件名" @update:model-value="(v: string) => setNameDraft(row, v)"
-                @change="() => saveDisplayName(row)" />
+              <el-input v-if="row.kind === 'ref' && canEdit" :model-value="nameDraft(refOf(row))" size="small" maxlength="255"
+                placeholder="留空=用原文件名" @update:model-value="(v: string) => setNameDraft(refOf(row), v)"
+                @change="() => saveDisplayName(refOf(row))" />
               <span v-else>{{ row.displayName || row.fileName || `附件 #${row.attachmentId}` }}</span>
             </template>
-            <span v-else-if="column.render === 'category'">{{ categoryLabelOf(row.documentType) }}</span>
+            <span v-else-if="column.render === 'category'">{{ row.documentType ? categoryLabelOf(row.documentType) : '-' }}</span>
             <template v-else-if="column.render === 'typeSelect'">
-              <AttachmentTypeSelect v-if="canEdit" :model-value="row.documentType"
+              <AttachmentTypeSelect v-if="row.kind === 'pending' && canEdit" :model-value="pendingOf(row).documentType"
+                :category="pendingCategoryOf(pendingOf(row))" :document-types="documentTypes" :source-type="sourceType"
+                show-category @update:category="(v) => setPendingCategory(pendingOf(row), v)"
+                @update:model-value="(v) => setPendingType(pendingOf(row), v)" />
+              <AttachmentTypeSelect v-else-if="row.kind === 'ref' && canEdit" :model-value="row.documentType"
                 :document-types="documentTypes" :source-type="sourceType"
-                :disabled="savingId === row.id" @update:model-value="(v) => saveDocType(row, v)" />
-              <span v-else>{{ secondLabelOf(row.documentType) }}</span>
+                :disabled="savingId === row.id" @update:model-value="(v) => saveDocType(refOf(row), v)" />
+              <span v-else>{{ row.documentType ? secondLabelOf(row.documentType) : '-' }}</span>
             </template>
             <span v-else-if="column.render === 'size'">{{ formatSize(row.fileSize) }}</span>
             <span v-else-if="column.render === 'time'">{{ formatTime(row.createTime) }}</span>
             <span v-else-if="column.render === 'text'">{{ row.createBy || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="来源" min-width="110">
+          <template #default="{ row }">{{ row.kind === 'trace' ? (row.sourceNo || row.bizTypeName || row.bizType || '-') : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="emit('download', row)">下载</el-button>
-            <el-button v-if="canEdit" link type="primary" @click="emit('edit', row)">更多</el-button>
-            <el-button v-if="canEdit" link type="danger" @click="emit('unbind', row)">移除</el-button>
+            <template v-if="row.kind === 'pending'">
+              <el-button v-if="canEdit" link type="primary" @click="emit('retryBind', pendingOf(row))">重试</el-button>
+              <el-button v-if="canEdit" link type="danger" @click="emit('removePending', row.attachmentId)">移除</el-button>
+            </template>
+            <template v-else-if="row.kind === 'ref'">
+              <el-button link type="primary" @click="emit('download', refOf(row))">下载</el-button>
+              <el-button v-if="canEdit" link type="primary" @click="emit('edit', refOf(row))">更多</el-button>
+              <el-button v-if="canEdit" link type="danger" @click="emit('unbind', refOf(row))">移除</el-button>
+            </template>
+            <template v-else>
+              <el-button link type="primary" @click="emit('downloadReadonly', row.data)">下载</el-button>
+              <el-button link type="primary" @click="emit('previewReadonly', row.data, readonlyGroup(row))">预览</el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
-    </template>
-
-    <!-- ===== 旧：一行行（保留，供切换/对比；无勾选、无批量） ===== -->
-    <template v-else>
-      <div class="ar-rows">
-        <div v-for="row in rows" :key="`ref-${row.id}`" class="ar-row">
-          <el-icon class="ar-icon"><Document /></el-icon>
-          <span class="ar-name" :title="row.displayName || ''">{{ legacyDisplayName(row) }}</span>
-          <span class="ar-sub">{{ formatSize(row.fileSize) }}</span>
-          <span class="ar-sub">· {{ row.createBy }}</span>
-          <span class="ar-sub">· {{ formatTime(row.createTime) }}</span>
-          <span class="ar-spacer" />
-          <el-button link type="primary" @click="emit('preview', row)">预览</el-button>
-          <el-button link type="primary" @click="emit('download', row)">下载</el-button>
-          <el-button v-if="canEdit" link type="primary" @click="emit('edit', row)"
-            >分类/命名</el-button
-          >
-          <el-button v-if="canEdit" link type="danger" @click="emit('unbind', row)">移除</el-button>
-        </div>
-      </div>
-    </template>
 
     <!-- 批量改类型 -->
     <el-dialog v-model="batchTypeVisible" title="批量改类型" width="440px" append-to-body>
@@ -147,18 +148,12 @@
 
 <script setup lang="ts">
 /**
- * 附件「引用」列表（A 段）——2026-10-13 dev-20261013-013 从 AttachmentCenter 抽出。
- *
- * 两种样子同时保留，`variant` 切换，默认 'table'（新）：
- *   - 'table'：标题行 + 勾选框 + 批量（改类型/改名/移除）
- *   - 'list' ：一行行 + 行内按钮（旧样子，无勾选/批量，供对比）
- *
- * 组件只负责「这一段长什么样 + 批量动作 + 勾选状态」；预览/下载/编辑/解绑由父组件处理
- * （父组件统一持有图片查看器与弹窗），避免同一能力两处实现。
+ * 公共附件统一表格：待绑定、引用及历史只读附件共用一套列与行渲染。
  */
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, View } from '@element-plus/icons-vue'
+import { View } from '@element-plus/icons-vue'
+import type { PendingEntry } from '@/composables/useAttachmentRefs'
 import {
   attachmentRefApi,
   type AttachmentDocumentTypeItem,
@@ -170,24 +165,79 @@ import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
 import { referenceColumns } from './attachmentFields'
 import { formatSize, formatTime } from './attachmentFormat'
 
-const props = withDefaults(
-  defineProps<{
+const props = defineProps<{
     rows: AttachmentRefItem[]
+    pending: PendingEntry[]
+    legacyRows: ReadonlyAttachment[]
+    traceRows: ReadonlyAttachment[]
     canEdit: boolean
-    /** 'table'（默认，新）| 'list'（旧样子） */
-    variant?: 'table' | 'list'
     /** 资料类型字典（父组件已加载，避免重复请求） */
     documentTypes: AttachmentDocumentTypeItem[]
     sourceType: string
-  }>(),
-  { variant: 'table' }
-)
+}>()
+
+type ReadonlyAttachment = Record<string, any> & { id: number }
+type TableRow = {
+  rowKey: string
+  kind: 'pending' | 'ref' | 'legacy' | 'trace'
+  data: PendingEntry | AttachmentRefItem | ReadonlyAttachment
+  id: number
+  attachmentId: number
+  fileName?: string | null
+  displayName?: string | null
+  documentType?: string | null
+  fileSize?: number | null
+  createTime?: string | null
+  createBy?: string | null
+  sourceNo?: string | null
+  bizTypeName?: string | null
+  bizType?: string | null
+}
+
+const tableRows = computed<TableRow[]>(() => [
+  ...props.pending.map((entry) => ({
+    rowKey: `pending:${entry.attachmentId}`, kind: 'pending' as const, data: entry,
+    id: entry.attachmentId, attachmentId: entry.attachmentId,
+    fileName: entry.fileName, displayName: entry.displayName, documentType: entry.documentType,
+    fileSize: entry.fileSize, createTime: entry.createdAt,
+  })),
+  ...props.rows.map((row) => ({ ...row, rowKey: `ref:${row.id}`, kind: 'ref' as const, data: row })),
+  ...props.legacyRows.map((row) => ({ ...row, rowKey: `legacy:${row.id}`, kind: 'legacy' as const, data: row, attachmentId: row.id })),
+  ...props.traceRows.map((row) => ({ ...row, rowKey: `trace:${row.id}`, kind: 'trace' as const, data: row, attachmentId: row.id })),
+])
+const refOf = (row: TableRow) => row.data as AttachmentRefItem
+const pendingOf = (row: TableRow) => row.data as PendingEntry
+const readonlyGroup = (row: TableRow) => row.kind === 'legacy' ? props.legacyRows : props.traceRows
+function previewRow(row: TableRow) {
+  if (row.kind === 'ref') emit('preview', refOf(row))
+  else if (row.kind !== 'pending') emit('previewReadonly', row.data as ReadonlyAttachment, readonlyGroup(row))
+}
+
+const pendingCategories = ref<Record<number, string>>({})
+function pendingCategoryOf(entry: PendingEntry) {
+  return pendingCategories.value[entry.attachmentId] || categoryKeyOfType(entry.documentType)
+}
+function setPendingCategory(entry: PendingEntry, category: string | null) {
+  if (category) pendingCategories.value[entry.attachmentId] = category
+  else delete pendingCategories.value[entry.attachmentId]
+  if (entry.documentType && categoryKeyOfType(entry.documentType) !== (category || '')) entry.documentType = null
+  emit('pendingChanged')
+}
+function setPendingType(entry: PendingEntry, value: string | null) {
+  entry.documentType = value
+  emit('pendingChanged')
+}
 
 const emit = defineEmits<{
   preview: [row: AttachmentRefItem]
   download: [row: AttachmentRefItem]
   edit: [row: AttachmentRefItem]
   unbind: [row: AttachmentRefItem]
+  retryBind: [entry: PendingEntry]
+  removePending: [attachmentId: number]
+  pendingChanged: []
+  previewReadonly: [row: ReadonlyAttachment, rows: ReadonlyAttachment[]]
+  downloadReadonly: [row: ReadonlyAttachment]
   /** 批量动作已落库，父组件据此重新拉列表 */
   changed: []
   error: [payload: { action: string; message: string }]
@@ -205,8 +255,8 @@ const {
 // ==================== 勾选 ====================
 const selectedIds = ref<number[]>([])
 const selectedRows = computed(() => props.rows.filter((r) => selectedIds.value.includes(r.id)))
-function onSelectionChange(rows: AttachmentRefItem[]) {
-  selectedIds.value = rows.map((r) => r.id)
+function onSelectionChange(rows: TableRow[]) {
+  selectedIds.value = rows.filter((r) => r.kind === 'ref').map((r) => r.id)
 }
 // 父组件刷新列表后，旧勾选必须作废（el-table 自身会清空，这里同步状态）
 watch(
@@ -406,12 +456,6 @@ async function onBatchUnlink() {
   }
 }
 
-// ==================== 展示 ====================
-/** 旧样式的名字：展示层拼「二级类型 · 展示名」（不写库） */
-function legacyDisplayName(row: AttachmentRefItem): string {
-  const base = row.displayName || row.fileName || `附件 #${row.attachmentId}`
-  return row.documentType ? `${secondLabelOf(row.documentType)} · ${base}` : base
-}
 </script>
 
 <style scoped>
@@ -459,33 +503,4 @@ function legacyDisplayName(row: AttachmentRefItem): string {
   min-width: 0;
 }
 
-/* 旧样子（variant='list'） */
-.ar-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.ar-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  background: #fafafa;
-  font-size: 13px;
-}
-.ar-icon {
-  color: #409eff;
-  font-size: 18px;
-}
-.ar-name {
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ar-spacer {
-  flex: 1;
-}
 </style>

@@ -43,47 +43,14 @@
       @error="onUploaderError"
     />
 
-    <!-- 待绑定（TEMP）队列：仅当前单据草稿可见，刷新后可恢复 id 清单 -->
-    <div v-if="pending.length" class="ac-pending">
-      <div v-for="entry in pending" :key="entry.attachmentId" class="ac-row">
-        <el-icon><Clock /></el-icon>
-        <span v-if="pendingHas('fileName')" class="ac-name">{{ renderPending(entry, 'fileName') }}</span>
-        <span v-if="pendingHas('fileSize')" class="ac-sub">{{ renderPending(entry, 'fileSize') }}</span>
-        <el-tag size="small" :type="entry.state === 'failed' ? 'danger' : 'warning'">
-          {{ entry.state === 'failed' ? '绑定失败' : '待绑定' }}
-        </el-tag>
-        <span v-if="entry.error" class="ac-error">{{ entry.error }}</span>
-        <span class="ac-spacer" />
-        <AttachmentTypeSelect
-          v-if="canEdit && pendingHas('documentType')"
-          :model-value="entry.documentType"
-          :category="entryCategoryKey(entry)"
-          :document-types="documentTypes"
-          :source-type="sourceType"
-          show-category
-          @update:category="(v) => setEntryCategory(entry, v)"
-          @update:model-value="
-            (v) => {
-              entry.documentType = v
-              persist()
-            }
-          "
-        />
-        <el-button v-if="canEdit" link type="primary" @click="retryBind(entry)">重试绑定</el-button>
-        <el-button v-if="canEdit" link type="danger" @click="removePending(entry.attachmentId)"
-          >移除</el-button
-        >
-      </div>
-      <div class="ac-hint">待绑定附件已上传到服务器（7 天有效），保存单据后自动建立引用。</div>
-    </div>
-
-    <!-- A 段：引用（主键 refId，不同 refId 全部保留）。列表抽到 AttachmentRefList，variant 切样式（table 新 / list 旧） -->
+    <!-- 待绑定、引用和历史只读附件共用一张表 -->
     <el-empty
       v-if="
         showList &&
         !loading &&
         !traceLoading &&
         !refRows.length &&
+        !pending.length &&
         !legacyOnlyRows.length &&
         !traceOnlyRows.length
       "
@@ -91,45 +58,29 @@
       :image-size="60"
     />
     <AttachmentRefList
-      v-else-if="showList && refRows.length"
-      :rows="refRows"
+      v-if="pending.length || (showList && (refRows.length || legacyOnlyRows.length || traceOnlyRows.length))"
+      :pending="pending"
+      :rows="showList ? refRows : []"
+      :legacy-rows="showList ? legacyOnlyRows : []"
+      :trace-rows="showList ? traceOnlyRows : []"
       :can-edit="canEdit"
-      :variant="variant"
       :document-types="documentTypes"
       :source-type="sourceType"
+      @retry-bind="retryBind"
+      @remove-pending="removePending"
+      @pending-changed="persist"
       @preview="previewRef"
       @download="onRowDownload"
       @edit="openMeta"
       @unbind="onUnbind"
       @changed="onRefListChanged"
       @error="onRefListError"
+      @download-readonly="(row) => openUrl(attachmentApi.downloadUrl(row.id))"
+      @preview-readonly="(row, rows) => previewReadOnly(row, rows)"
     />
-
-    <!-- B 段：历史附件 / 同链路来源单据（只读）→ 统一由只读列表组件渲染，字段来自 attachmentFieldSets -->
-    <AttachmentReadonlyList
-      v-if="showList && legacyOnlyRows.length"
-      title="历史附件（未建立引用，只读）"
-      key-prefix="att"
-      :rows="legacyOnlyRows"
-      :field-keys="attachmentFieldSets.legacy"
-      :tag-of="() => '历史附件'"
-      @download="(row) => openUrl(attachmentApi.downloadUrl(row.id))"
-      @preview="(row) => previewReadOnly(row, legacyOnlyRows)"
-    />
-    <AttachmentReadonlyList
-      v-if="showList && (traceLoading || traceError || traceOnlyRows.length)"
-      title="同链路来源单据（只读）"
-      key-prefix="trace"
-      :rows="traceOnlyRows"
-      :loading="traceLoading"
-      loading-text="正在加载同链路文档…"
-      :error="traceError"
-      :field-keys="attachmentFieldSets.trace"
-      :tag-of="(r) => r.bizTypeName || r.bizType || '来源单据'"
-      :sub-of="(r) => r.sourceNo || (r.bizId ? `#${r.bizId}` : '')"
-      @download="(row) => openUrl(attachmentApi.downloadUrl(row.id))"
-      @preview="(row) => previewReadOnly(row, traceOnlyRows)"
-    />
+    <div v-if="pending.length" class="ac-hint">待绑定附件已上传到服务器（7 天有效），保存单据后自动建立引用。</div>
+    <div v-if="showList && traceLoading" class="ac-hint">正在加载同链路文档…</div>
+    <el-alert v-if="showList && traceError" :title="traceError" type="warning" :closable="false" class="ac-alert" />
 
     <!-- 更多信息（类型/展示名已改成列表行内编辑，这里只留备注/排序） -->
     <el-dialog v-model="metaVisible" title="更多信息" width="460px" append-to-body destroy-on-close>
@@ -167,7 +118,7 @@
  */
 import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { FolderOpened, Document, Download, View, Clock } from '@element-plus/icons-vue'
+import { FolderOpened } from '@element-plus/icons-vue'
 import { attachmentApi } from '@/api/system/attachment'
 import {
   attachmentRefApi,
@@ -176,10 +127,6 @@ import {
 } from '@/api/system/attachmentRef'
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
 import AttachmentRefList from './AttachmentRefList.vue'
-import AttachmentReadonlyList from './AttachmentReadonlyList.vue'
-import { useAttachmentDocTypes } from './useAttachmentDocTypes'
-import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
-import { attachmentFieldSets, renderAttachmentField, type AttachmentFieldKey } from './attachmentFields'
 import { useAttachmentPreview } from './useAttachmentPreview'
 import { useAttachmentRefs, type PendingEntry } from '@/composables/useAttachmentRefs'
 const props = withDefaults(
@@ -202,8 +149,6 @@ const props = withDefaults(
     autoBind?: boolean
     /** 上传入口改为拖拽落区（替代 header 的小按钮）；默认 false 保持按钮形态 */
     dropZone?: boolean
-    /** 引用列表样式：'table'（默认，标题行+勾选+批量）| 'list'（旧：一行行+行内按钮）；两版都在 AttachmentRefList 里 */
-    variant?: 'table' | 'list'
     /** 单据产品（单产品单据传值，多产品单据不传）；写引用时随 product_id 落库 */
     productId?: number | null
     /** 行级附件归属：产品编码（内部字段，S5 dev-20261013-043）；为空=不归属产品 */
@@ -238,7 +183,6 @@ const props = withDefaults(
     ],
     autoBind: true,
     dropZone: false,
-    variant: 'table',
     productId: null,
     uploadBlocked: '',
   }
@@ -392,24 +336,6 @@ const uploaderProps = computed(() => ({
 }))
 function onUploaderError(message: string) {
   emit('error', { action: 'validate', message })
-}
-
-// ==================== 资料类型字典派生（与 AttachmentRefList 共用 composable，避免两处各写一份）====================
-const { categoryKeyOfType } = useAttachmentDocTypes(documentTypes, () => props.sourceType)
-
-/** 待绑定行的一级选择（仅前端筛选，不落库）；未手动选时由已选二级的 parent 反推，刷新后仍一致 */
-const entryCategoryMap = ref<Record<number, string>>({})
-function entryCategoryKey(entry: PendingEntry): string {
-  return entryCategoryMap.value[entry.attachmentId] || categoryKeyOfType(entry.documentType)
-}
-/** 切一级：当已选二级不属于新一级时清掉二级，避免一级/二级自相矛盾 */
-function setEntryCategory(entry: PendingEntry, categoryKey: string | null) {
-  if (categoryKey) entryCategoryMap.value[entry.attachmentId] = categoryKey
-  else delete entryCategoryMap.value[entry.attachmentId]
-  if (entry.documentType && categoryKeyOfType(entry.documentType) !== (categoryKey || '')) {
-    entry.documentType = null
-  }
-  persist()
 }
 
 // ==================== 上传 / 绑定 ====================
@@ -570,20 +496,6 @@ function previewReadOnly(row: TraceAttachment, rows: TraceAttachment[]) {
   previewViewer(rows, row, (r) => attachmentApi.downloadUrl(r.id))
 }
 
-// ==================== 待绑定段消费字段清单（dev-20261013-035） ====================
-const pendingFields: readonly AttachmentFieldKey[] = attachmentFieldSets.pending
-function pendingHas(key: AttachmentFieldKey): boolean {
-  return pendingFields.includes(key)
-}
-function renderPending(entry: PendingEntry, key: AttachmentFieldKey): string {
-  return renderAttachmentField(key, {
-    id: entry.attachmentId,
-    fileName: entry.fileName,
-    fileSize: entry.fileSize,
-    createTime: entry.createdAt,
-  })
-}
-
 defineExpose({
   refresh: () => Promise.all([load(), loadTrace()]),
   bindPending,
@@ -597,8 +509,7 @@ defineExpose({
 .attachment-center {
   padding: 4px 0;
 }
-.ac-header,
-.ac-row {
+.ac-header {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -623,44 +534,6 @@ defineExpose({
 .ac-dropzone {
   display: block;
   margin-bottom: 8px;
-}
-.ac-pending,
-.ac-legacy {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.ac-row {
-  padding: 6px 10px;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  background: #fafafa;
-  font-size: 13px;
-}
-.ac-name {
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ac-sub {
-  color: #909399;
-  font-size: 11px;
-}
-.ac-error {
-  color: #f56c6c;
-  font-size: 11px;
-}
-.ac-icon {
-  color: #409eff;
-  font-size: 18px;
-}
-.ac-legacy {
-  margin-top: 12px;
-}
-.ac-legacy-title {
-  font-size: 12px;
-  color: #909399;
 }
 .ac-hint {
   font-size: 11px;
