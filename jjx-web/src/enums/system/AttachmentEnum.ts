@@ -115,6 +115,15 @@ export const ATTACHMENT_DOCUMENT_TYPE_CODE: Record<string, string> = {
   DEFECT_PHOTO: 'DF',
   INSPECTION_REPORT: 'IR',
   TEST_RECORD: 'TR',
+  // 2026-10-13 M1（dev-20261013-038）：工程技术资料下新增 8 个二级（对应原 19 类别的图种/生产资料）
+  STRUCTURE_DRAWING: 'SD',
+  OUTLINE_DRAWING: 'OD',
+  PANEL_DRAWING: 'PD',
+  CIRCUIT_DRAWING: 'CI',
+  FILM: 'FL',
+  CONFIRM_DRAWING: 'CF',
+  PRINT_GUIDE: 'PG',
+  COLOR_CHECK: 'CK',
 }
 
 /** 一级编码 → 短码；未知回退原键 */
