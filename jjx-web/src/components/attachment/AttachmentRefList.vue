@@ -112,12 +112,18 @@
     <el-dialog v-model="batchNameVisible" title="批量改名" width="560px" append-to-body>
       <div class="ar-sub">
         命名规则：来源类型编码-来源Id-P产品id-一级码-二级码-二级名（来源类型编码取单号前缀，如
-        INQ/QT/SO；产品id 为空则整段跳过）。
+        INQ/QT/SO；<b>无产品时 P 段为 P0</b>；除产品id外各要素都必须有，缺任一不给生成）。
       </div>
       <div class="ar-sub" style="margin-top: 6px">
         共 {{ batchNameRows.length }} 条；示例（第 1 条）：
       </div>
       <div class="ar-preview">{{ batchNamePreview }}</div>
+      <el-alert
+        v-if="batchNameInvalidCount"
+        type="warning"
+        :closable="false"
+        :title="`有 ${batchNameInvalidCount} 行要素不齐（缺 ${batchNameMissingLabels}），请先在列表里补齐类型后再改名。`"
+      />
       <el-alert
         v-if="batchNameHasOverflow"
         type="warning"
@@ -129,7 +135,7 @@
         <el-button
           type="primary"
           :loading="batchNameSaving"
-          :disabled="!batchNameRows.length || batchNameHasOverflow"
+          :disabled="!batchNameRows.length || batchNameHasOverflow || batchNameInvalidCount > 0"
           @click="applyBatchName"
         >
           确定
@@ -295,38 +301,68 @@ async function applyBatchType() {
 
 // ==================== 批量改名（按行生成，每行名字不同）====================
 const NAME_SEP = '-'
+/** 产品id 缺省占位：保持 P 前缀；0 不是合法产品id，一眼看出"没有产品" */
+const PRODUCT_PLACEHOLDER = 'P0'
+interface BatchNameRow {
+  refId: number
+  name: string
+  overflow: boolean
+  /** 缺的要素名（除产品id外都必要）；非空 = 本行不能生成 */
+  missing: string[]
+}
 const batchNameVisible = ref(false)
 const batchNameSaving = ref(false)
-const batchNameRows = ref<{ refId: number; name: string; overflow: boolean }[]>([])
+const batchNameRows = ref<BatchNameRow[]>([])
 const batchNamePreview = computed(() => batchNameRows.value[0]?.name || '')
 const batchNameHasOverflow = computed(() => batchNameRows.value.some((r) => r.overflow))
+/** 要素不齐的行数（>0 时整批不给生成） */
+const batchNameInvalidCount = computed(() => batchNameRows.value.filter((r) => r.missing.length).length)
+/** 缺了哪些要素（去重后拼成一句话） */
+const batchNameMissingLabels = computed(() => {
+  const set = new Set<string>()
+  batchNameRows.value.forEach((r) => r.missing.forEach((m) => set.add(m)))
+  return Array.from(set).join('、')
+})
 /**
  * 命名规则：来源类型编码-来源Id-P产品id-一级码-二级码-二级名
- * 例：INQ-2-P123-CUSTOMER_DOC-CUSTOMER_DRAWING-客户图纸
- * 来源类型编码取单号前缀登记表（AttachmentEnum.attachmentSourceCode）；产品id 为空时整段跳过。
+ * 例：INQ-2-P123-CUSTOMER_DOC-CUSTOMER_DRAWING-客户图纸；无产品时 P 段为 P0。
+ * 除产品id外各要素都必要，缺任一则该行 missing 非空（不给生成）。
  */
-function buildRowDisplayName(row: AttachmentRefItem): string {
-  return [
-    attachmentSourceCode(row.sourceType),
+function buildRowName(row: AttachmentRefItem): { name: string; missing: string[] } {
+  const code = attachmentSourceCode(row.sourceType)
+  const category = categoryKeyOfType(row.documentType) || ''
+  const second = row.documentType ? secondLabelOf(row.documentType) : ''
+  const missing: string[] = []
+  if (!code) missing.push('来源类型')
+  if (row.sourceId == null) missing.push('来源Id')
+  if (!category) missing.push('一级类型')
+  if (!row.documentType) missing.push('二级类型')
+  if (!second) missing.push('二级名称')
+  // 不丢空段（段位固定）：缺的要素位置留空，供预览时一眼看出
+  const name = [
+    code,
     row.sourceId == null ? '' : String(row.sourceId),
-    row.productId == null ? '' : `P${row.productId}`,
-    categoryKeyOfType(row.documentType) || '',
+    row.productId == null ? PRODUCT_PLACEHOLDER : `P${row.productId}`,
+    category,
     row.documentType || '',
-    row.documentType ? secondLabelOf(row.documentType) : '',
-  ]
-    .filter((v) => v !== '')
-    .join(NAME_SEP)
+    second,
+  ].join(NAME_SEP)
+  return { name, missing }
 }
 function openBatchName() {
   batchNameRows.value = selectedRows.value.map((row) => {
-    const name = buildRowDisplayName(row)
-    return { refId: row.id, name, overflow: name.length > 255 }
+    const { name, missing } = buildRowName(row)
+    return { refId: row.id, name, overflow: name.length > 255, missing }
   })
   batchNameVisible.value = true
 }
 async function applyBatchName() {
   const items = batchNameRows.value.map((r) => ({ refId: r.refId, displayName: r.name }))
   if (!items.length) return
+  if (batchNameInvalidCount.value) {
+    ElMessage.warning(`有 ${batchNameInvalidCount.value} 行要素不齐（${batchNameMissingLabels.value}），请先补齐再改名`)
+    return
+  }
   if (batchNameHasOverflow.value) {
     ElMessage.warning('有名称超过 255 字符，请先调整类型后再改')
     return
