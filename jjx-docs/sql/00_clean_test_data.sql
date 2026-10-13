@@ -28,10 +28,14 @@ DELIMITER ;
 --     work_spec_usage（迁移 266 建，工单换版执行区间）
 --     sales_sample_requisition_sign / sales_sample_defect_record（迁移 259 建，样品需求单会签/打样不良记录；同一类缺口一并收口）
 -- v24 变更（2026-10-12，任务 dev-20261012-001）：
---   【口径对齐】--include-products 清空产品时，连带删除产品档案附件（sys_attachment.biz_type='product'，
+--   【口径对齐】全量清理包含产品时（原 --include-products），连带删除产品档案附件（sys_attachment.biz_type='product'，
 --     含工程上传客供稿、结构图、面板图等）。此前只清业务单据附件、保留 product 类，
 --     而 product 主表会被 TRUNCATE（自增归零）→ 遗留附件在新产品复用同一 ID 后被错挂
 --     （2026-10-12 实测：10-10 遗留的 7 条附件重挂到新建 YL001MEOO 的「客供资料」）。见下方产品块。
+-- v25 变更（2026-10-13，任务 dev-20261013-044；用户口径「恢复 --execute，产品类信息一并清除、不再单独执行」）：
+--   1. 本 SQL 内容不变：产品块仍由脚本激活，直接运行本 SQL 不清产品。
+--   2. 语义变更在 scripts/db-clean-test-data.sh：全量清理一律包含产品（不再需要 --include-products，
+--      该参数保留兼容、等价默认）；域模式不含产品。同一提交解除 db-clean-test-data.sh --execute 的 V1-A 冻结。
 -- v21 变更（2026-10-07，任务 dev-20261007-002）：
 --   1. 【新增清理】order_shortage_ledger（迁移 239 建，dev-20260930-026 订单缺料「欠交台账」，齐套重算派生，
 --      挂在 sales_order 上）——此前既不在 TRUNCATE 也不在保留白名单 → 体检覆盖率闸门报无归宿。
@@ -399,7 +403,7 @@ TRUNCATE quality_lot;
 --   保留（不清）：engineering_jjx_icon（工序图标）、system_config（公司 logo）、quality_template（质量模板）、
 --     inventory_material（物料附件）、purchase_supplier（供应商附件）
 --     —— 这些挂在清库后仍保留的主数据/配置上，清了会断链。
---   【v24 特例】product（产品文件）默认保留；但 --include-products 清空产品时必须一并删除
+--   【v24 特例】product（产品文件）在全量清理（含产品）时必须一并删除
 --     （见下方产品块），否则产品 ID 复用会把旧附件错挂到新产品。
 --   清理：下方列出的业务单据类型（其主表本身会被清空，附件随之清空；含 bom/routing，工程 BOM/工艺会被清）。
 DELETE FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing');
@@ -417,8 +421,8 @@ TRUNCATE sys_number_sequence;
 
 TRUNCATE sales_sample_order;
 
--- 产品清理为显式选项，默认仍遵守 v14 基础档案保留规则。
--- 以下标记仅由 db-clean-test-data.sh --include-products 激活，直接运行本 SQL 不会清产品。
+-- 产品清理：v14 起产品档案默认保留；2026-10-13（v25）起 db-clean-test-data.sh 全量清理默认包含产品
+-- （域模式不含产品）。以下语句由脚本解析后激活，直接运行本 SQL 不会清产品。
 -- 关联业务表清理完成后，先选项、模型，再产品和分类；物料与工装继续保留。
 -- 【v24】产品档案附件随产品一并清理（biz_type='product'，含工程上传客供稿/结构图等）：
 --   否则 product 被 TRUNCATE 后自增 ID 归零，新产品复用同一 ID → 遗留附件错挂到新产品的客供资料。
@@ -462,7 +466,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 -- quality_sampling_plan remains until its 8 legacy rows are compared with sys_config.
 -- engineering_bom_backup_20260809 and sys_event_config_bak_20260814 are retired by migration 241.
 -- Keep synchronized with scripts/db-clean-test-data.sh RETAINED_TABLES.
--- sys_attachment_ref：保留业务引用及解绑审计；V1-A禁用旧清库执行，防止历史引用丢失/来源ID复用。
+-- sys_attachment_ref：保留业务引用及解绑审计（清库不删引用表）；产品档案附件随产品一并清理，避免来源 ID 复用把旧附件错挂到新产品。
 SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;
 
 -- ==================== 13. 执行结果核验 ====================

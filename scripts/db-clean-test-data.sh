@@ -2,8 +2,7 @@
 # ============================================================================
 # JJX 清理测试数据唯一入口（jjx-docs/sql/00_clean_test_data.sql）
 #
-#   bash scripts/db-clean-test-data.sh                # 只读体检（默认，不写库）
-#   bash scripts/db-clean-test-data.sh --include-products # 只读预览全量清理，含全部产品资料
+#   bash scripts/db-clean-test-data.sh                # 只读体检（默认，不写库；全量含产品资料）
 #   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality        # 只体检三域
 #   bash scripts/db-clean-test-data.sh --execute      # 真执行：须在终端手工输入库名确认
 #   bash scripts/db-clean-test-data.sh --execute --backup <file>   # 指定本次校验的手工全库备份
@@ -19,6 +18,8 @@
 # 规范出处：jjx-docs/standards/CONVENTIONS.md §2（先备份再动库）/ §5。
 # 危险等级：🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（固定顺序：体检 → 校验手工备份 → 人工确认 → 执行）
 # 前置：--execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手输库名 jjx_erp_db；BACKUP_DIR（默认仓内 jjx-docs/sql/backups/）里要有今天的全库备份，或用 --backup 指定；--domains 仅可取 purchase/inventory/quality
+# 产品口径（2026-10-13 用户定）：全量清理一律包含产品资料（分类/配置模型/选项 + 产品附件），
+# 不再需要单独参数或单独执行；--include-products 保留兼容、等价默认。域模式不含产品。
 # 手册：jjx-docs/guides/scripts-commands-20260914.md
 # ============================================================================
 set -euo pipefail
@@ -56,18 +57,15 @@ warn() { printf '%s⚠%s %s\n' "$c_yel" "$c_off" "$*"; }
 
 usage() {
   cat <<'EOF'
-V1-A: --execute已禁用，历史硬引用未确认前仅允许只读体检。
 用途: 清理测试数据（jjx-docs/sql/00_clean_test_data.sql 的唯一入口；整表 TRUNCATE + 条件 DELETE，表清单以脚本实际解析为准）
 危险等级: 🟢 无参数/--domains=只读体检（不写库）／🔴 --execute 真清理（体检 → 校验手工备份 → 人工确认 → 执行）
 前置: --execute 必须在终端手工执行（agent/管道一律拒绝）；确认方式=手工输入库名 jjx_erp_db；BACKUP_DIR（默认仓库内 jjx-docs/sql/backups/）里要有今天的全库备份（或用 --backup 指定）；备份必须排除 hr_employee
 域参数: --domains <逗号分隔>，可选 purchase / inventory / quality；可组合，域模式不清理 sys_task
-产品参数: --include-products，仅限全量模式；同时清空所有产品、分类、配置模型和选项，清理无引用的产品库存身份。不是自动识别测试产品。
+产品口径: 全量清理一律包含全部产品资料（分类/配置模型/选项 + 产品附件）及无业务引用的 PRODUCT 库存身份；不能区分正式与测试产品。--include-products 保留兼容、等价默认；域模式不含产品。
 用法:
-  bash scripts/db-clean-test-data.sh             只读体检：打印本次将删除多少行
-  bash scripts/db-clean-test-data.sh --include-products  只读预览：全量清理包含全部产品资料
-  bash scripts/db-clean-test-data.sh --include-products --execute  含全部产品的全量清理（手工确认）
+  bash scripts/db-clean-test-data.sh             只读体检：打印本次将删除多少行（全量含产品）
   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality        只体检三域
-  bash scripts/db-clean-test-data.sh --execute   真执行（须在终端手输库名确认；用今天的全库备份）
+  bash scripts/db-clean-test-data.sh --execute   真执行（须在终端手输库名确认；用今天的全库备份；含产品）
   bash scripts/db-clean-test-data.sh --execute --backup <file>   指定本次校验的手工全库备份
   bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality --execute  真清理三域（仍须终端手输库名）
 退出码: 0=体检通过或清理成功  1=拒绝执行/中止/失败
@@ -82,6 +80,7 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     --execute) EXECUTE=1; shift ;;
+    # 兼容旧参数：全量清理已默认包含产品，此开关等价默认（域模式下忽略）。
     --include-products) INCLUDE_PRODUCTS=1; shift ;;
     --backup)
       [ $# -ge 2 ] || die "--backup 缺少参数（手工全库备份文件路径）"
@@ -103,7 +102,12 @@ while [ $# -gt 0 ]; do
     *) die "未知参数: $1（用法见 $0 --help）" ;;
   esac
 done
-[ "$INCLUDE_PRODUCTS" -eq 0 ] || [ "$DOMAIN_MODE" -eq 0 ] || die "--include-products 不能与 --domains 混用；产品清理需要完整的业务关联清理范围"
+# 产品口径（2026-10-13 用户定）：全量清理一律包含产品（不再单独参数/单独执行）；域模式不含产品。
+if [ "$DOMAIN_MODE" -eq 1 ]; then
+  INCLUDE_PRODUCTS=0
+else
+  INCLUDE_PRODUCTS=1
+fi
 
 domain_selected() {
   local table="$1" domain
@@ -125,11 +129,6 @@ domain_selected() {
 # 只留最新一份；脚本不再自动备份、不写索引 —— --execute 只校验「今天的全库备份存在」才放行。
 [ -f "$SQL_FILE" ] || die "清理脚本不存在: $SQL_FILE"
 [ "$DB_NAME" = "jjx_erp_db" ] || die "目标库必须是 jjx_erp_db（当前: $DB_NAME）——防误连"
-# V1-A: full cleanup can remove historical hard-reference owners and recycle source IDs.
-# Keep domain-only checks available, but no write mode until an attachment-aware cleanup is reviewed.
-if [ "$EXECUTE" -eq 1 ]; then
-  die "V1-A：历史硬引用清理策略未确认，旧清库执行已禁用；仅允许只读体检"
-fi
 if [ "$EXECUTE" -eq 1 ] && [ ! -t 0 ]; then
   die "真执行需要人工确认：请在终端里手工运行本脚本（agent/管道调用一律拒绝）"
 fi
@@ -385,10 +384,8 @@ if [ "$EXECUTE" -eq 0 ]; then
   ok "体检完成，未写库、未执行清理"
   if [ "$DOMAIN_MODE" -eq 1 ]; then
     say "   要真执行: bash scripts/db-clean-test-data.sh --domains $DOMAIN_LABEL --execute（在终端手工输入库名确认）"
-  elif [ "$INCLUDE_PRODUCTS" -eq 1 ]; then
-    say "   要真执行: bash scripts/db-clean-test-data.sh --include-products --execute（清空所有产品，须终端手工确认）"
   else
-    say "   要真执行: bash scripts/db-clean-test-data.sh --execute（在终端手工输入库名确认）"
+    say "   要真执行: bash scripts/db-clean-test-data.sh --execute（在终端手工输入库名确认；含全部产品）"
   fi
   exit 0
 fi

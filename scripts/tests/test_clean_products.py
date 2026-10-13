@@ -95,11 +95,13 @@ class CleanProductsTest(unittest.TestCase):
                 os.close(slave)
             os.close(master)
 
-    def test_default_preserves_products(self):
+    def test_default_includes_products(self):
+        # 2026-10-13 口径：全量清理默认包含产品（不再需要 --include-products）。
         r = self.run_script()
         self.assertEqual(0, r.returncode, r.stderr)
-        self.assertIn('保留产品、分类、配置模型和选项', r.stdout)
-        self.assertNotIn('product: 3 行', r.stdout)
+        self.assertIn('同时清空全部产品资料', r.stdout)
+        for table in PRODUCTS:
+            self.assertIn(table + ': ', r.stdout)
         self.assertFalse(self.capture.exists())
 
     def test_include_preview_lists_all_product_tables_and_live_identities(self):
@@ -110,12 +112,14 @@ class CleanProductsTest(unittest.TestCase):
         self.assertIn('inventory_item: 将删 2 条（保留 5 条）', r.stdout)
         self.assertFalse(self.capture.exists())
 
-    def test_domains_cannot_mix_in_either_order(self):
+    def test_domains_exclude_products_and_accept_legacy_flag(self):
+        # 域模式不含产品；--include-products 保留兼容、在域模式下等价忽略（不再报错）。
         for args in (['--domains', 'inventory', '--include-products'],
                      ['--include-products', '--domains', 'quality']):
             r = self.run_script(args)
-            self.assertNotEqual(0, r.returncode)
-            self.assertIn('不能与 --domains 混用', r.stderr)
+            self.assertEqual(0, r.returncode, r.stderr)
+            self.assertIn('保留产品、分类、配置模型和选项', r.stdout)
+            self.assertNotIn('product: 3 行', r.stdout)
         self.assertFalse(self.capture.exists())
 
     def test_retained_id_code_and_tag_refs_block(self):
@@ -165,13 +169,16 @@ class CleanProductsTest(unittest.TestCase):
         self.assertIn('清理已执行，但产品残留核验失败', r.stderr)
         self.assertTrue((self.dir / 'clean-test-data-log.txt').exists())
 
-    def test_simulated_default_execute_keeps_product_archives(self):
+    def test_simulated_default_execute_cleans_products(self):
+        # 默认 --execute 现在也清产品（含产品档案附件），核验四张产品表为 0。
         r = self.run_script(['--execute', '--backup', str(self.backup)], terminal=True)
         self.assertEqual(0, r.returncode, r.stdout + r.stderr)
         sql = self.capture.read_text()
         for table in PRODUCTS:
-            self.assertNotRegex(sql, r'(?m)^TRUNCATE ' + table + ';')
-        self.assertIn('include_products=0 domains=all', (self.dir / 'clean-test-data-log.txt').read_text())
+            self.assertRegex(sql, r'(?m)^TRUNCATE ' + table + ';')
+        self.assertIn("DELETE FROM sys_attachment WHERE biz_type = 'product'", sql)
+        self.assertIn('产品清理核验通过', r.stdout)
+        self.assertIn('include_products=1 domains=all', (self.dir / 'clean-test-data-log.txt').read_text())
 
     def test_simulated_missing_backup_never_submits_sql(self):
         r = self.run_script(['--include-products', '--execute', '--backup', str(self.dir / 'missing.sql')],

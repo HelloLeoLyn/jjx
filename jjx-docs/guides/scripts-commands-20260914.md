@@ -4,7 +4,7 @@
 任务：dev-20260914-005
 被取代 / 取代：无
 什么情况看这篇：要跑仓库里的脚本（迁移/备份/导出/清理/自检）时，先看这一页
-最后复核：2026-09-14
+最后复核：2026-10-13
 （2026-10-07 复核：备份口径同步为 CONVENTIONS §2 2026-09-28 版——脚本不再自动备份，改为校验手工备份存在；见 §2/§4/§6）
 
 > 规则：**新增或修改 `scripts/` 下的脚本，必须同步更新这一页。**（规范见 `standards/CONVENTIONS.md`）
@@ -97,14 +97,12 @@
 - 危险等级：🟢 无参数/`--domains`=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 校验手工备份 → 人工确认 → 执行）。
 - 前置：`--execute` 必须**在终端手工执行**（agent/管道一律拒绝）；确认方式=手工输入库名 `jjx_erp_db`；**已有今天的全库备份**（默认 `JJX_BACKUP_DIR`＝仓库内 `jjx-docs/sql/backups/`，或 `--backup`/`JJX_CLEAN_BACKUP` 指定）——2026-09-28 起脚本**不再自动备份**、只校验手工备份存在才放行；备份必须排除 `hr_employee`。
 - 域参数：`--domains <逗号分隔>`，可选 `purchase` / `inventory` / `quality`，可组合；域模式跳过 `sys_task` 清理。
-- 产品参数：`--include-products` 仅限全量清理，不能与 `--domains` 混用。默认保留产品；显式启用才清空 `product_config_option`、`product_config_model`、`product`、`product_category`，随后清理无业务引用的 PRODUCT 库存身份，MATERIAL 身份保留。此选项清空所有产品资料，不能自动区分正式产品和测试产品，也不是仅清理产品的独立模式。
+- 产品口径（2026-10-13 起）：全量清理**一律包含产品资料**（`product_config_option`、`product_config_model`、`product`、`product_category`，随后清理无业务引用的 PRODUCT 库存身份，MATERIAL 身份保留），不再需要单独参数或单独执行；`--include-products` 保留兼容、等价默认，`--domains` 域模式下忽略（域模式不含产品）。清产品不能区分正式与测试产品。
 - 产品关联保护：预览及人工确认后检查保留表的 `product_id` / `product_code` 和产品相关标签关系，存在引用（含已有悬空引用）即中止；关联业务表先清，产品资料后清。查询失败即中止，显示数据库错误。启用后清理完核验四张产品表及 PRODUCT 库存身份均为零，并在执行日志记录 `include_products` / `domains`。
 - 命令：
-  - 体检：`bash scripts/db-clean-test-data.sh`
-  - 含产品的全量预览：`bash scripts/db-clean-test-data.sh --include-products`
-  - 含产品的全量清理：`bash scripts/db-clean-test-data.sh --include-products --execute`（须手工备份、终端输入库名；会清空全部产品）
+  - 体检（全量含产品）：`bash scripts/db-clean-test-data.sh`
   - 只体检三域：`bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality`
-  - 真清：`bash scripts/db-clean-test-data.sh --execute`（用今天的全库备份；无备份即中止）
+  - 真清（含全部产品）：`bash scripts/db-clean-test-data.sh --execute`（用今天的全库备份；无备份即中止；须终端手输库名）
   - 真清三域：`bash scripts/db-clean-test-data.sh --domains purchase,inventory,quality --execute`（仍须终端手输库名）
   - 指定备份：`bash scripts/db-clean-test-data.sh --execute --backup <手工全库备份.sql>`
 - 输出怎么读：① TRUNCATE 组（有数据的表逐条列出行数 + 合计）② DELETE 组（将删/保留条数）③ **覆盖率校验**（库表是否都有归宿：清理清单 ∪ 保留白名单；有未登记的表即**阻断清理**，提示是加进清理段还是补进保留清单/`RETAINED_TABLES`）→ `--execute` 时先**校验手工备份存在**并打印备份路径/md5 → 执行后在 `$JJX_BACKUP_DIR/clean-test-data-log.txt` 留痕（脚本会清空 `sys_oper_log`，库里留不下痕迹）。
@@ -236,6 +234,8 @@
 | `npm run validate` | 上面六条 + `vue-tsc --noEmit`（提交前自查跑这个） |
 
 
-### 公共附件 V1-A 清理保护（2026-10-12）
+### 公共附件 V1-A 清理保护（2026-10-12；2026-10-13 部分解除）
 
-`scripts/clean-archive-ocr-data.sh --yes` 和 `scripts/db-clean-test-data.sh --execute` 均在任何写入前拒绝执行：旧清理无法证明跨业务及历史硬引用安全。无执行参数仍可只读预览。V1-A仅通过 `POST /system/attachment/refs/cleanup-preview` 预演，不物理删除；迁移271另设数据库DELETE触发器兜底。迁移271、272需人工静态审查及备份后决定执行，本任务未执行。
+- `scripts/db-clean-test-data.sh --execute` 已于 2026-10-13（任务 dev-20261013-044）**恢复**：全量清理一律包含产品资料；其余闸门不变（终端人工执行 + 今天的手工全库备份 + 手输库名 `jjx_erp_db`）。
+- `scripts/clean-archive-ocr-data.sh --yes` **仍冻结**：旧档案清理无法证明公共附件无历史引用，仅允许不带 `--yes` 的只读预览。
+- V1-A 清附件另有 `POST /system/attachment/refs/cleanup-preview` 预演（不物理删除）；迁移 271 的数据库 DELETE 触发器兜底仍在。迁移 271、272 需人工静态审查及备份后决定执行，尚未执行。
