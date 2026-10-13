@@ -50,6 +50,8 @@ export interface UseAttachmentRefsOptions {
   locked?: Ref<boolean> | boolean
   editPerm?: Ref<string> | string
   viewPerm?: Ref<string> | string
+  /** 单据产品（单产品单据才有；多产品单据传 null 表示整单级）。写引用时随 product_id 落库 */
+  productId?: Ref<number | null | undefined> | number | null
   /** 是否在创建时立即加载列表（默认 true） */
   autoLoad?: boolean
 }
@@ -119,6 +121,11 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   const locked = computed(() => !!unwrap<boolean>(options.locked, false))
   const editPerm = computed(() => unwrap<string>(options.editPerm, ''))
   const viewPerm = computed(() => unwrap<string>(options.viewPerm, ''))
+  /** 单据产品（单产品单据）；未传 = null（整单级引用） */
+  const productId = computed<number | null>(() => {
+    const raw = unwrap<number | null | undefined>(options.productId, null)
+    return raw === undefined || raw === null ? null : Number(raw)
+  })
 
   /** 待绑定队列的隔离键：必须含 userId + sourceType + draftId，避免跨用户/跨草稿污染。
    *  sourceId 有值时用 `id-{sourceId}`；否则**必须**由调用方提供 draftId（缺失即拒绝上传）。 */
@@ -306,6 +313,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
         attachmentId: entry.attachmentId,
         sourceType: sourceType.value,
         sourceId: sourceId.value,
+        productId: productId.value,
         documentType: meta?.documentType ?? null,
         displayName: meta?.displayName ?? null,
         remark: meta?.remark ?? null,

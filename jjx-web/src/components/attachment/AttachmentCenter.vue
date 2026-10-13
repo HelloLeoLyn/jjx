@@ -220,6 +220,10 @@ const props = withDefaults(
     dropZone?: boolean
     /** 引用列表样式：'table'（默认，标题行+勾选+批量）| 'list'（旧：一行行+行内按钮）；两版都在 AttachmentRefList 里 */
     variant?: 'table' | 'list'
+    /** 单据产品（单产品单据传值，多产品单据不传）；写引用时随 product_id 落库 */
+    productId?: number | null
+    /** 上传禁用原因（调用方按业务决定，非空即禁用并显示这句话）；组件本身不做业务判断 */
+    uploadBlocked?: string
   }>(),
   {
     sourceId: null,
@@ -249,6 +253,8 @@ const props = withDefaults(
     autoBind: true,
     dropZone: false,
     variant: 'table',
+    productId: null,
+    uploadBlocked: '',
   }
 )
 
@@ -270,6 +276,7 @@ const refs = useAttachmentRefs({
   locked: toRef(props, 'locked'),
   viewPerm: toRef(props, 'viewPerm'),
   editPerm: toRef(props, 'editPerm'),
+  productId: toRef(props, 'productId'),
 })
 
 const {
@@ -371,15 +378,21 @@ const uploadTip = computed(
 // ==================== 上传入口（按钮 / 拖拽落区共用同一组 props 与回调） ====================
 /** readonly 或无权编辑时不渲染上传入口 */
 const canUpload = computed(() => props.mode !== 'readonly' && canEdit.value)
+/**
+ * 上传禁用原因（唯一一条提示路径）：先看草稿标识是否就绪，再看调用方按业务传的 uploadBlocked。
+ * 两者取第一个非空；组件不解释业务原因，只负责"禁用 + 显示这句话"。
+ */
+const uploadBlockedReason = computed(() => {
+  if (!draftReady.value) return '请先保存单据或提供 draftId 后再上传（避免多个单据共用待绑定队列）'
+  return props.uploadBlocked || ''
+})
 const uploaderProps = computed(() => ({
   multiple: true,
-  disabled: !draftReady.value,
+  disabled: !!uploadBlockedReason.value,
   maxSizeMB: props.maxSizeMB,
   accept: props.accept,
   buttonText: props.mode === 'upload-only' ? '上传附件' : '上传（通用附件）',
-  tip: draftReady.value
-    ? uploadTip.value
-    : '请先保存单据或提供 draftId 后再上传（避免多个单据共用待绑定队列）',
+  tip: uploadBlockedReason.value || uploadTip.value,
   dropZone: props.dropZone,
 }))
 function onUploaderError(message: string) {

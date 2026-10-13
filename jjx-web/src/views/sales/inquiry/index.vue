@@ -307,14 +307,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="20">
-          <el-col :span="24">
-            <el-form-item label="有图纸" prop="hasDrawing">
-              <el-switch v-model="form.hasDrawing" :active-value="1" :inactive-value="0" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-divider content-position="left">附件</el-divider>
+
         <el-row>
           <el-col :span="24">
             <AttachmentCenter
@@ -323,6 +316,8 @@
               :source-id="form.inquiryId || null"
               :source-no="(form as any).inquiryNo || ''"
               :draft-id="draftId"
+              :product-id="form.productId || null"
+              :upload-blocked="form.inquiryId ? '' : '请先点「保 存」生成单据，再上传附件'"
               drop-zone
               view-perm="sales:inquiry:view"
               edit-perm="sales:inquiry:edit"
@@ -333,8 +328,10 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="cancel">取 消</el-button>
-          <el-button type="primary" @click="submitForm" :loading="submitting">确 定</el-button>
+          <el-button @click="cancel">{{ form.inquiryId ? '取 消' : '关 闭' }}</el-button>
+          <el-button type="primary" @click="submitForm" :loading="submitting">
+            {{ form.inquiryId ? '确 定' : '保 存' }}
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -1034,6 +1031,7 @@ async function submitForm() {
   if (!valid) return
 
   submitting.value = true
+  const isNew = !form.inquiryId
   try {
     if (form.inquiryId) {
       await inquiryApi.edit(form as any)
@@ -1044,10 +1042,11 @@ async function submitForm() {
       const newId = (res as any)?.data?.inquiryId || form.inquiryId || 0
       form.inquiryId = newId
       await bindPendingAttachments()
-      ElMessage.success('新增成功')
+      ElMessage.success('已保存，可继续上传附件')
     }
     clearDraftId()
-    dialogVisible.value = false
+    // 新增保存后留在弹窗里（已拿到单据 id，上传区随之解锁），方便接着上传附件；编辑走原来的"保存并关闭"
+    if (!isNew) dialogVisible.value = false
     getList()
   } catch (e) {
     console.error('提交失败:', e)
