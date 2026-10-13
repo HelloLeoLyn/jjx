@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     title="工艺路线详情"
-    width="80%"
+    width="1200px"
     @close="handleClose"
     @opened="handleOpened"
   >
@@ -16,7 +16,11 @@
     </template>
 
     <!-- 工艺路线流水（bizType=routing，按 bizId 聚合该路线全部操作） -->
-    <TraceTimeline v-model="traceOpen" :biz-type="'routing'" :biz-id="String(props.routingId || '')" />
+    <TraceTimeline
+      v-model="traceOpen"
+      :biz-type="'routing'"
+      :biz-id="String(props.routingId || '')"
+    />
   </el-dialog>
 </template>
 

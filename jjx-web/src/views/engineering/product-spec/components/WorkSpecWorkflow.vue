@@ -6,7 +6,8 @@
         v-if="editable"
         :disabled="busy || fetching || !currentRoutingId"
         @click="emit('edit')"
-      >编辑</el-button>
+        >编辑</el-button
+      >
     </div>
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false">
       <el-button link type="primary" @click="loadRouting">重新加载</el-button>
@@ -34,7 +35,9 @@
                     <span class="workflow-symbol">
                       <SvgIcon v-if="item.icon" :name="item.icon" :size="24" />
                       <span v-else>{{ item.processName || '-' }}</span>
-                      <sub v-if="workSpecStepSubscript(item)">{{ workSpecStepSubscript(item) }}</sub>
+                      <sub v-if="workSpecStepSubscript(item)">{{
+                        workSpecStepSubscript(item)
+                      }}</sub>
                     </span>
                   </template>
                 </div>
@@ -104,8 +107,10 @@ const normalizedRouteItems = computed(() => {
     }))
   const rows = normalize(currentItems.value).filter((row) => row.majorCategory !== 'PRINT')
   if (rows.some((row) => Array.isArray(row.children))) {
-    return rows.sort((a, b) => (a.workflowSeq ?? 1) - (b.workflowSeq ?? 1)
-      || (a.processOrder || 0) - (b.processOrder || 0))
+    return rows.sort(
+      (a, b) =>
+        (a.workflowSeq ?? 1) - (b.workflowSeq ?? 1) || (a.processOrder || 0) - (b.processOrder || 0)
+    )
   }
   const groups = new Map<string, SpecProcessRow[]>()
   rows.forEach((row, index) => {
@@ -114,18 +119,29 @@ const normalizedRouteItems = computed(() => {
     groups.get(key)!.push(row)
   })
   return [...groups.values()]
-    .sort((a, b) => (a[0].workflowSeq ?? 1) - (b[0].workflowSeq ?? 1)
-      || (a[0].groupOrder || a[0].processOrder || 0) - (b[0].groupOrder || b[0].processOrder || 0))
-    .map((group) => group.length === 1 ? group[0] : {
-      ...group[0],
-      children: group,
-      groupOrder: group[0].groupOrder || group[0].processOrder,
-    })
+    .sort(
+      (a, b) =>
+        (a[0].workflowSeq ?? 1) - (b[0].workflowSeq ?? 1) ||
+        (a[0].groupOrder || a[0].processOrder || 0) - (b[0].groupOrder || b[0].processOrder || 0)
+    )
+    .map((group) =>
+      group.length === 1
+        ? group[0]
+        : {
+            ...group[0],
+            children: group,
+            groupOrder: group[0].groupOrder || group[0].processOrder,
+          }
+    )
 })
 const workflowGroups = computed(() =>
   routeCategories.map((group) => ({
     ...group,
-    rows: processRowsForGroup(normalizedRouteItems.value, 'ASSEMBLY', group.value),
+    rows: processRowsForGroup(
+      normalizedRouteItems.value,
+      'ASSEMBLY',
+      group.value
+    ),
   }))
 )
 function machineHours(row: SpecProcessRow): string {
@@ -142,7 +158,8 @@ const hasMachineHours = computed(() => workflowGroups.value.some((group) =>
 watch(
   workflowGroups,
   (groups) => {
-    workflowTab.value = groups.find((group) => group.rows.length)?.value ?? flowGroups[0]?.value ?? ''
+    workflowTab.value =
+        groups.find((group) => group.rows.length)?.value ?? flowGroups[0]?.value ?? ''
   },
   { immediate: true }
 )
@@ -175,8 +192,16 @@ async function loadRouting() {
   }
 }
 
-watch(() => [props.items, props.productId], () => { void loadRouting() }, { immediate: true })
-onBeforeUnmount(() => { generation++ })
+watch(
+  () => [props.items, props.productId],
+  () => {
+    void loadRouting()
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  generation++
+})
 </script>
 
 <style scoped>

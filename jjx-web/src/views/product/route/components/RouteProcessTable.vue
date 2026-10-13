@@ -24,14 +24,20 @@ const routeItems = computed(() => props.items as unknown as SpecProcessRow[])
 const assemblyCount = computed(() => {
   const rows = props.items.filter((item) => item.majorCategory !== 'PRINT')
   if (rows.some((item) => Array.isArray(item.children))) return rows.length
-  return new Set(rows.map((item, index) => item.groupId ? `group_${item.groupId}` : `independent_${index}`)).size
+  return new Set(
+    rows.map((item, index) => (item.groupId ? `group_${item.groupId}` : `independent_${index}`))
+  ).size
 })
-const printCount = computed(() => props.items.filter((item) => item.majorCategory === 'PRINT').length)
+const printCount = computed(
+  () => props.items.filter((item) => item.majorCategory === 'PRINT').length
+)
 const majorCategoryTab = ref<'ASSEMBLY' | 'PRINT'>('ASSEMBLY')
 
 watch(
   () => props.items,
-  () => { majorCategoryTab.value = assemblyCount.value || !printCount.value ? 'ASSEMBLY' : 'PRINT' },
+  () => {
+    majorCategoryTab.value = assemblyCount.value || !printCount.value ? 'ASSEMBLY' : 'PRINT'
+  },
   { immediate: true }
 )
 </script>

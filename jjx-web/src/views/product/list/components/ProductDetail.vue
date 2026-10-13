@@ -38,10 +38,14 @@
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item v-if="hasPermi('product:price:view')" label="基础售价">{{
-              productData.product?.basePrice != null ? '¥' + Number(productData.product.basePrice).toFixed(2) : '-'
+              productData.product?.basePrice != null
+                ? '¥' + Number(productData.product.basePrice).toFixed(2)
+                : '-'
             }}</el-descriptions-item>
             <el-descriptions-item v-if="hasPermi('product:price:view')" label="标准成本">{{
-              productData.product?.costPrice != null ? '¥' + Number(productData.product.costPrice).toFixed(2) : '-'
+              productData.product?.costPrice != null
+                ? '¥' + Number(productData.product.costPrice).toFixed(2)
+                : '-'
             }}</el-descriptions-item>
             <el-descriptions-item label="最小起订量">{{
               productData.product?.minOrderQty || '-'
@@ -62,50 +66,6 @@
               productData.product?.remark || '-'
             }}</el-descriptions-item>
           </el-descriptions>
-
-          <!-- 菲林信息 -->
-          <el-divider content-position="left">
-            菲林配置
-            <el-tag
-              v-if="productData.films && productData.films.length > 0"
-              size="small"
-              type="primary"
-              style="margin-left: 8px"
-            >
-              {{ productData.films.length }} 个菲林
-            </el-tag>
-          </el-divider>
-          <div v-if="productData.films && productData.films.length > 0">
-            <el-table :data="productData.films" border size="small" max-height="400">
-              <el-table-column label="菲林编码" prop="filmCode" width="130" />
-              <el-table-column label="菲林名称" prop="filmName" width="150" />
-              <el-table-column label="菲林类型" prop="filmTypeName" width="100" />
-              <el-table-column label="版本" prop="version" width="80" />
-              <el-table-column label="当前版本" prop="isCurrentName" width="80" />
-              <el-table-column label="尺寸" prop="filmSize" width="120" />
-              <el-table-column label="厚度(mm)" prop="filmThickness" width="100" />
-              <el-table-column label="材料" prop="filmMaterial" width="100" />
-              <el-table-column label="颜色" prop="color" width="80" />
-              <el-table-column label="审核状态" prop="approveStatusName" width="100" />
-              <el-table-column label="设计人员" prop="designerName" width="100" />
-              <el-table-column label="是否下发" prop="isReleased" width="80">
-                <template #default="scope">
-                  <el-tag :type="scope.row.isReleased === 1 ? 'success' : 'info'" size="small">
-                    {{ scope.row.isReleased === 1 ? '已下发' : '未下发' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="创建时间" prop="createTime" width="160">
-                <template #default="scope">
-                  {{ parseTime(scope.row.createTime) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="备注" prop="remark" min-width="100" />
-            </el-table>
-          </div>
-          <div v-else class="empty-section">
-            <el-empty description="未配置菲林" :image-size="40" />
-          </div>
 
           <!-- 产品文件库（DEV-734） -->
           <el-divider content-position="left">产品文件库</el-divider>
@@ -146,7 +106,9 @@
                         <div class="biz-file-sub">
                           <span>{{ formatFileSize(file.fileSize) }}</span>
                           <span v-if="file.createBy">· {{ file.createBy }}</span>
-                          <span v-if="file.createTime">· {{ formatAttachmentTime(file.createTime) }}</span>
+                          <span v-if="file.createTime"
+                            >· {{ formatAttachmentTime(file.createTime) }}</span
+                          >
                         </div>
                       </div>
                     </div>
@@ -182,9 +144,15 @@
           </el-divider>
           <div v-if="productData.bom">
             <el-descriptions :column="3" border>
-              <el-descriptions-item label="BOM编码">{{ productData.bom.bomCode }}</el-descriptions-item>
-              <el-descriptions-item label="BOM名称">{{ productData.bom.bomName }}</el-descriptions-item>
-              <el-descriptions-item label="版本">{{ productData.bom.bomVersion }}</el-descriptions-item>
+              <el-descriptions-item label="BOM编码">{{
+                productData.bom.bomCode
+              }}</el-descriptions-item>
+              <el-descriptions-item label="BOM名称">{{
+                productData.bom.bomName
+              }}</el-descriptions-item>
+              <el-descriptions-item label="版本">{{
+                productData.bom.bomVersion
+              }}</el-descriptions-item>
               <el-descriptions-item label="是否当前版本">
                 <el-tag :type="productData.bom.isCurrent ? 'success' : 'info'" size="small">
                   {{ productData.bom.isCurrent ? '是' : '否' }}
@@ -196,7 +164,9 @@
               <el-descriptions-item label="失效日期">{{
                 productData.bom.expiryDate || '-'
               }}</el-descriptions-item>
-              <el-descriptions-item label="创建人">{{ productData.bom.createBy }}</el-descriptions-item>
+              <el-descriptions-item label="创建人">{{
+                productData.bom.createBy
+              }}</el-descriptions-item>
               <el-descriptions-item label="创建时间">{{
                 parseTime(productData.bom.createTime)
               }}</el-descriptions-item>
@@ -216,7 +186,6 @@
           <div v-else class="empty-section">
             <el-empty description="未配置BOM" :image-size="40" />
           </div>
-
         </el-tab-pane>
         <el-tab-pane label="工艺路线" name="routing">
           <!-- 工艺路线信息 -->
@@ -238,7 +207,10 @@
                 productData.routing.routingVersion
               }}</el-descriptions-item>
               <el-descriptions-item label="是否当前版本">
-                <el-tag :type="productData.routing.isCurrent === 1 ? 'success' : 'info'" size="small">
+                <el-tag
+                  :type="productData.routing.isCurrent === 1 ? 'success' : 'info'"
+                  size="small"
+                >
                   {{ productData.routing.isCurrentName }}
                 </el-tag>
               </el-descriptions-item>
@@ -270,7 +242,9 @@
           <div v-else class="empty-section">
             <el-empty description="未配置工艺路线" :image-size="40" />
           </div>
-
+        </el-tab-pane>
+        <el-tab-pane label="菲林" name="film">
+          <ProductFilmPanel :films="productData.films ?? []" />
         </el-tab-pane>
       </el-tabs>
     </div>
@@ -288,6 +262,7 @@ import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import ProductBasicInfo from '@/components/product/ProductBasicInfo.vue'
 import BomDetailTable from '@/views/product/bom/components/BomDetailTable.vue'
 import RouteProcessTable from '@/views/product/route/components/RouteProcessTable.vue'
+import ProductFilmPanel from '@/views/product/film/components/ProductFilmPanel.vue'
 import { attachmentApi } from '@/api/system/attachment'
 import type { ProductBizAttachmentGroup } from '@/api/product'
 import { Document, Download } from '@element-plus/icons-vue'
@@ -378,11 +353,12 @@ const loadBizAttachments = async () => {
   }
 }
 
-const sourceTypeLabel = (sourceType: ProductBizAttachmentGroup['sourceType']): string => ({
-  inquiry: '询价单',
-  quotation: '报价单',
-  order: '订单',
-})[sourceType]
+const sourceTypeLabel = (sourceType: ProductBizAttachmentGroup['sourceType']): string =>
+  ({
+    inquiry: '询价单',
+    quotation: '报价单',
+    order: '订单',
+  })[sourceType]
 
 const formatFileSize = (size?: number): string => {
   if (!size) return ''
