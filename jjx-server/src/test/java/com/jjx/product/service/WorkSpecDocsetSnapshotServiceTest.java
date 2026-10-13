@@ -1,5 +1,6 @@
 package com.jjx.product.service;
 
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -8,6 +9,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.utils.Sha256Utils;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
+import com.jjx.engineering.domain.entity.EngineeringRoutingItem;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.entity.ProductStandardProcess;
 import com.jjx.product.domain.vo.EngineeringBomVO;
@@ -16,11 +18,14 @@ import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.file.Files;
@@ -78,6 +83,57 @@ class WorkSpecDocsetSnapshotServiceTest {
         product.setCurrentBomId(1L);
         product.setCurrentBomVersion("V1.0");
         return product;
+    }
+
+    @Test
+    void routingSourceQueryUsesMappedPrimaryKey() throws Exception {
+        Product product = product();
+        product.setCurrentRouteId(2L);
+        ReflectionTestUtils.invokeMethod(service, "sourceToken", product);
+
+        ArgumentCaptor<String> queries = ArgumentCaptor.forClass(String.class);
+        verify(jdbc, times(6)).queryForList(queries.capture(), any(Object[].class));
+        String routingSql = queries.getAllValues().stream()
+                .filter(sql -> sql.contains("FROM engineering_routing_item "))
+                .findFirst().orElseThrow();
+        String primaryKey = EngineeringRoutingItem.class.getDeclaredField("itemId")
+                .getAnnotation(TableId.class).value();
+        assertTrue(routingSql.startsWith("SELECT " + primaryKey + ","), routingSql);
+        assertTrue(routingSql.endsWith("WHERE routing_id=? FOR SHARE"), routingSql);
+    }
+
+    /**
+     * 显式开启时，在只读测试连接上 EXPLAIN 实际来源 SQL；不执行锁读或发布。
+     * 环境：JJX_SNAPSHOT_SQL_CHECK=true、JJX_TEST_DB_URL、JJX_TEST_DB_USER=jjx_ro、JJX_TEST_DB_PASSWORD。
+     */
+    @Test
+    @EnabledIfEnvironmentVariable(named = "JJX_SNAPSHOT_SQL_CHECK", matches = "true")
+    void sourceQueriesExplainAgainstRealSchema() {
+        assertEquals("jjx_ro", System.getenv("JJX_TEST_DB_USER"), "必须使用只读账号");
+        DriverManagerDataSource source = new DriverManagerDataSource(
+                System.getenv("JJX_TEST_DB_URL"), System.getenv("JJX_TEST_DB_USER"),
+                System.getenv("JJX_TEST_DB_PASSWORD"));
+        JdbcTemplate database = new JdbcTemplate(source);
+        AtomicInteger checked = new AtomicInteger();
+        JdbcTemplate validator = new JdbcTemplate() {
+            @Override
+            public List<Map<String, Object>> queryForList(String sql, Object... args) {
+                assertTrue(sql.startsWith("SELECT ") && sql.endsWith("FOR SHARE"), sql);
+                database.queryForList("EXPLAIN " + sql, args);
+                checked.incrementAndGet();
+                return List.of();
+            }
+
+            @Override
+            public List<Map<String, Object>> queryForList(String sql) {
+                return queryForList(sql, new Object[0]);
+            }
+        };
+        ReflectionTestUtils.setField(service, "jdbc", validator);
+        Product product = product();
+        product.setCurrentRouteId(2L);
+        ReflectionTestUtils.invokeMethod(service, "sourceToken", product);
+        assertEquals(7, checked.get(), "BOM/路线各2条，附件2条，工序图标1条");
     }
 
     /** 规范正文（来自工作态读取：approved 已按 confirmedSource×来源摘要计算）。 */

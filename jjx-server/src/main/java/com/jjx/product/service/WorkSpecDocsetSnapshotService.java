@@ -452,7 +452,7 @@ public class WorkSpecDocsetSnapshotService {
                     "SELECT routing_id,routing_version,approve_status,update_time FROM engineering_routing WHERE routing_id=? FOR SHARE",
                     product.getCurrentRouteId()));
             appendRows(token, jdbc.queryForList(
-                    "SELECT item_id,process_id,parent_id,workflow_seq,process_order,custom_labor_hours,custom_process_params,update_time FROM engineering_routing_item WHERE routing_id=? FOR SHARE",
+                    "SELECT detail_id,process_id,parent_id,workflow_seq,process_order,custom_labor_hours,custom_process_params,update_time FROM engineering_routing_item WHERE routing_id=? FOR SHARE",
                     product.getCurrentRouteId()));
         }
         appendRows(token, jdbc.queryForList(
