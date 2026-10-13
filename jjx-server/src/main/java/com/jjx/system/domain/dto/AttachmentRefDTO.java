@@ -13,6 +13,9 @@ public class AttachmentRefDTO {
     private Long sourceId;
     @Positive
     private Long productId;
+    /** 行级附件归属：产品编码（内部字段；不建产品档案。S5 dev-20261013-043） */
+    @Size(max = 64)
+    private String productCode;
     @Size(max = 100)
     private String documentType;
     @Size(max = 255)

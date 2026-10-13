@@ -30,6 +30,8 @@ export interface PendingEntry {
   documentType?: string | null
   /** 预填展示名（可选）（dev-20261012-024） */
   displayName?: string | null
+  /** 行级附件归属：产品编码（上传时记录；绑定时随引用提交。S5 dev-20261013-043） */
+  productCode?: string | null
 }
 
 export type BindStatus = 'document-not-saved' | 'all-ok' | 'partial' | 'all-failed'
@@ -52,6 +54,8 @@ export interface UseAttachmentRefsOptions {
   viewPerm?: Ref<string> | string
   /** 单据产品（单产品单据才有；多产品单据传 null 表示整单级）。写引用时随 product_id 落库 */
   productId?: Ref<number | null | undefined> | number | null
+  /** 行级附件归属：产品编码（内部字段，S5 dev-20261013-043）；为空=不归属产品 */
+  productCode?: Ref<string | null | undefined> | string | null
   /** 是否在创建时立即加载列表（默认 true） */
   autoLoad?: boolean
 }
@@ -125,6 +129,11 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   const productId = computed<number | null>(() => {
     const raw = unwrap<number | null | undefined>(options.productId, null)
     return raw === undefined || raw === null ? null : Number(raw)
+  })
+  /** 行级附件归属：产品编码（内部字段）；未传 = null（不归属产品） */
+  const productCode = computed<string | null>(() => {
+    const raw = unwrap<string | null | undefined>(options.productCode, null)
+    return raw === undefined || raw === null || raw === '' ? null : String(raw)
   })
 
   /** 待绑定队列的隔离键：必须含 userId + sourceType + draftId，避免跨用户/跨草稿污染。
@@ -206,6 +215,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
               createdAt: String(e.createdAt || ''),
               documentType: e.documentType ? String(e.documentType) : null,
               displayName: e.displayName ? String(e.displayName) : null,
+              productCode: e.productCode ? String(e.productCode) : null,
             }))
         : []
     } catch {
@@ -292,6 +302,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
       createdAt: new Date().toISOString(),
       documentType: null,
       displayName: null,
+      productCode: productCode.value,
     })
     persist()
     return attachmentId
@@ -314,6 +325,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
         sourceType: sourceType.value,
         sourceId: sourceId.value,
         productId: productId.value,
+        productCode: entry.productCode ?? productCode.value,
         documentType: meta?.documentType ?? null,
         displayName: meta?.displayName ?? null,
         remark: meta?.remark ?? null,
@@ -449,4 +461,55 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     removePending,
     persist,
   }
+}
+
+/**
+ * 冲刷“某草稿键”下已存的待绑定队列：读取 localStorage，逐条建立引用（带 productCode），成功后清空该键。
+ * 用于“行级附件”在单据保存成功后，由父组件统一绑定（此时行弹窗组件可能已卸载）。幂等：绑成功即从键中移除，失败保留待重试。
+ */
+export async function flushStoredQueue(opts: {
+  userId: string | number | null | undefined
+  sourceType: string
+  draftId: string
+  sourceId: number
+  productCode?: string | null
+}): Promise<{ bound: number; failed: number; remaining: number }> {
+  const source = canonicalAttachmentSource(opts.sourceType)
+  const key = `${STORAGE_PREFIX}:${opts.userId ?? 'anonymous'}:${source}:${opts.draftId}`
+  let entries: any[] = []
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return { bound: 0, failed: 0, remaining: 0 }
+    const parsed = JSON.parse(raw)
+    entries = Array.isArray(parsed) ? parsed.filter((e: any) => Number(e?.attachmentId) > 0) : []
+  } catch {
+    return { bound: 0, failed: 0, remaining: 0 }
+  }
+  let bound = 0
+  let failed = 0
+  const remaining: any[] = []
+  for (const e of entries) {
+    try {
+      const res: any = await attachmentRefApi.createRef({
+        attachmentId: Number(e.attachmentId),
+        sourceType: source,
+        sourceId: opts.sourceId,
+        productCode: e.productCode ? String(e.productCode) : opts.productCode ?? null,
+        documentType: e.documentType ?? null,
+        displayName: e.displayName ?? null,
+      })
+      if (Number(res?.data)) bound++
+      else { failed++; remaining.push(e) }
+    } catch {
+      failed++
+      remaining.push(e)
+    }
+  }
+  try {
+    if (remaining.length) localStorage.setItem(key, JSON.stringify(remaining))
+    else localStorage.removeItem(key)
+  } catch {
+    /* 忽略：清理失败不影响功能 */
+  }
+  return { bound, failed, remaining: remaining.length }
 }

@@ -28,6 +28,8 @@ export interface AttachmentRefItem {
   sourceId: number
   sourceNo?: string | null
   productId?: number | null
+  /** 行级附件归属：产品编码（内部字段，S5 dev-20261013-043） */
+  productCode?: string | null
   documentType?: string | null
   displayName?: string | null
   remark?: string | null
@@ -53,6 +55,7 @@ export interface AttachmentRefCreateBody {
   sourceType: string
   sourceId: number
   productId?: number | null
+  productCode?: string | null
   documentType?: string | null
   displayName?: string | null
   remark?: string | null

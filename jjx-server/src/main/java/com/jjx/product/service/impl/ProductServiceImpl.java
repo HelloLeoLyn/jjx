@@ -124,18 +124,19 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         StringBuilder refSql = new StringBuilder("""
                 SELECT r.id, r.attachment_id, r.source_type, r.source_id, r.source_no,
                        r.document_type, r.display_name, r.remark, r.sort_order, r.create_by,
-                       r.create_time, a.file_name, a.file_size, a.file_type
+                       r.create_time, r.product_code, a.file_name, a.file_size, a.file_type
                   FROM sys_attachment_ref r
                   JOIN sys_attachment a ON a.id = r.attachment_id
                  WHERE r.deleted = 0
                    AND r.source_type IN ('inquiry', 'quotation', 'sales_order')
-                   AND (r.product_id = ?""");
+                   AND (r.product_code = ? OR r.product_id = ?""");
         refSql.append(inClause("r.source_type = 'inquiry' AND r.source_id", inquiryIds));
         refSql.append(inClause("r.source_type = 'quotation' AND r.source_id", quotationIds));
         refSql.append(inClause("r.source_type = 'sales_order' AND r.source_id", orderIds));
         refSql.append(")\n                 ORDER BY r.sort_order ASC, r.id ASC");
 
         List<Object> args = new ArrayList<>();
+        args.add(productCode);
         args.add(productId);
         args.addAll(inquiryIds);
         args.addAll(quotationIds);
@@ -148,6 +149,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                     row.put("sourceType", rs.getString("source_type"));
                     row.put("sourceId", rs.getLong("source_id"));
                     row.put("sourceNo", rs.getString("source_no"));
+                    row.put("productCode", rs.getString("product_code"));
                     row.put("documentType", rs.getString("document_type"));
                     row.put("displayName", rs.getString("display_name"));
                     row.put("remark", rs.getString("remark"));

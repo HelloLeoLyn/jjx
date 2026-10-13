@@ -206,6 +206,8 @@ const props = withDefaults(
     variant?: 'table' | 'list'
     /** 单据产品（单产品单据传值，多产品单据不传）；写引用时随 product_id 落库 */
     productId?: number | null
+    /** 行级附件归属：产品编码（内部字段，S5 dev-20261013-043）；为空=不归属产品 */
+    productCode?: string | null
     /** 上传禁用原因（调用方按业务决定，非空即禁用并显示这句话）；组件本身不做业务判断 */
     uploadBlocked?: string
   }>(),
@@ -261,6 +263,7 @@ const refs = useAttachmentRefs({
   viewPerm: toRef(props, 'viewPerm'),
   editPerm: toRef(props, 'editPerm'),
   productId: toRef(props, 'productId'),
+  productCode: toRef(props, 'productCode'),
 })
 
 const {

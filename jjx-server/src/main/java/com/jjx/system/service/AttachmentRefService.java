@@ -56,7 +56,7 @@ public class AttachmentRefService {
         types.validate(type, source);
         SysAttachmentRef ref = new SysAttachmentRef();
         ref.setAttachmentId(file.getId()); ref.setSourceType(source); ref.setSourceId(request.getSourceId());
-        ref.setSourceNo(sourceNo); ref.setProductId(request.getProductId()); ref.setDocumentType(type);
+        ref.setSourceNo(sourceNo); ref.setProductCode(optional(request.getProductCode(), 64)); ref.setProductId(request.getProductId()); ref.setDocumentType(type);
         ref.setDisplayName(optional(request.getDisplayName(), 255)); ref.setRemark(optional(request.getRemark(), 500));
         ref.setSortOrder(order(request.getSortOrder())); ref.setDeleted(false);
         ref.setCreateBy(StpUtil.getLoginIdAsString()); ref.setCreateTime(LocalDateTime.now());

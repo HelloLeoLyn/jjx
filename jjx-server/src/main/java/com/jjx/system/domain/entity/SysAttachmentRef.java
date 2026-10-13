@@ -13,6 +13,7 @@ public class SysAttachmentRef {
     private String sourceType;
     private Long sourceId;
     private String sourceNo;
+    private String productCode;
     private Long productId;
     private String documentType;
     private String displayName;

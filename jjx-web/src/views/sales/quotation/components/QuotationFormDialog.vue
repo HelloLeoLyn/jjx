@@ -153,30 +153,29 @@
             <span>{{ formatCurrency(scope.row.amount) }}</span>
           </template>
         </el-table-column>
-        <TableActionColumn :min-width="150" align="center" :fixed="false">
+        <TableActionColumn :min-width="180" align="center" :fixed="false">
           <template #before="scope">
-            <!-- 样品类型：编码生成（针对行内产品） -->
-            <template v-if="formData.quotationType === 2">
-              <el-tooltip content="生成/修改产品编码" placement="top">
-                <el-button link type="primary" icon="EditPen" @click="openCodeGen(scope.row)" />
-              </el-tooltip>
-              <el-tooltip content="产品资料（文件库）" placement="top">
-                <el-button
-                  link
-                  type="warning"
-                  icon="FolderOpened"
-                  :disabled="!scope.row.productCode"
-                  @click="openFileLibrary(scope.row)"
-                />
-              </el-tooltip>
-            </template>
+            <el-button
+              v-if="formData.quotationType === 2"
+              link
+              type="primary"
+              @click="openCodeGen(scope.row)"
+              >生成编码</el-button
+            >
+            <el-button
+              link
+              type="warning"
+              :disabled="!scope.row.productCode"
+              @click="openRowAttachment(scope.row)"
+              >上传附件</el-button
+            >
             <el-button
               v-if="formData.quotationType === 1 || formData.quotationType === 2"
               link
               type="danger"
-              icon="Delete"
               @click="removeItem(scope.$index)"
-            />
+              >删除</el-button
+            >
           </template>
         </TableActionColumn>
       </el-table>
@@ -314,19 +313,22 @@
       @confirm="onCodeGenConfirm"
     />
 
-    <!-- 产品文件库弹窗（明细行资料） -->
+    <!-- 明细行上传附件（S5 dev-20261013-043：附件挂本单 + 记该行产品编码，不建产品档案） -->
     <el-dialog
-      v-model="fileLibVisible"
-      :title="`产品资料【${fileLibProductCode || ''}】`"
-      width="720px"
+      v-model="rowAttachVisible"
+      :title="`上传附件【${rowAttachProductCode || ''}】`"
+      width="900px"
       append-to-body
     >
-      <ProductFileLibrary
-        v-if="fileLibVisible"
-        :product-code="fileLibProductCode"
-        upload-perm="product:edit"
-        delete-perm="product:delete"
-        @success="onFileLibUpload"
+      <AttachmentCenter
+        v-if="rowAttachVisible"
+        source-type="quotation"
+        :source-id="props.formData.quotationId || null"
+        :draft-id="rowAttachDraftId"
+        :trace-id="props.formData.traceId"
+        :product-code="rowAttachProductCode"
+        view-perm="sales:quotation:view"
+        edit-perm="sales:quotation:edit"
       />
     </el-dialog>
   </el-dialog>
@@ -341,8 +343,9 @@ import { quotationApi } from '@/api/sales/quotation'
 import { listProduct } from '@/api/product'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import QuotationCodeGenDialog from './QuotationCodeGenDialog.vue'
-import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import { flushStoredQueue } from '@/composables/useAttachmentRefs'
+import { useUserStore } from '@/store/modules/user'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 import { parseProductCode } from '@/composables/useProductCode'
 
@@ -384,10 +387,17 @@ const usedSerialsForCodeGen = computed(() => {
     .map((s: any) => String(s).trim().padStart(3, '0'))
 })
 
-// 产品文件库
-const fileLibVisible = ref(false)
-const fileLibProductCode = ref('')
+// 明细行「上传附件」（S5 dev-20261013-043）
+const rowAttachVisible = ref(false)
+const rowAttachProductCode = ref('')
+/** 行级附件草稿键：行级隔离，避免与单据级共用待绑定队列 */
+const rowAttachDraftId = computed(() =>
+  rowAttachProductCode.value
+    ? `${props.draftId || ''}::r:${rowAttachProductCode.value}`
+    : props.draftId || '',
+)
 const uploadedAttachmentIds = ref<number[]>([])
+const userStore = useUserStore()
 /** 公共附件中心（报价单通用附件；dev-20261012-047） */
 const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
 /** 保存成功后把待绑定（TEMP）附件一次性绑定到本报价单（照询价单：nextTick + 异常隔离 + partial/all-failed 提示） */
@@ -395,20 +405,23 @@ async function bindPendingAttachments() {
   await nextTick()
   try {
     const result = await attachmentCenterRef.value?.bindPending()
-    if (!result) return
-    if (result.status === 'document-not-saved') {
-      ElMessage.warning('报价单尚未保存，附件仍为待绑定状态')
-      return
+    if (result) {
+      if (result.status === 'document-not-saved') {
+        ElMessage.warning('报价单尚未保存，附件仍为待绑定状态')
+        return
+      }
+      if (result.status === 'partial') {
+        ElMessage.warning(
+          `报价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`,
+        )
+      } else if (result.status === 'all-failed') {
+        ElMessage.error(
+          `报价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`,
+        )
+      }
     }
-    if (result.status === 'partial') {
-      ElMessage.warning(
-        `报价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`,
-      )
-    } else if (result.status === 'all-failed') {
-      ElMessage.error(
-        `报价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`,
-      )
-    }
+    // 行级附件（明细行「上传附件」）：保存后按各行草稿键统一绑定（带该行产品编码）
+    await bindRowPendingAttachments()
   } catch (e: any) {
     // 异常隔离：报价单此时已保存成功，附件异常不得冒泡成「整单保存失败」
     console.error('附件绑定异常（报价单已保存）:', e)
@@ -416,9 +429,25 @@ async function bindPendingAttachments() {
   }
 }
 
-const onFileLibUpload = (id: number) => {
-  if (!uploadedAttachmentIds.value.includes(id)) {
-    uploadedAttachmentIds.value.push(id)
+/** 绑定明细行「上传附件」的待绑定队列（按行草稿键；绑定带该行产品编码。仅单据已保存时有效） */
+async function bindRowPendingAttachments() {
+  const sourceId = props.formData.quotationId
+  if (!sourceId) return
+  let failed = 0
+  for (const row of props.formData.items || []) {
+    const code = (row as any)?.productCode
+    if (!code) continue
+    const r = await flushStoredQueue({
+      userId: userStore.userId,
+      sourceType: 'quotation',
+      draftId: `${props.draftId || ''}::r:${code}`,
+      sourceId,
+      productCode: code,
+    })
+    failed += r.failed
+  }
+  if (failed) {
+    ElMessage.warning(`明细行附件有 ${failed} 条绑定失败，可在该行「上传附件」里重试`)
   }
 }
 
@@ -545,23 +574,13 @@ const onCodeGenConfirm = (params: ProductCodeResult) => {
   ElMessage.success(`编码已生成：${params.productCode}`)
 }
 
-// ============================================================
-// 产品文件库（明细行资料）
-// 2026-09-02：资料挂产品档案（product_id）。样品行保存报价单后建档才有 product_id；
-// 未建档时提示先保存（产品不存在，文件库挂不上）
-// ============================================================
-const openFileLibrary = (row: any) => {
+const openRowAttachment = (row: any) => {
   if (!row.productCode) {
     ElMessage.warning('请先生成产品编码')
     return
   }
-  // 标准品行直接可开（产品档案已存在）
-  if (props.formData.quotationType === 2 && !row.productId) {
-    ElMessage.info('请先【保存】报价单，产品建档后即可上传/查看资料')
-    return
-  }
-  fileLibProductCode.value = row.productCode
-  fileLibVisible.value = true
+  rowAttachProductCode.value = row.productCode
+  rowAttachVisible.value = true
 }
 
 // ============================================================
