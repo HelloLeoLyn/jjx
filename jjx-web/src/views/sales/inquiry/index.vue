@@ -272,11 +272,7 @@
             <!-- 样品编码由公共生成组件展示；标准品保留选产品后回填的编码。 -->
             <el-form-item v-else label="产品编码">
               <!-- 2026-09-30 dev-20260930-011：口径统一 —— 编码只能由「客户简称+序号+结构位」拼出，禁止整条手改 -->
-              <el-input
-                v-model="form.productCode"
-                placeholder="选择产品后自动带出"
-                readonly
-              >
+              <el-input v-model="form.productCode" placeholder="选择产品后自动带出" readonly>
               </el-input>
             </el-form-item>
 
@@ -323,7 +319,7 @@
           <el-col :span="24">
             <AttachmentCenter
               ref="attachmentCenterRef"
-              source-type="inquiry"
+              :source-type="AttachmentSourceTypeEnum.getItem('inquiry')?.value || 'inquiry'"
               :source-id="form.inquiryId || null"
               :source-no="(form as any).inquiryNo || ''"
               :draft-id="draftId"
@@ -387,7 +383,7 @@ import { customerApi } from '@/api/sales/customer'
 import { download } from '@/utils/format'
 import type { ProductItem } from '@/types/product'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
-
+import { AttachmentSourceTypeEnum } from '@/enums/system/AttachmentEnum'
 const inquiryActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
   {
@@ -633,7 +629,6 @@ function clearDraftId() {
   draftId.value = ''
 }
 
-
 function newDraftId() {
   return `inq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
@@ -655,11 +650,11 @@ async function bindPendingAttachments() {
     }
     if (result.status === 'partial') {
       ElMessage.warning(
-        `询价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`,
+        `询价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`
       )
     } else if (result.status === 'all-failed') {
       ElMessage.error(
-        `询价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`,
+        `询价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`
       )
     }
   } catch (e: any) {
@@ -837,7 +832,7 @@ function onProductSelect(val: number, product?: any) {
 function handleAdd() {
   dialogTitle.value = '新增询价单'
   dialogVisible.value = true
-  ensureDraftId()               // 空时才生成，刷新后恢复本会话未保存草稿。
+  ensureDraftId() // 空时才生成，刷新后恢复本会话未保存草稿。
   resetForm()
 }
 
@@ -846,7 +841,7 @@ function handleUpdate(row?: any) {
   const id = row?.inquiryId || ids.value[0]
   if (!id) return
 
-  draftId.value = ''             // 编辑已有单据：走 sourceId（inquiryId），无需 draftId
+  draftId.value = '' // 编辑已有单据：走 sourceId（inquiryId），无需 draftId
   dialogTitle.value = '修改询价单'
   dialogVisible.value = true
 
@@ -1066,8 +1061,7 @@ function cancel() {
 }
 
 // 关闭对话框后重置附件状态
-function handleClose() {
-}
+function handleClose() {}
 
 // ==================== 初始化 ====================
 onMounted(() => {

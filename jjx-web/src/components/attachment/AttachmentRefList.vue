@@ -29,62 +29,31 @@
         @selection-change="onSelectionChange"
       >
         <el-table-column v-if="canEdit" type="selection" width="42" />
-        <el-table-column label="原文件名" min-width="180" show-overflow-tooltip>
+        <el-table-column v-for="column in referenceColumns" :key="column.key"
+          :label="column.label" :width="'width' in column ? column.width : undefined"
+          :min-width="'minWidth' in column ? column.minWidth : undefined"
+          :show-overflow-tooltip="column.render === 'preview' || column.render === 'category' || column.render === 'text'">
           <template #default="{ row }">
-            <span class="ar-file" title="点击预览" @click="emit('preview', row)">
-              <el-icon class="ar-eye"><View /></el-icon>
-              {{ row.fileName || `附件 #${row.attachmentId}` }}
+            <span v-if="column.render === 'preview'" class="ar-file" title="点击预览" @click="emit('preview', row)">
+              <el-icon class="ar-eye"><View /></el-icon>{{ row.fileName || `附件 #${row.attachmentId}` }}
             </span>
+            <template v-else-if="column.render === 'displayName'">
+              <el-input v-if="canEdit" :model-value="nameDraft(row)" size="small" maxlength="255"
+                placeholder="留空=用原文件名" @update:model-value="(v: string) => setNameDraft(row, v)"
+                @change="() => saveDisplayName(row)" />
+              <span v-else>{{ row.displayName || row.fileName || `附件 #${row.attachmentId}` }}</span>
+            </template>
+            <span v-else-if="column.render === 'category'">{{ categoryLabelOf(row.documentType) }}</span>
+            <template v-else-if="column.render === 'typeSelect'">
+              <AttachmentTypeSelect v-if="canEdit" :model-value="row.documentType"
+                :document-types="documentTypes" :source-type="sourceType"
+                :disabled="savingId === row.id" @update:model-value="(v) => saveDocType(row, v)" />
+              <span v-else>{{ secondLabelOf(row.documentType) }}</span>
+            </template>
+            <span v-else-if="column.render === 'size'">{{ formatSize(row.fileSize) }}</span>
+            <span v-else-if="column.render === 'time'">{{ formatTime(row.createTime) }}</span>
+            <span v-else-if="column.render === 'text'">{{ row.createBy || '-' }}</span>
           </template>
-        </el-table-column>
-        <el-table-column label="展示文件名" min-width="180">
-          <template #default="{ row }">
-            <el-input
-              v-if="canEdit"
-              :model-value="nameDraft(row)"
-              size="small"
-              maxlength="255"
-              placeholder="留空=用原文件名"
-              @update:model-value="(v: string) => setNameDraft(row, v)"
-              @change="() => saveDisplayName(row)"
-            />
-            <span v-else>{{ row.displayName || row.fileName || `附件 #${row.attachmentId}` }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="一级类型" width="120" show-overflow-tooltip>
-          <template #default="{ row }">{{ categoryLabelOf(row.documentType) }}</template>
-        </el-table-column>
-        <el-table-column label="二级类型" width="180">
-          <template #default="{ row }">
-            <el-select
-              v-if="canEdit"
-              :model-value="row.documentType || ''"
-              size="small"
-              clearable
-              placeholder="选择类型"
-              :disabled="savingId === row.id"
-              @change="(v: string | null) => saveDocType(row, v)"
-            >
-              <el-option-group v-for="g in secondaryGroupsFor('')" :key="g.key" :label="g.label">
-                <el-option
-                  v-for="t in g.options"
-                  :key="t.item_key"
-                  :label="t.label"
-                  :value="t.item_key"
-                />
-              </el-option-group>
-            </el-select>
-            <span v-else>{{ secondLabelOf(row.documentType) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="大小" width="90">
-          <template #default="{ row }">{{ formatSize(row.fileSize) }}</template>
-        </el-table-column>
-        <el-table-column label="上传人" width="100" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.createBy || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="上传时间" width="140">
-          <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
@@ -119,33 +88,9 @@
     <!-- 批量改类型 -->
     <el-dialog v-model="batchTypeVisible" title="批量改类型" width="440px" append-to-body>
       <div class="ar-type-row">
-        <el-select
-          v-model="batchCategory"
-          clearable
-          placeholder="一级类型"
-          @change="onBatchCategoryChange"
-        >
-          <el-option
-            v-for="c in selectableCategories"
-            :key="c.key"
-            :label="c.label"
-            :value="c.key"
-          />
-        </el-select>
-        <el-select v-model="batchDocumentType" clearable placeholder="二级类型">
-          <el-option-group
-            v-for="g in secondaryGroupsFor(batchCategory)"
-            :key="g.key"
-            :label="g.label"
-          >
-            <el-option
-              v-for="t in g.options"
-              :key="t.item_key"
-              :label="t.label"
-              :value="t.item_key"
-            />
-          </el-option-group>
-        </el-select>
+        <AttachmentTypeSelect v-model="batchDocumentType" :category="batchCategory"
+          :document-types="documentTypes" :source-type="sourceType" show-category
+          @update:category="onBatchCategoryChange" />
       </div>
       <div class="ar-sub" style="margin-top: 8px">
         对选中的 {{ selectedIds.length }} 条统一设置同一个二级类型（一级仅用于筛选）。
@@ -213,6 +158,9 @@ import {
   type AttachmentRefItem,
 } from '@/api/system/attachmentRef'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
+import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
+import { referenceColumns } from './attachmentFields'
+import { formatSize, formatTime } from './attachmentFormat'
 
 const props = withDefaults(
   defineProps<{
@@ -241,8 +189,6 @@ const {
   categoryKeyOfType,
   categoryLabelOf,
   secondLabelOf,
-  selectableCategories,
-  secondaryGroupsFor,
 } = useAttachmentDocTypes(
   computed(() => props.documentTypes),
   () => props.sourceType
@@ -319,11 +265,9 @@ function openBatchType() {
   batchDocumentType.value = null
   batchTypeVisible.value = true
 }
-function onBatchCategoryChange() {
-  if (
-    batchDocumentType.value &&
-    categoryKeyOfType(batchDocumentType.value) !== batchCategory.value
-  ) {
+function onBatchCategoryChange(category: string) {
+  batchCategory.value = category
+  if (batchDocumentType.value && categoryKeyOfType(batchDocumentType.value) !== category) {
     batchDocumentType.value = null
   }
 }
@@ -424,16 +368,6 @@ async function onBatchUnlink() {
 function legacyDisplayName(row: AttachmentRefItem): string {
   const base = row.displayName || row.fileName || `附件 #${row.attachmentId}`
   return row.documentType ? `${secondLabelOf(row.documentType)} · ${base}` : base
-}
-function formatSize(size?: number | null) {
-  if (!size) return ''
-  if (size < 1024) return `${size}B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
-  return `${(size / 1024 / 1024).toFixed(1)}MB`
-}
-function formatTime(t?: string | null) {
-  if (!t) return ''
-  return String(t).replace('T', ' ').slice(0, 16)
 }
 </script>
 

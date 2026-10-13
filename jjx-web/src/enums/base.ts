@@ -4,6 +4,7 @@ export type EnumObject<T> = {
   getLabel: (value: T) => string
   getTagProps: (value: T) => TagProps
   canDo: (value: T) => boolean
+  getItem: (value: T) => { value: T; label: string; tagProps: TagProps } | undefined
 }
 
 type NamedEnumItem<T> = {
@@ -58,6 +59,9 @@ export function createEnum<T>(options: {
         return options.canDo(value)
       }
       return !!tagMap.get(value)
+    },
+    getItem(value: T) {
+      return options.items.find((item) => item.value === value)
     },
   }
 }

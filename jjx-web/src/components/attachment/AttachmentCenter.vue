@@ -54,38 +54,41 @@
         </el-tag>
         <span v-if="entry.error" class="ac-error">{{ entry.error }}</span>
         <span class="ac-spacer" />
-        <el-select
+        <AttachmentTypeSelect
           v-if="canEdit"
-          :model-value="entryCategoryKey(entry)"
-          size="small"
-          clearable
-          placeholder="一级类型"
-          style="width: 132px"
-          @update:model-value="(v: string | null) => setEntryCategory(entry, v)"
-        >
-          <el-option v-for="c in selectableCategories" :key="c.key" :label="c.label" :value="c.key" />
-        </el-select>
-        <el-select
-          v-if="canEdit"
-          v-model="entry.documentType"
-          size="small"
-          clearable
-          placeholder="二级类型"
-          style="width: 168px"
-          @change="() => persist()"
-        >
-          <el-option-group v-for="g in secondaryGroupsFor(entryCategoryKey(entry))" :key="g.key" :label="g.label">
-            <el-option v-for="t in g.options" :key="t.item_key" :label="t.label" :value="t.item_key" />
-          </el-option-group>
-        </el-select>
+          :model-value="entry.documentType"
+          :category="entryCategoryKey(entry)"
+          :document-types="documentTypes"
+          :source-type="sourceType"
+          show-category
+          @update:category="(v) => setEntryCategory(entry, v)"
+          @update:model-value="
+            (v) => {
+              entry.documentType = v
+              persist()
+            }
+          "
+        />
         <el-button v-if="canEdit" link type="primary" @click="retryBind(entry)">重试绑定</el-button>
-        <el-button v-if="canEdit" link type="danger" @click="removePending(entry.attachmentId)">移除</el-button>
+        <el-button v-if="canEdit" link type="danger" @click="removePending(entry.attachmentId)"
+          >移除</el-button
+        >
       </div>
       <div class="ac-hint">待绑定附件已上传到服务器（7 天有效），保存单据后自动建立引用。</div>
     </div>
 
     <!-- A 段：引用（主键 refId，不同 refId 全部保留）。列表抽到 AttachmentRefList，variant 切样式（table 新 / list 旧） -->
-    <el-empty v-if="!loading && !traceLoading && !refRows.length && !legacyOnlyRows.length && !traceOnlyRows.length" description="暂无附件" :image-size="60" />
+    <el-empty
+      v-if="
+        !loading &&
+        !traceLoading &&
+        !refRows.length &&
+        !legacyOnlyRows.length &&
+        !traceOnlyRows.length
+      "
+      description="暂无附件"
+      :image-size="60"
+    />
     <AttachmentRefList
       v-else-if="refRows.length"
       :rows="refRows"
@@ -111,7 +114,12 @@
         <span class="ac-sub">{{ formatSize(row.fileSize) }}</span>
         <span class="ac-sub">· {{ formatTime(row.createTime) }}</span>
         <span class="ac-spacer" />
-        <el-button link type="primary" :icon="Download" @click="openUrl(attachmentApi.downloadUrl(row.id))" />
+        <el-button
+          link
+          type="primary"
+          :icon="Download"
+          @click="openUrl(attachmentApi.downloadUrl(row.id))"
+        />
         <el-button link type="primary" :icon="View" @click="previewReadOnly(row, legacyOnlyRows)" />
       </div>
     </div>
@@ -125,11 +133,18 @@
         <el-icon class="ac-icon"><Document /></el-icon>
         <span class="ac-name" :title="row.fileName">{{ row.fileName || `附件 #${row.id}` }}</span>
         <el-tag size="small" type="info">{{ row.bizTypeName || row.bizType || '来源单据' }}</el-tag>
-        <span v-if="row.sourceNo || row.bizId" class="ac-sub">{{ row.sourceNo || `#${row.bizId}` }}</span>
+        <span v-if="row.sourceNo || row.bizId" class="ac-sub">{{
+          row.sourceNo || `#${row.bizId}`
+        }}</span>
         <span class="ac-sub">{{ formatSize(row.fileSize) }}</span>
         <span class="ac-sub">· {{ formatTime(row.createTime) }}</span>
         <span class="ac-spacer" />
-        <el-button link type="primary" :icon="Download" @click="openUrl(attachmentApi.downloadUrl(row.id))" />
+        <el-button
+          link
+          type="primary"
+          :icon="Download"
+          @click="openUrl(attachmentApi.downloadUrl(row.id))"
+        />
         <el-button link type="primary" :icon="View" @click="previewReadOnly(row, traceOnlyRows)" />
       </div>
     </div>
@@ -172,12 +187,17 @@ import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { FolderOpened, Document, Download, View, Clock } from '@element-plus/icons-vue'
 import { attachmentApi } from '@/api/system/attachment'
-import { attachmentRefApi, type AttachmentDocumentTypeItem, type AttachmentRefItem } from '@/api/system/attachmentRef'
+import {
+  attachmentRefApi,
+  type AttachmentDocumentTypeItem,
+  type AttachmentRefItem,
+} from '@/api/system/attachmentRef'
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
 import AttachmentRefList from './AttachmentRefList.vue'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
+import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
+import { formatSize, formatTime } from './attachmentFormat'
 import { useAttachmentRefs, type PendingEntry } from '@/composables/useAttachmentRefs'
-
 const props = withDefaults(
   defineProps<{
     sourceType: string
@@ -213,11 +233,23 @@ const props = withDefaults(
     editPerm: '',
     traceId: '',
     maxSizeMB: 20,
-    accept: () => ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.zip'],
+    accept: () => [
+      '.pdf',
+      '.doc',
+      '.docx',
+      '.xls',
+      '.xlsx',
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.webp',
+      '.zip',
+    ],
     autoBind: true,
     dropZone: false,
     variant: 'table',
-  },
+  }
 )
 
 const emit = defineEmits<{
@@ -314,13 +346,26 @@ async function loadTrace() {
   }
 }
 
-watch(() => [props.sourceType, props.sourceId, props.traceId, canView.value], () => loadTrace(), { immediate: true })
-watch(canView, (allowed) => { if (allowed) loadDocumentTypes() }, { immediate: true })
-onBeforeUnmount(() => { traceRequest++ })
+watch(
+  () => [props.sourceType, props.sourceId, props.traceId, canView.value],
+  () => loadTrace(),
+  { immediate: true }
+)
+watch(
+  canView,
+  (allowed) => {
+    if (allowed) loadDocumentTypes()
+  },
+  { immediate: true }
+)
+onBeforeUnmount(() => {
+  traceRequest++
+})
 
 const duplicateTip = ref('')
-const uploadTip = computed(() =>
-  `单个文件不超过 ${props.maxSizeMB}MB${props.accept.length ? '；支持 ' + props.accept.join(' ') : ''}`,
+const uploadTip = computed(
+  () =>
+    `单个文件不超过 ${props.maxSizeMB}MB${props.accept.length ? '；支持 ' + props.accept.join(' ') : ''}`
 )
 
 // ==================== 上传入口（按钮 / 拖拽落区共用同一组 props 与回调） ====================
@@ -342,10 +387,7 @@ function onUploaderError(message: string) {
 }
 
 // ==================== 资料类型字典派生（与 AttachmentRefList 共用 composable，避免两处各写一份）====================
-const { categoryKeyOfType, selectableCategories, secondaryGroupsFor } = useAttachmentDocTypes(
-  documentTypes,
-  () => props.sourceType,
-)
+const { categoryKeyOfType } = useAttachmentDocTypes(documentTypes, () => props.sourceType)
 
 /** 待绑定行的一级选择（仅前端筛选，不落库）；未手动选时由已选二级的 parent 反推，刷新后仍一致 */
 const entryCategoryMap = ref<Record<number, string>>({})
@@ -408,7 +450,11 @@ async function afterBound(entry: PendingEntry) {
   const others = matches.filter((m) => Number(m.attachmentId) !== entry.attachmentId)
   if (others.length) {
     duplicateTip.value = `本单据内已有 ${others.length} 份相同内容的附件（仅提示，不合并文件）`
-    emit('duplicate', { attachmentId: entry.attachmentId, sha256: entry.sha256 || '', matches: others.length })
+    emit('duplicate', {
+      attachmentId: entry.attachmentId,
+      sha256: entry.sha256 || '',
+      matches: others.length,
+    })
   }
 }
 
@@ -428,11 +474,15 @@ function onRefListError(payload: { action: string; message: string }) {
 // ==================== 解绑 / 元数据 ====================
 async function onUnbind(row: AttachmentRefItem) {
   try {
-    await ElMessageBox.confirm('解除本单据对该附件的引用？仅解除引用，物理文件与其他单据的引用保留。', '解除引用', {
-      confirmButtonText: '确定解除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(
+      '解除本单据对该附件的引用？仅解除引用，物理文件与其他单据的引用保留。',
+      '解除引用',
+      {
+        confirmButtonText: '确定解除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
     await unbind(row.id)
     ElMessage.success('已解除引用')
     emit('unbound', { refId: row.id, attachmentId: row.attachmentId })
@@ -447,7 +497,13 @@ async function onUnbind(row: AttachmentRefItem) {
 
 const metaVisible = ref(false)
 const metaSaving = ref(false)
-const metaForm = reactive({ refId: 0, documentType: '' as string | null, displayName: '', remark: '', sortOrder: 0 })
+const metaForm = reactive({
+  refId: 0,
+  documentType: '' as string | null,
+  displayName: '',
+  remark: '',
+  sortOrder: 0,
+})
 
 function openMeta(row: AttachmentRefItem) {
   metaForm.refId = row.id
@@ -493,7 +549,9 @@ function isImageName(name?: string, fileType?: string) {
 }
 function previewRef(row: AttachmentRefItem) {
   if (isImageName(row.fileName || undefined, row.fileType || undefined)) {
-    const images = refRows.value.filter((r) => isImageName(r.fileName || undefined, r.fileType || undefined))
+    const images = refRows.value.filter((r) =>
+      isImageName(r.fileName || undefined, r.fileType || undefined)
+    )
     viewerList.value = images.map((r) => attachmentRefApi.previewUrlByRef(r.id))
     const idx = images.findIndex((r) => r.id === row.id)
     viewerIndex.value = idx >= 0 ? idx : 0
@@ -509,7 +567,10 @@ function previewReadOnly(row: TraceAttachment, rows: TraceAttachment[]) {
   if (isImageName(row.fileName, row.fileType)) {
     const images = rows.filter((item) => isImageName(item.fileName, item.fileType))
     viewerList.value = images.map((item) => attachmentApi.downloadUrl(item.id))
-    viewerIndex.value = Math.max(0, images.findIndex((item) => item.id === row.id))
+    viewerIndex.value = Math.max(
+      0,
+      images.findIndex((item) => item.id === row.id)
+    )
     viewerVisible.value = true
     return
   }
@@ -517,16 +578,6 @@ function previewReadOnly(row: TraceAttachment, rows: TraceAttachment[]) {
 }
 function openUrl(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer')
-}
-function formatSize(size?: number | null) {
-  if (!size) return ''
-  if (size < 1024) return `${size}B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
-  return `${(size / 1024 / 1024).toFixed(1)}MB`
-}
-function formatTime(t?: string | null) {
-  if (!t) return ''
-  return String(t).replace('T', ' ').slice(0, 16)
 }
 
 defineExpose({
