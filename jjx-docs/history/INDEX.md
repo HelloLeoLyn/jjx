@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-13 (dev-20261013-008) | product-spec-full-snapshot-plan-dev-20261013-008.md | 作业规范完整发布快照：方案与四阶段修复任务（009—012） |
 | 2026-10-13 (dev-20261012-036) | att-v1b-11-testdata-orphan-inventory-dev-20261012-036.md | 测试附件与孤儿文件清理核查（ATT-V1B-11，只读候选清单） |
 | 2026-10-12 (dev-20261012-032) | att-v1b-07-old-attachment-retire-dev-20261012-032.md | 旧附件组件退役与代码清理（删无引用 AttachmentUploadDialog；Panel/Uploader 保留） |
 | 2026-10-12 (dev-20261012-031) | att-v1b-06-history-attachment-compat-dev-20261012-031.md | 公共附件历史兼容与迁移策略收口（A段 refs / B段 LEGACY） |
