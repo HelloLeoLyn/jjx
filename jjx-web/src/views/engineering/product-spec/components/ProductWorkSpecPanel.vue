@@ -154,16 +154,33 @@
                 row.pending ? '-' : workSpecMaterialSpec(row.item) || '-'
               }}</template></el-table-column
             >
-            <el-table-column label="刀模位置" min-width="200"
-              ><template #default="{ row }"
-                ><el-input
+            <el-table-column label="刀模位置" min-width="200">
+              <template #header>
+                <div class="die-head">
+                  <span>刀模位置</span>
+                  <span v-if="canEdit" class="die-head-actions">
+                    <template v-if="!dieEditing">
+                      <el-button link type="primary" size="small" @click="startDieEdit">编辑</el-button>
+                    </template>
+                    <template v-else>
+                      <el-button link size="small" @click="cancelDieEdit">取消</el-button>
+                      <el-button link type="primary" size="small" :loading="dieSaving" @click="saveDieLocationAll">保存</el-button>
+                    </template>
+                  </span>
+                </div>
+              </template>
+              <template #default="{ row }">
+                <el-input
+                  v-if="dieEditing"
                   v-model="dieDraft[row.key]"
                   size="small"
                   maxlength="100"
                   :placeholder="row.pending ? '待清理' : '未填写'"
-                  :disabled="!canEdit || dieSaving"
-                  @change="saveDieLocation(row.key, $event)" /></template
-            ></el-table-column>
+                  :disabled="dieSaving"
+                />
+                <span v-else>{{ dieDraft[row.key] || (row.pending ? '待清理' : '—') }}</span>
+              </template>
+            </el-table-column>
           </el-table>
           <el-alert
             v-if="hasLegacyDie"
@@ -449,6 +466,9 @@ const materialRows = computed(() => [
 ])
 const dieDraft = ref<Record<string, string>>({})
 const dieSaving = ref(false)
+// 显式编辑/保存模式（dev-20261013-033）：仅点「编辑」后可改，仅点「保存」落库；不动 BOM 表。
+const dieEditing = ref(false)
+const dieLegacyCleared = ref(false)
 const hasLegacyDie = computed(
   () =>
     !!String(data.value?.workSpec.dieLocationText || '').trim() &&
@@ -471,32 +491,43 @@ function migrateLegacyDie() {
     const value = (lines[index] || '').trim()
     if (value) map[dieLocationKey(row)] = value
   })
-  draft.value = { ...spec, dieLocation: map, dieLocationText: '' }
-  baseline.value = JSON.stringify(workSpecContent(draft.value))
-  editorTab.value = 'die'
-  editorVisible.value = true
+  dieDraft.value = { ...dieMap.value, ...map }
+  dieLegacyCleared.value = true
+  dieEditing.value = true
 }
-async function saveDieLocation(key: string, value: string) {
+function startDieEdit() {
+  if (!canEdit.value) return
+  dieDraft.value = { ...dieMap.value }
+  dieLegacyCleared.value = false
+  dieEditing.value = true
+}
+function cancelDieEdit() {
+  dieDraft.value = { ...dieMap.value }
+  dieLegacyCleared.value = false
+  dieEditing.value = false
+}
+/** 显式保存：整列一次性保存（不随输入即存），走既有通用保存（含 revision 校验）。 */
+async function saveDieLocationAll() {
   const spec = data.value?.workSpec
   if (!spec || dieSaving.value || !canEdit.value) return
-  const text = String(value ?? '').trim()
-  if (text === String(spec.dieLocation[key] || '').trim()) return
-  const next = normalizeWorkSpec(JSON.parse(JSON.stringify(spec)))
-  if (text) next.dieLocation = { ...next.dieLocation, [key]: text }
-  else {
-    const copy = { ...next.dieLocation }
-    delete copy[key]
-    next.dieLocation = copy
+  const map: Record<string, string> = {}
+  for (const [key, value] of Object.entries(dieDraft.value)) {
+    const text = String(value ?? '').trim()
+    if (text) map[key] = text
   }
+  const next = normalizeWorkSpec(JSON.parse(JSON.stringify(spec)))
+  next.dieLocation = map
+  if (dieLegacyCleared.value) next.dieLocationText = ''
   dieSaving.value = true
   try {
     await productWorkSpecApi.save(props.productId, next)
     ElMessage.success('刀模位置已保存')
+    dieEditing.value = false
+    dieLegacyCleared.value = false
     await sourcesSaved()
   } catch (e) {
     console.error('保存刀模位置失败', e)
     ElMessage.error('刀模位置保存失败，请重试')
-    dieDraft.value = { ...dieMap.value }
   } finally {
     dieSaving.value = false
   }
@@ -504,7 +535,7 @@ async function saveDieLocation(key: string, value: string) {
 watch(
   dieMap,
   (value) => {
-    dieDraft.value = { ...value }
+    if (!dieEditing.value) dieDraft.value = { ...value }
   },
   { immediate: true }
 )
@@ -814,6 +845,8 @@ onBeforeUnmount(() => {
   color: var(--el-color-warning);
   font-weight: 500;
 }
+.die-head { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.die-head-actions { display:flex; align-items:center; }
 .die-alert {
   margin-top: 12px;
 }
