@@ -292,3 +292,5 @@
 | dev-20261012-028 | att-v1b-03-sales-order-dev-20261012-028.md | ATT-V1B-03：销售订单通用附件接入 AttachmentCenter——OrderForm 换组件+draftId 策略+bindPending(异常隔离)、ReviewDialog/GeneratePlanDialog→upload-only、OrderDetailDrawer→readonly(CRLF 保持)、index 确认凭证弹窗→el-dialog 包 AttachmentCenter；vue-tsc/check:status-enums/check:docs 全 0；未 commit |
 
 | dev-20261012-047 | att-v1b-47-quotation-attachment-dev-20261012-047.md | 报价单附件闭环：QuotationFormDialog 加附件分节+AttachmentCenter+暴露 bindPendingAttachments、QuotationDetailDialog 加只读、index 加 draftId 并在 submitForm 保存成功后 bindPending（关键发现：保存收尾在 index.vue 非 handleSubmit，按卡先报告再改）；vue-tsc/门禁/check:docs 全 0；未 commit |
+
+| dev-20261013-012 | product-spec-snapshot-acceptance-dev-20261013-012.md | 发布快照 P4：历史缺项核证与整套不可变性验收 |
