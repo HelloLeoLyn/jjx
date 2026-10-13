@@ -29,6 +29,8 @@ elif 'information_schema.columns' in q:
     print('sales_order_product\tproduct_id')
 elif 'information_schema.tables' in q:
     print('\n'.join(f['tables']))
+elif 'information_schema.TRIGGERS' in q:
+    print(1)  # 守卫触发器存在（清库 SQL 删附件后已按原样重建）
 elif q.startswith('SELECT COUNT(*)'):
     table = re.search(r'FROM\s+`?(\w+)', q).group(1)
     if table == f.get('query_failure'):
@@ -177,6 +179,14 @@ class CleanProductsTest(unittest.TestCase):
         for table in PRODUCTS:
             self.assertRegex(sql, r'(?m)^TRUNCATE ' + table + ';')
         self.assertIn("DELETE FROM sys_attachment WHERE biz_type = 'product'", sql)
+        # 清库窗口：摘掉迁移 271 的物理删除守卫触发器后必须按原样恢复（两次删附件 → 两对）。
+        drops = sql.count('DROP TRIGGER IF EXISTS trg_attachment_v1_no_delete;')
+        creates = sql.count('CREATE TRIGGER trg_attachment_v1_no_delete')
+        self.assertEqual(2, drops)
+        self.assertEqual(drops, creates)
+        # 先清引用行、再删附件，避免悬空引用。
+        self.assertLess(sql.index('DELETE FROM sys_attachment_ref'),
+                        sql.index("DELETE FROM sys_attachment WHERE biz_type = 'product'"))
         self.assertIn('产品清理核验通过', r.stdout)
         self.assertIn('include_products=1 domains=all', (self.dir / 'clean-test-data-log.txt').read_text())
 

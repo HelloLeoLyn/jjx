@@ -435,18 +435,40 @@ else
     BEGIN { n=split(allowed, a, ","); for (i=1; i<=n; i++) keep[a[i]]=1 }
     /^TRUNCATE[[:space:]]/ { t=$2; sub(/;$/, "", t); if (!keep[t]) next }
     /^DELETE[[:space:]]+FROM[[:space:]]/ { next }
+    /^DROP[[:space:]]+TRIGGER/ { next }
+    /^CREATE[[:space:]]+TRIGGER/ { next }
+    /^FOR[[:space:]]+EACH[[:space:]]+ROW/ { next }
     { print }
   ' "$PLAN_SQL" > "$CLEAN_SQL_INPUT"
 fi
+# 清库 SQL 会在删附件窗口内临时摘掉迁移 271 的物理删除守卫触发器；
+# 无论成败都确认它已恢复，避免中途失败把它留在缺失状态。
+ensure_attachment_guard() {
+  local exists
+  exists="$("${MYSQL[@]}" "$DB_NAME" -e "SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE trigger_schema='$DB_NAME' AND trigger_name='trg_attachment_v1_no_delete';" 2>/dev/null || echo 1)"
+  [ "$exists" = "0" ] || return 0
+  warn "附件物理删除守卫触发器 trg_attachment_v1_no_delete 缺失，按原样恢复"
+  if "${MYSQL[@]}" "$DB_NAME" <<'SQL'
+CREATE TRIGGER trg_attachment_v1_no_delete BEFORE DELETE ON sys_attachment
+FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='V1-A: physical attachment deletion disabled; preview only';
+SQL
+  then
+    ok "已恢复 trg_attachment_v1_no_delete"
+  else
+    warn "恢复触发器失败：请人工执行 jjx-docs/sql/migrations/applied/271_attachment_references.sql 的触发器段"
+  fi
+}
 CLEAN_ERR="$(mktemp)"
 if ! "${MYSQL[@]}" "$DB_NAME" < "$CLEAN_SQL_INPUT" 2> "$CLEAN_ERR"; then
   sed 's/^/    /' "$CLEAN_ERR" >&2; rm -f "$CLEAN_ERR"
   [ "$DOMAIN_MODE" -eq 1 ] && rm -f "$CLEAN_SQL_INPUT"
+  ensure_attachment_guard
   die "清理执行失败。回滚参考: mysql -h$DB_HOST -P$DB_PORT -u$DB_USER $DB_NAME < $BK_FILE
     （备份 md5 $BK_MD5）"
 fi
 [ "$DOMAIN_MODE" -eq 1 ] && rm -f "$CLEAN_SQL_INPUT"
 rm -f "$CLEAN_ERR"
+ensure_attachment_guard
 ok "清理执行完成（$(($(date +%s) - START))s）"
 
 # ── 6. 库外留痕（脚本会清空 sys_oper_log，库里留不下痕迹）───────────────────

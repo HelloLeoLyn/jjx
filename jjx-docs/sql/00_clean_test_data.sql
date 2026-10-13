@@ -33,9 +33,11 @@ DELIMITER ;
 --     而 product 主表会被 TRUNCATE（自增归零）→ 遗留附件在新产品复用同一 ID 后被错挂
 --     （2026-10-12 实测：10-10 遗留的 7 条附件重挂到新建 YL001MEOO 的「客供资料」）。见下方产品块。
 -- v25 变更（2026-10-13，任务 dev-20261013-044；用户口径「恢复 --execute，产品类信息一并清除、不再单独执行」）：
---   1. 本 SQL 内容不变：产品块仍由脚本激活，直接运行本 SQL 不清产品。
---   2. 语义变更在 scripts/db-clean-test-data.sh：全量清理一律包含产品（不再需要 --include-products，
---      该参数保留兼容、等价默认）；域模式不含产品。同一提交解除 db-clean-test-data.sh --execute 的 V1-A 冻结。
+--   1. 脚本侧：全量清理一律包含产品（不再需要 --include-products，该参数保留兼容；域模式不含产品）；
+--      解除 db-clean-test-data.sh --execute 的 V1-A 冻结（守卫由 536dead3 于 2026-10-12 加入）。
+--   2. 本 SQL 侧：首次执行实测被迁移 271 的触发器 trg_attachment_v1_no_delete 拦在附件删除处（ERROR 1644）。
+--      故两处删附件改为「摘触发器 → 清该批附件的 sys_attachment_ref 行 → 删附件 → 按原样恢复触发器」，
+--      既不被物理删除守卫拦住，也不残留悬空引用。产品块仍由脚本激活，直接运行本 SQL 不清产品。
 -- v21 变更（2026-10-07，任务 dev-20261007-002）：
 --   1. 【新增清理】order_shortage_ledger（迁移 239 建，dev-20260930-026 订单缺料「欠交台账」，齐套重算派生，
 --      挂在 sales_order 上）——此前既不在 TRUNCATE 也不在保留白名单 → 体检覆盖率闸门报无归宿。
@@ -406,7 +408,14 @@ TRUNCATE quality_lot;
 --   【v24 特例】product（产品文件）在全量清理（含产品）时必须一并删除
 --     （见下方产品块），否则产品 ID 复用会把旧附件错挂到新产品。
 --   清理：下方列出的业务单据类型（其主表本身会被清空，附件随之清空；含 bom/routing，工程 BOM/工艺会被清）。
+-- 【v25 清库窗口】附件物理删除会被迁移 271 建的触发器 trg_attachment_v1_no_delete 无条件拦截
+--   （2026-10-13 实测清库执行 ERROR 1644）；故清库时先摘掉该守卫、删完立即按原样恢复。
+--   同时清掉被删附件的引用行（sys_attachment_ref），否则 FK/悬空引用会留下孤儿引用。
+DROP TRIGGER IF EXISTS trg_attachment_v1_no_delete;
+DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing'));
 DELETE FROM sys_attachment WHERE biz_type IN ('inquiry','quotation','sales_order','sales_order_confirmation','sample','order','sales_delivery','purchase_payment','requirement','task','bom','routing');
+CREATE TRIGGER trg_attachment_v1_no_delete BEFORE DELETE ON sys_attachment
+FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='V1-A: physical attachment deletion disabled; preview only';
 
 TRUNCATE sys_notification;
 
@@ -426,7 +435,12 @@ TRUNCATE sales_sample_order;
 -- 关联业务表清理完成后，先选项、模型，再产品和分类；物料与工装继续保留。
 -- 【v24】产品档案附件随产品一并清理（biz_type='product'，含工程上传客供稿/结构图等）：
 --   否则 product 被 TRUNCATE 后自增 ID 归零，新产品复用同一 ID → 遗留附件错挂到新产品的客供资料。
+-- 【v25 清库窗口】同第 11 节：删前先摘触发器、清引用行，删完按原样恢复。
+-- INCLUDE_PRODUCTS: DROP TRIGGER IF EXISTS trg_attachment_v1_no_delete;
+-- INCLUDE_PRODUCTS: DELETE FROM sys_attachment_ref WHERE attachment_id IN (SELECT id FROM sys_attachment WHERE biz_type = 'product');
 -- INCLUDE_PRODUCTS: DELETE FROM sys_attachment WHERE biz_type = 'product';
+-- INCLUDE_PRODUCTS: CREATE TRIGGER trg_attachment_v1_no_delete BEFORE DELETE ON sys_attachment
+-- INCLUDE_PRODUCTS: FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='V1-A: physical attachment deletion disabled; preview only';
 -- INCLUDE_PRODUCTS: TRUNCATE product_config_option;
 -- INCLUDE_PRODUCTS: TRUNCATE product_config_model;
 -- INCLUDE_PRODUCTS: TRUNCATE product;
@@ -466,7 +480,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 -- quality_sampling_plan remains until its 8 legacy rows are compared with sys_config.
 -- engineering_bom_backup_20260809 and sys_event_config_bak_20260814 are retired by migration 241.
 -- Keep synchronized with scripts/db-clean-test-data.sh RETAINED_TABLES.
--- sys_attachment_ref：保留业务引用及解绑审计（清库不删引用表）；产品档案附件随产品一并清理，避免来源 ID 复用把旧附件错挂到新产品。
+-- sys_attachment_ref：保留业务引用及解绑审计（本表不 TRUNCATE）；但随附件一起被删的引用行，会在第 11 节/产品块内先行清掉，避免悬空引用。
 SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;
 
 -- ==================== 13. 执行结果核验 ====================
