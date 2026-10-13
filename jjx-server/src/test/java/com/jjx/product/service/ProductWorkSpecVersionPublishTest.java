@@ -75,8 +75,8 @@ class ProductWorkSpecVersionPublishTest {
                 "{\"schemaVersion\":1}", "manifest-hash",
                 List.of(new WorkSpecDocsetSnapshotService.SnapshotFile(40L, "atlas", "结构图", "a.jpg", null,
                         null, null, "PRINT", "image/jpeg", 1L, "abc", "product-library", null, 0)),
-                0, 0);
-        when(docsetSnapshotService.build(any(), any(), anyString(), any(), any(), any())).thenReturn(snapshot);
+                List.of(), 0, 0);
+        when(docsetSnapshotService.build(any(), anyString(), any(), any(), any())).thenReturn(snapshot);
 
         ProductWorkSpecVersion version = service.publish(3L, "新增印刷工艺");
 
@@ -103,7 +103,7 @@ class ProductWorkSpecVersionPublishTest {
     @Test
     void publishFailsAtomicallyWhenSnapshotBuildFails() {
         stubBase();
-        when(docsetSnapshotService.build(any(), any(), anyString(), any(), any(), any()))
+        when(docsetSnapshotService.build(any(), anyString(), any(), any(), any()))
                 .thenThrow(new BusinessException("发布失败：附件文件缺失（id=40）"));
 
         assertThrows(BusinessException.class, () -> service.publish(3L, null));

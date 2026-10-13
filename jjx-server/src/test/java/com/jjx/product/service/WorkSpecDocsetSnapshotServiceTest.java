@@ -3,6 +3,7 @@ package com.jjx.product.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.common.utils.Sha256Utils;
@@ -10,8 +11,6 @@ import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.entity.ProductStandardProcess;
 import com.jjx.product.domain.vo.EngineeringBomVO;
-import com.jjx.product.domain.vo.EngineeringRoutingItemVO;
-import com.jjx.product.domain.vo.EngineeringRoutingVO;
 import com.jjx.product.mapper.ProductStandardProcessMapper;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.mapper.SysAttachmentMapper;
@@ -21,27 +20,35 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 /**
- * 发布完整快照构建器（dev-20261013-010）：完整性、图标冻结、文件字节校验与源一致性。
+ * 发布完整快照构建器（返修 dev-20261013-010）：客供采集、结构图显式纳入、批准口径、图标字节冻结、
+ * 文件字节校验与源一致性。
  */
 @ExtendWith(MockitoExtension.class)
 class WorkSpecDocsetSnapshotServiceTest {
 
     @Mock IEngineeringBomService bomService;
     @Mock IEngineeringRoutingService routingService;
+    @Mock ProductWorkSpecService workSpecService;
     @Mock SysAttachmentMapper attachmentMapper;
     @Mock ProductStandardProcessMapper processMapper;
+    @Mock JdbcTemplate jdbc;
 
     WorkSpecDocsetSnapshotService service;
     ObjectMapper json = JsonMapper.builder().addModule(new JavaTimeModule()).build();
@@ -50,8 +57,14 @@ class WorkSpecDocsetSnapshotServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new WorkSpecDocsetSnapshotService(bomService, routingService, attachmentMapper, processMapper, json);
+        service = new WorkSpecDocsetSnapshotService(bomService, routingService, workSpecService,
+                attachmentMapper, processMapper, jdbc, json);
         ReflectionTestUtils.setField(service, "uploadBasePath", tempDir.toString());
+        ReflectionTestUtils.setField(service, "iconAssetsDir", tempDir.resolve("icons").toString());
+        // 默认：正文（未批准、无结构图）、无候选附件、令牌查询空。
+        lenient().when(workSpecService.get(anyLong())).thenReturn(spec(null, false));
+        lenient().when(attachmentMapper.selectList(any())).thenReturn(List.of());
+        lenient().when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(List.of());
     }
 
     private Product product() {
@@ -64,31 +77,29 @@ class WorkSpecDocsetSnapshotServiceTest {
         product.setProductType("standard");
         product.setCurrentBomId(1L);
         product.setCurrentBomVersion("V1.0");
-        product.setCurrentRouteId(1L);
-        product.setCurrentRoutingVersion("V1.0");
         return product;
     }
 
-    private EngineeringBomVO bom() {
+    /** 规范正文（来自工作态读取：approved 已按 confirmedSource×来源摘要计算）。 */
+    private ObjectNode spec(Long structureFileId, boolean approved) {
+        ObjectNode node = json.createObjectNode();
+        node.put("issueUnit", "工程部");
+        node.put("approved", approved);
+        if (approved) { node.put("confirmedBy", "张三"); node.put("confirmedAt", "2026-10-12T10:00:00"); }
+        node.put("sourceRevision", "src-rev");
+        if (structureFileId != null) node.put("structureFileId", structureFileId);
+        return node;
+    }
+
+    private EngineeringBomVO bom(Long processId) {
         EngineeringBomItem item = new EngineeringBomItem();
         item.setItemId(1L);
-        item.setProcessId(17L);
-        item.setProcessName("印刷");
+        item.setProcessId(processId);
+        item.setProcessName("面板");
         item.setMaterialName("PET");
         EngineeringBomVO vo = new EngineeringBomVO();
         vo.setBomId(1L);
         vo.setBomCode("BOM-1");
-        vo.setProductId(3L);
-        vo.setItems(List.of(item));
-        return vo;
-    }
-
-    private EngineeringRoutingVO routing() {
-        EngineeringRoutingItemVO item = EngineeringRoutingItemVO.builder()
-                .itemId(1L).processId(20L).processName("印黑").icon("routing-icon").build();
-        EngineeringRoutingVO vo = new EngineeringRoutingVO();
-        vo.setRoutingId(1L);
-        vo.setRoutingCode("RT-1");
         vo.setProductId(3L);
         vo.setItems(List.of(item));
         return vo;
@@ -116,130 +127,160 @@ class WorkSpecDocsetSnapshotServiceTest {
         return att;
     }
 
+    private void stubProcessIcon(long processId, String icon) {
+        ProductStandardProcess process = new ProductStandardProcess();
+        process.setProcessId(processId);
+        process.setIcon(icon);
+        when(processMapper.selectById(processId)).thenReturn(process);
+    }
+
+    private void writeAsset(String name, String content) {
+        try {
+            Path dir = tempDir.resolve("icons");
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve(name + ".svg"), content);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private String section(WorkSpecDocsetSnapshotService.DocsetSnapshot snapshot, long id) {
+        return snapshot.files().stream().filter(f -> f.attachmentId() == id)
+                .map(WorkSpecDocsetSnapshotService.SnapshotFile::section).findFirst().orElseThrow();
+    }
+
+    // ---------- 1) 完整性与分类 ----------
+
     @Test
-    void capturesProductSpecConfirmationBomRoutingAndAllFileSections() throws Exception {
-        // 材料图标仅存于字典表；发布时按 processId 冻结进快照。
-        ProductStandardProcess cut = new ProductStandardProcess();
-        cut.setProcessId(17L);
-        cut.setIcon("cut");
-        when(processMapper.selectById(17L)).thenReturn(cut);
-        ProductStandardProcess print = new ProductStandardProcess();
-        print.setProcessId(20L);
-        print.setIcon("print");
-        when(processMapper.selectById(20L)).thenReturn(print);
+    void capturesAllSectionsIncludingCustomerLibraryAndExplicitStructureFile() throws Exception {
+        writeAsset("面板", "<svg id='icon-面板'></svg>");
+        stubProcessIcon(17L, "面板");
+        when(workSpecService.get(3L)).thenReturn(spec(40L, true));
+        when(bomService.getBomDetail(1L)).thenReturn(bom(17L));
 
-        when(bomService.getBomDetail(1L)).thenReturn(bom());
-        when(routingService.getRoutingItems(1L)).thenReturn(routing());
-
-        SysAttachment drawing = file(40L, "结构图.jpg", "结构图");
+        SysAttachment structure = file(40L, "结构图.jpg", "结构图");
+        structure.setIsCurrent(0);
+        structure.setReleased(0);
+        SysAttachment customerLib = file(36L, "客供稿.jpg", "客供稿");
         SysAttachment sample = file(50L, "样品.jpg", "样品照片");
-        SysAttachment customer = file(60L, "客供.pdf", "客供稿");
-        customer.setCustomerProductCode("YL1025PWOO");
-        when(attachmentMapper.selectList(any())).thenReturn(List.of(drawing), List.of(sample), List.of(customer));
+        SysAttachment customerSource = file(60L, "来料.pdf", null);
+        customerSource.setCustomerProductCode("YL1025PWOO");
+        when(attachmentMapper.selectById(40L)).thenReturn(structure);
+        when(attachmentMapper.selectList(any())).thenReturn(List.of(), List.of(sample), List.of(customerLib), List.of(customerSource));
 
-        String spec = "{\"issueUnit\":\"工程部\",\"approved\":true,\"confirmedBy\":\"张三\",\"issueDate\":\"2026-10-12\"}";
-        WorkSpecDocsetSnapshotService.DocsetSnapshot snapshot =
-                service.build(product(), spec, "V3.0", "系统管理员", LocalDateTime.of(2026, 10, 13, 12, 0), "新增印刷工艺");
+        WorkSpecDocsetSnapshotService.DocsetSnapshot snapshot = service.build(
+                product(), "V1.0", "系统管理员", LocalDateTime.of(2026, 10, 13, 12, 0), "首次发布");
 
         JsonNode node = json.readTree(snapshot.json());
         assertEquals(1, node.path("schemaVersion").asInt());
-        assertEquals("YL1025PWOO", node.path("productCode").asText());
-        assertEquals("工程部", node.path("confirmation").path("issueUnit").asText());
         assertTrue(node.path("confirmation").path("approved").asBoolean());
-        assertEquals("V3.0", node.path("publication").path("versionNo").asText());
-        // 材料图标冻结进 BOM 条目
-        assertEquals("cut", node.path("bom").path("items").get(0).path("icon").asText());
-        // 路线项图标保留
-        assertEquals("print", node.path("routing").path("items").get(0).path("icon").asText());
-        // 三类文件全部入集且分类正确
-        assertEquals(3, snapshot.files().size());
-        assertEquals(3, node.path("counts").path("files").asInt());
-        assertEquals(1, node.path("counts").path("bomItems").asInt());
-        assertEquals(1, node.path("counts").path("routingItems").asInt());
-        List<String> sections = snapshot.files().stream()
-                .map(WorkSpecDocsetSnapshotService.SnapshotFile::section).toList();
-        assertTrue(sections.containsAll(List.of("atlas", "sample", "customer")));
-        // 清单哈希为 64 位 hex，且与写入值一致
-        assertEquals(64, snapshot.manifestHash().length());
-        assertEquals(snapshot.manifestHash(), node.path("manifestHash").asText());
+        assertEquals("张三", node.path("confirmation").path("confirmedBy").asText());
+        List<Long> ids = snapshot.files().stream().map(WorkSpecDocsetSnapshotService.SnapshotFile::attachmentId).toList();
+        assertTrue(ids.containsAll(List.of(36L, 40L, 50L, 60L)), ids.toString());
+        assertEquals("customer", section(snapshot, 36L));
+        assertEquals("customer", section(snapshot, 60L));
+        assertEquals("atlas", section(snapshot, 40L));
+        assertEquals("sample", section(snapshot, 50L));
+        JsonNode icon = node.path("icons").path("面板");
+        assertEquals("bundled", icon.path("kind").asText());
+        assertEquals(64, icon.path("sha256").asText().length());
+        assertTrue(Files.isRegularFile(tempDir.resolve(icon.path("asset").asText())));
+        assertEquals(icon.path("sha256").asText(), node.path("bom").path("items").get(0).path("iconSha256").asText());
+    }
+
+    // ---------- 2) 批准口径 ----------
+
+    @Test
+    void unapprovedSpecStaysUnapproved() throws Exception {
+        WorkSpecDocsetSnapshotService.DocsetSnapshot snapshot = service.build(
+                productBomless(), "V1.0", "管理员", LocalDateTime.now(), null);
+        JsonNode node = json.readTree(snapshot.json());
+        assertFalse(node.path("confirmation").path("approved").asBoolean());
+        assertTrue(node.path("confirmation").path("confirmedBy").isNull());
+    }
+
+    private Product productBomless() {
+        Product product = product();
+        product.setCurrentBomId(null);
+        return product;
+    }
+
+    // ---------- 3) 图标冻结失败反例 ----------
+
+    @Test
+    void missingBundledIconAssetFails() {
+        writeAsset("面板", "<svg/>");
+        stubProcessIcon(17L, "不存在的图标");
+        when(bomService.getBomDetail(1L)).thenReturn(bom(17L));
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.build(
+                product(), "V1.0", "管理员", LocalDateTime.now(), null));
+        assertTrue(ex.getMessage().contains("打包图标资源缺失"));
     }
 
     @Test
-    void missingFileFailsWithoutProducingSnapshot() {
-        SysAttachment drawing = file(40L, "结构图.jpg", "结构图");
-        drawing.setFilePath("files/does-not-exist.jpg");
-        when(attachmentMapper.selectList(any())).thenReturn(List.of(drawing));
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.build(productWithoutBomOrRouting(), "{}", "V1.0", "管理员", LocalDateTime.now(), null));
+    void externalIconUrlRejected() {
+        stubProcessIcon(17L, "https://example.com/icon.png");
+        when(bomService.getBomDetail(1L)).thenReturn(bom(17L));
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.build(
+                product(), "V1.0", "管理员", LocalDateTime.now(), null));
+        assertTrue(ex.getMessage().contains("外部URL"));
+    }
+
+    @Test
+    void uploadedIconArchivedAndIncludedAsProtectedFile() {
+        stubProcessIcon(17L, "/system/attachment/download/55");
+        SysAttachment iconAtt = file(55L, "custom.png", null);
+        iconAtt.setBizType("engineering_jjx_icon");
+        when(attachmentMapper.selectById(55L)).thenReturn(iconAtt);
+        when(bomService.getBomDetail(1L)).thenReturn(bom(17L));
+
+        WorkSpecDocsetSnapshotService.DocsetSnapshot snapshot = service.build(
+                product(), "V1.0", "管理员", LocalDateTime.now(), null);
+        assertTrue(snapshot.files().stream().anyMatch(f -> f.attachmentId() == 55L && "icon".equals(f.section())));
+        assertTrue(snapshot.icons().stream().anyMatch(r -> "uploaded".equals(r.kind()) && r.attachmentId() == 55L));
+    }
+
+    // ---------- 4) 文件校验失败 ----------
+
+    @Test
+    void missingFileFails() {
+        when(workSpecService.get(3L)).thenReturn(spec(40L, true));
+        SysAttachment broken = file(40L, "结构图.jpg", "结构图");
+        broken.setFilePath("files/does-not-exist.jpg");
+        when(attachmentMapper.selectById(40L)).thenReturn(broken);
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.build(
+                productBomless(), "V1.0", "管理员", LocalDateTime.now(), null));
         assertTrue(ex.getMessage().contains("缺失"));
     }
 
     @Test
     void hashMismatchFails() {
-        SysAttachment drawing = file(40L, "结构图.jpg", "结构图");
-        drawing.setSha256("0".repeat(64));
-        when(attachmentMapper.selectList(any())).thenReturn(List.of(drawing));
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.build(productWithoutBomOrRouting(), "{}", "V1.0", "管理员", LocalDateTime.now(), null));
+        when(workSpecService.get(3L)).thenReturn(spec(40L, true));
+        SysAttachment tampered = file(40L, "结构图.jpg", "结构图");
+        tampered.setSha256("0".repeat(64));
+        when(attachmentMapper.selectById(40L)).thenReturn(tampered);
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.build(
+                productBomless(), "V1.0", "管理员", LocalDateTime.now(), null));
         assertTrue(ex.getMessage().contains("哈希不符"));
-    }
-
-    @Test
-    void invalidSpecJsonFails() {
-        assertThrows(BusinessException.class,
-                () -> service.build(product(), "{not json", "V1.0", "管理员", LocalDateTime.now(), null));
     }
 
     @Test
     void missingBomFails() {
         when(bomService.getBomDetail(1L)).thenReturn(null);
-        assertThrows(BusinessException.class,
-                () -> service.build(product(), "{}", "V1.0", "管理员", LocalDateTime.now(), null));
+        assertThrows(BusinessException.class, () -> service.build(
+                product(), "V1.0", "管理员", LocalDateTime.now(), null));
     }
 
+    // ---------- 5) 并发一致性 ----------
+
     @Test
-    void concurrentBomChangeFailsPublish() {
-        when(bomService.getBomDetail(1L)).thenReturn(bom(), routingBomMutated());
-        when(attachmentMapper.selectList(any())).thenReturn(List.of());
-        BusinessException ex = assertThrows(BusinessException.class,
-                () -> service.build(productWithoutRouting(), "{}", "V1.0", "管理员", LocalDateTime.now(), null));
+    void concurrentSourceChangeFails() {
+        when(bomService.getBomDetail(1L)).thenReturn(bom(null));
+        AtomicInteger calls = new AtomicInteger();
+        lenient().when(jdbc.queryForList(anyString(), any(Object[].class))).thenAnswer(inv ->
+                calls.getAndIncrement() < 5 ? List.of() : List.of(Map.of("changed", 1)));
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.build(
+                product(), "V1.0", "管理员", LocalDateTime.now(), null));
         assertTrue(ex.getMessage().contains("发生变化"));
-    }
-
-    private EngineeringBomVO routingBomMutated() {
-        EngineeringBomVO vo = bom();
-        vo.setBomCode("BOM-CHANGED");
-        return vo;
-    }
-
-    private Product productWithoutRouting() {
-        Product product = product();
-        product.setCurrentRouteId(null);
-        return product;
-    }
-
-    private Product productWithoutBomOrRouting() {
-        Product product = product();
-        product.setCurrentBomId(null);
-        product.setCurrentRouteId(null);
-        return product;
-    }
-
-    @Test
-    void rebuildingAfterSourceChangeYieldsNewSnapshotButOldStringUnchanged() throws Exception {
-        when(bomService.getBomDetail(1L)).thenReturn(bom());
-        when(routingService.getRoutingItems(1L)).thenReturn(routing());
-        when(attachmentMapper.selectList(any())).thenReturn(List.of());
-
-        WorkSpecDocsetSnapshotService.DocsetSnapshot first =
-                service.build(product(), "{\"engineeringRequirements\":\"旧要求\"}", "V1.0", "管理员", LocalDateTime.now(), null);
-
-        Product changed = product();
-        String second = service.build(changed, "{\"engineeringRequirements\":\"新要求\"}", "V2.0", "管理员", LocalDateTime.now(), null).json();
-
-        assertNotEquals(first.json(), second);
-        assertTrue(first.json().contains("旧要求"), "旧快照字符串不随后续构建改变");
-        assertFalse(second.contains("旧要求"));
-        assertTrue(second.contains("新要求"));
     }
 }

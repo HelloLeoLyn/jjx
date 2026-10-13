@@ -17,23 +17,32 @@ import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
- * 发布版本的「完整文档快照」构建器（dev-20261013-010）。
+ * 发布版本的「完整文档快照」构建器（dev-20261013-010；返修 dev-20261013-010）。
  *
- * <p>在发布事务内、写库之前构建并**校验**整份快照：产品信息、规范正文、确认信息、
- * BOM 树（材料图标）、工艺路线（图标/参数）、客供资料、样品与全部工程图及其文件身份。
- * 任一必需内容缺失 / 解析失败 / 文件缺失 / 哈希不符即抛出，由发布事务回滚，不生成半成品版本。</p>
+ * <p>在发布事务内、写库之前构建并**校验**整份快照：产品信息、规范正文与确认信息（批准状态按工作态
+ * 口径 confirmedSource×来源摘要 计算）、BOM 树（材料图标）、工艺路线（图标/参数）、客供资料
+ * （产品库类别 + 客户来源）、样品与全部工程图及其文件元数据与字节身份。任一必需内容缺失 / 解析失败 /
+ * 文件缺失 / 哈希不符 / 源并发变化即抛出，由发布事务回滚，不生成半成品版本。</p>
  *
  * <p>快照自包含（带 {@code schemaVersion}），下游（P3）只读本快照即可渲染，不再回查当前工作态。</p>
  */
@@ -41,17 +50,23 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class WorkSpecDocsetSnapshotService {
 
-    /** 快照格式版本：结构变更时递增，旧消费者按此分支兼容（契约见 task-docs / sys_task 说明）。 */
+    /** 快照格式版本：结构变更时递增，旧消费者按此分支兼容。 */
     public static final int SCHEMA_VERSION = 1;
 
     private final IEngineeringBomService bomService;
     private final IEngineeringRoutingService routingService;
+    private final ProductWorkSpecService workSpecService;
     private final SysAttachmentMapper attachmentMapper;
     private final ProductStandardProcessMapper processMapper;
+    private final JdbcTemplate jdbc;
     private final ObjectMapper json;
 
     @Value("${file.upload.path:./upload}")
     private String uploadBasePath;
+
+    /** 受控图标资源目录（打包的 SVG；未配置时按常见相对路径探测）。 */
+    @Value("${jjx.icon.assets.dir:}")
+    private String iconAssetsDir;
 
     /** 工程图种（与前端 productFileCategories.ENGINEERING_DRAWING_CATEGORIES 对齐）。 */
     static final List<String> DRAWING_CATEGORIES = List.of(
@@ -64,50 +79,77 @@ public class WorkSpecDocsetSnapshotService {
     /** 客供资料类别（产品文件库内明确标注客供的）。 */
     static final List<String> CUSTOMER_FILE_CATEGORIES = List.of("客供稿", "承认书", "客供资料");
 
+    private static final Pattern ATTACHMENT_URL_ID =
+            Pattern.compile("/(?:attachment|attachments)/(?:download/)?(\\d+)(?:\\?.*)?$");
+    private static final Pattern BUNDLED_ICON = Pattern.compile("^[\\p{IsHan}A-Za-z0-9_\\-]+$");
+
     /** 快照内的一个文件条目（冻结展示元数据 + 字节身份）。 */
     public record SnapshotFile(Long attachmentId, String section, String category, String fileName, String displayName,
                                String version, String drawingNo, String fileRole, String mime, Long size,
                                String sha256, String source, String customerDocType, Integer sortOrder) {
+        SnapshotFile withSection(String newSection) {
+            return new SnapshotFile(attachmentId, newSection, category, fileName, displayName, version,
+                    drawingNo, fileRole, mime, size, sha256, source, customerDocType, sortOrder);
+        }
     }
 
-    /** 构建结果：完整快照 JSON、清单哈希与文件保留索引（供写 DOCSET_FILE 条目）。 */
+    /** 冻结的图标资源（字节身份 + 受控来源），防止“同名 SVG 内容变化”。 */
+    public record IconRef(String value, String kind, String symbolId, Long attachmentId, String sha256, String asset) {
+    }
+
+    /** 构建结果：完整快照 JSON、清单哈希、文件保留索引与图标索引。 */
     public record DocsetSnapshot(String json, String manifestHash, List<SnapshotFile> files,
-                                 int bomItemCount, int routingItemCount) {
+                                 List<IconRef> icons, int bomItemCount, int routingItemCount) {
     }
 
     /**
-     * 构建并校验整份快照。要求调用方已持有产品行锁（{@code SELECT ... FOR UPDATE}），
-     * 从而保证 work_spec / currentBomId / currentRouteId 在构建期间不被并发修改。
+     * 构建并校验整份快照。要求调用方已持有产品行锁（{@code SELECT ... FOR UPDATE}）。
+     * 构建首尾对 BOM / 路线 / 产品附件 / 图标工序行加 {@code FOR SHARE} 锁读并比对源令牌，
+     * 覆盖工作态正文、BOM、路线、客供资料与文件集合的并发变化。
      */
-    public DocsetSnapshot build(Product product, String workSpecRaw, String versionNo, String publishedBy,
+    public DocsetSnapshot build(Product product, String versionNo, String publishedBy,
                                 LocalDateTime publishedAt, String changeSummary) {
         Long productId = product.getProductId();
 
-        JsonNode spec = parseSpec(workSpecRaw);
+        // 锁读来源并冻结读取窗口（FOR SHARE 读最新已提交，且阻塞窗口内修改）。
+        String tokenBefore = sourceToken(product);
 
-        // ---- BOM / 路线：双读一致性（读取期间源数据变化则发布失败）----
+        // 规范正文：复用工作态读取口径（approved 由 confirmedSource×来源摘要计算，非原始字段）。
+        ObjectNode spec = workSpecService.get(productId);
+
+        // 文件集合（结构图/产品库工程图/样品/产品库客供/客户来源客供），按附件 ID 去重。
+        List<SnapshotFile> files = new ArrayList<>(collectFiles(product, spec));
+        Set<Long> fileIds = new TreeSet<>();
+        for (SnapshotFile file : files) fileIds.add(file.attachmentId());
+
         EngineeringBomVO bomVo = null;
-        String bomCanon = null;
         if (product.getCurrentBomId() != null) {
             bomVo = bomService.getBomDetail(product.getCurrentBomId());
             if (bomVo == null) throw new BusinessException("发布失败：BOM 不存在（id=" + product.getCurrentBomId() + "）");
-            bomCanon = canon(bomVo);
         }
         EngineeringRoutingVO routingVo = null;
-        String routingCanon = null;
         if (product.getCurrentRouteId() != null) {
             routingVo = routingService.getRoutingItems(product.getCurrentRouteId());
             if (routingVo == null) throw new BusinessException("发布失败：工艺路线不存在（id=" + product.getCurrentRouteId() + "）");
-            routingCanon = canon(routingVo);
         }
 
-        Map<Long, String> iconCache = new HashMap<>();
         JsonNode bomNode = bomVo == null ? null : json.valueToTree(bomVo);
         JsonNode routingNode = routingVo == null ? null : json.valueToTree(routingVo);
-        enrichIcons(bomNode, iconCache);
-        enrichIcons(routingNode, iconCache);
 
-        List<SnapshotFile> files = collectFiles(product);
+        // 图标：解析为不可变资源（打包 SVG 字节归档 / 上传附件），回写 icon + iconSha256。
+        Set<Long> processIds = new TreeSet<>();
+        collectProcessIds(bomNode, processIds);
+        collectProcessIds(routingNode, processIds);
+        Map<Long, String> iconNames = processIconNames(processIds);
+        Map<String, IconRef> icons = new LinkedHashMap<>();
+        enrichIcons(bomNode, iconNames, icons);
+        enrichIcons(routingNode, iconNames, icons);
+        for (IconRef ref : icons.values()) {
+            if ("uploaded".equals(ref.kind()) && ref.attachmentId() != null && fileIds.add(ref.attachmentId())) {
+                SysAttachment att = attachmentMapper.selectById(ref.attachmentId());
+                if (att != null) files.add(buildFile(att, "icon", false).withSection("icon"));
+            }
+        }
 
         ObjectNode content = json.createObjectNode();
         content.put("schemaVersion", SCHEMA_VERSION);
@@ -139,6 +181,7 @@ public class WorkSpecDocsetSnapshotService {
         putText(confirmation, "confirmedAt", text(spec, "confirmedAt"));
         putText(confirmation, "issueUnit", text(spec, "issueUnit"));
         putText(confirmation, "issueDate", text(spec, "issueDate"));
+        putText(confirmation, "sourceRevision", text(spec, "sourceRevision"));
 
         ObjectNode publication = content.putObject("publication");
         putText(publication, "versionNo", versionNo);
@@ -149,6 +192,9 @@ public class WorkSpecDocsetSnapshotService {
         content.set("bom", bomNode == null ? json.nullNode() : bomNode);
         content.set("routing", routingNode == null ? json.nullNode() : routingNode);
 
+        ObjectNode iconsNode = content.putObject("icons");
+        for (IconRef ref : icons.values()) iconsNode.set(ref.value(), json.valueToTree(ref));
+
         ArrayNode fileArray = content.putArray("files");
         for (SnapshotFile file : files) fileArray.add(json.valueToTree(file));
 
@@ -156,6 +202,7 @@ public class WorkSpecDocsetSnapshotService {
         int routingItemCount = countNodes(routingNode);
         ObjectNode counts = content.putObject("counts");
         counts.put("files", files.size());
+        counts.put("icons", icons.size());
         counts.put("bomItems", bomItemCount);
         counts.put("routingItems", routingItemCount);
 
@@ -163,47 +210,68 @@ public class WorkSpecDocsetSnapshotService {
         String manifestHash = sha256(canon(content));
         content.put("manifestHash", manifestHash);
 
-        // ---- 源一致性复校验：BOM/路线在读取期间若发生变化则发布失败 ----
-        if (product.getCurrentBomId() != null
-                && !bomCanon.equals(canon(bomService.getBomDetail(product.getCurrentBomId())))) {
-            throw new BusinessException("发布失败：BOM 在读取期间发生变化，请重试");
-        }
-        if (product.getCurrentRouteId() != null
-                && !routingCanon.equals(canon(routingService.getRoutingItems(product.getCurrentRouteId())))) {
-            throw new BusinessException("发布失败：工艺路线在读取期间发生变化，请重试");
+        // 源一致性复校验：BOM/路线/附件/图标在读取期间若发生变化则发布失败。
+        if (!tokenBefore.equals(sourceToken(product))) {
+            throw new BusinessException("发布失败：发布来源在读取期间发生变化，请重试");
         }
 
-        return new DocsetSnapshot(content.toString(), manifestHash, files, bomItemCount, routingItemCount);
+        return new DocsetSnapshot(content.toString(), manifestHash, files, new ArrayList<>(icons.values()),
+                bomItemCount, routingItemCount);
     }
 
     // ==================== 文件采集与校验 ====================
 
-    /** 采集并校验：结构图 + 产品文件库工程图（现行/已下发） + 样品资料 + 客供资料；按附件 ID 去重。 */
-    private List<SnapshotFile> collectFiles(Product product) {
+    /** 采集：选定结构图 + 产品库工程图（现行/已下发） + 样品 + 产品库客供类别 + 客户来源客供；按附件 ID 去重。 */
+    private List<SnapshotFile> collectFiles(Product product, ObjectNode spec) {
         Long productId = product.getProductId();
         LinkedHashMap<Long, SnapshotFile> chosen = new LinkedHashMap<>();
 
-        List<SysAttachment> drawings = attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
+        // 1) 规范正文选定的结构图：显式纳入（不受现行/已下发过滤，避免旧版有、新版无）。
+        Long structureFileId = spec.path("structureFileId").isNumber() ? spec.path("structureFileId").asLong() : null;
+        if (structureFileId != null) {
+            SysAttachment structure = attachmentMapper.selectById(structureFileId);
+            if (structure == null) {
+                throw new BusinessException("发布失败：选定结构图不存在（id=" + structureFileId + "）");
+            }
+            add(chosen, buildFile(structure, "product-library", false));
+        }
+
+        // 2) 产品库工程图（现行或已下发）。
+        for (SysAttachment att : attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
                 .eq(SysAttachment::getBizType, "product")
                 .eq(SysAttachment::getBizId, productId)
                 .in(SysAttachment::getCategory, DRAWING_CATEGORIES)
                 .and(w -> w.eq(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode())
                         .or().eq(SysAttachment::getReleased, YesNoEnum.YES.getCode()))
-                .orderByAsc(SysAttachment::getId));
-        for (SysAttachment att : drawings) add(chosen, buildFile(att, "product-library", false));
+                .orderByAsc(SysAttachment::getId))) {
+            add(chosen, buildFile(att, "product-library", false));
+        }
 
-        List<SysAttachment> samples = attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
+        // 3) 样品资料。
+        for (SysAttachment att : attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
                 .eq(SysAttachment::getBizType, "product")
                 .eq(SysAttachment::getBizId, productId)
                 .in(SysAttachment::getCategory, SAMPLE_FILE_CATEGORIES)
-                .orderByAsc(SysAttachment::getId));
-        for (SysAttachment att : samples) add(chosen, buildFile(att, "product-library", false));
+                .orderByAsc(SysAttachment::getId))) {
+            add(chosen, buildFile(att, "product-library", false));
+        }
 
+        // 4) 产品库客供类别（客供稿/承认书/客供资料）——不再仅依赖 customer_product_code。
+        for (SysAttachment att : attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
+                .eq(SysAttachment::getBizType, "product")
+                .eq(SysAttachment::getBizId, productId)
+                .in(SysAttachment::getCategory, CUSTOMER_FILE_CATEGORIES)
+                .orderByAsc(SysAttachment::getId))) {
+            add(chosen, buildFile(att, "product-library", true));
+        }
+
+        // 5) 客户来源客供资料（按附件登记的产品编码归集；历史未登记归属的不猜测）。
         if (product.getProductCode() != null && !product.getProductCode().isBlank()) {
-            List<SysAttachment> customerDocs = attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
+            for (SysAttachment att : attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
                     .eq(SysAttachment::getCustomerProductCode, product.getProductCode())
-                    .orderByAsc(SysAttachment::getId));
-            for (SysAttachment att : customerDocs) add(chosen, buildFile(att, "customer-source", false));
+                    .orderByAsc(SysAttachment::getId))) {
+                add(chosen, buildFile(att, "customer-source", true));
+            }
         }
         return new ArrayList<>(chosen.values());
     }
@@ -251,37 +319,161 @@ public class WorkSpecDocsetSnapshotService {
 
     // ==================== 图标冻结 ====================
 
-    /** 递归为含 processId 的节点补写发布时的图标名（冻结；字典后续变化不影响旧版）。 */
-    private void enrichIcons(JsonNode node, Map<Long, String> cache) {
+    private void collectProcessIds(JsonNode node, Set<Long> out) {
+        if (node == null) return;
+        if (node.isObject()) {
+            JsonNode pid = node.get("processId");
+            if (pid != null && pid.isNumber()) out.add(pid.asLong());
+            node.forEach(child -> collectProcessIds(child, out));
+        } else if (node.isArray()) {
+            node.forEach(child -> collectProcessIds(child, out));
+        }
+    }
+
+    private Map<Long, String> processIconNames(Set<Long> processIds) {
+        Map<Long, String> names = new HashMap<>();
+        for (Long id : processIds) {
+            ProductStandardProcess process = processMapper.selectById(id);
+            if (process != null && process.getIcon() != null && !process.getIcon().isBlank()) {
+                names.put(id, process.getIcon());
+            }
+        }
+        return names;
+    }
+
+    /** 为含 processId 的节点回写 icon（原始值）与 iconSha256（图标字节身份），并登记 IconRef。 */
+    private void enrichIcons(JsonNode node, Map<Long, String> iconNames, Map<String, IconRef> icons) {
         if (node == null) return;
         if (node.isObject()) {
             JsonNode pid = node.get("processId");
             if (pid != null && pid.isNumber()) {
-                long id = pid.asLong();
-                if (!cache.containsKey(id)) {
-                    ProductStandardProcess process = processMapper.selectById(id);
-                    cache.put(id, process == null ? null : process.getIcon());
+                String value = iconNames.get(pid.asLong());
+                if (value != null && node instanceof ObjectNode obj) {
+                    IconRef ref = icons.computeIfAbsent(value, this::resolveIcon);
+                    obj.put("icon", value);
+                    obj.put("iconSha256", ref.sha256());
                 }
-                String icon = cache.get(id);
-                if (icon != null && node instanceof ObjectNode obj) obj.put("icon", icon);
             }
-            node.forEach(child -> enrichIcons(child, cache));
+            node.forEach(child -> enrichIcons(child, iconNames, icons));
         } else if (node.isArray()) {
-            node.forEach(child -> enrichIcons(child, cache));
+            node.forEach(child -> enrichIcons(child, iconNames, icons));
         }
+    }
+
+    /** 将图标值解析为不可变资源；无法解析为受控字节来源时失败（不冻结可变名称/外部URL）。 */
+    private IconRef resolveIcon(String value) {
+        if (value == null || value.isBlank()) {
+            throw new BusinessException("发布失败：图标引用为空");
+        }
+        boolean external = value.startsWith("http://") || value.startsWith("https://")
+                || value.startsWith("/") || value.startsWith("./");
+        if (external) {
+            Matcher matcher = ATTACHMENT_URL_ID.matcher(value);
+            if (!matcher.find()) {
+                throw new BusinessException("发布失败：图标为外部URL，不能作为不可变依据：" + value);
+            }
+            long attachmentId = Long.parseLong(matcher.group(1));
+            SysAttachment att = attachmentMapper.selectById(attachmentId);
+            if (att == null) {
+                throw new BusinessException("发布失败：图标附件不存在（id=" + attachmentId + "）");
+            }
+            String hash = validateAndHash(att);
+            return new IconRef(value, "uploaded", null, attachmentId, hash, null);
+        }
+        if (!BUNDLED_ICON.matcher(value).matches()) {
+            throw new BusinessException("发布失败：无法识别的图标引用：" + value);
+        }
+        Path asset = resolveBundledAsset(value);
+        if (asset == null) {
+            throw new BusinessException("发布失败：打包图标资源缺失（" + value + ".svg），请配置 jjx.icon.assets.dir");
+        }
+        byte[] bytes;
+        try {
+            bytes = Files.readAllBytes(asset);
+        } catch (IOException e) {
+            throw new BusinessException("发布失败：图标资源不可读（" + value + "）");
+        }
+        String hash = Sha256Utils.ofText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+        String relative = archiveIcon(bytes, hash);
+        return new IconRef(value, "bundled", "icon-" + value, null, hash, relative);
+    }
+
+    /** 打包 SVG 归档到受控存储（内容寻址，不可变），返回相对路径。 */
+    private String archiveIcon(byte[] bytes, String hash) {
+        String relative = "icon-archive/" + hash + ".svg";
+        Path root = Paths.get(uploadBasePath).toAbsolutePath().normalize();
+        Path target = root.resolve(relative).normalize();
+        if (!target.startsWith(root)) throw new BusinessException("发布失败：图标归档路径非法");
+        if (!Files.isRegularFile(target)) {
+            try {
+                Files.createDirectories(target.getParent());
+                Path tmp = Files.createTempFile(target.getParent(), hash, ".tmp");
+                Files.write(tmp, bytes);
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                throw new BusinessException("发布失败：图标资源归档失败（" + hash + "）");
+            }
+        }
+        return relative;
+    }
+
+    private Path resolveBundledAsset(String name) {
+        List<Path> candidates = new ArrayList<>();
+        if (iconAssetsDir != null && !iconAssetsDir.isBlank()) candidates.add(Paths.get(iconAssetsDir));
+        candidates.add(Paths.get("jjx-web/src/icons/jjx"));
+        candidates.add(Paths.get("../jjx-web/src/icons/jjx"));
+        candidates.add(Paths.get("src/icons/jjx"));
+        for (Path root : candidates) {
+            Path path = root.resolve(name + ".svg");
+            if (Files.isRegularFile(path)) return path;
+        }
+        return null;
+    }
+
+    // ==================== 源一致性（锁读 + 令牌） ====================
+
+    /**
+     * 对发布来源行加 {@code FOR SHARE} 锁读并生成令牌。
+     * 锁读读取**最新已提交**数据（不受事务一致性快照掩盖），并在事务提交前阻塞对这些行的修改，
+     * 因此首尾令牌一致即证明读取窗口内来源未被并发修改。
+     */
+    private String sourceToken(Product product) {
+        StringBuilder token = new StringBuilder();
+        if (product.getCurrentBomId() != null) {
+            appendRows(token, jdbc.queryForList(
+                    "SELECT bom_id,bom_code,bom_version,approve_status,update_time FROM engineering_bom WHERE bom_id=? FOR SHARE",
+                    product.getCurrentBomId()));
+            appendRows(token, jdbc.queryForList(
+                    "SELECT item_id,material_id,process_id,quantity,unit,layer,item_order,remark,update_time FROM engineering_bom_item WHERE bom_id=? FOR SHARE",
+                    product.getCurrentBomId()));
+        }
+        if (product.getCurrentRouteId() != null) {
+            appendRows(token, jdbc.queryForList(
+                    "SELECT routing_id,routing_version,approve_status,update_time FROM engineering_routing WHERE routing_id=? FOR SHARE",
+                    product.getCurrentRouteId()));
+            appendRows(token, jdbc.queryForList(
+                    "SELECT item_id,process_id,parent_id,workflow_seq,process_order,custom_labor_hours,custom_process_params,update_time FROM engineering_routing_item WHERE routing_id=? FOR SHARE",
+                    product.getCurrentRouteId()));
+        }
+        appendRows(token, jdbc.queryForList(
+                "SELECT id,sha256,category,file_role,is_current,released,file_name,version,drawing_no,file_path,biz_id,customer_product_code,update_time "
+                        + "FROM sys_attachment WHERE deleted=0 AND biz_type='product' AND biz_id=? FOR SHARE",
+                product.getProductId()));
+        if (product.getProductCode() != null && !product.getProductCode().isBlank()) {
+            appendRows(token, jdbc.queryForList(
+                    "SELECT id,sha256,category,file_role,is_current,released,file_name,version,drawing_no,file_path,biz_id,customer_product_code,update_time "
+                            + "FROM sys_attachment WHERE deleted=0 AND customer_product_code=? FOR SHARE",
+                    product.getProductCode()));
+        }
+        appendRows(token, jdbc.queryForList("SELECT process_id,icon,update_time FROM engineering_standard_process FOR SHARE"));
+        return sha256(token.toString());
+    }
+
+    private void appendRows(StringBuilder token, List<Map<String, Object>> rows) {
+        token.append(canon(rows)).append('\n');
     }
 
     // ==================== 工具 ====================
-
-    /** 解析规范正文；非法 JSON 直接失败（不生成半成品）。 */
-    private JsonNode parseSpec(String raw) {
-        if (raw == null || raw.isBlank()) return json.createObjectNode();
-        try {
-            return json.readTree(raw);
-        } catch (Exception e) {
-            throw new BusinessException("发布失败：规范正文解析失败");
-        }
-    }
 
     private String canon(Object value) {
         try {

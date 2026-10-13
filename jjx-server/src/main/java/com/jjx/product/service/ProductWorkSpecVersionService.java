@@ -138,7 +138,7 @@ public class ProductWorkSpecVersionService {
         // 完整文档快照（dev-20261013-010）：在写库前构建并校验；缺件 / 解析失败 / 哈希不符 / 源并发变化即失败。
         LocalDateTime publishedAt = LocalDateTime.now();
         WorkSpecDocsetSnapshotService.DocsetSnapshot snapshot =
-                docsetSnapshotService.build(product, raw, versionNo, displayName(), publishedAt, changeSummary);
+                docsetSnapshotService.build(product, versionNo, displayName(), publishedAt, changeSummary);
 
         int fileOrder = drawingOrder;
         for (WorkSpecDocsetSnapshotService.SnapshotFile file : snapshot.files()) {
