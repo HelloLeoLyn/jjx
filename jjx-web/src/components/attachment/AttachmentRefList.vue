@@ -111,8 +111,8 @@
     <!-- 批量改名 -->
     <el-dialog v-model="batchNameVisible" title="批量改名" width="560px" append-to-body>
       <div class="ar-sub">
-        命名规则：来源类型编码-来源Id-P产品id-一级码-二级码-二级名（来源类型编码取单号前缀，如
-        INQ/QT/SO；<b>无产品时 P 段为 P0</b>；除产品id外各要素都必须有，缺任一不给生成）。
+        命名规则：来源类型编码-来源Id-P产品id-一级码-二级码-二级名（编码取对照表：来源
+        INQ/QT/SO…、一级 BIZ/CUS/ENG/GEN/QUA、二级如 CD/PI；<b>无产品时 P 段为 P0</b>；除产品id外各要素都必须有，缺任一不给生成）。
       </div>
       <div class="ar-sub" style="margin-top: 6px">
         共 {{ batchNameRows.length }} 条；示例（第 1 条）：
@@ -165,7 +165,7 @@ import {
   type AttachmentRefItem,
 } from '@/api/system/attachmentRef'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
-import { attachmentSourceCode } from '@/enums/system/AttachmentEnum'
+import { attachmentSourceCode, attachmentCategoryCode, attachmentDocumentTypeCode } from '@/enums/system/AttachmentEnum'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
 import { referenceColumns } from './attachmentFields'
 import { formatSize, formatTime } from './attachmentFormat'
@@ -325,8 +325,8 @@ const batchNameMissingLabels = computed(() => {
 })
 /**
  * 命名规则：来源类型编码-来源Id-P产品id-一级码-二级码-二级名
- * 例：INQ-2-P123-CUSTOMER_DOC-CUSTOMER_DRAWING-客户图纸；无产品时 P 段为 P0。
- * 除产品id外各要素都必要，缺任一则该行 missing 非空（不给生成）。
+ * 例：INQ-3-P123-CUS-CD-客户图纸；无产品时 P 段为 P0。
+ * 来源/一级/二级编码取前端常量对照表（AttachmentEnum）；除产品id外各要素都必要，缺任一则 missing 非空（不给生成）。
  */
 function buildRowName(row: AttachmentRefItem): { name: string; missing: string[] } {
   const code = attachmentSourceCode(row.sourceType)
@@ -343,8 +343,8 @@ function buildRowName(row: AttachmentRefItem): { name: string; missing: string[]
     code,
     row.sourceId == null ? '' : String(row.sourceId),
     row.productId == null ? PRODUCT_PLACEHOLDER : `P${row.productId}`,
-    category,
-    row.documentType || '',
+    attachmentCategoryCode(category),
+    attachmentDocumentTypeCode(row.documentType),
     second,
   ].join(NAME_SEP)
   return { name, missing }

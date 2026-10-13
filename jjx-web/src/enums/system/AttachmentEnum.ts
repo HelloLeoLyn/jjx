@@ -77,6 +77,58 @@ export function attachmentSourceCode(source?: string | null): string {
   return ATTACHMENT_SOURCE_CODE[source] || source.toUpperCase()
 }
 
+/**
+ * 一级资料分类编码 → 短码（仅供展示名拼装；**真源仍是字典** `attachment_category.item_key`，
+ * 这里只是一张"编码 → 短码"对照表，用来把名字写短）。未知编码回退原键，不静默为空。
+ */
+export const ATTACHMENT_CATEGORY_CODE: Record<string, string> = {
+  BUSINESS_DOC: 'BIZ',
+  CUSTOMER_DOC: 'CUS',
+  ENGINEERING_DOC: 'ENG',
+  GENERAL: 'GEN',
+  QUALITY_DOC: 'QUA',
+}
+
+/** 二级资料类型编码 → 短码（同上；真源是字典 attachment_document_type.item_key） */
+export const ATTACHMENT_DOCUMENT_TYPE_CODE: Record<string, string> = {
+  CONTRACT: 'CT',
+  ORDER_CONFIRMATION: 'OC',
+  SALES_INQUIRY_ATTACHMENT: 'IA',
+  SALES_QUOTATION_ATTACHMENT: 'QA',
+  CUSTOMER_APPROVAL: 'CA',
+  CUSTOMER_DRAWING: 'CD',
+  CUSTOMER_REQUIREMENT: 'CR',
+  CUSTOMER_SAMPLE: 'CS',
+  PRODUCT_IMAGE: 'PI',
+  PRODUCT_SPECIFICATION: 'PS',
+  BOM: 'BOM',
+  DIE_CUTTING_PARAMETER: 'DP',
+  DIE_DRAWING: 'DD',
+  ENGINEERING_DRAWING: 'ED',
+  INK_MIXING_RECORD: 'IM',
+  PRINTING_PROCESS: 'PP',
+  PROCESS_ROUTE: 'PR',
+  WORK_INSTRUCTION: 'WI',
+  OTHER: 'OT',
+  ABNORMAL_REPORT: 'AR',
+  CERTIFICATE_OF_CONFORMITY: 'CC',
+  DEFECT_PHOTO: 'DF',
+  INSPECTION_REPORT: 'IR',
+  TEST_RECORD: 'TR',
+}
+
+/** 一级编码 → 短码；未知回退原键 */
+export function attachmentCategoryCode(itemKey?: string | null): string {
+  if (!itemKey) return ''
+  return ATTACHMENT_CATEGORY_CODE[itemKey] || itemKey
+}
+
+/** 二级编码 → 短码；未知回退原键 */
+export function attachmentDocumentTypeCode(itemKey?: string | null): string {
+  if (!itemKey) return ''
+  return ATTACHMENT_DOCUMENT_TYPE_CODE[itemKey] || itemKey
+}
+
 /** 归一来源类型；未知来源原样返回（由后端 fail-closed 拒绝） */
 export function canonicalAttachmentSource(source?: string | null): string {
   if (!source) return ''
