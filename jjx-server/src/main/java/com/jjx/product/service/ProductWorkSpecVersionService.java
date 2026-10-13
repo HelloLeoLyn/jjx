@@ -48,6 +48,7 @@ public class ProductWorkSpecVersionService {
     private final SysAttachmentMapper attachmentMapper;
     private final ProductWorkSpecVersionMapper versionMapper;
     private final ProductWorkSpecItemMapper itemMapper;
+    private final WorkSpecDocsetSnapshotService docsetSnapshotService;
     private final ObjectMapper json;
 
     /** 上传根目录（补算历史附件 sha256 用；dev-20261011-034）。 */
@@ -134,6 +135,25 @@ public class ProductWorkSpecVersionService {
             }
         }
 
+        // 完整文档快照（dev-20261013-010）：在写库前构建并校验；缺件 / 解析失败 / 哈希不符 / 源并发变化即失败。
+        LocalDateTime publishedAt = LocalDateTime.now();
+        WorkSpecDocsetSnapshotService.DocsetSnapshot snapshot =
+                docsetSnapshotService.build(product, raw, versionNo, displayName(), publishedAt, changeSummary);
+
+        int fileOrder = drawingOrder;
+        for (WorkSpecDocsetSnapshotService.SnapshotFile file : snapshot.files()) {
+            ObjectNode ref = json.createObjectNode();
+            ref.put("attachmentId", file.attachmentId());
+            if (file.section() != null) ref.put("section", file.section());
+            if (file.category() != null) ref.put("category", file.category());
+            if (file.fileName() != null) ref.put("fileName", file.fileName());
+            if (file.sha256() != null) ref.put("sha256", file.sha256());
+            items.add(newItem(WorkSpecResourceType.DOCSET_FILE.getCode(), file.attachmentId(), null,
+                    file.section(), ref.toString(), file.sha256(), fileOrder++));
+        }
+        items.add(newItem(WorkSpecResourceType.DOCSET_JSON.getCode(), null, null, null,
+                snapshot.json(), snapshot.manifestHash(), fileOrder));
+
         String manifest = items.stream()
                 .sorted(Comparator.comparing(ProductWorkSpecItem::getResourceType))
                 .map(i -> i.getResourceType() + "|" + (i.getSourceId() == null ? "" : i.getSourceId())
@@ -146,7 +166,7 @@ public class ProductWorkSpecVersionService {
         version.setStatus("PUBLISHED");
         version.setChangeSummary(changeSummary);
         version.setManifestHash(sha256(manifest));
-        version.setPublishedAt(LocalDateTime.now());
+        version.setPublishedAt(publishedAt);
         version.setPublishedBy(displayName());
         version.setDeleted(0);
         versionMapper.insert(version);
