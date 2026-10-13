@@ -32,6 +32,28 @@ public class AttachmentSourcePolicy {
             "SELECT COUNT(*) FROM inventory_material WHERE material_id=? AND product_id=?")
     );
 
+    /**
+     * 各来源单据的链路标识查询（用于建引用时回填附件的 trace_id）。
+     * 无 trace 列的表（product / inventory_material）不在此表 → traceIdOf 返回 null，附件保持空。
+     */
+    private static final Map<String, String> TRACE_SQL = Map.of(
+        "inquiry", "SELECT trace_id FROM sales_inquiry WHERE inquiry_id=? AND deleted=0",
+        "quotation", "SELECT trace_id FROM sales_quotation WHERE quotation_id=? AND deleted=0",
+        "sales_order", "SELECT trace_id FROM sales_order WHERE order_id=? AND deleted=0",
+        "sample", "SELECT o.trace_id FROM sales_sample_order s JOIN sales_order o ON o.order_id=s.order_id WHERE s.order_id=? AND s.deleted=0 AND o.deleted=0",
+        "purchase_order", "SELECT trace_id FROM purchase_order WHERE order_id=?",
+        "production_order", "SELECT trace_id FROM production_order WHERE order_id=?"
+    );
+
+    /** 取来源单据的链路标识；来源无 trace 或查不到 → null（调用方据此跳过回填） */
+    public String traceIdOf(String type, Long id) {
+        if (id == null || id <= 0) return null;
+        String sql = TRACE_SQL.get(canonical(type));
+        if (sql == null) return null;
+        List<String> rows = jdbc.queryForList(sql, String.class, id);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     public String canonical(String type) {
         if (type == null) throw new BusinessException("附件来源不能为空");
         return switch (type) {

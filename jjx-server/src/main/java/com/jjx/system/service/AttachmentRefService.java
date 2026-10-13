@@ -42,6 +42,12 @@ public class AttachmentRefService {
         SysAttachment file = lock(request.getAttachmentId());
         List<SysAttachmentRef> active = refs.lockActive(file.getId());
         access.checkRead(file); // Both original read permission and target edit permission are required.
+        // 回填附件链路标识：上传时单据可能还没保存（不知道 trace），建引用时一定存在
+        String traceId = sources.traceIdOf(source, request.getSourceId());
+        if (traceId != null && !traceId.isBlank()) {
+            jdbc.update("UPDATE sys_attachment SET trace_id=? WHERE id=? AND (trace_id IS NULL OR trace_id='')",
+                traceId, file.getId());
+        }
         for (SysAttachmentRef ref : active) {
             if (source.equals(ref.getSourceType()) && request.getSourceId().equals(ref.getSourceId())
                     && Objects.equals(request.getProductId(), ref.getProductId())) return ref.getId();
