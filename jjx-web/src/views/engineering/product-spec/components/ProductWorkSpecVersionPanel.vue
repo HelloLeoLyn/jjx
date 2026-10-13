@@ -88,7 +88,7 @@
           <template #default="{ row }"><span class="wsv-snap">{{ row.after || '（空）' }}</span></template>
         </el-table-column>
       </el-table>
-      <div class="wsv-tip">发布后内容不可改；此处为只读快照。BOM/工艺路线为「引用已批准版本」，工程图为「引用文件版本 + 哈希」。</div>
+      <div class="wsv-tip">发布后内容不可改；完整快照包含客供资料、BOM、工艺路线与工程图。旧版仅保留当时已收录的正文和引用，缺项不会自动补入。</div>
       <div class="wsv-tip">未纳入本次发布：{{ detailDiff.notIncluded.join('、') }}。</div>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
@@ -180,7 +180,7 @@ const detailItems = ref<any[]>([])
 const detailDiff = ref<{ changed: boolean; fields: any[]; notIncluded: string[] }>({
   changed: false,
   fields: [],
-  notIncluded: ['客供资料', '领料单', '油墨', '实际检测记录'],
+  notIncluded: [],
 })
 
 // 版本比较（dev-20261011-028）：任意两个已发布版本
@@ -289,6 +289,11 @@ async function openDetail(row: any) {
   if (res?.code === 200) {
     detailVersion.value = res.data?.version
     detailItems.value = res.data?.items || []
+    const complete = detailItems.value.some(item => item.resourceType === 'DOCSET_JSON')
+    detailDiff.value = {
+      changed: false, fields: [],
+      notIncluded: [...(complete ? [] : ['客供资料']), '领料单', '油墨', '实际检测记录'],
+    }
     detailVisible.value = true
   }
   try {
@@ -297,7 +302,7 @@ async function openDetail(row: any) {
       detailDiff.value = {
         changed: !!dres.data.changed,
         fields: dres.data.fields || [],
-        notIncluded: dres.data.notIncluded || detailDiff.value.notIncluded,
+        notIncluded: detailDiff.value.notIncluded,
       }
     }
   } catch {

@@ -8,7 +8,7 @@ import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreview'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
-import { parseSnapshotStrict, sectionForCategory, detectFileKind, buildVersionFiles, snapshotFileToDocFile, snapshotWarnings, type DocFile } from './versionDocset'
+import { parseSnapshotStrict, parseDocsetSnapshot, sectionForCategory, detectFileKind, buildVersionFiles, snapshotFileToDocFile, snapshotWarnings, type DocFile } from './versionDocset'
 export { renderFile, type FileImage } from '@/components/product/productFilePreview'
 export type { DocFile } from './versionDocset'
 export { snapshotFileToDocFile } from './versionDocset'
@@ -59,6 +59,7 @@ export interface DocsetData {
   workSpec: ProductWorkSpec
   files: DocFile[]
   warnings: string[]
+  unavailableSections?: Record<string, string>
 }
 
 export interface DocPage {
@@ -76,6 +77,7 @@ export interface DocPage {
   diePositionRows?: string[]
   changeLines?: PaperTextLine[]
   detailLines?: PaperTextLine[]
+  emptyMessage?: string
 }
 export interface PaperTextLine { text: string; color?: string }
 
@@ -223,9 +225,7 @@ export async function loadDocsetForVersion(productId: number, versionId: number,
  * 快照损坏 / 无法解析时抛错（不输出看似完整的文档）。
  */
 export function buildDocsetFromSnapshot(productId: number, snapshotJson: string | null | undefined, productCode = '', productName = ''): DocsetData {
-  const parsed = parseSnapshotStrict(snapshotJson)
-  if (!parsed.ok) throw new Error('该发布版本的完整快照损坏，无法预览')
-  const snapshot = parsed.value
+  const snapshot = parseDocsetSnapshot(snapshotJson)
   const data: DocsetData = {
     product: {
       productId,
@@ -287,7 +287,8 @@ export async function buildDocsetFromLegacyRefs(productId: number, items: Record
   data.warnings.push(...drawing.warnings)
 
   // 旧版未固化：不补取当前态冒充历史。
-  data.warnings.push('该版未纳入客供资料与样品')
+  data.unavailableSections = { customer: '该发布版本未收录客供资料。请切换工作态查看当前资料；完整归档需另行发布新版本。' }
+  data.warnings.push(data.unavailableSections.customer!)
   data.warnings.push('材料项目图标未随该发布版本固化，预览不补取当前图标')
 
   data.files.sort((a, b) => a.id - b.id)
@@ -331,7 +332,7 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
     } else {
       const files = data.files.filter((file) => file.section === section.key && fileIds.includes(file.key))
       for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: section.key, title: `${section.label} · ${productFileCategoryLabel(file.category)}`, kind: 'image', file, image }))
-      if (!files.length) pages.push({ key: `${section.key}-empty`, section: section.key, title: section.label, kind: 'empty' })
+      if (!files.length) pages.push({ key: `${section.key}-empty`, section: section.key, title: section.label, kind: 'empty', emptyMessage: data.unavailableSections?.[section.key] })
     }
   }
   return pages

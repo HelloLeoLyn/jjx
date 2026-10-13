@@ -110,4 +110,21 @@ class ProductWorkSpecVersionPublishTest {
         verify(versionMapper, never()).insert(any(ProductWorkSpecVersion.class));
         verify(itemMapper, never()).insert(any(ProductWorkSpecItem.class));
     }
+
+    @Test
+    void customerExclusionDependsOnWhetherVersionHasFullSnapshot() {
+        ProductWorkSpecVersion version = new ProductWorkSpecVersion();
+        version.setId(2L);
+        version.setProductId(3L);
+        when(versionMapper.selectById(2L)).thenReturn(version);
+        when(itemMapper.selectByVersionId(2L)).thenReturn(List.of());
+        assertTrue(((List<?>) service.diff(2L).get("notIncluded")).contains("客供资料"));
+
+        ProductWorkSpecItem full = new ProductWorkSpecItem();
+        full.setResourceType("DOCSET_JSON");
+        when(itemMapper.selectByVersionId(2L)).thenReturn(List.of(full));
+        List<?> excluded = (List<?>) service.diff(2L).get("notIncluded");
+        assertFalse(excluded.contains("客供资料"));
+        assertTrue(excluded.contains("领料单"));
+    }
 }

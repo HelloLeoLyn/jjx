@@ -15,7 +15,6 @@ export const PRODUCT_SPEC_TABS: ProductSpecTab[] = [
   {
     name: 'customer',
     label: '客供资料',
-    notIncluded: '未纳入本次发布：客供资料仅反映当前工作态，不随发布版本快照。',
   },
   {
     name: 'sample',

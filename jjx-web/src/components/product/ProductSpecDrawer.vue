@@ -29,7 +29,17 @@
 
             <!-- ① 客供资料 -->
             <template v-if="tab.name === 'customer'">
-              <CustomerDocPanel v-if="productId && productCode" :product-id="productId" :product-code="productCode" />
+              <ProductSpecPreview
+                v-if="selectedVersionId && productId && activeTab === 'customer'"
+                :key="`${productId}-customer-${selectedVersionId}`"
+                :product-id="productId"
+                :version-id="selectedVersionId"
+                :product-code="productCode"
+                :product-name="detail?.product?.productName || ''"
+                :initial-sections="['customer']"
+                paper-only
+              />
+              <CustomerDocPanel v-else-if="!selectedVersionId && productId && productCode" :product-id="productId" :product-code="productCode" />
             </template>
 
             <!-- ② 样品：需求单与实物/确认资料统一入口 -->
@@ -118,7 +128,7 @@
                 <el-alert v-else-if="versionError" type="error" :closable="false" class="tab-tip" :title="versionError" />
                 <el-button v-if="!versionLoading && (versionError || specError)" link type="primary" @click="applyVersionSelection">重新加载版本</el-button>
                 <el-alert v-if="versionSnapshot" type="info" :closable="false" class="tab-tip"
-                  :title="`正在查看发布版本 ${versionSnapshot?.version?.versionNo || ''}（只读快照，不可编辑）；未纳入本次发布：客供资料、领料单、油墨、实际检测记录。`" />
+                  :title="`正在查看发布版本 ${versionSnapshot?.version?.versionNo || ''}（只读快照，不可编辑）；客供资料请查看同名页签，旧版未收录时会明确提示。领料单、油墨、实际检测记录不属于规范快照。`" />
                 <el-descriptions v-if="versionSnapshot?.version" :column="2" border size="small">
                   <el-descriptions-item label="版本号">{{ versionSnapshot.version.versionNo }}</el-descriptions-item>
                   <el-descriptions-item label="发布人">{{ versionSnapshot.version.publishedBy || '-' }}</el-descriptions-item>

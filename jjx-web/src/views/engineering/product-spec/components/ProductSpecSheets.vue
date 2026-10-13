@@ -26,7 +26,7 @@
             <table class="paper-grid reference-grid"><thead><tr><th>顺序</th><th>工序名称</th><th>作业说明</th><th>人工工时（h）</th></tr></thead><tbody><tr v-for="(row, i) in page.rows" :key="row.itemId || i"><td>{{ row.processOrder }}</td><td>{{ plain(row.processName) }}</td><td>{{ plain(row.workInstruction || row.description) }}</td><td>{{ labor(row) }}</td></tr></tbody></table>
             <div v-if="!page.rows?.length" class="empty-paper">暂无工序记录</div>
           </template>
-          <div v-else class="empty-paper"><div class="empty-paper-frame"><span>{{ page.title }}</span><p>暂无已选文件</p></div></div>
+          <div v-else class="empty-paper"><div class="empty-paper-frame"><span>{{ page.title }}</span><p>{{ page.emptyMessage || '暂无已选文件' }}</p></div></div>
 
           <footer class="paper-footer"><span>名称：{{ data.product.productName }}</span><span>编号：{{ data.product.productCode }}</span><span v-if="data.routing.routingVersion">路线：{{ data.routing.routingVersion }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }} 页</span></footer>
         </article>

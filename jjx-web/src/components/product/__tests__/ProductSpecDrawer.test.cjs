@@ -61,17 +61,33 @@ function setup(getVersion, getRoute = async () => ({ data: { items: [] } })) {
   const { code, errors: compileErrors } = compileTemplate({ source: descriptor.template.content, filename, id: 'spec-test' })
   assert.equal(compileErrors.length, 0)
   const { render } = evaluate(code, { vue })
-  return { state, errors, stop: () => scope.stop(), async html() {
-    const app = vue.createSSRApp({ render, setup: () => ({ ...state, embossFields: api.embossFields, PRODUCT_SPEC_TABS: [{ name: 'spec', label: '作业规范' }] }) })
+  return { state, errors, stop: () => scope.stop(), async html(tab = 'spec') {
+    const app = vue.createSSRApp({ render, setup: () => ({ ...state, embossFields: api.embossFields, PRODUCT_SPEC_TABS: [{ name: tab, label: tab }] }) })
     const container = { setup: (_, { slots }) => () => vue.h('div', slots.default?.()) }
     for (const tag of ['el-drawer', 'el-tabs', 'el-tab-pane', 'el-descriptions', 'el-descriptions-item', 'el-button']) app.component(tag, container)
     app.component('el-alert', { props: ['title'], setup: props => () => vue.h('div', props.title) })
+    app.component('ProductSpecPreview', { props: ['productId', 'versionId', 'initialSections', 'paperOnly'], setup: props => () => vue.h('div', `冻结客供:${props.productId}:${props.versionId}:${props.initialSections?.join(',')}:${props.paperOnly !== undefined}`) })
+    app.component('CustomerDocPanel', { render: () => vue.h('div', '当前客供管理') })
     for (const tag of ['el-table', 'el-table-column', 'el-dialog', 'ProductSpecHeader', 'ProductPrintSpecPanel']) app.component(tag, { render: () => null })
     app.directive('loading', { getSSRProps: () => ({}) })
     app.config.warnHandler = () => {}
     return renderToString(app)
   } }
 }
+
+test('发布版本客供页签传同一版本给预览组件，工作态才展示当前资料管理', async t => {
+  const h = setup(async () => response())
+  t.after(h.stop)
+  h.state.detail.value = { product: { productId: 3, productCode: 'YL1025PWOO' } }
+  h.state.activeTab.value = 'customer'
+  h.state.selectedVersionId.value = 2
+  await tick()
+  assert.match(await h.html('customer'), /冻结客供:3:2:customer:true/)
+  assert.doesNotMatch(await h.html('customer'), /当前客供管理/)
+  h.state.selectedVersionId.value = 0
+  assert.match(await h.html('customer'), /当前客供管理/)
+  assert.doesNotMatch(await h.html('customer'), /冻结客供/)
+})
 
 test('真实 V1.0 正文先展示，工艺路线延迟或失败不产生无快照提示', async t => {
   const detail = deferred(), route = deferred()

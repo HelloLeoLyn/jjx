@@ -11,6 +11,10 @@
     <el-alert v-if="data?.warnings.length" :title="data.warnings.join('；')" type="warning" :closable="false" class="preview-message no-print" />
     <template v-if="paperOnly">
       <el-alert v-for="file in failedFiles" :key="file.key" :title="file.name + '：' + fileErrors[file.key]" type="error" :closable="false" class="preview-message no-print" />
+      <div v-for="file in originalFiles" :key="file.key" class="preview-message no-print">
+        {{ file.name }}：此格式请查看原文件。
+        <el-link type="primary" @click="downloadOriginal(file)">下载原文件</el-link>
+      </div>
     </template>
     <div class="preview-layout" :class="{ 'paper-only': paperOnly }" v-loading="loading">
       <aside v-if="!paperOnly" class="document-nav no-print">
@@ -88,6 +92,7 @@ const requestedFiles = computed(() => {
 })
 const pendingCount = computed(() => requestedFiles.value.filter((file) => !images.value[file.key] && !fileErrors.value[file.key]).length)
 const failedFiles = computed(() => requestedFiles.value.filter(file => fileErrors.value[file.key]))
+const originalFiles = computed(() => (data.value?.files || []).filter(file => file.kind === 'other' && selectedSections.value.includes(file.section)))
 const pages = computed(() => data.value ? makePages(data.value, selectedSections.value, selectedFiles.value, images.value, overflow.value) : [])
 const structureImage = computed(() => structureFile.value ? images.value[structureFile.value.key]?.[0]?.url : '')
 const structureCaption = computed(() => structureFile.value ? documentFileCaption({ ...structureFile.value, name: '' }) : '')

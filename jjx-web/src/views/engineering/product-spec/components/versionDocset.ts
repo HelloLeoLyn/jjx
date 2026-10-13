@@ -51,7 +51,7 @@ export function parseSnapshotStrict(value?: string | null): { ok: boolean; value
 
 /** 由文件类别判定文档栏目；工作态与发布版本共用同一口径。 */
 export function sectionForCategory(customer: boolean, category: string): string {
-  if (customer || ['客供稿', '客户确认样品'].includes(category)) return 'customer'
+  if (customer || ['客供稿', '承认书', '客供资料', '客户确认样品'].includes(category)) return 'customer'
   if (category === '印刷指导图') return 'print'
   if (category === '样品照片') return 'sample'
   if (category === '分色检查表') return 'color'
@@ -68,21 +68,46 @@ export function detectFileKind(name: string, mime = ''): 'image' | 'pdf' | 'othe
 
 /** 快照文件条目 → 文档集文件（冻结元数据；published=true 表示来自发布清单，dev-20261013-011）。 */
 export function snapshotFileToDocFile(file: Record<string, any>): DocFile {
-  const name = file.fileName || '未命名文件'
+  const originalName = file.fileName || '未命名文件'
+  const name = file.displayName || originalName
   const section = file.section || 'atlas'
   return {
     key: String(file.attachmentId),
     id: Number(file.attachmentId),
     name,
+    originalName,
     category: file.category || '',
     section,
-    kind: detectFileKind(name, file.mime || ''),
+    kind: detectFileKind(originalName, file.mime || ''),
     productFile: section !== 'customer',
     version: file.version ? String(file.version) : undefined,
     drawingNo: file.drawingNo ? String(file.drawingNo) : undefined,
     fileRole: file.fileRole ? String(file.fileRole) : undefined,
     published: true,
   }
+}
+
+/** 完整快照缺件属于读取失败，不能降级成空白客供页或回查工作态。 */
+export function parseDocsetSnapshot(value?: string | null): Record<string, any> {
+  const parsed = parseSnapshotStrict(value)
+  const snapshot = parsed.value
+  if (!parsed.ok || snapshot.schemaVersion !== 1 || !snapshot.spec || typeof snapshot.spec !== 'object'
+    || Array.isArray(snapshot.spec) || !Array.isArray(snapshot.files)) {
+    throw new Error('该发布版本的完整快照损坏或格式不支持，无法预览')
+  }
+  if (!Number.isInteger(snapshot.counts?.files) || snapshot.counts.files !== snapshot.files.length) {
+    throw new Error('该发布版本的文件清单数量不一致，无法预览')
+  }
+  const ids = new Set<number>()
+  for (const file of snapshot.files) {
+    const id = Number(file?.attachmentId)
+    if (!Number.isSafeInteger(id) || id <= 0 || ids.has(id) || typeof file?.fileName !== 'string'
+      || !file.fileName.trim() || !['customer', 'sample', 'atlas', 'print', 'color', 'icon'].includes(file.section)) {
+      throw new Error('该发布版本的文件清单不完整或附件重复，无法预览')
+    }
+    ids.add(id)
+  }
+  return snapshot
 }
 
 /** 快照完整性提示（纯）：区分「未固化」与「计数不一致」；空 BOM/路线属原本为空，不算缺项。 */

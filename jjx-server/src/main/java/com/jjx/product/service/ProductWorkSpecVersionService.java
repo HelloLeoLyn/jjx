@@ -233,7 +233,11 @@ public class ProductWorkSpecVersionService {
         result.put("productId", version.getProductId());
         result.put("changed", !fields.isEmpty());
         result.put("fields", fields);
-        result.put("notIncluded", NOT_INCLUDED);
+        boolean hasFullSnapshot = itemMapper.selectByVersionId(versionId).stream()
+                .anyMatch(item -> WorkSpecResourceType.DOCSET_JSON.getCode().equals(item.getResourceType()));
+        result.put("notIncluded", hasFullSnapshot
+                ? NOT_INCLUDED.stream().filter(label -> !"客供资料".equals(label)).toList()
+                : NOT_INCLUDED);
         return result;
     }
 
