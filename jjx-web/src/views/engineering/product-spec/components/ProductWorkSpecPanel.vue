@@ -265,7 +265,28 @@
             <div class="issuance-col">
               <div class="issuance-head"><strong>发行</strong></div>
               <el-descriptions :column="1" border>
-                <el-descriptions-item label="发行单位">{{ data?.workSpec.issueUnit || '工程部' }}</el-descriptions-item>
+                <el-descriptions-item label="发行单位">
+                  <el-input
+                    v-if="issuanceDraft"
+                    v-model="issuanceDraft.issueUnit"
+                    maxlength="100"
+                    placeholder="工程部"
+                    style="width: 160px"
+                  />
+                  <span v-else>{{ data?.workSpec.issueUnit || '工程部' }}</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="发行日期">
+                  <el-date-picker
+                    v-if="issuanceDraft"
+                    v-model="issuanceDraft.issueDate"
+                    type="date"
+                    value-format="YYYY-MM-DD"
+                    placeholder="默认今天"
+                    :disabled-date="isFutureDate"
+                    style="width: 160px"
+                  />
+                  <span v-else>{{ effectiveIssueDate || '—' }}</span>
+                </el-descriptions-item>
                 <el-descriptions-item label="发布日期">{{ publishedAt || '—' }}</el-descriptions-item>
               </el-descriptions>
             </div>
@@ -351,6 +372,8 @@ const noteDraft = ref<string | null>(null)
 const structureDraft = ref<number | null | undefined>(undefined)
 const savingInline = ref(false)
 const publishedAt = ref('')
+/** 发行日期展示口径（dev-20261013-029/031）：优先 issueDate；未填且已批准回退 confirmedAt；未批准留空。 */
+const effectiveIssueDate = computed(() => effectiveIssueDateOf(data.value?.workSpec))
 const editorTab = ref('requirements')
 const drawingBusy = ref(false)
 const bomVisible = ref(false)
@@ -572,9 +595,24 @@ async function save() {
     saving.value = false
   }
 }
+function todayString(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+/** 仅允许今天及以前（暂不启用“计划未来生效”，dev-20261013-031）。 */
+function isFutureDate(date: Date): boolean {
+  return date.getTime() > Date.now()
+}
+/** 发行日期计算口径（与纸张 WorkSpecPaper 一致）。 */
+function effectiveIssueDateOf(spec?: ProductWorkSpec | null): string | null {
+  return spec?.issueDate || (spec?.approved ? spec?.confirmedAt || null : null)
+}
 function startIssuanceEdit() {
   if (!data.value || !canEdit.value) return
-  issuanceDraft.value = normalizeWorkSpec(JSON.parse(JSON.stringify(data.value.workSpec)))
+  const clone = normalizeWorkSpec(JSON.parse(JSON.stringify(data.value.workSpec)))
+  // 发行日期默认今天（可改；前端禁止未来）
+  if (!clone.issueDate) clone.issueDate = todayString()
+  issuanceDraft.value = clone
 }
 function cancelIssuance() {
   issuanceDraft.value = null

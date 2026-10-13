@@ -10,3 +10,5 @@
 | dev-20261013-011 | dev-20261013-011-completion.md | completion | 发布快照 P3：预览打印统一读取与完整性拦截 |
 
 | dev-20261013-029 | dev-20261013-029-completion.md | completion | 作业规范发行信息口径对齐（页面发行单位/日期与快照契约） |
+
+| dev-20261013-031 | dev-20261013-031-completion.md | completion | 作业规范发行信息：发行单位/发行日期录入入口 |
