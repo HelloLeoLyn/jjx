@@ -67,14 +67,9 @@
             }}</el-descriptions-item>
           </el-descriptions>
 
-          <!-- 产品文件库（DEV-734） -->
-          <el-divider content-position="left">产品文件库</el-divider>
-          <ProductFileLibrary
-            v-if="productData.product?.productCode"
-            :product-code="productData.product.productCode"
-            upload-perm="product:edit"
-            delete-perm="product:delete"
-          />
+          <!-- 产品资料（dev-20261013-041：改走公共上传组件的 refs 产品视图；详情页只读，不给上传入口） -->
+          <el-divider content-position="left">产品资料</el-divider>
+          <ProductDocPanel v-if="productId" :product-id="productId" readonly />
 
           <el-divider content-position="left">业务流转附件</el-divider>
           <div v-loading="bizAttachmentsLoading" class="biz-attachments">
@@ -258,7 +253,7 @@ import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
 import { ProductEnum, ProductTypeEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
-import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
+import ProductDocPanel from '@/components/product/ProductDocPanel.vue'
 import ProductBasicInfo from '@/components/product/ProductBasicInfo.vue'
 import BomDetailTable from '@/views/product/bom/components/BomDetailTable.vue'
 import RouteProcessTable from '@/views/product/route/components/RouteProcessTable.vue'

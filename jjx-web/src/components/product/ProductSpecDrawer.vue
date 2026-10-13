@@ -80,12 +80,12 @@
               <h3 class="sample-section-title">样品资料</h3>
               <el-alert type="info" :closable="false" class="tab-tip"
                 title="样品实物照片 + 客户确认样品（工程上传）；与「客供资料」同一处理位置归集展示。" />
-              <ProductFileLibrary
-                v-if="productCode"
-                :product-code="productCode"
-                :categories="['样品照片', '客户确认样品']"
-                upload-perm="product:edit"
-                delete-perm="product:delete"
+              <ProductDocPanel
+                v-if="productId"
+                :product-id="productId"
+                title="样品资料"
+                view-perm="product:view"
+                edit-perm="product:edit"
               />
             </template>
 
@@ -237,7 +237,7 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getFullProduct } from '@/api/product'
-import ProductFileLibrary from '@/components/product/ProductFileLibrary.vue'
+import ProductDocPanel from '@/components/product/ProductDocPanel.vue'
 import ProductSpecHeader from '@/components/product/ProductSpecHeader.vue'
 import CustomerDocPanel from '@/components/product/customer-doc/CustomerDocPanel.vue'
 import EngineeringDrawingLibrary from '@/views/engineering/drawing/components/EngineeringDrawingLibrary.vue'

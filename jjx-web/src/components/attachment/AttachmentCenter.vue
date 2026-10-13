@@ -80,6 +80,7 @@
     <!-- A 段：引用（主键 refId，不同 refId 全部保留）。列表抽到 AttachmentRefList，variant 切样式（table 新 / list 旧） -->
     <el-empty
       v-if="
+        showList &&
         !loading &&
         !traceLoading &&
         !refRows.length &&
@@ -90,7 +91,7 @@
       :image-size="60"
     />
     <AttachmentRefList
-      v-else-if="refRows.length"
+      v-else-if="showList && refRows.length"
       :rows="refRows"
       :can-edit="canEdit"
       :variant="variant"
@@ -106,7 +107,7 @@
 
     <!-- B 段：历史附件 / 同链路来源单据（只读）→ 统一由只读列表组件渲染，字段来自 attachmentFieldSets -->
     <AttachmentReadonlyList
-      v-if="legacyOnlyRows.length"
+      v-if="showList && legacyOnlyRows.length"
       title="历史附件（未建立引用，只读）"
       key-prefix="att"
       :rows="legacyOnlyRows"
@@ -116,7 +117,7 @@
       @preview="(row) => previewReadOnly(row, legacyOnlyRows)"
     />
     <AttachmentReadonlyList
-      v-if="traceLoading || traceError || traceOnlyRows.length"
+      v-if="showList && (traceLoading || traceError || traceOnlyRows.length)"
       title="同链路来源单据（只读）"
       key-prefix="trace"
       :rows="traceOnlyRows"
@@ -361,6 +362,12 @@ const uploadTip = computed(
 // ==================== 上传入口（按钮 / 拖拽落区共用同一组 props 与回调） ====================
 /** readonly 或无权编辑时不渲染上传入口 */
 const canUpload = computed(() => props.mode !== 'readonly' && canEdit.value)
+/**
+ * 是否渲染列表段（A 段引用 / B 段历史 / 同链路段）。
+ * `mode='upload-only'` 语义是"只给上传入口"（报审核、生成计划、产品资料视图都只是要个上传按钮），
+ * 所以该模式下只保留上传入口与待绑定队列，不渲染任何列表，避免外面再套一层视图时出现"两个列表"。
+ */
+const showList = computed(() => props.mode !== 'upload-only')
 /**
  * 上传禁用原因（唯一一条提示路径）：先看草稿标识是否就绪，再看调用方按业务传的 uploadBlocked。
  * 两者取第一个非空；组件不解释业务原因，只负责"禁用 + 显示这句话"。
