@@ -167,6 +167,8 @@ const RESOURCE_LABELS: Record<string, string> = {
   BOM: 'BOM',
   ROUTING: '工艺路线',
   DRAWING: '工程图/结构图',
+  DOCSET_JSON: '完整快照',
+  DOCSET_FILE: '快照文件保留',
 }
 
 const versions = ref<any[]>([])

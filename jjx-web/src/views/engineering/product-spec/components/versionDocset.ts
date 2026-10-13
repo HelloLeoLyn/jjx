@@ -66,6 +66,36 @@ export function detectFileKind(name: string, mime = ''): 'image' | 'pdf' | 'othe
   return 'other'
 }
 
+/** 快照文件条目 → 文档集文件（冻结元数据；published=true 表示来自发布清单，dev-20261013-011）。 */
+export function snapshotFileToDocFile(file: Record<string, any>): DocFile {
+  const name = file.fileName || '未命名文件'
+  const section = file.section || 'atlas'
+  return {
+    key: String(file.attachmentId),
+    id: Number(file.attachmentId),
+    name,
+    category: file.category || '',
+    section,
+    kind: detectFileKind(name, file.mime || ''),
+    productFile: section !== 'customer',
+    version: file.version ? String(file.version) : undefined,
+    drawingNo: file.drawingNo ? String(file.drawingNo) : undefined,
+    fileRole: file.fileRole ? String(file.fileRole) : undefined,
+    published: true,
+  }
+}
+
+/** 快照完整性提示（纯）：区分「未固化」与「计数不一致」；空 BOM/路线属原本为空，不算缺项。 */
+export function snapshotWarnings(snapshot: Record<string, any>, fileCount: number): string[] {
+  const warnings: string[] = []
+  if (!snapshot.spec) warnings.push('该发布版本未固化规范正文，正文可能缺项')
+  const declared = snapshot?.counts?.files
+  if (typeof declared === 'number' && declared !== fileCount) {
+    warnings.push(`该版本清单声明 ${declared} 个文件，实际固化 ${fileCount} 个，请核查`)
+  }
+  return warnings
+}
+
 /**
  * 由发布版本条目组装工程图文件集（dev-20261013-009）。
  * - 读取**全部** DRAWING 条目（不再只取首条）；

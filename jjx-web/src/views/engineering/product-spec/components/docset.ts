@@ -8,9 +8,10 @@ import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreview'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
-import { parseSnapshotStrict, sectionForCategory, detectFileKind, buildVersionFiles, type DocFile } from './versionDocset'
+import { parseSnapshotStrict, sectionForCategory, detectFileKind, buildVersionFiles, snapshotFileToDocFile, snapshotWarnings, type DocFile } from './versionDocset'
 export { renderFile, type FileImage } from '@/components/product/productFilePreview'
 export type { DocFile } from './versionDocset'
+export { snapshotFileToDocFile } from './versionDocset'
 
 export const documentSections = [
   { key: 'customer', label: '客供资料', note: '客供稿 · 客户确认样品' },
@@ -202,21 +203,55 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
 }
 
 /**
- * 按【已发布版本】组装文档集（dev-20261011-036）：只读该版快照，不读当前态。
- * - 规范正文：SPEC_JSON 条目快照；
- * - BOM / 工艺路线：BOM/ROUTING 条目引用的已批准版本（按 id 取明细）；
- * - 工程图：DRAWING 条目引用的**全部**发布图（图种取 operationRef），按清单入集（dev-20261013-009，不再只取首条）。
- * 发布未纳入的（客供资料/样品/领料单/油墨/检测记录）本就不在该版，故不出，并在 warnings 中显式标注。
+ * 按【已发布版本】组装文档集（dev-20261011-036；统一读取 dev-20261013-011）：只读该版快照，不读当前态。
+ * - 新发布版本（含 DOCSET_JSON 完整快照）：**只读该快照**，不请求当前产品/BOM/路线/图标/附件清单补空；
+ * - 旧发布版本（无 DOCSET_JSON）：退回 SPEC_JSON/BOM/ROUTING/DRAWING 引用（仍按引用 id 取已批准版本，不回退工作态），
+ *   并显式标注「未固化完整快照，可能缺项」。
  */
 export async function loadDocsetForVersion(productId: number, versionId: number, productCode = '', productName = ''): Promise<DocsetData> {
   const res: any = await productWorkSpecApi.getVersion(versionId)
   const version = res?.data?.version
   const items: Record<string, any>[] = res?.data?.items || []
   if (!version) throw new Error('发布版本不存在')
+  const docsetItem = items.find((item) => item.resourceType === 'DOCSET_JSON')
+  if (docsetItem) return buildDocsetFromSnapshot(productId, docsetItem.snapshotJson, productCode, productName)
+  return buildDocsetFromLegacyRefs(productId, items, productCode, productName)
+}
+
+/**
+ * 由 DOCSET_JSON 完整快照组装文档集（dev-20261013-011）。快照自包含，全程不触网。
+ * 快照损坏 / 无法解析时抛错（不输出看似完整的文档）。
+ */
+export function buildDocsetFromSnapshot(productId: number, snapshotJson: string | null | undefined, productCode = '', productName = ''): DocsetData {
+  const parsed = parseSnapshotStrict(snapshotJson)
+  if (!parsed.ok) throw new Error('该发布版本的完整快照损坏，无法预览')
+  const snapshot = parsed.value
+  const data: DocsetData = {
+    product: {
+      productId,
+      productCode: snapshot.productCode || productCode || '',
+      productName: snapshot.productName || productName || '',
+      customerName: snapshot.customerName || '',
+    },
+    bom: snapshot.bom || {},
+    routing: snapshot.routing || {},
+    workSpec: normalizeWorkSpec(snapshot.spec || {}),
+    files: [],
+    warnings: [],
+  }
+  for (const file of snapshot.files || []) data.files.push(snapshotFileToDocFile(file))
+  data.warnings.push(...snapshotWarnings(snapshot, data.files.length))
+  data.files.sort((a, b) => a.id - b.id)
+  return data
+}
+
+/** 旧发布版本（无完整快照）退回引用读取；显式标注未固化，不回退工作态。 */
+export async function buildDocsetFromLegacyRefs(productId: number, items: Record<string, any>[], productCode = '', productName = ''): Promise<DocsetData> {
   const data: DocsetData = {
     product: { productId, productCode: productCode || '', productName: productName || '' },
     bom: {}, routing: {}, workSpec: normalizeWorkSpec({}), files: [], warnings: [],
   }
+  data.warnings.push('该版本未固化完整快照（旧版发布），工程图/客供等可能缺项')
 
   // 规范正文：SPEC_JSON 快照；缺失或解析失败显式提示，不用空对象冒充。
   const specItem = items.find((item) => item.resourceType === 'SPEC_JSON')
@@ -228,7 +263,7 @@ export async function loadDocsetForVersion(productId: number, versionId: number,
     data.workSpec = normalizeWorkSpec(spec.value as Partial<ProductWorkSpec>)
   }
 
-  // BOM：引用已批准版本，读取失败显式提示而非静默空文档。
+  // BOM：引用已批准版本（按引用 id 读取，非当前态），读取失败显式提示。
   const bomItem = items.find((item) => item.resourceType === 'BOM')
   const bomRef = parseSnapshotStrict(bomItem?.snapshotJson)
   if (!bomItem) data.warnings.push('该发布版本未包含 BOM 引用')
@@ -251,9 +286,9 @@ export async function loadDocsetForVersion(productId: number, versionId: number,
   data.files.push(...drawing.files)
   data.warnings.push(...drawing.warnings)
 
-  // 未固化内容显式标注：发布范围本就不含客供/样品；图标未随版本冻结，不补取当前态冒充历史。
-  data.warnings.push('客供资料与样品不在本发布版本范围内，预览不展示')
-  data.warnings.push('材料项目图标未随本发布版本固化，预览不补取当前图标')
+  // 旧版未固化：不补取当前态冒充历史。
+  data.warnings.push('该版未纳入客供资料与样品')
+  data.warnings.push('材料项目图标未随该发布版本固化，预览不补取当前图标')
 
   data.files.sort((a, b) => a.id - b.id)
   return data

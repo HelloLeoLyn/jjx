@@ -7,3 +7,4 @@
 |---|---|---|---|
 | dev-20261012-041 | dev-20261012-041-acceptance.md | acceptance | ATT-DICT-02 收口验收（Redis 缓存清理 + 只读复核三层一致） |
 | dev-20261013-010 | dev-20261013-010-completion.md | completion | 发布快照 P2：完整内容原子固化与引用资源保留（含 DOCSET_JSON 契约） |
+| dev-20261013-011 | dev-20261013-011-completion.md | completion | 发布快照 P3：预览打印统一读取与完整性拦截 |

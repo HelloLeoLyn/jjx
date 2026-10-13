@@ -409,6 +409,22 @@ async function applyVersionSelection() {
       throw new Error(res?.msg || '版本详情返回不完整')
     }
     const items = res.data.items
+    // 新发布版本：统一读完整快照（dev-20261013-011），不再分别请求 SPEC_JSON/路线/图纸。
+    const docsetItem = items.find((i: any) => i.resourceType === 'DOCSET_JSON')
+    if (docsetItem) {
+      let snapshot: any = null
+      try { snapshot = JSON.parse(docsetItem.snapshotJson || '{}') } catch { snapshot = null }
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('该版本完整快照解析失败')
+      versionSnapshot.value = {
+        version: res.data.version,
+        spec: normalizeWorkSpec(snapshot.spec || {}),
+        drawings: (snapshot.files || []).map((f: any) => ({ id: f.attachmentId, ref: f.category || '', hash: f.sha256 || '', fileName: f.fileName || null })),
+        routingItems: snapshot.routing?.items || [],
+        routingError: '',
+      }
+      versionLoading.value = false
+      return
+    }
     const specItem = items.find((i: any) => i.resourceType === 'SPEC_JSON')
     let spec: any = null
     if (specItem?.snapshotJson != null && specItem.snapshotJson !== '') {
