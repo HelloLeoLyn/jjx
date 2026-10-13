@@ -27,6 +27,12 @@
       <el-table-column label="字典键" prop="itemKey" width="150" />
       <el-table-column label="字典值" prop="itemValue" width="180" />
       <el-table-column label="标签" prop="label" width="100" />
+      <el-table-column v-if="isAttachmentType" label="一级分类" width="120">
+        <template #default="{ row }">{{ extSummary(row).parent }}</template>
+      </el-table-column>
+      <el-table-column v-if="isAttachmentType" label="来源(sources)" min-width="200">
+        <template #default="{ row }">{{ extSummary(row).sources }}</template>
+      </el-table-column>
       <el-table-column label="排序" prop="sortOrder" width="80" align="center" />
       <el-table-column label="状态" prop="isActive" width="80" align="center">
         <template #default="{ row }">
@@ -63,7 +69,7 @@
     </el-table>
 
     <!-- 字典项表单对话框 -->
-    <el-dialog :title="itemDialogTitle" v-model="itemDialogVisible" width="500px" append-to-body>
+    <el-dialog :title="itemDialogTitle" v-model="itemDialogVisible" width="800px" append-to-body>
       <el-form ref="itemFormRef" :model="itemForm" :rules="itemRules" label-width="100px">
         <el-form-item label="字典键" prop="itemKey">
           <el-input
@@ -83,6 +89,23 @@
         <el-form-item label="标签" prop="label">
           <el-input v-model="itemForm.label" placeholder="请输入标签(扩展)" maxlength="50" />
         </el-form-item>
+        <template v-if="isAttachmentType">
+          <el-form-item label="一级分类" required>
+            <el-select v-model="extParent" placeholder="请选择一级分类(parent)" style="width: 100%">
+              <el-option v-for="c in categoryOptions" :key="c.value" :label="c.label" :value="c.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="来源" required>
+            <el-select
+              v-model="extSources"
+              multiple
+              placeholder="请选择可用来源(sources)"
+              style="width: 100%"
+            >
+              <el-option v-for="s in ATTACHMENT_SOURCES" :key="s.value" :label="s.label" :value="s.value" />
+            </el-select>
+          </el-form-item>
+        </template>
         <el-form-item label="排序" prop="sortOrder">
           <el-input-number v-model="itemForm.sortOrder" :min="0" :max="9999" style="width: 100%" />
         </el-form-item>
@@ -153,6 +176,58 @@ const visible = computed({
 const loading = ref(false)
 const itemList = ref<SysDictItem[]>([])
 
+// ===== 附件资料类型字典：ext_data(parent + sources) 结构化编辑（dev-20261013-007） =====
+/** 仅 attachment_document_type 使用 ext_data；其它字典项不显示 ext_data（避免裸编 JSON 写坏） */
+const isAttachmentType = computed(() => props.dictCode === 'attachment_document_type')
+/** 可选来源（与后端 AttachmentSourcePolicy 白名单对齐） */
+const ATTACHMENT_SOURCES = [
+  { value: 'product', label: '产品' },
+  { value: 'inquiry', label: '询价单' },
+  { value: 'quotation', label: '报价单' },
+  { value: 'sales_order', label: '销售订单' },
+  { value: 'sample', label: '样品单' },
+  { value: 'purchase_order', label: '采购订单' },
+  { value: 'purchase_payment', label: '付款凭证' },
+  { value: 'production_order', label: '生产工单' },
+  { value: 'material', label: '物料' },
+]
+const categoryOptions = ref<Array<{ value: string; label: string }>>([])
+const extParent = ref('')
+const extSources = ref<string[]>([])
+
+async function loadCategoryOptions() {
+  if (!isAttachmentType.value || categoryOptions.value.length) return
+  try {
+    const res = await dictApi.getItems('attachment_category')
+    categoryOptions.value = (res.data || [])
+      .filter((it: SysDictItem) => it.isActive === 1)
+      .map((it: SysDictItem) => ({ value: it.itemKey, label: it.label || it.itemKey }))
+  } catch {
+    categoryOptions.value = []
+  }
+}
+
+function parseExtData(ext?: string): { parent: string; sources: string[] } {
+  if (!ext) return { parent: '', sources: [] }
+  try {
+    const o = JSON.parse(ext)
+    return {
+      parent: typeof o?.parent === 'string' ? o.parent : '',
+      sources: Array.isArray(o?.sources) ? o.sources.map((s: any) => String(s)) : [],
+    }
+  } catch {
+    return { parent: '', sources: [] }
+  }
+}
+
+function extSummary(row: SysDictItem) {
+  const { parent, sources } = parseExtData(row.extData)
+  const pLabel = categoryOptions.value.find((c) => c.value === parent)?.label || parent || '—'
+  const sLabel =
+    sources.map((s) => ATTACHMENT_SOURCES.find((o) => o.value === s)?.label || s).join('、') || '—'
+  return { parent: pLabel, sources: sLabel }
+}
+
 // 字典项表单
 const itemDialogVisible = ref(false)
 const itemDialogTitle = ref('')
@@ -197,6 +272,7 @@ const getItemList = async () => {
 watch(visible, (newVal) => {
   if (newVal) {
     getItemList()
+    loadCategoryOptions()
   }
 })
 
@@ -213,6 +289,9 @@ const handleAdd = () => {
     sortOrder: 0,
     isActive: 1,
   }
+  extParent.value = ''
+  extSources.value = []
+  loadCategoryOptions()
   itemDialogVisible.value = true
 }
 
@@ -229,6 +308,10 @@ const handleEdit = (row: SysDictItem) => {
     sortOrder: row.sortOrder,
     isActive: row.isActive,
   }
+  const { parent, sources } = parseExtData(row.extData)
+  extParent.value = parent
+  extSources.value = sources
+  loadCategoryOptions()
   itemDialogVisible.value = true
 }
 
@@ -263,6 +346,21 @@ const submitItemForm = async () => {
   if (!itemFormRef.value) return
   await itemFormRef.value.validate(async (valid) => {
     if (!valid) return
+    // 附件资料类型：ext_data(parent+sources) 必填校验（与后端 AttachmentDocumentTypeService 对齐）
+    if (isAttachmentType.value) {
+      if (!extParent.value) {
+        ElMessage.warning('请选择一级分类（parent）')
+        return
+      }
+      if (!extSources.value.length) {
+        ElMessage.warning('请至少选择一个来源（sources）')
+        return
+      }
+      itemForm.value.extData = JSON.stringify({
+        parent: extParent.value,
+        sources: extSources.value,
+      })
+    }
     itemSubmitLoading.value = true
     try {
       if (itemForm.value.itemId) {
