@@ -244,18 +244,11 @@
           ><el-input v-model="confirmForm.voucherNo" placeholder="银行转账流水号/回单号"
         /></el-form-item>
         <el-form-item label="转账回单">
-          <el-upload
-            :file-list="voucherFiles"
-            :http-request="handleVoucherUpload"
-            :on-remove="handleVoucherRemove"
-            :on-preview="handleVoucherPreview"
-            multiple
-          >
-            <el-button type="primary" plain>选择文件</el-button>
-            <template #tip>
-              <div class="el-upload__tip">上传银行转账回单/流水截图（可多张），作为付款凭证</div>
-            </template>
-          </el-upload>
+          <AttachmentCenter
+            source-type="purchase_payment"
+            :source-id="confirmTarget?.paymentId ?? null"
+            title="转账回单"
+          />
         </el-form-item>
       </el-form>
       <template #footer
@@ -291,11 +284,13 @@
         }}</el-descriptions-item>
         <el-descriptions-item label="转账流水号">{{ current.voucherNo || '-' }}</el-descriptions-item>
         <el-descriptions-item label="转账回单" :span="2">
-          <template v-if="detailVouchers.length">
-            <div v-for="v in detailVouchers" :key="v.id">
-              <el-link type="primary" @click="openVoucher(v)">{{ v.fileName }}</el-link>
-            </div>
-          </template>
+          <AttachmentCenter
+            v-if="current?.paymentId"
+            source-type="purchase_payment"
+            :source-id="current.paymentId"
+            title="转账回单"
+            readonly
+          />
           <span v-else>-</span>
         </el-descriptions-item>
         <el-descriptions-item label="审批时间">{{
@@ -324,9 +319,8 @@ import {
   confirmPayment,
   getPendingPaymentOrders,
   generatePaymentNo,
-  uploadVoucher,
 } from '@/api/purchase/payment'
-import { attachmentApi } from '@/api/system/attachment'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import {
   PaymentStatusEnum,
   PaymentApprovalStatus,
@@ -398,9 +392,6 @@ const userStore = useUserStore()
 const approverName = computed(() => userStore.userInfo?.realName?.trim() || userStore.userName || '-')
 const approveForm = reactive({ approvalComment: '' })
 const confirmForm = reactive({ actualPaymentDate: '', voucherNo: '' })
-// 付款凭证（转账回单）：统一附件表 bizType=purchase_payment（dev-20260929-015）
-const voucherFiles = ref<any[]>([])
-const detailVouchers = ref<any[]>([])
 
 const isPendingPayment = (row: any) =>
   row.approvalStatus === PaymentApprovalStatus.PENDING &&
@@ -582,57 +573,9 @@ async function submitApprove(decision: string) {
 function openConfirm(row: any) {
   confirmTarget.value = row
   Object.assign(confirmForm, { actualPaymentDate: today(), voucherNo: row.voucherNo || '' })
-  voucherFiles.value = []
-  loadVouchers()
   confirmVisible.value = true
 }
 
-// 加载已上传的转账回单
-async function loadVouchers() {
-  if (!confirmTarget.value) return
-  try {
-    const res: any = await attachmentApi.list('purchase_payment', confirmTarget.value.paymentId)
-    const list: any[] = res?.data || []
-    voucherFiles.value = list.map((a: any) => ({
-      name: a.fileName,
-      url: a.filePath,
-      uid: a.id,
-      attachmentId: a.id,
-    }))
-  } catch {
-    voucherFiles.value = []
-  }
-}
-
-async function handleVoucherUpload(options: any) {
-  const { file, onSuccess, onError } = options
-  if (!confirmTarget.value) return
-  try {
-    await uploadVoucher(confirmTarget.value.paymentId, file)
-    onSuccess?.({}, file)
-    ElMessage.success('凭证上传成功')
-    await loadVouchers()
-  } catch (e) {
-    onError?.(e)
-    ElMessage.error('凭证上传失败')
-  }
-}
-
-async function handleVoucherRemove(file: any) {
-  const item = voucherFiles.value.find((v) => v.uid === file.uid)
-  if (!item?.attachmentId) return
-  try {
-    await attachmentApi.remove(item.attachmentId)
-    ElMessage.success('已删除')
-    await loadVouchers()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '删除失败')
-  }
-}
-
-function handleVoucherPreview(file: any) {
-  if (file?.url) window.open(file.url, '_blank')
-}
 async function submitConfirm() {
   if (!confirmTarget.value) return
   submitting.value = true
@@ -655,23 +598,7 @@ async function submitConfirm() {
 async function detail(row: any) {
   const res: any = await getPayment(row.paymentId)
   current.value = res.data
-  detailVouchers.value = []
-  loadDetailVouchers(row.paymentId)
   detailVisible.value = true
-}
-
-// 详情抽屉：付款凭证（转账回单）列表
-async function loadDetailVouchers(paymentId: number) {
-  try {
-    const res: any = await attachmentApi.list('purchase_payment', paymentId)
-    detailVouchers.value = res?.data || []
-  } catch {
-    detailVouchers.value = []
-  }
-}
-
-function openVoucher(v: any) {
-  if (v?.filePath) window.open(v.filePath, '_blank')
 }
 
 async function remove(row: any) {

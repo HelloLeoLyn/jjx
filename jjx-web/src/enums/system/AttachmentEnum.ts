@@ -26,6 +26,7 @@ export const AttachmentSourceTypeEnum = createEnum({
     { value: 'sales_order', label: '销售订单', tagProps: { type: 'primary' } },
     { value: 'sample', label: '样品单', tagProps: { type: 'primary' } },
     { value: 'purchase_order', label: '采购订单', tagProps: { type: 'info' } },
+    { value: 'purchase_payment', label: '付款凭证', tagProps: { type: 'info' } },
     { value: 'production_order', label: '生产工单', tagProps: { type: 'info' } },
     { value: 'material', label: '物料', tagProps: { type: 'info' } },
   ],
@@ -43,6 +44,7 @@ export const ATTACHMENT_SOURCE_PERMISSION: Record<string, string> = {
   sales_order: 'sales:order',
   sample: 'sales:sample',
   purchase_order: 'purchase:order',
+  purchase_payment: 'purchase:payment',
   production_order: 'production:order',
   material: 'inventory:material',
 }
@@ -67,6 +69,7 @@ export const ATTACHMENT_SOURCE_CODE: Record<string, string> = {
   sales_order: 'SO',
   sample: 'SP',
   purchase_order: 'PO',
+  purchase_payment: 'PAY',
   production_order: 'WO',
   material: 'MTR',
 }

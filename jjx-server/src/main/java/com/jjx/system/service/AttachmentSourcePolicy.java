@@ -28,6 +28,7 @@ public class AttachmentSourcePolicy {
         "production_order", new Source("production:order", "SELECT order_no FROM production_order WHERE order_id=?",
             "SELECT COUNT(*) FROM production_order WHERE order_id=? AND product_id=?"),
         "purchase_order", new Source("purchase:order", "SELECT order_no FROM purchase_order WHERE order_id=?", null),
+        "purchase_payment", new Source("purchase:payment", "SELECT payment_no FROM purchase_payment WHERE payment_id=?", null),
         "material", new Source("inventory:material", "SELECT material_code FROM inventory_material WHERE material_id=?",
             "SELECT COUNT(*) FROM inventory_material WHERE material_id=? AND product_id=?")
     );
