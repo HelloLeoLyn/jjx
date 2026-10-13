@@ -60,8 +60,19 @@ class AttachmentAccessServiceTest {
                 .thenReturn(0L);
         when(jdbc.queryForObject(contains("review_flow"), eq(Long.class), any(), any(), any(), any(), any()))
                 .thenReturn(0L);
+        when(jdbc.queryForObject(contains("attachment_ref_ids"), eq(Long.class), eq(40L)))
+                .thenReturn(0L);
         assertFalse(access.protectedFile(file()));
         assertDoesNotThrow(() -> access.checkUnlink(file()));
+    }
+
+    @Test
+    void reviewedRefProtectsItsFile() {
+        when(jdbc.queryForObject(contains("product_work_spec_item"), eq(Long.class), any(), any(), any(), any()))
+                .thenReturn(0L);
+        when(jdbc.queryForObject(contains("attachment_ref_ids"), eq(Long.class), eq(40L)))
+                .thenReturn(1L);
+        assertTrue(access.protectedFile(file()));
     }
 
     @Test

@@ -3,6 +3,8 @@ package com.jjx.trace.domain.vo;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 审核流水（review_flow / sales_quotation_flow 统一视图）。
@@ -19,5 +21,6 @@ public class TraceReviewVO {
     private String operatorName;
     private String comment;
     private String attachmentIds;
+    private List<Map<String, Object>> attachmentRefs;
     private LocalDateTime createTime;
 }

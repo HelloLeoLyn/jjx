@@ -1,6 +1,8 @@
 package com.jjx.trace.service.impl;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.page.PageResult;
@@ -16,12 +18,14 @@ import com.jjx.trace.service.TraceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -31,6 +35,8 @@ public class TraceServiceImpl implements TraceService {
     private final SysOperLogMapper sysOperLogMapper;
     private final ReviewFlowMapper reviewFlowMapper;
     private final QuotationFlowMapper quotationFlowMapper;
+    private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbc;
 
     @Override
     public PageResult<UnifiedTraceEventVO> getEvents(String traceId, int pageNum, int pageSize) {
@@ -123,6 +129,24 @@ public class TraceServiceImpl implements TraceService {
         vo.setOperatorName(flow.getOperatorName());
         vo.setComment(flow.getComment());
         vo.setAttachmentIds(flow.getAttachmentIds());
+        if (flow.getAttachmentRefIds() != null) {
+            try {
+                List<Long> ids = objectMapper.readValue(flow.getAttachmentRefIds(), new TypeReference<>() {});
+                List<Map<String, Object>> attachments = new ArrayList<>();
+                for (Long id : ids) {
+                    attachments.addAll(jdbc.query(
+                            "SELECT r.id AS refId, COALESCE(r.display_name, a.file_name) AS fileName "
+                                    + "FROM sys_attachment_ref r JOIN sys_attachment a ON a.id=r.attachment_id "
+                                    + "WHERE r.id=? AND r.source_type=? AND r.source_id=? AND r.deleted=0",
+                            (rs, n) -> Map.<String, Object>of("refId", rs.getLong("refId"),
+                                    "fileName", rs.getString("fileName") == null ? "附件" : rs.getString("fileName")),
+                            id, flow.getBizType(), flow.getBizId()));
+                }
+                vo.setAttachmentRefs(attachments);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new IllegalStateException("审核附件引用数据无效: " + flow.getFlowId(), e);
+            }
+        }
         vo.setCreateTime(flow.getCreateTime());
         return vo;
     }

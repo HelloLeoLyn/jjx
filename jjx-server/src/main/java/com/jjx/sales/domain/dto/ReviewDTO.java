@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import java.util.List;
 
 
 
@@ -21,4 +22,7 @@ public class ReviewDTO {
 
     @Schema(description = "附件ID列表（逗号分隔，选填——审核通过时上传确认书等资料）")
     private String attachments;
+
+    @Schema(description = "本次订单审核附件引用 ID")
+    private List<Long> attachmentRefIds;
 }

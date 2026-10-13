@@ -24,6 +24,19 @@ public class ReviewFlowServiceImpl extends ServiceImpl<ReviewFlowMapper, ReviewF
     @Transactional(rollbackFor = Exception.class)
     public ReviewFlow record(String bizType, Long bizId, String action, String actionName,
                              Object fromStatus, Object toStatus, String comment, String attachmentIds) {
+        return recordInternal(bizType, bizId, action, actionName, fromStatus, toStatus, comment, attachmentIds, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ReviewFlow recordWithRefs(String bizType, Long bizId, String action, String actionName,
+                                     Object fromStatus, Object toStatus, String comment, String attachmentRefIds) {
+        return recordInternal(bizType, bizId, action, actionName, fromStatus, toStatus, comment, null, attachmentRefIds);
+    }
+
+    private ReviewFlow recordInternal(String bizType, Long bizId, String action, String actionName,
+                                      Object fromStatus, Object toStatus, String comment,
+                                      String attachmentIds, String attachmentRefIds) {
         ReviewFlow latest = baseMapper.selectOne(Wrappers.<ReviewFlow>lambdaQuery()
                 .eq(ReviewFlow::getBizType, bizType)
                 .eq(ReviewFlow::getBizId, bizId)
@@ -60,6 +73,7 @@ public class ReviewFlowServiceImpl extends ServiceImpl<ReviewFlowMapper, ReviewF
         flow.setCreateBy(currentUsername());
         flow.setComment(comment);
         flow.setAttachmentIds(attachmentIds);
+        flow.setAttachmentRefIds(attachmentRefIds);
         baseMapper.insert(flow);
         return flow;
     }

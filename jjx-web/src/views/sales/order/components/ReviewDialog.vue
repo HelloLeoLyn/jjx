@@ -54,6 +54,7 @@
       <!-- 审核通过时上传确认书等资料（选填，2026-08-12） -->
       <el-form-item v-if="formData.result === 'approve'" label="确认书/资料">
         <AttachmentCenter
+          ref="attachmentCenter"
           source-type="sales_order"
           :source-id="props.orderId || null"
           :trace-id="orderDetail?.traceId"
@@ -61,7 +62,8 @@
           :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"
           view-perm="sales:order:view"
           edit-perm="sales:order:edit"
-          @uploaded="(p: any) => onUploadSuccess(p.attachmentId)"
+          @bound="(p: { refId: number }) => onBound(p.refId)"
+          @unbound="(p: { refId: number }) => onUnbound(p.refId)"
         />
       </el-form-item>
 
@@ -138,14 +140,19 @@ const formData = ref({
   reviewTime: '',
 })
 
-// 审核通过时上传的附件ID列表（选填）
-const attachmentIds = ref<number[]>([])
+// 本次审核已绑定的订单附件引用 ID（选填）
+const attachmentRefIds = ref<number[]>([])
+const attachmentCenter = ref<InstanceType<typeof AttachmentCenter> | null>(null)
 
-// 上传成功回调
-function onUploadSuccess(id: number) {
-  if (!attachmentIds.value.includes(id)) {
-    attachmentIds.value.push(id)
+// 只记录绑定成功的引用，临时文件 ID 不进入审核流水
+function onBound(id: number) {
+  if (!attachmentRefIds.value.includes(id)) {
+    attachmentRefIds.value.push(id)
   }
+}
+
+function onUnbound(id: number) {
+  attachmentRefIds.value = attachmentRefIds.value.filter((refId) => refId !== id)
 }
 
 // 表单验证规则
@@ -213,9 +220,12 @@ const handleConfirm = async () => {
 
   try {
     if (formData.value.result === 'approve') {
-      // 审核通过（附带上传的确认书等附件ID，选填）
-      const attachments = attachmentIds.value.length ? attachmentIds.value.join(',') : undefined
-      await orderStatusApi.approveOrder(props.orderId, formData.value.remark, attachments)
+      // 审核通过时只提交已绑定的引用 ID
+      if (attachmentCenter.value?.uploading || attachmentCenter.value?.pendingCount) {
+        ElMessage.warning('请等待审核资料上传并绑定完成')
+        return
+      }
+      await orderStatusApi.approveOrder(props.orderId, formData.value.remark, attachmentRefIds.value)
       ElMessage.success('审核通过成功')
     } else {
       // 审核驳回
@@ -247,7 +257,7 @@ const handleClose = () => {
     reviewerName: '',
     reviewTime: '',
   }
-  attachmentIds.value = []
+  attachmentRefIds.value = []
   formRef.value?.resetFields()
 }
 

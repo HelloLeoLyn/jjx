@@ -51,6 +51,12 @@ public class AttachmentAccessService {
         Long hard = jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM product_work_spec_item WHERE resource_type IN ('DRAWING','DOCSET_FILE') AND source_id=?) + (SELECT COUNT(*) FROM quality_template_registry q WHERE q.file_id=? AND (SELECT a2.create_time FROM sys_attachment a2 WHERE a2.id=q.file_id) <= q.create_time) + (SELECT COUNT(*) FROM engineering_film WHERE file_id=?) + (SELECT COUNT(*) FROM product WHERE JSON_UNQUOTE(JSON_EXTRACT(work_spec_json,'$.structureFileId'))=?)",
             Long.class, file.getId(), file.getId(), file.getId(), String.valueOf(file.getId()));
         if (hard != null && hard > 0) return true;
+        Long reviewedRefs = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM sys_attachment_ref r JOIN review_flow f ON f.biz_type=r.source_type "
+                + "AND f.biz_id=r.source_id AND JSON_CONTAINS(f.attachment_ref_ids, CAST(r.id AS JSON)) "
+                + "WHERE r.attachment_id=? AND f.attachment_ref_ids IS NOT NULL",
+            Long.class, file.getId());
+        if (reviewedRefs != null && reviewedRefs > 0) return true;
         // Log evidence is an independent historical reference, never erased by detaching business refs.
         if (file.getTraceId() != null && !file.getTraceId().isBlank()) return true;
         String token = "(^|[^0-9])" + file.getId() + "([^0-9]|$)";

@@ -59,6 +59,16 @@ class ReviewFlowServiceImplTest {
     }
 
     @Test
+    void orderApprovalRecordsRefIdsWithoutLegacyFileIds() {
+        MapperStub stub = new MapperStub();
+        stub.selected.add(null);
+        ReviewFlow recorded = service(stub).recordWithRefs("sales_order", 22L, "APPROVE", "审核通过",
+                2, 3, "同意", "[11,12]");
+        assertEquals("[11,12]", recorded.getAttachmentRefIds());
+        assertEquals(null, recorded.getAttachmentIds());
+    }
+
+    @Test
     void listOrdersByRoundAndFlowIdAscending() {
         MapperStub stub = new MapperStub();
         List<ReviewFlow> rows = List.of(flow(1L, 1, "SUBMIT"), flow(2L, 1, "APPROVE"));

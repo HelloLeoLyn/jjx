@@ -411,25 +411,32 @@ function setEntryCategory(entry: PendingEntry, categoryKey: string | null) {
 }
 
 // ==================== 上传 / 绑定 ====================
+const uploading = ref(false)
+let activeUploads = 0
 async function onFiles(files: File[]) {
-  for (const file of files) {
-    try {
-      const attachmentId = await uploadTemp(file)
-      emit('uploaded', { attachmentId, temp: true })
-      if (props.autoBind && props.sourceId) {
-        const entry = pending.value.find((e) => e.attachmentId === attachmentId) as PendingEntry
-        const refId = await bindPendingOne(entry)
-        emit('bound', { refId, attachmentId })
-        await afterBound(entry)
-      } else {
-        ElMessage.success('已上传，保存单据后自动建立引用')
+  uploading.value = ++activeUploads > 0
+  try {
+    for (const file of files) {
+      try {
+        const attachmentId = await uploadTemp(file)
+        emit('uploaded', { attachmentId, temp: true })
+        if (props.autoBind && props.sourceId) {
+          const entry = pending.value.find((e) => e.attachmentId === attachmentId) as PendingEntry
+          const refId = await bindPendingOne(entry)
+          emit('bound', { refId, attachmentId })
+          await afterBound(entry)
+        } else {
+          ElMessage.success('已上传，保存单据后自动建立引用')
+        }
+        emit('changed', { count: pendingCount.value })
+      } catch (e: any) {
+        const message = e?.message || '附件上传失败'
+        ElMessage.error(message)
+        emit('error', { action: 'upload', message })
       }
-      emit('changed', { count: pendingCount.value })
-    } catch (e: any) {
-      const message = e?.message || '附件上传失败'
-      ElMessage.error(message)
-      emit('error', { action: 'upload', message })
     }
+  } finally {
+    uploading.value = --activeUploads > 0
   }
 }
 
@@ -579,6 +586,7 @@ defineExpose({
   refresh: () => Promise.all([load(), loadTrace()]),
   bindPending,
   pendingCount,
+  uploading,
   pendingEntries: pending,
 })
 </script>

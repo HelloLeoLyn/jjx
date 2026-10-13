@@ -9,5 +9,8 @@ public interface ReviewFlowService extends IService<ReviewFlow> {
     ReviewFlow record(String bizType, Long bizId, String action, String actionName,
                       Object fromStatus, Object toStatus, String comment, String attachmentIds);
 
+    ReviewFlow recordWithRefs(String bizType, Long bizId, String action, String actionName,
+                              Object fromStatus, Object toStatus, String comment, String attachmentRefIds);
+
     List<ReviewFlow> listByBiz(String bizType, Long bizId);
 }

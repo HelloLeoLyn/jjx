@@ -35,6 +35,8 @@ import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
 import com.jjx.system.domain.entity.ReviewFlow;
 import com.jjx.system.service.ReviewFlowService;
+import com.jjx.system.mapper.SysAttachmentRefMapper;
+import com.jjx.system.domain.entity.SysAttachmentRef;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +49,9 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -66,6 +71,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.service.OrderMaterialReserveService orderMaterialReserveService;
     private final ReviewFlowService reviewFlowService;
+    private final SysAttachmentRefMapper attachmentRefMapper;
     private final com.jjx.sales.service.SalesDeliveryWorkflowService deliveryWorkflow;
     private final SalesDeliveryMapper salesDeliveryMapper;
     private final SalesDeliveryItemMapper salesDeliveryItemMapper;
@@ -150,6 +156,24 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void approveOrder(ReviewDTO reviewDTO) {
+        List<Long> refIds = reviewDTO.getAttachmentRefIds();
+        if (reviewDTO.getAttachments() != null && !reviewDTO.getAttachments().isBlank()) {
+            throw new BusinessException("请使用附件引用 ID 提交订单审核资料");
+        }
+        if (refIds != null) {
+            if (refIds.size() > 100 || refIds.stream().anyMatch(id -> id == null || id <= 0)) {
+                throw new BusinessException("审核附件引用无效或数量超过限制");
+            }
+            Set<Long> unique = new HashSet<>(refIds);
+            if (unique.size() != refIds.size()) throw new BusinessException("审核附件引用重复");
+            for (Long refId : refIds) {
+                SysAttachmentRef ref = attachmentRefMapper.selectById(refId);
+                if (ref == null || !"sales_order".equals(ref.getSourceType())
+                        || !reviewDTO.getOrderId().equals(ref.getSourceId())) {
+                    throw new BusinessException("审核附件引用不属于当前订单");
+                }
+            }
+        }
         // 1. 查询订单
         SalesOrder order = salesOrderMapper.selectById(reviewDTO.getOrderId());
         if (order == null) {
@@ -174,8 +198,10 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
-        reviewFlowService.record("sales_order", reviewDTO.getOrderId(), "APPROVE", "审核通过",
-                currentStatus.getValue(), targetStatus.getValue(), reviewDTO.getRemark(), reviewDTO.getAttachments());
+        String refJson = refIds == null || refIds.isEmpty() ? null
+                : refIds.stream().map(String::valueOf).collect(Collectors.joining(",", "[", "]"));
+        reviewFlowService.recordWithRefs("sales_order", reviewDTO.getOrderId(), "APPROVE", "审核通过",
+                currentStatus.getValue(), targetStatus.getValue(), reviewDTO.getRemark(), refJson);
 
         // 7. 审核通过联动（原客户确认环节的步骤前移到审核通过，2026-08-12 去掉客户确认后）
         //    dev-20260930-010：以下均为「尽力而为」的联动，失败不应连坐审核。

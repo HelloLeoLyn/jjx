@@ -9,9 +9,9 @@ export const orderStatusApi = {
     return request.put<R<void>>(`/sales/orders/${orderId}/status/submissions`)
   },
 
-  /** 审核通过（2026-08-12：附带上传的确认书等附件ID，选填） */
-  approveOrder(orderId: number, remark: string, attachments?: string) {
-    return request.put<R<void>>(`/sales/orders/${orderId}/status/approval`, { orderId, remark, attachments })
+  /** 审核通过，记录本次已绑定的订单附件引用 */
+  approveOrder(orderId: number, remark: string, attachmentRefIds?: number[]) {
+    return request.put<R<void>>(`/sales/orders/${orderId}/status/approval`, { orderId, remark, attachmentRefIds })
   },
 
   /** 审核驳回 */

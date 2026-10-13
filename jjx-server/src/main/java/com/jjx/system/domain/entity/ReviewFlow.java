@@ -23,6 +23,7 @@ public class ReviewFlow {
     private String operatorName;
     private String comment;
     private String attachmentIds;
+    private String attachmentRefIds;
     private String extraJson;
     private String createBy;
     private LocalDateTime createTime;

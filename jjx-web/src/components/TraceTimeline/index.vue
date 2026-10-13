@@ -125,7 +125,7 @@
           <el-image
             v-for="attachment in imageAttachments"
             :key="attachment.id"
-            :src="downloadUrl(attachment.id)"
+            :src="downloadUrl(attachment)"
             :preview-src-list="imagePreviewUrls"
             fit="cover"
             class="attachment-image"
@@ -134,7 +134,7 @@
             v-for="attachment in fileAttachments"
             :key="attachment.id"
             type="primary"
-            :href="downloadUrl(attachment.id)"
+            :href="downloadUrl(attachment)"
             target="_blank"
             underline="never"
             class="attachment-link"
@@ -158,10 +158,12 @@ import { computed, ref, watch } from 'vue'
 import { Download, Loading } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { attachmentApi } from '@/api/system/attachment'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
 import { BusinessTypeEnum } from '@/enums/system/LogEnum'
 
 interface TraceAttachment {
   id: number
+  refId?: number
   fileName?: string
 }
 
@@ -181,6 +183,7 @@ interface ReviewHistory {
   operatorName?: string
   comment?: string
   attachmentIds?: string
+  attachmentRefs?: { refId: number; fileName?: string }[]
   createTime?: string
 }
 
@@ -267,9 +270,9 @@ const isRejected = computed(
 )
 
 const detailAttachments = computed(() => {
-  const unique = new Map<number, TraceAttachment>()
+  const unique = new Map<string, TraceAttachment>()
   for (const attachment of selectedEvent.value?.attachments || []) {
-    unique.set(attachment.id, attachment)
+    unique.set(attachment.refId ? `ref:${attachment.refId}` : `file:${attachment.id}`, attachment)
   }
   return [...unique.values()]
 })
@@ -279,7 +282,7 @@ const fileAttachments = computed(() =>
   detailAttachments.value.filter((attachment) => !isImageAttachment(attachment))
 )
 const imagePreviewUrls = computed(() =>
-  imageAttachments.value.map((attachment) => downloadUrl(attachment.id))
+  imageAttachments.value.map((attachment) => downloadUrl(attachment))
 )
 
 function isImageAttachment(attachment: TraceAttachment): boolean {
@@ -384,6 +387,12 @@ async function loadRowContent(row: TraceEvent) {
         row.comment = matched.comment
         row.roundNo = matched.roundNo
         row.actionCode = matched.actionCode || row.actionCode
+        if (matched.attachmentRefs?.length) {
+          row.attachments = [
+            ...(row.attachments || []),
+            ...matched.attachmentRefs.map((ref) => ({ id: ref.refId, refId: ref.refId, fileName: ref.fileName })),
+          ]
+        }
       }
     } catch {
       /* 审核流水加载失败不阻断展示 */
@@ -466,8 +475,10 @@ function formatTime(value?: string): string {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
 }
 
-function downloadUrl(id: number): string {
-  return attachmentApi.downloadUrl(id)
+function downloadUrl(attachment: TraceAttachment): string {
+  return attachment.refId
+    ? attachmentRefApi.downloadUrlByRef(attachment.refId)
+    : attachmentApi.downloadUrl(attachment.id)
 }
 </script>
 
