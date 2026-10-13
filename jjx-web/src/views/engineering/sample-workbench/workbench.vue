@@ -501,15 +501,20 @@
               </div>
               <el-alert
                 v-if="(productPlan.unlinkedMaterials?.length || 0) > 0"
-                type="warning"
+                :type="planPendingNames ? 'warning' : 'info'"
                 :closable="false"
                 show-icon
                 style="margin-top: 10px"
-                :title="`有 ${productPlan.unlinkedMaterials?.length} 条材料未挂工序`"
+                :title="
+                  planPendingNames
+                    ? `有 ${planPendingNames.split('、').length} 条材料未挂工序`
+                    : `有 ${planCommonNames.split('、').length} 条整单通用材料`
+                "
               >
                 <div style="font-size: 12px; line-height: 1.6">
-                  {{ (productPlan.unlinkedMaterials || []).map((m: any) => m.name).join('、') }}
-                  <br />带出时会暂放到首道工序，请在工序里核对归属（不会静默丢失）。
+                  <template v-if="planPendingNames">未挂工序：{{ planPendingNames }}<br /></template>
+                  <template v-if="planCommonNames">整单通用：{{ planCommonNames }}<br /></template>
+                  带出时都会暂放到首道工序，请在工序里核对（不会静默丢失）。
                 </div>
               </el-alert>
             </template>
@@ -591,7 +596,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { useSampleWorkbench } from './composables/useSampleWorkbench'
@@ -756,6 +761,20 @@ const {
   refreshCard,
   readonlyMode,
 } = useSampleWorkbench()
+
+// 成品方案带出：未挂工序 vs 整单通用(is_common) 分类展示（dev-20261013-049）
+const planPendingNames = computed(() =>
+  (productPlan.value?.unlinkedMaterials || [])
+    .filter((m: any) => !m.isCommon)
+    .map((m: any) => m.name)
+    .join('、'),
+)
+const planCommonNames = computed(() =>
+  (productPlan.value?.unlinkedMaterials || [])
+    .filter((m: any) => !!m.isCommon)
+    .map((m: any) => m.name)
+    .join('、'),
+)
 
 // 复制打样方案弹窗：来源 tab（本单历史轮/其他样品单/成品方案）
 const copySourceTab = ref<'round' | 'order' | 'product'>('order')

@@ -357,8 +357,10 @@ export function useSampleWorkbench() {
       ElMessage.warning('成品方案没有可带出的工序')
       return
     }
-    // 未挂工序的 BOM 材料：不静默丢弃 —— 暂挂到首道工序（带出后可在工序里调整），并在结果里提示
+    // BOM 材料不静默丢弃（硬要求）：无工序的材料一律暂挂到首道工序；区分「整单通用」与「未挂工序」两类提示
     const unlinked: any[] = pp.unlinkedMaterials || []
+    const pendingUnlinked = unlinked.filter((m: any) => !m.isCommon) // 未挂工序（待核对）
+    const commonMats = unlinked.filter((m: any) => !!m.isCommon) // 整单通用（合法）
     let unlinkedNote = ''
     if (unlinked.length) {
       const idx = list.findIndex((r: any) => r.majorCategory !== 'PRINT')
@@ -373,19 +375,33 @@ export function useSampleWorkbench() {
         materialCode: m.materialCode || '',
       }))
       list[ti].materials = JSON.stringify([...base, ...add])
-      unlinkedNote = `；另有 ${unlinked.length} 条未挂工序材料（${unlinked
-        .map((m: any) => m.name)
-        .join('、')}）已暂挂到首道工序「${list[ti].processName}」，请核对归属`
+      const parts: string[] = []
+      if (commonMats.length) {
+        parts.push(
+          `${commonMats.length} 条整单通用材料（${commonMats.map((m: any) => m.name).join('、')}）已暂挂到首道工序「${list[ti].processName}」`,
+        )
+      }
+      if (pendingUnlinked.length) {
+        parts.push(
+          `${pendingUnlinked.length} 条未挂工序材料（${pendingUnlinked.map((m: any) => m.name).join('、')}）已暂挂到首道工序「${list[ti].processName}」，请核对归属`,
+        )
+      }
+      if (parts.length) unlinkedNote = `；另有 ${parts.join('；')}`
     }
     productPlanCopying.value = true
     try {
       const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
       historyCopyVisible.value = false
       if (unlinkedNote) {
-        ElMessageBox.alert(`${unlinkedNote.replace(/^；/, '')}`, '材料未挂工序提示', {
-          confirmButtonText: '知道了',
-          type: 'warning',
-        }).catch(() => {})
+        const hasPending = pendingUnlinked.length > 0
+        ElMessageBox.alert(
+          `${unlinkedNote.replace(/^；/, '')}`,
+          hasPending ? '材料未挂工序提示' : '整单通用材料提示',
+          {
+            confirmButtonText: '知道了',
+            type: hasPending ? 'warning' : 'info',
+          },
+        ).catch(() => {})
       }
       ElMessage.success(
         `已带出 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到现有后'}，保存后生效；产品后续升版不会自动同步）`

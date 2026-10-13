@@ -1505,7 +1505,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         List<Map<String, Object>> unlinked = new ArrayList<>();
         for (EngineeringBomItem bi : bomItems) {
             if (bi.getProcessId() == null) {
-                // 未挂工序材料：不静默丢弃，单独返回由前端提示/处理
+                // 无工序材料：不静默丢弃。区分「整单通用(isCommon=true，合法)」与「未挂工序(isCommon=false，待核对)」
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("name", bi.getMaterialName());
                 m.put("spec", bi.getSpecification());
@@ -1513,6 +1513,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 m.put("unit", bi.getUnit());
                 m.put("materialId", bi.getMaterialId());
                 m.put("materialCode", bi.getMaterialCode());
+                m.put("isCommon", Boolean.TRUE.equals(bi.getIsCommon()));
                 unlinked.add(m);
                 continue;
             }
