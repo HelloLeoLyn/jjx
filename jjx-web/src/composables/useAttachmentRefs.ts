@@ -136,11 +136,15 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     return raw === undefined || raw === null || raw === '' ? null : String(raw)
   })
 
-  /** 待绑定队列的隔离键：必须含 userId + sourceType + draftId，避免跨用户/跨草稿污染。
-   *  sourceId 有值时用 `id-{sourceId}`；否则**必须**由调用方提供 draftId（缺失即拒绝上传）。 */
+  /** 待绑定队列的隔离键：用户、来源、草稿及产品行隔离。
+   *  已保存单据的行级键包含 productCode；未保存单据必须提供 draftId。 */
   const explicitDraftId = computed(() => unwrap<string>(options.draftId, '').trim())
   const draftReady = computed(() => !!sourceId.value || !!explicitDraftId.value)
-  const draftKey = computed(() => (sourceId.value ? `id-${sourceId.value}` : explicitDraftId.value))
+  const draftKey = computed(() => sourceId.value
+    ? productCode.value
+      ? `id-${sourceId.value}::p:${productCode.value}`
+      : `id-${sourceId.value}`
+    : explicitDraftId.value)
   const storageKey = computed(() =>
     draftReady.value ? `${STORAGE_PREFIX}:${userStore.userId ?? 'anonymous'}:${sourceType.value}:${draftKey.value}` : '',
   )
@@ -268,9 +272,12 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
 
   // ==================== 合并展示规则（refId 与 attachmentId 不混用） ====================
   /** A 段：全部保留（不同 refId 是不同业务上下文） */
-  const refRows = computed(() => refs.value.filter((r) => !r.deleted))
+  const refRows = computed(() => refs.value.filter((r) =>
+    !r.deleted && (!productCode.value || r.productCode === productCode.value)))
   /** B 段：已有有效引用（同业务上下文）的附件不再重复展示；其余历史行保留 */
   const legacyOnlyRows = computed(() => {
+    // 历史文件没有可靠的行级归属，不得在任意产品行展示为该行资料。
+    if (productCode.value) return []
     const referenced = new Set(refRows.value.map((r) => Number(r.attachmentId)))
     return legacyRows.value.filter((row) => !referenced.has(Number(row?.id)))
   })
@@ -475,41 +482,57 @@ export async function flushStoredQueue(opts: {
   productCode?: string | null
 }): Promise<{ bound: number; failed: number; remaining: number }> {
   const source = canonicalAttachmentSource(opts.sourceType)
-  const key = `${STORAGE_PREFIX}:${opts.userId ?? 'anonymous'}:${source}:${opts.draftId}`
-  let entries: any[] = []
-  try {
-    const raw = localStorage.getItem(key)
-    if (!raw) return { bound: 0, failed: 0, remaining: 0 }
-    const parsed = JSON.parse(raw)
-    entries = Array.isArray(parsed) ? parsed.filter((e: any) => Number(e?.attachmentId) > 0) : []
-  } catch {
-    return { bound: 0, failed: 0, remaining: 0 }
-  }
+  const prefix = `${STORAGE_PREFIX}:${opts.userId ?? 'anonymous'}:${source}:`
+  // 保存时组件若仍挂载，草稿队列会迁移到带单据 ID 的行键；兼容迁移前共用整单键。
+  const keys = [
+    `${prefix}${opts.draftId}`,
+    ...(opts.productCode ? [`${prefix}id-${opts.sourceId}::p:${opts.productCode}`,
+      `${prefix}id-${opts.sourceId}`] : []),
+  ]
   let bound = 0
   let failed = 0
-  const remaining: any[] = []
-  for (const e of entries) {
+  let remaining = 0
+  for (const key of new Set(keys)) {
+    let entries: any[]
     try {
-      const res: any = await attachmentRefApi.createRef({
-        attachmentId: Number(e.attachmentId),
-        sourceType: source,
-        sourceId: opts.sourceId,
-        productCode: e.productCode ? String(e.productCode) : opts.productCode ?? null,
-        documentType: e.documentType ?? null,
-        displayName: e.displayName ?? null,
-      })
-      if (Number(res?.data)) bound++
-      else { failed++; remaining.push(e) }
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      const parsed = JSON.parse(raw)
+      entries = Array.isArray(parsed) ? parsed.filter((e: any) => Number(e?.attachmentId) > 0) : []
     } catch {
-      failed++
-      remaining.push(e)
+      continue
+    }
+    const keep: any[] = []
+    for (const e of entries) {
+      // 旧整单键可能混有其他产品行；绝不把别行文件绑定到当前产品。
+      if (opts.productCode && key === `${prefix}id-${opts.sourceId}`
+        && e.productCode !== opts.productCode) {
+        keep.push(e)
+        continue
+      }
+      try {
+        const res: any = await attachmentRefApi.createRef({
+          attachmentId: Number(e.attachmentId),
+          sourceType: source,
+          sourceId: opts.sourceId,
+          productCode: e.productCode ? String(e.productCode) : opts.productCode ?? null,
+          documentType: e.documentType ?? null,
+          displayName: e.displayName ?? null,
+        })
+        if (Number(res?.data)) bound++
+        else { failed++; keep.push(e) }
+      } catch {
+        failed++
+        keep.push(e)
+      }
+    }
+    remaining += keep.length
+    try {
+      if (keep.length) localStorage.setItem(key, JSON.stringify(keep))
+      else localStorage.removeItem(key)
+    } catch {
+      /* 存储清理失败不影响已建立的引用 */
     }
   }
-  try {
-    if (remaining.length) localStorage.setItem(key, JSON.stringify(remaining))
-    else localStorage.removeItem(key)
-  } catch {
-    /* 忽略：清理失败不影响功能 */
-  }
-  return { bound, failed, remaining: remaining.length }
+  return { bound, failed, remaining }
 }

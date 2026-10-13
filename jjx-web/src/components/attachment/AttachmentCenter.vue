@@ -307,6 +307,8 @@ const traceError = ref('')
 let traceRequest = 0
 
 const traceOnlyRows = computed(() => {
+  // 同链路文件没有产品行标识；行级资料视图只展示本行有效引用。
+  if (props.productCode) return []
   const seen = new Set([
     ...refRows.value.map((row) => Number(row.attachmentId)),
     ...legacyOnlyRows.value.map((row) => Number(row.id)),
@@ -324,7 +326,7 @@ async function loadTrace() {
   traceRows.value = []
   traceError.value = ''
   traceLoading.value = false
-  if (!canView.value || !props.traceId) return
+  if (!canView.value || !props.traceId || props.productCode) return
   traceLoading.value = true
   try {
     const res: any = await attachmentApi.listByTrace(props.traceId)
@@ -341,7 +343,7 @@ async function loadTrace() {
 }
 
 watch(
-  () => [props.sourceType, props.sourceId, props.traceId, canView.value],
+  () => [props.sourceType, props.sourceId, props.traceId, props.productCode, canView.value],
   () => loadTrace(),
   { immediate: true }
 )

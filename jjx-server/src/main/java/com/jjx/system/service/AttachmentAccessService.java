@@ -57,8 +57,8 @@ public class AttachmentAccessService {
                 + "WHERE r.attachment_id=? AND f.attachment_ref_ids IS NOT NULL",
             Long.class, file.getId());
         if (reviewedRefs != null && reviewedRefs > 0) return true;
-        // Log evidence is an independent historical reference, never erased by detaching business refs.
-        if (file.getTraceId() != null && !file.getTraceId().isBlank()) return true;
+        // trace_id only links an attachment to a trace; it is not a hard business reference.
+        // Historical flow/file references below remain protected after a business ref is detached.
         String token = "(^|[^0-9])" + file.getId() + "([^0-9]|$)";
         Long evidence = jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM review_flow WHERE attachment_ids REGEXP ?) + (SELECT COUNT(*) FROM sales_quotation_flow WHERE attachment_ids REGEXP ?) + (SELECT COUNT(*) FROM sales_sample_round WHERE attachment_ids REGEXP ?) + (SELECT COUNT(*) FROM sales_order_review WHERE attachments REGEXP ?) + (SELECT COUNT(*) FROM sales_customer WHERE CAST(attachments AS CHAR) REGEXP ?)",
             Long.class, token, token, token, token, token);
