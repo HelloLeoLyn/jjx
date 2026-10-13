@@ -20,8 +20,6 @@ import com.jjx.product.enums.ProductEnums;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.*;
 import com.jjx.system.annotation.Event;
-import com.jjx.system.domain.entity.SysAttachment;
-import com.jjx.system.service.ISysAttachmentService;
 import com.jjx.notification.service.NotificationService;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
@@ -33,10 +31,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -64,15 +64,11 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
     private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
     private final com.jjx.system.service.LogSaveService logSaveService;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
-    private final ISysAttachmentService attachmentService;
-
-    private static final String INQUIRY_ATTACHMENT_BIZ_TYPE = "inquiry";
-    private static final String QUOTATION_ATTACHMENT_BIZ_TYPE = "quotation";
-    private static final String ORDER_ATTACHMENT_BIZ_TYPE = "order";
 
     /**
-     * 聚合引用该产品的询价、报价和销售订单附件。
-     * product_id 优先精确匹配，product_code 用于兼容历史未回填 product_id 的记录。
+     * 聚合引用该产品的询价、报价和销售订单附件（读 sys_attachment_ref；老 biz_type/biz_id 通道已退役）。
+     * product_id 优先精确匹配，product_code 用于兼容历史未回填 product_id 的记录；
+     * 另并入显式挂到本产品上的业务来源引用（ref.product_id = 本产品）。
      */
     public List<Map<String, Object>> getBizAttachments(Long productId) {
         Product product = productMapper.selectById(productId);
@@ -81,7 +77,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         }
 
         String productCode = product.getProductCode();
-        String sql = """
+        String sourceSql = """
                 SELECT 'inquiry' AS source_type, i.inquiry_id AS source_id,
                        i.inquiry_no AS source_no, i.create_time AS source_time
                   FROM sales_inquiry i
@@ -95,7 +91,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                  WHERE COALESCE(q.deleted, 0) = 0
                    AND (qi.product_id = ? OR (? IS NOT NULL AND qi.product_code = ?))
                 UNION ALL
-                SELECT 'order' AS source_type, o.order_id AS source_id,
+                SELECT 'sales_order' AS source_type, o.order_id AS source_id,
                        o.order_no AS source_no, o.create_time AS source_time
                   FROM sales_order_product op
                   JOIN sales_order o ON o.order_id = op.order_id
@@ -103,7 +99,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                    AND (op.product_id = ? OR (? IS NOT NULL AND op.product_code = ?))
                  ORDER BY source_time DESC
                 """;
-        List<BizAttachmentSource> sources = jdbcTemplate.query(sql,
+        List<BizAttachmentSource> sources = jdbcTemplate.query(sourceSql,
                 (rs, rowNum) -> new BizAttachmentSource(
                         rs.getString("source_type"),
                         rs.getLong("source_id"),
@@ -120,30 +116,67 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                 source -> source,
                 (first, ignored) -> first,
                 LinkedHashMap::new));
-        if (uniqueSources.isEmpty()) {
-            return List.of();
+
+        // 读引用行：命中来源单据的引用，或显式挂到本产品上的业务来源引用。
+        List<Long> inquiryIds = sourceIds(uniqueSources, "inquiry");
+        List<Long> quotationIds = sourceIds(uniqueSources, "quotation");
+        List<Long> orderIds = sourceIds(uniqueSources, "sales_order");
+        StringBuilder refSql = new StringBuilder("""
+                SELECT r.id, r.attachment_id, r.source_type, r.source_id, r.source_no,
+                       r.document_type, r.display_name, r.remark, r.sort_order, r.create_by,
+                       r.create_time, a.file_name, a.file_size, a.file_type
+                  FROM sys_attachment_ref r
+                  JOIN sys_attachment a ON a.id = r.attachment_id
+                 WHERE r.deleted = 0
+                   AND r.source_type IN ('inquiry', 'quotation', 'sales_order')
+                   AND (r.product_id = ?""");
+        refSql.append(inClause("r.source_type = 'inquiry' AND r.source_id", inquiryIds));
+        refSql.append(inClause("r.source_type = 'quotation' AND r.source_id", quotationIds));
+        refSql.append(inClause("r.source_type = 'sales_order' AND r.source_id", orderIds));
+        refSql.append(")\n                 ORDER BY r.sort_order ASC, r.id ASC");
+
+        List<Object> args = new ArrayList<>();
+        args.add(productId);
+        args.addAll(inquiryIds);
+        args.addAll(quotationIds);
+        args.addAll(orderIds);
+        List<Map<String, Object>> refRows = jdbcTemplate.query(refSql.toString(),
+                (rs, rowNum) -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("id", rs.getLong("id"));
+                    row.put("attachmentId", rs.getLong("attachment_id"));
+                    row.put("sourceType", rs.getString("source_type"));
+                    row.put("sourceId", rs.getLong("source_id"));
+                    row.put("sourceNo", rs.getString("source_no"));
+                    row.put("documentType", rs.getString("document_type"));
+                    row.put("displayName", rs.getString("display_name"));
+                    row.put("remark", rs.getString("remark"));
+                    row.put("sortOrder", rs.getInt("sort_order"));
+                    row.put("createBy", rs.getString("create_by"));
+                    row.put("createTime", rs.getString("create_time"));
+                    row.put("fileName", rs.getString("file_name"));
+                    row.put("fileSize", rs.getObject("file_size") == null ? 0L : rs.getLong("file_size"));
+                    row.put("fileType", rs.getString("file_type"));
+                    return row;
+                },
+                args.toArray());
+
+        Map<String, List<Map<String, Object>>> filesBySource = new LinkedHashMap<>();
+        for (Map<String, Object> row : refRows) {
+            filesBySource.computeIfAbsent(row.get("sourceType") + ":" + row.get("sourceId"),
+                    key -> new ArrayList<>()).add(row);
         }
 
-        LambdaQueryWrapper<SysAttachment> attachmentQuery = new LambdaQueryWrapper<>();
-        attachmentQuery.and(group -> uniqueSources.values().forEach(source ->
-                group.or(pair -> pair
-                        .eq(SysAttachment::getBizType, attachmentBizType(source.sourceType()))
-                        .eq(SysAttachment::getBizId, source.sourceId()))));
-        attachmentQuery.orderByAsc(SysAttachment::getSortOrder)
-                .orderByAsc(SysAttachment::getCreateTime);
-        Map<String, List<SysAttachment>> filesBySource = attachmentService.list(attachmentQuery).stream()
-                .collect(Collectors.groupingBy(
-                        attachment -> attachment.getBizType() + ':' + attachment.getBizId(),
-                        LinkedHashMap::new,
-                        Collectors.toList()));
-
+        // 先按来源单据时间倒序输出，再补上仅由 ref.product_id 命中（其来源未在该产品上）的引用。
         List<Map<String, Object>> result = new ArrayList<>();
+        Set<String> placed = new HashSet<>();
         for (BizAttachmentSource source : uniqueSources.values()) {
-            String bizType = attachmentBizType(source.sourceType());
-            List<SysAttachment> files = filesBySource.get(bizType + ':' + source.sourceId());
+            String key = source.sourceType() + ":" + source.sourceId();
+            List<Map<String, Object>> files = filesBySource.get(key);
             if (files == null || files.isEmpty()) {
                 continue;
             }
+            placed.add(key);
             Map<String, Object> group = new LinkedHashMap<>();
             group.put("sourceType", source.sourceType());
             group.put("sourceId", source.sourceId());
@@ -151,16 +184,35 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
             group.put("files", files);
             result.add(group);
         }
+        for (Map.Entry<String, List<Map<String, Object>>> entry : filesBySource.entrySet()) {
+            if (placed.contains(entry.getKey())) {
+                continue;
+            }
+            Map<String, Object> first = entry.getValue().get(0);
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("sourceType", first.get("sourceType"));
+            group.put("sourceId", first.get("sourceId"));
+            group.put("sourceNo", first.get("sourceNo"));
+            group.put("files", entry.getValue());
+            result.add(group);
+        }
         return result;
     }
 
-    private String attachmentBizType(String sourceType) {
-        return switch (sourceType) {
-            case "inquiry" -> INQUIRY_ATTACHMENT_BIZ_TYPE;
-            case "quotation" -> QUOTATION_ATTACHMENT_BIZ_TYPE;
-            case "order" -> ORDER_ATTACHMENT_BIZ_TYPE;
-            default -> sourceType;
-        };
+    private static List<Long> sourceIds(Map<String, BizAttachmentSource> sources, String sourceType) {
+        return sources.values().stream()
+                .filter(source -> source.sourceType().equals(sourceType))
+                .map(BizAttachmentSource::sourceId)
+                .distinct()
+                .toList();
+    }
+
+    private static String inClause(String predicate, List<Long> ids) {
+        if (ids.isEmpty()) {
+            return "";
+        }
+        String placeholders = ids.stream().map(id -> "?").collect(Collectors.joining(","));
+        return "\n                     OR (" + predicate + " IN (" + placeholders + "))";
     }
 
     private record BizAttachmentSource(String sourceType, Long sourceId, String sourceNo,

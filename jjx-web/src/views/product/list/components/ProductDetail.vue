@@ -92,7 +92,7 @@
                       <div class="biz-file-meta">
                         <el-link
                           type="primary"
-                          :href="attachmentApi.downloadUrl(file.id)"
+                          :href="attachmentRefApi.downloadUrlByRef(file.id)"
                           :underline="false"
                           target="_blank"
                         >
@@ -258,7 +258,7 @@ import ProductBasicInfo from '@/components/product/ProductBasicInfo.vue'
 import BomDetailTable from '@/views/product/bom/components/BomDetailTable.vue'
 import RouteProcessTable from '@/views/product/route/components/RouteProcessTable.vue'
 import ProductFilmPanel from '@/views/product/film/components/ProductFilmPanel.vue'
-import { attachmentApi } from '@/api/system/attachment'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
 import type { ProductBizAttachmentGroup } from '@/api/product'
 import { Document, Download } from '@element-plus/icons-vue'
 
@@ -352,7 +352,7 @@ const sourceTypeLabel = (sourceType: ProductBizAttachmentGroup['sourceType']): s
   ({
     inquiry: '询价单',
     quotation: '报价单',
-    order: '订单',
+    sales_order: '订单',
   })[sourceType]
 
 const formatFileSize = (size?: number): string => {
@@ -365,7 +365,7 @@ const formatFileSize = (size?: number): string => {
 const formatAttachmentTime = (time: string): string => time.replace('T', ' ').slice(0, 16)
 
 const openAttachment = (id: number) => {
-  window.open(attachmentApi.downloadUrl(id), '_blank')
+  window.open(attachmentRefApi.downloadUrlByRef(id), '_blank')
 }
 
 // 监听productId变化

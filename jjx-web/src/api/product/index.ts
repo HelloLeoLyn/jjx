@@ -12,16 +12,21 @@ import type {
 import type { PageResult, R } from '@/types'
 
 export interface ProductBizAttachment {
+  /** 引用ID（sys_attachment_ref.id）——下载/预览按引用走 */
   id: number
+  /** 附件ID（sys_attachment.id） */
+  attachmentId?: number
   fileName?: string
   fileSize?: number
   fileType?: string
+  displayName?: string
+  documentType?: string
   createBy?: string
   createTime?: string
 }
 
 export interface ProductBizAttachmentGroup {
-  sourceType: 'inquiry' | 'quotation' | 'order'
+  sourceType: 'inquiry' | 'quotation' | 'sales_order'
   sourceId: number
   sourceNo?: string
   files: ProductBizAttachment[]
