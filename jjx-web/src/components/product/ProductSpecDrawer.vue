@@ -114,7 +114,10 @@
                 @updated="refreshSpecSources"
               />
               <div v-else-if="selectedVersionId" v-loading="versionLoading" class="version-snapshot">
-                <el-alert type="info" :closable="false" class="tab-tip"
+                <el-alert v-if="versionLoading" type="info" :closable="false" class="tab-tip" title="正在加载版本快照…" />
+                <el-alert v-else-if="versionError" type="error" :closable="false" class="tab-tip" :title="versionError" />
+                <el-button v-if="!versionLoading && (versionError || specError)" link type="primary" @click="applyVersionSelection">重新加载版本</el-button>
+                <el-alert v-if="versionSnapshot" type="info" :closable="false" class="tab-tip"
                   :title="`正在查看发布版本 ${versionSnapshot?.version?.versionNo || ''}（只读快照，不可编辑）；未纳入本次发布：客供资料、领料单、油墨、实际检测记录。`" />
                 <el-descriptions v-if="versionSnapshot?.version" :column="2" border size="small">
                   <el-descriptions-item label="版本号">{{ versionSnapshot.version.versionNo }}</el-descriptions-item>
@@ -139,8 +142,10 @@
                     <span v-else>-</span>
                   </el-descriptions-item>
                 </el-descriptions>
-                <el-alert v-else type="warning" :closable="false" style="margin-top: 10px" title="该版本无规范正文快照" />
+                <el-alert v-else-if="specError" type="error" :closable="false" style="margin-top: 10px" :title="specError" />
+                <el-alert v-else-if="versionSnapshot && !versionLoading" type="warning" :closable="false" style="margin-top: 10px" title="该版本无规范正文快照" />
                 <el-table
+                  v-if="versionSnapshot"
                   :data="versionSnapshot?.drawings || []"
                   size="small"
                   border
@@ -254,6 +259,7 @@ const colorCheckBusy = ref(false)
 function closeSpec(done: () => void) {
   if (drawingBusy.value || workSpecBusy.value || colorCheckBusy.value) { ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口'); return }
   requestVersion++
+  resetVersionSnapshot()
   exportVisible.value = false
   done()
 }
@@ -289,6 +295,8 @@ async function open(id: number, versionId?: number) {
   }
   const version = ++requestVersion
   activeTab.value = 'customer'
+  selectedVersionId.value = 0
+  resetVersionSnapshot()
   sampleOrders.value = []
   pickRecords.value = []
   detail.value = null
@@ -363,11 +371,22 @@ const versionOptions = ref<any[]>([])
 const selectedVersionId = ref(0)
 const versionSnapshot = ref<{ version: any; spec: any; drawings: any[]; routingItems: any[]; routingError: string } | null>(null)
 const versionLoading = ref(false)
+const versionError = ref('')
+const specError = ref('')
+let snapshotRequest = 0
+
+function resetVersionSnapshot() {
+  snapshotRequest++
+  versionSnapshot.value = null
+  versionLoading.value = false
+  versionError.value = ''
+  specError.value = ''
+}
 
 async function loadVersionOptions() {
   versionOptions.value = []
   selectedVersionId.value = 0
-  versionSnapshot.value = null
+  resetVersionSnapshot()
   if (!productId.value) return
   try {
     const res: any = await productWorkSpecApi.listVersions(productId.value)
@@ -378,44 +397,57 @@ async function loadVersionOptions() {
 }
 
 async function applyVersionSelection() {
-  versionSnapshot.value = null
-  versionLoading.value = false
+  resetVersionSnapshot()
   if (!selectedVersionId.value) return
   versionLoading.value = true
+  const request = snapshotRequest
   const requestedVersionId = selectedVersionId.value
   try {
     const res: any = await productWorkSpecApi.getVersion(requestedVersionId)
-    if (res?.code === 200) {
-      const items = res?.data?.items || []
-      const specItem = items.find((i: any) => i.resourceType === 'SPEC_JSON')
-      let spec: any = null
-      if (specItem?.snapshotJson) {
-        try { spec = normalizeWorkSpec(JSON.parse(specItem.snapshotJson)) } catch { spec = null }
-      }
-      let routingItems: any[] = []
-      let routingError = ''
-      const routingItem = items.find((item: any) => item.resourceType === 'ROUTING')
+    if (request !== snapshotRequest) return
+    if (res?.code !== 200 || !res.data?.version || !Array.isArray(res.data.items)) {
+      throw new Error(res?.msg || '版本详情返回不完整')
+    }
+    const items = res.data.items
+    const specItem = items.find((i: any) => i.resourceType === 'SPEC_JSON')
+    let spec: any = null
+    if (specItem?.snapshotJson != null && specItem.snapshotJson !== '') {
       try {
-        const routingId = JSON.parse(routingItem?.snapshotJson || '{}').routingId
-        if (routingId) {
-          const routing = await productRouteApi.getProductRouteInfo(Number(routingId))
-          routingItems = routing.data?.items || []
-        }
+        const parsed = JSON.parse(specItem.snapshotJson)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('规范正文应为 JSON 对象')
+        spec = normalizeWorkSpec(parsed)
       } catch (error) {
-        console.error('读取发布版本印刷工序失败', error)
-        routingError = '该版本的印刷工序读取失败，请重新选择版本重试'
+        console.error('解析发布版本规范正文失败', { versionId: requestedVersionId, error })
+        specError.value = '该版本规范正文解析失败，请重试或联系管理员'
       }
-      if (requestedVersionId !== selectedVersionId.value) return
-      versionSnapshot.value = { version: res?.data?.version, spec, drawings: drawingItems(items), routingItems, routingError }
+    }
+    // 正文已就绪，不等待独立的工艺路线接口；路线失败不影响正文。
+    const snapshot = { version: res.data.version, spec, drawings: drawingItems(items), routingItems: [] as any[], routingError: '' }
+    versionSnapshot.value = snapshot
+    versionLoading.value = false
+    const routingItem = items.find((item: any) => item.resourceType === 'ROUTING')
+    try {
+      const routingId = JSON.parse(routingItem?.snapshotJson || '{}').routingId
+      if (routingId) {
+        const routing = await productRouteApi.getProductRouteInfo(Number(routingId))
+        if (request !== snapshotRequest) return
+        versionSnapshot.value!.routingItems = routing.data?.items || []
+      }
+    } catch (error) {
+      if (request !== snapshotRequest) return
+      console.error('读取发布版本印刷工序失败', error)
+      versionSnapshot.value!.routingError = '该版本的印刷工序读取失败，请重新选择版本重试'
     }
   } catch (e) {
-    if (requestedVersionId === selectedVersionId.value) ElMessage.error(e instanceof Error ? e.message : '版本快照加载失败')
+    if (request !== snapshotRequest) return
+    console.error('加载发布版本快照失败', { versionId: requestedVersionId, error: e })
+    versionError.value = `版本快照加载失败：${e instanceof Error ? e.message : '请重试'}`
   } finally {
-    if (requestedVersionId === selectedVersionId.value) versionLoading.value = false
+    if (request === snapshotRequest) versionLoading.value = false
   }
 }
 
-watch(selectedVersionId, () => { void applyVersionSelection() })
+watch(selectedVersionId, () => { void applyVersionSelection() }, { flush: 'sync' })
 
 /** 该版本的 DRAWING 条目（工程图 / 样品资料；多条目；dev-20261011-034）。 */
 function drawingItems(items: any[]) {
@@ -436,7 +468,7 @@ function openExport() {
   exportVisible.value = true
 }
 
-onBeforeUnmount(() => { requestVersion++ })
+onBeforeUnmount(() => { requestVersion++; resetVersionSnapshot() })
 defineExpose({ open })
 </script>
 
