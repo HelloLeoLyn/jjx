@@ -47,6 +47,20 @@ public class SysAttachmentRefController {
     @Log(module = "附件引用", businessType = BusinessType.DELETE, bizType = "'sys_attachment_ref'", bizId = "#refId", action = "解除附件引用")
     public Result<Boolean> unlink(@PathVariable Long refId) { refs.unlink(refId); return Result.success(true); }
 
+    /** 批量修改引用元数据（部分更新：只写显式传入的非 null 字段；一次事务） */
+    @PutMapping("/batch")
+    @Log(module = "附件引用", businessType = BusinessType.UPDATE, bizType = "'sys_attachment_ref'", action = "批量修改附件引用资料")
+    public Result<Integer> batchUpdate(@Valid @RequestBody AttachmentRefBatchDTO body) {
+        return Result.success(refs.batchUpdate(body));
+    }
+
+    /** 批量解除引用（逗号分隔的 refId 列表；一次事务；不动物理文件） */
+    @DeleteMapping("/batch/{refIds}")
+    @Log(module = "附件引用", businessType = BusinessType.DELETE, bizType = "'sys_attachment_ref'", action = "批量解除附件引用")
+    public Result<Integer> batchUnlink(@PathVariable Long[] refIds) {
+        return Result.success(refs.batchUnlink(java.util.Arrays.asList(refIds)));
+    }
+
     @GetMapping("/{refId}/download")
     public ResponseEntity<Resource> download(@PathVariable Long refId) { return downloads.byRef(refId, false); }
 

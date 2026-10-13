@@ -3,6 +3,8 @@ package com.jjx.system.service;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.system.domain.dto.AttachmentRefBatchDTO;
+import com.jjx.system.domain.dto.AttachmentRefBatchItem;
 import com.jjx.system.domain.dto.AttachmentRefDTO;
 import com.jjx.system.domain.dto.AttachmentRefMetadataDTO;
 import com.jjx.system.domain.entity.SysAttachment;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -149,6 +152,82 @@ public class AttachmentRefService {
                 file.getUploadState() == AttachmentUploadState.LEGACY ? AttachmentUploadState.LEGACY.name() : AttachmentUploadState.ORPHAN.name(),
                 LocalDateTime.now().plusDays(30), file.getId());
         }
+    }
+
+    /**
+     * 批量修改引用元数据（按行部分更新：每条只写自己非 null 的字段，null 表示不改）。
+     * 与单条 {@link #update}（全量替换、null=清空）语义不同；整批一次事务，任一条失败全部回滚。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int batchUpdate(AttachmentRefBatchDTO body) {
+        List<AttachmentRefBatchItem> items = body.getItems() == null ? null
+            : body.getItems().stream().filter(Objects::nonNull).toList();
+        if (items == null || items.isEmpty()) throw new BusinessException("请选择要修改的附件");
+        if (items.size() > 500) throw new BusinessException("单次最多修改 500 条");
+        // 同一 refId 只处理第一条，避免同批内自相矛盾
+        Map<Long, AttachmentRefBatchItem> unique = new LinkedHashMap<>();
+        for (AttachmentRefBatchItem item : items) {
+            if (item.getRefId() == null) throw new BusinessException("附件引用不能为空");
+            unique.putIfAbsent(item.getRefId(), item);
+        }
+        int changed = 0;
+        for (Map.Entry<Long, AttachmentRefBatchItem> entry : unique.entrySet()) {
+            Long id = entry.getKey();
+            AttachmentRefBatchItem item = entry.getValue();
+            SysAttachmentRef initial = readable(id);
+            lock(initial.getAttachmentId());
+            SysAttachmentRef ref = refs.lockActive(initial.getAttachmentId()).stream().filter(r -> r.getId().equals(id))
+                .findFirst().orElseThrow(() -> new BusinessException("附件引用已解除"));
+            sources.check(ref.getSourceType(), ref.getSourceId(), true);
+            String type = ref.getDocumentType();
+            if (item.getDocumentType() != null) { // 部分更新：未传则保留原值
+                type = optional(item.getDocumentType(), 100);
+                if (!Objects.equals(type, ref.getDocumentType())) types.validate(type, ref.getSourceType());
+            }
+            String displayName = item.getDisplayName() != null ? optional(item.getDisplayName(), 255) : ref.getDisplayName();
+            String remark = item.getRemark() != null ? optional(item.getRemark(), 500) : ref.getRemark();
+            int sortOrder = item.getSortOrder() != null
+                ? order(item.getSortOrder())
+                : (ref.getSortOrder() == null ? 0 : ref.getSortOrder());
+            jdbc.update("UPDATE sys_attachment_ref SET document_type=?,display_name=?,remark=?,sort_order=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
+                type, displayName, remark, sortOrder, StpUtil.getLoginIdAsString(), id);
+            changed++;
+        }
+        return changed;
+    }
+
+    /** 批量解除引用（逐条语义与 {@link #unlink} 一致；整批一次事务，任一条失败全部回滚）。 */
+    @Transactional(rollbackFor = Exception.class)
+    public int batchUnlink(List<Long> rawIds) {
+        List<Long> ids = distinctIds(rawIds);
+        int changed = 0;
+        for (Long id : ids) {
+            SysAttachmentRef ref = refs.includingDeleted(id);
+            if (ref == null) throw new BusinessException("附件引用不存在");
+            sources.check(ref.getSourceType(), ref.getSourceId(), true);
+            SysAttachment file = lock(ref.getAttachmentId());
+            List<SysAttachmentRef> active = refs.lockActive(file.getId());
+            if (active.stream().noneMatch(r -> r.getId().equals(id))) continue; // 已解除：幂等跳过，不移动保留期时钟
+            access.checkUnlink(file);
+            jdbc.update("UPDATE sys_attachment_ref SET deleted=1,deleted_at=NOW(),deleted_by=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
+                StpUtil.getLoginIdAsString(), StpUtil.getLoginIdAsString(), id);
+            if (active.size() == 1) {
+                jdbc.update("UPDATE sys_attachment SET upload_state=?,expires_at=? WHERE id=?",
+                    file.getUploadState() == AttachmentUploadState.LEGACY ? AttachmentUploadState.LEGACY.name() : AttachmentUploadState.ORPHAN.name(),
+                    LocalDateTime.now().plusDays(30), file.getId());
+            }
+            changed++;
+        }
+        return changed;
+    }
+
+    /** 批量入参清洗：去空、去重、限流（单次上限 500），空集合直接拒绝。 */
+    private List<Long> distinctIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) throw new BusinessException("请选择要操作的附件");
+        List<Long> distinct = ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) throw new BusinessException("请选择要操作的附件");
+        if (distinct.size() > 500) throw new BusinessException("单次最多操作 500 条");
+        return distinct;
     }
 
     private SysAttachment lock(Long id) {

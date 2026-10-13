@@ -59,8 +59,17 @@ export interface AttachmentRefCreateBody {
   sortOrder?: number | null
 }
 
-/** 修改引用元数据（PUT /refs/{refId}） */
+/** 修改引用元数据（PUT /refs/{refId}）：全量替换，null=清空 */
 export interface AttachmentRefMetadata {
+  documentType?: string | null
+  displayName?: string | null
+  remark?: string | null
+  sortOrder?: number | null
+}
+
+/** 批量修改单条（PUT /refs/batch）：按行部分更新，null/不传 = 不改该字段 */
+export interface AttachmentRefBatchItemBody {
+  refId: number
   documentType?: string | null
   displayName?: string | null
   remark?: string | null
@@ -123,6 +132,16 @@ export const attachmentRefApi = {
   /** 修改引用元数据（分类/展示名/备注/排序） */
   updateMeta(refId: number, body: AttachmentRefMetadata): AxiosPromise<boolean> {
     return request({ url: `/system/attachment/refs/${refId}`, method: 'put', data: body })
+  },
+
+  /** 批量修改引用元数据（按行部分更新：每条只传要改的字段；一次事务） */
+  batchUpdate(items: AttachmentRefBatchItemBody[]): AxiosPromise<number> {
+    return request({ url: '/system/attachment/refs/batch', method: 'put', data: { items } })
+  },
+
+  /** 批量解除引用（逗号分隔 refId；一次事务；不动物理文件） */
+  batchUnlink(refIds: number[]): AxiosPromise<number> {
+    return request({ url: `/system/attachment/refs/batch/${refIds.join(',')}`, method: 'delete' })
   },
 
   /** 解除引用（幂等；不动物理文件） */
