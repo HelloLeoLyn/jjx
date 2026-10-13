@@ -55,6 +55,28 @@ export const ATTACHMENT_SOURCE_ALIAS: Record<string, string> = {
   production: 'production_order',
 }
 
+/**
+ * 来源类型 → 单号前缀编码（用于附件展示名拼装）。
+ * 真源：`jjx-docs/design/doc-no-rules-dev-20260922-023.md` §4「前缀登记表」——直接复用单号前缀，不另造码。
+ * 注：非 status 值，故意不用 createEnum（避免状态魔法值门禁误伤）。
+ */
+export const ATTACHMENT_SOURCE_CODE: Record<string, string> = {
+  product: 'PROD',
+  inquiry: 'INQ',
+  quotation: 'QT',
+  sales_order: 'SO',
+  sample: 'SP',
+  purchase_order: 'PO',
+  production_order: 'WO',
+  material: 'MTR',
+}
+
+/** 取来源类型编码；未知来源回退大写原值（不静默为空） */
+export function attachmentSourceCode(source?: string | null): string {
+  if (!source) return ''
+  return ATTACHMENT_SOURCE_CODE[source] || source.toUpperCase()
+}
+
 /** 归一来源类型；未知来源原样返回（由后端 fail-closed 拒绝） */
 export function canonicalAttachmentSource(source?: string | null): string {
   if (!source) return ''

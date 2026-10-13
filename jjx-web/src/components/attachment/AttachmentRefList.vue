@@ -111,7 +111,8 @@
     <!-- 批量改名 -->
     <el-dialog v-model="batchNameVisible" title="批量改名" width="560px" append-to-body>
       <div class="ar-sub">
-        命名规则：来源类型-来源Id-一级编码-二级编码-二级名称（产品段系统暂未提供，未纳入）。
+        命名规则：来源类型编码-来源Id-P产品id-一级码-二级码-二级名（来源类型编码取单号前缀，如
+        INQ/QT/SO；产品id 为空则整段跳过）。
       </div>
       <div class="ar-sub" style="margin-top: 6px">
         共 {{ batchNameRows.length }} 条；示例（第 1 条）：
@@ -158,6 +159,7 @@ import {
   type AttachmentRefItem,
 } from '@/api/system/attachmentRef'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
+import { attachmentSourceCode } from '@/enums/system/AttachmentEnum'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
 import { referenceColumns } from './attachmentFields'
 import { formatSize, formatTime } from './attachmentFormat'
@@ -298,11 +300,16 @@ const batchNameSaving = ref(false)
 const batchNameRows = ref<{ refId: number; name: string; overflow: boolean }[]>([])
 const batchNamePreview = computed(() => batchNameRows.value[0]?.name || '')
 const batchNameHasOverflow = computed(() => batchNameRows.value.some((r) => r.overflow))
-/** 命名规则：来源类型-来源Id-一级编码-二级编码-二级名称（产品段系统暂未提供，未纳入） */
+/**
+ * 命名规则：来源类型编码-来源Id-P产品id-一级码-二级码-二级名
+ * 例：INQ-2-P123-CUSTOMER_DOC-CUSTOMER_DRAWING-客户图纸
+ * 来源类型编码取单号前缀登记表（AttachmentEnum.attachmentSourceCode）；产品id 为空时整段跳过。
+ */
 function buildRowDisplayName(row: AttachmentRefItem): string {
   return [
-    row.sourceType || '',
+    attachmentSourceCode(row.sourceType),
     row.sourceId == null ? '' : String(row.sourceId),
+    row.productId == null ? '' : `P${row.productId}`,
     categoryKeyOfType(row.documentType) || '',
     row.documentType || '',
     row.documentType ? secondLabelOf(row.documentType) : '',
