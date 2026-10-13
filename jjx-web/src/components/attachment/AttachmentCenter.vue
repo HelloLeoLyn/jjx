@@ -63,7 +63,9 @@
           style="width: 150px"
           @change="() => persist()"
         >
-          <el-option v-for="t in selectableTypes" :key="t.item_key" :label="t.label" :value="t.item_key" />
+          <el-option-group v-for="g in groupedSelectableTypes" :key="g.key" :label="g.label">
+            <el-option v-for="t in g.options" :key="t.item_key" :label="t.label" :value="t.item_key" />
+          </el-option-group>
         </el-select>
         <el-button v-if="canEdit" link type="primary" @click="retryBind(entry)">重试绑定</el-button>
         <el-button v-if="canEdit" link type="danger" @click="removePending(entry.attachmentId)">移除</el-button>
@@ -133,7 +135,9 @@
       <el-form label-width="80px">
         <el-form-item label="分类">
           <el-select v-model="metaForm.documentType" clearable placeholder="选择资料类型" style="width: 100%">
-            <el-option v-for="t in selectableTypes" :key="t.item_key" :label="t.label" :value="t.item_key" />
+            <el-option-group v-for="g in groupedSelectableTypes" :key="g.key" :label="g.label">
+              <el-option v-for="t in g.options" :key="t.item_key" :label="t.label" :value="t.item_key" />
+            </el-option-group>
           </el-select>
         </el-form-item>
         <el-form-item label="展示名">
@@ -174,7 +178,7 @@ import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { FolderOpened, Document, Download, View, Close, Clock } from '@element-plus/icons-vue'
 import { attachmentApi } from '@/api/system/attachment'
-import { attachmentRefApi, type AttachmentRefItem } from '@/api/system/attachmentRef'
+import { attachmentRefApi, type AttachmentDocumentTypeItem, type AttachmentRefItem } from '@/api/system/attachmentRef'
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
 import { useAttachmentRefs, type PendingEntry } from '@/composables/useAttachmentRefs'
 
@@ -348,6 +352,15 @@ function displayNameOf(row: AttachmentRefItem) {
   )
   return t ? `${t.label} · ${base}` : base
 }
+/** 二级 → 一级（attachment_category）解析：用真实字典的 ext_data.parent，不硬编码中文；未知/悬空返回 null */
+function parentCategoryOf(t: AttachmentDocumentTypeItem): AttachmentDocumentTypeItem | null {
+  const ext = typeof t.ext_data === 'string' ? safeJson(t.ext_data) : t.ext_data
+  const parent = (ext as any)?.parent
+  if (!parent) return null
+  return (
+    documentTypes.value.find((x) => x.item_key === parent && x.dict_code === 'attachment_category') || null
+  )
+}
 /** 「一级｜二级」（dev-20261012-024）：用真实字典，不硬编码中文；未知二级回退原编码；空值「未分类」 */
 function docTypeLabel(code?: string | null) {
   if (!code) return '未分类'
@@ -355,11 +368,7 @@ function docTypeLabel(code?: string | null) {
     (x) => x.item_key === code && x.dict_code === 'attachment_document_type',
   )
   if (!t) return code
-  const ext = typeof t.ext_data === 'string' ? safeJson(t.ext_data) : t.ext_data
-  const parent = (ext as any)?.parent
-  const p = parent
-    ? documentTypes.value.find((x) => x.item_key === parent && x.dict_code === 'attachment_category')
-    : null
+  const p = parentCategoryOf(t)
   return p ? `${p.label}｜${t.label}` : t.label
 }
 const selectableTypes = computed(() =>
@@ -371,6 +380,21 @@ const selectableTypes = computed(() =>
     return sources.includes(props.sourceType)
   }),
 )
+/** 类型下拉的两级形态：按一级（attachment_category）分组，组内为可选二级（attachment_document_type） */
+const groupedSelectableTypes = computed(() => {
+  const groups = new Map<string, { key: string; label: string; options: AttachmentDocumentTypeItem[] }>()
+  for (const t of selectableTypes.value) {
+    const parent = parentCategoryOf(t)
+    const key = parent?.item_key || '__unknown__'
+    let g = groups.get(key)
+    if (!g) {
+      g = { key, label: parent?.label || '未分类', options: [] }
+      groups.set(key, g)
+    }
+    g.options.push(t)
+  }
+  return Array.from(groups.values())
+})
 function safeJson(raw: string): Record<string, unknown> {
   try {
     return JSON.parse(raw)
