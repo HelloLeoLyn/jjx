@@ -175,7 +175,11 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
   INSERT INTO sys_task (task_code,task_type,kanban_module,title,status,priority,create_by)
   VALUES ('dev-YYYYMMDD-NNN','DEV','dev','<标题>',0,'P3','<agent>');
   ```
-- 完成后状态置 `2`（待审核），描述含：背景/方案/改动/提交 hash/验证待办；待用户审核后拖到已完成
+- **接单即置「进行中(1)」并记录开始时间与操作员（2026-10-13 用户定，全 agent 适用）**：谁接任务，**动手前**先把该任务置为进行中并留痕——
+  即 `UPDATE sys_task SET status=1, start_time=NOW(), assignee_name='<操作员>', update_by='<操作员>' WHERE task_code='dev-YYYYMMDD-NNN';`
+  记录「状态=进行中(1) + 开始时间(start_time) + 操作员(assignee_name/update_by)」；完成后置 `2` 并写 `completed_time=NOW()`。
+  目的：状态流转可追溯（谁、何时开始，谁、何时结束）。与既有「完成后置 2」不冲突，属**新增前置**。
+- 完成后状态置 `2`（待审核）并写 `completed_time=NOW()`，描述含：背景/方案/改动/提交 hash/验证待办；待用户审核后拖到已完成
 
 ---
 

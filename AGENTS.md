@@ -62,6 +62,13 @@ Quick rules:
   `pre-push` runs the table baseline gate (`scripts/check-model-baseline.sh`, CONVENTIONS §15) and blocks a red result; fail-open when the DB is unreachable.
   Single-use bypass: `git commit --no-verify` / `git push --no-verify` — only when you have confirmed the consequences.
 
+## Task pickup — set 进行中(1) + record time/operator (all agents; 2026-10-13 user rule)
+
+- When you take a task, **before starting work** set it to **进行中 (status=1)** and record **when + who**:
+  `UPDATE sys_task SET status=1, start_time=NOW(), assignee_name='<operator>', update_by='<operator>' WHERE task_code='dev-YYYYMMDD-NNN';`
+- On completion set `status=2` (待审核) **and** `completed_time=NOW()`. Status transitions must be traceable (who started/finished, when).
+- Full spec: `jjx-docs/standards/CONVENTIONS.md` §6.
+
 ## Task completion report format (all agents — full spec: `jjx-docs/standards/CONVENTIONS.md` §5)
 
 Every task's closing report in chat uses this fixed 6-line template, line-by-line verifiable (task code + commit hash mandatory). The `改：N` line counts **business/source files only** — reports, `INDEX.md` lines, guideline/spec docs, auto-generated files (`components.d.ts` etc.), backups and migration SQL are excluded and listed separately (2026-10-12, dev-20261012-054). Keep the report terse: put background, reasoning, command output and per-file detail in `sys_task.remark` (≤500, else `description`) or a `jjx-docs/history/` doc — **not** in the report.
