@@ -76,11 +76,11 @@
       <div class="changes"><div class="changes-content" data-overflow-title="变更内容" :data-overflow-repeat="page.continuation ? 'true' : undefined"><div v-for="(line, i) in page.changeLines" :key="i" data-overflow-record :style="{ color: line.color }">{{ line.text }}</div></div></div>
       <div class="vertical-label">发行单位</div>
       <div class="issuer">
-        <div v-if="data.workSpec.approved" class="approval"><div>{{ data.workSpec.issueUnit }}</div><div>{{ shortDate(data.workSpec.issueDate || data.workSpec.confirmedAt) }}</div><div>已批准</div></div>
+        <div v-if="data.workSpec.approved" class="approval"><div>{{ data.workSpec.issueUnit }}</div><div>{{ shortDate(effectiveIssueDate) }}</div><div>已批准</div></div>
         <span v-else>{{ data.workSpec.issueUnit }}</span>
       </div>
     </div>
-    <footer><span>名称：{{ data.product.productName }}</span><span>编号：{{ data.product.productCode }}</span><span>发行日期：{{ shortDate(data.workSpec.issueDate) }}</span><span>{{ pageIndex + 1 }}／{{ pageCount }}页</span></footer>
+    <footer><span>名称：{{ data.product.productName }}</span><span>编号：{{ data.product.productCode }}</span><span>发行日期：{{ shortDate(effectiveIssueDate) }}</span><span>{{ pageIndex + 1 }}／{{ pageCount }}页</span></footer>
   </article>
 </template>
 
@@ -94,6 +94,11 @@ import { useWorkSpecOverflow } from './useWorkSpecOverflow'
 
 const props = defineProps<{ data: DocsetData; page: DocPage; pageIndex: number; pageCount: number; structureImage?: string; structureCaption?: string }>()
 const emit = defineEmits<{ overflow: [lines: PaperTextLine[]] }>()
+/**
+ * 发行日期口径（dev-20261013-029）：优先 issueDate；未填且已批准回退 confirmedAt（批准即定稿发行）；未批准留空。
+ * 与圆章、页脚统一使用同一口径，避免“发布/发行”混淆。
+ */
+const effectiveIssueDate = computed<string | null>(() => props.data.workSpec.issueDate || (props.data.workSpec.approved ? props.data.workSpec.confirmedAt || null : null))
 const paper = ref<HTMLElement>()
 const { measure } = useWorkSpecOverflow(paper, () => JSON.stringify([props.page.rows, props.page.groups, props.page.engineeringNotes, props.page.changeLines, props.page.continuation]), lines => emit('overflow', lines))
 defineExpose({ measure })

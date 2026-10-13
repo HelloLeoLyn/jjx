@@ -265,8 +265,8 @@
             <div class="issuance-col">
               <div class="issuance-head"><strong>发行</strong></div>
               <el-descriptions :column="1" border>
-                <el-descriptions-item label="发行单位">工程部</el-descriptions-item>
-                <el-descriptions-item label="发行日期">{{ publishedAt || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="发行单位">{{ data?.workSpec.issueUnit || '工程部' }}</el-descriptions-item>
+                <el-descriptions-item label="发布日期">{{ publishedAt || '—' }}</el-descriptions-item>
               </el-descriptions>
             </div>
           </div>
