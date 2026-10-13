@@ -56,14 +56,25 @@
         <span class="ac-spacer" />
         <el-select
           v-if="canEdit"
+          :model-value="entryCategoryKey(entry)"
+          size="small"
+          clearable
+          placeholder="一级类型"
+          style="width: 132px"
+          @update:model-value="(v: string | null) => setEntryCategory(entry, v)"
+        >
+          <el-option v-for="c in selectableCategories" :key="c.key" :label="c.label" :value="c.key" />
+        </el-select>
+        <el-select
+          v-if="canEdit"
           v-model="entry.documentType"
           size="small"
           clearable
-          placeholder="选择类型"
-          style="width: 150px"
+          placeholder="二级类型"
+          style="width: 168px"
           @change="() => persist()"
         >
-          <el-option-group v-for="g in groupedSelectableTypes" :key="g.key" :label="g.label">
+          <el-option-group v-for="g in secondaryGroupsFor(entryCategoryKey(entry))" :key="g.key" :label="g.label">
             <el-option v-for="t in g.options" :key="t.item_key" :label="t.label" :value="t.item_key" />
           </el-option-group>
         </el-select>
@@ -134,11 +145,21 @@
     <el-dialog v-model="metaVisible" title="附件信息" width="460px" append-to-body destroy-on-close>
       <el-form label-width="80px">
         <el-form-item label="分类">
-          <el-select v-model="metaForm.documentType" clearable placeholder="选择资料类型" style="width: 100%">
-            <el-option-group v-for="g in groupedSelectableTypes" :key="g.key" :label="g.label">
-              <el-option v-for="t in g.options" :key="t.item_key" :label="t.label" :value="t.item_key" />
-            </el-option-group>
-          </el-select>
+          <div class="ac-meta-type">
+            <el-select
+              v-model="metaCategory"
+              clearable
+              placeholder="一级类型"
+              @change="onMetaCategoryChange"
+            >
+              <el-option v-for="c in selectableCategories" :key="c.key" :label="c.label" :value="c.key" />
+            </el-select>
+            <el-select v-model="metaForm.documentType" clearable placeholder="二级类型">
+              <el-option-group v-for="g in secondaryGroupsFor(metaCategory)" :key="g.key" :label="g.label">
+                <el-option v-for="t in g.options" :key="t.item_key" :label="t.label" :value="t.item_key" />
+              </el-option-group>
+            </el-select>
+          </div>
         </el-form-item>
         <el-form-item label="展示名">
           <el-input v-model="metaForm.displayName" maxlength="255" placeholder="留空使用默认展示" />
@@ -395,6 +416,40 @@ const groupedSelectableTypes = computed(() => {
   }
   return Array.from(groups.values())
 })
+/** 一级选项（= 当前单据下可选二级所属的一级），用于两级级联的第一个下拉 */
+const selectableCategories = computed(() =>
+  groupedSelectableTypes.value
+    .filter((g) => g.key !== '__unknown__')
+    .map((g) => ({ key: g.key, label: g.label })),
+)
+/** 二级下拉的组选项：选了某一级则只给该组，否则给全部（保留「按一级分组」形态） */
+function secondaryGroupsFor(categoryKey: string) {
+  return categoryKey
+    ? groupedSelectableTypes.value.filter((g) => g.key === categoryKey)
+    : groupedSelectableTypes.value
+}
+/** 二级编码 → 所属一级编码（未知返回空串） */
+function categoryKeyOfType(code?: string | null): string {
+  if (!code) return ''
+  const t = documentTypes.value.find(
+    (x) => x.item_key === code && x.dict_code === 'attachment_document_type',
+  )
+  return t ? parentCategoryOf(t)?.item_key || '' : ''
+}
+/** 待绑定行的一级选择（仅前端筛选，不落库）；未手动选时由已选二级的 parent 反推，刷新后仍一致 */
+const entryCategoryMap = ref<Record<number, string>>({})
+function entryCategoryKey(entry: PendingEntry): string {
+  return entryCategoryMap.value[entry.attachmentId] || categoryKeyOfType(entry.documentType)
+}
+/** 切一级：当已选二级不属于新一级时清掉二级，避免一级/二级自相矛盾 */
+function setEntryCategory(entry: PendingEntry, categoryKey: string | null) {
+  if (categoryKey) entryCategoryMap.value[entry.attachmentId] = categoryKey
+  else delete entryCategoryMap.value[entry.attachmentId]
+  if (entry.documentType && categoryKeyOfType(entry.documentType) !== (categoryKey || '')) {
+    entry.documentType = null
+  }
+  persist()
+}
 function safeJson(raw: string): Record<string, unknown> {
   try {
     return JSON.parse(raw)
@@ -476,10 +531,19 @@ async function onUnbind(row: AttachmentRefItem) {
 const metaVisible = ref(false)
 const metaSaving = ref(false)
 const metaForm = reactive({ refId: 0, documentType: '' as string | null, displayName: '', remark: '', sortOrder: 0 })
+/** 分类弹窗的一级筛选（仅前端；打开时由已存二级的 parent 反推） */
+const metaCategory = ref('')
+
+function onMetaCategoryChange() {
+  if (metaForm.documentType && categoryKeyOfType(metaForm.documentType) !== metaCategory.value) {
+    metaForm.documentType = ''
+  }
+}
 
 function openMeta(row: AttachmentRefItem) {
   metaForm.refId = row.id
   metaForm.documentType = row.documentType || ''
+  metaCategory.value = categoryKeyOfType(row.documentType)
   metaForm.displayName = row.displayName || ''
   metaForm.remark = row.remark || ''
   metaForm.sortOrder = row.sortOrder || 0
@@ -594,6 +658,16 @@ defineExpose({
 .ac-dropzone {
   display: block;
   margin-bottom: 8px;
+}
+/* 分类弹窗两级下拉并排：外层 flex，选择器 flex:1 min-width:0（避免组件自带 width:100% 挤掉另一个） */
+.ac-meta-type {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.ac-meta-type :deep(.el-select) {
+  flex: 1;
+  min-width: 0;
 }
 .ac-list,
 .ac-pending,
