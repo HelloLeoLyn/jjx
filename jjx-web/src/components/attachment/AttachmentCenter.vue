@@ -47,15 +47,15 @@
     <div v-if="pending.length" class="ac-pending">
       <div v-for="entry in pending" :key="entry.attachmentId" class="ac-row">
         <el-icon><Clock /></el-icon>
-        <span class="ac-name">{{ entry.fileName || `附件 #${entry.attachmentId}` }}</span>
-        <span class="ac-sub">{{ formatSize(entry.fileSize) }}</span>
+        <span v-if="pendingHas('fileName')" class="ac-name">{{ renderPending(entry, 'fileName') }}</span>
+        <span v-if="pendingHas('fileSize')" class="ac-sub">{{ renderPending(entry, 'fileSize') }}</span>
         <el-tag size="small" :type="entry.state === 'failed' ? 'danger' : 'warning'">
           {{ entry.state === 'failed' ? '绑定失败' : '待绑定' }}
         </el-tag>
         <span v-if="entry.error" class="ac-error">{{ entry.error }}</span>
         <span class="ac-spacer" />
         <AttachmentTypeSelect
-          v-if="canEdit"
+          v-if="canEdit && pendingHas('documentType')"
           :model-value="entry.documentType"
           :category="entryCategoryKey(entry)"
           :document-types="documentTypes"
@@ -104,50 +104,31 @@
       @error="onRefListError"
     />
 
-    <!-- B 段：历史附件（主键 attachmentId，只读；已建立引用的不再重复展示） -->
-    <div v-if="legacyOnlyRows.length" class="ac-legacy">
-      <div class="ac-legacy-title">历史附件（未建立引用，只读）</div>
-      <div v-for="row in legacyOnlyRows" :key="`att-${row.id}`" class="ac-row">
-        <el-icon class="ac-icon"><Document /></el-icon>
-        <span class="ac-name" :title="row.fileName">{{ row.fileName || `附件 #${row.id}` }}</span>
-        <el-tag size="small" type="info">历史附件</el-tag>
-        <span class="ac-sub">{{ formatSize(row.fileSize) }}</span>
-        <span class="ac-sub">· {{ formatTime(row.createTime) }}</span>
-        <span class="ac-spacer" />
-        <el-button
-          link
-          type="primary"
-          :icon="Download"
-          @click="openUrl(attachmentApi.downloadUrl(row.id))"
-        />
-        <el-button link type="primary" :icon="View" @click="previewReadOnly(row, legacyOnlyRows)" />
-      </div>
-    </div>
-
-    <!-- 同链路段按 attachmentId 去重，只有预览/下载，不进入 refs 写入链路。 -->
-    <div v-if="traceLoading || traceError || traceOnlyRows.length" class="ac-legacy">
-      <div class="ac-legacy-title">同链路来源单据（只读）</div>
-      <div v-if="traceLoading" class="ac-hint">正在加载同链路文档…</div>
-      <el-alert v-if="traceError" :title="traceError" type="warning" :closable="false" />
-      <div v-for="row in traceOnlyRows" :key="`trace-${row.id}`" class="ac-row">
-        <el-icon class="ac-icon"><Document /></el-icon>
-        <span class="ac-name" :title="row.fileName">{{ row.fileName || `附件 #${row.id}` }}</span>
-        <el-tag size="small" type="info">{{ row.bizTypeName || row.bizType || '来源单据' }}</el-tag>
-        <span v-if="row.sourceNo || row.bizId" class="ac-sub">{{
-          row.sourceNo || `#${row.bizId}`
-        }}</span>
-        <span class="ac-sub">{{ formatSize(row.fileSize) }}</span>
-        <span class="ac-sub">· {{ formatTime(row.createTime) }}</span>
-        <span class="ac-spacer" />
-        <el-button
-          link
-          type="primary"
-          :icon="Download"
-          @click="openUrl(attachmentApi.downloadUrl(row.id))"
-        />
-        <el-button link type="primary" :icon="View" @click="previewReadOnly(row, traceOnlyRows)" />
-      </div>
-    </div>
+    <!-- B 段：历史附件 / 同链路来源单据（只读）→ 统一由只读列表组件渲染，字段来自 attachmentFieldSets -->
+    <AttachmentReadonlyList
+      v-if="legacyOnlyRows.length"
+      title="历史附件（未建立引用，只读）"
+      key-prefix="att"
+      :rows="legacyOnlyRows"
+      :field-keys="attachmentFieldSets.legacy"
+      :tag-of="() => '历史附件'"
+      @download="(row) => openUrl(attachmentApi.downloadUrl(row.id))"
+      @preview="(row) => previewReadOnly(row, legacyOnlyRows)"
+    />
+    <AttachmentReadonlyList
+      v-if="traceLoading || traceError || traceOnlyRows.length"
+      title="同链路来源单据（只读）"
+      key-prefix="trace"
+      :rows="traceOnlyRows"
+      :loading="traceLoading"
+      loading-text="正在加载同链路文档…"
+      :error="traceError"
+      :field-keys="attachmentFieldSets.trace"
+      :tag-of="(r) => r.bizTypeName || r.bizType || '来源单据'"
+      :sub-of="(r) => r.sourceNo || (r.bizId ? `#${r.bizId}` : '')"
+      @download="(row) => openUrl(attachmentApi.downloadUrl(row.id))"
+      @preview="(row) => previewReadOnly(row, traceOnlyRows)"
+    />
 
     <!-- 更多信息（类型/展示名已改成列表行内编辑，这里只留备注/排序） -->
     <el-dialog v-model="metaVisible" title="更多信息" width="460px" append-to-body destroy-on-close>
@@ -169,7 +150,7 @@
       v-if="viewerVisible"
       :url-list="viewerList"
       :initial-index="viewerIndex"
-      @close="viewerVisible = false"
+      @close="closeViewer()"
     />
   </div>
 </template>
@@ -194,9 +175,11 @@ import {
 } from '@/api/system/attachmentRef'
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
 import AttachmentRefList from './AttachmentRefList.vue'
+import AttachmentReadonlyList from './AttachmentReadonlyList.vue'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
-import { formatSize, formatTime } from './attachmentFormat'
+import { attachmentFieldSets, renderAttachmentField, type AttachmentFieldKey } from './attachmentFields'
+import { useAttachmentPreview } from './useAttachmentPreview'
 import { useAttachmentRefs, type PendingEntry } from '@/composables/useAttachmentRefs'
 const props = withDefaults(
   defineProps<{
@@ -549,48 +532,37 @@ async function saveMeta() {
   }
 }
 
-// ==================== 预览 / 下载 ====================
-const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']
-const viewerVisible = ref(false)
-const viewerList = ref<string[]>([])
-const viewerIndex = ref(0)
-
-function isImageName(name?: string, fileType?: string) {
-  if (fileType && fileType.startsWith('image/')) return true
-  const lower = String(name || '').toLowerCase()
-  return IMAGE_EXT.some((ext) => lower.endsWith(ext))
-}
+// ==================== 预览 / 下载（唯一实现：useAttachmentPreview） ====================
+const {
+  viewerVisible,
+  viewerList,
+  viewerIndex,
+  preview: previewViewer,
+  openUrl,
+  close: closeViewer,
+} = useAttachmentPreview()
 function previewRef(row: AttachmentRefItem) {
-  if (isImageName(row.fileName || undefined, row.fileType || undefined)) {
-    const images = refRows.value.filter((r) =>
-      isImageName(r.fileName || undefined, r.fileType || undefined)
-    )
-    viewerList.value = images.map((r) => attachmentRefApi.previewUrlByRef(r.id))
-    const idx = images.findIndex((r) => r.id === row.id)
-    viewerIndex.value = idx >= 0 ? idx : 0
-    viewerVisible.value = true
-    return
-  }
-  openUrl(attachmentRefApi.previewUrlByRef(row.id))
+  previewViewer(refRows.value, row, (r) => attachmentRefApi.previewUrlByRef(r.id))
 }
 function downloadUrlByRef(refId: number) {
   return attachmentRefApi.downloadUrlByRef(refId)
 }
 function previewReadOnly(row: TraceAttachment, rows: TraceAttachment[]) {
-  if (isImageName(row.fileName, row.fileType)) {
-    const images = rows.filter((item) => isImageName(item.fileName, item.fileType))
-    viewerList.value = images.map((item) => attachmentApi.downloadUrl(item.id))
-    viewerIndex.value = Math.max(
-      0,
-      images.findIndex((item) => item.id === row.id)
-    )
-    viewerVisible.value = true
-    return
-  }
-  openUrl(attachmentApi.downloadUrl(row.id))
+  previewViewer(rows, row, (r) => attachmentApi.downloadUrl(r.id))
 }
-function openUrl(url: string) {
-  window.open(url, '_blank', 'noopener,noreferrer')
+
+// ==================== 待绑定段消费字段清单（dev-20261013-035） ====================
+const pendingFields: readonly AttachmentFieldKey[] = attachmentFieldSets.pending
+function pendingHas(key: AttachmentFieldKey): boolean {
+  return pendingFields.includes(key)
+}
+function renderPending(entry: PendingEntry, key: AttachmentFieldKey): string {
+  return renderAttachmentField(key, {
+    id: entry.attachmentId,
+    fileName: entry.fileName,
+    fileSize: entry.fileSize,
+    createTime: entry.createdAt,
+  })
 }
 
 defineExpose({
