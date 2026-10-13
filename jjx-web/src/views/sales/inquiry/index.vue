@@ -327,6 +327,7 @@
               :source-id="form.inquiryId || null"
               :source-no="(form as any).inquiryNo || ''"
               :draft-id="draftId"
+              drop-zone
               view-perm="sales:inquiry:view"
               edit-perm="sales:inquiry:edit"
               style="margin-bottom: 10px"

@@ -9,15 +9,10 @@
       <el-tag v-if="pendingCount" size="small" type="warning">待绑定 {{ pendingCount }}</el-tag>
       <span class="ac-spacer" />
       <AttachmentTempUploader
-        v-if="mode !== 'readonly' && canEdit"
-        :multiple="true"
-        :disabled="!draftReady"
-        :max-size-m-b="maxSizeMB"
-        :accept="accept"
-        :button-text="mode === 'upload-only' ? '上传附件' : '上传（通用附件）'"
-        :tip="draftReady ? uploadTip : '请先保存单据或提供 draftId 后再上传（避免多个单据共用待绑定队列）'"
+        v-if="canUpload && !dropZone"
+        v-bind="uploaderProps"
         @files="onFiles"
-        @error="(m) => emit('error', { action: 'validate', message: m })"
+        @error="onUploaderError"
       />
     </div>
 
@@ -37,6 +32,15 @@
       :closable="true"
       class="ac-alert"
       @close="duplicateTip = ''"
+    />
+
+    <!-- 拖拽落区（dropZone 启用时替代 header 按钮；落区本身可点击选文件） -->
+    <AttachmentTempUploader
+      v-if="canUpload && dropZone"
+      v-bind="uploaderProps"
+      class="ac-dropzone"
+      @files="onFiles"
+      @error="onUploaderError"
     />
 
     <!-- 待绑定（TEMP）队列：仅当前单据草稿可见，刷新后可恢复 id 清单 -->
@@ -192,6 +196,8 @@ const props = withDefaults(
     accept?: string[]
     /** sourceId 有值时是否上传后立即绑定 */
     autoBind?: boolean
+    /** 上传入口改为拖拽落区（替代 header 的小按钮）；默认 false 保持按钮形态 */
+    dropZone?: boolean
   }>(),
   {
     sourceId: null,
@@ -207,6 +213,7 @@ const props = withDefaults(
     maxSizeMB: 20,
     accept: () => ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.zip'],
     autoBind: true,
+    dropZone: false,
   },
 )
 
@@ -312,6 +319,24 @@ const duplicateTip = ref('')
 const uploadTip = computed(() =>
   `单个文件不超过 ${props.maxSizeMB}MB${props.accept.length ? '；支持 ' + props.accept.join(' ') : ''}`,
 )
+
+// ==================== 上传入口（按钮 / 拖拽落区共用同一组 props 与回调） ====================
+/** readonly 或无权编辑时不渲染上传入口 */
+const canUpload = computed(() => props.mode !== 'readonly' && canEdit.value)
+const uploaderProps = computed(() => ({
+  multiple: true,
+  disabled: !draftReady.value,
+  maxSizeMB: props.maxSizeMB,
+  accept: props.accept,
+  buttonText: props.mode === 'upload-only' ? '上传附件' : '上传（通用附件）',
+  tip: draftReady.value
+    ? uploadTip.value
+    : '请先保存单据或提供 draftId 后再上传（避免多个单据共用待绑定队列）',
+  dropZone: props.dropZone,
+}))
+function onUploaderError(message: string) {
+  emit('error', { action: 'validate', message })
+}
 
 /** A 段直接消费 refs 返回的文件元数据（后端 refs 查询链路已回填 fileName/fileSize/fileType） */
 function displayNameOf(row: AttachmentRefItem) {
@@ -540,6 +565,10 @@ defineExpose({
   flex: 1;
 }
 .ac-alert {
+  margin-bottom: 8px;
+}
+.ac-dropzone {
+  display: block;
   margin-bottom: 8px;
 }
 .ac-list,

@@ -6,8 +6,15 @@
     :show-file-list="false"
     :disabled="disabled"
     :on-change="onChange"
+    :drag="dropZone"
+    :class="dropZone ? 'attu-dropzone' : ''"
+    :style="dropZone ? { width: '100%' } : undefined"
   >
-    <el-button type="primary" size="small" :disabled="disabled">
+    <template v-if="dropZone">
+      <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+      <div class="el-upload__text">拖拽文件到此处，或 <em>点击上传</em></div>
+    </template>
+    <el-button v-else type="primary" size="small" :disabled="disabled">
       <el-icon><Upload /></el-icon> {{ buttonText }}
     </el-button>
     <template #tip>
@@ -25,7 +32,7 @@
  */
 import { nextTick, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Upload } from '@element-plus/icons-vue'
+import { Upload, UploadFilled } from '@element-plus/icons-vue'
 import type { UploadFile, UploadInstance } from 'element-plus'
 
 const props = withDefaults(
@@ -38,6 +45,8 @@ const props = withDefaults(
     accept?: string[]
     buttonText?: string
     tip?: string
+    /** 渲染拖拽落区（替代按钮）；与按钮共用同一条 on-change → 校验 → emit('files') 通道 */
+    dropZone?: boolean
   }>(),
   {
     multiple: true,
@@ -46,6 +55,7 @@ const props = withDefaults(
     accept: () => [],
     buttonText: '上传附件',
     tip: '',
+    dropZone: false,
   },
 )
 
@@ -91,5 +101,12 @@ defineExpose({ clearFiles: () => uploadRef.value?.clearFiles() })
   font-size: 12px;
   color: #999;
   margin-top: 6px;
+}
+/* 拖拽落区：收紧默认 40px 内边距，适配表单/弹窗内嵌 */
+.attu-dropzone :deep(.el-upload-dragger) {
+  padding: 14px 0;
+}
+.attu-dropzone :deep(.el-upload__text) {
+  font-size: 13px;
 }
 </style>
