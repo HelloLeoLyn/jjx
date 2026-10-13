@@ -463,20 +463,46 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         newRouting.setIsCurrent(0);
         save(newRouting);
 
-        // 复制明细（保留组合信息和前置工序）
-        List<EngineeringRoutingItem> oldDetails = routingDetailMapper.selectByRoutingId(routingId);
-        for (EngineeringRoutingItem detail : oldDetails) {
-            EngineeringRoutingItem newDetail = new EngineeringRoutingItem();
-            BeanUtil.copyProperties(detail, newDetail);
-            newDetail.setItemId(null);
-            newDetail.setRoutingId(newRouting.getRoutingId());
-            routingDetailMapper.insert(newDetail);
-        }
+        // 复制明细（保留组合信息与前置工序）
+        // dev-20261013-032：复制时把 parent_id 由旧 itemId 重映射为新 itemId，避免组合工序子行悬挂。
+        copyRoutingDetails(routingDetailMapper, routingId, newRouting.getRoutingId());
 
         calculateHours(newRouting.getRoutingId());
 
         log.info("复制工艺路线成功: {} -> {}", oldRouting.getRoutingCode(), newVersion);
         return getRoutingItems(newRouting.getRoutingId());
+    }
+
+    /**
+     * 复制路线明细，并把 parent_id 从旧 itemId 重映射为新 itemId（dev-20261013-032）。
+     * 父子结构下 parent_id 指向本表 detail_id：先落为根（parent_id=null）建立旧→新映射，再回填新父ID，
+     * 避免子作业项沿用旧父ID而悬挂（组合工序在新路线中丢失/错位）。
+     */
+    static Map<Long, Long> copyRoutingDetails(EngineeringRoutingItemMapper mapper, Long sourceRoutingId, Long newRoutingId) {
+        List<EngineeringRoutingItem> oldDetails = mapper.selectByRoutingId(sourceRoutingId);
+        Map<Long, Long> idMap = new HashMap<>();
+        List<EngineeringRoutingItem> newDetails = new ArrayList<>();
+        for (EngineeringRoutingItem detail : oldDetails) {
+            EngineeringRoutingItem newDetail = new EngineeringRoutingItem();
+            BeanUtil.copyProperties(detail, newDetail);
+            newDetail.setItemId(null);
+            newDetail.setRoutingId(newRoutingId);
+            newDetail.setParentId(null);
+            mapper.insert(newDetail);
+            idMap.put(detail.getItemId(), newDetail.getItemId());
+            newDetails.add(newDetail);
+        }
+        for (int i = 0; i < oldDetails.size(); i++) {
+            Long oldParentId = oldDetails.get(i).getParentId();
+            if (oldParentId == null) continue;
+            Long newParentId = idMap.get(oldParentId);
+            if (newParentId == null) continue; // 旧父行缺失：保持为根，避免悬挂
+            EngineeringRoutingItem patch = new EngineeringRoutingItem();
+            patch.setItemId(newDetails.get(i).getItemId());
+            patch.setParentId(newParentId);
+            mapper.updateById(patch);
+        }
+        return idMap;
     }
 
     @Override
