@@ -1,0 +1,115 @@
+/**
+ * 产品作业规范「已发布版本」文档集的纯组装逻辑（dev-20261013-009）。
+ *
+ * 本模块**零外部依赖**，便于用 `node --test` 直接做回归（见 `__tests__/versionDocset.test.ts`）；
+ * 网络读取（版本详情 / BOM / 工艺路线）仍由 `docset.ts` 负责。
+ * `DocFile` 是本模块单一来源，`docset.ts` 复用并再导出，避免两处定义漂移。
+ */
+
+/** 文档集内的一个文件；工作态（loadDocset）与发布版本（loadDocsetForVersion）共用。 */
+export interface DocFile {
+  key: string
+  id: number
+  name: string
+  originalName?: string
+  category: string
+  section: string
+  kind: 'image' | 'pdf' | 'other'
+  productFile: boolean
+  drawingNo?: string
+  version?: string
+  fileRole?: string
+  isCurrent?: number
+  released?: number
+  /**
+   * 来自已发布版本清单（dev-20261013-009）。
+   * 发布时未记录「现行 / 下发」快照，故这类文件不受当前工作态的现行/下发过滤与标签影响，
+   * 整批按发布清单默认入集展示。
+   */
+  published?: boolean
+}
+
+export interface VersionFilesResult {
+  files: DocFile[]
+  warnings: string[]
+}
+
+/**
+ * 解析发布条目快照。
+ * 空值（null / undefined / 空串）视为「原本为空」；非空但非法 JSON 显式标错，绝不静默当成空对象。
+ */
+export function parseSnapshotStrict(value?: string | null): { ok: boolean; value: Record<string, any> } {
+  if (value == null || value === '') return { ok: true, value: {} }
+  try {
+    const parsed = JSON.parse(value)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { ok: true, value: parsed }
+    return { ok: false, value: {} }
+  } catch {
+    return { ok: false, value: {} }
+  }
+}
+
+/** 由文件类别判定文档栏目；工作态与发布版本共用同一口径。 */
+export function sectionForCategory(customer: boolean, category: string): string {
+  if (customer || ['客供稿', '客户确认样品'].includes(category)) return 'customer'
+  if (category === '印刷指导图') return 'print'
+  if (category === '样品照片') return 'sample'
+  if (category === '分色检查表') return 'color'
+  return 'atlas'
+}
+
+/** 按文件名 / MIME 判定文件形态。 */
+export function detectFileKind(name: string, mime = ''): 'image' | 'pdf' | 'other' {
+  const ext = (name.split('.').pop() || '').toLowerCase()
+  if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) return 'image'
+  if (mime.includes('pdf') || ext === 'pdf') return 'pdf'
+  return 'other'
+}
+
+/**
+ * 由发布版本条目组装工程图文件集（dev-20261013-009）。
+ * - 读取**全部** DRAWING 条目（不再只取首条）；
+ * - 类别取 operationRef，其次快照 category；保留真实图种、版本与文件角色；
+ * - 解析失败 / 缺附件标识 / 附件重复的条目显式记入 warnings 并跳过，不冒充空白；
+ * - 清单为空时也给出明确告警，避免「静默无图」。
+ */
+export function buildVersionFiles(items: Record<string, any>[] = []): VersionFilesResult {
+  const files: DocFile[] = []
+  const warnings: string[] = []
+  const drawings = items.filter((item) => item?.resourceType === 'DRAWING')
+  if (!drawings.length) {
+    warnings.push('该发布版本未包含工程图引用')
+    return { files, warnings }
+  }
+  drawings.forEach((item, index) => {
+    const ref = parseSnapshotStrict(item?.snapshotJson)
+    if (!ref.ok) {
+      warnings.push(`该版工程图引用第 ${index + 1} 条解析失败，未纳入预览`)
+      return
+    }
+    const attId = Number(ref.value.attachmentId)
+    if (!attId) {
+      warnings.push(`该版工程图引用第 ${index + 1} 条缺少附件标识，未纳入预览`)
+      return
+    }
+    if (files.some((file) => file.id === attId)) {
+      warnings.push(`该版工程图引用第 ${index + 1} 条附件重复，已合并`)
+      return
+    }
+    const name = ref.value.fileName || '工程图'
+    const category = item.operationRef || ref.value.category || '其他工程图'
+    files.push({
+      key: String(attId),
+      id: attId,
+      name,
+      category,
+      section: sectionForCategory(false, category),
+      kind: detectFileKind(name, ref.value.fileType || ''),
+      productFile: true,
+      version: ref.value.version ? String(ref.value.version) : undefined,
+      fileRole: ref.value.fileRole,
+      published: true,
+    })
+  })
+  return { files, warnings }
+}

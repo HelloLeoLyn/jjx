@@ -8,7 +8,9 @@ import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreview'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
+import { parseSnapshotStrict, sectionForCategory, detectFileKind, buildVersionFiles, type DocFile } from './versionDocset'
 export { renderFile, type FileImage } from '@/components/product/productFilePreview'
+export type { DocFile } from './versionDocset'
 
 export const documentSections = [
   { key: 'customer', label: '客供资料', note: '客供稿 · 客户确认样品' },
@@ -20,22 +22,6 @@ export const documentSections = [
   { key: 'color', label: '分色检查表', note: '规范 · 面板菲林分色 · 线路 · 刀模治具' },
 ]
 
-export interface DocFile {
-  key: string
-  id: number
-  name: string
-  originalName?: string
-  category: string
-  section: string
-  kind: 'image' | 'pdf' | 'other'
-  productFile: boolean
-  drawingNo?: string
-  version?: string
-  fileRole?: string
-  isCurrent?: number
-  released?: number
-}
-
 export function isEngineeringFile(file: DocFile): boolean {
   return file.productFile && (!!file.drawingNo || ENGINEERING_DRAWING_VISIBLE_CATEGORIES.includes(file.category))
 }
@@ -46,6 +32,8 @@ export function defaultDocumentFiles(files: DocFile[]): DocFile[] {
     // 分色检查表以工程录入的电子表为主；历史附件不默认选中，避免重复打印。
     if (file.section === 'color') return false
     if (!isEngineeringFile(file)) return true
+    // 发布版本清单里的图纸即「当时已发布集合」，不受当前工作态现行/下发标记过滤（dev-20261013-009）。
+    if (file.published) return true
     if (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value) return false
     if (file.fileRole === DrawingFileRoleEnum.PRINT.value) return true
     return file.fileRole === DrawingFileRoleEnum.ORIGINAL.value && !files.some(other => other.productFile && other.drawingNo === file.drawingNo && other.version === file.version && other.fileRole === DrawingFileRoleEnum.PRINT.value)
@@ -55,7 +43,8 @@ export function documentFileCaption(file: DocFile): string {
   const parts = file.name ? [file.name] : []
   if (file.drawingNo) parts.push(file.drawingNo)
   if (file.version) parts.push(`版本 ${file.version}`)
-  if (isEngineeringFile(file)) {
+  // 发布版本清单未记录现行/下发快照，不臆造状态标签（dev-20261013-009）。
+  if (isEngineeringFile(file) && !file.published) {
     if (!file.drawingNo) parts.unshift('待归集')
     if (file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value) parts.unshift('非现行')
     if (file.released !== DrawingReleaseFlagEnum.RELEASED.value) parts.unshift('未下发')
@@ -204,63 +193,69 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
     const originalName = row.fileName || row.file_name || '未命名文件'
     const name = row.displayName || row.display_name || originalName
     const category = row.category || (customer ? '客供资料' : '其他')
-    const ext = name.split('.').pop()?.toLowerCase()
     const mime = row.fileType || row.file_type || ''
-    const kind = mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)
-      ? 'image' : (mime.includes('pdf') || ext === 'pdf' ? 'pdf' : 'other')
-    const section = customer || ['客供稿', '客户确认样品'].includes(category) ? 'customer'
-      : category === '印刷指导图' ? 'print' : category === '样品照片' ? 'sample' : category === '分色检查表' ? 'color' : 'atlas'
+    const kind = detectFileKind(name, mime)
+    const section = sectionForCategory(customer, category)
     data.files.push({ key: String(id), id, name, originalName, category, kind, section, productFile: !customer,
       drawingNo: row.drawingNo, version: row.version, fileRole: row.fileRole, isCurrent: row.isCurrent, released: row.released })
   }
-}
-
-function parseSnapshot(value?: string | null): Record<string, any> {
-  if (!value) return {}
-  try { const parsed = JSON.parse(value); return parsed && typeof parsed === 'object' ? parsed : {} } catch { return {} }
-}
-function detectFileKind(name: string, mime = ''): 'image' | 'pdf' | 'other' {
-  const ext = (name.split('.').pop() || '').toLowerCase()
-  if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) return 'image'
-  if (mime.includes('pdf') || ext === 'pdf') return 'pdf'
-  return 'other'
 }
 
 /**
  * 按【已发布版本】组装文档集（dev-20261011-036）：只读该版快照，不读当前态。
  * - 规范正文：SPEC_JSON 条目快照；
  * - BOM / 工艺路线：BOM/ROUTING 条目引用的已批准版本（按 id 取明细）；
- * - 工程图：DRAWING 条目引用的结构图文件。
- * 发布未纳入的（客供资料/样品/领料单/油墨/检测记录）本就不在该版，故不出。
+ * - 工程图：DRAWING 条目引用的**全部**发布图（图种取 operationRef），按清单入集（dev-20261013-009，不再只取首条）。
+ * 发布未纳入的（客供资料/样品/领料单/油墨/检测记录）本就不在该版，故不出，并在 warnings 中显式标注。
  */
 export async function loadDocsetForVersion(productId: number, versionId: number, productCode = '', productName = ''): Promise<DocsetData> {
   const res: any = await productWorkSpecApi.getVersion(versionId)
   const version = res?.data?.version
   const items: Record<string, any>[] = res?.data?.items || []
   if (!version) throw new Error('发布版本不存在')
-  const find = (type: string) => items.find((item) => item.resourceType === type)
-  const workSpec = normalizeWorkSpec(parseSnapshot(find('SPEC_JSON')?.snapshotJson) as Partial<ProductWorkSpec>)
   const data: DocsetData = {
     product: { productId, productCode: productCode || '', productName: productName || '' },
-    bom: {}, routing: {}, workSpec, files: [], warnings: [],
+    bom: {}, routing: {}, workSpec: normalizeWorkSpec({}), files: [], warnings: [],
   }
-  const bomRef = parseSnapshot(find('BOM')?.snapshotJson)
-  if (bomRef.bomId) {
-    try { const r: any = await productBomApi.getEngineeringBomInfo(Number(bomRef.bomId)); data.bom = r?.data || {} }
+
+  // 规范正文：SPEC_JSON 快照；缺失或解析失败显式提示，不用空对象冒充。
+  const specItem = items.find((item) => item.resourceType === 'SPEC_JSON')
+  if (!specItem) {
+    data.warnings.push('该发布版本未包含规范正文快照')
+  } else {
+    const spec = parseSnapshotStrict(specItem.snapshotJson)
+    if (!spec.ok) data.warnings.push('该版规范正文快照解析失败，正文可能缺项')
+    data.workSpec = normalizeWorkSpec(spec.value as Partial<ProductWorkSpec>)
+  }
+
+  // BOM：引用已批准版本，读取失败显式提示而非静默空文档。
+  const bomItem = items.find((item) => item.resourceType === 'BOM')
+  const bomRef = parseSnapshotStrict(bomItem?.snapshotJson)
+  if (!bomItem) data.warnings.push('该发布版本未包含 BOM 引用')
+  else if (bomRef.ok && bomRef.value.bomId) {
+    try { const r: any = await productBomApi.getEngineeringBomInfo(Number(bomRef.value.bomId)); data.bom = r?.data || {} }
     catch { data.warnings.push('该版 BOM 读取失败') }
-  }
-  const routeRef = parseSnapshot(find('ROUTING')?.snapshotJson)
-  if (routeRef.routingId) {
-    try { const r: any = await productRouteApi.getProductRouteInfo(Number(routeRef.routingId)); data.routing = r?.data || {} }
+  } else if (!bomRef.ok) data.warnings.push('该版 BOM 引用解析失败')
+
+  // 工艺路线：同上。
+  const routeItem = items.find((item) => item.resourceType === 'ROUTING')
+  const routeRef = parseSnapshotStrict(routeItem?.snapshotJson)
+  if (!routeItem) data.warnings.push('该发布版本未包含工艺路线引用')
+  else if (routeRef.ok && routeRef.value.routingId) {
+    try { const r: any = await productRouteApi.getProductRouteInfo(Number(routeRef.value.routingId)); data.routing = r?.data || {} }
     catch { data.warnings.push('该版工艺路线读取失败') }
-  }
-  const drawRef = parseSnapshot(find('DRAWING')?.snapshotJson)
-  const attId = Number(drawRef.attachmentId)
-  if (attId) {
-    const name = drawRef.fileName || '结构图'
-    data.files.push({ key: String(attId), id: attId, name, category: '结构图', section: 'atlas',
-      kind: detectFileKind(name), productFile: true, version: drawRef.version ? String(drawRef.version) : undefined })
-  }
+  } else if (!routeRef.ok) data.warnings.push('该版工艺路线引用解析失败')
+
+  // 工程图：读取**全部** DRAWING 条目，按发布清单入集，不受当前现行/下发标记过滤。
+  const drawing = buildVersionFiles(items)
+  data.files.push(...drawing.files)
+  data.warnings.push(...drawing.warnings)
+
+  // 未固化内容显式标注：发布范围本就不含客供/样品；图标未随版本冻结，不补取当前态冒充历史。
+  data.warnings.push('客供资料与样品不在本发布版本范围内，预览不展示')
+  data.warnings.push('材料项目图标未随本发布版本固化，预览不补取当前图标')
+
+  data.files.sort((a, b) => a.id - b.id)
   return data
 }
 

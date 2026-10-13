@@ -78,7 +78,8 @@ const structureFile = computed(() => data.value?.workSpec.structureFileId
   ? data.value.files.find(file => file.id === data.value?.workSpec.structureFileId && file.category === '结构图' && file.kind !== 'other')
   : undefined)
 const defaultFileKeys = computed(() => new Set(defaultDocumentFiles(data.value?.files || []).map(file => file.key)))
-const selectedDrafts = computed(() => requestedFiles.value.filter(file => isEngineeringFile(file) && (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value)))
+// 发布版本清单里的图纸不属于工作态，不按现行/下发/归集判定（dev-20261013-009）。
+const selectedDrafts = computed(() => requestedFiles.value.filter(file => !file.published && isEngineeringFile(file) && (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value)))
 const visibleFiles = computed(() => (data.value?.files || []).filter((file) => selectedFiles.value.includes(file.key) && selectedSections.value.includes(file.section) && (file.section !== 'print' || defaultFileKeys.value.has(file.key))))
 const requestedFiles = computed(() => {
   const files = [...visibleFiles.value]
