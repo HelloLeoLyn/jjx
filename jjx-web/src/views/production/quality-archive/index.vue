@@ -100,10 +100,10 @@
     </el-dialog>
 
     <el-dialog v-model="attachmentsVisible" title="归档附件" width="680px" destroy-on-close>
-      <AttachmentPanel
+      <AttachmentDocList
         v-if="selectedRow?.bizType && selectedRow.bizId"
-        :biz-type="selectedRow.bizType"
-        :biz-id="selectedRow.bizId"
+        :source-type="canonicalAttachmentSource(selectedRow.bizType)"
+        :source-id="selectedRow.bizId"
       />
     </el-dialog>
   </div>
@@ -113,8 +113,9 @@
 import { onMounted, reactive, ref } from 'vue'
 import dayjs from 'dayjs'
 import { Refresh } from '@element-plus/icons-vue'
-import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentDocList from '@/components/attachment/AttachmentDocList.vue'
 import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
+import { canonicalAttachmentSource } from '@/enums/system/AttachmentEnum'
 import {
   getQualityArchivePage,
   type QualityArchiveQuery,

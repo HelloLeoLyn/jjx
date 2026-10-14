@@ -49,10 +49,10 @@
 
       <!-- Tab2 文档流水 -->
       <el-tab-pane label="文档流水" name="docs">
-        <AttachmentPanel
+        <AttachmentDocList
           v-if="bizId"
-          :biz-type="bizType"
-          :biz-id="bizId"
+          :source-type="canonicalAttachmentSource(bizType)"
+          :source-id="bizId ?? undefined"
           :trace-id="traceId || undefined"
         />
         <el-empty v-else description="暂无单据ID" :image-size="60" />
@@ -76,7 +76,8 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Right } from '@element-plus/icons-vue'
 import BizDetailPanel, { type DetailItem } from './BizDetailPanel.vue'
-import AttachmentPanel from '@/components/AttachmentPanel/index.vue'
+import AttachmentDocList from '@/components/attachment/AttachmentDocList.vue'
+import { canonicalAttachmentSource } from '@/enums/system/AttachmentEnum'
 import request from '@/utils/request'
 
 const props = defineProps<{
