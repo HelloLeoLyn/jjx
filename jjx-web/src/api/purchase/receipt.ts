@@ -216,12 +216,13 @@ export function importTemplate() {
 export function confirmBatchReceive(
   orderId: number,
   items: { itemId: number; receivedQuantity: number }[],
+  attachments?: { receiptRequestKey: string; attachmentIds: number[] },
 ) {
   return request({
     url: '/purchase/receipt/confirm-batch',
     method: 'post',
     params: { orderId },
-    data: { items },
+    data: { items, ...attachments },
   })
 }
 
@@ -275,4 +276,9 @@ export function confirmReceiptDocs(
     method: 'post',
     data: { orderId, files },
   })
+}
+
+/** 已确认的新收货票据，按本次入库单归集。 */
+export function getReceiptDocRefs(orderId: number) {
+  return request({ url: `/purchase/receipt/doc/refs/${orderId}`, method: 'get' })
 }

@@ -200,7 +200,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  uploaded: [payload: { attachmentId: number; temp: boolean }]
+  uploaded: [payload: { attachmentId: number; temp: boolean; name?: string }]
   bound: [payload: { refId: number; attachmentId: number }]
   unbound: [payload: { refId: number; attachmentId: number }]
   changed: [payload: { count: number }]
@@ -358,7 +358,7 @@ async function onFiles(files: File[]) {
     for (const file of files) {
       try {
         const attachmentId = await uploadTemp(file)
-        emit('uploaded', { attachmentId, temp: true })
+        emit('uploaded', { attachmentId, temp: true, name: file.name })
         if (props.autoBind && props.sourceId) {
           const entry = pending.value.find((e) => e.attachmentId === attachmentId) as PendingEntry
           const refId = await bindPendingOne(entry)
@@ -513,6 +513,8 @@ defineExpose({
   pendingCount,
   uploading,
   pendingEntries: pending,
+  /** 业务服务已在事务内绑定成功，或用户放弃草稿时，仅清理本地队列。 */
+  clearPending: () => { pending.value = []; persist() },
 })
 </script>
 

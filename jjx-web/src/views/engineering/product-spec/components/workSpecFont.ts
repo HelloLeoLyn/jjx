@@ -9,12 +9,9 @@ export const workSpecFontAreas: { key: WorkSpecFontArea; label: string }[] = [
   { key: 'footer', label: '页脚' },
 ]
 
-export const workSpecFontOptions = [
-  { label: '小一号', value: -1 },
-  { label: '默认', value: 0 },
-  { label: '大一号', value: 1 },
-  { label: '大两号', value: 2 },
-]
+/** 各区域字号调节范围（相对默认的 px 增量，整数；0=默认）（2026-10-14 dev-20261014-014） */
+export const WORK_SPEC_FONT_MIN = -3
+export const WORK_SPEC_FONT_MAX = 6
 
 export function defaultWorkSpecFontSettings(): WorkSpecFontSettings {
   return { title: 0, materials: 0, flows: 0, notes: 0, footer: 0 }
@@ -24,7 +21,8 @@ export function parseWorkSpecFontSettings(value?: string | null): WorkSpecFontSe
   const settings = defaultWorkSpecFontSettings()
   if (!value) return settings
   const parts = value.split(',').map(Number)
-  if (parts.length !== workSpecFontAreas.length || parts.some(part => !workSpecFontOptions.some(option => option.value === part))) return settings
+  if (parts.length !== workSpecFontAreas.length
+      || parts.some(part => !Number.isInteger(part) || part < WORK_SPEC_FONT_MIN || part > WORK_SPEC_FONT_MAX)) return settings
   workSpecFontAreas.forEach((area, index) => { settings[area.key] = parts[index] })
   return settings
 }
