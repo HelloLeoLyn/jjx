@@ -135,6 +135,31 @@
         </el-card>
       </el-col>
     </el-row>
+    <!-- 待清理（到期且无有效引用） -->
+    <el-card shadow="never" style="margin-top: 12px">
+      <template #header>
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <span>待清理（到期且无有效引用；清理后进回收站，可恢复）</span>
+          <span>
+            <el-tag size="small" type="warning" style="margin-right: 8px">{{ cleanupCandidates.length }} 个</el-tag>
+            <el-button size="small" :loading="previewing" @click="loadCleanupCandidates">刷新预演</el-button>
+          </span>
+        </div>
+      </template>
+      <el-table :data="cleanupCandidates" size="small" border max-height="240">
+        <el-table-column label="文件名" min-width="220" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.fileName || `附件#${scope.row.attachmentId}` }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90" prop="uploadState" />
+        <el-table-column label="大小" width="100" align="right">
+          <template #default="scope">{{ formatSize(scope.row.fileSize) }}</template>
+        </el-table-column>
+        <el-table-column label="保留期截止" width="160">
+          <template #default="scope">{{ formatTime(scope.row.deadline) }}</template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!cleanupCandidates.length" description="没有到期且无有效引用的附件" :image-size="50" />
+    </el-card>
     <!-- 回收站 -->
     <el-card shadow="never" header="回收站（软删除附件，可恢复；物理删除已禁用）" style="margin-top: 12px">
       <div style="margin-bottom: 8px; display: flex; justify-content: flex-end">
@@ -290,31 +315,46 @@ async function onRestore(row: any) {
 
 /** A 口径清理：预演 → 确认 → 标记删除（进回收站，可恢复）。游标分页推进，最多 5 页。 */
 const CLEANUP_MAX_PAGES = 5
+const cleanupCandidates = ref<any[]>([])
+const previewing = ref(false)
 
-async function countEligible(): Promise<number> {
-  let count = 0
+/** 预演只读：返回「到期且无有效引用」的行（含 fileName/size/deadline），用于页面待清理区。 */
+async function fetchEligibleRows(): Promise<any[]> {
+  const rows: any[] = []
   let afterId = 0
   for (let page = 0; page < CLEANUP_MAX_PAGES; page++) {
     const res: any = await attachmentRefApi.cleanupPreview(afterId, 100)
-    const rows: any[] = (res as any)?.data || []
-    if (!rows.length) break
-    count += rows.filter((r) => r.eligible).length
-    if (rows.length < 100) break
-    afterId = Number(rows[rows.length - 1].attachmentId) || afterId
+    const data: any[] = (res as any)?.data || []
+    if (!data.length) break
+    data.filter((r) => r.eligible).forEach((r) => rows.push(r))
+    if (data.length < 100) break
+    afterId = Number(data[data.length - 1].attachmentId) || afterId
   }
-  return count
+  return rows
+}
+
+async function loadCleanupCandidates() {
+  previewing.value = true
+  try {
+    cleanupCandidates.value = await fetchEligibleRows()
+  } catch {
+    cleanupCandidates.value = []
+  } finally {
+    previewing.value = false
+  }
 }
 
 async function runCleanExpired() {
   cleaning.value = true
   try {
-    const eligible = await countEligible()
-    if (!eligible) {
+    const candidates = await fetchEligibleRows()
+    if (!candidates.length) {
+      cleanupCandidates.value = []
       ElMessage.info('没有到期且无有效引用的附件需要清理')
       return
     }
     await ElMessageBox.confirm(
-      `将把 ${eligible} 个到期且无有效引用的附件移入回收站（可恢复，磁盘文件保留）。继续？`,
+      `将把 ${candidates.length} 个到期且无有效引用的附件移入回收站（可恢复，磁盘文件保留）。继续？`,
       '清理过期附件',
       { confirmButtonText: '移入回收站', cancelButtonText: '取消', type: 'warning' }
     )
@@ -330,6 +370,7 @@ async function runCleanExpired() {
     }
     ElMessage.success(`已移入回收站 ${recycled} 个附件（可在列表中恢复）`)
     loadRecycle()
+    loadCleanupCandidates()
   } catch (e: any) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(e?.message || '清理失败')
   } finally {
@@ -372,6 +413,7 @@ function formatTime(t: string | null | undefined): string {
 onMounted(() => {
   loadStats()
   loadRecycle()
+  loadCleanupCandidates()
 })
 </script>
 

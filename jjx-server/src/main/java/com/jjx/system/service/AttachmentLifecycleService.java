@@ -98,7 +98,15 @@ public class AttachmentLifecycleService {
             Decision decision = evaluate(id);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("attachmentId", id); row.put("reason", decision.reason()); row.put("eligible", decision.eligible());
-            row.put("deadline", decision.deadline()); row.put("physicalDeleteEnabled", false); result.add(row);
+            row.put("deadline", decision.deadline()); row.put("physicalDeleteEnabled", false);
+            SysAttachment file = decision.file();
+            if (file != null) {
+                row.put("fileName", file.getFileName()); row.put("fileSize", file.getFileSize());
+                row.put("uploadState", file.getUploadState() == null ? null : file.getUploadState().name());
+                row.put("uploadOwner", file.getUploadOwner());
+                row.put("createTime", file.getCreateTime()); row.put("expiresAt", file.getExpiresAt());
+            }
+            result.add(row);
             log.info("附件清理预演 actor={} id={} reason={} deadline={} physicalDelete=false", StpUtil.getLoginIdAsString(), id, decision.reason(), decision.deadline());
         }
         return result;
@@ -136,15 +144,15 @@ public class AttachmentLifecycleService {
     /** 单行判定（只读）。eligible 仅表示「可移入回收站」，不代表允许物理删除。 */
     private Decision evaluate(Long id) {
         SysAttachment file = files.selectIncludingDeleted(id);
-        if (file == null) return new Decision("ROW_MISSING", null, false);
-        if (Boolean.TRUE.equals(file.getDeleted())) return new Decision("ALREADY_RECYCLED", null, false);
+        if (file == null) return new Decision("ROW_MISSING", null, false, null);
+        if (Boolean.TRUE.equals(file.getDeleted())) return new Decision("ALREADY_RECYCLED", null, false, file);
         Long active = jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref WHERE attachment_id=? AND deleted=0", Long.class, id);
-        if (active != null && active > 0) return new Decision("ACTIVE_REFERENCE", null, false);
-        if (access.protectedFile(file)) return new Decision("CONTROLLED_OR_HISTORICAL_REFERENCE", null, false);
+        if (active != null && active > 0) return new Decision("ACTIVE_REFERENCE", null, false, file);
+        if (access.protectedFile(file)) return new Decision("CONTROLLED_OR_HISTORICAL_REFERENCE", null, false, file);
         if (file.getUploadState() == null || file.getUploadState() == AttachmentUploadState.LEGACY)
-            return new Decision("LEGACY_REVIEW_REQUIRED", null, false);
+            return new Decision("LEGACY_REVIEW_REQUIRED", null, false, file);
         if (jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment WHERE file_path=? AND id<>?", Long.class, file.getFilePath(), id) > 0)
-            return new Decision("SHARED_PATH_REVIEW_REQUIRED", null, false);
+            return new Decision("SHARED_PATH_REVIEW_REQUIRED", null, false, file);
         List<LocalDateTime> dates = jdbc.query("SELECT MAX(deleted_at) AS last_unlinked,COUNT(*) AS history_count FROM sys_attachment_ref WHERE attachment_id=?",
                 (rs, row) -> {
                     var date = rs.getTimestamp("last_unlinked");
@@ -155,10 +163,10 @@ public class AttachmentLifecycleService {
         LocalDateTime deadline = dates.isEmpty() ? null : dates.get(0);
         // Never shorten retention due to a stale state or metadata clock.
         if (deadline != null && file.getExpiresAt() != null && file.getExpiresAt().isAfter(deadline)) deadline = file.getExpiresAt();
-        if (deadline == null) return new Decision("RETENTION_START_UNKNOWN", null, false);
-        if (deadline.isAfter(LocalDateTime.now())) return new Decision("RETENTION_PERIOD", deadline, false);
-        return new Decision("ELIGIBLE_PREVIEW_ONLY", deadline, true);
+        if (deadline == null) return new Decision("RETENTION_START_UNKNOWN", null, false, file);
+        if (deadline.isAfter(LocalDateTime.now())) return new Decision("RETENTION_PERIOD", deadline, false, file);
+        return new Decision("ELIGIBLE_PREVIEW_ONLY", deadline, true, file);
     }
 
-    private record Decision(String reason, LocalDateTime deadline, boolean eligible) {}
+    private record Decision(String reason, LocalDateTime deadline, boolean eligible, SysAttachment file) {}
 }

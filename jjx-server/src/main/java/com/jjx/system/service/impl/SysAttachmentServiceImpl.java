@@ -541,7 +541,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
             throw new BusinessException("回收站中不存在该附件: " + id);
         }
         if (recycled.getBizType() == null || recycled.getBizType().isBlank() || recycled.getBizId() == null) {
-            throw new BusinessException("回收站附件未绑定业务来源（临时或仅引用），不能按业务来源恢复: " + id);
+            // 无业务来源（TEMP 或仅引用）：清理口径 A 把这类行标记删除进回收站，恢复只回写 deleted 标记，
+            // 不做业务来源校验（原校验会让口径 A 的清理不可逆，2026-10-14 实测恢复报错）。
+            return attachmentMapper.restore(id) > 0;
         }
         attachmentSources.check(recycled.getBizType(), recycled.getBizId(), true);
         if ("product".equals(recycled.getBizType()) && recycled.getDrawingNo() != null) {

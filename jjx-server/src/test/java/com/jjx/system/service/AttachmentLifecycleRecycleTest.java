@@ -30,12 +30,42 @@ class AttachmentLifecycleRecycleTest {
     private SysAttachment tempFile() {
         SysAttachment file = new SysAttachment();
         file.setId(ID);
+        file.setFileName("x.bin");
+        file.setFileSize(3L);
         file.setFilePath("attachment-temp/x.bin");
         file.setUploadState(AttachmentUploadState.TEMP);
         file.setDeleted(false);
         file.setCreateTime(LocalDateTime.now().minusDays(9));
         file.setExpiresAt(LocalDateTime.now().minusDays(8));
         return file;
+    }
+
+    /** 预演行必须带页面「待清理」区要展示的字段（文件名/大小/状态/截止）。 */
+    @Test
+    void previewRowCarriesDisplayFields() {
+        SysAttachmentMapper files = mock(SysAttachmentMapper.class);
+        AttachmentAccessService access = mock(AttachmentAccessService.class);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("SELECT id FROM sys_attachment"), eq(Long.class), eq(0L), eq(100)))
+                .thenReturn(List.of(ID));
+        when(files.selectIncludingDeleted(ID)).thenReturn(tempFile());
+        when(jdbc.queryForObject(contains("COUNT(*) FROM sys_attachment_ref"), eq(Long.class), eq(ID))).thenReturn(0L);
+        when(access.protectedFile(any())).thenReturn(false);
+        when(jdbc.queryForObject(contains("file_path=?"), eq(Long.class), any(), eq(ID))).thenReturn(0L);
+        when(jdbc.query(contains("MAX(deleted_at)"), ArgumentMatchers.<RowMapper<LocalDateTime>>any(), eq(ID)))
+                .thenReturn(List.of(LocalDateTime.now().minusDays(3)));
+
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            List<Map<String, Object>> rows = service.preview(0, 100);
+
+            assertEquals(1, rows.size());
+            assertEquals("x.bin", rows.get(0).get("fileName"));
+            assertEquals(3L, rows.get(0).get("fileSize"));
+            assertEquals("TEMP", rows.get(0).get("uploadState"));
+            assertEquals(Boolean.TRUE, rows.get(0).get("eligible"));
+            assertEquals(Boolean.FALSE, rows.get(0).get("physicalDeleteEnabled"));
+        }
     }
 
     /** 到期、无有效引用、非受控 ⇒ 标记删除一次，结果 recycled=1 且明确 not physical。 */
