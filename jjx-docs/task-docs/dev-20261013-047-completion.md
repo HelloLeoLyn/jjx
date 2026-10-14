@@ -54,5 +54,12 @@
 4）后端仍有缺口：无「按 id 查 TEMP 状态」与 `GET /refs/temp/mine`（dev-20261012-034 已记录）。
 
 ## 7）环境坑（供后续 agent）
-
 Maven 增量编译会把 IDE（VS Code Java LS / JDT）写入 `target/classes` 的 **Unresolved compilation problems 占位类**当作「已是最新」而跳过重编，表现为测试编译报 `com.jjx.system.mapper.SysAttachmentMapper cannot be converted to SysAttachmentMapper`（类文件描述符是裸名 `LSysAttachmentMapper;`）。处置：`touch` 改动的源文件后重跑 `mvn -o compile`，再用 `javap -s -p` 或 `grep -c 'Unresolved compilation problems' <class>` 复核。
+
+## 8）追加：用户实测反馈后的修复（提交 db759e73）
+
+1）**现象**：清理后点「恢复」报 `回收站附件未绑定业务来源（临时或仅引用），不能按业务来源恢复: 75`。根因：`restoreAttachment` 只按业务来源恢复，而口径 A 清理的正是「无业务来源」的 TEMP 行 ⇒ 清理**不可逆**（首版交付的"可恢复"是错的）。
+2）**修复**：无业务来源（`bizType` 空 或 `bizId` 空）的回收站行，恢复只回写 `deleted` 标记、不做来源校验；有业务来源的行仍走原口径（不绕过来源权限）。新增 `SysAttachmentRestoreTest`（3 项：无来源可恢复 / 有来源仍校验 / 不在回收站报错）。
+3）**页面新增「待清理」区**（用户要求）：预演行补出 `fileName/fileSize/uploadState/createTime/expiresAt/deadline`，文件管理页在回收站上方新增「待清理（N 个）」表格 + 「刷新预演」按钮；清理后自动刷新两个列表。
+4）**测试载体**（只改 id 75 这一条无引用 TEMP，原值如下，可复原）：`create_time` 2026-10-14 15:29:13 → 2026-10-04 18:47:58；`expires_at` 2026-10-21 15:29:13 → 2026-10-05 18:47:58。两列都要改：保留期取「创建+7天」与 `expires_at` 中较晚者。
+5）**明确不做**：只删磁盘文件、保留数据库记录的"半删除"——会让行指向不存在的文件（下载/预览报错），状态更乱，且不能省下口径 B 的论证成本。见 §6 与 sys_task remark。
