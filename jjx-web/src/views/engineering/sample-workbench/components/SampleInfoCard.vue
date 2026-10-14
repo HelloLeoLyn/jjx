@@ -86,41 +86,19 @@
       </div>
     </div>
 
-    <!-- 图纸 / 工艺文件（2026-08-11 挪到样品信息卡：图纸=样品单级资料） -->
+    <!-- 图纸 / 工艺文件（2026-10-14 dev-20261014-015：改走公共附件组件 refs） -->
     <div class="eng-files">
       <div class="eng-files-label">📐 图纸 / 工艺文件</div>
-      <el-upload
-        :disabled="readonly"
-        :http-request="onUpload"
-        :on-remove="onRemove"
-        :file-list="engFileList"
-        :before-upload="beforeUpload"
-        list-type="text"
-        multiple
-      >
-        <el-button type="primary" size="small" :disabled="readonly">📄 上传图纸/文件</el-button>
-      </el-upload>
-      <div v-if="engFileList.length > 0" style="margin-top: 8px">
-        <div
-          v-for="f in engFileList"
-          :key="f.uid || f.name"
-          style="
-            padding: 4px 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            border-bottom: 1px solid #f0f0f0;
-          "
-        >
-          <el-link v-if="f.url" :href="f.url" target="_blank" type="primary" underline="never"
-            >📎 {{ f.name }}</el-link
-          >
-          <span v-else>{{ f.name }} <el-tag size="small" type="warning">待上传</el-tag></span>
-        </div>
-      </div>
-      <div v-else style="color: #999; font-size: 12px; margin-top: 6px">
-        菲林图 / 丝印图 / 模切图 / 规格书（≤10MB）
-      </div>
+      <AttachmentCenter
+        v-if="card?.orderId"
+        source-type="sample"
+        :source-id="card.orderId"
+        :trace-id="card.traceId"
+        :readonly="readonly"
+        view-perm="sales:sample:view"
+        edit-perm="sales:sample:edit"
+        drop-zone
+      />
     </div>
 
     <!-- 往来附件（客户/销售上传：退回修改/送样登记等；2026-09-05 轻量版只读展示） -->
@@ -154,11 +132,9 @@
 </template>
 
 <script setup lang="ts">
-import type { UploadProps } from 'element-plus'
-
 /**
  * 样品单信息卡（dev-20260811-008 组件化）
- * 样品信息 + 接单/拒单 + 图纸上传（图纸=样品单级，挪至此）
+ * 样品信息 + 接单/拒单 + 图纸上传（图纸=样品单级，挪至此；2026-10-14 改走公共附件组件 refs）
  */
 defineProps<{
   card: any
@@ -166,37 +142,18 @@ defineProps<{
   planCount: number
   summary: any
   saving: boolean
-  engFileList: any[]
   customerFileList: any[]
   readonly?: boolean
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   (e: 'historyCopy'): void
   (e: 'back'): void
   // (e: 'accept'): void
   (e: 'reject'): void
-  (e: 'upload', options: any): void
-  (e: 'remove', file: any): void
   (e: 'viewInquiry'): void
   (e: 'viewQuotation'): void
 }>()
-
-const beforeUpload: UploadProps['beforeUpload'] = (file) => {
-  if (file.size > 10 * 1024 * 1024) {
-    return false
-  }
-  return true
-}
-function onUpload(options: any): Promise<any> {
-  emit('upload', options)
-  return Promise.resolve()
-}
-function onRemove(file: any) {
-  emit('remove', file)
-}
-
-defineExpose({ beforeUpload })
 </script>
 
 <style scoped>

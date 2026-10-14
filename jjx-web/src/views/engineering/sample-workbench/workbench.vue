@@ -8,15 +8,12 @@
       :plan-count="totalCount"
       :summary="summary"
       :saving="saving"
-      :eng-file-list="engFileList"
       :customer-file-list="customerFileList"
       @history-copy="handleOpenCopy"
       @back="goBack"
       @reject="handleReject"
       @view-inquiry="openInquiryDetail"
       @view-quotation="openQuotationDetail"
-      @upload="engUploadFile"
-      @remove="engRemoveFile"
     />
     {{ readonlyMode }}
     <!-- 轮次切换（全局，冲型组装/印刷共用，2026-08-12 布局调整） -->
@@ -739,8 +736,6 @@ const {
   printParamsOf,
   loadRounds,
   bomList,
-  engUploadRef,
-  engFileList,
   customerFileList,
   goBack,
   loadDetail,
@@ -751,10 +746,6 @@ const {
   handleTransfer,
   transferDialogVisible,
   onTransferSuccess,
-  engBeforeUpload,
-  engUploadFile,
-  engRemoveFile,
-  loadEngFiles,
   handleMarkReady,
   loadPlan,
   loadBom,

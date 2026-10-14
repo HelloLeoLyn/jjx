@@ -1226,8 +1226,6 @@ export function useSampleWorkbench() {
     }
   }
   const bomList = ref<any[]>([])
-  const engUploadRef = ref()
-  const engFileList = ref<any[]>([])
 
   function goBack() {
     router.push('/engineering/sample-workbench')
@@ -1263,7 +1261,6 @@ export function useSampleWorkbench() {
         loadRounds(),
         loadPlan(),
         loadBom(),
-        loadEngFiles(),
         loadCustomerFiles(),
         loadSummary(),
         loadAllProcesses(),
@@ -1342,60 +1339,6 @@ export function useSampleWorkbench() {
     ElMessage.success('资料转移完成')
     // 刷新当前数据（BOM/路线已建档，刷新汇总）
     loadSummary()
-  }
-
-  // 图纸
-  const engBeforeUpload: UploadProps['beforeUpload'] = (file) => {
-    if (file.size > 10 * 1024 * 1024) {
-      ElMessage.warning('文件不能超过10MB')
-      return false
-    }
-    return true
-  }
-  async function engUploadFile(options: any) {
-    if (readonlyMode.value) return
-    if (!orderId.value) return
-    const fd = new FormData()
-    fd.append('file', options.file)
-    fd.append('bizType', 'sample')
-    fd.append('bizId', String(orderId.value))
-    if (card.value?.traceId) {
-      fd.append('traceId', card.value.traceId)
-    }
-    try {
-      const res = await request.post('/system/attachment/upload', fd)
-      if (res.code === 200 || res.code === 0) {
-        ElMessage.success('上传成功')
-        await loadEngFiles()
-      }
-    } catch (e: any) {
-      ElMessage.error(e?.message || '上传失败')
-    }
-  }
-  async function engRemoveFile(file: any) {
-    if (readonlyMode.value) return
-    if (file.id) {
-      try {
-        await request.delete(`/system/attachment/${file.id}`)
-      } catch {
-        /* ignore */
-      }
-    }
-    engFileList.value = engFileList.value.filter((f) => f.uid !== file.uid)
-  }
-  async function loadEngFiles() {
-    if (!orderId.value) return
-    try {
-      const res = await request.get(`/system/attachment/list?bizType=sample&bizId=${orderId.value}`)
-      engFileList.value = (res.data || []).map((a: any) => ({
-        uid: a.id,
-        name: a.fileName,
-        url: a.filePath,
-        id: a.id,
-      }))
-    } catch {
-      engFileList.value = []
-    }
   }
 
   // 往来附件（客户/销售上传：退回修改/送样登记等，bizType=sample_order；2026-09-05 轻量版只读展示）
@@ -1697,8 +1640,6 @@ export function useSampleWorkbench() {
     printParamsOf,
     loadRounds,
     bomList,
-    engUploadRef,
-    engFileList,
     customerFileList,
     goBack,
     loadDetail,
@@ -1709,10 +1650,6 @@ export function useSampleWorkbench() {
     handleTransfer,
     transferDialogVisible,
     onTransferSuccess,
-    engBeforeUpload,
-    engUploadFile,
-    engRemoveFile,
-    loadEngFiles,
     loadCustomerFiles,
     handleMarkReady,
     loadPlan,
