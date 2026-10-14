@@ -1,49 +1,27 @@
 <!-- views/sales/quotation/components/QuotationCodeGenDialog.vue
-  报价明细行编码生成弹窗（2026-09-02）：针对单行明细生成产品编码
+  报价明细行编码生成弹窗（2026-09-02）
+  2026-10-14 dev-20261014-011：内部改为通用 ProductCodeGenDialog 的薄封装，
+  对外接口（modelValue / customerShort / initState / usedSerials + confirm(params) / cancel）保持不变，调用方无感。
   - 隐藏客户简称显示（编码拼接仍用已选客户简称）
-  - 四选（面板结构/面板特征/线路类型/线路特征）全选后自动取流水号生成编码，无需点按钮
+  - 四选全选后自动取流水号生成编码，无需点按钮
   - 确定后回填产品编码（+ 静默携带编码参数，随报价保存建档写入 product.spec_json）
 -->
 <template>
-  <el-dialog
-    :title="editing ? '修改产品编码' : '生成产品编码'"
+  <ProductCodeGenDialog
     v-model="visible"
-    width="560px"
-    append-to-body
-    destroy-on-close
-    @close="handleClose"
-  >
-    <el-alert
-      v-if="!customerShort"
-      type="warning"
-      :closable="false"
-      show-icon
-      title="请先在报价单中选择客户，再生成产品编码"
-      style="margin-bottom: 12px"
-    />
-    <ProductCodeGenerator
-      ref="genRef"
-      :customer-short="customerShort"
-      v-model:state="codeState"
-      :emit-params="true"
-      v-model:params="codeParams"
-      hide-short-name
-      hide-generate
-    />
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button type="primary" :disabled="!previewCode" @click="handleConfirm">确 定</el-button>
-        <el-button @click="handleClose">取 消</el-button>
-      </div>
-    </template>
-  </el-dialog>
+    :title="editing ? '修改产品编码' : '生成产品编码'"
+    :customer-short="customerShort"
+    :init-state="initState"
+    :used-serials="usedSerials"
+    @confirm="onConfirm"
+    @cancel="emit('cancel')"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
-import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
+import { ref, computed, watch } from 'vue'
+import ProductCodeGenDialog from '@/components/ProductCodeGenDialog/index.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
-import { normalizeSerial } from '@/composables/useProductCode'
 
 const props = defineProps<{
   modelValue: boolean
@@ -61,95 +39,20 @@ const emit = defineEmits<{
 }>()
 
 const visible = ref(false)
-const editing = ref(false)
-const genRef = ref()
-const codeState = reactive<ProductCodeState>({
-  serialNo: '',
-  panelType: '',
-  panelFeature: '',
-  circuitType: '',
-  circuitFeature: '',
-})
-const codeParams = ref<ProductCodeResult | null>(null)
-
-const previewCode = computed(() => codeParams.value?.productCode || '')
-
 watch(
   () => props.modelValue,
-  (val) => {
-    visible.value = val
-    if (val) {
-      editing.value = !!(props.initState && Object.values(props.initState).some(Boolean))
-      // 重置为编辑态参数（有则回显，无则全新）
-      codeState.serialNo = props.initState?.serialNo || ''
-      codeState.panelType = props.initState?.panelType || ''
-      codeState.panelFeature = props.initState?.panelFeature || ''
-      codeState.circuitType = props.initState?.circuitType || ''
-      codeState.circuitFeature = props.initState?.circuitFeature || ''
-      codeParams.value = null
-    }
-  }
+  (v) => {
+    visible.value = v
+  },
+)
+watch(visible, (v) => emit('update:modelValue', v))
+
+const editing = computed(
+  () => !!(props.initState && Object.values(props.initState).some(Boolean)),
 )
 
-watch(visible, (val) => {
-  emit('update:modelValue', val)
-})
-
-// 四选全选 + 无流水号 → 自动取号生成编码（2026-09-02，无需点生成按钮）
-watch(
-  () => [
-    codeState.panelType,
-    codeState.panelFeature,
-    codeState.circuitType,
-    codeState.circuitFeature,
-  ],
-  () => {
-    if (
-      codeState.panelType &&
-      codeState.panelFeature &&
-      codeState.circuitType &&
-      codeState.circuitFeature &&
-      !codeState.serialNo
-    ) {
-      genRef.value?.generate()
-    }
-  }
-)
-
-// 同号自动避让（2026-09-02）：生成的流水号与本单其他明细重复时，自动 +1 重试
-// 依赖：serialNo 改变 → ProductCodeGenerator 内部 watch → 重新 emitResult → codeParams 更新 → 本 watch 再查
-watch(
-  () => codeParams.value?.productCode,
-  () => {
-    const code = codeParams.value?.productCode
-    if (!code || !codeState.serialNo) return
-    const used = (props.usedSerials || []).filter(Boolean)
-    if (!used.includes(codeState.serialNo)) return
-    // 撞号：自动 +1 直到不冲突（序号 3~4 位：超过 999 直接给 4 位，不再回绕）（2026-09-30 dev-20260930-011）
-    let next = Number(codeState.serialNo) + 1
-    let guard = 0
-    while (used.includes(normalizeSerial(String(next))) && guard < 200) {
-      next++
-      guard++
-    }
-    codeState.serialNo = normalizeSerial(String(next))
-  }
-)
-
-const handleConfirm = () => {
-  if (!codeParams.value) return
-  emit('confirm', codeParams.value)
+const onConfirm = (payload: { params: ProductCodeResult }) => {
+  emit('confirm', payload.params)
   visible.value = false
-}
-
-const handleClose = () => {
-  visible.value = false
-  emit('cancel')
 }
 </script>
-
-<style scoped>
-.dialog-footer {
-  text-align: right;
-}
-</style>

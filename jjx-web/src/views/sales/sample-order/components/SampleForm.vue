@@ -69,31 +69,40 @@
 
       <!-- 打样产品 -->
       <el-form-item label="打样产品" required>
-        <el-select
-          v-if="form.sourceType !== 'QUOTATION' || !form.sourceNo"
-          v-model="form.product.productId"
-          filterable
-          remote
-          :remote-method="searchProducts"
-          :loading="productSearching"
-          :disabled="!form.customerId"
-          placeholder="请先选择客户，再选择一个打样产品"
-          style="width: 100%"
-          @change="onProductSelect"
-        >
-          <el-option
-            v-for="p in productOptions"
-            :key="p.productId"
-            :label="`${p.productCode} - ${p.productName}`"
-            :value="p.productId"
+        <div class="product-row">
+          <el-select
+            v-if="showProductSelect"
+            v-model="form.product.productId"
+            filterable
+            remote
+            :remote-method="searchProducts"
+            :loading="productSearching"
+            :disabled="!form.customerId"
+            placeholder="请先选择客户，再选择一个打样产品"
+            @change="onProductSelect"
+          >
+            <el-option
+              v-for="p in productOptions"
+              :key="p.productId"
+              :label="`${p.productCode} - ${p.productName}`"
+              :value="p.productId"
+            />
+          </el-select>
+          <el-input
+            v-else-if="form.sourceType === 'QUOTATION' && form.sourceNo"
+            :model-value="form.product.productName"
+            readonly
+            placeholder="从来源报价单带入"
           />
-        </el-select>
-        <el-input
-          v-else
-          :model-value="form.product.productName"
-          readonly
-          placeholder="从来源报价单带入"
-        />
+          <el-input v-else :model-value="newProductLabel" readonly placeholder="新产品（待建档）" />
+          <el-button v-if="canCreateProduct" plain :icon="Plus" @click="openCodeGen">
+            新建产品
+          </el-button>
+          <el-button v-else-if="productIsNew" plain @click="clearNewProduct">重选</el-button>
+        </div>
+        <div v-if="productIsNew" class="new-product-tag">
+          <el-tag type="success" size="small">新产品 · 保存后自动建档</el-tag>
+        </div>
         <div class="form-tip">一张样品单对应一个成品，可打样多件。</div>
         <el-alert
           v-if="quotationProductError"
@@ -148,6 +157,15 @@
       </el-form-item>
     </el-form>
 
+    <ProductCodeGenDialog
+      v-model="codeGenVisible"
+      title="新建打样产品"
+      :customer-short="customerShort"
+      :used-serials="[]"
+      show-product-name
+      @confirm="onCodeGenConfirm"
+    />
+
     <!-- 弹窗 footer -->
     <template v-if="mode === 'dialog'" #footer>
       <el-button @click="handleClose">取消</el-button>
@@ -179,6 +197,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { ElDialog, ElMessage } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { quotationApi } from '@/api/sales/quotation'
@@ -192,6 +211,8 @@ import type {
   SampleOrderApiLike,
 } from './types'
 import request from '@/utils/request'
+import ProductCodeGenDialog from '@/components/ProductCodeGenDialog/index.vue'
+import type { ProductCodeResult } from '@/composables/useProductCode'
 
 defineOptions({ name: 'SampleForm' })
 
@@ -253,6 +274,8 @@ const customerOptions = ref<CustomerOption[]>([])
 const customerSearching = ref(false)
 const productOptions = ref<any[]>([])
 const productSearching = ref(false)
+const codeGenVisible = ref(false)
+const productIsNew = ref(false)
 const quotationOptions = ref<QuotationOption[]>([])
 const quotationProductLoading = ref(false)
 const quotationProductError = ref('')
@@ -287,6 +310,19 @@ const rules = {
 
 const isQuotationLocked = computed(
   () => form.sourceType === 'QUOTATION' && !!form.sourceNo && !props.editId
+)
+
+// 「新建产品」：现场用产品编码器生成编码，productId 留空、随单据保存由后端自动建档
+const customerShort = computed(
+  () => customerOptions.value.find((c) => c.customerId === form.customerId)?.customerShortName || '',
+)
+const sourceFromQuotation = computed(() => form.sourceType === 'QUOTATION' && !!form.sourceNo)
+const showProductSelect = computed(() => !sourceFromQuotation.value && !productIsNew.value)
+const canCreateProduct = computed(
+  () => !sourceFromQuotation.value && !props.editId && !!form.customerId && !productIsNew.value,
+)
+const newProductLabel = computed(() =>
+  [form.product.productCode, form.product.productName].filter(Boolean).join(' - '),
 )
 
 const dialogProps = computed(() => {
@@ -333,10 +369,12 @@ function resetProductSelection() {
   quotationProductLoading.value = false
   quotationProductError.value = ''
   productOptions.value = []
+  productIsNew.value = false
   form.product = emptyProduct()
 }
 
 function fillSampleProduct(item: any) {
+  productIsNew.value = false
   form.product = {
     productId: item.productId ?? undefined,
     productCode: item.productCode || '',
@@ -413,12 +451,45 @@ async function searchProducts(keyword: string) {
 }
 
 function onProductSelect(productId: number) {
+  productIsNew.value = false
   const product = productOptions.value.find((p) => p.productId === productId)
   if (product) {
     form.product.productCode = product.productCode
     form.product.productName = product.productName
     form.product.unit = product.unit || 'PCS'
   }
+}
+
+// ====== 新建产品（现场生成编码）======
+function openCodeGen() {
+  if (!form.customerId) {
+    ElMessage.warning('请先选择客户，再新建产品')
+    return
+  }
+  codeGenVisible.value = true
+}
+
+function onCodeGenConfirm(payload: { params: ProductCodeResult; productName: string }) {
+  const p = payload.params
+  form.product = {
+    productId: undefined,
+    productCode: p.productCode,
+    productName: payload.productName || p.productCode,
+    quantity: form.product.quantity || 1,
+    unit: form.product.unit || 'PCS',
+    serialNo: p.serialNo,
+    panelType: p.panelType,
+    panelFeature: p.panelFeature,
+    circuitType: p.circuitType,
+    circuitFeature: p.circuitFeature,
+  }
+  productIsNew.value = true
+  productOptions.value = []
+}
+
+function clearNewProduct() {
+  productIsNew.value = false
+  resetProductSelection()
 }
 
 // ====== 重置 & 数据回填 ======
@@ -591,6 +662,20 @@ defineExpose({
 .form-tip {
   color: #909399;
   font-size: 12px;
+}
+.product-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+.product-row > :deep(.el-select),
+.product-row > :deep(.el-input) {
+  flex: 1;
+  min-width: 0;
+}
+.new-product-tag {
+  margin-top: 6px;
 }
 .sample-form-inline {
   padding: 8px 0;

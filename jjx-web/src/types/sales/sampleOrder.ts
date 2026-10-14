@@ -83,6 +83,12 @@ export interface SampleOrderItemInput {
   productName?: string
   quantity?: number
   unit?: string
+  /** 现场新建产品的编码参数（productId 为空时，后端据此自动建档） */
+  serialNo?: string
+  panelType?: string
+  panelFeature?: string
+  circuitType?: string
+  circuitFeature?: string
 }
 
 export interface SampleOrderCreateDTO {

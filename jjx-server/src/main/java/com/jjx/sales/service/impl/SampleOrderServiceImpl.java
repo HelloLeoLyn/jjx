@@ -98,6 +98,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.jjx.system.service.ISysAttachmentService attachmentService;
     private final com.jjx.product.service.IEngineeringBomService bomService;
     private final com.jjx.product.service.IEngineeringRoutingService routingService;
+    private final com.jjx.product.service.IProductService productService;
     private final com.jjx.product.mapper.EngineeringBomItemMapper bomItemMapper;
     private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
     private final com.jjx.engineering.mapper.RoutingItemMapper routingItemMapper;
@@ -784,6 +785,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (items != null && !items.isEmpty()) {
             java.util.List<com.jjx.sales.domain.dto.SalesOrderProductDTO> addList = new java.util.ArrayList<>();
             for (com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item it : items) {
+                if (it.getProductId() == null && it.getProductCode() != null && !it.getProductCode().isBlank()) {
+                    // 现场新建的打样产品：productId 为空时随单自动建档草稿产品（同询价/报价口径，dev-20261014-011）
+                    Long pid = productService.ensureDraftProduct(it.getProductCode().trim(), it.getProductName(),
+                            it.getUnit(), "sample", dto.getCustomerId(), it.getSerialNo(), it.getPanelType(),
+                            it.getPanelFeature(), it.getCircuitType(), it.getCircuitFeature());
+                    it.setProductId(pid);
+                }
                 if (it.getProductId() != null) {
                     productCustomerValidator.validateBelongsToCustomer(it.getProductId(), dto.getCustomerId());
                 }

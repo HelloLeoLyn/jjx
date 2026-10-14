@@ -60,5 +60,12 @@ public class SampleOrderCreateDTO {
         private Integer quantity;
 
         private String unit;
+
+        /** 现场新建产品的编码参数（productId 为空时，后端据此自动建档写入 product.spec_json） */
+        private String serialNo;
+        private String panelType;
+        private String panelFeature;
+        private String circuitType;
+        private String circuitFeature;
     }
 }

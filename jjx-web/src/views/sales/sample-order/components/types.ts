@@ -13,12 +13,19 @@ export interface SampleProductItem {
   unit?: string
   specification?: string
   unitPrice?: number
+  /** 现场新建产品带出的编码参数（随单自动建档用） */
+  serialNo?: string
+  panelType?: string
+  panelFeature?: string
+  circuitType?: string
+  circuitFeature?: string
 }
 
 /** 客户选项 */
 export interface CustomerOption {
   customerId: number
   customerName: string
+  customerShortName?: string
   contactPerson?: string
   contactPhone?: string
 }
