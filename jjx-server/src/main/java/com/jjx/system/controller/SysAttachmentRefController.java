@@ -102,6 +102,14 @@ public class SysAttachmentRefController {
         return Result.success(lifecycle.recycleEligible(afterId, limit));
     }
 
+    /** 留痕式释放：删磁盘文件、保留数据库记录（状态 PURGED，不可下载）。 */
+    @PostMapping("/purge-apply")
+    @Log(module = "附件引用", businessType = BusinessType.DELETE, bizType = "'sys_attachment'", action = "释放附件字节（删文件、保留记录）")
+    public Result<Map<String, Object>> applyPurge(@RequestParam(defaultValue = "0") long afterId,
+                                                  @RequestParam(defaultValue = "100") int limit) {
+        return Result.success(lifecycle.purgeEligible(afterId, limit));
+    }
+
     @GetMapping("/by-sha256")
     public Result<List<Map<String, Object>>> duplicates(@RequestParam String sha256,
             @RequestParam String sourceType, @RequestParam Long sourceId) {

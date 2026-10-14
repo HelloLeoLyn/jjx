@@ -6,11 +6,15 @@ import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.enums.AttachmentUploadState;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentMatchers;
 import org.mockito.MockedStatic;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -213,6 +217,68 @@ class AttachmentLifecycleRecycleTest {
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             assertThrows(BusinessException.class, () -> service.recycleEligible(0, 101));
             assertThrows(BusinessException.class, () -> service.recycleEligible(-1, 10));
+            assertThrows(BusinessException.class, () -> service.purgeEligible(0, 101));
         }
+    }
+
+    /** 留痕式释放：磁盘文件删掉、状态置 PURGED，数据库行与元数据保留（不进回收站）。 */
+    @Test
+    void purgeEligibleDeletesBytesAndKeepsRecord(@TempDir Path root) throws Exception {
+        Path dir = Files.createDirectories(root.resolve("attachment-temp"));
+        Path bytes = dir.resolve("x.bin");
+        Files.write(bytes, new byte[]{1, 2, 3});
+
+        SysAttachmentMapper files = mock(SysAttachmentMapper.class);
+        AttachmentAccessService access = mock(AttachmentAccessService.class);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("SELECT id FROM sys_attachment"), eq(Long.class), eq(0L), eq(100)))
+                .thenReturn(List.of(ID));
+        when(files.selectIncludingDeleted(ID)).thenReturn(tempFile());
+        when(jdbc.queryForObject(contains("COUNT(*) FROM sys_attachment_ref"), eq(Long.class), eq(ID))).thenReturn(0L);
+        when(access.protectedFile(any())).thenReturn(false);
+        when(jdbc.queryForObject(contains("file_path=?"), eq(Long.class), any(), eq(ID))).thenReturn(0L);
+        when(jdbc.query(contains("MAX(deleted_at)"), ArgumentMatchers.<RowMapper<LocalDateTime>>any(), eq(ID)))
+                .thenReturn(List.of(LocalDateTime.now().minusDays(3)));
+        when(jdbc.update(anyString(), eq(ID))).thenReturn(1);
+
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc);
+        ReflectionTestUtils.setField(service, "uploadBasePath", root.toString());
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("1");
+            Map<String, Object> result = service.purgeEligible(0, 100);
+
+            assertEquals(1, result.get("purged"));
+            assertEquals(1, result.get("scanned"));
+            assertEquals(Boolean.TRUE, result.get("recordsKept"));
+            assertFalse(Files.exists(bytes), "磁盘文件应已删除");
+        }
+        verify(jdbc, times(1)).update(contains("upload_state='PURGED'"), eq(ID));
+        verify(files, never()).logicalDelete(anyLong());
+    }
+
+    /** 仍有有效引用的行不得释放字节：文件必须原样保留、状态不动。 */
+    @Test
+    void purgeSkipsRowsWithActiveReference(@TempDir Path root) throws Exception {
+        Path dir = Files.createDirectories(root.resolve("attachment-temp"));
+        Path bytes = dir.resolve("x.bin");
+        Files.write(bytes, new byte[]{1, 2, 3});
+
+        SysAttachmentMapper files = mock(SysAttachmentMapper.class);
+        AttachmentAccessService access = mock(AttachmentAccessService.class);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("SELECT id FROM sys_attachment"), eq(Long.class), eq(0L), eq(100)))
+                .thenReturn(List.of(ID));
+        when(files.selectIncludingDeleted(ID)).thenReturn(tempFile());
+        when(jdbc.queryForObject(contains("COUNT(*) FROM sys_attachment_ref"), eq(Long.class), eq(ID))).thenReturn(1L);
+
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc);
+        ReflectionTestUtils.setField(service, "uploadBasePath", root.toString());
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            Map<String, Object> result = service.purgeEligible(0, 100);
+
+            assertEquals(0, result.get("purged"));
+            assertTrue(Files.exists(bytes), "被引用的附件不得删文件");
+        }
+        verify(jdbc, never()).update(anyString(), anyLong());
     }
 }

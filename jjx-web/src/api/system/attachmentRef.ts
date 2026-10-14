@@ -219,6 +219,15 @@ export const attachmentRefApi = {
       params: { afterId, limit },
     })
   },
+
+  /** 留痕式释放：删磁盘文件、保留数据库记录（状态 PURGED，不可下载）。仅后台清理页使用。 */
+  purgeApply(afterId = 0, limit = 100): AxiosPromise<Record<string, unknown>> {
+    return request({
+      url: '/system/attachment/refs/purge-apply',
+      method: 'post',
+      params: { afterId, limit },
+    })
+  },
 }
 
 export default attachmentRefApi

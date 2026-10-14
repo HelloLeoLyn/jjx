@@ -2,6 +2,7 @@ package com.jjx.system.service;
 
 import com.jjx.common.exception.BusinessException;
 import com.jjx.system.domain.entity.SysAttachment;
+import com.jjx.system.enums.AttachmentUploadState;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,6 +27,7 @@ public class AttachmentDownloadService {
     public ResponseEntity<Resource> byAttachment(Long id) {
         SysAttachment file = files.selectById(id);
         access.checkRead(file);
+        ensureBytesPresent(file);
         return response(file, null, true);
     }
 
@@ -33,7 +35,15 @@ public class AttachmentDownloadService {
         var ref = refs.readable(id); // Authorization is tied to this ref, never another visible ref.
         SysAttachment file = files.selectById(ref.getAttachmentId());
         if (file == null) throw new BusinessException("附件不存在");
+        ensureBytesPresent(file);
         return response(file, ref.getDisplayName(), preview);
+    }
+
+    /** 留痕式释放的行：文件已删、记录保留，给出明确说明而不是 404/空响应。 */
+    private void ensureBytesPresent(SysAttachment file) {
+        if (file.getUploadState() == AttachmentUploadState.PURGED)
+            throw new BusinessException("文件已释放，仅保留上传记录（文件名：" + file.getFileName()
+                    + "，大小：" + file.getFileSize() + " 字节，sha256：" + file.getSha256() + "）");
     }
 
     private ResponseEntity<Resource> response(SysAttachment file, String displayName, boolean preview) {

@@ -142,6 +142,7 @@
           <span>待清理（到期且无有效引用；清理后进回收站，可恢复）</span>
           <span>
             <el-tag size="small" type="warning" style="margin-right: 8px">{{ cleanupCandidates.length }} 个</el-tag>
+            <el-button size="small" type="danger" plain :loading="purging" @click="runPurgeFiles">仅删文件（留记录）</el-button>
             <el-button size="small" :loading="previewing" @click="loadCleanupCandidates">刷新预演</el-button>
           </span>
         </div>
@@ -196,7 +197,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { h, ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
 import { fileApi } from '@/api/system/file'
@@ -317,6 +318,7 @@ async function onRestore(row: any) {
 const CLEANUP_MAX_PAGES = 5
 const cleanupCandidates = ref<any[]>([])
 const previewing = ref(false)
+const purging = ref(false)
 
 /** 预演只读：返回「到期且无有效引用」的行（含 fileName/size/deadline），用于页面待清理区。 */
 async function fetchEligibleRows(): Promise<any[]> {
@@ -341,6 +343,44 @@ async function loadCleanupCandidates() {
     cleanupCandidates.value = []
   } finally {
     previewing.value = false
+  }
+}
+
+/** 留痕式释放：删磁盘文件、保留数据库记录（状态 PURGED；不可恢复、不可下载）。 */
+async function runPurgeFiles() {
+  purging.value = true
+  try {
+    const candidates = await fetchEligibleRows()
+    if (!candidates.length) {
+      cleanupCandidates.value = []
+      ElMessage.info('没有可释放的附件')
+      return
+    }
+    const text =
+      `将删除以下 ${candidates.length} 个文件的磁盘文件；数据库记录、上传人与 sha256 保留（不可恢复、不可下载）：\n` +
+      candidates.map((r) => `・${r.fileName || `附件#${r.attachmentId}`}（${formatSize(r.fileSize)}）`).join('\n')
+    await ElMessageBox.confirm(
+      h('div', { style: 'white-space: pre-line; max-height: 320px; overflow: auto' }, text),
+      '仅删文件（留记录）',
+      { confirmButtonText: '确认删除文件', cancelButtonText: '取消', type: 'warning' }
+    )
+    let afterId = 0
+    let purged = 0
+    for (let page = 0; page < CLEANUP_MAX_PAGES; page++) {
+      const res: any = await attachmentRefApi.purgeApply(afterId, 100)
+      const d: any = (res as any)?.data || {}
+      purged += Number(d.purged ?? 0)
+      const next = Number(d.nextAfterId ?? afterId)
+      if (!Number(d.scanned ?? 0) || next === afterId) break
+      afterId = next
+    }
+    ElMessage.success(`已释放 ${purged} 个文件（记录保留）`)
+    loadCleanupCandidates()
+    loadStats()
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(e?.message || '释放失败')
+  } finally {
+    purging.value = false
   }
 }
 

@@ -190,6 +190,55 @@ public class AttachmentLifecycleService {
         return result;
     }
 
+    /**
+     * 留痕式释放（省磁盘分支）：删磁盘文件、保留数据库记录（upload_state 置 PURGED）。
+     * 对象与清理预演命中的行相同；有有效引用 / 受控或历史引用 / 共享路径 / 已回收 / 未到期 一律跳过。
+     * 顺序：先删字节成功，再写状态；删字节失败保持原样（宁可留文件，不留「状态说删了其实没删」）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> purgeEligible(long afterId, int limit) {
+        StpUtil.checkRole("admin");
+        if (afterId < 0 || limit < 1 || limit > 100) throw new BusinessException("limit应为1至100");
+        List<Long> ids = jdbc.queryForList("SELECT id FROM sys_attachment WHERE id>? ORDER BY id LIMIT ?", Long.class, afterId, limit);
+        Path root = Paths.get(uploadBasePath).toAbsolutePath().normalize();
+        int purged = 0; long cursor = afterId;
+        List<Map<String, Object>> skipped = new ArrayList<>();
+        List<Map<String, Object>> failed = new ArrayList<>();
+        for (Long id : ids) {
+            cursor = id;
+            Decision decision = evaluate(id);
+            SysAttachment file = decision.file();
+            if (!decision.eligible() || file == null) {
+                Map<String, Object> skip = new LinkedHashMap<>();
+                skip.put("attachmentId", id); skip.put("reason", decision.reason()); skipped.add(skip);
+                continue;
+            }
+            Path target = root.resolve(file.getFilePath()).normalize();
+            if (!target.startsWith(root)) {
+                log.error("附件释放被拒（路径越界）id={} filePath={}", id, file.getFilePath());
+                Map<String, Object> bad = new LinkedHashMap<>();
+                bad.put("attachmentId", id); bad.put("reason", "PATH_OUT_OF_ROOT"); failed.add(bad);
+                continue;
+            }
+            try {
+                Files.deleteIfExists(target); // 先删字节：删不掉就什么都不改
+            } catch (java.io.IOException ex) {
+                log.error("附件释放失败（保留文件与状态）id={} path={}", id, target, ex);
+                Map<String, Object> bad = new LinkedHashMap<>();
+                bad.put("attachmentId", id); bad.put("reason", "FILE_DELETE_FAILED"); failed.add(bad);
+                continue;
+            }
+            if (jdbc.update("UPDATE sys_attachment SET upload_state='PURGED' WHERE id=? AND deleted=0", id) > 0) purged++;
+            log.info("附件字节已释放 actor={} id={} fileName={} sha256={} state=PURGED（记录保留）",
+                    StpUtil.getLoginIdAsString(), id, file.getFileName(), file.getSha256());
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("scanned", ids.size()); result.put("purged", purged);
+        result.put("skipped", skipped); result.put("failed", failed);
+        result.put("nextAfterId", cursor); result.put("recordsKept", true);
+        return result;
+    }
+
     /** 单行判定（只读）。eligible 仅表示「可移入回收站」，不代表允许物理删除。 */
     private Decision evaluate(Long id) {
         SysAttachment file = files.selectIncludingDeleted(id);
