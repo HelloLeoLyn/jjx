@@ -8,6 +8,7 @@ import com.jjx.product.domain.entity.Product;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.domain.vo.FileStatsVO;
+import com.jjx.system.enums.AttachmentUploadState;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -173,7 +174,8 @@ public class FileBackupService {
     public FileStatsVO stats() {        FileStatsVO vo = new FileStatsVO();
         Path uploadRoot = Paths.get(uploadBasePath);
 
-        // 目录扫描：总大小/总数（排除 backup）
+        // 目录扫描：总大小/总数（排除 backup）。口径说明：本值是磁盘实际占用，PURGED 行字节已删，
+        // 磁盘扫描天然不计入，无需按 upload_state 过滤。
         long totalSize = 0, totalCount = 0;
         if (Files.exists(uploadRoot)) {
             try (Stream<Path> stream = Files.walk(uploadRoot)) {
@@ -206,9 +208,12 @@ public class FileBackupService {
         vo.setUsedPercent(Math.round(usedPercent * 10) / 10.0);
 
         // 今日新增（数据库）
+        // 口径（dev-20261014-033）：已释放（PURGED）行的磁盘字节已删，不再计入「在用」统计，避免磁盘口径虚高。
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         List<SysAttachment> todayList = attachmentMapper.selectList(
-                new LambdaQueryWrapper<SysAttachment>().ge(SysAttachment::getCreateTime, todayStart));
+                new LambdaQueryWrapper<SysAttachment>()
+                        .ge(SysAttachment::getCreateTime, todayStart)
+                        .ne(SysAttachment::getUploadState, AttachmentUploadState.PURGED));
         long todaySize = todayList.stream()
                 .mapToLong(a -> a.getFileSize() == null ? 0 : a.getFileSize()).sum();
         vo.setTodayAddedSize(todaySize);
@@ -217,7 +222,9 @@ public class FileBackupService {
         // 近30天按日期
         LocalDateTime monthAgo = LocalDate.now().minusDays(29).atStartOfDay();
         List<SysAttachment> monthList = attachmentMapper.selectList(
-                new LambdaQueryWrapper<SysAttachment>().ge(SysAttachment::getCreateTime, monthAgo));
+                new LambdaQueryWrapper<SysAttachment>()
+                        .ge(SysAttachment::getCreateTime, monthAgo)
+                        .ne(SysAttachment::getUploadState, AttachmentUploadState.PURGED));
         Map<String, long[]> dateMap = new LinkedHashMap<>();
         for (SysAttachment a : monthList) {
             String d = a.getCreateTime() == null ? "未知" : a.getCreateTime().toLocalDate().toString();
@@ -236,8 +243,10 @@ public class FileBackupService {
         dailyStats.sort(Comparator.comparing(FileStatsVO.DailyStat::getDate));
         vo.setDailyStats(dailyStats);
 
-        // 按 bizType 统计 + 大文件 Top20
-        List<SysAttachment> all = attachmentMapper.selectList(null);
+        // 按 bizType 统计 + 大文件 Top20（同样排除已释放 PURGED 行）
+        List<SysAttachment> all = attachmentMapper.selectList(
+                new LambdaQueryWrapper<SysAttachment>()
+                        .ne(SysAttachment::getUploadState, AttachmentUploadState.PURGED));
         Map<String, long[]> bizMap = new LinkedHashMap<>();
         for (SysAttachment a : all) {
             String b = a.getBizType() == null || a.getBizType().isBlank() ? "未分类" : a.getBizType();
