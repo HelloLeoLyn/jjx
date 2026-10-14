@@ -5,6 +5,7 @@
 
 | 任务码 | 文件 | 类型 | 标题 |
 |---|---|---|---|
+| dev-20261014-006 | dev-20261014-006-plan.md | plan | 附件表 collation 订正（sys_attachment_ref/order_shortage_ledger → utf8mb4_unicode_ci，迁移 278）+ 防复发三层规则与门禁 |
 | dev-20261014-003 | dev-20261014-003-plan.md | plan | 只读文档公共组件 AttachmentDocList：参数即查询条件、只读可下载（默认10列从字段清单生成；含 refs 按来源单号解析） |
 | dev-20261014-001 | dev-20261014-001-plan.md | plan | 附件批量改名 P 段按产品编码解析回填（后端 list() 只读回填 productId，修「INQ-1-P0-…」；存量不动） |
 | dev-20261013-043 | dev-20261013-043-plan.md | plan | S5「明细行上传附件」方案（已定案：方案2 = 引用表加内部列 product_code；报价/询价明细行「上传附件」按钮，不建档、不多余数据行） |
