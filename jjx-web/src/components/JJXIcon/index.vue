@@ -53,6 +53,7 @@ import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus
 import { useDict } from '@/composables/useDict'
 import { dictApi } from '@/api/system/dict'
 import { attachmentApi } from '@/api/system/attachment'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
 
 interface Props {
   modelValue?: string
@@ -121,6 +122,15 @@ const getFilteredIcons = (tabName: string): IconOption[] => {
   )
 }
 
+/** 受控上传入口要求的 requestKey：16~100 位 [A-Za-z0-9_-]（图标库无幂等去重需求，随机键即可）。 */
+function buildIconRequestKey(): string {
+  const uuid = globalThis.crypto?.randomUUID?.()
+  const raw = uuid
+    ? uuid.replace(/-/g, '')
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`
+  return raw.replace(/[^A-Za-z0-9_-]/g, '').padEnd(16, '0').slice(0, 64)
+}
+
 async function uploadIcon(options: UploadRequestOptions) {
   try {
     const name = await ElMessageBox.prompt('请输入图标名称', '上传 JJX 图标', {
@@ -128,14 +138,15 @@ async function uploadIcon(options: UploadRequestOptions) {
       inputPattern: /\S+/,
       inputErrorMessage: '图标名称不能为空',
     })
-    const uploaded: any = await attachmentApi.upload(
-      options.file as File,
-      'engineering_jjx_icon',
-      0,
-      JSON.stringify({ category: activeTab.value }),
-    )
-    const attachmentId = uploaded?.data?.data ?? uploaded?.data
-    const previewUrl = attachmentApi.downloadUrl(Number(attachmentId))
+    // 收口（dev-20261014-027）：不再走已退役的老通道 /system/attachment/upload
+    // （bizType=engineering_jjx_icon 不在来源白名单，早已 fail-closed），
+    // 改走公共【受控上传入口】/system/attachment/refs/temp（TEMP 附件）。
+    // 图标属「资产」：仅在字典登记 URL，**不建 sys_attachment_ref 引用**
+    //（同一图标被多个工序共用，引用表的解绑语义会把共用图标带走）。
+    const uploaded: any = await attachmentRefApi.tempUpload(options.file as File, buildIconRequestKey())
+    const attachmentId = Number(uploaded?.data)
+    if (!attachmentId) throw new Error(uploaded?.msg || '图标上传失败')
+    const previewUrl = attachmentApi.downloadUrl(attachmentId)
     await dictApi.addItem({
       dictCode: iconDictCode,
       itemKey: `jjx-upload-${attachmentId}`,
