@@ -98,6 +98,7 @@
           :view-perm="evidenceViewPerm"
           :edit-perm="evidenceEditPerm"
           @uploaded="onEvidenceUploaded"
+          @bound="onEvidenceBound"
         />
         <div v-else class="op-section-tip">当前操作的附件来源未登记，暂不支持上传。</div>
       </div>
@@ -178,7 +179,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  success: [payload?: { values: Record<string, any>; attachmentIds: number[] }]
+  success: [payload?: { values: Record<string, any>; attachmentIds: number[]; attachmentRefIds: number[] }]
   /** 业务接口实际调用失败时触发（表单校验失败/用户取消/预览数据加载失败均不触发） */
   error: [error: any]
 }>()
@@ -191,6 +192,8 @@ const visible = computed({
 const submitting = ref(false)
 const formValues = ref<Record<string, any>>({})
 const uploadedIds: number[] = []
+// 新通道（附件双写收口 dev-20261014-028）：已绑定成功的附件引用 ID，随操作提交，替代老字段 file id
+const boundRefIds: number[] = []
 const evidenceCenter = ref<InstanceType<typeof AttachmentCenter> | null>(null)
 
 // ===== 状态文本 =====
@@ -278,6 +281,12 @@ function onEvidenceUploaded(payload: { attachmentId: number }) {
   if (id && !uploadedIds.includes(id)) uploadedIds.push(id)
 }
 
+// 绑定成功的附件引用 ID（新通道：业务侧改收 attachmentRefIds 的操作读它）
+function onEvidenceBound(payload: { refId: number }) {
+  const id = Number(payload?.refId)
+  if (id && !boundRefIds.includes(id)) boundRefIds.push(id)
+}
+
 // ===== 确认执行 =====
 async function confirm() {
   const op = props.operation
@@ -304,9 +313,14 @@ async function confirm() {
       bizId: props.bizId,
       values: { ...formValues.value },
       attachmentIds: [...uploadedIds],
+      attachmentRefIds: [...boundRefIds],
     })
     ElMessage.success(op.successText || `${op.name}成功`)
-    emit('success', { values: { ...formValues.value }, attachmentIds: [...uploadedIds] })
+    emit('success', {
+      values: { ...formValues.value },
+      attachmentIds: [...uploadedIds],
+      attachmentRefIds: [...boundRefIds],
+    })
     visible.value = false
   } catch (e: any) {
     ElMessage.error(e?.message || `${op.name}失败`)
@@ -328,6 +342,7 @@ watch(
           field.defaultValue ?? (field.type === 'number' ? undefined : '')
       }
       uploadedIds.length = 0
+      boundRefIds.length = 0
       await loadEventsAndRoles()
     }
   }

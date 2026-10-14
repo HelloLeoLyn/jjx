@@ -116,10 +116,11 @@ public interface IQuotationService {
      * 发送报价单给客户
      *
      * @param quotationId 报价单ID
-     * @param attachmentIds 附件ID列表(JSON数组)，可空
+     * @param attachmentIds 老字段——附件ID列表(JSON数组)：非空即拒绝（双写收口）
+     * @param attachmentRefIds 本次附件的引用ID列表(sys_attachment_ref.id)，可空
      * @return 结果
      */
-    int sendQuotation(Long quotationId, String attachmentIds);
+    int sendQuotation(Long quotationId, String attachmentIds, java.util.List<Long> attachmentRefIds);
 
     /**
      * 报价单转为订单
@@ -155,9 +156,11 @@ public interface IQuotationService {
      * 提交报价单审核
      *
      * @param quotationId 报价单ID
+     * @param attachmentIds 老字段——附件ID列表(JSON数组)：非空即拒绝（双写收口）
+     * @param attachmentRefIds 本次附件的引用ID列表(sys_attachment_ref.id)，可空
      * @return 结果
      */
-    int submitReview(Long quotationId, String attachmentIds);
+    int submitReview(Long quotationId, String attachmentIds, java.util.List<Long> attachmentRefIds);
 
     /**
      * 按当前明细重算报价单表头金额（DEV-1116：提交审核/发送前兑底调用）

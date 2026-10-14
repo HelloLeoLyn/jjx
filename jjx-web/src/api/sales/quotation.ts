@@ -142,21 +142,21 @@ export const quotationApi = {
     })
   },
 
-  // 发送报价单给客户
-  send(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
+  // 发送报价单给客户（附件双写收口 dev-20261014-028：改传附件引用 ID，不再传老字段）
+  send(quotationId: number, attachmentRefIds?: number[]): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/send/${quotationId}`,
       method: 'put',
-      params: attachmentIds ? { attachmentIds } : undefined,
+      params: attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : undefined,
     })
   },
 
-  // 提交报价单审核
-  submitReview(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
+  // 提交报价单审核（附件双写收口 dev-20261014-028：改传附件引用 ID，不再传老字段）
+  submitReview(quotationId: number, attachmentRefIds?: number[]): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/submit-review/${quotationId}`,
       method: 'put',
-      params: attachmentIds ? { attachmentIds } : undefined,
+      params: attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : undefined,
     })
   },
 

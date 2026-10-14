@@ -42,7 +42,10 @@ export interface OperationField {
 export interface OperationContext {
   bizId: number
   values: Record<string, any>
+  /** 老通道：上传的附件 file id（未改收引用 ID 的操作仍用它） */
   attachmentIds: number[]
+  /** 新通道（附件双写收口 dev-20261014-028）：已绑定的附件引用 ID（sys_attachment_ref.id） */
+  attachmentRefIds: number[]
 }
 
 export interface OperationDef {
@@ -83,8 +86,8 @@ export const quotationOperations: OperationDef[] = [
     toStatus: 5,
     evidence: true,
     events: ['quotation.submitted'],
-    api: ({ bizId, attachmentIds }) =>
-      quotationApi.submitReview(bizId, attachmentIds.length ? attachmentIds.join(',') : undefined),
+    api: ({ bizId, attachmentRefIds }) =>
+      quotationApi.submitReview(bizId, attachmentRefIds.length ? attachmentRefIds : undefined),
   },
   {
     key: 'quotation.approve',
@@ -138,8 +141,8 @@ export const quotationOperations: OperationDef[] = [
     toStatus: 1,
     evidence: true,
     events: ['quotation.sent'],
-    api: ({ bizId, attachmentIds }) =>
-      quotationApi.send(bizId, attachmentIds.length ? attachmentIds.join(',') : undefined),
+    api: ({ bizId, attachmentRefIds }) =>
+      quotationApi.send(bizId, attachmentRefIds.length ? attachmentRefIds : undefined),
   },
   {
     key: 'quotation.customerConfirm',
@@ -206,10 +209,10 @@ export const sampleOperations: OperationDef[] = [
     events: ['sample.submitted'],
     impact: '提交后进入工程打样。',
     successText: '已提交打样申请',
-    api: ({ bizId, attachmentIds }) =>
+    api: ({ bizId, attachmentRefIds }) =>
       sampleOrderApi.submitRequest(
         bizId,
-        attachmentIds?.length ? attachmentIds.join(',') : undefined
+        attachmentRefIds?.length ? attachmentRefIds : undefined
       ),
   },
   {
@@ -224,11 +227,11 @@ export const sampleOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['sample.approved'],
-    api: ({ bizId, values, attachmentIds }) =>
+    api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.approve(
         bizId,
         values.remark || '',
-        attachmentIds?.length ? attachmentIds.join(',') : undefined
+        attachmentRefIds?.length ? attachmentRefIds : undefined
       ),
   },
   {
@@ -249,11 +252,11 @@ export const sampleOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['sample.rejected'],
-    api: ({ bizId, values, attachmentIds }) =>
+    api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.rejectReview(
         bizId,
         values.remark,
-        attachmentIds?.length ? attachmentIds.join(',') : undefined
+        attachmentRefIds?.length ? attachmentRefIds : undefined
       ),
   },
   {
@@ -277,11 +280,11 @@ export const sampleOperations: OperationDef[] = [
     fields: [{ key: 'trackingNo', label: '快递单号', type: 'input', placeholder: '选填' }],
     evidence: true,
     events: ['sample.sent'],
-    api: ({ bizId, values, attachmentIds }) =>
+    api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.sendSample(
         bizId,
         values.trackingNo || '',
-        attachmentIds?.length ? attachmentIds.join(',') : undefined
+        attachmentRefIds?.length ? attachmentRefIds : undefined
       ),
   },
   {
@@ -295,11 +298,11 @@ export const sampleOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['sample.confirmed'],
-    api: ({ bizId, values, attachmentIds }) =>
+    api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.confirm(
         bizId,
         values.clientName || '客户确认',
-        attachmentIds?.length ? attachmentIds.join(',') : undefined
+        attachmentRefIds?.length ? attachmentRefIds : undefined
       ),
   },
   {
@@ -319,11 +322,11 @@ export const sampleOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['sample.rejected_by_customer'],
-    api: ({ bizId, values, attachmentIds }) =>
+    api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.rejectSample(
         bizId,
         values.reason,
-        attachmentIds?.length ? attachmentIds.join(',') : undefined
+        attachmentRefIds?.length ? attachmentRefIds : undefined
       ),
   },
   {

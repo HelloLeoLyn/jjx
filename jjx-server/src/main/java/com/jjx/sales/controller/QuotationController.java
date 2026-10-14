@@ -128,8 +128,10 @@ public class QuotationController extends BaseController {
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/send/{quotationId}")
     public Result<Void> send(@PathVariable Long quotationId,
-                             @RequestParam(required = false) String attachmentIds) {
-        return toAjax(quotationService.sendQuotation(quotationId, attachmentIds));
+                             // 双写收口 dev-20261014-028：老字段仅保留以拒绝，非空即报错
+                             @RequestParam(required = false) String attachmentIds,
+                             @RequestParam(required = false) List<Long> attachmentRefIds) {
+        return toAjax(quotationService.sendQuotation(quotationId, attachmentIds, attachmentRefIds));
     }
 
     /**
@@ -180,8 +182,10 @@ public class QuotationController extends BaseController {
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/submit-review/{quotationId}")
     public Result<Void> submitReview(@PathVariable Long quotationId,
-                                     @RequestParam(required = false) String attachmentIds) {
-        return toAjax(quotationService.submitReview(quotationId, attachmentIds));
+                                     // 双写收口 dev-20261014-028：老字段仅保留以拒绝，非空即报错
+                                     @RequestParam(required = false) String attachmentIds,
+                                     @RequestParam(required = false) List<Long> attachmentRefIds) {
+        return toAjax(quotationService.submitReview(quotationId, attachmentIds, attachmentRefIds));
     }
 
     /**

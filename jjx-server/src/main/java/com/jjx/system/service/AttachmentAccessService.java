@@ -59,9 +59,17 @@ public class AttachmentAccessService {
         if (reviewedRefs != null && reviewedRefs > 0) return true;
         // trace_id only links an attachment to a trace; it is not a hard business reference.
         // Historical flow/file references below remain protected after a business ref is detached.
+        //
+        // dev-20261014-028（授权证据老字段兜底退役）：已退役 sales_order_review.attachments 与
+        //   sales_customer.attachments 两处——全库无写入、无数据（旧订单评审表已由 review_flow 取代），
+        //   退役不改任何放行/保护的判定。
+        // 未退役的三处（review_flow.attachment_ids / sales_quotation_flow.attachment_ids /
+        //   sales_sample_round.attachment_ids）仍存在写入路径，本轮无法确证「无写入」→ 保留兜底，
+        //   避免历史留痕看不了附件：①订单驳回（OrderStatusServiceImpl.rejectOrder 仍写 reviewDTO.attachments）；
+        //   ②报价 review/status/confirm/reject/modify（本卡只收口 send/submitReview）；③样品 markReady 归档图纸。
         String token = "(^|[^0-9])" + file.getId() + "([^0-9]|$)";
-        Long evidence = jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM review_flow WHERE attachment_ids REGEXP ?) + (SELECT COUNT(*) FROM sales_quotation_flow WHERE attachment_ids REGEXP ?) + (SELECT COUNT(*) FROM sales_sample_round WHERE attachment_ids REGEXP ?) + (SELECT COUNT(*) FROM sales_order_review WHERE attachments REGEXP ?) + (SELECT COUNT(*) FROM sales_customer WHERE CAST(attachments AS CHAR) REGEXP ?)",
-            Long.class, token, token, token, token, token);
+        Long evidence = jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM review_flow WHERE attachment_ids REGEXP ?) + (SELECT COUNT(*) FROM sales_quotation_flow WHERE attachment_ids REGEXP ?) + (SELECT COUNT(*) FROM sales_sample_round WHERE attachment_ids REGEXP ?)",
+            Long.class, token, token, token);
         return evidence != null && evidence > 0;
     }
 

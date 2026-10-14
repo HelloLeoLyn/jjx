@@ -36,6 +36,18 @@ public class SampleOrderController extends BaseController {
 
     private final ISampleOrderService sampleOrderService;
     private final com.jjx.sales.service.ISalesOrderProductService orderProductService;
+    /** 附件双写收口 dev-20261014-028：证据入参由老字段 attachmentIds 改为引用 ID。 */
+    private final com.jjx.system.mapper.SysAttachmentRefMapper attachmentRefMapper;
+
+    /**
+     * 证据入参收口（双写收口 dev-20261014-028）：拒绝老字段（附件 file id），
+     * 只收附件引用 ID（sys_attachment_ref.id）并校验归属本样品单。
+     */
+    private void guardEvidence(Long orderId, String attachmentIds, List<Long> attachmentRefIds) {
+        com.jjx.system.utils.AttachmentRefUtils.rejectLegacyField(attachmentIds, "请使用附件引用 ID 提交样品单资料");
+        com.jjx.system.utils.AttachmentRefUtils.assertRefsBelong(attachmentRefMapper, attachmentRefIds,
+                "sample", orderId, "附件引用不属于当前样品单");
+    }
 
     @Operation(summary = "新增样品单（直接选客户+产品明细，报价单可选）")
     @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()", action = LogActions.SAMPLE_CREATE)
@@ -186,7 +198,9 @@ public class SampleOrderController extends BaseController {
     @SaCheckPermission("sales:sample:edit")
     @PutMapping("/submit-request/{orderId}")
     public Result<SalesOrder> submitRequest(@PathVariable Long orderId,
-                                           @RequestParam(required = false) String attachmentIds) {
+                                           @RequestParam(required = false) String attachmentIds,
+                                           @RequestParam(required = false) List<Long> attachmentRefIds) {
+        guardEvidence(orderId, attachmentIds, attachmentRefIds);
         return Result.success(sampleOrderService.submitRequest(orderId));
     }
 
@@ -196,7 +210,9 @@ public class SampleOrderController extends BaseController {
     @PutMapping("/approve/{orderId}")
     public Result<SalesOrder> approve(@PathVariable Long orderId,
                                       @RequestParam(required = false) String remark,
-                                      @RequestParam(required = false) String attachmentIds) {
+                                      @RequestParam(required = false) String attachmentIds,
+                                      @RequestParam(required = false) List<Long> attachmentRefIds) {
+        guardEvidence(orderId, attachmentIds, attachmentRefIds);
         return Result.success(sampleOrderService.approveReview(orderId, remark));
     }
 
@@ -206,7 +222,9 @@ public class SampleOrderController extends BaseController {
     @PutMapping("/reject-review/{orderId}")
     public Result<SalesOrder> rejectReview(@PathVariable Long orderId,
                                            @RequestParam(required = false) String remark,
-                                           @RequestParam(required = false) String attachmentIds) {
+                                           @RequestParam(required = false) String attachmentIds,
+                                           @RequestParam(required = false) List<Long> attachmentRefIds) {
+        guardEvidence(orderId, attachmentIds, attachmentRefIds);
         return Result.success(sampleOrderService.rejectReview(orderId, remark));
     }
 
@@ -234,8 +252,10 @@ public class SampleOrderController extends BaseController {
     @PutMapping("/send-sample/{orderId}")
     public Result<SalesOrder> sendSample(@PathVariable Long orderId,
                                          @RequestParam(required = false) String trackingNo,
-                                         // 仅供 @Log SpEL 取值，业务方法无需使用
-                                         @RequestParam(required = false) String attachmentIds) {
+                                         // 双写收口 dev-20261014-028：老字段仅保留以拒绝，非空即报错
+                                         @RequestParam(required = false) String attachmentIds,
+                                         @RequestParam(required = false) List<Long> attachmentRefIds) {
+        guardEvidence(orderId, attachmentIds, attachmentRefIds);
         return Result.success(sampleOrderService.sendSample(orderId, trackingNo));
     }
 
@@ -245,8 +265,10 @@ public class SampleOrderController extends BaseController {
     @PutMapping("/confirm/{orderId}")
     public Result<SalesOrder> confirm(@PathVariable Long orderId,
                                       @RequestParam(required = false) String clientName,
-                                      // 仅供 @Log SpEL 取值，业务方法无需使用
-                                      @RequestParam(required = false) String attachmentIds) {
+                                      // 双写收口 dev-20261014-028：老字段仅保留以拒绝，非空即报错
+                                      @RequestParam(required = false) String attachmentIds,
+                                      @RequestParam(required = false) List<Long> attachmentRefIds) {
+        guardEvidence(orderId, attachmentIds, attachmentRefIds);
         return Result.success(sampleOrderService.confirmSample(orderId, clientName));
     }
 
@@ -256,8 +278,10 @@ public class SampleOrderController extends BaseController {
     @PutMapping("/reject-sample/{orderId}")
     public Result<SalesOrder> rejectSample(@PathVariable Long orderId,
                                            @RequestParam(required = false) String rejectReason,
-                                           // 仅供 @Log SpEL 取值，业务方法无需使用
-                                           @RequestParam(required = false) String attachmentIds) {
+                                           // 双写收口 dev-20261014-028：老字段仅保留以拒绝，非空即报错
+                                           @RequestParam(required = false) String attachmentIds,
+                                           @RequestParam(required = false) List<Long> attachmentRefIds) {
+        guardEvidence(orderId, attachmentIds, attachmentRefIds);
         return Result.success(sampleOrderService.rejectSample(orderId, rejectReason));
     }
 
@@ -342,7 +366,10 @@ public class SampleOrderController extends BaseController {
     @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
     @PutMapping("/reject-engineering/{orderId}")
     public Result<SalesOrder> rejectEngineering(@PathVariable Long orderId,
-                                                @RequestParam String rejectReason) {
+                                                @RequestParam String rejectReason,
+                                                @RequestParam(required = false) String attachmentIds,
+                                                @RequestParam(required = false) List<Long> attachmentRefIds) {
+        guardEvidence(orderId, attachmentIds, attachmentRefIds);
         return Result.success(sampleOrderService.rejectEngineering(orderId, rejectReason));
     }
 

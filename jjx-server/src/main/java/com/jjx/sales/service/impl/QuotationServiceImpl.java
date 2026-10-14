@@ -16,6 +16,8 @@ import com.jjx.product.domain.entity.Product;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.system.service.ISysAttachmentService;
 import com.jjx.system.mapper.SysAttachmentMapper;
+import com.jjx.system.mapper.SysAttachmentRefMapper;
+import com.jjx.system.utils.AttachmentRefUtils;
 import com.jjx.sales.domain.converter.SalesQuotationConverter;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.domain.dto.SalesQuotationAddDTO;
@@ -73,6 +75,8 @@ public class QuotationServiceImpl implements IQuotationService {
     private final RedisSequenceService redisSequenceService;
     private final OperLogChangeRecorder changeRecorder;
     private final SysAttachmentMapper attachmentMapper;
+    /** 附件双写收口 dev-20261014-028：报价 send/submitReview 由老字段 attachmentIds 改为引用 ID。 */
+    private final SysAttachmentRefMapper attachmentRefMapper;
     private final SalesQuotationConverter quotationConverter;
     /** 2026-09-21（dev-20260921-009）：报价改单要发事件。 */
     private final com.jjx.event.EventPublisher eventPublisher;
@@ -837,7 +841,11 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int sendQuotation(Long quotationId, String attachmentIds) {
+    public int sendQuotation(Long quotationId, String attachmentIds, List<Long> attachmentRefIds) {
+        // 双写收口：拒绝老字段（附件 file id），只收附件引用 ID（sys_attachment_ref.id）
+        AttachmentRefUtils.rejectLegacyField(attachmentIds, "请使用附件引用 ID 发送报价");
+        AttachmentRefUtils.assertRefsBelong(attachmentRefMapper, attachmentRefIds,
+                "quotation", quotationId, "附件引用不属于当前报价单");
         SalesQuotation quotation = selectQuotationById(quotationId);
         if (quotation == null) {
             throw new BusinessException("报价单不存在");
@@ -862,7 +870,8 @@ public class QuotationServiceImpl implements IQuotationService {
         quotation.setSendMethod("email"); // 默认邮件发送
 
         int rows = quotationMapper.updateById(quotation);
-        recordFlow(quotation, "SEND", "发送报价", from, QuotationStatus.SENT.getValue(), null, attachmentIds);
+        // 附件留痕改由引用表（sys_attachment_ref）承载，流转表不再写老字段
+        recordFlow(quotation, "SEND", "发送报价", from, QuotationStatus.SENT.getValue(), null, null);
         publishQuotationEvent("quotation.sent", quotation);
         return rows;
     }
@@ -1127,7 +1136,11 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int submitReview(Long quotationId, String attachmentIds) {
+    public int submitReview(Long quotationId, String attachmentIds, List<Long> attachmentRefIds) {
+        // 双写收口：拒绝老字段（附件 file id），只收附件引用 ID（sys_attachment_ref.id）
+        AttachmentRefUtils.rejectLegacyField(attachmentIds, "请使用附件引用 ID 提交报价审核");
+        AttachmentRefUtils.assertRefsBelong(attachmentRefMapper, attachmentRefIds,
+                "quotation", quotationId, "附件引用不属于当前报价单");
         SalesQuotation quotation = selectQuotationById(quotationId);
         if (quotation == null) {
             throw new BusinessException("报价单不存在");
@@ -1150,7 +1163,8 @@ public class QuotationServiceImpl implements IQuotationService {
         Integer from = quotation.getQuotationStatus();
         quotation.setQuotationStatus(QuotationStatus.PENDING_REVIEW.getValue());
         int rows = quotationMapper.updateById(quotation);
-        recordFlow(quotation, "SUBMIT_REVIEW", "提交审核", from, QuotationStatus.PENDING_REVIEW.getValue(), null, attachmentIds);
+        // 附件留痕改由引用表（sys_attachment_ref）承载，流转表不再写老字段
+        recordFlow(quotation, "SUBMIT_REVIEW", "提交审核", from, QuotationStatus.PENDING_REVIEW.getValue(), null, null);
         publishQuotationEvent("quotation.submitted", quotation);
         return rows;
     }

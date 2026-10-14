@@ -159,30 +159,30 @@ export const sampleOrderApi = {
     })
   },
 
-  // 提交审核
-  submitRequest(orderId: number, attachmentIds?: string) {
+  // 提交审核（附件双写收口 dev-20261014-028：改传附件引用 ID）
+  submitRequest(orderId: number, attachmentRefIds?: number[]) {
     return request<R<void>>({
       url: `/sales/sample-order/submit-request/${orderId}`,
       method: 'put',
-      params: { attachmentIds },
+      params: { attachmentRefIds: attachmentRefIds?.length ? attachmentRefIds.join(',') : undefined },
     })
   },
 
-  // 审核通过
-  approve(orderId: number, remark?: string, attachmentIds?: string) {
+  // 审核通过（附件双写收口 dev-20261014-028：改传附件引用 ID）
+  approve(orderId: number, remark?: string, attachmentRefIds?: number[]) {
     return request<R<void>>({
       url: `/sales/sample-order/approve/${orderId}`,
       method: 'put',
-      params: { remark, attachmentIds },
+      params: { remark, attachmentRefIds: attachmentRefIds?.length ? attachmentRefIds.join(',') : undefined },
     })
   },
 
-  // 审核驳回
-  rejectReview(orderId: number, remark?: string, attachmentIds?: string) {
+  // 审核驳回（附件双写收口 dev-20261014-028：改传附件引用 ID）
+  rejectReview(orderId: number, remark?: string, attachmentRefIds?: number[]) {
     return request<R<void>>({
       url: `/sales/sample-order/reject-review/${orderId}`,
       method: 'put',
-      params: { remark, attachmentIds },
+      params: { remark, attachmentRefIds: attachmentRefIds?.length ? attachmentRefIds.join(',') : undefined },
     })
   },
 
@@ -204,30 +204,30 @@ export const sampleOrderApi = {
     })
   },
 
-  // 送样登记
-  sendSample(orderId: number, trackingNo?: string, attachmentIds?: string) {
+  // 送样登记（附件双写收口 dev-20261014-028：改传附件引用 ID）
+  sendSample(orderId: number, trackingNo?: string, attachmentRefIds?: number[]) {
     return request<R<void>>({
       url: `/sales/sample-order/send-sample/${orderId}`,
       method: 'put',
-      params: { trackingNo, attachmentIds },
+      params: { trackingNo, attachmentRefIds: attachmentRefIds?.length ? attachmentRefIds.join(',') : undefined },
     })
   },
 
-  // 客户确认
-  confirm(orderId: number, clientName?: string, attachmentIds?: string) {
+  // 客户确认（附件双写收口 dev-20261014-028：改传附件引用 ID）
+  confirm(orderId: number, clientName?: string, attachmentRefIds?: number[]) {
     return request<R<void>>({
       url: `/sales/sample-order/confirm/${orderId}`,
       method: 'put',
-      params: { clientName, attachmentIds },
+      params: { clientName, attachmentRefIds: attachmentRefIds?.length ? attachmentRefIds.join(',') : undefined },
     })
   },
 
-  // 客户退回
-  rejectSample(orderId: number, rejectReason?: string, attachmentIds?: string) {
+  // 客户退回（附件双写收口 dev-20261014-028：改传附件引用 ID）
+  rejectSample(orderId: number, rejectReason?: string, attachmentRefIds?: number[]) {
     return request<R<void>>({
       url: `/sales/sample-order/reject-sample/${orderId}`,
       method: 'put',
-      params: { rejectReason, attachmentIds },
+      params: { rejectReason, attachmentRefIds: attachmentRefIds?.length ? attachmentRefIds.join(',') : undefined },
     })
   },
 
