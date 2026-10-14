@@ -22,3 +22,4 @@ time	kind	file	md5	bytes	tables	agent	task
 2026-10-14 00:10:00	full	jjx_erp_db_backup_20261014-0009.sql	8ad28c4fc67645cc8d29d838923a2819	5089968	127	dahuang	无
 2026-10-14 12:07:09	full	jjx_erp_db_backup_20261014-1207_before-collation-278.sql	9a84f8ac9116e000014a4173b66cc016	5125740	127	dahuang	dev-20261014-006
 2026-10-14 12:09:06	full	jjx_erp_db_backup_20261014-1209.sql	e01020fbfd7d4be76b35a47c9766efef	5126750	127	dahuang	无
+2026-10-14 20:23:22	full	jjx_erp_db_backup_20261014-2023_before-docperms-279-281.sql	b82b1e396b1e0a663f66c63133af70b1	5057290	127	dahuang	dev-20261014-022
