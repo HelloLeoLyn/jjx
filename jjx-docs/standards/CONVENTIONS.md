@@ -409,3 +409,15 @@ bash scripts/agent-preflight.sh
 ### 15.7 表数基线机制
 
 表数基线不是纯数字，而是当前表名清单 `tables` 加已批准例外清单 `approvedNewTables`。每条批准例外必须带任务码、日期和提案链接。基线允许受控增长；每次增长必须对应一条批准记录。门禁脚本为 `scripts/check-model-baseline.sh`，基线文件为 `scripts/model-baseline.json`。
+
+## 16. 字符集与排序规则（collation，2026-10-14 立；起因：附件引用表 ERROR 1267 事故，dev-20261014-006）
+
+**一句话**：全库字符串列一律 `utf8mb4_unicode_ci`；建表/加列/改列必须**显式**写 `CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`，**禁止只写 `DEFAULT CHARSET=utf8mb4`**。
+
+1. **默认口径**：所有字符串列与表默认排序规则统一为 `utf8mb4_unicode_ci`（库默认同此）。
+2. **必须显式 COLLATE**：`CREATE TABLE` / `ADD COLUMN` / `MODIFY` / `CONVERT TO` 里凡出现 `CHARACTER SET`/`CHARSET`，同一条语句必须带 `COLLATE`。只写 `DEFAULT CHARSET=utf8mb4` 时 **MySQL 8 会取字符集自带默认 `utf8mb4_0900_ai_ci`**（不是库默认），与库内其他列混排后，跨表字符串等值连接即报 `ERROR 1267 Illegal mix of collations`——实例：迁移 271 建 `sys_attachment_ref` 漏写 `COLLATE`，撞上 `sys_dict_item.item_key`；订正见迁移 278。
+3. **刻意例外**：确有需要非 `utf8mb4_unicode_ci` 的列（如 `sys_attachment.source_type`/`upload_key` 用 `ascii_bin`），必须在迁移注释里写明理由，且同样显式写 `COLLATE`。
+4. **门禁（两层）**：
+   - 静态：`node scripts/check-migration-collation.mjs` —— 扫 `jjx-docs/sql/migrations/`（不含已执行的 `applied/`），语句含 `CHARSET`/`CHARACTER SET` 却无 `COLLATE` 即报错；已挂进 `jjx-web` 的 `validate` 链。
+   - 动态：`bash scripts/check-collation.sh --strict` —— 漂移必须为 0；危险面扫「同名列」+「已知异名连接键对」（如 `sys_dict_item.item_key ↔ sys_attachment_ref.document_type`、`material_code`、`order_no`），因为只按同名列匹配会漏掉真正炸的异名键。
+5. **新迁移收尾**：执行后必须跑 `bash scripts/check-collation.sh --strict`，漂移 0 才算完成。

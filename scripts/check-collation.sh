@@ -5,7 +5,8 @@
 #
 # 背景：库内曾同时存在 utf8mb4_unicode_ci 与 utf8mb4_0900_ai_ci 两套字符串列，
 #       跨表字符串 JOIN 会报 ERROR 1267 Illegal mix of collations（实例见迁移 193 文件头）。
-#       修复迁移：jjx-docs/sql/migrations/193_collation_unify_utf8mb4_unicode_ci.sql
+#       修复迁移：jjx-docs/sql/migrations/278_attachment_ref_collation_unify.sql（任务码 dev-20261014-006）
+#       （2026-09 的 193_collation_unify_utf8mb4_unicode_ci.sql 为历史，已随 f96927a4 rm 移出仓）
 #
 # 用法：
 #   bash scripts/check-collation.sh              # 咨询模式：只报告，永远 exit 0
@@ -72,16 +73,42 @@ if [ "$cols_drift" -gt 0 ] || [ "$tbls_drift" -gt 0 ]; then
        AND COLLATION_NAME IS NOT NULL AND COLLATION_NAME<>'$TARGET_COLLATION'
      GROUP BY COLLATION_NAME ORDER BY cols DESC;"
   echo
-  echo "-- 5) 危险面：同名列跨两种 collation（最易触发 1267 的 JOIN 键）"
-  M "SELECT COLUMN_NAME,
-        SUM(COLLATION_NAME='$TARGET_COLLATION') AS unicode_ci,
-        SUM(COLLATION_NAME<>'$TARGET_COLLATION') AS other
+  echo "-- 5) 危险面：跨表字符串等值连接键（1267 只在'连接的两个键 collation 不一致'时炸）"
+  echo "   5a) 同名列跨两种 collation："
+  M "SELECT CONCAT('   ', COLUMN_NAME, '  unicode_ci=', SUM(COLLATION_NAME='$TARGET_COLLATION'), '  other=', SUM(COLLATION_NAME<>'$TARGET_COLLATION'))
      FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB_NAME'
        AND COLLATION_NAME IS NOT NULL
-       AND COLUMN_NAME IN ('material_code','batch_no','unit','product_code','product_name','customer_name','trace_id','order_no')
-     GROUP BY COLUMN_NAME HAVING unicode_ci>0 AND other>0 ORDER BY (unicode_ci+other) DESC;"
+       AND COLUMN_NAME IN ('material_code','batch_no','unit','product_code','product_name','customer_name','trace_id','order_no','document_type','item_key','dict_code','source_no')
+     GROUP BY COLUMN_NAME HAVING SUM(COLLATION_NAME<>'$TARGET_COLLATION')>0 AND SUM(COLLATION_NAME='$TARGET_COLLATION')>0
+     ORDER BY (SUM(COLLATION_NAME='$TARGET_COLLATION')+SUM(COLLATION_NAME<>'$TARGET_COLLATION')) DESC;"
   echo
-  echo "-- 修复：bash scripts/db-migrate.sh 193_collation_unify_utf8mb4_unicode_ci.sql --yes --task dev-20260921-046"
+  echo "   5b) 已知异名连接键对（代码里等值连接、列名不同；collation 不一致即 1267 隐患）："
+  # 键对真源：应用层跨表字符串等值连接（dev-20261014-006；只按同名列匹配会漏掉 document_type↔item_key）
+  PAIRS=(
+    "sys_dict_item.item_key|sys_attachment_ref.document_type"
+    "product.product_code|sys_attachment_ref.product_code"
+    "inventory_material.material_code|order_shortage_ledger.material_code"
+    "sales_order.order_no|order_shortage_ledger.order_no"
+  )
+  pair_danger=0
+  for pair in "${PAIRS[@]}"; do
+    lt="${pair%%|*}"; rt="${pair##*|}"
+    tL="${lt%%.*}"; cL="${lt##*.}"; tR="${rt%%.*}"; cR="${rt##*.}"
+    res=$(M "SELECT
+        (SELECT COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='$tL' AND COLUMN_NAME='$cL'),
+        (SELECT COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_NAME='$tR' AND COLUMN_NAME='$cR');")
+    lcol=$(printf '%s' "$res" | cut -f1); rcol=$(printf '%s' "$res" | cut -f2)
+    if [ -n "$lcol" ] && [ -n "$rcol" ] && [ "$lcol" != "$rcol" ]; then
+      echo "   ⚠ $lt=$lcol  ≠  $rt=$rcol"
+      pair_danger=$((pair_danger+1))
+    elif [ -n "$lcol" ] && [ -n "$rcol" ]; then
+      echo "   ok $lt=$lcol  =  $rt=$rcol"
+    fi
+  done
+  echo "   异名键对不一致：$pair_danger（期望 0）"
+  echo
+  echo "-- 修复：bash scripts/db-migrate.sh 278_attachment_ref_collation_unify.sql --yes --task dev-20261014-006 --backup <备份.sql>"
+  echo "        （执行后务必再跑：bash scripts/check-collation.sh --strict）"
 else
   echo "   ✅ 全库字符串列已统一到 $TARGET_COLLATION（1267 跨表字符串 JOIN 风险已消除）"
 fi
