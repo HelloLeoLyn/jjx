@@ -162,180 +162,8 @@
     </el-card>
 
     <!-- 新增/修改询价单对话框 -->
-    <el-dialog
-      :title="dialogTitle"
-      v-model="dialogVisible"
-      width="1200px"
-      append-to-body
-      @close="handleClose"
-    >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
-        <el-divider content-position="left">客户信息</el-divider>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="客户" prop="customerId">
-              <CustomerSelector
-                v-model="form.customerId"
-                value-type="customerId"
-                placeholder="请选择客户"
-                @change="customerChanged"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="客户名称" prop="customerName">
-              <el-input v-model="form.customerName" placeholder="客户名称" disabled />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="联系人" prop="contactPerson">
-              <el-input v-model="form.contactPerson" placeholder="请输入联系人" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="联系电话" prop="contactPhone">
-              <el-input v-model="form.contactPhone" placeholder="请输入联系电话" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="询价日期" prop="inquiryDate">
-              <el-date-picker
-                v-model="form.inquiryDate"
-                type="date"
-                placeholder="请选择询价日期"
-                value-format="YYYY-MM-DD"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="预估数量" prop="expectedQuantity">
-              <el-input-number
-                v-model="form.expectedQuantity"
-                :min="0"
-                placeholder="预估数量"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="预估单价" prop="unitPrice">
-              <el-input-number
-                v-model="form.unitPrice"
-                :min="0"
-                :precision="2"
-                placeholder="转报价继承，可留空"
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-divider content-position="left">产品信息</el-divider>
-        <el-row :gutter="20">
-          <el-col :span="24">
-            <el-form-item label="类型" prop="inquiryType">
-              <el-radio-group v-model="form.inquiryType" @change="onTypeChange">
-                <el-radio :value="1" border>标准品</el-radio>
-                <el-radio :value="2" border>样品（需打样）</el-radio>
-              </el-radio-group>
-            </el-form-item>
-
-            <!-- 标准品：选择产品（DEV-1121：必填 + 只能选该客户的产品，用公共组件 ProductPicker） -->
-            <el-form-item v-if="form.inquiryType === 1" label="选择产品" prop="productId">
-              <ProductPicker
-                v-model="form.productId"
-                value-type="productId"
-                :customer-id="form.customerId"
-                :disabled="!form.customerId"
-                placeholder="请先选择客户，再搜索该客户的产品"
-                @change="onProductSelect"
-              />
-            </el-form-item>
-
-            <!-- 样品：编码构成要素（公共组件 2026-08-12，统一校验/拼接/输出可配置） -->
-            <template v-if="form.inquiryType === 2">
-              <ProductCodeGenerator
-                ref="codeGenRef"
-                :customer-short="shortNameDisplay"
-                v-model:state="codeState"
-                :emit-params="true"
-                v-model:params="codeParams"
-                @change="onCodeChange"
-              />
-            </template>
-
-            <!-- 样品编码由公共生成组件展示；标准品保留选产品后回填的编码。 -->
-            <el-form-item v-else label="产品编码">
-              <!-- 2026-09-30 dev-20260930-011：口径统一 —— 编码只能由「客户简称+序号+结构位」拼出，禁止整条手改 -->
-              <el-input v-model="form.productCode" placeholder="选择产品后自动带出" readonly>
-              </el-input>
-            </el-form-item>
-
-            <!-- 产品名称（必填，不默认=编码；样品生成编码后由销售填写） -->
-            <el-form-item label="产品名称" prop="productName">
-              <el-input v-model="form.productName" placeholder="请填写产品名称" maxlength="200" />
-            </el-form-item>
-            <!-- 产品描述 -->
-            <el-form-item label="产品描述" prop="productDescription">
-              <el-input
-                v-model="form.productDescription"
-                type="textarea"
-                :rows="3"
-                placeholder="产品规格/描述"
-                maxlength="1000"
-                show-word-limit
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="20">
-          <el-col :span="24">
-            <el-form-item label="备注" prop="remark">
-              <el-input
-                v-model="form.remark"
-                type="textarea"
-                :rows="2"
-                placeholder="备注"
-                maxlength="1000"
-                show-word-limit
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row>
-          <el-col :span="24">
-            <AttachmentCenter
-              ref="attachmentCenterRef"
-              :source-type="AttachmentSourceTypeEnum.getItem('inquiry')?.value || 'inquiry'"
-              :source-id="form.inquiryId || null"
-              :source-no="(form as any).inquiryNo || ''"
-              :draft-id="draftId"
-              :product-id="form.productId || null"
-              :product-code="(form as any).productCode || null"
-              :upload-blocked="form.inquiryId ? '' : '请先点「保 存」生成单据，再上传附件'"
-              drop-zone
-              view-perm="sales:inquiry:view"
-              edit-perm="sales:inquiry:edit"
-              style="margin-bottom: 10px"
-            />
-          </el-col>
-        </el-row>
-      </el-form>
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="cancel">{{ form.inquiryId ? '取 消' : '关 闭' }}</el-button>
-          <el-button type="primary" @click="submitForm" :loading="submitting">
-            {{ form.inquiryId ? '确 定' : '保 存' }}
-          </el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <!-- 新增/修改询价单（组件化） -->
+    <InquiryForm v-model:visible="formVisible" :edit-id="formEditId" @success="onFormSuccess" />
 
     <!-- 询价单详情（共享组件：询价单列表页 + 工程打样工作台"来源单据"查看共用一套） -->
     <InquiryDetailDialog v-model="inquiryDetailVisible" :inquiry-id="inquiryDetailId" />
@@ -382,6 +210,10 @@ import { download } from '@/utils/format'
 import type { ProductItem } from '@/types/product'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import { AttachmentSourceTypeEnum } from '@/enums/system/AttachmentEnum'
+
+// 询价单表单弹窗
+const formVisible = ref(false)
+const formEditId = ref<number | null>(null)
 const inquiryActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
   {
@@ -420,7 +252,21 @@ const handleInquiryAction = (key: string, row: any) => {
   if (key === 'convert') void handleConvert(row)
   if (key === 'print') handlePrint(row)
 }
+function handleAdd() {
+  formEditId.value = null
+  formVisible.value = true
+}
 
+function handleUpdate(row?: any) {
+  const id = row?.inquiryId || ids.value[0]
+  if (!id) return
+  formEditId.value = id
+  formVisible.value = true
+}
+
+function onFormSuccess() {
+  getList()
+}
 defineOptions({
   name: 'SalesInquiry',
 })
@@ -824,60 +670,6 @@ function onProductSelect(val: number, product?: any) {
       }
     }
   }
-}
-
-// 新增
-function handleAdd() {
-  dialogTitle.value = '新增询价单'
-  dialogVisible.value = true
-  ensureDraftId() // 空时才生成，刷新后恢复本会话未保存草稿。
-  resetForm()
-}
-
-// 修改
-function handleUpdate(row?: any) {
-  const id = row?.inquiryId || ids.value[0]
-  if (!id) return
-
-  draftId.value = '' // 编辑已有单据：走 sourceId（inquiryId），无需 draftId
-  dialogTitle.value = '修改询价单'
-  dialogVisible.value = true
-
-  inquiryApi.getInfo(id).then((res) => {
-    const data = res.data
-    Object.assign(form, {
-      inquiryId: data.inquiryId,
-      customerId: data.customerId,
-      customerName: data.customerName,
-      contactPerson: data.contactPerson,
-      contactPhone: data.contactPhone,
-      inquiryDate: data.inquiryDate,
-      expectedQuantity: data.expectedQuantity,
-      unitPrice: data.unitPrice,
-      productId: data.productId,
-      productCode: data.productCode || '',
-      productName: data.productName || '',
-      productDescription: data.productDescription,
-      hasDrawing: data.hasDrawing ?? 0,
-      inquiryStatus: data.inquiryStatus,
-      inquiryType: data.inquiryType ?? 1,
-      remark: data.remark,
-      salesPersonId: data.salesPersonId,
-      salesPersonName: data.salesPersonName,
-    })
-    // 编码生成器回显：编码存在则反解构成要素（口径统一在 parseProductCode）
-    const parsed = parseProductCode(form.productCode)
-    if (parsed && form.inquiryType === 2) {
-      form.customerShortName = parsed.customerShort
-      codeState.value = {
-        serialNo: parsed.serialNo,
-        panelType: parsed.panelType,
-        panelFeature: parsed.panelFeature,
-        circuitType: parsed.circuitType,
-        circuitFeature: parsed.circuitFeature,
-      }
-    }
-  })
 }
 
 // 查看
