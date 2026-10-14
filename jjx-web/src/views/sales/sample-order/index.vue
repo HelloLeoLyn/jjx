@@ -124,264 +124,21 @@
     </el-card>
 
     <!-- ===== 创建样品单弹窗 ===== -->
-    <el-dialog
-      :title="createEditId ? `编辑样品单（${createEditOrderNo}）` : '新增样品单'"
-      v-model="createVisible"
-      width="860px"
-      append-to-body
-      @close="resetCreateForm"
-    >
-      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="110px">
-        <el-form-item label="客户" prop="customerId">
-          <el-select
-            v-model="createForm.customerId"
-            placeholder="请选择客户"
-            filterable
-            remote
-            :remote-method="searchCustomers"
-            :loading="customerSearching"
-            :disabled="createForm.sourceType === 'QUOTATION' && !!createForm.sourceNo"
-            style="width: 100%"
-            @change="onCustomerChange"
-          >
-            <el-option
-              v-for="c in customerOptions"
-              :key="c.customerId"
-              :label="c.customerName"
-              :value="c.customerId"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="来源类型">
-          <el-select
-            v-model="createForm.sourceType"
-            placeholder="无来源"
-            clearable
-            :disabled="!!createEditId"
-            style="width: 100%"
-            @change="onSourceTypeChange"
-          >
-            <el-option label="报价单" value="QUOTATION" />
-            <el-option label="销售订单" value="SALES_ORDER" />
-            <el-option label="样品单" value="SAMPLE_ORDER" disabled />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="来源单号" v-if="createForm.sourceType === 'QUOTATION' && !createEditId">
-          <el-select
-            v-model="createForm.sourceNo"
-            placeholder="选择单产品报价单，带出客户和产品"
-            filterable
-            clearable
-            style="width: 100%"
-            @change="onQuotationChange"
-          >
-            <el-option
-              v-for="q in quotationOptions"
-              :key="q.quotationNo"
-              :label="`${q.quotationNo} - ${q.customerName} (${q.finalAmount}元)`"
-              :value="q.quotationNo"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="来源单号" v-else-if="createForm.sourceType">
-          <el-input v-model="createForm.sourceNo" :disabled="!!createEditId" placeholder="填写来源单号" />
-        </el-form-item>
-        <el-form-item label="打样产品" required>
-          <el-select
-            v-if="createForm.sourceType !== 'QUOTATION' || !createForm.sourceNo"
-            v-model="createForm.product.productId"
-            filterable
-            remote
-            :remote-method="searchProducts"
-            :loading="productSearching"
-            :disabled="!createForm.customerId"
-            placeholder="请先选择客户，再选择一个打样产品"
-            style="width: 100%"
-            @change="onProductSelect"
-          >
-            <el-option
-              v-for="p in productOptions"
-              :key="p.productId"
-              :label="`${p.productCode} - ${p.productName}`"
-              :value="p.productId"
-            />
-          </el-select>
-          <el-input
-            v-else
-            :model-value="createForm.product.productName"
-            readonly
-            placeholder="从来源报价单带入"
-          />
-          <div style="color: #909399; font-size: 12px">一张样品单对应一个成品，可打样多件。</div>
-          <el-alert
-            v-if="quotationProductError"
-            :title="quotationProductError"
-            type="warning"
-            :closable="false"
-          />
-        </el-form-item>
-        <el-form-item label="产品编码">
-          <el-input :model-value="createForm.product.productCode" readonly />
-        </el-form-item>
-        <el-form-item label="产品名称">
-          <el-input :model-value="createForm.product.productName" readonly />
-        </el-form-item>
-        <el-form-item label="打样数量" prop="product.quantity">
-          <el-input-number
-            v-model="createForm.product.quantity"
-            :min="1"
-            :precision="0"
-            controls-position="right"
-          />
-        </el-form-item>
-        <el-form-item label="单位">
-          <el-input v-model="createForm.product.unit" placeholder="PCS" />
-        </el-form-item>
-        <el-form-item label="期望交样日期">
-          <el-date-picker
-            v-model="createForm.deliveryDate"
-            type="date"
-            value-format="YYYY-MM-DD"
-            placeholder="默认继承报价单交期"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-form-item label="联系人">
-          <el-input
-            v-model="createForm.contactPerson"
-            placeholder="默认带出客户/报价单联系人"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-form-item label="联系电话">
-          <el-input
-            v-model="createForm.contactPhone"
-            placeholder="默认带出客户/报价单电话"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-form-item label="技术要求">
-          <el-input
-            v-model="createForm.techRequirement"
-            type="textarea"
-            :rows="3"
-            placeholder="工程打样要求（材质/工艺/颜色/按键数/连接器等），将传承给打样工作台"
-          />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input
-            v-model="createForm.remark"
-            type="textarea"
-            :rows="2"
-            maxlength="500"
-            show-word-limit
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          @click="submitCreate"
-          :loading="creating"
-          :disabled="quotationProductLoading || !!quotationProductError"
-          >{{ createEditId ? '保存' : '创建' }}</el-button
-        >
-      </template>
-    </el-dialog>
+    <SampleForm
+      v-model:visible="createVisible"
+      :edit-id="createEditId"
+      :edit-order-no="createEditOrderNo"
+      @success="onFormSuccess"
+      @close="onFormClose"
+    />
 
     <!-- ===== 详情弹窗（含工程区） ===== -->
-    <el-dialog
-      title="样品单详情"
-      v-model="detailVisible"
-      width="820px"
-      append-to-body
-      @open="onDetailOpen"
-    >
-      <template v-if="detailData">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="样品单号" :span="2">{{
-            detailData.orderNo
-          }}</el-descriptions-item>
-          <el-descriptions-item label="客户名称">{{
-            detailData.customerName
-          }}</el-descriptions-item>
-          <el-descriptions-item label="来源类型">{{ sourceTypeLabel(detailData.sourceType) }}</el-descriptions-item>
-          <el-descriptions-item label="来源单号">{{ detailData.sourceNo || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="联系人">{{
-            detailData.contactPerson || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="样品状态">
-            <el-tag :type="statusTagType(detailData.sampleStatus)" size="small">{{
-              statusLabel(detailData.sampleStatus)
-            }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="迭代轮次"
-            >Round {{ detailData.sampleRound || 1 }}</el-descriptions-item
-          >
-          <el-descriptions-item label="打样数量">{{
-            detailData.sampleQty || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="送样日期">{{
-            detailData.sampleSendDate || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="快递单号">{{
-            detailData.sampleTrackingNo || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="客户确认日期">{{
-            detailData.sampleConfirmDate || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="客户确认人">{{
-            detailData.sampleClientName || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="转量产订单ID">{{
-            detailData.convertedOrderId || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="转量产时间">{{
-            detailData.convertOrderTime || '-'
-          }}</el-descriptions-item>
-          <el-descriptions-item label="备注" :span="2">{{
-            detailData.remark || '-'
-          }}</el-descriptions-item>
-        </el-descriptions>
 
-        <!-- 产品明细（DEV-781：报价转样品后详情展示） -->
-        <el-divider content-position="left">产品明细</el-divider>
-        <el-table
-          v-if="detailProducts.length"
-          :data="detailProducts"
-          size="small"
-          border
-          stripe
-          style="width: 100%"
-        >
-          <el-table-column prop="productCode" label="产品编码" width="120" />
-          <el-table-column prop="productName" label="产品名称" min-width="140" />
-          <el-table-column prop="specification" label="规格/要求" min-width="140" />
-          <el-table-column prop="quantity" label="数量" width="80" align="center" />
-          <el-table-column prop="unit" label="单位" width="70" align="center" />
-          <el-table-column prop="unitPrice" label="单价" width="90" align="right" />
-        </el-table>
-        <div v-else style="color: #999; font-size: 13px; padding: 8px 0">暂无产品明细</div>
-
-        <!-- 相关文档 -->
-        <el-divider content-position="left">相关文档</el-divider>
-        <AttachmentCenter
-          v-if="detailData?.orderId"
-          :key="detailData.orderId"
-          source-type="sample"
-          :source-id="detailData.orderId"
-          :trace-id="detailData.traceId"
-          view-perm="sales:sample:view"
-          edit-perm="sales:sample:edit"
-          :locked="false"
-        />
-      </template>
-      <template #footer>
-        <el-button @click="detailVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
+    <SampleDetail
+      v-model:visible="detailVisible"
+      :order-id="detailData?.orderId ?? null"
+      @loaded="onDetailLoaded"
+    />
     <!-- 工程打样工作台（独立路由页，按钮跳转） -->
     <!-- 操作预览器 -->
     <OperationPreviewDialog
@@ -453,12 +210,24 @@
     />
 
     <!-- 打样领料：预览 + 改数量（JJX-QR-031 抬头「打样领料单」） -->
-    <el-dialog v-model="pickVisible" :title="`打样领料 - ${pickSample?.orderNo || ''}`" width="780px" append-to-body>
+    <el-dialog
+      v-model="pickVisible"
+      :title="`打样领料 - ${pickSample?.orderNo || ''}`"
+      width="780px"
+      append-to-body
+    >
       <el-table :data="pickRows" size="small" border>
-        <el-table-column label="物料名称" prop="materialName" min-width="160" show-overflow-tooltip />
+        <el-table-column
+          label="物料名称"
+          prop="materialName"
+          min-width="160"
+          show-overflow-tooltip
+        />
         <el-table-column label="匹配物料" width="130" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.materialId" size="small" type="success">{{ row.materialCode }}</el-tag>
+            <el-tag v-if="row.materialId" size="small" type="success">{{
+              row.materialCode
+            }}</el-tag>
             <el-tag v-else size="small" type="danger">未匹配</el-tag>
           </template>
         </el-table-column>
@@ -471,15 +240,28 @@
         </el-table-column>
         <el-table-column label="本次领料" width="140">
           <template #default="{ row }">
-            <el-input-number v-model="row.pickQty" :min="0" :disabled="!row.materialId" size="small" style="width: 120px" />
+            <el-input-number
+              v-model="row.pickQty"
+              :min="0"
+              :disabled="!row.materialId"
+              size="small"
+              style="width: 120px"
+            />
           </template>
         </el-table-column>
       </el-table>
-      <el-alert v-if="unmatchedCount > 0" type="warning" :closable="false" style="margin-top: 8px"
-        :title="`有 ${unmatchedCount} 条样品BOM物料未匹配到物料档案，暂不参与领料（可先在物料档案补建后再来）`" />
+      <el-alert
+        v-if="unmatchedCount > 0"
+        type="warning"
+        :closable="false"
+        style="margin-top: 8px"
+        :title="`有 ${unmatchedCount} 条样品BOM物料未匹配到物料档案，暂不参与领料（可先在物料档案补建后再来）`"
+      />
       <template #footer>
         <el-button @click="pickVisible = false">取消</el-button>
-        <el-button type="primary" :loading="pickSubmitting" @click="submitSamplePick">生成领料单</el-button>
+        <el-button type="primary" :loading="pickSubmitting" @click="submitSamplePick"
+          >生成领料单</el-button
+        >
       </template>
     </el-dialog>
   </div>
@@ -512,6 +294,8 @@ import QuotationDetailDialog from '@/views/sales/quotation/components/QuotationD
 import CustomerDetailDialog from '@/views/sales/customer/components/CustomerDetailDialog.vue'
 import SampleReviewPreview from './components/SampleReviewPreview.vue'
 import RequisitionSignDialog from './components/RequisitionSignDialog.vue'
+import SampleForm from './components/SampleForm.vue'
+import SampleDetail from './components/SampleDetail.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 defineOptions({ name: 'SalesSampleOrder' })
@@ -576,11 +360,20 @@ const isEngineerRole = computed(() => {
     (r: any) => String(r) === '9' || String(r).includes('工程') || String(r) === 'engineering'
   )
 })
-
-// 打开工程打样工作台（独立路由页，标签页打开）
-function openWorkbench(row: any) {
-  router.push({ path: '/engineering-workbench/workbench', query: { orderId: row.orderId } })
+function onFormSuccess() {
+  getList()
 }
+function onFormClose() {
+  getList()
+}
+function onDetailLoaded({ order }: { order: any }) {
+  detailData.value = order
+  engineeringForm.note = order.engineeringNote || ''
+  engineeringForm.process = order.currentProcess || ''
+  costForm.cost = order.sampleCost || 0
+  costForm.workHours = order.sampleWorkHours || 0
+}
+
 const detailData = ref<any>(null)
 // 详情产品明细（DEV-781）
 const detailProducts = ref<any[]>([])
@@ -823,7 +616,12 @@ async function openCreateFromOrderQuery() {
   try {
     const orderId = Number(sourceOrderId)
     const itemId = Number(sourceItemId)
-    if (!Number.isSafeInteger(orderId) || orderId <= 0 || !Number.isSafeInteger(itemId) || itemId <= 0) {
+    if (
+      !Number.isSafeInteger(orderId) ||
+      orderId <= 0 ||
+      !Number.isSafeInteger(itemId) ||
+      itemId <= 0
+    ) {
       throw new Error('来源订单参数无效')
     }
     const response = await orderApi.getOrder(orderId)
@@ -868,44 +666,10 @@ async function openCreateFromOrderQuery() {
 
 // 编辑样品单（驳回后编辑：仅 CREATED 状态入口；编辑前加载最新 getInfo + getProducts，不使用列表缓存）
 async function handleEdit(row: any) {
-  const orderId = row?.orderId
-  if (!orderId || row.sampleStatus !== SampleOrderStatusEnum.CREATED.value) return
-  try {
-    const [infoRes, prodRes]: any[] = await Promise.all([
-      sampleOrderApi.getInfo(orderId),
-      sampleOrderApi.getProducts(orderId),
-    ])
-    const order = infoRes?.data || {}
-    const items: any[] = prodRes?.data || []
-    createForm.customerId = order.customerId
-    createForm.sourceType = order.sourceType || ''
-    createForm.sourceNo = order.sourceNo || ''
-    if (items.length > 1) {
-      ElMessage.error('该历史样品单包含多个产品，请先按产品拆单，不能直接编辑覆盖')
-      return
-    }
-    resetProductSelection()
-    if (items.length === 1) fillSampleProduct(items[0])
-    createForm.deliveryDate = order.deliveryDate || ''
-    createForm.contactPerson = order.contactPerson || ''
-    createForm.contactPhone = order.contactPhone || ''
-    createForm.techRequirement = order.engineeringNote || ''
-    createForm.remark = order.remark || ''
-    // 回填客户选项（保证当前客户可显示）
-    if (order.customerId && !customerOptions.value.some((c) => c.customerId === order.customerId)) {
-      customerOptions.value.push({
-        customerId: order.customerId,
-        customerName: order.customerName || '',
-        contactPerson: order.contactPerson || '',
-        contactPhone: order.contactPhone || '',
-      })
-    }
-    createEditId.value = orderId
-    createEditOrderNo.value = order.orderNo || ''
-    createVisible.value = true
-  } catch (e: any) {
-    ElMessage.error(e?.message || '加载样品单数据失败，请刷新后重试')
-  }
+  if (!row?.orderId || row.sampleStatus !== SampleOrderStatusEnum.CREATED.value) return
+  createEditId.value = row.orderId
+  createEditOrderNo.value = row.orderNo || ''
+  createVisible.value = true
 }
 
 // 客户搜索
@@ -1065,7 +829,8 @@ async function submitCreate() {
     } else {
       const res = await sampleOrderApi.create({
         ...payload,
-        sourceType: createForm.sourceType === 'SAMPLE_ORDER' ? undefined : createForm.sourceType || undefined,
+        sourceType:
+          createForm.sourceType === 'SAMPLE_ORDER' ? undefined : createForm.sourceType || undefined,
         sourceNo: createForm.sourceNo.trim() || undefined,
       })
       ElMessage.success(`样品单创建成功: ${res.data.orderNo}，可前往工程打样`)
@@ -1296,7 +1061,10 @@ async function submitSamplePick() {
   }
   pickSubmitting.value = true
   try {
-    const res: any = await outboundApi.createSamplePick(Number(pickSample.value.sampleOrderId), items)
+    const res: any = await outboundApi.createSamplePick(
+      Number(pickSample.value.sampleOrderId),
+      items
+    )
     const outboundId = Number(res?.data || 0)
     ElMessage.success('打样领料单已生成（待仓库确认发料后扣库存）')
     pickVisible.value = false
@@ -1400,7 +1168,11 @@ const sampleActions: TableAction<any>[] = [
     key: 'reqsign',
     label: '需求单签核',
     type: 'primary',
-    permission: ['sales:sample:reqsign:sales', 'sales:sample:reqsign:approve', 'sales:sample:reqsign:dept'],
+    permission: [
+      'sales:sample:reqsign:sales',
+      'sales:sample:reqsign:approve',
+      'sales:sample:reqsign:dept',
+    ],
   },
 
   { key: 'print', label: '打印', type: 'info' },
