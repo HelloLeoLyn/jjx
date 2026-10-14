@@ -560,12 +560,12 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean permanentDelete(Long id) {
-        throw new BusinessException("V1-A仅允许清理预演；物理删除已禁用，请使用refs/cleanup-preview");
+        throw new BusinessException("物理删除已禁用（V1-A 删除守卫）；请用 /system/attachment/refs/cleanup-apply 移入回收站（可恢复）");
     }
 
     @Override
     public int permanentDeleteExpired(int days) {
-        throw new BusinessException("V1-A仅允许清理预演；旧过期清理入口已禁用");
+        throw new BusinessException("物理删除已禁用（V1-A 删除守卫）；过期附件请用 /system/attachment/refs/cleanup-apply 移入回收站（可恢复）");
     }
 
     /** 客供资料按有效附件引用归集，页面与规范发布共用查询。 */

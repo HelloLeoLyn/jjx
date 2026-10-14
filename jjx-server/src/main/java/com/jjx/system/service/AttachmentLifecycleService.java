@@ -95,34 +95,70 @@ public class AttachmentLifecycleService {
         List<Long> ids = jdbc.queryForList("SELECT id FROM sys_attachment WHERE id>? ORDER BY id LIMIT ?", Long.class, afterId, limit);
         List<Map<String, Object>> result = new ArrayList<>();
         for (Long id : ids) {
-            SysAttachment file = files.selectIncludingDeleted(id);
-            String reason;
-            Long active = jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref WHERE attachment_id=? AND deleted=0", Long.class, id);
-            LocalDateTime deadline = null;
-            if (active != null && active > 0) reason = "ACTIVE_REFERENCE";
-            else if (access.protectedFile(file)) reason = "CONTROLLED_OR_HISTORICAL_REFERENCE";
-            else if (file.getUploadState() == null || file.getUploadState() == AttachmentUploadState.LEGACY)
-                reason = "LEGACY_REVIEW_REQUIRED";
-            else if (jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment WHERE file_path=? AND id<>?", Long.class, file.getFilePath(), id) > 0)
-                reason = "SHARED_PATH_REVIEW_REQUIRED";
-            else {
-                List<LocalDateTime> dates = jdbc.query("SELECT MAX(deleted_at) AS last_unlinked,COUNT(*) AS history_count FROM sys_attachment_ref WHERE attachment_id=?",
-                    (rs, row) -> {
-                        var date = rs.getTimestamp("last_unlinked");
-                        if (rs.getLong("history_count") > 0) return date == null ? null : date.toLocalDateTime().plusDays(30);
-                        return file.getUploadState() == AttachmentUploadState.TEMP && file.getCreateTime() != null
-                            ? file.getCreateTime().plusDays(7) : null;
-                    }, id);
-                deadline = dates.get(0);
-                // Never shorten retention due to a stale state or metadata clock.
-                if (deadline != null && file.getExpiresAt() != null && file.getExpiresAt().isAfter(deadline)) deadline = file.getExpiresAt();
-                reason = deadline == null ? "RETENTION_START_UNKNOWN" : deadline.isAfter(LocalDateTime.now()) ? "RETENTION_PERIOD" : "ELIGIBLE_PREVIEW_ONLY";
-            }
+            Decision decision = evaluate(id);
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("attachmentId", id); row.put("reason", reason); row.put("eligible", "ELIGIBLE_PREVIEW_ONLY".equals(reason));
-            row.put("deadline", deadline); row.put("physicalDeleteEnabled", false); result.add(row);
-            log.info("附件清理预演 actor={} id={} reason={} deadline={} physicalDelete=false", StpUtil.getLoginIdAsString(), id, reason, deadline);
+            row.put("attachmentId", id); row.put("reason", decision.reason()); row.put("eligible", decision.eligible());
+            row.put("deadline", decision.deadline()); row.put("physicalDeleteEnabled", false); result.add(row);
+            log.info("附件清理预演 actor={} id={} reason={} deadline={} physicalDelete=false", StpUtil.getLoginIdAsString(), id, decision.reason(), decision.deadline());
         }
         return result;
     }
+
+    /**
+     * 到期、无有效引用、非受控的附件按「标记删除」移入回收站（可恢复）。
+     * 只写 deleted 标记，不删磁盘文件、不放宽删除守卫；误判可由管理员在文件管理页恢复。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> recycleEligible(long afterId, int limit) {
+        StpUtil.checkRole("admin");
+        if (afterId < 0 || limit < 1 || limit > 100) throw new BusinessException("limit应为1至100");
+        List<Long> ids = jdbc.queryForList("SELECT id FROM sys_attachment WHERE id>? ORDER BY id LIMIT ?", Long.class, afterId, limit);
+        int recycled = 0; long cursor = afterId;
+        List<Map<String, Object>> skipped = new ArrayList<>();
+        for (Long id : ids) {
+            cursor = id;
+            Decision decision = evaluate(id);
+            if (!decision.eligible()) {
+                Map<String, Object> skip = new LinkedHashMap<>();
+                skip.put("attachmentId", id); skip.put("reason", decision.reason()); skipped.add(skip);
+                continue;
+            }
+            if (files.logicalDelete(id) > 0) recycled++;
+            log.info("附件移入回收站 actor={} id={} reason={} deadline={} physicalDelete=false",
+                    StpUtil.getLoginIdAsString(), id, decision.reason(), decision.deadline());
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("scanned", ids.size()); result.put("recycled", recycled);
+        result.put("skipped", skipped); result.put("nextAfterId", cursor); result.put("physicalDeleteEnabled", false);
+        return result;
+    }
+
+    /** 单行判定（只读）。eligible 仅表示「可移入回收站」，不代表允许物理删除。 */
+    private Decision evaluate(Long id) {
+        SysAttachment file = files.selectIncludingDeleted(id);
+        if (file == null) return new Decision("ROW_MISSING", null, false);
+        if (Boolean.TRUE.equals(file.getDeleted())) return new Decision("ALREADY_RECYCLED", null, false);
+        Long active = jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref WHERE attachment_id=? AND deleted=0", Long.class, id);
+        if (active != null && active > 0) return new Decision("ACTIVE_REFERENCE", null, false);
+        if (access.protectedFile(file)) return new Decision("CONTROLLED_OR_HISTORICAL_REFERENCE", null, false);
+        if (file.getUploadState() == null || file.getUploadState() == AttachmentUploadState.LEGACY)
+            return new Decision("LEGACY_REVIEW_REQUIRED", null, false);
+        if (jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment WHERE file_path=? AND id<>?", Long.class, file.getFilePath(), id) > 0)
+            return new Decision("SHARED_PATH_REVIEW_REQUIRED", null, false);
+        List<LocalDateTime> dates = jdbc.query("SELECT MAX(deleted_at) AS last_unlinked,COUNT(*) AS history_count FROM sys_attachment_ref WHERE attachment_id=?",
+                (rs, row) -> {
+                    var date = rs.getTimestamp("last_unlinked");
+                    if (rs.getLong("history_count") > 0) return date == null ? null : date.toLocalDateTime().plusDays(30);
+                    return file.getUploadState() == AttachmentUploadState.TEMP && file.getCreateTime() != null
+                            ? file.getCreateTime().plusDays(7) : null;
+                }, id);
+        LocalDateTime deadline = dates.isEmpty() ? null : dates.get(0);
+        // Never shorten retention due to a stale state or metadata clock.
+        if (deadline != null && file.getExpiresAt() != null && file.getExpiresAt().isAfter(deadline)) deadline = file.getExpiresAt();
+        if (deadline == null) return new Decision("RETENTION_START_UNKNOWN", null, false);
+        if (deadline.isAfter(LocalDateTime.now())) return new Decision("RETENTION_PERIOD", deadline, false);
+        return new Decision("ELIGIBLE_PREVIEW_ONLY", deadline, true);
+    }
+
+    private record Decision(String reason, LocalDateTime deadline, boolean eligible) {}
 }

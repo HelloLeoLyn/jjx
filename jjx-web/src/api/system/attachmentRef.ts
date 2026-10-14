@@ -186,6 +186,15 @@ export const attachmentRefApi = {
       params: { afterId, limit },
     })
   },
+
+  /** 到期且无有效引用的附件标记删除（移入回收站，可恢复；不物理删除）。仅后台清理页使用。 */
+  cleanupApply(afterId = 0, limit = 100): AxiosPromise<Record<string, unknown>> {
+    return request({
+      url: '/system/attachment/refs/cleanup-apply',
+      method: 'post',
+      params: { afterId, limit },
+    })
+  },
 }
 
 export default attachmentRefApi

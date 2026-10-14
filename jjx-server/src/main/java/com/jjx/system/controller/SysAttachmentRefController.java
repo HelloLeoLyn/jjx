@@ -82,6 +82,14 @@ public class SysAttachmentRefController {
         return Result.success(lifecycle.preview(afterId, limit));
     }
 
+    /** 到期、无有效引用、非受控的附件标记删除（进回收站，可恢复）；不做物理删除。 */
+    @PostMapping("/cleanup-apply")
+    @Log(module = "附件引用", businessType = BusinessType.OTHER, bizType = "'sys_attachment'", action = "过期附件移入回收站（软删除，可恢复）")
+    public Result<Map<String, Object>> applyCleanup(@RequestParam(defaultValue = "0") long afterId,
+                                                    @RequestParam(defaultValue = "100") int limit) {
+        return Result.success(lifecycle.recycleEligible(afterId, limit));
+    }
+
     @GetMapping("/by-sha256")
     public Result<List<Map<String, Object>>> duplicates(@RequestParam String sha256,
             @RequestParam String sourceType, @RequestParam Long sourceId) {

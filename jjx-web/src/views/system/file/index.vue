@@ -136,9 +136,9 @@
       </el-col>
     </el-row>
     <!-- 回收站 -->
-    <el-card shadow="never" header="回收站（软删除附件，30天后自动清理）" style="margin-top: 12px">
+    <el-card shadow="never" header="回收站（软删除附件，可恢复；物理删除已禁用）" style="margin-top: 12px">
       <div style="margin-bottom: 8px; display: flex; justify-content: flex-end">
-        <el-button size="small" :loading="cleaning" @click="runCleanExpired">清理30天前</el-button>
+        <el-button size="small" :loading="cleaning" @click="runCleanExpired">清理过期附件（移入回收站）</el-button>
       </div>
       <el-table :data="recycleList" size="small" border max-height="300">
         <el-table-column label="文件名" min-width="220" show-overflow-tooltip>
@@ -159,7 +159,9 @@
         <el-table-column label="操作" width="130" align="center">
           <template #default="scope">
             <el-button link type="success" size="small" @click="onRestore(scope.row)">恢复</el-button>
-            <el-button link type="danger" size="small" @click="onPermanent(scope.row)">彻底删除</el-button>
+            <el-tooltip content="当前策略：只支持移入回收站，物理删除已禁用" placement="top">
+              <span><el-button link type="danger" size="small" disabled>彻底删除</el-button></span>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -174,6 +176,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
 import { fileApi } from '@/api/system/file'
 import { attachmentApi } from '@/api/system/attachment'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
 
 const loading = ref(false)
 const backingDaily = ref(false)
@@ -285,29 +288,50 @@ async function onRestore(row: any) {
   }
 }
 
-async function onPermanent(row: any) {
-  try {
-    await ElMessageBox.confirm(`彻底删除「${row.fileName || '-'}」？物理文件将同时删除，不可恢复。`, '彻底删除', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    await attachmentApi.permanent(row.id)
-    ElMessage.success('已彻底删除')
-    loadRecycle()
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '删除失败')
+/** A 口径清理：预演 → 确认 → 标记删除（进回收站，可恢复）。游标分页推进，最多 5 页。 */
+const CLEANUP_MAX_PAGES = 5
+
+async function countEligible(): Promise<number> {
+  let count = 0
+  let afterId = 0
+  for (let page = 0; page < CLEANUP_MAX_PAGES; page++) {
+    const res: any = await attachmentRefApi.cleanupPreview(afterId, 100)
+    const rows: any[] = (res as any)?.data || []
+    if (!rows.length) break
+    count += rows.filter((r) => r.eligible).length
+    if (rows.length < 100) break
+    afterId = Number(rows[rows.length - 1].attachmentId) || afterId
   }
+  return count
 }
 
 async function runCleanExpired() {
   cleaning.value = true
   try {
-    const res: any = await attachmentApi.permanentExpired(30)
-    ElMessage.success(`已清理 ${(res as any)?.data ?? 0} 个过期附件`)
+    const eligible = await countEligible()
+    if (!eligible) {
+      ElMessage.info('没有到期且无有效引用的附件需要清理')
+      return
+    }
+    await ElMessageBox.confirm(
+      `将把 ${eligible} 个到期且无有效引用的附件移入回收站（可恢复，磁盘文件保留）。继续？`,
+      '清理过期附件',
+      { confirmButtonText: '移入回收站', cancelButtonText: '取消', type: 'warning' }
+    )
+    let afterId = 0
+    let recycled = 0
+    for (let page = 0; page < CLEANUP_MAX_PAGES; page++) {
+      const res: any = await attachmentRefApi.cleanupApply(afterId, 100)
+      const d: any = (res as any)?.data || {}
+      recycled += Number(d.recycled ?? 0)
+      const next = Number(d.nextAfterId ?? afterId)
+      if (!Number(d.scanned ?? 0) || next === afterId) break
+      afterId = next
+    }
+    ElMessage.success(`已移入回收站 ${recycled} 个附件（可在列表中恢复）`)
     loadRecycle()
   } catch (e: any) {
-    ElMessage.error(e?.message || '清理失败')
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(e?.message || '清理失败')
   } finally {
     cleaning.value = false
   }
