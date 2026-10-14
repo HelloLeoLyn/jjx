@@ -72,6 +72,7 @@ public class AttachmentRefService {
         List<SysAttachmentRef> rows = refs.selectList(Wrappers.<SysAttachmentRef>lambdaQuery().eq(SysAttachmentRef::getSourceType, source)
             .eq(SysAttachmentRef::getSourceId, id).orderByAsc(SysAttachmentRef::getSortOrder, SysAttachmentRef::getId));
         fillFileMetadata(rows);
+        fillProductIds(rows);
         return rows;
     }
 
@@ -111,6 +112,34 @@ public class AttachmentRefService {
             ref.setFileName((String) meta[0]);
             ref.setFileSize((Long) meta[1]);
             ref.setFileType((String) meta[2]);
+        }
+    }
+
+    /**
+     * 批量回填引用行的产品 id（仅展示用）：按 product_code 解析，一条 IN 查询。
+     * 只补 product_id 为空的行；已有真值不查不改；编码为空或产品不存在则保持 null。
+     * 不写库、不改引用模型、不改权限判定。（口径 dev-20261014-001，仿 fillFileMetadata）
+     */
+    private void fillProductIds(List<SysAttachmentRef> rows) {
+        if (rows == null || rows.isEmpty()) return;
+        List<String> codes = rows.stream()
+            .filter(r -> r.getProductId() == null && r.getProductCode() != null && !r.getProductCode().isBlank())
+            .map(SysAttachmentRef::getProductCode).distinct().toList();
+        if (codes.isEmpty()) return;
+        String placeholders = codes.stream().map(c -> "?").collect(Collectors.joining(","));
+        Map<String, Long> productIds = new HashMap<>();
+        jdbc.query("SELECT product_id,product_code FROM product WHERE product_code IN (" + placeholders + ")",
+            (rs, rowNum) -> {
+                productIds.put(rs.getString("product_code"), rs.getLong("product_id"));
+                return null;
+            },
+            codes.toArray());
+        for (SysAttachmentRef ref : rows) {
+            if (ref.getProductId() != null) continue;
+            String code = ref.getProductCode();
+            if (code == null || code.isBlank()) continue;
+            Long productId = productIds.get(code);
+            if (productId != null) ref.setProductId(productId);
         }
     }
 
