@@ -64,18 +64,7 @@
         </el-table>
         <div v-else class="empty-tip">暂无产品明细</div>
 
-        <!-- 相关文档 -->
-        <el-divider content-position="left">相关文档</el-divider>
-        <AttachmentCenter
-          v-if="data.orderId"
-          :key="data.orderId"
-          source-type="sample"
-          :source-id="data.orderId"
-          :trace-id="data.traceId"
-          view-perm="sales:sample:view"
-          edit-perm="sales:sample:edit"
-          :locked="false"
-        />
+        <AttachmentDocList :trace-id="data.traceId" />
       </template>
     </div>
 

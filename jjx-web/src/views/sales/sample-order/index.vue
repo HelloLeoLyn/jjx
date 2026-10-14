@@ -130,6 +130,7 @@
       :edit-order-no="createEditOrderNo"
       @success="onFormSuccess"
       @close="onFormClose"
+      width="1200px"
     />
 
     <!-- ===== 详情弹窗（含工程区） ===== -->
@@ -138,6 +139,7 @@
       v-model:visible="detailVisible"
       :order-id="detailData?.orderId ?? null"
       @loaded="onDetailLoaded"
+      width="1200px"
     />
     <!-- 工程打样工作台（独立路由页，按钮跳转） -->
     <!-- 操作预览器 -->

@@ -55,11 +55,7 @@
         }}</el-descriptions-item>
       </el-descriptions>
     </template>
-    <AttachmentDocList
-      v-if="modelValue && detailData?.inquiryId === props.inquiryId && detailData?.inquiryNo"
-      source-type="inquiry"
-      :source-no="detailData.inquiryNo"
-    />
+    <AttachmentDocList :trace-id="detailData.traceId" />
     <template #footer>
       <el-button @click="emitClose">关 闭</el-button>
     </template>

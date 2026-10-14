@@ -163,7 +163,12 @@
 
     <!-- 新增/修改询价单对话框 -->
     <!-- 新增/修改询价单（组件化） -->
-    <InquiryForm v-model:visible="formVisible" :edit-id="formEditId" @success="onFormSuccess" />
+    <InquiryForm
+      v-model:visible="formVisible"
+      :edit-id="formEditId"
+      @success="onFormSuccess"
+      width="1200px"
+    />
 
     <!-- 询价单详情（共享组件：询价单列表页 + 工程打样工作台"来源单据"查看共用一套） -->
     <InquiryDetailDialog v-model="inquiryDetailVisible" :inquiry-id="inquiryDetailId" />
@@ -198,8 +203,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import InquiryDetailDialog from './components/InquiryDetailDialog.vue'
 import BizFlowDetail from '@/components/BizFlowDetail/index.vue'
-import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
-import ProductPicker from '@/components/Selector/ProductPicker.vue'
+import InquiryForm from './components/InquiryForm.vue'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import type { FormInstance } from 'element-plus'
 import { inquiryApi } from '@/api/sales/inquiry'
