@@ -27,6 +27,18 @@
       </el-row>
       <el-row>
         <el-col :span="12">
+          <el-form-item label="联系人" prop="contactPerson">
+            <el-input v-model="formData.contactPerson" placeholder="默认带出客户联系人" />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="联系电话" prop="contactPhone">
+            <el-input v-model="formData.contactPhone" placeholder="默认带出客户电话（手机号或座机）" />
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <el-row>
+        <el-col :span="12">
           <el-form-item label="报价日期" prop="quotationDate">
             <el-date-picker
               v-model="formData.quotationDate"
@@ -477,6 +489,9 @@ const onCustomerChange = (val: any, customer: any) => {
   if (customer) {
     props.formData.customerName = customer.customerName
     qShortName.value = (customer.customerShortName || '').substring(0, 3)
+    // 联系人/电话照销售订单、样品单口径带出客户档案值（仅在为空时带，用户可改）
+    if (!props.formData.contactPerson) props.formData.contactPerson = customer.contactPerson || ''
+    if (!props.formData.contactPhone) props.formData.contactPhone = customer.contactPhone || ''
   } else {
     props.formData.customerName = ''
     qShortName.value = ''

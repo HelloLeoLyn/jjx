@@ -48,7 +48,8 @@ public class CustomerAddDTO implements Serializable {
     @Schema(description = "联系人", example = "张三")
     private String contactPerson;
 
-    @Pattern(regexp = "^(1[3-9]\\d{9}|(0\\d{2,3}-?)?\\d{7,8})$", message = "联系电话格式不正确")
+    // 可选电话：留空 / 11 位手机号 / 区号+座机（报价单·订单·客户四处口径必须一致，改则同改）
+    @Pattern(regexp = "^(1[3-9]\\d{9}|(0\\d{2,3}-?)?\\d{7,8})?$", message = "联系电话格式不正确")
     @Size(max = 20, message = "联系电话长度不能超过20个字符")
     @Schema(description = "联系电话", example = "13800138000")
     private String contactPhone;
