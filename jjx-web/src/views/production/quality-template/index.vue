@@ -45,7 +45,7 @@
           <template #default="{ row }"><el-tag :type="QualityTemplateStatusEnum.getTagProps(row.status).type">{{ QualityTemplateStatusEnum.getLabel(row.status) }}</el-tag></template>
         </el-table-column>
         <el-table-column label="模板文件" width="100">
-          <template #default="{ row }"><el-link v-if="row.fileId" type="primary" :href="attachmentApi.downloadUrl(row.fileId)" target="_blank">下载</el-link><span v-else>-</span></template>
+          <template #default="{ row }"><el-link v-if="row.fileRefId" type="primary" :href="attachmentRefApi.downloadUrlByRef(row.fileRefId)" target="_blank">下载</el-link><span v-else>-</span></template>
         </el-table-column>
         <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
@@ -82,10 +82,22 @@
       <template #footer><el-button @click="formVisible = false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="uploadVisible" :title="isRevision ? '模板换版' : '上传模板文件'" width="500px">
+    <el-dialog v-model="uploadVisible" :title="isRevision ? '模板换版' : '上传模板文件'" width="720px" destroy-on-close>
       <el-form label-width="80px"><el-form-item v-if="isRevision" label="新版本"><el-input v-model="uploadVersion" /></el-form-item></el-form>
-      <AttachmentUploader v-if="uploadRow?.id" :biz-id="uploadRow.id" biz-type="quality_template" :version="uploadVersion" :multiple="false" button-text="选择并上传" @success="fileUploaded" />
-      <div class="upload-tip">上传成功后自动回填当前模板文件；原附件保留。</div>
+      <!-- 走公共附件组件（来源 quality_template）；模板文件=一条引用，file_id 已退役（dev-20261014-026） -->
+      <AttachmentCenter
+        v-if="uploadRow?.id"
+        :key="`qt-upload-${uploadRow.id}`"
+        source-type="quality_template"
+        :source-id="uploadRow.id"
+        mode="panel"
+        title="模板文件"
+        view-perm="production:quality-template:doc:view"
+        edit-perm="production:quality-template:doc:add"
+        :accept="['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg']"
+        @bound="onTemplateBound"
+      />
+      <div class="upload-tip">模板文件以引用形式保存；解除引用即从模板移除（不删物理文件）。「换版」时上传后自动更新版次。</div>
     </el-dialog>
   </div>
 </template>
@@ -93,8 +105,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
-import { attachmentApi } from '@/api/system/attachment'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
 import { changeQualityTemplateStatus, createQualityTemplate, deleteQualityTemplate, getQualityTemplatePage, updateQualityTemplate, type QualityTemplate, type QualityTemplateQuery } from '@/api/production/qualityTemplate'
 import { QualityTemplateCategory, QualityTemplateCategoryEnum, QualityTemplateStatus, QualityTemplateStatusEnum } from '@/enums/production/QualityTemplateEnum'
 
@@ -132,7 +144,13 @@ function openEdit(row: QualityTemplateView) { Object.assign(form, emptyForm(), r
 async function save() { if (!form.recordNo.trim() || !form.recordName.trim() || !form.version.trim()) return ElMessage.warning('请填写编号、名称和版次'); form.id ? await updateQualityTemplate(form) : await createQualityTemplate(form); ElMessage.success('保存成功'); formVisible.value = false; load() }
 function nextVersion(version: string) { const value = version.trim().toUpperCase(); return /^[A-Z]$/.test(value) ? String.fromCharCode(value.charCodeAt(0) + 1) : `${version}-1` }
 function openUpload(row: QualityTemplateView, revision: boolean) { uploadRow.value = row; isRevision.value = revision; uploadVersion.value = revision ? nextVersion(row.version) : row.version; uploadVisible.value = true }
-async function fileUploaded(fileId: number) { if (!uploadRow.value) return; await updateQualityTemplate({ ...uploadRow.value, fileId, version: uploadVersion.value }); ElMessage.success(isRevision.value ? '换版成功' : '模板文件已更新'); uploadVisible.value = false; load() }
+async function onTemplateBound() {
+  // 上传并绑定成功后刷新列表（模板文件列/hasFile 均以引用为准）；换版时同步更新版次，不关闭弹窗便于继续查看/补充。
+  if (isRevision.value && uploadRow.value?.id) {
+    await updateQualityTemplate({ ...uploadRow.value, version: uploadVersion.value })
+  }
+  await load()
+}
 async function changeStatus(row: QualityTemplateView, status: number) { await changeQualityTemplateStatus(row.id!, status); ElMessage.success('状态已更新'); load() }
 async function remove(row: QualityTemplateView) { await ElMessageBox.confirm(`确认删除 ${row.recordNo}？`, '提示', { type: 'warning' }); await deleteQualityTemplate(row.id!); ElMessage.success('删除成功'); load() }
 onMounted(load)

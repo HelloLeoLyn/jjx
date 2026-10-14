@@ -82,21 +82,19 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
     }
 
     private void fillHasFile(QualityTemplateRegistry template) {
-        // 有效性：file_id 指向的附件必须存在、未删除，且建档时间不晚于模板自身建档时间。
-        // 时间条件只是异常防护（挡住历史 ID 被后建附件复用造成的误认），不是附件身份证明——
-        // 身份一致需要绑定时的内容指纹（registry 未存 sha256），故仍需人工复核。
-        // 引用无效时置空 fileId，避免前端据 fileId 拼出错误下载链接（quality-template / quality-print 两页都用它）。
-        boolean valid = false;
-        if (template.getFileId() != null) {
-            LocalDateTime attachedAt = jdbc.query(
-                "SELECT create_time FROM sys_attachment WHERE id=? AND deleted=0",
-                rs -> rs.next() ? rs.getTimestamp("create_time").toLocalDateTime() : null,
-                template.getFileId());
-            valid = attachedAt != null
-                    && (template.getCreateTime() == null || !attachedAt.isAfter(template.getCreateTime()));
-            if (!valid) template.setFileId(null);
+        // dev-20261014-026：file_id 退役——模板文件只认引用（sys_attachment_ref, source_type='quality_template'）。
+        // 模板文件 = 该模板当前有效引用中的最新一条（单文件语义）；无引用则视为无文件。
+        // 不再读 quality_template_registry.file_id，也不再叠加“附件建档时间不晚于模板建档时间”的历史异常防护
+        // （那是为旧 file_id 占位引用设的补丁，见 dev-20261012-011；引用模型下无此问题）。
+        Long refId = null;
+        if (template.getId() != null) {
+            List<Long> ids = jdbc.queryForList(
+                "SELECT id FROM sys_attachment_ref WHERE source_type='quality_template' AND source_id=? AND deleted=0 ORDER BY id DESC LIMIT 1",
+                Long.class, template.getId());
+            refId = ids.isEmpty() ? null : ids.get(0);
         }
-        template.setHasFile(valid);
+        template.setFileRefId(refId);
+        template.setHasFile(refId != null);
     }
 
     @Override
@@ -126,7 +124,6 @@ public class QualityTemplateRegistryServiceImpl implements QualityTemplateRegist
         update.setRetentionYears(input.getRetentionYears());
         update.setCategory(input.getCategory());
         update.setBizType(input.getBizType());
-        update.setFileId(input.getFileId());
         update.setRemark(input.getRemark());
         update.setPrintComponent(input.getPrintComponent());
         update.setBizModule(input.getBizModule());

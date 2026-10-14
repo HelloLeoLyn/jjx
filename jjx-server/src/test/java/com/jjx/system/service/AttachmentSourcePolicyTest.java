@@ -115,12 +115,36 @@ class AttachmentSourcePolicyTest {
     }
 
     @Test
+    void qualityTemplateUsesDocumentPermissionsAndRecordNoIdentity() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("FROM quality_template_registry WHERE id=?"), eq(String.class), eq(88L)))
+                .thenReturn(List.of("JJX-QR-001"));
+        AttachmentSourcePolicy policy = new AttachmentSourcePolicy(jdbc);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::isLogin).thenReturn(true);
+            // 写权限为 :add（凭证式，与收货票据/采购发票/送货回签件/质量档案同款）
+            assertEquals("JJX-QR-001", policy.check("quality_template", 88L, true));
+            auth.verify(() -> StpUtil.checkPermission("production:quality-template:doc:add"));
+            assertEquals("JJX-QR-001", policy.check("quality_template", 88L, false));
+            auth.verify(() -> StpUtil.checkPermission("production:quality-template:doc:view"));
+            assertFalse(policy.canRead("quality_template", 88L));
+            auth.when(() -> StpUtil.hasPermission("production:quality-template:doc:view")).thenReturn(true);
+            assertTrue(policy.canRead("quality_template", 88L));
+            assertFalse(policy.canRead("quality_template", 89L));
+            assertThrows(BusinessException.class, () -> policy.check("quality_template", 89L, true));
+            // 无 trace 列：traceIdOf 返回 null（不引入跨表分层）
+            assertNull(policy.traceIdOf("quality_template", 88L));
+        }
+    }
+
+    @Test
     void sourceAllowlistIsSingleSourceOfTruthForDictionary() {
-        // 收敛后：白名单唯一真源含全部来源（含凭证类三个），字典 ext_data.sources 必须取自本集合。
+        // 收敛后：白名单唯一真源含全部来源（含凭证类），字典 ext_data.sources 必须取自本集合。
         assertTrue(AttachmentSourcePolicy.knownSourceTypes().containsAll(List.of(
             "product", "inquiry", "quotation", "sales_order", "sample", "production_order",
             "purchase_order", "purchase_payment", "task", "material",
-            "purchase_receipt", "purchase_invoice", "sales_delivery", "quality_archive")));
+            "purchase_receipt", "purchase_invoice", "sales_delivery", "quality_archive",
+            "quality_template")));
     }
 
     @Test

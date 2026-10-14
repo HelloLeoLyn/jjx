@@ -20,7 +20,12 @@ public class QualityTemplateRegistry {
     private Integer retentionYears;
     private String category;
     private String bizType;
-    private Long fileId;
+    /**
+     * 模板文件引用ID（sys_attachment_ref.id，来源 quality_template）。
+     * dev-20261014-026：file_id 退役——模板文件只认引用，本字段非落库列，由查询时按引用回填。
+     */
+    @TableField(exist = false)
+    private Long fileRefId;
     @TableField(exist = false)
     private Boolean hasFile;
     private Integer status;

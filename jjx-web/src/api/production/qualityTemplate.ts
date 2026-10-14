@@ -20,7 +20,8 @@ export interface QualityTemplate {
   retentionYears: number
   category: string
   bizType?: string
-  fileId?: number
+  /** 模板文件引用ID（sys_attachment_ref.id，来源 quality_template）；dev-20261014-026 file_id 退役 */
+  fileRefId?: number
   hasFile?: boolean
   status?: number
   remark?: string

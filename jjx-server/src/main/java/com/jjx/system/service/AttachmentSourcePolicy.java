@@ -19,7 +19,8 @@ import java.util.Set;
  * <p>两套写权限范式（判据写在 {@link Source#docWrite()}）：
  * <ul>
  *   <li><b>凭证/受控文件类</b>：来源 name 以 {@code :doc} 结尾（收货票据 purchase_receipt、
- *       采购发票 purchase_invoice、销售送货回签件 sales_delivery、质量档案回传件 quality_archive），写权限用 {@code :add}。</li>
+ *       采购发票 purchase_invoice、销售送货回签件 sales_delivery、质量档案回传件 quality_archive、
+ *       质量模板文件 quality_template），写权限用 {@code :add}。</li>
  *   <li><b>单据附件类</b>：订单/报价/样品等（sales_order / quotation / sample …），写权限用 {@code :edit}。</li>
  * </ul>
  * 读权限两类一律 {@code :view}。新增来源按上表判据选择 {@code docWrite}。
@@ -118,6 +119,12 @@ public class AttachmentSourcePolicy {
         Map.entry("quality_archive", new Source("production:quality-archive:doc",
             "SELECT COALESCE(t.record_no, l.record_no) FROM quality_template_print_log l LEFT JOIN quality_template_registry t ON t.id=l.template_id WHERE l.id=?",
             "SELECT l.id FROM quality_template_print_log l LEFT JOIN quality_template_registry t ON t.id=l.template_id WHERE COALESCE(t.record_no, l.record_no)=?",
+            null, null, true)),
+        // 质量记录模板文件（受控/凭证类，dev-20261014-026）：独立权限域 production:quality-template:doc，写权限 :add；
+        // ID 实为质量模板登记表（quality_template_registry.id），单号取记录编号（record_no）；无产品关联、无 trace。
+        Map.entry("quality_template", new Source("production:quality-template:doc",
+            "SELECT record_no FROM quality_template_registry WHERE id=?",
+            "SELECT id FROM quality_template_registry WHERE record_no=?",
             null, null, true))
     );
 

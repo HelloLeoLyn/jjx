@@ -37,7 +37,7 @@
           </template>
         </el-table-column>
         <el-table-column label="模板文件" width="120">
-          <template #default="{ row }"><el-link v-if="row.hasFile && row.fileId" type="primary" :href="attachmentApi.downloadUrl(row.fileId)" target="_blank">已上传 · 打开</el-link><el-tag v-else type="info">未上传</el-tag></template>
+          <template #default="{ row }"><el-link v-if="row.hasFile && row.fileRefId" type="primary" :href="attachmentRefApi.downloadUrlByRef(row.fileRefId)" target="_blank">已上传 · 打开</el-link><el-tag v-else type="info">未上传</el-tag></template>
         </el-table-column>
         <el-table-column label="操作" width="210" fixed="right">
           <template #default="{ row }">
@@ -45,7 +45,7 @@
               <el-button v-if="row.bizType && BIZ_TYPE_ROUTE[row.bizType]" link type="primary" @click="goBusinessModule(row.bizType)">去业务模块打印</el-button>
               <el-tag v-else type="warning">请到对应业务模块打印</el-tag>
             </template>
-            <template v-else><el-button link type="primary" @click="openPrint(row)">空白表打印</el-button><el-link v-if="row.fileId" class="download-link" :href="attachmentApi.downloadUrl(row.fileId)" target="_blank">下载</el-link></template>
+            <template v-else><el-button link type="primary" @click="openPrint(row)">空白表打印</el-button><el-link v-if="row.fileRefId" class="download-link" :href="attachmentRefApi.downloadUrlByRef(row.fileRefId)" target="_blank">下载</el-link></template>
           </template>
         </el-table-column>
       </el-table>
@@ -57,7 +57,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { attachmentApi } from '@/api/system/attachment'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
 import { getQualityTemplateOwnerDepts, getQualityTemplatePage, type QualityTemplate, type QualityTemplateQuery } from '@/api/production/qualityTemplate'
 import { QualityTemplateCategory, QualityTemplateCategoryEnum, QualityTemplateStatus } from '@/enums/production/QualityTemplateEnum'
 
