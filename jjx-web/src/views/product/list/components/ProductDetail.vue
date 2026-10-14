@@ -73,9 +73,9 @@
 
           <el-divider content-position="left">业务流转附件</el-divider>
           <div v-loading="bizAttachmentsLoading" class="biz-attachments">
-            <el-collapse v-if="bizAttachmentGroups.length">
+            <el-collapse v-if="mainGroups.length || docGroups.length">
               <el-collapse-item
-                v-for="group in bizAttachmentGroups"
+                v-for="group in mainGroups"
                 :key="`${group.sourceType}-${group.sourceId}`"
                 :name="`${group.sourceType}-${group.sourceId}`"
               >
@@ -86,6 +86,50 @@
                   <el-tag size="small" type="info">{{ group.files.length }}</el-tag>
                 </template>
                 <div class="biz-file-list">
+                  <div v-for="file in group.files" :key="file.id" class="biz-file-item">
+                    <div class="biz-file-info">
+                      <el-icon class="biz-file-icon"><Document /></el-icon>
+                      <div class="biz-file-meta">
+                        <el-link
+                          type="primary"
+                          :href="attachmentRefApi.downloadUrlByRef(file.id)"
+                          :underline="false"
+                          target="_blank"
+                        >
+                          {{ file.fileName || '-' }}
+                        </el-link>
+                        <div class="biz-file-sub">
+                          <span>{{ formatFileSize(file.fileSize) }}</span>
+                          <span v-if="file.createBy">· {{ file.createBy }}</span>
+                          <span v-if="file.createTime"
+                            >· {{ formatAttachmentTime(file.createTime) }}</span
+                          >
+                        </div>
+                      </div>
+                    </div>
+                    <el-button
+                      link
+                      type="primary"
+                      :icon="Download"
+                      @click="openAttachment(file.id)"
+                    />
+                  </div>
+                </div>
+              </el-collapse-item>
+              <!-- 整单级资料（无产品归属）：次要可折叠兜底，避免整单级附件无处显示（dev-20261013-046） -->
+              <el-collapse-item v-if="docGroups.length" name="doc-level">
+                <template #title>
+                  <span class="biz-source-title">本单据整单级资料</span>
+                  <el-tag size="small" type="info">{{ docFileCount }}</el-tag>
+                </template>
+                <div
+                  v-for="group in docGroups"
+                  :key="`doc-${group.sourceType}-${group.sourceId}`"
+                  class="biz-file-list"
+                >
+                  <div class="biz-file-sub" style="margin: 4px 0 2px">
+                    {{ sourceTypeLabel(group.sourceType) }} {{ group.sourceNo || group.sourceId }}
+                  </div>
                   <div v-for="file in group.files" :key="file.id" class="biz-file-item">
                     <div class="biz-file-info">
                       <el-icon class="biz-file-icon"><Document /></el-icon>
@@ -248,7 +292,7 @@
 
 <script setup lang="ts">
 import { hasPermi } from '@/directives'
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
 import { ProductEnum, ProductTypeEnum } from '@/enums'
@@ -285,6 +329,12 @@ const activeTab = ref('basic')
 const error = ref<string>('')
 const bizAttachmentsLoading = ref(false)
 const bizAttachmentGroups = ref<ProductBizAttachmentGroup[]>([])
+// 分层（dev-20261013-046）：主区=明确归属本产品；次要兜底=整单级（无产品归属）
+const mainGroups = computed(() => bizAttachmentGroups.value.filter((g) => g.tier !== 'doc'))
+const docGroups = computed(() => bizAttachmentGroups.value.filter((g) => g.tier === 'doc'))
+const docFileCount = computed(() =>
+  docGroups.value.reduce((n, g) => n + (g.files?.length || 0), 0),
+)
 const productData = ref<ProductFullVO>({
   product: undefined,
   bom: undefined,

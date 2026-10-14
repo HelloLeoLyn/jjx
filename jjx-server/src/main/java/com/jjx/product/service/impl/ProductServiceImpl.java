@@ -124,7 +124,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         StringBuilder refSql = new StringBuilder("""
                 SELECT r.id, r.attachment_id, r.source_type, r.source_id, r.source_no,
                        r.document_type, r.display_name, r.remark, r.sort_order, r.create_by,
-                       r.create_time, r.product_code, a.file_name, a.file_size, a.file_type
+                       r.create_time, r.product_code, r.product_id, a.file_name, a.file_size, a.file_type
                   FROM sys_attachment_ref r
                   JOIN sys_attachment a ON a.id = r.attachment_id
                  WHERE r.deleted = 0
@@ -156,6 +156,17 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                     row.put("sortOrder", rs.getInt("sort_order"));
                     row.put("createBy", rs.getString("create_by"));
                     row.put("createTime", rs.getString("create_time"));
+                    Long rowPid = rs.getObject("product_id") == null ? null : rs.getLong("product_id");
+                    String rowCode = rs.getString("product_code");
+                    if ((rowPid != null && rowPid.equals(productId))
+                            || (rowPid == null && rowCode != null && rowCode.equals(productCode))) {
+                        row.put("tier", "product");
+                    } else if (rowPid == null && (rowCode == null || rowCode.isEmpty())) {
+                        row.put("tier", "doc");
+                    } else {
+                        row.put("tier", "other");
+                    }
+                    row.put("productId", rowPid);
                     row.put("fileName", rs.getString("file_name"));
                     row.put("fileSize", rs.getObject("file_size") == null ? 0L : rs.getLong("file_size"));
                     row.put("fileType", rs.getString("file_type"));
@@ -163,9 +174,13 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                 },
                 args.toArray());
 
+        // 收紧（dev-20261013-046）：只保留「明确归属本产品」（tier=product）与「整单级-无产品归属」（tier=doc）；
+        // 丢弃挂了其他产品的引用（tier=other）——否则单产品视图会把同单据里别的产品的行级附件也露出来。
+        refRows.removeIf(row -> "other".equals(row.get("tier")));
+
         Map<String, List<Map<String, Object>>> filesBySource = new LinkedHashMap<>();
         for (Map<String, Object> row : refRows) {
-            filesBySource.computeIfAbsent(row.get("sourceType") + ":" + row.get("sourceId"),
+            filesBySource.computeIfAbsent(row.get("sourceType") + ":" + row.get("sourceId") + ":" + row.get("tier"),
                     key -> new ArrayList<>()).add(row);
         }
 
@@ -173,18 +188,21 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         List<Map<String, Object>> result = new ArrayList<>();
         Set<String> placed = new HashSet<>();
         for (BizAttachmentSource source : uniqueSources.values()) {
-            String key = source.sourceType() + ":" + source.sourceId();
-            List<Map<String, Object>> files = filesBySource.get(key);
-            if (files == null || files.isEmpty()) {
-                continue;
+            for (String tier : new String[]{"product", "doc"}) {
+                String key = source.sourceType() + ":" + source.sourceId() + ":" + tier;
+                List<Map<String, Object>> files = filesBySource.get(key);
+                if (files == null || files.isEmpty()) {
+                    continue;
+                }
+                placed.add(key);
+                Map<String, Object> group = new LinkedHashMap<>();
+                group.put("sourceType", source.sourceType());
+                group.put("sourceId", source.sourceId());
+                group.put("sourceNo", source.sourceNo());
+                group.put("tier", tier);
+                group.put("files", files);
+                result.add(group);
             }
-            placed.add(key);
-            Map<String, Object> group = new LinkedHashMap<>();
-            group.put("sourceType", source.sourceType());
-            group.put("sourceId", source.sourceId());
-            group.put("sourceNo", source.sourceNo());
-            group.put("files", files);
-            result.add(group);
         }
         for (Map.Entry<String, List<Map<String, Object>>> entry : filesBySource.entrySet()) {
             if (placed.contains(entry.getKey())) {
@@ -195,6 +213,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
             group.put("sourceType", first.get("sourceType"));
             group.put("sourceId", first.get("sourceId"));
             group.put("sourceNo", first.get("sourceNo"));
+            group.put("tier", first.get("tier"));
             group.put("files", entry.getValue());
             result.add(group);
         }

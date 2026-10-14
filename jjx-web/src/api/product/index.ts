@@ -29,6 +29,8 @@ export interface ProductBizAttachmentGroup {
   sourceType: 'inquiry' | 'quotation' | 'sales_order'
   sourceId: number
   sourceNo?: string
+  /** 分层：product=明确归属本产品（主区）；doc=整单级-无产品归属（次要兜底区）dev-20261013-046 */
+  tier?: 'product' | 'doc'
   files: ProductBizAttachment[]
 }
 // ==================== 产品管理API ====================
