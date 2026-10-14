@@ -68,7 +68,7 @@
               v-if="!row.archived"
               link
               type="primary"
-              :disabled="!row.bizType || !row.bizId"
+              :disabled="!row.printLogId"
               @click="openUpload(row)"
             >回传扫描件</el-button>
             <el-button v-else link type="primary" @click="openAttachments(row)">查看附件</el-button>
@@ -87,23 +87,28 @@
       />
     </el-card>
 
-    <el-dialog v-model="uploadVisible" title="回传扫描件" width="520px" destroy-on-close>
-      <AttachmentUploader
-        v-if="selectedRow?.bizType && selectedRow.bizId"
-        :biz-type="selectedRow.bizType"
-        :biz-id="selectedRow.bizId"
-        category="quality_archive_scan"
-        button-text="选择并上传扫描件"
+    <el-dialog v-model="uploadVisible" title="回传扫描件" width="720px" destroy-on-close>
+      <!-- 走公共附件组件（来源 quality_archive）；与下方「查看附件」同一来源/同一档案记录，口径一致 -->
+      <AttachmentCenter
+        v-if="selectedRow"
+        :key="`qa-upload-${selectedRow.printLogId}`"
+        source-type="quality_archive"
+        :source-id="selectedRow.printLogId"
+        mode="panel"
+        title="回传扫描件"
+        view-perm="production:quality-archive:doc:view"
+        edit-perm="production:quality-archive:doc:add"
         :accept="['.pdf', '.png', '.jpg', '.jpeg']"
-        @success="uploaded"
+        @bound="onArchiveUploaded"
       />
     </el-dialog>
 
     <el-dialog v-model="attachmentsVisible" title="归档附件" width="680px" destroy-on-close>
+      <!-- 只读公共组件；来源与上传一致（quality_archive），一次上传两处都可见 -->
       <AttachmentDocList
-        v-if="selectedRow?.bizType && selectedRow.bizId"
-        :source-type="canonicalAttachmentSource(selectedRow.bizType)"
-        :source-id="selectedRow.bizId"
+        v-if="selectedRow"
+        :source-type="'quality_archive'"
+        :source-id="selectedRow.printLogId"
       />
     </el-dialog>
   </div>
@@ -114,8 +119,7 @@ import { onMounted, reactive, ref } from 'vue'
 import dayjs from 'dayjs'
 import { Refresh } from '@element-plus/icons-vue'
 import AttachmentDocList from '@/components/attachment/AttachmentDocList.vue'
-import AttachmentUploader from '@/components/AttachmentUploader/index.vue'
-import { canonicalAttachmentSource } from '@/enums/system/AttachmentEnum'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import {
   getQualityArchivePage,
   type QualityArchiveQuery,
@@ -187,8 +191,8 @@ function openAttachments(row: QualityArchiveRow) {
   attachmentsVisible.value = true
 }
 
-async function uploaded() {
-  uploadVisible.value = false
+async function onArchiveUploaded() {
+  // 上传并绑定成功后刷新列表，使「已回传」状态与附件一致（不关闭弹窗，便于继续查看/补充）
   await loadRows()
 }
 

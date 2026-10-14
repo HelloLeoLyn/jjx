@@ -92,12 +92,35 @@ class AttachmentSourcePolicyTest {
     }
 
     @Test
+    void qualityArchiveUsesDocumentPermissionsAndPrintLogIdentity() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("FROM quality_template_print_log"), eq(String.class), eq(88L)))
+                .thenReturn(List.of("JJX-QR-001"));
+        AttachmentSourcePolicy policy = new AttachmentSourcePolicy(jdbc);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::isLogin).thenReturn(true);
+            // 写权限为 :add（凭证式，与收货票据/采购发票/送货回签件同款）
+            assertEquals("JJX-QR-001", policy.check("quality_archive", 88L, true));
+            auth.verify(() -> StpUtil.checkPermission("production:quality-archive:doc:add"));
+            assertEquals("JJX-QR-001", policy.check("quality_archive", 88L, false));
+            auth.verify(() -> StpUtil.checkPermission("production:quality-archive:doc:view"));
+            assertFalse(policy.canRead("quality_archive", 88L));
+            auth.when(() -> StpUtil.hasPermission("production:quality-archive:doc:view")).thenReturn(true);
+            assertTrue(policy.canRead("quality_archive", 88L));
+            assertFalse(policy.canRead("quality_archive", 89L));
+            assertThrows(BusinessException.class, () -> policy.check("quality_archive", 89L, true));
+            // 无 trace 列：traceIdOf 返回 null（不引入跨表分层）
+            assertNull(policy.traceIdOf("quality_archive", 88L));
+        }
+    }
+
+    @Test
     void sourceAllowlistIsSingleSourceOfTruthForDictionary() {
         // 收敛后：白名单唯一真源含全部来源（含凭证类三个），字典 ext_data.sources 必须取自本集合。
         assertTrue(AttachmentSourcePolicy.knownSourceTypes().containsAll(List.of(
             "product", "inquiry", "quotation", "sales_order", "sample", "production_order",
             "purchase_order", "purchase_payment", "task", "material",
-            "purchase_receipt", "purchase_invoice", "sales_delivery")));
+            "purchase_receipt", "purchase_invoice", "sales_delivery", "quality_archive")));
     }
 
     @Test
