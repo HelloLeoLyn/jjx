@@ -5,10 +5,13 @@
     width="1200px"
     append-to-body
     :close-on-click-modal="false"
+    :close-on-press-escape="!busy"
+    :show-close="!busy"
+    :before-close="beforeClose"
     @close="handleClose"
     @update:model-value="(val: boolean) => emit('update:visible', val)"
   >
-    <el-form label-width="100px" v-loading="loading">
+    <el-form label-width="100px" v-loading="loading" :disabled="submitting">
       <el-form-item label="订单号">
         <el-input :model-value="orderNo" disabled />
       </el-form-item>
@@ -73,30 +76,41 @@
       <el-divider content-position="left">收货票据</el-divider>
 
       <el-form-item label="上传票据">
-        <template v-if="canUploadDoc">
-          <el-upload
-            ref="uploadRef"
-            :auto-upload="true"
-            list-type="picture-card"
-            :file-list="imageList"
-            :http-request="handleImageUpload"
-            :on-preview="handleImagePreview"
-            :on-remove="handleImageRemove"
-            :before-upload="beforeImageUpload"
-            accept="image/jpeg,image/png,image/gif,image/bmp,image/webp"
-            multiple
-          >
-            <el-icon><Plus /></el-icon>
-            <template #tip>
-              <div class="el-upload__tip">支持 JPG/PNG/GIF/BMP/WebP，单张不超过 10MB；确认收货时随票单一并入库</div>
-            </template>
-          </el-upload>
-        </template>
-        <template v-else>
-          <el-tag v-for="f in imageList" :key="f.url" class="doc-tag" type="info">{{ f.name }}</el-tag>
-          <span v-if="!imageList.length" class="doc-tip">无票据上传权限（purchase:receipt:doc:add）</span>
-          <span v-else class="doc-tip">只读：无票据上传权限</span>
-        </template>
+        <AttachmentCenter
+          v-if="props.visible && receiptDraftId && canUploadDoc"
+          :key="receiptDraftId"
+          ref="receiptAttachments"
+          source-type="purchase_receipt"
+          :draft-id="receiptDraftId"
+          mode="upload-only"
+          title="本次收货票据"
+          :auto-bind="false"
+          :locked="submitting"
+          :max-size-m-b="10"
+          :accept="['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']"
+          view-perm="purchase:receipt:doc:view"
+          edit-perm="purchase:receipt:doc:add"
+        />
+        <span v-else class="doc-tip">无票据上传权限</span>
+        <div class="doc-tip">支持 JPG/PNG/GIF/BMP/WebP，单张不超过 10MB；确认收货后关联本次入库单。</div>
+        <div v-for="file in pendingFiles" :key="file.attachmentId">
+          <el-button link type="primary" @click="previewAttachment(file.attachmentId)">预览 {{ file.fileName }}</el-button>
+        </div>
+      </el-form-item>
+
+      <el-form-item v-if="canViewDoc && (historyFiles.length || imageList.length)" label="历史票据">
+        <div>
+          <div v-for="file in historyFiles" :key="file.refId">
+            <span>{{ file.inboundNo }}：</span>
+            <el-button link type="primary" @click="previewAttachment(file.attachmentId)">{{ file.fileName }}</el-button>
+            <el-link :href="attachmentApi.downloadUrl(file.attachmentId)" target="_blank">下载</el-link>
+          </div>
+          <div v-for="file in imageList" :key="file.fileUrl">
+            <span>旧票据：</span>
+            <el-button link type="primary" @click="previewLegacy(file.fileUrl)">{{ file.fileName }}</el-button>
+            <el-link :href="file.fileUrl" target="_blank">下载</el-link>
+          </div>
+        </div>
       </el-form-item>
 
       <!-- 收货结果：把「生成了哪张入库单」明确告诉用户，并引到 IQC（检验在质量域，不在这里录） -->
@@ -119,7 +133,7 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose">关 闭</el-button>
+        <el-button :disabled="busy" @click="handleClose">关 闭</el-button>
         <el-tooltip :disabled="!hasOver" content="有明细超出未收数量，请先调整" placement="top">
           <span>
             <el-button type="primary" :loading="submitting" :disabled="!canSubmit" @click="handleSubmit">
@@ -135,17 +149,14 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
-import type { UploadProps, UploadUserFile } from 'element-plus'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import { attachmentApi } from '@/api/system/attachment'
 import { useUserStore } from '@/store/modules/user'
 import {
   getReceiptsByOrder,
   confirmBatchReceive,
-  getReceiptInboundOrders,
-  uploadReceiptDocTemp,
+  getReceiptDocRefs,
   getReceiptDocDiskFiles,
-  deleteReceiptDocTemp,
-  confirmReceiptDocs,
 } from '@/api/purchase/receipt'
 
 /**
@@ -200,14 +211,22 @@ const canViewDoc = computed(() => userStore.hasPermission('purchase:receipt:doc:
 /** 来料检验在质量域，跳转按钮只在有 IQC 读权限时出现（否则点进去是 403） */
 const canGotoIqc = computed(() => userStore.hasPermission('quality:lot:view'))
 
-const uploadRef = ref()
+const receiptAttachments = ref<InstanceType<typeof AttachmentCenter>>()
+const receiptDraftId = ref('')
+const pendingFiles = computed(() => receiptAttachments.value?.pendingEntries || [])
+const busy = computed(() => submitting.value || !!receiptAttachments.value?.uploading)
+const historyFiles = ref<{ refId: number; attachmentId: number; fileName: string; inboundNo: string }[]>([])
+function newDraft() {
+  receiptAttachments.value?.clearPending()
+  receiptDraftId.value = globalThis.crypto?.randomUUID?.() || `receipt-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
 const loading = ref(false)
 const submitting = ref(false)
 const lastInboundNo = ref('')
 
 const form = reactive({ items: [] as ReceiveItem[] })
 
-const imageList = ref<UploadUserFile[]>([])
+const imageList = ref<DiskFileInfo[]>([])
 const previewVisible = ref(false)
 const previewUrl = ref('')
 
@@ -233,7 +252,7 @@ const totalInput = computed(() => round2(form.items.reduce((s, it) => s + Number
 const totalOver = computed(() => round2(form.items.reduce((s, it) => s + Math.max(0, overOf(it)), 0)))
 const hasOver = computed(() => totalOver.value > 0)
 const filledCount = computed(() => form.items.filter((it) => Number(it.receiveQuantity || 0) > 0).length)
-const canSubmit = computed(() => !submitting.value && filledCount.value > 0 && !hasOver.value)
+const canSubmit = computed(() => !busy.value && !loading.value && filledCount.value > 0 && !hasOver.value)
 
 /** ⑧ 第一个超量行下标（-1=没有），用于自动滚入视野 */
 const firstOverIndex = computed(() => form.items.findIndex((it) => overOf(it) > 0))
@@ -268,6 +287,8 @@ watch(
   () => props.visible,
   async (val) => {
     if (val) {
+      newDraft()
+      lastInboundNo.value = ''
       await loadItems()
       await loadImages()
     }
@@ -277,7 +298,6 @@ watch(
 const loadItems = async () => {
   if (!props.orderId) return
   loading.value = true
-  lastInboundNo.value = ''
   qtyRefs.value = []
   try {
     const response: any = await getReceiptsByOrder(Number(props.orderId))
@@ -306,68 +326,25 @@ const loadItems = async () => {
   }
 }
 
-/** 磁盘上的票据（上传即落盘，确认收货时入库） */
+/** 新引用按入库单展示；旧目录只读，不再扫描后批量重复登记。 */
 const loadImages = async () => {
-  if (!props.orderId || !canViewDoc.value) {
-    imageList.value = []
-    return
-  }
-  try {
-    const response: any = await getReceiptDocDiskFiles(Number(props.orderId))
-    const files: DiskFileInfo[] = response.data || []
-    imageList.value = files.map((file, index) => ({
-      name: file.storageName || file.fileName,
-      url: file.fileUrl,
-      uid: index + 1,
-    }))
-  } catch (error) {
-    console.error('加载收货票据失败:', error)
-  }
+  imageList.value = []
+  historyFiles.value = []
+  if (!props.orderId || !canViewDoc.value) return
+  const [legacy, current] = await Promise.allSettled([
+    getReceiptDocDiskFiles(Number(props.orderId)), getReceiptDocRefs(Number(props.orderId)),
+  ])
+  if (legacy.status === 'fulfilled') imageList.value = legacy.value.data || []
+  if (current.status === 'fulfilled') historyFiles.value = current.value.data || []
+  if (legacy.status === 'rejected' || current.status === 'rejected') ElMessage.warning('部分历史票据加载失败，请重新打开查看')
 }
 
-const beforeImageUpload: UploadProps['beforeUpload'] = (file) => {
-  const isImage = ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'].includes(file.type)
-  if (!isImage) {
-    ElMessage.error('仅支持上传 JPG/PNG/GIF/BMP/WebP 格式的图片')
-    return false
-  }
-  if (file.size / 1024 / 1024 >= 10) {
-    ElMessage.error('图片大小不能超过 10MB')
-    return false
-  }
-  return true
+function previewAttachment(id: number) {
+  previewLegacy(attachmentApi.downloadUrl(id))
 }
-
-const handleImageUpload = async (options: any) => {
-  const { file, onSuccess, onError } = options
-  try {
-    const response = await uploadReceiptDocTemp(Number(props.orderId), file)
-    onSuccess(response, file)
-    ElMessage.success('票据上传成功')
-    await loadImages()
-  } catch (error) {
-    console.error('票据上传失败:', error)
-    onError(error)
-    ElMessage.error('票据上传失败')
-  }
-}
-
-const handleImagePreview: UploadProps['onPreview'] = (file) => {
-  previewUrl.value = file.url || ''
+function previewLegacy(url: string) {
+  previewUrl.value = url
   previewVisible.value = true
-}
-
-const handleImageRemove: UploadProps['onRemove'] = async (file) => {
-  try {
-    const fileItem = imageList.value.find((item) => item.uid === file.uid)
-    if (fileItem?.url) {
-      await deleteReceiptDocTemp(fileItem.url)
-      ElMessage.success('票据已删除')
-    }
-  } catch (error) {
-    console.error('票据删除失败:', error)
-    ElMessage.error('票据删除失败')
-  }
 }
 
 /** ⑧ 一旦出现超量行，把它滚入视野（nearest：尽量少跳动） */
@@ -400,35 +377,15 @@ const handleSubmit = async () => {
   } catch {
     return
   }
+  if (!canSubmit.value) return
   submitting.value = true
   try {
-    await confirmBatchReceive(Number(props.orderId), receiveItems)
-    // 缺陷④修复：确认收货后把临时票据落库（原来只上传不登记）
-    if (canUploadDoc.value) {
-      try {
-        const disk: any = await getReceiptDocDiskFiles(Number(props.orderId))
-        const files: DiskFileInfo[] = disk.data || []
-        if (files.length) {
-          await confirmReceiptDocs(
-            Number(props.orderId),
-            files.map((f) => ({ fileName: f.fileName, fileUrl: f.fileUrl, fileSize: Number(f.fileSize || 0) }))
-          )
-        }
-      } catch (docError) {
-        // 票据落库失败不回滚收货（收货是主业务，票据可后续补登）
-        console.error('收货票据登记失败:', docError)
-        ElMessage.warning('收货成功，但票据登记失败，请稍后在采购发票/收货页补登记')
-      }
-    }
-    // 把「收成了哪张入库单」回给用户（入库单号 = 后续来料检验的凭据）
-    let inboundNo = ''
-    try {
-      const inbound: any = await getReceiptInboundOrders(Number(props.orderId))
-      const list = inbound.data || []
-      inboundNo = list.length ? String(list[0].inboundNo || '') : ''
-    } catch (e) {
-      console.error('查询收货入库单失败:', e)
-    }
+    const response: any = await confirmBatchReceive(Number(props.orderId), receiveItems, {
+      receiptRequestKey: receiptDraftId.value,
+      attachmentIds: pendingFiles.value.map(file => file.attachmentId),
+    })
+    const inboundNo = String(response.data?.inboundNo || '')
+    newDraft()
     lastInboundNo.value = inboundNo
     ElMessage.success(inboundNo ? `收货成功，已生成入库单 ${inboundNo}（待来料检验）` : '收货成功')
     await loadItems()
@@ -447,7 +404,13 @@ const gotoIqc = () => {
   emit('goto-iqc', lastInboundNo.value)
 }
 
+const beforeClose = (done: () => void) => { if (!busy.value) done() }
 const handleClose = () => {
+  if (busy.value) return
+  receiptAttachments.value?.clearPending()
+  receiptDraftId.value = ''
+  historyFiles.value = []
+  previewVisible.value = false
   form.items = []
   imageList.value = []
   lastInboundNo.value = ''
