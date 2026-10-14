@@ -7,96 +7,129 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-/** Explicit allowlist, backed by existing controllers and verified schema. Unknown sources fail closed. */
+/**
+ * Explicit allowlist, backed by existing controllers and verified schema. Unknown sources fail closed.
+ *
+ * <p>来源体系治理（dev-20261014-031）：一个来源 = 一份声明式配置（{@link Source}），
+ * 全部登记在 {@link #SOURCES} 这唯一一张表里。新增来源只改一处——
+ * 「按单号反查ID」「取链路号」「权限拼接」都从这份配置读取，不再各写 if 分支。
+ *
+ * <p>两套写权限范式（判据写在 {@link Source#docWrite()}）：
+ * <ul>
+ *   <li><b>凭证/受控文件类</b>：来源 name 以 {@code :doc} 结尾（收货票据 purchase_receipt、
+ *       采购发票 purchase_invoice、销售送货回签件 sales_delivery），写权限用 {@code :add}。</li>
+ *   <li><b>单据附件类</b>：订单/报价/样品等（sales_order / quotation / sample …），写权限用 {@code :edit}。</li>
+ * </ul>
+ * 读权限两类一律 {@code :view}。新增来源按上表判据选择 {@code docWrite}。
+ */
 @Service
 @RequiredArgsConstructor
 public class AttachmentSourcePolicy {
     private final JdbcTemplate jdbc;
-    private static final String RECEIPT = "purchase_receipt";
-    private static final String RECEIPT_SQL = "SELECT inbound_no FROM inventory_inbound_order WHERE inbound_id=? AND source_type='PURCHASE'";
-    private static final Source RECEIPT_SOURCE = new Source("purchase:receipt:doc", RECEIPT_SQL, null);
-    private static final String INVOICE = "purchase_invoice";
-    private static final String INVOICE_SQL = "SELECT document_no FROM purchase_document WHERE document_id=? AND document_type='invoice'";
-    private static final Source INVOICE_SOURCE = new Source("purchase:invoice:doc", INVOICE_SQL, null);
-    /** 销售送货回签件（dev-20261014-023）：独立权限域 sales:delivery:doc，写权限 :add（凭证式）。 */
-    private static final String SALES_DELIVERY = "sales_delivery";
-    private static final String SALES_DELIVERY_SQL = "SELECT delivery_no FROM sales_delivery WHERE delivery_id=? AND deleted=0";
-    private static final Source SALES_DELIVERY_SOURCE = new Source("sales:delivery:doc", SALES_DELIVERY_SQL, null);
-
-    private String permission(String type, Source source, boolean write) {
-        String canonical = canonical(type);
-        boolean addWrite = RECEIPT.equals(canonical) || INVOICE.equals(canonical) || SALES_DELIVERY.equals(canonical);
-        return source.permission() + (write ? (addWrite ? ":add" : ":edit") : ":view");
-    }
-
-    /** 收货票据/采购发票/销售发货回签件不走 SOURCES 通用表：权限前缀 :add 写法 + 非标准单号解析。 */
-    private Source sourceByType(String canonical) {
-        if (RECEIPT.equals(canonical)) return RECEIPT_SOURCE;
-        if (INVOICE.equals(canonical)) return INVOICE_SOURCE;
-        if (SALES_DELIVERY.equals(canonical)) return SALES_DELIVERY_SOURCE;
-        return SOURCES.get(canonical);
-    }
-    private record Source(String permission, String sql, String productSql) {}
-    private static final Map<String, Source> SOURCES = Map.of(
-        "product", new Source("product", "SELECT product_code FROM product WHERE product_id=?",
-            "SELECT COUNT(*) FROM product WHERE product_id=? AND product_id=?"),
-        "inquiry", new Source("sales:inquiry", "SELECT inquiry_no FROM sales_inquiry WHERE inquiry_id=? AND deleted=0",
-            "SELECT COUNT(*) FROM sales_inquiry i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.inquiry_id=? AND p.product_id=? AND i.deleted=0"),
-        "quotation", new Source("sales:quotation", "SELECT quotation_no FROM sales_quotation WHERE quotation_id=? AND deleted=0",
-            "SELECT COUNT(*) FROM sales_quotation_item i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.quotation_id=? AND p.product_id=?"),
-        "sales_order", new Source("sales:order", "SELECT order_no FROM sales_order WHERE order_id=? AND deleted=0 AND NOT EXISTS (SELECT 1 FROM sales_sample_order s WHERE s.order_id=sales_order.order_id AND s.deleted=0)",
-            "SELECT COUNT(*) FROM sales_order_product i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.order_id=? AND p.product_id=?"),
-        "sample", new Source("sales:sample", "SELECT o.order_no FROM sales_sample_order s JOIN sales_order o ON o.order_id=s.order_id WHERE s.order_id=? AND s.deleted=0 AND o.deleted=0",
-            "SELECT COUNT(*) FROM sales_sample_order i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.order_id=? AND p.product_id=? AND i.deleted=0"),
-        "production_order", new Source("production:order", "SELECT order_no FROM production_order WHERE order_id=?",
-            "SELECT COUNT(*) FROM production_order WHERE order_id=? AND product_id=?"),
-        "purchase_order", new Source("purchase:order", "SELECT order_no FROM purchase_order WHERE order_id=?", null),
-        "purchase_payment", new Source("purchase:payment", "SELECT payment_no FROM purchase_payment WHERE payment_id=?", null),
-        // 看板任务接口对已登录用户开放，暂无独立权限点；附件沿用同一边界并核验任务存在。
-        "task", new Source(null, "SELECT task_code FROM sys_task WHERE task_id=?", null),
-        "material", new Source("inventory:material", "SELECT material_code FROM inventory_material WHERE material_id=?",
-            "SELECT COUNT(*) FROM inventory_material WHERE material_id=? AND product_id=?")
-    );
 
     /**
-     * 各来源单据的链路标识查询（用于建引用时回填附件的 trace_id）。
-     * 无 trace 列的表（product / inventory_material）不在此表 → traceIdOf 返回 null，附件保持空。
+     * 一个附件来源的完整声明（唯一扩展点）。
+     *
+     * @param permission 权限前缀；{@code null} = 无独立权限点（仅需登录，见 SOURCES 中 task 说明）。
+     * @param sql        存在性/回显单号校验 SQL（check / canRead 用，绑定 来源ID）。
+     * @param idByNoSql  按业务单号反查 来源ID（resolveReadId 用，绑定 单号）。
+     * @param productSql 校验产品归属（checkProduct 用，绑定 来源ID, 产品ID）；无产品关联为 {@code null}。
+     * @param traceSql   取链路号（traceIdOf 用，绑定 来源ID）；无 trace 列为 {@code null} → 返回空。
+     * @param docWrite   写权限范式判据：{@code true}=凭证/受控文件类（写 {@code :add}）；
+     *                   {@code false}=单据附件类（写 {@code :edit}）。读权限一律 {@code :view}。
      */
-    private static final Map<String, String> TRACE_SQL = Map.of(
-        "inquiry", "SELECT trace_id FROM sales_inquiry WHERE inquiry_id=? AND deleted=0",
-        "quotation", "SELECT trace_id FROM sales_quotation WHERE quotation_id=? AND deleted=0",
-        "sales_order", "SELECT trace_id FROM sales_order WHERE order_id=? AND deleted=0",
-        "sample", "SELECT o.trace_id FROM sales_sample_order s JOIN sales_order o ON o.order_id=s.order_id WHERE s.order_id=? AND s.deleted=0 AND o.deleted=0",
-        "purchase_order", "SELECT trace_id FROM purchase_order WHERE order_id=?",
-        "production_order", "SELECT trace_id FROM production_order WHERE order_id=?"
+    private record Source(String permission, String sql, String idByNoSql, String productSql, String traceSql, boolean docWrite) {}
+
+    /**
+     * 来源白名单——唯一真源。每新增一个来源只在此添加一条。
+     * 字典 {@code attachment_document_type.ext_data.sources} 的取值必须取自本表键集合（见 {@link #knownSourceTypes()}）。
+     */
+    private static final Map<String, Source> SOURCES = Map.ofEntries(
+        Map.entry("product", new Source("product",
+            "SELECT product_code FROM product WHERE product_id=?",
+            "SELECT product_id FROM product WHERE product_code=?",
+            "SELECT COUNT(*) FROM product WHERE product_id=? AND product_id=?",
+            null, false)),
+        Map.entry("inquiry", new Source("sales:inquiry",
+            "SELECT inquiry_no FROM sales_inquiry WHERE inquiry_id=? AND deleted=0",
+            "SELECT inquiry_id FROM sales_inquiry WHERE inquiry_no=? AND deleted=0",
+            "SELECT COUNT(*) FROM sales_inquiry i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.inquiry_id=? AND p.product_id=? AND i.deleted=0",
+            "SELECT trace_id FROM sales_inquiry WHERE inquiry_id=? AND deleted=0", false)),
+        Map.entry("quotation", new Source("sales:quotation",
+            "SELECT quotation_no FROM sales_quotation WHERE quotation_id=? AND deleted=0",
+            "SELECT quotation_id FROM sales_quotation WHERE quotation_no=? AND deleted=0",
+            "SELECT COUNT(*) FROM sales_quotation_item i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.quotation_id=? AND p.product_id=?",
+            "SELECT trace_id FROM sales_quotation WHERE quotation_id=? AND deleted=0", false)),
+        Map.entry("sales_order", new Source("sales:order",
+            "SELECT order_no FROM sales_order WHERE order_id=? AND deleted=0 AND NOT EXISTS (SELECT 1 FROM sales_sample_order s WHERE s.order_id=sales_order.order_id AND s.deleted=0)",
+            "SELECT order_id FROM sales_order WHERE order_no=? AND deleted=0 AND NOT EXISTS (SELECT 1 FROM sales_sample_order s WHERE s.order_id=sales_order.order_id AND s.deleted=0)",
+            "SELECT COUNT(*) FROM sales_order_product i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.order_id=? AND p.product_id=?",
+            "SELECT trace_id FROM sales_order WHERE order_id=? AND deleted=0", false)),
+        Map.entry("sample", new Source("sales:sample",
+            "SELECT o.order_no FROM sales_sample_order s JOIN sales_order o ON o.order_id=s.order_id WHERE s.order_id=? AND s.deleted=0 AND o.deleted=0",
+            "SELECT s.order_id FROM sales_sample_order s JOIN sales_order o ON o.order_id=s.order_id WHERE o.order_no=? AND s.deleted=0 AND o.deleted=0",
+            "SELECT COUNT(*) FROM sales_sample_order i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.order_id=? AND p.product_id=? AND i.deleted=0",
+            "SELECT o.trace_id FROM sales_sample_order s JOIN sales_order o ON o.order_id=s.order_id WHERE s.order_id=? AND s.deleted=0 AND o.deleted=0", false)),
+        Map.entry("production_order", new Source("production:order",
+            "SELECT order_no FROM production_order WHERE order_id=?",
+            "SELECT order_id FROM production_order WHERE order_no=?",
+            "SELECT COUNT(*) FROM production_order WHERE order_id=? AND product_id=?",
+            "SELECT trace_id FROM production_order WHERE order_id=?", false)),
+        Map.entry("purchase_order", new Source("purchase:order",
+            "SELECT order_no FROM purchase_order WHERE order_id=?",
+            "SELECT order_id FROM purchase_order WHERE order_no=?",
+            null,
+            "SELECT trace_id FROM purchase_order WHERE order_id=?", false)),
+        Map.entry("purchase_payment", new Source("purchase:payment",
+            "SELECT payment_no FROM purchase_payment WHERE payment_id=?",
+            "SELECT payment_id FROM purchase_payment WHERE payment_no=?",
+            null, null, false)),
+        // task（看板任务）：无独立权限点——看板任务接口对已登录用户开放（登录即边界），
+        // 附件沿用同一边界并核验任务存在，故不补权限点；若看板将来引入细粒度权限，此处再补。
+        Map.entry("task", new Source(null,
+            "SELECT task_code FROM sys_task WHERE task_id=?",
+            "SELECT task_id FROM sys_task WHERE task_code=?",
+            null, null, false)),
+        Map.entry("material", new Source("inventory:material",
+            "SELECT material_code FROM inventory_material WHERE material_id=?",
+            "SELECT material_id FROM inventory_material WHERE material_code=?",
+            "SELECT COUNT(*) FROM inventory_material WHERE material_id=? AND product_id=?",
+            null, false)),
+        // 收货票据（凭证/受控文件类）：来源名 purchase_receipt，ID 实为入库单（inventory_inbound_order）ID。
+        Map.entry("purchase_receipt", new Source("purchase:receipt:doc",
+            "SELECT inbound_no FROM inventory_inbound_order WHERE inbound_id=? AND source_type='PURCHASE'",
+            "SELECT inbound_id FROM inventory_inbound_order WHERE inbound_no=? AND source_type='PURCHASE'",
+            null,
+            "SELECT trace_id FROM inventory_inbound_order WHERE inbound_id=? AND source_type='PURCHASE'", true)),
+        // 采购发票（凭证/受控文件类）：来源名 purchase_invoice，ID 实为采购单据表 document_type='invoice' 的 ID；无 trace。
+        Map.entry("purchase_invoice", new Source("purchase:invoice:doc",
+            "SELECT document_no FROM purchase_document WHERE document_id=? AND document_type='invoice'",
+            "SELECT document_id FROM purchase_document WHERE document_no=? AND document_type='invoice'",
+            null, null, true)),
+        // 销售送货回签件（凭证/受控文件类，dev-20261014-023）：独立权限域 sales:delivery:doc，写权限 :add；无 trace。
+        Map.entry("sales_delivery", new Source("sales:delivery:doc",
+            "SELECT delivery_no FROM sales_delivery WHERE delivery_id=? AND deleted=0",
+            "SELECT delivery_id FROM sales_delivery WHERE delivery_no=? AND deleted=0",
+            null, null, true))
     );
 
-    /** 显式白名单，单号只作为绑定参数；样品与普通订单沿用各自的来源边界。 */
-    private static final Map<String, String> ID_BY_NO_SQL = Map.of(
-        "product", "SELECT product_id FROM product WHERE product_code=?",
-        "inquiry", "SELECT inquiry_id FROM sales_inquiry WHERE inquiry_no=? AND deleted=0",
-        "quotation", "SELECT quotation_id FROM sales_quotation WHERE quotation_no=? AND deleted=0",
-        "sales_order", "SELECT order_id FROM sales_order WHERE order_no=? AND deleted=0 AND NOT EXISTS (SELECT 1 FROM sales_sample_order s WHERE s.order_id=sales_order.order_id AND s.deleted=0)",
-        "sample", "SELECT s.order_id FROM sales_sample_order s JOIN sales_order o ON o.order_id=s.order_id WHERE o.order_no=? AND s.deleted=0 AND o.deleted=0",
-        "production_order", "SELECT order_id FROM production_order WHERE order_no=?",
-        "purchase_order", "SELECT order_id FROM purchase_order WHERE order_no=?",
-        "purchase_payment", "SELECT payment_id FROM purchase_payment WHERE payment_no=?",
-        "task", "SELECT task_id FROM sys_task WHERE task_code=?",
-        "material", "SELECT material_id FROM inventory_material WHERE material_code=?"
-    );
+    /** 来源清单唯一真源：字典 attachment_document_type.ext_data.sources 的取值必须落在此集合内。 */
+    public static Set<String> knownSourceTypes() {
+        return SOURCES.keySet();
+    }
+
+    /** 权限 = 前缀 + 读(:view) / 写（凭证类 :add，单据类 :edit）。前缀为 null 的来源无独立权限点。 */
+    private String permission(Source source, boolean write) {
+        return source.permission() + (write ? (source.docWrite() ? ":add" : ":edit") : ":view");
+    }
 
     public Long resolveReadId(String type, String number) {
         StpUtil.checkLogin();
         String canonical = canonical(type);
         Source source = source(canonical);
-        List<Long> ids = jdbc.queryForList(RECEIPT.equals(canonical)
-            ? "SELECT inbound_id FROM inventory_inbound_order WHERE inbound_no=? AND source_type='PURCHASE'"
-            : INVOICE.equals(canonical)
-                ? "SELECT document_id FROM purchase_document WHERE document_no=? AND document_type='invoice'"
-                : SALES_DELIVERY.equals(canonical)
-                    ? "SELECT delivery_id FROM sales_delivery WHERE delivery_no=? AND deleted=0"
-                    : ID_BY_NO_SQL.get(canonical), Long.class, number.trim());
+        List<Long> ids = jdbc.queryForList(source.idByNoSql(), Long.class, number.trim());
         // 先解析再判权；即使未匹配也执行同一权限检查，不向无权限用户泄露单号是否存在。
         if (source.permission() != null) StpUtil.checkPermission(source.permission() + ":view");
         return ids.size() == 1 ? ids.get(0) : null;
@@ -105,9 +138,8 @@ public class AttachmentSourcePolicy {
     /** 取来源单据的链路标识；来源无 trace 或查不到 → null（调用方据此跳过回填） */
     public String traceIdOf(String type, Long id) {
         if (id == null || id <= 0) return null;
-        String sql = RECEIPT.equals(canonical(type))
-            ? "SELECT trace_id FROM inventory_inbound_order WHERE inbound_id=? AND source_type='PURCHASE'"
-            : INVOICE.equals(canonical(type)) ? null : TRACE_SQL.get(canonical(type));
+        Source source = SOURCES.get(canonical(type));
+        String sql = source == null ? null : source.traceSql();
         if (sql == null) return null;
         List<String> rows = jdbc.queryForList(sql, String.class, id);
         return rows.isEmpty() ? null : rows.get(0);
@@ -128,7 +160,7 @@ public class AttachmentSourcePolicy {
         StpUtil.checkLogin();
         Source source = source(type);
         if (source.permission() != null) {
-            StpUtil.checkPermission(permission(type, source, write));
+            StpUtil.checkPermission(permission(source, write));
         }
         if (id == null || id <= 0) throw new BusinessException("业务来源ID无效");
         List<String> numbers = jdbc.queryForList(source.sql(), String.class, id);
@@ -138,7 +170,7 @@ public class AttachmentSourcePolicy {
 
     public boolean canRead(String type, Long id) {
         if (!StpUtil.isLogin() || type == null || id == null || id <= 0) return false;
-        Source source = sourceByType(canonical(type));
+        Source source = SOURCES.get(canonical(type));
         return source != null && (source.permission() == null || StpUtil.hasPermission(source.permission() + ":view"))
             && jdbc.queryForList(source.sql(), String.class, id).size() == 1;
     }
@@ -153,7 +185,7 @@ public class AttachmentSourcePolicy {
     }
 
     private Source source(String type) {
-        Source source = sourceByType(canonical(type));
+        Source source = SOURCES.get(canonical(type));
         if (source == null) throw new BusinessException("附件来源权限映射未确认，禁止操作：" + type);
         return source;
     }

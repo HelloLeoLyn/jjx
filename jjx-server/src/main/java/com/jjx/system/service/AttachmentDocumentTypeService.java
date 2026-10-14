@@ -33,6 +33,10 @@ public class AttachmentDocumentTypeService {
             throw new BusinessException("资料类型必须配置parent及sources");
         Long parents = jdbc.queryForObject("SELECT COUNT(*) FROM sys_dict_item i JOIN sys_dict d ON d.dict_code=i.dict_code AND d.deleted=0 AND d.is_active=1 WHERE i.dict_code=? AND i.item_key=? AND i.deleted=0 AND i.is_active=1", Long.class, CATEGORY, ext.path("parent").asText());
         if (parents == null || parents != 1) throw new BusinessException("一级资料分类不存在或已停用");
+        // 一致性校验（dev-20261014-031）：字典来源清单必须取自后端白名单，防两处漂移。
+        for (JsonNode source : ext.path("sources"))
+            if (!AttachmentSourcePolicy.knownSourceTypes().contains(source.asText()))
+                throw new BusinessException("资料类型来源未纳入附件来源白名单：" + source.asText());
         for (JsonNode source : ext.path("sources")) if (sourceType.equals(source.asText())) return;
         throw new BusinessException("资料类型不适用于当前来源");
     }

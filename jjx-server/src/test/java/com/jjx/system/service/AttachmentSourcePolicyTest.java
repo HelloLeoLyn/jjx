@@ -90,4 +90,29 @@ class AttachmentSourcePolicyTest {
             assertNull(policy.traceIdOf("sales_delivery", 88L));
         }
     }
+
+    @Test
+    void sourceAllowlistIsSingleSourceOfTruthForDictionary() {
+        // 收敛后：白名单唯一真源含全部来源（含凭证类三个），字典 ext_data.sources 必须取自本集合。
+        assertTrue(AttachmentSourcePolicy.knownSourceTypes().containsAll(List.of(
+            "product", "inquiry", "quotation", "sales_order", "sample", "production_order",
+            "purchase_order", "purchase_payment", "task", "material",
+            "purchase_receipt", "purchase_invoice", "sales_delivery")));
+    }
+
+    @Test
+    void receiptResolvesIdByNumberAndTraceThroughUnifiedConfig() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("inventory_inbound_order WHERE inbound_no=?"), eq(Long.class), eq("IN-88")))
+                .thenReturn(List.of(88L));
+        when(jdbc.queryForList(contains("inventory_inbound_order WHERE inbound_id=?"), eq(String.class), eq(88L)))
+                .thenReturn(List.of("TR-88"));
+        AttachmentSourcePolicy policy = new AttachmentSourcePolicy(jdbc);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::isLogin).thenReturn(true);
+            assertEquals(88L, policy.resolveReadId("purchase_receipt", "IN-88"));
+            auth.verify(() -> StpUtil.checkPermission("purchase:receipt:doc:view"));
+            assertEquals("TR-88", policy.traceIdOf("purchase_receipt", 88L));
+        }
+    }
 }
