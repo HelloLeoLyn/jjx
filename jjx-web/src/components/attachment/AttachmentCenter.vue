@@ -134,6 +134,7 @@ import { attachmentApi } from '@/api/system/attachment'
 import {
   attachmentRefApi,
   type AttachmentDocumentTypeItem,
+  type AttachmentDrawingMetadata,
   type AttachmentRefItem,
 } from '@/api/system/attachmentRef'
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
@@ -164,6 +165,9 @@ const props = withDefaults(
     productId?: number | null
     /** 行级附件归属：产品编码（内部字段，S5 dev-20261013-043）；为空=不归属产品 */
     productCode?: string | null
+    /** 可选图纸元数据（dev-20261014-029，019 方案B）：非空时随上传写入 sys_attachment 图纸列；
+     *  不传=不写这些列，行为不变。仅上传用，组件不渲染任何额外 UI（消费者接入属下游任务）。 */
+    drawingMeta?: AttachmentDrawingMetadata | null
     /** 上传禁用原因（调用方按业务决定，非空即禁用并显示这句话）；组件本身不做业务判断 */
     uploadBlocked?: string
   }>(),
@@ -195,6 +199,8 @@ const props = withDefaults(
     autoBind: true,
     dropZone: false,
     productId: null,
+    productCode: null,
+    drawingMeta: null,
     uploadBlocked: '',
   }
 )
@@ -219,6 +225,7 @@ const refs = useAttachmentRefs({
   editPerm: toRef(props, 'editPerm'),
   productId: toRef(props, 'productId'),
   productCode: toRef(props, 'productCode'),
+  drawingMeta: toRef(props, 'drawingMeta'),
 })
 
 const {

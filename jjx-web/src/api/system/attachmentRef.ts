@@ -49,6 +49,22 @@ export interface AttachmentRefItem {
   fileType?: string | null
 }
 
+/** 可选的图纸元数据（dev-20261014-029，019 方案B）
+ *  随 TEMP 上传一并提交，写入 sys_attachment 既有图纸列；不传 = 不写这些列，行为不变。
+ *  仅图纸类来源使用；其它来源照旧（不新增列、不改读列口径）。 */
+export interface AttachmentDrawingMetadata {
+  /** 图种/文件类别 */
+  category?: string | null
+  /** 图纸编号 */
+  drawingNo?: string | null
+  /** 图纸名称 */
+  drawingName?: string | null
+  /** 版本 */
+  version?: string | null
+  /** 文件用途：ORIGINAL=工程原稿，PRINT=预览打印件 */
+  fileRole?: string | null
+}
+
 /** 建立引用请求体（POST /refs） */
 export interface AttachmentRefCreateBody {
   attachmentId: number
@@ -100,11 +116,19 @@ export interface AttachmentDocumentTypeItem {
 }
 
 export const attachmentRefApi = {
-  /** TEMP 上传：requestKey 必须 16~100 位 [A-Za-z0-9_-]，同键同内容重传幂等返回原 attachmentId */
-  tempUpload(file: File, requestKey: string, onProgress?: (percent: number) => void): AxiosPromise<number> {
+  /** TEMP 上传：requestKey 必须 16~100 位 [A-Za-z0-9_-]，同键同内容重传幂等返回原 attachmentId。
+   *  meta 为可选图纸元数据（dev-20261014-029）：非空时写入 sys_attachment 图纸列；不传行为不变。 */
+  tempUpload(file: File, requestKey: string, onProgress?: (percent: number) => void, meta?: AttachmentDrawingMetadata | null): AxiosPromise<number> {
     const data = new FormData()
     data.append('file', file)
     data.append('requestKey', requestKey)
+    if (meta) {
+      if (meta.category != null) data.append('category', meta.category)
+      if (meta.drawingNo != null) data.append('drawingNo', meta.drawingNo)
+      if (meta.drawingName != null) data.append('drawingName', meta.drawingName)
+      if (meta.version != null) data.append('version', meta.version)
+      if (meta.fileRole != null) data.append('fileRole', meta.fileRole)
+    }
     return request({
       url: '/system/attachment/refs/temp',
       method: 'post',

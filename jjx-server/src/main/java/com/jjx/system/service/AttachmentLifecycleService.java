@@ -3,6 +3,7 @@ package com.jjx.system.service;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.system.domain.dto.AttachmentDrawingMetaDTO;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.enums.AttachmentUploadState;
 import com.jjx.system.mapper.SysAttachmentMapper;
@@ -34,10 +35,22 @@ public class AttachmentLifecycleService {
 
     @Transactional(rollbackFor = Exception.class)
     public Long upload(MultipartFile input, String requestKey) {
+        return upload(input, requestKey, null);
+    }
+
+    /**
+     * 临时上传（公共附件链路）。新增可选图纸元数据 {@code drawingMeta}（dev-20261014-029，019 方案B）：
+     * 非空时写入 {@code sys_attachment} 既有图纸列（category/drawing_no/drawing_name/version/file_role），
+     * 不传/null = 不写这些列，行为与改造前完全一致；不改表结构、不搬列、不动其它来源行为。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Long upload(MultipartFile input, String requestKey, AttachmentDrawingMetaDTO drawingMeta) {
         StpUtil.checkLogin();
         if (input == null || input.isEmpty()) throw new BusinessException("请选择文件");
         if (requestKey == null || !requestKey.matches("[A-Za-z0-9_-]{16,100}"))
             throw new BusinessException("上传必须提供16至100位requestKey，重试使用同一键");
+        // 图纸元数据先归一化校验（fail-fast，避免无效元数据产生孤立临时文件）
+        DrawingMeta meta = normalizeDrawingMeta(drawingMeta);
         String owner = StpUtil.getLoginIdAsString();
         // Serialize retries before writing bytes. This is the same authenticated sys_user primary key.
         if (jdbc.queryForList("SELECT user_id FROM sys_user WHERE user_id=? FOR UPDATE", owner).isEmpty())
@@ -77,6 +90,8 @@ public class AttachmentLifecycleService {
         SysAttachment file = new SysAttachment();
         file.setFileName(name); file.setFilePath(relative); file.setFileSize(input.getSize());
         file.setFileType(input.getContentType()); file.setSha256(hash); file.setDeleted(false);
+        file.setCategory(meta.category()); file.setDrawingNo(meta.drawingNo()); file.setDrawingName(meta.drawingName());
+        file.setVersion(meta.version()); file.setFileRole(meta.fileRole());
         file.setUploadState(AttachmentUploadState.TEMP); file.setExpiresAt(LocalDateTime.now().plusDays(7));
         file.setUploadOwner(owner); file.setUploadKey(key); file.setCreateBy(owner); file.setCreateTime(LocalDateTime.now());
         files.insert(file);
@@ -86,6 +101,40 @@ public class AttachmentLifecycleService {
     private String digest(byte[] value) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value)); }
         catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
+    }
+
+    /**
+     * 归一化可选图纸元数据：全部可选；不传=不写列。校验长度；图纸编号/版本统一大写（与老 upload-product 口径一致，
+     * 避免同图纸分组因大小写拆开）；文件用途仅接受 ORIGINAL/PRINT；填了名称/用途却没填图纸编号则拒绝（同老口径）。
+     */
+    private DrawingMeta normalizeDrawingMeta(AttachmentDrawingMetaDTO meta) {
+        if (meta == null) return DrawingMeta.EMPTY;
+        String category = drawingText(meta.getCategory(), 50, "图种");
+        String drawingNo = drawingText(meta.getDrawingNo(), 80, "图纸编号");
+        String drawingName = drawingText(meta.getDrawingName(), 120, "图纸名称");
+        String version = drawingText(meta.getVersion(), 50, "版本");
+        String fileRole = drawingText(meta.getFileRole(), 20, "文件用途");
+        if (drawingNo == null && (drawingName != null || fileRole != null))
+            throw new BusinessException("填写图纸编号后才能关联文件用途及图纸名称");
+        if (drawingNo != null) {
+            drawingNo = drawingNo.toUpperCase(Locale.ROOT);
+            if (version == null) throw new BusinessException("版本不能为空");
+            version = version.toUpperCase(Locale.ROOT);
+        }
+        if (fileRole != null && !"ORIGINAL".equals(fileRole) && !"PRINT".equals(fileRole))
+            throw new BusinessException("文件用途只能为原稿或预览打印件");
+        return new DrawingMeta(category, drawingNo, drawingName, version, fileRole);
+    }
+
+    private String drawingText(String value, int max, String label) {
+        if (value == null || value.isBlank()) return null;
+        String text = value.trim();
+        if (text.length() > max) throw new BusinessException(label + "不能超过" + max + "个字符");
+        return text;
+    }
+
+    private record DrawingMeta(String category, String drawingNo, String drawingName, String version, String fileRole) {
+        static final DrawingMeta EMPTY = new DrawingMeta(null, null, null, null, null);
     }
 
     /** Cursor paging includes recycled rows. Decision is observational, never authorization to delete later. */

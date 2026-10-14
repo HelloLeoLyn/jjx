@@ -2,6 +2,7 @@ import { computed, ref, watch, type Ref } from 'vue'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
 import type {
   AttachmentDocumentTypeItem,
+  AttachmentDrawingMetadata,
   AttachmentRefCreateBody,
   AttachmentRefItem,
   AttachmentRefMetadata,
@@ -56,6 +57,9 @@ export interface UseAttachmentRefsOptions {
   productId?: Ref<number | null | undefined> | number | null
   /** 行级附件归属：产品编码（内部字段，S5 dev-20261013-043）；为空=不归属产品 */
   productCode?: Ref<string | null | undefined> | string | null
+  /** 可选图纸元数据（dev-20261014-029，019 方案B）：非空时随 TEMP 上传写入 sys_attachment 图纸列；
+   *  不传/null = 不写这些列，行为与改造前一致，不影响其它来源。 */
+  drawingMeta?: Ref<AttachmentDrawingMetadata | null | undefined> | AttachmentDrawingMetadata | null
   /** 是否在创建时立即加载列表（默认 true） */
   autoLoad?: boolean
 }
@@ -135,6 +139,10 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     const raw = unwrap<string | null | undefined>(options.productCode, null)
     return raw === undefined || raw === null || raw === '' ? null : String(raw)
   })
+  /** 可选图纸元数据；未传 = null（不写图纸列）。仅上传时透传，不参与任何读取/唯一性判定。 */
+  const drawingMeta = computed<AttachmentDrawingMetadata | null>(() =>
+    unwrap<AttachmentDrawingMetadata | null | undefined>(options.drawingMeta, null) ?? null,
+  )
 
   /** 待绑定队列的隔离键：用户、来源、草稿及产品行隔离。
    *  已保存单据的行级键包含 productCode；未保存单据必须提供 draftId。 */
@@ -290,7 +298,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     }
     const sha = await sha256Of(file)
     const requestKey = await buildRequestKey(draftKey.value, file, sha)
-    const res: any = await attachmentRefApi.tempUpload(file, requestKey, onProgress)
+    const res: any = await attachmentRefApi.tempUpload(file, requestKey, onProgress, drawingMeta.value)
     const attachmentId = Number(res?.data)
     if (!attachmentId) throw new Error(res?.msg || '临时上传失败')
     const existing = pending.value.find((e) => e.attachmentId === attachmentId)

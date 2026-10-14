@@ -71,8 +71,20 @@ public class SysAttachmentRefController {
 
     @PostMapping("/temp")
     @Log(module = "附件引用", businessType = BusinessType.INSERT, bizType = "'sys_attachment'", bizId = "#result.data", action = "上传临时附件")
-    public Result<Long> temp(@RequestParam MultipartFile file, @RequestParam String requestKey) {
-        return Result.success(lifecycle.upload(file, requestKey));
+    public Result<Long> temp(@RequestParam MultipartFile file, @RequestParam String requestKey,
+                             @RequestParam(required = false) String category,
+                             @RequestParam(required = false) String drawingNo,
+                             @RequestParam(required = false) String drawingName,
+                             @RequestParam(required = false) String version,
+                             @RequestParam(required = false) String fileRole) {
+        // 可选图纸元数据（dev-20261014-029，019 方案B）：不传=不写图纸列，行为不变。
+        AttachmentDrawingMetaDTO drawingMeta = null;
+        if (category != null || drawingNo != null || drawingName != null || version != null || fileRole != null) {
+            drawingMeta = new AttachmentDrawingMetaDTO();
+            drawingMeta.setCategory(category); drawingMeta.setDrawingNo(drawingNo); drawingMeta.setDrawingName(drawingName);
+            drawingMeta.setVersion(version); drawingMeta.setFileRole(fileRole);
+        }
+        return Result.success(lifecycle.upload(file, requestKey, drawingMeta));
     }
 
     @PostMapping("/cleanup-preview")
