@@ -57,6 +57,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     private final com.jjx.system.service.AttachmentAccessService attachmentAccess;
     private final com.jjx.system.service.AttachmentSourcePolicy attachmentSources;
     private final com.jjx.system.service.AttachmentRefService attachmentRefs;
+    private final com.jjx.system.service.ProductCustomerDocumentService customerDocuments;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -536,46 +537,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         throw new BusinessException("V1-A仅允许清理预演；旧过期清理入口已禁用");
     }
 
-    /** 客供资料按附件登记的产品归集；历史未登记产品归属的附件不能猜测归属。 */
+    /** 客供资料按有效附件引用归集，页面与规范发布共用查询。 */
     public List<Map<String, Object>> customerDocs(Long productId) {
-        if (productId == null) return List.of();
-        String sql = """
-                SELECT a.id,a.biz_type,a.biz_id,a.file_name,a.display_name,a.customer_product_code,a.customer_doc_type,
-                       a.file_path,a.file_size,a.file_type,a.version,a.category,a.create_by,a.create_time,
-                       CASE a.biz_type WHEN 'inquiry' THEN '询价单' WHEN 'quotation' THEN '报价单'
-                            WHEN 'sales_order' THEN '销售订单' WHEN 'sample' THEN '样品单' END AS sourceType,
-                       CASE a.biz_type WHEN 'inquiry' THEN i.inquiry_no WHEN 'quotation' THEN q.quotation_no
-                            ELSE o.order_no END AS sourceNo
-                  FROM sys_attachment a
-                  JOIN product p ON p.product_id=? AND p.product_code=a.customer_product_code
-                  LEFT JOIN sales_inquiry i ON a.biz_type='inquiry' AND a.biz_id=i.inquiry_id AND i.deleted=0
-                  LEFT JOIN sales_quotation q ON a.biz_type='quotation' AND a.biz_id=q.quotation_id AND q.deleted=0
-                  LEFT JOIN sales_order o ON a.biz_type IN ('sales_order','sample') AND a.biz_id=o.order_id AND o.deleted=0
-                  LEFT JOIN sales_sample_order so ON a.biz_type='sample' AND a.biz_id=so.order_id AND so.deleted=0
-                 WHERE a.deleted=0 AND (
-                       (i.inquiry_id IS NOT NULL AND i.product_code=p.product_code)
-                    OR (q.quotation_id IS NOT NULL AND EXISTS
-                        (SELECT 1 FROM sales_quotation_item qi WHERE qi.quotation_id=q.quotation_id AND qi.product_code=p.product_code))
-                    OR (a.biz_type='sales_order' AND o.order_id IS NOT NULL AND EXISTS
-                        (SELECT 1 FROM sales_order_product op WHERE op.order_id=o.order_id AND op.product_code=p.product_code))
-                    OR (so.order_id IS NOT NULL AND o.order_id IS NOT NULL AND so.product_code=p.product_code)
-                 )
-                 ORDER BY a.create_time DESC
-                """;
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, productId);
-        // 已上传但尚未执行 270 回填的整理名：按当前来源单号和产品编码展示，不覆盖库中记录。
-        for (Map<String, Object> row : rows) {
-            String name = (String) row.get("display_name");
-            String code = (String) row.get("customer_product_code");
-            String sourceNo = (String) row.get("sourceNo");
-            if (name == null || code == null || sourceNo == null || name.startsWith(sourceNo + "-" + code + "-")) continue;
-            int separator = name.startsWith(sourceNo + "-") ? sourceNo.length() : name.indexOf('-');
-            if (separator < 0) continue;
-            String suffix = name.substring(separator + 1);
-            if (suffix.startsWith(code + "-")) suffix = suffix.substring(code.length() + 1);
-            row.put("display_name", sourceNo + "-" + code + "-" + suffix);
-        }
-        return rows;
+        return customerDocuments.list(productId);
     }
 
     @Override

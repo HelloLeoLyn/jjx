@@ -189,20 +189,6 @@
         </el-col>
       </el-row>
 
-      <!-- 附件（dev-20261012-047：通用附件中心） -->
-      <el-divider content-position="left">附件</el-divider>
-      <div style="margin-bottom: 10px">
-        <AttachmentCenter
-          ref="attachmentCenterRef"
-          source-type="quotation"
-          :source-id="props.formData.quotationId || null"
-          :draft-id="props.draftId || ''"
-          :trace-id="props.formData.traceId"
-          view-perm="sales:quotation:view"
-          edit-perm="sales:quotation:edit"
-        />
-      </div>
-
       <!-- 金额汇总 -->
       <el-divider content-position="left">金额汇总</el-divider>
       <el-row class="amount-summary">
@@ -317,7 +303,7 @@
     <el-dialog
       v-model="rowAttachVisible"
       :title="`上传附件【${rowAttachProductCode || ''}】`"
-      width="900px"
+      width="1200px"
       append-to-body
     >
       <AttachmentCenter
@@ -329,6 +315,7 @@
         :product-code="rowAttachProductCode"
         view-perm="sales:quotation:view"
         edit-perm="sales:quotation:edit"
+        drop-zone
       />
     </el-dialog>
   </el-dialog>
@@ -394,7 +381,7 @@ const rowAttachProductCode = ref('')
 const rowAttachDraftId = computed(() =>
   rowAttachProductCode.value
     ? `${props.draftId || ''}::r:${rowAttachProductCode.value}`
-    : props.draftId || '',
+    : props.draftId || ''
 )
 const uploadedAttachmentIds = ref<number[]>([])
 const userStore = useUserStore()
@@ -412,11 +399,11 @@ async function bindPendingAttachments() {
       }
       if (result.status === 'partial') {
         ElMessage.warning(
-          `报价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`,
+          `报价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`
         )
       } else if (result.status === 'all-failed') {
         ElMessage.error(
-          `报价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`,
+          `报价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`
         )
       }
     }

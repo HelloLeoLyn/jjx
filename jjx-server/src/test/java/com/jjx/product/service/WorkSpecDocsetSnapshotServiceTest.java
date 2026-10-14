@@ -16,6 +16,8 @@ import com.jjx.product.domain.vo.EngineeringBomVO;
 import com.jjx.product.mapper.ProductStandardProcessMapper;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.mapper.SysAttachmentMapper;
+import com.jjx.system.service.AttachmentSourcePolicy;
+import com.jjx.system.service.ProductCustomerDocumentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -54,6 +56,7 @@ class WorkSpecDocsetSnapshotServiceTest {
     @Mock SysAttachmentMapper attachmentMapper;
     @Mock ProductStandardProcessMapper processMapper;
     @Mock JdbcTemplate jdbc;
+    @Mock ProductCustomerDocumentService customerDocuments;
 
     WorkSpecDocsetSnapshotService service;
     ObjectMapper json = JsonMapper.builder().addModule(new JavaTimeModule()).build();
@@ -63,7 +66,7 @@ class WorkSpecDocsetSnapshotServiceTest {
     @BeforeEach
     void setUp() {
         service = new WorkSpecDocsetSnapshotService(bomService, routingService, workSpecService,
-                attachmentMapper, processMapper, jdbc, json);
+                attachmentMapper, processMapper, jdbc, json, customerDocuments);
         ReflectionTestUtils.setField(service, "uploadBasePath", tempDir.toString());
         ReflectionTestUtils.setField(service, "iconAssetsDir", tempDir.resolve("icons").toString());
         // 默认：正文（未批准、无结构图）、无候选附件、令牌查询空。
@@ -92,7 +95,8 @@ class WorkSpecDocsetSnapshotServiceTest {
         ReflectionTestUtils.invokeMethod(service, "sourceToken", product);
 
         ArgumentCaptor<String> queries = ArgumentCaptor.forClass(String.class);
-        verify(jdbc, times(6)).queryForList(queries.capture(), any(Object[].class));
+        verify(jdbc, times(5)).queryForList(queries.capture(), any(Object[].class));
+        verify(customerDocuments).lockForSnapshot(product.getProductId());
         String routingSql = queries.getAllValues().stream()
                 .filter(sql -> sql.contains("FROM engineering_routing_item "))
                 .findFirst().orElseThrow();
@@ -130,6 +134,8 @@ class WorkSpecDocsetSnapshotServiceTest {
             }
         };
         ReflectionTestUtils.setField(service, "jdbc", validator);
+        ReflectionTestUtils.setField(service, "customerDocuments",
+                new ProductCustomerDocumentService(validator, mock(AttachmentSourcePolicy.class)));
         Product product = product();
         product.setCurrentRouteId(2L);
         ReflectionTestUtils.invokeMethod(service, "sourceToken", product);
@@ -220,9 +226,12 @@ class WorkSpecDocsetSnapshotServiceTest {
         SysAttachment customerLib = file(36L, "客供稿.jpg", "客供稿");
         SysAttachment sample = file(50L, "样品.jpg", "样品照片");
         SysAttachment customerSource = file(60L, "来料.pdf", null);
-        customerSource.setCustomerProductCode("YL1025PWOO");
         when(attachmentMapper.selectById(40L)).thenReturn(structure);
-        when(attachmentMapper.selectList(any())).thenReturn(List.of(), List.of(sample), List.of(customerLib), List.of(customerSource));
+        when(attachmentMapper.selectById(60L)).thenReturn(customerSource);
+        when(attachmentMapper.selectList(any())).thenReturn(List.of(), List.of(sample), List.of(customerLib));
+        when(customerDocuments.list(3L)).thenReturn(List.of(Map.of(
+                "id", 60L, "display_name", "引用展示名", "customer_doc_type", "CUSTOMER_DRAWING",
+                "category", "客户图纸", "sort_order", 7)));
 
         WorkSpecDocsetSnapshotService.DocsetSnapshot snapshot = service.build(
                 product(), "V1.0", "系统管理员", LocalDateTime.of(2026, 10, 13, 12, 0), "首次发布");
@@ -235,6 +244,11 @@ class WorkSpecDocsetSnapshotServiceTest {
         assertTrue(ids.containsAll(List.of(36L, 40L, 50L, 60L)), ids.toString());
         assertEquals("customer", section(snapshot, 36L));
         assertEquals("customer", section(snapshot, 60L));
+        var customerFile = snapshot.files().stream().filter(f -> f.attachmentId() == 60L).findFirst().orElseThrow();
+        assertEquals("引用展示名", customerFile.displayName());
+        assertEquals("CUSTOMER_DRAWING", customerFile.customerDocType());
+        assertEquals("客户图纸", customerFile.category());
+        assertEquals(7, customerFile.sortOrder());
         assertEquals("atlas", section(snapshot, 40L));
         assertEquals("sample", section(snapshot, 50L));
         JsonNode icon = node.path("icons").path("面板");
@@ -259,6 +273,16 @@ class WorkSpecDocsetSnapshotServiceTest {
         Product product = product();
         product.setCurrentBomId(null);
         return product;
+    }
+
+    @Test
+    void changedReferenceMetadataDuringPublicationRejectsSnapshot() {
+        when(customerDocuments.lockForSnapshot(3L)).thenReturn(
+                List.of(Map.of("ref_id", 9L, "display_name", "旧展示名")),
+                List.of(Map.of("ref_id", 9L, "display_name", "新展示名")));
+        BusinessException error = assertThrows(BusinessException.class, () -> service.build(
+                productBomless(), "V1.0", "管理员", LocalDateTime.now(), null));
+        assertTrue(error.getMessage().contains("发布来源在读取期间发生变化"));
     }
 
     // ---------- 3) 图标冻结失败反例 ----------

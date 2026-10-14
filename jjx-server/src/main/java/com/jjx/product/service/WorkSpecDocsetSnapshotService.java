@@ -15,6 +15,7 @@ import com.jjx.product.domain.vo.EngineeringRoutingVO;
 import com.jjx.product.mapper.ProductStandardProcessMapper;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.mapper.SysAttachmentMapper;
+import com.jjx.system.service.ProductCustomerDocumentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -60,6 +61,7 @@ public class WorkSpecDocsetSnapshotService {
     private final ProductStandardProcessMapper processMapper;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private final ProductCustomerDocumentService customerDocuments;
 
     @Value("${file.upload.path:./upload}")
     private String uploadBasePath;
@@ -265,13 +267,16 @@ public class WorkSpecDocsetSnapshotService {
             add(chosen, buildFile(att, "product-library", true));
         }
 
-        // 5) 客户来源客供资料（按附件登记的产品编码归集；历史未登记归属的不猜测）。
-        if (product.getProductCode() != null && !product.getProductCode().isBlank()) {
-            for (SysAttachment att : attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
-                    .eq(SysAttachment::getCustomerProductCode, product.getProductCode())
-                    .orderByAsc(SysAttachment::getId))) {
-                add(chosen, buildFile(att, "customer-source", true));
-            }
+        // 5) 客户来源客供资料：与页面共用有效引用查询，并冻结引用上的展示名/资料类型。
+        for (Map<String, Object> row : customerDocuments.list(productId)) {
+            Long attachmentId = ((Number) row.get("id")).longValue();
+            SysAttachment att = attachmentMapper.selectById(attachmentId);
+            if (att == null) throw new BusinessException("发布失败：客供附件不存在（id=" + attachmentId + "）");
+            SnapshotFile file = buildFile(att, "customer-source", true);
+            add(chosen, new SnapshotFile(file.attachmentId(), file.section(), (String) row.get("category"),
+                    file.fileName(), (String) row.get("display_name"), file.version(), file.drawingNo(),
+                    file.fileRole(), file.mime(), file.size(), file.sha256(), file.source(),
+                    (String) row.get("customer_doc_type"), row.get("sort_order") instanceof Number n ? n.intValue() : null));
         }
         return new ArrayList<>(chosen.values());
     }
@@ -459,12 +464,7 @@ public class WorkSpecDocsetSnapshotService {
                 "SELECT id,sha256,category,file_role,is_current,released,file_name,version,drawing_no,file_path,biz_id,customer_product_code,update_time "
                         + "FROM sys_attachment WHERE deleted=0 AND biz_type='product' AND biz_id=? FOR SHARE",
                 product.getProductId()));
-        if (product.getProductCode() != null && !product.getProductCode().isBlank()) {
-            appendRows(token, jdbc.queryForList(
-                    "SELECT id,sha256,category,file_role,is_current,released,file_name,version,drawing_no,file_path,biz_id,customer_product_code,update_time "
-                            + "FROM sys_attachment WHERE deleted=0 AND customer_product_code=? FOR SHARE",
-                    product.getProductCode()));
-        }
+        appendRows(token, customerDocuments.lockForSnapshot(product.getProductId()));
         appendRows(token, jdbc.queryForList("SELECT process_id,icon,update_time FROM engineering_standard_process FOR SHARE"));
         return sha256(token.toString());
     }

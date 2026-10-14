@@ -210,8 +210,7 @@ public class SysAttachmentController {
     @GetMapping("/customer-docs/{productId}")
     public Result<java.util.List<java.util.Map<String, Object>>> customerDocs(@PathVariable Long productId) {
         sources.check("product", productId, false);
-        return Result.success(attachmentService.customerDocs(productId).stream().filter(row ->
-                sources.canRead((String) row.get("biz_type"), ((Number) row.get("biz_id")).longValue())).toList());
+        return Result.success(attachmentService.customerDocs(productId));
     }
 
     @Operation(summary = "下载/预览附件")
