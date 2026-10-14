@@ -166,35 +166,21 @@
       </p>
 
       <!-- 回签件（口径 D2）：客户签字送货单的回签归档，作为对账/开票/收款依据 -->
+      <!-- 走公共附件组件（来源 sales_delivery）；本抽屉与下方签收弹窗共用同一实现（同一组件、同一 source） -->
       <el-divider content-position="left">回签件（结算依据）</el-divider>
-      <div class="attach-row">
-        <el-upload
-          :show-file-list="false"
-          :before-upload="beforeUploadReturn"
-          accept="image/*,.pdf"
-        >
-          <el-button type="primary" size="small" icon="Upload">上传回签件</el-button>
-        </el-upload>
-        <span class="muted"
-          >客户签字的送货单回签件；月结/自送客户必须上传（分级强制待定：TODO 判"月结"用哪个字段需
-          Leo 确认）</span
-        >
+      <AttachmentCenter
+        v-if="current?.deliveryId"
+        :key="`return-drawer-${current.deliveryId}`"
+        source-type="sales_delivery"
+        :source-id="current.deliveryId"
+        mode="panel"
+        title="回签件"
+        view-perm="sales:delivery:doc:view"
+        edit-perm="sales:delivery:doc:add"
+      />
+      <div class="muted">
+        客户签字的送货单回签件；月结/自送客户必须上传（分级强制待定：TODO 判"月结"用哪个字段需 Leo 确认）
       </div>
-      <el-table :data="returnFiles" border style="margin-top: 10px" size="small">
-        <el-table-column prop="fileName" label="文件名" min-width="200" />
-        <el-table-column prop="remark" label="标记" width="110" />
-        <el-table-column prop="createBy" label="上传人" width="110" />
-        <el-table-column label="操作" width="140">
-          <template #default="{ row }">
-            <el-link type="primary" :href="attachmentApi.downloadUrl(row.id)" target="_blank"
-              >下载</el-link
-            >
-            <el-link type="danger" style="margin-left: 8px" @click="removeReturnFile(row)"
-              >删除</el-link
-            >
-          </template>
-        </el-table-column>
-      </el-table>
     </el-drawer>
 
     <el-dialog v-model="rejectVisible" title="客户拒收登记" width="640px">
@@ -246,7 +232,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="receiveVisible" title="发货单签收" width="560px">
+    <el-dialog v-model="receiveVisible" title="发货单签收" width="720px">
       <el-form :model="receiveForm" label-width="110px">
         <el-form-item label="签收人"><el-input v-model="receiveForm.receiverName" /></el-form-item>
         <el-form-item label="联系电话"
@@ -266,35 +252,18 @@
         /></el-form-item>
       </el-form>
       <el-divider content-position="left">回签件（结算依据）</el-divider>
-      <div class="attach-row">
-        <el-upload
-          :show-file-list="false"
-          :before-upload="(f) => beforeUploadReturn(f, receiveDeliveryId)"
-          accept="image/*,.pdf"
-        >
-          <el-button type="primary" size="small" icon="Upload">上传回签件</el-button>
-        </el-upload>
-        <span v-if="!returnFiles.length" class="muted">未上传；月结/自送客户建议上传</span>
-      </div>
-      <el-table
-        v-if="returnFiles.length"
-        :data="returnFiles"
-        border
-        style="margin-top: 10px"
-        size="small"
-      >
-        <el-table-column prop="fileName" label="文件名" min-width="200" />
-        <el-table-column label="操作" width="140">
-          <template #default="{ row }">
-            <el-link type="primary" :href="attachmentApi.downloadUrl(row.id)" target="_blank"
-              >下载</el-link
-            >
-            <el-link type="danger" style="margin-left: 8px" @click="removeReturnFile(row)"
-              >删除</el-link
-            >
-          </template>
-        </el-table-column>
-      </el-table>
+      <!-- 与详情抽屉共用同一 AttachmentCenter 实现（来源 sales_delivery），不另写上传逻辑 -->
+      <AttachmentCenter
+        v-if="receiveDeliveryId"
+        :key="`return-receive-${receiveDeliveryId}`"
+        source-type="sales_delivery"
+        :source-id="receiveDeliveryId"
+        mode="panel"
+        title="回签件"
+        view-perm="sales:delivery:doc:view"
+        edit-perm="sales:delivery:doc:add"
+      />
+      <div class="muted">客户签字的送货单回签件；月结/自送客户建议上传</div>
       <template #footer
         ><el-button @click="receiveVisible = false">取消</el-button
         ><el-button type="primary" :loading="submitting" @click="submitReceive"
@@ -311,7 +280,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deliveryApi, type SalesDeliveryQueryDTO, type SalesDeliveryVO } from '@/api/sales/delivery'
 import { orderApi } from '@/api/sales/order'
-import { attachmentApi } from '@/api/system/attachment'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import { DeliveryStatusEnum } from '@/enums/sales/DeliveryEnum'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 import MergeDeliveryWorkbench from './components/MergeDeliveryWorkbench.vue'
@@ -494,7 +463,6 @@ async function showDetail(row: SalesDeliveryVO) {
   current.value = detail.data || undefined
   items.value = order.data?.items || []
   detailVisible.value = true
-  await loadReturnFiles(row.deliveryId)
 }
 
 /** 本次发货明细（分批发货）：优先用发货单自己的明细；历史单无明细时退回订单明细 */
@@ -542,36 +510,7 @@ async function submitReject() {
   }
 }
 
-/** 回签件（口径 D2）：bizType=sales_delivery + bizId=deliveryId，标记「结算依据」 */
-const RETURN_BIZ_TYPE = 'sales_delivery'
-const returnFiles = ref<any[]>([])
-const returnFilesDeliveryId = ref<number | null>(null)
-async function loadReturnFiles(deliveryId: number) {
-  returnFilesDeliveryId.value = deliveryId
-  const res = await attachmentApi.list(RETURN_BIZ_TYPE, deliveryId)
-  returnFiles.value = res.data || []
-}
-async function beforeUploadReturn(file: File, deliveryIdArg?: number) {
-  const deliveryId = deliveryIdArg ?? current.value?.deliveryId
-  if (!deliveryId) return false
-  try {
-    await attachmentApi.upload(file, RETURN_BIZ_TYPE, deliveryId, '结算依据')
-    ElMessage.success('回签件已上传')
-    await loadReturnFiles(deliveryId)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '回签件上传失败')
-  }
-  return false
-}
-async function removeReturnFile(row: any) {
-  try {
-    await attachmentApi.remove(row.id)
-    ElMessage.success('已删除')
-    if (returnFilesDeliveryId.value) await loadReturnFiles(returnFilesDeliveryId.value)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '删除失败')
-  }
-}
+/** 回签件（口径 D2）：已换成公共附件组件（来源 sales_delivery），上传/列表/删除统一由 AttachmentCenter 处理。 */
 function openReceive(row: SalesDeliveryVO) {
   receiveDeliveryId.value = row.deliveryId
   Object.assign(receiveForm, {
@@ -580,8 +519,6 @@ function openReceive(row: SalesDeliveryVO) {
     customerReceiveDate: '',
     receiveRemark: '',
   })
-  returnFiles.value = []
-  void loadReturnFiles(row.deliveryId)
   receiveVisible.value = true
 }
 async function submitReceive() {
@@ -616,10 +553,5 @@ onMounted(load)
 .muted {
   color: #909399;
   font-size: 12px;
-}
-.attach-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 </style>

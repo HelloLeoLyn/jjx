@@ -68,4 +68,26 @@ class AttachmentSourcePolicyTest {
             assertThrows(BusinessException.class, () -> policy.check("purchase_invoice", 89L, true));
         }
     }
+    @Test
+    void salesDeliveryUsesDocumentPermissionsAndDeliveryIdentity() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("FROM sales_delivery"), eq(String.class), eq(88L)))
+                .thenReturn(List.of("DL-88"));
+        AttachmentSourcePolicy policy = new AttachmentSourcePolicy(jdbc);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::isLogin).thenReturn(true);
+            // 写权限为 :add（凭证式，与收货票据/采购发票同款）
+            assertEquals("DL-88", policy.check("sales_delivery", 88L, true));
+            auth.verify(() -> StpUtil.checkPermission("sales:delivery:doc:add"));
+            assertEquals("DL-88", policy.check("sales_delivery", 88L, false));
+            auth.verify(() -> StpUtil.checkPermission("sales:delivery:doc:view"));
+            assertFalse(policy.canRead("sales_delivery", 88L));
+            auth.when(() -> StpUtil.hasPermission("sales:delivery:doc:view")).thenReturn(true);
+            assertTrue(policy.canRead("sales_delivery", 88L));
+            assertFalse(policy.canRead("sales_delivery", 89L));
+            assertThrows(BusinessException.class, () -> policy.check("sales_delivery", 89L, true));
+            // 无 trace 列：traceIdOf 返回 null（不引入跨表分层）
+            assertNull(policy.traceIdOf("sales_delivery", 88L));
+        }
+    }
 }

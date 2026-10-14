@@ -19,17 +19,22 @@ public class AttachmentSourcePolicy {
     private static final String INVOICE = "purchase_invoice";
     private static final String INVOICE_SQL = "SELECT document_no FROM purchase_document WHERE document_id=? AND document_type='invoice'";
     private static final Source INVOICE_SOURCE = new Source("purchase:invoice:doc", INVOICE_SQL, null);
+    /** 销售送货回签件（dev-20261014-023）：独立权限域 sales:delivery:doc，写权限 :add（凭证式）。 */
+    private static final String SALES_DELIVERY = "sales_delivery";
+    private static final String SALES_DELIVERY_SQL = "SELECT delivery_no FROM sales_delivery WHERE delivery_id=? AND deleted=0";
+    private static final Source SALES_DELIVERY_SOURCE = new Source("sales:delivery:doc", SALES_DELIVERY_SQL, null);
 
     private String permission(String type, Source source, boolean write) {
         String canonical = canonical(type);
-        boolean addWrite = RECEIPT.equals(canonical) || INVOICE.equals(canonical);
+        boolean addWrite = RECEIPT.equals(canonical) || INVOICE.equals(canonical) || SALES_DELIVERY.equals(canonical);
         return source.permission() + (write ? (addWrite ? ":add" : ":edit") : ":view");
     }
 
-    /** 收货票据/采购发票不走 SOURCES 通用表：权限前缀 :add 写法 + 非标准单号解析。 */
+    /** 收货票据/采购发票/销售发货回签件不走 SOURCES 通用表：权限前缀 :add 写法 + 非标准单号解析。 */
     private Source sourceByType(String canonical) {
         if (RECEIPT.equals(canonical)) return RECEIPT_SOURCE;
         if (INVOICE.equals(canonical)) return INVOICE_SOURCE;
+        if (SALES_DELIVERY.equals(canonical)) return SALES_DELIVERY_SOURCE;
         return SOURCES.get(canonical);
     }
     private record Source(String permission, String sql, String productSql) {}
@@ -89,7 +94,9 @@ public class AttachmentSourcePolicy {
             ? "SELECT inbound_id FROM inventory_inbound_order WHERE inbound_no=? AND source_type='PURCHASE'"
             : INVOICE.equals(canonical)
                 ? "SELECT document_id FROM purchase_document WHERE document_no=? AND document_type='invoice'"
-                : ID_BY_NO_SQL.get(canonical), Long.class, number.trim());
+                : SALES_DELIVERY.equals(canonical)
+                    ? "SELECT delivery_id FROM sales_delivery WHERE delivery_no=? AND deleted=0"
+                    : ID_BY_NO_SQL.get(canonical), Long.class, number.trim());
         // 先解析再判权；即使未匹配也执行同一权限检查，不向无权限用户泄露单号是否存在。
         if (source.permission() != null) StpUtil.checkPermission(source.permission() + ":view");
         return ids.size() == 1 ? ids.get(0) : null;

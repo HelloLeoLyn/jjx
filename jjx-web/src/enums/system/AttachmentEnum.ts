@@ -32,6 +32,7 @@ export const AttachmentSourceTypeEnum = createEnum({
     { value: 'quotation', label: '报价单', tagProps: { type: 'primary' } },
     { value: 'sales_order', label: '销售订单', tagProps: { type: 'primary' } },
     { value: 'sample', label: '样品单', tagProps: { type: 'primary' } },
+    { value: 'sales_delivery', label: '销售发货单', tagProps: { type: 'primary' } },
     { value: 'purchase_order', label: '采购订单', tagProps: { type: 'info' } },
     { value: 'purchase_payment', label: '付款凭证', tagProps: { type: 'info' } },
     { value: 'purchase_receipt', label: '收货票据', tagProps: { type: 'info' } },
@@ -53,6 +54,8 @@ export const ATTACHMENT_SOURCE_PERMISSION: Record<string, string> = {
   quotation: 'sales:quotation',
   sales_order: 'sales:order',
   sample: 'sales:sample',
+  // 回签件上传权限为 :add，由业务入口显式传 editPerm。
+  sales_delivery: 'sales:delivery:doc',
   purchase_order: 'purchase:order',
   purchase_payment: 'purchase:payment',
   // 收货上传权限为 :add，由业务入口显式传 editPerm。
@@ -82,6 +85,7 @@ export const ATTACHMENT_SOURCE_CODE: Record<string, string> = {
   quotation: 'QT',
   sales_order: 'SO',
   sample: 'SP',
+  sales_delivery: 'DL',
   purchase_order: 'PO',
   purchase_payment: 'PAY',
   purchase_receipt: 'IN',
