@@ -19,7 +19,14 @@ public interface SysAttachmentMapper extends BaseMapper<SysAttachment> {
     @Select("SELECT * FROM sys_attachment WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     SysAttachment selectActiveForUpdate(Long id);
 
-    @Select("SELECT * FROM sys_attachment WHERE biz_type = 'product' AND biz_id = #{productId} AND drawing_no = #{drawingNo} AND deleted = 0 FOR UPDATE")
+    /**
+     * 取某产品某图纸编号下的全部附件（行锁）。
+     * 归属按引用表判定（source_type='product' AND product_id），不再依赖已废弃的 biz_type/biz_id（dev-20261014-016 第3项）。
+     */
+    @Select("SELECT a.* FROM sys_attachment a "
+            + "JOIN sys_attachment_ref r ON r.attachment_id = a.id AND r.deleted = 0 "
+            + "AND r.source_type = 'product' AND r.product_id = #{productId} "
+            + "WHERE a.drawing_no = #{drawingNo} AND a.deleted = 0 FOR UPDATE")
     List<SysAttachment> selectDrawingForUpdate(@org.apache.ibatis.annotations.Param("productId") Long productId,
                                               @org.apache.ibatis.annotations.Param("drawingNo") String drawingNo);
 

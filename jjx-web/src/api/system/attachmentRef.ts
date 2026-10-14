@@ -47,6 +47,22 @@ export interface AttachmentRefItem {
   fileSize?: number | null
   /** 附件 MIME（后端回填，用于预览/图片判定） */
   fileType?: string | null
+  /** 图种/文件类别（后端从 sys_attachment 回填，工程图纸库分组用） */
+  category?: string | null
+  /** 版本（后端从 sys_attachment 回填） */
+  version?: string | null
+  /** 图纸编号（后端从 sys_attachment 回填） */
+  drawingNo?: string | null
+  /** 图纸名称（后端从 sys_attachment 回填） */
+  drawingName?: string | null
+  /** 文件用途：ORIGINAL=工程原稿，PRINT=预览打印件（后端从 sys_attachment 回填） */
+  fileRole?: string | null
+  /** 是否现行版 0/1（后端从 sys_attachment 回填） */
+  isCurrent?: number | null
+  /** 是否受控 0/1（后端从 sys_attachment 回填） */
+  isControlled?: number | null
+  /** 是否已下发 0/1（后端从 sys_attachment 回填） */
+  released?: number | null
 }
 
 /** 可选的图纸元数据（dev-20261014-029，019 方案B）

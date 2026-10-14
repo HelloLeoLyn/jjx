@@ -54,6 +54,7 @@ public class AttachmentRefService {
         }
         String type = optional(request.getDocumentType(), 100);
         types.validate(type, source);
+        validateProductDrawing(source, request.getProductId(), file);
         SysAttachmentRef ref = new SysAttachmentRef();
         ref.setAttachmentId(file.getId()); ref.setSourceType(source); ref.setSourceId(request.getSourceId());
         ref.setSourceNo(sourceNo); ref.setProductCode(optional(request.getProductCode(), 64)); ref.setProductId(request.getProductId()); ref.setDocumentType(type);
@@ -96,9 +97,10 @@ public class AttachmentRefService {
     }
 
     /**
-     * 批量回填附件文件元数据（文件名/大小/类型）。
+     * 批量回填附件文件元数据（文件名/大小/类型 + 图纸列）。
      * 仅用于展示：一条 IN 查询，不改引用模型、不改权限判定、不写任何数据。
      * 附件已软删时仍回填（历史行仍需展示原文件名），故直接查表而不用逻辑删除过滤的 Mapper。
+     * 图纸列（category/version/drawing_no/drawing_name/file_role/is_current/is_controlled/released）供工程图纸库分组/现行/受控/下发展示（dev-20261014-016 第3项）。
      */
     private void fillFileMetadata(List<SysAttachmentRef> rows) {
         if (rows == null || rows.isEmpty()) return;
@@ -107,12 +109,20 @@ public class AttachmentRefService {
         if (ids.isEmpty()) return;
         String placeholders = ids.stream().map(i -> "?").collect(Collectors.joining(","));
         Map<Long, Object[]> files = new HashMap<>();
-        jdbc.query("SELECT id,file_name,file_size,file_type FROM sys_attachment WHERE id IN (" + placeholders + ")",
+        jdbc.query("SELECT id,file_name,file_size,file_type,category,version,drawing_no,drawing_name,file_role,is_current,is_controlled,released FROM sys_attachment WHERE id IN (" + placeholders + ")",
             (rs, rowNum) -> {
                 files.put(rs.getLong("id"), new Object[]{
                     rs.getString("file_name"),
                     rs.getObject("file_size") == null ? 0L : rs.getLong("file_size"),
-                    rs.getString("file_type")});
+                    rs.getString("file_type"),
+                    rs.getString("category"),
+                    rs.getString("version"),
+                    rs.getString("drawing_no"),
+                    rs.getString("drawing_name"),
+                    rs.getString("file_role"),
+                    rs.getObject("is_current") == null ? null : rs.getInt("is_current"),
+                    rs.getObject("is_controlled") == null ? null : rs.getInt("is_controlled"),
+                    rs.getObject("released") == null ? null : rs.getInt("released")});
                 return null;
             },
             ids.toArray());
@@ -122,7 +132,48 @@ public class AttachmentRefService {
             ref.setFileName((String) meta[0]);
             ref.setFileSize((Long) meta[1]);
             ref.setFileType((String) meta[2]);
+            ref.setCategory((String) meta[3]);
+            ref.setVersion((String) meta[4]);
+            ref.setDrawingNo((String) meta[5]);
+            ref.setDrawingName((String) meta[6]);
+            ref.setFileRole((String) meta[7]);
+            ref.setIsCurrent((Integer) meta[8]);
+            ref.setIsControlled((Integer) meta[9]);
+            ref.setReleased((Integer) meta[10]);
         }
+    }
+
+    /**
+     * 产品工程图纸唯一性守卫（同图纸编号、同版本下原稿/打印件各一份）（dev-20261014-016 第3项）。
+     * 图纸经公共链路（temp 上传写图纸列 + 建引用）落库后附件表无 biz_type/biz_id，故归属改为
+     * 「引用表 source_type='product' AND product_id」+ 附件表 drawing_no 判定（不依赖已废弃字段）。
+     * 仅对 product 来源且带图纸编号的附件生效；其它来源、普通产品资料不受影响。
+     * 说明：为换取吞吐未对产品行加锁，判重为尽力而为（UI 侧另有同批预检）；极端并发下仍可能两个同版同用途件同时通过。
+     */
+    private void validateProductDrawing(String source, Long productId, SysAttachment file) {
+        String drawingNo = file.getDrawingNo();
+        if (!"product".equals(source) || productId == null || drawingNo == null || drawingNo.isBlank()) return;
+        List<Map<String, Object>> rows = jdbc.queryForList(
+            "SELECT a.category,a.version,a.file_role,a.released FROM sys_attachment a "
+                + "JOIN sys_attachment_ref r ON r.attachment_id=a.id AND r.deleted=0 AND r.source_type='product' AND r.product_id=? "
+                + "WHERE a.deleted=0 AND a.drawing_no=? AND a.id<>?",
+            productId, drawingNo, file.getId());
+        for (Map<String, Object> row : rows) {
+            boolean sameVersion = Objects.equals(text(row.get("version")), file.getVersion());
+            if (sameVersion && isYes(row.get("released"))) throw new BusinessException("该版本已下发，请先撤回或上传新版本");
+            if (!Objects.equals(text(row.get("category")), file.getCategory())) throw new BusinessException("同一图纸编号的文件类别必须一致");
+            if (sameVersion && Objects.equals(text(row.get("file_role")), file.getFileRole()))
+                throw new BusinessException("该图纸版本已存在相同用途的文件，请使用新版本或先删除未下发的重复文件");
+        }
+    }
+
+    private String text(Object value) { return value == null ? null : String.valueOf(value); }
+
+    private boolean isYes(Object value) {
+        if (value == null) return false;
+        if (value instanceof Boolean b) return b;
+        if (value instanceof Number n) return n.intValue() == 1;
+        return "1".equals(String.valueOf(value)) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     /**

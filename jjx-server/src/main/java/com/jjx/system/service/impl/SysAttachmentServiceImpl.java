@@ -592,11 +592,29 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
 
     private SysAttachment lockedProductFile(Long id) {
         SysAttachment file = getById(id);
-        if (file == null || !"product".equals(file.getBizType())) throw new BusinessException("产品文件不存在");
-        lockProduct(file.getBizId());
+        if (file == null) throw new BusinessException("产品文件不存在");
+        // 归属按引用表判定（source_type='product'），不再依赖已废弃的 biz_type/biz_id（dev-20261014-016 第3项）
+        Long productId = requireProductId(id);
+        lockProduct(productId);
         file = attachmentMapper.selectActiveForUpdate(id);
         if (file == null) throw new BusinessException("产品文件已删除，请刷新");
         return file;
+    }
+
+    /** 附件所属产品 id（引用表 source_type='product' 的 product_id）；查不到则报错。 */
+    private Long requireProductId(Long attachmentId) {
+        Long productId = productIdOf(attachmentId);
+        if (productId == null) throw new BusinessException("产品文件不存在");
+        return productId;
+    }
+
+    /** 附件所属产品 id（引用表 source_type='product'）；无有效引用则返回 null。不依赖 biz_type/biz_id。 */
+    private Long productIdOf(Long attachmentId) {
+        if (attachmentId == null) return null;
+        List<Long> ids = jdbcTemplate.queryForList(
+                "SELECT product_id FROM sys_attachment_ref WHERE attachment_id=? AND source_type='product' AND product_id IS NOT NULL AND deleted=0 ORDER BY id LIMIT 1",
+                Long.class, attachmentId);
+        return ids.isEmpty() ? null : ids.get(0);
     }
 
     private List<SysAttachment> drawingFiles(Long productId, String drawingNo) {
@@ -655,6 +673,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     @Transactional(rollbackFor = Exception.class)
     public boolean updateDrawingMetadata(Long id, String drawingNo, String drawingName, String version, String fileRole, String category) {
         SysAttachment file = lockedProductFile(id);
+        Long productId = requireProductId(id);
         category = optionalText(category, 50, "文件类别");
         if (category == null) category = file.getCategory();
         drawingNo = requiredText(drawingNo, 80, "图纸编号").toUpperCase(java.util.Locale.ROOT);
@@ -673,7 +692,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
                 (!file.getDrawingNo().equals(drawingNo) || !sameVersion(file, version) || !java.util.Objects.equals(file.getFileRole(), fileRole) || !java.util.Objects.equals(file.getCategory(), category))) {
             throw new BusinessException("现行版本请上传新版本，不直接修改图纸关联");
         }
-        List<SysAttachment> files = drawingFiles(file.getBizId(), drawingNo);
+        List<SysAttachment> files = drawingFiles(productId, drawingNo);
         validateDrawingFile(files, id, category, version, fileRole);
         final String targetVersion = version;
         boolean otherVersionCurrent = files.stream().anyMatch(a -> !a.getId().equals(id) && yes(a.getIsCurrent()) && !sameVersion(a, targetVersion));
@@ -681,9 +700,11 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
         boolean current = (yes(file.getIsCurrent()) && !otherVersionCurrent)
                 || files.stream().anyMatch(a -> sameVersion(a, targetVersion) && yes(a.getIsCurrent()));
         // 同一版本的配套文件同步现行，避免绑定后只有原稿或只有PDF现行。
-        if (current) update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getBizType, "product")
-                .eq(SysAttachment::getBizId, file.getBizId()).eq(SysAttachment::getDrawingNo, drawingNo)
-                .eq(SysAttachment::getVersion, version).set(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode()));
+        if (current) {
+            List<Long> syncIds = files.stream().filter(a -> sameVersion(a, targetVersion)).map(SysAttachment::getId).toList();
+            if (!syncIds.isEmpty()) update(Wrappers.<SysAttachment>lambdaUpdate().in(SysAttachment::getId, syncIds)
+                    .set(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode()));
+        }
         return update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getId, id)
                 .set(SysAttachment::getDrawingNo, drawingNo).set(SysAttachment::getDrawingName, drawingName == null ? drawingNo : drawingName)
                 .set(SysAttachment::getCategory, category)
@@ -700,16 +721,18 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
             return update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getId, id)
                     .set(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode()));
         }
-        List<SysAttachment> files = drawingFiles(file.getBizId(), file.getDrawingNo());
+        Long productId = requireProductId(id);
+        List<SysAttachment> files = drawingFiles(productId, file.getDrawingNo());
         boolean alreadyCurrent = files.stream().filter(a -> sameVersion(a, file.getVersion())).allMatch(a -> yes(a.getIsCurrent()));
         if (alreadyCurrent) return true;
-        update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getBizType, "product")
-                .eq(SysAttachment::getBizId, file.getBizId()).eq(SysAttachment::getDrawingNo, file.getDrawingNo())
+        List<Long> drawingIds = files.stream().map(SysAttachment::getId).toList();
+        if (!drawingIds.isEmpty()) update(Wrappers.<SysAttachment>lambdaUpdate().in(SysAttachment::getId, drawingIds)
                 .set(SysAttachment::getIsCurrent, YesNoEnum.NO.getCode()));
         // 恢复历史版本为现行也必须重新下发；其他历史版本保留原下发信息。
-        return update(Wrappers.<SysAttachment>lambdaUpdate().eq(SysAttachment::getBizType, "product")
-                .eq(SysAttachment::getBizId, file.getBizId()).eq(SysAttachment::getDrawingNo, file.getDrawingNo())
-                .eq(SysAttachment::getVersion, file.getVersion()).set(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode())
+        List<Long> versionIds = files.stream().filter(a -> sameVersion(a, file.getVersion())).map(SysAttachment::getId).toList();
+        if (versionIds.isEmpty()) versionIds = List.of(id);
+        return update(Wrappers.<SysAttachment>lambdaUpdate().in(SysAttachment::getId, versionIds)
+                .set(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode())
                 .set(SysAttachment::getReleased, YesNoEnum.NO.getCode()).set(SysAttachment::getReleasedAt, null)
                 .set(SysAttachment::getReleasedBy, null));
     }
@@ -718,9 +741,10 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     @Transactional(rollbackFor = Exception.class)
     public boolean setReleased(Long id, boolean released) {
         SysAttachment file = lockedProductFile(id);
+        Long productId = requireProductId(id);
         List<SysAttachment> versionFiles = file.getDrawingNo() == null || file.getDrawingNo().isBlank()
                 ? java.util.Collections.singletonList(file)
-                : drawingFiles(file.getBizId(), file.getDrawingNo()).stream().filter(a -> sameVersion(a, file.getVersion())).toList();
+                : drawingFiles(productId, file.getDrawingNo()).stream().filter(a -> sameVersion(a, file.getVersion())).toList();
         if (released && versionFiles.stream().anyMatch(a -> !yes(a.getIsCurrent()))) {
             throw new BusinessException("只有现行版本可以下发，请先设为现行");
         }

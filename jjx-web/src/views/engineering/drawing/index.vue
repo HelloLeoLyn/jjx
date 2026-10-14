@@ -16,7 +16,7 @@
       <main v-loading="detailLoading" class="drawing-panel">
         <template v-if="selected">
           <div class="product-summary"><div class="product-summary-title"><h3>{{ selected.productName }}</h3><el-tag size="small" :type="ProductStatusEnum.getTagProps(selected.productStatus).type">{{ ProductStatusEnum.getLabel(selected.productStatus) }}</el-tag></div><div class="product-summary-fields"><span>产品编码 <strong>{{ selected.productCode }}</strong></span><span>客户 <strong>{{ selected.customerName || '—' }}</strong></span><span>规格 <strong>{{ specificationText || '—' }}</strong></span></div></div>
-          <EngineeringDrawingLibrary :key="selected.productId" :product-code="selected.productCode" :product-name="selected.productName" @busy="busy = $event" />
+          <EngineeringDrawingLibrary :key="selected.productId" :product-id="selected.productId" :product-code="selected.productCode" :product-name="selected.productName" @busy="busy = $event" />
         </template>
         <el-empty v-else description="从左侧选择产品，或按名称、编码搜索" :image-size="100" />
       </main>

@@ -199,6 +199,7 @@
                 v-if="productCode"
                 :key="`${productId}-atlas`"
                 :active="activeTab === 'atlas'"
+                :product-id="productId"
                 :product-code="productCode"
                 :product-name="detail?.product?.productName || ''"
                 :categories="ENGINEERING_DRAWING_VISIBLE_CATEGORIES"

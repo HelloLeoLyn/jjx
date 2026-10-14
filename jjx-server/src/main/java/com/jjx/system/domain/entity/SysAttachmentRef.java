@@ -38,4 +38,23 @@ public class SysAttachmentRef {
     private Long fileSize;
     @TableField(exist = false)
     private String fileType;
+
+    // ===== 图纸元数据（非落库列：refs 查询链路从 sys_attachment 回填，供工程图纸库图种分组/版本/现行/受控/下发展示）=====
+    // 同样是只读展示字段，不参与引用唯一性、权限判定与任何写入。（dev-20261014-016 第3项）
+    @TableField(exist = false)
+    private String category;
+    @TableField(exist = false)
+    private String version;
+    @TableField(exist = false)
+    private String drawingNo;
+    @TableField(exist = false)
+    private String drawingName;
+    @TableField(exist = false)
+    private String fileRole;
+    @TableField(exist = false)
+    private Integer isCurrent;
+    @TableField(exist = false)
+    private Integer isControlled;
+    @TableField(exist = false)
+    private Integer released;
 }

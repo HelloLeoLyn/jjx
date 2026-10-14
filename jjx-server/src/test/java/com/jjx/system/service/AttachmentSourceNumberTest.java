@@ -28,8 +28,8 @@ class AttachmentSourceNumberTest {
             JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource(db, true));
             jdbc.execute("CREATE TABLE sales_inquiry(inquiry_id BIGINT, inquiry_no VARCHAR, deleted INT)");
             jdbc.execute("INSERT INTO sales_inquiry VALUES (7,'INQ007',0),(8,'DELETED',1)");
-            jdbc.execute("CREATE TABLE sys_attachment(id BIGINT,file_name VARCHAR,file_size BIGINT,file_type VARCHAR)");
-            jdbc.execute("INSERT INTO sys_attachment VALUES (40,'drawing.pdf',1234,'application/pdf')");
+            jdbc.execute("CREATE TABLE sys_attachment(id BIGINT,file_name VARCHAR,file_size BIGINT,file_type VARCHAR,category VARCHAR,version VARCHAR,drawing_no VARCHAR,drawing_name VARCHAR,file_role VARCHAR,is_current INT,is_controlled INT,released INT)");
+            jdbc.execute("INSERT INTO sys_attachment(id,file_name,file_size,file_type) VALUES (40,'drawing.pdf',1234,'application/pdf')");
             var mapper = mock(SysAttachmentRefMapper.class);
             when(mapper.selectList(any())).thenAnswer(inv -> {
                 var row = new SysAttachmentRef();

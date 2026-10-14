@@ -94,6 +94,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { attachmentApi, type DrawingMetadata, type ProductDrawingFile } from '@/api/system/attachment'
+import { attachmentRefApi, type AttachmentDrawingMetadata, type AttachmentRefItem } from '@/api/system/attachmentRef'
 import { useUserStore } from '@/store/modules/user'
 import { useDict } from '@/composables/useDict'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum, DrawingFileRoleEnum, DrawingViewEnum, DrawingUploadStatusEnum } from '@/enums/product/drawing'
@@ -101,7 +102,11 @@ import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES, LEGACY_PRODUCT_ATLAS_CATEGORY, 
 import { downloadFile, fileKind } from '@/components/product/productFilePreview'
 import ProductFilePreview from '@/components/product/ProductFilePreview.vue'
 
-const props = defineProps<{ productCode: string; productName: string; categories?: string[]; active?: boolean }>()
+/** 图纸库行 = 附件（sys_attachment）+ 其产品引用（sys_attachment_ref）。
+ *  dev-20261014-016 第3项：读走按产品查引用（refsByProduct），写走公共 temp 上传 + 建引用；refId 用于解除引用。 */
+type DrawingFile = ProductDrawingFile & { refId: number }
+
+const props = defineProps<{ productId?: number; productCode: string; productName: string; categories?: string[]; active?: boolean }>()
 const emit = defineEmits<{ busy: [value: boolean]; loaded: [files: ProductDrawingFile[]] }>()
 const user = useUserStore()
 const canUpload = computed(() => user.hasPermission('product:edit'))
@@ -115,7 +120,7 @@ const categoryOptions = computed(() => {
     .filter(item => allowedCategories.includes(item.value) && item.value !== LEGACY_PRODUCT_ATLAS_CATEGORY)
     .sort((a, b) => allowedCategories.indexOf(a.value) - allowedCategories.indexOf(b.value))
 })
-const files = ref<ProductDrawingFile[]>([])
+const files = ref<DrawingFile[]>([])
 const loading = ref(false)
 const error = ref('')
 const keyword = ref('')
@@ -123,11 +128,13 @@ const categoryFilter = ref('')
 const view = ref<string>(DrawingViewEnum.ALL.value)
 const releaseFilter = ref<number | string>('')
 const mutationId = ref<number>()
+/** 图种（中文标签）→ attachment_document_type 编码；建引用时作 documentType（无同名项则 null）。 */
+const labelToDocType = ref<Record<string, string>>({})
 let generation = 0
 let disposed = false
-interface RevisionRow { key: string; drawingNo: string; name: string; category: string; version: string; files: ProductDrawingFile[]; current: boolean; released: boolean; hasReleased: boolean; latest: ProductDrawingFile }
+interface RevisionRow { key: string; drawingNo: string; name: string; category: string; version: string; files: DrawingFile[]; current: boolean; released: boolean; hasReleased: boolean; latest: DrawingFile }
 const rows = computed<RevisionRow[]>(() => {
-  const groups = new Map<string, ProductDrawingFile[]>()
+  const groups = new Map<string, DrawingFile[]>()
   for (const file of files.value) {
     const key = file.drawingNo ? JSON.stringify([file.drawingNo, file.version]) : `legacy-${file.id}`
     groups.set(key, [...(groups.get(key) || []), file])
@@ -150,18 +157,44 @@ const filteredRows = computed(() => rows.value.filter(row => {
 }))
 async function loadFiles() {
   if (disposed || props.active === false) return
+  if (!props.productId) { files.value = []; emit('loaded', []); return }
   const current = ++generation
   loading.value = true; error.value = ''
   try {
-    const res: any = await attachmentApi.productFiles(props.productCode)
+    // 读：按产品查引用（不再走已废弃的 biz_type/biz_id 通道）。refsByProduct 同时按 product_id 与 (source_type='product' AND source_id) 取；
+    // 图纸库只管理 product 来源的附件，故按 sourceType 再过滤一层，避免其它来源（询价/报价等）带 product_id 的行串入。
+    const res: any = await attachmentRefApi.refsByProduct(props.productId)
     if (current === generation && !disposed) {
-      files.value = (res.data || []).filter((file: ProductDrawingFile) => allowedCategories.includes(file.category))
+      files.value = ((res.data || []) as AttachmentRefItem[])
+        .filter(ref => ref.sourceType === 'product' && Number(ref.attachmentId) > 0)
+        .map(toDrawingFile)
+        .filter(file => allowedCategories.includes(file.category))
       emit('loaded', files.value)
     }
   } catch (e) { if (current === generation && !disposed) { files.value = []; error.value = e instanceof Error ? e.message : '文件加载失败，请刷新重试' } }
   finally { if (current === generation && !disposed) loading.value = false }
 }
-watch(() => props.productCode, () => { files.value = []; categoryFilter.value = ''; keyword.value = ''; previewVisible.value = false; loadFiles() }, { immediate: false })
+/** 引用行 → 图纸库行：id 取附件 id（预览/下载/图纸操作均作用于附件行），图纸列由后端从 sys_attachment 回填。 */
+function toDrawingFile(ref: AttachmentRefItem): DrawingFile {
+  return {
+    id: Number(ref.attachmentId),
+    fileName: ref.fileName || '',
+    fileSize: ref.fileSize ?? 0,
+    fileType: ref.fileType ?? undefined,
+    category: ref.category || '',
+    version: ref.version ?? undefined,
+    drawingNo: ref.drawingNo ?? undefined,
+    drawingName: ref.drawingName ?? undefined,
+    fileRole: ref.fileRole ?? undefined,
+    isCurrent: ref.isCurrent ?? undefined,
+    isControlled: ref.isControlled ?? undefined,
+    released: ref.released ?? undefined,
+    createBy: ref.createBy ?? undefined,
+    createTime: ref.createTime ?? undefined,
+    refId: Number(ref.id),
+  }
+}
+watch(() => props.productId, () => { files.value = []; categoryFilter.value = ''; keyword.value = ''; previewVisible.value = false; loadFiles() }, { immediate: false })
 const previewVisible = ref(false)
 const previewFile = ref<ProductDrawingFile>()
 function preview(file: ProductDrawingFile) { previewFile.value = file; previewVisible.value = true }
@@ -187,12 +220,12 @@ async function release(row: RevisionRow) {
   } catch (e) { if (!cancelled(e)) ElMessage.error(e instanceof Error ? e.message : '操作失败') }
   finally { mutationId.value = undefined }
 }
-async function remove(file: ProductDrawingFile) {
-  try { await ElMessageBox.confirm(`删除未下发文件「${file.fileName}」？`, '删除文件', { type: 'warning' }); await attachmentApi.remove(file.id); await loadFiles() }
-  catch (e) { if (!cancelled(e)) ElMessage.error(e instanceof Error ? e.message : '删除失败') }
+async function remove(file: DrawingFile) {
+  try { await ElMessageBox.confirm(`从图纸库移除「${file.fileName}」？仅解除引用，不删除文件。`, '移除文件', { type: 'warning' }); await attachmentRefApi.unbind(file.refId); await loadFiles() }
+  catch (e) { if (!cancelled(e)) ElMessage.error(e instanceof Error ? e.message : '移除失败') }
 }
 
-interface UploadRow extends DrawingMetadata { uid: number; file: File; category: string; status: string; progress: number; error: string; thumb?: string }
+interface UploadRow extends DrawingMetadata { uid: number; file: File; category: string; status: string; progress: number; error: string; thumb?: string; requestKey?: string }
 const uploadVisible = ref(false)
 const uploading = ref(false)
 const uploadNewRevision = ref(false)
@@ -237,18 +270,58 @@ async function submitUpload() {
     keys.add(key)
   }
   uploading.value = true
-  const code = props.productCode
   try {
     for (const row of pending) {
       if (disposed) break
       row.status = DrawingUploadStatusEnum.UPLOADING.value; row.error = ''; row.progress = 0
       try {
-        await attachmentApi.uploadProductFile(row.file, code, row.category, row.version, { drawingNo: row.drawingNo.trim(), drawingName: row.drawingName?.trim(), version: row.version.trim(), fileRole: row.fileRole }, value => { row.progress = value })
+        await uploadDrawingFile(row, value => { row.progress = value })
         row.status = DrawingUploadStatusEnum.SUCCESS.value; row.progress = 100
       } catch (e) { row.status = DrawingUploadStatusEnum.FAILED.value; row.error = e instanceof Error ? e.message : '上传失败' }
     }
     await loadFiles()
   } finally { uploading.value = false }
+}
+/** 16~100 位 [A-Za-z0-9_-] 上传键；同一行重试复用同一键 → 服务端幂等返回原 attachmentId。 */
+function requestKeyOf(row: UploadRow): string {
+  if (row.requestKey) return row.requestKey
+  const raw = `dwg${props.productId || 0}${row.uid}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+  row.requestKey = raw.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100).padEnd(16, '0')
+  return row.requestKey
+}
+/** 图种（中文）→ attachment_document_type 编码（同名二级）；无同名项 = null（不造类型）。 */
+function documentTypeOf(category: string): string | null { return labelToDocType.value[category] ?? null }
+async function loadDocTypes() {
+  try {
+    const res: any = await attachmentRefApi.documentTypes()
+    const map: Record<string, string> = {}
+    for (const item of (res?.data || []) as Array<{ dict_code?: string; item_key?: string; label?: string; is_active?: number }>) {
+      if (item.dict_code === 'attachment_document_type' && item.is_active === 1 && item.label && item.item_key) map[item.label] = item.item_key
+    }
+    labelToDocType.value = map
+  } catch { labelToDocType.value = {} }
+}
+/** 公共链路写入：TEMP 上传（带 drawingMeta 写 sys_attachment 图纸列）→ 建产品引用（必须带 product_id）。 */
+async function uploadDrawingFile(row: UploadRow, onProgress: (percent: number) => void) {
+  if (!props.productId) throw new Error('缺少产品标识，无法上传图纸')
+  const drawingMeta: AttachmentDrawingMetadata = {
+    category: row.category,
+    drawingNo: row.drawingNo.trim(),
+    drawingName: row.drawingName?.trim() || undefined,
+    version: row.version.trim(),
+    fileRole: row.fileRole,
+  }
+  const res: any = await attachmentRefApi.tempUpload(row.file, requestKeyOf(row), onProgress, drawingMeta)
+  const attachmentId = Number(res?.data)
+  if (!attachmentId) throw new Error(res?.msg || '临时上传失败')
+  await attachmentRefApi.createRef({
+    attachmentId,
+    sourceType: 'product',
+    sourceId: props.productId,
+    productId: props.productId,
+    productCode: props.productCode,
+    documentType: documentTypeOf(row.category),
+  })
 }
 async function closeUpload(done?: () => void) {
   if (uploading.value) return
@@ -277,6 +350,7 @@ async function saveMetadata() {
 watch(() => uploadVisible.value || metadataVisible.value || uploading.value || metadataSaving.value || !!mutationId.value, value => emit('busy', value))
 watch(() => props.active, value => { if (value) loadFiles() })
 loadFiles()
+loadDocTypes()
 onBeforeUnmount(() => { disposed = true; generation++; revokeQueue() })
 </script>
 
