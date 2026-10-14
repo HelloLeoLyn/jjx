@@ -82,32 +82,24 @@
         </el-form>
       </div>
 
-      <!-- ③ 证据：截图/文件/文档 -->
+      <!-- ③ 证据：截图/文件/文档（走公共附件组件；来源按调用方 operation.bizType 透传，不写死） -->
       <div v-if="operation.evidence" class="op-section">
         <div class="op-section-title">
           证据
           <span class="op-section-tip">截图 / 文件 / 文档，作为本次操作的依据（选填）</span>
         </div>
-        <el-upload
-          :action="uploadUrl"
-          :headers="uploadHeaders"
-          :data="uploadData"
-          multiple
-          :limit="9"
-          :on-success="onUploadSuccess"
-          :on-remove="onUploadRemove"
-          :on-error="onUploadError"
-          :file-list="evidenceFileList"
-          list-type="text"
-          drag
-          style="width: 100%"
-        >
-          <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-          <div class="el-upload__text">拖拽文件到此处，或 <em>点击上传</em></div>
-          <template #tip>
-            <div class="el-upload__tip">支持图片、PDF、Word、Excel 等，最多 9 个文件</div>
-          </template>
-        </el-upload>
+        <AttachmentCenter
+          v-if="evidenceSourceType && bizId"
+          :key="`${evidenceSourceType}-${bizId}`"
+          ref="evidenceCenter"
+          :source-type="evidenceSourceType"
+          :source-id="bizId"
+          mode="upload-only"
+          :view-perm="evidenceViewPerm"
+          :edit-perm="evidenceEditPerm"
+          @uploaded="onEvidenceUploaded"
+        />
+        <div v-else class="op-section-tip">当前操作的附件来源未登记，暂不支持上传。</div>
       </div>
 
       <!-- ④ 事件预告：通知谁 / 派什么任务（配置了 impact 自然语言说明时隐藏，避免技术信息） -->
@@ -163,9 +155,14 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Document, Right, Bell, UploadFilled } from '@element-plus/icons-vue'
+import { Document, Right, Bell } from '@element-plus/icons-vue'
 import { eventConfigApi } from '@/api/system/event-config'
 import { roleApi } from '@/api/system/role'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import {
+  ATTACHMENT_SOURCE_PERMISSION,
+  canonicalAttachmentSource,
+} from '@/enums/system/AttachmentEnum'
 import type { SysEventConfig } from '@/types/system'
 import type { OperationDef } from './registry'
 
@@ -193,8 +190,8 @@ const visible = computed({
 
 const submitting = ref(false)
 const formValues = ref<Record<string, any>>({})
-const evidenceFileList = ref<any[]>([])
 const uploadedIds: number[] = []
+const evidenceCenter = ref<InstanceType<typeof AttachmentCenter> | null>(null)
 
 // ===== 状态文本 =====
 function statusText(status: number): string {
@@ -262,39 +259,23 @@ function kanbanLabel(module?: string): string {
   return module ? map[module] || module : '看板'
 }
 
-// ===== 证据上传 =====
-const uploadUrl = computed(() => {
-  const base = (import.meta.env.VITE_BASE_API || '/api') as string
-  return `${base}/system/attachment/upload`
+// ===== 证据上传（公共附件组件）=====
+// 来源由调用方传入的操作决定：operation.bizType 按白名单别名归一（如 sample_order→sample）。
+// 该弹窗被多个调用方复用，来源逐个来源透传给 AttachmentCenter，不写死。
+const evidenceSourceType = computed(() => canonicalAttachmentSource(props.operation?.bizType || ''))
+const evidenceViewPerm = computed(() => {
+  const prefix = ATTACHMENT_SOURCE_PERMISSION[evidenceSourceType.value]
+  return prefix ? `${prefix}:view` : ''
 })
-const uploadHeaders = computed(() => {
-  const token = localStorage.getItem('token')
-  // 2026-09-02 修复：el-upload 原生 XHR 默认 Accept: */* → 后端内容协商返回 YAML，
-  // 导致 onUploadSuccess 拿不到 code/data（1284 附件不进流水根因）；显式要求 JSON
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-  }
-  if (token) headers['token'] = token
-  return headers
+const evidenceEditPerm = computed(() => {
+  const prefix = ATTACHMENT_SOURCE_PERMISSION[evidenceSourceType.value]
+  return prefix ? `${prefix}:edit` : ''
 })
-const uploadData = computed(() => ({
-  bizType: props.operation?.bizType || '',
-  bizId: props.bizId ?? 0,
-}))
 
-function onUploadSuccess(response: any) {
-  if (response?.code === 200 && response?.data) {
-    uploadedIds.push(Number(response.data))
-  } else {
-    ElMessage.warning(response?.msg || '上传响应异常')
-  }
-}
-function onUploadRemove(file: any) {
-  const idx = uploadedIds.indexOf(Number(file.response?.data))
-  if (idx > -1) uploadedIds.splice(idx, 1)
-}
-function onUploadError() {
-  ElMessage.error('证据上传失败')
+// 上传成功的附件 ID 作为本次操作的证据留痕随确认提交（旧通道行为保持一致）
+function onEvidenceUploaded(payload: { attachmentId: number }) {
+  const id = Number(payload?.attachmentId)
+  if (id && !uploadedIds.includes(id)) uploadedIds.push(id)
 }
 
 // ===== 确认执行 =====
@@ -309,6 +290,12 @@ async function confirm() {
       ElMessage.warning(`请填写${field.label}`)
       return
     }
+  }
+
+  // 证据正在上传时不允许提交，避免本次证据留痕丢失
+  if (evidenceCenter.value?.uploading) {
+    ElMessage.warning('请等待证据上传完成')
+    return
   }
 
   submitting.value = true
@@ -340,7 +327,6 @@ watch(
         formValues.value[field.key] =
           field.defaultValue ?? (field.type === 'number' ? undefined : '')
       }
-      evidenceFileList.value = []
       uploadedIds.length = 0
       await loadEventsAndRoles()
     }
