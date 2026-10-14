@@ -47,6 +47,11 @@ public interface IPurchaseDocumentService {
     int verifyDocument(Long documentId, String verifierName, String verificationDate, String verificationRemark);
 
     /**
+     * 核验票据（带发票文件）：当票种为 invoice 时，在核验事务内把临时附件建成引用（dev-20261014-022）。
+     */
+    int verifyDocument(Long documentId, String verifierName, String verificationDate, String verificationRemark, List<Long> attachmentIds);
+
+    /**
      * 检查票据编号是否唯一
      */
     boolean checkDocumentNoUnique(String documentNo);

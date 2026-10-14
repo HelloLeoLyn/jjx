@@ -37,6 +37,8 @@ public class PurchaseInvoiceController extends BaseController {
 
     private final IPurchaseDocumentService documentService;
     private final IPurchaseOrderService purchaseOrderService;
+    /** 发票文件接入公共附件（独立权限域 purchase:invoice:doc:*，dev-20261014-022）。 */
+    private final com.jjx.purchase.service.PurchaseInvoiceAttachmentService invoiceAttachments;
 
     /**
      * 查询采购发票列表
@@ -126,9 +128,19 @@ public class PurchaseInvoiceController extends BaseController {
     public Result<Void> verify(@PathVariable Long invoiceId,
                                @RequestParam String verificationDate,
                                @RequestParam String verifierName,
-                               @RequestParam(required = false) String verificationRemark) {
-        documentService.verifyDocument(invoiceId, verifierName, verificationDate, verificationRemark);
+                               @RequestParam(required = false) String verificationRemark,
+                               @RequestParam(required = false) List<Long> attachmentIds) {
+        documentService.verifyDocument(invoiceId, verifierName, verificationDate, verificationRemark, attachmentIds);
         return Result.success();
+    }
+
+    /**
+     * 按发票查公共附件引用（发票文件接入公共附件，dev-20261014-022）。
+     */
+    @GetMapping("/doc/refs/{invoiceId}")
+    @SaCheckPermission("purchase:invoice:doc:view")
+    public Result<List<Map<String, Object>>> invoiceDocRefs(@PathVariable Long invoiceId) {
+        return Result.success(invoiceAttachments.list(invoiceId));
     }
 
     /**

@@ -35,6 +35,7 @@ export const AttachmentSourceTypeEnum = createEnum({
     { value: 'purchase_order', label: '采购订单', tagProps: { type: 'info' } },
     { value: 'purchase_payment', label: '付款凭证', tagProps: { type: 'info' } },
     { value: 'purchase_receipt', label: '收货票据', tagProps: { type: 'info' } },
+    { value: 'purchase_invoice', label: '采购发票', tagProps: { type: 'info' } },
     { value: 'production_order', label: '生产工单', tagProps: { type: 'info' } },
     { value: 'material', label: '物料', tagProps: { type: 'info' } },
     { value: 'task', label: '任务', tagProps: { type: 'info' } },
@@ -56,6 +57,8 @@ export const ATTACHMENT_SOURCE_PERMISSION: Record<string, string> = {
   purchase_payment: 'purchase:payment',
   // 收货上传权限为 :add，由业务入口显式传 editPerm。
   purchase_receipt: 'purchase:receipt:doc',
+  // 发票文件上传权限为 :add，由业务入口显式传 editPerm。
+  purchase_invoice: 'purchase:invoice:doc',
   production_order: 'production:order',
   material: 'inventory:material',
 }
@@ -82,6 +85,7 @@ export const ATTACHMENT_SOURCE_CODE: Record<string, string> = {
   purchase_order: 'PO',
   purchase_payment: 'PAY',
   purchase_receipt: 'IN',
+  purchase_invoice: 'INV',
   production_order: 'WO',
   material: 'MTR',
 }

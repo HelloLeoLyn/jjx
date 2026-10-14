@@ -16,9 +16,21 @@ public class AttachmentSourcePolicy {
     private static final String RECEIPT = "purchase_receipt";
     private static final String RECEIPT_SQL = "SELECT inbound_no FROM inventory_inbound_order WHERE inbound_id=? AND source_type='PURCHASE'";
     private static final Source RECEIPT_SOURCE = new Source("purchase:receipt:doc", RECEIPT_SQL, null);
+    private static final String INVOICE = "purchase_invoice";
+    private static final String INVOICE_SQL = "SELECT document_no FROM purchase_document WHERE document_id=? AND document_type='invoice'";
+    private static final Source INVOICE_SOURCE = new Source("purchase:invoice:doc", INVOICE_SQL, null);
 
     private String permission(String type, Source source, boolean write) {
-        return source.permission() + (write ? (RECEIPT.equals(canonical(type)) ? ":add" : ":edit") : ":view");
+        String canonical = canonical(type);
+        boolean addWrite = RECEIPT.equals(canonical) || INVOICE.equals(canonical);
+        return source.permission() + (write ? (addWrite ? ":add" : ":edit") : ":view");
+    }
+
+    /** 收货票据/采购发票不走 SOURCES 通用表：权限前缀 :add 写法 + 非标准单号解析。 */
+    private Source sourceByType(String canonical) {
+        if (RECEIPT.equals(canonical)) return RECEIPT_SOURCE;
+        if (INVOICE.equals(canonical)) return INVOICE_SOURCE;
+        return SOURCES.get(canonical);
     }
     private record Source(String permission, String sql, String productSql) {}
     private static final Map<String, Source> SOURCES = Map.of(
@@ -73,7 +85,11 @@ public class AttachmentSourcePolicy {
         StpUtil.checkLogin();
         String canonical = canonical(type);
         Source source = source(canonical);
-        List<Long> ids = jdbc.queryForList(RECEIPT.equals(canonical) ? "SELECT inbound_id FROM inventory_inbound_order WHERE inbound_no=? AND source_type='PURCHASE'" : ID_BY_NO_SQL.get(canonical), Long.class, number.trim());
+        List<Long> ids = jdbc.queryForList(RECEIPT.equals(canonical)
+            ? "SELECT inbound_id FROM inventory_inbound_order WHERE inbound_no=? AND source_type='PURCHASE'"
+            : INVOICE.equals(canonical)
+                ? "SELECT document_id FROM purchase_document WHERE document_no=? AND document_type='invoice'"
+                : ID_BY_NO_SQL.get(canonical), Long.class, number.trim());
         // 先解析再判权；即使未匹配也执行同一权限检查，不向无权限用户泄露单号是否存在。
         if (source.permission() != null) StpUtil.checkPermission(source.permission() + ":view");
         return ids.size() == 1 ? ids.get(0) : null;
@@ -84,7 +100,7 @@ public class AttachmentSourcePolicy {
         if (id == null || id <= 0) return null;
         String sql = RECEIPT.equals(canonical(type))
             ? "SELECT trace_id FROM inventory_inbound_order WHERE inbound_id=? AND source_type='PURCHASE'"
-            : TRACE_SQL.get(canonical(type));
+            : INVOICE.equals(canonical(type)) ? null : TRACE_SQL.get(canonical(type));
         if (sql == null) return null;
         List<String> rows = jdbc.queryForList(sql, String.class, id);
         return rows.isEmpty() ? null : rows.get(0);
@@ -115,7 +131,7 @@ public class AttachmentSourcePolicy {
 
     public boolean canRead(String type, Long id) {
         if (!StpUtil.isLogin() || type == null || id == null || id <= 0) return false;
-        Source source = (RECEIPT.equals(canonical(type)) ? RECEIPT_SOURCE : SOURCES.get(canonical(type)));
+        Source source = sourceByType(canonical(type));
         return source != null && (source.permission() == null || StpUtil.hasPermission(source.permission() + ":view"))
             && jdbc.queryForList(source.sql(), String.class, id).size() == 1;
     }
@@ -130,7 +146,7 @@ public class AttachmentSourcePolicy {
     }
 
     private Source source(String type) {
-        Source source = (RECEIPT.equals(canonical(type)) ? RECEIPT_SOURCE : SOURCES.get(canonical(type)));
+        Source source = sourceByType(canonical(type));
         if (source == null) throw new BusinessException("附件来源权限映射未确认，禁止操作：" + type);
         return source;
     }

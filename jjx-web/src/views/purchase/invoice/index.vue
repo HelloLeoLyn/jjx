@@ -55,8 +55,8 @@
       <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total" layout="total, sizes, prev, pager, next" @change="load" />
     </el-card>
 
-    <el-dialog v-model="createVisible" title="新增发票（按文件批量开票）" width="640px" destroy-on-close>
-      <el-form :model="createForm" label-width="90px">
+    <el-dialog v-model="createVisible" title="新增发票（按文件批量开票）" width="800px" destroy-on-close @closed="resetCreate">
+      <el-form :model="createForm" label-width="90px" :disabled="submitting">
         <el-form-item label="采购订单" required>
           <el-select v-model="createForm.orderId" filterable placeholder="选择已收货的采购订单" style="width: 100%" @change="onOrderChange">
             <el-option v-for="o in pendingOrders" :key="o.orderId" :label="`${o.orderNo} - ${o.supplierName}`" :value="o.orderId" />
@@ -64,30 +64,58 @@
         </el-form-item>
         <el-form-item label="供应商">{{ createForm.supplierName || '-' }}</el-form-item>
         <el-form-item label="发票文件">
-          <el-upload :http-request="doUpload" :show-file-list="false" accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp,.doc,.docx,.xls,.xlsx" :disabled="!createForm.orderId">
-            <el-button type="primary" plain :loading="uploading" :disabled="!createForm.orderId">上传发票文件</el-button>
-          </el-upload>
-          <div v-for="(f, i) in createForm.files" :key="f.fileUrl" class="file-item">
-            <el-icon><Document /></el-icon>
-            <span class="file-name">{{ f.fileName }}</span>
-            <el-button link type="danger" @click="removeTempFile(i)">删除</el-button>
-          </div>
-          <div v-if="!createForm.orderId" class="tip">请先选择采购订单再上传</div>
+          <AttachmentCenter
+            v-if="createVisible && createForm.orderId && canUploadDoc"
+            :key="createDraftId"
+            ref="createAttachments"
+            source-type="purchase_invoice"
+            :draft-id="createDraftId"
+            mode="upload-only"
+            title="发票文件"
+            :auto-bind="false"
+            :locked="submitting"
+            :max-size-m-b="20"
+            :accept="INVOICE_ACCEPT"
+            view-perm="purchase:invoice:doc:view"
+            edit-perm="purchase:invoice:doc:add"
+          />
+          <span v-else class="tip">{{ createForm.orderId ? '无发票文件上传权限（purchase:invoice:doc:add）' : '请先选择采购订单再上传' }}</span>
+          <div class="tip">支持图片/PDF/Word/Excel，单文件不超过 20MB；生成发票后，文件在核销通过时建立引用。</div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" :disabled="!createForm.files.length" @click="submitCreate">确认生成发票（{{ createForm.files.length }} 张）</el-button>
+        <el-button :disabled="submitting" @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" :disabled="!createForm.orderId || !createPending.length" @click="submitCreate">确认生成发票（{{ createPending.length }} 张）</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="verifyVisible" title="发票核销" width="480px">
-      <el-form :model="verifyForm" label-width="90px">
+    <el-dialog v-model="verifyVisible" title="发票核销" width="800px" :close-on-click-modal="false" @closed="resetVerify">
+      <el-form :model="verifyForm" label-width="90px" :disabled="submitting">
+        <el-form-item label="发票号">{{ verifyTarget?.documentNo || '-' }}</el-form-item>
         <el-form-item label="核销日期"><el-date-picker v-model="verifyForm.verificationDate" type="date" value-format="YYYY-MM-DD" style="width: 100%" /></el-form-item>
         <el-form-item label="核销人"><el-input v-model="verifyForm.verifierName" placeholder="核销人姓名" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="verifyForm.verificationRemark" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="发票文件">
+          <AttachmentCenter
+            v-if="verifyVisible && verifyDraftId && canUploadDoc"
+            :key="verifyDraftId"
+            ref="verifyAttachments"
+            source-type="purchase_invoice"
+            :draft-id="verifyDraftId"
+            mode="upload-only"
+            title="本次核销文件"
+            :auto-bind="false"
+            :locked="submitting"
+            :max-size-m-b="20"
+            :accept="INVOICE_ACCEPT"
+            view-perm="purchase:invoice:doc:view"
+            edit-perm="purchase:invoice:doc:add"
+          />
+          <span v-else class="tip">无发票文件上传权限（purchase:invoice:doc:add）</span>
+          <div class="tip">支持图片/PDF/Word/Excel，单文件不超过 20MB；核销通过后随核销事务建立引用。</div>
+        </el-form-item>
       </el-form>
-      <template #footer><el-button @click="verifyVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitVerify">确认核销</el-button></template>
+      <template #footer><el-button :disabled="submitting" @click="verifyVisible = false">取消</el-button><el-button type="primary" :loading="submitting" @click="submitVerify">确认核销</el-button></template>
     </el-dialog>
 
     <el-drawer v-model="detailVisible" title="发票详情" size="560px">
@@ -100,21 +128,29 @@
         <el-descriptions-item label="币种">{{ current.currency || '-' }}</el-descriptions-item>
         <el-descriptions-item label="状态">{{ InvoiceStatusEnum.getLabel(current.documentStatus) }}</el-descriptions-item>
         <el-descriptions-item label="核销日期">{{ current.verificationDate || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="附件" :span="2">
-          <el-button v-if="current.fileName" link type="primary" @click="downloadFile(current)">{{ current.fileName }}</el-button>
-          <span v-else>-</span>
-        </el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ current.remark || '-' }}</el-descriptions-item>
       </el-descriptions>
+      <el-divider content-position="left">发票文件</el-divider>
+      <AttachmentCenter
+        v-if="detailVisible && current?.documentId && canViewDoc"
+        :key="current.documentId"
+        source-type="purchase_invoice"
+        :source-id="current.documentId"
+        title="发票文件"
+        :upload-blocked="'发票文件在核销时上传；此处可查看、下载、解除引用'"
+        view-perm="purchase:invoice:doc:view"
+        edit-perm="purchase:invoice:doc:add"
+      />
     </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document } from '@element-plus/icons-vue'
-import { listInvoice, getInvoice, delInvoice, verifyInvoice, getPendingInvoiceOrders, downloadInvoiceFile, uploadInvoiceTemp, batchConfirmInvoice, deleteInvoiceTempFile } from '@/api/purchase/invoice'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import { useUserStore } from '@/store/modules/user'
+import { listInvoice, getInvoice, delInvoice, verifyInvoice, getPendingInvoiceOrders, batchConfirmInvoice, downloadInvoiceFile } from '@/api/purchase/invoice'
 import { listSupplier } from '@/api/purchase/supplier'
 import { InvoiceStatusEnum } from '@/enums/purchase/invoice'
 import { download } from '@/utils/format'
@@ -123,12 +159,17 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 
 defineOptions({ name: 'PurchaseInvoice' })
 
-interface TempFile { fileName: string; fileUrl: string; fileSize: number }
 interface PendingOrder { orderId: number; orderNo: string; supplierId: number; supplierName: string }
+
+/** 发票文件公共附件上传接受类型（与后端 PurchaseInvoiceAttachmentService 校验一致）。 */
+const INVOICE_ACCEPT = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
+
+const userStore = useUserStore()
+const canUploadDoc = computed(() => userStore.hasPermission('purchase:invoice:doc:add'))
+const canViewDoc = computed(() => userStore.hasPermission('purchase:invoice:doc:view'))
 
 const loading = ref(false)
 const submitting = ref(false)
-const uploading = ref(false)
 const rows = ref<any[]>([])
 const total = ref(0)
 const dateRange = ref<string[]>([])
@@ -142,8 +183,21 @@ const verifyVisible = ref(false)
 const verifyTarget = ref<any>()
 
 const query = reactive<any>({ pageNum: 1, pageSize: 10, documentNo: '', supplierId: undefined, documentStatus: undefined })
-const createForm = reactive<{ orderId?: number; supplierName: string; files: TempFile[] }>({ orderId: undefined, supplierName: '', files: [] })
+const createForm = reactive<{ orderId?: number; supplierName: string }>({ orderId: undefined, supplierName: '' })
 const verifyForm = reactive({ verificationDate: '', verifierName: '', verificationRemark: '' })
+
+// 新建：发票文件走公共附件临时上传，生成发票时把附件ID随 batch-confirm 落库，核销时再建引用。
+const createAttachments = ref<InstanceType<typeof AttachmentCenter>>()
+const createDraftId = ref('')
+const createPending = computed(() => createAttachments.value?.pendingEntries || [])
+
+// 核销：本次核销上传的文件随核销事务建立引用。
+const verifyAttachments = ref<InstanceType<typeof AttachmentCenter>>()
+const verifyDraftId = ref('')
+
+function newDraftId(prefix: string) {
+  return globalThis.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
 
 const invoiceActions: TableAction<any>[] = [
   { key: 'detail', label: '详情', order: 10 },
@@ -214,43 +268,30 @@ async function loadPendingOrders() {
 }
 
 function openCreate() {
-  Object.assign(createForm, { orderId: undefined, supplierName: '', files: [] })
+  Object.assign(createForm, { orderId: undefined, supplierName: '' })
+  createDraftId.value = newDraftId('invoice-create')
   createVisible.value = true
 }
+function resetCreate() {
+  createAttachments.value?.clearPending()
+  createDraftId.value = ''
+}
 function onOrderChange(orderId?: number) {
-  createForm.files = []
+  createAttachments.value?.clearPending()
+  createDraftId.value = newDraftId('invoice-create')
   const o = pendingOrders.value.find((x) => x.orderId === orderId)
   createForm.supplierName = o?.supplierName || ''
 }
-async function doUpload(options: any) {
-  if (!createForm.orderId) return
-  uploading.value = true
-  try {
-    const res: any = await uploadInvoiceTemp(createForm.orderId, options.file)
-    const info = res.data || {}
-    createForm.files.push({ fileName: info.fileName || options.file.name, fileUrl: info.fileUrl, fileSize: info.fileSize || 0 })
-    ElMessage.success('上传成功')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '上传失败')
-  } finally {
-    uploading.value = false
-  }
-}
-async function removeTempFile(index: number) {
-  const f = createForm.files[index]
-  try {
-    if (f.fileUrl) await deleteInvoiceTempFile(f.fileUrl)
-  } catch { /* 临时文件可能已不存在，忽略 */ }
-  createForm.files.splice(index, 1)
-}
 async function submitCreate() {
-  if (!createForm.orderId || !createForm.files.length) return
+  if (!createForm.orderId) { ElMessage.error('请选择采购订单'); return }
+  if (!createPending.value.length) { ElMessage.warning('请先上传发票文件'); return }
   const o = pendingOrders.value.find((x) => x.orderId === createForm.orderId)
   if (!o) { ElMessage.error('请选择采购订单'); return }
   submitting.value = true
   try {
-    await batchConfirmInvoice(createForm.orderId, o.supplierId, createForm.files)
-    ElMessage.success(`已生成 ${createForm.files.length} 张发票`)
+    const files = createPending.value.map((f) => ({ attachmentId: f.attachmentId, fileName: f.fileName, fileSize: f.fileSize }))
+    await batchConfirmInvoice(createForm.orderId, o.supplierId, files)
+    ElMessage.success(`已生成 ${files.length} 张发票`)
     createVisible.value = false
     load()
   } catch (e: any) {
@@ -263,14 +304,20 @@ async function submitCreate() {
 function openVerify(row: any) {
   verifyTarget.value = row
   Object.assign(verifyForm, { verificationDate: new Date().toISOString().slice(0, 10), verifierName: '', verificationRemark: '' })
+  verifyDraftId.value = newDraftId('invoice-verify')
   verifyVisible.value = true
+}
+function resetVerify() {
+  verifyAttachments.value?.clearPending()
+  verifyDraftId.value = ''
 }
 async function submitVerify() {
   if (!verifyTarget.value) return
   if (!verifyForm.verificationDate || !verifyForm.verifierName) { ElMessage.warning('请填写核销日期和核销人'); return }
   submitting.value = true
   try {
-    await verifyInvoice(verifyTarget.value.documentId, verifyForm.verificationDate, verifyForm.verifierName, verifyForm.verificationRemark)
+    const attachmentIds = (verifyAttachments.value?.pendingEntries || []).map((f) => f.attachmentId)
+    await verifyInvoice(verifyTarget.value.documentId, verifyForm.verificationDate, verifyForm.verifierName, verifyForm.verificationRemark, attachmentIds)
     ElMessage.success('核销成功')
     verifyVisible.value = false
     load()
@@ -286,6 +333,7 @@ async function detail(row: any) {
   current.value = res.data
   detailVisible.value = true
 }
+/** 老磁盘票据行的下载（新链路文件在详情/核销走公共附件组件）。 */
 async function downloadFile(row: any) {
   try {
     const res: any = await downloadInvoiceFile(row.documentId)
@@ -322,7 +370,5 @@ onMounted(() => { load(); loadSuppliers(); loadPendingOrders() })
 <style scoped>
 .search-card { margin-bottom: 16px; }
 .toolbar { margin-bottom: 14px; }
-.file-item { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
-.file-item .file-name { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tip { color: #909399; font-size: 12px; margin-top: 6px; }
 </style>

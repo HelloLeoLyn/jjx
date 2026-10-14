@@ -45,6 +45,8 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     /** 2026-09-21（dev-20260921-013）：采购事件改手写 payload。 */
     private final com.jjx.event.EventPublisher eventPublisher;
     private final PurchaseOrderMapper purchaseOrderMapper;
+    /** 发票文件接入公共附件（dev-20261014-022）：核销事务内建引用。 */
+    private final com.jjx.purchase.service.PurchaseInvoiceAttachmentService invoiceAttachments;
 
     /**
      * 采购类事件统一发布（2026-09-21 dev-20260921-013 采购批）：
@@ -201,6 +203,12 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int verifyDocument(Long documentId, String verifierName, String verificationDate, String verificationRemark) {
+        return verifyDocument(documentId, verifierName, verificationDate, verificationRemark, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int verifyDocument(Long documentId, String verifierName, String verificationDate, String verificationRemark, java.util.List<Long> attachmentIds) {
         PurchaseDocument document = documentMapper.selectById(documentId);
         if (document == null) {
             throw new BusinessException("票据不存在");
@@ -208,6 +216,16 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
 
         if (!Objects.equals(DocumentStatus.PENDING.getValue(), document.getDocumentStatus())) {
             throw new BusinessException("只有待处理状态的票据可以核验");
+        }
+
+        // 发票票种：把本次核销携带的临时附件 + 新建时暂存的附件，在同一事务内建成引用（收货/合同等其他票种不涉及）。
+        boolean isInvoice = document.getDocumentType() != null && document.getDocumentType().equalsIgnoreCase("invoice");
+        java.util.List<Long> docAttachmentIds = new java.util.ArrayList<>();
+        if (isInvoice) {
+            if (attachmentIds != null) docAttachmentIds.addAll(attachmentIds);
+            Long carried = invoiceAttachments.carriedAttachmentId(document.getFileUrl());
+            if (carried != null) docAttachmentIds.add(carried);
+            invoiceAttachments.prepare(documentId, docAttachmentIds);
         }
 
         document.setDocumentStatus(DocumentStatus.VERIFIED.getValue());
@@ -219,6 +237,7 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
 
         int rows = documentMapper.updateById(document);
         if (rows > 0) {
+            if (isInvoice && !docAttachmentIds.isEmpty()) invoiceAttachments.complete(documentId, docAttachmentIds);
             publishDocumentEvent("purchase.document.verified", document.getDocumentId(), document.getDocumentNo());
         }
         return rows;
@@ -477,9 +496,17 @@ public class PurchaseDocumentServiceImpl extends ServiceImpl<PurchaseDocumentMap
             document.setDocumentAmount(java.math.BigDecimal.ZERO);
             document.setCurrency("CNY");
             document.setDocumentStatus(DocumentStatus.PENDING.getValue());
-            document.setFileName(fileName);
-            document.setFileUrl(fileUrl);
-            document.setFileSize(fileSize);
+            // 新链路（dev-20261014-022）：files 里带 attachmentId 时，文件是公共附件临时件，
+            // 只登记“发票文件=该附件”的关联（file_url 存公共下载地址），核销时随事务建引用；
+            // 不写文件名，避免列表把“待核销的文件”误显成可下载文件。
+            Long attachmentId = fileInfo.get("attachmentId") != null ? ((Number) fileInfo.get("attachmentId")).longValue() : null;
+            if (attachmentId != null) {
+                document.setFileUrl("/system/attachment/download/" + attachmentId);
+            } else {
+                document.setFileName(fileName);
+                document.setFileUrl(fileUrl);
+                document.setFileSize(fileSize);
+            }
 
             documentMapper.insert(document);
             count++;

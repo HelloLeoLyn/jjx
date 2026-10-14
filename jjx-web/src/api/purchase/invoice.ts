@@ -59,17 +59,18 @@ export function exportInvoice(params?: Record<string, unknown>) {
   })
 }
 
-// 核销发票
+// 核销发票（可携带本次核销的发票文件临时附件ID，核销时随事务建立公共附件引用）
 export function verifyInvoice(
   invoiceId: number,
   verificationDate: string,
   verifierName: string,
   verificationRemark?: string,
+  attachmentIds?: number[],
 ) {
   return request({
     url: `/purchase/invoice/verify/${invoiceId}`,
     method: 'put',
-    params: { verificationDate, verifierName, verificationRemark },
+    params: { verificationDate, verifierName, verificationRemark, attachmentIds },
   })
 }
 
@@ -344,4 +345,9 @@ export function deleteInvoiceTempFile(fileUrl: string) {
     method: 'delete',
     params: { fileUrl },
   })
+}
+
+/** 按发票查公共附件引用（发票文件接入公共附件，dev-20261014-022）。 */
+export function getInvoiceDocRefs(invoiceId: number) {
+  return request({ url: `/purchase/invoice/doc/refs/${invoiceId}`, method: 'get' })
 }

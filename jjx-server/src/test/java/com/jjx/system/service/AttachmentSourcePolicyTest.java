@@ -49,4 +49,23 @@ class AttachmentSourcePolicyTest {
             assertThrows(BusinessException.class, () -> policy.check("purchase_receipt", 89L, true));
         }
     }
+    @Test
+    void invoiceUsesDocumentPermissionsAndPurchaseInvoiceIdentity() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("document_type='invoice'"), eq(String.class), eq(88L)))
+                .thenReturn(List.of("INV-88"));
+        AttachmentSourcePolicy policy = new AttachmentSourcePolicy(jdbc);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::isLogin).thenReturn(true);
+            assertEquals("INV-88", policy.check("purchase_invoice", 88L, true));
+            auth.verify(() -> StpUtil.checkPermission("purchase:invoice:doc:add"));
+            assertEquals("INV-88", policy.check("purchase_invoice", 88L, false));
+            auth.verify(() -> StpUtil.checkPermission("purchase:invoice:doc:view"));
+            assertFalse(policy.canRead("purchase_invoice", 88L));
+            auth.when(() -> StpUtil.hasPermission("purchase:invoice:doc:view")).thenReturn(true);
+            assertTrue(policy.canRead("purchase_invoice", 88L));
+            assertFalse(policy.canRead("purchase_invoice", 89L));
+            assertThrows(BusinessException.class, () -> policy.check("purchase_invoice", 89L, true));
+        }
+    }
 }
