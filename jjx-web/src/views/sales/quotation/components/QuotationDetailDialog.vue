@@ -105,6 +105,7 @@
         v-if="props.quotationId"
         source-type="quotation"
         :source-id="props.quotationId"
+        :trace-id="detailData.traceId"
         mode="readonly"
         view-perm="sales:quotation:view"
       />

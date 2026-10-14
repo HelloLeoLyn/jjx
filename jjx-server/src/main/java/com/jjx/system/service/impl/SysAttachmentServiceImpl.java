@@ -10,6 +10,9 @@ import com.jjx.common.enums.YesNoEnum;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.system.domain.entity.SysAttachment;
+import com.jjx.system.domain.entity.SysAttachmentRef;
+import com.jjx.system.domain.vo.AttachmentSourceVO;
+import com.jjx.system.mapper.SysAttachmentRefMapper;
 import com.jjx.system.domain.entity.SysOperLog;
 import com.jjx.system.enums.AttachmentUploadState;
 import com.jjx.system.mapper.SysAttachmentMapper;
@@ -34,6 +37,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -50,6 +54,7 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     private String uploadBasePath;
 
     private final SysAttachmentMapper attachmentMapper;
+    private final SysAttachmentRefMapper attachmentRefMapper;
     private final ProductMapper productMapper;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final SysOperLogMapper sysOperLogMapper;
@@ -221,30 +226,54 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
 
     @Override
     public List<com.jjx.system.domain.vo.AttachmentSourceVO> getAttachmentSourcesByTraceId(String traceId) {
-        List<com.jjx.system.domain.vo.AttachmentSourceVO> result = new ArrayList<>();
-        if (traceId == null || traceId.isEmpty()) return result;
+        Map<Long, AttachmentSourceVO> result = new LinkedHashMap<>();
+        if (traceId == null || traceId.isBlank()) return new ArrayList<>();
 
+        for (SysAttachmentRef ref : attachmentRefMapper.selectByTrace(traceId)) {
+            if (result.containsKey(ref.getAttachmentId())
+                    || !attachmentSources.canRead(ref.getSourceType(), ref.getSourceId())) continue;
+            SysAttachment file = attachmentMapper.selectById(ref.getAttachmentId());
+            if (file == null || Boolean.TRUE.equals(file.getDeleted())
+                    || file.getUploadState() == AttachmentUploadState.TEMP
+                    || file.getUploadState() == AttachmentUploadState.ORPHAN) continue;
+            AttachmentSourceVO vo = traceSource(file);
+            vo.setBizType(ref.getSourceType());
+            vo.setBizId(ref.getSourceId());
+            vo.setBizTypeName(resolveBizTypeName(ref.getSourceType()));
+            vo.setSourceNo(attachmentSources.check(ref.getSourceType(), ref.getSourceId(), false));
+            vo.setTraceId(traceId);
+            result.put(file.getId(), vo);
+        }
+
+        // 仅无引用历史的老附件沿用旧来源；新附件及已解除引用不可回退。
         List<SysAttachment> attachments = getAttachmentsByTraceId(traceId);
         for (SysAttachment att : attachments) {
-            com.jjx.system.domain.vo.AttachmentSourceVO vo = new com.jjx.system.domain.vo.AttachmentSourceVO();
-            vo.setId(att.getId());
+            if (result.containsKey(att.getId()) || attachmentRefMapper.countHistory(att.getId()) > 0
+                    || !attachmentAccess.canRead(att)
+                    || !attachmentSources.canRead(att.getBizType(), att.getBizId())) continue;
+            AttachmentSourceVO vo = traceSource(att);
             vo.setBizType(att.getBizType());
             vo.setBizId(att.getBizId());
-            vo.setRemark(att.getRemark());
-            vo.setCategory(att.getCategory());
-            vo.setFileName(att.getFileName());
-            vo.setFileSize(att.getFileSize());
-            vo.setFileType(att.getFileType());
-            vo.setCreateBy(att.getCreateBy());
-            vo.setCreateTime(att.getCreateTime());
-            vo.setTraceId(att.getTraceId());
-
-            // 来源单据类型名 + 单号反查
             vo.setBizTypeName(resolveBizTypeName(att.getBizType()));
-            vo.setSourceNo(resolveSourceNo(att.getBizType(), att.getBizId()));
-            result.add(vo);
+            vo.setSourceNo(attachmentSources.check(att.getBizType(), att.getBizId(), false));
+            result.put(att.getId(), vo);
         }
-        return result;
+        return new ArrayList<>(result.values());
+    }
+
+    private AttachmentSourceVO traceSource(SysAttachment att) {
+        AttachmentSourceVO vo = new AttachmentSourceVO();
+        vo.setId(att.getId());
+        vo.setRemark(att.getRemark());
+        vo.setCategory(att.getCategory());
+        vo.setFileName(att.getFileName());
+        vo.setFileSize(att.getFileSize());
+        vo.setFileType(att.getFileType());
+        vo.setCreateBy(att.getCreateBy());
+        vo.setCreateTime(att.getCreateTime());
+        vo.setTraceId(att.getTraceId());
+
+        return vo;
     }
 
     /** 业务类型 → 中文名 + 对应主表单号字段 */
@@ -258,7 +287,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
             case "sample":
             case "sample_order": return "样品单";
             case "purchase": return "采购订单";
+            case "purchase_order": return "采购订单";
             case "production": return "生产工单";
+            case "production_order": return "生产工单";
             case "product": return "产品文件";
             default: return bizType;
         }

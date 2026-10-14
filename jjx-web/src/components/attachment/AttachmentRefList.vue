@@ -65,7 +65,7 @@
           </template>
         </el-table-column>
         <el-table-column label="来源" min-width="110">
-          <template #default="{ row }">{{ row.kind === 'trace' ? (row.sourceNo || row.bizTypeName || row.bizType || '-') : '-' }}</template>
+          <template #default="{ row }">{{ row.kind === 'trace' ? [row.bizTypeName || row.bizType, row.sourceNo].filter(Boolean).join(' · ') || '-' : '-' }}</template>
         </el-table-column>
         <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
