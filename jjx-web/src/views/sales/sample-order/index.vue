@@ -109,7 +109,7 @@
         </el-table-column>
         <TableActionColumn
           :actions="sampleActions"
-          min-width="200"
+          min-width="270"
           display="text"
           @action="handleSampleAction"
         />
@@ -1002,6 +1002,17 @@ function canRejectSample(row: any): boolean {
 function canConvert(row: any): boolean {
   return row?.sampleStatus === SampleOrderStatusEnum.CONFIRMED.value
 }
+function canPicker(row: any): boolean {
+  return row?.sampleStatus === SampleOrderStatusEnum.ENGINEERING.value
+}
+function canSingture(row: any): boolean {
+  return [
+    SampleOrderStatusEnum.ENGINEERING.value,
+    SampleOrderStatusEnum.SAMPLE_READY.value,
+    SampleOrderStatusEnum.SAMPLE_SENT.value,
+    SampleOrderStatusEnum.CONFIRMED.value,
+  ].includes(row?.sampleStatus)
+}
 function canRestart(row: any): boolean {
   return row?.sampleStatus === SampleOrderStatusEnum.REJECTED.value
 }
@@ -1087,6 +1098,25 @@ const sampleActions: TableAction<any>[] = [
   },
 
   {
+    key: 'pick',
+    label: '生成领料单',
+    type: 'primary',
+    permission: 'inventory:outbound:add',
+    visible: ({ row }) => canPicker(row),
+  },
+
+  {
+    key: 'reqsign',
+    label: '需求单签核',
+    type: 'primary',
+    permission: [
+      'sales:sample:reqsign:sales',
+      'sales:sample:reqsign:approve',
+      'sales:sample:reqsign:dept',
+    ],
+    visible: ({ row }) => canSingture(row),
+  },
+  {
     key: 'accept',
     label: '工程接单',
     type: 'warning',
@@ -1160,19 +1190,6 @@ const sampleActions: TableAction<any>[] = [
     type: 'danger',
     permission: 'sales:sample:edit',
     visible: ({ row }) => canCancel(row),
-  },
-
-  { key: 'pick', label: '生成领料单', type: 'primary', permission: 'inventory:outbound:add' },
-
-  {
-    key: 'reqsign',
-    label: '需求单签核',
-    type: 'primary',
-    permission: [
-      'sales:sample:reqsign:sales',
-      'sales:sample:reqsign:approve',
-      'sales:sample:reqsign:dept',
-    ],
   },
 
   { key: 'print', label: '打印', type: 'info' },

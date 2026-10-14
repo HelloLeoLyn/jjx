@@ -4,17 +4,13 @@
     <div class="print-toolbar no-print">
       <div class="toolbar-left">
         <el-button @click="router.back()">返回</el-button>
-        <el-radio-group v-model="layout">
-          <el-radio-button value="sample">样品单</el-radio-button>
-          <el-radio-button value="requisition">样品需求单</el-radio-button>
-        </el-radio-group>
         <span class="toolbar-tip">打印预览 - {{ info?.orderNo || '' }}</span>
       </div>
       <el-button type="primary" icon="Printer" @click="handlePrint">打印</el-button>
     </div>
 
-    <!-- ==================== 版式二：样品需求单（QR-065） ==================== -->
-    <A4Canvas v-if="info && layout === 'requisition'" :padding-mm="15">
+    <!-- 版式：样品需求单（QR-065） -->
+    <A4Canvas v-if="info" :padding-mm="15">
       <PrintCompanyHeader variant="center" />
 
       <div class="doc-title">样 品 需 求 单</div>
@@ -96,56 +92,17 @@
             <div class="sign-col-line">
               {{ signOf(s.role)?.approveResult === 1 ? '同意' : '不同意' }}
             </div>
-            <div class="sign-col-meta">{{ signOf(s.role)?.signerName || '' }} {{ signOf(s.role)?.signTime || '' }}</div>
-            <div v-if="signOf(s.role)?.comment" class="sign-col-comment">意见：{{ signOf(s.role)?.comment }}</div>
+            <div class="sign-col-meta">
+              {{ signOf(s.role)?.signerName || '' }} {{ signOf(s.role)?.signTime || '' }}
+            </div>
+            <div v-if="signOf(s.role)?.comment" class="sign-col-comment">
+              意见：{{ signOf(s.role)?.comment }}
+            </div>
           </template>
           <template v-else>
             <div class="sign-col-blank">&nbsp;</div>
             <div class="sign-col-meta">未签</div>
           </template>
-        </div>
-      </div>
-    </A4Canvas>
-
-    <!-- ==================== 版式一：样品单 ==================== -->
-    <A4Canvas v-else-if="info" :padding-mm="15">
-      <PrintCompanyHeader variant="center" />
-
-      <div class="doc-title">样 品 单</div>
-
-      <div class="doc-info">
-        <div class="info-item"><span class="info-label">样品单号</span>{{ info.orderNo }}</div>
-        <div class="info-item"><span class="info-label">样品状态</span>{{ statusName }}</div>
-        <div class="info-item"><span class="info-label">客户名称</span>{{ info.customerName || '-' }}</div>
-        <div class="info-item"><span class="info-label">联系人</span>{{ info.contactPerson || '-' }}</div>
-        <div class="info-item"><span class="info-label">来源类型</span>{{ info.sourceType === 'QUOTATION' ? '报价单' : info.sourceType === 'SALES_ORDER' ? '销售订单' : info.sourceType === 'SAMPLE_ORDER' ? '样品单' : '-' }}</div>
-        <div class="info-item"><span class="info-label">来源单号</span>{{ info.sourceNo || '-' }}</div>
-        <div class="info-item"><span class="info-label">迭代轮次</span>Round {{ info.sampleRound || 1 }}</div>
-        <div class="info-item"><span class="info-label">打样数量</span>{{ info.sampleQty || '-' }}</div>
-        <div class="info-item"><span class="info-label">送样日期</span>{{ info.sampleSendDate || '-' }}</div>
-        <div class="info-item"><span class="info-label">快递单号</span>{{ info.sampleTrackingNo || '-' }}</div>
-        <div class="info-item"><span class="info-label">客户确认</span>{{ info.sampleConfirmDate ? info.sampleConfirmDate + (info.sampleClientName ? ' / ' + info.sampleClientName : '') : '-' }}</div>
-      </div>
-
-      <div v-if="info.engineeringNote" class="doc-engineering">
-        <div class="eng-title">工艺参数 / 工程备注</div>
-        <div class="eng-content">{{ info.engineeringNote }}</div>
-      </div>
-
-      <div v-if="info.remark" class="doc-remark">备注：{{ info.remark }}</div>
-
-      <div class="doc-signs">
-        <div class="sign-item">
-          <div class="sign-line">制单人：</div>
-          <div class="sign-underline"></div>
-        </div>
-        <div class="sign-item">
-          <div class="sign-line">客户确认：</div>
-          <div class="sign-underline"></div>
-        </div>
-        <div class="sign-item">
-          <div class="sign-line">日期：</div>
-          <div class="sign-underline"></div>
         </div>
       </div>
     </A4Canvas>
@@ -159,7 +116,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
-import { SampleOrderStatusEnum } from '@/enums/sales'
 import {
   SampleCraftTypeEnum,
   SAMPLE_REQUISITION_SIGN_ROLES,
@@ -174,21 +130,10 @@ const router = useRouter()
 const info = ref<any>(null)
 const loading = ref(false)
 
-// 版式：sample=样品单（默认）/ requisition=样品需求单（QR-065）
-const layout = ref<'sample' | 'requisition'>(
-  String(route.query.layout) === 'requisition' ? 'requisition' : 'sample'
-)
-
 const signRoles = SAMPLE_REQUISITION_SIGN_ROLES
 const productCode = ref('')
 const signs = ref<SampleRequisitionSign[]>([])
 const defects = ref<SampleDefectRecord[]>([])
-
-const statusName = computed(() => {
-  const s = info.value?.sampleStatus
-  if (s === undefined || s === null) return '-'
-  return SampleOrderStatusEnum.getLabel(Number(s)) || String(s)
-})
 
 const printDefects = computed(() =>
   defects.value.filter((d) => d.craftType === SampleCraftTypeEnum.PRINT)
@@ -230,7 +175,7 @@ async function loadData() {
         /* 无产品明细不阻塞打印 */
       }
     }
-    // 需求单用：会签记录 + 不良记录（失败不阻塞样品单版式）
+    // 会签记录 + 不良记录（失败不阻塞）
     try {
       const s: any = await sampleOrderApi.listRequisitionSigns(orderId)
       signs.value = s?.data || []
@@ -296,7 +241,7 @@ onMounted(async () => {
   border-bottom: 2px solid var(--doc-theme, #2b5aa7);
 }
 
-/* ===== 样品需求单：表头字段表 ===== */
+/* ===== 表头字段表 ===== */
 .req-table,
 .craft-table {
   width: 100%;
@@ -396,75 +341,6 @@ onMounted(async () => {
 
 .sign-col-blank {
   height: 20px;
-}
-
-/* ===== 样品单版式沿用 ===== */
-.doc-info {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px 24px;
-  margin-bottom: 12px;
-  font-size: 11px;
-}
-
-.info-item {
-  display: flex;
-}
-
-.info-label {
-  width: 70px;
-  color: #888;
-  flex-shrink: 0;
-}
-
-.doc-engineering {
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  margin-bottom: 12px;
-  background: #f7f9fc;
-}
-
-.eng-title {
-  background: var(--doc-theme, #2b5aa7);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 5px 10px;
-}
-
-.eng-content {
-  font-size: 11px;
-  color: #555;
-  padding: 8px 10px;
-  white-space: pre-wrap;
-  line-height: 1.6;
-}
-
-.doc-remark {
-  font-size: 10px;
-  color: #555;
-  margin-bottom: 20px;
-}
-
-.doc-signs {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 40px;
-  padding: 0 20px;
-}
-
-.sign-item {
-  width: 30%;
-  text-align: center;
-  font-size: 11px;
-}
-
-.sign-line {
-  padding-bottom: 4px;
-}
-
-.sign-underline {
-  border-bottom: 1px solid #999;
 }
 
 @media print {
