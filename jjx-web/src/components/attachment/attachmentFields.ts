@@ -7,6 +7,22 @@ export const attachmentFields = {
   fileSize: { key: 'fileSize', label: '大小', width: 90, render: 'size' },
   createBy: { key: 'createBy', label: '上传人', width: 100, render: 'text' },
   createTime: { key: 'createTime', label: '上传时间', width: 140, render: 'time' },
+  sourceType: { key: 'sourceType', label: '来源类型', width: 110, render: 'sourceType' },
+  sourceNo: { key: 'sourceNo', label: '来源单号', minWidth: 150, render: 'sourceNo' },
+  status: { key: 'status', label: '状态', width: 90, render: 'status' },
+  actions: { key: 'actions', label: '操作', width: 80, render: 'download' },
 } as const
 
-export const referenceColumns = Object.values(attachmentFields)
+export type AttachmentFieldKey = keyof typeof attachmentFields
+
+// 原上传组件的列集合保持独立，不因新增只读场景字段而改变。
+export const referenceColumns = [
+  attachmentFields.fileName, attachmentFields.displayName, attachmentFields.category,
+  attachmentFields.documentType, attachmentFields.fileSize, attachmentFields.createBy,
+  attachmentFields.createTime,
+]
+
+export const documentColumnKeys: readonly AttachmentFieldKey[] = [
+  'fileName', 'sourceType', 'sourceNo', 'category', 'documentType',
+  'fileSize', 'createBy', 'createTime', 'status', 'actions',
+]

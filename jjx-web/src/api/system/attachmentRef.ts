@@ -123,8 +123,8 @@ export const attachmentRefApi = {
   },
 
   /** 按来源查询引用（主键 refId） */
-  listRefs(sourceType: string, sourceId: number): AxiosPromise<AttachmentRefItem[]> {
-    return request({ url: '/system/attachment/refs', method: 'get', params: { sourceType, sourceId } })
+  listRefs(sourceType: string, sourceId?: number, sourceNo?: string): AxiosPromise<AttachmentRefItem[]> {
+    return request({ url: '/system/attachment/refs', method: 'get', params: { sourceType, sourceId, sourceNo } })
   },
 
   /** 产品维度引用（含逐来源权限过滤） */

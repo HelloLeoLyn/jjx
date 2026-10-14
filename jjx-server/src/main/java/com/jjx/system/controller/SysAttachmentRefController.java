@@ -30,8 +30,10 @@ public class SysAttachmentRefController {
     public Result<Long> create(@Valid @RequestBody AttachmentRefDTO body) { return Result.success(refs.create(body)); }
 
     @GetMapping
-    public Result<List<SysAttachmentRef>> list(@RequestParam String sourceType, @RequestParam Long sourceId) {
-        return Result.success(refs.list(sourceType, sourceId));
+    public Result<List<SysAttachmentRef>> list(@RequestParam String sourceType,
+            @RequestParam(required = false) Long sourceId,
+            @RequestParam(required = false) String sourceNo) {
+        return Result.success(refs.list(sourceType, sourceId, sourceNo));
     }
 
     @GetMapping("/product/{productId}")

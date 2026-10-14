@@ -67,7 +67,17 @@ public class AttachmentRefService {
     }
 
     public List<SysAttachmentRef> list(String source, Long id) {
+        return list(source, id, null);
+    }
+
+    public List<SysAttachmentRef> list(String source, Long id, String sourceNo) {
+        boolean hasNumber = sourceNo != null && !sourceNo.isBlank();
+        if ((id != null) == hasNumber) throw new BusinessException("来源ID与来源单号须二选一");
         source = sources.canonical(source);
+        if (hasNumber) {
+            id = sources.resolveReadId(source, sourceNo);
+            if (id == null) return List.of();
+        }
         sources.check(source, id, false);
         List<SysAttachmentRef> rows = refs.selectList(Wrappers.<SysAttachmentRef>lambdaQuery().eq(SysAttachmentRef::getSourceType, source)
             .eq(SysAttachmentRef::getSourceId, id).orderByAsc(SysAttachmentRef::getSortOrder, SysAttachmentRef::getId));

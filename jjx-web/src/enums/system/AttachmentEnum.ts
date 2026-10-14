@@ -1,5 +1,12 @@
 // src/enums/system/AttachmentEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
+
+/** 只读文档的来源状态（区别于物理文件的上传生命周期）。 */
+export const AttachmentDocumentStatusEnum = createNamedEnum({
+  BOUND: { value: 'ref', label: '已绑定', tagProps: { type: 'success' } },
+  TRACE: { value: 'trace', label: '同链路', tagProps: { type: 'info' } },
+  LEGACY: { value: 'legacy', label: '历史', tagProps: { type: 'info' } },
+}, { type: 'info' })
 
 /**
  * 附件生命周期状态（与后端 AttachmentUploadState 一一对应）
@@ -29,6 +36,7 @@ export const AttachmentSourceTypeEnum = createEnum({
     { value: 'purchase_payment', label: '付款凭证', tagProps: { type: 'info' } },
     { value: 'production_order', label: '生产工单', tagProps: { type: 'info' } },
     { value: 'material', label: '物料', tagProps: { type: 'info' } },
+    { value: 'task', label: '任务', tagProps: { type: 'info' } },
   ],
   defaultTag: { type: 'info' },
 })

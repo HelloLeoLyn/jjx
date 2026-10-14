@@ -48,6 +48,30 @@ public class AttachmentSourcePolicy {
         "production_order", "SELECT trace_id FROM production_order WHERE order_id=?"
     );
 
+    /** 显式白名单，单号只作为绑定参数；样品与普通订单沿用各自的来源边界。 */
+    private static final Map<String, String> ID_BY_NO_SQL = Map.of(
+        "product", "SELECT product_id FROM product WHERE product_code=?",
+        "inquiry", "SELECT inquiry_id FROM sales_inquiry WHERE inquiry_no=? AND deleted=0",
+        "quotation", "SELECT quotation_id FROM sales_quotation WHERE quotation_no=? AND deleted=0",
+        "sales_order", "SELECT order_id FROM sales_order WHERE order_no=? AND deleted=0 AND NOT EXISTS (SELECT 1 FROM sales_sample_order s WHERE s.order_id=sales_order.order_id AND s.deleted=0)",
+        "sample", "SELECT s.order_id FROM sales_sample_order s JOIN sales_order o ON o.order_id=s.order_id WHERE o.order_no=? AND s.deleted=0 AND o.deleted=0",
+        "production_order", "SELECT order_id FROM production_order WHERE order_no=?",
+        "purchase_order", "SELECT order_id FROM purchase_order WHERE order_no=?",
+        "purchase_payment", "SELECT payment_id FROM purchase_payment WHERE payment_no=?",
+        "task", "SELECT task_id FROM sys_task WHERE task_code=?",
+        "material", "SELECT material_id FROM inventory_material WHERE material_code=?"
+    );
+
+    public Long resolveReadId(String type, String number) {
+        StpUtil.checkLogin();
+        String canonical = canonical(type);
+        Source source = source(canonical);
+        List<Long> ids = jdbc.queryForList(ID_BY_NO_SQL.get(canonical), Long.class, number.trim());
+        // 先解析再判权；即使未匹配也执行同一权限检查，不向无权限用户泄露单号是否存在。
+        if (source.permission() != null) StpUtil.checkPermission(source.permission() + ":view");
+        return ids.size() == 1 ? ids.get(0) : null;
+    }
+
     /** 取来源单据的链路标识；来源无 trace 或查不到 → null（调用方据此跳过回填） */
     public String traceIdOf(String type, Long id) {
         if (id == null || id <= 0) return null;
