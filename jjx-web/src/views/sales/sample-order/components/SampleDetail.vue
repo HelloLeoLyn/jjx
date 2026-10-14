@@ -64,7 +64,11 @@
         </el-table>
         <div v-else class="empty-tip">暂无产品明细</div>
 
-        <AttachmentDocList :trace-id="data.traceId" />
+        <AttachmentDocList
+          source-type="sample"
+          :source-id="data.orderId ?? undefined"
+          :trace-id="data.traceId || undefined"
+        />
       </template>
     </div>
 
@@ -77,7 +81,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ElDialog, ElMessage } from 'element-plus'
-import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales'
 import type { TagType } from '@/types'

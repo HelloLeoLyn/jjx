@@ -155,6 +155,19 @@
       <el-form-item label="备注">
         <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" show-word-limit />
       </el-form-item>
+
+      <!-- 附件（公共附件中心：新建走待绑定队列、保存后自动绑定；编辑直接读写引用） -->
+      <el-divider content-position="left">附件</el-divider>
+      <AttachmentCenter
+        ref="attachmentCenterRef"
+        source-type="sample"
+        :source-id="currentId"
+        :draft-id="draftId"
+        drop-zone
+        view-perm="sales:sample:view"
+        edit-perm="sales:sample:edit"
+        style="margin-bottom: 10px"
+      />
     </el-form>
 
     <ProductCodeGenDialog
@@ -195,7 +208,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElDialog, ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
@@ -212,6 +225,8 @@ import type {
 } from './types'
 import request from '@/utils/request'
 import ProductCodeGenDialog from '@/components/ProductCodeGenDialog/index.vue'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import { useUserStore } from '@/store/modules/user'
 import type { ProductCodeResult } from '@/composables/useProductCode'
 
 defineOptions({ name: 'SampleForm' })
@@ -279,6 +294,82 @@ const productIsNew = ref(false)
 const quotationOptions = ref<QuotationOption[]>([])
 const quotationProductLoading = ref(false)
 const quotationProductError = ref('')
+
+// ====== 附件（公共附件中心，单据级）======
+/** 当前单据ID：新建时为空（走待绑定队列），创建成功后回写，绑定待绑定附件时依赖它 */
+const currentId = ref<number | null>(null)
+const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
+/** 新建草稿标识：同一张未保存样品单生命周期内保持稳定，保存成功后清空（隔离待绑定队列） */
+const draftId = ref('')
+const draftUserStore = useUserStore()
+let draftOwnerKey = ''
+const draftSessionKey = () => `attach-draft:v1:${draftUserStore.userId ?? 'anonymous'}:sample`
+
+function newDraftId() {
+  return `sam-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/** 同一标签页/用户复用未保存草稿ID；sessionStorage 跨刷新保留，不能只靠内存 ref */
+function ensureDraftId() {
+  const key = draftSessionKey()
+  if (draftOwnerKey !== key) {
+    draftId.value = ''
+    draftOwnerKey = key
+  }
+  if (!draftId.value) {
+    try {
+      draftId.value = sessionStorage.getItem(key) || ''
+    } catch (error) {
+      console.warn('读取样品单草稿标识失败，刷新后可能无法恢复待绑定附件', error)
+    }
+    if (!draftId.value) draftId.value = newDraftId()
+  }
+  try {
+    sessionStorage.setItem(key, draftId.value)
+  } catch (error) {
+    console.warn('保存样品单草稿标识失败，刷新后可能无法恢复待绑定附件', error)
+  }
+}
+
+function clearDraftId() {
+  if (!draftId.value) return // 编辑已有单据不清理另一张未保存草稿的会话标识。
+  try {
+    sessionStorage.removeItem(draftOwnerKey)
+  } catch (error) {
+    console.warn('清理已保存样品单草稿标识失败', error)
+  }
+  draftId.value = ''
+}
+
+/**
+ * 保存成功后把待绑定（TEMP）附件一次性绑定到本样品单。
+ * 结果区分：单据未保存 / 部分成功 / 全部失败；失败条目留在待绑定队列可重试。
+ * 不抛错、不阻断保存流程（单据本身已保存成功）。
+ */
+async function bindPendingAttachments() {
+  await nextTick()
+  try {
+    const result = await attachmentCenterRef.value?.bindPending()
+    if (!result) return
+    if (result.status === 'document-not-saved') {
+      ElMessage.warning('样品单尚未保存，附件仍为待绑定状态')
+      return
+    }
+    if (result.status === 'partial') {
+      ElMessage.warning(
+        `样品单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`
+      )
+    } else if (result.status === 'all-failed') {
+      ElMessage.error(
+        `样品单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`
+      )
+    }
+  } catch (e: any) {
+    // 异常隔离：样品单此时已保存成功，附件异常不得冒泡成"整单保存失败"
+    console.error('附件绑定异常（样品单已保存）:', e)
+    ElMessage.error(`附件处理失败：${e?.message || '未知错误'}，可在附件区重试绑定`)
+  }
+}
 
 let quotationRequestId = 0
 
@@ -535,12 +626,15 @@ function fillFromOrder(order: Record<string, any>, products: SampleProductItem[]
 // ====== 生命周期 ======
 async function initForCreate() {
   resetForm()
+  currentId.value = null
+  ensureDraftId()
   await loadQuotationOptions()
   if (customerOptions.value.length === 0) await searchCustomers('')
 }
 
 async function initForEdit() {
   if (!props.editId) return
+  currentId.value = props.editId
   try {
     if (props.order && props.products) {
       // 外部已传数据
@@ -624,6 +718,8 @@ async function submit() {
   try {
     if (props.editId) {
       await api.value.update(props.editId, payload)
+      currentId.value = props.editId
+      await bindPendingAttachments()
       ElMessage.success(`样品单${props.editOrderNo}已保存`)
       emit('success', { mode: 'edit', data: { orderId: props.editId } })
     } else {
@@ -632,6 +728,10 @@ async function submit() {
         sourceType: form.sourceType === 'SAMPLE_ORDER' ? undefined : form.sourceType || undefined,
         sourceNo: form.sourceNo.trim() || undefined,
       })
+      // 先回写单据ID（bindPending 依赖 sourceId），绑定完再清草稿标识
+      currentId.value = res.data?.orderId ?? null
+      await bindPendingAttachments()
+      clearDraftId()
       ElMessage.success(`样品单创建成功: ${res.data.orderNo}，可前往工程打样`)
       emit('success', { mode: 'create', data: res.data })
     }
