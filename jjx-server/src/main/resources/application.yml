@@ -13,6 +13,14 @@ engineering:
     ai-model: ${JJX_ARCHIVE_AI_MODEL:}
     ai-proxy: ${JJX_ARCHIVE_AI_PROXY:}
 
+# 到期 TEMP 附件自动收口（dev-20261014-035）：到期→软删除移入回收站（只标记、不删字节）
+erp:
+  attachment:
+    cleanup:
+      enabled: false        # 默认关（保守）；确认后再开
+      cron: "0 0 3 * * ?"   # 每日 03:00 执行
+      batch-size: 100       # 每批游标分页条数（上限 100）
+
 # 服务器配置
 server:
   port: 8080

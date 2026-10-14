@@ -33,6 +33,8 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class AttachmentLifecycleService {
+    /** 自动清理的 actor 标识（写入应用日志，不依赖登录态）。 */
+    public static final String AUTO_ACTOR = "system:scheduler";
     private final SysAttachmentMapper files;
     private final AttachmentAccessService access;
     private final JdbcTemplate jdbc;
@@ -175,6 +177,20 @@ public class AttachmentLifecycleService {
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> recycleEligible(long afterId, int limit) {
         StpUtil.checkRole("admin");
+        return recycle(afterId, limit, StpUtil.getLoginIdAsString());
+    }
+
+    /**
+     * 定时任务专用入口（无人值守）：不校验登录态/角色，判定与「只标记、不删字节」语义与
+     * {@link #recycleEligible(long, int)} 完全一致，仅 actor 固定为 {@link #AUTO_ACTOR}。
+     * 供 {@code AttachmentCleanupTask} 游标分页调用；绝不调用物理删除。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> autoRecycleExpired(long afterId, int limit) {
+        return recycle(afterId, limit, AUTO_ACTOR);
+    }
+
+    private Map<String, Object> recycle(long afterId, int limit, String actor) {
         if (afterId < 0 || limit < 1 || limit > 100) throw new BusinessException("limit应为1至100");
         List<Long> ids = jdbc.queryForList("SELECT id FROM sys_attachment WHERE id>? ORDER BY id LIMIT ?", Long.class, afterId, limit);
         int recycled = 0; long cursor = afterId;
@@ -189,12 +205,44 @@ public class AttachmentLifecycleService {
             }
             if (files.logicalDelete(id) > 0) recycled++;
             log.info("附件移入回收站 actor={} id={} reason={} deadline={} physicalDelete=false",
-                    StpUtil.getLoginIdAsString(), id, decision.reason(), decision.deadline());
+                    actor, id, decision.reason(), decision.deadline());
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("scanned", ids.size()); result.put("recycled", recycled);
         result.put("skipped", skipped); result.put("nextAfterId", cursor); result.put("physicalDeleteEnabled", false);
         return result;
+    }
+
+    /**
+     * 定时自动清理的「一次运行」汇总操作日志（无人值守、不依赖登录态）：
+     * 仅在本次运行确有 recycle 动作时写入一条 {@code sys_oper_log}，使「何时、自动清了多少」在 DB 长期留存。
+     * 写入失败只记 error，不阻断任务。
+     */
+    public void recordAutoCleanupRun(int scanned, int recycled) {
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            SysOperLog entry = new SysOperLog();
+            entry.setUserId(0L);
+            entry.setUsername(AUTO_ACTOR);
+            entry.setRealName("系统定时任务");
+            entry.setTenantId(1L);
+            entry.setModule("附件引用");
+            entry.setBusinessType(BusinessType.DELETE.getCode());
+            entry.setAction("自动清理到期临时附件（移入回收站，不删字节）");
+            entry.setBizType("sys_attachment");
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("scanned", scanned);
+            detail.put("recycled", recycled);
+            detail.put("physicalDelete", false);
+            detail.put("actor", AUTO_ACTOR);
+            detail.put("cleanedAt", now.toString());
+            entry.setDetail(JSONUtil.toJsonStr(detail));
+            entry.setStatus(YesNoEnum.YES.getCode());
+            entry.setCreateTime(now);
+            operLogs.insert(entry);
+        } catch (Exception ex) {
+            log.error("附件自动清理补写操作日志失败 scanned={} recycled={}", scanned, recycled, ex);
+        }
     }
 
     /**
