@@ -1,4 +1,5 @@
 import { attachmentApi } from '@/api/system/attachment'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import { ProcessCategoryEnum } from '@/enums/product'
 import { productFileCategoryLabel, ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
@@ -180,7 +181,23 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
       data.bom = { ...data.bom, items: enrich(data.bom.items || []) }
     } },
     { label: '客供资料', run: async () => { const r: any = await attachmentApi.customerDocs(productId); appendFiles(data, r.data || [], true) } },
-    { label: '产品文件', run: async () => { const r: any = await attachmentApi.productFiles(data.product.productCode); appendFiles(data, r.data || [], false) } },
+    { label: '产品文件', run: async () => {
+      // 产品文件改按产品查引用（refsByProduct）：补显经公共组件新上传的图纸/文件（dev-20261014-036）
+      const r: any = await attachmentRefApi.refsByProduct(productId)
+      const rows = (r.data || []).map((x: any) => ({
+        id: x.attachmentId ?? x.id,
+        fileName: x.fileName,
+        displayName: x.displayName,
+        category: x.category || x.documentType,
+        fileType: x.fileType,
+        drawingNo: x.drawingNo,
+        version: x.version,
+        fileRole: x.fileRole,
+        isCurrent: x.isCurrent,
+        released: x.released,
+      }))
+      appendFiles(data, rows, false)
+    } },
   ]
   const results = await Promise.allSettled(jobs.map((job) => job.run()))
   results.forEach((result, i) => {
