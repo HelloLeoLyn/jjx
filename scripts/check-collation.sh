@@ -7,6 +7,7 @@
 #       跨表字符串 JOIN 会报 ERROR 1267 Illegal mix of collations（实例见迁移 193 文件头）。
 #       修复迁移：jjx-docs/sql/migrations/278_attachment_ref_collation_unify.sql（任务码 dev-20261014-006）
 #       （2026-09 的 193_collation_unify_utf8mb4_unicode_ci.sql 为历史，已随 f96927a4 rm 移出仓）
+#       刻意例外：ascii 家族的 ascii_bin（如 sys_attachment.source_type/upload_key）不计入漂移（CONVENTIONS §16.3）
 #
 # 用法：
 #   bash scripts/check-collation.sh              # 咨询模式：只报告，永远 exit 0
@@ -24,6 +25,8 @@ DB_USER="${DB_USER:-root}"
 DB_PASS="${DB_PASS:-123456}"
 DB_NAME="${DB_NAME:-jjx_erp_db}"
 TARGET_COLLATION="utf8mb4_unicode_ci"
+# 刻意例外 collation（utf8mb4 家族之外、经 CONVENTIONS §16.3 批准；不计入漂移量）
+ALLOWED_COLLATIONS="${COLLATION_ALLOWED_EXTRA:-ascii_bin}"
 
 STRICT=false
 PREFLIGHT=false
@@ -56,10 +59,14 @@ echo "-- 2) 表级分布（BASE TABLE / TABLE_COLLATION）"
 M "SELECT TABLE_COLLATION, COUNT(*) AS tbls FROM information_schema.TABLES
    WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_TYPE='BASE TABLE' GROUP BY TABLE_COLLATION ORDER BY tbls DESC;"
 
+ALLOWED_SQL=""
+IFS=',' read -ra _allowed <<< "$ALLOWED_COLLATIONS"
+for _a in "${_allowed[@]}"; do _a="${_a// /}"; [ -n "$_a" ] || continue; ALLOWED_SQL="${ALLOWED_SQL:+$ALLOWED_SQL,}'$_a'"; done
 cols_drift=$(M "SELECT COUNT(*) FROM information_schema.COLUMNS c JOIN information_schema.TABLES t
    ON t.TABLE_SCHEMA=c.TABLE_SCHEMA AND t.TABLE_NAME=c.TABLE_NAME
    WHERE c.TABLE_SCHEMA='$DB_NAME' AND t.TABLE_TYPE='BASE TABLE'
-     AND c.COLLATION_NAME IS NOT NULL AND c.COLLATION_NAME<>'$TARGET_COLLATION';")
+     AND c.COLLATION_NAME IS NOT NULL AND c.COLLATION_NAME<>'$TARGET_COLLATION'
+     AND c.COLLATION_NAME NOT IN ($ALLOWED_SQL);")
 tbls_drift=$(M "SELECT COUNT(*) FROM information_schema.TABLES
    WHERE TABLE_SCHEMA='$DB_NAME' AND TABLE_TYPE='BASE TABLE' AND TABLE_COLLATION<>'$TARGET_COLLATION';")
 echo

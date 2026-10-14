@@ -58,7 +58,10 @@
       :image-size="60"
     />
     <AttachmentRefList
-      v-if="pending.length || (showList && (refRows.length || legacyOnlyRows.length || traceOnlyRows.length))"
+      v-if="
+        pending.length ||
+        (showList && (refRows.length || legacyOnlyRows.length || traceOnlyRows.length))
+      "
       :pending="pending"
       :rows="showList ? refRows : []"
       :legacy-rows="showList ? legacyOnlyRows : []"
@@ -78,9 +81,17 @@
       @download-readonly="(row) => openUrl(attachmentApi.downloadUrl(row.id))"
       @preview-readonly="(row, rows) => previewReadOnly(row, rows)"
     />
-    <div v-if="pending.length" class="ac-hint">待绑定附件已上传到服务器（7 天有效），保存单据后自动建立引用。</div>
+    <div v-if="pending.length" class="ac-hint">
+      待绑定附件已上传到服务器（7 天有效），保存单据后自动建立引用。
+    </div>
     <div v-if="showList && traceLoading" class="ac-hint">正在加载同链路文档…</div>
-    <el-alert v-if="showList && traceError" :title="traceError" type="warning" :closable="false" class="ac-alert" />
+    <el-alert
+      v-if="showList && traceError"
+      :title="traceError"
+      type="warning"
+      :closable="false"
+      class="ac-alert"
+    />
 
     <!-- 更多信息（类型/展示名已改成列表行内编辑，这里只留备注/排序） -->
     <el-dialog v-model="metaVisible" title="更多信息" width="460px" append-to-body destroy-on-close>

@@ -164,17 +164,14 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 
 ## 6. 任务登记
 
-- 开发任务统一 `sys_task`（kanban_module='dev'），任务码 `dev-YYYYMMDD-NNN`（取当日最大 N+1，查询时按数字排序）
-- 取号（用只读账号即可，`commit-msg` 闸门里也会打印）：
-  ```sql
-  SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(task_code,'-',-1) AS UNSIGNED)),0)+1
-  FROM sys_task WHERE task_code LIKE CONCAT('dev-',DATE_FORMAT(NOW(),'%Y%m%d'),'-%');
-  ```
-  登记（**免备份**；登记/改状态/写 remark 属单行可逆写入）：
-  ```sql
-  INSERT INTO sys_task (task_code,task_type,kanban_module,title,status,priority,create_by)
-  VALUES ('dev-YYYYMMDD-NNN','DEV','dev','<标题>',0,'P3','<agent>');
-  ```
+- 开发任务统一 `sys_task`（kanban_module='dev'），任务码 `dev-YYYYMMDD-NNN`（查询时按数字排序）
+- **取码唯一入口（2026-10-14 用户拍板改口径）**：`bash scripts/task-register.sh --title "<标题>" [--seq-mode redis|db]`。
+  - **默认 `--seq-mode redis`**：Redis 计数器 `jjx:task:seq:<module>:<YYYYMMDD>` 用 `INCR` 取号（无 TTL，跨会话唯一）。
+  - **双下限播种**：首次使用，或**清库/回滚/Redis 被清**导致计数器落后时，脚本先用 `max(库里当天最大号, git 历史当天最大号)` 抬升计数器下限，再 `INCR`；因此**已用号不会被重发**。
+  - `--seq-mode db` 为旧行为兼容（库里当天最大号 +1，同样卡 git 下限）；Redis 不可达时脚本**自动回退 db 模式**，不阻塞登记。
+  - **禁止**再手工按"库里 MAX+1"补号或写裸 `INSERT`：库里行被回滚清掉时该口径必然重发号（2026-10-14 事故：`dev-20261014-001/002/004` 各被两件事用过）。
+  - 登记**免备份**；登记/改状态/写 remark 属单行可逆写入；脚本内置"撞唯一约束 → 重新取号重试 3 次"与"回查必须是当日最大号"。
+- **库回滚/导入前后必须核对当天已用任务码（2026-10-14 事故口径）**：任何"用备份把库导回 / 恢复快照"的动作，**前后都要核对当天已用号**——比对 `git log --all --grep='dev-YYYYMMDD-'` 与 `sys_task` 当天行；若库里少了已提交过的号，先跑 `bash scripts/task-register.sh --dry-run` 确认"当天下限"已把 git 历史号算进去，再继续取号。当天事故：09:49 前后用 `jjx_erp_db_backup_20261014-0009.sql` 把库导回，抹掉了今晨 `sys_task` 行，导致 `dev-20261014-001/002/004` 被重复发放。
 - **接单即置「进行中(1)」并记录开始时间与操作员（2026-10-13 用户定，全 agent 适用）**：谁接任务，**动手前**先把该任务置为进行中并留痕——
   即 `UPDATE sys_task SET status=1, start_time=NOW(), assignee_name='<操作员>', update_by='<操作员>' WHERE task_code='dev-YYYYMMDD-NNN';`
   记录「状态=进行中(1) + 开始时间(start_time) + 操作员(assignee_name/update_by)」；完成后置 `2` 并写 `completed_time=NOW()`。

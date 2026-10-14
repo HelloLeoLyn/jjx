@@ -5,6 +5,9 @@
 
 | 任务码 | 文件 | 类型 | 标题 |
 |---|---|---|---|
+| dev-20261014-010 | dev-20261014-010-plan.md | plan | 迁移文件缺失盘点 + 门禁指向修复（账本 208 号、仓内仅 256~277；check-collation.sh 指向已删的 193） |
+| dev-20261014-009 | dev-20261014-009-analysis.md | analysis | 附件中心组件治理分析：AttachmentRefList（506 行/4 kind）与 AttachmentCenter（4 模式）与 AttachmentDocList 两张表怎么收（只出分析） |
+| dev-20261014-008 | dev-20261014-008-plan.md | plan | 老通道面板残局收尾：AttachmentPanel 两处调用方换 AttachmentDocList + 删 TraceAttachmentPanel |
 | dev-20261014-006 | dev-20261014-006-plan.md | plan | 附件表 collation 订正（sys_attachment_ref/order_shortage_ledger → utf8mb4_unicode_ci，迁移 278）+ 防复发三层规则与门禁 |
 | dev-20261014-003 | dev-20261014-003-plan.md | plan | 只读文档公共组件 AttachmentDocList：参数即查询条件、只读可下载（默认10列从字段清单生成；含 refs 按来源单号解析） |
 | dev-20261014-001 | dev-20261014-001-plan.md | plan | 附件批量改名 P 段按产品编码解析回填（后端 list() 只读回填 productId，修「INQ-1-P0-…」；存量不动） |

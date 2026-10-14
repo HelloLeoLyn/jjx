@@ -99,16 +99,8 @@
         </el-row>
       </template>
 
-      <!-- 附件（只读；dev-20261012-047） -->
-      <el-divider content-position="left">附件</el-divider>
-      <AttachmentCenter
-        v-if="props.quotationId"
-        source-type="quotation"
-        :source-id="props.quotationId"
-        :trace-id="detailData.traceId"
-        mode="readonly"
-        view-perm="sales:quotation:view"
-      />
+      <!-- 附件 -->
+      <AttachmentDocList title="附件" :trace-id="detailData.traceId" />
     </div>
 
     <template #footer>
