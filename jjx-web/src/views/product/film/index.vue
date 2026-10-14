@@ -239,14 +239,16 @@
         </el-form-item>
         <el-form-item label="菲林图纸">
           <div class="upload-row">
-            <AttachmentCenter
-              source-type="product"
-              :source-id="form.productId || null"
-              :product-id="form.productId || null"
-              mode="upload-only"
-              :upload-blocked="form.productId ? '' : '请先选择关联产品'"
-              @uploaded="onDrawingUploaded"
-            />
+            <el-upload
+              :show-file-list="false"
+              :before-upload="beforeUpload"
+              :http-request="doUpload"
+              :disabled="uploading"
+            >
+              <el-button :loading="uploading" :icon="Upload">
+                {{ form.fileId ? '重新上传' : '上传图纸' }}
+              </el-button>
+            </el-upload>
             <span v-if="form.fileName" class="file-tip">
               <el-link type="primary" :href="downloadUrl(form.fileId)" target="_blank" underline="never">
                 {{ form.fileName }}
@@ -255,7 +257,7 @@
             </span>
             <span v-else class="muted">未上传</span>
           </div>
-          <div class="form-tip">支持 PDF/DWG/DXF/AI/CDR/图片（≤50MB）；经公共附件组件上传，归属当前产品。</div>
+          <div class="form-tip">支持 PDF/DWG/DXF/AI/CDR/图片（≤50MB）；上传后归档到产品文件库「菲林」类别</div>
         </el-form-item>
         <el-form-item label="技术规格">
           <el-input v-model="form.technicalSpec" type="textarea" :rows="2" placeholder="技术规格说明" />
@@ -280,11 +282,10 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
-import { Search, Refresh, Plus } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Upload } from '@element-plus/icons-vue'
 import { filmApi, type EngineeringFilm } from '@/api/product/film'
 import { listProductPage } from '@/api/product'
 import { attachmentApi } from '@/api/system/attachment'
-import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import {
   FilmApproveStatusEnum,
@@ -297,6 +298,7 @@ defineOptions({ name: 'EngineeringFilm' })
 
 const loading = ref(false)
 const submitting = ref(false)
+const uploading = ref(false)
 const filmList = ref<EngineeringFilm[]>([])
 const productOptions = ref<any[]>([])
 const queryProductId = ref<number | null>(null)
@@ -412,10 +414,43 @@ async function handleEdit(row: EngineeringFilm) {
   dialogVisible.value = true
 }
 
-/** 图纸上传改走公共附件组件：@uploaded 回填附件 id（归属当前产品） */
-function onDrawingUploaded(payload: { attachmentId: number; name?: string }) {
-  form.fileId = payload.attachmentId
-  if (payload.name) form.fileName = payload.name
+function beforeUpload(file: File) {
+  if (file.size > 50 * 1024 * 1024) {
+    ElMessage.error('文件大小不能超过50MB')
+    return false
+  }
+  return true
+}
+
+/** 图纸上传：先落产品文件库（菲林类别），把附件 id 回填到菲林档案 */
+async function doUpload(options: any) {
+  const productId = form.productId || queryProductId.value
+  const productCode = productId
+    ? productOptions.value.find((p: any) => p.productId === productId)?.productCode
+    : undefined
+  if (!productCode) {
+    ElMessage.warning('请先选择产品再上传图纸')
+    options.onError(new Error('no product'))
+    return
+  }
+  uploading.value = true
+  try {
+    const res: any = await attachmentApi.uploadProductFile(options.file, productCode, '菲林')
+    if (res?.code === 200) {
+      form.fileId = Number(res.data)
+      form.fileName = options.file.name
+      ElMessage.success('图纸上传成功')
+      options.onSuccess(res.data)
+    } else {
+      ElMessage.error(res?.msg || '上传失败')
+      options.onError(new Error(res?.msg || '上传失败'))
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '上传失败')
+    options.onError(e)
+  } finally {
+    uploading.value = false
+  }
 }
 
 function clearFile() {

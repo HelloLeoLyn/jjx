@@ -124,7 +124,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
         StringBuilder refSql = new StringBuilder("""
                 SELECT r.id, r.attachment_id, r.source_type, r.source_id, r.source_no,
                        r.document_type, r.display_name, r.remark, r.sort_order, r.create_by,
-                       r.create_time, r.product_code, r.product_id, a.file_name, a.file_size, a.file_type
+                       r.create_time, r.product_code, a.file_name, a.file_size, a.file_type
                   FROM sys_attachment_ref r
                   JOIN sys_attachment a ON a.id = r.attachment_id
                  WHERE r.deleted = 0
@@ -156,20 +156,12 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                     row.put("sortOrder", rs.getInt("sort_order"));
                     row.put("createBy", rs.getString("create_by"));
                     row.put("createTime", rs.getString("create_time"));
-                    Long rowPid = rs.getObject("product_id") == null ? null : rs.getLong("product_id");
-                    String rowCode = rs.getString("product_code");
-                    // 归属只按字段判：product_id=本产品，或 product_id 为空时 product_code=本产品编码（dev-20261013-046 口径）
-                    row.put("owned", (rowPid != null && rowPid.equals(productId))
-                            || (rowPid == null && rowCode != null && rowCode.equals(productCode)));
                     row.put("fileName", rs.getString("file_name"));
                     row.put("fileSize", rs.getObject("file_size") == null ? 0L : rs.getLong("file_size"));
                     row.put("fileType", rs.getString("file_type"));
                     return row;
                 },
                 args.toArray());
-
-        // 只显示「明确归属本产品」的行（dev-20261013-046）：不并集、不分层、不兜底；整单级/他产品行均不显示。
-        refRows.removeIf(row -> !Boolean.TRUE.equals(row.get("owned")));
 
         Map<String, List<Map<String, Object>>> filesBySource = new LinkedHashMap<>();
         for (Map<String, Object> row : refRows) {

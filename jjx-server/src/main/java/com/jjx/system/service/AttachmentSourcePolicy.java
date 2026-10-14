@@ -13,13 +13,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AttachmentSourcePolicy {
     private final JdbcTemplate jdbc;
-    private static final String RECEIPT = "purchase_receipt";
-    private static final String RECEIPT_SQL = "SELECT inbound_no FROM inventory_inbound_order WHERE inbound_id=? AND source_type='PURCHASE'";
-    private static final Source RECEIPT_SOURCE = new Source("purchase:receipt:doc", RECEIPT_SQL, null);
-
-    private String permission(String type, Source source, boolean write) {
-        return source.permission() + (write ? (RECEIPT.equals(canonical(type)) ? ":add" : ":edit") : ":view");
-    }
     private record Source(String permission, String sql, String productSql) {}
     private static final Map<String, Source> SOURCES = Map.of(
         "product", new Source("product", "SELECT product_code FROM product WHERE product_id=?",
@@ -73,7 +66,7 @@ public class AttachmentSourcePolicy {
         StpUtil.checkLogin();
         String canonical = canonical(type);
         Source source = source(canonical);
-        List<Long> ids = jdbc.queryForList(RECEIPT.equals(canonical) ? "SELECT inbound_id FROM inventory_inbound_order WHERE inbound_no=? AND source_type='PURCHASE'" : ID_BY_NO_SQL.get(canonical), Long.class, number.trim());
+        List<Long> ids = jdbc.queryForList(ID_BY_NO_SQL.get(canonical), Long.class, number.trim());
         // 先解析再判权；即使未匹配也执行同一权限检查，不向无权限用户泄露单号是否存在。
         if (source.permission() != null) StpUtil.checkPermission(source.permission() + ":view");
         return ids.size() == 1 ? ids.get(0) : null;
@@ -82,9 +75,7 @@ public class AttachmentSourcePolicy {
     /** 取来源单据的链路标识；来源无 trace 或查不到 → null（调用方据此跳过回填） */
     public String traceIdOf(String type, Long id) {
         if (id == null || id <= 0) return null;
-        String sql = RECEIPT.equals(canonical(type))
-            ? "SELECT trace_id FROM inventory_inbound_order WHERE inbound_id=? AND source_type='PURCHASE'"
-            : TRACE_SQL.get(canonical(type));
+        String sql = TRACE_SQL.get(canonical(type));
         if (sql == null) return null;
         List<String> rows = jdbc.queryForList(sql, String.class, id);
         return rows.isEmpty() ? null : rows.get(0);
@@ -105,7 +96,7 @@ public class AttachmentSourcePolicy {
         StpUtil.checkLogin();
         Source source = source(type);
         if (source.permission() != null) {
-            StpUtil.checkPermission(permission(type, source, write));
+            StpUtil.checkPermission(source.permission() + (write ? ":edit" : ":view"));
         }
         if (id == null || id <= 0) throw new BusinessException("业务来源ID无效");
         List<String> numbers = jdbc.queryForList(source.sql(), String.class, id);
@@ -115,7 +106,7 @@ public class AttachmentSourcePolicy {
 
     public boolean canRead(String type, Long id) {
         if (!StpUtil.isLogin() || type == null || id == null || id <= 0) return false;
-        Source source = (RECEIPT.equals(canonical(type)) ? RECEIPT_SOURCE : SOURCES.get(canonical(type)));
+        Source source = SOURCES.get(canonical(type));
         return source != null && (source.permission() == null || StpUtil.hasPermission(source.permission() + ":view"))
             && jdbc.queryForList(source.sql(), String.class, id).size() == 1;
     }
@@ -130,7 +121,7 @@ public class AttachmentSourcePolicy {
     }
 
     private Source source(String type) {
-        Source source = (RECEIPT.equals(canonical(type)) ? RECEIPT_SOURCE : SOURCES.get(canonical(type)));
+        Source source = SOURCES.get(canonical(type));
         if (source == null) throw new BusinessException("附件来源权限映射未确认，禁止操作：" + type);
         return source;
     }

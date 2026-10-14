@@ -62,7 +62,7 @@
 /**
  * 产品资料视图（dev-20261013-041 / M4）
  *
- * 与旧的「产品文件库」（老通道 biz_type=product + 19 类别，已退役）的差别：
+ * 与「产品文件库」（ProductFileLibrary，老通道 biz_type=product + 19 类别）的差别：
  *   - 上传：复用公共上传组件（AttachmentCenter，只上传模式），落 sys_attachment_ref（source_type='product'）
  *   - 列表：读 refs 的产品维度（refsByProduct），按**一级资料类型**分组（不再用 19 类别）
  *   - 删除：改「解除引用」（不删物理文件）

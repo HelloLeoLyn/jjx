@@ -24,19 +24,6 @@ public class PurchaseOrderReceiveDTO {
      */
     private Long orderId;
 
-    /** 本次收货草稿键；网络重试复用，成功后的下一次收货必须换键。 */
-    @jakarta.validation.constraints.Pattern(regexp = "[A-Za-z0-9-]{16,64}")
-    private String receiptRequestKey;
-
-    @jakarta.validation.constraints.Size(max = 50)
-    private List<@NotNull @Positive Long> attachmentIds;
-
-    /** 服务端返回本次入库凭证，禁止请求体注入。 */
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private Long inboundId;
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private String inboundNo;
-
     /**
      * 收货明细列表
      */

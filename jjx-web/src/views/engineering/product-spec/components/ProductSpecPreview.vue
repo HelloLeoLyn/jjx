@@ -45,22 +45,12 @@
       </main>
       <aside v-if="!paperOnly && selectedSections.includes('spec')" class="font-panel no-print">
         <strong>作业规范字号</strong>
-        <p>按区域调整（+px，相对默认字号；0=默认）；打印时使用当前设置。</p>
+        <p>按区域调整；默认保持原字号。打印时使用当前设置。</p>
         <label v-for="area in workSpecFontAreas" :key="area.key" class="font-control">
-          <el-tooltip content="相对默认字号，0=默认；+1 即大 1px" placement="left">
-            <span>{{ area.label }}（+px）</span>
-          </el-tooltip>
-          <el-input-number
-            v-model="fontSettings[area.key]"
-            :min="WORK_SPEC_FONT_MIN"
-            :max="WORK_SPEC_FONT_MAX"
-            :step="1"
-            :step-strictly="true"
-            size="small"
-            controls-position="right"
-            :aria-label="`${area.label}字号`"
-            style="width: 120px"
-          />
+          <span>{{ area.label }}</span>
+          <el-select v-model="fontSettings[area.key]" size="small" :aria-label="`${area.label}字号`">
+            <el-option v-for="option in workSpecFontOptions" :key="option.value" :label="option.label" :value="option.value" />
+          </el-select>
         </label>
         <el-button link type="primary" @click="resetFontSettings">恢复默认</el-button>
       </aside>
@@ -76,7 +66,7 @@ import { downloadFile } from '@/components/product/productFilePreview'
 import ProductSpecSheets from './ProductSpecSheets.vue'
 import { documentSections, loadDocset, loadDocsetForVersion, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, type DocsetData, type DocFile, type FileImage, type PaperTextLine } from './docset'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum } from '@/enums/product/drawing'
-import { defaultWorkSpecFontSettings, parseWorkSpecFontSettings, serializeWorkSpecFontSettings, workSpecFontAreas, WORK_SPEC_FONT_MIN, WORK_SPEC_FONT_MAX, type WorkSpecFontSettings } from './workSpecFont'
+import { defaultWorkSpecFontSettings, parseWorkSpecFontSettings, serializeWorkSpecFontSettings, workSpecFontAreas, workSpecFontOptions, type WorkSpecFontSettings } from './workSpecFont'
 
 const props = withDefaults(defineProps<{ productId: number; versionId?: number; productCode?: string; productName?: string; standalone?: boolean; autoPrint?: boolean; paperOnly?: boolean; initialSections?: string[]; initialFiles?: string[]; initialFontSettings?: string }>(), { standalone: false, autoPrint: false, paperOnly: false })
 const emit = defineEmits<{ loaded: [data: DocsetData] }>()

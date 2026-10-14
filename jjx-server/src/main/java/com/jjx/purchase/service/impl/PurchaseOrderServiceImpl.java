@@ -70,7 +70,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private final ReviewFlowService reviewFlowService;
     private final RedisSequenceService redisSequenceService;
     private final EventPublisher eventPublisher;
-    private final com.jjx.purchase.service.PurchaseReceiptAttachmentService receiptAttachments;
 
     /**
      * 采购类事件统一发布（2026-09-21 dev-20260921-013 采购批）：
@@ -1220,8 +1219,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (dto == null || dto.getOrderId() == null) {
             throw new BusinessException(PurchaseExceptionEnum.ORDER_ID_REQUIRED);
         }
-        // 锁订单并识别同一草稿的重试；附件检查和收货均处于本方法事务内。
-        if (receiptAttachments.prepare(dto)) return 0;
         // 检查订单是否存在
         PurchaseOrder order = orderMapper.selectById(dto.getOrderId());
         if (order == null) {
@@ -1243,9 +1240,6 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 throw new BusinessException(PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND, PurchaseExceptionEnum.ORDER_ITEM_NOT_FOUND.getMessage() + ": itemId=" + itemDTO.getItemId());
             }
 
-            if (!dto.getOrderId().equals(item.getOrderId())) {
-                throw new BusinessException("收货明细不属于当前采购订单");
-            }
             // 更新收货数量
             BigDecimal newReceivedQuantity = item.getReceivedQuantity() != null ?
                     item.getReceivedQuantity().add(itemDTO.getReceivedQuantity()) : itemDTO.getReceivedQuantity();
@@ -1277,8 +1271,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
 
         // 采购收货→自动生成入库单（DEV-624）：生成待仓库确认的入库单，仓库确认后才加库存（业务定稿 2026-08-11：收货≠入库）
         // 失败不吞异常：与收货同一事务，保证“收了货必有入库单”的一致性
-        Long receiptInboundId = inboundService.createInboundRecordFromPurchase(dto.getOrderId());
-        receiptAttachments.complete(dto, receiptInboundId);
+        inboundService.createInboundRecordFromPurchase(dto.getOrderId());
 
         // 2026-09-18：事件改为手写 payload 后置发布，把业务单号/供应商带进通知模板
         //（原 @Event 注解只能带内部 id，通知标题只能显示「内部编号」）

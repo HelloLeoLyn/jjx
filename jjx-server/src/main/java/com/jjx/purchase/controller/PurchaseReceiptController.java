@@ -48,7 +48,6 @@ public class PurchaseReceiptController extends BaseController {
     private final PurchaseOrderItemMapper orderItemMapper;
     /** 收货票据（独立权限域 purchase:receipt:doc:*，dev-20260923-004）。 */
     private final IPurchaseDocumentService purchaseDocumentService;
-    private final com.jjx.purchase.service.PurchaseReceiptAttachmentService receiptAttachments;
     /** 只读：本批收货生成的入库单（收货页展示 + 引导 IQC）。 */
     private final PurchaseReceiptInboundMapper receiptInboundMapper;
 
@@ -399,20 +398,10 @@ public class PurchaseReceiptController extends BaseController {
     @PostMapping("/confirm-batch")
     @Log(module = "采购收货管理", businessType = BusinessType.UPDATE, bizType = "'purchase_receipt'", bizId = "#orderId", action = LogActions.PUR_RECEIPT_CONFIRM_BATCH)
     @SaCheckPermission("purchase:receipt:add")
-    public Result<Map<String, Object>> confirmBatch(@RequestParam Long orderId, @Valid @RequestBody PurchaseOrderReceiveDTO dto) {
+    public Result<Void> confirmBatch(@RequestParam Long orderId, @Valid @RequestBody PurchaseOrderReceiveDTO dto) {
         dto.setOrderId(orderId);
         purchaseOrderService.batchReceiveOrderItems(dto);
-        Map<String, Object> result = new java.util.HashMap<>();
-        result.put("inboundId", dto.getInboundId());
-        result.put("inboundNo", dto.getInboundNo());
-        return Result.success(result);
-    }
-
-    /** 新链路票据按本次入库凭证归集；历史磁盘票据仍由原接口读取。 */
-    @GetMapping("/doc/refs/{orderId}")
-    @SaCheckPermission("purchase:receipt:doc:view")
-    public Result<List<Map<String, Object>>> receiptDocRefs(@PathVariable Long orderId) {
-        return Result.success(receiptAttachments.list(orderId));
+        return Result.success();
     }
 
     /**
