@@ -113,39 +113,17 @@
 
         <!-- ===== 凭证区：采购凭证 / 入库凭证 / 付款凭证（dev-20260929-015 P2） ===== -->
         <el-tabs v-model="activeTab" style="margin-top: 16px">
-          <!-- 采购凭证（供应商发票/收据/送货单，采购人员上传，类型不限） -->
+          <!-- 采购凭证（改走公共附件组件：写引用表 sys_attachment_ref；删除=解除引用）dev-20261014-017 -->
           <el-tab-pane label="采购凭证" name="purchase">
-            <el-upload
-              v-if="canUploadDoc"
-              :file-list="purchaseVoucherFiles"
-              :http-request="handlePurchaseVoucherUpload"
-              :on-remove="handlePurchaseVoucherRemove"
-              :on-preview="previewFile"
-              multiple
-            >
-              <el-button type="primary" plain>上传采购凭证</el-button>
-              <template #tip>
-                <div class="el-upload__tip">发票 / 收据 / 送货单等，类型不限（采购人员上传）</div>
-              </template>
-            </el-upload>
-            <el-empty v-if="!purchaseVouchers.length" description="暂无采购凭证" :image-size="50" />
-            <el-table v-else :data="purchaseVouchers" size="small" border style="width: 100%">
-              <el-table-column label="文件名" prop="fileName" min-width="220" show-overflow-tooltip />
-              <el-table-column label="上传人" prop="createBy" width="120" />
-              <el-table-column label="上传时间" prop="createTime" width="170" />
-              <el-table-column label="操作" width="130" align="center">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="previewFile(row)">查看</el-button>
-                  <el-button
-                    v-if="canDeleteDoc"
-                    link
-                    type="danger"
-                    @click="removePurchaseVoucher(row)"
-                    >删除</el-button
-                  >
-                </template>
-              </el-table-column>
-            </el-table>
+            <AttachmentCenter
+              v-if="props.orderId"
+              source-type="purchase_order"
+              :source-id="Number(props.orderId)"
+              title="采购凭证"
+              view-perm="purchase:order:view"
+              edit-perm="purchase:order:edit"
+              drop-zone
+            />
           </el-tab-pane>
 
           <!-- 入库凭证（收货生成的入库单） -->
@@ -203,21 +181,13 @@
                 <span class="voucher-qty">实付日：{{ p.actualPaymentDate || '-' }}</span>
                 <span class="voucher-qty">流水号：{{ p.voucherNo || '-' }}</span>
               </div>
-              <el-table
-                v-if="(paymentVouchers[p.paymentId] || []).length"
-                :data="paymentVouchers[p.paymentId]"
-                size="small"
-                border
-                style="width: 100%"
-              >
-                <el-table-column label="文件" prop="fileName" min-width="220" show-overflow-tooltip />
-                <el-table-column label="操作" width="90" align="center">
-                  <template #default="{ row }">
-                    <el-button link type="primary" @click="previewFile(row)">查看</el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-              <el-tag v-else type="info" size="small">无转账回单</el-tag>
+              <AttachmentCenter
+                v-if="p.paymentId"
+                source-type="purchase_payment"
+                :source-id="p.paymentId"
+                title="转账回单"
+                readonly
+              />
             </div>
           </el-tab-pane>
         </el-tabs>
@@ -252,9 +222,8 @@ import { ElMessage } from 'element-plus'
 import { PurchaseEnum } from '@/enums/purchase'
 import { getOrder } from '@/api/purchase/order'
 import { inboundApi } from '@/api/inventory/inbound'
-import { attachmentApi } from '@/api/system/attachment'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import { getPaymentsByOrder } from '@/api/purchase/payment'
-import { useUserStore } from '@/store/modules/user'
 import InboundDetail from '@/views/inventory/inbound/components/InboundDetail.vue'
 import { formatNumber } from '@/utils/format'
 import type { PurchaseOrderVO } from '@/types/purchase/order'
@@ -271,7 +240,6 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const orderDetail = ref<PurchaseOrderVO | null>(null)
-const userStore = useUserStore()
 
 const title = computed(() => `订单详情 - ${orderDetail.value?.orderNo || ''}`)
 
@@ -288,93 +256,18 @@ const voucherDialogVisible = ref(false)
 const voucherId = ref<number | null>(null)
 const voucherNo = ref('')
 
-// ===== 采购凭证（供应商发票/收据/送货单；采购人员上传，类型不限）dev-20260929-015 P2 =====
+// ===== 采购凭证 / 付款凭证（改走公共附件组件，写引用表 sys_attachment_ref）dev-20261014-017 =====
 const activeTab = ref('purchase')
-const canUploadDoc = computed(() => userStore.hasPermission('purchase:receipt:doc:add'))
-const canDeleteDoc = computed(() => userStore.hasPermission('purchase:receipt:doc:delete'))
-const purchaseVouchers = ref<any[]>([])
-const purchaseVoucherFiles = ref<any[]>([])
 
-// ===== 付款凭证（转账回单；按付款单分组） =====
+// ===== 付款凭证（转账回单；按付款单分组；凭证由 AttachmentCenter 按来源读取） =====
 const payments = ref<any[]>([])
-const paymentVouchers = ref<Record<string, any[]>>({})
-
-const previewFile = (f: any) => {
-  const url = f?.filePath || f?.url
-  if (url) window.open(url, '_blank')
-}
-
-const loadPurchaseVouchers = async () => {
-  purchaseVouchers.value = []
-  purchaseVoucherFiles.value = []
-  if (!props.orderId) return
-  try {
-    const res: any = await attachmentApi.list('purchase_order', Number(props.orderId))
-    const list: any[] = res?.data || []
-    purchaseVouchers.value = list
-    purchaseVoucherFiles.value = list.map((a: any) => ({
-      name: a.fileName,
-      url: a.filePath,
-      uid: a.id,
-    }))
-  } catch (e) {
-    console.error('加载采购凭证失败:', e)
-  }
-}
-
-const handlePurchaseVoucherUpload = async (options: any) => {
-  const { file, onSuccess, onError } = options
-  if (!props.orderId) return
-  try {
-    await attachmentApi.upload(
-      file,
-      'purchase_order',
-      Number(props.orderId),
-      undefined,
-      orderDetail.value?.traceId,
-      'purchase_voucher'
-    )
-    onSuccess?.({}, file)
-    ElMessage.success('上传成功')
-    await loadPurchaseVouchers()
-  } catch (e) {
-    onError?.(e)
-    ElMessage.error('上传失败')
-  }
-}
-
-const handlePurchaseVoucherRemove = async (file: any) => {
-  const item = purchaseVouchers.value.find((v) => v.id === file.uid)
-  if (item?.id) await removePurchaseVoucher(item)
-}
-
-const removePurchaseVoucher = async (row: any) => {
-  if (!row?.id) return
-  try {
-    await attachmentApi.remove(row.id)
-    ElMessage.success('已删除')
-    await loadPurchaseVouchers()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '删除失败')
-  }
-}
 
 const loadPayments = async () => {
   payments.value = []
-  paymentVouchers.value = {}
   if (!props.orderId) return
   try {
     const res: any = await getPaymentsByOrder(Number(props.orderId))
-    const list: any[] = res?.data || []
-    payments.value = list
-    for (const p of list) {
-      try {
-        const vr: any = await attachmentApi.list('purchase_payment', p.paymentId)
-        paymentVouchers.value[p.paymentId] = vr?.data || []
-      } catch {
-        paymentVouchers.value[p.paymentId] = []
-      }
-    }
+    payments.value = res?.data || []
   } catch (e) {
     console.error('加载付款凭证失败:', e)
   }
@@ -435,7 +328,6 @@ const loadDetail = async () => {
     const response = await getOrder(Number(props.orderId) as any)
     orderDetail.value = response.data || null
     await loadInbounds()
-    await loadPurchaseVouchers()
     await loadPayments()
   } catch (error) {
     console.error('加载订单详情失败:', error)
@@ -449,10 +341,7 @@ const loadDetail = async () => {
 const handleClose = () => {
   orderDetail.value = null
   inboundList.value = []
-  purchaseVouchers.value = []
-  purchaseVoucherFiles.value = []
   payments.value = []
-  paymentVouchers.value = {}
   activeTab.value = 'purchase'
   emit('update:visible', false)
 }
