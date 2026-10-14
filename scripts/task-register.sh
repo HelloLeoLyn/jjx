@@ -109,7 +109,7 @@ seq_floor() {
   d="$(db_max_today)"; g="$(git_max_today)"
   [[ "$d" =~ ^[0-9]+$ ]] || d=0
   [[ "$g" =~ ^[0-9]+$ ]] || g=0
-  if (( d > g )); then printf '%s' "$d"; else printf '%s' "$g"; fi
+  if (( 10#$d > 10#$g )); then printf '%s' "$d"; else printf '%s' "$g"; fi
 }
 
 redis_alive() { redis-cli "${REDIS_ARGS[@]}" PING >/dev/null 2>&1; }
@@ -121,7 +121,7 @@ redis_next() {
   redis-cli "${REDIS_ARGS[@]}" SET "$SEQ_KEY" "$floor" NX >/dev/null 2>&1 || true
   cur="$(redis-cli "${REDIS_ARGS[@]}" GET "$SEQ_KEY" 2>/dev/null | tr -d '\r')"
   [[ "$cur" =~ ^[0-9]+$ ]] || cur=0
-  if (( cur < floor )); then redis-cli "${REDIS_ARGS[@]}" SET "$SEQ_KEY" "$floor" >/dev/null 2>&1 || true; fi
+  if (( 10#$cur < 10#$floor )); then redis-cli "${REDIS_ARGS[@]}" SET "$SEQ_KEY" "$floor" >/dev/null 2>&1 || true; fi
   redis-cli "${REDIS_ARGS[@]}" INCR "$SEQ_KEY" | tr -d '\r'
 }
 
@@ -130,7 +130,7 @@ insert_sql_for() { # $1 = 完整 task_code
     "$(esc "$1")" "$(esc "$TYPE")" "$(esc "$MODULE")" "$(esc "$TITLE")" "$(esc "$PRIORITY")" "$(esc "$BY")" "$(esc "$DESC")"
 }
 
-code_of() { printf '%s%03d' "$PREFIX" "$1"; }
+code_of() { printf '%s%03d' "$PREFIX" "$((10#${1:-0}))"; }
 
 if [[ $DRY -eq 1 ]]; then
   echo "[dry-run] 取码模式: $SEQ_MODE ｜ Redis 键: $SEQ_KEY ｜ 当天下限(库/git 取大): $(seq_floor)"
@@ -170,7 +170,7 @@ while [[ $ATTEMPT -le $MAX_ATTEMPT ]]; do
     NUM="$(redis_next)"
   else
     [[ "$SEQ_MODE" == redis ]] && echo "Redis 不可达（$REDIS_HOST:$REDIS_PORT db$REDIS_DB），回退 db 模式取号" >&2
-    NUM=$(( $(seq_floor) + 1 ))
+    NUM=$(( 10#$(seq_floor) + 1 ))
   fi
   [[ "$NUM" =~ ^[0-9]+$ ]] || { echo "取号失败：得到非数字序号 '$NUM'" >&2; exit 1; }
   CODE="$(code_of "$NUM")"
