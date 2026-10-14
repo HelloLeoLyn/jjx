@@ -5,6 +5,7 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.system.domain.dto.AttachmentDrawingMetaDTO;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.mapper.SysAttachmentMapper;
+import com.jjx.system.mapper.SysOperLogMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
@@ -41,7 +42,7 @@ class AttachmentLifecycleDrawingMetaTest {
         jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(anyString(), any(Object.class))).thenReturn(users());
         when(files.selectList(any())).thenReturn(List.of());
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc);
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
         Field field = AttachmentLifecycleService.class.getDeclaredField("uploadBasePath");
         field.setAccessible(true);
         field.set(service, dir.toString());

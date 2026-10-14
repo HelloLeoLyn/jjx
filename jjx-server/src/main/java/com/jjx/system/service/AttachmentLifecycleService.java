@@ -1,12 +1,18 @@
 package com.jjx.system.service;
 
 import cn.dev33.satoken.stp.StpUtil;
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.jjx.common.enums.YesNoEnum;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.domain.dto.AttachmentDrawingMetaDTO;
 import com.jjx.system.domain.entity.SysAttachment;
+import com.jjx.system.domain.entity.SysOperLog;
 import com.jjx.system.enums.AttachmentUploadState;
 import com.jjx.system.mapper.SysAttachmentMapper;
+import com.jjx.system.mapper.SysOperLogMapper;
+import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +36,7 @@ public class AttachmentLifecycleService {
     private final SysAttachmentMapper files;
     private final AttachmentAccessService access;
     private final JdbcTemplate jdbc;
+    private final SysOperLogMapper operLogs;
     @Value("${file.upload.path:./upload}")
     private String uploadBasePath;
 
@@ -228,15 +235,53 @@ public class AttachmentLifecycleService {
                 bad.put("attachmentId", id); bad.put("reason", "FILE_DELETE_FAILED"); failed.add(bad);
                 continue;
             }
-            if (jdbc.update("UPDATE sys_attachment SET upload_state='PURGED' WHERE id=? AND deleted=0", id) > 0) purged++;
-            log.info("附件字节已释放 actor={} id={} fileName={} sha256={} state=PURGED（记录保留）",
-                    StpUtil.getLoginIdAsString(), id, file.getFileName(), file.getSha256());
+            if (jdbc.update("UPDATE sys_attachment SET upload_state='PURGED' WHERE id=? AND deleted=0", id) > 0) {
+                purged++;
+                // 按文件补写操作日志：biz_id=attachmentId，action/detail 带 fileName 与 sha256。
+                LocalDateTime purgedAt = LocalDateTime.now();
+                recordPurgeLog(id, file, purgedAt);
+                log.info("附件字节已释放 actor={} id={} fileName={} sha256={} state=PURGED（记录保留）",
+                        StpUtil.getLoginIdAsString(), id, file.getFileName(), file.getSha256());
+            }
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("scanned", ids.size()); result.put("purged", purged);
         result.put("skipped", skipped); result.put("failed", failed);
         result.put("nextAfterId", cursor); result.put("recordsKept", true);
         return result;
+    }
+
+    /**
+     * 释放成功后按文件补写一条操作日志（sink 到 {@code sys_oper_log}）：
+     * biz_id=attachmentId，action/detail 带 fileName 与 sha256，使「何时、谁、释放了哪个文件」在 DB 长期留存。
+     * 与状态更新同一事务（正常情况下 Atomic）；写入失败只记 error 不阻断释放——磁盘字节已不可恢复，
+     * 此时回滚状态反而会与实际不符（状态说没删、文件其实已删）。应用日志 log.info 会被 LogCleanTask 清掉，故必须落库。
+     */
+    private void recordPurgeLog(Long id, SysAttachment file, LocalDateTime purgedAt) {
+        try {
+            SysOperLog entry = new SysOperLog();
+            entry.setUserId(SecurityUtils.getUserId());
+            entry.setUsername(SecurityUtils.getUsername());
+            entry.setRealName(SecurityUtils.getRealName());
+            entry.setTenantId(SecurityUtils.getTenantId());
+            entry.setModule("附件引用");
+            entry.setBusinessType(BusinessType.DELETE.getCode());
+            entry.setAction("释放附件字节（删文件、保留记录）");
+            entry.setBizType("sys_attachment");
+            entry.setBizId(String.valueOf(id));
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("attachmentId", id);
+            detail.put("fileName", file.getFileName());
+            detail.put("fileSize", file.getFileSize());
+            detail.put("sha256", file.getSha256());
+            detail.put("purgedAt", purgedAt.toString());
+            entry.setDetail(JSONUtil.toJsonStr(detail));
+            entry.setStatus(YesNoEnum.YES.getCode());
+            entry.setCreateTime(purgedAt);
+            operLogs.insert(entry);
+        } catch (Exception ex) {
+            log.error("释放附件字节补写操作日志失败 id={} fileName={}", id, file.getFileName(), ex);
+        }
     }
 
     /** 单行判定（只读）。eligible 仅表示「可移入回收站」，不代表允许物理删除。 */
