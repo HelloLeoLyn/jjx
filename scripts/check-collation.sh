@@ -4,14 +4,14 @@
 #   任务：dev-20260921-046（任务 2108）  目标口径：全库字符串列统一 utf8mb4_unicode_ci
 #
 # 背景：库内曾同时存在 utf8mb4_unicode_ci 与 utf8mb4_0900_ai_ci 两套字符串列，
-#       跨表字符串 JOIN 会报 ERROR 1267 Illegal mix of collations（实例见迁移 193 文件头）。
-#       修复迁移：jjx-docs/sql/migrations/278_attachment_ref_collation_unify.sql（任务码 dev-20261014-006）
-#       （2026-09 的 193_collation_unify_utf8mb4_unicode_ci.sql 为历史，已随 f96927a4 rm 移出仓）
+#       跨表字符串 JOIN 会报 ERROR 1267 Illegal mix of collations（首见记录：2026-09 的 collation 统一迁移）。
+#       现行修复迁移：jjx-docs/sql/migrations/278_attachment_ref_collation_unify.sql（任务码 dev-20261014-006）
+#       （2026-09 的 193 号统一迁移文件已随 rm 事故移出仓且按 CONVENTIONS §3「历史缺失文件不恢复」不回填）
 #       刻意例外：ascii 家族的 ascii_bin（如 sys_attachment.source_type/upload_key）不计入漂移（CONVENTIONS §16.3）
 #
 # 用法：
 #   bash scripts/check-collation.sh              # 咨询模式：只报告，永远 exit 0
-#   bash scripts/check-collation.sh --strict      # 有漂移则 exit 1（迁移 193 执行后改用这个）
+#   bash scripts/check-collation.sh --strict      # 有漂移则 exit 1（全库漂移为 0 时启用；validate 走这个）
 #   bash scripts/check-collation.sh --preflight   # 追加执行前预检：串列外键 + 唯一索引撞键
 # 环境变量（与 scripts/db-backup.sh / db-migrate.sh 同口径）：
 #   DB_HOST DB_PORT DB_USER DB_PASS DB_NAME

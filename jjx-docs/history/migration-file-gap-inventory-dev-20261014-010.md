@@ -103,3 +103,25 @@
 2）`bash scripts/db-migrate.sh --status` → 不出现新的"待执行"（恢复文件均为已记账）。
 3）`cd jjx-web && npm run check:docs` 通过；清单文件带 BOM 且登记 `jjx-docs/history/INDEX.md`。
 4）反例自检：不重跑迁移、不伪造文件、不因为"文件回来了"就宣称"库结构已修复"。
+
+---
+
+## 10）拍板与落地（2026-10-14，用户口径）
+
+**用户拍板：不清仓内、不恢复历史** —— 原话「清空历史，只保留未执行的，同步更新门禁」，二选一时选 **B**：保留 `applied/` 里已有的 24 个已执行归档，**只保证不再新增历史文件**，并把门禁口径同步改掉。
+
+已执行的改动（本卡范围内）：
+
+1）`scripts/check-collation.sh`：背景注释不再指向已不在仓的 `193_collation_unify_utf8mb4_unicode_ci.sql`（改为「首见记录」中性表述 + 指向现行 `278_attachment_ref_collation_unify.sql`）；`--strict` 用法提示由"迁移 193 执行后改用这个"改为"全库漂移为 0 时启用；validate 走这个"。
+2）`jjx-docs/standards/CONVENTIONS.md` §3 新增条款：**历史缺失文件不恢复（66–255 共 187 个不回填；185 个虽可取回也不恢复；192/194 本无）**，以账本为准，禁止按当前库结构反推伪造。
+3）`AGENTS.md` 迁移条目追加同一句，并指向本清单。
+4）**未改**：`db-migrate.sh`（实测 `--status` 只列 1 个待执行 `280`、0 个待归档；缺失文件不影响它按账本判定）、`pre-commit`（B 方案不删任何 `jjx-docs/sql/**` 文件，无需放开拦截）。
+
+验证（实跑）：
+
+- `bash scripts/check-collation.sh` → 退出 0，全库字符串列已统一（漂移 0）。
+- `npm run check:migration-collation` → 通过（扫描 1 个待办迁移）。
+- `npm run check:docs` → 通过（history 250 篇）。
+- `grep -rn "193_collation|db-migrate.sh 19[0-9]_" scripts/ AGENTS.md` → **0 命中**（死引用已清；仅本清单与两张卡文件作为记录提及文件名）。
+
+遗留：断号 `99 / 212 / 213` 与同号多文件 25 组（第 6 节）**不在本卡处理**，建议单独登记。

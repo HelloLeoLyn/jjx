@@ -48,7 +48,7 @@ Full spec: `jjx-docs/standards/CONVENTIONS.md` — single source of truth.
 
 Quick rules:
 - **DB backup（2026-09-28 用户口径，覆盖此前的仓内/仓外/入库/索引要求）**: 只有三类需要备份——① 迁移/表结构变更 ② 清库 ③ 批量 UPDATE/DELETE 或脏数据订正；**任务登记、单行 status/remark、幂等配置/字典新增一律免备份**。备份放**仓库内** `jjx-docs/sql/backups/`（`JJX_BACKUP_DIR` 可覆盖），**由用户手工执行、只保留最新一份**（生成新份即删旧份，该目录内永远只有 1 份全库备份）。agent 与脚本**不再自动生成备份文件、不再维护 `backup-index.tsv`**，也不往仓库外放备份。全库导出**必须排除人事档案表 `hr_employee`**（仓库为公开，入库即永久留在 git 历史）。
-- Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql`（NN = `ops.schema.applied` 最大号与目录现存最大号的较大者 + 1）；已应用的迁移留在仓库内 `migrations/applied/`（由 `db-migrate.sh` 记账回查成功后同名归档），**是否执行过以目标库账本为准，不看文件是否在 `applied/`**。
+- Migration scripts: `jjx-docs/sql/migrations/NN_<desc>.sql`（NN = `ops.schema.applied` 最大号与目录现存最大号的较大者 + 1）；已应用的迁移留在仓库内 `migrations/applied/`（由 `db-migrate.sh` 记账回查成功后同名归档），**是否执行过以目标库账本为准，不看文件是否在 `applied/`**。**历史缺失的迁移文件（66–255 共 187 个，历史 rm 事故）不恢复**，以账本为准；清单见 `jjx-docs/history/migration-file-gap-inventory-dev-20261014-010.md`。
 - Analysis / test-plan / design reports: `jjx-docs/history/<topic>-dev-YYYYMMDD-NNN.md`, register in `history/INDEX.md`, UTF-8 BOM.
   → gate it with `npm run check:docs` (run from `jjx-web/`); it is part of `npm run validate`. Existing debt lives in `scripts/docs-baseline.json` and may only shrink (`--write-baseline` to narrow).
 - 表级 guard 备份只在**批量/破坏性订正**前做（登记任务、改一行状态不做）：命名 `<表域>_<topic>_YYYYMMDD-HHmm.sql`、放 `jjx-docs/sql/backups/`、**只留最新一份**；不再维护 `backup-index.tsv`。

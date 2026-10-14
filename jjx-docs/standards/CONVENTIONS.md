@@ -82,6 +82,7 @@ bash scripts/db-migrate.sh <NN_xxx.sql> --yes --task dev-YYYYMMDD-NNN
 - 位置：`jjx-docs/sql/migrations/`（仓库内**只保留未应用/最新**的迁移，见下条瘦身口径）
 - **归档口径（2026-10-11 用户指令，dev-20261011-014 落地；覆盖 2026-09-22「成批移出仓库」旧口径）**：已应用的迁移**留在仓库内**，由 `db-migrate.sh` 在记账回查成功后按**原文件名**移入 `jjx-docs/sql/migrations/applied/`；**是否执行过以目标库 `ops.schema.applied` 为准，不看文件是否在 `applied/`**（换到另一套数据库时，已归档文件仍按该库账本判定）。归档移动属“`jjx-docs/sql/` 下移动”，pre-commit 只放行「同名 + 内容不变」的 `migrations/NN_x.sql → migrations/applied/NN_x.sql`（见 §5），其余仍拦。
   已知代价：已归档文件仍在仓库（可作链参考）；新环境建库仍推荐 `jjx-docs/sql/init/`（初始化数据出包）或全库 dump 恢复。
+- **历史缺失文件不恢复（2026-10-14 用户指令，dev-20261014-010）**：`66–255` 共 **187 个号**的迁移文件已随历史 `rm` 事故移出仓库（`f96927a4` / `6758831e` / `938dfc99` / `5265d351` 等），**一律不回填**——其中 185 个虽可从 git 历史原样取回，按本口径也不恢复；`192`、`194` 本就不在任何历史提交里。**是否执行过一律以目标库 `ops.schema.applied` 为准**（缺失不影响 `db-migrate.sh --status`：它按库账本判定，不按仓内文件）。**禁止**按当前库结构反推伪造历史文件（例如"补一个 192/194"）。清单与证据：`jjx-docs/history/migration-file-gap-inventory-dev-20261014-010.md`。
 - 命名：`NN_<描述>.sql`；NN = **max(`sys_config.ops.schema.applied` 最大号, 目录现存最大号) + 1**（不能只看目录——已应用的文件在仓库外，只看目录会撞号；实例：194 已应用但文件不在仓库，故下一个号取 195）；同批多阶段可 `NN_a_<desc>.sql / NN_b_<desc>.sql`（2026-09-07 决议 C1）
 - 台账：`sys_config.ops.schema.applied`（`db-migrate.sh` 自动维护，最大号同步到 `ops.schema.version`）+ 每文件指纹 `ops.schema.file.<NN>`；已应用文件留 `migrations/applied/`（真源仍是库账本）；待执行/待归档清单用 `bash scripts/db-migrate.sh --status`
 - 存量平铺 dated 文件（`jjx-docs/sql/2026*.sql`，含 20260906_unified_iqc_*）为历史遗留：不迁移、不重复；新迁移一律进 migrations/
