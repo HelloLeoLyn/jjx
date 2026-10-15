@@ -56,7 +56,7 @@ function harness(params = {}, overrides = {}) {
   const filename = path.join(src, 'components/attachment/AttachmentDocList.vue')
   const { descriptor } = parse(fs.readFileSync(filename, 'utf8'))
   const scope = vue.effectScope()
-  const state = scope.run(() => evaluate(descriptor.scriptSetup.content + '\nexport { rows, messages, loading, documentTypes, detailVisible, detailRow, openDetail, hasQuery, reload, previewRow, downloadUrl, viewerVisible, viewerList, viewerIndex, close, openUrl, AttachmentTable }', filename))
+  const state = scope.run(() => evaluate(descriptor.scriptSetup.content + '\nexport { rows, messages, loading, documentTypes, detailVisible, detailRow, openDetail, hasQuery, reload, previewRow, downloadUrl, viewerVisible, viewerList, viewerIndex, close, openUrl, AttachmentTable, readonlyDocColumns }', filename))
   const { attachmentFields, attachmentColumns } = evaluate(fs.readFileSync(path.join(src, 'components/attachment/attachmentFields.ts'), 'utf8'), filename)
   state.visibleColumns = vue.computed(() => (props.columns ?? attachmentColumns).map(key => attachmentFields[key]))
   state.AttachmentDocumentStatusEnum = evaluate("export { AttachmentDocumentStatusEnum } from '@/enums/system/AttachmentEnum'", filename).AttachmentDocumentStatusEnum
@@ -82,11 +82,11 @@ function harness(params = {}, overrides = {}) {
   } }
 }
 
-test('无条件不请求，包括类型字典；默认九列且含展示文件名与产品编码', async t => {
+test('无条件不请求，包括类型字典；可写表默认八列且含产品编码（撤「展示文件名」，dev-20261016-004）', async t => {
   const h = harness(); t.after(h.stop); await tick()
   assert.equal(h.calls.length, 0)
-  assert.equal(h.state.visibleColumns.value.length, 9)
-  assert.equal(h.state.visibleColumns.value.some(c => c.key === 'displayName'), true)
+  assert.equal(h.state.visibleColumns.value.length, 8)
+  assert.equal(h.state.visibleColumns.value.some(c => c.key === 'displayName'), false)
   assert.equal(h.state.visibleColumns.value.some(c => c.key === 'productCode'), true)
   assert.match(await h.html(), /未指定查询条件/)
 })
@@ -211,19 +211,27 @@ test('链路附件保留引用元数据，类型回显且预览下载使用引�
   h.state.previewRow(row); assert.equal(h.opened[0][0], '/refs/91/preview')
 })
 
-test('只读和编辑组件共用相同列与行数据，只读没有修改操作', async t => {
+test('只读表保留「展示文件名」列；可写表已撤该列与行内改名；只读没有修改操作（dev-20261016-004）', async t => {
   const row = { ...refRow(1), displayName: '客户图纸', productCode: 'P008' }
   const h = harness({ sourceType: 'inquiry', sourceId: 7 }, { refs: async () => ({ data: [row] }) })
   t.after(h.stop); await tick()
   const props = { rows: [row], pending: [], sourceType: 'inquiry', documentTypes: h.state.documentTypes.value, canEdit: false }
   const doc = await h.html(), readonly = await h.html(props), editable = await h.html({ ...props, canEdit: true })
+  // 只读表（AttachmentDocList）：仍含「展示文件名」
   for (const label of ['原文件名', '展示文件名', '来源类型', '来源单号', '产品编码', '一级类型', '二级类型', '状态', '操作']) {
-    for (const html of [doc, readonly, editable]) assert.ok(html.includes(label), label)
+    assert.ok(doc.includes(label), label)
   }
-  for (const text of ['客户图纸', 'P008', 'INQ007', 'drawing.pdf', '图纸', '工程']) {
+  // 可写表（AttachmentRefList，两模式）：八列，已撤「展示文件名」，无行内改名输入
+  for (const html of [readonly, editable]) {
+    for (const label of ['原文件名', '来源类型', '来源单号', '产品编码', '一级类型', '二级类型', '状态', '操作']) {
+      assert.ok(html.includes(label), label)
+    }
+    assert.doesNotMatch(html, /展示文件名/)
+  }
+  for (const text of ['P008', 'INQ007', 'drawing.pdf', '图纸', '工程']) {
     assert.ok(doc.includes(text), text); assert.ok(readonly.includes(text), text)
   }
-  assert.match(editable, /value="客户图纸"/)
+  assert.ok(doc.includes('客户图纸'), '客户图纸')
   assert.match(editable, /value="DRAWING"/)
   assert.match(editable, /批量改类型/)
   assert.match(editable, /移除/)

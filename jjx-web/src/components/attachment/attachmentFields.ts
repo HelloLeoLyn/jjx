@@ -28,10 +28,9 @@ export const attachmentFields = {
 
 export type AttachmentFieldKey = keyof typeof attachmentFields
 
-/** 两种模式使用同一默认列集；编辑能力由单元格插槽提供。 */
+/** 可写表默认列（dev-20261016-004）：去掉「展示文件名」——展示名由后端按命名规则统一生成，前端不再录入 */
 export const attachmentColumns: readonly AttachmentFieldKey[] = [
   'fileName',
-  'displayName',
   'sourceType',
   'sourceNo',
   'productCode',
@@ -41,4 +40,9 @@ export const attachmentColumns: readonly AttachmentFieldKey[] = [
   'actions',
 ]
 
-export const readonlyDocColumns = attachmentColumns
+/** 只读表默认列：仍是可写列 + 「展示文件名」（只读展示，保留） */
+export const readonlyDocColumns: readonly AttachmentFieldKey[] = [
+  'fileName',
+  'displayName',
+  ...attachmentColumns.slice(1),
+]

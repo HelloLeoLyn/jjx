@@ -4,9 +4,6 @@
         <el-button size="small" :disabled="!selectedIds.length" @click="openBatchType"
           >批量改类型</el-button
         >
-        <el-button size="small" :disabled="!selectedIds.length" @click="openBatchName"
-          >批量改名</el-button
-        >
         <el-button
           size="small"
           type="danger"
@@ -31,12 +28,6 @@
         <template #fileName="{ row }">
           <span v-if="row.kind === 'pending'">{{ textOf('fileName', row) }}</span>
           <el-button v-else link type="primary" @click="previewRow(row)">{{ textOf('fileName', row) }}</el-button>
-        </template>
-        <template #displayName="{ row }">
-          <el-input v-if="row.kind === 'ref' && canEdit" :model-value="nameDraft(refOf(row))" size="small" maxlength="255"
-            placeholder="留空=用原文件名" @update:model-value="(v: string) => setNameDraft(refOf(row), v)"
-            @change="() => saveDisplayName(refOf(row))" />
-          <span v-else>{{ textOf('displayName', row) }}</span>
         </template>
         <template #category="{ row }">
           <AttachmentTypeSelect v-if="canEdit" category-only :category="categoryOfRow(row)"
@@ -98,40 +89,6 @@
       </template>
     </el-dialog>
 
-    <!-- 批量改名 -->
-    <el-dialog v-model="batchNameVisible" title="批量改名" width="560px" append-to-body>
-      <div class="ar-sub">
-        命名规则：来源类型编码-来源Id-P产品id-一级码-二级码-二级名（编码取对照表：来源
-        INQ/QT/SO…、一级 BIZ/CUS/ENG/GEN/QUA、二级如 CD/PI；<b>无产品时 P 段为 P0</b>；除产品id外各要素都必须有，缺任一不给生成）。
-      </div>
-      <div class="ar-sub" style="margin-top: 6px">
-        共 {{ batchNameRows.length }} 条；示例（第 1 条）：
-      </div>
-      <div class="ar-preview">{{ batchNamePreview }}</div>
-      <el-alert
-        v-if="batchNameInvalidCount"
-        type="warning"
-        :closable="false"
-        :title="`有 ${batchNameInvalidCount} 行要素不齐（缺 ${batchNameMissingLabels}），请先在列表里补齐类型后再改名。`"
-      />
-      <el-alert
-        v-if="batchNameHasOverflow"
-        type="warning"
-        :closable="false"
-        title="有名称超过 255 字符，后端会拒绝，请先调整类型后再改。"
-      />
-      <template #footer>
-        <el-button @click="batchNameVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="batchNameSaving"
-          :disabled="!batchNameRows.length || batchNameHasOverflow || batchNameInvalidCount > 0"
-          @click="applyBatchName"
-        >
-          确定
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -148,11 +105,6 @@ import {
   type AttachmentRefItem,
 } from '@/api/system/attachmentRef'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
-import {
-  attachmentSourceCode,
-  attachmentCategoryCode,
-  attachmentDocumentTypeCode,
-} from '@/enums/system/AttachmentEnum'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
 import AttachmentTable from './AttachmentTable.vue'
 import { KIND_ACTIONS_DEFAULT, type AttachmentAction } from './attachmentActions'
@@ -259,21 +211,12 @@ watch(
   () => props.rows,
   () => {
     selectedIds.value = []
-    nameDrafts.value = {} // 父组件刷新列表后丢弃草稿，避免旧值覆盖新值
-    rowCategories.value = {} // 同理：丢弃未落库的一级选择
+    rowCategories.value = {} // 丢弃未落库的一级选择（父组件刷新列表后）
   }
 )
 
-// ==================== 行内编辑（二级类型 / 展示文件名，改完即存）====================
+// ==================== 行内编辑（二级类型，改完即存）====================
 const savingId = ref<number | null>(null)
-/** 展示名草稿：key=refId；未编辑时回落到本行当前值 */
-const nameDrafts = ref<Record<number, string>>({})
-function nameDraft(row: AttachmentRefItem): string {
-  return nameDrafts.value[row.id] ?? row.displayName ?? ''
-}
-function setNameDraft(row: AttachmentRefItem, value: string) {
-  nameDrafts.value[row.id] = value
-}
 /**
  * 行内改二级类型：走 /refs/batch 的「按行部分更新」，只带 documentType，
  * 不会像单条 PUT（整条覆盖）那样把展示名/备注/排序清空；清空时传空串=清类型。
@@ -283,16 +226,9 @@ async function saveDocType(row: AttachmentRefItem, value: string | null) {
   if (next === (row.documentType ?? '')) return
   await inlineSave(row, { documentType: next })
 }
-/** 行内改展示名：空串=清空（回落到原文件名） */
-async function saveDisplayName(row: AttachmentRefItem) {
-  const next = (nameDrafts.value[row.id] ?? '').trim()
-  if (next === (row.displayName ?? '')) return
-  const ok = await inlineSave(row, { displayName: next })
-  if (ok) delete nameDrafts.value[row.id]
-}
 async function inlineSave(
   row: AttachmentRefItem,
-  patch: { documentType?: string; displayName?: string }
+  patch: { documentType?: string }
 ): Promise<boolean> {
   savingId.value = row.id
   try {
@@ -343,89 +279,6 @@ async function applyBatchType() {
     emit('error', { action: 'batch-type', message })
   } finally {
     batchSaving.value = false
-  }
-}
-
-// ==================== 批量改名（按行生成，每行名字不同）====================
-const NAME_SEP = '-'
-/** 产品id 缺省占位：保持 P 前缀；0 不是合法产品id，一眼看出"没有产品" */
-const PRODUCT_PLACEHOLDER = 'P0'
-interface BatchNameRow {
-  refId: number
-  name: string
-  overflow: boolean
-  /** 缺的要素名（除产品id外都必要）；非空 = 本行不能生成 */
-  missing: string[]
-}
-const batchNameVisible = ref(false)
-const batchNameSaving = ref(false)
-const batchNameRows = ref<BatchNameRow[]>([])
-const batchNamePreview = computed(() => batchNameRows.value[0]?.name || '')
-const batchNameHasOverflow = computed(() => batchNameRows.value.some((r) => r.overflow))
-/** 要素不齐的行数（>0 时整批不给生成） */
-const batchNameInvalidCount = computed(() => batchNameRows.value.filter((r) => r.missing.length).length)
-/** 缺了哪些要素（去重后拼成一句话） */
-const batchNameMissingLabels = computed(() => {
-  const set = new Set<string>()
-  batchNameRows.value.forEach((r) => r.missing.forEach((m) => set.add(m)))
-  return Array.from(set).join('、')
-})
-/**
- * 命名规则：来源类型编码-来源Id-P产品id-一级码-二级码-二级名
- * 例：INQ-3-P123-CUS-CD-客户图纸；无产品时 P 段为 P0。
- * 来源/一级/二级编码取前端常量对照表（AttachmentEnum）；除产品id外各要素都必要，缺任一则 missing 非空（不给生成）。
- */
-function buildRowName(row: AttachmentRefItem): { name: string; missing: string[] } {
-  const code = attachmentSourceCode(row.sourceType)
-  const category = categoryKeyOfType(row.documentType) || ''
-  const second = row.documentType ? secondLabelOf(row.documentType) : ''
-  const missing: string[] = []
-  if (!code) missing.push('来源类型')
-  if (row.sourceId == null) missing.push('来源Id')
-  if (!category) missing.push('一级类型')
-  if (!row.documentType) missing.push('二级类型')
-  if (!second) missing.push('二级名称')
-  // 不丢空段（段位固定）：缺的要素位置留空，供预览时一眼看出
-  const name = [
-    code,
-    row.sourceId == null ? '' : String(row.sourceId),
-    row.productId == null ? PRODUCT_PLACEHOLDER : `P${row.productId}`,
-    attachmentCategoryCode(category),
-    attachmentDocumentTypeCode(row.documentType),
-    second,
-  ].join(NAME_SEP)
-  return { name, missing }
-}
-function openBatchName() {
-  batchNameRows.value = selectedRows.value.map((row) => {
-    const { name, missing } = buildRowName(row)
-    return { refId: row.id, name, overflow: name.length > 255, missing }
-  })
-  batchNameVisible.value = true
-}
-async function applyBatchName() {
-  const items = batchNameRows.value.map((r) => ({ refId: r.refId, displayName: r.name }))
-  if (!items.length) return
-  if (batchNameInvalidCount.value) {
-    ElMessage.warning(`有 ${batchNameInvalidCount.value} 行要素不齐（${batchNameMissingLabels.value}），请先补齐再改名`)
-    return
-  }
-  if (batchNameHasOverflow.value) {
-    ElMessage.warning('有名称超过 255 字符，请先调整类型后再改')
-    return
-  }
-  batchNameSaving.value = true
-  try {
-    await attachmentRefApi.batchUpdate(items)
-    ElMessage.success(`已批量改名 ${items.length} 条`)
-    batchNameVisible.value = false
-    emit('changed')
-  } catch (e: any) {
-    const message = e?.message || '批量改名失败'
-    ElMessage.error(message)
-    emit('error', { action: 'batch-name', message })
-  } finally {
-    batchNameSaving.value = false
   }
 }
 

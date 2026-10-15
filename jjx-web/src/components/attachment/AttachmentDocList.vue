@@ -11,7 +11,7 @@
     />
     <AttachmentTable
       v-loading="loading" :rows="rows" :document-types="documentTypes"
-      :source-type="sourceType" :columns="columns"
+      :source-type="sourceType" :columns="columns ?? readonlyDocColumns"
       :empty-text="hasQuery ? '暂无文档' : '未指定查询条件'"
       @preview="previewRow" @download="(row) => openUrl(downloadUrl(row))" @detail="openDetail"
     />
@@ -32,7 +32,7 @@
 import { computed, ref } from 'vue'
 import { attachmentApi } from '@/api/system/attachment'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
-import type { AttachmentFieldKey } from './attachmentFields'
+import { readonlyDocColumns, type AttachmentFieldKey } from './attachmentFields'
 import AttachmentDetailInfo from './AttachmentDetailInfo.vue'
 import AttachmentTable from './AttachmentTable.vue'
 import { useAttachmentPreview, type PreviewRow } from './useAttachmentPreview'
