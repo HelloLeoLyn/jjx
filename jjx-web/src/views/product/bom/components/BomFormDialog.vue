@@ -459,6 +459,9 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       materialCode: '',
       materialName,
       processName: itemName, // 标准工序匹配由编辑器处理；未匹配名称原样保留。
+      // dev-1792056991945（方案A）：导入时无「项目名称」的行默认视为整单通用；
+      // 有名称但未匹配到工序的行保持未勾选，导入后提示人工核对。
+      isCommon: !String(itemName || '').trim(),
       specification: spec,
       unit: cellOf(row, 'unit') || 'PCS',
       quantity: calculateBomQuantity(baseQty, moduleQty) ?? 0,

@@ -92,13 +92,19 @@
             size="small"
             @change="(val: number | string | undefined) => handleProjectChange(scope.row, val)"
           />
+          <div
+            v-if="!scope.row.processId && !(scope.row.processName || '').trim()"
+            :class="scope.row.isCommon ? 'project-common-hint' : 'project-pending-hint'"
+          >
+            {{ scope.row.isCommon ? '整单通用（如需挂工序请选项目）' : '未挂工序：请选项目或勾「通用」' }}
+          </div>
         </template>
       </el-table-column>
-      <!-- 整单通用（dev-20261012-039）：不挂工序的材料必须显式标记，否则提交审核被拦 -->
+      <!-- 整单通用（dev-20261012-039；操作优化 dev-1792056991945）：项目为空或新增行默认视为通用，选工序自动取消 -->
       <el-table-column label="通用" width="64" align="center">
         <template #default="scope">
           <el-tooltip
-            :content="scope.row.isCommon ? '整单通用材料（不挂工序）' : '勾选=整单通用（不挂工序）'"
+            :content="scope.row.isCommon ? '整单通用材料（不挂工序）' : '未勾选且未选项目将无法提交审核'"
             placement="top"
           >
             <el-checkbox
@@ -368,7 +374,10 @@ watch(processOptions, () => walkTree(items.value, matchProjectByName))
 function matchProjectByName(row: EngineeringBomItem) {
   if (row.processId != null || !row.processName) return
   const matches = processOptions.value.filter((p) => p.processName === row.processName)
-  if (matches.length === 1) row.processId = matches[0].processId
+  if (matches.length === 1) {
+    row.processId = matches[0].processId
+    row.isCommon = false // 解析到工序 → 非通用（dev-1792056991945）
+  }
 }
 
 const handleProjectChange = (row: EngineeringBomItem, value: number | string | undefined) => {
@@ -382,10 +391,18 @@ const handleProjectChange = (row: EngineeringBomItem, value: number | string | u
     row.processId = undefined
     row.processName = value ?? ''
     matchProjectByName(row)
+    // dev-1792056991945（方案A）：项目为空 → 默认「整单通用」；已有工序 → 取消通用；
+    // 只有「名称已填但未匹配到工序」才保留未勾通用状态（提交时拦截，供人工核对）。
+    if (row.processId != null) {
+      row.isCommon = false
+    } else if (!(row.processName || '').trim()) {
+      row.isCommon = true
+    }
   }
 }
 
-// 勾选「整单通用」→ 清空工序（通用材料不挂工序）（dev-20261012-039）
+// 勾选「整单通用」→ 清空工序（通用材料不挂工序）（dev-20261012-039）；
+// 取消勾选时保留空项目（若未选项目则提交拦截）（dev-1792056991945）
 const handleCommonChange = (row: EngineeringBomItem, val: any) => {
   if (val) {
     row.processId = undefined
@@ -604,6 +621,7 @@ const handleAddItem = () => {
     actualIssueQty: 0,
     moduleQty: 1,
     baseQty: 1,
+    isCommon: true, // dev-1792056991945：新增行默认「整单通用」，选工序会自动取消
     remark: '',
     sortOrder: items.value.length + 1,
     create: false,
@@ -1124,5 +1142,17 @@ defineExpose({
 .material-name-cell > :first-child {
   flex: 1;
   min-width: 0;
+}
+.project-common-hint {
+  font-size: 11px;
+  color: #909399;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+.project-pending-hint {
+  font-size: 11px;
+  color: #e6a23c;
+  line-height: 1.3;
+  margin-top: 2px;
 }
 </style>
