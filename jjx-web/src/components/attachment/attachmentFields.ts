@@ -48,7 +48,7 @@ export const readonlyDocColumns: readonly AttachmentFieldKey[] = [
 /** 可写表默认列（2026-10-15 用户指定）：原文件名 / 展示文件名 / 来源类型 / 来源单号 / 产品编码 / 一级+二级类型；大小·上传人·时间在「详情」里看 */
 export const editableColumns = [
   attachmentFields.fileName,
-  attachmentFields.displayName,
+  // attachmentFields.displayName,
   attachmentFields.sourceType,
   attachmentFields.sourceNo,
   attachmentFields.productCode,
