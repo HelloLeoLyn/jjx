@@ -32,6 +32,7 @@ public class AttachmentRefService {
     private final AttachmentSourcePolicy sources;
     private final AttachmentAccessService access;
     private final AttachmentDocumentTypeService types;
+    private final AttachmentDisplayNameService displayNames;
     private final JdbcTemplate jdbc;
 
     @Transactional(rollbackFor = Exception.class)
@@ -70,7 +71,11 @@ public class AttachmentRefService {
         SysAttachmentRef ref = new SysAttachmentRef();
         ref.setAttachmentId(file.getId()); ref.setSourceType(source); ref.setSourceId(request.getSourceId());
         ref.setSourceNo(sourceNo); ref.setProductCode(productCode); ref.setProductId(productId); ref.setDocumentType(type);
-        ref.setDisplayName(optional(request.getDisplayName(), 255)); ref.setRemark(optional(request.getRemark(), 500));
+        // 展示名（dev-20261016-003）：调用方没传时，后端按命名规则生成
+        // 规则：来源码-来源Id-P产品id-一级码-二级码-二级名（无产品 P0；除产品 id 外缺任一不生成）
+        String displayName = optional(request.getDisplayName(), 255);
+        if (displayName == null) displayName = displayNames.build(source, request.getSourceId(), productId, type);
+        ref.setDisplayName(displayName); ref.setRemark(optional(request.getRemark(), 500));
         ref.setSortOrder(order(request.getSortOrder())); ref.setDeleted(false);
         ref.setCreateBy(StpUtil.getLoginIdAsString()); ref.setCreateTime(LocalDateTime.now());
         refs.insert(ref);
