@@ -218,18 +218,9 @@
           </el-card>
           <el-card class="col-files" shadow="never">
             <template #header><span style="font-weight:600">图纸 / 工艺文件</span></template>
-            <el-upload ref="engUploadRef" :http-request="engUploadFile" :on-remove="engRemoveFile"
-              :file-list="engFileList" :before-upload="engBeforeUpload"
-              list-type="text" multiple>
-              <el-button type="primary" size="small">📤 上传图纸/文件</el-button>
-            </el-upload>
-            <div v-if="engFileList.length > 0" style="margin-top:8px">
-              <div v-for="f in engFileList" :key="f.uid || f.name" style="padding:4px 0;display:flex;align-items:center;gap:8px;border-bottom:1px solid #f0f0f0">
-                <el-link v-if="f.url" :href="f.url" target="_blank" type="primary" underline="never">📎 {{ f.name }}</el-link>
-                <span v-else>{{ f.name }} <el-tag size="small" type="warning">待上传</el-tag></span>
-              </div>
-            </div>
-            <div v-else style="color:#999;font-size:12px;margin-top:6px">菲林图 / 丝印图 / 模切图 / 规格书（≤10MB）</div>
+            <AttachmentCenter ref="drawingCenter" source-type="sample" :source-id="card.orderId"
+              title="本单图纸" :drawing-meta="{ category: 'ENGINEERING_DRAWING' }"
+              :max-size-m-b="10" @bound="emit('saved')" @unbound="emit('saved')" />
           </el-card>
         </div>
 
@@ -257,6 +248,15 @@
             工艺参数：{{ activeRoundData.engineeringNote }}
           </span>
         </div>
+        <el-card shadow="never" style="margin-bottom:16px">
+          <template #header>本轮图纸</template>
+          <div v-for="file in activeRoundData?.attachmentRefs || []" :key="file.refId" style="margin-bottom:8px">
+            <el-link :href="attachmentRefApi.downloadUrlByRef(file.refId)" target="_blank" type="primary">
+              {{ file.fileName }}
+            </el-link>
+          </div>
+          <el-empty v-if="!activeRoundData?.attachmentRefs?.length" description="本轮无归档图纸" :image-size="40" />
+        </el-card>
         <el-card shadow="never" style="margin-bottom:16px">
           <template #header><span style="font-weight:600">📜 工序快照</span></template>
           <el-timeline v-if="activeRoundProcesses.length" style="padding-left:2px">
@@ -302,7 +302,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { UploadProps } from 'element-plus'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialApi } from '@/api/inventory/material'
@@ -636,8 +637,6 @@ async function loadRounds() {
   }
 }
 const bomList = ref<any[]>([])
-const engUploadRef = ref()
-const engFileList = ref<any[]>([])
 
 function onClose(val: boolean) {
   if (!val) emit('update:visible', false)
@@ -645,7 +644,7 @@ function onClose(val: boolean) {
 
 async function onOpen() {
   if (!props.card?.orderId) return
-  await Promise.all([loadRounds(), loadPlan(), loadBom(), loadEngFiles(), loadSummary(), loadAllProcesses()])
+  await Promise.all([loadRounds(), loadPlan(), loadBom(), loadSummary(), loadAllProcesses()])
   form.note = props.card.engineeringNote || ''
 }
 
@@ -724,57 +723,15 @@ async function handleTransfer() {
   }
 }
 
-// 图纸
-const engBeforeUpload: UploadProps['beforeUpload'] = (file) => {
-  if (file.size > 10 * 1024 * 1024) {
-    ElMessage.warning('文件不能超过10MB')
-    return false
-  }
-  return true
-}
-async function engUploadFile(options: any) {
-  if (!props.card?.orderId) return
-  const fd = new FormData()
-  fd.append('file', options.file)
-  fd.append('bizType', 'sample')
-  fd.append('bizId', String(props.card.orderId))
-  if (props.card?.traceId) {
-    fd.append('traceId', props.card.traceId)
-  }
-  try {
-    const res = await request.post('/system/attachment/upload', fd)
-    if (res.code === 200 || res.code === 0) {
-      ElMessage.success('上传成功')
-      await loadEngFiles()
-      emit('saved')
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || '上传失败')
-  }
-}
-async function engRemoveFile(file: any) {
-  if (file.id) {
-    try {
-      await request.delete(`/system/attachment/${file.id}`)
-    } catch { /* ignore */ }
-  }
-  engFileList.value = engFileList.value.filter(f => f.uid !== file.uid)
-}
-async function loadEngFiles() {
-  if (!props.card?.orderId) return
-  try {
-    const res = await request.get(`/system/attachment/list?bizType=sample&bizId=${props.card.orderId}`)
-    engFileList.value = (res.data || []).map((a: any) => ({
-      uid: a.id, name: a.fileName, url: a.filePath, id: a.id,
-    }))
-  } catch {
-    engFileList.value = []
-  }
-}
+const drawingCenter = ref<InstanceType<typeof AttachmentCenter> | null>(null)
 
 // 标记完成（dev-1788002406240：全部工序完成后才允许）
 async function handleMarkReady() {
   if (!props.card?.orderId) return
+  if (drawingCenter.value?.uploading || drawingCenter.value?.pendingCount) {
+    ElMessage.warning('请等待图纸上传并绑定完成')
+    return
+  }
   // 前置检测：当前轮次所有工序必须已完成（与后端 markSampleReady 强制校验一致）
   const unfinished = planList.value.filter((p) => p.status !== 2)
   if (unfinished.length) {

@@ -35,6 +35,7 @@ import com.jjx.sales.service.ISalesOrderProductService;
 import com.jjx.system.annotation.Event;
 import com.jjx.system.domain.entity.ReviewFlow;
 import com.jjx.system.service.ReviewFlowService;
+import com.jjx.system.utils.AttachmentRefUtils;
 import com.jjx.system.mapper.SysAttachmentRefMapper;
 import com.jjx.system.domain.entity.SysAttachmentRef;
 import com.jjx.system.utils.SecurityUtils;
@@ -157,23 +158,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     @Transactional(rollbackFor = Exception.class)
     public void approveOrder(ReviewDTO reviewDTO) {
         List<Long> refIds = reviewDTO.getAttachmentRefIds();
-        if (reviewDTO.getAttachments() != null && !reviewDTO.getAttachments().isBlank()) {
-            throw new BusinessException("请使用附件引用 ID 提交订单审核资料");
-        }
-        if (refIds != null) {
-            if (refIds.size() > 100 || refIds.stream().anyMatch(id -> id == null || id <= 0)) {
-                throw new BusinessException("审核附件引用无效或数量超过限制");
-            }
-            Set<Long> unique = new HashSet<>(refIds);
-            if (unique.size() != refIds.size()) throw new BusinessException("审核附件引用重复");
-            for (Long refId : refIds) {
-                SysAttachmentRef ref = attachmentRefMapper.selectById(refId);
-                if (ref == null || !"sales_order".equals(ref.getSourceType())
-                        || !reviewDTO.getOrderId().equals(ref.getSourceId())) {
-                    throw new BusinessException("审核附件引用不属于当前订单");
-                }
-            }
-        }
+        validateReviewAttachments(reviewDTO);
         // 1. 查询订单
         SalesOrder order = salesOrderMapper.selectById(reviewDTO.getOrderId());
         if (order == null) {
@@ -240,6 +225,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void rejectOrder(ReviewDTO reviewDTO) {
+        validateReviewAttachments(reviewDTO);
         // 1. 查询订单
         SalesOrder order = salesOrderMapper.selectById(reviewDTO.getOrderId());
         if (order == null) {
@@ -269,14 +255,21 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (result == 0) {
             throw new BusinessException("订单状态已被修改，请刷新后重试");
         }
-        reviewFlowService.record("sales_order", reviewDTO.getOrderId(), "REJECT", "审核驳回",
-                currentStatus.getValue(), targetStatus.getValue(), reviewDTO.getRemark(), reviewDTO.getAttachments());
+        reviewFlowService.recordWithRefs("sales_order", reviewDTO.getOrderId(), "REJECT", "审核驳回",
+                currentStatus.getValue(), targetStatus.getValue(), reviewDTO.getRemark(),
+                AttachmentRefUtils.toJson(reviewDTO.getAttachmentRefIds()));
 
         log.info("订单{}审核驳回，审核人：{}，原因：{}",
                  reviewDTO.getOrderId(), SecurityUtils.getUsername(), reviewDTO.getRemark());
         publishOrderEvent("order.rejected", reviewDTO.getOrderId());
     }
 
+
+    private void validateReviewAttachments(ReviewDTO dto) {
+        AttachmentRefUtils.rejectLegacyField(dto.getAttachments(), "请使用附件引用 ID 提交订单审核资料");
+        AttachmentRefUtils.assertRefsBelong(attachmentRefMapper, dto.getAttachmentRefIds(),
+                "sales_order", dto.getOrderId(), "审核附件引用不属于当前订单");
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)

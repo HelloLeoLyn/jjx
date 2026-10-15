@@ -710,22 +710,24 @@ public class QuotationServiceImpl implements IQuotationService {
      * 记录状态流转
      */
     private void recordFlow(SalesQuotation quotation, String actionCode, String actionName,
-                            Integer fromStatus, Integer toStatus, String remark, String attachmentIds) {
-        try {
-            SalesQuotationFlow flow = new SalesQuotationFlow();
-            flow.setQuotationId(quotation.getQuotationId());
-            flow.setActionCode(actionCode);
-            flow.setActionName(actionName);
-            flow.setFromStatus(fromStatus);
-            flow.setToStatus(toStatus);
-            flow.setOperatorName("系统");
-            flow.setRemark(remark);
-            flow.setAttachmentIds(attachmentIds);
-            flow.setCreateTime(LocalDateTime.now());
-            quotationFlowMapper.insert(flow);
-        } catch (Exception e) {
-            log.error("记录报价单流转失败: quotationId={}, action={}, {}", quotation.getQuotationId(), actionCode, e.getMessage());
-        }
+                            Integer fromStatus, Integer toStatus, String remark, List<Long> attachmentRefIds) {
+        SalesQuotationFlow flow = new SalesQuotationFlow();
+        flow.setQuotationId(quotation.getQuotationId());
+        flow.setActionCode(actionCode);
+        flow.setActionName(actionName);
+        flow.setFromStatus(fromStatus);
+        flow.setToStatus(toStatus);
+        flow.setOperatorName("系统");
+        flow.setRemark(remark);
+        flow.setAttachmentRefIds(AttachmentRefUtils.toJson(attachmentRefIds));
+        flow.setCreateTime(LocalDateTime.now());
+        if (quotationFlowMapper.insert(flow) != 1) throw new BusinessException("保存报价附件留痕失败");
+    }
+
+    private void validateFlowAttachments(Long quotationId, String legacyIds, List<Long> refIds) {
+        AttachmentRefUtils.rejectLegacyField(legacyIds, "请使用附件引用 ID 提交报价资料");
+        AttachmentRefUtils.assertRefsBelong(attachmentRefMapper, refIds,
+                "quotation", quotationId, "附件引用不属于当前报价单");
     }
 
     /**
@@ -733,12 +735,13 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int updateQuotationStatus(Long quotationId, Integer status, String attachmentIds) {
+    public int updateQuotationStatus(Long quotationId, Integer status, String attachmentIds, List<Long> attachmentRefIds) {
+        validateFlowAttachments(quotationId, attachmentIds, attachmentRefIds);
         if (status != null && status == 2) {
-            return confirmQuotation(quotationId, attachmentIds);
+            return confirmQuotation(quotationId, attachmentIds, attachmentRefIds);
         }
         if (status != null && status == 3) {
-            return rejectQuotation(quotationId, attachmentIds);
+            return rejectQuotation(quotationId, attachmentIds, attachmentRefIds);
         }
         SalesQuotation quotation = selectQuotationById(quotationId);
         if (quotation == null) {
@@ -748,7 +751,7 @@ public class QuotationServiceImpl implements IQuotationService {
         Integer from = quotation.getQuotationStatus();
         quotation.setQuotationStatus(status);
         int rows = quotationMapper.updateById(quotation);
-        recordFlow(quotation, "STATUS_CHANGE", "状态变更", from, status, null, attachmentIds);
+        recordFlow(quotation, "STATUS_CHANGE", "状态变更", from, status, null, attachmentRefIds);
         return rows;
     }
 
@@ -757,8 +760,9 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int confirmQuotation(Long quotationId, String attachmentIds) {
-        int rows = changeToStatus(quotationId, QuotationStatus.ACCEPTED.getValue(), "CUSTOMER_CONFIRM", "客户确认报价", attachmentIds);
+    public int confirmQuotation(Long quotationId, String attachmentIds, List<Long> attachmentRefIds) {
+        validateFlowAttachments(quotationId, attachmentIds, attachmentRefIds);
+        int rows = changeToStatus(quotationId, QuotationStatus.ACCEPTED.getValue(), "CUSTOMER_CONFIRM", "客户确认报价", attachmentRefIds);
         if (rows > 0) {
             publishQuotationEvent("quotation.confirmed", selectQuotationById(quotationId));
         }
@@ -770,8 +774,9 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int rejectQuotation(Long quotationId, String attachmentIds) {
-        int rows = changeToStatus(quotationId, QuotationStatus.REJECTED.getValue(), "CUSTOMER_REJECT", "客户拒绝报价", attachmentIds);
+    public int rejectQuotation(Long quotationId, String attachmentIds, List<Long> attachmentRefIds) {
+        validateFlowAttachments(quotationId, attachmentIds, attachmentRefIds);
+        int rows = changeToStatus(quotationId, QuotationStatus.REJECTED.getValue(), "CUSTOMER_REJECT", "客户拒绝报价", attachmentRefIds);
         if (rows > 0) {
             publishQuotationEvent("quotation.rejected", selectQuotationById(quotationId));
         }
@@ -799,7 +804,8 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int modifyQuotation(Long quotationId, String attachmentIds) {
+    public int modifyQuotation(Long quotationId, String attachmentIds, List<Long> attachmentRefIds) {
+        validateFlowAttachments(quotationId, attachmentIds, attachmentRefIds);
         SalesQuotation quotation = selectQuotationById(quotationId);
         if (quotation == null) {
             throw new BusinessException("报价单不存在");
@@ -811,7 +817,7 @@ public class QuotationServiceImpl implements IQuotationService {
         Integer from = quotation.getQuotationStatus();
         quotation.setQuotationStatus(QuotationStatus.MODIFYING.getValue());
         int rows = quotationMapper.updateById(quotation);
-        recordFlow(quotation, "MODIFY", "改单", from, QuotationStatus.MODIFYING.getValue(), null, attachmentIds);
+        recordFlow(quotation, "MODIFY", "改单", from, QuotationStatus.MODIFYING.getValue(), null, attachmentRefIds);
         // 2026-09-21（dev-20260921-009）：报价改单发事件（报价全链里此前唯独「改单」无通知）
         java.util.Map<String, Object> payload = com.jjx.event.EventPublishSupport.payload("quotation", quotationId, quotation.getQuotationNo());
         payload.put("quotationNo", quotation.getQuotationNo());
@@ -823,7 +829,7 @@ public class QuotationServiceImpl implements IQuotationService {
     /**
      * 通用状态变更 + 流转记录
      */
-    private int changeToStatus(Long quotationId, Integer targetStatus, String actionCode, String actionName, String attachmentIds) {
+    private int changeToStatus(Long quotationId, Integer targetStatus, String actionCode, String actionName, List<Long> attachmentRefIds) {
         SalesQuotation quotation = selectQuotationById(quotationId);
         if (quotation == null) {
             throw new BusinessException("报价单不存在");
@@ -832,7 +838,7 @@ public class QuotationServiceImpl implements IQuotationService {
         Integer from = quotation.getQuotationStatus();
         quotation.setQuotationStatus(targetStatus);
         int rows = quotationMapper.updateById(quotation);
-        recordFlow(quotation, actionCode, actionName, from, targetStatus, null, attachmentIds);
+        recordFlow(quotation, actionCode, actionName, from, targetStatus, null, attachmentRefIds);
         return rows;
     }
 
@@ -870,8 +876,8 @@ public class QuotationServiceImpl implements IQuotationService {
         quotation.setSendMethod("email"); // 默认邮件发送
 
         int rows = quotationMapper.updateById(quotation);
-        // 附件留痕改由引用表（sys_attachment_ref）承载，流转表不再写老字段
-        recordFlow(quotation, "SEND", "发送报价", from, QuotationStatus.SENT.getValue(), null, null);
+        // 保存本次动作引用快照，不以单据当前引用列表代替历史证据
+        recordFlow(quotation, "SEND", "发送报价", from, QuotationStatus.SENT.getValue(), null, attachmentRefIds);
         publishQuotationEvent("quotation.sent", quotation);
         return rows;
     }
@@ -1163,8 +1169,8 @@ public class QuotationServiceImpl implements IQuotationService {
         Integer from = quotation.getQuotationStatus();
         quotation.setQuotationStatus(QuotationStatus.PENDING_REVIEW.getValue());
         int rows = quotationMapper.updateById(quotation);
-        // 附件留痕改由引用表（sys_attachment_ref）承载，流转表不再写老字段
-        recordFlow(quotation, "SUBMIT_REVIEW", "提交审核", from, QuotationStatus.PENDING_REVIEW.getValue(), null, null);
+        // 保存本次动作引用快照，不以单据当前引用列表代替历史证据
+        recordFlow(quotation, "SUBMIT_REVIEW", "提交审核", from, QuotationStatus.PENDING_REVIEW.getValue(), null, attachmentRefIds);
         publishQuotationEvent("quotation.submitted", quotation);
         return rows;
     }
@@ -1174,7 +1180,8 @@ public class QuotationServiceImpl implements IQuotationService {
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public QuotationStatus reviewQuotation(Long quotationId, Boolean approved, String remark, String attachmentIds) {
+    public QuotationStatus reviewQuotation(Long quotationId, Boolean approved, String remark, String attachmentIds, List<Long> attachmentRefIds) {
+        validateFlowAttachments(quotationId, attachmentIds, attachmentRefIds);
         SalesQuotation quotation = selectQuotationById(quotationId);
         if (quotation == null) {
             throw new BusinessException("报价单不存在");
@@ -1200,7 +1207,7 @@ public class QuotationServiceImpl implements IQuotationService {
 
         int rows = quotationMapper.updateById(quotation);
         recordFlow(quotation, approved ? "APPROVE" : "REJECT", approved ? "审核通过" : "审核驳回",
-                from, quotation.getQuotationStatus(), remark, attachmentIds);
+                from, quotation.getQuotationStatus(), remark, attachmentRefIds);
         if (rows > 0) {
             publishQuotationEvent("quotation.reviewed", quotation);
         }

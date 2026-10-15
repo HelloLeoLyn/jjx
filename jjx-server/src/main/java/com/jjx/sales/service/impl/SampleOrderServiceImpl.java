@@ -91,6 +91,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final ISalesOrderProductService orderProductService;
     private final com.jjx.sales.service.IOrderService orderService;
     private final SalesSampleRoundMapper sampleRoundMapper;
+    private final com.jjx.system.service.AttachmentEvidenceService attachmentEvidence;
     private final SalesSampleProcessMapper sampleProcessMapper;
     private final SysDictItemMapper sysDictItemMapper;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
@@ -996,24 +997,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             round.setResult("pending");
             round.setCreateTime(java.time.LocalDateTime.now());
 
-            // ① 图纸附件ID：按 traceId 查附件，写入 attachmentIds(JSON数组)
-            if (full.getTraceId() != null) {
-                try {
-                    java.util.List<com.jjx.system.domain.entity.SysAttachment> atts =
-                            attachmentService.getAttachmentsByTraceId(full.getTraceId());
-                    if (atts != null && !atts.isEmpty()) {
-                        java.util.List<Long> ids = new java.util.ArrayList<>();
-                        for (com.jjx.system.domain.entity.SysAttachment a : atts) {
-                            if (a.getId() != null) ids.add(a.getId());
-                        }
-                        if (!ids.isEmpty()) {
-                            round.setAttachmentIds(objectMapper.writeValueAsString(ids));
-                        }
-                    }
-                } catch (Exception ae) {
-                    log.warn("归档图纸附件失败: {}", ae.getMessage());
-                }
-            }
+            // 固定本单已绑定的图纸引用，不从整条 trace 链抓取附件。
+            round.setAttachmentRefIds(attachmentEvidence.snapshotSampleDrawings(orderId));
 
             // ② BOM 物料快照（从工序单元材料聚合，仅当前轮次——避免旧轮次材料混入）
             try {
@@ -1056,14 +1041,14 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 log.warn("归档工序快照失败: {}", pe.getMessage());
             }
 
-            sampleRoundMapper.insert(round);
+            if (sampleRoundMapper.insert(round) != 1) throw new BusinessException("保存样品图纸快照失败");
             log.info("样品单[{}] 归档轮次快照 round={} (附件{}个/BOM{}条/工序{}条)",
                     orderId, round.getRoundNo(),
-                    round.getAttachmentIds() != null ? "有" : "无",
+                    round.getAttachmentRefIds() != null ? "有" : "无",
                     round.getBomSnapshot() != null ? "有" : "无",
                     round.getProcessSnapshot() != null ? "有" : "无");
         } catch (Exception e) {
-            log.warn("归档样品轮次快照失败: {}", e.getMessage());
+            throw new BusinessException("归档样品轮次快照失败：" + e.getMessage());
         }
 
         log.info("样品单[{}] 样品制作完成，待送样", orderId);
@@ -1932,7 +1917,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      */
     @Override
     public List<com.jjx.sales.domain.entity.SalesSampleRound> listSampleRounds(Long orderId) {
-        return sampleRoundMapper.selectByOrderId(orderId);
+        var rounds = sampleRoundMapper.selectByOrderId(orderId);
+        for (var round : rounds) {
+            round.setAttachmentRefs(attachmentEvidence.listSnapshot(round.getAttachmentRefIds(), "sample", orderId));
+        }
+        return rounds;
     }
 
     /**

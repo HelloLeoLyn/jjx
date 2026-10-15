@@ -100,12 +100,12 @@ export const quotationOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['quotation.reviewed'],
-    api: ({ bizId, values, attachmentIds }) =>
+    api: ({ bizId, values, attachmentRefIds }) =>
       quotationApi.review(
         bizId,
         true,
         values.remark,
-        attachmentIds.length ? attachmentIds.join(',') : undefined
+        attachmentRefIds.length ? attachmentRefIds : undefined
       ),
   },
   {
@@ -125,12 +125,12 @@ export const quotationOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['quotation.reviewed'],
-    api: ({ bizId, values, attachmentIds }) =>
+    api: ({ bizId, values, attachmentRefIds }) =>
       quotationApi.review(
         bizId,
         false,
         values.remark,
-        attachmentIds.length ? attachmentIds.join(',') : undefined
+        attachmentRefIds.length ? attachmentRefIds : undefined
       ),
   },
   {
@@ -152,8 +152,8 @@ export const quotationOperations: OperationDef[] = [
     toStatus: 2,
     evidence: true,
     events: ['quotation.confirmed'],
-    api: ({ bizId, attachmentIds }) =>
-      quotationApi.confirm(bizId, attachmentIds.length ? attachmentIds.join(',') : undefined),
+    api: ({ bizId, attachmentRefIds }) =>
+      quotationApi.confirm(bizId, attachmentRefIds.length ? attachmentRefIds : undefined),
   },
   {
     key: 'quotation.customerReject',
@@ -172,8 +172,8 @@ export const quotationOperations: OperationDef[] = [
     ],
     evidence: true,
     events: ['quotation.rejected'],
-    api: ({ bizId, values, attachmentIds }) =>
-      quotationApi.reject(bizId, attachmentIds.length ? attachmentIds.join(',') : undefined),
+    api: ({ bizId, values, attachmentRefIds }) =>
+      quotationApi.reject(bizId, attachmentRefIds.length ? attachmentRefIds : undefined),
   },
   {
     key: 'quotation.convert',

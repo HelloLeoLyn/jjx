@@ -198,9 +198,10 @@ public class QuotationController extends BaseController {
     public Result<com.jjx.sales.enums.QuotationStatus> review(@PathVariable Long quotationId,
                                @RequestParam Boolean approved,
                                @RequestParam(required = false) String remark,
-                               @RequestParam(required = false) String attachmentIds) {
+                               @RequestParam(required = false) String attachmentIds,
+                               @RequestParam(required = false) List<Long> attachmentRefIds) {
         com.jjx.sales.enums.QuotationStatus status =
-                quotationService.reviewQuotation(quotationId, approved, remark, attachmentIds);
+                quotationService.reviewQuotation(quotationId, approved, remark, attachmentIds, attachmentRefIds);
         return status != null ? Result.success(status) : Result.error();
     }
 
@@ -223,15 +224,16 @@ public class QuotationController extends BaseController {
     @PutMapping("/status/{quotationId}")
     public Result<Void> changeStatus(@PathVariable Long quotationId,
                                      @RequestParam Integer status,
-                                     @RequestParam(required = false) String attachmentIds) {
+                                     @RequestParam(required = false) String attachmentIds,
+                               @RequestParam(required = false) List<Long> attachmentRefIds) {
         // 客户确认/拒绝走独立接口（触发事件），其他状态直接更新
         if (status != null && status == 2) {
-            return toAjax(quotationService.confirmQuotation(quotationId, attachmentIds));
+            return toAjax(quotationService.confirmQuotation(quotationId, attachmentIds, attachmentRefIds));
         }
         if (status != null && status == 3) {
-            return toAjax(quotationService.rejectQuotation(quotationId, attachmentIds));
+            return toAjax(quotationService.rejectQuotation(quotationId, attachmentIds, attachmentRefIds));
         }
-        return toAjax(quotationService.updateQuotationStatus(quotationId, status, attachmentIds));
+        return toAjax(quotationService.updateQuotationStatus(quotationId, status, attachmentIds, attachmentRefIds));
     }
 
     /**
@@ -242,8 +244,9 @@ public class QuotationController extends BaseController {
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/confirm/{quotationId}")
     public Result<Void> confirm(@PathVariable Long quotationId,
-                                @RequestParam(required = false) String attachmentIds) {
-        return toAjax(quotationService.confirmQuotation(quotationId, attachmentIds));
+                                @RequestParam(required = false) String attachmentIds,
+                               @RequestParam(required = false) List<Long> attachmentRefIds) {
+        return toAjax(quotationService.confirmQuotation(quotationId, attachmentIds, attachmentRefIds));
     }
 
     /**
@@ -254,8 +257,9 @@ public class QuotationController extends BaseController {
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/reject/{quotationId}")
     public Result<Void> reject(@PathVariable Long quotationId,
-                               @RequestParam(required = false) String attachmentIds) {
-        return toAjax(quotationService.rejectQuotation(quotationId, attachmentIds));
+                               @RequestParam(required = false) String attachmentIds,
+                               @RequestParam(required = false) List<Long> attachmentRefIds) {
+        return toAjax(quotationService.rejectQuotation(quotationId, attachmentIds, attachmentRefIds));
     }
 
     /**
@@ -266,8 +270,9 @@ public class QuotationController extends BaseController {
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/modify/{quotationId}")
     public Result<Void> modify(@PathVariable Long quotationId,
-                               @RequestParam(required = false) String attachmentIds) {
-        return toAjax(quotationService.modifyQuotation(quotationId, attachmentIds));
+                               @RequestParam(required = false) String attachmentIds,
+                               @RequestParam(required = false) List<Long> attachmentRefIds) {
+        return toAjax(quotationService.modifyQuotation(quotationId, attachmentIds, attachmentRefIds));
     }
 
     /**

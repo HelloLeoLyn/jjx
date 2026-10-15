@@ -3,6 +3,7 @@ package com.jjx.system.utils;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.system.domain.entity.SysAttachmentRef;
 import com.jjx.system.mapper.SysAttachmentRefMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 
 import java.util.HashSet;
 import java.util.List;
@@ -49,11 +50,17 @@ public final class AttachmentRefUtils {
             throw new BusinessException("附件引用重复");
         }
         for (Long refId : refIds) {
-            SysAttachmentRef ref = mapper.selectById(refId);
-            if (ref == null || !sourceType.equals(ref.getSourceType())
+            SysAttachmentRef ref = mapper.selectOne(Wrappers.<SysAttachmentRef>lambdaQuery()
+                    .eq(SysAttachmentRef::getId, refId).last("FOR UPDATE"));
+            if (ref == null || Boolean.TRUE.equals(ref.getDeleted()) || !sourceType.equals(ref.getSourceType())
                     || ref.getSourceId() == null || !ref.getSourceId().equals(sourceId)) {
                 throw new BusinessException(message);
             }
         }
+    }
+
+    public static String toJson(List<Long> refIds) {
+        return refIds == null || refIds.isEmpty() ? null : refIds.stream()
+                .map(String::valueOf).collect(java.util.stream.Collectors.joining(",", "[", "]"));
     }
 }

@@ -51,8 +51,8 @@
         />
       </el-form-item>
 
-      <!-- 审核通过时上传确认书等资料（选填，2026-08-12） -->
-      <el-form-item v-if="formData.result === 'approve'" label="确认书/资料">
+      <!-- 审核通过与驳回都保存本次选用的资料引用。 -->
+      <el-form-item label="审核资料">
         <AttachmentCenter
           ref="attachmentCenter"
           source-type="sales_order"
@@ -219,17 +219,17 @@ const handleConfirm = async () => {
   loading.value = true
 
   try {
-    if (formData.value.result === 'approve') {
-      // 审核通过时只提交已绑定的引用 ID
       if (attachmentCenter.value?.uploading || attachmentCenter.value?.pendingCount) {
         ElMessage.warning('请等待审核资料上传并绑定完成')
         return
       }
+    if (formData.value.result === 'approve') {
+      // 审核通过时只提交已绑定的引用 ID
       await orderStatusApi.approveOrder(props.orderId, formData.value.remark, attachmentRefIds.value)
       ElMessage.success('审核通过成功')
     } else {
       // 审核驳回
-      await orderStatusApi.rejectOrder(props.orderId, formData.value.remark)
+      await orderStatusApi.rejectOrder(props.orderId, formData.value.remark, attachmentRefIds.value)
       ElMessage.success('审核驳回成功')
     }
 

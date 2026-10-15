@@ -60,8 +60,6 @@ class AttachmentAccessServiceTest {
         traced.setTraceId("quotation-trace");
         when(jdbc.queryForObject(contains("product_work_spec_item"), eq(Long.class), any(), any(), any(), any()))
                 .thenReturn(0L);
-        when(jdbc.queryForObject(contains("review_flow"), eq(Long.class), any(), any(), any()))
-                .thenReturn(0L);
         when(jdbc.queryForObject(contains("attachment_ref_ids"), eq(Long.class), eq(40L)))
                 .thenReturn(0L);
         assertFalse(access.protectedFile(traced));
@@ -75,6 +73,23 @@ class AttachmentAccessServiceTest {
         when(jdbc.queryForObject(contains("attachment_ref_ids"), eq(Long.class), eq(40L)))
                 .thenReturn(1L);
         assertTrue(access.protectedFile(file()));
+    }
+
+    @Test
+    void quotationEvidenceProtectsItsFile() {
+        when(jdbc.queryForObject(contains("product_work_spec_item"), eq(Long.class), any(), any(), any(), any())).thenReturn(0L);
+        when(jdbc.queryForObject(contains("JOIN review_flow"), eq(Long.class), eq(40L))).thenReturn(0L);
+        when(jdbc.queryForObject(contains("sales_quotation_flow"), eq(Long.class), eq(40L))).thenReturn(1L);
+        assertThrows(BusinessException.class, () -> access.checkUnlink(file()));
+    }
+
+    @Test
+    void sampleRoundEvidenceProtectsItsFile() {
+        when(jdbc.queryForObject(contains("product_work_spec_item"), eq(Long.class), any(), any(), any(), any())).thenReturn(0L);
+        when(jdbc.queryForObject(contains("JOIN review_flow"), eq(Long.class), eq(40L))).thenReturn(0L);
+        when(jdbc.queryForObject(contains("sales_quotation_flow"), eq(Long.class), eq(40L))).thenReturn(0L);
+        when(jdbc.queryForObject(contains("sales_sample_round"), eq(Long.class), eq(40L))).thenReturn(1L);
+        assertThrows(BusinessException.class, () -> access.checkUnlink(file()));
     }
 
     @Test

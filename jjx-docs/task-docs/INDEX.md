@@ -5,6 +5,7 @@
 
 | 任务码 | 文件 | 类型 | 标题 |
 |---|---|---|---|
+| dev-20261014-039 | dev-20261014-039-completion.md | completion | 3246 附件证据引用收口：代码完成，迁移待执行 |
 | dev-20261014-036 | dev-20261014-036-plan.md | plan | 产品电子文档集读取面接入 refs：补显经公共组件新上传的图纸/文件（承 016 第3项，docset 仍读老 productFiles） |
 | dev-20261013-047 | dev-20261013-047-completion.md | completion | 未保存草稿的 TEMP 附件清理（口径 A：到期无引用附件标记删除进回收站，物理删除仍禁用；文件管理页新增清理入口） |
 | dev-20261014-021 | dev-20261014-021-plan.md | plan | 任务执行器方案：固定流程脚本化（inspect/start/check/commit/record/push 复用现有脚本，只回摘要与失败项），业务方案/事务边界/审查仍由 agent 判断 |

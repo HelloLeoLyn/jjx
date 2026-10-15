@@ -15,8 +15,8 @@ export const orderStatusApi = {
   },
 
   /** 审核驳回 */
-  rejectOrder(orderId: number, remark: string) {
-    return request.put<R<void>>(`/sales/orders/${orderId}/status/rejection`, { orderId, remark })
+  rejectOrder(orderId: number, remark: string, attachmentRefIds?: number[]) {
+    return request.put<R<void>>(`/sales/orders/${orderId}/status/rejection`, { orderId, remark, attachmentRefIds })
   },
 
   /** 客户确认（2026-08-13 修正 URL：/confirm 不带 status） */

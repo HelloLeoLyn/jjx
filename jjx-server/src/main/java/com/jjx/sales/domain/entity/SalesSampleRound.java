@@ -32,6 +32,12 @@ public class SalesSampleRound {
     /** 该轮图纸附件ID(JSON数组) */
     private String attachmentIds;
 
+    /** 本次动作使用的附件引用 ID 快照；不随当前附件列表变化。 */
+    private String attachmentRefIds;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private java.util.List<java.util.Map<String, Object>> attachmentRefs;
+
     /** 该轮BOM物料快照(JSON) */
     private String bomSnapshot;
 

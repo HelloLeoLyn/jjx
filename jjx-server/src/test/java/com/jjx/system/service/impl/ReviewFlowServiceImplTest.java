@@ -47,14 +47,15 @@ class ReviewFlowServiceImplTest {
         stub.selected.add(flow(9L, 3, "SUBMIT"));
         ReviewFlowServiceImpl service = service(stub);
 
-        ReviewFlow recorded = service.record("purchase_order", 22L, "APPROVE", "审批通过",
-                2, 3, "同意", "11,12");
+        ReviewFlow recorded = service.recordWithRefs("purchase_order", 22L, "APPROVE", "审批通过",
+                2, 3, "同意", "[11,12]");
 
         assertEquals(3, recorded.getRoundNo());
         assertEquals(1001L, recorded.getOperatorId());
         assertEquals("测试审核员", recorded.getOperatorName());
         assertEquals("同意", recorded.getComment());
-        assertEquals("11,12", recorded.getAttachmentIds());
+        assertEquals("[11,12]", recorded.getAttachmentRefIds());
+        assertEquals(null, recorded.getAttachmentIds());
         assertEquals(List.of(recorded), stub.inserted);
     }
 
@@ -66,6 +67,22 @@ class ReviewFlowServiceImplTest {
                 2, 3, "同意", "[11,12]");
         assertEquals("[11,12]", recorded.getAttachmentRefIds());
         assertEquals(null, recorded.getAttachmentIds());
+    }
+
+    @Test
+    void legacyAttachmentWritesAreRejectedBeforeRecording() {
+        MapperStub stub = new MapperStub();
+        org.junit.jupiter.api.Assertions.assertThrows(com.jjx.common.exception.BusinessException.class,
+                () -> service(stub).record("sales_order", 22L, "REJECT", "驳回", 2, 3, "原因", "11"));
+        assertTrue(stub.inserted.isEmpty());
+    }
+
+    @Test
+    void zeroRowInsertCannotReportSuccessfulEvidence() {
+        MapperStub stub = new MapperStub();
+        stub.insertRows = 0;
+        org.junit.jupiter.api.Assertions.assertThrows(com.jjx.common.exception.BusinessException.class,
+                () -> service(stub).recordWithRefs("sales_order", 22L, "REJECT", "驳回", 2, 3, "原因", "[11]"));
     }
 
     @Test
@@ -105,6 +122,7 @@ class ReviewFlowServiceImplTest {
     private static class MapperStub {
         private final Deque<ReviewFlow> selected = new LinkedList<>();
         private final List<ReviewFlow> inserted = new ArrayList<>();
+        private int insertRows = 1;
         private List<ReviewFlow> listResult = List.of();
         private Wrapper<ReviewFlow> listWrapper;
 
@@ -115,7 +133,7 @@ class ReviewFlowServiceImplTest {
                         case "selectOne" -> selected.pollFirst();
                         case "insert" -> {
                             inserted.add((ReviewFlow) args[0]);
-                            yield 1;
+                            yield insertRows;
                         }
                         case "selectList" -> {
                             listWrapper = (Wrapper<ReviewFlow>) args[0];

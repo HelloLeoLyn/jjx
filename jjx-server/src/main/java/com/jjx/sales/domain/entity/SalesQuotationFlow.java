@@ -46,6 +46,9 @@ public class SalesQuotationFlow {
     /** 附件ID列表(JSON数组) */
     private String attachmentIds;
 
+    /** 本次动作使用的附件引用 ID 快照；不随当前附件列表变化。 */
+    private String attachmentRefIds;
+
     /** 创建时间 */
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;

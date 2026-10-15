@@ -24,19 +24,20 @@ public class ReviewFlowServiceImpl extends ServiceImpl<ReviewFlowMapper, ReviewF
     @Transactional(rollbackFor = Exception.class)
     public ReviewFlow record(String bizType, Long bizId, String action, String actionName,
                              Object fromStatus, Object toStatus, String comment, String attachmentIds) {
-        return recordInternal(bizType, bizId, action, actionName, fromStatus, toStatus, comment, attachmentIds, null);
+        com.jjx.system.utils.AttachmentRefUtils.rejectLegacyField(attachmentIds, "请使用附件引用 ID 记录审核附件");
+        return recordInternal(bizType, bizId, action, actionName, fromStatus, toStatus, comment, null);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ReviewFlow recordWithRefs(String bizType, Long bizId, String action, String actionName,
                                      Object fromStatus, Object toStatus, String comment, String attachmentRefIds) {
-        return recordInternal(bizType, bizId, action, actionName, fromStatus, toStatus, comment, null, attachmentRefIds);
+        return recordInternal(bizType, bizId, action, actionName, fromStatus, toStatus, comment, attachmentRefIds);
     }
 
     private ReviewFlow recordInternal(String bizType, Long bizId, String action, String actionName,
                                       Object fromStatus, Object toStatus, String comment,
-                                      String attachmentIds, String attachmentRefIds) {
+                                      String attachmentRefIds) {
         ReviewFlow latest = baseMapper.selectOne(Wrappers.<ReviewFlow>lambdaQuery()
                 .eq(ReviewFlow::getBizType, bizType)
                 .eq(ReviewFlow::getBizId, bizId)
@@ -72,9 +73,11 @@ public class ReviewFlowServiceImpl extends ServiceImpl<ReviewFlowMapper, ReviewF
         flow.setOperatorName(currentUsername());
         flow.setCreateBy(currentUsername());
         flow.setComment(comment);
-        flow.setAttachmentIds(attachmentIds);
+        // 旧 attachment_ids 列保留但不再写入。
         flow.setAttachmentRefIds(attachmentRefIds);
-        baseMapper.insert(flow);
+        if (baseMapper.insert(flow) != 1) {
+            throw new com.jjx.common.exception.BusinessException("保存审核附件留痕失败");
+        }
         return flow;
     }
 

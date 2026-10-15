@@ -161,47 +161,47 @@ export const quotationApi = {
   },
 
   // 审核报价单（通过/驳回）
-  review(quotationId: number, approved: boolean, remark?: string, attachmentIds?: string): AxiosPromise<void> {
+  review(quotationId: number, approved: boolean, remark?: string, attachmentRefIds?: number[]): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/review/${quotationId}`,
       method: 'put',
-      params: { approved, remark, ...(attachmentIds ? { attachmentIds } : {}) },
+      params: { approved, remark, ...(attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : {}) },
     })
   },
 
   // 更新报价单状态（客户确认/拒绝）
-  changeStatus(quotationId: number, status: number, attachmentIds?: string): AxiosPromise<void> {
+  changeStatus(quotationId: number, status: number, attachmentRefIds?: number[]): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/status/${quotationId}`,
       method: 'put',
-      params: { status, ...(attachmentIds ? { attachmentIds } : {}) },
+      params: { status, ...(attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : {}) },
     })
   },
 
   // 客户确认报价（触发事件）
-  confirm(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
+  confirm(quotationId: number, attachmentRefIds?: number[]): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/confirm/${quotationId}`,
       method: 'put',
-      params: attachmentIds ? { attachmentIds } : undefined,
+      params: attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : undefined,
     })
   },
 
   // 客户拒绝报价（触发事件）
-  reject(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
+  reject(quotationId: number, attachmentRefIds?: number[]): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/reject/${quotationId}`,
       method: 'put',
-      params: attachmentIds ? { attachmentIds } : undefined,
+      params: attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : undefined,
     })
   },
 
   // 已完成报价单改单
-  modify(quotationId: number, attachmentIds?: string): AxiosPromise<void> {
+  modify(quotationId: number, attachmentRefIds?: number[]): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/modify/${quotationId}`,
       method: 'put',
-      params: attachmentIds ? { attachmentIds } : undefined,
+      params: attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : undefined,
     })
   },
 
