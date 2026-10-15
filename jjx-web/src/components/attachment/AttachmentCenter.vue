@@ -51,20 +51,13 @@
         !traceLoading &&
         !refRows.length &&
         !legacyTraceDocRows.length &&
-        (isReadonlyMode || !pending.length)
+        !pending.length
       "
       description="暂无附件"
       :image-size="60"
     />
-    <!-- 只读模式：整块交给只读件（受控行），不含任何写动作 -->
-    <AttachmentDocList
-      v-if="isReadonlyMode && (refRows.length || legacyTraceDocRows.length)"
-      :rows="readonlyDocRows"
-      :columns="readonlyColumnKeys"
-      :title="title"
-    />
     <AttachmentRefList
-      v-if="!isReadonlyMode && (pending.length || (showList && refRows.length))"
+      v-if="pending.length || (showList && refRows.length)"
       :pending="pending"
       :rows="showList ? refRows : []"
       :can-edit="canEdit"
@@ -82,12 +75,12 @@
     />
     <!-- 历史 / 同链路只读段：由只读件承接（不并进可写表） -->
     <AttachmentDocList
-      v-if="!isReadonlyMode && showList && legacyTraceDocRows.length"
+      v-if="showList && legacyTraceDocRows.length"
       :rows="legacyTraceDocRows"
       :columns="readonlyColumnKeys"
       title="历史与同链路附件"
     />
-    <div v-if="!isReadonlyMode && pending.length" class="ac-hint">
+    <div v-if="pending.length" class="ac-hint">
       待绑定附件已上传到服务器（7 天有效），保存单据后自动建立引用。
     </div>
     <div v-if="showList && traceLoading" class="ac-hint">正在加载同链路文档…</div>
@@ -159,7 +152,7 @@ const props = withDefaults(
     /** 新建单据草稿标识：同一张未保存单据复用同一值（隔离待绑定队列） */
     draftId?: string
     title?: string
-    mode?: 'panel' | 'dialog' | 'upload-only' | 'readonly'
+    mode?: 'panel' | 'dialog' | 'upload-only'
     readonly?: boolean
     locked?: boolean
     viewPerm?: string
@@ -293,9 +286,6 @@ const traceOnlyRows = computed(() => {
   })
 })
 
-/** readonly 模式：列表整块交给只读件（受控行），Center 不再自渲染只读表 */
-const isReadonlyMode = computed(() => props.mode === 'readonly')
-
 /** 只读件列集：与可写表一致的数据列 + 来源/状态/操作（不丢展示文件名） */
 const readonlyColumnKeys: readonly AttachmentFieldKey[] = [
   'fileName',
@@ -311,7 +301,7 @@ const readonlyColumnKeys: readonly AttachmentFieldKey[] = [
   'actions',
 ]
 
-/** 只读模式的行：本单引用→已绑定、历史→历史、同链路→同链路；顺序与改前一致，不重排不去重 */
+/** 历史 / 同链路只读行：交给只读件渲染（不并进可写表） */
 const legacyTraceDocRows = computed<AttachmentDocRow[]>(() => [
   ...legacyOnlyRows.value.map((row) => ({
     ...row,
@@ -324,16 +314,6 @@ const legacyTraceDocRows = computed<AttachmentDocRow[]>(() => [
     status: AttachmentDocumentStatusEnum.TRACE.value,
   })),
 ])
-const readonlyDocRows = computed<AttachmentDocRow[]>(() => [
-  ...refRows.value.map((row) => ({
-    ...row,
-    id: Number(row.attachmentId),
-    refId: row.id,
-    status: AttachmentDocumentStatusEnum.BOUND.value,
-  })),
-  ...legacyTraceDocRows.value,
-])
-
 async function loadTrace() {
   const request = ++traceRequest
   traceRows.value = []
@@ -378,8 +358,8 @@ const uploadTip = computed(
 )
 
 // ==================== 上传入口（按钮 / 拖拽落区共用同一组 props 与回调） ====================
-/** readonly 或无权编辑时不渲染上传入口 */
-const canUpload = computed(() => props.mode !== 'readonly' && canEdit.value)
+/** 无权编辑时不渲染上传入口（readonly / locked 均已在 canEdit 内为 false） */
+const canUpload = computed(() => canEdit.value)
 /**
  * 是否渲染列表段（A 段引用 / B 段历史 / 同链路段）。
  * `mode='upload-only'` 语义是"只给上传入口"（报审核、生成计划、产品资料视图都只是要个上传按钮），

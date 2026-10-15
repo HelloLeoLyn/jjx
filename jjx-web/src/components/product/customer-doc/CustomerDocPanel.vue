@@ -7,13 +7,20 @@
       </div>
     </div>
 
-    <!-- 本产品资料：公共附件组件（上传/列表/预览下载/解绑；写引用表 sys_attachment_ref）dev-20261014-020 -->
+    <!-- 本产品资料：可写走公共附件组件；只读走只读件（dev-20261015-013） -->
+    <AttachmentDocList
+      v-if="readonly"
+      source-type="product"
+      :source-id="productId"
+      title="本产品资料"
+    />
     <AttachmentCenter
+      v-else
       source-type="product"
       :source-id="productId"
       :product-id="productId"
       :product-code="productCode"
-      :mode="readonly ? 'readonly' : 'panel'"
+      mode="panel"
       view-perm="product:view"
       edit-perm="product:edit"
       title="本产品资料"
@@ -65,6 +72,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import AttachmentDocList from '@/components/attachment/AttachmentDocList.vue'
 import { attachmentApi } from '@/api/system/attachment'
 
 interface CustomerFile {
