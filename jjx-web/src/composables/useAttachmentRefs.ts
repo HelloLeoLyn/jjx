@@ -176,6 +176,11 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     return permissionPrefix.value ? hasPermission(`${permissionPrefix.value}:edit`) : true
   })
   const pendingCount = computed(() => pending.value.length)
+  /** 待绑定队列中尚未选择二级资料类型的条数（保存前校验用，dev-20261015-032）。
+   *  这类附件绑定必然失败，故保存前拦下，避免「单据保存成功但附件未绑定」。 */
+  const pendingMissingTypeCount = computed(
+    () => pending.value.filter((e) => e.state !== 'binding' && !e.documentType).length
+  )
 
   // ==================== 待绑定队列持久化 ====================
   /** 写入当前队列；返回是否写入成功（供键迁移时决定能否清理旧键） */
@@ -470,6 +475,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     documentTypes,
     pending,
     pendingCount,
+    pendingMissingTypeCount,
     loading,
     error,
     canView,

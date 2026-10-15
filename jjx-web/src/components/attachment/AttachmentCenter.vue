@@ -242,6 +242,7 @@ const {
   documentTypes,
   pending,
   pendingCount,
+  pendingMissingTypeCount,
   draftReady,
   loading,
   error,
@@ -565,6 +566,8 @@ defineExpose({
   refresh: () => Promise.all([load(), loadTrace()]),
   bindPending,
   pendingCount,
+  /** 保存前校验用：待绑定队列中尚未选择二级资料类型的条数（dev-20261015-032） */
+  getMissingTypeCount: () => pendingMissingTypeCount.value,
   uploading,
   pendingEntries: pending,
   /** 业务服务已在事务内绑定成功，或用户放弃草稿时，仅清理本地队列。 */

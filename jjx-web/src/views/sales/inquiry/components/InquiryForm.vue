@@ -521,6 +521,12 @@ if (props.mode === 'inline') {
 async function submitForm() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
+  // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待绑定附件，避免「保存成功但附件未绑定」
+  const missingTypeCount = attachmentCenterRef.value?.getMissingTypeCount() ?? 0
+  if (missingTypeCount > 0) {
+    ElMessage.warning(`有 ${missingTypeCount} 个附件未选择资料类型，请先选择后再保存`)
+    return
+  }
   submitting.value = true
   const isNew = !form.inquiryId
   try {
