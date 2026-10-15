@@ -11,6 +11,7 @@ interface SampleBomContext {
   planList: Ref<any[]>
   printList: Ref<any[]>
   readonlyMode: Readonly<Ref<boolean>>
+  markOwnerDirty?: (pc: any) => void
 }
 
 interface BomRowState {
@@ -28,7 +29,7 @@ interface BomRowState {
  * 搜索态按 uid 存在独立的 reactive 表里，避免投影行每次重算丢失下拉状态。
  */
 export function useSampleBom(context: SampleBomContext) {
-  const { orderId, card, planList, printList, readonlyMode } = context
+  const { orderId, card, planList, printList, readonlyMode, markOwnerDirty } = context
   const standaloneMaterials = ref<any[]>([])
   const owners = () => [...planList.value, ...printList.value]
 
@@ -94,6 +95,7 @@ export function useSampleBom(context: SampleBomContext) {
     if (srcIndex < 0 || srcIndex >= rows.length) return
     rows[srcIndex] = { ...rows[srcIndex], ...normalizeMaterial(value, projectIdsOf(pc)) }
     applyRows(pc, rows)
+    markOwnerDirty?.(pc)
   }
 
   function removeMaterial(row: any) {
@@ -110,6 +112,7 @@ export function useSampleBom(context: SampleBomContext) {
     const rows = [...rowsFor(pc)]
     rows.splice(row.srcIndex, 1)
     applyRows(pc, rows)
+    markOwnerDirty?.(pc)
   }
 
   function addMaterial() {

@@ -309,7 +309,7 @@ export function useSampleWorkbench() {
   }
 
   const allProcesses = ref<any[]>([])
-  const { standaloneMaterials, bomList, stateOf: bomStateOf, loadBom, updateMaterial, removeMaterial, addMaterial, clearStandalone, debouncedSearchBomMaterials, onBomMaterialSelected, onBomVisible } = useSampleBom({ orderId, card, planList, printList, readonlyMode })
+  const { standaloneMaterials, bomList, stateOf: bomStateOf, loadBom, updateMaterial, removeMaterial, addMaterial, clearStandalone, debouncedSearchBomMaterials, onBomMaterialSelected, onBomVisible } = useSampleBom({ orderId, card, planList, printList, readonlyMode, markOwnerDirty: markDirty })
 
 
   const { addMaterialRow, startEdit, cancelEdit, finishEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange,
@@ -326,7 +326,7 @@ export function useSampleWorkbench() {
     loadBom, refreshCard, loadSummary,
   })
   const { advancePrint, advancePlan } = useProcessExecution({
-    readonlyMode, orderId, loadPlan, refreshCard, loadSummary,
+    readonlyMode, orderId, savingPlan, refreshCard, loadSummary,
   })
   async function loadAllProcesses() {
     try {
