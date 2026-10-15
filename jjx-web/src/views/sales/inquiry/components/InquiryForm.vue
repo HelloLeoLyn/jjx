@@ -150,7 +150,6 @@
             :draft-id="draftId"
             :product-id="form.productId || null"
             :product-code="(form as any).productCode || null"
-            :upload-blocked="form.inquiryId ? '' : '请先点「保 存」生成单据，再上传附件'"
             drop-zone
             view-perm="sales:inquiry:view"
             edit-perm="sales:inquiry:edit"
