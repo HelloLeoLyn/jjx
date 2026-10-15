@@ -50,17 +50,25 @@
         !loading &&
         !traceLoading &&
         !refRows.length &&
-        !pending.length &&
         !legacyOnlyRows.length &&
-        !traceOnlyRows.length
+        !traceOnlyRows.length &&
+        (isReadonlyMode || !pending.length)
       "
       description="暂无附件"
       :image-size="60"
     />
+    <!-- 只读模式：整块交给只读件（受控行），不含任何写动作 -->
+    <AttachmentDocList
+      v-if="isReadonlyMode && (refRows.length || legacyOnlyRows.length || traceOnlyRows.length)"
+      :rows="readonlyDocRows"
+      :columns="readonlyColumnKeys"
+      :title="title"
+    />
     <AttachmentRefList
       v-if="
-        pending.length ||
-        (showList && (refRows.length || legacyOnlyRows.length || traceOnlyRows.length))
+        !isReadonlyMode &&
+        (pending.length ||
+          (showList && (refRows.length || legacyOnlyRows.length || traceOnlyRows.length)))
       "
       :pending="pending"
       :rows="showList ? refRows : []"
@@ -81,7 +89,7 @@
       @download-readonly="(row) => openUrl(attachmentApi.downloadUrl(row.id))"
       @preview-readonly="(row, rows) => previewReadOnly(row, rows)"
     />
-    <div v-if="pending.length" class="ac-hint">
+    <div v-if="!isReadonlyMode && pending.length" class="ac-hint">
       待绑定附件已上传到服务器（7 天有效），保存单据后自动建立引用。
     </div>
     <div v-if="showList && traceLoading" class="ac-hint">正在加载同链路文档…</div>
@@ -139,6 +147,10 @@ import {
 } from '@/api/system/attachmentRef'
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
 import AttachmentRefList from './AttachmentRefList.vue'
+import AttachmentDocList from './AttachmentDocList.vue'
+import type { AttachmentFieldKey } from './attachmentFields'
+import type { AttachmentDocRow } from './useAttachmentDocList'
+import { AttachmentDocumentStatusEnum } from '@/enums/system/AttachmentEnum'
 import { useAttachmentPreview } from './useAttachmentPreview'
 import { useAttachmentRefs, type PendingEntry } from '@/composables/useAttachmentRefs'
 const props = withDefaults(
@@ -282,6 +294,44 @@ const traceOnlyRows = computed(() => {
     return true
   })
 })
+
+/** readonly 模式：列表整块交给只读件（受控行），Center 不再自渲染只读表 */
+const isReadonlyMode = computed(() => props.mode === 'readonly')
+
+/** 只读件列集：与可写表一致的数据列 + 来源/状态/操作（不丢展示文件名） */
+const readonlyColumnKeys: readonly AttachmentFieldKey[] = [
+  'fileName',
+  'displayName',
+  'sourceType',
+  'sourceNo',
+  'category',
+  'documentType',
+  'fileSize',
+  'createBy',
+  'createTime',
+  'status',
+  'actions',
+]
+
+/** 只读模式的行：本单引用→已绑定、历史→历史、同链路→同链路；顺序与改前一致，不重排不去重 */
+const readonlyDocRows = computed<AttachmentDocRow[]>(() => [
+  ...refRows.value.map((row) => ({
+    ...row,
+    id: Number(row.attachmentId),
+    refId: row.id,
+    status: AttachmentDocumentStatusEnum.BOUND.value,
+  })),
+  ...legacyOnlyRows.value.map((row) => ({
+    ...row,
+    attachmentId: Number(row.id),
+    status: AttachmentDocumentStatusEnum.LEGACY.value,
+  })),
+  ...traceOnlyRows.value.map((row) => ({
+    ...row,
+    attachmentId: Number(row.id),
+    status: AttachmentDocumentStatusEnum.TRACE.value,
+  })),
+])
 
 async function loadTrace() {
   const request = ++traceRequest
