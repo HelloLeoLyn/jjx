@@ -86,6 +86,7 @@
           title="本次收货票据"
           :auto-bind="false"
           :locked="submitting"
+          :lock-reason="submitting ? '提交中，请稍候' : ''"
           :max-size-m-b="10"
           :accept="['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']"
           view-perm="purchase:receipt:doc:view"

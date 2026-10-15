@@ -377,11 +377,19 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     const bound: BindResult['bound'] = []
     const failed: BindResult['failed'] = []
     for (const entry of queue) {
+      // 资料类型必选（dev-20261015-028）：缺类型不发绑定请求，直接给出可操作提示
+      const documentType = meta?.documentType ?? entry.documentType ?? null
+      if (!documentType) {
+        entry.state = 'failed'
+        entry.error = '请先选择资料类型（二级）'
+        failed.push({ attachmentId: entry.attachmentId, fileName: entry.fileName, message: entry.error })
+        continue
+      }
       entry.state = 'binding'
       try {
         // 每条待绑定行可各自预选类型（dev-20261012-024）：优先 entry 自身，其次批量 meta
         const refId = await bindPendingOne(entry, {
-          documentType: meta?.documentType ?? entry.documentType ?? null,
+          documentType,
           displayName: meta?.displayName ?? entry.displayName ?? null,
           remark: meta?.remark ?? null,
           sortOrder: meta?.sortOrder ?? null,

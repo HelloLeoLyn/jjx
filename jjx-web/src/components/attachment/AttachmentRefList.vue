@@ -68,12 +68,21 @@
           <template #default="{ row }">
             <template v-if="row.kind === 'pending'">
               <el-button v-if="canEdit" link type="primary" @click="emit('retryBind', pendingOf(row))">重试</el-button>
+              <el-tooltip v-else-if="lockReason" :content="lockReason" placement="top">
+                <span><el-button link type="primary" disabled>重试</el-button></span>
+              </el-tooltip>
               <el-button v-if="canEdit" link type="danger" @click="emit('removePending', row.attachmentId)">移除</el-button>
+              <el-tooltip v-else-if="lockReason" :content="lockReason" placement="top">
+                <span><el-button link type="danger" disabled>移除</el-button></span>
+              </el-tooltip>
             </template>
             <template v-else-if="row.kind === 'ref'">
               <el-button link type="primary" @click="emit('download', refOf(row))">下载</el-button>
               <el-button v-if="canEdit" link type="primary" @click="emit('edit', refOf(row))">详情</el-button>
               <el-button v-if="canEdit" link type="danger" @click="emit('unbind', refOf(row))">移除</el-button>
+              <el-tooltip v-else-if="lockReason" :content="lockReason" placement="top">
+                <span><el-button link type="danger" disabled>移除</el-button></span>
+              </el-tooltip>
             </template>
           </template>
         </el-table-column>
@@ -170,6 +179,8 @@ const props = defineProps<{
     /** 资料类型字典（父组件已加载，避免重复请求） */
     documentTypes: AttachmentDocumentTypeItem[]
     sourceType: string
+    /** 业务锁定原因（如"已审核，不可再改"）：有值时写操作按钮置灰并显示原因（dev-20261015-028） */
+    lockReason?: string
 }>()
 
 type TableRow = {

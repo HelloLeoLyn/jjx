@@ -63,6 +63,7 @@
       :can-edit="canEdit"
       :document-types="documentTypes"
       :source-type="sourceType"
+      :lock-reason="lockReason"
       @retry-bind="retryBind"
       @remove-pending="removePending"
       @pending-changed="persist"
@@ -175,6 +176,8 @@ const props = withDefaults(
     drawingMeta?: AttachmentDrawingMetadata | null
     /** 上传禁用原因（调用方按业务决定，非空即禁用并显示这句话）；组件本身不做业务判断 */
     uploadBlocked?: string
+    /** 业务锁定原因（如"已审核，不可再改"）：有值时写操作按钮置灰并显示原因（dev-20261015-028） */
+    lockReason?: string
   }>(),
   {
     sourceId: null,
@@ -373,6 +376,8 @@ const showList = computed(() => props.mode !== 'upload-only')
  * 两者取第一个非空；组件不解释业务原因，只负责"禁用 + 显示这句话"。
  */
 const uploadBlockedReason = computed(() => {
+  // 业务锁定优先（dev-20261015-028）：有权限但单据状态不允许时，给出原因而不是让入口悄悄消失
+  if (props.lockReason && !canEdit.value) return props.lockReason
   if (!draftReady.value) return '请先保存单据或提供 draftId 后再上传（避免多个单据共用待绑定队列）'
   return props.uploadBlocked || ''
 })
