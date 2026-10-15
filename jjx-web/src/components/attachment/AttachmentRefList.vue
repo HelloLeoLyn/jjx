@@ -1,7 +1,7 @@
 <template>
   <div class="ar-list">
       <div v-if="canEdit && hasSaveAction && (rows.length || pending.length)" class="ar-batch">
-        <el-button size="small" type="primary" @click="emit('save')">保存</el-button>
+        <el-button size="small" type="primary" :loading="saveSaving" @click="onSaveClick">保存</el-button>
         <span class="ar-sub">保存附件信息到本单</span>
       </div>
       <div v-if="canEdit && rows.length" class="ar-batch">
@@ -43,7 +43,7 @@
           <AttachmentTypeSelect v-if="row.kind === 'pending' && canEdit" :model-value="pendingOf(row).documentType"
             :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
             @update:model-value="(v) => setPendingType(pendingOf(row), v)" />
-          <AttachmentTypeSelect v-else-if="canEdit" :model-value="row.documentType"
+          <AttachmentTypeSelect v-else-if="canEdit" :model-value="docTypeOfRow(row)"
             :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
             :disabled="savingId === row.id" @update:model-value="(v) => saveDocType(refOf(row), v)" />
           <span v-else>{{ textOf('documentType', row) }}</span>
@@ -220,19 +220,65 @@ watch(
   () => {
     selectedIds.value = []
     rowCategories.value = {} // 丢弃未落库的一级选择（父组件刷新列表后）
+    typeEdits.value = {} // 丢弃未落库的二级类型改动
   }
 )
 
-// ==================== 行内编辑（二级类型，改完即存）====================
+// ==================== 行内编辑（二级类型）====================
 const savingId = ref<number | null>(null)
+const saveSaving = ref(false)
+/**
+ * 行内改的二级类型草稿（dev-20261016-006）：当调用方声明了 `save` 动作时，
+ * 行内改动**先攒着**、由表格上方「保存」统一提交；未声明 `save` 的页面保持「即改即存」（行为与改前一致）。
+ */
+const typeEdits = ref<Record<number, string>>({})
+/** 二级列当前显示值：引用行优先显示未提交的草稿 */
+function docTypeOfRow(row: TableRow): string {
+  if (row.kind !== 'ref') return row.documentType ?? ''
+  const draft = typeEdits.value[refOf(row).id]
+  return draft !== undefined ? draft : (refOf(row).documentType ?? '')
+}
 /**
  * 行内改二级类型：走 /refs/batch 的「按行部分更新」，只带 documentType，
  * 不会像单条 PUT（整条覆盖）那样把展示名/备注/排序清空；清空时传空串=清类型。
  */
 async function saveDocType(row: AttachmentRefItem, value: string | null) {
   const next = value ?? ''
-  if (next === (row.documentType ?? '')) return
-  await inlineSave(row, { documentType: next })
+  if (next === (row.documentType ?? '')) {
+    delete typeEdits.value[row.id]
+    return
+  }
+  if (!hasSaveAction.value) {
+    await inlineSave(row, { documentType: next })
+    return
+  }
+  typeEdits.value[row.id] = next
+}
+/** 提交攒着的二级类型改动；返回是否成功（无改动 = 成功） */
+async function flushTypeEdits(): Promise<boolean> {
+  const items = Object.entries(typeEdits.value).map(([refId, documentType]) => ({ refId: Number(refId), documentType }))
+  if (!items.length) return true
+  try {
+    await attachmentRefApi.batchUpdate(items)
+    typeEdits.value = {}
+    emit('changed')
+    return true
+  } catch (e: any) {
+    const message = e?.message || '保存失败'
+    ElMessage.error(message)
+    emit('error', { action: 'flush-type-edits', message })
+    return false
+  }
+}
+/** 表格上方「保存」：先提交攒着的类型改动，再把「保存」事件交给调用方（含义由调用方定） */
+async function onSaveClick() {
+  saveSaving.value = true
+  try {
+    if (!(await flushTypeEdits())) return
+    emit('save')
+  } finally {
+    saveSaving.value = false
+  }
 }
 async function inlineSave(
   row: AttachmentRefItem,
