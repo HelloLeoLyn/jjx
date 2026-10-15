@@ -334,6 +334,10 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   /** 绑定单条待上传附件（sourceId 有值时的即时绑定） */
   async function bindPendingOne(entry: PendingEntry, meta?: AttachmentRefMetadata): Promise<number> {
     if (!sourceId.value) throw new Error('单据尚未保存，无法建立引用')
+    // 资料类型必选（dev-20261015-028）：所有绑定路径统一在此拦（上传即绑定 / 批量 / 重试），避免漏拦
+    const requiredType = meta?.documentType ?? entry.documentType ?? null
+    if (!requiredType) throw new Error('请先选择资料类型（二级）')
+    entry.documentType = requiredType
     try {
       return await bindOne(entry, {
         attachmentId: entry.attachmentId,

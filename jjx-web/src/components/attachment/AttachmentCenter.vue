@@ -406,9 +406,18 @@ async function onFiles(files: File[]) {
         emit('uploaded', { attachmentId, temp: true, name: file.name })
         if (props.autoBind && props.sourceId) {
           const entry = pending.value.find((e) => e.attachmentId === attachmentId) as PendingEntry
-          const refId = await bindPendingOne(entry)
-          emit('bound', { refId, attachmentId })
-          await afterBound(entry)
+          try {
+            const refId = await bindPendingOne(entry)
+            emit('bound', { refId, attachmentId })
+            await afterBound(entry)
+          } catch (e: any) {
+            // 可自行修正的失败（如未选资料类型）：不报错，落到待绑定区提示，补选类型后点「重试」
+            const message = e?.message || '绑定失败'
+            entry.state = 'failed'
+            entry.error = message
+            persist()
+            ElMessage.warning(`已上传，但未绑定：${message}`)
+          }
         } else {
           ElMessage.success('已上传，保存单据后自动建立引用')
         }
