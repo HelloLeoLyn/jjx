@@ -19,6 +19,10 @@ public class SysAttachmentRef {
     private String displayName;
     private String remark;
     private Integer sortOrder;
+    /** 未保存单据草稿键（dev-20261016-009）：同一张草稿的附件共键；转正后保留 */
+    private String draftKey;
+    /** 引用状态：draft=未落定草稿 / active=正式（dev-20261016-009） */
+    private String refState;
     @TableLogic
     private Boolean deleted;
     private String createBy;

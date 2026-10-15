@@ -28,11 +28,11 @@ public interface SysAttachmentRefMapper extends BaseMapper<SysAttachmentRef> {
         """)
     List<SysAttachmentRef> selectByTrace(String traceId);
 
-    // 包括已解除引用：不能因解除后查不到有效引用而重新启用旧来源。
-    @Select("SELECT COUNT(*) FROM sys_attachment_ref WHERE attachment_id=#{id}")
+    // 包括已解除引用：不能因解除后查不到有效引用而重新启用旧来源。（草稿行不算历史，dev-20261016-009）
+    @Select("SELECT COUNT(*) FROM sys_attachment_ref WHERE attachment_id=#{id} AND ref_state<>'draft'")
     long countHistory(Long id);
 
-    @Select("SELECT * FROM sys_attachment_ref WHERE attachment_id=#{id} AND deleted=0 FOR UPDATE")
+    @Select("SELECT * FROM sys_attachment_ref WHERE attachment_id=#{id} AND deleted=0 AND ref_state<>'draft' FOR UPDATE")
     List<SysAttachmentRef> lockActive(Long id);
 
     @Select("SELECT * FROM sys_attachment_ref WHERE id=#{id}")

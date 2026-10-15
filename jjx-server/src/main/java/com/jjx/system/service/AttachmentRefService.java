@@ -108,6 +108,7 @@ public class AttachmentRefService {
         sources.check("product", id, false);
         List<SysAttachmentRef> rows = refs.selectList(Wrappers.<SysAttachmentRef>lambdaQuery().and(q -> q.eq(SysAttachmentRef::getProductId, id)
             .or(w -> w.eq(SysAttachmentRef::getSourceType, "product").eq(SysAttachmentRef::getSourceId, id)))
+            .ne(SysAttachmentRef::getRefState, "draft")
             .orderByAsc(SysAttachmentRef::getSortOrder, SysAttachmentRef::getId));
         fillFileMetadata(rows);
         return rows.stream().filter(r -> sources.canRead(r.getSourceType(), r.getSourceId())).toList();

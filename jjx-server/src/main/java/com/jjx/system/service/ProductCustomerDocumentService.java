@@ -36,7 +36,7 @@ public class ProductCustomerDocumentService {
               LEFT JOIN sales_quotation q ON r.source_type='quotation' AND r.source_id=q.quotation_id AND q.deleted=0
               LEFT JOIN sales_order o ON r.source_type IN ('sales_order','sample') AND r.source_id=o.order_id AND o.deleted=0
               LEFT JOIN sales_sample_order so ON r.source_id=so.order_id AND so.deleted=0
-             WHERE r.deleted=0 AND (
+             WHERE r.deleted=0 AND r.ref_state<>'draft' AND (
                    (i.inquiry_id IS NOT NULL AND (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)))
                 OR (q.quotation_id IS NOT NULL AND EXISTS
                     (SELECT 1 FROM sales_quotation_item qi WHERE qi.quotation_id=q.quotation_id

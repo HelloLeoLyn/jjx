@@ -128,6 +128,7 @@ public class ProductServiceImpl extends ServiceImpl<ProductMapper,Product> imple
                   FROM sys_attachment_ref r
                   JOIN sys_attachment a ON a.id = r.attachment_id
                  WHERE r.deleted = 0
+                   AND r.ref_state <> 'draft'
                    AND r.source_type IN ('inquiry', 'quotation', 'sales_order')
                    AND (r.product_code = ? OR r.product_id = ?""");
         refSql.append(inClause("r.source_type = 'inquiry' AND r.source_id", inquiryIds));
