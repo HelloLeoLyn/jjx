@@ -29,8 +29,8 @@
         <el-table-column v-if="canEdit && rows.length" type="selection" width="42" :selectable="(row: TableRow) => row.kind === 'ref'" />
         <el-table-column label="状态" width="105">
           <template #default="{ row }">
-            <el-tag size="small" :title="row.kind === 'pending' ? pendingOf(row).error : undefined" :type="row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? 'danger' : 'warning') : row.kind === 'ref' ? 'success' : 'info'">
-              {{ row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? '绑定失败' : '待绑定') : row.kind === 'ref' ? '已绑定' : row.kind === 'legacy' ? '历史' : '同链路' }}
+            <el-tag size="small" :title="row.kind === 'pending' ? pendingOf(row).error : undefined" :type="row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? 'danger' : 'warning') : 'success'">
+              {{ row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? '绑定失败' : '待绑定') : '已绑定' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -64,9 +64,6 @@
             <span v-else-if="column.render === 'text'">{{ row.createBy || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="来源" min-width="110">
-          <template #default="{ row }">{{ row.kind === 'trace' ? [row.bizTypeName || row.bizType, row.sourceNo].filter(Boolean).join(' · ') || '-' : '-' }}</template>
-        </el-table-column>
         <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
             <template v-if="row.kind === 'pending'">
@@ -77,10 +74,6 @@
               <el-button link type="primary" @click="emit('download', refOf(row))">下载</el-button>
               <el-button v-if="canEdit" link type="primary" @click="emit('edit', refOf(row))">更多</el-button>
               <el-button v-if="canEdit" link type="danger" @click="emit('unbind', refOf(row))">移除</el-button>
-            </template>
-            <template v-else>
-              <el-button link type="primary" @click="emit('downloadReadonly', row.data)">下载</el-button>
-              <el-button link type="primary" @click="emit('previewReadonly', row.data, readonlyGroup(row))">预览</el-button>
             </template>
           </template>
         </el-table-column>
@@ -168,19 +161,16 @@ import { formatSize, formatTime } from './attachmentFormat'
 const props = defineProps<{
     rows: AttachmentRefItem[]
     pending: PendingEntry[]
-    legacyRows: ReadonlyAttachment[]
-    traceRows: ReadonlyAttachment[]
     canEdit: boolean
     /** 资料类型字典（父组件已加载，避免重复请求） */
     documentTypes: AttachmentDocumentTypeItem[]
     sourceType: string
 }>()
 
-type ReadonlyAttachment = Record<string, any> & { id: number }
 type TableRow = {
   rowKey: string
-  kind: 'pending' | 'ref' | 'legacy' | 'trace'
-  data: PendingEntry | AttachmentRefItem | ReadonlyAttachment
+  kind: 'pending' | 'ref'
+  data: PendingEntry | AttachmentRefItem
   id: number
   attachmentId: number
   fileName?: string | null
@@ -202,15 +192,11 @@ const tableRows = computed<TableRow[]>(() => [
     fileSize: entry.fileSize, createTime: entry.createdAt,
   })),
   ...props.rows.map((row) => ({ ...row, rowKey: `ref:${row.id}`, kind: 'ref' as const, data: row })),
-  ...props.legacyRows.map((row) => ({ ...row, rowKey: `legacy:${row.id}`, kind: 'legacy' as const, data: row, attachmentId: row.id })),
-  ...props.traceRows.map((row) => ({ ...row, rowKey: `trace:${row.id}`, kind: 'trace' as const, data: row, attachmentId: row.id })),
 ])
 const refOf = (row: TableRow) => row.data as AttachmentRefItem
 const pendingOf = (row: TableRow) => row.data as PendingEntry
-const readonlyGroup = (row: TableRow) => row.kind === 'legacy' ? props.legacyRows : props.traceRows
 function previewRow(row: TableRow) {
   if (row.kind === 'ref') emit('preview', refOf(row))
-  else if (row.kind !== 'pending') emit('previewReadonly', row.data as ReadonlyAttachment, readonlyGroup(row))
 }
 
 const pendingCategories = ref<Record<number, string>>({})
@@ -236,8 +222,6 @@ const emit = defineEmits<{
   retryBind: [entry: PendingEntry]
   removePending: [attachmentId: number]
   pendingChanged: []
-  previewReadonly: [row: ReadonlyAttachment, rows: ReadonlyAttachment[]]
-  downloadReadonly: [row: ReadonlyAttachment]
   /** 批量动作已落库，父组件据此重新拉列表 */
   changed: []
   error: [payload: { action: string; message: string }]

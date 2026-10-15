@@ -50,8 +50,7 @@
         !loading &&
         !traceLoading &&
         !refRows.length &&
-        !legacyOnlyRows.length &&
-        !traceOnlyRows.length &&
+        !legacyTraceDocRows.length &&
         (isReadonlyMode || !pending.length)
       "
       description="暂无附件"
@@ -59,21 +58,15 @@
     />
     <!-- 只读模式：整块交给只读件（受控行），不含任何写动作 -->
     <AttachmentDocList
-      v-if="isReadonlyMode && (refRows.length || legacyOnlyRows.length || traceOnlyRows.length)"
+      v-if="isReadonlyMode && (refRows.length || legacyTraceDocRows.length)"
       :rows="readonlyDocRows"
       :columns="readonlyColumnKeys"
       :title="title"
     />
     <AttachmentRefList
-      v-if="
-        !isReadonlyMode &&
-        (pending.length ||
-          (showList && (refRows.length || legacyOnlyRows.length || traceOnlyRows.length)))
-      "
+      v-if="!isReadonlyMode && (pending.length || (showList && refRows.length))"
       :pending="pending"
       :rows="showList ? refRows : []"
-      :legacy-rows="showList ? legacyOnlyRows : []"
-      :trace-rows="showList ? traceOnlyRows : []"
       :can-edit="canEdit"
       :document-types="documentTypes"
       :source-type="sourceType"
@@ -86,8 +79,13 @@
       @unbind="onUnbind"
       @changed="onRefListChanged"
       @error="onRefListError"
-      @download-readonly="(row) => openUrl(attachmentApi.downloadUrl(row.id))"
-      @preview-readonly="(row, rows) => previewReadOnly(row, rows)"
+    />
+    <!-- 历史 / 同链路只读段：由只读件承接（不并进可写表） -->
+    <AttachmentDocList
+      v-if="!isReadonlyMode && showList && legacyTraceDocRows.length"
+      :rows="legacyTraceDocRows"
+      :columns="readonlyColumnKeys"
+      title="历史与同链路附件"
     />
     <div v-if="!isReadonlyMode && pending.length" class="ac-hint">
       待绑定附件已上传到服务器（7 天有效），保存单据后自动建立引用。
@@ -314,13 +312,7 @@ const readonlyColumnKeys: readonly AttachmentFieldKey[] = [
 ]
 
 /** 只读模式的行：本单引用→已绑定、历史→历史、同链路→同链路；顺序与改前一致，不重排不去重 */
-const readonlyDocRows = computed<AttachmentDocRow[]>(() => [
-  ...refRows.value.map((row) => ({
-    ...row,
-    id: Number(row.attachmentId),
-    refId: row.id,
-    status: AttachmentDocumentStatusEnum.BOUND.value,
-  })),
+const legacyTraceDocRows = computed<AttachmentDocRow[]>(() => [
   ...legacyOnlyRows.value.map((row) => ({
     ...row,
     attachmentId: Number(row.id),
@@ -331,6 +323,15 @@ const readonlyDocRows = computed<AttachmentDocRow[]>(() => [
     attachmentId: Number(row.id),
     status: AttachmentDocumentStatusEnum.TRACE.value,
   })),
+])
+const readonlyDocRows = computed<AttachmentDocRow[]>(() => [
+  ...refRows.value.map((row) => ({
+    ...row,
+    id: Number(row.attachmentId),
+    refId: row.id,
+    status: AttachmentDocumentStatusEnum.BOUND.value,
+  })),
+  ...legacyTraceDocRows.value,
 ])
 
 async function loadTrace() {
@@ -559,9 +560,6 @@ function previewRef(row: AttachmentRefItem) {
 }
 function downloadUrlByRef(refId: number) {
   return attachmentRefApi.downloadUrlByRef(refId)
-}
-function previewReadOnly(row: TraceAttachment, rows: TraceAttachment[]) {
-  previewViewer(rows, row, (r) => attachmentApi.downloadUrl(r.id))
 }
 
 defineExpose({
