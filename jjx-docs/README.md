@@ -52,6 +52,7 @@
 ### 第 5 章 查事实（`reference/`）
 权限矩阵、组件用法、开发规范摘要、模板清单 —— 长期有效。
 - `reference/attachment-state-vocabulary-dev-20261015-001.md` —— **附件状态词表 + 公共组件三条口径**：界面叫法 ↔ 库里状态对照（含两个未入库过程态）、解绑≠删文件（删文件只在管理端）、上传只管上传（绑定随业务提交）、绑定失败在待绑定区手动重试 ✅
+- `reference/attachment-entry-semantics-dev-20261015-007.md` —— **附件只读入口语义定义**：mode=readonly / readonly 属性 / 无编辑权限 / 业务锁定 四类各有判定来源（调用方传参 / 权限点 / 业务状态），四者不得合并成一个条件、业务锁定≠没权限；含 `AttachmentCenter` 27 个入口 + `AttachmentDocList` 5 个入口的逐调用方归类 ✅
 
 ### 第 6 章 决策记录（`decisions/`）
 一条决定一篇（带日期与状态）✅
