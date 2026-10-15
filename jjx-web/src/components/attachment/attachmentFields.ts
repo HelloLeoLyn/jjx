@@ -28,17 +28,9 @@ export const attachmentFields = {
 
 export type AttachmentFieldKey = keyof typeof attachmentFields
 
-// 原上传组件的列集合保持独立，不因新增只读场景字段而改变。
-export const referenceColumns = [
-  attachmentFields.fileName,
-  attachmentFields.sourceNo,
-  // attachmentFields.displayName,
-  attachmentFields.category,
-  attachmentFields.documentType,
-  attachmentFields.fileSize,
-  // attachmentFields.createBy,
-  // attachmentFields.createTime,
-]
+// 列集只有两份（2026-10-15 收口，旧的 referenceColumns 已删除）：
+//  1) editableColumns  —— 可写表（本单引用 / 待绑定）默认列
+//  2) readonlyDocColumns —— 只读表（详情 / 同链路 / 历史）默认列
 
 /** 只读表默认列（2026-10-15 用户要求：与可写表默认字段一致 + 状态/操作） */
 export const readonlyDocColumns: readonly AttachmentFieldKey[] = [
