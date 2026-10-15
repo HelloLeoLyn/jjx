@@ -40,6 +40,8 @@ public class AttachmentRefService {
         String sourceNo = sources.check(source, request.getSourceId(), true);
         sources.checkProduct(source, request.getSourceId(), request.getProductId());
         SysAttachment file = lock(request.getAttachmentId());
+        if (file.getUploadState() == AttachmentUploadState.ASSET)
+            throw new BusinessException("共享资产不能建立业务附件引用");
         List<SysAttachmentRef> active = refs.lockActive(file.getId());
         access.checkRead(file); // Both original read permission and target edit permission are required.
         // 回填附件链路标识：上传时单据可能还没保存（不知道 trace），建引用时一定存在

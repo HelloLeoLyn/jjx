@@ -41,3 +41,5 @@
 | dev-20261013-029 | dev-20261013-029-completion.md | completion | 作业规范发行信息口径对齐（页面发行单位/日期与快照契约） |
 
 | dev-20261013-031 | dev-20261013-031-completion.md | completion | 作业规范发行信息：发行单位/发行日期录入入口 |
+
+| dev-20261014-041 | dev-20261014-041-completion.md | completion | 工序图标永久共享资产、原子登记、权限与清理保护 |

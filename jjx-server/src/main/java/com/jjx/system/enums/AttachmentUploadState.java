@@ -6,6 +6,8 @@ public enum AttachmentUploadState {
     LEGACY,
     /** 上传后尚未绑定业务来源（保留期 7 天）。 */
     TEMP,
+    /** 已登记的永久共享资产，不参与业务引用和临时清理。 */
+    ASSET,
     /** 已绑定业务来源。 */
     BOUND,
     /** 无归属的孤儿行。 */

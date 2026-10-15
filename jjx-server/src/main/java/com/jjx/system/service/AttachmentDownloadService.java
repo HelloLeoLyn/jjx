@@ -52,12 +52,14 @@ public class AttachmentDownloadService {
             Path path = root.resolve(file.getFilePath()).normalize().toRealPath();
             if (!path.startsWith(root) || !Files.isRegularFile(path)) throw new BusinessException("附件路径无效");
             String mime = file.getFileType();
-            boolean inline = preview && mime != null && Set.of("application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp").contains(mime);
+            boolean safeIconSvg = ProcessIconService.isIcon(file) && "image/svg+xml".equals(mime);
+            boolean inline = preview && mime != null && (safeIconSvg || Set.of("application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp").contains(mime));
             String name = displayName == null || displayName.isBlank() ? file.getFileName() : displayName;
             String encoded = URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20");
             return ResponseEntity.ok().contentType(inline ? MediaType.parseMediaType(mime) : MediaType.APPLICATION_OCTET_STREAM)
                 .header(HttpHeaders.CONTENT_DISPOSITION, (inline ? "inline" : "attachment") + "; filename*=UTF-8''" + encoded)
-                .header("X-Content-Type-Options", "nosniff").header("Content-Security-Policy", "sandbox")
+                .header("X-Content-Type-Options", "nosniff").header("Content-Security-Policy",
+                    safeIconSvg ? "sandbox; default-src 'none'; style-src 'none'" : "sandbox")
                 .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
                 .body(new FileSystemResource(path));
         } catch (java.io.IOException ex) { return ResponseEntity.notFound().build(); }

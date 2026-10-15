@@ -28,6 +28,7 @@ public class AttachmentAccessService {
 
     public boolean canRead(SysAttachment file) {
         if (file == null || Boolean.TRUE.equals(file.getDeleted()) || !StpUtil.isLogin()) return false;
+        if (file.getUploadState() == AttachmentUploadState.ASSET) return ProcessIconService.isIcon(file);
         if (file.getUploadState() == AttachmentUploadState.TEMP || file.getUploadState() == AttachmentUploadState.ORPHAN)
             return StpUtil.getLoginIdAsString().equals(file.getUploadOwner()) && file.getExpiresAt() != null
                 && file.getExpiresAt().isAfter(java.time.LocalDateTime.now());
@@ -41,6 +42,7 @@ public class AttachmentAccessService {
     }
 
     public boolean protectedFile(SysAttachment file) {
+        if (file.getUploadState() == AttachmentUploadState.ASSET) return true;
         if (YesNoEnum.YES.getCode().equals(file.getIsControlled()) || YesNoEnum.YES.getCode().equals(file.getReleased())
                 || YesNoEnum.YES.getCode().equals(file.getIsCurrent())) return true;
         // All versions, including archived/deleted ones, retain their original file identity.

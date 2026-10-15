@@ -10,6 +10,7 @@
       prefix-icon="Search"
     />
     <el-upload
+      v-if="canUpload"
       :show-file-list="false"
       accept="image/png,image/jpeg,image/svg+xml"
       :http-request="uploadIcon"
@@ -51,9 +52,8 @@
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { useDict } from '@/composables/useDict'
-import { dictApi } from '@/api/system/dict'
-import { attachmentApi } from '@/api/system/attachment'
-import { attachmentRefApi } from '@/api/system/attachmentRef'
+import { uploadProcessIcon } from '@/api/system/processIcon'
+import { usePermission } from '@/composables/usePermission'
 
 interface Props {
   modelValue?: string
@@ -77,6 +77,8 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 const iconDictCode = 'engineering_jjx_icon'
 const { options: dictionaryOptions, refresh: refreshDictionary } = useDict(iconDictCode)
+const { hasAnyPermission } = usePermission()
+const canUpload = computed(() => hasAnyPermission(['engineering:standardProcess:add', 'engineering:standardProcess:edit']))
 
 const searchKey = ref('')
 const activeTab = ref('mianban')
@@ -122,7 +124,7 @@ const getFilteredIcons = (tabName: string): IconOption[] => {
   )
 }
 
-/** 受控上传入口要求的 requestKey：16~100 位 [A-Za-z0-9_-]（图标库无幂等去重需求，随机键即可）。 */
+/** 每次用户上传使用独立幂等键。 */
 function buildIconRequestKey(): string {
   const uuid = globalThis.crypto?.randomUUID?.()
   const raw = uuid
@@ -133,29 +135,15 @@ function buildIconRequestKey(): string {
 
 async function uploadIcon(options: UploadRequestOptions) {
   try {
+    if (options.file.size > 1024 * 1024) throw new Error('图标不能超过1MB')
     const name = await ElMessageBox.prompt('请输入图标名称', '上传 JJX 图标', {
       inputValue: options.file.name.replace(/\.[^.]+$/, ''),
-      inputPattern: /\S+/,
-      inputErrorMessage: '图标名称不能为空',
+      inputValidator: (value: string) => (value.trim().length > 0 && value.trim().length <= 50) || '图标名称应为1至50个字符',
     })
-    // 收口（dev-20261014-027）：不再走已退役的老通道 /system/attachment/upload
-    // （bizType=engineering_jjx_icon 不在来源白名单，早已 fail-closed），
-    // 改走公共【受控上传入口】/system/attachment/refs/temp（TEMP 附件）。
-    // 图标属「资产」：仅在字典登记 URL，**不建 sys_attachment_ref 引用**
-    //（同一图标被多个工序共用，引用表的解绑语义会把共用图标带走）。
-    const uploaded: any = await attachmentRefApi.tempUpload(options.file as File, buildIconRequestKey())
+    // 上传、图标库登记和永久化由服务端同一事务完成，不要求系统字典权限。
+    const uploaded = await uploadProcessIcon(options.file as File, buildIconRequestKey(), name.value.trim(), activeTab.value)
     const attachmentId = Number(uploaded?.data)
-    if (!attachmentId) throw new Error(uploaded?.msg || '图标上传失败')
-    const previewUrl = attachmentApi.downloadUrl(attachmentId)
-    await dictApi.addItem({
-      dictCode: iconDictCode,
-      itemKey: `jjx-upload-${attachmentId}`,
-      itemValue: previewUrl,
-      label: name.value,
-      remark: JSON.stringify({ category: activeTab.value, source: 'UPLOAD', previewUrl }),
-      sortOrder: 999,
-      isActive: 1,
-    })
+    if (!attachmentId) throw new Error('图标上传失败')
     await refreshDictionary()
     ElMessage.success('图标已上传并加入 JJX 图标库')
   } catch (error: any) {

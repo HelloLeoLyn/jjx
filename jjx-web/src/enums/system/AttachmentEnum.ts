@@ -16,6 +16,7 @@ export const AttachmentUploadStateEnum = createEnum({
   items: [
     { value: 'LEGACY', label: '历史附件', tagProps: { type: 'info' } },
     { value: 'TEMP', label: '待绑定', tagProps: { type: 'warning' } },
+    { value: 'ASSET', label: '永久资产', tagProps: { type: 'success' } },
     { value: 'BOUND', label: '已绑定', tagProps: { type: 'success' } },
     { value: 'ORPHAN', label: '已解绑', tagProps: { type: 'danger' } },
   ],
