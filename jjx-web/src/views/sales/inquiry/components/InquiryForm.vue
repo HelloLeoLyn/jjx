@@ -150,9 +150,12 @@
             :draft-id="draftId"
             :product-id="form.productId || null"
             :product-code="(form as any).productCode || null"
+            :actions="['download', 'detail', 'remove', 'save']"
+            :auto-bind="false"
             drop-zone
             view-perm="sales:inquiry:view"
             edit-perm="sales:inquiry:edit"
+            @save="onAttachSave"
             style="margin-bottom: 10px"
           />
         </el-col>
@@ -399,6 +402,27 @@ function newDraftId() {
 
 // 2026-10-15（dev-20261015-034）：原「保存后再绑附件」的 bindPendingAttachments 已删除——
 // 附件改为随单据请求一起提交、后端同事务建引用；失败即整单回滚，本地待绑定队列保留可重试。
+
+// ====== 附件区「保存」（dev-20261016-005，询价试点）======
+// 已保存单据：把待绑定附件落定（建引用）；草稿单：附件信息暂存本地，保存单据时随单落定。
+async function onAttachSave() {
+  await nextTick()
+  const result = await attachmentCenterRef.value?.bindPending()
+  if (!result) return
+  if (result.status === 'document-not-saved') {
+    ElMessage.info('单据尚未保存：附件信息已暂存在本地，保存单据时会一并落定')
+    return
+  }
+  if (result.status === 'all-ok') {
+    ElMessage.success('附件已保存')
+    return
+  }
+  if (result.status === 'partial') {
+    ElMessage.warning(`部分附件保存失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试`)
+    return
+  }
+  ElMessage.error(`附件全部保存失败（${result.failed.length} 条），可在附件区重试`)
+}
 
 // ====== 初始化 ======
 function resetForm() {

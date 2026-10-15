@@ -66,6 +66,7 @@
       :source-no="sourceNo"
       :lock-reason="lockReason"
       :actions="actions"
+      @save="emit('save')"
       @retry-bind="retryBind"
       @remove-pending="removePending"
       @pending-changed="persist"
@@ -222,6 +223,8 @@ const emit = defineEmits<{
   unbound: [payload: { refId: number; attachmentId: number }]
   changed: [payload: { count: number }]
   duplicate: [payload: { attachmentId: number; sha256: string; matches: number }]
+  /** 「保存」动作透传（含义由调用方定，dev-20261016-005） */
+  save: []
   error: [payload: { action: string; message: string }]
 }>()
 

@@ -1,5 +1,9 @@
 <template>
   <div class="ar-list">
+      <div v-if="canEdit && hasSaveAction && (rows.length || pending.length)" class="ar-batch">
+        <el-button size="small" type="primary" @click="emit('save')">保存</el-button>
+        <span class="ar-sub">保存附件信息到本单</span>
+      </div>
       <div v-if="canEdit && rows.length" class="ar-batch">
         <el-button size="small" :disabled="!selectedIds.length" @click="openBatchType"
           >批量改类型</el-button
@@ -150,6 +154,8 @@ function shows(action: AttachmentAction, kind: 'pending' | 'ref'): boolean {
   if (!base.includes(action)) return false
   return props.actions ? props.actions.includes(action) : true
 }
+/** 是否展示「保存」按钮（由调用方在 actions 里声明 `save`；与逐行无关，故不走 shows） */
+const hasSaveAction = computed(() => !!props.actions?.includes('save'))
 function previewRow(row: TableRow) {
   if (row.kind === 'ref') emit('preview', refOf(row))
 }
@@ -189,6 +195,8 @@ const emit = defineEmits<{
   pendingChanged: []
   /** 批量动作已落库，父组件据此重新拉列表 */
   changed: []
+  /** 「保存」动作（调用方在 actions 里声明 'save' 后，表格上方出现该按钮；组件只透传，不定义含义） */
+  save: []
   error: [payload: { action: string; message: string }]
 }>()
 
