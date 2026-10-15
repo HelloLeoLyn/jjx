@@ -26,3 +26,10 @@ export function validateMaterials(rows: any[]): string | null {
 export function projectIdsOf(pc: any): number[] {
   return [...new Set<number>((pc.items || []).map((item: any) => item.stdProcessId).filter((id: any) => Number.isInteger(id) && id > 0))]
 }
+
+/** 落库/快照前剥离仅用于会话内继承判断的 projectInherited 标记，避免脏字段进入 materials JSON。 */
+export function serializeMaterial(row: any) {
+  const rest = { ...row }
+  delete rest.projectInherited
+  return rest
+}

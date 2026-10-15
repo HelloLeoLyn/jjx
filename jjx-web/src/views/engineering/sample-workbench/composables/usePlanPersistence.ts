@@ -1,5 +1,5 @@
 import { materialValues } from './planDraft'
-import { normalizeMaterial, projectIdsOf, validateMaterials } from './sampleMaterials'
+import { normalizeMaterial, projectIdsOf, serializeMaterial, validateMaterials } from './sampleMaterials'
 import { planFingerprint } from './planDraft'
 import { ref, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -49,7 +49,7 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
         const rows = materialValues(pc).map(row => normalizeMaterial(row, projectIdsOf(pc)))
         const error = validateMaterials(rows)
         if (error) throw new Error(error)
-        pc.materials = rows.length ? JSON.stringify(rows) : null
+        pc.materials = rows.length ? JSON.stringify(rows.map(serializeMaterial)) : null
       }
       const independent = standaloneMaterials.value.map(row => normalizeMaterial(row))
       if (independent.some(row => !String(row.name || '').trim())) throw new Error('请为新增BOM行选择材料或删除空行')

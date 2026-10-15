@@ -1023,6 +1023,22 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         }
                     }
                 }
+                // 独立BOM材料（sales_sample_bom 当前轮）也纳入快照（dev-20261015-023）
+                for (com.jjx.sales.domain.entity.SalesSampleBom bom : sampleBomMapper.selectByOrderId(orderId)) {
+                    if (!java.util.Objects.equals(bom.getRoundNo(), round.getRoundNo())) continue;
+                    java.util.Map<String, Object> agg = new java.util.LinkedHashMap<>();
+                    agg.put("process", bom.getLayerName());
+                    agg.put("name", bom.getMaterialName());
+                    agg.put("spec", bom.getSpecification());
+                    agg.put("qty", bom.getQuantity());
+                    agg.put("unit", bom.getUnit());
+                    agg.put("materialId", bom.getMaterialId());
+                    agg.put("materialCode", bom.getMaterialCode());
+                    agg.put("projectIds", parseSampleProjects(bom.getProjectIds()));
+                    agg.put("moduleQty", bom.getModuleQty());
+                    agg.put("baseQty", bom.getBaseQty());
+                    aggMats.add(agg);
+                }
                 if (!aggMats.isEmpty()) {
                     round.setBomSnapshot(objectMapper.writeValueAsString(aggMats));
                 }

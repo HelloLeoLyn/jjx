@@ -15,7 +15,6 @@
       @view-inquiry="openInquiryDetail"
       @view-quotation="openQuotationDetail"
     />
-    {{ readonlyMode }}
     <!-- 轮次切换（全局，冲型组装/印刷共用，2026-08-12 布局调整） -->
     <el-tabs v-model="activeRound" style="margin-bottom: 10px">
       <el-tab-pane
@@ -132,8 +131,12 @@
             >
               <el-table-column prop="process" label="工序" width="90" />
               <el-table-column prop="name" label="材料" min-width="140" />
-              <el-table-column prop="spec" label="规格" min-width="120" />
-              <el-table-column prop="qty" label="用量" width="90" />
+              <el-table-column label="项目" min-width="130">
+                <template #default="{ row }">{{ roundBomProjects(row) }}</template>
+              </el-table-column>
+              <el-table-column prop="spec" label="规格" min-width="110" />
+              <el-table-column prop="moduleQty" label="模数" width="70" />
+              <el-table-column prop="baseQty" label="基数" width="70" />
               <el-table-column prop="unit" label="单位" width="70" />
             </el-table>
             <div v-else style="color: #999; font-size: 13px">该轮次无物料快照</div>
@@ -226,6 +229,8 @@
           :parse-materials="parseMaterials"
           :advance-print="advancePrint"
           :advance-plan="advancePlan"
+          :exec-block-reason="execBlockReason"
+          :print-block-reason="printBlockReason"
           :readonly="readonlyMode"
         />
         <BomPanel :readonly="readonlyMode" :bom-list="bomList" :projects="allProcesses" :state-of="bomStateOf"
@@ -609,6 +614,8 @@ const {
   removePrintRow,
   movePrintRow,
   advancePrint,
+  execBlockReason,
+  printBlockReason,
   frequentMaterials,
   saveStateText,
   markDirty,
@@ -732,6 +739,25 @@ const {
   refreshCard,
   readonlyMode,
 } = useSampleWorkbench()
+
+// 历史轮次 BOM 快照：项目ID → 标准工序名（dev-20261015-023）
+function roundBomProjects(row: any): string {
+  let ids: number[] = []
+  const raw = row?.projectIds
+  if (Array.isArray(raw)) ids = raw
+  else if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) ids = parsed
+    } catch {
+      ids = []
+    }
+  }
+  if (!ids.length) return '-'
+  return ids
+    .map((id) => allProcesses.value.find((p: any) => p.processId === id)?.processName || String(id))
+    .join('、')
+}
 
 // 成品方案带出：未挂工序 vs 整单通用(is_common) 分类展示（dev-20261013-049）
 const planPendingNames = computed(() =>

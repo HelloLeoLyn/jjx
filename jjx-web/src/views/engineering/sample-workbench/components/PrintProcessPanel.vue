@@ -319,8 +319,7 @@ function rowContent(r: any) {
 
 // 删除行（2026-09-04）：空行直接删除——若删后该分类无行则抑制一次自动补行（显示空态）；
 // 内容行删除同父级语义（本地移除，保存后后端生效）
-function handleDeleteRow(row: any, $index?: number) {
-  console.log('handleDeleteRow', row, $index)
+function handleDeleteRow(row: any, _$index?: number) {
   if (props.readonly) return
   const isEmpty = isEmptyRow(row)
   const rows = filtered(activeTab.value)

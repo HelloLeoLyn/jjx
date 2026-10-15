@@ -38,13 +38,18 @@
         </div>
         <!-- 开始/完成操作（2026-09-04：从表格行统一收口到执行时间线） -->
         <div v-if="!readonly && pc.status !== SampleProcessStatusEnum.DONE.value" class="ops">
-          <el-button
-            size="small"
-            type="primary"
-            :loading="pc.advancing"
-            @click="onAdvance(pc)"
-            >{{ pc.status === SampleProcessStatusEnum.DOING.value ? '✓ 完成' : '▶ 开始' }}</el-button
-          >
+          <el-tooltip :content="advanceReason(pc) || ''" :disabled="!advanceReason(pc)" placement="top">
+            <span>
+              <el-button
+                size="small"
+                type="primary"
+                :loading="pc.advancing"
+                :disabled="!!advanceReason(pc)"
+                @click="onAdvance(pc)"
+                >{{ pc.status === SampleProcessStatusEnum.DOING.value ? '✓ 完成' : '▶ 开始' }}</el-button
+              >
+            </span>
+          </el-tooltip>
         </div>
       </div>
     </div>
@@ -70,6 +75,8 @@ const props = defineProps<{
   parseMaterials: (json?: string | null) => any[]
   advancePrint?: (row: any) => void
   advancePlan?: (pc: any) => void
+  execBlockReason?: (pc: any) => string | null
+  printBlockReason?: (row: any) => string | null
   readonly?: boolean
 }>()
 
@@ -112,6 +119,10 @@ const merged = computed(() => {
 })
 
 // 统一推进：印刷行走原行（advancePrint 单行），组装卡片走原卡片（advancePlan 聚合）
+function advanceReason(pc: any): string | null {
+  return pc.isPrint ? (props.printBlockReason?.(pc.raw) || null) : (props.execBlockReason?.(pc) || null)
+}
+
 function onAdvance(pc: any) {
   if (props.readonly) return
   if (pc.isPrint) {

@@ -35,6 +35,16 @@ export function useProcessExecution(context: ExecutionContext) {
     return null
   }
 
+  /** 印刷行是否可执行（与卡片同口径）。 */
+  function printBlockReason(row: any): string | null {
+    if (row.advancing) return '该印刷工序正在提交，请勿重复操作'
+    if (savingPlan.value) return '工序计划保存中，请稍后再操作'
+    if (!row.processId) return '该印刷工序还未保存，请先保存计划'
+    if (row.saveState === 'saving') return '该印刷工序保存中，请稍后再操作'
+    if (row.saveState === 'error' || row.saveState === 'dirty') return '该印刷工序有未保存的修改，请先保存计划'
+    return null
+  }
+
   function applyExecution(pc: any, records: any[], next: number) {
     pc.status = next
     records.forEach((record) => {
@@ -55,21 +65,9 @@ export function useProcessExecution(context: ExecutionContext) {
   async function advancePrint(row: any) {
     if (readonlyMode.value) return
     if (!orderId.value) return
-    if (row.advancing) return
-    if (savingPlan.value) {
-      ElMessage.warning('工序计划保存中，请稍后再操作')
-      return
-    }
-    if (!row.processId) {
-      ElMessage.warning('该印刷工序还未保存，请先保存计划')
-      return
-    }
-    if (row.saveState === 'saving') {
-      ElMessage.warning('该印刷工序保存中，请稍后再操作')
-      return
-    }
-    if (row.saveState === 'error' || row.saveState === 'dirty') {
-      ElMessage.warning('该印刷工序有未保存的修改，请先保存计划')
+    const printReason = printBlockReason(row)
+    if (printReason) {
+      ElMessage.warning(printReason)
       return
     }
     const next =
@@ -132,5 +130,5 @@ export function useProcessExecution(context: ExecutionContext) {
     }
   }
 
-  return { advancePrint, advancePlan }
+  return { advancePrint, advancePlan, blockReason, printBlockReason }
 }
