@@ -72,8 +72,10 @@ import { useAttachmentPreview, type PreviewRow } from './useAttachmentPreview'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
 import {
   useAttachmentDocList,
+  docQueryOf,
   type AttachmentDocQuery,
   type AttachmentDocRow,
+  type AttachmentDocScope,
 } from './useAttachmentDocList'
 
 const props = withDefaults(
@@ -83,9 +85,11 @@ const props = withDefaults(
       title?: string
       /** 受控行：调用方直接给行（已排序去重）；给了就只渲染，不按参数查询 */
       rows?: AttachmentDocRow[] | null
+      /** 具名查询范围（推荐）：与散参数二选一，多个 = 并集；见 docQueryOf */
+      scopes?: AttachmentDocScope[]
     }
   >(),
-  { title: '文档', includeLegacy: undefined, rows: undefined }
+  { title: '文档', includeLegacy: undefined, rows: undefined, scopes: undefined }
 )
 /** 受控行模式：不发起文档查询，只加载资料类型字典（供分类/类型标签渲染） */
 const isControlled = computed(() => props.rows != null)
@@ -97,7 +101,12 @@ const {
   hasQuery: queriedHasQuery,
   reload,
 } = useAttachmentDocList(
-  () => (isControlled.value ? {} : props),
+  () =>
+    isControlled.value
+      ? {}
+      : props.scopes?.length
+        ? { ...props, ...docQueryOf(...props.scopes) }
+        : props,
   { typesOnly: () => isControlled.value }
 )
 const rows = computed(() => (isControlled.value ? (props.rows ?? []) : queriedRows.value))

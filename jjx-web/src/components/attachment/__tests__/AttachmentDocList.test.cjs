@@ -162,6 +162,17 @@ test('受控行：只渲染传入的行（不重排不去重），不发起文�
   assert.doesNotMatch(html, /未指定查询条件/)
 })
 
+test('具名范围 scopes：由唯一映射点转成查询参数，可见范围与散参数一致', async t => {
+  const h = harness(
+    { scopes: [{ kind: 'own', sourceType: 'inquiry', sourceId: 7 }, { kind: 'product', productId: 9 }] },
+    { refs: async () => ({ data: [refRow(1)] }), product: async () => ({ data: [refRow(3)] }) }
+  )
+  t.after(h.stop); await tick()
+  assert.deepEqual(h.calls.find(c => c[0] === 'refs'), ['refs', 'inquiry', 7, undefined])
+  assert.deepEqual(h.calls.find(c => c[0] === 'product'), ['product', 9])
+  assert.equal(h.calls.some(c => c[0] === 'legacy'), false)
+})
+
 test('来源ID与单号同时给出拒绝该段，链路继续查询', async t => {
   const h = harness({ sourceType: 'inquiry', sourceId: 7, sourceNo: 'INQ007', traceId: 'chain' }); t.after(h.stop); await tick()
   assert.equal(h.calls.some(c => c[0] === 'refs'), false)

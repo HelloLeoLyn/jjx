@@ -12,6 +12,41 @@ export interface AttachmentDocQuery {
   includeLegacy?: boolean | null
 }
 
+/**
+ * 具名查询范围：调用方只能声明这几种（可组合 = 并集），不得自由拼参数隐式扩大可见范围。
+ * - own：本单（来源类型 + 内部ID 或 单号，二选一）
+ * - chain：关联文档（同链路 traceId）
+ * - product：产品（productId）
+ * - legacy：历史附件（需要来源类型 + 可解析的内部ID，且显式声明才查）
+ */
+export type AttachmentDocScope =
+  | { kind: 'own'; sourceType: string; sourceId?: number; sourceNo?: string }
+  | { kind: 'chain'; traceId: string }
+  | { kind: 'product'; productId: number }
+  | { kind: 'legacy'; sourceType: string; sourceId: number }
+
+/** 具名范围 → 查询参数的唯一映射点（各调用方不再各拼一套） */
+export function docQueryOf(...scopes: AttachmentDocScope[]): AttachmentDocQuery {
+  const query: AttachmentDocQuery = {}
+  for (const scope of scopes) {
+    if (scope.kind === 'own') {
+      query.sourceType = scope.sourceType
+      if (scope.sourceId != null) query.sourceId = scope.sourceId
+      const sourceNo = scope.sourceNo?.trim()
+      if (sourceNo) query.sourceNo = sourceNo
+    } else if (scope.kind === 'chain') {
+      query.traceId = scope.traceId
+    } else if (scope.kind === 'product') {
+      query.productId = scope.productId
+    } else {
+      query.sourceType = scope.sourceType
+      query.sourceId = scope.sourceId
+      query.includeLegacy = true
+    }
+  }
+  return query
+}
+
 export interface AttachmentDocRow {
   /** 预览器与表格使用文件ID，引用ID单独保留，避免两种主键碰撞。 */
   id: number

@@ -292,8 +292,7 @@
           </template>
           <AttachmentDocList
             v-if="props.orderId"
-            source-type="sales_order"
-            :source-id="props.orderId"
+            :scopes="[{ kind: 'own', sourceType: 'sales_order', sourceId: props.orderId }]"
             title="相关文档"
           />
         </el-card>
