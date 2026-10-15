@@ -39,6 +39,26 @@ public class SysAttachmentRefController {
     @GetMapping("/product/{productId}")
     public Result<List<SysAttachmentRef>> product(@PathVariable Long productId) { return Result.success(refs.product(productId)); }
 
+    /** 草稿行列表（未保存单据的待保存附件）—— dev-20261016-009 */
+    @GetMapping("/drafts")
+    public Result<List<SysAttachmentRef>> drafts(@RequestParam String draftKey) {
+        return Result.success(refs.drafts(draftKey));
+    }
+
+    @PutMapping("/drafts/{id}")
+    @Log(module = "附件引用", businessType = BusinessType.UPDATE, bizType = "'sys_attachment_ref'", bizId = "#id", action = "草稿附件改类型")
+    public Result<Void> updateDraft(@PathVariable Long id, @RequestParam(required = false) String documentType) {
+        refs.updateDraft(id, documentType);
+        return Result.success();
+    }
+
+    @DeleteMapping("/drafts/{id}")
+    @Log(module = "附件引用", businessType = BusinessType.DELETE, bizType = "'sys_attachment_ref'", bizId = "#id", action = "移除草稿附件")
+    public Result<Void> removeDraft(@PathVariable Long id) {
+        refs.removeDraft(id);
+        return Result.success();
+    }
+
     @PutMapping("/{refId}")
     @Log(module = "附件引用", businessType = BusinessType.UPDATE, bizType = "'sys_attachment_ref'", bizId = "#refId", action = "修改附件引用资料")
     public Result<Boolean> update(@PathVariable Long refId, @Valid @RequestBody AttachmentRefMetadataDTO body) {

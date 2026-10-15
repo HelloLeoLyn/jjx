@@ -114,6 +114,46 @@ public class AttachmentRefService {
         return rows.stream().filter(r -> sources.canRead(r.getSourceType(), r.getSourceId())).toList();
     }
 
+    /** 草稿行列表（未保存单据的待保存附件；限本人 + 按草稿键）。dev-20261016-009 */
+    public List<SysAttachmentRef> drafts(String draftKey) {
+        if (draftKey == null || draftKey.isBlank()) return List.of();
+        List<SysAttachmentRef> rows = refs.selectList(Wrappers.<SysAttachmentRef>lambdaQuery()
+            .eq(SysAttachmentRef::getDraftKey, draftKey.trim())
+            .eq(SysAttachmentRef::getRefState, "draft")
+            .eq(SysAttachmentRef::getCreateBy, StpUtil.getLoginIdAsString())
+            .orderByAsc(SysAttachmentRef::getId));
+        fillFileMetadata(rows);
+        fillProductIds(rows);
+        return rows;
+    }
+
+    /** 草稿行改二级类型（仅本人 draft 行）。 */
+    public void updateDraft(Long id, String documentType) {
+        SysAttachmentRef ref = ownDraft(id);
+        types.validate(documentType, ref.getSourceType());
+        jdbc.update("UPDATE sys_attachment_ref SET document_type=?,update_by=?,update_time=NOW()"
+                + " WHERE id=? AND ref_state='draft' AND deleted=0",
+            optional(documentType, 100), StpUtil.getLoginIdAsString(), id);
+    }
+
+    /** 草稿行移除（软删引用行；文件由到期清理处理）。 */
+    public void removeDraft(Long id) {
+        ownDraft(id);
+        String actor = StpUtil.getLoginIdAsString();
+        jdbc.update("UPDATE sys_attachment_ref SET deleted=1,deleted_by=?,deleted_at=NOW(),update_by=?,update_time=NOW()"
+                + " WHERE id=? AND ref_state='draft' AND deleted=0", actor, actor, id);
+    }
+
+    /** 取本人草稿行；非草稿/非本人 → 报错。 */
+    private SysAttachmentRef ownDraft(Long id) {
+        SysAttachmentRef ref = refs.selectById(id);
+        if (ref == null || !"draft".equals(ref.getRefState()))
+            throw new BusinessException("待保存附件不存在");
+        if (!Objects.equals(ref.getCreateBy(), StpUtil.getLoginIdAsString()))
+            throw new BusinessException("只能操作本人上传的待保存附件");
+        return ref;
+    }
+
     /**
      * 批量回填附件文件元数据（文件名/大小/类型 + 图纸列）。
      * 仅用于展示：一条 IN 查询，不改引用模型、不改权限判定、不写任何数据。
