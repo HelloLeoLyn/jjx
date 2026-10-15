@@ -37,6 +37,10 @@ export interface SampleMaterialItem {
   matchedMaterialCode: string | null
   matchedMaterialName: string | null
   matched: boolean
+  /** 项目候选（标准工序ID列表，可空/组合，dev-20261015-017） */
+  projectIds?: number[] | null
+  moduleQty?: number | null
+  baseQty?: number | null
 }
 
 /** 标准工序库选项 */
@@ -101,13 +105,26 @@ export interface MaterialMapping {
   spec: string | null
   qty: number
   unit: string | null
+  processId?: number | null
+  isCommon?: boolean
+  moduleQty?: number | null
+  baseQty?: number | null
+  projectIds?: number[] | null
+}
+
+/** 自动匹配模式下，用户为每条材料确认的单一BOM项目 */
+export interface MaterialProjectSelection {
+  rowKey: string
+  processId?: number | null
+  isCommon?: boolean | null
 }
 
 /** 确认转移入参 */
 export interface SampleTransferConfirmDTO {
   orderId: number
-  processMappings: ProcessMapping[]
-  materialMappings: MaterialMapping[]
+  processMappings?: ProcessMapping[]
+  materialMappings?: MaterialMapping[]
+  materialProjects?: MaterialProjectSelection[]
 }
 
 /** 确认转移返回 */

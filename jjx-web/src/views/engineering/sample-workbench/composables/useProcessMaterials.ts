@@ -1,3 +1,4 @@
+import { normalizeMaterial, projectIdsOf } from './sampleMaterials'
 import { createCardEditSessions } from './planDraft'
 import { ref, nextTick, onScopeDispose, type Ref } from 'vue'
 import { debounce } from 'lodash-es'
@@ -15,7 +16,7 @@ export function useProcessMaterials(readonlyMode: Readonly<Ref<boolean>>, genUid
     pc.materialRows.push({
       name: '',
       spec: '',
-      qty: 1,
+      qty: 1, baseQty: 1, moduleQty: 1, projectIds: projectIdsOf(pc), projectInherited: true,
       unit: 'PCS',
       materialId: undefined as number | undefined,
       materialCode: '',
@@ -35,6 +36,7 @@ export function useProcessMaterials(readonlyMode: Readonly<Ref<boolean>>, genUid
     pc.editing = true
     if (!pc.materialRows.length) {
       pc.materialRows = (parseMaterials(pc.materials) || []).map((m: any) => ({
+        ...normalizeMaterial(m, projectIdsOf(pc)),
         name: m.name || '',
         spec: m.spec || '',
         qty: m.qty ?? 1,
@@ -158,6 +160,7 @@ export function useProcessMaterials(readonlyMode: Readonly<Ref<boolean>>, genUid
       t.row.options = [mat]
     } else if (t?.card) {
       t.card.materialRows.push({
+        baseQty: 1, moduleQty: 1, projectIds: projectIdsOf(t.card), projectInherited: true,
         name: mat.materialName,
         spec: mat.specification || '',
         qty: 1,

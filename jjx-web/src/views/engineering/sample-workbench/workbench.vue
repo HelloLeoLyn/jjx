@@ -228,7 +228,10 @@
           :advance-plan="advancePlan"
           :readonly="readonlyMode"
         />
-        <BomPanel :readonly="readonlyMode" :bom-list="bomList" @transfer="handleTransfer" />
+        <BomPanel :readonly="readonlyMode" :bom-list="bomList" :projects="allProcesses" :state-of="bomStateOf"
+          @update="updateMaterial" @remove="removeMaterial" @add="addMaterial"
+          @search="debouncedSearchBomMaterials" @select="onBomMaterialSelected" @visible="onBomVisible"
+          @transfer="handleTransfer" />
       </div>
 
       <!-- 工艺参数（图纸已挪到样品信息卡） -->
@@ -706,6 +709,13 @@ const {
   printParamsOf,
   loadRounds,
   bomList,
+  updateMaterial,
+  removeMaterial,
+  addMaterial,
+  bomStateOf,
+  debouncedSearchBomMaterials,
+  onBomMaterialSelected,
+  onBomVisible,
   customerFileList,
   goBack,
   loadDetail,

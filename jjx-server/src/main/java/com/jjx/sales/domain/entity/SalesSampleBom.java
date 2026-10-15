@@ -42,6 +42,14 @@ public class SalesSampleBom {
     /** 单位 */
     private String unit;
 
+    /** 物料档案标识及项目（可含多个标准工序，JSON数组） */
+    private Long materialId;
+    private String materialCode;
+    private String projectIds;
+    /** 与标准BOM一致：用量=基数/模数 */
+    private BigDecimal moduleQty;
+    private BigDecimal baseQty;
+
     /** 备注 */
     private String remark;
 

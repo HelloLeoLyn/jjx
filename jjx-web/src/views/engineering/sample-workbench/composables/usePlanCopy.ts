@@ -213,6 +213,9 @@ export function usePlanCopy(context: PlanCopyContext) {
         unit: m.unit || 'PCS',
         materialId: m.materialId,
         materialCode: m.materialCode || '',
+        baseQty: m.baseQty ?? 1,
+        moduleQty: m.moduleQty ?? 1,
+        projectIds: m.projectIds || [],
       }))
       list[ti].materials = JSON.stringify([...base, ...add])
       const parts: string[] = []

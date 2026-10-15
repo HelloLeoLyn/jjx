@@ -1,3 +1,5 @@
+import { materialValues } from './planDraft'
+import { normalizeMaterial, projectIdsOf, validateMaterials } from './sampleMaterials'
 import { planFingerprint } from './planDraft'
 import { ref, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -10,6 +12,7 @@ interface PlanPersistenceContext {
   card: Ref<any>
   planList: Ref<any[]>
   printList: Ref<any[]>
+  standaloneMaterials: Ref<any[]>
   allProcesses: Ref<any[]>
   makeCard: (items: any[], extra?: any) => any
   makePrintRow: (src?: any, order?: number) => any
@@ -20,10 +23,15 @@ interface PlanPersistenceContext {
 
 /** 计划的加载与整单保存边界；返回值明确表示保存是否成功。 */
 export function usePlanPersistence(context: PlanPersistenceContext) {
-  const { readonlyMode, orderId, card, planList, printList, allProcesses, makeCard, makePrintRow, loadBom, refreshCard, loadSummary } = context
+  const { readonlyMode, orderId, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow, loadBom, refreshCard, loadSummary } = context
   const savingPlan = ref(false)
-  const savedFingerprint = ref(planFingerprint([], []))
-  const hasUnsavedChanges = computed(() => planFingerprint(planList.value, printList.value) !== savedFingerprint.value)
+  const currentFingerprint = () => JSON.stringify([planFingerprint(planList.value, printList.value), standaloneMaterials.value])
+  const savedFingerprint = ref(JSON.stringify([planFingerprint([], []), []]))
+  const hasUnsavedChanges = computed(() => currentFingerprint() !== savedFingerprint.value)
+  /** 加载完成后统一建立一次保存快照（计划与独立材料都加载完再调用，避免误判未保存）。 */
+  function markSaved() {
+    savedFingerprint.value = currentFingerprint()
+  }
   // 保存工序计划（整单覆盖当前轮次；卡片展开为多行，同卡片同行序）
   async function savePlan(): Promise<boolean> {
     if (readonlyMode.value || savingPlan.value) return false
@@ -37,23 +45,16 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
     planList.value.forEach((pc) => (pc.saveState = 'saving'))
     savingPlan.value = true
     try {
-      // 2026-09-04 修复：编辑态卡片挂的材料暂存在 materialRows，未点卡片内“保存”时需先同步到
-      // pc.materials，否则直接点“保存工序计划”会丢掉新挂材料（SP2609040006 现场：工序存上材料 NULL）
-      planList.value.forEach((pc) => {
-        if (pc.editing && Array.isArray(pc.materialRows)) {
-          const validMats = (pc.materialRows as any[])
-            .filter((m: any) => m.name && m.name.trim())
-            .map((m: any) => ({
-              name: m.name,
-              spec: m.spec || '',
-              qty: m.qty ?? 1,
-              unit: m.unit || 'PCS',
-              materialId: m.materialId,
-              materialCode: m.materialCode || '',
-            }))
-          pc.materials = validMats.length ? JSON.stringify(validMats) : null
-        }
-      })
+      for (const pc of [...planList.value, ...validPrints]) {
+        const rows = materialValues(pc).map(row => normalizeMaterial(row, projectIdsOf(pc)))
+        const error = validateMaterials(rows)
+        if (error) throw new Error(error)
+        pc.materials = rows.length ? JSON.stringify(rows) : null
+      }
+      const independent = standaloneMaterials.value.map(row => normalizeMaterial(row))
+      if (independent.some(row => !String(row.name || '').trim())) throw new Error('请为新增BOM行选择材料或删除空行')
+      const independentError = validateMaterials(independent)
+      if (independentError) throw new Error(independentError)
       const items: any[] = []
       planList.value.forEach((pc, i) => {
         const order = i + 1
@@ -94,13 +95,17 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
           status: r.status ?? SampleProcessStatusEnum.TODO.value,
         })
       })
-      await sampleOrderApi.saveProcessPlan(orderId.value, { items })
+      await sampleOrderApi.saveProcessPlan(orderId.value, { items, standaloneMaterials: independent.map(row => ({
+        layerName: '', materialName: row.name, specification: row.spec, quantity: row.qty, unit: row.unit,
+        materialId: row.materialId, materialCode: row.materialCode, projectIds: JSON.stringify(row.projectIds || []), moduleQty: row.moduleQty, baseQty: row.baseQty,
+      })) })
       planList.value.forEach((pc) => (pc.saveState = 'synced'))
       ElMessage.success(
         `工序计划已保存（${planList.value.length + validPrints.length}道，含印刷${validPrints.length}）`
       )
       await loadPlan()
       await loadBom()
+      savedFingerprint.value = currentFingerprint()
       await refreshCard()
       await loadSummary()
       return true
@@ -166,11 +171,11 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
           operator: first.operator || '',
         })
       })
-      savedFingerprint.value = planFingerprint(planList.value, printList.value)
+      savedFingerprint.value = currentFingerprint()
     } catch {
       planList.value = []
     }
   }
 
-  return { savingPlan, hasUnsavedChanges, savePlan, loadPlan }
+  return { savingPlan, hasUnsavedChanges, savePlan, loadPlan, markSaved }
 }

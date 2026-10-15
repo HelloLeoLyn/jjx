@@ -1,3 +1,5 @@
+import { useSampleBom } from './useSampleBom'
+import { projectIdsOf } from './sampleMaterials'
 import { useProcessMaterials } from './useProcessMaterials'
 import { usePlanCopy } from './usePlanCopy'
 import { useProcessExecution } from './useProcessExecution'
@@ -155,6 +157,9 @@ export function useSampleWorkbench() {
         unit: mat.unit || 'PCS',
         materialId: mat.materialId,
         materialCode: mat.materialCode || '',
+        baseQty: 1,
+        moduleQty: 1,
+        projectIds: projectIdsOf(pc),
       })
       pc.materials = JSON.stringify(mats)
       // 编辑态同步到 materialRows
@@ -166,6 +171,10 @@ export function useSampleWorkbench() {
           unit: mat.unit || 'PCS',
           materialId: mat.materialId,
           materialCode: mat.materialCode || '',
+          baseQty: 1,
+          moduleQty: 1,
+          projectIds: projectIdsOf(pc),
+          projectInherited: true,
           options: [],
           loading: false,
           uid: genUid(),
@@ -186,6 +195,7 @@ export function useSampleWorkbench() {
     if (readonlyMode.value) return
     planList.value = []
     printList.value = []
+    clearStandalone()
     ElMessage.success('已清空当前轮次内容（保存后生效）')
   }
 
@@ -244,6 +254,9 @@ export function useSampleWorkbench() {
       unit: 'PCS',
       materialId: fm.materialId,
       materialCode: '',
+      baseQty: 1,
+      moduleQty: 1,
+      projectIds: projectIdsOf(target),
     })
     target.materials = JSON.stringify(mats)
     if (target.editing) {
@@ -254,6 +267,10 @@ export function useSampleWorkbench() {
         unit: 'PCS',
         materialId: fm.materialId,
         materialCode: '',
+        baseQty: 1,
+        moduleQty: 1,
+        projectIds: projectIdsOf(target),
+        projectInherited: true,
         options: [],
         loading: false,
         uid: genUid(),
@@ -292,6 +309,8 @@ export function useSampleWorkbench() {
   }
 
   const allProcesses = ref<any[]>([])
+  const { standaloneMaterials, bomList, stateOf: bomStateOf, loadBom, updateMaterial, removeMaterial, addMaterial, clearStandalone, debouncedSearchBomMaterials, onBomMaterialSelected, onBomVisible } = useSampleBom({ orderId, card, planList, printList, readonlyMode })
+
 
   const { addMaterialRow, startEdit, cancelEdit, finishEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange,
     loadMoreMaterials, onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate,
@@ -302,8 +321,8 @@ export function useSampleWorkbench() {
     loadProductPlan, confirmProductPlanCopy } = usePlanCopy({
       orderId, readonlyMode, card, planList, printList, allProcesses, makeCard, makePrintRow, genUid, parseMaterials,
     })
-  const { savingPlan, hasUnsavedChanges, savePlan, loadPlan } = usePlanPersistence({
-    readonlyMode, orderId, card, planList, printList, allProcesses, makeCard, makePrintRow,
+  const { savingPlan, hasUnsavedChanges, savePlan, loadPlan, markSaved } = usePlanPersistence({
+    readonlyMode, orderId, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow,
     loadBom, refreshCard, loadSummary,
   })
   const { advancePrint, advancePlan } = useProcessExecution({
@@ -680,7 +699,6 @@ export function useSampleWorkbench() {
       activeRound.value = String(card.value?.sampleRound || 1)
     }
   }
-  const bomList = ref<any[]>([])
 
   function goBack() {
     router.push('/engineering/sample-workbench')
@@ -721,6 +739,7 @@ export function useSampleWorkbench() {
         loadAllProcesses(),
         loadFrequentMaterials(),
       ])
+      markSaved()
     } catch (e: any) {
       ElMessage.error(e?.message || '加载样品单失败')
     }
@@ -850,46 +869,6 @@ export function useSampleWorkbench() {
       goBack()
     } catch (e: any) {
       if (e !== 'cancel') ElMessage.error(e?.message || '操作失败')
-    }
-  }
-
-  async function loadBom() {
-    if (!orderId.value) return
-    try {
-      const res = await sampleOrderApi.listProcesses(
-        orderId.value,
-        card.value?.sampleRound || undefined
-      )
-      const procs = res.data || []
-      const agg: any[] = []
-      const groups = new Map<string, any[]>()
-      for (const [index, p] of procs.entries()) {
-        const order = Number(p.processOrder)
-        const k = order > 0 ? `order-${order}` : `row-${index}`
-        if (!groups.has(k)) groups.set(k, [])
-        groups.get(k)!.push(p)
-      }
-      for (const rows of groups.values()) {
-        const p = rows[0]
-        if (!p.materials) continue
-        try {
-          const mats = JSON.parse(p.materials)
-          for (const m of mats) {
-            agg.push({
-              process: p.processName,
-              name: m.name,
-              spec: m.spec,
-              qty: m.qty,
-              unit: m.unit,
-            })
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-      bomList.value = agg
-    } catch {
-      bomList.value = []
     }
   }
 
@@ -1042,6 +1021,14 @@ export function useSampleWorkbench() {
     printParamsOf,
     loadRounds,
     bomList,
+    standaloneMaterials,
+    updateMaterial,
+    removeMaterial,
+    addMaterial,
+    bomStateOf,
+    debouncedSearchBomMaterials,
+    onBomMaterialSelected,
+    onBomVisible,
     customerFileList,
     goBack,
     loadDetail,

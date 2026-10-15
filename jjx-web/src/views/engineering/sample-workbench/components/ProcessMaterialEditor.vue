@@ -77,18 +77,24 @@
               <span v-else>{{ row.spec || '-' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="用量" width="90">
+          <el-table-column label="模数" width="90">
+            <template #default="{ row }">
+              <el-input-number v-if="pc.editing" v-model="row.moduleQty" :min="1" :precision="0" :controls="false" size="small" style="width:100%" />
+              <span v-else>{{ normalized(row).moduleQty ?? '待核对' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="基数" width="90">
             <template #default="{ row }">
               <el-input-number
                 v-if="pc.editing"
-                v-model="row.qty"
-                :min="0"
-                :precision="4"
+                v-model="row.baseQty"
+                :min="1"
+                :precision="0"
                 :controls="false"
                 size="small"
                 style="width: 100%"
               />
-              <span v-else>{{ row.qty }}</span>
+              <span v-else>{{ normalized(row).baseQty ?? '待核对' }}</span>
             </template>
           </el-table-column>
           <el-table-column label="单位" width="70">
@@ -128,6 +134,7 @@
     </div>
 </template>
 <script setup lang="ts">
+import { normalizeMaterial as normalized } from '../composables/sampleMaterials'
 defineProps<{
   pc: any
   readonly?: boolean

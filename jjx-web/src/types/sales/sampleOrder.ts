@@ -191,6 +191,7 @@ export interface SampleProcessPlanItem {
 }
 
 export interface SampleProcessPlanDTO {
+  standaloneMaterials?: SampleBomItem[]
   roundNo?: number
   items: SampleProcessPlanItem[]
 }
@@ -232,6 +233,11 @@ export interface SampleProductPlanMaterial {
 }
 
 export interface SampleBomItem {
+  materialId?: number
+  materialCode?: string
+  projectIds?: string
+  moduleQty?: number
+  baseQty?: number
   bomId?: number
   orderId?: number
   roundNo?: number

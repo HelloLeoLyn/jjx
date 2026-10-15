@@ -31,6 +31,14 @@
           class="notice"
         />
         <el-alert
+          v-if="store.combinationWarnings.length"
+          type="warning"
+          show-icon
+          :closable="false"
+          title="存在组合项目材料，请在物料步骤为每条材料选择一个标准BOM项目（或勾选整单通用）"
+          class="notice"
+        />
+        <el-alert
           v-else
           type="success"
           show-icon
@@ -160,6 +168,34 @@
                 <el-tag v-else size="small" type="danger" effect="plain">未匹配到标准物料</el-tag>
               </template>
             </el-table-column>
+            <el-table-column label="BOM项目" min-width="220">
+              <template #default="scope">
+                <div class="project-cell">
+                  <el-select
+                    v-model="store.materialProjects[scope.row.rowKey].processId"
+                    size="small"
+                    clearable
+                    filterable
+                    placeholder="选择单一标准BOM项目"
+                    :disabled="choiceOf(scope.row).isCommon"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="opt in projectOptions(scope.row)"
+                      :key="opt.id"
+                      :label="opt.label"
+                      :value="opt.id"
+                    />
+                  </el-select>
+                  <el-checkbox
+                    :model-value="choiceOf(scope.row).isCommon"
+                    size="small"
+                    @change="(v: any) => store.setMaterialCommon(scope.row.rowKey, !!v)"
+                    >整单通用</el-checkbox
+                  >
+                </div>
+              </template>
+            </el-table-column>
           </el-table>
         </template>
       </template>
@@ -172,7 +208,7 @@
       <el-button
         v-else
         type="primary"
-        :disabled="!store.allMatched"
+        :disabled="!store.allMatched || !store.materialProjectsValid"
         :loading="store.confirming"
         @click="onConfirm"
       >
@@ -227,6 +263,22 @@ const unmatchedMessage = computed(() => {
   ].filter(Boolean)
   return `以下工序/材料未匹配到标准项，请先在标准工序/物料库建档后再转移：${details.join('；')}`
 })
+
+const projectNameMap = computed(() => {
+  const map = new Map<number, string>()
+  for (const process of store.preview?.standardProcesses || []) map.set(process.processId, process.processName)
+  return map
+})
+
+function choiceOf(row: any) {
+  return store.materialProjects[row.rowKey] || { processId: null, isCommon: false }
+}
+
+function projectOptions(row: any): { id: number; label: string }[] {
+  const ids: number[] = row.projectIds || []
+  const source = ids.length ? ids : (store.preview?.standardProcesses || []).map((p) => p.processId)
+  return source.map((id) => ({ id, label: projectNameMap.value.get(id) || `#${id}` }))
+}
 
 function getTransferredIds(): number[] {
   try {
@@ -323,5 +375,10 @@ async function onConfirm() {
   justify-content: space-between;
   padding: 5px 0;
   border-top: 1px dashed #ebeef5;
+}
+.project-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 </style>

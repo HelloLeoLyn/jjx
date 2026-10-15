@@ -18,6 +18,8 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
   const preview = ref<SampleTransferPreview | null>(null)
   const confirming = ref(false)
   const transferResult = ref<SampleTransferConfirmResult | null>(null)
+  /** 每条材料确认的单一BOM项目 / 整单通用（dev-20261015-017） */
+  const materialProjects = ref<Record<string, { processId: number | null; isCommon: boolean }>>({})
 
   function hasCustomParams(process: { customProcessParams?: string | null }): boolean {
     return !!process.customProcessParams?.trim()
@@ -73,6 +75,32 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
   )
   const unmatchedProcessCount = computed(() => unmatchedProcesses.value.length)
   const unmatchedMaterialCount = computed(() => unmatchedMaterials.value.length)
+  /** 组合项目材料：转移时必须选择一个标准BOM项目，不得默认第一道 */
+  const combinationWarnings = computed(
+    () => sampleMaterials.value.filter((material) => (material.projectIds?.length || 0) > 1)
+  )
+  /** 每条材料都已明确「单一项目」或「整单通用」 */
+  const materialProjectsValid = computed(() =>
+    sampleMaterials.value.every((material) => {
+      const choice = materialProjects.value[material.rowKey]
+      return !!choice && (choice.isCommon || choice.processId != null)
+    })
+  )
+  function initMaterialProjects() {
+    const next: Record<string, { processId: number | null; isCommon: boolean }> = {}
+    for (const material of sampleMaterials.value) {
+      const ids = material.projectIds || []
+      // 单一项目自动带入；组合/空项目必须由用户明确选择，不默认第一道
+      next[material.rowKey] =
+        ids.length === 1 ? { processId: ids[0], isCommon: false } : { processId: null, isCommon: false }
+    }
+    materialProjects.value = next
+  }
+  function setMaterialCommon(rowKey: string, isCommon: boolean) {
+    if (!materialProjects.value[rowKey]) materialProjects.value[rowKey] = { processId: null, isCommon }
+    materialProjects.value[rowKey].isCommon = isCommon
+    if (isCommon) materialProjects.value[rowKey].processId = null
+  }
   const allMatched = computed(
     () =>
       (preview.value?.sampleProcesses?.length || 0) > 0 &&
@@ -89,6 +117,7 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
       orderId.value = data.orderId
       orderNo.value = data.orderNo
       transferResult.value = null
+      initMaterialProjects()
     } finally {
       loading.value = false
     }
@@ -99,6 +128,7 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
     orderNo.value = ''
     preview.value = null
     transferResult.value = null
+    materialProjects.value = {}
   }
 
   async function confirmTransfer(): Promise<SampleTransferConfirmResult | null> {
@@ -107,10 +137,24 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
       ElMessage.warning('存在未匹配的工序或物料，请先完成标准库建档')
       return null
     }
+    if (!materialProjectsValid.value) {
+      ElMessage.warning('请为每条材料选择单一BOM项目，或勾选「整单通用」')
+      return null
+    }
     confirming.value = true
     try {
-      // 自动模式只传 orderId，映射由服务端从最新轮次重建。
-      const res = await sampleTransferApi.confirm({ orderId: orderId.value } as SampleTransferConfirmDTO)
+      // 自动模式：工序/物料映射由服务端重建，本前端只提交用户对材料的项目确认。
+      const res = await sampleTransferApi.confirm({
+        orderId: orderId.value,
+        materialProjects: sampleMaterials.value.map((material) => {
+          const choice = materialProjects.value[material.rowKey]
+          return {
+            rowKey: material.rowKey,
+            processId: choice?.isCommon ? null : choice?.processId ?? null,
+            isCommon: !!choice?.isCommon,
+          }
+        }),
+      } as SampleTransferConfirmDTO)
       transferResult.value = res.data as unknown as SampleTransferConfirmResult
       return transferResult.value
     } finally {
@@ -133,6 +177,10 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
     unmatchedMaterials,
     unmatchedProcessCount,
     unmatchedMaterialCount,
+    combinationWarnings,
+    materialProjects,
+    materialProjectsValid,
+    setMaterialCommon,
     loadPreview,
     reset,
     confirmTransfer,

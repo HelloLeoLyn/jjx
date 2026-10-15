@@ -77,6 +77,10 @@ public class SampleTransferPreviewVO {
         private Long sourceProcessId;
         /** 来源打样工序名称 */
         private String sourceProcessName;
+        /** 项目候选与标准BOM数量参数 */
+        private java.util.List<Long> projectIds;
+        private BigDecimal moduleQty;
+        private BigDecimal baseQty;
         /** 物料名称（原始） */
         private String name;
         /** 规格 */

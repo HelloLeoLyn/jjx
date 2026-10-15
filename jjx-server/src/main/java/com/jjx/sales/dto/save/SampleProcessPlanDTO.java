@@ -21,6 +21,9 @@ public class SampleProcessPlanDTO {
      */
     private List<Item> items;
 
+    /** BOM直接新增的独立材料，null兼容旧客户端，空列表表示清空。 */
+    private List<com.jjx.sales.domain.entity.SalesSampleBom> standaloneMaterials;
+
     /**
      * 单道工序计划项
      */

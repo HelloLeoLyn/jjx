@@ -1669,12 +1669,16 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         record.setDurationMinutes(oldProcess.getDurationMinutes());
                     }
                 }
-                record.setMaterials(item.getMaterials());
+                record.setMaterials(normalizeSampleMaterials(item.getMaterials()));
                 record.setProcessNote(item.getProcessNote());
                 record.setOperator(SecurityUtils.getUsername());
                 record.setRemark(item.getRemark());
                 sampleProcessMapper.insert(record);
             }
+        }
+
+        if (dto.getStandaloneMaterials() != null) {
+            saveSampleBom(orderId, roundNo, dto.getStandaloneMaterials());
         }
 
         // 同步当前工序字段：优先进行中，其次第一个待做，全完成则最后一道
@@ -1855,8 +1859,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (current == null || current.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
         }
-        if (items == null || items.isEmpty()) {
-            throw new BusinessException("物料清单不能为空");
+        if (items == null) {
+            throw new BusinessException("物料清单参数不能为空");
         }
 
         int round = roundNo != null ? roundNo : (current.getSampleRound() != null ? current.getSampleRound() : 1);
@@ -1867,9 +1871,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         String username = SecurityUtils.getUsername();
         for (SalesSampleBom item : items) {
-            if (item.getLayerName() == null || item.getMaterialName() == null) {
-                throw new BusinessException("层结构和物料名称必填");
+            if (item.getMaterialName() == null || item.getMaterialName().isBlank()) {
+                throw new BusinessException("物料名称必填");
             }
+            if (item.getLayerName() == null) item.setLayerName("");
+            java.math.BigDecimal[] quantities = SampleMaterialQuantity.normalize(item.getBaseQty(), item.getModuleQty(), item.getQuantity());
+            item.setBaseQty(quantities[0]);
+            item.setModuleQty(quantities[1]);
+            item.setQuantity(quantities[2]);
+            parseSampleProjects(item.getProjectIds());
             item.setBomId(null);
             item.setOrderId(orderId);
             item.setRoundNo(round);
@@ -2528,6 +2538,14 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         item.setRowKey(sp.getProcessId() + "_" + i);
                         item.setSourceProcessId(sp.getProcessId());
                         item.setSourceProcessName(sp.getProcessName());
+                        java.util.List<Long> projects = m.containsKey("projectIds")
+                                ? parseSampleProjects(m.get("projectIds"))
+                                : processes.stream().filter(row -> java.util.Objects.equals(row.getProcessOrder(), sp.getProcessOrder()))
+                                    .map(SalesSampleProcess::getStdProcessId).filter(java.util.Objects::nonNull).distinct().collect(Collectors.toList());
+                        item.setProjectIds(projects);
+                        java.math.BigDecimal[] quantities = SampleMaterialQuantity.normalize(sampleDecimal(m.get("baseQty")), sampleDecimal(m.get("moduleQty")), sampleDecimal(m.get("qty")));
+                        item.setBaseQty(quantities[0]);
+                        item.setModuleQty(quantities[1]);
                         item.setName(m.get("name") != null ? m.get("name").toString() : null);
                         item.setSpec(m.get("spec") != null ? m.get("spec").toString() : null);
                         if (m.get("qty") != null) {
@@ -2559,9 +2577,31 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         materialItems.add(item);
                     }
                 } catch (Exception pe) {
-                    log.warn("解析打样工序材料失败: {}", pe.getMessage());
+                    throw new BusinessException("打样材料数据需修正：" + pe.getMessage());
                 }
             }
+        }
+        int bomRound = sampleOrder.getSampleRound() == null ? 1 : sampleOrder.getSampleRound();
+        for (SalesSampleBom bom : sampleBomMapper.selectByOrderId(orderId)) {
+            if (!java.util.Objects.equals(bom.getRoundNo(), bomRound)) continue;
+            var item = new com.jjx.sales.domain.vo.SampleTransferPreviewVO.SampleMaterialItem();
+            item.setRowKey("bom_" + bom.getBomId());
+            item.setSourceProcessName(bom.getLayerName());
+            item.setName(bom.getMaterialName());
+            item.setSpec(bom.getSpecification());
+            item.setQty(bom.getQuantity());
+            item.setUnit(bom.getUnit());
+            item.setMaterialId(bom.getMaterialId());
+            item.setMaterialCode(bom.getMaterialCode());
+            item.setProjectIds(parseSampleProjects(bom.getProjectIds()));
+            var quantities = SampleMaterialQuantity.normalize(bom.getBaseQty(), bom.getModuleQty(), bom.getQuantity());
+            item.setBaseQty(quantities[0]); item.setModuleQty(quantities[1]); item.setQty(quantities[2]);
+            var match = bom.getMaterialId() != null ? inventoryMaterialMapper.selectById(bom.getMaterialId()) : matchStandardMaterial(bom.getMaterialName(), stdMaterials);
+            item.setMatched(match != null);
+            if (match != null) {
+                item.setMatchedMaterialId(match.getMaterialId()); item.setMatchedMaterialCode(match.getMaterialCode()); item.setMatchedMaterialName(match.getMaterialName());
+            }
+            materialItems.add(item);
         }
         vo.setSampleMaterials(materialItems);
 
@@ -2609,6 +2649,29 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 throw new BusinessException("存在未选择标准工序的工序：" + pm.getProcessName());
             }
         }
+
+        java.util.Map<String, com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialProjectSelection> choices = new java.util.HashMap<>();
+        if (dto.getMaterialProjects() != null) {
+            for (var choice : dto.getMaterialProjects()) {
+                if (choices.put(choice.getRowKey(), choice) != null) throw new BusinessException("材料项目确认重复");
+            }
+        }
+        for (var mm : materialMappings) {
+            var choice = choices.remove(mm.getRowKey());
+            if (choice != null) { mm.setProcessId(choice.getProcessId()); mm.setIsCommon(choice.getIsCommon()); }
+            if (Boolean.TRUE.equals(mm.getIsCommon())) {
+                if (mm.getProjectIds() != null && mm.getProjectIds().size() > 1) throw new BusinessException("组合项目须选择其中一个工序：" + mm.getMaterialName());
+                mm.setProcessId(null);
+            } else {
+                if (mm.getProcessId() == null) throw new BusinessException("请为材料选择单一项目或整单通用：" + mm.getMaterialName());
+                if (mm.getProjectIds() != null && !mm.getProjectIds().isEmpty() && !mm.getProjectIds().contains(mm.getProcessId())) throw new BusinessException("所选项目不在材料项目范围内");
+                var project = standardProcessMapper.selectById(mm.getProcessId());
+                if (project == null || !Integer.valueOf(1).equals(project.getIsEnabled())) throw new BusinessException("所选项目不存在或已停用");
+            }
+            var quantities = SampleMaterialQuantity.normalize(mm.getBaseQty(), mm.getModuleQty(), mm.getQty());
+            mm.setBaseQty(quantities[0]); mm.setModuleQty(quantities[1]); mm.setQty(quantities[2]);
+        }
+        if (!choices.isEmpty()) throw new BusinessException("材料已变化，请刷新资料转移预览后重新确认");
 
         String transferNo = redisSequenceService.generateBusinessNumberByType(
                 "material_transfer", "TF", "yyMMdd", 3);
@@ -2712,6 +2775,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         item.setUnit(mm.getUnit() != null ? mm.getUnit() : (mat != null ? mat.getUnit() : "PCS"));
                         item.setQuantity(mm.getQty() != null ? mm.getQty() : java.math.BigDecimal.ONE);
                         item.setLayer(mm.getSourceProcessName());
+                        item.setProcessId(mm.getProcessId());
+                        item.setProcessName(mm.getProcessId() == null ? null : standardProcessMapper.selectById(mm.getProcessId()).getProcessName());
+                        item.setIsCommon(Boolean.TRUE.equals(mm.getIsCommon()));
+                        item.setBaseQty(mm.getBaseQty()); item.setModuleQty(mm.getModuleQty());
                         item.setItemOrder(itemOrder++);
                         bomItemMapper.insert(item);
                     }
@@ -3021,6 +3088,17 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO();
         result.setOrderId(orderId);
         result.setProcessMappings(processMappings);
+        materialMappings.clear();
+        for (var source : previewTransfer(orderId).getSampleMaterials()) {
+            if (!Boolean.TRUE.equals(source.getMatched())) throw new BusinessException("物料未匹配：" + source.getName());
+            var mm = new com.jjx.sales.dto.transfer.SampleTransferConfirmDTO.MaterialMapping();
+            mm.setRowKey(source.getRowKey()); mm.setSourceProcessId(source.getSourceProcessId()); mm.setSourceProcessName(source.getSourceProcessName());
+            mm.setMaterialId(source.getMatchedMaterialId()); mm.setMaterialName(source.getMatchedMaterialName());
+            mm.setSpec(source.getSpec()); mm.setQty(source.getQty()); mm.setUnit(source.getUnit());
+            mm.setModuleQty(source.getModuleQty()); mm.setBaseQty(source.getBaseQty()); mm.setProjectIds(source.getProjectIds());
+            if (source.getProjectIds() != null && source.getProjectIds().size() == 1) mm.setProcessId(source.getProjectIds().getFirst());
+            materialMappings.add(mm);
+        }
         result.setMaterialMappings(materialMappings);
         return result;
     }
@@ -4357,4 +4435,34 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 .matcher(json);
         return m.find() ? m.group(1) : null;
     }
+    private java.math.BigDecimal sampleDecimal(Object value) {
+        return value == null ? null : new java.math.BigDecimal(value.toString());
+    }
+
+    private java.util.List<Long> parseSampleProjects(Object raw) {
+        if (raw == null) return new java.util.ArrayList<>();
+        try {
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.List<Long> ids = raw instanceof String
+                ? mapper.readValue((String) raw, new com.fasterxml.jackson.core.type.TypeReference<java.util.List<Long>>() {})
+                : mapper.convertValue(raw, new com.fasterxml.jackson.core.type.TypeReference<java.util.List<Long>>() {});
+            if (ids == null || ids.stream().anyMatch(id -> id == null || id <= 0)) throw new IllegalArgumentException();
+            return ids.stream().distinct().collect(Collectors.toList());
+        } catch (Exception e) { throw new BusinessException("项目须为有效标准工序ID列表"); }
+    }
+
+    private String normalizeSampleMaterials(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var rows = mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<java.util.List<java.util.Map<String,Object>>>() {});
+            for (var row : rows) {
+                var quantities = SampleMaterialQuantity.normalize(sampleDecimal(row.get("baseQty")), sampleDecimal(row.get("moduleQty")), sampleDecimal(row.get("qty")));
+                row.put("baseQty", quantities[0]); row.put("moduleQty", quantities[1]); row.put("qty", quantities[2]);
+                if (row.containsKey("projectIds")) row.put("projectIds", parseSampleProjects(row.get("projectIds")));
+            }
+            return mapper.writeValueAsString(rows);
+        } catch (Exception e) { throw new BusinessException("材料数据无效：" + e.getMessage()); }
+    }
+
 }

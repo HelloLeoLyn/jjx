@@ -22,6 +22,14 @@ public class SampleTransferConfirmDTO {
 
     /** 物料映射列表（前端编辑后的标准物料选择，每物料一行） */
     private List<MaterialMapping> materialMappings;
+    /** 自动匹配模式下，用户对每条材料确认的单一BOM项目。 */
+    private List<MaterialProjectSelection> materialProjects;
+    @Data
+    public static class MaterialProjectSelection {
+        private String rowKey;
+        private Long processId;
+        private Boolean isCommon;
+    }
 
     /**
      * 工序映射项
@@ -75,6 +83,11 @@ public class SampleTransferConfirmDTO {
         private String materialName;
         /** 规格 */
         private String spec;
+        private Long processId;
+        private Boolean isCommon;
+        private BigDecimal moduleQty;
+        private BigDecimal baseQty;
+        private List<Long> projectIds;
         /** 用量 */
         private BigDecimal qty;
         /** 单位 */
