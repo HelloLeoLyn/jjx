@@ -7,7 +7,7 @@ const source = fs.readFileSync(path.join(__dirname, 'sampleMaterials.ts'), 'utf8
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
 const compiledModule = { exports: {} }
 new Function('exports', 'require', compiled)(compiledModule.exports, require)
-const { normalizeMaterial, validateMaterials, projectIdsOf } = compiledModule.exports
+const { normalizeMaterial, validateMaterials, projectIdsOf, serializeMaterial } = compiledModule.exports
 
 test('历史小数用量约分为整数基数/模数且单位用量=基数÷模数', () => {
   const row = normalizeMaterial({ name: '胶', qty: 0.25 })
@@ -45,4 +45,18 @@ test('模数/基数校验拦截非整数', () => {
 test('projectIdsOf 去重有效标准工序ID', () => {
   const pc = { items: [{ stdProcessId: 8 }, { stdProcessId: 9 }, { stdProcessId: 8 }, { stdProcessId: null }] }
   assert.deepEqual(projectIdsOf(pc), [8, 9])
+})
+
+test('serializeMaterial 剥离会话内继承标记，保留业务字段', () => {
+  const out = serializeMaterial({ name: '铜', baseQty: 3, moduleQty: 4, qty: 0.75, projectIds: [8], projectInherited: true })
+  assert.deepEqual(out, { name: '铜', baseQty: 3, moduleQty: 4, qty: 0.75, projectIds: [8] })
+  assert.equal('projectInherited' in out, false)
+})
+
+test('归一幂等：重复归一结果稳定', () => {
+  const once = normalizeMaterial({ name: '胶', qty: 0.25 })
+  const twice = normalizeMaterial(serializeMaterial(once))
+  assert.equal(twice.baseQty, once.baseQty)
+  assert.equal(twice.moduleQty, once.moduleQty)
+  assert.equal(twice.qty, once.qty)
 })
