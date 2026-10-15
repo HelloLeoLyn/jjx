@@ -33,40 +33,8 @@
           <!-- 工序计划面板（左选择器 + 右卡片区） -->
           <SampleProcessPlanEditor
             :readonly="readonlyMode"
-            :batch-mode="batchMode"
-            :batch-selected="batchSelected"
-            :batch-category="batchCategory"
-            :saving-plan="savingPlan"
-            :frequent-materials="frequentMaterials"
-            :plan-tabs="planTabs"
+            :controller="planEditor"
             v-model:active-plan-tab="activePlanTab"
-            :category-options="categoryOptions"
-            :cards-by-tab="cardsByTab"
-            :save-state-text="saveStateText"
-            :parse-materials="parseMaterials"
-            :toggle-batch-mode="toggleBatchMode"
-            :toggle-batch-select="toggleBatchSelect"
-            :toggle-batch-select-all="toggleBatchSelectAll"
-            :save-plan="savePlan"
-            :add-frequent-material="addFrequentMaterial"
-            :on-plan-drop="onPlanDrop"
-            :on-card-drop="onCardDrop"
-            :on-card-drag-over="onCardDragOver"
-            :on-card-drag-leave="onCardDragLeave"
-            :remove-card-item="removeCardItem"
-            :remove-plan-card="removePlanCard"
-            :save-card="saveCard"
-            :add-material-row="addMaterialRow"
-            :start-edit="startEdit"
-            :open-card-picker="openCardPicker"
-            :open-batch-material="openBatchMaterial"
-            :batch-delete="batchDelete"
-            :apply-batch-category="applyBatchCategory"
-            :on-update-index="onUpdateIndex"
-            :search-materials="debouncedSearchMaterials"
-            :on-material-selected="onMaterialSelected"
-            :on-select-visible-change="onSelectVisibleChange"
-            :open-material-create="openMaterialCreate"
           />
         </template>
 
@@ -624,6 +592,7 @@ function sampleStatusTag(status: number | undefined | null): any {
 
 // 全部状态与逻辑来自 composable（dev-20260811-008 组件化）
 const {
+  planEditor,
   card,
   orderId,
   saving,

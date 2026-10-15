@@ -36,204 +36,21 @@
         >
       </div>
     </div>
-    <!-- 行2：标准工序（组合，任意结构） -->
-    <div class="pc-row">
-      <div class="pc-items">
-        <ProcessOperation
-          v-if="readonly || !pc.editing"
-          :items="operationItems(pc.items)"
-          :remark="pc.operationRemark"
-        />
-        <template v-else>
-          <el-tooltip
-            v-for="(it, ii) in pc.items"
-            :key="ii"
-            content="双击编辑作业说明"
-            placement="top"
-            :disabled="!(it.hasWorkInstruction === 1 || it.workInstruction)"
-          >
-            <span class="instruction-trigger" @dblclick.stop="openInstructionEditor(it)">
-              <el-tag
-                size="small"
-                :closable="!readonly && pc.editing"
-                :disable-transitions="false"
-                class="process-item-tag"
-                @close="$emit('remove-item', Number(ii))"
-              >
-                <IconStepBadge
-                  v-if="it.icon"
-                  :icon="it.icon || ''"
-                  :size="16"
-                  :index="it.hasIndex === 1 ? (it.indexNumber ?? null) : undefined"
-                  :work-instruction="it.workInstruction"
-                  @update:index="(n: number) => $emit('update-index', it, n)"
-                />
-              </el-tag>
-            </span>
-          </el-tooltip>
-          <el-button
-            v-if="!readonly && !pc.editing"
-            size="small"
-            link
-            type="primary"
-            @click="$emit('open-picker')"
-            >＋ 添加标准工序</el-button
-          >
-          <span v-if="!pc.items.length && !pc.editing" style="color: #c0c4cc; font-size: 12px"
-            >未选择标准工序</span
-          >
-        </template>
-      </div>
-    </div>
-    <el-dialog
-      v-model="instructionDialogVisible"
-      title="编辑作业说明"
-      width="420px"
-      append-to-body
-      @closed="instructionEditingItem = null"
-    >
-      <el-input
-        v-model="instructionDraft"
-        type="textarea"
-        :rows="3"
-        maxlength="80"
-        show-word-limit
-        autofocus
-        placeholder="作业说明（可选，如：线路外形）"
-        @keyup.esc="closeInstructionEditor"
-      />
-      <template #footer>
-        <el-button @click="closeInstructionEditor">取消</el-button>
-        <el-button type="primary" @click="saveInstructionEditor">确定</el-button>
-      </template>
-    </el-dialog>
-    <!-- 行3：材料表格 -->
-    <div class="pc-row">
-      <div class="pc-mat">
-        <el-table
-          v-if="(pc.editing ? pc.materialRows : parseMaterials(pc.materials)).length"
-          :data="pc.editing ? pc.materialRows : parseMaterials(pc.materials)"
-          size="small"
-          border
-          style="width: 100%"
-        >
-          <el-table-column label="材料" min-width="150">
-            <template #default="{ row }">
-              <template v-if="pc.editing">
-                <el-select
-                  v-model="row.materialId"
-                  filterable
-                  remote
-                  :remote-method="(q: string) => onSearchMaterial(q, row)"
-                  :loading="row.loading"
-                  :popper-class="`material-popper-${row.uid}`"
-                  placeholder="搜索物料档案"
-                  style="width: 100%"
-                  @change="(v: any) => $emit('material-selected', row, v)"
-                  @visible-change="(v: boolean) => $emit('select-visible', row, v)"
-                >
-                  <el-option
-                    v-for="opt in row.options"
-                    :key="opt.materialId"
-                    :label="`${opt.materialName}${opt.specification ? ' ' + opt.specification : ''} (${opt.materialCode || ''})`"
-                    :value="opt.materialId"
-                  />
-                  <el-option
-                    v-if="row.loading"
-                    value="__loading__"
-                    disabled
-                    style="text-align: center; color: #909399; font-size: 12px"
-                    >加载中…</el-option
-                  >
-                  <el-option
-                    v-else-if="row.options.length && row.total > row.options.length"
-                    value="__more__"
-                    disabled
-                    style="text-align: center; color: #909399; font-size: 12px"
-                    >下拉加载更多（还有 {{ row.total - row.options.length }} 条）</el-option
-                  >
-                  <el-option
-                    v-else-if="row.options.length"
-                    value="__all__"
-                    disabled
-                    style="text-align: center; color: #c0c4cc; font-size: 12px"
-                    >已加载全部（共 {{ row.total }} 条）</el-option
-                  >
-                  <template #footer>
-                    <el-button
-                      v-if="matShowCreate(row)"
-                      link
-                      type="primary"
-                      @click="matCreate(pc, row)"
-                      >新建物料「{{ row._matKw }}」</el-button
-                    >
-                  </template>
-                </el-select>
-              </template>
-              <template v-else>{{ row.name }}</template>
-            </template>
-          </el-table-column>
-          <el-table-column label="规格" width="110">
-            <template #default="{ row }">
-              <el-input
-                v-if="pc.editing"
-                v-model="row.spec"
-                size="small"
-                placeholder="规格"
-                :disabled="!!row.materialId"
-              />
-              <span v-else>{{ row.spec || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="用量" width="90">
-            <template #default="{ row }">
-              <el-input-number
-                v-if="pc.editing"
-                v-model="row.qty"
-                :min="0"
-                :precision="4"
-                :controls="false"
-                size="small"
-                style="width: 100%"
-              />
-              <span v-else>{{ row.qty }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="单位" width="70">
-            <template #default="{ row }">
-              <el-input
-                v-if="pc.editing"
-                v-model="row.unit"
-                size="small"
-                :disabled="!!row.materialId"
-              />
-              <span v-else>{{ row.unit || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column v-if="!readonly && pc.editing" label="操作" width="60" align="center">
-            <template #header>
-              <el-button
-                size="small"
-                plain
-                icon="Plus"
-                @click="$emit('add-material-row')"
-              ></el-button>
-            </template>
-            <template #default="{ $index }">
-              <el-button size="small" link type="danger" @click="pc.materialRows.splice($index, 1)"
-                >删</el-button
-              >
-            </template>
-          </el-table-column>
-        </el-table>
-        <div v-if="!readonly && pc.editing" style="margin-top: 6px; display: flex; gap: 6px"></div>
-        <span
-          v-else-if="!parseMaterials(pc.materials).length"
-          style="color: #c0c4cc; font-size: 12px"
-          >无材料</span
-        >
-      </div>
-    </div>
+    <ProcessContentEditor
+      :pc="pc" :readonly="readonly"
+      @remove-item="(index) => $emit('remove-item', index)"
+      @update-index="(item, value) => $emit('update-index', item, value)"
+      @open-picker="$emit('open-picker')"
+    />
+    <ProcessMaterialEditor
+      :pc="pc" :readonly="readonly" :parse-materials="parseMaterials"
+      @search-material="(q, row) => $emit('search-material', q, row)"
+      @material-selected="(row, value) => $emit('material-selected', row, value)"
+      @select-visible="(row, visible) => $emit('select-visible', row, visible)"
+      @add-material-row="$emit('add-material-row')"
+      @remove-material="(index) => pc.materialRows.splice(index, 1)"
+      @create-material="(row) => $emit('create-material', row)"
+    />
     <!-- 行4：整道工序备注；单工序属于自身，复合工序属于整个组合 -->
     <div class="pc-row">
       <el-input
@@ -262,10 +79,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import IconStepBadge from '@/components/IconStepBadge/index.vue'
-import ProcessOperation from '@/components/ProcessOperation/index.vue'
-import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
+import ProcessContentEditor from './ProcessContentEditor.vue'
+import ProcessMaterialEditor from './ProcessMaterialEditor.vue'
 import { SampleProcessStatusEnum } from '@/enums/sales'
 
 /**
@@ -273,7 +88,7 @@ import { SampleProcessStatusEnum } from '@/enums/sales'
  * 自包含：状态/标准工序/材料/描述/编辑操作
  * 预留：卡片类型字段（标准/自定义），印刷工序后续扩展
  */
-const props = defineProps<{
+defineProps<{
   pc: any
   index: number
   batchMode: boolean
@@ -281,57 +96,7 @@ const props = defineProps<{
   saveStateText: (pc: any) => string
   parseMaterials: (json?: string | null) => any[]
   readonly?: boolean
-  /** 材料行内建档回调（workbench 注入，dev-20261009-036） */
-  openMaterialCreate?: (pc: any, m: any) => void
 }>()
-
-// 行内材料建档：记录搜索关键字 + 无同名时出现「新建物料」（dev-20261009-036）
-function onSearchMaterial(q: string, row: any) {
-  row._matKw = q || ''
-  emit('search-material', q, row)
-}
-function matShowCreate(row: any): boolean {
-  const kw = (row._matKw || '').trim()
-  if (!kw || row.loading) return false
-  return !(row.options || []).some((o: any) => (o.materialName || '').trim() === kw)
-}
-function matCreate(pc: any, row: any) {
-  row.name = (row._matKw || '').trim()
-  props.openMaterialCreate?.(pc, row)
-}
-
-function operationItems(items: any[]): ProcessOperationItem[] {
-  return (items || []).map((item, index) => ({
-    key: item.itemId ?? index,
-    icon: item.icon,
-    processName: item.processName,
-    indexNumber: item.hasIndex === 1 ? item.indexNumber : null,
-    hasWorkInstruction: item.hasWorkInstruction,
-    workInstruction: item.workInstruction,
-  }))
-}
-
-const instructionEditingItem = ref<any | null>(null)
-const instructionDialogVisible = ref(false)
-const instructionDraft = ref('')
-
-function openInstructionEditor(item: any) {
-  instructionEditingItem.value = item
-  instructionDraft.value = item.workInstruction || ''
-  instructionDialogVisible.value = true
-}
-
-function closeInstructionEditor() {
-  instructionEditingItem.value = null
-  instructionDialogVisible.value = false
-}
-
-function saveInstructionEditor() {
-  if (instructionEditingItem.value) {
-    instructionEditingItem.value.workInstruction = instructionDraft.value.trim()
-  }
-  closeInstructionEditor()
-}
 
 const emit = defineEmits<{
   (e: 'toggle-select', v: boolean): void

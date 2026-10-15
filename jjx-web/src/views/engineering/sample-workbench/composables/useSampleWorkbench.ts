@@ -1,8 +1,11 @@
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { useProcessMaterials } from './useProcessMaterials'
+import { usePlanCopy } from './usePlanCopy'
+import { useProcessExecution } from './useProcessExecution'
+import { usePlanPersistence } from './usePlanPersistence'
+import { ref, reactive, computed, watch } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadProps } from 'element-plus'
-import { debounce } from 'lodash-es'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialApi } from '@/api/inventory/material'
@@ -22,7 +25,6 @@ export function useSampleWorkbench() {
   const readonlyMode = computed(() => route.query.readonly === 'true')
 
   const saving = ref(false)
-  const savingPlan = ref(false)
   const form = reactive({ note: '' })
 
   // ===== 工序计划（方案A：卡片 = 一个工序单元，可挂多个标准工序）=====
@@ -179,238 +181,6 @@ export function useSampleWorkbench() {
     ElMessage.success('已批量添加材料')
   }
 
-  // 从历史打样复制
-  const historyCopyVisible = ref(false)
-  // 追加/覆盖（dev-20261012-012：给用户选择，默认追加）
-  const copyOverwrite = ref(false)
-  const historyOrders = ref<any[]>([])
-  const historyLoading = ref(false)
-  const historySelected = ref<any>(null)
-  const historyCopying = ref(false)
-  async function openHistoryCopy() {
-    historyCopyVisible.value = true
-    historySelected.value = null
-    historySelectedRound.value = null
-    copyOverwrite.value = false
-    historyLoading.value = true
-    loadProductPlan()
-    try {
-      // 2026-08-12 DEV-988：不再限已转量产(7)——查全部样品单（排除当前单），有工序即可复制
-      const res: any = await sampleOrderApi.list({})
-      historyOrders.value = (res.data || []).filter((o: any) => o.orderId !== orderId.value)
-    } catch {
-      historyOrders.value = []
-    } finally {
-      historyLoading.value = false
-    }
-  }
-  // 共用：把「打样工序行形状」的列表应用到当前轮编辑区（追加或覆盖；印刷→印刷表、其余→卡片）
-  function applyCopiedRows(list: any[], overwrite = false) {
-    const sorted = [...list].sort(
-      (a: any, b: any) =>
-        (a.processOrder || 999) - (b.processOrder || 999) ||
-        (a.processId || 0) - (b.processId || 0)
-    )
-    // 2026-08-12 DEV-988：拆分印刷(PRINT)与冲型组装(ASSEMBLY)——印刷行进印刷表格
-    const printRows = sorted.filter((p: any) => p.majorCategory === 'PRINT')
-    const assemblyRows = sorted.filter((p: any) => p.majorCategory !== 'PRINT')
-    if (overwrite) {
-      planList.value = []
-      printList.value = []
-    }
-    // 按 processOrder 分组为卡片（不覆盖时追加到当前 planList 后面）
-    const groups = new Map<number, any[]>()
-    for (const p of assemblyRows) {
-      const k = p.processOrder || 999
-      if (!groups.has(k)) groups.set(k, [])
-      groups.get(k)!.push(p)
-    }
-    let added = 0
-    for (const [, rows] of groups) {
-      const first = rows[0]
-      const enriched = rows.map((r: any) => {
-        const src2 = allProcesses.value.find((x) => x.processId === r.stdProcessId)
-        return src2
-          ? {
-              ...r,
-              processType: src2.processType,
-              processCategory: src2.processCategory,
-              icon: src2.icon,
-            }
-          : r
-      })
-      const pc = makeCard(enriched, {
-        processOrder: 0, // 追加，保存时重新编号
-        category: first.processCategory || '',
-        status: 0,
-        operationRemark: first.remark || '',
-        // 打样材料是「卡片级」：卡片材料 = 卡内各行材料的并集（组合卡片需合并子工序材料，dev-20261012-012 修复）
-        materials: mergeCardMaterials(rows),
-      })
-      planList.value.push(pc)
-      added++
-    }
-    // 印刷行追加到 printList（参数色号/油墨/网框随行；重置待做状态 + uid 防 key 冲突）
-    let addedPrint = 0
-    for (const r of printRows) {
-      const row = makePrintRow(r, printList.value.length + 1)
-      row.status = 0
-      row.uid = `new-${genUid()}`
-      printList.value.push(row)
-      addedPrint++
-    }
-    return { added, addedPrint }
-  }
-
-  // 合并卡内各行材料为卡片级材料（去重：materialId|name|spec）；无则 null
-  function mergeCardMaterials(rows: any[]): string | null {
-    const map = new Map<string, any>()
-    for (const r of rows) {
-      for (const m of parseMaterials(r.materials) || []) {
-        const key = `${m?.materialId ?? ''}|${m?.name ?? ''}|${m?.spec ?? ''}`
-        if (!map.has(key)) map.set(key, m)
-      }
-    }
-    return map.size ? JSON.stringify([...map.values()]) : null
-  }
-
-  async function confirmHistoryCopy() {
-    if (readonlyMode.value) return
-    const src = historySelected.value
-    if (!src) return
-    historyCopying.value = true
-    try {
-      const res = await sampleOrderApi.listProcesses(src.orderId)
-      const list: any[] = res.data || []
-      if (!list.length) {
-        ElMessage.warning('该样品单没有工序计划')
-        return
-      }
-      const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
-      historyCopyVisible.value = false
-      ElMessage.success(
-        `已复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到现有后'}，保存后生效）`
-      )
-    } catch (e: any) {
-      ElMessage.error(e?.message || '复制失败')
-    } finally {
-      historyCopying.value = false
-    }
-  }
-
-  // 复制本单指定历史轮工艺（同单多轮：Round N→任意历史轮，客户退回重做场景；追加到当前轮编辑区，保存后生效，DEV-20260905-007）
-  const copyPrevLoading = ref(false)
-  const historySelectedRound = ref<any>(null)
-  async function copyRoundFrom(roundNo: number) {
-    if (readonlyMode.value) return
-    if (!roundNo || roundNo <= 0) return
-    copyPrevLoading.value = true
-    try {
-      const res: any = await sampleOrderApi.listProcesses(orderId.value, roundNo)
-      const list: any[] = res.data || []
-      if (!list.length) {
-        ElMessage.warning(`Round ${roundNo} 没有工序计划，无法复制`)
-        return
-      }
-      // 与跨单复制同语义：PRINT→印刷表，其余→按 processOrder 分组为卡片
-      const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
-      ElMessage.success(
-        `已从 Round ${roundNo} 复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到当前轮'}，保存后生效）`
-      )
-      historyCopyVisible.value = false
-    } catch (e: any) {
-      ElMessage.error(e?.message || '复制失败')
-    } finally {
-      copyPrevLoading.value = false
-    }
-  }
-
-  // 快捷入口：复制上一轮（同单 Round N→N+1）
-  async function copyPreviousRound() {
-    const cur = card.value?.sampleRound || 1
-    if (cur <= 1) return
-    await copyRoundFrom(cur - 1)
-  }
-
-  // ===== 复制打样方案：来源3「成品方案」（只读带出，dev-20261012-012）=====
-  const productPlan = ref<any>(null)
-  const productPlanLoading = ref(false)
-  const productPlanCopying = ref(false)
-  async function loadProductPlan() {
-    if (!orderId.value) return
-    productPlanLoading.value = true
-    try {
-      const res: any = await sampleOrderApi.getProductPlan(orderId.value)
-      productPlan.value = res?.data || null
-    } catch {
-      productPlan.value = null
-    } finally {
-      productPlanLoading.value = false
-    }
-  }
-  async function confirmProductPlanCopy() {
-    if (readonlyMode.value) return
-    const pp: any = productPlan.value
-    if (!pp?.eligible) return
-    const list: any[] = (pp.rows || []).map((r: any) => ({ ...r }))
-    if (!list.length) {
-      ElMessage.warning('成品方案没有可带出的工序')
-      return
-    }
-    // BOM 材料不静默丢弃（硬要求）：无工序的材料一律暂挂到首道工序；区分「整单通用」与「未挂工序」两类提示
-    const unlinked: any[] = pp.unlinkedMaterials || []
-    const pendingUnlinked = unlinked.filter((m: any) => !m.isCommon) // 未挂工序（待核对）
-    const commonMats = unlinked.filter((m: any) => !!m.isCommon) // 整单通用（合法）
-    let unlinkedNote = ''
-    if (unlinked.length) {
-      const idx = list.findIndex((r: any) => r.majorCategory !== 'PRINT')
-      const ti = idx >= 0 ? idx : 0
-      const base = parseMaterials(list[ti].materials) || []
-      const add = unlinked.map((m: any) => ({
-        name: m.name,
-        spec: m.spec || '',
-        qty: m.qty ?? 1,
-        unit: m.unit || 'PCS',
-        materialId: m.materialId,
-        materialCode: m.materialCode || '',
-      }))
-      list[ti].materials = JSON.stringify([...base, ...add])
-      const parts: string[] = []
-      if (commonMats.length) {
-        parts.push(
-          `${commonMats.length} 条整单通用材料（${commonMats.map((m: any) => m.name).join('、')}）已暂挂到首道工序「${list[ti].processName}」`,
-        )
-      }
-      if (pendingUnlinked.length) {
-        parts.push(
-          `${pendingUnlinked.length} 条未挂工序材料（${pendingUnlinked.map((m: any) => m.name).join('、')}）已暂挂到首道工序「${list[ti].processName}」，请核对归属`,
-        )
-      }
-      if (parts.length) unlinkedNote = `；另有 ${parts.join('；')}`
-    }
-    productPlanCopying.value = true
-    try {
-      const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
-      historyCopyVisible.value = false
-      if (unlinkedNote) {
-        const hasPending = pendingUnlinked.length > 0
-        ElMessageBox.alert(
-          `${unlinkedNote.replace(/^；/, '')}`,
-          hasPending ? '材料未挂工序提示' : '整单通用材料提示',
-          {
-            confirmButtonText: '知道了',
-            type: hasPending ? 'warning' : 'info',
-          },
-        ).catch(() => {})
-      }
-      ElMessage.success(
-        `已带出 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到现有后'}，保存后生效；产品后续升版不会自动同步）`
-      )
-    } finally {
-      productPlanCopying.value = false
-    }
-  }
-
   // 清空当前轮次编辑区（未保存内容丢弃；需再次保存才同步后端覆盖，2026-09-05 用户提出）
   function clearCurrentRound() {
     if (readonlyMode.value) return
@@ -522,6 +292,23 @@ export function useSampleWorkbench() {
   }
 
   const allProcesses = ref<any[]>([])
+
+  const { addMaterialRow, startEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange,
+    loadMoreMaterials, onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate,
+    onMaterialCreated, parseMaterials } = useProcessMaterials(readonlyMode, genUid)
+  const { historyCopyVisible, copyOverwrite, historyOrders, historyLoading, historySelected,
+    historyCopying, openHistoryCopy, confirmHistoryCopy, copyPrevLoading, historySelectedRound,
+    copyRoundFrom, copyPreviousRound, productPlan, productPlanLoading, productPlanCopying,
+    loadProductPlan, confirmProductPlanCopy } = usePlanCopy({
+      orderId, readonlyMode, card, planList, printList, allProcesses, makeCard, makePrintRow, genUid, parseMaterials,
+    })
+  const { savingPlan, savePlan, loadPlan } = usePlanPersistence({
+    readonlyMode, orderId, card, planList, printList, allProcesses, makeCard, makePrintRow,
+    loadBom, refreshCard, loadSummary,
+  })
+  const { advancePrint, advancePlan } = useProcessExecution({
+    readonlyMode, orderId, loadPlan, refreshCard, loadSummary,
+  })
   async function loadAllProcesses() {
     try {
       const res = await request.get('/engineering/standard-processes/page', {
@@ -640,113 +427,6 @@ export function useSampleWorkbench() {
     const arr = printList.value
     ;[arr[i], arr[j]] = [arr[j], arr[i]]
     ElMessage.success('已调整顺序（保存后生效）')
-  }
-
-  // 印刷行状态推进：0待做 → 1进行中 → 2完成
-  async function advancePrint(row: any) {
-    if (readonlyMode.value) return
-    if (!orderId.value) return
-    if (!row.processId) {
-      ElMessage.warning('该印刷工序还未保存，请先保存计划')
-      return
-    }
-    const next = row.status === 1 ? 2 : 1
-    try {
-      await sampleOrderApi.updateProcessItemStatus(orderId.value, row.processId, { status: next })
-      row.status = next
-      ElMessage.success(next === 2 ? '印刷工序已完成' : '印刷工序已开始')
-      await refreshCard()
-      await loadSummary()
-    } catch (e: any) {
-      ElMessage.error(e?.message || '操作失败')
-    }
-  }
-
-  // 保存工序计划（整单覆盖当前轮次；卡片展开为多行，同卡片同行序）
-  async function savePlan() {
-    if (readonlyMode.value) return
-    if (!orderId.value) return
-    const validPrints = printList.value.filter((r) => (r.printName || '').trim())
-    if (!planList.value.length && !validPrints.length) {
-      ElMessage.warning('工序计划为空，请先勾选标准工序或添加印刷工序')
-      return
-    }
-    // 保存状态：全部标记为保存中
-    planList.value.forEach((pc) => (pc.saveState = 'saving'))
-    savingPlan.value = true
-    try {
-      // 2026-09-04 修复：编辑态卡片挂的材料暂存在 materialRows，未点卡片内“保存”时需先同步到
-      // pc.materials，否则直接点“保存工序计划”会丢掉新挂材料（SP2609040006 现场：工序存上材料 NULL）
-      planList.value.forEach((pc) => {
-        if (pc.editing && Array.isArray(pc.materialRows)) {
-          const validMats = (pc.materialRows as any[])
-            .filter((m: any) => m.name && m.name.trim())
-            .map((m: any) => ({
-              name: m.name,
-              spec: m.spec || '',
-              qty: m.qty ?? 1,
-              unit: m.unit || 'PCS',
-              materialId: m.materialId,
-              materialCode: m.materialCode || '',
-            }))
-          pc.materials = validMats.length ? JSON.stringify(validMats) : null
-        }
-      })
-      const items: any[] = []
-      planList.value.forEach((pc, i) => {
-        const order = i + 1
-        pc.items.forEach((it: any) => {
-          items.push({
-            processOrder: order,
-            processId: it.processId ?? undefined,
-            stdProcessId: it.stdProcessId ?? undefined,
-            processName: it.processName,
-            processCategory: pc.category || undefined,
-            majorCategory: 'ASSEMBLY',
-            materials: pc.materials,
-            processNote: it.workInstruction || null,
-            remark: pc.operationRemark || null,
-            status: pc.status ?? 0,
-            indexNumber: it.indexNumber ?? undefined, // DEV-777：下标数字
-          })
-        })
-      })
-      // 印刷行（dev-20260811-009）：processOrder 接在冲型组装后面
-      const baseOrder = planList.value.length
-      validPrints.forEach((r, i) => {
-        const params: any = { printName: r.printName }
-        if (r.colorNo) params.colorNo = r.colorNo
-        if (r.colorNoLabel) params.colorNoLabel = r.colorNoLabel
-        if (r.inkMaterialId != null) params.inkMaterialId = r.inkMaterialId
-        if (r.inkNo) params.inkNo = r.inkNo
-        if (r.screenNo) params.screenNo = r.screenNo
-        items.push({
-          processOrder: baseOrder + i + 1,
-          processId: r.processId ?? undefined,
-          stdProcessId: null,
-          processName: r.printName,
-          processCategory: r.category || 'OTHER',
-          majorCategory: 'PRINT',
-          customProcessParams: JSON.stringify(params),
-          materials: r.materials,
-          status: r.status ?? 0,
-        })
-      })
-      await sampleOrderApi.saveProcessPlan(orderId.value, { items })
-      planList.value.forEach((pc) => (pc.saveState = 'synced'))
-      ElMessage.success(
-        `工序计划已保存（${planList.value.length + validPrints.length}道，含印刷${validPrints.length}）`
-      )
-      await loadPlan()
-      await loadBom()
-      await refreshCard()
-      await loadSummary()
-    } catch (e: any) {
-      planList.value.forEach((pc) => (pc.saveState = 'error'))
-      ElMessage.error(e?.message || '保存工序计划失败')
-    } finally {
-      savingPlan.value = false
-    }
   }
 
   // 卡片内追加标准工序（弹窗多选，任意结构）
@@ -914,27 +594,6 @@ export function useSampleWorkbench() {
       batchSelected.value = s
     }
   }
-  async function advancePlan(pc: any) {
-    if (readonlyMode.value) return
-    if (!orderId.value) return
-    const next = pc.status === SampleProcessStatusEnum.DOING.value ? SampleProcessStatusEnum.DONE.value : SampleProcessStatusEnum.DOING.value
-    pc.advancing = true
-    try {
-      const targetIds = pc.items.map((i: any) => i.processId).filter(Boolean)
-      for (const pid of targetIds) {
-        await sampleOrderApi.updateProcessItemStatus(orderId.value, pid, { status: next })
-      }
-      ElMessage.success(next === 2 ? '工序已完成' : '工序已开始')
-      await loadPlan()
-      await refreshCard()
-      await loadSummary()
-    } catch (e: any) {
-      ElMessage.error(e?.message || '操作失败')
-    } finally {
-      pc.advancing = false
-    }
-  }
-
   // 保存卡片（整单保存，数据一致）
   async function saveCard(pc: any) {
     if (readonlyMode.value) return
@@ -954,7 +613,7 @@ export function useSampleWorkbench() {
         }))
       pc.materials = validMats.length ? JSON.stringify(validMats) : null
       pc.editing = false
-      await savePlan()
+      if (!(await savePlan())) return
       pc.saveState = 'synced'
       ElMessage.success('已保存')
     } catch (e: any) {
@@ -962,180 +621,6 @@ export function useSampleWorkbench() {
       ElMessage.error(e?.message || '保存失败')
     } finally {
       pc.savingCard = false
-    }
-  }
-
-  // 材料行
-  function addMaterialRow(pc: any) {
-    if (readonlyMode.value) return
-    pc.materialRows.push({
-      name: '',
-      spec: '',
-      qty: 1,
-      unit: 'PCS',
-      materialId: undefined as number | undefined,
-      materialCode: '',
-      options: [],
-      loading: false,
-      uid: genUid(),
-      pageNum: 1,
-      total: 0,
-      lastQuery: '',
-    })
-  }
-
-  // 进入编辑：初始化材料行
-  function startEdit(pc: any) {
-    pc.editing = true
-    if (!pc.materialRows.length) {
-      pc.materialRows = (parseMaterials(pc.materials) || []).map((m: any) => ({
-        name: m.name || '',
-        spec: m.spec || '',
-        qty: m.qty ?? 1,
-        unit: m.unit || 'PCS',
-        materialId: m.materialId,
-        materialCode: m.materialCode || '',
-        options: [],
-        loading: false,
-        uid: genUid(),
-        pageNum: 1,
-        total: 0,
-        lastQuery: '',
-      }))
-      if (!pc.materialRows.length) addMaterialRow(pc)
-    }
-  }
-
-  // 远程搜索物料档案（分页）
-  async function searchMaterials(query: string, m: any, pageNum = 1, append = false) {
-    m.loading = true
-    m.lastQuery = (query || '').trim()
-    try {
-      const params: any = { pageNum, pageSize: 20 }
-      if (m.lastQuery) params.materialName = m.lastQuery
-      const res: any = await materialApi.search(params)
-      const records = res?.data?.records || res?.data || []
-      if (append) {
-        const seen = new Set((m.options || []).map((o: any) => o.materialId))
-        for (const r of records) {
-          if (!seen.has(r.materialId)) {
-            m.options.push(r)
-            seen.add(r.materialId)
-          }
-        }
-      } else {
-        m.options = records
-      }
-      m.total = res?.data?.total ?? records.length
-      m.pageNum = pageNum
-    } catch {
-      if (!append) m.options = []
-    } finally {
-      m.loading = false
-    }
-  }
-
-  // DEV-1020：材料搜索防抖（每行材料选择器独立 300ms，避免 remote-method 输入即请求）
-  const materialSearchDebouncers = new Map<string, ReturnType<typeof debounce>>()
-  function debouncedSearchMaterials(query: string, m: any, pageNum = 1, append = false) {
-    const key = m?.uid || m?.materialId || 'material'
-    let fn = materialSearchDebouncers.get(key)
-    if (!fn) {
-      fn = debounce((q: string, row: any, p: number, ap: boolean) => {
-        materialSearchDebouncers.delete(key)
-        searchMaterials(q, row, p, ap)
-      }, 300)
-      materialSearchDebouncers.set(key, fn)
-    }
-    fn(query, m, pageNum, append)
-  }
-
-  // 下拉滚动加载下一页
-  function onSelectVisibleChange(m: any, visible: boolean) {
-    if (!visible) return
-    if (!m.options?.length && !m.loading) {
-      searchMaterials(m.lastQuery || '', m, 1, false)
-    }
-    nextTick(() => {
-      const wrap = document.querySelector(
-        `.material-popper-${m.uid} .el-select-dropdown__wrap`
-      ) as HTMLElement | null
-      if (!wrap) return
-      wrap.onscroll = () => {
-        if (wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 30) {
-          loadMoreMaterials(m)
-        }
-      }
-    })
-  }
-
-  async function loadMoreMaterials(m: any) {
-    if (m.loading) return
-    if (!m.total || (m.options?.length || 0) >= m.total) return
-    await searchMaterials(m.lastQuery || '', m, (m.pageNum || 1) + 1, true)
-  }
-
-  // 选中物料 → 自动填名称/规格/单位
-  function onMaterialSelected(m: any, materialId: number) {
-    const mat = (m.options || []).find((o: any) => o.materialId === materialId)
-    if (!mat) return
-    m.name = mat.materialName
-    m.spec = mat.specification || ''
-    m.unit = mat.unit || 'PCS'
-    m.materialCode = mat.materialCode || ''
-  }
-
-  // 建档弹窗
-  const materialCreateVisible = ref(false)
-  const materialPreset = ref<any>({})
-  const materialTarget = ref<any>(null)
-  function openMaterialCreate(pc: any, m: any) {
-    materialTarget.value = { card: pc, row: m }
-    materialPreset.value = {
-      materialName: m?.name || '',
-      specification: m?.spec || '',
-      unit: m?.unit || 'PCS',
-    }
-    materialCreateVisible.value = true
-  }
-
-  // 建档成功 → 填入目标行（无目标行则加到卡片材料表）
-  function onMaterialCreated(mat: any) {
-    if (readonlyMode.value) return
-    const t = materialTarget.value
-    if (t?.row) {
-      t.row.materialId = mat.materialId
-      t.row.materialCode = mat.materialCode || ''
-      t.row.name = mat.materialName
-      t.row.spec = mat.specification || ''
-      t.row.unit = mat.unit || 'PCS'
-      t.row.options = [mat]
-    } else if (t?.card) {
-      t.card.materialRows.push({
-        name: mat.materialName,
-        spec: mat.specification || '',
-        qty: 1,
-        unit: mat.unit || 'PCS',
-        materialId: mat.materialId,
-        materialCode: mat.materialCode || '',
-        options: [mat],
-        loading: false,
-        uid: genUid(),
-        pageNum: 1,
-        total: 0,
-        lastQuery: '',
-      })
-    }
-  }
-
-  // 解析材料JSON
-  function parseMaterials(json?: string | null) {
-    if (!json) return []
-    try {
-      const arr = JSON.parse(json)
-      return Array.isArray(arr) ? arr : []
-    } catch {
-      return []
     }
   }
 
@@ -1398,64 +883,6 @@ export function useSampleWorkbench() {
     }
   }
 
-  // 加载工序计划（当前轮次，按 processOrder 分组为卡片）
-  async function loadPlan() {
-    if (!orderId.value) return
-    try {
-      const res = await sampleOrderApi.listProcesses(
-        orderId.value,
-        card.value?.sampleRound || undefined
-      )
-      const list: any[] = res.data || []
-      list.sort(
-        (a, b) =>
-          (a.processOrder || 999) - (b.processOrder || 999) ||
-          (a.processId || 0) - (b.processId || 0)
-      )
-      // 一级大类拆分（dev-20260811-009）：PRINT → printList（表格），其余 → planList（卡片）
-      const printRows = list.filter((p) => p.majorCategory === 'PRINT')
-      const assemblyRows = list.filter((p) => p.majorCategory !== 'PRINT')
-      printList.value = printRows.map((p, i) => makePrintRow(p, i + 1))
-      // 按 processOrder 分组（同卡片多行组合）
-      const groups = new Map<number, any[]>()
-      for (const p of assemblyRows) {
-        const k = p.processOrder || 999
-        if (!groups.has(k)) groups.set(k, [])
-        groups.get(k)!.push(p)
-      }
-      planList.value = Array.from(groups.entries()).map(([order, rows]) => {
-        const first = rows[0]
-        const enriched = rows.map((r: any) => {
-          const src = allProcesses.value.find((x) => x.processId === r.stdProcessId)
-          return src
-            ? {
-                ...r,
-                processType: src.processType,
-                processCategory: src.processCategory,
-                icon: src.icon,
-                hasIndex: src.hasIndex ?? 0,
-                hasWorkInstruction: src.hasWorkInstruction ?? 0,
-              }
-            : { ...r, hasIndex: r.hasIndex ?? 0, hasWorkInstruction: r.hasWorkInstruction ?? 0 }
-        })
-        return makeCard(enriched, {
-          uid: `db-${order}`,
-          processOrder: order,
-          category: first.processCategory || '',
-          status: first.status ?? 0,
-          operationRemark: first.remark || '',
-          materials: first.materials || null,
-          durationMinutes: first.durationMinutes ?? null,
-          startTime: first.startTime || null,
-          endTime: first.endTime || null,
-          operator: first.operator || '',
-        })
-      })
-    } catch {
-      planList.value = []
-    }
-  }
-
   async function loadBom() {
     if (!orderId.value) return
     try {
@@ -1526,7 +953,11 @@ export function useSampleWorkbench() {
     { deep: true }
   )
 
+  // 仅计划面板所需的能力；内部 refs 保持响应式，不复制业务数据。
+  const planEditor = reactive({ batchMode, batchSelected, batchCategory, savingPlan, frequentMaterials, planTabs, categoryOptions, cardsByTab, saveStateText, parseMaterials, toggleBatchMode, toggleBatchSelect, toggleBatchSelectAll, savePlan, addFrequentMaterial, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, removeCardItem, removePlanCard, saveCard, addMaterialRow, startEdit, openCardPicker, openBatchMaterial, batchDelete, applyBatchCategory, onUpdateIndex, searchMaterials: debouncedSearchMaterials, onMaterialSelected, onSelectVisibleChange, openMaterialCreate })
+
   return {
+    planEditor,
     card,
     orderId,
     saving,

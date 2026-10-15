@@ -247,7 +247,7 @@ const props = defineProps<{
   addPrintRow: (category?: string) => void
   removePrintRow: (row: any) => void
   movePrintRow: (row: any, dir: number) => void
-  savePlan: () => void
+  savePlan: () => Promise<boolean>
   readonly?: boolean
 }>()
 
@@ -397,7 +397,7 @@ async function handleRowSave(row: any) {
   if (props.savingPlan) return
   row.saveState = 'saving'
   try {
-    await props.savePlan()
+    if (!(await props.savePlan())) row.saveState = 'dirty'
   } catch (e: any) {
     row.saveState = 'dirty'
     ElMessage.error(e?.message || '保存失败')

@@ -16,7 +16,6 @@
     "src/types/production/order.ts|local-status-map|export const STATUS_FLOW_RULES: Record<OrderStatus, OrderStatus[]> = {": 1,
     "src/types/production/order.ts|local-status-map|export const STATUS_LABELS: Record<OrderStatus, string> = {": 1,
     "src/types/production/order.ts|local-status-map|export const STATUS_TYPES: Record<OrderStatus, 'info' | 'warning' | 'success' | 'danger'> = {": 1,
-    "src/views/engineering/sample-workbench/composables/useSampleWorkbench.ts|status-comparison|const next = row.status === 1 ? 2 : 1": 1,
     "src/views/engineering/sample-workbench/composables/useSampleWorkbench.ts|status-comparison|const others = all.filter((o: any) => o.orderId !== orderId.value && o.sampleStatus === 7)": 1,
     "src/views/engineering/sample-workbench/index.vue|status-comparison|doneCountMap.value[oid] = list.filter((p) => p.status === 2).length": 1,
     "src/views/engineering/sample-workbench/workbench.vue|status-comparison|:type=\"row.status === 2 ? 'success' : row.status === 1 ? 'warning' : 'info'\"": 1,

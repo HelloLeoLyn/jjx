@@ -97,6 +97,7 @@
 </template>
 
 <script setup lang="ts">
+import { toRefs } from 'vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
 import SampleProcessPlanItem from './SampleProcessPlanItem.vue'
 import FrequentMaterialsBar from './FrequentMaterialsBar.vue'
@@ -105,9 +106,9 @@ import BatchToolbar from './BatchToolbar.vue'
 /**
  * 工序计划面板（dev-20260811-008 组件化）
  * 左：标准工序选择器；右：工序卡片列表（拖拽/编辑/批量）
- * 全部数据与逻辑来自 composable（props/emits 透传）
+ * 计划控制器提供共享草稿操作；工作台只接入一次业务边界。
  */
-const props = defineProps<{
+export interface PlanEditorController {
   batchMode: boolean
   batchSelected: Set<string>
   batchCategory: string | null
@@ -141,8 +142,10 @@ const props = defineProps<{
   onMaterialSelected: (row: any, v: any) => void
   onSelectVisibleChange: (row: any, v: boolean) => void
   openMaterialCreate: (pc: any, m: any) => void
-  readonly?: boolean
-}>()
+}
+const props = defineProps<{ controller: PlanEditorController; readonly?: boolean }>()
+const { batchMode, batchSelected, batchCategory, savingPlan, frequentMaterials, planTabs, categoryOptions, cardsByTab, saveStateText, parseMaterials, toggleBatchMode, toggleBatchSelect, toggleBatchSelectAll, savePlan, addFrequentMaterial, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, removeCardItem, removePlanCard, saveCard, addMaterialRow, startEdit, openCardPicker, openBatchMaterial, batchDelete, applyBatchCategory, onUpdateIndex, searchMaterials, onMaterialSelected, onSelectVisibleChange, openMaterialCreate } = toRefs(props.controller)
+
 
 // activePlanTab 双向绑定（v-model:active-plan-tab）
 const activePlanTab = defineModel<string>('activePlanTab')
