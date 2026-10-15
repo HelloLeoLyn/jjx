@@ -130,6 +130,30 @@ public class AttachmentLifecycleService {
         return file.getId();
     }
 
+    /**
+     * 到期清理草稿行（dev-20261016-012 / S4）：把超过 N 天还没落定的"草稿行"软删，
+     * 并把它引用的 TEMP 文件一并标到期（expires_at=NOW()），不留孤儿（口径 §7-2 甲）。
+     * **不自动跑**（无 scheduler；由运维/跟踪卡按需触发）。返回清理条数。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int cleanupExpiredDrafts(int retentionDays) {
+        int days = retentionDays > 0 ? retentionDays : 7;
+        List<Long> ids = jdbc.queryForList(
+            "SELECT attachment_id FROM sys_attachment_ref WHERE ref_state='draft' AND deleted=0"
+                + " AND create_time < DATE_SUB(NOW(), INTERVAL ? DAY)", Long.class, days);
+        if (ids == null || ids.isEmpty()) return 0;
+        StringBuilder in = new StringBuilder();
+        for (int i = 0; i < ids.size(); i++) in.append(i == 0 ? "?" : ",?");
+        Object[] refArgs = new Object[ids.size() + 1];
+        refArgs[0] = AUTO_ACTOR;
+        for (int i = 0; i < ids.size(); i++) refArgs[i + 1] = ids.get(i);
+        jdbc.update("UPDATE sys_attachment_ref SET deleted=1,deleted_by=?,deleted_at=NOW()"
+            + " WHERE ref_state='draft' AND deleted=0 AND attachment_id IN (" + in + ")", refArgs);
+        jdbc.update("UPDATE sys_attachment SET expires_at=NOW()"
+            + " WHERE upload_state='TEMP' AND id IN (" + in + ")", ids.toArray());
+        return ids.size();
+    }
+
     private String digest(byte[] value) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value)); }
         catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }

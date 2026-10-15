@@ -59,6 +59,13 @@ public class SysAttachmentRefController {
         return Result.success();
     }
 
+    /** 到期清理草稿行（手动触发；默认不自动跑）—— dev-20261016-012 */
+    @PostMapping("/drafts/cleanup")
+    @Log(module = "附件引用", businessType = BusinessType.OTHER, bizType = "'sys_attachment_ref'", action = "清理过期草稿附件")
+    public Result<Integer> cleanupDrafts(@RequestParam(defaultValue = "7") int days) {
+        return Result.success(lifecycle.cleanupExpiredDrafts(days));
+    }
+
     @PutMapping("/{refId}")
     @Log(module = "附件引用", businessType = BusinessType.UPDATE, bizType = "'sys_attachment_ref'", bizId = "#refId", action = "修改附件引用资料")
     public Result<Boolean> update(@PathVariable Long refId, @Valid @RequestBody AttachmentRefMetadataDTO body) {

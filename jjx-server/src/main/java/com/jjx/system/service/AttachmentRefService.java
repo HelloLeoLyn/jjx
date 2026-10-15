@@ -68,13 +68,31 @@ public class AttachmentRefService {
         String type = optional(request.getDocumentType(), 100);
         types.validate(type, source);
         validateProductDrawing(source, productId, file);
-        SysAttachmentRef ref = new SysAttachmentRef();
-        ref.setAttachmentId(file.getId()); ref.setSourceType(source); ref.setSourceId(request.getSourceId());
-        ref.setSourceNo(sourceNo); ref.setProductCode(productCode); ref.setProductId(productId); ref.setDocumentType(type);
         // 展示名（dev-20261016-003）：调用方没传时，后端按命名规则生成
         // 规则：来源码-来源Id-P产品id-一级码-二级码-二级名（无产品 P0；除产品 id 外缺任一不生成）
         String displayName = optional(request.getDisplayName(), 255);
         if (displayName == null) displayName = displayNames.build(source, request.getSourceId(), productId, type);
+        // 转正（dev-20261016-012 / S3）：未保存时上传建的"草稿行"（同一附件 + 同一上传人）→ 补归属、置 active
+        SysAttachmentRef draft = refs.selectOne(Wrappers.<SysAttachmentRef>lambdaQuery()
+            .eq(SysAttachmentRef::getAttachmentId, file.getId())
+            .eq(SysAttachmentRef::getRefState, "draft")
+            .eq(SysAttachmentRef::getCreateBy, StpUtil.getLoginIdAsString())
+            .last("LIMIT 1"));
+        if (draft != null) {
+            jdbc.update("UPDATE sys_attachment_ref SET source_type=?,source_id=?,source_no=?,product_id=?,product_code=?,"
+                    + "document_type=?,display_name=?,remark=?,sort_order=?,ref_state='active',"
+                    + "update_by=?,update_time=NOW(),deleted=0,deleted_by=NULL,deleted_at=NULL WHERE id=?",
+                source, request.getSourceId(), sourceNo, productId, productCode, type, displayName,
+                optional(request.getRemark(), 500), order(request.getSortOrder()),
+                StpUtil.getLoginIdAsString(), draft.getId());
+            jdbc.update("UPDATE sys_attachment SET upload_state=?,expires_at=NULL WHERE id=?",
+                file.getUploadState() == AttachmentUploadState.LEGACY ? AttachmentUploadState.LEGACY.name() : AttachmentUploadState.BOUND.name(),
+                file.getId());
+            return draft.getId();
+        }
+        SysAttachmentRef ref = new SysAttachmentRef();
+        ref.setAttachmentId(file.getId()); ref.setSourceType(source); ref.setSourceId(request.getSourceId());
+        ref.setSourceNo(sourceNo); ref.setProductCode(productCode); ref.setProductId(productId); ref.setDocumentType(type);
         ref.setDisplayName(displayName); ref.setRemark(optional(request.getRemark(), 500));
         ref.setSortOrder(order(request.getSortOrder())); ref.setDeleted(false);
         ref.setCreateBy(StpUtil.getLoginIdAsString()); ref.setCreateTime(LocalDateTime.now());
