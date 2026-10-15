@@ -55,17 +55,20 @@
         </template>
         <template #actions="{ row }">
           <template v-if="row.kind === 'pending'">
-            <el-button v-if="canEdit" link type="primary" @click="emit('retryBind', pendingOf(row))">重试</el-button>
-            <el-button v-if="canEdit" link type="danger" @click="emit('removePending', row.attachmentId)">移除</el-button>
-            <el-tooltip v-if="!canEdit && lockReason" :content="lockReason" placement="top">
-              <span><el-button link type="primary" disabled>重试</el-button><el-button link type="danger" disabled>移除</el-button></span>
+            <el-button v-if="shows('retry', 'pending') && canEdit" link type="primary" @click="emit('retryBind', pendingOf(row))">重试</el-button>
+            <el-button v-if="shows('remove', 'pending') && canEdit" link type="danger" @click="emit('removePending', row.attachmentId)">移除</el-button>
+            <el-tooltip v-if="!canEdit && lockReason && (shows('retry', 'pending') || shows('remove', 'pending'))" :content="lockReason" placement="top">
+              <span>
+                <el-button v-if="shows('retry', 'pending')" link type="primary" disabled>重试</el-button>
+                <el-button v-if="shows('remove', 'pending')" link type="danger" disabled>移除</el-button>
+              </span>
             </el-tooltip>
           </template>
           <template v-else>
-            <el-button link type="primary" @click="emit('download', refOf(row))">下载</el-button>
-            <el-button link type="primary" @click="emit('edit', refOf(row))">详情</el-button>
-            <el-button v-if="canEdit" link type="danger" @click="emit('unbind', refOf(row))">移除</el-button>
-            <el-tooltip v-else-if="lockReason" :content="lockReason" placement="top">
+            <el-button v-if="shows('download', 'ref')" link type="primary" @click="emit('download', refOf(row))">下载</el-button>
+            <el-button v-if="shows('detail', 'ref')" link type="primary" @click="emit('edit', refOf(row))">详情</el-button>
+            <el-button v-if="canEdit && shows('remove', 'ref')" link type="danger" @click="emit('unbind', refOf(row))">移除</el-button>
+            <el-tooltip v-else-if="shows('remove', 'ref') && lockReason" :content="lockReason" placement="top">
               <span><el-button link type="danger" disabled>移除</el-button></span>
             </el-tooltip>
           </template>
@@ -152,6 +155,7 @@ import {
 } from '@/enums/system/AttachmentEnum'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
 import AttachmentTable from './AttachmentTable.vue'
+import { KIND_ACTIONS_DEFAULT, type AttachmentAction } from './attachmentActions'
 import { useAttachmentRowText, type AttachmentRow } from './useAttachmentRowText'
 
 const props = defineProps<{
@@ -164,6 +168,8 @@ const props = defineProps<{
     sourceNo?: string
     /** 业务锁定原因（如"已审核，不可再改"）：有值时写操作按钮置灰并显示原因（dev-20261015-028） */
     lockReason?: string
+    /** 动作清单（第一阶段①）：由调用方决定操作列显示哪些动作；**不传 = 保持现状**（dev-20261016-002） */
+    actions?: AttachmentAction[]
 }>()
 
 type TableRow = AttachmentRow & {
@@ -186,6 +192,12 @@ const tableRows = computed<TableRow[]>(() => [
 const refOf = (row: TableRow) => row.data as AttachmentRefItem
 const pendingOf = (row: TableRow) => row.data as PendingEntry
 const { textOf } = useAttachmentRowText(computed(() => props.documentTypes), () => props.sourceType)
+/** 是否渲染某动作：调用方传了 actions 则取「清单 ∩ 该行默认可用的动作」，不传则用默认（行为与改前一致） */
+function shows(action: AttachmentAction, kind: 'pending' | 'ref'): boolean {
+  const base = KIND_ACTIONS_DEFAULT[kind]
+  if (!base.includes(action)) return false
+  return props.actions ? props.actions.includes(action) : true
+}
 function previewRow(row: TableRow) {
   if (row.kind === 'ref') emit('preview', refOf(row))
 }

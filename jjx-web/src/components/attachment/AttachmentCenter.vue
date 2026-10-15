@@ -65,6 +65,7 @@
       :source-type="sourceType"
       :source-no="sourceNo"
       :lock-reason="lockReason"
+      :actions="actions"
       @retry-bind="retryBind"
       @remove-pending="removePending"
       @pending-changed="persist"
@@ -140,6 +141,7 @@ import {
 } from '@/api/system/attachmentRef'
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
 import AttachmentRefList from './AttachmentRefList.vue'
+import type { AttachmentAction } from './attachmentActions'
 import AttachmentDocList from './AttachmentDocList.vue'
 import AttachmentDetailInfo from './AttachmentDetailInfo.vue'
 import { attachmentDocFromFile, type AttachmentDocRow } from './useAttachmentDocList'
@@ -175,6 +177,8 @@ const props = withDefaults(
     drawingMeta?: AttachmentDrawingMetadata | null
     /** 上传禁用原因（调用方按业务决定，非空即禁用并显示这句话）；组件本身不做业务判断 */
     uploadBlocked?: string
+    /** 动作清单（第一阶段①）：透传给可写表，决定操作列显示哪些动作；**不传 = 现状**（dev-20261016-002） */
+    actions?: AttachmentAction[]
     /** 业务锁定原因（如"已审核，不可再改"）：有值时写操作按钮置灰并显示原因（dev-20261015-028） */
     lockReason?: string
   }>(),
