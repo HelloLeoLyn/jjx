@@ -750,6 +750,8 @@ defineExpose({
   formRef,
   calculateTotalAmount,
   bindPendingAttachments,
+  /** 保存前校验用：待绑定队列中尚未选择二级资料类型的条数（dev-20261015-032） */
+  getMissingTypeCount: () => attachmentCenterRef.value?.getMissingTypeCount?.() ?? 0,
 })
 </script>
 

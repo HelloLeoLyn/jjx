@@ -726,6 +726,12 @@ const resetForm = () => {
 
 const submitForm = async () => {
   try {
+    // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待绑定附件，避免「保存成功但附件未绑定」
+    const missingTypeCount = quotationFormDialogRef.value?.getMissingTypeCount?.() ?? 0
+    if (missingTypeCount > 0) {
+      ElMessage.warning(`有 ${missingTypeCount} 个附件未选择资料类型，请先选择后再保存`)
+      return
+    }
     if (form.quotationId !== undefined && form.quotationId > 0) {
       // 修改：保存后不关弹窗，重新拉详情回填 product_id（产品资料可挂载）
       await quotationApi.edit(form as any)
