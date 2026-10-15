@@ -37,7 +37,7 @@
         <el-table-column v-for="column in editableColumns" :key="column.key"
           :label="column.label" :width="'width' in column ? column.width : undefined"
           :min-width="'minWidth' in column ? column.minWidth : undefined"
-          :show-overflow-tooltip="column.render === 'preview' || column.render === 'category'">
+          :show-overflow-tooltip="column.render === 'preview'">
           <template #default="{ row }">
             <span v-if="column.render === 'preview'" :class="{ 'ar-file': row.kind !== 'pending' }" :title="row.fileName" @click="previewRow(row)">
               <el-icon v-if="row.kind !== 'pending'" class="ar-eye"><View /></el-icon>{{ row.fileName || `附件 #${row.attachmentId}` }}
@@ -48,14 +48,16 @@
                 @change="() => saveDisplayName(refOf(row))" />
               <span v-else>{{ row.displayName || row.fileName || `附件 #${row.attachmentId}` }}</span>
             </template>
+            <AttachmentTypeSelect v-if="column.render === 'category' && canEdit" category-only
+              :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
+              :disabled="savingId === row.id" @update:category="(v) => onRowCategory(row, v)" />
             <span v-else-if="column.render === 'category'">{{ row.documentType ? categoryLabelOf(row.documentType) : '-' }}</span>
             <template v-else-if="column.render === 'typeSelect'">
               <AttachmentTypeSelect v-if="row.kind === 'pending' && canEdit" :model-value="pendingOf(row).documentType"
-                :category="pendingCategoryOf(pendingOf(row))" :document-types="documentTypes" :source-type="sourceType"
-                show-category @update:category="(v) => setPendingCategory(pendingOf(row), v)"
+                :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
                 @update:model-value="(v) => setPendingType(pendingOf(row), v)" />
               <AttachmentTypeSelect v-else-if="row.kind === 'ref' && canEdit" :model-value="row.documentType"
-                :document-types="documentTypes" :source-type="sourceType"
+                :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
                 :disabled="savingId === row.id" @update:model-value="(v) => saveDocType(refOf(row), v)" />
               <span v-else>{{ row.documentType ? secondLabelOf(row.documentType) : '-' }}</span>
             </template>
@@ -213,24 +215,35 @@ const tableRows = computed<TableRow[]>(() => [
 ])
 const refOf = (row: TableRow) => row.data as AttachmentRefItem
 const pendingOf = (row: TableRow) => row.data as PendingEntry
-/** 来源类型显示名（待绑定行没有来源 → 显示 -） */
+/** 来源类型显示名（待绑定行不带 sourceType，回落组件入参；来源类型由调用参数决定，见 dev-20261015-033） */
 function sourceTypeLabel(row: TableRow) {
-  if (!row.sourceType) return '-'
-  return AttachmentSourceTypeEnum.getLabel(canonicalAttachmentSource(row.sourceType))
+  const source = row.sourceType || props.sourceType
+  if (!source) return '-'
+  return AttachmentSourceTypeEnum.getLabel(canonicalAttachmentSource(source))
 }
 function previewRow(row: TableRow) {
   if (row.kind === 'ref') emit('preview', refOf(row))
 }
 
-const pendingCategories = ref<Record<number, string>>({})
-function pendingCategoryOf(entry: PendingEntry) {
-  return pendingCategories.value[entry.attachmentId] || categoryKeyOfType(entry.documentType)
+/** 行内「一级」选择（待绑定与引用行共用）：键=rowKey；一级与二级拆到两列（dev-20261015-033） */
+const rowCategories = ref<Record<string, string>>({})
+function categoryOfRow(row: TableRow): string {
+  const picked = rowCategories.value[row.rowKey]
+  if (picked !== undefined) return picked
+  return row.documentType ? categoryKeyOfType(row.documentType) : ''
 }
-function setPendingCategory(entry: PendingEntry, category: string | null) {
-  if (category) pendingCategories.value[entry.attachmentId] = category
-  else delete pendingCategories.value[entry.attachmentId]
-  if (entry.documentType && categoryKeyOfType(entry.documentType) !== (category || '')) entry.documentType = null
-  emit('pendingChanged')
+/** 一级列独立选择：记录本行一级；若与当前二级所属一级不一致，则作废二级（待重新选） */
+async function onRowCategory(row: TableRow, category: string | null) {
+  const next = category || ''
+  if (next) rowCategories.value[row.rowKey] = next
+  else delete rowCategories.value[row.rowKey]
+  if (!row.documentType || categoryKeyOfType(row.documentType) === next) return
+  if (row.kind === 'pending') {
+    pendingOf(row).documentType = null
+    emit('pendingChanged')
+  } else {
+    await saveDocType(refOf(row), null)
+  }
 }
 function setPendingType(entry: PendingEntry, value: string | null) {
   entry.documentType = value
@@ -271,6 +284,7 @@ watch(
   () => {
     selectedIds.value = []
     nameDrafts.value = {} // 父组件刷新列表后丢弃草稿，避免旧值覆盖新值
+    rowCategories.value = {} // 同理：丢弃未落库的一级选择
   }
 )
 
