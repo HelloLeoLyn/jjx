@@ -37,7 +37,7 @@
         <el-table-column v-for="column in editableColumns" :key="column.key"
           :label="column.label" :width="'width' in column ? column.width : undefined"
           :min-width="'minWidth' in column ? column.minWidth : undefined"
-          :show-overflow-tooltip="column.render === 'preview' || column.render === 'category' || column.render === 'text'">
+          :show-overflow-tooltip="column.render === 'preview' || column.render === 'category'">
           <template #default="{ row }">
             <span v-if="column.render === 'preview'" :class="{ 'ar-file': row.kind !== 'pending' }" :title="row.fileName" @click="previewRow(row)">
               <el-icon v-if="row.kind !== 'pending'" class="ar-eye"><View /></el-icon>{{ row.fileName || `附件 #${row.attachmentId}` }}
@@ -61,9 +61,7 @@
             </template>
             <span v-else-if="column.render === 'sourceType'">{{ sourceTypeLabel(row) }}</span>
             <span v-else-if="column.render === 'sourceNo'">{{ row.sourceNo || '-' }}</span>
-            <span v-else-if="column.render === 'size'">{{ formatSize(row.fileSize) }}</span>
-            <span v-else-if="column.render === 'time'">{{ formatTime(row.createTime) }}</span>
-            <span v-else-if="column.render === 'text'">{{ row.createBy || '-' }}</span>
+            <span v-else-if="column.render === 'productCode'">{{ row.productCode || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="190" fixed="right">
@@ -164,7 +162,6 @@ import {
 } from '@/enums/system/AttachmentEnum'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
 import { editableColumns } from './attachmentFields'
-import { formatSize, formatTime } from './attachmentFormat'
 
 const props = defineProps<{
     rows: AttachmentRefItem[]
@@ -189,6 +186,7 @@ type TableRow = {
   createBy?: string | null
   sourceType?: string | null
   sourceNo?: string | null
+  productCode?: string | null
   bizTypeName?: string | null
   bizType?: string | null
 }
