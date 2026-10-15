@@ -134,7 +134,8 @@ export interface AttachmentDocumentTypeItem {
 export const attachmentRefApi = {
   /** TEMP 上传：requestKey 必须 16~100 位 [A-Za-z0-9_-]，同键同内容重传幂等返回原 attachmentId。
    *  meta 为可选图纸元数据（dev-20261014-029）：非空时写入 sys_attachment 图纸列；不传行为不变。 */
-  tempUpload(file: File, requestKey: string, onProgress?: (percent: number) => void, meta?: AttachmentDrawingMetadata | null): AxiosPromise<number> {
+  tempUpload(file: File, requestKey: string, onProgress?: (percent: number) => void, meta?: AttachmentDrawingMetadata | null,
+    draft?: { sourceType: string; productId?: number | null; draftKey: string } | null): AxiosPromise<number> {
     const data = new FormData()
     data.append('file', file)
     data.append('requestKey', requestKey)
@@ -144,6 +145,12 @@ export const attachmentRefApi = {
       if (meta.drawingName != null) data.append('drawingName', meta.drawingName)
       if (meta.version != null) data.append('version', meta.version)
       if (meta.fileRole != null) data.append('fileRole', meta.fileRole)
+    }
+    // 草稿行（dev-20261016-009）：未保存单据上传时带上，后端同事务落一条草稿引用。
+    if (draft) {
+      data.append('sourceType', draft.sourceType)
+      if (draft.productId != null) data.append('productId', String(draft.productId))
+      data.append('draftKey', draft.draftKey)
     }
     return request({
       url: '/system/attachment/refs/temp',

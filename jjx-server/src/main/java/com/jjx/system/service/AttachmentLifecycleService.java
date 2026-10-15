@@ -39,12 +39,13 @@ public class AttachmentLifecycleService {
     private final AttachmentAccessService access;
     private final JdbcTemplate jdbc;
     private final SysOperLogMapper operLogs;
+    private final AttachmentSourcePolicy sources;
     @Value("${file.upload.path:./upload}")
     private String uploadBasePath;
 
     @Transactional(rollbackFor = Exception.class)
     public Long upload(MultipartFile input, String requestKey) {
-        return upload(input, requestKey, null);
+        return upload(input, requestKey, null, null, null, null);
     }
 
     /**
@@ -54,6 +55,17 @@ public class AttachmentLifecycleService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Long upload(MultipartFile input, String requestKey, AttachmentDrawingMetaDTO drawingMeta) {
+        return upload(input, requestKey, drawingMeta, null, null, null);
+    }
+
+    /**
+     * 临时上传（含"草稿行"）。dev-20261016-009：未保存单据的附件在上传时**同事务**落一条草稿引用
+     * （ref_state=draft、source_id 空、带 draft_key/product_id），单据保存时再转正。
+     * 不传 draftKey = 行为与改造前完全一致。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Long upload(MultipartFile input, String requestKey, AttachmentDrawingMetaDTO drawingMeta,
+                       String draftSourceType, Long draftProductId, String draftKey) {
         StpUtil.checkLogin();
         if (input == null || input.isEmpty()) throw new BusinessException("请选择文件");
         if (requestKey == null || !requestKey.matches("[A-Za-z0-9_-]{16,100}"))
@@ -104,6 +116,17 @@ public class AttachmentLifecycleService {
         file.setUploadState(AttachmentUploadState.TEMP); file.setExpiresAt(LocalDateTime.now().plusDays(7));
         file.setUploadOwner(owner); file.setUploadKey(key); file.setCreateBy(owner); file.setCreateTime(LocalDateTime.now());
         files.insert(file);
+        // 草稿行（dev-20261016-009）：仅未保存单据（传了 draftKey）才建；同事务，失败一并回滚。
+        if (draftKey != null && !draftKey.isBlank()) {
+            String draftSource = sources.canonical(draftSourceType);
+            if (draftSource == null || draftSource.isBlank()
+                    || !AttachmentSourcePolicy.knownSourceTypes().contains(draftSource))
+                throw new BusinessException("上传草稿必须提供合法来源类型");
+            jdbc.update("INSERT INTO sys_attachment_ref"
+                    + " (attachment_id,source_type,source_id,product_id,draft_key,ref_state,deleted,create_by,create_time)"
+                    + " VALUES (?,?,NULL,?,?,'draft',0,?,NOW())",
+                file.getId(), draftSource, draftProductId, draftKey.trim(), owner);
+        }
         return file.getId();
     }
 

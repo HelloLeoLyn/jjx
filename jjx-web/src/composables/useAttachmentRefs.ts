@@ -303,7 +303,11 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     }
     const sha = await sha256Of(file)
     const requestKey = await buildRequestKey(draftKey.value, file, sha)
-    const res: any = await attachmentRefApi.tempUpload(file, requestKey, onProgress, drawingMeta.value)
+    // 未保存单据上传时带草稿信息：后端同事务落一条草稿引用（dev-20261016-009）
+    const draft = sourceId.value
+      ? null
+      : { sourceType: sourceType.value, productId: productId.value ?? null, draftKey: draftKey.value }
+    const res: any = await attachmentRefApi.tempUpload(file, requestKey, onProgress, drawingMeta.value, draft)
     const attachmentId = Number(res?.data)
     if (!attachmentId) throw new Error(res?.msg || '临时上传失败')
     const existing = pending.value.find((e) => e.attachmentId === attachmentId)

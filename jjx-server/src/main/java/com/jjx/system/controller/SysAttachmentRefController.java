@@ -76,7 +76,10 @@ public class SysAttachmentRefController {
                              @RequestParam(required = false) String drawingNo,
                              @RequestParam(required = false) String drawingName,
                              @RequestParam(required = false) String version,
-                             @RequestParam(required = false) String fileRole) {
+                             @RequestParam(required = false) String fileRole,
+                             @RequestParam(required = false) String sourceType,
+                             @RequestParam(required = false) Long productId,
+                             @RequestParam(required = false) String draftKey) {
         // 可选图纸元数据（dev-20261014-029，019 方案B）：不传=不写图纸列，行为不变。
         AttachmentDrawingMetaDTO drawingMeta = null;
         if (category != null || drawingNo != null || drawingName != null || version != null || fileRole != null) {
@@ -84,7 +87,7 @@ public class SysAttachmentRefController {
             drawingMeta.setCategory(category); drawingMeta.setDrawingNo(drawingNo); drawingMeta.setDrawingName(drawingName);
             drawingMeta.setVersion(version); drawingMeta.setFileRole(fileRole);
         }
-        return Result.success(lifecycle.upload(file, requestKey, drawingMeta));
+        return Result.success(lifecycle.upload(file, requestKey, drawingMeta, sourceType, productId, draftKey));
     }
 
     @PostMapping("/cleanup-preview")
