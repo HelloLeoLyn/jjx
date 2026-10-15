@@ -11,6 +11,27 @@ public class AttachmentSourceVO {
 
     private Long id;
 
+    /** 与引用列表共用的元数据；历史附件无引用时为空。 */
+    private Long refId;
+    private String documentType;
+    private String displayName;
+    private Long productId;
+    private String productCode;
+    private Integer sortOrder;
+
+    public Long getRefId() { return refId; }
+    public void setRefId(Long refId) { this.refId = refId; }
+    public String getDocumentType() { return documentType; }
+    public void setDocumentType(String documentType) { this.documentType = documentType; }
+    public String getDisplayName() { return displayName; }
+    public void setDisplayName(String displayName) { this.displayName = displayName; }
+    public Long getProductId() { return productId; }
+    public void setProductId(Long productId) { this.productId = productId; }
+    public String getProductCode() { return productCode; }
+    public void setProductCode(String productCode) { this.productCode = productCode; }
+    public Integer getSortOrder() { return sortOrder; }
+    public void setSortOrder(Integer sortOrder) { this.sortOrder = sortOrder; }
+
     /** 业务类型（quotation/inquiry/order/purchase/production...） */
     private String bizType;
 

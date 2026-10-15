@@ -5,7 +5,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
 const vue = require('vue')
-const { parse, compileTemplate } = require('vue/compiler-sfc')
+const { parse, compileTemplate, compileScript } = require('vue/compiler-sfc')
 const { renderToString } = require('vue/server-renderer')
 const src = path.resolve(__dirname, '../../..')
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -30,7 +30,7 @@ function harness(params = {}, overrides = {}) {
     downloadUrl: id => `/files/${id}/download`,
   }
   const cache = new Map()
-  const props = vue.reactive({ title: '文档', ...params })
+  const props = vue.reactive({ title: '文档', sourceType: '', columns: undefined, ...params })
   function evaluate(source, filename) {
     const exports = {}
     const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
@@ -39,10 +39,15 @@ function harness(params = {}, overrides = {}) {
       defineProps: () => props, withDefaults: value => value, defineExpose() {},
       require(name) {
         if (name === 'vue') return vue
+        if (name === 'element-plus') return { ElMessage: { success() {}, error() {}, warning() {} }, ElMessageBox: {} }
         if (name === '@/api/system/attachmentRef') return { attachmentRefApi: api }
         if (name === '@/api/system/attachment') return { attachmentApi: files }
-        const file = name.startsWith('@/') ? path.join(src, name.slice(2) + '.ts') : path.resolve(path.dirname(filename), name + '.ts')
-        if (!cache.has(file)) cache.set(file, evaluate(fs.readFileSync(file, 'utf8'), file))
+        const file = name.startsWith('@/') ? path.join(src, name.slice(2) + '.ts') : path.resolve(path.dirname(filename), name.endsWith('.vue') ? name : name + '.ts')
+        if (!cache.has(file)) {
+          const source = fs.readFileSync(file, 'utf8')
+          const code = file.endsWith('.vue') ? compileScript(parse(source, { filename: file }).descriptor, { id: 'attachment-test', inlineTemplate: true }).content : source
+          cache.set(file, evaluate(code, file))
+        }
         return cache.get(file)
       },
     })
@@ -51,19 +56,29 @@ function harness(params = {}, overrides = {}) {
   const filename = path.join(src, 'components/attachment/AttachmentDocList.vue')
   const { descriptor } = parse(fs.readFileSync(filename, 'utf8'))
   const scope = vue.effectScope()
-  const state = scope.run(() => evaluate(descriptor.scriptSetup.content + '\nexport { rows, messages, loading, hasQuery, reload, visibleColumns, previewRow, downloadUrl, viewerVisible, viewerList, viewerIndex, close, textOf, openUrl, AttachmentDocumentStatusEnum }', filename))
-  return { props, state, calls, opened, stop: () => scope.stop(), async html() {
+  const state = scope.run(() => evaluate(descriptor.scriptSetup.content + '\nexport { rows, messages, loading, documentTypes, detailVisible, detailRow, openDetail, hasQuery, reload, previewRow, downloadUrl, viewerVisible, viewerList, viewerIndex, close, openUrl, AttachmentTable }', filename))
+  const { attachmentFields, attachmentColumns } = evaluate(fs.readFileSync(path.join(src, 'components/attachment/attachmentFields.ts'), 'utf8'), filename)
+  state.visibleColumns = vue.computed(() => (props.columns ?? attachmentColumns).map(key => attachmentFields[key]))
+  state.AttachmentDocumentStatusEnum = evaluate("export { AttachmentDocumentStatusEnum } from '@/enums/system/AttachmentEnum'", filename).AttachmentDocumentStatusEnum
+  return { props, state, calls, opened, stop: () => scope.stop(), async html(refProps) {
     const compiled = compileTemplate({ source: descriptor.template.content, filename, id: 'docs-test' })
     assert.deepEqual(compiled.errors, [])
     const { render } = evaluate(compiled.code, filename)
-    const app = vue.createSSRApp({ render, setup: () => ({ ...vue.toRefs(props), ...state }) })
+    const app = refProps
+      ? vue.createSSRApp(evaluate('export { default as RefList } from "./AttachmentRefList.vue"', filename).RefList, refProps)
+      : vue.createSSRApp({ render, setup: () => ({ ...vue.toRefs(props), ...state }) })
+    app.component('AttachmentTable', state.AttachmentTable)
     app.component('el-table', { props: ['data', 'emptyText'], setup(p, { slots }) { vue.provide('rows', vue.computed(() => p.data)); return () => vue.h('div', [!p.data.length ? p.emptyText : '', slots.default?.()]) } })
     app.component('el-table-column', { props: ['label'], setup(p, { slots }) { const rows = vue.inject('rows'); return () => vue.h('div', [p.label, ...rows.value.map(row => slots.default?.({ row }))]) } })
-    for (const name of ['el-button', 'el-tag']) app.component(name, { setup: (_, { slots }) => () => vue.h('span', slots.default?.()) })
+    for (const name of ['el-button', 'el-tag', 'el-divider', 'el-tooltip', 'el-option', 'el-option-group']) app.component(name, { setup: (_, { slots }) => () => vue.h('span', slots.default?.()) })
+    app.component('el-dialog', { render: () => null })
+    app.component('AttachmentDetailInfo', { render: () => null })
+    app.component('el-input', { props: ['modelValue'], setup: p => () => vue.h('input', { value: p.modelValue }) })
+    app.component('el-select', { props: ['modelValue'], setup: p => () => vue.h('select', { value: p.modelValue }) })
     app.component('el-alert', { props: ['title'], setup: p => () => vue.h('div', p.title) })
     app.component('el-image-viewer', { render: () => null })
     app.directive('loading', { getSSRProps: () => ({}) })
-    return renderToString(app)
+    return (await renderToString(app)).replace(/<!--[\s\S]*?-->/g, '')
   } }
 }
 
@@ -179,4 +194,39 @@ test('来源ID与单号同时给出拒绝该段，链路继续查询', async t =
   assert.equal(h.calls.some(c => c[0] === 'refs'), false)
   assert.equal(h.calls.some(c => c[0] === 'trace'), true)
   assert.match(h.state.messages.value.join(), /本单文档/)
+})
+
+test('链路附件保留引用元数据，类型回显且预览下载使用引用ID', async t => {
+  const h = harness({ traceId: 'chain' }, { trace: async () => ({ data: [{
+    id: 40, refId: 91, bizType: 'inquiry', bizTypeName: '询价单', sourceNo: 'INQ261015001',
+    fileName: 'drawing.pdf', displayName: '客户图纸', productCode: 'P008', documentType: 'DRAWING',
+  }] }) }); t.after(h.stop); await tick()
+  const row = h.state.rows.value[0]
+  assert.equal(row.attachmentId, 40)
+  assert.equal(row.refId, 91)
+  assert.equal(row.documentType, 'DRAWING')
+  const html = await h.html()
+  for (const text of ['客户图纸', 'P008', '工程', '图纸', 'INQ261015001']) assert.ok(html.includes(text), text)
+  assert.equal(h.state.downloadUrl(row), '/refs/91/download')
+  h.state.previewRow(row); assert.equal(h.opened[0][0], '/refs/91/preview')
+})
+
+test('只读和编辑组件共用相同列与行数据，只读没有修改操作', async t => {
+  const row = { ...refRow(1), displayName: '客户图纸', productCode: 'P008' }
+  const h = harness({ sourceType: 'inquiry', sourceId: 7 }, { refs: async () => ({ data: [row] }) })
+  t.after(h.stop); await tick()
+  const props = { rows: [row], pending: [], sourceType: 'inquiry', documentTypes: h.state.documentTypes.value, canEdit: false }
+  const doc = await h.html(), readonly = await h.html(props), editable = await h.html({ ...props, canEdit: true })
+  for (const label of ['原文件名', '展示文件名', '来源类型', '来源单号', '产品编码', '一级类型', '二级类型', '状态', '操作']) {
+    for (const html of [doc, readonly, editable]) assert.ok(html.includes(label), label)
+  }
+  for (const text of ['客户图纸', 'P008', 'INQ007', 'drawing.pdf', '图纸', '工程']) {
+    assert.ok(doc.includes(text), text); assert.ok(readonly.includes(text), text)
+  }
+  assert.match(editable, /value="客户图纸"/)
+  assert.match(editable, /value="DRAWING"/)
+  assert.match(editable, /批量改类型/)
+  assert.match(editable, /移除/)
+  assert.doesNotMatch(readonly, /<input|<select|批量改类型|移除/)
+  assert.doesNotMatch(doc, /<input|<select|批量改类型|移除/)
 })

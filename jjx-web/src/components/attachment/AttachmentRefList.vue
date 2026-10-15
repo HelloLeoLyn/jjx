@@ -19,76 +19,58 @@
         <span v-if="selectedIds.length" class="ar-sub">已选 {{ selectedIds.length }} 条</span>
       </div>
 
-      <el-table
-        :data="tableRows"
-        size="small"
-        row-key="rowKey"
-        style="width: 100%"
-        @selection-change="onSelectionChange"
-      >
-        <el-table-column v-if="canEdit && rows.length" type="selection" width="42" :selectable="(row: TableRow) => row.kind === 'ref'" />
-        <el-table-column label="状态" width="105">
-          <template #default="{ row }">
-            <el-tag size="small" :title="row.kind === 'pending' ? pendingOf(row).error : undefined" :type="row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? 'danger' : 'warning') : 'success'">
-              {{ row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? '绑定失败' : '待绑定') : '已绑定' }}
-            </el-tag>
+      <AttachmentTable :rows="tableRows" :document-types="documentTypes" :source-type="sourceType"
+        row-key="rowKey" :selectable="canEdit && rows.length ? (row: TableRow) => row.kind === 'ref' : undefined"
+        @selection-change="onSelectionChange" @preview="previewRow"
+        @download="(row) => emit('download', refOf(row))" @detail="(row) => emit('edit', refOf(row))">
+        <template #status="{ row }">
+          <el-tag size="small" :title="row.kind === 'pending' ? pendingOf(row).error : undefined" :type="row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? 'danger' : 'warning') : 'success'">
+            {{ row.kind === 'pending' ? (pendingOf(row).state === 'failed' ? '绑定失败' : '待绑定') : '已绑定' }}
+          </el-tag>
+        </template>
+        <template #fileName="{ row }">
+          <span v-if="row.kind === 'pending'">{{ textOf('fileName', row) }}</span>
+          <el-button v-else link type="primary" @click="previewRow(row)">{{ textOf('fileName', row) }}</el-button>
+        </template>
+        <template #displayName="{ row }">
+          <el-input v-if="row.kind === 'ref' && canEdit" :model-value="nameDraft(refOf(row))" size="small" maxlength="255"
+            placeholder="留空=用原文件名" @update:model-value="(v: string) => setNameDraft(refOf(row), v)"
+            @change="() => saveDisplayName(refOf(row))" />
+          <span v-else>{{ textOf('displayName', row) }}</span>
+        </template>
+        <template #category="{ row }">
+          <AttachmentTypeSelect v-if="canEdit" category-only :category="categoryOfRow(row)"
+            :document-types="documentTypes" :source-type="sourceType" :disabled="savingId === row.id"
+            @update:category="(v) => onRowCategory(row, v)" />
+          <span v-else>{{ textOf('category', row) }}</span>
+        </template>
+        <template #documentType="{ row }">
+          <AttachmentTypeSelect v-if="row.kind === 'pending' && canEdit" :model-value="pendingOf(row).documentType"
+            :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
+            @update:model-value="(v) => setPendingType(pendingOf(row), v)" />
+          <AttachmentTypeSelect v-else-if="canEdit" :model-value="row.documentType"
+            :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
+            :disabled="savingId === row.id" @update:model-value="(v) => saveDocType(refOf(row), v)" />
+          <span v-else>{{ textOf('documentType', row) }}</span>
+        </template>
+        <template #actions="{ row }">
+          <template v-if="row.kind === 'pending'">
+            <el-button v-if="canEdit" link type="primary" @click="emit('retryBind', pendingOf(row))">重试</el-button>
+            <el-button v-if="canEdit" link type="danger" @click="emit('removePending', row.attachmentId)">移除</el-button>
+            <el-tooltip v-if="!canEdit && lockReason" :content="lockReason" placement="top">
+              <span><el-button link type="primary" disabled>重试</el-button><el-button link type="danger" disabled>移除</el-button></span>
+            </el-tooltip>
           </template>
-        </el-table-column>
-        <el-table-column v-for="column in editableColumns" :key="column.key"
-          :label="column.label" :width="'width' in column ? column.width : undefined"
-          :min-width="'minWidth' in column ? column.minWidth : undefined"
-          :show-overflow-tooltip="column.render === 'preview'">
-          <template #default="{ row }">
-            <span v-if="column.render === 'preview'" :class="{ 'ar-file': row.kind !== 'pending' }" :title="row.fileName" @click="previewRow(row)">
-              <el-icon v-if="row.kind !== 'pending'" class="ar-eye"><View /></el-icon>{{ row.fileName || `附件 #${row.attachmentId}` }}
-            </span>
-            <template v-else-if="column.render === 'displayName'">
-              <el-input v-if="row.kind === 'ref' && canEdit" :model-value="nameDraft(refOf(row))" size="small" maxlength="255"
-                placeholder="留空=用原文件名" @update:model-value="(v: string) => setNameDraft(refOf(row), v)"
-                @change="() => saveDisplayName(refOf(row))" />
-              <span v-else>{{ row.displayName || row.fileName || `附件 #${row.attachmentId}` }}</span>
-            </template>
-            <AttachmentTypeSelect v-if="column.render === 'category' && canEdit" category-only
-              :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
-              :disabled="savingId === row.id" @update:category="(v) => onRowCategory(row, v)" />
-            <span v-else-if="column.render === 'category'">{{ row.documentType ? categoryLabelOf(row.documentType) : '-' }}</span>
-            <template v-else-if="column.render === 'typeSelect'">
-              <AttachmentTypeSelect v-if="row.kind === 'pending' && canEdit" :model-value="pendingOf(row).documentType"
-                :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
-                @update:model-value="(v) => setPendingType(pendingOf(row), v)" />
-              <AttachmentTypeSelect v-else-if="row.kind === 'ref' && canEdit" :model-value="row.documentType"
-                :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
-                :disabled="savingId === row.id" @update:model-value="(v) => saveDocType(refOf(row), v)" />
-              <span v-else>{{ row.documentType ? secondLabelOf(row.documentType) : '-' }}</span>
-            </template>
-            <span v-else-if="column.render === 'sourceType'">{{ sourceTypeLabel(row) }}</span>
-            <span v-else-if="column.render === 'sourceNo'">{{ row.sourceNo || '-' }}</span>
-            <span v-else-if="column.render === 'productCode'">{{ row.productCode || '-' }}</span>
+          <template v-else>
+            <el-button link type="primary" @click="emit('download', refOf(row))">下载</el-button>
+            <el-button link type="primary" @click="emit('edit', refOf(row))">详情</el-button>
+            <el-button v-if="canEdit" link type="danger" @click="emit('unbind', refOf(row))">移除</el-button>
+            <el-tooltip v-else-if="lockReason" :content="lockReason" placement="top">
+              <span><el-button link type="danger" disabled>移除</el-button></span>
+            </el-tooltip>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="190" fixed="right">
-          <template #default="{ row }">
-            <template v-if="row.kind === 'pending'">
-              <el-button v-if="canEdit" link type="primary" @click="emit('retryBind', pendingOf(row))">重试</el-button>
-              <el-tooltip v-else-if="lockReason" :content="lockReason" placement="top">
-                <span><el-button link type="primary" disabled>重试</el-button></span>
-              </el-tooltip>
-              <el-button v-if="canEdit" link type="danger" @click="emit('removePending', row.attachmentId)">移除</el-button>
-              <el-tooltip v-else-if="lockReason" :content="lockReason" placement="top">
-                <span><el-button link type="danger" disabled>移除</el-button></span>
-              </el-tooltip>
-            </template>
-            <template v-else-if="row.kind === 'ref'">
-              <el-button link type="primary" @click="emit('download', refOf(row))">下载</el-button>
-              <el-button v-if="canEdit" link type="primary" @click="emit('edit', refOf(row))">详情</el-button>
-              <el-button v-if="canEdit" link type="danger" @click="emit('unbind', refOf(row))">移除</el-button>
-              <el-tooltip v-else-if="lockReason" :content="lockReason" placement="top">
-                <span><el-button link type="danger" disabled>移除</el-button></span>
-              </el-tooltip>
-            </template>
-          </template>
-        </el-table-column>
-      </el-table>
+        </template>
+      </AttachmentTable>
 
     <!-- 批量改类型 -->
     <el-dialog v-model="batchTypeVisible" title="批量改类型" width="440px" append-to-body>
@@ -156,7 +138,6 @@
  */
 import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { View } from '@element-plus/icons-vue'
 import type { PendingEntry } from '@/composables/useAttachmentRefs'
 import {
   attachmentRefApi,
@@ -168,11 +149,10 @@ import {
   attachmentSourceCode,
   attachmentCategoryCode,
   attachmentDocumentTypeCode,
-  AttachmentSourceTypeEnum,
-  canonicalAttachmentSource,
 } from '@/enums/system/AttachmentEnum'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
-import { editableColumns } from './attachmentFields'
+import AttachmentTable from './AttachmentTable.vue'
+import { useAttachmentRowText, type AttachmentRow } from './useAttachmentRowText'
 
 const props = defineProps<{
     rows: AttachmentRefItem[]
@@ -181,27 +161,16 @@ const props = defineProps<{
     /** 资料类型字典（父组件已加载，避免重复请求） */
     documentTypes: AttachmentDocumentTypeItem[]
     sourceType: string
+    sourceNo?: string
     /** 业务锁定原因（如"已审核，不可再改"）：有值时写操作按钮置灰并显示原因（dev-20261015-028） */
     lockReason?: string
 }>()
 
-type TableRow = {
+type TableRow = AttachmentRow & {
   rowKey: string
   kind: 'pending' | 'ref'
   data: PendingEntry | AttachmentRefItem
   id: number
-  attachmentId: number
-  fileName?: string | null
-  displayName?: string | null
-  documentType?: string | null
-  fileSize?: number | null
-  createTime?: string | null
-  createBy?: string | null
-  sourceType?: string | null
-  sourceNo?: string | null
-  productCode?: string | null
-  bizTypeName?: string | null
-  bizType?: string | null
 }
 
 const tableRows = computed<TableRow[]>(() => [
@@ -210,17 +179,13 @@ const tableRows = computed<TableRow[]>(() => [
     id: entry.attachmentId, attachmentId: entry.attachmentId,
     fileName: entry.fileName, displayName: entry.displayName, documentType: entry.documentType,
     fileSize: entry.fileSize, createTime: entry.createdAt,
+    sourceType: props.sourceType, sourceNo: props.sourceNo, productCode: entry.productCode,
   })),
   ...props.rows.map((row) => ({ ...row, rowKey: `ref:${row.id}`, kind: 'ref' as const, data: row })),
 ])
 const refOf = (row: TableRow) => row.data as AttachmentRefItem
 const pendingOf = (row: TableRow) => row.data as PendingEntry
-/** 来源类型显示名（待绑定行不带 sourceType，回落组件入参；来源类型由调用参数决定，见 dev-20261015-033） */
-function sourceTypeLabel(row: TableRow) {
-  const source = row.sourceType || props.sourceType
-  if (!source) return '-'
-  return AttachmentSourceTypeEnum.getLabel(canonicalAttachmentSource(source))
-}
+const { textOf } = useAttachmentRowText(computed(() => props.documentTypes), () => props.sourceType)
 function previewRow(row: TableRow) {
   if (row.kind === 'ref') emit('preview', refOf(row))
 }
@@ -265,7 +230,6 @@ const emit = defineEmits<{
 
 const {
   categoryKeyOfType,
-  categoryLabelOf,
   secondLabelOf,
 } = useAttachmentDocTypes(
   computed(() => props.documentTypes),

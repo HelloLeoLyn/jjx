@@ -237,6 +237,15 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
                     || file.getUploadState() == AttachmentUploadState.TEMP
                     || file.getUploadState() == AttachmentUploadState.ORPHAN) continue;
             AttachmentSourceVO vo = traceSource(file);
+            vo.setRefId(ref.getId());
+            vo.setDocumentType(ref.getDocumentType());
+            vo.setDisplayName(ref.getDisplayName());
+            vo.setProductId(ref.getProductId());
+            vo.setProductCode(ref.getProductCode());
+            vo.setRemark(ref.getRemark());
+            vo.setSortOrder(ref.getSortOrder());
+            vo.setCreateBy(ref.getCreateBy());
+            vo.setCreateTime(ref.getCreateTime());
             vo.setBizType(ref.getSourceType());
             vo.setBizId(ref.getSourceId());
             vo.setBizTypeName(resolveBizTypeName(ref.getSourceType()));

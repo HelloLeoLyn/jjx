@@ -1,5 +1,16 @@
 import request from '@/utils/request'
 import type { AxiosPromise } from 'axios'
+import type { AttachmentRefItem } from './attachmentRef'
+
+/** 链路查询保留文件ID与引用ID，以及引用列表的相同展示元数据。 */
+export interface AttachmentSourceItem extends Partial<Omit<AttachmentRefItem, 'id' | 'attachmentId' | 'sourceType' | 'sourceId'>> {
+  id: number
+  refId?: number | null
+  bizType?: string
+  bizTypeName?: string
+  bizId?: number
+  traceId?: string
+}
 
 export interface DrawingMetadata {
   drawingNo: string
@@ -74,7 +85,7 @@ export const attachmentApi = {
   },
 
   // 按链路追踪ID获取附件（含来源单据文档）
-  listByTrace(traceId: string): AxiosPromise<any[]> {
+  listByTrace(traceId: string): AxiosPromise<AttachmentSourceItem[]> {
     return request({
       url: `/system/attachment/by-trace/${traceId}`,
       method: 'get',

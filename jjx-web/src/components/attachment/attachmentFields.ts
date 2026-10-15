@@ -28,12 +28,8 @@ export const attachmentFields = {
 
 export type AttachmentFieldKey = keyof typeof attachmentFields
 
-// 列集只有两份（2026-10-15 收口，旧的 referenceColumns 已删除）：
-//  1) editableColumns  —— 可写表（本单引用 / 待绑定）默认列
-//  2) readonlyDocColumns —— 只读表（详情 / 同链路 / 历史）默认列
-
-/** 只读表默认列（2026-10-15 用户要求：与可写表默认字段一致 + 状态/操作） */
-export const readonlyDocColumns: readonly AttachmentFieldKey[] = [
+/** 两种模式使用同一默认列集；编辑能力由单元格插槽提供。 */
+export const attachmentColumns: readonly AttachmentFieldKey[] = [
   'fileName',
   'displayName',
   'sourceType',
@@ -45,13 +41,4 @@ export const readonlyDocColumns: readonly AttachmentFieldKey[] = [
   'actions',
 ]
 
-/** 可写表默认列（2026-10-15 用户指定）：原文件名 / 展示文件名 / 来源类型 / 来源单号 / 产品编码 / 一级+二级类型；大小·上传人·时间在「详情」里看 */
-export const editableColumns = [
-  attachmentFields.fileName,
-  // attachmentFields.displayName,
-  attachmentFields.sourceType,
-  attachmentFields.sourceNo,
-  attachmentFields.productCode,
-  attachmentFields.category,
-  attachmentFields.documentType,
-]
+export const readonlyDocColumns = attachmentColumns

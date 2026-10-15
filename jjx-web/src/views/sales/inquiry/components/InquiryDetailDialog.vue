@@ -55,7 +55,7 @@
         }}</el-descriptions-item>
       </el-descriptions>
     </template>
-    <AttachmentDocList :trace-id="detailData.traceId" />
+    <AttachmentDocList source-type="inquiry" :source-id="detailData.inquiryId" :trace-id="detailData.traceId" />
     <template #footer>
       <el-button @click="emitClose">关 闭</el-button>
     </template>

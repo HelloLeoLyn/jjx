@@ -63,6 +63,7 @@
       :can-edit="canEdit"
       :document-types="documentTypes"
       :source-type="sourceType"
+      :source-no="sourceNo"
       :lock-reason="lockReason"
       @retry-bind="retryBind"
       @remove-pending="removePending"
@@ -78,7 +79,6 @@
     <AttachmentDocList
       v-if="showList && legacyTraceDocRows.length"
       :rows="legacyTraceDocRows"
-      :columns="readonlyColumnKeys"
       title="历史与同链路附件"
     />
     <div v-if="pending.length" class="ac-hint">
@@ -96,7 +96,7 @@
     <!-- 附件详情（类型/展示名已改成列表行内编辑，这里给只读归属信息 + 备注/排序） -->
     <el-dialog v-model="metaVisible" title="附件详情" width="520px" append-to-body destroy-on-close>
       <AttachmentDetailInfo :row="metaRow" :document-types="documentTypes" :source-type="props.sourceType" />
-      <el-form label-width="80px">
+      <el-form label-width="80px" :disabled="!canEdit">
         <el-form-item label="备注">
           <el-input v-model="metaForm.remark" maxlength="500" />
         </el-form-item>
@@ -106,7 +106,7 @@
       </el-form>
       <template #footer>
         <el-button @click="metaVisible = false">取消</el-button>
-        <el-button type="primary" :loading="metaSaving" @click="saveMeta">保存</el-button>
+        <el-button v-if="canEdit" type="primary" :loading="metaSaving" @click="saveMeta">保存</el-button>
       </template>
     </el-dialog>
 
@@ -131,7 +131,7 @@
 import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { FolderOpened } from '@element-plus/icons-vue'
-import { attachmentApi } from '@/api/system/attachment'
+import { attachmentApi, type AttachmentSourceItem } from '@/api/system/attachment'
 import {
   attachmentRefApi,
   type AttachmentDocumentTypeItem,
@@ -142,8 +142,7 @@ import AttachmentTempUploader from './AttachmentTempUploader.vue'
 import AttachmentRefList from './AttachmentRefList.vue'
 import AttachmentDocList from './AttachmentDocList.vue'
 import AttachmentDetailInfo from './AttachmentDetailInfo.vue'
-import type { AttachmentFieldKey } from './attachmentFields'
-import type { AttachmentDocRow } from './useAttachmentDocList'
+import { attachmentDocFromFile, type AttachmentDocRow } from './useAttachmentDocList'
 import { AttachmentDocumentStatusEnum } from '@/enums/system/AttachmentEnum'
 import { useAttachmentPreview } from './useAttachmentPreview'
 import { useAttachmentRefs, type PendingEntry } from '@/composables/useAttachmentRefs'
@@ -261,18 +260,7 @@ const {
 } = refs
 
 // by-trace 返回 AttachmentSourceVO[]：id 为附件 ID（不是 refId）。
-interface TraceAttachment {
-  id: number
-  fileName?: string
-  fileSize?: number
-  fileType?: string
-  createTime?: string
-  bizType?: string
-  bizTypeName?: string
-  bizId?: number
-  sourceNo?: string
-}
-const traceRows = ref<TraceAttachment[]>([])
+const traceRows = ref<AttachmentSourceItem[]>([])
 const traceLoading = ref(false)
 const traceError = ref('')
 let traceRequest = 0
@@ -292,33 +280,9 @@ const traceOnlyRows = computed(() => {
   })
 })
 
-/** 只读件列集：与可写表一致的数据列 + 来源/状态/操作（不丢展示文件名） */
-const readonlyColumnKeys: readonly AttachmentFieldKey[] = [
-  'fileName',
-  'displayName',
-  'sourceType',
-  'sourceNo',
-  'category',
-  'documentType',
-  'fileSize',
-  'createBy',
-  'createTime',
-  'status',
-  'actions',
-]
-
-/** 历史 / 同链路只读行：交给只读件渲染（不并进可写表） */
 const legacyTraceDocRows = computed<AttachmentDocRow[]>(() => [
-  ...legacyOnlyRows.value.map((row) => ({
-    ...row,
-    attachmentId: Number(row.id),
-    status: AttachmentDocumentStatusEnum.LEGACY.value,
-  })),
-  ...traceOnlyRows.value.map((row) => ({
-    ...row,
-    attachmentId: Number(row.id),
-    status: AttachmentDocumentStatusEnum.TRACE.value,
-  })),
+  ...legacyOnlyRows.value.map(row => attachmentDocFromFile(row, AttachmentDocumentStatusEnum.LEGACY.value)),
+  ...traceOnlyRows.value.map(row => attachmentDocFromFile(row, AttachmentDocumentStatusEnum.TRACE.value)),
 ])
 async function loadTrace() {
   const request = ++traceRequest
@@ -527,6 +491,7 @@ function openMeta(row: AttachmentRefItem) {
 }
 
 async function saveMeta() {
+  if (!canEdit.value) return
   metaSaving.value = true
   try {
     await updateMeta(metaForm.refId, {

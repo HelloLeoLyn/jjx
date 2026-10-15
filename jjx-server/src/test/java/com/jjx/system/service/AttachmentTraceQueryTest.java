@@ -42,7 +42,17 @@ class AttachmentTraceQueryTest {
 
     @Test
     void refsWorkWithoutLegacyFieldsAndDuplicateFilesAppearOnce() {
-        when(attachmentRefMapper.selectByTrace("chain")).thenReturn(List.of(ref(1), ref(2)));
+        SysAttachmentRef reference = ref(1);
+        reference.setId(91L);
+        reference.setDocumentType("CUSTOMER_DRAWING");
+        reference.setDisplayName("客户图纸");
+        reference.setProductId(8L);
+        reference.setProductCode("P008");
+        reference.setRemark("引用备注");
+        reference.setSortOrder(3);
+        reference.setCreateBy("operator");
+        reference.setCreateTime(java.time.LocalDateTime.of(2026, 10, 15, 10, 0));
+        when(attachmentRefMapper.selectByTrace("chain")).thenReturn(List.of(reference, ref(2)));
         when(attachmentSources.canRead("inquiry", 1L)).thenReturn(true);
         when(attachmentSources.check("inquiry", 1L, false)).thenReturn("IN001");
         when(attachmentMapper.selectById(40L)).thenReturn(file());
@@ -52,6 +62,16 @@ class AttachmentTraceQueryTest {
         assertEquals("IN001", rows.getFirst().getSourceNo());
         assertEquals("询价单", rows.getFirst().getBizTypeName());
         assertEquals("chain", rows.getFirst().getTraceId());
+        assertEquals(40L, rows.getFirst().getId());
+        assertEquals(reference.getId(), rows.getFirst().getRefId());
+        assertEquals(reference.getDocumentType(), rows.getFirst().getDocumentType());
+        assertEquals(reference.getDisplayName(), rows.getFirst().getDisplayName());
+        assertEquals(reference.getProductId(), rows.getFirst().getProductId());
+        assertEquals(reference.getProductCode(), rows.getFirst().getProductCode());
+        assertEquals(reference.getRemark(), rows.getFirst().getRemark());
+        assertEquals(reference.getSortOrder(), rows.getFirst().getSortOrder());
+        assertEquals(reference.getCreateBy(), rows.getFirst().getCreateBy());
+        assertEquals(reference.getCreateTime(), rows.getFirst().getCreateTime());
         verify(attachmentMapper, times(1)).selectById(40L);
     }
 
@@ -93,7 +113,10 @@ class AttachmentTraceQueryTest {
         when(attachmentAccess.canRead(legacy)).thenReturn(true);
         when(attachmentSources.canRead("inquiry", 1L)).thenReturn(true);
         when(attachmentSources.check("inquiry", 1L, false)).thenReturn("IN001");
-        assertEquals("IN001", service.getAttachmentSourcesByTraceId("chain").getFirst().getSourceNo());
+        var row = service.getAttachmentSourcesByTraceId("chain").getFirst();
+        assertEquals("IN001", row.getSourceNo());
+        assertNull(row.getRefId());
+        assertNull(row.getDocumentType());
     }
 
     @Test

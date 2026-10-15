@@ -1,7 +1,8 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
-import { attachmentApi } from '@/api/system/attachment'
+import { attachmentApi, type AttachmentSourceItem } from '@/api/system/attachment'
 import { attachmentRefApi, type AttachmentDocumentTypeItem, type AttachmentRefItem } from '@/api/system/attachmentRef'
 import { AttachmentDocumentStatusEnum } from '@/enums/system/AttachmentEnum'
+import type { AttachmentRow } from './useAttachmentRowText'
 
 export interface AttachmentDocQuery {
   sourceType?: string
@@ -47,28 +48,15 @@ export function docQueryOf(...scopes: AttachmentDocScope[]): AttachmentDocQuery 
   return query
 }
 
-export interface AttachmentDocRow {
+export interface AttachmentDocRow extends AttachmentRow {
   /** 预览器与表格使用文件ID，引用ID单独保留，避免两种主键碰撞。 */
   id: number
   attachmentId: number
-  refId?: number
-  sourceType?: string | null
-  sourceTypeName?: string | null
-  sourceNo?: string | null
-  fileName?: string | null
-  displayName?: string | null
-  documentType?: string | null
-  fileSize?: number | null
-  fileType?: string | null
-  createBy?: string | null
-  createTime?: string | null
+  refId?: number | null
   status: string
 }
 
-interface FileRow extends Omit<AttachmentDocRow, 'attachmentId' | 'status'> {
-  bizType?: string
-  bizTypeName?: string
-}
+type FileRow = AttachmentSourceItem
 
 function responseRows<T>(response: { data: T[] }): T[] {
   if (!Array.isArray(response.data)) throw new Error('文档返回格式异常')
@@ -79,7 +67,7 @@ function fromRef(row: AttachmentRefItem): AttachmentDocRow {
   return { ...row, id: row.attachmentId, refId: row.id, status: AttachmentDocumentStatusEnum.BOUND.value }
 }
 
-function fromFile(row: FileRow, status: string): AttachmentDocRow {
+export function attachmentDocFromFile(row: FileRow, status: string): AttachmentDocRow {
   return {
     ...row, attachmentId: row.id, sourceType: row.bizType,
     sourceTypeName: row.bizTypeName, status,
@@ -142,7 +130,7 @@ export function useAttachmentDocList(
           const sourceId = q.sourceId ?? refs[0]?.sourceId
           if (sourceId != null) {
             await run(3, '历史文档', async () => responseRows<FileRow>(await attachmentApi.list(q.sourceType!, sourceId))
-              .map(row => fromFile(row, AttachmentDocumentStatusEnum.LEGACY.value)))
+              .map(row => attachmentDocFromFile(row, AttachmentDocumentStatusEnum.LEGACY.value)))
           } else {
             failures.push('历史文档：当前单号没有可解析ID的引用，请传 sourceId 查询历史附件')
           }
@@ -154,7 +142,7 @@ export function useAttachmentDocList(
     }
     if (q.traceId) requests.push(run(1, '同链路文档', async () =>
       responseRows<FileRow>(await attachmentApi.listByTrace(q.traceId!))
-        .map(row => fromFile(row, AttachmentDocumentStatusEnum.TRACE.value))))
+        .map(row => attachmentDocFromFile(row, AttachmentDocumentStatusEnum.TRACE.value))))
     if (q.productId != null) requests.push(run(2, '产品文档', async () =>
       responseRows(await attachmentRefApi.refsByProduct(q.productId!)).map(fromRef)))
     // 字典失败只影响分类标签，不影响三个文档段。
