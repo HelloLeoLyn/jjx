@@ -1,4 +1,5 @@
-import { ref, type Ref } from 'vue'
+import { planFingerprint } from './planDraft'
+import { ref, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleProcessStatusEnum } from '@/enums/sales'
@@ -21,13 +22,15 @@ interface PlanPersistenceContext {
 export function usePlanPersistence(context: PlanPersistenceContext) {
   const { readonlyMode, orderId, card, planList, printList, allProcesses, makeCard, makePrintRow, loadBom, refreshCard, loadSummary } = context
   const savingPlan = ref(false)
+  const savedFingerprint = ref(planFingerprint([], []))
+  const hasUnsavedChanges = computed(() => planFingerprint(planList.value, printList.value) !== savedFingerprint.value)
   // 保存工序计划（整单覆盖当前轮次；卡片展开为多行，同卡片同行序）
   async function savePlan(): Promise<boolean> {
     if (readonlyMode.value || savingPlan.value) return false
     if (!orderId.value) return false
     const validPrints = printList.value.filter((r) => (r.printName || '').trim())
-    if (!planList.value.length && !validPrints.length) {
-      ElMessage.warning('工序计划为空，请先勾选标准工序或添加印刷工序')
+    if (planList.value.some((pc) => !pc.items.length)) {
+      ElMessage.warning('有卡片未选择工序，请补充或删除空卡片')
       return false
     }
     // 保存状态：全部标记为保存中
@@ -163,10 +166,11 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
           operator: first.operator || '',
         })
       })
+      savedFingerprint.value = planFingerprint(planList.value, printList.value)
     } catch {
       planList.value = []
     }
   }
 
-  return { savingPlan, savePlan, loadPlan }
+  return { savingPlan, hasUnsavedChanges, savePlan, loadPlan }
 }

@@ -31,18 +31,19 @@
                   :work-instruction="it.workInstruction"
                   @update:index="(n: number) => $emit('update-index', it, n)"
                 />
+                <span v-else>{{ it.processName }}</span>
               </el-tag>
             </span>
           </el-tooltip>
           <el-button
-            v-if="!readonly && !pc.editing"
+            v-if="!readonly && pc.editing"
             size="small"
             link
             type="primary"
             @click="$emit('open-picker')"
             >＋ 添加标准工序</el-button
           >
-          <span v-if="!pc.items.length && !pc.editing" style="color: #c0c4cc; font-size: 12px"
+          <span v-if="!pc.items.length" style="color: #c0c4cc; font-size: 12px"
             >未选择标准工序</span
           >
         </template>

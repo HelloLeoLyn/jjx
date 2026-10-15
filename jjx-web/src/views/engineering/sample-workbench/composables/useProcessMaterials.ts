@@ -1,9 +1,14 @@
+import { createCardEditSessions } from './planDraft'
 import { ref, nextTick, onScopeDispose, type Ref } from 'vue'
 import { debounce } from 'lodash-es'
 import { materialApi } from '@/api/inventory/material'
 
 /** 工序材料输入、搜索及建档回填；材料草稿仍归工序计划所有。 */
 export function useProcessMaterials(readonlyMode: Readonly<Ref<boolean>>, genUid: () => string) {
+  const editSessions = createCardEditSessions()
+  function cancelEdit(pc: any) { if (!readonlyMode.value) editSessions.cancel(pc) }
+  function finishEdit(pc: any) { if (!readonlyMode.value) editSessions.finish(pc) }
+
   // 材料行
   function addMaterialRow(pc: any) {
     if (readonlyMode.value) return
@@ -25,6 +30,8 @@ export function useProcessMaterials(readonlyMode: Readonly<Ref<boolean>>, genUid
 
   // 进入编辑：初始化材料行
   function startEdit(pc: any) {
+    if (readonlyMode.value) return
+    editSessions.begin(pc)
     pc.editing = true
     if (!pc.materialRows.length) {
       pc.materialRows = (parseMaterials(pc.materials) || []).map((m: any) => ({
@@ -183,5 +190,5 @@ export function useProcessMaterials(readonlyMode: Readonly<Ref<boolean>>, genUid
     materialSearchDebouncers.forEach((search) => search.cancel())
     materialSearchDebouncers.clear()
   })
-  return { addMaterialRow, startEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange, loadMoreMaterials, onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate, onMaterialCreated, parseMaterials }
+  return { addMaterialRow, startEdit, cancelEdit, finishEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange, loadMoreMaterials, onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate, onMaterialCreated, parseMaterials }
 }

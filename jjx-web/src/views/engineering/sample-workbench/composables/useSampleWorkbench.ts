@@ -44,13 +44,13 @@ export function useSampleWorkbench() {
   function saveStateText(pc: any): string {
     switch (pc.saveState) {
       case 'dirty':
-        return '⏳ 未同步'
+        return '未保存'
       case 'saving':
         return '🔄 保存中'
       case 'error':
         return '❌ 保存失败'
       default:
-        return '✅ 已同步'
+        return '已保存'
     }
   }
 
@@ -293,7 +293,7 @@ export function useSampleWorkbench() {
 
   const allProcesses = ref<any[]>([])
 
-  const { addMaterialRow, startEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange,
+  const { addMaterialRow, startEdit, cancelEdit, finishEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange,
     loadMoreMaterials, onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate,
     onMaterialCreated, parseMaterials } = useProcessMaterials(readonlyMode, genUid)
   const { historyCopyVisible, copyOverwrite, historyOrders, historyLoading, historySelected,
@@ -302,7 +302,7 @@ export function useSampleWorkbench() {
     loadProductPlan, confirmProductPlanCopy } = usePlanCopy({
       orderId, readonlyMode, card, planList, printList, allProcesses, makeCard, makePrintRow, genUid, parseMaterials,
     })
-  const { savingPlan, savePlan, loadPlan } = usePlanPersistence({
+  const { savingPlan, hasUnsavedChanges, savePlan, loadPlan } = usePlanPersistence({
     readonlyMode, orderId, card, planList, printList, allProcesses, makeCard, makePrintRow,
     loadBom, refreshCard, loadSummary,
   })
@@ -594,36 +594,6 @@ export function useSampleWorkbench() {
       batchSelected.value = s
     }
   }
-  // 保存卡片（整单保存，数据一致）
-  async function saveCard(pc: any) {
-    if (readonlyMode.value) return
-    pc.savingCard = true
-    pc.saveState = 'saving'
-    try {
-      // 材料行 → JSON
-      const validMats = (pc.materialRows || [])
-        .filter((m: any) => m.name && m.name.trim())
-        .map((m: any) => ({
-          name: m.name,
-          spec: m.spec || '',
-          qty: m.qty ?? 1,
-          unit: m.unit || 'PCS',
-          materialId: m.materialId,
-          materialCode: m.materialCode || '',
-        }))
-      pc.materials = validMats.length ? JSON.stringify(validMats) : null
-      pc.editing = false
-      if (!(await savePlan())) return
-      pc.saveState = 'synced'
-      ElMessage.success('已保存')
-    } catch (e: any) {
-      pc.saveState = 'error'
-      ElMessage.error(e?.message || '保存失败')
-    } finally {
-      pc.savingCard = false
-    }
-  }
-
   // ===== 汇总 =====
   // 完成进度 = 组装卡片 + 印刷行（dev-1788002406240：展示用，与后端校验口径对齐）
   const doneCount = computed(
@@ -718,11 +688,11 @@ export function useSampleWorkbench() {
 
   // 有未同步卡片时离开拦截（路由离开守卫）
   onBeforeRouteLeave(async () => {
-    const dirty = planList.value.some((pc) => pc.saveState === 'dirty' || pc.saveState === 'error')
+    const dirty = hasUnsavedChanges.value
     if (!dirty) return true
     try {
       await ElMessageBox.confirm(
-        '有卡片尚未同步保存，确定离开吗？未保存的修改将丢失。',
+        '工序计划有未保存修改，确定离开吗？未保存的修改将丢失。',
         '未保存修改',
         {
           confirmButtonText: '仍要离开',
@@ -954,7 +924,7 @@ export function useSampleWorkbench() {
   )
 
   // 仅计划面板所需的能力；内部 refs 保持响应式，不复制业务数据。
-  const planEditor = reactive({ batchMode, batchSelected, batchCategory, savingPlan, frequentMaterials, planTabs, categoryOptions, cardsByTab, saveStateText, parseMaterials, toggleBatchMode, toggleBatchSelect, toggleBatchSelectAll, savePlan, addFrequentMaterial, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, removeCardItem, removePlanCard, saveCard, addMaterialRow, startEdit, openCardPicker, openBatchMaterial, batchDelete, applyBatchCategory, onUpdateIndex, searchMaterials: debouncedSearchMaterials, onMaterialSelected, onSelectVisibleChange, openMaterialCreate })
+  const planEditor = reactive({ batchMode, batchSelected, batchCategory, savingPlan, hasUnsavedChanges, frequentMaterials, planTabs, categoryOptions, cardsByTab, saveStateText, parseMaterials, toggleBatchMode, toggleBatchSelect, toggleBatchSelectAll, savePlan, addFrequentMaterial, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, removeCardItem, removePlanCard, cancelEdit, finishEdit, addMaterialRow, startEdit, openCardPicker, openBatchMaterial, batchDelete, applyBatchCategory, onUpdateIndex, searchMaterials: debouncedSearchMaterials, onMaterialSelected, onSelectVisibleChange, openMaterialCreate })
 
   return {
     planEditor,
@@ -1044,7 +1014,8 @@ export function useSampleWorkbench() {
     removeCardItem,
     removePlanCard,
     advancePlan,
-    saveCard,
+    cancelEdit,
+    finishEdit,
     addMaterialRow,
     startEdit,
     searchMaterials,

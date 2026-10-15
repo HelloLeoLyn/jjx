@@ -18,22 +18,12 @@
       <span class="save-state" :class="`save-${pc.saveState || 'synced'}`">{{
         saveStateText(pc)
       }}</span>
-      <div class="pc-head-right">
-        <el-tag v-if="pc.status === SampleProcessStatusEnum.DONE.value" size="small" type="success"
-          >✓ 已完成</el-tag
-        >
-        <el-tag
-          v-else-if="pc.status === SampleProcessStatusEnum.DOING.value"
-          size="small"
-          type="warning"
-          >⏳ 进行中</el-tag
-        >
-        <el-tag v-else size="small" type="info">待做</el-tag>
-        <span
-          v-if="pc.status === SampleProcessStatusEnum.DONE.value && pc.durationMinutes"
-          style="color: #909399; font-size: 12px"
-          >⏱ {{ pc.durationMinutes }}分钟</span
-        >
+      <div v-if="!readonly" class="pc-head-right">
+        <el-button v-if="!pc.editing" size="small" link type="primary" @click="$emit('edit')">编辑</el-button>
+        <el-dropdown trigger="click" @command="$emit('delete')">
+          <el-button size="small" link aria-label="更多操作">更多 ⋯</el-button>
+          <template #dropdown><el-dropdown-menu><el-dropdown-item command="delete">删除卡片</el-dropdown-item></el-dropdown-menu></template>
+        </el-dropdown>
       </div>
     </div>
     <ProcessContentEditor
@@ -42,7 +32,11 @@
       @update-index="(item, value) => $emit('update-index', item, value)"
       @open-picker="$emit('open-picker')"
     />
-    <ProcessMaterialEditor
+    <div v-if="!pc.editing && materialSummary" class="material-summary">
+      <span>{{ materialSummary }}</span>
+      <el-button size="small" link type="primary" @click="materialsExpanded = !materialsExpanded">{{ materialsExpanded ? '收起' : '展开' }}</el-button>
+    </div>
+    <ProcessMaterialEditor v-if="pc.editing || materialsExpanded"
       :pc="pc" :readonly="readonly" :parse-materials="parseMaterials"
       @search-material="(q, row) => $emit('search-material', q, row)"
       @material-selected="(row, value) => $emit('material-selected', row, value)"
@@ -52,7 +46,7 @@
       @create-material="(row) => $emit('create-material', row)"
     />
     <!-- 行4：整道工序备注；单工序属于自身，复合工序属于整个组合 -->
-    <div class="pc-row">
+    <div v-if="pc.editing || pc.operationRemark" class="pc-row">
       <el-input
         v-if="!readonly && pc.editing"
         v-model="pc.operationRemark"
@@ -60,20 +54,11 @@
         :rows="2"
         placeholder="可选，如：一车一模；复合工序时作用于整道工序"
       />
-      <div v-else class="pc-desc-readonly">{{ pc.operationRemark || '—' }}</div>
+      <div v-else class="pc-desc-readonly">{{ pc.operationRemark }}</div>
     </div>
-    <!-- 右下角：删除/保存/编辑 -->
-    <div class="pc-footer">
-      <el-button v-if="!readonly && !pc.editing" size="small" @click="$emit('edit')"
-        >✏️ 编辑</el-button
-      >
-      <template v-else-if="!readonly">
-        <el-button size="small" @click="$emit('cancel-edit')">取消</el-button>
-        <el-button size="small" type="danger" plain @click="$emit('delete')">🗑 删除</el-button>
-        <el-button size="small" type="primary" :loading="pc.savingCard" @click="$emit('save')"
-          >💾 保存</el-button
-        >
-      </template>
+    <div v-if="!readonly && pc.editing" class="pc-footer">
+      <el-button size="small" @click="$emit('cancel-edit')">取消修改</el-button>
+      <el-button size="small" type="primary" @click="$emit('finish-edit')">完成编辑</el-button>
     </div>
   </div>
 </template>
@@ -81,14 +66,14 @@
 <script setup lang="ts">
 import ProcessContentEditor from './ProcessContentEditor.vue'
 import ProcessMaterialEditor from './ProcessMaterialEditor.vue'
-import { SampleProcessStatusEnum } from '@/enums/sales'
+import { computed, ref } from 'vue'
 
 /**
  * 打样工序计划项（dev-20260811-008 组件化核心）
  * 自包含：状态/标准工序/材料/描述/编辑操作
  * 预留：卡片类型字段（标准/自定义），印刷工序后续扩展
  */
-defineProps<{
+const props = defineProps<{
   pc: any
   index: number
   batchMode: boolean
@@ -97,6 +82,13 @@ defineProps<{
   parseMaterials: (json?: string | null) => any[]
   readonly?: boolean
 }>()
+
+const materialsExpanded = ref(false)
+const materialSummary = computed(() => {
+  const rows = props.parseMaterials(props.pc.materials)
+  if (!rows.length) return ''
+  return `${rows.slice(0, 2).map((row: any) => row.name).join('、')}${rows.length > 2 ? '…' : ''}（${rows.length}项材料）`
+})
 
 const emit = defineEmits<{
   (e: 'toggle-select', v: boolean): void
@@ -111,7 +103,7 @@ const emit = defineEmits<{
   (e: 'edit'): void
   (e: 'cancel-edit'): void
   (e: 'delete'): void
-  (e: 'save'): void
+  (e: 'finish-edit'): void
   (e: 'card-dragover', pc: any): void
   (e: 'card-dragleave', pc: any): void
   (e: 'card-drop', ev: DragEvent, pc: any): void
@@ -129,12 +121,14 @@ function onCardDrop(e: DragEvent, pc: any) {
 </script>
 
 <style scoped>
+.material-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #606266; font-size: 12px; }
+
 .plan-card {
   background: #fff;
   border: 1px solid #ebeef5;
   border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
   box-shadow: 0 1px 4px rgba(31, 45, 61, 0.05);
   transition:
     box-shadow 0.2s,
