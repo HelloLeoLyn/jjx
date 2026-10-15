@@ -30,12 +30,13 @@ export type AttachmentFieldKey = keyof typeof attachmentFields
 // 原上传组件的列集合保持独立，不因新增只读场景字段而改变。
 export const referenceColumns = [
   attachmentFields.fileName,
-  attachmentFields.displayName,
+  attachmentFields.sourceNo,
+  // attachmentFields.displayName,
   attachmentFields.category,
   attachmentFields.documentType,
   attachmentFields.fileSize,
-  attachmentFields.createBy,
-  attachmentFields.createTime,
+  // attachmentFields.createBy,
+  // attachmentFields.createTime,
 ]
 
 export const documentColumnKeys: readonly AttachmentFieldKey[] = [
@@ -49,4 +50,17 @@ export const documentColumnKeys: readonly AttachmentFieldKey[] = [
   'createTime',
   'status',
   'actions',
+]
+
+/** 可写表列集（本单引用 / 待绑定）：在 referenceColumns 基础上补来源类型与来源单号（2026-10-15 用户要求） */
+export const editableColumns = [
+  attachmentFields.fileName,
+  attachmentFields.displayName,
+  attachmentFields.sourceType,
+  attachmentFields.sourceNo,
+  attachmentFields.category,
+  attachmentFields.documentType,
+  attachmentFields.fileSize,
+  attachmentFields.createBy,
+  attachmentFields.createTime,
 ]

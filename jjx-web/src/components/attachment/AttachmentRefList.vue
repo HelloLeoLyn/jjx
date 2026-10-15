@@ -34,7 +34,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-for="column in referenceColumns" :key="column.key"
+        <el-table-column v-for="column in editableColumns" :key="column.key"
           :label="column.label" :width="'width' in column ? column.width : undefined"
           :min-width="'minWidth' in column ? column.minWidth : undefined"
           :show-overflow-tooltip="column.render === 'preview' || column.render === 'category' || column.render === 'text'">
@@ -59,6 +59,8 @@
                 :disabled="savingId === row.id" @update:model-value="(v) => saveDocType(refOf(row), v)" />
               <span v-else>{{ row.documentType ? secondLabelOf(row.documentType) : '-' }}</span>
             </template>
+            <span v-else-if="column.render === 'sourceType'">{{ sourceTypeLabel(row) }}</span>
+            <span v-else-if="column.render === 'sourceNo'">{{ row.sourceNo || '-' }}</span>
             <span v-else-if="column.render === 'size'">{{ formatSize(row.fileSize) }}</span>
             <span v-else-if="column.render === 'time'">{{ formatTime(row.createTime) }}</span>
             <span v-else-if="column.render === 'text'">{{ row.createBy || '-' }}</span>
@@ -72,7 +74,7 @@
             </template>
             <template v-else-if="row.kind === 'ref'">
               <el-button link type="primary" @click="emit('download', refOf(row))">下载</el-button>
-              <el-button v-if="canEdit" link type="primary" @click="emit('edit', refOf(row))">更多</el-button>
+              <el-button v-if="canEdit" link type="primary" @click="emit('edit', refOf(row))">详情</el-button>
               <el-button v-if="canEdit" link type="danger" @click="emit('unbind', refOf(row))">移除</el-button>
             </template>
           </template>
@@ -153,9 +155,15 @@ import {
   type AttachmentRefItem,
 } from '@/api/system/attachmentRef'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
-import { attachmentSourceCode, attachmentCategoryCode, attachmentDocumentTypeCode } from '@/enums/system/AttachmentEnum'
+import {
+  attachmentSourceCode,
+  attachmentCategoryCode,
+  attachmentDocumentTypeCode,
+  AttachmentSourceTypeEnum,
+  canonicalAttachmentSource,
+} from '@/enums/system/AttachmentEnum'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
-import { referenceColumns } from './attachmentFields'
+import { editableColumns } from './attachmentFields'
 import { formatSize, formatTime } from './attachmentFormat'
 
 const props = defineProps<{
@@ -179,6 +187,7 @@ type TableRow = {
   fileSize?: number | null
   createTime?: string | null
   createBy?: string | null
+  sourceType?: string | null
   sourceNo?: string | null
   bizTypeName?: string | null
   bizType?: string | null
@@ -195,6 +204,11 @@ const tableRows = computed<TableRow[]>(() => [
 ])
 const refOf = (row: TableRow) => row.data as AttachmentRefItem
 const pendingOf = (row: TableRow) => row.data as PendingEntry
+/** 来源类型显示名（待绑定行没有来源 → 显示 -） */
+function sourceTypeLabel(row: TableRow) {
+  if (!row.sourceType) return '-'
+  return AttachmentSourceTypeEnum.getLabel(canonicalAttachmentSource(row.sourceType))
+}
 function previewRow(row: TableRow) {
   if (row.kind === 'ref') emit('preview', refOf(row))
 }
