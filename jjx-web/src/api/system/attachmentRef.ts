@@ -164,6 +164,19 @@ export const attachmentRefApi = {
     })
   },
 
+  /** 草稿行：未保存单据的待保存附件（限本人 + 草稿键）—— dev-20261016-009 */
+  drafts(draftKey: string): AxiosPromise<AttachmentRefItem[]> {
+    return request({ url: '/system/attachment/refs/drafts', method: 'get', params: { draftKey } })
+  },
+  /** 草稿行改二级类型 */
+  updateDraft(id: number, documentType: string | null): AxiosPromise<void> {
+    return request({ url: `/system/attachment/refs/drafts/${id}`, method: 'put', params: { documentType } })
+  },
+  /** 移除草稿行（软删引用行） */
+  removeDraft(id: number): AxiosPromise<void> {
+    return request({ url: `/system/attachment/refs/drafts/${id}`, method: 'delete' })
+  },
+
   /** 建立引用（同来源同附件同产品幂等：返回原 refId） */
   createRef(body: AttachmentRefCreateBody): AxiosPromise<number> {
     return request({ url: '/system/attachment/refs', method: 'post', data: body })

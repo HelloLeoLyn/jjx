@@ -33,6 +33,8 @@ export interface PendingEntry {
   displayName?: string | null
   /** 行级附件归属：产品编码（上传时记录；绑定时随引用提交。S5 dev-20261013-043） */
   productCode?: string | null
+  /** 草稿行引用 ID（库里的待保存附件行；dev-20261016-009）。有值则改类型/移除直接打草稿行接口。 */
+  draftRefId?: number | null
 }
 
 export type BindStatus = 'document-not-saved' | 'all-ok' | 'partial' | 'all-failed'
@@ -182,9 +184,48 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     () => pending.value.filter((e) => e.state !== 'binding' && !e.documentType).length
   )
 
-  // ==================== 待绑定队列持久化 ====================
+  // ==================== 待绑定队列（以库里的「草稿行」为准，本地 localStorage 作离线兜底） ====================
+  /** 从后端拉草稿行（仅未保存单据）：以库为准刷新本地队列，展上未反映的本地上传项保留；失败则继续用本地。dev-20261016-009 */
+  async function syncDraftsFromBackend() {
+    if (sourceId.value || !draftReady.value) return
+    try {
+      const res: any = await attachmentRefApi.drafts(draftKey.value)
+      const rows = Array.isArray(res?.data) ? res.data : []
+      const local = pending.value
+      const mapped: PendingEntry[] = rows.map((r: any) => {
+        const prev = local.find((e) => e.attachmentId === Number(r.attachmentId))
+        return {
+          attachmentId: Number(r.attachmentId),
+          requestKey: prev?.requestKey || '',
+          fileName: String(r.fileName || ''),
+          fileSize: Number(r.fileSize || 0),
+          sha256: null,
+          state: 'pending' as const,
+          createdAt: String(r.createTime || ''),
+          documentType: r.documentType ? String(r.documentType) : null,
+          displayName: r.displayName ? String(r.displayName) : null,
+          productCode: r.productCode ? String(r.productCode) : null,
+          draftRefId: Number(r.id),
+        }
+      })
+      const seen = new Set(mapped.map((e) => e.attachmentId))
+      pending.value = [...mapped, ...local.filter((e) => !seen.has(e.attachmentId))]
+    } catch {
+      /* 拉取失败：保留本地队列（离线兜底），不阻断 */
+    }
+  }
+
+  /** 把本地队列里的二级类型推回草稿行（仅未保存单据；失败不影响本地）。 */
+  function syncDraftTypes() {
+    if (sourceId.value) return
+    for (const e of pending.value) {
+      if (e.draftRefId) void attachmentRefApi.updateDraft(e.draftRefId, e.documentType ?? null).catch(() => {})
+    }
+  }
+
   /** 写入当前队列；返回是否写入成功（供键迁移时决定能否清理旧键） */
   function persist(): boolean {
+    syncDraftTypes() // 队列变更同时推回草稿行（库为准）
     if (!storageKey.value) return false
     try {
       if (pending.value.length) localStorage.setItem(storageKey.value, JSON.stringify(pending.value))
@@ -238,9 +279,12 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     } catch {
       pending.value = []
     }
+    void syncDraftsFromBackend() // 以库里的草稿行为准补齐/刷新（dev-20261016-009）
   }
 
   function removePending(attachmentId: number) {
+    const entry = pending.value.find((e) => e.attachmentId === attachmentId)
+    if (entry?.draftRefId) void attachmentRefApi.removeDraft(entry.draftRefId).catch(() => {})
     pending.value = pending.value.filter((e) => e.attachmentId !== attachmentId)
     persist()
   }
@@ -329,6 +373,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
       productCode: productCode.value,
     })
     persist()
+    void syncDraftsFromBackend() // 取回刚建的草稿行 refId（dev-20261016-009）
     return attachmentId
   }
 
