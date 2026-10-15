@@ -153,6 +153,7 @@ export function usePlanCopy(context: PlanCopyContext) {
           moduleQty: row.moduleQty,
           projectIds,
           projectInherited: false,
+          layerName: row.layerName || '',
         })
       })
     if (overwrite) standaloneMaterials.value = []

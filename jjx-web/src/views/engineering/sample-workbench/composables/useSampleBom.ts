@@ -60,21 +60,37 @@ export function useSampleBom(context: SampleBomContext) {
     return value
   }
 
+  // 稳定行 uid 缓存（内容键 → uid）：删行后索引位移不串搜索态（dev-20261015-026）
+  const uidCache = new Map<string, string>()
+  let uidSeq = 0
+  function stableUid(key: string): string {
+    let uid = uidCache.get(key)
+    if (!uid) {
+      uid = `bm${++uidSeq}`
+      if (uidCache.size > 1000) uidCache.clear()
+      uidCache.set(key, uid)
+    }
+    return uid
+  }
+
   const bomList = computed(() => {
     const out: any[] = []
     for (const pc of owners()) {
       rowsFor(pc).forEach((row, index) => {
         if (!String(row?.name || '').trim()) return
+        // 稳定 uid：按内容键缓存，删行后索引位移不会串搜索态（dev-20261015-026）
+        const key = `${pc.uid}|${row.materialId ?? ''}|${row.name ?? ''}|${row.spec ?? ''}`
         out.push({
           ...normalizeMaterial(row, projectIdsOf(pc)),
           ownerUid: pc.uid,
           srcIndex: index,
-          uid: `${pc.uid}-${index}`,
+          uid: stableUid(key),
         })
       })
     }
     standaloneMaterials.value.forEach((row, index) => {
-      out.push({ ...normalizeMaterial(row), ownerUid: null, srcIndex: index, uid: `bom-${index}` })
+      const key = `bom|${row.materialId ?? ''}|${row.name ?? ''}|${row.spec ?? ''}`
+      out.push({ ...normalizeMaterial(row), ownerUid: null, srcIndex: index, uid: stableUid(key) })
     })
     return out
   })
@@ -128,12 +144,14 @@ export function useSampleBom(context: SampleBomContext) {
       projectInherited: false,
       materialId: undefined,
       materialCode: '',
+      layerName: '',
     })
   }
 
   function clearStandalone() {
     standaloneMaterials.value = []
     Object.keys(searchStates).forEach((k) => delete searchStates[k])
+    uidCache.clear()
   }
 
   // ===== BOM 行内材料搜索（复用物料档案接口，分页） =====
@@ -225,6 +243,7 @@ export function useSampleBom(context: SampleBomContext) {
           moduleQty: row.moduleQty,
           projectIds,
           projectInherited: false,
+          layerName: row.layerName || '',
         })
       })
   }

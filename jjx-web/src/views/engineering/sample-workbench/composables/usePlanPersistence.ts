@@ -96,7 +96,7 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
         })
       })
       await sampleOrderApi.saveProcessPlan(orderId.value, { items, standaloneMaterials: independent.map(row => ({
-        layerName: '', materialName: row.name, specification: row.spec, quantity: row.qty, unit: row.unit,
+        layerName: row.layerName || '', materialName: row.name, specification: row.spec, quantity: row.qty, unit: row.unit,
         materialId: row.materialId, materialCode: row.materialCode, projectIds: JSON.stringify(row.projectIds || []), moduleQty: row.moduleQty, baseQty: row.baseQty,
       })) })
       planList.value.forEach((pc) => (pc.saveState = 'synced'))

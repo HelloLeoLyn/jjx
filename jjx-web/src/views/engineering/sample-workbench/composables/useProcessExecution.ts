@@ -9,6 +9,7 @@ interface ExecutionContext {
   savingPlan: Readonly<Ref<boolean>>
   refreshCard: () => Promise<void>
   loadSummary: () => Promise<void>
+  loadRounds?: () => Promise<void>
 }
 
 /**
@@ -18,7 +19,7 @@ interface ExecutionContext {
  * 执行后只回写本卡片的执行数据，不整表重载覆盖其他草稿。
  */
 export function useProcessExecution(context: ExecutionContext) {
-  const { readonlyMode, orderId, savingPlan, refreshCard, loadSummary } = context
+  const { readonlyMode, orderId, savingPlan, refreshCard, loadSummary, loadRounds } = context
 
   /** 当前卡片是否可执行：只有本卡自身状态参与判断，其他草稿不阻断。 */
   function blockReason(pc: any): string | null {
@@ -86,6 +87,7 @@ export function useProcessExecution(context: ExecutionContext) {
       ElMessage.success(next === SampleProcessStatusEnum.DONE.value ? '印刷工序已完成' : '印刷工序已开始')
       await refreshCard()
       await loadSummary()
+      await loadRounds?.()
     } catch (e: any) {
       ElMessage.error(e?.message || '操作失败')
     } finally {
@@ -117,6 +119,7 @@ export function useProcessExecution(context: ExecutionContext) {
       ElMessage.success(next === SampleProcessStatusEnum.DONE.value ? '工序已完成' : '工序已开始')
       await refreshCard()
       await loadSummary()
+      await loadRounds?.()
     } catch (e: any) {
       // 部分成功不谎报整体成功；已成功的成员按返回结果回写，其余保持原状待刷新
       if (records.length > 0 && records.length < targetIds.length) {

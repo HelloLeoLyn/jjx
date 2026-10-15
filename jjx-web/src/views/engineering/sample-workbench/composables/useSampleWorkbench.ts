@@ -326,7 +326,7 @@ export function useSampleWorkbench() {
     loadBom, refreshCard, loadSummary,
   })
   const { advancePrint, advancePlan, blockReason: execBlockReason, printBlockReason } = useProcessExecution({
-    readonlyMode, orderId, savingPlan, refreshCard, loadSummary,
+    readonlyMode, orderId, savingPlan, refreshCard, loadSummary, loadRounds,
   })
   async function loadAllProcesses() {
     try {
