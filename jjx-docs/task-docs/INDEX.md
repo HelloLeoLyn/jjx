@@ -27,6 +27,7 @@
 | dev-20261014-011 | dev-20261014-011-plan.md | feature | 样品单「新建产品」入口：打样产品选择器接产品编码器现场生成编码、随单自动建档；抽公共编码弹窗组件（QuotationCodeGenDialog 改薄封装） |
 | dev-20261014-010 | dev-20261014-010-plan.md | plan | 迁移文件缺失盘点 + 门禁指向修复（账本 208 号、仓内仅 256~277；check-collation.sh 指向已删的 193） |
 | dev-20261014-009 | dev-20261014-009-analysis.md | analysis | 附件中心治理分析（2026-10-15修订）：推荐纯只读入口复用；保留编辑页混合展示，明确实施边界与待拍板项（不改代码） |
+| dev-20261014-009 | dev-20261014-009-plan.md | plan | 备用方案（未授权实施）：附件查看/编辑/上传分离，目录职责及数据边界；不替换现行收窄方案A |
 | dev-20261014-008 | dev-20261014-008-plan.md | plan | 老通道面板残局收尾：AttachmentPanel 两处调用方换 AttachmentDocList + 删 TraceAttachmentPanel |
 | dev-20261014-006 | dev-20261014-006-plan.md | plan | 附件表 collation 订正（sys_attachment_ref/order_shortage_ledger → utf8mb4_unicode_ci，迁移 278）+ 防复发三层规则与门禁 |
 | dev-20261014-003 | dev-20261014-003-plan.md | plan | 只读文档公共组件 AttachmentDocList：参数即查询条件、只读可下载（默认10列从字段清单生成；含 refs 按来源单号解析） |
