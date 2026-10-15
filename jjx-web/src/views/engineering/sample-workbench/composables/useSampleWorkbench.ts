@@ -319,7 +319,7 @@ export function useSampleWorkbench() {
     historyCopying, openHistoryCopy, confirmHistoryCopy, copyPrevLoading, historySelectedRound,
     copyRoundFrom, copyPreviousRound, productPlan, productPlanLoading, productPlanCopying,
     loadProductPlan, confirmProductPlanCopy } = usePlanCopy({
-      orderId, readonlyMode, card, planList, printList, allProcesses, makeCard, makePrintRow, genUid, parseMaterials,
+      orderId, readonlyMode, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow, genUid, parseMaterials,
     })
   const { savingPlan, hasUnsavedChanges, savePlan, loadPlan, markSaved } = usePlanPersistence({
     readonlyMode, orderId, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow,

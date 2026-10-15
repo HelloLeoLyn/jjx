@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleProcessStatusEnum } from '@/enums/sales'
+import { normalizeMaterial } from './sampleMaterials'
 
 interface PlanCopyContext {
   orderId: Readonly<Ref<number>>
@@ -9,6 +10,7 @@ interface PlanCopyContext {
   card: Ref<any>
   planList: Ref<any[]>
   printList: Ref<any[]>
+  standaloneMaterials: Ref<any[]>
   allProcesses: Ref<any[]>
   makeCard: (items: any[], extra?: any) => any
   makePrintRow: (src?: any, order?: number) => any
@@ -18,7 +20,7 @@ interface PlanCopyContext {
 
 /** 历史轮次、其他样品和成品方案复制；仅写入计划草稿。 */
 export function usePlanCopy(context: PlanCopyContext) {
-  const { orderId, readonlyMode, card, planList, printList, allProcesses, makeCard, makePrintRow, genUid, parseMaterials } = context
+  const { orderId, readonlyMode, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow, genUid, parseMaterials } = context
   // 从历史打样复制
   const historyCopyVisible = ref(false)
   // 追加/覆盖（dev-20261012-012：给用户选择，默认追加）
@@ -114,6 +116,58 @@ export function usePlanCopy(context: PlanCopyContext) {
     return map.size ? JSON.stringify([...map.values()]) : null
   }
 
+  /**
+   * 把源单/源轮的独立BOM材料（sales_sample_bom）带出到当前编辑区（dev-20261015-024）。
+   * 与卡片材料一致：覆盖则先清空；追加则按 materialId|name|spec 去重，不重复计量。
+   * 返回本次新增行数。
+   */
+  async function copyStandaloneMaterials(srcOrderId: number, srcRound: number | null, overwrite: boolean): Promise<number> {
+    let rows: any[] = []
+    try {
+      const res: any = await sampleOrderApi.listBom(srcOrderId)
+      rows = res.data || []
+    } catch {
+      return 0
+    }
+    // 目标轮次：显式给定则按轮次；否则取源单存在的最大轮次（复制其现行计划）
+    const rounds = rows.map((r: any) => Number(r.roundNo) || 1)
+    const round = srcRound != null ? srcRound : rounds.length ? Math.max(...rounds) : null
+    const mapped = rows
+      .filter((r: any) => round == null || (Number(r.roundNo) || 1) === round)
+      .map((row: any) => {
+        let projectIds: number[] = []
+        try {
+          const parsed = JSON.parse(row.projectIds || '[]')
+          if (Array.isArray(parsed)) projectIds = parsed
+        } catch {
+          projectIds = []
+        }
+        return normalizeMaterial({
+          name: row.materialName,
+          spec: row.specification,
+          qty: row.quantity,
+          unit: row.unit,
+          materialId: row.materialId,
+          materialCode: row.materialCode,
+          baseQty: row.baseQty,
+          moduleQty: row.moduleQty,
+          projectIds,
+          projectInherited: false,
+        })
+      })
+    if (overwrite) standaloneMaterials.value = []
+    const keyOf = (m: any) => `${m.materialId ?? ''}|${m.name ?? ''}|${m.spec ?? ''}`
+    const seen = new Set(standaloneMaterials.value.map(keyOf))
+    let added = 0
+    for (const m of mapped) {
+      if (seen.has(keyOf(m))) continue
+      standaloneMaterials.value.push(m)
+      seen.add(keyOf(m))
+      added++
+    }
+    return added
+  }
+
   async function confirmHistoryCopy() {
     if (readonlyMode.value) return
     const src = historySelected.value
@@ -127,9 +181,10 @@ export function usePlanCopy(context: PlanCopyContext) {
         return
       }
       const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
+      const addedStandalone = await copyStandaloneMaterials(src.orderId, src.sampleRound ?? null, copyOverwrite.value)
       historyCopyVisible.value = false
       ElMessage.success(
-        `已复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到现有后'}，保存后生效）`
+        `已复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}${addedStandalone ? `、独立材料${addedStandalone}项` : ''}（${copyOverwrite.value ? '覆盖' : '追加到现有后'}，保存后生效）`
       )
     } catch (e: any) {
       ElMessage.error(e?.message || '复制失败')
@@ -154,8 +209,9 @@ export function usePlanCopy(context: PlanCopyContext) {
       }
       // 与跨单复制同语义：PRINT→印刷表，其余→按 processOrder 分组为卡片
       const { added, addedPrint } = applyCopiedRows(list, copyOverwrite.value)
+      const addedStandalone = await copyStandaloneMaterials(orderId.value, roundNo, copyOverwrite.value)
       ElMessage.success(
-        `已从 Round ${roundNo} 复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}（${copyOverwrite.value ? '覆盖' : '追加到当前轮'}，保存后生效）`
+        `已从 Round ${roundNo} 复制 ${added} 张卡片${addedPrint ? `、${addedPrint} 道印刷工序` : ''}${addedStandalone ? `、独立材料${addedStandalone}项` : ''}（${copyOverwrite.value ? '覆盖' : '追加到当前轮'}，保存后生效）`
       )
       historyCopyVisible.value = false
     } catch (e: any) {
