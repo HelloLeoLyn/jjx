@@ -397,29 +397,8 @@ function newDraftId() {
   return `inq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-async function bindPendingAttachments() {
-  await nextTick()
-  try {
-    const result = await attachmentCenterRef.value?.bindPending()
-    if (!result) return
-    if (result.status === 'document-not-saved') {
-      ElMessage.warning('询价单尚未保存，附件仍为待绑定状态')
-      return
-    }
-    if (result.status === 'partial') {
-      ElMessage.warning(
-        `询价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`
-      )
-    } else if (result.status === 'all-failed') {
-      ElMessage.error(
-        `询价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`
-      )
-    }
-  } catch (e: any) {
-    console.error('附件绑定异常（询价单已保存）:', e)
-    ElMessage.error(`附件处理失败：${e?.message || '未知错误'}，可在附件区重试绑定`)
-  }
-}
+// 2026-10-15（dev-20261015-034）：原「保存后再绑附件」的 bindPendingAttachments 已删除——
+// 附件改为随单据请求一起提交、后端同事务建引用；失败即整单回滚，本地待绑定队列保留可重试。
 
 // ====== 初始化 ======
 function resetForm() {
@@ -527,21 +506,26 @@ async function submitForm() {
     ElMessage.warning(`有 ${missingTypeCount} 个附件未选择资料类型，请先选择后再保存`)
     return
   }
+  // 保存即完整（dev-20261015-034）：把待绑定附件（含资料类型）随单据一起提交，后端在同一事务内建引用
+  const attachments = (attachmentCenterRef.value?.pendingEntries ?? []).map((e: any) => ({
+    attachmentId: e.attachmentId,
+    documentType: e.documentType ?? null,
+  }))
   submitting.value = true
-  const isNew = !form.inquiryId
+  const payload = { ...(form as any), attachments }
   try {
     if (form.inquiryId) {
-      await api.value.edit(form as any)
-      await bindPendingAttachments()
+      await api.value.edit(payload)
+      attachmentCenterRef.value?.clearPending()
       ElMessage.success('修改成功')
       emit('success', { mode: 'edit', inquiryId: form.inquiryId })
       if (props.mode === 'dialog') dialogVisibleClose()
     } else {
-      const res = await api.value.add(form as any)
+      const res = await api.value.add(payload)
       const newId = (res as any)?.data?.inquiryId || 0
       form.inquiryId = newId
-      await bindPendingAttachments()
-      ElMessage.success('已保存，可继续上传附件')
+      attachmentCenterRef.value?.clearPending()
+      ElMessage.success('已保存，附件已一并落定')
       emit('success', { mode: 'create', inquiryId: newId })
       // 新增保存后留在弹窗里，方便接着上传附件
     }

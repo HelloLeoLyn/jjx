@@ -71,6 +71,34 @@ public class InquiryServiceImpl implements IInquiryService {
     private final SysAttachmentMapper attachmentMapper;
     /** 2026-09-21（dev-20260921-009）：询价发送/客户接受/拒绝要发事件。 */
     private final com.jjx.event.EventPublisher eventPublisher;
+    /** 2026-10-15（dev-20261015-034）：保存即完整——单据保存的同事务内落定附件引用。 */
+    private final com.jjx.system.service.AttachmentRefService attachmentRefService;
+
+    /**
+     * 保存即完整（dev-20261015-034）：把随单据提交的附件在**同一事务**内建成引用。
+     * 缺二级资料类型 → 直接拒绝保存（不留"单据存了、附件没挂"的中间态）。
+     */
+    private void bindAttachments(Long inquiryId, Long productId, String productCode,
+                                 java.util.List<com.jjx.sales.domain.dto.AttachmentBindDTO> attachments) {
+        if (attachments == null || attachments.isEmpty()) return;
+        long missing = attachments.stream()
+                .filter(a -> a == null || a.getAttachmentId() == null
+                        || a.getDocumentType() == null || a.getDocumentType().isBlank())
+                .count();
+        if (missing > 0) {
+            throw new BusinessException("有 " + missing + " 个附件未选择资料类型，请先选择后再保存");
+        }
+        for (com.jjx.sales.domain.dto.AttachmentBindDTO item : attachments) {
+            com.jjx.system.domain.dto.AttachmentRefDTO ref = new com.jjx.system.domain.dto.AttachmentRefDTO();
+            ref.setAttachmentId(item.getAttachmentId());
+            ref.setSourceType("inquiry");
+            ref.setSourceId(inquiryId);
+            ref.setProductId(productId);
+            ref.setProductCode(productCode);
+            ref.setDocumentType(item.getDocumentType());
+            attachmentRefService.create(ref);
+        }
+    }
 
     /**
      * 分页查询询价单列表
@@ -165,9 +193,15 @@ public class InquiryServiceImpl implements IInquiryService {
         return productCodeService.nextSerial(customerShort);
     }
 
-    @Override
+    /** 兼容旧调用：不带随单提交的附件（内部委托） */
     @Transactional(rollbackFor = Exception.class)
     public int insertInquiry(SalesInquiry inquiry) {
+        return insertInquiry(inquiry, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int insertInquiry(SalesInquiry inquiry, java.util.List<com.jjx.sales.domain.dto.AttachmentBindDTO> attachments) {
         // 自动生成询价单号
         // 自动生成询价单号和链路追踪ID
         String inquiryNo = redisSequenceService.generateBusinessNumberByType(
@@ -215,7 +249,10 @@ public class InquiryServiceImpl implements IInquiryService {
             inquiry.setProductId(pid);
         }
 
-        return inquiryMapper.insert(inquiry);
+        int rows = inquiryMapper.insert(inquiry);
+        // 保存即完整（dev-20261015-034）：随单据同一事务落定附件引用
+        bindAttachments(inquiry.getInquiryId(), inquiry.getProductId(), inquiry.getProductCode(), attachments);
+        return rows;
     }
 
     /**
@@ -274,6 +311,8 @@ public class InquiryServiceImpl implements IInquiryService {
             }
             vo.setDetailMessage(detailString);
         }
+        // 保存即完整（dev-20261015-034）：随单据同一事务落定附件引用（缺类型会在此抛错并回滚整单）
+        bindAttachments(dto.getInquiryId(), entity.getProductId(), entity.getProductCode(), dto.getAttachments());
         vo.setRows(rows);
         return vo;
     }

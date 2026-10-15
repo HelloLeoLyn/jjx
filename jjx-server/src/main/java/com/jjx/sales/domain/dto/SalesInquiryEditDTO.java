@@ -82,4 +82,7 @@ public class SalesInquiryEditDTO extends BaseEditDTO {
 
     @Schema(description = "本次修改会话内上传的附件ID")
     private List<Long> attachmentIds;
+
+    @Schema(description = "本次保存要挂到本单的附件（含资料类型；缺类型则拒绝保存，dev-20261015-034）")
+    private List<AttachmentBindDTO> attachments;
 }

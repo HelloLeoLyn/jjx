@@ -31,7 +31,7 @@ public interface IInquiryService {
     /**
      * 新增询价单
      */
-    int insertInquiry(SalesInquiry inquiry);
+    int insertInquiry(SalesInquiry inquiry, java.util.List<com.jjx.sales.domain.dto.AttachmentBindDTO> attachments);
 
     /**
      * 编码生成器：按客户简称取下一个流水号（查询该客户已有产品编码第4-6位最大值+1）
