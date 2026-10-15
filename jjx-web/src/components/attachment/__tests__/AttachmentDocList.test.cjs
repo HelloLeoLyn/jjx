@@ -148,6 +148,20 @@ test('真实模板展示来源、类型、上传人；可配置列，只有预�
   assert.deepEqual(Array.from(h.state.visibleColumns.value, c => c.key), ['displayName', 'fileName'])
 })
 
+test('受控行：只渲染传入的行（不重排不去重），不发起文档查询，仅加载类型字典', async t => {
+  const controlled = [
+    { attachmentId: 9, id: 9, fileName: 'b.pdf', fileSize: 10, status: 'TRACE' },
+    { attachmentId: 9, id: 9, fileName: 'a.pdf', fileSize: 20, status: 'LEGACY' },
+  ]
+  const h = harness({ rows: controlled }); t.after(h.stop); await tick()
+  assert.deepEqual(h.calls.map(c => c[0]), ['types'])
+  assert.deepEqual(Array.from(h.state.rows.value, r => r.fileName), ['b.pdf', 'a.pdf'])
+  assert.equal(h.state.hasQuery.value, true)
+  const html = await h.html()
+  assert.ok(html.includes('b.pdf') && html.includes('a.pdf'))
+  assert.doesNotMatch(html, /未指定查询条件/)
+})
+
 test('来源ID与单号同时给出拒绝该段，链路继续查询', async t => {
   const h = harness({ sourceType: 'inquiry', sourceId: 7, sourceNo: 'INQ007', traceId: 'chain' }); t.after(h.stop); await tick()
   assert.equal(h.calls.some(c => c[0] === 'refs'), false)

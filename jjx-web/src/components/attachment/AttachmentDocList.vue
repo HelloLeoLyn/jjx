@@ -81,13 +81,27 @@ const props = withDefaults(
     AttachmentDocQuery & {
       columns?: readonly AttachmentFieldKey[]
       title?: string
+      /** 受控行：调用方直接给行（已排序去重）；给了就只渲染，不按参数查询 */
+      rows?: AttachmentDocRow[] | null
     }
   >(),
-  { title: '文档', includeLegacy: undefined }
+  { title: '文档', includeLegacy: undefined, rows: undefined }
 )
-const { rows, loading, messages, documentTypes, hasQuery, reload } = useAttachmentDocList(
-  () => props
+/** 受控行模式：不发起文档查询，只加载资料类型字典（供分类/类型标签渲染） */
+const isControlled = computed(() => props.rows != null)
+const {
+  rows: queriedRows,
+  loading,
+  messages,
+  documentTypes,
+  hasQuery: queriedHasQuery,
+  reload,
+} = useAttachmentDocList(
+  () => (isControlled.value ? {} : props),
+  { typesOnly: () => isControlled.value }
 )
+const rows = computed(() => (isControlled.value ? (props.rows ?? []) : queriedRows.value))
+const hasQuery = computed(() => isControlled.value || queriedHasQuery.value)
 const visibleColumns = computed(() =>
   (props.columns ?? documentColumnKeys).map((key) => attachmentFields[key])
 )

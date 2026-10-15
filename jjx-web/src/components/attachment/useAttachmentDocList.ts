@@ -51,8 +51,12 @@ function fromFile(row: FileRow, status: string): AttachmentDocRow {
   }
 }
 
-/** 参数只启用对应查询；合并时去重，不追加产品/链路等前端过滤。 */
-export function useAttachmentDocList(query: () => AttachmentDocQuery) {
+/** 参数只启用对应查询；合并时去重，不追加产品/链路等前端过滤。
+ *  options.typesOnly：受控行模式——不按参数查询，只加载资料类型字典（供标签渲染）。 */
+export function useAttachmentDocList(
+  query: () => AttachmentDocQuery,
+  options: { typesOnly?: () => boolean } = {}
+) {
   const rows = ref<AttachmentDocRow[]>([])
   const loading = ref(false)
   const messages = ref<string[]>([])
@@ -67,11 +71,12 @@ export function useAttachmentDocList(query: () => AttachmentDocQuery) {
   async function reload() {
     const current = ++requestId
     const q = { ...query() }
+    const typesOnly = options.typesOnly?.() === true
     rows.value = []
     messages.value = []
     loading.value = false
-    if (!hasQuery.value || disposed) return
-    loading.value = true
+    if ((!hasQuery.value && !typesOnly) || disposed) return
+    if (!typesOnly) loading.value = true
     const segments: AttachmentDocRow[][] = [[], [], [], []]
     const failures: string[] = []
     const isCurrent = () => !disposed && current === requestId
