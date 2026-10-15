@@ -15,6 +15,22 @@ import static org.mockito.Mockito.*;
 
 class AttachmentSourcePolicyTest {
     @Test
+    void singleProductOfReturnsOnlyWhenExactlyOneProduct() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.query(contains("sales_quotation_item"), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<AttachmentSourcePolicy.ProductRef>>any(), eq(1L)))
+                .thenReturn(List.of(new AttachmentSourcePolicy.ProductRef(2L, "YL002MEOO")));
+        when(jdbc.query(contains("sales_order_product"), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<AttachmentSourcePolicy.ProductRef>>any(), eq(9L)))
+                .thenReturn(List.of(new AttachmentSourcePolicy.ProductRef(2L, "A"), new AttachmentSourcePolicy.ProductRef(3L, "B")));
+        AttachmentSourcePolicy policy = new AttachmentSourcePolicy(jdbc);
+
+        assertEquals(2L, policy.singleProductOf("quotation", 1L).id());
+        assertEquals("YL002MEOO", policy.singleProductOf("quotation", 1L).code());
+        assertNull(policy.singleProductOf("sales_order", 9L)); // 多产品不猜
+        assertNull(policy.singleProductOf("purchase_invoice", 1L)); // 无产品来源不登记
+        assertNull(policy.singleProductOf("quotation", null)); // 无来源ID
+    }
+
+    @Test
     void taskAttachmentsUseBoardLoginBoundaryAndRequireExistingTask() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(contains("FROM sys_task"), eq(String.class), eq(42L)))

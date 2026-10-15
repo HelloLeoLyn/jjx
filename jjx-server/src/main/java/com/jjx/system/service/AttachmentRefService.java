@@ -38,7 +38,17 @@ public class AttachmentRefService {
     public Long create(AttachmentRefDTO request) {
         String source = sources.canonical(request.getSourceType());
         String sourceNo = sources.check(source, request.getSourceId(), true);
-        sources.checkProduct(source, request.getSourceId(), request.getProductId());
+        // 归属收口（dev-20261015-027）：前端可能只传编码或都没传 —— 来源唯一产品时后端兜底写全（多产品/无产品不猜）
+        Long productId = request.getProductId();
+        String productCode = optional(request.getProductCode(), 64);
+        if (productId == null || productCode == null) {
+            AttachmentSourcePolicy.ProductRef resolved = sources.singleProductOf(source, request.getSourceId());
+            if (resolved != null) {
+                if (productId == null) productId = resolved.id();
+                if (productCode == null) productCode = resolved.code();
+            }
+        }
+        sources.checkProduct(source, request.getSourceId(), productId);
         SysAttachment file = lock(request.getAttachmentId());
         if (file.getUploadState() == AttachmentUploadState.ASSET)
             throw new BusinessException("共享资产不能建立业务附件引用");
@@ -52,14 +62,14 @@ public class AttachmentRefService {
         }
         for (SysAttachmentRef ref : active) {
             if (source.equals(ref.getSourceType()) && request.getSourceId().equals(ref.getSourceId())
-                    && Objects.equals(request.getProductId(), ref.getProductId())) return ref.getId();
+                    && Objects.equals(productId, ref.getProductId())) return ref.getId();
         }
         String type = optional(request.getDocumentType(), 100);
         types.validate(type, source);
-        validateProductDrawing(source, request.getProductId(), file);
+        validateProductDrawing(source, productId, file);
         SysAttachmentRef ref = new SysAttachmentRef();
         ref.setAttachmentId(file.getId()); ref.setSourceType(source); ref.setSourceId(request.getSourceId());
-        ref.setSourceNo(sourceNo); ref.setProductCode(optional(request.getProductCode(), 64)); ref.setProductId(request.getProductId()); ref.setDocumentType(type);
+        ref.setSourceNo(sourceNo); ref.setProductCode(productCode); ref.setProductId(productId); ref.setDocumentType(type);
         ref.setDisplayName(optional(request.getDisplayName(), 255)); ref.setRemark(optional(request.getRemark(), 500));
         ref.setSortOrder(order(request.getSortOrder())); ref.setDeleted(false);
         ref.setCreateBy(StpUtil.getLoginIdAsString()); ref.setCreateTime(LocalDateTime.now());

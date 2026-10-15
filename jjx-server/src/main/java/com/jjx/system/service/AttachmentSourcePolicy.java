@@ -129,6 +129,30 @@ public class AttachmentSourcePolicy {
     );
 
     /** 来源清单唯一真源：字典 attachment_document_type.ext_data.sources 的取值必须落在此集合内。 */
+    /**
+     * 来源单据的「唯一产品」：仅当该来源恰好关联一个产品时返回，否则 {@code null}（多产品/无产品一律不猜）。
+     * 用途：建引用时兜底 product_code / product_id —— 口径「来源有产品就必须写全」（dev-20261015-027）。
+     */
+    public ProductRef singleProductOf(String type, Long sourceId) {
+        String sql = SINGLE_PRODUCT_SQL.get(canonical(type));
+        if (sql == null || sourceId == null) return null;
+        List<ProductRef> rows = jdbc.query(sql,
+            (rs, rowNum) -> new ProductRef(rs.getLong(1), rs.getString(2)), sourceId);
+        return rows.size() == 1 ? rows.get(0) : null;
+    }
+
+    /** 来源单据关联的产品（id + 编码）；只表示「唯一产品」，见 {@link #singleProductOf}。 */
+    public record ProductRef(Long id, String code) {}
+
+    /** 各来源的「唯一产品」查询（返回 0..N 行，由 singleProductOf 判定是否唯一）；无产品来源不登记。 */
+    private static final Map<String, String> SINGLE_PRODUCT_SQL = Map.of(
+        "product", "SELECT product_id, product_code FROM product WHERE product_id=?",
+        "inquiry", "SELECT DISTINCT p.product_id, p.product_code FROM sales_inquiry i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.inquiry_id=? AND i.deleted=0",
+        "quotation", "SELECT DISTINCT p.product_id, p.product_code FROM sales_quotation_item i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.quotation_id=?",
+        "sales_order", "SELECT DISTINCT p.product_id, p.product_code FROM sales_order_product i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.order_id=?",
+        "sample", "SELECT DISTINCT p.product_id, p.product_code FROM sales_sample_order i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.order_id=? AND i.deleted=0"
+    );
+
     public static Set<String> knownSourceTypes() {
         return SOURCES.keySet();
     }
