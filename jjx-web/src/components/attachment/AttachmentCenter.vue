@@ -94,24 +94,7 @@
 
     <!-- 附件详情（类型/展示名已改成列表行内编辑，这里给只读归属信息 + 备注/排序） -->
     <el-dialog v-model="metaVisible" title="附件详情" width="520px" append-to-body destroy-on-close>
-      <el-descriptions :column="1" border size="small" style="margin-bottom: 12px">
-        <el-descriptions-item label="原文件名">
-          {{ metaRow?.fileName || `附件 #${metaRow?.attachmentId ?? ''}` }}
-        </el-descriptions-item>
-        <el-descriptions-item label="展示文件名">
-          {{ metaRow?.displayName || '（未设置，用原文件名）' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="来源类型">{{ metaSourceTypeLabel }}</el-descriptions-item>
-        <el-descriptions-item label="来源单号">{{ metaRow?.sourceNo || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="产品编码">{{ metaRow?.productCode || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="资料类型">
-          {{ metaCategoryLabel }}<span v-if="metaRow?.documentType"> / {{ metaSecondLabel }}</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="大小">{{ formatSize(metaRow?.fileSize) }}</el-descriptions-item>
-        <el-descriptions-item label="上传人 / 时间">
-          {{ metaRow?.createBy || '-' }} / {{ metaRow?.createTime || '-' }}
-        </el-descriptions-item>
-      </el-descriptions>
+      <AttachmentDetailInfo :row="metaRow" :document-types="documentTypes" :source-type="props.sourceType" />
       <el-form label-width="80px">
         <el-form-item label="备注">
           <el-input v-model="metaForm.remark" maxlength="500" />
@@ -157,11 +140,10 @@ import {
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
 import AttachmentRefList from './AttachmentRefList.vue'
 import AttachmentDocList from './AttachmentDocList.vue'
+import AttachmentDetailInfo from './AttachmentDetailInfo.vue'
 import type { AttachmentFieldKey } from './attachmentFields'
 import type { AttachmentDocRow } from './useAttachmentDocList'
-import { AttachmentDocumentStatusEnum, AttachmentSourceTypeEnum, canonicalAttachmentSource } from '@/enums/system/AttachmentEnum'
-import { formatSize } from './attachmentFormat'
-import { useAttachmentDocTypes } from './useAttachmentDocTypes'
+import { AttachmentDocumentStatusEnum } from '@/enums/system/AttachmentEnum'
 import { useAttachmentPreview } from './useAttachmentPreview'
 import { useAttachmentRefs, type PendingEntry } from '@/composables/useAttachmentRefs'
 const props = withDefaults(
@@ -516,21 +498,6 @@ const metaForm = reactive({
   remark: '',
   sortOrder: 0,
 })
-const { categoryLabelOf: metaCategoryLabelOf, secondLabelOf: metaSecondLabelOf } = useAttachmentDocTypes(
-  computed(() => documentTypes.value),
-  () => props.sourceType
-)
-const metaSourceTypeLabel = computed(() =>
-  metaRow.value?.sourceType
-    ? AttachmentSourceTypeEnum.getLabel(canonicalAttachmentSource(metaRow.value.sourceType))
-    : '-'
-)
-const metaCategoryLabel = computed(() =>
-  metaRow.value?.documentType ? metaCategoryLabelOf(metaRow.value.documentType) : '-'
-)
-const metaSecondLabel = computed(() =>
-  metaRow.value?.documentType ? metaSecondLabelOf(metaRow.value.documentType) : '-'
-)
 
 function openMeta(row: AttachmentRefItem) {
   metaRow.value = row

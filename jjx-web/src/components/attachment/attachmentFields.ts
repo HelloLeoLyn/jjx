@@ -40,15 +40,15 @@ export const referenceColumns = [
   // attachmentFields.createTime,
 ]
 
-export const documentColumnKeys: readonly AttachmentFieldKey[] = [
+/** 只读表默认列（2026-10-15 用户要求：与可写表默认字段一致 + 状态/操作） */
+export const readonlyDocColumns: readonly AttachmentFieldKey[] = [
   'fileName',
+  'displayName',
   'sourceType',
   'sourceNo',
+  'productCode',
   'category',
   'documentType',
-  'fileSize',
-  'createBy',
-  'createTime',
   'status',
   'actions',
 ]

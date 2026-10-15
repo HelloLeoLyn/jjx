@@ -31,13 +31,10 @@
           >
             {{ row.fileName || '-' }}
           </el-button>
-          <el-button
-            v-else-if="column.render === 'download'"
-            link
-            type="primary"
-            @click="openUrl(downloadUrl(row))"
-            >下载</el-button
-          >
+          <template v-else-if="column.render === 'download'">
+            <el-button link type="primary" @click="openUrl(downloadUrl(row))">下载</el-button>
+            <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+          </template>
           <el-tag
             v-else-if="column.render === 'status'"
             v-bind="AttachmentDocumentStatusEnum.getTagProps(row.status)"
@@ -54,11 +51,15 @@
       :initial-index="viewerIndex"
       @close="close"
     />
+    <!-- 附件详情（只读；与可写表共用同一份信息块） -->
+    <el-dialog v-model="detailVisible" title="附件详情" width="520px" append-to-body>
+      <AttachmentDetailInfo :row="detailRow" :document-types="documentTypes" :source-type="sourceType" />
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { attachmentApi } from '@/api/system/attachment'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
 import {
@@ -66,7 +67,8 @@ import {
   AttachmentSourceTypeEnum,
   canonicalAttachmentSource,
 } from '@/enums/system/AttachmentEnum'
-import { attachmentFields, documentColumnKeys, type AttachmentFieldKey } from './attachmentFields'
+import { attachmentFields, readonlyDocColumns, type AttachmentFieldKey } from './attachmentFields'
+import AttachmentDetailInfo from './AttachmentDetailInfo.vue'
 import { formatSize, formatTime } from './attachmentFormat'
 import { useAttachmentPreview, type PreviewRow } from './useAttachmentPreview'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
@@ -112,8 +114,15 @@ const {
 const rows = computed(() => (isControlled.value ? (props.rows ?? []) : queriedRows.value))
 const hasQuery = computed(() => isControlled.value || queriedHasQuery.value)
 const visibleColumns = computed(() =>
-  (props.columns ?? documentColumnKeys).map((key) => attachmentFields[key])
+  (props.columns ?? readonlyDocColumns).map((key) => attachmentFields[key])
 )
+/** 详情弹窗（只读件与可写表用同一份信息块） */
+const detailVisible = ref(false)
+const detailRow = ref<AttachmentDocRow | null>(null)
+function openDetail(row: AttachmentDocRow) {
+  detailRow.value = row
+  detailVisible.value = true
+}
 const { categoryLabelOf, secondLabelOf } = useAttachmentDocTypes(
   documentTypes,
   () => props.sourceType || ''

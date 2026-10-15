@@ -67,11 +67,12 @@ function harness(params = {}, overrides = {}) {
   } }
 }
 
-test('无条件不请求，包括类型字典；默认十列且不含展示文件名', async t => {
+test('无条件不请求，包括类型字典；默认九列且含展示文件名与产品编码', async t => {
   const h = harness(); t.after(h.stop); await tick()
   assert.equal(h.calls.length, 0)
-  assert.equal(h.state.visibleColumns.value.length, 10)
-  assert.equal(h.state.visibleColumns.value.some(c => c.key === 'displayName'), false)
+  assert.equal(h.state.visibleColumns.value.length, 9)
+  assert.equal(h.state.visibleColumns.value.some(c => c.key === 'displayName'), true)
+  assert.equal(h.state.visibleColumns.value.some(c => c.key === 'productCode'), true)
   assert.match(await h.html(), /未指定查询条件/)
 })
 
@@ -137,10 +138,10 @@ test('单号无引用无法解析历史ID时提示，不误报成功、不影响
   assert.equal(h.calls.some(c => c[0] === 'legacy'), false)
 })
 
-test('真实模板展示来源、类型、上传人；可配置列，只有预览和下载', async t => {
+test('真实模板展示来源、类型、展示名与状态；可配置列，只有预览/下载/详情', async t => {
   const h = harness({ sourceType: 'inquiry', sourceId: 7 }, { refs: async () => ({ data: [refRow(1)] }) }); t.after(h.stop); await tick()
   const html = await h.html()
-  for (const text of ['drawing.pdf', '询价单', 'INQ007', '工程', '图纸', 'uploader', '2026-10-14', '已绑定', '下载']) assert.ok(html.includes(text), text)
+  for (const text of ['drawing.pdf', '询价单', 'INQ007', '工程', '图纸', '已绑定', '下载', '详情']) assert.ok(html.includes(text), text)
   assert.doesNotMatch(html, /解绑|移除|改名|改类型|上传附件/)
   assert.equal(h.state.downloadUrl(h.state.rows.value[0]), '/refs/101/download')
   h.state.previewRow(h.state.rows.value[0]); assert.equal(h.opened[0][0], '/refs/101/preview')
