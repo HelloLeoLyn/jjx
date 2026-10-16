@@ -1,4 +1,5 @@
 import { computed, ref, watch, onMounted, onBeforeUnmount, onDeactivated, type Ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
 import type {
   AttachmentDocumentTypeItem,
@@ -237,12 +238,77 @@ export function useAttachmentDraftInstance(source: string, form: {
     current = undefined
     draftId.value = ''
   }
+  /** 草稿摘要（客户 / 产品编码）：确认弹窗与下拉 label 共用。 */
+  function summaryOf(record: AttachmentDraftRecord): string {
+    const data = record.snapshot?.form || record.snapshot
+    const product = data?.productCode || data?.product?.productCode || data?.items?.[0]?.productCode
+    return [data?.customerName, product].filter(Boolean).join(' / ')
+  }
+  /**
+   * 放弃一份未保存草稿（dev-20261016-042）：清本地实例记录 + 本地待绑定队列 + 库里的草稿行；
+   * 已上传的 TEMP 文件不在这里删，留待 7 天到期由清理流程回收（与既有解绑口径一致）。
+   */
+  async function discard(id: string): Promise<{ ok: boolean; removed: number; failed: number }> {
+    const record = records.value.find((r) => r.id === id && r.owner === owner())
+    if (!record) return { ok: false, removed: 0, failed: 0 }
+    if (current?.id === id) {
+      current = { ...current, active: false }
+      write(current)
+      current = undefined
+      draftId.value = ''
+    }
+    let removed = 0
+    let failed = 0
+    try {
+      const res: any = await attachmentRefApi.drafts(id)
+      for (const row of (res?.data || []) as { id: number }[]) {
+        try { await attachmentRefApi.removeDraft(Number(row.id)); removed++ }
+        catch (error) { console.warn('草稿行移除失败', row?.id, error); failed++ }
+      }
+    } catch (error) { console.warn('读取草稿行失败，仅清理本地草稿', error) }
+    try { localStorage.removeItem(pendingKey(id)) } catch { /* 队列清理失败不影响其余 */ }
+    dropRecord(record)
+    records.value = records.value.filter((r) => r.id !== id)
+    return { ok: failed === 0, removed, failed }
+  }
+  /** 恢复草稿（带确认，dev-20261016-042）：整单覆盖当前表单；当前已填内容会先保留成一份草稿，可再切回。 */
+  async function confirmRestore(id: string): Promise<boolean> {
+    const record = records.value.find((r) => r.id === id && r.owner === owner())
+    if (!record) { ElMessage.warning('该草稿已不存在'); return false }
+    const detail = summaryOf(record)
+    try {
+      await ElMessageBox.confirm(
+        `将载入这份草稿的整单内容（客户/产品/明细 + 附件）${detail ? `：${detail}` : ''}。`
+          + '当前已填内容会先保留成一份草稿，可再切回。',
+        '恢复未保存草稿',
+        { type: 'warning', confirmButtonText: '载入草稿', cancelButtonText: '取消' },
+      )
+    } catch { return false }
+    return restore(id)
+  }
+  /** 放弃草稿（带确认，dev-20261016-042）：删本地记录/队列与库中草稿行，不可恢复。 */
+  async function confirmDiscard(id: string): Promise<boolean> {
+    const record = records.value.find((r) => r.id === id && r.owner === owner())
+    if (!record) { ElMessage.warning('该草稿已不存在'); return false }
+    const detail = summaryOf(record)
+    try {
+      await ElMessageBox.confirm(
+        `将放弃这份草稿${detail ? `（${detail}）` : ''}：本地草稿与已上传的临时附件都会丢弃，不可恢复。`,
+        '放弃草稿',
+        { type: 'warning', confirmButtonText: '放弃', cancelButtonText: '取消' },
+      )
+    } catch { return false }
+    const result = await discard(id)
+    if (result.failed) ElMessage.warning(`草稿已放弃，但有 ${result.failed} 个附件引用未能清理，可稍后在文件管理页清理`)
+    else ElMessage.success('草稿已放弃')
+    return true
+  }
   // 连同产品/报价行上下文恢复，避免附件恢复后被当前新单的产品信息误带。
   onMounted(() => watch(form.snapshot, remember, { deep: true, flush: 'post' }))
   onBeforeUnmount(close)
   onDeactivated(close)
   watch(() => user.userId, () => { close(); readRecords() })
-  return { draftId, choices, resumeId, startNew, restore, close, complete }
+  return { draftId, choices, resumeId, startNew, restore, close, complete, discard, confirmRestore, confirmDiscard }
 }
 
 function unwrap<T>(value: Ref<T> | T | undefined, fallback: T): T {

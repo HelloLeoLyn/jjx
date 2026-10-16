@@ -149,6 +149,7 @@
         :draft-id="draftId"
         :draft-choices="draftChoices"
         @restore-draft="restoreAttachmentDraft"
+        @discard-draft="discardAttachmentDraft"
         @submit="submitForm"
         @cancel="cancel"
       />
@@ -605,7 +606,12 @@ const draftSession = useAttachmentDraftInstance('quotation', {
 })
 const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
 function restoreAttachmentDraft(id: string) {
-  draftSession.restore(id)
+  // 恢复是整单覆盖（客户/产品/明细+附件）：先确认（dev-20261016-042）
+  void draftSession.confirmRestore(id)
+}
+function discardAttachmentDraft(id: string) {
+  // 放弃草稿：删本地记录/队列 + 库中草稿行（dev-20261016-042）
+  void draftSession.confirmDiscard(id)
 }
 
 // ============================================================

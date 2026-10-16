@@ -12,6 +12,18 @@
         </el-dropdown-menu>
       </template>
     </el-dropdown>
+    <el-dropdown
+      v-if="!formData.quotationId && draftChoices?.length"
+      style="margin-left: 8px"
+      @command="(id: string) => emit('discard-draft', id)"
+    >
+      <el-button plain type="danger">放弃草稿</el-button>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px">
       <el-row>
         <el-col :span="12">
@@ -374,6 +386,7 @@ const emit = defineEmits<{
   (e: 'submit'): void
   (e: 'cancel'): void
   (e: 'restore-draft', id: string): void
+  (e: 'discard-draft', id: string): void
 }>()
 
 const visible = ref(false)

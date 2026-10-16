@@ -166,6 +166,14 @@
           </el-dropdown-menu>
         </template>
       </el-dropdown>
+      <el-dropdown v-if="!currentId && draftChoices.length" style="margin-left: 8px" @command="discardAttachmentDraft">
+        <el-button plain type="danger">放弃草稿</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <AttachmentCenter
         ref="attachmentCenterRef"
         source-type="sample"
@@ -323,7 +331,12 @@ function ensureDraftId() {
   if (!id || !draftSession.restore(id)) draftSession.startNew()
 }
 function restoreAttachmentDraft(id: string) {
-  draftSession.restore(id)
+  // 恢复是整单覆盖（客户/产品/明细+附件）：先确认（dev-20261016-042）
+  void draftSession.confirmRestore(id)
+}
+function discardAttachmentDraft(id: string) {
+  // 放弃草稿：删本地记录/队列 + 库中草稿行（dev-20261016-042）
+  void draftSession.confirmDiscard(id)
 }
 
 
