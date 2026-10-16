@@ -236,7 +236,7 @@
           <div class="variable-panel">
             <div v-if="!variables.length && payloadSource === 'sample'" class="variable-empty">该事件还没有采集到变量（未触发过），可先使用通用变量。</div>
             <div v-for="item in variables" :key="item.key" class="variable-row">
-              <el-tag size="small">{{ `{${item.key}}` }}</el-tag>
+              <el-tag size="small">{{ '{' + item.key + '}' }}</el-tag>
               <el-tag size="small" type="info">{{ variableSourceLabel(item.source) }}</el-tag>
               <el-tooltip v-if="item.lastSeenAt" :content="`最近采集：${item.lastSeenAt}`" placement="top">
                 <span class="variable-last-seen">ⓘ</span>
