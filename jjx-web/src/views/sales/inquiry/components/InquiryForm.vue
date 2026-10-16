@@ -548,6 +548,9 @@ async function submitForm() {
     if (form.inquiryId) {
       await api.value.edit(payload)
       attachmentCenterRef.value?.clearPending()
+      // 保存即建引用，但组件只在 sourceId 变化时 load()；同一单据重开 sourceId 未变 → 列表会停在旧数据。
+      // 保存成功后显式重取一次（dev-20261016-035），落定语义不变（仍由单据「保存」负责）。
+      void attachmentCenterRef.value?.refresh()
       ElMessage.success('修改成功')
       emit('success', { mode: 'edit', inquiryId: form.inquiryId })
       if (props.mode === 'dialog') dialogVisibleClose()
@@ -556,6 +559,8 @@ async function submitForm() {
       const newId = (res as any)?.data?.inquiryId || 0
       form.inquiryId = newId
       attachmentCenterRef.value?.clearPending()
+      // 同上：新增虽会因 sourceId 变化自动重载，这里显式重取，保证拿到落定后的引用列表（dev-20261016-035）
+      void attachmentCenterRef.value?.refresh()
       ElMessage.success('已保存，附件已一并落定')
       emit('success', { mode: 'create', inquiryId: newId })
       // 新增保存后留在弹窗里，方便接着上传附件
