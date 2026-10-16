@@ -333,9 +333,12 @@
         :draft-id="rowAttachDraftId"
         :trace-id="props.formData.traceId"
         :product-code="rowAttachProductCode"
+        :actions="['download', 'detail', 'remove', 'save']"
+        :auto-bind="false"
         view-perm="sales:quotation:view"
         edit-perm="sales:quotation:edit"
         drop-zone
+        @save="onAttachSave"
       />
     </el-dialog>
   </el-dialog>
@@ -459,6 +462,17 @@ async function bindRowPendingAttachments() {
   if (failed) {
     ElMessage.warning(`明细行附件有 ${failed} 条绑定失败，可在该行「上传附件」里重试`)
   }
+}
+
+// ====== 附件区「保存」（dev-20261016-019：承 001 §7-1 方案 A）======
+// 附件区「保存」= 只提交「附件信息类」改动（二级类型/备注/排序；组件内 flushTypeEdits 已提交），
+// **不再落定**——落定（建引用）只由单据「保存」负责（保存成功后统一绑定待绑定队列）。
+function onAttachSave() {
+  if (!props.formData.quotationId) {
+    ElMessage.info('单据尚未保存：附件信息已暂存在本地，保存单据时会一并落定')
+    return
+  }
+  ElMessage.success('附件信息已保存；附件随「保存单据」落定')
 }
 
 const exchangeRateHint = computed(() => {
