@@ -6,6 +6,7 @@ import com.jjx.common.annotation.ValidationGroups;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
 import java.util.Date;
@@ -134,5 +135,26 @@ public class SalesOrderAddDTO {
 
     @NotEmpty(message = "产品明细ID不能为空", groups = ValidationGroups.Add.class)
     private List<SalesOrderProductDTO> items;
+
+    /**
+     * 随订单保存提交的附件（dev-20261017-001，照报价侧 dev-20261016-064 范式）。
+     * 仅承载入参，落定（建引用 / 草稿行转正）由保存流程在同一事务内处理，DTO 不落库。
+     */
+    @Schema(description = "订单附件（可选，支持整单附件及产品附件）")
+    private List<OrderAttachmentDTO> attachments;
+
+    /**
+     * 随单附件入参载体（dev-20261017-001）：复用 {@link AttachmentBindDTO} 的
+     * attachmentId / documentType（必填），另带可选的 productId / productCode 作为归属关联键。
+     */
+    @Data
+    @EqualsAndHashCode(callSuper = true)
+    public static class OrderAttachmentDTO extends AttachmentBindDTO {
+        @Schema(description = "产品ID（可选，附件归属关联键）")
+        private Long productId;
+
+        @Schema(description = "产品编码（可选，未建档产品的上下文信息）")
+        private String productCode;
+    }
 
 }

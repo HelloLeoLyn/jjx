@@ -12,7 +12,9 @@ import com.jjx.engineering.domain.entity.EngineeringRouting;
 import com.jjx.product.service.IEngineeringBomService;
 import com.jjx.product.service.IEngineeringRoutingService;
 import com.jjx.system.annotation.Event;
+import com.jjx.system.domain.dto.AttachmentRefDTO;
 import com.jjx.system.domain.entity.SysOperLog;
+import com.jjx.system.service.AttachmentRefService;
 import com.jjx.system.service.LogSaveService;
 import com.jjx.system.service.OperLogChangeRecorder;
 import com.jjx.system.utils.SecurityUtils;
@@ -79,6 +81,8 @@ public class OrderServiceImpl implements IOrderService {
     private final IEngineeringRoutingService routingService;
     private final LogSaveService logSaveService;
     private final OperLogChangeRecorder changeRecorder;
+    /** dev-20261017-001：订单保存（新增/编辑）时随单附件落定（与报价侧同口径）。 */
+    private final AttachmentRefService attachmentRefService;
 
     /**
      * 查询销售订单列表
@@ -158,6 +162,8 @@ public class OrderServiceImpl implements IOrderService {
             ensureProductIds(dto.getItems(), dto.getOrderType());
             dto.getItems().forEach(i -> i.setOrderId(entity.getOrderId()));
             orderProductService.batchAdd(dto.getItems());
+            // 随单附件落定（dev-20261017-001）：与订单建档、明细落库同一事务，任一条失败整单回滚
+            bindOrderAttachments(entity.getOrderId(), dto.getItems(), dto.getAttachments());
             // 2026-08-18 task 1047：写创建日志（带新单 traceId）——链路出现"创建"节点，
             // 且后续编辑/删除的 @Log 可回退继承 traceId，草稿期操作全部进链路
             saveOrderCreateLog(entity);
@@ -228,11 +234,75 @@ public class OrderServiceImpl implements IOrderService {
             ensureProductIds(dto.getItems(), dto.getOrderType());
             dto.getItems().forEach(i -> i.setOrderId(dto.getOrderId()));
             boolean ok = orderProductService.replaceItems(dto.getOrderId(), dto.getItems());
+            // 随单附件落定（dev-20261017-001）：与订单更新同一事务，任一条失败整单回滚
+            bindOrderAttachments(dto.getOrderId(), dto.getItems(), dto.getAttachments());
             // 2026-08-18 L3：字段级变更对比日志（谁/何时/改了什么）
             saveOrderUpdateChangeLog(existingOrder, oldItemVOs, dto);
             return ok;
         }
         throw new BusinessException(BusinessExceptionEnum.DB_UPDATE_FAILED);
+    }
+
+    /**
+     * 订单保存（新增/编辑）时把随单附件落定（dev-20261017-001，照报价侧 066/081）。
+     *
+     * <p>口径（jjx-docs/reference/attachment-refactor-decisions-dev-20261016-001.md §2/§4/§5）：
+     * 1）保存单据 = 建引用 + 草稿行转正（原子）——转正唯一入口是 {@link AttachmentRefService#create}，
+     *    本方法不写第二套转正 SQL；来源单号由 create 按来源自证取得，不在此传。
+     * 2）归属 = 订单 + 产品：整单级不传产品（product_id 留空）；行级 productId 优先取入参，
+     *    缺失则按明细编码回填（此时明细已保存，productId 已建档/回填）。
+     * 3）缺 attachmentId / documentType 一律抛业务异常（服务层兜底，与 Controller 校验同口径）。
+     * 4）本方法分别在 {@link #insertOrder} 与 {@link #updateOrder} 的
+     *    {@code @Transactional(rollbackFor = Exception.class)} 内执行：任一条失败直接抛出 ⇒ 整单回滚，
+     *    禁止 try-catch 吞掉造成「单据存了、附件没落」的半成功。
+     */
+    private void bindOrderAttachments(Long orderId, List<SalesOrderProductDTO> items,
+                                      List<SalesOrderAddDTO.OrderAttachmentDTO> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < attachments.size(); i++) {
+            SalesOrderAddDTO.OrderAttachmentDTO attachment = attachments.get(i);
+            if (attachment == null) {
+                throw new BusinessException("attachments[" + i + "] 不能为空，必须提供 attachmentId 和 documentType");
+            }
+            if (attachment.getAttachmentId() == null) {
+                throw new BusinessException("attachments[" + i + "].attachmentId 不能为空");
+            }
+            if (attachment.getDocumentType() == null || attachment.getDocumentType().isBlank()) {
+                throw new BusinessException("attachments[" + i + "].documentType 不能为空");
+            }
+        }
+        // 明细产品 id：编码 → productId（此时明细已保存，productId 已建档/回填）
+        Map<String, Long> productIdByCode = new HashMap<>();
+        if (items != null) {
+            for (SalesOrderProductDTO item : items) {
+                if (item.getProductCode() == null || item.getProductCode().isBlank() || item.getProductId() == null) {
+                    continue;
+                }
+                productIdByCode.putIfAbsent(item.getProductCode().trim(), item.getProductId());
+            }
+        }
+        int sortOrder = 0;
+        for (SalesOrderAddDTO.OrderAttachmentDTO attachment : attachments) {
+            String productCode = attachment.getProductCode() == null ? null : attachment.getProductCode().trim();
+            if (productCode != null && productCode.isEmpty()) {
+                productCode = null;
+            }
+            Long productId = attachment.getProductId();
+            if (productId == null && productCode != null) {
+                productId = productIdByCode.get(productCode);
+            }
+            AttachmentRefDTO ref = new AttachmentRefDTO();
+            ref.setAttachmentId(attachment.getAttachmentId());
+            ref.setSourceType("sales_order");
+            ref.setSourceId(orderId);
+            ref.setProductId(productId);
+            ref.setProductCode(productCode);
+            ref.setDocumentType(attachment.getDocumentType().trim());
+            ref.setSortOrder(sortOrder++);
+            attachmentRefService.create(ref);
+        }
     }
 
     /**

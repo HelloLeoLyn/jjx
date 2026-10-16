@@ -76,6 +76,7 @@ public class OrderController extends BaseController {
     @SaCheckPermission("sales:order:add")
     @PostMapping
     public Result<java.util.Map<String, Object>> addOrder(@Validated(ValidationGroups.Add.class) @RequestBody SalesOrderAddDTO dto) {
+        validateAttachments(dto.getAttachments());
         Long orderId = orderService.insertOrder(dto);
         java.util.Map<String, Object> data = new java.util.HashMap<>();
         data.put("orderId", orderId);
@@ -105,7 +106,31 @@ public class OrderController extends BaseController {
         if(!orderId.equals(dto.getOrderId())){
             throw new BusinessException(BusinessExceptionEnum.DATA_CONFLICT);
         }
+        validateAttachments(dto.getAttachments());
         return toAjax(orderService.updateOrder(dto));
+    }
+
+    /**
+     * 随单附件入参校验（dev-20261017-001）：缺 attachmentId / documentType 一律拒绝（与报价侧 065 同口径）。
+     * 服务层另有同口径兜底；真正落定（建引用 / 草稿行转正）在保存事务内完成。
+     */
+    private void validateAttachments(List<SalesOrderAddDTO.OrderAttachmentDTO> attachments) {
+        if (attachments == null) {
+            return;
+        }
+        for (int i = 0; i < attachments.size(); i++) {
+            SalesOrderAddDTO.OrderAttachmentDTO attachment = attachments.get(i);
+            String field = "attachments[" + i + "]";
+            if (attachment == null) {
+                throw new BusinessException(field + " 不能为空，必须提供 attachmentId 和 documentType");
+            }
+            if (attachment.getAttachmentId() == null) {
+                throw new BusinessException(field + ".attachmentId 不能为空");
+            }
+            if (attachment.getDocumentType() == null || attachment.getDocumentType().isBlank()) {
+                throw new BusinessException(field + ".documentType 不能为空");
+            }
+        }
     }
 
     /**

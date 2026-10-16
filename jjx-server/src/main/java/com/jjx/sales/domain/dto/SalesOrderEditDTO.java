@@ -132,4 +132,11 @@ public class SalesOrderEditDTO {
     @NotEmpty(message = "产品明细ID不能为空", groups = ValidationGroups.Update.class)
     @Valid  // 关键：添加此注解
     private List<SalesOrderProductDTO> items;
+
+    /**
+     * 随订单编辑保存提交的附件（dev-20261017-001）：仅承载入参，落定由保存流程在同一事务内处理。
+     * 与新增侧同一形状（复用 {@link SalesOrderAddDTO.OrderAttachmentDTO}）。
+     */
+    @Schema(description = "订单附件（可选，支持整单附件及产品附件）")
+    private List<SalesOrderAddDTO.OrderAttachmentDTO> attachments;
 }
