@@ -162,7 +162,7 @@
  * 信息编辑（二级类型/备注/排序）只写进会话的编辑差异，**绝不即时提交**；由会话的保存入口统一提交。
  * 行内/批量保存按钮**默认隐藏**，仅在调用方显式开启且会话已注入处理器时出现。
  */
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { AttachmentDocumentTypeItem, AttachmentRefItem } from '@/api/system/attachmentRef'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
@@ -214,6 +214,8 @@ const emit = defineEmits<{
 const session = props.session
 const canEdit = computed(() => session.canEdit.value)
 const documentTypes = session.documentTypes
+// 061：Manager 挂载即加载资料类型字典（原来只在「打开详情」时才加载，导致刚上传后一级/二级下拉为空）
+onMounted(() => { void session.loadDocumentTypes() })
 /** 列表变化 + 编辑差异实时通知调用方（仅条数不足以反映信息编辑） */
 function notifyChanged() {
   emit('changed', { count: session.refRows.value.length, dirtyCount: session.dirtyCount.value })
