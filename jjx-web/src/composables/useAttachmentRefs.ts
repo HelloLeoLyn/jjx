@@ -68,8 +68,15 @@ export interface UseAttachmentRefsOptions {
 
 const STORAGE_PREFIX = 'attach-pending:v2'
 
-/** 每个实例单独存储；页面生命周期标识只用于识别刷新，不作为附件身份。 */
-const DRAFT_INSTANCE_PREFIX = 'attach-instance:v1:'
+/** 每个实例单独存储（dev-20261016-041：改存 localStorage——关掉标签页后仍能在「恢复未保存草稿」里找回）。 */
+const DRAFT_INSTANCE_PREFIX = 'attach-instance:v2:'
+/** 旧版草稿实例键（sessionStorage，仅当次会话可见）：读到即迁到 localStorage，避免升级当次丢草稿。 */
+const DRAFT_INSTANCE_PREFIX_V1 = 'attach-instance:v1:'
+/** 「本标签页正在编辑哪份草稿」指针（sessionStorage）：刷新能自动恢复，新开的标签页不会抢。 */
+const DRAFT_ACTIVE_PREFIX = 'attach-active:v1:'
+/** 草稿保留期（天）与每人每来源条数上限：与 TEMP 附件 7 天到期对齐。 */
+const DRAFT_RETENTION_DAYS = 7
+const DRAFT_MAX_PER_SOURCE = 20
 const draftPageInstance = `${Date.now()}-${Math.random()}`
 export interface AttachmentDraftChoice { id: string; label: string }
 interface AttachmentDraftRecord {
@@ -93,39 +100,93 @@ export function useAttachmentDraftInstance(source: string, form: {
   const records = ref<AttachmentDraftRecord[]>([])
   const owner = () => String(user.userId ?? 'anonymous')
   const page = () => window.location.pathname + window.location.search + window.location.hash
+  const instanceKey = (id: string) => DRAFT_INSTANCE_PREFIX + id
+  const activeKey = () => DRAFT_ACTIVE_PREFIX + owner() + ':' + source
+  const pendingKey = (id: string) => `${STORAGE_PREFIX}:${owner()}:${source}:${id}`
   let current: AttachmentDraftRecord | undefined
   let restoring = false
+  /** 写入实例记录（localStorage 持久），并同步本标签页的「正在编辑」指针。 */
   function write(record: AttachmentDraftRecord) {
-    try { sessionStorage.setItem(DRAFT_INSTANCE_PREFIX + record.id, JSON.stringify(record)) }
-    catch (error) { console.warn('草稿会话保存失败，刷新恢复不可用', error) }
+    try { localStorage.setItem(instanceKey(record.id), JSON.stringify(record)) }
+    catch (error) { console.warn('草稿会话保存失败，关标签页后可能无法恢复', error) }
     records.value = [...records.value.filter((r) => r.id !== record.id), record]
+    try {
+      if (record.active) sessionStorage.setItem(activeKey(), record.id)
+      else if (sessionStorage.getItem(activeKey()) === record.id) sessionStorage.removeItem(activeKey())
+    } catch (error) { console.warn('草稿指针写入失败，刷新自动恢复不可用', error) }
+  }
+  /** 丢掉一条实例记录（不动待绑定队列，也不动库里的草稿行）。 */
+  function dropRecord(record: AttachmentDraftRecord) {
+    try { localStorage.removeItem(instanceKey(record.id)) }
+    catch (error) { console.warn('草稿会话清理失败', error) }
+    try { if (sessionStorage.getItem(activeKey()) === record.id) sessionStorage.removeItem(activeKey()) }
+    catch { /* 指针清理失败不影响主流程 */ }
   }
   function readRecords() {
+    const found: AttachmentDraftRecord[] = []
     try {
-      const found: AttachmentDraftRecord[] = []
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i)
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
         if (!key?.startsWith(DRAFT_INSTANCE_PREFIX)) continue
         try {
-          const r = JSON.parse(sessionStorage.getItem(key) || 'null')
+          const r = JSON.parse(localStorage.getItem(key) || 'null')
+          // 同一浏览器可能被换过账号：只认本人 + 本源；别人的原样留着，换回去还能看到。
           if (r?.id && r.owner === owner() && r.source === source) found.push(r)
         } catch (error) { console.warn('跳过损坏的草稿会话记录', key, error) }
       }
-      records.value = found
-      // 旧共享键仅迁移为可选恢复项，绝不自动拿它创建下一张新单。
+      // 迁移旧 sessionStorage 版实例（v1）→ localStorage，迁完清旧键。
+      const legacyKeys: string[] = []
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i)
+        if (key?.startsWith(DRAFT_INSTANCE_PREFIX_V1)) legacyKeys.push(key)
+      }
+      for (const key of legacyKeys) {
+        let parsed: AttachmentDraftRecord | null = null
+        try { parsed = JSON.parse(sessionStorage.getItem(key) || 'null') } catch { parsed = null }
+        try { sessionStorage.removeItem(key) } catch { /* 旧键清理失败不影响迁移 */ }
+        const r = parsed
+        const duplicated = r ? found.some((x) => x.id === r.id) : false
+        if (r && !duplicated && r.owner === owner() && r.source === source) {
+          try { localStorage.setItem(instanceKey(r.id), JSON.stringify(r)) } catch { /* 存储不可用：不迁移，只当次可用 */ }
+          found.push(r)
+        }
+      }
+    } catch (error) { console.warn('读取草稿会话失败', error) }
+    // 保留策略：超期（与 TEMP 一致 7 天）或超出上限的最老记录，连本地待绑定队列一起清，避免只增不减。
+    const cutoff = Date.now() - DRAFT_RETENTION_DAYS * 86400000
+    const kept = found
+      .filter((r) => {
+        const t = Date.parse(r.createdAt)
+        return !Number.isFinite(t) || t >= cutoff
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, DRAFT_MAX_PER_SOURCE)
+    const keptIds = new Set(kept.map((r) => r.id))
+    for (const r of found) {
+      if (keptIds.has(r.id)) continue
+      dropRecord(r)
+      try { localStorage.removeItem(pendingKey(r.id)) } catch { /* 队列清理失败不影响读取 */ }
+    }
+    records.value = kept
+    // 旧共享键仅迁移为可选恢复项，绝不自动拿它创建下一张新单。
+    try {
       const legacyKey = `attach-draft:v1:${owner()}:${source}`
       const legacyId = sessionStorage.getItem(legacyKey)
-      if (legacyId && !found.some((r) => r.id === legacyId)) {
+      if (legacyId && !kept.some((r) => r.id === legacyId)) {
         write({ id: legacyId, owner: owner(), source, page: page(), pageInstance: '',
           active: false, createdAt: new Date().toISOString() })
       }
       if (legacyId) sessionStorage.removeItem(legacyKey)
-    } catch (error) { console.warn('读取草稿会话失败', error) }
+    } catch (error) { console.warn('迁移旧共享草稿键失败', error) }
   }
   readRecords()
-  // 只在新页面装载时自动恢复仍打开的实例；同页再次挂载属于新建。
-  const resumeId: string | undefined = records.value.filter((r) => r.active && r.page === page()
-    && r.pageInstance !== draftPageInstance).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.id
+  // 只自动恢复「本标签页」仍打开的实例（刷新场景）；新开的标签页不抢，仍可从下拉手动恢复。
+  const resumeId: string | undefined = (() => {
+    try {
+      const id = sessionStorage.getItem(activeKey())
+      return id && records.value.some((r) => r.id === id && r.active) ? id : undefined
+    } catch { return undefined }
+  })()
   const choices = computed<AttachmentDraftChoice[]>(() => records.value
     .filter((r) => r.owner === owner() && r.id !== draftId.value)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -171,8 +232,7 @@ export function useAttachmentDraftInstance(source: string, form: {
   }
   function complete() {
     if (!current) return
-    try { sessionStorage.removeItem(DRAFT_INSTANCE_PREFIX + current.id) }
-    catch (error) { console.warn('清理已保存草稿会话失败', error) }
+    dropRecord(current)
     records.value = records.value.filter((r) => r.id !== current?.id)
     current = undefined
     draftId.value = ''
