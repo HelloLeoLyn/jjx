@@ -85,6 +85,7 @@
           variant="upload-only"
           title="本次收货票据"
           :auto-bind="false"
+          :actions="['remove']"
           :locked="submitting"
           :lock-reason="submitting ? '提交中，请稍候' : ''"
           :max-size-m-b="10"
@@ -366,6 +367,12 @@ const handleSubmit = async () => {
     }))
   if (!receiveItems.length) {
     ElMessage.warning('请至少输入一个物料的收货数量')
+    return
+  }
+  // 资料类型必选（dev-20261016-023，对齐 032）：缺二级类型的待绑定票据会被拦，避免「收货成功但票据未建引用」
+  const missingTypeCount = receiptAttachments.value?.getMissingTypeCount?.() ?? 0
+  if (missingTypeCount > 0) {
+    ElMessage.warning(`有 ${missingTypeCount} 个票据未选择资料类型，请先选择后再提交`)
     return
   }
   // ⑥ 二次确认（默认已填满，避免误提交）
