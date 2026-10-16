@@ -316,29 +316,29 @@
       </el-row>
       <el-row>
         <el-col :span="24">
-          <!-- 整单级附件（dev-20261016-051）：订单级上传入口 + 唯一管理区，共享同一份会话（index.vue 创建）。
-               附件信息类改动（二级类型/备注/排序）攒进会话差异，随单据保存统一提交（001 §7-1 方案 A）；
-               行内/批量保存默认隐藏，真实落定由 dev-20261016-049 注入处理器接通。
-               明细行「上传附件」只当上传入口（带该行稳定归属），看/管以本管理区为准。 -->
-          <div class="attachment-section">
-            <AttachmentUpload :session="session" button-text="上传整单附件" drop-zone />
-            <AttachmentManager
-              class="quotation-attachment-manager"
-              :session="session"
-              title="整单附件"
-              source-type="quotation"
-              :source-no="formData.quotationNo || ''"
-              show-ownership-filter
-              @changed="onAttachmentsChanged"
-              @error="onAttachmentError"
-            />
-          </div>
+          <!-- 整单级附件（dev-20261016-045）：不传 product-code = 整单归属；
+               随单据「保存」落定（001 §7-1 方案 A），附件区「保存」只提交类型等附件信息。
+               明细行「上传附件」只当上传入口（带该行产品编码），看/管以本列表为准。 -->
+          <AttachmentCenter
+            ref="attachmentCenterRef"
+            source-type="quotation"
+            :source-id="formData.quotationId || null"
+            :source-no="formData.quotationNo || ''"
+            :draft-id="props.draftId || ''"
+            :trace-id="formData.traceId"
+            title="整单附件"
+            :actions="['download', 'detail', 'remove', 'save']"
+            :auto-bind="false"
+            drop-zone
+            view-perm="sales:quotation:view"
+            edit-perm="sales:quotation:edit"
+            @save="onAttachSave"
+          />
         </el-col>
       </el-row>
     </el-form>
     <template #footer>
       <div class="dialog-footer">
-        <span v-if="attachmentDirtyCount" class="attach-dirty-hint">附件有 {{ attachmentDirtyCount }} 项改动待落定</span>
         <el-button type="primary" @click="handleSubmit">保 存</el-button>
         <el-button @click="handleClose">关 闭</el-button>
       </div>
@@ -353,29 +353,33 @@
       @confirm="onCodeGenConfirm"
     />
 
-    <!-- 明细行上传附件（dev-20261016-051）：只放上传入口（归属=本行稳定身份），不再挂第二个管理列表；
-         查看/管理统一在「整单附件」管理区，行上传弹窗可保留壳但不再重复管理。 -->
+    <!-- 明细行上传附件（S5 dev-20261013-043：附件挂本单 + 记该行产品编码，不建产品档案） -->
     <el-dialog
       v-model="rowAttachVisible"
       :title="`上传附件【${rowAttachProductCode || ''}】`"
-      width="800px"
+      width="1200px"
       append-to-body
     >
-      <AttachmentUpload
-        :session="session"
-        :ownership="rowOwnership"
-        button-text="上传该行附件"
+      <AttachmentCenter
+        v-if="rowAttachVisible"
+        source-type="quotation"
+        :source-id="props.formData.quotationId || null"
+        :draft-id="rowAttachDraftId"
+        :trace-id="props.formData.traceId"
+        :product-code="rowAttachProductCode"
+        :actions="['download', 'detail', 'remove', 'save']"
+        :auto-bind="false"
+        view-perm="sales:quotation:view"
+        edit-perm="sales:quotation:edit"
         drop-zone
+        @save="onAttachSave"
       />
-      <div class="row-attach-hint">
-        该行附件挂在报价单下并记本行产品；保存单据后随单落定。查看 / 管理请用「整单附件」。
-      </div>
     </el-dialog>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { formatCurrency } from '@/utils/format'
@@ -383,10 +387,9 @@ import { quotationApi } from '@/api/sales/quotation'
 import { listProduct } from '@/api/product'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import QuotationCodeGenDialog from './QuotationCodeGenDialog.vue'
-import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
-import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
-import type { AttachmentDraftChoice } from '@/composables/useAttachmentRefs'
-import { productOwnership, type AttachmentSession } from '@/composables/useAttachmentSession'
+import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import { flushStoredQueue, type AttachmentDraftChoice } from '@/composables/useAttachmentRefs'
+import { useUserStore } from '@/store/modules/user'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 import { parseProductCode } from '@/composables/useProductCode'
 
@@ -398,11 +401,6 @@ const props = defineProps<{
   /** 待绑定队列草稿标识（由父组件下发；新建未保存时报价单复用同一草稿）（dev-20261012-047） */
   draftId?: string
   draftChoices?: AttachmentDraftChoice[]
-  /** 共享附件会话（dev-20261016-051）：由报价编辑容器（index.vue）每实例创建一次，显式传入；
-   *  整单/行级上传入口与唯一管理区共用这一份会话，禁止在弹窗里另建会话/队列。 */
-  session: AttachmentSession
-  /** 附件待落定改动数（父组件经 changed 实时同步；仅用于提示，不参与保存判断） */
-  attachmentDirtyCount?: number
 }>()
 
 const emit = defineEmits<{
@@ -411,8 +409,6 @@ const emit = defineEmits<{
   (e: 'cancel'): void
   (e: 'restore-draft', id: string): void
   (e: 'discard-draft', id: string): void
-  (e: 'changed', payload: { count: number; dirtyCount: number }): void
-  (e: 'error', payload: { action: string; message: string }): void
 }>()
 
 const visible = ref(false)
@@ -438,74 +434,82 @@ const usedSerialsForCodeGen = computed(() => {
     .map((s: any) => String(s).trim().padStart(3, '0'))
 })
 
-// 明细行「上传附件」（S5 dev-20261013-043；dev-20261016-051 改为仅上传入口，共享会话）
+// 明细行「上传附件」（S5 dev-20261013-043）
 const rowAttachVisible = ref(false)
-/** 当前打开上传弹窗的明细行（用于解析稳定归属：rowKey 稳定行键 + productId + productCode） */
-const rowAttachRow = ref<any>(null)
-const rowAttachProductCode = computed(() => rowAttachRow.value?.productCode || '')
-watch(() => props.draftId, () => { rowAttachVisible.value = false; rowAttachRow.value = null })
-const uploadedAttachmentIds = ref<number[]>([])
-
-/** 明细行的稳定归属：rowKey 用随草稿快照恢复的行内稳定键（不用数组下标/可变编码）；
- *  正式 product_id 存在时优先，新建产品无 ID 也照常上传（临时身份仅前端承接，不冒充 product_id）。 */
-const rowOwnership = computed(() =>
-  rowAttachRow.value
-    ? productOwnership({
-        rowKey: ensureRowKey(rowAttachRow.value),
-        productId: rowAttachRow.value.productId ?? null,
-        productCode: rowAttachRow.value.productCode ?? null,
-        label: rowAttachRow.value.productCode ? `产品 ${rowAttachRow.value.productCode}` : undefined,
-      })
-    : null,
+const rowAttachProductCode = ref('')
+/** 实例 ID + 产品编码：两张报价即使产品编码相同也不共用队列。 */
+const rowAttachDraftId = computed(() =>
+  rowAttachProductCode.value
+    ? `${props.draftId || ''}::r:${rowAttachProductCode.value}`
+    : props.draftId || ''
 )
-
-/** 给明细行分配稳定行键（存进行对象本身 → 随草稿快照序列化恢复；不使用数组下标/可变编码） */
-function ensureRowKey(row: any): string {
-  if (!row) return ''
-  if (!row.__rowKey) {
-    row.__rowKey = `qt-${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`
-  }
-  return row.__rowKey
-}
-
-/** 产品 ID 回填后把本行既有待保存附件的归属键从 row:<行键> 归一为 product:<id>，保持归属映射稳定（不串行） */
-function retagRowPending(row: any) {
-  const productId = row?.productId
-  if (productId == null || !props.session) return
-  const from = `row:${ensureRowKey(row)}`
-  const to = `product:${productId}`
-  let touched = false
-  for (const entry of props.session.pending.value) {
-    if (entry.ownershipKey === from) {
-      entry.ownershipKey = to
-      touched = true
+watch(() => props.draftId, () => { rowAttachVisible.value = false; rowAttachProductCode.value = '' })
+const uploadedAttachmentIds = ref<number[]>([])
+const userStore = useUserStore()
+/** 公共附件中心（报价单通用附件；dev-20261012-047） */
+const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
+/** 保存成功后把待绑定（TEMP）附件一次性绑定到本报价单（照询价单：nextTick + 异常隔离 + partial/all-failed 提示） */
+async function bindPendingAttachments() {
+  await nextTick()
+  try {
+    const result = await attachmentCenterRef.value?.bindPending()
+    if (result) {
+      if (result.status === 'document-not-saved') {
+        ElMessage.warning('报价单尚未保存，附件仍为待绑定状态')
+        return
+      }
+      if (result.status === 'partial') {
+        ElMessage.warning(
+          `报价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`
+        )
+      } else if (result.status === 'all-failed') {
+        ElMessage.error(
+          `报价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`
+        )
+      }
     }
+    // 行级附件（明细行「上传附件」）：保存后按各行草稿键统一绑定（带该行产品编码）
+    await bindRowPendingAttachments()
+    // 同单据重开 sourceId 未变，组件不会自动重载（同 dev-20261016-035）；保存成功后显式重取一次整单列表
+    void attachmentCenterRef.value?.refresh()
+  } catch (e: any) {
+    // 异常隔离：报价单此时已保存成功，附件异常不得冒泡成「整单保存失败」
+    console.error('附件绑定异常（报价单已保存）:', e)
+    ElMessage.error(`附件处理失败：${e?.message || '未知错误'}，可在附件区重试绑定`)
   }
-  if (touched) props.session.persist()
 }
 
-/** 本行已挂附件数（待保存 + 已绑定）；用于阻止「有附件的行被直接删除、附件被默默转整单」 */
-function countRowAttachments(row: any): number {
-  if (!row || !props.session) return 0
-  const keys = new Set<string>()
-  if (row.__rowKey) keys.add(`row:${row.__rowKey}`)
-  if (row.productId != null) keys.add(`product:${row.productId}`)
-  if (row.productCode) keys.add(`pc:${row.productCode}`)
-  let count = props.session.pending.value.filter((e) => e.ownershipKey && keys.has(e.ownershipKey)).length
-  // 058：已绑定引用按 正式 productId 或（无 id 时）旧 productCode 归属一并计数，避免漏旧编码引用
-  count += props.session.refRows.value.filter((r) =>
-    (row.productId != null && r.productId === row.productId)
-    || (row.productId == null && !!row.productCode && r.productId == null && r.productCode === row.productCode)
-  ).length
-  return count
+/** 绑定明细行「上传附件」的待绑定队列（按行草稿键；绑定带该行产品编码。仅单据已保存时有效） */
+async function bindRowPendingAttachments() {
+  const sourceId = props.formData.quotationId
+  if (!sourceId) return
+  let failed = 0
+  for (const row of props.formData.items || []) {
+    const code = (row as any)?.productCode
+    if (!code) continue
+    const r = await flushStoredQueue({
+      userId: userStore.userId,
+      sourceType: 'quotation',
+      draftId: `${props.draftId || ''}::r:${code}`,
+      sourceId,
+      productCode: code,
+    })
+    failed += r.failed
+  }
+  if (failed) {
+    ElMessage.warning(`明细行附件有 ${failed} 条绑定失败，可在该行「上传附件」里重试`)
+  }
 }
 
-/** 管理区实时变更通知：只转发，真正的数据以共享会话（父组件持有）为准 */
-function onAttachmentsChanged(payload: { count: number; dirtyCount: number }) {
-  emit('changed', payload)
-}
-function onAttachmentError(payload: { action: string; message: string }) {
-  emit('error', payload)
+// ====== 附件区「保存」（dev-20261016-019：承 001 §7-1 方案 A）======
+// 附件区「保存」= 只提交「附件信息类」改动（二级类型/备注/排序；组件内 flushTypeEdits 已提交），
+// **不再落定**——落定（建引用）只由单据「保存」负责（保存成功后统一绑定待绑定队列）。
+function onAttachSave() {
+  if (!props.formData.quotationId) {
+    ElMessage.info('单据尚未保存：附件信息已暂存在本地，保存单据时会一并落定')
+    return
+  }
+  ElMessage.success('附件信息已保存；附件随「保存单据」落定')
 }
 
 const exchangeRateHint = computed(() => {
@@ -640,9 +644,7 @@ const openRowAttachment = (row: any) => {
     ElMessage.warning('请先生成产品编码')
     return
   }
-  ensureRowKey(row)
-  retagRowPending(row)
-  rowAttachRow.value = row
+  rowAttachProductCode.value = row.productCode
   rowAttachVisible.value = true
 }
 
@@ -715,14 +717,6 @@ const addItem = () => {
 }
 
 const removeItem = (index: number) => {
-  const row = props.formData.items[index]
-  const attached = countRowAttachments(row)
-  if (attached > 0) {
-    ElMessage.warning(
-      `该明细行还有 ${attached} 个附件，请先在「整单附件」中移除相关附件后再删除该行（附件不会自动转为整单归属）`
-    )
-    return
-  }
   props.formData.items.splice(index, 1)
   calculateTotalAmount()
 }
@@ -818,6 +812,9 @@ function parseCodeFromProductCode(code?: string | null): Partial<ProductCodeStat
 defineExpose({
   formRef,
   calculateTotalAmount,
+  bindPendingAttachments,
+  /** 保存前校验用：待绑定队列中尚未选择二级资料类型的条数（dev-20261015-032） */
+  getMissingTypeCount: () => attachmentCenterRef.value?.getMissingTypeCount?.() ?? 0,
 })
 </script>
 
@@ -834,30 +831,7 @@ defineExpose({
   margin-left: 8px;
 }
 .dialog-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.attach-dirty-hint {
-  margin-right: auto;
-  font-size: 12px;
-  color: #e6a23c;
-}
-.attachment-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.quotation-attachment-manager {
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  padding: 8px;
-}
-.row-attach-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #909399;
+  text-align: right;
 }
 .sample-code {
   color: #409eff;
