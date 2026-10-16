@@ -161,6 +161,18 @@
       </el-table>
       <el-empty v-if="!cleanupCandidates.length" description="没有到期且无有效引用的附件" :image-size="50" />
     </el-card>
+    <!-- 过期草稿（未保存单据的待保存附件草稿行；>保留天数未落定即视为放弃） -->
+    <el-card shadow="never" style="margin-top: 12px">
+      <template #header>
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <span>过期草稿（未保存单据上传的待保存附件；超过 {{ DRAFT_RETENTION_DAYS }} 天仍未落定即视为放弃）</span>
+          <el-button size="small" type="danger" plain :loading="cleaningDrafts" @click="runCleanupDrafts">清理过期草稿</el-button>
+        </div>
+      </template>
+      <div class="stat-sub">
+        清理会把过期草稿行软删，并把其临时文件一并标记到期（随后在「待清理」区释放）。清理后该草稿无法再恢复。
+      </div>
+    </el-card>
     <!-- 回收站 -->
     <el-card shadow="never" header="回收站（软删除附件，可恢复；物理删除已禁用）" style="margin-top: 12px">
       <div style="margin-bottom: 8px; display: flex; justify-content: flex-end">
@@ -319,6 +331,36 @@ const CLEANUP_MAX_PAGES = 5
 const cleanupCandidates = ref<any[]>([])
 const previewing = ref(false)
 const purging = ref(false)
+/** 过期草稿清理（dev-20261016-043）：与 TEMP 附件到期口径一致，默认 7 天。 */
+const DRAFT_RETENTION_DAYS = 7
+const cleaningDrafts = ref(false)
+
+/**
+ * 清理过期草稿行（未保存单据上传的待保存附件）：>N 天未落定即软删，
+ * 并把其 TEMP 文件一并标记到期（随后在「待清理」区释放）。不可恢复，故先二次确认。
+ */
+async function runCleanupDrafts() {
+  try {
+    await ElMessageBox.confirm(
+      `将清理超过 ${DRAFT_RETENTION_DAYS} 天仍未落定的草稿行（未保存单据上传的待保存附件），`
+        + '并把其临时文件一并标记到期、随后在「待清理」区释放。清理后这些草稿无法再恢复。',
+      '清理过期草稿',
+      { confirmButtonText: '确认清理', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch { return }
+  cleaningDrafts.value = true
+  try {
+    const res: any = await attachmentRefApi.draftsCleanup(DRAFT_RETENTION_DAYS)
+    const count = Number(res?.data ?? 0)
+    ElMessage.success(count ? `已清理 ${count} 条过期草稿行` : '没有超过保留期的草稿行')
+    loadCleanupCandidates()
+    loadStats()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '清理过期草稿失败')
+  } finally {
+    cleaningDrafts.value = false
+  }
+}
 
 /** 预演只读：返回「到期且无有效引用」的行（含 fileName/size/deadline），用于页面待清理区。 */
 async function fetchEligibleRows(): Promise<any[]> {

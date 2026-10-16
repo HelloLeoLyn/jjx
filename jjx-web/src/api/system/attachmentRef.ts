@@ -176,6 +176,10 @@ export const attachmentRefApi = {
   removeDraft(id: number): AxiosPromise<void> {
     return request({ url: `/system/attachment/refs/drafts/${id}`, method: 'delete' })
   },
+  /** 清理过期草稿行（>N 天未落定；连同其 TEMP 文件标到期）+ 返回清理条数 —— dev-20261016-043 */
+  draftsCleanup(days = 7): AxiosPromise<number> {
+    return request({ url: '/system/attachment/refs/drafts/cleanup', method: 'post', params: { days } })
+  },
 
   /** 建立引用（同来源同附件同产品幂等：返回原 refId） */
   createRef(body: AttachmentRefCreateBody): AxiosPromise<number> {
