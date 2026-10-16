@@ -10,6 +10,7 @@ import com.jjx.sales.domain.entity.SalesQuotationItem;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -172,6 +173,20 @@ public class SalesQuotationAddDTO {
     @TableField(exist = false)
     @Schema(description = "报价单明细（非表字段，保存/查询时处理）")
     private List<SalesQuotationItem> items;
+
+    /** 随报价单保存提交的附件，仅承载入参，落定由保存流程处理。 */
+    @Schema(description = "报价附件（可选，支持整单附件及产品附件）")
+    private List<QuotationAttachmentDTO> attachments;
+
+    @Data
+    @EqualsAndHashCode(callSuper = true)
+    public static class QuotationAttachmentDTO extends AttachmentBindDTO {
+        @Schema(description = "产品ID（可选，附件归属关联键）")
+        private Long productId;
+
+        @Schema(description = "产品编码（可选，未建档产品的上下文信息）")
+        private String productCode;
+    }
 
    
 }
