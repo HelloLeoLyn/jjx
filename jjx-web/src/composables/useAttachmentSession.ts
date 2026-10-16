@@ -5,6 +5,7 @@ import {
   type PendingEntry,
 } from '@/composables/useAttachmentRefs'
 import type { AttachmentDocumentTypeItem, AttachmentRefItem } from '@/api/system/attachmentRef'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
 
 /**
  * 附件共享会话（dev-20261016-048 第一阶段 A 公共能力）
@@ -159,6 +160,8 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
   const edits = reactive<Record<number, Omit<AttachmentMetaEdit, 'refId'>>>({})
   const uploadingCount = ref(0)
   const saving = ref(false)
+  /** 正在提交保存的行（refId）：用于提交期间锁定对应行，防重复提交/并发编辑（dev-20261016-048） */
+  const savingRefIds = ref<Set<number>>(new Set())
   /** 已移除但可能仍有迟到回包的 attachmentId：回包不得重新加回 */
   const suppressed = ref<Set<number>>(new Set())
 
@@ -246,11 +249,23 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
     return { uploads, updates, total: uploads.length + updates.length }
   }
 
-  /** 保存前校验（例如待保存附件缺资料类型） */
+  /** 保存前校验：资料类型缺失之外，还覆盖上传未完成、无权限/锁定、正在处理中的待保存行 */
   function validate(scope: AttachmentSaveScope = { kind: 'all' }): AttachmentValidation {
     const issues: AttachmentValidationIssue[] = []
+    // 权限/锁定：无编辑能力时一律不得进入保存（不只靠 UI 隐藏）
+    if (!store.canEdit.value) {
+      issues.push({ key: -1, message: '当前无附件编辑权限或已被业务锁定，不能保存附件改动' })
+    }
+    // 上传未完成：有在途上传时不允许提交，避免与未落定队列竞争
+    if (uploadingCount.value > 0) {
+      issues.push({ key: -2, message: '有附件正在上传，请等待上传完成后再保存' })
+    }
     if (scope.kind === 'all') {
       for (const entry of store.pending.value) {
+        if (entry.state === 'binding') {
+          issues.push({ key: entry.attachmentId, message: `附件「${entry.fileName || entry.attachmentId}」正在处理中，请稍后` })
+          continue
+        }
         if (!entry.documentType) {
           issues.push({ key: entry.attachmentId, message: `待保存附件「${entry.fileName || entry.attachmentId}」未选择资料类型（二级）` })
         }
@@ -278,11 +293,18 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
   async function saveChanges(changes: AttachmentChanges): Promise<AttachmentSaveResult> {
     if (!saveHandler) throw new Error('未配置保存处理器，不能保存附件改动')
     saving.value = true
+    const lockedIds = changes.updates.map((u) => u.refId)
+    if (lockedIds.length) savingRefIds.value = new Set([...savingRefIds.value, ...lockedIds])
     try {
       const result = await saveHandler(changes)
       acceptSaved(result ?? {})
       return result ?? {}
     } finally {
+      if (lockedIds.length) {
+        const next = new Set(savingRefIds.value)
+        for (const id of lockedIds) next.delete(id)
+        savingRefIds.value = next
+      }
       saving.value = false
     }
   }
@@ -318,10 +340,15 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
     }
   }
 
-  /** 即时移除待保存附件（草稿移除草稿/队列项，不删文件）；成功后同步队列/选中，迟到回包不复活 */
-  function removePending(attachmentId: number) {
-    suppressed.value.add(attachmentId)
-    store.removePending(attachmentId)
+  /** 即时移除待保存附件（草稿移除草稿/队列项，不删文件）：
+   *  先删草稿行，成功才清队列项并登记抑制（迟到回包不复活）；失败抛错，由调用方保留原行。 */
+  async function removePending(attachmentId: number) {
+    const entry = store.pending.value.find((e) => e.attachmentId === attachmentId)
+    if (entry?.draftRefId) {
+      await attachmentRefApi.removeDraft(entry.draftRefId) // 失败向上抛：失败保持原行
+    }
+    suppressed.value = new Set([...suppressed.value, attachmentId])
+    store.removePendingLocal(attachmentId)
   }
 
   /** 即时移除已绑定引用（解除引用，不删文件）；成功清该行编辑差异 */
@@ -356,6 +383,7 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
     uploadingCount,
     uploading,
     saving,
+    savingRefIds,
     canSave,
     ownerships,
     // 编辑差异

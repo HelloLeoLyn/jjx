@@ -43,20 +43,7 @@
       @error="onUploaderError"
     />
 
-    <!-- 共享会话模式：列表区交由 AttachmentManager（不保留两套可变状态）。旧调用方不传 session 走下面旧路径。 -->
-    <AttachmentManager
-      v-if="props.session"
-      :session="props.session"
-      :title="title"
-      :source-type="props.sourceType"
-      :source-no="props.sourceNo"
-      :lock-reason="props.lockReason"
-      @changed="(p) => emit('changed', p)"
-      @error="onRefListError"
-    />
-
-    <!-- 待绑定、引用和历史只读附件共用一张表（旧路径） -->
-    <template v-if="!props.session">
+    <!-- 待绑定、引用和历史只读附件共用一张表 -->
     <el-empty
       v-if="
         showList &&
@@ -131,7 +118,6 @@
       :initial-index="viewerIndex"
       @close="closeViewer()"
     />
-    </template>
   </div>
 </template>
 
@@ -156,9 +142,6 @@ import {
 } from '@/api/system/attachmentRef'
 import AttachmentTempUploader from './AttachmentTempUploader.vue'
 import AttachmentRefList from './AttachmentRefList.vue'
-import AttachmentManager from './AttachmentManager.vue'
-import type { AttachmentSession, AttachmentOwnership } from '@/composables/useAttachmentSession'
-import { orderOwnership, productOwnership } from '@/composables/useAttachmentSession'
 import type { AttachmentAction } from './attachmentActions'
 import AttachmentDocList from './AttachmentDocList.vue'
 import AttachmentDetailInfo from './AttachmentDetailInfo.vue'
@@ -203,9 +186,6 @@ const props = withDefaults(
     actions?: AttachmentAction[]
     /** 业务锁定原因（如"已审核，不可再改"）：有值时写操作按钮置灰并显示原因（dev-20261015-028） */
     lockReason?: string
-    /** 共享会话（dev-20261016-048）：由单据编辑容器每实例创建一次并显式传入。
-     *  传入时列表区改用 AttachmentManager、上传走会话；**不传 = 旧行为不变**（默认兼容真实调用方）。 */
-    session?: AttachmentSession | null
   }>(),
   {
     sourceId: null,
@@ -238,7 +218,6 @@ const props = withDefaults(
     productCode: null,
     drawingMeta: null,
     uploadBlocked: '',
-    session: null,
   }
 )
 
@@ -258,8 +237,7 @@ const centerVariant = computed(() => props.variant ?? props.mode ?? 'panel')
 
 const refs = useAttachmentRefs({
   sourceType: toRef(props, 'sourceType'),
-  // 传入共享会话时，Center 不再自己加载（避免两套可变状态）：legacy 源置空 + 关闭自动加载。
-  sourceId: computed(() => (props.session ? null : props.sourceId ?? null)),
+  sourceId: toRef(props, 'sourceId'),
   draftId: toRef(props, 'draftId'),
   traceId: toRef(props, 'traceId'),
   readonly: toRef(props, 'readonly'),
@@ -269,7 +247,6 @@ const refs = useAttachmentRefs({
   productId: toRef(props, 'productId'),
   productCode: toRef(props, 'productCode'),
   drawingMeta: toRef(props, 'drawingMeta'),
-  autoLoad: !props.session,
 })
 
 const {
@@ -326,8 +303,7 @@ async function loadTrace() {
   traceRows.value = []
   traceError.value = ''
   traceLoading.value = false
-  // 共享会话模式：列表/链路由 AttachmentManager + 会话负责，Center 不再拉旧链路段。
-  if (props.session || !canView.value || !props.traceId || props.productCode) return
+  if (!canView.value || !props.traceId || props.productCode) return
   traceLoading.value = true
   try {
     const res: any = await attachmentApi.listByTrace(props.traceId)
@@ -398,43 +374,10 @@ function onUploaderError(message: string) {
 }
 
 // ==================== 上传 / 绑定 ====================
-const legacyUploading = ref(false)
+const uploading = ref(false)
 let activeUploads = 0
-/** 上传归属：有产品传产品级（稳定键），否则订单级；发起时固定（dev-20261016-048） */
-const uploadOwnership = computed<AttachmentOwnership>(() => {
-  if (props.productId != null || props.productCode) {
-    return productOwnership({
-      rowKey: `center:${props.productCode ?? props.productId}`,
-      productId: props.productId ?? null,
-      productCode: props.productCode ?? null,
-    })
-  }
-  return orderOwnership()
-})
-/** 共享会话模式的上传：归属由会话在执行时固定，入口不另建队列 */
-async function uploadViaSession(files: File[]) {
-  const session = props.session
-  if (!session) return
-  legacyUploading.value = ++activeUploads > 0
-  try {
-    for (const file of files) {
-      try {
-        const attachmentId = await session.upload(file, uploadOwnership.value)
-        emit('uploaded', { attachmentId, temp: true, name: file.name })
-        emit('changed', { count: session.pendingCount.value })
-      } catch (e: any) {
-        const message = e?.message || '附件上传失败'
-        ElMessage.error(message)
-        emit('error', { action: 'upload', message })
-      }
-    }
-  } finally {
-    legacyUploading.value = --activeUploads > 0
-  }
-}
 async function onFiles(files: File[]) {
-  if (props.session) return uploadViaSession(files)
-  legacyUploading.value = ++activeUploads > 0
+  uploading.value = ++activeUploads > 0
   try {
     for (const file of files) {
       try {
@@ -465,7 +408,7 @@ async function onFiles(files: File[]) {
       }
     }
   } finally {
-    legacyUploading.value = --activeUploads > 0
+    uploading.value = --activeUploads > 0
   }
 }
 
@@ -599,26 +542,15 @@ function downloadUrlByRef(refId: number) {
 }
 
 defineExpose({
-  refresh: () => (props.session ? props.session.refresh() : Promise.all([load(), loadTrace()])),
+  refresh: () => Promise.all([load(), loadTrace()]),
   bindPending,
-  /** 待保存/待绑定条数：共享会话模式读会话，否则读旧队列 */
-  pendingCount: computed(() => (props.session ? props.session.pendingCount.value : pendingCount.value)),
+  pendingCount,
   /** 保存前校验用：待绑定队列中尚未选择二级资料类型的条数（dev-20261015-032） */
-  getMissingTypeCount: () => (props.session
-    ? props.session.pending.value.filter((e) => !e.documentType).length
-    : pendingMissingTypeCount.value),
-  uploading: computed(() => (props.session ? props.session.uploading.value : legacyUploading.value)),
-  pendingEntries: computed(() => (props.session ? props.session.pending.value : pending.value)),
+  getMissingTypeCount: () => pendingMissingTypeCount.value,
+  uploading,
+  pendingEntries: pending,
   /** 业务服务已在事务内绑定成功，或用户放弃草稿时，仅清理本地队列。 */
-  clearPending: () => {
-    if (props.session) {
-      props.session.pending.value = []
-      props.session.persist()
-      return
-    }
-    pending.value = []
-    persist()
-  },
+  clearPending: () => { pending.value = []; persist() },
 })
 </script>
 

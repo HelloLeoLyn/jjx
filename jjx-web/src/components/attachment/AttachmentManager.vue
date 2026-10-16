@@ -50,7 +50,7 @@
       :selectable="canEdit ? (row: TableRow) => row.kind === 'ref' : undefined"
       @selection-change="onSelectionChange"
       @preview="previewRow"
-      @download="(row) => emit('download', refOf(row))"
+      @download="(row) => onDownload(refOf(row))"
       @detail="(row) => onDetail(row)"
     >
       <template #status="{ row }">
@@ -73,6 +73,7 @@
           :category="categoryOfRow(row)"
           :document-types="documentTypes"
           :source-type="sourceType"
+          :disabled="savingRow(row)"
           @update:category="(v) => onRowCategory(row, v)"
         />
         <span v-else>{{ textOf('category', row) }}</span>
@@ -84,6 +85,7 @@
           :category="categoryOfRow(row)"
           :document-types="documentTypes"
           :source-type="sourceType"
+          :disabled="savingRow(row)"
           @update:model-value="(v) => onRowType(row, v)"
         />
         <span v-else>{{ textOf('documentType', row) }}</span>
@@ -93,7 +95,7 @@
           <el-button link type="danger" @click="onRemovePending(row.attachmentId)">移除</el-button>
         </template>
         <template v-else>
-          <el-button link type="primary" @click="emit('download', refOf(row))">下载</el-button>
+          <el-button link type="primary" @click="onDownload(refOf(row))">下载</el-button>
           <el-button link type="primary" @click="onDetail(row)">详情</el-button>
           <el-button v-if="rowSaveEnabled && session.hasEdit(refOf(row).id)" link type="primary" @click="onRowSave(refOf(row))">保存</el-button>
           <el-button v-if="canEdit" link type="danger" @click="onRemoveRef(refOf(row))">移除</el-button>
@@ -203,7 +205,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  changed: [payload: { count: number }]
+  changed: [payload: { count: number; dirtyCount: number }]
   error: [payload: { action: string; message: string }]
   download: [row: AttachmentRefItem]
   detail: [row: AttachmentRefItem]
@@ -212,6 +214,10 @@ const emit = defineEmits<{
 const session = props.session
 const canEdit = computed(() => session.canEdit.value)
 const documentTypes = session.documentTypes
+/** 列表变化 + 编辑差异实时通知调用方（仅条数不足以反映信息编辑） */
+function notifyChanged() {
+  emit('changed', { count: session.refRows.value.length, dirtyCount: session.dirtyCount.value })
+}
 
 /** 保存入口只有在「调用方开启 + 会话有处理器」时才出现（无处理器不开放入口） */
 const rowSaveEnabled = computed(() => !!(props.rowSave && session.canSave.value))
@@ -265,6 +271,10 @@ function onSelectionChange(rows: TableRow[]) {
 watch(() => [session.refRows.value, filterKey.value], () => { selectedIds.value = [] })
 const selectedDirtyCount = computed(() => selectedIds.value.filter((id) => session.hasEdit(id)).length)
 const selectedDirty = computed(() => selectedDirtyCount.value > 0)
+/** 该行正在提交保存（锁定其编辑控件，防重复提交/并发编辑） */
+function savingRow(row: TableRow): boolean {
+  return row.kind === 'ref' && session.savingRefIds.value.has(refOf(row).id)
+}
 
 // ==================== 行内编辑（写进会话编辑差异，不即时提交） ====================
 const rowCategories = ref<Record<string, string>>({})
@@ -283,9 +293,11 @@ function onRowType(row: TableRow, value: string | null) {
   if (row.kind === 'pending') {
     pendingOf(row).documentType = value
     session.persist()
+    notifyChanged()
     return
   }
   session.setEdit(refOf(row).id, { documentType: value })
+  notifyChanged()
 }
 function onRowCategory(row: TableRow, category: string | null) {
   if (!canEdit.value) return
@@ -316,6 +328,7 @@ function applyMeta() {
   if (!canEdit.value || !metaRow.value) return
   session.setEdit(metaRow.value.id, { remark: metaForm.remark || null, sortOrder: metaForm.sortOrder || 0 })
   metaVisible.value = false
+  notifyChanged()
 }
 
 const batchTypeVisible = ref(false)
@@ -334,6 +347,7 @@ function applyBatchType() {
   if (!batchDocumentType.value || !selectedIds.value.length) return
   for (const refId of selectedIds.value) session.setEdit(refId, { documentType: batchDocumentType.value })
   batchTypeVisible.value = false
+  notifyChanged()
 }
 
 // ==================== 保存（范围契约：行内=当前行；批量=勾选行） ====================
@@ -347,9 +361,11 @@ async function runSave(scope: { kind: 'row'; refId: number } | { kind: 'rows'; r
     return
   }
   try {
-    await session.saveChanges(changes)
-    ElMessage.success('已保存')
-    emit('changed', { count: session.refRows.value.length })
+    const result = await session.saveChanges(changes)
+    const failed = result.failed?.length ?? 0
+    if (failed) ElMessage.warning(`已保存 ${changes.total - failed} 条，${failed} 条失败（保留待重试）`)
+    else ElMessage.success('已保存')
+    notifyChanged()
   } catch (e: any) {
     const message = e?.message || '保存失败'
     ElMessage.error(message)
@@ -364,9 +380,15 @@ function onBatchSave() {
 }
 
 // ==================== 即时移除（草稿移除队列项 / 已绑定解除引用；不删文件） ====================
-function onRemovePending(attachmentId: number) {
-  session.removePending(attachmentId)
-  emit('changed', { count: session.refRows.value.length })
+async function onRemovePending(attachmentId: number) {
+  try {
+    await session.removePending(attachmentId) // 先删草稿行，成功才清队列项
+    notifyChanged()
+  } catch (e: any) {
+    const message = e?.message || '移除失败（已保留原行）'
+    ElMessage.error(message)
+    emit('error', { action: 'remove-pending', message })
+  }
 }
 async function onRemoveRef(row: AttachmentRefItem) {
   try {
@@ -382,7 +404,7 @@ async function onRemoveRef(row: AttachmentRefItem) {
     await session.unbind(row.id)
     selectedIds.value = selectedIds.value.filter((id) => id !== row.id)
     ElMessage.success('已解除引用')
-    emit('changed', { count: session.refRows.value.length })
+    notifyChanged()
   } catch (e: any) {
     const message = e?.message || '解除引用失败'
     ElMessage.error(message)
@@ -415,14 +437,19 @@ async function onBatchRemove() {
   }
   if (failed) ElMessage.warning(`已移除 ${ok} 条，${failed} 条失败（保留原状）`)
   else ElMessage.success(`已移除 ${ok} 条引用`)
-  emit('changed', { count: session.refRows.value.length })
+  notifyChanged()
 }
 
 // ==================== 预览 / 下载（复用唯一实现） ====================
-const { viewerVisible, viewerList, viewerIndex, preview: previewViewer, close: closeViewer } = useAttachmentPreview()
+const { viewerVisible, viewerList, viewerIndex, preview: previewViewer, openUrl, close: closeViewer } = useAttachmentPreview()
 function previewRow(row: TableRow) {
   if (row.kind !== 'ref') return
   previewViewer(session.refRows.value, refOf(row), (r) => attachmentRefApi.previewUrlByRef(r.id))
+}
+/** 下载：复用既有下载工具真正打开文件 URL（不是无效按钮），并向外 emit 供上层埋点/处理 */
+function onDownload(row: AttachmentRefItem) {
+  openUrl(attachmentRefApi.downloadUrlByRef(row.id))
+  emit('download', row)
 }
 
 defineExpose({

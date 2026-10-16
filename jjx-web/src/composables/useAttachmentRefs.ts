@@ -463,7 +463,10 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
           documentType: r.documentType ? String(r.documentType) : null,
           displayName: r.displayName ? String(r.displayName) : null,
           productCode: r.productCode ? String(r.productCode) : null,
-          ownershipKey: prev?.ownershipKey ?? null,
+          // 草稿行归属稳定键：优先正式 productId，其次 productCode（仅兜底，不作唯一身份），保持/恢复上传时上下文（dev-20261016-048）
+          ownershipKey: prev?.ownershipKey
+            ?? (r.productId != null ? `product:${Number(r.productId)}`
+              : r.productCode ? `pc:${String(r.productCode)}` : null),
           draftRefId: Number(r.id),
         }
       })
@@ -543,6 +546,13 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     ++draftSyncSequence // 在途草稿列表不能把刚移除的行补回。
     const entry = pending.value.find((e) => e.attachmentId === attachmentId)
     if (entry?.draftRefId) void attachmentRefApi.removeDraft(entry.draftRefId).catch(() => {})
+    pending.value = pending.value.filter((e) => e.attachmentId !== attachmentId)
+    persist()
+  }
+
+  /** 仅清除本队列项（不发起草稿行删除请求）：供共享会话在“确认草稿行已删成功”后再清本地（dev-20261016-048）。 */
+  function removePendingLocal(attachmentId: number) {
+    ++draftSyncSequence // 在途草稿列表不能把刚移除的行补回。
     pending.value = pending.value.filter((e) => e.attachmentId !== attachmentId)
     persist()
   }
@@ -812,6 +822,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     updateMeta,
     checkDuplicate,
     removePending,
+    removePendingLocal,
     persist,
   }
 }

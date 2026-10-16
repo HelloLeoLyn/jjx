@@ -60,8 +60,9 @@ function buildSession(sessionOptions) {
   }
   let currentFile = src + '/'
   const elplus = { ElMessage: { success() {}, error() {}, warning() {} }, ElMessageBox: { confirm: () => Promise.resolve() } }
+  const vueStub = { ...vue, onBeforeUnmount() {}, onMounted() {}, onDeactivated() {}, onUnmounted() {} }
   function requireImpl(name) {
-    if (name === 'vue') return vue
+    if (name === 'vue') return vueStub
     if (name === 'element-plus') return elplus
     if (name === '@/api/system/attachmentRef') return { attachmentRefApi: api }
     if (name === '@/api/system/attachment') return { attachmentApi: { list: () => Promise.resolve({ data: [] }), listByTrace: () => Promise.resolve({ data: [] }) } }
@@ -97,13 +98,16 @@ function setupManager(props) {
   const compiled = compileScript(descriptor, { id: 'am-test' })
   const { sessionMod } = buildSession({ sourceType: 'quotation', sourceId: 7 })
   const emitted = []
+  const opened = []
   let currentFile = filename
+  const vueStub = { ...vue, onBeforeUnmount() {}, onMounted() {}, onDeactivated() {}, onUnmounted() {} }
   const sandbox = {
     console,
     exports: {},
     module: { exports: {} },
+    window: { open: (...a) => opened.push(a), location: { pathname: '/', search: '', hash: '' } },
     require(name) {
-      if (name === 'vue') return vue
+      if (name === 'vue') return vueStub
       if (name === 'element-plus') return { ElMessage: { success() {}, error() {}, warning() {} }, ElMessageBox: { confirm: () => Promise.resolve() } }
       if (name === '@/api/system/attachmentRef') return { attachmentRefApi: { previewUrlByRef: (id) => `/refs/${id}/preview`, downloadUrlByRef: (id) => `/refs/${id}/download` } }
       if (name === '@/composables/useAttachmentSession') return sessionMod
@@ -131,7 +135,7 @@ function setupManager(props) {
     attrs: {},
     slots: {},
   })
-  return { bindings, emitted }
+  return { bindings, emitted, opened }
 }
 
 const refRow = (id, extra = {}) => ({
@@ -197,4 +201,23 @@ test('信息编辑写进会话差异（不即时提交），与原值一致时�
   assert.equal(session.hasEdit(5), true)
   bindings.onRowType({ kind: 'ref', data: session.refs.value[0], rowKey: 'ref:5' }, 'DRAWING')
   assert.equal(session.hasEdit(5), false)
+})
+
+test('下载复用下载工具真正打开文件 URL（不是无效按钮），并向外 emit', () => {
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
+  session.refs.value = [refRow(5)]
+  const { bindings, emitted, opened } = setupManager({ session })
+  bindings.onDownload(session.refs.value[0])
+  assert.equal(opened[0][0], '/refs/5/download')
+  assert.ok(emitted.some((e) => e[0] === 'download' && e[1]?.id === 5))
+})
+
+test('信息编辑实时通知调用方：changed 携带 dirtyCount（不只是条数）', () => {
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
+  session.refs.value = [refRow(5)]
+  const { bindings, emitted } = setupManager({ session })
+  bindings.onRowType({ kind: 'ref', data: session.refs.value[0], rowKey: 'ref:5' }, 'X')
+  const changed = emitted.filter((e) => e[0] === 'changed')
+  assert.ok(changed.length >= 1)
+  assert.equal(changed[changed.length - 1][1].dirtyCount, 1)
 })

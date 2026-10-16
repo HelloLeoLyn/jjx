@@ -58,7 +58,7 @@ function harness(opts = {}) {
     },
     drafts: (...a) => { calls.push(['drafts', ...a]); return (opts.drafts || (() => Promise.resolve({ data: [] })))(...a) },
     updateDraft: (...a) => { calls.push(['updateDraft', ...a]); return Promise.resolve({ data: null }) },
-    removeDraft: (...a) => { calls.push(['removeDraft', ...a]); return Promise.resolve({ data: null }) },
+    removeDraft: (...a) => { calls.push(['removeDraft', ...a]); return (opts.removeDraft || (() => Promise.resolve({ data: null })))(...a) },
     createRef: (...a) => { calls.push(['createRef', ...a]); return Promise.resolve({ data: 1 }) },
     listRefs: (...a) => { calls.push(['listRefs', ...a]); return (opts.listRefs || (() => Promise.resolve({ data: [] })))(...a) },
     refsByProduct: () => Promise.resolve({ data: [] }),
@@ -93,8 +93,10 @@ function harness(opts = {}) {
     module: { exports: {} },
   }
   let currentFile = src + '/'
+  // 无活动组件实例时禁用生命周期注入，避免测试环境告警（仅测试棚）
+  const vueStub = { ...vue, onBeforeUnmount() {}, onMounted() {}, onDeactivated() {}, onUnmounted() {} }
   function requireImpl(name) {
-    if (name === 'vue') return vue
+    if (name === 'vue') return vueStub
     if (name === 'element-plus') return elplus
     if (name === '@/api/system/attachmentRef') return { attachmentRefApi: api }
     if (name === '@/api/system/attachment') return { attachmentApi: filesApi }
@@ -135,17 +137,14 @@ function harness(opts = {}) {
 
   const mod = loadModule(fs.readFileSync(path.join(src, 'composables/useAttachmentSession.ts'), 'utf8'),
     path.join(src, 'composables/useAttachmentSession.ts'))
+  const refsMod = loadModule(fs.readFileSync(path.join(src, 'composables/useAttachmentRefs.ts'), 'utf8'),
+    path.join(src, 'composables/useAttachmentRefs.ts'))
   const session = mod.useAttachmentSession(opts.sessionOptions || {
     sourceType: 'quotation',
     sourceId: 7,
     saveHandler: opts.saveHandler,
   })
-  if (opts.sessionOptions && 'saveHandler' in opts.sessionOptions) {
-    // 调用方已在 sessionOptions 指定处理器
-  } else if (opts.saveHandler) {
-    // 已通过默认 options 传入
-  }
-  return { session, mod, calls, api, localStorage, sessionStorage }
+  return { session, mod, refsMod, calls, api, localStorage, sessionStorage }
 }
 
 const refRow = (id, extra = {}) => ({
@@ -354,4 +353,84 @@ test('无保存处理器时不开放保存入口（canSave=false）；有处理�
     sessionOptions: { sourceType: 'quotation', sourceId: 7, saveHandler: () => ({}) },
   })
   assert.equal(withHandler.session.canSave.value, true)
+})
+
+test('旧调用默认语义不变：useAttachmentRefs 不经会话、不带上下文的 uploadTemp 仍用实例产品上下文', async () => {
+  let n = 700
+  const h = harness({ tempUpload: () => Promise.resolve({ data: n++ }) })
+  const store = h.refsMod.useAttachmentRefs({ sourceType: 'quotation', sourceId: 7, productCode: 'P1' })
+  await store.uploadTemp(fileOf('a.pdf'))
+  assert.equal(store.pending.value[0].productCode, 'P1')
+  assert.ok(store.pending.value[0].ownershipKey == null)
+  // 带显式上下文（新通道）：覆盖实例值并写 ownershipKey
+  await store.uploadTemp(fileOf('b.pdf'), undefined, { productCode: 'P2', productId: 5, ownershipKey: 'product:5' })
+  assert.equal(store.pending.value[1].productCode, 'P2')
+  assert.equal(store.pending.value[1].ownershipKey, 'product:5')
+})
+
+test('validate 不只看资料类型：无权限/锁定 与 在途上传 都拦截', () => {
+  const ro = harness({ sessionOptions: { sourceType: 'quotation', sourceId: 7, readonly: true } })
+  const rv = ro.session.validate({ kind: 'all' })
+  assert.equal(rv.ok, false)
+  assert.ok(rv.issues.some((i) => /权限|锁定/.test(i.message)))
+
+  const up = harness({ sessionOptions: { sourceType: 'quotation', sourceId: 7 } })
+  up.session.uploadingCount.value = 1
+  const uv = up.session.validate({ kind: 'all' })
+  assert.equal(uv.ok, false)
+  assert.ok(uv.issues.some((i) => /上传/.test(i.message)))
+})
+
+test('草稿移除失败：保留原行（不静默丢）；成功后清队列', async () => {
+  const fail = harness({ sessionOptions: { sourceType: 'quotation', draftId: 'd1' }, removeDraft: () => Promise.reject(new Error('网络错误')) })
+  fail.session.pending.value = [{ attachmentId: 901, requestKey: '', fileName: 'd.pdf', fileSize: 0, sha256: null, state: 'pending', createdAt: '', draftRefId: 901 }]
+  await assert.rejects(() => fail.session.removePending(901), /网络错误/)
+  assert.equal(fail.session.pending.value.length, 1) // 失败保留原行
+
+  const ok = harness({ sessionOptions: { sourceType: 'quotation', draftId: 'd1' } })
+  ok.session.pending.value = [{ attachmentId: 902, requestKey: '', fileName: 'e.pdf', fileSize: 0, sha256: null, state: 'pending', createdAt: '', draftRefId: 902 }]
+  await ok.session.removePending(902)
+  assert.equal(ok.session.pending.value.length, 0)
+  assert.equal(ok.calls.some((c) => c[0] === 'removeDraft' && c[1] === 902), true)
+})
+
+test('保存期间锁定对应行（savingRefIds），结束后释放', async () => {
+  let release
+  const gate = new Promise((resolve) => { release = resolve })
+  const rows = [refRow(5), refRow(6)]
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: rows }),
+    sessionOptions: { sourceType: 'quotation', sourceId: 7, saveHandler: () => gate },
+  })
+  await h.session.load(); await tick()
+  h.session.setEdit(5, { documentType: 'A' })
+  h.session.setEdit(6, { documentType: 'B' })
+  const p = h.session.saveChanges(h.session.getChanges({ kind: 'row', refId: 5 }))
+  await tick()
+  assert.equal(h.session.savingRefIds.value.has(5), true)
+  assert.equal(h.session.savingRefIds.value.has(6), false)
+  release({ acceptedUpdates: [5] })
+  await p
+  assert.equal(h.session.savingRefIds.value.has(5), false)
+})
+
+test('部分成功：只清被接受的改动，未接受（失败）的保留', async () => {
+  const rows = [refRow(5), refRow(6)]
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: rows }),
+    sessionOptions: {
+      sourceType: 'quotation', sourceId: 7,
+      saveHandler: (changes) => ({
+        acceptedUpdates: changes.updates.filter((u) => u.refId === 5).map((u) => u.refId),
+        failed: changes.updates.filter((u) => u.refId === 6).map((u) => ({ key: u.refId, message: '拒绝' })),
+      }),
+    },
+  })
+  await h.session.load(); await tick()
+  h.session.setEdit(5, { documentType: 'A' })
+  h.session.setEdit(6, { documentType: 'B' })
+  const res = await h.session.saveChanges(h.session.getChanges({ kind: 'all' }))
+  assert.equal(res.failed.length, 1)
+  assert.equal(h.session.hasEdit(5), false)
+  assert.equal(h.session.hasEdit(6), true)
 })
