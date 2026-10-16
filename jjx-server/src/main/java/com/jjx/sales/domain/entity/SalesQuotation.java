@@ -208,6 +208,14 @@ public class SalesQuotation extends BaseEntity {
     private List<Long> attachmentIds;
 
     /**
+     * 本次保存随单提交的附件（非表字段）：仅承载编辑入参，落定由保存流程处理。
+     * 与新增入口 {@code SalesQuotationAddDTO#attachments} 同一形状（dev-20261016-081：
+     * 编辑保存也要写 sys_attachment_ref，而老字段 attachmentIds 无 documentType，承载不了）。
+     */
+    @TableField(exist = false)
+    private List<com.jjx.sales.domain.dto.SalesQuotationAddDTO.QuotationAttachmentDTO> attachments;
+
+    /**
      * 删除标志 (0: 正常, 1: 删除)
      */
     @TableLogic

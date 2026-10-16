@@ -400,7 +400,7 @@ public class QuotationServiceImpl implements IQuotationService {
     }
 
     /**
-     * 报价新增保存时把随单附件落定（dev-20261016-066）。
+     * 报价保存（新增 dev-20261016-066 / 编辑 dev-20261016-081）时把随单附件落定。
      *
      * 口径（jjx-docs/reference/attachment-refactor-decisions-dev-20261016-001.md §2/§4/§5）：
      * 1）保存单据 = 建引用 + 草稿行转正（原子）——转正唯一入口是 {@link AttachmentRefService#create}，
@@ -408,7 +408,8 @@ public class QuotationServiceImpl implements IQuotationService {
      * 2）归属 = 报价单 + 产品：产品 id 优先取入参，缺失则按明细编码回填（未建档产品已在
      *    {@link #ensureSampleDraftProducts} 建档、标准单在 {@link #saveQuotationItems} 按码兜底）。
      * 3）缺 attachmentId / documentType 一律抛业务异常（服务层兜底，与 Controller 校验同口径）。
-     * 4）本方法在 {@link #insertQuotation} 的 {@code @Transactional(rollbackFor = Exception.class)} 内执行：
+     * 4）本方法分别在 {@link #insertQuotation} 与 {@link #updateQuotation} 的
+     *    {@code @Transactional(rollbackFor = Exception.class)} 内执行：
      *    任一条失败直接抛出 ⇒ 整单回滚，禁止 try-catch 吞掉造成「单据存了、附件没落」的半成功。
      */
     private void bindQuotationAttachments(SalesQuotation quotation,
@@ -495,6 +496,10 @@ public class QuotationServiceImpl implements IQuotationService {
             saveQuotationItems(quotation.getQuotationId(), quotation.getItems(),
                     quotation.getTaxRate(), quotation.getDiscountAmount());
         }
+
+        // 附件落定（dev-20261016-081）：编辑保存与新增同口径——随单附件在本事务内建引用 / 草稿行转正；
+        // 缺 attachmentId/documentType 抛业务异常 ⇒ 整单（含报价单修改）回滚（001 §7-1 方案 A：「落定」只由单据保存负责，新增/修改都走它）。
+        bindQuotationAttachments(quotation, quotation.getAttachments());
 
         SalesQuotation updatedQuotation = selectQuotationById(quotation.getQuotationId());
         List<String> changes = buildQuotationChanges(existingQuotation, updatedQuotation);
