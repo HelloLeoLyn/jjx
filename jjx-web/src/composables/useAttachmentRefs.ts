@@ -558,12 +558,16 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   }
 
   // ==================== 数据加载（A 段引用 / B 段历史） ====================
+  /** 058：读取身份+序号，用于丢弃迟到回包（切单据后旧响应不得覆盖新单） */
+  let loadSequence = 0
   async function load(keepPending = true) {
     if (!sourceId.value) {
       refs.value = []
       legacyRows.value = []
       return
     }
+    const loadIdentity = `${sourceType.value}:${sourceId.value}`
+    const loadSeq = ++loadSequence
     loading.value = true
     error.value = ''
     try {
@@ -578,6 +582,8 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
         error.value = (refRes.reason as Error)?.message || '附件引用加载失败'
       }
       legacyRows.value = legacyRes.status === 'fulfilled' ? ((legacyRes.value as any)?.data || []) : []
+      // 058：身份/序号已变（切了单据或又发起了新加载）→ 丢弃本次迟到回包
+      if (loadSeq !== loadSequence || loadIdentity !== `${sourceType.value}:${sourceId.value}`) return
     } finally {
       loading.value = false
       if (!keepPending) pending.value = []

@@ -492,9 +492,11 @@ function countRowAttachments(row: any): number {
   if (row.productId != null) keys.add(`product:${row.productId}`)
   if (row.productCode) keys.add(`pc:${row.productCode}`)
   let count = props.session.pending.value.filter((e) => e.ownershipKey && keys.has(e.ownershipKey)).length
-  if (row.productId != null) {
-    count += props.session.refRows.value.filter((r) => r.productId === row.productId).length
-  }
+  // 058：已绑定引用按 正式 productId 或（无 id 时）旧 productCode 归属一并计数，避免漏旧编码引用
+  count += props.session.refRows.value.filter((r) =>
+    (row.productId != null && r.productId === row.productId)
+    || (row.productId == null && !!row.productCode && r.productId == null && r.productCode === row.productCode)
+  ).length
   return count
 }
 

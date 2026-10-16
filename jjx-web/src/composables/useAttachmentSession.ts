@@ -1,4 +1,4 @@
-import { computed, reactive, ref, type Ref } from 'vue'
+import { computed, reactive, ref, watch, type Ref } from 'vue'
 import {
   useAttachmentRefs,
   type AttachmentUploadContext,
@@ -158,6 +158,8 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
 
   /** 编辑差异：refId → 未提交的元数据补丁（保存前攒着，绝不即时提交） */
   const edits = reactive<Record<number, Omit<AttachmentMetaEdit, 'refId'>>>({})
+  // 058：切换单据/实例时清空上一单遗留的引用编辑差异，避免跨单据残留（edits 以 refId 为键，不随 storageKey 变化）
+  watch(() => unwrap(options.sourceId, null), () => { for (const k of Object.keys(edits)) delete edits[Number(k)] })
   const uploadingCount = ref(0)
   const saving = ref(false)
   /** 正在提交保存的行（refId）：用于提交期间锁定对应行，防重复提交/并发编辑（dev-20261016-048） */

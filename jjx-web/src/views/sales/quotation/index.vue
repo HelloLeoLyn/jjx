@@ -725,28 +725,54 @@ async function flushAttachmentsAfterSave() {
 
 /** 识别并冲刷历史行级本地队列（旧路径 dev-20261013-043；键 = draftId::r:code 与 id-<sourceId>::p:code）。
  *  只读旧命名空间键、productCode 传 null（不附带共享会话的 id-<sourceId> 键），避免与新会话重复绑定同一附件。 */
+/** 058：getInfo 回填时保留既有明细行的 __rowKey（附件归属稳定键），避免保存后被服务端数据抹掉导致归属失配/删除保护失效 */
+function assignFormPreservingRowKeys(data: any) {
+  const byCode = new Map<string, string>()
+  const byIndex = (form.items || []).map((it: any) => it?.__rowKey)
+  for (const it of form.items || []) {
+    const code = (it as any)?.productCode
+    if (code && (it as any).__rowKey) byCode.set(String(code), (it as any).__rowKey)
+  }
+  Object.assign(form, data)
+  ;(form.items || []).forEach((it: any, i: number) => {
+    if (!it || it.__rowKey) return
+    const byK = it.productCode != null ? byCode.get(String(it.productCode)) : undefined
+    if (byK) it.__rowKey = byK
+    else if (byIndex[i]) it.__rowKey = byIndex[i]
+  })
+}
+
 async function flushLegacyRowQueues() {
   const sourceId = form.quotationId
   if (!sourceId) return
   let failed = 0
-  for (const row of form.items || []) {
-    const code = (row as any)?.productCode
-    if (!code) continue
-    const r1 = await flushStoredQueue({
+  // 058：改为冲刷**所有已存在的旧行队列键**（含已删行的残留），不再只遍历当前剩余行
+  const prefix = `attach-pending:v2:${userStore.userId}:quotation:`
+  const draftKeys: string[] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith(prefix) && k.slice(prefix.length).includes('::')) draftKeys.push(k.slice(prefix.length))
+    }
+  } catch {
+    /* localStorage 不可用则退回按当前行 */
+  }
+  if (!draftKeys.length) {
+    for (const row of form.items || []) {
+      const code = (row as any)?.productCode
+      if (!code) continue
+      draftKeys.push(`${draftId.value || ''}::r:${code}`, `id-${sourceId}::p:${code}`)
+    }
+  }
+  for (const dk of draftKeys) {
+    const r = await flushStoredQueue({
       userId: userStore.userId,
       sourceType: 'quotation',
-      draftId: `${draftId.value || ''}::r:${code}`,
+      draftId: dk,
       sourceId,
       productCode: null,
     })
-    const r2 = await flushStoredQueue({
-      userId: userStore.userId,
-      sourceType: 'quotation',
-      draftId: `id-${sourceId}::p:${code}`,
-      sourceId,
-      productCode: null,
-    })
-    failed += r1.failed + r2.failed
+    failed += r.failed
   }
   if (failed) ElMessage.warning(`历史行附件有 ${failed} 条未绑定，可在对应行「上传附件」重试`)
 }
@@ -821,7 +847,7 @@ const submitForm = async () => {
       // 修改：保存后不关弹窗，重新拉详情回填 product_id（产品资料可挂载）
       await quotationApi.edit(form as any)
       const res: any = await quotationApi.getInfo(form.quotationId)
-      Object.assign(form, res.data)
+      assignFormPreservingRowKeys(res.data)
       await flushAttachmentsAfterSave()
       title.value = `修改报价单【${res.data?.quotationNo || ''}】`
       ElMessage.success('保存成功')
@@ -833,9 +859,12 @@ const submitForm = async () => {
       if (newId) {
         form.quotationId = newId
         const info: any = await quotationApi.getInfo(newId)
-        Object.assign(form, info.data)
+        assignFormPreservingRowKeys(info.data)
         await flushAttachmentsAfterSave()
-        clearDraftId() // 保存成功：清空草稿标识
+        // 058：仅在附件会话无未落定改动/在途上传时才清草稿标识，避免待落定附件失去归属键
+        if (attachmentSession.dirtyCount.value === 0 && attachmentSession.uploadingCount.value === 0) {
+          clearDraftId()
+        }
         title.value = `修改报价单【${info.data?.quotationNo || ''}】`
       }
       ElMessage.success('保存成功，可继续编辑')
