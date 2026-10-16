@@ -270,7 +270,8 @@ async function flushTypeEdits(): Promise<boolean> {
     return false
   }
 }
-/** 表格上方「保存」：先提交攒着的类型改动，再把「保存」事件交给调用方（含义由调用方定） */
+/** 表格上方「保存」：先提交攒着的类型改动，再把「保存」事件交给调用方（含义由调用方定）。
+ *  口径 014 / 001 §7-1（方案 A）：调用方**不应**在此落定附件——落定只由单据「保存」负责。 */
 async function onSaveClick() {
   saveSaving.value = true
   try {

@@ -183,7 +183,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { ElDialog, ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
@@ -403,25 +403,16 @@ function newDraftId() {
 // 2026-10-15（dev-20261015-034）：原「保存后再绑附件」的 bindPendingAttachments 已删除——
 // 附件改为随单据请求一起提交、后端同事务建引用；失败即整单回滚，本地待绑定队列保留可重试。
 
-// ====== 附件区「保存」（dev-20261016-005，询价试点）======
-// 已保存单据：把待绑定附件落定（建引用）；草稿单：附件信息暂存本地，保存单据时随单落定。
+// ====== 附件区「保存」（dev-20261016-032：按口径 014 方案 A 收敛）======
+// 附件区「保存」= 只提交「附件信息类」改动（二级类型/备注/排序；组件内 flushTypeEdits 已提交），
+// **不再落定**——落定（建引用）只由单据「保存」负责（与单据/产品建档同事务、原子）。
 async function onAttachSave() {
-  await nextTick()
-  const result = await attachmentCenterRef.value?.bindPending()
-  if (!result) return
-  if (result.status === 'document-not-saved') {
+  // 未保存单据：附件信息（待绑定件的类型等）只暂存本地，保存单据时随单一并落定。
+  if (!form.inquiryId) {
     ElMessage.info('单据尚未保存：附件信息已暂存在本地，保存单据时会一并落定')
     return
   }
-  if (result.status === 'all-ok') {
-    ElMessage.success('附件已保存')
-    return
-  }
-  if (result.status === 'partial') {
-    ElMessage.warning(`部分附件保存失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试`)
-    return
-  }
-  ElMessage.error(`附件全部保存失败（${result.failed.length} 条），可在附件区重试`)
+  ElMessage.success('附件信息已保存；附件随「保存单据」落定')
 }
 
 // ====== 初始化 ======
