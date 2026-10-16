@@ -94,7 +94,7 @@
         :key="`qa-upload-${selectedRow.printLogId}`"
         source-type="quality_archive"
         :source-id="selectedRow.printLogId"
-        mode="panel"
+        variant="panel"
         title="回传扫描件"
         view-perm="production:quality-archive:doc:view"
         edit-perm="production:quality-archive:doc:add"

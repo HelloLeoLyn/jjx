@@ -184,7 +184,7 @@
           :source-id="attachmentQuotationId"
           :source-no="attachmentQuotationNo"
           :trace-id="attachmentTraceId"
-          mode="dialog"
+          variant="dialog"
           view-perm="sales:quotation:view"
           edit-perm="sales:quotation:edit"
         />

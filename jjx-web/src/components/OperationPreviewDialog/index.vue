@@ -94,7 +94,7 @@
           ref="evidenceCenter"
           :source-type="evidenceSourceType"
           :source-id="bizId"
-          mode="upload-only"
+          variant="upload-only"
           :view-perm="evidenceViewPerm"
           :edit-perm="evidenceEditPerm"
           @uploaded="onEvidenceUploaded"

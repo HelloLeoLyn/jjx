@@ -157,6 +157,10 @@ const props = withDefaults(
     /** 新建单据草稿标识：同一张未保存单据复用同一值（隔离待绑定队列） */
     draftId?: string
     title?: string
+    /** 形态（第一阶段⑥，dev-20261016-007）：panel / dialog / upload-only。
+     *  与「动作清单」(actions) 分离——variant 定形态、actions 定可做动作。 */
+    variant?: 'panel' | 'dialog' | 'upload-only'
+    /** @deprecated 兼容别名，请改用 variant（两者同传时 variant 优先） */
     mode?: 'panel' | 'dialog' | 'upload-only'
     readonly?: boolean
     locked?: boolean
@@ -227,6 +231,9 @@ const emit = defineEmits<{
   save: []
   error: [payload: { action: string; message: string }]
 }>()
+
+/** 形态取值：variant 优先，mode 为兼容别名（dev-20261016-007） */
+const centerVariant = computed(() => props.variant ?? props.mode ?? 'panel')
 
 const refs = useAttachmentRefs({
   sourceType: toRef(props, 'sourceType'),
@@ -342,7 +349,7 @@ const canUpload = computed(() => canEdit.value)
  * `mode='upload-only'` 语义是"只给上传入口"（报审核、生成计划、产品资料视图都只是要个上传按钮），
  * 所以该模式下只保留上传入口与待绑定队列，不渲染任何列表，避免外面再套一层视图时出现"两个列表"。
  */
-const showList = computed(() => props.mode !== 'upload-only')
+const showList = computed(() => centerVariant.value !== 'upload-only')
 /**
  * 上传禁用原因（唯一一条提示路径）：先看草稿标识是否就绪，再看调用方按业务传的 uploadBlocked。
  * 两者取第一个非空；组件不解释业务原因，只负责"禁用 + 显示这句话"。
@@ -358,7 +365,7 @@ const uploaderProps = computed(() => ({
   disabled: !!uploadBlockedReason.value,
   maxSizeMB: props.maxSizeMB,
   accept: props.accept,
-  buttonText: props.mode === 'upload-only' ? '上传附件' : '上传（通用附件）',
+  buttonText: centerVariant.value === 'upload-only' ? '上传附件' : '上传（通用附件）',
   tip: uploadBlockedReason.value || uploadTip.value,
   dropZone: props.dropZone,
 }))

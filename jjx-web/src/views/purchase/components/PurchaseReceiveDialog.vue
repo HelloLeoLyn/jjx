@@ -82,7 +82,7 @@
           ref="receiptAttachments"
           source-type="purchase_receipt"
           :draft-id="receiptDraftId"
-          mode="upload-only"
+          variant="upload-only"
           title="本次收货票据"
           :auto-bind="false"
           :locked="submitting"

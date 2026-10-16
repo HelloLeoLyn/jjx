@@ -20,7 +20,7 @@
       :source-id="productId"
       :product-id="productId"
       :product-code="productCode"
-      mode="panel"
+      variant="panel"
       view-perm="product:view"
       edit-perm="product:edit"
       title="本产品资料"

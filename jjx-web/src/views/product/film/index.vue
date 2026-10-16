@@ -243,7 +243,7 @@
               source-type="product"
               :source-id="form.productId || null"
               :product-id="form.productId || null"
-              mode="upload-only"
+              variant="upload-only"
               :upload-blocked="form.productId ? '' : '请先选择关联产品'"
               @uploaded="onDrawingUploaded"
             />

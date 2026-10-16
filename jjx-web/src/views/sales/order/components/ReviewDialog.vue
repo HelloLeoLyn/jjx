@@ -58,7 +58,7 @@
           source-type="sales_order"
           :source-id="props.orderId || null"
           :trace-id="orderDetail?.traceId"
-          mode="upload-only"
+          variant="upload-only"
           :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"
           view-perm="sales:order:view"
           edit-perm="sales:order:edit"

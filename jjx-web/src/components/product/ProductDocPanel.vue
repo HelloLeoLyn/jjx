@@ -5,7 +5,7 @@
       <AttachmentCenter
         source-type="product"
         :source-id="productId"
-        mode="upload-only"
+        variant="upload-only"
         :edit-perm="editPerm"
         :view-perm="viewPerm"
         :title="title"

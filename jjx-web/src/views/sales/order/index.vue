@@ -257,7 +257,7 @@
       <AttachmentCenter
         source-type="sales_order"
         :source-id="confirmAttachmentOrderId || null"
-        mode="panel"
+        variant="panel"
         view-perm="sales:order:view"
         edit-perm="sales:order:edit"
       />

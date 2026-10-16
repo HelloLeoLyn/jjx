@@ -90,7 +90,7 @@
         :key="`qt-upload-${uploadRow.id}`"
         source-type="quality_template"
         :source-id="uploadRow.id"
-        mode="panel"
+        variant="panel"
         title="模板文件"
         view-perm="production:quality-template:doc:view"
         edit-perm="production:quality-template:doc:add"
