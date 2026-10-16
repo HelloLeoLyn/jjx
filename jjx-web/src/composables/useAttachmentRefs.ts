@@ -36,6 +36,17 @@ export interface PendingEntry {
   productCode?: string | null
   /** 草稿行引用 ID（库里的待保存附件行；dev-20261016-009）。有值则改类型/移除直接打草稿行接口。 */
   draftRefId?: number | null
+  /** 归属上下文稳定键（dev-20261016-048 共享会话）：上传发起时固定，用于筛选/分组；
+   *  产品级用稳定标识（正式 product_id 或不随渲染变化的行键），不用产品编码/数组下标作唯一身份。 */
+  ownershipKey?: string | null
+}
+
+/** 单次上传的归属上下文（dev-20261016-048）：请求发起时固定，切换产品/单据不改变进行中上传的归属。 */
+export interface AttachmentUploadContext {
+  productId?: number | null
+  /** 仅展示/透传草稿行，不作唯一身份 */
+  productCode?: string | null
+  ownershipKey?: string | null
 }
 
 export type BindStatus = 'document-not-saved' | 'all-ok' | 'partial' | 'all-failed'
@@ -452,6 +463,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
           documentType: r.documentType ? String(r.documentType) : null,
           displayName: r.displayName ? String(r.displayName) : null,
           productCode: r.productCode ? String(r.productCode) : null,
+          ownershipKey: prev?.ownershipKey ?? null,
           draftRefId: Number(r.id),
         }
       })
@@ -518,6 +530,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
               documentType: e.documentType ? String(e.documentType) : null,
               displayName: e.displayName ? String(e.displayName) : null,
               productCode: e.productCode ? String(e.productCode) : null,
+              ownershipKey: e.ownershipKey ? String(e.ownershipKey) : null,
             }))
         : []
     } catch {
@@ -585,17 +598,20 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   })
 
   // ==================== 上传 / 绑定 / 解绑 / 元数据 ====================
-  async function uploadTemp(file: File, onProgress?: (percent: number) => void): Promise<number> {
+  async function uploadTemp(file: File, onProgress?: (percent: number) => void, context?: AttachmentUploadContext | null): Promise<number> {
     // 隔离要求：sourceId=null 时必须提供唯一 draftId（禁止退化为共享队列）
     if (!draftReady.value) {
       throw new Error('缺少草稿标识（draftId）：新建单据必须提供唯一 draftId 才能上传附件，避免多个单据共用待绑定队列')
     }
     const uploadIdentity = storageKey.value
     const uploadDraftKey = draftKey.value
+    // 归属上下文在发起时固定（dev-20261016-048）：显式传入优先，否则用实例默认；不随后续切换改变。
+    const uploadProductId = context ? (context.productId ?? null) : (productId.value ?? null)
+    const uploadProductCode = context ? (context.productCode ?? null) : productCode.value
+    const uploadOwnershipKey = context ? (context.ownershipKey ?? null) : null
     const draft = sourceId.value
       ? null
-      : { sourceType: sourceType.value, productId: productId.value ?? null, draftKey: uploadDraftKey }
-    const uploadProductCode = productCode.value
+      : { sourceType: sourceType.value, productId: uploadProductId, draftKey: uploadDraftKey }
     const uploadDrawingMeta = drawingMeta.value
     const sha = await sha256Of(file)
     const requestKey = await buildRequestKey(uploadDraftKey, file, sha)
@@ -623,6 +639,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
       documentType: null,
       displayName: null,
       productCode: uploadProductCode,
+      ownershipKey: uploadOwnershipKey,
     })
     persist()
     void syncDraftsFromBackend() // 取回刚建的草稿行 refId（dev-20261016-009）
