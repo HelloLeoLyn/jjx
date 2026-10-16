@@ -19,6 +19,9 @@
             >← 返回打样平台</el-button
           >
         </span>
+        <!-- 右上角可发现性提示（dev-20261016-055 增补）：明确「点这里能展开面板信息」；
+             处于 header 内，点击即展开/收起，无需额外事件。 -->
+        <span class="info-hint">{{ isOpen ? '点击收起' : '点击展开样品单信息' }}</span>
       </template>
     <el-descriptions :column="3" border size="small">
       <el-descriptions-item label="单号">{{ card.orderNo || '-' }}</el-descriptions-item>
@@ -137,15 +140,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 /**
  * 样品单信息卡（dev-20260811-008 组件化）
  * 样品信息 + 接单/拒单 + 图纸上传（图纸=样品单级，挪至此；2026-10-14 改走公共附件组件 refs）
- * 2026-10-16（dev-20261016-055）：整卡改折叠面板、默认收缩，title 带 Round / 单号 / 成品编号。
+ * 2026-10-16（dev-20261016-055）：整卡改折叠面板、默认收缩，title 带 Round / 单号 / 成品编号，
+ *   右上角给「点击展开样品单信息」提示，让用户知道点这里有内容。
  */
 /** 折叠面板展开项：空数组 = 默认全部收起 */
 const activeNames = ref<string[]>([])
+/** 面板是否已展开（用于右上角提示文案切换） */
+const isOpen = computed(() => activeNames.value.includes('info'))
 
 defineProps<{
   card: any
@@ -199,6 +205,19 @@ defineEmits<{
 .info-actions {
   margin-left: auto;
   white-space: nowrap;
+}
+/* 右上角可发现性提示（dev-20261016-055 增补）：在 header 内，点击即展开/收起 */
+.info-hint {
+  margin-left: 12px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--el-color-primary);
+  white-space: nowrap;
+}
+/* 提示文字与自带箭头同色，强化「这里可点」 */
+.info-collapse :deep(.el-collapse-item__arrow) {
+  color: var(--el-color-primary);
+  margin-left: 4px;
 }
 
 .summary-inline {
