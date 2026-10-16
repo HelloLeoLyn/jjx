@@ -148,6 +148,7 @@
         :currency-options="currencyOptions"
         :draft-id="draftId"
         :draft-choices="draftChoices"
+        :session="attachSession"
         @restore-draft="restoreAttachmentDraft"
         @discard-draft="discardAttachmentDraft"
         @submit="submitForm"
@@ -182,16 +183,24 @@
         append-to-body
         destroy-on-close
       >
-        <AttachmentCenter
-          v-if="attachmentDialogVisible && attachmentQuotationId"
-          source-type="quotation"
-          :source-id="attachmentQuotationId"
-          :source-no="attachmentQuotationNo"
-          :trace-id="attachmentTraceId"
-          variant="dialog"
-          view-perm="sales:quotation:view"
-          edit-perm="sales:quotation:edit"
-        />
+        <!-- 列表行「附件」弹窗（dev-20261016-071，084 并入的裁定）：Upload + Manager 共用同一份会话队列；
+             沿用同一 sourceType+sourceId（与报价单「整单附件」区同一队列键）、不加独立保存按钮
+             （会话未注入 saveHandler）⇒ 上传只进「待保存」，随报价单「保存」落定 -->
+        <template v-if="attachmentDialogVisible && attachmentQuotationId">
+          <AttachmentUpload
+            :session="attachDialogSession"
+            class="attach-block"
+            drop-zone
+            button-text="上传附件"
+          />
+          <AttachmentManager
+            :session="attachDialogSession"
+            class="attach-block"
+            title="附件"
+            source-type="quotation"
+            :source-no="attachmentQuotationNo"
+          />
+        </template>
       </el-dialog>
     </SkeletonAction>
 
@@ -269,7 +278,14 @@ import QuotationToolbar from './components/QuotationToolbar.vue'
 import QuotationFormDialog from './components/QuotationFormDialog.vue'
 import QuotationDetailDialog from './components/QuotationDetailDialog.vue' // ✅ 新增
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
-import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
+import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
+import {
+  useAttachmentSession,
+  type AttachmentChanges,
+  type AttachmentSaveResult,
+} from '@/composables/useAttachmentSession'
 import { useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
@@ -299,6 +315,19 @@ const attachmentDialogVisible = ref(false)
 const attachmentQuotationId = ref<number | null>(null)
 const attachmentQuotationNo = ref('')
 const attachmentTraceId = ref('')
+/**
+ * 列表行「附件」弹窗的附件会话（dev-20261016-071，084 并入的裁定）：
+ * 沿用同一 sourceType+sourceId（→ 与报价单「整单附件」区**同一份待保存队列**，不另起键）；
+ * **不注入 saveHandler**（⇒ 无独立保存按钮），弹窗里上传的附件只进「待保存」，
+ * 随报价单「保存」一起落定（001 §7-1 / §2-4）。
+ */
+const attachDialogSession = useAttachmentSession({
+  sourceType: 'quotation',
+  sourceId: computed(() => attachmentQuotationId.value),
+  traceId: computed(() => attachmentTraceId.value),
+  viewPerm: 'sales:quotation:view',
+  editPerm: 'sales:quotation:edit',
+})
 const previewVisible = ref(false)
 const previewOperation = ref<any>(null)
 const previewBizId = ref<number | null>(null)
@@ -712,32 +741,155 @@ const resetForm = () => {
   })
 }
 
+/**
+ * 报价单编辑用的附件会话（dev-20261016-071）：**由容器创建、显式下传给表单弹窗**（不得用全局单例）。
+ * - 队列键与列表「附件」弹窗完全一致（同一 sourceType+sourceId，键算法见 useAttachmentRefs.ts:407-413）；
+ * - 落定（建引用）只由单据「保存」负责：待保存队列随 add/edit 的 attachments 提交（066 add / 081 edit）；
+ * - saveHandler 只做「附件信息类」提交（二级类型/备注/排序 → 引用批量更新），不落定（001 §7-1 方案 A）。
+ */
+const attachSession = useAttachmentSession({
+  sourceType: 'quotation',
+  sourceId: computed(() => (form as any).quotationId || null),
+  draftId: computed(() => draftId.value || ''),
+  traceId: computed(() => (form as any).traceId || ''),
+  viewPerm: 'sales:quotation:view',
+  editPerm: 'sales:quotation:edit',
+  saveHandler: saveAttachInfo,
+})
+
+/** 附件信息类提交（保存处理器的唯一出口）：只认 updates；uploads 随单据保存落定，这里明确拒绝而不是静默吞掉 */
+async function saveAttachInfo(changes: AttachmentChanges): Promise<AttachmentSaveResult> {
+  if (changes.uploads.length) {
+    throw new Error('待保存附件随报价单「保存」落定，此处只提交附件信息类改动')
+  }
+  if (!changes.updates.length) return {}
+  const items = changes.updates.map((u) => ({
+    refId: u.refId,
+    documentType: u.documentType,
+    remark: u.remark,
+    sortOrder: u.sortOrder,
+  }))
+  await attachmentRefApi.batchUpdate(items)
+  return { acceptedUpdates: items.map((i) => i.refId) }
+}
+
+/** 保存前校验用：待保存队列里尚未选二级资料类型的条数（沿用 032 口径，谓词同 useAttachmentRefs:437） */
+const attachMissingTypeCount = computed(
+  () => attachSession.pending.value.filter((e) => e.state !== 'binding' && !e.documentType).length,
+)
+
+/** 待保存队列 → 报价单保存请求的 attachments（064 的 QuotationAttachmentDTO：attachmentId/documentType/productId/productCode） */
+function attachPayload() {
+  return attachSession.getChanges({ kind: 'all' }).uploads.map((u) => ({
+    attachmentId: u.attachmentId,
+    documentType: u.documentType ?? null,
+    productId: productIdOfOwnership(u.ownershipKey),
+    productCode: u.productCode ?? null,
+  }))
+}
+
+/** 上传归属键 → 正式产品 id：只有 `product:<id>` 能直接给出；`row:<键>` 交给后端按明细编码解析 */
+function productIdOfOwnership(key?: string | null): number | null {
+  const matched = /^product:(\d+)$/.exec(key || '')
+  return matched ? Number(matched[1]) : null
+}
+
+/**
+ * 单据保存**成功后**的附件收尾（承 077 §4 的 bindPending 语义：成功清队列、失败保留）：
+ * 重取引用 → 按 attachmentId 取**真实 refId** → acceptSaved；没落定的仍留在「待保存」待重试。
+ * 不做任何前端绑定请求（落定已在单据保存事务内完成）。
+ */
+async function finalizeAttachments(submittedIds: number[]) {
+  if (!submittedIds.length) return
+  await attachSession.refresh()
+  const sourceId = Number((form as any).quotationId)
+  const refIdByAttachment = new Map<number, number>()
+  for (const row of attachSession.refs.value) {
+    const attachmentId = Number((row as any).attachmentId)
+    if (!attachmentId || row.deleted || Number(row.sourceId) !== sourceId) continue
+    refIdByAttachment.set(attachmentId, row.id)
+  }
+  const acceptedUploads = submittedIds
+    .filter((id) => refIdByAttachment.has(id))
+    .map((id) => ({ attachmentId: id, refId: refIdByAttachment.get(id) as number }))
+  if (acceptedUploads.length) attachSession.acceptSaved({ acceptedUploads })
+  const remaining = submittedIds.length - acceptedUploads.length
+  if (remaining) ElMessage.warning(`有 ${remaining} 个附件未落定，仍保留在「待保存」，请再保存一次`)
+}
+
+/**
+ * 旧「行级草稿键」队列衔接（051 静态守卫点名的衔接点）：051 之前，明细行弹窗的待保存队列按
+ * `<draftId>::r:<产品编码>` 单独存（键格式见 useAttachmentRefs.ts:81 的 STORAGE_PREFIX）。
+ * 现在统一进共享队列——把存量键里的条目并入当前队列并删掉旧键，使其照常显示、随单据「保存」落定（001 §7-1）。
+ */
+function migrateLegacyRowQueues() {
+  const base = draftId.value
+  if (!base) return
+  const prefix = `attach-pending:v2:${userStore.userId ?? 'anonymous'}:quotation:${base}::r:`
+  const legacyKeys: string[] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(prefix)) legacyKeys.push(key)
+    }
+  } catch {
+    return
+  }
+  if (!legacyKeys.length) return
+  const merged = [...attachSession.pending.value]
+  const seen = new Set(merged.map((e) => e.attachmentId))
+  let moved = 0
+  for (const key of legacyKeys) {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(key) || '[]')
+      for (const entry of Array.isArray(parsed) ? parsed : []) {
+        const attachmentId = Number(entry?.attachmentId)
+        if (!attachmentId || seen.has(attachmentId)) continue
+        merged.push({ ...entry, attachmentId, state: 'pending' } as any)
+        seen.add(attachmentId)
+        moved++
+      }
+      localStorage.removeItem(key)
+    } catch {
+      /* 单键坏数据不阻断其余 */
+    }
+  }
+  if (!moved) return
+  attachSession.pending.value = merged
+  attachSession.persist()
+}
+
+// 打开/切换草稿实例时衔接旧行级队列（只在确有旧键时才动；纯本地合并，不发请求）
+watch([open, draftId], () => { if (open.value) migrateLegacyRowQueues() })
+
 const submitForm = async () => {
   try {
-    // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待绑定附件，避免「保存成功但附件未绑定」
-    const missingTypeCount = quotationFormDialogRef.value?.getMissingTypeCount?.() ?? 0
-    if (missingTypeCount > 0) {
-      ElMessage.warning(`有 ${missingTypeCount} 个附件未选择资料类型，请先选择后再保存`)
+    // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待保存附件，避免「保存成功但附件没落定」
+    if (attachMissingTypeCount.value > 0) {
+      ElMessage.warning(`有 ${attachMissingTypeCount.value} 个附件未选择资料类型，请先选择后再保存`)
       return
     }
+    // 待保存附件随单据保存一并提交，由后端在同一事务内建引用（066 add 侧 / 081 edit 侧）
+    const attachments = attachPayload()
+    const submittedIds = attachments.map((a) => a.attachmentId)
     if (form.quotationId !== undefined && form.quotationId > 0) {
       // 修改：保存后不关弹窗，重新拉详情回填 product_id（产品资料可挂载）
-      await quotationApi.edit(form as any)
+      await quotationApi.edit({ ...(form as any), attachments } as any)
       const res: any = await quotationApi.getInfo(form.quotationId)
       Object.assign(form, res.data)
-      await quotationFormDialogRef.value?.bindPendingAttachments()
+      await finalizeAttachments(submittedIds)
       title.value = `修改报价单【${res.data?.quotationNo || ''}】`
       ElMessage.success('保存成功')
       getList()
     } else {
       // 新增：保存后拿到新 ID，不关弹窗切到修改态，可继续编辑/挂资料
-      const res: any = await quotationApi.add(form as any)
+      const res: any = await quotationApi.add({ ...(form as any), attachments } as any)
       const newId: number | undefined = res?.data
       if (newId) {
         form.quotationId = newId
         const info: any = await quotationApi.getInfo(newId)
         Object.assign(form, info.data)
-        await quotationFormDialogRef.value?.bindPendingAttachments()
+        await finalizeAttachments(submittedIds)
         clearDraftId() // 保存成功：清空草稿标识
         title.value = `修改报价单【${info.data?.quotationNo || ''}】`
       }
@@ -1064,5 +1216,8 @@ onMounted(async () => {
 <style scoped>
 .table-card {
   margin-bottom: 16px;
+}
+.attach-block {
+  margin-bottom: 8px;
 }
 </style>

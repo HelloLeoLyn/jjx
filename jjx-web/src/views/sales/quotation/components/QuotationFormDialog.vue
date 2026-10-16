@@ -316,23 +316,26 @@
       </el-row>
       <el-row>
         <el-col :span="24">
-          <!-- 整单级附件（dev-20261016-045）：不传 product-code = 整单归属；
-               随单据「保存」落定（001 §7-1 方案 A），附件区「保存」只提交类型等附件信息。
-               明细行「上传附件」只当上传入口（带该行产品编码），看/管以本列表为准。 -->
-          <AttachmentCenter
-            ref="attachmentCenterRef"
-            source-type="quotation"
-            :source-id="formData.quotationId || null"
-            :source-no="formData.quotationNo || ''"
-            :draft-id="props.draftId || ''"
-            :trace-id="formData.traceId"
-            title="整单附件"
-            :actions="['download', 'detail', 'remove', 'save']"
-            :auto-bind="false"
+          <!-- 整单级附件（dev-20261016-071：旧 AttachmentCenter → Upload + Manager，共用同一份会话队列）：
+               上传只进「待保存」，随单据「保存」落定（001 §7-1 方案 A）；
+               附件区「保存」（row-save/batch-save）= 只提交附件信息类改动，不落定。
+               明细行「上传附件」只当上传入口（带该行产品归属），看/管以本列表为准。 -->
+          <AttachmentUpload
+            :session="session"
+            class="attach-block"
             drop-zone
-            view-perm="sales:quotation:view"
-            edit-perm="sales:quotation:edit"
-            @save="onAttachSave"
+            button-text="上传整单附件"
+            @error="onAttachError"
+          />
+          <AttachmentManager
+            :session="session"
+            class="attach-block"
+            title="整单附件"
+            source-type="quotation"
+            :source-no="formData.quotationNo || ''"
+            row-save
+            batch-save
+            @error="onAttachError"
           />
         </el-col>
       </el-row>
@@ -360,26 +363,25 @@
       width="1200px"
       append-to-body
     >
-      <AttachmentCenter
+      <!-- 明细行上传入口（与整单区共用同一份会话队列）：只负责「带该行产品归属」的上传；
+           查看/管理统一在整单附件区（可按归属筛选本行产品）；行级视图不显示同链路（001 §5-3） -->
+      <AttachmentUpload
         v-if="rowAttachVisible"
-        source-type="quotation"
-        :source-id="props.formData.quotationId || null"
-        :draft-id="rowAttachDraftId"
-        :trace-id="props.formData.traceId"
-        :product-code="rowAttachProductCode"
-        :actions="['download', 'detail', 'remove', 'save']"
-        :auto-bind="false"
-        view-perm="sales:quotation:view"
-        edit-perm="sales:quotation:edit"
+        :session="session"
+        :ownership="rowAttachOwnership"
         drop-zone
-        @save="onAttachSave"
+        :button-text="`上传到 ${rowAttachProductCode || '本行'}`"
+        @error="onAttachError"
       />
+      <div class="attach-row-hint">
+        上传后进入「待保存」，随报价单「保存」落定；查看/管理请在「整单附件」区（可按归属筛选本行产品）。
+      </div>
     </el-dialog>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { formatCurrency } from '@/utils/format'
@@ -387,9 +389,10 @@ import { quotationApi } from '@/api/sales/quotation'
 import { listProduct } from '@/api/product'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import QuotationCodeGenDialog from './QuotationCodeGenDialog.vue'
-import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
-import { flushStoredQueue, type AttachmentDraftChoice } from '@/composables/useAttachmentRefs'
-import { useUserStore } from '@/store/modules/user'
+import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
+import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
+import { productOwnership, type AttachmentSession } from '@/composables/useAttachmentSession'
+import type { AttachmentDraftChoice } from '@/composables/useAttachmentRefs'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 import { parseProductCode } from '@/composables/useProductCode'
 
@@ -401,6 +404,11 @@ const props = defineProps<{
   /** 待绑定队列草稿标识（由父组件下发；新建未保存时报价单复用同一草稿）（dev-20261012-047） */
   draftId?: string
   draftChoices?: AttachmentDraftChoice[]
+  /**
+   * 附件共享会话（dev-20261016-071）：由容器（index.vue）创建并显式下传，本弹窗只消费。
+   * 整单附件区与明细行弹窗共用它 ⇒ 一份待保存队列；落定随单据「保存」。
+   */
+  session: AttachmentSession
 }>()
 
 const emit = defineEmits<{
@@ -437,79 +445,28 @@ const usedSerialsForCodeGen = computed(() => {
 // 明细行「上传附件」（S5 dev-20261013-043）
 const rowAttachVisible = ref(false)
 const rowAttachProductCode = ref('')
-/** 实例 ID + 产品编码：两张报价即使产品编码相同也不共用队列。 */
-const rowAttachDraftId = computed(() =>
-  rowAttachProductCode.value
-    ? `${props.draftId || ''}::r:${rowAttachProductCode.value}`
-    : props.draftId || ''
-)
 watch(() => props.draftId, () => { rowAttachVisible.value = false; rowAttachProductCode.value = '' })
+/** 该行产品 id（行内上传归属；未建档/未回填时为 null，归属退回到稳定行键） */
+const rowAttachProductId = computed<number | null>(() => {
+  const code = rowAttachProductCode.value
+  if (!code) return null
+  const row = (props.formData.items || []).find((it: any) => it?.productCode === code)
+  return row?.productId ?? null
+})
+/** 行级上传归属：正式 productId 优先，否则用不随渲染变化的行键（产品编码）作稳定身份（043/048） */
+const rowAttachOwnership = computed(() =>
+  productOwnership({
+    rowKey: rowAttachProductCode.value,
+    productId: rowAttachProductId.value,
+    productCode: rowAttachProductCode.value,
+  }),
+)
 const uploadedAttachmentIds = ref<number[]>([])
-const userStore = useUserStore()
-/** 公共附件中心（报价单通用附件；dev-20261012-047） */
-const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
-/** 保存成功后把待绑定（TEMP）附件一次性绑定到本报价单（照询价单：nextTick + 异常隔离 + partial/all-failed 提示） */
-async function bindPendingAttachments() {
-  await nextTick()
-  try {
-    const result = await attachmentCenterRef.value?.bindPending()
-    if (result) {
-      if (result.status === 'document-not-saved') {
-        ElMessage.warning('报价单尚未保存，附件仍为待绑定状态')
-        return
-      }
-      if (result.status === 'partial') {
-        ElMessage.warning(
-          `报价单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试绑定`
-        )
-      } else if (result.status === 'all-failed') {
-        ElMessage.error(
-          `报价单已保存，附件全部绑定失败（${result.failed.length} 条），可在附件区重试绑定`
-        )
-      }
-    }
-    // 行级附件（明细行「上传附件」）：保存后按各行草稿键统一绑定（带该行产品编码）
-    await bindRowPendingAttachments()
-    // 同单据重开 sourceId 未变，组件不会自动重载（同 dev-20261016-035）；保存成功后显式重取一次整单列表
-    void attachmentCenterRef.value?.refresh()
-  } catch (e: any) {
-    // 异常隔离：报价单此时已保存成功，附件异常不得冒泡成「整单保存失败」
-    console.error('附件绑定异常（报价单已保存）:', e)
-    ElMessage.error(`附件处理失败：${e?.message || '未知错误'}，可在附件区重试绑定`)
-  }
-}
 
-/** 绑定明细行「上传附件」的待绑定队列（按行草稿键；绑定带该行产品编码。仅单据已保存时有效） */
-async function bindRowPendingAttachments() {
-  const sourceId = props.formData.quotationId
-  if (!sourceId) return
-  let failed = 0
-  for (const row of props.formData.items || []) {
-    const code = (row as any)?.productCode
-    if (!code) continue
-    const r = await flushStoredQueue({
-      userId: userStore.userId,
-      sourceType: 'quotation',
-      draftId: `${props.draftId || ''}::r:${code}`,
-      sourceId,
-      productCode: code,
-    })
-    failed += r.failed
-  }
-  if (failed) {
-    ElMessage.warning(`明细行附件有 ${failed} 条绑定失败，可在该行「上传附件」里重试`)
-  }
-}
-
-// ====== 附件区「保存」（dev-20261016-019：承 001 §7-1 方案 A）======
-// 附件区「保存」= 只提交「附件信息类」改动（二级类型/备注/排序；组件内 flushTypeEdits 已提交），
-// **不再落定**——落定（建引用）只由单据「保存」负责（保存成功后统一绑定待绑定队列）。
-function onAttachSave() {
-  if (!props.formData.quotationId) {
-    ElMessage.info('单据尚未保存：附件信息已暂存在本地，保存单据时会一并落定')
-    return
-  }
-  ElMessage.success('附件信息已保存；附件随「保存单据」落定')
+/** 附件上传/校验失败提示：上传失败组件内已提示，这里只补「选择文件校验」这类没有内建提示的错误 */
+function onAttachError(payload: { action: string; message: string }) {
+  if (payload.action === 'upload') return
+  ElMessage.error(payload.message || '附件处理失败')
 }
 
 const exchangeRateHint = computed(() => {
@@ -812,9 +769,6 @@ function parseCodeFromProductCode(code?: string | null): Partial<ProductCodeStat
 defineExpose({
   formRef,
   calculateTotalAmount,
-  bindPendingAttachments,
-  /** 保存前校验用：待绑定队列中尚未选择二级资料类型的条数（dev-20261015-032） */
-  getMissingTypeCount: () => attachmentCenterRef.value?.getMissingTypeCount?.() ?? 0,
 })
 </script>
 
@@ -832,6 +786,14 @@ defineExpose({
 }
 .dialog-footer {
   text-align: right;
+}
+.attach-block {
+  margin-bottom: 8px;
+}
+.attach-row-hint {
+  margin-top: 8px;
+  color: #909399;
+  font-size: 12px;
 }
 .sample-code {
   color: #409eff;
