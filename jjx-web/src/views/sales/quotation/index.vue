@@ -148,8 +148,12 @@
         :currency-options="currencyOptions"
         :draft-id="draftId"
         :draft-choices="draftChoices"
+        :session="attachmentSession"
+        :attachment-dirty-count="attachmentDirtyCount"
         @restore-draft="restoreAttachmentDraft"
         @discard-draft="discardAttachmentDraft"
+        @changed="onAttachmentChanged"
+        @error="onAttachmentError"
         @submit="submitForm"
         @cancel="cancel"
       />
@@ -270,7 +274,8 @@ import QuotationFormDialog from './components/QuotationFormDialog.vue'
 import QuotationDetailDialog from './components/QuotationDetailDialog.vue' // ✅ 新增
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
-import { useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
+import { flushStoredQueue, useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
+import { useAttachmentSession } from '@/composables/useAttachmentSession'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
@@ -663,6 +668,90 @@ const form = reactive({
 })
 
 // ============================================================
+// 12.5 附件共享会话（dev-20261016-051）
+// 单据编辑容器每实例创建一次，显式传给整单/行级上传入口与唯一管理区（QuotationFormDialog 内）。
+// 附件落定（真实同事务保存）由 dev-20261016-049 注入 saveHandler 后接通；本卡只做调用方接线。
+// ============================================================
+const attachmentSession = useAttachmentSession({
+  sourceType: 'quotation',
+  sourceId: computed(() => (form.quotationId && form.quotationId > 0 ? form.quotationId : null)),
+  draftId: computed(() => draftId.value || ''),
+  viewPerm: 'sales:quotation:view',
+  editPerm: 'sales:quotation:edit',
+})
+/** 附件实时变更计数（来自管理区 changed，不只监听文件数）——随会话 dirtyCount 更新 */
+const attachmentDirtyCount = ref(0)
+function onAttachmentChanged(payload: { count: number; dirtyCount: number }) {
+  attachmentDirtyCount.value = payload.dirtyCount
+}
+function onAttachmentError(payload: { action: string; message: string }) {
+  console.warn('[quotation] 附件操作异常', payload)
+}
+
+/** 保存前附件校验：只拦「待保存附件缺二级资料类型与在途上传」，
+ *  不因无附件编辑权限而误阻塞合法单据修改（无附件改动时计数为 0）。 */
+function attachmentMissingTypeCount(): number {
+  return attachmentSession.getChanges({ kind: 'all' }).uploads.filter((u) => !u.documentType).length
+}
+
+/** 附件落定（保存链衔接，dev-20261016-051）：真实同事务落定由 dev-20261016-049 注入 saveHandler 后接通。
+ *  未接通前如实回报待落定差异，不假成功、不清队列、不读已移除的 Center ref。 */
+async function flushAttachmentsAfterSave() {
+  try {
+    if (!attachmentSession.canSave.value) {
+      const pendingChanges = attachmentSession.dirtyCount.value
+      if (pendingChanges > 0) {
+        ElMessage.info(
+          `附件改动 ${pendingChanges} 项已记录，将在附件保存链接通（dev-20261016-049）后随单据统一落定`
+        )
+      }
+      await flushLegacyRowQueues()
+      return
+    }
+    const { validation, result } = await attachmentSession.commit({ kind: 'all' })
+    if (!validation.ok) {
+      ElMessage.warning(validation.issues[0]?.message || '附件改动存在未完成项')
+      return
+    }
+    const accepted = (result?.acceptedUploads?.length ?? 0) + (result?.acceptedUpdates?.length ?? 0)
+    const failed = result?.failed?.length ?? 0
+    if (failed) ElMessage.warning(`附件已保存 ${accepted} 项，${failed} 项失败（保留待重试）`)
+  } catch (e: any) {
+    // 异常隔离：报价单此时已保存成功，附件异常不得冒泡成「整单保存失败」
+    console.error('附件保存异常（报价单已保存）:', e)
+    ElMessage.error(`附件处理失败：${e?.message || '未知错误'}`)
+  }
+}
+
+/** 识别并冲刷历史行级本地队列（旧路径 dev-20261013-043；键 = draftId::r:code 与 id-<sourceId>::p:code）。
+ *  只读旧命名空间键、productCode 传 null（不附带共享会话的 id-<sourceId> 键），避免与新会话重复绑定同一附件。 */
+async function flushLegacyRowQueues() {
+  const sourceId = form.quotationId
+  if (!sourceId) return
+  let failed = 0
+  for (const row of form.items || []) {
+    const code = (row as any)?.productCode
+    if (!code) continue
+    const r1 = await flushStoredQueue({
+      userId: userStore.userId,
+      sourceType: 'quotation',
+      draftId: `${draftId.value || ''}::r:${code}`,
+      sourceId,
+      productCode: null,
+    })
+    const r2 = await flushStoredQueue({
+      userId: userStore.userId,
+      sourceType: 'quotation',
+      draftId: `id-${sourceId}::p:${code}`,
+      sourceId,
+      productCode: null,
+    })
+    failed += r1.failed + r2.failed
+  }
+  if (failed) ElMessage.warning(`历史行附件有 ${failed} 条未绑定，可在对应行「上传附件」重试`)
+}
+
+// ============================================================
 // 13. 销售负责人
 // ============================================================
 const salesPersonOptions = ref<Array<{ userId: number; nickName: string; userName: string }>>([])
@@ -712,20 +801,28 @@ const resetForm = () => {
   })
 }
 
+const submitting = ref(false)
 const submitForm = async () => {
+  if (submitting.value) return
   try {
-    // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待绑定附件，避免「保存成功但附件未绑定」
-    const missingTypeCount = quotationFormDialogRef.value?.getMissingTypeCount?.() ?? 0
+    // 附件校验（dev-20261016-051）：缺二级类型的待保存附件会导致落定失败，保存前拦住；
+    // 只拦附件自身未就绲状态，无附件改动时不阻塞合法单据修改。
+    const missingTypeCount = attachmentMissingTypeCount()
     if (missingTypeCount > 0) {
       ElMessage.warning(`有 ${missingTypeCount} 个附件未选择资料类型，请先选择后再保存`)
       return
     }
+    if (attachmentSession.uploadingCount.value > 0) {
+      ElMessage.warning('有附件正在上传，请等待上传完成后再保存')
+      return
+    }
+    submitting.value = true
     if (form.quotationId !== undefined && form.quotationId > 0) {
       // 修改：保存后不关弹窗，重新拉详情回填 product_id（产品资料可挂载）
       await quotationApi.edit(form as any)
       const res: any = await quotationApi.getInfo(form.quotationId)
       Object.assign(form, res.data)
-      await quotationFormDialogRef.value?.bindPendingAttachments()
+      await flushAttachmentsAfterSave()
       title.value = `修改报价单【${res.data?.quotationNo || ''}】`
       ElMessage.success('保存成功')
       getList()
@@ -737,7 +834,7 @@ const submitForm = async () => {
         form.quotationId = newId
         const info: any = await quotationApi.getInfo(newId)
         Object.assign(form, info.data)
-        await quotationFormDialogRef.value?.bindPendingAttachments()
+        await flushAttachmentsAfterSave()
         clearDraftId() // 保存成功：清空草稿标识
         title.value = `修改报价单【${info.data?.quotationNo || ''}】`
       }
@@ -746,12 +843,15 @@ const submitForm = async () => {
     }
   } catch (e: any) {
     console.error('保存报价单失败:', e)
+  } finally {
+    submitting.value = false
   }
 }
 
 const cancel = () => {
   draftSession.close()
   open.value = false
+  attachmentDirtyCount.value = 0
   resetForm()
 }
 
