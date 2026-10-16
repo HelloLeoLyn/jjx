@@ -105,7 +105,7 @@ function harness(opts = {}) {
     if (name === 'element-plus') return elplus
     if (name === '@/api/system/attachmentRef') return { attachmentRefApi: api }
     if (name === '@/api/system/attachment') return { attachmentApi: filesApi }
-    if (name === '@/composables/usePermission') return { usePermission: () => ({ hasPermission: () => true }) }
+    if (name === '@/composables/usePermission') return { usePermission: () => ({ hasPermission: opts.hasPermission || (() => true) }) }
     if (name === '@/store/modules/user') return { useUserStore: () => ({ userId: 1, permissions: ['*'] }) }
     const file = name.startsWith('@/')
       ? path.join(src, name.slice(2) + '.ts')
@@ -397,6 +397,52 @@ test('草稿移除失败：保留原行（不静默丢）；成功后清队列',
   await ok.session.removePending(902)
   assert.equal(ok.session.pending.value.length, 0)
   assert.equal(ok.calls.some((c) => c[0] === 'removeDraft' && c[1] === 902), true)
+})
+
+for (const mode of ['readonly', 'locked', 'noPermission']) {
+  test(`待保存移除守卫：${mode} 直接调用明确拒绝，零删除请求且保留队列`, async () => {
+    const h = harness({
+      sessionOptions: { sourceType: 'quotation', draftId: 'guard', [mode]: true },
+      hasPermission: mode === 'noPermission' ? () => false : () => true,
+    })
+    await tick()
+    h.session.pending.value = [
+      { attachmentId: 901, draftRefId: 1901, fileName: 'draft.pdf', state: 'pending' },
+      { attachmentId: 902, fileName: 'local.pdf', state: 'pending' },
+    ]
+    h.session.persist()
+    const before = JSON.stringify(h.session.pending.value)
+    const storageBefore = JSON.stringify([...h.localStorage._map])
+    const callsBefore = h.calls.length
+    for (const id of [901, 902]) {
+      await assert.rejects(() => h.session.removePending(id), /只读、无编辑权限或已被业务锁定/)
+    }
+    assert.equal(h.calls.length, callsBefore, '拒绝路径不能发起任何请求')
+    assert.equal(h.calls.some((c) => c[0] === 'removeDraft'), false)
+    assert.equal(JSON.stringify(h.session.pending.value), before)
+    assert.equal(JSON.stringify([...h.localStorage._map]), storageBefore)
+  })
+}
+
+test('待保存移除守卫实时读取 locked：锁定拒绝，解锁后成功；本地项仍可清理', async () => {
+  const locked = vue.ref(false)
+  const h = harness({ sessionOptions: { sourceType: 'quotation', draftId: 'guard-live', locked } })
+  await tick()
+  h.session.pending.value = [
+    { attachmentId: 901, draftRefId: 1901, fileName: 'draft.pdf', state: 'pending' },
+    { attachmentId: 902, fileName: 'local.pdf', state: 'pending' },
+  ]
+  locked.value = true
+  await assert.rejects(() => h.session.removePending(901), /不能移除待保存附件/)
+  assert.equal(h.calls.some((c) => c[0] === 'removeDraft'), false)
+  assert.equal(h.session.pending.value.length, 2)
+  locked.value = false
+  await h.session.removePending(901)
+  assert.deepEqual(h.calls.filter((c) => c[0] === 'removeDraft'), [['removeDraft', 1901]])
+  assert.deepEqual(Array.from(h.session.pending.value, (e) => e.attachmentId), [902])
+  await h.session.removePending(902)
+  assert.equal(h.session.pending.value.length, 0)
+  assert.equal(h.calls.filter((c) => c[0] === 'removeDraft').length, 1)
 })
 
 test('保存期间锁定对应行（savingRefIds），结束后释放', async () => {

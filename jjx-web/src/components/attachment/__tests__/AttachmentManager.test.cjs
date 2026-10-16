@@ -18,7 +18,8 @@ const vm = require('node:vm')
 const ts = require('typescript')
 const vue = require('vue')
 const nodeCrypto = require('node:crypto')
-const { parse, compileScript } = require('vue/compiler-sfc')
+const { parse, compileScript, compileTemplate } = require('vue/compiler-sfc')
+const { renderToString } = require('vue/server-renderer')
 
 const src = path.resolve(__dirname, '../../..')
 
@@ -142,6 +143,49 @@ const refRow = (id, extra = {}) => ({
   id, attachmentId: id, sourceType: 'quotation', sourceId: 7, fileName: `f${id}.pdf`,
   documentType: extra.documentType ?? null, productId: extra.productId ?? null,
   productCode: extra.productCode ?? null, deleted: false, ...extra,
+})
+
+test('待保存行真实模板：只读/locked 隐藏移除，可写时显示', async () => {
+  const filename = path.resolve(src, 'components/attachment/AttachmentManager.vue')
+  const { descriptor } = parse(fs.readFileSync(filename, 'utf8'), { filename })
+  const pendingActions = descriptor.template.content.match(/<template v-if="row.kind === 'pending'">([\s\S]*?)<\/template>/)
+  assert.ok(pendingActions, '必须取真实模板的 pending 操作分支')
+  const compiled = compileTemplate({ source: pendingActions[1], filename, id: 'pending-remove-079' })
+  assert.deepEqual(compiled.errors, [])
+  const code = ts.transpileModule(compiled.code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+  const mod = { exports: {} }
+  vm.runInNewContext(`(function (exports, require) {${code}\n})`, {})(mod.exports, () => vue)
+  for (const options of [{ readonly: true }, { locked: true }, {}]) {
+    const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, ...options })
+    const app = vue.createSSRApp({
+      render() {
+        return mod.exports.render({ canEdit: session.canEdit.value, row: { attachmentId: 901 }, onRemovePending() {} }, [])
+      },
+    })
+    app.component('el-button', { setup: (_, { slots }) => () => vue.h('button', slots.default?.()) })
+    const html = await renderToString(app)
+    assert.equal(html.includes('移除'), session.canEdit.value, JSON.stringify(options) + ': ' + html)
+  }
+})
+
+test('待保存移除 handler 独立守卫：禁写不调用会话、不报 changed，并透传锁定原因', async () => {
+  for (const options of [{ readonly: true }, { locked: true }]) {
+    const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, ...options })
+    let calls = 0
+    session.removePending = async () => { calls++ }
+    const { bindings, emitted } = setupManager({ session, lockReason: '已审核，不可再改' })
+    await bindings.onRemovePending(901)
+    assert.equal(calls, 0)
+    assert.equal(emitted.some((e) => e[0] === 'changed'), false)
+    assert.ok(emitted.some((e) => e[0] === 'error' && e[1].action === 'remove-pending' && e[1].message === '已审核，不可再改'))
+  }
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
+  let calls = 0
+  session.removePending = async () => { calls++ }
+  const { bindings, emitted } = setupManager({ session })
+  await bindings.onRemovePending(901)
+  assert.equal(calls, 1)
+  assert.equal(emitted.some((e) => e[0] === 'changed'), true)
 })
 
 test('Manager 不内置上传入口：不产生任何上传相关绑定', () => {

@@ -405,6 +405,9 @@ function createAttachmentSession(options: UseAttachmentSessionOptions) {
   /** 即时移除待保存附件（草稿移除草稿/队列项，不删文件）：
    *  先删草稿行，成功才清队列项并登记抑制（迟到回包不复活）；失败抛错，由调用方保留原行。 */
   async function removePending(attachmentId: number) {
+    if (!store.canEdit.value) {
+      throw new Error('当前附件为只读、无编辑权限或已被业务锁定，不能移除待保存附件')
+    }
     const entry = store.pending.value.find((e) => e.attachmentId === attachmentId)
     if (entry?.draftRefId) {
       await attachmentRefApi.removeDraft(entry.draftRefId) // 失败向上抛：失败保持原行

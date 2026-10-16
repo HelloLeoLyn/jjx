@@ -92,7 +92,7 @@
       </template>
       <template #actions="{ row }">
         <template v-if="row.kind === 'pending'">
-          <el-button link type="danger" @click="onRemovePending(row.attachmentId)">移除</el-button>
+          <el-button v-if="canEdit" link type="danger" @click="onRemovePending(row.attachmentId)">移除</el-button>
         </template>
         <template v-else>
           <el-button link type="primary" @click="onDownload(refOf(row))">下载</el-button>
@@ -384,6 +384,9 @@ function onBatchSave() {
 // ==================== 即时移除（草稿移除队列项 / 已绑定解除引用；不删文件） ====================
 async function onRemovePending(attachmentId: number) {
   try {
+    if (!canEdit.value) {
+      throw new Error(props.lockReason || '当前附件为只读、无编辑权限或已被业务锁定，不能移除待保存附件')
+    }
     await session.removePending(attachmentId) // 先删草稿行，成功才清队列项
     notifyChanged()
   } catch (e: any) {
