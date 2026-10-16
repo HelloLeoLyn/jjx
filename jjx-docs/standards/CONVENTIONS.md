@@ -287,6 +287,7 @@ bash scripts/agent-preflight.sh
 4. **归属只认基线**：任务开始时把 `git status --short` 存档为基线 —— 基线里已有的 `M/D/??` 是别人的，绝不动；开始后才出现的才是越界嫌疑，先取证（时间戳/进程/提交记录）再报告用户。
 
 配套：开工先跑 `bash scripts/agent-preflight.sh`；冲突仲裁口径＝**谁先提交谁算**，后来者 rebase 或让；整体路线见 `jjx-docs/guides/master-plan-20260914.md` 第 5 节。
+- **操作层细则（2026-10-16 立，dev-20261016-078）**：派卡 / 认领（CAS）/ 任务书必填项 / 完成与验收模板 / 人机交互口令（含反跑偏与反术语幻想）见 [`multi-agent-protocol.md`](./multi-agent-protocol.md)。本节四条铁律原文不变，该文件不废止任何旧规。
 
 ---
 
