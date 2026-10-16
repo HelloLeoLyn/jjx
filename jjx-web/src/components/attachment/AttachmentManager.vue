@@ -39,7 +39,7 @@
       <span v-if="selectedIds.length" class="am-sub">已选 {{ selectedIds.length }} 条</span>
     </div>
 
-    <el-empty v-if="!tableRows.length" description="暂无附件" :image-size="60" />
+    <el-empty v-if="!tableRows.length && !readonlyDocRows.length" description="暂无附件" :image-size="60" />
 
     <AttachmentTable
       v-else
@@ -102,6 +102,21 @@
         </template>
       </template>
     </AttachmentTable>
+
+    <!-- 历史 / 同链路只读段（dev-20261016-083）：由只读件承接，不并进可写表、不入计数/落定 -->
+    <AttachmentDocList
+      v-if="readonlyDocRows.length"
+      :rows="readonlyDocRows"
+      title="历史与同链路附件"
+    />
+    <div v-if="session.traceLoading.value" class="am-hint">正在加载同链路文档…</div>
+    <el-alert
+      v-if="session.traceError.value"
+      :title="session.traceError.value"
+      type="warning"
+      :closable="false"
+      class="am-alert"
+    />
 
     <div v-if="pendingCount" class="am-hint">待保存附件已上传到服务器，保存单据后自动建立引用。</div>
 
@@ -178,6 +193,9 @@ import { useAttachmentPreview } from './useAttachmentPreview'
 import AttachmentTable from './AttachmentTable.vue'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
 import AttachmentDetailInfo from './AttachmentDetailInfo.vue'
+import AttachmentDocList from './AttachmentDocList.vue'
+import { attachmentDocFromFile, type AttachmentDocRow } from './useAttachmentDocList'
+import { AttachmentDocumentStatusEnum } from '@/enums/system/AttachmentEnum'
 
 const props = withDefaults(
   defineProps<{
@@ -263,6 +281,15 @@ const tableRows = computed<TableRow[]>(() => [
 const refOf = (row: TableRow) => row.data as AttachmentRefItem
 const pendingOf = (row: TableRow) => row.data as PendingEntry
 const { textOf } = useAttachmentRowText(documentTypes, () => props.sourceType)
+
+/**
+ * 历史 / 同链路只读段（dev-20261016-083）：**仅展示**——不并入 tableRows、
+ * 不计入「待保存 / 已绑定」计数、不参与落定。行级视图的口径由会话（rowLevel）负责屏蔽。
+ */
+const readonlyDocRows = computed<AttachmentDocRow[]>(() => [
+  ...session.legacyOnlyRows.value.map((row) => attachmentDocFromFile(row, AttachmentDocumentStatusEnum.LEGACY.value)),
+  ...session.traceOnlyRows.value.map((row) => attachmentDocFromFile(row, AttachmentDocumentStatusEnum.TRACE.value)),
+])
 
 // ==================== 勾选 ====================
 const selectedIds = ref<number[]>([])

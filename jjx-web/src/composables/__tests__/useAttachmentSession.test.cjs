@@ -75,8 +75,8 @@ function harness(opts = {}) {
     refsBySha256: () => Promise.resolve({ data: [] }),
   }
   const filesApi = {
-    list: (...a) => { calls.push(['legacy', ...a]); return Promise.resolve({ data: [] }) },
-    listByTrace: (...a) => { calls.push(['trace', ...a]); return Promise.resolve({ data: [] }) },
+    list: (...a) => { calls.push(['legacy', ...a]); return (opts.legacy || (() => Promise.resolve({ data: [] })))(...a) },
+    listByTrace: (...a) => { calls.push(['trace', ...a]); return (opts.trace || (() => Promise.resolve({ data: [] })))(...a) },
     downloadUrl: (id) => `/files/${id}/download`,
   }
   const localStorage = makeStorage()
@@ -738,4 +738,66 @@ test('契约§5：提交期间 saving=true 且只锁定被提交行，结束后�
   assert.equal(session.savingRefIds.value.size, 0)
   assert.equal(session.hasEdit(5), false)
   assert.equal(session.hasEdit(6), true)
+})
+
+// ==================== 同链路 / 历史只读段（dev-20261016-083） ====================
+
+test('083：同链路/历史只读段接出并去重，且不计入待保存/已绑定、不参与落定', async () => {
+  const refs = [refRow(5, { attachmentId: 900 })]
+  const legacy = [
+    { id: 901, fileName: 'legacy.pdf', sourceNo: 'QT-0001' },
+    { id: 900, fileName: 'dup-legacy.pdf' },
+  ]
+  const trace = [
+    { id: 902, fileName: 'chain.pdf', bizType: 'inquiry', sourceNo: 'INQ-0007' },
+    { id: 901, fileName: 'dup-chain.pdf' },
+    { id: 902, fileName: 'dup-chain-2.pdf' },
+  ]
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: refs }),
+    legacy: () => Promise.resolve({ data: legacy }),
+    trace: () => Promise.resolve({ data: trace }),
+    sessionOptions: { sourceType: 'quotation', sourceId: 7, traceId: 'T-1' },
+  })
+  const { session } = h
+  await session.load(); await tick(); await tick()
+  assert.deepEqual(h.calls.filter((c) => c[0] === 'trace'), [['trace', 'T-1']])
+  // 本单历史段：排除已绑定引用（attachmentId=900）
+  assert.deepEqual(Array.from(session.legacyOnlyRows.value, (r) => r.id), [901])
+  // 同链路段：排除 refRows(900) / legacy 段(901) / 段内重复(902)
+  assert.deepEqual(Array.from(session.traceOnlyRows.value, (r) => r.id), [902])
+  assert.equal(session.hasReadonlyDocs.value, true)
+  // 纯只读：待保存/已绑定计数与落定完全不受影响
+  assert.equal(session.pending.value.length, 0)
+  assert.equal(session.pendingCount.value, 0)
+  assert.equal(session.refRows.value.length, 1)
+  assert.equal(session.dirtyCount.value, 0)
+  assert.equal(session.getChanges({ kind: 'all' }).total, 0)
+  assert.equal(session.hasEdits.value, false)
+})
+
+test('083：行级视图（调用方声明行/产品）不展示同链路与历史只读段，也不发起查询（001 §5-3）', async () => {
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: [] }),
+    legacy: () => Promise.resolve({ data: [{ id: 901, fileName: 'legacy.pdf' }] }),
+    trace: () => Promise.resolve({ data: [{ id: 902, fileName: 'chain.pdf' }] }),
+    sessionOptions: { sourceType: 'quotation', sourceId: 7, traceId: 'T-1', rowLevel: true },
+  })
+  const { session } = h
+  await session.load(); await tick(); await tick()
+  assert.deepEqual(Array.from(session.legacyOnlyRows.value), [])
+  assert.deepEqual(Array.from(session.traceOnlyRows.value), [])
+  assert.equal(session.hasReadonlyDocs.value, false)
+  assert.equal(h.calls.filter((c) => c[0] === 'trace').length, 0)
+})
+
+test('083：没有同链路/历史件时不出现只读段（hasReadonlyDocs=false，不空段）', async () => {
+  const h = harness({ listRefs: () => Promise.resolve({ data: [] }) })
+  const { session } = h
+  await session.load(); await tick()
+  assert.equal(session.hasReadonlyDocs.value, false)
+  assert.deepEqual(Array.from(session.legacyOnlyRows.value), [])
+  assert.deepEqual(Array.from(session.traceOnlyRows.value), [])
+  // 未传 traceId：不发起同链路查询
+  assert.equal(h.calls.filter((c) => c[0] === 'trace').length, 0)
 })

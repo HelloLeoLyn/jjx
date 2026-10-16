@@ -35,7 +35,7 @@ function makeStorage() {
 }
 
 /** 用真实 useAttachmentSession 构造共享会话（拦截 IO 边界）。 */
-function buildSession(sessionOptions) {
+function buildSession(sessionOptions, files = {}) {
   const cache = new Map()
   const api = {
     drafts: () => Promise.resolve({ data: [] }),
@@ -66,7 +66,10 @@ function buildSession(sessionOptions) {
     if (name === 'vue') return vueStub
     if (name === 'element-plus') return elplus
     if (name === '@/api/system/attachmentRef') return { attachmentRefApi: api }
-    if (name === '@/api/system/attachment') return { attachmentApi: { list: () => Promise.resolve({ data: [] }), listByTrace: () => Promise.resolve({ data: [] }) } }
+    if (name === '@/api/system/attachment') return { attachmentApi: {
+      list: files.list || (() => Promise.resolve({ data: [] })),
+      listByTrace: files.listByTrace || (() => Promise.resolve({ data: [] })),
+    } }
     if (name === '@/composables/usePermission') return { usePermission: () => ({ hasPermission: () => true }) }
     if (name === '@/store/modules/user') return { useUserStore: () => ({ userId: 1, permissions: ['*'] }) }
     const file = name.startsWith('@/')
@@ -112,6 +115,8 @@ function setupManager(props) {
       if (name === 'element-plus') return { ElMessage: { success() {}, error() {}, warning() {} }, ElMessageBox: { confirm: () => Promise.resolve() } }
       if (name === '@/api/system/attachmentRef') return { attachmentRefApi: { previewUrlByRef: (id) => `/refs/${id}/preview`, downloadUrlByRef: (id) => `/refs/${id}/download` } }
       if (name === '@/composables/useAttachmentSession') return sessionMod
+      if (name === '@/enums/system/AttachmentEnum') return { AttachmentDocumentStatusEnum: { BOUND: { value: 'ref' }, LEGACY: { value: 'legacy' }, TRACE: { value: 'trace' } } }
+      if (name === './useAttachmentDocList') return { attachmentDocFromFile: (row, status) => ({ ...row, attachmentId: row.id, status }) }
       if (name.endsWith('.vue')) return { render: () => null }
       const file = name.startsWith('@/')
         ? path.join(src, name.slice(2) + '.ts')
@@ -266,7 +271,29 @@ test('信息编辑实时通知调用方：changed 携带 dirtyCount（不只是�
   assert.equal(changed[changed.length - 1][1].dirtyCount, 1)
 })
 
-test('旧 Center 调用契约回归：撤除 048 兼容改造后不新增 session 参数，emits 保持原有集合', () => {
+test('083：历史/同链路只读段接出（含来源单号），不进可写表与计数', async () => {
+  const tick = () => new Promise((r) => setImmediate(r))
+  const { session } = buildSession(
+    { sourceType: 'quotation', sourceId: 7, traceId: 'T-1' },
+    {
+      list: () => Promise.resolve({ data: [{ id: 901, fileName: 'legacy.pdf', sourceNo: 'QT-0001', bizType: 'quotation' }] }),
+      listByTrace: () => Promise.resolve({ data: [{ id: 902, fileName: 'chain.pdf', bizType: 'inquiry', sourceNo: 'INQ-0007' }] }),
+    },
+  )
+  await session.load(); await tick(); await tick()
+  const { bindings } = setupManager({ session })
+  assert.deepEqual(
+    Array.from(bindings.readonlyDocRows.value, (r) => [r.attachmentId, r.status, r.sourceNo]),
+    [[901, 'legacy', 'QT-0001'], [902, 'trace', 'INQ-0007']],
+  )
+  // 纯只读：不进可写表、不影响计数与落定
+  assert.equal(bindings.tableRows.value.length, 0)
+  assert.equal(bindings.pendingCount.value, 0)
+  assert.equal(session.dirtyCount.value, 0)
+  assert.equal(session.getChanges({ kind: 'all' }).total, 0)
+})
+
+ test('旧 Center 调用契约回归：撤除 048 兼容改造后不新增 session 参数，emits 保持原有集合', () => {
   const filename = path.resolve(src, 'components/attachment/AttachmentCenter.vue')
   const { descriptor } = parse(fs.readFileSync(filename, 'utf8'), { filename })
   const compiled = compileScript(descriptor, { id: 'ac-test' })

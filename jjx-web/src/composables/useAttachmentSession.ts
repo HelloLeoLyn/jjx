@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 import {
   useAttachmentRefs,
   type AttachmentUploadContext,
@@ -6,6 +6,7 @@ import {
 } from '@/composables/useAttachmentRefs'
 import type { AttachmentDocumentTypeItem, AttachmentRefItem } from '@/api/system/attachmentRef'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
+import { attachmentApi, type AttachmentSourceItem } from '@/api/system/attachment'
 
 /**
  * 附件共享会话（dev-20261016-048 第一阶段 A 公共能力）
@@ -136,6 +137,12 @@ export interface UseAttachmentSessionOptions extends AttachmentSaveInjection {
   locked?: MaybeRef<boolean>
   editPerm?: MaybeRef<string>
   viewPerm?: MaybeRef<string>
+  /**
+   * 行级视图标记（001 §5-3）：调用方声明当前是「行 / 产品行视图」时，
+   * 同链路与历史遗留（legacy）只读段一律不展示（也**不发起**同链路查询）；默认 false = 单据级视图。
+   * 判据与 001 §5-3 一致——「调用方有没有传行 / 产品」，而不是看有没有 product_code。
+   */
+  rowLevel?: MaybeRef<boolean>
   autoLoad?: boolean
 }
 
@@ -203,6 +210,85 @@ function createAttachmentSession(options: UseAttachmentSessionOptions) {
     productCode: null,
     autoLoad: options.autoLoad,
   })
+
+  // ==================== 同链路 / 历史只读段（dev-20261016-083 · 纯只读） ====================
+  /**
+   * 与旧 AttachmentCenter.vue 的同链路/历史只读段口径对齐（AttachmentCenter.vue:81/:282/:297），
+   * 但**只读**：不产生任何写副作用、不计入「本单待保存 / 已绑定」计数、也不参与落定。
+   *
+   * 两段来源：
+   *   1）本单历史（legacy）= store.legacyOnlyRows（已排除本单已绑定引用，按 attachmentId）；
+   *   2）同链路 = attachmentApi.listByTrace(traceId)，再按 attachmentId 排除 refRows / legacy 段 / 段内重复。
+   * 行级视图（rowLevel=true，001 §5-3）不展示这两段。
+   */
+  const rowLevel = computed(() => !!unwrap(options.rowLevel, false))
+
+  /** 本单历史只读行（排除已绑定引用）；行级视图不展示 */
+  const legacyOnlyRows = computed<any[]>(() =>
+    rowLevel.value ? [] : store.legacyOnlyRows.value,
+  )
+
+  const traceRows = ref<AttachmentSourceItem[]>([])
+  const traceLoading = ref(false)
+  const traceError = ref('')
+  let traceRequest = 0
+
+  /** 同链路只读行：按 attachmentId 排除 refRows / legacy 段 / 段内重复（与旧 Center 一致） */
+  const traceOnlyRows = computed<AttachmentSourceItem[]>(() => {
+    if (rowLevel.value) return []
+    const seen = new Set<number>()
+    for (const row of store.refRows.value) seen.add(Number(row.attachmentId))
+    for (const row of legacyOnlyRows.value) seen.add(Number(row?.id))
+    const out: AttachmentSourceItem[] = []
+    for (const row of traceRows.value) {
+      const id = Number(row?.id)
+      if (!Number.isFinite(id) || seen.has(id)) continue
+      seen.add(id)
+      out.push(row)
+    }
+    return out
+  })
+
+  /** 只读段是否有内容（Manager 据此决定是否渲染，避免出现空段） */
+  const hasReadonlyDocs = computed(
+    () => legacyOnlyRows.value.length > 0 || traceOnlyRows.value.length > 0,
+  )
+
+  /** 拉取同链路只读行（按 traceId）。纯读取：不改任何会话状态 / 计数 / 落定。 */
+  async function loadTrace() {
+    const request = ++traceRequest
+    traceRows.value = []
+    traceError.value = ''
+    traceLoading.value = false
+    const traceId = unwrap(options.traceId, '')
+    if (rowLevel.value || !traceId || !store.canView.value) return
+    traceLoading.value = true
+    try {
+      const res: any = await attachmentApi.listByTrace(traceId)
+      if (request !== traceRequest) return // 切换单据/链路后旧回包不得回填
+      if (!Array.isArray(res?.data)) throw new Error('同链路文档返回格式异常')
+      traceRows.value = res.data as AttachmentSourceItem[]
+    } catch (e: any) {
+      if (request !== traceRequest) return
+      traceError.value = e?.message || '同链路文档加载失败'
+    } finally {
+      if (request === traceRequest) traceLoading.value = false
+    }
+  }
+
+  // 单据 / 链路 / 权限 / 行级视角变化时重取同链路只读段（与 refs 加载同源触发）
+  watch(
+    () => [
+      unwrap(options.sourceType, ''),
+      unwrap(options.sourceId, null),
+      unwrap(options.traceId, ''),
+      rowLevel.value,
+      store.canView.value,
+    ],
+    () => loadTrace(),
+    { immediate: true },
+  )
+  onBeforeUnmount(() => { traceRequest++ })
 
   /** 编辑差异：refId → 未提交的元数据补丁（保存前攒着，绝不即时提交） */
   const edits = reactive<Record<number, Omit<AttachmentMetaEdit, 'refId'>>>({})
@@ -423,7 +509,8 @@ function createAttachmentSession(options: UseAttachmentSessionOptions) {
   }
 
   function refresh() {
-    return store.load()
+    // 引用刷新 + 同链路只读段一起重取（旧 Center 的 refresh 也是 load + loadTrace）
+    return Promise.all([store.load(), loadTrace()])
   }
 
   return {
@@ -451,6 +538,14 @@ function createAttachmentSession(options: UseAttachmentSessionOptions) {
     savingRefIds,
     canSave,
     ownerships,
+    // 同链路 / 历史只读段（dev-20261016-083；纯只读，不入计数/落定）
+    legacyOnlyRows,
+    traceRows,
+    traceOnlyRows,
+    traceLoading,
+    traceError,
+    hasReadonlyDocs,
+    loadTrace,
     // 编辑差异
     setEdit,
     clearEdit,
