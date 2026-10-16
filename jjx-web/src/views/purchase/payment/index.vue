@@ -245,8 +245,12 @@
         /></el-form-item>
         <el-form-item label="转账回单">
           <AttachmentCenter
+            ref="confirmAttachRef"
             source-type="purchase_payment"
             :source-id="confirmTarget?.paymentId ?? null"
+            :actions="['download', 'detail', 'remove', 'save']"
+            :auto-bind="false"
+            @save="onAttachSave"
             title="转账回单"
           />
         </el-form-item>
@@ -576,15 +580,32 @@ function openConfirm(row: any) {
   confirmVisible.value = true
 }
 
+const confirmAttachRef = ref<InstanceType<typeof AttachmentCenter> | null>(null)
+/** 附件区「保存」（dev-20261016-039，承 014 §7-1 方案 A）：只提交附件信息类改动、不落定；落定归「确认」。 */
+function onAttachSave() {
+  ElMessage.success('附件信息已保存；回单随「确认」落定')
+}
+
 async function submitConfirm() {
   if (!confirmTarget.value) return
+  // 资料类型必选（dev-20261016-039，对齐 032）：缺二级类型的待绑定回单先拦
+  const missingTypeCount = confirmAttachRef.value?.getMissingTypeCount?.() ?? 0
+  if (missingTypeCount > 0) {
+    ElMessage.warning(`有 ${missingTypeCount} 个附件未选择资料类型，请先选择后再确认`)
+    return
+  }
   submitting.value = true
   try {
-    const fd = new FormData()
-    fd.append('paymentId', String(confirmTarget.value.paymentId))
-    fd.append('actualPaymentDate', confirmForm.actualPaymentDate)
-    if (confirmForm.voucherNo) fd.append('voucherNo', confirmForm.voucherNo)
-    await confirmPayment(fd)
+    const attachments = (confirmAttachRef.value?.pendingEntries ?? []).map((e: any) => ({
+      attachmentId: e.attachmentId,
+      documentType: e.documentType ?? null,
+    }))
+    await confirmPayment({
+      paymentId: confirmTarget.value.paymentId,
+      actualPaymentDate: confirmForm.actualPaymentDate,
+      voucherNo: confirmForm.voucherNo,
+      attachments,
+    })
     ElMessage.success('确认付款成功')
     confirmVisible.value = false
     load()

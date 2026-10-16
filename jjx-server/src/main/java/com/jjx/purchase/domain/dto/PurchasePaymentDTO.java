@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 采购付款数据传输对象
@@ -98,6 +99,12 @@ public class PurchasePaymentDTO {
      */
     @Size(max = 500, message = "凭证文件URL长度不能超过500个字符")
     private String voucherFileUrl;
+
+    /**
+     * 随「确认付款」一起提交的附件（转账回单），dev-20261016-039：
+     * 待绑定件随确认同事务建引用；缺二级资料类型则拒绝。
+     */
+    private List<com.jjx.sales.domain.dto.AttachmentBindDTO> attachments;
 
     /**
      * 备注

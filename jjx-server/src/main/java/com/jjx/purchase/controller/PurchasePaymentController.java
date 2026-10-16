@@ -116,7 +116,7 @@ public class PurchasePaymentController extends BaseController {
     @PostMapping("/confirm")
     @Log(module = "采购付款管理", businessType = BusinessType.UPDATE, bizType = "'purchase_payment'", bizId = "#dto.paymentId", action = LogActions.PUR_PAYMENT_CONFIRM)
     @SaCheckPermission("purchase:payment:edit")
-    public Result<Void> confirm(PurchasePaymentDTO dto) {
+    public Result<Void> confirm(@RequestBody PurchasePaymentDTO dto) {
         paymentService.confirmPayment(dto);
         return Result.success();
     }

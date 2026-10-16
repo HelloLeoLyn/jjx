@@ -45,6 +45,8 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
     /** 2026-09-21（dev-20260921-013）：采购事件改手写 payload。 */
     private final com.jjx.event.EventPublisher eventPublisher;
     private final PurchaseOrderMapper orderMapper;
+    /** 附件建引用（dev-20261016-039）：确认付款时把待绑定回单同事务挂到本付款单。 */
+    private final com.jjx.system.service.AttachmentRefService attachmentRefService;
 
     /**
      * 采购类事件统一发布（2026-09-21 dev-20260921-013 采购批）：
@@ -284,6 +286,9 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
 
         int result = paymentMapper.updateById(payment);
 
+        // 附件建引用（dev-20261016-039）：转账回单随「确认付款」同事务落定（缺资料类型则整单回滚）
+        bindAttachments(payment.getPaymentId(), dto.getAttachments());
+
         // 更新订单付款信息
         if (payment.getOrderId() != null) {
             updateOrderPaymentInfo(payment.getOrderId());
@@ -293,6 +298,29 @@ public class PurchasePaymentServiceImpl extends ServiceImpl<PurchasePaymentMappe
             publishPaymentEvent("purchase.payment.confirmed", payment.getPaymentId(), payment.getPaymentNo());
         }
         return result;
+    }
+
+    /**
+     * 把随「确认付款」提交的待绑定附件在同事务内建成引用（dev-20261016-039，照询价 034 范式）：
+     * 缺二级资料类型则拒绝；产品归属由来源策略兜底（{@code AttachmentRefService.create}）。
+     */
+    private void bindAttachments(Long paymentId, java.util.List<com.jjx.sales.domain.dto.AttachmentBindDTO> attachments) {
+        if (attachments == null || attachments.isEmpty()) return;
+        long missing = attachments.stream()
+                .filter(a -> a == null || a.getAttachmentId() == null
+                        || a.getDocumentType() == null || a.getDocumentType().isBlank())
+                .count();
+        if (missing > 0) {
+            throw new BusinessException("有 " + missing + " 个附件未选择资料类型，请先选择后再确认");
+        }
+        for (com.jjx.sales.domain.dto.AttachmentBindDTO item : attachments) {
+            com.jjx.system.domain.dto.AttachmentRefDTO ref = new com.jjx.system.domain.dto.AttachmentRefDTO();
+            ref.setAttachmentId(item.getAttachmentId());
+            ref.setSourceType("purchase_payment");
+            ref.setSourceId(paymentId);
+            ref.setDocumentType(item.getDocumentType());
+            attachmentRefService.create(ref);
+        }
     }
 
     @Override

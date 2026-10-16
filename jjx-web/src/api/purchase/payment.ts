@@ -66,15 +66,23 @@ export function approvePayment(
   })
 }
 
-// 确认付款
-export function confirmPayment(data: FormData) {
+// 确认付款（dev-20261016-039：改 JSON，携带待绑定附件 attachments 同事务建引用）
+export interface PaymentConfirmAttachment {
+  attachmentId: number
+  documentType: string | null
+}
+export interface PaymentConfirmBody {
+  paymentId: number
+  actualPaymentDate?: string
+  voucherNo?: string
+  voucherFileUrl?: string
+  attachments?: PaymentConfirmAttachment[]
+}
+export function confirmPayment(data: PaymentConfirmBody) {
   return request({
     url: '/purchase/payment/confirm',
     method: 'post',
     data,
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
   })
 }
 
