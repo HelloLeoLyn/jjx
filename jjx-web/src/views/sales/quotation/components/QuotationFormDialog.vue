@@ -314,6 +314,28 @@
           </el-form-item>
         </el-col>
       </el-row>
+      <el-row>
+        <el-col :span="24">
+          <!-- 整单级附件（dev-20261016-045）：不传 product-code = 整单归属；
+               随单据「保存」落定（001 §7-1 方案 A），附件区「保存」只提交类型等附件信息。
+               明细行「上传附件」只当上传入口（带该行产品编码），看/管以本列表为准。 -->
+          <AttachmentCenter
+            ref="attachmentCenterRef"
+            source-type="quotation"
+            :source-id="formData.quotationId || null"
+            :source-no="formData.quotationNo || ''"
+            :draft-id="props.draftId || ''"
+            :trace-id="formData.traceId"
+            title="整单附件"
+            :actions="['download', 'detail', 'remove', 'save']"
+            :auto-bind="false"
+            drop-zone
+            view-perm="sales:quotation:view"
+            edit-perm="sales:quotation:edit"
+            @save="onAttachSave"
+          />
+        </el-col>
+      </el-row>
     </el-form>
     <template #footer>
       <div class="dialog-footer">
@@ -448,6 +470,8 @@ async function bindPendingAttachments() {
     }
     // 行级附件（明细行「上传附件」）：保存后按各行草稿键统一绑定（带该行产品编码）
     await bindRowPendingAttachments()
+    // 同单据重开 sourceId 未变，组件不会自动重载（同 dev-20261016-035）；保存成功后显式重取一次整单列表
+    void attachmentCenterRef.value?.refresh()
   } catch (e: any) {
     // 异常隔离：报价单此时已保存成功，附件异常不得冒泡成「整单保存失败」
     console.error('附件绑定异常（报价单已保存）:', e)
