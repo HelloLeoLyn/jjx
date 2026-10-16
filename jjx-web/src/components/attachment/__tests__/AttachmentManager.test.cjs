@@ -221,3 +221,33 @@ test('信息编辑实时通知调用方：changed 携带 dirtyCount（不只是�
   assert.ok(changed.length >= 1)
   assert.equal(changed[changed.length - 1][1].dirtyCount, 1)
 })
+
+test('旧 Center 调用契约回归：撤除 048 兼容改造后不新增 session 参数，emits 保持原有集合', () => {
+  const filename = path.resolve(src, 'components/attachment/AttachmentCenter.vue')
+  const { descriptor } = parse(fs.readFileSync(filename, 'utf8'), { filename })
+  const compiled = compileScript(descriptor, { id: 'ac-test' })
+  const component = (() => {
+    const sandbox = {
+      console,
+      exports: {},
+      module: { exports: {} },
+      require(name) {
+        if (name === 'vue') return vue
+        if (name === 'element-plus') return { ElMessage: { success() {}, error() {}, warning() {} }, ElMessageBox: { confirm: () => Promise.resolve() } }
+        if (name === '@element-plus/icons-vue') return {}
+        if (name === '@/api/system/attachment' || name === '@/api/system/attachmentRef' || name === '@/enums/system/AttachmentEnum') return {}
+        if (name === '@/composables/useAttachmentRefs') return { useAttachmentRefs: () => ({}) }
+        if (name === './useAttachmentPreview') return { useAttachmentPreview: () => ({}) }
+        if (name === './useAttachmentDocList') return { attachmentDocFromFile: () => ({}) }
+        if (name.endsWith('.vue')) return { render: () => null }
+        return {}
+      },
+    }
+    const mod = { exports: {} }
+    const code = ts.transpileModule(compiled.content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }, fileName: 'AttachmentCenter.ts' }).outputText
+    vm.runInNewContext(`(function (exports, require, module) {${code}\n})`, sandbox, { filename })(mod.exports, sandbox.require, mod)
+    return mod.exports.default
+  })()
+  assert.equal('session' in (component.props || {}), false)
+  assert.deepEqual(Array.from(component.emits || []), ['uploaded', 'bound', 'unbound', 'changed', 'duplicate', 'save', 'error'])
+})

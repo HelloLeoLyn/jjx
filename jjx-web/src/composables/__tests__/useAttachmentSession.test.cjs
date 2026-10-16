@@ -18,6 +18,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
 const vue = require('vue')
+const { renderToString } = require('vue/server-renderer')
 const nodeCrypto = require('node:crypto')
 
 const src = path.resolve(__dirname, '../..')
@@ -93,10 +94,12 @@ function harness(opts = {}) {
     module: { exports: {} },
   }
   let currentFile = src + '/'
-  // 无活动组件实例时禁用生命周期注入，避免测试环境告警（仅测试棚）
+  // 默认禁用无实例生命周期注入：测试在无组件实例下直调会话，避免测试挂载方式产生的告警；
+  // opts.rawLifecycle=true 时用真实 vue（用于“告警根因核实”对照，证明非组件缺陷）。
   const vueStub = { ...vue, onBeforeUnmount() {}, onMounted() {}, onDeactivated() {}, onUnmounted() {} }
+  const vueForSandbox = opts.rawLifecycle ? vue : vueStub
   function requireImpl(name) {
-    if (name === 'vue') return vueStub
+    if (name === 'vue') return vueForSandbox
     if (name === 'element-plus') return elplus
     if (name === '@/api/system/attachmentRef') return { attachmentRefApi: api }
     if (name === '@/api/system/attachment') return { attachmentApi: filesApi }
@@ -139,7 +142,7 @@ function harness(opts = {}) {
     path.join(src, 'composables/useAttachmentSession.ts'))
   const refsMod = loadModule(fs.readFileSync(path.join(src, 'composables/useAttachmentRefs.ts'), 'utf8'),
     path.join(src, 'composables/useAttachmentRefs.ts'))
-  const session = mod.useAttachmentSession(opts.sessionOptions || {
+  const session = opts.noSession ? null : mod.useAttachmentSession(opts.sessionOptions || {
     sourceType: 'quotation',
     sourceId: 7,
     saveHandler: opts.saveHandler,
@@ -433,4 +436,59 @@ test('部分成功：只清被接受的改动，未接受（失败）的保留',
   assert.equal(res.failed.length, 1)
   assert.equal(h.session.hasEdit(5), false)
   assert.equal(h.session.hasEdit(6), true)
+})
+
+test('草稿行内保存只保存“信息”：saveChanges 不调用 createRef、不建立正式归属', async () => {
+  const rows = [refRow(5)]
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: rows }),
+    sessionOptions: { sourceType: 'quotation', sourceId: 7, saveHandler: (c) => ({ acceptedUpdates: c.updates.map((u) => u.refId) }) },
+  })
+  await h.session.load(); await tick()
+  h.session.setEdit(5, { documentType: 'A' })
+  await h.session.saveChanges(h.session.getChanges({ kind: 'row', refId: 5 }))
+  assert.equal(h.calls.some((c) => c[0] === 'createRef'), false) // 行内保存不提前绑定正式引用
+})
+
+test('旧调用路径回归：useAttachmentRefs 旧 removePending 仍删草稿行，removePendingLocal 不发请求', () => {
+  const a = harness({ sessionOptions: { sourceType: 'quotation', draftId: 'd1' } })
+  a.session.pending.value = [{ attachmentId: 1, requestKey: '', fileName: 'x', fileSize: 0, sha256: null, state: 'pending', createdAt: '', draftRefId: 11 }]
+  const storeA = a.refsMod.useAttachmentRefs({ sourceType: 'quotation', draftId: 'd1' })
+  storeA.pending.value = [{ attachmentId: 1, requestKey: '', fileName: 'x', fileSize: 0, sha256: null, state: 'pending', createdAt: '', draftRefId: 11 }]
+  storeA.removePending(1) // 旧行为：发草稿行删除请求
+  assert.equal(a.calls.some((c) => c[0] === 'removeDraft' && c[1] === 11), true)
+  assert.equal(storeA.pending.value.length, 0)
+
+  const b = harness({ sessionOptions: { sourceType: 'quotation', draftId: 'd2' } })
+  const storeB = b.refsMod.useAttachmentRefs({ sourceType: 'quotation', draftId: 'd2' })
+  storeB.pending.value = [{ attachmentId: 2, requestKey: '', fileName: 'y', fileSize: 0, sha256: null, state: 'pending', createdAt: '', draftRefId: 22 }]
+  storeB.removePendingLocal(2) // 新通道：仅本地清理，不发请求
+  assert.equal(b.calls.some((c) => c[0] === 'removeDraft'), false)
+  assert.equal(storeB.pending.value.length, 0)
+})
+
+test('告警根因核实：组件上下文挂载无 onBeforeUnmount 告警；无实例直调才告警（测试挂载方式问题，非组件缺陷）', async () => {
+  const logs = []
+  const orig = console.warn
+  console.warn = (...a) => logs.push(a.map((x) => String(x)).join(' '))
+  try {
+    // 真实用法：在组件 setup 内使用（有活动实例）
+    const good = harness({ rawLifecycle: true, noSession: true })
+    const app = vue.createSSRApp({
+      setup() {
+        good.refsMod.useAttachmentRefs({ sourceType: 'quotation', sourceId: 7 })
+        return () => null
+      },
+    })
+    await renderToString(app)
+    assert.equal(logs.filter((w) => /onBeforeUnmount/.test(w)).length, 0)
+
+    // 反证：脱离组件实例直调（测试挂载方式）会出现该告警
+    logs.length = 0
+    const raw = harness({ rawLifecycle: true, noSession: true })
+    raw.refsMod.useAttachmentRefs({ sourceType: 'quotation', sourceId: 7 })
+    assert.ok(logs.some((w) => /onBeforeUnmount/.test(w)))
+  } finally {
+    console.warn = orig
+  }
 })
