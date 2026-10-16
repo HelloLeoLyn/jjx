@@ -18,6 +18,8 @@ import com.jjx.system.service.ISysAttachmentService;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import com.jjx.system.mapper.SysAttachmentRefMapper;
 import com.jjx.system.utils.AttachmentRefUtils;
+import com.jjx.system.service.AttachmentRefService;
+import com.jjx.system.domain.dto.AttachmentRefDTO;
 import com.jjx.sales.domain.converter.SalesQuotationConverter;
 import com.jjx.sales.domain.dto.SalesOrderAddDTO;
 import com.jjx.sales.domain.dto.SalesQuotationAddDTO;
@@ -77,6 +79,8 @@ public class QuotationServiceImpl implements IQuotationService {
     private final SysAttachmentMapper attachmentMapper;
     /** 附件双写收口 dev-20261014-028：报价 send/submitReview 由老字段 attachmentIds 改为引用 ID。 */
     private final SysAttachmentRefMapper attachmentRefMapper;
+    /** 附件落定唯一入口（dev-20261016-066）：报价新增保存时把随单附件建成引用（草稿行同步转正）。 */
+    private final AttachmentRefService attachmentRefService;
     private final SalesQuotationConverter quotationConverter;
     /** 2026-09-21（dev-20260921-009）：报价改单要发事件。 */
     private final com.jjx.event.EventPublisher eventPublisher;
@@ -339,6 +343,9 @@ public class QuotationServiceImpl implements IQuotationService {
         // 保存报价单明细（自动汇总金额：税率百分数÷100 算税额，total=subtotal+tax，final=total-折扣）
         saveQuotationItems(quotation.getQuotationId(), quotation.getItems(),
                 quotation.getTaxRate(), quotation.getDiscountAmount());
+        // 附件落定（dev-20261016-066）：明细产品 id 已回填/建档，此时建引用并把草稿行转正；
+        // 任一条（缺类型/附件不存在/无权/产品不属于本单）抛业务异常 ⇒ 整单回滚，不留半成功。
+        bindQuotationAttachments(quotation, dto.getAttachments());
         // 返回新报价单 ID（2026-09-02：前端保存后不关弹窗，需凭 ID 续改/挂资料）
         return quotation.getQuotationId();
     }
@@ -389,6 +396,67 @@ public class QuotationServiceImpl implements IQuotationService {
                     log.warn("样品报价建档草稿产品失败: code={}, err={}", item.getProductCode(), e.getMessage());
                 }
             }
+        }
+    }
+
+    /**
+     * 报价新增保存时把随单附件落定（dev-20261016-066）。
+     *
+     * 口径（jjx-docs/reference/attachment-refactor-decisions-dev-20261016-001.md §2/§4/§5）：
+     * 1）保存单据 = 建引用 + 草稿行转正（原子）——转正唯一入口是 {@link AttachmentRefService#create}，
+     *    本方法不写第二套转正 SQL；来源单号由 create 按来源自证取得，不在此传。
+     * 2）归属 = 报价单 + 产品：产品 id 优先取入参，缺失则按明细编码回填（未建档产品已在
+     *    {@link #ensureSampleDraftProducts} 建档、标准单在 {@link #saveQuotationItems} 按码兜底）。
+     * 3）缺 attachmentId / documentType 一律抛业务异常（服务层兜底，与 Controller 校验同口径）。
+     * 4）本方法在 {@link #insertQuotation} 的 {@code @Transactional(rollbackFor = Exception.class)} 内执行：
+     *    任一条失败直接抛出 ⇒ 整单回滚，禁止 try-catch 吞掉造成「单据存了、附件没落」的半成功。
+     */
+    private void bindQuotationAttachments(SalesQuotation quotation,
+                                          List<SalesQuotationAddDTO.QuotationAttachmentDTO> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < attachments.size(); i++) {
+            SalesQuotationAddDTO.QuotationAttachmentDTO attachment = attachments.get(i);
+            if (attachment == null) {
+                throw new BusinessException("attachments[" + i + "] 不能为空，必须提供 attachmentId 和 documentType");
+            }
+            if (attachment.getAttachmentId() == null) {
+                throw new BusinessException("attachments[" + i + "].attachmentId 不能为空");
+            }
+            if (attachment.getDocumentType() == null || attachment.getDocumentType().isBlank()) {
+                throw new BusinessException("attachments[" + i + "].documentType 不能为空");
+            }
+        }
+        // 明细产品 id：编码 → productId（此时明细已保存，productId 已建档/回填）
+        Map<String, Long> productIdByCode = new HashMap<>();
+        if (quotation.getItems() != null) {
+            for (SalesQuotationItem item : quotation.getItems()) {
+                if (item.getProductCode() == null || item.getProductCode().isBlank() || item.getProductId() == null) {
+                    continue;
+                }
+                productIdByCode.putIfAbsent(item.getProductCode().trim(), item.getProductId());
+            }
+        }
+        int sortOrder = 0;
+        for (SalesQuotationAddDTO.QuotationAttachmentDTO attachment : attachments) {
+            String productCode = attachment.getProductCode() == null ? null : attachment.getProductCode().trim();
+            if (productCode != null && productCode.isEmpty()) {
+                productCode = null;
+            }
+            Long productId = attachment.getProductId();
+            if (productId == null && productCode != null) {
+                productId = productIdByCode.get(productCode);
+            }
+            AttachmentRefDTO ref = new AttachmentRefDTO();
+            ref.setAttachmentId(attachment.getAttachmentId());
+            ref.setSourceType("quotation");
+            ref.setSourceId(quotation.getQuotationId());
+            ref.setProductId(productId);
+            ref.setProductCode(productCode);
+            ref.setDocumentType(attachment.getDocumentType().trim());
+            ref.setSortOrder(sortOrder++);
+            attachmentRefService.create(ref);
         }
     }
 
