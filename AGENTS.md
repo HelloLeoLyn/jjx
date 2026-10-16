@@ -1,5 +1,11 @@
 # JJX Agent Engineering Rules
 
+## 协作与沟通规则入口（dev-20261016-085）
+
+涉及 JJX 的答疑、讨论、建议、出卡、领取、执行或验收前，必须读取 [多 Agent 协作交互规则](jjx-docs/standards/multi-agent-protocol.md)（本机绝对路径：`/home/administrator/jjx/jjx-docs/standards/multi-agent-protocol.md`；原任务 3380 / dev-20261016-078，优化任务 dev-20261016-082）。新会话先加载；已有会话尚未加载或获知规则更新时，在下一次 JJX 回复/动作前补读。每轮按已加载规则判断讨论与执行、使用完整问题名称、区分事实与推断，不逐轮复述检查表，也不以读取规则为由额外写文件或改库。
+只引用这一真源，不复制正文、不自建替代模板；用户当前明确指令优先，既有 CONVENTIONS 与服务操作授权规则仍适用。无法读取时说明具体路径及受阻范围，不宣称已加载。
+
+
 ## Agent 任务书入口（dev-20261012-045）
 
 编写、登记或交接 JJX 任务书前，必须读取 [任务书指南](jjx-docs/guides/agent-task-brief.md)（本机绝对路径：`/home/administrator/jjx/jjx-docs/guides/agent-task-brief.md`）。默认使用短任务卡，复杂内容按需补充；只引用该真源，不复制模板正文。已有会话尚未加载本规则时，在下一次出任务书前重新读取指南。通用规则仍遵循本文件与 CONVENTIONS，不以模板覆盖用户当次指令。
