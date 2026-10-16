@@ -301,9 +301,12 @@
         :draft-id="draftId"
         :trace-id="(form as any)?.traceId"
         :accept="['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']"
+        :actions="['download', 'detail', 'remove', 'save']"
+        :auto-bind="false"
         view-perm="sales:order:view"
         edit-perm="sales:order:edit"
         style="margin-bottom: 10px"
+        @save="onAttachSave"
       />
     </div>
 
@@ -632,6 +635,17 @@ function restoreAttachmentDraft(id: string) {
 const createdOrderId = ref<number>()
 const createdTraceId = ref<string>()
 
+// ====== 附件区「保存」（dev-20261016-020：承 001 §7-1 方案 A）======
+// 附件区「保存」= 只提交「附件信息类」改动（二级类型/备注/排序；组件内 flushTypeEdits 已提交），
+// **不再落定**——落定（建引用）只由单据「保存」负责（保存成功后 bindPending 统一绑定待绑定队列）。
+function onAttachSave() {
+  if (!form.orderId) {
+    ElMessage.info('单据尚未保存：附件信息已暂存在本地，保存单据时会一并落定')
+    return
+  }
+  ElMessage.success('附件信息已保存；附件随「保存单据」落定')
+}
+
 /** 客户档案 payment_method(1预付/2货到付款/3月结30天/4月结60天) → 订单同值域枚举 */
 const PAYMENT_METHOD_TO_TERMS: Record<number, string> = {
   1: 'prepaid',
@@ -924,9 +938,23 @@ watch(
 // 提交表单（重写：保存订单后再上传附件）
 const submitForm = async (): Promise<boolean> => {
   if (props.isEdit) {
-    // 编辑模式：走原有逻辑（附件已直接上传）
+    // 编辑模式：走原有逻辑；保存成功后把本次待绑定附件落定
+    // （dev-20261016-020 / 001 §7-1 方案 A：auto-bind 关闭后，落定只由单据「保存」负责）
     const success = await submitOrderForm()
     if (success) {
+      await nextTick()
+      try {
+        const result = await attachmentCenterRef.value?.bindPending()
+        if (result && (result.status === 'partial' || result.status === 'all-failed')) {
+          ElMessage.warning(
+            `订单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试`,
+          )
+        }
+      } catch (e) {
+        // 附件失败不得冒泡成「整单保存失败」（订单此时已保存成功）
+        console.error('附件绑定异常（订单已保存）:', e)
+        ElMessage.warning('订单已保存，但部分附件绑定失败，可在附件区重试')
+      }
       emit('success')
     }
     return success
