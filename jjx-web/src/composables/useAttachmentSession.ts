@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch, type Ref } from 'vue'
+import { computed, reactive, ref, watch, type ComputedRef, type Ref } from 'vue'
 import {
   useAttachmentRefs,
   type AttachmentUploadContext,
@@ -102,7 +102,32 @@ export type AttachmentSaveScope =
 
 type MaybeRef<T> = Ref<T> | T
 
-export interface UseAttachmentSessionOptions {
+/**
+ * 保存处理器注入契约（dev-20261016-069 定型；行为边界由 068 固化契约 + 契约文档共同定义）。
+ *
+ * 语义：
+ *   - **注入 saveHandler ⇒ 保存入口开放**（运行时 `canSave=true`）；**不注入 ⇒ 不开放**
+ *     （`canSave=false`，且 `saveChanges`/`commit` 抛错，见实现里的入口闸）。
+ *   - 该开关**在类型层同样可表达**：`useAttachmentSession` 是泛型函数，返回类型按这里有没有
+ *     `saveHandler` 推导为 `AttachmentSession<true>` / `AttachmentSession<false>`
+ *     （见 `AttachmentSaveGate`），因此「没有 handler 就没有保存入口」不只靠运行时布尔。
+ *   - 处理器是**唯一**与后端落定相关的出口：会话只做「攒差异 getChanges → 校验 validate →
+ *     调用处理器 saveChanges → 按『被接受』回填 acceptSaved」，业务请求不写在这里。
+ */
+export interface AttachmentSaveInjection {
+  /**
+   * 保存处理器。签名 `(changes) => Promise<AttachmentSaveResult> | AttachmentSaveResult`：
+   *   - `changes.uploads` 仅在 `scope.kind === 'all'`（完整会话）时出现；行内/批量只带 updates；
+   *   - 返回值用 `acceptedUploads` / `acceptedUpdates` 表示「已落定」，未列出的项一律**保留**
+   *     （失败/部分成功都不假成功，见 068 契约 §4）；
+   *   - 抛错 ⇒ 向上抛给调用方提示，会话保留全部改动并复位 saving（068 契约 §4/§5）。
+   *
+   * 不注入 = 本会话不开放任何保存入口（`canSave=false`，`saveChanges`/`commit` 抛错）。
+   */
+  saveHandler?: AttachmentSaveHandler
+}
+
+export interface UseAttachmentSessionOptions extends AttachmentSaveInjection {
   sourceType: MaybeRef<string>
   sourceId?: MaybeRef<number | null | undefined>
   draftId?: MaybeRef<string>
@@ -112,11 +137,34 @@ export interface UseAttachmentSessionOptions {
   editPerm?: MaybeRef<string>
   viewPerm?: MaybeRef<string>
   autoLoad?: boolean
-  /** 保存处理器；不传 = 不开放保存入口（无处理器不开放按钮） */
-  saveHandler?: AttachmentSaveHandler
 }
 
-export type AttachmentSession = ReturnType<typeof useAttachmentSession>
+/**
+ * 类型层闸门：调用方**是否注入了 saveHandler**。
+ * `true` ⇒ 保存入口开放；`false` ⇒ 不开放（`canSave` 在类型上即 `false`）。
+ * 依据传入 options 的**推断类型**；若调用方把 options 声明成宽松的 `UseAttachmentSessionOptions`
+ * （`saveHandler?` 可选），闸门退化为 `boolean`（未知），此时以运行时 `canSave` 为准。
+ */
+export type AttachmentSaveGate<O> = O extends { saveHandler: AttachmentSaveHandler } ? true : false
+
+/**
+ * 会话类型：运行时形状（`ReturnType<typeof createAttachmentSession>`）与保存闸门 `canSave` 的组合。
+ * - `AttachmentSession`（默认）= `canSave: ComputedRef<boolean>`：供公共组件（Manager/Upload）
+ *   等不依赖闸门推导的消费方使用；
+ * - `AttachmentSession<true>` / `AttachmentSession<false>`：注入 / 未注入 handler 的精确形状，
+ *   由 `useAttachmentSession` 的泛型参数推导。
+ */
+export type AttachmentSession<CanSave extends boolean = boolean> = ReturnType<
+  typeof createAttachmentSession
+> & {
+  /** 保存入口是否开放：`ComputedRef<true|false>`；泛型参数由 `AttachmentSaveGate<O>` 推导 */
+  canSave: ComputedRef<CanSave>
+}
+
+/** 已注入保存处理器：保存入口开放（`canSave.value` 恒真） */
+export type AttachmentSessionWithSaver = AttachmentSession<true>
+/** 未注入保存处理器：不开放保存入口（`canSave.value` 恒假，saveChanges/commit 抛错） */
+export type AttachmentSessionWithoutSaver = AttachmentSession<false>
 
 /** 引用行的归属键：优先正式 productId，其次 productCode 分组，最后单据级 */
 export function ownershipKeyOfRef(row: Pick<AttachmentRefItem, 'productId' | 'productCode'>): string {
@@ -139,7 +187,7 @@ function unwrap<T>(value: MaybeRef<T> | undefined, fallback: T): T {
     : (value as T)
 }
 
-export function useAttachmentSession(options: UseAttachmentSessionOptions) {
+function createAttachmentSession(options: UseAttachmentSessionOptions) {
   const saveHandler = options.saveHandler
 
   // 文档级共享：productCode 传 null → 一次加载整单全部引用；上传归属由每次 upload 的上下文固定。
@@ -424,4 +472,21 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
     ownershipKeyOfRef,
     ownershipKeyOfPending,
   }
+}
+
+/**
+ * 创建附件共享会话（唯一入口；运行时逻辑在 {@link createAttachmentSession}）。
+ *
+ * 返回类型按**是否注入 `saveHandler`** 精确推导（本卡 dev-20261016-069 定型）：
+ *   - 注入 → `AttachmentSession<true>`：`canSave` 类型即 `true`，保存入口开放；
+ *   - 未注入 → `AttachmentSession<false>`：`canSave` 类型即 `false`，不开放保存入口。
+ * 因此「无 handler 不开放保存入口」在**类型层**可表达，不需要等到运行时读 `canSave.value`。
+ *
+ * 注入示例与失败/部分成功/与移除互斥的边界，见
+ * `jjx-docs/reference/attachment-save-handler-contract-dev-20261016-069.md`（071 可直接照抄）。
+ */
+export function useAttachmentSession<
+  O extends UseAttachmentSessionOptions = UseAttachmentSessionOptions,
+>(options: O): AttachmentSession<AttachmentSaveGate<O>> {
+  return createAttachmentSession(options) as AttachmentSession<AttachmentSaveGate<O>>
 }
