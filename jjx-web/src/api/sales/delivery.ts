@@ -94,6 +94,8 @@ export interface SalesDeliveryReceiveDTO {
   /** 客户签收日期（纸面，口径 D1；与系统登记时间区分） */
   customerReceiveDate?: string
   receiveRemark?: string
+  /** 随签收提交的待绑定附件（dev-20261016-039）：同事务建引用；缺二级类型则拒绝 */
+  attachments?: { attachmentId: number; documentType: string | null }[]
 }
 
 export interface SalesDeliveryCreateDTO {

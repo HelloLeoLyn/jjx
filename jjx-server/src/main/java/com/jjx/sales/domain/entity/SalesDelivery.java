@@ -1,6 +1,7 @@
 package com.jjx.sales.domain.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -11,6 +12,7 @@ import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.List;
 
 /**
  * 销售发货单实体类
@@ -22,6 +24,10 @@ public class SalesDelivery extends BaseEntity {
 
     @TableId(type = IdType.AUTO)
     private Long deliveryId;
+
+    /** 随「签收」一起提交的待绑定附件（dev-20261016-039）：非表字段，仅用于接收请求体。 */
+    @TableField(exist = false)
+    private List<com.jjx.sales.domain.dto.AttachmentBindDTO> attachments;
 
     /** 发货单号 */
     private String deliveryNo;

@@ -256,9 +256,13 @@
       <AttachmentCenter
         v-if="receiveDeliveryId"
         :key="`return-receive-${receiveDeliveryId}`"
+        ref="receiveAttachRef"
         source-type="sales_delivery"
         :source-id="receiveDeliveryId"
         variant="panel"
+        :actions="['download', 'detail', 'remove', 'save']"
+        :auto-bind="false"
+        @save="onAttachSave"
         title="回签件"
         view-perm="sales:delivery:doc:view"
         edit-perm="sales:delivery:doc:add"
@@ -521,11 +525,27 @@ function openReceive(row: SalesDeliveryVO) {
   })
   receiveVisible.value = true
 }
+const receiveAttachRef = ref<InstanceType<typeof AttachmentCenter> | null>(null)
+/** 附件区「保存」（dev-20261016-039，承 014 §7-1 方案 A）：只提交附件信息类改动、不落定；落定归「确认签收」。 */
+function onAttachSave() {
+  ElMessage.success('附件信息已保存；回签件随「确认签收」落定')
+}
+
 async function submitReceive() {
   if (!receiveDeliveryId.value) return
+  // 资料类型必选（dev-20261016-039，对齐 032）：缺二级类型的待绑定回签件先拦
+  const missingTypeCount = receiveAttachRef.value?.getMissingTypeCount?.() ?? 0
+  if (missingTypeCount > 0) {
+    ElMessage.warning(`有 ${missingTypeCount} 个附件未选择资料类型，请先选择后再签收`)
+    return
+  }
   submitting.value = true
   try {
-    await deliveryApi.receive(receiveDeliveryId.value, receiveForm)
+    const attachments = (receiveAttachRef.value?.pendingEntries ?? []).map((e: any) => ({
+      attachmentId: e.attachmentId,
+      documentType: e.documentType ?? null,
+    }))
+    await deliveryApi.receive(receiveDeliveryId.value, { ...receiveForm, attachments })
     ElMessage.success('签收成功')
     receiveVisible.value = false
     await load()
