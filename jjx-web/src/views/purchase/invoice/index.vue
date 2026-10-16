@@ -73,6 +73,7 @@
             variant="upload-only"
             title="发票文件"
             :auto-bind="false"
+            :actions="['remove']"
             :locked="submitting"
             :lock-reason="submitting ? '提交中，请稍候' : ''"
             :max-size-m-b="20"
@@ -106,6 +107,7 @@
             variant="upload-only"
             title="本次核销文件"
             :auto-bind="false"
+            :actions="['remove']"
             :locked="submitting"
             :lock-reason="submitting ? '提交中，请稍候' : ''"
             :max-size-m-b="20"
@@ -287,6 +289,9 @@ function onOrderChange(orderId?: number) {
 async function submitCreate() {
   if (!createForm.orderId) { ElMessage.error('请选择采购订单'); return }
   if (!createPending.value.length) { ElMessage.warning('请先上传发票文件'); return }
+  // 资料类型必选（dev-20261016-024，对齐 032）：缺二级类型的待上传文件前拦，避免「生成成功但文件未建引用」
+  const createMissingType = createAttachments.value?.getMissingTypeCount?.() ?? 0
+  if (createMissingType > 0) { ElMessage.warning(`有 ${createMissingType} 个发票文件未选择资料类型，请先选择后再提交`); return }
   const o = pendingOrders.value.find((x) => x.orderId === createForm.orderId)
   if (!o) { ElMessage.error('请选择采购订单'); return }
   submitting.value = true
@@ -316,6 +321,9 @@ function resetVerify() {
 async function submitVerify() {
   if (!verifyTarget.value) return
   if (!verifyForm.verificationDate || !verifyForm.verifierName) { ElMessage.warning('请填写核销日期和核销人'); return }
+  // 资料类型必选（dev-20261016-024，对齐 032）：缺二级类型的待上传文件前拦
+  const verifyMissingType = verifyAttachments.value?.getMissingTypeCount?.() ?? 0
+  if (verifyMissingType > 0) { ElMessage.warning(`有 ${verifyMissingType} 个核销文件未选择资料类型，请先选择后再提交`); return }
   submitting.value = true
   try {
     const attachmentIds = (verifyAttachments.value?.pendingEntries || []).map((f) => f.attachmentId)
