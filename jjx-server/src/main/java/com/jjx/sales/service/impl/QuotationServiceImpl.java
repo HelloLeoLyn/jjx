@@ -648,6 +648,19 @@ public class QuotationServiceImpl implements IQuotationService {
             throw new BusinessException("已发送、待审核、已审核、已确认、已完成或改单中的报价单不能删除");
         }
 
+        // 附件清理必须放在主表逻辑删**之前**（dev-20261016-052）：
+        // deleteAttachmentsByBiz 第一步是 AttachmentSourcePolicy.check 的来源自证，其 SQL 要求 deleted=0；
+        // 主表先置 deleted=1 会让它查不到来源 → 抛「业务来源不存在或不唯一」，而该异常从 @Transactional
+        // 代理穿出会把本事务标 rollback-only，外层 catch 吞掉后提交时仍抛 UnexpectedRollbackException，
+        // 导致整单删除回滚（2026-10-16 实测 quotationId=2）。与报价单有没有附件无关。
+        try {
+            sysAttachmentService.deleteAttachmentsByBiz("quotation", quotationId);
+        } catch (Exception e) {
+            // 说明：此处吞掉异常并不能「不影响主表删除」——共享事务已被标 rollback-only，本次删除会整体回滚。
+            // 日志必须写明后果，否则失败后从日志看不出真实结果。
+            log.warn("报价单附件清理失败（本次删除将整体回滚）: quotationId={}, {}", quotationId, e.getMessage());
+        }
+
         // 逻辑删除（MP @TableLogic：deleteById 自动 SET deleted=1 WHERE id AND deleted=0）
         // 注意：不能 setDeleted(1)+updateById —— MP 逻辑删除字段不参与 UPDATE SET，那样 deleted 不会变
         int rows = quotationMapper.deleteById(quotationId);
@@ -664,8 +677,6 @@ public class QuotationServiceImpl implements IQuotationService {
                     .eq(SalesQuotationItem::getQuotationId, quotationId));
             quotationFlowMapper.delete(new LambdaQueryWrapper<SalesQuotationFlow>()
                     .eq(SalesQuotationFlow::getQuotationId, quotationId));
-            // 连带清理附件（记录+物理文件）
-            sysAttachmentService.deleteAttachmentsByBiz("quotation", quotationId);
         } catch (Exception e) {
             // 子表清理失败不影响主表删除结果，记录日志
             log.warn("删除报价单子表数据失败: quotationId={}, {}", quotationId, e.getMessage());
