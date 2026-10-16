@@ -23,7 +23,7 @@
     <!-- 底部操作栏 -->
     <div class="footer-bar">
       <el-button @click="goBack">取 消</el-button>
-      <el-button type="primary" @click="handleSubmit" :loading="submitting">确认转量产</el-button>
+      <el-button type="primary" @click="handleSubmit" :loading="submitting" :disabled="!sampleOrderId">确认转量产</el-button>
     </div>
   </div>
 </template>
@@ -42,7 +42,17 @@ import OrderForm from './components/OrderForm.vue'
 const route = useRoute()
 const router = useRouter()
 
-const sampleOrderId = Number(route.params.sampleId)
+// 路由参数可能是缺失/非法（手输 URL、过期书签）：Number(undefined)=NaN 会让本页静默退化成
+// 「普通新增订单」（NaN 在 OrderForm 里是假值，不会走 convertSample），比报错更隐蔽；
+// 这里显式校验，取不到就提示并回样品单列表（dev-20261016-054）。
+const rawSampleId = Array.isArray(route.params.sampleId) ? route.params.sampleId[0] : route.params.sampleId
+const parsedSampleId = Number(rawSampleId)
+const sampleOrderId = Number.isFinite(parsedSampleId) && parsedSampleId > 0 ? parsedSampleId : undefined
+
+if (!sampleOrderId) {
+  ElMessage.error('缺少样品单参数：请从「样品单列表」点「转量产」进入本页')
+  router.replace('/sales/sample-order')
+}
 
 // 表单组件引用
 const orderFormRef = ref<InstanceType<typeof OrderForm> | null>(null)

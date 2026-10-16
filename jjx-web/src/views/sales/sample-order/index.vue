@@ -1037,15 +1037,25 @@ function canCopy(row: any): boolean {
 // ===== 打样领料单（按样品单生成；原在「产品作业规范」⑦ 页签，dev-20261010-013 挪到样品单页）=====
 const pickVisible = ref(false)
 const pickSample = ref<any>(null)
+/** 开弹窗时守卫过的样品单号（列表行主键 orderId）：提交时直接用，不再从行对象取字段（dev-20261016-054） */
+const pickSampleId = ref<number | null>(null)
 const pickRows = ref<(SamplePickPreviewRow & { pickQty: number })[]>([])
 const pickSubmitting = ref(false)
 const unmatchedCount = computed(() => pickRows.value.filter((r) => !r.materialId).length)
 
 async function openSamplePick(row: any) {
+  // 列表行的主键是 orderId（SampleOrder.orderId）；曾误读 row.sampleOrderId（那是会签/不良记录的字段）
+  // → Number(undefined)=NaN 拼进 URL，后端 Long 转换失败（dev-20261016-054）。取值前先守卫。
+  const sampleOrderId = Number(row?.orderId)
+  if (!Number.isFinite(sampleOrderId) || sampleOrderId <= 0) {
+    ElMessage.error('取不到样品单号，无法生成领料单；请刷新列表后重试')
+    return
+  }
   pickSample.value = row
+  pickSampleId.value = sampleOrderId
   pickRows.value = []
   try {
-    const res: any = await outboundApi.samplePickPreview(Number(row.sampleOrderId))
+    const res: any = await outboundApi.samplePickPreview(sampleOrderId)
     const rows: SamplePickPreviewRow[] = res?.data || []
     pickRows.value = rows.map((r) => ({
       ...r,
@@ -1060,6 +1070,12 @@ async function openSamplePick(row: any) {
 
 async function submitSamplePick() {
   if (!pickSample.value) return
+  // 用开弹窗时守卫过的样品单号，避免再从行对象上取字段（dev-20261016-054）
+  const sampleOrderId = pickSampleId.value
+  if (!sampleOrderId) {
+    ElMessage.error('取不到样品单号，无法生成领料单；请刷新列表后重试')
+    return
+  }
   const items = pickRows.value
     .filter((r) => r.materialId && Number(r.pickQty) > 0)
     .map((r) => ({
@@ -1074,10 +1090,7 @@ async function submitSamplePick() {
   }
   pickSubmitting.value = true
   try {
-    const res: any = await outboundApi.createSamplePick(
-      Number(pickSample.value.sampleOrderId),
-      items
-    )
+    const res: any = await outboundApi.createSamplePick(sampleOrderId, items)
     const outboundId = Number(res?.data || 0)
     ElMessage.success('打样领料单已生成（待仓库确认发料后扣库存）')
     pickVisible.value = false
