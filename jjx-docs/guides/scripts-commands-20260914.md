@@ -239,3 +239,21 @@
 - `scripts/db-clean-test-data.sh --execute` 已于 2026-10-13（任务 dev-20261013-044）**恢复**：全量清理一律包含产品资料；其余闸门不变（终端人工执行 + 今天的手工全库备份 + 手输库名 `jjx_erp_db`）。
 - `scripts/clean-archive-ocr-data.sh --yes` **仍冻结**：旧档案清理无法证明公共附件无历史引用，仅允许不带 `--yes` 的只读预览。
 - V1-A 清附件另有 `POST /system/attachment/refs/cleanup-preview` 预演（不物理删除）；迁移 271 的数据库 DELETE 触发器兜底仍在。迁移 271、272 需人工静态审查及备份后决定执行，尚未执行。
+
+## 附件测试数据清理（dev-20261016-044）
+
+`python3 scripts/attachment-cleanup.py` 默认只读：显示附件两表行数、全部待删文件及范围外保留目录；`--help` 查看参数。危险等级：🟢预览／🔴执行（清库 + 删除文件）。不能自动区分正式与测试附件，执行会清空 `sys_attachment_ref` 和 `sys_attachment`（含草稿、已软删、受控、LEGACY），重置自增号。
+
+前置：Python 3.10+、mysql、现有迁移入口所需 bash/flock；操作人须先阻止上传和附件写入，脚本不操作服务。预览用只读账号 `jjx_ro`（可由 `JJX_RO_USER/JJX_RO_PASS` 覆盖）；执行沿用 `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASS`。
+
+默认扫描当前 `upload/`（或 `JJX_UPLOAD_ROOT`）及旧 `jjx-server/upload/` 的附件专属目录，包括 `attachment-temp` 与产品/业务附件；`--upload-root` 可重复指定，覆盖默认根目录。即使两表已空，仍列出这些目录的历史孤儿文件。OCR `engineering-archive`、图标目录、`upload/backup` 和未知目录保留并逐项显示；这些保留目录不属于公共附件数据，不能用本工具清空整个上传盘。
+
+1）预览：`python3 scripts/attachment-cleanup.py`。
+2）用户手工准备今天的全库 SQL 备份（排除 `hr_employee`，遵守现行只留最新一份规则）；另手工归档文件。例如在仓库根执行 `tar -cf /手工文件备份.tar -C / home/administrator/jjx/upload home/administrator/jjx/jjx-server/upload`（自定义根目录需使用对应绝对路径去掉开头 `/`）；归档须放在待删目录外。脚本不生成或清理备份。
+3）执行：`python3 scripts/attachment-cleanup.py --execute --task dev-YYYYMMDD-NNN --backup /手工全库.sql --files-backup /手工文件备份.tar --writes-paused`，只能在终端手工输入 `<数据库名> DELETE ALL ATTACHMENTS`。有待删文件时，逐个校验 tar 内字节一致才放行。
+
+发现额外附件外键、业务表非空 `attachment_id/attachment_ids/attachment_ref_ids` 证据、软链接/硬链接/特殊文件或无法读取的目录即中止；须先处理关联测试业务，脚本不抹除业务证据。清库生成下一编号 `jjx-docs/sql/migrations/NN_attachment_test_cleanup.sql`，经 `db-migrate.sh` 校验全库备份、执行、记账并同名归档；只对当前会话关闭 FK 检查并 TRUNCATE 两表，**不摘除保护触发器**。确认两表为空且文件清单未变化后逐个删除文件，空目录保留。
+
+非事务操作，库和磁盘无法一起回滚。SQL、记账、归档或文件删除失败会返回非零并保留错误，不自动重试；数据库可能已清空，磁盘文件可能部分删除。核查迁移账本/恢复记录后按迁移入口 `--record/--retry` 处理，勿盲目重跑；用户执行后需提交同名归档 SQL。脚本退出码 0=预览或执行成功，1=拒绝/中止/失败。
+
+隔离验证：`python3 -m unittest discover -s scripts/tests -p test_attachment_cleanup.py`；不连真实数据库、不删除真实文件。
