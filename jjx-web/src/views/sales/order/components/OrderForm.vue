@@ -286,6 +286,14 @@
     <!-- 附件上传（新建和编辑都显示） -->
     <el-divider content-position="left">订单附件</el-divider>
     <div class="attachment-section">
+      <el-dropdown v-if="!form.orderId && draftChoices.length" @command="restoreAttachmentDraft">
+        <el-button plain>恢复未保存草稿</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <AttachmentCenter
         ref="attachmentCenterRef"
         source-type="sales_order"
@@ -428,11 +436,11 @@
 
 <script setup lang="ts">
 import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
-import { onMounted, ref, reactive, computed, watch, nextTick } from 'vue'
+import { onActivated, onMounted, ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
-import { useUserStore } from '@/store/modules/user'
+import { useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
 import { orderApi } from '@/api/sales/order'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { customerApi } from '@/api/sales/customer'
@@ -608,44 +616,19 @@ const handleCurrencyChange = async (val: string) => {
 
 // ===== 附件上传（DEV-733 统一组件） =====
 const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
-/** 待绑定队列草稿标识（dev-20261012-028：照询价单策略——只在为空时生成，同一会话复用，保存成功后清空） */
-const draftId = ref('')
-const draftUserStore = useUserStore()
-let draftOwnerKey = ''
-const draftSessionKey = () => `attach-draft:v1:${draftUserStore.userId ?? 'anonymous'}:sales_order`
-function newDraftId() {
-  return `so-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
-/** 空时才生成；sessionStorage 跨刷新保留（修复「保存前刷新后待绑定不可达」） */
+/** 未保存单据按实例隔离；刷新恢复当前实例，显式恢复可找回已关闭实例。 */
+const draftSession = useAttachmentDraftInstance('sales_order', {
+  snapshot: () => form,
+  restore: (data) => { resetForm(); Object.assign(form, data) },
+})
+const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
 function ensureDraftId() {
-  const key = draftSessionKey()
-  if (draftOwnerKey !== key) {
-    draftId.value = ''
-    draftOwnerKey = key
-  }
-  if (!draftId.value) {
-    try {
-      draftId.value = sessionStorage.getItem(key) || ''
-    } catch (e) {
-      console.warn('读取订单草稿标识失败，刷新后可能无法恢复待绑定附件', e)
-    }
-    if (!draftId.value) draftId.value = newDraftId()
-  }
-  try {
-    sessionStorage.setItem(key, draftId.value)
-  } catch (e) {
-    console.warn('保存订单草稿标识失败，刷新后可能无法恢复待绑定附件', e)
-  }
+  if (!draftSession.resumeId || !draftSession.restore(draftSession.resumeId)) draftSession.startNew()
 }
-function clearDraftId() {
-  if (!draftId.value) return // 编辑已有单据不清理另一张未保存草稿的会话标识。
-  try {
-    sessionStorage.removeItem(draftOwnerKey)
-  } catch (e) {
-    console.warn('清理已保存订单草稿标识失败', e)
-  }
-  draftId.value = ''
+function restoreAttachmentDraft(id: string) {
+  draftSession.restore(id)
 }
+
 const createdOrderId = ref<number>()
 const createdTraceId = ref<string>()
 
@@ -907,13 +890,21 @@ watch(
   }
 )
 
+// 缓存页面离开时已关闭实例；再次进入新增页必须创建新实例。
+onActivated(() => {
+  if (!props.isEdit && !draftId.value && !form.orderId) {
+    resetForm()
+    draftSession.startNew()
+  }
+})
+
 // 初始化
 onMounted(() => {
   resetForm()
-  if (!props.isEdit) ensureDraftId() // 新建：空时才生成草稿标识（刷新复用）
+  if (!props.isEdit) ensureDraftId() // 新页面实例或刷新恢复，互不混用
   loadSalesPersons()
   // 2026-09-07：不再预取单号（取消/失败会烧号导致跳号），改由后端提交落库时生成
-  if (props.sampleOrderId) {
+  if (props.sampleOrderId && !draftSession.resumeId) {
     prefillFromSample(props.sampleOrderId)
   }
   loadCustomerAddresses().then(() => preferDefaultAddress())
@@ -1017,9 +1008,11 @@ const submitForm = async (): Promise<boolean> => {
 
 // 暴露给父组件的方法和属性
 function resetOrderForm() {
+  draftSession.close()
   createdOrderId.value = undefined
   createdTraceId.value = undefined
   resetForm()
+  if (!props.isEdit) draftSession.startNew()
 }
 defineExpose({
   orderFormRef,

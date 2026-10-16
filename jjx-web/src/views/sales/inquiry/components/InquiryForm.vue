@@ -142,6 +142,14 @@
 
       <el-row>
         <el-col :span="24">
+          <el-dropdown v-if="!form.inquiryId && draftChoices.length" @command="restoreAttachmentDraft">
+            <el-button plain>恢复未保存草稿</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <AttachmentCenter
             ref="attachmentCenterRef"
             :source-type="AttachmentSourceTypeEnum.getItem('inquiry')?.value || 'inquiry'"
@@ -183,10 +191,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { onActivated, onDeactivated, onMounted, ref, reactive, computed, watch } from 'vue'
 import { ElDialog, ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
-import { useUserStore } from '@/store/modules/user'
+import { useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
 import { inquiryApi } from '@/api/sales/inquiry'
 import { customerApi } from '@/api/sales/customer'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
@@ -360,44 +368,19 @@ function customerChanged(val: number, customer?: any) {
 
 // ====== 附件草稿 ======
 const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
-const draftId = ref('')
-const draftUserStore = useUserStore()
-let draftOwnerKey = ''
-const draftSessionKey = () => `attach-draft:v1:${draftUserStore.userId ?? 'anonymous'}:inquiry`
-
+const draftSession = useAttachmentDraftInstance('inquiry', {
+  snapshot: () => form,
+  restore: (data) => { resetForm(); Object.assign(form, data); hydrateFromCode(form.productCode) },
+})
+const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
+let resumeDraftId: string | undefined = draftSession.resumeId
 function ensureDraftId() {
-  const key = draftSessionKey()
-  if (draftOwnerKey !== key) {
-    draftId.value = ''
-    draftOwnerKey = key
-  }
-  if (!draftId.value) {
-    try {
-      draftId.value = sessionStorage.getItem(key) || ''
-    } catch (error) {
-      console.warn('读取询价草稿标识失败，刷新后可能无法恢复待绑定附件', error)
-    }
-    if (!draftId.value) draftId.value = newDraftId()
-  }
-  try {
-    sessionStorage.setItem(key, draftId.value)
-  } catch (error) {
-    console.warn('保存询价草稿标识失败，刷新后可能无法恢复待绑定附件', error)
-  }
+  const id = resumeDraftId
+  resumeDraftId = undefined
+  if (!id || !draftSession.restore(id)) draftSession.startNew()
 }
-
-function clearDraftId() {
-  if (!draftId.value) return
-  try {
-    sessionStorage.removeItem(draftOwnerKey)
-  } catch (error) {
-    console.warn('清理已保存询价草稿标识失败', error)
-  }
-  draftId.value = ''
-}
-
-function newDraftId() {
-  return `inq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+function restoreAttachmentDraft(id: string) {
+  draftSession.restore(id)
 }
 
 // 2026-10-15（dev-20261015-034）：原「保存后再绑附件」的 bindPendingAttachments 已删除——
@@ -430,11 +413,13 @@ function resetForm() {
 }
 
 async function initCreate() {
+  draftSession.close()
   resetForm()
   ensureDraftId()
 }
 
 async function initEdit() {
+  draftSession.close()
   draftId.value = ''
   if (props.data) {
     Object.assign(form, props.data)
@@ -492,6 +477,7 @@ watch(
   (v) => {
     if (props.mode !== 'dialog') return
     if (v) props.editId ? initEdit() : initCreate()
+    else draftSession.close()
   },
   { immediate: true }
 )
@@ -500,7 +486,7 @@ watch(
 watch(
   () => props.editId,
   (v) => {
-    if (props.mode === 'inline' || !props.visible) {
+    if (props.mode === 'inline') {
       if (v) initEdit()
       else initCreate()
     }
@@ -510,6 +496,19 @@ watch(
 if (props.mode === 'inline') {
   props.editId ? initEdit() : initCreate()
 }
+
+onActivated(() => {
+  if (props.mode === 'inline' && !props.editId && !draftId.value && !form.inquiryId) void initCreate()
+})
+onDeactivated(() => {
+  if (props.mode === 'dialog') emit('update:visible', false)
+})
+
+onMounted(() => {
+  if (resumeDraftId && props.mode === 'dialog' && !props.editId && !props.visible) {
+    emit('update:visible', true)
+  }
+})
 
 // ====== 提交 ======
 async function submitForm() {

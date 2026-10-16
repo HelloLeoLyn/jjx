@@ -4,6 +4,14 @@
 -->
 <template>
   <el-dialog :title="title" v-model="visible" width="1300px" append-to-body @close="handleClose">
+    <el-dropdown v-if="!formData.quotationId && draftChoices?.length" @command="(id: string) => emit('restore-draft', id)">
+      <el-button plain>恢复未保存草稿</el-button>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px">
       <el-row>
         <el-col :span="12">
@@ -343,7 +351,7 @@ import { listProduct } from '@/api/product'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import QuotationCodeGenDialog from './QuotationCodeGenDialog.vue'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
-import { flushStoredQueue } from '@/composables/useAttachmentRefs'
+import { flushStoredQueue, type AttachmentDraftChoice } from '@/composables/useAttachmentRefs'
 import { useUserStore } from '@/store/modules/user'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 import { parseProductCode } from '@/composables/useProductCode'
@@ -355,12 +363,14 @@ const props = defineProps<{
   currencyOptions: Array<{ value: string; label: string }>
   /** 待绑定队列草稿标识（由父组件下发；新建未保存时报价单复用同一草稿）（dev-20261012-047） */
   draftId?: string
+  draftChoices?: AttachmentDraftChoice[]
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'submit'): void
   (e: 'cancel'): void
+  (e: 'restore-draft', id: string): void
 }>()
 
 const visible = ref(false)
@@ -389,12 +399,13 @@ const usedSerialsForCodeGen = computed(() => {
 // 明细行「上传附件」（S5 dev-20261013-043）
 const rowAttachVisible = ref(false)
 const rowAttachProductCode = ref('')
-/** 行级附件草稿键：行级隔离，避免与单据级共用待绑定队列 */
+/** 实例 ID + 产品编码：两张报价即使产品编码相同也不共用队列。 */
 const rowAttachDraftId = computed(() =>
   rowAttachProductCode.value
     ? `${props.draftId || ''}::r:${rowAttachProductCode.value}`
     : props.draftId || ''
 )
+watch(() => props.draftId, () => { rowAttachVisible.value = false; rowAttachProductCode.value = '' })
 const uploadedAttachmentIds = ref<number[]>([])
 const userStore = useUserStore()
 /** 公共附件中心（报价单通用附件；dev-20261012-047） */
@@ -478,7 +489,8 @@ watch(
   (val) => {
     uploadedAttachmentIds.value = []
     visible.value = val
-  }
+  },
+  { immediate: true }
 )
 
 watch(visible, (val) => {

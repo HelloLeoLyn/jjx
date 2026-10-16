@@ -158,6 +158,14 @@
 
       <!-- 附件（公共附件中心：新建走待绑定队列、保存后自动绑定；编辑直接读写引用） -->
       <el-divider content-position="left">附件</el-divider>
+      <el-dropdown v-if="!currentId && draftChoices.length" @command="restoreAttachmentDraft">
+        <el-button plain>恢复未保存草稿</el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <AttachmentCenter
         ref="attachmentCenterRef"
         source-type="sample"
@@ -208,7 +216,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { onActivated, onDeactivated, onMounted, ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElDialog, ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
@@ -226,7 +234,7 @@ import type {
 import request from '@/utils/request'
 import ProductCodeGenDialog from '@/components/ProductCodeGenDialog/index.vue'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
-import { useUserStore } from '@/store/modules/user'
+import { useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
 import type { ProductCodeResult } from '@/composables/useProductCode'
 
 defineOptions({ name: 'SampleForm' })
@@ -300,46 +308,21 @@ const quotationProductError = ref('')
 const currentId = ref<number | null>(null)
 const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
 /** 新建草稿标识：同一张未保存样品单生命周期内保持稳定，保存成功后清空（隔离待绑定队列） */
-const draftId = ref('')
-const draftUserStore = useUserStore()
-let draftOwnerKey = ''
-const draftSessionKey = () => `attach-draft:v1:${draftUserStore.userId ?? 'anonymous'}:sample`
-
-function newDraftId() {
-  return `sam-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
-
-/** 同一标签页/用户复用未保存草稿ID；sessionStorage 跨刷新保留，不能只靠内存 ref */
+const draftSession = useAttachmentDraftInstance('sample', {
+  snapshot: () => ({ form, productIsNew: productIsNew.value }),
+  restore: (data) => { resetForm(); currentId.value = null; Object.assign(form, data.form || {}); productIsNew.value = !!data.productIsNew },
+})
+const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
+let resumeDraftId: string | undefined = draftSession.resumeId
 function ensureDraftId() {
-  const key = draftSessionKey()
-  if (draftOwnerKey !== key) {
-    draftId.value = ''
-    draftOwnerKey = key
-  }
-  if (!draftId.value) {
-    try {
-      draftId.value = sessionStorage.getItem(key) || ''
-    } catch (error) {
-      console.warn('读取样品单草稿标识失败，刷新后可能无法恢复待绑定附件', error)
-    }
-    if (!draftId.value) draftId.value = newDraftId()
-  }
-  try {
-    sessionStorage.setItem(key, draftId.value)
-  } catch (error) {
-    console.warn('保存样品单草稿标识失败，刷新后可能无法恢复待绑定附件', error)
-  }
+  const id = resumeDraftId
+  resumeDraftId = undefined
+  if (!id || !draftSession.restore(id)) draftSession.startNew()
+}
+function restoreAttachmentDraft(id: string) {
+  draftSession.restore(id)
 }
 
-function clearDraftId() {
-  if (!draftId.value) return // 编辑已有单据不清理另一张未保存草稿的会话标识。
-  try {
-    sessionStorage.removeItem(draftOwnerKey)
-  } catch (error) {
-    console.warn('清理已保存样品单草稿标识失败', error)
-  }
-  draftId.value = ''
-}
 
 /**
  * 保存成功后把待绑定（TEMP）附件一次性绑定到本样品单。
@@ -625,6 +608,7 @@ function fillFromOrder(order: Record<string, any>, products: SampleProductItem[]
 
 // ====== 生命周期 ======
 async function initForCreate() {
+  draftSession.close()
   resetForm()
   currentId.value = null
   ensureDraftId()
@@ -633,6 +617,7 @@ async function initForCreate() {
 }
 
 async function initForEdit() {
+  draftSession.close()
   if (!props.editId) return
   currentId.value = props.editId
   try {
@@ -659,7 +644,7 @@ watch(
     if (props.mode !== 'dialog') return
     if (v) {
       props.editId ? initForEdit() : initForCreate()
-    }
+    } else draftSession.close()
   },
   { immediate: true }
 )
@@ -668,7 +653,7 @@ watch(
 watch(
   () => props.editId,
   (v) => {
-    if (props.mode === 'inline' || !props.visible) {
+    if (props.mode === 'inline') {
       if (v) initForEdit()
       else initForCreate()
     }
@@ -679,6 +664,19 @@ watch(
 if (props.mode === 'inline') {
   props.editId ? initForEdit() : initForCreate()
 }
+
+onActivated(() => {
+  if (props.mode === 'inline' && !props.editId && !draftId.value && !currentId.value) void initForCreate()
+})
+onDeactivated(() => {
+  if (props.mode === 'dialog') emit('update:visible', false)
+})
+
+onMounted(() => {
+  if (resumeDraftId && props.mode === 'dialog' && !props.editId && !props.visible) {
+    emit('update:visible', true)
+  }
+})
 
 // ====== 提交 ======
 async function submit() {

@@ -147,6 +147,8 @@
         :form-data="form"
         :currency-options="currencyOptions"
         :draft-id="draftId"
+        :draft-choices="draftChoices"
+        @restore-draft="restoreAttachmentDraft"
         @submit="submitForm"
         @cancel="cancel"
       />
@@ -231,7 +233,7 @@ defineOptions({
 // ============================================================
 // 1. 基础导入
 // ============================================================
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onDeactivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import {
@@ -264,6 +266,7 @@ import QuotationFormDialog from './components/QuotationFormDialog.vue'
 import QuotationDetailDialog from './components/QuotationDetailDialog.vue' // ✅ 新增
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import { useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
@@ -595,41 +598,14 @@ const quotationDetailVisible = ref(false) // ✅ 新增
 const quotationDetailId = ref<number>(0) // ✅ 新增
 const quotationDetailMode = ref<'view' | 'submitReview'>('view') // ✅ 新增
 const userStore = useUserStore()
-/** 待绑定队列草稿标识（dev-20261012-047：照询价单——只在为空时生成，同一会话复用，保存成功后清空） */
-const draftId = ref('')
-let draftOwnerKey = ''
-const draftSessionKey = () => `attach-draft:v1:${userStore.userId ?? 'anonymous'}:quotation`
-function newDraftId() {
-  return `qt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-}
-function ensureDraftId() {
-  const key = draftSessionKey()
-  if (draftOwnerKey !== key) {
-    draftId.value = ''
-    draftOwnerKey = key
-  }
-  if (!draftId.value) {
-    try {
-      draftId.value = sessionStorage.getItem(key) || ''
-    } catch (e) {
-      console.warn('读取报价草稿标识失败，刷新后可能无法恢复待绑定附件', e)
-    }
-    if (!draftId.value) draftId.value = newDraftId()
-  }
-  try {
-    sessionStorage.setItem(key, draftId.value)
-  } catch (e) {
-    console.warn('保存报价草稿标识失败，刷新后可能无法恢复待绑定附件', e)
-  }
-}
-function clearDraftId() {
-  if (!draftId.value) return // 编辑已有单据不清理另一张未保存草稿的会话标识。
-  try {
-    sessionStorage.removeItem(draftOwnerKey)
-  } catch (e) {
-    console.warn('清理已保存报价草稿标识失败', e)
-  }
-  draftId.value = ''
+/** 草稿身份按报价实例隔离；刷新恢复原实例，新增始终创建新实例。 */
+const draftSession = useAttachmentDraftInstance('quotation', {
+  snapshot: () => form,
+  restore: (data) => { resetForm(); Object.assign(form, data) },
+})
+const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
+function restoreAttachmentDraft(id: string) {
+  draftSession.restore(id)
 }
 
 // ============================================================
@@ -762,6 +738,7 @@ const submitForm = async () => {
 }
 
 const cancel = () => {
+  draftSession.close()
   open.value = false
   resetForm()
 }
@@ -770,8 +747,9 @@ const cancel = () => {
 // 15. 操作按钮函数
 // ============================================================
 const handleAdd = () => {
+  draftSession.close()
   resetForm()
-  ensureDraftId() // 新建：空时才生成草稿标识（刷新复用）
+  draftSession.startNew()
   form.quotationDate = new Date().toISOString().split('T')[0]
   const validUntil = new Date()
   validUntil.setDate(validUntil.getDate() + 30)
@@ -783,6 +761,7 @@ const handleAdd = () => {
 }
 
 const handleUpdate = (row?: any) => {
+  draftSession.close()
   resetForm()
   const quotationId = row?.quotationId || ids.value[0]
   quotationApi.getInfo(quotationId).then((response: any) => {
@@ -1045,7 +1024,12 @@ const handleReset = () => {
 // ============================================================
 // 19. 初始化
 // ============================================================
+onDeactivated(() => { open.value = false })
 onMounted(async () => {
+  if (draftSession.resumeId && draftSession.restore(draftSession.resumeId)) {
+    open.value = true
+    title.value = '新增报价单（已恢复草稿）'
+  }
   await getList()
   loadStatistics()
   loadSalesPersons()

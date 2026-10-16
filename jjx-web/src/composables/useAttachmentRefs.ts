@@ -1,4 +1,4 @@
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount, onDeactivated, type Ref } from 'vue'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
 import type {
   AttachmentDocumentTypeItem,
@@ -67,6 +67,123 @@ export interface UseAttachmentRefsOptions {
 }
 
 const STORAGE_PREFIX = 'attach-pending:v2'
+
+/** 每个实例单独存储；页面生命周期标识只用于识别刷新，不作为附件身份。 */
+const DRAFT_INSTANCE_PREFIX = 'attach-instance:v1:'
+const draftPageInstance = `${Date.now()}-${Math.random()}`
+export interface AttachmentDraftChoice { id: string; label: string }
+interface AttachmentDraftRecord {
+  id: string
+  owner: string
+  source: string
+  page: string
+  pageInstance: string
+  active: boolean
+  createdAt: string
+  snapshot?: Record<string, any>
+}
+
+/** 新建和恢复是两个显式动作；关闭保留实例，成功保存才移除实例记录。 */
+export function useAttachmentDraftInstance(source: string, form: {
+  snapshot: () => Record<string, any>
+  restore: (snapshot: Record<string, any>) => void
+}) {
+  const user = useUserStore()
+  const draftId = ref('')
+  const records = ref<AttachmentDraftRecord[]>([])
+  const owner = () => String(user.userId ?? 'anonymous')
+  const page = () => window.location.pathname + window.location.search + window.location.hash
+  let current: AttachmentDraftRecord | undefined
+  let restoring = false
+  function write(record: AttachmentDraftRecord) {
+    try { sessionStorage.setItem(DRAFT_INSTANCE_PREFIX + record.id, JSON.stringify(record)) }
+    catch (error) { console.warn('草稿会话保存失败，刷新恢复不可用', error) }
+    records.value = [...records.value.filter((r) => r.id !== record.id), record]
+  }
+  function readRecords() {
+    try {
+      const found: AttachmentDraftRecord[] = []
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i)
+        if (!key?.startsWith(DRAFT_INSTANCE_PREFIX)) continue
+        try {
+          const r = JSON.parse(sessionStorage.getItem(key) || 'null')
+          if (r?.id && r.owner === owner() && r.source === source) found.push(r)
+        } catch (error) { console.warn('跳过损坏的草稿会话记录', key, error) }
+      }
+      records.value = found
+      // 旧共享键仅迁移为可选恢复项，绝不自动拿它创建下一张新单。
+      const legacyKey = `attach-draft:v1:${owner()}:${source}`
+      const legacyId = sessionStorage.getItem(legacyKey)
+      if (legacyId && !found.some((r) => r.id === legacyId)) {
+        write({ id: legacyId, owner: owner(), source, page: page(), pageInstance: '',
+          active: false, createdAt: new Date().toISOString() })
+      }
+      if (legacyId) sessionStorage.removeItem(legacyKey)
+    } catch (error) { console.warn('读取草稿会话失败', error) }
+  }
+  readRecords()
+  // 只在新页面装载时自动恢复仍打开的实例；同页再次挂载属于新建。
+  const resumeId: string | undefined = records.value.filter((r) => r.active && r.page === page()
+    && r.pageInstance !== draftPageInstance).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.id
+  const choices = computed<AttachmentDraftChoice[]>(() => records.value
+    .filter((r) => r.owner === owner() && r.id !== draftId.value)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map((r) => {
+      const data = r.snapshot?.form || r.snapshot
+      const product = data?.productCode || data?.product?.productCode || data?.items?.[0]?.productCode
+      const detail = [data?.customerName, product].filter(Boolean).join(' / ')
+      return { id: r.id, label: `${new Date(r.createdAt).toLocaleString()}.${r.createdAt.slice(20, 23)}${detail ? ` · ${detail}` : ''}` }
+    }))
+  function remember() {
+    if (!current || current.owner !== owner() || restoring) return
+    current = { ...current, snapshot: JSON.parse(JSON.stringify(form.snapshot())) }
+    write(current)
+  }
+  function close() {
+    if (!current) return
+    remember()
+    write({ ...current, active: false })
+    current = undefined
+    draftId.value = ''
+  }
+  function startNew() {
+    close()
+    const id = `${source}-${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`
+    current = { id, owner: owner(), source, page: page(), pageInstance: draftPageInstance,
+      active: true, createdAt: new Date().toISOString() }
+    draftId.value = id
+    remember()
+  }
+  function restore(id: string): boolean {
+    const record = records.value.find((r) => r.id === id && r.owner === owner())
+    if (!record) return false
+    close()
+    restoring = true
+    try {
+      // 无表单快照的历史实例也必须清空当前表单，避免携带另一张单的产品。
+      form.restore(record.snapshot ? JSON.parse(JSON.stringify(record.snapshot)) : {})
+      current = { ...record, page: page(), pageInstance: draftPageInstance, active: true }
+      draftId.value = id
+      write(current)
+    } finally { restoring = false }
+    return true
+  }
+  function complete() {
+    if (!current) return
+    try { sessionStorage.removeItem(DRAFT_INSTANCE_PREFIX + current.id) }
+    catch (error) { console.warn('清理已保存草稿会话失败', error) }
+    records.value = records.value.filter((r) => r.id !== current?.id)
+    current = undefined
+    draftId.value = ''
+  }
+  // 连同产品/报价行上下文恢复，避免附件恢复后被当前新单的产品信息误带。
+  onMounted(() => watch(form.snapshot, remember, { deep: true, flush: 'post' }))
+  onBeforeUnmount(close)
+  onDeactivated(close)
+  watch(() => user.userId, () => { close(); readRecords() })
+  return { draftId, choices, resumeId, startNew, restore, close, complete }
+}
 
 function unwrap<T>(value: Ref<T> | T | undefined, fallback: T): T {
   if (value === undefined) return fallback
@@ -186,10 +303,14 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
 
   // ==================== 待绑定队列（以库里的「草稿行」为准，本地 localStorage 作离线兜底） ====================
   /** 从后端拉草稿行（仅未保存单据）：以库为准刷新本地队列，展上未反映的本地上传项保留；失败则继续用本地。dev-20261016-009 */
+  let draftSyncSequence = 0
   async function syncDraftsFromBackend() {
     if (sourceId.value || !draftReady.value) return
+    const identity = storageKey.value
+    const sequence = ++draftSyncSequence
     try {
       const res: any = await attachmentRefApi.drafts(draftKey.value)
+      if (identity !== storageKey.value || sequence !== draftSyncSequence || sourceId.value) return
       const rows = Array.isArray(res?.data) ? res.data : []
       const local = pending.value
       const mapped: PendingEntry[] = rows.map((r: any) => {
@@ -248,17 +369,14 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   }
 
   function restore() {
+    ++draftSyncSequence
     if (!storageKey.value) {
       pending.value = []
       return
     }
     try {
       const raw = localStorage.getItem(storageKey.value)
-      if (!raw) {
-        pending.value = []
-        return
-      }
-      const parsed = JSON.parse(raw)
+      const parsed = raw ? JSON.parse(raw) : []
       pending.value = Array.isArray(parsed)
         ? parsed
             .filter((e: any) => Number(e?.attachmentId) > 0)
@@ -283,6 +401,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   }
 
   function removePending(attachmentId: number) {
+    ++draftSyncSequence // 在途草稿列表不能把刚移除的行补回。
     const entry = pending.value.find((e) => e.attachmentId === attachmentId)
     if (entry?.draftRefId) void attachmentRefApi.removeDraft(entry.draftRefId).catch(() => {})
     pending.value = pending.value.filter((e) => e.attachmentId !== attachmentId)
@@ -345,13 +464,20 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     if (!draftReady.value) {
       throw new Error('缺少草稿标识（draftId）：新建单据必须提供唯一 draftId 才能上传附件，避免多个单据共用待绑定队列')
     }
-    const sha = await sha256Of(file)
-    const requestKey = await buildRequestKey(draftKey.value, file, sha)
-    // 未保存单据上传时带草稿信息：后端同事务落一条草稿引用（dev-20261016-009）
+    const uploadIdentity = storageKey.value
+    const uploadDraftKey = draftKey.value
     const draft = sourceId.value
       ? null
-      : { sourceType: sourceType.value, productId: productId.value ?? null, draftKey: draftKey.value }
-    const res: any = await attachmentRefApi.tempUpload(file, requestKey, onProgress, drawingMeta.value, draft)
+      : { sourceType: sourceType.value, productId: productId.value ?? null, draftKey: uploadDraftKey }
+    const uploadProductCode = productCode.value
+    const uploadDrawingMeta = drawingMeta.value
+    const sha = await sha256Of(file)
+    const requestKey = await buildRequestKey(uploadDraftKey, file, sha)
+    // 未保存单据上传时带草稿信息：后端同事务落一条草稿引用（dev-20261016-009）
+    const res: any = await attachmentRefApi.tempUpload(file, requestKey, onProgress, uploadDrawingMeta, draft)
+    if (uploadIdentity !== storageKey.value) {
+      throw new Error('文件已上传到原草稿，请恢复原草稿查看')
+    }
     const attachmentId = Number(res?.data)
     if (!attachmentId) throw new Error(res?.msg || '临时上传失败')
     const existing = pending.value.find((e) => e.attachmentId === attachmentId)
@@ -370,7 +496,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
       createdAt: new Date().toISOString(),
       documentType: null,
       displayName: null,
-      productCode: productCode.value,
+      productCode: uploadProductCode,
     })
     persist()
     void syncDraftsFromBackend() // 取回刚建的草稿行 refId（dev-20261016-009）
@@ -487,6 +613,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     }
   }
 
+  onBeforeUnmount(() => { ++draftSyncSequence })
   restore()
   if (options.autoLoad !== false) {
     load()
@@ -498,6 +625,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
    * - 把当前队列落到新键；**只有写入成功后**才清理旧键（写失败则保留旧键，避免丢失唯一副本）。
    */
   watch(storageKey, (key, previousKey) => {
+    ++draftSyncSequence
     if (!key) {
       pending.value = [] // 保留原键持久化副本，不把内存条目带到下一张单据。
       return
@@ -513,7 +641,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     // 只有当前草稿保存成当前单据才迁移；落新键成功后清旧草稿键。
     if (!pending.value.length) restore()
     if (persist()) dropStoredKey(previousKey)
-  })
+  }, { flush: 'sync' })
 
   return {
     sourceType,
