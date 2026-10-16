@@ -33,7 +33,7 @@ class InquiryConversionOperLogTest {
             mock(ProductMapper.class), mock(ProductCustomerValidator.class), mock(IProductService.class),
             mock(ProductCodeService.class), mock(IQuotationService.class),
             mock(OperLogChangeRecorder.class), mock(LogSaveService.class),
-            mock(SysAttachmentMapper.class), mock(com.jjx.event.EventPublisher.class));
+            mock(SysAttachmentMapper.class), mock(com.jjx.event.EventPublisher.class), mock(com.jjx.system.service.AttachmentRefService.class));
         SalesInquiry inquiry = new SalesInquiry();
         inquiry.setInquiryId(3L);
         inquiry.setInquiryNo("INQ2608260001");

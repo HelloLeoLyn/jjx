@@ -53,7 +53,7 @@ class AttachmentRefProductDrawingTest {
         files = mock(SysAttachmentMapper.class);
         refs = mock(SysAttachmentRefMapper.class);
         service = new AttachmentRefService(files, refs, new AttachmentSourcePolicy(jdbc),
-            mock(AttachmentAccessService.class), mock(AttachmentDocumentTypeService.class), jdbc);
+            mock(AttachmentAccessService.class), mock(AttachmentDocumentTypeService.class), mock(AttachmentDisplayNameService.class), jdbc);
     }
 
     @AfterEach

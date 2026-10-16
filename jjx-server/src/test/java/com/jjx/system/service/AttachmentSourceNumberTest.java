@@ -39,7 +39,7 @@ class AttachmentSourceNumberTest {
                 return new ArrayList<>(List.of(row));
             });
             var policy = new AttachmentSourcePolicy(jdbc);
-            var service = new AttachmentRefService(null, mapper, policy, null, null, jdbc);
+            var service = new AttachmentRefService(null, mapper, policy, null, null, mock(AttachmentDisplayNameService.class), jdbc);
             var mvc = MockMvcBuilders.standaloneSetup(new SysAttachmentRefController(service, null, null, null)).build();
             for (String key : List.of("sourceNo", "sourceId")) {
                 mvc.perform(get("/system/attachment/refs").param("sourceType", "inquiry")
@@ -69,7 +69,7 @@ class AttachmentSourceNumberTest {
         });
         var policy = new AttachmentSourcePolicy(jdbc);
         var mapper = mock(SysAttachmentRefMapper.class);
-        var service = new AttachmentRefService(null, mapper, policy, null, null, jdbc);
+        var service = new AttachmentRefService(null, mapper, policy, null, null, mock(AttachmentDisplayNameService.class), jdbc);
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             auth.when(() -> StpUtil.checkPermission("sales:inquiry:view")).thenAnswer(inv -> {
                 events.add("permission"); throw new BusinessException("无权限");
@@ -83,7 +83,7 @@ class AttachmentSourceNumberTest {
     @Test
     void sourceScopeRequiresExactlyOneLocator() {
         var policy = mock(AttachmentSourcePolicy.class);
-        var service = new AttachmentRefService(null, null, policy, null, null, null);
+        var service = new AttachmentRefService(null, null, policy, null, null, mock(AttachmentDisplayNameService.class), null);
         assertThrows(BusinessException.class, () -> service.list("inquiry", null, null));
         assertThrows(BusinessException.class, () -> service.list("inquiry", 7L, "INQ007"));
         verifyNoInteractions(policy);

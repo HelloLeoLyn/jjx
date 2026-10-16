@@ -31,7 +31,8 @@ class ProductCustomerDocumentServiceTest {
                 + "create_time TIMESTAMP,update_time TIMESTAMP,deleted INT DEFAULT 0,customer_product_code VARCHAR(64))");
         jdbc.execute("CREATE TABLE sys_attachment_ref(id BIGINT PRIMARY KEY,attachment_id BIGINT,source_type VARCHAR(32),"
                 + "source_id BIGINT,product_id BIGINT,product_code VARCHAR(64),document_type VARCHAR(100),"
-                + "display_name VARCHAR(255),sort_order INT,update_time TIMESTAMP,deleted INT DEFAULT 0)");
+                + "display_name VARCHAR(255),sort_order INT,update_time TIMESTAMP,deleted INT DEFAULT 0,"
+                + "ref_state VARCHAR(20) DEFAULT 'active')");
         jdbc.execute("CREATE TABLE sys_dict_item(dict_code VARCHAR(64),item_key VARCHAR(100),label VARCHAR(100),deleted INT DEFAULT 0)");
         jdbc.execute("CREATE TABLE sales_inquiry(inquiry_id BIGINT,inquiry_no VARCHAR(64),product_id BIGINT,product_code VARCHAR(64),deleted INT DEFAULT 0)");
         jdbc.execute("CREATE TABLE sales_quotation(quotation_id BIGINT,quotation_no VARCHAR(64),deleted INT DEFAULT 0)");

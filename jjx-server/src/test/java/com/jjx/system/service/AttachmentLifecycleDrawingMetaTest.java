@@ -42,7 +42,7 @@ class AttachmentLifecycleDrawingMetaTest {
         jdbc = mock(JdbcTemplate.class);
         when(jdbc.queryForList(anyString(), any(Object.class))).thenReturn(users());
         when(files.selectList(any())).thenReturn(List.of());
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new AttachmentSourcePolicy(jdbc));
         Field field = AttachmentLifecycleService.class.getDeclaredField("uploadBasePath");
         field.setAccessible(true);
         field.set(service, dir.toString());

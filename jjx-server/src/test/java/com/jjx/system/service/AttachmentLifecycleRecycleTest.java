@@ -64,7 +64,7 @@ class AttachmentLifecycleRecycleTest {
         when(jdbc.query(contains("MAX(deleted_at)"), ArgumentMatchers.<RowMapper<LocalDateTime>>any(), eq(ID)))
                 .thenReturn(List.of(LocalDateTime.now().minusDays(3)));
 
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new AttachmentSourcePolicy(jdbc));
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             List<Map<String, Object>> rows = service.preview(0, 100);
 
@@ -93,7 +93,7 @@ class AttachmentLifecycleRecycleTest {
                 .thenReturn(List.of(LocalDateTime.now().minusDays(3)));
         when(files.logicalDelete(ID)).thenReturn(1);
 
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new AttachmentSourcePolicy(jdbc));
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             auth.when(StpUtil::getLoginIdAsString).thenReturn("1");
             Map<String, Object> result = service.recycleEligible(0, 100);
@@ -117,7 +117,7 @@ class AttachmentLifecycleRecycleTest {
         when(files.selectIncludingDeleted(ID)).thenReturn(tempFile());
         when(jdbc.queryForObject(contains("COUNT(*) FROM sys_attachment_ref"), eq(Long.class), eq(ID))).thenReturn(1L);
 
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new AttachmentSourcePolicy(jdbc));
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             Map<String, Object> result = service.recycleEligible(0, 100);
 
@@ -141,7 +141,7 @@ class AttachmentLifecycleRecycleTest {
         when(jdbc.queryForObject(contains("COUNT(*) FROM sys_attachment_ref"), eq(Long.class), eq(ID))).thenReturn(0L);
         when(access.protectedFile(any())).thenReturn(true);
 
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new AttachmentSourcePolicy(jdbc));
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             Map<String, Object> result = service.recycleEligible(0, 100);
 
@@ -169,7 +169,7 @@ class AttachmentLifecycleRecycleTest {
         when(jdbc.query(contains("MAX(deleted_at)"), ArgumentMatchers.<RowMapper<LocalDateTime>>any(), eq(ID)))
                 .thenReturn(List.of(LocalDateTime.now().plusDays(6)));
 
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new AttachmentSourcePolicy(jdbc));
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             Map<String, Object> result = service.recycleEligible(0, 100);
 
@@ -194,7 +194,7 @@ class AttachmentLifecycleRecycleTest {
                 .thenReturn(List.of(ID));
         when(files.selectIncludingDeleted(ID)).thenReturn(recycled);
 
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new AttachmentSourcePolicy(jdbc));
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             Map<String, Object> result = service.recycleEligible(0, 100);
 
@@ -207,7 +207,7 @@ class AttachmentLifecycleRecycleTest {
     @Test
     void nonAdminIsRejected() {
         AttachmentLifecycleService service = new AttachmentLifecycleService(
-                mock(SysAttachmentMapper.class), mock(AttachmentAccessService.class), mock(JdbcTemplate.class), mock(SysOperLogMapper.class));
+                mock(SysAttachmentMapper.class), mock(AttachmentAccessService.class), mock(JdbcTemplate.class), mock(SysOperLogMapper.class), new AttachmentSourcePolicy(mock(JdbcTemplate.class)));
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             auth.when(() -> StpUtil.checkRole("admin")).thenThrow(new BusinessException("无权限"));
             assertThrows(BusinessException.class, () -> service.recycleEligible(0, 100));
@@ -218,7 +218,7 @@ class AttachmentLifecycleRecycleTest {
     @Test
     void limitIsGuarded() {
         AttachmentLifecycleService service = new AttachmentLifecycleService(
-                mock(SysAttachmentMapper.class), mock(AttachmentAccessService.class), mock(JdbcTemplate.class), mock(SysOperLogMapper.class));
+                mock(SysAttachmentMapper.class), mock(AttachmentAccessService.class), mock(JdbcTemplate.class), mock(SysOperLogMapper.class), new AttachmentSourcePolicy(mock(JdbcTemplate.class)));
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             assertThrows(BusinessException.class, () -> service.recycleEligible(0, 101));
             assertThrows(BusinessException.class, () -> service.recycleEligible(-1, 10));
@@ -247,7 +247,7 @@ class AttachmentLifecycleRecycleTest {
         when(jdbc.update(anyString(), eq(ID))).thenReturn(1);
         SysOperLogMapper operLogs = mock(SysOperLogMapper.class);
 
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, operLogs);
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, operLogs, new AttachmentSourcePolicy(jdbc));
         ReflectionTestUtils.setField(service, "uploadBasePath", root.toString());
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             auth.when(StpUtil::getLoginIdAsString).thenReturn("1");
@@ -291,7 +291,7 @@ class AttachmentLifecycleRecycleTest {
         when(files.selectIncludingDeleted(ID)).thenReturn(tempFile());
         when(jdbc.queryForObject(contains("COUNT(*) FROM sys_attachment_ref"), eq(Long.class), eq(ID))).thenReturn(1L);
 
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new AttachmentSourcePolicy(jdbc));
         ReflectionTestUtils.setField(service, "uploadBasePath", root.toString());
         try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
             Map<String, Object> result = service.purgeEligible(0, 100);

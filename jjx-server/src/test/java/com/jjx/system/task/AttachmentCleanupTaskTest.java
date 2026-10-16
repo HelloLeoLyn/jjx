@@ -57,7 +57,7 @@ class AttachmentCleanupTaskTest {
         when(jdbc.queryForObject(contains("file_path=?"), eq(Long.class), any(), eq(ID))).thenReturn(0L);
         when(jdbc.query(contains("MAX(deleted_at)"), ArgumentMatchers.<RowMapper<LocalDateTime>>any(), eq(ID)))
                 .thenReturn(List.of(LocalDateTime.now().minusDays(3)));
-        return new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        return new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new com.jjx.system.service.AttachmentSourcePolicy(jdbc));
     }
 
     // ---- 开关（可关断） ----
@@ -145,7 +145,7 @@ class AttachmentCleanupTaskTest {
                 .thenReturn(List.of(ID));
         when(files.selectIncludingDeleted(ID)).thenReturn(tempFile());
         when(jdbc.queryForObject(contains("COUNT(*) FROM sys_attachment_ref"), eq(Long.class), eq(ID))).thenReturn(1L);
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new com.jjx.system.service.AttachmentSourcePolicy(jdbc));
 
         Map<String, Object> result = service.autoRecycleExpired(0, 100);
 
@@ -163,7 +163,7 @@ class AttachmentCleanupTaskTest {
         when(files.selectIncludingDeleted(ID)).thenReturn(tempFile());
         when(jdbc.queryForObject(contains("COUNT(*) FROM sys_attachment_ref"), eq(Long.class), eq(ID))).thenReturn(0L);
         when(access.protectedFile(any())).thenReturn(true);
-        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class));
+        AttachmentLifecycleService service = new AttachmentLifecycleService(files, access, jdbc, mock(SysOperLogMapper.class), new com.jjx.system.service.AttachmentSourcePolicy(jdbc));
 
         Map<String, Object> result = service.autoRecycleExpired(0, 100);
 
@@ -175,7 +175,7 @@ class AttachmentCleanupTaskTest {
     void recordAutoCleanupRunWritesOperLog() {
         SysOperLogMapper operLogs = mock(SysOperLogMapper.class);
         AttachmentLifecycleService service = new AttachmentLifecycleService(
-                mock(SysAttachmentMapper.class), mock(AttachmentAccessService.class), mock(JdbcTemplate.class), operLogs);
+                mock(SysAttachmentMapper.class), mock(AttachmentAccessService.class), mock(JdbcTemplate.class), operLogs, new com.jjx.system.service.AttachmentSourcePolicy(mock(JdbcTemplate.class)));
 
         service.recordAutoCleanupRun(20, 3);
 
