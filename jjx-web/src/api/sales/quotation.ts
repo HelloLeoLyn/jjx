@@ -79,6 +79,18 @@ export interface QuotationListResponse {
   total: number
 }
 
+// 附件归属使用的内部行键仅保留在页面/草稿中，提交副本不携带该字段。
+function toQuotationPayload(data: QuotationInfo): QuotationInfo {
+  return {
+    ...data,
+    items: data.items?.map((item) => {
+      const payload: QuotationItem & { __rowKey?: string } = { ...item }
+      delete payload.__rowKey
+      return payload
+    }),
+  }
+}
+
 // 报价单API对象
 export const quotationApi = {
   // 查询报价单列表
@@ -111,7 +123,7 @@ export const quotationApi = {
     return request({
       url: '/sales/quotation',
       method: 'post',
-      data,
+      data: toQuotationPayload(data),
     })
   },
 
@@ -120,7 +132,7 @@ export const quotationApi = {
     return request({
       url: '/sales/quotation',
       method: 'put',
-      data,
+      data: toQuotationPayload(data),
     })
   },
 
