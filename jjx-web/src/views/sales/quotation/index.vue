@@ -173,6 +173,7 @@
     <SkeletonAction>
       <TraceTimeline v-model="traceDialogVisible" :trace-id="currentTraceId" />
     </SkeletonAction>
+    <!-- 产品行内上传组件-->
     <SkeletonAction>
       <el-dialog
         v-model="attachmentDialogVisible"
@@ -193,6 +194,8 @@
         />
       </el-dialog>
     </SkeletonAction>
+
+    <!-- 操作预览器 提交审核-->
     <SkeletonAction>
       <OperationPreviewDialog
         v-model="previewVisible"
@@ -602,7 +605,10 @@ const userStore = useUserStore()
 /** 草稿身份按报价实例隔离；刷新恢复原实例，新增始终创建新实例。 */
 const draftSession = useAttachmentDraftInstance('quotation', {
   snapshot: () => form,
-  restore: (data) => { resetForm(); Object.assign(form, data) },
+  restore: (data) => {
+    resetForm()
+    Object.assign(form, data)
+  },
 })
 const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
 function restoreAttachmentDraft(id: string) {
@@ -1030,7 +1036,9 @@ const handleReset = () => {
 // ============================================================
 // 19. 初始化
 // ============================================================
-onDeactivated(() => { open.value = false })
+onDeactivated(() => {
+  open.value = false
+})
 onMounted(async () => {
   if (draftSession.resumeId && draftSession.restore(draftSession.resumeId)) {
     open.value = true

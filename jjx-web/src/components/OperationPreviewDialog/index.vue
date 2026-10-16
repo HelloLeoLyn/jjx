@@ -2,7 +2,7 @@
   <el-dialog
     :title="operation?.name || '操作确认'"
     v-model="visible"
-    width="640px"
+    width="1200px"
     append-to-body
     destroy-on-close
   >
@@ -179,7 +179,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  success: [payload?: { values: Record<string, any>; attachmentIds: number[]; attachmentRefIds: number[] }]
+  success: [
+    payload?: { values: Record<string, any>; attachmentIds: number[]; attachmentRefIds: number[] },
+  ]
   /** 业务接口实际调用失败时触发（表单校验失败/用户取消/预览数据加载失败均不触发） */
   error: [error: any]
 }>()
