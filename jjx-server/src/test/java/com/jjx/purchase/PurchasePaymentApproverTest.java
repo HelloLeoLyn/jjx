@@ -12,16 +12,28 @@ import com.jjx.purchase.service.impl.PurchasePaymentServiceImpl;
 import com.jjx.system.service.ISysAttachmentService;
 import com.jjx.system.utils.SecurityUtils;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+/** 依赖用 @InjectMocks 注入（dev-20261016-053）：服务再加构造依赖时本类无需跟着改。 */
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class PurchasePaymentApproverTest {
-    private final PurchasePaymentMapper payments = mock(PurchasePaymentMapper.class);
-    private final PurchaseOrderMapper orders = mock(PurchaseOrderMapper.class);
-    private final PurchasePaymentServiceImpl service = new PurchasePaymentServiceImpl(payments, null, orders);
+    @Mock private PurchasePaymentMapper payments;
+    @Mock private PurchaseOrderMapper orders;
+    /** 本类未用到的依赖也备成 mock：将来补用例走到该路径时不会空指针。 */
+    @Mock private com.jjx.event.EventPublisher eventPublisher;
+    @Mock private com.jjx.system.service.AttachmentRefService attachmentRefService;
+    @InjectMocks private PurchasePaymentServiceImpl service;
 
     @Test void approvalUsesLoggedInActorForBothDecisions() {
         try (var identity = mockStatic(SecurityUtils.class)) {

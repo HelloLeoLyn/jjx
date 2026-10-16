@@ -13,6 +13,12 @@ import com.jjx.purchase.service.impl.PurchasePaymentServiceImpl;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -20,10 +26,16 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+/** 依赖用 @InjectMocks 注入（dev-20261016-053）：服务再加构造依赖时本类无需跟着改。 */
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class PurchasePaymentFlowTest {
-    private final PurchaseOrderMapper orders = mock(PurchaseOrderMapper.class);
-    private final PurchasePaymentMapper payments = mock(PurchasePaymentMapper.class);
-    private final PurchasePaymentServiceImpl service = new PurchasePaymentServiceImpl(payments, null, orders);
+    @Mock private PurchaseOrderMapper orders;
+    @Mock private PurchasePaymentMapper payments;
+    /** 本类未用到的依赖也备成 mock：将来补用例走到该路径时不会空指针。 */
+    @Mock private com.jjx.event.EventPublisher eventPublisher;
+    @Mock private com.jjx.system.service.AttachmentRefService attachmentRefService;
+    @InjectMocks private PurchasePaymentServiceImpl service;
 
     private PurchaseOrder order() {
         PurchaseOrder order = new PurchaseOrder();
