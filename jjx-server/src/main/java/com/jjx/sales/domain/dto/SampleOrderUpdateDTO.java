@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 
@@ -60,4 +61,9 @@ public class SampleOrderUpdateDTO {
 
         private String unit;
     }
+
+    /** 随样品单保存提交的附件，仅承载入参，落定由保存流程处理（dev-20261017-002）。
+     *  与新增侧同一形状（复用 {@link SampleOrderCreateDTO.SampleAttachmentDTO}）。 */
+    @Schema(description = "样品单附件（可选，整单级及产品级）")
+    private List<SampleOrderCreateDTO.SampleAttachmentDTO> attachments;
 }

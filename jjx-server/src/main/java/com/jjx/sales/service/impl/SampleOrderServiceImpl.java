@@ -97,6 +97,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final SalesSampleBomMapper sampleBomMapper;
     private final com.jjx.system.service.ISysAttachmentService attachmentService;
+    /** 附件引用落定（dev-20261017-002）：随单附件在保存事务内经 create() 建引用/草稿行转正。 */
+    private final com.jjx.system.service.AttachmentRefService attachmentRefService;
     private final com.jjx.product.service.IEngineeringBomService bomService;
     private final com.jjx.product.service.IEngineeringRoutingService routingService;
     private final com.jjx.product.service.IProductService productService;
@@ -594,10 +596,70 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             log.warn("同步 sample_qty 失败: {}", e.getMessage());
         }
 
+        // 随单附件落定（dev-20261017-002）：同事务内建引用/草稿行转正，任一条失败整单回滚
+        bindSampleAttachments(orderId, dto.getAttachments());
+
         log.info("样品单[{}] 编辑保存 orderId={}，客户={}，明细{}条", order.getOrderNo(), orderId, customer.getCustomerName(), items.size());
         SalesOrder result = orderMapper.selectById(orderId);
         result.setDetailMessage(changes.isEmpty() ? null : changeRecorder.toDetailJson(changes));
         return result;
+    }
+
+    /**
+     * 样品单随单附件落定（dev-20261017-002，承 066/081 报价侧口径）：
+     * 保存单据 = 建引用 + 草稿行转正（原子）；转正唯一入口 {@link com.jjx.system.service.AttachmentRefService#create}，
+     * 本方法不写第二套 SQL。归属 = 样品单 + 产品（一单一成品）：产品 id 优先取入参，缺失按明细编码回填；
+     * 缺 attachmentId / documentType 抛业务异常 ⇒ 整单回滚（禁 try-catch 吞掉）。
+     */
+    private void bindSampleAttachments(
+            Long orderId,
+            java.util.List<com.jjx.sales.domain.dto.SampleOrderCreateDTO.SampleAttachmentDTO> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < attachments.size(); i++) {
+            com.jjx.sales.domain.dto.SampleOrderCreateDTO.SampleAttachmentDTO attachment = attachments.get(i);
+            if (attachment == null) {
+                throw new BusinessException("attachments[" + i + "] 不能为空，必须提供 attachmentId 和 documentType");
+            }
+            if (attachment.getAttachmentId() == null) {
+                throw new BusinessException("attachments[" + i + "].attachmentId 不能为空");
+            }
+            if (attachment.getDocumentType() == null || attachment.getDocumentType().isBlank()) {
+                throw new BusinessException("attachments[" + i + "].documentType 不能为空");
+            }
+        }
+        // 明细产品 id：编码 → productId（此时明细已保存，productId 已建档/回填）
+        java.util.Map<String, Long> productIdByCode = new java.util.LinkedHashMap<>();
+        java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> rows = orderProductService.getListByOrderId(orderId);
+        if (rows != null) {
+            for (com.jjx.sales.domain.vo.SalesOrderProductVO row : rows) {
+                if (row.getProductCode() == null || row.getProductCode().isBlank() || row.getProductId() == null) {
+                    continue;
+                }
+                productIdByCode.putIfAbsent(row.getProductCode().trim(), row.getProductId());
+            }
+        }
+        int sortOrder = 0;
+        for (com.jjx.sales.domain.dto.SampleOrderCreateDTO.SampleAttachmentDTO attachment : attachments) {
+            String productCode = attachment.getProductCode() == null ? null : attachment.getProductCode().trim();
+            if (productCode != null && productCode.isEmpty()) {
+                productCode = null;
+            }
+            Long productId = attachment.getProductId();
+            if (productId == null && productCode != null) {
+                productId = productIdByCode.get(productCode);
+            }
+            com.jjx.system.domain.dto.AttachmentRefDTO ref = new com.jjx.system.domain.dto.AttachmentRefDTO();
+            ref.setAttachmentId(attachment.getAttachmentId());
+            ref.setSourceType("sample");
+            ref.setSourceId(orderId);
+            ref.setProductId(productId);
+            ref.setProductCode(productCode);
+            ref.setDocumentType(attachment.getDocumentType().trim());
+            ref.setSortOrder(sortOrder++);
+            attachmentRefService.create(ref);
+        }
     }
 
     /** 样品单主表可编辑字段白名单对比。 */
@@ -841,6 +903,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 log.warn("更新报价单状态失败: {}", e.getMessage());
             }
         }
+
+        // 随单附件落定（dev-20261017-002）：同事务内建引用/草稿行转正，任一条失败整单回滚
+        bindSampleAttachments(order.getOrderId(), dto.getAttachments());
 
         return order;
     }

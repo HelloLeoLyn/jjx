@@ -49,11 +49,36 @@ public class SampleOrderController extends BaseController {
                 "sample", orderId, "附件引用不属于当前样品单");
     }
 
+    /**
+     * 随单附件入参校验（dev-20261017-002，与报价侧 065 同口径）：缺 attachmentId / documentType 直接拒绝保存。
+     */
+    private void validateAttachments(
+            List<com.jjx.sales.domain.dto.SampleOrderCreateDTO.SampleAttachmentDTO> attachments) {
+        if (attachments == null) {
+            return;
+        }
+        for (int i = 0; i < attachments.size(); i++) {
+            com.jjx.sales.domain.dto.SampleOrderCreateDTO.SampleAttachmentDTO attachment = attachments.get(i);
+            String path = "attachments[" + i + "]";
+            if (attachment == null) {
+                throw new com.jjx.common.exception.BusinessException(
+                        path + " 不能为空，必须提供 attachmentId 和 documentType");
+            }
+            if (attachment.getAttachmentId() == null) {
+                throw new com.jjx.common.exception.BusinessException(path + ".attachmentId 不能为空");
+            }
+            if (attachment.getDocumentType() == null || attachment.getDocumentType().isBlank()) {
+                throw new com.jjx.common.exception.BusinessException(path + ".documentType 不能为空");
+            }
+        }
+    }
+
     @Operation(summary = "新增样品单（直接选客户+产品明细，报价单可选）")
     @Log(module = "样品单管理", businessType = BusinessType.INSERT, bizType = "'sample'", bizId = "#result.data.orderId", traceId = "#result.data.traceId", bizStatus = "T(com.jjx.sales.enums.SampleOrderStatusEnum).CREATED.getLabel()", action = LogActions.SAMPLE_CREATE)
     @SaCheckPermission("sales:sample:add")
     @PostMapping
     public Result<SalesOrder> create(@Valid @RequestBody com.jjx.sales.domain.dto.SampleOrderCreateDTO dto) {
+        validateAttachments(dto.getAttachments());
         return Result.success(sampleOrderService.createSample(dto));
     }
 
@@ -63,6 +88,7 @@ public class SampleOrderController extends BaseController {
     @PutMapping("/{orderId}")
     public Result<SalesOrder> update(@PathVariable Long orderId,
                                      @Valid @RequestBody com.jjx.sales.domain.dto.SampleOrderUpdateDTO dto) {
+        validateAttachments(dto.getAttachments());
         return Result.success(sampleOrderService.updateSampleOrder(orderId, dto));
     }
 

@@ -6,6 +6,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
 
@@ -67,5 +69,20 @@ public class SampleOrderCreateDTO {
         private String panelFeature;
         private String circuitType;
         private String circuitFeature;
+    }
+
+    /** 随样品单保存提交的附件，仅承载入参，落定由保存流程处理（dev-20261017-002）。 */
+    @Schema(description = "样品单附件（可选，整单级及产品级）")
+    private List<SampleAttachmentDTO> attachments;
+
+    /** 附件 + 产品归属上下文（与报价侧 QuotationAttachmentDTO 同形状）。 */
+    @Data
+    @EqualsAndHashCode(callSuper = true)
+    public static class SampleAttachmentDTO extends AttachmentBindDTO {
+        @Schema(description = "产品ID（可选，附件归属关联键）")
+        private Long productId;
+
+        @Schema(description = "产品编码（可选，未建档产品的上下文信息）")
+        private String productCode;
     }
 }
