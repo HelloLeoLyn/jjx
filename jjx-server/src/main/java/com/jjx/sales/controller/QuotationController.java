@@ -78,6 +78,22 @@ public class QuotationController extends BaseController {
     @SaCheckPermission("sales:quotation:add")
     @PostMapping
     public Result<Long> add(@Validated @RequestBody SalesQuotationAddDTO quotation) {
+        List<SalesQuotationAddDTO.QuotationAttachmentDTO> attachments = quotation.getAttachments();
+        if (attachments != null) {
+            for (int i = 0; i < attachments.size(); i++) {
+                SalesQuotationAddDTO.QuotationAttachmentDTO attachment = attachments.get(i);
+                String field = "attachments[" + i + "]";
+                if (attachment == null) {
+                    throw new BusinessException(field + " 不能为空，必须提供 attachmentId 和 documentType");
+                }
+                if (attachment.getAttachmentId() == null) {
+                    throw new BusinessException(field + ".attachmentId 不能为空");
+                }
+                if (attachment.getDocumentType() == null || attachment.getDocumentType().isBlank()) {
+                    throw new BusinessException(field + ".documentType 不能为空");
+                }
+            }
+        }
         return Result.success(quotationService.insertQuotation(quotation));
     }
 
