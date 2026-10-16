@@ -257,3 +257,22 @@
 非事务操作，库和磁盘无法一起回滚。SQL、记账、归档或文件删除失败会返回非零并保留错误，不自动重试；数据库可能已清空，磁盘文件可能部分删除。核查迁移账本/恢复记录后按迁移入口 `--record/--retry` 处理，勿盲目重跑；用户执行后需提交同名归档 SQL。脚本退出码 0=预览或执行成功，1=拒绝/中止/失败。
 
 隔离验证：`python3 -m unittest discover -s scripts/tests -p test_attachment_cleanup.py`；不连真实数据库、不删除真实文件。
+
+
+## 任务精确回写护栏（dev-20261017-003，承 sys_task 全表误刷事故 086）
+
+`python3 scripts/task-update.py --help`。危险等级：🟢默认只读预览，🔴显式 `--execute` 仅写一个已登记任务（正常单行任务回写免备份）；不接受原始 SQL、任意表名或字段，不能批量操作。任务登记仍走 `task-register.sh`。
+
+前置：Python 3.10+、`mysql`、`timeout`；`sys_task` 为 InnoDB。连接沿用本机脚本默认：`DB_HOST=127.0.0.1`、`DB_PORT=3306`、`DB_NAME=jjx_erp_db`；执行使用 `DB_USER/DB_PASS`（默认仓库 root 配置），预览使用只读 `JJX_RO_USER/JJX_RO_PASS`。密码经子进程环境传递，不放命令行。使用前确认这是已获授权的任务回写，工具不授予执行权限。
+
+1）领取预览：`python3 scripts/task-update.py claim --task dev-YYYYMMDD-NNN --operator Codex --expect-status pending --text '领取本卡，开始实施'`。确认目标后加 `--execute`。领取仅允许待开始→进行中，写开始时间和执行者；状态已变会拒绝，不覆盖他人的领取。
+2）追加进度：`python3 scripts/task-update.py note --task dev-YYYYMMDD-NNN --operator Codex --expect-status running --text '实际验证结果与遗留' --execute`。`note` 不改状态、归属和完成时间；复核者也可在对应授权下追加说明。
+3）完成回写：`python3 scripts/task-update.py finish --task dev-YYYYMMDD-NNN --operator Codex --expect-status running --commit <本任务提交哈希> --text-file /tmp/本任务完成说明.txt --execute`。仅允许进行中→待审核，且执行者须与领取人一致；本地提交须存在且提交信息包含该任务码，成功写完成时间。
+
+安全路径：完整精确任务码校验 → 默认只读预览或显式执行 → 事务中锁定唯一行、检查现状 → 固定 `WHERE task_code=精确码 AND task_id=主键 AND status=原状态 AND assignee_name=原领取人` 回写 → 立即读取 ROW_COUNT，必须等于1 → 回查实际字段和 CHAR_LENGTH → 最后 COMMIT。零行、多行、身份/状态不符、回查不一致或提交前异常均拒绝并回滚。会话启用 SQL_SAFE_UPDATES，文本用十六进制字面量，备注中的引号、换行或SQL片段只是数据。
+
+只追加不覆盖：原 remark 加换行及带执行者的说明；合并后超过500字则原 remark 不动，将新说明追加至 description；description 超过TEXT字节上限时整单拒绝。结果 JSON 标明 `append_to`、`affected_rows`、`committed`，预览的 `affected_rows=0/committed=false` 不能当已写入。COMMIT响应丢失时返回非零并提示先只读核查，禁止直接重复执行。
+
+边界：工具只能保护经过它的写入，**不能拦截绕过工具直接运行的 mysql/UPDATE**，也未修改数据库权限、CONVENTIONS 或强制所有 agent 改走该入口。批量订正、全表恢复不属于本工具能力；本卡没有新建权限/触发器或备份机制。
+
+验证：`PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-task-update.py` 为纯输入单元测试；加 `--mysql` 运行真实MySQL会话临时表事务回归。测试在自己的连接创建同名 TEMPORARY sys_task 遮蔽业务表，断连即消失，不持久建表、不写真实任务行、不启服务。覆盖多行误刷/零行/错目标行/写后异常回滚、原备注保留、溢出转 description、领取CAS及完成归属。工具与测试均退出0表示成功，非0为拒绝或失败；不跳过错误，不自动重试。
