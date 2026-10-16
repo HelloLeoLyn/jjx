@@ -171,10 +171,13 @@
         source-type="sample"
         :source-id="currentId"
         :draft-id="draftId"
+        :actions="['download', 'detail', 'remove', 'save']"
+        :auto-bind="false"
         drop-zone
         view-perm="sales:sample:view"
         edit-perm="sales:sample:edit"
         style="margin-bottom: 10px"
+        @save="onAttachSave"
       />
     </el-form>
 
@@ -352,6 +355,17 @@ async function bindPendingAttachments() {
     console.error('附件绑定异常（样品单已保存）:', e)
     ElMessage.error(`附件处理失败：${e?.message || '未知错误'}，可在附件区重试绑定`)
   }
+}
+
+// ====== 附件区「保存」（dev-20261016-021：承 001 §7-1 方案 A）======
+// 附件区「保存」= 只提交「附件信息类」改动（二级类型/备注/排序；组件内 flushTypeEdits 已提交），
+// **不再落定**——落定（建引用）只由单据「保存」负责（保存成功后 bindPendingAttachments 统一绑定）。
+function onAttachSave() {
+  if (!currentId.value) {
+    ElMessage.info('单据尚未保存：附件信息已暂存在本地，保存单据时会一并落定')
+    return
+  }
+  ElMessage.success('附件信息已保存；附件随「保存单据」落定')
 }
 
 let quotationRequestId = 0
