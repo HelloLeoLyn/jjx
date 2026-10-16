@@ -10,6 +10,8 @@
  *  - 保存范围契约：行内=当前行、批量=勾选行改动、全量=完整会话；异步失败不假成功、不丢改动；
  *    成功后仅清本次改动并回填。
  *  - 即时移除成功/迟到回包不复活/解除引用；多实例（不同草稿）隔离；无处理器不开放保存入口。
+ *  - 保存契约固化（dev-20261016-068）：三档范围（行内/批量/全量含筛选隐藏行）、空勾选≠全量、
+ *    校验不通过不调用处理器、无处理器抛错、部分接受只清被接受项、提交期间 saving/锁定复位。
  */
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
@@ -491,4 +493,203 @@ test('告警根因核实：组件上下文挂载无 onBeforeUnmount 告警；无
   } finally {
     console.warn = orig
   }
+})
+
+// ==================== 保存契约固化（dev-20261016-068） ====================
+// 与 useAttachmentSession.ts「变更集 / 校验 / 保存」段的 JSDoc 契约逐条对应，写死在这里（不靠 emit/UI 表达）：
+//  §1 范围三档：row=当前行、rows=勾选行、all=完整会话（含筛选隐藏行/未进 refs 的行）；uploads 只在 all；空勾选 ≠ 全量。
+//  §2 入口闸：无 saveHandler ⇒ canSave=false，saveChanges/commit 抛错（不静默成功）。
+//  §3 校验先行：commit 校验不通过 ⇒ 不调用处理器、result=null，队列与差异原样保留。
+//  §4 失败不假成功：处理器抛错、或结果里未被接受的项，一律保留差异。
+//  §5 提交期间 saving=true 且被提交行进 savingRefIds 锁定；结束（含抛错）必须复位。
+
+test('契约§1：commit 全量=完整会话（含筛选隐藏行 + 待保存附件）', async () => {
+  const rows = [refRow(5, { productCode: 'P1' }), refRow(6, { productCode: 'P2' })]
+  const seen = []
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: rows }),
+    tempUpload: () => Promise.resolve({ data: 88 }),
+    sessionOptions: {
+      sourceType: 'quotation',
+      sourceId: 7,
+      saveHandler: (changes) => { seen.push(changes); return {} },
+    },
+  })
+  const { session } = h
+  await session.load(); await tick()
+  await session.upload(fileOf('a.pdf'), h.mod.orderOwnership())
+  session.pending.value[0].documentType = 'DRAWING' // 补二级类型，校验才通过
+  session.setEdit(5, { documentType: 'A' })
+  session.setEdit(6, { documentType: 'B' })
+  session.setEdit(7, { remark: '筛选隐藏行：未进 refs' }) // refs 里没有 7，仍属完整会话
+
+  const out = await session.commit({ kind: 'all' })
+  assert.equal(out.validation.ok, true)
+  assert.equal(out.changes.total, 4) // 1 个待保存附件 + 3 行差异
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].uploads.length, 1)
+  assert.equal(seen[0].uploads[0].attachmentId, 88)
+  assert.deepEqual(Array.from(seen[0].updates, (u) => u.refId).sort((a, b) => a - b), [5, 6, 7])
+  assert.notEqual(out.result, null)
+})
+
+test('契约§1：行内/批量只交该范围；未勾选（隐藏行）差异保留；空勾选 ≠ 全量', async () => {
+  const rows = [refRow(5), refRow(6)]
+  const seen = []
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: rows }),
+    sessionOptions: {
+      sourceType: 'quotation',
+      sourceId: 7,
+      saveHandler: (changes) => {
+        seen.push(changes)
+        return { acceptedUpdates: changes.updates.map((u) => u.refId) }
+      },
+    },
+  })
+  const { session } = h
+  await session.load(); await tick()
+  session.setEdit(5, { documentType: 'A' })
+  session.setEdit(6, { documentType: 'B' })
+  session.setEdit(7, { documentType: 'C' }) // 筛选隐藏行（不在 refs 里）
+
+  // 行内：只交当前行 5，不带待保存附件
+  await session.commit({ kind: 'row', refId: 5 })
+  assert.deepEqual(Array.from(seen[seen.length - 1].updates, (u) => u.refId), [5])
+  assert.equal(seen[seen.length - 1].uploads.length, 0)
+  assert.equal(session.hasEdit(5), false) // 被接受 ⇒ 清
+  assert.equal(session.hasEdit(6), true)
+
+  // 批量：只交勾选行 6；隐藏行 7 不在勾选内 ⇒ 必须保留
+  await session.commit({ kind: 'rows', refIds: [6] })
+  assert.deepEqual(Array.from(seen[seen.length - 1].updates, (u) => u.refId), [6])
+  assert.equal(session.hasEdit(6), false)
+  assert.equal(session.hasEdit(7), true)
+
+  // 空勾选：不提交任何改动（不等于全量）
+  await session.commit({ kind: 'rows', refIds: [] })
+  assert.equal(seen[seen.length - 1].total, 0)
+  assert.deepEqual(Array.from(seen[seen.length - 1].updates), [])
+  assert.equal(session.hasEdit(7), true)
+
+  // 全量兜底：筛选只改显示、不丢隐藏行改动
+  await session.commit({ kind: 'all' })
+  assert.deepEqual(Array.from(seen[seen.length - 1].updates, (u) => u.refId), [7])
+  assert.equal(session.hasEdit(7), false)
+})
+
+test('契约§2：无 saveHandler 不开放保存入口——canSave=false，saveChanges/commit 抛错且无副作用', async () => {
+  const h = harness({ sessionOptions: { sourceType: 'quotation', sourceId: 7 } })
+  const { session } = h
+  await session.load(); await tick()
+  session.setEdit(5, { documentType: 'A' })
+  assert.equal(session.canSave.value, false)
+  await assert.rejects(() => session.saveChanges(session.getChanges({ kind: 'all' })), /未配置保存处理器/)
+  await assert.rejects(() => session.commit({ kind: 'all' }), /未配置保存处理器/)
+  assert.equal(session.hasEdit(5), true) // 无副作用
+  assert.equal(session.saving.value, false)
+  assert.equal(session.savingRefIds.value.size, 0)
+})
+
+test('契约§3：校验不通过时 commit 不调用处理器、result=null（不假成功），队列与差异保留', async () => {
+  let handlerCalls = 0
+  const h = harness({
+    tempUpload: () => Promise.resolve({ data: 91 }),
+    sessionOptions: {
+      sourceType: 'quotation',
+      sourceId: 7,
+      saveHandler: () => { handlerCalls += 1; return {} },
+    },
+  })
+  const { session } = h
+  session.setEdit(5, { documentType: 'A' })
+  await session.upload(fileOf('a.pdf'), h.mod.orderOwnership()) // 缺二级类型 ⇒ 校验不通过
+
+  const out = await session.commit({ kind: 'all' })
+  assert.equal(out.validation.ok, false)
+  assert.ok(out.validation.issues.some((i) => /资料类型/.test(i.message)))
+  assert.equal(out.result, null)
+  assert.equal(handlerCalls, 0)
+  assert.equal(session.pending.value.length, 1)
+  assert.equal(session.hasEdit(5), true)
+  assert.equal(session.saving.value, false)
+})
+
+test('契约§4：commit 处理器抛错 ⇒ 向上抛、差异全保留、saving 与锁定复位', async () => {
+  const rows = [refRow(5)]
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: rows }),
+    sessionOptions: {
+      sourceType: 'quotation',
+      sourceId: 7,
+      saveHandler: () => Promise.reject(new Error('服务端 500')),
+    },
+  })
+  const { session } = h
+  await session.load(); await tick()
+  session.setEdit(5, { documentType: 'A' })
+  await assert.rejects(() => session.commit({ kind: 'all' }), /服务端 500/)
+  assert.equal(session.hasEdit(5), true)
+  assert.equal(session.saving.value, false)
+  assert.equal(session.savingRefIds.value.size, 0)
+})
+
+test('契约§4：acceptSaved 只清被接受项，未提到的一律保留；空结果不动状态且队列落盘', async () => {
+  let n = 700
+  const rows = [refRow(5), refRow(6)]
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: rows }),
+    tempUpload: () => Promise.resolve({ data: n++ }),
+    sessionOptions: {
+      sourceType: 'quotation',
+      sourceId: 7,
+      saveHandler: () => ({ acceptedUploads: [{ attachmentId: 700, refId: 9001 }] }),
+    },
+  })
+  const { session } = h
+  await session.load(); await tick()
+  await session.upload(fileOf('a.pdf'), h.mod.orderOwnership())
+  await session.upload(fileOf('b.pdf'), h.mod.orderOwnership())
+  session.setEdit(5, { documentType: 'A' })
+  session.setEdit(6, { documentType: 'B' })
+  assert.equal(session.pending.value.length, 2)
+
+  // 空结果：什么都不清
+  session.acceptSaved({})
+  assert.equal(session.pending.value.length, 2)
+  assert.equal(session.hasEdit(5), true)
+  assert.equal(session.hasEdit(6), true)
+
+  // 部分接受：只清 700 与 refId=5
+  session.acceptSaved({ acceptedUploads: [{ attachmentId: 700, refId: 9001 }], acceptedUpdates: [5] })
+  assert.deepEqual(Array.from(session.pending.value, (e) => e.attachmentId), [701])
+  assert.equal(session.hasEdit(5), false)
+  assert.equal(session.hasEdit(6), true)
+  const stored = JSON.parse(h.localStorage._map.get(session.storageKey.value) || '[]')
+  assert.deepEqual(Array.from(stored, (e) => e.attachmentId), [701]) // 队列已落盘
+})
+
+test('契约§5：提交期间 saving=true 且只锁定被提交行，结束后复位', async () => {
+  const gate = deferred()
+  const rows = [refRow(5), refRow(6)]
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: rows }),
+    sessionOptions: { sourceType: 'quotation', sourceId: 7, saveHandler: () => gate.promise },
+  })
+  const { session } = h
+  await session.load(); await tick()
+  session.setEdit(5, { documentType: 'A' })
+  session.setEdit(6, { documentType: 'B' })
+  const p = session.commit({ kind: 'row', refId: 5 })
+  await tick()
+  assert.equal(session.saving.value, true)
+  assert.equal(session.savingRefIds.value.has(5), true)
+  assert.equal(session.savingRefIds.value.has(6), false)
+  gate.resolve({ acceptedUpdates: [5] })
+  const out = await p
+  assert.deepEqual(Array.from(out.result.acceptedUpdates), [5])
+  assert.equal(session.saving.value, false)
+  assert.equal(session.savingRefIds.value.size, 0)
+  assert.equal(session.hasEdit(5), false)
+  assert.equal(session.hasEdit(6), true)
 })

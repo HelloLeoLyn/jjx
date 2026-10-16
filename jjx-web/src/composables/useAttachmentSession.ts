@@ -233,13 +233,23 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
   }
 
   // ==================== 变更集 / 校验 / 保存 ====================
+  /**
+   * 保存契约（写死在实现与测试里，不靠 emit/UI 表达；用例见
+   * `src/composables/__tests__/useAttachmentSession.test.cjs` 的「保存契约固化（dev-20261016-068）」段）：
+   *   1）范围三档：`row`=当前行；`rows`=勾选行；`all`=完整会话（含被筛选隐藏/未加载进 refs 的行）。
+   *      待保存附件（uploads）**只在 all** 出现；空勾选（`rows:[]`）不等于全量，不提交任何改动。
+   *   2）入口闸：无 saveHandler ⇒ `canSave=false`，且 `saveChanges`/`commit` **抛错**，不静默成功。
+   *   3）校验先行：`commit` 校验不通过 ⇒ 不调用处理器、`result=null`，队列与差异原样保留。
+   *   4）失败不假成功：处理器抛错、或返回结果里未被接受的项，一律保留差异；只有被接受项才清差异并回填。
+   *   5）提交期间 `saving=true` 且被提交的行进 `savingRefIds` 锁定；结束（含抛错）必须复位。
+   */
   function inScope(refId: number, scope: AttachmentSaveScope): boolean {
     if (scope.kind === 'all') return true
     if (scope.kind === 'row') return refId === scope.refId
     return scope.refIds.includes(refId)
   }
 
-  /** 按范围取变更集：uploads 仅"完整会话"包含；updates 按行过滤 */
+  /** 按范围取变更集：uploads 仅"完整会话"包含；updates 按行过滤（契约 §1：空勾选 ≠ 全量） */
   function getChanges(scope: AttachmentSaveScope = { kind: 'all' }): AttachmentChanges {
     const updates: AttachmentMetaEdit[] = []
     for (const key of Object.keys(edits)) {
@@ -291,7 +301,8 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
     void store.load()
   }
 
-  /** 执行保存：调用注入的处理器，成功才回填（失败保留改动、向上抛由调用方提示） */
+  /** 执行保存：调用注入的处理器，成功才回填（失败保留改动、向上抛由调用方提示）
+   *  契约 §2：无处理器直接抛错，且不改动任何状态（不假成功）。 */
   async function saveChanges(changes: AttachmentChanges): Promise<AttachmentSaveResult> {
     if (!saveHandler) throw new Error('未配置保存处理器，不能保存附件改动')
     saving.value = true
@@ -311,7 +322,8 @@ export function useAttachmentSession(options: UseAttachmentSessionOptions) {
     }
   }
 
-  /** 便捷方法：按范围取差异 → 调用处理器 → 回填；返回变更与结果 */
+  /** 便捷方法：按范围取差异 → 调用处理器 → 回填；返回变更与结果
+   *  契约 §3：校验不通过时 `result=null` 且**绝不调用处理器**（队列/差异原样保留）。 */
   async function commit(scope: AttachmentSaveScope = { kind: 'all' }) {
     const changes = getChanges(scope)
     const check = validate(scope)
