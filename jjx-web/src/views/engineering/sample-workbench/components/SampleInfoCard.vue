@@ -1,21 +1,25 @@
 <template>
-  <el-card class="wb-card" shadow="never">
-    <template #header>
-      <span style="font-weight: 600">样品单信息</span>
-      <span class="desc">Round {{ card.sampleRound || 1 }} · {{ card.orderNo || '' }}</span>
-      <span style="float: right">
-        <el-button
-          size="small"
-          icon="CopyDocument"
-          :disabled="readonly"
-          @click="$emit('historyCopy')"
-          >📋 复制打样方案</el-button
-        >
-        <el-button link type="primary" style="margin-left: 8px" @click="$emit('back')"
-          >← 返回打样平台</el-button
-        >
-      </span>
-    </template>
+  <!-- 顶部信息区（含附件）占高较多：改折叠面板、默认收缩（dev-20261016-055）。
+       title = 样品单信息 + Round N · 单号 + 成品编号；右侧动作按钮加 .stop，点按钮不会连带展开/收起。 -->
+  <el-collapse v-model="activeNames" class="wb-card info-collapse">
+    <el-collapse-item name="info">
+      <template #title>
+        <span class="info-title">样品单信息</span>
+        <span class="desc">Round {{ card.sampleRound || 1 }} · {{ card.orderNo || '' }}</span>
+        <span v-if="card.productCode" class="desc">成品编号 {{ card.productCode }}</span>
+        <span class="info-actions">
+          <el-button
+            size="small"
+            icon="CopyDocument"
+            :disabled="readonly"
+            @click.stop="$emit('historyCopy')"
+            >📋 复制打样方案</el-button
+          >
+          <el-button link type="primary" style="margin-left: 8px" @click.stop="$emit('back')"
+            >← 返回打样平台</el-button
+          >
+        </span>
+      </template>
     <el-descriptions :column="3" border size="small">
       <el-descriptions-item label="单号">{{ card.orderNo || '-' }}</el-descriptions-item>
       <el-descriptions-item label="客户">{{ card.customerName || '-' }}</el-descriptions-item>
@@ -128,14 +132,21 @@
         客户退回/送样等上传的附件（暂空）
       </div>
     </div>
-  </el-card>
+    </el-collapse-item>
+  </el-collapse>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+
 /**
  * 样品单信息卡（dev-20260811-008 组件化）
  * 样品信息 + 接单/拒单 + 图纸上传（图纸=样品单级，挪至此；2026-10-14 改走公共附件组件 refs）
+ * 2026-10-16（dev-20261016-055）：整卡改折叠面板、默认收缩，title 带 Round / 单号 / 成品编号。
  */
+/** 折叠面板展开项：空数组 = 默认全部收起 */
+const activeNames = ref<string[]>([])
+
 defineProps<{
   card: any
   doneCount: number
@@ -166,6 +177,28 @@ defineEmits<{
   color: #909399;
   font-weight: 400;
   margin-left: 8px;
+}
+
+/* 折叠面板（dev-20261016-055）：外观保持原卡片观感，高度默认收起 */
+.info-collapse {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  background: #fff;
+  padding: 0 14px;
+}
+.info-collapse :deep(.el-collapse-item__header) {
+  border-bottom: none;
+}
+.info-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom: none;
+}
+.info-title {
+  font-weight: 600;
+}
+/* 右侧动作（复制打样方案 / 返回）推到最右，不随 title 一起换行 */
+.info-actions {
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .summary-inline {
