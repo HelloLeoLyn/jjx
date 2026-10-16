@@ -302,19 +302,26 @@
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-      <AttachmentCenter
-        ref="attachmentCenterRef"
-        source-type="sales_order"
-        :source-id="form.orderId || null"
-        :draft-id="draftId"
-        :trace-id="(form as any)?.traceId"
+      <!-- 订单附件（dev-20261016-073：旧 AttachmentCenter → Upload + Manager，共用同一份会话队列）：
+           上传只进「待保存」，随订单「保存」落定（001 §7-1 方案 A）；
+           附件区「保存」（row-save / batch-save）= 只提交附件信息类改动，不落定。 -->
+      <AttachmentUpload
+        :session="attachSession"
+        class="attach-block"
         :accept="['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']"
-        :actions="['download', 'detail', 'remove', 'save']"
-        :auto-bind="false"
-        view-perm="sales:order:view"
-        edit-perm="sales:order:edit"
-        style="margin-bottom: 10px"
-        @save="onAttachSave"
+        drop-zone
+        button-text="上传订单附件"
+        @error="onAttachError"
+      />
+      <AttachmentManager
+        :session="attachSession"
+        class="attach-block"
+        title="订单附件"
+        source-type="sales_order"
+        :source-no="(form as any)?.orderNo || ''"
+        row-save
+        batch-save
+        @error="onAttachError"
       />
     </div>
 
@@ -450,7 +457,14 @@ import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
 import { onActivated, onMounted, ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
+import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
+import {
+  useAttachmentSession,
+  type AttachmentChanges,
+  type AttachmentSaveResult,
+} from '@/composables/useAttachmentSession'
 import { useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
 import { orderApi } from '@/api/sales/order'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
@@ -625,8 +639,7 @@ const handleCurrencyChange = async (val: string) => {
   }
 }
 
-// ===== 附件上传（DEV-733 统一组件） =====
-const attachmentCenterRef = ref<InstanceType<typeof AttachmentCenter>>()
+// ===== 附件（dev-20261016-073：新 Upload/Manager + 单据实例共享会话） =====
 /** 未保存单据按实例隔离；刷新恢复当前实例，显式恢复可找回已关闭实例。 */
 const draftSession = useAttachmentDraftInstance('sales_order', {
   snapshot: () => form,
@@ -645,19 +658,94 @@ function discardAttachmentDraft(id: string) {
   void draftSession.confirmDiscard(id)
 }
 
+// ====== 附件共享会话（dev-20261016-073：照 071 报价页闭环复制）======
+// 由本页（单据容器）创建并同时喂给 Upload 与 Manager ⇒ 一份待保存队列；
+// 落定（建引用）只由单据「保存」负责：待保存队列随新增/编辑的 attachments 提交（后端 dev-20261017-001）；
+// saveHandler 只做「附件信息类」提交（二级类型/备注/排序），不落定（001 §7-1 方案 A）。
+const attachSession = useAttachmentSession({
+  sourceType: 'sales_order',
+  sourceId: computed(() => form.orderId || null),
+  draftId: computed(() => draftId.value || ''),
+  traceId: computed(() => (form as any)?.traceId || ''),
+  viewPerm: 'sales:order:view',
+  editPerm: 'sales:order:edit',
+  saveHandler: saveAttachInfo,
+})
+
+/** 附件信息类提交（保存处理器的唯一出口）：只认 updates；uploads 随单据保存落定，这里明确拒绝而不是静默吞掉 */
+async function saveAttachInfo(changes: AttachmentChanges): Promise<AttachmentSaveResult> {
+  if (changes.uploads.length) {
+    throw new Error('待保存附件随订单「保存」落定，此处只提交附件信息类改动')
+  }
+  if (!changes.updates.length) return {}
+  const items = changes.updates.map((u) => ({
+    refId: u.refId,
+    documentType: u.documentType,
+    remark: u.remark,
+    sortOrder: u.sortOrder,
+  }))
+  await attachmentRefApi.batchUpdate(items)
+  return { acceptedUpdates: items.map((i) => i.refId) }
+}
+
+/** 保存前校验用：待保存队列里尚未选二级资料类型的条数（沿用 032 口径，谓词同 useAttachmentRefs） */
+const attachMissingTypeCount = computed(
+  () => attachSession.pending.value.filter((e) => e.state !== 'binding' && !e.documentType).length,
+)
+
+/** 待保存队列 → 订单保存请求的 attachments（attachmentId/documentType/productId/productCode） */
+function attachPayload() {
+  return attachSession.getChanges({ kind: 'all' }).uploads.map((u) => ({
+    attachmentId: u.attachmentId,
+    documentType: u.documentType ?? null,
+    productId: productIdOfOwnership(u.ownershipKey),
+    productCode: u.productCode ?? null,
+  }))
+}
+
+/** 上传归属键 → 正式产品 id：只有 `product:<id>` 能直接给出；`row:<键>` 交给后端按明细编码解析 */
+function productIdOfOwnership(key?: string | null): number | null {
+  const matched = /^product:(\d+)$/.exec(key || '')
+  return matched ? Number(matched[1]) : null
+}
+
+/** 附件上传/校验失败提示：上传失败组件内已提示，这里只补「选择文件校验」这类没有内建提示的错误 */
+function onAttachError(payload: { action: string; message: string }) {
+  if (payload.action === 'upload') return
+  ElMessage.error(payload.message || '附件处理失败')
+}
+
+/**
+ * 单据保存**成功后**的附件收尾（承 077 §4 的 bindPending 语义：成功清队列、失败保留）：
+ * 重取引用 → 按 attachmentId 取**真实 refId** → acceptSaved；没落定的仍留在「待保存」待重试。
+ * 不做任何前端绑定请求（落定已在单据保存事务内完成）。
+ */
+async function finalizeAttachments(submittedIds: number[]) {
+  if (!submittedIds.length) return
+  try {
+    await attachSession.refresh()
+    const sourceId = Number(form.orderId)
+    const refIdByAttachment = new Map<number, number>()
+    for (const row of attachSession.refs.value) {
+      const attachmentId = Number((row as any).attachmentId)
+      if (!attachmentId || row.deleted || Number(row.sourceId) !== sourceId) continue
+      refIdByAttachment.set(attachmentId, row.id)
+    }
+    const acceptedUploads = submittedIds
+      .filter((id) => refIdByAttachment.has(id))
+      .map((id) => ({ attachmentId: id, refId: refIdByAttachment.get(id) as number }))
+    if (acceptedUploads.length) attachSession.acceptSaved({ acceptedUploads })
+    const remaining = submittedIds.length - acceptedUploads.length
+    if (remaining) ElMessage.warning(`有 ${remaining} 个附件未落定，仍保留在「待保存」，请再保存一次`)
+  } catch (e) {
+    // 附件收尾失败不得冒泡成「整单保存失败」（订单此时已保存成功）
+    console.error('附件收尾异常（订单已保存）:', e)
+    ElMessage.warning('订单已保存，但附件队列未刷新，可在附件区重试')
+  }
+}
+
 const createdOrderId = ref<number>()
 const createdTraceId = ref<string>()
-
-// ====== 附件区「保存」（dev-20261016-020：承 001 §7-1 方案 A）======
-// 附件区「保存」= 只提交「附件信息类」改动（二级类型/备注/排序；组件内 flushTypeEdits 已提交），
-// **不再落定**——落定（建引用）只由单据「保存」负责（保存成功后 bindPending 统一绑定待绑定队列）。
-function onAttachSave() {
-  if (!form.orderId) {
-    ElMessage.info('单据尚未保存：附件信息已暂存在本地，保存单据时会一并落定')
-    return
-  }
-  ElMessage.success('附件信息已保存；附件随「保存单据」落定')
-}
 
 /** 客户档案 payment_method(1预付/2货到付款/3月结30天/4月结60天) → 订单同值域枚举 */
 const PAYMENT_METHOD_TO_TERMS: Record<number, string> = {
@@ -951,23 +1039,17 @@ watch(
 // 提交表单（重写：保存订单后再上传附件）
 const submitForm = async (): Promise<boolean> => {
   if (props.isEdit) {
-    // 编辑模式：走原有逻辑；保存成功后把本次待绑定附件落定
-    // （dev-20261016-020 / 001 §7-1 方案 A：auto-bind 关闭后，落定只由单据「保存」负责）
-    const success = await submitOrderForm()
+    // 编辑模式：待保存附件随「单据保存」一并提交，由后端在保存事务内建引用（dev-20261017-001）
+    if (attachMissingTypeCount.value > 0) {
+      ElMessage.warning(`有 ${attachMissingTypeCount.value} 个附件未选择资料类型，请先选择后再保存`)
+      return false
+    }
+    const attachments = attachPayload()
+    const submittedIds = attachments.map((a) => a.attachmentId)
+    const success = await submitOrderForm(attachments)
     if (success) {
       await nextTick()
-      try {
-        const result = await attachmentCenterRef.value?.bindPending()
-        if (result && (result.status === 'partial' || result.status === 'all-failed')) {
-          ElMessage.warning(
-            `订单已保存，部分附件绑定失败（成功 ${result.bound.length} 条、失败 ${result.failed.length} 条），可在附件区重试`,
-          )
-        }
-      } catch (e) {
-        // 附件失败不得冒泡成「整单保存失败」（订单此时已保存成功）
-        console.error('附件绑定异常（订单已保存）:', e)
-        ElMessage.warning('订单已保存，但部分附件绑定失败，可在附件区重试')
-      }
+      await finalizeAttachments(submittedIds)
       emit('success')
     }
     return success
@@ -995,18 +1077,20 @@ const submitForm = async (): Promise<boolean> => {
     return false
   }
 
-  // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待绑定附件，避免「保存成功但附件未绑定」
-  const missingTypeCount = attachmentCenterRef.value?.getMissingTypeCount?.() ?? 0
-  if (missingTypeCount > 0) {
-    ElMessage.warning(`有 ${missingTypeCount} 个附件未选择资料类型，请先选择后再保存`)
+  // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待保存附件，避免「保存成功但附件没落定」
+  if (attachMissingTypeCount.value > 0) {
+    ElMessage.warning(`有 ${attachMissingTypeCount.value} 个附件未选择资料类型，请先选择后再保存`)
     return false
   }
 
-  // 构建提交数据
+  // 构建提交数据（随单附件：待保存队列 → 请求体 attachments，落定由后端在保存事务内完成）
+  const attachments = attachPayload()
+  const submittedIds = attachments.map((a) => a.attachmentId)
   const submitData = {
     ...form,
     salesManagerId: form.salesPersonId!,
     salesManagerName: form.salesPersonName,
+    attachments,
   }
 
   try {
@@ -1026,16 +1110,10 @@ const submitForm = async (): Promise<boolean> => {
     createdOrderId.value = newOrderId
     createdTraceId.value = newTraceId
 
-    // 2. 绑定待处理（TEMP）附件到新订单（dev-20261012-028）
-    form.orderId = newOrderId // 先回写 sourceId，等一次渲染后 bindPending 才能读到
+    // 2. 附件收尾（dev-20261016-073）：落定已在保存事务内完成，这里按真实 refId 清「待保存」队列
+    form.orderId = newOrderId // 先回写 sourceId，finalizeAttachments 才能按真实 refId 回填
     await nextTick()
-    try {
-      await attachmentCenterRef.value?.bindPending()
-    } catch (e) {
-      // 附件失败不得冒泡成「整单保存失败」（订单此时已保存成功）
-      console.error('附件绑定异常（订单已保存）:', e)
-      ElMessage.warning('订单已保存，但部分附件绑定失败，可在附件区重试绑定')
-    }
+    await finalizeAttachments(submittedIds)
     clearDraftId() // 保存成功：清空草稿标识
     ElMessage.success(isSampleConvert ? '转量产成功，标准订单已生成' : '新增成功')
     emit('success')
@@ -1116,6 +1194,11 @@ defineExpose({
 .borderless-textarea :deep(.el-textarea__inner:focus) {
   border: none;
   box-shadow: none;
+}
+
+/* 附件区（Upload / Manager）块间距 */
+.attach-block {
+  margin-bottom: 8px;
 }
 
 /* 汇率提示文字 */

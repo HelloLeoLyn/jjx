@@ -23,6 +23,17 @@ type ProtectedAmountBaseline = {
   items: OrderItem[]
 }
 
+/**
+ * 随单附件入参（dev-20261016-073）：页面按「待保存队列」映射后传入，随订单保存一并提交。
+ * 仅新增可选通道，不改既有调用语义（不传 = 现状）。
+ */
+type OrderAttachmentInput = Array<{
+  attachmentId: number
+  documentType: string | null
+  productId: number | null
+  productCode: string | null
+}>
+
 export function useOrderForm(options: UseOrderFormOptions = {}) {
   const { isEdit = false, initialData = {} } = options
 
@@ -675,7 +686,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   }
 
   // 提交新增订单
-  const submitAdd = async (): Promise<boolean> => {
+  const submitAdd = async (attachments?: OrderAttachmentInput): Promise<boolean> => {
     if (!validateForm()) return false
 
     submitting.value = true
@@ -690,6 +701,8 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
         deliveryAddress: form.shippingAddress || '',
       } as any
       delete (submitData as any).shippingAddress
+      // 随单附件（dev-20261016-073）：仅页面传入时附加，落定由后端在保存事务内完成
+      if (attachments && attachments.length) (submitData as any).attachments = attachments
       // 1. 保存订单基本信息
       const orderResponse = await orderApi.addOrder(submitData as any)
       if (orderResponse.code !== 200) {
@@ -708,7 +721,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   }
 
   // 提交编辑订单
-  const submitEdit = async (): Promise<boolean> => {
+  const submitEdit = async (attachments?: OrderAttachmentInput): Promise<boolean> => {
     if (!validateForm()) return false
 
     submitting.value = true
@@ -723,6 +736,8 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
         deliveryAddress: form.shippingAddress || '',
       } as any
       delete (submitData as any).shippingAddress
+      // 随单附件（dev-20261016-073）：仅页面传入时附加，落定由后端在保存事务内完成
+      if (attachments && attachments.length) (submitData as any).attachments = attachments
       // 1. 更新订单基本信息
       const orderResponse = await orderApi.updateOrder(submitData as any)
       if (orderResponse.code !== 200) {
@@ -741,11 +756,11 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   }
 
   // 根据模式提交
-  const submitForm = async (): Promise<boolean> => {
+  const submitForm = async (attachments?: OrderAttachmentInput): Promise<boolean> => {
     if (isEdit) {
-      return await submitEdit()
+      return await submitEdit(attachments)
     } else {
-      return await submitAdd()
+      return await submitAdd(attachments)
     }
   }
 
