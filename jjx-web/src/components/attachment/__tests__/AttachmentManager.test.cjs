@@ -188,9 +188,11 @@ test('待保存移除 handler 独立守卫：禁写不调用会话、不报 chan
   const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
   session.pending.value = [{ attachmentId: 901, fileName: 'draft.pdf', state: 'pending' }]
   let calls = 0
-  session.removePending = async () => { calls++ }
+  const removePending = session.removePending
+  session.removePending = async (id) => { calls++; return removePending(id) }
   const { bindings, emitted } = setupManager({ session })
   await bindings.onRemovePending(901)
+  await vue.nextTick()
   assert.equal(calls, 1)
   assert.equal(emitted.some((e) => e[0] === 'changed'), true)
 })
@@ -263,14 +265,18 @@ test('下载复用下载工具真正打开文件 URL（不是无效按钮），�
   assert.ok(emitted.some((e) => e[0] === 'download' && e[1]?.id === 5))
 })
 
-test('信息编辑实时通知调用方：changed 携带 dirtyCount（不只是条数）', () => {
+test('共享 session 的变化通知调用方一次，并合并同一轮变更', async () => {
   const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
   session.refs.value = [refRow(5)]
   const { bindings, emitted } = setupManager({ session })
   bindings.onRowType(bindings.tableRows.value[0], 'X')
+  session.setEdit(5, { remark: 'note' })
+  session.pending.value = [{ attachmentId: 901, fileName: 'shared.pdf', state: 'pending' }]
+  await vue.nextTick()
   const changed = emitted.filter((e) => e[0] === 'changed')
-  assert.ok(changed.length >= 1)
-  assert.equal(changed[changed.length - 1][1].dirtyCount, 1)
+  assert.equal(changed.length, 1)
+  assert.equal(changed[0][1].dirtyCount, 2)
+  assert.equal(changed[0][1].count, 1)
 })
 
 test('005：历史/同链路并入主表（含来源单号），不进入待保存计数和写集合', async () => {

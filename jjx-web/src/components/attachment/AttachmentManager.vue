@@ -223,9 +223,14 @@ const documentTypes = session.documentTypes
 // 061：Manager 挂载即加载资料类型字典（原来只在「打开详情」时才加载，导致刚上传后一级/二级下拉为空）
 onMounted(() => { void session.loadDocumentTypes() })
 /** 列表变化 + 编辑差异实时通知调用方（仅条数不足以反映信息编辑） */
-function notifyChanged() {
+const changeSnapshot = computed(() => JSON.stringify({
+  refs: session.refs.value,
+  pending: session.pending.value,
+  edits: session.edits,
+}))
+watch(changeSnapshot, () => {
   emit('changed', { count: session.refRows.value.length, dirtyCount: session.dirtyCount.value })
-}
+}, { flush: 'post' })
 
 /** 保存入口只有在「调用方开启 + 会话有处理器」时才出现（无处理器不开放入口） */
 const rowSaveEnabled = computed(() => !!(props.rowSave && session.canSave.value))
@@ -268,12 +273,10 @@ function onRowType(row: TableRow, value: string | null) {
   if (row.kind === 'pending') {
     row.data.documentType = value
     session.persist()
-    notifyChanged()
     return
   }
   if (row.kind !== 'ref') return
   session.setEdit(row.refId, { documentType: value })
-  notifyChanged()
 }
 function onRowCategory(row: TableRow, category: string | null) {
   if (!capabilities(row).canEdit) return
@@ -315,7 +318,6 @@ function applyMeta(value: { remark: string; sortOrder: number }) {
   if (!row || !capabilities(row).canEdit) return
   session.setEdit(detailRow.value.refId, { remark: value.remark || null, sortOrder: value.sortOrder || 0 })
   metaVisible.value = false
-  notifyChanged()
 }
 
 const batchTypeVisible = ref(false)
@@ -334,7 +336,6 @@ function applyBatchType() {
   if (!batchDocumentType.value || !selectedRefIds.value.length) return
   for (const refId of selectedRefIds.value) session.setEdit(refId, { documentType: batchDocumentType.value })
   batchTypeVisible.value = false
-  notifyChanged()
 }
 
 // ==================== 保存（范围契约：行内=当前行；批量=勾选行） ====================
@@ -356,7 +357,6 @@ async function runSave(scope: { kind: 'row'; refId: number } | { kind: 'rows'; r
     const failed = committed.result?.failed?.length ?? 0
     if (failed) ElMessage.warning(`已保存 ${changes.total - failed} 条，${failed} 条失败（保留待重试）`)
     else ElMessage.success('已保存')
-    notifyChanged()
   } catch (e: any) {
     const message = e?.message || '保存失败'
     ElMessage.error(message)
@@ -380,7 +380,6 @@ async function onRemovePending(attachmentId: number) {
     const row = tableRows.value.find(row => row.kind === 'pending' && row.attachmentId === attachmentId)
     if (!row || !capabilities(row).canRemove) return
     await session.removePending(attachmentId) // 先删草稿行，成功才清队列项
-    notifyChanged()
   } catch (e: any) {
     const message = e?.message || '移除失败（已保留原行）'
     ElMessage.error(message)
@@ -404,7 +403,6 @@ async function onRemoveRef(row: TableRow) {
     await session.unbind(row.refId)
     selectedIds.value = selectedIds.value.filter((id) => id !== row.refId)
     ElMessage.success('已解除引用')
-    notifyChanged()
   } catch (e: any) {
     const message = e?.message || '解除引用失败'
     ElMessage.error(message)
@@ -439,7 +437,6 @@ async function onBatchRemove() {
   }
   if (failed) ElMessage.warning(`已移除 ${ok} 条，${failed} 条失败（保留原状）`)
   else ElMessage.success(`已移除 ${ok} 条引用`)
-  notifyChanged()
 }
 
 // ==================== 预览 / 下载（复用唯一实现） ====================
