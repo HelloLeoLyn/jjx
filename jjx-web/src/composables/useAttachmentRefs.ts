@@ -462,7 +462,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
           createdAt: String(r.createTime || ''),
           documentType: r.documentType ? String(r.documentType) : null,
           displayName: r.displayName ? String(r.displayName) : null,
-          productCode: r.productCode ? String(r.productCode) : null,
+          productCode: r.productCode ? String(r.productCode) : (prev?.productCode ?? null),
           // 草稿行归属稳定键：优先正式 productId，其次 productCode（仅兜底，不作唯一身份），保持/恢复上传时上下文（dev-20261016-048）
           ownershipKey: prev?.ownershipKey
             ?? (r.productId != null ? `product:${Number(r.productId)}`
@@ -614,7 +614,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   })
 
   // ==================== 上传 / 绑定 / 解绑 / 元数据 ====================
-  async function uploadTemp(file: File, onProgress?: (percent: number) => void, context?: AttachmentUploadContext | null): Promise<number> {
+  async function uploadTemp(file: File, onProgress?: (percent: number) => void, context?: AttachmentUploadContext | null, registerPending = true, onDetached?: (entry: PendingEntry) => void): Promise<number> {
     // 隔离要求：sourceId=null 时必须提供唯一 draftId（禁止退化为共享队列）
     if (!draftReady.value) {
       throw new Error('缺少草稿标识（draftId）：新建单据必须提供唯一 draftId 才能上传附件，避免多个单据共用待绑定队列')
@@ -638,13 +638,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     }
     const attachmentId = Number(res?.data)
     if (!attachmentId) throw new Error(res?.msg || '临时上传失败')
-    const existing = pending.value.find((e) => e.attachmentId === attachmentId)
-    if (existing) {
-      // 同内容 + 同草稿 = 服务端幂等返回原 id：不重复入队，避免出现两条同 id 条目
-      await load()
-      return attachmentId
-    }
-    pending.value.push({
+    const entry: PendingEntry = {
       attachmentId,
       requestKey,
       fileName: file.name,
@@ -656,7 +650,18 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
       displayName: null,
       productCode: uploadProductCode,
       ownershipKey: uploadOwnershipKey,
-    })
+    }
+    if (!registerPending) {
+      onDetached?.(entry)
+      return attachmentId
+    }
+    const existing = pending.value.find((e) => e.attachmentId === attachmentId)
+    if (existing) {
+      // 同内容 + 同草稿 = 服务端幂等返回原 id：不重复入队，避免出现两条同 id 条目
+      await load()
+      return attachmentId
+    }
+    pending.value.push(entry)
     persist()
     void syncDraftsFromBackend() // 取回刚建的草稿行 refId（dev-20261016-009）
     return attachmentId
@@ -684,7 +689,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
         sourceId: sourceId.value,
         productId: productId.value,
         productCode: entry.productCode ?? productCode.value,
-        documentType: meta?.documentType ?? null,
+        documentType: requiredType,
         displayName: meta?.displayName ?? null,
         remark: meta?.remark ?? null,
         sortOrder: meta?.sortOrder ?? null,

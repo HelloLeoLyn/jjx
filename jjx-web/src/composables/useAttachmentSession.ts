@@ -488,6 +488,32 @@ function createAttachmentSession(options: UseAttachmentSessionOptions) {
     }
   }
 
+  /** 只上传临时文件；由调用方在 uploaded 回调中显式登记待保存项。 */
+  async function uploadTemporary(file: File, ownership?: AttachmentOwnership, onProgress?: (percent: number) => void): Promise<{ attachmentId: number; entry: PendingEntry }> {
+    const context: AttachmentUploadContext | null = ownership
+      ? { productId: ownership.productId ?? null, productCode: ownership.productCode ?? null, ownershipKey: ownership.key }
+      : null
+    uploadingCount.value++
+    try {
+      let entry: PendingEntry | undefined
+      const attachmentId = await store.uploadTemp(file, onProgress, context, false, (value) => { entry = value })
+      if (!entry) throw new Error('临时附件结果缺失')
+      return { attachmentId, entry }
+    } finally {
+      uploadingCount.value--
+    }
+  }
+
+  /** 调用方收到临时上传结果后显式纳入本单待保存队列。 */
+  function registerUploaded(entry: PendingEntry, ownership?: AttachmentOwnership) {
+    const existing = store.pending.value.find((item) => item.attachmentId === entry.attachmentId)
+    if (existing) return
+    entry.productCode = ownership?.productCode ?? null
+    entry.ownershipKey = ownership?.key ?? 'order'
+    store.pending.value.push(entry)
+    store.persist()
+  }
+
   /** 即时移除待保存附件（草稿移除草稿/队列项，不删文件）：
    *  先删草稿行，成功才清队列项并登记抑制（迟到回包不复活）；失败抛错，由调用方保留原行。 */
   async function removePending(attachmentId: number) {
@@ -560,6 +586,8 @@ function createAttachmentSession(options: UseAttachmentSessionOptions) {
     commit,
     // 上传/移除
     upload,
+    uploadTemporary,
+    registerUploaded,
     removePending,
     unbind,
     persist: store.persist,

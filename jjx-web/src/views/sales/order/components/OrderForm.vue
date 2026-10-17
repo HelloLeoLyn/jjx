@@ -311,6 +311,7 @@
         :accept="['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']"
         drop-zone
         button-text="上传订单附件"
+        @uploaded="(item) => attachSession.registerUploaded(item.pending, item.ownership)"
         @error="onAttachError"
       />
       <AttachmentManager

@@ -448,6 +448,23 @@ public class QuotationServiceImpl implements IQuotationService {
             Long productId = attachment.getProductId();
             if (productId == null && productCode != null) {
                 productId = productIdByCode.get(productCode);
+                if (productId == null) {
+                    throw new BusinessException("附件产品编码不属于当前报价单明细: " + productCode);
+                }
+            }
+            if (productId != null) {
+                boolean belongsToQuotation = false;
+                if (quotation.getItems() != null) {
+                    for (SalesQuotationItem item : quotation.getItems()) {
+                        if (productId.equals(item.getProductId())) {
+                            belongsToQuotation = true;
+                            break;
+                        }
+                    }
+                }
+                if (!belongsToQuotation) {
+                    throw new BusinessException("附件产品不属于当前报价单明细");
+                }
             }
             AttachmentRefDTO ref = new AttachmentRefDTO();
             ref.setAttachmentId(attachment.getAttachmentId());

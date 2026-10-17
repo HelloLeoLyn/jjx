@@ -73,7 +73,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  uploaded: [payload: { attachmentId: number; temp: boolean; name?: string }]
+  uploaded: [payload: { attachmentId: number; temp: boolean; name?: string; ownership: AttachmentOwnership; pending: import('@/composables/useAttachmentRefs').PendingEntry }]
   changed: [payload: { count: number }]
   error: [payload: { action: string; message: string }]
 }>()
@@ -108,11 +108,12 @@ async function onFiles(files: File[]) {
   if (!canUpload.value) return
   for (const file of files) {
     try {
-      const attachmentId = await session.upload(file, ownershipValue.value, (percent) => {
+      const ownership = ownershipValue.value
+      const uploaded = await session.uploadTemporary(file, ownership, (percent) => {
         progress.value = percent
       })
-      emit('uploaded', { attachmentId, temp: true, name: file.name })
-      emit('changed', { count: session.pendingCount.value })
+      emit('uploaded', { attachmentId: uploaded.attachmentId, temp: true, name: file.name, ownership, pending: uploaded.entry })
+      emit('changed', { count: session.pendingCount.value + 1 })
     } catch (e: any) {
       const message = e?.message || '附件上传失败'
       ElMessage.error(message)

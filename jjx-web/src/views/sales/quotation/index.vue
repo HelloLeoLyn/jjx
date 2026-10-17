@@ -192,6 +192,7 @@
             class="attach-block"
             drop-zone
             button-text="上传附件"
+            @uploaded="(item) => attachDialogSession.registerUploaded(item.pending, item.ownership)"
           />
           <AttachmentManager
             :session="attachDialogSession"

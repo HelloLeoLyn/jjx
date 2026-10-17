@@ -325,6 +325,7 @@
             class="attach-block"
             drop-zone
             button-text="上传整单附件"
+            @uploaded="(item) => session.registerUploaded(item.pending, item.ownership)"
             @error="onAttachError"
           />
           <AttachmentManager
@@ -371,6 +372,7 @@
         :ownership="rowAttachOwnership"
         drop-zone
         :button-text="`上传到 ${rowAttachProductCode || '本行'}`"
+        @uploaded="(item) => session.registerUploaded(item.pending, item.ownership)"
         @error="onAttachError"
       />
       <div class="attach-row-hint">

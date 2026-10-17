@@ -44,13 +44,6 @@ public class AttachmentRefService {
         // 归属收口（dev-20261015-027）：前端可能只传编码或都没传 —— 来源唯一产品时后端兜底写全（多产品/无产品不猜）
         Long productId = request.getProductId();
         String productCode = optional(request.getProductCode(), 64);
-        if (productId == null || productCode == null) {
-            AttachmentSourcePolicy.ProductRef resolved = sources.singleProductOf(source, request.getSourceId());
-            if (resolved != null) {
-                if (productId == null) productId = resolved.id();
-                if (productCode == null) productCode = resolved.code();
-            }
-        }
         sources.checkProduct(source, request.getSourceId(), productId);
         SysAttachment file = lock(request.getAttachmentId());
         if (file.getUploadState() == AttachmentUploadState.ASSET)

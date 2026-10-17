@@ -180,6 +180,7 @@
         drop-zone
         button-text="上传整单附件"
         style="margin: 6px 0"
+        @uploaded="(item) => session.registerUploaded(item.pending, item.ownership)"
         @error="onAttachError"
       />
       <AttachmentManager

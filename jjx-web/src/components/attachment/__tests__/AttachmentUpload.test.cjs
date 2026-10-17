@@ -137,26 +137,33 @@ function setupUpload(props) {
   return { bindings, emitted }
 }
 
-test('选中文件经共享 Session 上传：队列立即可见并 emit uploaded/changed', async () => {
+test('选中文件只上传临时文件并 emit 结果，不自行写待保存队列', async () => {
   const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
   const { bindings, emitted } = setupUpload({ session })
   await bindings.onFiles([fileOf('a.pdf')])
   await tick()
-  assert.equal(session.pending.value.length, 1)
+  assert.equal(session.pending.value.length, 0)
+  const result = emitted.find((e) => e[0] === 'uploaded')[1]
+  assert.equal(result.name, 'a.pdf')
+  session.registerUploaded(result.pending, result.ownership)
   assert.equal(session.pending.value[0].fileName, 'a.pdf')
   const kinds = emitted.map((e) => e[0])
   assert.ok(kinds.includes('uploaded'))
   assert.ok(kinds.includes('changed'))
 })
 
-test('归属在发起时固定：产品级上传写入 ownershipKey（编码仅展示）', async () => {
+test('上传回调返回发起时的产品归属，由调用方决定何时入队', async () => {
   const { session, sessionMod } = buildSession({ sourceType: 'quotation', sourceId: 7 })
   const ownership = sessionMod.productOwnership({ rowKey: 'row-9', productId: 88, productCode: 'P088' })
-  const { bindings } = setupUpload({ session, ownership })
+  const { bindings, emitted } = setupUpload({ session, ownership })
   await bindings.onFiles([fileOf('b.pdf')])
   await tick()
+  assert.equal(session.pending.value.length, 0)
+  const result = emitted.find((e) => e[0] === 'uploaded')[1]
+  assert.equal(result.ownership.key, 'product:88')
+  assert.equal(result.ownership.productCode, 'P088')
+  session.registerUploaded(result.pending, result.ownership)
   assert.equal(session.pending.value[0].ownershipKey, 'product:88')
-  assert.equal(session.pending.value[0].productCode, 'P088')
 })
 
 test('多文件逐个上传，互不覆盖', async () => {
@@ -164,8 +171,11 @@ test('多文件逐个上传，互不覆盖', async () => {
   const { bindings, emitted } = setupUpload({ session })
   await bindings.onFiles([fileOf('a.pdf'), fileOf('b.pdf')])
   await tick()
+  assert.equal(session.pending.value.length, 0)
+  const results = emitted.filter((e) => e[0] === 'uploaded').map((e) => e[1])
+  assert.equal(results.length, 2)
+  results.forEach((result) => session.registerUploaded(result.pending, result.ownership))
   assert.equal(session.pending.value.length, 2)
-  assert.equal(emitted.filter((e) => e[0] === 'uploaded').length, 2)
 })
 
 test('上传失败：emit error 且不改队列（失败可见）', async () => {
