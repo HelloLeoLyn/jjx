@@ -7,6 +7,25 @@ import { menuApi } from '@/api/system/menu'
 import { useUserStore } from './user'
 import { constantRoutes } from '@/router/index'
 
+const HIDDEN_MENU_PATHS = new Set(['/sales/inquiry'])
+
+function filterHiddenMenuPaths(menus: any[], parentPath = ''): any[] {
+  return menus.flatMap((menu) => {
+    const currentPath = menu.path.startsWith('/')
+      ? menu.path
+      : `${parentPath.replace(/\/$/, '')}/${menu.path}`
+    const normalizedPath = `/${currentPath.split('/').filter(Boolean).join('/')}`
+
+    if (HIDDEN_MENU_PATHS.has(normalizedPath)) return []
+
+    const filteredMenu = { ...menu }
+    if (Array.isArray(menu.children)) {
+      filteredMenu.children = filterHiddenMenuPaths(menu.children, normalizedPath)
+    }
+    return [filteredMenu]
+  })
+}
+
 interface PermissionState {
   routes: RouteRecordRaw[]
   menus: any[]
@@ -58,7 +77,7 @@ export const usePermissionStore = defineStore('permission', {
       const routes = convertToRouteRecords(processedRoutes)
 
       // 生成菜单树
-      const dynamicMenus = generateMenuTree(processedRoutes)
+      const dynamicMenus = filterHiddenMenuPaths(generateMenuTree(processedRoutes))
       const staticMenus = this.generateStaticMenus()
       const menus = [...staticMenus, ...dynamicMenus]
 

@@ -63,7 +63,6 @@ const salesWB = reactive({
   monthSampleCount: 0,
 })
 const todoList = computed(() => [
-  { key: 'inquiry', label: '待处理询价', count: salesWB.inquiryPending, path: '/sales/inquiry' },
   {
     key: 'quotSent',
     label: '报价待客户回复',
