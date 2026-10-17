@@ -19,9 +19,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -63,15 +65,19 @@ public class AttachmentRefService {
         }
         for (SysAttachmentRef ref : active) {
             if (source.equals(ref.getSourceType()) && request.getSourceId().equals(ref.getSourceId())
-                    && Objects.equals(productId, ref.getProductId())) return ref.getId();
+                    && Objects.equals(productId, ref.getProductId())) {
+                AttachmentDisplayNameService.GroupKey existingGroup = group(ref);
+                displayNames.lockGroups(List.of(existingGroup));
+                renumber(existingGroup);
+                return ref.getId();
+            }
         }
         String type = optional(request.getDocumentType(), 100);
         types.validate(type, source);
         validateProductDrawing(source, productId, file);
-        // 展示名（dev-20261016-003）：调用方没传时，后端按命名规则生成
-        // 规则：来源码-来源Id-P产品id-一级码-二级码-二级名（无产品 P0；除产品 id 外缺任一不生成）
+        // 同组自动名称编号须串行分配；事务完成后释放分组锁。
+        displayNames.lockGroups(List.of(group(source, request.getSourceId(), productId, type)));
         String displayName = optional(request.getDisplayName(), 255);
-        if (displayName == null) displayName = displayNames.build(source, request.getSourceId(), productId, type);
         // 转正（dev-20261016-012 / S3）：未保存时上传建的"草稿行"（同一附件 + 同一上传人）→ 补归属、置 active
         SysAttachmentRef draft = refs.selectOne(Wrappers.<SysAttachmentRef>lambdaQuery()
             .eq(SysAttachmentRef::getAttachmentId, file.getId())
@@ -85,6 +91,7 @@ public class AttachmentRefService {
                 source, request.getSourceId(), sourceNo, productId, productCode, type, displayName,
                 optional(request.getRemark(), 500), order(request.getSortOrder()),
                 StpUtil.getLoginIdAsString(), draft.getId());
+            renumber(group(source, request.getSourceId(), productId, type));
             jdbc.update("UPDATE sys_attachment SET upload_state=?,expires_at=NULL WHERE id=?",
                 file.getUploadState() == AttachmentUploadState.LEGACY ? AttachmentUploadState.LEGACY.name() : AttachmentUploadState.BOUND.name(),
                 file.getId());
@@ -97,6 +104,7 @@ public class AttachmentRefService {
         ref.setSortOrder(order(request.getSortOrder())); ref.setDeleted(false);
         ref.setCreateBy(StpUtil.getLoginIdAsString()); ref.setCreateTime(LocalDateTime.now());
         refs.insert(ref);
+        renumber(group(source, request.getSourceId(), productId, type));
         jdbc.update("UPDATE sys_attachment SET upload_state=?,expires_at=NULL WHERE id=?",
             file.getUploadState() == AttachmentUploadState.LEGACY ? AttachmentUploadState.LEGACY.name() : AttachmentUploadState.BOUND.name(), file.getId());
         return ref.getId();
@@ -304,8 +312,24 @@ public class AttachmentRefService {
         sources.check(ref.getSourceType(), ref.getSourceId(), true);
         String type = optional(body.getDocumentType(), 100);
         if (!Objects.equals(type, ref.getDocumentType())) types.validate(type, ref.getSourceType());
+        String oldDisplayName = ref.getDisplayName();
+        String oldBase = displayNames.baseName(ref.getSourceType(), ref.getSourceId(), ref.getProductId(), ref.getDocumentType());
+        boolean generated = displayNames.isGeneratedName(oldDisplayName, oldBase);
+        boolean typeChanged = !Objects.equals(type, ref.getDocumentType());
+        String requestedDisplayName = optional(body.getDisplayName(), 255);
+        String displayName = typeChanged && generated
+            && (requestedDisplayName == null || Objects.equals(requestedDisplayName, oldDisplayName))
+                ? null
+                : (body.getDisplayName() != null ? requestedDisplayName : oldDisplayName);
+        Set<AttachmentDisplayNameService.GroupKey> affected = new LinkedHashSet<>();
+        if (typeChanged || body.getDisplayName() != null) {
+            affected.add(group(ref));
+            affected.add(group(ref.getSourceType(), ref.getSourceId(), ref.getProductId(), type));
+            displayNames.lockGroups(affected);
+        }
         jdbc.update("UPDATE sys_attachment_ref SET document_type=?,display_name=?,remark=?,sort_order=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
-            type, optional(body.getDisplayName(), 255), optional(body.getRemark(), 500), order(body.getSortOrder()), StpUtil.getLoginIdAsString(), id);
+            type, displayName, optional(body.getRemark(), 500), order(body.getSortOrder()), StpUtil.getLoginIdAsString(), id);
+        renumber(affected);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -317,8 +341,11 @@ public class AttachmentRefService {
         List<SysAttachmentRef> active = refs.lockActive(file.getId());
         if (active.stream().noneMatch(r -> r.getId().equals(id))) return; // Retry does not move the retention clock.
         access.checkUnlink(file);
+        AttachmentDisplayNameService.GroupKey group = group(ref);
+        displayNames.lockGroups(List.of(group));
         jdbc.update("UPDATE sys_attachment_ref SET deleted=1,deleted_at=NOW(),deleted_by=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
             StpUtil.getLoginIdAsString(), StpUtil.getLoginIdAsString(), id);
+        renumber(group);
         if (active.size() == 1) {
             jdbc.update("UPDATE sys_attachment SET upload_state=?,expires_at=? WHERE id=?",
                 file.getUploadState() == AttachmentUploadState.LEGACY ? AttachmentUploadState.LEGACY.name() : AttachmentUploadState.ORPHAN.name(),
@@ -342,38 +369,63 @@ public class AttachmentRefService {
             if (item.getRefId() == null) throw new BusinessException("附件引用不能为空");
             unique.putIfAbsent(item.getRefId(), item);
         }
-        int changed = 0;
-        for (Map.Entry<Long, AttachmentRefBatchItem> entry : unique.entrySet()) {
-            Long id = entry.getKey();
-            AttachmentRefBatchItem item = entry.getValue();
+        Map<Long, SysAttachmentRef> locked = new LinkedHashMap<>();
+        for (Long id : unique.keySet().stream().sorted().toList()) {
             SysAttachmentRef initial = readable(id);
-            lock(initial.getAttachmentId());
-            SysAttachmentRef ref = refs.lockActive(initial.getAttachmentId()).stream().filter(r -> r.getId().equals(id))
+            SysAttachment file = lock(initial.getAttachmentId());
+            SysAttachmentRef ref = refs.lockActive(file.getId()).stream().filter(r -> r.getId().equals(id))
                 .findFirst().orElseThrow(() -> new BusinessException("附件引用已解除"));
             sources.check(ref.getSourceType(), ref.getSourceId(), true);
-            String type = ref.getDocumentType();
-            if (item.getDocumentType() != null) { // 部分更新：未传则保留原值
-                type = optional(item.getDocumentType(), 100);
-                if (!Objects.equals(type, ref.getDocumentType())) types.validate(type, ref.getSourceType());
+            AttachmentRefBatchItem item = unique.get(id);
+            if (item.getDocumentType() != null) {
+                String nextType = optional(item.getDocumentType(), 100);
+                if (!Objects.equals(nextType, ref.getDocumentType())) types.validate(nextType, ref.getSourceType());
             }
-            String displayName = item.getDisplayName() != null ? optional(item.getDisplayName(), 255) : ref.getDisplayName();
+            locked.put(id, ref);
+        }
+
+        Set<AttachmentDisplayNameService.GroupKey> affected = new LinkedHashSet<>();
+        for (Map.Entry<Long, SysAttachmentRef> entry : locked.entrySet()) {
+            AttachmentRefBatchItem item = unique.get(entry.getKey());
+            SysAttachmentRef ref = entry.getValue();
+            String nextType = item.getDocumentType() == null ? ref.getDocumentType() : optional(item.getDocumentType(), 100);
+            if (!Objects.equals(nextType, ref.getDocumentType()) || item.getDisplayName() != null) {
+                affected.add(group(ref));
+                affected.add(group(ref.getSourceType(), ref.getSourceId(), ref.getProductId(), nextType));
+            }
+        }
+        displayNames.lockGroups(affected);
+
+        for (Map.Entry<Long, SysAttachmentRef> entry : locked.entrySet()) {
+            Long id = entry.getKey();
+            AttachmentRefBatchItem item = unique.get(id);
+            SysAttachmentRef ref = entry.getValue();
+            String type = item.getDocumentType() == null ? ref.getDocumentType() : optional(item.getDocumentType(), 100);
+            boolean typeChanged = !Objects.equals(type, ref.getDocumentType());
+            String oldBase = displayNames.baseName(ref.getSourceType(), ref.getSourceId(), ref.getProductId(), ref.getDocumentType());
+            boolean generated = displayNames.isGeneratedName(ref.getDisplayName(), oldBase);
+            String requestedDisplayName = optional(item.getDisplayName(), 255);
+            String displayName = typeChanged && generated
+                && (requestedDisplayName == null || Objects.equals(requestedDisplayName, ref.getDisplayName()))
+                    ? null
+                    : (item.getDisplayName() != null ? requestedDisplayName : ref.getDisplayName());
             String remark = item.getRemark() != null ? optional(item.getRemark(), 500) : ref.getRemark();
             int sortOrder = item.getSortOrder() != null
                 ? order(item.getSortOrder())
                 : (ref.getSortOrder() == null ? 0 : ref.getSortOrder());
             jdbc.update("UPDATE sys_attachment_ref SET document_type=?,display_name=?,remark=?,sort_order=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
                 type, displayName, remark, sortOrder, StpUtil.getLoginIdAsString(), id);
-            changed++;
         }
-        return changed;
+        renumber(affected);
+        return locked.size();
     }
 
     /** 批量解除引用（逐条语义与 {@link #unlink} 一致；整批一次事务，任一条失败全部回滚）。 */
     @Transactional(rollbackFor = Exception.class)
     public int batchUnlink(List<Long> rawIds) {
         List<Long> ids = distinctIds(rawIds);
-        int changed = 0;
-        for (Long id : ids) {
+        Map<Long, UnlinkCandidate> candidates = new LinkedHashMap<>();
+        for (Long id : ids.stream().sorted().toList()) {
             SysAttachmentRef ref = refs.includingDeleted(id);
             if (ref == null) throw new BusinessException("附件引用不存在");
             sources.check(ref.getSourceType(), ref.getSourceId(), true);
@@ -381,6 +433,17 @@ public class AttachmentRefService {
             List<SysAttachmentRef> active = refs.lockActive(file.getId());
             if (active.stream().noneMatch(r -> r.getId().equals(id))) continue; // 已解除：幂等跳过，不移动保留期时钟
             access.checkUnlink(file);
+            candidates.put(id, new UnlinkCandidate(ref, file, active));
+        }
+        Set<AttachmentDisplayNameService.GroupKey> affected = new LinkedHashSet<>();
+        candidates.values().forEach(candidate -> affected.add(group(candidate.ref())));
+        displayNames.lockGroups(affected);
+        int changed = 0;
+        for (Map.Entry<Long, UnlinkCandidate> entry : candidates.entrySet()) {
+            Long id = entry.getKey();
+            UnlinkCandidate candidate = entry.getValue();
+            SysAttachment file = candidate.file();
+            List<SysAttachmentRef> active = candidate.active();
             jdbc.update("UPDATE sys_attachment_ref SET deleted=1,deleted_at=NOW(),deleted_by=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
                 StpUtil.getLoginIdAsString(), StpUtil.getLoginIdAsString(), id);
             if (active.size() == 1) {
@@ -390,6 +453,7 @@ public class AttachmentRefService {
             }
             changed++;
         }
+        renumber(affected);
         return changed;
     }
 
@@ -407,6 +471,27 @@ public class AttachmentRefService {
         if (file == null) throw new BusinessException("附件不存在或已删除");
         return file;
     }
+
+    private AttachmentDisplayNameService.GroupKey group(SysAttachmentRef ref) {
+        return group(ref.getSourceType(), ref.getSourceId(), ref.getProductId(), ref.getDocumentType());
+    }
+
+    private AttachmentDisplayNameService.GroupKey group(String source, Long sourceId, Long productId, String type) {
+        return new AttachmentDisplayNameService.GroupKey(source, sourceId, productId, type);
+    }
+
+    private void renumber(AttachmentDisplayNameService.GroupKey group) {
+        renumber(Set.of(group));
+    }
+
+    private void renumber(Set<AttachmentDisplayNameService.GroupKey> groups) {
+        if (groups == null || groups.isEmpty()) return;
+        String operator = StpUtil.getLoginIdAsString();
+        groups.forEach(group -> displayNames.renumber(group.source(), group.sourceId(), group.productId(), group.documentType(), operator));
+    }
+
+    private record UnlinkCandidate(SysAttachmentRef ref, SysAttachment file, List<SysAttachmentRef> active) {}
+
     private int order(Integer value) {
         if (value != null && value < 0) throw new BusinessException("排序号不能为负");
         return value == null ? 0 : value;
