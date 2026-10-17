@@ -119,24 +119,17 @@
 
     <div v-if="pendingCount" class="am-hint">待保存附件已上传到服务器，保存单据后自动建立引用。</div>
 
-    <!-- 详情（备注/排序为「信息类」改动：先攒进会话，由保存入口统一提交，绝不即时提交） -->
-    <el-dialog v-model="metaVisible" title="附件详情" width="800px" append-to-body destroy-on-close>
-      <AttachmentDetailInfo :row="detailRow" :document-types="documentTypes" :source-type="sourceType" />
-      <el-alert v-if="detailReadonlyReason" :title="detailReadonlyReason" type="info" :closable="false" />
-      <el-form v-if="metaRow" label-width="80px" :disabled="!metaEditable">
-        <el-form-item label="备注">
-          <el-input v-model="metaForm.remark" maxlength="500" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="metaForm.sortOrder" :min="0" :max="9999" />
-        </el-form-item>
-      </el-form>
-      <div v-if="metaEditable" class="am-hint">这些改动会先记录在会话里，随「保存」统一提交（不会即时入库）。</div>
-      <template #footer>
-        <el-button @click="metaVisible = false">取消</el-button>
-        <el-button v-if="metaEditable" type="primary" @click="applyMeta">确定</el-button>
-      </template>
-    </el-dialog>
+    <AttachmentManagerDetailDialog
+      v-model="metaVisible"
+      :row="detailRow"
+      :document-types="documentTypes"
+      :source-type="sourceType"
+      :editable="metaEditable"
+      :readonly-reason="detailReadonlyReason"
+      :remark="detailRemark"
+      :sort-order="detailSortOrder"
+      @confirm="applyMeta"
+    />
 
     <!-- 批量改类型（同样先攒进会话） -->
     <el-dialog v-model="batchTypeVisible" title="批量改类型" width="440px" append-to-body>
@@ -177,7 +170,7 @@
  * 信息编辑（二级类型/备注/排序）只写进会话的编辑差异，**绝不即时提交**；由会话的保存入口统一提交。
  * 行内/批量保存按钮**默认隐藏**，仅在调用方显式开启且会话已注入处理器时出现。
  */
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { AttachmentRefItem } from '@/api/system/attachmentRef'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
@@ -189,7 +182,7 @@ import { useAttachmentRowText } from './useAttachmentRowText'
 import { useAttachmentPreview } from './useAttachmentPreview'
 import AttachmentTable from './AttachmentTable.vue'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
-import AttachmentDetailInfo from './AttachmentDetailInfo.vue'
+import AttachmentManagerDetailDialog from './AttachmentManagerDetailDialog.vue'
 import { useAttachmentManagerRows, type AttachmentManagerRow as TableRow } from './useAttachmentManagerRows'
 
 const props = withDefaults(
@@ -294,31 +287,33 @@ function onRowCategory(row: TableRow, category: string | null) {
 
 // ==================== 详情 / 批量改类型（攒进会话） ====================
 const metaVisible = ref(false)
-const metaRow = ref<AttachmentRefItem | null>(null)
 const detailRow = ref<TableRow | null>(null)
 const metaEditable = computed(() => !!detailRow.value && capabilities(detailRow.value).canEdit)
 const detailReadonlyReason = computed(() => detailRow.value ? capabilities(detailRow.value).readonlyReason : '')
-const metaForm = reactive({ remark: '', sortOrder: 0 })
+const detailRemark = computed(() => {
+  if (detailRow.value?.kind !== 'ref') return ''
+  const edit = session.editOf(detailRow.value.refId)
+  return (edit && 'remark' in edit ? edit.remark : detailRow.value.data.remark) ?? ''
+})
+const detailSortOrder = computed(() => {
+  if (detailRow.value?.kind !== 'ref') return 0
+  const edit = session.editOf(detailRow.value.refId)
+  return (edit && 'sortOrder' in edit ? edit.sortOrder : detailRow.value.data.sortOrder) ?? 0
+})
 function onDetail(row: TableRow) {
   if (row.kind === 'pending') return
   detailRow.value = row
-  metaRow.value = null
   metaVisible.value = true
   if (row.kind === 'readonly') return
   const refRow = row.data
-  metaRow.value = refRow
-  const edit = session.editOf(refRow.id)
-  metaForm.remark = (edit && 'remark' in edit ? edit.remark : refRow.remark) ?? ''
-  metaForm.sortOrder = (edit && 'sortOrder' in edit ? edit.sortOrder : refRow.sortOrder) ?? 0
-  metaVisible.value = true
   emit('detail', refRow)
   void session.loadDocumentTypes()
 }
-function applyMeta() {
-  if (!metaRow.value) return
-  const row = refRow(metaRow.value.id)
+function applyMeta(value: { remark: string; sortOrder: number }) {
+  if (detailRow.value?.kind !== 'ref') return
+  const row = refRow(detailRow.value.refId)
   if (!row || !capabilities(row).canEdit) return
-  session.setEdit(metaRow.value.id, { remark: metaForm.remark || null, sortOrder: metaForm.sortOrder || 0 })
+  session.setEdit(detailRow.value.refId, { remark: value.remark || null, sortOrder: value.sortOrder || 0 })
   metaVisible.value = false
   notifyChanged()
 }
@@ -352,14 +347,13 @@ async function runSave(scope: { kind: 'row'; refId: number } | { kind: 'rows'; r
   })) return
   const changes = session.getChanges(scope)
   if (!changes.total) return
-  const check = session.validate(scope)
-  if (!check.ok) {
-    ElMessage.warning(check.issues[0]?.message || '存在未完成的改动')
-    return
-  }
   try {
-    const result = await session.saveChanges(changes)
-    const failed = result.failed?.length ?? 0
+    const committed = await session.commit(scope)
+    if (!committed.validation.ok) {
+      ElMessage.warning(committed.validation.issues[0]?.message || '存在未完成的改动')
+      return
+    }
+    const failed = committed.result?.failed?.length ?? 0
     if (failed) ElMessage.warning(`已保存 ${changes.total - failed} 条，${failed} 条失败（保留待重试）`)
     else ElMessage.success('已保存')
     notifyChanged()

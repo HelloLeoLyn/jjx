@@ -396,8 +396,7 @@ test('004：弹窗和勾选后变为只读/锁定，所有写入入口重新检�
     blocked.value = true
     bindings.onRowType(row, 'OTHER')
     bindings.onRowCategory(row, 'ANY')
-    bindings.metaForm.remark = '不应写入'
-    bindings.applyMeta()
+    bindings.applyMeta({ remark: '不应写入', sortOrder: 0 })
     bindings.batchDocumentType.value = 'OTHER'
     bindings.applyBatchType()
     await bindings.onRowSave(row)
@@ -525,16 +524,28 @@ test('005：本单详情切换到只读详情，不残留备注编辑或提交�
   const { session, bindings } = await mixedManager()
   bindings.onDetail(bindings.tableRows.value.find(row => row.kind === 'ref'))
   assert.equal(bindings.metaEditable.value, true)
-  bindings.metaForm.remark = '尚未确认'
   bindings.onDetail(bindings.tableRows.value.find(row => row.rowKey === 'trace:902'))
   assert.equal(bindings.metaVisible.value, true)
-  assert.equal(bindings.metaRow.value, null)
   assert.equal(bindings.metaEditable.value, false)
   assert.match(bindings.detailReadonlyReason.value, /同链路/)
   assert.equal(bindings.detailRow.value.sourceNo, 'INQ-8')
-  bindings.applyMeta()
+  bindings.applyMeta({ remark: '不得写入', sortOrder: 3 })
   assert.equal(session.getChanges().updates.length, 0)
   assert.equal(session.getChanges().uploads.length, 1)
+})
+
+test('006：详情确认只写会话差异，保存失败时差异保留', async () => {
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, saveHandler: async () => { throw new Error('服务端拒绝') } })
+  session.refs.value = [refRow(5, { remark: '原备注', sortOrder: 1 })]
+  const { bindings, emitted } = setupManager({ session, rowSave: true })
+  const row = bindings.tableRows.value[0]
+  bindings.onDetail(row)
+  bindings.applyMeta({ remark: '新备注', sortOrder: 2 })
+  assert.deepEqual(JSON.parse(JSON.stringify(session.getChanges({ kind: 'row', refId: 5 }).updates)), [{ refId: 5, remark: '新备注', sortOrder: 2 }])
+  assert.equal(session.dirtyCount.value, 1)
+  await bindings.onRowSave(row)
+  assert.equal(session.dirtyCount.value, 1, '保存失败保留会话差异')
+  assert.ok(emitted.some(args => args[0] === 'error' && args[1].action === 'save'))
 })
 
 test('005：实际模板只有一张表，只读行只渲染下载和详情，状态使用枚举', async () => {
