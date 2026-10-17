@@ -96,7 +96,7 @@ function buildSession(sessionOptions, files = {}) {
 }
 
 /** 编译真实 Manager 的 <script setup> 并执行其 setup，返回绑定与 emit 记录。 */
-function setupManager(props) {
+function setupManager(props, { confirm = () => Promise.resolve() } = {}) {
   const filename = path.resolve(src, 'components/attachment/AttachmentManager.vue')
   const { descriptor } = parse(fs.readFileSync(filename, 'utf8'), { filename })
   const compiled = compileScript(descriptor, { id: 'am-test' })
@@ -112,7 +112,7 @@ function setupManager(props) {
     window: { open: (...a) => opened.push(a), location: { pathname: '/', search: '', hash: '' } },
     require(name) {
       if (name === 'vue') return vueStub
-      if (name === 'element-plus') return { ElMessage: { success() {}, error() {}, warning() {} }, ElMessageBox: { confirm: () => Promise.resolve() } }
+      if (name === 'element-plus') return { ElMessage: { success() {}, error() {}, warning() {} }, ElMessageBox: { confirm } }
       if (name === '@/api/system/attachmentRef') return { attachmentRefApi: { previewUrlByRef: (id) => `/refs/${id}/preview`, downloadUrlByRef: (id) => `/refs/${id}/download` } }
       if (name === '@/composables/useAttachmentSession') return sessionMod
       if (name === '@/enums/system/AttachmentEnum') return { AttachmentDocumentStatusEnum: { BOUND: { value: 'ref' }, LEGACY: { value: 'legacy' }, TRACE: { value: 'trace' } } }
@@ -162,9 +162,11 @@ test('待保存行真实模板：只读/locked 隐藏移除，可写时显示', 
   vm.runInNewContext(`(function (exports, require) {${code}\n})`, {})(mod.exports, () => vue)
   for (const options of [{ readonly: true }, { locked: true }, {}]) {
     const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, ...options })
+    session.pending.value = [{ attachmentId: 901, fileName: 'draft.pdf', state: 'pending' }]
+    const { bindings } = setupManager({ session })
     const app = vue.createSSRApp({
       render() {
-        return mod.exports.render({ canEdit: session.canEdit.value, row: { attachmentId: 901 }, onRemovePending() {} }, [])
+        return mod.exports.render({ capabilities: bindings.capabilities, row: bindings.tableRows.value[0], onRemovePending() {} }, [])
       },
     })
     app.component('el-button', { setup: (_, { slots }) => () => vue.h('button', slots.default?.()) })
@@ -185,6 +187,7 @@ test('待保存移除 handler 独立守卫：禁写不调用会话、不报 chan
     assert.ok(emitted.some((e) => e[0] === 'error' && e[1].action === 'remove-pending' && e[1].message === '已审核，不可再改'))
   }
   const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
+  session.pending.value = [{ attachmentId: 901, fileName: 'draft.pdf', state: 'pending' }]
   let calls = 0
   session.removePending = async () => { calls++ }
   const { bindings, emitted } = setupManager({ session })
@@ -235,7 +238,7 @@ test('归属筛选只改变显示范围，隐藏行的改动仍完整可取', ()
   const { bindings } = setupManager({ session })
   assert.equal(bindings.tableRows.value.length, 3)
   bindings.filterKey.value = 'product:55'
-  assert.deepEqual(Array.from(bindings.tableRows.value, (r) => r.id), [5])
+  assert.deepEqual(Array.from(bindings.tableRows.value, (r) => r.refId), [5])
   // 隐藏行（P066 / 订单级）的改动仍在会话里，可完整取回
   session.setEdit(6, { documentType: 'A' })
   session.setEdit(7, { documentType: 'B' })
@@ -246,9 +249,9 @@ test('信息编辑写进会话差异（不即时提交），与原值一致时�
   const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
   session.refs.value = [refRow(5, { documentType: 'DRAWING' })]
   const { bindings } = setupManager({ session })
-  bindings.onRowType({ kind: 'ref', data: session.refs.value[0], rowKey: 'ref:5' }, 'OTHER')
+  bindings.onRowType(bindings.tableRows.value[0], 'OTHER')
   assert.equal(session.hasEdit(5), true)
-  bindings.onRowType({ kind: 'ref', data: session.refs.value[0], rowKey: 'ref:5' }, 'DRAWING')
+  bindings.onRowType(bindings.tableRows.value[0], 'DRAWING')
   assert.equal(session.hasEdit(5), false)
 })
 
@@ -265,7 +268,7 @@ test('信息编辑实时通知调用方：changed 携带 dirtyCount（不只是�
   const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
   session.refs.value = [refRow(5)]
   const { bindings, emitted } = setupManager({ session })
-  bindings.onRowType({ kind: 'ref', data: session.refs.value[0], rowKey: 'ref:5' }, 'X')
+  bindings.onRowType(bindings.tableRows.value[0], 'X')
   const changed = emitted.filter((e) => e[0] === 'changed')
   assert.ok(changed.length >= 1)
   assert.equal(changed[changed.length - 1][1].dirtyCount, 1)
@@ -321,4 +324,136 @@ test('083：历史/同链路只读段接出（含来源单号），不进可写�
   })()
   assert.equal('session' in (component.props || {}), false)
   assert.deepEqual(Array.from(component.emits || []), ['uploaded', 'bound', 'unbound', 'changed', 'duplicate', 'save', 'error'])
+})
+
+test('004：同一文件的不同产品引用保留，引用ID与文件ID/草稿ID不混用', async () => {
+  const saved = []
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, saveHandler: async changes => {
+    saved.push(changes)
+    return { acceptedUpdates: changes.updates.map(row => row.refId) }
+  } })
+  session.refs.value = [refRow(5, { attachmentId: 900, productId: 55 }), refRow(6, { attachmentId: 900, productId: 66 })]
+  session.pending.value = [{ attachmentId: 5, fileName: 'new.pdf', state: 'pending', documentType: 'DRAWING' }]
+  const { bindings } = setupManager({ session })
+  const rows = bindings.tableRows.value
+  assert.deepEqual(Array.from(rows, row => [row.rowKey, row.attachmentId, row.refId]), [
+    ['pending:5', 5, null], ['ref:5', 900, 5], ['ref:6', 900, 6],
+  ])
+  assert.equal(rows.some(row => 'id' in row), false, '可写行不再暴露语义混淆的id')
+  bindings.onSelectionChange(rows)
+  assert.deepEqual(Array.from(bindings.selectedIds.value), [5, 6])
+  bindings.onRowType(rows[1], 'DRAWING')
+  bindings.onRowType(rows[2], 'OTHER')
+  await bindings.onBatchSave()
+  assert.equal(saved.length, 1)
+  assert.deepEqual(Array.from(saved[0].updates, row => row.refId), [5, 6])
+  assert.equal(saved[0].uploads.length, 0, '附件信息保存不提交待绑定队列')
+})
+
+test('004：历史/同链路行即使ID碰撞也不能选择、改类型、保存或解除引用', async () => {
+  let writes = 0
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, traceId: 'T', saveHandler: async () => { writes++; return {} } }, {
+    list: async () => ({ data: [{ id: 5, fileName: 'old.pdf' }] }),
+    listByTrace: async () => ({ data: [{ id: 6, fileName: 'chain.pdf', refId: 5 }] }),
+  })
+  await session.load()
+  await session.loadTrace()
+  session.refs.value = [refRow(5, { attachmentId: 900 })]
+  session.unbind = async () => { writes++ }
+  const { bindings } = setupManager({ session })
+  const rows = bindings.readonlyDocRows.value
+  assert.equal(rows.length, 2)
+  for (const row of rows) {
+    const caps = bindings.capabilities(row)
+    for (const name of ['canEdit', 'canSelect', 'canSave', 'canRemove']) assert.equal(caps[name], false, name)
+    assert.ok(caps.readonlyReason)
+    bindings.onRowType(row, 'OTHER')
+    bindings.onRowCategory(row, 'ANY')
+    await bindings.onRowSave(row)
+    await bindings.onRemoveRef(row)
+  }
+  bindings.onSelectionChange(rows)
+  bindings.batchDocumentType.value = 'OTHER'
+  bindings.applyBatchType()
+  await bindings.onBatchSave()
+  await bindings.onBatchRemove()
+  assert.equal(bindings.selectedIds.value.length, 0)
+  assert.equal(session.dirtyCount.value, 0)
+  assert.equal(writes, 0)
+})
+
+test('004：弹窗和勾选后变为只读/锁定，所有写入入口重新检查权限', async () => {
+  for (const option of ['readonly', 'locked']) {
+    const blocked = vue.ref(false)
+    let writes = 0
+    const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, [option]: blocked, saveHandler: async () => { writes++; return {} } })
+    session.refs.value = [refRow(5, { attachmentId: 900 })]
+    session.unbind = async () => { writes++ }
+    const { bindings } = setupManager({ session })
+    const row = bindings.tableRows.value[0]
+    bindings.onSelectionChange([row])
+    bindings.onDetail(row)
+    blocked.value = true
+    bindings.onRowType(row, 'OTHER')
+    bindings.onRowCategory(row, 'ANY')
+    bindings.metaForm.remark = '不应写入'
+    bindings.applyMeta()
+    bindings.batchDocumentType.value = 'OTHER'
+    bindings.applyBatchType()
+    await bindings.onRowSave(row)
+    await bindings.onBatchSave()
+    await bindings.onRemoveRef(row)
+    await bindings.onBatchRemove()
+    assert.equal(session.dirtyCount.value, 0, option)
+    assert.equal(writes, 0, option)
+  }
+})
+
+test('004：正在保存或已移除的行不能重复修改，隐藏行差异仍保留', async () => {
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
+  session.refs.value = [refRow(5), refRow(6)]
+  const { bindings } = setupManager({ session })
+  const [saving, removed] = bindings.tableRows.value
+  session.setEdit(5, { documentType: 'DRAWING' })
+  session.savingRefIds.value = new Set([5])
+  session.refs.value = session.refs.value.filter(row => row.id !== 6)
+  for (const row of [saving, removed]) {
+    assert.equal(bindings.capabilities(row).canEdit, false)
+    bindings.onRowType(row, 'OTHER')
+  }
+  bindings.onSelectionChange([saving, removed])
+  assert.equal(bindings.selectedIds.value.length, 0)
+  assert.equal(session.editOf(5).documentType, 'DRAWING')
+  assert.equal(session.hasEdit(6), false)
+})
+
+test('004：解除引用确认期间权限变化，确认后仍不得写入', async () => {
+  for (const batch of [false, true]) {
+    const locked = vue.ref(false)
+    let writes = 0
+    const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, locked })
+    session.refs.value = [refRow(5)]
+    session.unbind = async () => { writes++ }
+    const { bindings } = setupManager({ session }, { confirm: async () => { locked.value = true } })
+    const row = bindings.tableRows.value[0]
+    bindings.onSelectionChange([row])
+    if (batch) await bindings.onBatchRemove()
+    else await bindings.onRemoveRef(row)
+    assert.equal(writes, 0)
+  }
+})
+
+test('004：待保存类型编辑仍更新原会话队列，移除仍以文件ID调用', async () => {
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7 })
+  session.pending.value = [{ attachmentId: 901, fileName: 'new.pdf', state: 'pending' }]
+  let removed
+  session.removePending = async id => { removed = id }
+  const { bindings } = setupManager({ session })
+  const row = bindings.tableRows.value[0]
+  bindings.onRowType(row, 'DRAWING')
+  assert.equal(session.pending.value[0].documentType, 'DRAWING')
+  assert.equal(session.getChanges().uploads[0].attachmentId, 901)
+  assert.equal(session.getChanges().updates.length, 0)
+  await bindings.onRemovePending(row.attachmentId)
+  assert.equal(removed, 901)
 })
