@@ -1,8 +1,10 @@
 // src/enums/system/AttachmentEnum.ts
 import { createEnum, createNamedEnum } from '../base'
 
-/** 只读文档的来源状态（区别于物理文件的上传生命周期）。 */
+/** 附件列表的展示状态（区别于物理文件的上传生命周期）。 */
 export const AttachmentDocumentStatusEnum = createNamedEnum({
+  PENDING: { value: 'pending', label: '待保存', tagProps: { type: 'warning' } },
+  FAILED: { value: 'failed', label: '绑定失败', tagProps: { type: 'danger' } },
   BOUND: { value: 'ref', label: '已绑定', tagProps: { type: 'success' } },
   TRACE: { value: 'trace', label: '同链路', tagProps: { type: 'info' } },
   LEGACY: { value: 'legacy', label: '历史', tagProps: { type: 'info' } },

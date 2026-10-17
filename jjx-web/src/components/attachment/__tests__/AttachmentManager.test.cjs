@@ -115,8 +115,7 @@ function setupManager(props, { confirm = () => Promise.resolve() } = {}) {
       if (name === 'element-plus') return { ElMessage: { success() {}, error() {}, warning() {} }, ElMessageBox: { confirm } }
       if (name === '@/api/system/attachmentRef') return { attachmentRefApi: { previewUrlByRef: (id) => `/refs/${id}/preview`, downloadUrlByRef: (id) => `/refs/${id}/download` } }
       if (name === '@/composables/useAttachmentSession') return sessionMod
-      if (name === '@/enums/system/AttachmentEnum') return { AttachmentDocumentStatusEnum: { BOUND: { value: 'ref' }, LEGACY: { value: 'legacy' }, TRACE: { value: 'trace' } } }
-      if (name === './useAttachmentDocList') return { attachmentDocFromFile: (row, status) => ({ ...row, attachmentId: row.id, status }) }
+      if (name === '@/api/system/attachment') return { attachmentApi: { downloadUrl: (id) => `/files/${id}/download` } }
       if (name.endsWith('.vue')) return { render: () => null }
       const file = name.startsWith('@/')
         ? path.join(src, name.slice(2) + '.ts')
@@ -274,7 +273,7 @@ test('信息编辑实时通知调用方：changed 携带 dirtyCount（不只是�
   assert.equal(changed[changed.length - 1][1].dirtyCount, 1)
 })
 
-test('083：历史/同链路只读段接出（含来源单号），不进可写表与计数', async () => {
+test('005：历史/同链路并入主表（含来源单号），不进入待保存计数和写集合', async () => {
   const tick = () => new Promise((r) => setImmediate(r))
   const { session } = buildSession(
     { sourceType: 'quotation', sourceId: 7, traceId: 'T-1' },
@@ -286,11 +285,12 @@ test('083：历史/同链路只读段接出（含来源单号），不进可写�
   await session.load(); await tick(); await tick()
   const { bindings } = setupManager({ session })
   assert.deepEqual(
-    Array.from(bindings.readonlyDocRows.value, (r) => [r.attachmentId, r.status, r.sourceNo]),
+    Array.from(bindings.tableRows.value.filter(row => row.kind === 'readonly'), (r) => [r.attachmentId, r.status, r.sourceNo]),
     [[901, 'legacy', 'QT-0001'], [902, 'trace', 'INQ-0007']],
   )
-  // 纯只读：不进可写表、不影响计数与落定
-  assert.equal(bindings.tableRows.value.length, 0)
+  // 统一展示，但不进入编辑与提交集合
+  assert.equal(bindings.tableRows.value.length, 2)
+  assert.equal(bindings.totalCount.value, 2)
   assert.equal(bindings.pendingCount.value, 0)
   assert.equal(session.dirtyCount.value, 0)
   assert.equal(session.getChanges({ kind: 'all' }).total, 0)
@@ -361,7 +361,7 @@ test('004：历史/同链路行即使ID碰撞也不能选择、改类型、保�
   session.refs.value = [refRow(5, { attachmentId: 900 })]
   session.unbind = async () => { writes++ }
   const { bindings } = setupManager({ session })
-  const rows = bindings.readonlyDocRows.value
+  const rows = bindings.tableRows.value.filter(row => row.kind === 'readonly')
   assert.equal(rows.length, 2)
   for (const row of rows) {
     const caps = bindings.capabilities(row)
@@ -456,4 +456,106 @@ test('004：待保存类型编辑仍更新原会话队列，移除仍以文件ID
   assert.equal(session.getChanges().updates.length, 0)
   await bindings.onRemovePending(row.attachmentId)
   assert.equal(removed, 901)
+})
+
+async function mixedManager() {
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, traceId: 'T-005' }, {
+    list: async () => ({ data: [
+      { id: 5, fileName: 'legacy.png', bizType: 'quotation', sourceNo: 'QT-7', productCode: 'P055' },
+      { id: 5, fileName: 'legacy.png', bizType: 'quotation', sourceNo: 'QT-7' },
+      { id: 903, fileName: 'upload.png', bizType: 'quotation' },
+    ] }),
+    listByTrace: async () => ({ data: [{ id: 902, refId: 55, fileName: 'trace.png', bizType: 'inquiry', sourceNo: 'INQ-8' }] }),
+  })
+  await session.load()
+  await session.loadTrace()
+  session.refs.value = [
+    refRow(5, { attachmentId: 900, fileName: 'own.png', productId: 55, productCode: 'P055' }),
+    refRow(6, { attachmentId: 900, fileName: 'own.png', productId: 66, productCode: 'P066' }),
+  ]
+  session.pending.value = [{ attachmentId: 903, fileName: 'upload.png', state: 'pending', documentType: 'DRAWING' }]
+  return { session, ...setupManager({ session }) }
+}
+
+test('005：统一列表去重只读文件，保留同文件不同引用，筛选不伪造产品归属', async () => {
+  const { session, bindings } = await mixedManager()
+  assert.equal(bindings.totalCount.value, 5)
+  assert.deepEqual(Array.from(bindings.tableRows.value, row => row.rowKey), ['pending:903', 'ref:5', 'ref:6', 'legacy:5', 'trace:902'])
+  assert.equal(bindings.pendingCount.value, 1)
+  session.setEdit(6, { documentType: 'OTHER' })
+  bindings.filterKey.value = 'product:55'
+  assert.deepEqual(Array.from(bindings.tableRows.value, row => row.rowKey), ['ref:5'], '历史文件同产品编码也不推断为本单产品行附件')
+  assert.equal(bindings.totalCount.value, 5)
+  const readonlyOption = bindings.ownershipOptions.value.find(option => option.label === '只读参考附件')
+  assert.ok(readonlyOption)
+  bindings.filterKey.value = readonlyOption.key
+  assert.deepEqual(Array.from(bindings.tableRows.value, row => row.rowKey), ['legacy:5', 'trace:902'])
+  bindings.onSelectionChange(bindings.tableRows.value)
+  assert.equal(bindings.selectedIds.value.length, 0)
+  assert.equal(session.getChanges().updates[0].refId, 6)
+  assert.equal(session.getChanges().uploads[0].attachmentId, 903)
+})
+
+test('005：跨来源图片翻页按行定位，文件ID与引用ID碰撞不会串图', async () => {
+  const { bindings } = await mixedManager()
+  const rows = bindings.tableRows.value
+  bindings.previewRow(rows.find(row => row.rowKey === 'legacy:5'))
+  assert.deepEqual(Array.from(bindings.viewerList.value), ['/refs/5/preview', '/refs/6/preview', '/files/5/download', '/refs/55/preview'])
+  assert.equal(bindings.viewerIndex.value, 2)
+  bindings.previewRow(rows.find(row => row.rowKey === 'ref:6'))
+  assert.equal(bindings.viewerIndex.value, 1, '同文件的第二条引用仍定位到自己的预览地址')
+  bindings.filterKey.value = 'product:55'
+  bindings.previewRow(bindings.tableRows.value[0])
+  assert.deepEqual(Array.from(bindings.viewerList.value), ['/refs/5/preview'])
+})
+
+test('005：下载及非图片预览按引用/文件身份调用，待保存行不提供读取入口', async () => {
+  const { bindings, opened, emitted } = await mixedManager()
+  const rows = bindings.tableRows.value
+  for (const row of rows) bindings.downloadRow(row)
+  assert.deepEqual(opened.map(args => args[0]), ['/refs/5/download', '/refs/6/download', '/files/5/download', '/refs/55/download'])
+  assert.deepEqual(emitted.filter(args => args[0] === 'download').map(args => args[1].id), [5, 6], '保持原本单引用download事件契约')
+  for (const row of rows) row.fileName = 'document.pdf'
+  opened.length = 0
+  for (const row of rows) bindings.previewRow(row)
+  assert.deepEqual(opened.map(args => args[0]), ['/refs/5/preview', '/refs/6/preview', '/files/5/download', '/refs/55/preview'])
+})
+
+test('005：本单详情切换到只读详情，不残留备注编辑或提交能力', async () => {
+  const { session, bindings } = await mixedManager()
+  bindings.onDetail(bindings.tableRows.value.find(row => row.kind === 'ref'))
+  assert.equal(bindings.metaEditable.value, true)
+  bindings.metaForm.remark = '尚未确认'
+  bindings.onDetail(bindings.tableRows.value.find(row => row.rowKey === 'trace:902'))
+  assert.equal(bindings.metaVisible.value, true)
+  assert.equal(bindings.metaRow.value, null)
+  assert.equal(bindings.metaEditable.value, false)
+  assert.match(bindings.detailReadonlyReason.value, /同链路/)
+  assert.equal(bindings.detailRow.value.sourceNo, 'INQ-8')
+  bindings.applyMeta()
+  assert.equal(session.getChanges().updates.length, 0)
+  assert.equal(session.getChanges().uploads.length, 1)
+})
+
+test('005：实际模板只有一张表，只读行只渲染下载和详情，状态使用枚举', async () => {
+  const filename = path.resolve(src, 'components/attachment/AttachmentManager.vue')
+  const { descriptor } = parse(fs.readFileSync(filename, 'utf8'), { filename })
+  assert.equal((descriptor.template.content.match(/<AttachmentTable\b/g) || []).length, 1)
+  assert.equal(descriptor.template.content.includes('<AttachmentDocList'), false)
+  const { bindings } = await mixedManager()
+  const row = bindings.tableRows.value.find(row => row.rowKey === 'legacy:5')
+  const source = descriptor.template.content.match(/<template #actions="\{ row \}">([\s\S]*?)\n      <\/template>/)[1]
+  const compiled = compileTemplate({ source, filename, id: 'unified-readonly-actions' })
+  assert.deepEqual(compiled.errors, [])
+  const mod = { exports: {} }
+  const code = ts.transpileModule(compiled.code, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
+  vm.runInNewContext(`(function(exports,require){${code}\n})`, {})(mod.exports, () => vue)
+  const app = vue.createSSRApp({ render: () => mod.exports.render({ ...vue.proxyRefs(bindings), row }, []) })
+  app.component('el-button', { setup: (_, { slots }) => () => vue.h('button', slots.default?.()) })
+  const html = await renderToString(app)
+  assert.match(html, /下载/)
+  assert.match(html, /详情/)
+  assert.doesNotMatch(html, /保存|移除/)
+  assert.equal(bindings.AttachmentDocumentStatusEnum.getLabel(row.status), '历史')
+  assert.equal(bindings.AttachmentDocumentStatusEnum.getLabel(bindings.tableRows.value[0].status), '待保存')
 })

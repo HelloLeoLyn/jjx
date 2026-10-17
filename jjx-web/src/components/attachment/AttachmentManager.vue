@@ -2,7 +2,8 @@
   <div class="attachment-manager">
     <div class="am-header">
       <span class="am-title">{{ title }}</span>
-      <el-tag v-if="tableRows.length" size="small" type="info">{{ tableRows.length }} 条</el-tag>
+      <el-tag v-if="totalCount" size="small" type="info">{{ totalCount }} 条</el-tag>
+      <span v-if="filterKey" class="am-sub">当前显示 {{ tableRows.length }} 条</span>
       <el-tag v-if="pendingCount" size="small" type="warning">待保存 {{ pendingCount }}</el-tag>
       <el-tag v-if="session.dirtyCount.value" size="small" type="danger" effect="plain">未保存改动 {{ session.dirtyCount.value }}</el-tag>
       <span class="am-spacer" />
@@ -39,7 +40,7 @@
       <span v-if="selectedIds.length" class="am-sub">已选 {{ selectedIds.length }} 条</span>
     </div>
 
-    <el-empty v-if="!tableRows.length && !readonlyDocRows.length" description="暂无附件" :image-size="60" />
+    <el-empty v-if="!tableRows.length" :description="filterKey ? '当前筛选无附件' : '暂无附件'" :image-size="60" />
 
     <AttachmentTable
       v-else
@@ -50,16 +51,16 @@
       :selectable="canEdit ? (row: TableRow) => capabilities(row).canSelect : undefined"
       @selection-change="onSelectionChange"
       @preview="previewRow"
-      @download="(row) => row.kind === 'ref' && onDownload(row.data)"
+      @download="downloadRow"
       @detail="(row) => onDetail(row)"
     >
       <template #status="{ row }">
         <el-tag
           size="small"
-          :title="row.kind === 'pending' ? row.data.error : undefined"
-          :type="row.kind === 'pending' ? (row.data.state === 'failed' ? 'danger' : 'warning') : 'success'"
+          :title="row.kind === 'pending' ? row.data.error : capabilities(row).readonlyReason"
+          v-bind="AttachmentDocumentStatusEnum.getTagProps(row.status)"
         >
-          {{ row.kind === 'pending' ? (row.data.state === 'failed' ? '绑定失败' : '待保存') : '已绑定' }}
+          {{ AttachmentDocumentStatusEnum.getLabel(row.status) }}{{ row.kind === 'readonly' ? '·只读' : '' }}
         </el-tag>
       </template>
       <template #fileName="{ row }">
@@ -100,15 +101,13 @@
           <el-button v-if="rowSaveEnabled && capabilities(row).canSave && session.hasEdit(row.refId)" link type="primary" @click="onRowSave(row)">保存</el-button>
           <el-button v-if="capabilities(row).canRemove" link type="danger" @click="onRemoveRef(row)">移除</el-button>
         </template>
+        <template v-else>
+          <el-button link type="primary" @click="downloadRow(row)">下载</el-button>
+          <el-button link type="primary" @click="onDetail(row)">详情</el-button>
+        </template>
       </template>
     </AttachmentTable>
 
-    <!-- 历史 / 同链路只读段（dev-20261016-083）：由只读件承接，不并进可写表、不入计数/落定 -->
-    <AttachmentDocList
-      v-if="readonlyDocRows.length"
-      :rows="readonlyDocRows"
-      title="历史与同链路附件"
-    />
     <div v-if="session.traceLoading.value" class="am-hint">正在加载同链路文档…</div>
     <el-alert
       v-if="session.traceError.value"
@@ -122,8 +121,9 @@
 
     <!-- 详情（备注/排序为「信息类」改动：先攒进会话，由保存入口统一提交，绝不即时提交） -->
     <el-dialog v-model="metaVisible" title="附件详情" width="800px" append-to-body destroy-on-close>
-      <AttachmentDetailInfo :row="metaRow" :document-types="documentTypes" :source-type="sourceType" />
-      <el-form label-width="80px" :disabled="!canEdit">
+      <AttachmentDetailInfo :row="detailRow" :document-types="documentTypes" :source-type="sourceType" />
+      <el-alert v-if="detailReadonlyReason" :title="detailReadonlyReason" type="info" :closable="false" />
+      <el-form v-if="metaRow" label-width="80px" :disabled="!metaEditable">
         <el-form-item label="备注">
           <el-input v-model="metaForm.remark" maxlength="500" />
         </el-form-item>
@@ -131,10 +131,10 @@
           <el-input-number v-model="metaForm.sortOrder" :min="0" :max="9999" />
         </el-form-item>
       </el-form>
-      <div class="am-hint">这些改动会先记录在会话里，随「保存」统一提交（不会即时入库）。</div>
+      <div v-if="metaEditable" class="am-hint">这些改动会先记录在会话里，随「保存」统一提交（不会即时入库）。</div>
       <template #footer>
         <el-button @click="metaVisible = false">取消</el-button>
-        <el-button v-if="canEdit" type="primary" @click="applyMeta">确定</el-button>
+        <el-button v-if="metaEditable" type="primary" @click="applyMeta">确定</el-button>
       </template>
     </el-dialog>
 
@@ -181,6 +181,8 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { AttachmentRefItem } from '@/api/system/attachmentRef'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
+import { attachmentApi } from '@/api/system/attachment'
+import { AttachmentDocumentStatusEnum } from '@/enums/system/AttachmentEnum'
 import type { AttachmentSession } from '@/composables/useAttachmentSession'
 import { useAttachmentDocTypes } from './useAttachmentDocTypes'
 import { useAttachmentRowText } from './useAttachmentRowText'
@@ -188,7 +190,6 @@ import { useAttachmentPreview } from './useAttachmentPreview'
 import AttachmentTable from './AttachmentTable.vue'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
 import AttachmentDetailInfo from './AttachmentDetailInfo.vue'
-import AttachmentDocList from './AttachmentDocList.vue'
 import { useAttachmentManagerRows, type AttachmentManagerRow as TableRow } from './useAttachmentManagerRows'
 
 const props = withDefaults(
@@ -240,7 +241,7 @@ const batchSaveEnabled = computed(() => !!(props.batchSave && session.canSave.va
 const { categoryKeyOfType } = useAttachmentDocTypes(documentTypes, () => props.sourceType)
 
 // 行模型仅派生展示数据，编辑差异仍由共享会话持有。
-const { tableRows, readonlyDocRows, filterKey, ownershipOptions, pendingCount, capabilities, refRow } =
+const { tableRows, filterKey, ownershipOptions, pendingCount, totalCount, capabilities, refRow } =
   useAttachmentManagerRows(session, () => props)
 const { textOf } = useAttachmentRowText(documentTypes, () => props.sourceType)
 
@@ -294,9 +295,16 @@ function onRowCategory(row: TableRow, category: string | null) {
 // ==================== 详情 / 批量改类型（攒进会话） ====================
 const metaVisible = ref(false)
 const metaRow = ref<AttachmentRefItem | null>(null)
+const detailRow = ref<TableRow | null>(null)
+const metaEditable = computed(() => !!detailRow.value && capabilities(detailRow.value).canEdit)
+const detailReadonlyReason = computed(() => detailRow.value ? capabilities(detailRow.value).readonlyReason : '')
 const metaForm = reactive({ remark: '', sortOrder: 0 })
 function onDetail(row: TableRow) {
-  if (row.kind !== 'ref') return
+  if (row.kind === 'pending') return
+  detailRow.value = row
+  metaRow.value = null
+  metaVisible.value = true
+  if (row.kind === 'readonly') return
   const refRow = row.data
   metaRow.value = refRow
   const edit = session.editOf(refRow.id)
@@ -443,8 +451,21 @@ async function onBatchRemove() {
 // ==================== 预览 / 下载（复用唯一实现） ====================
 const { viewerVisible, viewerList, viewerIndex, preview: previewViewer, openUrl, close: closeViewer } = useAttachmentPreview()
 function previewRow(row: TableRow) {
-  if (row.kind !== 'ref') return
-  previewViewer(session.refRows.value, row.data, (r) => attachmentRefApi.previewUrlByRef(r.id))
+  if (row.kind === 'pending') return
+  // 预览工具以数字id定位图片：使用当前展示行序号，避免文件ID和引用ID碰撞或多引用串页。
+  const previews = tableRows.value.filter(item => item.kind !== 'pending').map((item, id) => ({
+    id, fileName: item.fileName, fileType: item.fileType, url: previewUrl(item), rowKey: item.rowKey,
+  }))
+  const selected = previews.find(item => item.rowKey === row.rowKey)
+  if (selected) previewViewer(previews, selected, item => previews[item.id].url)
+}
+function previewUrl(row: TableRow): string {
+  return row.refId != null ? attachmentRefApi.previewUrlByRef(row.refId) : attachmentApi.downloadUrl(row.attachmentId)
+}
+function downloadRow(row: TableRow) {
+  if (row.kind === 'pending') return
+  if (row.kind === 'ref') return onDownload(row.data)
+  openUrl(row.refId != null ? attachmentRefApi.downloadUrlByRef(row.refId) : attachmentApi.downloadUrl(row.attachmentId))
 }
 /** 下载：复用既有下载工具真正打开文件 URL（不是无效按钮），并向外 emit 供上层埋点/处理 */
 function onDownload(row: AttachmentRefItem) {

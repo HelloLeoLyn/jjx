@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AttachmentRefItem } from '@/api/system/attachmentRef'
 import type { PendingEntry } from '@/composables/useAttachmentRefs'
 import { ownershipKeyOfPending, ownershipKeyOfRef, type AttachmentSession } from '@/composables/useAttachmentSession'
@@ -30,12 +30,13 @@ export function useAttachmentManagerRows(
   source: () => { sourceType?: string; sourceNo?: string; lockReason?: string },
 ) {
   const filterKey = ref('')
-  const ownershipOptions = computed(() => session.ownerships.value)
   const pendingCount = computed(() => session.pending.value.length)
   const ownRows = computed<EditableManagerRow[]>(() => [
     ...session.pending.value.map((entry): PendingManagerRow => ({
       rowKey: `pending:${entry.attachmentId}`,
       kind: 'pending', data: entry, refId: null,
+      status: entry.state === AttachmentDocumentStatusEnum.FAILED.value
+        ? AttachmentDocumentStatusEnum.FAILED.value : AttachmentDocumentStatusEnum.PENDING.value,
       ownershipKey: ownershipKeyOfPending(entry),
       attachmentId: entry.attachmentId,
       fileName: entry.fileName, displayName: entry.displayName,
@@ -47,14 +48,12 @@ export function useAttachmentManagerRows(
       const { id: refId, ...fields } = row
       return {
         ...fields, rowKey: `ref:${refId}`, kind: 'ref', data: row,
+        status: AttachmentDocumentStatusEnum.BOUND.value,
         refId, ownershipKey: ownershipKeyOfRef(row),
       }
     }),
   ])
-  const tableRows = computed(() => ownRows.value.filter(row =>
-    !filterKey.value || row.ownershipKey === filterKey.value,
-  ))
-  // 本任务保留历史/同链路独立展示、计数及行级屏蔽口径，后续合表复用同一行模型。
+  // 会话负责查询范围和行级屏蔽；只读文件不推断为当前单据的某个产品行。
   const readonlyDocRows = computed<ReadonlyManagerRow[]>(() => [
     ...session.legacyOnlyRows.value.map((row): ReadonlyManagerRow => ({
       ...attachmentDocFromFile(row, AttachmentDocumentStatusEnum.LEGACY.value),
@@ -67,6 +66,29 @@ export function useAttachmentManagerRows(
       readonlyReason: '同链路附件仅供查阅，不能在本单修改',
     })),
   ])
+  const allRows = computed<AttachmentManagerRow[]>(() => {
+    const seen = new Set(ownRows.value.map(row => row.attachmentId))
+    const readonly = readonlyDocRows.value.filter(row => {
+      if (seen.has(row.attachmentId)) return false
+      seen.add(row.attachmentId)
+      return true
+    })
+    return [...ownRows.value, ...readonly]
+  })
+  const readonlyFilterKey = 'readonly-documents'
+  const ownershipOptions = computed(() => [
+    ...session.ownerships.value,
+    ...(allRows.value.some(row => row.kind === 'readonly')
+      ? [{ key: readonlyFilterKey, label: '只读参考附件' }] : []),
+  ])
+  const tableRows = computed(() => allRows.value.filter(row =>
+    !filterKey.value || (filterKey.value === readonlyFilterKey
+      ? row.kind === 'readonly' : row.ownershipKey === filterKey.value),
+  ))
+  const totalCount = computed(() => allRows.value.length)
+  watch(ownershipOptions, options => {
+    if (filterKey.value && !options.some(option => option.key === filterKey.value)) filterKey.value = ''
+  })
 
   /** 每次操作读取当前会话权限及成员关系，避免权限变化、移除或刷新后继续使用旧行。 */
   function capabilities(row: AttachmentManagerRow) {
@@ -91,5 +113,5 @@ export function useAttachmentManagerRows(
   function refRow(refId: number) {
     return ownRows.value.find((row): row is RefManagerRow => row.kind === 'ref' && row.refId === refId)
   }
-  return { tableRows, readonlyDocRows, filterKey, ownershipOptions, pendingCount, capabilities, refRow }
+  return { tableRows, readonlyDocRows, filterKey, ownershipOptions, pendingCount, totalCount, capabilities, refRow }
 }
