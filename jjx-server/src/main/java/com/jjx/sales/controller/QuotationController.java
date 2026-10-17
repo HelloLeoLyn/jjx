@@ -183,7 +183,7 @@ public class QuotationController extends BaseController {
      * 复制报价单
      */
     @Operation(summary = "复制报价单")
-    @Log(module = "报价单管理", businessType = BusinessType.INSERT, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).DRAFT.getLabel()", action = LogActions.QUOTATION_COPY)
+    @Log(module = "报价单管理", businessType = BusinessType.OTHER, bizType = "'quotation'", bizId = "#quotationId", action = LogActions.QUOTATION_COPY)
     @SaCheckPermission("sales:quotation:add")
     @PostMapping("/copy/{quotationId}")
     public Result<SalesQuotation> copy(@PathVariable Long quotationId) {

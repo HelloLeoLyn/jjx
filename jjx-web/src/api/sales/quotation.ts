@@ -273,7 +273,7 @@ export const quotationApi = {
     })
   },
 
-  // 复制报价单
+  // 获取待新增的报价单副本（此接口不落库）
   copy(quotationId: number): AxiosPromise<QuotationInfo> {
     return request({
       url: `/sales/quotation/copy/${quotationId}`,

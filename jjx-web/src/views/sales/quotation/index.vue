@@ -1095,18 +1095,25 @@ const handleModify = async (row?: any) => {
 // ============================================================
 // 复制报价
 // ============================================================
-const handleCopy = (row?: any) => {
-  const quotationId = row?.quotationId || ids.value[0]
-  quotationApi.copy(quotationId).then((response: any) => {
+const handleCopy = async (row?: any) => {
+  const quotationId = row?.quotationId ?? (ids.value.length === 1 ? ids.value[0] : undefined)
+  if (!quotationId) {
+    ElMessage.warning('请先选择一条报价单')
+    return
+  }
+  try {
+    const response: any = await quotationApi.copy(quotationId)
     resetForm()
     Object.assign(form, response.data)
-    // 复制单走新增分支（2026-09-02：submitForm 以 quotationId!==undefined 判修改，复制源无 id 需显式清掉）
+    // 复制接口只返回待新增数据；保存时由新增接口一次性写入表头和明细。
     form.quotationId = undefined
-    form.quotationNo = `COPY_${form.quotationNo}`
     open.value = true
     title.value = '复制报价单'
     ElMessage.success('复制成功')
-  })
+  } catch (error) {
+    console.error('复制报价单失败', error)
+    ElMessage.error('复制报价单失败')
+  }
 }
 
 // ============================================================

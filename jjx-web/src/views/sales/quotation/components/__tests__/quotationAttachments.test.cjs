@@ -48,6 +48,16 @@ test('静态守卫：默认不暴露附件保存入口（不强制打开保存�
   assert.ok(!/defaultShowSave|showSaveByDefault|:show-save="true"/.test(d), '默认不得打开附件保存按钮')
 })
 
+test('复制报价只准备新增数据，前端不二次拼接编号或提前新增', () => {
+  const source = indexSrc()
+  const handler = source.match(/const handleCopy = async \(row\?: any\) => \{([\s\S]*?)\n\}/)?.[1]
+  assert.ok(handler, '复制处理器应存在')
+  assert.match(handler, /ids\.value\.length === 1/, '工具栏复制必须恰好选择一条')
+  assert.match(handler, /await quotationApi\.copy\(quotationId\)/, '调用复制预览接口')
+  assert.match(handler, /form\.quotationId = undefined/, '复制结果必须走新增分支')
+  assert.doesNotMatch(handler, /COPY_\$\{|quotationApi\.(add|edit)\(/, '编号由后端提供，复制预览不落库')
+})
+
 // ---------- B. 纯函数契约（加载真模块，不跑响应式/组件） ----------
 function loadSessionModule() {
   const file = path.join(srcRoot, 'composables/useAttachmentSession.ts')

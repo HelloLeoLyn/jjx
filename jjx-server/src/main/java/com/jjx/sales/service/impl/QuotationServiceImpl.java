@@ -40,6 +40,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.BeanUtils;
 
 import java.time.LocalDateTime;
 import java.time.LocalDate;
@@ -1203,38 +1204,48 @@ public class QuotationServiceImpl implements IQuotationService {
      * 复制报价单
      */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public SalesQuotation copyQuotation(Long quotationId) {
         SalesQuotation original = selectQuotationById(quotationId);
         if (original == null) {
             throw new BusinessException("报价单不存在");
         }
 
-        // 创建副本
+        // 复制接口只准备新增表单数据；真正落库统一由新增接口完成，避免先复制落库、再提交新增造成双记录。
         SalesQuotation copy = new SalesQuotation();
-        copy.setQuotationNo("COPY_" + original.getQuotationNo());
-        copy.setCustomerId(original.getCustomerId());
-        copy.setCustomerName(original.getCustomerName());
-        copy.setContactPerson(original.getContactPerson());
-        copy.setContactPhone(original.getContactPhone());
-        copy.setQuotationDate(original.getQuotationDate());
-        copy.setValidUntil(original.getValidUntil());
-        copy.setCurrency(original.getCurrency());
-        copy.setExchangeRate(original.getExchangeRate());
+        BeanUtils.copyProperties(original, copy,
+                "quotationId", "traceId", "quotationNo", "quotationStatus", "approverId", "approverName",
+                "approveTime", "approveRemark", "sendTime", "sendMethod", "sendRemark", "convertedOrderId",
+                "convertTime", "deleted", "createBy", "createTime", "updateBy", "updateTime", "remark",
+                "items", "attachmentIds", "attachments", "sourceInquiryNo", "inquiryNo",
+                "convertedOrderType", "convertedOrderNo", "params");
+        String quotationNo = null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            String candidate = "COPY_" + redisSequenceService.generateBusinessNumberByType(
+                    "quotation", "QT", "yyMMdd", 3);
+            if (checkQuotationNoUnique(candidate)) {
+                quotationNo = candidate;
+                break;
+            }
+        }
+        if (quotationNo == null) {
+            throw new BusinessException("生成复制报价单号失败，请重试");
+        }
+        copy.setQuotationId(null);
+        copy.setTraceId(null);
+        copy.setQuotationNo(quotationNo);
         copy.setQuotationStatus(QuotationStatus.DRAFT.getValue());
-        copy.setSubtotalAmount(original.getSubtotalAmount());
-        copy.setTaxRate(original.getTaxRate());
-        copy.setTaxAmount(original.getTaxAmount());
-        copy.setTotalAmount(original.getTotalAmount());
-        copy.setShippingFee(original.getShippingFee());
-        copy.setDiscountAmount(original.getDiscountAmount());
-        copy.setFinalAmount(original.getFinalAmount());
         copy.setRemark("复制自报价单：" + original.getQuotationNo() + "\n" + original.getRemark());
-        copy.setSalesPersonId(original.getSalesPersonId());
-        copy.setSalesPersonName(original.getSalesPersonName());
-
-        // 保存副本
-        this.quotationMapper.insert(copy);
+        List<SalesQuotationItem> copiedItems = new ArrayList<>();
+        if (original.getItems() != null) {
+            for (SalesQuotationItem item : original.getItems()) {
+                SalesQuotationItem copiedItem = new SalesQuotationItem();
+                BeanUtils.copyProperties(item, copiedItem, "itemId", "quotationId", "createTime", "updateTime");
+                copiedItem.setItemId(null);
+                copiedItem.setQuotationId(null);
+                copiedItems.add(copiedItem);
+            }
+        }
+        copy.setItems(copiedItems);
         return copy;
     }
 
