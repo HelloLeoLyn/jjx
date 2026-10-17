@@ -610,6 +610,7 @@ const quotationActions = computed(() => {
         QuotationStatusEnum.ACCEPTED.value,
         QuotationStatusEnum.REJECTED.value,
         QuotationStatusEnum.EXPIRED.value,
+        QuotationStatusEnum.APPROVED.value,
       ].includes(status) && !completed,
     canModify: status === QuotationStatusEnum.COMPLETED.value,
   }
@@ -775,7 +776,7 @@ async function saveAttachInfo(changes: AttachmentChanges): Promise<AttachmentSav
 
 /** 保存前校验用：待保存队列里尚未选二级资料类型的条数（沿用 032 口径，谓词同 useAttachmentRefs:437） */
 const attachMissingTypeCount = computed(
-  () => attachSession.pending.value.filter((e) => e.state !== 'binding' && !e.documentType).length,
+  () => attachSession.pending.value.filter((e) => e.state !== 'binding' && !e.documentType).length
 )
 
 /** 待保存队列 → 报价单保存请求的 attachments（064 的 QuotationAttachmentDTO：attachmentId/documentType/productId/productCode） */
@@ -860,7 +861,9 @@ function migrateLegacyRowQueues() {
 }
 
 // 打开/切换草稿实例时衔接旧行级队列（只在确有旧键时才动；纯本地合并，不发请求）
-watch([open, draftId], () => { if (open.value) migrateLegacyRowQueues() })
+watch([open, draftId], () => {
+  if (open.value) migrateLegacyRowQueues()
+})
 
 const submitForm = async () => {
   try {

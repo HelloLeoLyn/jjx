@@ -269,6 +269,7 @@ function handleUpdate(row?: any) {
 }
 
 function onFormSuccess() {
+  formVisible.value = false
   getList()
 }
 defineOptions({
@@ -347,13 +348,6 @@ const form = reactive({
   salesPersonId: undefined as number | undefined,
   salesPersonName: '',
 })
-
-// 查看报价单（跳转并定位，DEV-590）
-function gotoQuotation(row: any) {
-  if (row.convertedQuotationId) {
-    window.open(`/sales/quotation?quotationId=${row.convertedQuotationId}`, '_blank')
-  }
-}
 
 // 表单验证规则
 const rules: Record<string, any> = {

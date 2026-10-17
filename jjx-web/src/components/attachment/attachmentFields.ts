@@ -41,8 +41,4 @@ export const attachmentColumns: readonly AttachmentFieldKey[] = [
 ]
 
 /** 只读表默认列：仍是可写列 + 「展示文件名」（只读展示，保留） */
-export const readonlyDocColumns: readonly AttachmentFieldKey[] = [
-  'fileName',
-  'displayName',
-  ...attachmentColumns.slice(1),
-]
+export const readonlyDocColumns: readonly AttachmentFieldKey[] = attachmentColumns

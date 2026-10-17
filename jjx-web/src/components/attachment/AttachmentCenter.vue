@@ -1,5 +1,6 @@
 <template>
   <div class="attachment-center">
+    <!-- 01. 标题与上传按钮 -->
     <div class="ac-header">
       <span class="ac-title">
         <el-icon><FolderOpened /></el-icon>
@@ -15,7 +16,6 @@
         @error="onUploaderError"
       />
     </div>
-
     <el-alert
       v-if="!draftReady"
       title="当前没有草稿标识（draftId）：新建单据场景必须传入唯一 draftId 才能上传附件，避免多个新建单据共用同一个待绑定队列。"
@@ -23,7 +23,6 @@
       :closable="false"
       class="ac-alert"
     />
-
     <el-alert v-if="error" :title="error" type="warning" :closable="false" class="ac-alert" />
     <el-alert
       v-if="duplicateTip"
@@ -33,7 +32,6 @@
       class="ac-alert"
       @close="duplicateTip = ''"
     />
-
     <!-- 拖拽落区（dropZone 启用时替代 header 按钮；落区本身可点击选文件） -->
     <AttachmentTempUploader
       v-if="canUpload && dropZone"
@@ -42,8 +40,8 @@
       @files="onFiles"
       @error="onUploaderError"
     />
-
     <!-- 待绑定、引用和历史只读附件共用一张表 -->
+    <!-- 04. 附件列表 -->
     <el-empty
       v-if="
         showList &&
@@ -94,10 +92,14 @@
       :closable="false"
       class="ac-alert"
     />
-
     <!-- 附件详情（类型/展示名已改成列表行内编辑，这里给只读归属信息 + 备注/排序） -->
+    <!-- 05. 附件详情弹窗 -->
     <el-dialog v-model="metaVisible" title="附件详情" width="520px" append-to-body destroy-on-close>
-      <AttachmentDetailInfo :row="metaRow" :document-types="documentTypes" :source-type="props.sourceType" />
+      <AttachmentDetailInfo
+        :row="metaRow"
+        :document-types="documentTypes"
+        :source-type="props.sourceType"
+      />
       <el-form label-width="80px" :disabled="!canEdit">
         <el-form-item label="备注">
           <el-input v-model="metaForm.remark" maxlength="500" />
@@ -108,10 +110,12 @@
       </el-form>
       <template #footer>
         <el-button @click="metaVisible = false">取消</el-button>
-        <el-button v-if="canEdit" type="primary" :loading="metaSaving" @click="saveMeta">保存</el-button>
+        <el-button v-if="canEdit" type="primary" :loading="metaSaving" @click="saveMeta"
+          >保存</el-button
+        >
       </template>
     </el-dialog>
-
+    <!-- 06. 图片预览 -->
     <el-image-viewer
       v-if="viewerVisible"
       :url-list="viewerList"
@@ -120,7 +124,6 @@
     />
   </div>
 </template>
-
 <script setup lang="ts">
 /**
  * 公共附件中心（V1-B WP2）
@@ -149,6 +152,7 @@ import { attachmentDocFromFile, type AttachmentDocRow } from './useAttachmentDoc
 import { AttachmentDocumentStatusEnum } from '@/enums/system/AttachmentEnum'
 import { useAttachmentPreview } from './useAttachmentPreview'
 import { useAttachmentRefs, type PendingEntry } from '@/composables/useAttachmentRefs'
+// ============ 01. 组件入参 Props ============
 const props = withDefaults(
   defineProps<{
     sourceType: string
@@ -220,7 +224,7 @@ const props = withDefaults(
     uploadBlocked: '',
   }
 )
-
+// ============ 02. 对外事件 Emits ============
 const emit = defineEmits<{
   uploaded: [payload: { attachmentId: number; temp: boolean; name?: string }]
   bound: [payload: { refId: number; attachmentId: number }]
@@ -231,10 +235,10 @@ const emit = defineEmits<{
   save: []
   error: [payload: { action: string; message: string }]
 }>()
-
 /** 形态取值：variant 优先，mode 为兼容别名（dev-20261016-007） */
+// ============ 03. 组件形态与组合式逻辑 ============
 const centerVariant = computed(() => props.variant ?? props.mode ?? 'panel')
-
+// ============ 04. 附件引用状态与操作 ============
 const refs = useAttachmentRefs({
   sourceType: toRef(props, 'sourceType'),
   sourceId: toRef(props, 'sourceId'),
@@ -248,7 +252,6 @@ const refs = useAttachmentRefs({
   productCode: toRef(props, 'productCode'),
   drawingMeta: toRef(props, 'drawingMeta'),
 })
-
 const {
   refRows,
   legacyOnlyRows,
@@ -272,13 +275,13 @@ const {
   removePending,
   persist,
 } = refs
-
 // by-trace 返回 AttachmentSourceVO[]：id 为附件 ID（不是 refId）。
+// ============ 05. 同链路历史附件状态 ============
 const traceRows = ref<AttachmentSourceItem[]>([])
 const traceLoading = ref(false)
 const traceError = ref('')
 let traceRequest = 0
-
+// ============ 06. 同链路附件去重与展示 ============
 const traceOnlyRows = computed(() => {
   // 同链路文件没有产品行标识；行级资料视图只展示本行有效引用。
   if (props.productCode) return []
@@ -293,11 +296,15 @@ const traceOnlyRows = computed(() => {
     return true
   })
 })
-
 const legacyTraceDocRows = computed<AttachmentDocRow[]>(() => [
-  ...legacyOnlyRows.value.map(row => attachmentDocFromFile(row, AttachmentDocumentStatusEnum.LEGACY.value)),
-  ...traceOnlyRows.value.map(row => attachmentDocFromFile(row, AttachmentDocumentStatusEnum.TRACE.value)),
+  ...legacyOnlyRows.value.map((row) =>
+    attachmentDocFromFile(row, AttachmentDocumentStatusEnum.LEGACY.value)
+  ),
+  ...traceOnlyRows.value.map((row) =>
+    attachmentDocFromFile(row, AttachmentDocumentStatusEnum.TRACE.value)
+  ),
 ])
+// ============ 07. 同链路附件加载 ============
 async function loadTrace() {
   const request = ++traceRequest
   traceRows.value = []
@@ -318,7 +325,7 @@ async function loadTrace() {
     if (request === traceRequest) traceLoading.value = false
   }
 }
-
+// ============ 08. 数据监听与生命周期 ============
 watch(
   () => [props.sourceType, props.sourceId, props.traceId, props.productCode, canView.value],
   () => loadTrace(),
@@ -334,13 +341,12 @@ watch(
 onBeforeUnmount(() => {
   traceRequest++
 })
-
+// ============ 09. 上传配置与权限 ============
 const duplicateTip = ref('')
 const uploadTip = computed(
   () =>
     `单个文件不超过 ${props.maxSizeMB}MB${props.accept.length ? '；支持 ' + props.accept.join(' ') : ''}`
 )
-
 // ==================== 上传入口（按钮 / 拖拽落区共用同一组 props 与回调） ====================
 /** 无权编辑时不渲染上传入口（readonly / locked 均已在 canEdit 内为 false） */
 const canUpload = computed(() => canEdit.value)
@@ -372,8 +378,8 @@ const uploaderProps = computed(() => ({
 function onUploaderError(message: string) {
   emit('error', { action: 'validate', message })
 }
-
 // ==================== 上传 / 绑定 ====================
+// ============ 10. 上传与自动绑定 ============
 const uploading = ref(false)
 let activeUploads = 0
 async function onFiles(files: File[]) {
@@ -411,7 +417,7 @@ async function onFiles(files: File[]) {
     uploading.value = --activeUploads > 0
   }
 }
-
+// ============ 11. 手动重试绑定 ============
 async function retryBind(entry: PendingEntry) {
   try {
     const refId = await bindPendingOne(entry, {
@@ -426,7 +432,7 @@ async function retryBind(entry: PendingEntry) {
     emit('error', { action: 'bind', message })
   }
 }
-
+// ============ 12. 绑定成功后处理 ============
 async function afterBound(entry: PendingEntry) {
   await load()
   emit('changed', { count: refRows.value.length })
@@ -442,9 +448,9 @@ async function afterBound(entry: PendingEntry) {
     })
   }
 }
-
 // ==================== 列表组件回调（批量动作与勾选已抽到 AttachmentRefList）====================
 /** 批量动作已落库 → 重新拉列表并通知外层 */
+// ============ 13. 列表事件与下载 ============
 async function onRefListChanged() {
   await load()
   emit('changed', { count: refRows.value.length })
@@ -455,8 +461,8 @@ function onRowDownload(row: AttachmentRefItem) {
 function onRefListError(payload: { action: string; message: string }) {
   emit('error', payload)
 }
-
 // ==================== 解绑 / 元数据 ====================
+// ============ 14. 解除附件引用 ============
 async function onUnbind(row: AttachmentRefItem) {
   try {
     await ElMessageBox.confirm(
@@ -479,7 +485,7 @@ async function onUnbind(row: AttachmentRefItem) {
     emit('error', { action: 'unbind', message })
   }
 }
-
+// ============ 15. 附件详情与元数据 ============
 const metaVisible = ref(false)
 const metaSaving = ref(false)
 /** 详情弹窗展示的那一行（只读核对用） */
@@ -491,7 +497,6 @@ const metaForm = reactive({
   remark: '',
   sortOrder: 0,
 })
-
 function openMeta(row: AttachmentRefItem) {
   metaRow.value = row
   metaForm.refId = row.id
@@ -503,7 +508,6 @@ function openMeta(row: AttachmentRefItem) {
   metaVisible.value = true
   loadDocumentTypes()
 }
-
 async function saveMeta() {
   if (!canEdit.value) return
   metaSaving.value = true
@@ -524,8 +528,7 @@ async function saveMeta() {
     metaSaving.value = false
   }
 }
-
-// ==================== 预览 / 下载（唯一实现：useAttachmentPreview） ====================
+// ==================== 16. 预览 / 下载（useAttachmentPreview） ====================
 const {
   viewerVisible,
   viewerList,
@@ -540,7 +543,7 @@ function previewRef(row: AttachmentRefItem) {
 function downloadUrlByRef(refId: number) {
   return attachmentRefApi.downloadUrlByRef(refId)
 }
-
+// ============ 17. 对外暴露方法 ============
 defineExpose({
   refresh: () => Promise.all([load(), loadTrace()]),
   bindPending,
@@ -550,20 +553,22 @@ defineExpose({
   uploading,
   pendingEntries: pending,
   /** 业务服务已在事务内绑定成功，或用户放弃草稿时，仅清理本地队列。 */
-  clearPending: () => { pending.value = []; persist() },
+  clearPending: () => {
+    pending.value = []
+    persist()
+  },
 })
 </script>
-
 <style scoped>
+/* 01. 根容器 */
 .attachment-center {
   padding: 4px 0;
 }
+/* 02. 标题栏 */
 .ac-header {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.ac-header {
   margin-bottom: 8px;
 }
 .ac-title {
@@ -577,6 +582,7 @@ defineExpose({
 .ac-spacer {
   flex: 1;
 }
+/* 03. 提示与上传 */
 .ac-alert {
   margin-bottom: 8px;
 }
