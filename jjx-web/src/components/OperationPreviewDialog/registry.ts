@@ -65,6 +65,8 @@ export interface OperationDef {
   fields?: OperationField[]
   /** 是否允许挂证据（截图/文件/文档） */
   evidence?: boolean
+  /** 上传证据时预选二级类型，用户仍可在附件行修改。 */
+  evidenceDefaultDocumentType?: string
   /** 触发的系统事件 code（对应 sys_event_config.event_code），用于事件预告 */
   events?: string[]
   /** 自然语言业务影响说明（纯文案，展示时不带任何技术信息；配置后替代技术事件预告区） */
@@ -85,6 +87,7 @@ export const quotationOperations: OperationDef[] = [
     fromStatus: [0],
     toStatus: 5,
     evidence: true,
+    evidenceDefaultDocumentType: 'SALES_QUOTATION_ATTACHMENT',
     events: ['quotation.submitted'],
     api: ({ bizId, attachmentRefIds }) =>
       quotationApi.submitReview(bizId, attachmentRefIds.length ? attachmentRefIds : undefined),
@@ -99,6 +102,7 @@ export const quotationOperations: OperationDef[] = [
       { key: 'remark', label: '审核意见', type: 'textarea', placeholder: '选填，审核意见/说明' },
     ],
     evidence: true,
+    evidenceDefaultDocumentType: 'SALES_QUOTATION_ATTACHMENT',
     events: ['quotation.reviewed'],
     api: ({ bizId, values, attachmentRefIds }) =>
       quotationApi.review(
@@ -124,6 +128,7 @@ export const quotationOperations: OperationDef[] = [
       },
     ],
     evidence: true,
+    evidenceDefaultDocumentType: 'SALES_QUOTATION_ATTACHMENT',
     events: ['quotation.reviewed'],
     api: ({ bizId, values, attachmentRefIds }) =>
       quotationApi.review(

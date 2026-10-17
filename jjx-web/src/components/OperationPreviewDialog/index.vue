@@ -97,6 +97,7 @@
           variant="upload-only"
           :view-perm="evidenceViewPerm"
           :edit-perm="evidenceEditPerm"
+          :default-document-type="operation.evidenceDefaultDocumentType"
           @uploaded="onEvidenceUploaded"
           @bound="onEvidenceBound"
         />
@@ -306,6 +307,14 @@ async function confirm() {
   // 证据正在上传时不允许提交，避免本次证据留痕丢失
   if (evidenceCenter.value?.uploading) {
     ElMessage.warning('请等待证据上传完成')
+    return
+  }
+  const pendingEvidence = evidenceCenter.value?.getPendingEntries?.() || []
+  if (pendingEvidence.length) {
+    const missingType = pendingEvidence.some((entry: any) => !entry.documentType)
+    ElMessage.warning(missingType
+      ? '请先补全证据的二级资料类型'
+      : '仍有证据未绑定，请在附件列表中重试绑定后再确认')
     return
   }
 

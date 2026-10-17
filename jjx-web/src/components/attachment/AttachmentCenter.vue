@@ -175,6 +175,8 @@ const props = withDefaults(
     accept?: string[]
     /** sourceId 有值时是否上传后立即绑定 */
     autoBind?: boolean
+    /** 新上传待绑定项的默认二级类型；调用方仍可编辑。 */
+    defaultDocumentType?: string
     /** 上传入口改为拖拽落区（替代 header 的小按钮）；默认 false 保持按钮形态 */
     dropZone?: boolean
     /** 单据产品（单产品单据传值，多产品单据不传）；写引用时随 product_id 落库 */
@@ -217,6 +219,7 @@ const props = withDefaults(
       '.zip',
     ],
     autoBind: true,
+    defaultDocumentType: '',
     dropZone: false,
     productId: null,
     productCode: null,
@@ -388,9 +391,14 @@ async function onFiles(files: File[]) {
     for (const file of files) {
       try {
         const attachmentId = await uploadTemp(file)
+        const uploadedEntry = pending.value.find((entry) => entry.attachmentId === attachmentId)
+        if (uploadedEntry && props.defaultDocumentType) {
+          uploadedEntry.documentType = props.defaultDocumentType
+          persist()
+        }
         emit('uploaded', { attachmentId, temp: true, name: file.name })
         if (props.autoBind && props.sourceId) {
-          const entry = pending.value.find((e) => e.attachmentId === attachmentId) as PendingEntry
+          const entry = uploadedEntry as PendingEntry
           try {
             const refId = await bindPendingOne(entry)
             emit('bound', { refId, attachmentId })
@@ -552,6 +560,7 @@ defineExpose({
   getMissingTypeCount: () => pendingMissingTypeCount.value,
   uploading,
   pendingEntries: pending,
+  getPendingEntries: () => pending.value,
   /** 业务服务已在事务内绑定成功，或用户放弃草稿时，仅清理本地队列。 */
   clearPending: () => {
     pending.value = []
