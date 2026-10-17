@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.jjx.system.domain.dto.AttachmentRefBatchDTO;
 import com.jjx.system.domain.dto.AttachmentRefBatchItem;
 import com.jjx.system.domain.dto.AttachmentRefDTO;
+import com.jjx.system.domain.dto.AttachmentRefMetadataDTO;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.domain.entity.SysAttachmentRef;
 import com.jjx.system.enums.AttachmentUploadState;
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -31,6 +33,7 @@ class AttachmentRefDisplayNameTest {
     private AttachmentDocumentTypeService types;
     private AttachmentDisplayNameService names;
     private JdbcTemplate jdbc;
+    private AttachmentRefOperationLogRecorder operationLogs;
     private AttachmentRefService service;
 
     @BeforeEach
@@ -42,7 +45,9 @@ class AttachmentRefDisplayNameTest {
         types = mock(AttachmentDocumentTypeService.class);
         names = mock(AttachmentDisplayNameService.class);
         jdbc = mock(JdbcTemplate.class);
+        operationLogs = mock(AttachmentRefOperationLogRecorder.class);
         service = new AttachmentRefService(files, refs, sources, access, types, names, jdbc);
+        ReflectionTestUtils.setField(service, "operationLogs", operationLogs);
         when(sources.canonical("quotation")).thenReturn("quotation");
         when(sources.check(eq("quotation"), anyLong(), anyBoolean())).thenReturn("QT-3");
         when(sources.traceIdOf(anyString(), anyLong())).thenReturn(null);
@@ -77,6 +82,28 @@ class AttachmentRefDisplayNameTest {
         ArgumentCaptor<SysAttachmentRef> created = ArgumentCaptor.forClass(SysAttachmentRef.class);
         verify(refs).insert(created.capture());
         assertNull(created.getValue().getDisplayName(), "自动名称由插入后按真实引用ID统一分配");
+        verify(operationLogs).record(eq("quotation"), eq(3L), isNull(), eq(1), eq("附件新增"),
+            eq(501L), eq(50L), eq("附件50"), eq(true), argThat(changes -> changes.get(0).contains("产品 ID 7")));
+    }
+
+    @Test
+    void idempotentCreateDoesNotRecordAnotherAttachmentEvent() {
+        SysAttachment file = file(50L);
+        SysAttachmentRef existing = ref(501L, 50L, "CUSTOMER_DRAWING", "客户图纸");
+        when(files.selectActiveForUpdate(50L)).thenReturn(file);
+        when(refs.lockActive(50L)).thenReturn(List.of(existing));
+        AttachmentRefDTO request = new AttachmentRefDTO();
+        request.setAttachmentId(50L);
+        request.setSourceType("quotation");
+        request.setSourceId(3L);
+        request.setProductId(7L);
+
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            assertEquals(501L, service.create(request));
+        }
+
+        verifyNoInteractions(operationLogs);
     }
 
     @Test
@@ -132,6 +159,75 @@ class AttachmentRefDisplayNameTest {
 
         verify(names).lockGroups(List.of(new AttachmentDisplayNameService.GroupKey("quotation", 3L, 7L, "CUSTOMER_DRAWING")));
         verify(names).renumber("quotation", 3L, 7L, "CUSTOMER_DRAWING", "operator");
+    }
+
+    @Test
+    void unchangedMetadataDoesNotWriteOrLogAnOperation() {
+        SysAttachmentRef ref = ref(5L, 50L, "CUSTOMER_DRAWING", "客户确认版.pdf");
+        when(refs.selectById(5L)).thenReturn(ref);
+        when(refs.lockActive(50L)).thenReturn(List.of(ref));
+        when(names.baseName("quotation", 3L, 7L, "CUSTOMER_DRAWING")).thenReturn("generated");
+        when(names.isGeneratedName(ref.getDisplayName(), "generated")).thenReturn(false);
+        AttachmentRefMetadataDTO body = new AttachmentRefMetadataDTO();
+        body.setDocumentType("CUSTOMER_DRAWING");
+        body.setSortOrder(0);
+
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            service.update(5L, body);
+        }
+
+        verify(jdbc, never()).update(startsWith("UPDATE sys_attachment_ref SET document_type"), any(Object[].class));
+        verifyNoInteractions(operationLogs);
+    }
+
+    @Test
+    void metadataChangeRecordsTheOwningDocumentAndAttachment() {
+        SysAttachmentRef ref = ref(5L, 50L, "CUSTOMER_DRAWING", "客户确认版.pdf");
+        when(refs.selectById(5L)).thenReturn(ref);
+        when(refs.lockActive(50L)).thenReturn(List.of(ref));
+        when(names.baseName("quotation", 3L, 7L, "CUSTOMER_DRAWING")).thenReturn("generated");
+        when(names.isGeneratedName(ref.getDisplayName(), "generated")).thenReturn(false);
+        when(files.selectById(50L)).thenReturn(file(50L));
+        AttachmentRefMetadataDTO body = new AttachmentRefMetadataDTO();
+        body.setDocumentType("OTHER");
+        body.setSortOrder(0);
+
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            service.update(5L, body);
+        }
+
+        verify(operationLogs).record(eq("quotation"), eq(3L), isNull(), eq(2), eq("附件资料修改"),
+            eq(5L), eq(50L), anyString(), eq(true), argThat(changes -> changes.size() == 1 && changes.get(0).contains("资料类型")));
+    }
+
+    @Test
+    void repeatedUnlinkDoesNotWriteOrLogAgain() {
+        SysAttachmentRef ref = ref(5L, 50L, "CUSTOMER_DRAWING", "客户确认版.pdf");
+        when(refs.includingDeleted(5L)).thenReturn(ref);
+        when(refs.lockActive(50L)).thenReturn(List.of());
+
+        service.unlink(5L);
+
+        verifyNoInteractions(operationLogs);
+        verify(jdbc, never()).update(startsWith("UPDATE sys_attachment_ref SET deleted=1"), any(Object[].class));
+    }
+
+    @Test
+    void draftMetadataAndRemovalDoNotEnterBusinessTimeline() {
+        SysAttachmentRef draft = ref(5L, 50L, "CUSTOMER_DRAWING", "草稿附件");
+        draft.setRefState("draft");
+        draft.setCreateBy("operator");
+        when(refs.selectById(5L)).thenReturn(draft);
+
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            service.updateDraft(5L, "OTHER");
+            service.removeDraft(5L);
+        }
+
+        verifyNoInteractions(operationLogs);
     }
 
     private AttachmentRefBatchItem item(Long id, String type) {
