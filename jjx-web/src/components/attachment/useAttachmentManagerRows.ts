@@ -101,7 +101,7 @@ export function useAttachmentManagerRows(
       editable,
       saving,
       canEdit: editable && !saving,
-      canSelect: editable && row.kind === 'ref' && !saving,
+      canSelect: editable && (row.kind === 'ref' ? !saving : row.kind === 'pending' && row.data.state !== 'binding'),
       canRemove: editable && !saving,
       canSave: editable && row.kind === 'ref' && !saving && session.canSave.value,
       readonlyReason: row.kind === 'readonly' ? row.readonlyReason

@@ -31,13 +31,13 @@
       >
         保存选中
       </el-button>
-      <span v-if="selectedIds.length" class="am-sub">已选 {{ selectedIds.length }} 条，可保存 {{ selectedDirtyCount }} 条改动</span>
+      <span v-if="selectedCount" class="am-sub">已选 {{ selectedCount }} 条，可保存 {{ selectedDirtyCount }} 条改动</span>
     </div>
 
     <div v-if="canEdit && tableRows.length" class="am-bar">
-      <el-button size="small" :disabled="!selectedIds.length" @click="openBatchType">批量改类型</el-button>
-      <el-button size="small" type="danger" plain :disabled="!selectedIds.length" @click="onBatchRemove">批量移除</el-button>
-      <span v-if="selectedIds.length" class="am-sub">已选 {{ selectedIds.length }} 条</span>
+      <el-button size="small" :disabled="!selectedCount" @click="openBatchType">批量改类型</el-button>
+      <el-button size="small" type="danger" plain :disabled="!selectedCount" @click="onBatchRemove">批量移除</el-button>
+      <span v-if="selectedCount" class="am-sub">已选 {{ selectedCount }} 条</span>
     </div>
 
     <el-empty v-if="!tableRows.length" :description="filterKey ? '当前筛选无附件' : '暂无附件'" :image-size="60" />
@@ -142,7 +142,7 @@
         @update:category="onBatchCategoryChange"
       />
       <div class="am-hint" style="margin-top: 8px">
-        对选中的 {{ selectedIds.length }} 条统一设置二级类型（一级仅用于筛选）；随「保存」统一提交。
+        对选中的 {{ selectedCount }} 条统一设置二级类型（一级仅用于筛选）；随「保存」统一提交。
       </div>
       <template #footer>
         <el-button @click="batchTypeVisible = false">取消</el-button>
@@ -245,11 +245,27 @@ const { textOf } = useAttachmentRowText(documentTypes, () => props.sourceType)
 
 // ==================== 勾选 ====================
 const selectedIds = ref<number[]>([])
+const selectedPendingIds = ref<number[]>([])
 function onSelectionChange(rows: TableRow[]) {
   selectedIds.value = rows.flatMap((row) => row.kind === 'ref' && capabilities(row).canSelect ? [row.refId] : [])
+  selectedPendingIds.value = rows.flatMap((row) => row.kind === 'pending' && capabilities(row).canSelect ? [row.attachmentId] : [])
 }
 // 列表/筛选刷新后，旧勾选作废（隐藏行的改动仍在会话里，不受影响）
-watch(() => [session.refRows.value, filterKey.value], () => { selectedIds.value = [] })
+watch(() => [session.refRows.value, session.pending.value, filterKey.value], () => {
+  selectedIds.value = []
+  selectedPendingIds.value = []
+})
+const selectedRows = computed(() => [
+  ...selectedPendingIds.value.flatMap((id) => {
+    const row = tableRows.value.find((item) => item.kind === 'pending' && item.attachmentId === id)
+    return row && capabilities(row).canSelect ? [row] : []
+  }),
+  ...selectedIds.value.flatMap((id) => {
+    const row = refRow(id)
+    return row && capabilities(row).canSelect ? [row] : []
+  }),
+])
+const selectedCount = computed(() => selectedRows.value.length)
 const selectedRefIds = computed(() => selectedIds.value.filter((id) => {
   const row = refRow(id)
   return row && capabilities(row).canSelect
@@ -333,8 +349,18 @@ function onBatchCategoryChange(category: string) {
   if (batchDocumentType.value && categoryKeyOfType(batchDocumentType.value) !== category) batchDocumentType.value = null
 }
 function applyBatchType() {
-  if (!batchDocumentType.value || !selectedRefIds.value.length) return
-  for (const refId of selectedRefIds.value) session.setEdit(refId, { documentType: batchDocumentType.value })
+  if (!batchDocumentType.value || !selectedRows.value.length) return
+  let pendingChanged = false
+  for (const row of selectedRows.value) {
+    if (!capabilities(row).canEdit) continue
+    if (row.kind === 'pending') {
+      row.data.documentType = batchDocumentType.value
+      pendingChanged = true
+    } else if (row.kind === 'ref') {
+      session.setEdit(row.refId, { documentType: batchDocumentType.value })
+    }
+  }
+  if (pendingChanged) session.persist()
   batchTypeVisible.value = false
 }
 
@@ -410,11 +436,11 @@ async function onRemoveRef(row: TableRow) {
   }
 }
 async function onBatchRemove() {
-  const ids = [...selectedRefIds.value]
-  if (!ids.length) return
+  const rows = [...selectedRows.value]
+  if (!rows.length) return
   try {
     await ElMessageBox.confirm(
-      `从本单据移除选中的 ${ids.length} 个附件？只解除本单据的引用，文件本身不删除。`,
+      `从本单据移除选中的 ${rows.length} 个附件？待保存附件将从待保存队列移除，已绑定附件只解除本单据的引用。`,
       '批量移除',
       { confirmButtonText: '确定移除', cancelButtonText: '取消', type: 'warning' },
     )
@@ -423,20 +449,24 @@ async function onBatchRemove() {
   }
   let ok = 0
   let failed = 0
-  for (const refId of ids) {
+  for (const row of rows) {
     try {
-      const row = refRow(refId)
-      if (!row || !capabilities(row).canRemove) throw new Error('附件已不可移除，请刷新后重试')
-      await session.unbind(refId)
+      if (!capabilities(row).canRemove) throw new Error('附件已不可移除，请刷新后重试')
+      if (row.kind === 'pending') {
+        await session.removePending(row.attachmentId)
+        selectedPendingIds.value = selectedPendingIds.value.filter(id => id !== row.attachmentId)
+      } else if (row.kind === 'ref') {
+        await session.unbind(row.refId)
+        selectedIds.value = selectedIds.value.filter(id => id !== row.refId)
+      }
       ok++
-      selectedIds.value = selectedIds.value.filter((id) => id !== refId)
     } catch (e: any) {
       failed++
-      emit('error', { action: 'unbind', message: e?.message || '解除引用失败' })
+      emit('error', { action: row.kind === 'pending' ? 'remove-pending' : 'unbind', message: e?.message || '移除失败' })
     }
   }
   if (failed) ElMessage.warning(`已移除 ${ok} 条，${failed} 条失败（保留原状）`)
-  else ElMessage.success(`已移除 ${ok} 条引用`)
+  else ElMessage.success(`已移除 ${ok} 条附件`)
 }
 
 // ==================== 预览 / 下载（复用唯一实现） ====================
@@ -466,7 +496,7 @@ function onDownload(row: AttachmentRefItem) {
 
 defineExpose({
   refresh: () => session.refresh(),
-  clearSelection: () => { selectedIds.value = [] },
+  clearSelection: () => { selectedIds.value = []; selectedPendingIds.value = [] },
 })
 </script>
 

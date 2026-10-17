@@ -348,12 +348,60 @@ test('004：同一文件的不同产品引用保留，引用ID与文件ID/草稿
   assert.equal(rows.some(row => 'id' in row), false, '可写行不再暴露语义混淆的id')
   bindings.onSelectionChange(rows)
   assert.deepEqual(Array.from(bindings.selectedIds.value), [5, 6])
+  assert.deepEqual(Array.from(bindings.selectedPendingIds.value), [5])
+  assert.equal(bindings.selectedCount.value, 3)
   bindings.onRowType(rows[1], 'DRAWING')
   bindings.onRowType(rows[2], 'OTHER')
   await bindings.onBatchSave()
   assert.equal(saved.length, 1)
   assert.deepEqual(Array.from(saved[0].updates, row => row.refId), [5, 6])
   assert.equal(saved[0].uploads.length, 0, '附件信息保存不提交待绑定队列')
+})
+
+test('009：待保存附件可与已绑定引用一起批量改类型和移除，ID碰撞不串行', async () => {
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, autoLoad: false })
+  session.refs.value = [refRow(5, { attachmentId: 900 })]
+  session.pending.value = [{ attachmentId: 5, fileName: 'new.pdf', state: 'pending', ownershipKey: 'product:55', productCode: 'P055' }]
+  let unbound = null
+  session.unbind = async id => { unbound = id }
+  let persistCalls = 0
+  const persist = session.persist
+  session.persist = () => { persistCalls++; return persist() }
+  const { bindings } = setupManager({ session })
+  const [pending, ref] = bindings.tableRows.value
+  bindings.onSelectionChange([pending, ref])
+  assert.equal(bindings.selectedCount.value, 2)
+
+  bindings.batchDocumentType.value = 'DRAWING'
+  bindings.applyBatchType()
+  assert.equal(session.pending.value[0].documentType, 'DRAWING')
+  assert.equal(persistCalls, 1, '批量修改待保存类型后持久化会话队列')
+  assert.deepEqual(
+    Array.from(session.getChanges().uploads, row => [row.documentType, row.ownershipKey]),
+    [['DRAWING', 'product:55']],
+    '单据保存载荷仍能携带修改后的类型和原产品归属',
+  )
+  assert.equal(session.editOf(5).documentType, 'DRAWING')
+  assert.equal(bindings.selectedCount.value, 2, '批量改类型后选择仍有效')
+
+  await bindings.onBatchRemove()
+  assert.equal(session.pending.value.length, 0, '待保存附件从本单队列移除')
+  assert.equal(unbound, 5, '已绑定引用仍使用 refId，而非 attachmentId')
+  assert.equal(bindings.selectedCount.value, 0)
+})
+
+test('009：处理中的待保存附件不可勾选，失败待保存附件仍可管理', () => {
+  const { session } = buildSession({ sourceType: 'quotation', sourceId: 7, autoLoad: false })
+  session.pending.value = [
+    { attachmentId: 1, fileName: 'binding.pdf', state: 'binding' },
+    { attachmentId: 2, fileName: 'failed.pdf', state: 'failed' },
+  ]
+  const { bindings } = setupManager({ session })
+  const [binding, failed] = bindings.tableRows.value
+  assert.equal(bindings.capabilities(binding).canSelect, false)
+  assert.equal(bindings.capabilities(failed).canSelect, true)
+  bindings.onSelectionChange([binding, failed])
+  assert.deepEqual(Array.from(bindings.selectedPendingIds.value), [2])
 })
 
 test('004：历史/同链路行即使ID碰撞也不能选择、改类型、保存或解除引用', async () => {
