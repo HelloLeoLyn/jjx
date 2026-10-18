@@ -6,6 +6,11 @@
     :fixed="fixed"
     :align="align"
   >
+    <template #header="scope">
+      <slot name="header" v-bind="scope">
+        {{ label }}
+      </slot>
+    </template>
     <template #default="{ row, $index }">
       <div class="table-action-column">
         <slot name="before" :row="row" :index="$index" :$index="$index" />

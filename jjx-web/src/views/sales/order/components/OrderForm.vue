@@ -187,10 +187,6 @@
             class="borderless-input"
             @change="(val: any, product: any) => handleProductChange(scope.row, val, product)"
           />
-          <el-button
-            link type="primary" :disabled="!form.customerId"
-            @click="openNewProduct(scope.row)"
-          >新建产品</el-button>
         </template>
       </el-table-column>
       <el-table-column label="产品名称" prop="productName" width="160">
@@ -200,18 +196,6 @@
             placeholder="请输入新产品名称"
             :readonly="!!scope.row.productId"
             maxlength="20"
-            class="borderless-input"
-          />
-        </template>
-      </el-table-column>
-      <el-table-column label="作业规范版本" width="165">
-        <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" empty-text="未指定" /></template>
-      </el-table-column>
-      <el-table-column label="规格型号" prop="specification" width="120">
-        <template #default="scope">
-          <el-input
-            v-model="scope.row.specification"
-            placeholder="规格型号"
             class="borderless-input"
           />
         </template>
@@ -276,18 +260,25 @@
           <el-input v-model="scope.row.lineRemark" placeholder="行备注" />
         </template>
       </el-table-column>
-      <TableActionColumn width="80" align="center" :fixed="false">
+      <TableActionColumn width="180" align="center" fixed="right">
+        <template #header>
+          <div class="action-header">
+            <span>操作</span>
+            <el-button type="primary" link @click="addItem()"> 添加明细 </el-button>
+          </div>
+        </template>
         <template #before="scope">
-          <el-button link type="danger" icon="Delete" @click="removeItem(scope.$index)"></el-button>
+          <el-button link type="danger" @click="removeItem(scope.$index)">删除</el-button>
+          <el-button
+            link
+            type="primary"
+            :disabled="!form.customerId"
+            @click="openNewProduct(scope.row)"
+            >新建产品</el-button
+          >
         </template>
       </TableActionColumn>
     </el-table>
-
-    <el-row>
-      <el-col :span="24" style="text-align: right">
-        <el-button type="primary" icon="Plus" @click="addItem()">添加明细</el-button>
-      </el-col>
-    </el-row>
 
     <!-- 附件上传（新建和编辑都显示） -->
     <el-divider content-position="left">订单附件</el-divider>
@@ -296,15 +287,23 @@
         <el-button plain>恢复未保存草稿</el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
+            <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{
+              draft.label
+            }}</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-      <el-dropdown v-if="!form.orderId && draftChoices.length" style="margin-left: 8px" @command="discardAttachmentDraft">
+      <el-dropdown
+        v-if="!form.orderId && draftChoices.length"
+        style="margin-left: 8px"
+        @command="discardAttachmentDraft"
+      >
         <el-button plain type="danger">放弃草稿</el-button>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
+            <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{
+              draft.label
+            }}</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -345,8 +344,6 @@
         title="订单附件"
         source-type="sales_order"
         :source-no="(form as any)?.orderNo || ''"
-        row-save
-        batch-save
         @error="onAttachError"
       />
     </div>
@@ -461,7 +458,7 @@
     <OrderProductCodeGenDialog
       v-model="productCodeDialogVisible"
       :customer-short="productCustomerShort"
-      :used-serials="form.items.map(item => item.serialNo || '').filter(Boolean)"
+      :used-serials="form.items.map((item) => item.serialNo || '').filter(Boolean)"
       @confirm="confirmNewProduct"
     />
     <!-- 新增客户弹窗 -->
@@ -650,7 +647,12 @@ async function openNewProduct(row: OrderItem) {
   productCodeDialogVisible.value = false
   try {
     const res = await customerApi.getCustomer(customerId)
-    if (request !== productEntryRequest || customerId !== form.customerId || !form.items.includes(row)) return
+    if (
+      request !== productEntryRequest ||
+      customerId !== form.customerId ||
+      !form.items.includes(row)
+    )
+      return
     const short = res.data?.customerShortName?.trim()
     if (!short) {
       ElMessage.warning('请先在客户档案填写客户简称')
@@ -665,17 +667,24 @@ async function openNewProduct(row: OrderItem) {
   }
 }
 function confirmNewProduct(params: ProductCodeResult) {
-  if (productEntryRow && productEntryCustomerId === form.customerId && form.items.includes(productEntryRow)) {
+  if (
+    productEntryRow &&
+    productEntryCustomerId === form.customerId &&
+    form.items.includes(productEntryRow)
+  ) {
     applyNewProduct(productEntryRow, params)
   }
   productEntryRow = null
   productCodeDialogVisible.value = false
 }
-watch(() => form.customerId, () => {
-  productEntryRequest++
-  productEntryRow = null
-  productCodeDialogVisible.value = false
-})
+watch(
+  () => form.customerId,
+  () => {
+    productEntryRequest++
+    productEntryRow = null
+    productCodeDialogVisible.value = false
+  }
+)
 
 // ===== 汇率自动填充 =====
 const exchangeRateLoading = ref(false)
@@ -722,11 +731,15 @@ const handleCurrencyChange = async (val: string) => {
 /** 未保存单据按实例隔离；刷新恢复当前实例，显式恢复可找回已关闭实例。 */
 const draftSession = useAttachmentDraftInstance('sales_order', {
   snapshot: () => form,
-  restore: (data) => { resetForm(); Object.assign(form, data) },
+  restore: (data) => {
+    resetForm()
+    Object.assign(form, data)
+  },
 })
 const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
 function ensureDraftId() {
-  if (!draftSession.resumeId || !draftSession.restore(draftSession.resumeId)) draftSession.startNew()
+  if (!draftSession.resumeId || !draftSession.restore(draftSession.resumeId))
+    draftSession.startNew()
 }
 function restoreAttachmentDraft(id: string) {
   // 恢复是整单覆盖（客户/产品/明细+附件）：先确认（dev-20261016-042）
@@ -801,7 +814,12 @@ function stableRowKey(row: OrderItem): string {
 const uploadOwnershipKey = ref('order')
 const uploadOwnershipOptions = computed(() => {
   const options = [
-    { key: 'order', label: '整单级（不归属产品）', productId: null as number | null, productCode: null as string | null },
+    {
+      key: 'order',
+      label: '整单级（不归属产品）',
+      productId: null as number | null,
+      productCode: null as string | null,
+    },
   ]
   form.items.forEach((row) => {
     const productCode = row.productCode?.trim() || ''
@@ -820,7 +838,9 @@ const uploadOwnershipOptions = computed(() => {
 })
 /** 上传归属在上传发起时固定：切换产品/客户不改变已上传附件的归属 */
 const uploadOwnership = computed(() => {
-  const selected = uploadOwnershipOptions.value.find((option) => option.key === uploadOwnershipKey.value)
+  const selected = uploadOwnershipOptions.value.find(
+    (option) => option.key === uploadOwnershipKey.value
+  )
   if (!selected || selected.key === 'order') return orderOwnershipOf()
   return productOwnershipOf({
     rowKey: selected.key.startsWith('row:') ? selected.key.slice(4) : selected.key,
@@ -830,7 +850,8 @@ const uploadOwnership = computed(() => {
   })
 })
 watch(uploadOwnershipOptions, (options) => {
-  if (!options.some((option) => option.key === uploadOwnershipKey.value)) uploadOwnershipKey.value = 'order'
+  if (!options.some((option) => option.key === uploadOwnershipKey.value))
+    uploadOwnershipKey.value = 'order'
 })
 
 /**
@@ -846,12 +867,12 @@ const attachOrphanCount = computed(
       if (productId) return !form.items.some((row) => row.productId === Number(productId[1]))
       const code = entry.productCode?.trim()
       return !code || !form.items.some((row) => row.productCode?.trim() === code)
-    }).length,
+    }).length
 )
 
 /** 保存前校验用：待保存队列里尚未选二级资料类型的条数（沿用 032 口径，谓词同 useAttachmentRefs） */
 const attachMissingTypeCount = computed(
-  () => attachSession.pending.value.filter((e) => e.state !== 'binding' && !e.documentType).length,
+  () => attachSession.pending.value.filter((e) => e.state !== 'binding' && !e.documentType).length
 )
 
 /** 待保存队列 → 订单保存请求的 attachments（attachmentId/documentType/productId/productCode） */
@@ -897,7 +918,8 @@ async function finalizeAttachments(submittedIds: number[]) {
       .map((id) => ({ attachmentId: id, refId: refIdByAttachment.get(id) as number }))
     if (acceptedUploads.length) attachSession.acceptSaved({ acceptedUploads })
     const remaining = submittedIds.length - acceptedUploads.length
-    if (remaining) ElMessage.warning(`有 ${remaining} 个附件未落定，仍保留在「待保存」，请再保存一次`)
+    if (remaining)
+      ElMessage.warning(`有 ${remaining} 个附件未落定，仍保留在「待保存」，请再保存一次`)
   } catch (e) {
     // 附件收尾失败不得冒泡成「整单保存失败」（订单此时已保存成功）
     console.error('附件收尾异常（订单已保存）:', e)
@@ -1202,7 +1224,9 @@ const submitForm = async (): Promise<boolean> => {
   if (props.isEdit) {
     // 编辑模式：待保存附件随「单据保存」一并提交，由后端在保存事务内建引用（dev-20261017-001）
     if (attachOrphanCount.value > 0) {
-      ElMessage.warning(`有 ${attachOrphanCount.value} 个待保存附件归属的产品已不在本单明细，请移除后重试`)
+      ElMessage.warning(
+        `有 ${attachOrphanCount.value} 个待保存附件归属的产品已不在本单明细，请移除后重试`
+      )
       return false
     }
     if (attachMissingTypeCount.value > 0) {
@@ -1231,7 +1255,9 @@ const submitForm = async (): Promise<boolean> => {
 
   // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待保存附件，避免「保存成功但附件没落定」
   if (attachOrphanCount.value > 0) {
-    ElMessage.warning(`有 ${attachOrphanCount.value} 个待保存附件归属的产品已不在本单明细，请移除后重试`)
+    ElMessage.warning(
+      `有 ${attachOrphanCount.value} 个待保存附件归属的产品已不在本单明细，请移除后重试`
+    )
     return false
   }
   if (attachMissingTypeCount.value > 0) {

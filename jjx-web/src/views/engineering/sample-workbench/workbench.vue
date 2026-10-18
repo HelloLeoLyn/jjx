@@ -80,13 +80,10 @@
         </template>
         <template #note>
           <p class="save-hint">「保存打样方案」一起保存工序、印刷、BOM和工程备注。</p>
-          <NoteFilesPanel
-            :readonly="readonlyMode"
-            v-model="form.note"
-            :saving="savingPlan"
-          />
+          <NoteFilesPanel :readonly="readonlyMode" v-model="form.note" :saving="savingPlan" />
         </template>
       </SamplePlanView>
+      <!-- 打样执行视图 -->
       <SampleExecutionView
         v-show="activeView === 'execution'"
         :readonly="readonlyMode"

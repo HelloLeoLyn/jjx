@@ -3,7 +3,10 @@
     <el-card shadow="never">
       <template #header>
         <span style="font-weight: 600">🖨️ 印刷工序（自定义工序，表格录入）</span>
-        <span class="desc">无标准工序库，逐行录入；每行一道印刷，可排序/推进/挂材料；行内保存会提交整份打样方案（组装 + 印刷 + BOM 独立材料 + 工程备注）</span>
+        <span class="desc"
+          >无标准工序库，逐行录入；每行一道印刷，可排序/推进/挂材料；行内保存会提交整份打样方案（组装
+          + 印刷 + BOM 独立材料 + 工程备注）</span
+        >
         <el-button
           type="success"
           size="small"
@@ -13,15 +16,6 @@
           @click="savePlan"
           style="float: right; margin-top: -2px"
           >💾 保存打样方案</el-button
-        >
-        <el-button
-          type="primary"
-          size="small"
-          icon="Plus"
-          :disabled="readonly"
-          @click="addPrintRow(activeTab)"
-          style="float: right; margin-top: -2px; margin-right: 8px"
-          >＋ 添加印刷工序</el-button
         >
       </template>
 
@@ -33,7 +27,7 @@
           :name="tab.value"
           :label="`${tab.label}（${filtered(tab.value).length}）`"
         >
-          <el-table :data="filtered(tab.value)" size="small" border stripe>
+          <el-table :data="filtered(tab.value)" border stripe>
             <el-table-column label="#" width="44" align="center">
               <template #default="{ $index }">{{ $index + 1 }}</template>
             </el-table-column>
@@ -74,7 +68,12 @@
             </el-table-column>
             <el-table-column label="菲林" width="170">
               <template #default="{ row }">
-                <PrintFieldAutocomplete v-model="row.filmNo" field="filmNo" width="160px" placeholder="菲林编码" />
+                <PrintFieldAutocomplete
+                  v-model="row.filmNo"
+                  field="filmNo"
+                  width="160px"
+                  placeholder="菲林编码"
+                />
               </template>
             </el-table-column>
             <el-table-column label="网框编号" width="170">
@@ -129,7 +128,18 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" min-width="200" align="center">
+            <el-table-column label="操作" min-width="200" align="center" fixed="right">
+              <template #header>
+                <span>操作</span>
+                <el-button
+                  type="primary"
+                  text
+                  size="small"
+                  :disabled="readonly"
+                  @click="addPrintRow(activeTab)"
+                  >添加印刷工序</el-button
+                >
+              </template>
               <template #default="{ row, $index }">
                 <template v-if="!isEmptyRow(row)">
                   <el-button
@@ -162,10 +172,10 @@
                     size="small"
                     link
                     type="danger"
-                    icon="Delete"
                     :disabled="readonly"
                     @click="handleDeleteRow(row)"
-                  ></el-button>
+                    >删除</el-button
+                  >
                 </template>
                 <!-- 空行（待录入占位行）也提供删除：防止手动新增多行空行后无法清理（2026-09-04） -->
                 <el-button
@@ -173,10 +183,10 @@
                   size="small"
                   link
                   type="danger"
-                  icon="Delete"
                   :disabled="readonly"
                   @click="handleDeleteRow(row, $index)"
-                ></el-button>
+                  >删除</el-button
+                >
               </template>
             </el-table-column>
           </el-table>
@@ -209,7 +219,11 @@
         />
       </el-select>
       <div v-if="pickerShowCreate" style="margin-top: 8px">
-        <el-button link type="primary" v-hasPermi="SAMPLE_MATERIAL_PERMS" @click="openCreateMaterial"
+        <el-button
+          link
+          type="primary"
+          v-hasPermi="SAMPLE_MATERIAL_PERMS"
+          @click="openCreateMaterial"
           >新建物料「{{ pickerKeyword }}」</el-button
         >
       </div>
@@ -440,7 +454,10 @@ function openCreateMaterial() {
 function onMaterialCreated(mat: any) {
   matFormVisible.value = false
   if (mat && mat.materialId) {
-    pickerOptions.value = [mat, ...pickerOptions.value.filter((o) => o.materialId !== mat.materialId)]
+    pickerOptions.value = [
+      mat,
+      ...pickerOptions.value.filter((o) => o.materialId !== mat.materialId),
+    ]
     pickerMaterialId.value = mat.materialId
     ElMessage.success(`已建档「${mat.materialName}」，请点“添加”加入本工序`)
   }
