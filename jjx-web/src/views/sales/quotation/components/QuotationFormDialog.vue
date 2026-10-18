@@ -101,7 +101,7 @@
       <el-divider content-position="left">报价明细</el-divider>
       <el-table :data="formData.items" border style="width: 100%; margin-bottom: 10px">
         <el-table-column label="序号" type="index" width="60" align="center" />
-        <el-table-column label="产品编码" prop="productCode" width="150">
+        <el-table-column label="产品编码" prop="productCode" width="170">
           <template #default="scope">
             <el-select
               v-model="scope.row.productCode"
@@ -167,12 +167,7 @@
             ><el-button type="primary" @click="addItem" size="small" text>添加明细</el-button>
           </template>
           <template #default="scope">
-            <el-button
-              link
-              type="primary"
-              @click="openCodeGen(scope.row)"
-              >新建产品</el-button
-            >
+            <el-button link type="primary" @click="openCodeGen(scope.row)">新建产品</el-button>
             <el-button
               link
               type="warning"
@@ -690,9 +685,7 @@ const handleSubmit = () => {
         const code = (item.productCode || '').trim()
         if (!code) continue
         if (seen.has(code)) {
-          ElMessage.error(
-            `明细产品编码重复：${code}（第${seen.get(code)}行与当前行），请重新生成`
-          )
+          ElMessage.error(`明细产品编码重复：${code}（第${seen.get(code)}行与当前行），请重新生成`)
           return
         }
         seen.set(code, props.formData.items.indexOf(item) + 1)
