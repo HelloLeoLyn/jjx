@@ -59,7 +59,7 @@ class QuotationAttachmentEvidenceTest {
             case "review" -> target.reviewQuotation(10L,true,"ok",legacy,refs);
             case "status" -> target.updateQuotationStatus(10L,QuotationStatus.ACCEPTED.getValue(),legacy,refs);
             case "confirm" -> target.confirmQuotation(10L,legacy,refs);
-            case "reject" -> target.rejectQuotation(10L,legacy,refs);
+            case "reject" -> target.rejectQuotation(10L,null,legacy,refs);
             case "modify" -> target.modifyQuotation(10L,legacy,refs);
             default -> throw new AssertionError(action);
         }
