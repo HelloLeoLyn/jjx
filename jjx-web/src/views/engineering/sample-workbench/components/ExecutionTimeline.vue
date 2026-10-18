@@ -1,15 +1,22 @@
 <template>
   <el-card class="col-timeline" shadow="never">
     <template #header>
-      <span style="font-weight: 600">执行时间线</span>
-      <span class="desc">Round {{ round }} · 按计划流转（在此开始/完成工序）</span>
+      <div class="tl-head">
+        <span class="tl-title">执行时间线</span>
+        <span class="desc">Round {{ round }} · 按计划流转（在此开始/完成工序）</span>
+        <span v-if="merged.length" class="progress">已完成 {{ doneCount }} / {{ merged.length }}</span>
+      </div>
     </template>
     <div v-if="merged.length" class="timeline">
       <div
         v-for="pc in merged"
         :key="pc.uid"
         class="tl-item"
-        :class="pc.status === SampleProcessStatusEnum.DONE.value ? 'done' : pc.status === SampleProcessStatusEnum.DOING.value ? 'doing' : ''"
+        :class="{
+          done: pc.status === SampleProcessStatusEnum.DONE.value,
+          doing: pc.status === SampleProcessStatusEnum.DOING.value,
+          current: pc.uid === currentUid,
+        }"
       >
         <div class="t">
           {{ pc.items.map((i: any) => i.processName).join(' + ') || '未命名工序' }}
@@ -17,6 +24,7 @@
           <el-tag v-if="pc.status === SampleProcessStatusEnum.DONE.value" size="small" type="success">完成</el-tag>
           <el-tag v-else-if="pc.status === SampleProcessStatusEnum.DOING.value" size="small" type="warning">进行中</el-tag>
           <el-tag v-else size="small" type="info">待做</el-tag>
+          <el-tag v-if="pc.uid === currentUid" size="small" type="primary" effect="dark">当前工序</el-tag>
         </div>
         <div class="s">
           <template v-if="pc.operator">{{ pc.operator }} · </template>
@@ -35,6 +43,13 @@
             style="margin-right:4px"
             >{{ m.name }}{{ m.spec ? ' ' + m.spec : '' }}{{ m.qty ? ' ×' + m.qty : '' }}</el-tag
           >
+        </div>
+        <!-- 阻断原因直接可见（不能只藏在 tooltip 里），按钮同时禁用 -->
+        <div
+          v-if="!readonly && pc.status !== SampleProcessStatusEnum.DONE.value && advanceReason(pc)"
+          class="block"
+        >
+          ⚠ {{ advanceReason(pc) }}
         </div>
         <!-- 开始/完成操作（2026-09-04：从表格行统一收口到执行时间线） -->
         <div v-if="!readonly && pc.status !== SampleProcessStatusEnum.DONE.value" class="ops">
@@ -118,6 +133,14 @@ const merged = computed(() => {
   )
 })
 
+// 当前工序 = 排序后首个未完成项（只用于呈现强调，不改变推进逻辑）
+const currentUid = computed(
+  () => merged.value.find((pc) => pc.status !== SampleProcessStatusEnum.DONE.value)?.uid || '',
+)
+const doneCount = computed(
+  () => merged.value.filter((pc) => pc.status === SampleProcessStatusEnum.DONE.value).length,
+)
+
 // 统一推进：印刷行走原行（advancePrint 单行），组装卡片走原卡片（advancePlan 聚合）
 function advanceReason(pc: any): string | null {
   return pc.isPrint ? (props.printBlockReason?.(pc.raw) || null) : (props.execBlockReason?.(pc) || null)
@@ -143,6 +166,20 @@ function onAdvance(pc: any) {
   color: #909399;
   font-weight: 400;
   margin-left: 8px;
+}
+.tl-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tl-title {
+  font-weight: 600;
+}
+.tl-head .progress {
+  font-size: 12px;
+  color: #606266;
+  margin-left: auto;
 }
 .timeline {
   position: relative;
@@ -177,6 +214,20 @@ function onAdvance(pc: any) {
 .tl-item.doing::before {
   background: #409eff;
   box-shadow: 0 0 0 3px #ecf5ff;
+}
+.tl-item.current .t {
+  font-size: 14px;
+}
+.tl-item.current {
+  background: #f0f7ff;
+  border-radius: 4px;
+  padding: 6px 8px 10px 8px;
+  margin-left: -8px;
+}
+.tl-item .block {
+  font-size: 12px;
+  color: #e6a23c;
+  margin-top: 4px;
 }
 .tl-item .t {
   font-size: 13px;

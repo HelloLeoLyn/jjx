@@ -4,10 +4,19 @@
       <div class="panel-head">
         <span class="panel-title">🧾 不良原因及改善（样品单级）</span>
         <span class="panel-sub">回填样品需求单（QR-065）的印刷 / 加工冲型制样记录</span>
+        <el-button
+          v-if="compact"
+          class="panel-toggle"
+          link
+          type="primary"
+          size="small"
+          @click="historyOpen = !historyOpen"
+          >{{ historyOpen ? '收起历史记录' : `展开历史记录（${list.length}）` }}</el-button
+        >
       </div>
     </template>
 
-    <el-table :data="list" size="small" border style="width: 100%">
+    <el-table v-if="showHistory" :data="list" size="small" border style="width: 100%">
       <el-table-column label="制样类别" width="100" align="center">
         <template #default="{ row }">
           <el-tag size="small" :type="row.craftType === SampleCraftTypeEnum.PRINT ? 'primary' : 'warning'">
@@ -40,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import type { SampleDefectRecord } from '@/types/sales/sampleOrder'
@@ -55,10 +64,20 @@ const props = defineProps<{
   orderId?: number
   roundNo?: number
   readonly?: boolean
+  /** dev-20261018-008：仅控制历史记录默认折叠，不改新增/删除/权限与样品单级归属 */
+  compact?: boolean
 }>()
 
 const list = ref<SampleDefectRecord[]>([])
 const saving = ref(false)
+const historyOpen = ref(!props.compact)
+const showHistory = computed(() => !props.compact || historyOpen.value)
+watch(
+  () => props.compact,
+  (value) => {
+    historyOpen.value = !value
+  },
+)
 const form = reactive<{ craftType: string; defectReason: string; improvement: string; recordDate: string }>({
   craftType: SampleCraftTypeEnum.PRINT,
   defectReason: '',
@@ -101,6 +120,8 @@ async function add() {
     form.defectReason = ''
     form.improvement = ''
     form.recordDate = ''
+    // compact 折叠态下新增成功后展开历史，保证新记录可见（不改变归属与权限）
+    historyOpen.value = true
     await load()
   } catch (e: any) {
     ElMessage.error(e?.message || '记录失败')
@@ -145,6 +166,10 @@ watch(() => props.orderId, load, { immediate: true })
 .panel-sub {
   font-size: 12px;
   color: #909399;
+}
+
+.panel-head .panel-toggle {
+  margin-left: auto;
 }
 
 .add-row {
