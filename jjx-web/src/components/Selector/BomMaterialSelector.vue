@@ -1,56 +1,44 @@
 <template>
-  <el-select
-    :model-value="materialId || materialName || undefined"
-    filterable
-    remote
-    clearable
-    :remote-method="search"
+  <EditableSearchSelect
+    :model-value="materialId"
+    :display-value="materialName"
+    :options="options"
+    option-key="materialId"
+    :label-of="labelOf"
     :loading="loading"
+    :total="total"
+    :show-create="showCreate"
+    :create-label="'新建物料「' + keyword + '」'"
     placeholder="输入物料名称搜索"
     size="small"
-    style="width: 100%"
-    @change="selectMaterial"
+    @search="search"
+    @select="selectMaterial"
     @clear="clear"
+    @create="(kw: string) => emit('create', kw)"
+    @load-more="loadMore"
   >
-    <el-option
-      v-if="materialName && !options.some((item) => item.materialId === materialId)"
-      :value="materialId || materialName"
-      :label="materialName"
-      hidden
-    />
-    <el-option
-      v-for="item in options"
-      :key="item.materialId"
-      :value="item.materialId!"
-      :label="item.materialName"
-    >
+    <template #option="{ item }">
       {{ item.materialName }} · {{ item.specification || '无规格' }} · {{ item.materialCode }}
-    </el-option>
-    <template #footer>
-      <div v-if="failed">
-        查询失败，<el-button link type="primary" @click="search(keyword)">重试</el-button>
-      </div>
-      <template v-else>
-        <el-button
-          v-if="showCreate"
-          v-hasPermi="BOM_MATERIAL_PERMS"
-          link
-          type="primary"
-          @click="emit('create', keyword)"
-          >新建物料「{{ keyword }}」</el-button
-        >
-        <el-button v-if="options.length < total" link :loading="loading" @click="loadMore">
-          加载更多
-        </el-button>
-      </template>
     </template>
-  </el-select>
+    <template #footer>
+      <div v-if="failed" style="padding: 6px 10px; font-size: 12px; color: var(--el-color-danger)">
+        查询失败，<el-button link type="primary" size="small" @click="retry">重试</el-button>
+      </div>
+    </template>
+  </EditableSearchSelect>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+/**
+ * BOM 行「物料名称」选择器（dev-20261018-011）
+ * 由 el-select 改为可编辑搜索框（EditableSearchSelect）：选中后文字可直接删改并续搜。
+ * 保留：远程搜索 300ms 防抖、加载更多、新建物料入口（权限在父级/指令侧）、已选回填、清空。
+ */
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { materialApi } from '@/api/inventory/material'
 import type { InventoryMaterial } from '@/types/inventory/material'
+import EditableSearchSelect from './EditableSearchSelect.vue'
+import { hasPermi } from '@/directives'
 
 const props = defineProps<{ materialId?: number; materialName?: string }>()
 const emit = defineEmits<{
@@ -58,8 +46,6 @@ const emit = defineEmits<{
   (e: 'clear'): void
   (e: 'create', keyword: string): void
 }>()
-// 建档入口权限：跟随 BOM 新增/修改权限（谁能编 BOM 谁就能顺手补材料）
-const BOM_MATERIAL_PERMS = ['engineering:bom:add', 'engineering:bom:edit']
 
 const options = ref<InventoryMaterial[]>([])
 const keyword = ref('')
@@ -68,10 +54,16 @@ const failed = ref(false)
 const searched = ref(false)
 const total = ref(0)
 
+// 建档入口权限：跟随 BOM 新增/修改权限（谁能编 BOM 谁就能顺手补材料）
+const BOM_MATERIAL_PERMS = ['engineering:bom:add', 'engineering:bom:edit']
+const canCreate = computed(() => hasPermi(BOM_MATERIAL_PERMS))
+
+const labelOf = (item: InventoryMaterial) => item.materialName || ''
+
 // 显示「新建物料」入口：搜过 & 有非空关键字 & 结果里没有与关键字同名的物料
 const showCreate = computed(() => {
   const kw = keyword.value.trim()
-  if (!searched.value || loading.value || !kw) return false
+  if (!canCreate.value || !searched.value || loading.value || !kw) return false
   return !options.value.some((o) => (o.materialName || '').trim() === kw)
 })
 
@@ -121,20 +113,18 @@ function loadMore() {
   void fetchPage(requestId, page + 1)
 }
 
-function selectMaterial(value: number | string | undefined) {
-  const material = options.value.find((item) => item.materialId === value)
-  if (material) emit('select', material)
+function selectMaterial(item: InventoryMaterial) {
+  if (item) emit('select', item)
+}
+
+function retry() {
+  search(keyword.value)
 }
 
 function clear() {
   search('')
   emit('clear')
 }
-
-watch(
-  () => props.materialId,
-  () => search('')
-)
 
 onBeforeUnmount(() => {
   clearTimeout(timer)

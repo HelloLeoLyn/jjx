@@ -1,35 +1,33 @@
-<!-- components/MaterialSelector.vue -->
+<!-- components/Selector/MaterialSelector.vue -->
 <template>
-  <el-select
-    v-model="selectedValue"
+  <EditableSearchSelect
+    :model-value="selectedValue"
+    :display-value="selectedLabel"
+    :options="displayOptions"
+    option-key="materialId"
+    :label-of="getOptionLabel"
     :placeholder="placeholder"
     :clearable="clearable"
     :disabled="disabled"
     :size="size"
-    filterable
-    remote
-    :remote-method="handleRemoteSearch"
     :loading="loading"
-    :default-first-option="autoSelectFirst"
-    @clear="handleClear"
-    @change="handleChange"
     class="material-selector"
-  >
-    <el-option
-      v-for="item in displayOptions"
-      :key="item.materialId"
-      :label="getOptionLabel(item)"
-      :value="item.materialId"
-      :disabled="item.status === '禁用'"
-    />
-  </el-select>
+    @search="handleRemoteSearch"
+    @select="onPick"
+    @clear="handleClear"
+  />
 </template>
 
 <script setup lang="ts">
+/**
+ * 物料选择器（dev-20261018-011 改为可编辑搜索框）
+ * v-model 语义、valueType、远程搜索防抖、外部 options、自动选首项均保留。
+ */
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import { materialApi } from '@/api/inventory/material'
+import EditableSearchSelect from './EditableSearchSelect.vue'
 
 interface Props {
   modelValue: InventoryMaterial | number | string | null
@@ -69,71 +67,63 @@ const loading = ref(false)
 const keyword = ref('')
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-// 选项数据源：优先使用外部传入的 options，否则使用远程搜索结果
 const displayOptions = computed(() => {
-  if (props.options && props.options.length > 0) {
-    return props.options
-  }
+  if (props.options && props.options.length > 0) return props.options
   return remoteOptions.value
 })
 
-// 选中值 - 简化版
-const selectedValue = computed({
-  get: () => {
-    if (!props.modelValue) return null
-    // 如果是对象，取 materialId
-    if (typeof props.modelValue === 'object') {
-      return props.modelValue.materialId
-    }
-    return props.modelValue
-  },
-  set: (val) => {
-    if (!val) {
-      emit('update:modelValue', null)
-      emit('change', null, null)
-      return
-    }
+const selectedValue = computed(() => {
+  if (props.modelValue == null) return null
+  if (typeof props.modelValue === 'object') return props.modelValue.materialId
+  return props.modelValue
+})
 
-    // 根据 materialId 找到完整对象
-    const material = displayOptions.value.find((item) => item.materialId === val)
-    if (!material) return
+const matchesModel = (item: InventoryMaterial) => {
+  const mv: any = props.modelValue
+  if (mv == null) return false
+  if (typeof mv === 'object') return item.materialId === mv.materialId
+  if (props.valueType === 'materialCode') return item.materialCode === mv
+  if (props.valueType === 'materialName') return item.materialName === mv
+  return item.materialId === mv
+}
 
-    // 根据 valueType 返回
-    if (props.valueType === 'materialId') {
-      emit('update:modelValue', material.materialId)
-      emit('change', material.materialId, material)
-    } else if (props.valueType === 'materialCode') {
-      emit('update:modelValue', material.materialCode)
-      emit('change', material.materialCode, material)
-    } else if (props.valueType === 'materialName') {
-      emit('update:modelValue', material.materialName)
-      emit('change', material.materialName, material)
-    } else {
-      emit('update:modelValue', material)
-      emit('change', material, material)
-    }
-  },
+const selectedLabel = computed(() => {
+  if (props.modelValue == null) return ''
+  const hit = displayOptions.value.find(matchesModel)
+  if (hit) return getOptionLabel(hit)
+  return typeof props.modelValue === 'object' ? '' : String(props.modelValue)
 })
 
 const getOptionLabel = (item: InventoryMaterial) => {
-  return `${item.materialName} (${item.materialCode})${item.specification ? ` - ${item.specification}` : ''}`
+  const spec = item.specification ? ' - ' + item.specification : ''
+  return item.materialName + ' (' + item.materialCode + ')' + spec
+}
+
+function onPick(material: InventoryMaterial) {
+  if (!material) return
+  if (props.valueType === 'materialId') {
+    emit('update:modelValue', material.materialId)
+    emit('change', material.materialId, material)
+  } else if (props.valueType === 'materialCode') {
+    emit('update:modelValue', material.materialCode)
+    emit('change', material.materialCode, material)
+  } else if (props.valueType === 'materialName') {
+    emit('update:modelValue', material.materialName)
+    emit('change', material.materialName, material)
+  } else {
+    emit('update:modelValue', material)
+    emit('change', material, material)
+  }
 }
 
 const handleRemoteSearch = (query: string) => {
   keyword.value = query
-
   if (debounceTimer) clearTimeout(debounceTimer)
-
-  // 如果有外部传入的 options，不执行远程搜索
-  if (props.options && props.options.length > 0) {
-    return
-  }
-
+  if (props.options && props.options.length > 0) return
   if (!query || query.length < props.minKeywordLength) {
     remoteOptions.value = []
     return
   }
-
   debounceTimer = setTimeout(async () => {
     loading.value = true
     try {
@@ -141,9 +131,8 @@ const handleRemoteSearch = (query: string) => {
       if (res.code === 200 && res.data) {
         remoteOptions.value = (res as any).data
         emit('search', query)
-
         if (props.autoSelectFirst && remoteOptions.value.length > 0) {
-          selectedValue.value = remoteOptions.value[0].materialId
+          onPick(remoteOptions.value[0])
         }
       }
     } catch (error) {
@@ -158,11 +147,8 @@ const handleClear = () => {
   remoteOptions.value = []
   keyword.value = ''
   emit('update:modelValue', null)
+  emit('change', null, null)
   emit('clear')
-}
-
-const handleChange = (val: number) => {
-  // 你可以在这里做任何想做的事情
 }
 
 onBeforeUnmount(() => {

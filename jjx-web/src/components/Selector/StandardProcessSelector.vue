@@ -1,42 +1,33 @@
 <template>
-  <!-- 模式一：下拉（el-select 分组 + 图标） -->
-  <el-select
+  <!-- 模式一：可编辑搜索下拉（EditableSearchSelect 分组 + 图标，dev-20261018-011） -->
+  <EditableSearchSelect
     v-if="mode === 'dropdown'"
     :model-value="innerValue"
+    :display-value="showName"
+    :groups="dropdownGroups"
+    option-key="processId"
+    option-label="processName"
     :placeholder="placeholder"
     :size="size"
     :disabled="disabled"
     :clearable="clearable"
-    filterable
-    :allow-create="allowCreate"
-    default-first-option
-    style="width: 100%"
-    @update:model-value="onUpdateValue"
+    :show-create="canCreate"
+    :create-label="'新建项目「' + keyword.trim() + '」'"
+    @search="onDropdownSearch"
+    @select="onDropdownPick"
     @clear="onClear"
+    @create="onDropdownCreate"
   >
-    <!-- 选中项目：输入框内显示图标 + 名称 -->
     <template #prefix>
       <SvgIcon v-if="showIcon" :name="showIcon" :size="16" class="sps-prefix-icon" />
     </template>
-    <template #label>
-      <span class="sps-selected-name">{{ showName }}</span>
+    <template #option="{ item }">
+      <div class="sps-option">
+        <SvgIcon v-if="item.icon" :name="item.icon" :size="16" />
+        <span class="sps-option-name">{{ item.processName }}</span>
+      </div>
     </template>
-    <!-- 历史/新建的纯名称（未关联工序 ID）回显 -->
-    <el-option v-if="fallbackName" :label="fallbackName" :value="fallbackName" hidden />
-    <el-option-group v-for="g in groups" :key="g.value" :label="g.label">
-      <el-option
-        v-for="p in g.items"
-        :key="p.processId"
-        :label="p.processName"
-        :value="p.processId"
-      >
-        <div class="sps-option">
-          <SvgIcon v-if="p.icon" :name="p.icon" :size="16" />
-          <span class="sps-option-name">{{ p.processName }}</span>
-        </div>
-      </el-option>
-    </el-option-group>
-  </el-select>
+  </EditableSearchSelect>
 
   <!-- 模式二：弹窗（点击展开分组网格） -->
   <div
@@ -101,6 +92,7 @@
 import { computed, ref, watch } from 'vue'
 import { CircleClose, Plus, Search } from '@element-plus/icons-vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
+import EditableSearchSelect from './EditableSearchSelect.vue'
 import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 import { useDict } from '@/composables/useDict'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
@@ -197,9 +189,7 @@ watch(
 const currentId = computed<number | undefined>(() =>
   typeof innerValue.value === 'number' ? innerValue.value : undefined
 )
-const fallbackName = computed(() =>
-  typeof innerValue.value === 'string' && innerValue.value ? innerValue.value : ''
-)
+
 
 /** 当前值命中的标准工序（用于取名称/图标） */
 const matched = computed<StandardProcessItem | undefined>(() => {
@@ -209,12 +199,12 @@ const matched = computed<StandardProcessItem | undefined>(() => {
   const name = props.processName || (typeof innerValue.value === 'string' ? innerValue.value : '')
   return name ? processes.value.find((p) => p.processName === name) : undefined
 })
-const showName = computed(
-  () =>
-    matched.value?.processName ||
-    props.processName ||
-    (typeof innerValue.value === 'string' ? innerValue.value : '')
-)
+const showName = computed(() => {
+  if (matched.value && matched.value.processName) return matched.value.processName
+  if (props.processName) return props.processName
+  const v = innerValue.value
+  return v == null ? '' : String(v)
+})
 const showIcon = computed(() => matched.value?.icon || '')
 
 // ==================== 弹窗状态 ====================
@@ -227,6 +217,31 @@ function openDialog() {
   keyword.value = ''
   activeTab.value = groups.value[0]?.value || ''
   dialogVisible.value = true
+}
+
+/** 下拉模式可见分组：按当前输入关键字过滤（dev-20261018-011） */
+const dropdownGroups = computed(() =>
+  groups.value
+    .map((g) => ({ label: g.label, items: filterItems(g.items) }))
+    .filter((g) => g.items.length > 0)
+)
+
+function onDropdownSearch(value: string) {
+  keyword.value = value
+}
+
+function onDropdownPick(item: StandardProcessItem) {
+  emitValue(item.processId)
+  emit('select', item)
+  keyword.value = ''
+}
+
+function onDropdownCreate(name: string) {
+  const value = (name || '').trim()
+  if (!value) return
+  emitValue(value)
+  emit('create', value)
+  keyword.value = ''
 }
 
 function filterItems(items: StandardProcessItem[]): StandardProcessItem[] {
@@ -269,21 +284,7 @@ function createFromKeyword() {
 
 function onClear() {
   emitValue(undefined)
-}
-
-function onUpdateValue(val: number | string | undefined | null) {
-  emitValue(val ?? undefined)
-  const v = innerValue.value
-  if (typeof v === 'number') {
-    const item = processes.value.find((p) => p.processId === v)
-    if (item) emit('select', item)
-    return
-  }
-  if (v) {
-    const exact = processes.value.find((p) => (p.processName || '').trim() === v)
-    if (exact) emit('select', exact)
-    else emit('create', v)
-  }
+  keyword.value = ''
 }
 
 defineExpose({ reload: reloadProcesses, processes })
