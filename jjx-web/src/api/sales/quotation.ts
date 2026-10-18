@@ -200,11 +200,20 @@ export const quotationApi = {
   },
 
   // 客户拒绝报价（触发事件）
-  reject(quotationId: number, attachmentRefIds?: number[]): AxiosPromise<void> {
+  reject(
+    quotationId: number,
+    reason?: string,
+    attachmentRefIds?: number[]
+  ): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/reject/${quotationId}`,
       method: 'put',
-      params: attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : undefined,
+      params: {
+        ...(reason ? { reason } : {}),
+        ...(attachmentRefIds?.length
+          ? { attachmentRefIds: attachmentRefIds.join(',') }
+          : {}),
+      },
     })
   },
 

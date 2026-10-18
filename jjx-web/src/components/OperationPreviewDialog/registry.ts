@@ -178,7 +178,11 @@ export const quotationOperations: OperationDef[] = [
     evidence: true,
     events: ['quotation.rejected'],
     api: ({ bizId, values, attachmentRefIds }) =>
-      quotationApi.reject(bizId, attachmentRefIds.length ? attachmentRefIds : undefined),
+      quotationApi.reject(
+        bizId,
+        values.remark,
+        attachmentRefIds.length ? attachmentRefIds : undefined
+      ),
   },
   {
     key: 'quotation.convert',

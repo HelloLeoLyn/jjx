@@ -247,7 +247,7 @@ public class QuotationController extends BaseController {
             return toAjax(quotationService.confirmQuotation(quotationId, attachmentIds, attachmentRefIds));
         }
         if (status != null && status == 3) {
-            return toAjax(quotationService.rejectQuotation(quotationId, attachmentIds, attachmentRefIds));
+            return toAjax(quotationService.rejectQuotation(quotationId, null, attachmentIds, attachmentRefIds));
         }
         return toAjax(quotationService.updateQuotationStatus(quotationId, status, attachmentIds, attachmentRefIds));
     }
@@ -273,9 +273,10 @@ public class QuotationController extends BaseController {
     @SaCheckPermission("sales:quotation:edit")
     @PutMapping("/reject/{quotationId}")
     public Result<Void> reject(@PathVariable Long quotationId,
+                               @RequestParam(required = false) String reason,
                                @RequestParam(required = false) String attachmentIds,
                                @RequestParam(required = false) List<Long> attachmentRefIds) {
-        return toAjax(quotationService.rejectQuotation(quotationId, attachmentIds, attachmentRefIds));
+        return toAjax(quotationService.rejectQuotation(quotationId, reason, attachmentIds, attachmentRefIds));
     }
 
     /**

@@ -202,17 +202,6 @@
       </el-dialog>
     </SkeletonAction>
 
-    <!-- 操作预览器 提交审核-->
-    <SkeletonAction>
-      <OperationPreviewDialog
-        v-model="previewVisible"
-        :operation="previewOperation"
-        :biz-id="previewBizId"
-        :biz-no="previewBizNo"
-        :status-text-map="quotationStatusTextMap"
-        @success="getList"
-      />
-    </SkeletonAction>
     <!-- 发送报价 -->
     <SkeletonAction>
       <QuotationSendDialog
@@ -222,7 +211,7 @@
       />
     </SkeletonAction>
 
-    <!-- 操作预览器 -->
+    <!-- 操作预览器：审核通过/驳回、客户确认/拒绝共用同一弹窗 -->
     <SkeletonAction>
       <OperationPreviewDialog
         v-model="previewVisible"
@@ -231,7 +220,14 @@
         :biz-no="previewBizNo"
         :status-text-map="quotationStatusTextMap"
         @success="getList"
-      />
+      >
+        <template #preview>
+          <QuotationSummaryCard
+            v-if="operationNeedsSummary"
+            :quotation-id="previewBizId"
+          />
+        </template>
+      </OperationPreviewDialog>
     </SkeletonAction>
   </div>
 </template>
@@ -275,6 +271,7 @@ import QuotationStats from './components/QuotationStats.vue'
 import QuotationToolbar from './components/QuotationToolbar.vue'
 import QuotationFormDialog from './components/QuotationFormDialog.vue'
 import QuotationDetailDialog from './components/QuotationDetailDialog.vue' // ✅ 新增
+import QuotationSummaryCard from './components/QuotationSummaryCard.vue'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
 import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
@@ -329,6 +326,16 @@ const previewVisible = ref(false)
 const previewOperation = ref<any>(null)
 const previewBizId = ref<number | null>(null)
 const previewBizNo = ref('')
+/** 审核通过/驳回、客户确认/拒绝共用报价摘要卡（dev-20261018-005） */
+const SUMMARY_OPERATION_KEYS = [
+  'quotation.approve',
+  'quotation.reject',
+  'quotation.customerConfirm',
+  'quotation.customerReject',
+]
+const operationNeedsSummary = computed(() =>
+  SUMMARY_OPERATION_KEYS.includes(previewOperation.value?.key)
+)
 const sendDialogVisible = ref(false)
 const sendQuotationId = ref<number>()
 // ============================================================

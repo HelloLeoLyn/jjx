@@ -98,10 +98,11 @@ public interface IQuotationService {
      * 客户拒绝报价
      *
      * @param quotationId 报价单ID
+     * @param reason 客户拒绝原因（写入流转记录）
      * @param attachmentIds 已退役文件 ID 参数；非空拒绝
      * @return 结果
      */
-    int rejectQuotation(Long quotationId, String attachmentIds, List<Long> attachmentRefIds);
+    int rejectQuotation(Long quotationId, String reason, String attachmentIds, List<Long> attachmentRefIds);
 
     /**
      * 已完成报价单改单
