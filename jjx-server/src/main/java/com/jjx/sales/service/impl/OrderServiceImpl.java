@@ -135,6 +135,9 @@ public class OrderServiceImpl implements IOrderService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long insertOrder(SalesOrderAddDTO dto) {
+        if (dto.getQuotationId() != null && !dto.isQuotationConversionValidated()) {
+            throw new BusinessException("报价来源订单请从报价转换页面保存");
+        }
         // 2026-09-07：取号时机后移到提交落库——不再由前端弹窗预取，取消/失败不烧号（根治跳号）
         String orderNo = dto.getOrderNo();
         if (orderNo == null || orderNo.trim().isEmpty()) {

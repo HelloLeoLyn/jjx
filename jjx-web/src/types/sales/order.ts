@@ -1,6 +1,11 @@
 import type { ProductCodeState } from '@/composables/useProductCode'
 
 // 订单明细
+export interface QuotationOrderDraft {
+  sourceVersion: string
+  order: SalesOrderAddDTO
+}
+
 export interface OrderItem extends Partial<ProductCodeState> {
   workSpecVersionId?: number | null
   productDraft?: Partial<import('@/types/product').ProductFormData> & Partial<import('@/composables/useProductCode').ProductCodeResult>

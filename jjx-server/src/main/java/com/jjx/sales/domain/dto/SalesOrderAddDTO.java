@@ -20,6 +20,9 @@ import java.util.List;
 @Schema(description = "销售订单添加DTO")
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SalesOrderAddDTO {
+    /** 仅服务端转换入口设置，禁止通过普通订单新增API绕过报价校验。 */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private boolean quotationConversionValidated;
 
     @Schema(description = "报价单ID", example = "1001")
     private Long quotationId;

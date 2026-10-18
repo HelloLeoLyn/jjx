@@ -15,6 +15,7 @@ import com.jjx.system.annotation.Log;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -155,10 +156,18 @@ public class QuotationController extends BaseController {
      */
     @Operation(summary = "报价单转为订单")
     @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).COMPLETED.getLabel()", action = LogActions.QUOTATION_CONVERT)
-    @SaCheckPermission("sales:quotation:edit")
+    @SaCheckPermission(value = {"sales:quotation:edit", "sales:order:add"}, mode = cn.dev33.satoken.annotation.SaMode.AND)
     @PostMapping("/convert/{quotationId}")
-    public Result<Object> convert(@PathVariable Long quotationId) {
-        return Result.success(quotationService.convertToOrder(quotationId));
+    public Result<Object> convert(@PathVariable Long quotationId,
+            @Valid @RequestBody(required = false) com.jjx.sales.domain.dto.QuotationOrderDraftDTO draft) {
+        return Result.success(draft == null ? quotationService.convertToOrder(quotationId) : quotationService.convertToOrder(quotationId, draft));
+    }
+
+    @Operation(summary = "只读预填报价来源订单，不创建订单或改变报价")
+    @SaCheckPermission(value = {"sales:quotation:edit", "sales:order:add"}, mode = cn.dev33.satoken.annotation.SaMode.AND)
+    @GetMapping("/order-draft/{quotationId}")
+    public Result<com.jjx.sales.domain.dto.QuotationOrderDraftDTO> orderDraft(@PathVariable Long quotationId) {
+        return Result.success(quotationService.getOrderDraft(quotationId));
     }
 
 

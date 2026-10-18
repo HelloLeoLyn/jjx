@@ -11,13 +11,15 @@
 
     <!-- 表单卡片 -->
     <el-card class="form-card" shadow="never">
-      <OrderForm ref="orderFormRef" @success="handleSuccess" @cancel="goBack" />
+      <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
+      <el-alert v-if="quotationId && ready" title="已带入报价资料；补充订单信息并提交后完成转换，取消不会创建订单。" type="info" :closable="false" />
+      <OrderForm v-if="ready" :key="quotationId || 'manual'" ref="orderFormRef" :initial-data="initialData" :source-quotation-id="quotationId" :quotation-source-version="sourceVersion" @success="handleSuccess" @cancel="goBack" />
     </el-card>
 
     <!-- 底部操作栏 -->
     <div class="footer-bar">
       <el-button @click="goBack">取 消</el-button>
-      <el-button type="primary" @click="handleSubmit" :loading="submitting">提 交</el-button>
+      <el-button type="primary" @click="handleSubmit" :loading="submitting" :disabled="!ready">提 交</el-button>
     </div>
   </div>
 </template>
@@ -27,13 +29,36 @@ defineOptions({
   name: 'SalesOrderAdd',
 })
 
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import OrderForm from './components/OrderForm.vue'
+import { quotationApi } from '@/api/sales/quotation'
 
 const router = useRouter()
+const route = useRoute()
+const quotationId = computed(() => Number(route.query?.quotationId) || undefined)
+const ready = ref(false)
+const loadError = ref('')
+const initialData = ref<Record<string, any>>({})
+const sourceVersion = ref('')
+let loadRequest = 0
+watch(quotationId, async id => {
+  const request = ++loadRequest
+  ready.value = false; loadError.value = ''; initialData.value = {}; sourceVersion.value = ''
+  if (!id) { ready.value = true; return }
+  try {
+    const res = await quotationApi.getOrderDraft(id)
+    if (request !== loadRequest) return
+    sourceVersion.value = res.data.sourceVersion
+    const order = res.data.order
+    initialData.value = { ...order, shippingAddress: order.deliveryAddress || '', salesPersonId: order.salesManagerId,
+      salesPersonName: order.salesManagerName, amountBreakdownConfirmed: true,
+      items: (order.items || []).map(item => ({ ...item, specification: item.specification || '', deliveryDays: item.deliveryDays || 0 })) }
+    ready.value = true
+  } catch (error: any) { if (request === loadRequest) loadError.value = error?.message || '读取报价预填资料失败，请重新打开' }
+}, { immediate: true })
 
 // 表单组件引用
 const orderFormRef = ref<InstanceType<typeof OrderForm> | null>(null)
@@ -46,7 +71,7 @@ const goBack = () => {
 
 // 提交表单
 const handleSubmit = async () => {
-  if (!orderFormRef.value) return
+  if (!orderFormRef.value || submitting.value) return
 
   submitting.value = true
   try {

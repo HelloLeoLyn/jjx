@@ -6,6 +6,7 @@
       <el-col :span="12">
         <el-form-item label="客户" prop="customerId">
           <CustomerSelector
+            :disabled="!!props.sourceQuotationId"
             v-model="form.customerId"
             value-type="customerId"
             placeholder="请选择客户"
@@ -531,6 +532,8 @@ interface Props {
   initialData?: Record<string, any>
   /** 从样品单转量产：进入后预填样品数据，提交走转量产接口（2026-09-07） */
   sampleOrderId?: number
+  sourceQuotationId?: number
+  quotationSourceVersion?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -1245,6 +1248,10 @@ onActivated(() => {
 // 初始化
 onMounted(() => {
   resetForm()
+  if (props.sourceQuotationId) {
+    Object.assign(form, props.initialData, { items: JSON.parse(JSON.stringify(props.initialData.items || [])) })
+    calculateTotalAmount()
+  }
   if (!props.isEdit) ensureDraftId() // 新页面实例或刷新恢复，互不混用
   loadSalesPersons()
   // 2026-09-07：不再预取单号（取消/失败会烧号导致跳号），改由后端提交落库时生成
@@ -1329,12 +1336,14 @@ const submitForm = async (): Promise<boolean> => {
     // 两个接口响应均已解包为 { code, msg, data }，类型统一按 any 处理
     const orderResponse: any = isSampleConvert
       ? await sampleOrderApi.convertSample(props.sampleOrderId as number, submitData as any)
+      : props.sourceQuotationId
+      ? await quotationApi.convert(props.sourceQuotationId, { sourceVersion: props.quotationSourceVersion || '', order: submitData as any })
       : await orderApi.addOrder(submitData as any)
     if (orderResponse.code !== 200) {
       ElMessage.error(isSampleConvert ? '转量产失败' : '新增订单失败')
       return false
     }
-    const data = orderResponse.data!
+    const data = typeof orderResponse.data === 'number' ? { orderId: orderResponse.data, traceId: form.traceId } : orderResponse.data!
     const newOrderId = data.orderId
     const newTraceId = data.traceId
     createdOrderId.value = newOrderId

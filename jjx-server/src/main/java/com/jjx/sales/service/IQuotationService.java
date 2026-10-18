@@ -12,6 +12,8 @@ import java.util.List;
  * 提供销售报价单的业务逻辑操作
  */
 public interface IQuotationService {
+    com.jjx.sales.domain.dto.QuotationOrderDraftDTO getOrderDraft(Long quotationId);
+    Long convertToOrder(Long quotationId, com.jjx.sales.domain.dto.QuotationOrderDraftDTO draft);
 
     /**
      * 查询销售报价单列表

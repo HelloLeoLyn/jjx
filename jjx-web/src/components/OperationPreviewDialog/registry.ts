@@ -6,6 +6,8 @@ import { outboundApi } from '@/api/inventory/outbound'
 import * as purchaseOrderApi from '@/api/purchase/order'
 import * as productionOrderApi from '@/api/production/order'
 import { useUserStore } from '@/store/modules/user'
+import router from '@/router'
+import { QuotationStatusEnum } from '@/enums/sales/QuotationEnum'
 
 // 当前用户（入库/出库审批人等字段用）
 function currentUser() {
@@ -189,12 +191,13 @@ export const quotationOperations: OperationDef[] = [
   {
     key: 'quotation.convert',
     bizType: 'quotation',
-    name: '转为订单',
-    fromStatus: [2],
-    toStatus: 9,
-    evidence: true,
-    events: ['quotation.converted'],
-    api: ({ bizId, attachmentIds }) => quotationApi.convert(bizId).then((r) => r),
+    name: '填写销售订单',
+    fromStatus: [QuotationStatusEnum.ACCEPTED.value],
+    evidence: false,
+    events: [],
+    impact: '进入销售订单新增页面，保存成功后完成转换。',
+    successText: '已进入订单新增页面',
+    api: ({ bizId }) => router.push({ path: '/sales/order/add', query: { quotationId: String(bizId) } }),
   },
   {
     key: 'quotation.toSample',

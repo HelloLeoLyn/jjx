@@ -1039,7 +1039,9 @@ const openPreview = async (opKey: string, row?: any) => {
 // ============================================================
 // 转为订单
 // ============================================================
-const handleConvert = (row?: any) => openPreview('quotation.convert', row)
+const handleConvert = (row?: any) => {
+  if (row?.quotationId) void router.push({ path: '/sales/order/add', query: { quotationId: String(row.quotationId) } })
+}
 
 // ============================================================
 // 转为样品单

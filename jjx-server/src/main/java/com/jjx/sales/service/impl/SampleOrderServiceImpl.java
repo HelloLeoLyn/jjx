@@ -3924,6 +3924,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         // 固定为标准订单；普通订单的报价关联按样品单来源单号解析，链路沿用样品单。
         dto.setOrderType(SalesOrderTypeEnum.STANDARD.getCode());
+        dto.setQuotationConversionValidated(true); // 已经由样品转量产入口校验，兼容其报价溯源。
         if (dto.getQuotationId() == null) {
             SalesQuotation sourceQuotation = findSourceQuotation(sampleOrder);
             dto.setQuotationId(sourceQuotation == null ? null : sourceQuotation.getQuotationId());

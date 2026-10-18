@@ -106,6 +106,7 @@ const api = vi.hoisted(() => ({
   getSourceQuotationSummary: vi.fn(),
   getItems: vi.fn(),
   getExchangeRate: vi.fn(),
+  convert: vi.fn(),
 }))
 
 const attachApi = vi.hoisted(() => ({
@@ -197,10 +198,10 @@ afterEach(() => {
   localStorage.clear()
 })
 
-async function form(edit = false) {
+async function form(edit = false, extra: Record<string, any> = {}) {
   const w = mount(OrderForm, {
     attachTo: document.body,
-    props: { isEdit: edit, orderId: edit ? 9 : undefined },
+    props: { isEdit: edit, orderId: edit ? 9 : undefined, ...extra },
     global: { directives: { loading: () => {} } },
   })
   wrappers.push(w)
@@ -232,6 +233,16 @@ async function pickOwnership(w: any, key: string) {
 }
 
 describe('销售订单随单附件（真实会话 + 真实表单模板）', () => {
+  it('报价来源走正式转换接口，失败保留表单，不绕过普通新增接口', async () => {
+    const w = await form(false, { sourceQuotationId: 31, quotationSourceVersion: 'version31' })
+    const before = JSON.stringify(w.vm.form)
+    api.convert.mockResolvedValueOnce({ code: 500 }).mockResolvedValueOnce({ code: 200, data: 99 })
+    expect(await w.vm.submitForm()).toBe(false)
+    expect(JSON.stringify(w.vm.form)).toBe(before)
+    expect(await w.vm.submitForm()).toBe(true)
+    expect(api.convert).toHaveBeenLastCalledWith(31, expect.objectContaining({ sourceVersion: 'version31', order: expect.objectContaining({ customerId: 5, deliveryAddress: '地址' }) }))
+    expect(api.addOrder).not.toHaveBeenCalled()
+  })
   it('产品行入口只显示本产品待保存附件，移除复用整单会话且不独立落定', async () => {
     const w = await form()
     w.vm.form.items.push({ ...row(), id: 72, productId: 12, productCode: 'BB001MEOO' })

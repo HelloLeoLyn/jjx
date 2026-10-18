@@ -234,13 +234,18 @@ export const quotationApi = {
     })
   },
 
-  // 报价单转为订单
+  getOrderDraft(quotationId: number): AxiosPromise<import('@/types/sales/order').QuotationOrderDraft> {
+    return request({ url: `/sales/quotation/order-draft/${quotationId}`, method: 'get' })
+  },
+  // 报价单转为订单，仅在来源订单表单正式保存时调用。
   convert(
     quotationId: number,
-  ): AxiosPromise<{ orderId: number; orderNo: string }> {
+    data?: import('@/types/sales/order').QuotationOrderDraft,
+  ): AxiosPromise<number> {
     return request({
       url: `/sales/quotation/convert/${quotationId}`,
       method: 'post',
+      data,
     })
   },
 

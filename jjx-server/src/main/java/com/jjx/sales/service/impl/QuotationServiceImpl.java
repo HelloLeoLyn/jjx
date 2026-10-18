@@ -1022,23 +1022,66 @@ public class QuotationServiceImpl implements IQuotationService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Object convertToOrder(Long quotationId) {
-        SalesQuotation quotation = selectQuotationById(quotationId);
-        if (quotation == null) {
-            throw new BusinessException("报价单不存在");
-        }
+        return saveQuotationOrder(quotationId, null);
+    }
 
-        // 只有已接受的报价单可以转为订单
-        if (!QuotationStatus.ACCEPTED.getValue().equals(quotation.getQuotationStatus())) {
-            throw new BusinessException("只有已接受的报价单可以转为订单");
+    private SalesQuotation requireConvertibleQuotation(Long id, boolean lock) {
+        var query = Wrappers.<SalesQuotation>lambdaQuery().eq(SalesQuotation::getQuotationId, id).eq(SalesQuotation::getDeleted, 0);
+        if (lock) query.last("FOR UPDATE");
+        var quotation = quotationMapper.selectOne(query);
+        if (quotation == null) throw new BusinessException("报价单不存在");
+        if (!QuotationStatus.ACCEPTED.getValue().equals(quotation.getQuotationStatus()) || quotation.getConvertedOrderId() != null)
+            throw new BusinessException("报价单已变更或已转换，请刷新报价列表");
+        return quotation;
+    }
+
+    private List<com.jjx.system.domain.entity.SysAttachmentRef> quotationOrderRefs(Long id) {
+        return attachmentRefMapper.selectList(Wrappers.<com.jjx.system.domain.entity.SysAttachmentRef>lambdaQuery()
+                .eq(com.jjx.system.domain.entity.SysAttachmentRef::getSourceType, "quotation")
+                .eq(com.jjx.system.domain.entity.SysAttachmentRef::getSourceId, id)
+                .eq(com.jjx.system.domain.entity.SysAttachmentRef::getDeleted, 0)
+                .orderByAsc(com.jjx.system.domain.entity.SysAttachmentRef::getId));
+    }
+
+    private String quotationOrderVersion(SalesQuotation q) {
+        var rows = quotationItemMapper.selectList(Wrappers.<SalesQuotationItem>lambdaQuery().eq(SalesQuotationItem::getQuotationId, q.getQuotationId()).orderByAsc(SalesQuotationItem::getItemId));
+        try {
+            byte[] bytes = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules()
+                    .writeValueAsBytes(List.of(q, rows, quotationOrderRefs(q.getQuotationId())));
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (java.security.NoSuchAlgorithmException | com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("无法读取报价转换版本", e);
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.jjx.sales.domain.dto.QuotationOrderDraftDTO getOrderDraft(Long quotationId) {
+        var q = requireConvertibleQuotation(quotationId, false);
+        var result = new com.jjx.sales.domain.dto.QuotationOrderDraftDTO();
+        result.setOrder(buildQuotationOrder(q)); result.setSourceVersion(quotationOrderVersion(q));
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long convertToOrder(Long quotationId, com.jjx.sales.domain.dto.QuotationOrderDraftDTO draft) {
+        if (draft == null || draft.getOrder() == null || draft.getSourceVersion() == null) throw new BusinessException("请重新读取报价预填资料");
+        return saveQuotationOrder(quotationId, draft);
+    }
+
+    private SalesOrderAddDTO buildQuotationOrder(SalesQuotation quotation) {
+        Long quotationId = quotation.getQuotationId();
 
         // 从报价单创建订单
         SalesOrderAddDTO orderDTO = new SalesOrderAddDTO();
-        orderDTO.setOrderNo(orderService.generateOrderNo());
         orderDTO.setCustomerId(quotation.getCustomerId());
         orderDTO.setCustomerName(quotation.getCustomerName());
         orderDTO.setOrderDate(new java.util.Date());
-        orderDTO.setOrderType(1);
+        orderDTO.setOrderType(com.jjx.sales.enums.SalesOrderTypeEnum.STANDARD.getCode());
+        orderDTO.setContactPerson(quotation.getContactPerson()); orderDTO.setContactPhone(quotation.getContactPhone());
+        orderDTO.setSalesManagerId(quotation.getSalesPersonId()); orderDTO.setSalesManagerName(quotation.getSalesPersonName());
+        if (quotation.getValidUntil() != null) orderDTO.setDeliveryDate(java.util.Date.from(quotation.getValidUntil().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()));
         orderDTO.setRemark("由报价单[" + quotation.getQuotationNo() + "]转换");
         // 记录来源报价单（正向引用）
         orderDTO.setQuotationId(quotationId);
@@ -1063,6 +1106,12 @@ public class QuotationServiceImpl implements IQuotationService {
                 item.setProductId(qi.getProductId());
                 item.setProductCode(qi.getProductCode());
                 item.setProductName(qi.getProductName());
+                item.setSerialNo(qi.getSerialNo()); item.setPanelType(qi.getPanelType()); item.setPanelFeature(qi.getPanelFeature());
+                item.setCircuitType(qi.getCircuitType()); item.setCircuitFeature(qi.getCircuitFeature());
+                if (qi.getProductId() != null) {
+                    var product = productMapper.selectById(qi.getProductId());
+                    if (product != null) item.setSpecification(product.getSpecJson());
+                }
                 item.setQuantity(qi.getQuantity());
                 item.setUnitPrice(qi.getUnitPrice());
                 item.setUnit(qi.getUnit());
@@ -1073,14 +1122,42 @@ public class QuotationServiceImpl implements IQuotationService {
             orderDTO.setItems(items);
         }
 
+        orderDTO.setAttachments(quotationOrderRefs(quotationId).stream().map(ref -> {
+            var a = new SalesOrderAddDTO.OrderAttachmentDTO(); a.setAttachmentId(ref.getAttachmentId()); a.setDocumentType(ref.getDocumentType());
+            a.setProductId(ref.getProductId()); a.setProductCode(ref.getProductCode()); return a;
+        }).toList());
+        return orderDTO;
+    }
+
+    private Long saveQuotationOrder(Long quotationId, com.jjx.sales.domain.dto.QuotationOrderDraftDTO draft) {
+        var quotation = requireConvertibleQuotation(quotationId, true);
+        var canonical = buildQuotationOrder(quotation);
+        SalesOrderAddDTO orderDTO = draft == null ? canonical : draft.getOrder();
+        if (draft != null && !quotationOrderVersion(quotation).equals(draft.getSourceVersion())) throw new BusinessException("报价资料已变化，请重新打开报价转换页面");
+        if (!java.util.Objects.equals(orderDTO.getCustomerId(), quotation.getCustomerId())) throw new BusinessException("报价来源客户不能更换");
+        orderDTO.setQuotationId(quotationId); orderDTO.setTraceId(quotation.getTraceId());
+        orderDTO.setCustomerName(quotation.getCustomerName()); orderDTO.setOrderNo(null);
+        orderDTO.setOrderType(com.jjx.sales.enums.SalesOrderTypeEnum.STANDARD.getCode());
+        orderDTO.setQuotationConversionValidated(true);
+        var attachments = new ArrayList<SalesOrderAddDTO.OrderAttachmentDTO>();
+        if (orderDTO.getAttachments() != null) attachments.addAll(orderDTO.getAttachments());
+        for (var original : canonical.getAttachments()) {
+            boolean belongs = original.getProductId() == null && (original.getProductCode() == null || original.getProductCode().isBlank())
+                    || orderDTO.getItems() != null && orderDTO.getItems().stream().anyMatch(item ->
+                    original.getProductId() != null ? original.getProductId().equals(item.getProductId()) : original.getProductCode().equals(item.getProductCode()));
+            if (belongs && attachments.stream().noneMatch(a -> java.util.Objects.equals(a.getAttachmentId(), original.getAttachmentId())
+                    && java.util.Objects.equals(a.getProductId(), original.getProductId()) && java.util.Objects.equals(a.getProductCode(), original.getProductCode()))) attachments.add(original);
+        }
+        orderDTO.setAttachments(attachments);
         Long orderId = orderService.insertOrder(orderDTO);
+        if (orderId == null) throw new BusinessException("订单保存失败，报价转换已回滚");
 
         // 转订单成功后：报价单状态改为已完成(9)，并回写转换结果（反向引用）
         Integer from = quotation.getQuotationStatus();
         quotation.setQuotationStatus(QuotationStatus.COMPLETED.getValue());
         quotation.setConvertedOrderId(orderId);
         quotation.setConvertTime(LocalDateTime.now());
-        quotationMapper.updateById(quotation);
+        if (quotationMapper.updateById(quotation) != 1) throw new BusinessException("报价转换状态保存失败，整单已回滚");
         recordFlow(quotation, "CONVERT_ORDER", "转订单完成", from, QuotationStatus.COMPLETED.getValue(), "转为销售订单，订单号:" + orderId, null);
 
         publishQuotationEvent("quotation.converted", quotation);
