@@ -599,7 +599,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         // 随单附件落定（dev-20261017-002）：同事务内建引用/草稿行转正，任一条失败整单回滚
-        bindSampleAttachments(orderId, dto.getAttachments());
+        bindSampleAttachments(orderId, customer.getCustomerId(), dto.getAttachments());
 
         log.info("样品单[{}] 编辑保存 orderId={}，客户={}，明细{}条", order.getOrderNo(), orderId, customer.getCustomerName(), items.size());
         SalesOrder result = orderMapper.selectById(orderId);
@@ -608,13 +608,17 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     /**
-     * 样品单随单附件落定（dev-20261017-002，承 066/081 报价侧口径）：
+     * 样品单随单附件落定（dev-20261017-002；归属校验对齐订单侧口径 dev-20261018-023）：
      * 保存单据 = 建引用 + 草稿行转正（原子）；转正唯一入口 {@link com.jjx.system.service.AttachmentRefService#create}，
-     * 本方法不写第二套 SQL。归属 = 样品单 + 产品（一单一成品）：产品 id 优先取入参，缺失按明细编码回填；
+     * 本方法不写第二套 SQL。归属 = 样品单 + 产品（一单一成品）：
+     * 1）传 productId：必须属于本单明细且属于本单客户；与 productCode 不一致直接拒绝（整单回滚）；
+     * 2）只传 productCode：命中本单明细编码则落产品；未知编码静默降为整单附件（productId/productCode 均空）；
+     * 3）都不传：整单附件（两字段均空）。
      * 缺 attachmentId / documentType 抛业务异常 ⇒ 整单回滚（禁 try-catch 吞掉）。
      */
     private void bindSampleAttachments(
             Long orderId,
+            Long customerId,
             java.util.List<com.jjx.sales.domain.dto.SampleOrderCreateDTO.SampleAttachmentDTO> attachments) {
         if (attachments == null || attachments.isEmpty()) {
             return;
@@ -631,26 +635,55 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 throw new BusinessException("attachments[" + i + "].documentType 不能为空");
             }
         }
-        // 明细产品 id：编码 → productId（此时明细已保存，productId 已建档/回填）
-        java.util.Map<String, Long> productIdByCode = new java.util.LinkedHashMap<>();
+        // 本单明细（此时明细已保存，productId 已建档/回填）
+        java.util.Map<Long, com.jjx.sales.domain.vo.SalesOrderProductVO> itemById = new java.util.LinkedHashMap<>();
+        java.util.Map<String, com.jjx.sales.domain.vo.SalesOrderProductVO> itemByCode = new java.util.LinkedHashMap<>();
         java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> rows = orderProductService.getListByOrderId(orderId);
         if (rows != null) {
             for (com.jjx.sales.domain.vo.SalesOrderProductVO row : rows) {
-                if (row.getProductCode() == null || row.getProductCode().isBlank() || row.getProductId() == null) {
-                    continue;
+                if (row.getProductId() != null) itemById.putIfAbsent(row.getProductId(), row);
+                if (row.getProductCode() != null && !row.getProductCode().isBlank()) {
+                    itemByCode.putIfAbsent(row.getProductCode().trim(), row);
                 }
-                productIdByCode.putIfAbsent(row.getProductCode().trim(), row.getProductId());
             }
         }
+        // 先全量校验/解析，再统一落库：任何一条校验失败时不会产生已写入的引用（配合事务整单回滚）
+        java.util.List<com.jjx.system.domain.dto.AttachmentRefDTO> refs = new java.util.ArrayList<>();
         int sortOrder = 0;
-        for (com.jjx.sales.domain.dto.SampleOrderCreateDTO.SampleAttachmentDTO attachment : attachments) {
+        for (int i = 0; i < attachments.size(); i++) {
+            com.jjx.sales.domain.dto.SampleOrderCreateDTO.SampleAttachmentDTO attachment = attachments.get(i);
             String productCode = attachment.getProductCode() == null ? null : attachment.getProductCode().trim();
             if (productCode != null && productCode.isEmpty()) {
                 productCode = null;
             }
             Long productId = attachment.getProductId();
-            if (productId == null && productCode != null) {
-                productId = productIdByCode.get(productCode);
+            if (productId != null) {
+                com.jjx.sales.domain.vo.SalesOrderProductVO item = itemById.get(productId);
+                if (item == null) {
+                    throw new BusinessException("第" + (i + 1) + "条附件：产品不属于本样品单（productId=" + productId + "）");
+                }
+                com.jjx.product.domain.entity.Product product = productMapper.selectById(productId);
+                if (product == null) {
+                    throw new BusinessException("第" + (i + 1) + "条附件：产品不存在（productId=" + productId + "）");
+                }
+                if (customerId != null && product.getCustomerId() != null
+                        && !customerId.equals(product.getCustomerId())) {
+                    throw new BusinessException("第" + (i + 1) + "条附件：产品不属于本单客户（productId=" + productId + "）");
+                }
+                String itemCode = item.getProductCode() == null ? null : item.getProductCode().trim();
+                if (productCode != null && !productCode.equals(itemCode)) {
+                    throw new BusinessException("第" + (i + 1) + "条附件：产品ID与编码不一致（ID=" + productId
+                            + "，传入编码=" + productCode + "，本单编码=" + itemCode + "）");
+                }
+                productCode = itemCode;
+            } else if (productCode != null) {
+                com.jjx.sales.domain.vo.SalesOrderProductVO item = itemByCode.get(productCode);
+                if (item != null && item.getProductId() != null) {
+                    productId = item.getProductId();
+                } else {
+                    // 未知编码：按整单附件处理（不报错，也不落未归属的编码）
+                    productCode = null;
+                }
             }
             com.jjx.system.domain.dto.AttachmentRefDTO ref = new com.jjx.system.domain.dto.AttachmentRefDTO();
             ref.setAttachmentId(attachment.getAttachmentId());
@@ -660,6 +693,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             ref.setProductCode(productCode);
             ref.setDocumentType(attachment.getDocumentType().trim());
             ref.setSortOrder(sortOrder++);
+            refs.add(ref);
+        }
+        for (com.jjx.system.domain.dto.AttachmentRefDTO ref : refs) {
             attachmentRefService.create(ref);
         }
     }
@@ -907,7 +943,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         // 随单附件落定（dev-20261017-002）：同事务内建引用/草稿行转正，任一条失败整单回滚
-        bindSampleAttachments(order.getOrderId(), dto.getAttachments());
+        bindSampleAttachments(order.getOrderId(), dto.getCustomerId(), dto.getAttachments());
 
         return order;
     }
