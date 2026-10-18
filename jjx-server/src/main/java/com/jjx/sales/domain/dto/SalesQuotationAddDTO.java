@@ -7,6 +7,7 @@ import java.util.List;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.jjx.sales.domain.entity.SalesQuotationItem;
+import com.jjx.common.validation.ValidContactPhone;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -15,7 +16,6 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 @Data
@@ -73,9 +73,9 @@ public class SalesQuotationAddDTO {
     /**
      * 联系电话
      */
-    @Schema(description = "联系电话")
-    // 可选电话：留空 / 11 位手机号 / 区号+座机（报价单·订单·客户四处口径必须一致，改则同改）
-    @Pattern(regexp = "^(1[3-9]\\d{9}|(0\\d{2,3}-?)?\\d{7,8})?$", message = "联系电话格式不正确")
+    @Schema(description = "联系电话（可选，最长50字符，可含数字、+、-、空格、括号、#）")
+    // dev-20261018-026：可选、≤50 字符、字符白名单（不做手机号/座机格式判断），规则仅见 ContactPhoneRule
+    @ValidContactPhone
     private String contactPhone;
 
     /**

@@ -3,6 +3,7 @@ package com.jjx.sales.domain.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.jjx.common.annotation.ValidationGroups;
+import com.jjx.common.validation.ValidContactPhone;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -40,9 +41,9 @@ public class SalesOrderEditDTO {
     @Schema(description = "联系人", example = "张三")
     private String contactPerson;
 
-    // 可选电话：留空 / 11 位手机号 / 区号+座机（报价单·订单·客户四处口径必须一致，改则同改）
-    @Pattern(regexp = "^(1[3-9]\\d{9}|(0\\d{2,3}-?)?\\d{7,8})?$", message = "联系电话格式不正确")
-    @Schema(description = "联系电话", example = "13800138000")
+    // dev-20261018-026：可选、≤50 字符、字符白名单（不做手机号/座机格式判断），规则仅见 ContactPhoneRule
+    @ValidContactPhone
+    @Schema(description = "联系电话（可选，最长50字符，可含数字、+、-、空格、括号、#）", example = "+86 13800000000")
     private String contactPhone;
 
     @NotNull(message = "订单日期不能为空")
