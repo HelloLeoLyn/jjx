@@ -117,6 +117,110 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private static final String SOURCE_SALES_ORDER = "SALES_ORDER";
     private static final String SOURCE_SAMPLE_ORDER = "SAMPLE_ORDER";
 
+    private static final List<Integer> ACTIVE_ORDER_SAMPLE_STATUSES = List.of(
+            SampleOrderStatusEnum.CREATED.getValue(), SampleOrderStatusEnum.REQUEST.getValue(),
+            SampleOrderStatusEnum.ENGINEERING.getValue(), SampleOrderStatusEnum.SAMPLE_READY.getValue(),
+            SampleOrderStatusEnum.SAMPLE_SENT.getValue(), SampleOrderStatusEnum.REJECTED.getValue());
+
+    private SalesOrder requireSampleSourceOrder(Long orderId, boolean lock) {
+        SalesOrder source = orderId == null ? null : (lock ? orderMapper.selectByIdForUpdate(orderId) : orderMapper.selectById(orderId));
+        if (source == null || !SalesOrderTypeEnum.STANDARD.getCode().equals(source.getOrderType()))
+            throw new BusinessException("来源销售订单不存在");
+        return source;
+    }
+
+    private List<com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO.ActiveSample> activeOrderSamples(
+            SalesOrder source, Long productId, String productCode) {
+        boolean lock = org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+                && !org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        return sampleOrderMapper.selectActiveOrderSamples(SOURCE_SALES_ORDER, source.getOrderNo(), source.getCustomerId(),
+                productId, productCode, SalesOrderTypeEnum.SAMPLE.getCode(), ACTIVE_ORDER_SAMPLE_STATUSES, lock);
+    }
+
+    private String sampleSourceVersion(SalesOrder source, List<com.jjx.sales.domain.vo.SalesOrderProductVO> items) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("orderId", source.getOrderId()); data.put("orderNo", source.getOrderNo());
+        data.put("customerId", source.getCustomerId()); data.put("customerName", source.getCustomerName());
+        data.put("contactPerson", source.getContactPerson()); data.put("contactPhone", source.getContactPhone());
+        data.put("updated", source.getUpdateTime()); data.put("deliveryDate", source.getDeliveryDate());
+        data.put("items", items.stream().sorted(java.util.Comparator.comparing(com.jjx.sales.domain.vo.SalesOrderProductVO::getId)).toList());
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(objectMapper.writeValueAsBytes(data)));
+        } catch (java.security.NoSuchAlgorithmException | com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("无法生成订单打样版本", e);
+        }
+    }
+
+    @Override
+    public com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO getSalesOrderSampleOptions(Long sourceOrderId) {
+        SalesOrder source = requireSampleSourceOrder(sourceOrderId, false);
+        var items = orderProductService.getListByOrderId(sourceOrderId);
+        var result = new com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO();
+        result.setOrderId(sourceOrderId); result.setOrderNo(source.getOrderNo()); result.setCustomerId(source.getCustomerId());
+        result.setCustomerName(source.getCustomerName()); result.setContactPerson(source.getContactPerson()); result.setContactPhone(source.getContactPhone());
+        if (source.getDeliveryDate() != null) result.setDeliveryDate(source.getDeliveryDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate().toString());
+        result.setSourceVersion(sampleSourceVersion(source, items));
+        result.setItems(items.stream().map(row -> {
+            var item = new com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO.Item();
+            item.setItemId(row.getId()); item.setProductId(row.getProductId()); item.setProductCode(row.getProductCode());
+            item.setProductName(row.getProductName()); item.setOrderQuantity(row.getQuantity()); item.setUnit(row.getUnit());
+            item.setRemark(row.getLineRemark() != null ? row.getLineRemark() : row.getRemark());
+            item.setActiveSamples(activeOrderSamples(source, row.getProductId(), row.getProductCode()));
+            return item;
+        }).toList());
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<SalesOrder> createBatchFromSalesOrder(Long sourceOrderId, com.jjx.sales.domain.dto.SalesOrderBatchSampleDTO dto) {
+        SalesOrder source = requireSampleSourceOrder(sourceOrderId, true);
+        if (dto == null || dto.getItems() == null || dto.getItems().isEmpty()) throw new BusinessException("请至少勾选一个打样产品");
+        var sourceItems = orderProductService.getListByOrderId(sourceOrderId);
+        if (!sampleSourceVersion(source, sourceItems).equals(dto.getSourceVersion())) throw new BusinessException("原订单资料已变化，请刷新后重新勾选打样产品");
+        Map<Long, com.jjx.sales.domain.vo.SalesOrderProductVO> byId = sourceItems.stream().collect(Collectors.toMap(
+                com.jjx.sales.domain.vo.SalesOrderProductVO::getId, row -> row));
+        Set<Long> itemIds = new LinkedHashSet<>(); Set<Long> productIds = new LinkedHashSet<>(); Set<String> codes = new LinkedHashSet<>();
+        // 所有行先校验，随后仍在同一来源订单锁和同一事务中逐产品建单。
+        for (var requested : dto.getItems()) {
+            var row = requested == null ? null : byId.get(requested.getItemId());
+            if (row == null) throw new BusinessException("选中的产品明细不属于来源销售订单，请刷新后重试");
+            String code = row.getProductCode() == null ? "" : row.getProductCode().trim();
+            if (!itemIds.add(row.getId()) || row.getProductId() != null && !productIds.add(row.getProductId())
+                    || !codes.add(code.toUpperCase(java.util.Locale.ROOT))) throw new BusinessException("产品[" + code + "]不能重复勾选");
+            if (code.isEmpty()) throw new BusinessException("来源订单产品编码为空，请先完善订单");
+            try {
+                if (requested.getQuantity() == null || requested.getQuantity().intValueExact() <= 0) throw new ArithmeticException();
+            } catch (ArithmeticException e) { throw new BusinessException("产品[" + code + "]的打样数量必须为正整数且不超过2147483647"); }
+            if (!activeOrderSamples(source, row.getProductId(), code).isEmpty()) throw new BusinessException("产品[" + code + "]已有进行中的样品单，请打开现有样品单");
+            if (row.getProductId() != null) productCustomerValidator.validateBelongsToCustomer(row.getProductId(), source.getCustomerId());
+        }
+        List<SalesOrder> created = new ArrayList<>();
+        for (var requested : dto.getItems()) {
+            var row = byId.get(requested.getItemId());
+            var sample = new com.jjx.sales.domain.dto.SampleOrderCreateDTO();
+            sample.setCustomerId(source.getCustomerId()); sample.setSourceType(SOURCE_SALES_ORDER); sample.setSourceNo(source.getOrderNo());
+            sample.setContactPerson(source.getContactPerson()); sample.setContactPhone(source.getContactPhone());
+            sample.setDeliveryDate(dto.getDeliveryDate() == null ? null : dto.getDeliveryDate().toString());
+            sample.setTechRequirement(dto.getTechRequirement()); sample.setRemark(requested.getRemark());
+            var item = new com.jjx.sales.domain.dto.SampleOrderCreateDTO.Item();
+            item.setProductId(row.getProductId()); item.setProductCode(row.getProductCode()); item.setProductName(row.getProductName());
+            item.setSpecification(row.getSpecification()); item.setCustomerMaterialNo(row.getCustomerMaterialNo());
+            item.setUnit(row.getUnit()); item.setQuantity(requested.getQuantity().intValueExact()); sample.setItems(List.of(item));
+            try {
+                SalesOrder saved = self.createSample(sample);
+                SalesOrder current = orderMapper.selectById(saved.getOrderId());
+                if (current == null || !java.util.Objects.equals(current.getTotalQuantity(), item.getQuantity())
+                        || !java.util.Objects.equals(current.getSampleQty(), item.getQuantity())) throw new BusinessException("样品数量同步失败");
+                created.add(current);
+            } catch (RuntimeException e) {
+                throw new BusinessException("产品[" + row.getProductCode() + "]创建失败，整批未保存：" + e.getMessage());
+            }
+        }
+        return created;
+    }
+
     /** 样品订单公共主表落库后同步一对一扩展记录。 */
     private void upsertSampleOrderProfile(SalesOrder order) {
         if (order == null || order.getOrderId() == null
@@ -783,6 +887,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException("来源单号不能超过80字符");
         }
         SalesQuotation quotation = null;
+        SalesOrder sourceSalesOrder = null;
         if (SOURCE_QUOTATION.equals(sourceType)) {
             quotation = findQuotationByNo(sourceNo);
             if (quotation == null || quotation.getDeleted() == 1) {
@@ -801,7 +906,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         } else if (SOURCE_SALES_ORDER.equals(sourceType)) {
             SalesOrder sourceOrder = orderMapper.selectOne(Wrappers.<SalesOrder>lambdaQuery()
-                    .eq(SalesOrder::getOrderNo, sourceNo).eq(SalesOrder::getDeleted, 0));
+                    .eq(SalesOrder::getOrderNo, sourceNo).eq(SalesOrder::getDeleted, 0).last("FOR UPDATE"));
             if (sourceOrder == null || !SalesOrderTypeEnum.STANDARD.getCode().equals(sourceOrder.getOrderType())) {
                 throw new BusinessException("来源销售订单不存在");
             }
@@ -821,6 +926,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             if (!belongsToOrder) {
                 throw new BusinessException("打样产品不属于来源销售订单");
             }
+            if (!activeOrderSamples(sourceOrder, item.getProductId(), item.getProductCode()).isEmpty()) {
+                throw new BusinessException("该订单产品已有进行中的样品单，请打开现有样品单");
+            }
+            sourceSalesOrder = sourceOrder;
         } else if (sourceType != null) {
             throw new BusinessException("不支持的样品单来源类型");
         }
@@ -842,12 +951,17 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         order.setContactPhone(dto.getContactPhone() != null && !dto.getContactPhone().isEmpty()
                 ? dto.getContactPhone()
                 : (quotation != null && quotation.getContactPhone() != null ? quotation.getContactPhone() : customer.getContactPhone()));
+        if (sourceSalesOrder != null) {
+            order.setContactPerson(sourceSalesOrder.getContactPerson());
+            order.setContactPhone(sourceSalesOrder.getContactPhone());
+        }
         order.setOrderDate(new Date());
         order.setOrderType(SalesOrderTypeEnum.SAMPLE.getCode());
         order.setSampleStatus(SampleOrderStatusEnum.CREATED.getValue());
         order.setSampleRound(1);
-        order.setCurrency(quotation != null ? quotation.getCurrency() : "CNY");
-        order.setExchangeRate(quotation != null ? quotation.getExchangeRate() : java.math.BigDecimal.ONE);
+        order.setCurrency(quotation != null ? quotation.getCurrency() : sourceSalesOrder != null ? sourceSalesOrder.getCurrency() : "CNY");
+        order.setExchangeRate(quotation != null ? quotation.getExchangeRate() : sourceSalesOrder != null ? sourceSalesOrder.getExchangeRate() : java.math.BigDecimal.ONE);
+        if (sourceSalesOrder != null) order.setDeliveryAddress(sourceSalesOrder.getDeliveryAddress());
         try {
             order.setSalesManagerId(SecurityUtils.getUserId());
             order.setSalesManagerName(SecurityUtils.getDisplayName());
@@ -873,8 +987,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             order.setEngineeringNote(dto.getTechRequirement());
         }
         // 链路：带报价单继承报价单 trace_id，否则新建独立链路
-        order.setTraceId(quotation != null && quotation.getTraceId() != null
-                ? quotation.getTraceId()
+        order.setTraceId(quotation != null && quotation.getTraceId() != null ? quotation.getTraceId()
+                : sourceSalesOrder != null && sourceSalesOrder.getTraceId() != null ? sourceSalesOrder.getTraceId()
                 : java.util.UUID.randomUUID().toString().replace("-", ""));
 
         orderMapper.insert(order);
@@ -901,6 +1015,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 d.setProductId(it.getProductId());
                 d.setProductCode(it.getProductCode());
                 d.setProductName(it.getProductName());
+                d.setSpecification(it.getSpecification());
+                d.setCustomerMaterialNo(it.getCustomerMaterialNo());
                 d.setQuantity(it.getQuantity());
                 d.setUnit(it.getUnit() != null ? it.getUnit() : "PCS");
                 d.setUnitPrice(java.math.BigDecimal.ZERO);

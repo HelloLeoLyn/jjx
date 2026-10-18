@@ -10,6 +10,12 @@ import java.util.List;
  */
 public interface ISampleOrderService {
 
+    com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO getSalesOrderSampleOptions(Long sourceOrderId);
+
+    /** 一次事务创建多张单产品样品单。 */
+    List<SalesOrder> createBatchFromSalesOrder(Long sourceOrderId,
+            com.jjx.sales.domain.dto.SalesOrderBatchSampleDTO dto);
+
     /**
      * 从报价单创建样品单
      */

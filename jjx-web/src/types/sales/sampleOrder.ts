@@ -1,5 +1,35 @@
 import type { PageQuery } from '@/types'
 
+export interface OrderSampleOption {
+  itemId: number
+  productId?: number
+  productCode: string
+  productName: string
+  unit?: string
+  orderQuantity: number
+  remark?: string
+  activeSamples: { orderId: number; orderNo: string; sampleStatus: number }[]
+}
+
+export interface OrderSampleOptions {
+  orderId: number
+  orderNo: string
+  customerId: number
+  customerName: string
+  contactPerson?: string
+  contactPhone?: string
+  sourceVersion: string
+  deliveryDate?: string
+  items: OrderSampleOption[]
+}
+
+export interface OrderBatchSampleRequest {
+  sourceVersion: string
+  deliveryDate?: string
+  techRequirement?: string
+  items: { itemId: number; quantity: number; remark?: string }[]
+}
+
 export interface SampleOrderQueryParams extends PageQuery {
   orderNo?: string
   customerId?: number
@@ -31,6 +61,8 @@ export interface SampleOrderListParams {
 
 export interface SampleOrder {
   orderId: number
+  sampleProductCode?: string
+  sampleProductName?: string
   traceId?: string
   orderNo: string
   sourceType?: 'QUOTATION' | 'SALES_ORDER' | 'SAMPLE_ORDER'

@@ -39,6 +39,23 @@ public class SampleOrderController extends BaseController {
     /** 附件双写收口 dev-20261014-028：证据入参由老字段 attachmentIds 改为引用 ID。 */
     private final com.jjx.system.mapper.SysAttachmentRefMapper attachmentRefMapper;
 
+    @Operation(summary = "查询销售订单批量打样产品及进行中样品单")
+    @SaCheckPermission(value = {"sales:sample:add", "sales:order:view"}, mode = SaMode.AND)
+    @GetMapping("/from-order/{sourceOrderId}")
+    public Result<com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO> fromOrderOptions(@PathVariable Long sourceOrderId) {
+        return Result.success(sampleOrderService.getSalesOrderSampleOptions(sourceOrderId));
+    }
+
+    @Operation(summary = "从销售订单批量创建样品单，整批成功或回滚")
+    @SaCheckPermission(value = {"sales:sample:add", "sales:order:view"}, mode = SaMode.AND)
+    @Log(module = "样品单管理", businessType = BusinessType.INSERT,
+            bizType = "'sales_order'", bizId = "#sourceOrderId", detail = "'销售订单批量发起打样'", action = LogActions.SAMPLE_CREATE)
+    @PostMapping("/from-order/{sourceOrderId}")
+    public Result<List<SalesOrder>> batchFromOrder(@PathVariable Long sourceOrderId,
+            @Valid @RequestBody com.jjx.sales.domain.dto.SalesOrderBatchSampleDTO dto) {
+        return Result.success(sampleOrderService.createBatchFromSalesOrder(sourceOrderId, dto));
+    }
+
     /**
      * 证据入参收口（双写收口 dev-20261014-028）：拒绝老字段（附件 file id），
      * 只收附件引用 ID（sys_attachment_ref.id）并校验归属本样品单。

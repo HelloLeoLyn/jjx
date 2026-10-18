@@ -2,6 +2,8 @@ import rawRequest from '@/utils/request'
 import type { AxiosRequestConfig } from 'axios'
 import type { PageResult, R as ApiResult } from '@/types'
 import type {
+  OrderSampleOptions,
+  OrderBatchSampleRequest,
   CreateFromQuotationDTO,
   InkSuggestion,
   SalesOrderProduct,
@@ -67,6 +69,19 @@ export type { SampleOrderQueryParams } from '@/types/sales/sampleOrder'
 
 // 样品单接口
 export const sampleOrderApi = {
+  getOrderSampleOptions(sourceOrderId: number) {
+    return request<R<OrderSampleOptions>>({
+      url: `/sales/sample-order/from-order/${sourceOrderId}`,
+      method: 'get',
+    })
+  },
+  createBatchFromOrder(sourceOrderId: number, data: OrderBatchSampleRequest) {
+    return request<R<SampleOrder[]>>({
+      url: `/sales/sample-order/from-order/${sourceOrderId}`,
+      method: 'post',
+      data,
+    })
+  },
   // 从报价单创建样品单
   // 新增样品单（直接选客户+产品明细，报价单可选）
   create(data: SampleOrderCreateDTO) {
