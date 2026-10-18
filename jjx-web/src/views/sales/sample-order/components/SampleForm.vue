@@ -7,26 +7,15 @@
       label-width="110px"
       :class="mode === 'dialog' ? '' : 'sample-form-inline'"
     >
-      <!-- 客户 -->
+      <!-- 客户（dev-20261018-038：复用公共 CustomerSelector，不再维护本地候选与第二套远程查询） -->
       <el-form-item label="客户" prop="customerId">
-        <el-select
+        <CustomerSelector
           v-model="form.customerId"
+          value-type="customerId"
           placeholder="请选择客户"
-          filterable
-          remote
-          :remote-method="searchCustomers"
-          :loading="customerSearching"
           :disabled="isQuotationLocked"
-          style="width: 100%"
           @change="onCustomerChange"
-        >
-          <el-option
-            v-for="c in customerOptions"
-            :key="c.customerId"
-            :label="c.customerName"
-            :value="c.customerId"
-          />
-        </el-select>
+        />
       </el-form-item>
 
       <!-- 来源类型 -->
@@ -239,16 +228,16 @@ import { Plus } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { quotationApi } from '@/api/sales/quotation'
-import { customerApi } from '@/api/sales/customer'
 import { searchProduct } from '@/api/product'
 import type {
   SampleDisplayMode,
   SampleProductItem,
-  CustomerOption,
   QuotationOption,
   SampleOrderApiLike,
 } from './types'
+import type { CustomerSearchVO } from '@/types/sales/customer'
 import request from '@/utils/request'
+import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import ProductCodeGenDialog from '@/components/ProductCodeGenDialog/index.vue'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
 import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
@@ -317,8 +306,10 @@ const api = computed<SampleOrderApiLike>(() => ({
 // ====== 状态 ======
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
-const customerOptions = ref<CustomerOption[]>([])
-const customerSearching = ref(false)
+/** 当前选中客户对象（CustomerSelector change 带回；仅用于简称等展示信息，不做候选缓存） */
+const selectedCustomer = ref<Partial<CustomerSearchVO> | null>(null)
+/** 已生效的客户 id：用于区分「换客户」与「同一客户重选」，避免重选覆盖手工填的联系人 */
+const activeCustomerId = ref<number | null>(null)
 const productOptions = ref<any[]>([])
 const productSearching = ref(false)
 const codeGenVisible = ref(false)
@@ -467,7 +458,7 @@ const isQuotationLocked = computed(
 
 // 「新建产品」：现场用产品编码器生成编码，productId 留空、随单据保存由后端自动建档
 const customerShort = computed(
-  () => customerOptions.value.find((c) => c.customerId === form.customerId)?.customerShortName || '',
+  () => selectedCustomer.value?.customerShortName || '',
 )
 const sourceFromQuotation = computed(() => form.sourceType === 'QUOTATION' && !!form.sourceNo)
 const showProductSelect = computed(() => !sourceFromQuotation.value && !productIsNew.value)
@@ -489,25 +480,29 @@ const dialogProps = computed(() => {
   }
 })
 
-// ====== 客户搜索 ======
-async function searchCustomers(keyword: string) {
-  customerSearching.value = true
-  try {
-    const res: any = await customerApi.searchCustomers(keyword || '')
-    customerOptions.value = res.data || []
-  } catch {
-    customerOptions.value = []
-  } finally {
-    customerSearching.value = false
-  }
+// ====== 客户选择（dev-20261018-038：只认 CustomerSelector 的 change，不再本地查候选）======
+/** 记住已生效客户（回填/来源报价单等程序性赋值也走这里，保持「同一客户重选」判定一致） */
+function applyCustomerIdentity(cid?: number | null, customer?: Partial<CustomerSearchVO> | null) {
+  activeCustomerId.value = cid ? Number(cid) : null
+  selectedCustomer.value = customer || null
 }
 
-function onCustomerChange(cid: number) {
+/**
+ * 选中客户后的身份同步：
+ * 1）换客户 → 用该客户联系人与电话覆盖（客户没填则清空，不把上一位客户的信息留给新客户）；
+ * 2）同一客户重选 → 保留手工改过的联系人；
+ * 3）清空 → 联系人电话与产品选择一并清掉，避免旧客户身份残留。
+ * 备注：来源报价单/编辑回填是程序赋值，不触发 change，仍用单据自身的联系人。
+ */
+function onCustomerChange(cid?: number | null, customer?: Partial<CustomerSearchVO> | null) {
+  const nextId = cid ? Number(cid) : null
+  const changed = (activeCustomerId.value ?? null) !== nextId
+  if (!cid) form.customerId = undefined
   if (form.sourceType === 'SALES_ORDER') form.sourceNo = ''
-  const c = customerOptions.value.find((x) => x.customerId === cid)
-  if (c) {
-    if (!form.contactPerson) form.contactPerson = c.contactPerson || ''
-    if (!form.contactPhone) form.contactPhone = c.contactPhone || ''
+  applyCustomerIdentity(nextId, customer)
+  if (changed) {
+    form.contactPerson = nextId ? customer?.contactPerson || '' : ''
+    form.contactPhone = nextId ? customer?.contactPhone || '' : ''
   }
   resetProductSelection()
 }
@@ -561,9 +556,11 @@ async function onQuotationChange(quotationNo?: string) {
   form.contactPerson = q.contactPerson || ''
   form.contactPhone = q.contactPhone || ''
   form.deliveryDate = q.validUntil || ''
-  if (!customerOptions.value.some((c) => c.customerId === q.customerId)) {
-    customerOptions.value.push({ ...q })
-  }
+  // 来源报价单是程序性赋值：只记身份（回显交给 CustomerSelector 按 id 取客户名），不覆盖报价单联系人
+  applyCustomerIdentity(q.customerId, {
+    customerId: q.customerId,
+    customerName: q.customerName,
+  })
   const requestId = quotationRequestId
   quotationProductLoading.value = true
   try {
@@ -648,6 +645,7 @@ function clearNewProduct() {
 // ====== 重置 & 数据回填 ======
 function resetForm() {
   form.customerId = undefined
+  applyCustomerIdentity(null, null)
   form.sourceType = ''
   form.sourceNo = ''
   form.deliveryDate = ''
@@ -675,14 +673,12 @@ function fillFromOrder(order: Record<string, any>, products: SampleProductItem[]
   form.contactPhone = order.contactPhone || ''
   form.techRequirement = order.engineeringNote || order.techRequirement || ''
   form.remark = order.remark || ''
-  if (order.customerId && !customerOptions.value.some((c) => c.customerId === order.customerId)) {
-    customerOptions.value.push({
-      customerId: order.customerId,
-      customerName: order.customerName || '',
-      contactPerson: order.contactPerson || '',
-      contactPhone: order.contactPhone || '',
-    })
-  }
+  // 编辑回显：客户名由 CustomerSelector 按 customerId 自动取；这里只记身份，联系人仍用单据快照
+  applyCustomerIdentity(order.customerId, {
+    customerId: order.customerId,
+    customerName: order.customerName || '',
+    customerShortName: order.customerShortName || '',
+  })
 }
 
 // ====== 生命周期 ======
@@ -692,7 +688,6 @@ async function initForCreate() {
   currentId.value = null
   ensureDraftId()
   await loadQuotationOptions()
-  if (customerOptions.value.length === 0) await searchCustomers('')
 }
 
 async function initForEdit() {
