@@ -36,6 +36,17 @@
 
 ---
 
+## 0b. start-jjx.sh —— 启动后端（dev-20261018-029）
+
+- 用途：Windows Git Bash / Linux 共用启动入口，默认按脚本位置定位 `jjx-server/target/jjx-server-1.0.0.jar`，从其他目录调用也可定位。
+- 危险等级：🟡 启动后端进程（应用可能写日志、连接数据库）；`--help` 为 🟢 只读。执行前须有当次明确的服务启动授权。
+- 前置：Bash、Java、已构建的后端 JAR。查看帮助：`bash start-jjx.sh --help`；启动：`bash start-jjx.sh`。
+- 配置：默认尝试 `/etc/jjx-server/jjx.env`，不存在时使用当前环境变量继续启动；不使用 AI 时无需配置 AI。该默认文件存在但不可读时仍报错。
+- 自定义配置文件：`JJX_ENV_FILE='/c/private/jjx.env' bash start-jjx.sh`。文件按 Bash 语法加载并导出变量；显式指定后文件必须存在且可读，空路径也会报错。请只加载可信文件，不把密钥提交到仓库。
+- 自定义 JAR：`JJX_JAR_FILE='/c/build output/jjx-server.jar' bash start-jjx.sh`。覆盖路径中的空格须加引号，相对覆盖路径以当前工作目录为基准。
+- AI 环境变量：`JJX_ARCHIVE_AI_URL`、`JJX_ARCHIVE_AI_API_KEY`、`JJX_ARCHIVE_AI_MODEL`、`JJX_ARCHIVE_AI_PROXY`；也可直接由调用环境提供。未配置 AI 时，AI 识别功能仍按业务接口提示配置。
+- 退出码：帮助为 `0`，参数或文件检查失败为 `1`；通过检查后以 `exec java -jar` 运行，退出码由 Java 进程决定。
+
 ## 1. scripts/agent-preflight.sh —— 开工自检
 
 - 用途：动手前一条命令看全局——git 闸门是否装、库迁移版本是否与代码一致、只读账号是否可用、文档门禁过不过、工作区有没有别人的 WIP。
