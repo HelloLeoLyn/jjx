@@ -94,8 +94,8 @@
           <el-form-item label="联系电话" prop="contactPhone">
             <el-input
               v-model="localFormData.contactPhone"
-              placeholder="请输入联系电话"
-              maxlength="20"
+              placeholder="可选，最长50字符，可含数字、+、-、空格、括号、#"
+              maxlength="50"
             />
           </el-form-item>
         </el-col>
@@ -254,6 +254,7 @@ import { Search } from '@element-plus/icons-vue'
 import { customerApi } from '@/api/sales/customer'
 import { useCustomerOptions } from '../composables/useCustomerOptions'
 import { CreditStartBasisEnum, PaymentTermTypeEnum } from '@/enums/sales/CustomerEnum'
+import { validateContactPhone } from '@/utils/contactPhone'
 
 const {
   customerTypeOptions,
@@ -350,24 +351,8 @@ const generateCode = async () => {
   }
 }
 
-// 验证手机号码格式
-const validatePhone = (_rule: any, value: string, callback: any) => {
-  if (!value) {
-    callback()
-    return
-  }
-
-  // 手机号码正则：11位数字，1开头
-  const phoneRegex = /^1[3-9]\d{9}$/
-  // 固定电话正则：区号-号码 或 区号号码
-  const telRegex = /^(0\d{2,3}-?)?\d{7,8}$/
-
-  if (phoneRegex.test(value) || telRegex.test(value)) {
-    callback()
-  } else {
-    callback(new Error('请输入正确的手机号码或固定电话'))
-  }
-}
+// 联系电话：可选、≤50 字符、字符白名单；规则唯一来源见 @/utils/contactPhone（dev-20261018-026）
+// （原 validatePhone 手机号/座机格式拦截已按 dev-20261018-026 口径移除）
 
 // 验证邮箱格式
 const validateEmail = (_rule: any, value: string, callback: any) => {
@@ -413,8 +398,7 @@ const rules = reactive<FormRules>({
     { max: 50, message: '联系人姓名长度不能超过50个字符', trigger: 'blur', required: true },
   ],
   contactPhone: [
-    { validator: validatePhone, trigger: 'blur' },
-    { max: 20, message: '联系电话长度不能超过20个字符', trigger: 'blur', required: true },
+    { validator: validateContactPhone, trigger: 'blur' },
   ],
   contactEmail: [
     { validator: validateEmail, trigger: 'blur' },
