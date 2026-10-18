@@ -1,5 +1,7 @@
+import type { ProductCodeState } from '@/composables/useProductCode'
+
 // 订单明细
-export interface OrderItem {
+export interface OrderItem extends Partial<ProductCodeState> {
   workSpecVersionId?: number | null
   id?: number
   productId?: number | null
@@ -34,6 +36,7 @@ export interface OrderQueryParams {
  * 销售订单添加DTO
  */
 export interface SalesOrderAddDTO {
+  items?: OrderItem[]
   /** 报价单ID */
   quotationId?: number
   /** 客户ID */
@@ -87,6 +90,7 @@ export interface SalesOrderAddDTO {
  * 销售订单编辑DTO
  */
 export interface SalesOrderEditDTO {
+  items?: OrderItem[]
   /** 订单ID */
   orderId: number
   /** 报价单ID */
@@ -346,22 +350,6 @@ export interface SalesOrderProductQueryDTO {
   pageSize?: number
   orderByColumn?: string
   isAsc?: string
-}
-
-// 订单明细项类型（与后端SalesOrderProductAddDTO保持一致）
-export interface OrderItem {
-  id?: number
-  productCode: string
-  productName: string
-  specification: string
-  unit: string
-  quantity: number
-  unitPrice: number
-  amount: number
-  deliveryDays: number
-  customRequirements: string
-  productId?: number | null
-  orderId?: number
 }
 
 // 订单表单数据类型

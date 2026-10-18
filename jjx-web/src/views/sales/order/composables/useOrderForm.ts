@@ -9,6 +9,7 @@ import type { CustomerSearchVO } from '@/types/sales/customer'
 import type { OrderFormData, OrderItem, UseOrderFormOptions } from '@/types/sales/order'
 import { formatCurrency } from '@/utils/format'
 import { productApi } from '@/api/product'
+import type { ProductCodeResult } from '@/composables/useProductCode'
 import { useDict } from '@/composables/useDict'
 
 /** 历史单金额保护基线（dev-20261008-015）：未确认时汇总冻结为原单值，取消改动即回退。 */
@@ -202,16 +203,13 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     const selectedCustomer = customer || customerOptions.value.find(
       (c: any) => c.customerId === customerId
     )
-    if (!selectedCustomer) return
-    form.items.forEach((item: OrderItem) => {
-      item.productId = undefined
-      item.productCode = ''
-      item.productName = ''
-      item.specification = ''
-      item.unit = ''
-    })
+    form.items.forEach(clearProductIdentity)
     productOptions.value = []
     productSearchCache.value.clear()
+    if (!selectedCustomer) {
+      form.customerName = ''
+      return
+    }
     // 覆盖策略：订单已填写过联系人/电话/收货地址/付款条件，且客户确实发生变更 → 确认后才覆盖
     const hasManualInfo = !!(
       form.contactPerson || form.contactPhone || form.shippingAddress || form.paymentTerms
@@ -367,27 +365,39 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     }
   })
 
-  // 处理产品选择变化（2026-08-11：改用 ProductSelector 回传的产品对象，不再依赖共享数组反查）
+  // 只清产品身份与档案快照；数量、价格、交期、客户物料号等订单字段保留。
+  const clearProductIdentity = (item: OrderItem) => {
+    item.productId = null
+    item.productCode = ''
+    item.productName = ''
+    item.specification = ''
+    item.workSpecVersionId = null
+    item.serialNo = undefined
+    item.panelType = undefined
+    item.panelFeature = undefined
+    item.circuitType = undefined
+    item.circuitFeature = undefined
+  }
+
+  const applyNewProduct = (item: OrderItem, params: ProductCodeResult) => {
+    clearProductIdentity(item)
+    const { productCode, serialNo, panelType, panelFeature, circuitType, circuitFeature } = params
+    Object.assign(item, { productCode, serialNo, panelType, panelFeature, circuitType, circuitFeature })
+    item.unit = item.unit || 'PCS'
+    calculateItemAmount(item)
+  }
+
   const handleProductChange = (item: OrderItem, val?: any, product?: any) => {
-    if (product && product.productId) {
-      // 更换产品后旧采用版本不再适用，新版本由后端保存时选择。
-      if (item.productId !== product.productId) item.workSpecVersionId = null
-      // 标准单：从 ProductSelector 回传的完整产品对象填充
+    const sameProduct = !!product?.productId && item.productId === product.productId
+    const versionId = sameProduct ? item.workSpecVersionId : null
+    clearProductIdentity(item)
+    if (product?.productId) {
+      item.productId = product.productId
       item.productCode = product.productCode
       item.productName = product.productName
-      item.unit = 'PCS' // 默认单位
-      item.specification = product.specification || '标准规格'
-      item.productId = product.productId
-    } else if (item.productCode) {
-      // 未匹配到产品：保留输入，兜底处理
-      if (!item.productName) {
-        item.productName = item.productCode
-      }
-      item.unit = item.unit || 'PCS'
-    } else {
-      item.productName = ''
-      item.unit = ''
-      item.specification = ''
+      item.specification = product.specification || product.specJson || ''
+      item.unit = 'PCS'
+      item.workSpecVersionId = versionId
     }
     calculateItemAmount(item)
   }
@@ -635,15 +645,14 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   }
 
   // 提交表单验证
-  const validateForm = (): boolean => {
+  const validateForm = async (): Promise<boolean> => {
     if (!orderFormRef.value) return false
 
-    let isValid = true
-    orderFormRef.value.validate((valid) => {
-      isValid = valid
-    })
-
-    if (!isValid) return false
+    try {
+      await orderFormRef.value.validate()
+    } catch {
+      return false
+    }
 
     if (!form.amountBreakdownConfirmed && originalPricing !== pricingSnapshot()) {
       ElMessage.warning('请确认运费、折扣等金额组成后再修改金额或明细价格数量')
@@ -662,7 +671,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
 
     // 验证明细数据
     for (const item of form.items) {
-      if (!item.productCode || !item.productName) {
+      if (!item.productCode?.trim() || !item.productName?.trim()) {
         ElMessage.warning('请填写完整的产品信息')
         return false
       }
@@ -687,7 +696,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
 
   // 提交新增订单
   const submitAdd = async (attachments?: OrderAttachmentInput): Promise<boolean> => {
-    if (!validateForm()) return false
+    if (!(await validateForm())) return false
 
     submitting.value = true
     try {
@@ -722,7 +731,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
 
   // 提交编辑订单
   const submitEdit = async (attachments?: OrderAttachmentInput): Promise<boolean> => {
-    if (!validateForm()) return false
+    if (!(await validateForm())) return false
 
     submitting.value = true
     try {
@@ -791,6 +800,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     salesPersonChanged,
     searchProduct,
     handleProductChange,
+    applyNewProduct,
     calculateItemAmount,
     calculateTotalAmount,
     onPricingChange,

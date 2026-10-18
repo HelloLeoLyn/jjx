@@ -180,20 +180,26 @@
             :model-value="scope.row.productCode"
             value-type="productCode"
             :customer-id="form.customerId"
+            status-scope="active"
             :disabled="!form.customerId"
             placeholder="请先选择客户，再搜索该客户的产品"
             :min-keyword-length="1"
             class="borderless-input"
             @change="(val: any, product: any) => handleProductChange(scope.row, val, product)"
           />
+          <el-button
+            link type="primary" :disabled="!form.customerId"
+            @click="openNewProduct(scope.row)"
+          >新建产品</el-button>
         </template>
       </el-table-column>
       <el-table-column label="产品名称" prop="productName" width="160">
         <template #default="scope">
           <el-input
             v-model="scope.row.productName"
-            placeholder="产品名称"
-            readonly
+            placeholder="请输入新产品名称"
+            :readonly="!!scope.row.productId"
+            maxlength="20"
             class="borderless-input"
           />
         </template>
@@ -433,6 +439,12 @@
         </el-form-item>
       </el-col>
     </el-row>
+    <OrderProductCodeGenDialog
+      v-model="productCodeDialogVisible"
+      :customer-short="productCustomerShort"
+      :used-serials="form.items.map(item => item.serialNo || '').filter(Boolean)"
+      @confirm="confirmNewProduct"
+    />
     <!-- 新增客户弹窗 -->
     <CustomerFormDialog
       v-model:visible="customerDialogVisible"
@@ -454,6 +466,9 @@
 </template>
 
 <script setup lang="ts">
+import OrderProductCodeGenDialog from './OrderProductCodeGenDialog.vue'
+import type { OrderItem } from '@/types/sales/order'
+import type { ProductCodeResult } from '@/composables/useProductCode'
 import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
 import { onActivated, onMounted, ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
@@ -587,6 +602,8 @@ const {
   loadSalesPersons,
   salesPersonChanged,
   handleProductChange,
+  applyNewProduct,
+  validateForm,
   calculateItemAmount,
   calculateTotalAmount,
   onPricingChange,
@@ -598,6 +615,47 @@ const {
   submitForm: submitOrderForm,
   formatCurrency,
 } = useOrderForm({ isEdit: props.isEdit, initialData: props.initialData })
+
+// 编码生成只在确认时改行；每次打开不传旧编码参数。
+const productCodeDialogVisible = ref(false)
+const productCustomerShort = ref('')
+let productEntryRow: OrderItem | null = null
+let productEntryCustomerId: number | undefined
+let productEntryRequest = 0
+async function openNewProduct(row: OrderItem) {
+  const customerId = form.customerId
+  if (!customerId) return
+  const request = ++productEntryRequest
+  productEntryRow = null
+  productCodeDialogVisible.value = false
+  try {
+    const res = await customerApi.getCustomer(customerId)
+    if (request !== productEntryRequest || customerId !== form.customerId || !form.items.includes(row)) return
+    const short = res.data?.customerShortName?.trim()
+    if (!short) {
+      ElMessage.warning('请先在客户档案填写客户简称')
+      return
+    }
+    productCustomerShort.value = short
+    productEntryCustomerId = customerId
+    productEntryRow = row
+    productCodeDialogVisible.value = true
+  } catch {
+    ElMessage.error('读取客户简称失败，请重试')
+  }
+}
+function confirmNewProduct(params: ProductCodeResult) {
+  if (productEntryRow && productEntryCustomerId === form.customerId && form.items.includes(productEntryRow)) {
+    applyNewProduct(productEntryRow, params)
+  }
+  productEntryRow = null
+  productCodeDialogVisible.value = false
+}
+watch(() => form.customerId, () => {
+  productEntryRequest++
+  productEntryRow = null
+  productCodeDialogVisible.value = false
+})
 
 // ===== 汇率自动填充 =====
 const exchangeRateLoading = ref(false)
@@ -1063,20 +1121,7 @@ const submitForm = async (): Promise<boolean> => {
     return true
   }
 
-  // 先验证明细数量（独立于 element-plus 表单校验）
-  if (form.items.length === 0) {
-    ElMessage.warning('请至少添加一条订单明细')
-    return false
-  }
-
-  // 验证表单字段（使用 Promise 方式，校验失败会飘红）
-  try {
-    await orderFormRef.value.validate()
-  } catch {
-    // Element Plus 已自动将错误字段飘红
-    ElMessage.warning('请完善表单信息')
-    return false
-  }
+  if (!(await validateForm())) return false
 
   // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待保存附件，避免「保存成功但附件没落定」
   if (attachMissingTypeCount.value > 0) {
@@ -1089,6 +1134,8 @@ const submitForm = async (): Promise<boolean> => {
   const submittedIds = attachments.map((a) => a.attachmentId)
   const submitData = {
     ...form,
+    deliveryAddress: form.shippingAddress || '',
+    shippingFee: form.amountBreakdownConfirmed ? form.shippingFee : null,
     salesManagerId: form.salesPersonId!,
     salesManagerName: form.salesPersonName,
     attachments,
