@@ -33,7 +33,10 @@
         </el-col>
         <el-col :span="12">
           <el-form-item label="联系电话" prop="contactPhone">
-            <el-input v-model="formData.contactPhone" placeholder="默认带出客户电话（手机号或座机）" />
+            <el-input
+              v-model="formData.contactPhone"
+              placeholder="默认带出客户电话（手机号或座机）"
+            />
           </el-form-item>
         </el-col>
       </el-row>
@@ -165,8 +168,12 @@
             <span>{{ formatCurrency(scope.row.amount) }}</span>
           </template>
         </el-table-column>
-        <TableActionColumn :min-width="180" align="center" :fixed="false">
-          <template #before="scope">
+        <el-table-column :min-width="180" align="center" :fixed="false" label="操作">
+          <template #header>
+            <span>操作</span
+            ><el-button type="primary" @click="addItem" size="small" text>添加明细</el-button>
+          </template>
+          <template #default="scope">
             <el-button
               v-if="formData.quotationType === 2"
               link
@@ -189,9 +196,9 @@
               >删除</el-button
             >
           </template>
-        </TableActionColumn>
+        </el-table-column>
       </el-table>
-
+      <!--
       <el-row>
         <el-col :span="24" style="text-align: right">
           <el-button type="primary" icon="Plus" @click="addItem">添加明细</el-button>
@@ -199,8 +206,32 @@
             >样品明细通过编码生成器添加（可多条）</span
           >
         </el-col>
+      </el-row> -->
+      <el-row>
+        <el-col :span="24">
+          <!-- 整单级附件（dev-20261016-071：旧 AttachmentCenter → Upload + Manager，共用同一份会话队列）：
+               上传只进「待保存」，随单据「保存」落定（001 §7-1 方案 A）；
+               附件区「保存」（row-save/batch-save）= 只提交附件信息类改动，不落定。
+               明细行「上传附件」只当上传入口（带该行产品归属），看/管以本列表为准。 -->
+          <!-- <AttachmentUpload
+            :session="session"
+            class="attach-block"
+            drop-zone
+            button-text="上传整单附件"
+            @uploaded="(item) => session.registerUploaded(item.pending, item.ownership)"
+            @error="onAttachError"
+          /> -->
+          <AttachmentManager
+            :session="session"
+            class="attach-block"
+            title="附件"
+            source-type="quotation"
+            :source-no="formData.quotationNo || ''"
+            row-save
+            @error="onAttachError"
+          />
+        </el-col>
       </el-row>
-
       <!-- 金额汇总 -->
       <el-divider content-position="left">金额汇总</el-divider>
       <el-row class="amount-summary">
@@ -292,32 +323,6 @@
               show-word-limit
             />
           </el-form-item>
-        </el-col>
-      </el-row>
-      <el-row>
-        <el-col :span="24">
-          <!-- 整单级附件（dev-20261016-071：旧 AttachmentCenter → Upload + Manager，共用同一份会话队列）：
-               上传只进「待保存」，随单据「保存」落定（001 §7-1 方案 A）；
-               附件区「保存」（row-save/batch-save）= 只提交附件信息类改动，不落定。
-               明细行「上传附件」只当上传入口（带该行产品归属），看/管以本列表为准。 -->
-          <AttachmentUpload
-            :session="session"
-            class="attach-block"
-            drop-zone
-            button-text="上传整单附件"
-            @uploaded="(item) => session.registerUploaded(item.pending, item.ownership)"
-            @error="onAttachError"
-          />
-          <AttachmentManager
-            :session="session"
-            class="attach-block"
-            title="整单附件"
-            source-type="quotation"
-            :source-no="formData.quotationNo || ''"
-            row-save
-            batch-save
-            @error="onAttachError"
-          />
         </el-col>
       </el-row>
     </el-form>
@@ -423,7 +428,13 @@ const usedSerialsForCodeGen = computed(() => {
 // 明细行「上传附件」（S5 dev-20261013-043）
 const rowAttachVisible = ref(false)
 const rowAttachProductCode = ref('')
-watch(() => props.draftId, () => { rowAttachVisible.value = false; rowAttachProductCode.value = '' })
+watch(
+  () => props.draftId,
+  () => {
+    rowAttachVisible.value = false
+    rowAttachProductCode.value = ''
+  }
+)
 /** 该行产品 id（行内上传归属；未建档/未回填时为 null，归属退回到稳定行键） */
 const rowAttachProductId = computed<number | null>(() => {
   const code = rowAttachProductCode.value
@@ -437,7 +448,7 @@ const rowAttachOwnership = computed(() =>
     rowKey: rowAttachProductCode.value,
     productId: rowAttachProductId.value,
     productCode: rowAttachProductCode.value,
-  }),
+  })
 )
 const uploadedAttachmentIds = ref<number[]>([])
 
