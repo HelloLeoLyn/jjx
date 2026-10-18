@@ -20,7 +20,8 @@ vi.mock('element-plus/es/components/page-header/style/css', () => ({}))
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
-import ProductCodeGenDialog from '@/components/ProductCodeGenDialog/index.vue'
+import ProductCodeGenDialog from '../OrderProductDraftDialog.vue'
+import ProductFormContent from '@/views/product/list/components/ProductFormContent.vue'
 
 vi.mock('element-plus/es/components/base/style/css', () => ({}))
 vi.mock('element-plus/es/components/alert/style/css', () => ({}))
@@ -54,7 +55,10 @@ const api = vi.hoisted(() => ({
   getInfo: vi.fn(), getProducts: vi.fn(), getSourceQuotationSummary: vi.fn(), getItems: vi.fn(),
 }))
 vi.mock('@/api/sales/order', () => ({ orderApi: api }))
-vi.mock('@/api/product', () => ({ productApi: { search: api.search } }))
+vi.mock('@/api/product', () => ({ productApi: { search: api.search,
+  generateSerialNo: vi.fn().mockResolvedValue({ data: '002' }),
+  category: { getProductCategoryTree: vi.fn().mockResolvedValue({ data: [] }) },
+} }))
 vi.mock('@/api/sales/customer', () => ({ customerApi: {
   getCustomer: api.getCustomer, getCustomerAddresses: vi.fn().mockResolvedValue({ data: [] }),
 } }))
@@ -66,7 +70,7 @@ vi.mock('@/composables/useDict', () => ({ useDict: () => ({ options: ref([]) }) 
 vi.mock('@/composables/useCompanyConfig', () => ({ useCompanyConfig: () => ({ company: {} }) }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), useRoute: () => ({ params: { id: '9', sampleId: '21' } }) }))
 vi.mock('@/composables/useAttachmentSession', () => ({ useAttachmentSession: () => ({
-  pending: ref([]), refs: ref([]), getChanges: () => ({ uploads: [] }),
+  pending: ref([]), refs: ref([]), refRows: ref([]), getChanges: () => ({ uploads: [] }),
 }) }))
 vi.mock('@/composables/useAttachmentRefs', () => ({ useAttachmentDraftInstance: () => ({
   draftId: ref('draft-017'), choices: ref([]), complete: vi.fn(), ensure: vi.fn(),
@@ -121,14 +125,18 @@ async function open(w: any) {
 }
 async function generate(w: any, confirm = true) {
   await open(w)
+  const content = w.findComponent(ProductFormContent)
+  Object.assign(content.vm.formData, { productName: '新产品', productType: 1 })
   const gen = w.findComponent(ProductCodeGenerator)
+  await gen.vm.generate()
+  await flushPromises()
   const selects = gen.findAllComponents(ElSelect)
   for (const [i, value] of ['M', 'E', 'O', 'O'].entries()) {
     selects[i].vm.$emit('update:modelValue', value)
     await nextTick()
   }
   await flushPromises()
-  const button = Array.from(document.body.querySelectorAll('.el-dialog button')).find(b => b.textContent?.replace(/\s/g, '') === (confirm ? '确定' : '取消')) as HTMLButtonElement
+  const button = Array.from(document.body.querySelectorAll('.el-dialog button')).find(b => b.textContent?.replace(/\s/g, '') === (confirm ? '确认并回填订单' : '取消')) as HTMLButtonElement
   expect(button.disabled).toBe(false)
   button.click()
   await flushPromises()
@@ -161,12 +169,10 @@ describe('销售订单产品入口真实组件（API与附件/地址外设替身
       await flushPromises()
       await generate(w)
       const item = w.vm.form.items[0]
-      expect(item).toMatchObject({ id: 71, productId: null, productCode: 'AA002MEOO', productName: '', specification: '',
+      expect(item).toMatchObject({ id: 71, productId: null, productCode: 'AA002MEOO', productName: '新产品', specification: expect.any(String),
         workSpecVersionId: null, serialNo: '002', panelType: 'M', panelFeature: 'E', circuitType: 'O', circuitFeature: 'O',
         quantity: 3, unitPrice: 12, deliveryDays: 7, customerMaterialNo: '客户料号', lineRemark: '行备注' })
-      expect(await w.vm.submitForm()).toBe(false)
-      expect(api.addOrder).not.toHaveBeenCalled()
-      expect(api.updateOrder).not.toHaveBeenCalled()
+      expect(item.productDraft).toMatchObject({ productName: '新产品', productType: 1 })
       const name = w.find('input[placeholder="请输入新产品名称"]')
       expect(name.attributes('readonly')).toBeUndefined()
       await name.setValue('新产品')
@@ -250,7 +256,7 @@ describe('销售订单产品入口真实组件（API与附件/地址外设替身
   it('样品转量产：仅补零价且按产品匹配报价，提交仍走convertSample', async () => {
     api.getInfo.mockResolvedValue({ data: { orderId: 21, customerId: 5, sourceType: 'QUOTATION', sourceNo: 'QT1',
       orderDate: '2026-10-18', deliveryDate: '2026-10-30', salesManagerId: 3, deliveryAddress: '地址' } })
-    api.getProducts.mockResolvedValue({ data: [{ ...row(), unitPrice: 0 }, { ...row(), unitPrice: 20 }] })
+    api.getProducts.mockResolvedValue({ data: [{ ...row(), unitPrice: 0 }, { ...row(), id: 72, productId: 12, productCode: 'BB001MEOO', unitPrice: 20 }] })
     api.getSourceQuotationSummary.mockResolvedValue({ data: { quotationId: 31 } })
     api.getItems.mockResolvedValue({ data: [{ ...product, unitPrice: 15 }] })
     const w = await form(false, { sampleOrderId: 21 })

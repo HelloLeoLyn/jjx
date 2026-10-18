@@ -1028,6 +1028,7 @@ public class OrderServiceImpl implements IOrderService {
                 if (matched != null) item.setProductId(matched.getProductId());
             }
             if (item.getProductId() != null) {
+                if (item.getProductDraft() != null) throw new BusinessException("产品编码已存在，请选择已有产品，不能覆盖档案");
                 applyProductArchive(item, productCustomerValidator.validateBelongsToCustomer(
                         item.getProductId(), customerId));
             } else {
@@ -1059,9 +1060,22 @@ public class OrderServiceImpl implements IOrderService {
     private void ensureProductIds(List<SalesOrderProductDTO> items, Long customerId) {
         for (SalesOrderProductDTO item : items) {
             if (item.getProductId() != null) continue;
-            Long productId = productService.ensureDraftProduct(item.getProductCode(), item.getProductName(),
-                    item.getUnit(), "sales_order", customerId, item.getSerialNo(), item.getPanelType(),
-                    item.getPanelFeature(), item.getCircuitType(), item.getCircuitFeature());
+            Long productId;
+            if (item.getProductDraft() != null) {
+                var input = item.getProductDraft();
+                var draft = new com.jjx.product.domain.dto.ProductDTO();
+                draft.setCustomerId(customerId); draft.setProductName(item.getProductName()); draft.setUnit(item.getUnit());
+                draft.setSerialNo(item.getSerialNo()); draft.setPanelType(item.getPanelType()); draft.setPanelFeature(item.getPanelFeature());
+                draft.setCircuitType(item.getCircuitType()); draft.setCircuitFeature(item.getCircuitFeature());
+                draft.setProductType(input.getProductType()); draft.setMinOrderQty(input.getMinOrderQty());
+                draft.setLeadTime(input.getLeadTime()); draft.setRemark(input.getRemark()); draft.setSpecJson(input.getSpecJson());
+                // 复用产品管理新增入口，由服务器按真实客户和结构重新生成编码。忽略草稿中的ID、状态、价格、BOM/工艺关联。
+                productId = productService.addProduct(draft);
+            } else {
+                productId = productService.ensureDraftProduct(item.getProductCode(), item.getProductName(),
+                        item.getUnit(), "sales_order", customerId, item.getSerialNo(), item.getPanelType(),
+                        item.getPanelFeature(), item.getCircuitType(), item.getCircuitFeature());
+            }
             if (productId == null) throw new BusinessException("订单产品建档失败：" + item.getProductCode());
             Product product = productCustomerValidator.validateBelongsToCustomer(productId, customerId);
             applyProductArchive(item, product);

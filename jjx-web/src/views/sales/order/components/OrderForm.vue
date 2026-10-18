@@ -466,10 +466,11 @@
         </el-form-item>
       </el-col>
     </el-row>
-    <OrderProductCodeGenDialog
+    <OrderProductDraftDialog
       v-model="productCodeDialogVisible"
       :customer-short="productCustomerShort"
-      :used-serials="form.items.map((item) => item.serialNo || '').filter(Boolean)"
+      :customer-id="form.customerId"
+      :initial-draft="productInitialDraft"
       @confirm="confirmNewProduct"
     />
     <!-- 新增客户弹窗 -->
@@ -493,7 +494,7 @@
 </template>
 
 <script setup lang="ts">
-import OrderProductCodeGenDialog from './OrderProductCodeGenDialog.vue'
+import OrderProductDraftDialog from './OrderProductDraftDialog.vue'
 import type { OrderItem } from '@/types/sales/order'
 import type { ProductCodeResult } from '@/composables/useProductCode'
 import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
@@ -647,6 +648,7 @@ const {
 // 编码生成只在确认时改行；每次打开不传旧编码参数。
 const productCodeDialogVisible = ref(false)
 const productCustomerShort = ref('')
+const productInitialDraft = ref<OrderItem['productDraft']>()
 let productEntryRow: OrderItem | null = null
 let productEntryCustomerId: number | undefined
 let productEntryRequest = 0
@@ -672,18 +674,19 @@ async function openNewProduct(row: OrderItem) {
     productCustomerShort.value = short
     productEntryCustomerId = customerId
     productEntryRow = row
+    productInitialDraft.value = row.productId ? undefined : row.productDraft
     productCodeDialogVisible.value = true
   } catch {
     ElMessage.error('读取客户简称失败，请重试')
   }
 }
-function confirmNewProduct(params: ProductCodeResult) {
+function confirmNewProduct(params: ProductCodeResult & Partial<import('@/types/product').ProductFormData>) {
   if (
     productEntryRow &&
     productEntryCustomerId === form.customerId &&
     form.items.includes(productEntryRow)
   ) {
-    applyNewProduct(productEntryRow, params)
+    if (!applyNewProduct(productEntryRow, params)) return
   }
   productEntryRow = null
   productCodeDialogVisible.value = false

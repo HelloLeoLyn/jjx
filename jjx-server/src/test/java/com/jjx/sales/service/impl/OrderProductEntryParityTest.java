@@ -94,6 +94,11 @@ class OrderProductEntryParityTest {
         });
         productService = mock(ProductServiceImpl.class, CALLS_REAL_METHODS);
         field(productService, "productMapper", products);
+        field(productService, "baseMapper", products);
+        var customerMapper = mock(CustomerMapper.class);
+        var draftCustomer = new SalesCustomer(); draftCustomer.setCustomerId(1L); draftCustomer.setCustomerShortName("AA");
+        when(customerMapper.selectById(1L)).thenReturn(draftCustomer);
+        field(productService, "salesCustomerMapper", customerMapper);
         field(productService, "logSaveService", mock(LogSaveService.class));
         var lineMapper = mock(SalesOrderProductMapper.class);
         when(lineMapper.selectList(any(Wrapper.class))).thenAnswer(c -> jdbc.query(
@@ -215,6 +220,21 @@ class OrderProductEntryParityTest {
         assertTrue(service.updateOrder(edit(id, newLine)));
         assertLinked(id, newLine.getProductId(), "NEW2", "新产品", "新规格");
         assertEquals(2, count("products"));
+    }
+    @Test void fullProductDraftIsCreatedInOrderTransactionAndRollsBackOnLineFailure() {
+        var line = item(null, "AA001MEOO"); line.setSerialNo("001"); line.setPanelType("M"); line.setPanelFeature("E"); line.setCircuitType("O"); line.setCircuitFeature("O");
+        var draft = new com.jjx.product.domain.dto.ProductDTO(); draft.setProductName("新产品");
+        draft.setProductType("1"); draft.setMinOrderQty(7); draft.setLeadTime(10); draft.setRemark("product remark"); draft.setCustomerId(999L);
+        line.setProductDraft(draft);
+        failLineSave = true;
+        assertThrows(BusinessException.class, () -> service.insertOrder(add(line)));
+        assertEquals(0, count("products")); assertEquals(0, count("orders"));
+        line.setProductId(null); failLineSave = false;
+        long id = service.insertOrder(add(line)); var saved = read("products", line.getProductId(), Product.class);
+        assertEquals(1L, saved.getCustomerId()); assertEquals(7, saved.getMinOrderQty()); assertEquals(10, saved.getLeadTime());
+        assertEquals("product remark", saved.getRemark()); assertEquals("AA001MEOO", saved.getProductCode());
+        assertThrows(BusinessException.class, () -> service.updateOrder(edit(id, line)));
+        assertEquals(1, count("products"));
     }
     @Test void codeOnlyResolvesArchiveAndMissingCodeUsesSelectedId() {
         archive(8, 1, false); var i = item(null, "P8"); i.setProductName(null);

@@ -364,6 +364,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
 
   // 只清产品身份与档案快照；数量、价格、交期、客户物料号等订单字段保留。
   const clearProductIdentity = (item: OrderItem) => {
+    item.productDraft = undefined
     item.productId = null
     item.productCode = ''
     item.productName = ''
@@ -376,7 +377,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     item.circuitFeature = undefined
   }
 
-  const applyNewProduct = (item: OrderItem, params: ProductCodeResult) => {
+  const applyNewProduct = (item: OrderItem, params: ProductCodeResult & Partial<import('@/types/product').ProductFormData>) => {
     if (duplicateOrderProduct(form.items, params, item)) {
       ElMessage.warning(`产品[${params.productCode}]已在订单中，同一产品只保留一行`)
       return false
@@ -384,8 +385,12 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     clearProductIdentity(item)
     const { productCode, serialNo, panelType, panelFeature, circuitType, circuitFeature } = params
     Object.assign(item, { productCode, serialNo, panelType, panelFeature, circuitType, circuitFeature })
+    item.productName = params.productName || ''
+    item.specification = params.specJson || ''
+    item.productDraft = { ...params }
     item.unit = item.unit || 'PCS'
     calculateItemAmount(item)
+    return true
   }
 
   const handleProductChange = (item: OrderItem, val?: any, product?: any) => {

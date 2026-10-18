@@ -15,6 +15,9 @@ import java.math.BigDecimal;
 @Schema(description = "订单产品明细添加DTO")
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SalesOrderProductDTO {
+    /** 仅新产品草稿使用，随订单同事务建档；不得用于修改已有产品档案。 */
+    @jakarta.validation.Valid
+    private com.jjx.product.domain.dto.ProductDTO productDraft;
     /** 编辑时的原明细ID，仅用于保留采用版本。 */
     private Long id;
     @NotNull(message = "产品数量不能为空")

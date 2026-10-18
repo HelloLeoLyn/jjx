@@ -27,6 +27,7 @@
       <el-col :span="12">
         <el-form-item label="客户" prop="codeCustomerId" required>
           <CustomerSelector
+            :disabled="props.mode === 'draft'"
             :model-value="formData.codeCustomerId ?? null"
             value-type="customerId"
             placeholder="请选择客户"
@@ -132,11 +133,16 @@ import type { CustomerSearchVO } from '@/types/sales/customer'
 
 const props = defineProps<{
   productId?: number
+  mode?: 'persist' | 'draft'
+  customerId?: number
+  customerShortName?: string
+  initialDraft?: Partial<ProductFormData> & Partial<ProductCodeResult>
 }>()
 
 const emit = defineEmits<{
   success: []
   cancel: []
+  'draft-confirm': [draft: ProductFormData & ProductCodeResult]
 }>()
 
 const isEdit = computed(() => !!props.productId)
@@ -358,6 +364,7 @@ const handleCategoryChange = (categoryId?: number) => {
 
 // 提交表单
 const handleSubmit = async () => {
+  if (submitting.value) return
   try {
     await formRef.value?.validate()
   } catch {
@@ -402,6 +409,14 @@ const handleSubmit = async () => {
     panelFeature: codeState.value.panelFeature,
     circuitType: codeState.value.circuitType,
     circuitFeature: codeState.value.circuitFeature,
+  }
+  if (props.mode === 'draft') {
+    const code = composeProductCode(selectedCustomerShortName.value, codeState.value)
+    if (!code || !props.customerId || formData.codeCustomerId !== props.customerId) {
+      throw new Error('请检查客户和产品编码')
+    }
+    emit('draft-confirm', { ...submitData, ...code, customerId: props.customerId })
+    return
   }
   // 详情可能带回价格，普通产品编辑始终不提交这两个字段。
   delete submitData.basePrice
@@ -480,6 +495,16 @@ const resetForm = () => {
 // 初始化加载
 const init = async () => {
   await loadCategoryTree()
+  if (props.mode === 'draft') {
+    Object.assign(formData, props.initialDraft || {}, { customerId: props.customerId, codeCustomerId: props.customerId })
+    selectedCustomerShortName.value = props.customerShortName || ''
+    const draft = props.initialDraft
+    if (draft) {
+      codeState.value = { serialNo: draft.serialNo || '', panelType: draft.panelType || '', panelFeature: draft.panelFeature || '', circuitType: draft.circuitType || '', circuitFeature: draft.circuitFeature || '' }
+      if (draft.specJson) { try { Object.assign(specData, JSON.parse(draft.specJson)) } catch { /* 保留默认规格 */ } }
+    }
+    return
+  }
   if (isEdit.value) {
     await loadProductDetail()
   }
