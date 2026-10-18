@@ -110,6 +110,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final LogSaveService logSaveService;
     private final OperLogChangeRecorder changeRecorder;
     private final com.jjx.sales.mapper.CustomerMapper customerMapper;
+    /** 审核流水（dev-20261018-021）：审核/退回意见写 review_flow，不再覆盖 sales_order.remark。 */
+    private final com.jjx.system.service.ReviewFlowService reviewFlowService;
 
     private static final String SOURCE_QUOTATION = "QUOTATION";
     private static final String SOURCE_SALES_ORDER = "SALES_ORDER";
@@ -910,6 +912,20 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         return order;
     }
 
+    /**
+     * 写样品单审核/退回流水（dev-20261018-021）：biz_type='sample'，轮次对齐 sales_order.sample_round。
+     * 审核意见只进 review_flow.comment，sales_order.remark 保持业务备注不变。
+     */
+    private void recordSampleReview(Long orderId, String action, String actionName,
+                                    Integer fromStatus, Integer toStatus, String comment, int roundNo) {
+        com.jjx.system.domain.entity.ReviewFlow flow = reviewFlowService.recordWithRefs(
+                "sample", orderId, action, actionName, fromStatus, toStatus, comment, null);
+        if (flow != null && (flow.getRoundNo() == null || !flow.getRoundNo().equals(roundNo))) {
+            flow.setRoundNo(roundNo);
+            reviewFlowService.updateById(flow);
+        }
+    }
+
     private void validateSingleSampleProduct(List<?> items) {
         if (items == null || items.isEmpty()) {
             throw new BusinessException("请选择一个打样产品");
@@ -949,15 +965,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 SampleOrderStatusEnum.ENGINEERING,
                 "审核通过");
 
-        // 更新审核信息
-        try {
-            SalesOrder update = new SalesOrder();
-            update.setOrderId(orderId);
-            update.setRemark(remark);
-            orderMapper.updateById(update);
-        } catch (Exception e) {
-            log.warn("更新样品单审核备注失败: {}", e.getMessage());
-        }
+        SalesOrder current = orderMapper.selectById(orderId);
+        // dev-20261018-021：审核意见只进 review_flow（biz_type=sample），不再覆盖业务备注
+        recordSampleReview(orderId, "APPROVE", "审核通过",
+                SampleOrderStatusEnum.REQUEST.getValue(),
+                SampleOrderStatusEnum.ENGINEERING.getValue(),
+                remark,
+                current != null && current.getSampleRound() != null ? current.getSampleRound() : 1);
 
         log.info("样品单[{}] 审核通过，进入工程打样阶段", orderId);
         return orderMapper.selectById(orderId);
@@ -972,15 +986,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 SampleOrderStatusEnum.REQUEST,
                 SampleOrderStatusEnum.CREATED,
                 "审核驳回");
-        // 记录驳回原因
-        try {
-            SalesOrder update = new SalesOrder();
-            update.setOrderId(orderId);
-            update.setRemark("[审核驳回] " + (remark != null ? remark : ""));
-            orderMapper.updateById(update);
-        } catch (Exception e) {
-            log.warn("记录审核驳回原因失败: {}", e.getMessage());
-        }
+        // dev-20261018-021：驳回原因只进 review_flow，不再覆盖/加前缀改写业务备注
+        SalesOrder current = orderMapper.selectById(orderId);
+        recordSampleReview(orderId, "REJECT", "审核驳回",
+                SampleOrderStatusEnum.REQUEST.getValue(),
+                SampleOrderStatusEnum.CREATED.getValue(),
+                remark,
+                current != null && current.getSampleRound() != null ? current.getSampleRound() : 1);
         return orderMapper.selectById(orderId);
     }
 
@@ -1213,12 +1225,17 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 SampleOrderStatusEnum.REJECTED.getValue());
 
         // 退回轮次+1，并退回工程阶段
-        int nextRound = (current.getSampleRound() != null ? current.getSampleRound() : 1) + 1;
+        int rejectedRound = current.getSampleRound() != null ? current.getSampleRound() : 1;
+        int nextRound = rejectedRound + 1;
         SalesOrder update = new SalesOrder();
         update.setOrderId(orderId);
         update.setSampleRound(nextRound);
-        update.setRemark(rejectReason);
+        // dev-20261018-021：退回原因只进 review_flow（记录被退回的轮次），不覆盖业务备注
         orderMapper.updateById(update);
+        recordSampleReview(orderId, "CUSTOMER_REJECT", "客户退回",
+                SampleOrderStatusEnum.SAMPLE_SENT.getValue(),
+                SampleOrderStatusEnum.REJECTED.getValue(),
+                rejectReason, rejectedRound);
 
         // 更新本轮快照结果：rejected + 退回原因
         try {

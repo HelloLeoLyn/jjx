@@ -164,7 +164,10 @@
         <SampleReviewPreview
           v-else-if="
             previewOperation?.key === 'sample.approve' ||
-            previewOperation?.key === 'sample.rejectReview'
+            previewOperation?.key === 'sample.rejectReview' ||
+            previewOperation?.key === 'sample.sendSample' ||
+            previewOperation?.key === 'sample.confirm' ||
+            previewOperation?.key === 'sample.rejectSample'
           "
           mode="audit"
           :order="previewData?.order"
@@ -193,7 +196,12 @@
     />
 
     <!-- 查看流水 -->
-    <TraceTimeline v-model="traceDrawerVisible" :trace-id="currentTraceId" />
+    <TraceTimeline
+      v-model="traceDrawerVisible"
+      :trace-id="currentTraceId"
+      biz-type="sample"
+      :biz-id="currentTraceBizId"
+    />
 
     <!-- 转量产 · 就绪检查（资料未齐时展示） -->
     <SampleConvertCheckDialog
@@ -1417,8 +1425,7 @@ async function handleConvert(row: any) {
 // 查看流水
 const traceDrawerVisible = ref(false)
 const currentTraceId = ref('')
-// 1199/1141：流水带 bizType+bizId（sample_order），事件流聚合才能拉到样品附件
-const currentTraceBizType = ref('sample_order')
+// 1199/1141：流水带 bizType+bizId（模板传 biz-type="sample"），事件流聚合才能拉到样品附件
 const currentTraceBizId = ref('')
 
 // 转量产标准化窗口

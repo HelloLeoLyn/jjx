@@ -165,6 +165,7 @@ public class TraceServiceImpl implements TraceService {
     private String reviewBizType(String bizType) {
         return switch (bizType) {
             case "order", "sales_order" -> "sales_order";
+            case "sample", "sample_order" -> "sample";
             case "purchase", "purchase_order" -> "purchase_order";
             case "bom" -> "engineering_bom";
             case "film" -> "engineering_film";
