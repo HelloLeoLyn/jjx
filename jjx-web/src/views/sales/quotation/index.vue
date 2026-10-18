@@ -668,6 +668,13 @@ const form = reactive({
   salesPersonId: undefined as number | undefined,
   salesPersonName: '',
   remark: '',
+  /**
+   * 链路追踪 ID / 旧附件 ID 列：只在「详情回填」时并入表单（submitForm 里 Object.assign(info.data)）。
+   * 必须在这里声明并随 resetForm 清空，否则新建单据会继承上一单的 traceId，
+   * 附件区把上一单的同链路附件当只读行显示（dev-20261018-025）。
+   */
+  traceId: '',
+  attachmentIds: [] as number[],
   items: [] as Array<{
     productId?: number
     productCode: string
@@ -731,6 +738,9 @@ const resetForm = () => {
     salesPersonId: undefined,
     salesPersonName: '',
     remark: '',
+    // 详情回填会并入这两个字段；重置必须清掉，新建单据不得继承上一单链路/附件（dev-20261018-025）
+    traceId: '',
+    attachmentIds: [],
     items: [],
   })
 }
@@ -745,7 +755,7 @@ const attachSession = useAttachmentSession({
   sourceType: 'quotation',
   sourceId: computed(() => (form as any).quotationId || null),
   draftId: computed(() => draftId.value || ''),
-  traceId: computed(() => (form as any).traceId || ''),
+  traceId: computed(() => form.traceId || ''),
   viewPerm: 'sales:quotation:view',
   editPerm: 'sales:quotation:edit',
   saveHandler: saveAttachInfo,

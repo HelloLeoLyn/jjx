@@ -254,14 +254,20 @@ function createAttachmentSession(options: UseAttachmentSessionOptions) {
     () => legacyOnlyRows.value.length > 0 || traceOnlyRows.value.length > 0,
   )
 
-  /** 拉取同链路只读行（按 traceId）。纯读取：不改任何会话状态 / 计数 / 落定。 */
+  /**
+   * 拉取同链路只读行（按 traceId）。纯读取：不改任何会话状态 / 计数 / 落定。
+   * 守卫（dev-20261018-025）：sourceId 为空 = 单据尚未保存，此时**不查询**同链路——
+   * 否则新建单据若继承到上一单的 traceId，会把上一单的同链路附件渲染成只读行混进本单。
+   * 保存成功（sourceId 有值）后 watch 重触发，已保存单据的同链路段照常加载。
+   */
   async function loadTrace() {
     const request = ++traceRequest
     traceRows.value = []
     traceError.value = ''
     traceLoading.value = false
     const traceId = unwrap(options.traceId, '')
-    if (rowLevel.value || !traceId || !store.canView.value) return
+    // store.sourceId 已按 Number 归一：未保存单据为 null（或 0）→ 没有「本单同链路」可查
+    if (rowLevel.value || !store.sourceId.value || !traceId || !store.canView.value) return
     traceLoading.value = true
     try {
       const res: any = await attachmentApi.listByTrace(traceId)

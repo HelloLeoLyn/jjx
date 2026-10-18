@@ -801,3 +801,62 @@ test('083：没有同链路/历史件时不出现只读段（hasReadonlyDocs=fal
   // 未传 traceId：不发起同链路查询
   assert.equal(h.calls.filter((c) => c[0] === 'trace').length, 0)
 })
+
+// ==================== 未保存单据守卫（dev-20261018-025） ====================
+
+test('025：sourceId 为空（新建未保存）即使带 traceId 也不查同链路，附件区无只读行', async () => {
+  const h = harness({
+    legacy: () => Promise.resolve({ data: [{ id: 901, fileName: 'legacy.pdf' }] }),
+    trace: () => Promise.resolve({ data: [{ id: 902, fileName: 'chain.pdf' }] }),
+    sessionOptions: { sourceType: 'quotation', sourceId: null, traceId: 'T-OLD', draftId: 'draft-x' },
+  })
+  const { session } = h
+  await session.load(); await tick(); await tick()
+  assert.equal(h.calls.filter((c) => c[0] === 'trace').length, 0, '未保存单据不得发 listByTrace')
+  assert.deepEqual(Array.from(session.traceOnlyRows.value), [])
+  assert.equal(session.hasReadonlyDocs.value, false)
+  // 显式 refresh 也不得绕过守卫
+  await session.refresh(); await tick()
+  assert.equal(h.calls.filter((c) => c[0] === 'trace').length, 0)
+})
+
+test('025：sourceId=0 视同未保存（不清屏时 resetForm 的默认值）同样不查同链路', async () => {
+  const h = harness({
+    trace: () => Promise.resolve({ data: [{ id: 902, fileName: 'chain.pdf' }] }),
+    sessionOptions: { sourceType: 'quotation', sourceId: 0, traceId: 'T-OLD' },
+  })
+  const { session } = h
+  await session.load(); await tick(); await tick()
+  assert.equal(h.calls.filter((c) => c[0] === 'trace').length, 0)
+  assert.deepEqual(Array.from(session.traceOnlyRows.value), [])
+})
+
+test('025：保存后 sourceId 出现才加载同链路；再点新增清空后不残留上一单只读行', async () => {
+  const sourceId = vue.ref(null)
+  const traceId = vue.ref('T-OLD')
+  const h = harness({
+    listRefs: () => Promise.resolve({ data: [] }),
+    legacy: () => Promise.resolve({ data: [] }),
+    trace: () => Promise.resolve({ data: [{ id: 902, fileName: 'chain.pdf' }] }),
+    sessionOptions: { sourceType: 'quotation', sourceId, traceId, draftId: 'draft-x' },
+  })
+  const { session } = h
+  await session.load(); await tick(); await tick()
+  assert.equal(h.calls.filter((c) => c[0] === 'trace').length, 0, '新建未保存：不发同链路请求')
+
+  // 保存成功：拿到 quotationId + 新 traceId → 同链路段照常加载（回归）
+  sourceId.value = 7
+  traceId.value = 'T-NEW'
+  await tick(); await tick()
+  assert.deepEqual(h.calls.filter((c) => c[0] === 'trace'), [['trace', 'T-NEW']])
+  assert.deepEqual(Array.from(session.traceOnlyRows.value, (r) => r.id), [902])
+
+  // 再点「新增」：resetForm 清掉 traceId / quotationId → 只读行清空且不再发请求
+  sourceId.value = null
+  traceId.value = ''
+  await tick(); await tick()
+  assert.deepEqual(Array.from(session.traceOnlyRows.value), [])
+  assert.equal(session.hasReadonlyDocs.value, false)
+  assert.equal(h.calls.filter((c) => c[0] === 'trace').length, 1, '回到新建不得再查上一单同链路')
+})
+

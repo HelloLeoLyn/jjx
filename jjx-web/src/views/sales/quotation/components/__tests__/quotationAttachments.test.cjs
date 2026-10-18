@@ -58,6 +58,19 @@ test('复制报价只准备新增数据，前端不二次拼接编号或提前�
   assert.doesNotMatch(handler, /COPY_\$\{|quotationApi\.(add|edit)\(/, '编号由后端提供，复制预览不落库')
 })
 
+test('新建报价单不继承上一单链路：resetForm 清 traceId / attachmentIds，会话 traceId 取自表单（025）', () => {
+  const source = indexSrc()
+  const reset = source.match(/const resetForm = \(\) => \{([\s\S]*?)\n\}/)?.[1]
+  assert.ok(reset, 'resetForm 应存在')
+  assert.match(reset, /traceId:\s*''/, 'resetForm 必须清 traceId，否则新建单带上一单同链路')
+  assert.match(reset, /attachmentIds:\s*\[\]/, 'resetForm 必须清旧附件 ID 列')
+  assert.match(
+    source,
+    /traceId:\s*computed\(\(\) => form\.traceId \|\| ''\)/,
+    '附件会话 traceId 应直接取表单值（resetForm 才能真正清掉）',
+  )
+})
+
 // ---------- B. 纯函数契约（加载真模块，不跑响应式/组件） ----------
 function loadSessionModule() {
   const file = path.join(srcRoot, 'composables/useAttachmentSession.ts')
