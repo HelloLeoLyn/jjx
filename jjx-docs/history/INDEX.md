@@ -300,3 +300,4 @@
 | dev-20261012-047 | att-v1b-47-quotation-attachment-dev-20261012-047.md | 报价单附件闭环：QuotationFormDialog 加附件分节+AttachmentCenter+暴露 bindPendingAttachments、QuotationDetailDialog 加只读、index 加 draftId 并在 submitForm 保存成功后 bindPending（关键发现：保存收尾在 index.vue 非 handleSubmit，按卡先报告再改）；vue-tsc/门禁/check:docs 全 0；未 commit |
 
 | dev-20261013-012 | product-spec-snapshot-acceptance-dev-20261013-012.md | 发布快照 P4：历史缺项核证与整套不可变性验收 |
+| dev-20261018-022 | sample-order-alignment-audit-dev-20261018-022.md | 只读核查：A 新建产品残留/归属——主路径不存在；发现归属未回填+缺一致性校验（相邻边界：多产品编辑早退不重置）；B 复制重复落库——代码层不存在，运行时无样本、证据不足 |
