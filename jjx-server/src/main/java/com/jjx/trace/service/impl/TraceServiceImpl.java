@@ -38,13 +38,26 @@ public class TraceServiceImpl implements TraceService {
         if (traceId == null || traceId.isBlank()) {
             return PageResult.build(Collections.emptyList(), 0);
         }
-        IPage<SysOperLog> page = sysOperLogMapper.selectPage(
-                new Page<>(Math.max(pageNum, 1), Math.min(Math.max(pageSize, 1), 100)),
+        // 先取整条 trace 的日志再归并、最后按归并后的条数分页：否则一对「附件 + 保存」会被页码切开，
+        // 总数也会和页面上看到的事件数不一致。一条 trace 只对应一次业务操作链，量级有限。
+        List<SysOperLog> logs = sysOperLogMapper.selectList(
                 Wrappers.<SysOperLog>lambdaQuery()
                         .eq(SysOperLog::getTraceId, traceId)
-                        .orderByAsc(SysOperLog::getCreateTime));
-        List<UnifiedTraceEventVO> records = page.getRecords().stream().map(this::fromLog).toList();
-        return PageResult.of(page, records);
+                        .orderByAsc(SysOperLog::getCreateTime)
+                        .orderByAsc(SysOperLog::getId));
+        List<UnifiedTraceEventVO> events = TraceEventAggregator.mergeAttachmentEvents(
+                logs.stream().map(this::fromLog).toList());
+        int size = Math.min(Math.max(pageSize, 1), 100);
+        int num = Math.max(pageNum, 1);
+        int from = Math.min((num - 1) * size, events.size());
+        int to = Math.min(from + size, events.size());
+        PageResult<UnifiedTraceEventVO> result = new PageResult<>();
+        result.setRecords(new ArrayList<>(events.subList(from, to)));
+        result.setTotal(events.size());
+        result.setPageNum(num);
+        result.setPageSize(size);
+        result.setTotalPages((events.size() + size - 1) / size);
+        return result;
     }
 
     /**
