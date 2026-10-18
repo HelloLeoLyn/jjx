@@ -214,6 +214,7 @@
     <OrderBatchSampleDialog
       v-model="sampleProductVisible"
       :source-order-id="sampleSourceOrderId"
+      :order-status="sampleSourceOrderStatus"
       @created="getList"
     />
 
@@ -310,7 +311,9 @@ import { orderStatusApi } from '@/api/sales/orderStatus'
 import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
-import OrderBatchSampleDialog from './components/OrderBatchSampleDialog.vue'
+import OrderBatchSampleDialog, {
+  sampleEntryBlockedReason,
+} from './components/OrderBatchSampleDialog.vue'
 import GeneratePlanDialog from './components/GeneratePlanDialog.vue'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
 import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
@@ -334,7 +337,14 @@ const isPartialShipped = (row: any) =>
   Number(row.shippedQuantity || 0) < Number(row.totalQuantity || 0)
 const orderRowActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
-  { key: 'sample', label: '发起打样', permission: 'sales:sample:add' },
+  {
+    key: 'sample',
+    label: '发起打样',
+    permission: 'sales:sample:add',
+    // 与后端 requireSampleableOrderStatus 同口径：仅未结束订单可发起，已发货/已完成/已取消及未知状态置灰并给原因
+    disabled: ({ row }) => !!sampleEntryBlockedReason(row.orderStatus),
+    disabledReason: ({ row }) => sampleEntryBlockedReason(row.orderStatus),
+  },
   {
     key: 'submit',
     label: '提交审核',
@@ -500,9 +510,16 @@ const handleOrderRowAction = (key: string, row: any) => {
 
 const sampleProductVisible = ref(false)
 const sampleSourceOrderId = ref<number>()
+const sampleSourceOrderStatus = ref<number | null>()
 function handleStartSample(row: SalesOrderVO) {
   if (!row.orderId) return
+  const blocked = sampleEntryBlockedReason(row.orderStatus)
+  if (blocked) {
+    ElMessage.warning(blocked)
+    return
+  }
   sampleSourceOrderId.value = row.orderId
+  sampleSourceOrderStatus.value = row.orderStatus ?? null
   sampleProductVisible.value = true
 }
 

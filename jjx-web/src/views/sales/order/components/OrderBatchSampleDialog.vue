@@ -11,6 +11,13 @@
   >
     <div v-loading="loading">
       <el-alert
+        v-if="blockedReason"
+        :title="blockedReason"
+        type="warning"
+        :closable="false"
+        style="margin-bottom: 12px"
+      />
+      <el-alert
         v-if="submitError"
         :title="submitError"
         type="error"
@@ -101,10 +108,13 @@
           </el-table-column>
         </el-table>
       </template>
-      <el-empty v-else description="未加载到订单打样资料" />
+      <el-empty v-else-if="!blockedReason" description="未加载到订单打样资料" />
     </div>
     <template #footer>
-      <el-button v-if="!created.length" :disabled="saving || loading" @click="load(true)"
+      <el-button
+        v-if="!created.length && !blockedReason"
+        :disabled="saving || loading"
+        @click="load(true)"
         >刷新资料</el-button
       >
       <el-button :disabled="saving" @click="visible = false">{{
@@ -114,7 +124,7 @@
         v-if="!created.length"
         type="primary"
         :loading="saving"
-        :disabled="loading || !selected.length"
+        :disabled="loading || !!blockedReason || !selected.length"
         @click="submit"
       >
         发起打样（{{ selected.length }} 个产品，共 {{ total }} 件）
@@ -124,6 +134,32 @@
   </el-dialog>
 </template>
 
+<script lang="ts">
+import { SalesOrderStatusEnum } from '@/enums/sales/OrderEnum'
+
+/** 允许发起打样的订单状态：未结束订单（含生产中补打样），与后端 requireSampleableOrderStatus 保持一致。 */
+const SAMPLEABLE_ORDER_STATUSES: number[] = [
+  SalesOrderStatusEnum.DRAFT.value,
+  SalesOrderStatusEnum.PENDING_REVIEW.value,
+  SalesOrderStatusEnum.REVIEWING.value,
+  SalesOrderStatusEnum.REVIEWED.value,
+  SalesOrderStatusEnum.REJECTED.value,
+  SalesOrderStatusEnum.CONFIRMED.value,
+  SalesOrderStatusEnum.PRODUCING.value,
+]
+
+/**
+ * 打样入口状态闸门（dev-20261018-039）：非终态返回空串；终态返回原因；未知/空状态明确拒绝。
+ */
+export function sampleEntryBlockedReason(orderStatus?: number | null): string {
+  if (orderStatus == null) return '订单状态未知，请刷新订单后再试'
+  if (SAMPLEABLE_ORDER_STATUSES.includes(orderStatus)) return ''
+  const label = SalesOrderStatusEnum.getLabel(orderStatus)
+  if (label === '未知') return `订单状态未知（${orderStatus}），请刷新订单后再试`
+  return `订单当前状态为「${label}」，不可发起打样`
+}
+</script>
+
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -132,7 +168,11 @@ import type { OrderSampleOption, OrderSampleOptions, SampleOrder } from '@/types
 import { SampleOrderStatusEnum } from '@/enums/sales/SampleEnum'
 import SampleDetail from '../../sample-order/components/SampleDetail.vue'
 
-const props = defineProps<{ modelValue: boolean; sourceOrderId?: number }>()
+const props = defineProps<{
+  modelValue: boolean
+  sourceOrderId?: number
+  orderStatus?: number | null
+}>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; created: [] }>()
 const visible = computed({
   get: () => props.modelValue,
@@ -152,6 +192,8 @@ const created = ref<SampleOrder[]>([])
 const detailVisible = ref(false)
 const detailId = ref<number>()
 const selected = computed(() => rows.value.filter((r) => r.selected))
+/** 订单状态闸门：终态/未知状态直接拦在入口，和后端校验同一口径（dev-20261018-039）。 */
+const blockedReason = computed(() => sampleEntryBlockedReason(props.orderStatus))
 const total = computed(() =>
   selected.value.reduce((sum, r) => sum + (validQuantity(r.quantity) ? Number(r.quantity) : 0), 0)
 )
@@ -167,8 +209,13 @@ async function load(preserve: boolean) {
   const version = ++loadVersion
   const previous = preserve ? new Map(rows.value.map((r) => [r.itemId, r])) : new Map<number, Row>()
   if (!sourceId) return
-  loading.value = true
   submitError.value = ''
+  if (blockedReason.value) {
+    options.value = undefined
+    rows.value = []
+    return
+  }
+  loading.value = true
   try {
     const res = await sampleOrderApi.getOrderSampleOptions(sourceId)
     if (version !== loadVersion || sourceId !== props.sourceOrderId) return
@@ -193,7 +240,7 @@ async function load(preserve: boolean) {
 }
 
 async function submit() {
-  if (saving.value || !options.value || !props.sourceOrderId) return
+  if (saving.value || blockedReason.value || !options.value || !props.sourceOrderId) return
   rows.value.forEach(
     (r) =>
       (r.error = r.selected && !validQuantity(r.quantity) ? '请输入正整数，最大2147483647' : '')

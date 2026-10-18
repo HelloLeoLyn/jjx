@@ -11,8 +11,10 @@ import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.product.service.ProductCustomerValidator;
 import com.jjx.sales.domain.dto.SalesOrderBatchSampleDTO;
 import com.jjx.sales.domain.dto.SalesOrderProductDTO;
+import com.jjx.sales.domain.dto.SampleOrderCreateDTO;
 import com.jjx.sales.domain.entity.*;
 import com.jjx.sales.domain.vo.SalesOrderProductVO;
+import com.jjx.sales.enums.SalesOrderStatusEnum;
 import com.jjx.sales.enums.SalesOrderTypeEnum;
 import com.jjx.sales.mapper.*;
 import com.jjx.sales.service.*;
@@ -96,6 +98,7 @@ class OrderBatchSampleMysqlTest {
         source = new SalesOrder(); source.setOrderNo(prefix + "SOURCE"); source.setCustomerId(customer.getCustomerId());
         source.setCustomerName(prefix); source.setOrderDate(new Date()); source.setOrderType(SalesOrderTypeEnum.STANDARD.getCode());
         source.setContactPerson("source contact"); source.setContactPhone("1234"); source.setCurrency("CNY"); source.setExchangeRate(BigDecimal.ONE);
+        source.setOrderStatus(SalesOrderStatusEnum.DRAFT.getValue());
         source.setTotalQuantity(300); source.setTraceId(prefix); orders.insert(source);
         for (int n = 1; n <= 3; n++) {
             var row = new SalesOrderProduct(); row.setOrderId(source.getOrderId()); row.setProductId((long)n);
@@ -162,5 +165,77 @@ class OrderBatchSampleMysqlTest {
             assertNotEquals(a.get(25, TimeUnit.SECONDS), b.get(25, TimeUnit.SECONDS));
             assertEquals(2, sampleCount()); verify(events, times(2)).fire(eq("sample.created"), anyMap());
         } finally { pool.shutdown(); assertTrue(pool.awaitTermination(30, TimeUnit.SECONDS)); }
+    }
+
+    /** dev-20261018-039：七类非终态（含生产中）预填均放行，生产中还保留补打样建单能力。 */
+    @Test void nonTerminalStatusesAllowPrefillAndProductionCanResample() {
+        for (var status : List.of(SalesOrderStatusEnum.DRAFT, SalesOrderStatusEnum.PENDING_REVIEW,
+                SalesOrderStatusEnum.REVIEWING, SalesOrderStatusEnum.APPROVED, SalesOrderStatusEnum.REJECTED,
+                SalesOrderStatusEnum.CONFIRMED, SalesOrderStatusEnum.IN_PRODUCTION)) {
+            jdbc.update("UPDATE sales_order SET order_status=? WHERE order_id=?", status.getValue(), source.getOrderId());
+            assertEquals(3, service.getSalesOrderSampleOptions(source.getOrderId()).getItems().size());
+        }
+        var created = service.createBatchFromSalesOrder(source.getOrderId(), request());
+        assertEquals(2, created.size()); assertEquals(2, sampleCount());
+        verify(events, times(2)).fire(eq("sample.created"), anyMap());
+    }
+
+    /** dev-20261018-039：终态订单预填直接拒绝。 */
+    @Test void terminalStatusRejectsPrefill() {
+        for (var status : List.of(SalesOrderStatusEnum.SHIPPED, SalesOrderStatusEnum.COMPLETED,
+                SalesOrderStatusEnum.CANCELLED)) {
+            jdbc.update("UPDATE sales_order SET order_status=? WHERE order_id=?", status.getValue(), source.getOrderId());
+            var error = assertThrows(BusinessException.class,
+                    () -> service.getSalesOrderSampleOptions(source.getOrderId()));
+            assertTrue(error.getMessage().contains(status.getLabel()));
+        }
+    }
+
+    /** dev-20261018-039：先打开弹窗（取 version）再把原单改终态 → 提交整批拒绝且无残留。 */
+    @Test void statusChangedAfterDialogOpenedRejectsWholeBatchWithoutResidue() {
+        var dto = request();
+        jdbc.update("UPDATE sales_order SET order_status=? WHERE order_id=?",
+                SalesOrderStatusEnum.SHIPPED.getValue(), source.getOrderId());
+        var error = assertThrows(BusinessException.class,
+                () -> service.createBatchFromSalesOrder(source.getOrderId(), dto));
+        assertTrue(error.getMessage().contains(SalesOrderStatusEnum.SHIPPED.getLabel()));
+        assertEquals(0, sampleCount());
+        assertTrue(writtenOrders.isEmpty(), "终态拒绝不应写入任何样品单产品行");
+        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM sales_order_product WHERE order_id=?",
+                Integer.class, source.getOrderId()));
+        verifyNoInteractions(events);
+    }
+
+    /** dev-20261018-039：未知状态明确拒绝，不猜作允许（列 NOT NULL，空状态以枚举外的未知值模拟）。 */
+    @Test void unknownStatusRejectsPrefillAndSubmit() {
+        var dto = request();
+        for (int status : new int[]{0, 99}) {
+            jdbc.update("UPDATE sales_order SET order_status=? WHERE order_id=?", status, source.getOrderId());
+            var prefill = assertThrows(BusinessException.class,
+                    () -> service.getSalesOrderSampleOptions(source.getOrderId()));
+            assertTrue(prefill.getMessage().contains("未知"));
+            var batch = assertThrows(BusinessException.class,
+                    () -> service.createBatchFromSalesOrder(source.getOrderId(), dto));
+            assertTrue(batch.getMessage().contains("核对") || batch.getMessage().contains("核查"));
+            assertEquals(0, sampleCount());
+        }
+        verifyNoInteractions(events);
+    }
+
+    /** dev-20261018-039：旧单产品来源建样品（createSample + SALES_ORDER）同样拒绝终态订单。 */
+    @Test void legacyProductSourcePathRejectsTerminalOrder() {
+        var dto = new SampleOrderCreateDTO();
+        dto.setCustomerId(customer.getCustomerId()); dto.setSourceType("SALES_ORDER"); dto.setSourceNo(source.getOrderNo());
+        var item = new SampleOrderCreateDTO.Item();
+        item.setProductId(1L); item.setProductCode(prefix + 1); item.setProductName("product1"); item.setQuantity(3);
+        dto.setItems(List.of(item));
+        for (var status : List.of(SalesOrderStatusEnum.SHIPPED, SalesOrderStatusEnum.COMPLETED,
+                SalesOrderStatusEnum.CANCELLED)) {
+            jdbc.update("UPDATE sales_order SET order_status=? WHERE order_id=?", status.getValue(), source.getOrderId());
+            var error = assertThrows(BusinessException.class, () -> service.createSample(dto));
+            assertTrue(error.getMessage().contains(status.getLabel()));
+        }
+        assertEquals(0, sampleCount());
+        verifyNoInteractions(events);
     }
 }

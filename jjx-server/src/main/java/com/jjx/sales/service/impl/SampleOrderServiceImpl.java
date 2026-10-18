@@ -11,6 +11,7 @@ import com.jjx.sales.domain.entity.SalesSampleProcess;
 import com.jjx.sales.domain.entity.SalesSampleBom;
 import com.jjx.sales.domain.entity.SalesSampleTransfer;
 import com.jjx.sales.enums.SalesOrderTypeEnum;
+import com.jjx.sales.enums.SalesOrderStatusEnum;
 import com.jjx.sales.enums.SalesSampleCraftType;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
@@ -130,6 +131,28 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         return source;
     }
 
+    /** 允许发起打样的订单状态：未结束订单（含生产中补打样），已发货/已完成/已取消禁止。 */
+    private static final Set<Integer> SAMPLEABLE_ORDER_STATUSES = java.util.Arrays.stream(
+                    new SalesOrderStatusEnum[]{SalesOrderStatusEnum.DRAFT, SalesOrderStatusEnum.PENDING_REVIEW,
+                            SalesOrderStatusEnum.REVIEWING, SalesOrderStatusEnum.APPROVED, SalesOrderStatusEnum.REJECTED,
+                            SalesOrderStatusEnum.CONFIRMED, SalesOrderStatusEnum.IN_PRODUCTION})
+            .map(SalesOrderStatusEnum::getValue).collect(Collectors.toUnmodifiableSet());
+
+    /**
+     * 打样来源订单状态闸门（dev-20261018-039）：预填、批量建单、旧单产品来源建单共用。
+     * 未知/空状态不猜作允许，明确拒绝并提示核查。
+     */
+    private void requireSampleableOrderStatus(SalesOrder source) {
+        Integer status = source.getOrderStatus();
+        var resolved = SalesOrderStatusEnum.getByValueSafe(status);
+        if (resolved.isPresent() && SAMPLEABLE_ORDER_STATUSES.contains(status)) {
+            return;
+        }
+        String label = resolved.map(SalesOrderStatusEnum::getLabel).orElse("未知");
+        throw new BusinessException("订单[" + source.getOrderNo() + "]当前状态为[" + label
+                + "]，不可发起打样" + (resolved.isPresent() ? "" : "，请核查订单状态后再试"));
+    }
+
     private List<com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO.ActiveSample> activeOrderSamples(
             SalesOrder source, Long productId, String productCode) {
         boolean lock = org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
@@ -156,6 +179,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Override
     public com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO getSalesOrderSampleOptions(Long sourceOrderId) {
         SalesOrder source = requireSampleSourceOrder(sourceOrderId, false);
+        requireSampleableOrderStatus(source);
         var items = orderProductService.getListByOrderId(sourceOrderId);
         var result = new com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO();
         result.setOrderId(sourceOrderId); result.setOrderNo(source.getOrderNo()); result.setCustomerId(source.getCustomerId());
@@ -177,6 +201,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Transactional(rollbackFor = Exception.class)
     public List<SalesOrder> createBatchFromSalesOrder(Long sourceOrderId, com.jjx.sales.domain.dto.SalesOrderBatchSampleDTO dto) {
         SalesOrder source = requireSampleSourceOrder(sourceOrderId, true);
+        // 持来源订单锁重读当前状态：弹窗打开后订单变终态也必须拒绝（dev-20261018-039）
+        requireSampleableOrderStatus(source);
         if (dto == null || dto.getItems() == null || dto.getItems().isEmpty()) throw new BusinessException("请至少勾选一个打样产品");
         var sourceItems = orderProductService.getListByOrderId(sourceOrderId);
         if (!sampleSourceVersion(source, sourceItems).equals(dto.getSourceVersion())) throw new BusinessException("原订单资料已变化，请刷新后重新勾选打样产品");
@@ -911,6 +937,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             if (sourceOrder == null || !SalesOrderTypeEnum.STANDARD.getCode().equals(sourceOrder.getOrderType())) {
                 throw new BusinessException("来源销售订单不存在");
             }
+            // 旧单产品来源建单兜底：终态/未知状态一律拒绝（dev-20261018-039）
+            requireSampleableOrderStatus(sourceOrder);
             if (!dto.getCustomerId().equals(sourceOrder.getCustomerId())) {
                 throw new BusinessException("来源销售订单不属于当前客户");
             }

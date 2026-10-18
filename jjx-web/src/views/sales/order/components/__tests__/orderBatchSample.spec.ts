@@ -4,11 +4,15 @@ import { defineComponent, h, provide, inject } from 'vue'
 import Dialog from '../OrderBatchSampleDialog.vue'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales/SampleEnum'
+import { SalesOrderStatusEnum } from '@/enums/sales/OrderEnum'
 
 vi.mock('@/api/sales/sampleOrder', () => ({
   sampleOrderApi: { getOrderSampleOptions: vi.fn(), createBatchFromOrder: vi.fn() },
 }))
-vi.mock('element-plus', () => ({ ElMessage: { success: vi.fn() } }))
+vi.mock('element-plus', () => ({
+  ElMessage: { success: vi.fn(), warning: vi.fn() },
+  ElAlert: { props: ['title'], template: '<p class="alert">{{ title }}</p>' },
+}))
 vi.mock('../../../sample-order/components/SampleDetail.vue', () => ({
   default: { template: '<div />' },
 }))
@@ -87,7 +91,11 @@ function options(count = 3) {
 }
 function render() {
   return mount(Dialog, {
-    props: { modelValue: true, sourceOrderId: 100 },
+    props: {
+      modelValue: true,
+      sourceOrderId: 100,
+      orderStatus: SalesOrderStatusEnum.DRAFT.value,
+    },
     global: {
       directives: { loading: {} },
       stubs: {
