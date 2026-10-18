@@ -194,7 +194,7 @@
             v-if="!filtered(tab.value).length"
             style="text-align: center; color: #c0c4cc; padding: 24px 0; font-size: 13px"
           >
-            暂无印刷工序，点击右上角【＋ 添加印刷工序】录入
+            暂无印刷工序，点表格右上角【添加印刷工序】新增一行
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -335,54 +335,21 @@ function rowContent(r: any) {
   return `${(r.printName || '').trim()}|${(r.colorNo || '').trim()}|${(r.colorNoLabel || '').trim()}|${r.inkMaterialId ?? ''}|${(r.inkNo || '').trim()}|${(r.screenNo || '').trim()}|${r.materials || ''}`
 }
 
-// 删除行（2026-09-04）：空行直接删除——若删后该分类无行则抑制一次自动补行（显示空态）；
+// 删除行：空行/内容行都直接移除，删完不回弹（dev-20261018-036：不再自动补空行，新增只由按钮触发）；
 // 内容行删除同父级语义（本地移除，保存后后端生效）
 function handleDeleteRow(row: any, _$index?: number) {
   if (props.readonly) return
   const isEmpty = isEmptyRow(row)
-  const rows = filtered(activeTab.value)
-  const willEmpty = isEmpty && rows.length === 1
   const i = props.printList.indexOf(row)
   if (i < 0) return
   props.printList.splice(i, 1)
-  if (isEmpty) {
-    if (willEmpty) suppressEnsureOnce = true
-    ElMessage.success('已删除空行')
-  } else {
-    ElMessage.success('已删除该印刷工序（保存后生效）')
-  }
+  ElMessage.success(isEmpty ? '已删除空行' : '已删除该印刷工序（保存后生效）')
 }
 
 // 行级保存（2026-08-12）：编辑不再自动补行，点“保存”才提交并触发新行/材料/执行时间线
 
-// 结构变化（加载/删除/保存重建）→ 确保当前 tab 末尾有一行空行；输入内容变化不触发
-// 2026-09-04：手动删除最后一个空行后抑制一次自动补行，允许分类显示空态（空态有“添加印刷工序”入口）
-let suppressEnsureOnce = false
-const uidSnapshot = ref('')
-watch(
-  () => props.printList.map((r) => String(r.uid)).join('|'),
-  (uids) => {
-    if (uids === uidSnapshot.value) return
-    uidSnapshot.value = uids
-    if (suppressEnsureOnce) {
-      suppressEnsureOnce = false
-      return
-    }
-    ensureEmptyRow()
-  },
-  { immediate: true }
-)
-
-// 切换子结构 tab → 目标 tab 也保证空行
-watch(activeTab, () => ensureEmptyRow())
-
-function ensureEmptyRow() {
-  const rows = filtered(activeTab.value)
-  const last = rows[rows.length - 1]
-  if (!last || !isEmptyRow(last)) {
-    props.addPrintRow(activeTab.value)
-  }
-}
+// 空行只由「添加印刷工序」按钮显式新增（dev-20261018-036）：
+// 加载 / 保存后重载 / 切换分类都不再自动补行，删除空行也不会回弹；空态保留显式新增入口。
 
 // 行内容变化 → 标记 dirty：逐行比对 uid→内容快照，仅真正编辑过的行标 dirty
 // （2026-09-04 修复：删除/自动补行属于结构变化，不应把其它行误标 dirty 而弹出“保存”按钮）

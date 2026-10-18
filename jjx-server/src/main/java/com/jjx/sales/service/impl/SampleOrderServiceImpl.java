@@ -11,6 +11,7 @@ import com.jjx.sales.domain.entity.SalesSampleProcess;
 import com.jjx.sales.domain.entity.SalesSampleBom;
 import com.jjx.sales.domain.entity.SalesSampleTransfer;
 import com.jjx.sales.enums.SalesOrderTypeEnum;
+import com.jjx.sales.enums.SalesSampleCraftType;
 import com.jjx.sales.enums.SampleOrderStatusEnum;
 import com.jjx.sales.mapper.OrderMapper;
 import com.jjx.sales.mapper.QuotationMapper;
@@ -4449,7 +4450,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         java.util.LinkedHashSet<String> colorNos = new java.util.LinkedHashSet<>();
         java.util.LinkedHashSet<String> inkNos = new java.util.LinkedHashSet<>();
         for (SalesSampleProcess p : all) {
-            if (p.getProcessName() != null && !p.getProcessName().isBlank()) {
+            // dev-20261018-036：印刷名称只联想历史「印刷」工序列（majorCategory=PRINT），
+            // 不再把组装/冲型工序名混进印刷名称下拉；其余历史字段口径不变。
+            if (SalesSampleCraftType.of(p.getMajorCategory()) == SalesSampleCraftType.PRINT
+                    && p.getProcessName() != null && !p.getProcessName().isBlank()) {
                 printNames.add(p.getProcessName().trim());
             }
             if (p.getCustomProcessParams() != null && !p.getCustomProcessParams().isBlank()) {
