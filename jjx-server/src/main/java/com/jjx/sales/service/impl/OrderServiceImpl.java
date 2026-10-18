@@ -76,6 +76,7 @@ public class OrderServiceImpl implements IOrderService {
     private final ISalesOrderProductService orderProductService;
     private final ICustomerService customerService;
     private final ProductMapper productMapper;
+    private final com.jjx.product.service.IProductService productService;
     private final ProductionOrderService productionOrderService;
     private final IEngineeringBomService bomService;
     private final IEngineeringRoutingService routingService;
@@ -159,7 +160,7 @@ public class OrderServiceImpl implements IOrderService {
         if(insert>0){
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType(), dto.getCustomerId());
-            ensureProductIds(dto.getItems(), dto.getOrderType());
+            ensureProductIds(dto.getItems(), dto.getCustomerId());
             dto.getItems().forEach(i -> i.setOrderId(entity.getOrderId()));
             orderProductService.batchAdd(dto.getItems());
             // 随单附件落定（dev-20261017-001）：与订单建档、明细落库同一事务，任一条失败整单回滚
@@ -231,7 +232,7 @@ public class OrderServiceImpl implements IOrderService {
         if(insert>0){
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType(), dto.getCustomerId());
-            ensureProductIds(dto.getItems(), dto.getOrderType());
+            ensureProductIds(dto.getItems(), dto.getCustomerId());
             dto.getItems().forEach(i -> i.setOrderId(dto.getOrderId()));
             boolean ok = orderProductService.replaceItems(dto.getOrderId(), dto.getItems());
             // 随单附件落定（dev-20261017-001）：与订单更新同一事务，任一条失败整单回滚
@@ -980,100 +981,55 @@ public class OrderServiceImpl implements IOrderService {
         return vo;
     }
 
-    /**
-     * 校验订单产品明细（区分样品单与标准单）
-     * 样品单(orderType=2): productId 允许为空，productCode 允许自定义
-     * 标准单(orderType=1): productId 和 productCode 需要完整
-     */
+    /** 保存草稿只校验身份与客户归属；生产就绪仍由提交生产入口校验。允许同产品多行。 */
     private void validateOrderItems(List<SalesOrderProductDTO> items, Integer orderType, Long customerId) {
-        if (items == null || items.isEmpty()) {
-            throw new BusinessException("产品明细不能为空");
-        }
-
-        boolean isSample = Integer.valueOf(2).equals(orderType);
-
-        for (int i = 0; i < items.size(); i++) {
-            SalesOrderProductDTO item = items.get(i);
-
-            if (isSample) {
-                // 样品单：productId 可为空，但 productCode 必须有
-                if (item.getProductId() == null && !StringUtils.hasText(item.getProductCode())) {
-                    throw new BusinessException("第" + (i + 1) + "行产品：样品单未关联产品时，产品编码不能为空");
-                }
-                // 样品单 productCode 为空时自动生成
-                if (!StringUtils.hasText(item.getProductCode())) {
-                    item.setProductCode("SAMPLE-" + System.currentTimeMillis() % 1000000);
-                }
-            } else {
-                // 标准单：productId 不能为空
-                if (item.getProductId() == null) {
-                    throw new BusinessException("第" + (i + 1) + "行产品：标准单必须关联产品");
-                }
-                if (!StringUtils.hasText(item.getProductCode())) {
-                    throw new BusinessException("第" + (i + 1) + "行产品：产品编码不能为空");
-                }
-                // 校验产品是否已发布(RELEASED)
-                Product product = productMapper.selectById(item.getProductId());
-                if (product == null) {
-                    throw new BusinessException("第" + (i + 1) + "行产品：产品不存在");
-                }
-                if (!ProductEnums.Status.RELEASED.getValue().equals(product.getProductStatus())) {
-                    throw new BusinessException("第" + (i + 1) + "行产品：产品[" + product.getProductName() + "]尚未发布，请先发布产品后再下单");
-                }
-                productCustomerValidator.validateBelongsToCustomer(item.getProductId(), customerId);
+        if (items == null || items.isEmpty()) throw new BusinessException("产品明细不能为空");
+        if (customerId == null) throw new BusinessException("客户不能为空");
+        for (SalesOrderProductDTO item : items) {
+            if (item == null) throw new BusinessException("产品明细不能为空");
+            if (item.getProductId() == null && StringUtils.hasText(item.getProductCode())) {
+                Product matched = productMapper.selectOne(new LambdaQueryWrapper<Product>()
+                        .eq(Product::getProductCode, item.getProductCode().trim()).last("LIMIT 1"));
+                if (matched != null) item.setProductId(matched.getProductId());
             }
-
-            if (!StringUtils.hasText(item.getProductName())) {
-                throw new BusinessException("第" + (i + 1) + "行产品：产品名称不能为空");
+            if (item.getProductId() != null) {
+                applyProductArchive(item, productCustomerValidator.validateBelongsToCustomer(
+                        item.getProductId(), customerId));
+            } else {
+                if (!StringUtils.hasText(item.getProductCode()) || !StringUtils.hasText(item.getProductName())) {
+                    throw new BusinessException("新产品编码和名称不能为空");
+                }
+                item.setProductCode(item.getProductCode().trim());
+                item.setProductName(item.getProductName().trim());
             }
         }
     }
 
-    /**
-     * 确保产品明细都有 productId
-     * 样品单中手动输入的产品编码，自动创建产品记录
-     */
-    private void ensureProductIds(List<SalesOrderProductDTO> items, Integer orderType) {
-        boolean isSample = Integer.valueOf(2).equals(orderType);
-        if (!isSample) {
-            // 标准单的 productId 由 validateOrderItems 保证不为空
-            return;
-        }
-
-        String currentUser = String.valueOf(cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong());
-
+    /** 与报价相同的客户草稿建档入口；返回后再次自证身份，失败直接回滚订单事务。 */
+    private void ensureProductIds(List<SalesOrderProductDTO> items, Long customerId) {
         for (SalesOrderProductDTO item : items) {
-            if (item.getProductId() != null) {
-                continue;
-            }
-
-            // 按 productCode 查找是否已存在
-            if (StringUtils.hasText(item.getProductCode())) {
-                Product existing = productMapper.selectOne(
-                        new LambdaQueryWrapper<Product>()
-                                .eq(Product::getProductCode, item.getProductCode().trim())
-                );
-                if (existing != null) {
-                    item.setProductId(existing.getProductId());
-                    continue;
-                }
-            }
-
-            // 不存在则创建新产品
-            Product newProduct = new Product();
-            newProduct.setProductCode(item.getProductCode());
-            newProduct.setProductName(item.getProductName());
-            newProduct.setUnit(item.getUnit());
-            newProduct.setSpecJson("{\"specification\":\"" + (item.getSpecification() != null ? item.getSpecification() : "") + "\"}");
-            newProduct.setProductStatus(1); // 已发布
-            newProduct.setCreateBy(currentUser);
-            newProduct.setUpdateBy(currentUser);
-            productMapper.insert(newProduct);
-            item.setProductId(newProduct.getProductId());
-
-            log.info("样品单自动创建产品: code={}, name={}, productId={}",
-                    newProduct.getProductCode(), newProduct.getProductName(), newProduct.getProductId());
+            if (item.getProductId() != null) continue;
+            Long productId = productService.ensureDraftProduct(item.getProductCode(), item.getProductName(),
+                    item.getUnit(), "sales_order", customerId, item.getSerialNo(), item.getPanelType(),
+                    item.getPanelFeature(), item.getCircuitType(), item.getCircuitFeature());
+            if (productId == null) throw new BusinessException("订单产品建档失败：" + item.getProductCode());
+            Product product = productCustomerValidator.validateBelongsToCustomer(productId, customerId);
+            applyProductArchive(item, product);
+            item.setProductId(productId);
         }
+    }
+
+    private void applyProductArchive(SalesOrderProductDTO item, Product product) {
+        if (product == null) throw new BusinessException("产品不存在");
+        if (StringUtils.hasText(item.getProductCode())
+                && !java.util.Objects.equals(product.getProductCode(), item.getProductCode().trim())) {
+            throw new BusinessException("产品编码与所选产品不一致");
+        }
+        item.setProductCode(product.getProductCode());
+        item.setProductName(product.getProductName());
+        if (!StringUtils.hasText(item.getProductName())) throw new BusinessException("产品档案名称不能为空");
+        // 规格为订单行快照：显式输入优先，缺省取所选产品档案；不修改已有产品档案。
+        if (item.getSpecification() == null) item.setSpecification(product.getSpecJson());
     }
 
     /**

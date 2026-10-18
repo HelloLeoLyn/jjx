@@ -3759,6 +3759,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         String prefix = "由样品单[" + sampleOrder.getOrderNo() + "]转量产生成";
         dto.setRemark(dto.getRemark() != null && !dto.getRemark().isEmpty()
                 ? prefix + "\n" + dto.getRemark() : prefix);
+        // 与另一转量产入口相同的必需项校验，不依赖标准订单草稿保存的产品状态限制。
+        com.jjx.sales.domain.vo.SampleConvertCheckVO check = buildConvertCheck(orderId);
+        if (!java.lang.Boolean.TRUE.equals(check.getAllPass())) {
+            String miss = check.getItems().stream()
+                    .filter(i -> "required".equals(i.getLevel()) && !java.lang.Boolean.TRUE.equals(i.getPass()))
+                    .map(com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem::getName)
+                    .collect(java.util.stream.Collectors.joining("、"));
+            throw new BusinessException("转量产资料未就绪：" + miss + "。请先补全（可在转量产就绪检查中查看明细）");
+        }
         // 复用标准订单新增核心（编号唯一校验/明细校验/金额/明细落库/创建日志）
         Long newOrderId = orderService.insertOrder(dto);
 

@@ -31,8 +31,8 @@ public class SalesOrderProductDTO {
     @NotNull(message = "订单ID不能为空", groups = ValidationGroups.Update.class)
     private Long orderId;
 
-    @Schema(description = "产品ID（样品单可为空）", example = "2001")
-    private Long productId; // 样品单允许为空
+    @Schema(description = "产品ID；为空按编码匹配或按订单客户新建开发中产品", example = "2001")
+    private Long productId;
 
     @Schema(description = "单位", example = "PCS")
     @NotNull(message = "单位不能为空")
@@ -44,12 +44,11 @@ public class SalesOrderProductDTO {
     private BigDecimal unitPrice;
 
     @Size(max = 50, message = "产品编码长度不能超过50个字符")
-    @Schema(description = "产品编码（样品单可自定义）", example = "P2024001")
-    private String productCode; // 样品单允许自定义
+    @Schema(description = "产品编码；已有ID可缺省，传值必须匹配档案，新产品必填", example = "P2024001")
+    private String productCode;
 
-    @NotBlank(message = "产品名称不能为空")
     @Size(max = 20, message = "产品名称长度不能超过20个字符")
-    @Schema(description = "产品名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "薄膜开关")
+    @Schema(description = "产品名称；已有产品以档案为准，新产品必填", example = "薄膜开关")
     private String productName;
 
     @Schema(description = "备注")
@@ -66,5 +65,12 @@ public class SalesOrderProductDTO {
     @Size(max = 500, message = "行备注长度不能超过500个字符")
     @Schema(description = "行备注")
     private String lineRemark;
+
+    // 与报价建档相同的编码参数，只写新产品 spec_json，不属于订单行持久字段。
+    private String serialNo;
+    private String panelType;
+    private String panelFeature;
+    private String circuitType;
+    private String circuitFeature;
 
 }

@@ -42,7 +42,7 @@ public interface SalesOrderProductConverter {
      * 更新 Entity（从 EditDTO）
      * 使用 @MappingTarget 更新已有对象
      */
-    @Mapping(target = "id", source = "orderId")
+    @Mapping(target = "id", ignore = true)
     void updateEntity(@MappingTarget SalesOrderProduct entity, SalesOrderProductDTO editDTO);
 
 
