@@ -3,12 +3,13 @@
     <el-card shadow="never">
       <template #header>
         <span style="font-weight: 600">🖨️ 印刷工序（自定义工序，表格录入）</span>
-        <span class="desc">无标准工序库，逐行录入；每行一道印刷，可排序/推进/挂材料</span>
+        <span class="desc">无标准工序库，逐行录入；每行一道印刷，可排序/推进/挂材料；行内保存会提交整份工序计划（组装 + 印刷 + BOM 独立材料）</span>
         <el-button
           type="success"
           size="small"
           :loading="savingPlan"
           :disabled="readonly"
+          title="保存工序计划：一并提交组装工序、本页印刷行与 BOM 独立材料"
           @click="savePlan"
           style="float: right; margin-top: -2px"
           >💾 保存工序计划</el-button
@@ -137,8 +138,11 @@
                     link
                     type="primary"
                     :loading="savingPlan"
+                    title="保存整份工序计划（含本行、组装工序与 BOM 独立材料）"
+                    aria-label="保存整份工序计划"
                     @click="handleRowSave(row)"
-                  ></el-button>
+                    >保存</el-button
+                  >
                   <!-- <el-button v-else size="small" link disabled>✓ 已存</el-button> -->
                   <el-button
                     size="small"

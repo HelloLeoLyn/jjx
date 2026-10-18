@@ -57,8 +57,15 @@
       <div v-else class="pc-desc-readonly">{{ pc.operationRemark }}</div>
     </div>
     <div v-if="!readonly && pc.editing" class="pc-footer">
+      <span class="edit-hint">完成编辑只结束本地编辑，不写入；请点「保存工序计划」落库</span>
       <el-button size="small" @click="$emit('cancel-edit')">取消修改</el-button>
-      <el-button size="small" type="primary" @click="$emit('finish-edit')">完成编辑</el-button>
+      <el-button
+        size="small"
+        type="primary"
+        title="只结束本卡编辑，不代表已保存；保存工序计划后才写入"
+        @click="$emit('finish-edit')"
+        >完成编辑</el-button
+      >
     </div>
   </div>
 </template>
@@ -239,9 +246,16 @@ function onCardDrop(e: DragEvent, pc: any) {
 }
 .pc-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   border-top: 1px dashed #e8ecf1;
   padding-top: 8px;
+}
+.edit-hint {
+  margin-right: auto;
+  font-size: 12px;
+  color: #e6a23c;
+  line-height: 1.5;
 }
 </style>

@@ -141,7 +141,7 @@
     <div v-else style="color: #999; font-size: 13px">
       暂无材料（在工序中添加材料，或点右上角 + 直接新增）
     </div>
-    <div class="transfer-zone">
+    <div v-if="showTransfer" class="transfer-zone" data-test="transfer-zone">
       <el-button type="success" size="small" :disabled="readonly" @click="$emit('transfer')"
         >📦 资料转移（建档产品/BOM/工艺路线）</el-button
       >
@@ -156,13 +156,19 @@
 /**
  * BOM 物料清单卡（dev-20260811-008 组件化；dev-20261015-017 支持直接编辑）
  * 列：材料｜项目｜规格｜模数｜基数｜单位；与卡片材料共用同一份草稿。
+ * dev-20261018-007：新增 showTransfer（默认 true），仅控制资料转移区显示，transfer 事件不变。
  */
-const props = defineProps<{
-  bomList: any[]
-  projects?: any[]
-  readonly?: boolean
-  stateOf: (uid: string) => any
-}>()
+const props = withDefaults(
+  defineProps<{
+    bomList: any[]
+    projects?: any[]
+    readonly?: boolean
+    stateOf: (uid: string) => any
+    /** 是否显示「资料转移」区；默认 true 兼容既有调用方，false 时仅隐藏、不改 transfer 事件（dev-20261018-007） */
+    showTransfer?: boolean
+  }>(),
+  { showTransfer: true }
+)
 
 const emit = defineEmits<{
   (e: 'update', row: any): void
