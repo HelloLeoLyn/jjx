@@ -262,7 +262,7 @@ public class QuotationServiceImpl implements IQuotationService {
     public Long insertQuotation(SalesQuotationAddDTO dto) {
 
         SalesQuotation quotation = quotationConverter.toEntity(dto);
-        validateCustomerProducts(quotation);
+        validateCustomerProducts(quotation, null);
         // 销售负责人默认当前登录用户（2026-08-08）
         if (quotation.getSalesPersonId() == null) {
             quotation.setSalesPersonId(SecurityUtils.getUserId());
@@ -339,8 +339,8 @@ public class QuotationServiceImpl implements IQuotationService {
         int rows = quotationMapper.insert(quotation);
         // 明细编码重复防线（2026-09-02：同码会导致两行指向同一草稿产品）
         validateItemCodeUnique(quotation.getItems());
-        // 样品报价：编码前置建档草稿产品（2026-08-08）
-        ensureSampleDraftProducts(quotation);
+        // 新产品随报价建档，两种报价类型共用
+        ensureDraftProducts(quotation);
         // 保存报价单明细（自动汇总金额：税率百分数÷100 算税额，total=subtotal+tax，final=total-折扣）
         saveQuotationItems(quotation.getQuotationId(), quotation.getItems(),
                 quotation.getTaxRate(), quotation.getDiscountAmount());
@@ -351,16 +351,39 @@ public class QuotationServiceImpl implements IQuotationService {
         return quotation.getQuotationId();
     }
 
-    /**
-     * 样品报价建档草稿产品（2026-08-08）：明细有编码无产品 → 建档/复用，回填 productId
-     */
-    private void validateCustomerProducts(SalesQuotation quotation) {
-        if (!java.lang.Integer.valueOf(1).equals(quotation.getQuotationType())
-                || quotation.getItems() == null || quotation.getItems().isEmpty()) {
-            return;
+    /** 已有产品始终校验客户归属；本报价原有关联允许继续编辑开发中的产品。 */
+    private void validateCustomerProducts(SalesQuotation quotation, SalesQuotation existing) {
+        if (quotation.getItems() == null) return;
+        java.util.Set<Long> previousProducts = new java.util.HashSet<>();
+        if (existing != null && existing.getItems() != null) {
+            for (SalesQuotationItem item : existing.getItems()) {
+                if (item.getProductId() != null) previousProducts.add(item.getProductId());
+            }
         }
         for (SalesQuotationItem item : quotation.getItems()) {
-            productCustomerValidator.validateSelectable(item.getProductId(), quotation.getCustomerId());
+            if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isBlank()) {
+                Product matched = productMapper.selectOne(new LambdaQueryWrapper<Product>()
+                        .eq(Product::getProductCode, item.getProductCode().trim()).last("LIMIT 1"));
+                if (matched != null) item.setProductId(matched.getProductId());
+            }
+            if (item.getProductId() == null) {
+                if (item.getProductCode() == null || item.getProductCode().isBlank()
+                        || item.getProductName() == null || item.getProductName().isBlank()) {
+                    throw new BusinessException("新产品编码和名称不能为空");
+                }
+                item.setProductCode(item.getProductCode().trim());
+                continue;
+            }
+            Product product = previousProducts.contains(item.getProductId())
+                    ? productCustomerValidator.validateBelongsToCustomer(item.getProductId(), quotation.getCustomerId())
+                    : productCustomerValidator.validateSelectable(item.getProductId(), quotation.getCustomerId());
+            if (product != null) {
+                if (item.getProductCode() != null && !item.getProductCode().isBlank()
+                        && !product.getProductCode().equals(item.getProductCode().trim())) {
+                    throw new BusinessException("产品编码与所选产品不一致");
+                }
+                item.setProductCode(product.getProductCode());
+            }
         }
     }
 
@@ -380,22 +403,19 @@ public class QuotationServiceImpl implements IQuotationService {
         }
     }
 
-    private void ensureSampleDraftProducts(SalesQuotation quotation) {
-        if (!java.lang.Integer.valueOf(2).equals(quotation.getQuotationType())) return;
+    private void ensureDraftProducts(SalesQuotation quotation) {
         if (quotation.getItems() == null) return;
         for (SalesQuotationItem item : quotation.getItems()) {
             if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isBlank()) {
-                try {
-                    // 编码参数（面板/线路/流水号）随建档写入 product.spec_json（2026-09-02：参数落产品档案，报价明细不再存）
-                    Long pid = productService.ensureDraftProduct(
-                            item.getProductCode(), item.getProductName(), item.getUnit(), "quotation",
-                            quotation.getCustomerId(),
-                            item.getSerialNo(), item.getPanelType(), item.getPanelFeature(),
-                            item.getCircuitType(), item.getCircuitFeature());
-                    item.setProductId(pid);
-                } catch (Exception e) {
-                    log.warn("样品报价建档草稿产品失败: code={}, err={}", item.getProductCode(), e.getMessage());
-                }
+                // 建档失败须中止整单事务，不能保存未关联产品的报价明细。
+                Long pid = productService.ensureDraftProduct(
+                        item.getProductCode(), item.getProductName(), item.getUnit(), "quotation",
+                        quotation.getCustomerId(),
+                        item.getSerialNo(), item.getPanelType(), item.getPanelFeature(),
+                        item.getCircuitType(), item.getCircuitFeature());
+                if (pid == null) throw new BusinessException("报价产品建档失败：" + item.getProductCode());
+                productCustomerValidator.validateBelongsToCustomer(pid, quotation.getCustomerId());
+                item.setProductId(pid);
             }
         }
     }
@@ -407,7 +427,7 @@ public class QuotationServiceImpl implements IQuotationService {
      * 1）保存单据 = 建引用 + 草稿行转正（原子）——转正唯一入口是 {@link AttachmentRefService#create}，
      *    本方法不写第二套转正 SQL；来源单号由 create 按来源自证取得，不在此传。
      * 2）归属 = 报价单 + 产品：产品 id 优先取入参，缺失则按明细编码回填（未建档产品已在
-     *    {@link #ensureSampleDraftProducts} 建档、标准单在 {@link #saveQuotationItems} 按码兜底）。
+     *    {@link #ensureDraftProducts} 建档、标准单在 {@link #saveQuotationItems} 按码兜底）。
      * 3）缺 attachmentId / documentType 一律抛业务异常（服务层兜底，与 Controller 校验同口径）。
      * 4）本方法分别在 {@link #insertQuotation} 与 {@link #updateQuotation} 的
      *    {@code @Transactional(rollbackFor = Exception.class)} 内执行：
@@ -490,7 +510,7 @@ public class QuotationServiceImpl implements IQuotationService {
         if (existingQuotation == null) {
             throw new BusinessException("报价单不存在");
         }
-        validateCustomerProducts(quotation);
+        validateCustomerProducts(quotation, existingQuotation);
 
         // 检查报价单号是否唯一（排除自身）
         if (quotation.getQuotationNo() != null && !quotation.getQuotationNo().equals(existingQuotation.getQuotationNo())) {
@@ -502,8 +522,8 @@ public class QuotationServiceImpl implements IQuotationService {
         int rows = quotationMapper.updateById(quotation);
         // 明细编码重复防线（2026-09-02：同码会导致两行指向同一草稿产品）
         validateItemCodeUnique(quotation.getItems());
-        // 样品报价：明细建档草稿产品（2026-08-08）
-        ensureSampleDraftProducts(quotation);
+        // 新产品随报价建档，两种报价类型共用
+        ensureDraftProducts(quotation);
         // DEV-1116：更新未携带明细时跳过"先删后插"，避免误删明细且表头不重算
         if (quotation.getItems() == null || quotation.getItems().isEmpty()) {
             log.info("报价单[{}]更新未携带明细，跳过明细重写", quotation.getQuotationId());

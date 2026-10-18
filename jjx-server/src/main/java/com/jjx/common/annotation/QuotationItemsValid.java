@@ -10,20 +10,14 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/**
- * 报价单明细校验（前后端双保险的后端部分）：
- * - 标准单（quotationType=1）：明细每行必须关联产品档案（productId 或可解析的 productCode）
- * - 样品单（quotationType=2）：明细可手填描述，不强制关联产品
- *
- * 挂在 SalesQuotation.items 字段上，配合 @Validated 触发。
- */
+/** 报价明细校验：标准品、样品均可选择已有产品或填写编码和名称后随单建档。 */
 @Documented
 @Target({ElementType.TYPE, ElementType.PARAMETER})
 @Retention(RetentionPolicy.RUNTIME)
 @Constraint(validatedBy = QuotationItemsValidator.class)
 public @interface QuotationItemsValid {
 
-    String message() default "标准单明细必须关联产品";
+    String message() default "报价明细必须选择已有产品或填写新产品编码和名称";
 
     Class<?>[] groups() default {};
 
