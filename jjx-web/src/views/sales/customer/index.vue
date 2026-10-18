@@ -9,6 +9,9 @@
         <el-form-item label="客户名称">
           <el-input v-model="queryParams.customerName" placeholder="请输入客户名称" clearable />
         </el-form-item>
+        <el-form-item label="客户简称">
+          <el-input v-model="queryParams.customerShortName" placeholder="请输入客户简称" clearable />
+        </el-form-item>
         <el-form-item label="客户类型">
           <el-select
             v-model="queryParams.customerType"
@@ -287,6 +290,7 @@ const queryParams = reactive<CustomerQueryParams>({
   pageSize: 10,
   customerCode: undefined,
   customerName: undefined,
+  customerShortName: undefined,
   customerType: undefined,
   customerStatus: undefined,
   orderByColumn: undefined,
@@ -370,6 +374,7 @@ const resetQuery = () => {
     pageSize: 10,
     customerCode: undefined,
     customerName: undefined,
+    customerShortName: undefined,
     customerType: undefined,
     customerStatus: undefined,
     orderByColumn: undefined,

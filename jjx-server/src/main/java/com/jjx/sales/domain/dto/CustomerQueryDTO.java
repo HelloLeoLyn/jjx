@@ -22,6 +22,11 @@ public class CustomerQueryDTO extends PageQuery {
     private String customerName;
 
     /**
+     * 客户简称（模糊查询）
+     */
+    private String customerShortName;
+
+    /**
      * 客户类型 (1: 终端客户, 2: 代理商, 3: 经销商)
      */
     private Integer customerType;

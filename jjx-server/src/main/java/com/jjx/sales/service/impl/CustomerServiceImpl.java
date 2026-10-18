@@ -84,6 +84,9 @@ public class CustomerServiceImpl implements ICustomerService {
         if (StringUtils.isNotBlank(queryDTO.getCustomerName())) {
             queryWrapper.like(SalesCustomer::getCustomerName, queryDTO.getCustomerName());
         }
+        if (StringUtils.isNotBlank(queryDTO.getCustomerShortName())) {
+            queryWrapper.like(SalesCustomer::getCustomerShortName, queryDTO.getCustomerShortName());
+        }
         if (queryDTO.getCustomerType() != null) {
             queryWrapper.eq(SalesCustomer::getCustomerType, queryDTO.getCustomerType());
         }
@@ -557,6 +560,9 @@ public class CustomerServiceImpl implements ICustomerService {
             }
             if (StringUtils.isNotBlank(customer.getCustomerName())) {
                 queryWrapper.like(SalesCustomer::getCustomerName, customer.getCustomerName());
+            }
+            if (StringUtils.isNotBlank(customer.getCustomerShortName())) {
+                queryWrapper.like(SalesCustomer::getCustomerShortName, customer.getCustomerShortName());
             }
             if (customer.getCustomerType() != null) {
                 queryWrapper.eq(SalesCustomer::getCustomerType, customer.getCustomerType());

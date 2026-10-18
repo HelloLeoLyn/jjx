@@ -4,6 +4,7 @@ export interface CustomerQueryParams {
   pageSize: number
   customerCode?: string
   customerName?: string
+  customerShortName?: string
   customerType?: number
   customerStatus?: number
   orderByColumn?: string
