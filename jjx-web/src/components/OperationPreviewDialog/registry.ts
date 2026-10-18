@@ -237,6 +237,7 @@ export const sampleOperations: OperationDef[] = [
       { key: 'remark', label: '审核意见', type: 'textarea', placeholder: '选填，审核意见/说明' },
     ],
     evidence: true,
+    evidenceDefaultDocumentType: 'SAMPLE_REVIEW_EVIDENCE',
     events: ['sample.approved'],
     api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.approve(
@@ -262,6 +263,7 @@ export const sampleOperations: OperationDef[] = [
       },
     ],
     evidence: true,
+    evidenceDefaultDocumentType: 'SAMPLE_REVIEW_EVIDENCE',
     events: ['sample.rejected'],
     api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.rejectReview(
@@ -290,6 +292,7 @@ export const sampleOperations: OperationDef[] = [
     toStatus: 5,
     fields: [{ key: 'trackingNo', label: '快递单号', type: 'input', placeholder: '选填' }],
     evidence: true,
+    evidenceDefaultDocumentType: 'SAMPLE_CUSTOMER_EVIDENCE',
     events: ['sample.sent'],
     api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.sendSample(
@@ -308,6 +311,7 @@ export const sampleOperations: OperationDef[] = [
       { key: 'clientName', label: '确认人姓名', type: 'input', placeholder: '客户方确认人姓名' },
     ],
     evidence: true,
+    evidenceDefaultDocumentType: 'SAMPLE_CUSTOMER_EVIDENCE',
     events: ['sample.confirmed'],
     api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.confirm(
@@ -332,6 +336,7 @@ export const sampleOperations: OperationDef[] = [
       },
     ],
     evidence: true,
+    evidenceDefaultDocumentType: 'SAMPLE_CUSTOMER_EVIDENCE',
     events: ['sample.rejected_by_customer'],
     api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.rejectSample(
