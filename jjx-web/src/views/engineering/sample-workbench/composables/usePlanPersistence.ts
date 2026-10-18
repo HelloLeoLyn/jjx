@@ -21,17 +21,50 @@ interface PlanPersistenceContext {
   loadBom: () => Promise<void>
   refreshCard: () => Promise<void>
   loadSummary: () => Promise<void>
+  /** 确保标准工序列表已就绪（同一页面只请求一次，失败不阻塞） */
+  ensureProcessesLoaded?: () => Promise<void>
+  /** 按 id 单条补齐标准工序（列表缺失/停用/>100 条时兜底），结果缓存 */
+  resolveProcessById?: (id: number) => Promise<any>
 }
 
 /** 计划的加载与整单保存边界；返回值明确表示保存是否成功。 */
 export function usePlanPersistence(context: PlanPersistenceContext) {
-  const { readonlyMode, orderId, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow, loadBom, refreshCard, loadSummary, note, canSave } = context
+  const { readonlyMode, orderId, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow, loadBom, refreshCard, loadSummary, note, canSave, ensureProcessesLoaded, resolveProcessById } = context
   const savingPlan = ref(false)
   const currentFingerprint = () => JSON.stringify([planFingerprint(planList.value, printList.value), standaloneMaterials.value])
   const savedFingerprint = ref(JSON.stringify([planFingerprint([], []), []]))
   const savedNote = ref('')
   const hasPlanChanges = computed(() => currentFingerprint() !== savedFingerprint.value)
   const hasUnsavedChanges = computed(() => hasPlanChanges.value || note.value !== savedNote.value)
+  /** 反查兜底缓存：列表里没有的 stdProcessId，按 id 单条补齐后缓存（dev-20261018-014） */
+  const resolvedProcesses = new Map<number, any>()
+
+  const processOf = (id: any) => {
+    if (id == null || id === '') return undefined
+    const key = Number(id)
+    return allProcesses.value.find((x: any) => Number(x.processId) === key) || resolvedProcesses.get(key)
+  }
+
+  /** 只查缺失项，限制并发 4；单条失败不影响其它行 */
+  async function resolveMissingProcesses(ids: number[]) {
+    if (!resolveProcessById) return
+    const queue = Array.from(new Set(ids.filter((id) => Number.isFinite(id) && id > 0)))
+      .filter((id) => !processOf(id))
+    if (!queue.length) return
+    const workers = Array.from({ length: Math.min(4, queue.length) }, async () => {
+      while (queue.length) {
+        const id = queue.shift() as number
+        try {
+          const item = await resolveProcessById(id)
+          if (item && item.processId != null) resolvedProcesses.set(Number(item.processId), item)
+        } catch {
+          // 单条失败保留占位，后续刷新会重试
+        }
+      }
+    })
+    await Promise.all(workers)
+  }
+
   /** 加载完成后统一建立一次保存快照（计划与独立材料都加载完再调用，避免误判未保存）。 */
   function markSaved() {
     savedFingerprint.value = currentFingerprint()
@@ -135,6 +168,13 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
   async function loadPlan() {
     if (!orderId.value) return
     try {
+      // A（dev-20261018-014）：先确保标准工序列表就绪，再 enrich，避免计划先渲染成「工」占位
+      // 列表加载失败不得阻塞计划本身；失败时由下方按 id 兜底
+      try {
+        await ensureProcessesLoaded?.()
+      } catch {
+        // 忽略：继续加载计划，图标走单条补齐
+      }
       const res = await sampleOrderApi.listProcesses(
         orderId.value,
         card.value?.sampleRound || undefined
@@ -145,6 +185,8 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
           (a.processOrder || 999) - (b.processOrder || 999) ||
           (a.processId || 0) - (b.processId || 0)
       )
+      // B：列表缺失项（停用 / 超过 pageSize / 加载失败）按 id 单条补齐后再 enrich
+      await resolveMissingProcesses(list.map((p: any) => Number(p.stdProcessId)))
       // 一级大类拆分（dev-20260811-009）：PRINT → printList（表格），其余 → planList（卡片）
       const printRows = list.filter((p) => p.majorCategory === 'PRINT')
       const assemblyRows = list.filter((p) => p.majorCategory !== 'PRINT')
@@ -159,7 +201,7 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
       planList.value = Array.from(groups.entries()).map(([order, rows]) => {
         const first = rows[0]
         const enriched = rows.map((r: any) => {
-          const src = allProcesses.value.find((x) => x.processId === r.stdProcessId)
+          const src = processOf(r.stdProcessId)
           return src
             ? {
                 ...r,

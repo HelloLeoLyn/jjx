@@ -11,6 +11,7 @@ import type { UploadProps } from 'element-plus'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialApi } from '@/api/inventory/material'
+import { standardProcessApi } from '@/api/product/standardProcess'
 import { useDict } from '@/composables/useDict'
 import { SampleProcessStatusEnum } from '@/enums/sales'
 
@@ -309,6 +310,10 @@ export function useSampleWorkbench() {
   }
 
   const allProcesses = ref<any[]>([])
+  // 标准工序列表：同页只请求一次（dev-20261018-014）
+  let processesLoaded = false
+  let processesPromise: Promise<void> | null = null
+  let processWarned = false
   const { standaloneMaterials, bomList, stateOf: bomStateOf, loadBom, updateMaterial, removeMaterial, addMaterial, clearStandalone, debouncedSearchBomMaterials, onBomMaterialSelected, onBomVisible } = useSampleBom({ orderId, card, planList, printList, readonlyMode, markOwnerDirty: markDirty })
 
 
@@ -324,25 +329,54 @@ export function useSampleWorkbench() {
   const { savingPlan, hasUnsavedChanges, savePlan, loadPlan, markSaved } = usePlanPersistence({
     readonlyMode, orderId, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow,
     loadBom, refreshCard, loadSummary, note: toRef(form, 'note'), canSave: () => isCurrentRound.value,
+    ensureProcessesLoaded: loadAllProcesses, resolveProcessById,
   })
   const { advancePrint, advancePlan, blockReason: execBlockReason, printBlockReason } = useProcessExecution({
     readonlyMode, orderId, savingPlan, refreshCard, loadSummary, loadRounds,
   })
-  async function loadAllProcesses() {
-    try {
-      const res = await request.get('/engineering/standard-processes/page', {
-        params: {
-          pageNum: 1,
-          pageSize: 100,
-          isEnabled: 1,
-          orderByColumn: 'displayOrder',
-          isAsc: 'asc',
-        },
-      })
-      allProcesses.value = res.data?.records || []
-    } catch {
-      allProcesses.value = []
-    }
+  async function fetchProcessesOnce() {
+    const res: any = await request.get('/engineering/standard-processes/page', {
+      params: {
+        pageNum: 1,
+        pageSize: 100,
+        isEnabled: 1,
+        orderByColumn: 'displayOrder',
+        isAsc: 'asc',
+      },
+    })
+    allProcesses.value = res.data?.records || []
+  }
+
+  /** 标准工序列表：同页只请求一次（并发共用同一 promise）；失败自动重试一次，仍失败给可见提示但不阻塞其它块 */
+  async function loadAllProcesses(force = false): Promise<void> {
+    if (processesLoaded && !force) return
+    if (processesPromise) return processesPromise
+    processesPromise = (async () => {
+      try {
+        await fetchProcessesOnce()
+        processesLoaded = true
+      } catch {
+        try {
+          await fetchProcessesOnce()
+          processesLoaded = true
+        } catch {
+          // C（dev-20261018-014）：失败不再静默置空；保留已有数据并提示一次，后续刷新可重试
+          if (!processWarned) {
+            processWarned = true
+            ElMessage.warning('标准工序列表加载失败，工序图标将按需逐条补齐；可刷新重试')
+          }
+        }
+      } finally {
+        processesPromise = null
+      }
+    })()
+    return processesPromise
+  }
+
+  /** B：按 id 单条补齐标准工序（停用 / 列表缺失 / 超过 pageSize 时兜底） */
+  async function resolveProcessById(id: number) {
+    const res: any = await standardProcessApi.getById(id)
+    return res?.data
   }
 
   function genUid() {
