@@ -11,7 +11,10 @@
 #   redis（默认）: Redis 计数器 `jjx:task:seq:<module>:<YYYYMMDD>` INCR 取号；首次使用/库被回滚时
 #                  先用 max(库里当天最大号, git 历史当天最大号) 播种（SETNX），因此**清库/回滚也不会重发号**。
 #   db          : 只看库里当天最大号 +1（旧行为，且已加 git 历史当天最大号下限）。
-#   Fallback    : redis 模式在 Redis 不可达时自动回退 db 模式（不阻塞登记）。
+#   Fallback    : redis 模式在 Redis 不可达时自动回退 db 模式（不阻塞登记）；连接超时 REDIS_TIMEOUT 默认 2s。
+#   自愈（2026-10-18 dev-20261018-012）: 计数器值为零填充/非规范整数（如 `010`）时，先归一为无前导零整数
+#                  再 INCR（Redis 对带前导零的字符串 INCR 会报 ERR）；非数字/超 18 位按当天下限重置；
+#                  INCR 仍失败则打印警告并回退 db 模式，登记不中断。
 set -euo pipefail
 
 DB_ARGS="${JJX_DB_ARGS:--uroot -p123456}"
@@ -24,7 +27,9 @@ MAX_ATTEMPT=3
 REDIS_HOST="${REDIS_HOST:-127.0.0.1}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 REDIS_DB="${REDIS_DB:-0}"
-REDIS_ARGS=(-h "$REDIS_HOST" -p "$REDIS_PORT" -n "$REDIS_DB")
+# 连接超时：Redis 不可达（端口被过滤而非拒绝）时不能无限挂起（dev-20261018-012）
+REDIS_TIMEOUT="${REDIS_TIMEOUT:-2}"
+REDIS_ARGS=(-h "$REDIS_HOST" -p "$REDIS_PORT" -n "$REDIS_DB" -t "$REDIS_TIMEOUT")
 [[ -n "${REDIS_PASSWORD:-}" ]] && REDIS_ARGS+=(-a "$REDIS_PASSWORD")
 
 usage() {
@@ -114,15 +119,41 @@ seq_floor() {
 
 redis_alive() { redis-cli "${REDIS_ARGS[@]}" PING >/dev/null 2>&1; }
 
-# redis 取号：播种（不回退已有值，但库被回滚后下限变高时会抬升）→ INCR
+# 把计数器原始值归一为「无前导零的非负整数」；非数字/超长返回空串（视为损坏）
+normalize_seq_value() {
+  local v="${1:-}"
+  [[ "$v" =~ ^[0-9]+$ ]] || return 0
+  (( ${#v} <= 18 )) || return 0
+  printf '%s' "$((10#$v))"
+}
+
+# redis 取号：播种（不回退已有值，但库被回滚后下限变高时会抬升）→ 归一 → INCR
+# 非数字/损坏/INCR 报错时返回非 0，由调用方回退 db 模式。
 redis_next() {
-  local floor cur
+  local floor raw canon inc
   floor="$(seq_floor)"
   redis-cli "${REDIS_ARGS[@]}" SET "$SEQ_KEY" "$floor" NX >/dev/null 2>&1 || true
-  cur="$(redis-cli "${REDIS_ARGS[@]}" GET "$SEQ_KEY" 2>/dev/null | tr -d '\r')"
-  [[ "$cur" =~ ^[0-9]+$ ]] || cur=0
-  if (( 10#$cur < 10#$floor )); then redis-cli "${REDIS_ARGS[@]}" SET "$SEQ_KEY" "$floor" >/dev/null 2>&1 || true; fi
-  redis-cli "${REDIS_ARGS[@]}" INCR "$SEQ_KEY" | tr -d '\r'
+  raw="$(redis-cli "${REDIS_ARGS[@]}" GET "$SEQ_KEY" 2>/dev/null | tr -d '\r')"
+  canon="$(normalize_seq_value "$raw")"
+  if [[ -z "$canon" ]]; then
+    echo "警告：Redis 计数器 $SEQ_KEY 值非数字（'$raw'），按当天下限 $floor 重置" >&2
+    redis-cli "${REDIS_ARGS[@]}" SET "$SEQ_KEY" "$floor" >/dev/null 2>&1 || true
+    canon="$floor"
+  elif [[ "$canon" != "$raw" ]]; then
+    echo "警告：Redis 计数器 $SEQ_KEY 非规范值（'$raw' → '$canon'），已归一" >&2
+    redis-cli "${REDIS_ARGS[@]}" SET "$SEQ_KEY" "$canon" >/dev/null 2>&1 || true
+  fi
+  if (( 10#$canon < 10#$floor )); then
+    canon="$floor"
+    redis-cli "${REDIS_ARGS[@]}" SET "$SEQ_KEY" "$canon" >/dev/null 2>&1 || true
+  fi
+  inc="$(redis-cli "${REDIS_ARGS[@]}" INCR "$SEQ_KEY" 2>&1 | tr -d '\r')"
+  if [[ ! "$inc" =~ ^[0-9]+$ ]]; then
+    echo "警告：Redis INCR 失败（$SEQ_KEY：$inc），将回退 db 模式" >&2
+    printf '%s' "$inc"
+    return 1
+  fi
+  printf '%s' "$inc"
 }
 
 insert_sql_for() { # $1 = 完整 task_code
@@ -136,7 +167,19 @@ if [[ $DRY -eq 1 ]]; then
   echo "[dry-run] 取码模式: $SEQ_MODE ｜ Redis 键: $SEQ_KEY ｜ 当天下限(库/git 取大): $(seq_floor)"
   if [[ "$SEQ_MODE" == redis ]]; then
     if redis_alive; then
-      echo "[dry-run] Redis 当前值: $(redis-cli "${REDIS_ARGS[@]}" GET "$SEQ_KEY" 2>/dev/null | tr -d '\r')（+1 即本次号；dry-run 不 INCR）"
+      DRY_RAW="$(redis-cli "${REDIS_ARGS[@]}" GET "$SEQ_KEY" 2>/dev/null | tr -d '\r')"
+      DRY_CANON="$(normalize_seq_value "$DRY_RAW")"
+      DRY_FLOOR="$(seq_floor)"
+      DRY_BASE="$DRY_CANON"
+      if [[ -z "$DRY_BASE" ]] || (( 10#$DRY_BASE < 10#$DRY_FLOOR )); then DRY_BASE="$DRY_FLOOR"; fi
+      DRY_NEXT=$(( 10#$DRY_BASE + 1 ))
+      if [[ -z "$DRY_CANON" ]]; then
+        echo "[dry-run] Redis 当前值: '$DRY_RAW' → 非规范/缺失，按当天下限 $DRY_FLOOR 重置；本次号 $DRY_NEXT（dry-run 不 INCR）"
+      elif [[ "$DRY_CANON" != "$DRY_RAW" ]]; then
+        echo "[dry-run] Redis 当前值: '$DRY_RAW' → 归一为 $DRY_CANON；本次号 $DRY_NEXT（dry-run 不 INCR）"
+      else
+        echo "[dry-run] Redis 当前值: $DRY_CANON；本次号 $DRY_NEXT（dry-run 不 INCR）"
+      fi
     else
       echo "[dry-run] Redis 不可达（$REDIS_HOST:$REDIS_PORT db$REDIS_DB）→ 实际执行会回退 db 模式"
     fi
@@ -166,10 +209,18 @@ fi
 # 2) 取号 + 插入（撞号自动重试）
 ATTEMPT=1; OK=0; CODE=""
 while [[ $ATTEMPT -le $MAX_ATTEMPT ]]; do
-  if [[ "$SEQ_MODE" == redis ]] && redis_alive; then
-    NUM="$(redis_next)"
+  REDIS_SEQ_BROKEN="${REDIS_SEQ_BROKEN:-0}"
+  if [[ "$SEQ_MODE" == redis ]] && [[ "$REDIS_SEQ_BROKEN" == 0 ]] && redis_alive; then
+    if ! NUM="$(redis_next)"; then
+      echo "警告：Redis 取号失败（$NUM），本次及后续取号改用 db 模式" >&2
+      REDIS_SEQ_BROKEN=1
+      NUM=$(( 10#$(seq_floor) + 1 ))
+    fi
   else
-    [[ "$SEQ_MODE" == redis ]] && echo "Redis 不可达（$REDIS_HOST:$REDIS_PORT db$REDIS_DB），回退 db 模式取号" >&2
+    if [[ "$SEQ_MODE" == redis && "$REDIS_SEQ_BROKEN" == 0 ]]; then
+      echo "Redis 不可达（$REDIS_HOST:$REDIS_PORT db$REDIS_DB），回退 db 模式取号" >&2
+    fi
+    [[ "$SEQ_MODE" == redis ]] && REDIS_SEQ_BROKEN=1
     NUM=$(( 10#$(seq_floor) + 1 ))
   fi
   [[ "$NUM" =~ ^[0-9]+$ ]] || { echo "取号失败：得到非数字序号 '$NUM'" >&2; exit 1; }
@@ -177,7 +228,7 @@ while [[ $ATTEMPT -le $MAX_ATTEMPT ]]; do
   if OUT="$(mysql_run "$(insert_sql_for "$CODE")" 2>&1)"; then OK=1; break; fi
   if grep -qE 'Duplicate entry|1062' <<<"$OUT"; then
     echo "第 $ATTEMPT 次取号撞车（$CODE），重试…" >&2
-    [[ "$SEQ_MODE" == redis ]] && redis_alive && redis-cli "${REDIS_ARGS[@]}" INCR "$SEQ_KEY" >/dev/null 2>&1 || true
+    [[ "$SEQ_MODE" == redis && "${REDIS_SEQ_BROKEN:-0}" == 0 ]] && redis_alive && redis-cli "${REDIS_ARGS[@]}" INCR "$SEQ_KEY" >/dev/null 2>&1 || true
     ATTEMPT=$((ATTEMPT+1)); sleep 1; continue
   fi
   echo "登记失败: $OUT" >&2; exit 1
