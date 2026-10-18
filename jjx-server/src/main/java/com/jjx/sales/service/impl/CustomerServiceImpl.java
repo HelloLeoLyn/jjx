@@ -17,6 +17,7 @@ import com.jjx.sales.enums.PaymentTermTypeEnum;
 import com.jjx.sales.mapper.CustomerMapper;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.sales.service.ICustomerService;
+import com.jjx.sales.service.ISalesCustomerAddressService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -45,6 +46,7 @@ public class CustomerServiceImpl implements ICustomerService {
     private final CustomerMapper customerMapper;
     private final CustomerConverter customerConverter;
     private final RedisSequenceService redisSequenceService;
+    private final ISalesCustomerAddressService customerAddressService;
     /** 2026-09-21（dev-20260921-013）：客户事件改手写 payload（带客户编码）。 */
     private final com.jjx.event.EventPublisher eventPublisher;
 
@@ -164,6 +166,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
         int rows = customerMapper.insert(customer);
         if (rows > 0) {
+            customerAddressService.ensureCompanyAddress(customer);
             publishCustomerEvent("sales.customer.created", customer);
         }
         return rows;

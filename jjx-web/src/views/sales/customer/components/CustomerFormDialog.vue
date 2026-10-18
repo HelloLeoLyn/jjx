@@ -199,7 +199,8 @@
           </el-form-item>
         </el-col>
       </el-row>
-      <el-divider content-position="left">地址信息</el-divider>
+      <el-divider content-position="left">公司地址</el-divider>
+      <p class="text-xs text-gray-500 mb-2">新增客户填写的地址会自动加入地址簿，首条地址设为默认收货地址。</p>
       <el-row :gutter="8">
         <el-col :span="12">
           <el-form-item label="国家/地区" prop="country">

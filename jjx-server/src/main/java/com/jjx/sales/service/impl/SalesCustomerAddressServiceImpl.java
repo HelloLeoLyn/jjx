@@ -2,9 +2,15 @@ package com.jjx.sales.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jjx.common.enums.YesNoEnum;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.sales.domain.dto.SalesCustomerAddressDTO;
 import com.jjx.sales.domain.entity.SalesCustomerAddress;
+import com.jjx.sales.domain.entity.SalesCustomer;
+import com.jjx.sales.mapper.CustomerMapper;
 import com.jjx.sales.mapper.SalesCustomerAddressMapper;
 import com.jjx.sales.service.ISalesCustomerAddressService;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * 客户收货地址簿服务实现（dev-20261008-029）
@@ -23,6 +31,57 @@ import java.util.List;
 public class SalesCustomerAddressServiceImpl implements ISalesCustomerAddressService {
 
     private final SalesCustomerAddressMapper addressMapper;
+    private final CustomerMapper customerMapper;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void ensureCompanyAddress(SalesCustomer customer) {
+        if (customer == null || StringUtils.isBlank(customer.getAddress())) return;
+        SalesCustomerAddressDTO dto = new SalesCustomerAddressDTO();
+        dto.setLabel("公司地址");
+        dto.setContactPerson(customer.getContactPerson());
+        dto.setContactPhone(customer.getContactPhone());
+        dto.setCountry(customer.getCountry());
+        dto.setProvince(customer.getProvince());
+        dto.setCity(customer.getCity());
+        dto.setPostalCode(customer.getPostalCode());
+        String raw = customer.getAddress().trim();
+        if (raw.startsWith("{")) {
+            try {
+                JsonNode json = objectMapper.readTree(raw);
+                dto.setAddress(json.path("street").asText(""));
+                dto.setCountry(json.path("country").asText(dto.getCountry()));
+                dto.setProvince(json.path("province").asText(dto.getProvince()));
+                dto.setCity(json.path("city").asText(dto.getCity()));
+                dto.setPostalCode(json.path("zipCode").asText(dto.getPostalCode()));
+            } catch (JsonProcessingException e) {
+                throw new BusinessException("客户公司地址格式无效，请检查地址信息");
+            }
+        } else {
+            dto.setAddress(raw);
+        }
+        if (StringUtils.isBlank(dto.getAddress())) return;
+        requireCustomer(customer.getCustomerId());
+        boolean exists = listByCustomer(customer.getCustomerId()).stream().anyMatch(a ->
+                "公司地址".equals(a.getLabel()) || (same(a.getAddress(), dto.getAddress())
+                        && same(a.getCountry(), dto.getCountry()) && same(a.getProvince(), dto.getProvince())
+                        && same(a.getCity(), dto.getCity()) && same(a.getPostalCode(), dto.getPostalCode())));
+        if (!exists) add(customer.getCustomerId(), dto);
+    }
+
+    private boolean same(String left, String right) {
+        return Objects.equals(StringUtils.trimToEmpty(left), StringUtils.trimToEmpty(right));
+    }
+
+    /** 锁住客户行，串行处理同客户地址写入，避免首条地址并发产生多个默认值。 */
+    private SalesCustomer requireCustomer(Long customerId) {
+        if (customerId == null) throw new BusinessException("客户ID不能为空");
+        SalesCustomer customer = customerMapper.selectOne(Wrappers.<SalesCustomer>lambdaQuery()
+                .eq(SalesCustomer::getCustomerId, customerId).last("FOR UPDATE"));
+        if (customer == null) throw new BusinessException("客户不存在");
+        return customer;
+    }
 
     @Override
     public List<SalesCustomerAddress> listByCustomer(Long customerId) {
@@ -46,13 +105,14 @@ public class SalesCustomerAddressServiceImpl implements ISalesCustomerAddressSer
         if (dto == null) {
             throw new BusinessException("地址信息不能为空");
         }
+        requireCustomer(customerId);
         SalesCustomerAddress entity = new SalesCustomerAddress();
         entity.setCustomerId(customerId);
         copy(dto, entity);
         // 首个地址自动成为默认；否则按显式指定
         boolean first = countByCustomer(customerId) == 0;
-        boolean asDefault = first || (dto.getIsDefault() != null && dto.getIsDefault() == 1);
-        entity.setIsDefault(asDefault ? 1 : 0);
+        boolean asDefault = first || Objects.equals(dto.getIsDefault(), YesNoEnum.YES.getCode());
+        entity.setIsDefault(asDefault ? YesNoEnum.YES.getCode() : YesNoEnum.NO.getCode());
         addressMapper.insert(entity);
         if (asDefault) {
             clearDefaultExcept(customerId, entity.getAddressId());
@@ -63,6 +123,7 @@ public class SalesCustomerAddressServiceImpl implements ISalesCustomerAddressSer
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean update(Long customerId, SalesCustomerAddressDTO dto) {
+        requireCustomer(customerId);
         if (dto == null || dto.getAddressId() == null) {
             throw new BusinessException("地址ID不能为空");
         }
@@ -92,6 +153,7 @@ public class SalesCustomerAddressServiceImpl implements ISalesCustomerAddressSer
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean delete(Long customerId, Long addressId) {
+        requireCustomer(customerId);
         SalesCustomerAddress existing = requireOwned(customerId, addressId);
         boolean wasDefault = existing.getIsDefault() != null && existing.getIsDefault() == 1;
         addressMapper.deleteById(addressId);
@@ -108,6 +170,7 @@ public class SalesCustomerAddressServiceImpl implements ISalesCustomerAddressSer
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean setDefault(Long customerId, Long addressId) {
+        requireCustomer(customerId);
         SalesCustomerAddress existing = requireOwned(customerId, addressId);
         existing.setIsDefault(1);
         addressMapper.updateById(existing);

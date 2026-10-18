@@ -40,6 +40,7 @@ class SalesFlowTest {
         // 手动注入所有依赖
         customerService = new CustomerServiceImpl(
             customerMapper, customerConverter, redisSequenceService,
+            org.mockito.Mockito.mock(com.jjx.sales.service.ISalesCustomerAddressService.class),
             org.mockito.Mockito.mock(com.jjx.event.EventPublisher.class)
         );
     }
