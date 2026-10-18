@@ -2,11 +2,13 @@
   <div class="attachment-center">
     <!-- 01. 标题与上传按钮 -->
     <div class="ac-header">
-      <span class="ac-title">
+      <span v-if="!compactMode" class="ac-title">
         <el-icon><FolderOpened /></el-icon>
         {{ title }}
       </span>
-      <el-tag v-if="refRows.length" size="small" type="info">{{ refRows.length }} 条引用</el-tag>
+      <el-tag v-if="displayRefRows.length" size="small" type="info"
+        >{{ displayRefRows.length }} 条引用</el-tag
+      >
       <el-tag v-if="pendingCount" size="small" type="warning">待绑定 {{ pendingCount }}</el-tag>
       <span class="ac-spacer" />
       <AttachmentTempUploader
@@ -55,15 +57,16 @@
       :image-size="60"
     />
     <AttachmentRefList
-      v-if="pending.length || (showList && refRows.length)"
+      v-if="pending.length || (showRefs && displayRefRows.length)"
       :pending="pending"
-      :rows="showList ? refRows : []"
+      :rows="showRefs ? displayRefRows : []"
       :can-edit="canEdit"
+      :readonly-type="compactMode"
       :document-types="documentTypes"
       :source-type="sourceType"
       :source-no="sourceNo"
       :lock-reason="lockReason"
-      :actions="actions"
+      :actions="compactMode ? COMPACT_ACTIONS : actions"
       @save="emit('save')"
       @retry-bind="retryBind"
       @remove-pending="removePending"
@@ -163,9 +166,9 @@ const props = withDefaults(
     title?: string
     /** 形态（第一阶段⑥，dev-20261016-007）：panel / dialog / upload-only。
      *  与「动作清单」(actions) 分离——variant 定形态、actions 定可做动作。 */
-    variant?: 'panel' | 'dialog' | 'upload-only'
+    variant?: 'panel' | 'dialog' | 'upload-only' | 'upload-compact'
     /** @deprecated 兼容别名，请改用 variant（两者同传时 variant 优先） */
-    mode?: 'panel' | 'dialog' | 'upload-only'
+    mode?: 'panel' | 'dialog' | 'upload-only' | 'upload-compact'
     readonly?: boolean
     locked?: boolean
     viewPerm?: string
@@ -188,6 +191,8 @@ const props = withDefaults(
     drawingMeta?: AttachmentDrawingMetadata | null
     /** 上传禁用原因（调用方按业务决定，非空即禁用并显示这句话）；组件本身不做业务判断 */
     uploadBlocked?: string
+    /** upload-compact 专用：只展示这些引用（本次会话上传的证据）；不传=展示全部 */
+    refIdsFilter?: number[]
     /** 动作清单（第一阶段①）：透传给可写表，决定操作列显示哪些动作；**不传 = 现状**（dev-20261016-002） */
     actions?: AttachmentAction[]
     /** 业务锁定原因（如"已审核，不可再改"）：有值时写操作按钮置灰并显示原因（dev-20261015-028） */
@@ -225,6 +230,7 @@ const props = withDefaults(
     productCode: null,
     drawingMeta: null,
     uploadBlocked: '',
+    refIdsFilter: () => [],
   }
 )
 // ============ 02. 对外事件 Emits ============
@@ -359,6 +365,16 @@ const canUpload = computed(() => canEdit.value)
  * 所以该模式下只保留上传入口与待绑定队列，不渲染任何列表，避免外面再套一层视图时出现"两个列表"。
  */
 const showList = computed(() => centerVariant.value !== 'upload-only')
+/** 证据上传形态：上传入口 + 本次上传的只读引用列表（不展示批量/类型编辑） */
+const compactMode = computed(() => centerVariant.value === 'upload-compact')
+const showRefs = computed(() => showList.value || compactMode.value)
+const COMPACT_ACTIONS: AttachmentAction[] = ['download', 'remove']
+/** compact 模式只展示本次会话产生的引用，避免把单据已有附件误当成本次证据 */
+const displayRefRows = computed(() => {
+  if (!compactMode.value) return refRows.value
+  const ids = props.refIdsFilter || []
+  return refRows.value.filter((row) => ids.includes(Number(row.id)))
+})
 /**
  * 上传禁用原因（唯一一条提示路径）：先看草稿标识是否就绪，再看调用方按业务传的 uploadBlocked。
  * 两者取第一个非空；组件不解释业务原因，只负责"禁用 + 显示这句话"。
@@ -374,7 +390,12 @@ const uploaderProps = computed(() => ({
   disabled: !!uploadBlockedReason.value,
   maxSizeMB: props.maxSizeMB,
   accept: props.accept,
-  buttonText: centerVariant.value === 'upload-only' ? '上传附件' : '上传（通用附件）',
+  buttonText:
+    centerVariant.value === 'upload-compact'
+      ? '上传证据'
+      : centerVariant.value === 'upload-only'
+        ? '上传附件'
+        : '上传（通用附件）',
   tip: uploadBlockedReason.value || uploadTip.value,
   dropZone: props.dropZone,
 }))

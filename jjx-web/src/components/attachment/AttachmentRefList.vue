@@ -1,10 +1,10 @@
 <template>
   <div class="ar-list">
-      <div v-if="canEdit && hasSaveAction && (rows.length || pending.length)" class="ar-batch">
+      <div v-if="canEdit && !readonlyType && hasSaveAction && (rows.length || pending.length)" class="ar-batch">
         <el-button size="small" type="primary" :loading="saveSaving" @click="onSaveClick">保存</el-button>
         <span class="ar-sub">保存附件信息到本单</span>
       </div>
-      <div v-if="canEdit && rows.length" class="ar-batch">
+      <div v-if="canEdit && !readonlyType && rows.length" class="ar-batch">
         <el-button size="small" :disabled="!selectedIds.length" @click="openBatchType"
           >批量改类型</el-button
         >
@@ -21,7 +21,7 @@
       </div>
 
       <AttachmentTable :rows="tableRows" :document-types="documentTypes" :source-type="sourceType"
-        row-key="rowKey" :selectable="canEdit && rows.length ? (row: TableRow) => row.kind === 'ref' : undefined"
+        row-key="rowKey" :selectable="canEdit && !readonlyType && rows.length ? (row: TableRow) => row.kind === 'ref' : undefined"
         @selection-change="onSelectionChange" @preview="previewRow"
         @download="(row) => emit('download', refOf(row))" @detail="(row) => emit('edit', refOf(row))">
         <template #status="{ row }">
@@ -34,16 +34,16 @@
           <el-button v-else link type="primary" @click="previewRow(row)">{{ textOf('fileName', row) }}</el-button>
         </template>
         <template #category="{ row }">
-          <AttachmentTypeSelect v-if="canEdit" category-only :category="categoryOfRow(row)"
+          <AttachmentTypeSelect v-if="canEdit && !readonlyType" category-only :category="categoryOfRow(row)"
             :document-types="documentTypes" :source-type="sourceType" :disabled="savingId === row.id"
             @update:category="(v) => onRowCategory(row, v)" />
           <span v-else>{{ textOf('category', row) }}</span>
         </template>
         <template #documentType="{ row }">
-          <AttachmentTypeSelect v-if="row.kind === 'pending' && canEdit" :model-value="pendingOf(row).documentType"
+          <AttachmentTypeSelect v-if="row.kind === 'pending' && canEdit && !readonlyType" :model-value="pendingOf(row).documentType"
             :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
             @update:model-value="(v) => setPendingType(pendingOf(row), v)" />
-          <AttachmentTypeSelect v-else-if="canEdit" :model-value="docTypeOfRow(row)"
+          <AttachmentTypeSelect v-else-if="canEdit && !readonlyType" :model-value="docTypeOfRow(row)"
             :category="categoryOfRow(row)" :document-types="documentTypes" :source-type="sourceType"
             :disabled="savingId === row.id" @update:model-value="(v) => saveDocType(refOf(row), v)" />
           <span v-else>{{ textOf('documentType', row) }}</span>
@@ -126,6 +126,8 @@ const props = defineProps<{
     lockReason?: string
     /** 动作清单（第一阶段①）：由调用方决定操作列显示哪些动作；**不传 = 保持现状**（dev-20261016-002） */
     actions?: AttachmentAction[]
+    /** 只读类型（证据区等场景）：隐藏类型选择与批量改类型，但仍保留动作列（需与 canEdit 配合） */
+    readonlyType?: boolean
 }>()
 
 type TableRow = AttachmentRow & {

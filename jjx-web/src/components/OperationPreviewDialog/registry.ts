@@ -87,7 +87,7 @@ export const quotationOperations: OperationDef[] = [
     fromStatus: [0],
     toStatus: 5,
     evidence: true,
-    evidenceDefaultDocumentType: 'SALES_QUOTATION_ATTACHMENT',
+    evidenceDefaultDocumentType: 'SALES_QUOTATION_REVIEW_EVIDENCE',
     events: ['quotation.submitted'],
     api: ({ bizId, attachmentRefIds }) =>
       quotationApi.submitReview(bizId, attachmentRefIds.length ? attachmentRefIds : undefined),
@@ -102,7 +102,7 @@ export const quotationOperations: OperationDef[] = [
       { key: 'remark', label: '审核意见', type: 'textarea', placeholder: '选填，审核意见/说明' },
     ],
     evidence: true,
-    evidenceDefaultDocumentType: 'SALES_QUOTATION_ATTACHMENT',
+    evidenceDefaultDocumentType: 'SALES_QUOTATION_REVIEW_EVIDENCE',
     events: ['quotation.reviewed'],
     api: ({ bizId, values, attachmentRefIds }) =>
       quotationApi.review(
@@ -128,7 +128,7 @@ export const quotationOperations: OperationDef[] = [
       },
     ],
     evidence: true,
-    evidenceDefaultDocumentType: 'SALES_QUOTATION_ATTACHMENT',
+    evidenceDefaultDocumentType: 'SALES_QUOTATION_REVIEW_EVIDENCE',
     events: ['quotation.reviewed'],
     api: ({ bizId, values, attachmentRefIds }) =>
       quotationApi.review(
@@ -156,6 +156,7 @@ export const quotationOperations: OperationDef[] = [
     fromStatus: [1],
     toStatus: 2,
     evidence: true,
+    evidenceDefaultDocumentType: 'SALES_QUOTATION_CUSTOMER_EVIDENCE',
     events: ['quotation.confirmed'],
     api: ({ bizId, attachmentRefIds }) =>
       quotationApi.confirm(bizId, attachmentRefIds.length ? attachmentRefIds : undefined),
@@ -176,6 +177,7 @@ export const quotationOperations: OperationDef[] = [
       },
     ],
     evidence: true,
+    evidenceDefaultDocumentType: 'SALES_QUOTATION_CUSTOMER_EVIDENCE',
     events: ['quotation.rejected'],
     api: ({ bizId, values, attachmentRefIds }) =>
       quotationApi.reject(

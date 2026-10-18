@@ -94,7 +94,8 @@
           ref="evidenceCenter"
           :source-type="evidenceSourceType"
           :source-id="bizId"
-          variant="upload-only"
+          variant="upload-compact"
+          :ref-ids-filter="visibleEvidenceRefIds"
           :view-perm="evidenceViewPerm"
           :edit-perm="evidenceEditPerm"
           :default-document-type="operation.evidenceDefaultDocumentType"
@@ -195,6 +196,8 @@ const visible = computed({
 const submitting = ref(false)
 const formValues = ref<Record<string, any>>({})
 const uploadedIds: number[] = []
+/** 本次弹窗内成功绑定的引用 ID：证据区只展示这些，避免把单据已有附件误当成本次证据 */
+const visibleEvidenceRefIds = ref<number[]>([])
 // 新通道（附件双写收口 dev-20261014-028）：已绑定成功的附件引用 ID，随操作提交，替代老字段 file id
 const boundRefIds: number[] = []
 const evidenceCenter = ref<InstanceType<typeof AttachmentCenter> | null>(null)
@@ -288,6 +291,7 @@ function onEvidenceUploaded(payload: { attachmentId: number }) {
 function onEvidenceBound(payload: { refId: number }) {
   const id = Number(payload?.refId)
   if (id && !boundRefIds.includes(id)) boundRefIds.push(id)
+  if (id && !visibleEvidenceRefIds.value.includes(id)) visibleEvidenceRefIds.value.push(id)
 }
 
 // ===== 确认执行 =====
@@ -354,6 +358,7 @@ watch(
       }
       uploadedIds.length = 0
       boundRefIds.length = 0
+      visibleEvidenceRefIds.value = []
       await loadEventsAndRoles()
     }
   }
