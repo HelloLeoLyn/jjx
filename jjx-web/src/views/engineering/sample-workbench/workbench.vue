@@ -2,7 +2,9 @@
   <div class="wb-page">
     <!-- 样品单信息（含接单/拒单 + 图纸上传，dev-20260811-008） -->
     <SampleInfoCard
-      :readonly="readonlyMode"
+      ref="infoCardRef"
+      :readonly="!canWriteCurrent"
+      :display-round="Number(activeRound) || card.sampleRound || 1"
       :card="card"
       :done-count="doneCount"
       :plan-count="totalCount"
@@ -10,6 +12,8 @@
       :saving="saving"
       :customer-file-list="customerFileList"
       @history-copy="handleOpenCopy"
+      @clear="handleClearCurrentRound"
+      @transfer="runCurrentAction(handleTransfer)"
       @back="goBack"
       @reject="handleReject"
       @view-inquiry="openInquiryDetail"
@@ -25,126 +29,29 @@
       />
     </el-tabs>
 
-    <!-- 一级大类 Tabs（dev-20260811-009）：冲型组装 | 印刷 -->
-    <el-tabs v-model="majorCategory" style="margin-bottom: 10px">
-      <el-tab-pane label="🛠 冲型组装" name="ASSEMBLY">
-        <template v-if="isCurrentRound">
-          <!-- 工序计划面板（左选择器 + 右卡片区） -->
+    <el-tabs v-model="activeView" class="view-tabs">
+      <el-tab-pane label="方案编制" name="plan" />
+      <el-tab-pane label="打样执行" name="execution" />
+    </el-tabs>
+
+    <template v-if="isCurrentRound">
+      <el-alert
+        v-if="planEditor.hasUnsavedChanges"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="工序计划有未保存修改，请在方案编制中保存；切换视图会保留当前修改。"
+        style="margin-bottom: 12px"
+      />
+      <SamplePlanView v-show="activeView === 'plan'" v-model:major-category="majorCategory">
+        <template #assembly>
           <SampleProcessPlanEditor
             :readonly="readonlyMode"
             :controller="planEditor"
             v-model:active-plan-tab="activePlanTab"
           />
         </template>
-
-        <!-- 历史轮次（只读，DEV-500） -->
-        <div v-else class="round-readonly">
-          <el-alert
-            type="info"
-            :closable="false"
-            show-icon
-            style="margin-bottom: 12px"
-            title="历史轮次（只读）"
-            description="该轮次已归档，如需调整请在当前轮次重新打样"
-          />
-          <div v-if="activeRoundData" style="margin-bottom: 12px">
-            <el-tag
-              :type="
-                activeRoundData.result === 'confirmed'
-                  ? 'success'
-                  : activeRoundData.result === 'rejected'
-                    ? 'danger'
-                    : 'info'
-              "
-            >
-              {{
-                activeRoundData.result === 'confirmed'
-                  ? '✅ 已确认'
-                  : activeRoundData.result === 'rejected'
-                    ? '⛔ 已退回'
-                    : '🔄 进行中'
-              }}
-            </el-tag>
-            <span
-              v-if="activeRoundData.rejectReason"
-              style="margin-left: 8px; color: #f56c6c; font-size: 13px"
-            >
-              退回原因：{{ activeRoundData.rejectReason }}
-            </span>
-            <span
-              v-if="activeRoundData.engineeringNote"
-              style="margin-left: 12px; color: #606266; font-size: 13px"
-            >
-              工艺参数：{{ activeRoundData.engineeringNote }}
-            </span>
-          </div>
-          <el-card shadow="never" style="margin-bottom: 16px">
-            <template #header><span style="font-weight: 600">📜 工序快照</span></template>
-            <el-timeline v-if="activeRoundProcesses.length" style="padding-left: 2px">
-              <el-timeline-item
-                v-for="(p, i) in activeRoundProcesses"
-                :key="i"
-                :timestamp="formatTime(p.startTime)"
-                placement="top"
-                :type="i === activeRoundProcesses.length - 1 ? 'primary' : 'info'"
-              >
-                <div style="font-size: 13px">
-                  <span style="font-weight: 600">{{ p.processName }}</span>
-                  <span
-                    v-if="p.durationMinutes"
-                    style="margin-left: 8px; color: #606266; font-size: 12px"
-                    >⏱ {{ p.durationMinutes }}分钟</span
-                  >
-                  <span v-if="p.operator" style="margin-left: 8px; color: #909399; font-size: 12px"
-                    >操作人：{{ p.operator }}</span
-                  >
-                  <div
-                    v-if="p.processNote"
-                    style="color: #606266; font-size: 12px; margin-top: 2px"
-                  >
-                    🔧 {{ p.processNote }}
-                  </div>
-                  <div v-if="p.materials" style="margin-top: 2px">
-                    <el-tag
-                      v-for="(m, mi) in parseMaterials(p.materials)"
-                      :key="mi"
-                      size="small"
-                      type="info"
-                      style="margin-right: 4px"
-                      >{{ m.name }}{{ m.spec ? ' ' + m.spec : ''
-                      }}{{ m.qty ? ' ×' + m.qty : '' }}</el-tag
-                    >
-                  </div>
-                </div>
-              </el-timeline-item>
-            </el-timeline>
-            <div v-else style="color: #999; font-size: 13px">该轮次无工序快照</div>
-          </el-card>
-          <el-card shadow="never">
-            <template #header><span style="font-weight: 600">🧾 BOM 物料快照</span></template>
-            <el-table
-              v-if="activeRoundBom.length"
-              :data="activeRoundBom"
-              size="small"
-              border
-              style="width: 100%"
-            >
-              <el-table-column prop="process" label="工序" width="90" />
-              <el-table-column prop="name" label="材料" min-width="140" />
-              <el-table-column label="项目" min-width="130">
-                <template #default="{ row }">{{ roundBomProjects(row) }}</template>
-              </el-table-column>
-              <el-table-column prop="spec" label="规格" min-width="110" />
-              <el-table-column prop="moduleQty" label="模数" width="70" />
-              <el-table-column prop="baseQty" label="基数" width="70" />
-              <el-table-column prop="unit" label="单位" width="70" />
-            </el-table>
-            <div v-else style="color: #999; font-size: 13px">该轮次无物料快照</div>
-          </el-card>
-        </div>
-      </el-tab-pane>
-      <el-tab-pane label="🖨️ 印刷" name="PRINT">
-        <template v-if="isCurrentRound">
+        <template #print>
           <PrintProcessPanel
             :readonly="readonlyMode"
             :print-list="printList"
@@ -156,138 +63,235 @@
             :save-plan="savePlan"
           />
         </template>
-        <div v-else class="round-readonly">
-          <el-alert
-            type="info"
-            :closable="false"
-            show-icon
-            style="margin-bottom: 12px"
-            title="历史轮次（只读）"
-            description="该轮次已归档，印刷工序请查看下方快照"
+        <template #materials>
+          <BomPanel
+            :readonly="readonlyMode"
+            :bom-list="bomList"
+            :projects="allProcesses"
+            :state-of="bomStateOf"
+            :show-transfer="false"
+            @update="updateMaterial"
+            @remove="removeMaterial"
+            @add="addMaterial"
+            @search="debouncedSearchBomMaterials"
+            @select="onBomMaterialSelected"
+            @visible="onBomVisible"
           />
-          <el-card shadow="never">
-            <template #header><span style="font-weight: 600">🖨️ 印刷工序快照</span></template>
-            <el-table
-              v-if="activeRoundPrintList.length"
-              :data="activeRoundPrintList"
-              size="small"
-              border
-              style="width: 100%"
-            >
-              <el-table-column prop="processName" label="印刷名称" min-width="130" />
-              <el-table-column label="参数" min-width="200">
-                <template #default="{ row }">
-                  <el-tag
-                    v-for="(v, k) in printParamsOf(row)"
-                    :key="k"
-                    size="small"
-                    type="info"
-                    style="margin-right: 4px"
-                    >{{ k }}: {{ v }}</el-tag
-                  >
-                </template>
-              </el-table-column>
-              <el-table-column label="材料" min-width="160">
-                <template #default="{ row }">
-                  <el-tag
-                    v-for="(m, i) in parseMaterials(row.materials)"
-                    :key="i"
-                    size="small"
-                    style="margin-right: 4px"
-                    >{{ m.name }}</el-tag
-                  >
-                  <span v-if="!parseMaterials(row.materials).length" style="color: #c0c4cc"
-                    >无</span
-                  >
-                </template>
-              </el-table-column>
-              <el-table-column label="状态" width="80" align="center">
-                <template #default="{ row }">
-                  <el-tag
-                    :type="row.status === 2 ? 'success' : row.status === 1 ? 'warning' : 'info'"
-                    size="small"
-                  >
-                    {{ row.status === 2 ? '完成' : row.status === 1 ? '进行中' : '待做' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-            </el-table>
-            <div v-else style="color: #999; font-size: 13px">该轮次无印刷工序</div>
-          </el-card>
-        </div>
-      </el-tab-pane>
-    </el-tabs>
-
-    <!-- 公用区（冲型组装/印刷共用，2026-08-12 布局调整）：执行时间线 | BOM + 工艺参数/工程备注 + 标记完成 -->
-    <template v-if="isCurrentRound">
-      <div class="bottom-row">
-        <ExecutionTimeline
-          :plan-list="planList"
-          :print-list="printList"
-          :round="card.sampleRound || 1"
-          :format-time="formatTime"
-          :parse-materials="parseMaterials"
-          :advance-print="advancePrint"
-          :advance-plan="advancePlan"
-          :exec-block-reason="execBlockReason"
-          :print-block-reason="printBlockReason"
-          :readonly="readonlyMode"
-        />
-        <BomPanel :readonly="readonlyMode" :bom-list="bomList" :projects="allProcesses" :state-of="bomStateOf"
-          @update="updateMaterial" @remove="removeMaterial" @add="addMaterial"
-          @search="debouncedSearchBomMaterials" @select="onBomMaterialSelected" @visible="onBomVisible"
-          @transfer="handleTransfer" />
-      </div>
-
-      <!-- 工艺参数（图纸已挪到样品信息卡） -->
-      <div class="bottom-row">
-        <NoteFilesPanel
-          :readonly="readonlyMode"
-          v-model="form.note"
-          :saving="saving"
-          @save="saveNote"
-        />
-      </div>
-
-      <!-- 标记完成 -->
-      <div style="text-align: center; margin: 12px 0 4px">
-        <el-button
-          v-if="!readonlyMode"
-          type="danger"
-          plain
-          size="large"
-          style="width: 220px; margin-right: 12px"
-          @click="handleClearCurrentRound"
-          >🗑 清空当前轮内容</el-button
-        >
-        <el-button
-          v-if="!readonlyMode && (Number(card.sampleRound || 1)) > 1"
-          type="primary"
-          plain
-          size="large"
-          :loading="copyPrevLoading"
-          style="width: 220px; margin-right: 12px"
-          @click="copyPreviousRound"
-          >📋 复制上一轮（Round {{ (Number(card.sampleRound || 1)) - 1 }}）工艺</el-button
-        >
-        <el-button
-          type="success"
-          size="large"
-          @click="handleMarkReady"
-          :disabled="readonlyMode"
-          :loading="saving"
-          style="width: 220px"
-          >🎯 标记样品完成（送样）</el-button
-        >
-      </div>
+        </template>
+        <template #note>
+          <p class="save-hint">工艺参数 / 工程备注单独保存，不随工序计划保存。</p>
+          <NoteFilesPanel
+            :readonly="readonlyMode"
+            v-model="form.note"
+            :saving="saving"
+            @save="saveNote"
+          />
+        </template>
+      </SamplePlanView>
+      <SampleExecutionView
+        v-show="activeView === 'execution'"
+        :readonly="readonlyMode"
+        :order-id="orderId"
+        :round-no="card.sampleRound || 1"
+        :plan-list="planList"
+        :print-list="printList"
+        :format-time="formatTime"
+        :parse-materials="parseMaterials"
+        :saving="saving"
+        :advance-print="advancePrint"
+        :advance-plan="advancePlan"
+        :exec-block-reason="execBlockReason"
+        :print-block-reason="printBlockReason"
+        @mark-ready="runCurrentAction(handleMarkReady)"
+        @view-files="showFiles"
+      />
     </template>
-
-    <!-- 打样不良原因及改善记录（样品单级，dev-20261010-028） -->
-    <DefectRecordPanel
-      :readonly="readonlyMode"
-      :order-id="orderId"
-      :round-no="card.sampleRound || 1"
-    />
+    <template v-else>
+      <el-tabs v-model="majorCategory">
+        <el-tab-pane label="🛠 冲型组装" name="ASSEMBLY">
+          <div class="round-readonly">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 12px"
+              title="历史轮次（只读）"
+              description="该轮次已归档，如需调整请在当前轮次重新打样"
+            />
+            <div v-if="activeRoundData" style="margin-bottom: 12px">
+              <el-tag
+                :type="
+                  activeRoundData.result === 'confirmed'
+                    ? 'success'
+                    : activeRoundData.result === 'rejected'
+                      ? 'danger'
+                      : 'info'
+                "
+              >
+                {{
+                  activeRoundData.result === 'confirmed'
+                    ? '✅ 已确认'
+                    : activeRoundData.result === 'rejected'
+                      ? '⛔ 已退回'
+                      : '🔄 进行中'
+                }}
+              </el-tag>
+              <span
+                v-if="activeRoundData.rejectReason"
+                style="margin-left: 8px; color: #f56c6c; font-size: 13px"
+              >
+                退回原因：{{ activeRoundData.rejectReason }}
+              </span>
+              <span
+                v-if="activeRoundData.engineeringNote"
+                style="margin-left: 12px; color: #606266; font-size: 13px"
+              >
+                工艺参数：{{ activeRoundData.engineeringNote }}
+              </span>
+            </div>
+            <el-card shadow="never" style="margin-bottom: 16px">
+              <template #header><span style="font-weight: 600">📜 工序快照</span></template>
+              <el-timeline v-if="activeRoundProcesses.length" style="padding-left: 2px">
+                <el-timeline-item
+                  v-for="(p, i) in activeRoundProcesses"
+                  :key="i"
+                  :timestamp="formatTime(p.startTime)"
+                  placement="top"
+                  :type="i === activeRoundProcesses.length - 1 ? 'primary' : 'info'"
+                >
+                  <div style="font-size: 13px">
+                    <span style="font-weight: 600">{{ p.processName }}</span>
+                    <span
+                      v-if="p.durationMinutes"
+                      style="margin-left: 8px; color: #606266; font-size: 12px"
+                      >⏱ {{ p.durationMinutes }}分钟</span
+                    >
+                    <span
+                      v-if="p.operator"
+                      style="margin-left: 8px; color: #909399; font-size: 12px"
+                      >操作人：{{ p.operator }}</span
+                    >
+                    <div
+                      v-if="p.processNote"
+                      style="color: #606266; font-size: 12px; margin-top: 2px"
+                    >
+                      🔧 {{ p.processNote }}
+                    </div>
+                    <div v-if="p.materials" style="margin-top: 2px">
+                      <el-tag
+                        v-for="(m, mi) in parseMaterials(p.materials)"
+                        :key="mi"
+                        size="small"
+                        type="info"
+                        style="margin-right: 4px"
+                        >{{ m.name }}{{ m.spec ? ' ' + m.spec : ''
+                        }}{{ m.qty ? ' ×' + m.qty : '' }}</el-tag
+                      >
+                    </div>
+                  </div>
+                </el-timeline-item>
+              </el-timeline>
+              <div v-else style="color: #999; font-size: 13px">该轮次无工序快照</div>
+            </el-card>
+            <el-card shadow="never">
+              <template #header><span style="font-weight: 600">🧾 BOM 物料快照</span></template>
+              <el-table
+                v-if="activeRoundBom.length"
+                :data="activeRoundBom"
+                size="small"
+                border
+                style="width: 100%"
+              >
+                <el-table-column prop="process" label="工序" width="90" />
+                <el-table-column prop="name" label="材料" min-width="140" />
+                <el-table-column label="项目" min-width="130">
+                  <template #default="{ row }">{{ roundBomProjects(row) }}</template>
+                </el-table-column>
+                <el-table-column prop="spec" label="规格" min-width="110" />
+                <el-table-column prop="moduleQty" label="模数" width="70" />
+                <el-table-column prop="baseQty" label="基数" width="70" />
+                <el-table-column prop="unit" label="单位" width="70" />
+              </el-table>
+              <div v-else style="color: #999; font-size: 13px">该轮次无物料快照</div>
+            </el-card>
+          </div>
+        </el-tab-pane>
+        <el-tab-pane label="🖨️ 印刷" name="PRINT">
+          <div class="round-readonly">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 12px"
+              title="历史轮次（只读）"
+              description="该轮次已归档，印刷工序请查看下方快照"
+            />
+            <el-card shadow="never">
+              <template #header><span style="font-weight: 600">🖨️ 印刷工序快照</span></template>
+              <el-table
+                v-if="activeRoundPrintList.length"
+                :data="activeRoundPrintList"
+                size="small"
+                border
+                style="width: 100%"
+              >
+                <el-table-column prop="processName" label="印刷名称" min-width="130" />
+                <el-table-column label="参数" min-width="200">
+                  <template #default="{ row }">
+                    <el-tag
+                      v-for="(v, k) in printParamsOf(row)"
+                      :key="k"
+                      size="small"
+                      type="info"
+                      style="margin-right: 4px"
+                      >{{ k }}: {{ v }}</el-tag
+                    >
+                  </template>
+                </el-table-column>
+                <el-table-column label="材料" min-width="160">
+                  <template #default="{ row }">
+                    <el-tag
+                      v-for="(m, i) in parseMaterials(row.materials)"
+                      :key="i"
+                      size="small"
+                      style="margin-right: 4px"
+                      >{{ m.name }}</el-tag
+                    >
+                    <span v-if="!parseMaterials(row.materials).length" style="color: #c0c4cc"
+                      >无</span
+                    >
+                  </template>
+                </el-table-column>
+                <el-table-column label="状态" width="80" align="center">
+                  <template #default="{ row }">
+                    <el-tag
+                      :type="
+                        row.status === SampleProcessStatusEnum.DONE.value
+                          ? 'success'
+                          : row.status === SampleProcessStatusEnum.DOING.value
+                            ? 'warning'
+                            : 'info'
+                      "
+                      size="small"
+                    >
+                      {{
+                        row.status === SampleProcessStatusEnum.DONE.value
+                          ? '完成'
+                          : row.status === SampleProcessStatusEnum.DOING.value
+                            ? '进行中'
+                            : '待做'
+                      }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div v-else style="color: #999; font-size: 13px">该轮次无印刷工序</div>
+            </el-card>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+      <DefectRecordPanel readonly compact :order-id="orderId" :round-no="Number(activeRound)" />
+    </template>
 
     <!-- 来源单据查看弹窗：有销售查看权限 → 复用询价/报价单列表页同一套详情组件；无权限（工程角色）→ 收敛摘要弹窗（任务1438，不离开工作台） -->
     <QuotationDetailDialog
@@ -349,12 +353,7 @@
     />
 
     <!-- 复制打样方案弹窗（2026-09-05：本单历史轮 / 其他样品单 两源统一） -->
-    <el-dialog
-      v-model="historyCopyVisible"
-      title="📋 复制打样方案"
-      width="680px"
-      append-to-body
-    >
+    <el-dialog v-model="historyCopyVisible" title="📋 复制打样方案" width="680px" append-to-body>
       <el-alert
         type="info"
         :closable="false"
@@ -364,13 +363,9 @@
       />
       <el-tabs v-model="copySourceTab">
         <!-- 来源1：本单历史轮次（退回重做迭代：可任选历史某轮） -->
-        <el-tab-pane
-          v-if="(Number(card.sampleRound || 1)) > 1"
-          label="本单历史轮"
-          name="round"
-        >
+        <el-tab-pane v-if="Number(card.sampleRound || 1) > 1" label="本单历史轮" name="round">
           <el-table
-            :data="roundList.filter((r: any) => Number(r.roundNo) < (Number(card.sampleRound || 1)))"
+            :data="roundList.filter((r: any) => Number(r.roundNo) < Number(card.sampleRound || 1))"
             size="small"
             border
             stripe
@@ -384,23 +379,17 @@
                   :model-value="historySelectedRound?.roundNo"
                   :value="row.roundNo"
                   @change="historySelectedRound = row"
-                  ><span /></el-radio
-                >
+                  ><span
+                /></el-radio>
               </template>
             </el-table-column>
             <el-table-column prop="roundNo" label="轮次" width="80" align="center" />
             <el-table-column label="结果" width="120">
               <template #default="{ row }">
-                <el-tag
-                  v-if="row.result === 'rejected'"
-                  size="small"
-                  type="danger"
+                <el-tag v-if="row.result === 'rejected'" size="small" type="danger"
                   >⛔ 已退回</el-tag
                 >
-                <el-tag
-                  v-else-if="row.result === 'confirmed'"
-                  size="small"
-                  type="success"
+                <el-tag v-else-if="row.result === 'confirmed'" size="small" type="success"
                   >✅ 已确认</el-tag
                 >
                 <el-tag v-else size="small" type="info">进行中</el-tag>
@@ -432,8 +421,8 @@
                   :model-value="historySelected?.orderId"
                   :value="row.orderId"
                   @change="historySelected = row"
-                  ><span /></el-radio
-                >
+                  ><span
+                /></el-radio>
               </template>
             </el-table-column>
             <el-table-column prop="orderNo" label="样品单号" width="150" />
@@ -466,7 +455,8 @@
                   <el-tag size="small" type="success">已批准</el-tag>
                 </el-descriptions-item>
                 <el-descriptions-item label="带出内容">
-                  工序 {{ productPlan.processCount || 0 }} 道 · 材料 {{ productPlan.materialCount || 0 }} 条
+                  工序 {{ productPlan.processCount || 0 }} 道 · 材料
+                  {{ productPlan.materialCount || 0 }} 条
                 </el-descriptions-item>
               </el-descriptions>
               <div style="font-size: 12px; color: #909399; margin-top: 10px; line-height: 1.6">
@@ -485,7 +475,9 @@
                 "
               >
                 <div style="font-size: 12px; line-height: 1.6">
-                  <template v-if="planPendingNames">未挂工序：{{ planPendingNames }}<br /></template>
+                  <template v-if="planPendingNames"
+                    >未挂工序：{{ planPendingNames }}<br
+                  /></template>
                   <template v-if="planCommonNames">整单通用：{{ planCommonNames }}<br /></template>
                   带出时都会暂放到首道工序，请在工序里核对（不会静默丢失）。
                 </div>
@@ -510,27 +502,27 @@
         <el-button
           v-if="copySourceTab === 'round'"
           type="primary"
-          :disabled="!historySelectedRound"
+          :disabled="!canWriteCurrent || !historySelectedRound"
           :loading="copyPrevLoading"
-          @click="copyRoundFrom(Number(historySelectedRound?.roundNo))"
+          @click="runCurrentAction(() => copyRoundFrom(Number(historySelectedRound?.roundNo)))"
         >
           复制选中轮到当前
         </el-button>
         <el-button
           v-else-if="copySourceTab === 'product'"
           type="primary"
-          :disabled="!productPlan?.eligible"
+          :disabled="!canWriteCurrent || !productPlan?.eligible"
           :loading="productPlanCopying"
-          @click="confirmProductPlanCopy"
+          @click="runCurrentAction(confirmProductPlanCopy)"
         >
           复制方案到当前轮
         </el-button>
         <el-button
           v-else
           type="primary"
-          :disabled="!historySelected"
+          :disabled="!canWriteCurrent || !historySelected"
           :loading="historyCopying"
-          @click="confirmHistoryCopy"
+          @click="runCurrentAction(confirmHistoryCopy)"
         >
           复制到当前
         </el-button>
@@ -582,12 +574,13 @@ import InquiryDetailDialog from '@/views/sales/inquiry/components/InquiryDetailD
 import SourceDocSummaryDialog from './components/SourceDocSummaryDialog.vue'
 import { hasPermi } from '@/directives'
 import SampleProcessPlanEditor from './components/SampleProcessPlanEditor.vue'
-import ExecutionTimeline from './components/ExecutionTimeline.vue'
+import SamplePlanView from './components/SamplePlanView.vue'
+import SampleExecutionView from './components/SampleExecutionView.vue'
 import BomPanel from './components/BomPanel.vue'
 import NoteFilesPanel from './components/NoteFilesPanel.vue'
 import DefectRecordPanel from './components/DefectRecordPanel.vue'
 import PrintProcessPanel from './components/PrintProcessPanel.vue'
-import { SampleOrderStatusEnum } from '@/enums/sales'
+import { SampleOrderStatusEnum, SampleProcessStatusEnum } from '@/enums/sales'
 
 defineOptions({ name: 'SampleWorkbenchPage' })
 
@@ -740,6 +733,18 @@ const {
   readonlyMode,
 } = useSampleWorkbench()
 
+// 切换视图只改变显示；方案状态与业务动作仍由原 composable 持有。
+const activeView = ref<'plan' | 'execution'>('plan')
+const infoCardRef = ref<InstanceType<typeof SampleInfoCard>>()
+const canWriteCurrent = computed(() => isCurrentRound.value && !readonlyMode.value)
+function runCurrentAction(action: () => unknown) {
+  if (!canWriteCurrent.value) return
+  return action()
+}
+function showFiles() {
+  infoCardRef.value?.showFiles()
+}
+
 // 历史轮次 BOM 快照：项目ID → 标准工序名（dev-20261015-023）
 function roundBomProjects(row: any): string {
   let ids: number[] = []
@@ -764,32 +769,38 @@ const planPendingNames = computed(() =>
   (productPlan.value?.unlinkedMaterials || [])
     .filter((m: any) => !m.isCommon)
     .map((m: any) => m.name)
-    .join('、'),
+    .join('、')
 )
 const planCommonNames = computed(() =>
   (productPlan.value?.unlinkedMaterials || [])
     .filter((m: any) => !!m.isCommon)
     .map((m: any) => m.name)
-    .join('、'),
+    .join('、')
 )
 
 // 复制打样方案弹窗：来源 tab（本单历史轮/其他样品单/成品方案）
 const copySourceTab = ref<'round' | 'order' | 'product'>('order')
 function handleOpenCopy() {
+  if (!canWriteCurrent.value) return
   // 多轮迭代默认进"本单历史轮"；单轮场景默认进"成品方案"（成品已批准则最有用）
-  copySourceTab.value = (Number(card.value?.sampleRound || 1)) > 1 ? 'round' : 'product'
+  copySourceTab.value = Number(card.value?.sampleRound || 1) > 1 ? 'round' : 'product'
   openHistoryCopy()
 }
 
 // 清空当前轮内容（确认后清编辑区，保存后同步后端）
 async function handleClearCurrentRound() {
+  if (!canWriteCurrent.value) return
   try {
-    await ElMessageBox.confirm('确定清空当前轮次的全部工序/印刷内容？清空后需点保存才生效。', '清空当前轮', {
-      confirmButtonText: '清空',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    clearCurrentRound()
+    await ElMessageBox.confirm(
+      '确定清空当前轮次的全部工序/印刷内容？清空后需点保存才生效。',
+      '清空当前轮',
+      {
+        confirmButtonText: '清空',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+    if (canWriteCurrent.value) clearCurrentRound()
   } catch {
     // 用户取消
   }
@@ -834,6 +845,11 @@ loadDetail()
 </script>
 
 <style scoped>
+.save-hint {
+  font-size: 12px;
+  color: #909399;
+  margin: 0 0 8px;
+}
 .wb-page {
   max-width: 1200px;
   margin: 0 auto;
