@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-12",
-  "tableCountBaseline": 130,
+  "generatedAt": "2026-10-18",
+  "tableCountBaseline": 131,
   "tables": [
     "archive_production_quality_inspection",
     "archive_production_quality_inspection_item",
@@ -86,6 +86,7 @@
     "review_flow",
     "sales_customer",
     "sales_customer_address",
+    "sales_customer_contact",
     "sales_delivery",
     "sales_delivery_item",
     "sales_inquiry",
@@ -134,6 +135,13 @@
     "work_spec_usage"
   ],
   "approvedNewTables": [
+    {
+      "table": "sales_customer_contact",
+      "taskCode": "dev-20261018-030",
+      "date": "2026-10-18",
+      "proposalLink": "jjx-docs/history/customer-address-contacts-dev-20261018-030.md",
+      "reason": "客户独立联系人通讯录：客户对联系人1:N、联系人对地址1:N，单独增改删及审计，地址和单据保留选用时快照。用户2026-10-18明确允许建表。"
+    },
     {
       "table": "sys_event_var",
       "taskCode": "dev-20260928-044",

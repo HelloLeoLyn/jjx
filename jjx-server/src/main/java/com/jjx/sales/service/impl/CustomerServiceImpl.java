@@ -18,6 +18,7 @@ import com.jjx.sales.mapper.CustomerMapper;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.sales.service.ICustomerService;
 import com.jjx.sales.service.ISalesCustomerAddressService;
+import com.jjx.sales.service.ISalesCustomerContactService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -47,6 +48,7 @@ public class CustomerServiceImpl implements ICustomerService {
     private final CustomerConverter customerConverter;
     private final RedisSequenceService redisSequenceService;
     private final ISalesCustomerAddressService customerAddressService;
+    private final ISalesCustomerContactService customerContactService;
     /** 2026-09-21（dev-20260921-013）：客户事件改手写 payload（带客户编码）。 */
     private final com.jjx.event.EventPublisher eventPublisher;
 
@@ -166,6 +168,7 @@ public class CustomerServiceImpl implements ICustomerService {
 
         int rows = customerMapper.insert(customer);
         if (rows > 0) {
+            customerContactService.ensurePrimaryContact(customer);
             customerAddressService.ensureCompanyAddress(customer);
             publishCustomerEvent("sales.customer.created", customer);
         }

@@ -21,13 +21,17 @@ import static org.mockito.Mockito.*;
 class CustomerCompanyAddressTest {
     private final SalesCustomerAddressMapper addresses = mock(SalesCustomerAddressMapper.class);
     private final CustomerMapper customers = mock(CustomerMapper.class);
+    private final com.jjx.sales.service.ISalesCustomerContactService contactService =
+            mock(com.jjx.sales.service.ISalesCustomerContactService.class);
     private final SalesCustomerAddressServiceImpl service =
-            new SalesCustomerAddressServiceImpl(addresses, customers, new ObjectMapper());
+            new SalesCustomerAddressServiceImpl(addresses, customers, new ObjectMapper(),
+                    contactService);
     private SalesCustomer customer;
     private final List<SalesCustomerAddress> stored = new ArrayList<>();
 
     @BeforeEach
     void setup() {
+        when(contactService.ensurePrimaryContact(any())).thenReturn(null);
         customer = new SalesCustomer();
         customer.setCustomerId(7L);
         customer.setAddress("科技路1号");

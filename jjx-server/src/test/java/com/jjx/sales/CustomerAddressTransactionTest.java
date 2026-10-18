@@ -65,9 +65,14 @@ class CustomerAddressTransactionTest {
             if (failAfterAddressInsert) throw new IllegalStateException("模拟地址插入后失败");
             return rows;
         });
+        com.jjx.sales.service.ISalesCustomerContactService contactService =
+                mock(com.jjx.sales.service.ISalesCustomerContactService.class);
+        when(contactService.ensurePrimaryContact(any())).thenReturn(null);
         ISalesCustomerAddressService addressService = proxy(new SalesCustomerAddressServiceImpl(
-                addresses, customers, new ObjectMapper()), manager, ISalesCustomerAddressService.class);
+                addresses, customers, new ObjectMapper(),
+                contactService), manager, ISalesCustomerAddressService.class);
         service = proxy(new CustomerServiceImpl(customers, converter, sequence, addressService,
+                contactService,
                 mock(EventPublisher.class)), manager, ICustomerService.class);
     }
 

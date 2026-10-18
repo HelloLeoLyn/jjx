@@ -3,6 +3,7 @@ package com.jjx.sales.domain.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
 /**
@@ -17,6 +18,12 @@ public class SalesCustomerAddressDTO {
 
     @Schema(description = "客户ID（由路径提供，可忽略）")
     private Long customerId;
+
+    @Positive(message = "联系人ID必须为正数")
+    private Long contactId;
+
+    @Schema(description = "明确使用联系人当前信息替换地址中的姓名和电话快照")
+    private Boolean refreshContact;
 
     @Size(max = 50, message = "地址标签长度不能超过50个字符")
     @Schema(description = "地址标签", example = "上海总部")

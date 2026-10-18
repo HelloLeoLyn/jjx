@@ -41,6 +41,7 @@ class SalesFlowTest {
         customerService = new CustomerServiceImpl(
             customerMapper, customerConverter, redisSequenceService,
             org.mockito.Mockito.mock(com.jjx.sales.service.ISalesCustomerAddressService.class),
+            org.mockito.Mockito.mock(com.jjx.sales.service.ISalesCustomerContactService.class),
             org.mockito.Mockito.mock(com.jjx.event.EventPublisher.class)
         );
     }

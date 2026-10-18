@@ -8,6 +8,7 @@ import type {
   CustomerSearchVO,
   CustomerVO,
   SalesCustomerAddress,
+  SalesCustomerContact,
 } from '@/types/sales/customer'
 
 // 客户管理API
@@ -91,7 +92,7 @@ export const customerApi = {
 
   /** 获取客户联系人列表 */
   getCustomerContacts(customerId: number) {
-    return request.get<R<Record<string, unknown>[]>>(`/sales/customers/${customerId}/contacts`)
+    return request.get<R<SalesCustomerContact[]>>(`/sales/customers/${customerId}/contacts`)
   },
 
   /** 获取客户历史订单 */
@@ -134,6 +135,18 @@ export const customerApi = {
   },
 
   // ==================== 客户收货地址簿（dev-20261008-029） ====================
+  addCustomerContact(customerId: number, data: SalesCustomerContact) {
+    return request.post<R<number>>(`/sales/customers/${customerId}/contacts`, data)
+  },
+
+  updateCustomerContact(customerId: number, contactId: number, data: SalesCustomerContact) {
+    return request.put<R<void>>(`/sales/customers/${customerId}/contacts/${contactId}`, data)
+  },
+
+  deleteCustomerContact(customerId: number, contactId: number) {
+    return request.delete<R<void>>(`/sales/customers/${customerId}/contacts/${contactId}`)
+  },
+
   /** 查询客户收货地址列表（默认置顶） */
   getCustomerAddresses(customerId: number) {
     return request.get<R<SalesCustomerAddress[]>>(`/sales/customers/${customerId}/addresses`)

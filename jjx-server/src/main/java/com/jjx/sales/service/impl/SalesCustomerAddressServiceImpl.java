@@ -13,6 +13,8 @@ import com.jjx.sales.domain.entity.SalesCustomer;
 import com.jjx.sales.mapper.CustomerMapper;
 import com.jjx.sales.mapper.SalesCustomerAddressMapper;
 import com.jjx.sales.service.ISalesCustomerAddressService;
+import com.jjx.sales.service.ISalesCustomerContactService;
+import com.jjx.sales.domain.entity.SalesCustomerContact;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,7 @@ public class SalesCustomerAddressServiceImpl implements ISalesCustomerAddressSer
     private final SalesCustomerAddressMapper addressMapper;
     private final CustomerMapper customerMapper;
     private final ObjectMapper objectMapper;
+    private final ISalesCustomerContactService contactService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -67,7 +70,10 @@ public class SalesCustomerAddressServiceImpl implements ISalesCustomerAddressSer
                 "公司地址".equals(a.getLabel()) || (same(a.getAddress(), dto.getAddress())
                         && same(a.getCountry(), dto.getCountry()) && same(a.getProvince(), dto.getProvince())
                         && same(a.getCity(), dto.getCity()) && same(a.getPostalCode(), dto.getPostalCode())));
-        if (!exists) add(customer.getCustomerId(), dto);
+        if (!exists) {
+            dto.setContactId(contactService.ensurePrimaryContact(customer));
+            add(customer.getCustomerId(), dto);
+        }
     }
 
     private boolean same(String left, String right) {
@@ -218,9 +224,26 @@ public class SalesCustomerAddressServiceImpl implements ISalesCustomerAddressSer
     }
 
     private void copy(SalesCustomerAddressDTO dto, SalesCustomerAddress entity) {
+        Long previousContactId = entity.getContactId();
+        String previousPerson = entity.getContactPerson();
+        String previousPhone = entity.getContactPhone();
+        entity.setContactId(dto.getContactId());
         entity.setLabel(dto.getLabel());
         entity.setContactPerson(dto.getContactPerson());
         entity.setContactPhone(dto.getContactPhone());
+        if (dto.getContactId() != null) {
+            SalesCustomerContact contact = contactService.requireOwned(entity.getCustomerId(), dto.getContactId());
+            if (entity.getAddressId() == null || !Objects.equals(previousContactId, dto.getContactId())
+                    || Boolean.TRUE.equals(dto.getRefreshContact())) {
+                // 姓名和电话由后端读取，不能伪造其他联系人的快照。
+                entity.setContactPerson(contact.getContactPerson());
+                entity.setContactPhone(contact.getContactPhone());
+            } else {
+                // 只改地址时保留原快照；需显式选择更新联系人信息。
+                entity.setContactPerson(previousPerson);
+                entity.setContactPhone(previousPhone);
+            }
+        }
         entity.setCountry(dto.getCountry());
         entity.setProvince(dto.getProvince());
         entity.setCity(dto.getCity());

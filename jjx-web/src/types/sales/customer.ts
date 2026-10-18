@@ -133,6 +133,9 @@ export interface CustomerVO {
 export interface SalesCustomerAddress {
   addressId?: number
   customerId?: number
+  contactId?: number | null
+  /** 显式用联系人当前信息更新快照，仅请求使用 */
+  refreshContact?: boolean
   /** 地址标签，如 上海总部/东莞仓 */
   label?: string
   contactPerson?: string
@@ -147,4 +150,13 @@ export interface SalesCustomerAddress {
   isDefault?: number
   remark?: string
   updateTime?: string
+}
+
+/** 客户通讯录；地址中的联系人和电话为快照。 */
+export interface SalesCustomerContact {
+  contactId?: number
+  customerId?: number
+  contactPerson: string
+  contactPhone: string
+  remark?: string
 }

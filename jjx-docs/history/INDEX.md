@@ -10,7 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
-| 2026-10-18 (dev-20261018-030) | customer-address-contacts-dev-20261018-030.md | 客户地址簿：独立联系人提案、公司地址补齐与自动建址 |
+| 2026-10-18 (dev-20261018-030) | customer-address-contacts-dev-20261018-030.md | 客户地址簿：联系人管理、公司地址补齐与自动建址 |
 | 2026-10-16 (dev-20261016-086) | incident-20261016-sys_task-mass-update.md | sys_task 全表误刷事故：无WHERE覆盖280行、binlog before镜像还原与恢复核查、三项待批准预防提案 |
 | 2026-10-16 (dev-20261016-077) | attachment-center-capability-inventory-dev-20261016-077.md | 旧附件中心能力与调用方清单：27条搜索命中（26实例+1测试文本）、Props/Emit/Expose及隐含保存链覆盖差异，供071/050替换收敛 |
 | 2026-10-15 (dev-20261015-019) | sample-workbench-handoff-dev-20261015-019.md | 打样工作台四阶段交接：015/016已推送，017半成品及迁移285未执行，018待办与接手验收 |

@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.jjx.common.core.domain.BaseEntity;
 import lombok.Data;
@@ -25,6 +27,10 @@ public class SalesCustomerAddress extends BaseEntity {
 
     /** 客户ID（sales_customer.customer_id） */
     private Long customerId;
+
+    /** 可解除的客户联系人关联；姓名/电话保留为地址快照。 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long contactId;
 
     /** 地址标签，如 上海总部/东莞仓 */
     private String label;
