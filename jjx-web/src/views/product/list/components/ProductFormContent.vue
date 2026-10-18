@@ -194,7 +194,7 @@ const formData = reactive<Partial<ProductFormData>>({
 // 编码生成器（公共组件 2026-08-12）
 import ProductCodeGenerator from '@/components/ProductCodeGenerator/index.vue'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
-import { parseProductCode } from '@/composables/useProductCode'
+import { composeProductCode, parseProductCode } from '@/composables/useProductCode'
 const codeGenRef = ref<InstanceType<typeof ProductCodeGenerator>>()
 const codeState = ref<ProductCodeState>({
   serialNo: '',
@@ -300,6 +300,8 @@ const loadCategoryTree = async () => {
 // 口径统一在 useProductCode.parseProductCode（2026-09-30 dev-20260930-011）：右起 4 位=结构位，其左连续数字=序号(3~4位)
 function parseCodeElements(code?: string | null) {
   const parsed = parseProductCode(code)
+  // 编辑沿用原编码前缀，不依赖客户选择框的用户变更事件，也不重新取号。
+  selectedCustomerShortName.value = parsed?.customerShort || ''
   codeState.value = {
     serialNo: parsed?.serialNo || '',
     panelType: parsed?.panelType || '',
@@ -378,6 +380,16 @@ const handleSubmit = async () => {
       ElMessage.error('请完整选择面板结构/特征、线路类型/特征')
       throw new Error('编码要素不完整')
     }
+  }
+
+  if (isEdit.value) {
+    const result = composeProductCode(selectedCustomerShortName.value, codeState.value)
+    if (!result) {
+      ElMessage.error('请完整选择面板结构/特征、线路类型/特征，并确认原产品编码有效')
+      throw new Error('编码要素不完整')
+    }
+    // 保存前直接计算，防止响应式回调未执行或要素缺失时沿用旧编码。
+    onCodeChange(result)
   }
 
   // 组装规格参数JSON
