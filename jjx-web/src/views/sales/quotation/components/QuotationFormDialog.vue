@@ -4,26 +4,6 @@
 -->
 <template>
   <el-dialog :title="title" v-model="visible" width="1300px" append-to-body @close="handleClose">
-    <el-dropdown v-if="!formData.quotationId && draftChoices?.length" @command="(id: string) => emit('restore-draft', id)">
-      <el-button plain>恢复未保存草稿</el-button>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
-    <el-dropdown
-      v-if="!formData.quotationId && draftChoices?.length"
-      style="margin-left: 8px"
-      @command="(id: string) => emit('discard-draft', id)"
-    >
-      <el-button plain type="danger">放弃草稿</el-button>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item v-for="draft in draftChoices" :key="draft.id" :command="draft.id">{{ draft.label }}</el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px">
       <el-row>
         <el-col :span="12">
@@ -394,7 +374,6 @@ import QuotationCodeGenDialog from './QuotationCodeGenDialog.vue'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
 import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
 import { productOwnership, type AttachmentSession } from '@/composables/useAttachmentSession'
-import type { AttachmentDraftChoice } from '@/composables/useAttachmentRefs'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
 import { parseProductCode } from '@/composables/useProductCode'
 
@@ -405,7 +384,6 @@ const props = defineProps<{
   currencyOptions: Array<{ value: string; label: string }>
   /** 待绑定队列草稿标识（由父组件下发；新建未保存时报价单复用同一草稿）（dev-20261012-047） */
   draftId?: string
-  draftChoices?: AttachmentDraftChoice[]
   /**
    * 附件共享会话（dev-20261016-071）：由容器（index.vue）创建并显式下传，本弹窗只消费。
    * 整单附件区与明细行弹窗共用它 ⇒ 一份待保存队列；落定随单据「保存」。
@@ -417,8 +395,6 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'submit'): void
   (e: 'cancel'): void
-  (e: 'restore-draft', id: string): void
-  (e: 'discard-draft', id: string): void
 }>()
 
 const visible = ref(false)

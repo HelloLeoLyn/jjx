@@ -147,10 +147,7 @@
         :form-data="form"
         :currency-options="currencyOptions"
         :draft-id="draftId"
-        :draft-choices="draftChoices"
         :session="attachSession"
-        @restore-draft="restoreAttachmentDraft"
-        @discard-draft="discardAttachmentDraft"
         @submit="submitForm"
         @cancel="cancel"
       />
@@ -287,7 +284,6 @@ import {
   type AttachmentChanges,
   type AttachmentSaveResult,
 } from '@/composables/useAttachmentSession'
-import { useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
 import OperationPreviewDialog from '@/components/OperationPreviewDialog/index.vue'
 import { getOperation } from '@/components/OperationPreviewDialog/registry'
 import QuotationSendDialog from './components/QuotationSendDialog.vue'
@@ -633,22 +629,11 @@ const quotationDetailVisible = ref(false) // ✅ 新增
 const quotationDetailId = ref<number>(0) // ✅ 新增
 const quotationDetailMode = ref<'view' | 'submitReview'>('view') // ✅ 新增
 const userStore = useUserStore()
-/** 草稿身份按报价实例隔离；刷新恢复原实例，新增始终创建新实例。 */
-const draftSession = useAttachmentDraftInstance('quotation', {
-  snapshot: () => form,
-  restore: (data) => {
-    resetForm()
-    Object.assign(form, data)
-  },
-})
-const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
-function restoreAttachmentDraft(id: string) {
-  // 恢复是整单覆盖（客户/产品/明细+附件）：先确认（dev-20261016-042）
-  void draftSession.confirmRestore(id)
-}
-function discardAttachmentDraft(id: string) {
-  // 放弃草稿：删本地记录/队列 + 库中草稿行（dev-20261016-042）
-  void draftSession.confirmDiscard(id)
+// 附件草稿恢复暂时关闭。新建单仍用一次性 draftId 隔离待保存队列，但不持久化表单快照。
+const draftId = ref('')
+function createAttachmentDraftId() {
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+  return `quotation-${id}`
 }
 
 // ============================================================
@@ -894,7 +879,7 @@ const submitForm = async () => {
         const info: any = await quotationApi.getInfo(newId)
         Object.assign(form, info.data)
         await finalizeAttachments(submittedIds)
-        clearDraftId() // 保存成功：清空草稿标识
+        draftId.value = '' // 保存成功后，后续附件直接归属已落库报价单
         title.value = `修改报价单【${info.data?.quotationNo || ''}】`
       }
       ElMessage.success('保存成功，可继续编辑')
@@ -906,7 +891,7 @@ const submitForm = async () => {
 }
 
 const cancel = () => {
-  draftSession.close()
+  draftId.value = ''
   open.value = false
   resetForm()
 }
@@ -915,9 +900,8 @@ const cancel = () => {
 // 15. 操作按钮函数
 // ============================================================
 const handleAdd = () => {
-  draftSession.close()
   resetForm()
-  draftSession.startNew()
+  draftId.value = createAttachmentDraftId()
   form.quotationDate = new Date().toISOString().split('T')[0]
   const validUntil = new Date()
   validUntil.setDate(validUntil.getDate() + 30)
@@ -929,7 +913,7 @@ const handleAdd = () => {
 }
 
 const handleUpdate = (row?: any) => {
-  draftSession.close()
+  draftId.value = ''
   resetForm()
   const quotationId = row?.quotationId || ids.value[0]
   quotationApi.getInfo(quotationId).then((response: any) => {
@@ -1203,10 +1187,6 @@ onDeactivated(() => {
   open.value = false
 })
 onMounted(async () => {
-  if (draftSession.resumeId && draftSession.restore(draftSession.resumeId)) {
-    open.value = true
-    title.value = '新增报价单（已恢复草稿）'
-  }
   await getList()
   loadStatistics()
   loadSalesPersons()
