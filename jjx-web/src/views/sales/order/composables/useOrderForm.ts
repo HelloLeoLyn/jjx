@@ -11,6 +11,7 @@ import { formatCurrency } from '@/utils/format'
 import { productApi } from '@/api/product'
 import type { ProductCodeResult } from '@/composables/useProductCode'
 import { useDict } from '@/composables/useDict'
+import { duplicateOrderProduct } from './orderProductRules'
 
 /** 历史单金额保护基线（dev-20261008-015）：未确认时汇总冻结为原单值，取消改动即回退。 */
 type ProtectedAmountBaseline = {
@@ -376,6 +377,10 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   }
 
   const applyNewProduct = (item: OrderItem, params: ProductCodeResult) => {
+    if (duplicateOrderProduct(form.items, params, item)) {
+      ElMessage.warning(`产品[${params.productCode}]已在订单中，同一产品只保留一行`)
+      return false
+    }
     clearProductIdentity(item)
     const { productCode, serialNo, panelType, panelFeature, circuitType, circuitFeature } = params
     Object.assign(item, { productCode, serialNo, panelType, panelFeature, circuitType, circuitFeature })
@@ -384,6 +389,10 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
   }
 
   const handleProductChange = (item: OrderItem, val?: any, product?: any) => {
+    if (product && duplicateOrderProduct(form.items, product, item)) {
+      ElMessage.warning(`产品[${product.productCode}]已在订单中，同一产品只保留一行`)
+      return
+    }
     const sameProduct = !!product?.productId && item.productId === product.productId
     const versionId = sameProduct ? item.workSpecVersionId : null
     clearProductIdentity(item)
@@ -666,6 +675,11 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       return false
     }
 
+    const duplicate = duplicateOrderProduct(form.items)
+    if (duplicate) {
+      ElMessage.warning(`产品[${duplicate.productCode}]重复，同一产品只保留一行`)
+      return false
+    }
     // 验证明细数据
     for (const item of form.items) {
       if (!item.productCode?.trim() || !item.productName?.trim()) {

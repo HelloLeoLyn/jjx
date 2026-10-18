@@ -1016,7 +1016,7 @@ public class OrderServiceImpl implements IOrderService {
         return vo;
     }
 
-    /** 保存草稿只校验身份与客户归属；生产就绪仍由提交生产入口校验。允许同产品多行。 */
+    /** 保存草稿校验身份、客户归属和同单产品唯一；生产就绪由提交生产入口校验。 */
     private void validateOrderItems(List<SalesOrderProductDTO> items, Integer orderType, Long customerId) {
         if (items == null || items.isEmpty()) throw new BusinessException("产品明细不能为空");
         if (customerId == null) throw new BusinessException("客户不能为空");
@@ -1038,6 +1038,21 @@ public class OrderServiceImpl implements IOrderService {
                 item.setProductName(item.getProductName().trim());
             }
         }
+        validateUniqueOrderProducts(items);
+    }
+
+    private void validateUniqueOrderProducts(List<SalesOrderProductDTO> items) {
+        Set<Long> ids = new HashSet<>();
+        Map<String, Long> codes = new HashMap<>();
+        for (var item : items) {
+            String code = item.getProductCode() == null ? "" : item.getProductCode().trim().toUpperCase(java.util.Locale.ROOT);
+            if (item.getProductId() != null && !ids.add(item.getProductId())
+                    || codes.containsKey(code) && (item.getProductId() == null || codes.get(code) == null
+                    || item.getProductId().equals(codes.get(code)))) {
+                throw new BusinessException("产品[" + item.getProductCode() + "]重复，同一订单同一产品只保留一行");
+            }
+            codes.put(code, item.getProductId());
+        }
     }
 
     /** 与报价相同的客户草稿建档入口；返回后再次自证身份，失败直接回滚订单事务。 */
@@ -1052,6 +1067,7 @@ public class OrderServiceImpl implements IOrderService {
             applyProductArchive(item, product);
             item.setProductId(productId);
         }
+        validateUniqueOrderProducts(items);
     }
 
     private void applyProductArchive(SalesOrderProductDTO item, Product product) {

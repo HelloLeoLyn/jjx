@@ -232,13 +232,29 @@ async function pickOwnership(w: any, key: string) {
 }
 
 describe('销售订单随单附件（真实会话 + 真实表单模板）', () => {
+  it('产品行入口只显示本产品待保存附件，移除复用整单会话且不独立落定', async () => {
+    const w = await form()
+    w.vm.form.items.push({ ...row(), id: 72, productId: 12, productCode: 'BB001MEOO' })
+    await upload(w, 'first.pdf', productOwnership({ rowKey: '71', productId: 11, productCode: product.productCode }))
+    await upload(w, 'second.pdf', productOwnership({ rowKey: '72', productId: 12, productCode: 'BB001MEOO' }))
+    const button = w.findAll('button').find((b: any) => b.text().startsWith('附件（'))!
+    expect(button.text()).toContain('1')
+    await button.trigger('click'); await flushPromises()
+    const managers = w.findAllComponents({ name: 'AttachmentManagerStub' })
+    expect(managers).toHaveLength(2)
+    const scoped = managers[1].props('session')
+    expect(scoped.pending.value.map((p: any) => p.fileName)).toEqual(['first.pdf'])
+    await scoped.removePending(scoped.pending.value[0].attachmentId); await flushPromises()
+    expect(sessionOf(w).pending.value.map((p: any) => p.fileName)).toEqual(['second.pdf'])
+    expect(attachApi.createRef).not.toHaveBeenCalled()
+  })
   it('整单级上传：待保存不冒充已归属，保存请求 productId/productCode 均为空', async () => {
     const w = await form()
     const { attachmentId } = await upload(w, '整单.pdf', orderOwnership())
     const session = sessionOf(w)
     expect(session.pending.value).toHaveLength(1)
     expect(session.refRows.value).toHaveLength(0)
-    expect(managerStub(w).props()).toMatchObject({ sourceType: 'sales_order', rowSave: true, batchSave: true })
+    expect(managerStub(w).props()).toMatchObject({ sourceType: 'sales_order', rowSave: false, batchSave: false })
 
     expect(await w.vm.submitForm()).toBe(false)
     expect(api.addOrder).not.toHaveBeenCalled()

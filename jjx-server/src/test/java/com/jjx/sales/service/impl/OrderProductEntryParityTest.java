@@ -222,16 +222,26 @@ class OrderProductEntryParityTest {
         var changed = item(8L, null); changed.setProductName(null); service.updateOrder(edit(id, changed));
         assertEquals("P8", service.selectOrderById(id).getItems().getFirst().getProductCode());
     }
-    @Test void switchedProductDoesNotInheritWorkSpecAndDuplicateProductsRemainValid() {
-        archive(8, 1, true); archive(9, 1, true);
-        long id = service.insertOrder(add(item(8L, "P8"), item(8L, "P8")));
+    @Test void switchedProductDoesNotInheritWorkSpecAndDistinctProductsRemainValid() {
+        archive(8, 1, true); archive(9, 1, true); archive(10, 1, true);
+        long id = service.insertOrder(add(item(8L, "P8"), item(10L, "P10")));
         var old = service.selectOrderById(id).getItems(); assertEquals(2, old.size());
         var switched = item(9L, "P9"); switched.setId(old.getFirst().getId());
-        var retained = item(8L, "P8"); retained.setId(old.getLast().getId());
+        var retained = item(10L, "P10"); retained.setId(old.getLast().getId());
         service.updateOrder(edit(id, switched, retained));
         var saved = service.selectOrderById(id).getItems();
         assertEquals(90L, saved.getFirst().getWorkSpecVersionId());
-        assertEquals(80L, saved.getLast().getWorkSpecVersionId());
+        assertEquals(100L, saved.getLast().getWorkSpecVersionId());
+    }
+    @Test void duplicateIdAndUnarchivedCodeRejectWithoutPartialWrites() {
+        archive(8, 1, true);
+        assertThrows(BusinessException.class, () -> service.insertOrder(add(item(8L, "P8"), item(8L, "P8"))));
+        assertEquals(0, count("orders")); assertEquals(0, count("lines"));
+        assertThrows(BusinessException.class, () -> service.insertOrder(add(item(null, "NEW1"), item(null, " new1 "))));
+        assertEquals(1, count("products")); assertEquals(0, count("orders"));
+        long id = service.insertOrder(add(item(8L, "P8")));
+        assertThrows(BusinessException.class, () -> service.updateOrder(edit(id, item(8L, "P8"), item(8L, "P8"))));
+        assertEquals(1, service.selectOrderById(id).getItems().size());
     }
     @Test void rejectsCrossCustomerByIdOrCodeAndMismatchedIdentity() {
         archive(8, 2, true); archive(9, 1, true);

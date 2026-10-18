@@ -260,7 +260,7 @@
           <el-input v-model="scope.row.lineRemark" placeholder="行备注" />
         </template>
       </el-table-column>
-      <TableActionColumn width="180" align="center" fixed="right">
+      <TableActionColumn width="260" align="center" fixed="right">
         <template #header>
           <div class="action-header">
             <span>操作</span>
@@ -268,6 +268,9 @@
           </div>
         </template>
         <template #before="scope">
+          <el-button link type="primary" :disabled="!scope.row.productCode" @click="openProductAttachments(scope.row)">
+            附件（{{ productAttachmentCount(scope.row) }}）
+          </el-button>
           <el-button link type="danger" @click="removeItem(scope.$index)">删除</el-button>
           <el-button
             link
@@ -347,6 +350,14 @@
         @error="onAttachError"
       />
     </div>
+
+    <el-dialog v-model="productAttachmentsVisible" :title="`产品附件 · ${productAttachmentIdentity?.productCode || ''}`" width="1000px" append-to-body destroy-on-close>
+      <p>已保存 {{ productAttachmentSession.refRows.value.length }} 个，待保存 {{ productAttachmentSession.pending.value.length }} 个；上传后随订单保存。</p>
+      <AttachmentUpload :session="attachSession" :ownership="productAttachmentOwnership" button-text="上传产品附件"
+        @uploaded="(item) => attachSession.registerUploaded(item.pending, item.ownership)" @error="onAttachError" />
+      <AttachmentManager v-if="productAttachmentsVisible" :session="productAttachmentSession" :show-ownership-filter="false" source-type="sales_order" title="本产品附件" @error="onAttachError" />
+      <template #footer><el-button @click="productAttachmentsVisible = false">关闭</el-button></template>
+    </el-dialog>
 
     <!-- 金额汇总 -->
     <el-divider content-position="left">金额汇总</el-divider>
@@ -810,6 +821,38 @@ function stableRowKey(row: OrderItem): string {
   orderRowKeys.set(row, key)
   return key
 }
+
+// 派生视图共享原会话的所有写方法和队列，仅限定当前订单产品的显示范围。
+const productAttachmentsVisible = ref(false)
+const productAttachmentIdentity = ref<AttachmentOwnership>()
+const productAttachmentOwnership = computed(() => productAttachmentIdentity.value || orderOwnershipOf())
+function ownershipOfRow(row: OrderItem) {
+  return productOwnershipOf({ rowKey: stableRowKey(row), productId: row.productId, productCode: row.productCode, label: row.productName })
+}
+function pendingForProduct(row: { productId?: number | null; productCode?: string | null; key: string }) {
+  return attachSession.pending.value.filter(entry => entry.ownershipKey === row.key && entry.productCode?.trim() === row.productCode?.trim())
+}
+function refsForProduct(row: { productId?: number | null }) {
+  return attachSession.refRows.value.filter(entry => row.productId != null && entry.productId === row.productId && Number(entry.sourceId) === form.orderId && entry.sourceType === 'sales_order')
+}
+function productAttachmentCount(row: OrderItem) {
+  const ownership = ownershipOfRow(row)
+  return pendingForProduct(ownership).length + refsForProduct(ownership).length
+}
+const productAttachmentSession = {
+  ...attachSession,
+  pending: computed(() => productAttachmentIdentity.value ? pendingForProduct(productAttachmentIdentity.value) : []),
+  refRows: computed(() => productAttachmentIdentity.value ? refsForProduct(productAttachmentIdentity.value) : []),
+  refs: computed(() => productAttachmentIdentity.value ? refsForProduct(productAttachmentIdentity.value) : []),
+  legacyOnlyRows: computed(() => []), traceOnlyRows: computed(() => []), hasReadonlyDocs: computed(() => false),
+}
+function openProductAttachments(row: OrderItem) {
+  productAttachmentIdentity.value = ownershipOfRow(row)
+  productAttachmentsVisible.value = true
+}
+watch(() => [form.customerId, form.items.map(row => `${stableRowKey(row)}:${row.productId}:${row.productCode}`).join('|')], () => {
+  productAttachmentsVisible.value = false
+})
 
 const uploadOwnershipKey = ref('order')
 const uploadOwnershipOptions = computed(() => {
