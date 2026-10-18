@@ -1,11 +1,15 @@
 <template>
   <div class="attachment-manager">
+    <el-divider content-position="left"
+      ><span class="am-title">{{ title }}</span></el-divider
+    >
     <div class="am-header">
-      <span class="am-title">{{ title }}</span>
       <el-tag v-if="totalCount" size="small" type="info">{{ totalCount }} 条</el-tag>
       <span v-if="filterKey" class="am-sub">当前显示 {{ tableRows.length }} 条</span>
       <el-tag v-if="pendingCount" size="small" type="warning">待保存 {{ pendingCount }}</el-tag>
-      <el-tag v-if="session.dirtyCount.value" size="small" type="danger" effect="plain">未保存改动 {{ session.dirtyCount.value }}</el-tag>
+      <el-tag v-if="session.dirtyCount.value" size="small" type="danger" effect="plain"
+        >未保存改动 {{ session.dirtyCount.value }}</el-tag
+      >
       <span class="am-spacer" />
       <el-select
         v-if="showOwnershipFilter && ownershipOptions.length > 1"
@@ -14,11 +18,22 @@
         class="am-filter"
       >
         <el-option label="全部归属" value="" />
-        <el-option v-for="o in ownershipOptions" :key="o.key" :label="o.label || o.key" :value="o.key" />
+        <el-option
+          v-for="o in ownershipOptions"
+          :key="o.key"
+          :label="o.label || o.key"
+          :value="o.key"
+        />
       </el-select>
     </div>
 
-    <el-alert v-if="session.error.value" :title="session.error.value" type="warning" :closable="false" class="am-alert" />
+    <el-alert
+      v-if="session.error.value"
+      :title="session.error.value"
+      type="warning"
+      :closable="false"
+      class="am-alert"
+    />
 
     <!-- 批量保存：默认隐藏，仅在调用方显式开启且会话已注入处理器时出现 -->
     <div v-if="canEdit && batchSaveEnabled" class="am-bar">
@@ -31,16 +46,26 @@
       >
         保存选中
       </el-button>
-      <span v-if="selectedCount" class="am-sub">已选 {{ selectedCount }} 条，可保存 {{ selectedDirtyCount }} 条改动</span>
+      <span v-if="selectedCount" class="am-sub"
+        >已选 {{ selectedCount }} 条，可保存 {{ selectedDirtyCount }} 条改动</span
+      >
     </div>
 
     <div v-if="canEdit && tableRows.length" class="am-bar">
-      <el-button size="small" :disabled="!selectedCount" @click="openBatchType">批量改类型</el-button>
-      <el-button size="small" type="danger" plain :disabled="!selectedCount" @click="onBatchRemove">批量移除</el-button>
+      <el-button size="small" :disabled="!selectedCount" @click="openBatchType"
+        >批量改类型</el-button
+      >
+      <el-button size="small" type="danger" plain :disabled="!selectedCount" @click="onBatchRemove"
+        >批量移除</el-button
+      >
       <span v-if="selectedCount" class="am-sub">已选 {{ selectedCount }} 条</span>
     </div>
 
-    <el-empty v-if="!tableRows.length" :description="filterKey ? '当前筛选无附件' : '暂无附件'" :image-size="60" />
+    <el-empty
+      v-if="!tableRows.length"
+      :description="filterKey ? '当前筛选无附件' : '暂无附件'"
+      :image-size="60"
+    />
 
     <AttachmentTable
       v-else
@@ -60,12 +85,15 @@
           :title="row.kind === 'pending' ? row.data.error : capabilities(row).readonlyReason"
           v-bind="AttachmentDocumentStatusEnum.getTagProps(row.status)"
         >
-          {{ AttachmentDocumentStatusEnum.getLabel(row.status) }}{{ row.kind === 'readonly' ? '·只读' : '' }}
+          {{ AttachmentDocumentStatusEnum.getLabel(row.status)
+          }}{{ row.kind === 'readonly' ? '·只读' : '' }}
         </el-tag>
       </template>
       <template #fileName="{ row }">
         <span v-if="row.kind === 'pending'">{{ textOf('fileName', row) }}</span>
-        <el-button v-else link type="primary" @click="previewRow(row)">{{ textOf('fileName', row) }}</el-button>
+        <el-button v-else link type="primary" @click="previewRow(row)">{{
+          textOf('fileName', row)
+        }}</el-button>
       </template>
       <template #category="{ row }">
         <AttachmentTypeSelect
@@ -93,13 +121,27 @@
       </template>
       <template #actions="{ row }">
         <template v-if="row.kind === 'pending'">
-          <el-button v-if="capabilities(row).canRemove" link type="danger" @click="onRemovePending(row.attachmentId)">移除</el-button>
+          <el-button
+            v-if="capabilities(row).canRemove"
+            link
+            type="danger"
+            @click="onRemovePending(row.attachmentId)"
+            >移除</el-button
+          >
         </template>
         <template v-else-if="row.kind === 'ref'">
           <el-button link type="primary" @click="onDownload(row.data)">下载</el-button>
           <el-button link type="primary" @click="onDetail(row)">详情</el-button>
-          <el-button v-if="rowSaveEnabled && capabilities(row).canSave && session.hasEdit(row.refId)" link type="primary" @click="onRowSave(row)">保存</el-button>
-          <el-button v-if="capabilities(row).canRemove" link type="danger" @click="onRemoveRef(row)">移除</el-button>
+          <el-button
+            v-if="rowSaveEnabled && capabilities(row).canSave && session.hasEdit(row.refId)"
+            link
+            type="primary"
+            @click="onRowSave(row)"
+            >保存</el-button
+          >
+          <el-button v-if="capabilities(row).canRemove" link type="danger" @click="onRemoveRef(row)"
+            >移除</el-button
+          >
         </template>
         <template v-else>
           <el-button link type="primary" @click="downloadRow(row)">下载</el-button>
@@ -117,7 +159,9 @@
       class="am-alert"
     />
 
-    <div v-if="pendingCount" class="am-hint">待保存附件已上传到服务器，保存单据后自动建立引用。</div>
+    <div v-if="pendingCount" class="am-hint">
+      待保存附件已上传到服务器，保存单据后自动建立引用。
+    </div>
 
     <AttachmentManagerDetailDialog
       v-model="metaVisible"
@@ -146,7 +190,9 @@
       </div>
       <template #footer>
         <el-button @click="batchTypeVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!batchDocumentType" @click="applyBatchType">确定</el-button>
+        <el-button type="primary" :disabled="!batchDocumentType" @click="applyBatchType"
+          >确定</el-button
+        >
       </template>
     </el-dialog>
 
@@ -183,7 +229,10 @@ import { useAttachmentPreview } from './useAttachmentPreview'
 import AttachmentTable from './AttachmentTable.vue'
 import AttachmentTypeSelect from './AttachmentTypeSelect.vue'
 import AttachmentManagerDetailDialog from './AttachmentManagerDetailDialog.vue'
-import { useAttachmentManagerRows, type AttachmentManagerRow as TableRow } from './useAttachmentManagerRows'
+import {
+  useAttachmentManagerRows,
+  type AttachmentManagerRow as TableRow,
+} from './useAttachmentManagerRows'
 
 const props = withDefaults(
   defineProps<{
@@ -207,7 +256,7 @@ const props = withDefaults(
     rowSave: false,
     batchSave: false,
     showOwnershipFilter: true,
-  },
+  }
 )
 
 const emit = defineEmits<{
@@ -221,16 +270,24 @@ const session = props.session
 const canEdit = computed(() => session.canEdit.value)
 const documentTypes = session.documentTypes
 // 061：Manager 挂载即加载资料类型字典（原来只在「打开详情」时才加载，导致刚上传后一级/二级下拉为空）
-onMounted(() => { void session.loadDocumentTypes() })
+onMounted(() => {
+  void session.loadDocumentTypes()
+})
 /** 列表变化 + 编辑差异实时通知调用方（仅条数不足以反映信息编辑） */
-const changeSnapshot = computed(() => JSON.stringify({
-  refs: session.refs.value,
-  pending: session.pending.value,
-  edits: session.edits,
-}))
-watch(changeSnapshot, () => {
-  emit('changed', { count: session.refRows.value.length, dirtyCount: session.dirtyCount.value })
-}, { flush: 'post' })
+const changeSnapshot = computed(() =>
+  JSON.stringify({
+    refs: session.refs.value,
+    pending: session.pending.value,
+    edits: session.edits,
+  })
+)
+watch(
+  changeSnapshot,
+  () => {
+    emit('changed', { count: session.refRows.value.length, dirtyCount: session.dirtyCount.value })
+  },
+  { flush: 'post' }
+)
 
 /** 保存入口只有在「调用方开启 + 会话有处理器」时才出现（无处理器不开放入口） */
 const rowSaveEnabled = computed(() => !!(props.rowSave && session.canSave.value))
@@ -247,14 +304,21 @@ const { textOf } = useAttachmentRowText(documentTypes, () => props.sourceType)
 const selectedIds = ref<number[]>([])
 const selectedPendingIds = ref<number[]>([])
 function onSelectionChange(rows: TableRow[]) {
-  selectedIds.value = rows.flatMap((row) => row.kind === 'ref' && capabilities(row).canSelect ? [row.refId] : [])
-  selectedPendingIds.value = rows.flatMap((row) => row.kind === 'pending' && capabilities(row).canSelect ? [row.attachmentId] : [])
+  selectedIds.value = rows.flatMap((row) =>
+    row.kind === 'ref' && capabilities(row).canSelect ? [row.refId] : []
+  )
+  selectedPendingIds.value = rows.flatMap((row) =>
+    row.kind === 'pending' && capabilities(row).canSelect ? [row.attachmentId] : []
+  )
 }
 // 列表/筛选刷新后，旧勾选作废（隐藏行的改动仍在会话里，不受影响）
-watch(() => [session.refRows.value, session.pending.value, filterKey.value], () => {
-  selectedIds.value = []
-  selectedPendingIds.value = []
-})
+watch(
+  () => [session.refRows.value, session.pending.value, filterKey.value],
+  () => {
+    selectedIds.value = []
+    selectedPendingIds.value = []
+  }
+)
 const selectedRows = computed(() => [
   ...selectedPendingIds.value.flatMap((id) => {
     const row = tableRows.value.find((item) => item.kind === 'pending' && item.attachmentId === id)
@@ -266,11 +330,15 @@ const selectedRows = computed(() => [
   }),
 ])
 const selectedCount = computed(() => selectedRows.value.length)
-const selectedRefIds = computed(() => selectedIds.value.filter((id) => {
-  const row = refRow(id)
-  return row && capabilities(row).canSelect
-}))
-const selectedDirtyCount = computed(() => selectedRefIds.value.filter((id) => session.hasEdit(id)).length)
+const selectedRefIds = computed(() =>
+  selectedIds.value.filter((id) => {
+    const row = refRow(id)
+    return row && capabilities(row).canSelect
+  })
+)
+const selectedDirtyCount = computed(
+  () => selectedRefIds.value.filter((id) => session.hasEdit(id)).length
+)
 const selectedDirty = computed(() => selectedDirtyCount.value > 0)
 // ==================== 行内编辑（写进会话编辑差异，不即时提交） ====================
 const rowCategories = ref<Record<string, string>>({})
@@ -282,7 +350,7 @@ function categoryOfRow(row: TableRow): string {
 }
 function docTypeOfRow(row: TableRow): string {
   if (row.kind === 'ref') return session.effectiveDocumentType(row.refId, row.data.documentType)
-  return row.kind === 'pending' ? row.data.documentType ?? '' : row.documentType ?? ''
+  return row.kind === 'pending' ? (row.data.documentType ?? '') : (row.documentType ?? '')
 }
 function onRowType(row: TableRow, value: string | null) {
   if (!capabilities(row).canEdit) return
@@ -308,7 +376,9 @@ function onRowCategory(row: TableRow, category: string | null) {
 const metaVisible = ref(false)
 const detailRow = ref<TableRow | null>(null)
 const metaEditable = computed(() => !!detailRow.value && capabilities(detailRow.value).canEdit)
-const detailReadonlyReason = computed(() => detailRow.value ? capabilities(detailRow.value).readonlyReason : '')
+const detailReadonlyReason = computed(() =>
+  detailRow.value ? capabilities(detailRow.value).readonlyReason : ''
+)
 const detailRemark = computed(() => {
   if (detailRow.value?.kind !== 'ref') return ''
   const edit = session.editOf(detailRow.value.refId)
@@ -332,7 +402,10 @@ function applyMeta(value: { remark: string; sortOrder: number }) {
   if (detailRow.value?.kind !== 'ref') return
   const row = refRow(detailRow.value.refId)
   if (!row || !capabilities(row).canEdit) return
-  session.setEdit(detailRow.value.refId, { remark: value.remark || null, sortOrder: value.sortOrder || 0 })
+  session.setEdit(detailRow.value.refId, {
+    remark: value.remark || null,
+    sortOrder: value.sortOrder || 0,
+  })
   metaVisible.value = false
 }
 
@@ -346,7 +419,8 @@ function openBatchType() {
 }
 function onBatchCategoryChange(category: string) {
   batchCategory.value = category
-  if (batchDocumentType.value && categoryKeyOfType(batchDocumentType.value) !== category) batchDocumentType.value = null
+  if (batchDocumentType.value && categoryKeyOfType(batchDocumentType.value) !== category)
+    batchDocumentType.value = null
 }
 function applyBatchType() {
   if (!batchDocumentType.value || !selectedRows.value.length) return
@@ -368,10 +442,13 @@ function applyBatchType() {
 async function runSave(scope: { kind: 'row'; refId: number } | { kind: 'rows'; refIds: number[] }) {
   if (!canEdit.value || !session.canSave.value) return
   const ids = scope.kind === 'row' ? [scope.refId] : scope.refIds
-  if (!ids.every((id) => {
-    const row = refRow(id)
-    return row && capabilities(row).canSave
-  })) return
+  if (
+    !ids.every((id) => {
+      const row = refRow(id)
+      return row && capabilities(row).canSave
+    })
+  )
+    return
   const changes = session.getChanges(scope)
   if (!changes.total) return
   try {
@@ -381,7 +458,8 @@ async function runSave(scope: { kind: 'row'; refId: number } | { kind: 'rows'; r
       return
     }
     const failed = committed.result?.failed?.length ?? 0
-    if (failed) ElMessage.warning(`已保存 ${changes.total - failed} 条，${failed} 条失败（保留待重试）`)
+    if (failed)
+      ElMessage.warning(`已保存 ${changes.total - failed} 条，${failed} 条失败（保留待重试）`)
     else ElMessage.success('已保存')
   } catch (e: any) {
     const message = e?.message || '保存失败'
@@ -401,9 +479,13 @@ function onBatchSave() {
 async function onRemovePending(attachmentId: number) {
   try {
     if (!canEdit.value) {
-      throw new Error(props.lockReason || '当前附件为只读、无编辑权限或已被业务锁定，不能移除待保存附件')
+      throw new Error(
+        props.lockReason || '当前附件为只读、无编辑权限或已被业务锁定，不能移除待保存附件'
+      )
     }
-    const row = tableRows.value.find(row => row.kind === 'pending' && row.attachmentId === attachmentId)
+    const row = tableRows.value.find(
+      (row) => row.kind === 'pending' && row.attachmentId === attachmentId
+    )
     if (!row || !capabilities(row).canRemove) return
     await session.removePending(attachmentId) // 先删草稿行，成功才清队列项
   } catch (e: any) {
@@ -418,7 +500,7 @@ async function onRemoveRef(row: TableRow) {
     await ElMessageBox.confirm(
       '解除本单据对该附件的引用？仅解除引用，物理文件与其他单据的引用保留。',
       '解除引用',
-      { confirmButtonText: '确定解除', cancelButtonText: '取消', type: 'warning' },
+      { confirmButtonText: '确定解除', cancelButtonText: '取消', type: 'warning' }
     )
   } catch {
     return
@@ -442,7 +524,7 @@ async function onBatchRemove() {
     await ElMessageBox.confirm(
       `从本单据移除选中的 ${rows.length} 个附件？待保存附件将从待保存队列移除，已绑定附件只解除本单据的引用。`,
       '批量移除',
-      { confirmButtonText: '确定移除', cancelButtonText: '取消', type: 'warning' },
+      { confirmButtonText: '确定移除', cancelButtonText: '取消', type: 'warning' }
     )
   } catch {
     return
@@ -454,15 +536,18 @@ async function onBatchRemove() {
       if (!capabilities(row).canRemove) throw new Error('附件已不可移除，请刷新后重试')
       if (row.kind === 'pending') {
         await session.removePending(row.attachmentId)
-        selectedPendingIds.value = selectedPendingIds.value.filter(id => id !== row.attachmentId)
+        selectedPendingIds.value = selectedPendingIds.value.filter((id) => id !== row.attachmentId)
       } else if (row.kind === 'ref') {
         await session.unbind(row.refId)
-        selectedIds.value = selectedIds.value.filter(id => id !== row.refId)
+        selectedIds.value = selectedIds.value.filter((id) => id !== row.refId)
       }
       ok++
     } catch (e: any) {
       failed++
-      emit('error', { action: row.kind === 'pending' ? 'remove-pending' : 'unbind', message: e?.message || '移除失败' })
+      emit('error', {
+        action: row.kind === 'pending' ? 'remove-pending' : 'unbind',
+        message: e?.message || '移除失败',
+      })
     }
   }
   if (failed) ElMessage.warning(`已移除 ${ok} 条，${failed} 条失败（保留原状）`)
@@ -470,23 +555,42 @@ async function onBatchRemove() {
 }
 
 // ==================== 预览 / 下载（复用唯一实现） ====================
-const { viewerVisible, viewerList, viewerIndex, preview: previewViewer, openUrl, close: closeViewer } = useAttachmentPreview()
+const {
+  viewerVisible,
+  viewerList,
+  viewerIndex,
+  preview: previewViewer,
+  openUrl,
+  close: closeViewer,
+} = useAttachmentPreview()
 function previewRow(row: TableRow) {
   if (row.kind === 'pending') return
   // 预览工具以数字id定位图片：使用当前展示行序号，避免文件ID和引用ID碰撞或多引用串页。
-  const previews = tableRows.value.filter(item => item.kind !== 'pending').map((item, id) => ({
-    id, fileName: item.fileName, fileType: item.fileType, url: previewUrl(item), rowKey: item.rowKey,
-  }))
-  const selected = previews.find(item => item.rowKey === row.rowKey)
-  if (selected) previewViewer(previews, selected, item => previews[item.id].url)
+  const previews = tableRows.value
+    .filter((item) => item.kind !== 'pending')
+    .map((item, id) => ({
+      id,
+      fileName: item.fileName,
+      fileType: item.fileType,
+      url: previewUrl(item),
+      rowKey: item.rowKey,
+    }))
+  const selected = previews.find((item) => item.rowKey === row.rowKey)
+  if (selected) previewViewer(previews, selected, (item) => previews[item.id].url)
 }
 function previewUrl(row: TableRow): string {
-  return row.refId != null ? attachmentRefApi.previewUrlByRef(row.refId) : attachmentApi.downloadUrl(row.attachmentId)
+  return row.refId != null
+    ? attachmentRefApi.previewUrlByRef(row.refId)
+    : attachmentApi.downloadUrl(row.attachmentId)
 }
 function downloadRow(row: TableRow) {
   if (row.kind === 'pending') return
   if (row.kind === 'ref') return onDownload(row.data)
-  openUrl(row.refId != null ? attachmentRefApi.downloadUrlByRef(row.refId) : attachmentApi.downloadUrl(row.attachmentId))
+  openUrl(
+    row.refId != null
+      ? attachmentRefApi.downloadUrlByRef(row.refId)
+      : attachmentApi.downloadUrl(row.attachmentId)
+  )
 }
 /** 下载：复用既有下载工具真正打开文件 URL（不是无效按钮），并向外 emit 供上层埋点/处理 */
 function onDownload(row: AttachmentRefItem) {
@@ -496,7 +600,10 @@ function onDownload(row: AttachmentRefItem) {
 
 defineExpose({
   refresh: () => session.refresh(),
-  clearSelection: () => { selectedIds.value = []; selectedPendingIds.value = [] },
+  clearSelection: () => {
+    selectedIds.value = []
+    selectedPendingIds.value = []
+  },
 })
 </script>
 
