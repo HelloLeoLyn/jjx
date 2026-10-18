@@ -2,12 +2,18 @@ package com.jjx.sales.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.jjx.product.domain.entity.Product;
+import com.jjx.product.enums.ProductEnums;
+import com.jjx.product.service.impl.ProductServiceImpl;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.event.EventPublisher;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.product.mapper.ProductMapper;
-import com.jjx.product.service.IProductService;
 import com.jjx.product.service.ProductCustomerValidator;
 import com.jjx.sales.domain.converter.SalesQuotationConverter;
 import com.jjx.sales.domain.dto.SalesQuotationAddDTO;
@@ -68,7 +74,7 @@ import static org.mockito.Mockito.*;
  *   <li>上传时已建的草稿行被转正（同一行 ref_state: draft→active、补 source_id），不新增重复行。</li>
  * </ol>
  *
- * <p>被测业务代码一行未改；仅本地内存库建表 + 起真 mapper，不依赖起服务，不依赖手工往真库造数。
+ * <p>本地 H2 + 真实 mapper/事务；新增产品用例执行真实建档服务，不启动服务、不写真实业务库。
  */
 class QuotationAttachmentFinalizeTest {
 
@@ -110,6 +116,20 @@ class QuotationAttachmentFinalizeTest {
         QuotationMapper quotationMapper = template.getMapper(QuotationMapper.class);
         SalesQuotationItemMapper quotationItemMapper = template.getMapper(SalesQuotationItemMapper.class);
         ProductMapper productMapper = template.getMapper(ProductMapper.class);
+        // 使用真实产品建档与归属校验；补齐本地 H2 中 Product mapper 所需列。
+        for (var field : TableInfoHelper.getTableInfo(Product.class).getFieldList()) {
+            if ("product_code".equals(field.getColumn())) continue;
+            Class<?> type = field.getPropertyType();
+            String sqlType = type == Long.class ? "BIGINT" : type == Integer.class ? "INT"
+                    : type == BigDecimal.class ? "DECIMAL(18,4)"
+                    : type == LocalDateTime.class ? "TIMESTAMP" : "VARCHAR(4000)";
+            jdbc.execute("ALTER TABLE product ADD " + field.getColumn() + " " + sqlType);
+        }
+        jdbc.update("UPDATE product SET product_name=?,customer_id=1,product_status=? WHERE product_id=?",
+                "薄膜开关", ProductEnums.Status.RELEASED.getValue(), PRODUCT_ID);
+        ProductServiceImpl draftProducts = mock(ProductServiceImpl.class, CALLS_REAL_METHODS);
+        ReflectionTestUtils.setField(draftProducts, "productMapper", productMapper);
+        ReflectionTestUtils.setField(draftProducts, "logSaveService", mock(com.jjx.system.service.LogSaveService.class));
         SysAttachmentMapper files = template.getMapper(SysAttachmentMapper.class);
         refs = template.getMapper(SysAttachmentRefMapper.class);
 
@@ -127,8 +147,8 @@ class QuotationAttachmentFinalizeTest {
                 quotationItemMapper,
                 mock(SalesInquiryMapper.class),
                 productMapper,
-                mock(ProductCustomerValidator.class),
-                mock(IProductService.class),
+                new ProductCustomerValidator(productMapper),
+                draftProducts,
                 mock(IOrderService.class),
                 mock(OrderMapper.class),
                 mock(ISysAttachmentService.class),
@@ -171,7 +191,7 @@ class QuotationAttachmentFinalizeTest {
                 + "delivery_days INT, estimated_delivery_date DATE, custom_requirements VARCHAR(500),"
                 + "logo_requirement VARCHAR(255), certification_requirement VARCHAR(255), item_order INT,"
                 + "create_time TIMESTAMP, update_time TIMESTAMP)");
-        jdbc.execute("CREATE TABLE product(product_id BIGINT PRIMARY KEY, product_code VARCHAR(64))");
+        jdbc.execute("CREATE TABLE product(product_id BIGINT AUTO_INCREMENT PRIMARY KEY, product_code VARCHAR(64))");
         jdbc.execute("CREATE TABLE sys_attachment("
                 + "id BIGINT AUTO_INCREMENT PRIMARY KEY, upload_state VARCHAR(20), expires_at TIMESTAMP,"
                 + "trace_id VARCHAR(32), deleted TINYINT NOT NULL DEFAULT 0, file_name VARCHAR(255))");
@@ -191,6 +211,7 @@ class QuotationAttachmentFinalizeTest {
         auth.when(() -> StpUtil.checkPermission(anyString())).thenAnswer(inv -> null);
         auth.when(StpUtil::isLogin).thenReturn(true);
         auth.when(StpUtil::getLoginIdAsString).thenReturn(LOGIN_ID);
+        auth.when(StpUtil::getSession).thenReturn(mock(cn.dev33.satoken.session.SaSession.class));
         return auth;
     }
 
@@ -328,4 +349,97 @@ class QuotationAttachmentFinalizeTest {
                     Long.class), "不应再剩草稿态行");
         }
     }
+    /** 两种报价类型均真正写入 H2 产品/报价/引用表，再走详情读取验证，非业务 MySQL。 */
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void newProductSaveAndReloadKeepsIdentityNameSpecAndAttachmentTogether(int type) {
+        init();
+        seedUploadedTempFile();
+        SalesQuotationAddDTO dto = newQuotationRequest("SALES_QUOTATION_ATTACHMENT");
+        SalesQuotation entity = converter.toEntity(dto);
+        entity.setQuotationType(type);
+        SalesQuotationItem item = entity.getItems().get(0);
+        item.setProductId(null);
+        item.setProductCode("P-FRESH");
+        item.setProductName("新产品名称");
+        item.setSerialNo("123");
+        item.setPanelType("NEW-PANEL");
+        item.setPanelFeature("NEW-FEATURE");
+        item.setCircuitType("NEW-CIRCUIT");
+        item.setCircuitFeature("NEW-CIRCUIT-FEATURE");
+        dto.getAttachments().get(0).setProductId(null);
+        dto.getAttachments().get(0).setProductCode("P-FRESH");
+        try (MockedStatic<StpUtil> auth = login()) {
+            Long id = service.insertQuotation(dto);
+            SalesQuotationItem saved = service.selectQuotationById(id).getItems().get(0);
+            assertNotEquals(PRODUCT_ID, saved.getProductId());
+            assertEquals("P-FRESH", saved.getProductCode());
+            assertEquals("新产品名称", saved.getProductName());
+            Map<String, Object> archive = jdbc.queryForMap(
+                    "SELECT product_code,product_name,spec_json FROM product WHERE product_id=?", saved.getProductId());
+            assertEquals(saved.getProductCode(), archive.get("product_code"));
+            assertEquals(saved.getProductName(), archive.get("product_name"));
+            var spec = com.alibaba.fastjson2.JSON.parseObject((String) archive.get("spec_json"));
+            assertEquals("123", spec.getString("serialNo"));
+            assertEquals("NEW-PANEL", spec.getString("panelType"));
+            assertEquals("NEW-FEATURE", spec.getString("panelFeature"));
+            assertEquals("NEW-CIRCUIT", spec.getString("circuitType"));
+            assertEquals("NEW-CIRCUIT-FEATURE", spec.getString("circuitFeature"));
+            Map<String, Object> ref = jdbc.queryForMap("SELECT product_id,product_code FROM sys_attachment_ref WHERE attachment_id=?", ATTACHMENT_ID);
+            assertEquals(saved.getProductId(), ((Number) ref.get("product_id")).longValue());
+            assertEquals(saved.getProductCode(), ref.get("product_code"));
+            assertEquals("薄膜开关", jdbc.queryForObject("SELECT product_name FROM product WHERE product_id=?", String.class, PRODUCT_ID));
+            assertNull(jdbc.queryForObject("SELECT spec_json FROM product WHERE product_id=?", String.class, PRODUCT_ID));
+        }
+    }
+
+    @Test
+    void attachmentWithOldIdAndAnotherRowsCodeRollsBackEverything() {
+        init();
+        seedUploadedTempFile();
+        SalesQuotationAddDTO dto = newQuotationRequest("SALES_QUOTATION_ATTACHMENT");
+        SalesQuotation entity = converter.toEntity(dto);
+        jdbc.update("INSERT INTO product(product_id,product_code,product_name,customer_id,product_status) VALUES (3,'P-OTHER','另一产品',1,?)",
+                ProductEnums.Status.RELEASED.getValue());
+        SalesQuotationItem other = new SalesQuotationItem();
+        other.setProductId(3L);
+        other.setProductCode("P-OTHER");
+        other.setProductName("另一产品");
+        other.setQuantity(1);
+        other.setUnitPrice(BigDecimal.TEN);
+        entity.getItems().add(other);
+        dto.getAttachments().get(0).setProductCode("P-OTHER");
+        try (MockedStatic<StpUtil> auth = login()) {
+            BusinessException ex = assertThrows(BusinessException.class, () -> service.insertQuotation(dto));
+            assertTrue(ex.getMessage().contains("ID与编码不一致"));
+        }
+        assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM sales_quotation", Long.class));
+        assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM sales_quotation_item", Long.class));
+        assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref", Long.class));
+        assertEquals("TEMP", jdbc.queryForObject("SELECT upload_state FROM sys_attachment WHERE id=?", String.class, ATTACHMENT_ID));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void replacingProductDoesNotMoveOldAttachmentAndRollsBackNewArchive(int type) {
+        init();
+        seedUploadedTempFile();
+        SalesQuotationAddDTO dto = newQuotationRequest("SALES_QUOTATION_ATTACHMENT");
+        SalesQuotation entity = converter.toEntity(dto);
+        entity.setQuotationType(type);
+        SalesQuotationItem item = entity.getItems().get(0);
+        item.setProductId(null);
+        item.setProductCode("P-REPLACEMENT");
+        item.setProductName("新名称");
+        try (MockedStatic<StpUtil> auth = login()) {
+            assertThrows(BusinessException.class, () -> service.insertQuotation(dto));
+        }
+        assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM product WHERE product_code='P-REPLACEMENT'", Long.class));
+        assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM sales_quotation", Long.class));
+        assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM sales_quotation_item", Long.class));
+        assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref", Long.class));
+        assertEquals(PRODUCT_CODE, jdbc.queryForObject("SELECT product_code FROM product WHERE product_id=?", String.class, PRODUCT_ID));
+        assertEquals("TEMP", jdbc.queryForObject("SELECT upload_state FROM sys_attachment WHERE id=?", String.class, ATTACHMENT_ID));
+    }
+
 }

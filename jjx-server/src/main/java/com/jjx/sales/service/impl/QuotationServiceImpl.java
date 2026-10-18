@@ -383,6 +383,10 @@ public class QuotationServiceImpl implements IQuotationService {
                     throw new BusinessException("产品编码与所选产品不一致");
                 }
                 item.setProductCode(product.getProductCode());
+                // 已有产品名称取档案，防止前端切换产品后携带另一产品的旧名称。
+                if (org.apache.commons.lang3.StringUtils.isNotBlank(product.getProductName())) {
+                    item.setProductName(product.getProductName());
+                }
             }
         }
     }
@@ -414,7 +418,10 @@ public class QuotationServiceImpl implements IQuotationService {
                         item.getSerialNo(), item.getPanelType(), item.getPanelFeature(),
                         item.getCircuitType(), item.getCircuitFeature());
                 if (pid == null) throw new BusinessException("报价产品建档失败：" + item.getProductCode());
-                productCustomerValidator.validateBelongsToCustomer(pid, quotation.getCustomerId());
+                Product product = productCustomerValidator.validateBelongsToCustomer(pid, quotation.getCustomerId());
+                if (product != null && org.apache.commons.lang3.StringUtils.isNotBlank(product.getProductName())) {
+                    item.setProductName(product.getProductName());
+                }
                 item.setProductId(pid);
             }
         }
@@ -472,6 +479,10 @@ public class QuotationServiceImpl implements IQuotationService {
                 if (productId == null) {
                     throw new BusinessException("附件产品编码不属于当前报价单明细: " + productCode);
                 }
+            }
+            if (productId != null && productCode != null
+                    && !productId.equals(productIdByCode.get(productCode))) {
+                throw new BusinessException("附件产品ID与编码不一致，不能混用其他产品资料");
             }
             if (productId != null) {
                 boolean belongsToQuotation = false;

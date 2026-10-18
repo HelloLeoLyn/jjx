@@ -151,4 +151,16 @@ class QuotationProductEntryTest {
         assertThrows(BusinessException.class, () -> service.insertQuotation(new SalesQuotationAddDTO()));
         verify(quotations, never()).insert(any(SalesQuotation.class));
     }
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void selectedProductNameAlwaysComesFromItsArchive(int type) {
+        quotation.setQuotationType(type);
+        item.setProductId(8L);
+        item.setProductName("另一个产品的旧名称");
+        product.setProductName("所选产品名称");
+        service.insertQuotation(new SalesQuotationAddDTO());
+        assertEquals("所选产品名称", item.getProductName());
+        verify(items).insert(item);
+    }
+
 }

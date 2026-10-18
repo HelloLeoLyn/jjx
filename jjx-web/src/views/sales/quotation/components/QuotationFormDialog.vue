@@ -372,7 +372,6 @@ import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
 import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
 import { productOwnership, type AttachmentSession } from '@/composables/useAttachmentSession'
 import type { ProductCodeState, ProductCodeResult } from '@/composables/useProductCode'
-import { parseProductCode } from '@/composables/useProductCode'
 
 const props = defineProps<{
   modelValue: boolean
@@ -533,27 +532,19 @@ const openCodeGen = (row: any) => {
     return
   }
   codeGenRow.value = row
-  // 编辑回显：行上已有参数直接用；无参数尝试从编码反解
-  codeGenInitState.value = {
-    serialNo: row.serialNo,
-    panelType: row.panelType,
-    panelFeature: row.panelFeature,
-    circuitType: row.circuitType,
-    circuitFeature: row.circuitFeature,
-  }
-  if (!hasAnyCodeParam(codeGenInitState.value) && row.productCode) {
-    codeGenInitState.value = parseCodeFromProductCode(row.productCode)
-  }
+  // 新建产品始终从空参数开始；确认前不改原行，取消即可保留原产品。
+  codeGenInitState.value = {}
   codeGenVisible.value = true
 }
 
 const onCodeGenConfirm = (params: ProductCodeResult) => {
   if (codeGenRow.value) {
-    // 编辑已有行：只改编码+参数，保留手改的产品名称（2026-09-02）
+    // 确认新建后替换产品身份，名称必须重新填写，避免沿用旧产品名称。
     const row = codeGenRow.value
     row.productCode = params.productCode
     // 编码变了 → 清掉旧 productId，提交时后端按新编码重新建档（2026-09-02）
     row.productId = undefined
+    row.productName = ''
     row.serialNo = params.serialNo
     row.panelType = params.panelType
     row.panelFeature = params.panelFeature
@@ -718,29 +709,6 @@ const handleClose = () => {
   uploadedAttachmentIds.value = []
   visible.value = false
   emit('cancel')
-}
-
-// ============================================================
-// 工具：编码参数反解/判断
-// ============================================================
-function hasAnyCodeParam(state: Partial<ProductCodeState>): boolean {
-  return !!(
-    state.serialNo ||
-    state.panelType ||
-    state.panelFeature ||
-    state.circuitType ||
-    state.circuitFeature
-  )
-}
-
-/** 从产品编码反解构成要素（口径统一在 useProductCode.parseProductCode，2026-09-30 dev-20260930-011） */
-function parseCodeFromProductCode(code?: string | null): Partial<ProductCodeState> {
-  const parsed = parseProductCode(code)
-  if (!parsed) {
-    return { serialNo: '', panelType: '', panelFeature: '', circuitType: '', circuitFeature: '' }
-  }
-  const { serialNo, panelType, panelFeature, circuitType, circuitFeature } = parsed
-  return { serialNo, panelType, panelFeature, circuitType, circuitFeature }
 }
 
 defineExpose({
