@@ -133,10 +133,14 @@ const merged = computed(() => {
   )
 })
 
-// 当前工序 = 排序后首个未完成项（只用于呈现强调，不改变推进逻辑）
-const currentUid = computed(
-  () => merged.value.find((pc) => pc.status !== SampleProcessStatusEnum.DONE.value)?.uid || '',
-)
+// 当前工序：与后端 SampleOrderServiceImpl.syncCurrentProcess 同口径——排序后首个「进行中」优先，
+// 无进行中取首个「待开始」；全部完成时不存在可执行的当前项（仅呈现强调，不改变推进逻辑）
+const currentUid = computed(() => {
+  const doing = merged.value.find((pc) => pc.status === SampleProcessStatusEnum.DOING.value)
+  if (doing) return doing.uid
+  const todo = merged.value.find((pc) => pc.status === SampleProcessStatusEnum.TODO.value)
+  return todo?.uid || ''
+})
 const doneCount = computed(
   () => merged.value.filter((pc) => pc.status === SampleProcessStatusEnum.DONE.value).length,
 )

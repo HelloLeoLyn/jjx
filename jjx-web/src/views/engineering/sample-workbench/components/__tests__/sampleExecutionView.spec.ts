@@ -162,6 +162,92 @@ describe('SampleExecutionView 打样执行视图', () => {
     expect(advanceButtons(wrapper)).toHaveLength(0)
   })
 
+  it('当前工序反例：排序靠后的进行中优先于靠前的待做', async () => {
+    const wrapper = mountView({
+      planList: [
+        planCard({
+          uid: 'plan-a',
+          items: [{ processName: '前序待做' }],
+          status: SampleProcessStatusEnum.TODO.value,
+          processOrder: 10,
+        }),
+        planCard({
+          uid: 'plan-b',
+          items: [{ processName: '后序进行中' }],
+          status: SampleProcessStatusEnum.DOING.value,
+          processOrder: 20,
+        }),
+      ],
+    })
+    await flushPromises()
+
+    const items = wrapper.findAll('.tl-item')
+    expect(items).toHaveLength(2)
+    // 进行中在后、待做在前：当前工序必须落在进行中那一项
+    expect(items[0].classes()).not.toContain('current')
+    expect(items[0].text()).not.toContain('当前工序')
+    expect(items[1].classes()).toContain('current')
+    expect(items[1].text()).toContain('当前工序')
+    expect(items[1].text()).toContain('后序进行中')
+    // 推进按钮与状态未因高亮改变：待做仍是「开始」，进行中仍是「完成」
+    expect(items[0].text()).toContain('▶ 开始')
+    expect(items[1].text()).toContain('✓ 完成')
+    expect(advanceButtons(wrapper)).toHaveLength(2)
+  })
+
+  it('当前工序回退：无进行中时取首个待做', async () => {
+    const wrapper = mountView({
+      planList: [
+        planCard({
+          uid: 'plan-a',
+          items: [{ processName: '首个待做' }],
+          status: SampleProcessStatusEnum.TODO.value,
+          processOrder: 10,
+        }),
+        planCard({
+          uid: 'plan-b',
+          items: [{ processName: '第二个待做' }],
+          status: SampleProcessStatusEnum.TODO.value,
+          processOrder: 20,
+        }),
+      ],
+    })
+    await flushPromises()
+
+    const items = wrapper.findAll('.tl-item')
+    expect(items).toHaveLength(2)
+    expect(items[0].classes()).toContain('current')
+    expect(items[0].text()).toContain('当前工序')
+    expect(items[1].classes()).not.toContain('current')
+    expect(items[1].text()).not.toContain('当前工序')
+  })
+
+  it('当前工序：全部完成时不出现可执行的当前项', async () => {
+    const wrapper = mountView({
+      planList: [
+        planCard({
+          uid: 'plan-a',
+          items: [{ processName: '已完成一' }],
+          status: SampleProcessStatusEnum.DONE.value,
+          processOrder: 10,
+        }),
+        planCard({
+          uid: 'plan-b',
+          items: [{ processName: '已完成二' }],
+          status: SampleProcessStatusEnum.DONE.value,
+          processOrder: 20,
+        }),
+      ],
+    })
+    await flushPromises()
+
+    expect(wrapper.findAll('.tl-item')).toHaveLength(2)
+    expect(wrapper.findAll('.tl-item.current')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('当前工序')
+    expect(wrapper.text()).toContain('已完成 2 / 2')
+    expect(advanceButtons(wrapper)).toHaveLength(0)
+  })
+
   it('readonly 不出现推进、不良新增/删除与标记样品完成能力', async () => {
     const wrapper = mountView({
       readonly: true,
