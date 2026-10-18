@@ -40,6 +40,8 @@
       :pc="pc" :readonly="readonly" :parse-materials="parseMaterials"
       @search-material="(q, row) => $emit('search-material', q, row)"
       @material-selected="(row, value) => $emit('material-selected', row, value)"
+      @material-cleared="(row) => $emit('material-cleared', row)"
+      @load-more-material="(row) => $emit('load-more-material', row)"
       @select-visible="(row, visible) => $emit('select-visible', row, visible)"
       @add-material-row="$emit('add-material-row')"
       @remove-material="(index) => pc.materialRows.splice(index, 1)"
@@ -104,6 +106,8 @@ const emit = defineEmits<{
   (e: 'open-picker'): void
   (e: 'search-material', q: string, row: any): void
   (e: 'material-selected', row: any, v: any): void
+  (e: 'material-cleared', row: any): void
+  (e: 'load-more-material', row: any): void
   (e: 'select-visible', row: any, v: boolean): void
   (e: 'add-material-row'): void
   (e: 'create-material', m: any): void

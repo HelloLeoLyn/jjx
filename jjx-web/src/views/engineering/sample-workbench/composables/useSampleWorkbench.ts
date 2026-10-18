@@ -318,7 +318,7 @@ export function useSampleWorkbench() {
 
 
   const { addMaterialRow, startEdit, cancelEdit, finishEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange,
-    loadMoreMaterials, onMaterialSelected, materialCreateVisible, materialPreset, openMaterialCreate,
+    loadMoreMaterials, onMaterialSelected, clearMaterialRow, materialCreateVisible, materialPreset, openMaterialCreate,
     onMaterialCreated, parseMaterials } = useProcessMaterials(readonlyMode, genUid)
   const { historyCopyVisible, copyOverwrite, historyOrders, historyLoading, historySelected,
     historyCopying, openHistoryCopy, confirmHistoryCopy, copyPrevLoading, historySelectedRound,
@@ -921,7 +921,7 @@ export function useSampleWorkbench() {
   )
 
   // 仅计划面板所需的能力；内部 refs 保持响应式，不复制业务数据。
-  const planEditor = reactive({ batchMode, batchSelected, batchCategory, savingPlan, hasUnsavedChanges, frequentMaterials, planTabs, categoryOptions, cardsByTab, saveStateText, parseMaterials, toggleBatchMode, toggleBatchSelect, toggleBatchSelectAll, savePlan, addFrequentMaterial, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, removeCardItem, removePlanCard, cancelEdit, finishEdit, addMaterialRow, startEdit, openCardPicker, openBatchMaterial, batchDelete, applyBatchCategory, onUpdateIndex, searchMaterials: debouncedSearchMaterials, onMaterialSelected, onSelectVisibleChange, openMaterialCreate })
+  const planEditor = reactive({ batchMode, batchSelected, batchCategory, savingPlan, hasUnsavedChanges, frequentMaterials, planTabs, categoryOptions, cardsByTab, saveStateText, parseMaterials, toggleBatchMode, toggleBatchSelect, toggleBatchSelectAll, savePlan, addFrequentMaterial, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, removeCardItem, removePlanCard, cancelEdit, finishEdit, addMaterialRow, startEdit, openCardPicker, openBatchMaterial, batchDelete, applyBatchCategory, onUpdateIndex, searchMaterials: debouncedSearchMaterials, onMaterialSelected, onMaterialCleared: clearMaterialRow, onMaterialLoadMore: loadMoreMaterials, onSelectVisibleChange, openMaterialCreate })
 
   return {
     planEditor,
