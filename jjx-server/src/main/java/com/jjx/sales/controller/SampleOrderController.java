@@ -239,7 +239,7 @@ public class SampleOrderController extends BaseController {
                                       @RequestParam(required = false) String attachmentIds,
                                       @RequestParam(required = false) List<Long> attachmentRefIds) {
         guardEvidence(orderId, attachmentIds, attachmentRefIds);
-        return Result.success(sampleOrderService.approveReview(orderId, remark));
+        return Result.success(sampleOrderService.approveReview(orderId, remark, attachmentRefIds));
     }
 
     @Operation(summary = "样品单审核驳回")
@@ -251,7 +251,7 @@ public class SampleOrderController extends BaseController {
                                            @RequestParam(required = false) String attachmentIds,
                                            @RequestParam(required = false) List<Long> attachmentRefIds) {
         guardEvidence(orderId, attachmentIds, attachmentRefIds);
-        return Result.success(sampleOrderService.rejectReview(orderId, remark));
+        return Result.success(sampleOrderService.rejectReview(orderId, remark, attachmentRefIds));
     }
 
     @Operation(summary = "工程接单（记录工程备注）")
@@ -308,7 +308,7 @@ public class SampleOrderController extends BaseController {
                                            @RequestParam(required = false) String attachmentIds,
                                            @RequestParam(required = false) List<Long> attachmentRefIds) {
         guardEvidence(orderId, attachmentIds, attachmentRefIds);
-        return Result.success(sampleOrderService.rejectSample(orderId, rejectReason));
+        return Result.success(sampleOrderService.rejectSample(orderId, rejectReason, attachmentRefIds));
     }
 
     @Operation(summary = "样品转量产（生成标准订单，可传产品标准化items）")

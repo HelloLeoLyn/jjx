@@ -44,12 +44,12 @@ public interface ISampleOrderService {
     /**
      * 样品单审核通过（审核通过后进入工程打样阶段）
      */
-    SalesOrder approveReview(Long orderId, String remark);
+    SalesOrder approveReview(Long orderId, String remark, java.util.List<Long> attachmentRefIds);
 
     /**
      * 样品单审核驳回
      */
-    SalesOrder rejectReview(Long orderId, String remark);
+    SalesOrder rejectReview(Long orderId, String remark, java.util.List<Long> attachmentRefIds);
 
     /**
      * 工程接单并上传工艺备注
@@ -74,7 +74,7 @@ public interface ISampleOrderService {
     /**
      * 客户退回样品（多轮迭代）
      */
-    SalesOrder rejectSample(Long orderId, String rejectReason);
+    SalesOrder rejectSample(Long orderId, String rejectReason, java.util.List<Long> attachmentRefIds);
 
     /**
      * 退回后重新打样（REJECTED → ENGINEERING，轮次已+1）

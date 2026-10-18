@@ -917,9 +917,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 审核意见只进 review_flow.comment，sales_order.remark 保持业务备注不变。
      */
     private void recordSampleReview(Long orderId, String action, String actionName,
-                                    Integer fromStatus, Integer toStatus, String comment, int roundNo) {
+                                    Integer fromStatus, Integer toStatus, String comment, int roundNo,
+                                    java.util.List<Long> attachmentRefIds) {
         com.jjx.system.domain.entity.ReviewFlow flow = reviewFlowService.recordWithRefs(
-                "sample", orderId, action, actionName, fromStatus, toStatus, comment, null);
+                "sample", orderId, action, actionName, fromStatus, toStatus, comment,
+                com.jjx.system.utils.AttachmentRefUtils.toJson(attachmentRefIds));
         if (flow != null && (flow.getRoundNo() == null || !flow.getRoundNo().equals(roundNo))) {
             flow.setRoundNo(roundNo);
             reviewFlowService.updateById(flow);
@@ -959,7 +961,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Override
     @Event(value = "sample.approved", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
-    public SalesOrder approveReview(Long orderId, String remark) {
+    public SalesOrder approveReview(Long orderId, String remark, java.util.List<Long> attachmentRefIds) {
         safeTransition(orderId,
                 SampleOrderStatusEnum.REQUEST,
                 SampleOrderStatusEnum.ENGINEERING,
@@ -971,7 +973,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 SampleOrderStatusEnum.REQUEST.getValue(),
                 SampleOrderStatusEnum.ENGINEERING.getValue(),
                 remark,
-                current != null && current.getSampleRound() != null ? current.getSampleRound() : 1);
+                current != null && current.getSampleRound() != null ? current.getSampleRound() : 1,
+                attachmentRefIds);
 
         log.info("样品单[{}] 审核通过，进入工程打样阶段", orderId);
         return orderMapper.selectById(orderId);
@@ -980,7 +983,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Override
     @Event(value = "sample.rejected", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
-    public SalesOrder rejectReview(Long orderId, String remark) {
+    public SalesOrder rejectReview(Long orderId, String remark, java.util.List<Long> attachmentRefIds) {
         // 审核驳回：回到创建状态(1)，销售可改单后重新提交（语义与客户退回9区分）
         safeTransition(orderId,
                 SampleOrderStatusEnum.REQUEST,
@@ -992,7 +995,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 SampleOrderStatusEnum.REQUEST.getValue(),
                 SampleOrderStatusEnum.CREATED.getValue(),
                 remark,
-                current != null && current.getSampleRound() != null ? current.getSampleRound() : 1);
+                current != null && current.getSampleRound() != null ? current.getSampleRound() : 1,
+                attachmentRefIds);
         return orderMapper.selectById(orderId);
     }
 
@@ -1207,7 +1211,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Override
     @Event(value = "sample.rejected_by_customer", bizId = "#orderId", bizType = "'sample'")
     @Transactional(rollbackFor = Exception.class)
-    public SalesOrder rejectSample(Long orderId, String rejectReason) {
+    public SalesOrder rejectSample(Long orderId, String rejectReason, java.util.List<Long> attachmentRefIds) {
         SalesOrder current = orderMapper.selectById(orderId);
         if (current == null || current.getDeleted() == 1) {
             throw new BusinessException("样品单不存在");
@@ -1235,7 +1239,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         recordSampleReview(orderId, "CUSTOMER_REJECT", "客户退回",
                 SampleOrderStatusEnum.SAMPLE_SENT.getValue(),
                 SampleOrderStatusEnum.REJECTED.getValue(),
-                rejectReason, rejectedRound);
+                rejectReason, rejectedRound, attachmentRefIds);
 
         // 更新本轮快照结果：rejected + 退回原因
         try {
