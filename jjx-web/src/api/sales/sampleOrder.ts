@@ -338,6 +338,16 @@ export const sampleOrderApi = {
     })
   },
 
+  // 统一保存打样方案；独立路由确保旧后端不会按旧覆盖语义误处理备注单改。
+  saveScheme(orderId: number, data: SampleProcessPlanDTO) {
+    return request<R<SampleProcess[]>>({
+      url: `/sales/sample-order/processes/${orderId}/scheme`,
+      method: 'put',
+      data,
+    })
+  },
+
+
   // 推进打样工序状态（开始/完成，可带耗时/说明/材料）
   updateProcessItemStatus(orderId: number, processId: number, data: SampleProcessStatusDTO) {
     return request<R<SampleProcess>>({

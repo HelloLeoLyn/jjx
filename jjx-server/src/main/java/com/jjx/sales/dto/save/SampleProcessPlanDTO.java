@@ -16,8 +16,11 @@ public class SampleProcessPlanDTO {
      */
     private Integer roundNo;
 
+    /** 工程备注：null兼容旧调用方不修改；空字符串表示清空，与方案一起保存。 */
+    private String engineeringNote;
+
     /**
-     * 工序计划项列表（有序，按列表顺序）
+     * 工序计划项列表（有序，按列表顺序）；null不改计划，空列表清空当前轮次
      */
     private List<Item> items;
 

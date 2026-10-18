@@ -428,6 +428,17 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.saveProcessPlan(orderId, dto));
     }
 
+    /** 统一保存入口：旧服务版本不识别此路由时拒绝请求，避免按旧计划覆盖语义处理备注单改。 */
+    @Operation(summary = "保存打样方案（工序、印刷、BOM及工程备注同一事务）")
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @PutMapping("/processes/{orderId}/scheme")
+    public Result<List<com.jjx.sales.domain.entity.SalesSampleProcess>> saveScheme(
+            @PathVariable Long orderId,
+            @RequestBody com.jjx.sales.dto.save.SampleProcessPlanDTO dto) {
+        return Result.success(sampleOrderService.saveProcessPlan(orderId, dto));
+    }
+
+
     /**
      * 推进打样工序状态（开始/完成）
      */

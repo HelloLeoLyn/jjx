@@ -6,20 +6,12 @@
       type="textarea"
       :rows="3"
       :readonly="readonly"
+      :disabled="saving"
       placeholder="填写工艺参数/材料规格/丝印要求/模切尺寸等"
       maxlength="2000"
       show-word-limit
     />
-    <el-button
-      type="primary"
-      size="small"
-      style="margin-top: 8px"
-      v-hasPermi="['sales:sample:engineering', 'engineering:sample:workbench']"
-      :disabled="readonly"
-      @click="$emit('save')"
-      :loading="saving"
-      >💾 保存工艺参数</el-button
-    >
+    <div class="note-save-hint">随「保存打样方案」一起保存。</div>
   </el-card>
 </template>
 
@@ -38,7 +30,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', v: string): void
-  (e: 'save'): void
 }>()
 
 const note = computed({

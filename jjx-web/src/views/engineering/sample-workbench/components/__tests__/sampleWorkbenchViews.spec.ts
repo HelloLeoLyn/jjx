@@ -314,7 +314,7 @@ describe('工程打样工作台双视图接入', () => {
     expect(state.printList.value[0].printName).toBe('新印刷')
     expect(state.bomList.value[0].name).toBe('新材料')
     expect(state.form.note).toBe('新备注')
-    for (const name of ['savePlan', 'saveNote', 'advancePlan', 'advancePrint', 'handleMarkReady'])
+    for (const name of ['savePlan', 'advancePlan', 'advancePrint', 'handleMarkReady'])
       expect(state[name]).not.toHaveBeenCalled()
     w.unmount()
   })
@@ -376,7 +376,7 @@ describe('工程打样工作台双视图接入', () => {
     expect(state.openHistoryCopy).not.toHaveBeenCalled()
     expect(state.handleTransfer).not.toHaveBeenCalled()
     expect(state.handleMarkReady).not.toHaveBeenCalled()
-    expect(w.text()).toContain('单独保存')
+    expect(w.text()).toContain('一起保存工序、印刷、BOM和工程备注')
     w.unmount()
   })
   it('复制方案三种来源仍走原回调；弹窗打开后切历史也不能确认复制', async () => {

@@ -1675,7 +1675,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
      * 保存打样工序计划（方案A：多选作业项目形成计划，整单覆盖当前轮次）
      */
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public List<SalesSampleProcess> saveProcessPlan(Long orderId, com.jjx.sales.dto.save.SampleProcessPlanDTO dto) {
         SalesOrder current = orderMapper.selectById(orderId);
         if (current == null || current.getDeleted() == 1) {
@@ -1691,17 +1691,36 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         Integer roundNo = dto.getRoundNo() != null ? dto.getRoundNo()
                 : (current.getSampleRound() != null ? current.getSampleRound() : 1);
 
-        // 覆盖式保存：删除该轮次旧计划后整单重插
-        LambdaQueryWrapper<SalesSampleProcess> planWrapper = new LambdaQueryWrapper<SalesSampleProcess>()
-                .eq(SalesSampleProcess::getOrderId, orderId)
-                .eq(SalesSampleProcess::getRoundNo, roundNo);
-        List<SalesSampleProcess> oldPlan = sampleProcessMapper.selectList(planWrapper);
-        Map<Long, SalesSampleProcess> oldProcessMap = oldPlan.stream()
-                .filter(process -> process.getProcessId() != null)
-                .collect(Collectors.toMap(SalesSampleProcess::getProcessId, process -> process));
-        sampleProcessMapper.delete(planWrapper);
+        int currentRound = current.getSampleRound() != null ? current.getSampleRound() : 1;
+        if (!roundNo.equals(currentRound)) {
+            throw new BusinessException("历史轮次只读，不能保存打样方案");
+        }
+        if (dto.getEngineeringNote() != null) {
+            if (dto.getEngineeringNote().length() > 2000) {
+                throw new BusinessException("工程备注不能超过2000字");
+            }
+            if (!SampleOrderStatusEnum.ENGINEERING.getValue().equals(current.getSampleStatus())
+                    && !java.util.Objects.equals(dto.getEngineeringNote(), current.getEngineeringNote())) {
+                throw new BusinessException("当前状态不可修改工程备注");
+            }
+            SalesOrder noteUpdate = new SalesOrder();
+            noteUpdate.setOrderId(orderId);
+            noteUpdate.setEngineeringNote(dto.getEngineeringNote());
+            orderMapper.updateById(noteUpdate);
+        }
 
+        // 未传计划表示只改备注/独立材料，不删除工序或重建已有执行记录。
         if (dto.getItems() != null) {
+            // 覆盖式保存：删除该轮次旧计划后整单重插
+            LambdaQueryWrapper<SalesSampleProcess> planWrapper = new LambdaQueryWrapper<SalesSampleProcess>()
+                    .eq(SalesSampleProcess::getOrderId, orderId)
+                    .eq(SalesSampleProcess::getRoundNo, roundNo);
+            List<SalesSampleProcess> oldPlan = sampleProcessMapper.selectList(planWrapper);
+            Map<Long, SalesSampleProcess> oldProcessMap = oldPlan.stream()
+                    .filter(process -> process.getProcessId() != null)
+                    .collect(Collectors.toMap(SalesSampleProcess::getProcessId, process -> process));
+            sampleProcessMapper.delete(planWrapper);
+
             int order = 1;
             for (com.jjx.sales.dto.save.SampleProcessPlanDTO.Item item : dto.getItems()) {
                 if (item.getProcessName() == null || item.getProcessName().isEmpty()) {
@@ -1764,7 +1783,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         // 同步当前工序字段：优先进行中，其次第一个待做，全完成则最后一道
         List<SalesSampleProcess> plan = sampleProcessMapper.selectByOrderAndRound(orderId, roundNo);
-        syncCurrentProcess(orderId, plan);
+        if (dto.getItems() != null) syncCurrentProcess(orderId, plan);
 
         log.info("样品单[{}] 保存打样工序计划: Round{} 共{}道", orderId, roundNo, plan.size());
         return plan;

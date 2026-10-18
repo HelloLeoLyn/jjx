@@ -79,12 +79,11 @@
           />
         </template>
         <template #note>
-          <p class="save-hint">工艺参数 / 工程备注单独保存，不随工序计划保存。</p>
+          <p class="save-hint">「保存打样方案」一起保存工序、印刷、BOM和工程备注。</p>
           <NoteFilesPanel
             :readonly="readonlyMode"
             v-model="form.note"
-            :saving="saving"
-            @save="saveNote"
+            :saving="savingPlan"
           />
         </template>
       </SamplePlanView>
@@ -722,7 +721,6 @@ const {
   formatTime,
   handleAccept,
   handleReject,
-  saveNote,
   handleTransfer,
   transferDialogVisible,
   onTransferSuccess,

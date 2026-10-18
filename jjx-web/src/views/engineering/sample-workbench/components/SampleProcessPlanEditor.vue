@@ -22,7 +22,7 @@
     <el-card class="col-plan" shadow="never">
       <template #header>
         <span style="font-weight: 600">打样工序计划</span>
-        <span class="desc">{{ hasUnsavedChanges ? '有未保存修改（需保存工序计划）' : '已保存' }}</span>
+        <span class="desc">{{ hasUnsavedChanges ? '有未保存修改（需保存打样方案）' : '已保存' }}</span>
         <el-button
           v-if="!readonly"
           size="small"
@@ -38,10 +38,10 @@
           type="success"
           size="small"
           :loading="savingPlan"
-          title="保存工序计划：一并提交组装工序、印刷工序与 BOM 独立材料"
+          title="保存打样方案：一并提交组装工序、印刷工序、BOM 独立材料与工程备注"
           @click="savePlan"
           style="float: right; margin-top: -2px"
-          >💾 保存工序计划</el-button
+          >💾 保存打样方案</el-button
         >
       </template>
 

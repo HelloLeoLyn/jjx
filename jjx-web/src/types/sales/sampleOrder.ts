@@ -191,9 +191,10 @@ export interface SampleProcessPlanItem {
 }
 
 export interface SampleProcessPlanDTO {
+  engineeringNote?: string
   standaloneMaterials?: SampleBomItem[]
   roundNo?: number
-  items: SampleProcessPlanItem[]
+  items?: SampleProcessPlanItem[]
 }
 
 export interface SampleProcessStatusDTO {

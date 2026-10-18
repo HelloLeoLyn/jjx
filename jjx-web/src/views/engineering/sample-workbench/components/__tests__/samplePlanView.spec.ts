@@ -4,9 +4,9 @@
  * 覆盖：
  * 1）SamplePlanView：大类切换、BOM 默认折叠/展开、折叠不重建插槽实例、备注可见；
  * 2）SampleProcessPlanEditor：选择器默认收起、展开后可点选/拖拽入口仍在、保存仍走 controller.savePlan；
- * 3）SampleProcessPlanItem：完成编辑只发 finish-edit，并提示需保存工序计划；
+ * 3）SampleProcessPlanItem：完成编辑只发 finish-edit，并提示需保存打样方案；
  * 4）BomPanel：showTransfer 默认 true 兼容既有调用方，false 只隐藏资料转移区、transfer 事件不变；
- * 5）PrintProcessPanel：保存按钮说明会提交整份工序计划。
+ * 5）PrintProcessPanel：保存按钮说明会提交整份打样方案。
  *
  * 运行（带内存笼子，禁止裸跑）：
  *   cd /home/administrator/jjx/jjx-web
@@ -194,7 +194,7 @@ describe('SampleProcessPlanEditor 选择器收起/展开', () => {
     // 拖拽落点（新建卡片区域）仍在
     expect(wrapper.find('.plan-scroll').exists()).toBe(true)
 
-    const saveBtn = wrapper.findAll('button').find((btn) => btn.text().includes('保存工序计划'))
+    const saveBtn = wrapper.findAll('button').find((btn) => btn.text().includes('保存打样方案'))
     expect(saveBtn).toBeTruthy()
     expect(saveBtn!.attributes('title')).toContain('组装')
     expect(saveBtn!.attributes('title')).toContain('印刷')
@@ -273,7 +273,7 @@ describe('BomPanel 资料转移区开关', () => {
 })
 
 describe('PrintProcessPanel 印刷行保存范围', () => {
-  it('保存按钮与行保存都明确会提交整份工序计划', async () => {
+  it('保存按钮与行保存都明确会提交整份打样方案', async () => {
     const savePlan = vi.fn().mockResolvedValue(true)
     const printList: any[] = [
       { uid: 'new-1', category: 'PANEL', printName: '丝印', saveState: 'dirty', materials: null },
@@ -295,9 +295,9 @@ describe('PrintProcessPanel 印刷行保存范围', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('行内保存会提交整份工序计划')
+    expect(wrapper.text()).toContain('行内保存会提交整份打样方案')
 
-    const headerSave = wrapper.findAll('button').find((btn) => btn.text().includes('保存工序计划'))
+    const headerSave = wrapper.findAll('button').find((btn) => btn.text().includes('保存打样方案'))
     expect(headerSave).toBeTruthy()
     expect(headerSave!.attributes('title')).toContain('组装')
     await headerSave!.trigger('click')
@@ -305,7 +305,7 @@ describe('PrintProcessPanel 印刷行保存范围', () => {
 
     const rowSave = wrapper.findAll('button').find((btn) => btn.text() === '保存')
     expect(rowSave).toBeTruthy()
-    expect(rowSave!.attributes('title')).toContain('整份工序计划')
+    expect(rowSave!.attributes('title')).toContain('整份打样方案')
     await rowSave!.trigger('click')
     expect(savePlan).toHaveBeenCalledTimes(2)
 

@@ -10,6 +10,8 @@ interface PlanPersistenceContext {
   readonlyMode: Readonly<Ref<boolean>>
   orderId: Readonly<Ref<number>>
   card: Ref<any>
+  note: Ref<string>
+  canSave?: () => boolean
   planList: Ref<any[]>
   printList: Ref<any[]>
   standaloneMaterials: Ref<any[]>
@@ -23,95 +25,106 @@ interface PlanPersistenceContext {
 
 /** 计划的加载与整单保存边界；返回值明确表示保存是否成功。 */
 export function usePlanPersistence(context: PlanPersistenceContext) {
-  const { readonlyMode, orderId, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow, loadBom, refreshCard, loadSummary } = context
+  const { readonlyMode, orderId, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow, loadBom, refreshCard, loadSummary, note, canSave } = context
   const savingPlan = ref(false)
   const currentFingerprint = () => JSON.stringify([planFingerprint(planList.value, printList.value), standaloneMaterials.value])
   const savedFingerprint = ref(JSON.stringify([planFingerprint([], []), []]))
-  const hasUnsavedChanges = computed(() => currentFingerprint() !== savedFingerprint.value)
+  const savedNote = ref('')
+  const hasPlanChanges = computed(() => currentFingerprint() !== savedFingerprint.value)
+  const hasUnsavedChanges = computed(() => hasPlanChanges.value || note.value !== savedNote.value)
   /** 加载完成后统一建立一次保存快照（计划与独立材料都加载完再调用，避免误判未保存）。 */
   function markSaved() {
     savedFingerprint.value = currentFingerprint()
+    savedNote.value = note.value
   }
   // 保存工序计划（整单覆盖当前轮次；卡片展开为多行，同卡片同行序）
   async function savePlan(): Promise<boolean> {
-    if (readonlyMode.value || savingPlan.value) return false
+    if (readonlyMode.value || savingPlan.value || canSave?.() === false) return false
     if (!orderId.value) return false
+    const planChanged = hasPlanChanges.value
+    const submittedNote = note.value
+    if (!planChanged && submittedNote === savedNote.value) return true
     const validPrints = printList.value.filter((r) => (r.printName || '').trim())
-    if (planList.value.some((pc) => !pc.items.length)) {
+    if (planChanged && planList.value.some((pc) => !pc.items.length)) {
       ElMessage.warning('有卡片未选择工序，请补充或删除空卡片')
       return false
     }
     // 保存状态：全部标记为保存中
-    planList.value.forEach((pc) => (pc.saveState = 'saving'))
+    if (planChanged) planList.value.forEach((pc) => (pc.saveState = 'saving'))
     savingPlan.value = true
     try {
-      for (const pc of [...planList.value, ...validPrints]) {
-        const rows = materialValues(pc).map(row => normalizeMaterial(row, projectIdsOf(pc)))
-        const error = validateMaterials(rows)
-        if (error) throw new Error(error)
-        pc.materials = rows.length ? JSON.stringify(rows.map(serializeMaterial)) : null
-      }
-      const independent = standaloneMaterials.value.map(row => normalizeMaterial(row))
-      if (independent.some(row => !String(row.name || '').trim())) throw new Error('请为新增BOM行选择材料或删除空行')
-      const independentError = validateMaterials(independent)
-      if (independentError) throw new Error(independentError)
       const items: any[] = []
-      planList.value.forEach((pc, i) => {
-        const order = i + 1
-        pc.items.forEach((it: any) => {
-          items.push({
-            processOrder: order,
-            processId: it.processId ?? undefined,
-            stdProcessId: it.stdProcessId ?? undefined,
-            processName: it.processName,
-            processCategory: pc.category || undefined,
-            majorCategory: 'ASSEMBLY',
-            materials: pc.materials,
-            processNote: it.workInstruction || null,
-            remark: pc.operationRemark || null,
-            status: pc.status ?? SampleProcessStatusEnum.TODO.value,
-            indexNumber: it.indexNumber ?? undefined, // DEV-777：下标数字
+      let independent: any[] = []
+      if (planChanged) {
+        for (const pc of [...planList.value, ...validPrints]) {
+          const rows = materialValues(pc).map(row => normalizeMaterial(row, projectIdsOf(pc)))
+          const error = validateMaterials(rows)
+          if (error) throw new Error(error)
+          pc.materials = rows.length ? JSON.stringify(rows.map(serializeMaterial)) : null
+        }
+        independent = standaloneMaterials.value.map(row => normalizeMaterial(row))
+        if (independent.some(row => !String(row.name || '').trim())) throw new Error('请为新增BOM行选择材料或删除空行')
+        const independentError = validateMaterials(independent)
+        if (independentError) throw new Error(independentError)
+        planList.value.forEach((pc, i) => {
+          const order = i + 1
+          pc.items.forEach((it: any) => {
+            items.push({
+              processOrder: order,
+              processId: it.processId ?? undefined,
+              stdProcessId: it.stdProcessId ?? undefined,
+              processName: it.processName,
+              processCategory: pc.category || undefined,
+              majorCategory: 'ASSEMBLY',
+              materials: pc.materials,
+              processNote: it.workInstruction || null,
+              remark: pc.operationRemark || null,
+              status: pc.status ?? SampleProcessStatusEnum.TODO.value,
+              indexNumber: it.indexNumber ?? undefined, // DEV-777：下标数字
+            })
           })
         })
-      })
-      // 印刷行（dev-20260811-009）：processOrder 接在冲型组装后面
-      const baseOrder = planList.value.length
-      validPrints.forEach((r, i) => {
-        const params: any = { printName: r.printName }
-        if (r.colorNo) params.colorNo = r.colorNo
-        if (r.colorNoLabel) params.colorNoLabel = r.colorNoLabel
-        if (r.inkMaterialId != null) params.inkMaterialId = r.inkMaterialId
-        if (r.inkNo) params.inkNo = r.inkNo
-        if (r.screenNo) params.screenNo = r.screenNo
-        items.push({
-          processOrder: baseOrder + i + 1,
-          processId: r.processId ?? undefined,
-          stdProcessId: null,
-          processName: r.printName,
-          processCategory: r.category || 'OTHER',
-          majorCategory: 'PRINT',
-          customProcessParams: JSON.stringify(params),
-          materials: r.materials,
-          status: r.status ?? SampleProcessStatusEnum.TODO.value,
+        // 印刷行（dev-20260811-009）：processOrder 接在冲型组装后面
+        const baseOrder = planList.value.length
+        validPrints.forEach((r, i) => {
+          const params: any = { printName: r.printName }
+          if (r.colorNo) params.colorNo = r.colorNo
+          if (r.colorNoLabel) params.colorNoLabel = r.colorNoLabel
+          if (r.inkMaterialId != null) params.inkMaterialId = r.inkMaterialId
+          if (r.inkNo) params.inkNo = r.inkNo
+          if (r.screenNo) params.screenNo = r.screenNo
+          items.push({
+            processOrder: baseOrder + i + 1,
+            processId: r.processId ?? undefined,
+            stdProcessId: null,
+            processName: r.printName,
+            processCategory: r.category || 'OTHER',
+            majorCategory: 'PRINT',
+            customProcessParams: JSON.stringify(params),
+            materials: r.materials,
+            status: r.status ?? SampleProcessStatusEnum.TODO.value,
+          })
         })
-      })
-      await sampleOrderApi.saveProcessPlan(orderId.value, { items, standaloneMaterials: independent.map(row => ({
+      }
+      await sampleOrderApi.saveScheme(orderId.value, { engineeringNote: submittedNote !== savedNote.value ? submittedNote : undefined, roundNo: card.value?.sampleRound || 1, items: planChanged ? items : undefined, standaloneMaterials: planChanged ? independent.map(row => ({
         layerName: row.layerName || '', materialName: row.name, specification: row.spec, quantity: row.qty, unit: row.unit,
         materialId: row.materialId, materialCode: row.materialCode, projectIds: JSON.stringify(row.projectIds || []), moduleQty: row.moduleQty, baseQty: row.baseQty,
-      })) })
-      planList.value.forEach((pc) => (pc.saveState = 'synced'))
-      ElMessage.success(
-        `工序计划已保存（${planList.value.length + validPrints.length}道，含印刷${validPrints.length}）`
-      )
-      await loadPlan()
-      await loadBom()
-      savedFingerprint.value = currentFingerprint()
+      })) : undefined })
+      savedNote.value = submittedNote
+      card.value.engineeringNote = submittedNote
+      if (planChanged) {
+        planList.value.forEach((pc) => (pc.saveState = 'synced'))
+        await loadPlan()
+        await loadBom()
+        savedFingerprint.value = currentFingerprint()
+      }
       await refreshCard()
       await loadSummary()
+      ElMessage.success('打样方案已保存（含工序、印刷、BOM和工程备注）')
       return true
     } catch (e: any) {
-      planList.value.forEach((pc) => (pc.saveState = 'error'))
-      ElMessage.error(e?.message || '保存工序计划失败')
+      if (planChanged) planList.value.forEach((pc) => (pc.saveState = 'error'))
+      ElMessage.error(e?.message || '保存打样方案失败')
       return false
     } finally {
       savingPlan.value = false

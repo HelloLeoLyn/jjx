@@ -4,7 +4,7 @@ import { useProcessMaterials } from './useProcessMaterials'
 import { usePlanCopy } from './usePlanCopy'
 import { useProcessExecution } from './useProcessExecution'
 import { usePlanPersistence } from './usePlanPersistence'
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, toRef } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadProps } from 'element-plus'
@@ -323,7 +323,7 @@ export function useSampleWorkbench() {
     })
   const { savingPlan, hasUnsavedChanges, savePlan, loadPlan, markSaved } = usePlanPersistence({
     readonlyMode, orderId, card, planList, printList, standaloneMaterials, allProcesses, makeCard, makePrintRow,
-    loadBom, refreshCard, loadSummary,
+    loadBom, refreshCard, loadSummary, note: toRef(form, 'note'), canSave: () => isCurrentRound.value,
   })
   const { advancePrint, advancePlan, blockReason: execBlockReason, printBlockReason } = useProcessExecution({
     readonlyMode, orderId, savingPlan, refreshCard, loadSummary, loadRounds,
@@ -710,7 +710,7 @@ export function useSampleWorkbench() {
     if (!dirty) return true
     try {
       await ElMessageBox.confirm(
-        '工序计划有未保存修改，确定离开吗？未保存的修改将丢失。',
+        '打样方案有未保存修改，确定离开吗？未保存的修改将丢失。',
         '未保存修改',
         {
           confirmButtonText: '仍要离开',
@@ -780,22 +780,6 @@ export function useSampleWorkbench() {
       goBack()
     } catch (e: any) {
       if (e !== 'cancel') ElMessage.error(e?.message || '拒单失败')
-    }
-  }
-
-  // 保存工艺参数
-  async function saveNote() {
-    if (readonlyMode.value) return
-    if (!orderId.value) return
-    saving.value = true
-    try {
-      await sampleOrderApi.startEngineering(orderId.value, form.note)
-      card.value.engineeringNote = form.note
-      ElMessage.success('工艺参数已保存')
-    } catch (e: any) {
-      ElMessage.error(e?.message || '保存失败')
-    } finally {
-      saving.value = false
     }
   }
 
@@ -1037,7 +1021,6 @@ export function useSampleWorkbench() {
     formatTime,
     handleAccept,
     handleReject,
-    saveNote,
     handleTransfer,
     transferDialogVisible,
     onTransferSuccess,
