@@ -308,11 +308,30 @@
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-      <!-- 订单附件（dev-20261016-073：旧 AttachmentCenter → Upload + Manager，共用同一份会话队列）：
+      <!-- 订单附件（dev-20261016-073：旧 AttachmentCenter → Upload + Manager，共用同一份会话队列；
+           dev-20261018-019：上传归属可选整单级/产品级，归属在上传发起时固定）：
            上传只进「待保存」，随订单「保存」落定（001 §7-1 方案 A）；
            附件区「保存」（row-save / batch-save）= 只提交附件信息类改动，不落定。 -->
+      <div class="attach-ownership">
+        <span class="attach-ownership-label">上传归属</span>
+        <el-select
+          v-model="uploadOwnershipKey"
+          size="small"
+          style="width: 300px"
+          placeholder="选择附件归属"
+        >
+          <el-option
+            v-for="option in uploadOwnershipOptions"
+            :key="option.key"
+            :label="option.label"
+            :value="option.key"
+          />
+        </el-select>
+        <span class="attach-ownership-tip">产品级附件保存后挂到该产品；整单级不归属产品</span>
+      </div>
       <AttachmentUpload
         :session="attachSession"
+        :ownership="uploadOwnership"
         class="attach-block"
         :accept="['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']"
         drop-zone
@@ -479,6 +498,7 @@ import { attachmentRefApi } from '@/api/system/attachmentRef'
 import {
   useAttachmentSession,
   type AttachmentChanges,
+  type AttachmentOwnership,
   type AttachmentSaveResult,
 } from '@/composables/useAttachmentSession'
 import { useAttachmentDraftInstance } from '@/composables/useAttachmentRefs'
@@ -746,6 +766,88 @@ async function saveAttachInfo(changes: AttachmentChanges): Promise<AttachmentSav
   await attachmentRefApi.batchUpdate(items)
   return { acceptedUpdates: items.map((i) => i.refId) }
 }
+
+// ===== 上传归属（整单级 / 产品级，dev-20261018-019）=====
+// 产品级归属键用正式 productId 优先，否则用不随渲染变化的明细行键；产品编码只作展示/透传给后端解析。
+// 归属对象在本文件内构造（公共会话模块只提供契约类型），避免调用方额外依赖公共模块的导出。
+function orderOwnershipOf(): AttachmentOwnership {
+  return { key: 'order', kind: 'order', productId: null, productCode: null, label: '订单级' }
+}
+function productOwnershipOf(input: {
+  rowKey: string
+  productId?: number | null
+  productCode?: string | null
+  label?: string
+}): AttachmentOwnership {
+  return {
+    key: input.productId != null ? `product:${input.productId}` : `row:${input.rowKey}`,
+    kind: 'product',
+    productId: input.productId ?? null,
+    productCode: input.productCode ?? null,
+    label: input.label,
+  }
+}
+
+const orderRowKeys = new WeakMap<object, string>()
+let orderRowKeySeq = 0
+function stableRowKey(row: OrderItem): string {
+  const cached = orderRowKeys.get(row)
+  if (cached) return cached
+  const key = row.id != null ? `item-${row.id}` : `new-${++orderRowKeySeq}`
+  orderRowKeys.set(row, key)
+  return key
+}
+
+const uploadOwnershipKey = ref('order')
+const uploadOwnershipOptions = computed(() => {
+  const options = [
+    { key: 'order', label: '整单级（不归属产品）', productId: null as number | null, productCode: null as string | null },
+  ]
+  form.items.forEach((row) => {
+    const productCode = row.productCode?.trim() || ''
+    if (row.productId == null && !productCode) return
+    const key = row.productId != null ? `product:${row.productId}` : `row:${stableRowKey(row)}`
+    if (options.some((option) => option.key === key)) return
+    const suffix = row.productName ? ` · ${row.productName}` : ''
+    options.push({
+      key,
+      label: `产品 ${productCode || `#${row.productId}`}${suffix}`,
+      productId: row.productId ?? null,
+      productCode: productCode || null,
+    })
+  })
+  return options
+})
+/** 上传归属在上传发起时固定：切换产品/客户不改变已上传附件的归属 */
+const uploadOwnership = computed(() => {
+  const selected = uploadOwnershipOptions.value.find((option) => option.key === uploadOwnershipKey.value)
+  if (!selected || selected.key === 'order') return orderOwnershipOf()
+  return productOwnershipOf({
+    rowKey: selected.key.startsWith('row:') ? selected.key.slice(4) : selected.key,
+    productId: selected.productId,
+    productCode: selected.productCode,
+    label: selected.label,
+  })
+})
+watch(uploadOwnershipOptions, (options) => {
+  if (!options.some((option) => option.key === uploadOwnershipKey.value)) uploadOwnershipKey.value = 'order'
+})
+
+/**
+ * 待保存附件的归属是否仍在本单明细内（dev-20261018-019）：
+ * 产品被切换/移除后，旧产品附件既不跟随新产品，也不允许后端「编码查不到→静默降级整单」丢失归属。
+ */
+const attachOrphanCount = computed(
+  () =>
+    attachSession.pending.value.filter((entry) => {
+      const key = entry.ownershipKey || ''
+      if (!key || key === 'order') return false
+      const productId = /^product:(\d+)$/.exec(key)
+      if (productId) return !form.items.some((row) => row.productId === Number(productId[1]))
+      const code = entry.productCode?.trim()
+      return !code || !form.items.some((row) => row.productCode?.trim() === code)
+    }).length,
+)
 
 /** 保存前校验用：待保存队列里尚未选二级资料类型的条数（沿用 032 口径，谓词同 useAttachmentRefs） */
 const attachMissingTypeCount = computed(
@@ -1099,6 +1201,10 @@ watch(
 const submitForm = async (): Promise<boolean> => {
   if (props.isEdit) {
     // 编辑模式：待保存附件随「单据保存」一并提交，由后端在保存事务内建引用（dev-20261017-001）
+    if (attachOrphanCount.value > 0) {
+      ElMessage.warning(`有 ${attachOrphanCount.value} 个待保存附件归属的产品已不在本单明细，请移除后重试`)
+      return false
+    }
     if (attachMissingTypeCount.value > 0) {
       ElMessage.warning(`有 ${attachMissingTypeCount.value} 个附件未选择资料类型，请先选择后再保存`)
       return false
@@ -1124,6 +1230,10 @@ const submitForm = async (): Promise<boolean> => {
   if (!(await validateForm())) return false
 
   // 资料类型必选（dev-20261015-032）：保存前拦住缺二级类型的待保存附件，避免「保存成功但附件没落定」
+  if (attachOrphanCount.value > 0) {
+    ElMessage.warning(`有 ${attachOrphanCount.value} 个待保存附件归属的产品已不在本单明细，请移除后重试`)
+    return false
+  }
   if (attachMissingTypeCount.value > 0) {
     ElMessage.warning(`有 ${attachMissingTypeCount.value} 个附件未选择资料类型，请先选择后再保存`)
     return false
@@ -1157,6 +1267,8 @@ const submitForm = async (): Promise<boolean> => {
     const newTraceId = data.traceId
     createdOrderId.value = newOrderId
     createdTraceId.value = newTraceId
+    // 新建单的链路号只有保存后才存在：回填后同链路只读段/附件来源按本单 trace 归属（dev-20261018-019）
+    form.traceId = newTraceId
 
     // 2. 附件收尾（dev-20261016-073）：落定已在保存事务内完成，这里按真实 refId 清「待保存」队列
     form.orderId = newOrderId // 先回写 sourceId，finalizeAttachments 才能按真实 refId 回填
@@ -1247,6 +1359,23 @@ defineExpose({
 /* 附件区（Upload / Manager）块间距 */
 .attach-block {
   margin-bottom: 8px;
+}
+
+/* 上传归属选择（整单 / 产品级） */
+.attach-ownership {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.attach-ownership-label {
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+}
+.attach-ownership-tip {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 /* 汇率提示文字 */

@@ -6,7 +6,7 @@ import { orderApi } from '@/api/sales/order'
 import { customerApi } from '@/api/sales/customer'
 import { userApi } from '@/api/system/user'
 import type { CustomerSearchVO } from '@/types/sales/customer'
-import type { OrderFormData, OrderItem, UseOrderFormOptions } from '@/types/sales/order'
+import type { OrderAttachmentDTO, OrderFormData, OrderItem, UseOrderFormOptions } from '@/types/sales/order'
 import { formatCurrency } from '@/utils/format'
 import { productApi } from '@/api/product'
 import type { ProductCodeResult } from '@/composables/useProductCode'
@@ -25,15 +25,11 @@ type ProtectedAmountBaseline = {
 }
 
 /**
- * 随单附件入参（dev-20261016-073）：页面按「待保存队列」映射后传入，随订单保存一并提交。
+ * 随单附件入参（dev-20261016-073 / dev-20261018-018）：页面按「待保存队列」映射后传入，
+ * 随订单保存一并提交；字段契约见 types/sales/order.ts 的 OrderAttachmentDTO。
  * 仅新增可选通道，不改既有调用语义（不传 = 现状）。
  */
-type OrderAttachmentInput = Array<{
-  attachmentId: number
-  documentType: string | null
-  productId: number | null
-  productCode: string | null
-}>
+type OrderAttachmentInput = OrderAttachmentDTO[]
 
 export function useOrderForm(options: UseOrderFormOptions = {}) {
   const { isEdit = false, initialData = {} } = options
@@ -563,6 +559,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
       salesPersonId: undefined,
       salesPersonName: '',
       remark: '',
+      traceId: '',
       items: [],
     })
   }

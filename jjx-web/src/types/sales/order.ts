@@ -33,10 +33,25 @@ export interface OrderQueryParams {
 }
 
 /**
+ * 随单附件入参（dev-20261017-001 / dev-20261018-018 冻结契约）：
+ * 新增/编辑订单保存时一并提交，由后端在订单保存事务内建立引用。
+ * - 整单级：productId / productCode 均传 null
+ * - 产品级：productId 与 productCode 指向本订单明细中的同一产品；只传编码时由后端按明细解析
+ */
+export interface OrderAttachmentDTO {
+  attachmentId: number
+  documentType: string | null
+  productId: number | null
+  productCode: string | null
+}
+
+/**
  * 销售订单添加DTO
  */
 export interface SalesOrderAddDTO {
   items?: OrderItem[]
+  /** 随单附件（待保存队列 → 保存事务内落定） */
+  attachments?: OrderAttachmentDTO[]
   /** 报价单ID */
   quotationId?: number
   /** 客户ID */
@@ -91,6 +106,8 @@ export interface SalesOrderAddDTO {
  */
 export interface SalesOrderEditDTO {
   items?: OrderItem[]
+  /** 随单附件（待保存队列 → 保存事务内落定） */
+  attachments?: OrderAttachmentDTO[]
   /** 订单ID */
   orderId: number
   /** 报价单ID */
@@ -282,6 +299,8 @@ export interface SalesOrderVO {
   salesManagerName: string
   /** 备注 */
   remark?: string
+  /** 链路号（后端 sales_order.trace_id；附件来源与同链路只读按它归属） */
+  traceId?: string
   /** 创建时间 */
   createTime: string
   /** 创建人 */
@@ -385,6 +404,8 @@ export interface OrderFormData {
   salesPersonId?: number
   salesPersonName: string
   remark: string
+  /** 链路号（保存后由后端回填；附件来源/同链路只读按它归属） */
+  traceId?: string
   items: OrderItem[]
 }
 

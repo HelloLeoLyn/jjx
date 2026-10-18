@@ -247,20 +247,43 @@
       @success="getList"
     />
 
-    <!-- 确认凭证附件弹窗（dev-20261012-028：换用公共 AttachmentCenter） -->
+    <!-- 确认凭证附件弹窗（dev-20261018-019：Upload + Manager 共用同一订单会话，
+         与订单编辑页同一 sourceType+sourceId 队列；新上传待保存、随订单保存落定） -->
     <el-dialog
       v-model="confirmAttachmentVisible"
       :title="`确认凭证 - ${confirmAttachmentOrderNo}`"
-      width="720px"
+      width="860px"
       append-to-body
+      destroy-on-close
     >
-      <AttachmentCenter
-        source-type="sales_order"
-        :source-id="confirmAttachmentOrderId || null"
-        variant="panel"
-        view-perm="sales:order:view"
-        edit-perm="sales:order:edit"
-      />
+      <template v-if="confirmAttachmentVisible && confirmAttachmentOrderId">
+        <AttachmentUpload
+          :session="confirmAttachSession"
+          class="attach-block"
+          :accept="['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']"
+          button-text="上传确认凭证"
+          drop-zone
+          @uploaded="(item) => confirmAttachSession.registerUploaded(item.pending, item.ownership)"
+          @error="onConfirmAttachError"
+        />
+        <AttachmentManager
+          :session="confirmAttachSession"
+          class="attach-block"
+          title="确认凭证"
+          source-type="sales_order"
+          :source-no="confirmAttachmentOrderNo"
+          row-save
+          batch-save
+          @error="onConfirmAttachError"
+        />
+        <div class="attach-hint">
+          上传后点「保存附件」立即建立引用；类型/备注/排序随同一次保存提交。保存失败保留待保存项，可重试。
+        </div>
+      </template>
+      <template #footer>
+        <el-button :loading="confirmAttachSaving" @click="commitConfirmAttachments">保存附件</el-button>
+        <el-button type="primary" @click="confirmAttachmentVisible = false">关 闭</el-button>
+      </template>
     </el-dialog>
 
     <!-- 验证对话框 -->
@@ -300,7 +323,14 @@ import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
 import GeneratePlanDialog from './components/GeneratePlanDialog.vue'
-import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
+import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
+import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
+import { attachmentRefApi } from '@/api/system/attachmentRef'
+import {
+  useAttachmentSession,
+  type AttachmentChanges,
+  type AttachmentSaveResult,
+} from '@/composables/useAttachmentSession'
 import ValidationDialog from './components/ValidationDialog.vue'
 import ShortageCheckDialog from './components/ShortageCheckDialog.vue'
 import type { SalesOrderProductVO, SalesOrderQueryDTO, SalesOrderVO } from '@/types/sales/order'
@@ -761,9 +791,84 @@ const handleResubmit = async (row: any) => {
 const confirmAttachmentVisible = ref(false)
 const confirmAttachmentOrderId = ref<number>()
 const confirmAttachmentOrderNo = ref('')
+const confirmAttachmentTraceId = ref('')
+/**
+ * 列表「确认凭证」弹窗的附件会话（dev-20261018-019）：
+ * - 与订单编辑页同一 sourceType + sourceId ⇒ 同一份待保存队列（localStorage 按来源+单据键隔离）；
+ * - 订单此时已确认、没有「订单保存」可搭，因此弹窗内「保存附件」统一落定：新上传先待保存，
+ *   点保存才建引用；失败保留、成功才清已接受项（001 §2-4 / §7-1 的保存语义）。
+ * - 产品级/整单级按后端冻结契约：本弹窗只上传整单级确认凭证，不改已有引用的产品归属。
+ */
+const confirmAttachSession = useAttachmentSession({
+  sourceType: 'sales_order',
+  sourceId: computed(() => confirmAttachmentOrderId.value ?? null),
+  traceId: computed(() => confirmAttachmentTraceId.value),
+  viewPerm: 'sales:order:view',
+  editPerm: 'sales:order:edit',
+  saveHandler: saveConfirmAttachInfo,
+})
+const confirmAttachSaving = ref(false)
+
+async function saveConfirmAttachInfo(changes: AttachmentChanges): Promise<AttachmentSaveResult> {
+  const sourceId = Number(confirmAttachmentOrderId.value)
+  if (!sourceId) throw new Error('订单尚未保存，不能上传确认凭证')
+  const acceptedUploads: { attachmentId: number; refId: number }[] = []
+  for (const entry of changes.uploads) {
+    if (!entry.documentType) {
+      throw new Error(`附件「${entry.fileName || entry.attachmentId}」未选择资料类型`)
+    }
+    const res: any = await attachmentRefApi.createRef({
+      attachmentId: entry.attachmentId,
+      sourceType: 'sales_order',
+      sourceId,
+      productId: null,
+      productCode: null,
+      documentType: entry.documentType,
+    })
+    const refId = Number(res?.data)
+    if (!refId) throw new Error(res?.msg || '确认凭证附件保存失败')
+    acceptedUploads.push({ attachmentId: entry.attachmentId, refId })
+  }
+  const acceptedUpdates: number[] = []
+  if (changes.updates.length) {
+    const items = changes.updates.map((u) => ({
+      refId: u.refId,
+      documentType: u.documentType,
+      remark: u.remark,
+      sortOrder: u.sortOrder,
+    }))
+    await attachmentRefApi.batchUpdate(items)
+    acceptedUpdates.push(...items.map((i) => i.refId))
+  }
+  return { acceptedUploads, acceptedUpdates }
+}
+
+async function commitConfirmAttachments() {
+  if (!confirmAttachmentOrderId.value) return
+  confirmAttachSaving.value = true
+  try {
+    const committed = await confirmAttachSession.commit({ kind: 'all' })
+    if (!committed.validation.ok) {
+      ElMessage.warning(committed.validation.issues[0]?.message || '附件未就绪，请处理后重试')
+      return
+    }
+    ElMessage.success('附件已保存')
+  } catch (e: any) {
+    ElMessage.error(e?.message || '附件保存失败')
+  } finally {
+    confirmAttachSaving.value = false
+  }
+}
+
+function onConfirmAttachError(payload: { action: string; message: string }) {
+  if (payload.action === 'upload') return
+  ElMessage.error(payload.message || '附件处理失败')
+}
+
 const openConfirmAttachment = (row: any) => {
   confirmAttachmentOrderId.value = row.orderId
   confirmAttachmentOrderNo.value = row.orderNo || ''
+  confirmAttachmentTraceId.value = row.traceId || ''
   confirmAttachmentVisible.value = true
 }
 
@@ -954,5 +1059,14 @@ function handleReviewPrint(row: any, templateId: 47 | 53) {
 
 .mb8 {
   margin-bottom: 8px;
+}
+
+/* 确认凭证弹窗（Upload / Manager） */
+.attach-block {
+  margin-bottom: 8px;
+}
+.attach-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>
