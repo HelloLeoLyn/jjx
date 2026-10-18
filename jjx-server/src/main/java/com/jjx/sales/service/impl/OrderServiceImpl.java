@@ -58,6 +58,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * 销售订单服务实现类
@@ -245,17 +247,28 @@ public class OrderServiceImpl implements IOrderService {
     }
 
     /**
-     * 订单保存（新增/编辑）时把随单附件落定（dev-20261017-001，照报价侧 066/081）。
+     * 订单保存（新增/编辑）时把随单附件落定（dev-20261017-001，照报价侧 066/081；
+     * 归属一致性与附件业务流水契约 dev-20261018-018）。
      *
      * <p>口径（jjx-docs/reference/attachment-refactor-decisions-dev-20261016-001.md §2/§4/§5）：
      * 1）保存单据 = 建引用 + 草稿行转正（原子）——转正唯一入口是 {@link AttachmentRefService#create}，
      *    本方法不写第二套转正 SQL；来源单号由 create 按来源自证取得，不在此传。
-     * 2）归属 = 订单 + 产品：整单级不传产品（product_id 留空）；行级 productId 优先取入参，
-     *    缺失则按明细编码回填（此时明细已保存，productId 已建档/回填）。
-     * 3）缺 attachmentId / documentType 一律抛业务异常（服务层兜底，与 Controller 校验同口径）。
-     * 4）本方法分别在 {@link #insertOrder} 与 {@link #updateOrder} 的
+     * 2）归属 = 订单 + 产品：整单级不传产品（product_id / product_code 都留空）；行级 productId 优先取入参，
+     *    缺失则按明细编码回填（此时明细已建档/回填）。原产品引用不因明细换产品而迁移，本方法只新增引用、
+     *    不改旧引用，也不删文件——归属变化以新的「附件新增」流水留痕。
+     * 3）归属一致性（本卡冻结的错误契约）：产品 ID 与编码必须指向同一产品，否则拒绝；产品必须属于
+     *    本订单明细（其他订单/客户的产品一律拒绝）；编码在明细里查不到时**静默降为整单附件**
+     *    （同时清掉编码，避免留下「有编码无产品 ID」的悬空归属）。
+     * 4）缺 attachmentId / documentType 一律抛业务异常（服务层兜底，与 Controller 校验同口径）。
+     * 5）本方法分别在 {@link #insertOrder} 与 {@link #updateOrder} 的
      *    {@code @Transactional(rollbackFor = Exception.class)} 内执行：任一条失败直接抛出 ⇒ 整单回滚，
      *    禁止 try-catch 吞掉造成「单据存了、附件没落」的半成功。
+     *
+     * <p>业务流水契约（由公共 {@code AttachmentRefService} 写入，本方法不重复写）：来源
+     * {@code source_type=sales_order} + {@code source_id=orderId}，链路号取
+     * {@code sales_order.trace_id}（样品单底层订单被来源 SQL 排除，不会混入样品单）；
+     * 新增/资料修改/解绑分别记「附件新增」「附件资料修改」「附件解绑」，同一事务内多条附件按
+     * {@code sourceType:sourceId:action} 归并为一条业务操作。
      */
     private void bindOrderAttachments(Long orderId, List<SalesOrderProductDTO> items,
                                       List<SalesOrderAddDTO.OrderAttachmentDTO> attachments) {
@@ -276,15 +289,22 @@ public class OrderServiceImpl implements IOrderService {
         }
         // 明细产品 id：编码 → productId（此时明细已保存，productId 已建档/回填）
         Map<String, Long> productIdByCode = new HashMap<>();
+        Set<Long> orderProductIds = new HashSet<>();
         if (items != null) {
             for (SalesOrderProductDTO item : items) {
-                if (item.getProductCode() == null || item.getProductCode().isBlank() || item.getProductId() == null) {
+                if (item.getProductId() == null) {
+                    continue;
+                }
+                orderProductIds.add(item.getProductId());
+                if (item.getProductCode() == null || item.getProductCode().isBlank()) {
                     continue;
                 }
                 productIdByCode.putIfAbsent(item.getProductCode().trim(), item.getProductId());
             }
         }
-        int sortOrder = 0;
+        // 先整批解析/校验归属，再逐条建引用：任一附件归属不合法时，连一条引用都不落（失败在写之前）
+        record ResolvedAttachment(Long attachmentId, String documentType, Long productId, String productCode) { }
+        List<ResolvedAttachment> resolved = new ArrayList<>(attachments.size());
         for (SalesOrderAddDTO.OrderAttachmentDTO attachment : attachments) {
             String productCode = attachment.getProductCode() == null ? null : attachment.getProductCode().trim();
             if (productCode != null && productCode.isEmpty()) {
@@ -293,14 +313,29 @@ public class OrderServiceImpl implements IOrderService {
             Long productId = attachment.getProductId();
             if (productId == null && productCode != null) {
                 productId = productIdByCode.get(productCode);
+                // 未知编码（不在本订单明细内）：静默降为整单附件，编码一并清掉，不留「有编码无产品ID」的悬空归属
+                if (productId == null) {
+                    productCode = null;
+                }
             }
+            if (productId != null && !orderProductIds.contains(productId)) {
+                throw new BusinessException("附件产品不属于当前订单明细（禁止挂其他订单/客户的产品）");
+            }
+            if (productId != null && productCode != null && !productId.equals(productIdByCode.get(productCode))) {
+                throw new BusinessException("附件产品ID与编码不一致，不能混用其他产品资料");
+            }
+            resolved.add(new ResolvedAttachment(attachment.getAttachmentId(), attachment.getDocumentType().trim(),
+                productId, productCode));
+        }
+        int sortOrder = 0;
+        for (ResolvedAttachment attachment : resolved) {
             AttachmentRefDTO ref = new AttachmentRefDTO();
-            ref.setAttachmentId(attachment.getAttachmentId());
+            ref.setAttachmentId(attachment.attachmentId());
             ref.setSourceType("sales_order");
             ref.setSourceId(orderId);
-            ref.setProductId(productId);
-            ref.setProductCode(productCode);
-            ref.setDocumentType(attachment.getDocumentType().trim());
+            ref.setProductId(attachment.productId());
+            ref.setProductCode(attachment.productCode());
+            ref.setDocumentType(attachment.documentType());
             ref.setSortOrder(sortOrder++);
             attachmentRefService.create(ref);
         }
