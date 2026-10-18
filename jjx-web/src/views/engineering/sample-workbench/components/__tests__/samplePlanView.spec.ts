@@ -29,6 +29,38 @@ vi.mock('@/api/inventory/material', () => ({
   materialApi: { search: vi.fn().mockResolvedValue({ data: { records: [] } }) },
 }))
 
+// dev-20261018-007 复核修复：仓库 vitest.config.ts 未把 element-plus 加入
+// server.deps.inline，外部化依赖的 style/css 会走 Node 加载器报
+// Unknown file extension ".css"。这里只 mock 样式副作用入口，行为组件仍真实挂载。
+vi.mock('element-plus/es/components/base/style/css', () => ({}))
+vi.mock('element-plus/es/components/autocomplete/style/css', () => ({}))
+vi.mock('element-plus/es/components/button/style/css', () => ({}))
+vi.mock('element-plus/es/components/card/style/css', () => ({}))
+vi.mock('element-plus/es/components/checkbox/style/css', () => ({}))
+vi.mock('element-plus/es/components/col/style/css', () => ({}))
+vi.mock('element-plus/es/components/dialog/style/css', () => ({}))
+vi.mock('element-plus/es/components/divider/style/css', () => ({}))
+vi.mock('element-plus/es/components/dropdown/style/css', () => ({}))
+vi.mock('element-plus/es/components/dropdown-item/style/css', () => ({}))
+vi.mock('element-plus/es/components/dropdown-menu/style/css', () => ({}))
+vi.mock('element-plus/es/components/empty/style/css', () => ({}))
+vi.mock('element-plus/es/components/form/style/css', () => ({}))
+vi.mock('element-plus/es/components/form-item/style/css', () => ({}))
+vi.mock('element-plus/es/components/input/style/css', () => ({}))
+vi.mock('element-plus/es/components/input-number/style/css', () => ({}))
+vi.mock('element-plus/es/components/option/style/css', () => ({}))
+vi.mock('element-plus/es/components/popover/style/css', () => ({}))
+vi.mock('element-plus/es/components/row/style/css', () => ({}))
+vi.mock('element-plus/es/components/select/style/css', () => ({}))
+vi.mock('element-plus/es/components/switch/style/css', () => ({}))
+vi.mock('element-plus/es/components/tab-pane/style/css', () => ({}))
+vi.mock('element-plus/es/components/table/style/css', () => ({}))
+vi.mock('element-plus/es/components/table-column/style/css', () => ({}))
+vi.mock('element-plus/es/components/tabs/style/css', () => ({}))
+vi.mock('element-plus/es/components/tag/style/css', () => ({}))
+vi.mock('element-plus/es/components/tooltip/style/css', () => ({}))
+
+
 const slotOf = (name: string) => () => h('div', { 'data-test': 'slot-' + name }, name)
 
 // v-show 在 jsdom 下以行内 style.display 为准（VTU isVisible 对 jsdom 无布局节点不可靠）
@@ -200,6 +232,8 @@ describe('SampleProcessPlanItem 完成编辑语义', () => {
 
     expect(wrapper.text()).toContain('未保存')
     expect(wrapper.text()).toContain('完成编辑只结束本地编辑')
+    expect(wrapper.text()).toContain('尚未保存')
+    expect(wrapper.text()).toContain('保存后生效')
     const finishBtn = wrapper.findAll('button').find((btn) => btn.text() === '完成编辑')
     expect(finishBtn).toBeTruthy()
     expect(finishBtn!.attributes('title')).toContain('不代表已保存')

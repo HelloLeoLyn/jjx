@@ -57,12 +57,12 @@
       <div v-else class="pc-desc-readonly">{{ pc.operationRemark }}</div>
     </div>
     <div v-if="!readonly && pc.editing" class="pc-footer">
-      <span class="edit-hint">完成编辑只结束本地编辑，不写入；请点「保存工序计划」落库</span>
+      <span class="edit-hint">完成编辑只结束本地编辑，尚未保存；请点「保存工序计划」保存后生效</span>
       <el-button size="small" @click="$emit('cancel-edit')">取消修改</el-button>
       <el-button
         size="small"
         type="primary"
-        title="只结束本卡编辑，不代表已保存；保存工序计划后才写入"
+        title="只结束本卡编辑，不代表已保存；点「保存工序计划」保存后才生效"
         @click="$emit('finish-edit')"
         >完成编辑</el-button
       >
