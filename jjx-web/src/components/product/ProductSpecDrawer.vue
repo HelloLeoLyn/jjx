@@ -194,7 +194,7 @@
             <!-- ⑧ 工程图集 -->
             <template v-else-if="tab.name === 'atlas'">
               <el-alert type="info" :closable="false" class="tab-tip"
-                title="按图种归集工程图纸：结构图、外形尺寸图、面板图、线路图、组装图、包装图、印刷指导图等；上传时选择对应图种和版本。" />
+                title="按二级资料类型归集工程图（一级：工程技术资料）：结构图、外形尺寸图、面板图、线路图、组装图、包装图、印刷指导图等；上传时选择对应类型和版本。" />
               <EngineeringDrawingLibrary
                 v-if="productCode"
                 :key="`${productId}-atlas`"
@@ -202,7 +202,7 @@
                 :product-id="productId"
                 :product-code="productCode"
                 :product-name="detail?.product?.productName || ''"
-                :categories="ENGINEERING_DRAWING_VISIBLE_CATEGORIES"
+                :categories="ENGINEERING_DOCUMENT_TYPE_CODES"
                 @busy="drawingBusy = $event"
               />
             </template>
@@ -242,7 +242,7 @@ import ProductDocPanel from '@/components/product/ProductDocPanel.vue'
 import ProductSpecHeader from '@/components/product/ProductSpecHeader.vue'
 import CustomerDocPanel from '@/components/product/customer-doc/CustomerDocPanel.vue'
 import EngineeringDrawingLibrary from '@/views/engineering/drawing/components/EngineeringDrawingLibrary.vue'
-import { ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
+import { ENGINEERING_DOCUMENT_TYPE_CODES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from '@/views/engineering/product-spec/components/ProductSpecPreview.vue'
 import ProductWorkSpecPanel from '@/views/engineering/product-spec/components/ProductWorkSpecPanel.vue'
 import ProductPrintSpecPanel from '@/views/engineering/product-spec/components/ProductPrintSpecPanel.vue'

@@ -13,6 +13,8 @@ export interface DocFile {
   name: string
   originalName?: string
   category: string
+  /** 二级资料类型编码（dev-20261019-018）；旧数据可能为空。 */
+  documentType?: string
   section: string
   kind: 'image' | 'pdf' | 'other'
   productFile: boolean
@@ -49,13 +51,42 @@ export function parseSnapshotStrict(value?: string | null): { ok: boolean; value
   }
 }
 
-/** 由文件类别判定文档栏目；工作态与发布版本共用同一口径。 */
+/** 由文件类别判定文档栏目（legacy：仅无 documentType 的历史非图纸数据回退用）。 */
 export function sectionForCategory(customer: boolean, category: string): string {
   if (customer || ['客供稿', '承认书', '客供资料', '客户确认样品'].includes(category)) return 'customer'
   if (category === '印刷指导图') return 'print'
   if (category === '样品照片') return 'sample'
   if (category === '分色检查表') return 'color'
   return 'atlas'
+}
+
+/** 工程图类二级类型（除下方显式映射外，其余归工程图集）。 */
+export const ENGINEERING_DOCUMENT_TYPES = new Set([
+  'ENGINEERING_DRAWING', 'STRUCTURE_DRAWING', 'OUTLINE_DRAWING', 'PANEL_DRAWING', 'CIRCUIT_DRAWING',
+  'ASSEMBLY_DRAWING', 'PACKAGING_DRAWING', 'MOLD_DRAWING', 'DIE_DRAWING', 'DIE_PARAMETER_DRAWING',
+  'CONFIRM_DRAWING', 'FILM',
+])
+
+/**
+ * 文档集分栏（dev-20261019-018）：优先按二级资料类型编码映射；
+ * 无类型的历史数据仅对非图纸栏目按原类别回退，工程图不默认落图集（归 other/未分类）。
+ */
+export function sectionForDocumentType(documentType?: string | null, category?: string | null): string {
+  const type = (documentType || '').trim()
+  if (type) {
+    if (type.startsWith('CUSTOMER_')) return 'customer'
+    if (type === 'PRODUCT_SPECIFICATION' || type === 'WORK_INSTRUCTION') return 'spec'
+    if (type === 'PRINT_GUIDE') return 'print'
+    if (type === 'COLOR_CHECK') return 'color'
+    if (ENGINEERING_DOCUMENT_TYPES.has(type)) return 'atlas'
+    return 'other'
+  }
+  const cat = (category || '').trim()
+  if (['客供稿', '承认书', '客供资料', '客户确认样品'].includes(cat)) return 'customer'
+  if (cat === '样品照片') return 'sample'
+  if (cat === '印刷指导图') return 'print'
+  if (cat === '分色检查表') return 'color'
+  return 'other'
 }
 
 /** 按文件名 / MIME 判定文件形态。 */
@@ -70,13 +101,16 @@ export function detectFileKind(name: string, mime = ''): 'image' | 'pdf' | 'othe
 export function snapshotFileToDocFile(file: Record<string, any>): DocFile {
   const originalName = file.fileName || '未命名文件'
   const name = file.displayName || originalName
-  const section = file.section || 'atlas'
+  const documentType = file.documentType ? String(file.documentType) : ''
+  // 新快照按 documentType 分栏；旧快照无该字段时沿用已固化的 section（兼容读取）。
+  const section = documentType ? sectionForDocumentType(documentType, file.category) : (file.section || 'other')
   return {
     key: String(file.attachmentId),
     id: Number(file.attachmentId),
     name,
     originalName,
     category: file.category || '',
+    documentType: documentType || undefined,
     section,
     kind: detectFileKind(originalName, file.mime || ''),
     productFile: section !== 'customer',
@@ -153,12 +187,14 @@ export function buildVersionFiles(items: Record<string, any>[] = []): VersionFil
     }
     const name = ref.value.fileName || '工程图'
     const category = item.operationRef || ref.value.category || '其他工程图'
+    const documentType = ref.value.documentType ? String(ref.value.documentType) : ''
     files.push({
       key: String(attId),
       id: attId,
       name,
       category,
-      section: sectionForCategory(false, category),
+      documentType: documentType || undefined,
+      section: documentType ? sectionForDocumentType(documentType, category) : sectionForCategory(false, category),
       kind: detectFileKind(name, ref.value.fileType || ''),
       productFile: true,
       version: ref.value.version ? String(ref.value.version) : undefined,

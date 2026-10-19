@@ -2,14 +2,14 @@ import { attachmentApi } from '@/api/system/attachment'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import { ProcessCategoryEnum } from '@/enums/product'
-import { productFileCategoryLabel, ENGINEERING_DRAWING_VISIBLE_CATEGORIES } from '@/components/product/productFileCategories'
+import { productFileCategoryLabel, engineeringDocumentTypeLabel } from '@/components/product/productFileCategories'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum, DrawingFileRoleEnum } from '@/enums/product/drawing'
 import { productWorkSpecApi, normalizeWorkSpec, type ProductWorkSpec, type DieLocationMap } from '@/api/product/workSpec'
 import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreview'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
-import { parseSnapshotStrict, parseDocsetSnapshot, sectionForCategory, detectFileKind, buildVersionFiles, snapshotFileToDocFile, snapshotWarnings, type DocFile } from './versionDocset'
+import { parseSnapshotStrict, parseDocsetSnapshot, sectionForDocumentType, detectFileKind, buildVersionFiles, snapshotFileToDocFile, snapshotWarnings, type DocFile } from './versionDocset'
 export { renderFile, type FileImage } from '@/components/product/productFilePreview'
 export type { DocFile } from './versionDocset'
 export { snapshotFileToDocFile } from './versionDocset'
@@ -22,10 +22,12 @@ export const documentSections = [
   { key: 'atlas', label: '工程图集', note: '结构图 · 面板图 · 线路图等' },
   { key: 'ink', label: '油墨调配记录表', note: '空白记录表 · 每页五组' },
   { key: 'color', label: '分色检查表', note: '规范 · 面板菲林分色 · 线路 · 刀模治具' },
+  { key: 'other', label: '其他资料', note: '未分类 · 其它资料' },
 ]
 
 export function isEngineeringFile(file: DocFile): boolean {
-  return file.productFile && (!!file.drawingNo || ENGINEERING_DRAWING_VISIBLE_CATEGORIES.includes(file.category))
+  // 图种退役后以二级类型分栏（atlas）为准；无类型的旧数据不得默认落工程图集。
+  return file.productFile && (!!file.drawingNo || file.section === 'atlas')
 }
 /** 一个图纸版本仅默认选打印件；没有打印件时才允许可预览的原稿。 */
 export function defaultDocumentFiles(files: DocFile[]): DocFile[] {
@@ -33,6 +35,8 @@ export function defaultDocumentFiles(files: DocFile[]): DocFile[] {
     if (file.kind === 'other') return false
     // 分色检查表以工程录入的电子表为主；历史附件不默认选中，避免重复打印。
     if (file.section === 'color') return false
+    // 未分类文件不默认进工程图集，也不默认勾选打印
+    if (file.section === 'other') return false
     if (!isEngineeringFile(file)) return true
     // 发布版本清单里的图纸即「当时已发布集合」，不受当前工作态现行/下发标记过滤（dev-20261013-009）。
     if (file.published) return true
@@ -188,7 +192,8 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
         id: x.attachmentId ?? x.id,
         fileName: x.fileName,
         displayName: x.displayName,
-        category: x.category || x.documentType,
+        category: x.category || engineeringDocumentTypeLabel(x.documentType),
+        documentType: x.documentType,
         fileType: x.fileType,
         drawingNo: x.drawingNo,
         version: x.version,
@@ -212,11 +217,12 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
     if (!id || data.files.some((file) => file.id === id)) continue
     const originalName = row.fileName || row.file_name || '未命名文件'
     const name = row.displayName || row.display_name || originalName
-    const category = row.category || (customer ? '客供资料' : '其他')
+    const category = row.category || (customer ? '客供资料' : '')
+    const documentType = row.documentType || row.document_type || ''
     const mime = row.fileType || row.file_type || ''
     const kind = detectFileKind(name, mime)
-    const section = sectionForCategory(customer, category)
-    data.files.push({ key: String(id), id, name, originalName, category, kind, section, productFile: !customer,
+    const section = customer ? 'customer' : sectionForDocumentType(documentType, category)
+    data.files.push({ key: String(id), id, name, originalName, category, documentType: documentType || undefined, kind, section, productFile: !customer,
       drawingNo: row.drawingNo, version: row.version, fileRole: row.fileRole, isCurrent: row.isCurrent, released: row.released })
   }
 }
