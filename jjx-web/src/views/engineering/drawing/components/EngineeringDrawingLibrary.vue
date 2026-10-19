@@ -1,51 +1,78 @@
 <template>
   <div class="drawing-library">
     <div class="library-toolbar">
-      <div class="library-heading"><strong>图纸文件</strong><span>{{ files.length }} 个文件 · {{ rows.length }} 个版本</span></div>
+      <div class="library-heading"><strong>工程图集</strong><span>{{ files.length }} 个文件 · {{ rows.length }} 张图纸</span></div>
       <div><el-button @click="loadFiles">刷新</el-button><el-button v-if="canUpload" type="primary" icon="Upload" @click="openUpload()">上传图纸</el-button></div>
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="library-alert" />
     <div class="filters">
       <el-input v-model="keyword" placeholder="图纸编号、名称或文件名" clearable style="width:240px" />
+      <el-select v-model="categoryFilter" aria-label="资料类型" style="width:190px">
+        <el-option :label="`全部资料类型 (${keywordRows.length})`" value="" />
+        <el-option v-for="item in documentTypeTabs" :key="item.value" :label="`${item.label} (${item.count})`" :value="item.value" />
+      </el-select>
+      <el-checkbox v-model="onlyMissingPrint">只看缺打印件 ({{ missingPrintCount }})</el-checkbox>
+      <el-checkbox v-model="onlyUnclassified">只看未分类 ({{ unclassifiedCount }})</el-checkbox>
       <el-select v-model="view" style="width:160px"><el-option v-for="item in DrawingViewEnum.items" :key="item.value" :label="item.label" :value="item.value" /></el-select>
       <el-select v-model="releaseFilter" style="width:145px"><el-option label="全部下发状态" value="" /><el-option v-for="item in DrawingReleaseFlagEnum.items" :key="item.value" :label="item.label" :value="item.value" /></el-select>
     </div>
-    <el-tabs v-model="categoryFilter" class="category-tabs">
-      <el-tab-pane label="全部类型" name="" />
-      <el-tab-pane v-for="item in documentTypeTabs" :key="item.value" :label="`${item.label} (${item.count})`" :name="item.value" />
-    </el-tabs>
-    <el-table v-loading="loading" :data="filteredRows" row-key="key" class="drawing-table" empty-text="暂无符合条件的图纸，可切换筛选或上传文件">
+    <el-table v-loading="loading" :data="filteredRows" row-key="key" :row-class-name="drawingRowClass" class="drawing-table">
+      <template #empty>
+        <el-empty :description="error ? '图纸加载失败，请刷新重试' : files.length ? '暂无符合条件的图纸，可切换筛选' : '暂无工程图纸'">
+          <el-button v-if="error" @click="loadFiles">重试</el-button>
+          <el-button v-else-if="canUpload && !files.length" type="primary" @click="openUpload()">上传第一张结构图</el-button>
+        </el-empty>
+      </template>
       <el-table-column type="expand">
         <template #default="{ row }">
-          <div class="revision-files">
-            <div v-for="file in row.files" :key="file.id" class="revision-file">
-              <el-tag size="small" effect="plain">{{ file.fileRole ? DrawingFileRoleEnum.getLabel(file.fileRole) : '未归集' }}</el-tag>
-              <el-link type="primary" @click="preview(file)">{{ file.fileName }}</el-link>
-              <span class="file-info">{{ sizeLabel(file.fileSize) }} · {{ file.createBy || '—' }} · {{ timeLabel(file.createTime) }}</span>
-              <el-button link type="primary" @click="download(file)">下载</el-button>
-              <el-button v-if="canUpload && file.released !== DrawingReleaseFlagEnum.RELEASED.value" link type="primary" @click="openMetadata(file)">{{ file.drawingNo ? '编辑关联' : '补录图纸关联' }}</el-button>
-              <el-button v-if="canDelete && file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value && file.released !== DrawingReleaseFlagEnum.RELEASED.value" link type="danger" @click="remove(file)">删除</el-button>
-            </div>
-          </div>
+          <el-timeline class="revision-timeline">
+            <el-timeline-item v-for="revision in row.revisions" :key="revision.key" :timestamp="`${timeLabel(revision.latest.createTime)} · ${revision.latest.createBy || '—'}`" placement="top">
+              <div class="revision-heading">
+                <strong>{{ revision.version || '未标注' }} 版 · {{ revision.files.length }} 个文件</strong>
+                <el-tag size="small" :type="revision.current ? 'success' : 'info'">{{ DrawingCurrentFlagEnum.getLabel(revision.current ? DrawingCurrentFlagEnum.CURRENT.value : DrawingCurrentFlagEnum.NOT_CURRENT.value) }}</el-tag>
+                <el-tag size="small" :type="revision.released ? 'success' : 'info'">{{ revision.released ? '已下发' : revision.hasReleased ? '部分已下发' : '未下发' }}</el-tag>
+                <el-button v-if="canUpload && revision.drawingNo && !revision.current" link type="warning" :disabled="!!mutationId" @click="setCurrent(revision)">设为现行</el-button>
+                <el-button v-if="canRelease && ((revision.drawingNo && revision.current) || revision.hasReleased)" link :type="revision.hasReleased ? 'info' : 'success'" :disabled="!!mutationId" @click="release(revision)">{{ revision.hasReleased ? '撤回' : '下发' }}</el-button>
+              </div>
+              <div class="revision-files">
+                <div v-for="file in revision.files" :key="file.refId" class="revision-file">
+                  <el-tag size="small" effect="plain">{{ documentTypeLabel(file.documentType) }}</el-tag>
+                  <el-tag size="small" effect="plain">{{ file.fileRole ? DrawingFileRoleEnum.getLabel(file.fileRole) : '未归集' }}</el-tag>
+                  <el-link type="primary" @click="preview(file)">{{ file.fileName }}</el-link>
+                  <span class="file-info">{{ sizeLabel(file.fileSize) }} · {{ file.createBy || '—' }} · {{ timeLabel(file.createTime) }}</span>
+                  <el-button link type="primary" @click="download(file)">下载</el-button>
+                  <el-button v-if="canUpload && file.released !== DrawingReleaseFlagEnum.RELEASED.value" link type="primary" @click="openMetadata(file)">{{ !file.documentType ? '补资料类型' : file.drawingNo ? '编辑关联' : '补录图纸关联' }}</el-button>
+                  <el-button v-if="canDelete && file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value && file.released !== DrawingReleaseFlagEnum.RELEASED.value" link type="danger" @click="remove(file)">删除</el-button>
+                </div>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
         </template>
       </el-table-column>
       <el-table-column label="图纸" min-width="210">
         <template #default="{ row }"><div class="drawing-title">{{ row.name }}</div><div class="drawing-sub">{{ row.drawingNo || '待归集：请补录图纸编号' }}</div></template>
       </el-table-column>
-      <el-table-column label="资料类型" width="140"><template #default="{ row }">{{ documentTypeLabel(row.documentType) }}</template></el-table-column>
-      <el-table-column label="版本" width="80"><template #default="{ row }">{{ row.version || '未标注' }}</template></el-table-column>
-      <el-table-column label="文件 / 预览" min-width="170">
+      <el-table-column label="资料类型" width="140"><template #default="{ row }">{{ row.documentTypes.map(documentTypeLabel).join('、') }}</template></el-table-column>
+      <el-table-column label="当前版本" width="110"><template #default="{ row }">{{ row.version || '未标注' }}{{ row.current ? '' : '（待设现行）' }}</template></el-table-column>
+      <el-table-column label="文件数" width="85"><template #default="{ row }">{{ row.totalFiles.length }}</template></el-table-column>
+      <el-table-column label="缺件" min-width="180"><template #default="{ row }">
+        <el-tag v-if="row.missingPrint" size="small" type="warning">缺打印件</el-tag>
+        <div v-if="row.unclassified" class="drawing-sub">补资料类型后才能进打印
+          <span v-if="!row.unclassifiedFile">（已下发文件请先撤回）</span>
+          <el-button v-if="canUpload && row.unclassifiedFile" link type="primary" @click="openMetadata(row.unclassifiedFile)">补资料类型</el-button>
+        </div>
+      </template></el-table-column>
+      <el-table-column label="当前版文件 / 预览" min-width="170">
         <template #default="{ row }"><div v-for="file in row.files" :key="file.id" class="file-link"><el-link type="primary" @click="preview(file)">{{ file.fileRole ? DrawingFileRoleEnum.getLabel(file.fileRole) : file.fileName }}</el-link><span>{{ extension(file.fileName) }}</span></div></template>
       </el-table-column>
       <el-table-column label="状态" width="135">
         <template #default="{ row }"><div class="status-tags"><el-tag size="small" :type="row.current ? 'success' : 'info'">{{ DrawingCurrentFlagEnum.getLabel(row.current ? DrawingCurrentFlagEnum.CURRENT.value : DrawingCurrentFlagEnum.NOT_CURRENT.value) }}</el-tag><el-tag size="small" :type="row.released ? 'success' : 'info'">{{ DrawingReleaseFlagEnum.getLabel(row.released ? DrawingReleaseFlagEnum.RELEASED.value : DrawingReleaseFlagEnum.NOT_RELEASED.value) }}</el-tag></div></template>
       </el-table-column>
-      <el-table-column label="最新上传" width="150"><template #default="{ row }"><div>{{ row.latest.createBy || '—' }}</div><div class="drawing-sub">{{ timeLabel(row.latest.createTime) }}</div></template></el-table-column>
+      <el-table-column label="最新上传" width="150"><template #default="{ row }"><div>{{ row.revisions[0].latest.createBy || '—' }}</div><div class="drawing-sub">{{ timeLabel(row.revisions[0].latest.createTime) }}</div></template></el-table-column>
       <el-table-column label="操作" min-width="200" fixed="right">
         <template #default="{ row }">
           <div class="row-actions">
             <el-button v-if="canUpload && row.drawingNo" link type="primary" @click="openUpload(row, true)">新版本</el-button>
-            <el-tag v-if="row.drawingNo && !row.hasReleased && !row.files.some((f: ProductDrawingFile) => f.fileRole === DrawingFileRoleEnum.PRINT.value)" size="small" type="warning" effect="plain" class="missing-hint">该版本缺少打印件/原稿</el-tag>
             <el-button v-if="canUpload && !row.drawingNo" link type="primary" @click="openMetadata(row.files[0])">补录关联</el-button>
             <el-button v-if="canUpload && row.drawingNo && !row.current" link type="warning" :disabled="!!mutationId" @click="setCurrent(row)">设为现行</el-button>
             <el-button v-if="canRelease && ((row.drawingNo && row.current) || row.hasReleased)" link :type="row.hasReleased ? 'info' : 'success'" :disabled="!!mutationId" @click="release(row)">{{ row.hasReleased ? '撤回' : '下发' }}</el-button>
@@ -53,7 +80,7 @@
         </template>
       </el-table-column>
     </el-table>
-    <p class="library-note">同一图纸编号、同一版本可放多个文件（原稿/打印件）；按二级资料类型筛选与归组，历史文件补录关联后再设现行、下发。</p>
+    <p class="library-note">同一图纸编号、同一版本可放多个文件（原稿/打印件）；按图纸编号合并，展开查看版本时间线；行内操作作用于当前版本，无现行时作用于最新上传版本。</p>
 
     <el-dialog v-model="uploadVisible" :title="uploadNewRevision ? '上传图纸新版本' : '上传工程图纸'" width="1100px" append-to-body destroy-on-close :close-on-click-modal="false" :close-on-press-escape="!uploading" :show-close="!uploading" :before-close="closeUpload">
       <div class="upload-product"><strong>{{ productName }}</strong><span>{{ productCode }}</span></div>
@@ -139,10 +166,12 @@ const categoryFilter = ref('')
 const view = ref<string>(DrawingViewEnum.ALL.value)
 const releaseFilter = ref<number | string>('')
 const mutationId = ref<number>()
+const onlyMissingPrint = ref(false)
+const onlyUnclassified = ref(false)
 let generation = 0
 let disposed = false
 interface RevisionRow { key: string; drawingNo: string; name: string; documentType: string; version: string; files: DrawingFile[]; current: boolean; released: boolean; hasReleased: boolean; latest: DrawingFile }
-const rows = computed<RevisionRow[]>(() => {
+const revisionRows = computed<RevisionRow[]>(() => {
   const groups = new Map<string, DrawingFile[]>()
   for (const file of files.value) {
     const key = file.drawingNo ? JSON.stringify([file.drawingNo, file.version]) : `legacy-${file.id}`
@@ -154,31 +183,68 @@ const rows = computed<RevisionRow[]>(() => {
       current: list.every(file => file.isCurrent === DrawingCurrentFlagEnum.CURRENT.value), released: list.every(file => file.released === DrawingReleaseFlagEnum.RELEASED.value), hasReleased: list.some(file => file.released === DrawingReleaseFlagEnum.RELEASED.value), latest }
   }).sort((a, b) => b.latest.id - a.latest.id)
 })
+interface DrawingRow extends RevisionRow {
+  revisions: RevisionRow[]; totalFiles: DrawingFile[]; documentTypes: string[]
+  missingPrint: boolean; unclassified: boolean; unclassifiedFile?: DrawingFile
+}
+function drawingKey(file: Pick<ProductDrawingFile, 'drawingNo' | 'id'>) {
+  // 编号是跨版本身份；名称可能随修订更正，不据此拆成另一张图纸。
+  return file.drawingNo ? JSON.stringify([file.drawingNo]) : `legacy-${file.id}`
+}
+const rows = computed<DrawingRow[]>(() => {
+  const groups = new Map<string, RevisionRow[]>()
+  for (const revision of revisionRows.value) {
+    const key = drawingKey(revision.latest)
+    groups.set(key, [...(groups.get(key) || []), revision])
+  }
+  return [...groups.entries()].map(([key, revisions]) => {
+    // 已有现行优先；新上传历史版不能悄悄接管外层操作目标。
+    const selected = revisions.find(revision => revision.current) || revisions[0]
+    const totalFiles = revisions.flatMap(revision => revision.files)
+    const unclassifiedFile = totalFiles.find(file => !file.documentType && file.released !== DrawingReleaseFlagEnum.RELEASED.value)
+    return { ...selected, key, revisions, totalFiles, documentTypes: [...new Set(totalFiles.map(file => file.documentType || ''))],
+      missingPrint: !selected.files.some(file => file.fileRole === DrawingFileRoleEnum.PRINT.value),
+      unclassified: totalFiles.some(file => !file.documentType), unclassifiedFile }
+  }).sort((a, b) => b.revisions[0].latest.id - a.revisions[0].latest.id)
+})
 /** 未分类筛选值（与“全部”的空串区分）。 */
 const UNCATEGORIZED_FILTER = '__UNCATEGORIZED__'
-const documentTypeTabs = computed(() => {
-  const tabs = allowedDocumentTypes.value.map(value => ({
-    value,
-    label: documentTypeLabel(value),
-    count: files.value.filter(file => file.documentType === value).length,
-  }))
-  const untyped = files.value.filter(file => !file.documentType).length
-  if (untyped) tabs.push({ value: UNCATEGORIZED_FILTER, label: '未分类', count: untyped })
-  return tabs.filter(tab => tab.count > 0)
-})
-function matchesDocumentType(file: DrawingFile) {
-  if (!categoryFilter.value) return true
-  return categoryFilter.value === UNCATEGORIZED_FILTER ? !file.documentType : file.documentType === categoryFilter.value
-}
-const filteredRows = computed(() => rows.value.filter(row => {
+const keywordRows = computed(() => {
   const term = keyword.value.trim().toLowerCase()
-  return row.files.some(matchesDocumentType)
-    && (!term || [row.drawingNo, row.name, ...row.files.map(file => file.fileName)].some(value => value.toLowerCase().includes(term)))
-    && (view.value !== DrawingViewEnum.CURRENT.value || row.current)
-    && (view.value !== DrawingViewEnum.HISTORY.value || !row.current)
-    && (view.value !== DrawingViewEnum.UNBOUND.value || !row.drawingNo)
-    && (typeof releaseFilter.value !== 'number' || row.released === (releaseFilter.value === DrawingReleaseFlagEnum.RELEASED.value))
-}))
+  return rows.value.filter(row => !term || [row.drawingNo, row.name,
+    ...row.totalFiles.flatMap(file => [file.drawingName || '', file.fileName])].some(value => value.toLowerCase().includes(term)))
+})
+const documentTypeTabs = computed(() => [
+  ...allowedDocumentTypes.value.map(value => ({ value, label: documentTypeLabel(value),
+    count: keywordRows.value.filter(row => row.documentTypes.includes(value)).length })),
+  { value: UNCATEGORIZED_FILTER, label: '未分类', count: keywordRows.value.filter(row => row.unclassified).length },
+])
+const typeRows = computed(() => keywordRows.value.filter(row => !categoryFilter.value ||
+  row.documentTypes.includes(categoryFilter.value === UNCATEGORIZED_FILTER ? '' : categoryFilter.value)))
+const missingPrintCount = computed(() => typeRows.value.filter(row => row.missingPrint).length)
+const unclassifiedCount = computed(() => typeRows.value.filter(row => row.unclassified).length)
+const filteredRows = computed(() => typeRows.value.filter(row =>
+  (!onlyMissingPrint.value || row.missingPrint)
+  && (!onlyUnclassified.value || row.unclassified)
+  // 版本视图决定该图纸是否出现；完整时间线和当前版本操作目标始终保留。
+  && row.revisions.some(revision =>
+    (view.value !== DrawingViewEnum.CURRENT.value || revision.current)
+    && (view.value !== DrawingViewEnum.HISTORY.value || !revision.current)
+    && (view.value !== DrawingViewEnum.UNBOUND.value || !revision.drawingNo)
+    && (typeof releaseFilter.value !== 'number' || revision.released === (releaseFilter.value === DrawingReleaseFlagEnum.RELEASED.value)))
+))
+const highlightedKeys = ref<string[]>([])
+let highlightTimer: ReturnType<typeof setTimeout> | undefined
+let hasLoaded = false
+let lastLoadedIds = new Set<number>()
+function drawingRowClass({ row }: { row: DrawingRow }) { return highlightedKeys.value.includes(row.key) ? 'uploaded-drawing' : '' }
+function showUploaded(uploaded: DrawingFile[]) {
+  if (!uploaded.length) return
+  if (highlightTimer) clearTimeout(highlightTimer)
+  highlightedKeys.value = [...new Set(uploaded.map(drawingKey))]
+  ElMessage.success(`已上传：${[...new Set(uploaded.map(file => `${file.drawingNo || file.fileName}-${file.version || '未标注'}`))].join('、')}`)
+  highlightTimer = setTimeout(() => { highlightedKeys.value = [] }, 2000)
+}
 async function loadFiles() {
   if (disposed || props.active === false) return
   if (!props.productId) { files.value = []; emit('loaded', []); return }
@@ -189,10 +255,15 @@ async function loadFiles() {
     // 图纸库只管理 product 来源的附件，故按 sourceType 再过滤一层，避免其它来源（询价/报价等）带 product_id 的行串入。
     const res: any = await attachmentRefApi.refsByProduct(props.productId)
     if (current === generation && !disposed) {
-      files.value = ((res.data || []) as AttachmentRefItem[])
+      const previousIds = lastLoadedIds
+      const nextFiles = ((res.data || []) as AttachmentRefItem[])
         .filter(ref => ref.sourceType === 'product' && Number(ref.attachmentId) > 0)
         .map(toDrawingFile)
         .filter(file => !file.documentType || allowedDocumentTypes.value.includes(file.documentType))
+      files.value = nextFiles
+      if (hasLoaded) showUploaded(nextFiles.filter(file => !previousIds.has(file.id)))
+      lastLoadedIds = new Set(nextFiles.map(file => file.id))
+      hasLoaded = true
       emit('loaded', files.value)
     }
   } catch (e) { if (current === generation && !disposed) { files.value = []; error.value = e instanceof Error ? e.message : '文件加载失败，请刷新重试' } }
@@ -219,7 +290,7 @@ function toDrawingFile(ref: AttachmentRefItem): DrawingFile {
     refId: Number(ref.id),
   }
 }
-watch(() => props.productId, () => { files.value = []; categoryFilter.value = ''; keyword.value = ''; previewVisible.value = false; loadFiles() }, { immediate: false })
+watch(() => props.productId, () => { hasLoaded = false; lastLoadedIds = new Set(); highlightedKeys.value = []; if (highlightTimer) clearTimeout(highlightTimer); onlyMissingPrint.value = false; onlyUnclassified.value = false; view.value = DrawingViewEnum.ALL.value; releaseFilter.value = ''; files.value = []; categoryFilter.value = ''; keyword.value = ''; previewVisible.value = false; loadFiles() }, { immediate: false })
 const previewVisible = ref(false)
 const previewFile = ref<ProductDrawingFile>()
 function preview(file: ProductDrawingFile) { previewFile.value = file; previewVisible.value = true }
@@ -305,6 +376,12 @@ async function submitUpload() {
         await uploadDrawingFile(row, value => { row.progress = value })
         row.status = DrawingUploadStatusEnum.SUCCESS.value; row.progress = 100
       } catch (e) { row.status = DrawingUploadStatusEnum.FAILED.value; row.error = e instanceof Error ? e.message : '上传失败' }
+    }
+    if (pending.some(row => row.status === DrawingUploadStatusEnum.SUCCESS.value)) {
+      // 上传后回到可见范围，避免新图纸被先前筛选隐藏。
+      categoryFilter.value = ''; keyword.value = ''; onlyMissingPrint.value = false; onlyUnclassified.value = false
+      view.value = DrawingViewEnum.ALL.value; releaseFilter.value = ''
+      if (!pendingUploads.value.length) { revokeQueue(); uploadVisible.value = false; queue.value = [] }
     }
     await loadFiles()
   } finally { uploading.value = false }
@@ -405,11 +482,14 @@ watch(() => uploadVisible.value || metadataVisible.value || uploading.value || m
 watch(() => props.active, value => { if (value) loadFiles() })
 loadFiles()
 loadDocTypes()
-onBeforeUnmount(() => { disposed = true; generation++; revokeQueue() })
+onBeforeUnmount(() => { disposed = true; generation++; if (highlightTimer) clearTimeout(highlightTimer); revokeQueue() })
 </script>
 
 <style scoped>
+.revision-timeline { padding:20px 24px; }.revision-heading { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.drawing-table :deep(.uploaded-drawing > td.el-table__cell) { background:#e8f5e9; transition:background-color .3s; }
+
 .library-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; }.library-heading { display:flex; align-items:center; gap:12px; }.library-heading strong { font-size:15px; }.library-heading span,.library-note { font-size:12px; color:#909baa; }.library-alert { margin-bottom:15px; }
-.filters { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:8px; }.category-tabs :deep(.el-tabs__header) { margin-bottom:16px; }.category-tabs :deep(.el-tabs__item) { font-size:13px; }.drawing-title { font-size:13px; font-weight:500; color:#35445a; }.drawing-sub { margin-top:4px; font-size:11px; color:#98a2af; }.status-tags { display:flex; flex-wrap:wrap; gap:5px; }.file-link { display:flex; align-items:center; gap:8px; margin:4px 0; }.file-link span { color:#99a2ae; font-size:10px; }.row-actions { display:flex; flex-wrap:wrap; gap:8px; }.row-actions :deep(.el-button+.el-button) { margin-left:0; }.revision-files { padding:12px 26px; background:#f8fafc; }.revision-file { display:flex; align-items:center; gap:12px; padding:9px 0; }.revision-file :deep(.el-link) { flex:1; justify-content:flex-start; }.file-info { color:#8a96a6; font-size:11px; }
-.upload-product { display:flex; gap:14px; align-items:center; background:#f2f6fc; border-radius:6px; padding:14px 18px; margin-bottom:18px; }.upload-product span { color:#77869b; font-size:13px; }.upload-defaults { display:flex; align-items:center; gap:12px; margin-bottom:14px; }.upload-defaults > span { color:#8895a5; font-size:12px; }.upload-queue { margin-top:18px; }.queue-thumb { width:42px; height:42px; border-radius:4px; border:1px solid #e3e8ee; background:#fff; cursor:zoom-in; }.queue-error { color:#d95757; font-size:11px; margin-top:5px; }.upload-summary { float:left; color:#8896a8; font-size:12px; padding-top:10px; }.missing-hint { margin-left:2px; }.metadata-file { margin:0 0 20px; padding:12px; background:#f6f8fb; color:#69778a; }.metadata-type { display:flex; align-items:center; gap:10px; width:100%; }
+.filters { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:8px; }.drawing-title { font-size:13px; font-weight:500; color:#35445a; }.drawing-sub { margin-top:4px; font-size:11px; color:#98a2af; }.status-tags { display:flex; flex-wrap:wrap; gap:5px; }.file-link { display:flex; align-items:center; gap:8px; margin:4px 0; }.file-link span { color:#99a2ae; font-size:10px; }.row-actions { display:flex; flex-wrap:wrap; gap:8px; }.row-actions :deep(.el-button+.el-button) { margin-left:0; }.revision-files { padding:12px 26px; background:#f8fafc; }.revision-file { display:flex; align-items:center; gap:12px; padding:9px 0; }.revision-file :deep(.el-link) { flex:1; justify-content:flex-start; }.file-info { color:#8a96a6; font-size:11px; }
+.upload-product { display:flex; gap:14px; align-items:center; background:#f2f6fc; border-radius:6px; padding:14px 18px; margin-bottom:18px; }.upload-product span { color:#77869b; font-size:13px; }.upload-defaults { display:flex; align-items:center; gap:12px; margin-bottom:14px; }.upload-defaults > span { color:#8895a5; font-size:12px; }.upload-queue { margin-top:18px; }.queue-thumb { width:42px; height:42px; border-radius:4px; border:1px solid #e3e8ee; background:#fff; cursor:zoom-in; }.queue-error { color:#d95757; font-size:11px; margin-top:5px; }.upload-summary { float:left; color:#8896a8; font-size:12px; padding-top:10px; }.metadata-file { margin:0 0 20px; padding:12px; background:#f6f8fb; color:#69778a; }.metadata-type { display:flex; align-items:center; gap:10px; width:100%; }
 </style>
