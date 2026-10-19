@@ -30,7 +30,7 @@ import EngineeringDrawingLibrary from '../EngineeringDrawingLibrary.vue'
 const mocks = vi.hoisted(() => ({
   refsByProduct: vi.fn(), documentTypes: vi.fn(), tempUpload: vi.fn(), createRef: vi.fn(), updateMeta: vi.fn(), unbind: vi.fn(),
   setCurrent: vi.fn(), release: vi.fn(), updateDrawingMetadata: vi.fn(), getWorkSpec: vi.fn(), saveWorkSpec: vi.fn(),
-  success: vi.fn(), error: vi.fn(), confirm: vi.fn(), download: vi.fn(),
+  success: vi.fn(), error: vi.fn(), warning: vi.fn(), confirm: vi.fn(), download: vi.fn(),
   hasPermission: vi.fn(),
 }))
 vi.mock('@/utils/request', () => ({ default: {} }))
@@ -48,7 +48,7 @@ vi.mock('@/components/product/productFilePreview', () => ({
 }))
 vi.mock('element-plus', async original => ({
   ...await original<typeof import('element-plus')>(),
-  ElMessage: { success: mocks.success, error: mocks.error, warning: vi.fn() },
+  ElMessage: { success: mocks.success, error: mocks.error, warning: mocks.warning },
   ElMessageBox: { confirm: mocks.confirm },
 }))
 
@@ -83,6 +83,7 @@ beforeEach(() => {
   mocks.hasPermission.mockReturnValue(true)
   mocks.updateDrawingMetadata.mockResolvedValue({ data: true })
   mocks.updateMeta.mockResolvedValue({ data: true })
+  mocks.release.mockResolvedValue({ data: true })
   mocks.documentTypes.mockResolvedValue({ data: [] })
   mocks.confirm.mockResolvedValue('confirm')
   mocks.tempUpload.mockResolvedValue({ data: 9 })
@@ -125,7 +126,7 @@ describe('工程图集列表与筛选（dev-20261019-024）', () => {
     await flushPromises()
     state.printPublishing = true
     await nextTick()
-    await clickText(wrapper, '撤回')
+    await clickText(wrapper, '撤回整版')
     expect(mocks.release).toHaveBeenCalledWith(1, false)
     await clickText(wrapper, '设为现行')
     expect(mocks.setCurrent).toHaveBeenCalledWith(8)
@@ -372,12 +373,12 @@ describe('工程图集列表与筛选（dev-20261019-024）', () => {
     await clickText(wrapper, '更多')
     expect(wrapper.findAll('.filters')).toHaveLength(2)
     await wrapper.get('.el-table__expand-icon').trigger('click'); await flushPromises()
-    expect(wrapper.findAll('button').some(button => button.text() === '撤回')).toBe(false)
+    expect(wrapper.findAll('button').some(button => button.text() === '撤回整版')).toBe(false)
     const toggle = wrapper.findAll('.el-checkbox').find(item => item.text() === '打印发布')!
     await toggle.get('input').setValue(true)
-    expect(wrapper.findAll('button').some(button => button.text() === '撤回')).toBe(true)
+    expect(wrapper.findAll('button').some(button => button.text() === '撤回整版')).toBe(true)
     await toggle.get('input').setValue(false)
-    expect(wrapper.findAll('button').some(button => button.text() === '撤回')).toBe(false)
+    expect(wrapper.findAll('button').some(button => button.text() === '撤回整版')).toBe(false)
     expect(mocks.release).not.toHaveBeenCalled()
     expect(state.rows[0].released).toBe(true)
     expect(wrapper.text()).toContain('打开「打印发布」')
@@ -389,7 +390,7 @@ describe('工程图集列表与筛选（dev-20261019-024）', () => {
     state.printPublishing = true
     await wrapper.get('.el-table__expand-icon').trigger('click'); await flushPromises()
     expect(wrapper.findAll('.el-checkbox').some(item => item.text() === '打印发布')).toBe(false)
-    expect(wrapper.findAll('button').some(button => ['下发', '撤回'].includes(button.text()))).toBe(false)
+    expect(wrapper.findAll('button').some(button => ['下发', '下发新增文件', '撤回整版'].includes(button.text()))).toBe(false)
     expect(wrapper.text()).toContain('需由有下发权限的人员完成下发')
     expect(mocks.release).not.toHaveBeenCalled()
   })
@@ -474,6 +475,67 @@ describe('工程图集列表与筛选（dev-20261019-024）', () => {
     expect(mocks.updateDrawingMetadata).toHaveBeenCalledWith(1, expect.objectContaining({ drawingName: '', version: 'B' }))
     finish({ data: true }); await saving
     expect(state.metadataSaving).toBe(false)
+  })
+
+  it('补文件沿用目标版本，新增待下发仍保留现行，可单独下发新增或撤回整版', async () => {
+    const { wrapper, state } = await setup([file(1, { version: 'C', isCurrent: 1, released: 1 }), file(2, { version: 'C', isCurrent: 1 })])
+    await wrapper.get('.el-table__expand-icon').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('有新增文件待下发')
+    expect(state.rows[0].current).toBe(true)
+    const input = wrapper.get('[data-test="new-revision-file"]')
+    vi.spyOn(input.element as HTMLInputElement, 'click').mockImplementation(() => {})
+    await clickText(wrapper, '补文件')
+    Object.defineProperty(input.element, 'files', { configurable: true, value: [new File(['pdf'], 'supplement.pdf')] })
+    await input.trigger('change'); await flushPromises()
+    expect(mocks.tempUpload).toHaveBeenCalledWith(expect.anything(), expect.any(String), expect.any(Function), expect.objectContaining({ drawingNo: 'DWG-1', version: 'C' }))
+    expect(mocks.release).not.toHaveBeenCalled()
+    state.printPublishing = true; await nextTick()
+    await clickText(wrapper, '下发新增文件')
+    expect(mocks.release).toHaveBeenLastCalledWith(1, true)
+    await clickText(wrapper, '撤回整版')
+    expect(mocks.release).toHaveBeenLastCalledWith(1, false)
+  })
+
+  it('打印清单只携带本版现行已下发打印件，未下发补件不入清单', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const { wrapper } = await setup([
+      file(1, { isCurrent: 1, released: 1 }), file(2, { isCurrent: 1, released: 0 }),
+      file(3, { isCurrent: 1, released: 1, fileRole: 'ORIGINAL' }),
+    ])
+    await wrapper.get('.el-table__expand-icon').trigger('click'); await flushPromises()
+    await clickText(wrapper, '打印清单')
+    expect(open).toHaveBeenCalledWith('/print/product-spec/42?sections=atlas&files=1', '_blank')
+    open.mockRestore()
+  })
+
+  it('内容摘要判重：同名不同内容不报重复，异名相同内容提示但保留上传', async () => {
+    const { state } = await setup([file(1, { fileName: 'same.pdf', sha256: 'a'.repeat(64) })])
+    mocks.refsByProduct.mockResolvedValue({ data: [
+      file(1, { fileName: 'same.pdf', sha256: 'a'.repeat(64) }), file(2, { fileName: 'same.pdf', sha256: 'b'.repeat(64) }),
+    ] })
+    await state.loadFiles()
+    expect(mocks.warning).not.toHaveBeenCalled()
+    mocks.refsByProduct.mockResolvedValue({ data: [
+      file(1, { fileName: 'same.pdf', sha256: 'a'.repeat(64) }), file(2, { fileName: 'same.pdf', sha256: 'b'.repeat(64) }), file(3, { fileName: 'renamed.pdf', sha256: 'a'.repeat(64) }),
+    ] })
+    await state.loadFiles()
+    expect(mocks.warning).toHaveBeenCalledWith(expect.stringContaining('renamed.pdf'))
+    expect(state.files).toHaveLength(3)
+  })
+
+  it('补件关联失败重试沿用上传键及附件ID，不误报成功', async () => {
+    const { state } = await setup([file(1)])
+    state.openUpload(state.revisionRows[0], false)
+    state.addFile({ uid: 91, name: 'supplement.pdf', raw: new File(['pdf'], 'supplement.pdf') })
+    mocks.createRef.mockResolvedValueOnce({ data: false })
+    await state.submitUpload()
+    expect(state.queue[0].status).toBe('failed')
+    expect(state.queue[0].error).toContain('关联保存失败')
+    expect(mocks.success).not.toHaveBeenCalled()
+    const key = mocks.tempUpload.mock.calls[0][1]
+    await state.submitUpload()
+    expect(mocks.tempUpload.mock.calls[1][1]).toBe(key)
+    expect(mocks.createRef.mock.calls.map(call => call[0].attachmentId)).toEqual([9, 9])
   })
 
 })

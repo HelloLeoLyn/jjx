@@ -45,6 +45,8 @@ export interface AttachmentRefItem {
   fileName?: string | null
   /** 附件字节数（后端回填） */
   fileSize?: number | null
+  /** 内容摘要，用于重复文件提示。 */
+  sha256?: string | null
   /** 附件 MIME（后端回填，用于预览/图片判定） */
   fileType?: string | null
   /** 图种/文件类别（后端从 sys_attachment 回填，工程图纸库分组用） */

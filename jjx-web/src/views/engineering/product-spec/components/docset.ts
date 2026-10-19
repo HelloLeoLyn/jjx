@@ -29,10 +29,21 @@ export function isEngineeringFile(file: DocFile): boolean {
   // 图种退役后以二级类型分栏（atlas）为准；无类型的旧数据不得默认落工程图集。
   return file.productFile && (!!file.drawingNo || file.section === 'atlas')
 }
+/** 正式打印按文件下发集合准入；补入的未下发成员不得混入。历史快照自带当时集合。 */
+export function canPrintDocumentFile(file: DocFile): boolean {
+  return file.kind !== 'other' && (!isEngineeringFile(file) || !!file.published || (
+    !!file.drawingNo && file.section !== 'other' && file.isCurrent === DrawingCurrentFlagEnum.CURRENT.value
+    && file.released === DrawingReleaseFlagEnum.RELEASED.value
+  ))
+}
+export function orderedPrintFiles(files: DocFile[], keys: string[]): DocFile[] {
+  const byKey = new Map(files.map(file => [file.key, file]))
+  return [...new Set(keys)].map(key => byKey.get(key)).filter((file): file is DocFile => !!file && canPrintDocumentFile(file))
+}
 /** 一个图纸版本仅默认选打印件；没有打印件时才允许可预览的原稿。 */
 export function defaultDocumentFiles(files: DocFile[]): DocFile[] {
   return files.filter(file => {
-    if (file.kind === 'other') return false
+    if (!canPrintDocumentFile(file)) return false
     // 分色检查表以工程录入的电子表为主；历史附件不默认选中，避免重复打印。
     if (file.section === 'color') return false
     // 未分类文件不默认进工程图集，也不默认勾选打印
@@ -42,7 +53,7 @@ export function defaultDocumentFiles(files: DocFile[]): DocFile[] {
     if (file.published) return true
     if (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value) return false
     if (file.fileRole === DrawingFileRoleEnum.PRINT.value) return true
-    return file.fileRole === DrawingFileRoleEnum.ORIGINAL.value && !files.some(other => other.productFile && other.drawingNo === file.drawingNo && other.version === file.version && other.fileRole === DrawingFileRoleEnum.PRINT.value)
+    return file.fileRole === DrawingFileRoleEnum.ORIGINAL.value && !files.some(other => canPrintDocumentFile(other) && other.productFile && other.drawingNo === file.drawingNo && other.version === file.version && other.fileRole === DrawingFileRoleEnum.PRINT.value)
   })
 }
 export function documentFileCaption(file: DocFile): string {
@@ -320,6 +331,7 @@ export async function buildDocsetFromLegacyRefs(productId: number, items: Record
 
 export function makePages(data: DocsetData, sections: string[], fileIds: string[], images: Record<string, FileImage[]>, overflow: Record<string, PaperTextLine[]> = {}): DocPage[] {
   const pages: DocPage[] = []
+  const printFiles = orderedPrintFiles(data.files, fileIds)
   const all = flatten(data.routing.items || [])
   const printRows = all.filter((row) => row.majorCategory === 'PRINT')
   const assembly = data.routing.items || []
@@ -343,17 +355,17 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
       const details = pages.filter(page => page.kind === 'print').flatMap(page => overflow[page.key] || [])
       for (let i = 0; i < details.length; i += 48) pages.push({ key: 'print-details-' + i, section: 'print', title: '印刷规范 · 内容附页', kind: 'spec-details', detailLines: details.slice(i, i + 48) })
       // 指导图跟随印刷表，整套文档中不再在工程图集重复打印；仅允许现行已下发的预览件。
-      const files = defaultDocumentFiles(data.files).filter(file => file.section === 'print' && fileIds.includes(file.key))
+      const files = printFiles.filter(file => file.section === 'print')
       for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: 'print', title: '印刷指导图', kind: 'image', file, image }))
     } else if (section.key === 'ink') {
       pages.push({ key: 'ink', section: 'ink', title: '油墨调配记录表', kind: 'ink' })
     } else if (section.key === 'color') {
       // 分色检查表：电子表纸张固定一张（未填写也可预览空白），历史附件排其后。
       pages.push({ key: 'color', section: 'color', title: '规范分色检查表', kind: 'color' })
-      const files = data.files.filter((file) => file.section === 'color' && fileIds.includes(file.key))
+      const files = printFiles.filter((file) => file.section === 'color')
       for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: 'color', title: `规范分色检查表 · ${documentFileCaption(file)}`, kind: 'image', file, image }))
     } else {
-      const files = data.files.filter((file) => file.section === section.key && fileIds.includes(file.key))
+      const files = printFiles.filter((file) => file.section === section.key)
       for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: section.key, title: `${section.label} · ${productFileCategoryLabel(file.category)}`, kind: 'image', file, image }))
       if (!files.length) pages.push({ key: `${section.key}-empty`, section: section.key, title: section.label, kind: 'empty', emptyMessage: data.unavailableSections?.[section.key] })
     }

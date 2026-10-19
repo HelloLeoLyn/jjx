@@ -668,13 +668,8 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
     }
     private void validateDrawingFile(List<SysAttachment> files, Long excludeId, String category, String version, String role) {
         for (SysAttachment file : files) {
-            // 已下发版本不可追加、改关联，避免无需再次下发便改变生产资料。
-            if (sameVersion(file, version) && yes(file.getReleased())) throw new BusinessException("该版本已下发，请先撤回或上传新版本");
             if (file.getId().equals(excludeId)) continue;
             if (!java.util.Objects.equals(file.getCategory(), category)) throw new BusinessException("同一图纸编号的文件类别必须一致");
-            if (sameVersion(file, version) && java.util.Objects.equals(file.getFileRole(), role)) {
-                throw new BusinessException("该图纸版本已存在相同用途的文件，请使用新版本或先删除未下发的重复文件");
-            }
         }
     }
 
@@ -758,7 +753,9 @@ public class SysAttachmentServiceImpl extends ServiceImpl<SysAttachmentMapper, S
             throw new BusinessException("只有现行版本可以下发，请先设为现行");
         }
         String operator = released ? String.valueOf(cn.dev33.satoken.stp.StpUtil.getLoginId()) : null;
-        List<Long> ids = versionFiles.stream().map(SysAttachment::getId).toList();
+        // 补件下发只更新新增成员，保留已下发文件的时间与操作人；撤回仍作用于整版。
+        List<Long> ids = versionFiles.stream().filter(a -> !released || !yes(a.getReleased())).map(SysAttachment::getId).toList();
+        if (ids.isEmpty()) return true;
         return update(Wrappers.<SysAttachment>lambdaUpdate().in(SysAttachment::getId, ids)
                 .set(SysAttachment::getReleased, released ? YesNoEnum.YES.getCode() : YesNoEnum.NO.getCode())
                 .set(SysAttachment::getIsControlled, YesNoEnum.YES.getCode())

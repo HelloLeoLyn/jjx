@@ -37,9 +37,12 @@
               <div class="revision-heading">
                 <strong>{{ revision.version || '未标注' }} 版 · {{ revision.files.length }} 个文件</strong>
                 <el-tag size="small" :type="revision.current ? 'success' : 'info'">{{ DrawingCurrentFlagEnum.getLabel(revision.current ? DrawingCurrentFlagEnum.CURRENT.value : DrawingCurrentFlagEnum.NOT_CURRENT.value) }}</el-tag>
-                <el-tag size="small" :type="revision.released ? 'success' : 'info'">{{ revision.released ? '已下发' : revision.hasReleased ? '部分已下发' : '未下发' }}</el-tag>
+                <el-tag size="small" :type="revision.released ? 'success' : 'info'">{{ revision.released ? '已下发' : revision.hasReleased ? '有新增文件待下发' : '未下发' }}</el-tag>
                 <el-button v-if="canUpload && revision.drawingNo && !revision.current" link type="warning" :disabled="!!mutationId" @click="setCurrent(revision)">设为现行</el-button>
-                <el-button v-if="canRelease && printPublishing && ((revision.drawingNo && revision.current) || revision.hasReleased)" link :type="revision.hasReleased ? 'info' : 'success'" :disabled="!!mutationId" @click="release(revision)">{{ revision.hasReleased ? '撤回' : '下发' }}</el-button>
+                <el-button v-if="canUpload && revision.drawingNo" link type="primary" :disabled="uploading" @click="chooseSupplement(revision)">补文件</el-button>
+                <el-button v-if="printableVersionFiles(revision).length" link type="primary" @click="openPrintList(revision)">打印清单</el-button>
+                <el-button v-if="canRelease && printPublishing && revision.drawingNo && revision.current && !revision.released" link type="success" :disabled="!!mutationId" @click="release(revision, true)">{{ revision.hasReleased ? '下发新增文件' : '下发' }}</el-button>
+                <el-button v-if="canRelease && printPublishing && revision.hasReleased" link type="info" :disabled="!!mutationId" @click="release(revision, false)">撤回整版</el-button>
                 <el-button v-if="pendingStructureSync?.drawingNo === revision.drawingNo && pendingStructureSync?.version === revision.version" link type="warning" :disabled="!!mutationId" @click="retryStructureSync">重试同步结构图</el-button>
               </div>
               <div class="revision-files">
@@ -74,7 +77,7 @@
         <template #default="{ row }"><div v-for="file in row.files" :key="file.id" class="file-link"><el-link type="primary" @click="preview(file)">{{ file.fileRole ? DrawingFileRoleEnum.getLabel(file.fileRole) : file.fileName }}</el-link><span>{{ extension(file.fileName) }}</span></div></template>
       </el-table-column>
       <el-table-column label="状态" width="135">
-        <template #default="{ row }"><div class="status-tags"><el-tag size="small" :type="row.current ? 'success' : 'info'">{{ DrawingCurrentFlagEnum.getLabel(row.current ? DrawingCurrentFlagEnum.CURRENT.value : DrawingCurrentFlagEnum.NOT_CURRENT.value) }}</el-tag><el-tag size="small" :type="row.released ? 'success' : 'info'">{{ DrawingReleaseFlagEnum.getLabel(row.released ? DrawingReleaseFlagEnum.RELEASED.value : DrawingReleaseFlagEnum.NOT_RELEASED.value) }}</el-tag></div></template>
+        <template #default="{ row }"><div class="status-tags"><el-tag size="small" :type="row.current ? 'success' : 'info'">{{ DrawingCurrentFlagEnum.getLabel(row.current ? DrawingCurrentFlagEnum.CURRENT.value : DrawingCurrentFlagEnum.NOT_CURRENT.value) }}</el-tag><el-tag size="small" :type="row.released ? 'success' : 'info'">{{ row.hasReleased && !row.released ? '有新增文件待下发' : DrawingReleaseFlagEnum.getLabel(row.released ? DrawingReleaseFlagEnum.RELEASED.value : DrawingReleaseFlagEnum.NOT_RELEASED.value) }}</el-tag></div></template>
       </el-table-column>
       <el-table-column label="最新上传" width="150"><template #default="{ row }"><div>{{ row.revisions[0].latest.createBy || '—' }}</div><div class="drawing-sub">{{ timeLabel(row.revisions[0].latest.createTime) }}</div></template></el-table-column>
       <el-table-column label="操作" min-width="200" fixed="right">
@@ -92,7 +95,7 @@
       <div class="upload-product"><strong>{{ productName }}</strong><span>{{ productCode }}</span></div>
       <div class="upload-defaults">
         <span>批量默认值</span><el-tag size="small" effect="plain">工程技术资料</el-tag><el-select v-model="defaults.documentType" clearable placeholder="未分类（可稍后补录）" :disabled="!!uploadDrawingNo || uploading" style="width:170px"><el-option v-for="item in documentTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
-        <el-input v-model="defaults.version" placeholder="版本，如 A / B" maxlength="50" :disabled="uploading" style="width:160px" />
+        <el-input v-model="defaults.version" placeholder="版本，如 A / B" maxlength="50" :disabled="uploading || !!uploadFixedVersion" style="width:160px" />
         <el-button :disabled="uploading" @click="applyDefaults">应用到待上传文件</el-button>
       </div>
       <el-upload drag multiple :auto-upload="false" :show-file-list="false" :disabled="uploading" :on-change="addFile">
@@ -134,7 +137,8 @@ import { attachmentApi, type DrawingMetadata, type ProductDrawingFile } from '@/
 import { attachmentRefApi, type AttachmentDocumentTypeItem, type AttachmentDrawingMetadata, type AttachmentRefItem } from '@/api/system/attachmentRef'
 import { useUserStore } from '@/store/modules/user'
 import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum, DrawingFileRoleEnum, DrawingViewEnum, DrawingUploadStatusEnum } from '@/enums/product/drawing'
-import { ENGINEERING_DOCUMENT_TYPES, ENGINEERING_DOCUMENT_TYPE_CODES, duplicateFingerprints, fileFingerprint } from '@/components/product/productFileCategories'
+import { ENGINEERING_DOCUMENT_TYPES, ENGINEERING_DOCUMENT_TYPE_CODES } from '@/components/product/productFileCategories'
+import { sectionForDocumentType } from '@/views/engineering/product-spec/components/versionDocset'
 import { downloadFile, fileKind } from '@/components/product/productFilePreview'
 import ProductFilePreview from '@/components/product/ProductFilePreview.vue'
 import { newDrawingIdentity, nextDrawingVersion } from '@/components/product/drawingUploadRules'
@@ -142,7 +146,7 @@ import { normalizeWorkSpec, productWorkSpecApi } from '@/api/product/workSpec'
 
 /** 图纸库行 = 附件（sys_attachment）+ 其产品引用（sys_attachment_ref）。
  *  dev-20261014-016 第3项：读走按产品查引用（refsByProduct），写走公共 temp 上传 + 建引用；refId 用于解除引用。 */
-type DrawingFile = ProductDrawingFile & { refId: number; documentType?: string }
+type DrawingFile = ProductDrawingFile & { refId: number; documentType?: string; sha256?: string }
 
 const props = defineProps<{ productId?: number; productCode: string; productName: string; categories?: string[]; active?: boolean }>()
 const emit = defineEmits<{ busy: [value: boolean]; loaded: [files: ProductDrawingFile[]] }>()
@@ -275,7 +279,12 @@ async function loadFiles() {
         .map(toDrawingFile)
         .filter(file => !file.documentType || allowedDocumentTypes.value.includes(file.documentType))
       files.value = nextFiles
-      if (hasLoaded) showUploaded(nextFiles.filter(file => !previousIds.has(file.id)))
+      if (hasLoaded) {
+        const uploaded = nextFiles.filter(file => !previousIds.has(file.id))
+        const duplicates = uploaded.filter(file => file.sha256 && nextFiles.some(other => other.id !== file.id && other.sha256 === file.sha256))
+        if (duplicates.length) ElMessage.warning(`已上传的文件内容重复：${duplicates.map(file => file.fileName).join('、')}。文件已保留，请核对。`)
+        showUploaded(uploaded)
+      }
       lastLoadedIds = new Set(nextFiles.map(file => file.id))
       hasLoaded = true
       emit('loaded', files.value)
@@ -289,6 +298,7 @@ function toDrawingFile(ref: AttachmentRefItem): DrawingFile {
     id: Number(ref.attachmentId),
     fileName: ref.fileName || '',
     fileSize: ref.fileSize ?? 0,
+    sha256: ref.sha256 ?? undefined,
     fileType: ref.fileType ?? undefined,
     category: ref.category || '',
     documentType: ref.documentType ?? undefined,
@@ -372,11 +382,25 @@ async function setCurrent(row: RevisionRow) {
     mutationId.value = undefined
   }
 }
-async function release(row: RevisionRow) {
+function printableVersionFiles(row: RevisionRow) {
+  if (sectionForDocumentType(row.documentType) === 'other') return []
+  const printable = row.files.filter(file => row.current && file.released === DrawingReleaseFlagEnum.RELEASED.value && fileKind(file) !== 'other')
+  return printable.some(file => file.fileRole === DrawingFileRoleEnum.PRINT.value)
+    ? printable.filter(file => file.fileRole === DrawingFileRoleEnum.PRINT.value) : printable
+}
+function openPrintList(row: RevisionRow) {
+  const preferred = printableVersionFiles(row)
+  if (!preferred.length) return
+  const params = new URLSearchParams({ sections: sectionForDocumentType(row.documentType), files: preferred.map(file => String(file.id)).join(',') })
+  window.open(`/print/product-spec/${props.productId}?${params}`, '_blank')
+}
+async function release(row: RevisionRow, publish: boolean) {
   try {
-    await ElMessageBox.confirm(`${row.hasReleased ? '撤回' : '下发'}「${row.name}」${row.version}版？同版本原稿、打印件一起处理。`, '图纸下发', { type: 'warning' })
+    await ElMessageBox.confirm(`${publish ? row.hasReleased ? '下发新增文件' : '下发' : '撤回整版'}「${row.name}」${row.version}版？${publish ? '仅下发未下发文件，已有下发记录保留。' : '同版本全部文件一起撤回。'}`, '图纸下发', { type: 'warning' })
     mutationId.value = row.files[0].id
-    await attachmentApi.release(row.files[0].id, !row.hasReleased); ElMessage.success(row.hasReleased ? '已撤回' : '已下发'); await loadFiles()
+    const result = await attachmentApi.release(row.files[0].id, publish)
+    if (result.data === false) throw new Error('下发状态更新失败')
+    ElMessage.success(publish ? '已下发' : '已撤回整版'); await loadFiles()
   } catch (e) { if (!cancelled(e)) ElMessage.error(e instanceof Error ? e.message : '操作失败') }
   finally { mutationId.value = undefined }
 }
@@ -406,7 +430,7 @@ function removeQueueRow(row: UploadRow) { revokeThumb(row); queue.value = queue.
 const pendingUploads = computed(() => queue.value.filter(row => row.status === DrawingUploadStatusEnum.QUEUED.value || row.status === DrawingUploadStatusEnum.FAILED.value))
 watch(documentTypeOptions, (options) => { if (defaults.documentType && !options.some(item => item.value === defaults.documentType)) defaults.documentType = '' }, { immediate: true })
 const revisionInput = ref<HTMLInputElement>()
-let revisionSelection: { row: DrawingRow; version: string; productId?: number } | undefined
+let revisionSelection: { row: RevisionRow; version: string; supplement: boolean; productId?: number } | undefined
 function openUpload(row?: RevisionRow, newRevision = false, documentType?: string, show = true) {
   if (uploading.value) return
   revokeQueue(); queue.value = []; uploadNewRevision.value = newRevision; uploadDrawingNo.value = row?.drawingNo || ''; uploadDrawingName.value = row?.name || ''; uploadLegacyCategory.value = row?.files[0]?.category || undefined
@@ -419,7 +443,12 @@ function chooseNewVersion(row: DrawingRow) {
   if (uploading.value) return
   const version = nextDrawingVersion(row.revisions.map(revision => revision.version))
   if (!version) { openUpload(row, true); return }
-  revisionSelection = { row, version, productId: props.productId }
+  revisionSelection = { row, version, supplement: false, productId: props.productId }
+  revisionInput.value?.click()
+}
+function chooseSupplement(row: RevisionRow) {
+  if (uploading.value) return
+  revisionSelection = { row, version: row.version, supplement: true, productId: props.productId }
   revisionInput.value?.click()
 }
 async function uploadNewVersionFiles(event: Event) {
@@ -428,7 +457,7 @@ async function uploadNewVersionFiles(event: Event) {
   input.value = ''
   const context = revisionSelection
   if (!context || context.productId !== props.productId || !selected.length || uploading.value) return
-  openUpload(context.row, true, undefined, false)
+  openUpload(context.row, !context.supplement, undefined, false)
   defaults.version = context.version; uploadFixedVersion.value = context.version
   selected.forEach((file, i) => addFile({ uid: Date.now() + i, name: file.name, raw: file } as UploadFile))
   await submitUpload()
@@ -446,11 +475,6 @@ function regenerateIdentity(row: UploadRow) {
 function addFile(upload: UploadFile) {
   if (!upload.raw || uploading.value) return
   if (upload.raw.size > 10 * 1024 * 1024 || !upload.raw.size) { ElMessage.warning(`${upload.name}：文件须非空且不超过10MB`); return }
-  // 判重只看文件指纹（同名同大小同修改时间），图纸编号+版本不参与：同编号同版本允许多个文件。
-  const fingerprint = fileFingerprint(upload.name, upload.raw.size, upload.raw.lastModified)
-  if (queue.value.some(row => fileFingerprint(row.file.name, row.file.size, row.file.lastModified) === fingerprint)) {
-    ElMessage.warning(`${upload.name}：与已选文件同名同大小，可能重复，请核对`)
-  }
   const kind = fileKind({ fileName: upload.name, fileType: upload.raw.type })
   const thumb = kind === 'image' ? URL.createObjectURL(upload.raw) : ''
   const identity = uploadDrawingNo.value ? { drawingNo: uploadDrawingNo.value, drawingName: uploadDrawingName.value } : newDrawingIdentity(props.productCode, props.productName, defaults.documentType, [...files.value, ...queue.value], documentTypeLabel(defaults.documentType))
@@ -475,10 +499,6 @@ function applyDefaults() {
 async function submitUpload() {
   const pending = pendingUploads.value
   if (pending.some(row => !row.drawingNo.trim() || !row.version.trim() || (!!row.documentType && !documentTypeOptions.value.some(item => item.value === row.documentType)))) { ElMessage.warning('请确认资料类型有效并填写版本'); return }
-  // 同一图纸编号+版本允许多文件；仅按文件指纹提示“可能重复”，不阻断上传。
-  if (duplicateFingerprints(queue.value.map(row => ({ fileName: row.file.name, fileSize: row.file.size, lastModified: row.file.lastModified }))).length) {
-    ElMessage.warning('上传清单中有同名同大小的文件，可能重复；仍会继续上传，请核对')
-  }
   uploading.value = true
   try {
     for (const row of pending) {
@@ -540,7 +560,7 @@ async function uploadDrawingFile(row: UploadRow, onProgress: (percent: number) =
   const attachmentId = Number(res?.data)
   if (!attachmentId) throw new Error(res?.msg || '临时上传失败')
   if (props.productId !== productId) throw new Error('产品已切换，请重新选择上传文件')
-  await attachmentRefApi.createRef({
+  const reference = await attachmentRefApi.createRef({
     attachmentId,
     sourceType: 'product',
     sourceId: productId,
@@ -548,6 +568,7 @@ async function uploadDrawingFile(row: UploadRow, onProgress: (percent: number) =
     productCode,
     documentType: row.documentType || null,
   })
+  if (!Number(reference.data)) throw new Error('文件已上传，图纸关联保存失败，请重试')
 }
 async function closeUpload(done?: () => void) {
   if (uploading.value) return

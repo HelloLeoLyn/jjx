@@ -3,6 +3,7 @@ package com.jjx.system.service;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.common.enums.YesNoEnum;
 import com.jjx.system.domain.dto.AttachmentRefBatchDTO;
 import com.jjx.system.domain.dto.AttachmentRefBatchItem;
 import com.jjx.system.domain.dto.AttachmentRefDTO;
@@ -49,6 +50,10 @@ public class AttachmentRefService {
         Long productId = request.getProductId();
         String productCode = optional(request.getProductCode(), 64);
         sources.checkProduct(source, request.getSourceId(), productId);
+        // 与现行切换/下发采用相同产品锁，补件不能与整版操作交错。
+        if ("product".equals(source) && productId != null) {
+            jdbc.queryForList("SELECT product_id FROM product WHERE product_id=? FOR UPDATE", productId);
+        }
         SysAttachment file = lock(request.getAttachmentId());
         if (file.getUploadState() == AttachmentUploadState.ASSET)
             throw new BusinessException("共享资产不能建立业务附件引用");
@@ -194,7 +199,7 @@ public class AttachmentRefService {
         if (ids.isEmpty()) return;
         String placeholders = ids.stream().map(i -> "?").collect(Collectors.joining(","));
         Map<Long, Object[]> files = new HashMap<>();
-        jdbc.query("SELECT id,file_name,file_size,file_type,category,version,drawing_no,drawing_name,file_role,is_current,is_controlled,released FROM sys_attachment WHERE id IN (" + placeholders + ")",
+        jdbc.query("SELECT id,file_name,file_size,file_type,category,version,drawing_no,drawing_name,file_role,is_current,is_controlled,released,sha256 FROM sys_attachment WHERE id IN (" + placeholders + ")",
             (rs, rowNum) -> {
                 files.put(rs.getLong("id"), new Object[]{
                     rs.getString("file_name"),
@@ -207,7 +212,7 @@ public class AttachmentRefService {
                     rs.getString("file_role"),
                     rs.getObject("is_current") == null ? null : rs.getInt("is_current"),
                     rs.getObject("is_controlled") == null ? null : rs.getInt("is_controlled"),
-                    rs.getObject("released") == null ? null : rs.getInt("released")});
+                    rs.getObject("released") == null ? null : rs.getInt("released"), rs.getString("sha256")});
                 return null;
             },
             ids.toArray());
@@ -225,30 +230,33 @@ public class AttachmentRefService {
             ref.setIsCurrent((Integer) meta[8]);
             ref.setIsControlled((Integer) meta[9]);
             ref.setReleased((Integer) meta[10]);
+            ref.setSha256((String) meta[11]);
         }
     }
 
     /**
-     * 产品工程图纸唯一性守卫（同图纸编号、同版本下原稿/打印件各一份）（dev-20261014-016 第3项）。
+     * 同版可补多个同用途文件；新文件沿用该版现行状态，但须单独确认下发。
      * 图纸经公共链路（temp 上传写图纸列 + 建引用）落库后附件表无 biz_type/biz_id，故归属改为
      * 「引用表 source_type='product' AND product_id」+ 附件表 drawing_no 判定（不依赖已废弃字段）。
      * 仅对 product 来源且带图纸编号的附件生效；其它来源、普通产品资料不受影响。
-     * 说明：为换取吞吐未对产品行加锁，判重为尽力而为（UI 侧另有同批预检）；极端并发下仍可能两个同版同用途件同时通过。
+     * 调用方持有产品锁，与整版切换/下发串行。重复内容仅由前端提示。
      */
     private void validateProductDrawing(String source, Long productId, SysAttachment file) {
         String drawingNo = file.getDrawingNo();
         if (!"product".equals(source) || productId == null || drawingNo == null || drawingNo.isBlank()) return;
         List<Map<String, Object>> rows = jdbc.queryForList(
-            "SELECT a.category,a.version,a.file_role,a.released FROM sys_attachment a "
+            "SELECT a.category,a.version,a.is_current FROM sys_attachment a "
                 + "JOIN sys_attachment_ref r ON r.attachment_id=a.id AND r.deleted=0 AND r.source_type='product' AND r.product_id=? "
-                + "WHERE a.deleted=0 AND a.drawing_no=? AND a.id<>?",
+                + "WHERE a.deleted=0 AND a.drawing_no=? AND a.id<>? FOR UPDATE",
             productId, drawingNo, file.getId());
         for (Map<String, Object> row : rows) {
-            boolean sameVersion = Objects.equals(text(row.get("version")), file.getVersion());
-            if (sameVersion && isYes(row.get("released"))) throw new BusinessException("该版本已下发，请先撤回或上传新版本");
             if (!Objects.equals(text(row.get("category")), file.getCategory())) throw new BusinessException("同一图纸编号的文件类别必须一致");
-            if (sameVersion && Objects.equals(text(row.get("file_role")), file.getFileRole()))
-                throw new BusinessException("该图纸版本已存在相同用途的文件，请使用新版本或先删除未下发的重复文件");
+        }
+        // 已绑定文件再建其它来源引用不改变其发布记录；仅初始化新上传的文件。
+        if (file.getUploadState() == AttachmentUploadState.TEMP) {
+            boolean current = rows.stream().anyMatch(row -> Objects.equals(text(row.get("version")), file.getVersion()) && isYes(row.get("is_current")));
+            jdbc.update("UPDATE sys_attachment SET is_current=?,released=?,released_at=NULL,released_by=NULL WHERE id=?",
+                current ? YesNoEnum.YES.getCode() : YesNoEnum.NO.getCode(), YesNoEnum.NO.getCode(), file.getId());
         }
     }
 

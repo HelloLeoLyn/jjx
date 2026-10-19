@@ -19,17 +19,17 @@
     <div class="preview-layout" :class="{ 'paper-only': paperOnly }" v-loading="loading">
       <aside v-if="!paperOnly" class="document-nav no-print">
         <div class="nav-heading"><strong>文档目录</strong><el-button link @click="selectAll">全选</el-button></div>
-        <p class="nav-tip">勾选要预览和打印的文档</p>
+        <p class="nav-tip">打印清单：勾选文件，用上移／下移调整同栏目内的打印顺序。</p>
         <el-switch v-model="showHistory" size="small" active-text="查看原稿／全部版本" />
-        <p class="nav-tip">印刷指导图仅引用现行已下发版；其他工程图纸默认选择现行打印件，可展开全部版本。</p>
-        <el-alert v-if="selectedDrafts.length" title="已手动选择非现行、未下发或待归集图纸，打印页会标注其状态。" type="warning" :closable="false" />
+        <p class="nav-tip">工程图纸仅打印现行且已下发的文件；补入文件需确认下发后才能加入清单。</p>
         <el-checkbox-group v-model="selectedSections">
           <div v-for="section in documentSections" :key="section.key" class="nav-section" :class="{ chosen: selectedSections.includes(section.key) }">
             <el-checkbox :value="section.key" :label="section.key"><span class="section-label">{{ section.label }}</span></el-checkbox>
             <div class="section-note" @click="jumpTo(section.key)">{{ section.note }}<span>{{ sectionPageCount(section.key) }} 页</span></div>
             <el-checkbox-group v-if="selectedSections.includes(section.key) && filesFor(section.key).length" v-model="selectedFiles" class="file-choices">
               <div v-for="file in filesFor(section.key)" :key="file.key" class="file-choice">
-                <el-checkbox :value="file.key" :label="file.key" :disabled="file.kind === 'other'"><span :title="file.originalName && file.originalName !== file.name ? `原文件名：${file.originalName}` : documentFileCaption(file)">{{ documentFileCaption(file) }}</span></el-checkbox>
+                <el-checkbox :value="file.key" :label="file.key" :disabled="!canPrintDocumentFile(file)"><span :title="file.originalName && file.originalName !== file.name ? `原文件名：${file.originalName}` : documentFileCaption(file)">{{ documentFileCaption(file) }}</span></el-checkbox>
+                <div v-if="selectedFiles.includes(file.key) && canPrintDocumentFile(file)" class="file-order"><el-button link :disabled="!canMoveFile(file, -1)" @click="moveFile(file, -1)">上移</el-button><el-button link :disabled="!canMoveFile(file, 1)" @click="moveFile(file, 1)">下移</el-button></div>
                 <div v-if="file.kind === 'other'" class="file-help"><span>此格式请使用原文件</span><el-link type="primary" @click="downloadOriginal(file)">下载原文件</el-link></div>
                 <div v-if="fileErrors[file.key]" class="file-error">{{ fileErrors[file.key] }}</div>
               </div>
@@ -74,8 +74,7 @@ import { ElMessage } from 'element-plus'
 import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import { downloadFile } from '@/components/product/productFilePreview'
 import ProductSpecSheets from './ProductSpecSheets.vue'
-import { documentSections, loadDocset, loadDocsetForVersion, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, type DocsetData, type DocFile, type FileImage, type PaperTextLine } from './docset'
-import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum } from '@/enums/product/drawing'
+import { documentSections, loadDocset, loadDocsetForVersion, makePages, renderFile, defaultDocumentFiles, documentFileCaption, isEngineeringFile, canPrintDocumentFile, orderedPrintFiles, type DocsetData, type DocFile, type FileImage, type PaperTextLine } from './docset'
 import { defaultWorkSpecFontSettings, parseWorkSpecFontSettings, serializeWorkSpecFontSettings, workSpecFontAreas, WORK_SPEC_FONT_MIN, WORK_SPEC_FONT_MAX, type WorkSpecFontSettings } from './workSpecFont'
 
 const props = withDefaults(defineProps<{ productId: number; versionId?: number; productCode?: string; productName?: string; standalone?: boolean; autoPrint?: boolean; paperOnly?: boolean; initialSections?: string[]; initialFiles?: string[]; initialFontSettings?: string }>(), { standalone: false, autoPrint: false, paperOnly: false })
@@ -106,12 +105,10 @@ const structureFile = computed(() => data.value?.workSpec.structureFileId
   ? data.value.files.find(file => file.id === data.value?.workSpec.structureFileId && file.category === '结构图' && file.kind !== 'other')
   : undefined)
 const defaultFileKeys = computed(() => new Set(defaultDocumentFiles(data.value?.files || []).map(file => file.key)))
-// 发布版本清单里的图纸不属于工作态，不按现行/下发/归集判定（dev-20261013-009）。
-const selectedDrafts = computed(() => requestedFiles.value.filter(file => !file.published && isEngineeringFile(file) && (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value)))
-const visibleFiles = computed(() => (data.value?.files || []).filter((file) => selectedFiles.value.includes(file.key) && selectedSections.value.includes(file.section) && (file.section !== 'print' || defaultFileKeys.value.has(file.key))))
+const visibleFiles = computed(() => orderedPrintFiles(data.value?.files || [], selectedFiles.value).filter(file => selectedSections.value.includes(file.section)))
 const requestedFiles = computed(() => {
   const files = [...visibleFiles.value]
-  if (selectedSections.value.includes('spec') && structureFile.value && !files.some((file) => file.key === structureFile.value?.key)) files.push(structureFile.value)
+  if (selectedSections.value.includes('spec') && structureFile.value && canPrintDocumentFile(structureFile.value) && !files.some((file) => file.key === structureFile.value?.key)) files.push(structureFile.value)
   return files
 })
 const pendingCount = computed(() => requestedFiles.value.filter((file) => !images.value[file.key] && !fileErrors.value[file.key]).length)
@@ -138,10 +135,11 @@ async function load() {
       ? await loadDocsetForVersion(props.productId, props.versionId, props.productCode, props.productName)
       : await loadDocset(props.productId)
     if (current !== generation || disposed) return
-    selectedFiles.value = (props.initialFiles ? result.files.filter(file => file.kind !== 'other' && props.initialFiles!.includes(file.key)) : defaultDocumentFiles(result.files)).map(file => file.key)
+    selectedFiles.value = (props.initialFiles ? orderedPrintFiles(result.files, props.initialFiles) : defaultDocumentFiles(result.files)).map(file => file.key)
     data.value = result
     emit('loaded', result)
     if (selectedSections.value.includes('spec') && result.workSpec.structureFileId && !structureFile.value) throw new Error('所选结构图已不可用，请在产品作业规范中重新选择')
+    if (selectedSections.value.includes('spec') && structureFile.value && !canPrintDocumentFile(structureFile.value)) throw new Error('所选结构图未设为现行或尚未下发，请先完成图纸下发后重新加载')
   } catch (e) {
     if (current === generation && !disposed) error.value = e instanceof Error ? e.message : '文档加载失败'
   } finally { if (current === generation && !disposed) loading.value = false }
@@ -165,7 +163,26 @@ async function expandFiles() {
   } finally { queueRunning = false }
 }
 function filesFor(section: string): DocFile[] {
-  return data.value?.files.filter(file => file.section === section && (section === 'print' ? defaultFileKeys.value.has(file.key) : (showHistory.value || !isEngineeringFile(file) || defaultFileKeys.value.has(file.key) || selectedFiles.value.includes(file.key)))) || []
+  const files = data.value?.files.filter(file => file.section === section && (showHistory.value || !isEngineeringFile(file) || defaultFileKeys.value.has(file.key) || selectedFiles.value.includes(file.key))) || []
+  return files.sort((a, b) => {
+    const position = (file: DocFile) => { const index = selectedFiles.value.indexOf(file.key); return index < 0 ? Number.MAX_SAFE_INTEGER : index }
+    return position(a) - position(b)
+  })
+}
+function canMoveFile(file: DocFile, delta: number) {
+  const selected = filesFor(file.section).filter(item => selectedFiles.value.includes(item.key))
+  const index = selected.findIndex(item => item.key === file.key)
+  return index >= 0 && index + delta >= 0 && index + delta < selected.length
+}
+function moveFile(file: DocFile, delta: number) {
+  if (!canMoveFile(file, delta)) return
+  const selected = filesFor(file.section).filter(item => selectedFiles.value.includes(item.key))
+  const index = selected.findIndex(item => item.key === file.key)
+  const first = selectedFiles.value.indexOf(file.key)
+  const second = selectedFiles.value.indexOf(selected[index + delta].key)
+  const keys = [...selectedFiles.value]
+  ;[keys[first], keys[second]] = [keys[second], keys[first]]
+  selectedFiles.value = keys
 }
 function sectionPageCount(section: string) { return pages.value.filter((page) => page.section === section).length }
 async function downloadOriginal(file: DocFile) {
@@ -202,7 +219,7 @@ defineExpose({ reload: load })
 watch(requestedFiles, expandFiles)
 watch(fontSettings, () => { overflow.value = {} }, { deep: true })
 watch(canPrint, (ready) => {
-  if (ready && props.standalone && props.autoPrint && !autoPrinted && !selectedDrafts.value.length) {
+  if (ready && props.standalone && props.autoPrint && !autoPrinted) {
     autoPrinted = true
     printDocuments()
   }

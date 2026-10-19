@@ -40,6 +40,9 @@ public class SysAttachmentRef {
     private String fileName;
     @TableField(exist = false)
     private Long fileSize;
+    /** 内容摘要，仅用于重复提示。 */
+    @TableField(exist = false)
+    private String sha256;
     @TableField(exist = false)
     private String fileType;
 
