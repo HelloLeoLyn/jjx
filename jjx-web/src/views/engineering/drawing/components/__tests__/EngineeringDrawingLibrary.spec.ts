@@ -31,13 +31,14 @@ const mocks = vi.hoisted(() => ({
   refsByProduct: vi.fn(), documentTypes: vi.fn(), tempUpload: vi.fn(), createRef: vi.fn(), updateMeta: vi.fn(), unbind: vi.fn(),
   setCurrent: vi.fn(), release: vi.fn(), updateDrawingMetadata: vi.fn(), getWorkSpec: vi.fn(), saveWorkSpec: vi.fn(),
   success: vi.fn(), error: vi.fn(), confirm: vi.fn(), download: vi.fn(),
+  hasPermission: vi.fn(),
 }))
 vi.mock('@/utils/request', () => ({ default: {} }))
 vi.mock('@/api/product/workSpec', async original => ({
   ...await original<typeof import('@/api/product/workSpec')>(),
   productWorkSpecApi: { get: mocks.getWorkSpec, save: mocks.saveWorkSpec },
 }))
-vi.mock('@/store/modules/user', () => ({ useUserStore: () => ({ hasPermission: () => true }) }))
+vi.mock('@/store/modules/user', () => ({ useUserStore: () => ({ hasPermission: mocks.hasPermission }) }))
 vi.mock('@/api/system/attachmentRef', () => ({ attachmentRefApi: mocks }))
 vi.mock('@/api/system/attachment', () => ({ attachmentApi: mocks }))
 vi.mock('@/components/product/ProductFilePreview.vue', () => ({ default: { props: ['modelValue', 'file'], template: '<div />' } }))
@@ -79,6 +80,9 @@ async function setup(data = [file(1), file(2, { version: 'B', isCurrent: 1, rele
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.hasPermission.mockReturnValue(true)
+  mocks.updateDrawingMetadata.mockResolvedValue({ data: true })
+  mocks.updateMeta.mockResolvedValue({ data: true })
   mocks.documentTypes.mockResolvedValue({ data: [] })
   mocks.confirm.mockResolvedValue('confirm')
   mocks.tempUpload.mockResolvedValue({ data: 9 })
@@ -119,6 +123,8 @@ describe('工程图集列表与筛选（dev-20261019-024）', () => {
     expect(wrapper.findAll('button').some(button => button.text() === '撤回')).toBe(false)
     await wrapper.get('.el-table__expand-icon').trigger('click')
     await flushPromises()
+    state.printPublishing = true
+    await nextTick()
     await clickText(wrapper, '撤回')
     expect(mocks.release).toHaveBeenCalledWith(1, false)
     await clickText(wrapper, '设为现行')
@@ -135,31 +141,29 @@ describe('工程图集列表与筛选（dev-20261019-024）', () => {
       file(4, { drawingNo: 'DWG-3', documentType: null, fileRole: 'ORIGINAL' }),
     ])
     expect(state.rows).toHaveLength(3)
-    expect(state.missingPrintCount).toBe(2)
-    expect(state.unclassifiedCount).toBe(1)
-    state.onlyMissingPrint = true
+    expect(state.pendingCount).toBe(2)
+    state.onlyPending = true
     await nextTick()
     expect(state.filteredRows.map((row: any) => row.drawingNo)).toEqual(['DWG-3', 'DWG-1'])
     state.categoryFilter = 'STRUCTURE_DRAWING'
     await nextTick()
-    expect(state.missingPrintCount).toBe(1)
-    expect(state.unclassifiedCount).toBe(0)
+    expect(state.pendingCount).toBe(1)
     state.keyword = '包装'
     await nextTick()
-    expect(state.missingPrintCount).toBe(0)
+    expect(state.pendingCount).toBe(0)
     expect(state.documentTypeTabs.find((item: any) => item.value === 'PACKAGING_DRAWING').count).toBe(1)
     state.categoryFilter = 'PACKAGING_DRAWING'
-    state.onlyMissingPrint = false
+    state.onlyPending = false
     await nextTick()
     expect(state.filteredRows).toHaveLength(1)
   })
 
-  it('未分类开关、提示与补录入口可用；没有编号的旧文件不错误合并', async () => {
+  it('待处理包含未分类及待归集；没有编号的旧文件不错误合并', async () => {
     const { wrapper, state } = await setup([file(1, { documentType: null }), file(2, { drawingNo: null, documentType: null }), file(3, { drawingNo: null })])
     expect(state.rows).toHaveLength(3)
-    state.onlyUnclassified = true
+    state.onlyPending = true
     await nextTick()
-    expect(state.filteredRows).toHaveLength(2)
+    expect(state.filteredRows).toHaveLength(3)
     expect(wrapper.text()).toContain('补资料类型后才能进打印')
     await clickText(wrapper, '补资料类型')
     expect(state.metadataVisible).toBe(true)
@@ -187,9 +191,12 @@ describe('工程图集列表与筛选（dev-20261019-024）', () => {
   })
 
   it('下发与设现行仅在版本时间线提供，无现行时允许设置选中版本', async () => {
-    const { wrapper } = await setup([file(1, { isCurrent: 1 }), file(2, { version: 'B' })])
+    const { wrapper, state } = await setup([file(1, { isCurrent: 1 }), file(2, { version: 'B' })])
     expect(wrapper.findAll('button').some(button => button.text() === '下发')).toBe(false)
     await wrapper.get('.el-table__expand-icon').trigger('click'); await flushPromises()
+    expect(wrapper.findAll('button').some(button => button.text() === '下发')).toBe(false)
+    state.printPublishing = true
+    await nextTick()
     await clickText(wrapper, '下发')
     expect(mocks.release).toHaveBeenCalledWith(1, true)
     const pending = await setup([file(4), file(5, { version: 'B' })])
@@ -207,7 +214,7 @@ describe('工程图集列表与筛选（dev-20261019-024）', () => {
     state.addFile({ uid: 9, name: '新结构图.pdf', raw: new File(['pdf'], '新结构图.pdf', { type: 'application/pdf' }) })
     state.categoryFilter = 'PACKAGING_DRAWING'
     state.keyword = '无匹配'
-    state.onlyMissingPrint = true
+    state.onlyPending = true
     mocks.refsByProduct.mockResolvedValue({ data: [file(9, { drawingNo: '新结构图', drawingName: '新结构图' })] })
     await state.submitUpload()
     await flushPromises()
@@ -334,6 +341,139 @@ describe('工程图集列表与筛选（dev-20261019-024）', () => {
     data[0].isCurrent = 0; data[1].isCurrent = 1
     mocks.saveWorkSpec.mockClear(); await state.retryStructureSync()
     expect(mocks.saveWorkSpec).not.toHaveBeenCalled(); expect(state.syncError).toContain('目标版本已不是现行版本')
+  })
+
+  it('待处理按图纸行去重，关键词和类型联动；齐全图纸不混入', async () => {
+    const { state } = await setup([
+      file(1, { drawingNo: '缺件未分类', documentType: null, fileRole: 'ORIGINAL' }),
+      file(2, { drawingNo: null }),
+      file(3, { drawingNo: '齐全' }),
+      file(4, { drawingNo: '缺包装图', documentType: 'PACKAGING_DRAWING', fileRole: 'ORIGINAL' }),
+    ])
+    expect(state.pendingCount).toBe(3)
+    state.onlyPending = true
+    await nextTick()
+    expect(state.filteredRows).toHaveLength(3)
+    expect(state.filteredRows.some((row: any) => row.drawingNo === '齐全')).toBe(false)
+    state.categoryFilter = 'STRUCTURE_DRAWING'
+    await nextTick()
+    expect(state.pendingCount).toBe(1)
+    state.keyword = '齐全'
+    await nextTick()
+    expect(state.pendingCount).toBe(0)
+    expect(state.filteredRows).toHaveLength(0)
+  })
+
+  it('筛选默认收起更多，展开可用；打印发布开关不改变下发状态', async () => {
+    const { wrapper, state } = await setup()
+    expect(wrapper.findAll('.filters')).toHaveLength(1)
+    expect(wrapper.get('.filters').text()).toContain('只看待处理')
+    expect(wrapper.get('.filters').text()).not.toContain('只看缺打印件')
+    await clickText(wrapper, '更多')
+    expect(wrapper.findAll('.filters')).toHaveLength(2)
+    await wrapper.get('.el-table__expand-icon').trigger('click'); await flushPromises()
+    expect(wrapper.findAll('button').some(button => button.text() === '撤回')).toBe(false)
+    const toggle = wrapper.findAll('.el-checkbox').find(item => item.text() === '打印发布')!
+    await toggle.get('input').setValue(true)
+    expect(wrapper.findAll('button').some(button => button.text() === '撤回')).toBe(true)
+    await toggle.get('input').setValue(false)
+    expect(wrapper.findAll('button').some(button => button.text() === '撤回')).toBe(false)
+    expect(mocks.release).not.toHaveBeenCalled()
+    expect(state.rows[0].released).toBe(true)
+    expect(wrapper.text()).toContain('打开「打印发布」')
+  })
+
+  it('无下发权限不显示打印发布开关或任何下发撤回动作', async () => {
+    mocks.hasPermission.mockImplementation((permission: string) => permission !== 'engineering:drawing:release')
+    const { wrapper, state } = await setup()
+    state.printPublishing = true
+    await wrapper.get('.el-table__expand-icon').trigger('click'); await flushPromises()
+    expect(wrapper.findAll('.el-checkbox').some(item => item.text() === '打印发布')).toBe(false)
+    expect(wrapper.findAll('button').some(button => ['下发', '撤回'].includes(button.text()))).toBe(false)
+    expect(wrapper.text()).toContain('需由有下发权限的人员完成下发')
+    expect(mocks.release).not.toHaveBeenCalled()
+  })
+
+  it('已有编号的未分类文件只补类型，不写隐藏的版本编号名称和用途', async () => {
+    const data = [file(1, { documentType: null, version: 'V1.7', drawingName: '历史名称', fileRole: 'ORIGINAL' })]
+    const { wrapper, state } = await setup(data)
+    await clickText(wrapper, '补资料类型')
+    expect(wrapper.findAll('.el-form-item').map(item => item.text())).toEqual([expect.stringContaining('资料类型')])
+    expect(state.metadata.documentType).toBe('')
+    state.metadata.documentType = 'PANEL_DRAWING'
+    mocks.updateMeta.mockImplementation(async () => { data[0].documentType = 'PANEL_DRAWING'; return { data: true } })
+    await state.saveMetadata()
+    expect(mocks.updateDrawingMetadata).not.toHaveBeenCalled()
+    expect(mocks.updateMeta).toHaveBeenCalledWith(101, { documentType: 'PANEL_DRAWING' })
+    expect(state.files[0]).toMatchObject({ drawingNo: 'DWG-1', drawingName: '历史名称', version: 'V1.7', fileRole: 'ORIGINAL' })
+    state.categoryFilter = 'PANEL_DRAWING'; await nextTick()
+    expect(state.filteredRows).toHaveLength(1)
+  })
+
+  it('待归集自动生成编号名称，已有版本用途保留，已归集才显示版本和用途', async () => {
+    const { wrapper, state } = await setup([file(1, { drawingNo: null, drawingName: null, version: 'C', fileRole: 'ORIGINAL' })])
+    await clickText(wrapper, '补录关联')
+    expect(wrapper.findAll('.el-form-item').map(item => item.text())).toEqual([expect.stringContaining('资料类型')])
+    await state.saveMetadata()
+    expect(mocks.updateDrawingMetadata).toHaveBeenCalledWith(1, { drawingNo: 'P42-ST', drawingName: '测试产品结构图', version: 'C', fileRole: 'ORIGINAL' })
+    state.openMetadata(fileToDrawing())
+    await nextTick()
+    expect(wrapper.findAll('.el-form-item').map(item => item.text()).join()).toContain('版本')
+    expect(wrapper.findAll('.el-form-item').map(item => item.text()).join()).toContain('文件用途')
+    expect(wrapper.findAll('.el-form-item').map(item => item.text()).join()).not.toContain('图纸编号')
+    state.metadata.version = 'D'
+    state.metadata.fileRole = 'PRINT'
+    await state.saveMetadata()
+    expect(mocks.updateDrawingMetadata).toHaveBeenLastCalledWith(1, { drawingNo: '旧编号', drawingName: '旧名称', version: 'D', fileRole: 'PRINT' })
+    function fileToDrawing() { return { id: 1, refId: 101, fileName: '1.pdf', drawingNo: '旧编号', drawingName: '旧名称', version: 'C', documentType: 'STRUCTURE_DRAWING', fileRole: 'ORIGINAL' } }
+  })
+
+  it('图纸保存失败不再写类型，分步保存失败明确提示且重试不重新编号', async () => {
+    const data = [file(1, { drawingNo: null, drawingName: null, documentType: null })]
+    const { state } = await setup(data)
+    state.openMetadata(state.files[0]); state.metadata.documentType = 'STRUCTURE_DRAWING'
+    mocks.updateDrawingMetadata.mockResolvedValueOnce({ data: false })
+    await state.saveMetadata()
+    expect(mocks.updateMeta).not.toHaveBeenCalled()
+    expect(state.metadataError).toBe('图纸关联保存失败')
+    mocks.updateDrawingMetadata.mockImplementation(async (_, metadata) => { Object.assign(data[0], metadata); return { data: true } })
+    mocks.updateMeta.mockRejectedValueOnce(new Error('类型接口失败'))
+    await state.saveMetadata()
+    expect(state.metadataVisible).toBe(true)
+    expect(state.metadataError).toContain('图纸关联已保存，资料类型保存失败')
+    expect(mocks.success).not.toHaveBeenCalled()
+    mocks.updateDrawingMetadata.mockClear()
+    await state.saveMetadata()
+    expect(mocks.updateDrawingMetadata).not.toHaveBeenCalled()
+    expect(mocks.updateMeta).toHaveBeenLastCalledWith(101, { documentType: 'STRUCTURE_DRAWING' })
+    expect(state.metadataVisible).toBe(false)
+    expect(mocks.success).toHaveBeenCalledWith('图纸关联已保存')
+  })
+
+  it('只补类型接口返回false不提示成功，保留弹窗可重试', async () => {
+    const { state } = await setup([file(1, { documentType: null })])
+    state.openMetadata(state.files[0]); state.metadata.documentType = 'PANEL_DRAWING'
+    mocks.updateMeta.mockResolvedValueOnce({ data: false })
+    await state.saveMetadata()
+    expect(state.metadataVisible).toBe(true)
+    expect(state.metadataError).toBe('资料类型保存失败')
+    expect(mocks.success).not.toHaveBeenCalled()
+    expect(mocks.updateDrawingMetadata).not.toHaveBeenCalled()
+    await state.saveMetadata()
+    expect(state.metadataVisible).toBe(false)
+  })
+
+  it('编辑关联保留隐藏的空名称，保存过程中不重复提交', async () => {
+    const { state } = await setup([file(1, { drawingName: '' })])
+    state.openMetadata(state.files[0]); state.metadata.version = 'B'
+    let finish!: (value: { data: boolean }) => void
+    mocks.updateDrawingMetadata.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const saving = state.saveMetadata()
+    await state.saveMetadata()
+    expect(mocks.updateDrawingMetadata).toHaveBeenCalledTimes(1)
+    expect(mocks.updateDrawingMetadata).toHaveBeenCalledWith(1, expect.objectContaining({ drawingName: '', version: 'B' }))
+    finish({ data: true }); await saving
+    expect(state.metadataSaving).toBe(false)
   })
 
 })

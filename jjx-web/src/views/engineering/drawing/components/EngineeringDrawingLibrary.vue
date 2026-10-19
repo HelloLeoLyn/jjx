@@ -14,11 +14,15 @@
         <el-option :label="`全部资料类型 (${keywordRows.length})`" value="" />
         <el-option v-for="item in documentTypeTabs" :key="item.value" :label="`${item.label} (${item.count})`" :value="item.value" />
       </el-select>
-      <el-checkbox v-model="onlyMissingPrint">只看缺打印件 ({{ missingPrintCount }})</el-checkbox>
-      <el-checkbox v-model="onlyUnclassified">只看未分类 ({{ unclassifiedCount }})</el-checkbox>
+      <el-checkbox v-model="onlyPending">只看待处理 ({{ pendingCount }})</el-checkbox>
+      <el-button link type="primary" @click="showMore = !showMore">{{ showMore ? '收起更多' : '更多' }}</el-button>
+      <el-checkbox v-if="canRelease" v-model="printPublishing">打印发布</el-checkbox>
+    </div>
+    <div v-if="showMore" class="filters">
       <el-select v-model="view" style="width:160px"><el-option v-for="item in DrawingViewEnum.items" :key="item.value" :label="item.label" :value="item.value" /></el-select>
       <el-select v-model="releaseFilter" style="width:145px"><el-option label="全部下发状态" value="" /><el-option v-for="item in DrawingReleaseFlagEnum.items" :key="item.value" :label="item.label" :value="item.value" /></el-select>
     </div>
+    <p class="library-note">图集打印需资料已分类、有图纸关联、为现行版且已下发。<span v-if="canRelease">需要下发或撤回时，打开「打印发布」并展开图纸版本。</span><span v-else>需由有下发权限的人员完成下发。</span></p>
     <el-table v-loading="loading" :data="filteredRows" row-key="key" :row-class-name="drawingRowClass" class="drawing-table">
       <template #empty>
         <el-empty :description="error ? '图纸加载失败，请刷新重试' : files.length ? '暂无符合条件的图纸，可切换筛选' : '暂无工程图纸'">
@@ -35,7 +39,7 @@
                 <el-tag size="small" :type="revision.current ? 'success' : 'info'">{{ DrawingCurrentFlagEnum.getLabel(revision.current ? DrawingCurrentFlagEnum.CURRENT.value : DrawingCurrentFlagEnum.NOT_CURRENT.value) }}</el-tag>
                 <el-tag size="small" :type="revision.released ? 'success' : 'info'">{{ revision.released ? '已下发' : revision.hasReleased ? '部分已下发' : '未下发' }}</el-tag>
                 <el-button v-if="canUpload && revision.drawingNo && !revision.current" link type="warning" :disabled="!!mutationId" @click="setCurrent(revision)">设为现行</el-button>
-                <el-button v-if="canRelease && ((revision.drawingNo && revision.current) || revision.hasReleased)" link :type="revision.hasReleased ? 'info' : 'success'" :disabled="!!mutationId" @click="release(revision)">{{ revision.hasReleased ? '撤回' : '下发' }}</el-button>
+                <el-button v-if="canRelease && printPublishing && ((revision.drawingNo && revision.current) || revision.hasReleased)" link :type="revision.hasReleased ? 'info' : 'success'" :disabled="!!mutationId" @click="release(revision)">{{ revision.hasReleased ? '撤回' : '下发' }}</el-button>
                 <el-button v-if="pendingStructureSync?.drawingNo === revision.drawingNo && pendingStructureSync?.version === revision.version" link type="warning" :disabled="!!mutationId" @click="retryStructureSync">重试同步结构图</el-button>
               </div>
               <div class="revision-files">
@@ -54,7 +58,7 @@
         </template>
       </el-table-column>
       <el-table-column label="图纸" min-width="210">
-        <template #default="{ row }"><div class="drawing-title">{{ row.name }}</div><div class="drawing-sub">{{ row.drawingNo || '待归集：请补录图纸编号' }}</div></template>
+        <template #default="{ row }"><div class="drawing-title">{{ row.name }}</div><div class="drawing-sub">{{ row.drawingNo || '待归集：请补录关联' }}</div></template>
       </el-table-column>
       <el-table-column label="资料类型" width="140"><template #default="{ row }">{{ row.documentTypes.map(documentTypeLabel).join('、') }}</template></el-table-column>
       <el-table-column label="当前版本" width="110"><template #default="{ row }">{{ row.version || '未标注' }}{{ row.current ? '' : '（待设现行）' }}</template></el-table-column>
@@ -106,9 +110,16 @@
       <template #footer><span class="upload-summary">{{ queue.filter(item => item.status === DrawingUploadStatusEnum.SUCCESS.value).length }} / {{ queue.length }} 个已上传</span><el-button :disabled="uploading" @click="closeUpload()">关闭</el-button><el-button type="primary" :loading="uploading" :disabled="!pendingUploads.length" @click="submitUpload">上传待处理文件 / 重试失败项</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="metadataVisible" title="图纸文件关联" width="560px" append-to-body :close-on-click-modal="false" :show-close="!metadataSaving" :close-on-press-escape="!metadataSaving">
+    <el-dialog v-model="metadataVisible" :title="metadataTypeOnly ? '补资料类型' : metadataFile?.drawingNo ? '编辑关联' : '补录关联'" width="560px" append-to-body :close-on-click-modal="false" :show-close="!metadataSaving" :close-on-press-escape="!metadataSaving">
       <p class="metadata-file">{{ metadataFile?.fileName }}</p>
-      <el-form label-width="110px"><el-form-item label="资料类型" required><div class="metadata-type"><el-tag size="small" effect="plain">工程技术资料</el-tag><el-select v-model="metadata.documentType" @change="regenerateMetadataIdentity"><el-option v-for="item in documentTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></div></el-form-item><el-form-item label="版本" required><el-input v-model="metadata.version" maxlength="50" /></el-form-item></el-form>
+      <el-alert v-if="metadataError" :title="metadataError" type="error" :closable="false" />
+      <el-form label-width="110px"><el-form-item label="资料类型" required><div class="metadata-type"><el-tag size="small" effect="plain">工程技术资料</el-tag><el-select v-model="metadata.documentType" :disabled="metadataSaving" @change="regenerateMetadataIdentity"><el-option v-for="item in documentTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></div></el-form-item>
+        <template v-if="!metadataTypeOnly && metadataFile?.drawingNo">
+          <el-form-item label="版本" required><el-input v-model="metadata.version" maxlength="50" :disabled="metadataSaving" /></el-form-item>
+          <el-form-item label="文件用途" required><el-select v-model="metadata.fileRole" :disabled="metadataSaving"><el-option v-for="item in DrawingFileRoleEnum.items" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
+        </template>
+      </el-form>
+      <p v-if="!metadataFile?.drawingNo" class="library-note">图纸编号和名称自动生成；已有版本和文件用途保留。</p>
       <template #footer><el-button :disabled="metadataSaving" @click="metadataVisible = false">取消</el-button><el-button type="primary" :loading="metadataSaving" @click="saveMetadata">保存关联</el-button></template>
     </el-dialog>
     <ProductFilePreview v-model="previewVisible" :file="previewFile" />
@@ -169,8 +180,9 @@ const releaseFilter = ref<number | string>('')
 const mutationId = ref<number>()
 const syncError = ref('')
 const pendingStructureSync = ref<{ productId: number; drawingNo: string; version: string }>()
-const onlyMissingPrint = ref(false)
-const onlyUnclassified = ref(false)
+const onlyPending = ref(false)
+const showMore = ref(false)
+const printPublishing = ref(false)
 let generation = 0
 let disposed = false
 interface RevisionRow { key: string; drawingNo: string; name: string; documentType: string; version: string; files: DrawingFile[]; current: boolean; released: boolean; hasReleased: boolean; latest: DrawingFile }
@@ -224,11 +236,10 @@ const documentTypeTabs = computed(() => [
 ])
 const typeRows = computed(() => keywordRows.value.filter(row => !categoryFilter.value ||
   row.documentTypes.includes(categoryFilter.value === UNCATEGORIZED_FILTER ? '' : categoryFilter.value)))
-const missingPrintCount = computed(() => typeRows.value.filter(row => row.missingPrint).length)
-const unclassifiedCount = computed(() => typeRows.value.filter(row => row.unclassified).length)
+function needsAttention(row: DrawingRow) { return row.missingPrint || row.unclassified || !row.drawingNo }
+const pendingCount = computed(() => typeRows.value.filter(needsAttention).length)
 const filteredRows = computed(() => typeRows.value.filter(row =>
-  (!onlyMissingPrint.value || row.missingPrint)
-  && (!onlyUnclassified.value || row.unclassified)
+  (!onlyPending.value || needsAttention(row))
   // 版本视图决定该图纸是否出现；完整时间线和当前版本操作目标始终保留。
   && row.revisions.some(revision =>
     (view.value !== DrawingViewEnum.CURRENT.value || revision.current)
@@ -293,7 +304,7 @@ function toDrawingFile(ref: AttachmentRefItem): DrawingFile {
     refId: Number(ref.id),
   }
 }
-watch(() => props.productId, () => { pendingStructureSync.value = undefined; syncError.value = ''; hasLoaded = false; lastLoadedIds = new Set(); highlightedKeys.value = []; if (highlightTimer) clearTimeout(highlightTimer); onlyMissingPrint.value = false; onlyUnclassified.value = false; view.value = DrawingViewEnum.ALL.value; releaseFilter.value = ''; files.value = []; categoryFilter.value = ''; keyword.value = ''; previewVisible.value = false; loadFiles() }, { immediate: false })
+watch(() => props.productId, () => { pendingStructureSync.value = undefined; syncError.value = ''; hasLoaded = false; lastLoadedIds = new Set(); highlightedKeys.value = []; if (highlightTimer) clearTimeout(highlightTimer); onlyPending.value = false; showMore.value = false; printPublishing.value = false; view.value = DrawingViewEnum.ALL.value; releaseFilter.value = ''; files.value = []; categoryFilter.value = ''; keyword.value = ''; previewVisible.value = false; loadFiles() }, { immediate: false })
 const previewVisible = ref(false)
 const previewFile = ref<ProductDrawingFile>()
 function preview(file: ProductDrawingFile) { previewFile.value = file; previewVisible.value = true }
@@ -480,7 +491,7 @@ async function submitUpload() {
     }
     if (pending.some(row => row.status === DrawingUploadStatusEnum.SUCCESS.value)) {
       // 上传后回到可见范围，避免新图纸被先前筛选隐藏。
-      categoryFilter.value = ''; keyword.value = ''; onlyMissingPrint.value = false; onlyUnclassified.value = false
+      categoryFilter.value = ''; keyword.value = ''; onlyPending.value = false
       view.value = DrawingViewEnum.ALL.value; releaseFilter.value = ''
       if (!pendingUploads.value.length) { revokeQueue(); uploadVisible.value = false; queue.value = [] }
     }
@@ -549,13 +560,16 @@ async function closeUpload(done?: () => void) {
 const metadataVisible = ref(false)
 const metadataSaving = ref(false)
 const metadataFile = ref<DrawingFile>()
+const metadataTypeOnly = ref(false)
+const metadataError = ref('')
 interface MetadataForm extends DrawingMetadata { documentType: string }
 const metadata = reactive<MetadataForm>({ drawingNo: '', drawingName: '', version: '', documentType: '', fileRole: DrawingFileRoleEnum.PRINT.value })
 function openMetadata(file: DrawingFile) {
   metadataFile.value = file
+  metadataTypeOnly.value = !file.documentType
+  metadataError.value = ''
   Object.assign(metadata, {
-    documentType: file.documentType && documentTypeOptions.value.some(item => item.value === file.documentType)
-      ? file.documentType : (documentTypeOptions.value[0]?.value || ''),
+    documentType: file.documentType || '',
     drawingNo: file.drawingNo || newDrawingIdentity(props.productCode, props.productName, file.documentType || documentTypeOptions.value[0]?.value || '', files.value).drawingNo,
     drawingName: file.drawingName || newDrawingIdentity(props.productCode, props.productName, file.documentType || documentTypeOptions.value[0]?.value || '', files.value).drawingName,
     version: file.version || 'A',
@@ -570,24 +584,42 @@ function regenerateMetadataIdentity() {
   if (!metadataFile.value.drawingName) metadata.drawingName = identity.drawingName
 }
 async function saveMetadata() {
-  if (!metadataFile.value || !metadata.drawingNo.trim() || !metadata.version.trim() || !documentTypeOptions.value.some(item => item.value === metadata.documentType)) { ElMessage.warning('请选择资料类型，填写图纸编号和版本'); return }
+  if (metadataSaving.value) return
+  const file = metadataFile.value
+  if (!file || !documentTypeOptions.value.some(item => item.value === metadata.documentType)) { ElMessage.warning('请选择资料类型'); return }
+  if (!metadataTypeOnly.value && file.drawingNo && !metadata.version.trim()) { ElMessage.warning('请填写版本'); return }
+  regenerateMetadataIdentity()
   metadataSaving.value = true
+  metadataError.value = ''
+  let drawingSaved = false
   try {
-    // 图种字段停写：只更新图纸列；二级类型写引用元数据（refs 接口支持 documentType）。
-    await attachmentApi.updateDrawingMetadata(metadataFile.value.id, {
-      drawingNo: metadata.drawingNo.trim(),
-      drawingName: metadata.drawingName,
-      version: metadata.version.trim(),
-      fileRole: metadata.fileRole,
-    })
-    if (metadata.documentType !== (metadataFile.value.documentType || '')) {
-      await attachmentRefApi.updateMeta(metadataFile.value.refId, { documentType: metadata.documentType })
+    // 只补类型不写已有图纸字段；待归集时才自动生成身份，保留已有版本与用途。
+    if (!metadataTypeOnly.value || !file.drawingNo) {
+      const result = await attachmentApi.updateDrawingMetadata(file.id, {
+        drawingNo: file.drawingNo || metadata.drawingNo.trim(),
+        drawingName: file.drawingNo ? file.drawingName : (file.drawingName || metadata.drawingName),
+        version: metadataTypeOnly.value || !file.drawingNo ? (file.version || 'A') : metadata.version.trim(),
+        fileRole: metadataTypeOnly.value || !file.drawingNo ? (file.fileRole || metadata.fileRole) : metadata.fileRole,
+      })
+      if (result.data === false) throw new Error('图纸关联保存失败')
+      drawingSaved = true
+    }
+    if (metadata.documentType !== (file.documentType || '')) {
+      const result = await attachmentRefApi.updateMeta(file.refId, { documentType: metadata.documentType })
+      if (result.data === false) throw new Error('资料类型保存失败')
     }
     metadataVisible.value = false
     ElMessage.success('图纸关联已保存')
     await loadFiles()
   }
-  catch (e) { ElMessage.error(e instanceof Error ? e.message : '保存失败') }
+  catch (e) {
+    const message = e instanceof Error ? e.message : '保存失败'
+    metadataError.value = drawingSaved ? `图纸关联已保存，资料类型保存失败：${message}。请重试保存。` : message
+    ElMessage.error(metadataError.value)
+    await loadFiles()
+    const latest = files.value.find(item => item.refId === file.refId)
+    if (latest) metadataFile.value = latest
+  }
   finally { metadataSaving.value = false }
 }
 watch(() => uploadVisible.value || metadataVisible.value || uploading.value || metadataSaving.value || !!mutationId.value, value => emit('busy', value))
