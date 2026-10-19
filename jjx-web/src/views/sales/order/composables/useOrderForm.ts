@@ -32,6 +32,71 @@ type ProtectedAmountBaseline = {
  */
 type OrderAttachmentInput = OrderAttachmentDTO[]
 
+/**
+ * 订单金额口径（dev-20261019-020）：
+ * - sales_order / sales_quotation 的金额与单价统一按人民币（CNY）存储：后端计算器不做换算，
+ *   报价转订单只透传币种/汇率（QuotationServiceImpl 的既有口径：“订单金额仍为 CNY 口径，币种/汇率仅记录溯源”）。
+ * - exchange_rate 方向：1 外币 = N 人民币；仅用于溯源和「折合原币」展示。
+ * - 汇率缺失/非正时不得按 1 冒充：原币返回 null，由界面明确提示。
+ * - 本文件只做展示换算，不写库、不改历史金额。
+ */
+export interface OrderMoneyView {
+  currency: string
+  cny: number
+  original: number | null
+  rateValid: boolean
+}
+
+/** 金额四舍五入到 2 位（HALF_UP）。 */
+export function roundAmount(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+/** 同一金额的「人民币 + 折合原币」视图。 */
+export function orderMoneyView(
+  amount: number | string | null | undefined,
+  currency?: string | null,
+  exchangeRate?: number | string | null,
+): OrderMoneyView {
+  const cny = roundAmount(Number(amount ?? 0))
+  const cur = String(currency || 'CNY').trim().toUpperCase() || 'CNY'
+  if (cur === 'CNY') return { currency: 'CNY', cny, original: cny, rateValid: true }
+  const rate = Number(exchangeRate)
+  if (!Number.isFinite(rate) || rate <= 0) return { currency: cur, cny, original: null, rateValid: false }
+  return { currency: cur, cny, original: roundAmount(cny / rate), rateValid: true }
+}
+
+export function formatAmount(value?: number | string | null): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '—'
+  return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** 人民币金额（系统金额字段口径）。 */
+export function formatCny(view: OrderMoneyView): string {
+  return `¥${formatAmount(view.cny)}`
+}
+
+/** 折合原币；人民币单直接显示人民币，外币单汇率缺失时明确提示。 */
+export function formatOriginal(view: OrderMoneyView): string {
+  if (view.currency === 'CNY') return `¥${formatAmount(view.cny)}`
+  if (!view.rateValid || view.original == null) return '汇率缺失，无法折算原币'
+  return `${view.currency} ${formatAmount(view.original)}`
+}
+
+/** 列表/详情的一行金额文案：人民币为主，外币单附折合原币。 */
+export function moneyPair(
+  amount: number | string | null | undefined,
+  currency?: string | null,
+  exchangeRate?: number | string | null,
+): string {
+  const view = orderMoneyView(amount, currency, exchangeRate)
+  if (view.currency === 'CNY') return formatCny(view)
+  return `${formatCny(view)}（${formatOriginal(view)}）`
+}
+
 export function useOrderForm(options: UseOrderFormOptions = {}) {
   const { isEdit = false, initialData = {} } = options
 
@@ -419,7 +484,7 @@ export function useOrderForm(options: UseOrderFormOptions = {}) {
     onPricingChange()
   }
 
-  const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
+  const roundMoney = (value: number) => roundAmount(value)
   let originalPricing = ''
   const pricingSnapshot = () => JSON.stringify({
     taxRate: Number(form.taxRate || 0),

@@ -181,10 +181,24 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="币种" align="center" prop="currency" width="80" />
-        <el-table-column label="总金额" align="center" prop="totalAmount" width="120">
+        <el-table-column label="币种 / 汇率" align="center" width="110">
           <template #default="scope">
-            <span>{{ formatCurrency(scope.row.totalAmount) }}</span>
+            <div>{{ scope.row.currency || 'CNY' }}</div>
+            <div v-if="scope.row.currency && scope.row.currency !== 'CNY'" class="money-sub">
+              1 {{ scope.row.currency }} = {{ scope.row.exchangeRate || '—' }} CNY
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="含税总额（折前）" align="right" prop="totalAmount" width="200">
+          <template #default="scope">
+            <div>{{ moneyPair(scope.row.totalAmount, scope.row.currency, scope.row.exchangeRate) }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="实际应收" align="right" prop="finalAmount" width="200">
+          <template #default="scope">
+            <div class="money-primary">
+              {{ moneyPair(scope.row.finalAmount, scope.row.currency, scope.row.exchangeRate) }}
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="销售员" align="center" prop="salesManagerName" width="100" />
@@ -308,7 +322,8 @@ const route = useRoute()
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import { orderApi } from '@/api/sales/order'
 import { orderStatusApi } from '@/api/sales/orderStatus'
-import { parseTime, download, formatCurrency, parseDate } from '@/utils/format'
+import { parseTime, download, parseDate } from '@/utils/format'
+import { moneyPair } from './composables/useOrderForm'
 import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
 import OrderBatchSampleDialog, {
@@ -1042,5 +1057,15 @@ function handleReviewPrint(row: any, templateId: 47 | 53) {
 .attach-hint {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+/* 金额口径（dev-20261019-020）：人民币为主，折合原币作副行 */
+.money-sub {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
+.money-primary {
+  font-weight: 600;
 }
 </style>

@@ -75,37 +75,63 @@
             <span>金额信息</span>
           </template>
 
+          <el-alert
+            v-if="isForeignOrder"
+            class="money-note"
+            type="info"
+            :closable="false"
+            show-icon
+            title="金额按人民币（CNY）口径存储；折合原币按 1 外币 = N 人民币计算，仅作溯源展示，不改变已存金额。"
+          />
+          <el-alert
+            v-if="isForeignOrder && !rateValid"
+            class="money-note"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="该单汇率缺失或无效，无法折算原币；系统未按 1 冒充汇率。"
+          />
           <el-descriptions :column="3" border>
-            <el-descriptions-item label="总金额">
-              <strong class="text-primary">
-                {{ formatCurrency(orderDetail.totalAmount) }} {{ orderDetail.currency }}
-              </strong>
+            <el-descriptions-item label="含税总额（折前）">
+              <strong class="text-primary">{{ cnyText(orderDetail.totalAmount) }}</strong>
+              <div v-if="isForeignOrder" class="money-sub">
+                折合原币：{{ originalText(orderDetail.totalAmount) }}
+              </div>
             </el-descriptions-item>
             <el-descriptions-item label="运费（不计税）">
               <span v-if="orderDetail.shippingFee == null">金额组成待确认</span>
-              <span v-else
-                >{{ formatCurrency(orderDetail.shippingFee) }} {{ orderDetail.currency }}</span
-              >
+              <template v-else>
+                <span>{{ cnyText(orderDetail.shippingFee) }}</span>
+                <div v-if="isForeignOrder" class="money-sub">
+                  折合原币：{{ originalText(orderDetail.shippingFee) }}
+                </div>
+              </template>
             </el-descriptions-item>
             <el-descriptions-item label="税率">
               {{ (Number(orderDetail.taxRate) || 0).toFixed(2) }}%
             </el-descriptions-item>
             <el-descriptions-item label="税额">
-              {{ formatCurrency(orderDetail.taxAmount) }} {{ orderDetail.currency }}
-            </el-descriptions-item>
-            <el-descriptions-item label="含税总金额">
-              {{ formatCurrency(orderDetail.totalAmountWithTax) }} {{ orderDetail.currency }}
+              <span>{{ cnyText(orderDetail.taxAmount) }}</span>
+              <div v-if="isForeignOrder" class="money-sub">
+                折合原币：{{ originalText(orderDetail.taxAmount) }}
+              </div>
             </el-descriptions-item>
             <el-descriptions-item label="折扣率">
-              {{ (orderDetail.discountRate * 100).toFixed(2) }}%
+              {{ (Number(orderDetail.discountRate) * 100).toFixed(2) }}%
             </el-descriptions-item>
-            <el-descriptions-item label="折扣金额">
-              {{ formatCurrency(orderDetail.discountAmount) }} {{ orderDetail.currency }}
+            <el-descriptions-item label="优惠金额">
+              <span>{{ cnyText(orderDetail.discountAmount) }}</span>
+              <div v-if="isForeignOrder" class="money-sub">
+                折合原币：{{ originalText(orderDetail.discountAmount) }}
+              </div>
             </el-descriptions-item>
-            <el-descriptions-item label="最终金额" :span="3">
+            <el-descriptions-item label="实际应收" :span="3">
               <strong class="text-success" style="font-size: 18px">
-                {{ formatCurrency(orderDetail.finalAmount) }} {{ orderDetail.currency }}
+                {{ cnyText(orderDetail.finalAmount) }}
               </strong>
+              <div v-if="isForeignOrder" class="money-sub">
+                折合原币：{{ originalText(orderDetail.finalAmount) }}
+              </div>
             </el-descriptions-item>
           </el-descriptions>
         </el-card>
@@ -133,10 +159,16 @@
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="已付金额">
-              {{ formatCurrency(orderDetail.paidAmount) }} {{ orderDetail.currency }}
+              <span>{{ cnyText(orderDetail.paidAmount) }}</span>
+              <div v-if="isForeignOrder" class="money-sub">
+                折合原币：{{ originalText(orderDetail.paidAmount) }}
+              </div>
             </el-descriptions-item>
             <el-descriptions-item label="未付金额">
-              {{ formatCurrency(orderDetail.unpaidAmount) }} {{ orderDetail.currency }}
+              <span>{{ cnyText(orderDetail.unpaidAmount) }}</span>
+              <div v-if="isForeignOrder" class="money-sub">
+                折合原币：{{ originalText(orderDetail.unpaidAmount) }}
+              </div>
             </el-descriptions-item>
             <el-descriptions-item label="已生产数量">
               {{ orderDetail.producedQuantity || 0 }} / {{ orderDetail.totalQuantity }}
@@ -222,12 +254,12 @@
             />
             <el-table-column label="单位" prop="unit" width="60" align="center" />
             <el-table-column label="数量" prop="quantity" width="80" align="right" />
-            <el-table-column label="单价" prop="unitPrice" width="100" align="right">
+            <el-table-column label="单价（元）" prop="unitPrice" width="110" align="right">
               <template #default="{ row }">
                 {{ formatCurrency(row.unitPrice) }}
               </template>
             </el-table-column>
-            <el-table-column label="金额" prop="amount" width="120" align="right">
+            <el-table-column label="金额（元）" prop="amount" width="130" align="right">
               <template #default="{ row }">
                 <strong>{{ formatCurrency(row.amount) }}</strong>
               </template>
@@ -246,10 +278,8 @@
             <strong>{{ orderItems.length }} 种商品</strong>
             <span style="margin-left: 20px">总数量：</span>
             <strong>{{ totalQuantity }}</strong>
-            <span style="margin-left: 20px">总金额：</span>
-            <strong class="text-success"
-              >{{ formatCurrency(totalAmount) }} {{ orderDetail.currency }}</strong
-            >
+            <span style="margin-left: 20px">明细金额合计（未税）：</span>
+            <strong class="text-success">{{ cnyText(itemsSubtotal) }}</strong>
           </div>
         </el-card>
 
@@ -291,6 +321,7 @@ import {
   ProdStatusEnum,
 } from '@/enums/sales/OrderEnum'
 import { parseDate, parseTime as parseDateTime, formatCurrency } from '@/utils/format'
+import { formatCny, formatOriginal, orderMoneyView } from '../composables/useOrderForm'
 
 const props = defineProps<{
   modelValue: boolean
@@ -316,10 +347,20 @@ const totalQuantity = computed(() => {
   return orderItems.value.reduce((sum, item) => sum + (item.quantity || 0), 0)
 })
 
-// 计算总金额
-const totalAmount = computed(() => {
+// 明细金额合计（未税，人民币口径）。注意：不是订单「含税总额/实际应收」。
+const itemsSubtotal = computed(() => {
   return orderItems.value.reduce((sum, item) => sum + (item.amount || 0), 0)
 })
+
+// 金额口径（dev-20261019-020）：系统金额字段按人民币存储；外币只做折合展示。
+const moneyView = (value: number | string | null | undefined) =>
+  orderMoneyView(value, orderDetail.value?.currency, orderDetail.value?.exchangeRate)
+const cnyText = (value: number | string | null | undefined) => formatCny(moneyView(value))
+const originalText = (value: number | string | null | undefined) => formatOriginal(moneyView(value))
+const isForeignOrder = computed(
+  () => String(orderDetail.value?.currency || 'CNY').toUpperCase() !== 'CNY',
+)
+const rateValid = computed(() => moneyView(orderDetail.value?.finalAmount).rateValid)
 
 // 获取时间线类型
 const getTimelineType = (result: string) => {
@@ -479,5 +520,15 @@ watch(
   background-color: #fafafa;
   border-bottom: 1px solid #ebeef5;
   font-weight: 600;
+}
+
+/* 金额口径（dev-20261019-020）：人民币主值 + 折合原币副行 */
+.money-sub {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}
+.money-note {
+  margin-bottom: 12px;
 }
 </style>

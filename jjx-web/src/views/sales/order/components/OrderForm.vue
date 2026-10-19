@@ -241,7 +241,7 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="单价" prop="unitPrice" width="160">
+      <el-table-column label="单价（元）" prop="unitPrice" width="170">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.unitPrice"
@@ -253,7 +253,7 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="金额" prop="amount" width="120">
+      <el-table-column label="金额（元）" prop="amount" width="130">
         <template #default="scope">
           <span>{{ formatCurrency(scope.row.amount) }}</span>
         </template>
@@ -423,7 +423,7 @@
     >
     <el-row class="amount-summary" :gutter="20">
       <el-col :span="8">
-        <el-form-item label="未税小计">
+        <el-form-item label="未税小计（元）">
           <el-input v-model="form.subtotalAmount" readonly style="width: 100%">
             <template #append>元</template>
           </el-input>
@@ -444,7 +444,7 @@
         </el-form-item>
       </el-col>
       <el-col :span="8">
-        <el-form-item label="税额">
+        <el-form-item label="税额（元）">
           <el-input v-model="form.taxAmount" readonly style="width: 100%">
             <template #append>元</template>
           </el-input>
@@ -453,7 +453,7 @@
     </el-row>
     <el-row class="amount-summary" :gutter="20">
       <el-col :span="8">
-        <el-form-item label="运费（不计税）">
+        <el-form-item label="运费（不计税，元）">
           <el-input-number
             v-model="form.shippingFee"
             :min="0"
@@ -466,7 +466,7 @@
         </el-form-item>
       </el-col>
       <el-col :span="8">
-        <el-form-item label="折扣金额">
+        <el-form-item label="优惠金额（元）">
           <el-input-number
             v-model="form.discountAmount"
             :min="0"
@@ -479,19 +479,31 @@
         </el-form-item>
       </el-col>
       <el-col :span="8">
-        <el-form-item label="应付总额">
-          <el-input v-model="form.finalAmount" readonly style="width: 100%">
+        <el-form-item label="含税总额（折前，元）">
+          <el-input v-model="form.totalAmount" readonly style="width: 100%">
             <template #append>元</template>
           </el-input>
         </el-form-item>
       </el-col>
     </el-row>
-    <el-row class="amount-summary" :gutter="20" v-if="form.currency && form.currency !== 'CNY'">
+    <el-row class="amount-summary" :gutter="20">
       <el-col :span="8">
-        <el-form-item :label="`外币总金额（${form.currency}）`">
-          <el-input v-model="foreignCurrencyDisplay" readonly style="width: 100%">
-            <template #append>{{ form.currency }}</template>
+        <el-form-item label="实际应收（元）">
+          <el-input v-model="form.finalAmount" readonly style="width: 100%">
+            <template #append>元</template>
           </el-input>
+        </el-form-item>
+      </el-col>
+      <el-col :span="16" v-if="form.currency && form.currency !== 'CNY'">
+        <el-form-item :label="`折合原币（${form.currency}）`">
+          <div class="rate-hint">
+            <span v-if="!foreignRateValid">汇率缺失或无效，无法折算原币；金额仍按人民币记录</span>
+            <span v-else>
+              含税总额（折前） {{ foreignTotalDisplay }} {{ form.currency }} · 实际应收
+              {{ foreignCurrencyDisplay }} {{ form.currency }}
+              （1 {{ form.currency }} = {{ form.exchangeRate }} CNY）
+            </span>
+          </div>
         </el-form-item>
       </el-col>
     </el-row>
@@ -564,7 +576,7 @@ import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { customerApi } from '@/api/sales/customer'
 import { serializeAddress } from '@/types/sales/address'
 import { quotationApi } from '@/api/sales/quotation'
-import { useOrderForm } from '../composables/useOrderForm'
+import { useOrderForm, orderMoneyView, formatAmount } from '../composables/useOrderForm'
 import InternationalAddressEditor from '@/components/InternationalAddressEditor.vue'
 import CustomerFormDialog from '../../customer/components/CustomerFormDialog.vue'
 import CustomerSelector from '@/components/Selector/CustomerSelector.vue'
@@ -777,12 +789,21 @@ watch(
 const exchangeRateLoading = ref(false)
 
 // 外币总金额显示（订单选外币时，将人民币总金额折算成外币）
-const foreignCurrencyDisplay = computed(() => {
-  if (!form.exchangeRate || !form.finalAmount || form.currency === 'CNY') return 0
-  // 汇率 = 1外币 = N人民币，所以外币金额 = 人民币总金额 / 汇率
-  const foreignAmount = form.finalAmount / form.exchangeRate
-  return foreignAmount.toFixed(2)
-})
+// 金额口径（dev-20261019-020）：系统金额字段按人民币存储；外币只做「折合原币」展示。
+// 汇率缺失/非正时原币显示“—”，不按 1 冒充，也不改写已存金额。
+const foreignView = computed(() => ({
+  total: orderMoneyView(form.totalAmount, form.currency, form.exchangeRate),
+  final: orderMoneyView(form.finalAmount, form.currency, form.exchangeRate),
+}))
+const foreignRateValid = computed(
+  () => form.currency === 'CNY' || foreignView.value.final.rateValid,
+)
+const foreignTotalDisplay = computed(() =>
+  foreignView.value.total.original == null ? '—' : formatAmount(foreignView.value.total.original),
+)
+const foreignCurrencyDisplay = computed(() =>
+  foreignView.value.final.original == null ? '—' : formatAmount(foreignView.value.final.original),
+)
 
 // 汇率提示文字
 const exchangeRateHint = computed(() => {
