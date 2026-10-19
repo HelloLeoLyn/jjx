@@ -126,7 +126,7 @@ async function open(w: any) {
 async function generate(w: any, confirm = true) {
   await open(w)
   const content = w.findComponent(ProductFormContent)
-  Object.assign(content.vm.formData, { productName: '新产品', productType: 1 })
+  Object.assign(content.vm.formData, { productName: '新产品' })
   const gen = w.findComponent(ProductCodeGenerator)
   await gen.vm.generate()
   await flushPromises()
@@ -172,7 +172,9 @@ describe('销售订单产品入口真实组件（API与附件/地址外设替身
       expect(item).toMatchObject({ id: 71, productId: null, productCode: 'AA002MEOO', productName: '新产品', specification: expect.any(String),
         workSpecVersionId: null, serialNo: '002', panelType: 'M', panelFeature: 'E', circuitType: 'O', circuitFeature: 'O',
         quantity: 3, unitPrice: 12, deliveryDays: 7, customerMaterialNo: '客户料号', lineRemark: '行备注' })
-      expect(item.productDraft).toMatchObject({ productName: '新产品', productType: 1 })
+      // dev-20261019-005：产品类型已从产品表单隐藏，草稿不携带 productType
+      expect(item.productDraft).toMatchObject({ productName: '新产品' })
+      expect(item.productDraft).not.toHaveProperty('productType')
       const name = w.find('input[placeholder="请输入新产品名称"]')
       expect(name.attributes('readonly')).toBeUndefined()
       await name.setValue('新产品')

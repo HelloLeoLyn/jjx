@@ -72,8 +72,12 @@ export const ProductStatusEnum = createEnum({
 })
 
 /**
- * 产品类型枚举
+ * 产品类型枚举（legacy）
  * 对应 Java ProductEnums.Type
+ *
+ * dev-20261019-005：product_type（1 成品 / 2 样品）已无业务含义，
+ * 产品表单/详情/审核弹窗均不再展示或提交该字段；成品/样品靠订单类型与样品单区分。
+ * 枚举仅保留供类型定义与历史数据兼容，前端无 UI 引用；删列根治见后续任务。
  */
 export const ProductTypeEnum = createEnum({
   items: [

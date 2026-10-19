@@ -40,21 +40,6 @@
           />
         </el-form-item>
       </el-col>
-      <el-col :span="12">
-        <el-form-item label="产品类型" prop="productType">
-          <el-select
-            v-model="formData.productType"
-            placeholder="请选择产品类型"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="item in ProductTypeEnum.items"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </el-form-item>
-      </el-col>
     </el-row>
 
     <!-- 编码构成要素（客户选择 + 公共编码生成组件 2026-08-12；序号格在组件里，2026-09-30 dev-20260930-011） -->
@@ -120,7 +105,6 @@
 import { ref, computed, reactive, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { productApi } from '@/api/product'
-import { ProductTypeEnum } from '@/enums'
 import type {
   ProductVo,
   ProductFormData,
@@ -183,7 +167,6 @@ const formData = reactive<Partial<ProductFormData>>({
   productCode: '',
   productName: '',
   categoryId: undefined,
-  productType: undefined,
   productStatus: 1,
   unit: 'PCS',
   minOrderQty: 1,
@@ -243,7 +226,6 @@ const rules = {
   ],
   productName: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
   codeCustomerId: [{ required: true, message: '请选择客户', trigger: 'change' }],
-  productType: [{ required: true, message: '请选择产品类型', trigger: 'change' }],
   codeSerialNo: [
     { required: true, message: '请点「取号」自动取号，或手填 1~4 位序号', trigger: 'change' },
     {
@@ -325,11 +307,8 @@ const loadProductDetail = async () => {
   const data = res.data
   Object.assign(formData, data)
 
-  // 2026-09-22：product_type 后端是 varchar，接口回的是字符串（"1"/"2"），
-  // 而 ProductTypeEnum 的 option value 是数字 → el-select 因类型不等匹配不上，显示裸值/空白。这里统一转数字。
-  if (data.productType !== undefined && data.productType !== null && data.productType !== '') {
-    formData.productType = Number(data.productType)
-  }
+  // dev-20261019-005：产品类型（成品/样品）已无业务意义，表单不再展示/提交该字段；
+  // 编辑回显的值原样保留在 formData，仅提交前剔除，避免改写历史数据（新增落列默认 '1'）。
 
   // 2026-08-10：编辑回显客户（CustomerSelector 用 codeCustomerId 显示，自动加载客户名）
   if (data.customerId) {
@@ -410,6 +389,9 @@ const handleSubmit = async () => {
     circuitType: codeState.value.circuitType,
     circuitFeature: codeState.value.circuitFeature,
   }
+  // dev-20261019-005：产品类型不再随表单提交（新增/编辑/订单草稿都不带）。
+  // 后端编辑 null 跳过不改原值；新增由 product_type 列默认值 '1' 落库。
+  delete submitData.productType
   if (props.mode === 'draft') {
     const code = composeProductCode(selectedCustomerShortName.value, codeState.value)
     if (!code || !props.customerId || formData.codeCustomerId !== props.customerId) {
@@ -458,7 +440,6 @@ const resetForm = () => {
     productCode: '',
     productName: '',
     categoryId: undefined,
-    productType: undefined,
     productStatus: 1,
     unit: 'PCS',
     minOrderQty: 1,

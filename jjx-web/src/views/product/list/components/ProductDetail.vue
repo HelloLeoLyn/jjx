@@ -24,9 +24,6 @@
             <el-descriptions-item label="产品分类">{{
               productData.category?.categoryName || productData.product?.categoryName
             }}</el-descriptions-item>
-            <el-descriptions-item label="产品类型">{{
-              ProductTypeEnum.getLabel(Number(productData.product?.productType))
-            }}</el-descriptions-item>
             <el-descriptions-item label="单位">{{
               productData.product?.unit || '-'
             }}</el-descriptions-item>
@@ -251,7 +248,7 @@ import { hasPermi } from '@/directives'
 import { ref, watch } from 'vue'
 import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
-import { ProductEnum, ProductTypeEnum } from '@/enums'
+import { ProductEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
 import ProductDocPanel from '@/components/product/ProductDocPanel.vue'
 import ProductBasicInfo from '@/components/product/ProductBasicInfo.vue'

@@ -12,13 +12,6 @@
         <el-tag :type="getProductStatusTagType(productStatus)" size="large">
           {{ getProductStatusLabel(productStatus) }}
         </el-tag>
-        <el-tag
-          v-if="productType"
-          :type="ProductTypeEnum.getTagProps(Number(productType)).type"
-          size="large"
-        >
-          {{ ProductTypeEnum.getLabel(Number(productType)) }}
-        </el-tag>
       </div>
     </div>
 
@@ -54,7 +47,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Promotion } from '@element-plus/icons-vue'
 import { productApi } from '@/api/product'
-import { ProductEnum, ProductTypeEnum } from '@/enums'
+import { ProductEnum } from '@/enums'
 import ProductDetail from './ProductDetail.vue'
 import type { ProductFullVO } from '@/types/product'
 
@@ -90,7 +83,6 @@ const visible = computed({
 const loading = ref(false)
 const error = ref<string>('')
 const productStatus = ref<number>()
-const productType = ref<string>()
 
 // 获取产品状态
 const getProductStatusLabel = (status?: number) => {
@@ -114,7 +106,6 @@ const canDelete = computed(() => {
 // 加载完成回调
 const handleLoaded = (data: ProductFullVO) => {
   productStatus.value = data.product?.productStatus
-  productType.value = data.product?.productType
   loading.value = false
   error.value = ''
 }
@@ -157,7 +148,6 @@ watch(
       })
     } else {
       productStatus.value = undefined
-      productType.value = undefined
       loading.value = false
       error.value = ''
     }

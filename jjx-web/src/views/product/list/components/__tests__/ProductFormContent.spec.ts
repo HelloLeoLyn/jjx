@@ -35,6 +35,7 @@ vi.mock('element-plus', async (importOriginal) => ({
 vi.mock('@/components/Selector/CustomerSelector.vue', () => ({ default: { template: '<div />' } }))
 
 const Form = defineComponent({
+  props: ['model', 'rules'],
   setup(_, { expose }) {
     expose({ validate: async () => true })
   },
@@ -83,5 +84,20 @@ describe('产品编辑编码', () => {
     generator.props('state')!.panelFeature = ''
     await expect(wrapper.vm.handleSubmit()).rejects.toThrow('编码要素不完整')
     expect(api.edit).not.toHaveBeenCalled()
+  })
+
+  // dev-20261019-005：产品类型已从表单隐藏，编辑保存不得提交该字段（保留历史值）
+  it('编辑保存不提交 productType，表单无产品类型必填项', async () => {
+    const generator = await open()
+    // 表单不再渲染「产品类型」表单项，也没有对应必选规则（否则保存会被拦）
+    expect(wrapper.html()).not.toContain('产品类型')
+    expect(wrapper.findComponent(Form).props('rules')).not.toHaveProperty('productType')
+    generator.props('state')!.panelType = 'P'
+    generator.props('state')!.circuitFeature = 'C'
+    await nextTick()
+    await (wrapper.vm as any).handleSubmit()
+    const payload = api.edit.mock.calls[0][0]
+    expect(payload).not.toHaveProperty('productType')
+    expect(payload.productName).toBe('产品')
   })
 })
