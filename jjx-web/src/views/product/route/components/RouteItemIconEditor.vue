@@ -272,12 +272,18 @@
               :label="`${tab.label}（${filteredPrintRows(tab.value).length}）`"
             >
               <el-table
+                :ref="(el: any) => (printTableRefs[tab.value] = el)"
                 :data="filteredPrintRows(tab.value)"
                 size="small"
                 border
                 stripe
                 style="width: 100%"
               >
+                <el-table-column width="40" align="center">
+                  <template #default>
+                    <span class="print-drag-handle" title="拖动调整顺序">⋮⋮</span>
+                  </template>
+                </el-table-column>
                 <el-table-column type="index" label="#" width="44" align="center" />
                 <el-table-column label="印刷名称 *" min-width="140">
                   <template #default="{ row }">
@@ -446,7 +452,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import Sortable from 'sortablejs'
+import { moveWithinSubset, reorderSubset } from './routePrintOrder'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import type { StandardProcessOption } from '@/types/product'
@@ -518,6 +526,8 @@ const printRows = ref<EngineeringRoutingItemVO[]>([])
 /** 印刷子结构 Tabs（业务上印刷按结构分：面板/上线/下线/未分类，与打样一致，2026-08-12） */
 const PRINT_TABS = ROUTE_STRUCTURE_TABS
 const printActiveTab = ref('PANEL')
+/** 印刷表格实例：按子结构 tab 存一份，供拖拽排序初始化（dev-20261019-015） */
+const printTableRefs = reactive<Record<string, any>>({})
 
 const ASSEMBLY_TABS = ROUTE_STRUCTURE_TABS
 const assemblyActiveTab = ref('PANEL')
@@ -609,6 +619,64 @@ function removePrintRow(row: any) {
   printRows.value.splice(printRows.value.indexOf(row), 1)
   syncToParent()
 }
+
+// ==================== 印刷工序拖拽排序（dev-20261019-015） ====================
+let printSortable: Sortable | null = null
+let printSortableKey = ''
+let printSortableDisposed = false
+
+function destroyPrintSortable() {
+  if (printSortable) {
+    printSortable.destroy()
+    printSortable = null
+  }
+  printSortableKey = ''
+}
+
+/** 给当前子结构 tab 的表格挂 Sortable：只在同一子集内换序，槽位不动 */
+function initPrintSortable(value: string) {
+  if (printSortableDisposed) return
+  const table = printTableRefs[value]
+  const el = table?.$el?.querySelector('.el-table__body-wrapper tbody') as HTMLElement | null
+  if (!el) {
+    setTimeout(() => {
+      if (!printSortableDisposed && majorCategoryTab.value === 'PRINT' && printActiveTab.value === value) {
+        initPrintSortable(value)
+      }
+    }, 200)
+    return
+  }
+  if (printSortableKey === value && printSortable) return
+  destroyPrintSortable()
+  printSortableKey = value
+  printSortable = Sortable.create(el, {
+    handle: '.print-drag-handle',
+    animation: 150,
+    ghostClass: 'print-sortable-ghost',
+    onEnd: (evt) => {
+      const { oldIndex, newIndex } = evt
+      if (oldIndex == null || newIndex == null || oldIndex === newIndex) return
+      const subset = filteredPrintRows(value)
+      const ordered = moveWithinSubset(subset, oldIndex, newIndex)
+      printRows.value = reorderSubset(printRows.value, subset, ordered)
+      syncToParent()
+    },
+  })
+}
+
+// 切大类/切子结构时重挂到对应表格；离开印刷 tab 时销毁，避免实例残留
+watch([majorCategoryTab, printActiveTab], ([major, tab]) => {
+  if (major !== 'PRINT') {
+    destroyPrintSortable()
+    return
+  }
+  nextTick(() => initPrintSortable(tab))
+})
+
+onBeforeUnmount(() => {
+  printSortableDisposed = true
+  destroyPrintSortable()
+})
 
 /** 工艺参数列提示 */
 function printParamsHint(item: EngineeringRoutingItemVO): string {
@@ -1375,6 +1443,23 @@ defineExpose({
   max-height: 300px;
   overflow-y: auto;
   padding: 8px;
+}
+
+/* dev-20261019-015：印刷表格拖拽手柄与拖拽中的占位样式 */
+.print-drag-handle {
+  cursor: grab;
+  user-select: none;
+  color: var(--el-text-color-placeholder);
+  font-size: 14px;
+  line-height: 1;
+  display: inline-block;
+}
+.print-drag-handle:active {
+  cursor: grabbing;
+}
+.print-sortable-ghost {
+  opacity: 0.45;
+  background: var(--el-color-primary-light-9);
 }
 
 .icon-item {
