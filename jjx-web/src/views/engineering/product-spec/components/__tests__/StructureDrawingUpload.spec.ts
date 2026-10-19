@@ -1,12 +1,5 @@
 vi.mock('element-plus/es/components/base/style/css', () => ({}))
 vi.mock('element-plus/es/components/button/style/css', () => ({}))
-vi.mock('element-plus/es/components/dialog/style/css', () => ({}))
-vi.mock('element-plus/es/components/alert/style/css', () => ({}))
-vi.mock('element-plus/es/components/form/style/css', () => ({}))
-vi.mock('element-plus/es/components/form-item/style/css', () => ({}))
-vi.mock('element-plus/es/components/select/style/css', () => ({}))
-vi.mock('element-plus/es/components/option/style/css', () => ({}))
-vi.mock('element-plus/es/components/input/style/css', () => ({}))
 vi.mock('@/utils/request', () => ({ default: {} }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -34,28 +27,11 @@ vi.mock('@/api/product/workSpec', async (original) => ({
   productWorkSpecApi: { get: vi.fn(), save: vi.fn() },
 }))
 
-const slot = defineComponent({ template: '<div><slot /><slot name="footer" /></div>' })
-const input = defineComponent({
-  props: ['modelValue'],
-  emits: ['update:modelValue', 'input', 'change'],
-  template:
-    '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" @change="$emit(\'change\')" />',
-})
 const stubs = {
-  ElDialog: defineComponent({
-    props: ['modelValue'],
-    template: '<div v-if="modelValue"><slot /><slot name="footer" /></div>',
-  }),
   ElButton: defineComponent({
     props: ['disabled', 'loading'],
     template: '<button :disabled="disabled || loading"><slot /></button>',
   }),
-  ElAlert: defineComponent({ props: ['title'], template: '<div>{{ title }}</div>' }),
-  ElInput: input,
-  ElSelect: slot,
-  ElOption: true,
-  ElForm: slot,
-  ElFormItem: slot,
 }
 function mountUpload() {
   return mount(StructureDrawingUpload, {
@@ -63,18 +39,23 @@ function mountUpload() {
     global: { stubs },
   })
 }
-async function openWithFile(wrapper: ReturnType<typeof mountUpload>) {
+async function openWithFile(
+  wrapper: ReturnType<typeof mountUpload>,
+  name = '结构图.pdf',
+  type = 'application/pdf'
+) {
   await wrapper.get('[data-test="open"]').trigger('click')
   await flushPromises()
   const field = wrapper.get('[data-test="file"]')
   Object.defineProperty(field.element, 'files', {
     configurable: true,
-    value: [new File(['drawing'], '结构图.pdf', { type: 'application/pdf' })],
+    value: [new File(['drawing'], name, { type })],
   })
   await field.trigger('change')
+  await flushPromises()
 }
 async function submit(wrapper: ReturnType<typeof mountUpload>) {
-  await wrapper.get('[data-test="submit"]').trigger('click')
+  await wrapper.get('[data-test="open"]').trigger('click')
   await flushPromises()
 }
 beforeEach(() => {
@@ -105,8 +86,8 @@ describe('作业规范结构图上传', () => {
   it('建议下一版本，串行上传、建同源引用、设现行、下发并保存最新规范内容', async () => {
     const wrapper = mountUpload()
     await openWithFile(wrapper)
-    expect((wrapper.get('[data-test="version"]').element as HTMLInputElement).value).toBe('B')
-    await submit(wrapper)
+    expect(wrapper.find('el-dialog').exists()).toBe(false)
+    expect(wrapper.find('[data-test="version"]').exists()).toBe(false)
     expect(attachmentRefApi.tempUpload).toHaveBeenCalledWith(
       expect.any(File),
       expect.any(String),
@@ -142,22 +123,41 @@ describe('作业规范结构图上传', () => {
     expect(wrapper.text()).toContain('作业规范结构图已更新')
     wrapper.unmount()
   })
-  it('版本必填，可改；同编号同版本只提示可能重复，仍调用上传', async () => {
+  it('按钮直接打开系统文件选择器，取消选择不调用上传接口', async () => {
+    const wrapper = mountUpload()
+    const click = vi.spyOn(wrapper.get('[data-test="file"]').element as HTMLInputElement, 'click')
+    await wrapper.get('[data-test="open"]').trigger('click')
+    expect(click).toHaveBeenCalledTimes(1)
+    await wrapper.get('[data-test="file"]').trigger('change')
+    expect(attachmentRefApi.listRefs).not.toHaveBeenCalled()
+    expect(attachmentRefApi.tempUpload).not.toHaveBeenCalled()
+    expect(wrapper.find('el-dialog').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('文件指纹可能重复只提示，不阻断自动上传', async () => {
+    vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({
+      data: [
+        {
+          attachmentId: 224,
+          documentType: 'STRUCTURE_DRAWING',
+          drawingNo: '产品结构图',
+          version: 'A',
+          fileName: '结构图.pdf',
+          fileSize: 7,
+        },
+      ],
+    } as any)
     const wrapper = mountUpload()
     await openWithFile(wrapper)
-    await wrapper.get('[data-test="version"]').setValue('')
-    expect(wrapper.get('[data-test="submit"]').attributes('disabled')).toBeDefined()
-    await wrapper.get('[data-test="version"]').setValue('A')
     expect(wrapper.text()).toContain('可能重复')
-    await submit(wrapper)
     expect(attachmentRefApi.tempUpload).toHaveBeenCalledTimes(1)
+    expect(productWorkSpecApi.save).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
   it('无下发权限只上传和建引用，提示未下发，不更改现行或规范引用', async () => {
     auth.release = false
     const wrapper = mountUpload()
     await openWithFile(wrapper)
-    await submit(wrapper)
     expect(attachmentRefApi.createRef).toHaveBeenCalledTimes(1)
     expect(attachmentApi.setCurrent).not.toHaveBeenCalled()
     expect(attachmentApi.release).not.toHaveBeenCalled()
@@ -176,7 +176,6 @@ describe('作业规范结构图上传', () => {
       else vi.mocked(attachmentApi.release).mockResolvedValueOnce({ data: false } as any)
       const wrapper = mountUpload()
       await openWithFile(wrapper)
-      await submit(wrapper)
       expect(wrapper.text()).toContain('已上传，未下发，可重试')
       expect(productWorkSpecApi.save).not.toHaveBeenCalled()
       await submit(wrapper)
@@ -191,7 +190,6 @@ describe('作业规范结构图上传', () => {
     vi.mocked(attachmentRefApi.createRef).mockRejectedValueOnce(new Error('引用失败'))
     const wrapper = mountUpload()
     await openWithFile(wrapper)
-    await submit(wrapper)
     expect(wrapper.text()).toContain('产品引用未建立，未下发')
     expect(attachmentApi.setCurrent).not.toHaveBeenCalled()
     await submit(wrapper)
@@ -203,7 +201,6 @@ describe('作业规范结构图上传', () => {
     vi.mocked(productWorkSpecApi.save).mockRejectedValueOnce(new Error('revision 冲突'))
     const wrapper = mountUpload()
     await openWithFile(wrapper)
-    await submit(wrapper)
     expect(wrapper.text()).toContain('已下发，作业规范引用未更新')
     await submit(wrapper)
     expect(productWorkSpecApi.get).toHaveBeenCalledTimes(2)
@@ -211,17 +208,30 @@ describe('作业规范结构图上传', () => {
     expect(attachmentApi.release).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
-  it('Z 之后建议 AA，手工版本值不会被编号变动覆盖', async () => {
+  it.each([
+    ['Z', 'AA'],
+    ['AA', 'AB'],
+    ['无法解析', 'A'],
+    ['ZZZZZZZZZZZZZZZZZZZZ', 'AAAAAAAAAAAAAAAAAAAAA'],
+  ])('版本 %s 自动生成 %s', async (old, next) => {
     vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({
-      data: [{ attachmentId: 224, category: '结构图', drawingNo: 'DWG-2', version: 'Z' }],
+      data: [
+        {
+          attachmentId: 224,
+          category: '结构图',
+          drawingNo: 'DWG-2',
+          version: old,
+        },
+      ],
     } as any)
     const wrapper = mountUpload()
     await openWithFile(wrapper)
-    expect((wrapper.get('[data-test="version"]').element as HTMLInputElement).value).toBe('AA')
-    await wrapper.get('[data-test="version"]').setValue('CUSTOM')
-    await wrapper.get('[data-test="drawing-no"]').setValue('OTHER')
-    await wrapper.get('[data-test="drawing-no"]').trigger('change')
-    expect((wrapper.get('[data-test="version"]').element as HTMLInputElement).value).toBe('CUSTOM')
+    expect(attachmentRefApi.tempUpload).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.any(String),
+      undefined,
+      expect.objectContaining({ version: next })
+    )
     wrapper.unmount()
   })
   it('后端拒绝同版本重复建引用时显示错误，不伪报上传下发成功', async () => {
@@ -230,8 +240,6 @@ describe('作业规范结构图上传', () => {
     )
     const wrapper = mountUpload()
     await openWithFile(wrapper)
-    await wrapper.get('[data-test="version"]').setValue('A')
-    await submit(wrapper)
     expect(wrapper.text()).toContain('该图纸版本已存在相同用途的文件')
     expect(wrapper.text()).toContain('产品引用未建立，未下发')
     expect(attachmentApi.setCurrent).not.toHaveBeenCalled()
@@ -239,25 +247,121 @@ describe('作业规范结构图上传', () => {
     wrapper.unmount()
   })
 
-  it('已有多张结构图时沿用作业规范当前引用的编号，再建议下一版本', async () => {
+  it('使用最新结构图引用的历史编号，同编号所有版本参与递增', async () => {
     vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({
       data: [
-        { attachmentId: 223, category: '结构图', drawingNo: 'OTHER', version: 'D' },
         {
-          attachmentId: 224,
+          id: 30,
+          attachmentId: 230,
           documentType: 'STRUCTURE_DRAWING',
-          drawingNo: 'SELECTED',
+          drawingNo: '产品结构图',
           version: 'B',
+          createTime: '2026-10-19 10:00:00',
         },
+        {
+          id: 29,
+          attachmentId: 229,
+          category: '结构图',
+          drawingNo: '产品结构图',
+          version: 'D',
+          released: 0,
+          createTime: '2026-10-18 10:00:00',
+        },
+        {
+          id: 28,
+          attachmentId: 224,
+          category: '结构图',
+          drawingNo: 'OLD',
+          version: 'Z',
+          isCurrent: 1,
+          createTime: '2026-10-17 10:00:00',
+        },
+        { id: 31, attachmentId: 231, documentType: 'OTHER', drawingNo: 'OTHER', version: 'Z' },
       ],
     } as any)
     const wrapper = mountUpload()
     await wrapper.setProps({ structureFileId: 224 })
     await openWithFile(wrapper)
-    expect((wrapper.get('[data-test="drawing-no"]').element as HTMLInputElement).value).toBe(
-      'SELECTED'
+    expect(attachmentRefApi.tempUpload).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.any(String),
+      undefined,
+      expect.objectContaining({ drawingNo: '产品结构图', version: 'E' })
     )
-    expect((wrapper.get('[data-test="version"]').element as HTMLInputElement).value).toBe('C')
+    wrapper.unmount()
+  })
+  it.each([
+    ['结构图.pdf', '', 'PRINT'],
+    ['图.png', '', 'PRINT'],
+    ['图.bin', 'image/png', 'PRINT'],
+    ['原稿.dwg', '', 'ORIGINAL'],
+  ])('无历史、缺产品编码仍上传，%s 自动选用途', async (name, type, role) => {
+    vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({ data: [] } as any)
+    const wrapper = mountUpload()
+    await wrapper.setProps({ productCode: '' })
+    await openWithFile(wrapper, name, type)
+    expect(attachmentRefApi.tempUpload).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.any(String),
+      undefined,
+      { category: '结构图', drawingNo: '-ST', version: 'A', fileRole: role }
+    )
+    wrapper.unmount()
+  })
+  it('首次生成产品编码-ST，再传复用编号并升级到 B', async () => {
+    vi.mocked(attachmentRefApi.listRefs)
+      .mockResolvedValueOnce({ data: [] } as any)
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 301,
+            attachmentId: 225,
+            documentType: 'STRUCTURE_DRAWING',
+            drawingNo: 'P2-ST',
+            version: 'A',
+          },
+        ],
+      } as any)
+    const wrapper = mountUpload()
+    await openWithFile(wrapper)
+    await openWithFile(wrapper)
+    expect(attachmentRefApi.tempUpload).toHaveBeenNthCalledWith(
+      1,
+      expect.any(File),
+      expect.any(String),
+      undefined,
+      expect.objectContaining({ drawingNo: 'P2-ST', version: 'A' })
+    )
+    expect(attachmentRefApi.tempUpload).toHaveBeenNthCalledWith(
+      2,
+      expect.any(File),
+      expect.any(String),
+      undefined,
+      expect.objectContaining({ drawingNo: 'P2-ST', version: 'B' })
+    )
+    wrapper.unmount()
+  })
+  it('清单读取失败可重试，保留所选文件，不猜历史版本', async () => {
+    vi.mocked(attachmentRefApi.listRefs).mockRejectedValueOnce(new Error('读取失败'))
+    const wrapper = mountUpload()
+    await openWithFile(wrapper)
+    expect(attachmentRefApi.tempUpload).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('读取失败')
+    await submit(wrapper)
+    expect(attachmentRefApi.tempUpload).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+  it('上传失败重试沿用请求键，禁用时不处理文件', async () => {
+    vi.mocked(attachmentRefApi.tempUpload).mockRejectedValueOnce(new Error('网络失败'))
+    const wrapper = mountUpload()
+    await openWithFile(wrapper)
+    await submit(wrapper)
+    const calls = vi.mocked(attachmentRefApi.tempUpload).mock.calls
+    expect(calls[0][1]).toBe(calls[1][1])
+    expect(attachmentRefApi.createRef).toHaveBeenCalledTimes(1)
+    await wrapper.setProps({ disabled: true })
+    await openWithFile(wrapper)
+    expect(attachmentRefApi.tempUpload).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 })

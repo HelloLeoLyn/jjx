@@ -56,6 +56,7 @@
               @busy="structureUploadBusy = $event"
               @updated="sourcesSaved"
             />
+            <p v-if="canEdit" class="structure-caption">选择文件即上传，编号、版本和用途自动生成。</p>
             <el-select
               v-if="structureDraft !== undefined"
               v-model="structureDraft"

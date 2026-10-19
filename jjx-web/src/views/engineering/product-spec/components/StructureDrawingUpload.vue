@@ -1,92 +1,26 @@
 <template>
   <div class="structure-upload">
-    <el-button :disabled="disabled || busy" data-test="open" @click="open">
-      {{ attachmentId && !completed ? '重试结构图处理' : '上传结构图' }}
+    <el-button :disabled="disabled || busy" :loading="busy" data-test="open" @click="open">
+      {{
+        attachmentId && !completed
+          ? '重试结构图处理'
+          : file && !completed
+            ? '重试上传结构图'
+            : '上传结构图'
+      }}
     </el-button>
+    <input
+      ref="fileInput"
+      data-test="file"
+      type="file"
+      hidden
+      :disabled="disabled || busy"
+      @change="chooseFile"
+    />
+    <p v-if="duplicate" class="upload-message" role="status">
+      可能重复：文件指纹（名称、大小）与已有文件一致，继续上传。
+    </p>
     <p v-if="message" class="upload-message" role="status">{{ message }}</p>
-    <el-dialog
-      v-model="visible"
-      title="上传结构图"
-      width="560px"
-      append-to-body
-      destroy-on-close
-      :close-on-click-modal="false"
-      :close-on-press-escape="!busy"
-      :show-close="!busy"
-      :before-close="close"
-    >
-      <el-alert
-        :title="
-          canRelease
-            ? '上传后自动设为现行并下发，再更新作业规范结构图；旧版本转为历史。'
-            : '当前账号只上传文件，需有权限的人下发后再选用。'
-        "
-        type="info"
-        :closable="false"
-      />
-      <el-form label-width="90px" :disabled="busy || !!attachmentId">
-        <el-form-item label="图种" required
-          ><el-select v-model="documentType"
-            ><el-option label="结构图" value="STRUCTURE_DRAWING" /></el-select
-        ></el-form-item>
-        <el-form-item label="图纸编号" required
-          ><el-input
-            v-model="drawingNo"
-            maxlength="80"
-            data-test="drawing-no"
-            @change="suggestVersion"
-        /></el-form-item>
-        <el-form-item label="版本" required
-          ><el-input
-            v-model="version"
-            maxlength="50"
-            data-test="version"
-            @input="versionEdited = true"
-        /></el-form-item>
-        <el-form-item label="文件用途" required
-          ><el-select v-model="fileRole"
-            ><el-option
-              v-for="role in DrawingFileRoleEnum.items"
-              :key="role.value"
-              :value="role.value"
-              :label="role.label" /></el-select
-        ></el-form-item>
-        <el-form-item label="文件" required
-          ><input
-            data-test="file"
-            type="file"
-            accept="image/*,.pdf"
-            :disabled="busy || !!attachmentId"
-            @change="chooseFile"
-        /></el-form-item>
-      </el-form>
-      <el-alert
-        v-if="duplicate"
-        title="可能重复：该图纸编号和版本已有文件，可继续上传。"
-        type="warning"
-        :closable="false"
-      />
-      <el-alert
-        v-if="message"
-        :title="message"
-        :type="completed ? 'success' : 'warning'"
-        :closable="false"
-        data-test="result"
-      />
-      <template #footer>
-        <el-button :disabled="busy" @click="close()">关闭</el-button>
-        <el-button
-          v-if="!completed"
-          type="primary"
-          :loading="busy"
-          :disabled="busy || !ready"
-          data-test="submit"
-          @click="submit"
-        >
-          {{ attachmentId ? '重试后续处理' : canRelease ? '上传并下发' : '上传' }}
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -95,7 +29,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { attachmentRefApi, type AttachmentRefItem } from '@/api/system/attachmentRef'
 import { attachmentApi } from '@/api/system/attachment'
 import { normalizeWorkSpec, productWorkSpecApi } from '@/api/product/workSpec'
-import { DrawingCurrentFlagEnum, DrawingFileRoleEnum } from '@/enums/product/drawing'
+import { DrawingFileRoleEnum } from '@/enums/product/drawing'
 import { useUserStore } from '@/store/modules/user'
 
 const props = defineProps<{
@@ -107,107 +41,91 @@ const props = defineProps<{
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
 const user = useUserStore()
 const canRelease = computed(() => user.hasPermission('engineering:drawing:release'))
-const visible = ref(false)
+const fileInput = ref<HTMLInputElement>()
 const busy = ref(false)
 const message = ref('')
 const completed = ref(false)
 const file = ref<File>()
 // 二级类型为引用真源；category 兼容尚未完成收敛的图集/打印读取。
-const documentType = ref('STRUCTURE_DRAWING')
+const documentType = 'STRUCTURE_DRAWING'
 const drawingNo = ref('')
 const version = ref('A')
-const versionEdited = ref(false)
 const fileRole = ref<string>(DrawingFileRoleEnum.PRINT.value)
 const refs = ref<AttachmentRefItem[]>([])
-const listLoaded = ref(false)
+let metadataReady = false
 const attachmentId = ref<number>()
 let requestKey = ''
 let linked = false
 let madeCurrent = false
 let released = false
-const ready = computed(
-  () =>
-    !!attachmentId.value ||
-    (listLoaded.value && !!file.value && !!drawingNo.value.trim() && !!version.value.trim())
-)
 const sameDrawing = computed(() =>
   refs.value.filter(
     (row) => (row.drawingNo || '').trim().toUpperCase() === drawingNo.value.trim().toUpperCase()
   )
 )
-const duplicate = computed(
-  () =>
-    !!version.value.trim() &&
-    sameDrawing.value.some(
-      (row) => (row.version || '').trim().toUpperCase() === version.value.trim().toUpperCase()
-    )
-)
+// 轻量前端指纹只提示“可能重复”，不作为上传门禁。
+const duplicate = ref(false)
 
 function suggestVersion() {
-  if (versionEdited.value || attachmentId.value) return
   const letters = sameDrawing.value
     .map((row) => (row.version || '').trim().toUpperCase())
     .filter((value) => /^[A-Z]+$/.test(value))
-  // 字母序版本支持 Z → AA；仅提供建议，版本输入始终可改且必填。
-  const numberOf = (value: string) =>
-    [...value].reduce((total, char) => total * 26 + char.charCodeAt(0) - 64, 0)
-  let next = Math.max(0, ...letters.map(numberOf)) + 1
-  let result = ''
-  while (next > 0) {
-    next--
-    result = String.fromCharCode(65 + (next % 26)) + result
-    next = Math.floor(next / 26)
+    .sort((a, b) => b.length - a.length || b.localeCompare(a))
+  // 同编号所有引用参与版本计算，含历史和未下发版本；Z → AA。
+  // 直接对字母进位，避免长版本转换为数字丢失精度。
+  const next = [...(letters[0] || '')]
+  let index = next.length - 1
+  while (index >= 0 && next[index] === 'Z') {
+    next[index--] = 'A'
   }
-  version.value = result
+  if (index < 0) next.unshift('A')
+  else next[index] = String.fromCharCode(next[index].charCodeAt(0) + 1)
+  version.value = next.join('')
 }
-async function open() {
-  visible.value = true
-  if (attachmentId.value && !completed.value) return
-  attachmentId.value = undefined
-  completed.value = false
-  message.value = ''
-  file.value = undefined
-  linked = madeCurrent = released = false
-  requestKey = crypto.randomUUID()
-  versionEdited.value = false
-  busy.value = true
-  listLoaded.value = false
-  try {
-    const response = await attachmentRefApi.listRefs('product', props.productId)
-    refs.value = response.data || []
-    listLoaded.value = true
-    const structure = refs.value.filter(
-      (row) => row.documentType === 'STRUCTURE_DRAWING' || row.category === '结构图'
-    )
-    const selected =
-      structure.find((row) => row.attachmentId === props.structureFileId) ||
-      structure.find(
-        (row) => row.isCurrent === DrawingCurrentFlagEnum.CURRENT.value && row.drawingNo
-      ) ||
-      structure.find((row) => row.drawingNo)
-    drawingNo.value = selected?.drawingNo || `${props.productCode}-STRUCTURE`
-    suggestVersion()
-  } catch (error) {
-    message.value = '结构图清单读取失败，请关闭后重新打开：' + errorText(error)
-    refs.value = []
-  } finally {
-    busy.value = false
-  }
-}
-function chooseFile(event: Event) {
-  const selected = (event.target as HTMLInputElement).files?.[0]
-  if (!selected) return
-  if (
-    !selected.type.startsWith('image/') &&
-    !/\.(png|jpe?g|gif|webp|bmp|svg|pdf)$/i.test(selected.name)
-  ) {
-    message.value = '结构图请选择可预览的图片或PDF打印件'
-    file.value = undefined
+function open() {
+  if (props.disabled || busy.value) return
+  if (!completed.value && (attachmentId.value || file.value)) {
+    void submit()
     return
   }
+  // 在用户点击的同步调用栈中打开系统文件选择器。
+  fileInput.value?.click()
+}
+async function prepareMetadata() {
+  const response = await attachmentRefApi.listRefs('product', props.productId)
+  refs.value = response.data || []
+  const structure = refs.value
+    .filter((row) => row.documentType === documentType || row.category === '结构图')
+    .sort(
+      (a, b) =>
+        String(b.createTime || '').localeCompare(String(a.createTime || '')) ||
+        (b.id || b.attachmentId) - (a.id || a.attachmentId)
+    )
+  drawingNo.value = structure[0]?.drawingNo?.trim() || `${props.productCode}-ST`
+  suggestVersion()
+  duplicate.value = refs.value.some(
+    (row) => row.fileName === file.value!.name && Number(row.fileSize) === file.value!.size
+  )
+  metadataReady = true
+}
+async function chooseFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const selected = input.files?.[0]
+  if (!selected || props.disabled || busy.value) return
+  input.value = '' // 同一个文件也可再次选择；重复文件不阻断。
+  attachmentId.value = undefined
+  completed.value = false
+  linked = madeCurrent = released = metadataReady = false
+  duplicate.value = false
   file.value = selected
+  fileRole.value =
+    selected.type.startsWith('image/') ||
+    selected.type === 'application/pdf' ||
+    /\.(png|jpe?g|gif|webp|bmp|svg|tiff?|avif|heic|pdf)$/i.test(selected.name)
+      ? DrawingFileRoleEnum.PRINT.value
+      : DrawingFileRoleEnum.ORIGINAL.value
   requestKey = crypto.randomUUID()
-  message.value = ''
+  await submit()
 }
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -216,11 +134,12 @@ function requireTrue(response: { data: boolean }, action: string) {
   if (response.data !== true) throw new Error(action + '失败')
 }
 async function submit() {
-  if (busy.value || !ready.value || !user.hasPermission('product:edit')) return
+  if (props.disabled || busy.value || !file.value || !user.hasPermission('product:edit')) return
   busy.value = true
   message.value = ''
   try {
     if (!attachmentId.value) {
+      if (!metadataReady) await prepareMetadata()
       const response = await attachmentRefApi.tempUpload(file.value!, requestKey, undefined, {
         category: '结构图',
         drawingNo: drawingNo.value.trim(),
@@ -238,7 +157,7 @@ async function submit() {
         sourceId: props.productId,
         productId: props.productId,
         productCode: props.productCode,
-        documentType: documentType.value,
+        documentType,
       })
       if (!Number(response.data)) throw new Error('产品引用未建立')
       linked = true
@@ -277,12 +196,7 @@ async function submit() {
     busy.value = false
   }
 }
-function close(done?: () => void) {
-  if (busy.value) return
-  visible.value = false
-  done?.()
-}
-watch([visible, busy], ([open, working]) => emit('busy', open || working))
+watch(busy, (working) => emit('busy', working), { flush: 'sync' })
 onBeforeUnmount(() => emit('busy', false))
 </script>
 
@@ -292,8 +206,5 @@ onBeforeUnmount(() => emit('busy', false))
   color: var(--el-color-warning);
   margin: 6px 0;
   overflow-wrap: anywhere;
-}
-.el-form {
-  margin-top: 16px;
 }
 </style>
