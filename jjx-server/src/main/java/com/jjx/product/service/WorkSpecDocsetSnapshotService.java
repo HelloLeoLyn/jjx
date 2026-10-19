@@ -86,11 +86,12 @@ public class WorkSpecDocsetSnapshotService {
     private static final Pattern BUNDLED_ICON = Pattern.compile("^[\\p{IsHan}A-Za-z0-9_\\-]+$");
 
     /** 快照内的一个文件条目（冻结展示元数据 + 字节身份）。 */
-    public record SnapshotFile(Long attachmentId, String section, String category, String fileName, String displayName,
+    public record SnapshotFile(Long attachmentId, String section, String category, String documentType,
+                               String fileName, String displayName,
                                String version, String drawingNo, String fileRole, String mime, Long size,
                                String sha256, String source, String customerDocType, Integer sortOrder) {
         SnapshotFile withSection(String newSection) {
-            return new SnapshotFile(attachmentId, newSection, category, fileName, displayName, version,
+            return new SnapshotFile(attachmentId, newSection, category, documentType, fileName, displayName, version,
                     drawingNo, fileRole, mime, size, sha256, source, customerDocType, sortOrder);
         }
     }
@@ -149,7 +150,7 @@ public class WorkSpecDocsetSnapshotService {
         for (IconRef ref : icons.values()) {
             if ("uploaded".equals(ref.kind()) && ref.attachmentId() != null && fileIds.add(ref.attachmentId())) {
                 SysAttachment att = attachmentMapper.selectById(ref.attachmentId());
-                if (att != null) files.add(buildFile(att, "icon", false).withSection("icon"));
+                if (att != null) files.add(buildFile(att, "icon", false, null).withSection("icon"));
             }
         }
 
@@ -227,6 +228,8 @@ public class WorkSpecDocsetSnapshotService {
     private List<SnapshotFile> collectFiles(Product product, ObjectNode spec) {
         Long productId = product.getProductId();
         LinkedHashMap<Long, SnapshotFile> chosen = new LinkedHashMap<>();
+        // 附件 → 二级资料类型（dev-20261019-017）：图集从图种 category 收敛到 documentType，category 继续保留兼容
+        Map<Long, String> documentTypes = documentTypesOf(productId);
 
         // 1) 规范正文选定的结构图：显式纳入（不受现行/已下发过滤，避免旧版有、新版无）。
         Long structureFileId = spec.path("structureFileId").isNumber() ? spec.path("structureFileId").asLong() : null;
@@ -235,7 +238,7 @@ public class WorkSpecDocsetSnapshotService {
             if (structure == null) {
                 throw new BusinessException("发布失败：选定结构图不存在（id=" + structureFileId + "）");
             }
-            add(chosen, buildFile(structure, "product-library", false));
+            add(chosen, buildFile(structure, "product-library", false, documentTypes.get(structure.getId())));
         }
 
         // 2) 产品库工程图（现行或已下发）。
@@ -246,7 +249,7 @@ public class WorkSpecDocsetSnapshotService {
                 .and(w -> w.eq(SysAttachment::getIsCurrent, YesNoEnum.YES.getCode())
                         .or().eq(SysAttachment::getReleased, YesNoEnum.YES.getCode()))
                 .orderByAsc(SysAttachment::getId))) {
-            add(chosen, buildFile(att, "product-library", false));
+            add(chosen, buildFile(att, "product-library", false, documentTypes.get(att.getId())));
         }
 
         // 3) 样品资料。
@@ -255,7 +258,7 @@ public class WorkSpecDocsetSnapshotService {
                 .eq(SysAttachment::getBizId, productId)
                 .in(SysAttachment::getCategory, SAMPLE_FILE_CATEGORIES)
                 .orderByAsc(SysAttachment::getId))) {
-            add(chosen, buildFile(att, "product-library", false));
+            add(chosen, buildFile(att, "product-library", false, documentTypes.get(att.getId())));
         }
 
         // 4) 产品库客供类别（客供稿/承认书/客供资料）——不再仅依赖 customer_product_code。
@@ -264,7 +267,7 @@ public class WorkSpecDocsetSnapshotService {
                 .eq(SysAttachment::getBizId, productId)
                 .in(SysAttachment::getCategory, CUSTOMER_FILE_CATEGORIES)
                 .orderByAsc(SysAttachment::getId))) {
-            add(chosen, buildFile(att, "product-library", true));
+            add(chosen, buildFile(att, "product-library", true, documentTypes.get(att.getId())));
         }
 
         // 5) 客户来源客供资料：与页面共用有效引用查询，并冻结引用上的展示名/资料类型。
@@ -272,9 +275,12 @@ public class WorkSpecDocsetSnapshotService {
             Long attachmentId = ((Number) row.get("id")).longValue();
             SysAttachment att = attachmentMapper.selectById(attachmentId);
             if (att == null) throw new BusinessException("发布失败：客供附件不存在（id=" + attachmentId + "）");
-            SnapshotFile file = buildFile(att, "customer-source", true);
+            String rowDocType = row.get("customer_doc_type") == null ? null : String.valueOf(row.get("customer_doc_type"));
+            if (rowDocType != null && rowDocType.isBlank()) rowDocType = null;
+            SnapshotFile file = buildFile(att, "customer-source", true,
+                    rowDocType != null ? rowDocType : documentTypes.get(att.getId()));
             add(chosen, new SnapshotFile(file.attachmentId(), file.section(), (String) row.get("category"),
-                    file.fileName(), (String) row.get("display_name"), file.version(), file.drawingNo(),
+                    file.documentType(), file.fileName(), (String) row.get("display_name"), file.version(), file.drawingNo(),
                     file.fileRole(), file.mime(), file.size(), file.sha256(), file.source(),
                     (String) row.get("customer_doc_type"), row.get("sort_order") instanceof Number n ? n.intValue() : null));
         }
@@ -286,14 +292,27 @@ public class WorkSpecDocsetSnapshotService {
         chosen.putIfAbsent(file.attachmentId(), file);
     }
 
-    /** 组装单条文件：校验字节存在 + 哈希一致，返回冻结元数据。 */
-    private SnapshotFile buildFile(SysAttachment att, String source, boolean customerSource) {
+    /** 组装单条文件：校验字节存在 + 哈希一致，返回冻结元数据（含二级资料类型 documentType）。 */
+    private SnapshotFile buildFile(SysAttachment att, String source, boolean customerSource, String documentType) {
         String hash = validateAndHash(att);
         String category = att.getCategory();
         String section = sectionOf(customerSource, category);
-        return new SnapshotFile(att.getId(), section, category, att.getFileName(), att.getDisplayName(),
+        return new SnapshotFile(att.getId(), section, category, documentType, att.getFileName(), att.getDisplayName(),
                 att.getVersion(), att.getDrawingNo(), att.getFileRole(), att.getFileType(), att.getFileSize(),
                 hash, source, att.getCustomerDocType(), att.getSortOrder());
+    }
+
+    /** 产品范围内附件 → 二级资料类型（ref 上的 document_type；同一附件取首条非空）。 */
+    private Map<Long, String> documentTypesOf(Long productId) {
+        Map<Long, String> map = new HashMap<>();
+        jdbc.query("SELECT attachment_id,document_type FROM sys_attachment_ref "
+                        + "WHERE deleted=0 AND document_type IS NOT NULL AND document_type<>'' "
+                        + "AND ((source_type='product' AND source_id=?) OR product_id=?) ORDER BY id",
+                (rs, rowNum) -> {
+                    map.putIfAbsent(rs.getLong("attachment_id"), rs.getString("document_type"));
+                    return null;
+                }, productId, productId);
+        return map;
     }
 
     private String sectionOf(boolean customerSource, String category) {

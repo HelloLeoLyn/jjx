@@ -39,13 +39,14 @@ class ProductWorkSpecVersionPublishTest {
     @Mock ProductWorkSpecVersionMapper versionMapper;
     @Mock ProductWorkSpecItemMapper itemMapper;
     @Mock WorkSpecDocsetSnapshotService docsetSnapshotService;
+    @Mock com.jjx.system.mapper.SysAttachmentRefMapper attachmentRefMapper;
 
     ProductWorkSpecVersionService service;
 
     @BeforeEach
     void setUp() {
         service = new ProductWorkSpecVersionService(workSpecMapper, productMapper, attachmentMapper,
-                versionMapper, itemMapper, docsetSnapshotService, new ObjectMapper());
+                versionMapper, itemMapper, docsetSnapshotService, attachmentRefMapper, new ObjectMapper());
     }
 
     private Product product() {
@@ -73,8 +74,8 @@ class ProductWorkSpecVersionPublishTest {
         stubBase();
         var snapshot = new WorkSpecDocsetSnapshotService.DocsetSnapshot(
                 "{\"schemaVersion\":1}", "manifest-hash",
-                List.of(new WorkSpecDocsetSnapshotService.SnapshotFile(40L, "atlas", "结构图", "a.jpg", null,
-                        null, null, "PRINT", "image/jpeg", 1L, "abc", "product-library", null, 0)),
+                List.of(new WorkSpecDocsetSnapshotService.SnapshotFile(40L, "atlas", "结构图", "STRUCTURE_DRAWING",
+                        "a.jpg", null, null, null, "PRINT", "image/jpeg", 1L, "abc", "product-library", null, 0)),
                 List.of(), 0, 0);
         when(docsetSnapshotService.build(any(), anyString(), any(), any(), any())).thenReturn(snapshot);
 

@@ -1,6 +1,8 @@
 package com.jjx.product.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.jjx.system.domain.entity.SysAttachmentRef;
+import com.jjx.system.mapper.SysAttachmentRefMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -49,6 +51,8 @@ public class ProductWorkSpecVersionService {
     private final ProductWorkSpecVersionMapper versionMapper;
     private final ProductWorkSpecItemMapper itemMapper;
     private final WorkSpecDocsetSnapshotService docsetSnapshotService;
+    /** 附件引用（dev-20261019-017）：图集条目补二级资料类型 documentType。 */
+    private final SysAttachmentRefMapper attachmentRefMapper;
     private final ObjectMapper json;
 
     /** 上传根目录（补算历史附件 sha256 用；dev-20261011-034）。 */
@@ -146,6 +150,7 @@ public class ProductWorkSpecVersionService {
             ref.put("attachmentId", file.attachmentId());
             if (file.section() != null) ref.put("section", file.section());
             if (file.category() != null) ref.put("category", file.category());
+            if (file.documentType() != null && !file.documentType().isBlank()) ref.put("documentType", file.documentType());
             if (file.fileName() != null) ref.put("fileName", file.fileName());
             if (file.sha256() != null) ref.put("sha256", file.sha256());
             items.add(newItem(WorkSpecResourceType.DOCSET_FILE.getCode(), file.attachmentId(), null,
@@ -319,15 +324,33 @@ public class ProductWorkSpecVersionService {
         fields.add(row);
     }
 
-    /** 某版本的 DRAWING 条目签名（图种|附件ID|哈希，排序后换行拼接）。 */
+    /** 某版本的 DRAWING 条目签名（资料类型|附件ID|哈希；优先 documentType，旧快照回退 category/operationRef）。 */
     private String drawingSignature(Long versionId) {
         return itemMapper.selectByVersionId(versionId).stream()
                 .filter(i -> WorkSpecResourceType.DRAWING.getCode().equals(i.getResourceType()))
-                .map(i -> (i.getOperationRef() == null ? "" : i.getOperationRef()) + "|"
-                        + (i.getSourceId() == null ? "" : i.getSourceId()) + "|"
-                        + (i.getContentHash() == null ? "" : i.getContentHash()))
+                .map(i -> {
+                    String key = i.getOperationRef() == null ? "" : i.getOperationRef();
+                    JsonNode snapshot = parseSafe(i.getSnapshotJson());
+                    if (snapshot.hasNonNull("documentType") && !snapshot.get("documentType").asText().isBlank()) {
+                        key = snapshot.get("documentType").asText();
+                    }
+                    return key + "|"
+                            + (i.getSourceId() == null ? "" : i.getSourceId()) + "|"
+                            + (i.getContentHash() == null ? "" : i.getContentHash());
+                })
                 .sorted()
                 .collect(Collectors.joining("\n"));
+    }
+
+    /** 附件对应的二级资料类型（ref.document_type；多引用取首条非空）。 */
+    private String documentTypeOf(Long attachmentId) {
+        if (attachmentId == null) return null;
+        for (SysAttachmentRef ref : attachmentRefMapper.selectList(Wrappers.<SysAttachmentRef>lambdaQuery()
+                .eq(SysAttachmentRef::getAttachmentId, attachmentId)
+                .orderByAsc(SysAttachmentRef::getId))) {
+            if (ref.getDocumentType() != null && !ref.getDocumentType().isBlank()) return ref.getDocumentType();
+        }
+        return null;
     }
 
     private Map<String, Object> versionBrief(ProductWorkSpecVersion version) {
@@ -498,6 +521,8 @@ public class ProductWorkSpecVersionService {
         ref.put("attachmentId", att.getId());
         if (att.getFileName() != null) ref.put("fileName", att.getFileName());
         if (att.getCategory() != null) ref.put("category", att.getCategory());
+        String documentType = documentTypeOf(att.getId());
+        if (documentType != null) ref.put("documentType", documentType);
         if (att.getVersion() != null) ref.put("version", att.getVersion());
         if (att.getFileRole() != null) ref.put("fileRole", att.getFileRole());
         ref.put("sha256", hash);
