@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ProductSpecPreview from '../ProductSpecPreview.vue'
+import { normalizeWorkSpec } from '@/api/product/workSpec'
 import {
   canPrintDocumentFile,
   defaultDocumentFiles,
@@ -66,13 +67,89 @@ function drawing(id: number, overrides: Partial<DocFile> = {}): DocFile {
 const image = { url: 'data:image/png;base64,test', width: 10, height: 10 }
 
 describe('版本打印清单（dev-20261019-021）', () => {
+  it('旧非托管结构图仍保留原有下发保护', async () => {
+    mocks.load.mockResolvedValue({
+      product: {},
+      bom: { items: [] },
+      routing: { items: [] },
+      workSpec: normalizeWorkSpec({ structureFileId: 1 }),
+      files: [drawing(1, { isCurrent: 0, released: 0 })],
+      warnings: [],
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
+    const wrapper = mount(ProductSpecPreview, {
+      props: { productId: 42, initialSections: ['spec'] },
+    })
+    wrappers.push(wrapper)
+    await flushPromises()
+    const state = (wrapper.vm as any).$.setupState
+    expect(state.error).toContain('尚未下发')
+    expect(state.canPrint).toBe(false)
+  })
+  it.each([
+    { frozen: false, print: true },
+    { frozen: false, print: false },
+    { frozen: true, print: true },
+    { frozen: true, print: false },
+  ])('新结构图无旧图种，定版=$frozen 打印=$print 时规范正文仍可打印', async ({ frozen, print }) => {
+    const file = drawing(1, {
+      category: '',
+      documentType: 'STRUCTURE_DRAWING',
+      published: frozen,
+      draftManaged: !frozen,
+      printSelected: print,
+      isCurrent: 0,
+      released: 0,
+    })
+    const data = {
+      product: {},
+      bom: { items: [] },
+      routing: { items: [] },
+      workSpec: normalizeWorkSpec({ draftManaged: true, structureFileId: 1 }),
+      files: [file],
+      warnings: [],
+    }
+    mocks.renderFile.mockClear()
+    mocks.renderFile.mockResolvedValue([image])
+    if (frozen) mocks.loadVersion.mockResolvedValue(data)
+    else mocks.load.mockResolvedValue(data)
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
+    const wrapper = mount(ProductSpecPreview, {
+      props: { productId: 42, versionId: frozen ? 10 : undefined, initialSections: ['spec'] },
+    })
+    wrappers.push(wrapper)
+    await flushPromises()
+    const state = (wrapper.vm as any).$.setupState
+    state.overflow = { 'spec-0': [] }
+    await flushPromises()
+    expect(state.error).toBe('')
+    expect(state.canPrint).toBe(true)
+    expect(state.structureImage).toBe(print ? image.url : '')
+    expect(mocks.renderFile).toHaveBeenCalledTimes(print ? 1 : 0)
+    state.showHistory = true
+    state.selectedSections = ['spec', 'atlas']
+    await flushPromises()
+    expect(wrapper.findAll('.file-choice')[0].text()).toContain('下载原文件')
+    expect(wrapper.findAll('.file-choice')[0].text()).toContain('预览')
+  })
   it('完整快照组装保留附件冻结顺序、打印选择和负责人，不按附件ID重排', () => {
-    const data = buildDocsetFromSnapshot(42, JSON.stringify({
-      schemaVersion:1, spec:{draftManaged:true,preparedById:7,preparedByName:'工程甲'}, counts:{files:3},
-      files:[3,1,2].map(attachmentId=>({attachmentId,section:'atlas',documentType:'STRUCTURE_DRAWING',fileName:attachmentId+'.pdf',printSelected:attachmentId!==1})),
-    }))
-    expect(data.files.map(file=>file.id)).toEqual([3,1,2])
-    expect(defaultDocumentFiles(data.files).map(file=>file.id)).toEqual([3,2])
+    const data = buildDocsetFromSnapshot(
+      42,
+      JSON.stringify({
+        schemaVersion: 1,
+        spec: { draftManaged: true, preparedById: 7, preparedByName: '工程甲' },
+        counts: { files: 3 },
+        files: [3, 1, 2].map((attachmentId) => ({
+          attachmentId,
+          section: 'atlas',
+          documentType: 'STRUCTURE_DRAWING',
+          fileName: attachmentId + '.pdf',
+          printSelected: attachmentId !== 1,
+        })),
+      })
+    )
+    expect(data.files.map((file) => file.id)).toEqual([3, 1, 2])
+    expect(defaultDocumentFiles(data.files).map((file) => file.id)).toEqual([3, 2])
     expect(data.workSpec.preparedByName).toBe('工程甲')
   })
   it('统一定版按冻结打印选择及原顺序，未下发也可打印；不打印文件仍保留', () => {

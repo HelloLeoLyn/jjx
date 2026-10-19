@@ -60,7 +60,13 @@
         <div class="nav-heading">
           <strong>文档目录</strong><el-button link @click="selectAll">全选</el-button>
         </div>
-        <p class="nav-tip">{{ versionId ? '打印清单采用定版时的顺序。' : '勾选文件，用上移／下移调整同栏目内的打印顺序。' }}</p>
+        <p class="nav-tip">
+          {{
+            versionId
+              ? '打印清单采用定版时的顺序。'
+              : '勾选文件，用上移／下移调整同栏目内的打印顺序。'
+          }}
+        </p>
         <el-switch v-model="showHistory" size="small" active-text="显示全部附件" />
         <p class="nav-tip">
           {{
@@ -265,7 +271,7 @@ const structureFile = computed(() =>
     ? data.value.files.find(
         (file) =>
           file.id === data.value?.workSpec.structureFileId &&
-          file.category === '结构图' &&
+          (file.documentType === 'STRUCTURE_DRAWING' || file.category === '结构图') &&
           file.kind !== 'other'
       )
     : undefined
@@ -314,10 +320,14 @@ const pages = computed(() =>
     : []
 )
 const structureImage = computed(() =>
-  structureFile.value ? images.value[structureFile.value.key]?.[0]?.url : ''
+  structureFile.value && canPrintDocumentFile(structureFile.value)
+    ? images.value[structureFile.value.key]?.[0]?.url
+    : ''
 )
 const structureCaption = computed(() =>
-  structureFile.value ? documentFileCaption({ ...structureFile.value, name: '' }) : ''
+  structureFile.value && canPrintDocumentFile(structureFile.value)
+    ? documentFileCaption({ ...structureFile.value, name: '' })
+    : ''
 )
 const layoutReady = computed(() =>
   pages.value
@@ -380,6 +390,7 @@ async function load() {
     if (
       selectedSections.value.includes('spec') &&
       structureFile.value &&
+      !(result.workSpec.draftManaged && structureFile.value.printSelected === false) &&
       !canPrintDocumentFile(structureFile.value)
     )
       throw new Error('所选结构图未设为现行或尚未下发，请先完成图纸下发后重新加载')
