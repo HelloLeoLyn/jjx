@@ -4,7 +4,11 @@
       v-bind="uploaderProps"
       @files="onFiles"
       @error="onError"
-    />
+    >
+      <template v-if="$slots.trigger" #trigger="scope">
+        <slot name="trigger" v-bind="scope" />
+      </template>
+    </AttachmentTempUploader>
     <el-progress
       v-if="progress !== null"
       class="au-progress"
@@ -106,9 +110,10 @@ function onError(message: string) {
 /** 选中文件 → 通过共享会话上传（归属固定，写同一份 Session 状态） */
 async function onFiles(files: File[]) {
   if (!canUpload.value) return
+  // 一次选择的所有文件属于同一对象，异步上传期间切换产品不改变后续文件归属。
+  const ownership = { ...ownershipValue.value }
   for (const file of files) {
     try {
-      const ownership = ownershipValue.value
       const uploaded = await session.uploadTemporary(file, ownership, (percent) => {
         progress.value = percent
       })

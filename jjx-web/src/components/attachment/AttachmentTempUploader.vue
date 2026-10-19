@@ -14,9 +14,11 @@
       <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
       <div class="el-upload__text">拖拽文件到此处，或 <em>点击上传</em></div>
     </template>
-    <el-button v-else type="primary" size="small" :disabled="disabled">
-      <el-icon><Upload /></el-icon> {{ buttonText }}
-    </el-button>
+    <slot v-else name="trigger" :disabled="disabled">
+      <el-button type="primary" size="small" :disabled="disabled">
+        <el-icon><Upload /></el-icon> {{ buttonText }}
+      </el-button>
+    </slot>
     <template #tip>
       <div class="el-upload__tip">{{ tip }}</div>
     </template>
