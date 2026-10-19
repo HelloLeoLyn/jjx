@@ -32,21 +32,24 @@
       @change="chooseFile"
     />
     <p v-if="editable && duplicate" class="upload-message" role="status">
-      可能重复：文件名称、大小与已有文件一致，继续上传。
+      文件可能重复，请核对已有工程附件。
     </p>
-    <p v-if="message && (editable || completed)" class="upload-message" :role="failed ? 'alert' : 'status'">{{ message }}</p>
+    <p
+      v-if="message && (editable || completed)"
+      class="upload-message"
+      :role="failed ? 'alert' : 'status'"
+    >
+      {{ message }}
+    </p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue'
-import { attachmentRefApi, type AttachmentRefItem } from '@/api/system/attachmentRef'
+import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
 import { fileKind } from '@/components/product/productFilePreview'
-import { newDrawingIdentity, nextDrawingVersion } from '@/components/product/drawingUploadRules'
-import { normalizeWorkSpec, productWorkSpecApi } from '@/api/product/workSpec'
-import { DrawingFileRoleEnum } from '@/enums/product/drawing'
-import { useUserStore } from '@/store/modules/user'
-
+import { normalizeWorkSpec } from '@/api/product/workSpec'
+import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
+import type { PendingEntry } from '@/composables/useAttachmentRefs'
 const props = defineProps<{
   productId: number
   productCode: string
@@ -56,163 +59,76 @@ const props = defineProps<{
   editable?: boolean
 }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
-const user = useUserStore()
+const draft = useWorkSpecAttachmentSession(toRef(props, 'productId'), toRef(props, 'productCode'))
 const fileInput = ref<HTMLInputElement>()
 const busy = ref(false)
 const message = ref('')
 const completed = ref(false)
 const failed = ref(false)
-let generation = 0
-const file = ref<File>()
-// 二级类型为引用真源；category 兼容尚未完成收敛的图集/打印读取。
-const documentType = 'STRUCTURE_DRAWING'
-const drawingNo = ref('')
-const drawingName = ref('')
-const legacyCategory = ref<string>()
-const version = ref('A')
-const fileRole = ref<string>(DrawingFileRoleEnum.PRINT.value)
-const refs = ref<AttachmentRefItem[]>([])
-let metadataReady = false
-const attachmentId = ref<number>()
-let requestKey = ''
-let linked = false
-const sameDrawing = computed(() =>
-  refs.value.filter(
-    (row) => (row.drawingNo || '').trim().toUpperCase() === drawingNo.value.trim().toUpperCase()
-  )
-)
-// 轻量前端指纹只提示“可能重复”，不作为上传门禁。
 const duplicate = ref(false)
-
-function suggestVersion() {
-  version.value = nextDrawingVersion(sameDrawing.value.map(row => row.version)) || 'A'
-}
+const file = ref<File>()
+const entry = ref<PendingEntry>()
+let generation = 0
 function open() {
   if (!props.editable || props.disabled || busy.value) return
-  if (!completed.value && (attachmentId.value || file.value)) {
+  if (failed.value && file.value) {
     void submit()
     return
   }
-  // 在用户点击的同步调用栈中打开系统文件选择器。
   fileInput.value?.click()
-}
-async function prepareMetadata(productId: number, currentGeneration: number) {
-  const response = await attachmentRefApi.listRefs('product', productId)
-  if (currentGeneration !== generation) return
-  refs.value = response.data || []
-  const structure = refs.value
-    .filter((row) => row.documentType === documentType || row.category === '结构图')
-    .sort(
-      (a, b) =>
-        String(b.createTime || '').localeCompare(String(a.createTime || '')) ||
-        (b.id || b.attachmentId) - (a.id || a.attachmentId)
-    )
-  const identity = newDrawingIdentity(props.productCode, props.productName || '', documentType, refs.value)
-  drawingNo.value = structure[0]?.drawingNo?.trim() || identity.drawingNo
-  drawingName.value = structure[0]?.drawingNo ? structure[0].drawingName?.trim() || '' : identity.drawingName
-  legacyCategory.value = structure[0]?.drawingNo ? structure[0].category || undefined : '结构图'
-  suggestVersion()
-  duplicate.value = refs.value.some(
-    (row) => row.fileName === file.value!.name && Number(row.fileSize) === file.value!.size
-  )
-  metadataReady = true
 }
 async function chooseFile(event: Event) {
   const input = event.target as HTMLInputElement
   const selected = input.files?.[0]
+  input.value = ''
   if (!selected || !props.editable || props.disabled || busy.value) return
-  input.value = '' // 同一个文件也可再次选择；重复文件不阻断。
   if (fileKind({ fileName: selected.name, fileType: selected.type }) === 'other') {
-    message.value = '结构图请选择可预览的图片或 PDF'
+    message.value = '请选择图片或 PDF'
     return
   }
-  attachmentId.value = undefined
-  completed.value = false
-  failed.value = false
-  linked = metadataReady = false
-  duplicate.value = false
   file.value = selected
-  fileRole.value = DrawingFileRoleEnum.PRINT.value
-  requestKey = newRequestKey()
+  entry.value = undefined
+  completed.value = false
+  duplicate.value = draft.files.value.some(
+    (row) => row.fileName === selected.name && row.fileSize === selected.size
+  )
   await submit()
 }
-function newRequestKey(): string {
-  const uuid = globalThis.crypto?.randomUUID?.()
-  if (uuid && /^[A-Za-z0-9_-]{16,100}$/.test(uuid)) return uuid
-  // 兼容内网 HTTP 页面：requestKey 为上传幂等标识，不依赖安全上下文中的 randomUUID。
-  return `structure-${Date.now().toString(36)}-${Math.random().toString(36).slice(2).padEnd(16, '0')}`
-}
-function errorText(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
-}
 async function submit() {
-  if (
-    !props.editable ||
-    props.disabled ||
-    busy.value ||
-    !file.value ||
-    !user.hasPermission('product:edit')
-  )
-    return
+  if (!file.value || busy.value || !props.editable || props.disabled) return
   busy.value = true
-  message.value = ''
   failed.value = false
-  const currentGeneration = generation
-  const productId = props.productId
-  const productCode = props.productCode
+  message.value = ''
+  const current = generation
   try {
-    if (!attachmentId.value) {
-      if (!metadataReady) await prepareMetadata(productId, currentGeneration)
-      if (currentGeneration !== generation) return
-      if (!/^[A-Za-z0-9_-]{16,100}$/.test(requestKey)) requestKey = newRequestKey()
-      const response = await attachmentRefApi.tempUpload(file.value!, requestKey, undefined, {
-        ...(legacyCategory.value ? { category: legacyCategory.value } : {}),
-        drawingNo: drawingNo.value.trim(),
-        drawingName: drawingName.value,
-        version: version.value.trim(),
-        fileRole: fileRole.value,
-      })
-      if (currentGeneration !== generation) return
-      const id = Number(response.data)
-      if (!Number.isSafeInteger(id) || id <= 0) throw new Error('上传未返回有效附件编号')
-      attachmentId.value = id
+    if (!draft.ready.value) await draft.load()
+    if (!draft.ready.value) throw new Error('草稿未加载，请重试')
+    if (!entry.value) {
+      const uploaded = await draft.session.uploadTemporary(file.value, draft.ownership.value)
+      if (current !== generation) return
+      entry.value = uploaded.entry
+      duplicate.value = draft.files.value.some((row) =>
+        uploaded.entry.sha256 && row.sha256
+          ? uploaded.entry.sha256 === row.sha256
+          : row.fileName === uploaded.entry.fileName && row.fileSize === uploaded.entry.fileSize
+      )
+      draft.register(uploaded.entry, 'STRUCTURE_DRAWING')
     }
-    if (!linked) {
-      const response = await attachmentRefApi.createRef({
-        attachmentId: attachmentId.value,
-        sourceType: 'product',
-        sourceId: productId,
-        productId,
-        productCode,
-        documentType,
-      })
-      if (currentGeneration !== generation) return
-      if (!Number(response.data)) throw new Error('产品引用未建立')
-      linked = true
-    }
-    // 每次重试读取最新 revision 和内容，避免覆盖其它规范字段。
-    const current = await productWorkSpecApi.get(productId)
-    if (currentGeneration !== generation) return
-    if (!current.data || typeof current.data !== 'object')
-      throw new Error('未读取到当前规范，请重试')
-    const spec = normalizeWorkSpec(current.data)
-    spec.structureFileId = attachmentId.value
-    await productWorkSpecApi.save(productId, spec)
-    if (currentGeneration !== generation) return
+    const next = normalizeWorkSpec(draft.spec.value)
+    next.structureFileId = entry.value.attachmentId
+    await draft.save(next)
+    if (current !== generation) return
     completed.value = true
-    message.value = '结构图已保存'
+    message.value = '结构图已保存到规范草稿'
     emit('updated')
   } catch (error) {
-    if (currentGeneration !== generation) return
+    if (current !== generation) return
     failed.value = true
-    const prefix = attachmentId.value
-      ? linked
-        ? '文件已上传，规范保存失败，点击图片区重试'
-        : '文件已上传，产品引用未建立，点击图片区重试'
-      : '上传失败，点击图片区重试'
-    message.value = prefix + '：' + errorText(error)
+    message.value =
+      (entry.value ? '文件已上传，草稿保存失败，点击重试：' : '上传失败，点击重试：') +
+      (error instanceof Error ? error.message : String(error))
   } finally {
-    if (currentGeneration === generation) busy.value = false
+    if (current === generation) busy.value = false
   }
 }
 watch(
@@ -220,14 +136,12 @@ watch(
   () => {
     generation++
     file.value = undefined
-    attachmentId.value = undefined
-    requestKey = ''
-    linked = metadataReady = false
+    entry.value = undefined
     busy.value = completed.value = failed.value = duplicate.value = false
     message.value = ''
   }
 )
-watch(busy, (working) => emit('busy', working), { flush: 'sync' })
+watch(busy, (value) => emit('busy', value), { flush: 'sync' })
 onBeforeUnmount(() => {
   generation++
   emit('busy', false)

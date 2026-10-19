@@ -1,237 +1,395 @@
 <template>
-    <!-- 作业规范详情 -->
-    <el-drawer v-model="specVisible" :title="`生产作业规范 - ${detail?.product?.productCode || ''}`" size="82%" destroy-on-close append-to-body :before-close="closeSpec">
-      <div v-loading="detailLoading" class="spec-body">
-        <ProductSpecHeader
-          v-model:version-id="selectedVersionId"
-          :detail="detail"
-          :product-id="productId"
-          :versions="versionOptions"
-          :loading="detailLoading"
-          @preview="openExport"
-        />
+  <!-- 作业规范详情 -->
+  <el-drawer
+    v-model="specVisible"
+    :title="`生产作业规范 - ${detail?.product?.productCode || ''}`"
+    size="82%"
+    destroy-on-close
+    append-to-body
+    :before-close="closeSpec"
+  >
+    <div v-loading="detailLoading" class="spec-body">
+      <ProductSpecHeader
+        v-model:version-id="selectedVersionId"
+        :detail="detail"
+        :product-id="productId"
+        :versions="versionOptions"
+        :loading="detailLoading"
+        @preview="openExport"
+      />
 
-        <el-tabs v-model="activeTab" class="spec-tabs" :before-leave="beforeSpecTabLeave">
-          <el-tab-pane
-            v-for="tab in PRODUCT_SPEC_TABS"
-            :key="tab.name"
-            :label="tab.label"
-            :name="tab.name"
-          >
-            <!-- 未纳入本次发布：由注册表 notIncluded 统一渲染 -->
+      <ProductWorkSpecVersionPanel
+        v-if="!selectedVersionId && productId"
+        :key="productId"
+        :product-id="productId"
+        :blocked="workSpecBusy || colorCheckBusy"
+        @updated="versionSaved"
+      />
+
+      <el-tabs v-model="activeTab" class="spec-tabs" :before-leave="beforeSpecTabLeave">
+        <el-tab-pane
+          v-for="tab in PRODUCT_SPEC_TABS"
+          :key="tab.name"
+          :label="tab.label"
+          :name="tab.name"
+        >
+          <!-- 未纳入本次发布：由注册表 notIncluded 统一渲染 -->
+          <el-alert
+            v-if="selectedVersionId && tab.notIncluded"
+            type="warning"
+            :closable="false"
+            class="tab-tip"
+            :title="tab.notIncluded"
+          />
+
+          <!-- ① 客供资料 -->
+          <template v-if="tab.name === 'customer'">
+            <ProductSpecPreview
+              v-if="selectedVersionId && productId && activeTab === 'customer'"
+              :key="`${productId}-customer-${selectedVersionId}`"
+              :product-id="productId"
+              :version-id="selectedVersionId"
+              :product-code="productCode"
+              :product-name="detail?.product?.productName || ''"
+              :initial-sections="['customer']"
+              paper-only
+            />
+            <CustomerDocPanel
+              v-else-if="!selectedVersionId && productId && productCode"
+              :product-id="productId"
+              :product-code="productCode"
+            />
+          </template>
+
+          <!-- ② 样品：需求单与实物/确认资料统一入口 -->
+          <template v-else-if="tab.name === 'sample'">
+            <h3 class="sample-section-title">样品需求单</h3>
+            <el-table :data="sampleOrders" v-loading="sampleLoading" border size="small">
+              <el-table-column
+                label="样品单号"
+                prop="orderNo"
+                min-width="150"
+                show-overflow-tooltip
+              />
+              <el-table-column label="轮次" width="70">
+                <template #default="{ row }">{{ row.sampleRound ?? '-' }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="120">
+                <template #default="{ row }">
+                  <el-tag size="small" v-bind="SampleOrderStatus.getTagProps(row.sampleStatus)">{{
+                    SampleOrderStatus.getLabel(row.sampleStatus)
+                  }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="打样数量" width="90">
+                <template #default="{ row }">{{ row.sampleQty ?? '-' }}</template>
+              </el-table-column>
+              <el-table-column label="送样" min-width="170">
+                <template #default="{ row }">
+                  <span v-if="row.sampleSendDate || row.sampleTrackingNo"
+                    >{{ row.sampleSendDate || '-'
+                    }}<span v-if="row.sampleTrackingNo"> · {{ row.sampleTrackingNo }}</span></span
+                  >
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="客户确认" min-width="170">
+                <template #default="{ row }">
+                  <span v-if="row.sampleConfirmDate || row.sampleClientName"
+                    >{{ row.sampleConfirmDate || '-'
+                    }}<span v-if="row.sampleClientName"> · {{ row.sampleClientName }}</span></span
+                  >
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="120" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" @click="printSampleRequisition(row)"
+                    >打印 QR-065</el-button
+                  >
+                </template>
+              </el-table-column>
+              <template #empty
+                ><el-empty description="该产品暂无样品需求单" :image-size="60"
+              /></template>
+            </el-table>
+            <h3 class="sample-section-title">样品资料</h3>
             <el-alert
-              v-if="selectedVersionId && tab.notIncluded"
+              type="info"
+              :closable="false"
+              class="tab-tip"
+              title="样品实物照片 + 客户确认样品（工程上传）；与「客供资料」同一处理位置归集展示。"
+            />
+            <ProductDocPanel
+              v-if="productId"
+              :product-id="productId"
+              title="样品资料"
+              view-perm="product:view"
+              edit-perm="product:edit"
+            />
+          </template>
+
+          <!-- ④ 领料单（只读执行记录） -->
+          <template v-else-if="tab.name === 'pick-order'">
+            <el-alert
+              type="info"
+              :closable="false"
+              class="tab-tip"
+              title="只读执行记录：打样领料（来源样品单）与生产领料（来源工单）；不纳入发布版本。"
+            />
+            <el-table :data="pickRecords" v-loading="pickLoading" border size="small">
+              <el-table-column
+                label="出库单号"
+                prop="outboundNo"
+                min-width="150"
+                show-overflow-tooltip
+              />
+              <el-table-column label="类型" width="110">
+                <template #default="{ row }">
+                  <el-tag size="small" v-bind="OutboundTypeEnum.getTagProps(row.outboundType)">{{
+                    OutboundTypeEnum.getLabel(row.outboundType)
+                  }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column
+                label="来源单号"
+                prop="sourceNo"
+                min-width="150"
+                show-overflow-tooltip
+              />
+              <el-table-column label="出库日期" prop="outboundDate" width="120" />
+              <el-table-column label="数量" prop="totalQuantity" width="90" />
+              <el-table-column label="状态" width="110">
+                <template #default="{ row }">
+                  <el-tag
+                    size="small"
+                    v-bind="OutboundOrderStatusEnum.getTagProps(row.orderStatus)"
+                    >{{ OutboundOrderStatusEnum.getLabel(row.orderStatus) }}</el-tag
+                  >
+                </template>
+              </el-table-column>
+              <template #empty
+                ><el-empty description="该产品暂无领料记录" :image-size="60"
+              /></template>
+            </el-table>
+          </template>
+
+          <!-- ⑤ 作业规范：产品作业规范 + 印刷规范 -->
+          <template v-else-if="tab.name === 'spec'">
+            <ProductWorkSpecPanel
+              v-if="!selectedVersionId && productId && activeTab === 'spec'"
+              :key="productId"
+              :product-id="productId"
+              :product-code="productCode"
+              :product-name="detail?.product?.productName || ''"
+              @busy="workSpecBusy = $event"
+              @updated="refreshSpecSources"
+            />
+            <div v-else-if="selectedVersionId" v-loading="versionLoading" class="version-snapshot">
+              <el-alert
+                v-if="versionLoading"
+                type="info"
+                :closable="false"
+                class="tab-tip"
+                title="正在加载版本快照…"
+              />
+              <el-alert
+                v-else-if="versionError"
+                type="error"
+                :closable="false"
+                class="tab-tip"
+                :title="versionError"
+              />
+              <el-button
+                v-if="!versionLoading && (versionError || specError)"
+                link
+                type="primary"
+                @click="applyVersionSelection"
+                >重新加载版本</el-button
+              >
+              <el-alert
+                v-if="versionSnapshot"
+                type="info"
+                :closable="false"
+                class="tab-tip"
+                :title="`正在查看发布版本 ${versionSnapshot?.version?.versionNo || ''}（只读快照，不可编辑）；客供资料请查看同名页签，旧版未收录时会明确提示。领料单、油墨、实际检测记录不属于规范快照。`"
+              />
+              <el-descriptions v-if="versionSnapshot?.version" :column="2" border size="small">
+                <el-descriptions-item label="版本号">{{
+                  versionSnapshot.version.versionNo
+                }}</el-descriptions-item>
+                <el-descriptions-item label="发布人">{{
+                  versionSnapshot.version.publishedBy || '-'
+                }}</el-descriptions-item>
+                <el-descriptions-item label="发布时间">{{
+                  versionSnapshot.version.publishedAt || '-'
+                }}</el-descriptions-item>
+                <el-descriptions-item label="清单哈希">{{
+                  versionSnapshot.version.manifestHash || '-'
+                }}</el-descriptions-item>
+                <el-descriptions-item label="修订说明" :span="2">{{
+                  versionSnapshot.version.changeSummary || '-'
+                }}</el-descriptions-item>
+              </el-descriptions>
+              <el-descriptions
+                v-if="versionSnapshot?.spec"
+                :column="1"
+                border
+                size="small"
+                style="margin-top: 10px"
+              >
+                <el-descriptions-item label="制定负责人">{{
+                  versionSnapshot.spec.preparedByName || '-'
+                }}</el-descriptions-item>
+                <el-descriptions-item label="备注">{{
+                  versionSnapshot.spec.engineeringRequirements || '-'
+                }}</el-descriptions-item>
+                <el-descriptions-item label="刀模位置">{{
+                  dieText(versionSnapshot.spec)
+                }}</el-descriptions-item>
+                <el-descriptions-item label="结构图ID">{{
+                  versionSnapshot.spec.structureFileId ?? '-'
+                }}</el-descriptions-item>
+                <el-descriptions-item label="凹凸条件">
+                  <div v-for="f in embossFields" :key="f.key">
+                    {{ f.label }}：{{ versionSnapshot.spec.emboss[f.key] || '-' }}
+                  </div>
+                </el-descriptions-item>
+                <el-descriptions-item label="变更">
+                  <template v-if="versionSnapshot.spec.changes.length">
+                    <div v-for="(c, i) in versionSnapshot.spec.changes" :key="i">
+                      {{ c.date || '-' }}　{{ c.text || '-'
+                      }}<span v-if="c.reason">（{{ c.reason }}）</span>
+                    </div>
+                  </template>
+                  <span v-else>-</span>
+                </el-descriptions-item>
+              </el-descriptions>
+              <el-alert
+                v-else-if="specError"
+                type="error"
+                :closable="false"
+                style="margin-top: 10px"
+                :title="specError"
+              />
+              <el-alert
+                v-else-if="versionSnapshot && !versionLoading"
+                type="warning"
+                :closable="false"
+                style="margin-top: 10px"
+                title="该版本无规范正文快照"
+              />
+              <el-table
+                v-if="versionSnapshot"
+                :data="versionSnapshot?.drawings || []"
+                size="small"
+                border
+                style="margin-top: 10px"
+                empty-text="该版本未纳入工程图 / 样品资料"
+              >
+                <el-table-column label="图种 / 类别" width="140">
+                  <template #default="{ row }">{{ row.ref || '-' }}</template>
+                </el-table-column>
+                <el-table-column label="文件" min-width="200" show-overflow-tooltip>
+                  <template #default="{ row }">{{ row.fileName || '附件#' + row.id }}</template>
+                </el-table-column>
+                <el-table-column label="SHA-256" min-width="240" show-overflow-tooltip>
+                  <template #default="{ row }">{{ row.hash || '-' }}</template>
+                </el-table-column>
+              </el-table>
+            </div>
+            <el-alert
+              v-if="selectedVersionId && versionSnapshot?.routingError"
+              :title="versionSnapshot.routingError"
               type="warning"
               :closable="false"
               class="tab-tip"
-              :title="tab.notIncluded"
             />
+            <ProductPrintSpecPanel
+              v-if="selectedVersionId && versionSnapshot?.spec && productId && activeTab === 'spec'"
+              :key="`${productId}-${selectedVersionId}-print`"
+              :product-id="productId"
+              :work-spec="versionSnapshot.spec"
+              :routing-items="versionSnapshot.routingItems"
+              read-only
+            />
+          </template>
 
-            <!-- ① 客供资料 -->
-            <template v-if="tab.name === 'customer'">
-              <ProductSpecPreview
-                v-if="selectedVersionId && productId && activeTab === 'customer'"
-                :key="`${productId}-customer-${selectedVersionId}`"
-                :product-id="productId"
-                :version-id="selectedVersionId"
-                :product-code="productCode"
-                :product-name="detail?.product?.productName || ''"
-                :initial-sections="['customer']"
-                paper-only
-              />
-              <CustomerDocPanel v-else-if="!selectedVersionId && productId && productCode" :product-id="productId" :product-code="productCode" />
-            </template>
+          <!-- ⑦ 油墨调配记录表 -->
+          <template v-else-if="tab.name === 'ink'">
+            <el-alert
+              type="info"
+              :closable="false"
+              class="tab-tip"
+              title="油墨调配记录表：按参考样张录入机种/色号/色样、原料名称、重量(g)、百分比、油墨罐号、调墨员、调墨日期、溶剂。"
+            />
+            <InkMixingForm v-if="productId && activeTab === 'ink'" :key="`${productId}-ink`" />
+          </template>
 
-            <!-- ② 样品：需求单与实物/确认资料统一入口 -->
-            <template v-else-if="tab.name === 'sample'">
-              <h3 class="sample-section-title">样品需求单</h3>
-              <el-table :data="sampleOrders" v-loading="sampleLoading" border size="small">
-                <el-table-column label="样品单号" prop="orderNo" min-width="150" show-overflow-tooltip />
-                <el-table-column label="轮次" width="70">
-                  <template #default="{ row }">{{ row.sampleRound ?? '-' }}</template>
-                </el-table-column>
-                <el-table-column label="状态" width="120">
-                  <template #default="{ row }">
-                    <el-tag size="small" v-bind="SampleOrderStatus.getTagProps(row.sampleStatus)">{{ SampleOrderStatus.getLabel(row.sampleStatus) }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="打样数量" width="90">
-                  <template #default="{ row }">{{ row.sampleQty ?? '-' }}</template>
-                </el-table-column>
-                <el-table-column label="送样" min-width="170">
-                  <template #default="{ row }">
-                    <span v-if="row.sampleSendDate || row.sampleTrackingNo">{{ row.sampleSendDate || '-' }}<span v-if="row.sampleTrackingNo"> · {{ row.sampleTrackingNo }}</span></span>
-                    <span v-else>-</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="客户确认" min-width="170">
-                  <template #default="{ row }">
-                    <span v-if="row.sampleConfirmDate || row.sampleClientName">{{ row.sampleConfirmDate || '-' }}<span v-if="row.sampleClientName"> · {{ row.sampleClientName }}</span></span>
-                    <span v-else>-</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="120" fixed="right">
-                  <template #default="{ row }">
-                    <el-button link type="primary" @click="printSampleRequisition(row)">打印 QR-065</el-button>
-                  </template>
-                </el-table-column>
-                <template #empty><el-empty description="该产品暂无样品需求单" :image-size="60" /></template>
-              </el-table>
-              <h3 class="sample-section-title">样品资料</h3>
-              <el-alert type="info" :closable="false" class="tab-tip"
-                title="样品实物照片 + 客户确认样品（工程上传）；与「客供资料」同一处理位置归集展示。" />
-              <ProductDocPanel
-                v-if="productId"
-                :product-id="productId"
-                title="样品资料"
-                view-perm="product:view"
-                edit-perm="product:edit"
-              />
-            </template>
+          <!-- ⑧ 工程图集 -->
+          <template v-else-if="tab.name === 'atlas'">
+            <el-alert
+              type="info"
+              :closable="false"
+              class="tab-tip"
+              :title="
+                selectedVersionId
+                  ? '旧版附件只读，来自当时定版快照。'
+                  : '整理工程附件并保存草稿，随作业规范统一定版。'
+              "
+            />
+            <ProductSpecPreview
+              v-if="selectedVersionId && productId && activeTab === 'atlas'"
+              :key="`${productId}-atlas-${selectedVersionId}`"
+              :product-id="productId"
+              :version-id="selectedVersionId"
+              :initial-sections="['atlas', 'print']"
+            />
+            <EngineeringDrawingLibrary
+              v-else-if="!selectedVersionId && productCode"
+              :key="`${productId}-atlas`"
+              :active="activeTab === 'atlas'"
+              :product-id="productId"
+              :product-code="productCode"
+              :product-name="detail?.product?.productName || ''"
+              :categories="ENGINEERING_DOCUMENT_TYPE_CODES"
+              :show-versions="false"
+              @busy="drawingBusy = $event"
+            />
+          </template>
 
-            <!-- ④ 领料单（只读执行记录） -->
-            <template v-else-if="tab.name === 'pick-order'">
-              <el-alert type="info" :closable="false" class="tab-tip"
-                title="只读执行记录：打样领料（来源样品单）与生产领料（来源工单）；不纳入发布版本。" />
-              <el-table :data="pickRecords" v-loading="pickLoading" border size="small">
-                <el-table-column label="出库单号" prop="outboundNo" min-width="150" show-overflow-tooltip />
-                <el-table-column label="类型" width="110">
-                  <template #default="{ row }">
-                    <el-tag size="small" v-bind="OutboundTypeEnum.getTagProps(row.outboundType)">{{ OutboundTypeEnum.getLabel(row.outboundType) }}</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="来源单号" prop="sourceNo" min-width="150" show-overflow-tooltip />
-                <el-table-column label="出库日期" prop="outboundDate" width="120" />
-                <el-table-column label="数量" prop="totalQuantity" width="90" />
-                <el-table-column label="状态" width="110">
-                  <template #default="{ row }">
-                    <el-tag size="small" v-bind="OutboundOrderStatusEnum.getTagProps(row.orderStatus)">{{ OutboundOrderStatusEnum.getLabel(row.orderStatus) }}</el-tag>
-                  </template>
-                </el-table-column>
-                <template #empty><el-empty description="该产品暂无领料记录" :image-size="60" /></template>
-              </el-table>
-            </template>
+          <!-- ⑨ 分色检查表 -->
+          <template v-else-if="tab.name === 'color'">
+            <ProductColorCheckPanel
+              v-if="productId && activeTab === 'color'"
+              :key="`${productId}-color`"
+              :product-id="productId"
+              @busy="colorCheckBusy = $event"
+              @updated="refreshSpecSources"
+            />
+          </template>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
+  </el-drawer>
 
-            <!-- ⑤ 作业规范：产品作业规范 + 印刷规范 -->
-            <template v-else-if="tab.name === 'spec'">
-              <ProductWorkSpecPanel
-                v-if="!selectedVersionId && productId && activeTab === 'spec'"
-                :key="productId"
-                :product-id="productId"
-                :product-code="productCode"
-                :product-name="detail?.product?.productName || ''"
-                @busy="workSpecBusy = $event"
-                @updated="refreshSpecSources"
-              />
-              <div v-else-if="selectedVersionId" v-loading="versionLoading" class="version-snapshot">
-                <el-alert v-if="versionLoading" type="info" :closable="false" class="tab-tip" title="正在加载版本快照…" />
-                <el-alert v-else-if="versionError" type="error" :closable="false" class="tab-tip" :title="versionError" />
-                <el-button v-if="!versionLoading && (versionError || specError)" link type="primary" @click="applyVersionSelection">重新加载版本</el-button>
-                <el-alert v-if="versionSnapshot" type="info" :closable="false" class="tab-tip"
-                  :title="`正在查看发布版本 ${versionSnapshot?.version?.versionNo || ''}（只读快照，不可编辑）；客供资料请查看同名页签，旧版未收录时会明确提示。领料单、油墨、实际检测记录不属于规范快照。`" />
-                <el-descriptions v-if="versionSnapshot?.version" :column="2" border size="small">
-                  <el-descriptions-item label="版本号">{{ versionSnapshot.version.versionNo }}</el-descriptions-item>
-                  <el-descriptions-item label="发布人">{{ versionSnapshot.version.publishedBy || '-' }}</el-descriptions-item>
-                  <el-descriptions-item label="发布时间">{{ versionSnapshot.version.publishedAt || '-' }}</el-descriptions-item>
-                  <el-descriptions-item label="清单哈希">{{ versionSnapshot.version.manifestHash || '-' }}</el-descriptions-item>
-                  <el-descriptions-item label="修订说明" :span="2">{{ versionSnapshot.version.changeSummary || '-' }}</el-descriptions-item>
-                </el-descriptions>
-                <el-descriptions v-if="versionSnapshot?.spec" :column="1" border size="small" style="margin-top: 10px">
-                  <el-descriptions-item label="备注">{{ versionSnapshot.spec.engineeringRequirements || '-' }}</el-descriptions-item>
-                  <el-descriptions-item label="刀模位置">{{ dieText(versionSnapshot.spec) }}</el-descriptions-item>
-                  <el-descriptions-item label="结构图ID">{{ versionSnapshot.spec.structureFileId ?? '-' }}</el-descriptions-item>
-                  <el-descriptions-item label="凹凸条件">
-                    <div v-for="f in embossFields" :key="f.key">{{ f.label }}：{{ versionSnapshot.spec.emboss[f.key] || '-' }}</div>
-                  </el-descriptions-item>
-                  <el-descriptions-item label="变更">
-                    <template v-if="versionSnapshot.spec.changes.length">
-                      <div v-for="(c, i) in versionSnapshot.spec.changes" :key="i">
-                        {{ c.date || '-' }}　{{ c.text || '-' }}<span v-if="c.reason">（{{ c.reason }}）</span>
-                      </div>
-                    </template>
-                    <span v-else>-</span>
-                  </el-descriptions-item>
-                </el-descriptions>
-                <el-alert v-else-if="specError" type="error" :closable="false" style="margin-top: 10px" :title="specError" />
-                <el-alert v-else-if="versionSnapshot && !versionLoading" type="warning" :closable="false" style="margin-top: 10px" title="该版本无规范正文快照" />
-                <el-table
-                  v-if="versionSnapshot"
-                  :data="versionSnapshot?.drawings || []"
-                  size="small"
-                  border
-                  style="margin-top: 10px"
-                  empty-text="该版本未纳入工程图 / 样品资料"
-                >
-                  <el-table-column label="图种 / 类别" width="140">
-                    <template #default="{ row }">{{ row.ref || '-' }}</template>
-                  </el-table-column>
-                  <el-table-column label="文件" min-width="200" show-overflow-tooltip>
-                    <template #default="{ row }">{{ row.fileName || ('附件#' + row.id) }}</template>
-                  </el-table-column>
-                  <el-table-column label="SHA-256" min-width="240" show-overflow-tooltip>
-                    <template #default="{ row }">{{ row.hash || '-' }}</template>
-                  </el-table-column>
-                </el-table>
-              </div>
-              <el-alert v-if="selectedVersionId && versionSnapshot?.routingError" :title="versionSnapshot.routingError" type="warning" :closable="false" class="tab-tip" />
-              <ProductPrintSpecPanel
-                v-if="selectedVersionId && versionSnapshot?.spec && productId && activeTab === 'spec'"
-                :key="`${productId}-${selectedVersionId}-print`"
-                :product-id="productId"
-                :work-spec="versionSnapshot.spec"
-                :routing-items="versionSnapshot.routingItems"
-                read-only
-              />
-            </template>
-
-            <!-- ⑦ 油墨调配记录表 -->
-            <template v-else-if="tab.name === 'ink'">
-              <el-alert type="info" :closable="false" class="tab-tip"
-                title="油墨调配记录表：按参考样张录入机种/色号/色样、原料名称、重量(g)、百分比、油墨罐号、调墨员、调墨日期、溶剂。" />
-              <InkMixingForm v-if="productId && activeTab === 'ink'" :key="`${productId}-ink`" />
-            </template>
-
-            <!-- ⑧ 工程图集 -->
-            <template v-else-if="tab.name === 'atlas'">
-              <el-alert type="info" :closable="false" class="tab-tip"
-                title="按二级资料类型归集工程图（一级：工程技术资料）：结构图、外形尺寸图、面板图、线路图、组装图、包装图、印刷指导图等；上传时选择对应类型和版本。" />
-              <EngineeringDrawingLibrary
-                v-if="productCode"
-                :key="`${productId}-atlas`"
-                :active="activeTab === 'atlas'"
-                :product-id="productId"
-                :product-code="productCode"
-                :product-name="detail?.product?.productName || ''"
-                :categories="ENGINEERING_DOCUMENT_TYPE_CODES"
-                @busy="drawingBusy = $event"
-              />
-            </template>
-
-            <!-- ⑨ 分色检查表 -->
-            <template v-else-if="tab.name === 'color'">
-              <ProductColorCheckPanel
-                v-if="productId && activeTab === 'color'"
-                :key="`${productId}-color`"
-                :product-id="productId"
-                @busy="colorCheckBusy = $event"
-                @updated="refreshSpecSources"
-              />
-            </template>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-    </el-drawer>
-
-    <!-- 在线纸张预览：目录选择与打印共用同一版式 -->
-    <el-dialog v-model="exportVisible" title="产品电子文档集 · 在线预览" width="94%" top="4vh" append-to-body destroy-on-close>
-      <ProductSpecPreview
-        v-if="exportVisible && productId"
-        :product-id="productId"
-        :version-id="selectedVersionId || undefined"
-        :product-code="productCode"
-        :product-name="detail?.product?.productName || ''"
-      />
-    </el-dialog>
+  <!-- 在线纸张预览：目录选择与打印共用同一版式 -->
+  <el-dialog
+    v-model="exportVisible"
+    title="产品电子文档集 · 在线预览"
+    width="94%"
+    top="4vh"
+    append-to-body
+    destroy-on-close
+  >
+    <ProductSpecPreview
+      v-if="exportVisible && productId"
+      :product-id="productId"
+      :version-id="selectedVersionId || undefined"
+      :product-code="productCode"
+      :product-name="detail?.product?.productName || ''"
+    />
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -245,6 +403,8 @@ import EngineeringDrawingLibrary from '@/views/engineering/drawing/components/En
 import { ENGINEERING_DOCUMENT_TYPE_CODES } from '@/components/product/productFileCategories'
 import ProductSpecPreview from '@/views/engineering/product-spec/components/ProductSpecPreview.vue'
 import ProductWorkSpecPanel from '@/views/engineering/product-spec/components/ProductWorkSpecPanel.vue'
+import ProductWorkSpecVersionPanel from '@/views/engineering/product-spec/components/ProductWorkSpecVersionPanel.vue'
+import { useWorkSpecAttachmentSession } from '@/views/engineering/product-spec/components/useWorkSpecAttachmentSession'
 import ProductPrintSpecPanel from '@/views/engineering/product-spec/components/ProductPrintSpecPanel.vue'
 import ProductColorCheckPanel from '@/views/engineering/product-spec/components/ProductColorCheckPanel.vue'
 import InkMixingForm from '@/views/engineering/product-spec/components/InkMixingForm.vue'
@@ -261,21 +421,37 @@ import { productRouteApi } from '@/api/product/routing'
 
 function dieText(spec: any): string {
   const values = Object.values(spec?.dieLocation || {}).filter(Boolean)
-  return values.length ? values.join('；') : (spec?.dieLocationText || '-')
+  return values.length ? values.join('；') : spec?.dieLocationText || '-'
 }
 const specVisible = ref(false)
 const drawingBusy = ref(false)
 const workSpecBusy = ref(false)
 const colorCheckBusy = ref(false)
 function closeSpec(done: () => void) {
-  if (drawingBusy.value || workSpecBusy.value || colorCheckBusy.value) { ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口'); return }
+  if (draftSession.dirty.value || draftSession.busy.value) {
+    ElMessage.warning('请先保存或取消工程附件草稿改动')
+    return
+  }
+  if (
+    draftSession.busy.value ||
+    draftSession.dirty.value ||
+    drawingBusy.value ||
+    workSpecBusy.value ||
+    colorCheckBusy.value
+  ) {
+    ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口')
+    return
+  }
   requestVersion++
   resetVersionSnapshot()
   exportVisible.value = false
   done()
 }
 function beforeSpecTabLeave() {
-  if (workSpecBusy.value || colorCheckBusy.value) { ElMessage.warning('请先完成或关闭规范编辑窗口'); return false }
+  if (workSpecBusy.value || colorCheckBusy.value) {
+    ElMessage.warning('请先完成或关闭规范编辑窗口')
+    return false
+  }
   return true
 }
 const detailLoading = ref(false)
@@ -285,6 +461,7 @@ const activeTab = ref('customer')
 const productCode = computed(() => detail.value?.product?.productCode || '')
 
 const productId = computed(() => Number(detail.value?.product?.productId || 0))
+const draftSession = useWorkSpecAttachmentSession(productId, productCode)
 let requestVersion = 0
 async function refreshSpecSources() {
   if (!productId.value) return
@@ -294,13 +471,20 @@ async function refreshSpecSources() {
     const response = await getFullProduct(id)
     if (version === requestVersion && specVisible.value) detail.value = response.data
   } catch (e) {
-    if (version === requestVersion && specVisible.value) ElMessage.error(e instanceof Error ? e.message : '产品资料刷新失败')
+    if (version === requestVersion && specVisible.value)
+      ElMessage.error(e instanceof Error ? e.message : '产品资料刷新失败')
   }
 }
 
 async function open(id: number, versionId?: number) {
   if (!Number.isFinite(id) || id <= 0) return
-  if (drawingBusy.value || workSpecBusy.value || colorCheckBusy.value) {
+  if (
+    draftSession.busy.value ||
+    draftSession.dirty.value ||
+    drawingBusy.value ||
+    workSpecBusy.value ||
+    colorCheckBusy.value
+  ) {
     ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口')
     return
   }
@@ -326,7 +510,8 @@ async function open(id: number, versionId?: number) {
       }
     }
   } catch (e) {
-    if (version === requestVersion && specVisible.value) ElMessage.error(e instanceof Error ? e.message : '加载作业规范失败')
+    if (version === requestVersion && specVisible.value)
+      ElMessage.error(e instanceof Error ? e.message : '加载作业规范失败')
   } finally {
     if (version === requestVersion) detailLoading.value = false
   }
@@ -341,7 +526,10 @@ const pickRecords = ref<ProductPickRow[]>([])
 const pickLoading = ref(false)
 
 async function loadSampleOrders() {
-  if (!productId.value) { sampleOrders.value = []; return }
+  if (!productId.value) {
+    sampleOrders.value = []
+    return
+  }
   sampleLoading.value = true
   try {
     const response: any = await sampleOrderApi.list({ productId: productId.value })
@@ -355,7 +543,10 @@ async function loadSampleOrders() {
 }
 
 async function loadPickRecords() {
-  if (!productId.value) { pickRecords.value = []; return }
+  if (!productId.value) {
+    pickRecords.value = []
+    return
+  }
   pickLoading.value = true
   try {
     const response: any = await outboundApi.listPickByProduct(productId.value)
@@ -369,7 +560,11 @@ async function loadPickRecords() {
 }
 
 function printSampleRequisition(row: SampleOrder) {
-  window.open(`/print/sample-order/${row.orderId}?layout=requisition`, '_blank', 'noopener,noreferrer')
+  window.open(
+    `/print/sample-order/${row.orderId}?layout=requisition`,
+    '_blank',
+    'noopener,noreferrer'
+  )
 }
 
 watch(activeTab, (tab) => {
@@ -380,7 +575,13 @@ watch(activeTab, (tab) => {
 // ⑤ 产品作业规范：版本切换（只读快照；dev-20261011-027）
 const versionOptions = ref<any[]>([])
 const selectedVersionId = ref(0)
-const versionSnapshot = ref<{ version: any; spec: any; drawings: any[]; routingItems: any[]; routingError: string } | null>(null)
+const versionSnapshot = ref<{
+  version: any
+  spec: any
+  drawings: any[]
+  routingItems: any[]
+  routingError: string
+} | null>(null)
 const versionLoading = ref(false)
 const versionError = ref('')
 const specError = ref('')
@@ -406,6 +607,10 @@ async function loadVersionOptions() {
     versionOptions.value = []
   }
 }
+async function versionSaved() {
+  await refreshSpecSources()
+  await loadVersionOptions()
+}
 
 async function applyVersionSelection() {
   resetVersionSnapshot()
@@ -424,12 +629,22 @@ async function applyVersionSelection() {
     const docsetItem = items.find((i: any) => i.resourceType === 'DOCSET_JSON')
     if (docsetItem) {
       let snapshot: any = null
-      try { snapshot = JSON.parse(docsetItem.snapshotJson || '{}') } catch { snapshot = null }
-      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('该版本完整快照解析失败')
+      try {
+        snapshot = JSON.parse(docsetItem.snapshotJson || '{}')
+      } catch {
+        snapshot = null
+      }
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot))
+        throw new Error('该版本完整快照解析失败')
       versionSnapshot.value = {
         version: res.data.version,
         spec: normalizeWorkSpec(snapshot.spec || {}),
-        drawings: (snapshot.files || []).map((f: any) => ({ id: f.attachmentId, ref: f.category || '', hash: f.sha256 || '', fileName: f.fileName || null })),
+        drawings: (snapshot.files || []).map((f: any) => ({
+          id: f.attachmentId,
+          ref: f.category || '',
+          hash: f.sha256 || '',
+          fileName: f.fileName || null,
+        })),
         routingItems: snapshot.routing?.items || [],
         routingError: '',
       }
@@ -441,7 +656,8 @@ async function applyVersionSelection() {
     if (specItem?.snapshotJson != null && specItem.snapshotJson !== '') {
       try {
         const parsed = JSON.parse(specItem.snapshotJson)
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('规范正文应为 JSON 对象')
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+          throw new Error('规范正文应为 JSON 对象')
         spec = normalizeWorkSpec(parsed)
       } catch (error) {
         console.error('解析发布版本规范正文失败', { versionId: requestedVersionId, error })
@@ -449,7 +665,13 @@ async function applyVersionSelection() {
       }
     }
     // 正文已就绪，不等待独立的工艺路线接口；路线失败不影响正文。
-    const snapshot = { version: res.data.version, spec, drawings: drawingItems(items), routingItems: [] as any[], routingError: '' }
+    const snapshot = {
+      version: res.data.version,
+      spec,
+      drawings: drawingItems(items),
+      routingItems: [] as any[],
+      routingError: '',
+    }
     versionSnapshot.value = snapshot
     versionLoading.value = false
     const routingItem = items.find((item: any) => item.resourceType === 'ROUTING')
@@ -474,7 +696,13 @@ async function applyVersionSelection() {
   }
 }
 
-watch(selectedVersionId, () => { void applyVersionSelection() }, { flush: 'sync' })
+watch(
+  selectedVersionId,
+  () => {
+    void applyVersionSelection()
+  },
+  { flush: 'sync' }
+)
 
 /** 该版本的 DRAWING 条目（工程图 / 样品资料；多条目；dev-20261011-034）。 */
 function drawingItems(items: any[]) {
@@ -495,7 +723,10 @@ function openExport() {
   exportVisible.value = true
 }
 
-onBeforeUnmount(() => { requestVersion++; resetVersionSnapshot() })
+onBeforeUnmount(() => {
+  requestVersion++
+  resetVersionSnapshot()
+})
 defineExpose({ open })
 </script>
 

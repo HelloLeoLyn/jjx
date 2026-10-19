@@ -2,14 +2,36 @@ import { attachmentApi } from '@/api/system/attachment'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import { ProcessCategoryEnum } from '@/enums/product'
-import { productFileCategoryLabel, engineeringDocumentTypeLabel } from '@/components/product/productFileCategories'
-import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum, DrawingFileRoleEnum } from '@/enums/product/drawing'
-import { productWorkSpecApi, normalizeWorkSpec, type ProductWorkSpec, type DieLocationMap } from '@/api/product/workSpec'
+import {
+  productFileCategoryLabel,
+  engineeringDocumentTypeLabel,
+  ENGINEERING_DOCUMENT_TYPE_CODES,
+} from '@/components/product/productFileCategories'
+import {
+  DrawingCurrentFlagEnum,
+  DrawingReleaseFlagEnum,
+  DrawingFileRoleEnum,
+} from '@/enums/product/drawing'
+import {
+  productWorkSpecApi,
+  normalizeWorkSpec,
+  type ProductWorkSpec,
+  type DieLocationMap,
+} from '@/api/product/workSpec'
 import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreview'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
-import { parseSnapshotStrict, parseDocsetSnapshot, sectionForDocumentType, detectFileKind, buildVersionFiles, snapshotFileToDocFile, snapshotWarnings, type DocFile } from './versionDocset'
+import {
+  parseSnapshotStrict,
+  parseDocsetSnapshot,
+  sectionForDocumentType,
+  detectFileKind,
+  buildVersionFiles,
+  snapshotFileToDocFile,
+  snapshotWarnings,
+  type DocFile,
+} from './versionDocset'
 export { renderFile, type FileImage } from '@/components/product/productFilePreview'
 export type { DocFile } from './versionDocset'
 export { snapshotFileToDocFile } from './versionDocset'
@@ -31,19 +53,32 @@ export function isEngineeringFile(file: DocFile): boolean {
 }
 /** 正式打印按文件下发集合准入；补入的未下发成员不得混入。历史快照自带当时集合。 */
 export function canPrintDocumentFile(file: DocFile): boolean {
-  return file.kind !== 'other' && (!isEngineeringFile(file) || !!file.published || (
-    !!file.drawingNo && file.section !== 'other' && file.isCurrent === DrawingCurrentFlagEnum.CURRENT.value
-    && file.released === DrawingReleaseFlagEnum.RELEASED.value
-  ))
+  if (file.printSelected === false) return false
+  if (file.draftManaged) return file.kind !== 'other'
+  return (
+    file.kind !== 'other' &&
+    (!isEngineeringFile(file) ||
+      !!file.published ||
+      (!!file.drawingNo &&
+        file.section !== 'other' &&
+        file.isCurrent === DrawingCurrentFlagEnum.CURRENT.value &&
+        file.released === DrawingReleaseFlagEnum.RELEASED.value))
+  )
 }
 export function orderedPrintFiles(files: DocFile[], keys: string[]): DocFile[] {
-  const byKey = new Map(files.map(file => [file.key, file]))
-  return [...new Set(keys)].map(key => byKey.get(key)).filter((file): file is DocFile => !!file && canPrintDocumentFile(file))
+  const byKey = new Map(files.map((file) => [file.key, file]))
+  const selected = [...new Set(keys)]
+    .map((key) => byKey.get(key))
+    .filter((file): file is DocFile => !!file && canPrintDocumentFile(file))
+  return files.some((file) => file.published && typeof file.printSelected === 'boolean')
+    ? selected.sort((a, b) => files.indexOf(a) - files.indexOf(b))
+    : selected
 }
 /** 一个图纸版本仅默认选打印件；没有打印件时才允许可预览的原稿。 */
 export function defaultDocumentFiles(files: DocFile[]): DocFile[] {
-  return files.filter(file => {
+  return files.filter((file) => {
     if (!canPrintDocumentFile(file)) return false
+    if (file.draftManaged || typeof file.printSelected === 'boolean') return true
     // 分色检查表以工程录入的电子表为主；历史附件不默认选中，避免重复打印。
     if (file.section === 'color') return false
     // 未分类文件不默认进工程图集，也不默认勾选打印
@@ -51,9 +86,24 @@ export function defaultDocumentFiles(files: DocFile[]): DocFile[] {
     if (!isEngineeringFile(file)) return true
     // 发布版本清单里的图纸即「当时已发布集合」，不受当前工作态现行/下发标记过滤（dev-20261013-009）。
     if (file.published) return true
-    if (!file.drawingNo || file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value || file.released !== DrawingReleaseFlagEnum.RELEASED.value) return false
+    if (
+      !file.drawingNo ||
+      file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value ||
+      file.released !== DrawingReleaseFlagEnum.RELEASED.value
+    )
+      return false
     if (file.fileRole === DrawingFileRoleEnum.PRINT.value) return true
-    return file.fileRole === DrawingFileRoleEnum.ORIGINAL.value && !files.some(other => canPrintDocumentFile(other) && other.productFile && other.drawingNo === file.drawingNo && other.version === file.version && other.fileRole === DrawingFileRoleEnum.PRINT.value)
+    return (
+      file.fileRole === DrawingFileRoleEnum.ORIGINAL.value &&
+      !files.some(
+        (other) =>
+          canPrintDocumentFile(other) &&
+          other.productFile &&
+          other.drawingNo === file.drawingNo &&
+          other.version === file.version &&
+          other.fileRole === DrawingFileRoleEnum.PRINT.value
+      )
+    )
   })
 }
 export function documentFileCaption(file: DocFile): string {
@@ -61,7 +111,8 @@ export function documentFileCaption(file: DocFile): string {
   if (file.drawingNo) parts.push(file.drawingNo)
   if (file.version) parts.push(`版本 ${file.version}`)
   // 发布版本清单未记录现行/下发快照，不臆造状态标签（dev-20261013-009）。
-  if (isEngineeringFile(file) && !file.published) {
+  if (file.draftManaged) parts.unshift('草稿')
+  if (isEngineeringFile(file) && !file.published && !file.draftManaged) {
     if (!file.drawingNo) parts.unshift('待归集')
     if (file.isCurrent !== DrawingCurrentFlagEnum.CURRENT.value) parts.unshift('非现行')
     if (file.released !== DrawingReleaseFlagEnum.RELEASED.value) parts.unshift('未下发')
@@ -84,7 +135,14 @@ export interface DocPage {
   title: string
   kind: 'spec' | 'spec-details' | 'print' | 'color' | 'image' | 'empty' | 'flow' | 'ink'
   rows?: Record<string, any>[]
-  groups?: { label: string; symbol: string; rows: Record<string, any>[]; value?: string; capacity?: number; remark?: string }[]
+  groups?: {
+    label: string
+    symbol: string
+    rows: Record<string, any>[]
+    value?: string
+    capacity?: number
+    remark?: string
+  }[]
   showFilm?: boolean
   image?: FileImage
   file?: DocFile
@@ -95,27 +153,41 @@ export interface DocPage {
   detailLines?: PaperTextLine[]
   emptyMessage?: string
 }
-export interface PaperTextLine { text: string; color?: string }
+export interface PaperTextLine {
+  text: string
+  color?: string
+}
 
 /** 固定区域按中文字符宽度保守折行，超出内容另起附页，避免CSS裁掉数据。 */
 function paperLines(value: string, width: number): string[] {
-  return value.split(/\r?\n/).flatMap(paragraph => {
+  return value.split(/\r?\n/).flatMap((paragraph) => {
     const result: string[] = []
-    let line = '', used = 0
+    let line = '',
+      used = 0
     for (const char of Array.from(paragraph)) {
       const size = char.charCodeAt(0) < 128 ? 0.6 : 1
-      if (used + size > width) { result.push(line); line = ''; used = 0 }
-      line += char; used += size
+      if (used + size > width) {
+        result.push(line)
+        line = ''
+        used = 0
+      }
+      line += char
+      used += size
     }
     result.push(line)
     return result
   })
 }
 export function dieLocationKey(row: Record<string, any>): string {
-  return [row?.materialCode, row?.layer, row?.processName].map(value => String(value ?? '').trim()).join('|')
+  return [row?.materialCode, row?.layer, row?.processName]
+    .map((value) => String(value ?? '').trim())
+    .join('|')
 }
 export function dieLocationLabel(row: Record<string, any>): string {
-  const extra = [row?.layer, row?.processName].map(value => String(value ?? '').trim()).filter(Boolean).join(' / ')
+  const extra = [row?.layer, row?.processName]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .join(' / ')
   const base = String(row?.materialName ?? row?.materialCode ?? '').trim() || '-'
   return extra ? `${base}（${extra}）` : base
 }
@@ -123,37 +195,55 @@ export function flattenedBom(items?: Record<string, any>[] | null): Record<strin
   return flatten(items || [])
 }
 /** 刀模位置按 BOM 行（展平后）对齐取值，与纸张行序一致。map 优先；该行无 map 值时回退旧版多行文本（dieLocationText，按行对齐）。 */
-export function dieLocationRows(map: DieLocationMap | undefined, items: Record<string, any>[] | null | undefined, legacyText?: string): string[] {
+export function dieLocationRows(
+  map: DieLocationMap | undefined,
+  items: Record<string, any>[] | null | undefined,
+  legacyText?: string
+): string[] {
   const legacy = legacyText ? legacyText.split(/\r?\n/) : []
-  return flattenedBom(items).map((row, index) => (map && map[dieLocationKey(row)]) || (legacy[index] || '').trim())
+  return flattenedBom(items).map(
+    (row, index) => (map && map[dieLocationKey(row)]) || (legacy[index] || '').trim()
+  )
 }
 function specText(data: DocsetData) {
   return {
     engineeringNotes: data.workSpec.engineeringRequirements,
-    diePositionRows: dieLocationRows(data.workSpec.dieLocation, data.bom.items || [], data.workSpec.dieLocationText),
+    diePositionRows: dieLocationRows(
+      data.workSpec.dieLocation,
+      data.bom.items || [],
+      data.workSpec.dieLocationText
+    ),
     changeLines: [...data.workSpec.changes]
-      .filter(change => change.print && change.text.trim())
+      .filter((change) => change.print && change.text.trim())
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-      .map(change => ({ text: (change.date ? change.date.slice(2) + '　' : '') + change.text, color: change.color })),
+      .map((change) => ({
+        text: (change.date ? change.date.slice(2) + '　' : '') + change.text,
+        color: change.color,
+      })),
   }
 }
 /** 附页已由DOM确认需要，再按附页正文宽度分行；不用于判断主表是否溢出。 */
 export function detailTextLines(text: string, color?: string): PaperTextLine[] {
-  return paperLines(text, 44).map(line => ({ text: line, color }))
+  return paperLines(text, 44).map((line) => ({ text: line, color }))
 }
 
 export function plain(value: unknown): string {
-  return String(value ?? '').replace(/<[^>]*>/g, '').trim()
+  return String(value ?? '')
+    .replace(/<[^>]*>/g, '')
+    .trim()
 }
 /** 作业规范只组合BOM事实；尺寸0视为未填，计件材料使用不含损耗的单位用量。 */
 export function workSpecMaterialSpec(row?: Record<string, any> | null): string {
   if (!row) return ''
-  const width = Number(row.widthMm), length = Number(row.lengthMm)
+  const width = Number(row.widthMm),
+    length = Number(row.lengthMm)
   const hasWidth = Number.isFinite(width) && width > 0
   const hasLength = Number.isFinite(length) && length > 0
-  const specification = hasWidth && hasLength ? width + '*' + length + 'mm' : plain(row.specification)
+  const specification =
+    hasWidth && hasLength ? width + '*' + length + 'mm' : plain(row.specification)
   const module = Number(row.moduleQty)
-  if (specification) return specification + (Number.isFinite(module) && module > 0 ? '=' + module + 'PCS' : '')
+  if (specification)
+    return specification + (Number.isFinite(module) && module > 0 ? '=' + module + 'PCS' : '')
   const unit = plain(row.unit).toUpperCase()
   if (!hasWidth && !hasLength && (unit === 'PCS' || unit === '个') && module === 1) {
     const quantity = calculateBomQuantity(row.baseQty, row.moduleQty)
@@ -162,64 +252,133 @@ export function workSpecMaterialSpec(row?: Record<string, any> | null): string {
   return ''
 }
 export function workSpecStepSubscript(item: Record<string, any>): string {
-  return [item.indexNumber == null ? '' : String(item.indexNumber), plain(item.workInstruction)].filter(Boolean).join(' ')
+  return [item.indexNumber == null ? '' : String(item.indexNumber), plain(item.workInstruction)]
+    .filter(Boolean)
+    .join(' ')
 }
 export function workSpecOperationRemark(row?: Record<string, any>): string {
   if (!row) return ''
-  return [plain(row.remark), ...(row.children || []).map((item: Record<string, any>) => plain(item.remark))].filter(Boolean).join('；')
+  return [
+    plain(row.remark),
+    ...(row.children || []).map((item: Record<string, any>) => plain(item.remark)),
+  ]
+    .filter(Boolean)
+    .join('；')
 }
 export function printParams(row: Record<string, any>): Record<string, any> {
-  try { return JSON.parse(row.customProcessParams || '{}') || {} } catch { return {} }
+  try {
+    return JSON.parse(row.customProcessParams || '{}') || {}
+  } catch {
+    return {}
+  }
 }
 function flatten(items: Record<string, any>[]): Record<string, any>[] {
   return items.flatMap((row) => [row, ...flatten(row.children || [])])
 }
-export const flowGroups = ProcessCategoryEnum.items.filter((item) => item.value !== 'OTHER')
-  .map((item, index) => ({ value: item.value, label: item.label, symbol: ['□', '△', '▽'][index] || '' }))
+export const flowGroups = ProcessCategoryEnum.items
+  .filter((item) => item.value !== 'OTHER')
+  .map((item, index) => ({
+    value: item.value,
+    label: item.label,
+    symbol: ['□', '△', '▽'][index] || '',
+  }))
 export const printCapacities = [12, 5, 7, 4]
 
 export async function loadDocset(productId: number): Promise<DocsetData> {
   const specification = await productWorkSpecApi.get(productId)
   const full = specification.data?.sourceData
   if (!full?.product) throw new Error('未找到产品资料')
-  const data: DocsetData = { product: full.product, bom: full.bom || {}, routing: full.routing || {}, workSpec: normalizeWorkSpec(specification.data || {}), files: [], warnings: [] }
+  const data: DocsetData = {
+    product: full.product,
+    bom: full.bom || {},
+    routing: full.routing || {},
+    workSpec: normalizeWorkSpec(specification.data || {}),
+    files: [],
+    warnings: [],
+  }
   const jobs = [
-    { label: '材料项目图标', run: async () => {
-      const ids = [...new Set(flatten(data.bom.items || []).map(row => Number(row.processId)).filter(Boolean))]
-      const results = await Promise.allSettled(ids.map(id => standardProcessApi.getById(id)))
-      const icons = new Map<number, string>()
-      results.forEach((result, i) => {
-        if (result.status === 'fulfilled') { const item: any = result.value.data; if (item?.icon) icons.set(ids[i], item.icon) }
-        else data.warnings.push('项目图标加载失败，保留项目名称')
-      })
-      const enrich = (rows: any[]): any[] => rows.map(row => ({ ...row, icon: icons.get(Number(row.processId)) || row.icon, ...(row.children ? { children: enrich(row.children) } : {}) }))
-      data.bom = { ...data.bom, items: enrich(data.bom.items || []) }
-    } },
-    { label: '客供资料', run: async () => { const r: any = await attachmentApi.customerDocs(productId); appendFiles(data, r.data || [], true) } },
-    { label: '产品文件', run: async () => {
-      // 产品文件改按产品查引用（refsByProduct）：补显经公共组件新上传的图纸/文件（dev-20261014-036）
-      const r: any = await attachmentRefApi.refsByProduct(productId)
-      const rows = (r.data || []).map((x: any) => ({
-        id: x.attachmentId ?? x.id,
-        fileName: x.fileName,
-        displayName: x.displayName,
-        category: x.category || engineeringDocumentTypeLabel(x.documentType),
-        documentType: x.documentType,
-        fileType: x.fileType,
-        drawingNo: x.drawingNo,
-        version: x.version,
-        fileRole: x.fileRole,
-        isCurrent: x.isCurrent,
-        released: x.released,
-      }))
-      appendFiles(data, rows, false)
-    } },
+    {
+      label: '材料项目图标',
+      run: async () => {
+        const ids = [
+          ...new Set(
+            flatten(data.bom.items || [])
+              .map((row) => Number(row.processId))
+              .filter(Boolean)
+          ),
+        ]
+        const results = await Promise.allSettled(ids.map((id) => standardProcessApi.getById(id)))
+        const icons = new Map<number, string>()
+        results.forEach((result, i) => {
+          if (result.status === 'fulfilled') {
+            const item: any = result.value.data
+            if (item?.icon) icons.set(ids[i], item.icon)
+          } else data.warnings.push('项目图标加载失败，保留项目名称')
+        })
+        const enrich = (rows: any[]): any[] =>
+          rows.map((row) => ({
+            ...row,
+            icon: icons.get(Number(row.processId)) || row.icon,
+            ...(row.children ? { children: enrich(row.children) } : {}),
+          }))
+        data.bom = { ...data.bom, items: enrich(data.bom.items || []) }
+      },
+    },
+    {
+      label: '客供资料',
+      run: async () => {
+        const r: any = await attachmentApi.customerDocs(productId)
+        appendFiles(data, r.data || [], true)
+      },
+    },
+    {
+      label: '产品文件',
+      run: async () => {
+        // 产品文件改按产品查引用（refsByProduct）：补显经公共组件新上传的图纸/文件（dev-20261014-036）
+        const r: any = await attachmentRefApi.refsByProduct(productId)
+        const draftFiles = specification.data?.draftFiles || []
+        const managed = data.workSpec.draftManaged === true
+        const selected = new Map(
+          (data.workSpec.draftAttachments || []).map((file) => [file.attachmentId, file])
+        )
+        const source = managed
+          ? [
+              ...draftFiles,
+              ...(r.data || []).filter(
+                (file: any) => !ENGINEERING_DOCUMENT_TYPE_CODES.includes(file.documentType)
+              ),
+            ]
+          : r.data || []
+        const rows = source.map((x: any) => ({
+          id: x.attachmentId ?? x.id,
+          fileName: x.fileName,
+          displayName: x.displayName,
+          category: x.category || engineeringDocumentTypeLabel(x.documentType),
+          documentType: x.documentType,
+          fileType: x.fileType,
+          drawingNo: x.drawingNo,
+          version: x.version,
+          fileRole: x.fileRole,
+          isCurrent: x.isCurrent,
+          released: x.released,
+          draftManaged: managed && selected.has(x.attachmentId),
+          printSelected:
+            managed && selected.has(x.attachmentId)
+              ? selected.get(x.attachmentId)?.print !== false
+              : undefined,
+        }))
+        appendFiles(data, rows, false)
+      },
+    },
   ]
   const results = await Promise.allSettled(jobs.map((job) => job.run()))
   results.forEach((result, i) => {
-    if (result.status === 'rejected') data.warnings.push(`${jobs[i].label}加载失败：${result.reason instanceof Error ? result.reason.message : '请重试'}`)
+    if (result.status === 'rejected')
+      data.warnings.push(
+        `${jobs[i].label}加载失败：${result.reason instanceof Error ? result.reason.message : '请重试'}`
+      )
   })
-  data.files.sort((a, b) => a.id - b.id)
+  if (!data.workSpec.draftManaged) data.files.sort((a, b) => a.id - b.id)
   return data
 }
 function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
@@ -233,8 +392,24 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
     const mime = row.fileType || row.file_type || ''
     const kind = detectFileKind(name, mime)
     const section = customer ? 'customer' : sectionForDocumentType(documentType, category)
-    data.files.push({ key: String(id), id, name, originalName, category, documentType: documentType || undefined, kind, section, productFile: !customer,
-      drawingNo: row.drawingNo, version: row.version, fileRole: row.fileRole, isCurrent: row.isCurrent, released: row.released })
+    data.files.push({
+      key: String(id),
+      id,
+      name,
+      originalName,
+      category,
+      documentType: documentType || undefined,
+      kind,
+      section,
+      productFile: !customer,
+      drawingNo: row.drawingNo,
+      version: row.version,
+      fileRole: row.fileRole,
+      isCurrent: row.isCurrent,
+      released: row.released,
+      printSelected: row.printSelected,
+      draftManaged: row.draftManaged,
+    })
   }
 }
 
@@ -244,13 +419,19 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
  * - 旧发布版本（无 DOCSET_JSON）：退回 SPEC_JSON/BOM/ROUTING/DRAWING 引用（仍按引用 id 取已批准版本，不回退工作态），
  *   并显式标注「未固化完整快照，可能缺项」。
  */
-export async function loadDocsetForVersion(productId: number, versionId: number, productCode = '', productName = ''): Promise<DocsetData> {
+export async function loadDocsetForVersion(
+  productId: number,
+  versionId: number,
+  productCode = '',
+  productName = ''
+): Promise<DocsetData> {
   const res: any = await productWorkSpecApi.getVersion(versionId)
   const version = res?.data?.version
   const items: Record<string, any>[] = res?.data?.items || []
   if (!version) throw new Error('发布版本不存在')
   const docsetItem = items.find((item) => item.resourceType === 'DOCSET_JSON')
-  if (docsetItem) return buildDocsetFromSnapshot(productId, docsetItem.snapshotJson, productCode, productName)
+  if (docsetItem)
+    return buildDocsetFromSnapshot(productId, docsetItem.snapshotJson, productCode, productName)
   return buildDocsetFromLegacyRefs(productId, items, productCode, productName)
 }
 
@@ -258,7 +439,12 @@ export async function loadDocsetForVersion(productId: number, versionId: number,
  * 由 DOCSET_JSON 完整快照组装文档集（dev-20261013-011）。快照自包含，全程不触网。
  * 快照损坏 / 无法解析时抛错（不输出看似完整的文档）。
  */
-export function buildDocsetFromSnapshot(productId: number, snapshotJson: string | null | undefined, productCode = '', productName = ''): DocsetData {
+export function buildDocsetFromSnapshot(
+  productId: number,
+  snapshotJson: string | null | undefined,
+  productCode = '',
+  productName = ''
+): DocsetData {
   const snapshot = parseDocsetSnapshot(snapshotJson)
   const data: DocsetData = {
     product: {
@@ -275,15 +461,24 @@ export function buildDocsetFromSnapshot(productId: number, snapshotJson: string 
   }
   for (const file of snapshot.files || []) data.files.push(snapshotFileToDocFile(file))
   data.warnings.push(...snapshotWarnings(snapshot, data.files.length))
-  data.files.sort((a, b) => a.id - b.id)
+  if (!data.workSpec.draftManaged) data.files.sort((a, b) => a.id - b.id)
   return data
 }
 
 /** 旧发布版本（无完整快照）退回引用读取；显式标注未固化，不回退工作态。 */
-export async function buildDocsetFromLegacyRefs(productId: number, items: Record<string, any>[], productCode = '', productName = ''): Promise<DocsetData> {
+export async function buildDocsetFromLegacyRefs(
+  productId: number,
+  items: Record<string, any>[],
+  productCode = '',
+  productName = ''
+): Promise<DocsetData> {
   const data: DocsetData = {
     product: { productId, productCode: productCode || '', productName: productName || '' },
-    bom: {}, routing: {}, workSpec: normalizeWorkSpec({}), files: [], warnings: [],
+    bom: {},
+    routing: {},
+    workSpec: normalizeWorkSpec({}),
+    files: [],
+    warnings: [],
   }
   data.warnings.push('该版本未固化完整快照（旧版发布），工程图/客供等可能缺项')
 
@@ -302,8 +497,12 @@ export async function buildDocsetFromLegacyRefs(productId: number, items: Record
   const bomRef = parseSnapshotStrict(bomItem?.snapshotJson)
   if (!bomItem) data.warnings.push('该发布版本未包含 BOM 引用')
   else if (bomRef.ok && bomRef.value.bomId) {
-    try { const r: any = await productBomApi.getEngineeringBomInfo(Number(bomRef.value.bomId)); data.bom = r?.data || {} }
-    catch { data.warnings.push('该版 BOM 读取失败') }
+    try {
+      const r: any = await productBomApi.getEngineeringBomInfo(Number(bomRef.value.bomId))
+      data.bom = r?.data || {}
+    } catch {
+      data.warnings.push('该版 BOM 读取失败')
+    }
   } else if (!bomRef.ok) data.warnings.push('该版 BOM 引用解析失败')
 
   // 工艺路线：同上。
@@ -311,8 +510,12 @@ export async function buildDocsetFromLegacyRefs(productId: number, items: Record
   const routeRef = parseSnapshotStrict(routeItem?.snapshotJson)
   if (!routeItem) data.warnings.push('该发布版本未包含工艺路线引用')
   else if (routeRef.ok && routeRef.value.routingId) {
-    try { const r: any = await productRouteApi.getProductRouteInfo(Number(routeRef.value.routingId)); data.routing = r?.data || {} }
-    catch { data.warnings.push('该版工艺路线读取失败') }
+    try {
+      const r: any = await productRouteApi.getProductRouteInfo(Number(routeRef.value.routingId))
+      data.routing = r?.data || {}
+    } catch {
+      data.warnings.push('该版工艺路线读取失败')
+    }
   } else if (!routeRef.ok) data.warnings.push('该版工艺路线引用解析失败')
 
   // 工程图：读取**全部** DRAWING 条目，按发布清单入集，不受当前现行/下发标记过滤。
@@ -321,7 +524,9 @@ export async function buildDocsetFromLegacyRefs(productId: number, items: Record
   data.warnings.push(...drawing.warnings)
 
   // 旧版未固化：不补取当前态冒充历史。
-  data.unavailableSections = { customer: '该发布版本未收录客供资料。请切换工作态查看当前资料；完整归档需另行发布新版本。' }
+  data.unavailableSections = {
+    customer: '该发布版本未收录客供资料。请切换工作态查看当前资料；完整归档需另行发布新版本。',
+  }
   data.warnings.push(data.unavailableSections.customer!)
   data.warnings.push('材料项目图标未随该发布版本固化，预览不补取当前图标')
 
@@ -329,7 +534,13 @@ export async function buildDocsetFromLegacyRefs(productId: number, items: Record
   return data
 }
 
-export function makePages(data: DocsetData, sections: string[], fileIds: string[], images: Record<string, FileImage[]>, overflow: Record<string, PaperTextLine[]> = {}): DocPage[] {
+export function makePages(
+  data: DocsetData,
+  sections: string[],
+  fileIds: string[],
+  images: Record<string, FileImage[]>,
+  overflow: Record<string, PaperTextLine[]> = {}
+): DocPage[] {
   const pages: DocPage[] = []
   const printFiles = orderedPrintFiles(data.files, fileIds)
   const all = flatten(data.routing.items || [])
@@ -338,36 +549,152 @@ export function makePages(data: DocsetData, sections: string[], fileIds: string[
   for (const section of documentSections.filter((item) => sections.includes(item.key))) {
     if (section.key === 'spec') {
       const bom = flatten(data.bom.items || [])
-      const groups = flowGroups.map((group) => ({ ...group, rows: assembly.filter((row: any) => row.processCategory === group.value) }))
+      const groups = flowGroups.map((group) => ({
+        ...group,
+        rows: assembly.filter((row: any) => row.processCategory === group.value),
+      }))
       const capacities = [14, 6, 14]
       const text = specText(data)
-      const count = Math.max(1, Math.ceil(bom.length / 14), Math.ceil(text.diePositionRows.length / 14), ...groups.map((group, i) => Math.ceil(group.rows.length / capacities[i])))
-      for (let i = 0; i < count; i++) pages.push({ key: `spec-${i}`, section: 'spec', title: '产品作业规范', kind: 'spec', continuation: i, engineeringNotes: text.engineeringNotes, diePositionRows: text.diePositionRows.slice(i * 14, (i + 1) * 14), changeLines: text.changeLines, rows: bom.slice(i * 14, (i + 1) * 14), groups: groups.map((group, j) => ({ label: group.label, symbol: group.symbol, rows: group.rows.slice(i * capacities[j], (i + 1) * capacities[j]) })) })
-      const details = pages.filter(page => page.kind === 'spec').flatMap(page => overflow[page.key] || [])
-      for (let i = 0; i < details.length; i += 48) pages.push({ key: 'spec-details-' + i, section: 'spec', title: '产品作业规范 · 工程内容附页', kind: 'spec-details', detailLines: details.slice(i, i + 48) })
-      const uncategorized = assembly.filter((row: any) => !flowGroups.some((group) => group.value === row.processCategory))
-      for (let i = 0; i < uncategorized.length; i += 22) pages.push({ key: `flow-${i}`, section: 'spec', title: '产品作业规范 · 未分类工序', kind: 'flow', rows: uncategorized.slice(i, i + 22) })
+      const count = Math.max(
+        1,
+        Math.ceil(bom.length / 14),
+        Math.ceil(text.diePositionRows.length / 14),
+        ...groups.map((group, i) => Math.ceil(group.rows.length / capacities[i]))
+      )
+      for (let i = 0; i < count; i++)
+        pages.push({
+          key: `spec-${i}`,
+          section: 'spec',
+          title: '产品作业规范',
+          kind: 'spec',
+          continuation: i,
+          engineeringNotes: text.engineeringNotes,
+          diePositionRows: text.diePositionRows.slice(i * 14, (i + 1) * 14),
+          changeLines: text.changeLines,
+          rows: bom.slice(i * 14, (i + 1) * 14),
+          groups: groups.map((group, j) => ({
+            label: group.label,
+            symbol: group.symbol,
+            rows: group.rows.slice(i * capacities[j], (i + 1) * capacities[j]),
+          })),
+        })
+      const details = pages
+        .filter((page) => page.kind === 'spec')
+        .flatMap((page) => overflow[page.key] || [])
+      for (let i = 0; i < details.length; i += 48)
+        pages.push({
+          key: 'spec-details-' + i,
+          section: 'spec',
+          title: '产品作业规范 · 工程内容附页',
+          kind: 'spec-details',
+          detailLines: details.slice(i, i + 48),
+        })
+      const uncategorized = assembly.filter(
+        (row: any) => !flowGroups.some((group) => group.value === row.processCategory)
+      )
+      for (let i = 0; i < uncategorized.length; i += 22)
+        pages.push({
+          key: `flow-${i}`,
+          section: 'spec',
+          title: '产品作业规范 · 未分类工序',
+          kind: 'flow',
+          rows: uncategorized.slice(i, i + 22),
+        })
     } else if (section.key === 'print') {
-      const groups = [...flowGroups, { value: '', label: '未分类', symbol: '' }].map((group, j) => ({ ...group, capacity: printCapacities[j]!, remark: data.workSpec.printRemarks[group.value] || '', rows: printRows.filter((row) => group.value ? row.processCategory === group.value : !flowGroups.some((g) => g.value === row.processCategory)) }))
-      const count = Math.max(1, ...groups.map((group, j) => Math.ceil(group.rows.length / printCapacities[j])))
-      const showFilm = printRows.some(row => String(printParams(row).filmNo ?? '').length > 0)
-      for (let i = 0; i < count; i++) pages.push({ key: `print-${i}`, section: 'print', title: '印刷规范', kind: 'print', continuation: i, showFilm, groups: groups.filter(group => group.value || group.rows.length).map(group => ({ ...group, rows: group.rows.slice(i * group.capacity, (i + 1) * group.capacity) })) })
-      const details = pages.filter(page => page.kind === 'print').flatMap(page => overflow[page.key] || [])
-      for (let i = 0; i < details.length; i += 48) pages.push({ key: 'print-details-' + i, section: 'print', title: '印刷规范 · 内容附页', kind: 'spec-details', detailLines: details.slice(i, i + 48) })
+      const groups = [...flowGroups, { value: '', label: '未分类', symbol: '' }].map(
+        (group, j) => ({
+          ...group,
+          capacity: printCapacities[j]!,
+          remark: data.workSpec.printRemarks[group.value] || '',
+          rows: printRows.filter((row) =>
+            group.value
+              ? row.processCategory === group.value
+              : !flowGroups.some((g) => g.value === row.processCategory)
+          ),
+        })
+      )
+      const count = Math.max(
+        1,
+        ...groups.map((group, j) => Math.ceil(group.rows.length / printCapacities[j]))
+      )
+      const showFilm = printRows.some((row) => String(printParams(row).filmNo ?? '').length > 0)
+      for (let i = 0; i < count; i++)
+        pages.push({
+          key: `print-${i}`,
+          section: 'print',
+          title: '印刷规范',
+          kind: 'print',
+          continuation: i,
+          showFilm,
+          groups: groups
+            .filter((group) => group.value || group.rows.length)
+            .map((group) => ({
+              ...group,
+              rows: group.rows.slice(i * group.capacity, (i + 1) * group.capacity),
+            })),
+        })
+      const details = pages
+        .filter((page) => page.kind === 'print')
+        .flatMap((page) => overflow[page.key] || [])
+      for (let i = 0; i < details.length; i += 48)
+        pages.push({
+          key: 'print-details-' + i,
+          section: 'print',
+          title: '印刷规范 · 内容附页',
+          kind: 'spec-details',
+          detailLines: details.slice(i, i + 48),
+        })
       // 指导图跟随印刷表，整套文档中不再在工程图集重复打印；仅允许现行已下发的预览件。
-      const files = printFiles.filter(file => file.section === 'print')
-      for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: 'print', title: '印刷指导图', kind: 'image', file, image }))
+      const files = printFiles.filter((file) => file.section === 'print')
+      for (const file of files)
+        (images[file.key] || []).forEach((image, i) =>
+          pages.push({
+            key: `file-${file.key}-${i}`,
+            section: 'print',
+            title: '印刷指导图',
+            kind: 'image',
+            file,
+            image,
+          })
+        )
     } else if (section.key === 'ink') {
       pages.push({ key: 'ink', section: 'ink', title: '油墨调配记录表', kind: 'ink' })
     } else if (section.key === 'color') {
       // 分色检查表：电子表纸张固定一张（未填写也可预览空白），历史附件排其后。
       pages.push({ key: 'color', section: 'color', title: '规范分色检查表', kind: 'color' })
       const files = printFiles.filter((file) => file.section === 'color')
-      for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: 'color', title: `规范分色检查表 · ${documentFileCaption(file)}`, kind: 'image', file, image }))
+      for (const file of files)
+        (images[file.key] || []).forEach((image, i) =>
+          pages.push({
+            key: `file-${file.key}-${i}`,
+            section: 'color',
+            title: `规范分色检查表 · ${documentFileCaption(file)}`,
+            kind: 'image',
+            file,
+            image,
+          })
+        )
     } else {
       const files = printFiles.filter((file) => file.section === section.key)
-      for (const file of files) (images[file.key] || []).forEach((image, i) => pages.push({ key: `file-${file.key}-${i}`, section: section.key, title: `${section.label} · ${productFileCategoryLabel(file.category)}`, kind: 'image', file, image }))
-      if (!files.length) pages.push({ key: `${section.key}-empty`, section: section.key, title: section.label, kind: 'empty', emptyMessage: data.unavailableSections?.[section.key] })
+      for (const file of files)
+        (images[file.key] || []).forEach((image, i) =>
+          pages.push({
+            key: `file-${file.key}-${i}`,
+            section: section.key,
+            title: `${section.label} · ${productFileCategoryLabel(file.category)}`,
+            kind: 'image',
+            file,
+            image,
+          })
+        )
+      if (!files.length)
+        pages.push({
+          key: `${section.key}-empty`,
+          section: section.key,
+          title: section.label,
+          kind: 'empty',
+          emptyMessage: data.unavailableSections?.[section.key],
+        })
     }
   }
   return pages

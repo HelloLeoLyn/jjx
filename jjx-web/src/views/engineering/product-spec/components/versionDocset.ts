@@ -29,6 +29,9 @@ export interface DocFile {
    * 整批按发布清单默认入集展示。
    */
   published?: boolean
+  /** 定版固化的打印选择；false仍可下载，不能临时勾选打印。 */
+  printSelected?: boolean
+  draftManaged?: boolean
 }
 
 export interface VersionFilesResult {
@@ -40,11 +43,15 @@ export interface VersionFilesResult {
  * 解析发布条目快照。
  * 空值（null / undefined / 空串）视为「原本为空」；非空但非法 JSON 显式标错，绝不静默当成空对象。
  */
-export function parseSnapshotStrict(value?: string | null): { ok: boolean; value: Record<string, any> } {
+export function parseSnapshotStrict(value?: string | null): {
+  ok: boolean
+  value: Record<string, any>
+} {
   if (value == null || value === '') return { ok: true, value: {} }
   try {
     const parsed = JSON.parse(value)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { ok: true, value: parsed }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+      return { ok: true, value: parsed }
     return { ok: false, value: {} }
   } catch {
     return { ok: false, value: {} }
@@ -53,7 +60,8 @@ export function parseSnapshotStrict(value?: string | null): { ok: boolean; value
 
 /** 由文件类别判定文档栏目（legacy：仅无 documentType 的历史非图纸数据回退用）。 */
 export function sectionForCategory(customer: boolean, category: string): string {
-  if (customer || ['客供稿', '承认书', '客供资料', '客户确认样品'].includes(category)) return 'customer'
+  if (customer || ['客供稿', '承认书', '客供资料', '客户确认样品'].includes(category))
+    return 'customer'
   if (category === '印刷指导图') return 'print'
   if (category === '样品照片') return 'sample'
   if (category === '分色检查表') return 'color'
@@ -62,16 +70,28 @@ export function sectionForCategory(customer: boolean, category: string): string 
 
 /** 工程图类二级类型（除下方显式映射外，其余归工程图集）。 */
 export const ENGINEERING_DOCUMENT_TYPES = new Set([
-  'ENGINEERING_DRAWING', 'STRUCTURE_DRAWING', 'OUTLINE_DRAWING', 'PANEL_DRAWING', 'CIRCUIT_DRAWING',
-  'ASSEMBLY_DRAWING', 'PACKAGING_DRAWING', 'MOLD_DRAWING', 'DIE_DRAWING', 'DIE_PARAMETER_DRAWING',
-  'CONFIRM_DRAWING', 'FILM',
+  'ENGINEERING_DRAWING',
+  'STRUCTURE_DRAWING',
+  'OUTLINE_DRAWING',
+  'PANEL_DRAWING',
+  'CIRCUIT_DRAWING',
+  'ASSEMBLY_DRAWING',
+  'PACKAGING_DRAWING',
+  'MOLD_DRAWING',
+  'DIE_DRAWING',
+  'DIE_PARAMETER_DRAWING',
+  'CONFIRM_DRAWING',
+  'FILM',
 ])
 
 /**
  * 文档集分栏（dev-20261019-018）：优先按二级资料类型编码映射；
  * 无类型的历史数据仅对非图纸栏目按原类别回退，工程图不默认落图集（归 other/未分类）。
  */
-export function sectionForDocumentType(documentType?: string | null, category?: string | null): string {
+export function sectionForDocumentType(
+  documentType?: string | null,
+  category?: string | null
+): string {
   const type = (documentType || '').trim()
   if (type) {
     if (type.startsWith('CUSTOMER_')) return 'customer'
@@ -92,7 +112,11 @@ export function sectionForDocumentType(documentType?: string | null, category?: 
 /** 按文件名 / MIME 判定文件形态。 */
 export function detectFileKind(name: string, mime = ''): 'image' | 'pdf' | 'other' {
   const ext = (name.split('.').pop() || '').toLowerCase()
-  if (mime.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) return 'image'
+  if (
+    mime.startsWith('image/') ||
+    ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)
+  )
+    return 'image'
   if (mime.includes('pdf') || ext === 'pdf') return 'pdf'
   return 'other'
 }
@@ -103,7 +127,9 @@ export function snapshotFileToDocFile(file: Record<string, any>): DocFile {
   const name = file.displayName || originalName
   const documentType = file.documentType ? String(file.documentType) : ''
   // 新快照按 documentType 分栏；旧快照无该字段时沿用已固化的 section（兼容读取）。
-  const section = documentType ? sectionForDocumentType(documentType, file.category) : (file.section || 'other')
+  const section = documentType
+    ? sectionForDocumentType(documentType, file.category)
+    : file.section || 'other'
   return {
     key: String(file.attachmentId),
     id: Number(file.attachmentId),
@@ -118,6 +144,7 @@ export function snapshotFileToDocFile(file: Record<string, any>): DocFile {
     drawingNo: file.drawingNo ? String(file.drawingNo) : undefined,
     fileRole: file.fileRole ? String(file.fileRole) : undefined,
     published: true,
+    printSelected: typeof file.printSelected === 'boolean' ? file.printSelected : undefined,
   }
 }
 
@@ -125,18 +152,33 @@ export function snapshotFileToDocFile(file: Record<string, any>): DocFile {
 export function parseDocsetSnapshot(value?: string | null): Record<string, any> {
   const parsed = parseSnapshotStrict(value)
   const snapshot = parsed.value
-  if (!parsed.ok || snapshot.schemaVersion !== 1 || !snapshot.spec || typeof snapshot.spec !== 'object'
-    || Array.isArray(snapshot.spec) || !Array.isArray(snapshot.files)) {
+  if (
+    !parsed.ok ||
+    snapshot.schemaVersion !== 1 ||
+    !snapshot.spec ||
+    typeof snapshot.spec !== 'object' ||
+    Array.isArray(snapshot.spec) ||
+    !Array.isArray(snapshot.files)
+  ) {
     throw new Error('该发布版本的完整快照损坏或格式不支持，无法预览')
   }
-  if (!Number.isInteger(snapshot.counts?.files) || snapshot.counts.files !== snapshot.files.length) {
+  if (
+    !Number.isInteger(snapshot.counts?.files) ||
+    snapshot.counts.files !== snapshot.files.length
+  ) {
     throw new Error('该发布版本的文件清单数量不一致，无法预览')
   }
   const ids = new Set<number>()
   for (const file of snapshot.files) {
     const id = Number(file?.attachmentId)
-    if (!Number.isSafeInteger(id) || id <= 0 || ids.has(id) || typeof file?.fileName !== 'string'
-      || !file.fileName.trim() || !['customer', 'sample', 'atlas', 'print', 'color', 'icon'].includes(file.section)) {
+    if (
+      !Number.isSafeInteger(id) ||
+      id <= 0 ||
+      ids.has(id) ||
+      typeof file?.fileName !== 'string' ||
+      !file.fileName.trim() ||
+      !['customer', 'sample', 'atlas', 'print', 'color', 'icon'].includes(file.section)
+    ) {
       throw new Error('该发布版本的文件清单不完整或附件重复，无法预览')
     }
     ids.add(id)
@@ -194,7 +236,9 @@ export function buildVersionFiles(items: Record<string, any>[] = []): VersionFil
       name,
       category,
       documentType: documentType || undefined,
-      section: documentType ? sectionForDocumentType(documentType, category) : sectionForCategory(false, category),
+      section: documentType
+        ? sectionForDocumentType(documentType, category)
+        : sectionForCategory(false, category),
       kind: detectFileKind(name, ref.value.fileType || ''),
       productFile: true,
       version: ref.value.version ? String(ref.value.version) : undefined,

@@ -2,16 +2,20 @@
   <el-card shadow="never" class="wsv-card">
     <template #header>
       <div class="wsv-head">
-        <span class="wsv-title">作业规范发布版本</span>
+        <span class="wsv-title">作业规范定版</span>
         <div>
           <el-button
             v-hasPermi="['product:work-spec:publish']"
             type="primary"
             size="small"
             :loading="publishing"
+            :disabled="blocked || draft.busy.value || !draft.ready.value"
             @click="publish"
-          >发布新版本</el-button>
-          <el-button size="small" :disabled="versions.length < 2" @click="openCompare">版本比较</el-button>
+            >定版</el-button
+          >
+          <el-button size="small" :disabled="versions.length < 2" @click="openCompare"
+            >版本比较</el-button
+          >
           <el-button size="small" @click="load">刷新</el-button>
         </div>
       </div>
@@ -21,43 +25,78 @@
       <el-table-column prop="versionNo" label="版本号" width="100" />
       <el-table-column label="状态" width="90" align="center">
         <template #default="{ row }">
-          <el-tag size="small" v-bind="WorkSpecVersionStatus.getTagProps(row.status)">{{ WorkSpecVersionStatus.getLabel(row.status) }}</el-tag>
+          <el-tag size="small" v-bind="WorkSpecVersionStatus.getTagProps(row.status)">{{
+            WorkSpecVersionStatus.getLabel(row.status)
+          }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="changeSummary" label="修订说明" min-width="180" show-overflow-tooltip />
-      <el-table-column prop="publishedBy" label="发布人" width="100" align="center" />
-      <el-table-column prop="publishedAt" label="发布时间" width="160" align="center" />
-      <el-table-column label="操作" width="230" align="center">
+      <el-table-column
+        prop="changeSummary"
+        label="修订说明"
+        min-width="180"
+        show-overflow-tooltip
+      />
+      <el-table-column prop="publishedBy" label="定版人" width="100" align="center" />
+      <el-table-column prop="publishedAt" label="定版时间" width="160" align="center" />
+      <el-table-column label="操作" width="330" align="center">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">明细</el-button>
-          <el-button v-if="showFullPage" link type="primary" @click="emit('openVersion', row.id)">整页查看</el-button>
+          <el-button
+            v-hasPermi="['product:edit']"
+            link
+            type="primary"
+            :disabled="blocked || draft.busy.value || draft.dirty.value || publishing"
+            @click="upgrade(row)"
+            >从此版升级</el-button
+          >
+          <el-button v-if="showFullPage" link type="primary" @click="emit('openVersion', row.id)"
+            >整页查看</el-button
+          >
           <el-button
             v-if="row.status === WorkSpecVersionStatus.RETIRED.value"
             v-hasPermi="['product:work-spec:publish']"
             link
             type="primary"
             @click="restoreVersion(row)"
-          >恢复</el-button>
+            >恢复</el-button
+          >
           <el-button
             v-else
             v-hasPermi="['product:work-spec:publish']"
             link
             type="danger"
             @click="retireVersion(row)"
-          >停用</el-button>
+            >停用</el-button
+          >
         </template>
       </el-table-column>
-      <template #empty>尚未发布版本</template>
+      <template #empty>尚未定版</template>
     </el-table>
 
-    <el-dialog v-model="detailVisible" :title="`版本详情 ${detailVersion?.versionNo || ''}`" width="820px" append-to-body destroy-on-close>
+    <el-dialog
+      v-model="detailVisible"
+      :title="`版本详情 ${detailVersion?.versionNo || ''}`"
+      width="820px"
+      append-to-body
+      destroy-on-close
+    >
       <el-descriptions :column="2" border size="small">
         <el-descriptions-item label="版本号">{{ detailVersion?.versionNo }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ detailVersion?.status ? WorkSpecVersionStatus.getLabel(detailVersion.status) : '-' }}</el-descriptions-item>
-        <el-descriptions-item label="发布人">{{ detailVersion?.publishedBy || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="发布时间">{{ detailVersion?.publishedAt || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="修订说明" :span="2">{{ detailVersion?.changeSummary || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="清单哈希" :span="2">{{ detailVersion?.manifestHash || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{
+          detailVersion?.status ? WorkSpecVersionStatus.getLabel(detailVersion.status) : '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="定版人">{{
+          detailVersion?.publishedBy || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="定版时间">{{
+          detailVersion?.publishedAt || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="修订说明" :span="2">{{
+          detailVersion?.changeSummary || '-'
+        }}</el-descriptions-item>
+        <el-descriptions-item label="清单哈希" :span="2">{{
+          detailVersion?.manifestHash || '-'
+        }}</el-descriptions-item>
       </el-descriptions>
       <el-table :data="detailItems" size="small" border style="margin-top: 10px">
         <el-table-column label="条目" width="140">
@@ -67,10 +106,14 @@
           <template #default="{ row }">{{ row.operationRef || '-' }}</template>
         </el-table-column>
         <el-table-column label="内容 / 引用" min-width="320">
-          <template #default="{ row }"><span class="wsv-snap">{{ row.snapshotJson }}</span></template>
+          <template #default="{ row }"
+            ><span class="wsv-snap">{{ row.snapshotJson }}</span></template
+          >
         </el-table-column>
         <el-table-column label="哈希" width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.contentHash ? row.contentHash.slice(0, 12) + '…' : '-' }}</template>
+          <template #default="{ row }">{{
+            row.contentHash ? row.contentHash.slice(0, 12) + '…' : '-'
+          }}</template>
         </el-table-column>
       </el-table>
       <el-alert
@@ -79,16 +122,28 @@
         style="margin-top: 10px"
         :title="detailDiff.changed ? '当前工作态与本次发布已有差异' : '当前工作态与本次发布一致'"
       />
-      <el-table v-if="detailDiff.changed" :data="detailDiff.fields" size="small" border style="margin-top: 8px">
+      <el-table
+        v-if="detailDiff.changed"
+        :data="detailDiff.fields"
+        size="small"
+        border
+        style="margin-top: 8px"
+      >
         <el-table-column prop="label" label="字段" width="190" show-overflow-tooltip />
         <el-table-column label="发布版本" min-width="180">
-          <template #default="{ row }"><span class="wsv-snap">{{ row.before || '（空）' }}</span></template>
+          <template #default="{ row }"
+            ><span class="wsv-snap">{{ row.before || '（空）' }}</span></template
+          >
         </el-table-column>
         <el-table-column label="当前工作态" min-width="180">
-          <template #default="{ row }"><span class="wsv-snap">{{ row.after || '（空）' }}</span></template>
+          <template #default="{ row }"
+            ><span class="wsv-snap">{{ row.after || '（空）' }}</span></template
+          >
         </el-table-column>
       </el-table>
-      <div class="wsv-tip">发布后内容不可改；完整快照包含客供资料、BOM、工艺路线与工程图。旧版仅保留当时已收录的正文和引用，缺项不会自动补入。</div>
+      <div class="wsv-tip">
+        定版后内容不可改；完整快照包含客供资料、BOM、工艺路线与工程图。旧版仅保留当时已收录的正文和引用，缺项不会自动补入。
+      </div>
       <div class="wsv-tip">未纳入本次发布：{{ detailDiff.notIncluded.join('、') }}。</div>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
@@ -96,22 +151,31 @@
           v-if="showFullPage && detailVersion"
           type="primary"
           @click="emit('openVersion', detailVersion.id)"
-        >整页查看</el-button>
+          >整页查看</el-button
+        >
         <el-button
           v-if="detailVersion && detailVersion.status === WorkSpecVersionStatus.RETIRED.value"
           v-hasPermi="['product:work-spec:publish']"
           @click="restoreVersion(detailVersion)"
-        >恢复</el-button>
+          >恢复</el-button
+        >
         <el-button
           v-else-if="detailVersion"
           v-hasPermi="['product:work-spec:publish']"
           type="danger"
           @click="retireVersion(detailVersion)"
-        >停用</el-button>
+          >停用</el-button
+        >
       </template>
     </el-dialog>
 
-    <el-dialog v-model="compareVisible" title="版本比较（已发布版本）" width="860px" append-to-body destroy-on-close>
+    <el-dialog
+      v-model="compareVisible"
+      title="版本比较（已定版版本）"
+      width="860px"
+      append-to-body
+      destroy-on-close
+    >
       <div class="wsv-compare-bar">
         <el-select v-model="compareA" placeholder="版本A" style="width: 160px">
           <el-option v-for="v in versions" :key="v.id" :label="v.versionNo" :value="v.id" />
@@ -125,42 +189,68 @@
           :loading="comparing"
           :disabled="!compareA || !compareB || compareA === compareB"
           @click="runCompare"
-        >比较</el-button>
+          >比较</el-button
+        >
       </div>
       <template v-if="compareResult">
         <el-alert
           :type="compareResult.changed ? 'warning' : 'success'"
           :closable="false"
           style="margin-top: 10px"
-          :title="compareResult.changed ? `发现 ${compareResult.fields.length} 处字段差异` : '两个版本内容一致'"
+          :title="
+            compareResult.changed
+              ? `发现 ${compareResult.fields.length} 处字段差异`
+              : '两个版本内容一致'
+          "
         />
-        <el-table v-if="compareResult.changed" :data="compareResult.fields" size="small" border style="margin-top: 8px">
+        <el-table
+          v-if="compareResult.changed"
+          :data="compareResult.fields"
+          size="small"
+          border
+          style="margin-top: 8px"
+        >
           <el-table-column prop="label" label="字段" width="190" show-overflow-tooltip />
           <el-table-column label="版本A" min-width="220">
-            <template #default="{ row }"><span class="wsv-snap">{{ row.before || '（空）' }}</span></template>
+            <template #default="{ row }"
+              ><span class="wsv-snap">{{ row.before || '（空）' }}</span></template
+            >
           </el-table-column>
           <el-table-column label="版本B" min-width="220">
-            <template #default="{ row }"><span class="wsv-snap">{{ row.after || '（空）' }}</span></template>
+            <template #default="{ row }"
+              ><span class="wsv-snap">{{ row.after || '（空）' }}</span></template
+            >
           </el-table-column>
         </el-table>
-        <div class="wsv-tip">仅比较规范正文快照；未纳入：{{ (compareResult.notIncluded || []).join('、') }}。</div>
+        <div class="wsv-tip">
+          仅比较规范正文快照；未纳入：{{ (compareResult.notIncluded || []).join('、') }}。
+        </div>
       </template>
-      <div v-else class="wsv-tip">选择两个已发布版本后点「比较」。A 为基准（左），B 为对照（右）。</div>
+      <div v-else class="wsv-tip">
+        选择两个已定版版本后点「比较」。A 为基准（左），B 为对照（右）。
+      </div>
     </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import { WorkSpecVersionStatus } from '@/enums/product/workSpec'
+import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
+import { useUserStore } from '@/store/modules/user'
 
-const props = withDefaults(defineProps<{ productId: number; showFullPage?: boolean }>(), {
-  showFullPage: false,
-})
+const props = withDefaults(
+  defineProps<{ productId: number; showFullPage?: boolean; blocked?: boolean }>(),
+  {
+    showFullPage: false,
+  }
+)
 // 整页查看（dev-20261011-029）：由父页打开作业规范抽屉并定位到该版本（只读）
-const emit = defineEmits<{ (e: 'openVersion', versionId: number): void }>()
+const emit = defineEmits<{ (e: 'openVersion', versionId: number): void; (e: 'updated'): void }>()
+const draft = useWorkSpecAttachmentSession(toRef(props, 'productId'), ref(''))
+const user = useUserStore()
 
 const RESOURCE_LABELS: Record<string, string> = {
   SPEC_JSON: '规范正文快照',
@@ -183,7 +273,7 @@ const detailDiff = ref<{ changed: boolean; fields: any[]; notIncluded: string[] 
   notIncluded: [],
 })
 
-// 版本比较（dev-20261011-028）：任意两个已发布版本
+// 版本比较（dev-20261011-028）：任意两个已定版版本
 const compareVisible = ref(false)
 const compareA = ref<number | null>(null)
 const compareB = ref<number | null>(null)
@@ -228,23 +318,72 @@ async function load() {
 }
 
 async function publish() {
+  if (props.blocked || publishing.value || draft.busy.value || !draft.ready.value) return
+  publishing.value = true
   try {
-    const { value } = await ElMessageBox.prompt('填写本次修订说明（可空）', '发布新版本', {
-      inputPlaceholder: '如：冲型压力 80→85',
-      inputValue: '',
-      confirmButtonText: '发布',
-      cancelButtonText: '取消',
-    })
-    publishing.value = true
-    const res: any = await productWorkSpecApi.publishVersion(props.productId, value || undefined)
+    // 保存失败必须中断；所有附件和正文共用服务端返回的revision。
+    const before = [...draft.manifest.value]
+    const removed = draft.removed.value.length
+    const added = draft.session.pendingCount.value
+    if (
+      !user.hasPermission('product:edit') &&
+      (!draft.spec.value.draftManaged || draft.dirty.value)
+    )
+      throw new Error('请先由有编辑权限的人员保存规范草稿')
+    const saved = user.hasPermission('product:edit')
+      ? await draft.save()
+      : { data: draft.spec.value }
+    const printOrder =
+      before
+        .filter((file) => file.print)
+        .map(
+          (file) =>
+            file.displayName ||
+            draft.files.value.find((row) => row.attachmentId === file.attachmentId)?.fileName ||
+            String(file.attachmentId)
+        )
+        .join(' → ') || '无工程附件打印'
+    const { value } = await ElMessageBox.prompt(
+      `新增 ${added}，移除 ${removed}。打印顺序：${printOrder}。修订说明可留空。`,
+      '规范定版',
+      {
+        inputPlaceholder: '如：冲型压力 80→85',
+        inputValue: '',
+        confirmButtonText: '发布',
+        cancelButtonText: '取消',
+      }
+    )
+    const res: any = await productWorkSpecApi.publishVersion(
+      props.productId,
+      value || undefined,
+      saved.data.revision
+    )
     if (res?.code === 200) {
-      ElMessage.success(`已发布 ${res.data?.versionNo || ''}`)
+      ElMessage.success(`已定版 ${res.data?.versionNo || ''}`)
       await load()
+      await draft.load()
+      emit('updated')
     }
   } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '发布失败')
+    if (e !== 'cancel') ElMessage.error(e?.message || '定版失败')
   } finally {
     publishing.value = false
+  }
+}
+
+async function upgrade(row: any) {
+  if (props.blocked || publishing.value || draft.busy.value || draft.dirty.value) return
+  try {
+    await ElMessageBox.confirm(
+      `从 ${row.versionNo} 复制正文、附件和负责人为新草稿？`,
+      '升级作业规范'
+    )
+    await draft.upgrade(row.id)
+    ElMessage.success('已生成可编辑草稿')
+    emit('updated')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close')
+      ElMessage.error(error instanceof Error ? error.message : '升级失败')
   }
 }
 
@@ -289,9 +428,10 @@ async function openDetail(row: any) {
   if (res?.code === 200) {
     detailVersion.value = res.data?.version
     detailItems.value = res.data?.items || []
-    const complete = detailItems.value.some(item => item.resourceType === 'DOCSET_JSON')
+    const complete = detailItems.value.some((item) => item.resourceType === 'DOCSET_JSON')
     detailDiff.value = {
-      changed: false, fields: [],
+      changed: false,
+      fields: [],
       notIncluded: [...(complete ? [] : ['客供资料']), '领料单', '油墨', '实际检测记录'],
     }
     detailVisible.value = true
@@ -311,14 +451,39 @@ async function openDetail(row: any) {
 }
 
 onMounted(load)
+watch(() => props.productId, load)
 </script>
 
 <style scoped>
-.wsv-card { margin-bottom: 12px; }
-.wsv-head { display: flex; align-items: center; justify-content: space-between; }
-.wsv-title { font-weight: 600; }
-.wsv-snap { white-space: pre-wrap; word-break: break-all; font-size: 12px; color: #555; }
-.wsv-tip { margin-top: 10px; font-size: 12px; color: #909399; }
-.wsv-compare-bar { display: flex; align-items: center; gap: 10px; }
-.wsv-vs { color: #909399; font-size: 13px; }
+.wsv-card {
+  margin-bottom: 12px;
+}
+.wsv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.wsv-title {
+  font-weight: 600;
+}
+.wsv-snap {
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+  color: #555;
+}
+.wsv-tip {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #909399;
+}
+.wsv-compare-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.wsv-vs {
+  color: #909399;
+  font-size: 13px;
+}
 </style>

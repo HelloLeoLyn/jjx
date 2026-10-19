@@ -6,14 +6,6 @@
         <el-button :disabled="!data || loading || editing" @click="previewVisible = true"
           >打印预览</el-button
         >
-        <el-button
-          v-if="canConfirm"
-          type="success"
-          :disabled="!data || loading || editing || data.workSpec.approved"
-          :loading="confirming"
-          @click="confirmSpec"
-          >确认已批准</el-button
-        >
       </div>
     </div>
     <el-alert
@@ -38,8 +30,18 @@
           <div class="spec-top-col">
             <div class="section-heading">
               <h3>结构图</h3>
-              <el-button v-if="canEdit && !structureEditing" :disabled="loading || editing" @click="startStructureEdit">编辑</el-button>
-              <el-button v-else-if="canEdit" :disabled="loading || structureUploadBusy" @click="structureEditing = false">取消</el-button>
+              <el-button
+                v-if="canEdit && !structureEditing"
+                :disabled="loading || editing"
+                @click="startStructureEdit"
+                >编辑</el-button
+              >
+              <el-button
+                v-else-if="canEdit"
+                :disabled="loading || structureUploadBusy"
+                @click="structureEditing = false"
+                >取消</el-button
+              >
             </div>
             <StructureDrawingUpload
               :key="productId"
@@ -48,15 +50,30 @@
               :product-name="productName"
               :structure-file-id="data.workSpec.structureFileId"
               :editable="canEdit && structureEditing"
-              :disabled="loading || savingInline || confirming || editorVisible || bomVisible || routeVisible || printSpecBusy || dieSaving"
+              :disabled="
+                loading ||
+                savingInline ||
+                editorVisible ||
+                bomVisible ||
+                routeVisible ||
+                printSpecBusy ||
+                dieSaving
+              "
               @busy="structureUploadBusy = $event"
               @updated="structureSaved"
             >
-              <img v-if="structureImage" class="structure-image" :src="structureImage" :alt="`${productName || productCode} 结构图`" />
+              <img
+                v-if="structureImage"
+                class="structure-image"
+                :src="structureImage"
+                :alt="`${productName || productCode} 结构图`"
+              />
               <span v-else class="empty-hint">暂无结构图</span>
             </StructureDrawingUpload>
             <p v-if="structureCaption" class="structure-caption">{{ structureCaption }}</p>
-            <p v-if="structurePreviewError" class="structure-caption" role="alert">{{ structurePreviewError }}</p>
+            <p v-if="structurePreviewError" class="structure-caption" role="alert">
+              {{ structurePreviewError }}
+            </p>
           </div>
           <div class="spec-top-col">
             <div class="section-heading">
@@ -82,7 +99,9 @@
             <div class="section-heading">
               <h3>备注</h3>
               <div v-if="noteDraft === null">
-                <el-button v-if="canEdit" :disabled="loading" @click="startNoteEdit">编辑</el-button>
+                <el-button v-if="canEdit" :disabled="loading" @click="startNoteEdit"
+                  >编辑</el-button
+                >
               </div>
               <div v-else>
                 <el-button :disabled="savingInline" @click="noteDraft = null">取消</el-button>
@@ -145,11 +164,20 @@
                   <span>刀模位置</span>
                   <span v-if="canEdit" class="die-head-actions">
                     <template v-if="!dieEditing">
-                      <el-button link type="primary" size="small" @click="startDieEdit">编辑</el-button>
+                      <el-button link type="primary" size="small" @click="startDieEdit"
+                        >编辑</el-button
+                      >
                     </template>
                     <template v-else>
                       <el-button link size="small" @click="cancelDieEdit">取消</el-button>
-                      <el-button link type="primary" size="small" :loading="dieSaving" @click="saveDieLocationAll">保存</el-button>
+                      <el-button
+                        link
+                        type="primary"
+                        size="small"
+                        :loading="dieSaving"
+                        @click="saveDieLocationAll"
+                        >保存</el-button
+                      >
                     </template>
                   </span>
                 </div>
@@ -198,11 +226,15 @@
           <div class="section-heading">
             <h3>变更内容 · 发行单位</h3>
             <div v-if="!issuanceDraft">
-              <el-button v-if="canEdit" :disabled="loading" @click="startIssuanceEdit">编辑</el-button>
+              <el-button v-if="canEdit" :disabled="loading" @click="startIssuanceEdit"
+                >编辑</el-button
+              >
             </div>
             <div v-else>
               <el-button :disabled="savingIssuance" @click="cancelIssuance">取消</el-button>
-              <el-button type="primary" :loading="savingIssuance" @click="saveIssuance">保存</el-button>
+              <el-button type="primary" :loading="savingIssuance" @click="saveIssuance"
+                >保存</el-button
+              >
             </div>
           </div>
           <div class="issuance">
@@ -259,7 +291,9 @@
                 </el-table-column>
                 <el-table-column v-if="issuanceDraft" label="操作" width="70" align="center">
                   <template #default="{ $index }">
-                    <el-button link type="danger" @click="removeIssuanceChange($index)">删除</el-button>
+                    <el-button link type="danger" @click="removeIssuanceChange($index)"
+                      >删除</el-button
+                    >
                   </template>
                 </el-table-column>
               </el-table>
@@ -289,7 +323,9 @@
                   />
                   <span v-else>{{ effectiveIssueDate || '—' }}</span>
                 </el-descriptions-item>
-                <el-descriptions-item label="发布日期">{{ publishedAt || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="发布日期">{{
+                  publishedAt || '—'
+                }}</el-descriptions-item>
               </el-descriptions>
             </div>
           </div>
@@ -326,7 +362,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch, toRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
 import {
@@ -339,9 +375,9 @@ import {
 } from '@/api/product/workSpec'
 import ProductSpecPreview from './ProductSpecPreview.vue'
 import StructureDrawingUpload from './StructureDrawingUpload.vue'
+import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
 import ProductPrintSpecPanel from './ProductPrintSpecPanel.vue'
 import WorkSpecWorkflow from './WorkSpecWorkflow.vue'
-import EngineeringDrawingLibrary from '../../drawing/components/EngineeringDrawingLibrary.vue'
 import BomFormDialog from '@/views/product/bom/components/BomFormDialog.vue'
 import RouteFormDialog from '@/views/product/route/components/RouteFormDialog.vue'
 import {
@@ -358,9 +394,13 @@ import {
 
 const props = defineProps<{ productId: number; productCode: string; productName: string }>()
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
+const draftSession = useWorkSpecAttachmentSession(
+  toRef(props, 'productId'),
+  toRef(props, 'productCode')
+)
+const saveSpec = (value: ProductWorkSpec) => draftSession.save(value)
 const user = useUserStore()
 const canEdit = computed(() => user.hasPermission('product:edit'))
-const canConfirm = computed(() => user.hasPermission('product:status:approve'))
 const canEditBom = computed(() => user.hasPermission('engineering:bom:edit'))
 const canEditRoute = computed(() => user.hasPermission('engineering:routing:edit'))
 const previewVisible = ref(false)
@@ -383,7 +423,6 @@ const structureUploadBusy = ref(false)
 const bomVisible = ref(false)
 const routeVisible = ref(false)
 const saving = ref(false)
-const confirming = ref(false)
 const draft = ref<ProductWorkSpec>(normalizeWorkSpec())
 const baseline = ref('')
 const savingIssuance = ref(false)
@@ -427,12 +466,12 @@ async function loadStructureImage() {
   try {
     const images = await renderFile(file)
     if (generation !== structurePreviewGeneration) {
-      images.forEach(image => URL.revokeObjectURL(image.url))
+      images.forEach((image) => URL.revokeObjectURL(image.url))
       return
     }
     if (structureImage.value) URL.revokeObjectURL(structureImage.value)
     structureImage.value = images[0]?.url || ''
-    images.slice(1).forEach(image => URL.revokeObjectURL(image.url))
+    images.slice(1).forEach((image) => URL.revokeObjectURL(image.url))
   } catch (e) {
     if (generation === structurePreviewGeneration) {
       if (structureImage.value) URL.revokeObjectURL(structureImage.value)
@@ -526,7 +565,7 @@ async function saveDieLocationAll() {
   if (dieLegacyCleared.value) next.dieLocationText = ''
   dieSaving.value = true
   try {
-    await productWorkSpecApi.save(props.productId, next)
+    await saveSpec(next)
     ElMessage.success('刀模位置已保存')
     dieEditing.value = false
     dieLegacyCleared.value = false
@@ -548,6 +587,9 @@ watch(
 const editing = computed(
   () =>
     structureUploadBusy.value ||
+    noteDraft.value !== null ||
+    issuanceDraft.value !== null ||
+    dieEditing.value ||
     editorVisible.value ||
     bomVisible.value ||
     routeVisible.value ||
@@ -562,6 +604,7 @@ async function loadData() {
     const result = await loadDocset(props.productId)
     if (generation === loadGeneration) {
       data.value = result
+      draftSession.adopt(result.workSpec)
       syncInline()
     }
     void loadPublishedAt()
@@ -621,7 +664,7 @@ async function save() {
   }
   saving.value = true
   try {
-    const response: any = await productWorkSpecApi.save(props.productId, draft.value)
+    const response: any = await saveSpec(draft.value)
     if (data.value) data.value = { ...data.value, workSpec: normalizeWorkSpec(response.data) }
     baseline.value = JSON.stringify(workSpecContent(draft.value))
     editorVisible.value = false
@@ -687,7 +730,7 @@ async function saveIssuance() {
   }
   savingIssuance.value = true
   try {
-    const response: any = await productWorkSpecApi.save(props.productId, current)
+    const response: any = await saveSpec(current)
     if (data.value) data.value = { ...data.value, workSpec: normalizeWorkSpec(response.data) }
     issuanceDraft.value = null
     ElMessage.success('变更内容 · 发行单位已保存')
@@ -696,27 +739,6 @@ async function saveIssuance() {
     console.error('保存变更与发行失败', e)
   } finally {
     savingIssuance.value = false
-  }
-}
-async function confirmSpec() {
-  if (!data.value || confirming.value) return
-  try {
-    await ElMessageBox.confirm('确认当前材料、流程、结构图及工程要求已批准？', '工程确认', {
-      type: 'warning',
-      confirmButtonText: '确认已批准',
-    })
-    confirming.value = true
-    await productWorkSpecApi.confirm(
-      props.productId,
-      data.value.workSpec.revision,
-      data.value.workSpec.sourceRevision
-    )
-    ElMessage.success('已记录工程确认')
-    await sourcesSaved()
-  } catch (e) {
-    if (e !== 'cancel' && e !== 'close') console.error('工程确认失败', e)
-  } finally {
-    confirming.value = false
   }
 }
 async function printRemarksSaved(workSpec: ProductWorkSpec) {
@@ -737,12 +759,14 @@ async function persistSpec(next: ProductWorkSpec, message: string) {
   if (savingInline.value) return
   savingInline.value = true
   try {
-    const response: any = await productWorkSpecApi.save(props.productId, next)
+    const response: any = await saveSpec(next)
     if (data.value) data.value = { ...data.value, workSpec: normalizeWorkSpec(response.data) }
     ElMessage.success(message)
     await sourcesSaved()
+    return true
   } catch (e) {
     console.error(message, e)
+    return false
   } finally {
     savingInline.value = false
   }
@@ -759,8 +783,7 @@ async function saveNote() {
   if (noteDraft.value === null) return
   const spec = currentSpec()
   spec.engineeringRequirements = noteDraft.value
-  await persistSpec(spec, '备注已保存')
-  noteDraft.value = null
+  if (await persistSpec(spec, '备注已保存')) noteDraft.value = null
 }
 function startStructureEdit() {
   if (!data.value || !canEdit.value || editing.value || loading.value) return
@@ -790,7 +813,22 @@ async function refreshDrawings() {
   await loadData()
 }
 watch(
-  () => editing.value || confirming.value,
+  () => draftSession.spec.value.revision,
+  (revision) => {
+    if (
+      data.value &&
+      revision &&
+      data.value.workSpec.revision !== revision &&
+      !editing.value &&
+      !savingInline.value &&
+      !saving.value &&
+      !savingIssuance.value
+    )
+      void loadData()
+  }
+)
+watch(
+  () => editing.value,
   (value) => emit('busy', value)
 )
 watch(
@@ -855,8 +893,16 @@ onBeforeUnmount(() => {
   color: var(--el-color-warning);
   font-weight: 500;
 }
-.die-head { display:flex; align-items:center; justify-content:space-between; gap:6px; }
-.die-head-actions { display:flex; align-items:center; }
+.die-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.die-head-actions {
+  display: flex;
+  align-items: center;
+}
 .die-alert {
   margin-top: 12px;
 }

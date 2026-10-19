@@ -22,7 +22,12 @@ import { attachmentApi } from '@/api/system/attachment'
 import { loadDocset, renderFile, defaultDocumentFiles } from '../docset'
 const permission = vi.hoisted(() => ({ edit: true }))
 vi.mock('@/store/modules/user', () => ({
-  useUserStore: () => ({ hasPermission: (p: string) => p === 'product:edit' && permission.edit }),
+  useUserStore: () => ({
+    permissions: ['*'],
+    roles: [],
+    userId: 7,
+    hasPermission: (p: string) => p === 'product:edit' && permission.edit,
+  }),
 }))
 vi.mock('@/utils/request', () => ({ default: {} }))
 vi.mock('@/api/system/attachmentRef', () => ({
@@ -35,7 +40,7 @@ vi.mock('@/api/product/workSpec', async (original) => ({
   ...(await original<typeof import('@/api/product/workSpec')>()),
   productWorkSpecApi: {
     get: vi.fn(),
-    save: vi.fn(),
+    saveDraft: vi.fn(),
     listVersions: vi.fn(),
     publishVersion: vi.fn(),
   },
@@ -77,12 +82,17 @@ const drawing = (id: number, kind = 'image') => ({
 })
 beforeEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
+  vi.stubGlobal('crypto', {})
   permission.edit = true
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
   spec = normalizeWorkSpec({
     structureFileId: 224,
     revision: 'old',
     engineeringRequirements: '保留备注',
+    draftFiles: [
+      { attachmentId: 224, refId: 300, fileName: '图224.png', documentType: 'STRUCTURE_DRAWING' },
+    ],
   })
   files = [drawing(224)]
   vi.mocked(loadDocset).mockImplementation(async () => ({
@@ -103,8 +113,19 @@ beforeEach(() => {
   vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({ data: [] } as any)
   vi.mocked(attachmentRefApi.tempUpload).mockResolvedValue({ data: 225 } as any)
   vi.mocked(attachmentRefApi.createRef).mockResolvedValue({ data: 300 } as any)
-  vi.mocked(productWorkSpecApi.save).mockImplementation(async (_, value) => {
-    spec = normalizeWorkSpec({ ...value, revision: 'new' })
+  vi.mocked(productWorkSpecApi.saveDraft).mockImplementation(async (_, value) => {
+    spec = normalizeWorkSpec({
+      ...spec,
+      ...value.spec,
+      revision: 'new',
+      draftManaged: true,
+      draftAttachments: value.attachments,
+      draftFiles: value.attachments.map((f: any) => ({
+        ...f,
+        refId: f.attachmentId + 100,
+        fileName: '?' + f.attachmentId + '.png',
+      })),
+    })
     files = [drawing(224), drawing(225)]
     return { data: spec } as any
   })
@@ -152,11 +173,11 @@ describe('作业规范面板结构图编辑交互', () => {
     const section = w.get('.spec-top-col')
     expect(w.get('[data-test="open"]').element.tagName).toBe('BUTTON')
     expect(section.find('el-select').exists()).toBe(false)
-    expect(section.findAll('button').some(b => b.text() === '保存')).toBe(false)
+    expect(section.findAll('button').some((b) => b.text() === '保存')).toBe(false)
     expect(section.text()).not.toContain('上传结构图')
     await section.get('.section-heading button').trigger('click')
     expect(w.get('[data-test="open"]').element.tagName).toBe('DIV')
-    expect(productWorkSpecApi.save).not.toHaveBeenCalled()
+    expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
   })
   it('保存成功后显示新图并退出编辑，重新打开仍是新图，发布/下发接口未调用', async () => {
     const w = await render()
@@ -164,9 +185,14 @@ describe('作业规范面板结构图编辑交互', () => {
     await selectFile(w)
     expect(w.find('img').attributes('src')).toBe('blob:225')
     expect(w.get('[data-test="open"]').element.tagName).toBe('DIV')
-    expect(productWorkSpecApi.save).toHaveBeenCalledWith(
+    expect(productWorkSpecApi.saveDraft).toHaveBeenCalledWith(
       2,
-      expect.objectContaining({ structureFileId: 225, engineeringRequirements: '保留备注' })
+      expect.objectContaining({
+        spec: expect.objectContaining({
+          structureFileId: 225,
+          engineeringRequirements: '保留备注',
+        }),
+      })
     )
     expect(attachmentApi.setCurrent).not.toHaveBeenCalled()
     expect(attachmentApi.release).not.toHaveBeenCalled()
@@ -180,31 +206,41 @@ describe('作业规范面板结构图编辑交互', () => {
     expect(defaultDocumentFiles([{ ...drawing(224), published: true }])).toHaveLength(1)
   })
   it('保存失败保留旧图和编辑状态，点击图片区重试不重复上传且保留最新备注', async () => {
-    vi.mocked(productWorkSpecApi.save).mockRejectedValueOnce(new Error('revision 冲突'))
+    vi.mocked(productWorkSpecApi.saveDraft).mockRejectedValueOnce(new Error('revision 冲突'))
     const w = await render()
     await edit(w)
     await selectFile(w)
     expect(w.find('img').attributes('src')).toBe('blob:224')
-    expect(w.find('[role="alert"]').text()).toContain('规范保存失败')
+    expect(w.find('[role="alert"]').text()).toContain('草稿保存失败')
     expect(w.emitted('updated')).toBeUndefined()
-    spec.engineeringRequirements = '其他操作已更新备注'
     await w.get('[data-test="open"]').trigger('click')
     await flushPromises()
     expect(w.find('img').attributes('src')).toBe('blob:225')
     expect(attachmentRefApi.tempUpload).toHaveBeenCalledTimes(1)
-    expect(attachmentRefApi.createRef).toHaveBeenCalledTimes(1)
-    expect(productWorkSpecApi.save).toHaveBeenLastCalledWith(
+    expect(attachmentRefApi.createRef).not.toHaveBeenCalled()
+    expect(productWorkSpecApi.saveDraft).toHaveBeenLastCalledWith(
       2,
-      expect.objectContaining({ engineeringRequirements: '其他操作已更新备注' })
+      expect.objectContaining({
+        spec: expect.objectContaining({ engineeringRequirements: '保留备注' }),
+      })
     )
   })
   it('保存请求进行中保留旧图，不能再次上传或退出编辑', async () => {
     let finish!: () => void
-    vi.mocked(productWorkSpecApi.save).mockImplementationOnce(async (_, value) => {
+    vi.mocked(productWorkSpecApi.saveDraft).mockImplementationOnce(async (_, value) => {
       await new Promise<void>((r) => {
         finish = r
       })
-      spec = normalizeWorkSpec(value)
+      spec = normalizeWorkSpec({
+        ...spec,
+        ...value.spec,
+        revision: 'new',
+        draftFiles: value.attachments.map((f: any) => ({
+          ...f,
+          refId: f.attachmentId + 100,
+          fileName: '?' + f.attachmentId + '.png',
+        })),
+      })
       files = [drawing(224), drawing(225)]
       return { data: spec } as any
     })
@@ -246,7 +282,8 @@ describe('作业规范面板结构图编辑交互', () => {
       expect.any(File),
       expect.stringMatching(/^[A-Za-z0-9_-]{16,100}$/),
       undefined,
-      expect.objectContaining({ fileRole: 'PRINT' })
+      null,
+      null
     )
   })
 })

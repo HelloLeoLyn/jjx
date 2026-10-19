@@ -4,10 +4,22 @@
     <el-card shadow="never" class="search-card">
       <el-form inline>
         <el-form-item label="产品编码">
-          <el-input v-model="query.productCode" placeholder="产品编码" clearable style="width: 160px" @keyup.enter="load" />
+          <el-input
+            v-model="query.productCode"
+            placeholder="产品编码"
+            clearable
+            style="width: 160px"
+            @keyup.enter="load"
+          />
         </el-form-item>
         <el-form-item label="产品名称">
-          <el-input v-model="query.productName" placeholder="产品名称" clearable style="width: 160px" @keyup.enter="load" />
+          <el-input
+            v-model="query.productName"
+            placeholder="产品名称"
+            clearable
+            style="width: 160px"
+            @keyup.enter="load"
+          />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="load">查询</el-button>
@@ -20,7 +32,12 @@
     <el-card shadow="never">
       <el-table v-loading="loading" :data="rows" border>
         <el-table-column label="产品编码" prop="productCode" min-width="150" />
-        <el-table-column label="产品名称" prop="productName" min-width="180" show-overflow-tooltip />
+        <el-table-column
+          label="产品名称"
+          prop="productName"
+          min-width="180"
+          show-overflow-tooltip
+        />
         <el-table-column label="客户" prop="customerName" min-width="150" show-overflow-tooltip />
         <el-table-column label="当前BOM版本" width="120" align="center">
           <template #default="{ row }">{{ (row as any).bomVersion || '-' }}</template>
@@ -31,7 +48,7 @@
         <el-table-column label="当前规范版本" width="170" align="center">
           <template #default="{ row }">
             <el-button link type="primary" @click="openVersions(row)">
-              {{ versionInfoMap[Number(row.productId)]?.latestVersionNo || '未发布' }}
+              {{ versionInfoMap[Number(row.productId)]?.latestVersionNo || '未定版' }}
             </el-button>
             <el-tag
               v-if="versionInfoMap[Number(row.productId)]?.hasUnpublishedChanges"
@@ -39,13 +56,20 @@
               type="warning"
               effect="plain"
               style="margin-left: 4px"
-            >未发布改动</el-tag>
+              >待定版改动</el-tag
+            >
           </template>
         </el-table-column>
         <el-table-column label="操作" width="340" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openSpec(row)">作业规范</el-button>
-            <el-button v-hasPermi="['product:work-spec:publish']" link type="primary" @click="publishVersion(row)">发布版本</el-button>
+            <el-button
+              v-hasPermi="['product:work-spec:publish']"
+              link
+              type="primary"
+              @click="publishVersion(row)"
+              >规范定版</el-button
+            >
             <el-button link type="primary" @click="openVersions(row)">版本</el-button>
             <el-button link type="primary" @click="openPreview(row)">预览/打印</el-button>
           </template>
@@ -62,10 +86,10 @@
 
     <ProductSpecDrawer ref="specDrawer" />
 
-    <!-- 发布版本：列表操作栏入口 -->
+    <!-- 规范定版：列表操作栏入口 -->
     <el-dialog
       v-model="versionsVisible"
-      :title="`发布版本 - ${versionsRow?.productCode || ''}`"
+      :title="`规范定版 - ${versionsRow?.productCode || ''}`"
       width="900px"
       top="6vh"
       append-to-body
@@ -76,6 +100,7 @@
         :product-id="Number(versionsRow.productId)"
         show-full-page
         @open-version="openVersionFullPage"
+        @updated="loadVersionsStatus"
       />
     </el-dialog>
 
@@ -88,7 +113,10 @@
       append-to-body
       destroy-on-close
     >
-      <ProductSpecPreview v-if="previewVisible && previewRow" :product-id="Number(previewRow.productId)" />
+      <ProductSpecPreview
+        v-if="previewVisible && previewRow"
+        :product-id="Number(previewRow.productId)"
+      />
     </el-dialog>
   </div>
 </template>
@@ -96,7 +124,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { listProductPage } from '@/api/product'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import ProductSpecDrawer from '@/components/product/ProductSpecDrawer.vue'
@@ -113,7 +140,7 @@ const rows = ref<ProductVo[]>([])
 const total = ref(0)
 const query = reactive({ productCode: '', productName: '', current: 1, pageSize: 20 })
 
-// 发布版本（列表操作栏）
+// 规范定版（列表操作栏）
 const versionsVisible = ref(false)
 const versionsRow = ref<any>(null)
 // 当前规范版本列（dev-20261011-027）
@@ -149,20 +176,7 @@ function openPreview(row: any) {
   previewVisible.value = true
 }
 async function publishVersion(row: any) {
-  const productId = Number(row?.productId)
-  if (!productId) return
-  try {
-    const { value } = await ElMessageBox.prompt('填写本次修订说明（可空）', `发布版本 - ${row?.productCode || ''}`, {
-      inputPlaceholder: '如：冲型压力 80→85',
-      inputValue: '',
-      confirmButtonText: '发布',
-      cancelButtonText: '取消',
-    })
-    const res: any = await productWorkSpecApi.publishVersion(productId, value || undefined)
-    if (res?.code === 200) ElMessage.success(`已发布 ${res.data?.versionNo || ''}`)
-  } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '发布失败')
-  }
+  openVersions(row)
 }
 
 async function load() {

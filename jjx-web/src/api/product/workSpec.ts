@@ -1,6 +1,11 @@
 import request from '@/utils/request'
 
-export interface WorkSpecChangeSource { id: number; date: string; text: string; label: string }
+export interface WorkSpecChangeSource {
+  id: number
+  date: string
+  text: string
+  label: string
+}
 export interface PrintRemarkHistory {
   id: number
   operatorName: string
@@ -16,14 +21,42 @@ export interface WorkSpecChange {
   sourceLogIds: number[]
   sources?: WorkSpecChangeSource[]
 }
-export interface ColorCheckItemValue { result: string; reason: string; by?: string; at?: string }
+export interface ColorCheckItemValue {
+  result: string
+  reason: string
+  by?: string
+  at?: string
+}
 export interface ColorCheck {
   items: Record<string, ColorCheckItemValue>
   updatedBy?: string
   updatedAt?: string
 }
 export type DieLocationMap = Record<string, string>
+export interface WorkSpecAttachment {
+  attachmentId: number
+  documentType: string
+  displayName?: string | null
+  remark?: string | null
+  print?: boolean
+  sortOrder?: number
+  sha256?: string | null
+}
+export interface WorkSpecDraftFile extends WorkSpecAttachment {
+  refId: number
+  fileName: string
+  fileType?: string
+  fileSize?: number
+}
 export interface ProductWorkSpec {
+  draftManaged?: boolean
+  draftAttachments?: WorkSpecAttachment[]
+  draftFiles?: WorkSpecDraftFile[]
+  preparedById?: number
+  preparedByName?: string
+  basedOnVersionId?: number
+  finalizedVersionId?: number
+  finalizedFromRevision?: string
   revision: string
   sourceRevision: string
   emboss: Record<string, string>
@@ -52,8 +85,10 @@ export const embossFields = [
   { key: 'holdTime', label: '凹凸保持时间', unit: 's' },
 ] as const
 export const workSpecColors = [
-  { value: '#252525', label: '黑色' }, { value: '#ed00df', label: '品红' },
-  { value: '#e53935', label: '红色' }, { value: '#1565c0', label: '蓝色' },
+  { value: '#252525', label: '黑色' },
+  { value: '#ed00df', label: '品红' },
+  { value: '#e53935', label: '红色' },
+  { value: '#1565c0', label: '蓝色' },
 ]
 export function normalizeColorCheck(value?: Partial<ColorCheck> | null): ColorCheck {
   const items: Record<string, ColorCheckItemValue> = {}
@@ -65,12 +100,28 @@ export function normalizeColorCheck(value?: Partial<ColorCheck> | null): ColorCh
 }
 function dieLocationMap(value: unknown): DieLocationMap {
   if (!value || typeof value !== 'object') return {}
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, item == null ? '' : String(item)]))
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+      key,
+      item == null ? '' : String(item),
+    ])
+  )
 }
 export function normalizeWorkSpec(value: Partial<ProductWorkSpec> = {}): ProductWorkSpec {
   return {
-    revision: value.revision || '', sourceRevision: value.sourceRevision || '',
-    emboss: Object.fromEntries(Object.entries(value.emboss || {}).map(([key, item]) => [key, item ?? ''])),
+    draftManaged: value.draftManaged,
+    draftAttachments: value.draftAttachments?.map((file) => ({ ...file })),
+    draftFiles: value.draftFiles?.map((file) => ({ ...file })),
+    preparedById: value.preparedById,
+    preparedByName: value.preparedByName,
+    basedOnVersionId: value.basedOnVersionId,
+    finalizedVersionId: value.finalizedVersionId,
+    finalizedFromRevision: value.finalizedFromRevision,
+    revision: value.revision || '',
+    sourceRevision: value.sourceRevision || '',
+    emboss: Object.fromEntries(
+      Object.entries(value.emboss || {}).map(([key, item]) => [key, item ?? ''])
+    ),
     engineeringRequirements: value.engineeringRequirements || '',
     requirementsColor: value.requirementsColor || '#ed00df',
     dieLocation: dieLocationMap(value.dieLocation),
@@ -78,34 +129,100 @@ export function normalizeWorkSpec(value: Partial<ProductWorkSpec> = {}): Product
     structureFileId: value.structureFileId ?? null,
     printRemarks: { ...(value.printRemarks || {}) },
     colorCheck: normalizeColorCheck(value.colorCheck),
-    changes: (value.changes || []).map(row => ({ date: row.date || null, text: row.text || '', color: row.color || '#ed00df',
-      print: row.print !== false, reason: row.reason || '', sourceLogIds: row.sourceLogIds || [], sources: row.sources || [] })),
-    issueUnit: value.issueUnit ?? '工程部', issueDate: value.issueDate || null,
-    approved: value.approved === true, confirmedBy: value.confirmedBy, confirmedAt: value.confirmedAt,
+    changes: (value.changes || []).map((row) => ({
+      date: row.date || null,
+      text: row.text || '',
+      color: row.color || '#ed00df',
+      print: row.print !== false,
+      reason: row.reason || '',
+      sourceLogIds: row.sourceLogIds || [],
+      sources: row.sources || [],
+    })),
+    issueUnit: value.issueUnit ?? '工程部',
+    issueDate: value.issueDate || null,
+    approved: value.approved === true,
+    confirmedBy: value.confirmedBy,
+    confirmedAt: value.confirmedAt,
   }
 }
 export function workSpecContent(value: ProductWorkSpec) {
-  const { revision, sourceRevision, approved, confirmedBy, confirmedAt, printRemarks, colorCheck, dieLocationText, ...content } = value
+  const {
+    revision,
+    sourceRevision,
+    approved,
+    confirmedBy,
+    confirmedAt,
+    printRemarks,
+    colorCheck,
+    dieLocationText,
+    draftManaged,
+    draftAttachments,
+    draftFiles,
+    preparedById,
+    preparedByName,
+    basedOnVersionId,
+    finalizedVersionId,
+    finalizedFromRevision,
+    ...content
+  } = value
   return {
-    ...content, structureFileId: value.structureFileId || null, issueDate: value.issueDate || null,
-    dieLocation: Object.keys(value.dieLocation || {}).length ? value.dieLocation : (dieLocationText || {}),
-    changes: value.changes.map(({ sources, ...change }) => ({ ...change, date: change.date || null })),
-    emboss: Object.fromEntries(embossFields.map(field => [field.key, (value.emboss[field.key] || '').trim()]).filter(([, item]) => item)),
+    ...content,
+    structureFileId: value.structureFileId || null,
+    issueDate: value.issueDate || null,
+    dieLocation: Object.keys(value.dieLocation || {}).length
+      ? value.dieLocation
+      : dieLocationText || {},
+    changes: value.changes.map(({ sources, ...change }) => ({
+      ...change,
+      date: change.date || null,
+    })),
+    emboss: Object.fromEntries(
+      embossFields
+        .map((field) => [field.key, (value.emboss[field.key] || '').trim()])
+        .filter(([, item]) => item)
+    ),
   }
 }
 export const productWorkSpecApi = {
+  saveDraft: (
+    id: number,
+    value: {
+      revision: string
+      preparedById?: number
+      spec?: ReturnType<typeof workSpecContent>
+      attachments: WorkSpecAttachment[]
+    }
+  ) => request.put('/product/' + id + '/work-spec/draft', value),
+  upgradeDraft: (id: number, revision: string, baseVersionId: number) =>
+    request.post('/product/' + id + '/work-spec/draft/from-version', { revision, baseVersionId }),
+  responsibleUsers: (id: number) => request.get('/product/' + id + '/work-spec/responsible-users'),
+  history: (id: number, before?: number) =>
+    request.get('/product/' + id + '/work-spec/history', { params: { before } }),
   get: (id: number) => request.get('/product/' + id + '/work-spec'),
-  save: (id: number, value: ProductWorkSpec) => request.put('/product/' + id + '/work-spec', { ...workSpecContent(value), revision: value.revision }),
-  confirm: (id: number, revision: string, sourceRevision: string) => request.post('/product/' + id + '/work-spec/confirm', { revision, sourceRevision }),
-  changeSources: (id: number, before?: number) => request.get('/product/' + id + '/work-spec/change-sources', { params: { before } }),
-  savePrintRemarks: (id: number, revision: string, remarks: Record<string, string>) => request.put('/product/' + id + '/work-spec/print-remarks', { revision, remarks }),
-  printRemarksHistory: (id: number, before?: number) => request.get('/product/' + id + '/work-spec/print-remarks/history', { params: { before } }),
-  saveColorCheck: (id: number, revision: string, items: Record<string, ColorCheckItemValue>) => request.put('/product/' + id + '/work-spec/color-check', { revision, items }),
+  save: (id: number, value: ProductWorkSpec) =>
+    request.put('/product/' + id + '/work-spec', {
+      ...workSpecContent(value),
+      revision: value.revision,
+    }),
+  confirm: (id: number, revision: string, sourceRevision: string) =>
+    request.post('/product/' + id + '/work-spec/confirm', { revision, sourceRevision }),
+  changeSources: (id: number, before?: number) =>
+    request.get('/product/' + id + '/work-spec/change-sources', { params: { before } }),
+  savePrintRemarks: (id: number, revision: string, remarks: Record<string, string>) =>
+    request.put('/product/' + id + '/work-spec/print-remarks', { revision, remarks }),
+  printRemarksHistory: (id: number, before?: number) =>
+    request.get('/product/' + id + '/work-spec/print-remarks/history', { params: { before } }),
+  saveColorCheck: (id: number, revision: string, items: Record<string, ColorCheckItemValue>) =>
+    request.put('/product/' + id + '/work-spec/color-check', { revision, items }),
   // 发布版本（dev-20261011-008）
-  publishVersion: (id: number, changeSummary?: string) => request.post('/product/' + id + '/work-spec/publish', null, { params: { changeSummary } }),
+  publishVersion: (id: number, changeSummary?: string, revision?: string) =>
+    request.post('/product/' + id + '/work-spec/publish', null, {
+      params: { changeSummary, revision },
+    }),
   listVersions: (id: number) => request.get('/product/' + id + '/work-spec/versions'),
   getVersion: (versionId: number) => request.get('/product/work-spec/versions/' + versionId),
-  versionDiff: (versionId: number) => request.get('/product/work-spec/versions/' + versionId + '/diff'),
+  versionDiff: (versionId: number) =>
+    request.get('/product/work-spec/versions/' + versionId + '/diff'),
   // 列表用：批量查最新发布版本 + 有无未发布改动（dev-20261011-027）
   batchStatus: (productIds: number[]) =>
     request.get('/product/work-spec/status', { params: { productIds: productIds.join(',') } }),
@@ -113,6 +230,8 @@ export const productWorkSpecApi = {
   compareVersions: (versionA: number, versionB: number) =>
     request.get('/product/work-spec/compare', { params: { versionA, versionB } }),
   // 停用 / 恢复发布版本（不硬删；dev-20261011-033）
-  retireVersion: (versionId: number) => request.post('/product/work-spec/versions/' + versionId + '/retire'),
-  restoreVersion: (versionId: number) => request.post('/product/work-spec/versions/' + versionId + '/restore'),
+  retireVersion: (versionId: number) =>
+    request.post('/product/work-spec/versions/' + versionId + '/retire'),
+  restoreVersion: (versionId: number) =>
+    request.post('/product/work-spec/versions/' + versionId + '/restore'),
 }
