@@ -44,6 +44,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ProductWorkSpecVersionService {
+    @org.springframework.beans.factory.annotation.Autowired private ProductWorkSpecService draftService;
 
     private final ProductWorkSpecMapper workSpecMapper;
     private final ProductMapper productMapper;
@@ -81,6 +82,11 @@ public class ProductWorkSpecVersionService {
     /** 发布新版本（产品内串行，避免并发产生重复版本号/混合快照）。 */
     @Transactional(rollbackFor = Exception.class)
     public ProductWorkSpecVersion publish(Long productId, String changeSummary) {
+        return publish(productId, changeSummary, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ProductWorkSpecVersion publish(Long productId, String changeSummary, String revision) {
         if (workSpecMapper.lock(productId) == null) {
             throw new BusinessException("产品不存在: " + productId);
         }
@@ -91,6 +97,17 @@ public class ProductWorkSpecVersionService {
         String raw = workSpecMapper.read(productId);
         if (raw == null || raw.isBlank()) {
             raw = "{}";
+        }
+        ObjectNode draft = (ObjectNode) parseSafe(raw);
+        boolean managed = draft.path("draftManaged").asBoolean();
+        if (managed) {
+            if (draft.hasNonNull("finalizedVersionId") && (sha256(raw).equals(revision) || draft.path("finalizedFromRevision").asText().equals(revision))) {
+                ProductWorkSpecVersion previous = versionMapper.selectById(draft.path("finalizedVersionId").asLong());
+                if (previous == null || !productId.equals(previous.getProductId())) throw new BusinessException("原定版版本不存在");
+                return previous;
+            }
+            if (!sha256(raw).equals(revision)) throw new BusinessException("草稿已变化，请重新加载后定版");
+            if (!draft.hasNonNull("preparedById") || draft.path("preparedByName").asText().isBlank()) throw new BusinessException("请先保存编制负责人");
         }
 
         int seq = Math.toIntExact(versionMapper.selectCount(
@@ -122,18 +139,18 @@ public class ProductWorkSpecVersionService {
         int drawingOrder = 3;
         Set<Long> usedDrawingIds = new HashSet<>();
         Long structureFileId = structureFileId(raw);
-        if (structureFileId != null) {
+        if (!managed && structureFileId != null) {
             SysAttachment structure = attachmentMapper.selectById(structureFileId);
             if (structure != null && usedDrawingIds.add(structure.getId())) {
                 items.add(drawingItem(structure, "结构图", drawingOrder++));
             }
         }
-        for (SysAttachment att : drawingAttachments(productId)) {
+        for (SysAttachment att : managed ? List.<SysAttachment>of() : drawingAttachments(productId)) {
             if (usedDrawingIds.add(att.getId())) {
                 items.add(drawingItem(att, att.getCategory(), drawingOrder++));
             }
         }
-        for (SysAttachment att : attachmentsByCategory(productId, SAMPLE_FILE_CATEGORIES)) {
+        for (SysAttachment att : managed ? List.<SysAttachment>of() : attachmentsByCategory(productId, SAMPLE_FILE_CATEGORIES)) {
             if (usedDrawingIds.add(att.getId())) {
                 items.add(drawingItem(att, att.getCategory(), drawingOrder++));
             }
@@ -173,12 +190,18 @@ public class ProductWorkSpecVersionService {
         version.setManifestHash(sha256(manifest));
         version.setPublishedAt(publishedAt);
         version.setPublishedBy(displayName());
+        if (draft.hasNonNull("basedOnVersionId")) version.setBasedOnVersionId(draft.path("basedOnVersionId").asLong());
         version.setDeleted(0);
         versionMapper.insert(version);
 
         for (ProductWorkSpecItem item : items) {
             item.setSpecVersionId(version.getId());
             itemMapper.insert(item);
+        }
+        if (managed) {
+            ObjectNode finalized = draft.deepCopy(); finalized.put("finalizedVersionId", version.getId()); finalized.put("finalizedFromRevision", revision);
+            workSpecMapper.write(productId, finalized.toString());
+            draftService.recordOperation(productId, "定版 " + versionNo, draft, finalized);
         }
         return version;
     }
@@ -217,6 +240,10 @@ public class ProductWorkSpecVersionService {
         version.setStatus(target);
         version.setUpdateBy(displayName());
         versionMapper.updateById(version);
+        if (draftService != null) {
+            ObjectNode before = json.createObjectNode().put("versionId", versionId).put("versionNo", version.getVersionNo());
+            draftService.recordOperation(version.getProductId(), "RETIRED".equals(target) ? "停用版本" : "恢复版本", before, before.deepCopy().put("status", target));
+        }
         return versionMapper.selectById(versionId);
     }
 
@@ -382,6 +409,9 @@ public class ProductWorkSpecVersionService {
     /** 两份规范正文快照的字段级差异（前一份 vs 后一份）。 */
     private List<Map<String, Object>> compareSnapshots(JsonNode snap, JsonNode cur) {
         List<Map<String, Object>> fields = new ArrayList<>();
+        addDiff(fields, "工程附件清单", snap.get("draftAttachments"), cur.get("draftAttachments"));
+        addDiff(fields, "制定负责人", snap.get("preparedById"), cur.get("preparedById"));
+        addDiff(fields, "负责人姓名", snap.get("preparedByName"), cur.get("preparedByName"));
         addDiff(fields, "加工要求", snap.get("engineeringRequirements"), cur.get("engineeringRequirements"));
         addDiff(fields, "刀模位置", snap.get("dieLocation"), cur.get("dieLocation"));
         addDiff(fields, "结构图", snap.get("structureFileId"), cur.get("structureFileId"));

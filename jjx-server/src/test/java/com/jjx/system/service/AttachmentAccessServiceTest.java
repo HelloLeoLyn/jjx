@@ -98,4 +98,17 @@ class AttachmentAccessServiceTest {
         released.setReleased(1);
         assertTrue(access.protectedFile(released));
     }
+
+    @Test void orphanedVersionFileRemainsReadableByVersionPermissionButNotOtherFiles() {
+        var file = file(); file.setUploadState(com.jjx.system.enums.AttachmentUploadState.ORPHAN);
+        try (var auth = org.mockito.Mockito.mockStatic(cn.dev33.satoken.stp.StpUtil.class)) {
+            auth.when(cn.dev33.satoken.stp.StpUtil::isLogin).thenReturn(true);
+            auth.when(cn.dev33.satoken.stp.StpUtil::getLoginIdAsString).thenReturn("other-user");
+            auth.when(()->cn.dev33.satoken.stp.StpUtil.hasPermission("production:order:view")).thenReturn(true);
+            when(jdbc.queryForObject(contains("JOIN product_work_spec_version"),eq(Long.class),eq(40L))).thenReturn(1L);
+            assertTrue(access.canRead(file));
+            when(jdbc.queryForObject(contains("JOIN product_work_spec_version"),eq(Long.class),eq(40L))).thenReturn(0L);
+            assertFalse(access.canRead(file));
+        }
+    }
 }

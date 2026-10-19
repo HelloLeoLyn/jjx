@@ -95,7 +95,7 @@ class WorkSpecDocsetSnapshotServiceTest {
         ReflectionTestUtils.invokeMethod(service, "sourceToken", product);
 
         ArgumentCaptor<String> queries = ArgumentCaptor.forClass(String.class);
-        verify(jdbc, times(5)).queryForList(queries.capture(), any(Object[].class));
+        verify(jdbc, times(6)).queryForList(queries.capture(), any(Object[].class));
         verify(customerDocuments).lockForSnapshot(product.getProductId());
         String routingSql = queries.getAllValues().stream()
                 .filter(sql -> sql.contains("FROM engineering_routing_item "))
@@ -139,7 +139,7 @@ class WorkSpecDocsetSnapshotServiceTest {
         Product product = product();
         product.setCurrentRouteId(2L);
         ReflectionTestUtils.invokeMethod(service, "sourceToken", product);
-        assertEquals(7, checked.get(), "BOM/路线各2条，附件2条，工序图标1条");
+        assertEquals(8, checked.get(), "BOM/路线各2条，附件及引用3条，工序图标1条");
     }
 
     /** 规范正文（来自工作态读取：approved 已按 confirmedSource×来源摘要计算）。 */
@@ -187,6 +187,43 @@ class WorkSpecDocsetSnapshotServiceTest {
         att.setFileSize(100L);
         att.setSha256(Sha256Utils.ofFile(target));
         return att;
+    }
+
+    @Test void unifiedManifestFreezesOnlyChosenFilesWithoutDrawingReleaseAndPreservesOrder() throws Exception {
+        Product product = product(); product.setCurrentBomId(null);
+        ObjectNode spec = spec(40L, false); spec.put("draftManaged", true); spec.put("preparedByName", "工程甲");
+        var manifest = spec.putArray("draftAttachments");
+        SysAttachment b = file(42L,"B.pdf",null), c = file(43L,"C.pdf",null);
+        for (SysAttachment att : List.of(c,b)) {
+            att.setIsCurrent(0); att.setReleased(0);
+            manifest.addObject().put("attachmentId",att.getId()).put("documentType","STRUCTURE_DRAWING")
+                .put("displayName",att.getFileName()).put("sortOrder",manifest.size()).put("sha256",att.getSha256()).put("print",true);
+            when(attachmentMapper.selectActiveForUpdate(att.getId())).thenReturn(att);
+        }
+        when(workSpecService.get(3L)).thenReturn(spec);
+        when(jdbc.queryForObject(contains("source_type='product'"),eq(Long.class),any(),any(),any())).thenReturn(1L);
+        var frozen = service.build(product,"V2.0","定版人",LocalDateTime.now(),null);
+        assertEquals(List.of(43L,42L),frozen.files().stream().map(WorkSpecDocsetSnapshotService.SnapshotFile::attachmentId).toList());
+        assertEquals("工程甲",json.readTree(frozen.json()).path("spec").path("preparedByName").asText());
+        assertTrue(json.readTree(frozen.json()).path("files").get(0).path("printSelected").asBoolean());
+        ((ObjectNode)manifest.get(0)).put("print",false);
+        var notPrinted = service.build(product,"V3.0","定版人",LocalDateTime.now(),null);
+        assertFalse(json.readTree(notPrinted.json()).path("files").get(0).path("printSelected").asBoolean());
+        verify(attachmentMapper,never()).selectById(40L);
+    }
+
+    @Test void unifiedManifestRejectsMissingCurrentReferenceOrChangedBytes() {
+        Product product = product(); product.setCurrentBomId(null);
+        SysAttachment att = file(42L,"B.pdf",null);
+        ObjectNode spec = spec(null,false); spec.put("draftManaged",true);
+        var entry = spec.putArray("draftAttachments").addObject().put("attachmentId",42L).put("documentType","STRUCTURE_DRAWING").put("sha256",att.getSha256());
+        when(workSpecService.get(3L)).thenReturn(spec);
+        when(attachmentMapper.selectActiveForUpdate(42L)).thenReturn(att);
+        when(jdbc.queryForObject(contains("source_type='product'"),eq(Long.class),any(),any(),any())).thenReturn(0L);
+        assertThrows(BusinessException.class,()->service.build(product,"V1.0","x",LocalDateTime.now(),null));
+        when(jdbc.queryForObject(contains("source_type='product'"),eq(Long.class),any(),any(),any())).thenReturn(1L);
+        entry.put("sha256","not-the-saved-digest");
+        assertTrue(assertThrows(BusinessException.class,()->service.build(product,"V1.0","x",LocalDateTime.now(),null)).getMessage().contains("内容已变化"));
     }
 
     private void stubProcessIcon(long processId, String icon) {

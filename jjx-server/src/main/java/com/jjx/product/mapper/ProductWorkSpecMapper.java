@@ -19,6 +19,33 @@ public interface ProductWorkSpecMapper {
     @Update("UPDATE product SET work_spec_json = #{json} WHERE product_id = #{id}")
     int write(@Param("id") Long id, @Param("json") String json);
 
+    @Select("SELECT user_id AS id, COALESCE(NULLIF(nick_name,''),user_name) AS name FROM sys_user WHERE del_flag=#{normal} AND status=#{normal} ORDER BY nick_name,user_id")
+    List<Map<String, Object>> responsibleUsers(@Param("normal") String normal);
+
+    @Select("SELECT COUNT(*) FROM sys_dict_item WHERE dict_code='attachment_document_type' AND item_key=#{type} AND deleted=0 AND is_active=1 AND JSON_UNQUOTE(JSON_EXTRACT(ext_data,'$.parent'))='ENGINEERING_DOC'")
+    int engineeringType(@Param("type") String type);
+
+    @Select("""
+        SELECT r.id AS refId,r.attachment_id AS attachmentId,r.document_type AS documentType,
+          r.display_name AS displayName,r.remark,r.sort_order AS sortOrder,
+          a.file_name AS fileName,a.file_type AS fileType,a.file_size AS fileSize,a.sha256
+        FROM sys_attachment_ref r JOIN sys_attachment a ON a.id=r.attachment_id AND a.deleted=0
+        JOIN sys_dict_item d ON d.dict_code='attachment_document_type' AND d.item_key=r.document_type
+          AND d.deleted=0 AND JSON_UNQUOTE(JSON_EXTRACT(d.ext_data,'$.parent'))='ENGINEERING_DOC'
+        WHERE r.deleted=0 AND r.ref_state<>'draft' AND r.source_type='product' AND r.source_id=#{id}
+        ORDER BY r.sort_order,r.id
+        """)
+    List<Map<String, Object>> draftFiles(Long id);
+
+    @Select("SELECT snapshot_json FROM product_work_spec_item WHERE spec_version_id=#{versionId} AND resource_type='DOCSET_JSON' ORDER BY id LIMIT 1")
+    String versionSnapshot(Long versionId);
+
+    @Select("SELECT product_id FROM product_work_spec_version WHERE id=#{versionId} AND deleted=0")
+    Long versionProduct(Long versionId);
+
+    @Select("SELECT id,action,COALESCE(NULLIF(real_name,''),username) AS operatorName,create_time AS changedAt,detail FROM sys_oper_log WHERE biz_type='product' AND biz_id=#{productId} AND module='作业规范版本' AND status=#{success} AND (#{before} IS NULL OR id<#{before}) ORDER BY id DESC LIMIT 51")
+    List<Map<String, Object>> draftHistory(@Param("productId") String productId,@Param("before") Long before,@Param("success") Integer success);
+
     @Select("""
         SELECT id, COALESCE(NULLIF(real_name, ''), username) AS operatorName,
                DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS changedAt, detail

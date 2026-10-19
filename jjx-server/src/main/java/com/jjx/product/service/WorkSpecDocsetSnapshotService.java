@@ -199,7 +199,13 @@ public class WorkSpecDocsetSnapshotService {
         for (IconRef ref : icons.values()) iconsNode.set(ref.value(), json.valueToTree(ref));
 
         ArrayNode fileArray = content.putArray("files");
-        for (SnapshotFile file : files) fileArray.add(json.valueToTree(file));
+        for (SnapshotFile file : files) {
+            ObjectNode frozen = json.valueToTree(file);
+            if (spec.path("draftManaged").asBoolean()) for (JsonNode entry : spec.path("draftAttachments")) {
+                if (entry.path("attachmentId").asLong() == file.attachmentId()) frozen.put("printSelected", entry.path("print").asBoolean());
+            }
+            fileArray.add(frozen);
+        }
 
         int bomItemCount = countNodes(bomNode);
         int routingItemCount = countNodes(routingNode);
@@ -231,6 +237,22 @@ public class WorkSpecDocsetSnapshotService {
         // 附件 → 二级资料类型（dev-20261019-017）：图集从图种 category 收敛到 documentType，category 继续保留兼容
         Map<Long, String> documentTypes = documentTypesOf(productId);
 
+        if (spec.path("draftManaged").asBoolean()) {
+            for (JsonNode entry : spec.path("draftAttachments")) {
+                long attachmentId = entry.path("attachmentId").asLong();
+                SysAttachment att = attachmentMapper.selectActiveForUpdate(attachmentId);
+                Long bound = jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref WHERE source_type='product' AND source_id=? AND attachment_id=? AND deleted=0 AND document_type=?",
+                    Long.class, productId, attachmentId, entry.path("documentType").asText());
+                if (att == null || bound == null || bound == 0) throw new BusinessException("定版失败：草稿附件已移除、类型变化或不存在");
+                SnapshotFile file = buildFile(att, "work-spec-draft", false, entry.path("documentType").asText());
+                if (!entry.path("sha256").asText().isBlank() && !entry.path("sha256").asText().equalsIgnoreCase(file.sha256())) throw new BusinessException("定版失败：草稿文件内容已变化，请重新保存草稿");
+                chosen.put(attachmentId, new SnapshotFile(file.attachmentId(), "PRINT_GUIDE".equals(file.documentType()) ? "print" : "atlas",
+                    file.category(), file.documentType(), file.fileName(), entry.path("displayName").asText(file.fileName()),
+                    file.version(), file.drawingNo(), file.fileRole(), file.mime(), file.size(), file.sha256(), file.source(), file.customerDocType(), entry.path("sortOrder").asInt()));
+            }
+        }
+
+        if (!spec.path("draftManaged").asBoolean()) {
         // 1) 规范正文选定的结构图：显式纳入（不受现行/已下发过滤，避免旧版有、新版无）。
         Long structureFileId = spec.path("structureFileId").isNumber() ? spec.path("structureFileId").asLong() : null;
         if (structureFileId != null) {
@@ -252,6 +274,7 @@ public class WorkSpecDocsetSnapshotService {
             add(chosen, buildFile(att, "product-library", false, documentTypes.get(att.getId())));
         }
 
+        }
         // 3) 样品资料。
         for (SysAttachment att : attachmentMapper.selectList(Wrappers.<SysAttachment>lambdaQuery()
                 .eq(SysAttachment::getBizType, "product")
@@ -485,6 +508,8 @@ public class WorkSpecDocsetSnapshotService {
                 product.getProductId()));
         appendRows(token, customerDocuments.lockForSnapshot(product.getProductId()));
         appendRows(token, jdbc.queryForList("SELECT process_id,icon,update_time FROM engineering_standard_process FOR SHARE"));
+        appendRows(token, jdbc.queryForList("SELECT r.id,r.attachment_id,r.document_type,r.sort_order,r.display_name,r.remark,a.sha256,a.file_path,a.deleted "
+            + "FROM sys_attachment_ref r JOIN sys_attachment a ON a.id=r.attachment_id WHERE r.source_type='product' AND r.source_id=? AND r.deleted=0 ORDER BY r.id FOR SHARE", product.getProductId()));
         return sha256(token.toString());
     }
 

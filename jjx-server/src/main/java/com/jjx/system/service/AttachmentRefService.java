@@ -348,6 +348,23 @@ public class AttachmentRefService {
         recordRefChange(ref, file, BusinessType.UPDATE.getCode(), "附件资料修改", changes);
     }
 
+    /** 仅供统一作业规范事务移除当前草稿关联；历史硬引用和其它业务引用不动。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void detachWorkSpecFile(Long productId, Long attachmentId) {
+        sources.check("product", productId, true);
+        SysAttachment file = lock(attachmentId);
+        List<SysAttachmentRef> active = refs.lockActive(attachmentId);
+        for (SysAttachmentRef ref : active) {
+            if (!"product".equals(ref.getSourceType()) || !Objects.equals(productId, ref.getSourceId())) continue;
+            jdbc.update("UPDATE sys_attachment_ref SET deleted=1,deleted_at=NOW(),deleted_by=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
+                StpUtil.getLoginIdAsString(), StpUtil.getLoginIdAsString(), ref.getId());
+        }
+        if (active.stream().allMatch(ref -> "product".equals(ref.getSourceType()) && Objects.equals(productId, ref.getSourceId()))) {
+            jdbc.update("UPDATE sys_attachment SET upload_state=?,expires_at=? WHERE id=?",
+                AttachmentUploadState.ORPHAN.name(), LocalDateTime.now().plusDays(30), file.getId());
+        }
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public void unlink(Long id) {
         SysAttachmentRef ref = refs.includingDeleted(id);

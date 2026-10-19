@@ -28,8 +28,9 @@ public class ProductWorkSpecVersionController {
     @SaCheckPermission("product:work-spec:publish")
     @Log(module = "产品作业规范", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#productId")
     public Result<ProductWorkSpecVersion> publish(@PathVariable Long productId,
-                                                  @RequestParam(required = false) String changeSummary) {
-        return Result.success(service.publish(productId, changeSummary));
+                                                  @RequestParam(required = false) String changeSummary,
+                                                  @RequestParam(required = false) String revision) {
+        return Result.success(service.publish(productId, changeSummary, revision));
     }
 
     @GetMapping("/{productId}/work-spec/versions")

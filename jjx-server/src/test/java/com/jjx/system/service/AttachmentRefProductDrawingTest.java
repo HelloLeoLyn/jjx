@@ -30,7 +30,7 @@ import static org.mockito.Mockito.*;
  * ① 产品图纸唯一性守卫按「引用表 source_type='product' AND product_id + 附件 drawing_no」判定（不依赖已废弃的 biz_type/biz_id）；
  * ② 按产品查引用的回填要带上 sys_attachment 图纸列（category/version/drawing_no/drawing_name/file_role/is_current/is_controlled/released）。
  */
-class AttachmentRefProductDrawingTest {
+public class AttachmentRefProductDrawingTest {
 
     private Connection db;
     private JdbcTemplate jdbc;
@@ -86,6 +86,73 @@ class AttachmentRefProductDrawingTest {
             99L, "old.pdf", category, version, drawingNo, role, released);
         jdbc.update("INSERT INTO sys_attachment_ref(id,attachment_id,source_type,source_id,product_id,deleted) VALUES (?,?,?,?,?,0)",
             900L, 99L, "product", 1L, 1L);
+    }
+
+    /** H2仅补齐MySQL JSON标量函数；业务服务、权限来源查询及所有引用写入使用真实JDBC。 */
+    public static String jsonExtract(String value, String path) throws Exception {
+        if (value == null) return null;
+        var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(value).get(path.substring(2));
+        return node == null || node.isNull() ? null : node.toString();
+    }
+    public static String jsonUnquote(String value) throws Exception {
+        return value == null ? null : new com.fasterxml.jackson.databind.ObjectMapper().readTree(value).asText();
+    }
+
+    @Test void realDraftDetachRetainsHistoricalReadAndCleanupProtectionAndRollsBack() throws Exception {
+        jdbc.execute("ALTER TABLE product ADD work_spec_json VARCHAR(2000) DEFAULT '{}'");
+        jdbc.execute("ALTER TABLE sys_attachment_ref ADD deleted_at TIMESTAMP");
+        jdbc.execute("ALTER TABLE sys_attachment_ref ADD deleted_by VARCHAR(64)");
+        jdbc.execute("ALTER TABLE sys_attachment_ref ADD update_by VARCHAR(64)");
+        jdbc.execute("CREATE TABLE product_work_spec_version(id BIGINT PRIMARY KEY,product_id BIGINT,deleted INT)");
+        jdbc.execute("CREATE TABLE product_work_spec_item(spec_version_id BIGINT,resource_type VARCHAR(30),source_id BIGINT)");
+        jdbc.execute("CREATE TABLE quality_template_registry(file_id BIGINT,create_time TIMESTAMP)");
+        jdbc.execute("CREATE TABLE engineering_film(file_id BIGINT)");
+        jdbc.execute("ALTER TABLE sys_attachment ADD create_time TIMESTAMP");
+        jdbc.execute("CREATE ALIAS JSON_EXTRACT FOR 'com.jjx.system.service.AttachmentRefProductDrawingTest.jsonExtract'");
+        jdbc.execute("CREATE ALIAS JSON_UNQUOTE FOR 'com.jjx.system.service.AttachmentRefProductDrawingTest.jsonUnquote'");
+        jdbc.update("INSERT INTO product VALUES (2,'P2','{}')");
+        jdbc.update("INSERT INTO sys_attachment(id,file_name,sha256,upload_state,deleted) VALUES (5,'original.pdf','original-hash','BOUND',0)");
+        jdbc.update("INSERT INTO sys_attachment_ref(id,attachment_id,source_type,source_id,product_id,deleted) VALUES (51,5,'product',1,1,0),(52,5,'product',2,2,0)");
+        jdbc.update("INSERT INTO product_work_spec_version VALUES (10,1,0)");
+        jdbc.update("INSERT INTO product_work_spec_item VALUES (10,'DOCSET_FILE',5)");
+        when(files.selectActiveForUpdate(5L)).thenAnswer(call -> storedFixtureFile());
+        when(files.selectIncludingDeleted(5L)).thenAnswer(call -> storedFixtureFile());
+        when(refs.lockActive(5L)).thenAnswer(call -> jdbc.query("SELECT id,source_type,source_id FROM sys_attachment_ref WHERE attachment_id=5 AND deleted=0 FOR UPDATE", (rs,i) -> {
+            var ref = new SysAttachmentRef(); ref.setId(rs.getLong(1)); ref.setSourceType(rs.getString(2)); ref.setSourceId(rs.getLong(3)); return ref;
+        }));
+        var policy = new AttachmentSourcePolicy(jdbc);
+        var access = new AttachmentAccessService(policy, refs, jdbc);
+        var lifecycle = new AttachmentLifecycleService(files, access, jdbc, mock(com.jjx.system.mapper.SysOperLogMapper.class), policy);
+        var tx = new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(jdbc.getDataSource()));
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("other-user");
+            auth.when(StpUtil::isLogin).thenReturn(true);
+            auth.when(() -> StpUtil.hasPermission("production:order:view")).thenReturn(true);
+            assertThrows(IllegalStateException.class, () -> tx.execute(status -> {
+                service.detachWorkSpecFile(1L,5L); throw new IllegalStateException("later business/log failure");
+            }));
+            assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref WHERE deleted=0", Integer.class));
+            tx.executeWithoutResult(status -> service.detachWorkSpecFile(1L,5L));
+            assertEquals(1, jdbc.queryForObject("SELECT deleted FROM sys_attachment_ref WHERE id=51", Integer.class));
+            assertEquals(0, jdbc.queryForObject("SELECT deleted FROM sys_attachment_ref WHERE id=52", Integer.class));
+            assertEquals("BOUND", storedFixtureFile().getUploadState().name());
+            tx.executeWithoutResult(status -> service.detachWorkSpecFile(2L,5L));
+            assertEquals(AttachmentUploadState.ORPHAN, storedFixtureFile().getUploadState());
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM product_work_spec_item WHERE source_id=5", Integer.class));
+            assertEquals("original-hash", jdbc.queryForObject("SELECT sha256 FROM sys_attachment WHERE id=5", String.class));
+            assertTrue(access.canRead(storedFixtureFile()));
+            assertTrue(access.protectedFile(storedFixtureFile()));
+            assertThrows(BusinessException.class, () -> access.checkUnlink(storedFixtureFile()));
+            assertEquals(0, lifecycle.autoRecycleExpired(0,100).get("recycled"));
+            verify(files, never()).logicalDelete(anyLong());
+        }
+    }
+
+    private SysAttachment storedFixtureFile() {
+        return jdbc.queryForObject("SELECT * FROM sys_attachment WHERE id=5", (rs,i) -> {
+            var file = new SysAttachment(); file.setId(5L); file.setDeleted(false); file.setFileName(rs.getString("file_name"));
+            file.setSha256(rs.getString("sha256")); file.setUploadState(AttachmentUploadState.valueOf(rs.getString("upload_state"))); return file;
+        });
     }
 
     @Test

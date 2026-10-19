@@ -6,6 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.product.domain.dto.ProductWorkSpecDTO;
+import com.jjx.product.domain.dto.ProductWorkSpecDraftDTO;
+import com.jjx.system.service.AttachmentRefService;
+import com.jjx.system.service.AttachmentAccessService;
+import com.jjx.system.domain.dto.AttachmentRefDTO;
+import com.jjx.system.domain.dto.AttachmentRefMetadataDTO;
+import com.jjx.common.constant.UserConstants;
 import com.jjx.product.domain.dto.PrintSpecRemarksDTO;
 import com.jjx.product.domain.dto.ColorCheckDTO;
 import com.jjx.product.enums.ProcessCategoryEnum;
@@ -41,6 +47,8 @@ import java.util.ArrayList;
 @Service
 @RequiredArgsConstructor
 public class ProductWorkSpecService {
+    @org.springframework.beans.factory.annotation.Autowired private AttachmentRefService draftRefs;
+    @org.springframework.beans.factory.annotation.Autowired private AttachmentAccessService draftAccess;
     private static final Set<String> EMBOSS_KEYS = Set.of("setupHeight", "requiredHeight", "upperTemperature", "lowerTemperature", "pressTime", "holdTime");
     private static final Set<String> COLORS = Set.of("#252525", "#ed00df", "#e53935", "#1565c0");
     private final ProductWorkSpecMapper mapper;
@@ -71,10 +79,158 @@ public class ProductWorkSpecService {
         if (oldContent.has("printRemarks")) next.set("printRemarks", oldContent.get("printRemarks").deepCopy());
         // 分色检查表同样由专用入口维护；通用保存不得覆盖或清空。
         if (oldContent.has("colorCheck")) next.set("colorCheck", oldContent.get("colorCheck").deepCopy());
+        for (String key : List.of("draftManaged", "draftAttachments", "preparedById", "preparedByName", "basedOnVersionId", "finalizedVersionId", "finalizedFromRevision"))
+            if (oldContent.has(key)) next.set(key, oldContent.get(key).deepCopy());
         changeService.attachSources(id, oldContent, next);
-        if (oldContent.equals(next)) return response(id, oldRaw);
+        if (sameContent(oldContent, next)) return response(id, oldRaw);
+        beginEdit(oldContent, next);
         mapper.write(id, next.toString());
+        recordOperation(id, "保存草稿", oldContent, next);
         return response(id, mapper.read(id));
+    }
+
+    public List<Map<String, Object>> responsibleUsers() { return mapper.responsibleUsers(UserConstants.USER_STATUS_NORMAL); }
+
+    public ObjectNode draftHistory(Long id, Long before) {
+        if (mapper.exists(id) == 0) throw new BusinessException("产品不存在");
+        var rows = mapper.draftHistory(id.toString(), before, YesNoEnum.YES.getCode());
+        ObjectNode result = json.createObjectNode();
+        result.set("items", json.valueToTree(rows.subList(0, Math.min(50, rows.size()))));
+        if (rows.size() > 50) result.put("nextBefore", ((Number) rows.get(49).get("id")).longValue());
+        return result;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ObjectNode saveDraft(Long id, ProductWorkSpecDraftDTO input) {
+        String previous = raw(lock(id));
+        checkRevision(input.getRevision(), previous);
+        ObjectNode old = parse(previous);
+        ObjectNode next = input.getSpec() == null ? old.deepCopy() : json.valueToTree(input.getSpec());
+        next.remove(List.of("revision", "confirmedBy", "confirmedAt", "confirmedSource"));
+        for (String key : List.of("printRemarks", "colorCheck", "basedOnVersionId", "finalizedVersionId", "finalizedFromRevision"))
+            if (old.has(key)) next.set(key, old.get(key).deepCopy());
+        next.put("draftManaged", true);
+        Long owner = input.getPreparedById() != null ? input.getPreparedById()
+            : old.hasNonNull("preparedById") ? old.path("preparedById").asLong() : SecurityUtils.getUserId();
+        Map<String, Object> user = responsibleUsers().stream().filter(row -> Objects.equals(((Number) row.get("id")).longValue(), owner))
+            .findFirst().orElseThrow(() -> new BusinessException("请选择有效的编制负责人"));
+        next.put("preparedById", owner); next.put("preparedByName", Objects.toString(user.get("name"), ""));
+        if (input.getAttachments() == null) {
+            if (!old.path("draftManaged").asBoolean()) throw new BusinessException("首次保存请提交完整附件清单");
+            next.set("draftAttachments", old.path("draftAttachments").deepCopy());
+        } else {
+            var manifest = next.putArray("draftAttachments");
+            Set<Long> ids = new java.util.HashSet<>();
+            for (var item : input.getAttachments()) {
+                if (item == null || item.getAttachmentId() == null || !ids.add(item.getAttachmentId())) throw new BusinessException("附件清单存在空项或重复文件");
+                if (mapper.engineeringType(item.getDocumentType()) == 0) throw new BusinessException("工程图集只能使用工程技术资料类型");
+                SysAttachment file = attachments.selectActiveForUpdate(item.getAttachmentId());
+                if (file == null) throw new BusinessException("附件不存在或已删除");
+                draftAccess.checkRead(file);
+                if (Boolean.TRUE.equals(item.getPrint()) && !previewable(file)) throw new BusinessException("打印清单只能选择图片或PDF");
+                AttachmentRefDTO ref = new AttachmentRefDTO();
+                ref.setAttachmentId(file.getId()); ref.setSourceType("product"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(item.getDocumentType());
+                Long refId = draftRefs.create(ref);
+                AttachmentRefMetadataDTO meta = new AttachmentRefMetadataDTO();
+                meta.setDocumentType(item.getDocumentType()); meta.setDisplayName(item.getDisplayName()); meta.setRemark(item.getRemark()); meta.setSortOrder(manifest.size());
+                draftRefs.update(refId, meta);
+                ObjectNode entry = manifest.addObject();
+                entry.put("attachmentId", file.getId()); entry.put("documentType", item.getDocumentType());
+                entry.put("displayName", item.getDisplayName() == null || item.getDisplayName().isBlank() ? file.getFileName() : item.getDisplayName());
+                entry.put("remark", Objects.toString(item.getRemark(), "")); entry.put("sortOrder", manifest.size() - 1);
+                entry.put("print", item.getPrint() == null ? previewable(file) : item.getPrint());
+                entry.put("sha256", Objects.toString(file.getSha256(), ""));
+            }
+            for (JsonNode item : old.path("draftAttachments")) {
+                long fileId = item.path("attachmentId").asLong();
+                if (!ids.contains(fileId)) draftRefs.detachWorkSpecFile(id, fileId);
+            }
+            if (next.hasNonNull("structureFileId") && !ids.contains(next.path("structureFileId").asLong())) next.putNull("structureFileId");
+        }
+        if (input.getSpec() != null) {
+            input.getSpec().setStructureFileId(next.hasNonNull("structureFileId") ? next.path("structureFileId").asLong() : null);
+            validate(id, input.getSpec());
+            changeService.attachSources(id, old, next);
+        }
+        if (!sameContent(old, next)) {
+            beginEdit(old, next);
+            mapper.write(id, next.toString());
+            recordOperation(id, "保存草稿", old, next);
+        }
+        return response(id, mapper.read(id));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ObjectNode upgradeDraft(Long id, ProductWorkSpecDraftDTO input) {
+        String previous = raw(lock(id)); checkRevision(input.getRevision(), previous);
+        if (input.getBaseVersionId() == null || !Objects.equals(id, mapper.versionProduct(input.getBaseVersionId()))) throw new BusinessException("请选择本产品的定版版本");
+        ObjectNode snapshot = parse(mapper.versionSnapshot(input.getBaseVersionId()));
+        if (!snapshot.path("spec").isObject() || !snapshot.path("files").isArray()) throw new BusinessException("该版本缺少完整快照，不能复制为草稿");
+        ObjectNode source = ((ObjectNode) snapshot.path("spec")).deepCopy();
+        source.remove(List.of("revision", "sourceRevision", "sourceData", "draftFiles", "approved", "confirmedAt", "confirmedBy", "confirmedSource", "finalizedVersionId", "finalizedFromRevision"));
+        // 已保存草稿包含修订内容时不覆盖；调用方需先处理现有草稿。
+        ObjectNode old = parse(previous);
+        if (old.path("draftManaged").asBoolean() && !old.hasNonNull("finalizedVersionId")) throw new BusinessException("当前已有未定版草稿，请先处理当前草稿");
+        source.put("draftManaged", true); source.put("basedOnVersionId", input.getBaseVersionId());
+        if (!source.path("draftAttachments").isArray()) throw new BusinessException("该版本缺少统一附件清单，不能复制为草稿");
+        Set<Long> selected = new java.util.HashSet<>();
+        for (JsonNode entry : source.path("draftAttachments")) {
+            long attachmentId = entry.path("attachmentId").asLong();
+            SysAttachment file = attachments.selectActiveForUpdate(attachmentId);
+            if (file == null || !selected.add(attachmentId)) throw new BusinessException("原定版文件缺失或清单重复");
+            draftAccess.checkRead(file);
+            AttachmentRefDTO ref = new AttachmentRefDTO(); ref.setAttachmentId(attachmentId);
+            ref.setSourceType("product"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(entry.path("documentType").asText());
+            Long refId = draftRefs.create(ref);
+            AttachmentRefMetadataDTO meta = new AttachmentRefMetadataDTO();
+            meta.setDocumentType(entry.path("documentType").asText()); meta.setDisplayName(entry.path("displayName").asText());
+            meta.setRemark(entry.path("remark").asText("")); meta.setSortOrder(entry.path("sortOrder").asInt());
+            draftRefs.update(refId, meta);
+        }
+        for (JsonNode entry : old.path("draftAttachments"))
+            if (!selected.contains(entry.path("attachmentId").asLong())) draftRefs.detachWorkSpecFile(id, entry.path("attachmentId").asLong());
+        mapper.write(id, source.toString());
+        recordOperation(id, "从旧版升级", old, source);
+        return response(id, mapper.read(id));
+    }
+
+    private boolean previewable(SysAttachment file) {
+        return Objects.toString(file.getFileType(), "").startsWith("image/") || Objects.toString(file.getFileName(), "").toLowerCase(java.util.Locale.ROOT).matches(".*\\.(pdf|png|jpg|jpeg|webp|gif|bmp|svg)$");
+    }
+    private void beginEdit(ObjectNode old, ObjectNode next) {
+        if (old.hasNonNull("finalizedVersionId")) next.set("basedOnVersionId", old.get("finalizedVersionId"));
+        next.remove(List.of("finalizedVersionId", "finalizedFromRevision"));
+    }
+    private boolean sameContent(ObjectNode before, ObjectNode after) {
+        // JSON落库读取会把小范围Long还原为Int；按归一后的值比较，避免无改动生成流水。
+        return parse(before.toString()).equals(parse(after.toString()));
+    }
+    public void recordOperation(Long id, String action, ObjectNode before, ObjectNode after) {
+        SysOperLog event = new SysOperLog();
+        event.setModule("作业规范版本"); event.setBizType("product"); event.setBizId(id.toString());
+        event.setBusinessType(BusinessType.UPDATE.getCode()); event.setAction(action);
+        event.setUserId(SecurityUtils.getUserId()); event.setUsername(SecurityUtils.getUsername()); event.setRealName(SecurityUtils.getDisplayName());
+        event.setStatus(YesNoEnum.YES.getCode()); event.setCreateTime(LocalDateTime.now());
+        ObjectNode detail = json.createObjectNode();
+        detail.put("beforeRevision", digest(before.toString())); detail.put("afterRevision", digest(after.toString()));
+        detail.put("preparedByBefore", before.path("preparedByName").asText(""));
+        detail.put("preparedByAfter", after.path("preparedByName").asText(""));
+        if (after.has("finalizedVersionId")) detail.set("versionId", after.get("finalizedVersionId"));
+        if (after.has("versionId")) detail.set("versionId", after.get("versionId"));
+        if (after.has("versionNo")) detail.set("versionNo", after.get("versionNo"));
+        if (after.has("basedOnVersionId")) detail.set("basedOnVersionId", after.get("basedOnVersionId"));
+        if (after.has("status")) detail.set("status", after.get("status"));
+        var changed = detail.putArray("changedFields");
+        java.util.Set<String> keys = new java.util.TreeSet<>(); before.fieldNames().forEachRemaining(keys::add); after.fieldNames().forEachRemaining(keys::add);
+        keys.stream().filter(key -> !Objects.equals(before.get(key), after.get(key))).forEach(changed::add);
+        List<Long> oldIds = new ArrayList<>(), newIds = new ArrayList<>();
+        before.path("draftAttachments").forEach(item -> oldIds.add(item.path("attachmentId").asLong()));
+        after.path("draftAttachments").forEach(item -> newIds.add(item.path("attachmentId").asLong()));
+        detail.set("added", json.valueToTree(newIds.stream().filter(file -> !oldIds.contains(file)).toList()));
+        detail.set("removed", json.valueToTree(oldIds.stream().filter(file -> !newIds.contains(file)).toList()));
+        detail.put("orderChanged", !oldIds.equals(newIds));
+        event.setOperParam(action + "：附件" + newIds.size() + "个"); event.setDetail(detail.toString());
+        operLogs.insert(event);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -100,6 +256,7 @@ public class ProductWorkSpecService {
         }
         if (changes.isEmpty()) return response(id, oldRaw);
         next.set("printRemarks", remarks);
+        beginEdit(parse(oldRaw), next);
         next.remove(List.of("confirmedBy", "confirmedAt", "confirmedSource"));
         mapper.write(id, next.toString());
         SysOperLog log = new SysOperLog();
@@ -165,6 +322,7 @@ public class ProductWorkSpecService {
         colorCheck.put("updatedBy", operator);
         colorCheck.put("updatedAt", now);
         next.set("colorCheck", colorCheck);
+        beginEdit(parse(oldRaw), next);
         next.remove(List.of("confirmedBy", "confirmedAt", "confirmedSource"));
         mapper.write(id, next.toString());
         SysOperLog log = new SysOperLog();
@@ -220,6 +378,7 @@ public class ProductWorkSpecService {
         data.put("confirmedBy", SecurityUtils.getUsername());
         data.put("confirmedAt", LocalDateTime.now().toString());
         data.put("confirmedSource", sourceFingerprint(id, data));
+        beginEdit(parse(oldRaw), data);
         mapper.write(id, data.toString());
         return response(id, mapper.read(id));
     }
@@ -246,6 +405,15 @@ public class ProductWorkSpecService {
     }
     private ObjectNode response(Long id, String raw) {
         ObjectNode data = parse(raw);
+        if (data.path("draftManaged").asBoolean()) {
+            Map<Long, Map<String, Object>> available = new java.util.HashMap<>();
+            for (var file : mapper.draftFiles(id)) available.put(((Number) file.get("attachmentId")).longValue(), file);
+            var files = data.putArray("draftFiles");
+            for (JsonNode entry : data.path("draftAttachments")) {
+                ObjectNode file = available.containsKey(entry.path("attachmentId").asLong()) ? json.valueToTree(available.get(entry.path("attachmentId").asLong())) : json.createObjectNode();
+                file.setAll((ObjectNode) entry); files.add(file);
+            }
+        } else data.set("draftFiles", json.valueToTree(mapper.draftFiles(id)));
         data.put("revision", digest(raw == null ? "" : raw));
         ObjectNode sources = sourceData(id, data);
         String sourceRevision = digest(sources.toString());

@@ -5,6 +5,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.dto.ProductWorkSpecDTO;
+import com.jjx.product.domain.dto.ProductWorkSpecDraftDTO;
 import com.jjx.product.domain.dto.PrintSpecRemarksDTO;
 import com.jjx.product.domain.dto.ColorCheckDTO;
 import com.jjx.product.service.ProductWorkSpecService;
@@ -57,6 +58,23 @@ public class ProductWorkSpecController {
     public Result<ObjectNode> save(@PathVariable Long productId, @Validated @RequestBody ProductWorkSpecDTO dto) {
         return Result.success(service.save(productId, dto));
     }
+
+    @PutMapping("/draft")
+    @SaCheckPermission("product:edit")
+    public Result<ObjectNode> saveDraft(@PathVariable Long productId, @Validated @RequestBody ProductWorkSpecDraftDTO dto) {
+        return Result.success(service.saveDraft(productId, dto));
+    }
+    @PostMapping("/draft/from-version")
+    @SaCheckPermission("product:edit")
+    public Result<ObjectNode> upgradeDraft(@PathVariable Long productId, @Validated @RequestBody ProductWorkSpecDraftDTO dto) {
+        return Result.success(service.upgradeDraft(productId, dto));
+    }
+    @GetMapping("/responsible-users")
+    @SaCheckPermission("product:edit")
+    public Result<java.util.List<java.util.Map<String,Object>>> responsibleUsers() { return Result.success(service.responsibleUsers()); }
+    @GetMapping("/history")
+    @SaCheckPermission(value={"product:spec:view","engineering:spec:view"},mode=cn.dev33.satoken.annotation.SaMode.OR)
+    public Result<ObjectNode> history(@PathVariable Long productId,@RequestParam(required=false) Long before) { return Result.success(service.draftHistory(productId,before)); }
 
     @PostMapping("/confirm")
     @SaCheckPermission("product:status:approve")

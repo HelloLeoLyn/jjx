@@ -29,6 +29,8 @@ public class AttachmentAccessService {
     public boolean canRead(SysAttachment file) {
         if (file == null || Boolean.TRUE.equals(file.getDeleted()) || !StpUtil.isLogin()) return false;
         if (file.getUploadState() == AttachmentUploadState.ASSET) return ProcessIconService.isIcon(file);
+        // 解除草稿关联后的定版文件仍通过版本查看权限读取，不依赖上传人或临时保留时钟。
+        if (file.getUploadState() != AttachmentUploadState.TEMP && canReadWorkSpecVersion(file.getId())) return true;
         if (file.getUploadState() == AttachmentUploadState.TEMP || file.getUploadState() == AttachmentUploadState.ORPHAN)
             return StpUtil.getLoginIdAsString().equals(file.getUploadOwner()) && file.getExpiresAt() != null
                 && file.getExpiresAt().isAfter(java.time.LocalDateTime.now());
@@ -39,6 +41,14 @@ public class AttachmentAccessService {
         Long history = jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref WHERE attachment_id=? AND source_type=? AND source_id=?",
             Long.class, file.getId(), file.getBizType() == null ? null : sources.canonical(file.getBizType()), file.getBizId());
         return history != null && history == 0 && sources.canRead(file.getBizType(), file.getBizId());
+    }
+
+    private boolean canReadWorkSpecVersion(Long attachmentId) {
+        if (List.of("product:spec:view", "engineering:spec:view", "sales:order:view", "production:order:view")
+                .stream().noneMatch(StpUtil::hasPermission)) return false;
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM product_work_spec_item i JOIN product_work_spec_version v ON v.id=i.spec_version_id "
+            + "JOIN product p ON p.product_id=v.product_id WHERE i.source_id=? AND i.resource_type IN ('DRAWING','DOCSET_FILE') AND v.deleted=0", Long.class, attachmentId);
+        return count != null && count > 0;
     }
 
     public boolean protectedFile(SysAttachment file) {
