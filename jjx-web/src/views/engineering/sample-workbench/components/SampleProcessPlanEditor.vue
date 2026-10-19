@@ -1,20 +1,11 @@
 <template>
-  <div class="mid-row" :class="{ 'picker-collapsed': !pickerExpanded }">
+  <div class="mid-row">
     <el-card class="col-picker" shadow="never">
       <template #header>
         <span style="font-weight: 600">添加标准工序</span>
         <span class="desc">选结构 → 拖拽工序到右侧卡片组合</span>
-        <el-button
-          size="small"
-          class="picker-toggle"
-          style="float: right; margin-top: -2px"
-          :title="pickerExpanded ? '收起标准工序库，释放编辑宽度' : '展开标准工序库，拖拽或点选标准工序'"
-          @click="pickerExpanded = !pickerExpanded"
-        >
-          {{ pickerExpanded ? '收起标准工序库' : '展开标准工序库' }}
-        </el-button>
       </template>
-      <div v-show="pickerExpanded" class="picker-body" data-test="picker-body">
+      <div class="picker-body" data-test="picker-body">
         <WorkProjectPicker :readonly="readonly" />
       </div>
     </el-card>
@@ -111,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, toRefs } from 'vue'
+import { toRefs } from 'vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
 import SampleProcessPlanItem from './SampleProcessPlanItem.vue'
 import FrequentMaterialsBar from './FrequentMaterialsBar.vue'
@@ -168,9 +159,6 @@ const { batchMode, batchSelected, batchCategory, savingPlan, hasUnsavedChanges, 
 // activePlanTab 双向绑定（v-model:active-plan-tab）
 const activePlanTab = defineModel<string>('activePlanTab')
 
-// 标准工序选择器：默认收起，只保留可发现的「展开标准工序库」入口；展开后仍可拖拽/点选
-const pickerExpanded = ref(false)
-
 // 模板中直接使用 props 定义的属性名（Vue 自动可用，保持响应性）
 // 注意：不在此处解构 props，避免失去响应式
 </script>
@@ -182,12 +170,6 @@ const pickerExpanded = ref(false)
   display: flex;
   gap: 14px;
   margin-bottom: 14px;
-}
-.mid-row.picker-collapsed {
-  flex-direction: column;
-}
-.mid-row.picker-collapsed .col-picker {
-  width: 100%;
 }
 .picker-body {
   min-height: 240px;
