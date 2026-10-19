@@ -39,13 +39,23 @@
             <div class="section-heading">
               <h3>结构图</h3>
               <div v-if="structureDraft === undefined">
-                <el-button v-if="canEdit" :disabled="loading" @click="startStructureEdit">编辑</el-button>
+                <el-button v-if="canEdit" :disabled="loading || editing" @click="startStructureEdit">编辑</el-button>
               </div>
               <div v-else>
                 <el-button :disabled="savingInline" @click="structureDraft = null">取消</el-button>
                 <el-button type="primary" :loading="savingInline" @click="saveStructure">保存</el-button>
               </div>
             </div>
+            <StructureDrawingUpload
+              v-if="canEdit"
+              :key="productId"
+              :product-id="productId"
+              :product-code="productCode"
+              :structure-file-id="data.workSpec.structureFileId"
+              :disabled="loading || editing || savingInline || structureDraft !== undefined"
+              @busy="structureUploadBusy = $event"
+              @updated="sourcesSaved"
+            />
             <el-select
               v-if="structureDraft !== undefined"
               v-model="structureDraft"
@@ -353,6 +363,7 @@ import {
   type ProductWorkSpec,
 } from '@/api/product/workSpec'
 import ProductSpecPreview from './ProductSpecPreview.vue'
+import StructureDrawingUpload from './StructureDrawingUpload.vue'
 import ProductPrintSpecPanel from './ProductPrintSpecPanel.vue'
 import WorkSpecWorkflow from './WorkSpecWorkflow.vue'
 import EngineeringDrawingLibrary from '../../drawing/components/EngineeringDrawingLibrary.vue'
@@ -393,6 +404,7 @@ const publishedAt = ref('')
 const effectiveIssueDate = computed(() => effectiveIssueDateOf(data.value?.workSpec))
 const editorTab = ref('requirements')
 const drawingBusy = ref(false)
+const structureUploadBusy = ref(false)
 const bomVisible = ref(false)
 const routeVisible = ref(false)
 const saving = ref(false)
@@ -403,10 +415,13 @@ const savingIssuance = ref(false)
 const issuanceDraft = ref<ProductWorkSpec | null>(null)
 const issuanceChanges = computed(() => issuanceDraft.value?.changes || [])
 const dirty = computed(() => JSON.stringify(workSpecContent(draft.value)) !== baseline.value)
+function isStructureDrawing(file: { category: string; documentType?: string | null }): boolean {
+  return file.documentType === 'STRUCTURE_DRAWING' || file.category === '结构图'
+}
 const structureOptions = computed(
   () =>
     data.value?.files.filter(
-      (file) => file.productFile && file.category === '结构图' && file.kind !== 'other'
+      (file) => file.productFile && isStructureDrawing(file) && file.kind !== 'other'
     ) || []
 )
 const structureFile = computed(() =>
@@ -414,7 +429,7 @@ const structureFile = computed(() =>
     ? data.value.files.find(
         (file) =>
           file.id === data.value?.workSpec.structureFileId &&
-          file.category === '结构图' &&
+          isStructureDrawing(file) &&
           file.kind !== 'other'
       )
     : undefined
@@ -541,6 +556,7 @@ watch(
 )
 const editing = computed(
   () =>
+    structureUploadBusy.value ||
     editorVisible.value ||
     bomVisible.value ||
     routeVisible.value ||
