@@ -1,5 +1,6 @@
 package com.jjx.product.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -20,6 +21,8 @@ import com.jjx.product.domain.vo.ProductFullVO;
 import com.jjx.product.mapper.ProductWorkSpecMapper;
 import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.mapper.SysAttachmentMapper;
+import com.jjx.system.mapper.SysAttachmentRefMapper;
+import com.jjx.system.domain.entity.SysAttachmentRef;
 import com.jjx.system.utils.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -42,6 +45,7 @@ public class ProductWorkSpecService {
     private static final Set<String> COLORS = Set.of("#252525", "#ed00df", "#e53935", "#1565c0");
     private final ProductWorkSpecMapper mapper;
     private final SysAttachmentMapper attachments;
+    private final SysAttachmentRefMapper attachmentRefs;
     private final IProductService products;
     private final ObjectMapper json;
     private final ProductWorkSpecChangeService changeService;
@@ -303,7 +307,11 @@ public class ProductWorkSpecService {
     }
     private SysAttachment structure(Long id, Long fileId) {
         SysAttachment file = attachments.selectById(fileId);
-        if (file == null || !"product".equals(file.getBizType()) || !Objects.equals(id, file.getBizId()) || !"结构图".equals(file.getCategory()))
+        List<SysAttachmentRef> refs = attachmentRefs.selectList(new QueryWrapper<SysAttachmentRef>()
+                .eq("attachment_id", fileId).eq("source_type", "product").eq("source_id", id)
+                .eq("deleted", false));
+        if (file == null || refs.isEmpty() || (!"结构图".equals(file.getCategory())
+                && refs.stream().noneMatch(ref -> "STRUCTURE_DRAWING".equals(ref.getDocumentType()))))
             throw new BusinessException("请选择该产品已有的结构图");
         String name = file.getFileName() == null ? "" : file.getFileName().toLowerCase(java.util.Locale.ROOT);
         String mime = file.getFileType() == null ? "" : file.getFileType();
