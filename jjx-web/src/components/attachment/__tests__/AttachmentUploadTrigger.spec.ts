@@ -17,12 +17,12 @@ vi.mock('element-plus', async (importOriginal) => ({
 }))
 const wrappers: ReturnType<typeof mount>[] = []
 afterEach(() => { wrappers.splice(0).forEach((w) => w.unmount()) })
-function setup(options: { disabled?: boolean; custom?: boolean } = {}) {
+function setup(options: { disabled?: boolean; custom?: boolean; inline?: boolean } = {}) {
   const uploadTemporary = vi.fn().mockResolvedValue({ attachmentId: 1, entry: { attachmentId: 1 } })
   const session = { canEdit: ref(true), uploadingCount: ref(0), pendingCount: ref(0), uploadTemporary } as unknown as AttachmentSession
   const ownership = { kind: 'product', productId: 7, productCode: 'AA001MEOO', ownershipKey: 'product:7' } as AttachmentOwnership
   const w = mount(AttachmentUpload, {
-    props: { session, ownership, disabled: options.disabled },
+    props: { session, ownership, disabled: options.disabled, inline: options.inline },
     slots: options.custom ? { trigger: '<template #default="{ disabled }"><button class="row-upload" :disabled="disabled">上传</button></template>' } : {},
   })
   wrappers.push(w)
@@ -35,6 +35,26 @@ async function select(w: ReturnType<typeof mount>, file: File) {
   await flushPromises()
 }
 describe('调用方自定义上传入口', () => {
+  it('行内模式不占提示区，点击仍选文件，进度在操作栏外展示', async () => {
+    const { w, uploadTemporary } = setup({ custom: true, inline: true })
+    expect(w.find('.el-upload__tip').exists()).toBe(false)
+    const click = vi.spyOn(w.find('input[type=file]').element as HTMLInputElement, 'click')
+    await w.find('.row-upload').trigger('click')
+    expect(click).toHaveBeenCalledOnce()
+    let finish!: (value: unknown) => void
+    uploadTemporary.mockImplementationOnce((_file, _ownership, onProgress) => {
+      onProgress(30)
+      return new Promise((resolve) => { finish = resolve })
+    })
+    w.findComponent(AttachmentTempUploader).vm.$emit('files', [new File(['a'], 'a.pdf')])
+    await flushPromises()
+    const progress = document.body.querySelector('[role="status"]')
+    expect(progress?.textContent).toContain('附件上传中')
+    expect(w.element.contains(progress)).toBe(false)
+    finish({ attachmentId: 1, entry: { attachmentId: 1 } })
+    await flushPromises()
+    expect(document.body.querySelector('[role="status"]')).toBeNull()
+  })
   it('自定义按钮直接触发原生文件选择并沿现有通道上传', async () => {
     const { w, uploadTemporary, ownership } = setup({ custom: true })
     const inputClick = vi.spyOn(w.find('input[type=file]').element as HTMLInputElement, 'click')

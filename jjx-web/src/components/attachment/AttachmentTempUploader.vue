@@ -7,7 +7,7 @@
     :disabled="disabled"
     :on-change="onChange"
     :drag="dropZone"
-    :class="dropZone ? 'attu-dropzone' : ''"
+    :class="{ 'attu-dropzone': dropZone, 'attu-inline': inline && !dropZone }"
     :style="dropZone ? { width: '100%' } : undefined"
   >
     <template v-if="dropZone">
@@ -19,7 +19,7 @@
         <el-icon><Upload /></el-icon> {{ buttonText }}
       </el-button>
     </slot>
-    <template #tip>
+    <template v-if="!inline" #tip>
       <div class="el-upload__tip">{{ tip }}</div>
     </template>
   </el-upload>
@@ -49,6 +49,7 @@ const props = withDefaults(
     tip?: string
     /** 渲染拖拽落区（替代按钮）；与按钮共用同一条 on-change → 校验 → emit('files') 通道 */
     dropZone?: boolean
+    inline?: boolean
   }>(),
   {
     multiple: true,
@@ -58,6 +59,7 @@ const props = withDefaults(
     buttonText: '上传附件',
     tip: '',
     dropZone: false,
+    inline: false,
   },
 )
 
@@ -99,6 +101,10 @@ defineExpose({ clearFiles: () => uploadRef.value?.clearFiles() })
 </script>
 
 <style scoped>
+.attu-inline,
+.attu-inline :deep(.el-upload) {
+  display: contents;
+}
 .el-upload__tip {
   font-size: 12px;
   color: #999;

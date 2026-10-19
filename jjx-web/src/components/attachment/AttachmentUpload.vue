@@ -1,5 +1,5 @@
 <template>
-  <div class="attachment-upload">
+  <div class="attachment-upload" :class="{ 'attachment-upload--inline': inline }">
     <AttachmentTempUploader
       v-bind="uploaderProps"
       @files="onFiles"
@@ -10,12 +10,18 @@
       </template>
     </AttachmentTempUploader>
     <el-progress
-      v-if="progress !== null"
+      v-if="!inline && progress !== null"
       class="au-progress"
       :percentage="progress"
       :status="progress >= 100 ? 'success' : undefined"
     />
-    <span v-if="uploadingCount" class="au-sub">{{ uploadingCount }} 个文件上传中…</span>
+    <span v-if="!inline && uploadingCount" class="au-sub">{{ uploadingCount }} 个文件上传中…</span>
+    <Teleport to="body">
+      <div v-if="inline && progress !== null" class="au-floating-progress" role="status">
+        附件上传中…
+        <el-progress :percentage="progress" />
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -48,6 +54,8 @@ const props = withDefaults(
     tip?: string
     /** 渲染拖拽落区替代按钮 */
     dropZone?: boolean
+    /** 操作栏入口：容器不占布局空间，进度独立展示。 */
+    inline?: boolean
     /** 上传禁用原因（调用方按业务决定）；组件本身不做业务判断 */
     blockedReason?: string
   }>(),
@@ -72,6 +80,7 @@ const props = withDefaults(
     buttonText: '上传附件',
     tip: '',
     dropZone: false,
+    inline: false,
     blockedReason: '',
   },
 )
@@ -101,6 +110,7 @@ const uploaderProps = computed(() => ({
   buttonText: props.buttonText,
   tip: disabledTip.value || props.tip,
   dropZone: props.dropZone,
+  inline: props.inline,
 }))
 
 function onError(message: string) {
@@ -132,6 +142,21 @@ defineExpose({ canUpload, disabledTip })
 </script>
 
 <style scoped>
+.attachment-upload--inline {
+  display: contents;
+}
+.au-floating-progress {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 3000;
+  width: 220px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  background: var(--el-bg-color-overlay);
+  box-shadow: var(--el-box-shadow-light);
+  font-size: 12px;
+}
 .au-progress {
   margin-top: 6px;
   width: 100%;

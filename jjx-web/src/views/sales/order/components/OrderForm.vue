@@ -273,7 +273,7 @@
             :session="attachSession"
             :ownership="ownershipOfRow(scope.row)"
             :disabled="!scope.row.productCode"
-            style="display: inline-flex"
+            inline
             @uploaded="(item) => attachSession.registerUploaded(item.pending, item.ownership)"
             @error="onAttachError"
           >
