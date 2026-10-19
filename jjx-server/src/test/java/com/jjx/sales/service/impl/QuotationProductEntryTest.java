@@ -92,10 +92,24 @@ class QuotationProductEntryTest {
         quotation.setQuotationType(type);
         item.setProductId(8L);
         assertEquals(10L, service.insertQuotation(new SalesQuotationAddDTO()));
-        verify(customers).validateSelectable(8L, 1L);
+        // dev-20261019-012：报价不再要求产品已发布，改走客户归属校验
+        verify(customers).validateBelongsToCustomer(8L, 1L);
+        verify(customers, never()).validateSelectable(anyLong(), anyLong());
         verifyNoInteractions(productService);
         verify(items).insert(item);
         assertEquals(8L, item.getProductId());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void unreleasedProductCanBeQuoted(int type) {
+        // dev-20261019-012：产品未发布（开发中）也允许进报价单，只校验客户归属
+        quotation.setQuotationType(type);
+        item.setProductId(8L);
+        product.setProductStatus(com.jjx.product.enums.ProductEnums.Status.DEVELOPING.getValue());
+        assertEquals(10L, service.insertQuotation(new SalesQuotationAddDTO()));
+        verify(customers).validateBelongsToCustomer(8L, 1L);
+        verify(customers, never()).validateSelectable(anyLong(), anyLong());
     }
 
     @ParameterizedTest
@@ -117,7 +131,7 @@ class QuotationProductEntryTest {
     void existingProductCannotBypassCustomerCheckBySubmittingOnlyCode(int type) {
         quotation.setQuotationType(type);
         when(products.selectOne(any(Wrapper.class))).thenReturn(product);
-        when(customers.validateSelectable(8L, 1L)).thenThrow(new BusinessException("不属于当前客户"));
+        when(customers.validateBelongsToCustomer(8L, 1L)).thenThrow(new BusinessException("不属于当前客户"));
         assertThrows(BusinessException.class, () -> service.insertQuotation(new SalesQuotationAddDTO()));
         verify(quotations, never()).insert(any(SalesQuotation.class));
         verifyNoInteractions(productService);

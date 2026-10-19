@@ -353,15 +353,9 @@ public class QuotationServiceImpl implements IQuotationService {
         return quotation.getQuotationId();
     }
 
-    /** 已有产品始终校验客户归属；本报价原有关联允许继续编辑开发中的产品。 */
+    /** 已有产品始终校验客户归属；报价阶段不再限制产品发布状态（dev-20261019-012）。 */
     private void validateCustomerProducts(SalesQuotation quotation, SalesQuotation existing) {
         if (quotation.getItems() == null) return;
-        java.util.Set<Long> previousProducts = new java.util.HashSet<>();
-        if (existing != null && existing.getItems() != null) {
-            for (SalesQuotationItem item : existing.getItems()) {
-                if (item.getProductId() != null) previousProducts.add(item.getProductId());
-            }
-        }
         for (SalesQuotationItem item : quotation.getItems()) {
             if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isBlank()) {
                 Product matched = productMapper.selectOne(new LambdaQueryWrapper<Product>()
@@ -376,9 +370,9 @@ public class QuotationServiceImpl implements IQuotationService {
                 item.setProductCode(item.getProductCode().trim());
                 continue;
             }
-            Product product = previousProducts.contains(item.getProductId())
-                    ? productCustomerValidator.validateBelongsToCustomer(item.getProductId(), quotation.getCustomerId())
-                    : productCustomerValidator.validateSelectable(item.getProductId(), quotation.getCustomerId());
+            // dev-20261019-012：报价阶段不再要求产品已发布（开发中/待审核/驳回等也可报价），
+            // 只校验客户归属；生产就绪由转订单/生产入口负责（与订单草稿口径一致）。
+            Product product = productCustomerValidator.validateBelongsToCustomer(item.getProductId(), quotation.getCustomerId());
             if (product != null) {
                 if (item.getProductCode() != null && !item.getProductCode().isBlank()
                         && !product.getProductCode().equals(item.getProductCode().trim())) {
