@@ -453,7 +453,11 @@ import type { StandardProcessOption } from '@/types/product'
 import type { EngineeringRoutingItemVO } from '@/types/product/routing'
 import { ProcessCategoryEnum } from '@/enums/product'
 import PrintFieldAutocomplete from '@/components/print/PrintFieldAutocomplete.vue'
-import { ROUTE_STRUCTURE_TABS, routeStructureTabValue } from './routeProcessTabs'
+import {
+  ROUTE_STRUCTURE_TABS,
+  groupProcessesByCategory,
+  routeStructureTabValue,
+} from './routeProcessTabs'
 import EngineeringRoutingItem from '@/components/product/EngineeringRoutingItem.vue'
 import ProcessOperation from '@/components/ProcessOperation/index.vue'
 import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
@@ -717,7 +721,9 @@ const generateTempItemId = (): number => {
 
 // ==================== 计算属性 ====================
 
-// 按工序类别分组的标准工序（固定维度，支持关键字过滤；2026-08-12 移除类型分组切换）
+// 按工序类别分组的标准工序（固定业务顺序 面板→上线→下线→其他→未分类，支持关键字过滤；2026-08-12 移除类型分组切换）
+// 2026-10-19 dev-20261019-014：分组与排序统一走 routeProcessTabs.groupProcessesByCategory，
+// 与下方组合工序表格 tab 共用同一份顺序，不再依赖工序数据的到达顺序。
 const groupedProcesses = computed(() => {
   const kw = searchKeyword.value.trim().toLowerCase()
   const filtered = kw
@@ -727,19 +733,7 @@ const groupedProcesses = computed(() => {
           (p.processCode || '').toLowerCase().includes(kw)
       )
     : props.standardProcesses
-  const groups = new Map<string, StandardProcessOption[]>()
-  filtered.forEach((p) => {
-    const key = p.processCategory
-    if (!groups.has(key)) {
-      groups.set(key, [])
-    }
-    groups.get(key)!.push(p)
-  })
-  const result = Array.from(groups.entries()).map(([key, options]) => ({
-    key,
-    label: ProcessCategoryEnum.getLabel(key),
-    options,
-  }))
+  const result = groupProcessesByCategory(filtered, (p) => p.processCategory)
   // 默认选中第一个tab
   if (result.length > 0 && !activeTab.value) {
     activeTab.value = result[0].key
