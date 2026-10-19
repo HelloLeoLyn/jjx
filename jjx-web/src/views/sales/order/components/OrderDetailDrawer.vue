@@ -4,6 +4,7 @@
     v-model="drawerVisible"
     :title="`订单详情 - ${orderDetail?.orderNo || ''}`"
     width="70%"
+    max-width="1200px"
     :close-on-click-modal="false"
     destroy-on-close
     @close="handleClose"
@@ -21,7 +22,7 @@
             </div>
           </template>
 
-          <el-descriptions :column="2" border>
+          <el-descriptions :column="3" border>
             <el-descriptions-item label="订单编号">
               {{ orderDetail.orderNo }}
             </el-descriptions-item>
@@ -59,10 +60,10 @@
             <el-descriptions-item label="交货条件">
               {{ orderDetail.deliveryTerms || '-' }}
             </el-descriptions-item>
-            <el-descriptions-item label="交货地址" :span="2">
+            <el-descriptions-item label="交货地址" :span="3">
               {{ orderDetail.deliveryAddress || '-' }}
             </el-descriptions-item>
-            <el-descriptions-item label="备注" :span="2">
+            <el-descriptions-item label="备注" :span="3">
               {{ orderDetail.remark || '-' }}
             </el-descriptions-item>
           </el-descriptions>
@@ -74,7 +75,7 @@
             <span>金额信息</span>
           </template>
 
-          <el-descriptions :column="2" border>
+          <el-descriptions :column="3" border>
             <el-descriptions-item label="总金额">
               <strong class="text-primary">
                 {{ formatCurrency(orderDetail.totalAmount) }} {{ orderDetail.currency }}
@@ -82,7 +83,9 @@
             </el-descriptions-item>
             <el-descriptions-item label="运费（不计税）">
               <span v-if="orderDetail.shippingFee == null">金额组成待确认</span>
-              <span v-else>{{ formatCurrency(orderDetail.shippingFee) }} {{ orderDetail.currency }}</span>
+              <span v-else
+                >{{ formatCurrency(orderDetail.shippingFee) }} {{ orderDetail.currency }}</span
+              >
             </el-descriptions-item>
             <el-descriptions-item label="税率">
               {{ (Number(orderDetail.taxRate) || 0).toFixed(2) }}%
@@ -99,7 +102,7 @@
             <el-descriptions-item label="折扣金额">
               {{ formatCurrency(orderDetail.discountAmount) }} {{ orderDetail.currency }}
             </el-descriptions-item>
-            <el-descriptions-item label="最终金额" :span="2">
+            <el-descriptions-item label="最终金额" :span="3">
               <strong class="text-success" style="font-size: 18px">
                 {{ formatCurrency(orderDetail.finalAmount) }} {{ orderDetail.currency }}
               </strong>
@@ -113,7 +116,7 @@
             <span>状态信息</span>
           </template>
 
-          <el-descriptions :column="2" border>
+          <el-descriptions :column="3" border>
             <el-descriptions-item label="订单状态">
               <el-tag :type="SalesOrderStatusEnum.getTagProps(orderDetail.orderStatus).type">
                 {{ SalesOrderStatusEnum.getLabel(orderDetail.orderStatus) }}
@@ -150,7 +153,7 @@
             <span>审核信息</span>
           </template>
 
-          <el-descriptions :column="2" border>
+          <el-descriptions :column="3" border>
             <el-descriptions-item label="审核人">
               {{ orderDetail.reviewerName }}
             </el-descriptions-item>
@@ -160,10 +163,10 @@
             <el-descriptions-item v-if="orderDetail.reviewEndTime" label="审核结束时间">
               {{ parseDateTime(orderDetail.reviewEndTime) }}
             </el-descriptions-item>
-            <el-descriptions-item v-if="orderDetail.reviewRemark" label="审核备注" :span="2">
+            <el-descriptions-item v-if="orderDetail.reviewRemark" label="审核备注" :span="3">
               {{ orderDetail.reviewRemark }}
             </el-descriptions-item>
-            <el-descriptions-item v-if="orderDetail.rejectReason" label="驳回原因" :span="2">
+            <el-descriptions-item v-if="orderDetail.rejectReason" label="驳回原因" :span="3">
               <span class="text-danger">{{ orderDetail.rejectReason }}</span>
             </el-descriptions-item>
           </el-descriptions>
@@ -205,9 +208,11 @@
               min-width="150"
               show-overflow-tooltip
             />
-      <el-table-column label="作业规范版本" width="165">
-        <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" empty-text="未指定" /></template>
-      </el-table-column>
+            <el-table-column label="作业规范版本" width="165">
+              <template #default="{ row }"
+                ><WorkSpecVersionLink :version-id="row.workSpecVersionId" empty-text="未指定"
+              /></template>
+            </el-table-column>
             <el-table-column label="产品编码" prop="productCode" width="120" />
             <el-table-column
               label="规格型号"
@@ -246,43 +251,6 @@
               >{{ formatCurrency(totalAmount) }} {{ orderDetail.currency }}</strong
             >
           </div>
-        </el-card>
-
-        <!-- 审核历史时间线 -->
-        <el-card class="info-card" shadow="never">
-          <template #header>
-            <span>操作历史</span>
-          </template>
-
-          <el-timeline v-if="reviewHistory.length > 0">
-            <el-timeline-item
-              v-for="item in reviewHistory"
-              :key="item.logId"
-              :timestamp="parseDateTime(item.operationTime)"
-              placement="top"
-              :type="getTimelineType(item.operationResult)"
-            >
-              <el-card shadow="hover">
-                <div class="history-item">
-                  <div class="history-header">
-                    <span class="history-action">{{
-                      item.operationTypeName || item.action || item.operationType
-                    }}</span>
-                    <span class="history-operator">{{ item.operatorName }}</span>
-                  </div>
-                  <div v-if="item.operationDescription || item.remark" class="history-remark">
-                    {{ item.operationDescription || item.remark }}
-                  </div>
-                  <div v-if="item.operationResult" class="history-result">
-                    <el-tag :type="item.operationResult === 1 ? 'success' : 'danger'" size="small">
-                      {{ item.operationResult === 1 ? '成功' : '失败' }}
-                    </el-tag>
-                  </div>
-                </div>
-              </el-card>
-            </el-timeline-item>
-          </el-timeline>
-          <el-empty v-else description="暂无操作历史" :image-size="80" />
         </el-card>
 
         <!-- 相关文档 -->
