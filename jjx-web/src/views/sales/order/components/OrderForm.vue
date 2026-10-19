@@ -269,6 +269,18 @@
           </div>
         </template>
         <template #before="scope">
+          <AttachmentUpload
+            :session="attachSession"
+            :ownership="ownershipOfRow(scope.row)"
+            :disabled="!scope.row.productCode"
+            style="display: inline-flex"
+            @uploaded="(item) => attachSession.registerUploaded(item.pending, item.ownership)"
+            @error="onAttachError"
+          >
+            <template #trigger="{ disabled }">
+              <el-button link type="primary" :disabled="disabled">上传附件</el-button>
+            </template>
+          </AttachmentUpload>
           <el-button
             link
             type="primary"
@@ -375,7 +387,14 @@
         @uploaded="(item) => attachSession.registerUploaded(item.pending, item.ownership)"
         @error="onAttachError"
       />
-      <!-- <AttachmentManager v-if="productAttachmentsVisible" :session="productAttachmentSession" :show-ownership-filter="false" source-type="sales_order" title="本产品附件" @error="onAttachError" /> -->
+      <AttachmentManager
+        v-if="productAttachmentsVisible"
+        :session="productAttachmentSession"
+        :show-ownership-filter="false"
+        source-type="sales_order"
+        title="本产品附件"
+        @error="onAttachError"
+      />
       <template #footer
         ><el-button @click="productAttachmentsVisible = false">关闭</el-button></template
       >

@@ -61,9 +61,10 @@ vi.mock('@/components/attachment/AttachmentUpload.vue', async () => {
         accept: Array,
         buttonText: String,
         dropZone: Boolean,
+        disabled: Boolean,
       },
       emits: ['uploaded', 'error', 'changed'],
-      template: '<div class="upload-stub" />',
+      template: '<div class="upload-stub"><slot name="trigger" :disabled="disabled" /></div>',
     }),
   }
 })
@@ -213,7 +214,8 @@ async function form(edit = false, extra: Record<string, any> = {}) {
   return w
 }
 
-const uploadStub = (w: any) => w.findComponent({ name: 'AttachmentUploadStub' })
+const uploadStub = (w: any) => w.findAllComponents({ name: 'AttachmentUploadStub' })
+  .find((upload: any) => upload.props('buttonText') === '上传订单附件')!
 const managerStub = (w: any) => w.findComponent({ name: 'AttachmentManagerStub' })
 const sessionOf = (w: any) => uploadStub(w).props('session')
 
@@ -233,6 +235,28 @@ async function pickOwnership(w: any, key: string) {
 }
 
 describe('销售订单随单附件（真实会话 + 真实表单模板）', () => {
+  it.each([false, true])('新增/编辑入口产品行直接上传，不打开中间弹窗（编辑=%s）', async (edit) => {
+    const w = await form(edit)
+    const inline = w.findAllComponents({ name: 'AttachmentUploadStub' })
+      .find((upload: any) => upload.find('button').text() === '上传附件')!
+    expect(inline.props('session')).toBe(sessionOf(w))
+    expect(inline.props('ownership')).toEqual(expect.objectContaining({
+      kind: 'product', productId: 11, productCode: product.productCode,
+    }))
+    await inline.find('button').trigger('click')
+    expect(w.findAllComponents({ name: 'AttachmentManagerStub' })).toHaveLength(1)
+    const owner = inline.props('ownership')
+    const session = sessionOf(w)
+    const uploaded = await session.uploadTemporary(new File(['x'], 'inline.pdf'), owner)
+    inline.vm.$emit('uploaded', { pending: uploaded.entry, ownership: owner })
+    await flushPromises()
+    expect(session.getChanges({ kind: 'all' }).uploads).toEqual([
+      expect.objectContaining({ ownershipKey: 'product:11', productCode: product.productCode }),
+    ])
+    expect(attachApi.createRef).not.toHaveBeenCalled()
+    expect(api.addOrder).not.toHaveBeenCalled()
+    expect(api.updateOrder).not.toHaveBeenCalled()
+  })
   it('报价来源走正式转换接口，失败保留表单，不绕过普通新增接口', async () => {
     const w = await form(false, { sourceQuotationId: 31, quotationSourceVersion: 'version31' })
     const before = JSON.stringify(w.vm.form)
