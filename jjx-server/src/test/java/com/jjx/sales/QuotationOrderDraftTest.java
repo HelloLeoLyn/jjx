@@ -25,11 +25,13 @@ class QuotationOrderDraftTest {
     SalesQuotationItemMapper items = mock(SalesQuotationItemMapper.class);
     QuotationFlowMapper flows = mock(QuotationFlowMapper.class);
     IOrderService orders = mock(IOrderService.class);
+    SysAttachmentRefMapper attachments = mock(SysAttachmentRefMapper.class);
+    com.jjx.system.service.AttachmentDocumentTypeService documentTypes = mock(com.jjx.system.service.AttachmentDocumentTypeService.class);
     SalesQuotation quote;
     QuotationServiceImpl service;
     @BeforeEach void setup() {
         service = service(QuotationServiceImpl.class, Map.of(QuotationMapper.class, quotations, SalesQuotationItemMapper.class, items,
-                IOrderService.class, orders, QuotationFlowMapper.class, flows, SysAttachmentRefMapper.class, mock(SysAttachmentRefMapper.class)));
+                IOrderService.class, orders, QuotationFlowMapper.class, flows, SysAttachmentRefMapper.class, attachments, com.jjx.system.service.AttachmentDocumentTypeService.class, documentTypes));
         quote = new SalesQuotation(); quote.setQuotationId(1L); quote.setCustomerId(7L); quote.setCustomerName("customer"); quote.setQuotationNo("Q1");
         quote.setQuotationStatus(QuotationStatus.ACCEPTED.getValue()); quote.setDeleted(0); quote.setContactPerson("contact"); quote.setTraceId("trace");
         when(quotations.selectOne(any())).thenReturn(quote);
@@ -54,6 +56,26 @@ class QuotationOrderDraftTest {
         verify(orders).insertOrder(argThat(d -> d.isQuotationConversionValidated() && d.getQuotationId().equals(1L) && d.getTraceId().equals("trace")));
         assertThrows(BusinessException.class, () -> service.convertToOrder(1L, draft));
     }
+    @Test void conversionBindsOnlyOrderUploadsAndKeepsQuotationFilesOnOriginalSource() {
+        var drawing = new com.jjx.system.domain.entity.SysAttachmentRef();
+        drawing.setId(3L); drawing.setAttachmentId(213L); drawing.setDocumentType("CUSTOMER_DRAWING");
+        var evidence = new com.jjx.system.domain.entity.SysAttachmentRef();
+        evidence.setId(4L); evidence.setAttachmentId(214L); evidence.setDocumentType("SALES_QUOTATION_CUSTOMER_EVIDENCE");
+        when(attachments.selectList(any())).thenReturn(List.of(drawing, evidence));
+        when(documentTypes.supports(any(), eq("sales_order"))).thenReturn(true);
+        var draft = service.getOrderDraft(1L);
+        var upload = new SalesOrderAddDTO.OrderAttachmentDTO();
+        upload.setAttachmentId(221L); upload.setDocumentType("PRODUCT_SPECIFICATION");
+        var input = new ArrayList<>(draft.getOrder().getAttachments());
+        input.add(upload); draft.getOrder().setAttachments(input);
+        assertEquals(9L, service.convertToOrder(1L, draft));
+        verify(orders).insertOrder(argThat(order -> order.getTraceId().equals("trace")
+            && order.getAttachments().size() == 1 && order.getAttachments().getFirst().getAttachmentId().equals(221L)));
+        verify(attachments, never()).insert(any(com.jjx.system.domain.entity.SysAttachmentRef.class));
+        verify(attachments, never()).updateById(any(com.jjx.system.domain.entity.SysAttachmentRef.class));
+        verify(attachments, never()).deleteById(anyLong());
+    }
+
     @Test void internalFlagCannotBeForgedThroughJson() throws Exception {
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         assertFalse(mapper.readValue("{\"quotationConversionValidated\":true}", SalesOrderAddDTO.class).isQuotationConversionValidated());

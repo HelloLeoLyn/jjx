@@ -49,13 +49,52 @@ describe('报价转订单来源附件展示', () => {
       expect(manager.capabilities(row)).toMatchObject({ canEdit: false, canSelect: false, canRemove: false, canSave: false })
     }
     expect(view.pending).toBe(session.pending)
-    expect(view.refRows).toBe(session.refRows)
+    expect(view.refRows.value).toEqual(session.refRows.value)
     expect(view.getChanges()).toEqual({ uploads: [], updates: [] })
     expect(session.refRows.value).toEqual([])
   })
-  it('普通新增及已保存订单不查询来源附件', async () => {
+  it('新增页报价两条加订单待保存一条合计三条，来源队列不混入保存内容', async () => {
+    api.listRefs.mockResolvedValue({ data: refs() })
+    const { session, view, manager } = setup()
+    const pending = { attachmentId: 221, fileName: '工程图3.jpg', state: 'pending', ownershipKey: 'product:2', productCode: 'GF1344POOO' } as any
+    session.pending.value = [pending]
+    await flushPromises()
+    expect(manager.tableRows.value.map(row => row.attachmentId).sort()).toEqual([213, 214, 221])
+    expect(view.pending.value).toEqual([pending])
+    expect(session.refRows.value).toEqual([])
+    expect(manager.tableRows.value.find(row => row.attachmentId === 221)?.sourceType).toBe('sales_order')
+  })
+
+  it('SO261019004重开时显示三文件，旧重复订单引用不覆盖报价来源', async () => {
+    api.listRefs.mockResolvedValue({ data: refs() })
+    const { session, view, manager } = setup(2, 5)
+    session.refRows.value = [
+      { ...refs()[0], id: 15, sourceType: 'sales_order', sourceId: 5, sourceNo: 'SO261019004' },
+      { id: 14, attachmentId: 221, sourceType: 'sales_order', sourceId: 5, sourceNo: 'SO261019004', productId: 2, productCode: 'GF1344POOO', documentType: 'PRODUCT_SPECIFICATION', fileName: '工程图3.jpg' },
+    ]
+    await flushPromises()
+    const rows = manager.tableRows.value
+    expect(rows).toHaveLength(3)
+    expect(rows.map(row => [row.attachmentId, row.sourceType, row.sourceNo]).sort()).toEqual([
+      [213, 'quotation', 'QT261019002'], [214, 'quotation', 'QT261019002'], [221, 'sales_order', 'SO261019004'],
+    ])
+    expect(rows.find(row => row.attachmentId === 213)?.refId).toBe(3)
+    expect(rows.find(row => row.attachmentId === 214)?.refId).toBe(4)
+    expect(manager.capabilities(rows.find(row => row.attachmentId === 221)!)).toMatchObject({ canEdit: true, canRemove: true })
+    expect(view.refRows.value.map(row => row.attachmentId)).toEqual([221])
+    expect(session.refRows.value.map(row => row.id)).toEqual([15, 14]) // 原引用未修改或删除
+  })
+
+  it('没有历史重复引用的新订单仍合并显示报价两条及订单新增一条', async () => {
+    api.listRefs.mockResolvedValue({ data: refs() })
+    const { session, manager } = setup(2, 5)
+    session.refRows.value = [{ id: 14, attachmentId: 221, sourceType: 'sales_order', sourceId: 5, sourceNo: 'SO261019004', fileName: '工程图3.jpg' }]
+    await flushPromises()
+    expect(manager.tableRows.value.map(row => row.attachmentId).sort()).toEqual([213, 214, 221])
+  })
+
+  it('普通新增不查询来源附件', async () => {
     setup(0)
-    setup(2, 99)
     await flushPromises()
     expect(api.listRefs).not.toHaveBeenCalled()
   })
@@ -69,7 +108,7 @@ describe('报价转订单来源附件展示', () => {
     await flushPromises()
     expect(view.traceOnlyRows.value.map(row => row.sourceNo)).toEqual(['QT-NEW'])
   })
-  it('订单保存后清除来源行，忽略保存前的回包', async () => {
+  it('订单保存后重新读取明确来源，保留报价附件', async () => {
     const old = deferred()
     api.listRefs.mockReturnValue(old.promise)
     const { orderId, view } = setup()
@@ -77,7 +116,8 @@ describe('报价转订单来源附件展示', () => {
     await nextTick()
     old.resolve({ data: refs() })
     await flushPromises()
-    expect(view.traceOnlyRows.value).toEqual([])
+    expect(view.traceOnlyRows.value.map(row => row.id)).toEqual([213, 214])
+    expect(api.listRefs).toHaveBeenCalledTimes(2)
   })
   it('离开页面后忽略回包', async () => {
     const old = deferred()

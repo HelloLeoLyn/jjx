@@ -3,7 +3,7 @@ import { attachmentRefApi } from '@/api/system/attachmentRef'
 import type { AttachmentSourceItem } from '@/api/system/attachment'
 import type { AttachmentSession } from '@/composables/useAttachmentSession'
 
-/** 转单新增页只按明确来源读取报价引用，不改变本单队列或未保存单据的链路查询守卫。 */
+/** 按明确来源读取报价引用；新增、保存后重开均保留原来源，不改变本单保存队列。 */
 export function useQuotationAttachmentView(
   session: AttachmentSession,
   quotationId: () => number | undefined,
@@ -20,7 +20,7 @@ export function useQuotationAttachmentView(
     sourceError.value = ''
     sourceLoading.value = false
     const id = quotationId()
-    if (!id || orderId() || !session.canView.value) return
+    if (!id || !session.canView.value) return
     sourceLoading.value = true
     try {
       const response = await attachmentRefApi.listRefs('quotation', id)
@@ -44,9 +44,16 @@ export function useQuotationAttachmentView(
   }, { immediate: true })
   onScopeDispose(() => { request++ })
 
+  // 兼容旧转换已生成的重复订单引用：只在展示时优先报价来源，不改动历史引用。
+  const ownRows = computed(() => {
+    const sourceIds = new Set(sourceRows.value.map(row => row.id))
+    return session.refRows.value.filter(row => !sourceIds.has(row.attachmentId))
+  })
   // 会话读写方法仍指向原实例；仅给 Manager 补只读展示行，不计入本单附件及保存内容。
   return {
     ...session,
+    refRows: ownRows,
+    refs: ownRows,
     traceOnlyRows: computed(() => [...sourceRows.value, ...session.traceOnlyRows.value]),
     hasReadonlyDocs: computed(() => sourceRows.value.length > 0 || session.hasReadonlyDocs.value),
     traceError: computed(() => sourceError.value || session.traceError.value),

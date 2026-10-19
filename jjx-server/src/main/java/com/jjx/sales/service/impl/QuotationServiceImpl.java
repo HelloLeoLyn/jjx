@@ -1155,21 +1155,14 @@ public class QuotationServiceImpl implements IQuotationService {
         orderDTO.setCustomerName(quotation.getCustomerName()); orderDTO.setOrderNo(null);
         orderDTO.setOrderType(com.jjx.sales.enums.SalesOrderTypeEnum.STANDARD.getCode());
         orderDTO.setQuotationConversionValidated(true);
-        var attachments = new ArrayList<SalesOrderAddDTO.OrderAttachmentDTO>();
-        if (orderDTO.getAttachments() != null) {
-            // 前端草稿可能仍带报价专用证据：落库前按目标来源再过滤一次（不降级、不删报价引用）
-            orderDTO.getAttachments().stream()
-                    .filter(a -> orderAttachmentSupported(a.getDocumentType()))
-                    .forEach(attachments::add);
-        }
-        for (var original : canonical.getAttachments()) {
-            boolean belongs = original.getProductId() == null && (original.getProductCode() == null || original.getProductCode().isBlank())
-                    || orderDTO.getItems() != null && orderDTO.getItems().stream().anyMatch(item ->
-                    original.getProductId() != null ? original.getProductId().equals(item.getProductId()) : original.getProductCode().equals(item.getProductCode()));
-            if (belongs && attachments.stream().noneMatch(a -> java.util.Objects.equals(a.getAttachmentId(), original.getAttachmentId())
-                    && java.util.Objects.equals(a.getProductId(), original.getProductId()) && java.util.Objects.equals(a.getProductCode(), original.getProductCode()))) attachments.add(original);
-        }
-        orderDTO.setAttachments(attachments);
+        // 与询价转报价一致：来源附件沿原链路查阅，订单只绑定自己新增的附件。
+        // 兼容旧预填请求带回的报价附件ID，避免再次挂为订单来源。
+        var sourceAttachmentIds = quotationOrderRefs(quotationId).stream()
+                .map(com.jjx.system.domain.entity.SysAttachmentRef::getAttachmentId)
+                .collect(java.util.stream.Collectors.toSet());
+        orderDTO.setAttachments(orderDTO.getAttachments() == null ? List.of() : orderDTO.getAttachments().stream()
+                .filter(a -> !sourceAttachmentIds.contains(a.getAttachmentId()))
+                .filter(a -> orderAttachmentSupported(a.getDocumentType())).toList());
         Long orderId = orderService.insertOrder(orderDTO);
         if (orderId == null) throw new BusinessException("订单保存失败，报价转换已回滚");
 

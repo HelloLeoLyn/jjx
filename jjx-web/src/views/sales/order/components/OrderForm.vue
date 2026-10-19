@@ -817,7 +817,7 @@ const attachSession = useAttachmentSession({
 })
 const attachmentViewSession = useQuotationAttachmentView(
   attachSession,
-  () => props.sourceQuotationId,
+  () => props.sourceQuotationId || (form as any).quotationId,
   () => form.orderId,
 )
 
