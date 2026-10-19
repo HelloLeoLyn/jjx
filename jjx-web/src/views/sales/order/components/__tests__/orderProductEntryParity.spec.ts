@@ -71,6 +71,9 @@ vi.mock('@/composables/useCompanyConfig', () => ({ useCompanyConfig: () => ({ co
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), useRoute: () => ({ params: { id: '9', sampleId: '21' } }) }))
 vi.mock('@/composables/useAttachmentSession', () => ({ useAttachmentSession: () => ({
   pending: ref([]), refs: ref([]), refRows: ref([]), getChanges: () => ({ uploads: [] }),
+  // dev-20261019-007：006 新增的 useQuotationAttachmentView 会读 session.canView，
+  // 生产会话本来就有该字段，这里补齐测试替身契约，避免挂载即抛错。
+  canView: ref(true),
 }) }))
 vi.mock('@/composables/useAttachmentRefs', () => ({ useAttachmentDraftInstance: () => ({
   draftId: ref('draft-017'), choices: ref([]), complete: vi.fn(), ensure: vi.fn(),
