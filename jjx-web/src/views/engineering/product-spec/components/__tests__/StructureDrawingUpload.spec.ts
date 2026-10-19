@@ -1,6 +1,7 @@
 vi.mock('element-plus/es/components/base/style/css', () => ({}))
 vi.mock('element-plus/es/components/button/style/css', () => ({}))
-vi.mock('@/utils/request', () => ({ default: {} }))
+const http = vi.hoisted(() => ({ request: vi.fn() }))
+vi.mock('@/utils/request', () => ({ default: http.request }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
@@ -9,11 +10,13 @@ import { attachmentRefApi } from '@/api/system/attachmentRef'
 import { attachmentApi } from '@/api/system/attachment'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 
-const auth = vi.hoisted(() => ({ release: true }))
+const auth = vi.hoisted(() => ({ release: true, edit: true }))
 vi.mock('@/store/modules/user', () => ({
   useUserStore: () => ({
     hasPermission: (permission: string) =>
-      permission !== 'engineering:drawing:release' || auth.release,
+      permission === 'product:edit'
+        ? auth.edit
+        : permission !== 'engineering:drawing:release' || auth.release,
   }),
 }))
 vi.mock('@/api/system/attachmentRef', () => ({
@@ -35,7 +38,7 @@ const stubs = {
 }
 function mountUpload() {
   return mount(StructureDrawingUpload, {
-    props: { productId: 2, productCode: 'P2' },
+    props: { productId: 2, productCode: 'P2', editable: true },
     global: { stubs },
   })
 }
@@ -61,6 +64,8 @@ async function submit(wrapper: ReturnType<typeof mountUpload>) {
 beforeEach(() => {
   vi.clearAllMocks()
   auth.release = true
+  auth.edit = true
+  http.request.mockResolvedValue({ data: 225 })
   vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({
     data: [
       {
@@ -83,7 +88,7 @@ beforeEach(() => {
 })
 
 describe('作业规范结构图上传', () => {
-  it('建议下一版本，串行上传、建同源引用、设现行、下发并保存最新规范内容', async () => {
+  it('建议下一版本，串行上传、建产品引用并保存最新规范内容，不设现行或下发', async () => {
     const wrapper = mountUpload()
     await openWithFile(wrapper)
     expect(wrapper.find('el-dialog').exists()).toBe(false)
@@ -105,8 +110,6 @@ describe('作业规范结构图上传', () => {
     const calls = [
       attachmentRefApi.tempUpload,
       attachmentRefApi.createRef,
-      attachmentApi.setCurrent,
-      attachmentApi.release,
       productWorkSpecApi.get,
       productWorkSpecApi.save,
     ]
@@ -120,7 +123,7 @@ describe('作业规范结构图上传', () => {
         engineeringRequirements: '保留备注',
       })
     )
-    expect(wrapper.text()).toContain('作业规范结构图已更新')
+    expect(wrapper.text()).toContain('结构图已保存')
     wrapper.unmount()
   })
   it('按钮直接打开系统文件选择器，取消选择不调用上传接口', async () => {
@@ -154,58 +157,40 @@ describe('作业规范结构图上传', () => {
     expect(productWorkSpecApi.save).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
-  it('无下发权限只上传和建引用，提示未下发，不更改现行或规范引用', async () => {
+  it('有编辑权限而无下发权限也能保存工作态，不设现行/下发/发布', async () => {
     auth.release = false
     const wrapper = mountUpload()
     await openWithFile(wrapper)
     expect(attachmentRefApi.createRef).toHaveBeenCalledTimes(1)
     expect(attachmentApi.setCurrent).not.toHaveBeenCalled()
     expect(attachmentApi.release).not.toHaveBeenCalled()
-    expect(productWorkSpecApi.save).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('已上传，需有权限的人下发')
-    expect(wrapper.text()).toContain('未下发')
+    expect(productWorkSpecApi.save).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('updated')).toHaveLength(1)
     wrapper.unmount()
   })
-  it.each(['current', 'release', 'false-result'])(
-    '%s 失败显示未下发，重试不重复上传',
-    async (failure) => {
-      if (failure === 'current')
-        vi.mocked(attachmentApi.setCurrent).mockRejectedValueOnce(new Error('现行失败'))
-      else if (failure === 'release')
-        vi.mocked(attachmentApi.release).mockRejectedValueOnce(new Error('下发失败'))
-      else vi.mocked(attachmentApi.release).mockResolvedValueOnce({ data: false } as any)
-      const wrapper = mountUpload()
-      await openWithFile(wrapper)
-      expect(wrapper.text()).toContain('已上传，未下发，可重试')
-      expect(productWorkSpecApi.save).not.toHaveBeenCalled()
-      await submit(wrapper)
-      expect(attachmentRefApi.tempUpload).toHaveBeenCalledTimes(1)
-      expect(attachmentRefApi.createRef).toHaveBeenCalledTimes(1)
-      expect(attachmentApi.setCurrent).toHaveBeenCalledTimes(failure === 'current' ? 2 : 1)
-      expect(wrapper.text()).toContain('作业规范结构图已更新')
-      wrapper.unmount()
-    }
-  )
   it('建引用失败保留上传结果，重试同一附件', async () => {
     vi.mocked(attachmentRefApi.createRef).mockRejectedValueOnce(new Error('引用失败'))
     const wrapper = mountUpload()
     await openWithFile(wrapper)
-    expect(wrapper.text()).toContain('产品引用未建立，未下发')
+    expect(wrapper.text()).toContain('产品引用未建立')
     expect(attachmentApi.setCurrent).not.toHaveBeenCalled()
     await submit(wrapper)
     expect(attachmentRefApi.tempUpload).toHaveBeenCalledTimes(1)
     expect(attachmentRefApi.createRef).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
-  it('规范保存失败准确提示已下发，重试读取最新规范且不重复设现行或下发', async () => {
+  it('规范保存失败不通知替换旧图，重试读取最新规范且不重复上传和建引用', async () => {
     vi.mocked(productWorkSpecApi.save).mockRejectedValueOnce(new Error('revision 冲突'))
     const wrapper = mountUpload()
     await openWithFile(wrapper)
-    expect(wrapper.text()).toContain('已下发，作业规范引用未更新')
+    expect(wrapper.text()).toContain('规范保存失败')
+    expect(wrapper.emitted('updated')).toBeUndefined()
     await submit(wrapper)
     expect(productWorkSpecApi.get).toHaveBeenCalledTimes(2)
-    expect(attachmentApi.setCurrent).toHaveBeenCalledTimes(1)
-    expect(attachmentApi.release).toHaveBeenCalledTimes(1)
+    expect(attachmentApi.setCurrent).not.toHaveBeenCalled()
+    expect(attachmentApi.release).not.toHaveBeenCalled()
+    expect(attachmentRefApi.tempUpload).toHaveBeenCalledTimes(1)
+    expect(attachmentRefApi.createRef).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
   it.each([
@@ -241,7 +226,7 @@ describe('作业规范结构图上传', () => {
     const wrapper = mountUpload()
     await openWithFile(wrapper)
     expect(wrapper.text()).toContain('该图纸版本已存在相同用途的文件')
-    expect(wrapper.text()).toContain('产品引用未建立，未下发')
+    expect(wrapper.text()).toContain('产品引用未建立')
     expect(attachmentApi.setCurrent).not.toHaveBeenCalled()
     expect(productWorkSpecApi.save).not.toHaveBeenCalled()
     wrapper.unmount()
@@ -294,7 +279,6 @@ describe('作业规范结构图上传', () => {
     ['结构图.pdf', '', 'PRINT'],
     ['图.png', '', 'PRINT'],
     ['图.bin', 'image/png', 'PRINT'],
-    ['原稿.dwg', '', 'ORIGINAL'],
   ])('无历史、缺产品编码仍上传，%s 自动选用途', async (name, type, role) => {
     vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({ data: [] } as any)
     const wrapper = mountUpload()
@@ -362,6 +346,79 @@ describe('作业规范结构图上传', () => {
     await wrapper.setProps({ disabled: true })
     await openWithFile(wrapper)
     expect(attachmentRefApi.tempUpload).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+  it('只读或无编辑权限不能通过区域点击/文件事件上传，退出编辑不落库', async () => {
+    const wrapper = mountUpload()
+    await wrapper.setProps({ editable: false })
+    expect(wrapper.get('[data-test="open"]').element.tagName).toBe('DIV')
+    await openWithFile(wrapper)
+    expect(attachmentRefApi.tempUpload).not.toHaveBeenCalled()
+    await wrapper.setProps({ editable: true })
+    auth.edit = false
+    await openWithFile(wrapper)
+    expect(productWorkSpecApi.save).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('无 randomUUID 的内网环境也产生合法请求键，同文件重试沿用，新文件换键', async () => {
+    const uuid = vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('' as any)
+    try {
+      vi.mocked(attachmentRefApi.tempUpload).mockRejectedValueOnce(new Error('network'))
+      const wrapper = mountUpload()
+      await openWithFile(wrapper)
+      await submit(wrapper)
+      const calls = vi.mocked(attachmentRefApi.tempUpload).mock.calls
+      expect(calls[0][1]).toMatch(/^[A-Za-z0-9_-]{16,100}$/)
+      expect(calls[0][1]).toBe(calls[1][1])
+      await openWithFile(wrapper, 'second.png', 'image/png')
+      expect(vi.mocked(attachmentRefApi.tempUpload).mock.calls[2][1]).not.toBe(calls[0][1])
+      wrapper.unmount()
+    } finally {
+      uuid.mockRestore()
+    }
+  })
+  it('真实附件API将 requestKey 编入 multipart FormData，重试使用相同值', async () => {
+    const actual = await vi.importActual<typeof import('@/api/system/attachmentRef')>(
+      '@/api/system/attachmentRef'
+    )
+    vi.mocked(attachmentRefApi.tempUpload).mockImplementation(actual.attachmentRefApi.tempUpload)
+    http.request.mockRejectedValueOnce(new Error('network'))
+    const wrapper = mountUpload()
+    await openWithFile(wrapper)
+    await submit(wrapper)
+    const a = http.request.mock.calls[0][0],
+      b = http.request.mock.calls[1][0]
+    expect(a.url).toBe('/system/attachment/refs/temp')
+    expect(a.data).toBeInstanceOf(FormData)
+    expect(a.data.get('requestKey')).toMatch(/^[A-Za-z0-9_-]{16,100}$/)
+    expect(a.data.get('requestKey')).toBe(b.data.get('requestKey'))
+    expect(a.data.get('file')).toBeInstanceOf(File)
+    wrapper.unmount()
+  })
+  it('不支持的结构图类型在上传前提示，不创建引用', async () => {
+    const wrapper = mountUpload()
+    await openWithFile(wrapper, 'drawing.dwg', '')
+    expect(wrapper.text()).toContain('可预览的图片或 PDF')
+    expect(attachmentRefApi.tempUpload).not.toHaveBeenCalled()
+    expect(productWorkSpecApi.save).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('上传中切换产品，旧请求不再建引用或覆盖新产品规范', async () => {
+    let resolve!: (r: any) => void
+    vi.mocked(attachmentRefApi.tempUpload).mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          resolve = r
+        })
+    )
+    const wrapper = mountUpload()
+    await openWithFile(wrapper)
+    await wrapper.setProps({ productId: 3, productCode: 'P3' })
+    resolve({ data: 225 })
+    await flushPromises()
+    expect(attachmentRefApi.createRef).not.toHaveBeenCalled()
+    expect(productWorkSpecApi.save).not.toHaveBeenCalled()
+    expect(wrapper.emitted('updated')).toBeUndefined()
     wrapper.unmount()
   })
 })

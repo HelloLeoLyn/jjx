@@ -38,51 +38,24 @@
           <div class="spec-top-col">
             <div class="section-heading">
               <h3>结构图</h3>
-              <div v-if="structureDraft === undefined">
-                <el-button v-if="canEdit" :disabled="loading || editing" @click="startStructureEdit">编辑</el-button>
-              </div>
-              <div v-else>
-                <el-button :disabled="savingInline" @click="structureDraft = null">取消</el-button>
-                <el-button type="primary" :loading="savingInline" @click="saveStructure">保存</el-button>
-              </div>
+              <el-button v-if="canEdit && !structureEditing" :disabled="loading || editing" @click="startStructureEdit">编辑</el-button>
+              <el-button v-else-if="canEdit" :disabled="loading || structureUploadBusy" @click="structureEditing = false">取消</el-button>
             </div>
             <StructureDrawingUpload
-              v-if="canEdit"
               :key="productId"
               :product-id="productId"
               :product-code="productCode"
               :structure-file-id="data.workSpec.structureFileId"
-              :disabled="loading || editing || savingInline || structureDraft !== undefined"
+              :editable="canEdit && structureEditing"
+              :disabled="loading || savingInline || confirming || editorVisible || bomVisible || routeVisible || printSpecBusy || dieSaving"
               @busy="structureUploadBusy = $event"
-              @updated="sourcesSaved"
-            />
-            <p v-if="canEdit" class="structure-caption">选择文件即上传，编号、版本和用途自动生成。</p>
-            <el-select
-              v-if="structureDraft !== undefined"
-              v-model="structureDraft"
-              clearable
-              filterable
-              placeholder="选择这张规范单使用的图纸"
-              style="width: 100%"
+              @updated="structureSaved"
             >
-              <el-option
-                v-for="file in structureOptions"
-                :key="file.id"
-                :label="documentFileCaption(file)"
-                :value="file.id"
-              />
-            </el-select>
-            <template v-else>
-              <div class="structure-preview">
-                <img
-                  v-if="structureImage"
-                  :src="structureImage"
-                  :alt="`${productName || productCode} 结构图`"
-                />
-                <span v-else class="empty-hint">未选择结构图</span>
-              </div>
-              <p v-if="structureCaption" class="structure-caption">{{ structureCaption }}</p>
-            </template>
+              <img v-if="structureImage" class="structure-image" :src="structureImage" :alt="`${productName || productCode} 结构图`" />
+              <span v-else class="empty-hint">暂无结构图</span>
+            </StructureDrawingUpload>
+            <p v-if="structureCaption" class="structure-caption">{{ structureCaption }}</p>
+            <p v-if="structurePreviewError" class="structure-caption" role="alert">{{ structurePreviewError }}</p>
           </div>
           <div class="spec-top-col">
             <div class="section-heading">
@@ -398,7 +371,7 @@ const data = shallowRef<DocsetData>()
 const editorVisible = ref(false)
 const embossDraft = reactive<Record<string, string>>({})
 const noteDraft = ref<string | null>(null)
-const structureDraft = ref<number | null | undefined>(undefined)
+const structureEditing = ref(false)
 const savingInline = ref(false)
 const publishedAt = ref('')
 /** 发行日期展示口径（dev-20261013-029/031）：优先 issueDate；未填且已批准回退 confirmedAt；未批准留空。 */
@@ -436,19 +409,35 @@ const structureFile = computed(() =>
     : undefined
 )
 const structureImage = ref('')
+const structurePreviewError = ref('')
+let structurePreviewGeneration = 0
 const structureCaption = computed(() =>
   structureFile.value ? documentFileCaption({ ...structureFile.value, name: '' }) : ''
 )
 async function loadStructureImage() {
-  if (structureImage.value) {
-    URL.revokeObjectURL(structureImage.value)
-    structureImage.value = ''
-  }
+  const generation = ++structurePreviewGeneration
   const file = structureFile.value
-  if (!file) return
+  structurePreviewError.value = ''
+  if (!file) {
+    if (structureImage.value) URL.revokeObjectURL(structureImage.value)
+    structureImage.value = ''
+    return
+  }
   try {
-    structureImage.value = (await renderFile(file))[0]?.url || ''
+    const images = await renderFile(file)
+    if (generation !== structurePreviewGeneration) {
+      images.forEach(image => URL.revokeObjectURL(image.url))
+      return
+    }
+    if (structureImage.value) URL.revokeObjectURL(structureImage.value)
+    structureImage.value = images[0]?.url || ''
+    images.slice(1).forEach(image => URL.revokeObjectURL(image.url))
   } catch (e) {
+    if (generation === structurePreviewGeneration) {
+      if (structureImage.value) URL.revokeObjectURL(structureImage.value)
+      structureImage.value = ''
+      structurePreviewError.value = '结构图预览加载失败，请重新加载'
+    }
     console.error('结构图加载失败', e)
   }
 }
@@ -773,14 +762,12 @@ async function saveNote() {
   noteDraft.value = null
 }
 function startStructureEdit() {
-  if (!data.value || !canEdit.value) return
-  structureDraft.value = data.value.workSpec.structureFileId ?? null
+  if (!data.value || !canEdit.value || editing.value || loading.value) return
+  structureEditing.value = true
 }
-async function saveStructure() {
-  const spec = currentSpec()
-  spec.structureFileId = structureDraft.value ?? null
-  await persistSpec(spec, '结构图已保存')
-  structureDraft.value = undefined
+async function structureSaved() {
+  structureEditing.value = false
+  await sourcesSaved()
 }
 async function loadPublishedAt() {
   try {
@@ -808,6 +795,10 @@ watch(
 watch(
   () => props.productId,
   () => {
+    structureEditing.value = false
+    structurePreviewGeneration++
+    if (structureImage.value) URL.revokeObjectURL(structureImage.value)
+    structureImage.value = ''
     data.value = undefined
     previewVisible.value = false
     void loadData()
@@ -816,6 +807,7 @@ watch(
 )
 onBeforeUnmount(() => {
   loadGeneration++
+  structurePreviewGeneration++
   if (structureImage.value) URL.revokeObjectURL(structureImage.value)
   emit('busy', false)
 })
@@ -893,20 +885,10 @@ onBeforeUnmount(() => {
 .spec-top-col .section-heading {
   margin-bottom: 12px;
 }
-.structure-preview {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  border: 1px dashed var(--el-border-color);
-  border-radius: 6px;
-  box-sizing: border-box;
-}
-.structure-preview img {
+.structure-image {
   max-width: 100%;
   max-height: 100%;
+  min-height: 0;
   object-fit: contain;
 }
 .empty-hint {
