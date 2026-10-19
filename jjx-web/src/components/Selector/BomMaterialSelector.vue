@@ -18,7 +18,7 @@
     @load-more="loadMore"
   >
     <template #option="{ item }">
-      {{ item.materialName }} · {{ item.specification || '无规格' }} · {{ item.materialCode }}
+      {{ item.materialName }} · {{ item.specification || '无规格' }}
     </template>
     <template #footer>
       <div v-if="failed" style="padding: 6px 10px; font-size: 12px; color: var(--el-color-danger)">

@@ -3,30 +3,9 @@
     <div class="panel-heading">
       <div>
         <h3>客供资料</h3>
-        <p>本产品资料（上传/管理走公共附件组件）＋ 单据归集（只读）。</p>
       </div>
     </div>
 
-    <!-- 本产品资料：可写走公共附件组件；只读走只读件（dev-20261015-013） -->
-    <AttachmentDocList
-      v-if="readonly"
-      source-type="product"
-      :source-id="productId"
-      title="本产品资料"
-    />
-    <AttachmentCenter
-      v-else
-      source-type="product"
-      :source-id="productId"
-      :product-id="productId"
-      :product-code="productCode"
-      variant="panel"
-      view-perm="product:view"
-      edit-perm="product:edit"
-      title="本产品资料"
-    />
-
-    <el-divider content-position="left">单据归集（只读）</el-divider>
     <el-alert v-if="error" :title="error" type="warning" :closable="false" class="panel-notice" />
 
     <div class="filters">
@@ -44,7 +23,11 @@
         <template #default="{ row }">
           <el-link
             type="primary"
-            :title="row.originalFileName !== row.fileName ? `原文件名：${row.originalFileName}` : row.fileName"
+            :title="
+              row.originalFileName !== row.fileName
+                ? `原文件名：${row.originalFileName}`
+                : row.fileName
+            "
             @click="openFile(row.id)"
             >{{ row.fileName }}</el-link
           >
@@ -87,9 +70,12 @@ interface CustomerFile {
   createTime: string
 }
 
-const props = withDefaults(defineProps<{ productId: number; productCode: string; readonly?: boolean }>(), {
-  readonly: false,
-})
+const props = withDefaults(
+  defineProps<{ productId: number; productCode: string; readonly?: boolean }>(),
+  {
+    readonly: false,
+  }
+)
 
 const files = ref<CustomerFile[]>([])
 const loading = ref(false)
@@ -103,7 +89,8 @@ const visibleFiles = computed(() => {
   return files.value.filter(
     (file) =>
       (!sourceFilter.value || file.source === sourceFilter.value) &&
-      (!term || `${file.fileName} ${file.originalFileName} ${file.sourceNo}`.toLowerCase().includes(term)),
+      (!term ||
+        `${file.fileName} ${file.originalFileName} ${file.sourceNo}`.toLowerCase().includes(term))
   )
 })
 

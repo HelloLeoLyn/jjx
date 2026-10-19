@@ -83,6 +83,12 @@
           </div>
         </template>
       </el-table-column>
+      <!-- 规格型号 -->
+      <el-table-column label="规格型号" prop="specification" width="100">
+        <template #default="scope">
+          <el-input v-model="scope.row.specification" placeholder="请输入规格型号" size="small" />
+        </template>
+      </el-table-column>
       <el-table-column label="项目" prop="processName" width="200">
         <template #default="scope">
           <StandardProcessSelector
@@ -95,16 +101,16 @@
           <div
             v-if="!scope.row.processId && !(scope.row.processName || '').trim()"
             :class="scope.row.isCommon ? 'project-common-hint' : 'project-pending-hint'"
-          >
-            {{ scope.row.isCommon ? '整单通用（如需挂工序请选项目）' : '未挂工序：请选项目或勾「通用」' }}
-          </div>
+          ></div>
         </template>
       </el-table-column>
       <!-- 整单通用（dev-20261012-039；操作优化 dev-1792056991945）：项目为空或新增行默认视为通用，选工序自动取消 -->
       <el-table-column label="通用" width="64" align="center">
         <template #default="scope">
           <el-tooltip
-            :content="scope.row.isCommon ? '整单通用材料（不挂工序）' : '未勾选且未选项目将无法提交审核'"
+            :content="
+              scope.row.isCommon ? '整单通用材料（不挂工序）' : '未勾选且未选项目将无法提交审核'
+            "
             placement="top"
           >
             <el-checkbox
@@ -113,12 +119,6 @@
               @change="(v: any) => handleCommonChange(scope.row, v)"
             />
           </el-tooltip>
-        </template>
-      </el-table-column>
-      <!-- 规格型号 -->
-      <el-table-column label="规格型号" prop="specification" width="100">
-        <template #default="scope">
-          <el-input v-model="scope.row.specification" placeholder="请输入规格型号" size="small" />
         </template>
       </el-table-column>
 
@@ -879,10 +879,13 @@ function copyMaterial(row: EngineeringBomItem) {
   const done = () => ElMessage.success(`已复制：${text}`)
   const clip = navigator.clipboard
   if (clip && typeof clip.writeText === 'function') {
-    clip.writeText(text).then(done).catch(() => {
-      if (fallbackCopy(text)) done()
-      else ElMessage.warning('复制失败，请手动选择')
-    })
+    clip
+      .writeText(text)
+      .then(done)
+      .catch(() => {
+        if (fallbackCopy(text)) done()
+        else ElMessage.warning('复制失败，请手动选择')
+      })
   } else if (fallbackCopy(text)) {
     done()
   } else {
