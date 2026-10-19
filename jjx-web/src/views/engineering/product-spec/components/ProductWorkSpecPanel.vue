@@ -45,6 +45,7 @@
               :key="productId"
               :product-id="productId"
               :product-code="productCode"
+              :product-name="productName"
               :structure-file-id="data.workSpec.structureFileId"
               :editable="canEdit && structureEditing"
               :disabled="loading || savingInline || confirming || editorVisible || bomVisible || routeVisible || printSpecBusy || dieSaving"

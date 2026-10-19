@@ -42,6 +42,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { attachmentRefApi, type AttachmentRefItem } from '@/api/system/attachmentRef'
 import { fileKind } from '@/components/product/productFilePreview'
+import { newDrawingIdentity, nextDrawingVersion } from '@/components/product/drawingUploadRules'
 import { normalizeWorkSpec, productWorkSpecApi } from '@/api/product/workSpec'
 import { DrawingFileRoleEnum } from '@/enums/product/drawing'
 import { useUserStore } from '@/store/modules/user'
@@ -49,6 +50,7 @@ import { useUserStore } from '@/store/modules/user'
 const props = defineProps<{
   productId: number
   productCode: string
+  productName?: string
   structureFileId?: number | null
   disabled?: boolean
   editable?: boolean
@@ -65,6 +67,8 @@ const file = ref<File>()
 // 二级类型为引用真源；category 兼容尚未完成收敛的图集/打印读取。
 const documentType = 'STRUCTURE_DRAWING'
 const drawingNo = ref('')
+const drawingName = ref('')
+const legacyCategory = ref<string>()
 const version = ref('A')
 const fileRole = ref<string>(DrawingFileRoleEnum.PRINT.value)
 const refs = ref<AttachmentRefItem[]>([])
@@ -81,20 +85,7 @@ const sameDrawing = computed(() =>
 const duplicate = ref(false)
 
 function suggestVersion() {
-  const letters = sameDrawing.value
-    .map((row) => (row.version || '').trim().toUpperCase())
-    .filter((value) => /^[A-Z]+$/.test(value))
-    .sort((a, b) => b.length - a.length || b.localeCompare(a))
-  // 同编号所有引用参与版本计算，含历史和未下发版本；Z → AA。
-  // 直接对字母进位，避免长版本转换为数字丢失精度。
-  const next = [...(letters[0] || '')]
-  let index = next.length - 1
-  while (index >= 0 && next[index] === 'Z') {
-    next[index--] = 'A'
-  }
-  if (index < 0) next.unshift('A')
-  else next[index] = String.fromCharCode(next[index].charCodeAt(0) + 1)
-  version.value = next.join('')
+  version.value = nextDrawingVersion(sameDrawing.value.map(row => row.version)) || 'A'
 }
 function open() {
   if (!props.editable || props.disabled || busy.value) return
@@ -116,7 +107,10 @@ async function prepareMetadata(productId: number, currentGeneration: number) {
         String(b.createTime || '').localeCompare(String(a.createTime || '')) ||
         (b.id || b.attachmentId) - (a.id || a.attachmentId)
     )
-  drawingNo.value = structure[0]?.drawingNo?.trim() || `${props.productCode}-ST`
+  const identity = newDrawingIdentity(props.productCode, props.productName || '', documentType, refs.value)
+  drawingNo.value = structure[0]?.drawingNo?.trim() || identity.drawingNo
+  drawingName.value = structure[0]?.drawingNo ? structure[0].drawingName?.trim() || '' : identity.drawingName
+  legacyCategory.value = structure[0]?.drawingNo ? structure[0].category || undefined : '结构图'
   suggestVersion()
   duplicate.value = refs.value.some(
     (row) => row.fileName === file.value!.name && Number(row.fileSize) === file.value!.size
@@ -172,8 +166,9 @@ async function submit() {
       if (currentGeneration !== generation) return
       if (!/^[A-Za-z0-9_-]{16,100}$/.test(requestKey)) requestKey = newRequestKey()
       const response = await attachmentRefApi.tempUpload(file.value!, requestKey, undefined, {
-        category: '结构图',
+        ...(legacyCategory.value ? { category: legacyCategory.value } : {}),
         drawingNo: drawingNo.value.trim(),
+        drawingName: drawingName.value,
         version: version.value.trim(),
         fileRole: fileRole.value,
       })

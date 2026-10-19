@@ -2,8 +2,11 @@
   <div class="drawing-library">
     <div class="library-toolbar">
       <div class="library-heading"><strong>工程图集</strong><span>{{ files.length }} 个文件 · {{ rows.length }} 张图纸</span></div>
-      <div><el-button @click="loadFiles">刷新</el-button><el-button v-if="canUpload" type="primary" icon="Upload" @click="openUpload()">上传图纸</el-button></div>
+      <div><el-button @click="loadFiles">刷新</el-button><el-button v-if="canUpload" type="primary" icon="Upload" :disabled="uploading" @click="openUpload()">上传图纸</el-button></div>
     </div>
+    <p v-if="uploading" class="library-note" role="status">正在上传图纸…</p>
+    <input ref="revisionInput" type="file" multiple hidden data-test="new-revision-file" :disabled="uploading" @change="uploadNewVersionFiles" />
+    <el-alert v-if="syncError" :title="syncError" type="warning" :closable="false" class="library-alert" />
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="library-alert" />
     <div class="filters">
       <el-input v-model="keyword" placeholder="图纸编号、名称或文件名" clearable style="width:240px" />
@@ -20,7 +23,7 @@
       <template #empty>
         <el-empty :description="error ? '图纸加载失败，请刷新重试' : files.length ? '暂无符合条件的图纸，可切换筛选' : '暂无工程图纸'">
           <el-button v-if="error" @click="loadFiles">重试</el-button>
-          <el-button v-else-if="canUpload && !files.length" type="primary" @click="openUpload()">上传第一张结构图</el-button>
+          <el-button v-else-if="canUpload && !files.length" type="primary" @click="openUpload(undefined, false, 'STRUCTURE_DRAWING')">上传第一张结构图</el-button>
         </el-empty>
       </template>
       <el-table-column type="expand">
@@ -33,6 +36,7 @@
                 <el-tag size="small" :type="revision.released ? 'success' : 'info'">{{ revision.released ? '已下发' : revision.hasReleased ? '部分已下发' : '未下发' }}</el-tag>
                 <el-button v-if="canUpload && revision.drawingNo && !revision.current" link type="warning" :disabled="!!mutationId" @click="setCurrent(revision)">设为现行</el-button>
                 <el-button v-if="canRelease && ((revision.drawingNo && revision.current) || revision.hasReleased)" link :type="revision.hasReleased ? 'info' : 'success'" :disabled="!!mutationId" @click="release(revision)">{{ revision.hasReleased ? '撤回' : '下发' }}</el-button>
+                <el-button v-if="pendingStructureSync?.drawingNo === revision.drawingNo && pendingStructureSync?.version === revision.version" link type="warning" :disabled="!!mutationId" @click="retryStructureSync">重试同步结构图</el-button>
               </div>
               <div class="revision-files">
                 <div v-for="file in revision.files" :key="file.refId" class="revision-file">
@@ -72,10 +76,8 @@
       <el-table-column label="操作" min-width="200" fixed="right">
         <template #default="{ row }">
           <div class="row-actions">
-            <el-button v-if="canUpload && row.drawingNo" link type="primary" @click="openUpload(row, true)">新版本</el-button>
+            <el-button v-if="canUpload && row.drawingNo" link type="primary" :disabled="uploading" @click="chooseNewVersion(row)">新版本</el-button>
             <el-button v-if="canUpload && !row.drawingNo" link type="primary" @click="openMetadata(row.files[0])">补录关联</el-button>
-            <el-button v-if="canUpload && row.drawingNo && !row.current" link type="warning" :disabled="!!mutationId" @click="setCurrent(row)">设为现行</el-button>
-            <el-button v-if="canRelease && ((row.drawingNo && row.current) || row.hasReleased)" link :type="row.hasReleased ? 'info' : 'success'" :disabled="!!mutationId" @click="release(row)">{{ row.hasReleased ? '撤回' : '下发' }}</el-button>
           </div>
         </template>
       </el-table-column>
@@ -85,7 +87,7 @@
     <el-dialog v-model="uploadVisible" :title="uploadNewRevision ? '上传图纸新版本' : '上传工程图纸'" width="1100px" append-to-body destroy-on-close :close-on-click-modal="false" :close-on-press-escape="!uploading" :show-close="!uploading" :before-close="closeUpload">
       <div class="upload-product"><strong>{{ productName }}</strong><span>{{ productCode }}</span></div>
       <div class="upload-defaults">
-        <span>批量默认值</span><el-tag size="small" effect="plain">工程技术资料</el-tag><el-select v-model="defaults.documentType" :disabled="!!uploadDrawingNo || uploading" style="width:170px"><el-option v-for="item in documentTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+        <span>批量默认值</span><el-tag size="small" effect="plain">工程技术资料</el-tag><el-select v-model="defaults.documentType" clearable placeholder="未分类（可稍后补录）" :disabled="!!uploadDrawingNo || uploading" style="width:170px"><el-option v-for="item in documentTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
         <el-input v-model="defaults.version" placeholder="版本，如 A / B" maxlength="50" :disabled="uploading" style="width:160px" />
         <el-button :disabled="uploading" @click="applyDefaults">应用到待上传文件</el-button>
       </div>
@@ -95,21 +97,18 @@
       <el-table :data="queue" max-height="340" class="upload-queue">
         <el-table-column label="预览" width="72" align="center"><template #default="{ row }"><el-image v-if="row.thumb" :src="row.thumb" :preview-src-list="[row.thumb]" :initial-index="0" fit="contain" preview-teleported class="queue-thumb" /><el-tag v-else size="small" effect="plain" type="info">{{ queueKindTag(row) }}</el-tag></template></el-table-column>
         <el-table-column label="文件" min-width="160"><template #default="{ row }"><div>{{ row.file.name }}</div><span class="drawing-sub">{{ sizeLabel(row.file.size) }}</span></template></el-table-column>
-        <el-table-column label="资料类型" width="165"><template #default="{ row }"><el-select v-model="row.documentType" :disabled="locked(row) || !!uploadDrawingNo"><el-option v-for="item in documentTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></template></el-table-column>
-        <el-table-column label="图纸编号" min-width="170"><template #default="{ row }"><el-input v-model="row.drawingNo" maxlength="80" placeholder="必填" :disabled="locked(row) || !!uploadDrawingNo" /></template></el-table-column>
-        <el-table-column label="图纸名称" min-width="155"><template #default="{ row }"><el-input v-model="row.drawingName" maxlength="120" :disabled="locked(row)" /></template></el-table-column>
-        <el-table-column label="版本" width="100"><template #default="{ row }"><el-input v-model="row.version" maxlength="50" :disabled="locked(row) || !!uploadFixedVersion" /></template></el-table-column>
-        <el-table-column label="用途" width="145"><template #default="{ row }"><el-select v-model="row.fileRole" :disabled="locked(row)"><el-option v-for="item in DrawingFileRoleEnum.items" :key="item.value" :label="item.label" :value="item.value" :disabled="item.value === DrawingFileRoleEnum.PRINT.value && fileKind({ fileName: row.file.name, fileType: row.file.type }) === 'other'" /></el-select></template></el-table-column>
+        <el-table-column label="资料类型" width="165"><template #default="{ row }"><el-select v-model="row.documentType" clearable placeholder="未分类" @change="regenerateIdentity(row)" :disabled="locked(row) || !!uploadDrawingNo"><el-option v-for="item in documentTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></template></el-table-column>
+        <el-table-column label="版本" width="100"><template #default="{ row }"><el-input v-model="row.version" maxlength="50" @change="resetUploadAttempt(row)" :disabled="locked(row) || !!uploadFixedVersion" /></template></el-table-column>
         <el-table-column label="进度" width="145"><template #default="{ row }"><el-progress v-if="row.status === DrawingUploadStatusEnum.UPLOADING.value" :percentage="row.progress" /><el-tag v-else size="small" :type="DrawingUploadStatusEnum.getTagProps(row.status).type">{{ DrawingUploadStatusEnum.getLabel(row.status) }}</el-tag><div v-if="row.error" class="queue-error">{{ row.error }}</div></template></el-table-column>
         <el-table-column width="60"><template #default="{ row }"><el-button v-if="!locked(row)" link type="danger" @click="removeQueueRow(row)">移除</el-button></template></el-table-column>
       </el-table>
-      <p class="library-note">新图纸编号默认取文件名（去扩展名），请核对；不同版本必须使用同一个图纸编号。</p>
+      <p class="library-note">图纸编号和名称自动生成，用途按文件类型识别；未分类文件上传后可补资料类型。版本不明确时请填写版本。</p>
       <template #footer><span class="upload-summary">{{ queue.filter(item => item.status === DrawingUploadStatusEnum.SUCCESS.value).length }} / {{ queue.length }} 个已上传</span><el-button :disabled="uploading" @click="closeUpload()">关闭</el-button><el-button type="primary" :loading="uploading" :disabled="!pendingUploads.length" @click="submitUpload">上传待处理文件 / 重试失败项</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="metadataVisible" title="图纸文件关联" width="560px" append-to-body :close-on-click-modal="false" :show-close="!metadataSaving" :close-on-press-escape="!metadataSaving">
       <p class="metadata-file">{{ metadataFile?.fileName }}</p>
-      <el-form label-width="110px"><el-form-item label="资料类型" required><div class="metadata-type"><el-tag size="small" effect="plain">工程技术资料</el-tag><el-select v-model="metadata.documentType"><el-option v-for="item in documentTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></div></el-form-item><el-form-item label="图纸编号" required><el-input v-model="metadata.drawingNo" maxlength="80" placeholder="同一张图纸的各版本使用相同编号" /></el-form-item><el-form-item label="图纸名称"><el-input v-model="metadata.drawingName" maxlength="120" /></el-form-item><el-form-item label="版本" required><el-input v-model="metadata.version" maxlength="50" /></el-form-item><el-form-item label="文件用途" required><el-select v-model="metadata.fileRole"><el-option v-for="item in DrawingFileRoleEnum.items" :key="item.value" :label="item.label" :value="item.value" :disabled="item.value === DrawingFileRoleEnum.PRINT.value && metadataFile && fileKind(metadataFile) === 'other'" /></el-select></el-form-item></el-form>
+      <el-form label-width="110px"><el-form-item label="资料类型" required><div class="metadata-type"><el-tag size="small" effect="plain">工程技术资料</el-tag><el-select v-model="metadata.documentType" @change="regenerateMetadataIdentity"><el-option v-for="item in documentTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></div></el-form-item><el-form-item label="版本" required><el-input v-model="metadata.version" maxlength="50" /></el-form-item></el-form>
       <template #footer><el-button :disabled="metadataSaving" @click="metadataVisible = false">取消</el-button><el-button type="primary" :loading="metadataSaving" @click="saveMetadata">保存关联</el-button></template>
     </el-dialog>
     <ProductFilePreview v-model="previewVisible" :file="previewFile" />
@@ -127,6 +126,8 @@ import { DrawingCurrentFlagEnum, DrawingReleaseFlagEnum, DrawingFileRoleEnum, Dr
 import { ENGINEERING_DOCUMENT_TYPES, ENGINEERING_DOCUMENT_TYPE_CODES, duplicateFingerprints, fileFingerprint } from '@/components/product/productFileCategories'
 import { downloadFile, fileKind } from '@/components/product/productFilePreview'
 import ProductFilePreview from '@/components/product/ProductFilePreview.vue'
+import { newDrawingIdentity, nextDrawingVersion } from '@/components/product/drawingUploadRules'
+import { normalizeWorkSpec, productWorkSpecApi } from '@/api/product/workSpec'
 
 /** 图纸库行 = 附件（sys_attachment）+ 其产品引用（sys_attachment_ref）。
  *  dev-20261014-016 第3项：读走按产品查引用（refsByProduct），写走公共 temp 上传 + 建引用；refId 用于解除引用。 */
@@ -166,6 +167,8 @@ const categoryFilter = ref('')
 const view = ref<string>(DrawingViewEnum.ALL.value)
 const releaseFilter = ref<number | string>('')
 const mutationId = ref<number>()
+const syncError = ref('')
+const pendingStructureSync = ref<{ productId: number; drawingNo: string; version: string }>()
 const onlyMissingPrint = ref(false)
 const onlyUnclassified = ref(false)
 let generation = 0
@@ -290,23 +293,73 @@ function toDrawingFile(ref: AttachmentRefItem): DrawingFile {
     refId: Number(ref.id),
   }
 }
-watch(() => props.productId, () => { hasLoaded = false; lastLoadedIds = new Set(); highlightedKeys.value = []; if (highlightTimer) clearTimeout(highlightTimer); onlyMissingPrint.value = false; onlyUnclassified.value = false; view.value = DrawingViewEnum.ALL.value; releaseFilter.value = ''; files.value = []; categoryFilter.value = ''; keyword.value = ''; previewVisible.value = false; loadFiles() }, { immediate: false })
+watch(() => props.productId, () => { pendingStructureSync.value = undefined; syncError.value = ''; hasLoaded = false; lastLoadedIds = new Set(); highlightedKeys.value = []; if (highlightTimer) clearTimeout(highlightTimer); onlyMissingPrint.value = false; onlyUnclassified.value = false; view.value = DrawingViewEnum.ALL.value; releaseFilter.value = ''; files.value = []; categoryFilter.value = ''; keyword.value = ''; previewVisible.value = false; loadFiles() }, { immediate: false })
 const previewVisible = ref(false)
 const previewFile = ref<ProductDrawingFile>()
 function preview(file: ProductDrawingFile) { previewFile.value = file; previewVisible.value = true }
 async function download(file: ProductDrawingFile) { try { await downloadFile(file) } catch (e) { ElMessage.error(e instanceof Error ? e.message : '下载失败') } }
 function timeLabel(value?: string) { return value?.replace('T', ' ').slice(0, 16) || '—' }
 function extension(name: string) { return name.split('.').pop()?.toUpperCase() || '' }
-function stem(name: string) { const i = name.lastIndexOf('.'); return i > 0 ? name.slice(0, i) : name }
 function sizeLabel(size = 0) { return size < 1024 * 1024 ? `${(size / 1024).toFixed(0)} KB` : `${(size / 1024 / 1024).toFixed(1)} MB` }
 function cancelled(e: unknown) { return e === 'cancel' || e === 'close' }
-async function setCurrent(row: RevisionRow) {
+function isStructure(file: DrawingFile) {
+  return file.documentType === 'STRUCTURE_DRAWING' || file.category === '结构图'
+}
+async function syncStructure(row: RevisionRow, productId: number) {
+  const candidates = row.files.filter(file => isStructure(file) && fileKind(file) !== 'other')
+  const selected = candidates.find(file => file.fileRole === DrawingFileRoleEnum.PRINT.value) || candidates[0]
+  if (!selected) throw new Error('此版本没有可预览的结构图，请补充图片或PDF后重试同步')
+  const current = await productWorkSpecApi.get(productId)
+  if (props.productId !== productId) return
+  if (!current.data || typeof current.data !== 'object') throw new Error('未读取到最新作业规范')
+  const spec = normalizeWorkSpec(current.data)
+  spec.structureFileId = selected.id
+  await productWorkSpecApi.save(productId, spec)
+  if (props.productId !== productId) return
+  pendingStructureSync.value = undefined
+  syncError.value = ''
+  ElMessage.success('已设为现行，作业规范结构图已同步')
+}
+async function retryStructureSync() {
+  const pending = pendingStructureSync.value
+  if (!pending || mutationId.value || pending.productId !== props.productId) return
+  mutationId.value = -1
   try {
-    await ElMessageBox.confirm(`将「${row.name}」${row.version}版设为现行？此图纸的其他版本转为非现行，新现行版需下发后才默认进入打印。`, '切换现行版本', { type: 'warning' })
+    await loadFiles()
+    const row = revisionRows.value.find(row => row.drawingNo === pending.drawingNo && row.version === pending.version && row.current)
+    if (!row) throw new Error('目标版本已不是现行版本，请重新选择')
+    await syncStructure(row, pending.productId)
+  } catch (e) {
+    syncError.value = `图集现行状态保留，规范结构图同步失败：${e instanceof Error ? e.message : '请重试'}`
+    ElMessage.error(syncError.value)
+  } finally { mutationId.value = undefined }
+}
+async function setCurrent(row: RevisionRow) {
+  if (mutationId.value || !props.productId) return
+  const productId = props.productId
+  let switched = false
+  try {
+    await ElMessageBox.confirm(`将「${row.name}」${row.version}版设为现行？此图纸的其他版本转为非现行，新现行版需重新下发。`, '切换现行版本', { type: 'warning' })
+    if (props.productId !== productId) return
     mutationId.value = row.files[0].id
-    await attachmentApi.setCurrent(row.files[0].id); ElMessage.success('已切换现行版本'); await loadFiles()
-  } catch (e) { if (!cancelled(e)) ElMessage.error(e instanceof Error ? e.message : '设置失败') }
-  finally { mutationId.value = undefined }
+    const result = await attachmentApi.setCurrent(row.files[0].id)
+    if (result?.data !== true) throw new Error('现行版本切换失败')
+    switched = true
+    if (props.productId !== productId) return
+    if (row.files.some(isStructure)) {
+      pendingStructureSync.value = { productId, drawingNo: row.drawingNo, version: row.version }
+      await syncStructure(row, productId)
+    } else ElMessage.success('已切换现行版本')
+  } catch (e) {
+    if (!cancelled(e) && props.productId === productId) {
+      const message = e instanceof Error ? e.message : '设置失败'
+      if (switched) syncError.value = `现行已切换，作业规范结构图同步失败：${message}。可在该版本行重试同步`
+      ElMessage.error(switched ? syncError.value : message)
+    }
+  } finally {
+    if (switched && props.productId === productId) await loadFiles()
+    mutationId.value = undefined
+  }
 }
 async function release(row: RevisionRow) {
   try {
@@ -327,6 +380,7 @@ const uploading = ref(false)
 const uploadNewRevision = ref(false)
 const uploadDrawingNo = ref('')
 const uploadDrawingName = ref('')
+const uploadLegacyCategory = ref<string>()
 const uploadFixedVersion = ref('')
 const defaults = reactive({ documentType: '', version: 'A' })
 const queue = ref<UploadRow[]>([])
@@ -339,11 +393,44 @@ function revokeQueue() { queue.value.forEach(revokeThumb) }
 /** 移除待上传行（释放缩略图） */
 function removeQueueRow(row: UploadRow) { revokeThumb(row); queue.value = queue.value.filter(item => item.uid !== row.uid) }
 const pendingUploads = computed(() => queue.value.filter(row => row.status === DrawingUploadStatusEnum.QUEUED.value || row.status === DrawingUploadStatusEnum.FAILED.value))
-watch(documentTypeOptions, (options) => { if (!options.some(item => item.value === defaults.documentType)) defaults.documentType = options[0]?.value || '' }, { immediate: true })
-function openUpload(row?: RevisionRow, newRevision = false) {
-  revokeQueue(); queue.value = []; uploadNewRevision.value = newRevision; uploadDrawingNo.value = row?.drawingNo || ''; uploadDrawingName.value = row?.name || ''
-  uploadFixedVersion.value = row && !newRevision ? row.version : ''; defaults.documentType = row?.documentType || documentTypeOptions.value[0]?.value || ''; defaults.version = row ? (newRevision ? '' : row.version) : 'A'
-  uploadVisible.value = true
+watch(documentTypeOptions, (options) => { if (defaults.documentType && !options.some(item => item.value === defaults.documentType)) defaults.documentType = '' }, { immediate: true })
+const revisionInput = ref<HTMLInputElement>()
+let revisionSelection: { row: DrawingRow; version: string; productId?: number } | undefined
+function openUpload(row?: RevisionRow, newRevision = false, documentType?: string, show = true) {
+  if (uploading.value) return
+  revokeQueue(); queue.value = []; uploadNewRevision.value = newRevision; uploadDrawingNo.value = row?.drawingNo || ''; uploadDrawingName.value = row?.name || ''; uploadLegacyCategory.value = row?.files[0]?.category || undefined
+  uploadFixedVersion.value = row && !newRevision ? row.version : ''
+  defaults.documentType = row?.documentType || documentType || (categoryFilter.value !== UNCATEGORIZED_FILTER ? categoryFilter.value : '')
+  defaults.version = row ? (newRevision ? '' : row.version) : 'A'
+  uploadVisible.value = show
+}
+function chooseNewVersion(row: DrawingRow) {
+  if (uploading.value) return
+  const version = nextDrawingVersion(row.revisions.map(revision => revision.version))
+  if (!version) { openUpload(row, true); return }
+  revisionSelection = { row, version, productId: props.productId }
+  revisionInput.value?.click()
+}
+async function uploadNewVersionFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  const selected = Array.from(input.files || [])
+  input.value = ''
+  const context = revisionSelection
+  if (!context || context.productId !== props.productId || !selected.length || uploading.value) return
+  openUpload(context.row, true, undefined, false)
+  defaults.version = context.version; uploadFixedVersion.value = context.version
+  selected.forEach((file, i) => addFile({ uid: Date.now() + i, name: file.name, raw: file } as UploadFile))
+  await submitUpload()
+  if (pendingUploads.value.length) uploadVisible.value = true
+}
+function resetUploadAttempt(row: UploadRow) {
+  if (!uploading.value && row.status !== DrawingUploadStatusEnum.SUCCESS.value) row.requestKey = undefined
+}
+function regenerateIdentity(row: UploadRow) {
+  resetUploadAttempt(row)
+  if (uploadDrawingNo.value) return
+  Object.assign(row, newDrawingIdentity(props.productCode, props.productName, row.documentType || '',
+    [...files.value, ...queue.value.filter(other => other !== row)], documentTypeLabel(row.documentType)))
 }
 function addFile(upload: UploadFile) {
   if (!upload.raw || uploading.value) return
@@ -355,14 +442,28 @@ function addFile(upload: UploadFile) {
   }
   const kind = fileKind({ fileName: upload.name, fileType: upload.raw.type })
   const thumb = kind === 'image' ? URL.createObjectURL(upload.raw) : ''
-  queue.value.push({ uid: upload.uid, file: upload.raw, thumb, documentType: defaults.documentType, drawingNo: uploadDrawingNo.value || stem(upload.name).slice(0, 80), drawingName: uploadDrawingName.value || stem(upload.name).slice(0, 120), version: defaults.version,
+  const identity = uploadDrawingNo.value ? { drawingNo: uploadDrawingNo.value, drawingName: uploadDrawingName.value } : newDrawingIdentity(props.productCode, props.productName, defaults.documentType, [...files.value, ...queue.value], documentTypeLabel(defaults.documentType))
+  queue.value.push({ uid: upload.uid, file: upload.raw, thumb, documentType: defaults.documentType, ...identity, version: defaults.version,
     fileRole: kind === 'other' ? DrawingFileRoleEnum.ORIGINAL.value : DrawingFileRoleEnum.PRINT.value, status: DrawingUploadStatusEnum.QUEUED.value, progress: 0, error: '' })
 }
 function locked(row: UploadRow) { return uploading.value || row.status === DrawingUploadStatusEnum.SUCCESS.value }
-function applyDefaults() { pendingUploads.value.forEach(row => { row.documentType = defaults.documentType; row.version = uploadFixedVersion.value || defaults.version }) }
+function applyDefaults() {
+  const pending = pendingUploads.value
+  const changedType = pending.filter(row => row.documentType !== defaults.documentType)
+  const reserved = [...files.value, ...queue.value.filter(row => !changedType.includes(row))]
+  for (const row of pending) {
+    const version = uploadFixedVersion.value || defaults.version
+    if (row.documentType !== defaults.documentType || row.version !== version) resetUploadAttempt(row)
+    row.documentType = defaults.documentType; row.version = version
+    if (!uploadDrawingNo.value && changedType.includes(row)) {
+      Object.assign(row, newDrawingIdentity(props.productCode, props.productName, row.documentType, reserved, documentTypeLabel(row.documentType)))
+      reserved.push(row)
+    }
+  }
+}
 async function submitUpload() {
   const pending = pendingUploads.value
-  if (pending.some(row => !row.drawingNo.trim() || !row.version.trim() || !documentTypeOptions.value.some(item => item.value === row.documentType))) { ElMessage.warning('请补齐每个文件的资料类型、图纸编号和版本'); return }
+  if (pending.some(row => !row.drawingNo.trim() || !row.version.trim() || (!!row.documentType && !documentTypeOptions.value.some(item => item.value === row.documentType)))) { ElMessage.warning('请确认资料类型有效并填写版本'); return }
   // 同一图纸编号+版本允许多文件；仅按文件指纹提示“可能重复”，不阻断上传。
   if (duplicateFingerprints(queue.value.map(row => ({ fileName: row.file.name, fileSize: row.file.size, lastModified: row.file.lastModified }))).length) {
     ElMessage.warning('上传清单中有同名同大小的文件，可能重复；仍会继续上传，请核对')
@@ -414,7 +515,11 @@ function safeParseJson(value: string): Record<string, unknown> | null {
 /** 公共链路写入：TEMP 上传（带 drawingMeta 写 sys_attachment 图纸列）→ 建产品引用（必须带 product_id）。 */
 async function uploadDrawingFile(row: UploadRow, onProgress: (percent: number) => void) {
   if (!props.productId) throw new Error('缺少产品标识，无法上传图纸')
+  const productId = props.productId
+  const productCode = props.productCode
   const drawingMeta: AttachmentDrawingMetadata = {
+    // 仅旧编号的新版本继承服务器已有类别；新图纸不写旧图种、不提供旧图种输入。
+    ...(uploadLegacyCategory.value ? { category: uploadLegacyCategory.value } : {}),
     drawingNo: row.drawingNo.trim(),
     drawingName: row.drawingName?.trim() || undefined,
     version: row.version.trim(),
@@ -423,12 +528,13 @@ async function uploadDrawingFile(row: UploadRow, onProgress: (percent: number) =
   const res: any = await attachmentRefApi.tempUpload(row.file, requestKeyOf(row), onProgress, drawingMeta)
   const attachmentId = Number(res?.data)
   if (!attachmentId) throw new Error(res?.msg || '临时上传失败')
+  if (props.productId !== productId) throw new Error('产品已切换，请重新选择上传文件')
   await attachmentRefApi.createRef({
     attachmentId,
     sourceType: 'product',
-    sourceId: props.productId,
-    productId: props.productId,
-    productCode: props.productCode,
+    sourceId: productId,
+    productId,
+    productCode,
     documentType: row.documentType || null,
   })
 }
@@ -450,12 +556,18 @@ function openMetadata(file: DrawingFile) {
   Object.assign(metadata, {
     documentType: file.documentType && documentTypeOptions.value.some(item => item.value === file.documentType)
       ? file.documentType : (documentTypeOptions.value[0]?.value || ''),
-    drawingNo: file.drawingNo || '',
-    drawingName: file.drawingName || stem(file.fileName),
+    drawingNo: file.drawingNo || newDrawingIdentity(props.productCode, props.productName, file.documentType || documentTypeOptions.value[0]?.value || '', files.value).drawingNo,
+    drawingName: file.drawingName || newDrawingIdentity(props.productCode, props.productName, file.documentType || documentTypeOptions.value[0]?.value || '', files.value).drawingName,
     version: file.version || 'A',
     fileRole: file.fileRole || (fileKind(file) === 'other' ? DrawingFileRoleEnum.ORIGINAL.value : DrawingFileRoleEnum.PRINT.value),
   })
   metadataVisible.value = true
+}
+function regenerateMetadataIdentity() {
+  if (!metadataFile.value || metadataFile.value.drawingNo) return
+  const identity = newDrawingIdentity(props.productCode, props.productName, metadata.documentType, files.value, documentTypeLabel(metadata.documentType))
+  metadata.drawingNo = identity.drawingNo
+  if (!metadataFile.value.drawingName) metadata.drawingName = identity.drawingName
 }
 async function saveMetadata() {
   if (!metadataFile.value || !metadata.drawingNo.trim() || !metadata.version.trim() || !documentTypeOptions.value.some(item => item.value === metadata.documentType)) { ElMessage.warning('请选择资料类型，填写图纸编号和版本'); return }

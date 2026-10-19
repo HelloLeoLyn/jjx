@@ -97,7 +97,7 @@ describe('作业规范结构图上传', () => {
       expect.any(File),
       expect.any(String),
       undefined,
-      { category: '结构图', drawingNo: 'DWG-2', version: 'B', fileRole: 'PRINT' }
+      { category: '结构图', drawingNo: 'DWG-2', drawingName: '', version: 'B', fileRole: 'PRINT' }
     )
     expect(attachmentRefApi.createRef).toHaveBeenCalledWith({
       attachmentId: 225,
@@ -288,7 +288,7 @@ describe('作业规范结构图上传', () => {
       expect.any(File),
       expect.any(String),
       undefined,
-      { category: '结构图', drawingNo: '-ST', version: 'A', fileRole: role }
+      { category: '结构图', drawingNo: '-ST', drawingName: '结构图', version: 'A', fileRole: role }
     )
     wrapper.unmount()
   })
@@ -421,4 +421,24 @@ describe('作业规范结构图上传', () => {
     expect(wrapper.emitted('updated')).toBeUndefined()
     wrapper.unmount()
   })
+  it('首次上传使用与图集相同的编号名称规则，后续版本继承历史身份', async () => {
+    vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({ data: [] } as any)
+    const wrapper = mountUpload(); await wrapper.setProps({ productName: '产品二' }); await openWithFile(wrapper)
+    expect(attachmentRefApi.tempUpload).toHaveBeenCalledWith(expect.any(File), expect.any(String), undefined,
+      expect.objectContaining({ drawingNo: 'P2-ST', drawingName: '产品二结构图', version: 'A' }))
+    vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({ data: [{ drawingNo: '历史编号', drawingName: '历史名称', documentType: 'STRUCTURE_DRAWING', version: 'A' }] } as any)
+    await openWithFile(wrapper)
+    expect(attachmentRefApi.tempUpload).toHaveBeenLastCalledWith(expect.any(File), expect.any(String), undefined,
+      expect.objectContaining({ drawingNo: '历史编号', drawingName: '历史名称', version: 'B' }))
+    wrapper.unmount()
+  })
+
+  it('复用图集生成的无旧类别编号时，后续结构图版本也不强加旧类别', async () => {
+    vi.mocked(attachmentRefApi.listRefs).mockResolvedValue({ data: [{ drawingNo: 'P2-ST', drawingName: '产品结构图', documentType: 'STRUCTURE_DRAWING', category: null, version: 'A' }] } as any)
+    const wrapper = mountUpload(); await openWithFile(wrapper)
+    const meta = vi.mocked(attachmentRefApi.tempUpload).mock.calls[0][3]
+    expect(meta).not.toHaveProperty('category'); expect(meta).toMatchObject({ drawingNo: 'P2-ST', drawingName: '产品结构图', version: 'B' })
+    wrapper.unmount()
+  })
+
 })
