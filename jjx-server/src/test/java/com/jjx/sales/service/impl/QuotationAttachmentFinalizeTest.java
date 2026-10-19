@@ -157,6 +157,7 @@ class QuotationAttachmentFinalizeTest {
                 files,
                 refs,
                 attachmentRefService,
+                types,
                 converter,
                 mock(EventPublisher.class));
 

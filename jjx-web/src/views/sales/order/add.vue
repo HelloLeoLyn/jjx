@@ -13,6 +13,7 @@
     <el-card class="form-card" shadow="never">
       <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
       <el-alert v-if="quotationId && ready" title="已带入报价资料；补充订单信息并提交后完成转换，取消不会创建订单。" type="info" :closable="false" />
+      <el-alert v-if="quotationId && ready && omittedAttachmentCount > 0" :title="omittedNotice" type="warning" :closable="false" show-icon />
       <OrderForm v-if="ready" :key="quotationId || 'manual'" ref="orderFormRef" :initial-data="initialData" :source-quotation-id="quotationId" :quotation-source-version="sourceVersion" @success="handleSuccess" @cancel="goBack" />
     </el-card>
 
@@ -43,15 +44,24 @@ const ready = ref(false)
 const loadError = ref('')
 const initialData = ref<Record<string, any>>({})
 const sourceVersion = ref('')
+const omittedAttachmentCount = ref(0)
+const omittedAttachmentTypes = ref<string[]>([])
+const omittedNotice = computed(() => {
+  const types = omittedAttachmentTypes.value.length ? `（${omittedAttachmentTypes.value.join('、')}）` : ''
+  return `有 ${omittedAttachmentCount.value} 个报价专用证据未带入订单${types}；这些证据仍保留在报价单上，可按同一 trace 在报价/订单流水查看。`
+})
 let loadRequest = 0
 watch(quotationId, async id => {
   const request = ++loadRequest
   ready.value = false; loadError.value = ''; initialData.value = {}; sourceVersion.value = ''
+  omittedAttachmentCount.value = 0; omittedAttachmentTypes.value = []
   if (!id) { ready.value = true; return }
   try {
     const res = await quotationApi.getOrderDraft(id)
     if (request !== loadRequest) return
     sourceVersion.value = res.data.sourceVersion
+    omittedAttachmentCount.value = Number(res.data.omittedAttachmentCount) || 0
+    omittedAttachmentTypes.value = Array.isArray(res.data.omittedAttachmentTypes) ? res.data.omittedAttachmentTypes : []
     const order = res.data.order
     initialData.value = { ...order, shippingAddress: order.deliveryAddress || '', salesPersonId: order.salesManagerId,
       salesPersonName: order.salesManagerName, amountBreakdownConfirmed: true,

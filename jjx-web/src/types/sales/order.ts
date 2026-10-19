@@ -4,6 +4,9 @@ import type { ProductCodeState } from '@/composables/useProductCode'
 export interface QuotationOrderDraft {
   sourceVersion: string
   order: SalesOrderAddDTO
+  /** 目标来源（订单）不支持的报价专用证据：未带入的数量与类型名称（dev-20261019-001） */
+  omittedAttachmentCount?: number
+  omittedAttachmentTypes?: string[]
 }
 
 export interface OrderItem extends Partial<ProductCodeState> {

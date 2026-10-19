@@ -82,6 +82,8 @@ public class QuotationServiceImpl implements IQuotationService {
     private final SysAttachmentRefMapper attachmentRefMapper;
     /** 附件落定唯一入口（dev-20261016-066）：报价新增保存时把随单附件建成引用（草稿行同步转正）。 */
     private final AttachmentRefService attachmentRefService;
+    /** 资料类型来源校验/只读判断（dev-20261019-001：转订单按目标来源过滤）。 */
+    private final com.jjx.system.service.AttachmentDocumentTypeService attachmentDocumentTypeService;
     private final SalesQuotationConverter quotationConverter;
     /** 2026-09-21（dev-20260921-009）：报价改单要发事件。 */
     private final com.jjx.event.EventPublisher eventPublisher;
@@ -1035,6 +1037,11 @@ public class QuotationServiceImpl implements IQuotationService {
         return quotation;
     }
 
+    /** 目标来源是否允许该资料类型（只影响复制结果；空类型=普通附件）。 */
+    private boolean orderAttachmentSupported(String documentType) {
+        return attachmentDocumentTypeService.supports(documentType, "sales_order");
+    }
+
     private List<com.jjx.system.domain.entity.SysAttachmentRef> quotationOrderRefs(Long id) {
         return attachmentRefMapper.selectList(Wrappers.<com.jjx.system.domain.entity.SysAttachmentRef>lambdaQuery()
                 .eq(com.jjx.system.domain.entity.SysAttachmentRef::getSourceType, "quotation")
@@ -1060,6 +1067,13 @@ public class QuotationServiceImpl implements IQuotationService {
         var q = requireConvertibleQuotation(quotationId, false);
         var result = new com.jjx.sales.domain.dto.QuotationOrderDraftDTO();
         result.setOrder(buildQuotationOrder(q)); result.setSourceVersion(quotationOrderVersion(q));
+        // 目标来源（订单）不支持的报价专用证据：不复制到订单，只在转换页提示（报价侧引用保留）
+        var omitted = quotationOrderRefs(q.getQuotationId()).stream()
+                .filter(ref -> !orderAttachmentSupported(ref.getDocumentType())).toList();
+        result.setOmittedAttachmentCount(omitted.size());
+        result.setOmittedAttachmentTypes(omitted.stream()
+                .map(ref -> attachmentDocumentTypeService.labelOf(ref.getDocumentType()))
+                .filter(java.util.Objects::nonNull).distinct().toList());
         return result;
     }
 
@@ -1122,10 +1136,12 @@ public class QuotationServiceImpl implements IQuotationService {
             orderDTO.setItems(items);
         }
 
-        orderDTO.setAttachments(quotationOrderRefs(quotationId).stream().map(ref -> {
-            var a = new SalesOrderAddDTO.OrderAttachmentDTO(); a.setAttachmentId(ref.getAttachmentId()); a.setDocumentType(ref.getDocumentType());
-            a.setProductId(ref.getProductId()); a.setProductCode(ref.getProductCode()); return a;
-        }).toList());
+        orderDTO.setAttachments(quotationOrderRefs(quotationId).stream()
+                .filter(ref -> orderAttachmentSupported(ref.getDocumentType()))
+                .map(ref -> {
+                    var a = new SalesOrderAddDTO.OrderAttachmentDTO(); a.setAttachmentId(ref.getAttachmentId()); a.setDocumentType(ref.getDocumentType());
+                    a.setProductId(ref.getProductId()); a.setProductCode(ref.getProductCode()); return a;
+                }).toList());
         return orderDTO;
     }
 
@@ -1140,7 +1156,12 @@ public class QuotationServiceImpl implements IQuotationService {
         orderDTO.setOrderType(com.jjx.sales.enums.SalesOrderTypeEnum.STANDARD.getCode());
         orderDTO.setQuotationConversionValidated(true);
         var attachments = new ArrayList<SalesOrderAddDTO.OrderAttachmentDTO>();
-        if (orderDTO.getAttachments() != null) attachments.addAll(orderDTO.getAttachments());
+        if (orderDTO.getAttachments() != null) {
+            // 前端草稿可能仍带报价专用证据：落库前按目标来源再过滤一次（不降级、不删报价引用）
+            orderDTO.getAttachments().stream()
+                    .filter(a -> orderAttachmentSupported(a.getDocumentType()))
+                    .forEach(attachments::add);
+        }
         for (var original : canonical.getAttachments()) {
             boolean belongs = original.getProductId() == null && (original.getProductCode() == null || original.getProductCode().isBlank())
                     || orderDTO.getItems() != null && orderDTO.getItems().stream().anyMatch(item ->

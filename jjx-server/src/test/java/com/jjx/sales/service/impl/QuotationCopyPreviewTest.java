@@ -71,6 +71,7 @@ class QuotationCopyPreviewTest {
                 mock(SysAttachmentMapper.class),
                 mock(SysAttachmentRefMapper.class),
                 new AttachmentRefService(null, null, null, null, null, null, null),
+                mock(com.jjx.system.service.AttachmentDocumentTypeService.class),
                 mock(SalesQuotationConverter.class),
                 mock(EventPublisher.class));
 

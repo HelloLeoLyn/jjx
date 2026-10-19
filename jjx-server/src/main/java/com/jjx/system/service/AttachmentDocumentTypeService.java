@@ -41,6 +41,47 @@ public class AttachmentDocumentTypeService {
         throw new BusinessException("资料类型不适用于当前来源");
     }
 
+    /**
+     * 只读判断：该资料类型是否允许用于目标来源（dev-20261019-001）。
+     * 空类型=普通附件，允许；类型不存在/停用/未配置 sources 均视为不允许。
+     * 不改变 validate 现有语义。
+     */
+    public boolean supports(String type, String sourceType) {
+        if (type == null || type.isBlank()) return true;
+        JsonNode ext = readExt(type);
+        if (ext == null || !ext.path("sources").isArray()) return false;
+        for (JsonNode source : ext.path("sources")) if (sourceType.equals(source.asText())) return true;
+        return false;
+    }
+
+    /** 只读取显示名（类型缺失/停用时回退为编码），用于转换页提示。 */
+    public String labelOf(String type) {
+        if (type == null || type.isBlank()) return type;
+        try {
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                    "SELECT i.label FROM sys_dict_item i JOIN sys_dict d ON d.dict_code=i.dict_code AND d.deleted=0 AND d.is_active=1 WHERE i.dict_code=? AND i.item_key=? AND i.deleted=0 AND i.is_active=1",
+                    TYPE, type);
+            if (rows.size() == 1 && rows.get(0).get("label") != null) {
+                return String.valueOf(rows.get(0).get("label"));
+            }
+        } catch (Exception ignored) {
+            // 只读提示用，取不到回退编码
+        }
+        return type;
+    }
+
+    private JsonNode readExt(String type) {
+        try {
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                    "SELECT i.ext_data FROM sys_dict_item i JOIN sys_dict d ON d.dict_code=i.dict_code AND d.deleted=0 AND d.is_active=1 WHERE i.dict_code=? AND i.item_key=? AND i.deleted=0 AND i.is_active=1",
+                    TYPE, type);
+            if (rows.size() != 1) return null;
+            return json.readTree(String.valueOf(rows.get(0).get("ext_data")));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Disabled labels remain visible when reading historical references. */
     public List<Map<String, Object>> list() {
         cn.dev33.satoken.stp.StpUtil.checkLogin();

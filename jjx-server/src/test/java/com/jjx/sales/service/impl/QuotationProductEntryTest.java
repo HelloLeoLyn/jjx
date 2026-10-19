@@ -57,7 +57,8 @@ class QuotationProductEntryTest {
                 mock(IOrderService.class), mock(OrderMapper.class), mock(ISysAttachmentService.class),
                 mock(RedisSequenceService.class), mock(OperLogChangeRecorder.class),
                 mock(SysAttachmentMapper.class), mock(SysAttachmentRefMapper.class),
-                mock(AttachmentRefService.class), converter, mock(EventPublisher.class)));
+                mock(AttachmentRefService.class), mock(AttachmentDocumentTypeService.class),
+                converter, mock(EventPublisher.class)));
         doNothing().when(service).recalcQuotationAmounts(anyLong());
         quotation = new SalesQuotation();
         quotation.setCustomerId(1L);

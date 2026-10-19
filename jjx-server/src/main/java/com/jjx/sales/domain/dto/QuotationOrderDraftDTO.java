@@ -10,4 +10,9 @@ import lombok.Data;
 public class QuotationOrderDraftDTO {
     @NotBlank private String sourceVersion;
     @Valid @NotNull private SalesOrderAddDTO order;
+
+    /** 报价专用证据（目标来源不支持）未带入订单的数量（dev-20261019-001） */
+    private Integer omittedAttachmentCount;
+    /** 未带入的类型名称（去重） */
+    private java.util.List<String> omittedAttachmentTypes;
 }
