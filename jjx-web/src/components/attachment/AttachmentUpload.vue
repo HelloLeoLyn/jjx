@@ -1,10 +1,6 @@
 <template>
   <div class="attachment-upload" :class="{ 'attachment-upload--inline': inline }">
-    <AttachmentTempUploader
-      v-bind="uploaderProps"
-      @files="onFiles"
-      @error="onError"
-    >
+    <AttachmentTempUploader v-bind="uploaderProps" @files="onFiles" @error="onError">
       <template v-if="$slots.trigger" #trigger="scope">
         <slot name="trigger" v-bind="scope" />
       </template>
@@ -82,11 +78,19 @@ const props = withDefaults(
     dropZone: false,
     inline: false,
     blockedReason: '',
-  },
+  }
 )
 
 const emit = defineEmits<{
-  uploaded: [payload: { attachmentId: number; temp: boolean; name?: string; ownership: AttachmentOwnership; pending: import('@/composables/useAttachmentRefs').PendingEntry }]
+  uploaded: [
+    payload: {
+      attachmentId: number
+      temp: boolean
+      name?: string
+      ownership: AttachmentOwnership
+      pending: import('@/composables/useAttachmentRefs').PendingEntry
+    },
+  ]
   changed: [payload: { count: number }]
   error: [payload: { action: string; message: string }]
 }>()
@@ -127,7 +131,13 @@ async function onFiles(files: File[]) {
       const uploaded = await session.uploadTemporary(file, ownership, (percent) => {
         progress.value = percent
       })
-      emit('uploaded', { attachmentId: uploaded.attachmentId, temp: true, name: file.name, ownership, pending: uploaded.entry })
+      emit('uploaded', {
+        attachmentId: uploaded.attachmentId,
+        temp: true,
+        name: file.name,
+        ownership,
+        pending: uploaded.entry,
+      })
       emit('changed', { count: session.pendingCount.value + 1 })
     } catch (e: any) {
       const message = e?.message || '附件上传失败'

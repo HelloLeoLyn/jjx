@@ -278,17 +278,19 @@
             @error="onAttachError"
           >
             <template #trigger="{ disabled }">
-              <el-button link type="primary" :disabled="disabled">上传附件</el-button>
+              <el-button link type="primary" :disabled="disabled"
+                >附件（{{ productAttachmentCount(scope.row) }}）</el-button
+              >
             </template>
           </AttachmentUpload>
-          <el-button
+          <!-- <el-button
             link
             type="primary"
             :disabled="!scope.row.productCode"
             @click="openProductAttachments(scope.row)"
           >
             附件（{{ productAttachmentCount(scope.row) }}）
-          </el-button>
+          </el-button> -->
           <el-button link type="danger" @click="removeItem(scope.$index)">删除</el-button>
           <el-button
             link
@@ -304,7 +306,7 @@
     <!-- 附件上传（新建和编辑都显示） -->
     <el-divider content-position="left">订单附件</el-divider>
     <div class="attachment-section">
-      <el-dropdown v-if="!form.orderId && draftChoices.length" @command="restoreAttachmentDraft">
+      <!-- <el-dropdown v-if="!form.orderId && draftChoices.length" @command="restoreAttachmentDraft">
         <el-button plain>恢复未保存草稿</el-button>
         <template #dropdown>
           <el-dropdown-menu>
@@ -313,8 +315,8 @@
             }}</el-dropdown-item>
           </el-dropdown-menu>
         </template>
-      </el-dropdown>
-      <el-dropdown
+      </el-dropdown> -->
+      <!-- <el-dropdown
         v-if="!form.orderId && draftChoices.length"
         style="margin-left: 8px"
         @command="discardAttachmentDraft"
@@ -327,12 +329,12 @@
             }}</el-dropdown-item>
           </el-dropdown-menu>
         </template>
-      </el-dropdown>
+      </el-dropdown> -->
       <!-- 订单附件（dev-20261016-073：旧 AttachmentCenter → Upload + Manager，共用同一份会话队列；
            dev-20261018-019：上传归属可选整单级/产品级，归属在上传发起时固定）：
            上传只进「待保存」，随订单「保存」落定（001 §7-1 方案 A）；
            附件区「保存」（row-save / batch-save）= 只提交附件信息类改动，不落定。 -->
-      <div class="attach-ownership">
+      <!-- <div class="attach-ownership">
         <span class="attach-ownership-label">上传归属</span>
         <el-select
           v-model="uploadOwnershipKey"
@@ -348,17 +350,7 @@
           />
         </el-select>
         <span class="attach-ownership-tip">产品级附件保存后挂到该产品；整单级不归属产品</span>
-      </div>
-      <AttachmentUpload
-        :session="attachSession"
-        :ownership="uploadOwnership"
-        class="attach-block"
-        :accept="['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.jpg', '.jpeg', '.png']"
-        drop-zone
-        button-text="上传订单附件"
-        @uploaded="(item) => attachSession.registerUploaded(item.pending, item.ownership)"
-        @error="onAttachError"
-      />
+      </div> -->
       <AttachmentManager
         :session="attachmentViewSession"
         class="attach-block"
