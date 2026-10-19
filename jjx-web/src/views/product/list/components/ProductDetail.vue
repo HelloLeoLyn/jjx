@@ -64,62 +64,23 @@
             }}</el-descriptions-item>
           </el-descriptions>
 
-          <!-- 产品资料（dev-20261013-041：改走公共上传组件的 refs 产品视图；详情页只读，不给上传入口） -->
           <el-divider content-position="left">产品资料</el-divider>
-          <ProductDocPanel v-if="productId" :product-id="productId" readonly />
+          <ProductDocLedger
+            v-if="productId"
+            ref="docLedger"
+            :product-id="productId"
+            @loaded="productDocIds = $event.map(row => row.attachmentId)"
+            @loading="productDocsLoading = $event"
+          />
 
-          <el-divider content-position="left">业务流转附件</el-divider>
-          <div v-loading="bizAttachmentsLoading" class="biz-attachments">
-            <el-collapse v-if="bizAttachmentGroups.length">
-              <el-collapse-item
-                v-for="group in bizAttachmentGroups"
-                :key="`${group.sourceType}-${group.sourceId}`"
-                :name="`${group.sourceType}-${group.sourceId}`"
-              >
-                <template #title>
-                  <span class="biz-source-title">
-                    {{ sourceTypeLabel(group.sourceType) }} {{ group.sourceNo || group.sourceId }}
-                  </span>
-                  <el-tag size="small" type="info">{{ group.files.length }}</el-tag>
-                </template>
-                <div class="biz-file-list">
-                  <div v-for="file in group.files" :key="file.id" class="biz-file-item">
-                    <div class="biz-file-info">
-                      <el-icon class="biz-file-icon"><Document /></el-icon>
-                      <div class="biz-file-meta">
-                        <el-link
-                          type="primary"
-                          :href="attachmentRefApi.downloadUrlByRef(file.id)"
-                          :underline="false"
-                          target="_blank"
-                        >
-                          {{ file.fileName || '-' }}
-                        </el-link>
-                        <div class="biz-file-sub">
-                          <span>{{ formatFileSize(file.fileSize) }}</span>
-                          <span v-if="file.createBy">· {{ file.createBy }}</span>
-                          <span v-if="file.createTime"
-                            >· {{ formatAttachmentTime(file.createTime) }}</span
-                          >
-                        </div>
-                      </div>
-                    </div>
-                    <el-button
-                      link
-                      type="primary"
-                      :icon="Download"
-                      @click="openAttachment(file.id)"
-                    />
-                  </div>
-                </div>
-              </el-collapse-item>
-            </el-collapse>
-            <el-empty
-              v-else-if="!bizAttachmentsLoading"
-              description="暂无业务流转附件"
-              :image-size="60"
-            />
-          </div>
+          <el-divider content-position="left">业务流转</el-divider>
+          <ProductBizTimeline
+            v-if="productId"
+            :product-id="productId"
+            :product-attachment-ids="productDocIds"
+            :product-docs-loading="productDocsLoading"
+            @open-product-doc="docLedger?.focusAttachment($event)"
+          />
         </el-tab-pane>
         <el-tab-pane label="BOM" name="bom">
           <!-- BOM信息 -->
@@ -245,19 +206,17 @@
 
 <script setup lang="ts">
 import { hasPermi } from '@/directives'
-import { ref, watch } from 'vue'
+import { onScopeDispose, ref, watch } from 'vue'
 import { productApi } from '@/api/product'
 import { parseTime } from '@/utils/format'
 import { ProductEnum } from '@/enums'
 import type { ProductFullVO } from '@/types/product'
-import ProductDocPanel from '@/components/product/ProductDocPanel.vue'
+import ProductDocLedger from '@/components/product/ProductDocLedger.vue'
+import ProductBizTimeline from '@/components/product/ProductBizTimeline.vue'
 import ProductBasicInfo from '@/components/product/ProductBasicInfo.vue'
 import BomDetailTable from '@/views/product/bom/components/BomDetailTable.vue'
 import RouteProcessTable from '@/views/product/route/components/RouteProcessTable.vue'
 import ProductFilmPanel from '@/views/product/film/components/ProductFilmPanel.vue'
-import { attachmentRefApi } from '@/api/system/attachmentRef'
-import type { ProductBizAttachmentGroup } from '@/api/product'
-import { Document, Download } from '@element-plus/icons-vue'
 
 // Props
 interface Props {
@@ -280,8 +239,10 @@ const emit = defineEmits<Emits>()
 const loading = ref(false)
 const activeTab = ref('basic')
 const error = ref<string>('')
-const bizAttachmentsLoading = ref(false)
-const bizAttachmentGroups = ref<ProductBizAttachmentGroup[]>([])
+const docLedger = ref<InstanceType<typeof ProductDocLedger>>()
+const productDocIds = ref<number[]>([])
+const productDocsLoading = ref(true)
+let detailRequest = 0
 const productData = ref<ProductFullVO>({
   product: undefined,
   bom: undefined,
@@ -298,7 +259,9 @@ const getApproveStatusText = (status: number): string => {
 
 // 加载数据
 const loadData = async () => {
-  if (!props.productId) {
+  const current = ++detailRequest
+  const productId = props.productId
+  if (!productId) {
     error.value = '产品ID不能为空'
     return
   }
@@ -308,10 +271,10 @@ const loadData = async () => {
   error.value = ''
 
   try {
-    const response = await productApi.full(props.productId)
+    const response = await productApi.full(productId)
+    if (current !== detailRequest) return
     if (response.data) {
       productData.value = response.data
-      await loadBizAttachments()
 
       // 触发加载完成事件
       emit('loaded', productData.value)
@@ -324,45 +287,12 @@ const loadData = async () => {
       error.value = '未找到产品信息'
     }
   } catch (err: any) {
+    if (current !== detailRequest) return
     console.error('加载产品详情失败:', err)
     error.value = err.message || '加载产品详情失败，请稍后重试'
   } finally {
-    loading.value = false
+    if (current === detailRequest) loading.value = false
   }
-}
-
-const loadBizAttachments = async () => {
-  if (!props.productId) return
-  bizAttachmentsLoading.value = true
-  try {
-    const response = await productApi.bizAttachments(props.productId)
-    bizAttachmentGroups.value = response.data || []
-  } catch (err) {
-    console.error('加载业务流转附件失败:', err)
-    bizAttachmentGroups.value = []
-  } finally {
-    bizAttachmentsLoading.value = false
-  }
-}
-
-const sourceTypeLabel = (sourceType: ProductBizAttachmentGroup['sourceType']): string =>
-  ({
-    inquiry: '询价单',
-    quotation: '报价单',
-    sales_order: '订单',
-  })[sourceType]
-
-const formatFileSize = (size?: number): string => {
-  if (!size) return ''
-  if (size < 1024) return `${size}B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
-  return `${(size / 1024 / 1024).toFixed(1)}MB`
-}
-
-const formatAttachmentTime = (time: string): string => time.replace('T', ' ').slice(0, 16)
-
-const openAttachment = (id: number) => {
-  window.open(attachmentRefApi.downloadUrlByRef(id), '_blank')
 }
 
 // 监听productId变化
@@ -372,6 +302,8 @@ watch(
     if (newId) {
       loadData()
     } else {
+      detailRequest++
+      loading.value = false
       // 重置数据
       productData.value = {
         product: undefined,
@@ -381,11 +313,14 @@ watch(
         films: [],
       }
       error.value = ''
-      bizAttachmentGroups.value = []
+      productDocIds.value = []
+      productDocsLoading.value = false
     }
   },
   { immediate: true }
 )
+
+onScopeDispose(() => { detailRequest++ })
 
 // 暴露方法给父组件
 defineExpose({
@@ -430,47 +365,4 @@ defineExpose({
   color: #909399;
 }
 
-.biz-source-title {
-  margin-right: 8px;
-  font-weight: 600;
-}
-
-.biz-file-list {
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.biz-file-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.biz-file-item:last-child {
-  border-bottom: none;
-}
-
-.biz-file-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.biz-file-icon {
-  color: #409eff;
-  flex-shrink: 0;
-}
-
-.biz-file-meta {
-  min-width: 0;
-}
-
-.biz-file-sub {
-  font-size: 12px;
-  color: #909399;
-}
 </style>
