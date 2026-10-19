@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-19 (dev-20261019-027) | engineering-drawing-work-spec-discussion-dev-20261019-027.md | 工程图集与作业规范结构图换版讨论纪要：原始问题、已核实现状、025/026/021 状态、多来源与接口未决项 |
 | 2026-10-19 (dev-20261019-009) | order-attachment-discussion-overreach-dev-20261019-009.md | 报价转订单附件讨论越界与撤回复盘：撤回九文件，记录六项错误与执行边界 |
 | 2026-10-18 (dev-20261018-030) | customer-address-contacts-dev-20261018-030.md | 客户地址簿：联系人管理、公司地址补齐与自动建址 |
 | 2026-10-16 (dev-20261016-086) | incident-20261016-sys_task-mass-update.md | sys_task 全表误刷事故：无WHERE覆盖280行、binlog before镜像还原与恢复核查、三项待批准预防提案 |
