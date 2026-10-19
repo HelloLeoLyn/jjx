@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-10-19 (dev-20261019-009) | order-attachment-discussion-overreach-dev-20261019-009.md | 报价转订单附件讨论越界与撤回复盘：撤回九文件，记录六项错误与执行边界 |
 | 2026-10-18 (dev-20261018-030) | customer-address-contacts-dev-20261018-030.md | 客户地址簿：联系人管理、公司地址补齐与自动建址 |
 | 2026-10-16 (dev-20261016-086) | incident-20261016-sys_task-mass-update.md | sys_task 全表误刷事故：无WHERE覆盖280行、binlog before镜像还原与恢复核查、三项待批准预防提案 |
 | 2026-10-16 (dev-20261016-077) | attachment-center-capability-inventory-dev-20261016-077.md | 旧附件中心能力与调用方清单：27条搜索命中（26实例+1测试文本）、Props/Emit/Expose及隐含保存链覆盖差异，供071/050替换收敛 |
