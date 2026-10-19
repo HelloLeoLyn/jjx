@@ -1,3 +1,6 @@
+vi.mock('element-plus/theme-chalk/base.css', () => ({}))
+vi.mock('element-plus/es/components/skeleton/style/css', () => ({}))
+vi.mock('element-plus/es/components/skeleton-item/style/css', () => ({}))
 vi.mock('element-plus/es/components/dropdown/style/css', () => ({}))
 vi.mock('element-plus/es/components/dropdown-item/style/css', () => ({}))
 vi.mock('element-plus/es/components/dropdown-menu/style/css', () => ({}))
@@ -51,7 +54,7 @@ vi.mock('element-plus/es/components/pagination/style/css', () => ({}))
 
 const api = vi.hoisted(() => ({
   addOrder: vi.fn(), updateOrder: vi.fn(), getOrder: vi.fn(),
-  getCustomer: vi.fn(), search: vi.fn(), convertSample: vi.fn(),
+  getCustomer: vi.fn(), search: vi.fn(), convertSample: vi.fn(), convertCheck: vi.fn(),
   getInfo: vi.fn(), getProducts: vi.fn(), getSourceQuotationSummary: vi.fn(), getItems: vi.fn(),
 }))
 vi.mock('@/api/sales/order', () => ({ orderApi: api }))
@@ -107,6 +110,7 @@ beforeEach(() => {
   api.search.mockResolvedValue({ code: 200, data: [product] })
   api.addOrder.mockResolvedValue({ code: 200, data: { orderId: 99, traceId: 't' } })
   api.updateOrder.mockResolvedValue({ code: 200 })
+  api.convertCheck.mockResolvedValue({ code: 200, data: { returnToSourceOrder: false, allPass: true, items: [] } })
   api.convertSample.mockResolvedValue({ code: 200, data: { orderId: 99 } })
 })
 afterEach(() => { wrappers.splice(0).forEach(w => w.unmount()); document.body.innerHTML = '' })

@@ -208,6 +208,7 @@
       v-model="convertDialogVisible"
       :order-id="convertRow?.orderId ?? null"
       :order-no="convertRow?.orderNo"
+      @success="getList"
     />
 
     <!-- 转量产 · 预填标准订单表单弹窗（2026-09-07 复用销售订单新增表单） -->
@@ -495,8 +496,13 @@ const iterationHistory = computed(() => {
   if (d.sampleStatus === SampleOrderStatusEnum.TRANSFERRED.value && d.convertOrderTime) {
     history.push({
       time: d.convertOrderTime,
-      action: '📦 已转量产',
-      detail: d.convertedOrderId ? `标准订单ID: ${d.convertedOrderId}` : null,
+      action: d.sourceType === 'SALES_ORDER' ? '📦 已关联原订单' : '📦 已转量产',
+      detail:
+        d.sourceType === 'SALES_ORDER'
+          ? `原订单: ${d.sourceNo || d.convertedOrderId}`
+          : d.convertedOrderId
+            ? `标准订单ID: ${d.convertedOrderId}`
+            : null,
       type: 'success',
     })
   }
@@ -1182,13 +1188,13 @@ const sampleActions: TableAction<any>[] = [
   },
   {
     key: 'convert',
-    label: '转量产',
+    label: ({ row }) => (row.sourceType === 'SALES_ORDER' ? '关联回原订单' : '转量产'),
     permission: 'sales:sample:convert',
     visible: ({ row }) => canConvert(row),
   },
   {
     key: 'transferred',
-    label: '已转量产',
+    label: ({ row }) => (row.sourceType === 'SALES_ORDER' ? '已关联原订单' : '已转量产'),
     type: 'success',
     disabled: true,
     visible: ({ row }) => isTransferred(row),
@@ -1411,7 +1417,7 @@ async function handleConvert(row: any) {
   try {
     const res: any = await sampleOrderApi.convertCheck(row.orderId)
     const check: any = res?.data
-    if (check?.allPass) {
+    if (check?.allPass && !check.returnToSourceOrder) {
       convertFormVisible.value = true
     } else {
       convertDialogVisible.value = true

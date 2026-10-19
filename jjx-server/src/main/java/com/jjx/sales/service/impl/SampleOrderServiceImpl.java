@@ -3727,11 +3727,111 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         items.add(transferItem);
 
+        boolean returnToSource = sampleOrder != null && SOURCE_SALES_ORDER.equals(sampleOrder.getSourceType());
+        vo.setReturnToSourceOrder(returnToSource);
+        if (returnToSource) {
+            vo.setSourceOrderNo(sampleOrder.getSourceNo());
+            vo.setProductCode(sampleOrder.getSampleProductCode());
+            vo.setProductName(sampleOrder.getSampleProductName());
+            var sourceItem = new com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem();
+            sourceItem.setCode("source-order"); sourceItem.setName("原销售订单"); sourceItem.setLevel("required");
+            try {
+                var source = resolveReturnSource(sampleOrder, false);
+                vo.setSourceOrderId(source.order().getOrderId());
+                vo.setSourceOrderProductId(source.product().getId());
+                sourceItem.setPass(true); sourceItem.setStatus("ready");
+                sourceItem.setMessage("关联回原订单 " + source.order().getOrderNo() + "，保留原订单数量、价格及状态");
+            } catch (BusinessException e) {
+                sourceItem.setPass(false); sourceItem.setStatus("missing"); sourceItem.setMessage(e.getMessage());
+            }
+            items.add(sourceItem);
+        }
         vo.setItems(items);
         vo.setAllPass(items.stream()
                 .filter(i -> "required".equals(i.getLevel()))
                 .allMatch(com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem::getPass));
         return vo;
+    }
+
+    /** 锁主单和样品扩展行后再读取，所有转换入口共用，重试不重复落库/发事件。 */
+    private SalesOrder lockConfirmedSample(Long orderId) {
+        SalesOrder main = orderMapper.selectByIdForUpdate(orderId);
+        if (main == null || !SalesOrderTypeEnum.SAMPLE.getCode().equals(main.getOrderType())) {
+            throw new BusinessException("样品单不存在");
+        }
+        SalesSampleOrder profile = sampleOrderMapper.selectOne(Wrappers.<SalesSampleOrder>lambdaQuery()
+                .eq(SalesSampleOrder::getOrderId, orderId).eq(SalesSampleOrder::getDeleted, 0).last("FOR UPDATE"));
+        if (profile == null) throw new BusinessException("样品单不存在");
+        if (!SampleOrderStatusEnum.CONFIRMED.getValue().equals(profile.getSampleStatus())
+                || profile.getConvertedOrderId() != null) {
+            throw new BusinessException("样品单已处理或状态已变化，请刷新后查看关联订单");
+        }
+        main.setSourceType(profile.getSourceType());
+        main.setSourceNo(profile.getSourceNo());
+        main.setSampleStatus(profile.getSampleStatus());
+        main.setSampleProductId(profile.getProductId());
+        main.setSampleProductCode(profile.getProductCode());
+        main.setSampleProductName(profile.getProductName());
+        main.setEngineeringNote(profile.getEngineeringNote());
+        main.setCurrentProcess(profile.getCurrentProcess());
+        return main;
+    }
+
+    private record SourceOrderProduct(SalesOrder order, com.jjx.sales.domain.entity.SalesOrderProduct product) {}
+
+    /** 只用服务端来源及产品身份，不采信转换请求里的客户/产品/原订单。 */
+    private SourceOrderProduct resolveReturnSource(SalesOrder sample, boolean lock) {
+        if (!org.springframework.util.StringUtils.hasText(sample.getSourceNo())) {
+            throw new BusinessException("来源销售订单不存在，请核查来源单号");
+        }
+        var query = Wrappers.<SalesOrder>lambdaQuery().eq(SalesOrder::getOrderNo, sample.getSourceNo())
+                .eq(SalesOrder::getDeleted, 0);
+        if (lock) query.last("FOR UPDATE");
+        var sources = orderMapper.selectList(query);
+        if (sources.size() != 1 || !SalesOrderTypeEnum.STANDARD.getCode().equals(sources.getFirst().getOrderType())) {
+            throw new BusinessException("来源销售订单不存在或不唯一");
+        }
+        SalesOrder source = sources.getFirst();
+        if (sample.getCustomerId() == null || !sample.getCustomerId().equals(source.getCustomerId())) {
+            throw new BusinessException("来源销售订单与样品单客户不一致");
+        }
+        if (source.getOrderStatus() == null || !SAMPLEABLE_ORDER_STATUSES.contains(source.getOrderStatus())) {
+            String label = SalesOrderStatusEnum.getByValueSafe(source.getOrderStatus())
+                    .map(SalesOrderStatusEnum::getLabel).orElse("未知");
+            throw new BusinessException("原订单[" + source.getOrderNo() + "]状态为[" + label + "]，不能关联打样结果");
+        }
+        var productQuery = Wrappers.<com.jjx.sales.domain.entity.SalesOrderProduct>lambdaQuery()
+                .eq(com.jjx.sales.domain.entity.SalesOrderProduct::getOrderId, source.getOrderId());
+        if (lock) productQuery.last("FOR UPDATE");
+        var matches = orderProductMapper.selectList(productQuery).stream().filter(row ->
+                sample.getSampleProductId() != null ? sample.getSampleProductId().equals(row.getProductId())
+                        : org.springframework.util.StringUtils.hasText(sample.getSampleProductCode())
+                            && sample.getSampleProductCode().equals(row.getProductCode())).toList();
+        if (matches.size() != 1) throw new BusinessException("原订单中的打样产品已移除或不唯一，请核查原订单产品");
+        return new SourceOrderProduct(source, matches.getFirst());
+    }
+
+    private SalesOrder returnSampleToSource(SalesOrder sample) {
+        SourceOrderProduct source = resolveReturnSource(sample, true);
+        requireConvertReady(sample.getOrderId());
+        safeTransition(sample.getOrderId(), SampleOrderStatusEnum.CONFIRMED, SampleOrderStatusEnum.TRANSFERRED, "关联回原订单");
+        SalesOrder update = new SalesOrder();
+        update.setOrderId(sample.getOrderId());
+        update.setConvertedOrderId(source.order().getOrderId());
+        update.setConvertOrderTime(new Date());
+        if (orderMapper.updateById(update) < 1) throw new BusinessException("关联原订单失败，请刷新后重试");
+        return source.order();
+    }
+
+    private void requireConvertReady(Long orderId) {
+        var check = buildConvertCheck(orderId);
+        if (!Boolean.TRUE.equals(check.getAllPass())) {
+            String miss = check.getItems().stream()
+                    .filter(i -> "required".equals(i.getLevel()) && !Boolean.TRUE.equals(i.getPass()))
+                    .map(com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem::getMessage)
+                    .collect(Collectors.joining("；"));
+            throw new BusinessException("转量产资料未就绪：" + miss);
+        }
     }
 
     @Override
@@ -3755,10 +3855,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     public SalesOrder convertToProduction(Long orderId,
                                           java.util.List<com.jjx.sales.domain.dto.SampleConvertItemDTO> items,
                                           com.jjx.sales.domain.dto.SampleConvertExtrasDTO extras) {
-        SalesOrder sampleOrder = orderMapper.selectById(orderId);
-        if (sampleOrder == null || sampleOrder.getDeleted() == 1) {
-            throw new BusinessException("样品单不存在");
-        }
+        SalesOrder sampleOrder = lockConfirmedSample(orderId);
+        if (SOURCE_SALES_ORDER.equals(sampleOrder.getSourceType())) return returnSampleToSource(sampleOrder);
 
         safeTransition(orderId,
                 SampleOrderStatusEnum.CONFIRMED,
@@ -3941,13 +4039,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder convertSampleToProduction(Long orderId,
                                                 com.jjx.sales.domain.dto.SalesOrderAddDTO dto) {
-        SalesOrder sampleOrder = orderMapper.selectById(orderId);
-        if (sampleOrder == null || Boolean.TRUE.equals(sampleOrder.getDeleted())) {
-            throw new BusinessException("样品单不存在");
-        }
-        if (!SampleOrderStatusEnum.CONFIRMED.getValue().equals(sampleOrder.getSampleStatus())) {
-            throw new BusinessException("当前样品单状态不允许转量产（仅客户确认后的样品单可转量产）");
-        }
+        SalesOrder sampleOrder = lockConfirmedSample(orderId);
+        if (SOURCE_SALES_ORDER.equals(sampleOrder.getSourceType())) return returnSampleToSource(sampleOrder);
         if (dto == null) {
             throw new BusinessException("缺少标准订单数据，请从转量产页提交");
         }

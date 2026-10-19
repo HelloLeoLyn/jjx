@@ -16,8 +16,9 @@
         v-if="mountedOnce"
         ref="orderFormRef"
         :is-edit="mode === 'edit'"
-        :order-id="mode === 'edit' ? orderId ?? undefined : undefined"
-        :sample-order-id="mode === 'convert' ? orderId ?? undefined : undefined"
+        :order-id="mode === 'edit' ? (orderId ?? undefined) : undefined"
+        :sample-order-id="mode === 'convert' ? (orderId ?? undefined) : undefined"
+        @conversion-mode="returnToSourceOrder = $event"
         @success="handleSuccess"
         @cancel="handleClose"
       />
@@ -25,7 +26,12 @@
 
     <template #footer>
       <el-button @click="handleClose">取 消</el-button>
-      <el-button type="primary" :loading="submitting" @click="handleSubmit">
+      <el-button
+        v-if="!returnToSourceOrder"
+        type="primary"
+        :loading="submitting"
+        @click="handleSubmit"
+      >
         {{ submitLabel }}
       </el-button>
     </template>
@@ -67,11 +73,13 @@ const visible = computed({
 })
 
 const orderFormRef = ref<InstanceType<typeof OrderForm> | null>(null)
+const returnToSourceOrder = ref(false)
 const submitting = ref(false)
 const innerLoading = ref(false)
 const mountedOnce = ref(false)
 
 const dialogTitle = computed(() => {
+  if (props.mode === 'convert' && returnToSourceOrder.value) return '关联回原订单'
   if (props.mode === 'convert') return `转量产 · ${props.orderNo || '来自样品单'}`
   if (props.mode === 'edit') return `修改销售订单 · ${props.orderNo || ''}`
   return '新增销售订单'
@@ -86,7 +94,10 @@ const submitLabel = computed(() => {
 watch(
   () => props.modelValue,
   (v) => {
-    if (v) mountedOnce.value = true
+    if (v) {
+      returnToSourceOrder.value = false
+      mountedOnce.value = true
+    }
   }
 )
 

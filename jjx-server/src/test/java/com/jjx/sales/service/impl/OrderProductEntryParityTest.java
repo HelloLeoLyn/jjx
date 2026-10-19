@@ -73,7 +73,7 @@ class OrderProductEntryParityTest {
         jdbc.execute("CREATE TABLE caller_write(id INT)");
         var configuration = new MybatisConfiguration();
         for (Class<?> entity : List.of(Product.class, SalesOrderProduct.class, EngineeringBom.class,
-                EngineeringRouting.class, EngineeringFilm.class, SalesSampleTransfer.class)) {
+                EngineeringRouting.class, EngineeringFilm.class, SalesSampleTransfer.class, SalesSampleOrder.class)) {
             TableInfoHelper.initTableInfo(new MapperBuilderAssistant(configuration, "parity"), entity);
         }
         security = mockStatic(SecurityUtils.class);
@@ -119,6 +119,7 @@ class OrderProductEntryParityTest {
         doAnswer(c -> { jdbc.update("DELETE FROM lines WHERE order_id=?", c.getArgument(0, Long.class)); return true; })
                 .when(lines).deleteByOrderId(anyLong());
         orders = mock(OrderMapper.class);
+        when(orders.selectByIdForUpdate(anyLong())).thenAnswer(c -> read("orders", c.getArgument(0), SalesOrder.class));
         when(orders.checkOrderNoUnique(anyString())).thenReturn(0);
         when(orders.selectById(anyLong())).thenAnswer(c -> read("orders", c.getArgument(0), SalesOrder.class));
         when(orders.insert(any(SalesOrder.class))).thenAnswer(c -> {
@@ -147,6 +148,18 @@ class OrderProductEntryParityTest {
         service = (IOrderService) proxy(target);
 
         var sample = mock(SampleOrderServiceImpl.class, CALLS_REAL_METHODS);
+        var profiles = mock(SalesSampleOrderMapper.class);
+        when(profiles.selectOne(any(Wrapper.class))).thenAnswer(c -> {
+            LambdaQueryWrapper<?> query = c.getArgument(0); query.getSqlSegment();
+            Long orderId = query.getParamNameValuePairs().values().stream().filter(Long.class::isInstance)
+                    .map(Long.class::cast).findFirst().orElseThrow();
+            var order = read("orders", orderId, SalesOrder.class);
+            if (order == null) return null;
+            var profile = new SalesSampleOrder(); profile.setOrderId(order.getOrderId());
+            profile.setSampleStatus(order.getSampleStatus()); profile.setConvertedOrderId(order.getConvertedOrderId());
+            return profile;
+        });
+        field(sample, "sampleOrderMapper", profiles);
         field(sample, "orderMapper", orders); field(sample, "orderService", service);
         field(sample, "orderProductService", lines); field(sample, "productMapper", products);
         field(sample, "bomService", boms); field(sample, "routingService", routes);
@@ -344,7 +357,7 @@ class OrderProductEntryParityTest {
         var route = new EngineeringRouting(); route.setApproveStatus(missing == 3 ? 0 : 3);
         when(boms.getOne(any(Wrapper.class))).thenReturn(bom); when(routes.getOne(any(Wrapper.class))).thenReturn(route);
         long source = service.insertOrder(add(item(8L, "P8")));
-        var patch = new SalesOrder(); patch.setOrderId(source); patch.setSampleStatus(SampleOrderStatusEnum.CONFIRMED.getValue());
+        var patch = new SalesOrder(); patch.setOrderId(source); patch.setOrderType(SalesOrderTypeEnum.SAMPLE.getCode()); patch.setSampleStatus(SampleOrderStatusEnum.CONFIRMED.getValue());
         orders.updateById(patch);
         var request = add(item(8L, "P8"));
         if (missing != 0) {

@@ -1,5 +1,18 @@
 <template>
-  <el-form ref="orderFormRef" :model="form" :rules="rules" label-width="120px">
+  <el-skeleton v-if="conversionLoading" :rows="5" animated />
+  <div v-else-if="conversionError">
+    <el-alert title="无法读取样品来源，请重试" type="error" :closable="false" />
+    <el-button @click="loadSampleConversion">重试</el-button>
+  </div>
+  <SampleConvertCheckDialog
+    v-else-if="returnToSourceOrder"
+    ref="returnPanel"
+    :model-value="true"
+    embedded
+    :order-id="props.sampleOrderId"
+    @success="emit('success')"
+  />
+  <el-form v-else ref="orderFormRef" :model="form" :rules="rules" label-width="120px">
     <!-- 订单基本信息 -->
     <el-divider content-position="left">订单基本信息</el-divider>
     <el-row :gutter="20">
@@ -528,6 +541,7 @@
 
 <script setup lang="ts">
 import OrderProductDraftDialog from './OrderProductDraftDialog.vue'
+import SampleConvertCheckDialog from '@/views/sales/sample-order/components/SampleConvertCheckDialog.vue'
 import type { OrderItem } from '@/types/sales/order'
 import type { ProductCodeResult } from '@/composables/useProductCode'
 import WorkSpecVersionLink from '@/components/product/WorkSpecVersionLink.vue'
@@ -579,8 +593,29 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   success: []
   cancel: []
+  conversionMode: [returnToSourceOrder: boolean]
 }>()
 
+const conversionLoading = ref(!!props.sampleOrderId)
+const conversionError = ref(false)
+const returnToSourceOrder = ref(false)
+const returnPanel = ref<InstanceType<typeof SampleConvertCheckDialog> | null>(null)
+async function loadSampleConversion() {
+  if (!props.sampleOrderId) return
+  conversionLoading.value = true
+  conversionError.value = false
+  try {
+    const res: any = await sampleOrderApi.convertCheck(props.sampleOrderId)
+    if (!res?.data) throw new Error('缺少样品来源')
+    returnToSourceOrder.value = res.data.returnToSourceOrder === true
+    emit('conversionMode', returnToSourceOrder.value)
+    if (!returnToSourceOrder.value && !draftSession.resumeId) await prefillFromSample(props.sampleOrderId)
+  } catch {
+    conversionError.value = true
+  } finally {
+    conversionLoading.value = false
+  }
+}
 const router = useRouter()
 const goToProductIndex = () => {
   router.push('/product/list')
@@ -1331,8 +1366,8 @@ onMounted(() => {
   if (!props.isEdit) ensureDraftId() // 新页面实例或刷新恢复，互不混用
   loadSalesPersons()
   // 2026-09-07：不再预取单号（取消/失败会烧号导致跳号），改由后端提交落库时生成
-  if (props.sampleOrderId && !draftSession.resumeId) {
-    prefillFromSample(props.sampleOrderId)
+  if (props.sampleOrderId) {
+    void loadSampleConversion()
   }
   loadCustomerAddresses().then(() => preferDefaultAddress())
 })
@@ -1350,6 +1385,10 @@ watch(
 
 // 提交表单（重写：保存订单后再上传附件）
 const submitForm = async (): Promise<boolean> => {
+  if (props.sampleOrderId) {
+    if (conversionLoading.value || conversionError.value) return false
+    if (returnToSourceOrder.value) return (await returnPanel.value?.confirmReturn()) ?? false
+  }
   if (props.isEdit) {
     // 编辑模式：待保存附件随「单据保存」一并提交，由后端在保存事务内建引用（dev-20261017-001）
     if (attachOrphanCount.value > 0) {

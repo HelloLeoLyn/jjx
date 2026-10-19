@@ -12,6 +12,13 @@ public class SampleConvertCheckVO {
 
     private Long orderId;
     private String orderNo;
+    /** 销售订单来源只关联回原单；由服务端真实来源决定。 */
+    private Boolean returnToSourceOrder;
+    private Long sourceOrderId;
+    private String sourceOrderNo;
+    private Long sourceOrderProductId;
+    private String productCode;
+    private String productName;
     /** 是否全部就绪（必需项全过） */
     private Boolean allPass;
     /** 校验项列表 */

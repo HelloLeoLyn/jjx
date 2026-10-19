@@ -262,7 +262,7 @@ export const sampleOrderApi = {
   },
 
   // 转量产（2026-09-07 复用标准订单新增表单：整单预填样品数据提交，数量/单价可改）
-  convertSample(orderId: number, dto: SampleConvertDTO) {
+  convertSample(orderId: number, dto?: SampleConvertDTO) {
     return request<R<SampleOrder>>({
       url: `/sales/sample-order/${orderId}/convert`,
       method: 'post',

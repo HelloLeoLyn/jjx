@@ -1,11 +1,26 @@
 <template>
-  <el-dialog
+  <component
+    :is="embedded ? 'section' : ElDialog"
     v-model="visible"
-    :title="`转量产就绪检查 · ${orderNo || ''}`"
+    :title="`${check?.returnToSourceOrder ? '关联回原订单' : '转量产就绪检查'} · ${orderNo || ''}`"
     width="720px"
     append-to-body
     destroy-on-close
   >
+    <h3 v-if="embedded">关联回原订单</h3>
+    <p v-if="check?.returnToSourceOrder">
+      原订单：<a
+        v-if="check.sourceOrderId"
+        :href="`/dashboard/order/detail/${check.sourceOrderId}`"
+        target="_blank"
+        rel="noopener"
+        >{{ check.sourceOrderNo }}</a
+      >
+      <span v-else>{{ check.sourceOrderNo }}</span>
+      · {{ check.productCode }} {{ check.productName }}
+    </p>
+    <el-alert v-if="loadFailed" type="error" title="就绪检查加载失败，请重试" :closable="false" />
+    <el-button v-if="loadFailed" @click="load">重试</el-button>
     <el-alert
       v-if="!allPass"
       type="warning"
@@ -19,7 +34,13 @@
       type="success"
       show-icon
       :closable="false"
-      title="资料齐全，可以转量产"
+      :title="
+        completed
+          ? '已关联回原订单'
+          : check?.returnToSourceOrder
+            ? '资料齐全，可以关联回原订单'
+            : '资料齐全，可以转量产'
+      "
       style="margin-bottom: 12px"
     />
 
@@ -80,15 +101,33 @@
       </el-table-column>
     </el-table>
 
-    <template #footer>
-      <el-button type="primary" @click="visible = false">关 闭</el-button>
-    </template>
-  </el-dialog>
+    <div class="convert-actions">
+      <template v-if="completed">
+        <span>已关联回原订单 </span>
+        <a :href="`/dashboard/order/detail/${check?.sourceOrderId}`" target="_blank" rel="noopener"
+          >查看原订单 {{ check?.sourceOrderNo }}</a
+        >
+        <el-button type="primary" @click="finishReturn">完成</el-button>
+      </template>
+      <template v-else>
+        <el-button v-if="!embedded" @click="visible = false">关闭</el-button>
+        <el-button
+          v-if="check?.returnToSourceOrder"
+          type="primary"
+          :disabled="!allPass || loading || loadFailed"
+          :loading="submitting"
+          @click="confirmReturn"
+          >关联回原订单</el-button
+        >
+      </template>
+    </div>
+  </component>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElDialog, ElMessage } from 'element-plus'
+import type { SampleConvertCheck } from '@/types/sales/sampleOrder'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 
 const props = withDefaults(
@@ -96,6 +135,7 @@ const props = withDefaults(
     modelValue: boolean
     orderId?: number | null
     orderNo?: string
+    embedded?: boolean
   }>(),
   {
     orderId: null,
@@ -104,6 +144,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  success: []
 }>()
 
 const visible = computed({
@@ -111,6 +152,10 @@ const visible = computed({
   set: (v: boolean) => emit('update:modelValue', v),
 })
 
+const check = ref<SampleConvertCheck>()
+const loadFailed = ref(false)
+const submitting = ref(false)
+const completed = ref(false)
 const items = ref<any[]>([])
 const loading = ref(false)
 const reminding = ref(false)
@@ -129,23 +174,66 @@ watch(
   () => props.modelValue,
   async (v) => {
     if (v && props.orderId) {
+      completed.value = false
       await load()
     }
-  }
+  },
+  { immediate: true }
 )
 
 async function load() {
   loading.value = true
   items.value = []
+  check.value = undefined
+  loadFailed.value = false
   try {
     const res: any = await sampleOrderApi.convertCheck(props.orderId as number)
-    items.value = (res as any)?.data?.items || []
+    if (!res?.data) throw new Error('缺少就绪检查结果')
+    check.value = res.data
+    items.value = res.data.items || []
   } catch {
+    loadFailed.value = true
     items.value = []
   } finally {
     loading.value = false
   }
 }
+
+function finishReturn() {
+  visible.value = false
+  emit('success')
+}
+
+async function confirmReturn(): Promise<boolean> {
+  if (completed.value) {
+    finishReturn()
+    return true
+  }
+  if (
+    submitting.value ||
+    loading.value ||
+    loadFailed.value ||
+    !allPass.value ||
+    !check.value?.returnToSourceOrder ||
+    !props.orderId
+  )
+    return false
+  submitting.value = true
+  try {
+    const res: any = await sampleOrderApi.convertSample(props.orderId)
+    if (res?.code !== 200) throw new Error(res?.msg || '关联原订单失败')
+    completed.value = true
+    ElMessage.success('已关联回原订单')
+    return true
+  } catch (e: any) {
+    ElMessage.error(e?.message || '关联原订单失败，请刷新后重试')
+    return false
+  } finally {
+    submitting.value = false
+  }
+}
+
+defineExpose({ confirmReturn })
 
 function statusText(row: any): string {
   if (row.pass) return '就绪'

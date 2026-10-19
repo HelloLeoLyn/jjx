@@ -326,6 +326,12 @@ export interface SampleConvertCheckItem {
 }
 
 export interface SampleConvertCheck {
+  returnToSourceOrder?: boolean
+  sourceOrderId?: number
+  sourceOrderNo?: string
+  sourceOrderProductId?: number
+  productCode?: string
+  productName?: string
   orderId: number
   orderNo: string
   allPass: boolean
