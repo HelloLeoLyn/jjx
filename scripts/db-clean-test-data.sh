@@ -316,6 +316,7 @@ RETAINED_TABLES=(
   # Legacy tables still present in this database; preserve their rows/schema until separately retired.
   archive_production_quality_inspection archive_production_quality_inspection_item
   quality_sampling_plan sales_order_review
+  sales_customer_contact
 )
 DB_TABLES="$("${MYSQL[@]}" "$DB_NAME" -N -B -e \
   "SELECT table_name FROM information_schema.tables WHERE table_schema='$DB_NAME' AND table_type='BASE TABLE'" | tr -d '\r' | sort)"

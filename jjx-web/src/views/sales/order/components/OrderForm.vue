@@ -269,7 +269,12 @@
           </div>
         </template>
         <template #before="scope">
-          <el-button link type="primary" :disabled="!scope.row.productCode" @click="openProductAttachments(scope.row)">
+          <el-button
+            link
+            type="primary"
+            :disabled="!scope.row.productCode"
+            @click="openProductAttachments(scope.row)"
+          >
             附件（{{ productAttachmentCount(scope.row) }}）
           </el-button>
           <el-button link type="danger" @click="removeItem(scope.$index)">删除</el-button>
@@ -352,12 +357,28 @@
       />
     </div>
 
-    <el-dialog v-model="productAttachmentsVisible" :title="`产品附件 · ${productAttachmentIdentity?.productCode || ''}`" width="1000px" append-to-body destroy-on-close>
-      <p>已保存 {{ productAttachmentSession.refRows.value.length }} 个，待保存 {{ productAttachmentSession.pending.value.length }} 个；上传后随订单保存。</p>
-      <AttachmentUpload :session="attachSession" :ownership="productAttachmentOwnership" button-text="上传产品附件"
-        @uploaded="(item) => attachSession.registerUploaded(item.pending, item.ownership)" @error="onAttachError" />
-      <AttachmentManager v-if="productAttachmentsVisible" :session="productAttachmentSession" :show-ownership-filter="false" source-type="sales_order" title="本产品附件" @error="onAttachError" />
-      <template #footer><el-button @click="productAttachmentsVisible = false">关闭</el-button></template>
+    <el-dialog
+      v-model="productAttachmentsVisible"
+      :title="`产品附件 · ${productAttachmentIdentity?.productCode || ''}`"
+      width="1000px"
+      append-to-body
+      destroy-on-close
+    >
+      <p>
+        已保存 {{ productAttachmentSession.refRows.value.length }} 个，待保存
+        {{ productAttachmentSession.pending.value.length }} 个；上传后随订单保存。
+      </p>
+      <AttachmentUpload
+        :session="attachSession"
+        :ownership="productAttachmentOwnership"
+        button-text="上传产品附件"
+        @uploaded="(item) => attachSession.registerUploaded(item.pending, item.ownership)"
+        @error="onAttachError"
+      />
+      <!-- <AttachmentManager v-if="productAttachmentsVisible" :session="productAttachmentSession" :show-ownership-filter="false" source-type="sales_order" title="本产品附件" @error="onAttachError" /> -->
+      <template #footer
+        ><el-button @click="productAttachmentsVisible = false">关闭</el-button></template
+      >
     </el-dialog>
 
     <!-- 金额汇总 -->
@@ -683,7 +704,9 @@ async function openNewProduct(row: OrderItem) {
     ElMessage.error('读取客户简称失败，请重试')
   }
 }
-function confirmNewProduct(params: ProductCodeResult & Partial<import('@/types/product').ProductFormData>) {
+function confirmNewProduct(
+  params: ProductCodeResult & Partial<import('@/types/product').ProductFormData>
+) {
   if (
     productEntryRow &&
     productEntryCustomerId === form.customerId &&
@@ -831,15 +854,35 @@ function stableRowKey(row: OrderItem): string {
 // 派生视图共享原会话的所有写方法和队列，仅限定当前订单产品的显示范围。
 const productAttachmentsVisible = ref(false)
 const productAttachmentIdentity = ref<AttachmentOwnership>()
-const productAttachmentOwnership = computed(() => productAttachmentIdentity.value || orderOwnershipOf())
+const productAttachmentOwnership = computed(
+  () => productAttachmentIdentity.value || orderOwnershipOf()
+)
 function ownershipOfRow(row: OrderItem) {
-  return productOwnershipOf({ rowKey: stableRowKey(row), productId: row.productId, productCode: row.productCode, label: row.productName })
+  return productOwnershipOf({
+    rowKey: stableRowKey(row),
+    productId: row.productId,
+    productCode: row.productCode,
+    label: row.productName,
+  })
 }
-function pendingForProduct(row: { productId?: number | null; productCode?: string | null; key: string }) {
-  return attachSession.pending.value.filter(entry => entry.ownershipKey === row.key && entry.productCode?.trim() === row.productCode?.trim())
+function pendingForProduct(row: {
+  productId?: number | null
+  productCode?: string | null
+  key: string
+}) {
+  return attachSession.pending.value.filter(
+    (entry) =>
+      entry.ownershipKey === row.key && entry.productCode?.trim() === row.productCode?.trim()
+  )
 }
 function refsForProduct(row: { productId?: number | null }) {
-  return attachSession.refRows.value.filter(entry => row.productId != null && entry.productId === row.productId && Number(entry.sourceId) === form.orderId && entry.sourceType === 'sales_order')
+  return attachSession.refRows.value.filter(
+    (entry) =>
+      row.productId != null &&
+      entry.productId === row.productId &&
+      Number(entry.sourceId) === form.orderId &&
+      entry.sourceType === 'sales_order'
+  )
 }
 function productAttachmentCount(row: OrderItem) {
   const ownership = ownershipOfRow(row)
@@ -847,18 +890,32 @@ function productAttachmentCount(row: OrderItem) {
 }
 const productAttachmentSession = {
   ...attachSession,
-  pending: computed(() => productAttachmentIdentity.value ? pendingForProduct(productAttachmentIdentity.value) : []),
-  refRows: computed(() => productAttachmentIdentity.value ? refsForProduct(productAttachmentIdentity.value) : []),
-  refs: computed(() => productAttachmentIdentity.value ? refsForProduct(productAttachmentIdentity.value) : []),
-  legacyOnlyRows: computed(() => []), traceOnlyRows: computed(() => []), hasReadonlyDocs: computed(() => false),
+  pending: computed(() =>
+    productAttachmentIdentity.value ? pendingForProduct(productAttachmentIdentity.value) : []
+  ),
+  refRows: computed(() =>
+    productAttachmentIdentity.value ? refsForProduct(productAttachmentIdentity.value) : []
+  ),
+  refs: computed(() =>
+    productAttachmentIdentity.value ? refsForProduct(productAttachmentIdentity.value) : []
+  ),
+  legacyOnlyRows: computed(() => []),
+  traceOnlyRows: computed(() => []),
+  hasReadonlyDocs: computed(() => false),
 }
 function openProductAttachments(row: OrderItem) {
   productAttachmentIdentity.value = ownershipOfRow(row)
   productAttachmentsVisible.value = true
 }
-watch(() => [form.customerId, form.items.map(row => `${stableRowKey(row)}:${row.productId}:${row.productCode}`).join('|')], () => {
-  productAttachmentsVisible.value = false
-})
+watch(
+  () => [
+    form.customerId,
+    form.items.map((row) => `${stableRowKey(row)}:${row.productId}:${row.productCode}`).join('|'),
+  ],
+  () => {
+    productAttachmentsVisible.value = false
+  }
+)
 
 const uploadOwnershipKey = ref('order')
 const uploadOwnershipOptions = computed(() => {
@@ -1249,7 +1306,9 @@ onActivated(() => {
 onMounted(() => {
   resetForm()
   if (props.sourceQuotationId) {
-    Object.assign(form, props.initialData, { items: JSON.parse(JSON.stringify(props.initialData.items || [])) })
+    Object.assign(form, props.initialData, {
+      items: JSON.parse(JSON.stringify(props.initialData.items || [])),
+    })
     calculateTotalAmount()
   }
   if (!props.isEdit) ensureDraftId() // 新页面实例或刷新恢复，互不混用
@@ -1337,13 +1396,19 @@ const submitForm = async (): Promise<boolean> => {
     const orderResponse: any = isSampleConvert
       ? await sampleOrderApi.convertSample(props.sampleOrderId as number, submitData as any)
       : props.sourceQuotationId
-      ? await quotationApi.convert(props.sourceQuotationId, { sourceVersion: props.quotationSourceVersion || '', order: submitData as any })
-      : await orderApi.addOrder(submitData as any)
+        ? await quotationApi.convert(props.sourceQuotationId, {
+            sourceVersion: props.quotationSourceVersion || '',
+            order: submitData as any,
+          })
+        : await orderApi.addOrder(submitData as any)
     if (orderResponse.code !== 200) {
       ElMessage.error(isSampleConvert ? '转量产失败' : '新增订单失败')
       return false
     }
-    const data = typeof orderResponse.data === 'number' ? { orderId: orderResponse.data, traceId: form.traceId } : orderResponse.data!
+    const data =
+      typeof orderResponse.data === 'number'
+        ? { orderId: orderResponse.data, traceId: form.traceId }
+        : orderResponse.data!
     const newOrderId = data.orderId
     const newTraceId = data.traceId
     createdOrderId.value = newOrderId

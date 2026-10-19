@@ -8,7 +8,9 @@
         <span class="desc"
           >Round {{ displayRound || card.sampleRound || 1 }} · {{ card.orderNo || '' }}</span
         >
-        <span v-if="card.productCode" class="desc">成品编号 {{ card.productCode }}</span>
+        <span v-if="card.sampleProductCode" class="desc"
+          >产品编号 {{ card.sampleProductCode }}</span
+        >
         <span v-if="card.productName" class="desc">{{ card.productName }}</span>
         <el-tag size="small" type="warning">{{
           SampleOrderStatusEnum.getLabel(card.sampleStatus) || '工程打样中'
