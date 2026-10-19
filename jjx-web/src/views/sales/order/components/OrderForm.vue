@@ -360,7 +360,7 @@
         @error="onAttachError"
       />
       <AttachmentManager
-        :session="attachSession"
+        :session="attachmentViewSession"
         class="attach-block"
         title="订单附件"
         source-type="sales_order"
@@ -544,6 +544,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
 import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
+import { useQuotationAttachmentView } from '../composables/useQuotationAttachmentView'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
 import {
   useAttachmentSession,
@@ -822,6 +823,11 @@ const attachSession = useAttachmentSession({
   editPerm: 'sales:order:edit',
   saveHandler: saveAttachInfo,
 })
+const attachmentViewSession = useQuotationAttachmentView(
+  attachSession,
+  () => props.sourceQuotationId,
+  () => form.orderId,
+)
 
 /** 附件信息类提交（保存处理器的唯一出口）：只认 updates；uploads 随单据保存落定，这里明确拒绝而不是静默吞掉 */
 async function saveAttachInfo(changes: AttachmentChanges): Promise<AttachmentSaveResult> {
