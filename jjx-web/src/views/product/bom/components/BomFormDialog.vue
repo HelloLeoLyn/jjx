@@ -353,11 +353,10 @@ const parseExcelFile = (file: File) => {
       // 将解析后的数据填充到 formData.items
       formData.items = [...formData.items, ...items]
       ElMessage.success(`成功解析并添加 ${items.length} 项物料，可在表格中拖拽调整顺序`)
-      // dev-20261012-039：不静默——导入后若有材料未匹配「项目」，明确提示处理方式（指定项目 或 勾选「通用」）
-      const noProject = items.filter((it) => it.processId == null && !it.isCommon).length
+      const noProject = items.filter((it) => it.processId == null && !!it.processName?.trim()).length
       if (noProject > 0) {
         ElMessageBox.alert(
-          `本次导入有 ${noProject} 行未匹配到「项目」（工序）。请在表格中为它们选择项目，或勾选「通用」（整单通用材料），否则无法提交审核。`,
+          `本次导入有 ${noProject} 行项目名称尚未匹配工序，请选择对应项目，或清空项目作为公共物料。`,
           '有物料未挂工序',
           { confirmButtonText: '知道了', type: 'warning' }
         ).catch(() => {})
@@ -399,6 +398,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     actualIssue: ['实际投料'],
     width: ['宽度'],
     length: ['长度'],
+    split: ['跳距', 'split'],
     remark: ['备注'],
   }
   const matchKey = (cell: any): string | null => {
@@ -471,10 +471,10 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       materialCode: '',
       materialName,
       processName: itemName, // 标准工序匹配由编辑器处理；未匹配名称原样保留。
-      // dev-1792056991945（方案A）：导入时无「项目名称」的行默认视为整单通用；
-      // 有名称但未匹配到工序的行保持未勾选，导入后提示人工核对。
+      // 项目为空即公共物料；未匹配的项目名称保留并提示核对。
       isCommon: !String(itemName || '').trim(),
       specification: spec,
+      split: cellOf(row, 'split'),
       unit: cellOf(row, 'unit') || 'PCS',
       quantity: calculateBomQuantity(baseQty, moduleQty) ?? 0,
       actualIssueQty: actualRaw ? num(actualRaw) : undefined,

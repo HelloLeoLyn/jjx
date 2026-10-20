@@ -241,6 +241,12 @@ export function workSpecMaterialSpec(row?: Record<string, any> | null): string {
   const specification =
     hasWidth && hasLength ? width + '*' + length + 'mm' : plain(row.specification)
   const module = Number(row.moduleQty)
+  const split = plain(row.split)
+  if (split) {
+    return (
+      specification + '跳' + split + (Number.isFinite(module) && module > 0 ? '=' + module + 'PCS' : '')
+    )
+  }
   if (specification)
     return specification + (Number.isFinite(module) && module > 0 ? '=' + module + 'PCS' : '')
   const unit = plain(row.unit).toUpperCase()

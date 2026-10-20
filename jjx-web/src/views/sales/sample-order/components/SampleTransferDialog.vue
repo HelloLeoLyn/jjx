@@ -176,8 +176,7 @@
                     size="small"
                     clearable
                     filterable
-                    placeholder="选择单一标准BOM项目"
-                    :disabled="choiceOf(scope.row).isCommon"
+                    placeholder="留空为公共物料"
                     style="width: 100%"
                   >
                     <el-option
@@ -187,12 +186,6 @@
                       :value="opt.id"
                     />
                   </el-select>
-                  <el-checkbox
-                    :model-value="choiceOf(scope.row).isCommon"
-                    size="small"
-                    @change="(v: any) => store.setMaterialCommon(scope.row.rowKey, !!v)"
-                    >整单通用</el-checkbox
-                  >
                 </div>
               </template>
             </el-table-column>
@@ -269,10 +262,6 @@ const projectNameMap = computed(() => {
   for (const process of store.preview?.standardProcesses || []) map.set(process.processId, process.processName)
   return map
 })
-
-function choiceOf(row: any) {
-  return store.materialProjects[row.rowKey] || { processId: null, isCommon: false }
-}
 
 function projectOptions(row: any): { id: number; label: string }[] {
   const ids: number[] = row.projectIds || []

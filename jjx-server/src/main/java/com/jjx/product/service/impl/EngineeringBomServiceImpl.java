@@ -362,6 +362,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                         oldIt.getBaseQty(), e.getValue().getBaseQty());
                 changeRecorder.diffDecimal(changes, "模数(" + label + ")",
                         oldIt.getModuleQty(), e.getValue().getModuleQty());
+                changeRecorder.diff(changes, "跳距(" + label + ")",
+                        oldIt.getSplit(), e.getValue().getSplit());
                 // 2026-10-09 dev-20261009-048：补 项目名称 与 关联标准工序(processId) 的变更记录
                 changeRecorder.diff(changes, "项目(" + label + ")",
                         oldIt.getProcessName(), e.getValue().getProcessName());
@@ -741,9 +743,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         item.setMaterialCode(dto.getMaterialCode());
         item.setMaterialName(dto.getMaterialName());
         item.setSpecification(dto.getSpecification());
+        item.setSplit(dto.getSplit() == null ? null : dto.getSplit().trim());
         item.setProcessId(dto.getProcessId());
         item.setProcessName(dto.getProcessName());
-        item.setIsCommon(dto.getIsCommon() == null ? Boolean.FALSE : dto.getIsCommon());
+        item.setIsCommon(dto.getProcessId() == null
+                && (dto.getProcessName() == null || dto.getProcessName().isBlank()));
         item.setUnit(dto.getUnit());
         item.setQuantity(dto.getQuantity());
         item.setLossRate(dto.getLossRate());
@@ -877,9 +881,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 } else if (sp.getIsEnabled() != null && sp.getIsEnabled() == 0) {
                     issues.add(issue(iid, code, name, "processId", "项目（标准工序）「" + sp.getProcessName() + "」已停用"));
                 }
-            } else if (!Boolean.TRUE.equals(it.getIsCommon())) {
-                // dev-20261012-039：未挂工序必须显式标记「整单通用」，否则不静默丢弃、拦提交审核
-                issues.add(issue(iid, code, name, "processId", "未挂工序（请在「项目」选择工序，或勾选「整单通用」）"));
+            } else if (it.getProcessName() != null && !it.getProcessName().isBlank()) {
+                issues.add(issue(iid, code, name, "processId", "项目名称未匹配标准工序，请重新选择项目或清空作为公共物料"));
             }
             // 父引用
             Long pid = it.getParentMaterialId();

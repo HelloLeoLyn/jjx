@@ -95,11 +95,27 @@ class SampleTransferMaterialProjectValidationTest {
     }
 
     @Test
-    void rejectsMaterialWithoutAnyChoice() {
+    void emptyProjectIsCommonEvenWithoutLegacyFlag() {
         confirmedOrder();
-        var ex = assertThrows(BusinessException.class, () -> service.confirmTransfer(
+        when(redisSequenceService.generateBusinessNumberByType(anyString(), anyString(), anyString(), anyInt()))
+                .thenThrow(new RuntimeException("REACHED_WRITES"));
+        var ex = assertThrows(RuntimeException.class, () -> service.confirmTransfer(
                 dto(List.of(material("r1", null)), new ArrayList<>())));
-        assertTrue(ex.getMessage().contains("请为材料选择单一项目或整单通用"));
+        assertEquals("REACHED_WRITES", ex.getMessage());
+    }
+
+    @Test
+    void legacyCommonFlagCannotEraseSelectedProject() {
+        confirmedOrder();
+        enabledProcess(5L);
+        when(redisSequenceService.generateBusinessNumberByType(anyString(), anyString(), anyString(), anyInt()))
+                .thenThrow(new RuntimeException("REACHED_WRITES"));
+        var mm = material("r1", null);
+        var ex = assertThrows(RuntimeException.class, () -> service.confirmTransfer(
+                dto(List.of(mm), List.of(selection("r1", 5L, true)))));
+        assertEquals("REACHED_WRITES", ex.getMessage());
+        assertEquals(5L, mm.getProcessId());
+        assertEquals(false, mm.getIsCommon());
     }
 
     @Test

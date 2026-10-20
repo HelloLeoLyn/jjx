@@ -501,7 +501,7 @@ public class WorkSpecDocsetSnapshotService {
                     "SELECT bom_id,bom_code,bom_version,approve_status,update_time FROM engineering_bom WHERE bom_id=? FOR SHARE",
                     product.getCurrentBomId()));
             appendRows(token, jdbc.queryForList(
-                    "SELECT item_id,material_id,process_id,quantity,unit,layer,item_order,remark,update_time FROM engineering_bom_item WHERE bom_id=? FOR SHARE",
+                    "SELECT item_id,material_id,process_id,split,quantity,unit,layer,item_order,remark,update_time FROM engineering_bom_item WHERE bom_id=? FOR SHARE",
                     product.getCurrentBomId()));
         }
         if (product.getCurrentRouteId() != null) {

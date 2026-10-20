@@ -1815,7 +1815,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         List<Map<String, Object>> unlinked = new ArrayList<>();
         for (EngineeringBomItem bi : bomItems) {
             if (bi.getProcessId() == null) {
-                // 无工序材料：不静默丢弃。区分「整单通用(isCommon=true，合法)」与「未挂工序(isCommon=false，待核对)」
+                // 项目为空即公共物料；旧is_common列不再作为独立判断依据。
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("name", bi.getMaterialName());
                 m.put("spec", bi.getSpecification());
@@ -2995,11 +2995,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         for (var mm : materialMappings) {
             var choice = choices.remove(mm.getRowKey());
             if (choice != null) { mm.setProcessId(choice.getProcessId()); mm.setIsCommon(choice.getIsCommon()); }
-            if (Boolean.TRUE.equals(mm.getIsCommon())) {
+            mm.setIsCommon(mm.getProcessId() == null);
+            if (mm.getProcessId() == null) {
                 if (mm.getProjectIds() != null && mm.getProjectIds().size() > 1) throw new BusinessException("组合项目须选择其中一个工序：" + mm.getMaterialName());
                 mm.setProcessId(null);
             } else {
-                if (mm.getProcessId() == null) throw new BusinessException("请为材料选择单一项目或整单通用：" + mm.getMaterialName());
                 if (mm.getProjectIds() != null && !mm.getProjectIds().isEmpty() && !mm.getProjectIds().contains(mm.getProcessId())) throw new BusinessException("所选项目不在材料项目范围内");
                 var project = standardProcessMapper.selectById(mm.getProcessId());
                 if (project == null || !Integer.valueOf(1).equals(project.getIsEnabled())) throw new BusinessException("所选项目不存在或已停用");

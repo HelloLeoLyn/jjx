@@ -34,13 +34,17 @@ public class EngineeringBomItemDTO {
     /** 规格型号 */
     private String specification;
 
+    /** 跳距（含单位，如50mm） */
+    @jakarta.validation.constraints.Size(max = 50, message = "跳距不能超过50个字符")
+    private String split;
+
     /** 项目（标准工序）引用 engineering_standard_process.process_id */
     private Long processId;
 
     /** 项目（标准工序）名称冗余 */
     private String processName;
 
-    /** 整单通用材料（不挂工序的合法标记）（dev-20261012-039） */
+    /** 兼容旧客户端；服务端根据项目是否为空判定，不采用此输入。 */
     private Boolean isCommon;
 
     /** 单位 */

@@ -52,6 +52,10 @@ public class EngineeringBomItem {
      */
     private String specification;
 
+    /** 跳距（含单位，如50mm） */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String split;
+
     /**
      * 项目（标准工序）引用 engineering_standard_process.process_id
      */
@@ -63,9 +67,14 @@ public class EngineeringBomItem {
     private String processName;
 
     /**
-     * 整单通用材料（不挂工序的合法标记）：0否 1是（dev-20261012-039）
+     * 兼容旧列；公共物料由项目为空派生。
      */
     private Boolean isCommon;
+
+    /** 兼容旧接口字段；公共物料只由项目是否为空决定，不采用历史标记。 */
+    public Boolean getIsCommon() {
+        return processId == null && (processName == null || processName.isBlank());
+    }
 
     /**
      * 单位

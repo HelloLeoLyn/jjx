@@ -43,7 +43,7 @@ export interface EngineeringBomItem {
   processId?: number
   /** 项目名称；未匹配时原样保存用户填写的名称 */
   processName?: string
-  /** 整单通用材料（不挂工序的合法标记）（dev-20261012-039） */
+  /** 兼容字段，由项目是否为空派生 */
   isCommon?: boolean
   unit: string
   quantity: number
@@ -58,6 +58,8 @@ export interface EngineeringBomItem {
   sortOrder: number
   /** 模数：每份材料可产出产品数量 */
   moduleQty?: number
+  /** 跳距（含单位，如50mm） */
+  split?: string
   /** 基数：每个产品所需材料份数 */
   baseQty?: number
   /** 最低投料量 */

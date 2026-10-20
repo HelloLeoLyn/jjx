@@ -45,6 +45,9 @@ public class EngineeringBomItemVO {
      */
     private String specification;
 
+    /** 跳距（含单位，如50mm） */
+    private String split;
+
     /**
      * 单位
      */

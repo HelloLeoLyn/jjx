@@ -79,27 +79,22 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
   const combinationWarnings = computed(
     () => sampleMaterials.value.filter((material) => (material.projectIds?.length || 0) > 1)
   )
-  /** 每条材料都已明确「单一项目」或「整单通用」 */
+  /** 项目为空即公共物料；组合项目仍须选择其中一个工序。 */
   const materialProjectsValid = computed(() =>
     sampleMaterials.value.every((material) => {
       const choice = materialProjects.value[material.rowKey]
-      return !!choice && (choice.isCommon || choice.processId != null)
+      return !!choice && ((material.projectIds?.length || 0) <= 1 || choice.processId != null)
     })
   )
   function initMaterialProjects() {
     const next: Record<string, { processId: number | null; isCommon: boolean }> = {}
     for (const material of sampleMaterials.value) {
       const ids = material.projectIds || []
-      // 单一项目自动带入；组合/空项目必须由用户明确选择，不默认第一道
+      // 单一项目自动带入；空项目为公共物料，组合项目不默认第一道。
       next[material.rowKey] =
-        ids.length === 1 ? { processId: ids[0], isCommon: false } : { processId: null, isCommon: false }
+        ids.length === 1 ? { processId: ids[0], isCommon: false } : { processId: null, isCommon: true }
     }
     materialProjects.value = next
-  }
-  function setMaterialCommon(rowKey: string, isCommon: boolean) {
-    if (!materialProjects.value[rowKey]) materialProjects.value[rowKey] = { processId: null, isCommon }
-    materialProjects.value[rowKey].isCommon = isCommon
-    if (isCommon) materialProjects.value[rowKey].processId = null
   }
   const allMatched = computed(
     () =>
@@ -138,7 +133,7 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
       return null
     }
     if (!materialProjectsValid.value) {
-      ElMessage.warning('请为每条材料选择单一BOM项目，或勾选「整单通用」')
+      ElMessage.warning('组合项目材料须选择其中一个BOM项目')
       return null
     }
     confirming.value = true
@@ -150,8 +145,8 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
           const choice = materialProjects.value[material.rowKey]
           return {
             rowKey: material.rowKey,
-            processId: choice?.isCommon ? null : choice?.processId ?? null,
-            isCommon: !!choice?.isCommon,
+            processId: choice?.processId ?? null,
+            isCommon: choice?.processId == null,
           }
         }),
       } as SampleTransferConfirmDTO)
@@ -180,7 +175,6 @@ export const useSampleTransferStore = defineStore('sampleTransfer', () => {
     combinationWarnings,
     materialProjects,
     materialProjectsValid,
-    setMaterialCommon,
     loadPreview,
     reset,
     confirmTransfer,
