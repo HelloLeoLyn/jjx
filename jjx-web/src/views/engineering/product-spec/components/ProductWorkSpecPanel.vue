@@ -119,6 +119,18 @@
           <div class="spec-top-col">
             <div class="section-heading">
               <h3>凹凸条件</h3>
+              <el-button
+                v-if="canEdit && !embossEditing"
+                :disabled="loading || editing"
+                @click="startEmbossEdit"
+                >编辑</el-button
+              >
+              <div v-else-if="canEdit">
+                <el-button :disabled="savingInline" @click="cancelEmbossEdit">取消</el-button>
+                <el-button type="primary" :loading="savingInline" :disabled="loading || savingInline" @click="saveEmboss"
+                  >保存</el-button
+                >
+              </div>
             </div>
             <el-descriptions :column="1" border>
               <el-descriptions-item
@@ -127,10 +139,10 @@
                 :label="field.label"
               >
                 <el-input
-                  v-if="canEdit"
+                  v-if="canEdit && embossEditing"
                   size="small"
                   v-model="embossDraft[field.key]"
-                  @change="saveEmboss"
+                  :disabled="savingInline"
                 />
                 <span v-else>{{ embossDraft[field.key] || '-' }}</span>
               </el-descriptions-item>
@@ -494,6 +506,7 @@ let loadGeneration = 0
 const data = shallowRef<DocsetData>()
 const editorVisible = ref(false)
 const embossDraft = reactive<Record<string, string>>({})
+const embossEditing = ref(false)
 const noteDraft = ref<string | null>(null)
 const structureEditing = ref(false)
 const savingInline = ref(false)
@@ -672,6 +685,7 @@ const editing = computed(
   () =>
     structureUploadBusy.value ||
     structureEditing.value ||
+    embossEditing.value ||
     savingInline.value ||
     saving.value ||
     savingIssuance.value ||
@@ -838,6 +852,7 @@ async function printRemarksSaved(workSpec: ProductWorkSpec) {
   await sourcesSaved()
 }
 function syncInline() {
+  if (embossEditing.value) return
   const spec = data.value?.workSpec
   Object.keys(embossDraft).forEach((key) => delete embossDraft[key])
   Object.entries(spec?.emboss || {}).forEach(([key, value]) => {
@@ -865,9 +880,33 @@ async function persistSpec(next: ProductWorkSpec, message: string) {
     savingInline.value = false
   }
 }
+function startEmbossEdit() {
+  if (!data.value || !canEdit.value || loading.value || editing.value) return
+  syncInline()
+  embossEditing.value = true
+}
+function cancelEmbossEdit() {
+  if (savingInline.value) return
+  embossEditing.value = false
+  syncInline()
+}
 async function saveEmboss() {
-  if (!data.value) return
-  await persistSpec(currentSpec(), '凹凸条件已保存')
+  if (!data.value || !canEdit.value || !embossEditing.value || savingInline.value) return
+  const spec = currentSpec()
+  const values: Record<string, string> = {}
+  for (const field of embossFields) {
+    const value = (embossDraft[field.key] || '').trim()
+    if (value && !/^[+-]?\d{1,12}(\.\d{1,6})?$/.test(value)) {
+      ElMessage.warning(field.label + '请填写数值，或留空')
+      return
+    }
+    if (value) values[field.key] = value
+  }
+  spec.emboss = values
+  if (await persistSpec(spec, '凹凸条件已保存')) {
+    embossEditing.value = false
+    syncInline()
+  }
 }
 function startNoteEdit() {
   if (!data.value || !canEdit.value) return
@@ -910,9 +949,10 @@ async function refreshDrawings() {
 function collectRecoveryContent(attempt?: ProductWorkSpec) {
   if (editorVisible.value) return normalizeWorkSpec(JSON.parse(JSON.stringify(draft.value)))
   if (issuanceDraft.value) return normalizeWorkSpec(JSON.parse(JSON.stringify(issuanceDraft.value)))
-  if (!attempt && noteDraft.value === null && !dieEditing.value) return undefined
+  if (!attempt && noteDraft.value === null && !dieEditing.value && !embossEditing.value) return undefined
   const next = normalizeWorkSpec(JSON.parse(JSON.stringify(attempt || data.value?.workSpec || {})))
   if (noteDraft.value !== null) next.engineeringRequirements = noteDraft.value
+  if (embossEditing.value) next.emboss = { ...embossDraft }
   if (dieEditing.value) {
     next.dieLocation = { ...dieDraft.value }
     if (dieLegacyCleared.value) next.dieLocationText = ''
@@ -921,6 +961,7 @@ function collectRecoveryContent(attempt?: ProductWorkSpec) {
 }
 draftSession.recoveryContent.value = collectRecoveryContent
 watch(draftSession.recovered, () => {
+  embossEditing.value = false
   noteDraft.value = null
   issuanceDraft.value = null
   dieEditing.value = false
@@ -950,6 +991,7 @@ watch(
 watch(
   () => props.productId,
   () => {
+    embossEditing.value = false
     structureEditing.value = false
     structurePreviewGeneration++
     if (structureImage.value) URL.revokeObjectURL(structureImage.value)

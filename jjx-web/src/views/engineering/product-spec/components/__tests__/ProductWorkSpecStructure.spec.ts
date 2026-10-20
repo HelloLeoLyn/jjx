@@ -384,7 +384,7 @@ async function drawer() {
   return { w, state, panel: w.getComponent(Panel), header: w.getComponent(Header) }
 }
 describe('真实Header→Drawer→正文面板切版保护', () => {
-  it.each(['note', 'issuance', 'die', 'editor', 'structure'])(
+  it.each(['note', 'issuance', 'die', 'editor', 'structure', 'emboss'])(
     '%s编辑中保持原面板和输入，明确取消后才可切版',
     async (mode) => {
       const { w, state, panel, header } = await drawer()
@@ -405,6 +405,10 @@ describe('真实Header→Drawer→正文面板切版保护', () => {
         local.edit('requirements')
         local.draft.engineeringRequirements = '未保存正文'
       }
+      if (mode === 'emboss') {
+        local.startEmbossEdit()
+        local.embossDraft.setupHeight = '0.25'
+      }
       if (mode === 'structure') local.startStructureEdit()
       await flushPromises()
       header.vm.$emit('update:versionId', 11)
@@ -415,11 +419,13 @@ describe('真实Header→Drawer→正文面板切版保护', () => {
       if (mode === 'issuance') expect(local.issuanceDraft.issueUnit).toBe('未保存发行')
       if (mode === 'die') expect(local.dieDraft.key).toBe('未保存刀模')
       if (mode === 'editor') expect(local.draft.engineeringRequirements).toBe('未保存正文')
+      if (mode === 'emboss') expect(local.embossDraft.setupHeight).toBe('0.25')
       local.noteDraft = null
       local.issuanceDraft = null
       local.dieEditing = false
       local.editorVisible = false
       local.structureEditing = false
+      local.embossEditing = false
       await flushPromises()
       vi.mocked(productWorkSpecApi.getVersion).mockResolvedValue({
         code: 200,
@@ -538,4 +544,113 @@ it('真实结构图上传/保存等待中Header切版不会卸载编辑；保存
   header.vm.$emit('update:versionId', 11)
   await flushPromises()
   expect(state.selectedVersionId).toBe(11)
+})
+
+
+describe('凹凸条件显式编辑保存', () => {
+  const embossSection = (w: any) => w.findAll('.spec-top-col')[1]
+  async function begin(w: any) {
+    await embossSection(w).get('.section-heading button').trigger('click')
+    await flushPromises()
+  }
+  it('默认只读，输入和失焦不保存；点击保存提交六项新值，刷新重开可见', async () => {
+    const w = await render()
+    expect(embossSection(w).findAll('input')).toHaveLength(0)
+    await begin(w)
+    const values = ['0.25', '0.2', '100', '90', '2', '3']
+    const inputs = embossSection(w).findAll('input')
+    expect(inputs).toHaveLength(6)
+    for (let i = 0; i < inputs.length; i++) {
+      await inputs[i].setValue(values[i])
+      await inputs[i].trigger('blur')
+    }
+    expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
+    await embossSection(w).findAll('.section-heading button')[1].trigger('click')
+    await flushPromises()
+    const expected = { setupHeight: '0.25', requiredHeight: '0.2', upperTemperature: '100',
+      lowerTemperature: '90', pressTime: '2', holdTime: '3' }
+    expect(productWorkSpecApi.saveDraft).toHaveBeenCalledTimes(1)
+    expect(productWorkSpecApi.saveDraft).toHaveBeenCalledWith(2, expect.objectContaining({
+      spec: expect.objectContaining({ emboss: expected, engineeringRequirements: '保留备注' }),
+    }))
+    expect(embossSection(w).findAll('input')).toHaveLength(0)
+    expect(spec.emboss).toEqual(expected)
+    const reopened = await render()
+    for (const value of values) expect(embossSection(reopened).text()).toContain(value)
+  })
+  it('取消还原原值，不提交；外部刷新不覆盖正在编辑的输入', async () => {
+    spec.emboss = { setupHeight: '0.1' }
+    const w = await render()
+    await begin(w)
+    await embossSection(w).get('input').setValue('0.5')
+    await (w.vm as any).$.setupState.loadData()
+    expect((embossSection(w).get('input').element as HTMLInputElement).value).toBe('0.5')
+    await embossSection(w).get('.section-heading button').trigger('click')
+    expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
+    expect(embossSection(w).text()).toContain('0.1')
+    expect(embossSection(w).findAll('input')).toHaveLength(0)
+  })
+  it('保存失败保留编辑值并可重试', async () => {
+    const w = await render()
+    await begin(w)
+    await embossSection(w).get('input').setValue('0.3')
+    vi.mocked(productWorkSpecApi.saveDraft).mockRejectedValueOnce(new Error('网络错误'))
+    await (w.vm as any).$.setupState.saveEmboss()
+    await flushPromises()
+    expect((embossSection(w).get('input').element as HTMLInputElement).value).toBe('0.3')
+    expect((w.vm as any).$.setupState.embossEditing).toBe(true)
+    await (w.vm as any).$.setupState.saveEmboss()
+    await flushPromises()
+    expect(spec.emboss.setupHeight).toBe('0.3')
+    expect((w.vm as any).$.setupState.embossEditing).toBe(false)
+  })
+  it('非法数值不提交，清空原值后显式保存可删除', async () => {
+    spec.emboss = { setupHeight: '0.1' }
+    const w = await render()
+    await begin(w)
+    await embossSection(w).get('input').setValue('不是数值')
+    await (w.vm as any).$.setupState.saveEmboss()
+    expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
+    await embossSection(w).get('input').setValue('   ')
+    await (w.vm as any).$.setupState.saveEmboss()
+    await flushPromises()
+    expect(spec.emboss).toEqual({})
+    expect(embossSection(w).findAll('input')).toHaveLength(0)
+  })
+  it('只读用户不能进入凹凸条件编辑或提交', async () => {
+    permission.edit = false
+    const w = await render()
+    const state = (w.vm as any).$.setupState
+    state.startEmbossEdit()
+    state.embossDraft.setupHeight = '0.1'
+    await state.saveEmboss()
+    expect(state.embossEditing).toBe(false)
+    expect(embossSection(w).findAll('button')).toHaveLength(0)
+    expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
+  })
+  it('冲突后继续输入，重新应用取最新凹凸条件，恢复后退出编辑', async () => {
+    const { state, panel } = await drawer()
+    const local = (panel.vm as any).$.setupState
+    local.startEmbossEdit()
+    local.embossDraft.setupHeight = '0.2'
+    const normalSave = vi.mocked(productWorkSpecApi.saveDraft).getMockImplementation()!
+    spec = normalizeWorkSpec({ ...spec, revision: 'server-r2', emboss: { setupHeight: '0.1' } })
+    vi.mocked(productWorkSpecApi.saveDraft).mockImplementation(async (id, body) => {
+      if (body.revision !== spec.revision) throw new Error('revision 冲突')
+      return normalSave(id, body)
+    })
+    await local.saveEmboss()
+    expect(state.draftSession.conflict.value).toBe(true)
+    expect(local.embossEditing).toBe(true)
+    local.embossDraft.setupHeight = '0.4'
+    const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
+    try {
+      await state.draftSession.recover()
+      await flushPromises()
+      expect(spec.emboss.setupHeight).toBe('0.4')
+      expect(local.embossEditing).toBe(false)
+    } finally {
+      confirm.mockRestore()
+    }
+  })
 })
