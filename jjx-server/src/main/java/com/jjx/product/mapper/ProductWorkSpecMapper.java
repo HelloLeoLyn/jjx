@@ -39,7 +39,15 @@ public interface ProductWorkSpecMapper {
         """)
     int claim(@Param("id") Long id, @Param("ownerId") Long ownerId, @Param("ownerName") String ownerName);
 
-    @Select("SELECT user_id AS id, COALESCE(NULLIF(nick_name,''),user_name) AS name FROM sys_user WHERE del_flag=#{normal} AND status=#{normal} ORDER BY nick_name,user_id")
+    @Select("""
+        SELECT u.user_id AS id, COALESCE(NULLIF(u.nick_name,''),u.user_name) AS name
+        FROM sys_user u
+        WHERE u.del_flag=#{normal} AND u.status=#{normal}
+          AND EXISTS (SELECT 1 FROM sys_user_role ur JOIN sys_role r ON r.role_id=ur.role_id
+              WHERE ur.user_id=u.user_id AND r.role_key LIKE 'engineering:%'
+                AND r.del_flag=#{normal} AND r.status=#{normal})
+        ORDER BY u.nick_name,u.user_id
+        """)
     List<Map<String, Object>> responsibleUsers(@Param("normal") String normal);
 
     @Select("SELECT COUNT(*) FROM sys_dict_item WHERE dict_code='attachment_document_type' AND item_key=#{type} AND deleted=0 AND is_active=1 AND JSON_UNQUOTE(JSON_EXTRACT(ext_data,'$.parent'))='ENGINEERING_DOC'")

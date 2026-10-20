@@ -225,6 +225,52 @@ class WorkSpecDraftLifecycleTest {
             "SELECT action FROM operation_log ORDER BY id DESC LIMIT 1", String.class));
     }
 
+    @Test void nonEngineeringTargetsAreRejectedWithoutChangingDraftOrLog() {
+        save(11L);
+        String before = mapper.read(1L);
+        long logCount = count("operation_log");
+        // 当前负责人、管理员、工程主管均不能绕过目标工程角色校验。
+        for (String role : List.of("owner", "admin", "engineering:all")) {
+            actor.when(SecurityUtils::getUserId).thenReturn("owner".equals(role) ? 7L : 9L);
+            actor.when(() -> SecurityUtils.hasRole("admin")).thenReturn("admin".equals(role));
+            actor.when(() -> SecurityUtils.hasRole("engineering:all")).thenReturn("engineering:all".equals(role));
+            var handoff = input(11L);
+            handoff.setPreparedById(9L); // 有效但无工程角色的管理员也不能成为目标。
+            handoff.setOwnerTransferConfirmed(true);
+            var denied = assertThrows(BusinessException.class,
+                    () -> tx.execute(status -> drafts.transfer(1L, handoff)));
+            assertEquals("制定负责人必须是工程人员", denied.getMessage());
+            assertEquals(before, mapper.read(1L));
+            assertEquals(logCount, count("operation_log"));
+        }
+    }
+
+    @Test void adminCanReassignToEngineeringUser() {
+        save(11L);
+        actor.when(SecurityUtils::getUserId).thenReturn(9L);
+        actor.when(() -> SecurityUtils.hasRole("admin")).thenReturn(true);
+        var handoff = input(11L);
+        handoff.setPreparedById(8L);
+        handoff.setOwnerTransferConfirmed(true);
+        ObjectNode result = tx.execute(status -> drafts.transfer(1L, handoff));
+        assertEquals(8L, result.path("preparedById").asLong());
+        assertEquals("工程乙", result.path("preparedByName").asText());
+    }
+
+    @Test void noEngineeringCandidatesGiveBusinessErrorsWithoutChangingDraft() {
+        save(11L);
+        String before = mapper.read(1L);
+        when(mapper.responsibleUsers(anyString())).thenReturn(List.of());
+        assertEquals("暂无可选择的工程人员",
+                assertThrows(BusinessException.class, drafts::responsibleUsers).getMessage());
+        var handoff = input(11L);
+        handoff.setPreparedById(8L);
+        handoff.setOwnerTransferConfirmed(true);
+        assertEquals("制定负责人必须是工程人员", assertThrows(BusinessException.class,
+                () -> tx.execute(status -> drafts.transfer(1L, handoff))).getMessage());
+        assertEquals(before, mapper.read(1L));
+    }
+
     @Test void unclaimedSaveAndPublishFailWithoutImplicitOwner() {
         String before = mapper.read(1L);
         var input = input(11L);

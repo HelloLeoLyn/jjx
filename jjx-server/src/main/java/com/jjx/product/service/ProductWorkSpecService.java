@@ -93,7 +93,11 @@ public class ProductWorkSpecService {
         return response(id, mapper.read(id));
     }
 
-    public List<Map<String, Object>> responsibleUsers() { return mapper.responsibleUsers(UserConstants.USER_STATUS_NORMAL); }
+    public List<Map<String, Object>> responsibleUsers() {
+        var users = mapper.responsibleUsers(UserConstants.USER_STATUS_NORMAL);
+        if (users.isEmpty()) throw new BusinessException("暂无可选择的工程人员");
+        return users;
+    }
 
     @Transactional(rollbackFor = Exception.class)
     public ObjectNode claim(Long id) {
@@ -128,9 +132,10 @@ public class ProductWorkSpecService {
     }
 
     private String responsibleName(Long id) {
-        return responsibleUsers().stream().filter(row -> Objects.equals(((Number) row.get("id")).longValue(), id))
+        return mapper.responsibleUsers(UserConstants.USER_STATUS_NORMAL).stream()
+            .filter(row -> Objects.equals(((Number) row.get("id")).longValue(), id))
             .map(row -> Objects.toString(row.get("name"), "")).findFirst()
-            .orElseThrow(() -> new BusinessException("请选择有效的制定负责人"));
+            .orElseThrow(() -> new BusinessException("制定负责人必须是工程人员"));
     }
 
     public ObjectNode draftHistory(Long id, Long before) {
