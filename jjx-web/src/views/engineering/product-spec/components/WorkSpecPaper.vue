@@ -12,7 +12,7 @@
       <tbody>
         <tr v-for="(row, i) in padded(page.rows, 14)" :key="i">
           <td class="center" :style="columnFont('materialNumber', 'Content')">{{ (page.continuation || 0) * 14 + i + 1 }}</td>
-          <td class="center" :style="columnFont('materialProject', 'Content')"><SvgIcon v-if="row?.icon" :name="row.icon" :size="20" /><span v-else class="cell-single" :data-overflow-title="materialLabel(i) + '项目'" :title="plain(row?.processName)">{{ plain(row?.processName) }}</span></td>
+          <td class="center" :style="columnFont('materialProject', 'Content')"><SvgIcon v-if="row?.icon" :name="row.icon" :size="fontSettings.materialProjectContent" /><span v-else class="cell-single" :data-overflow-title="materialLabel(i) + '项目'" :title="plain(row?.processName)">{{ plain(row?.processName) }}</span></td>
           <td :style="columnFont('materialName', 'Content')"><span class="material-name" :data-overflow-title="materialLabel(i) + '材料'" :title="row?.materialName || row?.materialCode">{{ row?.materialName || row?.materialCode }}</span></td>
           <td :style="columnFont('materialSpec', 'Content')"><span class="cell-single" :data-overflow-title="materialLabel(i) + '规格及模数'" :title="workSpecMaterialSpec(row)">{{ workSpecMaterialSpec(row) }}</span></td>
           <td class="die-position" :style="columnFont('materialDie', 'Content')">{{ page.diePositionRows?.[i] }}</td>
@@ -48,7 +48,7 @@
                     <template v-for="(item, j) in operations(cell.item)" :key="item.itemId || j">
                       <span v-if="j" class="plus">＋</span>
                       <span class="symbol">
-                        <SvgIcon v-if="item.icon" :name="item.icon" :size="20" />
+                        <SvgIcon v-if="item.icon" :name="item.icon" :size="fontSettings[`flow${cell.column}OperationContent` as WorkSpecFontArea]" />
                         <sub v-if="workSpecStepSubscript(item)" data-overflow-part>{{ workSpecStepSubscript(item) }}</sub>
                       </span>
                     </template>

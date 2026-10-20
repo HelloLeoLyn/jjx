@@ -87,39 +87,54 @@ test('实际纸张组件将各列标题与内容字号写入对应单元格，�
   const vue = require('vue')
   const { renderToString } = require('vue/server-renderer')
   const { parse: parseSfc, compileScript } = require('vue/compiler-sfc')
-  const filename = path.join(__dirname, '../WorkSpecPaper.vue')
-  const { descriptor } = parseSfc(fs.readFileSync(filename, 'utf8'), { filename })
-  const script = compileScript(descriptor, { id: 'font-render-check', inlineTemplate: true })
+  function compileComponent(filename, deps) {
+    const { descriptor } = parseSfc(fs.readFileSync(filename, 'utf8'), { filename })
+    const script = compileScript(descriptor, { id: 'font-render-check', inlineTemplate: true })
+    const component = { exports: {}, require(name) {
+      assert.ok(name in deps, `Unexpected dependency: ${name}`)
+      return deps[name]
+    } }
+    vm.runInNewContext(ts.transpileModule(script.content, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText, component)
+    return component.exports.default
+  }
+  const icon = compileComponent(path.join(__dirname, '../../../../../components/SvgIcon/index.vue'), { vue })
   const deps = {
     vue,
-    '@/components/SvgIcon/index.vue': { __esModule: true, default: { render: () => null } },
+    '@/components/SvgIcon/index.vue': { __esModule: true, default: icon },
     '@/api/product/workSpec': { embossFields: [] },
     './docset': { flowGroups: [], plain: v => String(v ?? ''), workSpecMaterialSpec: () => '',
       workSpecStepSubscript: () => '', workSpecOperationRemark: () => '' },
     './useWorkSpecOverflow': { useWorkSpecOverflow: () => ({ measure() {} }) },
     './workSpecFont': context.exports,
   }
-  const component = { exports: {}, require(name) {
-    assert.ok(name in deps, `Unexpected dependency: ${name}`)
-    return deps[name]
-  } }
-  vm.runInNewContext(ts.transpileModule(script.content, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText, component)
+  const paper = compileComponent(path.join(__dirname, '../WorkSpecPaper.vue'), deps)
   const fonts = { ...defaults(), materialNumberTitle: 21, materialNameTitle: 22,
-    materialNameContent: 19, flow0NumberContent: 23, flow1NumberContent: 24 }
+    materialNameContent: 19, materialProjectContent: 17, flow0NumberContent: 23, flow1NumberContent: 24,
+    flow0OperationContent: 11, flow1OperationContent: 15, flow2OperationContent: 18 }
+  // 直接预览和打印URL还原使用相同纸张组件，两者都须把尺寸传到真实SvgIcon。
+  for (const fontSettings of [fonts, parse(serialize(fonts))]) {
   for (const continuation of [0, 1]) {
-    const html = await renderToString(vue.createSSRApp(component.exports.default, {
+    const html = await renderToString(vue.createSSRApp(paper, {
       data: { product: { productName: 'DEMO', productCode: 'D' }, routing: { items: [] },
         workSpec: { approved: false, emboss: {}, issueUnit: '' } },
-      page: { continuation, rows: [{ materialName: 'MATERIAL-A' }],
-        groups: ['面板', '上线', '下线'].map(label => ({ label, rows: [] })), changeLines: [] },
-      pageIndex: continuation, pageCount: 2, fontSettings: fonts,
+      page: { continuation, rows: [{ materialName: 'MATERIAL-A', icon: '/test.svg' }],
+        groups: ['面板', '上线', '下线'].map((label, index) => ({ label,
+          rows: [{ children: [{ icon: `flow-${index}-a` }, { icon: `flow-${index}-b` }] }] })), changeLines: [] },
+      pageIndex: continuation, pageCount: 2, fontSettings,
     }))
     assert.match(html, /<th[^>]*style="font-size:21px;"[^>]*>序号<\/th>/)
     assert.match(html, /<th[^>]*style="font-size:22px;"[^>]*>材　料<\/th>/)
     assert.match(html, /<td style="font-size:19px;">[\s\S]*?MATERIAL-A/)
     assert.ok(html.includes(`style="font-size:23px;">${continuation * 14 + 1}</td>`))
     assert.ok(html.includes(`style="font-size:24px;">${continuation * 6 + 1}</td>`))
+    assert.match(html, /<img[^>]*src="\/test.svg"[^>]*width="17"[^>]*height="17"/)
+    for (const [index, size] of [[0, 11], [1, 15], [2, 18]]) {
+      for (const child of ['a', 'b']) {
+        assert.match(html, new RegExp(`<svg[^>]*width="${size}"[^>]*height="${size}"[^>]*><use href="#icon-flow-${index}-${child}"`))
+      }
+    }
+  }
   }
 })
