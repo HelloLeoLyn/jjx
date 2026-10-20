@@ -251,8 +251,14 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     if (!ready.value || busy.value) throw new Error('草稿尚未就绪或正在处理，请稍后重试')
     if (!isOwner.value) throw new Error(readOnlyReason.value)
     if (!session.canEdit.value) throw new Error('无草稿编辑权限')
-    if (manifest.value.some((file) => !file.documentType))
-      throw new Error('请为每个附件选择资料类型')
+    const missingTypes = files.value.filter((file) => !file.documentType)
+    if (missingTypes.length)
+      throw new Error(
+        '以下附件未选择资料类型：' +
+          missingTypes
+            .map((file) => file.displayName || file.fileName || String(file.attachmentId))
+            .join('、')
+      )
     const current = generation
     const id = productId.value
     saving.value = true
@@ -439,8 +445,22 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
   }
   function register(entry: PendingEntry, documentType?: string) {
     if (session.refs.value.some((row) => row.attachmentId === entry.attachmentId)) return
-    if (documentType) entry.documentType = documentType
+    // 未指定时保持为空，等待用户在清单逐行选择；不默认任何二级类型。
+    entry.documentType = documentType || ''
     session.registerUploaded(entry, ownership.value)
+    session.persist()
+  }
+  /** 清单行内改二级类型：已绑定行进编辑差异，待保存行改队列项；空值不落库由保存校验拦截。 */
+  function setDocumentType(attachmentId: number, documentType: string) {
+    if (!session.canEdit.value) return
+    const row = session.refs.value.find((file) => file.attachmentId === attachmentId)
+    if (row) {
+      session.setEdit(row.id, { documentType: documentType || null })
+      return
+    }
+    const pending = session.pending.value.find((file) => file.attachmentId === attachmentId)
+    if (!pending) return
+    pending.documentType = documentType || ''
     session.persist()
   }
   function move(attachmentId: number, delta: number) {
@@ -515,6 +535,7 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     save,
     upgrade,
     register,
+    setDocumentType,
     move,
     adopt,
   }

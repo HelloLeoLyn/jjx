@@ -53,27 +53,13 @@
     </div>
     <p>附件随作业规范一起定版。新版移除附件不会删除旧版文件。</p>
     <div v-if="canEditSpec" class="draft-actions">
-      <el-select
-        v-model="uploadType"
-        placeholder="请选择资料类型"
-        clearable
-        :disabled="draft.busy.value"
-        style="width: 180px"
-      >
-        <el-option
-          v-for="type in types"
-          :key="type.value"
-          :label="type.label"
-          :value="type.value"
-        />
-      </el-select>
       <span v-if="!uploadTypeAvailable" class="upload-type-hint"
         >资料类型不可用，暂不能上传，请重试加载</span
       >
       <AttachmentUpload
         :session="draft.session"
         :ownership="draft.ownership.value"
-        :disabled="draft.busy.value || !uploadTypeSelected"
+        :disabled="draft.busy.value || !uploadTypeAvailable"
         :blocked-reason="uploadBlockedReason"
         :accept="acceptedFiles"
         :max-size-m-b="100"
@@ -93,6 +79,27 @@
         ><template #default="{ row }">{{
           row.displayName || row.fileName
         }}</template></el-table-column
+      >
+      <el-table-column label="资料类型" min-width="190"
+        ><template #default="{ row }">
+          <el-select
+            v-if="canEditSpec"
+            :model-value="row.documentType"
+            placeholder="请选择资料类型"
+            clearable
+            size="small"
+            :disabled="draft.busy.value"
+            @update:model-value="(value) => setRowDocumentType(row, value)"
+          >
+            <el-option
+              v-for="type in types"
+              :key="type.value"
+              :label="type.label"
+              :value="type.value"
+            />
+          </el-select>
+          <span v-else>{{ typeLabel(row.documentType) }}</span>
+        </template></el-table-column
       >
       <el-table-column label="打印" width="100"
         ><template #default="{ row }">
@@ -175,22 +182,16 @@ const canEditSpec = computed(() => canEdit.value && draft.canWrite.value)
 const types = computed(() =>
   draft.engineeringTypes.value.map((type) => ({ value: type.item_key, label: type.label }))
 )
-// 上传不设默认资料类型：必须由用户明确选择，避免误登记为结构图。
-const uploadType = ref('')
+// 上传不要求预选资料类型：上传后由清单逐行选择；未选不能保存、不落库。
 const uploadTypeAvailable = computed(() => types.value.length > 0)
-const uploadTypeSelected = computed(() =>
-  types.value.some((type) => type.value === uploadType.value)
+const uploadBlockedReason = computed(() =>
+  uploadTypeAvailable.value ? '' : '资料类型不可用，暂不能上传'
 )
-const uploadBlockedReason = computed(() => {
-  if (!uploadTypeAvailable.value) return '资料类型不可用，暂不能上传'
-  if (!uploadTypeSelected.value) return '先选择资料类型再上传'
-  return ''
-})
-// 只在当前选择失效（字典刷新/停用）时清空，不自动回退到第一项。
-watch(types, (options) => {
-  if (uploadType.value && !options.some((type) => type.value === uploadType.value))
-    uploadType.value = ''
-})
+const typeLabel = (value?: string | null) =>
+  types.value.find((type) => type.value === value)?.label || value || '未选择'
+function setRowDocumentType(row: { attachmentId: number }, value: string | null) {
+  draft.setDocumentType(row.attachmentId, value || '')
+}
 const acceptedFiles = [
   '.pdf',
   '.jpg',
@@ -216,16 +217,13 @@ const acceptedFiles = [
   '.xlsx',
 ]
 function uploaded(payload: { pending: PendingEntry }) {
-  if (!uploadTypeSelected.value) {
-    ElMessage.warning('先选择资料类型再上传')
-    return
-  }
   const duplicate = draft.files.value.some((file) =>
     payload.pending.sha256 && file.sha256
       ? payload.pending.sha256 === file.sha256
       : file.fileName === payload.pending.fileName && file.fileSize === payload.pending.fileSize
   )
-  draft.register(payload.pending, uploadType.value)
+  // 上传后类型为空，由用户在清单行内选择；不默认结构图、不自动选第一项。
+  draft.register(payload.pending)
   if (duplicate)
     ElMessage.info(
       payload.pending.sha256
@@ -296,8 +294,6 @@ async function loadHistory() {
 watch(
   () => props.productId,
   async () => {
-    // 切换产品不继承上一产品的资料类型选择。
-    uploadType.value = ''
     if (!canEdit.value) return
     try {
       await draft.session.loadDocumentTypes()

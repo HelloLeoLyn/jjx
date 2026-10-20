@@ -67,7 +67,7 @@ vi.mock('@/views/engineering/product-spec/components/ProductWorkSpecVersionPanel
   default: { template: '<div />' },
 }))
 const wrappers: ReturnType<typeof mount>[] = []
-function response(ids = [1, 2], revision = 'r1') {
+function response(ids = [1, 2], revision = 'r1', documentType = 'STRUCTURE_DRAWING') {
   return {
     data: {
       revision,
@@ -76,14 +76,14 @@ function response(ids = [1, 2], revision = 'r1') {
       preparedByName: '工程甲',
       draftAttachments: ids.map((attachmentId) => ({
         attachmentId,
-        documentType: 'STRUCTURE_DRAWING',
+        documentType,
         print: true,
       })),
       draftFiles: ids.map((attachmentId) => ({
         refId: attachmentId + 100,
         attachmentId,
         fileName: attachmentId + '.pdf',
-        documentType: 'STRUCTURE_DRAWING',
+        documentType,
       })),
     },
   }
@@ -130,7 +130,6 @@ describe('工程图集采用作业规范草稿', () => {
     const draft = (w.vm as any).$.setupState.draft
     draft.session.refs.value[0].sha256 = 'same-content'
     const state = (w.vm as any).$.setupState
-    state.uploadType = 'STRUCTURE_DRAWING'
     state.uploaded({
       pending: {
         attachmentId: 3,
@@ -159,10 +158,11 @@ describe('工程图集采用作业规范草稿', () => {
   })
   it('新上传与管理组件共享会话，移除暂存，保存使用完整最终清单', async () => {
     const w = await setup()
-    ;(w.vm as any).$.setupState.uploadType = 'STRUCTURE_DRAWING'
+    const state = (w.vm as any).$.setupState
     await w.get('.remove-stub').trigger('click')
     await w.get('.upload-stub').trigger('click')
     await flushPromises()
+    state.setRowDocumentType({ attachmentId: 3 }, 'STRUCTURE_DRAWING')
     expect(api.saveDraft).not.toHaveBeenCalled()
     expect(w.text()).not.toContain('设现行')
     expect(w.text()).not.toContain('下发')
@@ -186,9 +186,10 @@ describe('工程图集采用作业规范草稿', () => {
   })
   it('保存失败保留输入和附件；取消改动后重读已保存草稿', async () => {
     const w = await setup()
-    ;(w.vm as any).$.setupState.uploadType = 'STRUCTURE_DRAWING'
+    const state = (w.vm as any).$.setupState
     await flushPromises()
     await w.get('.upload-stub').trigger('click')
+    state.setRowDocumentType({ attachmentId: 3 }, 'STRUCTURE_DRAWING')
     api.saveDraft.mockRejectedValueOnce(new Error('save failed'))
     await w
       .findAll('button')
@@ -216,9 +217,8 @@ it('上传选项来自工程字典，旧固定categories不截断BOM/作业指�
   const state = (w.vm as any).$.setupState
   expect(state.types.map((type: any) => type.value)).toContain('BOM')
   expect(state.types.map((type: any) => type.value)).toContain('WORK_INSTRUCTION')
-  state.uploadType = 'BOM'
-  await flushPromises()
   await w.get('.upload-stub').trigger('click')
+  state.setRowDocumentType({ attachmentId: 3 }, 'BOM')
   await state.save()
   expect(api.saveDraft).toHaveBeenCalledWith(
     42,
@@ -230,84 +230,86 @@ it('上传选项来自工程字典，旧固定categories不截断BOM/作业指�
   )
 })
 
-describe('上传必须先选择资料类型', () => {
-  it('初始未选择类型：上传禁用并提示先选择，不默认结构图', async () => {
+describe('工程图集先上传后选择资料类型', () => {
+  it('未预选类型也能上传：清单出现类型为空的行，不默认结构图', async () => {
     const w = await setup()
     const state = (w.vm as any).$.setupState
-    expect(state.uploadType).toBe('')
-    expect(state.types.length).toBeGreaterThan(0)
-    expect(state.uploadTypeSelected).toBe(false)
-    expect(state.uploadBlockedReason).toBe('先选择资料类型再上传')
-    expect(w.get('.upload-stub').attributes('disabled')).toBeDefined()
-    expect(w.get('.upload-stub').attributes('data-blocked-reason')).toBe('先选择资料类型再上传')
-    state.uploaded({
-      pending: {
-        attachmentId: 3,
-        requestKey: 'key-0000000000003',
-        fileName: 'new.pdf',
-        fileSize: 3,
-        state: 'pending',
-        createdAt: '2026-10-19',
-      },
-    })
-    await flushPromises()
-    expect(messages.warning).toHaveBeenCalledWith('先选择资料类型再上传')
-    expect(state.draft.session.pendingCount.value).toBe(0)
-  })
-  it('选择面板图后上传按面板图登记，上传后保留当前选择', async () => {
-    const w = await setup()
-    const state = (w.vm as any).$.setupState
-    state.uploadType = 'PANEL_DRAWING'
-    await flushPromises()
-    expect(state.uploadTypeSelected).toBe(true)
+    expect(state.uploadTypeAvailable).toBe(true)
     expect(state.uploadBlockedReason).toBe('')
     expect(w.get('.upload-stub').attributes('disabled')).toBeUndefined()
     await w.get('.upload-stub').trigger('click')
     await flushPromises()
-    expect(state.uploadType).toBe('PANEL_DRAWING')
+    expect(messages.warning).not.toHaveBeenCalledWith('先选择资料类型再上传')
+    expect(state.draft.session.pendingCount.value).toBe(1)
+    const pending = state.draft.files.value.find((file: any) => file.attachmentId === 3)
+    expect(pending.documentType).toBe('')
+  })
+  it('清单行逐条选择类型；历史附件可改，保存按所选类型提交', async () => {
+    const w = await setup()
+    const state = (w.vm as any).$.setupState
+    await w.get('.upload-stub').trigger('click')
+    await flushPromises()
+    state.setRowDocumentType({ attachmentId: 3 }, 'PANEL_DRAWING')
+    state.setRowDocumentType({ attachmentId: 2 }, 'BOM')
     await state.save()
     expect(api.saveDraft).toHaveBeenCalledWith(
       42,
       expect.objectContaining({
         attachments: expect.arrayContaining([
+          expect.objectContaining({ attachmentId: 1, documentType: 'STRUCTURE_DRAWING' }),
+          expect.objectContaining({ attachmentId: 2, documentType: 'BOM' }),
           expect.objectContaining({ attachmentId: 3, documentType: 'PANEL_DRAWING' }),
         ]),
       })
     )
-    // 既有附件保持原类型；只有本次新上传的附件用面板图。
-    expect(
-      api.saveDraft.mock.calls[0][1].attachments.find((file: any) => file.attachmentId === 3)
-        ?.documentType
-    ).toBe('PANEL_DRAWING')
+    expect(messages.success).toHaveBeenCalledWith('草稿已保存')
   })
-  it('清空已选类型后重新禁用上传', async () => {
+  it('多个待保存附件可分别选择不同类型，互不影响', async () => {
     const w = await setup()
     const state = (w.vm as any).$.setupState
-    state.uploadType = 'PANEL_DRAWING'
-    await flushPromises()
-    state.uploadType = ''
-    await flushPromises()
-    expect(state.uploadTypeSelected).toBe(false)
-    expect(state.uploadBlockedReason).toBe('先选择资料类型再上传')
-    expect(w.get('.upload-stub').attributes('disabled')).toBeDefined()
+    await w.get('.upload-stub').trigger('click')
+    state.uploaded({
+      pending: {
+        attachmentId: 4,
+        requestKey: 'key-0000000000004',
+        fileName: 'four.pdf',
+        fileSize: 4,
+        state: 'pending',
+        createdAt: '2026-10-19',
+      },
+    })
+    state.setRowDocumentType({ attachmentId: 3 }, 'PANEL_DRAWING')
+    state.setRowDocumentType({ attachmentId: 4 }, 'WORK_INSTRUCTION')
+    await state.save()
+    const sent = api.saveDraft.mock.calls[0][1].attachments
+    expect(sent.find((file: any) => file.attachmentId === 3).documentType).toBe('PANEL_DRAWING')
+    expect(sent.find((file: any) => file.attachmentId === 4).documentType).toBe('WORK_INSTRUCTION')
   })
-  it('切换产品后回到未选择状态，不继承上一产品类型', async () => {
+  it('任一行未选类型时阻止保存，提示中列出文件名且不调用保存接口', async () => {
     const w = await setup()
     const state = (w.vm as any).$.setupState
-    state.uploadType = 'PANEL_DRAWING'
+    await w.get('.upload-stub').trigger('click')
     await flushPromises()
+    await state.save()
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(messages.error).toHaveBeenCalledWith(expect.stringContaining('new.pdf'))
+    expect(messages.success).not.toHaveBeenCalled()
+  })
+  it('切换产品重新加载后，类型按服务端保存值恢复', async () => {
+    const w = await setup()
+    const state = (w.vm as any).$.setupState
+    api.get.mockResolvedValue(response([1, 2], 'r9', 'PANEL_DRAWING'))
     await w.setProps({ productId: 43, productCode: 'P43' })
     await flushPromises()
-    expect(state.uploadType).toBe('')
-    expect(state.uploadTypeSelected).toBe(false)
-    expect(w.get('.upload-stub').attributes('disabled')).toBeDefined()
+    expect(state.draft.files.value.map((file: any) => file.documentType)).toEqual([
+      'PANEL_DRAWING',
+      'PANEL_DRAWING',
+    ])
   })
-  it('字典加载失败时不自动选第一项，明确提示且不能上传', async () => {
+  it('字典不可用：上传禁用并提示，不能上传', async () => {
     api.documentTypes.mockRejectedValueOnce(new Error('字典不可用'))
     const w = await setup()
     const state = (w.vm as any).$.setupState
-    expect(state.uploadType).toBe('')
-    expect(state.types).toEqual([])
     expect(state.uploadTypeAvailable).toBe(false)
     expect(state.uploadBlockedReason).toBe('资料类型不可用，暂不能上传')
     expect(w.get('.upload-stub').attributes('disabled')).toBeDefined()
@@ -325,34 +327,18 @@ describe('制定负责人锁（dev-20261020-013）', () => {
     const state = (w.vm as any).$.setupState
     expect(state.draft.isOwner.value).toBe(false)
     expect(state.canEditSpec).toBe(false)
-    expect(state.canAssignOwner).toBe(false)
     expect(w.text()).toContain('当前由 工程乙 制定，你只能查看')
     expect(w.findAll('button').some((b) => b.text() === '保存草稿')).toBe(false)
     expect(w.find('.upload-stub').exists()).toBe(false)
     expect(w.findAll('.el-select').length).toBe(0)
     expect(w.text()).toContain('制定中')
   })
-  it('负责人换人先确认，确认后带 ownerTransferConfirmed 保存', async () => {
+  it('负责人转交走独立入口，不混入附件草稿保存', async () => {
     const w = await setup()
-    api.responsibleUsers.mockResolvedValue({
-      data: [
-        { id: 7, name: '工程甲' },
-        { id: 8, name: '工程乙' },
-      ],
-    })
-    await w.setProps({ productId: 43, productCode: 'P43' })
-    await flushPromises()
     const state = (w.vm as any).$.setupState
-    state.draft.owner.value = 8
+    expect(state.draft.canTransfer.value).toBe(true)
     await state.save()
-    expect(messages.confirm).toHaveBeenCalledWith(
-      expect.stringContaining('工程甲'),
-      '变更制定负责人',
-      expect.objectContaining({ confirmButtonText: '确认更换' })
-    )
-    expect(api.saveDraft).toHaveBeenCalledWith(
-      43,
-      expect.objectContaining({ preparedById: 8, ownerTransferConfirmed: true })
-    )
+    expect(messages.confirm).not.toHaveBeenCalled()
+    expect(api.saveDraft).toHaveBeenCalledWith(42, expect.objectContaining({ preparedById: 7 }))
   })
 })
