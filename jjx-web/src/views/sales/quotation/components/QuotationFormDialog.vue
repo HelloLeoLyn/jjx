@@ -400,6 +400,8 @@ const codeGenVisible = ref(false)
 const codeGenRow = ref<any>(null)
 const codeGenInitState = ref<Partial<ProductCodeState>>({})
 const qShortName = ref('')
+/** 当前生效客户 ID：区分「换客户」与「同一客户重选」（dev-20261020-005） */
+const activeCustomerId = ref<number | null>(null)
 
 /** 本单已占用的流水号（排除当前编辑行自身；新增行 codeGenRow 为 null 时取全部） */
 const usedSerialsForCodeGen = computed(() => {
@@ -472,6 +474,10 @@ watch(
   (val) => {
     uploadedAttachmentIds.value = []
     visible.value = val
+    // 打开/切换单据时同步客户身份快照：编辑回填是程序赋值，不触发 change，不覆盖单据自带联系人
+    if (val) {
+      activeCustomerId.value = props.formData.customerId ? Number(props.formData.customerId) : null
+    }
   },
   { immediate: true }
 )
@@ -480,17 +486,27 @@ watch(visible, (val) => {
   emit('update:modelValue', val)
 })
 
+/**
+ * 客户变化（dev-20261020-005）：联系人/电话跟随新客户档案
+ * 1）换客户 → 用新客户档案覆盖；客户没填则置空，不保留上一位客户的值；
+ * 2）同一客户重选 → 不覆盖，保留用户手工修改；
+ * 3）清空客户 → 联系人/电话一并清空。
+ */
 const onCustomerChange = (val: any, customer: any) => {
+  const nextCustomerId = val ? Number(val) : null
+  const customerChanged = activeCustomerId.value !== nextCustomerId
   if (customer) {
     props.formData.customerName = customer.customerName
     qShortName.value = (customer.customerShortName || '').substring(0, 3)
-    // 联系人/电话照销售订单、样品单口径带出客户档案值（仅在为空时带，用户可改）
-    if (!props.formData.contactPerson) props.formData.contactPerson = customer.contactPerson || ''
-    if (!props.formData.contactPhone) props.formData.contactPhone = customer.contactPhone || ''
   } else {
     props.formData.customerName = ''
     qShortName.value = ''
   }
+  if (customerChanged) {
+    props.formData.contactPerson = nextCustomerId ? customer?.contactPerson || '' : ''
+    props.formData.contactPhone = nextCustomerId ? customer?.contactPhone || '' : ''
+  }
+  activeCustomerId.value = nextCustomerId
   productOptions.value = []
   props.formData.items.forEach((item: any) => {
     item.productId = undefined
