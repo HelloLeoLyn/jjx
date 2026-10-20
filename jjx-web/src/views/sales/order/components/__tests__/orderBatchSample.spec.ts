@@ -1,3 +1,31 @@
+vi.mock('element-plus/es/components/base/style/css', () => ({}))
+vi.mock('element-plus/es/components/icon/style/css', () => ({}))
+vi.mock('element-plus/es/components/overlay/style/css', () => ({}))
+vi.mock('element-plus/es/components/tooltip/style/css', () => ({}))
+vi.mock('element-plus/es/components/scrollbar/style/css', () => ({}))
+vi.mock('element-plus/es/components/popper/style/css', () => ({}))
+vi.mock('element-plus/es/components/select/style/css', () => ({}))
+vi.mock('element-plus/es/components/option/style/css', () => ({}))
+vi.mock('element-plus/es/components/tag/style/css', () => ({}))
+vi.mock('element-plus/es/components/input-number/style/css', () => ({}))
+vi.mock('element-plus/es/components/row/style/css', () => ({}))
+vi.mock('element-plus/es/components/col/style/css', () => ({}))
+vi.mock('element-plus/es/components/dialog/style/css', () => ({}))
+vi.mock('element-plus/es/components/alert/style/css', () => ({}))
+vi.mock('element-plus/es/components/descriptions/style/css', () => ({}))
+vi.mock('element-plus/es/components/descriptions-item/style/css', () => ({}))
+vi.mock('element-plus/es/components/form/style/css', () => ({}))
+vi.mock('element-plus/es/components/form-item/style/css', () => ({}))
+vi.mock('element-plus/es/components/date-picker/style/css', () => ({}))
+vi.mock('element-plus/es/components/input/style/css', () => ({}))
+vi.mock('element-plus/es/components/table/style/css', () => ({}))
+vi.mock('element-plus/es/components/table-column/style/css', () => ({}))
+vi.mock('element-plus/es/components/checkbox/style/css', () => ({}))
+vi.mock('element-plus/es/components/link/style/css', () => ({}))
+vi.mock('element-plus/es/components/empty/style/css', () => ({}))
+vi.mock('element-plus/es/components/button/style/css', () => ({}))
+vi.mock('element-plus/es/components/loading/style/css', () => ({}))
+vi.mock('element-plus/es/components/message/style/css', () => ({}))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h, provide, inject } from 'vue'
@@ -9,7 +37,8 @@ import { SalesOrderStatusEnum } from '@/enums/sales/OrderEnum'
 vi.mock('@/api/sales/sampleOrder', () => ({
   sampleOrderApi: { getOrderSampleOptions: vi.fn(), createBatchFromOrder: vi.fn() },
 }))
-vi.mock('element-plus', () => ({
+vi.mock('element-plus', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('element-plus')>()),
   ElMessage: { success: vi.fn(), warning: vi.fn() },
   ElAlert: { props: ['title'], template: '<p class="alert">{{ title }}</p>' },
 }))
@@ -215,6 +244,66 @@ describe('sales order batch sampling', () => {
     await flushPromises()
     expect(w.text()).toContain('batch rolled back')
     expect((w.get('[aria-label="P1打样数量"]').element as HTMLInputElement).value).toBe('3')
+    w.unmount()
+  })
+})
+
+describe('sales order sample progress summary', () => {
+  it('summarizes unsampled products and keeps all available', async () => {
+    const w = render()
+    await flushPromises()
+    expect(w.text()).toContain('本单 3 个产品，0 个已有进行中样品单，可为剩余 3 个发起打样')
+    expect(
+      w.findAll('input[type=checkbox]').every((b) => b.attributes('disabled') === undefined)
+    ).toBe(true)
+    w.unmount()
+  })
+  it('keeps active A disabled and allows submitting B', async () => {
+    const data = options(2)
+    data.items[0].activeSamples = [
+      { orderId: 80, orderNo: 'SP80', sampleStatus: SampleOrderStatusEnum.CREATED.value },
+    ]
+    vi.mocked(sampleOrderApi.getOrderSampleOptions).mockResolvedValue({ data } as any)
+    const w = render()
+    await flushPromises()
+    expect(w.text()).toContain('本单 2 个产品，1 个已有进行中样品单，可为剩余 1 个发起打样')
+    expect((w.get('[aria-label="选择P1"]').element as HTMLInputElement).checked).toBe(false)
+    await w.get('[aria-label="选择P2"]').setValue(true)
+    await submit(w).trigger('click')
+    await flushPromises()
+    expect(sampleOrderApi.createBatchFromOrder).toHaveBeenCalledWith(
+      100,
+      expect.objectContaining({ items: [{ itemId: 2, quantity: 1, remark: '' }] })
+    )
+    expect(w.emitted('created')).toHaveLength(1)
+    w.unmount()
+  })
+  it('all active shows existing links without submit, closing a sample restores availability on refresh', async () => {
+    const data = options(1)
+    data.items[0].activeSamples = [
+      { orderId: 80, orderNo: 'SP80', sampleStatus: SampleOrderStatusEnum.CREATED.value },
+    ]
+    vi.mocked(sampleOrderApi.getOrderSampleOptions).mockResolvedValue({ data } as any)
+    const w = render()
+    await flushPromises()
+    expect(w.text()).toContain('全部产品已有进行中样品单')
+    expect(w.text()).toContain('SP80')
+    expect(w.findAll('button').some((b) => b.text().startsWith('发起打样'))).toBe(false)
+    expect(w.findAll('input[type=checkbox]')).toHaveLength(0)
+    await w
+      .findAll('button')
+      .find((b) => b.text() === 'SP80')!
+      .trigger('click')
+    expect(sampleOrderApi.createBatchFromOrder).not.toHaveBeenCalled()
+    vi.mocked(sampleOrderApi.getOrderSampleOptions).mockResolvedValue({ data: options(1) } as any)
+    await w
+      .findAll('button')
+      .find((b) => b.text() === '刷新资料')!
+      .trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('可为剩余 1 个发起打样')
+    expect(w.get('[aria-label="选择P1"]').attributes('disabled')).toBeUndefined()
+    expect(submit(w)).toBeDefined()
     w.unmount()
   })
 })

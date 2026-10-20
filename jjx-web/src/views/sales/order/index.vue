@@ -328,6 +328,7 @@ import ReviewDialog from './components/ReviewDialog.vue'
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue'
 import OrderBatchSampleDialog, {
   sampleEntryBlockedReason,
+  sampleEntryLabel,
 } from './components/OrderBatchSampleDialog.vue'
 import GeneratePlanDialog from './components/GeneratePlanDialog.vue'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
@@ -354,7 +355,7 @@ const orderRowActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
   {
     key: 'sample',
-    label: '发起打样',
+    label: ({ row }) => sampleEntryLabel(row),
     permission: 'sales:sample:add',
     // 与后端 requireSampleableOrderStatus 同口径：仅未结束订单可发起，已发货/已完成/已取消及未知状态置灰并给原因
     disabled: ({ row }) => !!sampleEntryBlockedReason(row.orderStatus),

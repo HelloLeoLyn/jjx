@@ -226,6 +226,9 @@ export interface SalesOrderQueryDTO {
  * 销售订单响应VO
  */
 export interface SalesOrderVO {
+  /** 只读打样进度；旧接口可能不返回 */
+  activeSampleCount?: number | null
+  sampleableProductCount?: number | null
   /** 订单ID */
   orderId: number
   /** 订单编号 */

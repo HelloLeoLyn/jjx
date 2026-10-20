@@ -1,14 +1,45 @@
+vi.mock('element-plus/es/components/base/style/css', () => ({}))
+vi.mock('element-plus/es/components/icon/style/css', () => ({}))
+vi.mock('element-plus/es/components/overlay/style/css', () => ({}))
+vi.mock('element-plus/es/components/tooltip/style/css', () => ({}))
+vi.mock('element-plus/es/components/scrollbar/style/css', () => ({}))
+vi.mock('element-plus/es/components/popper/style/css', () => ({}))
+vi.mock('element-plus/es/components/select/style/css', () => ({}))
+vi.mock('element-plus/es/components/option/style/css', () => ({}))
+vi.mock('element-plus/es/components/tag/style/css', () => ({}))
+vi.mock('element-plus/es/components/input-number/style/css', () => ({}))
+vi.mock('element-plus/es/components/row/style/css', () => ({}))
+vi.mock('element-plus/es/components/col/style/css', () => ({}))
+vi.mock('element-plus/es/components/dialog/style/css', () => ({}))
+vi.mock('element-plus/es/components/alert/style/css', () => ({}))
+vi.mock('element-plus/es/components/descriptions/style/css', () => ({}))
+vi.mock('element-plus/es/components/descriptions-item/style/css', () => ({}))
+vi.mock('element-plus/es/components/form/style/css', () => ({}))
+vi.mock('element-plus/es/components/form-item/style/css', () => ({}))
+vi.mock('element-plus/es/components/date-picker/style/css', () => ({}))
+vi.mock('element-plus/es/components/input/style/css', () => ({}))
+vi.mock('element-plus/es/components/table/style/css', () => ({}))
+vi.mock('element-plus/es/components/table-column/style/css', () => ({}))
+vi.mock('element-plus/es/components/checkbox/style/css', () => ({}))
+vi.mock('element-plus/es/components/link/style/css', () => ({}))
+vi.mock('element-plus/es/components/empty/style/css', () => ({}))
+vi.mock('element-plus/es/components/button/style/css', () => ({}))
+vi.mock('element-plus/es/components/loading/style/css', () => ({}))
+vi.mock('element-plus/es/components/message/style/css', () => ({}))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, h, inject, provide } from 'vue'
-import Dialog, { sampleEntryBlockedReason } from '../OrderBatchSampleDialog.vue'
+import Dialog, { sampleEntryBlockedReason, sampleEntryLabel } from '../OrderBatchSampleDialog.vue'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SalesOrderStatusEnum } from '@/enums/sales/OrderEnum'
 
 vi.mock('@/api/sales/sampleOrder', () => ({
   sampleOrderApi: { getOrderSampleOptions: vi.fn(), createBatchFromOrder: vi.fn() },
 }))
-vi.mock('element-plus', () => ({ ElMessage: { success: vi.fn() } }))
+vi.mock('element-plus', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('element-plus')>()),
+  ElMessage: { success: vi.fn() },
+}))
 vi.mock('../../../sample-order/components/SampleDetail.vue', () => ({
   default: { template: '<div />' },
 }))
@@ -183,8 +214,37 @@ describe('sales order sample status gate', () => {
     const w = render(SalesOrderStatusEnum.PRODUCING.value)
     await flushPromises()
     expect(sampleOrderApi.getOrderSampleOptions).toHaveBeenCalledWith(100)
-    expect(w.find('.alert').exists()).toBe(false)
+    expect(w.text()).not.toContain('不可发起打样')
+    expect(w.text()).toContain('本单 1 个产品，0 个已有进行中样品单')
     expect(submitButton(w)!.attributes('disabled')).toBeUndefined()
     w.unmount()
+  })
+})
+
+describe('sales order sample progress label', () => {
+  it.each([
+    [0, 3, '发起打样'],
+    [1, 2, '发起打样（剩余 2）'],
+    [3, 0, '查看打样'],
+    [undefined, 0, '发起打样'],
+    [1, undefined, '发起打样'],
+    [null, null, '发起打样'],
+    [null, 0, '发起打样'],
+    [1, null, '发起打样'],
+  ])('active=%s remaining=%s gives %s', (active, remaining, label) => {
+    expect(
+      sampleEntryLabel({
+        orderStatus: SalesOrderStatusEnum.DRAFT.value,
+        activeSampleCount: active,
+        sampleableProductCount: remaining,
+      })
+    ).toBe(label)
+  })
+  it('terminal reason takes priority over fully active progress', () => {
+    const orderStatus = SalesOrderStatusEnum.COMPLETED.value
+    expect(sampleEntryLabel({ orderStatus, activeSampleCount: 3, sampleableProductCount: 0 })).toBe(
+      '发起打样'
+    )
+    expect(sampleEntryBlockedReason(orderStatus)).toContain('不可发起打样')
   })
 })

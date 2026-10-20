@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="批量发起打样"
+    :title="allActive ? '查看打样' : '批量发起打样'"
     width="1040px"
     append-to-body
     destroy-on-close
@@ -37,6 +37,18 @@
         </div>
       </template>
       <template v-else-if="options">
+        <el-alert
+          :title="`本单 ${rows.length} 个产品，${activeProductCount} 个已有进行中样品单，可为剩余 ${sampleableProductCount} 个发起打样`"
+          type="info"
+          :closable="false"
+          style="margin-bottom: 12px"
+        />
+        <el-alert
+          v-if="allActive"
+          title="全部产品已有进行中样品单，请查看现有样品单。"
+          type="info"
+          :closable="false"
+        />
         <el-descriptions :column="3" border size="small">
           <el-descriptions-item label="来源订单">{{ options.orderNo }}</el-descriptions-item>
           <el-descriptions-item label="客户">{{ options.customerName }}</el-descriptions-item>
@@ -44,7 +56,7 @@
             >{{ options.contactPerson || '—' }} {{ options.contactPhone }}</el-descriptions-item
           >
         </el-descriptions>
-        <el-form label-width="110px" class="sample-common" :disabled="saving">
+        <el-form v-if="!allActive" label-width="110px" class="sample-common" :disabled="saving">
           <el-form-item label="期望交样日期">
             <el-date-picker
               v-model="deliveryDate"
@@ -62,7 +74,7 @@
           </el-form-item>
         </el-form>
         <el-table :data="rows" border max-height="430">
-          <el-table-column label="勾选" width="65" align="center">
+          <el-table-column v-if="!allActive" label="勾选" width="65" align="center">
             <template #default="{ row }"
               ><el-checkbox
                 v-model="row.selected"
@@ -73,7 +85,7 @@
           <el-table-column prop="productCode" label="产品编码" min-width="150" />
           <el-table-column prop="productName" label="产品名称" min-width="140" />
           <el-table-column prop="orderQuantity" label="订单数量" width="95" align="right" />
-          <el-table-column label="打样数量" width="140">
+          <el-table-column v-if="!allActive" label="打样数量" width="140">
             <template #default="{ row }">
               <el-input
                 v-model="row.quantity"
@@ -86,7 +98,7 @@
               <span v-if="row.error" class="quantity-error">{{ row.error }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="产品备注" min-width="150">
+          <el-table-column v-if="!allActive" label="产品备注" min-width="150">
             <template #default="{ row }"
               ><el-input
                 v-model="row.remark"
@@ -118,10 +130,10 @@
         >刷新资料</el-button
       >
       <el-button :disabled="saving" @click="visible = false">{{
-        created.length ? '关闭' : '取消'
+        created.length || allActive ? '关闭' : '取消'
       }}</el-button>
       <el-button
-        v-if="!created.length"
+        v-if="!created.length && !allActive"
         type="primary"
         :loading="saving"
         :disabled="loading || !!blockedReason || !selected.length"
@@ -135,6 +147,7 @@
 </template>
 
 <script lang="ts">
+import type { SalesOrderVO } from '@/types/sales/order'
 import { SalesOrderStatusEnum } from '@/enums/sales/OrderEnum'
 
 /** 允许发起打样的订单状态：未结束订单（含生产中补打样），与后端 requireSampleableOrderStatus 保持一致。 */
@@ -147,6 +160,24 @@ const SAMPLEABLE_ORDER_STATUSES: number[] = [
   SalesOrderStatusEnum.CONFIRMED.value,
   SalesOrderStatusEnum.PRODUCING.value,
 ]
+
+/** 缺失任何计数时保留旧入口；订单终态闸门优先。 */
+export function sampleEntryLabel(
+  order: Pick<SalesOrderVO, 'orderStatus' | 'activeSampleCount' | 'sampleableProductCount'>
+): string {
+  if (sampleEntryBlockedReason(order.orderStatus)) return '发起打样'
+  const { activeSampleCount: active, sampleableProductCount: remaining } = order
+  if (
+    active == null ||
+    remaining == null ||
+    !Number.isInteger(active) ||
+    !Number.isInteger(remaining) ||
+    active <= 0 ||
+    remaining < 0
+  )
+    return '发起打样'
+  return remaining > 0 ? `发起打样（剩余 ${remaining}）` : '查看打样'
+}
 
 /**
  * 打样入口状态闸门（dev-20261018-039）：非终态返回空串；终态返回原因；未知/空状态明确拒绝。
@@ -183,6 +214,11 @@ const visible = computed({
 type Row = OrderSampleOption & { selected: boolean; quantity: string | number; error: string }
 const options = ref<OrderSampleOptions>()
 const rows = ref<Row[]>([])
+const activeProductCount = computed(
+  () => rows.value.filter((r) => r.activeSamples.length > 0).length
+)
+const sampleableProductCount = computed(() => rows.value.length - activeProductCount.value)
+const allActive = computed(() => rows.value.length > 0 && sampleableProductCount.value === 0)
 const loading = ref(false)
 const saving = ref(false)
 const deliveryDate = ref('')

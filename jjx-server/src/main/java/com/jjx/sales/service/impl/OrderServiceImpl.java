@@ -70,6 +70,7 @@ import java.util.Set;
 public class OrderServiceImpl implements IOrderService {
 
     private final OrderMapper orderMapper;
+    private final com.jjx.sales.mapper.SalesSampleOrderMapper sampleOrderMapper;
     /** 2026-09-21（dev-20260921-013）：订单提交生产改手写 payload（带 orderNo）。 */
     private final com.jjx.event.EventPublisher eventPublisher;
     private final RedisSequenceService redisSequenceService;
@@ -102,9 +103,42 @@ public class OrderServiceImpl implements IOrderService {
         // Entity 转 VO
         List<SalesOrderVO> voList = orderConverter.toVOList(orderPage.getRecords());
 
+        fillSampleProgress(voList);
+
         // 返回分页结果
         return PageResult.of(orderPage, voList);
     }
+    /** 只读展示失败不影响列表主数据；所有行先置零，整页仅一次查询。 */
+    void fillSampleProgress(List<SalesOrderVO> orders) {
+        if (orders == null || orders.isEmpty()) return;
+        Map<Long, SalesOrderVO> byId = new HashMap<>();
+        orders.forEach(order -> {
+            order.setActiveSampleCount(0);
+            order.setSampleableProductCount(0);
+            if (order.getOrderId() != null) byId.put(order.getOrderId(), order);
+        });
+        if (byId.isEmpty()) return;
+        try {
+            var statuses = List.of(com.jjx.sales.enums.SampleOrderStatusEnum.CREATED,
+                    com.jjx.sales.enums.SampleOrderStatusEnum.REQUEST, com.jjx.sales.enums.SampleOrderStatusEnum.ENGINEERING,
+                    com.jjx.sales.enums.SampleOrderStatusEnum.SAMPLE_READY, com.jjx.sales.enums.SampleOrderStatusEnum.SAMPLE_SENT,
+                    com.jjx.sales.enums.SampleOrderStatusEnum.REJECTED).stream()
+                    .map(com.jjx.sales.enums.SampleOrderStatusEnum::getValue).toList();
+            var progress = sampleOrderMapper.selectOrderSampleProgress(new ArrayList<>(byId.keySet()), "SALES_ORDER",
+                    com.jjx.sales.enums.SalesOrderTypeEnum.SAMPLE.getCode(), statuses);
+            if (progress == null) return;
+            progress.forEach(count -> {
+                var order = byId.get(count.getOrderId());
+                if (order != null) {
+                    order.setActiveSampleCount(count.getActiveSampleCount() == null ? 0 : count.getActiveSampleCount());
+                    order.setSampleableProductCount(count.getSampleableProductCount() == null ? 0 : count.getSampleableProductCount());
+                }
+            });
+        } catch (Exception e) {
+            log.warn("订单打样进度汇总查询失败，列表按零展示", e);
+        }
+    }
+
     /**
      * 列表查询（不分页）
      */

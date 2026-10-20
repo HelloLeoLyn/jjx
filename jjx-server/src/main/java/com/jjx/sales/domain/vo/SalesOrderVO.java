@@ -15,6 +15,12 @@ import java.util.List;
 @Schema(description = "销售订单响应VO")
 public class SalesOrderVO {
 
+    @Schema(description = "来源订单进行中样品单数（只读汇总）")
+    private Integer activeSampleCount;
+
+    @Schema(description = "尚无进行中样品单的产品行数（只读汇总）")
+    private Integer sampleableProductCount;
+
     /** 样品单一对一产品快照。 */
     private Long sampleProductId;
     private String sampleProductCode;
