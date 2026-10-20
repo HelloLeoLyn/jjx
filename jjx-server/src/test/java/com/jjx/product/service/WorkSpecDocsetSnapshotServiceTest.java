@@ -97,6 +97,11 @@ class WorkSpecDocsetSnapshotServiceTest {
         ArgumentCaptor<String> queries = ArgumentCaptor.forClass(String.class);
         verify(jdbc, times(6)).queryForList(queries.capture(), any(Object[].class));
         verify(customerDocuments).lockForSnapshot(product.getProductId());
+        String referenceSql = queries.getAllValues().stream()
+                .filter(sql -> sql.contains("FROM sys_attachment_ref r JOIN sys_attachment"))
+                .findFirst().orElseThrow();
+        assertTrue(referenceSql.contains("source_type IN ('product','work_spec')"), referenceSql);
+        assertTrue(referenceSql.contains("r.source_type,r.ref_state"), referenceSql);
         String routingSql = queries.getAllValues().stream()
                 .filter(sql -> sql.contains("FROM engineering_routing_item "))
                 .findFirst().orElseThrow();
@@ -201,7 +206,7 @@ class WorkSpecDocsetSnapshotServiceTest {
             when(attachmentMapper.selectActiveForUpdate(att.getId())).thenReturn(att);
         }
         when(workSpecService.get(3L)).thenReturn(spec);
-        when(jdbc.queryForObject(contains("source_type='product'"),eq(Long.class),any(),any(),any())).thenReturn(1L);
+        when(jdbc.queryForObject(contains("source_type IN ('product','work_spec')"),eq(Long.class),any(),any(),any())).thenReturn(1L);
         var frozen = service.build(product,"V2.0","定版人",LocalDateTime.now(),null);
         assertEquals(List.of(43L,42L),frozen.files().stream().map(WorkSpecDocsetSnapshotService.SnapshotFile::attachmentId).toList());
         assertEquals("工程甲",json.readTree(frozen.json()).path("spec").path("preparedByName").asText());
@@ -219,11 +224,38 @@ class WorkSpecDocsetSnapshotServiceTest {
         var entry = spec.putArray("draftAttachments").addObject().put("attachmentId",42L).put("documentType","STRUCTURE_DRAWING").put("sha256",att.getSha256());
         when(workSpecService.get(3L)).thenReturn(spec);
         when(attachmentMapper.selectActiveForUpdate(42L)).thenReturn(att);
-        when(jdbc.queryForObject(contains("source_type='product'"),eq(Long.class),any(),any(),any())).thenReturn(0L);
-        assertThrows(BusinessException.class,()->service.build(product,"V1.0","x",LocalDateTime.now(),null));
-        when(jdbc.queryForObject(contains("source_type='product'"),eq(Long.class),any(),any(),any())).thenReturn(1L);
+        when(jdbc.queryForObject(contains("source_type IN ('product','work_spec')"),eq(Long.class),any(),any(),any())).thenReturn(0L);
+        when(jdbc.queryForObject(contains("source_type IN ('product','work_spec')"),eq(Long.class),any(),any())).thenReturn(0L);
+        String removed = assertThrows(BusinessException.class,()->service.build(product,"V1.0","x",LocalDateTime.now(),null)).getMessage();
+        assertTrue(removed.contains("B.pdf（ID=42）"), removed);
+        assertTrue(removed.contains("移除"), removed);
+        when(jdbc.queryForObject(contains("source_type IN ('product','work_spec')"),eq(Long.class),any(),any())).thenReturn(1L);
+        String changed = assertThrows(BusinessException.class,()->service.build(product,"V1.0","x",LocalDateTime.now(),null)).getMessage();
+        assertTrue(changed.contains("B.pdf（ID=42）资料类型已变化"), changed);
+        when(jdbc.queryForObject(contains("source_type IN ('product','work_spec')"),eq(Long.class),any(),any(),any())).thenReturn(1L);
         entry.put("sha256","not-the-saved-digest");
         assertTrue(assertThrows(BusinessException.class,()->service.build(product,"V1.0","x",LocalDateTime.now(),null)).getMessage().contains("内容已变化"));
+    }
+
+    @Test void missingDraftFileReportsItsNameAndId() {
+        ObjectNode draft = spec(null, false);
+        draft.put("draftManaged", true);
+        draft.putArray("draftAttachments").addObject().put("attachmentId", 42L)
+                .put("documentType", "STRUCTURE_DRAWING").put("displayName", "产品结构图.pdf");
+        when(workSpecService.get(3L)).thenReturn(draft);
+        String error = assertThrows(BusinessException.class, () -> service.build(
+                productBomless(), "V1.0", "x", LocalDateTime.now(), null)).getMessage();
+        assertTrue(error.contains("产品结构图.pdf（ID=42）文件已删除或不存在"), error);
+    }
+
+    @Test void changedWorkSpecReferenceDuringPublicationRejectsSnapshot() {
+        when(jdbc.queryForList(anyString())).thenReturn(List.of());
+        when(jdbc.queryForList(contains("FROM sys_attachment_ref r JOIN sys_attachment"), any(Object[].class)))
+                .thenReturn(List.of(Map.of("source_type", "work_spec", "document_type", "STRUCTURE_DRAWING")),
+                        List.of(Map.of("source_type", "work_spec", "document_type", "PANEL_DRAWING")));
+        String error = assertThrows(BusinessException.class, () -> service.build(
+                productBomless(), "V1.0", "x", LocalDateTime.now(), null)).getMessage();
+        assertTrue(error.contains("发布来源在读取期间发生变化"), error);
     }
 
     private void stubProcessIcon(long processId, String icon) {

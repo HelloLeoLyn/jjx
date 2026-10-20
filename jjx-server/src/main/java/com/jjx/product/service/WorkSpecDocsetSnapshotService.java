@@ -241,11 +241,21 @@ public class WorkSpecDocsetSnapshotService {
             for (JsonNode entry : spec.path("draftAttachments")) {
                 long attachmentId = entry.path("attachmentId").asLong();
                 SysAttachment att = attachmentMapper.selectActiveForUpdate(attachmentId);
-                Long bound = jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref WHERE source_type='product' AND source_id=? AND attachment_id=? AND deleted=0 AND document_type=?",
+                String label = entry.path("displayName").asText("");
+                if (label.isBlank()) label = att == null ? "附件" : att.getFileName();
+                label = label + "（ID=" + attachmentId + "）";
+                if (att == null) throw new BusinessException("定版失败：" + label + "文件已删除或不存在");
+                // 新规范附件来源为 work_spec；历史 product 引用仍可随草稿定版。
+                String refScope = " FROM sys_attachment_ref WHERE source_type IN ('product','work_spec') AND source_id=? AND attachment_id=? AND deleted=0 AND ref_state<>'draft'";
+                Long bound = jdbc.queryForObject("SELECT COUNT(*)" + refScope + " AND document_type=?",
                     Long.class, productId, attachmentId, entry.path("documentType").asText());
-                if (att == null || bound == null || bound == 0) throw new BusinessException("定版失败：草稿附件已移除、类型变化或不存在");
+                if (bound == null || bound == 0) {
+                    Long references = jdbc.queryForObject("SELECT COUNT(*)" + refScope, Long.class, productId, attachmentId);
+                    String reason = references != null && references > 0 ? "资料类型已变化" : "已从该产品的规范附件中移除";
+                    throw new BusinessException("定版失败：" + label + reason + "，请重新加载并保存草稿");
+                }
                 SnapshotFile file = buildFile(att, "work-spec-draft", false, entry.path("documentType").asText());
-                if (!entry.path("sha256").asText().isBlank() && !entry.path("sha256").asText().equalsIgnoreCase(file.sha256())) throw new BusinessException("定版失败：草稿文件内容已变化，请重新保存草稿");
+                if (!entry.path("sha256").asText().isBlank() && !entry.path("sha256").asText().equalsIgnoreCase(file.sha256())) throw new BusinessException("定版失败：" + label + "文件内容已变化，请重新保存草稿");
                 chosen.put(attachmentId, new SnapshotFile(file.attachmentId(), "PRINT_GUIDE".equals(file.documentType()) ? "print" : "atlas",
                     file.category(), file.documentType(), file.fileName(), entry.path("displayName").asText(file.fileName()),
                     file.version(), file.drawingNo(), file.fileRole(), file.mime(), file.size(), file.sha256(), file.source(), file.customerDocType(), entry.path("sortOrder").asInt()));
@@ -508,8 +518,8 @@ public class WorkSpecDocsetSnapshotService {
                 product.getProductId()));
         appendRows(token, customerDocuments.lockForSnapshot(product.getProductId()));
         appendRows(token, jdbc.queryForList("SELECT process_id,icon,update_time FROM engineering_standard_process FOR SHARE"));
-        appendRows(token, jdbc.queryForList("SELECT r.id,r.attachment_id,r.document_type,r.sort_order,r.display_name,r.remark,a.sha256,a.file_path,a.deleted "
-            + "FROM sys_attachment_ref r JOIN sys_attachment a ON a.id=r.attachment_id WHERE r.source_type='product' AND r.source_id=? AND r.deleted=0 ORDER BY r.id FOR SHARE", product.getProductId()));
+        appendRows(token, jdbc.queryForList("SELECT r.id,r.source_type,r.ref_state,r.attachment_id,r.document_type,r.sort_order,r.display_name,r.remark,a.sha256,a.file_path,a.deleted "
+            + "FROM sys_attachment_ref r JOIN sys_attachment a ON a.id=r.attachment_id WHERE r.source_type IN ('product','work_spec') AND r.source_id=? AND r.deleted=0 ORDER BY r.id FOR SHARE", product.getProductId()));
         return sha256(token.toString());
     }
 

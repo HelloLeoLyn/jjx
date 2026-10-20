@@ -240,6 +240,8 @@ const props = withDefaults(
     title?: string
     sourceType?: string
     sourceNo?: string
+    /** 未选择二级类型时展示的一级类型，仅影响展示，不代选二级类型。 */
+    defaultCategory?: string
     /** 业务锁定原因（调用方按业务传）：只读/无权限不得产生写副作用 */
     lockReason?: string
     /** 行内保存：默认隐藏；启用需会话已注入保存处理器 */
@@ -252,6 +254,7 @@ const props = withDefaults(
     title: '附件',
     sourceType: '',
     sourceNo: '',
+    defaultCategory: '',
     lockReason: '',
     rowSave: false,
     batchSave: false,
@@ -346,7 +349,7 @@ function categoryOfRow(row: TableRow): string {
   const picked = rowCategories.value[row.rowKey]
   if (picked !== undefined) return picked
   const code = docTypeOfRow(row)
-  return code ? categoryKeyOfType(code) : ''
+  return code ? categoryKeyOfType(code) : props.defaultCategory
 }
 function docTypeOfRow(row: TableRow): string {
   if (row.kind === 'ref') return session.effectiveDocumentType(row.refId, row.data.documentType)

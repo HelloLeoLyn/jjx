@@ -134,6 +134,7 @@ describe('工程图集采用作业规范草稿', () => {
     const draft = (w.vm as any).$.setupState.draft
     expect(draft.session.refs.value.map((r: any) => r.sourceType)).toEqual(['product', 'work_spec'])
     expect(w.find('.manager-stub').attributes('source-type')).toBe('work_spec')
+    expect(w.find('.manager-stub').attributes('default-category')).toBe('ENGINEERING_DOC')
     expect(draft.engineeringTypes.value.length).toBe(4)
   })
   it('按内容hash提示同内容异名重复，同名异内容不误报', async () => {

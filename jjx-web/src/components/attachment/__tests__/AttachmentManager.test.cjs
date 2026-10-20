@@ -624,3 +624,18 @@ test('005：实际模板只有一张表，只读行只渲染下载和详情，�
   assert.equal(bindings.AttachmentDocumentStatusEnum.getLabel(row.status), '历史')
   assert.equal(bindings.AttachmentDocumentStatusEnum.getLabel(bindings.tableRows.value[0].status), '待保存')
 })
+
+
+test('工程图集默认一级类型不代选二级类型，显式选择和其它入口保持各自类型', () => {
+  const { session } = buildSession({ sourceType: 'work_spec', sourceId: 42 })
+  session.pending.value = [{ attachmentId: 901, fileName: 'drawing.pdf', state: 'pending' }]
+  const { bindings } = setupManager({ session, sourceType: 'work_spec', defaultCategory: 'ENGINEERING_DOC' })
+  const row = bindings.tableRows.value[0]
+  assert.equal(bindings.categoryOfRow(row), 'ENGINEERING_DOC')
+  assert.equal(bindings.docTypeOfRow(row), '')
+  assert.equal(session.pending.value[0].documentType, undefined)
+  bindings.onRowCategory(row, 'CUSTOMER_DOC')
+  assert.equal(bindings.categoryOfRow(row), 'CUSTOMER_DOC')
+  const other = setupManager({ session, defaultCategory: '' })
+  assert.equal(other.bindings.categoryOfRow(other.bindings.tableRows.value[0]), '')
+})

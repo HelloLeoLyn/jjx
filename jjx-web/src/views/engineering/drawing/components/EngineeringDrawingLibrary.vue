@@ -70,6 +70,7 @@
       :session="draft.session"
       title="工程附件"
       source-type="work_spec"
+      default-category="ENGINEERING_DOC"
       :source-no="productCode"
       :show-ownership-filter="false"
     />
