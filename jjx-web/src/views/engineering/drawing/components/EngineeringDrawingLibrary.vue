@@ -44,7 +44,13 @@
     </div>
     <p>附件随作业规范一起定版。新版移除附件不会删除旧版文件。</p>
     <div v-if="canEdit" class="draft-actions">
-      <el-select v-model="uploadType" :disabled="draft.busy.value" style="width: 180px">
+      <el-select
+        v-model="uploadType"
+        placeholder="请选择资料类型"
+        clearable
+        :disabled="draft.busy.value"
+        style="width: 180px"
+      >
         <el-option
           v-for="type in types"
           :key="type.value"
@@ -52,10 +58,14 @@
           :value="type.value"
         />
       </el-select>
+      <span v-if="!uploadTypeAvailable" class="upload-type-hint"
+        >资料类型不可用，暂不能上传，请重试加载</span
+      >
       <AttachmentUpload
         :session="draft.session"
         :ownership="draft.ownership.value"
-        :disabled="draft.busy.value || !types.some((type) => type.value === uploadType)"
+        :disabled="draft.busy.value || !uploadTypeSelected"
+        :blocked-reason="uploadBlockedReason"
         :accept="acceptedFiles"
         :max-size-m-b="100"
         @uploaded="uploaded"
@@ -152,10 +162,21 @@ const owners = ref<{ id: number; name: string }[]>([])
 const types = computed(() =>
   draft.engineeringTypes.value.map((type) => ({ value: type.item_key, label: type.label }))
 )
-const uploadType = ref('STRUCTURE_DRAWING')
+// 上传不设默认资料类型：必须由用户明确选择，避免误登记为结构图。
+const uploadType = ref('')
+const uploadTypeAvailable = computed(() => types.value.length > 0)
+const uploadTypeSelected = computed(() =>
+  types.value.some((type) => type.value === uploadType.value)
+)
+const uploadBlockedReason = computed(() => {
+  if (!uploadTypeAvailable.value) return '资料类型不可用，暂不能上传'
+  if (!uploadTypeSelected.value) return '先选择资料类型再上传'
+  return ''
+})
+// 只在当前选择失效（字典刷新/停用）时清空，不自动回退到第一项。
 watch(types, (options) => {
-  if (!options.some((type) => type.value === uploadType.value))
-    uploadType.value = options[0]?.value || ''
+  if (uploadType.value && !options.some((type) => type.value === uploadType.value))
+    uploadType.value = ''
 })
 const acceptedFiles = [
   '.pdf',
@@ -182,6 +203,10 @@ const acceptedFiles = [
   '.xlsx',
 ]
 function uploaded(payload: { pending: PendingEntry }) {
+  if (!uploadTypeSelected.value) {
+    ElMessage.warning('先选择资料类型再上传')
+    return
+  }
   const duplicate = draft.files.value.some((file) =>
     payload.pending.sha256 && file.sha256
       ? payload.pending.sha256 === file.sha256
@@ -248,6 +273,8 @@ async function loadHistory() {
 watch(
   () => props.productId,
   async () => {
+    // 切换产品不继承上一产品的资料类型选择。
+    uploadType.value = ''
     if (!canEdit.value) return
     try {
       await draft.session.loadDocumentTypes()
@@ -274,6 +301,10 @@ defineExpose({ save, dirty: draft.dirty, busy: draft.busy })
   flex-wrap: wrap;
   gap: 10px;
   margin: 12px 0;
+}
+.upload-type-hint {
+  color: var(--el-color-warning);
+  font-size: 13px;
 }
 .draft-library > p {
   color: var(--el-text-color-secondary);
