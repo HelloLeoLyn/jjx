@@ -1,5 +1,6 @@
 import {
   computed,
+  h,
   inject,
   onBeforeUnmount,
   provide,
@@ -17,7 +18,8 @@ import {
   type ProductWorkSpec,
   type WorkSpecAttachment,
 } from '@/api/product/workSpec'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElSelect, ElOption } from 'element-plus'
+import request from '@/utils/request'
 import { useUserStore } from '@/store/modules/user'
 import { useAttachmentDocTypes } from '@/components/attachment/useAttachmentDocTypes'
 import { detectFileKind } from './versionDocset'
@@ -49,7 +51,7 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
   const recoveryContent = ref<(attempt?: ProductWorkSpec) => ProductWorkSpec | undefined>()
   let failedContent: ProductWorkSpec | undefined
   const baseline = ref('')
-  const owner = ref<number>()
+  const owner = computed(() => spec.value.preparedById)
   const prints = reactive<Record<number, boolean>>({})
   const ranks = reactive<Record<number, number>>({})
   const removed = ref<number[]>([])
@@ -63,19 +65,48 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     viewPerm: 'product:view',
     locked: computed(() => loading.value || saving.value || confirming.value || !ready.value),
   })
-  /** 制定任务锁（dev-20261020-013）：草稿已有负责人时，只有负责人可编辑；未建任务/未指定负责人不受限。 */
-  const isOwner = computed(() => {
-    const value = spec.value
-    if (!value.draftManaged || !value.preparedById) return true
-    return value.preparedById === user.userId
-  })
+  // 状态由定版标记和负责人派生，复用既有版本枚举之外不引入状态码。
+  const finalized = computed(() => !!spec.value.finalizedVersionId)
+  const isOwner = computed(
+    () => !!spec.value.preparedById && spec.value.preparedById === user.userId
+  )
+  const canWrite = computed(() => isOwner.value && !finalized.value)
+  const canClaim = computed(
+    () =>
+      ready.value &&
+      !spec.value.preparedById &&
+      !finalized.value &&
+      user.hasPermission('product:edit')
+  )
+  const canTransfer = computed(
+    () =>
+      ready.value &&
+      !!spec.value.preparedById &&
+      !finalized.value &&
+      user.hasPermission('product:edit') &&
+      (isOwner.value ||
+        user.roles.includes('admin') ||
+        user.roles.includes('engineering:all') ||
+        user.permissions.includes('*') ||
+        user.permissions.includes('*:*:*'))
+  )
+  const transferLabel = computed(() => (isOwner.value ? '转交' : '改派'))
+  const stateLabel = computed(() =>
+    finalized.value ? '已定版' : spec.value.preparedById ? '制定中' : '待制定'
+  )
   const ownerLabel = computed(() => spec.value.preparedByName || '未指定')
   const readOnlyReason = computed(() =>
-    isOwner.value ? '' : `当前由 ${ownerLabel.value} 制定，你只能查看`
+    finalized.value
+      ? '作业规范已定版，请升级新版本后修改'
+      : !spec.value.preparedById
+        ? '作业规范待制定，请有权限的用户点击制定规范'
+        : isOwner.value
+          ? ''
+          : `当前由 ${ownerLabel.value} 制定，你只能查看`
   )
   // 只读锁同样作用于附件管理区：非负责人看得到清单，但不能上传/移除/排序/改元数据。
   const baseCanEdit = session.canEdit
-  session.canEdit = computed(() => baseCanEdit.value && isOwner.value)
+  session.canEdit = computed(() => baseCanEdit.value && canWrite.value)
   // 来源切换时公共store会刷新通用引用；业务清单单独由work-spec响应接管，避免混入其它产品资料。
   const selectedRefs = ref<AttachmentRefItem[]>([])
   session.refs = selectedRefs
@@ -176,7 +207,6 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     error.value = ''
     failedContent = undefined
     spec.value = normalizeWorkSpec(value)
-    owner.value = spec.value.preparedById
     removed.value = []
     Object.keys(prints).forEach((id) => delete prints[Number(id)])
     Object.keys(ranks).forEach((id) => delete ranks[Number(id)])
@@ -217,16 +247,10 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
       if (current === generation) loading.value = false
     }
   }
-  async function save(content?: ProductWorkSpec, options?: { ownerTransferConfirmed?: boolean }) {
+  async function save(content?: ProductWorkSpec) {
     if (!ready.value || busy.value) throw new Error('草稿尚未就绪或正在处理，请稍后重试')
     if (!isOwner.value) throw new Error(readOnlyReason.value)
     if (!session.canEdit.value) throw new Error('无草稿编辑权限')
-    const ownerChanged =
-      !!owner.value &&
-      !!spec.value.preparedById &&
-      owner.value !== spec.value.preparedById
-    if (ownerChanged && !options?.ownerTransferConfirmed)
-      throw new Error('变更制定负责人需要确认')
     if (manifest.value.some((file) => !file.documentType))
       throw new Error('请为每个附件选择资料类型')
     const current = generation
@@ -241,13 +265,11 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
           '资料类型已停用、非工程技术资料或字典不可用，请重新选择：' +
             invalid.map((file) => file.displayName || file.fileName).join('、')
         )
-      // 换负责人标记随保存提交；API 类型由调用点断言，不改公共 API 声明（本卡白名单）。
       const payload = {
         revision: content?.revision || spec.value.revision,
-        preparedById: owner.value,
+        preparedById: spec.value.preparedById,
         spec: content ? workSpecContent(content) : undefined,
         attachments: manifest.value,
-        ...(ownerChanged ? { ownerTransferConfirmed: true } : {}),
       }
       const response = await productWorkSpecApi.saveDraft(
         id,
@@ -270,6 +292,78 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
       if (current === generation) saving.value = false
     }
   }
+  async function ownershipAction(target?: number, targetName?: string) {
+    if (busy.value || dirty.value || session.pendingCount.value)
+      throw new Error('请先保存或取消当前草稿改动')
+    if (target === undefined ? !canClaim.value : !canTransfer.value)
+      throw new Error('当前不可制定或转交/改派')
+    const current = generation
+    const id = productId.value
+    const revision = spec.value.revision
+    if (target !== undefined)
+      await ElMessageBox.confirm(
+        `${transferLabel.value}：${ownerLabel.value} → ${targetName || '新负责人'}。更换后原负责人立即只能查看，确认继续？`,
+        transferLabel.value,
+        { type: 'warning', confirmButtonText: '确认' + transferLabel.value }
+      )
+    if (current !== generation || id !== productId.value || revision !== spec.value.revision)
+      throw new Error('确认期间产品或草稿已变化，请重新操作')
+    if (busy.value || dirty.value || session.pendingCount.value)
+      throw new Error('请先保存或取消当前草稿改动')
+    saving.value = true
+    try {
+      const response =
+        target === undefined
+          ? await request.post(`/product/${id}/work-spec/claim`)
+          : await request.post(`/product/${id}/work-spec/transfer`, {
+              revision,
+              preparedById: target,
+              ownerTransferConfirmed: true,
+            })
+      if (current !== generation || id !== productId.value)
+        throw new Error('产品已切换，请重新加载')
+      if (!response.data?.revision) throw new Error('负责人操作未返回有效结果')
+      accept(response.data)
+    } finally {
+      if (current === generation) saving.value = false
+    }
+  }
+  async function transfer() {
+    // 用独立确认操作转交，不与草稿正文或附件保存混在一起。
+    if (!canTransfer.value || busy.value || dirty.value || session.pendingCount.value)
+      throw new Error('当前不可转交/改派，请先保存或取消草稿改动')
+    const current = generation
+    const id = productId.value
+    const response = await productWorkSpecApi.responsibleUsers(id)
+    const users = (response.data || []) as { id: number; name: string }[]
+    const choices = users.filter((person) => person.id !== spec.value.preparedById)
+    const selected = ref<number>()
+    await ElMessageBox.confirm(
+      () =>
+        h(
+          ElSelect,
+          {
+            modelValue: selected.value,
+            'onUpdate:modelValue': (value: number) => {
+              selected.value = value
+            },
+            placeholder: '请选择新负责人',
+            filterable: true,
+          },
+          () =>
+            choices.map((person) =>
+              h(ElOption, { key: person.id, value: person.id, label: person.name })
+            )
+        ),
+      transferLabel.value + '作业规范',
+      { confirmButtonText: '下一步', cancelButtonText: '取消' }
+    )
+    if (current !== generation || id !== productId.value) throw new Error('产品已切换，请重新加载')
+    const target = choices.find((person) => person.id === selected.value)
+    if (!target) throw new Error('请选择有效的新负责人')
+    await ownershipAction(target.id, target.name)
+  }
+
   async function recover(discard = false) {
     if (!conflict.value || busy.value) return
     const current = generation
@@ -289,7 +383,7 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
           .join(' → ') || '无'
       await ElMessageBox.confirm(
         discard
-          ? '放弃本地文字、附件增删、排序和负责人改动，重读服务端草稿？'
+          ? '放弃本地文字、附件增删和排序改动，重读服务端草稿？'
           : `服务端附件：${names(latest.draftFiles || [])}；负责人：${latest.preparedByName || latest.preparedById || '未指定'}。\n本地附件：${names(files.value)}；负责人：${owner.value || '未指定'}。\n服务端正文：${JSON.stringify(workSpecContent(latest))}\n本地正文：${JSON.stringify(workSpecContent(localContent || spec.value))}\n重新应用将以本地完整附件清单${localContent ? '和正文' : ''}替换以上服务端内容，可能移除他人新增附件。请核对后明确确认；取消则保留双方内容。`,
         discard ? '放弃并重读' : '冲突比较 · 重新应用本地改动',
         {
@@ -314,8 +408,8 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
         const originalRevision = spec.value.revision
         spec.value.revision = latest.revision
         try {
-          // 冲突比较弹窗已完整列出负责人差异并获确认，重试视为已确认换人。
-          await save(local, { ownerTransferConfirmed: true })
+          // 保存重试仍只保存正文和附件，不变更负责人。
+          await save(local)
           error.value = ''
           recovered.value++
         } catch (cause) {
@@ -376,7 +470,6 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
       ready.value = false
       spec.value = normalizeWorkSpec()
       baseline.value = ''
-      owner.value = undefined
       session.refs.value = []
       removed.value = []
       void load()
@@ -393,6 +486,14 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     spec,
     owner,
     isOwner,
+    canWrite,
+    canClaim,
+    canTransfer,
+    transferLabel,
+    stateLabel,
+    finalized,
+    claim: () => ownershipAction(),
+    transfer,
     ownerLabel,
     readOnlyReason,
     files,

@@ -11,6 +11,9 @@ import com.jjx.product.mapper.ProductWorkSpecMapper;
 import com.jjx.product.mapper.ProductWorkSpecVersionMapper;
 import com.jjx.system.mapper.SysAttachmentMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.mockito.MockedStatic;
+import com.jjx.system.utils.SecurityUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -42,9 +45,13 @@ class ProductWorkSpecVersionPublishTest {
     @Mock com.jjx.system.mapper.SysAttachmentRefMapper attachmentRefMapper;
 
     ProductWorkSpecVersionService service;
+    MockedStatic<SecurityUtils> actor;
+    @AfterEach void closeActor() { actor.close(); }
 
     @BeforeEach
     void setUp() {
+        actor = mockStatic(SecurityUtils.class);
+        actor.when(SecurityUtils::getUserId).thenReturn(7L);
         service = new ProductWorkSpecVersionService(workSpecMapper, productMapper, attachmentMapper,
                 versionMapper, itemMapper, docsetSnapshotService, attachmentRefMapper, new ObjectMapper());
     }
@@ -64,7 +71,7 @@ class ProductWorkSpecVersionPublishTest {
         lock.put("product_id", 3L);
         when(workSpecMapper.lock(3L)).thenReturn(lock);
         when(productMapper.selectById(3L)).thenReturn(product());
-        when(workSpecMapper.read(3L)).thenReturn("{}");
+        when(workSpecMapper.read(3L)).thenReturn("{\"preparedById\":7,\"preparedByName\":\"工程甲\"}");
         when(versionMapper.selectCount(any())).thenReturn(0L);
         when(attachmentMapper.selectList(any())).thenReturn(List.of());
     }

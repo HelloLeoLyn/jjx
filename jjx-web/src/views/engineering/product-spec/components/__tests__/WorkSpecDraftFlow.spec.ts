@@ -35,10 +35,13 @@ const api = vi.hoisted(() => ({
   listRefs: vi.fn(),
   documentTypes: vi.fn(),
   removeRef: vi.fn(),
+  post: vi.fn(),
+  responsibleUsers: vi.fn(),
 }))
 const messages = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
+  warning: vi.fn(),
   prompt: vi.fn(),
   confirm: vi.fn(),
 }))
@@ -62,6 +65,7 @@ vi.mock('@/api/product/workSpec', async (original) => ({
   ...(await original<typeof import('@/api/product/workSpec')>()),
   productWorkSpecApi: api,
 }))
+vi.mock('@/utils/request', () => ({ default: { post: api.post } }))
 vi.mock('@/api/system/attachmentRef', () => ({ attachmentRefApi: api }))
 vi.mock('@/api/system/attachment', () => ({
   attachmentApi: { list: vi.fn().mockResolvedValue({ data: [] }) },
@@ -212,23 +216,21 @@ describe('作业规范统一草稿会话', () => {
     expect(state.draft.session.pendingCount.value).toBe(1)
     expect(state.publishing).toBe(false)
   })
-  it('移除仅暂存，新增/改类型/清空备注/打印/排序/负责人一并保存最终集合', async () => {
+  it('移除仅暂存，新增/改类型/清空备注/打印/排序一并保存最终集合', async () => {
     const { draft } = await setup()
     await draft.session.unbind(101)
     expect(api.removeRef).not.toHaveBeenCalled()
     draft.session.setEdit(102, { documentType: 'PANEL_DRAWING', remark: null })
     draft.register(pending(), 'STRUCTURE_DRAWING')
     draft.prints[2] = false
-    draft.owner.value = 8
     draft.move(3, -1)
     expect(draft.dirty.value).toBe(true)
-    await expect(draft.save()).rejects.toThrow('变更制定负责人需要确认')
-    await draft.save(undefined, { ownerTransferConfirmed: true })
+    await draft.save()
     expect(api.saveDraft).toHaveBeenCalledWith(
       42,
       expect.objectContaining({
         revision: 'r1',
-        preparedById: 8,
+        preparedById: 7,
         attachments: [
           expect.objectContaining({
             attachmentId: 3,
@@ -247,28 +249,25 @@ describe('作业规范统一草稿会话', () => {
     expect(draft.session.pending.value).toEqual([])
     expect(draft.dirty.value).toBe(false)
   })
-  it('保存失败保留新增、移除、负责人和排序；重试成功才清队列', async () => {
+  it('保存失败保留新增、移除和排序；重试成功才清队列', async () => {
     const { draft } = await setup()
     await draft.session.unbind(101)
     draft.register(pending(), 'STRUCTURE_DRAWING')
-    draft.owner.value = 8
     api.saveDraft.mockRejectedValueOnce(new Error('revision conflict'))
-    await expect(draft.save(undefined, { ownerTransferConfirmed: true })).rejects.toThrow(
-      'revision conflict'
-    )
+    await expect(draft.save()).rejects.toThrow('revision conflict')
     expect(draft.files.value.map((file) => file.attachmentId)).toEqual([2, 3])
-    expect(draft.owner.value).toBe(8)
+    expect(draft.owner.value).toBe(7)
     expect(draft.saving.value).toBe(false)
     expect(draft.session.pendingCount.value).toBe(1)
-    await draft.save(undefined, { ownerTransferConfirmed: true })
+    await draft.save()
     expect(draft.session.pendingCount.value).toBe(0)
   })
   it('升级不覆盖未保存改动；成功升级采用冻结正文、文件和负责人', async () => {
     const { draft } = await setup()
-    draft.owner.value = 8
+    draft.move(2, -1)
     await expect(draft.upgrade(10)).rejects.toThrow('先保存或取消')
     expect(api.upgradeDraft).not.toHaveBeenCalled()
-    draft.owner.value = 7
+    draft.move(2, 1)
     api.upgradeDraft.mockResolvedValue({
       data: { ...saved([4, 5], 'r3'), preparedById: 8, preparedByName: '工程乙' },
     })
@@ -432,13 +431,12 @@ describe('定版差异使用已保存草稿与冻结基版', () => {
     await publish
     expect(state.draft.busy.value).toBe(false)
   })
-  it('仅重排和改负责人、无变化重试都不会伪报附件增删', async () => {
+  it('仅重排、无变化重试都不会伪报附件增删', async () => {
     api.listVersions.mockResolvedValue({ data: [{ id: 10 }] })
     api.getVersion.mockResolvedValue(snapshot([1, 2]))
     const state = await versionPanel()
     state.draft.move(2, -1)
-    state.draft.owner.value = 8
-    api.get.mockResolvedValue({ data: { ...saved([2, 1], 'r2'), preparedById: 8 } })
+    api.get.mockResolvedValue({ data: saved([2, 1], 'r2') })
     await state.publish()
     await state.publish()
     for (const call of messages.prompt.mock.calls) {
@@ -469,11 +467,10 @@ describe('持续严格revision冲突恢复', () => {
     await draft.session.unbind(101)
     draft.register(pending(), 'STRUCTURE_DRAWING')
     draft.move(3, -1)
-    draft.owner.value = 8
     const text = normalizeWorkSpec({ ...draft.spec.value, engineeringRequirements: '本地文字' })
     const retry = { ownerTransferConfirmed: true }
-    await expect(draft.save(text, retry)).rejects.toThrow('其他入口修改')
-    await expect(draft.save(text, retry)).rejects.toThrow('其他入口修改')
+    await expect(draft.save(text)).rejects.toThrow('其他入口修改')
+    await expect(draft.save(text)).rejects.toThrow('其他入口修改')
     server = { ...saved([1, 2, 4], 'server-r2'), engineeringRequirements: '他人文字' }
     messages.confirm.mockRejectedValueOnce('cancel')
     await expect(draft.recover()).rejects.toBe('cancel')
@@ -487,7 +484,7 @@ describe('持续严格revision冲突恢复', () => {
       42,
       expect.objectContaining({
         revision: 'server-r2',
-        preparedById: 8,
+        preparedById: 7,
         spec: expect.objectContaining({ engineeringRequirements: '本地文字' }),
         attachments: [
           expect.objectContaining({ attachmentId: 3 }),
@@ -592,15 +589,51 @@ describe('制定负责人锁（dev-20261020-013）', () => {
     await expect(draft.save()).rejects.toThrow('你只能查看')
     expect(api.saveDraft).not.toHaveBeenCalled()
   })
-  it('换负责人未确认被拒；显式确认后随保存提交', async () => {
+  it('显式制定后才能编辑，未指定负责人不能通过保存自动占用', async () => {
+    api.get.mockResolvedValue({ data: normalizeWorkSpec({ revision: 'r0' }) })
     const { draft } = await setup()
-    draft.owner.value = 8
-    await expect(draft.save()).rejects.toThrow('变更制定负责人需要确认')
+    expect(draft.stateLabel.value).toBe('待制定')
+    expect(draft.canClaim.value).toBe(true)
+    expect(draft.session.canEdit.value).toBe(false)
+    await expect(draft.save()).rejects.toThrow()
+    api.post.mockResolvedValue({ data: saved() })
+    await draft.claim()
+    expect(api.post).toHaveBeenCalledWith('/product/42/work-spec/claim')
+    expect(draft.stateLabel.value).toBe('制定中')
+    expect(draft.session.canEdit.value).toBe(true)
     expect(api.saveDraft).not.toHaveBeenCalled()
-    await draft.save(undefined, { ownerTransferConfirmed: true })
-    expect(api.saveDraft).toHaveBeenCalledWith(
-      42,
-      expect.objectContaining({ preparedById: 8, ownerTransferConfirmed: true })
-    )
+  })
+  it('转交是独立确认操作，不提交附件和正文，转交后立即只读', async () => {
+    const { draft } = await setup()
+    api.responsibleUsers.mockResolvedValue({ data: [{ id: 8, name: '工程乙' }] })
+    messages.confirm.mockImplementationOnce(async (render) => {
+      render().props['onUpdate:modelValue'](8)
+      return true
+    })
+    api.post.mockResolvedValue({ data: { ...saved(), preparedById: 8, preparedByName: '工程乙' } })
+    await draft.transfer()
+    expect(messages.confirm).toHaveBeenCalled()
+    expect(api.post).toHaveBeenCalledWith('/product/42/work-spec/transfer', {
+      revision: 'r1',
+      preparedById: 8,
+      ownerTransferConfirmed: true,
+    })
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(draft.session.canEdit.value).toBe(false)
+    expect(draft.readOnlyReason.value).toContain('工程乙')
+  })
+  it('无编辑权限不能制定；定版后不能保存或转交', async () => {
+    auth.edit = false
+    api.get.mockResolvedValue({ data: normalizeWorkSpec({ revision: 'r0' }) })
+    const { draft } = await setup()
+    expect(draft.canClaim.value).toBe(false)
+    await expect(draft.claim()).rejects.toThrow()
+    auth.edit = true
+    api.get.mockResolvedValue({ data: { ...saved(), finalizedVersionId: 10 } })
+    await draft.load(true)
+    expect(draft.stateLabel.value).toBe('已定版')
+    expect(draft.canTransfer.value).toBe(false)
+    expect(draft.session.canEdit.value).toBe(false)
+    await expect(draft.save()).rejects.toThrow()
   })
 })

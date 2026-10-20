@@ -2,14 +2,15 @@
   <el-card shadow="never" class="wsv-card">
     <template #header>
       <div class="wsv-head">
-        <span class="wsv-title">作业规范定版</span>
+        <span class="wsv-title">{{ draft.canWrite.value ? '作业规范定版' : '作业规范' }}</span>
         <div>
           <el-button
+            v-if="draft.canWrite.value"
             v-hasPermi="['product:work-spec:publish']"
             type="primary"
             size="small"
             :loading="publishing"
-            :disabled="blocked || draft.busy.value || !draft.ready.value || !draft.isOwner.value"
+            :disabled="blocked || draft.busy.value || !draft.ready.value || !draft.canWrite.value"
             :title="draft.isOwner.value ? '' : '只有当前制定负责人可以定版'"
             @click="publish"
             >定版</el-button
@@ -23,8 +24,8 @@
     </template>
 
     <el-alert
-      v-if="!draft.isOwner.value"
-      :title="draft.readOnlyReason.value + '；定版与升级仅负责人可操作'"
+      v-if="draft.readOnlyReason.value"
+      :title="draft.readOnlyReason.value"
       type="info"
       :closable="false"
       show-icon
@@ -355,7 +356,7 @@ async function load() {
 
 async function publish() {
   if (props.blocked || publishing.value || draft.busy.value || !draft.ready.value) return
-  if (!draft.isOwner.value) {
+  if (!draft.canWrite.value) {
     ElMessage.warning(draft.readOnlyReason.value + '；只有当前制定负责人可以定版')
     return
   }

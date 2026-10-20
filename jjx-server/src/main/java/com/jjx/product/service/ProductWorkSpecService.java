@@ -95,6 +95,44 @@ public class ProductWorkSpecService {
 
     public List<Map<String, Object>> responsibleUsers() { return mapper.responsibleUsers(UserConstants.USER_STATUS_NORMAL); }
 
+    @Transactional(rollbackFor = Exception.class)
+    public ObjectNode claim(Long id) {
+        ObjectNode before = parse(raw(lock(id)));
+        Long actor = SecurityUtils.getUserId();
+        String name = responsibleName(actor);
+        if (mapper.claim(id, actor, name) != 1)
+            throw new BusinessException("已被他人制定或已定版，请重新加载作业规范");
+        ObjectNode after = parse(mapper.read(id));
+        recordOperation(id, "制定规范", before, after);
+        return response(id, mapper.read(id));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public ObjectNode transfer(Long id, ProductWorkSpecDraftDTO input) {
+        String previous = raw(lock(id));
+        checkRevision(input.getRevision(), previous);
+        ObjectNode before = parse(previous);
+        if (!before.hasNonNull("preparedById") || before.hasNonNull("finalizedVersionId"))
+            throw new BusinessException("只有制定中的作业规范可以转交/改派");
+        boolean owner = Objects.equals(before.path("preparedById").asLong(), SecurityUtils.getUserId());
+        if (!owner && !canAssignOwner()) throw new BusinessException("只有当前制定负责人或工程主管可以转交/改派");
+        if (!Boolean.TRUE.equals(input.getOwnerTransferConfirmed())) throw new BusinessException("转交/改派负责人需要确认");
+        Long target = input.getPreparedById();
+        String name = responsibleName(target);
+        if (Objects.equals(target, before.path("preparedById").asLong())) throw new BusinessException("请选择其他负责人");
+        ObjectNode after = before.deepCopy();
+        after.put("preparedById", target); after.put("preparedByName", name); after.put("draftManaged", true);
+        mapper.write(id, after.toString());
+        recordOperation(id, (owner ? "转交：" : "改派：") + ownerLabel(before) + "→" + name, before, after);
+        return response(id, mapper.read(id));
+    }
+
+    private String responsibleName(Long id) {
+        return responsibleUsers().stream().filter(row -> Objects.equals(((Number) row.get("id")).longValue(), id))
+            .map(row -> Objects.toString(row.get("name"), "")).findFirst()
+            .orElseThrow(() -> new BusinessException("请选择有效的制定负责人"));
+    }
+
     public ObjectNode draftHistory(Long id, Long before) {
         if (mapper.exists(id) == 0) throw new BusinessException("产品不存在");
         var rows = mapper.draftHistory(id.toString(), before, YesNoEnum.YES.getCode());
@@ -119,29 +157,14 @@ public class ProductWorkSpecService {
         for (String key : List.of("printRemarks", "colorCheck", "basedOnVersionId", "finalizedVersionId", "finalizedFromRevision"))
             if (old.has(key)) next.set(key, old.get(key).deepCopy());
         next.put("draftManaged", true);
-        // 负责人即当前制定任务：首次保存默认当前用户；已存在负责人时只有本人或工程主管可改派（dev-20261020-013）。
-        Long actor = SecurityUtils.getUserId();
-        Long existingOwner = old.path("draftManaged").asBoolean() && old.hasNonNull("preparedById")
-            ? old.path("preparedById").asLong() : null;
-        Long requestedOwner = input.getPreparedById();
-        boolean ownerChanged = existingOwner != null && requestedOwner != null
-            && !Objects.equals(requestedOwner, existingOwner);
-        if (ownerChanged && !Objects.equals(existingOwner, actor) && !canAssignOwner())
-            throw new BusinessException("只有当前制定负责人或工程主管可以变更负责人");
-        if (ownerChanged && !Boolean.TRUE.equals(input.getOwnerTransferConfirmed()))
-            throw new BusinessException("变更负责人需要确认：由 " + ownerLabel(old) + " 改为新负责人");
-        if (existingOwner != null && !ownerChanged && !Objects.equals(existingOwner, actor))
-            throw new BusinessException(readOnlyMessage(old));
-        if (existingOwner == null && requestedOwner != null && !Objects.equals(requestedOwner, actor) && !canAssignOwner())
-            throw new BusinessException("首次保存只能以当前用户为制定负责人；如需指派他人，请由工程主管操作");
-        Long owner = requestedOwner != null ? requestedOwner
-            : existingOwner != null ? existingOwner : actor;
-        Map<String, Object> user = responsibleUsers().stream().filter(row -> Objects.equals(((Number) row.get("id")).longValue(), owner))
-            .findFirst().orElseThrow(() -> new BusinessException("请选择有效的编制负责人"));
-        next.put("preparedById", owner); next.put("preparedByName", Objects.toString(user.get("name"), ""));
+        requireOwner(old);
+        if (input.getPreparedById() != null && !Objects.equals(input.getPreparedById(), old.path("preparedById").asLong()))
+            throw new BusinessException("请使用转交/改派操作变更负责人");
+        next.set("preparedById", old.get("preparedById"));
+        next.set("preparedByName", old.get("preparedByName"));
         if (input.getAttachments() == null) {
             if (!old.path("draftManaged").asBoolean()) throw new BusinessException("首次保存请提交完整附件清单");
-            next.set("draftAttachments", old.path("draftAttachments").deepCopy());
+            if (old.has("draftAttachments")) next.set("draftAttachments", old.get("draftAttachments").deepCopy());
         } else {
             var manifest = next.putArray("draftAttachments");
             Set<Long> ids = new java.util.HashSet<>();
@@ -179,9 +202,7 @@ public class ProductWorkSpecService {
         if (!sameContent(old, next)) {
             beginEdit(old, next);
             mapper.write(id, next.toString());
-            boolean ownerMoved = existingOwner != null
-                && !Objects.equals(old.path("preparedById").asText(), next.path("preparedById").asText());
-            recordOperation(id, ownerMoved ? "负责人变更：" + ownerLabel(old) + "→" + ownerLabel(next) : "保存草稿", old, next);
+            recordOperation(id, "保存草稿", old, next);
         }
         return response(id, mapper.read(id));
     }
@@ -415,6 +436,7 @@ public class ProductWorkSpecService {
         String oldRaw = raw(row);
         checkRevision(revision, oldRaw);
         ObjectNode data = parse(oldRaw);
+        requireOwner(data);
         if (!Objects.equals(sourceRevision, sourceFingerprint(id, data)))
             throw new BusinessException("材料、流程或结构图已变化，请重新加载后确认");
         data.put("confirmedBy", SecurityUtils.getUsername());
@@ -425,9 +447,11 @@ public class ProductWorkSpecService {
         return response(id, mapper.read(id));
     }
 
-    /** 制定任务锁：草稿已有负责人时，只有负责人可编辑；无草稿任务/未指定负责人不受限。 */
+    /** 显式制定后仅负责人可编辑；定版后需通过升级进入下一次制定。 */
     private void requireOwner(ObjectNode data) {
-        if (!data.path("draftManaged").asBoolean() || !data.hasNonNull("preparedById")) return;
+        if (data.hasNonNull("finalizedVersionId")) throw new BusinessException("作业规范已定版，请先升级新版本");
+        if (!data.hasNonNull("preparedById") || data.path("preparedById").asLong() == 0)
+            throw new BusinessException("请先点击制定规范");
         if (Objects.equals(data.path("preparedById").asLong(), SecurityUtils.getUserId())) return;
         throw new BusinessException(readOnlyMessage(data));
     }
@@ -473,7 +497,7 @@ public class ProductWorkSpecService {
     }
     private ObjectNode response(Long id, String raw) {
         ObjectNode data = parse(raw);
-        if (data.path("draftManaged").asBoolean()) {
+        if (data.path("draftAttachments").isArray()) {
             Map<Long, Map<String, Object>> available = new java.util.HashMap<>();
             for (var file : mapper.draftFiles(id)) available.put(((Number) file.get("attachmentId")).longValue(), file);
             var files = data.putArray("draftFiles");

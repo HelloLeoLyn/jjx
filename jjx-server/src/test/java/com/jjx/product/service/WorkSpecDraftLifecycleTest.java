@@ -62,6 +62,14 @@ class WorkSpecDraftLifecycleTest {
         when(mapper.read(1L)).thenAnswer(call -> db.queryForObject("SELECT work_spec_json FROM product WHERE product_id=1", String.class));
         when(mapper.exists(1L)).thenReturn(1);
         when(mapper.write(eq(1L), anyString())).thenAnswer(call -> db.update("UPDATE product SET work_spec_json=? WHERE product_id=1", call.getArgument(1, String.class)));
+        when(mapper.claim(eq(1L), anyLong(), anyString())).thenAnswer(call -> {
+            String before = mapper.read(1L);
+            ObjectNode value = (ObjectNode) json.readTree(before);
+            if (value.hasNonNull("preparedById") || value.hasNonNull("finalizedVersionId")) return 0;
+            value.put("preparedById", call.getArgument(1, Long.class));
+            value.put("preparedByName", call.getArgument(2, String.class)); value.put("draftManaged", true);
+            return db.update("UPDATE product SET work_spec_json=? WHERE product_id=1 AND work_spec_json=?", value.toString(), before);
+        });
         when(mapper.responsibleUsers(anyString())).thenReturn(List.of(Map.of("id", 7L, "name", "工程甲"), Map.of("id", 8L, "name", "工程乙")));
         when(mapper.engineeringType(anyString())).thenAnswer(call -> "STRUCTURE_DRAWING".equals(call.getArgument(0)) ? 1 : 0);
         when(mapper.draftFiles(1L)).thenAnswer(call -> db.query("SELECT * FROM draft_ref ORDER BY sort_order", (rs, i) -> {
@@ -128,21 +136,21 @@ class WorkSpecDraftLifecycleTest {
         var value = new ProductWorkSpecDraftDTO(); value.setRevision(drafts.get(1L).path("revision").asText());
         value.setAttachments(Arrays.stream(ids).map(id -> { var file = new ProductWorkSpecDraftDTO.File(); file.setAttachmentId(id); file.setDocumentType("STRUCTURE_DRAWING"); file.setPrint(true); return file; }).toList()); return value;
     }
-    ObjectNode save(Long... ids) { var input = input(ids); return tx.execute(status -> drafts.saveDraft(1L,input)); }
+    ObjectNode save(Long... ids) { if (!drafts.get(1L).hasNonNull("preparedById")) tx.execute(status -> drafts.claim(1L)); var input = input(ids); return tx.execute(status -> drafts.saveDraft(1L,input)); }
     ProductWorkSpecVersion publish() { String rev = drafts.get(1L).path("revision").asText(); return tx.execute(status -> versions.publish(1L,null,rev)); }
     long count(String table) { return db.queryForObject("SELECT COUNT(*) FROM "+table, Long.class); }
 
-    @Test void ownerDefaultsChangesAndNoOpDoesNotProduceExtraHistory() {
+    @Test void explicitClaimAndTransferAndNoOpDoNotProduceExtraHistory() {
         ObjectNode first = save(11L,12L); assertEquals("工程甲",first.path("preparedByName").asText());
         // 保存草稿主流水归入「产品作业规范」，不再写历史模块名。
         assertEquals("产品作业规范", db.queryForObject("SELECT module FROM operation_log ORDER BY id DESC LIMIT 1", String.class));
         long logsBefore = count("operation_log"); save(11L,12L); assertEquals(logsBefore,count("operation_log"));
         var changed = input(11L,12L); changed.setPreparedById(8L); changed.setOwnerTransferConfirmed(true);
-        tx.execute(status -> drafts.saveDraft(1L,changed));
+        tx.execute(status -> drafts.transfer(1L,changed));
         assertEquals("工程乙",drafts.get(1L).path("preparedByName").asText());
         // 负责人变更写独立流水，含前后姓名，并归入「产品作业规范」模块。
         var latest = db.queryForMap("SELECT action,module FROM operation_log ORDER BY id DESC LIMIT 1");
-        assertEquals("负责人变更：工程甲→工程乙", latest.get("ACTION"));
+        assertEquals("转交：工程甲→工程乙", latest.get("ACTION"));
         assertEquals("产品作业规范", latest.get("MODULE"));
     }
     @Test void v1RetainsOldFilesAndOwnerWhenV2RemovesAndReorders() throws Exception {
@@ -152,7 +160,9 @@ class WorkSpecDraftLifecycleTest {
         tx.execute(status -> drafts.upgradeDraft(1L,upgrade));
         assertEquals("工程甲",drafts.get(1L).path("preparedByName").asText());
         var second = input(13L,12L); second.setPreparedById(8L); second.setOwnerTransferConfirmed(true);
-        tx.execute(status -> drafts.saveDraft(1L,second));
+        save(13L,12L);
+        second.setRevision(drafts.get(1L).path("revision").asText());
+        tx.execute(status -> drafts.transfer(1L,second));
         // 换负责人后定版只归新负责人。
         actor.when(SecurityUtils::getUserId).thenReturn(8L);
         actor.when(SecurityUtils::getUsername).thenReturn("eng8");
@@ -169,6 +179,8 @@ class WorkSpecDraftLifecycleTest {
         long version = tx.execute(status -> versions.publish(1L,null,revision)).getId();
         assertEquals(version,publish().getId()); assertEquals(1,count("version_record"));
         assertEquals(version,tx.execute(status -> versions.publish(1L,null,revision)).getId());
+        var upgrade = input(); upgrade.setBaseVersionId(version);
+        tx.execute(status -> drafts.upgradeDraft(1L,upgrade));
         save(12L);
         assertThrows(BusinessException.class, () -> tx.execute(status -> versions.publish(1L,null,revision)));
     }
@@ -189,7 +201,7 @@ class WorkSpecDraftLifecycleTest {
         BusinessException saveDenied = assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L,snoop)));
         assertTrue(saveDenied.getMessage().contains("只能查看"));
         var grab = input(11L); grab.setPreparedById(8L); grab.setOwnerTransferConfirmed(true);
-        assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L,grab)));
+        assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.transfer(1L,grab)));
         String revision = drafts.get(1L).path("revision").asText();
         BusinessException publishDenied = assertThrows(BusinessException.class, () -> tx.execute(status -> versions.publish(1L,null,revision)));
         assertTrue(publishDenied.getMessage().contains("当前制定负责人"));
@@ -199,7 +211,7 @@ class WorkSpecDraftLifecycleTest {
     @Test void ownerTransferNeedsExplicitConfirmationAndManagerCanReassign() {
         save(11L);
         var unconfirmed = input(11L); unconfirmed.setPreparedById(8L);
-        BusinessException confirmDenied = assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L,unconfirmed)));
+        BusinessException confirmDenied = assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.transfer(1L,unconfirmed)));
         assertTrue(confirmDenied.getMessage().contains("需要确认"));
         assertEquals("工程甲",drafts.get(1L).path("preparedByName").asText());
         // 工程主管（engineering:all）可把负责人改派给他人，即使自己不是当前负责人。
@@ -207,10 +219,96 @@ class WorkSpecDraftLifecycleTest {
         actor.when(SecurityUtils::getDisplayName).thenReturn("工程主管");
         actor.when(() -> SecurityUtils.hasRole("engineering:all")).thenReturn(true);
         var reassign = input(11L); reassign.setPreparedById(8L); reassign.setOwnerTransferConfirmed(true);
-        ObjectNode result = tx.execute(status -> drafts.saveDraft(1L,reassign));
+        ObjectNode result = tx.execute(status -> drafts.transfer(1L,reassign));
         assertEquals("工程乙",result.path("preparedByName").asText());
-        assertEquals("负责人变更：工程甲→工程乙", db.queryForObject(
+        assertEquals("改派：工程甲→工程乙", db.queryForObject(
             "SELECT action FROM operation_log ORDER BY id DESC LIMIT 1", String.class));
+    }
+
+    @Test void unclaimedSaveAndPublishFailWithoutImplicitOwner() {
+        String before = mapper.read(1L);
+        var input = input(11L);
+        assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L,input)));
+        assertThrows(BusinessException.class, this::publish);
+        assertEquals(before, mapper.read(1L));
+    }
+
+    @Test void claimPreservesBodyAndManifestAndLoserDoesNotWriteLog() throws Exception {
+        ObjectNode original = json.createObjectNode(); original.put("engineeringRequirements", "保留正文");
+        original.putArray("draftAttachments").addObject().put("attachmentId", 11L);
+        db.update("UPDATE product SET work_spec_json=? WHERE product_id=1", original.toString());
+        ObjectNode first = tx.execute(status -> drafts.claim(1L));
+        assertEquals("保留正文", first.path("engineeringRequirements").asText());
+        assertEquals(original.path("draftAttachments").toString(), first.path("draftAttachments").toString());
+        actor.when(SecurityUtils::getUserId).thenReturn(8L);
+        assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.claim(1L)));
+        assertEquals(1, count("operation_log"));
+        assertEquals("制定规范", db.queryForObject("SELECT action FROM operation_log", String.class));
+    }
+
+    @Test void upgradingLegacyVersionWithoutOwnerWaitsForClaimAndCannotOverwriteActiveDraft() {
+        db.update("INSERT INTO version_record VALUES (99,?)", "{\"spec\":{\"draftAttachments\":[],\"engineeringRequirements\":\"旧版正文\"},\"files\":[]}");
+        var upgrade = input(); upgrade.setBaseVersionId(99L);
+        ObjectNode result = tx.execute(status -> drafts.upgradeDraft(1L, upgrade));
+        assertFalse(result.hasNonNull("preparedById"));
+        assertEquals("旧版正文", result.path("engineeringRequirements").asText());
+        var unclaimed = input();
+        assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L, unclaimed)));
+        tx.execute(status -> drafts.claim(1L));
+        String before = mapper.read(1L);
+        upgrade.setRevision(drafts.get(1L).path("revision").asText());
+        assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.upgradeDraft(1L, upgrade)));
+        assertEquals(before, mapper.read(1L));
+    }
+
+    @Test void concurrentClaimOnlyOneTransactionWins() throws Exception {
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var results = new ArrayList<java.util.concurrent.Future<Boolean>>();
+            for (long userId : List.of(7L, 8L)) results.add(pool.submit(() -> {
+                try (MockedStatic<SecurityUtils> user = mockStatic(SecurityUtils.class)) {
+                    user.when(SecurityUtils::getUserId).thenReturn(userId);
+                    user.when(SecurityUtils::getUsername).thenReturn("engineer" + userId);
+                    user.when(SecurityUtils::getDisplayName).thenReturn("工程" + userId);
+                    start.await();
+                    try { tx.execute(status -> drafts.claim(1L)); return true; }
+                    catch (BusinessException denied) { assertTrue(denied.getMessage().contains("已被他人制定")); return false; }
+                }
+            }));
+            start.countDown();
+            int winners = 0;
+            for (var result : results) if (result.get(10, java.util.concurrent.TimeUnit.SECONDS)) winners++;
+            assertEquals(1, winners); assertEquals(1, count("operation_log"));
+        } finally { pool.shutdown(); }
+    }
+
+    @Test void failedTransferLogRollsBackOwnerAndDoesNotChangeAttachments() {
+        save(11L); String before = mapper.read(1L);
+        var handoff = input(); handoff.setPreparedById(8L); handoff.setOwnerTransferConfirmed(true);
+        when(logs.insert(any(SysOperLog.class))).thenThrow(new IllegalStateException("log unavailable"));
+        assertThrows(IllegalStateException.class, () -> tx.execute(status -> drafts.transfer(1L, handoff)));
+        assertEquals(before, mapper.read(1L));
+        assertEquals(1, count("draft_ref"));
+    }
+
+    @Test void claimLogFailureRollsBack() {
+        String original = mapper.read(1L);
+        when(logs.insert(any(SysOperLog.class))).thenThrow(new IllegalStateException("log unavailable"));
+        assertThrows(IllegalStateException.class, () -> tx.execute(status -> drafts.claim(1L)));
+        assertEquals(original, mapper.read(1L));
+    }
+
+    @Test void transferredOwnerImmediatelyLosesWriteWhileRecipientCanSave() {
+        save(11L);
+        var handoff = input(); handoff.setPreparedById(8L); handoff.setOwnerTransferConfirmed(true);
+        tx.execute(status -> drafts.transfer(1L, handoff));
+        assertThrows(BusinessException.class, () -> save(12L));
+        actor.when(SecurityUtils::getUserId).thenReturn(8L);
+        save(12L); publish();
+        assertThrows(BusinessException.class, () -> save(13L));
+        var after = input(); after.setPreparedById(7L); after.setOwnerTransferConfirmed(true);
+        assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.transfer(1L, after)));
     }
 
     @Test void duplicateFilesInvalidOwnerAndStaleSaveDoNotChangeDraft() {

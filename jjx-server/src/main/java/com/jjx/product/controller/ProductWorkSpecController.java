@@ -64,6 +64,16 @@ public class ProductWorkSpecController {
     public Result<ObjectNode> saveDraft(@PathVariable Long productId, @Validated @RequestBody ProductWorkSpecDraftDTO dto) {
         return Result.success(service.saveDraft(productId, dto));
     }
+    @PostMapping("/claim")
+    @SaCheckPermission("product:edit")
+    public Result<ObjectNode> claim(@PathVariable Long productId) { return Result.success(service.claim(productId)); }
+
+    @PostMapping("/transfer")
+    @SaCheckPermission("product:edit")
+    public Result<ObjectNode> transfer(@PathVariable Long productId, @Validated @RequestBody ProductWorkSpecDraftDTO dto) {
+        return Result.success(service.transfer(productId, dto));
+    }
+
     @PostMapping("/draft/from-version")
     @SaCheckPermission("product:edit")
     public Result<ObjectNode> upgradeDraft(@PathVariable Long productId, @Validated @RequestBody ProductWorkSpecDraftDTO dto) {

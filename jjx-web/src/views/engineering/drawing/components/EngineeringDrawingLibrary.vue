@@ -8,7 +8,7 @@
       <el-button v-else link @click="draft.load()">重试</el-button>
     </el-alert>
     <el-alert
-      v-if="!draft.isOwner.value"
+      v-if="draft.readOnlyReason.value"
       :title="draft.readOnlyReason.value"
       type="info"
       :closable="false"
@@ -17,25 +17,23 @@
     <div class="draft-actions">
       <el-tag
         :type="draft.spec.value.finalizedVersionId && !draft.dirty.value ? 'success' : 'warning'"
-        >{{ draft.spec.value.finalizedVersionId && !draft.dirty.value ? '已定版' : '制定中' }}</el-tag
+        >{{ draft.stateLabel.value }}</el-tag
       >
       <span>制定负责人</span>
-      <el-select
-        v-if="canAssignOwner"
-        v-model="draft.owner.value"
-        placeholder="默认当前用户"
-        filterable
+      <span>{{ draft.ownerLabel.value }}</span>
+      <el-button
+        v-if="draft.canClaim.value"
         :disabled="draft.busy.value"
-        style="width: 160px"
+        type="primary"
+        @click="ownerAction(false)"
+        >制定规范</el-button
       >
-        <el-option
-          v-for="person in owners"
-          :key="person.id"
-          :value="person.id"
-          :label="person.name"
-        />
-      </el-select>
-      <span v-else>{{ draft.spec.value.preparedByName || '未指定' }}</span>
+      <el-button
+        v-if="draft.canTransfer.value"
+        :disabled="draft.busy.value"
+        @click="ownerAction(true)"
+        >{{ draft.transferLabel.value }}</el-button
+      >
       <el-button
         v-if="canEditSpec"
         type="primary"
@@ -97,7 +95,9 @@
           <el-checkbox
             :model-value="row.print"
             :disabled="
-              !canEditSpec || draft.busy.value || detectFileKind(row.fileName, row.fileType) === 'other'
+              !canEditSpec ||
+              draft.busy.value ||
+              detectFileKind(row.fileName, row.fileType) === 'other'
             "
             @update:model-value="(value) => (draft.prints[row.attachmentId] = !!value)"
             >打印</el-checkbox
@@ -142,7 +142,6 @@
 import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
-import { usePermission } from '@/composables/usePermission'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import type { PendingEntry } from '@/composables/useAttachmentRefs'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
@@ -164,15 +163,8 @@ const props = withDefaults(
 const emit = defineEmits<{ busy: [value: boolean]; loaded: [files: any[]]; updated: [] }>()
 const draft = useWorkSpecAttachmentSession(toRef(props, 'productId'), toRef(props, 'productCode'))
 const user = useUserStore()
-const { hasRole } = usePermission()
 const canEdit = computed(() => user.hasPermission('product:edit'))
-// 制定任务锁：非负责人只读；管理员/工程主管可改派负责人（dev-20261020-013）。
-const canManageOwner = computed(() => hasRole('engineering:all'))
-const canEditSpec = computed(() => canEdit.value && draft.isOwner.value)
-const canAssignOwner = computed(
-  () => canEdit.value && (draft.isOwner.value || canManageOwner.value)
-)
-const owners = ref<{ id: number; name: string }[]>([])
+const canEditSpec = computed(() => canEdit.value && draft.canWrite.value)
 // 两个工程入口均承接后端ENGINEERING_DOC有效字典；旧categories固定列表不再截断。
 const types = computed(() =>
   draft.engineeringTypes.value.map((type) => ({ value: type.item_key, label: type.label }))
@@ -236,27 +228,22 @@ function uploaded(payload: { pending: PendingEntry }) {
     )
 }
 async function save() {
-  const nextOwner = draft.owner.value
-  const ownerChanged =
-    !!nextOwner && !!draft.spec.value.preparedById && nextOwner !== draft.spec.value.preparedById
-  if (ownerChanged) {
-    const target = owners.value.find((person) => person.id === nextOwner)?.name || '新负责人'
-    try {
-      await ElMessageBox.confirm(
-        `将制定负责人由「${draft.spec.value.preparedByName || '原负责人'}」改为「${target}」？更换后原负责人立即只能查看，本次变更写入操作记录。`,
-        '变更制定负责人',
-        { confirmButtonText: '确认更换', cancelButtonText: '取消', type: 'warning' }
-      )
-    } catch {
-      return
-    }
-  }
   try {
-    await draft.save(undefined, ownerChanged ? { ownerTransferConfirmed: true } : undefined)
+    await draft.save()
     ElMessage.success('草稿已保存')
     emit('updated')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '保存失败，改动已保留')
+  }
+}
+async function ownerAction(transfer: boolean) {
+  try {
+    if (transfer) await draft.transfer()
+    else await draft.claim()
+    emit('updated')
+  } catch (cause) {
+    if (cause !== 'cancel' && cause !== 'close')
+      ElMessage.error(cause instanceof Error ? cause.message : '负责人操作失败')
   }
 }
 async function recover(discard: boolean) {
@@ -270,7 +257,7 @@ async function recover(discard: boolean) {
 }
 async function cancel() {
   try {
-    await ElMessageBox.confirm('放弃尚未保存的附件、顺序和负责人改动？', '取消改动')
+    await ElMessageBox.confirm('放弃尚未保存的附件和顺序改动？', '取消改动')
     draft.session.pending.value = []
     draft.session.persist()
     await draft.load(true)
@@ -308,10 +295,8 @@ watch(
     if (!canEdit.value) return
     try {
       await draft.session.loadDocumentTypes()
-      const result = await productWorkSpecApi.responsibleUsers(props.productId)
-      owners.value = result.data || []
     } catch (error) {
-      ElMessage.error(error instanceof Error ? error.message : '负责人加载失败')
+      ElMessage.error(error instanceof Error ? error.message : '资料类型加载失败')
     }
   },
   { immediate: true }

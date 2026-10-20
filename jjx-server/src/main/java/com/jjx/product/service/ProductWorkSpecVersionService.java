@@ -100,6 +100,10 @@ public class ProductWorkSpecVersionService {
         }
         ObjectNode draft = (ObjectNode) parseSafe(raw);
         boolean managed = draft.path("draftManaged").asBoolean();
+        if (!draft.hasNonNull("preparedById") || draft.path("preparedById").asLong() == 0)
+            throw new BusinessException("请先点击制定规范");
+        if (!java.util.Objects.equals(draft.path("preparedById").asLong(), SecurityUtils.getUserId()))
+            throw new BusinessException("只有当前制定负责人可以定版；如需他人定版，请先转交负责人");
         if (managed) {
             if (draft.hasNonNull("finalizedVersionId") && (sha256(raw).equals(revision) || draft.path("finalizedFromRevision").asText().equals(revision))) {
                 ProductWorkSpecVersion previous = versionMapper.selectById(draft.path("finalizedVersionId").asLong());

@@ -37,6 +37,9 @@ beforeEach(() => {
   vi.stubGlobal('crypto', {})
   api.get.mockResolvedValue({
     data: {
+      preparedById: 7,
+      preparedByName: '工程甲',
+      draftManaged: true,
       revision: 'r1',
       engineeringRequirements: '保留备注',
       draftFiles: [
@@ -88,6 +91,7 @@ describe('结构图统一草稿保存', () => {
     expect(api.saveDraft).toHaveBeenCalledWith(
       42,
       expect.objectContaining({
+        preparedById: 7,
         revision: 'r1',
         spec: expect.objectContaining({ structureFileId: 2, engineeringRequirements: '保留备注' }),
         attachments: [

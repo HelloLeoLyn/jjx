@@ -19,6 +19,16 @@ public interface ProductWorkSpecMapper {
     @Update("UPDATE product SET work_spec_json = #{json} WHERE product_id = #{id}")
     int write(@Param("id") Long id, @Param("json") String json);
 
+    /** JSON_SET only touches ownership; the predicate is the atomic claim gate. */
+    @Update("""
+        UPDATE product SET work_spec_json = JSON_SET(COALESCE(work_spec_json, JSON_OBJECT()),
+          '$.preparedById', #{ownerId}, '$.preparedByName', #{ownerName}, '$.draftManaged', CAST('true' AS JSON))
+        WHERE product_id = #{id}
+          AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(work_spec_json, '$.preparedById')), 'null') IN ('null', '0', '')
+          AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(work_spec_json, '$.finalizedVersionId')), 'null') = 'null'
+        """)
+    int claim(@Param("id") Long id, @Param("ownerId") Long ownerId, @Param("ownerName") String ownerName);
+
     @Select("SELECT user_id AS id, COALESCE(NULLIF(nick_name,''),user_name) AS name FROM sys_user WHERE del_flag=#{normal} AND status=#{normal} ORDER BY nick_name,user_id")
     List<Map<String, Object>> responsibleUsers(@Param("normal") String normal);
 

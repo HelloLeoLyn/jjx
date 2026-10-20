@@ -138,6 +138,9 @@ beforeEach(() => {
   permission.edit = true
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
   spec = normalizeWorkSpec({
+    preparedById: 7,
+    preparedByName: '工程甲',
+    draftManaged: true,
     structureFileId: 224,
     revision: 'old',
     engineeringRequirements: '保留备注',

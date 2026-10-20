@@ -10,13 +10,22 @@
               ? 'success'
               : 'warning'
           "
-          >{{
-            draftSession.spec.value.finalizedVersionId && !draftSession.dirty.value
-              ? '已定版'
-              : '制定中'
-          }}</el-tag
+          >{{ draftSession.stateLabel.value }}</el-tag
         >
         <span>制定负责人：{{ draftSession.ownerLabel.value }}</span>
+        <el-button
+          v-if="draftSession.canClaim.value"
+          :disabled="draftSession.busy.value"
+          type="primary"
+          @click="ownerAction(false)"
+          >制定规范</el-button
+        >
+        <el-button
+          v-if="draftSession.canTransfer.value"
+          :disabled="draftSession.busy.value || editing"
+          @click="ownerAction(true)"
+          >{{ draftSession.transferLabel.value }}</el-button
+        >
       </div>
       <div class="source-actions">
         <el-button :disabled="!data || loading || editing" @click="previewVisible = true"
@@ -25,7 +34,7 @@
       </div>
     </div>
     <el-alert
-      v-if="!draftSession.isOwner.value"
+      v-if="draftSession.readOnlyReason.value"
       :title="draftSession.readOnlyReason.value"
       type="info"
       :closable="false"
@@ -426,7 +435,17 @@ const draftSession = useWorkSpecAttachmentSession(
 const saveSpec = (value: ProductWorkSpec) => draftSession.save(value)
 const user = useUserStore()
 // 制定任务锁（dev-20261020-013）：非负责人只能查看，隐藏保存/上传/排序/负责人入口。
-const canEdit = computed(() => user.hasPermission('product:edit') && draftSession.isOwner.value)
+const canEdit = computed(() => user.hasPermission('product:edit') && draftSession.canWrite.value)
+async function ownerAction(transfer: boolean) {
+  try {
+    if (transfer) await draftSession.transfer()
+    else await draftSession.claim()
+    await loadData()
+  } catch (cause) {
+    if (cause !== 'cancel' && cause !== 'close')
+      ElMessage.error(cause instanceof Error ? cause.message : '负责人操作失败')
+  }
+}
 const canEditBom = computed(() => user.hasPermission('engineering:bom:edit'))
 const canEditRoute = computed(() => user.hasPermission('engineering:routing:edit'))
 const previewVisible = ref(false)
