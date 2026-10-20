@@ -115,3 +115,45 @@ test('修改BOM回填产品及既有名称，不使用新增默认值覆盖', as
   assert.equal(selector(state).selectedLabel.value, '产品甲 (P42)')
   assert.equal(state.formData.bomName, '原有名称')
 })
+
+
+test('新增BOM名称与编码默认同为产品编码-BOM，换选产品更新默认名', () => {
+  const { state } = form()
+  state.handleProductChange(42, product)
+  assert.equal(state.formData.bomName, 'P42-BOM')
+  assert.equal(state.formData.bomName, state.formData.bomCode)
+  state.handleProductChange(43, { ...product, productId: 43, productCode: 'P43' })
+  assert.equal(state.formData.bomName, 'P43-BOM')
+  assert.equal(state.formData.bomName, state.formData.bomCode)
+})
+
+test('清空产品同时清空自动名称，再选产品重新生成', () => {
+  const { state } = form()
+  state.handleProductChange(42, product)
+  state.handleProductChange(null, null)
+  assert.equal(state.formData.bomName, '')
+  assert.equal(state.formData.bomCode, '')
+  state.handleProductChange(42, product)
+  assert.equal(state.formData.bomName, 'P42-BOM')
+})
+
+test('手工名称在换选产品、清空产品和重新选择时均保留', () => {
+  const { state } = form()
+  state.handleProductChange(42, product)
+  state.formData.bomName = '客户专用BOM'
+  state.handleProductChange(43, { ...product, productId: 43, productCode: 'P43' })
+  assert.equal(state.formData.bomName, '客户专用BOM')
+  state.handleProductChange(null, null)
+  assert.equal(state.formData.bomName, '客户专用BOM')
+  state.handleProductChange(42, product)
+  assert.equal(state.formData.bomName, '客户专用BOM')
+})
+
+test('历史自动名称打开时保留，仅重新选择产品时采用新规则', async () => {
+  const { state } = form()
+  await state.loadBomData(9)
+  state.formData.bomName = '产品甲-BOM'
+  assert.equal(state.formData.bomName, '产品甲-BOM')
+  state.handleProductChange(43, { ...product, productId: 43, productCode: 'P43' })
+  assert.equal(state.formData.bomName, 'P43-BOM')
+})

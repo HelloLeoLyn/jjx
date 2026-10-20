@@ -249,16 +249,20 @@ const rules = reactive<FormRules>({
 
 // 处理产品选择变化
 const handleProductChange = (productId: number | null, product: any) => {
+  const oldCode = formData.productCode
+  const oldName = formData.productName
+  // 空白或仍沿用自动名称时，随产品更新；手工名称与编辑回填不被覆盖。
+  const hasDefaultName = !formData.bomName.trim() ||
+    (!!oldCode && formData.bomName === `${oldCode}-BOM`) ||
+    (!!oldName && formData.bomName === `${oldName}-BOM`)
   if (!product) {
     formData.productId = null
     // 2026-09-15：清空产品时同步清掉回填字段——残留会让 productOptions 非空，
     // 且提交时 productCode/productName 与 productId 不一致
-    const oldCode = formData.productCode
-    const oldName = formData.productName
     if (oldCode && formData.bomCode === `${oldCode}-BOM`) {
       formData.bomCode = ''
     }
-    if (oldName && formData.bomName === `${oldName}-BOM`) {
+    if (hasDefaultName) {
       formData.bomName = ''
     }
     formData.productCode = ''
@@ -268,7 +272,7 @@ const handleProductChange = (productId: number | null, product: any) => {
   formData.productCode = product.productCode
   formData.productName = product.productName
   formData.productId = product.productId
-  formData.bomName = `${product.productName}-BOM`
+  if (hasDefaultName) formData.bomName = `${product.productCode}-BOM`
   formData.bomCode = `${product.productCode}-BOM`
 }
 
