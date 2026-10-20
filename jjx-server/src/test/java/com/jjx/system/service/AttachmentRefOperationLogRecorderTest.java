@@ -28,6 +28,19 @@ class AttachmentRefOperationLogRecorderTest {
     }
 
     @Test
+    void workSpecAttachmentKeepsProductTimelineWithoutModuleContext() {
+        recorder.record("work_spec", 42L, null, BusinessType.INSERT.getCode(), "附件新增",
+            11L, 21L, "spec.pdf", true, List.of("新增附件"));
+        @SuppressWarnings("unchecked")
+        var captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(logSave).saveOperLogsInOrder(captor.capture());
+        SysOperLog event = (SysOperLog) captor.getValue().get(0);
+        assertEquals("product", event.getBizType());
+        assertEquals("42", event.getBizId());
+        assertEquals("产品作业规范", event.getModule());
+    }
+
+    @Test
     void recordsOnlyAfterCommitAndGroupsChangesForOneBusinessDocument() {
         TransactionSynchronizationManager.initSynchronization();
         recorder.record("quotation", 41L, "trace-41", BusinessType.UPDATE.getCode(),

@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ElInput, ElSelect, ElTable, ElTabs } from 'element-plus'
 import ProductDocLedger from '../ProductDocLedger.vue'
+import { AttachmentSourceTypeEnum } from '@/enums/system/AttachmentEnum'
 const api = vi.hoisted(() => ({ refsByProduct: vi.fn(), documentTypes: vi.fn(), previewUrlByRef: vi.fn(id => `preview/${id}`), downloadUrlByRef: vi.fn(id => `download/${id}`) }))
 vi.mock('@/api/system/attachmentRef', () => ({ attachmentRefApi: api }))
 const dictionary = [
@@ -50,6 +51,15 @@ async function open() { w = mount(ProductDocLedger, { props: { productId: 7 }, a
 const rows = () => w.findComponent(ElTable).props('data') as typeof files
 
 describe('产品资料台账', () => {
+  it('按产品保留work_spec与历史product引用，过滤其它来源', async () => {
+    api.refsByProduct.mockResolvedValue({ data: [...files,
+      { id: 5, attachmentId: 14, sourceType: 'work_spec', sourceId: 7, fileName: 'work-spec.pdf', documentType: 'DRAWING' },
+    ] })
+    await open()
+    expect(api.refsByProduct).toHaveBeenCalledWith(7)
+    expect(rows().map(row => row.attachmentId)).toEqual([10, 11, 12, 14])
+    expect(AttachmentSourceTypeEnum.getLabel('work_spec')).toBe('产品作业规范')
+  })
   it('只读读取产品引用，按一级/二级/文件名筛选且计数同步', async () => {
     await open()
     expect(rows()).toHaveLength(3)

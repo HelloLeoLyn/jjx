@@ -101,7 +101,7 @@ async function load() {
   if (current !== request) return
   const failures: string[] = []
   if (files.status === 'fulfilled' && Array.isArray(files.value.data)) {
-    rows.value = files.value.data.filter(row => row.sourceType === 'product' && !row.deleted)
+    rows.value = files.value.data.filter(row => ['product', 'work_spec'].includes(row.sourceType) && !row.deleted)
   } else failures.push('产品资料加载失败')
   if (dictionary.status === 'fulfilled' && Array.isArray(dictionary.value.data)) types.value = dictionary.value.data
   else failures.push('资料类型加载失败')

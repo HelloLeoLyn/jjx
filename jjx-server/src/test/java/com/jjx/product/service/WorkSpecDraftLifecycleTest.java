@@ -140,6 +140,27 @@ class WorkSpecDraftLifecycleTest {
     ProductWorkSpecVersion publish() { String rev = drafts.get(1L).path("revision").asText(); return tx.execute(status -> versions.publish(1L,null,rev)); }
     long count(String table) { return db.queryForObject("SELECT COUNT(*) FROM "+table, Long.class); }
 
+    @Test void newDraftAttachmentsUseWorkSpecButHistoricalProductRefIsReused() {
+        var refs = (AttachmentRefService) ReflectionTestUtils.getField(drafts, "draftRefs");
+        save(11L);
+        var captor = org.mockito.ArgumentCaptor.forClass(AttachmentRefDTO.class);
+        verify(refs).create(captor.capture());
+        assertEquals("work_spec", captor.getValue().getSourceType());
+        assertEquals(1L, captor.getValue().getSourceId());
+        assertEquals(1L, captor.getValue().getProductId());
+        clearInvocations(refs);
+        var historical = new SysAttachmentRef(); historical.setId(111L);
+        historical.setSourceType("product"); historical.setSourceId(1L);
+        historical.setAttachmentId(11L);
+        var refMapper = (SysAttachmentRefMapper) ReflectionTestUtils.getField(drafts, "attachmentRefs");
+        when(refMapper.selectList(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class)))
+            .thenReturn(List.of(historical));
+        save(11L);
+        verify(refs, never()).create(any());
+        verify(refs).update(eq(111L), any());
+        assertEquals("product", historical.getSourceType());
+    }
+
     @Test void explicitClaimAndTransferAndNoOpDoNotProduceExtraHistory() {
         ObjectNode first = save(11L,12L); assertEquals("工程甲",first.path("preparedByName").asText());
         // 保存草稿主流水归入「产品作业规范」，不再写历史模块名。

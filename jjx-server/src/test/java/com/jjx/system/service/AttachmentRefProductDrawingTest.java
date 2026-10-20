@@ -98,7 +98,9 @@ public class AttachmentRefProductDrawingTest {
         return value == null ? null : new com.fasterxml.jackson.databind.ObjectMapper().readTree(value).asText();
     }
 
-    @Test void realDraftDetachRetainsHistoricalReadAndCleanupProtectionAndRollsBack() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"product", "work_spec"})
+    void realDraftDetachRetainsHistoricalReadAndCleanupProtectionAndRollsBack(String sourceType) throws Exception {
         jdbc.execute("ALTER TABLE product ADD work_spec_json VARCHAR(2000) DEFAULT '{}'");
         jdbc.execute("ALTER TABLE sys_attachment_ref ADD deleted_at TIMESTAMP");
         jdbc.execute("ALTER TABLE sys_attachment_ref ADD deleted_by VARCHAR(64)");
@@ -112,7 +114,7 @@ public class AttachmentRefProductDrawingTest {
         jdbc.execute("CREATE ALIAS JSON_UNQUOTE FOR 'com.jjx.system.service.AttachmentRefProductDrawingTest.jsonUnquote'");
         jdbc.update("INSERT INTO product VALUES (2,'P2','{}')");
         jdbc.update("INSERT INTO sys_attachment(id,file_name,sha256,upload_state,deleted) VALUES (5,'original.pdf','original-hash','BOUND',0)");
-        jdbc.update("INSERT INTO sys_attachment_ref(id,attachment_id,source_type,source_id,product_id,deleted) VALUES (51,5,'product',1,1,0),(52,5,'product',2,2,0)");
+        jdbc.update("INSERT INTO sys_attachment_ref(id,attachment_id,source_type,source_id,product_id,deleted) VALUES (51,5,?,1,1,0),(52,5,?,2,2,0)", sourceType, sourceType);
         jdbc.update("INSERT INTO product_work_spec_version VALUES (10,1,0)");
         jdbc.update("INSERT INTO product_work_spec_item VALUES (10,'DOCSET_FILE',5)");
         when(files.selectActiveForUpdate(5L)).thenAnswer(call -> storedFixtureFile());
@@ -145,6 +147,36 @@ public class AttachmentRefProductDrawingTest {
             assertThrows(BusinessException.class, () -> access.checkUnlink(storedFixtureFile()));
             assertEquals(0, lifecycle.autoRecycleExpired(0,100).get("recycled"));
             verify(files, never()).logicalDelete(anyLong());
+        }
+    }
+
+    @Test void draftDetachRemovesBothSourcesOnlyForCurrentProductAndPreservesOtherBusiness() {
+        jdbc.execute("ALTER TABLE sys_attachment_ref ADD deleted_at TIMESTAMP");
+        jdbc.execute("ALTER TABLE sys_attachment_ref ADD deleted_by VARCHAR(64)");
+        jdbc.execute("ALTER TABLE sys_attachment_ref ADD update_by VARCHAR(64)");
+        jdbc.update("INSERT INTO sys_attachment(id,file_name,upload_state,deleted) VALUES (5,'shared.pdf','BOUND',0)");
+        jdbc.update("INSERT INTO sys_attachment_ref(id,attachment_id,source_type,source_id,deleted) VALUES "
+            + "(51,5,'product',1,0),(52,5,'work_spec',1,0),(53,5,'work_spec',2,0),(54,5,'quotation',1,0)");
+        when(files.selectActiveForUpdate(5L)).thenAnswer(call -> storedFixtureFile());
+        when(refs.lockActive(5L)).thenAnswer(call -> jdbc.query(
+            "SELECT id,source_type,source_id FROM sys_attachment_ref WHERE attachment_id=5 AND deleted=0 FOR UPDATE", (rs,i) -> {
+                var ref = new SysAttachmentRef(); ref.setId(rs.getLong(1)); ref.setSourceType(rs.getString(2)); ref.setSourceId(rs.getLong(3)); return ref;
+            }));
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::isLogin).thenReturn(true);
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("editor");
+            service.detachWorkSpecFile(1L, 5L);
+            auth.verify(() -> StpUtil.checkPermission("product:edit"));
+            assertEquals(List.of(53L, 54L), jdbc.queryForList("SELECT id FROM sys_attachment_ref WHERE deleted=0 ORDER BY id", Long.class));
+            assertEquals(AttachmentUploadState.BOUND, storedFixtureFile().getUploadState());
+            // Remaining other-business reference must also prevent orphaning after retry.
+            service.detachWorkSpecFile(1L, 5L);
+            assertEquals(AttachmentUploadState.BOUND, storedFixtureFile().getUploadState());
+            jdbc.update("DELETE FROM sys_attachment_ref WHERE id IN (53,54)");
+            jdbc.update("UPDATE sys_attachment_ref SET deleted=0 WHERE id IN (51,52)");
+            service.detachWorkSpecFile(1L, 5L);
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM sys_attachment_ref WHERE deleted=0", Integer.class));
+            assertEquals(AttachmentUploadState.ORPHAN, storedFixtureFile().getUploadState());
         }
     }
 

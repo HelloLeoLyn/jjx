@@ -117,7 +117,7 @@ async function loadRows() {
   loading.value = true
   try {
     const res: any = await attachmentRefApi.refsByProduct(props.productId)
-    const list = ((res?.data || []) as AttachmentRefItem[]).filter((r) => r.sourceType === 'product' && !r.deleted)
+    const list = ((res?.data || []) as AttachmentRefItem[]).filter((r) => ['product', 'work_spec'].includes(r.sourceType) && !r.deleted)
     rows.value = list
   } catch (e: any) {
     rows.value = []

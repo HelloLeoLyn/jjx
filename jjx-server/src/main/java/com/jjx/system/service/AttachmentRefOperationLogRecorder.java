@@ -56,7 +56,7 @@ public class AttachmentRefOperationLogRecorder {
         event.setModule(moduleOf(sourceType));
         event.setBusinessType(businessType);
         event.setOperUrl("attachment.ref." + action);
-        event.setBizType(sourceType);
+        event.setBizType("work_spec".equals(sourceType) ? "product" : sourceType);
         event.setBizId(String.valueOf(sourceId));
         event.setTraceId(traceId);
         event.setAction(action);
@@ -167,6 +167,7 @@ public class AttachmentRefOperationLogRecorder {
             case "sales_order" -> "销售订单管理";
             case "sample" -> "样品单管理";
             case "product" -> "产品管理";
+            case "work_spec" -> "产品作业规范";
             case "purchase_order" -> "采购订单管理";
             case "purchase_payment" -> "采购付款管理";
             case "purchase_receipt" -> "采购收货管理";

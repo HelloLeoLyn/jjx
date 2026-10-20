@@ -355,11 +355,13 @@ public class AttachmentRefService {
         SysAttachment file = lock(attachmentId);
         List<SysAttachmentRef> active = refs.lockActive(attachmentId);
         for (SysAttachmentRef ref : active) {
-            if (!"product".equals(ref.getSourceType()) || !Objects.equals(productId, ref.getSourceId())) continue;
+            if (!("product".equals(ref.getSourceType()) || "work_spec".equals(ref.getSourceType()))
+                || !Objects.equals(productId, ref.getSourceId())) continue;
             jdbc.update("UPDATE sys_attachment_ref SET deleted=1,deleted_at=NOW(),deleted_by=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
                 StpUtil.getLoginIdAsString(), StpUtil.getLoginIdAsString(), ref.getId());
         }
-        if (active.stream().allMatch(ref -> "product".equals(ref.getSourceType()) && Objects.equals(productId, ref.getSourceId()))) {
+        if (active.stream().allMatch(ref -> ("product".equals(ref.getSourceType()) || "work_spec".equals(ref.getSourceType()))
+            && Objects.equals(productId, ref.getSourceId()))) {
             jdbc.update("UPDATE sys_attachment SET upload_state=?,expires_at=? WHERE id=?",
                 AttachmentUploadState.ORPHAN.name(), LocalDateTime.now().plusDays(30), file.getId());
         }

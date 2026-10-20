@@ -100,7 +100,7 @@ beforeEach(() => {
         item_key,
         label: item_key,
         is_active: 1,
-        ext_data: { parent: 'ENGINEERING_DOC' },
+        ext_data: { parent: 'ENGINEERING_DOC', sources: ['product', 'work_spec'] },
       })),
     ],
   })
@@ -125,6 +125,17 @@ async function setup() {
   return w
 }
 describe('工程图集采用作业规范草稿', () => {
+  it('新上传会话使用work_spec，读取清单保留历史product和新来源', async () => {
+    const value = response()
+    Object.assign(value.data.draftFiles[0], { sourceType: 'product' })
+    Object.assign(value.data.draftFiles[1], { sourceType: 'work_spec' })
+    api.get.mockResolvedValue(value)
+    const w = await setup()
+    const draft = (w.vm as any).$.setupState.draft
+    expect(draft.session.refs.value.map((r: any) => r.sourceType)).toEqual(['product', 'work_spec'])
+    expect(w.find('.manager-stub').attributes('source-type')).toBe('work_spec')
+    expect(draft.engineeringTypes.value.length).toBe(4)
+  })
   it('按内容hash提示同内容异名重复，同名异内容不误报', async () => {
     const w = await setup()
     const draft = (w.vm as any).$.setupState.draft

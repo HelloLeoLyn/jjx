@@ -30,6 +30,7 @@ export const AttachmentUploadStateEnum = createEnum({
  */
 export const AttachmentSourceTypeEnum = createEnum({
   items: [
+    { value: 'work_spec', label: '产品作业规范', tagProps: { type: 'primary' } },
     { value: 'product', label: '产品', tagProps: { type: 'primary' } },
     { value: 'inquiry', label: '询价单', tagProps: { type: 'primary' } },
     { value: 'quotation', label: '报价单', tagProps: { type: 'primary' } },
@@ -54,6 +55,7 @@ export const AttachmentSourceTypeEnum = createEnum({
  * 前端仅用于提前禁用按钮，后端始终是最终裁决方）
  */
 export const ATTACHMENT_SOURCE_PERMISSION: Record<string, string> = {
+  work_spec: 'product',
   product: 'product',
   inquiry: 'sales:inquiry',
   quotation: 'sales:quotation',
@@ -89,6 +91,7 @@ export const ATTACHMENT_SOURCE_ALIAS: Record<string, string> = {
  * 注：非 status 值，故意不用 createEnum（避免状态魔法值门禁误伤）。
  */
 export const ATTACHMENT_SOURCE_CODE: Record<string, string> = {
+  work_spec: 'PROD',
   product: 'PROD',
   inquiry: 'INQ',
   quotation: 'QT',

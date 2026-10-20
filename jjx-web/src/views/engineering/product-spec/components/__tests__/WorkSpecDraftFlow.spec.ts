@@ -319,7 +319,7 @@ describe('作业规范统一草稿会话', () => {
   })
   it('刷新恢复的待保存附件必须仍算未保存，不能阻止保存或假装已保存', async () => {
     localStorage.setItem(
-      'attach-pending:v2:7:product:id-42',
+      'attach-pending:v2:7:work_spec:id-42',
       JSON.stringify([{ ...pending(), documentType: 'STRUCTURE_DRAWING' }])
     )
     const { draft } = await setup()

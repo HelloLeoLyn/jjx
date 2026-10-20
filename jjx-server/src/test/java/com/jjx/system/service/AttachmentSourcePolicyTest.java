@@ -15,6 +15,29 @@ import static org.mockito.Mockito.*;
 
 class AttachmentSourcePolicyTest {
     @Test
+    void workSpecUsesProductIdentityPermissionsAndOwnership() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("FROM product"), eq(String.class), eq(42L)))
+            .thenReturn(List.of("P42"));
+        when(jdbc.queryForObject(contains("COUNT(*) FROM product"), eq(Long.class), eq(42L), eq(42L)))
+            .thenReturn(1L);
+        AttachmentSourcePolicy policy = new AttachmentSourcePolicy(jdbc);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::isLogin).thenReturn(true);
+            assertEquals("P42", policy.check("work_spec", 42L, true));
+            auth.verify(() -> StpUtil.checkPermission("product:edit"));
+            assertEquals("P42", policy.check("work_spec", 42L, false));
+            auth.verify(() -> StpUtil.checkPermission("product:view"));
+            assertFalse(policy.canRead("work_spec", 42L));
+            auth.when(() -> StpUtil.hasPermission("product:view")).thenReturn(true);
+            assertTrue(policy.canRead("work_spec", 42L));
+            assertThrows(BusinessException.class, () -> policy.check("work_spec", 99L, true));
+            policy.checkProduct("work_spec", 42L, 42L);
+            assertThrows(BusinessException.class, () -> policy.checkProduct("work_spec", 41L, 42L));
+        }
+    }
+
+    @Test
     void singleProductOfReturnsOnlyWhenExactlyOneProduct() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.query(contains("sales_quotation_item"), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<AttachmentSourcePolicy.ProductRef>>any(), eq(1L)))

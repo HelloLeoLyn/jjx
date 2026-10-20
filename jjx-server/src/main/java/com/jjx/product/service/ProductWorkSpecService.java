@@ -181,8 +181,8 @@ public class ProductWorkSpecService {
                 draftAccess.checkRead(file);
                 if (Boolean.TRUE.equals(item.getPrint()) && !previewable(file)) throw new BusinessException("打印清单只能选择图片或PDF");
                 AttachmentRefDTO ref = new AttachmentRefDTO();
-                ref.setAttachmentId(file.getId()); ref.setSourceType("product"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(item.getDocumentType());
-                Long refId = draftRefs.create(ref);
+                ref.setAttachmentId(file.getId()); ref.setSourceType("work_spec"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(item.getDocumentType());
+                Long refId = workSpecRefId(id, ref);
                 AttachmentRefMetadataDTO meta = new AttachmentRefMetadataDTO();
                 meta.setDocumentType(item.getDocumentType()); meta.setDisplayName(item.getDisplayName()); meta.setRemark(item.getRemark()); meta.setSortOrder(manifest.size());
                 draftRefs.update(refId, meta);
@@ -239,8 +239,8 @@ public class ProductWorkSpecService {
             if (file == null || !selected.add(attachmentId)) throw new BusinessException("原定版文件缺失或清单重复");
             draftAccess.checkRead(file);
             AttachmentRefDTO ref = new AttachmentRefDTO(); ref.setAttachmentId(attachmentId);
-            ref.setSourceType("product"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(entry.path("documentType").asText());
-            Long refId = draftRefs.create(ref);
+            ref.setSourceType("work_spec"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(entry.path("documentType").asText());
+            Long refId = workSpecRefId(id, ref);
             AttachmentRefMetadataDTO meta = new AttachmentRefMetadataDTO();
             meta.setDocumentType(entry.path("documentType").asText()); meta.setDisplayName(entry.path("displayName").asText());
             meta.setRemark(entry.path("remark").asText("")); meta.setSortOrder(entry.path("sortOrder").asInt());
@@ -251,6 +251,14 @@ public class ProductWorkSpecService {
         mapper.write(id, source.toString());
         recordOperation(id, "从旧版升级", old, source);
         return response(id, mapper.read(id));
+    }
+
+    private Long workSpecRefId(Long productId, AttachmentRefDTO request) {
+        List<SysAttachmentRef> existing = attachmentRefs.selectList(new QueryWrapper<SysAttachmentRef>()
+            .eq("attachment_id", request.getAttachmentId()).in("source_type", "product", "work_spec")
+            .eq("source_id", productId).eq("deleted", false).ne("ref_state", "draft")
+            .orderByAsc("id"));
+        return existing.isEmpty() ? draftRefs.create(request) : existing.get(0).getId();
     }
 
     private boolean previewable(SysAttachment file) {
@@ -573,7 +581,7 @@ public class ProductWorkSpecService {
     private SysAttachment structure(Long id, Long fileId) {
         SysAttachment file = attachments.selectById(fileId);
         List<SysAttachmentRef> refs = attachmentRefs.selectList(new QueryWrapper<SysAttachmentRef>()
-                .eq("attachment_id", fileId).eq("source_type", "product").eq("source_id", id)
+                .eq("attachment_id", fileId).in("source_type", "product", "work_spec").eq("source_id", id)
                 .eq("deleted", false));
         if (file == null || refs.isEmpty() || (!"结构图".equals(file.getCategory())
                 && refs.stream().noneMatch(ref -> "STRUCTURE_DRAWING".equals(ref.getDocumentType()))))

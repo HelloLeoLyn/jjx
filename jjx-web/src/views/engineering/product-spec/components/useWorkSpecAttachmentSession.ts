@@ -57,7 +57,7 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
   const removed = ref<number[]>([])
   let generation = 0
   const session = useAttachmentSession({
-    sourceType: 'product',
+    sourceType: 'work_spec',
     sourceId: productId,
     rowLevel: true,
     autoLoad: false,
@@ -118,7 +118,7 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
       productCode: productCode.value,
     })
   )
-  const docTypes = useAttachmentDocTypes(session.documentTypes, () => 'product')
+  const docTypes = useAttachmentDocTypes(session.documentTypes, () => 'work_spec')
   const engineeringTypes = computed(() =>
     docTypes.selectableTypes.value.filter(
       (type) => docTypes.categoryKeyOfType(type.item_key) === 'ENGINEERING_DOC'
@@ -215,7 +215,7 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     session.refs.value = (spec.value.draftFiles || []).map((file, index) => ({
       ...file,
       id: file.refId,
-      sourceType: 'product',
+      sourceType: (file as typeof file & { sourceType?: string }).sourceType || 'product',
       sourceId: productId.value,
       productId: productId.value,
       productCode: productCode.value,

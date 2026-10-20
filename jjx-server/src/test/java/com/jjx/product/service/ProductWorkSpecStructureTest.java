@@ -61,6 +61,10 @@ class ProductWorkSpecStructureTest {
         ref(224, "product", 2, "STRUCTURE_DRAWING", false);
         assertSame(file, validate());
     }
+    @Test void acceptsWorkSpecStructureReference() {
+        ref(224, "work_spec", 2, "STRUCTURE_DRAWING", false);
+        assertSame(file, validate());
+    }
     @Test void acceptsLegacyCategoryOnlyWithActiveProductReference() {
         file.setCategory("结构图"); ref(224, "product", 2, null, false);
         assertSame(file, validate());

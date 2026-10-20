@@ -69,7 +69,7 @@
     <AttachmentManager
       :session="draft.session"
       title="工程附件"
-      source-type="product"
+      source-type="work_spec"
       :source-no="productCode"
       :show-ownership-filter="false"
     />

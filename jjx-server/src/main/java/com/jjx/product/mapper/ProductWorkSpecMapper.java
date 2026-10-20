@@ -54,13 +54,13 @@ public interface ProductWorkSpecMapper {
     int engineeringType(@Param("type") String type);
 
     @Select("""
-        SELECT r.id AS refId,r.attachment_id AS attachmentId,r.document_type AS documentType,
+        SELECT r.id AS refId,r.source_type AS sourceType,r.attachment_id AS attachmentId,r.document_type AS documentType,
           r.display_name AS displayName,r.remark,r.sort_order AS sortOrder,
           a.file_name AS fileName,a.file_type AS fileType,a.file_size AS fileSize,a.sha256
         FROM sys_attachment_ref r JOIN sys_attachment a ON a.id=r.attachment_id AND a.deleted=0
         JOIN sys_dict_item d ON d.dict_code='attachment_document_type' AND d.item_key=r.document_type
           AND d.deleted=0 AND JSON_UNQUOTE(JSON_EXTRACT(d.ext_data,'$.parent'))='ENGINEERING_DOC'
-        WHERE r.deleted=0 AND r.ref_state<>'draft' AND r.source_type='product' AND r.source_id=#{id}
+        WHERE r.deleted=0 AND r.ref_state<>'draft' AND r.source_type IN ('product','work_spec') AND r.source_id=#{id}
         ORDER BY r.sort_order,r.id
         """)
     List<Map<String, Object>> draftFiles(Long id);

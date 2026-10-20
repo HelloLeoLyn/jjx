@@ -48,6 +48,11 @@ public class AttachmentSourcePolicy {
      * 字典 {@code attachment_document_type.ext_data.sources} 的取值必须取自本表键集合（见 {@link #knownSourceTypes()}）。
      */
     private static final Map<String, Source> SOURCES = Map.ofEntries(
+        Map.entry("work_spec", new Source("product",
+            "SELECT product_code FROM product WHERE product_id=?",
+            "SELECT product_id FROM product WHERE product_code=?",
+            "SELECT COUNT(*) FROM product WHERE product_id=? AND product_id=?",
+            null, false)),
         Map.entry("product", new Source("product",
             "SELECT product_code FROM product WHERE product_id=?",
             "SELECT product_id FROM product WHERE product_code=?",
@@ -146,6 +151,7 @@ public class AttachmentSourcePolicy {
 
     /** 各来源的「唯一产品」查询（返回 0..N 行，由 singleProductOf 判定是否唯一）；无产品来源不登记。 */
     private static final Map<String, String> SINGLE_PRODUCT_SQL = Map.of(
+        "work_spec", "SELECT product_id, product_code FROM product WHERE product_id=?",
         "product", "SELECT product_id, product_code FROM product WHERE product_id=?",
         "inquiry", "SELECT DISTINCT p.product_id, p.product_code FROM sales_inquiry i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.inquiry_id=? AND i.deleted=0",
         "quotation", "SELECT DISTINCT p.product_id, p.product_code FROM sales_quotation_item i JOIN product p ON (i.product_id=p.product_id OR (i.product_id IS NULL AND i.product_code=p.product_code)) WHERE i.quotation_id=?",
