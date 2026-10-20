@@ -103,6 +103,14 @@ class WorkSpecDraftLifecycleTest {
             db.update("UPDATE draft_ref SET document_type=?,display_name=?,sort_order=? WHERE attachment_id=?", value.getDocumentType(), generated, value.getSortOrder(), attachmentId);
             return null;
         }).when(refs).updateAutoNamed(anyLong(), any());
+        doAnswer(call -> {
+            AttachmentRefMetadataDTO value = call.getArgument(1);
+            long attachmentId = call.getArgument(0, Long.class) - 100;
+            int position = db.queryForObject("SELECT COUNT(*) FROM draft_ref WHERE document_type=? AND attachment_id<=?", Integer.class, value.getDocumentType(), attachmentId);
+            String generated = "WORK_SPEC-1-P1-ENG-SD-结构图-" + String.format("%02d", position);
+            db.update("UPDATE draft_ref SET document_type=?,display_name=?,sort_order=? WHERE attachment_id=?", value.getDocumentType(), generated, value.getSortOrder(), attachmentId);
+            return null;
+        }).when(refs).initAutoNamed(anyLong(), any());
         doAnswer(call -> { db.update("DELETE FROM draft_ref WHERE attachment_id=?", call.getArgument(1, Long.class)); return null; }).when(refs).detachWorkSpecFile(eq(1L), anyLong());
         when(logs.insert(any(SysOperLog.class))).thenAnswer(call -> {
             SysOperLog log = call.getArgument(0); return db.update("INSERT INTO operation_log(action,detail,module) VALUES (?,?,?)", log.getAction(), log.getDetail(), log.getModule());
@@ -183,7 +191,7 @@ class WorkSpecDraftLifecycleTest {
         assertEquals(previousLogs, count("operation_log"), "客户端缓存名不构成业务修改");
         assertFalse(mapper.read(1L).contains("原文件名.pdf"));
         var refs = (AttachmentRefService) ReflectionTestUtils.getField(drafts, "draftRefs");
-        verify(refs, atLeastOnce()).updateAutoNamed(anyLong(), argThat(meta -> meta.getDisplayName() == null));
+        verify(refs, atLeastOnce()).initAutoNamed(anyLong(), argThat(meta -> meta.getDisplayName() == null));
     }
 
     @Test void readUsesCurrentReferenceNameWithoutWritingOldManifestOrChangingRevision() throws Exception {
@@ -226,6 +234,24 @@ class WorkSpecDraftLifecycleTest {
         assertEquals("转交：工程甲→工程乙", latest.get("ACTION"));
         assertEquals("产品作业规范", latest.get("MODULE"));
     }
+    @Test void saveDraftWritesHumanDiffWithFileNamesDieRowsAndRequirement() throws Exception {
+        save(11L,12L);
+        var request = input(12L,13L);
+        var spec = new com.jjx.product.domain.dto.ProductWorkSpecDTO();
+        spec.setEngineeringRequirements("新要求");
+        spec.setDieLocation(json.readTree("{\"MAT-A||\":\"1-2\"}"));
+        request.setSpec(spec);
+        tx.execute(status -> drafts.saveDraft(1L, request));
+        var detail = db.queryForObject("SELECT detail FROM operation_log ORDER BY id DESC LIMIT 1", String.class);
+        var operParam = db.queryForObject("SELECT action FROM operation_log ORDER BY id DESC LIMIT 1", String.class);
+        assertTrue(detail.contains("附件新增"), detail);
+        assertTrue(detail.contains("附件移除"), detail);
+        assertTrue(detail.contains("刀模位置·MAT-A||：（空） → 1-2"), detail);
+        assertTrue(detail.contains("工程要求：（空） → 新要求"), detail);
+        assertTrue(operParam.contains("保存草稿"), operParam);
+        assertFalse(detail.contains("附件5个"), "流水不能退回只写附件数量");
+    }
+
     @Test void v1RetainsOldFilesAndOwnerWhenV2RemovesAndReorders() throws Exception {
         save(11L,12L); long v1 = publish().getId();
         String frozen = mapper.versionSnapshot(v1);

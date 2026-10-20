@@ -49,8 +49,16 @@ import java.util.ArrayList;
 @RequiredArgsConstructor
 public class ProductWorkSpecService {
     @org.springframework.beans.factory.annotation.Autowired private AttachmentRefService draftRefs;
+    @org.springframework.beans.factory.annotation.Autowired private com.jjx.system.service.AttachmentDocumentTypeService docTypes;
     @org.springframework.beans.factory.annotation.Autowired private AttachmentAccessService draftAccess;
     private static final Set<String> EMBOSS_KEYS = Set.of("setupHeight", "requiredHeight", "upperTemperature", "lowerTemperature", "pressTime", "holdTime");
+    private static final List<String> EMBOSS_ORDER = List.of("setupHeight", "requiredHeight", "upperTemperature", "lowerTemperature", "pressTime", "holdTime");
+    private static final Map<String, String> EMBOSS_LABELS = Map.of(
+        "setupHeight", "凹凸调机高度", "requiredHeight", "凹凸要求高度",
+        "upperTemperature", "凹凸上模温度", "lowerTemperature", "凹凸下模温度",
+        "pressTime", "凹凸下压时间", "holdTime", "凹凸保持时间");
+    private static final Map<String, String> COLOR_LABELS = Map.of(
+        "#252525", "黑色", "#ed00df", "品红", "#e53935", "红色", "#1565c0", "蓝色");
     private static final Set<String> COLORS = Set.of("#252525", "#ed00df", "#e53935", "#1565c0");
     /** 统一业务模块名：作业规范的保存/负责人变更/升级/定版等流水都归到这里（dev-20261020-015）。 */
     private static final String WORK_SPEC_MODULE = "产品作业规范";
@@ -138,15 +146,6 @@ public class ProductWorkSpecService {
             .orElseThrow(() -> new BusinessException("制定负责人必须是工程人员"));
     }
 
-    public ObjectNode draftHistory(Long id, Long before) {
-        if (mapper.exists(id) == 0) throw new BusinessException("产品不存在");
-        var rows = mapper.draftHistory(id.toString(), before, YesNoEnum.YES.getCode());
-        ObjectNode result = json.createObjectNode();
-        result.set("items", json.valueToTree(rows.subList(0, Math.min(50, rows.size()))));
-        if (rows.size() > 50) result.put("nextBefore", ((Number) rows.get(49).get("id")).longValue());
-        return result;
-    }
-
     @Transactional(rollbackFor = Exception.class)
     public ObjectNode saveDraft(Long id, ProductWorkSpecDraftDTO input) {
         // 本次保存创建的附件引用日志跟随作业规范模块，不改产品模块其它附件日志。
@@ -182,10 +181,13 @@ public class ProductWorkSpecService {
                 if (Boolean.TRUE.equals(item.getPrint()) && !previewable(file)) throw new BusinessException("打印清单只能选择图片或PDF");
                 AttachmentRefDTO ref = new AttachmentRefDTO();
                 ref.setAttachmentId(file.getId()); ref.setSourceType("work_spec"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(item.getDocumentType());
-                Long refId = workSpecRefId(id, ref);
+                WorkSpecRef resolved = workSpecRef(id, ref);
+                Long refId = resolved.id();
                 AttachmentRefMetadataDTO meta = new AttachmentRefMetadataDTO();
                 meta.setDocumentType(item.getDocumentType()); meta.setRemark(item.getRemark()); meta.setSortOrder(manifest.size());
-                draftRefs.updateAutoNamed(refId, meta);
+                // 新建引用只由 create() 写「附件新增」；自动生成的展示名/排序不另记附件资料修改。
+                if (resolved.created()) draftRefs.initAutoNamed(refId, meta);
+                else draftRefs.updateAutoNamed(refId, meta);
                 ObjectNode entry = manifest.addObject();
                 entry.put("attachmentId", file.getId()); entry.put("documentType", item.getDocumentType());
                 entry.put("remark", Objects.toString(item.getRemark(), "")); entry.put("sortOrder", manifest.size() - 1);
@@ -241,11 +243,12 @@ public class ProductWorkSpecService {
             draftAccess.checkRead(file);
             AttachmentRefDTO ref = new AttachmentRefDTO(); ref.setAttachmentId(attachmentId);
             ref.setSourceType("work_spec"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(entry.path("documentType").asText());
-            Long refId = workSpecRefId(id, ref);
+            WorkSpecRef resolved = workSpecRef(id, ref);
             AttachmentRefMetadataDTO meta = new AttachmentRefMetadataDTO();
             meta.setDocumentType(entry.path("documentType").asText());
             meta.setRemark(entry.path("remark").asText("")); meta.setSortOrder(entry.path("sortOrder").asInt());
-            draftRefs.updateAutoNamed(refId, meta);
+            if (resolved.created()) draftRefs.initAutoNamed(resolved.id(), meta);
+            else draftRefs.updateAutoNamed(resolved.id(), meta);
         }
         for (JsonNode entry : old.path("draftAttachments"))
             if (!selected.contains(entry.path("attachmentId").asLong())) draftRefs.detachWorkSpecFile(id, entry.path("attachmentId").asLong());
@@ -255,12 +258,16 @@ public class ProductWorkSpecService {
         return response(id, mapper.read(id));
     }
 
-    private Long workSpecRefId(Long productId, AttachmentRefDTO request) {
+    private record WorkSpecRef(Long id, boolean created) {}
+
+    private WorkSpecRef workSpecRef(Long productId, AttachmentRefDTO request) {
         List<SysAttachmentRef> existing = attachmentRefs.selectList(new QueryWrapper<SysAttachmentRef>()
             .eq("attachment_id", request.getAttachmentId()).in("source_type", "product", "work_spec")
             .eq("source_id", productId).eq("deleted", false).ne("ref_state", "draft")
             .orderByAsc("id"));
-        return existing.isEmpty() ? draftRefs.create(request) : existing.get(0).getId();
+        return existing.isEmpty()
+            ? new WorkSpecRef(draftRefs.create(request), true)
+            : new WorkSpecRef(existing.get(0).getId(), false);
     }
 
     private boolean previewable(SysAttachment file) {
@@ -289,24 +296,265 @@ public class ProductWorkSpecService {
         if (after.has("versionNo")) detail.set("versionNo", after.get("versionNo"));
         if (after.has("basedOnVersionId")) detail.set("basedOnVersionId", after.get("basedOnVersionId"));
         if (after.has("status")) detail.set("status", after.get("status"));
-        var changed = detail.putArray("changedFields");
+        // 兼容：保留字段名快照供技术排查，但人话差异单独写 changes，页面与流水都不再只显示字段名/附件数量。
         java.util.Set<String> keys = new java.util.TreeSet<>(); before.fieldNames().forEachRemaining(keys::add); after.fieldNames().forEachRemaining(keys::add);
+        var changed = detail.putArray("changedFields");
         keys.stream().filter(key -> !Objects.equals(before.get(key), after.get(key))).forEach(changed::add);
-        List<Long> oldIds = new ArrayList<>(), newIds = new ArrayList<>();
-        before.path("draftAttachments").forEach(item -> oldIds.add(item.path("attachmentId").asLong()));
-        after.path("draftAttachments").forEach(item -> newIds.add(item.path("attachmentId").asLong()));
+        Map<Long, JsonNode> oldFiles = attachmentEntries(before), newFiles = attachmentEntries(after);
+        Map<Long, String> names = attachmentNames(oldFiles, newFiles);
+        List<Long> oldIds = new ArrayList<>(oldFiles.keySet()), newIds = new ArrayList<>(newFiles.keySet());
         detail.set("added", json.valueToTree(newIds.stream().filter(file -> !oldIds.contains(file)).toList()));
         detail.set("removed", json.valueToTree(oldIds.stream().filter(file -> !newIds.contains(file)).toList()));
+        detail.set("addedFiles", json.valueToTree(newIds.stream().filter(file -> !oldIds.contains(file))
+            .map(file -> attachmentName(names, file)).toList()));
+        detail.set("removedFiles", json.valueToTree(oldIds.stream().filter(file -> !newIds.contains(file))
+            .map(file -> attachmentName(names, file)).toList()));
         detail.put("orderChanged", !oldIds.equals(newIds));
+        List<String> changes = humanChanges(id, before, after, oldFiles, newFiles, names);
+        detail.set("changes", json.valueToTree(changes));
+        event.setOperParam(summary(action, changes)); event.setDetail(detail.toString());
+        operLogs.insert(event);
+    }
+
+    /** 保存草稿等事件写人话差异：文件名、刀模具体行、资料类型/展示名/备注、排序和负责人。 */
+    private List<String> humanChanges(Long id, ObjectNode before, ObjectNode after,
+                                      Map<Long, JsonNode> oldFiles, Map<Long, JsonNode> newFiles,
+                                      Map<Long, String> names) {
+        List<String> changes = new ArrayList<>();
         String beforeOwner = before.path("preparedByName").asText("");
         String afterOwner = after.path("preparedByName").asText("");
-        if (!Objects.equals(beforeOwner, afterOwner)) {
-            var changes = detail.putArray("changes");
-            changes.add("制定负责人：" + (beforeOwner.isBlank() ? "未指定" : beforeOwner)
-                + " → " + (afterOwner.isBlank() ? "未指定" : afterOwner));
+        if (!Objects.equals(beforeOwner, afterOwner))
+            changes.add("制定负责人：" + blankText(beforeOwner) + " → " + blankText(afterOwner));
+
+        Long oldStructure = numberOrNull(before.get("structureFileId"));
+        Long newStructure = numberOrNull(after.get("structureFileId"));
+        if (!Objects.equals(oldStructure, newStructure))
+            changes.add("结构图：" + attachmentName(names, oldStructure) + " → " + attachmentName(names, newStructure));
+
+        changes.addAll(dieLocationChanges(id, before, after));
+        addSpecFieldChanges(changes, before, after);
+        addAttachmentChanges(changes, oldFiles, newFiles, names);
+
+        String oldVersion = textOf(before, "versionNo"), newVersion = textOf(after, "versionNo");
+        if (!oldVersion.isBlank() && !oldVersion.equals(newVersion)) changes.add("版本号：" + oldVersion + " → " + blankText(newVersion));
+        String oldStatus = textOf(before, "status"), newStatus = textOf(after, "status");
+        if (!Objects.equals(oldStatus, newStatus)) changes.add("版本状态：" + blankText(oldStatus) + " → " + blankText(newStatus));
+        boolean oldFinalized = before.hasNonNull("finalizedVersionId"), newFinalized = after.hasNonNull("finalizedVersionId");
+        if (oldFinalized != newFinalized)
+            changes.add(newFinalized ? "状态：制定中 → 已定版" : "状态：已定版 → 制定中");
+        return changes;
+    }
+
+    private List<String> dieLocationChanges(Long id, ObjectNode before, ObjectNode after) {
+        List<String> changes = new ArrayList<>();
+        JsonNode oldDie = before.path("dieLocation"), newDie = after.path("dieLocation");
+        if (oldDie.isObject() || newDie.isObject()) {
+            Map<String, String> labels = dieRowLabels(id);
+            java.util.Set<String> keys = new java.util.TreeSet<>();
+            oldDie.fieldNames().forEachRemaining(keys::add);
+            newDie.fieldNames().forEachRemaining(keys::add);
+            for (String key : keys) {
+                String oldValue = oldDie.path(key).asText(""), newValue = newDie.path(key).asText("");
+                if (Objects.equals(oldValue, newValue)) continue;
+                if (oldValue.isBlank() && newValue.isBlank()) continue;
+                changes.add("刀模位置·" + labels.getOrDefault(key, key) + "：" + blankText(oldValue) + " → " + blankText(newValue));
+            }
         }
-        event.setOperParam(action + "：附件" + newIds.size() + "个"); event.setDetail(detail.toString());
-        operLogs.insert(event);
+        String oldText = textOf(before, "dieLocationText"), newText = textOf(after, "dieLocationText");
+        if (!Objects.equals(oldText, newText))
+            changes.add("刀模位置（旧版文本）：" + abbreviate(oldText) + " → " + abbreviate(newText));
+        return changes;
+    }
+
+    private void addSpecFieldChanges(List<String> changes, ObjectNode before, ObjectNode after) {
+        addTextChange(changes, "工程要求", textOf(before, "engineeringRequirements"), textOf(after, "engineeringRequirements"));
+        String oldColor = textOf(before, "requirementsColor"), newColor = textOf(after, "requirementsColor");
+        if (!Objects.equals(oldColor, newColor)) changes.add("要求文字颜色：" + colorLabel(oldColor) + " → " + colorLabel(newColor));
+        addTextChange(changes, "发行单位", textOf(before, "issueUnit"), textOf(after, "issueUnit"));
+        addTextChange(changes, "发行日期", textOf(before, "issueDate"), textOf(after, "issueDate"));
+        for (String key : EMBOSS_ORDER) {
+            String oldValue = before.path("emboss").path(key).asText("");
+            String newValue = after.path("emboss").path(key).asText("");
+            if (!Objects.equals(oldValue, newValue))
+                changes.add("凹凸条件·" + EMBOSS_LABELS.get(key) + "：" + blankText(oldValue) + " → " + blankText(newValue));
+        }
+        String changeSummary = changeListDiff(before, after);
+        if (!changeSummary.isBlank()) changes.add(changeSummary);
+    }
+
+    private void addAttachmentChanges(List<String> changes, Map<Long, JsonNode> oldFiles,
+                                      Map<Long, JsonNode> newFiles, Map<Long, String> names) {
+        List<Long> oldIds = new ArrayList<>(oldFiles.keySet()), newIds = new ArrayList<>(newFiles.keySet());
+        List<Long> added = newIds.stream().filter(file -> !oldFiles.containsKey(file)).toList();
+        List<Long> removed = oldIds.stream().filter(file -> !newFiles.containsKey(file)).toList();
+        if (!added.isEmpty()) changes.add("附件新增：" + nameList(added, names));
+        if (!removed.isEmpty()) changes.add("附件移除：" + nameList(removed, names));
+        List<Long> oldCommon = oldIds.stream().filter(newFiles::containsKey).toList();
+        List<Long> newCommon = newIds.stream().filter(oldFiles::containsKey).toList();
+        if (!oldCommon.equals(newCommon))
+            changes.add("附件顺序：" + nameList(oldCommon, names) + " → " + nameList(newCommon, names));
+        for (Long fileId : newCommon) {
+            JsonNode oldFile = oldFiles.get(fileId), newFile = newFiles.get(fileId);
+            String name = attachmentName(names, fileId);
+            String oldType = oldFile.path("documentType").asText(""), newType = newFile.path("documentType").asText("");
+            if (!Objects.equals(oldType, newType))
+                changes.add("附件「" + name + "」资料类型修改：" + typeLabel(oldType) + " → " + typeLabel(newType));
+            String oldDisplay = oldFile.path("displayName").asText(""), newDisplay = newFile.path("displayName").asText("");
+            if (Objects.equals(oldType, newType) && !Objects.equals(oldDisplay, newDisplay))
+                changes.add("附件「" + name + "」展示名称：" + blankText(oldDisplay) + " → " + blankText(newDisplay));
+            String oldRemark = oldFile.path("remark").asText(""), newRemark = newFile.path("remark").asText("");
+            if (!Objects.equals(oldRemark, newRemark))
+                changes.add("附件「" + name + "」备注：" + blankText(oldRemark) + " → " + blankText(newRemark));
+            boolean oldPrint = oldFile.path("print").asBoolean(true), newPrint = newFile.path("print").asBoolean(true);
+            if (oldPrint != newPrint)
+                changes.add("附件「" + name + "」打印：" + (oldPrint ? "是" : "否") + " → " + (newPrint ? "是" : "否"));
+        }
+    }
+
+    private Map<Long, JsonNode> attachmentEntries(ObjectNode spec) {
+        Map<Long, JsonNode> entries = new java.util.LinkedHashMap<>();
+        for (JsonNode item : spec.path("draftAttachments")) {
+            if (item.path("attachmentId").isNumber()) entries.put(item.path("attachmentId").asLong(), item);
+        }
+        return entries;
+    }
+
+    private Map<Long, String> attachmentNames(Map<Long, JsonNode> oldFiles, Map<Long, JsonNode> newFiles) {
+        Map<Long, String> names = new java.util.LinkedHashMap<>();
+        for (Map<Long, JsonNode> entries : List.of(oldFiles, newFiles)) {
+            entries.forEach((id, item) -> {
+                String label = item.path("displayName").asText("");
+                if (label.isBlank()) label = item.path("fileName").asText("");
+                if (!label.isBlank()) names.putIfAbsent(id, label);
+            });
+        }
+        java.util.Set<Long> missing = new java.util.LinkedHashSet<>();
+        for (Long id : oldFiles.keySet()) if (!names.containsKey(id)) missing.add(id);
+        for (Long id : newFiles.keySet()) if (!names.containsKey(id)) missing.add(id);
+        if (!missing.isEmpty() && attachments != null) {
+            try {
+                for (SysAttachment file : attachments.selectBatchIds(missing)) {
+                    if (file.getId() != null && file.getFileName() != null && !file.getFileName().isBlank())
+                        names.putIfAbsent(file.getId(), file.getFileName());
+                }
+            } catch (Exception ignored) {
+                // 文件名补不到时用附件 ID 兜底，不阻断业务保存。
+            }
+        }
+        return names;
+    }
+
+    private String attachmentName(Map<Long, String> names, Long id) {
+        if (id == null) return "未设置";
+        String name = names.get(id);
+        return name == null || name.isBlank() ? "附件 " + id : name;
+    }
+
+    private String nameList(List<Long> ids, Map<Long, String> names) {
+        if (ids == null || ids.isEmpty()) return "（无）";
+        List<String> namesList = ids.stream().limit(20).map(id -> "「" + attachmentName(names, id) + "」").toList();
+        return String.join("、", namesList) + (ids.size() > 20 ? " 等 " + ids.size() + " 个" : "");
+    }
+
+    private Map<String, String> dieRowLabels(Long productId) {
+        Map<String, String> labels = new java.util.HashMap<>();
+        try {
+            ProductFullVO full = products.getFullProductDetail(productId);
+            if (full == null || full.getBom() == null || full.getBom().getItems() == null) return labels;
+            for (var item : full.getBom().getItems()) {
+                String base = item.getMaterialName() == null || item.getMaterialName().isBlank()
+                    ? textOf(item.getMaterialCode()) : item.getMaterialName();
+                String extra = java.util.stream.Stream.of(item.getLayer(), item.getProcessName())
+                    .filter(value -> value != null && !value.isBlank()).reduce((a, b) -> a + " / " + b).orElse("");
+                String label = extra.isBlank() ? base : base + "（" + extra + "）";
+                labels.putIfAbsent(textOf(item.getMaterialCode()) + "|" + textOf(item.getLayer()) + "|"
+                    + textOf(item.getProcessName()), label);
+            }
+        } catch (Exception ignored) {
+            // BOM 不可读时用行键兜底，仍能定位到具体行。
+        }
+        return labels;
+    }
+
+    private String changeListDiff(ObjectNode before, ObjectNode after) {
+        List<String> oldSignatures = changeSignatures(before), newSignatures = changeSignatures(after);
+        if (oldSignatures.equals(newSignatures)) return "";
+        List<String> oldLabels = changeLabels(before), newLabels = changeLabels(after);
+        List<String> parts = new ArrayList<>();
+        int common = Math.min(oldSignatures.size(), newSignatures.size());
+        for (int i = 0; i < common && parts.size() < 5; i++) {
+            if (Objects.equals(oldSignatures.get(i), newSignatures.get(i))) continue;
+            parts.add("第" + (i + 1) + "条 " + blankText(oldLabels.get(i)) + " → " + blankText(newLabels.get(i)));
+        }
+        for (int i = common; i < newSignatures.size() && parts.size() < 5; i++)
+            parts.add("新增「" + abbreviate(newLabels.get(i)) + "」");
+        for (int i = common; i < oldSignatures.size() && parts.size() < 5; i++)
+            parts.add("删除「" + abbreviate(oldLabels.get(i)) + "」");
+        return parts.isEmpty() ? "" : "变更记录：" + String.join("；", parts);
+    }
+
+    private List<String> changeSignatures(ObjectNode spec) {
+        List<String> values = new ArrayList<>();
+        for (JsonNode item : spec.path("changes")) {
+            values.add(item.path("date").asText("") + "|" + item.path("text").asText("") + "|"
+                + item.path("print").asBoolean(true) + "|" + item.path("reason").asText("") + "|"
+                + item.path("color").asText(""));
+        }
+        return values;
+    }
+
+    private List<String> changeLabels(ObjectNode spec) {
+        List<String> values = new ArrayList<>();
+        for (JsonNode item : spec.path("changes")) {
+            String date = item.path("date").asText("");
+            values.add((date.isBlank() ? "" : date + " ") + item.path("text").asText(""));
+        }
+        return values;
+    }
+
+    private void addTextChange(List<String> changes, String label, String before, String after) {
+        if (!Objects.equals(before, after))
+            changes.add(label + "：" + abbreviate(before) + " → " + abbreviate(after));
+    }
+
+    private String typeLabel(String type) {
+        if (type == null || type.isBlank()) return "未分类";
+        try {
+            String label = docTypes == null ? null : docTypes.labelOf(type);
+            return label == null || label.isBlank() ? type : label;
+        } catch (Exception e) {
+            return type;
+        }
+    }
+
+    private String colorLabel(String value) {
+        if (value == null || value.isBlank()) return "默认";
+        return COLOR_LABELS.getOrDefault(value, value);
+    }
+
+    private String summary(String action, List<String> changes) {
+        String body = changes == null || changes.isEmpty() ? "" : "：" + String.join("；", changes);
+        String text = action + body;
+        return text.length() > 1000 ? text.substring(0, 1000) + "…" : text;
+    }
+
+    private String textOf(ObjectNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? "" : value.asText("");
+    }
+
+    private String textOf(String value) { return value == null ? "" : value; }
+
+    private String blankText(String value) { return value == null || value.isBlank() ? "（空）" : value; }
+
+    private String abbreviate(String value) {
+        if (value == null || value.isBlank()) return "（空）";
+        String oneLine = value.replaceAll("\\s+", " ").trim();
+        return oneLine.length() > 200 ? oneLine.substring(0, 200) + "…" : oneLine;
+    }
+
+    private Long numberOrNull(JsonNode value) {
+        return value == null || value.isNull() || !value.isNumber() ? null : value.asLong();
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -514,7 +762,7 @@ public class ProductWorkSpecService {
         Map<Long, Map<String, Object>> available = new java.util.HashMap<>();
         for (var file : mapper.draftFiles(id)) {
             Long attachmentId = ((Number) file.get("attachmentId")).longValue();
-            // 与 workSpecRefId 一致：重复的历史来源取最早的有效引用。
+            // 与 workSpecRef 一致：重复的历史来源取最早的有效引用。
             available.merge(attachmentId, file, (a, b) ->
                 ((Number) a.get("refId")).longValue() <= ((Number) b.get("refId")).longValue() ? a : b);
         }

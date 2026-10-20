@@ -314,16 +314,25 @@ public class AttachmentRefService {
 
     @Transactional(rollbackFor = Exception.class)
     public void update(Long id, AttachmentRefMetadataDTO body) {
-        updateMetadata(id, body, false);
+        updateMetadata(id, body, false, true);
+    }
+
+    /**
+     * 新建引用初始化：自动生成的展示名与排序只落库，不另记「附件资料修改」。
+     * 用户真正修改资料类型/展示名/备注仍走 {@link #updateAutoNamed}。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void initAutoNamed(Long id, AttachmentRefMetadataDTO body) {
+        updateMetadata(id, body, true, false);
     }
 
     /** 作业规范统一命名：忽略客户端缓存的展示名，修复原文件名占用展示名的旧引用。 */
     @Transactional(rollbackFor = Exception.class)
     public void updateAutoNamed(Long id, AttachmentRefMetadataDTO body) {
-        updateMetadata(id, body, true);
+        updateMetadata(id, body, true, true);
     }
 
-    private void updateMetadata(Long id, AttachmentRefMetadataDTO body, boolean automaticName) {
+    private void updateMetadata(Long id, AttachmentRefMetadataDTO body, boolean automaticName, boolean logChanges) {
         SysAttachmentRef initial = readable(id);
         SysAttachment file = lock(initial.getAttachmentId());
         SysAttachmentRef ref = refs.lockActive(initial.getAttachmentId()).stream().filter(r -> r.getId().equals(id))
@@ -345,8 +354,11 @@ public class AttachmentRefService {
         int sortOrder = order(body.getSortOrder());
         boolean generatedNameWillBeRebuilt = typeChanged && generated
             && (requestedDisplayName == null || Objects.equals(requestedDisplayName, oldDisplayName));
-        List<String> changes = metadataChanges(ref, type, displayName, remark, sortOrder, !generatedNameWillBeRebuilt);
-        if (changes.isEmpty() && !rebuildAutomaticName) return;
+        boolean sortChanged = (ref.getSortOrder() == null ? 0 : ref.getSortOrder()) != sortOrder;
+        // 自动命名模式下排序由草稿清单位置派生，单条记录不再记「排序」流水；真正换位由保存草稿的人话差异承担。
+        List<String> changes = metadataChanges(ref, type, displayName, remark, sortOrder,
+            !generatedNameWillBeRebuilt, !automaticName);
+        if (changes.isEmpty() && !rebuildAutomaticName && !sortChanged) return;
         Set<AttachmentDisplayNameService.GroupKey> affected = new LinkedHashSet<>();
         if (typeChanged || (!automaticName && body.getDisplayName() != null) || rebuildAutomaticName) {
             affected.add(group(ref));
@@ -360,9 +372,11 @@ public class AttachmentRefService {
             SysAttachmentRef named = refs.selectById(id);
             if (named == null || named.getDisplayName() == null || named.getDisplayName().isBlank())
                 throw new BusinessException("附件展示名生成失败，请检查资料类型字典");
-            changes = metadataChanges(ref, type, named.getDisplayName(), remark, sortOrder, true);
+            // 资料类型变化会顺带重排自动展示名，只记用户真正改的类型，不把生成名另记一条。
+            changes = metadataChanges(ref, type, named.getDisplayName(), remark, sortOrder,
+                !(typeChanged && generated), !automaticName);
         }
-        recordRefChange(ref, file, BusinessType.UPDATE.getCode(), "附件资料修改", changes);
+        if (logChanges && !changes.isEmpty()) recordRefChange(ref, file, BusinessType.UPDATE.getCode(), "附件资料修改", changes);
     }
 
     /** 仅供统一作业规范事务移除当前草稿关联；历史硬引用和其它业务引用不动。 */
@@ -371,11 +385,21 @@ public class AttachmentRefService {
         sources.check("product", productId, true);
         SysAttachment file = lock(attachmentId);
         List<SysAttachmentRef> active = refs.lockActive(attachmentId);
+        boolean removalRecorded = false;
         for (SysAttachmentRef ref : active) {
             if (!("product".equals(ref.getSourceType()) || "work_spec".equals(ref.getSourceType()))
                 || !Objects.equals(productId, ref.getSourceId())) continue;
             jdbc.update("UPDATE sys_attachment_ref SET deleted=1,deleted_at=NOW(),deleted_by=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
                 StpUtil.getLoginIdAsString(), StpUtil.getLoginIdAsString(), ref.getId());
+            // 同一文件同一次移除只记一条「附件移除」，不借资料修改动作冒充。
+            if (!removalRecorded && operationLogs != null) {
+                operationLogs.record(ref.getSourceType(), ref.getSourceId(),
+                    sources.traceIdOf(ref.getSourceType(), ref.getSourceId()), BusinessType.DELETE.getCode(),
+                    "附件移除", ref.getId(), file.getId(), fileName(file), false,
+                    List.of("移除附件" + productLabel(ref.getProductId(), ref.getProductCode())
+                        + "：「" + fileName(file) + "」"));
+                removalRecorded = true;
+            }
         }
         if (active.stream().allMatch(ref -> ("product".equals(ref.getSourceType()) || "work_spec".equals(ref.getSourceType()))
             && Objects.equals(productId, ref.getSourceId()))) {
@@ -459,7 +483,7 @@ public class AttachmentRefService {
             boolean generatedNameWillBeRebuilt = typeChanged && generated
                 && (requestedDisplayName == null || Objects.equals(requestedDisplayName, ref.getDisplayName()));
             List<String> changes = metadataChanges(ref, nextType, nextDisplayName, nextRemark, nextSortOrder,
-                !generatedNameWillBeRebuilt);
+                !generatedNameWillBeRebuilt, true);
             if (!changes.isEmpty() && (!Objects.equals(nextType, ref.getDocumentType())
                     || !Objects.equals(nextDisplayName, ref.getDisplayName()))) {
                 affected.add(group(ref));
@@ -489,7 +513,7 @@ public class AttachmentRefService {
             boolean generatedNameWillBeRebuilt = typeChanged && generated
                 && (requestedDisplayName == null || Objects.equals(requestedDisplayName, ref.getDisplayName()));
             List<String> changes = metadataChanges(ref, type, displayName, remark, sortOrder,
-                !generatedNameWillBeRebuilt);
+                !generatedNameWillBeRebuilt, true);
             if (changes.isEmpty()) continue;
             jdbc.update("UPDATE sys_attachment_ref SET document_type=?,display_name=?,remark=?,sort_order=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
                 type, displayName, remark, sortOrder, StpUtil.getLoginIdAsString(), id);
@@ -586,13 +610,26 @@ public class AttachmentRefService {
     }
 
     private List<String> metadataChanges(SysAttachmentRef ref, String documentType, String displayName,
-                                         String remark, int sortOrder, boolean includeDisplayName) {
+                                         String remark, int sortOrder, boolean includeDisplayName,
+                                         boolean includeSort) {
         List<String> changes = new java.util.ArrayList<>();
-        addChange(changes, "资料类型", ref.getDocumentType(), documentType);
+        if (!Objects.equals(ref.getDocumentType(), documentType))
+            changes.add("资料类型修改：" + typeLabel(ref.getDocumentType()) + " → " + typeLabel(documentType));
         if (includeDisplayName) addChange(changes, "展示名称", ref.getDisplayName(), displayName);
         addChange(changes, "备注", ref.getRemark(), remark);
-        addChange(changes, "排序", ref.getSortOrder() == null ? 0 : ref.getSortOrder(), sortOrder);
+        if (includeSort) addChange(changes, "排序", ref.getSortOrder() == null ? 0 : ref.getSortOrder(), sortOrder);
         return changes;
+    }
+
+    /** 流水写人话：资料类型用字典中文名，不把枚举编码直接抛给用户。 */
+    private String typeLabel(String type) {
+        if (type == null || type.isBlank()) return "未分类";
+        try {
+            String label = types.labelOf(type);
+            return label == null || label.isBlank() ? type : label;
+        } catch (Exception e) {
+            return type;
+        }
     }
 
     private void addChange(List<String> changes, String label, Object oldValue, Object newValue) {

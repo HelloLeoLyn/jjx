@@ -29,12 +29,13 @@ public class TraceController {
             @RequestParam(required = false) String traceId,
             @RequestParam(required = false) String bizType,
             @RequestParam(required = false) Long bizId,
+            @RequestParam(required = false) String scope,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {
         if (traceId != null && !traceId.isBlank()) {
-            return Result.success(traceService.getEvents(traceId, pageNum, pageSize));
+            return Result.success(traceService.getEvents(traceId, scope, pageNum, pageSize));
         }
-        return Result.success(traceService.getEventsByBiz(bizType, bizId, pageNum, pageSize));
+        return Result.success(traceService.getEventsByBiz(bizType, bizId, scope, pageNum, pageSize));
     }
 
     @Operation(summary = "按业务单据查询审核流水（review_flow + 报价 sales_quotation_flow）")

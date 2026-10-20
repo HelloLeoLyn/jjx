@@ -10,6 +10,9 @@ import com.jjx.product.domain.dto.PrintSpecRemarksDTO;
 import com.jjx.product.domain.dto.ColorCheckDTO;
 import com.jjx.product.service.ProductWorkSpecService;
 import com.jjx.product.service.ProductWorkSpecChangeService;
+import com.jjx.common.core.page.PageResult;
+import com.jjx.trace.domain.vo.UnifiedTraceEventVO;
+import com.jjx.trace.service.TraceService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +26,7 @@ import jakarta.validation.constraints.NotBlank;
 public class ProductWorkSpecController {
     private final ProductWorkSpecService service;
     private final ProductWorkSpecChangeService changes;
+    private final TraceService traceService;
 
     @GetMapping("/change-sources")
     @SaCheckPermission("product:edit")
@@ -82,9 +86,19 @@ public class ProductWorkSpecController {
     @GetMapping("/responsible-users")
     @SaCheckPermission("product:edit")
     public Result<java.util.List<java.util.Map<String,Object>>> responsibleUsers() { return Result.success(service.responsibleUsers()); }
+    /**
+     * @deprecated 规范操作记录统一走 /api/trace/events + scope=work_spec；这里只转调同一查询，
+     * 不再保留 ProductWorkSpecMapper.draftHistory 第二口径。保留入口仅为兼容旧客户端。
+     */
+    @Deprecated
     @GetMapping("/history")
     @SaCheckPermission(value={"product:spec:view","engineering:spec:view"},mode=cn.dev33.satoken.annotation.SaMode.OR)
-    public Result<ObjectNode> history(@PathVariable Long productId,@RequestParam(required=false) Long before) { return Result.success(service.draftHistory(productId,before)); }
+    public Result<PageResult<UnifiedTraceEventVO>> history(@PathVariable Long productId,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return Result.success(traceService.getEventsByBiz("product", productId,
+                TraceService.SCOPE_WORK_SPEC, pageNum, pageSize));
+    }
 
     @PostMapping("/confirm")
     @SaCheckPermission("product:status:approve")

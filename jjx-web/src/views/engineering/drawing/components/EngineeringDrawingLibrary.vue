@@ -138,23 +138,20 @@
       :product-id="productId"
       @updated="emit('updated')"
     />
-    <el-dialog v-model="historyVisible" title="规范操作记录" width="760px" append-to-body>
-      <el-table :data="historyRows" v-loading="historyLoading" size="small">
-        <el-table-column prop="changedAt" label="时间" width="175" />
-        <el-table-column prop="operatorName" label="操作人" width="120" />
-        <el-table-column prop="action" label="操作" min-width="180" />
-      </el-table>
-      <el-button v-if="historyBefore" :loading="historyLoading" @click="loadHistory"
-        >更多</el-button
-      >
-    </el-dialog>
+    <!-- 规范操作记录与产品流水同一个组件：只传 scope，不再维护第二套表格/查询。 -->
+    <TraceTimeline
+      v-model="historyVisible"
+      biz-type="product"
+      :biz-id="String(productId)"
+      scope="work_spec"
+    />
   </section>
 </template>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
-import { productWorkSpecApi } from '@/api/product/workSpec'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import type { PendingEntry } from '@/composables/useAttachmentRefs'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
 import AttachmentManager from '@/components/attachment/AttachmentManager.vue'
@@ -277,26 +274,8 @@ async function cancel() {
   }
 }
 const historyVisible = ref(false)
-const historyLoading = ref(false)
-const historyRows = ref<any[]>([])
-const historyBefore = ref<number>()
-async function history() {
-  historyRows.value = []
-  historyBefore.value = undefined
+function history() {
   historyVisible.value = true
-  await loadHistory()
-}
-async function loadHistory() {
-  historyLoading.value = true
-  try {
-    const result = await productWorkSpecApi.history(props.productId, historyBefore.value)
-    historyRows.value.push(...(result.data?.items || []))
-    historyBefore.value = result.data?.nextBefore || undefined
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '记录加载失败')
-  } finally {
-    historyLoading.value = false
-  }
 }
 watch(
   () => props.productId,

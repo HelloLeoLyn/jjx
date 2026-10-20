@@ -132,6 +132,26 @@ describe('TraceTimeline 产品工程流水', () => {
     expect(wrapper.text()).toContain('工艺路线管理')
   })
 
+  it('规范操作记录只增加范围参数并显示过滤标识，渲染仍是同一组件', async () => {
+    get.mockResolvedValue({ data: { total: 1, records: [
+      { eventId: 'oper-9', bizType: 'product', bizId: '8', module: '产品作业规范', action: '保存草稿',
+        detail: JSON.stringify({ changes: ['附件新增：「结构图.pdf」'], attachments: [] }) },
+    ] } } as any)
+    wrapper = mount(TraceTimeline, {
+      props: { modelValue: true, bizType: 'product', bizId: '8', scope: 'work_spec' },
+      global: { stubs: { ElDrawer: defineComponent({
+        name: 'ElDrawerStub', emits: ['open'], template: '<div><slot /></div>',
+      }) } },
+    })
+    wrapper.findComponent({ name: 'ElDrawerStub' }).vm.$emit('open')
+    await flushPromises()
+    expect(get).toHaveBeenCalledWith('/api/trace/events', {
+      params: { bizType: 'product', bizId: '8', scope: 'work_spec', pageNum: 1, pageSize: 20 },
+    })
+    expect(wrapper.text()).toContain('仅看产品作业规范')
+    expect(wrapper.text()).toContain('保存草稿')
+  })
+
   it('历史作业规范模块「作业规范版本」展示为「产品作业规范」', async () => {
     get.mockResolvedValue({ data: { total: 1, records: [
       { eventId: 'oper-9', bizType: 'product', bizId: '8', module: '作业规范版本', action: '保存草稿' },

@@ -305,6 +305,67 @@ class AttachmentRefDisplayNameTest {
         return item;
     }
 
+
+    @Test
+    void newlyCreatedReferenceInitializesGeneratedMetadataWithoutAnotherEvent() {
+        SysAttachmentRef ref = ref(5L, 50L, "STRUCTURE_DRAWING", null);
+        ref.setSourceType("work_spec");
+        SysAttachmentRef named = ref(5L, 50L, "STRUCTURE_DRAWING", "WORK_SPEC-3-P7-ENG-SD-结构图-01");
+        named.setSourceType("work_spec");
+        when(refs.selectById(5L)).thenReturn(ref, named);
+        when(refs.lockActive(50L)).thenReturn(List.of(ref));
+        when(names.baseName("work_spec", 3L, 7L, "STRUCTURE_DRAWING")).thenReturn("WORK_SPEC-3-P7-ENG-SD-结构图");
+        when(names.isGeneratedName(null, "WORK_SPEC-3-P7-ENG-SD-结构图")).thenReturn(false);
+        AttachmentRefMetadataDTO body = new AttachmentRefMetadataDTO();
+        body.setDocumentType("STRUCTURE_DRAWING"); body.setSortOrder(1);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            service.initAutoNamed(5L, body);
+        }
+        verify(jdbc).update(startsWith("UPDATE sys_attachment_ref SET document_type"), any(Object[].class));
+        verifyNoInteractions(operationLogs);
+    }
+
+    @Test
+    void derivedSortOnlyChangeIsPersistedWithoutAnAttachmentModificationEvent() {
+        SysAttachmentRef ref = ref(5L, 50L, "STRUCTURE_DRAWING", "WORK_SPEC-3-P7-ENG-SD-结构图-01");
+        ref.setSourceType("work_spec");
+        when(refs.selectById(5L)).thenReturn(ref);
+        when(refs.lockActive(50L)).thenReturn(List.of(ref));
+        when(names.baseName("work_spec", 3L, 7L, "STRUCTURE_DRAWING")).thenReturn("WORK_SPEC-3-P7-ENG-SD-结构图");
+        when(names.isGeneratedName(ref.getDisplayName(), "WORK_SPEC-3-P7-ENG-SD-结构图")).thenReturn(true);
+        AttachmentRefMetadataDTO body = new AttachmentRefMetadataDTO();
+        body.setDocumentType("STRUCTURE_DRAWING"); body.setSortOrder(4);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            service.updateAutoNamed(5L, body);
+        }
+        verify(jdbc).update(startsWith("UPDATE sys_attachment_ref SET document_type"), any(Object[].class));
+        verifyNoInteractions(operationLogs);
+    }
+
+    @Test
+    void detachWorkSpecFileRecordsRealRemovalWithFileName() {
+        SysAttachmentRef ref = ref(5L, 50L, "STRUCTURE_DRAWING", "结构图-01");
+        ref.setSourceType("work_spec");
+        ref.setSourceId(7L);
+        SysAttachment file = file(50L);
+        file.setFileName("刀模图.pdf");
+        when(files.selectActiveForUpdate(50L)).thenReturn(file);
+        when(refs.lockActive(50L)).thenReturn(List.of(ref));
+        when(sources.check("product", 7L, true)).thenReturn("P7");
+        when(sources.traceIdOf("work_spec", 7L)).thenReturn("trace-9");
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            service.detachWorkSpecFile(7L, 50L);
+        }
+        verify(operationLogs).record(eq("work_spec"), eq(7L), eq("trace-9"),
+            eq(com.jjx.system.annotation.BusinessType.DELETE.getCode()), eq("附件移除"),
+            eq(5L), eq(50L), eq("刀模图.pdf"), eq(false),
+            argThat(changes -> changes.size() == 1 && changes.get(0).contains("移除附件")
+                && changes.get(0).contains("刀模图.pdf")));
+    }
+
     private SysAttachmentRef ref(Long id, Long attachmentId, String type, String displayName) {
         SysAttachmentRef ref = new SysAttachmentRef();
         ref.setId(id);

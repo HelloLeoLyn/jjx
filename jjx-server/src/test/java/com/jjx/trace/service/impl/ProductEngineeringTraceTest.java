@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.*;
 
 /** H2 执行真实 MyBatis 查询与分页；不写业务库，不代表实机操作点验。 */
@@ -90,6 +91,68 @@ class ProductEngineeringTraceTest {
         assertTrue(service.getEventsByBiz("product", 8L, 4, 2).getRecords().isEmpty());
         assertEquals(0, service.getEventsByBiz("product", 99L, 1, 2).getTotal());
         assertEquals(1, service.getEventsByBiz("bom", 11L, 1, 20).getTotal());
+    }
+
+    @Test
+    void workSpecScopeFiltersModulesWithoutChangingTheSharedQuery() {
+        event(1, "product", "8", "产品管理", null, 0);
+        event(2, "product", "8", "作业规范版本", null, 1);
+        event(3, "product", "8", "产品作业规范", null, 2);
+        event(4, "bom", "11", "产品BOM管理", null, 3);
+
+        assertEquals(4, service.getEventsByBiz("product", 8L, 1, 20).getTotal());
+
+        var scoped = service.getEventsByBiz("product", 8L,
+                com.jjx.trace.service.TraceService.SCOPE_WORK_SPEC, 1, 20);
+        assertEquals(2, scoped.getTotal());
+        assertEquals(List.of("oper-2", "oper-3"), scoped.getRecords().stream().map(e -> e.getEventId()).toList());
+        assertEquals("产品作业规范", scoped.getRecords().getFirst().getModule(), "历史模块名只做读时映射");
+        var secondPage = service.getEventsByBiz("product", 8L,
+                com.jjx.trace.service.TraceService.SCOPE_WORK_SPEC, 2, 1);
+        assertEquals(2, secondPage.getTotalPages());
+        assertEquals(List.of("oper-3"), secondPage.getRecords().stream().map(e -> e.getEventId()).toList());
+    }
+
+    @Test
+    void emptyPublishActionGetsExplicitNameAndUnknownEmptyActionIsMarked() {
+        var publish = new SysOperLog();
+        publish.setId(21L); publish.setBizType("product"); publish.setBizId("8");
+        publish.setModule("产品作业规范"); publish.setOperUrl("/product/8/work-spec/publish");
+        publish.setCreateTime(LocalDateTime.of(2026, 10, 20, 10, 5));
+        logs.insert(publish);
+        var unknown = new SysOperLog();
+        unknown.setId(22L); unknown.setBizType("product"); unknown.setBizId("8");
+        unknown.setModule("产品作业规范");
+        unknown.setCreateTime(LocalDateTime.of(2026, 10, 20, 10, 6));
+        logs.insert(unknown);
+
+        var events = service.getEventsByBiz("product", 8L,
+                com.jjx.trace.service.TraceService.SCOPE_WORK_SPEC, 1, 20).getRecords();
+        assertEquals("发布规范版本", events.get(0).getAction());
+        assertEquals("未命名操作", events.get(1).getAction());
+    }
+
+    @Test
+    void legacyDraftDetailIsReadOnlyBackfilledWithFileNames() {
+        var row = new SysOperLog();
+        row.setId(31L); row.setBizType("product"); row.setBizId("8"); row.setModule("产品作业规范");
+        row.setAction("保存草稿");
+        row.setDetail("{\"added\":[50],\"removed\":[51],\"orderChanged\":true}");
+        row.setCreateTime(LocalDateTime.of(2026, 10, 20, 10, 7));
+        logs.insert(row);
+        var files = mock(com.jjx.system.mapper.SysAttachmentMapper.class);
+        var first = new com.jjx.system.domain.entity.SysAttachment(); first.setId(50L); first.setFileName("新结构图.pdf");
+        var second = new com.jjx.system.domain.entity.SysAttachment(); second.setId(51L); second.setFileName("旧刀模图.pdf");
+        when(files.selectBatchIds(anyCollection())).thenReturn(List.of(first, second));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "attachmentMapper", files);
+
+        var event = service.getEventsByBiz("product", 8L,
+                com.jjx.trace.service.TraceService.SCOPE_WORK_SPEC, 1, 20).getRecords().getFirst();
+        assertEquals("保存草稿", event.getAction());
+        assertTrue(event.getDetail().contains("新结构图.pdf"));
+        assertTrue(event.getDetail().contains("旧刀模图.pdf"));
+        assertTrue(event.getDetail().contains("新增附件"));
+        assertTrue(event.getDetail().contains("移除附件"));
     }
 
     @Test

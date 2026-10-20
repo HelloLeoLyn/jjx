@@ -1,5 +1,8 @@
 package com.jjx.trace.service.impl;
 
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -8,21 +11,28 @@ import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.entity.SalesQuotationFlow;
 import com.jjx.sales.mapper.QuotationFlowMapper;
 import com.jjx.system.domain.entity.ReviewFlow;
+import com.jjx.system.domain.entity.SysAttachment;
 import com.jjx.system.domain.entity.SysOperLog;
 import com.jjx.system.mapper.ReviewFlowMapper;
+import com.jjx.system.mapper.SysAttachmentMapper;
 import com.jjx.system.mapper.SysOperLogMapper;
 import com.jjx.trace.domain.vo.TraceReviewVO;
 import com.jjx.trace.domain.vo.UnifiedTraceEventVO;
 import com.jjx.trace.service.TraceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -33,24 +43,28 @@ public class TraceServiceImpl implements TraceService {
     private final ReviewFlowMapper reviewFlowMapper;
     private final QuotationFlowMapper quotationFlowMapper;
     private final com.jjx.system.service.AttachmentEvidenceService attachmentEvidence;
+    /** 历史流水补文件名专用；单测构造时不注入，读时降级为「附件 ID」。 */
+    @Autowired(required = false)
+    private SysAttachmentMapper attachmentMapper;
 
     @Override
-    public PageResult<UnifiedTraceEventVO> getEvents(String traceId, int pageNum, int pageSize) {
+    public PageResult<UnifiedTraceEventVO> getEvents(String traceId, String scope, int pageNum, int pageSize) {
         if (traceId == null || traceId.isBlank()) {
             return PageResult.build(Collections.emptyList(), 0);
         }
         // 先取整条 trace 的日志再归并、最后按归并后的条数分页：否则一对「附件 + 保存」会被页码切开，
         // 总数也会和页面上看到的事件数不一致。一条 trace 只对应一次业务操作链，量级有限。
-        List<SysOperLog> logs = sysOperLogMapper.selectList(
-                Wrappers.<SysOperLog>lambdaQuery()
-                        .eq(SysOperLog::getTraceId, traceId)
-                        // 工程主数据归产品；读时排除历史误挂记录，保留 NULL 类型的旧日志。
-                        .and(w -> w.isNull(SysOperLog::getBizType)
-                                .or().notIn(SysOperLog::getBizType, List.of("bom", "routing")))
-                        .orderByAsc(SysOperLog::getCreateTime)
-                        .orderByAsc(SysOperLog::getId));
-        List<UnifiedTraceEventVO> events = TraceEventAggregator.mergeAttachmentEvents(
-                logs.stream().map(this::fromLog).toList());
+        LambdaQueryWrapper<SysOperLog> query = Wrappers.<SysOperLog>lambdaQuery()
+                .eq(SysOperLog::getTraceId, traceId)
+                // 工程主数据归产品；读时排除历史误挂记录，保留 NULL 类型的旧日志。
+                .and(w -> w.isNull(SysOperLog::getBizType)
+                        .or().notIn(SysOperLog::getBizType, List.of("bom", "routing")))
+                .orderByAsc(SysOperLog::getCreateTime)
+                .orderByAsc(SysOperLog::getId);
+        applyScope(query, scope);
+        List<SysOperLog> logs = sysOperLogMapper.selectList(query);
+        List<UnifiedTraceEventVO> events = enrichWorkSpecHistory(TraceEventAggregator.mergeAttachmentEvents(
+                logs.stream().map(this::fromLog).toList()));
         int size = Math.min(Math.max(pageSize, 1), 100);
         int num = Math.max(pageNum, 1);
         int from = Math.min((num - 1) * size, events.size());
@@ -68,7 +82,7 @@ public class TraceServiceImpl implements TraceService {
      * 按业务对象查询操作日志（产品/BOM/工艺路线等主数据无 trace_id，按 bizType+bizId 聚合）
      */
     @Override
-    public PageResult<UnifiedTraceEventVO> getEventsByBiz(String bizType, Long bizId, int pageNum, int pageSize) {
+    public PageResult<UnifiedTraceEventVO> getEventsByBiz(String bizType, Long bizId, String scope, int pageNum, int pageSize) {
         if (bizType == null || bizType.isBlank() || bizId == null) {
             return PageResult.build(Collections.emptyList(), 0);
         }
@@ -84,10 +98,11 @@ public class TraceServiceImpl implements TraceService {
         } else {
             query.eq(SysOperLog::getBizType, bizType).eq(SysOperLog::getBizId, bizId.toString());
         }
+        applyScope(query, scope);
         query.orderByAsc(SysOperLog::getCreateTime).orderByAsc(SysOperLog::getId);
         IPage<SysOperLog> page = sysOperLogMapper.selectPage(
                 new Page<>(Math.max(pageNum, 1), Math.min(Math.max(pageSize, 1), 100)), query);
-        List<UnifiedTraceEventVO> records = page.getRecords().stream().map(this::fromLog).toList();
+        List<UnifiedTraceEventVO> records = enrichWorkSpecHistory(page.getRecords().stream().map(this::fromLog).toList());
         return PageResult.of(page, records);
     }
 
@@ -159,12 +174,12 @@ public class TraceServiceImpl implements TraceService {
         event.setEventId("oper-" + log.getId());
         event.setTime(log.getCreateTime());
         event.setBizStatus(log.getBizStatus());
-        event.setAction(log.getAction());
+        event.setAction(actionOf(log));
         event.setOperatorName(log.getRealName() != null && !log.getRealName().isBlank()
                 ? log.getRealName() : log.getUsername());
         event.setResult(log.getStatus());
         event.setTraceId(log.getTraceId());
-        event.setModule(log.getModule());
+        event.setModule(moduleOf(log.getModule()));
         event.setBizType(log.getBizType());
         event.setBizId(log.getBizId());
         event.setBusinessType(log.getBusinessType());
@@ -172,6 +187,162 @@ public class TraceServiceImpl implements TraceService {
         event.setOperParam(log.getOperParam());
         event.setDetail(log.getDetail());
         return event;
+    }
+
+
+    /** 统一范围只加模块条件：同一查询入口、同一 VO、同一分页规则。 */
+    private static final List<String> WORK_SPEC_MODULES = List.of("产品作业规范", "作业规范版本");
+    private static final String WORK_SPEC_MODULE = "产品作业规范";
+
+    private void applyScope(LambdaQueryWrapper<SysOperLog> query, String scope) {
+        if (com.jjx.trace.service.TraceService.SCOPE_WORK_SPEC.equals(scope)) {
+            query.in(SysOperLog::getModule, WORK_SPEC_MODULES);
+        }
+    }
+
+    /** 历史模块名只做读时映射，不改日志行。 */
+    private String moduleOf(String module) {
+        return "作业规范版本".equals(module) ? WORK_SPEC_MODULE : module;
+    }
+
+    /** 写入端未给 action 的历史行：能按固定入口判定就补明确动作，否则标明未命名。 */
+    private String actionOf(SysOperLog log) {
+        String action = log.getAction();
+        if (action != null && !action.isBlank()) return action;
+        String module = moduleOf(log.getModule());
+        if (WORK_SPEC_MODULE.equals(module)) {
+            String url = log.getOperUrl();
+            if (url != null && url.contains("/work-spec/publish")) return "发布规范版本";
+            return "未命名操作";
+        }
+        return null;
+    }
+
+    /**
+     * 历史作业规范流水只读补全：detail.attachments 缺文件名时按附件 ID 回填；
+     * 早期「保存草稿」只有 added/removed ID、没有 changes 时补成人话。不改库。
+     */
+    private List<UnifiedTraceEventVO> enrichWorkSpecHistory(List<UnifiedTraceEventVO> events) {
+        if (events == null || events.isEmpty()) return events;
+        List<UnifiedTraceEventVO> targets = events.stream()
+                .filter(event -> WORK_SPEC_MODULE.equals(event.getModule()))
+                .toList();
+        if (targets.isEmpty()) return events;
+        Set<Long> ids = new LinkedHashSet<>();
+        for (UnifiedTraceEventVO event : targets) collectAttachmentIds(event.getDetail(), ids);
+        Map<Long, String> names = attachmentNames(ids);
+        for (UnifiedTraceEventVO event : targets) {
+            JSONObject detail = parseEventDetail(event.getDetail());
+            if (detail == null) continue;
+            boolean changed = fillAttachmentNames(detail, names);
+            changed |= fillLegacyChanges(detail, names);
+            if (changed) event.setDetail(detail.toString());
+        }
+        return events;
+    }
+
+    private void collectAttachmentIds(String detailText, Set<Long> ids) {
+        JSONObject detail = parseEventDetail(detailText);
+        if (detail == null) return;
+        JSONArray attachments = detail.getJSONArray("attachments");
+        if (attachments != null) {
+            for (Object item : attachments) {
+                Long id = number(read(item, "id"));
+                if (id != null) ids.add(id);
+            }
+        }
+        for (String key : List.of("added", "removed")) {
+            JSONArray array = detail.getJSONArray(key);
+            if (array == null) continue;
+            for (Object item : array) {
+                Long id = number(item);
+                if (id != null) ids.add(id);
+            }
+        }
+    }
+
+    private Map<Long, String> attachmentNames(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty() || attachmentMapper == null) return Collections.emptyMap();
+        try {
+            List<SysAttachment> files = attachmentMapper.selectBatchIds(ids);
+            if (files == null || files.isEmpty()) return Collections.emptyMap();
+            Map<Long, String> names = new java.util.HashMap<>();
+            for (SysAttachment file : files) {
+                if (file.getId() != null && file.getFileName() != null && !file.getFileName().isBlank()) {
+                    names.put(file.getId(), file.getFileName());
+                }
+            }
+            return names;
+        } catch (Exception e) {
+            log.warn("历史流水补文件名失败，按附件 ID 展示: {}", e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    private boolean fillAttachmentNames(JSONObject detail, Map<Long, String> names) {
+        JSONArray attachments = detail.getJSONArray("attachments");
+        if (attachments == null || attachments.isEmpty()) return false;
+        boolean changed = false;
+        for (Object item : attachments) {
+            if (!(item instanceof JSONObject attachment)) continue;
+            String fileName = attachment.getStr("fileName");
+            if (fileName != null && !fileName.isBlank()) continue;
+            Long id = number(attachment.get("id"));
+            if (id == null) continue;
+            String resolved = names.get(id);
+            attachment.set("fileName", resolved != null ? resolved : "附件 " + id + "（历史记录）");
+            changed = true;
+        }
+        return changed;
+    }
+
+    private boolean fillLegacyChanges(JSONObject detail, Map<Long, String> names) {
+        JSONArray changes = detail.getJSONArray("changes");
+        if (changes != null && !changes.isEmpty()) return false;
+        List<String> added = legacyFileLabels(detail.getJSONArray("added"), names);
+        List<String> removed = legacyFileLabels(detail.getJSONArray("removed"), names);
+        if (added.isEmpty() && removed.isEmpty()) return false;
+        List<String> lines = new ArrayList<>();
+        if (!added.isEmpty()) lines.add("新增附件：" + String.join("、", added));
+        if (!removed.isEmpty()) lines.add("移除附件：" + String.join("、", removed));
+        detail.set("changes", lines);
+        return true;
+    }
+
+    private List<String> legacyFileLabels(JSONArray ids, Map<Long, String> names) {
+        List<String> labels = new ArrayList<>();
+        if (ids == null) return labels;
+        for (Object item : ids) {
+            Long id = number(item);
+            if (id == null) continue;
+            String resolved = names.get(id);
+            labels.add(resolved != null ? "「" + resolved + "」" : "附件 " + id + "（历史记录）");
+        }
+        return labels;
+    }
+
+    private JSONObject parseEventDetail(String detail) {
+        if (detail == null || detail.isBlank()) return null;
+        try {
+            return JSONUtil.parseObj(detail);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Object read(Object item, String key) {
+        if (item instanceof JSONObject json) return json.get(key);
+        if (item instanceof Map<?, ?> map) return map.get(key);
+        return null;
+    }
+
+    private Long number(Object value) {
+        if (value == null) return null;
+        try {
+            return Long.valueOf(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** 前端统一标识 → review_flow 存储的 bizType */

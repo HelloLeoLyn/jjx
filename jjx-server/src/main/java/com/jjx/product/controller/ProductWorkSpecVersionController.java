@@ -26,7 +26,7 @@ public class ProductWorkSpecVersionController {
 
     @PostMapping("/{productId}/work-spec/publish")
     @SaCheckPermission("product:work-spec:publish")
-    @Log(module = "产品作业规范", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#productId")
+    @Log(module = "产品作业规范", action = "发布规范版本", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#productId")
     public Result<ProductWorkSpecVersion> publish(@PathVariable Long productId,
                                                   @RequestParam(required = false) String changeSummary,
                                                   @RequestParam(required = false) String revision) {
@@ -42,7 +42,7 @@ public class ProductWorkSpecVersionController {
     /** 停用版本（PUBLISHED → RETIRED，不硬删；dev-20261011-033）。 */
     @PostMapping("/work-spec/versions/{versionId}/retire")
     @SaCheckPermission("product:work-spec:publish")
-    @Log(module = "产品作业规范", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#result.data.productId")
+    @Log(module = "产品作业规范", action = "停用规范版本", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#result.data.productId")
     public Result<ProductWorkSpecVersion> retire(@PathVariable Long versionId) {
         return Result.success(service.retire(versionId));
     }
@@ -50,7 +50,7 @@ public class ProductWorkSpecVersionController {
     /** 恢复版本（RETIRED → PUBLISHED；dev-20261011-033）。 */
     @PostMapping("/work-spec/versions/{versionId}/restore")
     @SaCheckPermission("product:work-spec:publish")
-    @Log(module = "产品作业规范", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#result.data.productId")
+    @Log(module = "产品作业规范", action = "恢复规范版本", businessType = BusinessType.UPDATE, bizType = "'product'", bizId = "#result.data.productId")
     public Result<ProductWorkSpecVersion> restore(@PathVariable Long versionId) {
         return Result.success(service.restore(versionId));
     }

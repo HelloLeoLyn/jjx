@@ -8,7 +8,10 @@
   >
     <div class="toolbar">
       <span class="toolbar-hint">按时间正序展示业务操作</span>
-      <el-switch v-model="showTechnical" active-text="技术详情" />
+      <div class="toolbar-actions">
+        <el-tag v-if="scopeLabel" size="small" type="info">{{ scopeLabel }}</el-tag>
+        <el-switch v-model="showTechnical" active-text="技术详情" />
+      </div>
     </div>
 
     <div v-if="loading" class="loading-box">
@@ -217,6 +220,8 @@ const props = defineProps<{
   bizType?: string
   bizId?: string
   module?: string
+  /** 范围过滤：work_spec=同一产品流水中只看产品作业规范；留空=不筛模块 */
+  scope?: string
   modelValue: boolean
 }>()
 
@@ -236,6 +241,10 @@ const total = ref(0)
 /** 按需加载缓存：key = bizType:bizId */
 const reviewCache = new Map<string, ReviewHistory[]>()
 
+const scopeLabel = computed(() =>
+  props.scope === 'work_spec' ? '仅看产品作业规范' : undefined
+)
+
 watch(
   () => props.modelValue,
   (value) => {
@@ -249,7 +258,7 @@ watch(
   }
 )
 watch(
-  () => [props.bizType, props.bizId] as const,
+  () => [props.bizType, props.bizId, props.scope] as const,
   () => {
     if (props.modelValue) resetAndLoad()
   }
@@ -318,6 +327,7 @@ async function loadEvents() {
       params.bizType = props.bizType
       params.bizId = props.bizId
     }
+    if (props.scope) params.scope = props.scope
     const response = await request.get('/api/trace/events', { params })
     const data = (response as any)?.data || {}
     events.value = (data.records || []).map(enrichEvent)
@@ -509,6 +519,11 @@ function downloadUrl(attachment: TraceAttachment): string {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .toolbar-hint,
 .detail-meta {
