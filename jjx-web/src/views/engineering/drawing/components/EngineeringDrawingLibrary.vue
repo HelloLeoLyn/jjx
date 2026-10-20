@@ -232,6 +232,12 @@ function uploaded(payload: { pending: PendingEntry }) {
     )
 }
 async function save() {
+  // 与作业规范面板共用同一保存前汇总校验与文案；只读/非负责人不会进入附件校验。
+  const check = await draft.validateBeforeSave()
+  if (!check.ok) {
+    ElMessage.error(check.message)
+    return
+  }
   try {
     await draft.save()
     ElMessage.success('草稿已保存')

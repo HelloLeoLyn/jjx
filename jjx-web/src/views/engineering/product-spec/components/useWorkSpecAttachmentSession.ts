@@ -29,6 +29,26 @@ import { attachmentRefApi, type AttachmentRefItem } from '@/api/system/attachmen
 const key: InjectionKey<WorkSpecDraftSession> = Symbol('work-spec-draft')
 export type WorkSpecDraftSession = ReturnType<typeof createWorkSpecAttachmentSession>
 
+/** 保存前汇总校验最多逐个列出的文件名；其余只报数量（dev-20261020-025）。 */
+export const WORK_SPEC_ATTACHMENT_NAME_LIMIT = 5
+export function workSpecAttachmentName(file: {
+  displayName?: string | null
+  fileName?: string
+  attachmentId: number
+}): string {
+  return file.displayName || file.fileName || String(file.attachmentId)
+}
+export function workSpecAttachmentNames(names: string[]): string {
+  const head = names.slice(0, WORK_SPEC_ATTACHMENT_NAME_LIMIT).join('、')
+  return names.length > WORK_SPEC_ATTACHMENT_NAME_LIMIT
+    ? `${head} 等 ${names.length - WORK_SPEC_ATTACHMENT_NAME_LIMIT} 个`
+    : head
+}
+export interface WorkSpecSaveCheck {
+  ok: boolean
+  message: string
+}
+
 /** 每个产品容器一份会话；正文、结构图和图集共享完整草稿保存边界。 */
 export function useWorkSpecAttachmentSession(productId: Ref<number>, productCode: Ref<string>) {
   const inherited = inject(key, undefined)
@@ -202,6 +222,50 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     () => loading.value || saving.value || confirming.value || session.uploading.value
   )
 
+  /**
+   * 保存前汇总校验：附件二级类型缺失、类型已停用/非 ENGINEERING_DOC、上传未完成/尚未绑定，
+   * 一次性列出问题附件名（最多 5 个，其余只报数量）。两个保存入口共用同一文案口径。
+   * 只读/非负责人在此之前被拦截，不进入附件校验。
+   */
+  async function validateBeforeSave(
+    options: { refreshTypes?: boolean } = {}
+  ): Promise<WorkSpecSaveCheck> {
+    if (!ready.value) return { ok: false, message: '草稿尚未就绪，请稍后重试' }
+    if (!isOwner.value)
+      return { ok: false, message: readOnlyReason.value || '当前不是制定负责人，不能保存' }
+    if (!session.canEdit.value) return { ok: false, message: '无草稿编辑权限' }
+    if (options.refreshTypes || !session.documentTypes.value.length) {
+      try {
+        await session.loadDocumentTypes()
+      } catch {
+        return { ok: false, message: '资料类型字典不可用，请重新加载后再保存' }
+      }
+    }
+    const issues: string[] = []
+    // 状态有效：上传中、绑定中或失败的附件都还没落定，不能随草稿一起提交。
+    const unfinished =
+      (session.uploadingCount?.value || 0) +
+      session.pending.value.filter((entry) => entry.state !== 'pending').length
+    if (unfinished > 0)
+      issues.push(`仍有 ${unfinished} 个附件上传未完成或尚未绑定，请等待完成或移除后再保存`)
+    const missing = files.value.filter((file) => !file.documentType)
+    if (missing.length)
+      issues.push(
+        `以下 ${missing.length} 个附件未选择资料类型：${workSpecAttachmentNames(missing.map(workSpecAttachmentName))}`
+      )
+    if (files.value.length) {
+      const active = new Set(engineeringTypes.value.map((type) => type.item_key))
+      const invalid = files.value.filter(
+        (file) => file.documentType && !active.has(file.documentType)
+      )
+      if (invalid.length)
+        issues.push(
+          `以下 ${invalid.length} 个附件资料类型已停用或非工程技术资料，请重新选择：${workSpecAttachmentNames(invalid.map(workSpecAttachmentName))}`
+        )
+    }
+    return issues.length ? { ok: false, message: issues.join('；') } : { ok: true, message: '' }
+  }
+
   function accept(value: Partial<ProductWorkSpec>) {
     conflict.value = false
     error.value = ''
@@ -248,29 +312,15 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     }
   }
   async function save(content?: ProductWorkSpec) {
-    if (!ready.value || busy.value) throw new Error('草稿尚未就绪或正在处理，请稍后重试')
-    if (!isOwner.value) throw new Error(readOnlyReason.value)
-    if (!session.canEdit.value) throw new Error('无草稿编辑权限')
-    const missingTypes = files.value.filter((file) => !file.documentType)
-    if (missingTypes.length)
-      throw new Error(
-        '以下附件未选择资料类型：' +
-          missingTypes
-            .map((file) => file.displayName || file.fileName || String(file.attachmentId))
-            .join('、')
-      )
+    if (!ready.value || loading.value || saving.value || confirming.value)
+      throw new Error('草稿尚未就绪或正在处理，请稍后重试')
+    // 保存前统一汇总校验；后端 saveDraft 仍保留同样的类型校验，前端只负责提前说清是哪几个附件。
+    const check = await validateBeforeSave({ refreshTypes: true })
+    if (!check.ok) throw new Error(check.message)
     const current = generation
     const id = productId.value
     saving.value = true
     try {
-      await session.loadDocumentTypes()
-      const active = new Set(engineeringTypes.value.map((type) => type.item_key))
-      const invalid = files.value.filter((file) => !active.has(file.documentType || ''))
-      if (invalid.length)
-        throw new Error(
-          '资料类型已停用、非工程技术资料或字典不可用，请重新选择：' +
-            invalid.map((file) => file.displayName || file.fileName).join('、')
-        )
       const payload = {
         revision: content?.revision || spec.value.revision,
         preparedById: spec.value.preparedById,
@@ -532,6 +582,7 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     recoveryContent,
     recover,
     load,
+    validateBeforeSave,
     save,
     upgrade,
     register,

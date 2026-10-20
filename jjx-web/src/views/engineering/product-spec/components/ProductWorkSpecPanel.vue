@@ -454,6 +454,13 @@ const draftSession = useWorkSpecAttachmentSession(
   toRef(props, 'productCode')
 )
 const saveSpec = (value: ProductWorkSpec) => draftSession.save(value)
+/** 作业规范面板各保存入口共用同一份保存前汇总校验；只读/非负责人先被负责人锁拦截。 */
+async function blockInvalidAttachments(): Promise<boolean> {
+  const check = await draftSession.validateBeforeSave()
+  if (check.ok) return false
+  ElMessage.error(check.message)
+  return true
+}
 const user = useUserStore()
 // 制定任务锁（dev-20261020-013）：非负责人只能查看，隐藏保存/上传/排序/负责人入口。
 const canEdit = computed(
@@ -631,6 +638,7 @@ function cancelDieEdit() {
 async function saveDieLocationAll() {
   const spec = data.value?.workSpec
   if (!spec || dieSaving.value || !canEdit.value) return
+  if (await blockInvalidAttachments()) return
   const map: Record<string, string> = {}
   for (const [key, value] of Object.entries(dieDraft.value)) {
     const text = String(value ?? '').trim()
@@ -648,7 +656,7 @@ async function saveDieLocationAll() {
     await sourcesSaved()
   } catch (e) {
     console.error('保存刀模位置失败', e)
-    ElMessage.error('刀模位置保存失败，请重试')
+    ElMessage.error(e instanceof Error ? e.message : '刀模位置保存失败，请重试')
   } finally {
     dieSaving.value = false
   }
@@ -723,6 +731,7 @@ async function closeEditor(done?: () => void) {
 }
 async function save() {
   if (saving.value || drawingBusy.value) return
+  if (await blockInvalidAttachments()) return
   if (draft.value.changes.some((change) => change.text.length > 1000)) {
     ElMessage.warning('请将变更说明整理到1000字以内，原始来源内容会保留')
     return
@@ -752,6 +761,7 @@ async function save() {
     await sourcesSaved()
   } catch (e) {
     console.error('保存工程规范失败', e)
+    ElMessage.error(e instanceof Error ? e.message : '保存工程规范失败，请重试')
   } finally {
     saving.value = false
   }
@@ -804,6 +814,7 @@ function removeIssuanceChange(index: number) {
 async function saveIssuance() {
   const current = issuanceDraft.value
   if (!current || savingIssuance.value) return
+  if (await blockInvalidAttachments()) return
   if (current.changes.some((change) => change.text.length > 1000)) {
     ElMessage.warning('请将变更说明整理到1000字以内')
     return
@@ -817,6 +828,7 @@ async function saveIssuance() {
     await sourcesSaved()
   } catch (e) {
     console.error('保存变更与发行失败', e)
+    ElMessage.error(e instanceof Error ? e.message : '保存变更与发行失败，请重试')
   } finally {
     savingIssuance.value = false
   }
@@ -837,6 +849,7 @@ function currentSpec(): ProductWorkSpec {
 }
 async function persistSpec(next: ProductWorkSpec, message: string) {
   if (savingInline.value) return
+  if (await blockInvalidAttachments()) return false
   savingInline.value = true
   try {
     const response: any = await saveSpec(next)
@@ -846,6 +859,7 @@ async function persistSpec(next: ProductWorkSpec, message: string) {
     return true
   } catch (e) {
     console.error(message, e)
+    ElMessage.error(e instanceof Error ? e.message : message + '失败，请重试')
     return false
   } finally {
     savingInline.value = false

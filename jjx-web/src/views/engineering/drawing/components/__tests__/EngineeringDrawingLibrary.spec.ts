@@ -296,6 +296,23 @@ describe('工程图集先上传后选择资料类型', () => {
     expect(sent.find((file: any) => file.attachmentId === 3).documentType).toBe('PANEL_DRAWING')
     expect(sent.find((file: any) => file.attachmentId === 4).documentType).toBe('WORK_INSTRUCTION')
   })
+  it('保存入口与作业规范面板共用同一汇总校验：补选后同一会话直接保存成功', async () => {
+    const w = await setup()
+    const state = (w.vm as any).$.setupState
+    await w.get('.upload-stub').trigger('click')
+    await flushPromises()
+    const check = await state.draft.validateBeforeSave()
+    expect(check.ok).toBe(false)
+    expect(check.message).toContain('以下 1 个附件未选择资料类型：new.pdf')
+    await state.save()
+    expect(messages.error).toHaveBeenCalledWith(check.message)
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    expect(messages.success).not.toHaveBeenCalled()
+    state.setRowDocumentType({ attachmentId: 3 }, 'PANEL_DRAWING')
+    await state.save()
+    expect(api.saveDraft).toHaveBeenCalledTimes(1)
+    expect(messages.success).toHaveBeenCalledWith('草稿已保存')
+  })
   it('任一行未选类型时阻止保存，提示中列出文件名且不调用保存接口', async () => {
     const w = await setup()
     const state = (w.vm as any).$.setupState

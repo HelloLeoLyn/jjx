@@ -28,7 +28,7 @@ vi.mock('element-plus/es/components/base/style/css', () => ({}))
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import Panel from '../ProductWorkSpecPanel.vue'
 import Drawer from '@/components/product/ProductSpecDrawer.vue'
 import Header from '@/components/product/ProductSpecHeader.vue'
@@ -339,6 +339,25 @@ describe('作业规范面板结构图编辑交互', () => {
       null,
       null
     )
+  })
+  it('作业规范面板保存前汇总附件问题并提示文件名，不调用保存接口', async () => {
+    const w = await render()
+    const state = (w.vm as any).$.setupState
+    const error = vi.spyOn(ElMessage, 'error').mockImplementation(() => ({}) as any)
+    state.draftSession.register({
+      attachmentId: 226,
+      requestKey: 'request-0000000002',
+      fileName: 'pending.pdf',
+      fileSize: 3,
+      sha256: 'hash',
+      state: 'pending',
+      createdAt: '2026-10-20',
+    })
+    await state.save()
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('以下 1 个附件未选择资料类型'))
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('pending.pdf'))
+    expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
+    error.mockRestore()
   })
 })
 

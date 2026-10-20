@@ -637,3 +637,59 @@ describe('制定负责人锁（dev-20261020-013）', () => {
     await expect(draft.save()).rejects.toThrow()
   })
 })
+
+describe('保存前附件类型与待上传汇总校验（dev-20261020-025）', () => {
+  it('未选类型按文件名阻止保存；同一会话补选后直接保存，无需刷新', async () => {
+    const { draft } = await setup()
+    draft.session.setEdit(101, { documentType: null })
+    await expect(draft.save()).rejects.toThrow('以下 1 个附件未选择资料类型：1.pdf')
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    draft.session.setEdit(101, { documentType: 'STRUCTURE_DRAWING' })
+    await draft.save()
+    expect(api.saveDraft).toHaveBeenCalledTimes(1)
+    expect(draft.session.pendingCount.value).toBe(0)
+  })
+  it('多条缺失一次性汇总：列出前5个文件名，其余只报等N个', async () => {
+    const { draft } = await setup()
+    for (let index = 0; index < 7; index += 1) {
+      draft.register({ ...pending(10 + index), fileName: `p${index + 1}.pdf` })
+    }
+    await expect(draft.save()).rejects.toThrow(
+      '以下 7 个附件未选择资料类型：p1.pdf、p2.pdf、p3.pdf、p4.pdf、p5.pdf 等 2 个'
+    )
+    expect(api.saveDraft).not.toHaveBeenCalled()
+  })
+  it('类型停用或非工程技术资料时按文件名阻止，不调用保存接口', async () => {
+    const { draft } = await setup()
+    draft.register(pending(), 'NOT_ENGINEERING_TYPE')
+    await expect(draft.save()).rejects.toThrow(
+      '以下 1 个附件资料类型已停用或非工程技术资料，请重新选择：3.pdf'
+    )
+    expect(api.saveDraft).not.toHaveBeenCalled()
+  })
+  it('上传未完成或待绑定附件按数量阻止，提示具体总数', async () => {
+    const { draft } = await setup()
+    draft.register(pending(), 'STRUCTURE_DRAWING')
+    draft.session.pending.value[0].state = 'failed'
+    draft.session.uploadingCount.value = 1
+    await expect(draft.save()).rejects.toThrow('仍有 2 个附件上传未完成或尚未绑定')
+    expect(api.saveDraft).not.toHaveBeenCalled()
+  })
+  it('字典不可用时提前阻止并给出同口径提示', async () => {
+    const { draft } = await setup()
+    api.documentTypes.mockRejectedValueOnce(new Error('dict down'))
+    draft.session.setEdit(101, { documentType: null })
+    await expect(draft.save()).rejects.toThrow('资料类型字典不可用，请重新加载后再保存')
+    expect(api.saveDraft).not.toHaveBeenCalled()
+  })
+  it('只读/非负责人优先报权限原因，不进入附件校验', async () => {
+    api.get.mockResolvedValue({
+      data: { ...saved(), preparedById: 8, preparedByName: '工程乙' },
+    })
+    const { draft } = await setup()
+    draft.session.edits[101] = { documentType: null }
+    const check = await draft.validateBeforeSave()
+    expect(check).toEqual({ ok: false, message: '当前由 工程乙 制定，你只能查看' })
+    expect(check.message).not.toContain('未选择资料类型')
+  })
+})
