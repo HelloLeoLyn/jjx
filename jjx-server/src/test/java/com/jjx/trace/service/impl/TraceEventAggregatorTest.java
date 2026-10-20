@@ -12,10 +12,11 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** 查看流水读时归并（dev-20261018-004）：一次保存顺带落定的附件并入保存行。 */
+/** 查看流水读时归并：一次业务动作 + 它的证据附件只显示一条主流水。 */
 class TraceEventAggregatorTest {
 
-    private static final LocalDateTime T0 = LocalDateTime.of(2026, 10, 18, 11, 8, 11);
+    private static final LocalDateTime T0 = LocalDateTime.of(2026, 10, 20, 10, 10, 48);
+    private static final String OPERATOR = "系统管理员";
 
     @Test
     void mergesAttachmentBindingIntoFollowingSave() {
@@ -125,6 +126,106 @@ class TraceEventAggregatorTest {
         assertEquals(1, detail.getJSONArray("attachments").size());
     }
 
+    @Test
+    void mergesCustomerConfirmEvidenceByRefIdBeyondLegacyWindow() {
+        UnifiedTraceEventVO attachment = attachmentEvent("附件新增", T0,
+                List.of("新增附件（整单）：「客户需求.jpg」"),
+                List.of(attachmentRef(2, 239, "客户需求.jpg")));
+        UnifiedTraceEventVO confirm = actionEvent("客户确认报价", T0.plusSeconds(5), 2, null,
+                "{\"quotationId\":1,\"attachmentRefIds\":[2]}");
+
+        List<UnifiedTraceEventVO> merged = TraceEventAggregator.mergeAttachmentEvents(List.of(attachment, confirm));
+
+        assertEquals(1, merged.size());
+        assertEquals("客户确认报价", merged.get(0).getAction());
+        JSONObject detail = JSONUtil.parseObj(merged.get(0).getDetail());
+        assertTrue(detail.getJSONArray("changes").toString().contains("客户需求.jpg"));
+        assertEquals(1, detail.getJSONArray("attachments").size());
+        assertEquals("客户需求.jpg", detail.getJSONArray("attachments").getJSONObject(0).getStr("fileName"));
+    }
+
+    @Test
+    void mergesReviewApproveEvidenceByRefId() {
+        UnifiedTraceEventVO attachment = attachmentEvent("附件新增", T0,
+                List.of("新增附件（整单）：「检验报告.pdf」"),
+                List.of(attachmentRef(3, 240, "检验报告.pdf")));
+        UnifiedTraceEventVO review = actionEvent("审核报价单", T0.plusSeconds(8), 6, null,
+                "{\"approved\":true,\"quotationId\":1,\"attachmentRefIds\":[3]}");
+
+        List<UnifiedTraceEventVO> merged = TraceEventAggregator.mergeAttachmentEvents(List.of(attachment, review));
+
+        assertEquals(1, merged.size());
+        assertEquals("审核报价单", merged.get(0).getAction());
+        JSONObject detail = JSONUtil.parseObj(merged.get(0).getDetail());
+        assertEquals(1, detail.getJSONArray("attachments").size());
+    }
+
+    @Test
+    void keepsBothRowsWhenRefIdsExplicitlyMismatch() {
+        UnifiedTraceEventVO attachment = attachmentEvent("附件新增", T0,
+                List.of("新增附件（整单）：「客户需求.jpg」"),
+                List.of(attachmentRef(2, 239, "客户需求.jpg")));
+        UnifiedTraceEventVO confirm = actionEvent("客户确认报价", T0.plusSeconds(5), 2, null,
+                "{\"quotationId\":1,\"attachmentRefIds\":[7]}");
+
+        List<UnifiedTraceEventVO> merged = TraceEventAggregator.mergeAttachmentEvents(List.of(attachment, confirm));
+
+        assertEquals(2, merged.size());
+        assertEquals("附件新增", merged.get(0).getAction());
+        assertEquals("客户确认报价", merged.get(1).getAction());
+    }
+
+    @Test
+    void mergesAdjacentActionWithinSixtySecondsWithoutRefIds() {
+        UnifiedTraceEventVO attachment = attachmentEvent("附件新增", T0,
+                List.of("新增附件（整单）：「客户需求.jpg」"), List.of());
+        UnifiedTraceEventVO send = actionEvent("发送报价单", T0.plusSeconds(30), 2, null, null);
+
+        List<UnifiedTraceEventVO> merged = TraceEventAggregator.mergeAttachmentEvents(List.of(attachment, send));
+
+        assertEquals(1, merged.size());
+        assertEquals("发送报价单", merged.get(0).getAction());
+        JSONObject detail = JSONUtil.parseObj(merged.get(0).getDetail());
+        assertTrue(detail.getJSONArray("changes").toString().contains("客户需求.jpg"));
+    }
+
+    @Test
+    void doesNotMergeAdjacentActionBeyondSixtySeconds() {
+        UnifiedTraceEventVO attachment = attachmentEvent("附件新增", T0,
+                List.of("新增附件（整单）：「客户需求.jpg」"), List.of());
+        UnifiedTraceEventVO send = actionEvent("发送报价单", T0.plusSeconds(61), 2, null, null);
+
+        List<UnifiedTraceEventVO> merged = TraceEventAggregator.mergeAttachmentEvents(List.of(attachment, send));
+
+        assertEquals(2, merged.size());
+    }
+
+    @Test
+    void doesNotMergeAdjacentActionFromDifferentOperator() {
+        UnifiedTraceEventVO attachment = attachmentEvent("附件新增", T0,
+                List.of("新增附件（整单）：「客户需求.jpg」"), List.of());
+        UnifiedTraceEventVO send = actionEvent("发送报价单", T0.plusSeconds(5), 2, null, null);
+        send.setOperatorName("李四");
+
+        List<UnifiedTraceEventVO> merged = TraceEventAggregator.mergeAttachmentEvents(List.of(attachment, send));
+
+        assertEquals(2, merged.size());
+    }
+
+    @Test
+    void keepsBothRowsWhenActionDetailIsBroken() {
+        UnifiedTraceEventVO attachment = attachmentEvent("附件新增", T0,
+                List.of("新增附件（整单）：「客户需求.jpg」"),
+                List.of(attachmentRef(2, 239, "客户需求.jpg")));
+        UnifiedTraceEventVO confirm = actionEvent("客户确认报价", T0.plusSeconds(5), 2,
+                "坏掉的详情", "{\"quotationId\":1,\"attachmentRefIds\":[2]}");
+
+        List<UnifiedTraceEventVO> merged = TraceEventAggregator.mergeAttachmentEvents(List.of(attachment, confirm));
+
+        assertEquals(2, merged.size());
+        assertEquals("坏掉的详情", merged.get(1).getDetail());
+    }
+
     private UnifiedTraceEventVO attachmentEvent(String action, LocalDateTime time,
                                                 List<String> changes, List<JSONObject> attachments) {
         return attachmentEventWithRawDetail(action, time, OperLogDetailBuilder.build(changes, attachments));
@@ -139,20 +240,28 @@ class TraceEventAggregatorTest {
         event.setOperUrl("attachment.ref." + action);
         event.setBizType("quotation");
         event.setBizId("1");
+        event.setOperatorName(OPERATOR);
         event.setDetail(detail);
         return event;
     }
 
     private UnifiedTraceEventVO saveEvent(String action, LocalDateTime time, String detail) {
+        return actionEvent(action, time, 2, detail, null);
+    }
+
+    private UnifiedTraceEventVO actionEvent(String action, LocalDateTime time, int businessType,
+                                            String detail, String operParam) {
         UnifiedTraceEventVO event = new UnifiedTraceEventVO();
         event.setEventId("oper-" + action + time);
         event.setAction(action);
         event.setTime(time);
-        event.setBusinessType(2);
+        event.setBusinessType(businessType);
         event.setOperUrl("/sales/quotation");
         event.setBizType("quotation");
         event.setBizId("1");
+        event.setOperatorName(OPERATOR);
         event.setDetail(detail);
+        event.setOperParam(operParam);
         return event;
     }
 

@@ -272,10 +272,15 @@ const isRejected = computed(
 const detailAttachments = computed(() => {
   const unique = new Map<string, TraceAttachment>()
   for (const attachment of selectedEvent.value?.attachments || []) {
-    unique.set(attachment.refId ? `ref:${attachment.refId}` : `file:${attachment.id}`, attachment)
+    unique.set(attachmentKey(attachment), attachment)
   }
   return [...unique.values()]
 })
+
+/** 附件唯一键：优先 refId，其次附件 id；后端归并后与审核流水回填共用，避免同一附件显示两次 */
+function attachmentKey(attachment: TraceAttachment): string {
+  return attachment.refId ? `ref:${attachment.refId}` : `file:${attachment.id}`
+}
 
 const imageAttachments = computed(() => detailAttachments.value.filter(isImageAttachment))
 const fileAttachments = computed(() =>
@@ -388,10 +393,17 @@ async function loadRowContent(row: TraceEvent) {
         row.roundNo = matched.roundNo
         row.actionCode = matched.actionCode || row.actionCode
         if (matched.attachmentRefs?.length) {
-          row.attachments = [
-            ...(row.attachments || []),
-            ...matched.attachmentRefs.map((ref) => ({ id: ref.refId, refId: ref.refId, fileName: ref.fileName })),
-          ]
+          const existing = row.attachments || []
+          const seen = new Set(existing.map(attachmentKey))
+          const extra = matched.attachmentRefs
+            .map((ref) => ({ id: ref.refId, refId: ref.refId, fileName: ref.fileName }))
+            .filter((ref) => {
+              const key = attachmentKey(ref)
+              if (seen.has(key)) return false
+              seen.add(key)
+              return true
+            })
+          row.attachments = [...existing, ...extra]
         }
       }
     } catch {
