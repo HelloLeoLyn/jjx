@@ -191,7 +191,9 @@
         </el-table-column>
         <el-table-column label="含税总额（折前）" align="right" prop="totalAmount" width="200">
           <template #default="scope">
-            <div>{{ moneyPair(scope.row.totalAmount, scope.row.currency, scope.row.exchangeRate) }}</div>
+            <div>
+              {{ moneyPair(scope.row.totalAmount, scope.row.currency, scope.row.exchangeRate) }}
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="实际应收" align="right" prop="finalAmount" width="200">
@@ -236,7 +238,6 @@
     <ReviewDialog
       v-model="reviewDialogVisible"
       :order-id="currentOrderId"
-      :action="currentAction"
       @success="handleReviewSuccess"
     />
 
@@ -284,7 +285,9 @@
         </div>
       </template>
       <template #footer>
-        <el-button :loading="confirmAttachSaving" @click="commitConfirmAttachments">保存附件</el-button>
+        <el-button :loading="confirmAttachSaving" @click="commitConfirmAttachments"
+          >保存附件</el-button
+        >
         <el-button type="primary" @click="confirmAttachmentVisible = false">关 闭</el-button>
       </template>
     </el-dialog>
@@ -353,14 +356,7 @@ const isPartialShipped = (row: any) =>
   Number(row.shippedQuantity || 0) < Number(row.totalQuantity || 0)
 const orderRowActions: TableAction<any>[] = [
   { key: 'trace', label: '查看流水', type: 'info' },
-  {
-    key: 'sample',
-    label: ({ row }) => sampleEntryLabel(row),
-    permission: 'sales:sample:add',
-    // 与后端 requireSampleableOrderStatus 同口径：仅未结束订单可发起，已发货/已完成/已取消及未知状态置灰并给原因
-    disabled: ({ row }) => !!sampleEntryBlockedReason(row.orderStatus),
-    disabledReason: ({ row }) => sampleEntryBlockedReason(row.orderStatus),
-  },
+
   {
     key: 'submit',
     label: '提交审核',
@@ -372,20 +368,22 @@ const orderRowActions: TableAction<any>[] = [
     label: '开始审核',
     permission: 'sales:order:review',
     visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.PENDING_REVIEW.value),
+    disabled: ({ row }) => startingReviewIds.value.has(row.orderId),
   },
   {
-    key: 'approve',
-    label: '审核通过',
-    type: 'success',
+    key: 'review',
+    label: '审核',
     permission: 'sales:order:approve',
     visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWING.value),
+    disabled: () => reviewDialogVisible.value,
   },
   {
-    key: 'reject',
-    label: '审核驳回',
-    type: 'danger',
-    permission: 'sales:order:approve',
-    visible: ({ row }) => statusIs(row, SalesOrderStatusEnum.REVIEWING.value),
+    key: 'sample',
+    label: ({ row }) => sampleEntryLabel(row),
+    permission: 'sales:sample:add',
+    // 与后端 requireSampleableOrderStatus 同口径：仅未结束订单可发起，已发货/已完成/已取消及未知状态置灰并给原因
+    disabled: ({ row }) => !!sampleEntryBlockedReason(row.orderStatus),
+    disabledReason: ({ row }) => sampleEntryBlockedReason(row.orderStatus),
   },
   {
     key: 'plan',
@@ -507,8 +505,7 @@ const handleOrderRowAction = (key: string, row: any) => {
     sample: () => void handleStartSample(row),
     submit: () => void handleSubmitReview(row),
     startReview: () => void handleStartReview(row),
-    approve: () => handleApprove(row),
-    reject: () => handleReject(row),
+    review: () => handleReview(row),
     plan: () => handleGeneratePlan(row),
     print: () => handleConfirmPrint(row),
     printReview: () => handleReviewPrint(row, 47),
@@ -516,7 +513,11 @@ const handleOrderRowAction = (key: string, row: any) => {
     resubmit: () => void handleResubmit(row),
     shortage: () => handleRecheckShortage(row),
     proof: () => openConfirmAttachment(row),
-    delivery: () => void router.push({ path: '/sales/delivery', query: { orderId: String(row.orderId), orderNo: row.orderNo } }),
+    delivery: () =>
+      void router.push({
+        path: '/sales/delivery',
+        query: { orderId: String(row.orderId), orderNo: row.orderNo },
+      }),
     complete: () => void handleCompleteOrder(row),
     cancel: () => void handleCancelOrder(row),
     edit: () => handleUpdate(row),
@@ -568,7 +569,6 @@ const dateRange = ref<string[]>([])
 const reviewDialogVisible = ref(false)
 const currentOrderId = ref(0)
 const currentOrderNo = ref('')
-const currentAction = ref<'approve' | 'reject' | null>(null)
 
 // 验证相关
 const validationDialogVisible = ref(false)
@@ -723,8 +723,11 @@ const handleSubmitReview = async (row: any) => {
   }
 }
 
-// 开始审核
+// 开始审核只流转状态；结果由统一审核入口明确选择。
+const startingReviewIds = ref(new Set<number>())
 const handleStartReview = async (row: any) => {
+  if (startingReviewIds.value.has(row.orderId)) return
+  startingReviewIds.value.add(row.orderId)
   try {
     await ElMessageBox.confirm(`确定要开始审核订单【${row.orderNo}】吗？`, '开始审核', {
       confirmButtonText: '确定',
@@ -732,30 +735,20 @@ const handleStartReview = async (row: any) => {
       type: 'info',
     })
     await orderStatusApi.startReview(row.orderId)
-    // ElMessage.success('开始审核成功')
-    // 开始审核成功后，直接打开审核对话框
-    currentOrderId.value = row.orderId
-    currentAction.value = 'approve'
-    reviewDialogVisible.value = true
-    getList()
+    await getList()
   } catch (error) {
     if (error !== 'cancel') {
       console.error('开始审核失败', error)
     }
+  } finally {
+    startingReviewIds.value.delete(row.orderId)
   }
 }
 
-// 审核通过
-const handleApprove = (row: any) => {
+// 统一审核入口，不预设审核结果。
+const handleReview = (row: any) => {
+  if (reviewDialogVisible.value) return
   currentOrderId.value = row.orderId
-  currentAction.value = 'approve'
-  reviewDialogVisible.value = true
-}
-
-// 审核驳回（2026-08-12 DEV-013：3→5，复用审核弹窗）
-const handleReject = (row: any) => {
-  currentOrderId.value = row.orderId
-  currentAction.value = 'reject'
   reviewDialogVisible.value = true
 }
 

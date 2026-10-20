@@ -2,9 +2,11 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="dialogTitle"
-    width="500px"
+    title="订单审核"
+    width="1200px"
     :close-on-click-modal="false"
+    :close-on-press-escape="!loading"
+    :show-close="!loading"
     @close="handleClose"
   >
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px">
@@ -23,7 +25,7 @@
       </el-form-item>
 
       <el-form-item label="审核结果" prop="result" required>
-        <el-radio-group v-model="formData.result">
+        <el-radio-group v-model="formData.result" :disabled="loading">
           <el-radio value="approve">审核通过</el-radio>
           <el-radio value="reject">审核驳回</el-radio>
         </el-radio-group>
@@ -52,21 +54,18 @@
       </el-form-item>
 
       <!-- 审核通过与驳回都保存本次选用的资料引用。 -->
-      <el-form-item label="审核资料">
-        <AttachmentCenter
-          ref="attachmentCenter"
-          source-type="sales_order"
-          :source-id="props.orderId || null"
-          :trace-id="orderDetail?.traceId"
-          variant="upload-only"
-          :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"
-          view-perm="sales:order:view"
-          edit-perm="sales:order:edit"
-          @bound="(p: { refId: number }) => onBound(p.refId)"
-          @unbound="(p: { refId: number }) => onUnbound(p.refId)"
-        />
-      </el-form-item>
-
+      <AttachmentCenter
+        ref="attachmentCenter"
+        source-type="sales_order"
+        :source-id="props.orderId || null"
+        :trace-id="orderDetail?.traceId"
+        variant="upload-only"
+        :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"
+        view-perm="sales:order:view"
+        edit-perm="sales:order:edit"
+        @bound="(p: { refId: number }) => onBound(p.refId)"
+        @unbound="(p: { refId: number }) => onUnbound(p.refId)"
+      />
       <!-- 审核人信息（只读） -->
       <el-divider content-position="left">审核信息</el-divider>
 
@@ -80,14 +79,20 @@
     </el-form>
 
     <template #footer>
-      <el-button @click="handleClose">取消</el-button>
-      <el-button type="primary" :loading="loading" @click="handleConfirm"> 确认 </el-button>
+      <el-button :disabled="loading" @click="handleClose">取消</el-button>
+      <el-button
+        type="primary"
+        :loading="loading"
+        :disabled="loading || !formData.result"
+        @click="handleConfirm"
+        >提交审核结果</el-button
+      >
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { orderStatusApi } from '@/api/sales/orderStatus'
 import { orderApi } from '@/api/sales/order'
@@ -97,7 +102,6 @@ import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 const props = defineProps<{
   modelValue: boolean
   orderId: number
-  action: 'approve' | 'reject' | null
 }>()
 
 const emit = defineEmits<{
@@ -114,13 +118,6 @@ const dialogVisible = computed({
   set: (val) => emit('update:modelValue', val),
 })
 
-// 对话框标题
-const dialogTitle = computed(() => {
-  if (props.action === 'approve') return '审核通过'
-  if (props.action === 'reject') return '审核驳回'
-  return '订单审核'
-})
-
 // 表单引用
 const formRef = ref()
 const loading = ref(false)
@@ -134,7 +131,7 @@ const formData = ref({
   orderNo: '',
   customerName: '',
   totalAmount: '',
-  result: 'approve',
+  result: undefined as 'approve' | 'reject' | undefined,
   remark: '',
   reviewerName: '',
   reviewTime: '',
@@ -156,22 +153,16 @@ function onUnbound(id: number) {
 }
 
 // 表单验证规则
-const rules = {
+const rules = computed(() => ({
+  result: [{ required: true, message: '请选择审核结果', trigger: 'change' }],
   remark: [
     {
-      required: true,
+      required: formData.value.result === 'reject',
       message: '请填写驳回原因',
       trigger: 'blur',
-      validator: (rule: any, value: string, callback: any) => {
-        if (formData.value.result === 'reject' && !value) {
-          callback(new Error('请填写驳回原因'))
-        } else {
-          callback()
-        }
-      },
     },
   ],
-}
+}))
 
 // 获取订单详情
 const fetchOrderDetail = async () => {
@@ -211,21 +202,30 @@ const formatTime = (date: Date): string => {
 
 // 确认审核
 const handleConfirm = async () => {
-  // 如果是驳回，需要验证表单
-  if (formData.value.result === 'reject') {
-    await formRef.value?.validate()
+  if (loading.value) return
+  if (!formData.value.result) {
+    ElMessage.warning('请选择审核结果')
+    return
   }
-
   loading.value = true
-
   try {
-      if (attachmentCenter.value?.uploading || attachmentCenter.value?.pendingCount) {
-        ElMessage.warning('请等待审核资料上传并绑定完成')
-        return
-      }
+    try {
+      const valid = await formRef.value?.validate()
+      if (!valid) return
+    } catch {
+      return
+    }
+    if (attachmentCenter.value?.uploading || attachmentCenter.value?.pendingCount) {
+      ElMessage.warning('请等待审核资料上传并绑定完成')
+      return
+    }
     if (formData.value.result === 'approve') {
       // 审核通过时只提交已绑定的引用 ID
-      await orderStatusApi.approveOrder(props.orderId, formData.value.remark, attachmentRefIds.value)
+      await orderStatusApi.approveOrder(
+        props.orderId,
+        formData.value.remark,
+        attachmentRefIds.value
+      )
       ElMessage.success('审核通过成功')
     } else {
       // 审核驳回
@@ -234,6 +234,7 @@ const handleConfirm = async () => {
     }
 
     emit('success')
+    loading.value = false
     handleClose()
   } catch (error) {
     console.error('审核操作失败', error)
@@ -245,6 +246,7 @@ const handleConfirm = async () => {
 
 // 关闭对话框
 const handleClose = () => {
+  if (loading.value) return
   dialogVisible.value = false
   // 重置表单
   formData.value = {
@@ -252,7 +254,7 @@ const handleClose = () => {
     orderNo: '',
     customerName: '',
     totalAmount: '',
-    result: 'approve',
+    result: undefined as 'approve' | 'reject' | undefined,
     remark: '',
     reviewerName: '',
     reviewTime: '',
@@ -266,6 +268,9 @@ watch(
   () => props.modelValue,
   async (val) => {
     if (val && props.orderId) {
+      formData.value.result = undefined
+      formData.value.remark = ''
+      formRef.value?.clearValidate()
       await fetchOrderDetail()
       // 设置审核人信息
       formData.value.reviewerName = userStore.userInfo?.userName || '当前用户'
@@ -274,16 +279,10 @@ watch(
   }
 )
 
-// 监听 action 变化，重置审核结果
+// 切换结果时清除上一种结果的校验提示。
 watch(
-  () => props.action,
-  (val) => {
-    if (val === 'approve') {
-      formData.value.result = 'approve'
-    } else if (val === 'reject') {
-      formData.value.result = 'reject'
-    }
-  }
+  () => formData.value.result,
+  () => formRef.value?.clearValidate('remark')
 )
 </script>
 
