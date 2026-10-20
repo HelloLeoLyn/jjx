@@ -155,23 +155,26 @@
       </main>
       <aside v-if="!paperOnly && selectedSections.includes('spec')" class="font-panel no-print">
         <strong>作业规范字号</strong>
-        <p>按区域调整（+px，相对默认字号；0=默认）；打印时使用当前设置。</p>
-        <label v-for="area in workSpecFontAreas" :key="area.key" class="font-control">
-          <el-tooltip content="相对默认字号，0=默认；+1 即大 1px" placement="left">
-            <span>{{ area.label }}（+px）</span>
-          </el-tooltip>
-          <el-input-number
-            v-model="fontSettings[area.key]"
-            :min="WORK_SPEC_FONT_MIN"
-            :max="WORK_SPEC_FONT_MAX"
-            :step="1"
-            :step-strictly="true"
-            size="small"
-            controls-position="right"
-            :aria-label="`${area.label}字号`"
-            style="width: 120px"
-          />
-        </label>
+        <p>设置实际字号（px），每列标题与内容分别调整；打印使用当前设置。</p>
+        <el-collapse v-model="openFontGroups">
+          <el-collapse-item v-for="group in workSpecFontGroups" :key="group.label" :name="group.label" :title="group.label">
+            <label v-for="area in group.areas" :key="area.key" class="font-control">
+              <span>{{ area.label }}（px）</span>
+              <el-input-number
+                v-model="fontSettings[area.key]"
+                :value-on-clear="defaultWorkSpecFontSettings()[area.key]"
+                :min="WORK_SPEC_FONT_MIN"
+                :max="WORK_SPEC_FONT_MAX"
+                :step="1"
+                :step-strictly="true"
+                size="small"
+                controls-position="right"
+                :aria-label="`${group.label}${area.label}字号`"
+                style="width: 120px"
+              />
+            </label>
+          </el-collapse-item>
+        </el-collapse>
         <el-button link type="primary" @click="resetFontSettings">恢复默认</el-button>
       </aside>
     </div>
@@ -206,7 +209,7 @@ import {
   defaultWorkSpecFontSettings,
   parseWorkSpecFontSettings,
   serializeWorkSpecFontSettings,
-  workSpecFontAreas,
+  workSpecFontGroups,
   WORK_SPEC_FONT_MIN,
   WORK_SPEC_FONT_MAX,
   type WorkSpecFontSettings,
@@ -257,6 +260,7 @@ function onLayout(key: string, lines: PaperTextLine[]) {
 }
 const zoom = ref(props.paperOnly ? 100 : 80)
 const fontSettings = ref<WorkSpecFontSettings>(parseWorkSpecFontSettings(props.initialFontSettings))
+const openFontGroups = ref(['常规', '材料表'])
 function resetFontSettings() {
   fontSettings.value = defaultWorkSpecFontSettings()
 }
