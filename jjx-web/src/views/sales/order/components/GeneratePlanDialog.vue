@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="dialogVisible" title="生成生产计划（确认订单）" width="640px" @closed="reset">
+  <el-dialog v-model="dialogVisible" title="生成生产计划（确认订单）" width="1200" @closed="reset">
     <el-descriptions :column="2" border size="small">
       <el-descriptions-item label="订单号">{{ order?.orderNo || '-' }}</el-descriptions-item>
       <el-descriptions-item label="客户">{{ order?.customerName || '-' }}</el-descriptions-item>
@@ -138,7 +138,9 @@ const loading = ref(false)
 const fmt = (v?: number | string | null): string => {
   if (v === null || v === undefined || v === '') return '-'
   const n = Number(v)
-  return Number.isNaN(n) ? String(v) : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return Number.isNaN(n)
+    ? String(v)
+    : n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 const handleConfirm = async () => {
