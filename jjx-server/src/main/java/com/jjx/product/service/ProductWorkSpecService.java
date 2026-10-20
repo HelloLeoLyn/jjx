@@ -74,6 +74,7 @@ public class ProductWorkSpecService {
         ObjectNode next = parse(json.valueToTree(dto).toString());
         next.remove("revision");
         ObjectNode oldContent = parse(oldRaw).deepCopy();
+        requireOwner(oldContent);
         oldContent.remove(java.util.List.of("confirmedBy", "confirmedAt", "confirmedSource"));
         // 整组备注由专用入口维护；旧客户端保存其他规范内容也不能覆盖它。
         if (oldContent.has("printRemarks")) next.set("printRemarks", oldContent.get("printRemarks").deepCopy());
@@ -110,8 +111,23 @@ public class ProductWorkSpecService {
         for (String key : List.of("printRemarks", "colorCheck", "basedOnVersionId", "finalizedVersionId", "finalizedFromRevision"))
             if (old.has(key)) next.set(key, old.get(key).deepCopy());
         next.put("draftManaged", true);
-        Long owner = input.getPreparedById() != null ? input.getPreparedById()
-            : old.hasNonNull("preparedById") ? old.path("preparedById").asLong() : SecurityUtils.getUserId();
+        // 负责人即当前制定任务：首次保存默认当前用户；已存在负责人时只有本人或工程主管可改派（dev-20261020-013）。
+        Long actor = SecurityUtils.getUserId();
+        Long existingOwner = old.path("draftManaged").asBoolean() && old.hasNonNull("preparedById")
+            ? old.path("preparedById").asLong() : null;
+        Long requestedOwner = input.getPreparedById();
+        boolean ownerChanged = existingOwner != null && requestedOwner != null
+            && !Objects.equals(requestedOwner, existingOwner);
+        if (ownerChanged && !Objects.equals(existingOwner, actor) && !canAssignOwner())
+            throw new BusinessException("只有当前制定负责人或工程主管可以变更负责人");
+        if (ownerChanged && !Boolean.TRUE.equals(input.getOwnerTransferConfirmed()))
+            throw new BusinessException("变更负责人需要确认：由 " + ownerLabel(old) + " 改为新负责人");
+        if (existingOwner != null && !ownerChanged && !Objects.equals(existingOwner, actor))
+            throw new BusinessException(readOnlyMessage(old));
+        if (existingOwner == null && requestedOwner != null && !Objects.equals(requestedOwner, actor) && !canAssignOwner())
+            throw new BusinessException("首次保存只能以当前用户为制定负责人；如需指派他人，请由工程主管操作");
+        Long owner = requestedOwner != null ? requestedOwner
+            : existingOwner != null ? existingOwner : actor;
         Map<String, Object> user = responsibleUsers().stream().filter(row -> Objects.equals(((Number) row.get("id")).longValue(), owner))
             .findFirst().orElseThrow(() -> new BusinessException("请选择有效的编制负责人"));
         next.put("preparedById", owner); next.put("preparedByName", Objects.toString(user.get("name"), ""));
@@ -155,7 +171,9 @@ public class ProductWorkSpecService {
         if (!sameContent(old, next)) {
             beginEdit(old, next);
             mapper.write(id, next.toString());
-            recordOperation(id, "保存草稿", old, next);
+            boolean ownerMoved = existingOwner != null
+                && !Objects.equals(old.path("preparedById").asText(), next.path("preparedById").asText());
+            recordOperation(id, ownerMoved ? "变更负责人：" + ownerLabel(old) + "→" + ownerLabel(next) : "保存草稿", old, next);
         }
         return response(id, mapper.read(id));
     }
@@ -171,6 +189,9 @@ public class ProductWorkSpecService {
         // 已保存草稿包含修订内容时不覆盖；调用方需先处理现有草稿。
         ObjectNode old = parse(previous);
         if (old.path("draftManaged").asBoolean() && !old.hasNonNull("finalizedVersionId")) throw new BusinessException("当前已有未定版草稿，请先处理当前草稿");
+        if (old.path("draftManaged").asBoolean() && old.hasNonNull("preparedById")
+                && !Objects.equals(old.path("preparedById").asLong(), SecurityUtils.getUserId()) && !canAssignOwner())
+            throw new BusinessException("当前作业规范由 " + ownerLabel(old) + " 制定，只有负责人或工程主管可以升级");
         source.put("draftManaged", true); source.put("basedOnVersionId", input.getBaseVersionId());
         if (!source.path("draftAttachments").isArray()) throw new BusinessException("该版本缺少统一附件清单，不能复制为草稿");
         Set<Long> selected = new java.util.HashSet<>();
@@ -229,6 +250,13 @@ public class ProductWorkSpecService {
         detail.set("added", json.valueToTree(newIds.stream().filter(file -> !oldIds.contains(file)).toList()));
         detail.set("removed", json.valueToTree(oldIds.stream().filter(file -> !newIds.contains(file)).toList()));
         detail.put("orderChanged", !oldIds.equals(newIds));
+        String beforeOwner = before.path("preparedByName").asText("");
+        String afterOwner = after.path("preparedByName").asText("");
+        if (!Objects.equals(beforeOwner, afterOwner)) {
+            var changes = detail.putArray("changes");
+            changes.add("制定负责人：" + (beforeOwner.isBlank() ? "未指定" : beforeOwner)
+                + " → " + (afterOwner.isBlank() ? "未指定" : afterOwner));
+        }
         event.setOperParam(action + "：附件" + newIds.size() + "个"); event.setDetail(detail.toString());
         operLogs.insert(event);
     }
@@ -237,6 +265,7 @@ public class ProductWorkSpecService {
     public ObjectNode savePrintRemarks(Long id, PrintSpecRemarksDTO dto) {
         String oldRaw = raw(lock(id));
         checkRevision(dto.getRevision(), oldRaw);
+        requireOwner(parse(oldRaw));
         if (dto.getRemarks().keySet().stream().anyMatch(key -> PRINT_GROUPS.stream().noneMatch(group -> group.getCode().equals(key))))
             throw new BusinessException("仅支持面板、上线、下线的整组印刷备注");
         ObjectNode next = parse(oldRaw);
@@ -284,6 +313,7 @@ public class ProductWorkSpecService {
     public ObjectNode saveColorCheck(Long id, ColorCheckDTO dto) {
         String oldRaw = raw(lock(id));
         checkRevision(dto.getRevision(), oldRaw);
+        requireOwner(parse(oldRaw));
         for (String key : dto.getItems().keySet())
             if (!ColorCheckItemEnum.codes().contains(key)) throw new BusinessException("未知的分色检查项");
         ObjectNode next = parse(oldRaw);
@@ -381,6 +411,32 @@ public class ProductWorkSpecService {
         beginEdit(parse(oldRaw), data);
         mapper.write(id, data.toString());
         return response(id, mapper.read(id));
+    }
+
+    /** 制定任务锁：草稿已有负责人时，只有负责人可编辑；无草稿任务/未指定负责人不受限。 */
+    private void requireOwner(ObjectNode data) {
+        if (!data.path("draftManaged").asBoolean() || !data.hasNonNull("preparedById")) return;
+        if (Objects.equals(data.path("preparedById").asLong(), SecurityUtils.getUserId())) return;
+        throw new BusinessException(readOnlyMessage(data));
+    }
+
+    /** 管理员 / 工程主管（engineering:all）可改派负责人；换人后原负责人立即只读。 */
+    public boolean canAssignOwner() {
+        try {
+            return SecurityUtils.hasRole("engineering:all") || SecurityUtils.hasRole("admin")
+                || SecurityUtils.hasPermission("*:*:*") || SecurityUtils.hasPermission("*");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String ownerLabel(ObjectNode data) {
+        String name = data.path("preparedByName").asText("");
+        return name.isBlank() ? "未指定" : name;
+    }
+
+    private String readOnlyMessage(ObjectNode data) {
+        return "当前作业规范由 " + ownerLabel(data) + " 制定，你只能查看；如需修改请联系负责人或由工程主管改派";
     }
 
     private Map<String, Object> lock(Long id) {

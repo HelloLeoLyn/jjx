@@ -315,3 +315,44 @@ describe('上传必须先选择资料类型', () => {
     expect(messages.error).toHaveBeenCalled()
   })
 })
+
+describe('制定负责人锁（dev-20261020-013）', () => {
+  it('非负责人只能查看：隐藏保存/上传/排序/负责人下拉', async () => {
+    api.get.mockResolvedValue({
+      data: { ...response().data, preparedById: 8, preparedByName: '工程乙' },
+    })
+    const w = await setup()
+    const state = (w.vm as any).$.setupState
+    expect(state.draft.isOwner.value).toBe(false)
+    expect(state.canEditSpec).toBe(false)
+    expect(state.canAssignOwner).toBe(false)
+    expect(w.text()).toContain('当前由 工程乙 制定，你只能查看')
+    expect(w.findAll('button').some((b) => b.text() === '保存草稿')).toBe(false)
+    expect(w.find('.upload-stub').exists()).toBe(false)
+    expect(w.findAll('.el-select').length).toBe(0)
+    expect(w.text()).toContain('制定中')
+  })
+  it('负责人换人先确认，确认后带 ownerTransferConfirmed 保存', async () => {
+    const w = await setup()
+    api.responsibleUsers.mockResolvedValue({
+      data: [
+        { id: 7, name: '工程甲' },
+        { id: 8, name: '工程乙' },
+      ],
+    })
+    await w.setProps({ productId: 43, productCode: 'P43' })
+    await flushPromises()
+    const state = (w.vm as any).$.setupState
+    state.draft.owner.value = 8
+    await state.save()
+    expect(messages.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('工程甲'),
+      '变更制定负责人',
+      expect.objectContaining({ confirmButtonText: '确认更换' })
+    )
+    expect(api.saveDraft).toHaveBeenCalledWith(
+      43,
+      expect.objectContaining({ preparedById: 8, ownerTransferConfirmed: true })
+    )
+  })
+})

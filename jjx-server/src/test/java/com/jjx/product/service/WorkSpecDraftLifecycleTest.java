@@ -135,9 +135,12 @@ class WorkSpecDraftLifecycleTest {
     @Test void ownerDefaultsChangesAndNoOpDoesNotProduceExtraHistory() {
         ObjectNode first = save(11L,12L); assertEquals("工程甲",first.path("preparedByName").asText());
         long logsBefore = count("operation_log"); save(11L,12L); assertEquals(logsBefore,count("operation_log"));
-        var changed = input(11L,12L); changed.setPreparedById(8L);
+        var changed = input(11L,12L); changed.setPreparedById(8L); changed.setOwnerTransferConfirmed(true);
         tx.execute(status -> drafts.saveDraft(1L,changed));
         assertEquals("工程乙",drafts.get(1L).path("preparedByName").asText());
+        // 负责人变更写独立流水，含前后姓名。
+        assertEquals("变更负责人：工程甲→工程乙", db.queryForObject(
+            "SELECT action FROM operation_log ORDER BY id DESC LIMIT 1", String.class));
     }
     @Test void v1RetainsOldFilesAndOwnerWhenV2RemovesAndReorders() throws Exception {
         save(11L,12L); long v1 = publish().getId();
@@ -145,7 +148,12 @@ class WorkSpecDraftLifecycleTest {
         var upgrade = new ProductWorkSpecDraftDTO(); upgrade.setRevision(drafts.get(1L).path("revision").asText()); upgrade.setBaseVersionId(v1);
         tx.execute(status -> drafts.upgradeDraft(1L,upgrade));
         assertEquals("工程甲",drafts.get(1L).path("preparedByName").asText());
-        var second = input(13L,12L); second.setPreparedById(8L); tx.execute(status -> drafts.saveDraft(1L,second));
+        var second = input(13L,12L); second.setPreparedById(8L); second.setOwnerTransferConfirmed(true);
+        tx.execute(status -> drafts.saveDraft(1L,second));
+        // 换负责人后定版只归新负责人。
+        actor.when(SecurityUtils::getUserId).thenReturn(8L);
+        actor.when(SecurityUtils::getUsername).thenReturn("eng8");
+        actor.when(SecurityUtils::getDisplayName).thenReturn("工程乙");
         long v2 = publish().getId(); assertNotEquals(v1,v2);
         assertEquals(frozen,mapper.versionSnapshot(v1));
         assertEquals(11L,json.readTree(frozen).path("spec").path("draftAttachments").get(0).path("attachmentId").asLong());
@@ -168,6 +176,40 @@ class WorkSpecDraftLifecycleTest {
         assertEquals(before,mapper.read(1L)); assertEquals(11L,db.queryForObject("SELECT attachment_id FROM draft_ref",Long.class));
         assertThrows(IllegalStateException.class,this::publish); assertEquals(0,count("version_record")); assertEquals(before,mapper.read(1L));
     }
+    @Test void nonOwnerCannotSaveTransferOrPublish() {
+        save(11L);
+        actor.when(SecurityUtils::getUserId).thenReturn(8L);
+        actor.when(SecurityUtils::getUsername).thenReturn("eng8");
+        actor.when(SecurityUtils::getDisplayName).thenReturn("工程乙");
+        String before = mapper.read(1L);
+        var snoop = input(11L);
+        BusinessException saveDenied = assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L,snoop)));
+        assertTrue(saveDenied.getMessage().contains("只能查看"));
+        var grab = input(11L); grab.setPreparedById(8L); grab.setOwnerTransferConfirmed(true);
+        assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L,grab)));
+        String revision = drafts.get(1L).path("revision").asText();
+        BusinessException publishDenied = assertThrows(BusinessException.class, () -> tx.execute(status -> versions.publish(1L,null,revision)));
+        assertTrue(publishDenied.getMessage().contains("当前制定负责人"));
+        assertEquals(before,mapper.read(1L)); assertEquals(0,count("version_record"));
+    }
+
+    @Test void ownerTransferNeedsExplicitConfirmationAndManagerCanReassign() {
+        save(11L);
+        var unconfirmed = input(11L); unconfirmed.setPreparedById(8L);
+        BusinessException confirmDenied = assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L,unconfirmed)));
+        assertTrue(confirmDenied.getMessage().contains("需要确认"));
+        assertEquals("工程甲",drafts.get(1L).path("preparedByName").asText());
+        // 工程主管（engineering:all）可把负责人改派给他人，即使自己不是当前负责人。
+        actor.when(SecurityUtils::getUserId).thenReturn(9L);
+        actor.when(SecurityUtils::getDisplayName).thenReturn("工程主管");
+        actor.when(() -> SecurityUtils.hasRole("engineering:all")).thenReturn(true);
+        var reassign = input(11L); reassign.setPreparedById(8L); reassign.setOwnerTransferConfirmed(true);
+        ObjectNode result = tx.execute(status -> drafts.saveDraft(1L,reassign));
+        assertEquals("工程乙",result.path("preparedByName").asText());
+        assertEquals("变更负责人：工程甲→工程乙", db.queryForObject(
+            "SELECT action FROM operation_log ORDER BY id DESC LIMIT 1", String.class));
+    }
+
     @Test void duplicateFilesInvalidOwnerAndStaleSaveDoNotChangeDraft() {
         save(11L); String before = mapper.read(1L);
         assertThrows(BusinessException.class, () -> save(11L,11L));

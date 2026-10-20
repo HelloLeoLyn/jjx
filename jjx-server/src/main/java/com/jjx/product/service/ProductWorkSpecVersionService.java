@@ -108,6 +108,9 @@ public class ProductWorkSpecVersionService {
             }
             if (!sha256(raw).equals(revision)) throw new BusinessException("草稿已变化，请重新加载后定版");
             if (!draft.hasNonNull("preparedById") || draft.path("preparedByName").asText().isBlank()) throw new BusinessException("请先保存编制负责人");
+            // 定版只归当前制定负责人；他人需先由负责人/工程主管改派（dev-20261020-013）。
+            if (!java.util.Objects.equals(draft.path("preparedById").asLong(), SecurityUtils.getUserId()))
+                throw new BusinessException("只有当前制定负责人可以定版；如需他人定版，请先转交负责人");
         }
 
         int seq = Math.toIntExact(versionMapper.selectCount(

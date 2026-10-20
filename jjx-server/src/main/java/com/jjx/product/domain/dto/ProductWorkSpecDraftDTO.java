@@ -11,6 +11,8 @@ public class ProductWorkSpecDraftDTO {
     @NotBlank @Size(max = 64) private String revision;
     private Long baseVersionId;
     private Long preparedById;
+    /** 换负责人必须由前端显式确认后置 true；后端拒绝未确认的负责人变更（dev-20261020-013）。 */
+    private Boolean ownerTransferConfirmed;
     @Valid private ProductWorkSpecDTO spec;
     @Valid @Size(max = 500) private List<File> attachments;
 

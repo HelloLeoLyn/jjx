@@ -7,14 +7,21 @@
       </template>
       <el-button v-else link @click="draft.load()">重试</el-button>
     </el-alert>
+    <el-alert
+      v-if="!draft.isOwner.value"
+      :title="draft.readOnlyReason.value"
+      type="info"
+      :closable="false"
+      show-icon
+    />
     <div class="draft-actions">
       <el-tag
         :type="draft.spec.value.finalizedVersionId && !draft.dirty.value ? 'success' : 'warning'"
-        >{{ draft.spec.value.finalizedVersionId && !draft.dirty.value ? '已定版' : '草稿' }}</el-tag
+        >{{ draft.spec.value.finalizedVersionId && !draft.dirty.value ? '已定版' : '制定中' }}</el-tag
       >
       <span>制定负责人</span>
       <el-select
-        v-if="canEdit"
+        v-if="canAssignOwner"
         v-model="draft.owner.value"
         placeholder="默认当前用户"
         filterable
@@ -30,7 +37,7 @@
       </el-select>
       <span v-else>{{ draft.spec.value.preparedByName || '未指定' }}</span>
       <el-button
-        v-if="canEdit"
+        v-if="canEditSpec"
         type="primary"
         :loading="draft.saving.value"
         :disabled="!draft.ready.value || draft.busy.value"
@@ -43,7 +50,7 @@
       >
     </div>
     <p>附件随作业规范一起定版。新版移除附件不会删除旧版文件。</p>
-    <div v-if="canEdit" class="draft-actions">
+    <div v-if="canEditSpec" class="draft-actions">
       <el-select
         v-model="uploadType"
         placeholder="请选择资料类型"
@@ -90,14 +97,14 @@
           <el-checkbox
             :model-value="row.print"
             :disabled="
-              !canEdit || draft.busy.value || detectFileKind(row.fileName, row.fileType) === 'other'
+              !canEditSpec || draft.busy.value || detectFileKind(row.fileName, row.fileType) === 'other'
             "
             @update:model-value="(value) => (draft.prints[row.attachmentId] = !!value)"
             >打印</el-checkbox
           >
         </template></el-table-column
       >
-      <el-table-column v-if="canEdit" label="排序" width="130"
+      <el-table-column v-if="canEditSpec" label="排序" width="130"
         ><template #default="{ row, $index }">
           <el-button
             link
@@ -135,6 +142,7 @@
 import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
+import { usePermission } from '@/composables/usePermission'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import type { PendingEntry } from '@/composables/useAttachmentRefs'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
@@ -156,7 +164,14 @@ const props = withDefaults(
 const emit = defineEmits<{ busy: [value: boolean]; loaded: [files: any[]]; updated: [] }>()
 const draft = useWorkSpecAttachmentSession(toRef(props, 'productId'), toRef(props, 'productCode'))
 const user = useUserStore()
+const { hasRole } = usePermission()
 const canEdit = computed(() => user.hasPermission('product:edit'))
+// 制定任务锁：非负责人只读；管理员/工程主管可改派负责人（dev-20261020-013）。
+const canManageOwner = computed(() => hasRole('engineering:all'))
+const canEditSpec = computed(() => canEdit.value && draft.isOwner.value)
+const canAssignOwner = computed(
+  () => canEdit.value && (draft.isOwner.value || canManageOwner.value)
+)
 const owners = ref<{ id: number; name: string }[]>([])
 // 两个工程入口均承接后端ENGINEERING_DOC有效字典；旧categories固定列表不再截断。
 const types = computed(() =>
@@ -221,8 +236,23 @@ function uploaded(payload: { pending: PendingEntry }) {
     )
 }
 async function save() {
+  const nextOwner = draft.owner.value
+  const ownerChanged =
+    !!nextOwner && !!draft.spec.value.preparedById && nextOwner !== draft.spec.value.preparedById
+  if (ownerChanged) {
+    const target = owners.value.find((person) => person.id === nextOwner)?.name || '新负责人'
+    try {
+      await ElMessageBox.confirm(
+        `将制定负责人由「${draft.spec.value.preparedByName || '原负责人'}」改为「${target}」？更换后原负责人立即只能查看，本次变更写入操作记录。`,
+        '变更制定负责人',
+        { confirmButtonText: '确认更换', cancelButtonText: '取消', type: 'warning' }
+      )
+    } catch {
+      return
+    }
+  }
   try {
-    await draft.save()
+    await draft.save(undefined, ownerChanged ? { ownerTransferConfirmed: true } : undefined)
     ElMessage.success('草稿已保存')
     emit('updated')
   } catch (error) {

@@ -9,7 +9,8 @@
             type="primary"
             size="small"
             :loading="publishing"
-            :disabled="blocked || draft.busy.value || !draft.ready.value"
+            :disabled="blocked || draft.busy.value || !draft.ready.value || !draft.isOwner.value"
+            :title="draft.isOwner.value ? '' : '只有当前制定负责人可以定版'"
             @click="publish"
             >定版</el-button
           >
@@ -21,6 +22,14 @@
       </div>
     </template>
 
+    <el-alert
+      v-if="!draft.isOwner.value"
+      :title="draft.readOnlyReason.value + '；定版与升级仅负责人可操作'"
+      type="info"
+      :closable="false"
+      show-icon
+      class="wsv-tip"
+    />
     <el-alert
       v-if="draft.conflict.value"
       :title="draft.error.value"
@@ -58,7 +67,10 @@
             v-hasPermi="['product:edit']"
             link
             type="primary"
-            :disabled="blocked || draft.busy.value || draft.dirty.value || publishing"
+            :disabled="
+              blocked || draft.busy.value || draft.dirty.value || publishing || !canStartUpgrade
+            "
+            :title="canStartUpgrade ? '' : '只有当前制定负责人或工程主管可以升级'"
             @click="upgrade(row)"
             >从此版升级</el-button
           >
@@ -247,13 +259,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, toRef, watch } from 'vue'
+import { computed, onMounted, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import { WorkSpecVersionStatus } from '@/enums/product/workSpec'
 import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
 import { parseDocsetSnapshot, detectFileKind } from './versionDocset'
 import { useUserStore } from '@/store/modules/user'
+import { usePermission } from '@/composables/usePermission'
 
 const props = withDefaults(
   defineProps<{ productId: number; showFullPage?: boolean; blocked?: boolean }>(),
@@ -269,6 +282,11 @@ const emit = defineEmits<{
 }>()
 const draft = useWorkSpecAttachmentSession(toRef(props, 'productId'), ref(''))
 const user = useUserStore()
+const { hasRole } = usePermission()
+// 制定任务锁（dev-20261020-013）：定版仅负责人；升级由负责人或工程主管发起。
+const canStartUpgrade = computed(
+  () => draft.isOwner.value || (user.hasPermission('product:edit') && hasRole('engineering:all'))
+)
 
 const RESOURCE_LABELS: Record<string, string> = {
   SPEC_JSON: '规范正文快照',
@@ -337,6 +355,10 @@ async function load() {
 
 async function publish() {
   if (props.blocked || publishing.value || draft.busy.value || !draft.ready.value) return
+  if (!draft.isOwner.value) {
+    ElMessage.warning(draft.readOnlyReason.value + '；只有当前制定负责人可以定版')
+    return
+  }
   publishing.value = true
   try {
     // 保存失败必须中断；所有附件和正文共用服务端返回的revision。

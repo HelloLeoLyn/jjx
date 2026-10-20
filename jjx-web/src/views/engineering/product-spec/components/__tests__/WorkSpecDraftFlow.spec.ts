@@ -222,7 +222,8 @@ describe('作业规范统一草稿会话', () => {
     draft.owner.value = 8
     draft.move(3, -1)
     expect(draft.dirty.value).toBe(true)
-    await draft.save()
+    await expect(draft.save()).rejects.toThrow('变更制定负责人需要确认')
+    await draft.save(undefined, { ownerTransferConfirmed: true })
     expect(api.saveDraft).toHaveBeenCalledWith(
       42,
       expect.objectContaining({
@@ -252,12 +253,14 @@ describe('作业规范统一草稿会话', () => {
     draft.register(pending(), 'STRUCTURE_DRAWING')
     draft.owner.value = 8
     api.saveDraft.mockRejectedValueOnce(new Error('revision conflict'))
-    await expect(draft.save()).rejects.toThrow('revision conflict')
+    await expect(draft.save(undefined, { ownerTransferConfirmed: true })).rejects.toThrow(
+      'revision conflict'
+    )
     expect(draft.files.value.map((file) => file.attachmentId)).toEqual([2, 3])
     expect(draft.owner.value).toBe(8)
     expect(draft.saving.value).toBe(false)
     expect(draft.session.pendingCount.value).toBe(1)
-    await draft.save()
+    await draft.save(undefined, { ownerTransferConfirmed: true })
     expect(draft.session.pendingCount.value).toBe(0)
   })
   it('升级不覆盖未保存改动；成功升级采用冻结正文、文件和负责人', async () => {
@@ -468,8 +471,9 @@ describe('持续严格revision冲突恢复', () => {
     draft.move(3, -1)
     draft.owner.value = 8
     const text = normalizeWorkSpec({ ...draft.spec.value, engineeringRequirements: '本地文字' })
-    await expect(draft.save(text)).rejects.toThrow('其他入口修改')
-    await expect(draft.save(text)).rejects.toThrow('其他入口修改')
+    const retry = { ownerTransferConfirmed: true }
+    await expect(draft.save(text, retry)).rejects.toThrow('其他入口修改')
+    await expect(draft.save(text, retry)).rejects.toThrow('其他入口修改')
     server = { ...saved([1, 2, 4], 'server-r2'), engineeringRequirements: '他人文字' }
     messages.confirm.mockRejectedValueOnce('cancel')
     await expect(draft.recover()).rejects.toBe('cancel')
@@ -573,5 +577,30 @@ describe('后端工程技术资料字典', () => {
     expect(draft.session.pendingCount.value).toBe(1)
     draft.session.pending.value[0].documentType = 'CUSTOMER_ORIGINAL'
     await expect(draft.save()).rejects.toThrow('非工程技术资料')
+  })
+})
+
+describe('制定负责人锁（dev-20261020-013）', () => {
+  it('非负责人只读：保存被拒，附件会话不可编辑', async () => {
+    api.get.mockResolvedValue({
+      data: { ...saved(), preparedById: 8, preparedByName: '工程乙' },
+    })
+    const { draft } = await setup()
+    expect(draft.isOwner.value).toBe(false)
+    expect(draft.readOnlyReason.value).toBe('当前由 工程乙 制定，你只能查看')
+    expect(draft.session.canEdit.value).toBe(false)
+    await expect(draft.save()).rejects.toThrow('你只能查看')
+    expect(api.saveDraft).not.toHaveBeenCalled()
+  })
+  it('换负责人未确认被拒；显式确认后随保存提交', async () => {
+    const { draft } = await setup()
+    draft.owner.value = 8
+    await expect(draft.save()).rejects.toThrow('变更制定负责人需要确认')
+    expect(api.saveDraft).not.toHaveBeenCalled()
+    await draft.save(undefined, { ownerTransferConfirmed: true })
+    expect(api.saveDraft).toHaveBeenCalledWith(
+      42,
+      expect.objectContaining({ preparedById: 8, ownerTransferConfirmed: true })
+    )
   })
 })

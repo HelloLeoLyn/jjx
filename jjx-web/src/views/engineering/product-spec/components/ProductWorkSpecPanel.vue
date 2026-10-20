@@ -2,12 +2,36 @@
   <div class="work-spec-panel">
     <div class="work-actions">
       <strong>作业规范</strong>
+      <div class="owner-status">
+        <el-tag
+          size="small"
+          :type="
+            draftSession.spec.value.finalizedVersionId && !draftSession.dirty.value
+              ? 'success'
+              : 'warning'
+          "
+          >{{
+            draftSession.spec.value.finalizedVersionId && !draftSession.dirty.value
+              ? '已定版'
+              : '制定中'
+          }}</el-tag
+        >
+        <span>制定负责人：{{ draftSession.ownerLabel.value }}</span>
+      </div>
       <div class="source-actions">
         <el-button :disabled="!data || loading || editing" @click="previewVisible = true"
           >打印预览</el-button
         >
       </div>
     </div>
+    <el-alert
+      v-if="!draftSession.isOwner.value"
+      :title="draftSession.readOnlyReason.value"
+      type="info"
+      :closable="false"
+      show-icon
+      class="data-message"
+    />
     <el-alert
       v-if="loadError"
       :title="loadError"
@@ -219,6 +243,7 @@
           :work-spec="data.workSpec"
           :routing-items="data.routing.items || []"
           :loading="loading"
+          :read-only="!canEdit"
           @busy="printSpecBusy = $event"
           @updated="printRemarksSaved"
         />
@@ -400,7 +425,8 @@ const draftSession = useWorkSpecAttachmentSession(
 )
 const saveSpec = (value: ProductWorkSpec) => draftSession.save(value)
 const user = useUserStore()
-const canEdit = computed(() => user.hasPermission('product:edit'))
+// 制定任务锁（dev-20261020-013）：非负责人只能查看，隐藏保存/上传/排序/负责人入口。
+const canEdit = computed(() => user.hasPermission('product:edit') && draftSession.isOwner.value)
 const canEditBom = computed(() => user.hasPermission('engineering:bom:edit'))
 const canEditRoute = computed(() => user.hasPermission('engineering:routing:edit'))
 const previewVisible = ref(false)
@@ -893,6 +919,13 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+.owner-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 .work-actions .el-button + .el-button {
   margin-left: 0;

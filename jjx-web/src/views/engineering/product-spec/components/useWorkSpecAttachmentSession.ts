@@ -18,6 +18,7 @@ import {
   type WorkSpecAttachment,
 } from '@/api/product/workSpec'
 import { ElMessageBox } from 'element-plus'
+import { useUserStore } from '@/store/modules/user'
 import { useAttachmentDocTypes } from '@/components/attachment/useAttachmentDocTypes'
 import { detectFileKind } from './versionDocset'
 import type { PendingEntry } from '@/composables/useAttachmentRefs'
@@ -37,6 +38,7 @@ export function useWorkSpecAttachmentSession(productId: Ref<number>, productCode
 
 export function createWorkSpecAttachmentSession(productId: Ref<number>, productCode: Ref<string>) {
   const spec = ref<ProductWorkSpec>(normalizeWorkSpec())
+  const user = useUserStore()
   const loading = ref(false)
   const saving = ref(false)
   const confirming = ref(false)
@@ -61,6 +63,19 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     viewPerm: 'product:view',
     locked: computed(() => loading.value || saving.value || confirming.value || !ready.value),
   })
+  /** 制定任务锁（dev-20261020-013）：草稿已有负责人时，只有负责人可编辑；未建任务/未指定负责人不受限。 */
+  const isOwner = computed(() => {
+    const value = spec.value
+    if (!value.draftManaged || !value.preparedById) return true
+    return value.preparedById === user.userId
+  })
+  const ownerLabel = computed(() => spec.value.preparedByName || '未指定')
+  const readOnlyReason = computed(() =>
+    isOwner.value ? '' : `当前由 ${ownerLabel.value} 制定，你只能查看`
+  )
+  // 只读锁同样作用于附件管理区：非负责人看得到清单，但不能上传/移除/排序/改元数据。
+  const baseCanEdit = session.canEdit
+  session.canEdit = computed(() => baseCanEdit.value && isOwner.value)
   // 来源切换时公共store会刷新通用引用；业务清单单独由work-spec响应接管，避免混入其它产品资料。
   const selectedRefs = ref<AttachmentRefItem[]>([])
   session.refs = selectedRefs
@@ -202,9 +217,16 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
       if (current === generation) loading.value = false
     }
   }
-  async function save(content?: ProductWorkSpec) {
+  async function save(content?: ProductWorkSpec, options?: { ownerTransferConfirmed?: boolean }) {
     if (!ready.value || busy.value) throw new Error('草稿尚未就绪或正在处理，请稍后重试')
+    if (!isOwner.value) throw new Error(readOnlyReason.value)
     if (!session.canEdit.value) throw new Error('无草稿编辑权限')
+    const ownerChanged =
+      !!owner.value &&
+      !!spec.value.preparedById &&
+      owner.value !== spec.value.preparedById
+    if (ownerChanged && !options?.ownerTransferConfirmed)
+      throw new Error('变更制定负责人需要确认')
     if (manifest.value.some((file) => !file.documentType))
       throw new Error('请为每个附件选择资料类型')
     const current = generation
@@ -219,12 +241,18 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
           '资料类型已停用、非工程技术资料或字典不可用，请重新选择：' +
             invalid.map((file) => file.displayName || file.fileName).join('、')
         )
-      const response = await productWorkSpecApi.saveDraft(id, {
+      // 换负责人标记随保存提交；API 类型由调用点断言，不改公共 API 声明（本卡白名单）。
+      const payload = {
         revision: content?.revision || spec.value.revision,
         preparedById: owner.value,
         spec: content ? workSpecContent(content) : undefined,
         attachments: manifest.value,
-      })
+        ...(ownerChanged ? { ownerTransferConfirmed: true } : {}),
+      }
+      const response = await productWorkSpecApi.saveDraft(
+        id,
+        payload as Parameters<typeof productWorkSpecApi.saveDraft>[1]
+      )
       if (!response.data?.revision) throw new Error('草稿保存未返回有效结果')
       if (current !== generation || id !== productId.value)
         throw new Error('保存期间产品已切换，请重新加载原产品草稿确认')
@@ -286,7 +314,8 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
         const originalRevision = spec.value.revision
         spec.value.revision = latest.revision
         try {
-          await save(local)
+          // 冲突比较弹窗已完整列出负责人差异并获确认，重试视为已确认换人。
+          await save(local, { ownerTransferConfirmed: true })
           error.value = ''
           recovered.value++
         } catch (cause) {
@@ -363,6 +392,9 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     engineeringTypes,
     spec,
     owner,
+    isOwner,
+    ownerLabel,
+    readOnlyReason,
     files,
     manifest,
     prints,
