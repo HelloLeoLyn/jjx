@@ -14,14 +14,14 @@
         >
         <span>制定负责人：{{ draftSession.ownerLabel.value }}</span>
         <el-button
-          v-if="draftSession.canClaim.value"
+          v-if="!viewOnly && draftSession.canClaim.value"
           :disabled="draftSession.busy.value"
           type="primary"
           @click="ownerAction(false)"
           >制定规范</el-button
         >
         <el-button
-          v-if="draftSession.canTransfer.value"
+          v-if="!viewOnly && draftSession.canTransfer.value"
           :disabled="draftSession.busy.value || editing"
           @click="ownerAction(true)"
           >{{ draftSession.transferLabel.value }}</el-button
@@ -33,6 +33,14 @@
         >
       </div>
     </div>
+    <el-alert
+      v-if="viewOnly"
+      title="只读查看；如需编辑，请从列表点「继续制定」或「制定规范」进入"
+      type="info"
+      :closable="false"
+      show-icon
+      class="data-message"
+    />
     <el-alert
       v-if="draftSession.readOnlyReason.value"
       :title="draftSession.readOnlyReason.value"
@@ -426,7 +434,16 @@ import {
   type DocsetData,
 } from './docset'
 
-const props = defineProps<{ productId: number; productCode: string; productName: string }>()
+const props = withDefaults(
+  defineProps<{
+    productId: number
+    productCode: string
+    productName: string
+    /** 列表「作业规范」入口以只读查看打开；编辑走「制定规范/继续制定」。 */
+    viewOnly?: boolean
+  }>(),
+  { viewOnly: false }
+)
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
 const draftSession = useWorkSpecAttachmentSession(
   toRef(props, 'productId'),
@@ -435,7 +452,9 @@ const draftSession = useWorkSpecAttachmentSession(
 const saveSpec = (value: ProductWorkSpec) => draftSession.save(value)
 const user = useUserStore()
 // 制定任务锁（dev-20261020-013）：非负责人只能查看，隐藏保存/上传/排序/负责人入口。
-const canEdit = computed(() => user.hasPermission('product:edit') && draftSession.canWrite.value)
+const canEdit = computed(
+  () => user.hasPermission('product:edit') && draftSession.canWrite.value && !props.viewOnly
+)
 async function ownerAction(transfer: boolean) {
   try {
     if (transfer) await draftSession.transfer()

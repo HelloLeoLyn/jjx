@@ -23,7 +23,7 @@
         v-if="!selectedVersionId && productId"
         :key="productId"
         :product-id="productId"
-        :blocked="workSpecBusy || colorCheckBusy"
+        :blocked="workSpecBusy || colorCheckBusy || specViewOnly"
         @updated="versionSaved"
         @busy="versionBusy = $event"
       />
@@ -184,6 +184,7 @@
               :product-id="productId"
               :product-code="productCode"
               :product-name="detail?.product?.productName || ''"
+              :view-only="specViewOnly"
               @busy="workSpecBusy = $event"
               @updated="refreshSpecSources"
             />
@@ -356,6 +357,7 @@
               :product-name="detail?.product?.productName || ''"
               :categories="ENGINEERING_DOCUMENT_TYPE_CODES"
               :show-versions="false"
+              :view-only="specViewOnly"
               @busy="drawingBusy = $event"
             />
           </template>
@@ -426,6 +428,8 @@ function dieText(spec: any): string {
   return values.length ? values.join('；') : spec?.dieLocationText || '-'
 }
 const specVisible = ref(false)
+/** 列表「作业规范」以只读查看打开；只有「制定规范/继续制定」进入可编辑态（dev-20261020-018）。 */
+const specViewOnly = ref(false)
 const versionBusy = ref(false)
 const drawingBusy = ref(false)
 const workSpecBusy = ref(false)
@@ -480,7 +484,7 @@ async function refreshSpecSources() {
   }
 }
 
-async function open(id: number, versionId?: number) {
+async function open(id: number, versionId?: number, options?: { readOnly?: boolean }) {
   if (!Number.isFinite(id) || id <= 0) return
   if (
     versionBusy.value ||
@@ -493,6 +497,7 @@ async function open(id: number, versionId?: number) {
     ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口')
     return
   }
+  specViewOnly.value = options?.readOnly === true
   const version = ++requestVersion
   activeTab.value = 'customer'
   selectedVersionId.value = 0

@@ -70,9 +70,17 @@
             {{ versionInfoMap[Number(row.productId)]?.preparedByName || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="440" align="center" fixed="right">
+        <el-table-column label="操作" width="540" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openSpec(row)">作业规范</el-button>
+            <el-button link type="primary" @click="openSpec(row, true)">作业规范</el-button>
+            <el-button
+              v-if="canContinueSpec(row)"
+              v-hasPermi="['product:edit']"
+              link
+              type="primary"
+              @click="openSpec(row, false)"
+              >继续制定</el-button
+            >
             <el-button
               v-if="canClaimSpec(row)"
               v-hasPermi="['product:edit']"
@@ -81,6 +89,14 @@
               :loading="claimingId === Number(row.productId)"
               @click="claimSpec(row)"
               >制定规范</el-button
+            >
+            <el-button
+              v-if="canTransferSpec(row)"
+              v-hasPermi="['product:edit']"
+              link
+              type="primary"
+              @click="openTransfer(row)"
+              >{{ isSpecOwner(row) ? '转交' : '改派' }}</el-button
             >
             <el-button
               v-hasPermi="['product:work-spec:publish']"
@@ -104,6 +120,45 @@
     </el-card>
 
     <ProductSpecDrawer ref="specDrawer" />
+
+    <!-- 转交/改派制定负责人（dev-20261020-018） -->
+    <el-dialog
+      v-model="transferVisible"
+      :title="transferRow && isSpecOwner(transferRow) ? '转交制定负责人' : '改派制定负责人'"
+      width="460px"
+      append-to-body
+      destroy-on-close
+    >
+      <p class="transfer-tip">
+        当前负责人：{{
+          transferRow ? versionInfoMap[Number(transferRow.productId)]?.preparedByName || '-' : '-'
+        }}
+      </p>
+      <el-select
+        v-model="transferTarget"
+        filterable
+        placeholder="选择新的制定负责人"
+        style="width: 100%"
+        :disabled="transferLoading || transferSubmitting"
+      >
+        <el-option
+          v-for="person in transferUsers"
+          :key="person.id"
+          :label="person.name"
+          :value="person.id"
+        />
+      </el-select>
+      <template #footer>
+        <el-button :disabled="transferSubmitting" @click="transferVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="transferSubmitting"
+          :disabled="transferLoading || !transferTarget"
+          @click="submitTransfer"
+          >确认{{ transferRow && isSpecOwner(transferRow) ? '转交' : '改派' }}</el-button
+        >
+      </template>
+    </el-dialog>
 
     <!-- 规范定版：列表操作栏入口 -->
     <el-dialog
@@ -146,6 +201,8 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listProductPage } from '@/api/product'
 import { productWorkSpecApi } from '@/api/product/workSpec'
+import { useUserStore } from '@/store/modules/user'
+import { usePermission } from '@/composables/usePermission'
 import ProductSpecDrawer from '@/components/product/ProductSpecDrawer.vue'
 import ProductWorkSpecVersionPanel from './components/ProductWorkSpecVersionPanel.vue'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
@@ -159,6 +216,8 @@ const loading = ref(false)
 const rows = ref<ProductVo[]>([])
 const total = ref(0)
 const query = reactive({ productCode: '', productName: '', current: 1, pageSize: 20 })
+const userStore = useUserStore()
+const { hasRole } = usePermission()
 
 // 规范定版（列表操作栏）
 const versionsVisible = ref(false)
@@ -204,6 +263,77 @@ function canClaimSpec(row: any) {
   const info = specInfo(row)
   return !!info && !info.preparedById && !info.finalizedVersionId
 }
+function isSpecOwner(row: any) {
+  const info = specInfo(row)
+  return !!info?.preparedById && Number(info.preparedById) === Number(userStore.userId)
+}
+function canContinueSpec(row: any) {
+  const info = specInfo(row)
+  return !!info && !!info.preparedById && !info.finalizedVersionId && isSpecOwner(row)
+}
+function canTransferSpec(row: any) {
+  const info = specInfo(row)
+  return (
+    !!info &&
+    !!info.preparedById &&
+    !info.finalizedVersionId &&
+    (isSpecOwner(row) || hasRole('engineering:all'))
+  )
+}
+const transferVisible = ref(false)
+const transferRow = ref<any>()
+const transferUsers = ref<{ id: number; name: string }[]>([])
+const transferTarget = ref<number>()
+const transferLoading = ref(false)
+const transferSubmitting = ref(false)
+const transferRevision = ref('')
+async function openTransfer(row: any) {
+  const productId = Number(row?.productId)
+  if (!productId) return
+  transferRow.value = row
+  transferTarget.value = undefined
+  transferUsers.value = []
+  transferRevision.value = ''
+  transferVisible.value = true
+  transferLoading.value = true
+  try {
+    const [detail, users] = await Promise.all([
+      productWorkSpecApi.get(productId),
+      productWorkSpecApi.responsibleUsers(productId),
+    ])
+    transferRevision.value = String(detail?.data?.revision || '')
+    const currentOwner = Number(specInfo(row)?.preparedById)
+    transferUsers.value = ((users?.data || []) as { id: number; name: string }[]).filter(
+      (person) => Number(person.id) !== currentOwner
+    )
+  } catch (error: any) {
+    ElMessage.error(error?.message || '负责人列表加载失败')
+    transferVisible.value = false
+  } finally {
+    transferLoading.value = false
+  }
+}
+async function submitTransfer() {
+  const productId = Number(transferRow.value?.productId)
+  const target = Number(transferTarget.value)
+  if (!productId || !target || !transferRevision.value || transferSubmitting.value) return
+  transferSubmitting.value = true
+  try {
+    await productWorkSpecApi.transferWorkSpec(productId, {
+      revision: transferRevision.value,
+      preparedById: target,
+      ownerTransferConfirmed: true,
+    })
+    ElMessage.success(isSpecOwner(transferRow.value) ? '已转交制定负责人' : '已改派制定负责人')
+    transferVisible.value = false
+    await load()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '转交失败，请刷新后重试')
+    await load()
+  } finally {
+    transferSubmitting.value = false
+  }
+}
 async function claimSpec(row: any) {
   const productId = Number(row?.productId)
   if (!productId || claimingId.value) return
@@ -221,7 +351,7 @@ async function claimSpec(row: any) {
     await productWorkSpecApi.claimWorkSpec(productId)
     ElMessage.success('已开始制定，可以编辑作业规范')
     await load()
-    openSpec(row)
+    openSpec(row, false)
   } catch (error: any) {
     ElMessage.error(error?.message || '制定失败，请刷新后重试')
     await load()
@@ -269,8 +399,8 @@ function reset() {
   load()
 }
 
-function openSpec(row: Pick<ProductVo, 'productId'>) {
-  specDrawer.value?.open(Number(row.productId))
+function openSpec(row: Pick<ProductVo, 'productId'>, readOnly = true) {
+  specDrawer.value?.open(Number(row.productId), undefined, { readOnly })
 }
 
 // 兼容原有带 productId 的作业规范链接。
@@ -287,5 +417,10 @@ onMounted(() => {
 }
 .search-card {
   margin-bottom: 12px;
+}
+.transfer-tip {
+  margin: 0 0 10px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
 }
 </style>

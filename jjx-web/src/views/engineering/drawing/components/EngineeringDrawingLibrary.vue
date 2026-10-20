@@ -8,8 +8,12 @@
       <el-button v-else link @click="draft.load()">重试</el-button>
     </el-alert>
     <el-alert
-      v-if="draft.readOnlyReason.value"
-      :title="draft.readOnlyReason.value"
+      v-if="viewOnly || draft.readOnlyReason.value"
+      :title="
+        viewOnly
+          ? '只读查看；如需编辑请从列表点「继续制定」或「制定规范」进入'
+          : draft.readOnlyReason.value
+      "
       type="info"
       :closable="false"
       show-icon
@@ -22,14 +26,14 @@
       <span>制定负责人</span>
       <span>{{ draft.ownerLabel.value }}</span>
       <el-button
-        v-if="draft.canClaim.value"
+        v-if="!viewOnly && draft.canClaim.value"
         :disabled="draft.busy.value"
         type="primary"
         @click="ownerAction(false)"
         >制定规范</el-button
       >
       <el-button
-        v-if="draft.canTransfer.value"
+        v-if="!viewOnly && draft.canTransfer.value"
         :disabled="draft.busy.value"
         @click="ownerAction(true)"
         >{{ draft.transferLabel.value }}</el-button
@@ -157,13 +161,15 @@ const props = withDefaults(
     categories?: string[]
     active?: boolean
     showVersions?: boolean
+    /** 列表「作业规范」入口以只读查看打开；编辑走「制定规范/继续制定」。 */
+    viewOnly?: boolean
   }>(),
-  { showVersions: true }
+  { showVersions: true, viewOnly: false }
 )
 const emit = defineEmits<{ busy: [value: boolean]; loaded: [files: any[]]; updated: [] }>()
 const draft = useWorkSpecAttachmentSession(toRef(props, 'productId'), toRef(props, 'productCode'))
 const user = useUserStore()
-const canEdit = computed(() => user.hasPermission('product:edit'))
+const canEdit = computed(() => !props.viewOnly && user.hasPermission('product:edit'))
 const canEditSpec = computed(() => canEdit.value && draft.canWrite.value)
 // 两个工程入口均承接后端ENGINEERING_DOC有效字典；旧categories固定列表不再截断。
 const types = computed(() =>

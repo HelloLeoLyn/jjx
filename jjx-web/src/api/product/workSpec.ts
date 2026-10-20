@@ -228,6 +228,9 @@ export const productWorkSpecApi = {
     request.get('/product/work-spec/status', { params: { productIds: productIds.join(',') } }),
   /** 显式制定规范（dev-20261020-016/017）：无负责人时原子占用，返回最新工作态。 */
   claimWorkSpec: (id: number) => request.post('/product/' + id + '/work-spec/claim'),
+  /** 转交/改派制定负责人（dev-20261020-016/018）：需当前 revision 与显式确认。 */
+  transferWorkSpec: (id: number, body: { revision: string; preparedById: number; ownerTransferConfirmed: true }) =>
+    request.post('/product/' + id + '/work-spec/transfer', body),
   // 任意两个已发布版本比较（dev-20261011-028）
   compareVersions: (versionA: number, versionB: number) =>
     request.get('/product/work-spec/compare', { params: { versionA, versionB } }),
