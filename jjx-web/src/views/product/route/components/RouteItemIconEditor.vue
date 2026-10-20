@@ -91,7 +91,7 @@
                   </template>
                 </el-table-column>
 
-                <el-table-column label="组合工序" min-width="460">
+                <el-table-column label="组合工序" min-width="280">
                   <template #default="scope">
                     <div
                       class="group-items"
@@ -148,7 +148,7 @@
                   </template>
                 </el-table-column>
 
-                <el-table-column label="备注" width="380">
+                <el-table-column label="备注" width="280">
                   <template #default="scope">
                     <RouteRemarkAutocomplete
                       v-model="scope.row.remark"
@@ -332,23 +332,6 @@
                       width="160px"
                       @update:model-value="(v: string) => setPrintParam(row, 'screenNo', v)"
                     />
-                  </template>
-                </el-table-column>
-                <el-table-column label="子结构" width="110">
-                  <template #default="{ row }">
-                    <el-select
-                      v-model="row.processCategory"
-                      size="small"
-                      style="width: 100px"
-                      @change="syncToParent"
-                    >
-                      <el-option
-                        v-for="o in ProcessCategoryEnum.items"
-                        :key="o.value"
-                        :label="o.label"
-                        :value="o.value"
-                      />
-                    </el-select>
                   </template>
                 </el-table-column>
                 <el-table-column label="人工工时(h)" width="100" align="center">
@@ -645,7 +628,11 @@ function initPrintSortable(value: string) {
   const el = table?.$el?.querySelector('.el-table__body-wrapper tbody') as HTMLElement | null
   if (!el) {
     setTimeout(() => {
-      if (!printSortableDisposed && majorCategoryTab.value === 'PRINT' && printActiveTab.value === value) {
+      if (
+        !printSortableDisposed &&
+        majorCategoryTab.value === 'PRINT' &&
+        printActiveTab.value === value
+      ) {
         initPrintSortable(value)
       }
     }, 200)
@@ -1056,7 +1043,9 @@ const addToGroup = (groupIndex: number, process: StandardProcessOption) => {
   recalculateGroupHours(groupIndex)
   bumpGroupSyncToken(groupIndex)
   syncToParent()
-  scrollToAssemblyIndex(assemblyGroupsByTab(assemblyActiveTab.value).indexOf(groups.value[groupIndex]))
+  scrollToAssemblyIndex(
+    assemblyGroupsByTab(assemblyActiveTab.value).indexOf(groups.value[groupIndex])
+  )
   maybePromptIndex(newItem)
 }
 
