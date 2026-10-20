@@ -148,13 +148,13 @@
                   </template>
                 </el-table-column>
 
-                <el-table-column label="组合备注" width="380">
+                <el-table-column label="备注" width="380">
                   <template #default="scope">
-                    <el-input
+                    <RouteRemarkAutocomplete
                       v-model="scope.row.remark"
-                      size="small"
-                      placeholder="组合备注（存到第一条工序的说明中）"
-                      @input="syncToParent"
+                      :process-category="scope.row.processCategory"
+                      :process-ids="remarkProcessIds(scope.row)"
+                      @update:model-value="syncToParent"
                     />
                   </template>
                 </el-table-column>
@@ -454,6 +454,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import Sortable from 'sortablejs'
+import RouteRemarkAutocomplete from './RouteRemarkAutocomplete.vue'
 import { moveWithinSubset, reorderSubset } from './routePrintOrder'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
@@ -494,6 +495,10 @@ const props = defineProps<{
 }>()
 
 const modernOperation = computed(() => props.modernOperation === true)
+
+function remarkProcessIds(group: RouteItemGroup): number[] {
+  return group.items.map((item) => item.processId).filter((id): id is number => id != null)
+}
 
 function toOperationItems(items: EngineeringRoutingItemVO[]): ProcessOperationItem[] {
   return items.map((item, index) => ({

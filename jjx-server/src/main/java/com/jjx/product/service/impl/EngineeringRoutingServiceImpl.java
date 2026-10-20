@@ -14,6 +14,7 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.common.exception.BusinessExceptionEnum;
 import com.jjx.product.domain.converter.EngineeringRoutingConverter;
 import com.jjx.product.domain.dto.EngineeringRoutingDTO;
+import com.jjx.product.domain.dto.RoutingRemarkQueryDTO;
 import com.jjx.product.domain.dto.EngineeringRoutingItemDTO;
 import com.jjx.product.domain.dto.EngineeringRoutingQueryDTO;
 import com.jjx.engineering.domain.entity.EngineeringRouting;
@@ -51,6 +52,17 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     private final EngineeringRoutingConverter routingConverter;
     private final com.jjx.product.mapper.ProductMapper productMapper;
     private final OperLogChangeRecorder changeRecorder;
+
+    @Override
+    public List<String> suggestRemarks(RoutingRemarkQueryDTO query) {
+        // ID 集合忽略顺序及重复项，单作业与组合使用同一匹配规则。
+        String processKey = Optional.ofNullable(query.getProcessIds()).orElseGet(List::of)
+                .stream().filter(Objects::nonNull).distinct().sorted()
+                .map(String::valueOf).collect(Collectors.joining(","));
+        return routingDetailMapper.selectRemarkSuggestions(
+                query.getProcessCategory() == null ? "" : query.getProcessCategory().trim(),
+                processKey, query.getKeyword() == null ? "" : query.getKeyword().trim());
+    }
 
     /**
      * 工程事件统一发布（2026-09-21 dev-20260921-013 工程批）：手写 payload，bizNo 取工艺路线编号。

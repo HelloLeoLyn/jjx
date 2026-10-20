@@ -4,6 +4,7 @@ import com.jjx.common.constant.LogActions;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
 import com.jjx.product.domain.dto.EngineeringRoutingDTO;
+import com.jjx.product.domain.dto.RoutingRemarkQueryDTO;
 import com.jjx.product.domain.dto.EngineeringRoutingQueryDTO;
 import com.jjx.product.domain.vo.EngineeringRoutingVO;
 import com.jjx.product.service.IEngineeringRoutingService;
@@ -41,6 +42,14 @@ public class EngineeringRoutingController {
     @GetMapping("/page")
     public Result<PageResult<EngineeringRoutingVO>> pageQuery(EngineeringRoutingQueryDTO dto) {
         return Result.success(routingService.pageQuery(dto));
+    }
+
+    @Operation(summary = "查询工序备注常用内容")
+    @GetMapping("/remark-suggestions")
+    @SaCheckPermission("engineering:routing:view")
+    public Result<List<String>> remarkSuggestions(
+            @Valid RoutingRemarkQueryDTO query) {
+        return Result.success(routingService.suggestRemarks(query));
     }
 
     @Operation(summary = "获取工艺路线详情")

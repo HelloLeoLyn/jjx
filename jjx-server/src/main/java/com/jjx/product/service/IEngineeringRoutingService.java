@@ -3,6 +3,7 @@ package com.jjx.product.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.product.domain.dto.EngineeringRoutingDTO;
+import com.jjx.product.domain.dto.RoutingRemarkQueryDTO;
 import com.jjx.product.domain.dto.EngineeringRoutingQueryDTO;
 import com.jjx.engineering.domain.entity.EngineeringRouting;
 import com.jjx.product.domain.vo.EngineeringRoutingVO;
@@ -11,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 
 public interface IEngineeringRoutingService extends IService<EngineeringRouting> {
+
+    List<String> suggestRemarks(RoutingRemarkQueryDTO query);
 
     /**
      * 创建工艺路线

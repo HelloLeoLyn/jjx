@@ -14,7 +14,7 @@
  *     npx vitest run src/views/product/route/components/__tests__/routeItemIconTabs.spec.ts --maxWorkers=1
  */
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import RouteItemIconEditor from '../RouteItemIconEditor.vue'
@@ -42,6 +42,13 @@ vi.mock('element-plus/es/components/table-column/style/css', () => ({}))
 vi.mock('element-plus/es/components/tab-pane/style/css', () => ({}))
 vi.mock('element-plus/es/components/tabs/style/css', () => ({}))
 vi.mock('element-plus/es/components/tooltip/style/css', () => ({}))
+
+vi.mock('../RouteRemarkAutocomplete.vue', () => ({ default: {
+  name: 'RouteRemarkAutocomplete',
+  props: ['modelValue', 'processCategory', 'processIds'],
+  emits: ['update:modelValue'],
+  template: `<input class="remark-test-input" :value="modelValue" @input="$emit('update:modelValue', $event.target.value)" />`,
+} }))
 
 // 子组件在这里只作为挂载占位：真实模块会连带引入大量 element-plus 样式入口，
 // 与「图标区 tab 排序」无关，mock 掉可把外部化 CSS 的加载面收敛到本文件的 mock 列表。
@@ -205,4 +212,35 @@ describe('RouteItemIconEditor 图标区 tab 顺序', () => {
     expect(iconLabels.at(-1)).toBe('其他')
     wrapper.unmount()
   })
+})
+
+
+describe('新旧编辑入口的父行备注', () => {
+  it.each([[false, false], [false, true], [true, false], [true, true]])(
+    'modernOperation=%s、组合=%s：备注可编辑且保存输出不串写说明或子备注',
+    async (modernOperation, composite) => {
+      const single = { ...processOption(3, '冲型', 'PANEL'), itemId: 1,
+        remark: '单作业备注', description: '原说明', workInstruction: '原作业说明' }
+      const child = { ...single, itemId: 2, parentId: 1, remark: '子备注' }
+      const parent = composite ? { ...single, processId: undefined, remark: '组合备注',
+        children: [child, { ...child, itemId: 3, processId: 20 }] } : single
+      const wrapper = mount(RouteItemIconEditor, {
+        props: { modelValue: [parent] as any, standardProcesses: [], modernOperation },
+        global: { stubs: GLOBAL_STUBS },
+      })
+      await nextTick()
+      await flushPromises()
+      expect(wrapper.findAllComponents({ name: 'ElTableColumn' }).some(col => col.props('label') === '备注')).toBe(true)
+      expect(wrapper.text()).not.toContain('组合备注（存到第一条工序的说明中）')
+      const input = wrapper.find('.remark-test-input')
+      expect((input.element as HTMLInputElement).value).toBe(composite ? '组合备注' : '单作业备注')
+      await input.setValue('选择后修改的备注')
+      const saved = (wrapper.vm as any).getItems()[0]
+      expect(saved.remark).toBe('选择后修改的备注')
+      expect(saved.description).toBe('原说明')
+      expect(saved.workInstruction).toBe('原作业说明')
+      if (composite) expect(saved.children.map((item: any) => item.remark)).toEqual(['子备注', '子备注'])
+      wrapper.unmount()
+    }
+  )
 })

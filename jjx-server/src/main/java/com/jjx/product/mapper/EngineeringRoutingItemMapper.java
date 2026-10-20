@@ -12,6 +12,25 @@ import java.util.List;
 @Mapper
 public interface EngineeringRoutingItemMapper extends BaseMapper<EngineeringRoutingItem> {
 
+    /** 与路线列表相同的路线集合；入口要求 routing:view，当前路线列表无行级数据过滤。
+     * 只读取根行 remark，子行仅用于计算标准工序 ID 集合。结果聚合后限制十条。
+     */
+    @Select("SELECT TRIM(i.remark) AS suggestion FROM engineering_routing_item i "
+            + "JOIN engineering_routing r ON r.routing_id = i.routing_id "
+            + "LEFT JOIN (SELECT parent_id, GROUP_CONCAT(DISTINCT process_id ORDER BY process_id SEPARATOR ',') AS process_key "
+            + "FROM engineering_routing_item WHERE parent_id IS NOT NULL GROUP BY parent_id) c ON c.parent_id = i.detail_id "
+            + "WHERE i.parent_id IS NULL AND COALESCE(i.process_category, '') = #{category} "
+            + "AND COALESCE(i.major_category, 'ASSEMBLY') = 'ASSEMBLY' "
+            + "AND TRIM(COALESCE(i.remark, '')) != '' "
+            + "AND LOCATE(LOWER(#{keyword}), LOWER(TRIM(i.remark))) > 0 "
+            + "GROUP BY TRIM(i.remark) "
+            + "ORDER BY MAX(CASE WHEN #{processKey} != '' AND "
+            + "COALESCE(c.process_key, CAST(i.process_id AS CHAR), '') = #{processKey} THEN 1 ELSE 0 END) DESC, "
+            + "COUNT(*) DESC, MAX(COALESCE(i.update_time, i.create_time, r.update_time, r.create_time)) DESC, suggestion ASC LIMIT 10")
+    List<String> selectRemarkSuggestions(@Param("category") String category,
+                                        @Param("processKey") String processKey,
+                                        @Param("keyword") String keyword);
+
     /**
      * 根据路线ID查询明细（按组 + 工序顺序排序；子件跟随其父工序）
      * dev-20260929-027：process_order 是「组内序号」（历史档案按 面板/上线/下线 分组各自从 1），

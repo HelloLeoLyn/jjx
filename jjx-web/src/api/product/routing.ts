@@ -10,6 +10,11 @@ import type { PageResult, R } from '@/types'
 // ==================== 工艺路线API ====================
 // 菜单管理API
 export const productRouteApi = {
+  suggestRemarks(params: { processCategory?: string; processIds: number[]; keyword: string }) {
+    return request.get<R<string[]>>('/engineering/routings/remark-suggestions', {
+      params: { ...params, processIds: params.processIds.join(',') },
+    })
+  },
   /**
    * 分页查询工艺路线
    * 对应后端 GET /engineering/routings/page
