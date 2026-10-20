@@ -9,6 +9,7 @@ import com.jjx.product.domain.dto.ProductWorkSpecDTO;
 import com.jjx.product.domain.dto.ProductWorkSpecDraftDTO;
 import com.jjx.system.service.AttachmentRefService;
 import com.jjx.system.service.AttachmentAccessService;
+import com.jjx.system.service.AttachmentRefOperationLogRecorder;
 import com.jjx.system.domain.dto.AttachmentRefDTO;
 import com.jjx.system.domain.dto.AttachmentRefMetadataDTO;
 import com.jjx.common.constant.UserConstants;
@@ -51,6 +52,8 @@ public class ProductWorkSpecService {
     @org.springframework.beans.factory.annotation.Autowired private AttachmentAccessService draftAccess;
     private static final Set<String> EMBOSS_KEYS = Set.of("setupHeight", "requiredHeight", "upperTemperature", "lowerTemperature", "pressTime", "holdTime");
     private static final Set<String> COLORS = Set.of("#252525", "#ed00df", "#e53935", "#1565c0");
+    /** 统一业务模块名：作业规范的保存/负责人变更/升级/定版等流水都归到这里（dev-20261020-015）。 */
+    private static final String WORK_SPEC_MODULE = "产品作业规范";
     private final ProductWorkSpecMapper mapper;
     private final SysAttachmentMapper attachments;
     private final SysAttachmentRefMapper attachmentRefs;
@@ -103,6 +106,11 @@ public class ProductWorkSpecService {
 
     @Transactional(rollbackFor = Exception.class)
     public ObjectNode saveDraft(Long id, ProductWorkSpecDraftDTO input) {
+        // 本次保存创建的附件引用日志跟随作业规范模块，不改产品模块其它附件日志。
+        return AttachmentRefOperationLogRecorder.withModule(WORK_SPEC_MODULE, () -> doSaveDraft(id, input));
+    }
+
+    private ObjectNode doSaveDraft(Long id, ProductWorkSpecDraftDTO input) {
         String previous = raw(lock(id));
         checkRevision(input.getRevision(), previous);
         ObjectNode old = parse(previous);
@@ -173,13 +181,17 @@ public class ProductWorkSpecService {
             mapper.write(id, next.toString());
             boolean ownerMoved = existingOwner != null
                 && !Objects.equals(old.path("preparedById").asText(), next.path("preparedById").asText());
-            recordOperation(id, ownerMoved ? "变更负责人：" + ownerLabel(old) + "→" + ownerLabel(next) : "保存草稿", old, next);
+            recordOperation(id, ownerMoved ? "负责人变更：" + ownerLabel(old) + "→" + ownerLabel(next) : "保存草稿", old, next);
         }
         return response(id, mapper.read(id));
     }
 
     @Transactional(rollbackFor = Exception.class)
     public ObjectNode upgradeDraft(Long id, ProductWorkSpecDraftDTO input) {
+        return AttachmentRefOperationLogRecorder.withModule(WORK_SPEC_MODULE, () -> doUpgradeDraft(id, input));
+    }
+
+    private ObjectNode doUpgradeDraft(Long id, ProductWorkSpecDraftDTO input) {
         String previous = raw(lock(id)); checkRevision(input.getRevision(), previous);
         if (input.getBaseVersionId() == null || !Objects.equals(id, mapper.versionProduct(input.getBaseVersionId()))) throw new BusinessException("请选择本产品的定版版本");
         ObjectNode snapshot = parse(mapper.versionSnapshot(input.getBaseVersionId()));
@@ -228,7 +240,7 @@ public class ProductWorkSpecService {
     }
     public void recordOperation(Long id, String action, ObjectNode before, ObjectNode after) {
         SysOperLog event = new SysOperLog();
-        event.setModule("作业规范版本"); event.setBizType("product"); event.setBizId(id.toString());
+        event.setModule(WORK_SPEC_MODULE); event.setBizType("product"); event.setBizId(id.toString());
         event.setBusinessType(BusinessType.UPDATE.getCode()); event.setAction(action);
         event.setUserId(SecurityUtils.getUserId()); event.setUsername(SecurityUtils.getUsername()); event.setRealName(SecurityUtils.getDisplayName());
         event.setStatus(YesNoEnum.YES.getCode()); event.setCreateTime(LocalDateTime.now());

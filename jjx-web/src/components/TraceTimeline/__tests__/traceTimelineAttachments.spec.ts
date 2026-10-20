@@ -131,4 +131,20 @@ describe('TraceTimeline 产品工程流水', () => {
     expect(wrapper.text()).toContain('产品BOM管理')
     expect(wrapper.text()).toContain('工艺路线管理')
   })
+
+  it('历史作业规范模块「作业规范版本」展示为「产品作业规范」', async () => {
+    get.mockResolvedValue({ data: { total: 1, records: [
+      { eventId: 'oper-9', bizType: 'product', bizId: '8', module: '作业规范版本', action: '保存草稿' },
+    ] } } as any)
+    wrapper = mount(TraceTimeline, {
+      props: { modelValue: true, bizType: 'product', bizId: '8' },
+      global: { stubs: { ElDrawer: defineComponent({
+        name: 'ElDrawerStub', emits: ['open'], template: '<div><slot /></div>',
+      }) } },
+    })
+    wrapper.findComponent({ name: 'ElDrawerStub' }).vm.$emit('open')
+    await flushPromises()
+    expect(wrapper.text()).toContain('产品作业规范')
+    expect(wrapper.text()).not.toContain('作业规范版本')
+  })
 })

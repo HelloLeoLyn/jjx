@@ -43,7 +43,7 @@ public interface ProductWorkSpecMapper {
     @Select("SELECT product_id FROM product_work_spec_version WHERE id=#{versionId} AND deleted=0")
     Long versionProduct(Long versionId);
 
-    @Select("SELECT id,action,COALESCE(NULLIF(real_name,''),username) AS operatorName,create_time AS changedAt,detail FROM sys_oper_log WHERE biz_type='product' AND biz_id=#{productId} AND module='作业规范版本' AND status=#{success} AND (#{before} IS NULL OR id<#{before}) ORDER BY id DESC LIMIT 51")
+    @Select("SELECT id,action,COALESCE(NULLIF(real_name,''),username) AS operatorName,create_time AS changedAt,detail FROM sys_oper_log WHERE biz_type='product' AND biz_id=#{productId} AND module IN ('产品作业规范','作业规范版本') AND status=#{success} AND (#{before} IS NULL OR id<#{before}) ORDER BY id DESC LIMIT 51")
     List<Map<String, Object>> draftHistory(@Param("productId") String productId,@Param("before") Long before,@Param("success") Integer success);
 
     @Select("""

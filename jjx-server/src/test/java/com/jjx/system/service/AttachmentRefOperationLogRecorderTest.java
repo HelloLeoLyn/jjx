@@ -61,6 +61,48 @@ class AttachmentRefOperationLogRecorderTest {
     }
 
     @Test
+    void moduleOverrideAppliesToAttachmentLogsOnlyInsideTheScopedAction() {
+        // 作业规范保存期间产生的附件日志写「产品作业规范」。
+        AttachmentRefOperationLogRecorder.withModule("产品作业规范", () -> recorder.record("product", 1L, "trace-1",
+            BusinessType.INSERT.getCode(), "附件新增", 11L, 21L, "spec.pdf", true, List.of("新增附件：spec.pdf")));
+
+        @SuppressWarnings("unchecked")
+        var eventsCaptor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(logSave).saveOperLogsInOrder(eventsCaptor.capture());
+        List<SysOperLog> events = (List<SysOperLog>) eventsCaptor.getValue();
+        assertEquals(1, events.size());
+        assertEquals("产品作业规范", events.get(0).getModule());
+        assertEquals("product", events.get(0).getBizType());
+    }
+
+    @Test
+    void productAttachmentLogsStayInProductModuleOutsideWorkSpecContext() {
+        recorder.record("product", 2L, "trace-2", BusinessType.INSERT.getCode(), "附件新增",
+            12L, 22L, "photo.jpg", true, List.of("新增附件：photo.jpg"));
+
+        @SuppressWarnings("unchecked")
+        var eventsCaptor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(logSave).saveOperLogsInOrder(eventsCaptor.capture());
+        List<SysOperLog> events = (List<SysOperLog>) eventsCaptor.getValue();
+        assertEquals("产品管理", events.get(0).getModule());
+    }
+
+    @Test
+    void scopedModuleDoesNotLeakWhenTheActionThrows() {
+        assertThrows(IllegalStateException.class, () -> AttachmentRefOperationLogRecorder.withModule("产品作业规范", () -> {
+            throw new IllegalStateException("boom");
+        }));
+        recorder.record("product", 3L, "trace-3", BusinessType.INSERT.getCode(), "附件新增",
+            13L, 23L, "after.jpg", true, List.of("新增附件：after.jpg"));
+
+        @SuppressWarnings("unchecked")
+        var eventsCaptor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(logSave).saveOperLogsInOrder(eventsCaptor.capture());
+        List<SysOperLog> events = (List<SysOperLog>) eventsCaptor.getValue();
+        assertEquals("产品管理", events.get(0).getModule());
+    }
+
+    @Test
     void discardsPendingBusinessEventsWhenTransactionRollsBack() {
         TransactionSynchronizationManager.initSynchronization();
         recorder.record("inquiry", 7L, "trace-7", BusinessType.INSERT.getCode(),

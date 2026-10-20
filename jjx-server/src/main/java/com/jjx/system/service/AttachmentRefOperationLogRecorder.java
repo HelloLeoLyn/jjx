@@ -14,13 +14,37 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /** Writes attachment-reference changes into the owning business document's operation timeline. */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AttachmentRefOperationLogRecorder {
+    /** 当前业务动作显式指定的流水模块；仅覆盖本次调用线程，避免影响产品模块其它附件日志。 */
+    private static final ThreadLocal<String> MODULE_OVERRIDE = new ThreadLocal<>();
     private final LogSaveService logSaveService;
+
+    /**
+     * 在指定模块名下执行一段附件引用操作（作业规范保存等），结束后恢复上层上下文。
+     * 只影响当前线程内产生的附件流水，调用方无法长期残留覆盖值。
+     */
+    public static <T> T withModule(String module, Supplier<T> action) {
+        String previous = MODULE_OVERRIDE.get();
+        if (module == null || module.isBlank()) MODULE_OVERRIDE.remove();
+        else MODULE_OVERRIDE.set(module);
+        try {
+            return action.get();
+        } finally {
+            if (previous == null) MODULE_OVERRIDE.remove();
+            else MODULE_OVERRIDE.set(previous);
+        }
+    }
+
+    /** 无返回值的同上用法。 */
+    public static void withModule(String module, Runnable action) {
+        withModule(module, () -> { action.run(); return null; });
+    }
 
     /** Collects multiple attachment changes in one business transaction into one timeline event per document/action. */
     public void record(String sourceType, Long sourceId, String traceId, int businessType,
@@ -135,6 +159,8 @@ public class AttachmentRefOperationLogRecorder {
     }
 
     private String moduleOf(String sourceType) {
+        String override = MODULE_OVERRIDE.get();
+        if (override != null && !override.isBlank()) return override;
         return switch (sourceType) {
             case "inquiry" -> "询价单管理";
             case "quotation" -> "报价单管理";

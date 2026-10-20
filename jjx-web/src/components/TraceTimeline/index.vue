@@ -145,7 +145,7 @@
 
         <div v-if="showTechnical" class="technical-detail">
           <div>traceId：{{ selectedEvent.traceId || traceId || '-' }}</div>
-          <div>模块：{{ selectedEvent.module || module || '-' }}</div>
+          <div>模块：{{ displayModule(selectedEvent.module || module) || '-' }}</div>
           <div>业务类型：{{ selectedEvent.bizType || bizType || '-' }}</div>
         </div>
       </section>
@@ -350,7 +350,7 @@ function enrichEvent(row: any): TraceEvent {
 function buildActionTitle(row: any): string {
   const action = (row.action || '').trim()
   if (action) return action
-  const module = (row.module || '').replace(/管理$/, '')
+  const module = displayModule(row.module)?.replace(/管理$/, '')
   const bizLabel = BusinessTypeEnum.getLabel(row.businessType)
   if (module && bizLabel) return `${module} - ${bizLabel}`
   return bizLabel || module || '操作'
@@ -477,11 +477,19 @@ const BIZ_MODULE_NAMES: Record<string, string> = {
   review: '审核',
   attachment: '附件',
 }
+/** 历史流水模块别名：旧数据把作业规范操作记成「作业规范版本」，展示统一为「产品作业规范」。 */
+const MODULE_ALIASES: Record<string, string> = {
+  作业规范版本: '产品作业规范',
+}
+function displayModule(module?: string): string | undefined {
+  if (!module) return module
+  return MODULE_ALIASES[module] || module
+}
 function formatBizModule(module?: string, bizType?: string): string {
   const byBizType = bizType ? BIZ_MODULE_NAMES[bizType] : undefined
   if (byBizType) return byBizType
   if (!module) return '-'
-  return BIZ_MODULE_NAMES[module] || module
+  return BIZ_MODULE_NAMES[module] || displayModule(module) || module
 }
 
 function formatTime(value?: string): string {
