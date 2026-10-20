@@ -41,27 +41,19 @@
         <template #default="scope">
           <div class="drag-cell">
             <el-icon class="drag-handle"><Rank /></el-icon>
+            <el-icon v-if="scope.row.materialId" size="small" color="#15bf15">
+              <Check />
+            </el-icon>
+            <el-icon v-else size="small" color="#e56706">
+              <WarningFilled />
+            </el-icon>
             <!-- <span class="row-index">{{ scope.row.sortOrder }}</span> -->
           </div>
         </template>
       </el-table-column>
 
-      <!-- 物料编码 -->
-      <el-table-column label="物料编码" prop="materialCode" width="120" fixed="left">
-        <template #default="scope">
-          <span>{{ scope.row.materialCode }}</span>
-          <el-tooltip
-            v-if="syncReasonText(scope.row)"
-            :content="syncReasonText(scope.row)"
-            placement="top"
-          >
-            <el-icon class="sync-warn-icon"><WarningFilled /></el-icon>
-          </el-tooltip>
-        </template>
-      </el-table-column>
-
       <!-- 物料名称 -->
-      <el-table-column label="物料名称" prop="materialName" min-width="240">
+      <el-table-column label="物料名称" prop="materialName" min-width="210">
         <template #default="scope">
           <div class="material-name-cell">
             <BomMaterialSelector
@@ -71,15 +63,6 @@
               @clear="handleMaterialClear(scope.row)"
               @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
             />
-            <el-button
-              link
-              type="primary"
-              size="small"
-              :disabled="!scope.row.materialName && !scope.row.materialCode"
-              title="复制 物料名 · 规格 · 编码"
-              @click="copyMaterial(scope.row)"
-              >复制</el-button
-            >
           </div>
         </template>
       </el-table-column>
@@ -94,7 +77,7 @@
           <el-input v-model="scope.row.split" placeholder="如：50mm" maxlength="50" size="small" />
         </template>
       </el-table-column>
-      <el-table-column label="项目" prop="processName" width="200">
+      <el-table-column label="项目" prop="processName" width="140">
         <template #default="scope">
           <StandardProcessSelector
             :mode="PROJECT_PICKER_MODE"
@@ -128,7 +111,7 @@
       </el-table-column>
 
       <!-- 模数 -->
-      <el-table-column label="模数" prop="moduleQty" align="center" width="80">
+      <el-table-column label="模数" prop="moduleQty" align="center" width="60">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.moduleQty"
@@ -143,7 +126,7 @@
       </el-table-column>
 
       <!-- 基数 -->
-      <el-table-column label="基数" prop="baseQty" align="center" width="80">
+      <el-table-column label="基数" prop="baseQty" align="center" width="60">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.baseQty"
@@ -156,21 +139,6 @@
           />
         </template>
       </el-table-column>
-
-      <!-- 数量 -->
-      <!-- <el-table-column label="数量" prop="quantity" align="center">
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.quantity"
-            :min="0"
-            :precision="2"
-            :step="getQuantityStep(scope.row.unit)"
-            size="small"
-            controls-position="right"
-            @change="recalcAppliedIssue(scope.row)"
-          />
-        </template>
-      </el-table-column> -->
 
       <!-- 损耗率 -->
       <el-table-column label="损耗率(%)" prop="lossRate" align="center">
@@ -189,12 +157,6 @@
           </el-input-number>
         </template>
       </el-table-column>
-
-      <!-- 应用料（含损耗，只读） -->
-      <el-table-column label="应用料" prop="appliedQty" align="center" width="90">
-        <template #default="scope">{{ formatQty(scope.row.appliedQty) }}</template>
-      </el-table-column>
-
       <!-- 最低投料量 -->
       <el-table-column label="最低投料量" prop="minIssueQty" align="center" width="110">
         <template #default="scope">
@@ -209,64 +171,13 @@
           />
         </template>
       </el-table-column>
-
-      宽度(mm)
-      <!-- <el-table-column label="宽度(mm)" align="center" width="110">
-        <template #header>
-          <div class="column-header">
-            <span>宽度(mm)</span>
-            <el-button link type="primary" size="small" @click="resetAllWidth">重置</el-button>
-          </div>
-        </template>
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.widthMm"
-            :min="0"
-            :precision="2"
-            :step="1"
-            size="small"
-            controls-position="right"
-          />
-        </template>
-      </el-table-column> -->
-
-      <!-- 长度(mm) -->
-      <!-- <el-table-column label="长度(mm)" align="center" width="110">
-        <template #header>
-          <div class="column-header">
-            <span>长度(mm)</span>
-            <el-button link type="primary" size="small" @click="resetAllLength">重置</el-button>
-          </div>
-        </template>
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.lengthMm"
-            :min="0"
-            :precision="2"
-            :step="1"
-            size="small"
-            controls-position="right"
-          />
-        </template>
-      </el-table-column> -->
-
-      <!-- 项目（标准工序） -->
-
-      <!-- 备注 -->
-      <el-table-column label="备注" prop="remark" min-width="150">
-        <template #default="scope">
-          <el-input
-            v-model="scope.row.remark"
-            placeholder="请输入备注"
-            size="small"
-            clearable
-            maxlength="500"
-          />
-        </template>
+      <!-- 应用料（含损耗，只读） -->
+      <el-table-column label="应用料" prop="appliedQty" align="center" width="90">
+        <template #default="scope">{{ formatQty(scope.row.appliedQty) }}</template>
       </el-table-column>
 
       <!-- 操作列 -->
-      <el-table-column label="操作" width="220" align="center" fixed="right">
+      <el-table-column label="操作" min-width="120" align="center" fixed="right">
         <template #default="scope">
           <el-button
             v-if="!scope.row.materialId"
