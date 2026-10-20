@@ -1,4 +1,21 @@
-﻿import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+﻿vi.mock('element-plus/es/components/base/style/css', () => ({}))
+vi.mock('element-plus/es/components/loading/style/css', () => ({}))
+vi.mock('element-plus/es/components/message/style/css', () => ({}))
+vi.mock('element-plus/es/components/message-box/style/css', () => ({}))
+vi.mock('element-plus/es/components/alert/style/css', () => ({}))
+vi.mock('element-plus/es/components/button/style/css', () => ({}))
+vi.mock('element-plus/es/components/card/style/css', () => ({}))
+vi.mock('element-plus/es/components/table/style/css', () => ({}))
+vi.mock('element-plus/es/components/table-column/style/css', () => ({}))
+vi.mock('element-plus/es/components/dialog/style/css', () => ({}))
+vi.mock('element-plus/es/components/descriptions/style/css', () => ({}))
+vi.mock('element-plus/es/components/descriptions-item/style/css', () => ({}))
+vi.mock('element-plus/es/components/select/style/css', () => ({}))
+vi.mock('element-plus/es/components/option/style/css', () => ({}))
+vi.mock('element-plus/es/components/input/style/css', () => ({}))
+vi.mock('element-plus/es/components/checkbox/style/css', () => ({}))
+vi.mock('element-plus/es/components/tag/style/css', () => ({}))
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import EngineeringDrawingLibrary from '../EngineeringDrawingLibrary.vue'
 const api = vi.hoisted(() => ({
@@ -71,7 +88,18 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   api.get.mockResolvedValue(response())
-  api.documentTypes.mockResolvedValue({ data: [] })
+  api.documentTypes.mockResolvedValue({
+    data: [
+      { dict_code: 'attachment_category', item_key: 'ENGINEERING_DOC', label: '工程技术资料' },
+      ...['STRUCTURE_DRAWING', 'PANEL_DRAWING', 'BOM', 'WORK_INSTRUCTION'].map((item_key) => ({
+        dict_code: 'attachment_document_type',
+        item_key,
+        label: item_key,
+        is_active: 1,
+        ext_data: { parent: 'ENGINEERING_DOC' },
+      })),
+    ],
+  })
   api.responsibleUsers.mockResolvedValue({ data: [{ id: 7, name: '工程甲' }] })
   api.saveDraft.mockImplementation(async (_id, body) =>
     response(
@@ -171,4 +199,23 @@ describe('工程图集采用作业规范草稿', () => {
       1, 2,
     ])
   })
+})
+
+it('上传选项来自工程字典，旧固定categories不截断BOM/作业指导书', async () => {
+  const w = await setup()
+  await w.setProps({ categories: ['STRUCTURE_DRAWING'] })
+  const state = (w.vm as any).$.setupState
+  expect(state.types.map((type: any) => type.value)).toContain('BOM')
+  expect(state.types.map((type: any) => type.value)).toContain('WORK_INSTRUCTION')
+  state.uploadType = 'BOM'
+  await w.get('.upload-stub').trigger('click')
+  await state.save()
+  expect(api.saveDraft).toHaveBeenCalledWith(
+    42,
+    expect.objectContaining({
+      attachments: expect.arrayContaining([
+        expect.objectContaining({ attachmentId: 3, documentType: 'BOM' }),
+      ]),
+    })
+  )
 })

@@ -24,6 +24,18 @@ vi.mock('element-plus/es/components/empty/style/css', () => ({}))
 vi.mock('element-plus/es/components/link/style/css', () => ({}))
 vi.mock('element-plus/es/components/tooltip/style/css', () => ({}))
 vi.mock('element-plus/es/components/input-number/style/css', () => ({}))
+const currentApi = vi.hoisted(() => ({
+  get: vi.fn(),
+  refsByProduct: vi.fn(),
+  documentTypes: vi.fn(),
+  customerDocs: vi.fn(),
+}))
+vi.mock('@/api/product/workSpec', async (original) => ({
+  ...(await original<typeof import('@/api/product/workSpec')>()),
+  productWorkSpecApi: currentApi,
+}))
+vi.mock('@/api/system/attachmentRef', () => ({ attachmentRefApi: currentApi }))
+vi.mock('@/api/system/attachment', () => ({ attachmentApi: currentApi }))
 const mocks = vi.hoisted(() => ({ load: vi.fn(), loadVersion: vi.fn(), renderFile: vi.fn() }))
 vi.mock('../docset', async (original) => ({
   ...(await original<typeof import('../docset')>()),
@@ -299,5 +311,112 @@ describe('版本打印清单（dev-20261019-021）', () => {
     wrappers.push(reopened)
     await flushPromises()
     expect((reopened.vm as any).$.setupState.selectedFiles).toEqual(['1', '2'])
+  })
+})
+
+describe('工程字典和冻结分栏实际出纸', () => {
+  it('WORK_INSTRUCTION及未知工程类型按冻结atlas出纸，不按今天映射改栏；spec附件也实际出纸', () => {
+    const data = buildDocsetFromSnapshot(
+      42,
+      JSON.stringify({
+        schemaVersion: 1,
+        spec: { draftManaged: true },
+        counts: { files: 3 },
+        files: [
+          {
+            attachmentId: 1,
+            fileName: 'work.pdf',
+            documentType: 'WORK_INSTRUCTION',
+            section: 'atlas',
+            printSelected: true,
+          },
+          {
+            attachmentId: 2,
+            fileName: 'future.pdf',
+            documentType: 'FUTURE_TYPE',
+            section: 'atlas',
+            printSelected: true,
+          },
+          {
+            attachmentId: 3,
+            fileName: 'spec.pdf',
+            documentType: 'WORK_INSTRUCTION',
+            section: 'spec',
+            printSelected: true,
+          },
+        ],
+      })
+    )
+    const pages = makePages(data, ['spec', 'atlas'], ['2', '3', '1'], {
+      '1': [image],
+      '2': [image],
+      '3': [image],
+    })
+    expect(
+      pages.filter((page) => page.kind === 'image').map((page) => [page.file?.id, page.section])
+    ).toEqual([
+      [3, 'spec'],
+      [1, 'atlas'],
+      [2, 'atlas'],
+    ])
+  })
+  it('当前态承接新增工程字典类型，移除后重开不混回BOM/停用工程引用', async () => {
+    const actual = await vi.importActual<typeof import('../docset')>('../docset')
+    let ids = [1, 2]
+    currentApi.get.mockImplementation(async () => ({
+      data: {
+        sourceData: { product: { productId: 42 }, bom: { items: [] }, routing: { items: [] } },
+        revision: 'r1',
+        draftManaged: true,
+        draftAttachments: ids.map((attachmentId) => ({
+          attachmentId,
+          documentType: attachmentId === 1 ? 'WORK_INSTRUCTION' : 'BOM',
+          print: true,
+        })),
+        draftFiles: ids.map((attachmentId) => ({
+          attachmentId,
+          refId: attachmentId + 100,
+          fileName: attachmentId + '.pdf',
+          documentType: attachmentId === 1 ? 'WORK_INSTRUCTION' : 'BOM',
+        })),
+      },
+    }))
+    currentApi.customerDocs.mockResolvedValue({ data: [] })
+    currentApi.refsByProduct.mockResolvedValue({
+      data: [
+        { attachmentId: 2, fileName: 'removed-bom.pdf', documentType: 'BOM' },
+        { attachmentId: 3, fileName: 'disabled.pdf', documentType: 'DISABLED_ENGINEERING' },
+        { attachmentId: 4, fileName: 'customer.pdf', documentType: 'CUSTOMER_ORIGINAL' },
+      ],
+    })
+    currentApi.documentTypes.mockResolvedValue({
+      data: [
+        ...['WORK_INSTRUCTION', 'BOM', 'DISABLED_ENGINEERING'].map((item_key) => ({
+          dict_code: 'attachment_document_type',
+          item_key,
+          is_active: item_key === 'DISABLED_ENGINEERING' ? 0 : 1,
+          ext_data: { parent: 'ENGINEERING_DOC' },
+        })),
+        {
+          dict_code: 'attachment_document_type',
+          item_key: 'CUSTOMER_ORIGINAL',
+          ext_data: JSON.stringify({ parent: 'CUSTOMER_DOC' }),
+        },
+      ],
+    })
+    const initial = await actual.loadDocset(42)
+    expect(initial.files.filter((file) => file.draftManaged).map((file) => file.section)).toEqual([
+      'atlas',
+      'atlas',
+    ])
+    const pages = makePages(initial, ['atlas'], ['1', '2'], { '1': [image], '2': [image] })
+    expect(pages.map((page) => page.file?.id)).toEqual([1, 2])
+    ids = [1]
+    const reopened = await actual.loadDocset(42)
+    expect(reopened.files.map((file) => file.id)).toEqual([1, 4])
+    currentApi.documentTypes.mockRejectedValue(new Error('字典服务不可用'))
+    const unavailable = await actual.loadDocset(42)
+    expect(unavailable.files.map((file) => file.id)).toEqual([1])
+    expect(unavailable.warnings.join()).toContain('字典不可用')
   })
 })

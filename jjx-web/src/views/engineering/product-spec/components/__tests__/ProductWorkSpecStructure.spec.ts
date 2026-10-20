@@ -1,3 +1,16 @@
+vi.mock('element-plus/es/components/drawer/style/css', () => ({}))
+vi.mock('element-plus/es/components/tabs/style/css', () => ({}))
+vi.mock('element-plus/es/components/tab-pane/style/css', () => ({}))
+vi.mock('element-plus/es/components/tag/style/css', () => ({}))
+vi.mock('element-plus/es/components/empty/style/css', () => ({}))
+vi.mock('element-plus/es/components/select/style/css', () => ({}))
+vi.mock('element-plus/es/components/option/style/css', () => ({}))
+vi.mock('element-plus/es/components/card/style/css', () => ({}))
+vi.mock('element-plus/es/components/link/style/css', () => ({}))
+vi.mock('element-plus/es/components/tooltip/style/css', () => ({}))
+vi.mock('element-plus/es/components/checkbox-group/style/css', () => ({}))
+vi.mock('element-plus/es/components/switch/style/css', () => ({}))
+vi.mock('element-plus/es/components/input-number/style/css', () => ({}))
 vi.mock('element-plus/es/components/loading/style/css', () => ({}))
 vi.mock('element-plus/es/components/message/style/css', () => ({}))
 vi.mock('element-plus/es/components/message-box/style/css', () => ({}))
@@ -15,7 +28,11 @@ vi.mock('element-plus/es/components/base/style/css', () => ({}))
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { ElMessageBox } from 'element-plus'
 import Panel from '../ProductWorkSpecPanel.vue'
+import Drawer from '@/components/product/ProductSpecDrawer.vue'
+import Header from '@/components/product/ProductSpecHeader.vue'
+import VersionPanel from '../ProductWorkSpecVersionPanel.vue'
 import { normalizeWorkSpec, productWorkSpecApi } from '@/api/product/workSpec'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
 import { attachmentApi } from '@/api/system/attachment'
@@ -29,17 +46,39 @@ vi.mock('@/store/modules/user', () => ({
     hasPermission: (p: string) => p === 'product:edit' && permission.edit,
   }),
 }))
+vi.mock('@/api/product', () => ({
+  getFullProduct: vi.fn().mockResolvedValue({
+    data: { product: { productId: 2, productCode: 'P2', productName: '产品' } },
+  }),
+}))
+vi.mock('@/components/product/customer-doc/CustomerDocPanel.vue', () => ({
+  default: { template: '<div />' },
+}))
+vi.mock('@/components/product/ProductBasicInfo.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/components/product/ProductDocPanel.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('../ProductColorCheckPanel.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('../InkMixingForm.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/utils/request', () => ({ default: {} }))
 vi.mock('@/api/system/attachmentRef', () => ({
-  attachmentRefApi: { listRefs: vi.fn(), tempUpload: vi.fn(), createRef: vi.fn() },
+  attachmentRefApi: {
+    documentTypes: vi.fn(),
+    listRefs: vi.fn(),
+    tempUpload: vi.fn(),
+    createRef: vi.fn(),
+  },
 }))
 vi.mock('@/api/system/attachment', () => ({
-  attachmentApi: { setCurrent: vi.fn(), release: vi.fn() },
+  attachmentApi: {
+    list: vi.fn().mockResolvedValue({ data: [] }),
+    setCurrent: vi.fn(),
+    release: vi.fn(),
+  },
 }))
 vi.mock('@/api/product/workSpec', async (original) => ({
   ...(await original<typeof import('@/api/product/workSpec')>()),
   productWorkSpecApi: {
     get: vi.fn(),
+    getVersion: vi.fn(),
     saveDraft: vi.fn(),
     listVersions: vi.fn(),
     publishVersion: vi.fn(),
@@ -82,6 +121,18 @@ const drawing = (id: number, kind = 'image') => ({
 })
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(attachmentRefApi.documentTypes).mockResolvedValue({
+    data: [
+      { dict_code: 'attachment_category', item_key: 'ENGINEERING_DOC', label: '工程技术资料' },
+      {
+        dict_code: 'attachment_document_type',
+        item_key: 'STRUCTURE_DRAWING',
+        label: '结构图',
+        is_active: 1,
+        ext_data: { parent: 'ENGINEERING_DOC' },
+      },
+    ],
+  } as any)
   localStorage.clear()
   vi.stubGlobal('crypto', {})
   permission.edit = true
@@ -286,4 +337,183 @@ describe('作业规范面板结构图编辑交互', () => {
       null
     )
   })
+})
+
+async function drawer() {
+  const w = mount(Drawer, {
+    global: {
+      directives: { loading: () => {}, hasPermi: () => {} },
+      stubs: {
+        ElDrawer: { template: '<div><slot/></div>' },
+        ElTabs: { template: '<div><slot/></div>' },
+        ElTabPane: { template: '<div><slot/></div>' },
+        ElTable: { template: '<div />' },
+        ElDialog: { template: '<div />' },
+        ProductColorCheckPanel: true,
+        EngineeringDrawingLibrary: true,
+      },
+    },
+  })
+  wrappers.push(w)
+  await (w.vm as any).open(2)
+  const state = (w.vm as any).$.setupState
+  state.activeTab = 'spec'
+  await flushPromises()
+  return { w, state, panel: w.getComponent(Panel), header: w.getComponent(Header) }
+}
+describe('真实Header→Drawer→正文面板切版保护', () => {
+  it.each(['note', 'issuance', 'die', 'editor', 'structure'])(
+    '%s编辑中保持原面板和输入，明确取消后才可切版',
+    async (mode) => {
+      const { w, state, panel, header } = await drawer()
+      const local = (panel.vm as any).$.setupState
+      if (mode === 'note') {
+        local.startNoteEdit()
+        local.noteDraft = '未保存备注'
+      }
+      if (mode === 'issuance') {
+        local.startIssuanceEdit()
+        local.issuanceDraft.issueUnit = '未保存发行'
+      }
+      if (mode === 'die') {
+        local.startDieEdit()
+        local.dieDraft = { key: '未保存刀模' }
+      }
+      if (mode === 'editor') {
+        local.edit('requirements')
+        local.draft.engineeringRequirements = '未保存正文'
+      }
+      if (mode === 'structure') local.startStructureEdit()
+      await flushPromises()
+      header.vm.$emit('update:versionId', 11)
+      await flushPromises()
+      expect(state.selectedVersionId).toBe(0)
+      expect((w.getComponent(Panel).vm as any).$.uid).toBe((panel.vm as any).$.uid)
+      if (mode === 'note') expect(local.noteDraft).toBe('未保存备注')
+      if (mode === 'issuance') expect(local.issuanceDraft.issueUnit).toBe('未保存发行')
+      if (mode === 'die') expect(local.dieDraft.key).toBe('未保存刀模')
+      if (mode === 'editor') expect(local.draft.engineeringRequirements).toBe('未保存正文')
+      local.noteDraft = null
+      local.issuanceDraft = null
+      local.dieEditing = false
+      local.editorVisible = false
+      local.structureEditing = false
+      await flushPromises()
+      vi.mocked(productWorkSpecApi.getVersion).mockResolvedValue({
+        code: 200,
+        data: { version: {}, items: [] },
+      } as any)
+      header.vm.$emit('update:versionId', 11)
+      await flushPromises()
+      expect(state.selectedVersionId).toBe(11)
+      expect(w.findComponent(Panel).exists()).toBe(false)
+      header.vm.$emit('update:versionId', 0)
+      await flushPromises()
+      expect(state.selectedVersionId).toBe(0)
+    }
+  )
+  it('附件待保存、上传保存和定版等待中均不能切走；无改动可正常切换', async () => {
+    const { state, header, w } = await drawer()
+    state.draftSession.register(
+      {
+        attachmentId: 225,
+        requestKey: 'key-0000000000001',
+        fileName: 'new.pdf',
+        fileSize: 1,
+        createdAt: '2026-10-20',
+        state: 'pending',
+      },
+      'STRUCTURE_DRAWING'
+    )
+    header.vm.$emit('update:versionId', 11)
+    await flushPromises()
+    expect(state.selectedVersionId).toBe(0)
+    state.draftSession.session.pending.value = []
+    state.draftSession.saving.value = true
+    header.vm.$emit('update:versionId', 11)
+    await flushPromises()
+    expect(state.selectedVersionId).toBe(0)
+    state.draftSession.saving.value = false
+    const version = w.getComponent(VersionPanel)
+    version.vm.$emit('busy', true)
+    header.vm.$emit('update:versionId', 11)
+    await flushPromises()
+    expect(state.selectedVersionId).toBe(0)
+    version.vm.$emit('busy', false)
+    vi.mocked(productWorkSpecApi.getVersion).mockResolvedValue({
+      code: 200,
+      data: { version: {}, items: [] },
+    } as any)
+    header.vm.$emit('update:versionId', 11)
+    await flushPromises()
+    expect(state.selectedVersionId).toBe(11)
+  })
+})
+
+it('真实正文面板冲突后继续编辑，显式重新应用保留最新文字', async () => {
+  const { state, panel } = await drawer()
+  const local = (panel.vm as any).$.setupState
+  local.startNoteEdit()
+  local.noteDraft = '第一次输入'
+  const normalSave = vi.mocked(productWorkSpecApi.saveDraft).getMockImplementation()!
+  spec = normalizeWorkSpec({
+    ...spec,
+    revision: 'server-r2',
+    engineeringRequirements: '他人已保存',
+  })
+  vi.mocked(productWorkSpecApi.saveDraft).mockImplementation(async (id, body) => {
+    if (body.revision !== spec.revision)
+      throw new Error('工程规范已被其他入口修改，请重新加载后编辑')
+    return normalSave(id, body)
+  })
+  await local.saveNote()
+  expect(local.noteDraft).toBe('第一次输入')
+  expect(state.draftSession.conflict.value).toBe(true)
+  local.noteDraft = '冲突后继续编辑的新文字'
+  const confirm = vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm')
+  try {
+    await state.draftSession.recover()
+    await flushPromises()
+    expect(productWorkSpecApi.saveDraft).toHaveBeenLastCalledWith(
+      2,
+      expect.objectContaining({
+        revision: 'server-r2',
+        spec: expect.objectContaining({ engineeringRequirements: '冲突后继续编辑的新文字' }),
+      })
+    )
+    expect(local.noteDraft).toBe(null)
+    expect(spec.engineeringRequirements).toBe('冲突后继续编辑的新文字')
+  } finally {
+    confirm.mockRestore()
+  }
+})
+
+it('真实结构图上传/保存等待中Header切版不会卸载编辑；保存后可切版', async () => {
+  let finish!: () => void
+  const normalSave = vi.mocked(productWorkSpecApi.saveDraft).getMockImplementation()!
+  vi.mocked(productWorkSpecApi.saveDraft).mockImplementationOnce(async (id, body) => {
+    await new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    return normalSave(id, body)
+  })
+  const { w, state, panel, header } = await drawer()
+  const local = (panel.vm as any).$.setupState
+  local.startStructureEdit()
+  await flushPromises()
+  await selectFile(w)
+  header.vm.$emit('update:versionId', 11)
+  await flushPromises()
+  expect(state.selectedVersionId).toBe(0)
+  expect(w.findComponent(Panel).exists()).toBe(true)
+  expect(attachmentRefApi.tempUpload).toHaveBeenCalledTimes(1)
+  finish()
+  await flushPromises()
+  vi.mocked(productWorkSpecApi.getVersion).mockResolvedValue({
+    code: 200,
+    data: { version: {}, items: [] },
+  } as any)
+  header.vm.$emit('update:versionId', 11)
+  await flushPromises()
+  expect(state.selectedVersionId).toBe(11)
 })

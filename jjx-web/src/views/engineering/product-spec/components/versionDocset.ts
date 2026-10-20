@@ -126,10 +126,8 @@ export function snapshotFileToDocFile(file: Record<string, any>): DocFile {
   const originalName = file.fileName || '未命名文件'
   const name = file.displayName || originalName
   const documentType = file.documentType ? String(file.documentType) : ''
-  // 新快照按 documentType 分栏；旧快照无该字段时沿用已固化的 section（兼容读取）。
-  const section = documentType
-    ? sectionForDocumentType(documentType, file.category)
-    : file.section || 'other'
+  // 完整快照的栏目就是定版事实；不能用今天的类型映射重算历史栏目。
+  const section = file.section || sectionForDocumentType(documentType, file.category)
   return {
     key: String(file.attachmentId),
     id: Number(file.attachmentId),
@@ -177,7 +175,9 @@ export function parseDocsetSnapshot(value?: string | null): Record<string, any> 
       ids.has(id) ||
       typeof file?.fileName !== 'string' ||
       !file.fileName.trim() ||
-      !['customer', 'sample', 'atlas', 'print', 'color', 'icon'].includes(file.section)
+      !['customer', 'sample', 'spec', 'atlas', 'print', 'color', 'other', 'icon'].includes(
+        file.section
+      )
     ) {
       throw new Error('该发布版本的文件清单不完整或附件重复，无法预览')
     }

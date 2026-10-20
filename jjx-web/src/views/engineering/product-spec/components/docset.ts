@@ -5,7 +5,6 @@ import { ProcessCategoryEnum } from '@/enums/product'
 import {
   productFileCategoryLabel,
   engineeringDocumentTypeLabel,
-  ENGINEERING_DOCUMENT_TYPE_CODES,
 } from '@/components/product/productFileCategories'
 import {
   DrawingCurrentFlagEnum,
@@ -341,14 +340,36 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
         const selected = new Map(
           (data.workSpec.draftAttachments || []).map((file) => [file.attachmentId, file])
         )
-        const source = managed
-          ? [
-              ...draftFiles,
-              ...(r.data || []).filter(
-                (file: any) => !ENGINEERING_DOCUMENT_TYPE_CODES.includes(file.documentType)
-              ),
-            ]
-          : r.data || []
+        let otherRefs: any[] = []
+        if (managed) {
+          try {
+            const dictionary = await attachmentRefApi.documentTypes()
+            if (!Array.isArray(dictionary.data) || !dictionary.data.length)
+              throw new Error('未读取到资料类型字典')
+            const parents = new Map(
+              dictionary.data
+                .filter((type: any) => type.dict_code === 'attachment_document_type')
+                .map((type: any) => {
+                  const ext =
+                    typeof type.ext_data === 'string'
+                      ? parseSnapshotStrict(type.ext_data).value
+                      : type.ext_data
+                  return [type.item_key, ext?.parent]
+                })
+            )
+            // 只补入字典证实属于其它资料域的引用；停用/新增工程类型同样不得从当前refs补回。
+            otherRefs = (r.data || []).filter((file: any) => {
+              const parent = parents.get(file.documentType)
+              return !!parent && parent !== 'ENGINEERING_DOC'
+            })
+          } catch (cause) {
+            data.warnings.push(
+              '工程资料字典不可用，仅展示已保存草稿附件：' +
+                (cause instanceof Error ? cause.message : String(cause))
+            )
+          }
+        }
+        const source = managed ? [...draftFiles, ...otherRefs] : r.data || []
         const rows = source.map((x: any) => ({
           id: x.attachmentId ?? x.id,
           fileName: x.fileName,
@@ -361,6 +382,12 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
           fileRole: x.fileRole,
           isCurrent: x.isCurrent,
           released: x.released,
+          section:
+            managed && selected.has(x.attachmentId)
+              ? x.documentType === 'PRINT_GUIDE'
+                ? 'print'
+                : 'atlas'
+              : undefined,
           draftManaged: managed && selected.has(x.attachmentId),
           printSelected:
             managed && selected.has(x.attachmentId)
@@ -391,7 +418,9 @@ function appendFiles(data: DocsetData, rows: any[], customer: boolean) {
     const documentType = row.documentType || row.document_type || ''
     const mime = row.fileType || row.file_type || ''
     const kind = detectFileKind(name, mime)
-    const section = customer ? 'customer' : sectionForDocumentType(documentType, category)
+    const section = customer
+      ? 'customer'
+      : row.section || sectionForDocumentType(documentType, category)
     data.files.push({
       key: String(id),
       id,
@@ -600,6 +629,18 @@ export function makePages(
           kind: 'flow',
           rows: uncategorized.slice(i, i + 22),
         })
+      // 旧快照/资料映射明确属于spec的附件也必须实际出纸，不能只留在files数组。
+      for (const file of printFiles.filter((file) => file.section === 'spec'))
+        (images[file.key] || []).forEach((image, i) =>
+          pages.push({
+            key: `file-${file.key}-${i}`,
+            section: 'spec',
+            title: `产品作业规范 · ${documentFileCaption(file)}`,
+            kind: 'image',
+            file,
+            image,
+          })
+        )
     } else if (section.key === 'print') {
       const groups = [...flowGroups, { value: '', label: '未分类', symbol: '' }].map(
         (group, j) => ({

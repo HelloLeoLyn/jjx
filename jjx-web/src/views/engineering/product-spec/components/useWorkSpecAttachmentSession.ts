@@ -17,10 +17,11 @@ import {
   type ProductWorkSpec,
   type WorkSpecAttachment,
 } from '@/api/product/workSpec'
-import { ENGINEERING_DOCUMENT_TYPE_CODES } from '@/components/product/productFileCategories'
+import { ElMessageBox } from 'element-plus'
+import { useAttachmentDocTypes } from '@/components/attachment/useAttachmentDocTypes'
 import { detectFileKind } from './versionDocset'
 import type { PendingEntry } from '@/composables/useAttachmentRefs'
-import type { AttachmentRefItem } from '@/api/system/attachmentRef'
+import { attachmentRefApi, type AttachmentRefItem } from '@/api/system/attachmentRef'
 
 const key: InjectionKey<WorkSpecDraftSession> = Symbol('work-spec-draft')
 export type WorkSpecDraftSession = ReturnType<typeof createWorkSpecAttachmentSession>
@@ -38,8 +39,13 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
   const spec = ref<ProductWorkSpec>(normalizeWorkSpec())
   const loading = ref(false)
   const saving = ref(false)
+  const confirming = ref(false)
   const error = ref('')
   const ready = ref(false)
+  const conflict = ref(false)
+  const recovered = ref(0)
+  const recoveryContent = ref<(attempt?: ProductWorkSpec) => ProductWorkSpec | undefined>()
+  let failedContent: ProductWorkSpec | undefined
   const baseline = ref('')
   const owner = ref<number>()
   const prints = reactive<Record<number, boolean>>({})
@@ -53,7 +59,7 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     autoLoad: false,
     editPerm: 'product:edit',
     viewPerm: 'product:view',
-    locked: computed(() => loading.value || saving.value || !ready.value),
+    locked: computed(() => loading.value || saving.value || confirming.value || !ready.value),
   })
   // 来源切换时公共store会刷新通用引用；业务清单单独由work-spec响应接管，避免混入其它产品资料。
   const selectedRefs = ref<AttachmentRefItem[]>([])
@@ -66,13 +72,22 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
       productCode: productCode.value,
     })
   )
-  const loadTypes = session.loadDocumentTypes
+  const docTypes = useAttachmentDocTypes(session.documentTypes, () => 'product')
+  const engineeringTypes = computed(() =>
+    docTypes.selectableTypes.value.filter(
+      (type) => docTypes.categoryKeyOfType(type.item_key) === 'ENGINEERING_DOC'
+    )
+  )
   session.loadDocumentTypes = async () => {
-    const types = await loadTypes()
-    session.documentTypes.value = types.filter(
-      (type) =>
-        type.dict_code !== 'attachment_document_type' ||
-        ENGINEERING_DOCUMENT_TYPE_CODES.includes(type.item_key)
+    const response = await attachmentRefApi.documentTypes()
+    if (!Array.isArray(response.data) || !response.data.length)
+      throw new Error('工程资料字典不可用，请稍后重试，改动已保留')
+    session.documentTypes.value = response.data
+    // 只保留后端ENGINEERING_DOC父类及其二级项；停用项仍保留用于显式识别失效类型。
+    session.documentTypes.value = session.documentTypes.value.filter((type) =>
+      type.dict_code === 'attachment_category'
+        ? type.item_key === 'ENGINEERING_DOC'
+        : docTypes.categoryKeyOfType(type.item_key) === 'ENGINEERING_DOC'
     )
     return session.documentTypes.value
   }
@@ -137,9 +152,14 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
   )
   const signature = () => JSON.stringify({ owner: owner.value, files: manifest.value })
   const dirty = computed(() => ready.value && signature() !== baseline.value)
-  const busy = computed(() => loading.value || saving.value || session.uploading.value)
+  const busy = computed(
+    () => loading.value || saving.value || confirming.value || session.uploading.value
+  )
 
   function accept(value: Partial<ProductWorkSpec>) {
+    conflict.value = false
+    error.value = ''
+    failedContent = undefined
     spec.value = normalizeWorkSpec(value)
     owner.value = spec.value.preparedById
     removed.value = []
@@ -191,6 +211,14 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     const id = productId.value
     saving.value = true
     try {
+      await session.loadDocumentTypes()
+      const active = new Set(engineeringTypes.value.map((type) => type.item_key))
+      const invalid = files.value.filter((file) => !active.has(file.documentType || ''))
+      if (invalid.length)
+        throw new Error(
+          '资料类型已停用、非工程技术资料或字典不可用，请重新选择：' +
+            invalid.map((file) => file.displayName || file.fileName).join('、')
+        )
       const response = await productWorkSpecApi.saveDraft(id, {
         revision: content?.revision || spec.value.revision,
         preparedById: owner.value,
@@ -202,8 +230,72 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
         throw new Error('保存期间产品已切换，请重新加载原产品草稿确认')
       accept(response.data)
       return response
+    } catch (cause) {
+      failedContent = content ? normalizeWorkSpec(JSON.parse(JSON.stringify(content))) : undefined
+      const message = cause instanceof Error ? cause.message : String(cause)
+      if (/revision|冲突|其他入口修改|草稿已变化/i.test(message)) {
+        conflict.value = true
+        error.value = '草稿已被其他入口修改。本地输入和上传已保留，请比较后重新应用或放弃重读。'
+      }
+      throw cause
     } finally {
       if (current === generation) saving.value = false
+    }
+  }
+  async function recover(discard = false) {
+    if (!conflict.value || busy.value) return
+    const current = generation
+    const id = productId.value
+    const localContent = recoveryContent.value?.(failedContent) || failedContent
+    loading.value = true
+    try {
+      const response = await productWorkSpecApi.get(id)
+      if (current !== generation || id !== productId.value) return
+      if (!response.data?.revision) throw new Error('未读取到最新草稿，改动已保留')
+      const latest = normalizeWorkSpec(response.data)
+      const names = (
+        rows: { displayName?: string | null; fileName?: string; attachmentId: number }[]
+      ) =>
+        rows
+          .map((file) => file.displayName || file.fileName || String(file.attachmentId))
+          .join(' → ') || '无'
+      await ElMessageBox.confirm(
+        discard
+          ? '放弃本地文字、附件增删、排序和负责人改动，重读服务端草稿？'
+          : `服务端附件：${names(latest.draftFiles || [])}；负责人：${latest.preparedByName || latest.preparedById || '未指定'}。\n本地附件：${names(files.value)}；负责人：${owner.value || '未指定'}。\n服务端正文：${JSON.stringify(workSpecContent(latest))}\n本地正文：${JSON.stringify(workSpecContent(localContent || spec.value))}\n重新应用将以本地完整附件清单${localContent ? '和正文' : ''}替换以上服务端内容，可能移除他人新增附件。请核对后明确确认；取消则保留双方内容。`,
+        discard ? '放弃并重读' : '冲突比较 · 重新应用本地改动',
+        {
+          confirmButtonText: discard ? '放弃并重读' : '确认替换并保存',
+          cancelButtonText: '继续保留',
+          type: 'warning',
+        }
+      )
+      if (current !== generation || id !== productId.value) return
+      if (discard) {
+        session.pending.value = []
+        accept(latest)
+        error.value = ''
+        recovered.value++
+      } else {
+        // 只在用户看过两份内容并明确确认后使用最新revision；请求仍接受后端严格并发校验。
+        const local = localContent
+          ? normalizeWorkSpec({ ...localContent, revision: latest.revision })
+          : undefined
+        loading.value = false
+        // 附件独立保存不覆盖服务端正文；正文提交保持完整的本地输入。
+        const originalRevision = spec.value.revision
+        spec.value.revision = latest.revision
+        try {
+          await save(local)
+          error.value = ''
+          recovered.value++
+        } catch (cause) {
+          spec.value.revision = originalRevision
+          throw cause
+        }
+      }
+    } finally {
+      if (current === generation) loading.value = false
     }
   }
   async function upgrade(versionId: number) {
@@ -268,6 +360,7 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
   return {
     session,
     ownership,
+    engineeringTypes,
     spec,
     owner,
     files,
@@ -278,8 +371,13 @@ export function createWorkSpecAttachmentSession(productId: Ref<number>, productC
     busy,
     loading,
     saving,
+    confirming,
     ready,
     error,
+    conflict,
+    recovered,
+    recoveryContent,
+    recover,
     load,
     save,
     upgrade,

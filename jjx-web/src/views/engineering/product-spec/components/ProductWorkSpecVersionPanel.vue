@@ -21,6 +21,19 @@
       </div>
     </template>
 
+    <el-alert
+      v-if="draft.conflict.value"
+      :title="draft.error.value"
+      type="warning"
+      :closable="false"
+    >
+      <el-button :disabled="draft.busy.value || publishing" @click="recover(false)"
+        >比较并重新应用</el-button
+      >
+      <el-button :disabled="draft.busy.value || publishing" @click="recover(true)"
+        >放弃并重读</el-button
+      >
+    </el-alert>
     <el-table :data="versions" size="small" border v-loading="loading">
       <el-table-column prop="versionNo" label="版本号" width="100" />
       <el-table-column label="状态" width="90" align="center">
@@ -239,6 +252,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import { WorkSpecVersionStatus } from '@/enums/product/workSpec'
 import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
+import { parseDocsetSnapshot, detectFileKind } from './versionDocset'
 import { useUserStore } from '@/store/modules/user'
 
 const props = withDefaults(
@@ -248,7 +262,11 @@ const props = withDefaults(
   }
 )
 // 整页查看（dev-20261011-029）：由父页打开作业规范抽屉并定位到该版本（只读）
-const emit = defineEmits<{ (e: 'openVersion', versionId: number): void; (e: 'updated'): void }>()
+const emit = defineEmits<{
+  (e: 'openVersion', versionId: number): void
+  (e: 'updated'): void
+  (e: 'busy', value: boolean): void
+}>()
 const draft = useWorkSpecAttachmentSession(toRef(props, 'productId'), ref(''))
 const user = useUserStore()
 
@@ -322,9 +340,6 @@ async function publish() {
   publishing.value = true
   try {
     // 保存失败必须中断；所有附件和正文共用服务端返回的revision。
-    const before = [...draft.manifest.value]
-    const removed = draft.removed.value.length
-    const added = draft.session.pendingCount.value
     if (
       !user.hasPermission('product:edit') &&
       (!draft.spec.value.draftManaged || draft.dirty.value)
@@ -333,23 +348,50 @@ async function publish() {
     const saved = user.hasPermission('product:edit')
       ? await draft.save()
       : { data: draft.spec.value }
-    const printOrder =
-      before
-        .filter((file) => file.print)
-        .map(
-          (file) =>
-            file.displayName ||
-            draft.files.value.find((row) => row.attachmentId === file.attachmentId)?.fileName ||
-            String(file.attachmentId)
-        )
-        .join(' → ') || '无工程附件打印'
+    draft.confirming.value = true
+    const final = saved.data
+    const listed = await productWorkSpecApi.listVersions(props.productId)
+    const baseId = final.basedOnVersionId || final.finalizedVersionId || listed.data?.[0]?.id
+    let previous: { attachmentId: number; fileName: string; displayName?: string }[] = []
+    if (baseId) {
+      const response = await productWorkSpecApi.getVersion(baseId)
+      const complete = response.data?.items?.find(
+        (item: any) => item.resourceType === 'DOCSET_JSON'
+      )
+      if (!complete) throw new Error('基版缺少完整快照，无法确认附件差异')
+      previous = parseDocsetSnapshot(complete.snapshotJson).files
+    }
+    const current = final.draftFiles || []
+    const label = (file: { displayName?: string | null; fileName: string }) =>
+      file.displayName || file.fileName
+    const currentIds = new Set(current.map((file: any) => file.attachmentId))
+    const oldIds = new Set(previous.map((file) => file.attachmentId))
+    const added = current.filter((file: any) => !oldIds.has(file.attachmentId)).map(label)
+    const removed = previous.filter((file) => !currentIds.has(file.attachmentId)).map(label)
+    const selected = new Map(
+      (final.draftAttachments || []).map((file: any) => [file.attachmentId, file.print !== false])
+    )
+    const printable = current.filter(
+      (file: any) =>
+        selected.get(file.attachmentId) && detectFileKind(file.fileName, file.fileType) !== 'other'
+    )
+    // managed定版服务端将PRINT_GUIDE固化到print，其余工程资料固化到atlas；栏目内保持manifest顺序。
+    const printOrder = [
+      ['印刷规范', printable.filter((file: any) => file.documentType === 'PRINT_GUIDE')],
+      ['工程图集', printable.filter((file: any) => file.documentType !== 'PRINT_GUIDE')],
+    ]
+      .map(
+        ([section, files]) =>
+          `${section}：${(files as typeof current).map(label).join(' → ') || '无'}`
+      )
+      .join('；')
     const { value } = await ElMessageBox.prompt(
-      `新增 ${added}，移除 ${removed}。打印顺序：${printOrder}。修订说明可留空。`,
+      `${baseId ? '相对基版' : '首次定版，全新清单'}：新增 ${added.length}（${added.join('、') || '无'}），移除 ${removed.length}（${removed.join('、') || '无'}）。栏目内打印顺序：${printOrder}。修订说明可留空。`,
       '规范定版',
       {
         inputPlaceholder: '如：冲型压力 80→85',
         inputValue: '',
-        confirmButtonText: '发布',
+        confirmButtonText: '定版',
         cancelButtonText: '取消',
       }
     )
@@ -361,15 +403,32 @@ async function publish() {
     if (res?.code === 200) {
       ElMessage.success(`已定版 ${res.data?.versionNo || ''}`)
       await load()
+      draft.confirming.value = false
       await draft.load()
       emit('updated')
     }
   } catch (e: any) {
-    if (e !== 'cancel') ElMessage.error(e?.message || '定版失败')
+    if (/revision|冲突|其他入口修改|草稿已变化/i.test(e?.message || '')) {
+      draft.conflict.value = true
+      draft.error.value = '草稿已被其他入口修改，请比较后重新应用或放弃重读。'
+    }
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(e?.message || '定版失败')
   } finally {
+    draft.confirming.value = false
     publishing.value = false
   }
 }
+
+async function recover(discard: boolean) {
+  try {
+    await draft.recover(discard)
+    emit('updated')
+  } catch (cause) {
+    if (cause !== 'cancel' && cause !== 'close')
+      ElMessage.error(cause instanceof Error ? cause.message : '冲突恢复失败，改动已保留')
+  }
+}
+watch(publishing, (value) => emit('busy', value), { flush: 'sync' })
 
 async function upgrade(row: any) {
   if (props.blocked || publishing.value || draft.busy.value || draft.dirty.value) return

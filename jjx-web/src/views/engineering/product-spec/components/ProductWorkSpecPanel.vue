@@ -587,6 +587,10 @@ watch(
 const editing = computed(
   () =>
     structureUploadBusy.value ||
+    structureEditing.value ||
+    savingInline.value ||
+    saving.value ||
+    savingIssuance.value ||
     noteDraft.value !== null ||
     issuanceDraft.value !== null ||
     dieEditing.value ||
@@ -812,6 +816,28 @@ async function sourcesSaved() {
 async function refreshDrawings() {
   await loadData()
 }
+// 冲突后用户可能继续修订文字；显式恢复读取当前输入，而不是第一次失败时的副本。
+function collectRecoveryContent(attempt?: ProductWorkSpec) {
+  if (editorVisible.value) return normalizeWorkSpec(JSON.parse(JSON.stringify(draft.value)))
+  if (issuanceDraft.value) return normalizeWorkSpec(JSON.parse(JSON.stringify(issuanceDraft.value)))
+  if (!attempt && noteDraft.value === null && !dieEditing.value) return undefined
+  const next = normalizeWorkSpec(JSON.parse(JSON.stringify(attempt || data.value?.workSpec || {})))
+  if (noteDraft.value !== null) next.engineeringRequirements = noteDraft.value
+  if (dieEditing.value) {
+    next.dieLocation = { ...dieDraft.value }
+    if (dieLegacyCleared.value) next.dieLocationText = ''
+  }
+  return next
+}
+draftSession.recoveryContent.value = collectRecoveryContent
+watch(draftSession.recovered, () => {
+  noteDraft.value = null
+  issuanceDraft.value = null
+  dieEditing.value = false
+  editorVisible.value = false
+  structureEditing.value = false
+  void loadData()
+})
 watch(
   () => draftSession.spec.value.revision,
   (revision) => {
@@ -845,6 +871,8 @@ watch(
   { immediate: true }
 )
 onBeforeUnmount(() => {
+  if (draftSession.recoveryContent.value === collectRecoveryContent)
+    draftSession.recoveryContent.value = undefined
   loadGeneration++
   structurePreviewGeneration++
   if (structureImage.value) URL.revokeObjectURL(structureImage.value)

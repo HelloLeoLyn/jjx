@@ -1,7 +1,11 @@
 ﻿<template>
   <section class="draft-library" v-loading="draft.loading.value">
     <el-alert v-if="draft.error.value" :title="draft.error.value" type="error" :closable="false">
-      <el-button link @click="draft.load()">重试</el-button>
+      <template v-if="draft.conflict.value">
+        <el-button :disabled="draft.busy.value" @click="recover(false)">比较并重新应用</el-button>
+        <el-button :disabled="draft.busy.value" @click="recover(true)">放弃并重读</el-button>
+      </template>
+      <el-button v-else link @click="draft.load()">重试</el-button>
     </el-alert>
     <div class="draft-actions">
       <el-tag
@@ -51,7 +55,7 @@
       <AttachmentUpload
         :session="draft.session"
         :ownership="draft.ownership.value"
-        :disabled="draft.busy.value"
+        :disabled="draft.busy.value || !types.some((type) => type.value === uploadType)"
         :accept="acceptedFiles"
         :max-size-m-b="100"
         @uploaded="uploaded"
@@ -121,7 +125,6 @@
 import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store/modules/user'
-import { ENGINEERING_DOCUMENT_TYPES } from '@/components/product/productFileCategories'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import type { PendingEntry } from '@/composables/useAttachmentRefs'
 import AttachmentUpload from '@/components/attachment/AttachmentUpload.vue'
@@ -145,12 +148,15 @@ const draft = useWorkSpecAttachmentSession(toRef(props, 'productId'), toRef(prop
 const user = useUserStore()
 const canEdit = computed(() => user.hasPermission('product:edit'))
 const owners = ref<{ id: number; name: string }[]>([])
+// 两个工程入口均承接后端ENGINEERING_DOC有效字典；旧categories固定列表不再截断。
 const types = computed(() =>
-  ENGINEERING_DOCUMENT_TYPES.filter(
-    (type) => !props.categories?.length || props.categories.includes(type.value)
-  )
+  draft.engineeringTypes.value.map((type) => ({ value: type.item_key, label: type.label }))
 )
 const uploadType = ref('STRUCTURE_DRAWING')
+watch(types, (options) => {
+  if (!options.some((type) => type.value === uploadType.value))
+    uploadType.value = options[0]?.value || ''
+})
 const acceptedFiles = [
   '.pdf',
   '.jpg',
@@ -198,6 +204,15 @@ async function save() {
     ElMessage.error(error instanceof Error ? error.message : '保存失败，改动已保留')
   }
 }
+async function recover(discard: boolean) {
+  try {
+    await draft.recover(discard)
+    emit('updated')
+  } catch (cause) {
+    if (cause !== 'cancel' && cause !== 'close')
+      ElMessage.error(cause instanceof Error ? cause.message : '冲突恢复失败，改动已保留')
+  }
+}
 async function cancel() {
   try {
     await ElMessageBox.confirm('放弃尚未保存的附件、顺序和负责人改动？', '取消改动')
@@ -235,6 +250,7 @@ watch(
   async () => {
     if (!canEdit.value) return
     try {
+      await draft.session.loadDocumentTypes()
       const result = await productWorkSpecApi.responsibleUsers(props.productId)
       owners.value = result.data || []
     } catch (error) {

@@ -10,7 +10,8 @@
   >
     <div v-loading="detailLoading" class="spec-body">
       <ProductSpecHeader
-        v-model:version-id="selectedVersionId"
+        :version-id="selectedVersionId"
+        @update:version-id="selectVersion"
         :detail="detail"
         :product-id="productId"
         :versions="versionOptions"
@@ -24,6 +25,7 @@
         :product-id="productId"
         :blocked="workSpecBusy || colorCheckBusy"
         @updated="versionSaved"
+        @busy="versionBusy = $event"
       />
 
       <el-tabs v-model="activeTab" class="spec-tabs" :before-leave="beforeSpecTabLeave">
@@ -424,6 +426,7 @@ function dieText(spec: any): string {
   return values.length ? values.join('；') : spec?.dieLocationText || '-'
 }
 const specVisible = ref(false)
+const versionBusy = ref(false)
 const drawingBusy = ref(false)
 const workSpecBusy = ref(false)
 const colorCheckBusy = ref(false)
@@ -433,6 +436,7 @@ function closeSpec(done: () => void) {
     return
   }
   if (
+    versionBusy.value ||
     draftSession.busy.value ||
     draftSession.dirty.value ||
     drawingBusy.value ||
@@ -448,7 +452,7 @@ function closeSpec(done: () => void) {
   done()
 }
 function beforeSpecTabLeave() {
-  if (workSpecBusy.value || colorCheckBusy.value) {
+  if (versionBusy.value || draftSession.busy.value || workSpecBusy.value || colorCheckBusy.value) {
     ElMessage.warning('请先完成或关闭规范编辑窗口')
     return false
   }
@@ -479,6 +483,7 @@ async function refreshSpecSources() {
 async function open(id: number, versionId?: number) {
   if (!Number.isFinite(id) || id <= 0) return
   if (
+    versionBusy.value ||
     draftSession.busy.value ||
     draftSession.dirty.value ||
     drawingBusy.value ||
@@ -610,6 +615,20 @@ async function loadVersionOptions() {
 async function versionSaved() {
   await refreshSpecSources()
   await loadVersionOptions()
+}
+
+// Header只发出选择意图；守卫通过前不改变v-if，避免卸载正文局部输入。
+function selectVersion(versionId: number) {
+  if (versionId === selectedVersionId.value) return
+  if (versionBusy.value || draftSession.busy.value || workSpecBusy.value || colorCheckBusy.value) {
+    ElMessage.warning('请先保存或取消正在编辑的内容，并等待上传、保存或定版结束')
+    return
+  }
+  if (draftSession.dirty.value || drawingBusy.value) {
+    ElMessage.warning('请先保存或明确取消工程附件草稿改动')
+    return
+  }
+  selectedVersionId.value = versionId
 }
 
 async function applyVersionSelection() {

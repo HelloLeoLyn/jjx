@@ -21,6 +21,18 @@ vi.mock('@/store/modules/user', () => ({
 const wrappers: ReturnType<typeof mount>[] = []
 beforeEach(() => {
   vi.clearAllMocks()
+  api.documentTypes.mockResolvedValue({
+    data: [
+      { dict_code: 'attachment_category', item_key: 'ENGINEERING_DOC', label: '工程技术资料' },
+      {
+        dict_code: 'attachment_document_type',
+        item_key: 'STRUCTURE_DRAWING',
+        label: '结构图',
+        is_active: 1,
+        ext_data: { parent: 'ENGINEERING_DOC' },
+      },
+    ],
+  } as any)
   localStorage.clear()
   vi.stubGlobal('crypto', {})
   api.get.mockResolvedValue({
