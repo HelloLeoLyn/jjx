@@ -23,7 +23,7 @@ public class LogSaveService {
     private final SysOperLogMapper operLogMapper;
     private final SysLoginLogMapper loginLogMapper;
     private final SysErrorLogMapper errorLogMapper;
-    // DEV-1023：血缘反查 traceId 用（BOM/工艺路线/库存单据 → 所属订单）
+    // 库存等单据血缘反查 traceId；工程主数据不继承订单链路。
     private final com.jjx.product.mapper.EngineeringBomMapper engineeringBomMapper;
     private final com.jjx.product.mapper.EngineeringRoutingMapper engineeringRoutingMapper;
     private final com.jjx.inventory.mapper.InventoryInboundOrderMapper inboundOrderMapper;
@@ -70,6 +70,8 @@ public class LogSaveService {
      * 按 bizType+bizId 从历史操作日志继承 traceId（同单据所有操作共享链路）
      */
     public String findTraceIdByBiz(String bizType, String bizId) {
+        // 旧日志可能已挂到订单 trace，工程主数据也不能从历史日志继续继承。
+        if (isProductEngineering(bizType)) return null;
         try {
             com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysOperLog> w =
                     new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
@@ -90,10 +92,11 @@ public class LogSaveService {
     }
 
     /**
-     * 血缘反查 traceId（DEV-1023）：BOM/工艺路线/库存单据等子单据通过 source 字段
-     * 反查所属订单的 traceId，使打样/转标准/库存等环节操作并入订单统一流水链路
+     * 血缘反查 traceId：库存等子单据通过 source 字段反查所属订单。
+     * BOM/工艺路线归产品侧，保留 source_sample_id 数据血缘但不继承订单流水。
      */
     public String findTraceIdBySource(String bizType, String bizId) {
+        if (isProductEngineering(bizType)) return null;
         try {
             Long id = Long.valueOf(bizId);
             // dev-20260929-008：采购链路（收货/付款/发票）统一挂到采购单 trace。
@@ -110,13 +113,7 @@ public class LogSaveService {
                 return doc == null ? null : traceOfPurchaseOrder(doc.getOrderId());
             }
             Long orderId = null;
-            if ("bom".equals(bizType)) {
-                com.jjx.engineering.domain.entity.EngineeringBom bom = engineeringBomMapper.selectById(id);
-                if (bom != null) orderId = bom.getSourceSampleId();
-            } else if ("routing".equals(bizType)) {
-                com.jjx.engineering.domain.entity.EngineeringRouting routing = engineeringRoutingMapper.selectById(id);
-                if (routing != null) orderId = routing.getSourceSampleId();
-            } else if ("inbound".equals(bizType)) {
+            if ("inbound".equals(bizType)) {
                 com.jjx.inventory.domain.InventoryInboundOrder inbound = inboundOrderMapper.selectById(id);
                 if (inbound != null && inbound.getSourceId() != null) {
                     // dev-20260929-008：采购来源入库挂到采购单 trace；其余（生产/销售）沿用销售订单反查
@@ -140,6 +137,10 @@ public class LogSaveService {
             log.debug("血缘反查traceId失败: {}", e.getMessage());
             return null;
         }
+    }
+
+    private boolean isProductEngineering(String bizType) {
+        return "bom".equals(bizType) || "routing".equals(bizType);
     }
 
     /** 采购单 trace（采购来源单据统一锚点；dev-20260929-008） */

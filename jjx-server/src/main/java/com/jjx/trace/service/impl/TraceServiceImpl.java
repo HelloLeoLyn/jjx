@@ -1,6 +1,7 @@
 package com.jjx.trace.service.impl;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.page.PageResult;
@@ -43,6 +44,9 @@ public class TraceServiceImpl implements TraceService {
         List<SysOperLog> logs = sysOperLogMapper.selectList(
                 Wrappers.<SysOperLog>lambdaQuery()
                         .eq(SysOperLog::getTraceId, traceId)
+                        // 工程主数据归产品；读时排除历史误挂记录，保留 NULL 类型的旧日志。
+                        .and(w -> w.isNull(SysOperLog::getBizType)
+                                .or().notIn(SysOperLog::getBizType, List.of("bom", "routing")))
                         .orderByAsc(SysOperLog::getCreateTime)
                         .orderByAsc(SysOperLog::getId));
         List<UnifiedTraceEventVO> events = TraceEventAggregator.mergeAttachmentEvents(
@@ -68,12 +72,21 @@ public class TraceServiceImpl implements TraceService {
         if (bizType == null || bizType.isBlank() || bizId == null) {
             return PageResult.build(Collections.emptyList(), 0);
         }
+        LambdaQueryWrapper<SysOperLog> query = Wrappers.<SysOperLog>lambdaQuery();
+        if ("product".equals(bizType)) {
+            // 一次只读查询覆盖全部版本（含历史 trace 上的工程日志），先排序后在数据库分页。
+            // biz_id 是字符串，子查询显式转字符串，避免 MySQL 数值比较误匹配非数字业务 ID。
+            query.and(w -> w.eq(SysOperLog::getBizType, "product").eq(SysOperLog::getBizId, bizId.toString())
+                    .or(bom -> bom.eq(SysOperLog::getBizType, "bom")
+                            .apply("biz_id IN (SELECT CONCAT('', bom_id) FROM engineering_bom WHERE product_id = {0})", bizId))
+                    .or(routing -> routing.eq(SysOperLog::getBizType, "routing")
+                            .apply("biz_id IN (SELECT CONCAT('', routing_id) FROM engineering_routing WHERE product_id = {0})", bizId)));
+        } else {
+            query.eq(SysOperLog::getBizType, bizType).eq(SysOperLog::getBizId, bizId.toString());
+        }
+        query.orderByAsc(SysOperLog::getCreateTime).orderByAsc(SysOperLog::getId);
         IPage<SysOperLog> page = sysOperLogMapper.selectPage(
-                new Page<>(Math.max(pageNum, 1), Math.min(Math.max(pageSize, 1), 100)),
-                Wrappers.<SysOperLog>lambdaQuery()
-                        .eq(SysOperLog::getBizType, bizType)
-                        .eq(SysOperLog::getBizId, bizId)
-                        .orderByAsc(SysOperLog::getCreateTime));
+                new Page<>(Math.max(pageNum, 1), Math.min(Math.max(pageSize, 1), 100)), query);
         List<UnifiedTraceEventVO> records = page.getRecords().stream().map(this::fromLog).toList();
         return PageResult.of(page, records);
     }

@@ -109,3 +109,26 @@ describe('TraceTimeline 证据附件', () => {
     expect(wrapper.text()).toContain('📎 1')
   })
 })
+
+
+describe('TraceTimeline 产品工程流水', () => {
+  it('按产品请求流水并保留 BOM 和工艺路线的模块名称', async () => {
+    get.mockResolvedValue({ data: { total: 2, records: [
+      { eventId: 'oper-1', bizType: 'bom', bizId: '11', module: '产品BOM管理' },
+      { eventId: 'oper-2', bizType: 'routing', bizId: '21', module: '工艺路线管理' },
+    ] } } as any)
+    wrapper = mount(TraceTimeline, {
+      props: { modelValue: true, bizType: 'product', bizId: '8' },
+      global: { stubs: { ElDrawer: defineComponent({
+        name: 'ElDrawerStub', emits: ['open'], template: '<div><slot /></div>',
+      }) } },
+    })
+    wrapper.findComponent({ name: 'ElDrawerStub' }).vm.$emit('open')
+    await flushPromises()
+    expect(get).toHaveBeenCalledWith('/api/trace/events', {
+      params: { bizType: 'product', bizId: '8', pageNum: 1, pageSize: 20 },
+    })
+    expect(wrapper.text()).toContain('产品BOM管理')
+    expect(wrapper.text()).toContain('工艺路线管理')
+  })
+})
