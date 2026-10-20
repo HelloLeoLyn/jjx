@@ -29,7 +29,8 @@ class OrderSampleProgressTest {
         var page = List.of(row(1, null, null), row(2, null, null), row(3, null, null));
         var statuses = List.of(SampleOrderStatusEnum.CREATED, SampleOrderStatusEnum.REQUEST,
                 SampleOrderStatusEnum.ENGINEERING, SampleOrderStatusEnum.SAMPLE_READY,
-                SampleOrderStatusEnum.SAMPLE_SENT, SampleOrderStatusEnum.REJECTED).stream()
+                SampleOrderStatusEnum.SAMPLE_SENT, SampleOrderStatusEnum.REJECTED,
+                SampleOrderStatusEnum.CONFIRMED, SampleOrderStatusEnum.TRANSFERRED).stream()
                 .map(SampleOrderStatusEnum::getValue).toList();
         when(mapper.selectOrderSampleProgress(anyList(), eq("SALES_ORDER"), eq(SalesOrderTypeEnum.SAMPLE.getCode()), eq(statuses)))
                 .thenReturn(List.of(row(1, 1, 2), row(2, 3, 0)));

@@ -215,7 +215,7 @@ describe('sales order sample status gate', () => {
     await flushPromises()
     expect(sampleOrderApi.getOrderSampleOptions).toHaveBeenCalledWith(100)
     expect(w.text()).not.toContain('不可发起打样')
-    expect(w.text()).toContain('本单 1 个产品，0 个已有进行中样品单')
+    expect(w.text()).toContain('本单 1 个产品，0 个已打样')
     expect(submitButton(w)!.attributes('disabled')).toBeUndefined()
     w.unmount()
   })

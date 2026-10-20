@@ -122,7 +122,8 @@ public class OrderServiceImpl implements IOrderService {
             var statuses = List.of(com.jjx.sales.enums.SampleOrderStatusEnum.CREATED,
                     com.jjx.sales.enums.SampleOrderStatusEnum.REQUEST, com.jjx.sales.enums.SampleOrderStatusEnum.ENGINEERING,
                     com.jjx.sales.enums.SampleOrderStatusEnum.SAMPLE_READY, com.jjx.sales.enums.SampleOrderStatusEnum.SAMPLE_SENT,
-                    com.jjx.sales.enums.SampleOrderStatusEnum.REJECTED).stream()
+                    com.jjx.sales.enums.SampleOrderStatusEnum.REJECTED,
+                    com.jjx.sales.enums.SampleOrderStatusEnum.CONFIRMED, com.jjx.sales.enums.SampleOrderStatusEnum.TRANSFERRED).stream()
                     .map(com.jjx.sales.enums.SampleOrderStatusEnum::getValue).toList();
             var progress = sampleOrderMapper.selectOrderSampleProgress(new ArrayList<>(byId.keySet()), "SALES_ORDER",
                     com.jjx.sales.enums.SalesOrderTypeEnum.SAMPLE.getCode(), statuses);

@@ -38,14 +38,14 @@
       </template>
       <template v-else-if="options">
         <el-alert
-          :title="`本单 ${rows.length} 个产品，${activeProductCount} 个已有进行中样品单，可为剩余 ${sampleableProductCount} 个发起打样`"
+          :title="`本单 ${rows.length} 个产品，${activeProductCount} 个已打样，可为剩余 ${sampleableProductCount} 个发起打样`"
           type="info"
           :closable="false"
           style="margin-bottom: 12px"
         />
         <el-alert
           v-if="allActive"
-          title="全部产品已有进行中样品单，请查看现有样品单。"
+          title="全部产品已打样，请查看现有样品单。"
           type="info"
           :closable="false"
         />
@@ -107,7 +107,7 @@
                 placeholder="可单独补充"
             /></template>
           </el-table-column>
-          <el-table-column label="进行中样品单" min-width="190">
+          <el-table-column label="已有样品单" min-width="190">
             <template #default="{ row }">
               <div v-for="sample in row.activeSamples" :key="sample.orderId">
                 <el-link type="primary" @click="showSample(sample.orderId)">{{

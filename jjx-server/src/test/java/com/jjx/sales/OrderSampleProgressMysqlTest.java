@@ -37,7 +37,8 @@ class OrderSampleProgressMysqlTest {
             jdbc.update("INSERT INTO sales_order_product VALUES (11,1,101,' A '),(12,1,102,'B'),(13,1,103,'C'),(21,2,201,'D')");
             var statuses = List.of(SampleOrderStatusEnum.CREATED, SampleOrderStatusEnum.REQUEST,
                     SampleOrderStatusEnum.ENGINEERING, SampleOrderStatusEnum.SAMPLE_READY,
-                    SampleOrderStatusEnum.SAMPLE_SENT, SampleOrderStatusEnum.REJECTED).stream().map(SampleOrderStatusEnum::getValue).toList();
+                    SampleOrderStatusEnum.SAMPLE_SENT, SampleOrderStatusEnum.REJECTED,
+                SampleOrderStatusEnum.CONFIRMED, SampleOrderStatusEnum.TRANSFERRED).stream().map(SampleOrderStatusEnum::getValue).toList();
             jdbc.execute("CREATE TEMPORARY TABLE source_orders AS SELECT * FROM sales_order");
             var initial = mapper.selectOrderSampleProgress(List.of(1L,2L,3L), "SALES_ORDER", SalesOrderTypeEnum.SAMPLE.getCode(), statuses);
             assertEquals(3, initial.size());
@@ -51,9 +52,9 @@ class OrderSampleProgressMysqlTest {
                 jdbc.update("INSERT INTO sales_sample_order VALUES (?,'SALES_ORDER','SO1',999,'a',?,0)", id, statuses.get(n));
             }
             var partial = mapper.selectOrderSampleProgress(List.of(1L,2L), "SALES_ORDER", SalesOrderTypeEnum.SAMPLE.getCode(), statuses);
-            assertEquals(6, partial.get(0).getActiveSampleCount()); assertEquals(2, partial.get(0).getSampleableProductCount());
+            assertEquals(8, partial.get(0).getActiveSampleCount()); assertEquals(2, partial.get(0).getSampleableProductCount());
             assertEquals(0, partial.get(1).getActiveSampleCount());
-            assertEquals(6, mapper.selectActiveOrderSamples("SALES_ORDER","SO1",7L,101L," A ",SalesOrderTypeEnum.SAMPLE.getCode(),statuses,false).size());
+            assertEquals(8, mapper.selectActiveOrderSamples("SALES_ORDER","SO1",7L,101L," A ",SalesOrderTypeEnum.SAMPLE.getCode(),statuses,false).size());
             // ID match with changed code. Wrong customer/source/type and soft deletions never count.
             for (int n = 0; n < 7; n++) {
                 long id = 200 + n;
@@ -63,11 +64,11 @@ class OrderSampleProgressMysqlTest {
                         n == 6 ? "OTHER" : "SO1", 102, "changed", statuses.get(0), n == 5 ? 1 : 0);
             }
             var matched = mapper.selectOrderSampleProgress(List.of(1L), "SALES_ORDER", SalesOrderTypeEnum.SAMPLE.getCode(), statuses).get(0);
-            assertEquals(7, matched.getActiveSampleCount()); assertEquals(1, matched.getSampleableProductCount());
+            assertEquals(9, matched.getActiveSampleCount()); assertEquals(1, matched.getSampleableProductCount());
             jdbc.update("INSERT INTO sales_order VALUES (300,'SP300',7,?,0)", SalesOrderTypeEnum.SAMPLE.getCode());
             jdbc.update("INSERT INTO sales_sample_order VALUES (300,'SALES_ORDER','SO1',103,'C',?,0)", statuses.get(0));
             var full = mapper.selectOrderSampleProgress(List.of(1L), "SALES_ORDER", SalesOrderTypeEnum.SAMPLE.getCode(), statuses).get(0);
-            assertEquals(8, full.getActiveSampleCount()); assertEquals(0, full.getSampleableProductCount());
+            assertEquals(10, full.getActiveSampleCount()); assertEquals(0, full.getSampleableProductCount());
             for (var terminal : SampleOrderStatusEnum.values()) {
                 if (statuses.contains(terminal.getValue())) continue;
                 jdbc.update("UPDATE sales_sample_order SET sample_status=?", terminal.getValue());

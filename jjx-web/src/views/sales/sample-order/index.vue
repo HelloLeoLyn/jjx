@@ -1016,7 +1016,7 @@ function canRejectSample(row: any): boolean {
   return row?.sampleStatus === SampleOrderStatusEnum.SAMPLE_SENT.value
 }
 function canConvert(row: any): boolean {
-  return row?.sampleStatus === SampleOrderStatusEnum.CONFIRMED.value
+  return row?.sampleStatus === SampleOrderStatusEnum.CONFIRMED.value && !row?.convertedOrderId
 }
 function canPicker(row: any): boolean {
   return row?.sampleStatus === SampleOrderStatusEnum.ENGINEERING.value
@@ -1266,7 +1266,31 @@ function openPreview(opKey: string, row: any) {
       ),
     }
   }
-  previewOperation.value = op
+  const operation = op
+  previewOperation.value =
+    opKey === 'sample.confirm'
+      ? {
+          ...op,
+          api: async (args: Parameters<typeof operation.api>[0]) => {
+            const response = await operation.api(args)
+            const sample = response?.data
+            if (sample?.sourceType === 'SALES_ORDER') {
+              if (sample.sampleStatus === SampleOrderStatusEnum.CONFIRMED.value) {
+                ElMessage.warning({
+                  message:
+                    sample.remark ||
+                    '客户确认已保存，自动关联原订单未完成，请使用「关联回原订单」重试',
+                  duration: 0,
+                  showClose: true,
+                })
+              } else if (sample.sampleStatus === SampleOrderStatusEnum.TRANSFERRED.value) {
+                ElMessage.success('客户确认已保存，已自动关联回原订单')
+              }
+            }
+            return response
+          },
+        }
+      : op
   previewBizId.value = row.orderId
   previewBizNo.value = row.orderNo || ''
   previewVisible.value = true

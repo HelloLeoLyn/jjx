@@ -252,21 +252,23 @@ describe('sales order sample progress summary', () => {
   it('summarizes unsampled products and keeps all available', async () => {
     const w = render()
     await flushPromises()
-    expect(w.text()).toContain('本单 3 个产品，0 个已有进行中样品单，可为剩余 3 个发起打样')
+    expect(w.text()).toContain('本单 3 个产品，0 个已打样，可为剩余 3 个发起打样')
     expect(
       w.findAll('input[type=checkbox]').every((b) => b.attributes('disabled') === undefined)
     ).toBe(true)
     w.unmount()
   })
-  it('keeps active A disabled and allows submitting B', async () => {
+  it.each([
+    SampleOrderStatusEnum.CREATED,
+    SampleOrderStatusEnum.CONFIRMED,
+    SampleOrderStatusEnum.TRANSFERRED,
+  ])('keeps sampled A ($label) disabled and allows submitting B', async (status) => {
     const data = options(2)
-    data.items[0].activeSamples = [
-      { orderId: 80, orderNo: 'SP80', sampleStatus: SampleOrderStatusEnum.CREATED.value },
-    ]
+    data.items[0].activeSamples = [{ orderId: 80, orderNo: 'SP80', sampleStatus: status.value }]
     vi.mocked(sampleOrderApi.getOrderSampleOptions).mockResolvedValue({ data } as any)
     const w = render()
     await flushPromises()
-    expect(w.text()).toContain('本单 2 个产品，1 个已有进行中样品单，可为剩余 1 个发起打样')
+    expect(w.text()).toContain('本单 2 个产品，1 个已打样，可为剩余 1 个发起打样')
     expect((w.get('[aria-label="选择P1"]').element as HTMLInputElement).checked).toBe(false)
     await w.get('[aria-label="选择P2"]').setValue(true)
     await submit(w).trigger('click')
@@ -278,32 +280,33 @@ describe('sales order sample progress summary', () => {
     expect(w.emitted('created')).toHaveLength(1)
     w.unmount()
   })
-  it('all active shows existing links without submit, closing a sample restores availability on refresh', async () => {
-    const data = options(1)
-    data.items[0].activeSamples = [
-      { orderId: 80, orderNo: 'SP80', sampleStatus: SampleOrderStatusEnum.CREATED.value },
-    ]
-    vi.mocked(sampleOrderApi.getOrderSampleOptions).mockResolvedValue({ data } as any)
-    const w = render()
-    await flushPromises()
-    expect(w.text()).toContain('全部产品已有进行中样品单')
-    expect(w.text()).toContain('SP80')
-    expect(w.findAll('button').some((b) => b.text().startsWith('发起打样'))).toBe(false)
-    expect(w.findAll('input[type=checkbox]')).toHaveLength(0)
-    await w
-      .findAll('button')
-      .find((b) => b.text() === 'SP80')!
-      .trigger('click')
-    expect(sampleOrderApi.createBatchFromOrder).not.toHaveBeenCalled()
-    vi.mocked(sampleOrderApi.getOrderSampleOptions).mockResolvedValue({ data: options(1) } as any)
-    await w
-      .findAll('button')
-      .find((b) => b.text() === '刷新资料')!
-      .trigger('click')
-    await flushPromises()
-    expect(w.text()).toContain('可为剩余 1 个发起打样')
-    expect(w.get('[aria-label="选择P1"]').attributes('disabled')).toBeUndefined()
-    expect(submit(w)).toBeDefined()
-    w.unmount()
-  })
+  it.each([SampleOrderStatusEnum.CONFIRMED, SampleOrderStatusEnum.TRANSFERRED])(
+    'all sampled ($label) shows existing links without submit, closing restores availability',
+    async (status) => {
+      const data = options(1)
+      data.items[0].activeSamples = [{ orderId: 80, orderNo: 'SP80', sampleStatus: status.value }]
+      vi.mocked(sampleOrderApi.getOrderSampleOptions).mockResolvedValue({ data } as any)
+      const w = render()
+      await flushPromises()
+      expect(w.text()).toContain('全部产品已打样')
+      expect(w.text()).toContain('SP80')
+      expect(w.findAll('button').some((b) => b.text().startsWith('发起打样'))).toBe(false)
+      expect(w.findAll('input[type=checkbox]')).toHaveLength(0)
+      await w
+        .findAll('button')
+        .find((b) => b.text() === 'SP80')!
+        .trigger('click')
+      expect(sampleOrderApi.createBatchFromOrder).not.toHaveBeenCalled()
+      vi.mocked(sampleOrderApi.getOrderSampleOptions).mockResolvedValue({ data: options(1) } as any)
+      await w
+        .findAll('button')
+        .find((b) => b.text() === '刷新资料')!
+        .trigger('click')
+      await flushPromises()
+      expect(w.text()).toContain('可为剩余 1 个发起打样')
+      expect(w.get('[aria-label="选择P1"]').attributes('disabled')).toBeUndefined()
+      expect(submit(w)).toBeDefined()
+      w.unmount()
+    }
+  )
 })

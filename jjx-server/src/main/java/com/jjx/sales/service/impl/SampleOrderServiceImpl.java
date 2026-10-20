@@ -122,7 +122,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private static final List<Integer> ACTIVE_ORDER_SAMPLE_STATUSES = List.of(
             SampleOrderStatusEnum.CREATED.getValue(), SampleOrderStatusEnum.REQUEST.getValue(),
             SampleOrderStatusEnum.ENGINEERING.getValue(), SampleOrderStatusEnum.SAMPLE_READY.getValue(),
-            SampleOrderStatusEnum.SAMPLE_SENT.getValue(), SampleOrderStatusEnum.REJECTED.getValue());
+            SampleOrderStatusEnum.SAMPLE_SENT.getValue(), SampleOrderStatusEnum.REJECTED.getValue(),
+            SampleOrderStatusEnum.CONFIRMED.getValue(), SampleOrderStatusEnum.TRANSFERRED.getValue());
 
     private SalesOrder requireSampleSourceOrder(Long orderId, boolean lock) {
         SalesOrder source = orderId == null ? null : (lock ? orderMapper.selectByIdForUpdate(orderId) : orderMapper.selectById(orderId));
@@ -1360,6 +1361,15 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             params = {"bizNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder confirmSample(Long orderId, String clientName) {
+        // 先锁主单再读取扩展状态，重复确认不覆盖确认时间/确认人，也不重复关联。
+        SalesOrder locked = orderMapper.selectByIdForUpdate(orderId);
+        if (locked == null || !SalesOrderTypeEnum.SAMPLE.getCode().equals(locked.getOrderType()))
+            throw new BusinessException("样品单不存在");
+        SalesOrder current = orderMapper.selectById(orderId);
+        if (current == null) throw new BusinessException("样品单不存在");
+        if (SampleOrderStatusEnum.TRANSFERRED.getValue().equals(current.getSampleStatus())) return current;
+        if (SampleOrderStatusEnum.CONFIRMED.getValue().equals(current.getSampleStatus()))
+            return autoReturnToSource(current);
         safeTransition(orderId,
                 SampleOrderStatusEnum.SAMPLE_SENT,
                 SampleOrderStatusEnum.CONFIRMED,
@@ -1386,7 +1396,31 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         log.info("样品单[{}] 客户[{}]已确认样品OK", orderId, clientName);
-        return orderMapper.selectById(orderId);
+        return autoReturnToSource(orderMapper.selectById(orderId));
+    }
+
+    /** 关联使用保存点：失败只撤销关联，客户确认及轮次结果仍提交。 */
+    private SalesOrder autoReturnToSource(SalesOrder sample) {
+        if (!SOURCE_SALES_ORDER.equals(sample.getSourceType())) return sample;
+        org.springframework.transaction.TransactionStatus tx = null;
+        Object savepoint = null;
+        try {
+            if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+                tx = org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus();
+                savepoint = tx.createSavepoint();
+            }
+            returnSampleToSource(sample);
+            return orderMapper.selectById(sample.getOrderId());
+        } catch (Exception e) {
+            if (savepoint != null) tx.rollbackToSavepoint(savepoint);
+            log.warn("样品单[{}]客户确认已保存，自动关联原订单失败，待手动重试", sample.getOrderId(), e);
+            SalesOrder result = orderMapper.selectById(sample.getOrderId());
+            // 响应提示不覆盖单据原备注；列表上的客户确认状态保留手动重试入口。
+            result.setRemark("客户确认已保存，自动关联原订单失败：" + e.getMessage() + "；请使用「关联回原订单」重试");
+            return result;
+        } finally {
+            if (savepoint != null) tx.releaseSavepoint(savepoint);
+        }
     }
 
     @Override
@@ -3541,6 +3575,35 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         vo.setOrderNo(sampleOrder != null ? sampleOrder.getOrderNo() : null);
         java.util.List<com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem> items = new java.util.ArrayList<>();
 
+        boolean returnToSource = sampleOrder != null && SOURCE_SALES_ORDER.equals(sampleOrder.getSourceType());
+        vo.setReturnToSourceOrder(returnToSource);
+        if (returnToSource) {
+            vo.setSourceOrderNo(sampleOrder.getSourceNo());
+            vo.setProductCode(sampleOrder.getSampleProductCode());
+            vo.setProductName(sampleOrder.getSampleProductName());
+            var sourceItem = new com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem();
+            sourceItem.setCode("source-order"); sourceItem.setName("原销售订单"); sourceItem.setLevel("required");
+            try {
+                var source = resolveReturnSource(sampleOrder, false);
+                vo.setSourceOrderId(source.order().getOrderId());
+                vo.setSourceOrderProductId(source.product().getId());
+                sourceItem.setPass(true); sourceItem.setStatus("ready");
+                sourceItem.setMessage("关联回原订单 " + source.order().getOrderNo() + "，保留原订单数量、价格及状态");
+            } catch (BusinessException e) {
+                sourceItem.setPass(false); sourceItem.setStatus("missing"); sourceItem.setMessage(e.getMessage());
+            }
+            items.add(sourceItem);
+            var confirmation = new com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem();
+            confirmation.setCode("customer-confirmation"); confirmation.setName("客户确认"); confirmation.setLevel("required");
+            confirmation.setPass(SampleOrderStatusEnum.CONFIRMED.getValue().equals(sampleOrder.getSampleStatus())
+                    && sampleOrder.getConvertedOrderId() == null);
+            confirmation.setMessage(confirmation.getPass() ? "客户已确认，可关联原订单" : "样品未确认或已关联，请刷新");
+            items.add(confirmation);
+            vo.setItems(items);
+            vo.setAllPass(items.stream().allMatch(i -> Boolean.TRUE.equals(i.getPass())));
+            return vo;
+        }
+
         java.util.List<com.jjx.sales.domain.vo.SalesOrderProductVO> prodList =
                 orderProductService.getListByOrderId(orderId);
         // 去重产品集合
@@ -3727,25 +3790,6 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
         items.add(transferItem);
 
-        boolean returnToSource = sampleOrder != null && SOURCE_SALES_ORDER.equals(sampleOrder.getSourceType());
-        vo.setReturnToSourceOrder(returnToSource);
-        if (returnToSource) {
-            vo.setSourceOrderNo(sampleOrder.getSourceNo());
-            vo.setProductCode(sampleOrder.getSampleProductCode());
-            vo.setProductName(sampleOrder.getSampleProductName());
-            var sourceItem = new com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem();
-            sourceItem.setCode("source-order"); sourceItem.setName("原销售订单"); sourceItem.setLevel("required");
-            try {
-                var source = resolveReturnSource(sampleOrder, false);
-                vo.setSourceOrderId(source.order().getOrderId());
-                vo.setSourceOrderProductId(source.product().getId());
-                sourceItem.setPass(true); sourceItem.setStatus("ready");
-                sourceItem.setMessage("关联回原订单 " + source.order().getOrderNo() + "，保留原订单数量、价格及状态");
-            } catch (BusinessException e) {
-                sourceItem.setPass(false); sourceItem.setStatus("missing"); sourceItem.setMessage(e.getMessage());
-            }
-            items.add(sourceItem);
-        }
         vo.setItems(items);
         vo.setAllPass(items.stream()
                 .filter(i -> "required".equals(i.getLevel()))
@@ -3795,11 +3839,6 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (sample.getCustomerId() == null || !sample.getCustomerId().equals(source.getCustomerId())) {
             throw new BusinessException("来源销售订单与样品单客户不一致");
         }
-        if (source.getOrderStatus() == null || !SAMPLEABLE_ORDER_STATUSES.contains(source.getOrderStatus())) {
-            String label = SalesOrderStatusEnum.getByValueSafe(source.getOrderStatus())
-                    .map(SalesOrderStatusEnum::getLabel).orElse("未知");
-            throw new BusinessException("原订单[" + source.getOrderNo() + "]状态为[" + label + "]，不能关联打样结果");
-        }
         var productQuery = Wrappers.<com.jjx.sales.domain.entity.SalesOrderProduct>lambdaQuery()
                 .eq(com.jjx.sales.domain.entity.SalesOrderProduct::getOrderId, source.getOrderId());
         if (lock) productQuery.last("FOR UPDATE");
@@ -3813,25 +3852,16 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
     private SalesOrder returnSampleToSource(SalesOrder sample) {
         SourceOrderProduct source = resolveReturnSource(sample, true);
-        requireConvertReady(sample.getOrderId());
-        safeTransition(sample.getOrderId(), SampleOrderStatusEnum.CONFIRMED, SampleOrderStatusEnum.TRANSFERRED, "关联回原订单");
+        if (!SampleOrderStatusEnum.CONFIRMED.getValue().equals(sample.getSampleStatus())
+                || sample.getConvertedOrderId() != null)
+            throw new BusinessException("样品单未确认或已关联，请刷新后重试");
         SalesOrder update = new SalesOrder();
         update.setOrderId(sample.getOrderId());
+        update.setSampleStatus(SampleOrderStatusEnum.TRANSFERRED.getValue());
         update.setConvertedOrderId(source.order().getOrderId());
         update.setConvertOrderTime(new Date());
         if (orderMapper.updateById(update) < 1) throw new BusinessException("关联原订单失败，请刷新后重试");
         return source.order();
-    }
-
-    private void requireConvertReady(Long orderId) {
-        var check = buildConvertCheck(orderId);
-        if (!Boolean.TRUE.equals(check.getAllPass())) {
-            String miss = check.getItems().stream()
-                    .filter(i -> "required".equals(i.getLevel()) && !Boolean.TRUE.equals(i.getPass()))
-                    .map(com.jjx.sales.domain.vo.SampleConvertCheckVO.CheckItem::getMessage)
-                    .collect(Collectors.joining("；"));
-            throw new BusinessException("转量产资料未就绪：" + miss);
-        }
     }
 
     @Override

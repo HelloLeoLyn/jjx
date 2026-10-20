@@ -89,6 +89,35 @@ class SampleReturnSourceOrderMysqlTest {
         assertEquals("SALES_ORDER", saved.getSourceType()); assertEquals("P37", saved.getSampleProductCode());
         assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM sales_order WHERE order_no LIKE ?", Integer.class, prefix + "%")); verifyNoInteractions(orderService);
     }
+    @Test void customerConfirmationAutoLinksAndRepeatedConfirmationDoesNotRewrite() {
+        jdbc.update("UPDATE sales_sample_order SET sample_status=? WHERE order_id=?", SampleOrderStatusEnum.SAMPLE_SENT.getValue(), sample.getOrderId());
+        var before = original(); var product = originalProduct();
+        service.confirmSample(sample.getOrderId(), "customer");
+        assertLinkedWithoutNewOrder(); assertEquals(before, original()); assertEquals(product, originalProduct());
+        var confirmed = orders.selectById(sample.getOrderId());
+        service.confirmSample(sample.getOrderId(), "other customer");
+        assertEquals(confirmed.getSampleConfirmDate(), orders.selectById(sample.getOrderId()).getSampleConfirmDate());
+        assertEquals("customer", orders.selectById(sample.getOrderId()).getSampleClientName());
+    }
+    @Test void failedAutoLinkAfterWriteRollsBackOnlyLinkAndAllowsManualRetry() {
+        jdbc.update("UPDATE sales_sample_order SET sample_status=? WHERE order_id=?", SampleOrderStatusEnum.SAMPLE_SENT.getValue(), sample.getOrderId());
+        failAfterLink = true;
+        var result = service.confirmSample(sample.getOrderId(), "customer");
+        assertTrue(result.getRemark().contains("关联回原订单"));
+        var saved = orders.selectById(sample.getOrderId());
+        assertEquals(SampleOrderStatusEnum.CONFIRMED.getValue(), saved.getSampleStatus());
+        assertNotNull(saved.getSampleConfirmDate()); assertNull(saved.getConvertedOrderId()); assertNull(saved.getConvertOrderTime());
+        failAfterLink = false; service.convertToProduction(sample.getOrderId()); assertLinkedWithoutNewOrder();
+    }
+    @Test void missingSourceOrProductDoesNotRollBackCustomerConfirmation() {
+        jdbc.update("UPDATE sales_sample_order SET sample_status=?,source_no='MISSING' WHERE order_id=?", SampleOrderStatusEnum.SAMPLE_SENT.getValue(), sample.getOrderId());
+        assertTrue(service.confirmSample(sample.getOrderId(), "customer").getRemark().contains("失败"));
+        assertEquals(SampleOrderStatusEnum.CONFIRMED.getValue(), orders.selectById(sample.getOrderId()).getSampleStatus());
+        jdbc.update("UPDATE sales_sample_order SET source_no=? WHERE order_id=?", source.getOrderNo(), sample.getOrderId());
+        jdbc.update("UPDATE sales_order_product SET product_id=9 WHERE id=?", originalLine.getId());
+        assertTrue(service.confirmSample(sample.getOrderId(), "customer").getRemark().contains("产品"));
+        assertNull(orders.selectById(sample.getOrderId()).getConvertedOrderId());
+    }
     @Test void postLinksAndRetryCannotRepeatWhileOriginalIsByteForByteUnchanged() {
         var before = original(); var product = originalProduct(); assertEquals(source.getOrderId(), service.convertSampleToProduction(sample.getOrderId(), null).getOrderId());
         assertLinkedWithoutNewOrder(); assertEquals(before, original()); assertEquals(product, originalProduct());
@@ -114,7 +143,7 @@ class SampleReturnSourceOrderMysqlTest {
     }
     @Test void deletedClosedWrongCustomerAndRemovedProductRejectWithoutLink() {
         jdbc.update("UPDATE sales_order SET deleted=1 WHERE order_id=?", source.getOrderId()); assertThrows(BusinessException.class, () -> service.convertSampleToProduction(sample.getOrderId(), null));
-        jdbc.update("UPDATE sales_order SET deleted=0,order_status=? WHERE order_id=?", SalesOrderStatusEnum.COMPLETED.getValue(), source.getOrderId()); assertThrows(BusinessException.class, () -> service.convertToProduction(sample.getOrderId()));
+        jdbc.update("UPDATE sales_order SET deleted=0,order_status=? WHERE order_id=?", SalesOrderStatusEnum.COMPLETED.getValue(), source.getOrderId());
         jdbc.update("UPDATE sales_order SET order_status=?,customer_id=? WHERE order_id=?", SalesOrderStatusEnum.DRAFT.getValue(), source.getCustomerId()+99999, source.getOrderId()); assertThrows(BusinessException.class, () -> service.convertSampleToProduction(sample.getOrderId(), null));
         jdbc.update("UPDATE sales_order SET customer_id=? WHERE order_id=?", source.getCustomerId(), source.getOrderId());
         jdbc.update("UPDATE sales_order_product SET product_id=9 WHERE id=?", originalLine.getId()); assertThrows(BusinessException.class, () -> service.convertSampleToProduction(sample.getOrderId(), null));

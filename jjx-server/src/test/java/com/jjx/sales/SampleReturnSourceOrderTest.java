@@ -82,9 +82,6 @@ class SampleReturnSourceOrderTest {
         assertEquals(100L, check.getSourceOrderId()); assertEquals(300L, check.getSourceOrderProductId()); verify(orders, never()).updateById(any(SalesOrder.class));
     }
     @Test void invalidOriginalOrderRejectedBeforeWrite() {
-        for (var status : List.of(SalesOrderStatusEnum.SHIPPED, SalesOrderStatusEnum.COMPLETED, SalesOrderStatusEnum.CANCELLED)) {
-            source.setOrderStatus(status.getValue()); assertThrows(BusinessException.class, () -> service.convertSampleToProduction(200L, null));
-        }
         source.setOrderStatus(SalesOrderStatusEnum.DRAFT.getValue()); source.setCustomerId(9L);
         assertThrows(BusinessException.class, () -> service.convertSampleToProduction(200L, null)); source.setCustomerId(7L);
         when(orders.selectList(any())).thenReturn(List.of()); assertThrows(BusinessException.class, () -> service.convertToProduction(200L));
@@ -98,12 +95,45 @@ class SampleReturnSourceOrderTest {
         line.setProductId(9L); when(lines.selectList(any())).thenReturn(List.of(line)); assertThrows(BusinessException.class, () -> service.convertSampleToProduction(200L, new SalesOrderAddDTO()));
         verify(orders, never()).updateById(any(SalesOrder.class));
     }
-    @Test void readinessConfirmationAndRetryGuardRemainRequired() {
-        when(((IEngineeringBomService)deps.get(IEngineeringBomService.class)).getOne(any(Wrapper.class))).thenReturn(null);
-        assertThrows(BusinessException.class, () -> service.convertSampleToProduction(200L, null)); ready(deps, 8L);
-        profile.setSampleStatus(SampleOrderStatusEnum.SAMPLE_SENT.getValue()); assertThrows(BusinessException.class, () -> service.convertToProduction(200L));
+    @Test void sourceLinkNeedsNoEngineeringButConfirmationAndRetryGuardRemainRequired() {
+        reset((IEngineeringBomService)deps.get(IEngineeringBomService.class));
+        assertEquals(100L, service.convertSampleToProduction(200L, null).getOrderId());
+        assertTrue(service.checkConvertReady(200L).getAllPass());
+        verifyNoInteractions(deps.get(IEngineeringBomService.class), deps.get(IEngineeringRoutingService.class));
+        clearInvocations(orders);
+        profile.setSampleStatus(SampleOrderStatusEnum.SAMPLE_SENT.getValue());
+        assertThrows(BusinessException.class, () -> service.convertToProduction(200L));
         profile.setSampleStatus(SampleOrderStatusEnum.TRANSFERRED.getValue()); profile.setConvertedOrderId(100L);
-        assertThrows(BusinessException.class, () -> service.convertSampleToProduction(200L, null)); verify(orders, never()).updateById(any(SalesOrder.class));
+        assertThrows(BusinessException.class, () -> service.convertSampleToProduction(200L, null));
+        verify(orders, never()).updateById(any(SalesOrder.class));
+    }
+    @Test void newProductionOrderStillRequiresBom() {
+        sample.setSourceType(null); profile.setSourceType(null);
+        when(((IEngineeringBomService)deps.get(IEngineeringBomService.class)).getOne(any(Wrapper.class))).thenReturn(null);
+        assertThrows(BusinessException.class, () -> service.convertSampleToProduction(200L, new SalesOrderAddDTO()));
+        verifyNoInteractions(orderService);
+    }
+    @Test void confirmedSalesSampleAutoLinksWithoutChangingOriginal() {
+        sample.setSampleStatus(SampleOrderStatusEnum.SAMPLE_SENT.getValue());
+        doAnswer(i -> { sample.setSampleStatus(i.getArgument(2)); return 1; }).when(orders).updateSampleStatus(eq(200L), anyInt(), anyInt());
+        service.confirmSample(200L, "客户");
+        verify(orders).updateById(argThat((SalesOrder o) -> Long.valueOf(100L).equals(o.getConvertedOrderId())
+                && SampleOrderStatusEnum.TRANSFERRED.getValue().equals(o.getSampleStatus())));
+        verifyNoInteractions(orderService, deps.get(IEngineeringBomService.class), deps.get(IEngineeringRoutingService.class));
+        assertEquals(100, source.getTotalQuantity()); assertEquals(BigDecimal.TEN, line.getUnitPrice());
+    }
+    @Test void failedAutoLinkKeepsConfirmationAndReturnsRetryHint() {
+        sample.setSampleStatus(SampleOrderStatusEnum.SAMPLE_SENT.getValue());
+        when(orders.selectList(any())).thenReturn(List.of());
+        var result = service.confirmSample(200L, "客户");
+        verify(orders).updateSampleStatus(200L, SampleOrderStatusEnum.SAMPLE_SENT.getValue(), SampleOrderStatusEnum.CONFIRMED.getValue());
+        assertTrue(result.getRemark().contains("关联回原订单"));
+        verify(orders, never()).updateById(argThat((SalesOrder o) -> o.getConvertedOrderId() != null));
+    }
+    @Test void repeatedConfirmationDoesNotWriteLinkedSampleAgain() {
+        sample.setSampleStatus(SampleOrderStatusEnum.TRANSFERRED.getValue()); sample.setConvertedOrderId(100L);
+        assertSame(sample, service.confirmSample(200L, "客户"));
+        verify(orders, never()).updateById(any(SalesOrder.class)); verify(orders, never()).updateSampleStatus(anyLong(), anyInt(), anyInt());
     }
     @Test void standaloneAndQuotationStillCreateOrderWithTrace() {
         for (String origin : Arrays.asList(null, "QUOTATION")) {
