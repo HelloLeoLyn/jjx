@@ -297,6 +297,25 @@ public class ProductWorkSpecVersionService {
             ProductWorkSpecVersion latest = versionMapper.selectLatestPublished(productId);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("productId", productId);
+            Long preparedById = null;
+            String preparedByName = null;
+            Long finalizedVersionId = null;
+            try {
+                String raw = workSpecMapper.read(productId);
+                if (raw != null && !raw.isBlank()) {
+                    JsonNode spec = json.readTree(raw);
+                    if (spec != null) {
+                        if (spec.path("preparedById").isNumber()) preparedById = spec.path("preparedById").asLong();
+                        if (spec.path("preparedByName").isTextual()) preparedByName = spec.path("preparedByName").asText();
+                        if (spec.path("finalizedVersionId").isNumber()) finalizedVersionId = spec.path("finalizedVersionId").asLong();
+                    }
+                }
+            } catch (Exception ignored) {
+                // 状态列失败不阻塞版本状态；无可读负责人时前端按待制定展示。
+            }
+            row.put("preparedById", preparedById);
+            row.put("preparedByName", preparedByName);
+            row.put("finalizedVersionId", finalizedVersionId);
             if (latest == null) {
                 row.put("latestVersionId", null);
                 row.put("latestVersionNo", null);

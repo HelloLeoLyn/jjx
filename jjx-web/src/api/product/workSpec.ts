@@ -226,6 +226,8 @@ export const productWorkSpecApi = {
   // 列表用：批量查最新发布版本 + 有无未发布改动（dev-20261011-027）
   batchStatus: (productIds: number[]) =>
     request.get('/product/work-spec/status', { params: { productIds: productIds.join(',') } }),
+  /** 显式制定规范（dev-20261020-016/017）：无负责人时原子占用，返回最新工作态。 */
+  claimWorkSpec: (id: number) => request.post('/product/' + id + '/work-spec/claim'),
   // 任意两个已发布版本比较（dev-20261011-028）
   compareVersions: (versionA: number, versionB: number) =>
     request.get('/product/work-spec/compare', { params: { versionA, versionB } }),

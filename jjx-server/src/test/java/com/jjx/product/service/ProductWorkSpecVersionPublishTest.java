@@ -135,4 +135,18 @@ class ProductWorkSpecVersionPublishTest {
         assertFalse(excluded.contains("客供资料"));
         assertTrue(excluded.contains("领料单"));
     }
+
+    @Test
+    void listStatusIncludesPreparedOwnerAndFinalizedDraft() {
+        when(versionMapper.selectLatestPublished(1L)).thenReturn(null);
+        when(workSpecMapper.read(1L)).thenReturn(
+                "{\"preparedById\":7,\"preparedByName\":\"工程甲\",\"finalizedVersionId\":12}");
+
+        Map<String, Object> row = service.statuses(List.of(1L)).get(0);
+
+        assertEquals(7L, ((Number) row.get("preparedById")).longValue());
+        assertEquals("工程甲", row.get("preparedByName"));
+        assertEquals(12L, ((Number) row.get("finalizedVersionId")).longValue());
+        assertNull(row.get("latestVersionNo"));
+    }
 }

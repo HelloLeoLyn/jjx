@@ -60,9 +60,28 @@
             >
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="340" align="center" fixed="right">
+        <el-table-column label="制定状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" :type="specStateType(row)">{{ specStateLabel(row) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="制定负责人" width="120" align="center">
+          <template #default="{ row }">
+            {{ versionInfoMap[Number(row.productId)]?.preparedByName || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="440" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openSpec(row)">作业规范</el-button>
+            <el-button
+              v-if="canClaimSpec(row)"
+              v-hasPermi="['product:edit']"
+              link
+              type="primary"
+              :loading="claimingId === Number(row.productId)"
+              @click="claimSpec(row)"
+              >制定规范</el-button
+            >
             <el-button
               v-hasPermi="['product:work-spec:publish']"
               link
@@ -124,6 +143,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { listProductPage } from '@/api/product'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import ProductSpecDrawer from '@/components/product/ProductSpecDrawer.vue'
@@ -161,6 +181,53 @@ async function loadVersionsStatus() {
 function openVersions(row: any) {
   versionsRow.value = row
   versionsVisible.value = true
+}
+// 列表制定状态/负责人（dev-20261020-017）：数据来自 batchStatus 的 preparedBy/finalizedVersionId。
+const claimingId = ref<number>()
+function specInfo(row: any) {
+  return versionInfoMap.value[Number(row?.productId)]
+}
+function specStateLabel(row: any) {
+  const info = specInfo(row)
+  if (!info) return '-'
+  if (info.finalizedVersionId) return '已定版'
+  if (info.preparedById) return '制定中'
+  return '待制定'
+}
+function specStateType(row: any): 'success' | 'warning' | 'info' {
+  const state = specStateLabel(row)
+  if (state === '已定版') return 'success'
+  if (state === '制定中') return 'warning'
+  return 'info'
+}
+function canClaimSpec(row: any) {
+  const info = specInfo(row)
+  return !!info && !info.preparedById && !info.finalizedVersionId
+}
+async function claimSpec(row: any) {
+  const productId = Number(row?.productId)
+  if (!productId || claimingId.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确认制定「${row.productCode || row.productName || productId}」的作业规范？制定后由你负责，其他人只能查看。`,
+      '制定规范',
+      { type: 'warning', confirmButtonText: '确认制定', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  claimingId.value = productId
+  try {
+    await productWorkSpecApi.claimWorkSpec(productId)
+    ElMessage.success('已开始制定，可以编辑作业规范')
+    await load()
+    openSpec(row)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '制定失败，请刷新后重试')
+    await load()
+  } finally {
+    claimingId.value = undefined
+  }
 }
 // 整页查看：关弹窗 → 打开作业规范抽屉并定位到该版本只读（dev-20261011-029）
 function openVersionFullPage(versionId: number) {
