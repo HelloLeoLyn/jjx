@@ -61,7 +61,7 @@
       :pending="pending"
       :rows="showRefs ? displayRefRows : []"
       :can-edit="canEdit"
-      :readonly-type="compactMode"
+      :readonly-type="compactMode && !editableDocumentType"
       :document-types="documentTypes"
       :source-type="sourceType"
       :source-no="sourceNo"
@@ -197,6 +197,8 @@ const props = withDefaults(
     actions?: AttachmentAction[]
     /** 业务锁定原因（如"已审核，不可再改"）：有值时写操作按钮置灰并显示原因（dev-20261015-028） */
     lockReason?: string
+    /** 证据区（upload-compact）是否允许改资料类型；默认 false 保持只读类型（dev-20261020-003） */
+    editableDocumentType?: boolean
   }>(),
   {
     sourceId: null,
@@ -231,6 +233,7 @@ const props = withDefaults(
     drawingMeta: null,
     uploadBlocked: '',
     refIdsFilter: () => [],
+    editableDocumentType: false,
   }
 )
 // ============ 02. 对外事件 Emits ============

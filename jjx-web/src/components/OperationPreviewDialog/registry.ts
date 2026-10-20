@@ -295,7 +295,7 @@ export const sampleOperations: OperationDef[] = [
     toStatus: 5,
     fields: [{ key: 'trackingNo', label: '快递单号', type: 'input', placeholder: '选填' }],
     evidence: true,
-    evidenceDefaultDocumentType: 'SAMPLE_CUSTOMER_EVIDENCE',
+    evidenceDefaultDocumentType: 'SAMPLE_SEND_EVIDENCE',
     events: ['sample.sent'],
     api: ({ bizId, values, attachmentRefIds }) =>
       sampleOrderApi.sendSample(

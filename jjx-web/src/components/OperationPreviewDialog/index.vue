@@ -99,6 +99,7 @@
           :view-perm="evidenceViewPerm"
           :edit-perm="evidenceEditPerm"
           :default-document-type="operation.evidenceDefaultDocumentType"
+          editable-document-type
           @uploaded="onEvidenceUploaded"
           @bound="onEvidenceBound"
         />
