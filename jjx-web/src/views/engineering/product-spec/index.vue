@@ -31,7 +31,13 @@
     <!-- 列表：一个产品一行 -->
     <el-card shadow="never">
       <el-table v-loading="loading" :data="rows" border>
-        <el-table-column label="产品编码" prop="productCode" min-width="150" />
+        <el-table-column label="产品编码" prop="productCode" min-width="150">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openSpec(row, true)">{{
+              row.productCode
+            }}</el-button>
+          </template>
+        </el-table-column>
         <el-table-column
           label="产品名称"
           prop="productName"
@@ -72,7 +78,6 @@
         </el-table-column>
         <el-table-column label="操作" width="540" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openSpec(row, true)">作业规范</el-button>
             <el-button
               v-if="canContinueSpec(row)"
               v-hasPermi="['product:edit']"
