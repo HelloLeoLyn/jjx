@@ -22,6 +22,11 @@ public class WorkSpecBindingService {
         return version == null ? null : version.getId();
     }
 
+    /** 是否存在未删除的版本，用于区分尚未制定和已有版本但未发布。 */
+    public boolean hasVersions(Long productId) {
+        return productId != null && !versions.selectByProductId(productId).isEmpty();
+    }
+
     /**
      * 校验显式绑定的版本：必须存在、属同产品且已发布。
      * <p>versionId 为 null 视为「未绑定」——历史未知版本不自动推断，直接报错。</p>

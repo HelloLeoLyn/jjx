@@ -11,6 +11,7 @@ import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.mapper.ProductMapper;
+import com.jjx.product.service.WorkSpecBindingService;
 import com.jjx.product.mapper.EngineeringRoutingMapper;
 import com.jjx.sales.domain.dto.ReviewDTO;
 import com.jjx.sales.domain.entity.SalesOrder;
@@ -67,6 +68,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
     private final EngineeringBomMapper productBomMapper;
     private final ProductMapper productMapper;
     private final EngineeringRoutingMapper productRoutingMapper;
+    private final WorkSpecBindingService workSpecBindingService;
     private final EventPublisher eventPublisher;
     private final com.jjx.inventory.service.InventoryAlertService inventoryAlertService;
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
@@ -449,6 +451,21 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         );
         // BOM/路线前置校验
         checkBomAndRouting(products);
+
+        // 全部产品通过后才创建 PLAN；仅检查发布版本是否存在，不改变订单行的历史绑定。
+        for (SalesOrderProduct product : products) {
+            if (product.getProductId() == null) {
+                log.warn("订单{}产品{}无productId（样品单），跳过作业规范检查", orderId, product.getProductCode());
+                continue;
+            }
+            if (workSpecBindingService.latestPublishedId(product.getProductId()) == null) {
+                String productLabel = "产品[" + product.getProductCode() + "] " + product.getProductName();
+                if (workSpecBindingService.hasVersions(product.getProductId())) {
+                    throw new BusinessException(productLabel + " 作业规范已制定但未发布，请先发布版本");
+                }
+                throw new BusinessException(productLabel + " 尚未制定作业规范，请先在产品作业规范页制定并发布");
+            }
+        }
 
         int createdCount = 0;
         for (SalesOrderProduct product : products) {
