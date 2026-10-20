@@ -11,7 +11,7 @@
       <thead><tr><th>序号</th><th>项目</th><th>材　料</th><th>规格及模数</th><th>刀模位置</th><th>凹凸条件</th><th></th></tr></thead>
       <tbody>
         <tr v-for="(row, i) in padded(page.rows, 14)" :key="i">
-          <td class="center">{{ '(' + ((page.continuation || 0) * 14 + i + 1) + ')' }}</td>
+          <td class="center">{{ (page.continuation || 0) * 14 + i + 1 }}</td>
           <td class="center"><SvgIcon v-if="row?.icon" :name="row.icon" :size="20" /><span v-else class="cell-single" :data-overflow-title="materialLabel(i) + '项目'" :title="plain(row?.processName)">{{ plain(row?.processName) }}</span></td>
           <td><span class="material-name" :data-overflow-title="materialLabel(i) + '材料'" :title="row?.materialName || row?.materialCode">{{ row?.materialName || row?.materialCode }}</span></td>
           <td><span class="cell-single" :data-overflow-title="materialLabel(i) + '规格及模数'" :title="workSpecMaterialSpec(row)">{{ workSpecMaterialSpec(row) }}</span></td>
@@ -41,7 +41,7 @@
         <tr v-for="line in flowRows" :key="line.index">
           <template v-for="cell in line.cells" :key="cell.column">
             <template v-if="cell.column !== 1 || line.index >= 8">
-              <td class="center">{{ '(' + cell.number + ')' }}</td>
+              <td class="center">{{ cell.number }}</td>
               <td>
                 <div v-if="cell.item" class="operation" :data-overflow-title="cell.label + '第' + cell.number + '道作业说明'" :data-overflow-text="operationText(cell.item)">
                   <div class="operation-symbols" data-overflow-part>
