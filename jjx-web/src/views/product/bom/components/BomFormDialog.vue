@@ -221,7 +221,7 @@ const formData = reactive<EngineeringBomFormData>({
   bomCode: '',
   bomName: '',
   bomVersion: '',
-  productId: 0,
+  productId: null,
   productCode: '',
   productName: '',
   isCurrent: false,
@@ -233,7 +233,14 @@ const formData = reactive<EngineeringBomFormData>({
 
 // 表单验证规则
 const rules = reactive<FormRules>({
-  productId: [{ required: true, message: '请选择产品', trigger: 'change' }],
+  productId: [{
+    required: true,
+    trigger: 'change',
+    validator: (_rule, value, callback) => {
+      if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) callback()
+      else callback(new Error('请选择有效产品'))
+    },
+  }],
   bomVersion: [{ message: '请输入BOM版本', trigger: 'blur' }],
   bomName: [{ required: true, message: '请输入BOM名称', trigger: 'blur' }],
   bomCode: [{ required: true, message: '请输入BOM编码', trigger: 'blur' }],
@@ -243,6 +250,7 @@ const rules = reactive<FormRules>({
 // 处理产品选择变化
 const handleProductChange = (productId: number | null, product: any) => {
   if (!product) {
+    formData.productId = null
     // 2026-09-15：清空产品时同步清掉回填字段——残留会让 productOptions 非空，
     // 且提交时 productCode/productName 与 productId 不一致
     const oldCode = formData.productCode
@@ -498,7 +506,7 @@ const resetForm = () => {
     bomId: undefined,
     bomCode: '',
     bomName: '',
-    productId: 0,
+    productId: null,
     productCode: '',
     productName: '',
     bomVersion: '',

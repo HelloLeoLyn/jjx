@@ -17,7 +17,7 @@ export interface EngineeringBomFormData {
   bomCode: string
   bomName: string
   bomVersion?: string
-  productId: number
+  productId: number | null
   productCode: string
   productName: string
   approveStatus?: number
