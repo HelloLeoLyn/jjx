@@ -45,8 +45,8 @@ vi.mock('element-plus/es/components/checkbox-group/style/css', () => ({}))
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { nextTick } from 'vue'
-import { ElSelect } from 'element-plus'
+import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue'
+import { ElDropdown, ElMessageBox, ElSelect } from 'element-plus'
 import OrderForm from '../OrderForm.vue'
 import { orderOwnership, productOwnership } from '@/composables/useAttachmentSession'
 
@@ -174,6 +174,7 @@ let seq = 500
 
 beforeEach(() => {
   localStorage.clear()
+  sessionStorage.clear()
   seq = 500
   vi.clearAllMocks()
   attachApi.tempUpload.mockImplementation(() => Promise.resolve({ data: ++seq }))
@@ -405,5 +406,128 @@ describe('销售订单随单附件（真实会话 + 真实表单模板）', () =
     expect(attachApi.batchUpdate.mock.calls[0][0][0]).toMatchObject({
       refId: 904, remark: '备注', sortOrder: 2,
     })
+  })
+})
+
+
+const draftSessionOf = (w: any) => managerStub(w).props('session')
+// 使用真实草稿存储、OrderForm 生命周期和附件会话，避免表单桩掩盖覆盖问题。
+const oldDraftId = 'sales_order-old'
+function seedActiveDraft() {
+  const snapshot = { ...data(), orderId: undefined, customerName: '旧草稿客户',
+    contactPerson: '旧联系人', traceId: 'TR-OLD', shippingAddress: '旧地址' }
+  localStorage.setItem(`attach-instance:v2:${oldDraftId}`, JSON.stringify({
+    id: oldDraftId, owner: '1', source: 'sales_order', page: '/sales/order/add',
+    pageInstance: 'old-page', active: true, createdAt: new Date().toISOString(), snapshot,
+  }))
+  sessionStorage.setItem('attach-active:v1:1:sales_order', oldDraftId)
+  localStorage.setItem(`attach-pending:v2:1:sales_order:${oldDraftId}`, '[]')
+  return snapshot
+}
+const quotationData = () => ({ ...data(), orderId: undefined, customerId: 7,
+  customerName: '报价客户', contactPerson: '报价联系人', contactPhone: '13800000000',
+  shippingAddress: '报价地址', traceId: 'TR-QUOTE', quotationId: 31,
+  items: [{ ...row(), id: 71, quantity: 5, unitPrice: 20, amount: 100 }],
+  totalAmount: 100, finalAmount: 100, totalQuantity: 5,
+})
+async function rawForm(extra: Record<string, any> = {}) {
+  const w = mount(OrderForm, { props: extra, global: { directives: { loading: () => {} } } })
+  wrappers.push(w)
+  await flushPromises()
+  return w
+}
+
+describe('报价转销售订单与旧草稿隔离', () => {
+  it.each([false, true])('报价客户/联系人/明细/金额及附件上下文保留（有旧草稿=%s）', async (old) => {
+    const oldSnapshot = old ? seedActiveDraft() : undefined
+    const initialData = quotationData()
+    const w = await rawForm({ sourceQuotationId: 31, initialData })
+    await flushPromises()
+    expect(w.vm.form).toMatchObject(initialData)
+    expect(attachApi.listRefs).toHaveBeenCalledWith('quotation', 31)
+    expect(draftSessionOf(w).storageKey.value).not.toContain(oldDraftId)
+    if (old) {
+      expect(JSON.parse(localStorage.getItem(`attach-instance:v2:${oldDraftId}`)!).snapshot).toEqual(oldSnapshot)
+      expect(localStorage.getItem(`attach-pending:v2:1:sales_order:${oldDraftId}`)).toBe('[]')
+    }
+  })
+
+  it('普通新增刷新自动恢复本标签页草稿；编辑读取正式订单', async () => {
+    const snapshot = seedActiveDraft()
+    const w = await rawForm()
+    expect(w.vm.form).toMatchObject(snapshot)
+    expect(draftSessionOf(w).storageKey.value).toContain(oldDraftId)
+    const edit = await rawForm({ isEdit: true, orderId: 9 })
+    expect(edit.vm.form).toMatchObject({ orderId: 9, customerName: '客户', totalAmount: 36 })
+    expect(api.getOrder).toHaveBeenCalledWith(9)
+  })
+
+  it('显式恢复仍先确认，取消保留报价；确认覆盖；放弃草稿仍先确认', async () => {
+    seedActiveDraft()
+    const w = await rawForm({ sourceQuotationId: 31, initialData: quotationData() })
+    const confirm = vi.spyOn(ElMessageBox, 'confirm')
+    try {
+      const restoreMenu = w.findAllComponents(ElDropdown).find(menu => menu.text().includes('恢复未保存草稿'))!
+      expect(restoreMenu.exists()).toBe(true)
+      confirm.mockRejectedValueOnce('cancel')
+      restoreMenu.vm.$emit('command', oldDraftId)
+      await flushPromises()
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining('整单内容'), '恢复未保存草稿', expect.any(Object))
+      expect(w.vm.form.customerName).toBe('报价客户')
+      confirm.mockResolvedValueOnce('confirm')
+      restoreMenu.vm.$emit('command', oldDraftId)
+      await flushPromises()
+      expect(w.vm.form.customerName).toBe('旧草稿客户')
+      expect(draftSessionOf(w).storageKey.value).toContain(oldDraftId)
+      confirm.mockRejectedValueOnce('cancel')
+      w.vm.$.setupState.discardAttachmentDraft(oldDraftId)
+      await flushPromises()
+      expect(localStorage.getItem(`attach-instance:v2:${oldDraftId}`)).not.toBeNull()
+      confirm.mockResolvedValueOnce('confirm')
+      w.vm.$.setupState.discardAttachmentDraft(oldDraftId)
+      await flushPromises()
+      expect(localStorage.getItem(`attach-instance:v2:${oldDraftId}`)).toBeNull()
+      expect(localStorage.getItem(`attach-pending:v2:1:sales_order:${oldDraftId}`)).toBeNull()
+    } finally { confirm.mockRestore() }
+  })
+
+  it('缓存页初次激活和重新激活保留报价表单、用户修改及同一附件队列', async () => {
+    seedActiveDraft()
+    const visible = ref(true)
+    const Host = defineComponent({ setup: () => () => h(KeepAlive, null, {
+      default: () => visible.value ? h(OrderForm, { sourceQuotationId: 31, initialData: quotationData() }) : null,
+    }) })
+    const host = mount(Host, { global: { directives: { loading: () => {} } } })
+    wrappers.push(host)
+    await flushPromises()
+    const w = host.findComponent(OrderForm)
+    expect(w.vm.form).toMatchObject(quotationData())
+    w.vm.form.contactPerson = '修改后的联系人'
+    const session = draftSessionOf(w)
+    const uploaded = await session.uploadTemporary(new File(['x'], '本报价附件.pdf'), orderOwnership())
+    session.registerUploaded(uploaded.entry, orderOwnership())
+    await flushPromises()
+    const key = draftSessionOf(w).storageKey.value
+    visible.value = false
+    await nextTick()
+    visible.value = true
+    await flushPromises()
+    expect(w.vm.form).toMatchObject({ ...quotationData(), contactPerson: '修改后的联系人' })
+    expect(draftSessionOf(w).storageKey.value).toBe(key)
+    expect(draftSessionOf(w).pending.value.map((p: any) => p.fileName)).toEqual(['本报价附件.pdf'])
+  })
+
+  it('切换报价后新表单不恢复上一报价草稿', async () => {
+    seedActiveDraft()
+    const first = await rawForm({ sourceQuotationId: 31, initialData: quotationData() })
+    const firstKey = draftSessionOf(first).storageKey.value
+    first.unmount()
+    wrappers.splice(wrappers.indexOf(first), 1)
+    const next = { ...quotationData(), quotationId: 32, customerId: 8, customerName: '新报价客户',
+      contactPerson: '新报价联系人', traceId: 'TR-QUOTE-32' }
+    const second = await rawForm({ sourceQuotationId: 32, initialData: next })
+    expect(second.vm.form).toMatchObject(next)
+    expect(draftSessionOf(second).storageKey.value).not.toBe(firstKey)
+    expect(attachApi.listRefs).toHaveBeenCalledWith('quotation', 32)
   })
 })

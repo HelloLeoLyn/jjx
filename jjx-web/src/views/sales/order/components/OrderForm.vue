@@ -319,7 +319,7 @@
     <!-- 附件上传（新建和编辑都显示） -->
     <el-divider content-position="left">订单附件</el-divider>
     <div class="attachment-section">
-      <!-- <el-dropdown v-if="!form.orderId && draftChoices.length" @command="restoreAttachmentDraft">
+      <el-dropdown v-if="!form.orderId && draftChoices.length" @command="restoreAttachmentDraft">
         <el-button plain>恢复未保存草稿</el-button>
         <template #dropdown>
           <el-dropdown-menu>
@@ -328,7 +328,7 @@
             }}</el-dropdown-item>
           </el-dropdown-menu>
         </template>
-      </el-dropdown> -->
+      </el-dropdown>
       <!-- <el-dropdown
         v-if="!form.orderId && draftChoices.length"
         style="margin-left: 8px"
@@ -845,8 +845,13 @@ const draftSession = useAttachmentDraftInstance('sales_order', {
   },
 })
 const { draftId, choices: draftChoices, complete: clearDraftId } = draftSession
+// 报价转换只重用本组件已打开的草稿，不接管本标签页的通用订单草稿。
+let quotationDraftId = ''
+watch(draftId, (id) => {
+  if (props.sourceQuotationId && id) quotationDraftId = id
+}, { flush: 'sync' })
 function ensureDraftId() {
-  if (!draftSession.resumeId || !draftSession.restore(draftSession.resumeId))
+  if (props.sourceQuotationId || !draftSession.resumeId || !draftSession.restore(draftSession.resumeId))
     draftSession.startNew()
 }
 function restoreAttachmentDraft(id: string) {
@@ -1370,7 +1375,10 @@ watch(
 // 缓存页面离开时已关闭实例；再次进入新增页必须创建新实例。
 onActivated(() => {
   if (!props.isEdit && !draftId.value && !form.orderId) {
-    resetForm()
+    if (props.sourceQuotationId) {
+      // deactivated 已保存当前快照；恢复同一实例也保留附件队列归属。
+      if (quotationDraftId && draftSession.restore(quotationDraftId)) return
+    } else resetForm()
     draftSession.startNew()
   }
 })
