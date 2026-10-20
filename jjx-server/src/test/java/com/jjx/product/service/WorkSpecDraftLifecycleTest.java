@@ -75,7 +75,9 @@ class WorkSpecDraftLifecycleTest {
         when(mapper.draftFiles(1L)).thenAnswer(call -> db.query("SELECT * FROM draft_ref ORDER BY sort_order", (rs, i) -> {
             Map<String,Object> result = new HashMap<>();
             result.put("attachmentId", rs.getLong("attachment_id")); result.put("refId", rs.getLong("attachment_id") + 100);
-            result.put("fileName", rs.getLong("attachment_id") + ".pdf"); return result;
+            result.put("fileName", rs.getLong("attachment_id") + ".pdf");
+            result.put("displayName", rs.getString("display_name"));
+            result.put("documentType", rs.getString("document_type")); return result;
         }));
         when(attachments.selectActiveForUpdate(anyLong())).thenAnswer(call -> file(call.getArgument(0)));
         var products = mock(IProductService.class);
@@ -94,9 +96,13 @@ class WorkSpecDraftLifecycleTest {
         });
         doAnswer(call -> {
             AttachmentRefMetadataDTO value = call.getArgument(1);
-            db.update("UPDATE draft_ref SET document_type=?,display_name=?,sort_order=? WHERE attachment_id=?", value.getDocumentType(), value.getDisplayName(), value.getSortOrder(), call.getArgument(0,Long.class)-100);
+            long attachmentId = call.getArgument(0, Long.class) - 100;
+            // 公共自动命名服务为独立回归边界；此处验证最终命名结果随草稿同事务保存。
+            int position = db.queryForObject("SELECT COUNT(*) FROM draft_ref WHERE document_type=? AND attachment_id<=?", Integer.class, value.getDocumentType(), attachmentId);
+            String generated = "WORK_SPEC-1-P1-ENG-SD-结构图-" + String.format("%02d", position);
+            db.update("UPDATE draft_ref SET document_type=?,display_name=?,sort_order=? WHERE attachment_id=?", value.getDocumentType(), generated, value.getSortOrder(), attachmentId);
             return null;
-        }).when(refs).update(anyLong(), any());
+        }).when(refs).updateAutoNamed(anyLong(), any());
         doAnswer(call -> { db.update("DELETE FROM draft_ref WHERE attachment_id=?", call.getArgument(1, Long.class)); return null; }).when(refs).detachWorkSpecFile(eq(1L), anyLong());
         when(logs.insert(any(SysOperLog.class))).thenAnswer(call -> {
             SysOperLog log = call.getArgument(0); return db.update("INSERT INTO operation_log(action,detail,module) VALUES (?,?,?)", log.getAction(), log.getDetail(), log.getModule());
@@ -157,8 +163,54 @@ class WorkSpecDraftLifecycleTest {
             .thenReturn(List.of(historical));
         save(11L);
         verify(refs, never()).create(any());
-        verify(refs).update(eq(111L), any());
+        verify(refs).updateAutoNamed(eq(111L), any());
         assertEquals("product", historical.getSourceType());
+    }
+
+    @Test void savedManifestAndResponseUseGeneratedNamesNotClientOrOriginalFileNames() {
+        save(11L, 12L);
+        var request = input(11L, 12L);
+        request.getAttachments().get(0).setDisplayName("原文件名.pdf");
+        request.getAttachments().get(1).setDisplayName("客户端缓存的旧展示名");
+        long previousLogs = count("operation_log");
+        ObjectNode result = tx.execute(status -> drafts.saveDraft(1L, request));
+        for (int i = 0; i < 2; i++) {
+            String expected = "WORK_SPEC-1-P1-ENG-SD-结构图-0" + (i + 1);
+            assertEquals(expected, result.path("draftAttachments").get(i).path("displayName").asText());
+            assertEquals(expected, result.path("draftFiles").get(i).path("displayName").asText());
+            assertEquals((11 + i) + ".pdf", result.path("draftFiles").get(i).path("fileName").asText());
+        }
+        assertEquals(previousLogs, count("operation_log"), "客户端缓存名不构成业务修改");
+        assertFalse(mapper.read(1L).contains("原文件名.pdf"));
+        var refs = (AttachmentRefService) ReflectionTestUtils.getField(drafts, "draftRefs");
+        verify(refs, atLeastOnce()).updateAutoNamed(anyLong(), argThat(meta -> meta.getDisplayName() == null));
+    }
+
+    @Test void readUsesCurrentReferenceNameWithoutWritingOldManifestOrChangingRevision() throws Exception {
+        save(11L);
+        ObjectNode stale = (ObjectNode) json.readTree(mapper.read(1L));
+        ((ObjectNode) stale.path("draftAttachments").get(0)).put("displayName", "旧清单原名.pdf");
+        mapper.write(1L, stale.toString());
+        String rawBefore = mapper.read(1L);
+        ObjectNode result = drafts.get(1L);
+        assertEquals("WORK_SPEC-1-P1-ENG-SD-结构图-01", result.path("draftFiles").get(0).path("displayName").asText());
+        assertEquals(result.path("draftFiles").get(0).path("displayName"), result.path("draftAttachments").get(0).path("displayName"));
+        assertEquals(rawBefore, mapper.read(1L), "读取不订正数据库");
+        tx.execute(status -> drafts.saveDraft(1L, input(11L)));
+        assertFalse(mapper.read(1L).contains("旧清单原名.pdf"));
+    }
+
+    @Test void upgradeRegeneratesNamesAndDoesNotRewriteHistoricalSnapshot() throws Exception {
+        save(11L);
+        long version = publish().getId();
+        ObjectNode oldSnapshot = (ObjectNode) json.readTree(mapper.versionSnapshot(version));
+        ((ObjectNode) oldSnapshot.path("spec").path("draftAttachments").get(0)).put("displayName", "历史原文件名.pdf");
+        db.update("UPDATE version_record SET snapshot=? WHERE id=?", oldSnapshot.toString(), version);
+        String frozen = mapper.versionSnapshot(version);
+        var request = input(); request.setBaseVersionId(version);
+        ObjectNode result = tx.execute(status -> drafts.upgradeDraft(1L, request));
+        assertEquals("WORK_SPEC-1-P1-ENG-SD-结构图-01", result.path("draftAttachments").get(0).path("displayName").asText());
+        assertEquals(frozen, mapper.versionSnapshot(version));
     }
 
     @Test void explicitClaimAndTransferAndNoOpDoNotProduceExtraHistory() {

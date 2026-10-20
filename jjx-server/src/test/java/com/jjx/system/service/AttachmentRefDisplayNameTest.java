@@ -56,6 +56,74 @@ class AttachmentRefDisplayNameTest {
     }
 
     @Test
+    void automaticMetadataRepairsOriginalNameAndLogsFinalGeneratedName() {
+        SysAttachmentRef original = ref(5L, 50L, "STRUCTURE_DRAWING", "原文件名.pdf");
+        original.setSourceType("work_spec");
+        SysAttachmentRef named = ref(5L, 50L, "STRUCTURE_DRAWING", "WORK_SPEC-3-P7-ENG-SD-结构图-01");
+        named.setSourceType("work_spec");
+        when(refs.selectById(5L)).thenReturn(original, named);
+        when(refs.lockActive(50L)).thenReturn(List.of(original));
+        when(names.baseName("work_spec", 3L, 7L, "STRUCTURE_DRAWING")).thenReturn("WORK_SPEC-3-P7-ENG-SD-结构图");
+        when(names.isGeneratedName("原文件名.pdf", "WORK_SPEC-3-P7-ENG-SD-结构图")).thenReturn(false);
+        AttachmentRefMetadataDTO body = new AttachmentRefMetadataDTO();
+        body.setDocumentType("STRUCTURE_DRAWING"); body.setSortOrder(0);
+        body.setDisplayName("不可信客户端缓存.pdf");
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            service.updateAutoNamed(5L, body);
+        }
+        ArgumentCaptor<Object[]> writes = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbc).update(startsWith("UPDATE sys_attachment_ref SET document_type"), writes.capture());
+        assertNull(writes.getValue()[1], "先清除原名，再由既有编号服务生成");
+        verify(names).renumber("work_spec", 3L, 7L, "STRUCTURE_DRAWING", "operator");
+        verify(operationLogs).record(eq("work_spec"), eq(3L), isNull(), eq(2), eq("附件资料修改"),
+            eq(5L), eq(50L), anyString(), eq(true), argThat(changes ->
+                changes.stream().anyMatch(change -> change.contains("WORK_SPEC-3-P7-ENG-SD-结构图-01"))));
+    }
+
+    @Test
+    void automaticMetadataIgnoresCachedNameAndDoesNotWriteWhenAlreadyGenerated() {
+        SysAttachmentRef ref = ref(5L, 50L, "STRUCTURE_DRAWING", "WORK_SPEC-3-P7-ENG-SD-结构图-01");
+        ref.setSourceType("work_spec");
+        when(refs.selectById(5L)).thenReturn(ref);
+        when(refs.lockActive(50L)).thenReturn(List.of(ref));
+        when(names.baseName("work_spec", 3L, 7L, "STRUCTURE_DRAWING")).thenReturn("WORK_SPEC-3-P7-ENG-SD-结构图");
+        when(names.isGeneratedName(ref.getDisplayName(), "WORK_SPEC-3-P7-ENG-SD-结构图")).thenReturn(true);
+        AttachmentRefMetadataDTO body = new AttachmentRefMetadataDTO();
+        body.setDocumentType("STRUCTURE_DRAWING"); body.setSortOrder(0); body.setDisplayName("旧文件名.pdf");
+        service.updateAutoNamed(5L, body);
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+        verify(names, never()).renumber(anyString(), anyLong(), anyLong(), anyString(), anyString());
+        verifyNoInteractions(operationLogs);
+    }
+
+    @Test
+    void automaticMetadataTypeChangeRegeneratesAndMissingDictionaryNameFails() {
+        SysAttachmentRef ref = ref(5L, 50L, "STRUCTURE_DRAWING", "WORK_SPEC-3-P7-ENG-SD-结构图-01");
+        ref.setSourceType("work_spec");
+        SysAttachmentRef changed = ref(5L, 50L, "PANEL_DRAWING", "WORK_SPEC-3-P7-ENG-PD-面板图-01");
+        changed.setSourceType("work_spec");
+        when(refs.selectById(5L)).thenReturn(ref, changed);
+        when(refs.lockActive(50L)).thenReturn(List.of(ref));
+        when(names.baseName("work_spec", 3L, 7L, "STRUCTURE_DRAWING")).thenReturn("WORK_SPEC-3-P7-ENG-SD-结构图");
+        when(names.isGeneratedName(ref.getDisplayName(), "WORK_SPEC-3-P7-ENG-SD-结构图")).thenReturn(true);
+        AttachmentRefMetadataDTO body = new AttachmentRefMetadataDTO();
+        body.setDocumentType("PANEL_DRAWING"); body.setSortOrder(0);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            service.updateAutoNamed(5L, body);
+        }
+        verify(names).renumber("work_spec", 3L, 7L, "STRUCTURE_DRAWING", "operator");
+        verify(names).renumber("work_spec", 3L, 7L, "PANEL_DRAWING", "operator");
+        changed.setDisplayName(null);
+        when(refs.selectById(5L)).thenReturn(ref, changed);
+        try (MockedStatic<StpUtil> auth = mockStatic(StpUtil.class)) {
+            auth.when(StpUtil::getLoginIdAsString).thenReturn("operator");
+            assertThrows(com.jjx.common.exception.BusinessException.class, () -> service.updateAutoNamed(5L, body));
+        }
+    }
+
+    @Test
     void createSerializesGroupAndNumbersNewAutomaticName() {
         SysAttachment file = file(50L);
         when(files.selectActiveForUpdate(50L)).thenReturn(file);

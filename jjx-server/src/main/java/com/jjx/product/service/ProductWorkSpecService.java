@@ -184,11 +184,10 @@ public class ProductWorkSpecService {
                 ref.setAttachmentId(file.getId()); ref.setSourceType("work_spec"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(item.getDocumentType());
                 Long refId = workSpecRefId(id, ref);
                 AttachmentRefMetadataDTO meta = new AttachmentRefMetadataDTO();
-                meta.setDocumentType(item.getDocumentType()); meta.setDisplayName(item.getDisplayName()); meta.setRemark(item.getRemark()); meta.setSortOrder(manifest.size());
-                draftRefs.update(refId, meta);
+                meta.setDocumentType(item.getDocumentType()); meta.setRemark(item.getRemark()); meta.setSortOrder(manifest.size());
+                draftRefs.updateAutoNamed(refId, meta);
                 ObjectNode entry = manifest.addObject();
                 entry.put("attachmentId", file.getId()); entry.put("documentType", item.getDocumentType());
-                entry.put("displayName", item.getDisplayName() == null || item.getDisplayName().isBlank() ? file.getFileName() : item.getDisplayName());
                 entry.put("remark", Objects.toString(item.getRemark(), "")); entry.put("sortOrder", manifest.size() - 1);
                 entry.put("print", item.getPrint() == null ? previewable(file) : item.getPrint());
                 entry.put("sha256", Objects.toString(file.getSha256(), ""));
@@ -199,6 +198,8 @@ public class ProductWorkSpecService {
             }
             if (next.hasNonNull("structureFileId") && !ids.contains(next.path("structureFileId").asLong())) next.putNull("structureFileId");
         }
+        // 类型变更会重排同组名称，待本次引用操作全部完成后再固化最终展示名。
+        syncDraftAttachmentNames(next, draftFilesById(id));
         if (input.getSpec() != null) {
             input.getSpec().setStructureFileId(next.hasNonNull("structureFileId") ? next.path("structureFileId").asLong() : null);
             validate(id, input.getSpec());
@@ -242,12 +243,13 @@ public class ProductWorkSpecService {
             ref.setSourceType("work_spec"); ref.setSourceId(id); ref.setProductId(id); ref.setDocumentType(entry.path("documentType").asText());
             Long refId = workSpecRefId(id, ref);
             AttachmentRefMetadataDTO meta = new AttachmentRefMetadataDTO();
-            meta.setDocumentType(entry.path("documentType").asText()); meta.setDisplayName(entry.path("displayName").asText());
+            meta.setDocumentType(entry.path("documentType").asText());
             meta.setRemark(entry.path("remark").asText("")); meta.setSortOrder(entry.path("sortOrder").asInt());
-            draftRefs.update(refId, meta);
+            draftRefs.updateAutoNamed(refId, meta);
         }
         for (JsonNode entry : old.path("draftAttachments"))
             if (!selected.contains(entry.path("attachmentId").asLong())) draftRefs.detachWorkSpecFile(id, entry.path("attachmentId").asLong());
+        syncDraftAttachmentNames(source, draftFilesById(id));
         mapper.write(id, source.toString());
         recordOperation(id, "从旧版升级", old, source);
         return response(id, mapper.read(id));
@@ -508,11 +510,31 @@ public class ProductWorkSpecService {
         if (product == null || product.getProduct() == null) throw new BusinessException("产品不存在");
         return product;
     }
+    private Map<Long, Map<String, Object>> draftFilesById(Long id) {
+        Map<Long, Map<String, Object>> available = new java.util.HashMap<>();
+        for (var file : mapper.draftFiles(id)) {
+            Long attachmentId = ((Number) file.get("attachmentId")).longValue();
+            // 与 workSpecRefId 一致：重复的历史来源取最早的有效引用。
+            available.merge(attachmentId, file, (a, b) ->
+                ((Number) a.get("refId")).longValue() <= ((Number) b.get("refId")).longValue() ? a : b);
+        }
+        return available;
+    }
+
+    private void syncDraftAttachmentNames(ObjectNode spec, Map<Long, Map<String, Object>> available) {
+        for (JsonNode entry : spec.path("draftAttachments")) {
+            var file = available.get(entry.path("attachmentId").asLong());
+            if (file != null && file.get("displayName") instanceof String name && !name.isBlank())
+                ((ObjectNode) entry).put("displayName", name);
+        }
+    }
+
     private ObjectNode response(Long id, String raw) {
         ObjectNode data = parse(raw);
         if (data.path("draftAttachments").isArray()) {
-            Map<Long, Map<String, Object>> available = new java.util.HashMap<>();
-            for (var file : mapper.draftFiles(id)) available.put(((Number) file.get("attachmentId")).longValue(), file);
+            Map<Long, Map<String, Object>> available = draftFilesById(id);
+            // 展示名属于当前引用；清单中的旧缓存不能覆盖后端生成结果。
+            syncDraftAttachmentNames(data, available);
             var files = data.putArray("draftFiles");
             for (JsonNode entry : data.path("draftAttachments")) {
                 ObjectNode file = available.containsKey(entry.path("attachmentId").asLong()) ? json.valueToTree(available.get(entry.path("attachmentId").asLong())) : json.createObjectNode();

@@ -314,6 +314,16 @@ public class AttachmentRefService {
 
     @Transactional(rollbackFor = Exception.class)
     public void update(Long id, AttachmentRefMetadataDTO body) {
+        updateMetadata(id, body, false);
+    }
+
+    /** 作业规范统一命名：忽略客户端缓存的展示名，修复原文件名占用展示名的旧引用。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateAutoNamed(Long id, AttachmentRefMetadataDTO body) {
+        updateMetadata(id, body, true);
+    }
+
+    private void updateMetadata(Long id, AttachmentRefMetadataDTO body, boolean automaticName) {
         SysAttachmentRef initial = readable(id);
         SysAttachment file = lock(initial.getAttachmentId());
         SysAttachmentRef ref = refs.lockActive(initial.getAttachmentId()).stream().filter(r -> r.getId().equals(id))
@@ -325,8 +335,9 @@ public class AttachmentRefService {
         String oldBase = displayNames.baseName(ref.getSourceType(), ref.getSourceId(), ref.getProductId(), ref.getDocumentType());
         boolean generated = displayNames.isGeneratedName(oldDisplayName, oldBase);
         boolean typeChanged = !Objects.equals(type, ref.getDocumentType());
-        String requestedDisplayName = optional(body.getDisplayName(), 255);
-        String displayName = typeChanged && generated
+        String requestedDisplayName = automaticName ? null : optional(body.getDisplayName(), 255);
+        boolean rebuildAutomaticName = automaticName && (!generated || typeChanged);
+        String displayName = automaticName ? (rebuildAutomaticName ? null : oldDisplayName) : typeChanged && generated
             && (requestedDisplayName == null || Objects.equals(requestedDisplayName, oldDisplayName))
                 ? null
                 : (body.getDisplayName() != null ? requestedDisplayName : oldDisplayName);
@@ -335,9 +346,9 @@ public class AttachmentRefService {
         boolean generatedNameWillBeRebuilt = typeChanged && generated
             && (requestedDisplayName == null || Objects.equals(requestedDisplayName, oldDisplayName));
         List<String> changes = metadataChanges(ref, type, displayName, remark, sortOrder, !generatedNameWillBeRebuilt);
-        if (changes.isEmpty()) return;
+        if (changes.isEmpty() && !rebuildAutomaticName) return;
         Set<AttachmentDisplayNameService.GroupKey> affected = new LinkedHashSet<>();
-        if (typeChanged || body.getDisplayName() != null) {
+        if (typeChanged || (!automaticName && body.getDisplayName() != null) || rebuildAutomaticName) {
             affected.add(group(ref));
             affected.add(group(ref.getSourceType(), ref.getSourceId(), ref.getProductId(), type));
             displayNames.lockGroups(affected);
@@ -345,6 +356,12 @@ public class AttachmentRefService {
         jdbc.update("UPDATE sys_attachment_ref SET document_type=?,display_name=?,remark=?,sort_order=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
             type, displayName, remark, sortOrder, StpUtil.getLoginIdAsString(), id);
         renumber(affected);
+        if (rebuildAutomaticName) {
+            SysAttachmentRef named = refs.selectById(id);
+            if (named == null || named.getDisplayName() == null || named.getDisplayName().isBlank())
+                throw new BusinessException("附件展示名生成失败，请检查资料类型字典");
+            changes = metadataChanges(ref, type, named.getDisplayName(), remark, sortOrder, true);
+        }
         recordRefChange(ref, file, BusinessType.UPDATE.getCode(), "附件资料修改", changes);
     }
 
