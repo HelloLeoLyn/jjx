@@ -139,8 +139,8 @@ class ProductWorkSpecVersionPublishTest {
     @Test
     void listStatusIncludesPreparedOwnerAndFinalizedDraft() {
         when(versionMapper.selectLatestPublished(1L)).thenReturn(null);
-        when(workSpecMapper.read(1L)).thenReturn(
-                "{\"preparedById\":7,\"preparedByName\":\"工程甲\",\"finalizedVersionId\":12}");
+        when(workSpecMapper.readBatch(List.of(1L))).thenReturn(List.of(Map.of("productId", 1L,
+                "workSpecJson", "{\"preparedById\":7,\"preparedByName\":\"工程甲\",\"finalizedVersionId\":12}")));
 
         Map<String, Object> row = service.statuses(List.of(1L)).get(0);
 

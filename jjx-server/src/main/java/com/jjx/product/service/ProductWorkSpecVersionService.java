@@ -290,6 +290,14 @@ public class ProductWorkSpecVersionService {
         if (productIds == null || productIds.isEmpty()) {
             return out;
         }
+        List<Long> queryIds = productIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (queryIds.isEmpty()) {
+            return out;
+        }
+        Map<Long, String> workSpecs = new HashMap<>();
+        for (Map<String, Object> spec : workSpecMapper.readBatch(queryIds)) {
+            workSpecs.put(((Number) spec.get("productId")).longValue(), (String) spec.get("workSpecJson"));
+        }
         for (Long productId : productIds) {
             if (productId == null) {
                 continue;
@@ -300,8 +308,8 @@ public class ProductWorkSpecVersionService {
             Long preparedById = null;
             String preparedByName = null;
             Long finalizedVersionId = null;
+            String raw = workSpecs.get(productId);
             try {
-                String raw = workSpecMapper.read(productId);
                 if (raw != null && !raw.isBlank()) {
                     JsonNode spec = json.readTree(raw);
                     if (spec != null) {
@@ -325,7 +333,8 @@ public class ProductWorkSpecVersionService {
                 row.put("latestVersionId", latest.getId());
                 row.put("latestVersionNo", latest.getVersionNo());
                 row.put("latestPublishedAt", latest.getPublishedAt());
-                row.put("hasUnpublishedChanges", !buildDiffFields(latest).isEmpty());
+                row.put("hasUnpublishedChanges", !compareSnapshots(
+                        parseSafe(specSnapshot(latest.getId())), parseSafe(raw)).isEmpty());
             }
             out.add(row);
         }

@@ -13,6 +13,16 @@ public interface ProductWorkSpecMapper {
     @Select("SELECT CAST(work_spec_json AS CHAR) FROM product WHERE product_id = #{id}")
     String read(Long id);
 
+    /** 列表一次读取当前工作态，调用方须传入非空产品 ID 集合。 */
+    @Select("""
+        <script>
+        SELECT product_id AS productId, CAST(work_spec_json AS CHAR) AS workSpecJson
+        FROM product WHERE product_id IN
+        <foreach collection="productIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </script>
+        """)
+    List<Map<String, Object>> readBatch(@Param("productIds") List<Long> productIds);
+
     @Select("SELECT product_id, work_spec_json FROM product WHERE product_id = #{id} FOR UPDATE")
     Map<String, Object> lock(Long id);
 
