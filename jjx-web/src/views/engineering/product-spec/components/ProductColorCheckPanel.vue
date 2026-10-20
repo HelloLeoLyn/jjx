@@ -44,10 +44,13 @@ import type { DocsetData } from './docset'
 
 interface ColorCheckDraft { result: string; reason: string }
 
-const props = defineProps<{ productId: number }>()
+const props = withDefaults(defineProps<{ productId: number; readOnly?: boolean }>(), {
+  readOnly: false,
+})
 const emit = defineEmits<{ busy: [value: boolean]; updated: [] }>()
 const user = useUserStore()
-const canEdit = computed(() => user.hasPermission('product:edit'))
+// 作业规范只读查看、非负责人或已定版时，分色检查表不得录入（dev-20261020-019）。
+const canEdit = computed(() => !props.readOnly && user.hasPermission('product:edit'))
 const preview = ref<InstanceType<typeof ProductSpecPreview>>()
 const data = shallowRef<DocsetData>()
 const editorVisible = ref(false)

@@ -368,6 +368,7 @@
               v-if="productId && activeTab === 'color'"
               :key="`${productId}-color`"
               :product-id="productId"
+              :read-only="specViewOnly || !draftSession.canWrite.value"
               @busy="colorCheckBusy = $event"
               @updated="refreshSpecSources"
             />

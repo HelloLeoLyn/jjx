@@ -243,7 +243,11 @@
             class="die-alert"
             title="检测到旧版刀模位置文本（未按 BOM 行），可迁移到 BOM 行"
           >
-            <el-button link type="primary" :disabled="!canEdit" @click="migrateLegacyDie"
+            <el-button
+              v-if="canEdit"
+              link
+              type="primary"
+              @click="migrateLegacyDie"
               >迁移旧文本</el-button
             >
           </el-alert>
@@ -465,8 +469,16 @@ async function ownerAction(transfer: boolean) {
       ElMessage.error(cause instanceof Error ? cause.message : '负责人操作失败')
   }
 }
-const canEditBom = computed(() => user.hasPermission('engineering:bom:edit'))
-const canEditRoute = computed(() => user.hasPermission('engineering:routing:edit'))
+// 只读查看、非负责人或已定版时，BOM/工艺路线等正文外编辑入口一并关闭（dev-20261020-019）。
+const canEditBom = computed(
+  () => !props.viewOnly && draftSession.canWrite.value && user.hasPermission('engineering:bom:edit')
+)
+const canEditRoute = computed(
+  () =>
+    !props.viewOnly &&
+    draftSession.canWrite.value &&
+    user.hasPermission('engineering:routing:edit')
+)
 const previewVisible = ref(false)
 const loading = ref(false)
 const loadError = ref('')
