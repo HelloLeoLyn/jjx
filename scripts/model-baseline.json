@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-18",
-  "tableCountBaseline": 131,
+  "generatedAt": "2026-10-21",
+  "tableCountBaseline": 132,
   "tables": [
     "archive_production_quality_inspection",
     "archive_production_quality_inspection_item",
@@ -20,6 +20,7 @@
     "engineering_screen_frame",
     "engineering_screen_plate",
     "engineering_standard_process",
+    "engineering_standard_process_usage",
     "hr_dept_mapping",
     "hr_employee",
     "inventory_alert_log",
@@ -204,6 +205,13 @@
       "date": "2026-10-12",
       "proposalLink": "jjx-docs/history/common-attachment-v1a-20261012.md",
       "reason": "公共附件 V1-A 业务引用表（迁移 271 新增，已执行并记账）：多态来源引用 + 软删审计 + 活动引用唯一键，解绑保留审计；用户 2026-10-12 授权登记 approvedNewTables"
+    },
+    {
+      "table": "engineering_standard_process_usage",
+      "taskCode": "dev-20261021-018",
+      "date": "2026-10-21",
+      "proposalLink": "jjx-docs/sql/migrations/applied/297_standard_process_usage.sql",
+      "reason": "全公司标准工序使用量日聚合表（process_id+period_date 唯一键，按 COUNT(DISTINCT bom_id) 计，供「常用」tab 排序）：用户 2026-10-21 在任务卡 dev-20261021-018 中拍板建表，迁移 297 已执行。"
     }
   ],
   "typeSuffixAllowlist": [
