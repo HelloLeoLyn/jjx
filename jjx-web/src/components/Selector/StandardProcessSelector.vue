@@ -239,14 +239,18 @@ const categoryGroups = computed(() => {
 })
 
 const commonItems = computed(() => {
-  const items = commonProcessIds.value
-    .map((id) => selectableProcesses.value.find((p) => p.processId === id))
+  // 默认常用固定在前（顺序按用户指定编码），接口返回的高频项去重后追加在后。
+  // 用户 2026-10-21 口径：这 20 项是默认，使用频次只做「自动加」，不替换默认。
+  const byId = new Map(selectableProcesses.value.map((p) => [p.processId, p]))
+  const defaults = COMMON_CODES
+    .map((code) => selectableProcesses.value.find((p) => p.processCode === code))
     .filter((p): p is StandardProcessItem => Boolean(p))
-  return items.length
-    ? items
-    : COMMON_CODES
-        .map((code) => selectableProcesses.value.find((p) => p.processCode === code))
-        .filter((p): p is StandardProcessItem => Boolean(p))
+  const defaultIds = new Set(defaults.map((p) => p.processId))
+  const extra = commonProcessIds.value
+    .filter((id) => !defaultIds.has(id))
+    .map((id) => byId.get(id))
+    .filter((p): p is StandardProcessItem => Boolean(p))
+  return [...defaults, ...extra]
 })
 const groups = computed(() => [
   { value: COMMON_TAB, label: '常用', items: commonItems.value },
