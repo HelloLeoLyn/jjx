@@ -5,6 +5,8 @@
     append-to-body
     :fullscreen="isFullscreen"
     destroy-on-close
+    :close-on-click-modal="false"
+    :before-close="handleBeforeClose"
   >
     <template #header>
       <div class="dialog-header">
@@ -149,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules, UploadFile, UploadInstance } from 'element-plus'
 import { FullScreen, UploadFilled, Download } from '@element-plus/icons-vue'
@@ -276,9 +278,68 @@ const handleProductChange = (productId: number | null, product: any) => {
   formData.bomCode = `${product.productCode}-BOM`
 }
 
+// ==================== 未保存离开拦截（dev-20261021-015，沿用工艺路线范式） ====================
+const text = (value: unknown) => (value == null ? '' : String(value).trim())
+const num = (value: unknown) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : 0
+}
+/** 明细只取用户可编辑列；应用料/实际投料等派生值不计入，负临时 itemId 不参与比较。 */
+const snapshotItems = (items: EngineeringBomItem[]) =>
+  (items || []).map((item) => ({
+    materialId: num(item.materialId),
+    materialCode: text(item.materialCode),
+    materialName: text(item.materialName),
+    specification: text(item.specification),
+    // processId 由项目名称异步回填（useEnabledProcesses），不作为 dirty 依据；用户改选会同时改 processName。
+    processName: text(item.processName),
+    unit: text(item.unit),
+    quantity: num(item.quantity),
+    lossRate: num(item.lossRate),
+    remark: text(item.remark),
+    moduleQty: num(item.moduleQty),
+    split: text(item.split),
+    baseQty: num(item.baseQty),
+    minIssueQty: num(item.minIssueQty),
+    widthMm: num(item.widthMm),
+    lengthMm: num(item.lengthMm),
+  }))
+
+/** 完整快照：表头可编辑字段 + 明细关键列；明细取编辑器当前值，避免只 watch formData 漏判。 */
+const fullFormSnapshot = (): string =>
+  JSON.stringify({
+    productId: formData.productId ?? null,
+    bomCode: text(formData.bomCode),
+    bomName: text(formData.bomName),
+    bomVersion: text(formData.bomVersion),
+    isCurrent: !!formData.isCurrent,
+    effectiveDate: text(formData.effectiveDate),
+    expiryDate: text(formData.expiryDate),
+    remark: text(formData.remark),
+    items: snapshotItems(bomItemEditorRef.value?.getItems?.() || formData.items || []),
+  })
+
+const baseline = ref('')
+const isDirty = ref(false)
+const suppressGuard = ref(false)
+const setBaseline = () => {
+  baseline.value = fullFormSnapshot()
+  isDirty.value = false
+}
+const recomputeDirty = () => {
+  if (!baseline.value) {
+    isDirty.value = false
+    return
+  }
+  isDirty.value = fullFormSnapshot() !== baseline.value
+}
+
+// 表头任意变更都重算；明细在编辑器内部，靠 change 事件触发（内部取 getItems）。
+watch(formData, recomputeDirty, { deep: true })
+
 // 处理BOM明细变化
-const handleItemsChange = (items: EngineeringBomItem[]) => {
-  console.log('BOM明细已更新:', items)
+const handleItemsChange = () => {
+  recomputeDirty()
 }
 
 // ==================== Excel 导入 ====================
@@ -526,6 +587,7 @@ const resetForm = () => {
   if (importUploadRef.value) {
     importUploadRef.value.clearFiles()
   }
+  setBaseline()
 }
 
 // 加载BOM数据
@@ -536,64 +598,134 @@ const loadBomData = async (bomId: number) => {
     // 加载BOM明细
     const itemResponse = await productBomApi.listEngineeringBomItem(bomId)
     formData.items = itemResponse.data || []
+    // 明细回填到编辑器后再建基线，避免“刚打开就提示未保存”。
+    await nextTick()
+    setBaseline()
   } catch (error) {
     console.error('加载BOM数据失败:', error)
     ElMessage.error('加载BOM数据失败')
   }
 }
 
-// 提交表单
-const submitForm = () => {
-  if (!bomFormRef.value) return
-
-  bomFormRef.value.validate(async (valid) => {
-    if (!valid) return
-
-    // 保存前按当前模式校验（快速模式名称+规格必填；常规模式必须选物料）
-    if (!bomItemEditorRef.value?.validateItems()) return
-    // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
-    formData.items = bomItemEditorRef.value.getItems()
-    const longProject = formData.items.find((item) => (item.processName?.length || 0) > 200)
-    if (longProject) {
-      ElMessage.warning(`物料 "${longProject.materialName}" 的项目名称不能超过200个字符`)
-      return
+/** 保存（供「确定」与「保存并离开」共用）；成功返回 true，失败/校验不过返回 false 且不清数据。 */
+const doSave = async (): Promise<boolean> => {
+  if (!bomFormRef.value) return false
+  try {
+    await bomFormRef.value.validate()
+  } catch {
+    return false
+  }
+  // 保存前按当前模式校验（快速模式名称+规格必填；常规模式必须选物料）
+  if (!bomItemEditorRef.value?.validateItems()) return false
+  // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
+  formData.items = bomItemEditorRef.value.getItems()
+  const longProject = formData.items.find((item) => (item.processName?.length || 0) > 200)
+  if (longProject) {
+    ElMessage.warning(`物料 "${longProject.materialName}" 的项目名称不能超过200个字符`)
+    return false
+  }
+  submitting.value = true
+  try {
+    if (formData.bomId !== undefined) {
+      await productBomApi.editEngineeringBom(formData as any)
+      ElMessage.success('修改成功')
+    } else {
+      await productBomApi.addEngineeringBom(formData as any)
+      ElMessage.success('新增成功')
     }
-    submitting.value = true
-    try {
-      if (formData.bomId !== undefined) {
-        await productBomApi.editEngineeringBom(formData as any)
-        ElMessage.success('修改成功')
-      } else {
-        await productBomApi.addEngineeringBom(formData as any)
-        ElMessage.success('新增成功')
-      }
-      visible.value = false
-      emit('success')
-    } catch (error) {
-      console.error('保存BOM失败:', error)
-      ElMessage.error('保存BOM失败')
-    } finally {
-      submitting.value = false
-    }
-  })
+    emit('success')
+    return true
+  } catch (error) {
+    console.error('保存BOM失败:', error)
+    ElMessage.error('保存BOM失败')
+    return false
+  } finally {
+    submitting.value = false
+  }
+}
+
+// 提交表单：保存成功后关闭，不重复触发未保存提示
+const submitForm = async () => {
+  const ok = await doSave()
+  if (!ok) return
+  suppressGuard.value = true
+  visible.value = false
+}
+
+/** 未保存离开拦截：true=允许离开，false=继续编辑。 */
+const resolveLeave = async (): Promise<boolean> => {
+  if (suppressGuard.value) return true
+  // 明细在编辑器内部防抖回传，关闭前重新取一次 getItems()，避免 300ms 内关闭漏判。
+  recomputeDirty()
+  if (!isDirty.value) return true
+  try {
+    await ElMessageBox.confirm('当前 BOM 有未保存的修改。', '未保存提醒', {
+      distinguishCancelAndClose: true,
+      confirmButtonText: '保存并离开',
+      cancelButtonText: '放弃修改',
+      type: 'warning',
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
+    })
+    // 保存并离开：保存成功才离开；校验不过/接口失败留在弹窗。
+    return await doSave()
+  } catch (action) {
+    // 放弃修改 → 离开；X / Esc（close）→ 继续编辑
+    return action === 'cancel'
+  }
+}
+
+/** 弹窗关闭前拦截（× / Esc / 取消共用） */
+const handleBeforeClose = async (done: () => void) => {
+  if (submitting.value) return
+  if (await resolveLeave()) {
+    suppressGuard.value = true
+    done()
+  }
 }
 
 // 取消按钮
-const handleCancel = () => {
-  visible.value = false
-  resetForm()
+const handleCancel = async () => {
+  if (submitting.value) return
+  if (await resolveLeave()) {
+    suppressGuard.value = true
+    visible.value = false
+    resetForm()
+  }
 }
+
+/** 浏览器刷新/关闭标签页原生提示（仅确有未保存修改时） */
+const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+  if (props.modelValue) recomputeDirty()
+  if (props.modelValue && isDirty.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload))
+
+// 供父级路由离开保护使用
+defineExpose({
+  formIsDirty: () => {
+    recomputeDirty()
+    return isDirty.value
+  },
+  resolveLeave,
+})
 
 // 监听对话框打开
 watch(
   () => props.modelValue,
-  (newVal) => {
-    if (newVal) {
-      if (props.bomId) {
-        loadBomData(props.bomId)
-      } else {
-        resetForm()
-      }
+  async (newVal) => {
+    if (!newVal) return
+    suppressGuard.value = false
+    if (props.bomId) {
+      await loadBomData(props.bomId)
+    } else {
+      resetForm()
+      await nextTick()
+      setBaseline()
     }
   }
 )

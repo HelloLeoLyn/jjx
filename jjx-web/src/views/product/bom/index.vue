@@ -172,7 +172,7 @@
     </el-card>
 
     <!-- 添加或修改BOM对话框 -->
-    <BomFormDialog v-model="open" :bom-id="selectedBomId" @success="getList" />
+    <BomFormDialog ref="bomFormRef" v-model="open" :bom-id="selectedBomId" @success="getList" />
     <BomDetail :bom-id="selectedBomId" v-model="bomDetailOpen" />
 
     <!-- BOM审核对话框 -->
@@ -194,6 +194,7 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted, watch, computed } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
 import { parseTime, parseDate } from '@/utils/format'
@@ -266,6 +267,7 @@ const single = ref(true)
 const multiple = ref(true)
 const total = ref(0)
 const open = ref(false)
+const bomFormRef = ref<InstanceType<typeof BomFormDialog>>()
 const bomDetailOpen = ref(false)
 const bomApproveOpen = ref(false)
 const selectedBom = ref<EngineeringBom | null>(null)
@@ -563,6 +565,15 @@ watch(
 // 组件挂载时获取数据
 onMounted(() => {
   getList()
+})
+
+// ==================== 路由离开保护（dev-20261021-015） ====================
+// 弹窗打开且有未保存修改时，切换左侧菜单前走同一套「保存并离开 / 放弃修改 / 继续编辑」。
+onBeforeRouteLeave(async () => {
+  if (!open.value) return true
+  const dialog = bomFormRef.value
+  if (!dialog?.formIsDirty?.()) return true
+  return await dialog.resolveLeave()
 })
 </script>
 
