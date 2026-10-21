@@ -3,9 +3,7 @@
     <div v-for="(page, pageIndex) in pages" :key="page.key" :id="`doc-page-${pageIndex}`" class="sheet-slot">
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
       <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print' }" :padding-mm="9" :scale="1">
-        <div v-if="page.flowHtml" v-html="workSpecFlowPageHtml(page.flowHtml, pageIndex, pages.length)" />
-        <div v-else-if="page.flowPending">正在分页…</div>
-        <WorkSpecPaper v-else-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :spec-template="specTemplate" />
+        <WorkSpecPaper v-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :spec-template="specTemplate" />
         <InkMixingPaper v-else-if="page.kind === 'ink'" :product-code="data.product.productCode" />
         <article v-else class="paper-form">
           <header v-if="page.section !== 'customer' && page.section !== 'atlas'" class="paper-heading">
@@ -41,7 +39,6 @@
 import { ref } from 'vue'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import WorkSpecPaper from './WorkSpecPaper.vue'
-import { workSpecFlowPageHtml } from './workSpecFlowPagination'
 import PrintSpecPaper from './PrintSpecPaper.vue'
 import ColorCheckPaper from './ColorCheckPaper.vue'
 import InkMixingPaper from './InkMixingPaper.vue'

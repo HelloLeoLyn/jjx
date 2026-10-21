@@ -2,53 +2,15 @@
   <article
     ref="paper"
     class="work-paper"
-    :class="{ continuous: specTemplate === 'B' }"
+    :class="{ 'extended-materials': materialCapacity > 14 }"
     :style="fontStyle"
   >
     <header class="work-title">
       产 品 作 业 规 范<span v-if="page.continuation">（续）</span>
     </header>
-    <section v-if="specTemplate === 'B'" class="spec-overview">
-      <div class="overview-structure-content">
-        <div class="overview-art">
-          <img v-if="structureImage" :src="structureImage" alt="产品结构图" />
-        </div>
-        <div v-if="structureCaption" class="overview-caption" :style="fontSize('structureCaption')">
-          {{ structureCaption }}
-        </div>
-      </div>
-      <div class="overview-conditions">
-        <div class="overview-title" :style="columnFont('materialEmboss', 'Title')">凹凸条件</div>
-        <table class="overview-emboss">
-          <colgroup>
-            <col class="overview-label-column" />
-            <col />
-          </colgroup>
-          <tbody>
-            <tr v-for="field in embossFields" :key="field.key">
-              <td :style="columnFont('materialEmboss', 'Content')">
-                <div class="overview-emboss-label">{{ field.label }}</div>
-              </td>
-              <td :style="columnFont('materialEmbossValue', 'Content')">
-                <div class="overview-emboss-value">{{ embossValue(field.key, field.unit) }}</div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="overview-remarks">
-        <div class="overview-title" :style="fontSize('notesTitle')">备注</div>
-        <div
-          class="overview-notes"
-          :style="{ ...fontSize('notes'), color: data.workSpec.requirementsColor }"
-        >
-          {{ page.engineeringNotes }}
-        </div>
-      </div>
-    </section>
     <table class="grid materials">
-      <!-- 模板A共用1/3边界；模板B缩窄数值列，为材料和规格腾出宽度。 -->
-      <colgroup v-if="specTemplate === 'A'">
+      <!-- A/B 共用模板 A 的列宽及右侧凹凸/加工要求。 -->
+      <colgroup>
         <col style="width: 5%" />
         <col style="width: 5%" />
         <col style="width: calc(100% / 3 - 10%)" />
@@ -57,19 +19,10 @@
         <col style="width: 16.74%" />
         <col style="width: 10.26%" />
       </colgroup>
-      <colgroup v-else>
-        <col style="width: 5%" />
-        <col style="width: 5%" />
-        <col style="width: calc(100% / 3 - 1%)" />
-        <col style="width: calc(69% - 100% / 3)" />
-        <col style="width: 5%" />
-        <col style="width: 5%" />
-        <col style="width: 12%" />
-      </colgroup>
       <thead>
         <tr>
           <th
-            v-for="column in activeMaterialColumns"
+            v-for="column in materialFontColumns"
             :key="column.key"
             :style="columnFont(column.key, 'Title')"
           >
@@ -107,24 +60,16 @@
             <span
               class="cell-single"
               :data-overflow-title="
-                materialLabel(i) + (specTemplate === 'B' ? '规格' : '规格及模数')
+                materialLabel(i) + '规格及模数'
               "
               :title="materialSpec(row)"
               >{{ materialSpec(row) }}</span
             >
           </td>
-          <template v-if="specTemplate === 'B'">
-            <td class="center" :style="columnFont('materialModule', 'Content')">
-              {{ plain(row?.moduleQty) }}
-            </td>
-            <td class="center" :style="columnFont('materialBase', 'Content')">
-              {{ plain(row?.baseQty) }}
-            </td>
-          </template>
           <td class="die-position" :style="columnFont('materialDie', 'Content')">
             {{ page.diePositionRows?.[i] }}
           </td>
-          <template v-if="specTemplate === 'A' && i < embossFields.length">
+          <template v-if="i < embossFields.length">
             <td class="emboss-label" :style="columnFont('materialEmboss', 'Content')">
               {{ embossFields[i]?.label }}
             </td>
@@ -133,8 +78,8 @@
             </td>
           </template>
           <td
-            v-else-if="specTemplate === 'A' && i === embossFields.length"
-            :rowspan="14 - embossFields.length"
+            v-else-if="i === embossFields.length"
+            :rowspan="materialCapacity - embossFields.length"
             colspan="2"
             class="engineering-notes"
           >
@@ -148,10 +93,6 @@
             </div>
           </td>
         </tr>
-        <!-- <tr v-if="specTemplate === 'B'" class="material-remarks">
-          <td colspan="2" class="center" :style="fontSize('notesTitle')">备注</td>
-          <td colspan="5" :style="fontSize('notes')"><div class="material-remarks-content" data-overflow-title="材料备注" :data-overflow-repeat="page.continuation ? 'true' : undefined" :style="{ color: data.workSpec.requirementsColor }">{{ materialRemarks }}</div></td>
-        </tr> -->
       </tbody>
     </table>
     <!-- 三组流程使用同一表格行，结构图跨7行，上线表头占第8行。 -->
@@ -308,7 +249,6 @@ import {
   flowGroups,
   plain,
   workSpecMaterialSpec,
-  workSpecMaterialDimensions,
   workSpecStepSubscript,
   workSpecOperationRemark,
   type DocsetData,
@@ -319,7 +259,6 @@ import {
 import { useWorkSpecOverflow } from './useWorkSpecOverflow'
 import {
   materialFontColumns,
-  materialFontColumnsB,
   type WorkSpecTemplate,
   type WorkSpecFontSettings,
   type WorkSpecFontArea,
@@ -339,29 +278,13 @@ const props = withDefaults(
   }>(),
   { specTemplate: 'A' }
 )
-const activeMaterialColumns = computed(() =>
-  props.specTemplate === 'B' ? materialFontColumnsB : materialFontColumns
-)
 const materialCapacity = computed(() =>
   props.specTemplate === 'B'
-    ? Math.max(12, props.page.rows?.length || 0, props.page.diePositionRows?.length || 0)
+    ? Math.max(14, props.page.rows?.length || 0, props.page.diePositionRows?.length || 0)
     : 14
 )
-const materialRemarks = computed(() =>
-  [
-    plain(props.page.engineeringNotes),
-    ...embossFields.map((field) => {
-      const value = props.data.workSpec.emboss[field.key]
-      return value == null || String(value).trim() === ''
-        ? ''
-        : field.label + '：' + embossValue(field.key, field.unit)
-    }),
-  ]
-    .filter(Boolean)
-    .join('；')
-)
 function materialSpec(row?: Record<string, any> | null) {
-  return props.specTemplate === 'B' ? workSpecMaterialDimensions(row) : workSpecMaterialSpec(row)
+  return workSpecMaterialSpec(row)
 }
 const emit = defineEmits<{ overflow: [lines: PaperTextLine[]] }>()
 /**
@@ -379,7 +302,7 @@ const fontStyle = computed(() => ({
   '--font-notes': `${props.fontSettings.notes}px`,
   '--font-notes-title': `${props.fontSettings.notesTitle}px`,
   '--font-footer': `${props.fontSettings.footer}px`,
-  '--overview-label-width': `${props.fontSettings.materialEmbossContent * 6 + 9}px`,
+  '--extra-material-height': `${(materialCapacity.value - 14) * 22}px`,
 }))
 function fontSize(area: WorkSpecFontArea) {
   return { fontSize: `${props.fontSettings[area]}px` }
@@ -428,15 +351,7 @@ const allOperations = computed<Record<string, any>[]>(() => props.data.routing.i
 const flowRows = computed(() =>
   Array.from(
     {
-      length:
-        props.specTemplate === 'B'
-          ? Math.max(
-              14,
-              ...(props.page.groups || []).map(
-                (group, column) => group.rows.length + (column === 1 ? 8 : 0)
-              )
-            )
-          : 14,
+      length: 14,
     },
     (_, index) => ({
       index,
@@ -547,115 +462,6 @@ function shortDate(value?: string | null) {
 .center {
   text-align: center;
 }
-/* 顶部固定为标题32px＋六行22px，结构图使用相同边长；余宽全部给备注。 */
-.spec-overview {
-  --overview-size: 164px;
-  display: grid;
-  grid-template-columns: var(--overview-size) calc(var(--overview-label-width) + 96px) minmax(
-      0,
-      1fr
-    );
-  height: var(--overview-size);
-  flex-shrink: 0;
-}
-.overview-structure-content {
-  width: var(--overview-size);
-  height: var(--overview-size);
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  border-right: 1px solid #333;
-  border-bottom: 1px solid #333;
-  overflow: hidden;
-}
-.overview-art {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px;
-}
-.overview-art img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-.overview-caption {
-  flex: none;
-  text-align: center;
-  line-height: 1.2;
-  padding: 0 3px 2px;
-  overflow-wrap: anywhere;
-}
-.overview-conditions,
-.overview-remarks {
-  height: var(--overview-size);
-  min-width: 0;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-.overview-conditions {
-  border-right: 1px solid #333;
-  border-bottom: 1px solid #333;
-}
-.overview-remarks {
-  border-bottom: 1px solid #333;
-}
-.overview-title {
-  height: 32px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-bottom: 1px solid #333;
-  overflow: hidden;
-}
-.overview-emboss {
-  width: 100%;
-  height: 132px;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-.overview-label-column {
-  width: var(--overview-label-width);
-}
-.overview-emboss tr {
-  height: 22px;
-}
-.overview-emboss td {
-  height: 22px;
-  padding: 0;
-  box-sizing: border-box;
-  border-right: 1px solid #333;
-  border-bottom: 1px solid #333;
-}
-.overview-emboss td:last-child {
-  border-right: 0;
-}
-.overview-emboss-label,
-.overview-emboss-value {
-  height: 21px;
-  line-height: 17px;
-  padding: 2px 4px;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-.overview-emboss-label {
-  white-space: nowrap;
-}
-.overview-emboss-value,
-.overview-notes {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.overview-notes {
-  height: 132px;
-  padding: 2px 4px;
-  box-sizing: border-box;
-  line-height: 1.5;
-  overflow: hidden;
-}
 .materials {
   height: 340px;
 }
@@ -666,18 +472,6 @@ function shortDate(value?: string | null) {
   height: 22px;
   padding-top: 0;
   padding-bottom: 0;
-}
-.materials tr.material-remarks,
-.materials tr.material-remarks td {
-  height: 44px;
-}
-.material-remarks-content {
-  height: 38px;
-  overflow: hidden;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.5;
-  position: relative;
 }
 /* 右侧要求跨行时，刀模单元格仍保留与要求区之间的边线。 */
 .materials tbody td.die-position {
@@ -961,80 +755,37 @@ footer {
 footer {
   font-size: var(--font-footer);
 }
-/* B先以真实宽度完整排版，再按DOM高度拆成普通A4续页。 */
-.work-paper.continuous {
+/* 超过 14 行只增高材料区，后续区块保持 A 版尺寸与顺序。 */
+.work-paper.extended-materials {
   height: auto;
-  min-height: 0;
+  min-height: calc(278mm + var(--extra-material-height));
   display: block;
 }
-.work-paper:is(.continuous, .flow-page) {
-  line-height: 1.5;
+.extended-materials .materials {
+  height: calc(340px + var(--extra-material-height));
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
-.work-paper.flow-page {
-  height: 278mm;
-  display: flex;
+.extended-materials .notes-content {
+  height: calc(159px + var(--extra-material-height));
 }
-.work-paper:is(.continuous, .flow-page) .materials,
-.work-paper:is(.continuous, .flow-page) .flows {
-  height: auto;
+.extended-materials .flows,
+.extended-materials .hours,
+.extended-materials .issuance {
+  break-inside: avoid;
+  page-break-inside: avoid;
 }
-.work-paper:is(.continuous, .flow-page) .material-name {
-  max-height: none;
-  overflow: visible;
-  line-height: 1.2;
-}
-.work-paper:is(.continuous, .flow-page) .cell-single {
-  white-space: pre-wrap;
-  overflow: visible;
-}
-.work-paper:is(.continuous, .flow-page) .material-remarks-content {
-  height: auto;
-  min-height: 38px;
-  overflow: visible;
-}
-.work-paper:is(.continuous, .flow-page) .operation {
-  height: auto;
-  min-height: 24px;
-  overflow: visible;
-  flex-wrap: wrap;
-}
-.work-paper:is(.continuous, .flow-page) .operation-symbols {
-  flex-shrink: 1;
-  flex-wrap: wrap;
-}
-.work-paper:is(.continuous, .flow-page) .symbol sub {
-  max-width: none;
-}
-.work-paper:is(.continuous, .flow-page) .operation-remark {
-  max-height: none;
-  overflow: visible;
-  line-height: 1.2;
-}
-.work-paper:is(.continuous, .flow-page) .structure-caption {
-  white-space: normal;
-  overflow: visible;
-}
-.work-paper:is(.continuous, .flow-page) .issuance {
-  flex: none;
-  min-height: 100px;
-}
-.work-paper:is(.continuous, .flow-page) .changes,
-.work-paper:is(.continuous, .flow-page) .changes-content {
-  overflow: visible;
-}
-.work-paper.flow-page footer {
-  margin-top: auto;
-}
-.work-paper:is(.continuous, .flow-page) [data-overflowing]::after {
-  content: none;
+.extended-materials .issuance {
+  min-height: 110px;
 }
 @media print {
   .work-paper {
     width: 100%;
     height: 278mm;
   }
-}
-.work-paper.continuous {
-  height: auto;
+  .work-paper.extended-materials {
+    height: auto;
+    min-height: 0;
+  }
 }
 </style>

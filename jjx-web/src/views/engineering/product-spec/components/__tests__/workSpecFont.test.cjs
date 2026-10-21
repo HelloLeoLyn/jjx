@@ -130,7 +130,7 @@ test('实际打印按钮把A/B选择、版本和字号传入打印入口', async
   }
 })
 
-test('B提供全部材料和流程用于自然分页，正常续页不生成工程附页，A仍为14项', () => {
+test('B材料连续且流程沿用A版容量，A仍为14项', () => {
   const source = fs.readFileSync(path.join(__dirname, '../docset.ts'), 'utf8')
   const parsed = ts.createSourceFile('docset.ts', source, ts.ScriptTarget.Latest, true)
   const functions = parsed.statements.filter(node => ts.isFunctionDeclaration(node)
@@ -148,16 +148,15 @@ test('B提供全部材料和流程用于自然分页，正常续页不生成工�
   const result = runtime.exports.makePages(data, ['spec'], [], {}, { 'spec-0': [{ text: '备注长内容' }] }, 'B')
   const b = result.filter(page => page.kind === 'spec')
   assert.deepEqual(plain(a.map(page => page.rows.length)), [14, 11])
-  assert.deepEqual(plain(b.map(page => page.rows.length)), [25])
-  assert.equal(b[0].flowPending, true)
+  assert.deepEqual(plain(b.map(page => page.rows.length)), [25, 0])
+  assert.equal(b[0].flowPending, undefined)
   assert.deepEqual(plain(b.flatMap(page => page.rows.map(row => row.itemId))), Array.from({ length: 25 }, (_, i) => i + 1))
   assert.equal(a[1].diePositionRows[0], 'D15')
   assert.equal(b[0].diePositionRows[24], 'D25')
-  assert.equal(b[0].groups[0].rows.length, 18)
-  assert.equal(result.some(page => page.kind === 'spec-details'), false)
-  const ready = runtime.exports.makePages(data, ['spec'], [], {}, {}, 'B', ['<article>1</article>', '<article>2</article>'])
-  assert.deepEqual(plain(ready.map(page => page.flowHtml)), ['<article>1</article>', '<article>2</article>'])
-  assert.ok(ready.every(page => !page.flowPending))
+  assert.equal(b[0].groups[0].rows.length, 14)
+  assert.equal(b[1].groups[0].rows.length, 4)
+  assert.equal(result.some(page => page.kind === 'spec-details'), true)
+
 })
 
 test('实际纸张组件将各列标题与内容字号写入对应单元格，续页同样生效', async () => {
@@ -221,43 +220,14 @@ test('实际纸张组件将各列标题与内容字号写入对应单元格，�
     assert.ok(html.includes(`style="font-size:24px;">${continuation * 6 + 1}</td>`))
     assert.match(html, /<img[^>]*src="\/test.svg"[^>]*width="17"[^>]*height="17"/)
     const materialHtml = html.match(/<table\b[^>]*class="grid materials"[^>]*>[\s\S]*?<\/table>/)[0]
-    if (specTemplate === 'A') {
-      assert.ok(!html.includes('spec-overview'))
-      assert.ok(html.includes('class="structure-art"'))
-      assert.ok(html.includes('class="structure-title"'))
-      assert.ok(materialHtml.includes('规格及模数'))
-      assert.ok(materialHtml.includes('110跳50mm=5PCS'))
-      assert.ok(materialHtml.includes('EMBOSS-ONLY-A'))
-      assert.equal(materialHtml.includes('NOTE-ONLY-A'), hasRemarks)
-      assert.equal([...materialHtml.split('<tbody>')[1].matchAll(/<tr\b/g)].length, 14)
-    } else {
-      assert.ok(html.includes('class="structure-art"'))
-      assert.ok(html.includes('class="structure-title"'))
-      const flowHtml = html.match(/<table\b[^>]*class="grid flows"[^>]*>[\s\S]*?<\/table>/)[0]
-      assert.deepEqual([...flowHtml.split('</thead>')[0].matchAll(/<th\b[^>]*>([^<]*)<\/th>/g)].map(match => match[1].trim()),
-        ['序号', '面板作业流程', '耗时(h)', '产 品 结 构 图', '序号', '下线作业流程', '耗时(h)'])
-      const overviewHtml = html.split(materialHtml)[0]
-      assert.deepEqual([...overviewHtml.matchAll(/<div class="overview-title"[^>]*>([^<]*)<\/div>/g)].map(match => match[1]), ['凹凸条件', '备注'])
-      assert.ok(!overviewHtml.includes('>结构图<'))
-      assert.ok(overviewHtml.includes('EMBOSS-ONLY-A'))
-      assert.equal(overviewHtml.includes('NOTE-ONLY-A'), hasRemarks)
-      assert.ok(overviewHtml.includes('EMPTY-EMBOSS'))
-      if (hasRemarks) assert.ok(overviewHtml.includes(testValue === 0 ? '0 mm' : String(testValue).replace(/</g, '&lt;').replace(/>/g, '&gt;')))
-      const headings = [...materialHtml.matchAll(/<th\b[^>]*>([^<]*)<\/th>/g)].map(match => match[1])
-      assert.deepEqual(headings, ['序号', '项目', '材　料', '规格', '模数', '基数', '刀模位置'])
-      assert.ok(materialHtml.includes('110跳50mm'))
-      assert.ok(!materialHtml.includes('=5PCS'))
-      assert.match(materialHtml, /<td class="center" style="font-size:13px;">5<\/td>/)
-      assert.match(materialHtml, /<td class="center" style="font-size:13px;">2<\/td>/)
-      assert.ok(!materialHtml.includes('凹凸条件'))
-      // 用户已在本次实施前注释材料底部备注，保持当前页面现状。
-      assert.equal([...materialHtml.split('<tbody>')[1].matchAll(/<tr\b/g)].length, 12)
-      assert.ok(!materialHtml.includes('material-remarks'))
-      assert.ok(!materialHtml.includes('EMBOSS-ONLY-A'))
-      assert.ok(!materialHtml.includes('NOTE-ONLY-A'))
-      assert.ok(!materialHtml.includes('EMPTY-EMBOSS'))
-      assert.ok(materialHtml.includes(`style="font-size:13px;">${continuation * 12 + 1}</td>`))
-    }
+    assert.ok(!html.includes('spec-overview'))
+    assert.ok(html.includes('class="structure-art"'))
+    assert.ok(html.includes('class="structure-title"'))
+    assert.ok(materialHtml.includes('规格及模数'))
+    assert.ok(materialHtml.includes('110跳50mm=5PCS'))
+    assert.ok(materialHtml.includes('EMBOSS-ONLY-A'))
+    assert.equal(materialHtml.includes('NOTE-ONLY-A'), hasRemarks)
+    assert.equal([...materialHtml.split('<tbody>')[1].matchAll(/<tr\b/g)].length, 14)
     for (const [index, size] of [[0, 11], [1, 15], [2, 18]]) {
       for (const child of ['a', 'b']) {
         assert.match(html, new RegExp(`<svg[^>]*width="${size}"[^>]*height="${size}"[^>]*><use href="#icon-flow-${index}-${child}"`))

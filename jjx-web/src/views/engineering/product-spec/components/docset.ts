@@ -594,8 +594,7 @@ export function makePages(
   fileIds: string[],
   images: Record<string, FileImage[]>,
   overflow: Record<string, PaperTextLine[]> = {},
-  specTemplate: 'A' | 'B' = 'A',
-  flowPages: string[] = []
+  specTemplate: 'A' | 'B' = 'A'
 ): DocPage[] {
   const pages: DocPage[] = []
   const printFiles = orderedPrintFiles(data.files, fileIds)
@@ -612,48 +611,45 @@ export function makePages(
       }))
       const capacities = [14, 6, 14]
       const text = specText(data)
-      if (specTemplate === 'B') {
-        const source = workSpecFlowSource(data)
-        if (flowPages.length) flowPages.forEach((flowHtml, i) => pages.push({
-          ...source, key: `spec-b-${i}`, continuation: i, rows: [], groups: [], flowHtml,
-        }))
-        else pages.push({ ...source, key: 'spec-b-pending', flowPending: true })
-      } else {
-        const count = Math.max(
-          1,
-          Math.ceil(bom.length / materialCapacity),
-          Math.ceil(text.diePositionRows.length / materialCapacity),
-          ...groups.map((group, i) => Math.ceil(group.rows.length / capacities[i]))
-        )
-        for (let i = 0; i < count; i++)
-          pages.push({
-            key: `spec-${i}`,
-            section: 'spec',
-            title: '产品作业规范',
-            kind: 'spec',
-            continuation: i,
-            engineeringNotes: text.engineeringNotes,
-            diePositionRows: text.diePositionRows.slice(i * materialCapacity, (i + 1) * materialCapacity),
-            changeLines: text.changeLines,
-            rows: bom.slice(i * materialCapacity, (i + 1) * materialCapacity),
-            groups: groups.map((group, j) => ({
-              label: group.label,
-              symbol: group.symbol,
-              rows: group.rows.slice(i * capacities[j], (i + 1) * capacities[j]),
-            })),
-          })
-        const details = pages
-          .filter((page) => page.kind === 'spec')
-          .flatMap((page) => overflow[page.key] || [])
-        for (let i = 0; i < details.length; i += 48)
-          pages.push({
-            key: 'spec-details-' + i,
-            section: 'spec',
-            title: '产品作业规范 · 工程内容附页',
-            kind: 'spec-details',
-            detailLines: details.slice(i, i + 48),
-          })
-      }
+      const count = Math.max(
+        1,
+        specTemplate === 'B' ? 1 : Math.ceil(bom.length / materialCapacity),
+        specTemplate === 'B' ? 1 : Math.ceil(text.diePositionRows.length / materialCapacity),
+        ...groups.map((group, i) => Math.ceil(group.rows.length / capacities[i]))
+      )
+      for (let i = 0; i < count; i++)
+        pages.push({
+          key: `spec-${i}`,
+          section: 'spec',
+          title: '产品作业规范',
+          kind: 'spec',
+          continuation: i,
+          engineeringNotes: text.engineeringNotes,
+          diePositionRows: specTemplate === 'B'
+            ? (i === 0 ? text.diePositionRows : [])
+            : text.diePositionRows.slice(i * materialCapacity, (i + 1) * materialCapacity),
+          changeLines: text.changeLines,
+          // B 材料只出现在首张表，后续页仅承接超出容量的流程。
+          rows: specTemplate === 'B'
+            ? (i === 0 ? bom : [])
+            : bom.slice(i * materialCapacity, (i + 1) * materialCapacity),
+          groups: groups.map((group, j) => ({
+            label: group.label,
+            symbol: group.symbol,
+            rows: group.rows.slice(i * capacities[j], (i + 1) * capacities[j]),
+          })),
+        })
+      const details = pages
+        .filter((page) => page.kind === 'spec')
+        .flatMap((page) => overflow[page.key] || [])
+      for (let i = 0; i < details.length; i += 48)
+        pages.push({
+          key: 'spec-details-' + i,
+          section: 'spec',
+          title: '产品作业规范 · 工程内容附页',
+          kind: 'spec-details',
+          detailLines: details.slice(i, i + 48),
+        })
       const uncategorized = assembly.filter(
         (row: any) => !flowGroups.some((group) => group.value === row.processCategory)
       )

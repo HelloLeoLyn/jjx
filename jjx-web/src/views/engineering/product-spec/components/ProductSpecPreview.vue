@@ -32,8 +32,8 @@
       </div>
     </div>
     <el-alert
-      v-if="error || flowError"
-      :title="error || flowError"
+      v-if="error"
+      :title="error"
       type="error"
       :closable="false"
       class="preview-message no-print"
@@ -59,9 +59,6 @@
         <el-link type="primary" @click="downloadOriginal(file)">下载原文件</el-link>
       </div>
     </template>
-    <WorkSpecFlowLayout v-if="data && selectedTemplate === 'B' && selectedSections.includes('spec')"
-      ref="flowLayout" :data="data" :font-settings="fontSettings" :structure-image="structureImage"
-      :structure-caption="structureCaption" @layout="onFlowLayout" @error="flowError = $event" />
     <div class="preview-layout" :class="{ 'paper-only': paperOnly }" v-loading="loading">
       <aside v-if="!paperOnly" class="document-nav no-print">
         <div class="nav-heading">
@@ -197,7 +194,6 @@ import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import ProductFilePreview from '@/components/product/ProductFilePreview.vue'
 import { downloadFile } from '@/components/product/productFilePreview'
 import ProductSpecSheets from './ProductSpecSheets.vue'
-import WorkSpecFlowLayout from './WorkSpecFlowLayout.vue'
 import {
   documentSections,
   loadDocset,
@@ -265,13 +261,6 @@ const showHistory = ref(false)
 const images = shallowRef<Record<string, FileImage[]>>({})
 const fileErrors = ref<Record<string, string>>({})
 const sheets = ref<InstanceType<typeof ProductSpecSheets>>()
-const flowLayout = ref<InstanceType<typeof WorkSpecFlowLayout>>()
-const flowPages = shallowRef<string[]>([])
-const flowError = ref('')
-function onFlowLayout(value: string[]) {
-  flowError.value = ''
-  if (JSON.stringify(flowPages.value) !== JSON.stringify(value)) flowPages.value = value
-}
 const overflow = shallowRef<Record<string, PaperTextLine[]>>({})
 function onLayout(key: string, lines: PaperTextLine[]) {
   if (JSON.stringify(overflow.value[key]) !== JSON.stringify(lines))
@@ -280,7 +269,7 @@ function onLayout(key: string, lines: PaperTextLine[]) {
 const zoom = ref(props.paperOnly ? 100 : 80)
 const fontSettings = ref<WorkSpecFontSettings>(parseWorkSpecFontSettings(props.initialFontSettings))
 const selectedTemplate = ref<WorkSpecTemplate>(normalizeWorkSpecTemplate(props.initialTemplate))
-const visibleFontGroups = computed(() => workSpecFontGroupsForTemplate(selectedTemplate.value))
+const visibleFontGroups = computed(() => workSpecFontGroupsForTemplate('A'))
 const openFontGroups = ref(['常规', '材料表'])
 function resetFontSettings() {
   fontSettings.value = defaultWorkSpecFontSettings()
@@ -341,8 +330,7 @@ const pages = computed(() =>
         selectedFiles.value,
         images.value,
         overflow.value,
-        selectedTemplate.value,
-        flowPages.value
+        selectedTemplate.value
       )
     : []
 )
@@ -359,7 +347,7 @@ const structureCaption = computed(() =>
 const layoutReady = computed(() =>
   pages.value
     .filter((page) => page.kind === 'spec' || page.kind === 'print')
-    .every((page) => !page.flowPending && (!!page.flowHtml || overflow.value[page.key] !== undefined))
+    .every((page) => overflow.value[page.key] !== undefined)
 )
 const canPrint = computed(
   () =>
@@ -367,7 +355,6 @@ const canPrint = computed(
     !!data.value &&
     !loading.value &&
     !error.value &&
-    !flowError.value &&
     pages.value.length > 0 &&
     pendingCount.value === 0 &&
     !requestedFiles.value.some((file) => fileErrors.value[file.key])
@@ -525,8 +512,6 @@ async function printDocuments() {
   }
   await nextTick()
   await document.fonts.ready
-  await flowLayout.value?.measure()
-  await nextTick()
   if (!canPrint.value) return
   await sheets.value?.measureLayout()
   await nextTick()
@@ -541,10 +526,6 @@ async function printDocuments() {
 watch(() => [props.productId, props.versionId], load, { immediate: true })
 defineExpose({ reload: load })
 watch(requestedFiles, expandFiles)
-watch([data, fontSettings, structureImage, structureCaption, selectedTemplate], () => {
-  flowPages.value = []
-  flowError.value = ''
-}, { deep: true, flush: 'sync' })
 watch(selectedTemplate, () => { overflow.value = {} })
 watch(
   fontSettings,
