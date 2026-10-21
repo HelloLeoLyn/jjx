@@ -230,22 +230,26 @@
             empty-text="未纳入项目材料"
           >
             <el-table-column label="序号" width="65" align="center"
-              ><template #default="{ $index }">{{ projectMaterialDisplayNo[$index] || '' }}</template></el-table-column
+              ><template #default="{ $index }">{{
+                projectMaterialDisplayNo[$index] || ''
+              }}</template></el-table-column
             >
-            <el-table-column label="项目" min-width="160"
+            <el-table-column label="项目" min-width="180"
               ><template #default="{ row, $index }"
-                ><div class="project-material-project">
+                ><StandardProcessSelector
+                  v-if="projectMaterialDraft"
+                  :model-value="row.processId ?? row.processName"
+                  :process-name="row.processName"
+                  mode="dropdown"
+                  size="small"
+                  @change="(value) => handleProjectMaterialChange($index, value)"
+                  @select="(item) => handleProjectMaterialSelect($index, item)"
+                /><div v-else class="project-material-project">
                   <SvgIcon
                     v-if="projectMaterialIcon($index)"
                     :name="projectMaterialIcon($index)"
                     :size="16"
-                  />
-                  <el-input
-                    v-if="projectMaterialDraft"
-                    :model-value="row.processName"
-                    @update:model-value="renameProjectMaterial($index, $event)"
-                    maxlength="200"
-                  /><span v-else>{{ row.processName || '—' }}</span>
+                  /><span>{{ row.processName || '—' }}</span>
                 </div></template
               ></el-table-column
             >
@@ -311,15 +315,13 @@
                 }}</span></template
               ></el-table-column
             >
-            <el-table-column label="操作" width="270"
+            <el-table-column label="操作" width="330"
               ><template #default="{ row, $index }"
                 ><template v-if="projectMaterialDraft"
+                  ><el-button link @click="addProjectMaterialGroup($index)">新增</el-button
                   ><el-button link @click="restoreProjectMaterialSpec(row)"
                     >恢复规格及模数</el-button
-                  ><el-button
-                    link
-                    type="danger"
-                    @click="projectMaterialDraft.splice($index, 1)"
+                  ><el-button link type="danger" @click="projectMaterialDraft.splice($index, 1)"
                     >删除</el-button
                   ><el-button link :disabled="$index === 0" @click="moveProjectMaterial($index, -1)"
                     >上移</el-button
@@ -505,6 +507,7 @@ import {
   flattenProjectMaterials,
 } from '@/api/product/workSpec'
 import SvgIcon from '@/components/SvgIcon/index.vue'
+import StandardProcessSelector from '@/components/Selector/StandardProcessSelector.vue'
 import ProductSpecPreview from './ProductSpecPreview.vue'
 import StructureDrawingUpload from './StructureDrawingUpload.vue'
 import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
@@ -679,8 +682,8 @@ function projectMaterialIcon(index: number) {
   const group = projectMaterialGroups.value[index]
   if (group?.icon) return group.icon
   return (
-    bomRows.value.find((item) => group?.processId != null && item.processId === group.processId)?.icon ||
-    ''
+    bomRows.value.find((item) => group?.processId != null && item.processId === group.processId)
+      ?.icon || ''
   )
 }
 function projectMaterialSpan({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) {
@@ -689,11 +692,27 @@ function projectMaterialSpan({ rowIndex, columnIndex }: { rowIndex: number; colu
   const span = projectMaterialGroups.value[rowIndex]?.projectSpan || 0
   return [span, span ? 1 : 0]
 }
-function renameProjectMaterial(index: number, name: string) {
+/** 项目选择/改名后同步整个项目组，保持合并。 */
+function applyProjectMaterialProject(index: number, fields: Partial<ProjectMaterial>) {
   const rows = projectMaterialDraft.value
   if (!rows) return
   const span = projectMaterialGroups.value[index]?.projectSpan || 1
-  for (let offset = 0; offset < span; offset++) rows[index + offset].processName = name
+  for (let offset = 0; offset < span; offset++) Object.assign(rows[index + offset], fields)
+}
+function handleProjectMaterialChange(index: number, value: number | string | undefined) {
+  // ID 由 @select 带名称/图标；这里只处理清空与手输名称。
+  if (typeof value === 'number') return
+  applyProjectMaterialProject(index, { processId: undefined, processName: value || '', icon: '' })
+}
+function handleProjectMaterialSelect(
+  index: number,
+  item: { processId: number; processName: string; icon?: string }
+) {
+  applyProjectMaterialProject(index, {
+    processId: item.processId,
+    processName: item.processName,
+    icon: item.icon || '',
+  })
 }
 function startProjectMaterials() {
   // 未建立/空项目材料时用当前 BOM 行初始化，避免“查看有数据、点编辑变空表”。
@@ -712,15 +731,37 @@ async function importProjectMaterials() {
     projectMaterialFromBom(row, index, data.value?.workSpec)
   )
 }
+/** 行外「新增」：追加到最后一个项目组，不新建组。 */
 function addProjectMaterial() {
   const row = bomRows.value[0]
-  if (!row) {
+  const rows = projectMaterialDraft.value
+  if (!row || !rows) {
     ElMessage.warning('当前 BOM 没有可选材料')
     return
   }
-  projectMaterialDraft.value?.push(
-    projectMaterialFromBom(row, projectMaterialDraft.value.length, data.value?.workSpec)
-  )
+  const material = projectMaterialFromBom(row, rows.length, data.value?.workSpec)
+  const last = rows[rows.length - 1]
+  if (last) {
+    material.processId = last.processId
+    material.processName = last.processName
+    material.icon = last.icon
+  }
+  rows.push(material)
+}
+/** 操作列「新增」：在当前项目组之后插入一行空白项目，形成新的项目组。 */
+function addProjectMaterialGroup(index: number) {
+  const rows = projectMaterialDraft.value
+  if (!rows || !rows[index]) return
+  const span = projectMaterialGroups.value[index]?.projectSpan || 1
+  const insertAt = index + span
+  rows.splice(insertAt, 0, {
+    ...rows[index],
+    processId: undefined,
+    processName: '',
+    icon: '',
+    params: '',
+    sortOrder: insertAt,
+  })
 }
 function selectProjectMaterial(index: number, selected: string) {
   if (!projectMaterialDraft.value || !bomRows.value[Number(selected)]) return
