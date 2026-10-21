@@ -9,6 +9,8 @@
       :clearable="clearable"
       :prefix-icon="prefixIcon"
       @input="onInput"
+      @compositionstart="onCompositionStart"
+      @compositionend="onCompositionEnd"
       @focus="onFocus"
       @blur="onBlur"
       @clear="onClear"
@@ -142,6 +144,7 @@ const text = ref(props.displayValue || '')
 const open = ref(false)
 const popperWidth = ref(260)
 const focused = ref(false)
+let composing = false
 let blurTimer: ReturnType<typeof setTimeout> | undefined
 
 const keyOf = (item: any) => (item == null ? '' : item[props.optionKey])
@@ -171,7 +174,21 @@ function onFocus() {
 function onInput(value: string) {
   text.value = value
   open.value = true
+  if (composing) return
   emit('search', value)
+}
+
+function onCompositionStart() {
+  composing = true
+}
+
+async function onCompositionEnd(event: CompositionEvent) {
+  const value = (event.target as HTMLInputElement).value
+  // Element Plus 会在 nextTick 补发 input；先收齐该事件，再补发一次最终搜索。
+  await nextTick()
+  await nextTick()
+  composing = false
+  onInput(value)
 }
 
 function onBlur() {

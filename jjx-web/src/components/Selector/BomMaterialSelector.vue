@@ -32,7 +32,7 @@
 /**
  * BOM 行「物料名称」选择器（dev-20261018-011）
  * 由 el-select 改为可编辑搜索框（EditableSearchSelect）：选中后文字可直接删改并续搜。
- * 保留：远程搜索 300ms 防抖、加载更多、新建物料入口（权限在父级/指令侧）、已选回填、清空。
+ * 保留：远程搜索 400ms 防抖（至少 2 字符）、加载更多、新建物料入口（权限在父级/指令侧）、已选回填、清空。
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { materialApi } from '@/api/inventory/material'
@@ -107,12 +107,13 @@ function search(value: string) {
   total.value = 0
   searched.value = false
   failed.value = false
-  loading.value = !!keyword.value
-  if (keyword.value) timer = setTimeout(() => fetchPage(id, 1), 300)
+  page = 1
+  loading.value = keyword.value.length >= 2
+  if (loading.value) timer = setTimeout(() => fetchPage(id, 1), 400)
 }
 
 function loadMore() {
-  if (loading.value) return
+  if (loading.value || keyword.value.length < 2) return
   loading.value = true
   void fetchPage(requestId, page + 1)
 }
