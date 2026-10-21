@@ -14,6 +14,10 @@
         ><span class="toolbar-caption">{{ pages.length }} 页 · A4</span>
       </div>
       <div class="preview-actions">
+        <el-select v-if="!paperOnly && selectedSections.includes('spec')" v-model="selectedTemplate" aria-label="作业规范模板" style="width: 140px">
+          <el-option label="模板 A" value="A" />
+          <el-option label="模板 B" value="B" />
+        </el-select>
         <el-button text @click="zoom = Math.max(50, zoom - 10)">−</el-button><span>{{ zoom }}%</span
         ><el-button text @click="zoom = Math.min(120, zoom + 10)">＋</el-button
         ><el-button @click="load">重新加载</el-button
@@ -28,8 +32,8 @@
       </div>
     </div>
     <el-alert
-      v-if="error"
-      :title="error"
+      v-if="error || flowError"
+      :title="error || flowError"
       type="error"
       :closable="false"
       class="preview-message no-print"
@@ -55,6 +59,9 @@
         <el-link type="primary" @click="downloadOriginal(file)">下载原文件</el-link>
       </div>
     </template>
+    <WorkSpecFlowLayout v-if="data && selectedTemplate === 'B' && selectedSections.includes('spec')"
+      ref="flowLayout" :data="data" :font-settings="fontSettings" :structure-image="structureImage"
+      :structure-caption="structureCaption" @layout="onFlowLayout" @error="flowError = $event" />
     <div class="preview-layout" :class="{ 'paper-only': paperOnly }" v-loading="loading">
       <aside v-if="!paperOnly" class="document-nav no-print">
         <div class="nav-heading">
@@ -149,6 +156,7 @@
             :structure-image="structureImage"
             :structure-caption="structureCaption"
             :font-settings="fontSettings"
+            :spec-template="selectedTemplate"
           />
         </div>
         <el-empty v-else-if="!loading && !error" description="勾选左侧文档，查看纸张预览" />
@@ -157,7 +165,7 @@
         <strong>作业规范字号</strong>
         <p>设置实际字号（px），每列标题与内容分别调整；打印使用当前设置。</p>
         <el-collapse v-model="openFontGroups">
-          <el-collapse-item v-for="group in workSpecFontGroups" :key="group.label" :name="group.label" :title="group.label">
+          <el-collapse-item v-for="group in visibleFontGroups" :key="group.label" :name="group.label" :title="group.label">
             <label v-for="area in group.areas" :key="area.key" class="font-control">
               <span>{{ area.label }}（px）</span>
               <el-input-number
@@ -189,6 +197,7 @@ import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import ProductFilePreview from '@/components/product/ProductFilePreview.vue'
 import { downloadFile } from '@/components/product/productFilePreview'
 import ProductSpecSheets from './ProductSpecSheets.vue'
+import WorkSpecFlowLayout from './WorkSpecFlowLayout.vue'
 import {
   documentSections,
   loadDocset,
@@ -209,10 +218,12 @@ import {
   defaultWorkSpecFontSettings,
   parseWorkSpecFontSettings,
   serializeWorkSpecFontSettings,
-  workSpecFontGroups,
+  workSpecFontGroupsForTemplate,
+  normalizeWorkSpecTemplate,
   WORK_SPEC_FONT_MIN,
   WORK_SPEC_FONT_MAX,
   type WorkSpecFontSettings,
+  type WorkSpecTemplate,
 } from './workSpecFont'
 
 const props = withDefaults(
@@ -227,6 +238,7 @@ const props = withDefaults(
     initialSections?: string[]
     initialFiles?: string[]
     initialFontSettings?: string
+    initialTemplate?: WorkSpecTemplate
   }>(),
   { standalone: false, autoPrint: false, paperOnly: false }
 )
@@ -253,6 +265,13 @@ const showHistory = ref(false)
 const images = shallowRef<Record<string, FileImage[]>>({})
 const fileErrors = ref<Record<string, string>>({})
 const sheets = ref<InstanceType<typeof ProductSpecSheets>>()
+const flowLayout = ref<InstanceType<typeof WorkSpecFlowLayout>>()
+const flowPages = shallowRef<string[]>([])
+const flowError = ref('')
+function onFlowLayout(value: string[]) {
+  flowError.value = ''
+  if (JSON.stringify(flowPages.value) !== JSON.stringify(value)) flowPages.value = value
+}
 const overflow = shallowRef<Record<string, PaperTextLine[]>>({})
 function onLayout(key: string, lines: PaperTextLine[]) {
   if (JSON.stringify(overflow.value[key]) !== JSON.stringify(lines))
@@ -260,6 +279,8 @@ function onLayout(key: string, lines: PaperTextLine[]) {
 }
 const zoom = ref(props.paperOnly ? 100 : 80)
 const fontSettings = ref<WorkSpecFontSettings>(parseWorkSpecFontSettings(props.initialFontSettings))
+const selectedTemplate = ref<WorkSpecTemplate>(normalizeWorkSpecTemplate(props.initialTemplate))
+const visibleFontGroups = computed(() => workSpecFontGroupsForTemplate(selectedTemplate.value))
 const openFontGroups = ref(['常规', '材料表'])
 function resetFontSettings() {
   fontSettings.value = defaultWorkSpecFontSettings()
@@ -319,7 +340,9 @@ const pages = computed(() =>
         selectedSections.value,
         selectedFiles.value,
         images.value,
-        overflow.value
+        overflow.value,
+        selectedTemplate.value,
+        flowPages.value
       )
     : []
 )
@@ -336,7 +359,7 @@ const structureCaption = computed(() =>
 const layoutReady = computed(() =>
   pages.value
     .filter((page) => page.kind === 'spec' || page.kind === 'print')
-    .every((page) => overflow.value[page.key] !== undefined)
+    .every((page) => !page.flowPending && (!!page.flowHtml || overflow.value[page.key] !== undefined))
 )
 const canPrint = computed(
   () =>
@@ -344,6 +367,7 @@ const canPrint = computed(
     !!data.value &&
     !loading.value &&
     !error.value &&
+    !flowError.value &&
     pages.value.length > 0 &&
     pendingCount.value === 0 &&
     !requestedFiles.value.some((file) => fileErrors.value[file.key])
@@ -488,6 +512,7 @@ async function printDocuments() {
       sections: selectedSections.value.join(','),
       files: selectedFiles.value.join(','),
       fonts: serializeWorkSpecFontSettings(fontSettings.value),
+      template: selectedTemplate.value,
       print: '1',
     })
     if (props.versionId) {
@@ -500,6 +525,9 @@ async function printDocuments() {
   }
   await nextTick()
   await document.fonts.ready
+  await flowLayout.value?.measure()
+  await nextTick()
+  if (!canPrint.value) return
   await sheets.value?.measureLayout()
   await nextTick()
   const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.doc-sheets img'))
@@ -513,6 +541,11 @@ async function printDocuments() {
 watch(() => [props.productId, props.versionId], load, { immediate: true })
 defineExpose({ reload: load })
 watch(requestedFiles, expandFiles)
+watch([data, fontSettings, structureImage, structureCaption, selectedTemplate], () => {
+  flowPages.value = []
+  flowError.value = ''
+}, { deep: true, flush: 'sync' })
+watch(selectedTemplate, () => { overflow.value = {} })
 watch(
   fontSettings,
   () => {

@@ -835,8 +835,6 @@ public class ProductWorkSpecService {
         }
         if (dto.getEmboss() != null) dto.getEmboss().forEach((key, value) -> {
             if (!EMBOSS_KEYS.contains(key)) throw new BusinessException("未知凹凸参数");
-            if (value != null && !value.isBlank() && (!value.matches("[+-]?\\d{1,12}(\\.\\d{1,6})?") || value.length() > 20))
-                throw new BusinessException("凹凸参数请填写数值，未使用的项目可留空");
         });
         color(dto.getRequirementsColor());
         if (dto.getChanges() != null) dto.getChanges().forEach(change -> {

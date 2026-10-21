@@ -7,6 +7,17 @@ export const materialFontColumns = [
   { key: 'materialEmboss', label: '凹凸条件项目', heading: '凹凸条件' },
   { key: 'materialEmbossValue', label: '凹凸条件数值', heading: '' },
 ] as const
+export const materialFontColumnsB = [
+  ...materialFontColumns.slice(0, 3),
+  { key: 'materialSpec', label: '规格', heading: '规格' },
+  { key: 'materialModule', label: '模数', heading: '模数' },
+  { key: 'materialBase', label: '基数', heading: '基数' },
+  materialFontColumns[4],
+] as const
+export type WorkSpecTemplate = 'A' | 'B'
+export function normalizeWorkSpecTemplate(value?: unknown): WorkSpecTemplate {
+  return value === 'B' ? 'B' : 'A'
+}
 const flowFontColumns = [
   { key: 'flow0Number', label: '序号', group: '面板作业流程' },
   { key: 'flow0Operation', label: '作业流程', group: '面板作业流程' },
@@ -19,11 +30,12 @@ const flowFontColumns = [
   { key: 'flow2Hours', label: '耗时', group: '下线作业流程' },
 ] as const
 export type WorkSpecFontColumn = typeof materialFontColumns[number]['key'] | typeof flowFontColumns[number]['key']
+  | 'materialModule' | 'materialBase'
 export type WorkSpecFontArea = 'title' | 'notesTitle' | 'notes' | 'footer' | 'structureTitle' | 'structureCaption'
   | `${WorkSpecFontColumn}Title` | `${WorkSpecFontColumn}Content`
 export type WorkSpecFontSettings = Record<WorkSpecFontArea, number>
 interface FontArea { key: WorkSpecFontArea; label: string; group: string; defaultSize: number }
-export const workSpecFontAreas: FontArea[] = [
+const legacyFontAreas: FontArea[] = [
   { key: 'title', label: '作业规范大标题', group: '常规', defaultSize: 27 },
   { key: 'notesTitle', label: '加工与变更 · 标题', group: '常规', defaultSize: 17 },
   { key: 'notes', label: '加工与变更 · 内容', group: '常规', defaultSize: 12 },
@@ -41,10 +53,34 @@ export const workSpecFontAreas: FontArea[] = [
       defaultSize: column.key.endsWith('Operation') ? 12 : 13 },
   ]),
 ]
+export const workSpecFontAreas: FontArea[] = [
+  ...legacyFontAreas,
+  ...(['materialModule', 'materialBase'] as const).flatMap((key): FontArea[] => [
+    { key: `${key}Title`, label: `${key === 'materialModule' ? '模数' : '基数'} · 标题`, group: '材料表', defaultSize: 14 },
+    { key: `${key}Content`, label: `${key === 'materialModule' ? '模数' : '基数'} · 内容`, group: '材料表', defaultSize: 13 },
+  ]),
+]
 export const workSpecFontGroups = ['常规', '材料表', '面板作业流程', '上线作业流程', '下线作业流程'].map(label => ({
-  label, areas: workSpecFontAreas.filter(area => area.group === label && area.key !== 'materialEmbossValueTitle'),
+  label, areas: legacyFontAreas.filter(area => area.group === label && area.key !== 'materialEmbossValueTitle'),
 }))
-/** 实际字号，单位px；v3保存逐列设置，兼容旧五项增量和v2区域设置。 */
+export function workSpecFontGroupsForTemplate(template: WorkSpecTemplate) {
+  if (template === 'A') return workSpecFontGroups
+  const columns = materialFontColumnsB.map(column => column.key)
+  const groups = workSpecFontGroups.map(group => ({
+    label: group.label,
+    areas: group.label === '材料表'
+      ? workSpecFontAreas.filter(area => columns.some(key => area.key === `${key}Title` || area.key === `${key}Content`))
+          .map(area => ({ ...area, label: area.label.replace('规格及模数', '规格') }))
+      : group.areas.map(area => ({ ...area, label: area.label.replace('加工与变更', '备注与变更') })),
+  }))
+  groups.splice(1, 0, {
+    label: '顶部信息',
+    areas: legacyFontAreas.filter(area => ['materialEmbossTitle', 'materialEmbossContent', 'materialEmbossValueContent'].includes(area.key))
+      .map(area => ({ ...area, label: area.key === 'materialEmbossTitle' ? '凹凸条件 · 标题' : area.label })),
+  })
+  return groups
+}
+/** 实际字号，单位px；v4增加B模数/基数列，兼容v3、v2及旧增量参数。 */
 export const WORK_SPEC_FONT_MIN = 5
 export const WORK_SPEC_FONT_MAX = 48
 export function defaultWorkSpecFontSettings(): WorkSpecFontSettings {
@@ -57,9 +93,10 @@ export function parseWorkSpecFontSettings(value?: string | null): WorkSpecFontSe
   const version = tokens[0].startsWith('v') ? tokens.shift() : 'legacy'
   if (tokens.some(token => !token.trim())) return settings
   const parts = tokens.map(Number)
-  if (version === 'v3') {
-    if (parts.length !== workSpecFontAreas.length || !validSizes(parts)) return settings
-    workSpecFontAreas.forEach((area, index) => { settings[area.key] = parts[index] })
+  if (version === 'v4' || version === 'v3') {
+    const areas = version === 'v4' ? workSpecFontAreas : legacyFontAreas
+    if (parts.length !== areas.length || !validSizes(parts)) return settings
+    areas.forEach((area, index) => { settings[area.key] = parts[index] })
     return settings
   }
   if (version === 'v2') {
@@ -88,5 +125,5 @@ function validSizes(parts: number[]): boolean {
   return parts.every(part => Number.isInteger(part) && part >= WORK_SPEC_FONT_MIN && part <= WORK_SPEC_FONT_MAX)
 }
 export function serializeWorkSpecFontSettings(settings: WorkSpecFontSettings): string {
-  return 'v3,' + workSpecFontAreas.map(area => settings[area.key]).join(',')
+  return 'v4,' + workSpecFontAreas.map(area => settings[area.key]).join(',')
 }

@@ -752,10 +752,6 @@ async function save() {
   }
   for (const field of embossFields) {
     const value = (draft.value.emboss[field.key] || '').trim()
-    if (value && !/^[+-]?\d{1,12}(\.\d{1,6})?$/.test(value)) {
-      ElMessage.warning(field.label + '请填写数值，或留空')
-      return
-    }
     draft.value.emboss[field.key] = value
   }
   if (
@@ -896,10 +892,6 @@ async function saveEmboss() {
   const values: Record<string, string> = {}
   for (const field of embossFields) {
     const value = (embossDraft[field.key] || '').trim()
-    if (value && !/^[+-]?\d{1,12}(\.\d{1,6})?$/.test(value)) {
-      ElMessage.warning(field.label + '请填写数值，或留空')
-      return
-    }
     if (value) values[field.key] = value
   }
   spec.emboss = values

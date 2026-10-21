@@ -154,6 +154,37 @@ class WorkSpecDraftLifecycleTest {
     ProductWorkSpecVersion publish() { String rev = drafts.get(1L).path("revision").asText(); return tx.execute(status -> versions.publish(1L,null,rev)); }
     long count(String table) { return db.queryForObject("SELECT COUNT(*) FROM "+table, Long.class); }
 
+    @Test void embossAllowsFreeTextLongInstructionsAndUnitsAndCanBeCleared() throws Exception {
+        save();
+        var values = Map.of("setupHeight", "按实物调机，先轻压再微调，确认面板没有白痕后再连续生产",
+                "requiredHeight", "0.2～0.3mm", "upperTemperature", "常温",
+                "lowerTemperature", "<80℃>", "pressTime", "先试压两次", "holdTime", "");
+        var request = input();
+        var spec = new com.jjx.product.domain.dto.ProductWorkSpecDTO();
+        spec.setEmboss(values);
+        request.setSpec(spec);
+        tx.execute(status -> drafts.saveDraft(1L, request));
+        var saved = drafts.get(1L).path("emboss");
+        for (var entry : values.entrySet()) assertEquals(entry.getValue(), saved.path(entry.getKey()).asText());
+        var stored = json.readTree(mapper.read(1L)).path("emboss");
+        assertEquals(values.get("setupHeight"), stored.path("setupHeight").asText());
+        assertEquals("<80℃>", stored.path("lowerTemperature").asText());
+
+        var cleared = input();
+        var next = new com.jjx.product.domain.dto.ProductWorkSpecDTO();
+        next.setEmboss(Map.of("setupHeight", "0", "requiredHeight", ""));
+        cleared.setSpec(next);
+        tx.execute(status -> drafts.saveDraft(1L, cleared));
+        assertEquals("0", drafts.get(1L).path("emboss").path("setupHeight").asText());
+        assertEquals("", drafts.get(1L).path("emboss").path("requiredHeight").asText());
+
+        String before = mapper.read(1L);
+        var invalid = input();
+        next.setEmboss(Map.of("unknown", "自由文本")); invalid.setSpec(next);
+        assertThrows(BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L, invalid)));
+        assertEquals(before, mapper.read(1L));
+    }
+
     @Test void newDraftAttachmentsUseWorkSpecButHistoricalProductRefIsReused() {
         var refs = (AttachmentRefService) ReflectionTestUtils.getField(drafts, "draftRefs");
         save(11L);
