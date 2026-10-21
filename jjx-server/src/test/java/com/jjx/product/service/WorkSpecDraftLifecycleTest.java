@@ -131,7 +131,7 @@ class WorkSpecDraftLifecycleTest {
         });
         var snapshot = mock(WorkSpecDocsetSnapshotService.class);
         when(snapshot.build(any(), anyString(), any(), any(), any())).thenAnswer(call -> {
-            ObjectNode result = json.createObjectNode(); result.set("spec", json.readTree(mapper.read(1L))); result.putArray("files");
+            ObjectNode result = json.createObjectNode(); result.set("spec", json.readTree(mapper.read(1L))); drafts.freezeProjectMaterials((ObjectNode)result.path("spec")); result.putArray("files");
             return new WorkSpecDocsetSnapshotService.DocsetSnapshot(result.toString(), "hash", List.of(), List.of(), 0, 0);
         });
         var items = mock(ProductWorkSpecItemMapper.class);
@@ -153,6 +153,37 @@ class WorkSpecDraftLifecycleTest {
     ObjectNode save(Long... ids) { if (!drafts.get(1L).hasNonNull("preparedById")) tx.execute(status -> drafts.claim(1L)); var input = input(ids); return tx.execute(status -> drafts.saveDraft(1L,input)); }
     ProductWorkSpecVersion publish() { String rev = drafts.get(1L).path("revision").asText(); return tx.execute(status -> versions.publish(1L,null,rev)); }
     long count(String table) { return db.queryForObject("SELECT COUNT(*) FROM "+table, Long.class); }
+
+    @Test void projectMaterialSnapshotRemainsFrozenAfterUpgradeEditAndRejectedSaveRollsBack() throws Exception {
+        var products = (IProductService) ReflectionTestUtils.getField(drafts, "products");
+        var full = products.getFullProductDetail(1L);
+        var bom = new com.jjx.product.domain.vo.EngineeringBomVO();
+        var material = new com.jjx.engineering.domain.entity.EngineeringBomItem();
+        material.setMaterialId(5L); material.setMaterialCode("M5"); material.setMaterialName("面材"); material.setQuantity(java.math.BigDecimal.ONE);
+        bom.setItems(List.of(material)); full.setBom(bom);
+        save();
+        var row = new com.jjx.product.domain.dto.ProductWorkSpecDTO.ProjectMaterial();
+        row.setMaterialCode("M5"); row.setMaterialName("面材"); row.setQuantity(java.math.BigDecimal.ONE); row.setSpecification("旧规格");
+        var spec = new com.jjx.product.domain.dto.ProductWorkSpecDTO(); spec.setProjectMaterials(List.of(row));
+        var first = input(); first.setSpec(spec);
+        tx.execute(status -> drafts.saveDraft(1L, first));
+        ProductWorkSpecVersion version = publish();
+        String frozen = db.queryForObject("SELECT snapshot FROM version_record WHERE id=?", String.class, version.getId());
+        assertEquals("旧规格", json.readTree(frozen).path("spec").path("projectMaterials").get(0).path("specification").asText());
+        assertEquals("旧规格", json.readTree(frozen).path("spec").path("projectMaterials").get(0).path("params").asText());
+        var upgrade = new ProductWorkSpecDraftDTO(); upgrade.setRevision(drafts.get(1L).path("revision").asText()); upgrade.setBaseVersionId(version.getId());
+        tx.execute(status -> drafts.upgradeDraft(1L, upgrade));
+        row.setSpecification("新规格");
+        var edit = input(); edit.setSpec(spec);
+        tx.execute(status -> drafts.saveDraft(1L, edit));
+        assertEquals("新规格", drafts.get(1L).path("projectMaterials").get(0).path("specification").asText());
+        assertEquals(frozen, db.queryForObject("SELECT snapshot FROM version_record WHERE id=?", String.class, version.getId()));
+        String before = mapper.read(1L); long logCount = count("operation_log");
+        row.setMaterialCode("OUTSIDE"); var invalid = input(); invalid.setSpec(spec);
+        assertThrows(com.jjx.common.exception.BusinessException.class, () -> tx.execute(status -> drafts.saveDraft(1L, invalid)));
+        assertEquals(before, mapper.read(1L)); assertEquals(logCount, count("operation_log"));
+        assertEquals(java.math.BigDecimal.ONE, material.getQuantity());
+    }
 
     @Test void embossAllowsFreeTextLongInstructionsAndUnitsAndCanBeCleared() throws Exception {
         save();

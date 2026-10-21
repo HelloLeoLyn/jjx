@@ -15,6 +15,7 @@ import {
   productWorkSpecApi,
   normalizeWorkSpec,
   type ProductWorkSpec,
+  type ProjectMaterial,
   type DieLocationMap,
 } from '@/api/product/workSpec'
 import { productBomApi } from '@/api/product/bom'
@@ -195,6 +196,80 @@ export function dieLocationLabel(row: Record<string, any>): string {
 export function flattenedBom(items?: Record<string, any>[] | null): Record<string, any>[] {
   return flatten(items || [])
 }
+const materialSourceFields = [
+  'materialId',
+  'materialCode',
+  'materialName',
+  'processId',
+  'processName',
+  'specification',
+  'quantity',
+  'unit',
+  'moduleQty',
+  'baseQty',
+  'split',
+  'widthMm',
+  'lengthMm',
+] as const
+export function projectMaterialFromBom(
+  row: Record<string, any>,
+  index: number,
+  spec?: ProductWorkSpec
+): ProjectMaterial {
+  return {
+    materialId: row.materialId,
+    materialCode: row.materialCode || '',
+    materialName: row.materialName || '',
+    processId: row.processId,
+    processName: row.processName || '',
+    specification: row.specification || '',
+    params: '',
+    widthMm: row.widthMm,
+    lengthMm: row.lengthMm,
+    quantity: Number(row.quantity || 0),
+    unit: row.unit || '',
+    dieLocation:
+      spec?.dieLocation[dieLocationKey(row)] || spec?.dieLocationText?.split(/\r?\n/)[index] || '',
+    sortOrder: index,
+    moduleQty: row.moduleQty,
+    baseQty: row.baseQty,
+    split: row.split,
+    sourceBom: Object.fromEntries(materialSourceFields.map((key) => [key, String(row[key] ?? '')])),
+  }
+}
+/** 只合并连续项目；组号全局递增，空项目各占一组。 */
+export function groupProjectMaterials(rows: Record<string, any>[]): Record<string, any>[] {
+  let group = 0
+  let previous = ''
+  const result: Record<string, any>[] = rows.map((row) => ({
+    ...row,
+    projectGroup: 0,
+    projectSpan: 0,
+  }))
+  let first = 0
+  result.forEach((row, index) => {
+    const name = plain(row.processName)
+    const key = name ? String(row.processId || '') + '|' + name : ''
+    if (!key || key !== previous) {
+      group++
+      first = index
+    }
+    row.projectGroup = group
+    result[first].projectSpan++
+    previous = key
+  })
+  return result
+}
+export function projectMaterialPrintRows(data: DocsetData): Record<string, any>[] {
+  const rows = data.workSpec.projectMaterials ?? flatten(data.bom.items || [])
+  const bom = flatten(data.bom.items || [])
+  return groupProjectMaterials(
+    rows.map((row) => ({
+      ...row,
+      icon: row.icon || bom.find((item) => item.processId === row.processId)?.icon,
+    }))
+  )
+}
 /** 刀模位置按 BOM 行（展平后）对齐取值，与纸张行序一致。map 优先；该行无 map 值时回退旧版多行文本（dieLocationText，按行对齐）。 */
 export function dieLocationRows(
   map: DieLocationMap | undefined,
@@ -236,9 +311,12 @@ export function plain(value: unknown): string {
 /** B模板规格独立成列，保留尺寸与跳距，不拼接模数或基数。 */
 export function workSpecMaterialDimensions(row?: Record<string, any> | null): string {
   if (!row) return ''
-  const width = Number(row.widthMm), length = Number(row.lengthMm)
-  const specification = Number.isFinite(width) && width > 0 && Number.isFinite(length) && length > 0
-    ? width + '*' + length + 'mm' : plain(row.specification)
+  const width = Number(row.widthMm),
+    length = Number(row.lengthMm)
+  const specification =
+    Number.isFinite(width) && width > 0 && Number.isFinite(length) && length > 0
+      ? width + '*' + length + 'mm'
+      : plain(row.specification)
   const split = plain(row.split)
   return specification + (split ? '跳' + split : '')
 }
@@ -255,7 +333,10 @@ export function workSpecMaterialSpec(row?: Record<string, any> | null): string {
   const split = plain(row.split)
   if (split) {
     return (
-      specification + '跳' + split + (Number.isFinite(module) && module > 0 ? '=' + module + 'PCS' : '')
+      specification +
+      '跳' +
+      split +
+      (Number.isFinite(module) && module > 0 ? '=' + module + 'PCS' : '')
     )
   }
   if (specification)
@@ -318,7 +399,7 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
       run: async () => {
         const ids = [
           ...new Set(
-            flatten(data.bom.items || [])
+            [...flatten(data.bom.items || []), ...(data.workSpec.projectMaterials || [])]
               .map((row) => Number(row.processId))
               .filter(Boolean)
           ),
@@ -338,6 +419,8 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
             ...(row.children ? { children: enrich(row.children) } : {}),
           }))
         data.bom = { ...data.bom, items: enrich(data.bom.items || []) }
+        if (data.workSpec.projectMaterials)
+          data.workSpec.projectMaterials = enrich(data.workSpec.projectMaterials)
       },
     },
     {
@@ -583,10 +666,26 @@ export async function buildDocsetFromLegacyRefs(
 /** B的测量源：所有材料/备注在前，全部流程随后连续排列。 */
 export function workSpecFlowSource(data: DocsetData): DocPage {
   const text = specText(data)
-  return { key: 'spec-b-source', section: 'spec', title: '产品作业规范', kind: 'spec', continuation: 0,
-    engineeringNotes: text.engineeringNotes, diePositionRows: text.diePositionRows, changeLines: text.changeLines,
-    rows: flatten(data.bom.items || []), groups: flowGroups.map(group => ({ ...group,
-      rows: (data.routing.items || []).filter((row: any) => row.processCategory === group.value) })) }
+  const materials = projectMaterialPrintRows(data)
+  const diePositions =
+    data.workSpec.projectMaterials !== undefined
+      ? materials.map((row) => row.dieLocation || '')
+      : text.diePositionRows
+  return {
+    key: 'spec-b-source',
+    section: 'spec',
+    title: '产品作业规范',
+    kind: 'spec',
+    continuation: 0,
+    engineeringNotes: text.engineeringNotes,
+    diePositionRows: diePositions,
+    changeLines: text.changeLines,
+    rows: materials,
+    groups: flowGroups.map((group) => ({
+      ...group,
+      rows: (data.routing.items || []).filter((row: any) => row.processCategory === group.value),
+    })),
+  }
 }
 export function makePages(
   data: DocsetData,
@@ -606,9 +705,27 @@ export function makePages(
   for (const section of documentSections.filter((item) => sections.includes(item.key))) {
     if (section.key === 'spec') {
       if (specTemplate === 'B') {
-        pages.push(...(measuredSpecPages.length ? measuredSpecPages.map((flowHtml, index): DocPage => ({
-          key: `spec-b-${index}`, section: 'spec', title: '产品作业规范', kind: 'spec', flowHtml,
-        })) : [{ key: 'spec-b-pending', section: 'spec', title: '产品作业规范', kind: 'spec', flowPending: true } as DocPage]))
+        pages.push(
+          ...(measuredSpecPages.length
+            ? measuredSpecPages.map(
+                (flowHtml, index): DocPage => ({
+                  key: `spec-b-${index}`,
+                  section: 'spec',
+                  title: '产品作业规范',
+                  kind: 'spec',
+                  flowHtml,
+                })
+              )
+            : [
+                {
+                  key: 'spec-b-pending',
+                  section: 'spec',
+                  title: '产品作业规范',
+                  kind: 'spec',
+                  flowPending: true,
+                } as DocPage,
+              ])
+        )
       }
       const materialCapacity = 14
       const bom = flatten(data.bom.items || [])
@@ -632,7 +749,10 @@ export function makePages(
           kind: 'spec',
           continuation: i,
           engineeringNotes: text.engineeringNotes,
-          diePositionRows: text.diePositionRows.slice(i * materialCapacity, (i + 1) * materialCapacity),
+          diePositionRows: text.diePositionRows.slice(
+            i * materialCapacity,
+            (i + 1) * materialCapacity
+          ),
           changeLines: text.changeLines,
           rows: bom.slice(i * materialCapacity, (i + 1) * materialCapacity),
           groups: groups.map((group, j) => ({
@@ -794,12 +914,17 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
     page.classList.add('flow-page')
     const heading = clone(sourceHeader)
     if (pages.length && !heading.querySelector('span')) {
-      const continuation = doc.createElement('span'); continuation.textContent = '（续）'; heading.append(continuation)
+      const continuation = doc.createElement('span')
+      continuation.textContent = '（续）'
+      heading.append(continuation)
     }
     footer = clone(sourceFooter) as HTMLElement
     const number = footer.lastElementChild as HTMLElement
-    number.textContent = ''; number.setAttribute('data-work-spec-page', '')
-    page.append(heading, footer); host.append(page); pages.push(page)
+    number.textContent = ''
+    number.setAttribute('data-work-spec-page', '')
+    page.append(heading, footer)
+    host.append(page)
+    pages.push(page)
   }
   const fits = () => {
     // 结构图首次出现的页保留结构图标题，后续纯流程页才使用上线列标题。
@@ -810,7 +935,8 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
         if (!merged && original.tHead) table.tHead?.replaceWith(clone(original.tHead))
       } else if (merged) {
         const upperHeading = original.tBodies[0]?.rows[7]?.querySelectorAll('th')
-        if (upperHeading?.length === 3) merged.replaceWith(...Array.from(upperHeading, cell => clone(cell)))
+        if (upperHeading?.length === 3)
+          merged.replaceWith(...Array.from(upperHeading, (cell) => clone(cell)))
       }
     }
     return page.scrollHeight <= page.clientHeight + 1
@@ -820,20 +946,26 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
 
   function tableFragment(table: HTMLTableElement) {
     const fragment = table.cloneNode(false) as HTMLTableElement
-    for (const child of table.children) if (child.tagName === 'COLGROUP' || child.tagName === 'THEAD') fragment.append(clone(child))
-    const body = doc.createElement('tbody'); fragment.append(body); insert(fragment)
+    for (const child of table.children)
+      if (child.tagName === 'COLGROUP' || child.tagName === 'THEAD') fragment.append(clone(child))
+    const body = doc.createElement('tbody')
+    fragment.append(body)
+    insert(fragment)
     return { fragment, body }
   }
 
   function rowGroups(rows: HTMLTableRowElement[]) {
     const groups: HTMLTableRowElement[][] = []
-    for (let start = 0; start < rows.length;) {
+    for (let start = 0; start < rows.length; ) {
       let end = start
       for (let i = start; i <= end; i++) {
-        for (const cell of rows[i].cells) end = Math.min(rows.length - 1, Math.max(end, i + cell.rowSpan - 1))
-        if (Array.from(rows[i].cells).every(cell => cell.tagName === 'TH')) end = Math.min(rows.length - 1, Math.max(end, i + 1))
+        for (const cell of rows[i].cells)
+          end = Math.min(rows.length - 1, Math.max(end, i + cell.rowSpan - 1))
+        if (Array.from(rows[i].cells).every((cell) => cell.tagName === 'TH'))
+          end = Math.min(rows.length - 1, Math.max(end, i + 1))
       }
-      groups.push(rows.slice(start, end + 1)); start = end + 1
+      groups.push(rows.slice(start, end + 1))
+      start = end + 1
     }
     return groups
   }
@@ -843,18 +975,28 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
     const active: { column: number; until: number; cell: HTMLTableCellElement }[] = []
     return rows.map((row, rowIndex) => {
       const result = clone(row)
-      const original = Array.from(result.cells); result.replaceChildren()
-      let column = 0, index = 0
-      while (index < original.length || active.some(span => span.until >= rowIndex && span.column >= column)) {
-        const span = active.find(item => item.column === column && item.until >= rowIndex)
+      const original = Array.from(result.cells)
+      result.replaceChildren()
+      let column = 0,
+        index = 0
+      while (
+        index < original.length ||
+        active.some((span) => span.until >= rowIndex && span.column >= column)
+      ) {
+        const span = active.find((item) => item.column === column && item.until >= rowIndex)
         if (span) {
           const empty = span.cell.cloneNode(false) as HTMLTableCellElement
-          empty.removeAttribute('rowspan'); result.append(empty); column += empty.colSpan
+          empty.removeAttribute('rowspan')
+          result.append(empty)
+          column += empty.colSpan
         } else {
           const cell = original[index++]
           if (!cell) break
-          if (cell.rowSpan > 1) active.push({ column, until: rowIndex + cell.rowSpan - 1, cell: clone(cell) })
-          cell.removeAttribute('rowspan'); result.append(cell); column += cell.colSpan
+          if (cell.rowSpan > 1)
+            active.push({ column, until: rowIndex + cell.rowSpan - 1, cell: clone(cell) })
+          cell.removeAttribute('rowspan')
+          result.append(cell)
+          column += cell.colSpan
         }
       }
       return result
@@ -862,8 +1004,21 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
   }
 
   function addMaterials(table: HTMLTableElement) {
-    const rows = Array.from(table.tBodies[0]?.rows || [])
-    const conditions = rows.slice(0, 6).map(row => Array.from(row.cells).slice(5).map(clone))
+    const rows = Array.from(table.tBodies[0]?.rows || []).map((row) => clone(row))
+    let projectCell: HTMLTableCellElement | undefined
+    let remaining = 0
+    for (const row of rows) {
+      if (remaining > 0 && projectCell) {
+        row.insertBefore(clone(projectCell), row.cells[1])
+        remaining--
+      } else {
+        projectCell = row.cells[1] ? clone(row.cells[1]) : undefined
+        remaining = (projectCell?.rowSpan || 1) - 1
+      }
+      if (projectCell) projectCell.rowSpan = 1
+      if (row.cells[1]) row.cells[1].rowSpan = 1
+    }
+    const conditions = rows.slice(0, 6).map((row) => Array.from(row.cells).slice(5).map(clone))
     const notes = table.querySelector<HTMLTableCellElement>('.engineering-notes')
     let current = tableFragment(table)
     // 每个片段沿用 A 的右侧凹凸/加工要求与列宽；正文编号取源行，不按固定容量重算。
@@ -873,76 +1028,127 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
         while (row.cells.length > 5) row.deleteCell(5)
         if (index < 6) row.append(...(conditions[index] || []).map(clone))
         else if (index === 6 && notes) {
-          const cell = clone(notes); cell.rowSpan = fragmentRows.length - 6; row.append(cell)
+          const cell = clone(notes)
+          cell.rowSpan = fragmentRows.length - 6
+          row.append(cell)
         }
       })
     }
     for (const row of rows) {
       const copy = clone(row)
       while (copy.cells.length > 5) copy.deleteCell(5)
-      current.body.append(copy); rightCells()
+      current.body.append(copy)
+      rightCells()
       if (fits()) continue
-      copy.remove(); rightCells()
+      copy.remove()
+      rightCells()
       if (!current.body.rows.length) {
         current.fragment.remove()
         if (!hasContent()) throw new Error('材料单行超过A4可用高度，请检查字号或加工要求')
       }
-      nextPage(); current = tableFragment(table); current.body.append(copy); rightCells()
+      nextPage()
+      current = tableFragment(table)
+      current.body.append(copy)
+      rightCells()
       if (!fits()) throw new Error('材料单行超过A4可用高度，请检查字号或加工要求')
     }
+    // 跨页时重建项目单元格，保留同一个组序号；右侧凹凸/加工要求仍按原列定位。
+    for (const printedPage of pages)
+      for (const materialTable of printedPage.querySelectorAll<HTMLTableElement>(
+        'table.materials'
+      )) {
+        let first: HTMLTableCellElement | undefined, group: string | undefined
+        for (const row of Array.from(materialTable.tBodies[0]?.rows || [])) {
+          const next = row.dataset.materialGroup
+          const cell = row.cells[1]
+          if (next && next === group && first) {
+            first.rowSpan++
+            cell.remove()
+          } else {
+            first = cell
+            group = next
+          }
+        }
+      }
   }
 
   function addTable(table: HTMLTableElement) {
-    if (table.classList.contains('materials')) { addMaterials(table); return }
+    if (table.classList.contains('materials')) {
+      addMaterials(table)
+      return
+    }
     let current = tableFragment(table)
     function advance() {
       if (!current.body.children.length) current.fragment.remove()
-      nextPage(); current = tableFragment(table)
+      nextPage()
+      current = tableFragment(table)
     }
     function splitRow(row: HTMLTableRowElement) {
-      const selector = '.material-remarks-content,.material-name,.cell-single,.operation-remark,.symbol sub,.die-position'
-      let remaining = Array.from(row.querySelectorAll<HTMLElement>(selector), node => Array.from(node.textContent || ''))
-      if (!remaining.some(text => text.length)) throw new Error('单行内容超过A4可用高度，请减小该列字号')
+      const selector =
+        '.material-remarks-content,.material-name,.cell-single,.operation-remark,.symbol sub,.die-position'
+      let remaining = Array.from(row.querySelectorAll<HTMLElement>(selector), (node) =>
+        Array.from(node.textContent || '')
+      )
+      if (!remaining.some((text) => text.length))
+        throw new Error('单行内容超过A4可用高度，请减小该列字号')
       let first = true
-      while (remaining.some(text => text.length)) {
+      while (remaining.some((text) => text.length)) {
         const copy = clone(row)
-        if (!first) copy.querySelectorAll('.structure').forEach(cell => cell.replaceChildren())
+        if (!first) copy.querySelectorAll('.structure').forEach((cell) => cell.replaceChildren())
         const targets = Array.from(copy.querySelectorAll<HTMLElement>(selector))
         current.body.append(copy)
-        const maximum = Math.max(...remaining.map(text => text.length))
-        const prefixLength = (text: string[], amount: number) => Math.ceil(text.length * amount / maximum)
+        const maximum = Math.max(...remaining.map((text) => text.length))
+        const prefixLength = (text: string[], amount: number) =>
+          Math.ceil((text.length * amount) / maximum)
         function setPrefix(amount: number) {
-          targets.forEach((target, i) => { target.textContent = remaining[i].slice(0, prefixLength(remaining[i], amount)).join('') })
+          targets.forEach((target, i) => {
+            target.textContent = remaining[i].slice(0, prefixLength(remaining[i], amount)).join('')
+          })
         }
-        let low = 0, high = maximum
+        let low = 0,
+          high = maximum
         while (low < high) {
-          const mid = Math.ceil((low + high) / 2); setPrefix(mid)
-          if (fits()) low = mid; else high = mid - 1
+          const mid = Math.ceil((low + high) / 2)
+          setPrefix(mid)
+          if (fits()) low = mid
+          else high = mid - 1
         }
         if (!low) {
           copy.remove()
           const occupied = current.body.children.length > 0 || page.children.length > 3
           if (!occupied) throw new Error('该内容最小片段无法放入A4，请减小字号')
-          advance(); continue
+          advance()
+          continue
         }
         setPrefix(low)
         first = false
-        remaining = remaining.map(text => text.slice(prefixLength(text, low)))
-        if (remaining.some(text => text.length)) advance()
+        remaining = remaining.map((text) => text.slice(prefixLength(text, low)))
+        if (remaining.some((text) => text.length)) advance()
       }
     }
     function addRows(rows: HTMLTableRowElement[]) {
-      const copies = rows.map(row => clone(row)); current.body.append(...copies)
+      const copies = rows.map((row) => clone(row))
+      current.body.append(...copies)
       if (fits()) return
-      copies.forEach(row => row.remove())
-      if (rows.length === 1 && rows[0].classList.contains('material-remarks')
-        && rows[0].querySelector('.material-remarks-content')?.textContent) { splitRow(rows[0]); return }
-      if (current.body.children.length || page.children.length > 3) {
-        advance(); current.body.append(...copies)
-        if (fits()) return
-        copies.forEach(row => row.remove())
+      copies.forEach((row) => row.remove())
+      if (
+        rows.length === 1 &&
+        rows[0].classList.contains('material-remarks') &&
+        rows[0].querySelector('.material-remarks-content')?.textContent
+      ) {
+        splitRow(rows[0])
+        return
       }
-      if (rows.length > 1) { expandSpans(rows).forEach(row => addRows([row])); return }
+      if (current.body.children.length || page.children.length > 3) {
+        advance()
+        current.body.append(...copies)
+        if (fits()) return
+        copies.forEach((row) => row.remove())
+      }
+      if (rows.length > 1) {
+        expandSpans(rows).forEach((row) => addRows([row]))
+        return
+      }
       splitRow(rows[0])
     }
     rowGroups(Array.from(table.tBodies[0]?.rows || [])).forEach(addRows)
@@ -952,10 +1158,13 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
 
   function splitTextBlock(block: HTMLElement, selector: string) {
     const sourceText = block.querySelector<HTMLElement>(selector)!
-    const records = sourceText.children.length ? Array.from(sourceText.children) as HTMLElement[] : [sourceText]
-    let remaining = records.map(node => ({ node, text: Array.from(node.textContent || '') }))
-    while (remaining.some(record => record.text.length)) {
-      const copy = clone(block), target = copy.querySelector<HTMLElement>(selector)!
+    const records = sourceText.children.length
+      ? (Array.from(sourceText.children) as HTMLElement[])
+      : [sourceText]
+    let remaining = records.map((node) => ({ node, text: Array.from(node.textContent || '') }))
+    while (remaining.some((record) => record.text.length)) {
+      const copy = clone(block),
+        target = copy.querySelector<HTMLElement>(selector)!
       insert(copy)
       function setPrefix(amount: number) {
         target.replaceChildren()
@@ -964,34 +1173,45 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
           if (!amount) break
           const part = record.node.cloneNode(false) as HTMLElement
           const count = Math.min(amount, record.text.length)
-          part.textContent = record.text.slice(0, count).join(''); target.append(part); amount -= count
+          part.textContent = record.text.slice(0, count).join('')
+          target.append(part)
+          amount -= count
         }
       }
-      let low = 0, high = remaining.reduce((sum, record) => sum + record.text.length, 0)
+      let low = 0,
+        high = remaining.reduce((sum, record) => sum + record.text.length, 0)
       while (low < high) {
-        const mid = Math.ceil((low + high) / 2); setPrefix(mid)
-        if (fits()) low = mid; else high = mid - 1
+        const mid = Math.ceil((low + high) / 2)
+        setPrefix(mid)
+        if (fits()) low = mid
+        else high = mid - 1
       }
       if (!low) {
         copy.remove()
         if (!hasContent()) throw new Error('变更内容最小片段无法放入A4，请减小字号')
-        nextPage(); continue
+        nextPage()
+        continue
       }
       setPrefix(low)
       let consumed = low
-      remaining = remaining.map(record => {
-        const count = Math.min(consumed, record.text.length); consumed -= count
+      remaining = remaining.map((record) => {
+        const count = Math.min(consumed, record.text.length)
+        consumed -= count
         return { ...record, text: record.text.slice(count) }
       })
-      if (remaining.some(record => record.text.length)) nextPage()
+      if (remaining.some((record) => record.text.length)) nextPage()
     }
   }
   try {
     nextPage()
     for (const child of Array.from(source.children) as HTMLElement[]) {
       if (child === sourceHeader || child === sourceFooter) continue
-      if (child.tagName === 'TABLE') { addTable(child as HTMLTableElement); continue }
-      const copy = clone(child); insert(copy)
+      if (child.tagName === 'TABLE') {
+        addTable(child as HTMLTableElement)
+        continue
+      }
+      const copy = clone(child)
+      insert(copy)
       if (fits()) continue
       copy.remove()
       if (hasContent()) nextPage()
@@ -1001,6 +1221,8 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
       if (child.querySelector('.changes-content')) splitTextBlock(child, '.changes-content')
       else throw new Error('内容块无法放入A4，请减小字号')
     }
-    return pages.map(item => item.outerHTML)
-  } finally { host.remove() }
+    return pages.map((item) => item.outerHTML)
+  } finally {
+    host.remove()
+  }
 }

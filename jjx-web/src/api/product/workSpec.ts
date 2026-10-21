@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import { ElMessageBox } from 'element-plus'
 
 export interface WorkSpecChangeSource {
   id: number
@@ -48,7 +49,36 @@ export interface WorkSpecDraftFile extends WorkSpecAttachment {
   fileType?: string
   fileSize?: number
 }
+export interface ProjectMaterial {
+  materialId?: number
+  materialCode: string
+  materialName: string
+  processId?: number
+  processName: string
+  specification: string
+  params?: string
+  quantity: number
+  unit: string
+  dieLocation: string
+  sortOrder: number
+  moduleQty?: number
+  baseQty?: number
+  split?: string
+  widthMm?: number
+  lengthMm?: number
+  icon?: string
+  sourceBom?: Record<string, string>
+}
+export interface ProjectMaterialsCheck {
+  errors: string[]
+  warnings: string[]
+  token?: string
+  bomSources?: Record<string, string>[]
+}
 export interface ProductWorkSpec {
+  projectMaterials?: ProjectMaterial[]
+  projectMaterialsAcknowledgement?: string
+  projectMaterialsCheck?: ProjectMaterialsCheck
   draftManaged?: boolean
   draftAttachments?: WorkSpecAttachment[]
   draftFiles?: WorkSpecDraftFile[]
@@ -109,6 +139,12 @@ function dieLocationMap(value: unknown): DieLocationMap {
 }
 export function normalizeWorkSpec(value: Partial<ProductWorkSpec> = {}): ProductWorkSpec {
   return {
+    projectMaterials: value.projectMaterials?.map((row) => ({
+      ...row,
+      sourceBom: row.sourceBom && { ...row.sourceBom },
+    })),
+    projectMaterialsCheck: value.projectMaterialsCheck,
+    projectMaterialsAcknowledgement: value.projectMaterialsAcknowledgement,
     draftManaged: value.draftManaged,
     draftAttachments: value.draftAttachments?.map((file) => ({ ...file })),
     draftFiles: value.draftFiles?.map((file) => ({ ...file })),
@@ -163,10 +199,13 @@ export function workSpecContent(value: ProductWorkSpec) {
     basedOnVersionId,
     finalizedVersionId,
     finalizedFromRevision,
+    projectMaterialsCheck,
+    projectMaterialsAcknowledgement,
     ...content
   } = value
   return {
     ...content,
+    projectMaterials: content.projectMaterials?.map(({ icon, ...row }) => row),
     structureFileId: value.structureFileId || null,
     issueDate: value.issueDate || null,
     dieLocation: Object.keys(value.dieLocation || {}).length
@@ -183,6 +222,44 @@ export function workSpecContent(value: ProductWorkSpec) {
     ),
   }
 }
+export async function checkProjectMaterialsBeforeSave(id: number, value: ProductWorkSpec) {
+  if (!value.projectMaterials) return
+  const response = await request.post('/product/' + id + '/work-spec/project-materials/check', {
+    projectMaterials: value.projectMaterials,
+  })
+  const check = response.data as ProjectMaterialsCheck
+  if (check.errors.length) throw new Error(check.errors.join('；'))
+  value.projectMaterialsAcknowledgement = undefined
+  if (check.warnings.length) {
+    await ElMessageBox.confirm(check.warnings.join('；'), '项目材料差异提醒', {
+      type: 'warning',
+      confirmButtonText: '确认继续',
+    })
+    value.projectMaterialsAcknowledgement = check.token
+  }
+}
+export async function acknowledgeProjectMaterials(
+  id: number,
+  value: ProductWorkSpec,
+  action: '打印' | '定版'
+) {
+  const check = value.projectMaterialsCheck
+  if (check?.errors.length) throw new Error(check.errors.join('；'))
+  if (!check?.warnings.length) return value
+  await ElMessageBox.confirm(check.warnings.join('；'), '项目材料差异提醒', {
+    type: 'warning',
+    confirmButtonText: '确认继续',
+  })
+  const response = await request.post(
+    '/product/' + id + '/work-spec/project-materials/acknowledge',
+    {
+      revision: value.revision,
+      token: check.token,
+      action,
+    }
+  )
+  return normalizeWorkSpec(response.data)
+}
 export const productWorkSpecApi = {
   saveDraft: (
     id: number,
@@ -192,18 +269,30 @@ export const productWorkSpecApi = {
       spec?: ReturnType<typeof workSpecContent>
       attachments: WorkSpecAttachment[]
     }
-  ) => request.put('/product/' + id + '/work-spec/draft', value),
+  ) => {
+    return (async () => {
+      if (!value.spec) {
+        const current = normalizeWorkSpec((await productWorkSpecApi.get(id)).data)
+        if (current.projectMaterials) value.spec = workSpecContent(current)
+      }
+      if (value.spec) await checkProjectMaterialsBeforeSave(id, value.spec as ProductWorkSpec)
+      return request.put('/product/' + id + '/work-spec/draft', value)
+    })()
+  },
   upgradeDraft: (id: number, revision: string, baseVersionId: number) =>
     request.post('/product/' + id + '/work-spec/draft/from-version', { revision, baseVersionId }),
   responsibleUsers: (id: number) => request.get('/product/' + id + '/work-spec/responsible-users'),
   history: (id: number, before?: number) =>
     request.get('/product/' + id + '/work-spec/history', { params: { before } }),
   get: (id: number) => request.get('/product/' + id + '/work-spec'),
-  save: (id: number, value: ProductWorkSpec) =>
-    request.put('/product/' + id + '/work-spec', {
+  save: async (id: number, value: ProductWorkSpec) => {
+    await checkProjectMaterialsBeforeSave(id, value)
+    return request.put('/product/' + id + '/work-spec', {
       ...workSpecContent(value),
       revision: value.revision,
-    }),
+      projectMaterialsAcknowledgement: value.projectMaterialsAcknowledgement,
+    })
+  },
   confirm: (id: number, revision: string, sourceRevision: string) =>
     request.post('/product/' + id + '/work-spec/confirm', { revision, sourceRevision }),
   changeSources: (id: number, before?: number) =>
@@ -215,10 +304,14 @@ export const productWorkSpecApi = {
   saveColorCheck: (id: number, revision: string, items: Record<string, ColorCheckItemValue>) =>
     request.put('/product/' + id + '/work-spec/color-check', { revision, items }),
   // 发布版本（dev-20261011-008）
-  publishVersion: (id: number, changeSummary?: string, revision?: string) =>
-    request.post('/product/' + id + '/work-spec/publish', null, {
-      params: { changeSummary, revision },
-    }),
+  publishVersion: async (id: number, changeSummary?: string, revision?: string) => {
+    const current = normalizeWorkSpec((await productWorkSpecApi.get(id)).data)
+    if (revision && revision !== current.revision) throw new Error('草稿已变化，请重新加载后定版')
+    const accepted = await acknowledgeProjectMaterials(id, current, '定版')
+    return request.post('/product/' + id + '/work-spec/publish', null, {
+      params: { changeSummary, revision: accepted.revision },
+    })
+  },
   listVersions: (id: number) => request.get('/product/' + id + '/work-spec/versions'),
   getVersion: (versionId: number) => request.get('/product/work-spec/versions/' + versionId),
   versionDiff: (versionId: number) =>
@@ -229,8 +322,10 @@ export const productWorkSpecApi = {
   /** 显式制定规范（dev-20261020-016/017）：无负责人时原子占用，返回最新工作态。 */
   claimWorkSpec: (id: number) => request.post('/product/' + id + '/work-spec/claim'),
   /** 转交/改派制定负责人（dev-20261020-016/018）：需当前 revision 与显式确认。 */
-  transferWorkSpec: (id: number, body: { revision: string; preparedById: number; ownerTransferConfirmed: true }) =>
-    request.post('/product/' + id + '/work-spec/transfer', body),
+  transferWorkSpec: (
+    id: number,
+    body: { revision: string; preparedById: number; ownerTransferConfirmed: true }
+  ) => request.post('/product/' + id + '/work-spec/transfer', body),
   // 任意两个已发布版本比较（dev-20261011-028）
   compareVersions: (versionA: number, versionB: number) =>
     request.get('/product/work-spec/compare', { params: { versionA, versionB } }),

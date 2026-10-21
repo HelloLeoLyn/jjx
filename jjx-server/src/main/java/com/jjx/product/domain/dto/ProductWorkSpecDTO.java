@@ -15,6 +15,32 @@ import java.util.Map;
 @Data
 public class ProductWorkSpecDTO {
     @Size(max = 64) private String revision;
+    /** null 保留历史 BOM 回退；空数组是操作员明确选择的空清单。 */
+    @Valid @Size(max = 1000) private List<ProjectMaterial> projectMaterials;
+    @Size(max = 64) private String projectMaterialsAcknowledgement;
+
+    @Data
+    public static class ProjectMaterial {
+        private Long materialId;
+        @Size(max = 100) private String materialCode;
+        @Size(max = 200) private String materialName;
+        private Long processId;
+        @Size(max = 200) private String processName;
+        @Size(max = 500) private String specification;
+        /** 空值使用自动计算，非空为人工覆盖的纯文本。 */
+        @Size(max = 500) private String params;
+        private java.math.BigDecimal quantity;
+        @Size(max = 30) private String unit;
+        @Size(max = 100) private String dieLocation;
+        private Integer sortOrder;
+        private java.math.BigDecimal moduleQty;
+        private java.math.BigDecimal baseQty;
+        @Size(max = 100) private String split;
+        private java.math.BigDecimal widthMm;
+        private java.math.BigDecimal lengthMm;
+        /** 导入时的 BOM 内容，仅用于差异提醒，不作关联键。 */
+        private JsonNode sourceBom;
+    }
     @Size(max = 6) private Map<String, String> emboss = new LinkedHashMap<>();
     @Size(max = 2000) private String engineeringRequirements;
     @Size(max = 20) private String requirementsColor;

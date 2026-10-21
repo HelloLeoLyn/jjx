@@ -31,11 +31,20 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(row, i) in padded(page.rows, materialCapacity)" :key="i">
+        <tr
+          v-for="(row, i) in padded(page.rows, materialCapacity)"
+          :key="i"
+          :data-material-group="specTemplate === 'B' ? row?.projectGroup : undefined"
+        >
           <td class="center" :style="columnFont('materialNumber', 'Content')">
             {{ (page.continuation || 0) * materialCapacity + i + 1 }}
           </td>
-          <td class="center" :style="columnFont('materialProject', 'Content')">
+          <td
+            v-if="specTemplate !== 'B' || !row || row.projectSpan"
+            class="center"
+            :rowspan="specTemplate === 'B' ? row?.projectSpan || 1 : 1"
+            :style="columnFont('materialProject', 'Content')"
+          >
             <SvgIcon
               v-if="row?.icon"
               :name="row.icon"
@@ -46,7 +55,7 @@
               :data-overflow-title="materialLabel(i) + '项目'"
               :title="plain(row?.processName)"
               >{{ plain(row?.processName) }}</span
-            >
+            ><sub v-if="specTemplate === 'B' && row">{{ row.projectGroup }}</sub>
           </td>
           <td :style="columnFont('materialName', 'Content')">
             <span
@@ -59,9 +68,8 @@
           <td :style="columnFont('materialSpec', 'Content')">
             <span
               class="cell-single"
-              :data-overflow-title="
-                materialLabel(i) + '规格及模数'
-              "
+              :data-overflow-title="materialLabel(i) + '规格及模数'"
+              :class="{ 'manual-params': specTemplate === 'B' && row?.params }"
               :title="materialSpec(row)"
               >{{ materialSpec(row) }}</span
             >
@@ -285,7 +293,7 @@ const materialCapacity = computed(() =>
     : 14
 )
 function materialSpec(row?: Record<string, any> | null) {
-  return workSpecMaterialSpec(row)
+  return props.specTemplate === 'B' && row?.params ? row.params : workSpecMaterialSpec(row)
 }
 const emit = defineEmits<{ overflow: [lines: PaperTextLine[]] }>()
 /**
@@ -352,9 +360,15 @@ const allOperations = computed<Record<string, any>[]>(() => props.data.routing.i
 const flowRows = computed(() =>
   Array.from(
     {
-      length: props.specTemplate === 'B'
-        ? Math.max(14, ...(props.page.groups || []).map((group, column) => group.rows.length + (column === 1 ? 8 : 0)))
-        : 14,
+      length:
+        props.specTemplate === 'B'
+          ? Math.max(
+              14,
+              ...(props.page.groups || []).map(
+                (group, column) => group.rows.length + (column === 1 ? 8 : 0)
+              )
+            )
+          : 14,
     },
     (_, index) => ({
       index,
@@ -410,6 +424,10 @@ function shortDate(value?: string | null) {
 </script>
 
 <style scoped>
+.manual-params {
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere;
+}
 .work-paper {
   width: 100%;
   height: 278mm;
@@ -764,31 +782,65 @@ footer {
 /* B 的连续源只用于测量；最终每页使用固定 A4 正文高度。 */
 /* Draw the content frame per block so the footer's free space stays outside it.
    Inset outlines preserve the measured column widths and pagination geometry. */
-.work-paper > :not(footer) { outline: 1.5px solid #222; outline-offset: -1.5px; }
-.inline-content:not(.continuous):not(.flow-page) :is(.material-name, .cell-single, .notes-content, .operation, .operation-remark, .changes, .changes-content) {
+.work-paper > :not(footer) {
+  outline: 1.5px solid #222;
+  outline-offset: -1.5px;
+}
+.inline-content:not(.continuous):not(.flow-page)
+  :is(
+    .material-name,
+    .cell-single,
+    .notes-content,
+    .operation,
+    .operation-remark,
+    .changes,
+    .changes-content
+  ) {
   height: auto;
   max-height: none;
   overflow: visible;
   white-space: normal;
 }
-.inline-content:not(.continuous):not(.flow-page) .changes-content { flex: 0 0 auto; }
+.inline-content:not(.continuous):not(.flow-page) .changes-content {
+  flex: 0 0 auto;
+}
 .continuous,
 .flow-page {
   display: flex;
   flex-direction: column;
 }
-.continuous { height: auto; }
-.flow-page { height: 278mm; overflow: hidden; }
+.continuous {
+  height: auto;
+}
+.flow-page {
+  height: 278mm;
+  overflow: hidden;
+}
 .continuous .materials,
-.flow-page .materials { height: auto; min-height: 0; }
+.flow-page .materials {
+  height: auto;
+  min-height: 0;
+}
 .continuous .flows,
-.flow-page .flows { height: auto; min-height: 0; }
+.flow-page .flows {
+  height: auto;
+  min-height: 0;
+}
 .continuous .notes-content,
-.flow-page .notes-content { height: auto; overflow: visible; min-height: 0; }
+.flow-page .notes-content {
+  height: auto;
+  overflow: visible;
+  min-height: 0;
+}
 .continuous .issuance,
-.flow-page .issuance { flex: 0 0 auto; min-height: 110px; }
+.flow-page .issuance {
+  flex: 0 0 auto;
+  min-height: 110px;
+}
 .continuous .changes-content,
-.flow-page .changes-content { overflow: visible; }
+.flow-page .changes-content {
+  overflow: visible;
+}
 .continuous .material-name,
 .flow-page .material-name,
 .continuous .cell-single,
@@ -803,9 +855,16 @@ footer {
   white-space: normal;
 }
 .continuous .operation,
-.flow-page .operation { min-height: 24px; }
-.flow-page footer { margin-top: auto; }
+.flow-page .operation {
+  min-height: 24px;
+}
+.flow-page footer {
+  margin-top: auto;
+}
 @media print {
-  .work-paper { width: 100%; height: 278mm; }
+  .work-paper {
+    width: 100%;
+    height: 278mm;
+  }
 }
 </style>

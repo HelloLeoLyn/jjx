@@ -119,6 +119,7 @@ public class WorkSpecDocsetSnapshotService {
 
         // 规范正文：复用工作态读取口径（approved 由 confirmedSource×来源摘要计算，非原始字段）。
         ObjectNode spec = workSpecService.get(productId);
+        workSpecService.freezeProjectMaterials(spec);
 
         // 文件集合（结构图/产品库工程图/样品/产品库客供/客户来源客供），按附件 ID 去重。
         List<SnapshotFile> files = new ArrayList<>(collectFiles(product, spec));
@@ -141,10 +142,12 @@ public class WorkSpecDocsetSnapshotService {
 
         // 图标：解析为不可变资源（打包 SVG 字节归档 / 上传附件），回写 icon + iconSha256。
         Set<Long> processIds = new TreeSet<>();
+        collectProcessIds(spec.path("projectMaterials"), processIds);
         collectProcessIds(bomNode, processIds);
         collectProcessIds(routingNode, processIds);
         Map<Long, String> iconNames = processIconNames(processIds);
         Map<String, IconRef> icons = new LinkedHashMap<>();
+        enrichIcons(spec.path("projectMaterials"), iconNames, icons);
         enrichIcons(bomNode, iconNames, icons);
         enrichIcons(routingNode, iconNames, icons);
         for (IconRef ref : icons.values()) {

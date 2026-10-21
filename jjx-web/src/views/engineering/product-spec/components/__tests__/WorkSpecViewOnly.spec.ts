@@ -33,6 +33,7 @@ vi.mock('element-plus/es/components/form-item/style/css', () => ({}))
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { ElMessage } from 'element-plus'
 import Panel from '../ProductWorkSpecPanel.vue'
 import ColorPanel from '../ProductColorCheckPanel.vue'
 import Drawer from '@/components/product/ProductSpecDrawer.vue'
@@ -192,26 +193,29 @@ describe('作业规范只读模式覆盖正文外编辑入口', () => {
     ['只读查看', true, 7, undefined],
     ['非负责人', false, 9, undefined],
     ['已定版', false, 7, 3],
-  ])('%s时不出现 BOM/路线/刀模/发行/结构图/印刷备注编辑入口', async (_, viewOnly, owner, finalized) => {
-    spec = normalizeWorkSpec({
-      revision: 'r1',
-      draftManaged: true,
-      preparedById: owner,
-      preparedByName: owner === 7 ? '工程甲' : '工程乙',
-      finalizedVersionId: finalized,
-      dieLocationText: '旧刀模位置',
-    })
-    const wrapper = await mountPanel(viewOnly)
-    expect(editButtons(wrapper)).toHaveLength(0)
-    expect(wrapper.find('.structure-stub').attributes('data-editable')).toBe('false')
-    expect(wrapper.find('.route-stub').attributes('data-editable')).toBe('false')
-    expect(wrapper.find('.print-stub').attributes('data-readonly')).toBe('true')
-    expect(wrapper.text()).not.toContain('迁移旧文本')
-  })
+  ])(
+    '%s时不出现 BOM/路线/刀模/发行/结构图/印刷备注编辑入口',
+    async (_, viewOnly, owner, finalized) => {
+      spec = normalizeWorkSpec({
+        revision: 'r1',
+        draftManaged: true,
+        preparedById: owner,
+        preparedByName: owner === 7 ? '工程甲' : '工程乙',
+        finalizedVersionId: finalized,
+        dieLocationText: '旧刀模位置',
+      })
+      const wrapper = await mountPanel(viewOnly)
+      expect(editButtons(wrapper)).toHaveLength(0)
+      expect(wrapper.find('.structure-stub').attributes('data-editable')).toBe('false')
+      expect(wrapper.find('.route-stub').attributes('data-editable')).toBe('false')
+      expect(wrapper.find('.print-stub').attributes('data-readonly')).toBe('true')
+      expect(wrapper.text()).not.toContain('迁移旧文本')
+    }
+  )
 
   it('继续制定（可编辑态）时各入口恢复，且只读标记关闭', async () => {
     const wrapper = await mountPanel(false)
-    // 结构图、材料 BOM、刀模位置、备注、变更内容 · 发行单位 五个编辑入口
+    // 结构图、项目材料、备注、变更内容 · 发行单位等现有编辑入口
     expect(editButtons(wrapper)).toHaveLength(5)
     expect(wrapper.find('.route-stub').attributes('data-editable')).toBe('true')
     expect(wrapper.find('.print-stub').attributes('data-readonly')).toBe('false')
@@ -219,6 +223,100 @@ describe('作业规范只读模式覆盖正文外编辑入口', () => {
     await wrapper.find('.spec-top-col .section-heading button').trigger('click')
     await flushPromises()
     expect(wrapper.find('.structure-stub').attributes('data-editable')).toBe('true')
+  })
+})
+
+describe('项目材料独立编辑', () => {
+  it('支持增删排序、params编辑恢复自动，保存后重新打开保留数据且不修改BOM', async () => {
+    const bom = [
+      {
+        materialId: 1,
+        materialCode: 'M1',
+        materialName: '面材',
+        processName: '面板',
+        quantity: 1,
+        unit: 'PCS',
+        specification: '100mm',
+      },
+      {
+        materialId: 2,
+        materialCode: 'M2',
+        materialName: '胶',
+        processName: '面板',
+        quantity: 2,
+        unit: 'PCS',
+        specification: '200mm',
+      },
+    ]
+    vi.mocked(attachmentRefApi.documentTypes).mockResolvedValue({ data: [{ dict_code: 'attachment_category', item_key: 'ENGINEERING_DOC', label: '工程技术资料', is_active: 1 }] } as any)
+    const errors = vi.spyOn(ElMessage, 'error')
+    const before = JSON.stringify(bom)
+    spec.projectMaterials = bom.map((row, i) => ({
+      ...row,
+      params: '',
+      sortOrder: i,
+      dieLocation: '',
+    }))
+    vi.mocked(loadDocset).mockImplementation(async () => ({
+      product: {},
+      workSpec: normalizeWorkSpec(spec),
+      files: [],
+      bom: { items: bom },
+      routing: { items: [] },
+      warnings: [],
+    }))
+    vi.mocked(productWorkSpecApi.saveDraft).mockImplementation(async (_id, input) => {
+      spec = normalizeWorkSpec({ ...spec, ...input.spec, revision: 'r2' })
+      return { data: normalizeWorkSpec(spec) } as any
+    })
+    const wrapper = await mountPanel(false)
+    const section = () =>
+      wrapper.findAll('.data-section').find((node) => node.find('h3').text() === '项目材料')!
+    const action = (text: string) =>
+      section()
+        .findAll(
+          ['恢复自动', '删除', '下移'].includes(text)
+            ? '.el-table__body-wrapper button'
+            : '.section-heading button'
+        )
+        .find((node) => node.text() === text)!
+    await action('编辑').trigger('click')
+    await flushPromises()
+    await section().findAll('.el-table__body-wrapper tbody textarea')[0].setValue('人工规格\n2模')
+    await action('恢复自动').trigger('click')
+    await flushPromises()
+    expect(
+      (
+        section().findAll('.el-table__body-wrapper tbody textarea')[0]
+          .element as HTMLTextAreaElement
+      ).value
+    ).toBe('')
+    await section().findAll('.el-table__body-wrapper tbody textarea')[0].setValue('人工规格\n2模')
+    await action('新增').trigger('click')
+    await flushPromises()
+    expect(section().findAll('.el-table__body-wrapper tbody textarea')).toHaveLength(3)
+    await action('删除').trigger('click')
+    await flushPromises()
+    expect(section().findAll('.el-table__body-wrapper tbody textarea')).toHaveLength(2)
+    await action('下移').trigger('click')
+    await flushPromises()
+    await section().findAll('.el-table__body-wrapper tbody textarea')[0].setValue('胶参数')
+    await action('保存').trigger('click')
+    await flushPromises()
+    expect(errors.mock.calls).toEqual([])
+    errors.mockRestore()
+    expect(productWorkSpecApi.saveDraft).toHaveBeenCalled()
+    expect(spec.projectMaterials?.map((row) => row.materialCode)).toEqual(['M1', 'M2'])
+    expect(spec.projectMaterials?.[0].params).toBe('胶参数')
+    expect(JSON.stringify(bom)).toBe(before)
+    await action('编辑').trigger('click')
+    await flushPromises()
+    expect(
+      (
+        section().findAll('.el-table__body-wrapper tbody textarea')[0]
+          .element as HTMLTextAreaElement
+      ).value
+    ).toBe('胶参数')
   })
 })
 

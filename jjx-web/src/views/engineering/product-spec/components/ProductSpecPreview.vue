@@ -196,6 +196,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { productWorkSpecApi, normalizeWorkSpec, acknowledgeProjectMaterials } from '@/api/product/workSpec'
 import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import ProductFilePreview from '@/components/product/ProductFilePreview.vue'
 import { downloadFile } from '@/components/product/productFilePreview'
@@ -532,6 +533,21 @@ async function printDocuments() {
     }
     window.open(`/print/product-spec/${props.productId}?${params}`, '_blank')
     return
+  }
+  // 历史版本只读取冻结快照；工作态打印在最终出纸窗口重新核对当前 BOM。
+  if (!props.versionId && data.value) {
+    try {
+      const current = normalizeWorkSpec((await productWorkSpecApi.get(props.productId)).data)
+      if (current.revision !== data.value.workSpec.revision || current.sourceRevision !== data.value.workSpec.sourceRevision) {
+        await load()
+        ElMessage.warning('作业规范或 BOM 已变化，已重新加载，请核对后再打印')
+        return
+      }
+      await acknowledgeProjectMaterials(props.productId, current, '打印')
+    } catch (cause) {
+      if (cause !== 'cancel' && cause !== 'close') ElMessage.error(cause instanceof Error ? cause.message : '项目材料校验失败')
+      return
+    }
   }
   await nextTick()
   await document.fonts.ready

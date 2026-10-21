@@ -28,6 +28,23 @@ public class ProductWorkSpecController {
     private final ProductWorkSpecChangeService changes;
     private final TraceService traceService;
 
+    /** 只读预检：不持久化、不改 BOM。 */
+    @PostMapping("/project-materials/check")
+    @SaCheckLogin
+    public Result<ObjectNode> checkProjectMaterials(@PathVariable Long productId,
+            @Validated @RequestBody ProductWorkSpecDTO dto) {
+        return Result.success(service.checkProjectMaterialsInput(productId, dto));
+    }
+
+    /** 打印确认只写审计流水；定版确认还要求制定负责人。 */
+    @PostMapping("/project-materials/acknowledge")
+    @SaCheckLogin
+    public Result<ObjectNode> acknowledgeProjectMaterials(@PathVariable Long productId,
+            @Validated @RequestBody MaterialAcknowledgement dto) {
+        return Result.success(service.acknowledgeProjectMaterials(productId, dto.revision(), dto.token(), dto.action()));
+    }
+    public record MaterialAcknowledgement(@NotBlank String revision, @NotBlank String token, @NotBlank String action) {}
+
     @GetMapping("/change-sources")
     @SaCheckPermission("product:edit")
     public Result<ObjectNode> changeSources(@PathVariable Long productId, @RequestParam(required = false) Long before) {

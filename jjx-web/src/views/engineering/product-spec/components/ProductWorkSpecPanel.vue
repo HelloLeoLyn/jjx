@@ -127,7 +127,11 @@
               >
               <div v-else-if="canEdit">
                 <el-button :disabled="savingInline" @click="cancelEmbossEdit">取消</el-button>
-                <el-button type="primary" :loading="savingInline" :disabled="loading || savingInline" @click="saveEmboss"
+                <el-button
+                  type="primary"
+                  :loading="savingInline"
+                  :disabled="loading || savingInline"
+                  @click="saveEmboss"
                   >保存</el-button
                 >
               </div>
@@ -175,94 +179,184 @@
         </section>
         <section class="data-section">
           <div class="section-heading">
-            <h3>材料</h3>
-            <el-button
-              v-if="canEditBom"
-              :disabled="loading || !data.bom.bomId"
-              @click="bomVisible = true"
-              >编辑</el-button
-            >
+            <h3>项目材料</h3>
+            <div v-if="canEdit">
+              <template v-if="projectMaterialDraft === null">
+                <el-button :disabled="editing" @click="startProjectMaterials">编辑</el-button>
+                <el-button
+                  v-if="!data.workSpec.projectMaterials"
+                  :disabled="editing"
+                  @click="importProjectMaterials"
+                  >从 BOM 引入</el-button
+                >
+              </template>
+              <template v-else>
+                <el-button :disabled="projectMaterialSaving" @click="projectMaterialDraft = null"
+                  >取消</el-button
+                >
+                <el-button :disabled="projectMaterialSaving" @click="addProjectMaterial"
+                  >新增</el-button
+                >
+                <el-button
+                  type="primary"
+                  :loading="projectMaterialSaving"
+                  @click="saveProjectMaterials"
+                  >保存</el-button
+                >
+              </template>
+            </div>
           </div>
-          <el-table :data="materialRows" border size="small" empty-text="暂无 BOM 材料">
-            <el-table-column label="序号" width="80"
+          <el-alert
+            v-if="!data.workSpec.projectMaterials"
+            title="未建立项目材料，打印暂沿用 BOM；从 BOM 引入后不再自动同步，也不回写 BOM。"
+            type="info"
+            :closable="false"
+          />
+          <el-alert
+            v-for="message in [
+              ...(data.workSpec.projectMaterialsCheck?.errors || []),
+              ...(data.workSpec.projectMaterialsCheck?.warnings || []),
+            ]"
+            :key="message"
+            :title="message"
+            type="warning"
+            :closable="false"
+          />
+          <el-table
+            :data="projectMaterialDraft ?? data.workSpec.projectMaterials ?? bomRows"
+            border
+            size="small"
+            empty-text="未纳入项目材料"
+          >
+            <el-table-column label="序号" width="65"
+              ><template #default="{ $index }">{{ $index + 1 }}</template></el-table-column
+            >
+            <el-table-column label="项目" min-width="120"
               ><template #default="{ row }"
-                ><span :class="{ 'pending-row': row.pending }">{{
-                  row.pending ? '待清理' : row.index
+                ><el-input
+                  v-if="projectMaterialDraft"
+                  v-model="row.processName"
+                  maxlength="200"
+                /><span v-else>{{ row.processName || '—' }}</span></template
+              ></el-table-column
+            >
+            <el-table-column label="材料（限当前 BOM）" min-width="200"
+              ><template #default="{ row, $index }">
+                <el-select
+                  v-if="projectMaterialDraft"
+                  :model-value="
+                    bomRows.findIndex(
+                      (item) =>
+                        item.materialCode === row.materialCode &&
+                        (!row.materialId || row.materialId === item.materialId)
+                    ) >= 0
+                      ? String(
+                          bomRows.findIndex(
+                            (item) =>
+                              item.materialCode === row.materialCode &&
+                              (!row.materialId || row.materialId === item.materialId)
+                          )
+                        )
+                      : undefined
+                  "
+                  @change="selectProjectMaterial($index, $event)"
+                >
+                  <el-option
+                    v-for="(item, index) in bomRows"
+                    :key="index"
+                    :value="String(index)"
+                    :label="item.materialName + ' (' + item.materialCode + ')'"
+                  /> </el-select
+                ><span v-else>{{ row.materialName || row.materialCode }}</span>
+                <el-tag
+                  v-if="!bomRows.some((item) => item.materialCode === row.materialCode)"
+                  type="danger"
+                  >BOM已移除</el-tag
+                >
+              </template></el-table-column
+            >
+            <el-table-column label="规格及模数" min-width="180"
+              ><template #default="{ row }"
+                ><template v-if="projectMaterialDraft"
+                  ><el-input
+                    v-model="row.specification"
+                    maxlength="500"
+                    placeholder="规格"
+                  /><el-input-number
+                    v-model="row.widthMm"
+                    :min="0"
+                    placeholder="宽(mm)"
+                  /><el-input-number
+                    v-model="row.lengthMm"
+                    :min="0"
+                    placeholder="长(mm)"
+                  /><el-input-number
+                    v-model="row.moduleQty"
+                    :min="0"
+                    placeholder="模数"
+                  /><el-input-number v-model="row.baseQty" :min="0" placeholder="基数" /><el-input
+                    v-model="row.split"
+                    maxlength="100"
+                    placeholder="跳距"
+                  /><el-input
+                    v-model="row.params"
+                    type="textarea"
+                    :rows="3"
+                    maxlength="500"
+                    show-word-limit
+                    :placeholder="workSpecMaterialSpec(row) || '自动计算'"
+                  /><el-button link @click="row.params = ''">恢复自动</el-button>
+                  <div>自动值：{{ workSpecMaterialSpec(row) || '—' }}</div></template
+                ><span v-else class="multiline">{{
+                  row.params || workSpecMaterialSpec(row)
                 }}</span></template
               ></el-table-column
             >
-            <el-table-column label="项目" min-width="120"
-              ><template #default="{ row }">{{
-                row.pending ? '-' : plain(row.item?.processName) || '-'
-              }}</template></el-table-column
-            >
-            <el-table-column label="材料" min-width="160"
+            <el-table-column label="用量" width="155"
               ><template #default="{ row }"
-                ><span
-                  :title="row.pending ? row.key : row.item?.materialName || row.item?.materialCode"
-                  >{{
-                    row.pending ? row.key : row.item?.materialName || row.item?.materialCode || '-'
-                  }}</span
+                ><el-input-number
+                  v-if="projectMaterialDraft"
+                  v-model="row.quantity"
+                  :min="0"
+                  :controls="false"
+                  style="width: 125px"
+                /><span v-else>{{ row.quantity }}</span></template
+              ></el-table-column
+            >
+            <el-table-column label="单位" width="95"
+              ><template #default="{ row }"
+                ><el-input v-if="projectMaterialDraft" v-model="row.unit" maxlength="30" /><span
+                  v-else
+                  >{{ row.unit }}</span
                 ></template
               ></el-table-column
             >
-            <el-table-column label="规格及模数" min-width="160"
-              ><template #default="{ row }">{{
-                row.pending ? '-' : workSpecMaterialSpec(row.item) || '-'
-              }}</template></el-table-column
-            >
-            <el-table-column label="刀模位置" min-width="200">
-              <template #header>
-                <div class="die-head">
-                  <span>刀模位置</span>
-                  <span v-if="canEdit" class="die-head-actions">
-                    <template v-if="!dieEditing">
-                      <el-button link type="primary" size="small" @click="startDieEdit"
-                        >编辑</el-button
-                      >
-                    </template>
-                    <template v-else>
-                      <el-button link size="small" @click="cancelDieEdit">取消</el-button>
-                      <el-button
-                        link
-                        type="primary"
-                        size="small"
-                        :loading="dieSaving"
-                        @click="saveDieLocationAll"
-                        >保存</el-button
-                      >
-                    </template>
-                  </span>
-                </div>
-              </template>
-              <template #default="{ row }">
-                <el-input
-                  v-if="dieEditing"
-                  v-model="dieDraft[row.key]"
-                  size="small"
+            <el-table-column label="刀模位置" min-width="130"
+              ><template #default="{ row }"
+                ><el-input
+                  v-if="projectMaterialDraft"
+                  v-model="row.dieLocation"
                   maxlength="100"
-                  :placeholder="row.pending ? '待清理' : '未填写'"
-                  :disabled="dieSaving"
-                />
-                <span v-else>{{ dieDraft[row.key] || (row.pending ? '待清理' : '—') }}</span>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-alert
-            v-if="hasLegacyDie"
-            type="info"
-            :closable="false"
-            class="die-alert"
-            title="检测到旧版刀模位置文本（未按 BOM 行），可迁移到 BOM 行"
-          >
-            <el-button
-              v-if="canEdit"
-              link
-              type="primary"
-              @click="migrateLegacyDie"
-              >迁移旧文本</el-button
+                /><span v-else>{{
+                  row.dieLocation ?? dieMap[dieLocationKey(row)] ?? '—'
+                }}</span></template
+              ></el-table-column
             >
-          </el-alert>
+            <el-table-column v-if="projectMaterialDraft" label="排序/删除" width="180"
+              ><template #default="{ $index }"
+                ><el-button link :disabled="$index === 0" @click="moveProjectMaterial($index, -1)"
+                  >上移</el-button
+                ><el-button
+                  link
+                  :disabled="$index === projectMaterialDraft.length - 1"
+                  @click="moveProjectMaterial($index, 1)"
+                  >下移</el-button
+                ><el-button link type="danger" @click="projectMaterialDraft.splice($index, 1)"
+                  >删除</el-button
+                ></template
+              ></el-table-column
+            >
+          </el-table>
         </section>
         <WorkSpecWorkflow
           :items="data.routing.items || []"
@@ -430,6 +524,7 @@ import {
   embossFields,
   workSpecColors,
   type ProductWorkSpec,
+  type ProjectMaterial,
 } from '@/api/product/workSpec'
 import ProductSpecPreview from './ProductSpecPreview.vue'
 import StructureDrawingUpload from './StructureDrawingUpload.vue'
@@ -446,6 +541,7 @@ import {
   dieLocationKey,
   dieLocationLabel,
   flattenedBom,
+  projectMaterialFromBom,
   renderFile,
   type DocsetData,
 } from './docset'
@@ -494,9 +590,7 @@ const canEditBom = computed(
 )
 const canEditRoute = computed(
   () =>
-    !props.viewOnly &&
-    draftSession.canWrite.value &&
-    user.hasPermission('engineering:routing:edit')
+    !props.viewOnly && draftSession.canWrite.value && user.hasPermission('engineering:routing:edit')
 )
 const previewVisible = ref(false)
 const loading = ref(false)
@@ -581,6 +675,66 @@ watch(structureFile, () => {
   void loadStructureImage()
 })
 const bomRows = computed(() => flattenedBom(data.value?.bom.items))
+const projectMaterialDraft = ref<ProjectMaterial[] | null>(null)
+const projectMaterialSaving = ref(false)
+function startProjectMaterials() {
+  projectMaterialDraft.value = JSON.parse(
+    JSON.stringify(data.value?.workSpec.projectMaterials ?? [])
+  )
+}
+async function importProjectMaterials() {
+  await ElMessageBox.confirm('从当前 BOM 复制一次；之后不自动同步，不回写 BOM。', '从 BOM 引入')
+  projectMaterialDraft.value = bomRows.value.map((row, index) =>
+    projectMaterialFromBom(row, index, data.value?.workSpec)
+  )
+}
+function addProjectMaterial() {
+  const row = bomRows.value[0]
+  if (!row) {
+    ElMessage.warning('当前 BOM 没有可选材料')
+    return
+  }
+  projectMaterialDraft.value?.push(
+    projectMaterialFromBom(row, projectMaterialDraft.value.length, data.value?.workSpec)
+  )
+}
+function selectProjectMaterial(index: number, selected: string) {
+  if (!projectMaterialDraft.value || !bomRows.value[Number(selected)]) return
+  projectMaterialDraft.value[index] = projectMaterialFromBom(
+    bomRows.value[Number(selected)],
+    index,
+    data.value?.workSpec
+  )
+}
+function moveProjectMaterial(index: number, delta: number) {
+  const rows = projectMaterialDraft.value
+  if (!rows || index + delta < 0 || index + delta >= rows.length) return
+  const [row] = rows.splice(index, 1)
+  rows.splice(index + delta, 0, row)
+}
+async function saveProjectMaterials() {
+  if (!data.value || !projectMaterialDraft.value || !canEdit.value || projectMaterialSaving.value)
+    return
+  if (await blockInvalidAttachments()) return
+  projectMaterialSaving.value = true
+  try {
+    const next = normalizeWorkSpec(data.value.workSpec)
+    next.projectMaterials = projectMaterialDraft.value.map((row, index) => ({
+      ...row,
+      sortOrder: index,
+    }))
+    await saveSpec(next)
+    projectMaterialDraft.value = null
+    await sourcesSaved()
+    ElMessage.success('项目材料已保存')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close')
+      ElMessage.error(error instanceof Error ? error.message : '项目材料保存失败')
+  } finally {
+    projectMaterialSaving.value = false
+  }
+}
+
 const dieRows = computed(() =>
   bomRows.value.map((row) => ({ key: dieLocationKey(row), label: dieLocationLabel(row) }))
 )
@@ -693,6 +847,8 @@ const editing = computed(
     issuanceDraft.value !== null ||
     dieEditing.value ||
     editorVisible.value ||
+    projectMaterialDraft.value !== null ||
+    projectMaterialSaving.value ||
     bomVisible.value ||
     routeVisible.value ||
     printSpecBusy.value ||
@@ -941,8 +1097,20 @@ async function refreshDrawings() {
 function collectRecoveryContent(attempt?: ProductWorkSpec) {
   if (editorVisible.value) return normalizeWorkSpec(JSON.parse(JSON.stringify(draft.value)))
   if (issuanceDraft.value) return normalizeWorkSpec(JSON.parse(JSON.stringify(issuanceDraft.value)))
-  if (!attempt && noteDraft.value === null && !dieEditing.value && !embossEditing.value) return undefined
+  if (
+    !attempt &&
+    noteDraft.value === null &&
+    !dieEditing.value &&
+    !embossEditing.value &&
+    projectMaterialDraft.value === null
+  )
+    return undefined
   const next = normalizeWorkSpec(JSON.parse(JSON.stringify(attempt || data.value?.workSpec || {})))
+  if (projectMaterialDraft.value !== null)
+    next.projectMaterials = projectMaterialDraft.value.map((row, index) => ({
+      ...row,
+      sortOrder: index,
+    }))
   if (noteDraft.value !== null) next.engineeringRequirements = noteDraft.value
   if (embossEditing.value) next.emboss = { ...embossDraft }
   if (dieEditing.value) {
@@ -953,6 +1121,7 @@ function collectRecoveryContent(attempt?: ProductWorkSpec) {
 }
 draftSession.recoveryContent.value = collectRecoveryContent
 watch(draftSession.recovered, () => {
+  projectMaterialDraft.value = null
   embossEditing.value = false
   noteDraft.value = null
   issuanceDraft.value = null
@@ -983,6 +1152,7 @@ watch(
 watch(
   () => props.productId,
   () => {
+    projectMaterialDraft.value = null
     embossEditing.value = false
     structureEditing.value = false
     structurePreviewGeneration++

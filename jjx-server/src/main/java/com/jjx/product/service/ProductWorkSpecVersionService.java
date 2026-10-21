@@ -117,6 +117,8 @@ public class ProductWorkSpecVersionService {
                 throw new BusinessException("只有当前制定负责人可以定版；如需他人定版，请先转交负责人");
         }
 
+        if (draft.hasNonNull("projectMaterials")) draftService.requireProjectMaterialsAcknowledged(productId, draft, "定版");
+
         int seq = Math.toIntExact(versionMapper.selectCount(
                 Wrappers.<ProductWorkSpecVersion>lambdaQuery()
                         .eq(ProductWorkSpecVersion::getProductId, productId))) + 1;
@@ -444,6 +446,7 @@ public class ProductWorkSpecVersionService {
     /** 两份规范正文快照的字段级差异（前一份 vs 后一份）。 */
     private List<Map<String, Object>> compareSnapshots(JsonNode snap, JsonNode cur) {
         List<Map<String, Object>> fields = new ArrayList<>();
+        addDiff(fields, "项目材料（新增/移除/修改/排序）", snap.get("projectMaterials"), cur.get("projectMaterials"));
         addDiff(fields, "工程附件清单", snap.get("draftAttachments"), cur.get("draftAttachments"));
         addDiff(fields, "制定负责人", snap.get("preparedById"), cur.get("preparedById"));
         addDiff(fields, "负责人姓名", snap.get("preparedByName"), cur.get("preparedByName"));

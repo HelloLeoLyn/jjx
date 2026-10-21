@@ -75,6 +75,23 @@ class WorkSpecDocsetSnapshotServiceTest {
         lenient().when(jdbc.queryForList(anyString(), any(Object[].class))).thenReturn(List.of());
     }
 
+    @Test
+    void projectMaterialsFreezeEffectiveParamsWithoutChangingWorkingCopy() throws Exception {
+        Product product = product(); product.setCurrentBomId(null);
+        ObjectNode working = spec(null, false);
+        working.putArray("projectMaterials").addObject().put("materialCode", "M1").put("materialName", "面材")
+            .put("widthMm", 100).put("lengthMm", 200).put("moduleQty", 2).put("params", "");
+        working.withArray("projectMaterials").addObject().put("materialCode", "M2").put("params", "人工\n<规格>");
+        when(workSpecService.get(anyLong())).thenAnswer(call -> working.deepCopy());
+        var formatter = new ProductWorkSpecService(null, null, null, null, json, null, null);
+        doAnswer(call -> { formatter.freezeProjectMaterials(call.getArgument(0)); return null; })
+            .when(workSpecService).freezeProjectMaterials(any());
+        JsonNode frozen = json.readTree(service.build(product, "V1.0", "工程甲", LocalDateTime.now(), null).json());
+        assertEquals("100*200mm=2PCS", frozen.path("spec").path("projectMaterials").get(0).path("params").asText());
+        assertEquals("人工\n<规格>", frozen.path("spec").path("projectMaterials").get(1).path("params").asText());
+        assertEquals("", working.path("projectMaterials").get(0).path("params").asText());
+    }
+
     private Product product() {
         Product product = new Product();
         product.setProductId(3L);

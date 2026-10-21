@@ -83,9 +83,11 @@ public class ProductWorkSpecService {
         checkRevision(dto.getRevision(), oldRaw);
         validate(id, dto);
         ObjectNode next = parse(json.valueToTree(dto).toString());
-        next.remove("revision");
+        next.remove(List.of("revision", "projectMaterialsAcknowledgement"));
+        preserveProjectMaterials(oldRaw, next);
         ObjectNode oldContent = parse(oldRaw).deepCopy();
         requireOwner(oldContent);
+        checkProjectMaterials(id, next, dto.getProjectMaterialsAcknowledgement(), "保存");
         oldContent.remove(java.util.List.of("confirmedBy", "confirmedAt", "confirmedSource"));
         // 整组备注由专用入口维护；旧客户端保存其他规范内容也不能覆盖它。
         if (oldContent.has("printRemarks")) next.set("printRemarks", oldContent.get("printRemarks").deepCopy());
@@ -160,8 +162,12 @@ public class ProductWorkSpecService {
         next.remove(List.of("revision", "confirmedBy", "confirmedAt", "confirmedSource"));
         for (String key : List.of("printRemarks", "colorCheck", "basedOnVersionId", "finalizedVersionId", "finalizedFromRevision"))
             if (old.has(key)) next.set(key, old.get(key).deepCopy());
+        next.remove("projectMaterialsAcknowledgement");
+        preserveProjectMaterials(previous, next);
+
         next.put("draftManaged", true);
         requireOwner(old);
+        checkProjectMaterials(id, next, input.getSpec() == null ? null : input.getSpec().getProjectMaterialsAcknowledgement(), "保存");
         if (input.getPreparedById() != null && !Objects.equals(input.getPreparedById(), old.path("preparedById").asLong()))
             throw new BusinessException("请使用转交/改派操作变更负责人");
         next.set("preparedById", old.get("preparedById"));
@@ -331,6 +337,7 @@ public class ProductWorkSpecService {
         if (!Objects.equals(oldStructure, newStructure))
             changes.add("结构图：" + attachmentName(names, oldStructure) + " → " + attachmentName(names, newStructure));
 
+        changes.addAll(projectMaterialChanges(before, after));
         changes.addAll(dieLocationChanges(id, before, after));
         addSpecFieldChanges(changes, before, after);
         addAttachmentChanges(changes, oldFiles, newFiles, names);
@@ -693,6 +700,172 @@ public class ProductWorkSpecService {
         return result;
     }
 
+    private void preserveProjectMaterials(String previous, ObjectNode next) {
+        ObjectNode old = parse(previous);
+        if ((!next.has("projectMaterials") || next.path("projectMaterials").isNull()) && old.hasNonNull("projectMaterials"))
+            next.set("projectMaterials", old.get("projectMaterials").deepCopy());
+        else if (next.path("projectMaterials").isNull()) next.remove("projectMaterials");
+        if (old.has("projectMaterialsAcknowledgements")) next.set("projectMaterialsAcknowledgements", old.get("projectMaterialsAcknowledgements").deepCopy());
+    }
+
+    private static final List<String> MATERIAL_BOM_FIELDS = List.of("materialId", "materialCode", "materialName", "processId", "processName", "specification", "quantity", "unit", "moduleQty", "baseQty", "split", "widthMm", "lengthMm");
+
+    public ObjectNode materialBomSource(JsonNode row) {
+        ObjectNode result = json.createObjectNode();
+        for (String key : MATERIAL_BOM_FIELDS) {
+            JsonNode value = row.path(key);
+            result.put(key, value.isNumber() ? value.decimalValue().stripTrailingZeros().toPlainString() : value.asText(""));
+        }
+        return result;
+    }
+
+    private void collectMaterialRows(JsonNode rows, List<JsonNode> target) {
+        for (JsonNode row : rows) {
+            target.add(row);
+            collectMaterialRows(row.path("children"), target);
+        }
+    }
+
+    private boolean sameMaterial(JsonNode a, JsonNode b) {
+        String code = a.path("materialCode").asText("");
+        if (!code.isBlank()) return code.equals(b.path("materialCode").asText(""))
+            && (!a.hasNonNull("materialId") || a.path("materialId").asText().equals(b.path("materialId").asText()));
+        return a.hasNonNull("materialId") && a.path("materialId").asText().equals(b.path("materialId").asText());
+    }
+
+    public ObjectNode checkProjectMaterialsInput(Long id, ProductWorkSpecDTO input) {
+        return inspectProjectMaterials(id, json.valueToTree(input.getProjectMaterials()));
+    }
+
+    /** 工作态检查；历史定版快照不调用当前 BOM 校验。 */
+    public ObjectNode inspectProjectMaterials(Long id, JsonNode materials) {
+        ObjectNode result = json.createObjectNode();
+        var errors = result.putArray("errors");
+        var warnings = result.putArray("warnings");
+        if (materials == null || materials.isNull()) return result;
+        if (!materials.isArray() || materials.size() > 1000) throw new BusinessException("项目材料必须是最多1000条的有序清单");
+        List<JsonNode> bom = new ArrayList<>();
+        var full = requireProduct(id);
+        collectMaterialRows(json.<JsonNode>valueToTree(full.getBom()).path("items"), bom);
+        var sources = result.putArray("bomSources");
+        bom.forEach(row -> sources.add(materialBomSource(row)));
+        List<String> missing = new ArrayList<>();
+        for (JsonNode row : bom) {
+            boolean found = false;
+            for (JsonNode item : materials) if (sameMaterial(item, row)) { found = true; break; }
+            if (!found) missing.add(row.path("materialName").asText(row.path("materialCode").asText()));
+        }
+        if (!missing.isEmpty()) warnings.add("当前 BOM 有 " + missing.size() + " 项材料未纳入项目材料：" + String.join("、", missing));
+        int i = 0;
+        for (JsonNode item : materials) {
+            i++;
+            final JsonNode current = item;
+            var matches = bom.stream().filter(row -> sameMaterial(current, row)).toList();
+            String label = "项目材料第 " + i + " 行「" + item.path("materialName").asText("") + "」";
+            if (matches.isEmpty()) errors.add(label + "：BOM已移除或不在当前 BOM 中，请删除或替换");
+            if (!item.isObject() || (item.hasNonNull("params") && (!item.path("params").isTextual() || item.path("params").asText().length() > 500)))
+                errors.add(label + "：params 必须为500字以内的纯文本");
+            if (item.path("materialName").asText("").isBlank() || !item.path("quantity").isNumber()
+                    || item.path("quantity").decimalValue().signum() <= 0)
+                errors.add(label + "：材料名称和大于0的用量必填");
+            if (item.hasNonNull("sourceBom") && !matches.isEmpty()
+                    && matches.stream().noneMatch(row -> materialBomSource(row).equals(item.get("sourceBom"))))
+                warnings.add(label + "：BOM 内容已变化；保留项目材料当前内容，不自动覆盖");
+        }
+        result.put("token", digest(canonicalMaterialJson(sources).toString() + canonicalMaterialJson(materials).toString()));
+        return result;
+    }
+
+    private JsonNode canonicalMaterialJson(JsonNode node) {
+        if (node.isObject()) {
+            ObjectNode result = json.createObjectNode();
+            var keys = new java.util.TreeSet<String>(); node.fieldNames().forEachRemaining(keys::add);
+            for (String key : keys) result.set(key, canonicalMaterialJson(node.get(key)));
+            return result;
+        }
+        if (node.isArray()) {
+            var result = json.createArrayNode(); node.forEach(item -> result.add(canonicalMaterialJson(item))); return result;
+        }
+        if (node.isNumber()) return json.getNodeFactory().textNode(node.decimalValue().stripTrailingZeros().toPlainString());
+        return node;
+    }
+
+    /** 与 B 版 workSpecMaterialSpec 自动计算保持一致；只在定版副本上固化生效文本。 */
+    public String projectMaterialParams(JsonNode row) {
+        String override = row.path("params").asText("");
+        if (!override.isEmpty()) return override;
+        var width = row.path("widthMm").decimalValue(); var length = row.path("lengthMm").decimalValue();
+        String specification = width.signum() > 0 && length.signum() > 0
+            ? decimalText(width) + "*" + decimalText(length) + "mm" : row.path("specification").asText("");
+        String split = row.path("split").asText(""); var module = row.path("moduleQty").decimalValue();
+        String suffix = module.signum() > 0 ? "=" + decimalText(module) + "PCS" : "";
+        if (!split.isEmpty()) return specification + "跳" + split + suffix;
+        if (!specification.isEmpty()) return specification + suffix;
+        String unit = row.path("unit").asText("").toUpperCase(java.util.Locale.ROOT);
+        var base = row.path("baseQty").decimalValue();
+        if (("PCS".equals(unit) || "个".equals(unit)) && module.compareTo(java.math.BigDecimal.ONE) == 0 && base.signum() > 0)
+            return decimalText(base.divide(module, 4, java.math.RoundingMode.HALF_UP)) + "个/PCS";
+        return "";
+    }
+    private String decimalText(java.math.BigDecimal value) { return value.stripTrailingZeros().toPlainString(); }
+
+    public void freezeProjectMaterials(ObjectNode snapshot) {
+        for (JsonNode row : snapshot.path("projectMaterials")) ((ObjectNode) row).put("params", projectMaterialParams(row));
+        snapshot.remove(List.of("projectMaterialsCheck", "projectMaterialsAcknowledgements"));
+    }
+
+    private void checkProjectMaterials(Long id, ObjectNode spec, String acknowledgement, String action) {
+        ObjectNode check = inspectProjectMaterials(id, spec.get("projectMaterials"));
+        if (!check.path("errors").isEmpty()) throw new BusinessException(check.path("errors").get(0).asText());
+        if (check.path("warnings").isEmpty()) return;
+        if (!Objects.equals(acknowledgement, check.path("token").asText()))
+            throw new BusinessException(String.join("；", json.convertValue(check.path("warnings"), new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {})) + "；请确认后继续" );
+        recordMaterialAcknowledgement(id, spec, check, action);
+    }
+
+    private void recordMaterialAcknowledgement(Long id, ObjectNode spec, ObjectNode check, String action) {
+        ObjectNode event = json.createObjectNode();
+        event.set("warnings", check.path("warnings"));
+        event.put("action", action); event.put("operator", SecurityUtils.getDisplayName());
+        event.put("at", LocalDateTime.now().toString());
+        recordOperation(id, "项目材料提醒确认·" + action, json.createObjectNode(), event);
+    }
+
+    /** 供打印/定版入口使用；只记确认流水与校验令牌，不改项目材料。 */
+    @Transactional(rollbackFor = Exception.class)
+    public ObjectNode acknowledgeProjectMaterials(Long id, String revision, String token, String action) {
+        if (!Set.of("打印", "定版").contains(action)) throw new BusinessException("未知项目材料操作");
+        String raw = raw(lock(id)); checkRevision(revision, raw);
+        ObjectNode data = parse(raw);
+        if ("定版".equals(action)) requireOwner(data);
+        checkProjectMaterials(id, data, token, action);
+        if ("定版".equals(action)) {
+            ObjectNode ack = data.with("projectMaterialsAcknowledgements");
+            ack.put(action, token + ":" + SecurityUtils.getUserId());
+            mapper.write(id, data.toString());
+        }
+        return response(id, mapper.read(id));
+    }
+
+    public void requireProjectMaterialsAcknowledged(Long id, ObjectNode data, String action) {
+        ObjectNode check = inspectProjectMaterials(id, data.get("projectMaterials"));
+        if (!check.path("errors").isEmpty()) throw new BusinessException(check.path("errors").get(0).asText());
+        if (!check.path("warnings").isEmpty() && !Objects.equals(data.path("projectMaterialsAcknowledgements").path(action).asText(), check.path("token").asText() + ":" + SecurityUtils.getUserId()))
+            throw new BusinessException("项目材料与 BOM 有差异，请重新确认提醒后" + action);
+    }
+
+    private List<String> projectMaterialChanges(ObjectNode before, ObjectNode after) {
+        List<String> result = new ArrayList<>();
+        JsonNode old = before.path("projectMaterials"), next = after.path("projectMaterials");
+        for (int i = 0; i < Math.max(old.size(), next.size()); i++) {
+            JsonNode a = old.path(i), b = next.path(i);
+            if (!a.equals(b)) result.add("项目材料第" + (i + 1) + "行（新增/移除/修改/排序）："
+                + (a.isMissingNode() ? "（无）" : a.toString()) + " → " + (b.isMissingNode() ? "（无）" : b.toString()));
+        }
+        if (before.has("warnings") || after.has("warnings")) result.add("提醒确认：" + after.path("action").asText() + " " + after.path("warnings"));
+        return result;
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public ObjectNode confirm(Long id, String revision, String sourceRevision) {
         Map<String, Object> row = lock(id);
@@ -700,6 +873,7 @@ public class ProductWorkSpecService {
         checkRevision(revision, oldRaw);
         ObjectNode data = parse(oldRaw);
         requireOwner(data);
+        requireProjectMaterialsAcknowledged(id, data, "定版");
         if (!Objects.equals(sourceRevision, sourceFingerprint(id, data)))
             throw new BusinessException("材料、流程或结构图已变化，请重新加载后确认");
         data.put("confirmedBy", SecurityUtils.getUsername());
@@ -789,6 +963,7 @@ public class ProductWorkSpecService {
                 file.setAll((ObjectNode) entry); files.add(file);
             }
         } else data.set("draftFiles", json.valueToTree(mapper.draftFiles(id)));
+        data.set("projectMaterialsCheck", inspectProjectMaterials(id, data.get("projectMaterials")));
         data.put("revision", digest(raw == null ? "" : raw));
         ObjectNode sources = sourceData(id, data);
         String sourceRevision = digest(sources.toString());
@@ -875,6 +1050,7 @@ public class ProductWorkSpecService {
         sources.set("product", product);
         sources.set("bom", json.valueToTree(full.getBom()));
         sources.set("routing", json.valueToTree(full.getRouting()));
+        if (data.has("projectMaterials")) sources.set("projectMaterials", data.get("projectMaterials"));
         if (data.hasNonNull("structureFileId")) {
             SysAttachment file = attachments.selectById(data.path("structureFileId").asLong());
             if (file == null) sources.put("structureMissing", true);
