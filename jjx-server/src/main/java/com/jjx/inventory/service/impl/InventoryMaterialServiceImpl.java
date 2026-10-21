@@ -294,7 +294,10 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         // 按编码/名称/英文名/规格模糊匹配（采购订单物料选择等远程搜索共用）
         // 8-08 修复：无任何查询条件时不再拼 and() 空括号（SQL: WHERE () 语法错误），直接查全部
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
-        String keyword = StringUtils.trimToNull(queryDTO.getKeyword());
+        String keyword = queryDTO.getKeyword();
+        if (keyword != null) {
+            keyword = StringUtils.trimToNull(keyword.replaceAll("[\\s\\u3000]+", " "));
+        }
         String code = queryDTO.getMaterialCode();
         String name = queryDTO.getMaterialName();
         if (keyword != null) {
@@ -302,26 +305,29 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                     .filter(StringUtils::isNotBlank)
                     .limit(4)
                     .toList();
-            keyword = String.join(" ", terms);
+            List<String> ranks = new java.util.ArrayList<>();
+            String param = "#{" + wrapper.getParamAlias() + ".paramNameValuePairs.";
             for (String term : terms) {
                 // 词内四字段 OR，词间 AND；名称和规格可分别命中不同词。
                 wrapper.and(w -> w.like(InventoryMaterial::getMaterialCode, term)
                         .or().like(InventoryMaterial::getMaterialName, term)
                         .or().like(InventoryMaterial::getMaterialNameEn, term)
                         .or().like(InventoryMaterial::getSpecification, term));
+                // 每词独立绑定比较值，SQL 片段只拼接内部生成的参数名。
+                String key = "rank" + ranks.size();
+                wrapper.getParamNameValuePairs().put(key + "Exact", term);
+                wrapper.getParamNameValuePairs().put(key + "Prefix", term + "%");
+                wrapper.getParamNameValuePairs().put(key + "Contains", "%" + term + "%");
+                String specificationRank = "WHEN specification LIKE " + param + key + "Contains} THEN 0 ";
+                ranks.add("CASE "
+                        + (term.matches("[0-9]+(?:\\*[0-9]+)?") ? specificationRank : "")
+                        + "WHEN material_name = " + param + key + "Exact} THEN 1 "
+                        + "WHEN material_name LIKE " + param + key + "Prefix} THEN 2 "
+                        + "WHEN material_name LIKE " + param + key + "Contains} THEN 3 "
+                        + "ELSE 4 END");
             }
-            // CASE 的值沿用 wrapper 参数绑定，搜索文本不拼进 SQL。
-            wrapper.getParamNameValuePairs().put("rankExact", keyword);
-            wrapper.getParamNameValuePairs().put("rankPrefix", keyword + "%");
-            wrapper.getParamNameValuePairs().put("rankContains", "%" + keyword + "%");
-            String param = "#{" + wrapper.getParamAlias() + ".paramNameValuePairs.";
-            String specificationRank = "WHEN specification LIKE " + param + "rankContains} THEN 0 ";
-            String rank = "CASE "
-                    + (keyword.matches("[0-9]+(?:\\*[0-9]+)?") ? specificationRank : "")
-                    + "WHEN material_name = " + param + "rankExact} THEN 1 "
-                    + "WHEN material_name LIKE " + param + "rankPrefix} THEN 2 "
-                    + "WHEN material_name LIKE " + param + "rankContains} THEN 3 "
-                    + "ELSE 4 END ASC";
+            String rank = (ranks.size() == 1 ? ranks.get(0) : "LEAST(" + String.join(", ", ranks) + ")")
+                    + " ASC";
             wrapper.getExpression().add(com.baomidou.mybatisplus.core.enums.SqlKeyword.ORDER_BY, () -> rank);
         } else if (StringUtils.isNotBlank(code) || StringUtils.isNotBlank(name)) {
             wrapper.and(w -> {
