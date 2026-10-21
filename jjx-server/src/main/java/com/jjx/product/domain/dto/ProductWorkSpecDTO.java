@@ -16,16 +16,25 @@ import java.util.Map;
 public class ProductWorkSpecDTO {
     @Size(max = 64) private String revision;
     /** null 保留历史 BOM 回退；空数组是操作员明确选择的空清单。 */
-    @Valid @Size(max = 1000) private List<ProjectMaterial> projectMaterials;
+    @Valid @Size(max = 1000) private List<ProjectMaterialGroup> projectMaterials;
     @Size(max = 64) private String projectMaterialsAcknowledgement;
+
+    @Data
+    public static class ProjectMaterialGroup {
+        @Size(max = 300) private String groupKey;
+        private Long processId;
+        @Size(max = 200) private String projectName;
+        @Size(max = 500) private String projectIcon;
+        private Integer groupNo;
+        @jakarta.validation.constraints.NotNull
+        @Valid @Size(min = 1, max = 1000) private List<ProjectMaterial> materials;
+    }
 
     @Data
     public static class ProjectMaterial {
         private Long materialId;
         @Size(max = 100) private String materialCode;
         @Size(max = 200) private String materialName;
-        private Long processId;
-        @Size(max = 200) private String processName;
         @Size(max = 500) private String specification;
         /** 空值使用自动计算，非空为人工覆盖的纯文本。 */
         @Size(max = 500) private String params;

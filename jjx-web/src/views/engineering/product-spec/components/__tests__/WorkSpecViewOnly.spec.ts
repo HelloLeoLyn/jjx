@@ -248,15 +248,26 @@ describe('项目材料独立编辑', () => {
         specification: '200mm',
       },
     ]
-    vi.mocked(attachmentRefApi.documentTypes).mockResolvedValue({ data: [{ dict_code: 'attachment_category', item_key: 'ENGINEERING_DOC', label: '工程技术资料', is_active: 1 }] } as any)
+    vi.mocked(attachmentRefApi.documentTypes).mockResolvedValue({
+      data: [
+        {
+          dict_code: 'attachment_category',
+          item_key: 'ENGINEERING_DOC',
+          label: '工程技术资料',
+          is_active: 1,
+        },
+      ],
+    } as any)
     const errors = vi.spyOn(ElMessage, 'error')
     const before = JSON.stringify(bom)
-    spec.projectMaterials = bom.map((row, i) => ({
-      ...row,
-      params: '',
-      sortOrder: i,
-      dieLocation: '',
-    }))
+    spec.projectMaterials = normalizeWorkSpec({
+      projectMaterials: bom.map((row, i) => ({
+        ...row,
+        params: '',
+        sortOrder: i,
+        dieLocation: '',
+      })),
+    }).projectMaterials
     vi.mocked(loadDocset).mockImplementation(async () => ({
       product: {},
       workSpec: normalizeWorkSpec(spec),
@@ -306,8 +317,10 @@ describe('项目材料独立编辑', () => {
     expect(errors.mock.calls).toEqual([])
     errors.mockRestore()
     expect(productWorkSpecApi.saveDraft).toHaveBeenCalled()
-    expect(spec.projectMaterials?.map((row) => row.materialCode)).toEqual(['M1', 'M2'])
-    expect(spec.projectMaterials?.[0].params).toBe('胶参数')
+    expect(
+      spec.projectMaterials?.flatMap((group) => group.materials.map((row) => row.materialCode))
+    ).toEqual(['M1', 'M2'])
+    expect(spec.projectMaterials?.[0].materials[0].params).toBe('胶参数')
     expect(JSON.stringify(bom)).toBe(before)
     await action('编辑').trigger('click')
     await flushPromises()

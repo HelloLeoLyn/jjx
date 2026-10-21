@@ -87,8 +87,8 @@ class WorkSpecDocsetSnapshotServiceTest {
         doAnswer(call -> { formatter.freezeProjectMaterials(call.getArgument(0)); return null; })
             .when(workSpecService).freezeProjectMaterials(any());
         JsonNode frozen = json.readTree(service.build(product, "V1.0", "工程甲", LocalDateTime.now(), null).json());
-        assertEquals("100*200mm=2PCS", frozen.path("spec").path("projectMaterials").get(0).path("params").asText());
-        assertEquals("人工\n<规格>", frozen.path("spec").path("projectMaterials").get(1).path("params").asText());
+        assertEquals("100*200mm=2PCS", frozen.path("spec").path("projectMaterials").get(0).path("materials").get(0).path("params").asText());
+        assertEquals("人工\n<规格>", frozen.path("spec").path("projectMaterials").get(1).path("materials").get(0).path("params").asText());
         assertEquals("", working.path("projectMaterials").get(0).path("params").asText());
     }
 

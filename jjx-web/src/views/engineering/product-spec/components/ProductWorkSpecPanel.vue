@@ -223,7 +223,8 @@
             :closable="false"
           />
           <el-table
-            :data="projectMaterialDraft ?? data.workSpec.projectMaterials ?? bomRows"
+            :data="projectMaterialRows"
+            :span-method="projectMaterialSpan"
             border
             size="small"
             empty-text="未纳入项目材料"
@@ -232,10 +233,11 @@
               ><template #default="{ $index }">{{ $index + 1 }}</template></el-table-column
             >
             <el-table-column label="项目" min-width="120"
-              ><template #default="{ row }"
+              ><template #default="{ row, $index }"
                 ><el-input
                   v-if="projectMaterialDraft"
-                  v-model="row.processName"
+                  :model-value="row.processName"
+                  @update:model-value="renameProjectMaterial($index, $event)"
                   maxlength="200"
                 /><span v-else>{{ row.processName || '—' }}</span></template
               ></el-table-column
@@ -525,6 +527,8 @@ import {
   workSpecColors,
   type ProductWorkSpec,
   type ProjectMaterial,
+  nestProjectMaterials,
+  flattenProjectMaterials,
 } from '@/api/product/workSpec'
 import ProductSpecPreview from './ProductSpecPreview.vue'
 import StructureDrawingUpload from './StructureDrawingUpload.vue'
@@ -542,6 +546,7 @@ import {
   dieLocationLabel,
   flattenedBom,
   projectMaterialFromBom,
+  groupProjectMaterials,
   renderFile,
   type DocsetData,
 } from './docset'
@@ -677,9 +682,28 @@ watch(structureFile, () => {
 const bomRows = computed(() => flattenedBom(data.value?.bom.items))
 const projectMaterialDraft = ref<ProjectMaterial[] | null>(null)
 const projectMaterialSaving = ref(false)
+const projectMaterialRows = computed(
+  () =>
+    projectMaterialDraft.value ??
+    (data.value?.workSpec.projectMaterials
+      ? flattenProjectMaterials(data.value.workSpec.projectMaterials)
+      : bomRows.value)
+)
+const projectMaterialGroups = computed(() => groupProjectMaterials(projectMaterialRows.value))
+function projectMaterialSpan({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) {
+  if (columnIndex !== 1) return [1, 1]
+  const span = projectMaterialGroups.value[rowIndex]?.projectSpan || 0
+  return [span, span ? 1 : 0]
+}
+function renameProjectMaterial(index: number, name: string) {
+  const rows = projectMaterialDraft.value
+  if (!rows) return
+  const span = projectMaterialGroups.value[index]?.projectSpan || 1
+  for (let offset = 0; offset < span; offset++) rows[index + offset].processName = name
+}
 function startProjectMaterials() {
   projectMaterialDraft.value = JSON.parse(
-    JSON.stringify(data.value?.workSpec.projectMaterials ?? [])
+    JSON.stringify(flattenProjectMaterials(data.value?.workSpec.projectMaterials ?? []))
   )
 }
 async function importProjectMaterials() {
@@ -719,10 +743,12 @@ async function saveProjectMaterials() {
   projectMaterialSaving.value = true
   try {
     const next = normalizeWorkSpec(data.value.workSpec)
-    next.projectMaterials = projectMaterialDraft.value.map((row, index) => ({
-      ...row,
-      sortOrder: index,
-    }))
+    next.projectMaterials = nestProjectMaterials(
+      projectMaterialDraft.value.map((row, index) => ({
+        ...row,
+        sortOrder: index,
+      }))
+    )
     await saveSpec(next)
     projectMaterialDraft.value = null
     await sourcesSaved()
@@ -1107,10 +1133,12 @@ function collectRecoveryContent(attempt?: ProductWorkSpec) {
     return undefined
   const next = normalizeWorkSpec(JSON.parse(JSON.stringify(attempt || data.value?.workSpec || {})))
   if (projectMaterialDraft.value !== null)
-    next.projectMaterials = projectMaterialDraft.value.map((row, index) => ({
-      ...row,
-      sortOrder: index,
-    }))
+    next.projectMaterials = nestProjectMaterials(
+      projectMaterialDraft.value.map((row, index) => ({
+        ...row,
+        sortOrder: index,
+      }))
+    )
   if (noteDraft.value !== null) next.engineeringRequirements = noteDraft.value
   if (embossEditing.value) next.emboss = { ...embossDraft }
   if (dieEditing.value) {

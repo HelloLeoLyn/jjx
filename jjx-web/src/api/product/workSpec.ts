@@ -69,6 +69,62 @@ export interface ProjectMaterial {
   icon?: string
   sourceBom?: Record<string, string>
 }
+export interface ProjectMaterialGroup {
+  groupKey: string
+  processId?: number
+  projectName: string
+  projectIcon: string
+  groupNo: number
+  materials: Omit<ProjectMaterial, 'processId' | 'processName' | 'icon'>[]
+}
+/** 兼容历史平铺输入；只按连续项目归组，不改原对象。 */
+export function nestProjectMaterials(
+  rows: (ProjectMaterial | ProjectMaterialGroup)[]
+): ProjectMaterialGroup[] {
+  const groups: ProjectMaterialGroup[] = []
+  const counts = new Map<string, number>()
+  let previous = ''
+  let active: ProjectMaterialGroup | undefined
+  for (const row of rows) {
+    const nested = 'materials' in row
+    const name = nested ? row.projectName : row.processName
+    const key = `${row.processId ?? ''}|${name || ''}`
+    if (!active || !name || key !== previous) {
+      const groupNo = (counts.get(key) || 0) + 1
+      counts.set(key, groupNo)
+      active = {
+        groupKey: `${key}|${groupNo}`,
+        processId: row.processId,
+        projectName: name || '',
+        projectIcon: (nested ? row.projectIcon : row.icon) || '',
+        groupNo,
+        materials: [],
+      }
+      groups.push(active)
+    }
+    const copyMaterial = ({ processId, processName, icon, ...material }: ProjectMaterial) => ({
+      ...material,
+      sourceBom: material.sourceBom && { ...material.sourceBom },
+    })
+    if (nested) {
+      active!.materials.push(
+        ...row.materials.map((material) => copyMaterial(material as ProjectMaterial))
+      )
+    } else active!.materials.push(copyMaterial(row))
+    previous = key
+  }
+  return groups
+}
+export function flattenProjectMaterials(groups: ProjectMaterialGroup[]): ProjectMaterial[] {
+  return groups.flatMap((group) =>
+    group.materials.map((material) => ({
+      ...material,
+      processId: group.processId,
+      processName: group.projectName,
+      icon: group.projectIcon,
+    }))
+  )
+}
 export interface ProjectMaterialsCheck {
   errors: string[]
   warnings: string[]
@@ -76,7 +132,7 @@ export interface ProjectMaterialsCheck {
   bomSources?: Record<string, string>[]
 }
 export interface ProductWorkSpec {
-  projectMaterials?: ProjectMaterial[]
+  projectMaterials?: ProjectMaterialGroup[]
   projectMaterialsAcknowledgement?: string
   projectMaterialsCheck?: ProjectMaterialsCheck
   draftManaged?: boolean
@@ -137,12 +193,13 @@ function dieLocationMap(value: unknown): DieLocationMap {
     ])
   )
 }
-export function normalizeWorkSpec(value: Partial<ProductWorkSpec> = {}): ProductWorkSpec {
+export function normalizeWorkSpec(
+  value: Omit<Partial<ProductWorkSpec>, 'projectMaterials'> & {
+    projectMaterials?: (ProjectMaterial | ProjectMaterialGroup)[]
+  } = {}
+): ProductWorkSpec {
   return {
-    projectMaterials: value.projectMaterials?.map((row) => ({
-      ...row,
-      sourceBom: row.sourceBom && { ...row.sourceBom },
-    })),
+    projectMaterials: value.projectMaterials && nestProjectMaterials(value.projectMaterials),
     projectMaterialsCheck: value.projectMaterialsCheck,
     projectMaterialsAcknowledgement: value.projectMaterialsAcknowledgement,
     draftManaged: value.draftManaged,
@@ -205,7 +262,7 @@ export function workSpecContent(value: ProductWorkSpec) {
   } = value
   return {
     ...content,
-    projectMaterials: content.projectMaterials?.map(({ icon, ...row }) => row),
+    projectMaterials: content.projectMaterials && nestProjectMaterials(content.projectMaterials),
     structureFileId: value.structureFileId || null,
     issueDate: value.issueDate || null,
     dieLocation: Object.keys(value.dieLocation || {}).length

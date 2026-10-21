@@ -410,7 +410,7 @@ public class WorkSpecDocsetSnapshotService {
                 String value = iconNames.get(pid.asLong());
                 if (value != null && node instanceof ObjectNode obj) {
                     IconRef ref = icons.computeIfAbsent(value, this::resolveIcon);
-                    obj.put("icon", value);
+                    obj.put(obj.has("materials") ? "projectIcon" : "icon", value);
                     obj.put("iconSha256", ref.sha256());
                 }
             }

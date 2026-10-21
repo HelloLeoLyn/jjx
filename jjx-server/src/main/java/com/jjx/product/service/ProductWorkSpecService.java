@@ -708,6 +708,46 @@ public class ProductWorkSpecService {
         if (old.has("projectMaterialsAcknowledgements")) next.set("projectMaterialsAcknowledgements", old.get("projectMaterialsAcknowledgements").deepCopy());
     }
 
+    /** 仅转换副本，不回写历史快照。旧平铺只合并连续同项目，重复项目重新编号。 */
+    public static JsonNode normalizeProjectMaterials(JsonNode input) {
+        if (input == null || !input.isArray()) return input;
+        var groups = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
+        Map<String, Integer> counts = new java.util.HashMap<>();
+        ObjectNode active = null; String previous = null;
+        for (JsonNode row : input) {
+            boolean nested = row.has("materials");
+            String name = row.path(nested ? "projectName" : "processName").asText("");
+            String key = row.path("processId").asText("") + "|" + name;
+            if (active == null || name.isBlank() || !key.equals(previous)) {
+                int number = counts.merge(key, 1, Integer::sum);
+                active = groups.addObject();
+                active.put("groupKey", key + "|" + number);
+                if (row.hasNonNull("processId")) active.set("processId", row.get("processId"));
+                active.put("projectName", name);
+                active.put("projectIcon", row.path(nested ? "projectIcon" : "icon").asText(""));
+                active.put("groupNo", number);
+                active.putArray("materials");
+            }
+            if (nested) {
+                if (!row.path("materials").isArray()) throw new BusinessException("项目组 materials 必须是数组");
+                for (JsonNode material : row.path("materials")) active.withArray("materials").add(material.deepCopy());
+            } else {
+                if (!(row instanceof ObjectNode)) throw new BusinessException("项目材料行格式错误");
+                ObjectNode material = ((ObjectNode) row).deepCopy();
+                material.remove(List.of("processId", "processName", "icon"));
+                active.withArray("materials").add(material);
+            }
+            previous = key;
+        }
+        return groups;
+    }
+
+    private List<JsonNode> projectMaterialRows(JsonNode groups) {
+        List<JsonNode> rows = new ArrayList<>();
+        for (JsonNode group : groups) group.path("materials").forEach(rows::add);
+        return rows;
+    }
+
     private static final List<String> MATERIAL_BOM_FIELDS = List.of("materialId", "materialCode", "materialName", "processId", "processName", "specification", "quantity", "unit", "moduleQty", "baseQty", "split", "widthMm", "lengthMm");
 
     public ObjectNode materialBomSource(JsonNode row) {
@@ -744,6 +784,12 @@ public class ProductWorkSpecService {
         var warnings = result.putArray("warnings");
         if (materials == null || materials.isNull()) return result;
         if (!materials.isArray() || materials.size() > 1000) throw new BusinessException("项目材料必须是最多1000条的有序清单");
+        materials = normalizeProjectMaterials(materials);
+        List<JsonNode> rows = projectMaterialRows(materials);
+        if (rows.size() > 1000) throw new BusinessException("项目材料最多1000条");
+        for (JsonNode group : materials) {
+            if (!group.path("materials").isArray() || group.path("materials").isEmpty()) errors.add("项目组必须包含材料");
+        }
         List<JsonNode> bom = new ArrayList<>();
         var full = requireProduct(id);
         collectMaterialRows(json.<JsonNode>valueToTree(full.getBom()).path("items"), bom);
@@ -752,12 +798,12 @@ public class ProductWorkSpecService {
         List<String> missing = new ArrayList<>();
         for (JsonNode row : bom) {
             boolean found = false;
-            for (JsonNode item : materials) if (sameMaterial(item, row)) { found = true; break; }
+            for (JsonNode item : rows) if (sameMaterial(item, row)) { found = true; break; }
             if (!found) missing.add(row.path("materialName").asText(row.path("materialCode").asText()));
         }
         if (!missing.isEmpty()) warnings.add("当前 BOM 有 " + missing.size() + " 项材料未纳入项目材料：" + String.join("、", missing));
         int i = 0;
-        for (JsonNode item : materials) {
+        for (JsonNode item : rows) {
             i++;
             final JsonNode current = item;
             var matches = bom.stream().filter(row -> sameMaterial(current, row)).toList();
@@ -810,7 +856,8 @@ public class ProductWorkSpecService {
     private String decimalText(java.math.BigDecimal value) { return value.stripTrailingZeros().toPlainString(); }
 
     public void freezeProjectMaterials(ObjectNode snapshot) {
-        for (JsonNode row : snapshot.path("projectMaterials")) ((ObjectNode) row).put("params", projectMaterialParams(row));
+        if (snapshot.hasNonNull("projectMaterials")) snapshot.set("projectMaterials", normalizeProjectMaterials(snapshot.get("projectMaterials")));
+        for (JsonNode row : projectMaterialRows(snapshot.path("projectMaterials"))) ((ObjectNode) row).put("params", projectMaterialParams(row));
         snapshot.remove(List.of("projectMaterialsCheck", "projectMaterialsAcknowledgements"));
     }
 
@@ -859,7 +906,7 @@ public class ProductWorkSpecService {
         JsonNode old = before.path("projectMaterials"), next = after.path("projectMaterials");
         for (int i = 0; i < Math.max(old.size(), next.size()); i++) {
             JsonNode a = old.path(i), b = next.path(i);
-            if (!a.equals(b)) result.add("项目材料第" + (i + 1) + "行（新增/移除/修改/排序）："
+            if (!a.equals(b)) result.add("项目材料第" + (i + 1) + "组（新增/移除/修改/排序）："
                 + (a.isMissingNode() ? "（无）" : a.toString()) + " → " + (b.isMissingNode() ? "（无）" : b.toString()));
         }
         if (before.has("warnings") || after.has("warnings")) result.add("提醒确认：" + after.path("action").asText() + " " + after.path("warnings"));
@@ -983,6 +1030,7 @@ public class ProductWorkSpecService {
             if (raw == null || raw.isBlank()) return json.createObjectNode();
             JsonNode node = json.readTree(raw);
             if (!(node instanceof ObjectNode object)) throw new BusinessException("工程规范数据格式错误");
+            if (object.hasNonNull("projectMaterials")) object.set("projectMaterials", normalizeProjectMaterials(object.get("projectMaterials")));
             return object;
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new BusinessException("工程规范数据解析失败，请联系管理员");

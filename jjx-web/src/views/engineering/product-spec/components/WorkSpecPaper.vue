@@ -34,7 +34,7 @@
         <tr
           v-for="(row, i) in padded(page.rows, materialCapacity)"
           :key="i"
-          :data-material-group="specTemplate === 'B' ? row?.projectGroup : undefined"
+          :data-material-group="specTemplate === 'B' ? row?.projectGroupKey : undefined"
         >
           <td class="center" :style="columnFont('materialNumber', 'Content')">
             {{ (page.continuation || 0) * materialCapacity + i + 1 }}

@@ -6,7 +6,10 @@ import { mount } from '@vue/test-utils'
 import WorkSpecPaper from '../WorkSpecPaper.vue'
 import {
   normalizeWorkSpec,
+  nestProjectMaterials,
+  flattenProjectMaterials,
   checkProjectMaterialsBeforeSave,
+  workSpecContent,
   acknowledgeProjectMaterials,
 } from '@/api/product/workSpec'
 import {
@@ -51,9 +54,56 @@ function data(): DocsetData {
 }
 describe('项目材料独立清单与B版打印', () => {
   it('连续项目合并，隔行同名为新组，空项目不合并', () => {
-    const rows = groupProjectMaterials(data().workSpec.projectMaterials!)
-    expect(rows.map((row) => row.projectGroup)).toEqual([1, 1, 2, 3, 4, 5])
+    const rows = groupProjectMaterials(flattenProjectMaterials(data().workSpec.projectMaterials!))
+    expect(rows.map((row) => row.projectGroup)).toEqual([1, 1, 1, 2, 1, 2])
     expect(rows.map((row) => row.projectSpan)).toEqual([2, 0, 1, 1, 1, 1])
+  })
+  it('旧平铺读取无损，新保存只写项目组，三个材料只打印一个项目图标', () => {
+    const rows = [
+      material('面板', '面1'),
+      material('面板', '面2'),
+      material('面板', '面3'),
+      material('线路', '线1'),
+      material('面板', '面4'),
+      material('面板', '面5'),
+    ]
+    const before = JSON.stringify(rows)
+    const spec = normalizeWorkSpec({ projectMaterials: rows })
+    const groups = workSpecContent(spec).projectMaterials!
+    expect(groups.map((group) => group.materials.length)).toEqual([3, 1, 2])
+    expect(groups.map((group) => group.groupNo)).toEqual([1, 1, 2])
+    expect(nestProjectMaterials([groups[0], groups[0]])[0].materials).toHaveLength(6)
+    expect(nestProjectMaterials(groups)).toEqual(groups)
+    expect(new Set(groups.map((group) => group.groupKey)).size).toBe(3)
+    expect(groups[0].materials[0]).not.toHaveProperty('processName')
+    expect(groups[0].materials[0]).not.toHaveProperty('processId')
+    expect(flattenProjectMaterials(groups).map((row) => row.materialName)).toEqual(
+      rows.map((row) => row.materialName)
+    )
+    expect(JSON.stringify(rows)).toBe(before)
+    const source = data()
+    source.workSpec = normalizeWorkSpec({ projectMaterials: [groups[0]] })
+    source.workSpec.projectMaterials![0].projectIcon = 'panel'
+    const wrapper = mount(WorkSpecPaper, {
+      props: {
+        data: source,
+        page: workSpecFlowSource(source),
+        specTemplate: 'B',
+        pageIndex: 0,
+        pageCount: 1,
+        fontSettings: defaultWorkSpecFontSettings(),
+      },
+      global: { stubs: { SvgIcon: { template: '<i class="test-icon" />' } } },
+    })
+    expect(
+      wrapper
+        .findAll('.material-name')
+        .map((node) => node.text())
+        .filter(Boolean)
+    ).toEqual(['面1', '面2', '面3'])
+    expect(wrapper.findAll('.test-icon')).toHaveLength(1)
+    expect(wrapper.get('td[rowspan="3"]').text()).toBe('1')
+    wrapper.unmount()
   })
   it('B读独立材料/顺序/刀模，A仍读BOM；历史缺失时回退', () => {
     const source = data()
@@ -74,8 +124,7 @@ describe('项目材料独立清单与B版打印', () => {
   })
   it('保留旧表头，图标+每组单序号，无图标回退名称', () => {
     const source = data()
-    source.workSpec.projectMaterials![0].icon = 'panel'
-    source.workSpec.projectMaterials![1].icon = 'panel'
+    source.workSpec.projectMaterials![0].projectIcon = 'panel'
     const wrapper = mount(WorkSpecPaper, {
       props: {
         data: source,
@@ -95,8 +144,8 @@ describe('项目材料独立清单与B版打印', () => {
     expect(table.get('thead').text()).not.toContain('单位')
     expect(table.findAll('td[rowspan="2"]')).toHaveLength(1)
     expect(table.findAll('.test-icon')).toHaveLength(1)
-    expect(table.findAll('sub').map((node) => node.text())).toEqual(['1', '2', '3', '4', '5'])
-    expect(table.text()).toContain('线路2')
+    expect(table.findAll('sub').map((node) => node.text())).toEqual(['1', '1', '2', '1', '2'])
+    expect(table.text()).toContain('线路1')
     wrapper.unmount()
   })
   it('从BOM复制一次，编辑不会改BOM', () => {
@@ -114,7 +163,8 @@ describe('项目材料独立清单与B版打印', () => {
     expect(bom.quantity).toBe(2)
     expect(bom.specification).toBe('20mm')
     expect(
-      normalizeWorkSpec({ projectMaterials: [row] }).projectMaterials![0].sourceBom?.quantity
+      normalizeWorkSpec({ projectMaterials: [row] }).projectMaterials![0].materials[0].sourceBom
+        ?.quantity
     ).toBe('2')
   })
   it('保存缺项先确认，取消不通过；硬错误不能确认绕过', async () => {
@@ -152,7 +202,7 @@ describe('项目材料独立清单与B版打印', () => {
 
   it('params人工文本按原文打印并保留换行，恢复自动后使用计算值；A不使用覆盖文本', () => {
     const source = data()
-    const row = source.workSpec.projectMaterials![0]
+    const row = source.workSpec.projectMaterials![0].materials[0]
     row.params = '人工规格\n<样张> & 2模'
     const paper = () =>
       mount(WorkSpecPaper, {
@@ -193,8 +243,8 @@ describe('项目材料独立清单与B版打印', () => {
   })
   it('连续项目跨页后保持同组序号、材料和刀模列完整', () => {
     const source = data()
-    source.workSpec.projectMaterials = Array.from({ length: 18 }, (_, i) =>
-      material('面板', '材料' + i)
+    source.workSpec.projectMaterials = nestProjectMaterials(
+      Array.from({ length: 18 }, (_, i) => material(i < 10 ? '面板' : '线路', '材料' + i))
     )
     const wrapper = mount(WorkSpecPaper, {
       props: {
@@ -222,12 +272,23 @@ describe('项目材料独立清单与B版打印', () => {
       const tables = Array.from(doc.querySelectorAll('table.materials'))
       expect(tables.length).toBeGreaterThan(1)
       expect(tables.every((table) => table.querySelector('sub')?.textContent === '1')).toBe(true)
+      for (const table of tables) {
+        const keys = new Set(
+          Array.from(
+            table.querySelectorAll('tbody tr[data-material-group]'),
+            (row) => (row as HTMLElement).dataset.materialGroup
+          )
+        )
+        expect(table.querySelectorAll('sub').length).toBe(keys.size)
+      }
       expect(Array.from(doc.querySelectorAll('.material-name'), (el) => el.textContent)).toEqual(
-        source.workSpec.projectMaterials.map((row) => row.materialName)
+        flattenProjectMaterials(source.workSpec.projectMaterials).map((row) => row.materialName)
       )
       expect(
         Array.from(doc.querySelectorAll('.die-position'), (el) => el.textContent?.trim())
-      ).toEqual(source.workSpec.projectMaterials.map((row) => row.dieLocation))
+      ).toEqual(
+        flattenProjectMaterials(source.workSpec.projectMaterials).map((row) => row.dieLocation)
+      )
     } finally {
       height.mockRestore()
       scroll.mockRestore()

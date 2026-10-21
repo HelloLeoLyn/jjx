@@ -16,6 +16,7 @@ import {
   normalizeWorkSpec,
   type ProductWorkSpec,
   type ProjectMaterial,
+  nestProjectMaterials,
   type DieLocationMap,
 } from '@/api/product/workSpec'
 import { productBomApi } from '@/api/product/bom'
@@ -237,36 +238,33 @@ export function projectMaterialFromBom(
     sourceBom: Object.fromEntries(materialSourceFields.map((key) => [key, String(row[key] ?? '')])),
   }
 }
-/** 只合并连续项目；组号全局递增，空项目各占一组。 */
+/** 只合并连续项目；同一项目再次出现时组号递增。 */
 export function groupProjectMaterials(rows: Record<string, any>[]): Record<string, any>[] {
-  let group = 0
-  let previous = ''
-  const result: Record<string, any>[] = rows.map((row) => ({
-    ...row,
-    projectGroup: 0,
-    projectSpan: 0,
-  }))
-  let first = 0
-  result.forEach((row, index) => {
-    const name = plain(row.processName)
-    const key = name ? String(row.processId || '') + '|' + name : ''
-    if (!key || key !== previous) {
-      group++
-      first = index
-    }
-    row.projectGroup = group
-    result[first].projectSpan++
-    previous = key
-  })
-  return result
+  const groups = nestProjectMaterials(rows as ProjectMaterial[])
+  return groups.flatMap((group) =>
+    group.materials.map((row, index) => ({
+      ...row,
+      processId: group.processId,
+      processName: group.projectName,
+      icon: group.projectIcon,
+      projectGroup: group.groupNo,
+      projectGroupKey: group.groupKey,
+      projectSpan: index === 0 ? group.materials.length : 0,
+    }))
+  )
 }
 export function projectMaterialPrintRows(data: DocsetData): Record<string, any>[] {
-  const rows = data.workSpec.projectMaterials ?? flatten(data.bom.items || [])
   const bom = flatten(data.bom.items || [])
-  return groupProjectMaterials(
-    rows.map((row) => ({
+  if (data.workSpec.projectMaterials === undefined) return groupProjectMaterials(bom)
+  return data.workSpec.projectMaterials.flatMap((group) =>
+    group.materials.map((row, index) => ({
       ...row,
-      icon: row.icon || bom.find((item) => item.processId === row.processId)?.icon,
+      processId: group.processId,
+      processName: group.projectName,
+      icon: group.projectIcon || bom.find((item) => item.processId === group.processId)?.icon,
+      projectGroup: group.groupNo,
+      projectGroupKey: group.groupKey,
+      projectSpan: index === 0 ? group.materials.length : 0,
     }))
   )
 }
@@ -420,7 +418,10 @@ export async function loadDocset(productId: number): Promise<DocsetData> {
           }))
         data.bom = { ...data.bom, items: enrich(data.bom.items || []) }
         if (data.workSpec.projectMaterials)
-          data.workSpec.projectMaterials = enrich(data.workSpec.projectMaterials)
+          data.workSpec.projectMaterials = data.workSpec.projectMaterials.map((group) => ({
+            ...group,
+            projectIcon: icons.get(Number(group.processId)) || group.projectIcon,
+          }))
       },
     },
     {
