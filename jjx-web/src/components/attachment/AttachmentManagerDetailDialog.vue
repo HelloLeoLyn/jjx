@@ -7,7 +7,7 @@
     destroy-on-close
     @update:model-value="onVisibleChange"
   >
-    <AttachmentDetailInfo :row="row" :document-types="documentTypes" :source-type="sourceType" />
+    <AttachmentDetailInfo :row="row" :visible="modelValue" :document-types="documentTypes" :source-type="sourceType" />
     <el-alert v-if="readonlyReason" :title="readonlyReason" type="info" :closable="false" />
     <el-form v-if="row?.kind === 'ref'" label-width="80px" :disabled="!editable">
       <el-form-item label="备注">

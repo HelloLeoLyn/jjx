@@ -23,7 +23,7 @@
     />
     <!-- 附件详情（只读；与可写表共用同一份信息块） -->
     <el-dialog v-model="detailVisible" title="附件详情" width="520px" append-to-body>
-      <AttachmentDetailInfo :row="detailRow" :document-types="documentTypes" :source-type="sourceType" />
+      <AttachmentDetailInfo :row="detailRow" :visible="detailVisible" :document-types="documentTypes" :source-type="sourceType" />
     </el-dialog>
   </section>
 </template>

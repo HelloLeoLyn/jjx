@@ -67,6 +67,24 @@ export interface AttachmentRefItem {
   released?: number | null
 }
 
+/** 当前引用的动作摘要；后端按引用实际来源鉴权，不返回其它单据的日志。 */
+export interface AttachmentRefAction {
+  eventKey: string
+  actionName: string
+  actionTime: string | null
+  operatorName: string | null
+}
+
+export interface AttachmentRefActions {
+  refId: number
+  uploadedBy: string | null
+  uploadedAt: string | null
+  joinedBy: string | null
+  joinedAt: string | null
+  businessActions: AttachmentRefAction[]
+  referenceEvents: AttachmentRefAction[]
+}
+
 /** 可选的图纸元数据（dev-20261014-029，019 方案B）
  *  随 TEMP 上传一并提交，写入 sys_attachment 既有图纸列；不传 = 不写这些列，行为不变。
  *  仅图纸类来源使用；其它来源照旧（不新增列、不改读列口径）。 */
@@ -134,6 +152,11 @@ export interface AttachmentDocumentTypeItem {
 }
 
 export const attachmentRefApi = {
+  /** 仅在打开详情时查询；refId 是引用主键，不能传文件 ID。 */
+  actions(refId: number): AxiosPromise<AttachmentRefActions> {
+    return request({ url: `/system/attachment/refs/${refId}/actions`, method: 'get' })
+  },
+
   /** TEMP 上传：requestKey 必须 16~100 位 [A-Za-z0-9_-]，同键同内容重传幂等返回原 attachmentId。
    *  meta 为可选图纸元数据（dev-20261014-029）：非空时写入 sys_attachment 图纸列；不传行为不变。 */
   tempUpload(file: File, requestKey: string, onProgress?: (percent: number) => void, meta?: AttachmentDrawingMetadata | null,

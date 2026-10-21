@@ -100,6 +100,8 @@
     <el-dialog v-model="metaVisible" title="附件详情" width="520px" append-to-body destroy-on-close>
       <AttachmentDetailInfo
         :row="metaRow"
+        :ref-id="metaRow?.id"
+        :visible="metaVisible"
         :document-types="documentTypes"
         :source-type="props.sourceType"
       />
