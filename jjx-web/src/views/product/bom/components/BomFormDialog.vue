@@ -131,8 +131,8 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button v-if="formData.items?.length" icon="Printer" @click="printPreviewVisible = true">打印预览</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">确 定</el-button>
         <el-button @click="handleCancel">取 消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitForm">保 存</el-button>
       </div>
     </template>
 
@@ -744,6 +744,15 @@ watch(
 }
 
 .dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 10px 0;
+  background: var(--el-bg-color, #fff);
   text-align: right;
 }
 
