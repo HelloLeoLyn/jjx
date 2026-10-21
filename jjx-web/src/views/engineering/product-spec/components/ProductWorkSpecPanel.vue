@@ -229,17 +229,24 @@
             size="small"
             empty-text="未纳入项目材料"
           >
-            <el-table-column label="序号" width="65"
-              ><template #default="{ $index }">{{ $index + 1 }}</template></el-table-column
+            <el-table-column label="序号" width="65" align="center"
+              ><template #default="{ $index }">{{ projectMaterialDisplayNo[$index] || '' }}</template></el-table-column
             >
-            <el-table-column label="项目" min-width="120"
+            <el-table-column label="项目" min-width="160"
               ><template #default="{ row, $index }"
-                ><el-input
-                  v-if="projectMaterialDraft"
-                  :model-value="row.processName"
-                  @update:model-value="renameProjectMaterial($index, $event)"
-                  maxlength="200"
-                /><span v-else>{{ row.processName || '—' }}</span></template
+                ><div class="project-material-project">
+                  <SvgIcon
+                    v-if="projectMaterialIcon($index)"
+                    :name="projectMaterialIcon($index)"
+                    :size="16"
+                  />
+                  <el-input
+                    v-if="projectMaterialDraft"
+                    :model-value="row.processName"
+                    @update:model-value="renameProjectMaterial($index, $event)"
+                    maxlength="200"
+                  /><span v-else>{{ row.processName || '—' }}</span>
+                </div></template
               ></el-table-column
             >
             <el-table-column label="材料（限当前 BOM）" min-width="200"
@@ -277,62 +284,28 @@
                 >
               </template></el-table-column
             >
-            <el-table-column label="规格及模数" min-width="180"
+            <el-table-column label="规格及模数" min-width="220"
               ><template #default="{ row }"
                 ><template v-if="projectMaterialDraft"
                   ><el-input
                     v-model="row.specification"
                     maxlength="500"
                     placeholder="规格"
-                  /><el-input-number
-                    v-model="row.widthMm"
-                    :min="0"
-                    placeholder="宽(mm)"
-                  /><el-input-number
-                    v-model="row.lengthMm"
-                    :min="0"
-                    placeholder="长(mm)"
-                  /><el-input-number
-                    v-model="row.moduleQty"
-                    :min="0"
-                    placeholder="模数"
-                  /><el-input-number v-model="row.baseQty" :min="0" placeholder="基数" /><el-input
-                    v-model="row.split"
-                    maxlength="100"
-                    placeholder="跳距"
                   /><el-input
                     v-model="row.params"
+                    class="params-input"
                     type="textarea"
                     :rows="3"
                     maxlength="500"
                     show-word-limit
-                    :placeholder="workSpecMaterialSpec(row) || '自动计算'"
-                  /><el-button link @click="row.params = ''">恢复自动</el-button>
-                  <div>自动值：{{ workSpecMaterialSpec(row) || '—' }}</div></template
+                    placeholder="手动覆盖（可选）"
+                  /></template
                 ><span v-else class="multiline">{{
                   row.params || workSpecMaterialSpec(row)
                 }}</span></template
               ></el-table-column
             >
-            <el-table-column label="用量" width="155"
-              ><template #default="{ row }"
-                ><el-input-number
-                  v-if="projectMaterialDraft"
-                  v-model="row.quantity"
-                  :min="0"
-                  :controls="false"
-                  style="width: 125px"
-                /><span v-else>{{ row.quantity }}</span></template
-              ></el-table-column
-            >
-            <el-table-column label="单位" width="95"
-              ><template #default="{ row }"
-                ><el-input v-if="projectMaterialDraft" v-model="row.unit" maxlength="30" /><span
-                  v-else
-                  >{{ row.unit }}</span
-                ></template
-              ></el-table-column
-            >
+
             <el-table-column label="刀模位置" min-width="130"
               ><template #default="{ row }"
                 ><el-input
@@ -344,18 +317,25 @@
                 }}</span></template
               ></el-table-column
             >
-            <el-table-column v-if="projectMaterialDraft" label="排序/删除" width="180"
-              ><template #default="{ $index }"
-                ><el-button link :disabled="$index === 0" @click="moveProjectMaterial($index, -1)"
-                  >上移</el-button
-                ><el-button
-                  link
-                  :disabled="$index === projectMaterialDraft.length - 1"
-                  @click="moveProjectMaterial($index, 1)"
-                  >下移</el-button
-                ><el-button link type="danger" @click="projectMaterialDraft.splice($index, 1)"
-                  >删除</el-button
-                ></template
+            <el-table-column label="操作" width="270"
+              ><template #default="{ row, $index }"
+                ><template v-if="projectMaterialDraft"
+                  ><el-button link @click="restoreProjectMaterialSpec(row)"
+                    >恢复规格及模数</el-button
+                  ><el-button
+                    link
+                    type="danger"
+                    @click="projectMaterialDraft.splice($index, 1)"
+                    >删除</el-button
+                  ><el-button link :disabled="$index === 0" @click="moveProjectMaterial($index, -1)"
+                    >上移</el-button
+                  ><el-button
+                    link
+                    :disabled="$index === projectMaterialDraft.length - 1"
+                    @click="moveProjectMaterial($index, 1)"
+                    >下移</el-button
+                  ></template
+                ><span v-else>—</span></template
               ></el-table-column
             >
           </el-table>
@@ -530,6 +510,7 @@ import {
   nestProjectMaterials,
   flattenProjectMaterials,
 } from '@/api/product/workSpec'
+import SvgIcon from '@/components/SvgIcon/index.vue'
 import ProductSpecPreview from './ProductSpecPreview.vue'
 import StructureDrawingUpload from './StructureDrawingUpload.vue'
 import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
@@ -690,8 +671,27 @@ const projectMaterialRows = computed(
       : bomRows.value)
 )
 const projectMaterialGroups = computed(() => groupProjectMaterials(projectMaterialRows.value))
+/** 序号按项目组重新编号（1、2、3…），不沿用同名重复组的 groupNo。 */
+const projectMaterialDisplayNo = computed<Record<number, number>>(() => {
+  const result: Record<number, number> = {}
+  let no = 0
+  projectMaterialRows.value.forEach((_, index) => {
+    if ((projectMaterialGroups.value[index]?.projectSpan || 0) > 0) result[index] = ++no
+  })
+  return result
+})
+/** 项目图标：优先用项目材料自带图标，缺失时回退当前 BOM 同项目行。 */
+function projectMaterialIcon(index: number) {
+  const group = projectMaterialGroups.value[index]
+  if (group?.icon) return group.icon
+  return (
+    bomRows.value.find((item) => group?.processId != null && item.processId === group.processId)?.icon ||
+    ''
+  )
+}
 function projectMaterialSpan({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) {
-  if (columnIndex !== 1) return [1, 1]
+  // 序号与项目都按项目组合并，每组只显示一个序号/一个项目。
+  if (columnIndex !== 0 && columnIndex !== 1) return [1, 1]
   const span = projectMaterialGroups.value[rowIndex]?.projectSpan || 0
   return [span, span ? 1 : 0]
 }
@@ -702,9 +702,15 @@ function renameProjectMaterial(index: number, name: string) {
   for (let offset = 0; offset < span; offset++) rows[index + offset].processName = name
 }
 function startProjectMaterials() {
-  projectMaterialDraft.value = JSON.parse(
-    JSON.stringify(flattenProjectMaterials(data.value?.workSpec.projectMaterials ?? []))
-  )
+  // 未建立/空项目材料时用当前 BOM 行初始化，避免“查看有数据、点编辑变空表”。
+  const source = data.value?.workSpec.projectMaterials
+  if (!source || !source.length) {
+    projectMaterialDraft.value = bomRows.value.map((row, index) =>
+      projectMaterialFromBom(row, index, data.value?.workSpec)
+    )
+    return
+  }
+  projectMaterialDraft.value = JSON.parse(JSON.stringify(flattenProjectMaterials(source)))
 }
 async function importProjectMaterials() {
   await ElMessageBox.confirm('从当前 BOM 复制一次；之后不自动同步，不回写 BOM。', '从 BOM 引入')
@@ -729,6 +735,10 @@ function selectProjectMaterial(index: number, selected: string) {
     index,
     data.value?.workSpec
   )
+}
+/** 恢复规格及模数：清空手动覆盖 params，回到 workSpecMaterialSpec 的自动值。 */
+function restoreProjectMaterialSpec(row: ProjectMaterial) {
+  row.params = ''
 }
 function moveProjectMaterial(index: number, delta: number) {
   const rows = projectMaterialDraft.value
@@ -1390,5 +1400,17 @@ onBeforeUnmount(() => {
   .issuance {
     grid-template-columns: 1fr;
   }
+}
+/* 项目材料编辑（dev-20261021-024）：项目图标+名称同一单元格；规格与手动覆盖上下排列 */
+.project-material-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.project-material-project :deep(.el-input) {
+  flex: 1;
+}
+.params-input {
+  margin-top: 6px;
 }
 </style>
