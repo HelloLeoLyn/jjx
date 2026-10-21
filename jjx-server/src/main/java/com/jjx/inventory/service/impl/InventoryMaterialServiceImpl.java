@@ -298,10 +298,31 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         String code = queryDTO.getMaterialCode();
         String name = queryDTO.getMaterialName();
         if (keyword != null) {
-            wrapper.and(w -> w.like(InventoryMaterial::getMaterialCode, keyword)
-                    .or().like(InventoryMaterial::getMaterialName, keyword)
-                    .or().like(InventoryMaterial::getMaterialNameEn, keyword)
-                    .or().like(InventoryMaterial::getSpecification, keyword));
+            List<String> terms = java.util.Arrays.stream(keyword.split(" +"))
+                    .filter(StringUtils::isNotBlank)
+                    .limit(4)
+                    .toList();
+            keyword = String.join(" ", terms);
+            for (String term : terms) {
+                // 词内四字段 OR，词间 AND；名称和规格可分别命中不同词。
+                wrapper.and(w -> w.like(InventoryMaterial::getMaterialCode, term)
+                        .or().like(InventoryMaterial::getMaterialName, term)
+                        .or().like(InventoryMaterial::getMaterialNameEn, term)
+                        .or().like(InventoryMaterial::getSpecification, term));
+            }
+            // CASE 的值沿用 wrapper 参数绑定，搜索文本不拼进 SQL。
+            wrapper.getParamNameValuePairs().put("rankExact", keyword);
+            wrapper.getParamNameValuePairs().put("rankPrefix", keyword + "%");
+            wrapper.getParamNameValuePairs().put("rankContains", "%" + keyword + "%");
+            String param = "#{" + wrapper.getParamAlias() + ".paramNameValuePairs.";
+            String specificationRank = "WHEN specification LIKE " + param + "rankContains} THEN 0 ";
+            String rank = "CASE "
+                    + (keyword.matches("[0-9]+(?:\\*[0-9]+)?") ? specificationRank : "")
+                    + "WHEN material_name = " + param + "rankExact} THEN 1 "
+                    + "WHEN material_name LIKE " + param + "rankPrefix} THEN 2 "
+                    + "WHEN material_name LIKE " + param + "rankContains} THEN 3 "
+                    + "ELSE 4 END ASC";
+            wrapper.getExpression().add(com.baomidou.mybatisplus.core.enums.SqlKeyword.ORDER_BY, () -> rank);
         } else if (StringUtils.isNotBlank(code) || StringUtils.isNotBlank(name)) {
             wrapper.and(w -> {
                 w.like(StringUtils.isNotBlank(code), InventoryMaterial::getMaterialCode, code)

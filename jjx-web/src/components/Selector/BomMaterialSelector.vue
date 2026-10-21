@@ -64,11 +64,11 @@ const canCreate = computed(() => hasPermi(BOM_MATERIAL_PERMS))
 
 const labelOf = (item: InventoryMaterial) => item.materialName || ''
 
-// 显示「新建物料」入口：搜过 & 有非空关键字 & 结果里没有与关键字同名的物料
+// 显示「新建物料」入口：搜过 & 有非空关键字 & 没有搜索结果
 const showCreate = computed(() => {
   const kw = keyword.value.trim()
   if (!canCreate.value || !searched.value || loading.value || !kw) return false
-  return !options.value.some((o) => (o.materialName || '').trim() === kw)
+  return options.value.length === 0
 })
 
 let page = 1
@@ -78,7 +78,7 @@ let timer: ReturnType<typeof setTimeout> | undefined
 async function fetchPage(id: number, nextPage: number) {
   try {
     const res = await materialApi.search({
-      materialName: keyword.value,
+      keyword: keyword.value,
       pageNum: nextPage,
       pageSize: 20,
     })
