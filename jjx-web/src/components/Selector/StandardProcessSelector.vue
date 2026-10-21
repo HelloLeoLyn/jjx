@@ -180,17 +180,31 @@ const CATEGORY_FALLBACK: Record<string, string> = {
 
 const COMMON_TAB = '__common__'
 const SEARCH_TAB = '__search__'
-const COMMON_NAMES = [
-  '面板',
-  '面板裁切',
-  '面板冲孔',
-  '面板背胶',
-  '上线',
-  '上线裁切',
-  '下线',
-  '下线冲型',
-  '品检',
-  '包装',
+/**
+ * 默认常用项目：用户 2026-10-21 指定的工序编码与顺序（按编码匹配，改名不影响）。
+ * /engineering/standard-processes/common 返回数据时以接口为准，这里仅作无数据兜底。
+ */
+const COMMON_CODES = [
+  'SP-101',
+  'SP-103',
+  'SP-104',
+  'SP-110',
+  'SP-112',
+  'SP-113',
+  'SP-301',
+  'SP-302',
+  'SP-304',
+  'SP-305',
+  'SP-306',
+  'SP-405',
+  'SP-406',
+  'SP-401',
+  'SP-409',
+  'SP-410',
+  'SP-201',
+  'SP-202',
+  'SP-204',
+  'SP-205',
 ]
 const isPending = (item: StandardProcessItem) =>
   item.processStatus === StandardProcessStatus.PENDING
@@ -230,7 +244,9 @@ const commonItems = computed(() => {
     .filter((p): p is StandardProcessItem => Boolean(p))
   return items.length
     ? items
-    : selectableProcesses.value.filter((p) => COMMON_NAMES.includes(p.processName))
+    : COMMON_CODES
+        .map((code) => selectableProcesses.value.find((p) => p.processCode === code))
+        .filter((p): p is StandardProcessItem => Boolean(p))
 })
 const groups = computed(() => [
   { value: COMMON_TAB, label: '常用', items: commonItems.value },
