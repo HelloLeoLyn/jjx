@@ -144,6 +144,41 @@ describe('版本打印清单（dev-20261019-021）', () => {
     expect(wrapper.findAll('.file-choice')[0].text()).toContain('下载原文件')
     expect(wrapper.findAll('.file-choice')[0].text()).toContain('预览')
   })
+  it('预览内附页默认关闭，勾选/取消立即更新纸张；重新加载保留选择', async () => {
+    mocks.load.mockResolvedValue({ product: {}, bom: { items: [] }, routing: { items: [] },
+      workSpec: normalizeWorkSpec({}), files: [], warnings: [] })
+    const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'] } })
+    wrappers.push(wrapper)
+    await flushPromises()
+    const state = (wrapper.vm as any).$.setupState
+    state.overflow = { 'spec-0': [{ text: '加工要求（完整内容）' }, { text: '超长全文' }] }
+    await flushPromises()
+    expect(state.generateOverflowAppendix).toBe(false)
+    expect(state.pages.some((page: any) => page.kind === 'spec-details')).toBe(false)
+    const checkbox = wrapper.findAllComponents({ name: 'ElCheckbox' }).find(item => item.text() === '生成工程内容附页')!
+    expect(checkbox).toBeDefined()
+    checkbox.vm.$emit('update:modelValue', true)
+    await flushPromises()
+    expect(state.pages.find((page: any) => page.kind === 'spec-details').detailLines[1].text).toBe('超长全文')
+    checkbox.vm.$emit('update:modelValue', false)
+    await flushPromises()
+    expect(state.pages.some((page: any) => page.kind === 'spec-details')).toBe(false)
+    checkbox.vm.$emit('update:modelValue', true)
+    await state.load()
+    expect(state.generateOverflowAppendix).toBe(true)
+  })
+  it.each(['0', '1'])('独立打印入口恢复附页开关 %s', async value => {
+    mocks.load.mockResolvedValue({ product: {}, bom: { items: [] }, routing: { items: [] },
+      workSpec: normalizeWorkSpec({}), files: [], warnings: [] })
+    const previousUrl = window.location.href
+    try {
+      window.history.replaceState(null, '', '?generateOverflowAppendix=' + value)
+      const wrapper = mount(ProductSpecPreview, { props: { productId: 42, standalone: true, initialSections: ['spec'] } })
+      wrappers.push(wrapper)
+      await flushPromises()
+      expect((wrapper.vm as any).$.setupState.generateOverflowAppendix).toBe(value === '1')
+    } finally { window.history.replaceState(null, '', previousUrl) }
+  })
   it('完整快照组装保留附件冻结顺序、打印选择和负责人，不按附件ID重排', () => {
     const data = buildDocsetFromSnapshot(
       42,

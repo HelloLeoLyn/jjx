@@ -6,12 +6,12 @@
     </div>
     <div v-for="(page, pageIndex) in pages" :key="page.key" :id="`doc-page-${pageIndex}`" class="sheet-slot">
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
-      <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print', 'measured-canvas': !!page.flowHtml || page.flowPending }" :padding-mm="9" :scale="1">
+      <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print', 'work-spec-canvas': page.kind === 'spec' || (page.kind === 'spec-details' && page.section === 'spec'), 'measured-canvas': !!page.flowHtml || page.flowPending }" :padding-mm="9" :scale="1">
         <div v-if="page.flowHtml" class="measured-page" v-html="workSpecFlowPageHtml(page.flowHtml, pageIndex, pages.length)" />
         <div v-else-if="page.flowPending" class="layout-pending">正在按 A4 测量分页…</div>
-        <WorkSpecPaper v-else-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :spec-template="specTemplate" />
+        <WorkSpecPaper v-else-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :spec-template="specTemplate" :generate-overflow-appendix="generateOverflowAppendix" />
         <InkMixingPaper v-else-if="page.kind === 'ink'" :product-code="data.product.productCode" />
-        <article v-else class="paper-form">
+        <article v-else class="paper-form" :class="{ 'appendix-form': page.kind === 'spec-details' && page.section === 'spec' }">
           <header v-if="page.section !== 'customer' && page.section !== 'atlas'" class="paper-heading">
             <h1>{{ page.title }}<small v-if="page.continuation">（续）</small></h1>
             <div v-if="page.section !== 'print'" class="paper-meta"><span>{{ data.product.productCode }}</span><span>{{ data.product.customerName || '' }}</span></div>
@@ -52,7 +52,7 @@ import { plain, documentFileCaption, workSpecFlowSource, paginateMeasuredWorkSpe
 import { workSpecFlowPageHtml } from './workSpecFlowPagination'
 import type { WorkSpecFontSettings, WorkSpecTemplate } from './workSpecFont'
 
-const props = withDefaults(defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string; fontSettings: WorkSpecFontSettings; specTemplate?: WorkSpecTemplate }>(), { specTemplate: 'A' })
+const props = withDefaults(defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string; fontSettings: WorkSpecFontSettings; specTemplate?: WorkSpecTemplate; generateOverflowAppendix?: boolean }>(), { specTemplate: 'A', generateOverflowAppendix: false })
 const emit = defineEmits<{ layout: [key: string, lines: PaperTextLine[]]; flowLayout: [pages: string[]]; flowError: [message: string] }>()
 const workPapers = ref<InstanceType<typeof WorkSpecPaper>[]>([])
 const printPapers = ref<InstanceType<typeof PrintSpecPaper>[]>([])
@@ -112,6 +112,7 @@ function totalLabor(rows: Record<string, any>[]): string {
 .layout-pending { height:278mm; }
 .doc-sheets { display:flex; flex-direction:column; align-items:center; gap:24px; }
 .spec-canvas :deep(.a4-canvas) { width:210mm; border:0; }
+.work-spec-canvas :deep(.a4-canvas) { width:210mm; height:297mm; min-height:297mm; border:0; }
 .sheet-slot { width:794px; scroll-margin-top:24px; }
 .page-caption { display:flex; justify-content:space-between; color:#798493; font-size:12px; padding:0 2px 8px; }
 .paper-form { min-height:1053px; box-sizing:border-box; display:flex; flex-direction:column; border:1.4px solid #262626; color:#252525; font-family:'SimSun','Songti SC',serif; }
@@ -163,6 +164,9 @@ function totalLabor(rows: Record<string, any>[]): string {
 .empty-paper-frame span { font-size:17px; }.empty-paper-frame p { font-size:12px; margin-top:15px; }
 .paper-footer { margin-top:auto; display:flex; gap:10px; align-items:center; justify-content:space-between; border-top:1.3px solid #333; padding:7px 8px; font-size:11px; }
 .paper-footer span { overflow-wrap:anywhere; }.paper-footer span:last-child { flex-shrink:0; }
+.appendix-form { height:278mm; min-height:0; border:0; }
+.appendix-form .paper-heading, .appendix-form .spec-detail-lines { outline:1.4px solid #262626; outline-offset:-1.4px; }
+.appendix-form .spec-detail-lines { flex:0 0 auto; }
 @media print {
   .flow-source { display:none; }
   .no-print { display:none !important; }
@@ -170,6 +174,7 @@ function totalLabor(rows: Record<string, any>[]): string {
   .sheet-slot { width:210mm; margin:0; break-after:page; page-break-after:always; }
   .sheet-slot:last-child { break-after:auto; page-break-after:auto; }
   .paper-form { min-height:279mm; }
+  .appendix-form { min-height:0; }
   .sheet-slot :deep(.a4-canvas) { min-height:297mm; }
 }
 </style>

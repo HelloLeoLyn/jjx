@@ -91,11 +91,11 @@ test('真实浏览器：5/18/25/65行按A4边界分页，流程和变更不丢�
   const { JSDOM } = require('jsdom')
   const temporary = fs.mkdtempSync('/tmp/dev-008-print-')
   try {
-    for (const [count, processCount, changeCount] of [[5, 0, 1], [18, 0, 1], [25, 0, 1], [65, 22, 90]]) {
+    for (const [template, count, processCount, changeCount] of [['A', 5, 0, 1], ['B', 5, 0, 1], ['B', 18, 0, 1], ['B', 25, 0, 1], ['B', 65, 22, 90]]) {
       const fixture = path.join(temporary, 'fixture.html'), pdf = path.join(temporary, 'print.pdf')
-      const sourceHtml = await render('B', count, processCount, changeCount)
+      const sourceHtml = await render(template, count, processCount, changeCount)
       fs.writeFileSync(fixture, `<!doctype html><meta charset="utf-8"><style>
-        body{margin:0}#source{position:absolute;left:-100000px;width:192mm}
+        *{box-sizing:border-box}body{margin:0}#source{position:absolute;left:-100000px;width:192mm}
         .sheet{width:210mm;height:297mm;padding:9mm;box-sizing:border-box;break-after:page;overflow:hidden}
         .sheet:last-child{break-after:auto}
         ${paper.css}${icon.css}
@@ -103,10 +103,16 @@ test('真实浏览器：5/18/25/65行按A4边界分页，流程和变更不丢�
         </style><div id="source">${sourceHtml}</div><main id="output"></main><pre id="result"></pre>
         <script>
         onload=()=>{try{
-          const pages=(${paginate.toString()})(document.querySelector('.work-paper'));
+          const pages=${template === 'A' ? "[document.querySelector('.work-paper').outerHTML]" : "(" + paginate.toString() + ")(document.querySelector('.work-paper'))"};
           document.querySelector('#output').innerHTML=pages.map(html=>'<div class="sheet">'+html+'</div>').join('');
           const result={pages:pages.length,heights:[...document.querySelectorAll('.sheet')].map(el=>el.getBoundingClientRect().height),
             fits:[...document.querySelectorAll('#output .work-paper')].map(el=>el.scrollHeight<=el.clientHeight+1),
+            frames:[...document.querySelectorAll('#output .work-paper')].map(el=>{
+              const footer=el.querySelector(':scope > footer'), last=footer.previousElementSibling;
+              return {border:getComputedStyle(el).borderWidth, gap:footer.getBoundingClientRect().top-last.getBoundingClientRect().bottom,
+                footerBottom:el.getBoundingClientRect().bottom-footer.getBoundingClientRect().bottom,
+                frame:getComputedStyle(last).outlineStyle, grow:getComputedStyle(last).flexGrow, children:[...el.children].map(n=>[n.className,n.getBoundingClientRect().height])};
+            }),
             rows:[...document.querySelectorAll('#output .materials tbody tr')].map(el=>el.cells[0].textContent.trim())};
           document.querySelector('#result').textContent=JSON.stringify(result)
         }catch(e){document.querySelector('#result').textContent=JSON.stringify({error:e.message})}};
@@ -120,6 +126,8 @@ test('真实浏览器：5/18/25/65行按A4边界分页，流程和变更不丢�
       const actual = JSON.parse(doc.querySelector('#result').textContent)
       assert.equal(actual.error, undefined)
       assert.ok(actual.fits.every(Boolean), JSON.stringify(actual))
+      assert.ok(actual.frames.every(frame => frame.border === '0px' && frame.frame === 'solid' && frame.gap >= -1 && frame.footerBottom < 3), JSON.stringify(actual.frames))
+      if (count === 5 && template === 'B') assert.ok(actual.frames[0].gap > 1, JSON.stringify(actual.frames))
       assert.ok(actual.heights.every(height => Math.abs(height - 297 * 96 / 25.4) < 1))
       assert.deepEqual(actual.rows, Array.from({ length: Math.max(14, count) }, (_, i) => String(i + 1)))
       const names = [...doc.querySelectorAll('#output .material-name')].map(el => el.textContent.trim()).filter(Boolean)
@@ -130,7 +138,7 @@ test('真实浏览器：5/18/25/65行按A4边界分页，流程和变更不丢�
       const tables = [...doc.querySelectorAll('#output .materials')]
       for (const table of tables) assert.equal(table.querySelector('colgroup').outerHTML, tables[0].querySelector('colgroup').outerHTML)
       if (count === 18 || count === 25) assert.equal(tables[0].tBodies[0].rows.length, count)
-      if (count === 5) assert.equal(actual.pages, 1)
+      if (count === 5) assert.equal(actual.pages, 1, JSON.stringify(actual))
       if (count === 65) assert.ok(tables[0].tBodies[0].rows.length > 25)
       for (const group of groups) for (let i = 1; i <= processCount; i++)
         assert.equal(doc.querySelector('#output').textContent.split('OP_' + group.value + '_' + String(i).padStart(3, '0')).length - 1, 1)
@@ -147,7 +155,7 @@ test('真实浏览器：5/18/25/65行按A4边界分页，流程和变更不丢�
       assert.ok(pdfPages.every(page => Math.abs(page.width - 595.28) < 1 && Math.abs(page.height - 841.89) < 1))
       const pdfText = pdfPages.map(page => page.text).join('\n')
       for (const name of names) assert.equal(pdfText.replace(/\s/g, '').split(name).length - 1, 1, name + ':' + pdfText)
-      t.diagnostic(JSON.stringify({ count, processCount, changeCount, ...actual, pdfPages: pdfPages.length }))
+      t.diagnostic(JSON.stringify({ template, count, processCount, changeCount, ...actual, pdfPages: pdfPages.length }))
     }
   } finally { fs.rmSync(temporary, { recursive: true, force: true }) }
 })

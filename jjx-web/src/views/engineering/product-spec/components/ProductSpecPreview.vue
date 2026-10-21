@@ -18,6 +18,9 @@
           <el-option label="模板 A" value="A" />
           <el-option label="模板 B" value="B" />
         </el-select>
+        <el-checkbox v-if="!paperOnly && selectedSections.includes('spec')" v-model="generateOverflowAppendix">
+          生成工程内容附页
+        </el-checkbox>
         <el-button text @click="zoom = Math.max(50, zoom - 10)">−</el-button><span>{{ zoom }}%</span
         ><el-button text @click="zoom = Math.min(120, zoom + 10)">＋</el-button
         ><el-button @click="load">重新加载</el-button
@@ -156,6 +159,7 @@
             :structure-caption="structureCaption"
             :font-settings="fontSettings"
             :spec-template="selectedTemplate"
+            :generate-overflow-appendix="generateOverflowAppendix"
           />
         </div>
         <el-empty v-else-if="!loading && !error" description="勾选左侧文档，查看纸张预览" />
@@ -279,6 +283,9 @@ function onLayout(key: string, lines: PaperTextLine[]) {
   if (JSON.stringify(overflow.value[key]) !== JSON.stringify(lines))
     overflow.value = { ...overflow.value, [key]: lines }
 }
+const generateOverflowAppendix = ref(
+  props.standalone && new URLSearchParams(window.location.search).get('generateOverflowAppendix') === '1'
+)
 const zoom = ref(props.paperOnly ? 100 : 80)
 const fontSettings = ref<WorkSpecFontSettings>(parseWorkSpecFontSettings(props.initialFontSettings))
 const selectedTemplate = ref<WorkSpecTemplate>(normalizeWorkSpecTemplate(props.initialTemplate))
@@ -344,7 +351,8 @@ const pages = computed(() =>
         images.value,
         overflow.value,
         selectedTemplate.value,
-        measuredSpecPages.value
+        measuredSpecPages.value,
+        generateOverflowAppendix.value
       )
     : []
 )
@@ -514,6 +522,7 @@ async function printDocuments() {
       files: selectedFiles.value.join(','),
       fonts: serializeWorkSpecFontSettings(fontSettings.value),
       template: selectedTemplate.value,
+      generateOverflowAppendix: generateOverflowAppendix.value ? '1' : '0',
       print: '1',
     })
     if (props.versionId) {

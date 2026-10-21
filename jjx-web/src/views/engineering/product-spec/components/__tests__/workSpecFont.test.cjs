@@ -113,7 +113,7 @@ test('实际打印按钮把A/B选择、版本和字号传入打印入口', async
     let opened
     const state = { canPrint: { value: true }, props: { standalone: false, productId: 41, versionId: 7 },
       selectedSections: { value: ['spec'] }, selectedFiles: { value: [] }, fontSettings: { value: defaults() },
-      selectedTemplate: { value: template }, serializeWorkSpecFontSettings: serialize, URLSearchParams,
+      selectedTemplate: { value: template }, generateOverflowAppendix: { value: true }, serializeWorkSpecFontSettings: serialize, URLSearchParams,
       window: { open(url, target) { opened = { url, target } } } }
     vm.createContext(state)
     vm.runInContext(ts.transpileModule(method.getText(source), {
@@ -126,6 +126,7 @@ test('实际打印按钮把A/B选择、版本和字号传入打印入口', async
     assert.equal(context.exports.normalizeWorkSpecTemplate(url.searchParams.get('template')), template)
     assert.equal(url.searchParams.get('versionId'), '7')
     assert.equal(url.searchParams.get('print'), '1')
+    assert.equal(url.searchParams.get('generateOverflowAppendix'), '1')
     assert.deepEqual(plain(parse(url.searchParams.get('fonts'))), plain(defaults()))
   }
 })
@@ -157,7 +158,9 @@ test('B完整材料与流程送入DOM测量，A仍为14项', () => {
   assert.equal(flow.diePositionRows[24], 'D25')
   assert.equal(flow.groups[0].rows.length, 18)
   const aOverflow = runtime.exports.makePages(data, ['spec'], [], {}, { 'spec-0': [{ text: '备注长内容' }] }, 'A')
-  assert.equal(aOverflow.some(page => page.kind === 'spec-details'), true)
+  assert.equal(aOverflow.some(page => page.kind === 'spec-details'), false)
+  const enabled = runtime.exports.makePages(data, ['spec'], [], {}, { 'spec-0': [{ text: '备注长内容' }] }, 'A', [], true)
+  assert.equal(enabled.some(page => page.kind === 'spec-details'), true)
 
 })
 

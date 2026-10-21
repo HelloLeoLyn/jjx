@@ -2,7 +2,7 @@
   <article
     ref="paper"
     class="work-paper"
-    :class="{ continuous: specTemplate === 'B' }"
+    :class="{ continuous: specTemplate === 'B', 'inline-content': !generateOverflowAppendix }"
     :style="fontStyle"
   >
     <header class="work-title">
@@ -275,8 +275,9 @@ const props = withDefaults(
     structureCaption?: string
     fontSettings: WorkSpecFontSettings
     specTemplate?: WorkSpecTemplate
+    generateOverflowAppendix?: boolean
   }>(),
-  { specTemplate: 'A' }
+  { specTemplate: 'A', generateOverflowAppendix: false }
 )
 const materialCapacity = computed(() =>
   props.specTemplate === 'B'
@@ -327,6 +328,7 @@ const { measure } = useWorkSpecOverflow(
       props.page.continuation,
       props.fontSettings,
       props.specTemplate,
+      props.generateOverflowAppendix,
     ]),
   (lines) => emit('overflow', lines)
 )
@@ -414,7 +416,9 @@ function shortDate(value?: string | null) {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  border: 1.5px solid #222;
+  border: 0;
+  padding: 1.5px;
+  position: relative;
   color: #252525;
   font-family: SimSun, 'Songti SC', serif;
   font-size: 13px;
@@ -621,7 +625,7 @@ function shortDate(value?: string | null) {
   padding: 4px 10px;
 }
 .issuance {
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 0;
   display: flex;
 }
@@ -703,6 +707,7 @@ function shortDate(value?: string | null) {
   font-size: 12px;
 }
 footer {
+  margin-top: auto;
   height: 27px;
   flex-shrink: 0;
   border-top: 1px solid #333;
@@ -757,6 +762,16 @@ footer {
   font-size: var(--font-footer);
 }
 /* B 的连续源只用于测量；最终每页使用固定 A4 正文高度。 */
+/* Draw the content frame per block so the footer's free space stays outside it.
+   Inset outlines preserve the measured column widths and pagination geometry. */
+.work-paper > :not(footer) { outline: 1.5px solid #222; outline-offset: -1.5px; }
+.inline-content:not(.continuous):not(.flow-page) :is(.material-name, .cell-single, .notes-content, .operation, .operation-remark, .changes, .changes-content) {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  white-space: normal;
+}
+.inline-content:not(.continuous):not(.flow-page) .changes-content { flex: 0 0 auto; }
 .continuous,
 .flow-page {
   display: flex;

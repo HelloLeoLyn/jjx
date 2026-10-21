@@ -595,7 +595,8 @@ export function makePages(
   images: Record<string, FileImage[]>,
   overflow: Record<string, PaperTextLine[]> = {},
   specTemplate: 'A' | 'B' = 'A',
-  measuredSpecPages: string[] = []
+  measuredSpecPages: string[] = [],
+  generateOverflowAppendix = false
 ): DocPage[] {
   const pages: DocPage[] = []
   const printFiles = orderedPrintFiles(data.files, fileIds)
@@ -643,7 +644,7 @@ export function makePages(
       const details = pages
         .filter((page) => page.kind === 'spec')
         .flatMap((page) => overflow[page.key] || [])
-      for (let i = 0; i < details.length; i += 48)
+      for (let i = 0; generateOverflowAppendix && i < details.length; i += 48)
         pages.push({
           key: 'spec-details-' + i,
           section: 'spec',
