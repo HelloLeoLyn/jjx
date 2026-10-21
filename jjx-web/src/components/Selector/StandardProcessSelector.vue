@@ -105,6 +105,7 @@ import { CircleClose, Plus, Search } from '@element-plus/icons-vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import EditableSearchSelect from './EditableSearchSelect.vue'
 import TempProcessCreateDialog from './TempProcessCreateDialog.vue'
+import { loadCommonStandardProcesses } from '@/api/product/standardProcess'
 import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 import { useDict } from '@/composables/useDict'
 import { StandardProcessStatus } from '@/types/product/standardProcess'
@@ -160,6 +161,14 @@ const emit = defineEmits<{
 // ==================== 数据 ====================
 // 启用的标准工序：全局单例缓存，多实例只请求一次
 const { processes, reload: reloadProcesses } = useEnabledProcesses()
+const commonProcessIds = ref<number[]>([])
+loadCommonStandardProcesses()
+  .then((items) => {
+    commonProcessIds.value = items.map((item) => item.processId)
+  })
+  .catch((error) => {
+    console.error('加载常用标准工序失败:', error)
+  })
 const { options: categoryOptions } = useDict('process_category')
 
 const CATEGORY_FALLBACK: Record<string, string> = {
@@ -215,9 +224,14 @@ const categoryGroups = computed(() => {
     .filter((g) => g.items.length > 0 || g.value === 'PANEL')
 })
 
-const commonItems = computed(() =>
-  selectableProcesses.value.filter((p) => COMMON_NAMES.includes(p.processName))
-)
+const commonItems = computed(() => {
+  const items = commonProcessIds.value
+    .map((id) => selectableProcesses.value.find((p) => p.processId === id))
+    .filter((p): p is StandardProcessItem => Boolean(p))
+  return items.length
+    ? items
+    : selectableProcesses.value.filter((p) => COMMON_NAMES.includes(p.processName))
+})
 const groups = computed(() => [
   { value: COMMON_TAB, label: '常用', items: commonItems.value },
   ...categoryGroups.value,

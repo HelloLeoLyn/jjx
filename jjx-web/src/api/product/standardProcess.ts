@@ -9,10 +9,35 @@ import type {
 } from '@/types/product/standardProcess'
 import type { PageResult, R } from '@/types'
 
+export type CommonStandardProcess = Pick<
+  StandardProcessItem,
+  'processId' | 'processName' | 'processCategory' | 'icon' | 'processStatus'
+> & { useCount: number }
+
+// 与启用工序缓存相同：整个页面共享一次请求（包含空数组结果），并发实例去重。
+let commonRequest: Promise<CommonStandardProcess[]> | undefined
+export function loadCommonStandardProcesses(): Promise<CommonStandardProcess[]> {
+  if (!commonRequest) {
+    commonRequest = standardProcessApi
+      .getCommon()
+      .then((res) => res.data || [])
+      .catch((error) => {
+        commonRequest = undefined
+        throw error
+      })
+  }
+  return commonRequest
+}
+
 /**
  * 标准工序 API
  */
 export const standardProcessApi = {
+  getCommon(limit = 12) {
+    return request.get<R<CommonStandardProcess[]>>('/standard-process/common', {
+      params: { limit },
+    })
+  },
   /** 近名提示码 40901；确认后携 force=true 重提，同名不可绕过。 */
   createTemp(data: TempStandardProcessData) {
     return request.post<R<StandardProcessItem>>('/engineering/standard-processes/temp', data, {
