@@ -286,7 +286,7 @@ describe('项目材料独立编辑', () => {
     const action = (text: string) =>
       section()
         .findAll(
-          ['恢复自动', '删除', '下移'].includes(text)
+          ['恢复规格及模数', '删除', '下移'].includes(text)
             ? '.el-table__body-wrapper button'
             : '.section-heading button'
         )
@@ -294,7 +294,7 @@ describe('项目材料独立编辑', () => {
     await action('编辑').trigger('click')
     await flushPromises()
     await section().findAll('.el-table__body-wrapper tbody textarea')[0].setValue('人工规格\n2模')
-    await action('恢复自动').trigger('click')
+    await action('恢复规格及模数').trigger('click')
     await flushPromises()
     expect(
       (

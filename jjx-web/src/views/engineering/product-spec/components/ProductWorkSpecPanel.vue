@@ -288,10 +288,11 @@
               ><template #default="{ row }"
                 ><template v-if="projectMaterialDraft"
                   ><el-input
-                    :model-value="row.params || workSpecMaterialSpec(row)"
+                    v-model="row.params"
+                    type="textarea"
+                    :rows="2"
                     maxlength="500"
-                    placeholder="规格及模数"
-                    @update:model-value="row.params = $event"
+                    :placeholder="workSpecMaterialSpec(row) || '自动计算'"
                   /></template
                 ><span v-else class="multiline">{{
                   row.params || workSpecMaterialSpec(row)
