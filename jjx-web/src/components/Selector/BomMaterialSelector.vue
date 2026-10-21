@@ -11,6 +11,7 @@
     :create-label="'新建物料「' + keyword + '」'"
     placeholder="输入物料名称搜索"
     size="small"
+    keep-text-on-blur
     @search="search"
     @select="selectMaterial"
     @clear="clear"
@@ -64,11 +65,12 @@ const canCreate = computed(() => hasPermi(BOM_MATERIAL_PERMS))
 
 const labelOf = (item: InventoryMaterial) => item.materialName || ''
 
-// 显示「新建物料」入口：搜过 & 有非空关键字 & 没有搜索结果
+// 显示「新建物料」入口：搜过 & 有非空关键字 & 没有与关键字完全同名的物料
+// 2026-10-21：同名不同规格是常态（库内单个名称最多 43 个规格），只在 100% 同名时才隐藏建档行
 const showCreate = computed(() => {
   const kw = keyword.value.trim()
   if (!canCreate.value || !searched.value || loading.value || !kw) return false
-  return options.value.length === 0
+  return !options.value.some((o) => (o.materialName || '').trim() === kw)
 })
 
 let page = 1
@@ -80,7 +82,7 @@ async function fetchPage(id: number, nextPage: number) {
     const res = await materialApi.search({
       keyword: keyword.value,
       pageNum: nextPage,
-      pageSize: 20,
+      pageSize: 10,
     })
     if (id !== requestId) return
     if (!res.data) throw new Error('物料查询未返回分页数据')
@@ -108,12 +110,12 @@ function search(value: string) {
   searched.value = false
   failed.value = false
   page = 1
-  loading.value = keyword.value.length >= 2
+  loading.value = !!keyword.value
   if (loading.value) timer = setTimeout(() => fetchPage(id, 1), 400)
 }
 
 function loadMore() {
-  if (loading.value || keyword.value.length < 2) return
+  if (loading.value || !keyword.value) return
   loading.value = true
   void fetchPage(requestId, page + 1)
 }

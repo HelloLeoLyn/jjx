@@ -107,6 +107,8 @@ interface Props {
   total?: number
   showCreate?: boolean
   createLabel?: string
+  /** 失焦时不回滚已输入文本（仅当使用方显式开启；默认保持原回滚行为） */
+  keepTextOnBlur?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -127,6 +129,7 @@ const props = withDefaults(defineProps<Props>(), {
   total: 0,
   showCreate: false,
   createLabel: '',
+  keepTextOnBlur: false,
 })
 
 const emit = defineEmits<{
@@ -196,7 +199,9 @@ function onBlur() {
   clearTimeout(blurTimer)
   blurTimer = setTimeout(() => {
     open.value = false
-    if (text.value !== (props.displayValue || '')) text.value = props.displayValue || ''
+    if (!props.keepTextOnBlur && text.value !== (props.displayValue || '')) {
+      text.value = props.displayValue || ''
+    }
   }, 150)
 }
 
