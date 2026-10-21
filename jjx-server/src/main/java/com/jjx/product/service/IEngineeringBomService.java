@@ -24,6 +24,24 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
     /**
      * 获取产品BOM列表
      */
+    /** 列表专用参数与返回值，避免改变审批/生产链路使用的查询契约。 */
+    @lombok.Data
+    @lombok.EqualsAndHashCode(callSuper = true)
+    class BomListQuery extends EngineeringBomQuery {
+        private boolean showAllVersions;
+        private String bomName;
+    }
+
+    @lombok.Data
+    @lombok.EqualsAndHashCode(callSuper = true)
+    class BomListRow extends EngineeringBomVO {
+        private long versionCount;
+    }
+
+    PageResult<BomListRow> getBomListPage(BomListQuery query);
+
+    List<EngineeringBomVO> getBomVersions(String bomCode);
+
     PageResult<EngineeringBomVO> getBomListPage(EngineeringBomQuery query);
     /**
      * 获取BOM详情（包含明细）

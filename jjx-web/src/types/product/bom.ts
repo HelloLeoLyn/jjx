@@ -2,6 +2,7 @@
 // ==================== 通用类型 ====================
 import type { PageQuery, PageResult } from '@/types/index'
 export interface EngineeringBomQueryParams extends PageQuery {
+  showAllVersions?: boolean
   bomCode?: string
   bomName?: string
   productCode?: string
@@ -137,6 +138,7 @@ export interface BomMaterialMatchResult {
   matchCount: number
 }
 export interface EngineeringBom {
+  versionCount?: number
   bomId: number
   bomCode: string
   bomName: string

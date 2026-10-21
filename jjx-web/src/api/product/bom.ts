@@ -24,6 +24,9 @@ export const productBomApi = {
       params,
     })
   },
+  getBomVersions(bomCode: string) {
+    return request.get<R<EngineeringBom[]>>('/engineering/bom/versions', { params: { bomCode } })
+  },
   /**
    * 获取BOM列表
    */

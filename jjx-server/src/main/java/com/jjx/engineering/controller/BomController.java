@@ -44,8 +44,13 @@ public class BomController extends BaseController {
      * 获取BOM列表
      */
     @GetMapping("/page")
-    public Result<PageResult<EngineeringBomVO>> listPage(EngineeringBomQuery query) {
-        return Result.success(productBomService.listPage(query));
+    public Result<PageResult<IEngineeringBomService.BomListRow>> listPage(IEngineeringBomService.BomListQuery query) {
+        return Result.success(productBomService.getBomListPage(query));
+    }
+
+    @GetMapping("/versions")
+    public Result<List<EngineeringBomVO>> versions(@RequestParam String bomCode) {
+        return Result.success(productBomService.getBomVersions(bomCode));
     }
 
     /**
@@ -66,8 +71,19 @@ public class BomController extends BaseController {
     @GetMapping("/export")
     @Operation(summary = "导出BOM列表")
     @SaCheckPermission("engineering:bom:view")
-    public void exportBom(EngineeringBomQuery query, HttpServletResponse response) {
-        PageResult<EngineeringBomVO> page = productBomService.listPage(query);
+    public void exportBom(IEngineeringBomService.BomListQuery query, HttpServletResponse response) {
+        // 导出全部符合当前筛选的代表版本/全部版本，不受当前页限制。
+        query.setPageNum(1);
+        query.setPageSize(100);
+        PageResult<IEngineeringBomService.BomListRow> page = productBomService.getBomListPage(query);
+        List<IEngineeringBomService.BomListRow> allRecords = new ArrayList<>(page.getRecords());
+        while (allRecords.size() < page.getTotal()) {
+            query.setPageNum(query.getPageNum() + 1);
+            PageResult<IEngineeringBomService.BomListRow> next = productBomService.getBomListPage(query);
+            if (next.getRecords().isEmpty()) break;
+            allRecords.addAll(next.getRecords());
+        }
+        page.setRecords(allRecords);
         List<EngineeringBomExportVO> rows = new ArrayList<>();
         if (page != null && page.getRecords() != null) {
             for (EngineeringBomVO vo : page.getRecords()) {

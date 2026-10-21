@@ -113,6 +113,63 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return PageResult.build(bomConverter.toVOList(records),productBomIPage.getTotal());
     }
 
+    /** 先在 SQL 中选定每个编码的代表版本，再由数据库分页，绝不合并已分页的版本。 */
+    @Override
+    public PageResult<BomListRow> getBomListPage(BomListQuery query) {
+        LambdaQueryWrapper<EngineeringBom> wrapper = buildQueryWrapper(query);
+        wrapper.like(StringUtils.isNotBlank(query.getBomName()), EngineeringBom::getBomName, query.getBomName());
+        wrapper.eq(StringUtils.isNotBlank(query.getBomType()), EngineeringBom::getBomType, query.getBomType());
+        wrapper.apply(StringUtils.isNotBlank(query.getProductCode()),
+                "product_id IN (SELECT product_id FROM product WHERE product_code LIKE CONCAT('%', {0}, '%'))", query.getProductCode());
+        wrapper.apply(StringUtils.isNotBlank(query.getProductName()),
+                "product_id IN (SELECT product_id FROM product WHERE product_name LIKE CONCAT('%', {0}, '%'))", query.getProductName());
+        if (!query.isShowAllVersions()) {
+            // 当前优先；无当前时按创建时间/id 取最新。修改历史版不会把它变成最新版本。
+            wrapper.apply("NOT EXISTS (SELECT 1 FROM engineering_bom newer WHERE newer.bom_code = engineering_bom.bom_code "
+                    + "AND (COALESCE(newer.is_current, 0) > COALESCE(engineering_bom.is_current, 0) "
+                    + "OR (COALESCE(newer.is_current, 0) = COALESCE(engineering_bom.is_current, 0) "
+                    + "AND (COALESCE(newer.create_time, '1000-01-01') > COALESCE(engineering_bom.create_time, '1000-01-01') "
+                    + "OR (COALESCE(newer.create_time, '1000-01-01') = COALESCE(engineering_bom.create_time, '1000-01-01') "
+                    + "AND newer.bom_id > engineering_bom.bom_id)))))");
+        }
+        wrapper.orderByAsc(EngineeringBom::getBomCode).orderByDesc(EngineeringBom::getCreateTime, EngineeringBom::getBomId);
+        IPage<EngineeringBom> page = productBomMapper.selectPage(new Page<>(query.getPageNum(), query.getPageSize()), wrapper);
+        List<EngineeringBom> records = page.getRecords();
+        Map<String, Long> counts = new HashMap<>();
+        Map<Long, Product> products = new HashMap<>();
+        if (!records.isEmpty()) {
+            productBomMapper.selectList(new LambdaQueryWrapper<EngineeringBom>()
+                    .select(EngineeringBom::getBomCode)
+                    .in(EngineeringBom::getBomCode, records.stream().map(EngineeringBom::getBomCode).distinct().toList()))
+                    .forEach(bom -> counts.merge(bom.getBomCode(), 1L, Long::sum));
+            List<Long> productIds = records.stream().map(EngineeringBom::getProductId).filter(Objects::nonNull).distinct().toList();
+            if (!productIds.isEmpty()) {
+                productMapper.selectBatchIds(productIds).forEach(product -> products.put(product.getProductId(), product));
+            }
+        }
+        List<BomListRow> rows = records.stream().map(bom -> {
+            BomListRow row = new BomListRow();
+            cn.hutool.core.bean.BeanUtil.copyProperties(bomConverter.toVO(bom), row);
+            row.setBomType(bom.getBomType());
+            row.setVersionCount(counts.getOrDefault(bom.getBomCode(), 0L));
+            Product product = products.get(bom.getProductId());
+            if (product != null) {
+                row.setProductCode(product.getProductCode());
+                row.setProductName(product.getProductName());
+            }
+            return row;
+        }).toList();
+        return PageResult.of(page, rows);
+    }
+
+    @Override
+    public List<EngineeringBomVO> getBomVersions(String bomCode) {
+        if (StringUtils.isBlank(bomCode)) throw new BusinessException("BOM编码不能为空");
+        return bomConverter.toVOList(productBomMapper.selectList(new LambdaQueryWrapper<EngineeringBom>()
+                .eq(EngineeringBom::getBomCode, bomCode)
+                .orderByDesc(EngineeringBom::getCreateTime, EngineeringBom::getBomId)));
+    }
+
     @Override
     public EngineeringBomVO getBomDetail(Long bomId) {
         EngineeringBom bom = productBomMapper.selectById(bomId);

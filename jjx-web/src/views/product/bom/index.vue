@@ -115,9 +115,30 @@
       </el-row>
     </el-card>
 
+    <el-switch
+      v-model="queryParams.showAllVersions"
+      active-text="显示全部版本"
+      @change="handleQuery"
+    />
     <!-- 数据表格 -->
     <el-card class="table-card" shadow="never">
-      <el-table v-loading="loading" :data="bomList" @selection-change="handleSelectionChange">
+      <el-table
+        :key="listRevision"
+        v-loading="loading"
+        :data="bomList"
+        row-key="bomId"
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column v-if="!queryParams.showAllVersions" type="expand">
+          <template #default="scope">
+            <BomVersionTimeline
+              :bom-code="scope.row.bomCode"
+              :actions="bomActions"
+              @action="handleBomAction"
+              @view="handleView"
+            />
+          </template>
+        </el-table-column>
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="BOM编码" align="center" prop="bomCode" min-width="160">
           <template #default="scope">
@@ -126,7 +147,19 @@
             }}</el-button>
           </template>
         </el-table-column>
-        <el-table-column label="BOM版本" align="center" prop="bomVersion" width="100" />
+        <el-table-column label="BOM版本" align="center" prop="bomVersion" width="140">
+          <template #default="scope">
+            {{ scope.row.bomVersion }}
+            <el-tag v-if="scope.row.isCurrent" type="success">现行</el-tag>
+            <el-tag v-else-if="!queryParams.showAllVersions" type="warning">待设现行</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="版本数" prop="versionCount" width="80" />
+        <el-table-column label="最近更新时间" width="180">
+          <template #default="scope">{{
+            parseTime(scope.row.updateTime || scope.row.createTime)
+          }}</template>
+        </el-table-column>
         <el-table-column label="产品编码" align="center" prop="productCode" width="170" />
         <el-table-column label="产品名称" align="center" prop="productName" width="170" />
 
@@ -199,6 +232,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
 import { parseTime, parseDate } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import BomVersionTimeline from './components/BomVersionTimeline.vue'
 import BomDetail from './components/BomDetail.vue'
 import BomApproveDialog from './components/BomApproveDialog.vue'
 import BomFormDialog from './components/BomFormDialog.vue'
@@ -211,6 +245,7 @@ const canEditBom = (bom?: EngineeringBom | null) =>
 
 const bomActions: TableAction<EngineeringBom>[] = [
   { key: 'trace', label: '流水' },
+  { key: 'copy', label: '复制BOM', permission: 'engineering:bom:add' },
   {
     key: 'edit',
     label: '修改',
@@ -251,6 +286,7 @@ const bomActions: TableAction<EngineeringBom>[] = [
 const queryParams = reactive<EngineeringBomQueryParams>({
   pageNum: 1,
   pageSize: 10,
+  showAllVersions: false,
   bomCode: undefined,
   bomName: undefined,
   productCode: undefined,
@@ -277,23 +313,23 @@ const selectedBomForApprove = ref<number | undefined>(undefined)
 
 // 表格数据
 const bomList = ref<EngineeringBom[]>([])
+const listRevision = ref(0)
 
 // 字典选项
-const bomStatusOptions = ref([
-  { value: 'draft', label: '草稿' },
-  { value: 'reviewing', label: '审核中' },
-  { value: 'approved', label: '已审核' },
-  { value: 'active', label: '生效中' },
-  { value: 'inactive', label: '已失效' },
-])
+const bomStatusOptions = BomStatusEnum.items.map((item) => ({
+  value: String(item.value),
+  label: item.label,
+}))
 
 // 获取BOM列表
 const getList = async () => {
   loading.value = true
   try {
     const response = await productBomApi.listEngineeringBom(queryParams)
+    handleSelectionChange([])
     bomList.value = response.data?.records || []
     total.value = response.data?.total || 0
+    listRevision.value++
   } catch (error) {
     console.error('获取BOM列表失败:', error)
   } finally {
@@ -316,7 +352,9 @@ const resetQuery = () => {
     productCode: undefined,
     productName: undefined,
     bomVersion: undefined,
-    bomStatus: undefined,
+    bomName: undefined,
+    approveStatus: undefined,
+    showAllVersions: false,
     startDate: undefined,
     endDate: undefined,
     orderByColumn: undefined,
@@ -377,11 +415,17 @@ const handleDelete = (row?: EngineeringBom) => {
 
 // 导出按钮操作
 const handleExport = () => {
-  ElMessageBox.confirm('是否确认导出所有BOM数据项？', '警告', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
+  ElMessageBox.confirm(
+    queryParams.showAllVersions
+      ? '导出当前筛选的全部版本（包含历史版本），不受分页限制？'
+      : '导出当前筛选的每个BOM现行/最新版本；历史版本请打开「显示全部版本」后导出。',
+    '导出范围',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  )
     .then(() => {
       return productBomApi.exportEngineeringBom(queryParams)
     })
@@ -492,6 +536,7 @@ const handleCopySelected = () => {
 }
 
 const handleBomAction = (key: string, row: EngineeringBom) => {
+  if (key === 'copy') handleCopyBom(row)
   if (key === 'edit') handleUpdate(row)
   if (key === 'delete') handleDelete(row)
   if (key === 'submit') void handleSubmitApprove(row)
