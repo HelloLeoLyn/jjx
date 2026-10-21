@@ -1,3 +1,4 @@
+vi.mock('element-plus/theme-chalk/base.css', () => ({}))
 vi.mock('element-plus/es/components/base/style/css', () => ({}))
 vi.mock('element-plus/es/components/icon/style/css', () => ({}))
 vi.mock('element-plus/es/components/overlay/style/css', () => ({}))
