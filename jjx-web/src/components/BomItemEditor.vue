@@ -63,9 +63,19 @@
           </div>
         </template>
       </el-table-column>
-
+      <el-table-column label="项目" prop="processName" width="120">
+        <template #default="scope">
+          <StandardProcessSelector
+            :mode="PROJECT_PICKER_MODE"
+            :model-value="scope.row.processId ?? scope.row.processName"
+            :process-name="scope.row.processName"
+            size="small"
+            @change="(val: number | string | undefined) => handleProjectChange(scope.row, val)"
+          />
+        </template>
+      </el-table-column>
       <!-- 物料名称：常规模式选物料；快速模式直接录材料原文（dev-20261020-029 A） -->
-      <el-table-column label="物料名称" prop="materialName" min-width="210">
+      <el-table-column label="物料名称" prop="materialName" min-width="200">
         <template #default="scope">
           <div class="material-name-cell">
             <el-input
@@ -83,36 +93,53 @@
               @clear="handleMaterialClear(scope.row)"
               @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
             />
-            <el-tag
+            <!-- <el-tag
               v-if="quickMode && !scope.row.materialId"
               size="small"
               type="warning"
               effect="plain"
               >未建档</el-tag
-            >
+            > -->
           </div>
         </template>
       </el-table-column>
       <!-- 规格型号 -->
-      <el-table-column label="规格型号" prop="specification" width="110">
+      <el-table-column label="规格型号" prop="specification" width="100">
         <template #default="scope">
-          <el-input v-model="scope.row.specification" placeholder="必填" size="small" maxlength="500" />
-        </template>
-      </el-table-column>
-      <el-table-column label="跳距" prop="split" width="100">
-        <template #default="scope">
-          <el-input v-model="scope.row.split" placeholder="如：50mm" maxlength="50" size="small" />
-        </template>
-      </el-table-column>
-      <el-table-column label="项目" prop="processName" width="140">
-        <template #default="scope">
-          <StandardProcessSelector
-            :mode="PROJECT_PICKER_MODE"
-            :model-value="scope.row.processId ?? scope.row.processName"
-            :process-name="scope.row.processName"
+          <el-input
+            v-model="scope.row.specification"
+            placeholder="必填"
             size="small"
-            @change="(val: number | string | undefined) => handleProjectChange(scope.row, val)"
+            maxlength="500"
           />
+        </template>
+      </el-table-column>
+      <!-- 模数 -->
+      <el-table-column label="模数" prop="moduleQty" align="center" width="80">
+        <template #default="scope">
+          <el-input-number
+            v-model="scope.row.moduleQty"
+            :min="1"
+            :precision="0"
+            :step="1"
+            size="small"
+            controls-position="right"
+            @change="handleModuleQtyChange(scope.row)"
+          />
+        </template>
+      </el-table-column>
+      <el-table-column label="跳距" prop="split" width="110">
+        <template #default="scope">
+          <el-input-number
+            :model-value="splitNumber(scope.row.split)"
+            :min="0"
+            :precision="0"
+            :step="1"
+            size="small"
+            controls-position="right"
+            style="width: 82px"
+            @update:model-value="(value) => handleSplitChange(scope.row, value)"
+          /><span class="split-unit">mm</span>
         </template>
       </el-table-column>
 
@@ -134,21 +161,6 @@
               :value="item.value"
             />
           </el-select>
-        </template>
-      </el-table-column>
-
-      <!-- 模数 -->
-      <el-table-column label="模数" prop="moduleQty" align="center" width="60">
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.moduleQty"
-            :min="1"
-            :precision="0"
-            :step="1"
-            size="small"
-            controls-position="right"
-            @change="handleModuleQtyChange(scope.row)"
-          />
         </template>
       </el-table-column>
 
@@ -239,14 +251,14 @@
             @click="handleUndoRemove(scope.row)"
             >撤销移除</el-button
           >
-          <!-- <el-button link type="primary" :icon="CopyDocument" @click="handleCopyItem(scope.row)" /> -->
+          <el-button link type="primary" @click="handleCopyItem(scope.row)">复制</el-button>
           <el-button
             v-if="!isPendingRemove(scope.row)"
             link
             type="danger"
-            :icon="Delete"
             @click="handleDeleteItem(scope.row)"
-          />
+            >删除</el-button
+          >
         </template>
       </el-table-column>
     </el-table>
@@ -822,6 +834,20 @@ const syncReasonText = (row: EngineeringBomItem): string => {
 // 物料建档：保存独立物料档案后回填当前行
 const materialFormVisible = ref(false)
 const materialPreset = ref({ materialName: '', specification: '', unit: 'PCS' })
+
+/** 跳距：界面只输整数、单位固定 mm；存储保留“数字+mm”字符串供打印/快照使用。 */
+function splitNumber(value?: string | null): number | undefined {
+  if (value == null || value === '') return undefined
+  const n = Number.parseFloat(String(value))
+  return Number.isFinite(n) ? Math.trunc(n) : undefined
+}
+function handleSplitChange(row: EngineeringBomItem, value?: number | null) {
+  if (value == null || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+    row.split = ''
+    return
+  }
+  row.split = `${Math.trunc(Number(value))}mm`
+}
 let creatingRow: EngineeringBomItem | null = null
 
 const handleMaterialClear = (row: EngineeringBomItem) => {
@@ -992,6 +1018,12 @@ defineExpose({
   background: #fff;
   border-radius: 8px;
   padding: 16px;
+}
+
+.split-unit {
+  margin-left: 4px;
+  font-size: 12px;
+  color: #909399;
 }
 
 .editor-header {

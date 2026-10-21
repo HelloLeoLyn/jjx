@@ -293,11 +293,7 @@
                 ><template v-if="projectMaterialDraft"
                   ><el-input
                     v-model="row.params"
-                    type="textarea"
-                    :rows="2"
-                    maxlength="500"
-                    :placeholder="workSpecMaterialSpec(row) || '自动计算'"
-                  /></template
+                    :placeholder="workSpecMaterialSpec(row) || '自动计算'" /></template
                 ><span v-else class="multiline">{{
                   row.params || workSpecMaterialSpec(row)
                 }}</span></template
