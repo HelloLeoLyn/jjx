@@ -198,6 +198,7 @@ import * as XLSX from 'xlsx'
 import { stockApi, type StockBatchCheckItemVO } from '@/api/inventory/stock'
 import { warehouseApi } from '@/api/inventory/warehouse'
 import { materialApi } from '@/api/inventory/material'
+import { materialSaveFromImport } from './materialCreateDefaults'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [boolean]; success: [] }>()
@@ -445,14 +446,7 @@ const handleCreateMaterials = async () => {
     for (const row of notFoundRows) {
       try {
         const codeRes = await materialApi.generateCode()
-        await materialApi.add({
-          materialCode: codeRes.data || '',
-          materialName: row.materialName,
-          materialType: 'R',
-          specification: row.specification,
-          unit: 'PCS',
-          supplierName: row.supplierName || '',
-        } as any)
+        await materialApi.add(materialSaveFromImport(row, codeRes.data || '') as any)
         // 更新本行校验结果为 ok（重新校验时会用）
         row.materialName = row.materialName
         row._forceOk = true

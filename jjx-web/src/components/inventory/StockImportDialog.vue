@@ -214,60 +214,25 @@
       </div>
     </div>
 
-    <!-- 物料建档对话框 -->
-    <el-dialog
-      title="新建物料"
+    <!-- 物料建档对话框：统一复用 MaterialFormDialog（dev-20261021-026） -->
+    <MaterialFormDialog
       v-model="createDialogVisible"
-      width="500px"
-      append-to-body
-      :close-on-click-modal="false"
-    >
-      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="100px">
-        <el-form-item label="物料编码" prop="materialCode">
-          <el-input v-model="createForm.materialCode" placeholder="系统自动生成" readonly>
-            <template #append>
-              <el-button :icon="Search" @click="handleGenerateCode" />
-            </template>
-          </el-input>
-        </el-form-item>
-        <el-form-item label="物料名称" prop="materialName">
-          <el-input v-model="createForm.materialName" placeholder="请输入物料名称" />
-        </el-form-item>
-        <el-form-item label="物料类型" prop="materialType">
-          <EnumSelect
-            v-model="createForm.materialType"
-            :enum-obj="MaterialEnum.type"
-            placeholder="请选择"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-form-item label="规格型号" prop="specification">
-          <el-input v-model="createForm.specification" placeholder="请输入规格型号" />
-        </el-form-item>
-        <el-form-item label="单位" prop="unit">
-          <el-input v-model="createForm.unit" placeholder="如：PCS、KG" />
-        </el-form-item>
-        <el-form-item label="供应商" prop="supplierName">
-          <el-input v-model="createForm.supplierName" placeholder="请输入供应商名称" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creatingMaterial" @click="submitCreateMaterial">
-          确定
-        </el-button>
-      </template>
-    </el-dialog>
+      :preset-data="createPreset"
+      @success="handleMaterialCreated"
+    />
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { UploadFilled, Search, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
+import { UploadFilled, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import { stockApi } from '@/api/inventory/stock'
 import { materialApi } from '@/api/inventory/material'
-import { MaterialEnum, WarehouseEnum } from '@/enums/inventory'
+import { WarehouseEnum } from '@/enums/inventory'
+import MaterialFormDialog from './MaterialFormDialog.vue'
+import { materialCreatePresetFromImport, type MaterialCreatePreset } from './materialCreateDefaults'
+import type { InventoryMaterial } from '@/types/inventory/material'
 import * as XLSX from 'xlsx'
 import type { UploadInstance } from 'element-plus'
 
@@ -333,24 +298,10 @@ const createAllLoading = ref(false)
 // 高级字段展开/收起
 const showExtraFields = ref(false)
 
-// 建档相关
+// 建档相关：统一走 MaterialFormDialog（dev-20261021-026）
 const createDialogVisible = ref(false)
-const creatingMaterial = ref(false)
-const createFormRef = ref()
 const currentRow = ref<ImportRow | null>(null)
-const createForm = reactive({
-  materialCode: '',
-  materialName: '',
-  materialType: 'R',
-  specification: '',
-  unit: 'PCS',
-  supplierName: '',
-})
-const createRules = {
-  materialName: [{ required: true, message: '请输入物料名称', trigger: 'blur' }],
-  materialType: [{ required: true, message: '请选择物料类型', trigger: 'change' }],
-  unit: [{ required: true, message: '请输入单位', trigger: 'blur' }],
-}
+const createPreset = ref<MaterialCreatePreset>()
 
 // 重置状态
 const resetState = () => {
@@ -713,60 +664,25 @@ const handleCreateAll = async () => {
   ElMessage.success(`建档完成：成功 ${successCount} 条，失败 ${failCount} 条`)
 }
 
-// 打开建档对话框
+// 打开建档弹窗：预填导入行信息，保存后回填当前行
 const handleCreateMaterial = (row: ImportRow) => {
   currentRow.value = row
-  createForm.materialCode = ''
-  createForm.materialName = row.materialName
-  createForm.materialType = 'R'
-  createForm.specification = row.specification
-  createForm.unit = 'PCS'
-  createForm.supplierName = row.supplierName || ''
+  createPreset.value = materialCreatePresetFromImport(row)
   createDialogVisible.value = true
 }
 
-// 生成物料编码
-const handleGenerateCode = async () => {
-  try {
-    const res = await materialApi.generateCode()
-    if (res.data) {
-      createForm.materialCode = res.data
-    }
-  } catch (error) {
-    ElMessage.error('生成物料编码失败')
+function handleMaterialCreated(material: InventoryMaterial) {
+  const row = currentRow.value
+  if (row) {
+    row.checked = true
+    row.materialCode = material.materialCode || row.materialCode
+    row.materialName = material.materialName || row.materialName
+    row.specification = material.specification || row.specification
+    row.supplierName = material.supplierName || row.supplierName
+    if (material.materialId != null) row.materialId = String(material.materialId)
   }
-}
-
-// 提交建档
-const submitCreateMaterial = async () => {
-  const valid = await createFormRef.value.validate().catch(() => false)
-  if (!valid) return
-
-  creatingMaterial.value = true
-  try {
-    const saveData = {
-      materialCode: createForm.materialCode,
-      materialName: createForm.materialName,
-      materialType: createForm.materialType,
-      specification: createForm.specification,
-      unit: createForm.unit,
-      supplierName: createForm.supplierName,
-    }
-    await materialApi.add(saveData as any)
-    ElMessage.success('物料建档成功')
-
-    if (currentRow.value) {
-      currentRow.value.checked = true
-      currentRow.value.materialCode = createForm.materialCode
-    }
-
-    createDialogVisible.value = false
-  } catch (error) {
-    console.error('建档失败:', error)
-    ElMessage.error('建档失败')
-  } finally {
-    creatingMaterial.value = false
-  }
+  currentRow.value = null
+  createDialogVisible.value = false
 }
 
 // 执行导入

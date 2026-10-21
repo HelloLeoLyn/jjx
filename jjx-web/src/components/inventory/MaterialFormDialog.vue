@@ -155,6 +155,11 @@ import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { materialApi } from '@/api/inventory/material'
 import { MaterialTypeEnum } from '@/enums/inventory/MaterialEnum'
+import {
+  MATERIAL_DEFAULT_EXPIRY_ALERT_DAYS,
+  MATERIAL_DEFAULT_TYPE,
+  MATERIAL_DEFAULT_UNIT,
+} from './materialCreateDefaults'
 import type {
   MaterialSaveDTO,
   MaterialUpdateDTO,
@@ -169,6 +174,8 @@ interface Props {
     materialName?: string
     specification?: string
     unit?: string
+    supplierName?: string
+    materialType?: string
   }
 }
 
@@ -200,11 +207,11 @@ const form = reactive({
   materialId: null as number | null,
   materialCode: '',
   materialName: '',
-  materialType: 'R',
+  materialType: MATERIAL_DEFAULT_TYPE,
   tagIds: [] as number[],
   materialNameEn: '',
   specification: '',
-  unit: 'PCS',
+  unit: MATERIAL_DEFAULT_UNIT,
   safeStock: 0,
   maxStock: 0,
   reorderPoint: 0,
@@ -213,7 +220,7 @@ const form = reactive({
   supplierName: '',
   batchControl: false,
   shelfLife: null as number | null,
-  expiryAlertDays: 30,
+  expiryAlertDays: MATERIAL_DEFAULT_EXPIRY_ALERT_DAYS,
   remark: '',
 })
 
@@ -228,11 +235,11 @@ const resetForm = () => {
   form.materialId = null
   form.materialCode = ''
   form.materialName = ''
-  form.materialType = 'R'
+  form.materialType = MATERIAL_DEFAULT_TYPE
   form.tagIds = []
   form.materialNameEn = ''
   form.specification = ''
-  form.unit = 'PCS'
+  form.unit = MATERIAL_DEFAULT_UNIT
   form.safeStock = 0
   form.maxStock = 0
   form.reorderPoint = 0
@@ -241,7 +248,7 @@ const resetForm = () => {
   form.supplierName = ''
   form.batchControl = false
   form.shelfLife = null
-  form.expiryAlertDays = 30
+  form.expiryAlertDays = MATERIAL_DEFAULT_EXPIRY_ALERT_DAYS
   form.remark = ''
 }
 
@@ -361,6 +368,8 @@ watch(
           if (props.presetData.materialName) form.materialName = props.presetData.materialName
           if (props.presetData.specification) form.specification = props.presetData.specification
           if (props.presetData.unit) form.unit = props.presetData.unit
+          if (props.presetData.supplierName) form.supplierName = props.presetData.supplierName
+          if (props.presetData.materialType) form.materialType = props.presetData.materialType
         }
       }
     }
