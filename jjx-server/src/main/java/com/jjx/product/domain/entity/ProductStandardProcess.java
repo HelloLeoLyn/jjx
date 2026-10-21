@@ -15,6 +15,21 @@ public class ProductStandardProcess {
     
     @TableId(type = IdType.AUTO)
     private Long processId;
+
+    public enum Status {
+        PENDING(1), FORMAL(2), REJECTED(3);
+        public final int value;
+        Status(int value) { this.value = value; }
+    }
+
+
+    /** 临时工序审核状态；tempFlag 在转正后保留来源标记。 */
+    private Integer processStatus;
+    private Integer tempFlag;
+    private String rejectReason;
+    private String approvedBy;
+    private LocalDateTime approvedTime;
+
     
     /**
      * 工序编码

@@ -4,6 +4,8 @@ import type {
   StandardProcessQueryParams,
   StandardProcessFormData,
   StandardProcessItem,
+  TempStandardProcessData,
+  StandardProcessBomReference,
 } from '@/types/product/standardProcess'
 import type { PageResult, R } from '@/types'
 
@@ -11,6 +13,33 @@ import type { PageResult, R } from '@/types'
  * 标准工序 API
  */
 export const standardProcessApi = {
+  /** 近名提示码 40901；确认后携 force=true 重提，同名不可绕过。 */
+  createTemp(data: TempStandardProcessData) {
+    return request.post<R<StandardProcessItem>>('/engineering/standard-processes/temp', data, {
+      transformResponse: [
+        (raw: string) => {
+          const result = JSON.parse(raw)
+          if (result.code === 40901) {
+            throw Object.assign(new Error(result.msg), { code: result.code })
+          }
+          return result
+        },
+      ],
+    })
+  },
+  approve(processId: number) {
+    return request.put<R<void>>(`/engineering/standard-processes/${processId}/approve`)
+  },
+  reject(processId: number, rejectReason: string) {
+    return request.put<R<void>>(`/engineering/standard-processes/${processId}/reject`, {
+      rejectReason,
+    })
+  },
+  getBomReferences(processId: number) {
+    return request.get<R<StandardProcessBomReference[]>>(
+      `/engineering/standard-processes/${processId}/bom-references`
+    )
+  },
   /**
    * 分页查询标准工序
    * GET /engineering/standard-processes/page
@@ -82,7 +111,9 @@ export const standardProcessApi = {
    * GET /engineering/standard-processes/type/{processType}
    */
   getByProcessType(processType: string) {
-    return request.get<R<StandardProcessItem[]>>(`/engineering/standard-processes/type/${processType}`)
+    return request.get<R<StandardProcessItem[]>>(
+      `/engineering/standard-processes/type/${processType}`
+    )
   },
 
   /**

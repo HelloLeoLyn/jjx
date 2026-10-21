@@ -8,6 +8,7 @@ export interface StandardProcessQueryParams extends PageQuery {
   processName?: string
   processType?: string
   processCategory?: string
+  processStatus?: StandardProcessStatus
   isEnabled?: number
   orderByColumn?: string
   isAsc?: string
@@ -41,6 +42,11 @@ export interface StandardProcessFormData {
  * 鏍囧噯宸ュ簭鍒楄〃椤癸紙瀵瑰簲鍚庣 VO锛?
  */
 export interface StandardProcessItem {
+  processStatus?: StandardProcessStatus
+  tempFlag?: number
+  rejectReason?: string
+  approvedBy?: string
+  approvedTime?: string
   processId: number
   processCode: string
   processName: string
@@ -73,4 +79,23 @@ export interface StandardProcessItem {
   updateTime: string
 }
 
+/** 标准工序审核状态（独立于样品工序执行状态）。 */
+export enum StandardProcessStatus {
+  PENDING = 1,
+  FORMAL = 2,
+  REJECTED = 3,
+}
 
+export interface TempStandardProcessData {
+  processName: string
+  processCategory: string
+  description: string
+  force?: boolean
+}
+
+export interface StandardProcessBomReference {
+  bomId: number
+  itemId: number
+  processId: number
+  processName: string
+}

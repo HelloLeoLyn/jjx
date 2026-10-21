@@ -1,6 +1,7 @@
 package com.jjx.product.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import static com.jjx.product.domain.entity.ProductStandardProcess.Status.*;
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -63,6 +64,12 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ProductStandardProcessVO createProcess(ProductStandardProcess process) {
+        process.setProcessId(null);
+        process.setProcessStatus(FORMAL.value);
+        process.setTempFlag(0);
+        process.setApprovedBy(null);
+        process.setApprovedTime(null);
+        process.setRejectReason(null);
         validateIcon(process.getIcon());
         // 检查编码是否唯一
         if (!checkProcessCodeUnique(process.getProcessCode(), null)) {
@@ -106,7 +113,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ProductStandardProcessVO updateProcess(ProductStandardProcess process) {
-        ProductStandardProcess existing = getById(process.getProcessId());
+        ProductStandardProcess existing = processMapper.selectForUpdate(process.getProcessId());
         if (existing == null) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
@@ -175,7 +182,7 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteProcess(Long processId) {
-        ProductStandardProcess process = getById(processId);
+        ProductStandardProcess process = processMapper.selectForUpdate(processId);
         if (process == null) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
@@ -184,6 +191,9 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
             throw new BusinessException("该工序为系统内置，不允许删除");
         }
 
+        if (!Integer.valueOf(FORMAL.value).equals(process.getProcessStatus())) {
+            throw new BusinessException("临时待审或已驳回工序禁止物理删除");
+        }
         // 检查是否可删除
         if (!canDelete(processId)) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_PROCESS_ALREADY_EXISTS,
@@ -251,12 +261,100 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         return productStandardProcessConverter.toVO(process);
     }
 
+    // ==================== 临时工序审核 ====================
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ProductStandardProcessVO createTemp(com.jjx.product.domain.dto.TempStandardProcessDTO request) {
+        String name = StringUtils.trim(request.getProcessName());
+        String category = StringUtils.trim(request.getProcessCategory());
+        if (StringUtils.isBlank(name) || StringUtils.isBlank(request.getDescription())) {
+            throw new BusinessException("工序名称、类别、说明必填");
+        }
+        resolveProcessCategory(category);
+        // 所有分配编码的临时创建/审批按相同顺序加锁，避免并发重复编码与同名创建。
+        List<ProductStandardProcess> locked = processMapper.lockProcesses();
+        List<ProductStandardProcess> sameCategory = list(Wrappers.<ProductStandardProcess>lambdaQuery()
+                .eq(ProductStandardProcess::getProcessCategory, category));
+        for (ProductStandardProcess existing : sameCategory) {
+            if (existing.getProcessName().trim().equalsIgnoreCase(name)) {
+                throw new BusinessException("同类别已存在工序：" + existing.getProcessName()
+                        + "（" + existing.getProcessCode() + "）");
+            }
+        }
+        if (!request.isForce()) {
+            for (ProductStandardProcess existing : sameCategory) {
+                String existingName = existing.getProcessName().trim().toLowerCase(java.util.Locale.ROOT);
+                String lowerName = name.toLowerCase(java.util.Locale.ROOT);
+                if (existingName.contains(lowerName) || lowerName.contains(existingName)) {
+                    throw new BusinessException(40901, "存在近名工序：" + existing.getProcessName()
+                            + "（" + existing.getProcessCode() + "），请确认后带 force=true 重提");
+                }
+            }
+        }
+        String prefix = "TMP-" + java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE) + "-";
+        int max = locked.stream().map(ProductStandardProcess::getProcessCode)
+                .filter(code -> code != null && code.matches(java.util.regex.Pattern.quote(prefix) + "[0-9]+"))
+                .mapToInt(code -> Integer.parseInt(code.substring(prefix.length()))).max().orElse(0);
+        ProductStandardProcess process = new ProductStandardProcess();
+        process.setProcessCode(prefix + String.format("%03d", max + 1));
+        process.setProcessType(com.jjx.product.enums.ProcessTypeEnum.OTHER.getCode());
+        process.setProcessName(name);
+        process.setProcessCategory(category);
+        process.setDescription(request.getDescription().trim());
+        process.setProcessStatus(PENDING.value);
+        process.setTempFlag(1);
+        process.setIsSystem(0);
+        process.setIsEnabled(1);
+        process.setDisplayOrder(0);
+        if (!save(process)) throw new BusinessException(BusinessExceptionEnum.DB_INSERT_FAILED);
+        return productStandardProcessConverter.toVO(process);
+    }
+
+    private ProductStandardProcess lockedPending(Long id) {
+        ProductStandardProcess process = processMapper.lockProcesses().stream()
+                .filter(p -> p.getProcessId().equals(id)).findFirst()
+                .orElseThrow(() -> new BusinessException("工序不存在"));
+        if (!Integer.valueOf(PENDING.value).equals(process.getProcessStatus())) {
+            throw new BusinessException("仅临时待审工序允许审核或驳回");
+        }
+        return process;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void approveProcess(Long processId) {
+        ProductStandardProcess process = lockedPending(processId);
+        process.setProcessCode(generateNextProcessCode(process.getProcessType(), process.getProcessCategory()));
+        process.setProcessStatus(FORMAL.value);
+        process.setApprovedBy(com.jjx.system.utils.SecurityUtils.getDisplayName());
+        process.setApprovedTime(LocalDateTime.now());
+        process.setUpdateTime(LocalDateTime.now());
+        if (!updateById(process)) throw new BusinessException(BusinessExceptionEnum.DB_UPDATE_FAILED);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rejectProcess(Long processId, String reason) {
+        if (StringUtils.isBlank(reason) || reason.length() > 500) throw new BusinessException("驳回原因必填且不超过500字");
+        ProductStandardProcess process = lockedPending(processId);
+        process.setProcessStatus(REJECTED.value);
+        process.setRejectReason(reason.trim());
+        process.setUpdateTime(LocalDateTime.now());
+        if (!updateById(process)) throw new BusinessException(BusinessExceptionEnum.DB_UPDATE_FAILED);
+    }
+
+    @Override
+    public List<com.jjx.product.domain.vo.StandardProcessBomReferenceVO> getBomReferences(Long processId) {
+        return processMapper.selectBomReferences(processId);
+    }
+
     // ==================== 状态管理 ====================
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void setEnabled(Long processId, Boolean enabled) {
-        ProductStandardProcess process = getById(processId);
+        ProductStandardProcess process = processMapper.selectForUpdate(processId);
         if (process == null) {
             throw new BusinessException(BusinessExceptionEnum.PRODUCT_NOT_FOUND);
         }
@@ -278,7 +376,10 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
     @Override
     public List<ProductStandardProcessVO> getEnabledProcesses() {
         LambdaQueryWrapper<ProductStandardProcess> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ProductStandardProcess::getIsEnabled, 1)
+        wrapper.and(w -> w.eq(ProductStandardProcess::getProcessStatus, PENDING.value)
+                        .or(f -> f.eq(ProductStandardProcess::getProcessStatus, FORMAL.value)
+                                .eq(ProductStandardProcess::getIsEnabled, 1)))
+                .orderByDesc(ProductStandardProcess::getProcessStatus)
                 .orderByAsc(ProductStandardProcess::getDisplayOrder);
 
         List<ProductStandardProcess> processes = list(wrapper);
@@ -418,7 +519,10 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         // 检查是否被工艺路线引用
         // TODO: 实现引用检查，需要 EngineeringRoutingItemMapper 中的方法
         // return routingItemMapper.countByProcessId(processId) == 0;
-        return true;
+        ProductStandardProcess process = getById(processId);
+        return process != null && Integer.valueOf(FORMAL.value).equals(process.getProcessStatus())
+                && !Integer.valueOf(1).equals(process.getIsSystem())
+                && getBomReferences(processId).isEmpty();
     }
 
     // ==================== 编码生成 ====================
@@ -553,6 +657,9 @@ public class ProductStandardProcessServiceImpl extends ServiceImpl<ProductStanda
         }
         if (StringUtils.isNotBlank(queryDTO.getProcessCategory())) {
             wrapper.eq(ProductStandardProcess::getProcessCategory, queryDTO.getProcessCategory());
+        }
+        if (queryDTO.getProcessStatus() != null) {
+            wrapper.eq(ProductStandardProcess::getProcessStatus, queryDTO.getProcessStatus());
         }
         if (queryDTO.getIsEnabled() != null) {
             wrapper.eq(ProductStandardProcess::getIsEnabled, queryDTO.getIsEnabled());

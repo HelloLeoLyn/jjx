@@ -51,6 +51,18 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="审核状态">
+          <el-select
+            v-model="queryParams.processStatus"
+            clearable
+            placeholder="全部"
+            style="width: 140px"
+          >
+            <el-option label="待审核" :value="StandardProcessStatus.PENDING" />
+            <el-option label="正式" :value="StandardProcessStatus.FORMAL" />
+            <el-option label="已驳回" :value="StandardProcessStatus.REJECTED" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="启用状态" prop="isEnabled">
           <el-select
             v-model="queryParams.isEnabled"
@@ -72,6 +84,9 @@
     <!-- 操作按钮区域 -->
     <el-card class="operation-card" shadow="never">
       <div class="operation-bar">
+        <el-button v-hasPermi="['engineering:standardProcess:add']" @click="openTempDialog"
+          >新增临时工序</el-button
+        >
         <el-button
           type="primary"
           icon="Plus"
@@ -152,6 +167,23 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="审核状态" width="110">
+          <template #default="{ row }">
+            <el-tag v-if="row.processStatus === StandardProcessStatus.PENDING" type="warning"
+              >待审核</el-tag
+            >
+            <el-tag v-else-if="row.processStatus === StandardProcessStatus.REJECTED" type="danger"
+              >已驳回</el-tag
+            >
+            <el-tag v-else type="success">正式</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="rejectReason"
+          label="驳回原因"
+          min-width="140"
+          show-overflow-tooltip
+        />
         <el-table-column prop="createBy" label="创建人" width="100" />
         <el-table-column prop="createTime" label="创建时间" width="170" />
         <TableActionColumn
@@ -189,6 +221,32 @@
       :process-id="processDialogId"
       @success="loadData"
     />
+    <el-dialog v-model="tempDialogVisible" title="新增临时工序" width="480px">
+      <el-form label-width="80px">
+        <el-form-item label="名称" required
+          ><el-input v-model="tempForm.processName" maxlength="100"
+        /></el-form-item>
+        <el-form-item label="类别" required>
+          <el-select v-model="tempForm.processCategory">
+            <el-option
+              v-for="item in processCategoryOptions"
+              :key="item.itemValue"
+              :label="item.label"
+              :value="item.itemValue"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="说明" required
+          ><el-input v-model="tempForm.description" type="textarea" maxlength="500"
+        /></el-form-item>
+      </el-form>
+      <template #footer
+        ><el-button @click="tempDialogVisible = false">取消</el-button
+        ><el-button type="primary" :loading="tempSaving" @click="saveTempProcess"
+          >提交待审</el-button
+        ></template
+      >
+    </el-dialog>
     <StandardProcessPreviewDrawer v-model="previewVisible" :process="previewProcess" />
   </div>
 </template>
@@ -202,6 +260,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit, Delete, CircleCheck, CircleClose, View } from '@element-plus/icons-vue'
 
+import { StandardProcessStatus } from '@/types/product/standardProcess'
+import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
@@ -262,7 +322,54 @@ const previewItem = (row: StandardProcessItem): ProcessOperationItem => ({
   workInstruction: row.hasWorkInstruction === 1 ? '作业说明' : undefined,
 })
 
+const tempDialogVisible = ref(false)
+const tempSaving = ref(false)
+const tempForm = reactive({ processName: '', processCategory: '', description: '' })
+const openTempDialog = () => {
+  Object.assign(tempForm, { processName: '', processCategory: '', description: '' })
+  tempDialogVisible.value = true
+}
+const saveTempProcess = async () => {
+  if (!tempForm.processName.trim() || !tempForm.processCategory || !tempForm.description.trim()) {
+    ElMessage.warning('名称、类别、说明必填')
+    return
+  }
+  tempSaving.value = true
+  const payload = { ...tempForm }
+  try {
+    try {
+      await standardProcessApi.createTemp(payload)
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 40901) throw error
+      await ElMessageBox.confirm(error.message, '近名工序确认', { type: 'warning' })
+      await standardProcessApi.createTemp({ ...payload, force: true })
+    }
+    tempDialogVisible.value = false
+    ElMessage.success('临时工序已提交待审')
+    await Promise.all([loadData(), reloadProcesses()])
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') console.error('创建临时工序失败:', error)
+  } finally {
+    tempSaving.value = false
+  }
+}
+
+const { reload: reloadProcesses } = useEnabledProcesses(false)
 const processActions: TableAction<StandardProcessItem>[] = [
+  {
+    key: 'approve',
+    label: '审核通过',
+    type: 'success',
+    permission: 'product:standardProcess:approve',
+    visible: ({ row }) => row.processStatus === StandardProcessStatus.PENDING,
+  },
+  {
+    key: 'reject',
+    label: '驳回',
+    type: 'danger',
+    permission: 'product:standardProcess:approve',
+    visible: ({ row }) => row.processStatus === StandardProcessStatus.PENDING,
+  },
   {
     key: 'preview',
     label: '预览',
@@ -285,6 +392,7 @@ const processActions: TableAction<StandardProcessItem>[] = [
   },
   {
     key: 'delete',
+    visible: ({ row }) => row.processStatus === StandardProcessStatus.FORMAL,
     label: '删除',
     icon: Delete,
     type: 'danger',
@@ -293,10 +401,30 @@ const processActions: TableAction<StandardProcessItem>[] = [
 ]
 
 const handleProcessAction = (key: string, row: StandardProcessItem) => {
+  if (key === 'approve' || key === 'reject') void handleReview(key, row)
   if (key === 'preview') handlePreview(row)
   if (key === 'edit') handleEdit(row)
   if (key === 'toggle') void handleToggleEnabled(row)
   if (key === 'delete') handleDelete(row)
+}
+
+const handleReview = async (action: 'approve' | 'reject', row: StandardProcessItem) => {
+  try {
+    if (action === 'approve') {
+      await ElMessageBox.confirm(`确认将临时工序「${row.processName}」转正？`, '审核工序')
+      await standardProcessApi.approve(row.processId)
+    } else {
+      const { value } = await ElMessageBox.prompt('请填写驳回原因', '驳回工序', {
+        inputValidator: (value) =>
+          (!!value?.trim() && value.length <= 500) || '原因必填且不超过500字',
+      })
+      await standardProcessApi.reject(row.processId, value.trim())
+    }
+    ElMessage.success('操作成功')
+    await Promise.all([loadData(), reloadProcesses()])
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') console.error('工序审核失败:', error)
+  }
 }
 
 const handlePreview = (row: StandardProcessItem) => {
@@ -336,6 +464,7 @@ const resetQuery = () => {
     processName: undefined,
     processType: undefined,
     processCategory: undefined,
+    processStatus: undefined,
     isEnabled: undefined,
     orderByColumn: 'displayOrder',
     isAsc: 'asc',

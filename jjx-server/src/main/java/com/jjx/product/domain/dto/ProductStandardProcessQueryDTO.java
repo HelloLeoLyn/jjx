@@ -32,6 +32,7 @@ public class ProductStandardProcessQueryDTO {
      * 是否启用
      */
     private Integer isEnabled;
+    private Integer processStatus;
     
     /**
      * 页码

@@ -11,6 +11,15 @@ import java.util.List;
 @Mapper
 public interface ProductStandardProcessMapper extends BaseMapper<ProductStandardProcess> {
     
+    @Select("SELECT * FROM engineering_standard_process WHERE process_id = #{processId} FOR UPDATE")
+    ProductStandardProcess selectForUpdate(@Param("processId") Long processId);
+
+    @Select("SELECT * FROM engineering_standard_process ORDER BY process_id FOR UPDATE")
+    List<ProductStandardProcess> lockProcesses();
+
+    @Select("SELECT bom_id, item_id, process_id, process_name FROM engineering_bom_item WHERE process_id = #{processId} ORDER BY bom_id, item_id")
+    List<com.jjx.product.domain.vo.StandardProcessBomReferenceVO> selectBomReferences(@Param("processId") Long processId);
+
     /**
      * 查询启用的工序
      */

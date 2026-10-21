@@ -19,6 +19,11 @@ public interface IProductStandardProcessService extends IService<ProductStandard
     com.jjx.inventory.dto.vo.MaterialImportResultVO importStandardProcesses(
             java.util.List<com.jjx.product.dto.imports.StandardProcessImportDTO> importList);
 
+    ProductStandardProcessVO createTemp(com.jjx.product.domain.dto.TempStandardProcessDTO request);
+    void approveProcess(Long processId);
+    void rejectProcess(Long processId, String reason);
+    List<com.jjx.product.domain.vo.StandardProcessBomReferenceVO> getBomReferences(Long processId);
+
     // ==================== 基础 CRUD ====================
 
     /**

@@ -44,6 +44,12 @@ public class ProductStandardProcessController {
 
     private final IProductStandardProcessService processService;
 
+    @ExceptionHandler(cn.dev33.satoken.exception.NotPermissionException.class)
+    @ResponseStatus(org.springframework.http.HttpStatus.FORBIDDEN)
+    public Result<Void> permissionDenied(cn.dev33.satoken.exception.NotPermissionException exception) {
+        return Result.error(403, "无标准工序操作权限");
+    }
+
     // ==================== 基础 CRUD ====================
 
     @Operation(summary = "分页查询标准工序")
@@ -87,8 +93,36 @@ public class ProductStandardProcessController {
     public Result<Void> delete(
             @Parameter(description = "工序ID", required = true)
             @PathVariable @NotNull Long processId) {
-        processService.removeById(processId);
+        processService.deleteProcess(processId);
         return Result.success();
+    }
+
+    @PostMapping("/temp")
+    @SaCheckPermission("engineering:standardProcess:add")
+    public Result<ProductStandardProcessVO> createTemp(
+            @Valid @RequestBody com.jjx.product.domain.dto.TempStandardProcessDTO request) {
+        return Result.success(processService.createTemp(request));
+    }
+
+    @PutMapping("/{processId}/approve")
+    @SaCheckPermission("product:standardProcess:approve")
+    public Result<Void> approve(@PathVariable Long processId) {
+        processService.approveProcess(processId);
+        return Result.success();
+    }
+
+    @PutMapping("/{processId}/reject")
+    @SaCheckPermission("product:standardProcess:approve")
+    public Result<Void> reject(@PathVariable Long processId,
+            @Valid @RequestBody com.jjx.product.domain.dto.RejectStandardProcessDTO request) {
+        processService.rejectProcess(processId, request.getRejectReason());
+        return Result.success();
+    }
+
+    @GetMapping("/{processId}/bom-references")
+    public Result<List<com.jjx.product.domain.vo.StandardProcessBomReferenceVO>> bomReferences(
+            @PathVariable Long processId) {
+        return Result.success(processService.getBomReferences(processId));
     }
 
     // ==================== 状态管理 ====================
