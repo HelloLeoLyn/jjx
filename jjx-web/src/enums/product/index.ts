@@ -145,6 +145,26 @@ export const BomStatusEnum = Object.assign(
 )
 
 /**
+ * BOM 明细行审核状态枚举（dev-20261020-029）
+ * 对应 Java ProductEnums.BomItemReviewStatus
+ */
+const bomItemReviewStatusDefinitions = {
+  DRAFT: { value: 1 as const, label: '草稿', tagProps: { type: 'info' as const } },
+  PENDING: { value: 2 as const, label: '待审核', tagProps: { type: 'warning' as const } },
+  APPROVED: { value: 3 as const, label: '审核通过', tagProps: { type: 'success' as const } },
+  REJECTED: { value: 4 as const, label: '审核驳回', tagProps: { type: 'danger' as const } },
+  PENDING_REMOVE: { value: 5 as const, label: '待移除', tagProps: { type: 'danger' as const } },
+}
+
+export const BomItemReviewStatusEnum = Object.assign(
+  bomItemReviewStatusDefinitions,
+  createEnum<number>({
+    items: Object.values(bomItemReviewStatusDefinitions),
+    defaultTag: { type: 'info' },
+  })
+)
+
+/**
  * 物料来源类型枚举
  * 对应 Java ProductEnums.SourceType
  */

@@ -2,8 +2,6 @@ package com.jjx.product.domain.dto;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -15,14 +13,16 @@ import java.math.BigDecimal;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class EngineeringBomItemDTO {
 
-    /** 明细ID（编辑时必填，新增时不填） */
+    /** 明细ID（编辑已有行时必填；新增行不填） */
     private Long itemId;
+
+    /** 工程侧请求移除该行：已审核通过行转“待移除”，由审核员确认后删除（dev-20261020-029） */
+    private Boolean removeRequested;
 
     /** 父节点明细ID（NULL=根节点，树形结构） */
     private Long parentMaterialId;
 
-    /** 物料ID */
-    @NotNull(message = "物料不能为空")
+    /** 物料ID（快速模式可空，服务端按材料名称+规格先入审核） */
     private Long materialId;
 
     /** 物料编码（冗余） */
@@ -50,9 +50,7 @@ public class EngineeringBomItemDTO {
     /** 单位 */
     private String unit;
 
-    /** 用量 */
-    @NotNull(message = "用量不能为空")
-    @Positive(message = "用量必须大于0")
+    /** 用量（服务端按基数÷模数重算；提交/批准时校验 >0） */
     private BigDecimal quantity;
 
     /** 应用料（含损耗，由后端按用量和损耗率重算，不采用Excel录入值） */

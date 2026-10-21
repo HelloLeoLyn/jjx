@@ -231,6 +231,43 @@ public final class ProductEnums {
     }
 
     /**
+     * BOM明细行审核状态（dev-20261020-029）
+     * 新增=草稿；提交后草稿/驳回→待审核；审核通过保留；修改已通过行→待审核；
+     * 删除已通过行→待移除，审核员确认后随 BOM 批准物理删除。
+     */
+    @Getter
+    public enum BomItemReviewStatus implements ValueEnum {
+        DRAFT(1, "草稿", "info"),
+        PENDING(2, "待审核", "warning"),
+        APPROVED(3, "审核通过", "success"),
+        REJECTED(4, "审核驳回", "danger"),
+        PENDING_REMOVE(5, "待移除", "danger");
+
+        private final Integer value;
+        private final String label;
+        private final String tagType;
+
+        BomItemReviewStatus(Integer value, String label, String tagType) {
+            this.value = value;
+            this.label = label;
+            this.tagType = tagType;
+        }
+
+        public static BomItemReviewStatus fromValue(Integer value) {
+            for (BomItemReviewStatus status : values()) {
+                if (status.value.equals(value)) {
+                    return status;
+                }
+            }
+            return DRAFT;
+        }
+
+        public boolean isApproved() {
+            return this == APPROVED;
+        }
+    }
+
+    /**
      * 物料来源类型枚举
      */
     @Getter

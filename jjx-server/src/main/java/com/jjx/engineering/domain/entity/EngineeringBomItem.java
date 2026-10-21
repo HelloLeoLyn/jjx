@@ -33,9 +33,41 @@ public class EngineeringBomItem {
     private Long parentMaterialId;
 
     /**
-     * 物料ID（关联库存模块）
+     * 物料ID（关联库存模块；快速模式可空，审核员补齐）
      */
     private Long materialId;
+
+    /**
+     * 行审核状态（dev-20261020-029）：1草稿 2待审核 3审核通过 4审核驳回 5待移除
+     */
+    private Integer reviewStatus;
+
+    /**
+     * 行审核驳回原因
+     */
+    private String rejectReason;
+
+    /**
+     * 批准时内容指纹（SHA-256），用于识别已通过行是否被修改
+     */
+    private String approvedFingerprint;
+
+    /** 行审核通过人 */
+    private String approvedBy;
+
+    /** 行审核通过时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime approvedTime;
+
+    /** 待移除行是否已被审核员确认：0否 1是 */
+    private Boolean removeConfirmed;
+
+    /** 移除确认人 */
+    private String removeConfirmedBy;
+
+    /** 移除确认时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime removeConfirmedTime;
 
     /**
      * 物料编码（冗余，便于查询）

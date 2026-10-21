@@ -54,8 +54,12 @@ const failed = ref(false)
 const searched = ref(false)
 const total = ref(0)
 
-// 建档入口权限：跟随 BOM 新增/修改权限（谁能编 BOM 谁就能顺手补材料）
-const BOM_MATERIAL_PERMS = ['engineering:bom:add', 'engineering:bom:edit']
+// 建档入口权限：工程编 BOM 可顺手补材料；审核员凭 inventory:material:add 在审核页补档（dev-20261020-029 D）
+const BOM_MATERIAL_PERMS = [
+  'engineering:bom:add',
+  'engineering:bom:edit',
+  'inventory:material:add',
+]
 const canCreate = computed(() => hasPermi(BOM_MATERIAL_PERMS))
 
 const labelOf = (item: InventoryMaterial) => item.materialName || ''

@@ -1,7 +1,31 @@
 <template>
-  <el-dialog v-model="visible" :title="dialogTitle" width="1200px" :before-close="handleClose">
+  <el-dialog v-model="visible" :title="dialogTitle" width="1250px" :before-close="handleClose">
     <BomBasicInfo :detail="detail" />
-    <BomDetailTable :items="bomDetailList" />
+
+    <el-alert
+      v-if="blockingIssues.length"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="blocking-alert"
+      :title="`暂不能批准：${blockingIssues.length} 项待处理`"
+    >
+      <div v-for="(issue, idx) in blockingIssues.slice(0, 5)" :key="idx" class="blocking-line">
+        · {{ issueLocation(issue) }} {{ issue.message }}
+      </div>
+      <div v-if="blockingIssues.length > 5" class="blocking-line">
+        … 共 {{ blockingIssues.length }} 项
+      </div>
+    </el-alert>
+
+    <BomItemReviewTable
+      :items="bomDetailList"
+      :busy-item-id="busyItemId"
+      @review="handleRowReview"
+      @link="handleLinkMaterial"
+      @create="handleCreateMaterial"
+    />
+
     <el-card class="approve-form-card" shadow="never">
       <template #header>审核意见</template>
       <ApprovalOpinionForm
@@ -23,10 +47,16 @@
           :loading="submitting"
           @click="handleSubmit"
         >
-          提交审核
+          {{ approveForm.result === ApprovalResultEnum.APPROVE ? '批准BOM' : '驳回BOM' }}
         </el-button>
       </span>
     </template>
+
+    <MaterialFormDialog
+      v-model="materialFormVisible"
+      :preset-data="materialPreset"
+      @success="handleMaterialCreated"
+    />
   </el-dialog>
 </template>
 
@@ -34,28 +64,33 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
-import type { EngineeringBom, EngineeringBomItem } from '@/types/product/bom'
+import type {
+  EngineeringBom,
+  EngineeringBomItem,
+  BomCheckIssue,
+} from '@/types/product/bom'
+import type { InventoryMaterial } from '@/types/inventory/material'
 import { ProductActions, BomStatusEnum } from '@/enums/product'
 import { ApprovalResultEnum } from '@/enums/common/ApprovalEnum'
 import ApprovalOpinionForm from '@/components/Approval/ApprovalOpinionForm.vue'
 import type { ApprovalOpinion } from '@/components/Approval/types'
+import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import BomBasicInfo from './BomBasicInfo.vue'
-import BomDetailTable from './BomDetailTable.vue'
+import BomItemReviewTable from './BomItemReviewTable.vue'
+
+type RowAction = 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE'
 
 // Props
 const props = defineProps({
-  // BOM ID
   bomId: {
     type: Number,
     required: false,
     default: undefined,
   },
-  // 对话框显示控制
   modelValue: {
     type: Boolean,
     default: false,
   },
-  // 对话框标题（可选）
   title: {
     type: String,
     default: 'BOM审核',
@@ -65,17 +100,13 @@ const props = defineProps({
 // Emits
 const emit = defineEmits(['update:modelValue', 'success', 'close'])
 
-// 响应式数据
 const visible = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
 
-const dialogTitle = computed(() => {
-  return `${props.title} - ${detail.bomCode || ''}`
-})
+const dialogTitle = computed(() => `${props.title} - ${detail.bomCode || ''}`)
 
-// BOM详情数据
 const createEmptyDetail = (): EngineeringBom => ({
   bomId: 0,
   bomCode: '',
@@ -97,54 +128,77 @@ const createEmptyDetail = (): EngineeringBom => ({
 })
 
 const detail = reactive<EngineeringBom>(createEmptyDetail())
-
-// BOM明细数据
 const bomDetailList = ref<EngineeringBomItem[]>([])
+const blockingIssues = ref<BomCheckIssue[]>([])
+const busyItemId = ref<number | undefined>(undefined)
 
 // 审核表单
 const approveForm = ref<ApprovalOpinion>({ result: ApprovalResultEnum.APPROVE, remark: '' })
 const approveFormRef = ref<InstanceType<typeof ApprovalOpinionForm>>()
-
-// 提交状态
 const submitting = ref(false)
 
-// 加载BOM详情数据
+// 物料建档（审核员补档后立即关联当前行）
+const materialFormVisible = ref(false)
+const materialPreset = ref({ materialName: '', specification: '', unit: 'PCS' })
+let linkingItemId: number | undefined
+
+const issueLocation = (issue: BomCheckIssue) =>
+  issue.materialCode || (issue.itemId != null ? `行#${issue.itemId}` : '主表')
+
+// 加载BOM详情 + 批准条件体检
 const loadBomDetail = async () => {
   if (!props.bomId) {
     resetData()
     return
   }
-
   try {
     const response = await productBomApi.getEngineeringBomInfo(props.bomId)
     Object.assign(detail, response.data)
     bomDetailList.value = response.data.items || []
-
-    // 重置审核表单
-    approveForm.value.result = ApprovalResultEnum.APPROVE
-    approveForm.value.remark = ''
   } catch (error) {
     console.error('加载BOM详情失败:', error)
     ElMessage.error('加载BOM详情失败')
+    return
+  }
+  await refreshApproveCheck()
+  approveForm.value.result = ApprovalResultEnum.APPROVE
+  approveForm.value.remark = ''
+}
+
+const refreshApproveCheck = async () => {
+  if (!props.bomId) return
+  try {
+    const res = await productBomApi.checkBomForApprove(props.bomId)
+    blockingIssues.value = res.data || []
+  } catch (error) {
+    console.error('BOM批准条件体检失败:', error)
+    blockingIssues.value = []
   }
 }
 
-// 重置数据
+const refreshAfterAction = async () => {
+  if (!props.bomId) return
+  const res = await productBomApi.getEngineeringBomInfo(props.bomId)
+  Object.assign(detail, res.data)
+  bomDetailList.value = res.data.items || []
+  await refreshApproveCheck()
+}
+
 const resetData = () => {
   Object.assign(detail, createEmptyDetail())
   bomDetailList.value = []
+  blockingIssues.value = []
+  busyItemId.value = undefined
   approveForm.value.result = ApprovalResultEnum.APPROVE
   approveForm.value.remark = ''
   approveFormRef.value?.clearValidate()
 }
 
-// 处理对话框关闭
 const handleClose = () => {
   if (submitting.value) {
     ElMessage.warning('正在提交，请稍候...')
     return
   }
-
   ElMessageBox.confirm('确定要关闭审核窗口吗？未保存的审核意见将会丢失。', '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
@@ -157,22 +211,131 @@ const handleClose = () => {
     .catch(() => {})
 }
 
-// 提交审核
+// 行级审核：通过 / 驳回 / 确认移除
+const handleRowReview = async (row: EngineeringBomItem, action: RowAction) => {
+  if (!row.itemId) {
+    ElMessage.warning('该行尚未保存，不能行级审核')
+    return
+  }
+  let remark = ''
+  try {
+    if (action === 'REJECT') {
+      const { value } = await ElMessageBox.prompt('请输入行驳回原因', '行审核驳回', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputType: 'textarea',
+        inputValidator: (v: string) => (v && v.trim() ? true : '驳回原因不能为空'),
+      })
+      remark = value.trim()
+    } else if (action === 'CONFIRM_REMOVE') {
+      await ElMessageBox.confirm(
+        `确认移除材料「${row.materialName || row.materialCode || ''}」？批准 BOM 时将物理删除该行。`,
+        '确认移除',
+        { confirmButtonText: '确认移除', cancelButtonText: '取消', type: 'warning' }
+      )
+    } else if (!row.materialId) {
+      ElMessage.warning('请先为该行关联物料，再审核通过')
+      return
+    }
+  } catch {
+    return
+  }
+
+  busyItemId.value = row.itemId
+  try {
+    await productBomApi.reviewBomItem({ itemId: row.itemId, action, remark })
+    ElMessage.success(
+      action === 'APPROVE'
+        ? '该行已审核通过'
+        : action === 'REJECT'
+          ? '该行已驳回，BOM已退回工程修改'
+          : '已确认移除'
+    )
+    await refreshAfterAction()
+    if (action === 'REJECT') {
+      // 行驳回会整单退回工程修改，关闭审核窗并刷新列表
+      emit('success', {
+        bomId: props.bomId,
+        approveResult: ProductActions.REJECT,
+        approveRemark: remark,
+      })
+      visible.value = false
+    }
+  } catch (error: any) {
+    console.error('行级审核失败:', error)
+    ElMessage.error(error?.message || '行级审核失败')
+  } finally {
+    busyItemId.value = undefined
+  }
+}
+
+// 关联已有物料
+const handleLinkMaterial = async (row: EngineeringBomItem, material: InventoryMaterial) => {
+  if (!row.itemId || !material?.materialId) return
+  busyItemId.value = row.itemId
+  try {
+    await productBomApi.reviewBomItem({
+      itemId: row.itemId,
+      action: 'LINK_MATERIAL',
+      materialId: material.materialId,
+    })
+    ElMessage.success('已关联物料，请继续审核该行')
+    await refreshAfterAction()
+  } catch (error: any) {
+    console.error('关联物料失败:', error)
+    ElMessage.error(error?.message || '关联物料失败')
+  } finally {
+    busyItemId.value = undefined
+  }
+}
+
+// 新建物料并关联（审核员需 inventory:material:add）
+const handleCreateMaterial = (row: EngineeringBomItem, keyword: string) => {
+  linkingItemId = row.itemId
+  materialPreset.value = {
+    materialName: keyword || row.materialName || '',
+    specification: row.specification || '',
+    unit: row.unit || 'PCS',
+  }
+  materialFormVisible.value = true
+}
+
+const handleMaterialCreated = async (material: InventoryMaterial) => {
+  if (!material?.materialId || !linkingItemId) {
+    ElMessage.warning('物料已建档，请在行内搜索后关联')
+    return
+  }
+  const row = bomDetailList.value.find((it) => it.itemId === linkingItemId)
+  if (row) await handleLinkMaterial(row, material)
+  linkingItemId = undefined
+}
+
+// 整单审核提交
 const handleSubmit = async () => {
   if (!approveFormRef.value) return
 
-  // 表单验证
   try {
     await approveFormRef.value.validate()
-  } catch (error) {
+  } catch {
     ElMessage.warning('请完善审核信息')
     return
   }
 
-  // 确认提交
+  if (approveForm.value.result === ApprovalResultEnum.APPROVE) {
+    await refreshApproveCheck()
+    if (blockingIssues.value.length) {
+      ElMessageBox.alert(
+        `仍有 ${blockingIssues.value.length} 项未满足批准条件：请先逐行审核通过、关联物料并确认待移除行。`,
+        '暂不能批准',
+        { confirmButtonText: '知道了', type: 'warning' }
+      ).catch(() => {})
+      return
+    }
+  }
+
   const confirmMessage =
     approveForm.value.result === ApprovalResultEnum.APPROVE
-      ? '确定要通过此BOM审核吗？'
+      ? '确定要批准此BOM吗？'
       : '确定要驳回此BOM吗？'
 
   try {
@@ -182,7 +345,7 @@ const handleSubmit = async () => {
       type: 'warning',
     })
   } catch {
-    return // 用户取消
+    return
   }
 
   submitting.value = true
@@ -191,12 +354,9 @@ const handleSubmit = async () => {
       throw new Error('BOM ID不能为空')
     }
 
-    // 根据审核结果调用不同的API
     if (approveForm.value.result === ApprovalResultEnum.APPROVE) {
-      // 调用审核通过API
       await productBomApi.approveEngineeringBom(props.bomId, approveForm.value.remark)
     } else {
-      // 调用审核驳回API
       await productBomApi.rejectEngineeringBom(props.bomId, approveForm.value.remark)
     }
 
@@ -204,7 +364,6 @@ const handleSubmit = async () => {
       approveForm.value.result === ApprovalResultEnum.APPROVE ? '审核通过成功' : '审核驳回成功'
     )
 
-    // 触发成功事件
     emit('success', {
       bomId: props.bomId,
       approveResult:
@@ -214,11 +373,10 @@ const handleSubmit = async () => {
       approveRemark: approveForm.value.remark,
     })
 
-    // 关闭对话框
     visible.value = false
-  } catch (error) {
+  } catch (error: any) {
     console.error('提交审核失败:', error)
-    ElMessage.error('提交审核失败')
+    ElMessage.error(error?.message || '提交审核失败')
   } finally {
     submitting.value = false
   }
@@ -228,14 +386,11 @@ const handleSubmit = async () => {
 watch(
   [() => props.bomId, () => visible.value],
   ([newBomId, newVisible], [oldBomId, oldVisible]) => {
-    // 只有当对话框打开且有有效的bomId时才加载数据
     if (newVisible && newBomId) {
-      // 避免重复加载：只有当bomId变化或对话框从关闭变为打开时才加载
       if (newBomId !== oldBomId || !oldVisible) {
         loadBomDetail()
       }
     } else if (!newVisible) {
-      // 对话框关闭时重置数据
       resetData()
     }
   },
@@ -244,10 +399,15 @@ watch(
 </script>
 
 <style scoped>
-.bom-info-card,
-.bom-detail-card,
 .approve-form-card {
-  margin-bottom: 20px;
+  margin-top: 16px;
+}
+.blocking-alert {
+  margin-bottom: 12px;
+}
+.blocking-line {
+  font-size: 12px;
+  line-height: 20px;
 }
 .dialog-footer {
   display: flex;

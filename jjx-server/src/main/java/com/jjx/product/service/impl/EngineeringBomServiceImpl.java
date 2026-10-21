@@ -14,6 +14,7 @@ import com.jjx.system.annotation.Event;
 import com.jjx.product.domain.converter.EngineeringBomConverter;
 import com.jjx.product.domain.dto.EngineeringBomDTO;
 import com.jjx.product.domain.dto.EngineeringBomItemDTO;
+import com.jjx.product.domain.dto.BomItemReviewDTO;
 import com.jjx.product.domain.dto.UpdateBomStatusDTO;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.engineering.domain.entity.EngineeringBom;
@@ -27,12 +28,19 @@ import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.IEngineeringBomService;
 import com.jjx.system.service.ReviewFlowService;
 import lombok.NonNull;
-import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * BOM Service实现
@@ -142,6 +150,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     public Long createBomReturnId(EngineeringBomDTO dto) {
         EngineeringBom bom = bomConverter.toEntity(dto);
         bom.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
+        // 未批准的 BOM 不能成为当前/生效版本（dev-20261020-029 F）
+        bom.setIsCurrent(false);
 
         // 生成BOM版本
         generateBomVersion(dto.getProductId(), bom);
@@ -269,41 +279,13 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             return failVo;
         }
 
-        // 删除旧的BOM明细
-        productBomItemMapper.deleteByBomId(dto.getBomId());
+        // 按 itemId 合并明细：更新/新增/标记待移除，禁止整表 delete+insert（dev-20261020-029 C）
+        mergeBomItems(dto);
 
-        // 保存新的BOM明细（父子关系：旧itemId → 新itemId 映射转换）
-        if (ObjectUtils.isNotEmpty(dto.getItems())) {
-            java.util.Map<Long, Long> idMap = new java.util.HashMap<>();
-            for (EngineeringBomItemDTO itemDTO : dto.getItems()) {
-                Long oldId = itemDTO.getItemId();
-                EngineeringBomItem item = toBomItemEntity(itemDTO);
-                item.setItemId(null);
-                item.setBomId(dto.getBomId());
-                productBomItemMapper.insert(item);
-                if (oldId != null) {
-                    idMap.put(oldId, item.getItemId());
-                }
-            }
-            // 第二遍：修正 parentMaterialId（旧ID → 新ID）
-            java.util.List<EngineeringBomItem> saved = productBomItemMapper.selectList(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringBomItem>()
-                            .eq(EngineeringBomItem::getBomId, dto.getBomId()));
-            boolean needUpdate = false;
-            for (EngineeringBomItem it : saved) {
-                if (it.getParentMaterialId() != null && idMap.containsKey(it.getParentMaterialId())) {
-                    it.setParentMaterialId(idMap.get(it.getParentMaterialId()));
-                    needUpdate = true;
-                }
-            }
-            if (needUpdate) {
-                for (EngineeringBomItem it : saved) {
-                    productBomItemMapper.updateById(it);
-                }
-            }
+        // 未批准 BOM 不允许设为当前；已当前且被驳回时保留原当前标记，避免误清空生效版本
+        if (!Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+            bom.setIsCurrent(existingBom.getIsCurrent());
         }
-
-        // 如果是当前版本，更新其他版本为非当前
         if (bom.getIsCurrent() != null && bom.getIsCurrent()) {
             setOtherBomNotCurrent(bom.getProductId(), bom.getBomId());
         }
@@ -314,6 +296,198 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         ProductEnums.BomStatus latestStatus = ProductEnums.BomStatus.fromValue(bom.getApproveStatus());
         vo.setBizStatus(latestStatus != null ? latestStatus.getLabel() : null);
         return vo;
+    }
+
+    /**
+     * 按 itemId 合并明细（dev-20261020-029 C）：
+     * 已有行更新、无 itemId 的新增、缺失的已通过行转“待移除”、缺失的未通过行物理删除。
+     * 行 ID 全程保留，父节点引用不再需要旧ID→新ID重映射。
+     */
+    private void mergeBomItems(EngineeringBomDTO dto) {
+        Long bomId = dto.getBomId();
+        List<EngineeringBomItem> stored = productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
+        Map<Long, EngineeringBomItem> storedById = new HashMap<>();
+        if (stored != null) {
+            for (EngineeringBomItem it : stored) {
+                if (it.getItemId() != null) storedById.put(it.getItemId(), it);
+            }
+        }
+        Set<Long> kept = new HashSet<>();
+        if (dto.getItems() != null) {
+            for (EngineeringBomItemDTO itemDTO : dto.getItems()) {
+                EngineeringBomItem incoming = toBomItemEntity(itemDTO);
+                if (incoming == null) continue;
+                incoming.setBomId(bomId);
+                EngineeringBomItem old = itemDTO.getItemId() == null ? null : storedById.get(itemDTO.getItemId());
+                if (old == null) {
+                    incoming.setItemId(null);
+                    applyDraftStatus(incoming);
+                    productBomItemMapper.insert(incoming);
+                    if (incoming.getItemId() != null) kept.add(incoming.getItemId());
+                    continue;
+                }
+                kept.add(old.getItemId());
+                ProductEnums.BomItemReviewStatus oldStatus =
+                        ProductEnums.BomItemReviewStatus.fromValue(old.getReviewStatus());
+                // 待移除行：审核员确认前不改内容；工程侧撤销移除时按指纹恢复
+                if (oldStatus == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                    if (!Boolean.TRUE.equals(itemDTO.getRemoveRequested())) {
+                        boolean same = old.getApprovedFingerprint() != null
+                                && old.getApprovedFingerprint().equals(fingerprint(incoming));
+                        copyItemContent(incoming, old);
+                        old.setReviewStatus(same
+                                ? ProductEnums.BomItemReviewStatus.APPROVED.getValue()
+                                : ProductEnums.BomItemReviewStatus.PENDING.getValue());
+                        old.setRemoveConfirmed(false);
+                        old.setRemoveConfirmedBy(null);
+                        old.setRemoveConfirmedTime(null);
+                        productBomItemMapper.updateById(old);
+                    }
+                    continue;
+                }
+                if (Boolean.TRUE.equals(itemDTO.getRemoveRequested())) {
+                    if (oldStatus == ProductEnums.BomItemReviewStatus.APPROVED) {
+                        markPendingRemove(old);
+                    } else {
+                        productBomItemMapper.deleteById(old.getItemId());
+                        kept.remove(old.getItemId());
+                    }
+                    continue;
+                }
+                boolean changed = contentChanged(old, incoming);
+                copyItemContent(incoming, old);
+                if (oldStatus == ProductEnums.BomItemReviewStatus.APPROVED) {
+                    if (changed) {
+                        old.setReviewStatus(ProductEnums.BomItemReviewStatus.PENDING.getValue());
+                        clearApproval(old);
+                    } else if (old.getApprovedFingerprint() == null || old.getApprovedFingerprint().isBlank()) {
+                        // 历史行没有指纹：内容未变时收养当前指纹，避免无故退回待审核
+                        old.setApprovedFingerprint(fingerprint(old));
+                    }
+                }
+                productBomItemMapper.updateById(old);
+            }
+        }
+        if (stored == null) return;
+        for (EngineeringBomItem old : stored) {
+            if (old.getItemId() == null || kept.contains(old.getItemId())) continue;
+            ProductEnums.BomItemReviewStatus status =
+                    ProductEnums.BomItemReviewStatus.fromValue(old.getReviewStatus());
+            if (status == ProductEnums.BomItemReviewStatus.APPROVED) {
+                markPendingRemove(old);
+            } else if (status != ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                productBomItemMapper.deleteById(old.getItemId());
+            }
+        }
+    }
+
+    /** 新行/草稿默认状态与审核痕迹清零 */
+    private void applyDraftStatus(EngineeringBomItem item) {
+        item.setReviewStatus(ProductEnums.BomItemReviewStatus.DRAFT.getValue());
+        item.setRejectReason(null);
+        item.setRemoveConfirmed(false);
+        item.setRemoveConfirmedBy(null);
+        item.setRemoveConfirmedTime(null);
+        clearApproval(item);
+    }
+
+    private void clearApproval(EngineeringBomItem item) {
+        item.setApprovedFingerprint(null);
+        item.setApprovedBy(null);
+        item.setApprovedTime(null);
+    }
+
+    private void markPendingRemove(EngineeringBomItem item) {
+        item.setReviewStatus(ProductEnums.BomItemReviewStatus.PENDING_REMOVE.getValue());
+        item.setRemoveConfirmed(false);
+        item.setRemoveConfirmedBy(null);
+        item.setRemoveConfirmedTime(null);
+        item.setRejectReason(null);
+        productBomItemMapper.updateById(item);
+    }
+
+    /** 只搬运业务字段，保留 itemId/行状态/审核痕迹 */
+    private void copyItemContent(EngineeringBomItem src, EngineeringBomItem dst) {
+        dst.setParentMaterialId(src.getParentMaterialId());
+        dst.setMaterialId(src.getMaterialId());
+        dst.setMaterialCode(src.getMaterialCode());
+        dst.setMaterialName(src.getMaterialName());
+        dst.setSpecification(src.getSpecification());
+        dst.setSplit(src.getSplit());
+        dst.setProcessId(src.getProcessId());
+        dst.setProcessName(src.getProcessName());
+        dst.setIsCommon(src.getIsCommon());
+        dst.setUnit(src.getUnit());
+        dst.setQuantity(src.getQuantity());
+        dst.setAppliedQty(src.getAppliedQty());
+        dst.setActualIssueQty(src.getActualIssueQty());
+        dst.setLossRate(src.getLossRate());
+        dst.setModuleQty(src.getModuleQty());
+        dst.setBaseQty(src.getBaseQty());
+        dst.setMinIssueQty(src.getMinIssueQty());
+        dst.setWidthMm(src.getWidthMm());
+        dst.setLengthMm(src.getLengthMm());
+        dst.setLayer(src.getLayer());
+        dst.setPositionNo(src.getPositionNo());
+        dst.setSourceType(src.getSourceType());
+        dst.setSubstituteJson(src.getSubstituteJson());
+        dst.setItemOrder(src.getItemOrder());
+        dst.setRemark(src.getRemark());
+    }
+
+    /** 已通过行内容是否变化（指纹为空的历史行按未变化处理） */
+    private boolean contentChanged(EngineeringBomItem stored, EngineeringBomItem incoming) {
+        String approved = stored.getApprovedFingerprint();
+        if (approved == null || approved.isBlank()) {
+            return false;
+        }
+        return !approved.equals(fingerprint(incoming));
+    }
+
+    /** 行内容指纹：业务字段规范串的 SHA-256 */
+    static String fingerprint(EngineeringBomItem item) {
+        if (item == null) return null;
+        String canonical = String.join("\u0001",
+                num(item.getMaterialId()), text(item.getMaterialCode()), text(item.getMaterialName()),
+                text(item.getSpecification()), text(item.getUnit()), dec(item.getQuantity()),
+                dec(item.getLossRate() == null ? null : BigDecimal.valueOf(item.getLossRate())),
+                dec(item.getModuleQty()), dec(item.getBaseQty()), dec(item.getMinIssueQty()),
+                dec(item.getWidthMm()), dec(item.getLengthMm()), text(item.getSplit()),
+                num(item.getProcessId()), text(item.getProcessName()), text(item.getSourceType()),
+                text(item.getLayer()), text(item.getPositionNo()));
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(canonical.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
+                hex.append(Character.forDigit(b & 0xF, 16));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("内容指纹算法不可用", e);
+        }
+    }
+
+    private static String text(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static String num(Long value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String dec(BigDecimal value) {
+        return value == null ? "" : value.stripTrailingZeros().toPlainString();
+    }
+
+    private static String currentOperator() {
+        try {
+            return com.jjx.system.utils.SecurityUtils.getDisplayName();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -496,6 +670,15 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             return null;
         }
 
+        // 未批准的 BOM 不得成为当前/生效版本（dev-20261020-029 F）
+        if (!Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+            throw new BusinessException("只有已批准的BOM才能设为当前生效版本");
+        }
+        List<com.jjx.product.domain.vo.BomCheckIssueVO> issues = checkBomForApprove(bomId);
+        if (!issues.isEmpty()) {
+            throw new BusinessException(formatIssues("BOM 明细未全部审核通过，不能设为当前生效版本", issues));
+        }
+
         // 设置当前BOM为默认
         bom.setIsCurrent(true);
         productBomMapper.updateById(bom);
@@ -528,7 +711,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     public List<EngineeringBomItem> getBomItems(Long bomId) {
         LambdaQueryWrapper<EngineeringBomItem> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(EngineeringBomItem::getBomId,bomId);
+        queryWrapper.eq(EngineeringBomItem::getBomId,bomId)
+                .orderByAsc(EngineeringBomItem::getItemOrder)
+                .orderByAsc(EngineeringBomItem::getItemId);
         List<EngineeringBomItem> items = productBomItemMapper.selectList(queryWrapper);
         // 带出物料类型（R=板材/卷材，前端展示用）
         if (items != null) {
@@ -617,6 +802,15 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             cn.hutool.core.bean.BeanUtil.copyProperties(item, newItem);
             newItem.setItemId(null);
             newItem.setBomId(newBom.getBomId());
+            // 复制出的行重新走审核：全部草稿、清审核痕迹（dev-20261020-029）
+            newItem.setReviewStatus(ProductEnums.BomItemReviewStatus.DRAFT.getValue());
+            newItem.setRejectReason(null);
+            newItem.setApprovedFingerprint(null);
+            newItem.setApprovedBy(null);
+            newItem.setApprovedTime(null);
+            newItem.setRemoveConfirmed(false);
+            newItem.setRemoveConfirmedBy(null);
+            newItem.setRemoveConfirmedTime(null);
             productBomItemMapper.insert(newItem);
         }
 
@@ -669,6 +863,17 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             }
             throw new BusinessException(sb.toString());
         }
+        // 行级状态：草稿/驳回 → 待审核；已通过行与待移除行保持（dev-20261020-029 B）
+        for (EngineeringBomItem it : getBomItems(bomId)) {
+            ProductEnums.BomItemReviewStatus status =
+                    ProductEnums.BomItemReviewStatus.fromValue(it.getReviewStatus());
+            if (status == ProductEnums.BomItemReviewStatus.DRAFT
+                    || status == ProductEnums.BomItemReviewStatus.REJECTED) {
+                it.setReviewStatus(ProductEnums.BomItemReviewStatus.PENDING.getValue());
+                it.setRejectReason(null);
+                productBomItemMapper.updateById(it);
+            }
+        }
         // 用 updateStatus 改为 PENDING
         UpdateBomStatusDTO dto = new UpdateBomStatusDTO();
         dto.setBomId(bomId);
@@ -686,15 +891,63 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Transactional(rollbackFor = Exception.class)
     public boolean approve(UpdateBomStatusDTO dto) {
         EngineeringBom productBom = productBomMapper.selectById(dto.getBomId());
+        if (productBom == null) {
+            throw new BusinessException("BOM不存在");
+        }
+        if (!Objects.equals(productBom.getApproveStatus(), ProductEnums.BomStatus.REVIEWING.getValue())) {
+            throw new BusinessException("只有审核中的BOM才能批准");
+        }
+        // 批准条件（dev-20261020-029 E）：无草稿/待审核/驳回；待移除行已确认；所有行已关联有效物料
+        List<com.jjx.product.domain.vo.BomCheckIssueVO> issues = checkBomForApprove(dto.getBomId());
+        if (!issues.isEmpty()) {
+            throw new BusinessException(formatIssues("BOM 不满足批准条件", issues));
+        }
+        String operator = currentOperator();
+        LocalDateTime now = LocalDateTime.now();
+        for (EngineeringBomItem it : getBomItems(dto.getBomId())) {
+            ProductEnums.BomItemReviewStatus status =
+                    ProductEnums.BomItemReviewStatus.fromValue(it.getReviewStatus());
+            if (status == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                // 批准事务内物理删除已确认的待移除行，并写行级流水
+                reviewFlowService.record("engineering_bom_item", it.getItemId(), "REMOVE_COMMIT",
+                        "确认移除并删除", status.getLabel(), "已删除", itemOriginalText(it), null);
+                productBomItemMapper.deleteById(it.getItemId());
+            } else {
+                it.setReviewStatus(ProductEnums.BomItemReviewStatus.APPROVED.getValue());
+                it.setApprovedFingerprint(fingerprint(it));
+                it.setApprovedBy(operator);
+                it.setApprovedTime(now);
+                it.setRejectReason(null);
+                it.setRemoveConfirmed(false);
+                productBomItemMapper.updateById(it);
+            }
+        }
         dto.setCurrent(ProductEnums.BomStatus.REVIEWING.getValue());
         dto.setTarget(ProductEnums.BomStatus.APPROVED.getValue());
         boolean updated = updateStatus(dto);
-        if (updated) {
-            reviewFlowService.record("engineering_bom", dto.getBomId(), "APPROVE", "审核通过",
-                    dto.getCurrent(), dto.getTarget(), dto.getRemark(), null);
+        if (!updated) {
+            throw new BusinessException("BOM状态已变化，批准未生效");
         }
+        reviewFlowService.record("engineering_bom", dto.getBomId(), "APPROVE", "审核通过",
+                dto.getCurrent(), dto.getTarget(), dto.getRemark(), null);
         publishBomEvent("bom.approved", productBom);
-        return updated;
+        return true;
+    }
+
+    private String formatIssues(String title, List<com.jjx.product.domain.vo.BomCheckIssueVO> issues) {
+        StringBuilder sb = new StringBuilder(title).append("：\n");
+        int max = Math.min(issues.size(), 10);
+        for (int i = 0; i < max; i++) {
+            com.jjx.product.domain.vo.BomCheckIssueVO v = issues.get(i);
+            String loc = v.getMaterialCode() != null && !v.getMaterialCode().isBlank()
+                    ? v.getMaterialCode()
+                    : (v.getItemId() != null ? ("行#" + v.getItemId()) : "主表");
+            sb.append("· [").append(loc).append("] ").append(v.getMessage()).append("\n");
+        }
+        if (issues.size() > max) {
+            sb.append("… 共 ").append(issues.size()).append(" 项");
+        }
+        return sb.toString();
     }
 
 
@@ -725,6 +978,15 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         if (updated) {
             reviewFlowService.record("engineering_bom", dto.getBomId(), "REJECT", "审核驳回",
                     dto.getCurrent(), dto.getTarget(), dto.getRemark(), null);
+            // 待审核行 → 审核驳回并保留原因；已通过行保持（dev-20261020-029 B）
+            for (EngineeringBomItem it : getBomItems(dto.getBomId())) {
+                if (ProductEnums.BomItemReviewStatus.fromValue(it.getReviewStatus())
+                        == ProductEnums.BomItemReviewStatus.PENDING) {
+                    it.setReviewStatus(ProductEnums.BomItemReviewStatus.REJECTED.getValue());
+                    it.setRejectReason(dto.getRemark());
+                    productBomItemMapper.updateById(it);
+                }
+            }
         }
         return updated;
     }
@@ -738,8 +1000,13 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
         EngineeringBomItem item = new EngineeringBomItem();
         item.setItemId(dto.getItemId());
-        item.setParentMaterialId(dto.getParentMaterialId());
-        item.setMaterialId(dto.getMaterialId());
+        item.setParentMaterialId(dto.getParentMaterialId() != null && dto.getParentMaterialId() > 0
+                ? dto.getParentMaterialId() : null);
+        // 快速模式允许 materialId 为空；0/负数统一归一化为 null（dev-20261020-029 A）
+        item.setMaterialId(dto.getMaterialId() != null && dto.getMaterialId() > 0 ? dto.getMaterialId() : null);
+        // 行状态由服务端维护；新实体先给草稿，已有行在 mergeBomItems 中保留原状态
+        item.setReviewStatus(ProductEnums.BomItemReviewStatus.DRAFT.getValue());
+        item.setRemoveConfirmed(false);
         item.setMaterialCode(dto.getMaterialCode());
         item.setMaterialName(dto.getMaterialName());
         item.setSpecification(dto.getSpecification());
@@ -801,6 +1068,18 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      */
     @Override
     public List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBomForSubmit(Long bomId) {
+        return checkBom(bomId, false);
+    }
+
+    /**
+     * BOM 批准前体检（只读）：行必须全部审核通过、待移除行已确认、所有行已关联有效物料。
+     */
+    @Override
+    public List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBomForApprove(Long bomId) {
+        return checkBom(bomId, true);
+    }
+
+    private List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBom(Long bomId, boolean forApprove) {
         List<com.jjx.product.domain.vo.BomCheckIssueVO> issues = new java.util.ArrayList<>();
         EngineeringBom bom = productBomMapper.selectById(bomId);
         if (bom == null) {
@@ -835,18 +1114,52 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 ids.add(it.getItemId());
             }
         }
+        java.util.Set<Long> referencedParents = new java.util.HashSet<>();
+        for (EngineeringBomItem it : items) {
+            if (it.getParentMaterialId() != null) {
+                referencedParents.add(it.getParentMaterialId());
+            }
+        }
         boolean hasRoot = false;
+        int activeRows = 0;
         for (EngineeringBomItem it : items) {
             Long iid = it.getItemId();
             String code = it.getMaterialCode();
             String name = it.getMaterialName();
+            ProductEnums.BomItemReviewStatus rowStatus =
+                    ProductEnums.BomItemReviewStatus.fromValue(it.getReviewStatus());
             // 行归属：明细必须挂在本 BOM 下
             if (!java.util.Objects.equals(it.getBomId(), bomId)) {
                 issues.add(issue(iid, code, name, "bomId", "明细不属于本BOM"));
             }
-            // 物料
+            // 待移除行不参与内容校验；批准前必须已由审核员确认移除
+            if (rowStatus == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                if (forApprove && !Boolean.TRUE.equals(it.getRemoveConfirmed())) {
+                    issues.add(issue(iid, code, name, "removeConfirmed", "待移除行尚未确认移除"));
+                }
+                if (iid != null && referencedParents.contains(iid)) {
+                    issues.add(issue(iid, code, name, "removeConfirmed",
+                            "待移除行仍被其他明细引用为父节点，请先调整父子关系"));
+                }
+                continue;
+            }
+            activeRows++;
+            if (forApprove && rowStatus != ProductEnums.BomItemReviewStatus.APPROVED) {
+                issues.add(issue(iid, code, name, "reviewStatus",
+                        "行状态为「" + rowStatus.getLabel() + "」，需逐行审核通过"));
+            }
+            // 材料原文（快速模式）：名称、规格必填；未建档允许先入审核
+            if (org.apache.commons.lang3.StringUtils.isBlank(it.getMaterialName())) {
+                issues.add(issue(iid, code, name, "materialName", "材料名称不能为空"));
+            }
+            if (org.apache.commons.lang3.StringUtils.isBlank(it.getSpecification())) {
+                issues.add(issue(iid, code, name, "specification", "规格型号不能为空"));
+            }
+            // 物料关联：批准时必须已匹配有效物料
             if (it.getMaterialId() == null || it.getMaterialId() <= 0) {
-                issues.add(issue(iid, code, name, "materialId", "未选择物料"));
+                if (forApprove) {
+                    issues.add(issue(iid, code, name, "materialId", "未匹配物料，请审核员关联已有物料或新建"));
+                }
             } else if (inventoryMaterialMapper.selectById(it.getMaterialId()) == null) {
                 issues.add(issue(iid, code, name, "materialId", "物料不存在（material_id=" + it.getMaterialId() + "）"));
             }
@@ -894,7 +1207,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 issues.add(issue(iid, code, name, "parentMaterialId", "父节点不存在（悬空，parent_material_id=" + pid + "）"));
             }
         }
-        if (!hasRoot) {
+        if (activeRows == 0) {
+            issues.add(issue(null, null, null, "items", "BOM至少保留一行有效明细（待移除行全部删除后不能为空）"));
+        }
+        if (!hasRoot && activeRows > 0) {
             issues.add(issue(null, null, null, "parentMaterialId", "必须至少有一行根节点（parent_material_id 为空）"));
         }
         // 环检测：沿父链上溯，重复出现即为环
@@ -988,6 +1304,148 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             sb.append(Character.toLowerCase(c));
         }
         return sb.toString();
+    }
+
+    /**
+     * BOM 明细行级审核（dev-20261020-029 D/F）：
+     * APPROVE 行通过、REJECT 行驳回、CONFIRM_REMOVE 确认待移除、LINK_MATERIAL 关联已有物料。
+     * 每次操作写 review_flow（含操作人、时间与行原文字）。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reviewItem(BomItemReviewDTO dto) {
+        if (dto == null || dto.getItemId() == null) {
+            throw new BusinessException("明细ID不能为空");
+        }
+        EngineeringBomItem item = productBomItemMapper.selectById(dto.getItemId());
+        if (item == null) {
+            throw new BusinessException("BOM明细不存在");
+        }
+        EngineeringBom bom = productBomMapper.selectById(item.getBomId());
+        if (bom == null) {
+            throw new BusinessException("BOM不存在");
+        }
+        if (!Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.REVIEWING.getValue())) {
+            throw new BusinessException("只有审核中的BOM才能做行级审核");
+        }
+        ProductEnums.BomItemReviewStatus from =
+                ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus());
+        String action = dto.getAction() == null ? "" : dto.getAction().trim().toUpperCase(java.util.Locale.ROOT);
+        String operator = currentOperator();
+        LocalDateTime now = LocalDateTime.now();
+        switch (action) {
+            case "APPROVE" -> {
+                if (from == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                    throw new BusinessException("待移除行不能审核通过");
+                }
+                if (item.getMaterialId() == null || item.getMaterialId() <= 0
+                        || inventoryMaterialMapper.selectById(item.getMaterialId()) == null) {
+                    throw new BusinessException("该行尚未关联有效物料，请先匹配或新建物料");
+                }
+                item.setReviewStatus(ProductEnums.BomItemReviewStatus.APPROVED.getValue());
+                item.setApprovedFingerprint(fingerprint(item));
+                item.setApprovedBy(operator);
+                item.setApprovedTime(now);
+                item.setRejectReason(null);
+            }
+            case "REJECT" -> {
+                if (StringUtils.isBlank(dto.getRemark())) {
+                    throw new BusinessException("驳回原因不能为空");
+                }
+                if (from == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                    throw new BusinessException("待移除行请使用确认移除");
+                }
+                item.setReviewStatus(ProductEnums.BomItemReviewStatus.REJECTED.getValue());
+                item.setRejectReason(trimTo500(dto.getRemark()));
+                clearApproval(item);
+            }
+            case "CONFIRM_REMOVE" -> {
+                if (from != ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                    throw new BusinessException("只有待移除行才能确认移除");
+                }
+                item.setRemoveConfirmed(true);
+                item.setRemoveConfirmedBy(operator);
+                item.setRemoveConfirmedTime(now);
+            }
+            case "LINK_MATERIAL" -> {
+                if (from == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                    throw new BusinessException("待移除行不能关联物料");
+                }
+                if (dto.getMaterialId() == null || dto.getMaterialId() <= 0) {
+                    throw new BusinessException("关联物料不能为空");
+                }
+                com.jjx.inventory.domain.InventoryMaterial material =
+                        inventoryMaterialMapper.selectById(dto.getMaterialId());
+                if (material == null) {
+                    throw new BusinessException("物料不存在（material_id=" + dto.getMaterialId() + "）");
+                }
+                item.setMaterialId(material.getMaterialId());
+                item.setMaterialCode(material.getMaterialCode());
+                if (org.apache.commons.lang3.StringUtils.isBlank(item.getUnit())) {
+                    item.setUnit(material.getUnit());
+                }
+                if (from == ProductEnums.BomItemReviewStatus.APPROVED) {
+                    item.setReviewStatus(ProductEnums.BomItemReviewStatus.PENDING.getValue());
+                    clearApproval(item);
+                }
+            }
+            default -> throw new BusinessException("未支持的审核动作：" + dto.getAction());
+        }
+        productBomItemMapper.updateById(item);
+        reviewFlowService.record("engineering_bom_item", item.getItemId(), action, itemActionName(action),
+                from.getLabel(), ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus()).getLabel(),
+                buildItemReviewComment(item, dto.getRemark()), null);
+        if ("REJECT".equals(action)) {
+            // 行驳回后整单退回，工程可修改后重新提交，避免审核中无法修改造成死锁
+            UpdateBomStatusDTO statusDto = new UpdateBomStatusDTO();
+            statusDto.setBomId(bom.getBomId());
+            statusDto.setCurrent(ProductEnums.BomStatus.REVIEWING.getValue());
+            statusDto.setTarget(ProductEnums.BomStatus.REJECT.getValue());
+            statusDto.setRemark("行#" + item.getItemId() + "驳回：" + dto.getRemark());
+            if (updateStatus(statusDto)) {
+                reviewFlowService.record("engineering_bom", bom.getBomId(), "REJECT", "行驳回退回",
+                        ProductEnums.BomStatus.REVIEWING.getValue(), ProductEnums.BomStatus.REJECT.getValue(),
+                        statusDto.getRemark(), null);
+            }
+        }
+    }
+
+    private static String itemActionName(String action) {
+        return switch (action) {
+            case "APPROVE" -> "行审核通过";
+            case "REJECT" -> "行审核驳回";
+            case "CONFIRM_REMOVE" -> "确认移除";
+            case "LINK_MATERIAL" -> "关联物料";
+            default -> action;
+        };
+    }
+
+    private static String trimTo500(String text) {
+        if (text == null) return null;
+        String trimmed = text.trim();
+        return trimmed.length() <= 500 ? trimmed : trimmed.substring(0, 500);
+    }
+
+    /** 行原文字留痕：材料名称/规格/单位/用量/编码/物料ID + 审核意见 */
+    private String buildItemReviewComment(EngineeringBomItem item, String remark) {
+        StringBuilder sb = new StringBuilder(itemOriginalText(item));
+        if (org.apache.commons.lang3.StringUtils.isNotBlank(remark)) {
+            sb.append("；意见：").append(remark.trim());
+        }
+        return sb.toString();
+    }
+
+    private String itemOriginalText(EngineeringBomItem item) {
+        return "原文字：名称=" + nullToEmpty(item.getMaterialName())
+                + "；规格=" + nullToEmpty(item.getSpecification())
+                + "；单位=" + nullToEmpty(item.getUnit())
+                + "；用量=" + (item.getQuantity() == null ? "" : item.getQuantity().toPlainString())
+                + "；编码=" + nullToEmpty(item.getMaterialCode())
+                + "；物料ID=" + (item.getMaterialId() == null ? "" : item.getMaterialId());
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private com.jjx.product.domain.vo.BomCheckIssueVO issue(Long itemId, String code, String name, String field, String message) {

@@ -549,6 +549,8 @@ const submitForm = () => {
   bomFormRef.value.validate(async (valid) => {
     if (!valid) return
 
+    // 保存前按当前模式校验（快速模式名称+规格必填；常规模式必须选物料）
+    if (!bomItemEditorRef.value?.validateItems()) return
     // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
     formData.items = bomItemEditorRef.value.getItems()
     const longProject = formData.items.find((item) => (item.processName?.length || 0) > 200)

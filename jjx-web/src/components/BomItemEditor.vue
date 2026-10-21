@@ -3,6 +3,18 @@
     <!-- 操作按钮区域 -->
     <div class="editor-header">
       <div class="header-left">
+        <el-tooltip
+          content="快速模式：材料名称+规格必填，允许未建档先提交审核；审核员再匹配或新建物料"
+          placement="bottom"
+        >
+          <el-switch
+            v-model="quickMode"
+            active-text="快速模式"
+            inactive-text="常规模式"
+            inline-prompt
+            style="--el-switch-on-color: #e6a23c"
+          />
+        </el-tooltip>
         <el-button type="primary" :icon="Plus" @click="handleAddItem"> 添加物料 </el-button>
         <el-button type="info" :icon="Refresh" :loading="refreshLoading" @click="handleRefresh">
           刷新
@@ -52,24 +64,39 @@
         </template>
       </el-table-column>
 
-      <!-- 物料名称 -->
+      <!-- 物料名称：常规模式选物料；快速模式直接录材料原文（dev-20261020-029 A） -->
       <el-table-column label="物料名称" prop="materialName" min-width="210">
         <template #default="scope">
           <div class="material-name-cell">
+            <el-input
+              v-if="quickMode"
+              v-model="scope.row.materialName"
+              placeholder="输入材料名称（必填）"
+              size="small"
+              maxlength="200"
+            />
             <BomMaterialSelector
+              v-else
               :material-id="scope.row.materialId"
               :material-name="scope.row.materialName"
               @select="(material) => handleMaterialSelect(material, scope.row)"
               @clear="handleMaterialClear(scope.row)"
               @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
             />
+            <el-tag
+              v-if="quickMode && !scope.row.materialId"
+              size="small"
+              type="warning"
+              effect="plain"
+              >未建档</el-tag
+            >
           </div>
         </template>
       </el-table-column>
       <!-- 规格型号 -->
-      <el-table-column label="规格型号" prop="specification" width="100">
+      <el-table-column label="规格型号" prop="specification" width="110">
         <template #default="scope">
-          <el-input v-model="scope.row.specification" placeholder="请输入规格型号" size="small" />
+          <el-input v-model="scope.row.specification" placeholder="必填" size="small" maxlength="500" />
         </template>
       </el-table-column>
       <el-table-column label="跳距" prop="split" width="100">
@@ -176,19 +203,50 @@
         <template #default="scope">{{ formatQty(scope.row.appliedQty) }}</template>
       </el-table-column>
 
+      <!-- 行审核状态（dev-20261020-029） -->
+      <el-table-column label="行状态" width="105" align="center">
+        <template #default="scope">
+          <div class="row-status-cell">
+            <el-tag
+              :type="BomItemReviewStatusEnum.getTagProps(rowReviewStatus(scope.row)).type"
+              size="small"
+            >
+              {{ BomItemReviewStatusEnum.getLabel(rowReviewStatus(scope.row)) }}
+            </el-tag>
+            <el-tooltip v-if="scope.row.rejectReason" :content="scope.row.rejectReason">
+              <el-icon class="reject-icon"><WarningFilled /></el-icon>
+            </el-tooltip>
+          </div>
+        </template>
+      </el-table-column>
+
       <!-- 操作列 -->
       <el-table-column label="操作" min-width="120" align="center" fixed="right">
         <template #default="scope">
           <el-button
-            v-if="!scope.row.materialId"
+            v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
             link
             type="primary"
             size="small"
             @click="handleCreateMaterial(scope.row, scope.row.materialName || '')"
             >建档</el-button
           >
+          <el-button
+            v-if="isPendingRemove(scope.row)"
+            link
+            type="warning"
+            size="small"
+            @click="handleUndoRemove(scope.row)"
+            >撤销移除</el-button
+          >
           <!-- <el-button link type="primary" :icon="CopyDocument" @click="handleCopyItem(scope.row)" /> -->
-          <el-button link type="danger" :icon="Delete" @click="handleDeleteItem(scope.row)" />
+          <el-button
+            v-if="!isPendingRemove(scope.row)"
+            link
+            type="danger"
+            :icon="Delete"
+            @click="handleDeleteItem(scope.row)"
+          />
         </template>
       </el-table-column>
     </el-table>
@@ -214,6 +272,7 @@ import {
 } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
 import type { EngineeringBomItem, BomMaterialMatchItem } from '@/types/product/bom'
+import { BomItemReviewStatusEnum } from '@/enums/product'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
@@ -255,6 +314,18 @@ const selectedItems = ref<EngineeringBomItem[]>([])
 const tableLoading = ref(false)
 const refreshLoading = ref(false)
 const tableHeight = ref(400)
+// 快速模式（dev-20261020-029）：直接录材料名称+规格，materialId 可空
+const quickMode = ref(false)
+
+/** 行审核状态（历史数据缺省按草稿展示） */
+const rowReviewStatus = (row: EngineeringBomItem): number =>
+  row.reviewStatus ?? BomItemReviewStatusEnum.DRAFT.value
+
+const isPendingRemove = (row: EngineeringBomItem): boolean =>
+  rowReviewStatus(row) === BomItemReviewStatusEnum.PENDING_REMOVE.value
+
+const isApprovedRow = (row: EngineeringBomItem): boolean =>
+  rowReviewStatus(row) === BomItemReviewStatusEnum.APPROVED.value
 
 // 项目选择器交互模式：'dropdown' 内联下拉 / 'dialog' 分组网格弹窗
 // （2026-10-12 两模式并存，实际效果对比后再定用哪个）
@@ -318,6 +389,11 @@ function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
   return (list || []).map((it) => {
     const copy: EngineeringBomItem = { ...it, parentMaterialId: null }
     delete copy.children
+    if (copy.reviewStatus == null) copy.reviewStatus = BomItemReviewStatusEnum.DRAFT.value
+    // 待移除行回填时必须继续带 removeRequested，否则保存会被当成“撤销移除”
+    copy.removeRequested =
+      copy.reviewStatus === BomItemReviewStatusEnum.PENDING_REMOVE.value ||
+      copy.removeRequested === true
     if (copy.itemId == null) copy.itemId = nextTempItemId()
     return copy
   })
@@ -330,6 +406,7 @@ function toSubmitItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
     delete copy.children
     copy.parentMaterialId = null
     copy.sortOrder = idx + 1
+    copy.removeRequested = !!it.removeRequested
     if (copy.itemId != null && Number(copy.itemId) < 0) copy.itemId = undefined
     return copy
   })
@@ -505,6 +582,8 @@ const handleAddItem = () => {
     remark: '',
     sortOrder: items.value.length + 1,
     create: false,
+    reviewStatus: BomItemReviewStatusEnum.DRAFT.value,
+    removeRequested: false,
   }
 
   items.value.push(newItem)
@@ -525,6 +604,14 @@ const handleCopyItem = (item: EngineeringBomItem) => {
   copyItem.itemId = nextTempItemId()
   copyItem.parentMaterialId = null
   copyItem.sortOrder = items.value.length + 1
+  // 复制行重新走审核（dev-20261020-029）
+  copyItem.reviewStatus = BomItemReviewStatusEnum.DRAFT.value
+  copyItem.rejectReason = undefined
+  copyItem.approvedFingerprint = undefined
+  copyItem.approvedBy = undefined
+  copyItem.approvedTime = undefined
+  copyItem.removeConfirmed = false
+  copyItem.removeRequested = false
   items.value.push(copyItem)
   ElMessage.success('复制成功')
 }
@@ -533,9 +620,16 @@ const handleCopyItem = (item: EngineeringBomItem) => {
  * 删除物料（平铺列表）
  */
 const handleDeleteItem = async (row: EngineeringBomItem) => {
+  if (isPendingRemove(row)) {
+    ElMessage.info('该行已标记待移除，需审核员确认')
+    return
+  }
+  const approved = isApprovedRow(row)
   try {
     await ElMessageBox.confirm(
-      `确定要删除物料 "${row.materialName || row.materialCode || ''}" 吗？`,
+      approved
+        ? `物料 "${row.materialName || row.materialCode || ''}" 已审核通过，删除将标记为「待移除」，审核员确认后才物理删除。确定继续吗？`
+        : `确定要删除物料 "${row.materialName || row.materialCode || ''}" 吗？`,
       '提示',
       {
         confirmButtonText: '确定',
@@ -543,6 +637,14 @@ const handleDeleteItem = async (row: EngineeringBomItem) => {
         type: 'warning',
       }
     )
+    if (approved) {
+      // 已通过行先标记待移除，保留行ID供审核员确认（dev-20261020-029 B）
+      row.removeRequested = true
+      row.reviewStatus = BomItemReviewStatusEnum.PENDING_REMOVE.value
+      row.removeConfirmed = false
+      ElMessage.success('已标记待移除，保存后由审核员确认')
+      return
+    }
     // 平铺列表：按行引用定位，失败兜底按 id（失败不谎报成功）
     let idx = items.value.indexOf(row)
     if (idx < 0) idx = items.value.findIndex((it) => Number(it.itemId) === Number(row.itemId))
@@ -555,6 +657,15 @@ const handleDeleteItem = async (row: EngineeringBomItem) => {
   } catch {
     // 用户取消
   }
+}
+
+/** 撤销「待移除」：保存后后端按指纹恢复为审核通过/待审核 */
+const handleUndoRemove = (row: EngineeringBomItem) => {
+  row.removeRequested = false
+  row.reviewStatus = row.approvedFingerprint
+    ? BomItemReviewStatusEnum.APPROVED.value
+    : BomItemReviewStatusEnum.PENDING.value
+  ElMessage.success('已撤销移除，保存后生效')
 }
 
 /**
@@ -693,6 +804,7 @@ const handleSyncMaterials = async () => {
 
 /** 行标黄：未匹配（浅黄） / 多义待确认（深黄） */
 const rowClassName = ({ row }: { row: EngineeringBomItem }) => {
+  if (isPendingRemove(row)) return 'bom-row-pending-remove'
   const flag = syncFlags.value[String(row.itemId)]
   if (flag === 'AMBIGUOUS') return 'bom-row-ambiguous'
   if (flag === 'NOT_FOUND') return 'bom-row-unmatched'
@@ -845,13 +957,20 @@ defineExpose({
     let ok = true
     walkTree(items.value, (item) => {
       if (!ok) return
-      if (!item.materialCode?.trim()) {
-        ElMessage.warning('物料编码不能为空')
+      if (isPendingRemove(item)) return
+      if (!item.materialName?.trim()) {
+        ElMessage.warning('材料名称不能为空')
         ok = false
         return
       }
-      if (!item.materialName?.trim()) {
-        ElMessage.warning('物料名称不能为空')
+      if (!item.specification?.trim()) {
+        ElMessage.warning(`材料 "${item.materialName}" 的规格型号不能为空`)
+        ok = false
+        return
+      }
+      // 常规模式必须选已建档物料；快速模式允许未建档先入审核
+      if (!quickMode.value && (!item.materialId || Number(item.materialId) <= 0)) {
+        ElMessage.warning(`请为材料 "${item.materialName}" 选择物料，或切换快速模式`)
         ok = false
         return
       }
@@ -950,6 +1069,17 @@ defineExpose({
     background-color: #ffe7ba !important;
   }
 
+  // 待移除行：整行置灰并禁用编辑（保留可见，等待审核员确认）
+  :deep(.el-table__body tr.bom-row-pending-remove > td) {
+    background-color: #f4f4f5 !important;
+    color: #909399;
+  }
+
+  :deep(.el-table__body tr.bom-row-pending-remove > td:not(:last-child)) {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
   .sync-warn-icon {
     margin-left: 4px;
     color: #e6a23c;
@@ -1025,5 +1155,16 @@ defineExpose({
 .material-name-cell > :first-child {
   flex: 1;
   min-width: 0;
+}
+
+.row-status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.reject-icon {
+  color: var(--el-color-danger);
+  cursor: help;
 }
 </style>

@@ -28,9 +28,26 @@ export interface EngineeringBomFormData {
   items: EngineeringBomItem[]
 }
 
+/** BOM 明细行审核状态（dev-20261020-029，对应 Java ProductEnums.BomItemReviewStatus） */
+export type BomItemReviewStatus = 1 | 2 | 3 | 4 | 5
+
 export interface EngineeringBomItem {
   itemId?: number
   bomId?: number
+  /** 行审核状态：1草稿 2待审核 3审核通过 4审核驳回 5待移除 */
+  reviewStatus?: BomItemReviewStatus
+  /** 行审核驳回原因 */
+  rejectReason?: string
+  /** 批准时内容指纹 */
+  approvedFingerprint?: string
+  approvedBy?: string
+  approvedTime?: string
+  /** 待移除行是否已被审核员确认 */
+  removeConfirmed?: boolean
+  removeConfirmedBy?: string
+  removeConfirmedTime?: string
+  /** 编辑时请求移除该行（已通过行将转待移除） */
+  removeRequested?: boolean
   /** 父节点明细ID（NULL=根节点，树形结构） */
   parentMaterialId?: number | null
   /** 子节点（树形表格用） */
@@ -70,6 +87,14 @@ export interface EngineeringBomItem {
   lengthMm?: number
   create?: boolean
 }
+/** BOM 明细行级审核请求（dev-20261020-029） */
+export interface BomItemReviewRequest {
+  itemId: number
+  action: 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE' | 'LINK_MATERIAL'
+  remark?: string
+  materialId?: number
+}
+
 export interface BomCheckIssue {
   /** 明细ID（问题所在行；主表级问题为空） */
   itemId?: number

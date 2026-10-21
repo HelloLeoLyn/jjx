@@ -8,6 +8,24 @@
     </template>
     <el-table :data="items" border style="width: 100%" :height="height" :stripe="stripe">
       <el-table-column label="序号" type="index" width="60" align="center" />
+      <el-table-column label="行状态" width="105" align="center">
+        <template #default="{ row }">
+          <el-tag
+            :type="
+              BomItemReviewStatusEnum.getTagProps(
+                row.reviewStatus ?? BomItemReviewStatusEnum.DRAFT.value
+              ).type
+            "
+            size="small"
+          >
+            {{
+              BomItemReviewStatusEnum.getLabel(
+                row.reviewStatus ?? BomItemReviewStatusEnum.DRAFT.value
+              )
+            }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="物料编码" prop="materialCode" width="120" />
       <el-table-column label="物料名称" prop="materialName" width="180" />
       <el-table-column label="项目" prop="processName" width="160" show-overflow-tooltip>
@@ -36,6 +54,7 @@
         </template>
       </el-table-column> -->
 
+      <el-table-column label="驳回原因" prop="rejectReason" width="160" show-overflow-tooltip />
       <el-table-column label="备注" prop="remark" />
     </el-table>
   </el-card>
@@ -43,7 +62,7 @@
 <script setup lang="ts">
 import type { EngineeringBomItem } from '@/types/product/bom'
 import ProcessName from '@/components/ProcessName.vue'
-import { SourceTypeEnum } from '@/enums/product'
+import { SourceTypeEnum, BomItemReviewStatusEnum } from '@/enums/product'
 withDefaults(
   defineProps<{ items: EngineeringBomItem[]; height?: number | string; stripe?: boolean }>(),
   { height: 300, stripe: false }

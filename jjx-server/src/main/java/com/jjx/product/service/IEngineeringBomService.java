@@ -108,6 +108,18 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
     List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBomForSubmit(Long bomId);
 
     /**
+     * BOM 批准前体检（只读）：行全部审核通过、待移除行已确认、物料已关联。
+     * dev-20261020-029
+     */
+    List<com.jjx.product.domain.vo.BomCheckIssueVO> checkBomForApprove(Long bomId);
+
+    /**
+     * BOM 明细行级审核：APPROVE / REJECT / CONFIRM_REMOVE / LINK_MATERIAL。
+     * dev-20261020-029
+     */
+    void reviewItem(com.jjx.product.domain.dto.BomItemReviewDTO dto);
+
+    /**
      * BOM 物料全量同步：批量按「名称+规格」匹配物料库（只读，不改任何数据）。
      * 供编辑器「全量同步」按钮回填未关联的导入行。
      * 2026-10-10 dev-20261010-002

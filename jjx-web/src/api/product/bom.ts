@@ -8,6 +8,7 @@ import type {
   BomCheckIssue,
   BomMaterialMatchItem,
   BomMaterialMatchResult,
+  BomItemReviewRequest,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
 // ==================== BomAPI ====================
@@ -78,6 +79,22 @@ export const productBomApi = {
    */
   checkEngineeringBom(bomId: number) {
     return request.get<R<BomCheckIssue[]>>(`/engineering/bom/${bomId}/check`)
+  },
+
+  /**
+   * BOM 批准前体检（行状态/待移除确认/物料关联）
+   * 2026-10-21 dev-20261020-029
+   */
+  checkBomForApprove(bomId: number) {
+    return request.get<R<BomCheckIssue[]>>(`/engineering/bom/${bomId}/approve-check`)
+  },
+
+  /**
+   * BOM 明细行级审核：通过/驳回/确认移除/关联物料（逐行写流水）
+   * 2026-10-21 dev-20261020-029
+   */
+  reviewBomItem(data: BomItemReviewRequest) {
+    return request.put('/engineering/bom/item/review', data)
   },
 
   /**

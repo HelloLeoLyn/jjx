@@ -140,6 +140,27 @@ public class BomController extends BaseController {
     }
 
     /**
+     * BOM 批准前体检（只读）：行状态/待移除确认/物料关联（dev-20261020-029）。
+     */
+    @Operation(summary = "BOM批准前体检")
+    @GetMapping("/{bomId}/approve-check")
+    @SaCheckPermission("engineering:bom:approve")
+    public Result<List<com.jjx.product.domain.vo.BomCheckIssueVO>> checkBomForApprove(@PathVariable Long bomId) {
+        return Result.success(productBomService.checkBomForApprove(bomId));
+    }
+
+    /**
+     * BOM 明细行级审核（dev-20261020-029）：通过/驳回/确认移除/关联物料，逐行写流水。
+     */
+    @Operation(summary = "BOM明细行级审核")
+    @PutMapping("/item/review")
+    @SaCheckPermission("engineering:bom:approve")
+    public Result<Void> reviewItem(@Validated @RequestBody com.jjx.product.domain.dto.BomItemReviewDTO dto) {
+        productBomService.reviewItem(dto);
+        return Result.success();
+    }
+
+    /**
      * 获取产品已审批的BOM列表（用于产品新增/编辑时选择）
      */
     @GetMapping("/approved/{productId}")
