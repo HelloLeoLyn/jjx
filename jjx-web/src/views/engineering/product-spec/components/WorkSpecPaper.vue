@@ -2,7 +2,7 @@
   <article
     ref="paper"
     class="work-paper"
-    :class="{ 'extended-materials': materialCapacity > 14 }"
+    :class="{ continuous: specTemplate === 'B' }"
     :style="fontStyle"
   >
     <header class="work-title">
@@ -302,7 +302,6 @@ const fontStyle = computed(() => ({
   '--font-notes': `${props.fontSettings.notes}px`,
   '--font-notes-title': `${props.fontSettings.notesTitle}px`,
   '--font-footer': `${props.fontSettings.footer}px`,
-  '--extra-material-height': `${(materialCapacity.value - 14) * 22}px`,
 }))
 function fontSize(area: WorkSpecFontArea) {
   return { fontSize: `${props.fontSettings[area]}px` }
@@ -351,7 +350,9 @@ const allOperations = computed<Record<string, any>[]>(() => props.data.routing.i
 const flowRows = computed(() =>
   Array.from(
     {
-      length: 14,
+      length: props.specTemplate === 'B'
+        ? Math.max(14, ...(props.page.groups || []).map((group, column) => group.rows.length + (column === 1 ? 8 : 0)))
+        : 14,
     },
     (_, index) => ({
       index,
@@ -755,37 +756,41 @@ footer {
 footer {
   font-size: var(--font-footer);
 }
-/* 超过 14 行只增高材料区，后续区块保持 A 版尺寸与顺序。 */
-.work-paper.extended-materials {
+/* B 的连续源只用于测量；最终每页使用固定 A4 正文高度。 */
+.continuous,
+.flow-page {
+  display: flex;
+  flex-direction: column;
+}
+.continuous { height: auto; }
+.flow-page { height: 278mm; overflow: hidden; }
+.continuous .materials,
+.flow-page .materials { height: auto; min-height: 0; }
+.continuous .flows,
+.flow-page .flows { height: auto; min-height: 0; }
+.continuous .notes-content,
+.flow-page .notes-content { height: auto; overflow: visible; min-height: 0; }
+.continuous .issuance,
+.flow-page .issuance { flex: 0 0 auto; min-height: 110px; }
+.continuous .changes-content,
+.flow-page .changes-content { overflow: visible; }
+.continuous .material-name,
+.flow-page .material-name,
+.continuous .cell-single,
+.flow-page .cell-single,
+.continuous .operation,
+.flow-page .operation,
+.continuous .operation-remark,
+.flow-page .operation-remark {
   height: auto;
-  min-height: calc(278mm + var(--extra-material-height));
-  display: block;
+  max-height: none;
+  overflow: visible;
+  white-space: normal;
 }
-.extended-materials .materials {
-  height: calc(340px + var(--extra-material-height));
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.extended-materials .notes-content {
-  height: calc(159px + var(--extra-material-height));
-}
-.extended-materials .flows,
-.extended-materials .hours,
-.extended-materials .issuance {
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.extended-materials .issuance {
-  min-height: 110px;
-}
+.continuous .operation,
+.flow-page .operation { min-height: 24px; }
+.flow-page footer { margin-top: auto; }
 @media print {
-  .work-paper {
-    width: 100%;
-    height: 278mm;
-  }
-  .work-paper.extended-materials {
-    height: auto;
-    min-height: 0;
-  }
+  .work-paper { width: 100%; height: 278mm; }
 }
 </style>

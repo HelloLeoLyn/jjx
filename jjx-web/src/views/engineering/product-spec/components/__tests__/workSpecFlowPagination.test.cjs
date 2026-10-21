@@ -46,60 +46,108 @@ const paper = component(path.join(directory, 'WorkSpecPaper.vue'), {
   './useWorkSpecOverflow': { useWorkSpecOverflow: () => ({ measure() {} }) },
 }, 'flow-paper')
 
-test('B沿用A排版，18行材料连续且打印只分页后续区块', { timeout: 90000 }, async t => {
+
+const paginateNode = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'paginateMeasuredWorkSpec')
+const paginate = load(paginateNode.getText(source)).paginateMeasuredWorkSpec
+
+test('B材料默认14行，沿用A列宽与凹凸/加工要求布局', async () => {
   const { JSDOM } = require('jsdom')
-  const rows = Array.from({ length: 18 }, (_, i) => ({ itemId: i + 1, materialName: `MATERIAL-${i + 1}`, specification: '110', moduleQty: 5 }))
-  const data = { product: { productName: '连续材料验证', productCode: 'TEST-007' }, routing: { items: [] },
-    workSpec: { emboss: { setupHeight: '0.25' }, issueUnit: '工程部', approved: false } }
-  const render = (specTemplate, count) => renderToString(vue.createSSRApp(paper.value, { data,
-    page: { rows: rows.slice(0, count), engineeringNotes: 'NOTE-007', diePositionRows: [], changeLines: [{ text: 'CHANGE-007' }],
-      groups: groups.map(group => ({ ...group, rows: [] })) },
+  for (const count of [5, 18, 25, 65]) {
+    const html = await render('B', count)
+    const doc = new JSDOM(html).window.document
+    const table = doc.querySelector('.materials')
+    assert.equal(table.tBodies[0].rows.length, Math.max(14, count))
+    assert.equal(table.querySelector('.engineering-notes').rowSpan, Math.max(14, count) - 6)
+    assert.equal(table.querySelector('.engineering-notes').parentElement.sectionRowIndex, 6)
+    assert.equal(table.querySelectorAll('.emboss-label').length, 6)
+    assert.equal(html.includes('--extra-material-height'), false)
+  }
+  const a = await render('A', 5), b = await render('B', 5)
+  assert.equal(a, b.replace('work-paper continuous', 'work-paper'))
+})
+
+function render(specTemplate, count, processCount = 0, changeCount = 1) {
+  const rows = Array.from({ length: count }, (_, i) => ({
+    itemId: i + 1, materialName: 'MAT_' + String(i + 1).padStart(3, '0'),
+    specification: '110', moduleQty: 5,
+  }))
+  const routing = groups.flatMap(group => Array.from({ length: processCount }, (_, i) => ({
+    processCategory: group.value, itemId: group.value + i, indexNumber: i + 1,
+    remark: 'OP_' + group.value + '_' + String(i + 1).padStart(3, '0'),
+  })))
+  const data = { product: { productName: '连续材料验证', productCode: 'TEST-008' }, routing: { items: routing },
+    workSpec: { emboss: { setupHeight: '0.25' }, issueUnit: 'ENGINEERING', approved: false } }
+  return renderToString(vue.createSSRApp(paper.value, { data,
+    page: { rows, engineeringNotes: 'NOTE-008', diePositionRows: [],
+      changeLines: Array.from({ length: changeCount }, (_, i) => ({ text: 'CHANGE_' + String(i + 1).padStart(3, '0') })),
+      groups: groups.map(group => ({ ...group, rows: routing.filter(row => row.processCategory === group.value) })) },
+    structureCaption: 'STRUCTURE_008',
+    structureImage: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="gray"/></svg>'),
     pageIndex: 0, pageCount: 1, specTemplate, fontSettings: fonts.defaultWorkSpecFontSettings() }))
-  const a = await render('A', 5), b = await render('B', 5), extended = await render('B', 18)
-  assert.equal(a, b, '5行材料时A/B必须使用相同DOM、列宽和字体')
-  const doc = new JSDOM(extended).window.document, table = doc.querySelector('.materials')
-  assert.equal(new JSDOM(b).window.document.querySelector('.materials').tBodies[0].rows.length, 14)
-  assert.equal(table.tBodies[0].rows.length, 18)
-  assert.equal(table.querySelector('.engineering-notes').rowSpan, 12)
-  assert.equal(table.querySelector('.engineering-notes').parentElement.sectionRowIndex, 6)
-  assert.equal(table.querySelectorAll('.emboss-label').length, 6)
-  assert.deepEqual([...table.querySelectorAll('.material-name')].map(el => el.textContent.trim()), rows.map(row => row.materialName))
-  assert.equal(doc.querySelector('.spec-overview'), null)
-  if (!process.env.CHROME_BIN) { t.diagnostic('未设置CHROME_BIN，未验证浏览器与PDF'); return }
-  const temporary = fs.mkdtempSync('/tmp/dev-007-print-')
+}
+
+test('真实浏览器：5/18/25/65行按A4边界分页，流程和变更不丢失，PDF固定A4', { timeout: 120000 }, async t => {
+  if (!process.env.CHROME_BIN) { t.skip('未设置CHROME_BIN，浏览器与PDF未验证'); return }
+  const { JSDOM } = require('jsdom')
+  const temporary = fs.mkdtempSync('/tmp/dev-008-print-')
   try {
-    const fixture = path.join(temporary, 'fixture.html'), pdf = path.join(temporary, 'print.pdf')
-    fs.writeFileSync(fixture, `<!doctype html><meta charset="utf-8"><style>body{margin:0}#paper{width:192mm}${paper.css}${icon.css}
-      @media print{@page{size:A4 portrait;margin:9mm}#result{display:none}}</style>
-      <div id="paper">${extended}</div><pre id="result"></pre><script>
-      onload=()=>{const q=s=>document.querySelector(s),r=s=>q(s).getBoundingClientRect();
-      q('#result').textContent=JSON.stringify({materialHeight:r('.materials').height,notesHeight:r('.engineering-notes').height,
-        materialsBottom:r('.materials').bottom,flowsTop:r('.flows').top,flowsBottom:r('.flows').bottom,hoursTop:r('.hours').top,
-        issueTop:r('.issuance').top,hoursBottom:r('.hours').bottom,paperHeight:r('.work-paper').height});};</script>`)
-    const { chromium } = require(process.env.PLAYWRIGHT_CORE_PATH || 'playwright-core')
-    const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN, headless: true,
-      args: ['--no-sandbox', '--disable-dev-shm-usage'], timeout: 15000 })
-    let actual
-    try {
-      const page = await browser.newPage({ viewport: { width: 840, height: 1300 } })
-      await page.goto(pathToFileURL(fixture).href, { waitUntil: 'load', timeout: 15000 })
-      actual = JSON.parse(await page.locator('#result').textContent())
-      await page.pdf({ path: pdf, preferCSSPageSize: true, printBackground: true })
-    } finally { await browser.close() }
-    assert.ok(actual.materialHeight >= 427)
-    assert.ok(actual.notesHeight >= 264)
-    assert.ok(actual.flowsTop >= actual.materialsBottom - 1)
-    assert.ok(actual.hoursTop >= actual.flowsBottom - 1)
-    assert.ok(actual.issueTop >= actual.hoursBottom - 1)
-    assert.ok(actual.paperHeight > 278 * 96 / 25.4)
-    const extract = spawnSync('python3', ['-c', 'import pymupdf,json,sys; d=pymupdf.open(sys.argv[1]); print(json.dumps([p.get_text() for p in d]))', pdf], { encoding: 'utf8' })
-    assert.ifError(extract.error)
-    assert.equal(extract.status, 0, extract.stderr)
-    const printed = JSON.parse(extract.stdout)
-    assert.ok(printed.length >= 2)
-    for (const row of rows) assert.ok(printed[0].includes(row.materialName), row.materialName + '应在打印首页')
-    assert.equal(printed.filter(page => page.includes('MATERIAL-18')).length, 1)
-    assert.ok(printed.slice(1).some(page => page.includes('CHANGE-007')))
-    t.diagnostic(JSON.stringify({ ...actual, pdfPages: printed.length, materialRowsOnFirstPrintedPage: 18 }))
+    for (const [count, processCount, changeCount] of [[5, 0, 1], [18, 0, 1], [25, 0, 1], [65, 22, 90]]) {
+      const fixture = path.join(temporary, 'fixture.html'), pdf = path.join(temporary, 'print.pdf')
+      const sourceHtml = await render('B', count, processCount, changeCount)
+      fs.writeFileSync(fixture, `<!doctype html><meta charset="utf-8"><style>
+        body{margin:0}#source{position:absolute;left:-100000px;width:192mm}
+        .sheet{width:210mm;height:297mm;padding:9mm;box-sizing:border-box;break-after:page;overflow:hidden}
+        .sheet:last-child{break-after:auto}
+        ${paper.css}${icon.css}
+        @media print{@page{size:A4 portrait;margin:0}#source,#result{display:none}}
+        </style><div id="source">${sourceHtml}</div><main id="output"></main><pre id="result"></pre>
+        <script>
+        onload=()=>{try{
+          const pages=(${paginate.toString()})(document.querySelector('.work-paper'));
+          document.querySelector('#output').innerHTML=pages.map(html=>'<div class="sheet">'+html+'</div>').join('');
+          const result={pages:pages.length,heights:[...document.querySelectorAll('.sheet')].map(el=>el.getBoundingClientRect().height),
+            fits:[...document.querySelectorAll('#output .work-paper')].map(el=>el.scrollHeight<=el.clientHeight+1),
+            rows:[...document.querySelectorAll('#output .materials tbody tr')].map(el=>el.cells[0].textContent.trim())};
+          document.querySelector('#result').textContent=JSON.stringify(result)
+        }catch(e){document.querySelector('#result').textContent=JSON.stringify({error:e.message})}};
+        </script>`)
+      const run = extra => spawnSync(process.env.CHROME_BIN, ['--headless', '--no-sandbox',
+        '--disable-dev-shm-usage', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--no-pdf-header-footer',
+        ...extra, pathToFileURL(fixture).href], { encoding: 'utf8', timeout: 25000, maxBuffer: 10 * 1024 * 1024 })
+      const dumped = run(['--dump-dom'])
+      if (dumped.error) console.error(dumped.stderr); assert.ifError(dumped.error); assert.equal(dumped.status, 0, dumped.stderr)
+      const doc = new JSDOM(dumped.stdout).window.document
+      const actual = JSON.parse(doc.querySelector('#result').textContent)
+      assert.equal(actual.error, undefined)
+      assert.ok(actual.fits.every(Boolean), JSON.stringify(actual))
+      assert.ok(actual.heights.every(height => Math.abs(height - 297 * 96 / 25.4) < 1))
+      assert.deepEqual(actual.rows, Array.from({ length: Math.max(14, count) }, (_, i) => String(i + 1)))
+      const names = [...doc.querySelectorAll('#output .material-name')].map(el => el.textContent.trim()).filter(Boolean)
+      assert.deepEqual(names, Array.from({ length: count }, (_, i) => 'MAT_' + String(i + 1).padStart(3, '0')))
+      // 相同材料列宽，续页没有重放材料；无14/20行截断。
+      assert.equal(doc.querySelectorAll('#output .structure-art img').length, 1)
+      assert.equal(doc.querySelector('#output').textContent.split('STRUCTURE_008').length - 1, 1)
+      const tables = [...doc.querySelectorAll('#output .materials')]
+      for (const table of tables) assert.equal(table.querySelector('colgroup').outerHTML, tables[0].querySelector('colgroup').outerHTML)
+      if (count === 18 || count === 25) assert.equal(tables[0].tBodies[0].rows.length, count)
+      if (count === 5) assert.equal(actual.pages, 1)
+      if (count === 65) assert.ok(tables[0].tBodies[0].rows.length > 25)
+      for (const group of groups) for (let i = 1; i <= processCount; i++)
+        assert.equal(doc.querySelector('#output').textContent.split('OP_' + group.value + '_' + String(i).padStart(3, '0')).length - 1, 1)
+      for (let i = 1; i <= changeCount; i++)
+        assert.equal(doc.querySelector('#output').textContent.split('CHANGE_' + String(i).padStart(3, '0')).length - 1, 1)
+      const printed = run(['--print-to-pdf=' + pdf])
+      assert.ifError(printed.error); assert.equal(printed.status, 0, printed.stderr)
+      const extract = spawnSync('python3', ['-c',
+        'import pymupdf,json,sys; d=pymupdf.open(sys.argv[1]); print(json.dumps([dict(text=p.get_text(),width=p.rect.width,height=p.rect.height) for p in d]))',
+        pdf], { encoding: 'utf8' })
+      assert.ifError(extract.error); assert.equal(extract.status, 0, extract.stderr)
+      const pdfPages = JSON.parse(extract.stdout)
+      assert.equal(pdfPages.length, actual.pages)
+      assert.ok(pdfPages.every(page => Math.abs(page.width - 595.28) < 1 && Math.abs(page.height - 841.89) < 1))
+      const pdfText = pdfPages.map(page => page.text).join('\n')
+      for (const name of names) assert.equal(pdfText.replace(/\s/g, '').split(name).length - 1, 1, name + ':' + pdfText)
+      t.diagnostic(JSON.stringify({ count, processCount, changeCount, ...actual, pdfPages: pdfPages.length }))
+    }
   } finally { fs.rmSync(temporary, { recursive: true, force: true }) }
 })

@@ -148,6 +148,8 @@
           <ProductSpecSheets
             ref="sheets"
             @layout="onLayout"
+            @flow-layout="onFlowLayout"
+            @flow-error="onFlowError"
             :data="data"
             :pages="pages"
             :structure-image="structureImage"
@@ -261,6 +263,17 @@ const showHistory = ref(false)
 const images = shallowRef<Record<string, FileImage[]>>({})
 const fileErrors = ref<Record<string, string>>({})
 const sheets = ref<InstanceType<typeof ProductSpecSheets>>()
+const measuredSpecPages = shallowRef<string[]>([])
+const flowError = ref('')
+function onFlowLayout(pages: string[]) {
+  flowError.value = ''
+  if (JSON.stringify(measuredSpecPages.value) !== JSON.stringify(pages)) measuredSpecPages.value = pages
+}
+function onFlowError(message: string) {
+  measuredSpecPages.value = []
+  flowError.value = message
+  ElMessage.error(message)
+}
 const overflow = shallowRef<Record<string, PaperTextLine[]>>({})
 function onLayout(key: string, lines: PaperTextLine[]) {
   if (JSON.stringify(overflow.value[key]) !== JSON.stringify(lines))
@@ -330,7 +343,8 @@ const pages = computed(() =>
         selectedFiles.value,
         images.value,
         overflow.value,
-        selectedTemplate.value
+        selectedTemplate.value,
+        measuredSpecPages.value
       )
     : []
 )
@@ -345,8 +359,8 @@ const structureCaption = computed(() =>
     : ''
 )
 const layoutReady = computed(() =>
-  pages.value
-    .filter((page) => page.kind === 'spec' || page.kind === 'print')
+  !flowError.value && !pages.value.some(page => page.flowPending) && pages.value
+    .filter((page) => (page.kind === 'spec' && !page.flowHtml) || page.kind === 'print')
     .every((page) => overflow.value[page.key] !== undefined)
 )
 const canPrint = computed(
@@ -515,6 +529,7 @@ async function printDocuments() {
   if (!canPrint.value) return
   await sheets.value?.measureLayout()
   await nextTick()
+  if (!canPrint.value) return
   const imgs = Array.from(document.querySelectorAll<HTMLImageElement>('.doc-sheets img'))
   try {
     await Promise.all(imgs.map((image) => image.decode()))

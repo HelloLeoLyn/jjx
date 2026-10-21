@@ -130,7 +130,7 @@ test('实际打印按钮把A/B选择、版本和字号传入打印入口', async
   }
 })
 
-test('B材料连续且流程沿用A版容量，A仍为14项', () => {
+test('B完整材料与流程送入DOM测量，A仍为14项', () => {
   const source = fs.readFileSync(path.join(__dirname, '../docset.ts'), 'utf8')
   const parsed = ts.createSourceFile('docset.ts', source, ts.ScriptTarget.Latest, true)
   const functions = parsed.statements.filter(node => ts.isFunctionDeclaration(node)
@@ -145,17 +145,19 @@ test('B材料连续且流程沿用A版容量，A仍为14项', () => {
     routing: { items: Array.from({ length: 18 }, () => ({ processCategory: 'PANEL' })) }, files: [],
     workSpec: { engineeringRequirements: 'NOTE', changes: [], dieLocationText: Array.from({ length: 25 }, (_, i) => `D${i + 1}`).join('\n') } }
   const a = runtime.exports.makePages(data, ['spec'], [], {}, {}, 'A').filter(page => page.kind === 'spec')
-  const result = runtime.exports.makePages(data, ['spec'], [], {}, { 'spec-0': [{ text: '备注长内容' }] }, 'B')
-  const b = result.filter(page => page.kind === 'spec')
+  const pending = runtime.exports.makePages(data, ['spec'], [], {}, {}, 'B')
+  assert.equal(pending[0].flowPending, true)
+  const html = ['<article>首张A4</article>', '<article>续张A4</article>']
+  const b = runtime.exports.makePages(data, ['spec'], [], {}, {}, 'B', html)
+  const flow = runtime.exports.workSpecFlowSource(data)
   assert.deepEqual(plain(a.map(page => page.rows.length)), [14, 11])
-  assert.deepEqual(plain(b.map(page => page.rows.length)), [25, 0])
-  assert.equal(b[0].flowPending, undefined)
-  assert.deepEqual(plain(b.flatMap(page => page.rows.map(row => row.itemId))), Array.from({ length: 25 }, (_, i) => i + 1))
   assert.equal(a[1].diePositionRows[0], 'D15')
-  assert.equal(b[0].diePositionRows[24], 'D25')
-  assert.equal(b[0].groups[0].rows.length, 14)
-  assert.equal(b[1].groups[0].rows.length, 4)
-  assert.equal(result.some(page => page.kind === 'spec-details'), true)
+  assert.deepEqual(plain(b.map(page => page.flowHtml)), html)
+  assert.deepEqual(plain(flow.rows.map(row => row.itemId)), Array.from({ length: 25 }, (_, i) => i + 1))
+  assert.equal(flow.diePositionRows[24], 'D25')
+  assert.equal(flow.groups[0].rows.length, 18)
+  const aOverflow = runtime.exports.makePages(data, ['spec'], [], {}, { 'spec-0': [{ text: '备注长内容' }] }, 'A')
+  assert.equal(aOverflow.some(page => page.kind === 'spec-details'), true)
 
 })
 

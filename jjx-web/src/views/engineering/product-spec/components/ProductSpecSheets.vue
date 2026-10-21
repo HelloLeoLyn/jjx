@@ -1,9 +1,15 @@
 <template>
   <div class="doc-sheets">
+    <div v-if="specTemplate === 'B'" ref="flowSource" class="flow-source" aria-hidden="true">
+      <WorkSpecPaper :data="data" :page="workSpecFlowSource(data)" :page-index="0" :page-count="1"
+        :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" spec-template="B" />
+    </div>
     <div v-for="(page, pageIndex) in pages" :key="page.key" :id="`doc-page-${pageIndex}`" class="sheet-slot">
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
-      <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print' }" :padding-mm="9" :scale="1">
-        <WorkSpecPaper v-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :spec-template="specTemplate" />
+      <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print', 'measured-canvas': !!page.flowHtml || page.flowPending }" :padding-mm="9" :scale="1">
+        <div v-if="page.flowHtml" class="measured-page" v-html="workSpecFlowPageHtml(page.flowHtml, pageIndex, pages.length)" />
+        <div v-else-if="page.flowPending" class="layout-pending">正在按 A4 测量分页…</div>
+        <WorkSpecPaper v-else-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :spec-template="specTemplate" />
         <InkMixingPaper v-else-if="page.kind === 'ink'" :product-code="data.product.productCode" />
         <article v-else class="paper-form">
           <header v-if="page.section !== 'customer' && page.section !== 'atlas'" class="paper-heading">
@@ -36,20 +42,56 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import WorkSpecPaper from './WorkSpecPaper.vue'
 import PrintSpecPaper from './PrintSpecPaper.vue'
 import ColorCheckPaper from './ColorCheckPaper.vue'
 import InkMixingPaper from './InkMixingPaper.vue'
-import { plain, documentFileCaption, type DocsetData, type DocPage, type PaperTextLine } from './docset'
+import { plain, documentFileCaption, workSpecFlowSource, paginateMeasuredWorkSpec, type DocsetData, type DocPage, type PaperTextLine } from './docset'
+import { workSpecFlowPageHtml } from './workSpecFlowPagination'
 import type { WorkSpecFontSettings, WorkSpecTemplate } from './workSpecFont'
 
-withDefaults(defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string; fontSettings: WorkSpecFontSettings; specTemplate?: WorkSpecTemplate }>(), { specTemplate: 'A' })
-const emit = defineEmits<{ layout: [key: string, lines: PaperTextLine[]] }>()
+const props = withDefaults(defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string; fontSettings: WorkSpecFontSettings; specTemplate?: WorkSpecTemplate }>(), { specTemplate: 'A' })
+const emit = defineEmits<{ layout: [key: string, lines: PaperTextLine[]]; flowLayout: [pages: string[]]; flowError: [message: string] }>()
 const workPapers = ref<InstanceType<typeof WorkSpecPaper>[]>([])
 const printPapers = ref<InstanceType<typeof PrintSpecPaper>[]>([])
-defineExpose({ measureLayout: () => Promise.all([...workPapers.value, ...printPapers.value].map(paper => paper.measure())) })
+const flowSource = ref<HTMLElement>()
+let generation = 0
+let disposed = false
+async function measureFlow() {
+  const current = ++generation
+  if (props.specTemplate !== 'B') return
+  try {
+    await nextTick()
+    await document.fonts.ready
+    const source = flowSource.value?.querySelector<HTMLElement>('.work-paper')
+    if (!source?.clientWidth) return
+    await Promise.all(Array.from(source.querySelectorAll('img'), image => image.decode()))
+    if (disposed || current !== generation) return
+    emit('flowLayout', paginateMeasuredWorkSpec(source))
+  } catch (error) {
+    if (!disposed && current === generation)
+      emit('flowError', error instanceof Error ? error.message : '作业规范分页失败')
+  }
+}
+watch(() => [props.data, props.specTemplate, props.fontSettings, props.structureImage, props.structureCaption], () => {
+  emit('flowLayout', [])
+  void measureFlow()
+}, { deep: true, flush: 'post' })
+onMounted(() => {
+  document.fonts.addEventListener('loadingdone', measureFlow)
+  void measureFlow()
+})
+onBeforeUnmount(() => {
+  disposed = true
+  generation++
+  document.fonts.removeEventListener('loadingdone', measureFlow)
+})
+defineExpose({ measureLayout: async () => {
+  await measureFlow()
+  await Promise.all([...workPapers.value, ...printPapers.value].map(paper => paper.measure()))
+} })
 function labor(row?: Record<string, any> | null): string {
   if (!row) return ''
   if (row.children?.length) return totalLabor(row.children)
@@ -64,6 +106,10 @@ function totalLabor(rows: Record<string, any>[]): string {
 </script>
 
 <style scoped>
+.flow-source { position:fixed; left:-100000px; top:0; width:192mm; visibility:hidden; pointer-events:none; }
+.measured-canvas :deep(.a4-canvas) { height:297mm; min-height:297mm; overflow:hidden; }
+.measured-page { height:278mm; }
+.layout-pending { height:278mm; }
 .doc-sheets { display:flex; flex-direction:column; align-items:center; gap:24px; }
 .spec-canvas :deep(.a4-canvas) { width:210mm; border:0; }
 .sheet-slot { width:794px; scroll-margin-top:24px; }
@@ -118,6 +164,7 @@ function totalLabor(rows: Record<string, any>[]): string {
 .paper-footer { margin-top:auto; display:flex; gap:10px; align-items:center; justify-content:space-between; border-top:1.3px solid #333; padding:7px 8px; font-size:11px; }
 .paper-footer span { overflow-wrap:anywhere; }.paper-footer span:last-child { flex-shrink:0; }
 @media print {
+  .flow-source { display:none; }
   .no-print { display:none !important; }
   .doc-sheets { display:block; }
   .sheet-slot { width:210mm; margin:0; break-after:page; page-break-after:always; }
