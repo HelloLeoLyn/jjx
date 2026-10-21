@@ -12,7 +12,7 @@
     :disabled="disabled"
     :clearable="clearable"
     :show-create="canCreate"
-    :create-label="'新建项目「' + keyword.trim() + '」'"
+    :create-label="'+ 新建临时工序「' + keyword.trim() + '」'"
     @search="onDropdownSearch"
     @select="onDropdownPick"
     @clear="onClear"
@@ -24,7 +24,9 @@
     <template #option="{ item }">
       <div class="sps-option">
         <SvgIcon v-if="item.icon" :name="item.icon" :size="16" />
-        <span class="sps-option-name">{{ item.processName }}</span>
+        <span class="sps-option-name"
+          >{{ item.processName }}{{ isPending(item) ? '（待审）' : '' }}</span
+        >
       </div>
     </template>
   </EditableSearchSelect>
@@ -59,33 +61,42 @@
     />
     <el-tabs v-model="activeTab" class="sps-tabs">
       <el-tab-pane
-        v-for="g in groups"
+        v-for="g in visibleGroups"
         :key="g.value"
         :name="g.value"
         :label="`${g.label}（${g.items.length}）`"
       >
         <div class="sps-grid">
           <div
-            v-for="p in filterItems(g.items)"
+            v-for="p in g.items"
             :key="p.processId"
             class="sps-card"
             :class="{ 'is-active': p.processId === currentId }"
             @click="pick(p)"
           >
+            <el-tag v-if="isPending(p)" class="sps-pending" size="small" type="warning"
+              >待审</el-tag
+            >
             <SvgIcon v-if="p.icon" :name="p.icon" :size="28" />
             <span v-else class="sps-card-emoji">📦</span>
             <span class="sps-card-name">{{ p.processName }}</span>
           </div>
-          <el-empty v-if="!filterItems(g.items).length" description="无匹配项目" :image-size="56" />
+          <el-empty v-if="!g.items.length" description="无匹配项目" :image-size="56" />
         </div>
       </el-tab-pane>
     </el-tabs>
     <div v-if="canCreate" class="sps-create">
       <el-button link type="primary" :icon="Plus" @click="createFromKeyword">
-        + 新建项目「{{ keyword.trim() }}」
+        + 新建临时工序「{{ keyword.trim() }}」
       </el-button>
     </div>
   </el-dialog>
+  <TempProcessCreateDialog
+    v-model="createDialogVisible"
+    :initial-name="createName"
+    :processes="processes"
+    @created="onTempCreated"
+  />
 </template>
 
 <script setup lang="ts">
@@ -93,8 +104,10 @@ import { computed, ref, watch } from 'vue'
 import { CircleClose, Plus, Search } from '@element-plus/icons-vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
 import EditableSearchSelect from './EditableSearchSelect.vue'
+import TempProcessCreateDialog from './TempProcessCreateDialog.vue'
 import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 import { useDict } from '@/composables/useDict'
+import { StandardProcessStatus } from '@/types/product/standardProcess'
 import type { StandardProcessItem } from '@/types/product/standardProcess'
 
 /**
@@ -156,13 +169,36 @@ const CATEGORY_FALLBACK: Record<string, string> = {
   OTHER: '其他',
 }
 
-/** 分组：优先按字典顺序，字典里没有的分类补在后面 */
-const groups = computed(() => {
+const COMMON_TAB = '__common__'
+const SEARCH_TAB = '__search__'
+const COMMON_NAMES = [
+  '面板',
+  '面板裁切',
+  '面板冲孔',
+  '面板背胶',
+  '上线',
+  '上线裁切',
+  '下线',
+  '下线冲型',
+  '品检',
+  '包装',
+]
+const isPending = (item: StandardProcessItem) =>
+  item.processStatus === StandardProcessStatus.PENDING
+const selectableProcesses = computed(() =>
+  processes.value
+    .filter((p) => p.processStatus !== StandardProcessStatus.REJECTED)
+    .slice()
+    .sort((a, b) => Number(isPending(a)) - Number(isPending(b)))
+)
+
+/** 字典分类，正式项优先；未分类项也保留在“其他”。 */
+const categoryGroups = computed(() => {
   const order: { value: string; label: string }[] = categoryOptions.value.length
     ? categoryOptions.value.map((d) => ({ value: d.itemValue, label: d.label || d.itemValue }))
     : Object.entries(CATEGORY_FALLBACK).map(([value, label]) => ({ value, label }))
   const seen = new Set(order.map((o) => o.value))
-  for (const p of processes.value) {
+  for (const p of selectableProcesses.value) {
     if (p.processCategory && !seen.has(p.processCategory)) {
       order.push({
         value: p.processCategory,
@@ -172,9 +208,27 @@ const groups = computed(() => {
     }
   }
   return order
-    .map((o) => ({ ...o, items: processes.value.filter((p) => p.processCategory === o.value) }))
-    .filter((g) => g.items.length > 0)
+    .map((o) => ({
+      ...o,
+      items: selectableProcesses.value.filter((p) => (p.processCategory || 'OTHER') === o.value),
+    }))
+    .filter((g) => g.items.length > 0 || g.value === 'PANEL')
 })
+
+const commonItems = computed(() =>
+  selectableProcesses.value.filter((p) => COMMON_NAMES.includes(p.processName))
+)
+const groups = computed(() => [
+  { value: COMMON_TAB, label: '常用', items: commonItems.value },
+  ...categoryGroups.value,
+])
+const defaultTab = computed(() =>
+  commonItems.value.length
+    ? COMMON_TAB
+    : categoryGroups.value.find((g) => g.value === 'PANEL')?.value ||
+      categoryGroups.value[0]?.value ||
+      COMMON_TAB
+)
 
 // ==================== 当前值（内部受控，保证选中即时回显）====================
 // el-select 单选的显示依赖 model-value 变化；这里维护内部值，选中即写入，不依赖父级回传。
@@ -189,7 +243,6 @@ watch(
 const currentId = computed<number | undefined>(() =>
   typeof innerValue.value === 'number' ? innerValue.value : undefined
 )
-
 
 /** 当前值命中的标准工序（用于取名称/图标） */
 const matched = computed<StandardProcessItem | undefined>(() => {
@@ -211,18 +264,28 @@ const showIcon = computed(() => matched.value?.icon || '')
 const dialogVisible = ref(false)
 const keyword = ref('')
 const activeTab = ref('')
+const createDialogVisible = ref(false)
+const createName = ref('')
+const visibleGroups = computed(() =>
+  keyword.value.trim()
+    ? [{ value: SEARCH_TAB, label: '搜索结果', items: filterItems(selectableProcesses.value) }]
+    : groups.value
+)
+watch([keyword, defaultTab], () => {
+  activeTab.value = keyword.value.trim() ? SEARCH_TAB : defaultTab.value
+})
 
 function openDialog() {
   if (props.disabled) return
   keyword.value = ''
-  activeTab.value = groups.value[0]?.value || ''
+  activeTab.value = defaultTab.value
   dialogVisible.value = true
 }
 
 /** 下拉模式可见分组：按当前输入关键字过滤（dev-20261018-011） */
 const dropdownGroups = computed(() =>
-  groups.value
-    .map((g) => ({ label: g.label, items: filterItems(g.items) }))
+  visibleGroups.value
+    .map((g) => ({ label: g.label, items: g.items }))
     .filter((g) => g.items.length > 0)
 )
 
@@ -237,11 +300,7 @@ function onDropdownPick(item: StandardProcessItem) {
 }
 
 function onDropdownCreate(name: string) {
-  const value = (name || '').trim()
-  if (!value) return
-  emitValue(value)
-  emit('create', value)
-  keyword.value = ''
+  openCreateDialog(name)
 }
 
 function filterItems(items: StandardProcessItem[]): StandardProcessItem[] {
@@ -258,7 +317,7 @@ const canCreate = computed(() => {
   if (!props.allowCreate) return false
   const kw = keyword.value.trim()
   if (!kw) return false
-  return !processes.value.some((p) => (p.processName || '').trim() === kw)
+  return filterItems(selectableProcesses.value).length === 0
 })
 
 function emitValue(value: number | string | undefined) {
@@ -275,11 +334,23 @@ function pick(p: StandardProcessItem) {
 }
 
 function createFromKeyword() {
-  const name = keyword.value.trim()
-  if (!name) return
-  emitValue(name)
-  emit('create', name)
-  dialogVisible.value = false
+  openCreateDialog(keyword.value)
+}
+
+function openCreateDialog(name: string) {
+  if (props.disabled || !props.allowCreate || !name.trim()) return
+  createName.value = name.trim()
+  createDialogVisible.value = true
+}
+
+async function onTempCreated(item: StandardProcessItem) {
+  await reloadProcesses()
+  // reload 内部会记录加载失败；仍保留已创建项，保证当前与其他实例即时可选。
+  if (!processes.value.some((p) => p.processId === item.processId)) {
+    processes.value = [...processes.value, item]
+  }
+  pick(item)
+  keyword.value = ''
 }
 
 function onClear() {
@@ -372,15 +443,21 @@ defineExpose({ reload: reloadProcesses, processes })
   padding: 2px;
 }
 .sps-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 12px 6px;
+  padding: 24px 6px 12px;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s;
+}
+.sps-pending {
+  position: absolute;
+  top: 2px;
+  right: 2px;
 }
 .sps-card:hover {
   border-color: var(--el-color-primary);
