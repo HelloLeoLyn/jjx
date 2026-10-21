@@ -108,6 +108,30 @@ async function save() {
   } catch (error) { console.error('保存分色检查表失败', error) }
   finally { saving.value = false }
 }
+/** 未保存/忙碌来源（dev-20261021-025）：区分未保存、窗口未关闭、保存中。 */
+const guardDetails = computed(() => {
+  const reasons: string[] = []
+  if (saving.value) reasons.push('分色检查表正在保存')
+  if (editorVisible.value) {
+    reasons.push(dirty.value ? '分色检查表有未保存修改' : '分色检查表编辑窗口未关闭')
+  }
+  return { busy: saving.value, dirty: editorVisible.value, reasons }
+})
+async function saveIfDirty(): Promise<boolean> {
+  if (saving.value) return false
+  if (!editorVisible.value) return true
+  if (dirty.value) await save()
+  else editorVisible.value = false
+  return !editorVisible.value
+}
+function discardIfDirty() {
+  editorVisible.value = false
+}
+defineExpose({
+  guardState: () => guardDetails.value,
+  saveIfDirty,
+  discardIfDirty,
+})
 function beforeUnload(event: BeforeUnloadEvent) {
   if (saving.value || (editorVisible.value && dirty.value)) { event.preventDefault(); event.returnValue = '' }
 }

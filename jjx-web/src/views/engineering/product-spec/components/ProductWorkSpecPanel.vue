@@ -925,6 +925,74 @@ const editing = computed(
     printSpecBusy.value ||
     dieSaving.value
 )
+/** 未保存/忙碌来源（dev-20261021-025）：给父级抽屉提示“具体哪里没保存”。 */
+const guardDetails = computed(() => {
+  const busyReasons: string[] = []
+  const dirtyReasons: string[] = []
+  if (structureUploadBusy.value) busyReasons.push('结构图正在上传')
+  if (savingInline.value) busyReasons.push('凹凸字段正在保存')
+  if (saving.value) busyReasons.push('工程规范正在保存')
+  if (savingIssuance.value) busyReasons.push('发行信息正在保存')
+  if (projectMaterialSaving.value) busyReasons.push('项目材料正在保存')
+  if (dieSaving.value) busyReasons.push('刀模位置正在保存')
+  if (printSpecBusy.value) busyReasons.push('印刷备注正在保存')
+  if (structureEditing.value && !structureUploadBusy.value) dirtyReasons.push('结构图有未保存修改')
+  if (embossEditing.value) dirtyReasons.push('凹凸字段有未保存修改')
+  if (noteDraft.value !== null) dirtyReasons.push('工程备注有未保存修改')
+  if (issuanceDraft.value !== null) dirtyReasons.push('发行信息有未保存修改')
+  if (dieEditing.value) dirtyReasons.push('刀模位置有未保存修改')
+  if (projectMaterialDraft.value !== null)
+    dirtyReasons.push(`项目材料有未保存修改（${projectMaterialDraft.value.length} 行）`)
+  if (editorVisible.value)
+    dirtyReasons.push(dirty.value ? '工程规范有未保存修改' : '工程规范编辑窗口未关闭')
+  if (bomVisible.value) dirtyReasons.push('BOM 窗口未关闭')
+  if (routeVisible.value) dirtyReasons.push('工艺路线窗口未关闭')
+  return {
+    busy: busyReasons.length > 0,
+    dirty: dirtyReasons.length > 0,
+    reasons: [...busyReasons, ...dirtyReasons],
+  }
+})
+/** 保存当前所有可自动保存的草稿；无法自动保存的窗口返回 false，由离场拦截留在原处。 */
+async function saveIfDirty(): Promise<boolean> {
+  if (guardDetails.value.busy) return false
+  try {
+    if (projectMaterialDraft.value !== null) await saveProjectMaterials()
+    if (noteDraft.value !== null) await saveNote()
+    if (issuanceDraft.value !== null) await saveIssuance()
+    if (embossEditing.value) await saveEmboss()
+    if (dieEditing.value) await saveDieLocationAll()
+    if (editorVisible.value) {
+      if (dirty.value) await save()
+      else editorVisible.value = false
+    }
+    if (structureEditing.value || bomVisible.value || routeVisible.value) {
+      ElMessage.warning('结构图、BOM 或工艺路线窗口无法自动保存，请先在窗口内保存或取消')
+      return false
+    }
+    return !guardDetails.value.dirty
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存未完成')
+    return false
+  }
+}
+/** 放弃本次草稿（仅在用户明确选择“放弃修改”后调用）。 */
+function discardIfDirty() {
+  projectMaterialDraft.value = null
+  noteDraft.value = null
+  issuanceDraft.value = null
+  embossEditing.value = false
+  dieEditing.value = false
+  editorVisible.value = false
+  structureEditing.value = false
+  bomVisible.value = false
+  routeVisible.value = false
+}
+defineExpose({
+  guardState: () => guardDetails.value,
+  saveIfDirty,
+  discardIfDirty,
+})
 async function loadData() {
   const generation = ++loadGeneration
   loading.value = true

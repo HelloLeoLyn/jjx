@@ -20,6 +20,7 @@
       />
 
       <ProductWorkSpecVersionPanel
+        ref="versionPanelRef"
         v-if="!selectedVersionId && productId"
         :key="productId"
         :product-id="productId"
@@ -179,6 +180,7 @@
           <!-- ⑤ 作业规范：产品作业规范 + 印刷规范 -->
           <template v-else-if="tab.name === 'spec'">
             <ProductWorkSpecPanel
+              ref="workSpecPanelRef"
               v-if="!selectedVersionId && productId && activeTab === 'spec'"
               :key="productId"
               :product-id="productId"
@@ -365,6 +367,7 @@
           <!-- ⑨ 分色检查表 -->
           <template v-else-if="tab.name === 'color'">
             <ProductColorCheckPanel
+              ref="colorCheckPanelRef"
               v-if="productId && activeTab === 'color'"
               :key="`${productId}-color`"
               :product-id="productId"
@@ -399,7 +402,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { getFullProduct } from '@/api/product'
 import ProductDocPanel from '@/components/product/ProductDocPanel.vue'
 import ProductSpecHeader from '@/components/product/ProductSpecHeader.vue'
@@ -429,39 +432,113 @@ function dieText(spec: any): string {
   return values.length ? values.join('；') : spec?.dieLocationText || '-'
 }
 const specVisible = ref(false)
+// 子面板守卫（dev-20261021-025）：切换/关闭时按需查询未保存来源
+const versionPanelRef = ref<any>()
+const workSpecPanelRef = ref<any>()
+const colorCheckPanelRef = ref<any>()
 /** 列表「作业规范」以只读查看打开；只有「制定规范/继续制定」进入可编辑态（dev-20261020-018）。 */
 const specViewOnly = ref(false)
 const versionBusy = ref(false)
 const drawingBusy = ref(false)
 const workSpecBusy = ref(false)
 const colorCheckBusy = ref(false)
-function closeSpec(done: () => void) {
-  if (draftSession.dirty.value || draftSession.busy.value) {
-    ElMessage.warning('请先保存或取消工程附件草稿改动')
-    return
+interface SpecGuardState {
+  area: string
+  dirty: boolean
+  busy: boolean
+  /** 无法自动保存/放弃的阻断（如工程附件草稿），只能留在原处处理。 */
+  hardBlock?: boolean
+  reasons: string[]
+  saveIfDirty?: () => Promise<boolean>
+  discardIfDirty?: () => void
+}
+/** 汇总当前所有未保存/忙碌来源（dev-20261021-025）：按需查询子面板，不长期镜像布尔。 */
+function collectSpecGuardStates(): SpecGuardState[] {
+  const states: SpecGuardState[] = []
+  if (draftSession.busy.value) {
+    states.push({
+      area: '工程附件草稿',
+      dirty: false,
+      busy: true,
+      reasons: ['工程附件草稿正在上传/保存'],
+    })
+  } else if (draftSession.dirty.value) {
+    // 草稿没有单独的“放弃”API，硬拦并提示先在作业规范内保存，避免切走静默丢失。
+    states.push({
+      area: '工程附件草稿',
+      dirty: true,
+      busy: false,
+      hardBlock: true,
+      reasons: ['工程附件草稿有未保存修改，请先在作业规范内保存'],
+    })
   }
-  if (
-    versionBusy.value ||
-    draftSession.busy.value ||
-    draftSession.dirty.value ||
-    drawingBusy.value ||
-    workSpecBusy.value ||
-    colorCheckBusy.value
-  ) {
-    ElMessage.warning('请先完成或关闭工程规范、印刷备注、分色检查表、图纸维护窗口')
-    return
+  if (drawingBusy.value) {
+    states.push({
+      area: '图纸维护',
+      dirty: false,
+      busy: true,
+      reasons: ['图纸维护正在上传/保存'],
+    })
   }
+  const panels: Array<[string, any]> = [
+    ['版本', versionPanelRef.value],
+    ['作业规范', workSpecPanelRef.value],
+    ['分色检查表', colorCheckPanelRef.value],
+  ]
+  for (const [area, panel] of panels) {
+    const state = panel?.guardState?.()
+    if (!state || (!state.dirty && !state.busy)) continue
+    states.push({
+      area,
+      dirty: !!state.dirty,
+      busy: !!state.busy,
+      reasons: (state.reasons || []).map((reason: string) => `${area}：${reason}`),
+      saveIfDirty: panel.saveIfDirty ? () => panel.saveIfDirty() : undefined,
+      discardIfDirty: panel.discardIfDirty ? () => panel.discardIfDirty() : undefined,
+    })
+  }
+  return states
+}
+/** 离开当前 tab/关闭抽屉前统一判定：请求中只等待；有未保存改动时三选一。 */
+async function confirmSpecLeave(): Promise<boolean> {
+  const states = collectSpecGuardStates()
+  if (!states.length) return true
+  const hard = states.filter((state) => state.busy || state.hardBlock)
+  if (hard.length) {
+    ElMessage.warning(`请先处理：${hard.flatMap((state) => state.reasons).join('；')}`)
+    return false
+  }
+  const reasons = states.flatMap((state) => state.reasons)
+  try {
+    await ElMessageBox.confirm(`以下内容有未保存修改：\n${reasons.join('；')}`, '未保存提醒', {
+      distinguishCancelAndClose: true,
+      confirmButtonText: '保存并离开',
+      cancelButtonText: '放弃修改',
+      type: 'warning',
+      closeOnClickModal: false,
+      closeOnPressEscape: false,
+    })
+  } catch (action) {
+    if (action === 'cancel') {
+      states.forEach((state) => state.discardIfDirty?.())
+      return true
+    }
+    return false
+  }
+  for (const state of states) {
+    if (state.saveIfDirty && !(await state.saveIfDirty())) return false
+  }
+  return true
+}
+async function closeSpec(done: () => void) {
+  if (!(await confirmSpecLeave())) return
   requestVersion++
   resetVersionSnapshot()
   exportVisible.value = false
   done()
 }
-function beforeSpecTabLeave() {
-  if (versionBusy.value || draftSession.busy.value || workSpecBusy.value || colorCheckBusy.value) {
-    ElMessage.warning('请先完成或关闭规范编辑窗口')
-    return false
-  }
-  return true
+async function beforeSpecTabLeave() {
+  return await confirmSpecLeave()
 }
 const detailLoading = ref(false)
 const detail = ref<ProductFullVO | null>(null)

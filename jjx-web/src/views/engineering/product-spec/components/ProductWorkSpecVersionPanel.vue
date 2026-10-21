@@ -532,6 +532,18 @@ async function openDetail(row: any) {
   }
 }
 
+/** 版本发布/定版进行中为 busy（dev-20261021-025）；发布没有本地草稿态。 */
+const guardDetails = computed(() => ({
+  busy: publishing.value,
+  dirty: false,
+  reasons: publishing.value ? ['版本正在发布/定版'] : [],
+}))
+defineExpose({
+  guardState: () => guardDetails.value,
+  saveIfDirty: async () => !publishing.value,
+  discardIfDirty: () => {},
+})
+
 onMounted(load)
 watch(() => props.productId, load)
 </script>
