@@ -23,7 +23,12 @@
     </template>
     <template #option="{ item }">
       <div class="sps-option">
-        <SvgIcon v-if="item.icon" :name="item.icon" :size="16" />
+        <ProcessIcon
+          :icon="item.icon"
+          :name="item.processName"
+          :category="item.processCategory"
+          :size="16"
+        />
         <span class="sps-option-name"
           >{{ item.processName }}{{ isPending(item) ? '（待审）' : '' }}</span
         >
@@ -77,8 +82,12 @@
             <el-tag v-if="isPending(p)" class="sps-pending" size="small" type="warning"
               >待审</el-tag
             >
-            <SvgIcon v-if="p.icon" :name="p.icon" :size="28" />
-            <span v-else class="sps-card-emoji">📦</span>
+            <ProcessIcon
+              :icon="p.icon"
+              :name="p.processName"
+              :category="p.processCategory"
+              :size="28"
+            />
             <span class="sps-card-name">{{ p.processName }}</span>
           </div>
           <el-empty v-if="!g.items.length" description="无匹配项目" :image-size="56" />
@@ -103,6 +112,7 @@
 import { computed, ref, watch } from 'vue'
 import { CircleClose, Plus, Search } from '@element-plus/icons-vue'
 import SvgIcon from '@/components/SvgIcon/index.vue'
+import ProcessIcon from '@/components/ProcessIcon.vue'
 import EditableSearchSelect from './EditableSearchSelect.vue'
 import TempProcessCreateDialog from './TempProcessCreateDialog.vue'
 import { loadCommonStandardProcesses } from '@/api/product/standardProcess'

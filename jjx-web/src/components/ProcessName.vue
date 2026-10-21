@@ -1,13 +1,19 @@
 <template>
   <span class="process-name">
-    <SvgIcon v-if="icon" :name="icon" :size="size" class="process-name-icon" />
+    <ProcessIcon
+      :icon="icon"
+      :name="displayName"
+      :category="matched?.processCategory"
+      :size="size"
+      class="process-name-icon"
+    />
     <span class="process-name-text">{{ displayName }}</span>
   </span>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import SvgIcon from '@/components/SvgIcon/index.vue'
+import ProcessIcon from '@/components/ProcessIcon.vue'
 import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 
 /**
