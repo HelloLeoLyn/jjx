@@ -288,17 +288,10 @@
               ><template #default="{ row }"
                 ><template v-if="projectMaterialDraft"
                   ><el-input
-                    v-model="row.specification"
+                    :model-value="row.params || workSpecMaterialSpec(row)"
                     maxlength="500"
-                    placeholder="规格"
-                  /><el-input
-                    v-model="row.params"
-                    class="params-input"
-                    type="textarea"
-                    :rows="3"
-                    maxlength="500"
-                    show-word-limit
-                    placeholder="手动覆盖（可选）"
+                    placeholder="规格及模数"
+                    @update:model-value="row.params = $event"
                   /></template
                 ><span v-else class="multiline">{{
                   row.params || workSpecMaterialSpec(row)
@@ -1409,8 +1402,5 @@ onBeforeUnmount(() => {
 }
 .project-material-project :deep(.el-input) {
   flex: 1;
-}
-.params-input {
-  margin-top: 6px;
 }
 </style>
