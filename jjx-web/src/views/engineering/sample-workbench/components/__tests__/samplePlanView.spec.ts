@@ -167,8 +167,8 @@ function makeController(overrides: Record<string, any> = {}) {
   })
 }
 
-describe('SampleProcessPlanEditor 标准工序库常驻展开', () => {
-  it('默认即展开、无收起入口，标准工序入口仍在，保存仍走控制器', async () => {
+describe('SampleProcessPlanEditor 顶部标准工序库默认收起', () => {
+  it('默认收起、可展开/收起且不重建选择器，保存仍走控制器', async () => {
     const controller = makeController()
     const wrapper = mount(SampleProcessPlanEditor, {
       props: { controller, readonly: false },
@@ -182,11 +182,18 @@ describe('SampleProcessPlanEditor 标准工序库常驻展开', () => {
       },
     })
 
-    // dev-20261019-011：去掉折叠，标准工序库常驻展开，不再有展开/收起按钮
-    expect(wrapper.find('.mid-row').classes()).not.toContain('picker-collapsed')
+    // dev-20261022-014：选择器移到顶部，默认收起；展开/收起只切 v-show，不重建实例
+    const toggle = wrapper.find('.picker-toggle')
+    expect(toggle.exists()).toBe(true)
+    expect(shown(wrapper.find('[data-test="picker-body"]'))).toBe(false)
+    const picker = wrapper.find('work-project-picker-stub')
+    expect(picker.exists()).toBe(true)
+    expect(picker.attributes('layout')).toBe('horizontal')
+    await toggle.trigger('click')
     expect(shown(wrapper.find('[data-test="picker-body"]'))).toBe(true)
+    await toggle.trigger('click')
+    expect(shown(wrapper.find('[data-test="picker-body"]'))).toBe(false)
     expect(wrapper.find('work-project-picker-stub').exists()).toBe(true)
-    expect(wrapper.find('.picker-toggle').exists()).toBe(false)
     // 拖拽落点（新建卡片区域）仍在
     expect(wrapper.find('.plan-scroll').exists()).toBe(true)
 

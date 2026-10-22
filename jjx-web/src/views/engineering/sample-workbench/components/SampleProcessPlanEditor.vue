@@ -1,12 +1,17 @@
 <template>
-  <div class="mid-row">
-    <el-card class="col-picker" shadow="never">
-      <template #header>
-        <span style="font-weight: 600">添加标准工序</span>
-        <span class="desc">选结构 → 拖拽工序到右侧卡片组合</span>
-      </template>
-      <div class="picker-body" data-test="picker-body">
-        <WorkProjectPicker :readonly="readonly" />
+  <div class="plan-editor">
+    <el-card class="picker-card" shadow="never">
+      <div class="picker-bar">
+        <div class="picker-bar-title">
+          <span style="font-weight: 600">添加标准工序</span>
+          <span class="desc">选结构 → 拖拽工序到下方卡片组合</span>
+        </div>
+        <el-button class="picker-toggle" size="small" link @click="pickerExpanded = !pickerExpanded">
+          {{ pickerExpanded ? '收起标准工序' : '展开标准工序' }}
+        </el-button>
+      </div>
+      <div v-show="pickerExpanded" class="picker-body" data-test="picker-body">
+        <WorkProjectPicker :readonly="readonly" layout="horizontal" />
       </div>
     </el-card>
 
@@ -104,7 +109,7 @@
 </template>
 
 <script setup lang="ts">
-import { toRefs } from 'vue'
+import { ref, toRefs } from 'vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
 import SampleProcessPlanItem from './SampleProcessPlanItem.vue'
 import FrequentMaterialsBar from './FrequentMaterialsBar.vue'
@@ -198,6 +203,9 @@ const {
 // activePlanTab 双向绑定（v-model:active-plan-tab）
 const activePlanTab = defineModel<string>('activePlanTab')
 
+/** 顶部标准工序库默认收起，避免挤压下方工序材料编辑区（dev-20261022-014）。 */
+const pickerExpanded = ref(false)
+
 // 模板中直接使用 props 定义的属性名（Vue 自动可用，保持响应性）
 // 注意：不在此处解构 props，避免失去响应式
 </script>
@@ -210,20 +218,37 @@ const activePlanTab = defineModel<string>('activePlanTab')
   background: #fff;
 }
 
-.mid-row {
+.plan-editor {
   display: flex;
+  flex-direction: column;
   gap: 14px;
   margin-bottom: 14px;
 }
-.picker-body {
-  min-height: 240px;
+.picker-card {
+  width: 100%;
 }
-.col-picker {
-  width: 400px;
+.picker-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.picker-bar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.picker-toggle {
   flex-shrink: 0;
 }
+.picker-body {
+  margin-top: 10px;
+  min-height: 0;
+}
 .col-plan {
-  flex: 1;
+  width: 100%;
   min-width: 0;
 }
 .desc {

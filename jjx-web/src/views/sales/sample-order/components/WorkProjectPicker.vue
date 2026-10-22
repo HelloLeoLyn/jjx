@@ -1,5 +1,5 @@
 <template>
-  <div class="work-project-picker">
+  <div class="work-project-picker" :class="{ 'layout-horizontal': layout === 'horizontal' }">
     <!-- 搜索 -->
     <div class="picker-search">
       <el-input
@@ -70,6 +70,8 @@ const props = defineProps<{
   /** 已选标准工序ID列表（可选，不传=只浏览/拖拽） */
   modelValue?: number[]
   readonly?: boolean
+  /** 布局：default=原左侧竖向；horizontal=顶部横向换行+限高滚动（dev-20261022-014） */
+  layout?: 'default' | 'horizontal'
 }>()
 
 const emit = defineEmits<{
@@ -248,6 +250,22 @@ onMounted(loadProcesses)
   max-height: 300px;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+/* 顶部横向布局（dev-20261022-014）：工序横排自动换行，限高内部滚动；默认布局不受影响 */
+.work-project-picker.layout-horizontal .picker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.work-project-picker.layout-horizontal .proc-item {
+  flex: 0 0 120px;
+  width: 120px;
+  padding: 8px 4px;
 }
 
 .proc-item {
