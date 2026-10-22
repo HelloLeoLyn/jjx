@@ -1168,6 +1168,20 @@ public class QuotationServiceImpl implements IQuotationService {
         if (quotationMapper.updateById(quotation) != 1) throw new BusinessException("报价转换状态保存失败，整单已回滚");
         recordFlow(quotation, "CONVERT_ORDER", "转订单完成", from, QuotationStatus.COMPLETED.getValue(), "转为销售订单，订单号:" + orderId, null);
 
+        // 来源报价附件沿原链路查阅；仅收集实际建立在订单上的引用，不复制来源附件。
+        var orderRefIds = attachmentRefMapper.selectList(Wrappers.<com.jjx.system.domain.entity.SysAttachmentRef>lambdaQuery()
+                .eq(com.jjx.system.domain.entity.SysAttachmentRef::getSourceType, "sales_order")
+                .eq(com.jjx.system.domain.entity.SysAttachmentRef::getSourceId, orderId)
+                .eq(com.jjx.system.domain.entity.SysAttachmentRef::getDeleted, 0)).stream()
+                .map(com.jjx.system.domain.entity.SysAttachmentRef::getId).toList();
+        var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        if (attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet) {
+            var params = new java.util.HashMap<String, Object>();
+            params.put("quotationId", quotationId);
+            params.put("attachmentRefIds", orderRefIds);
+            params.put("traceId", orderDTO.getTraceId());
+            servlet.getRequest().setAttribute("jjx.quotationConversionLog", params);
+        }
         publishQuotationEvent("quotation.converted", quotation);
         log.info("报价单{}已转为订单: orderId={}", quotationId, orderId);
         return orderId;

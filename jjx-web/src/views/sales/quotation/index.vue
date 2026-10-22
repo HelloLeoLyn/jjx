@@ -169,7 +169,7 @@
     <!-- ✅ 流水弹窗 -->
     <!-- ============================================================ -->
     <SkeletonAction>
-      <TraceTimeline v-model="traceDialogVisible" :trace-id="currentTraceId" />
+      <TraceTimeline v-model="traceDialogVisible" :trace-id="currentTraceId" :group-id="currentGroupId" biz-type="quotation" :biz-id="currentTraceBizId" />
     </SkeletonAction>
     <!-- 产品行内上传组件-->
     <SkeletonAction>
@@ -240,7 +240,7 @@ defineOptions({
 // ============================================================
 // 1. 基础导入
 // ============================================================
-import { ref, reactive, computed, onMounted, onDeactivated } from 'vue'
+import { ref, reactive, computed, onMounted, onDeactivated, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import {
@@ -304,6 +304,13 @@ const currencyOptions = [
 ]
 // 状态
 const traceDialogVisible = ref(false)
+const currentGroupId = ref('')
+const currentTraceBizId = ref('')
+provide('jjx.openTraceGroup', (traceId: string, groupId: string) => {
+  currentTraceId.value = traceId
+  currentGroupId.value = groupId
+  traceDialogVisible.value = true
+})
 const currentTraceId = ref('')
 const attachmentDialogVisible = ref(false)
 const attachmentQuotationId = ref<number | null>(null)
@@ -1166,6 +1173,8 @@ const handleView = (row: any) => {
 // ============================================================
 // 方法
 const showTrace = (row: any) => {
+  currentGroupId.value = ''
+  currentTraceBizId.value = String(row.quotationId || '')
   currentTraceId.value = row.traceId || ''
   traceDialogVisible.value = true
 }

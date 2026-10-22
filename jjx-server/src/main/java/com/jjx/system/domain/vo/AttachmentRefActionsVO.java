@@ -9,5 +9,10 @@ public record AttachmentRefActionsVO(
         String joinedBy, LocalDateTime joinedAt,
         List<Action> businessActions, List<Action> referenceEvents) {
 
-    public record Action(String eventKey, String actionName, LocalDateTime actionTime, String operatorName) {}
+    public record Action(String eventKey, String actionName, LocalDateTime actionTime, String operatorName,
+                         String traceId, String groupId, List<Action> children) {
+        public Action(String eventKey, String actionName, LocalDateTime actionTime, String operatorName) {
+            this(eventKey, actionName, actionTime, operatorName, null, null, List.of());
+        }
+    }
 }

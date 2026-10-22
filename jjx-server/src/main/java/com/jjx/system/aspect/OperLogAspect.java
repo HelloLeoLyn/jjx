@@ -78,6 +78,15 @@ public class OperLogAspect {
 
             // 执行业务方法
             Object result = point.proceed();
+            // 方案2：转换服务提供精确引用集合，复用本条 @Log，禁止另写转换日志。
+            var requestAttributes = RequestContextHolder.getRequestAttributes();
+            if (requestAttributes instanceof ServletRequestAttributes servlet
+                    && "报价转订单".equals(operLog.getAction())
+                    && servlet.getRequest().getAttribute("jjx.quotationConversionLog") instanceof Map<?, ?> conversion) {
+                operLog.setOperParam(JSONUtil.toJsonStr(conversion));
+                Object conversionTrace = conversion.get("traceId");
+                if (conversionTrace != null) traceId = conversionTrace.toString();
+            }
             // 返回值表达式（bizId/traceId/detail 等）必须共享同一个上下文。
             bindResult(spelCtx, result);
 

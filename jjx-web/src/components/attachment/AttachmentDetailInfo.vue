@@ -33,8 +33,19 @@
         <template v-else>
           <ul v-if="actionDetail?.businessActions.length" class="action-list">
             <li v-for="action in actionDetail.businessActions" :key="action.eventKey">
-              <strong>{{ action.actionName }}</strong>
-              <div>{{ formatTime(action.actionTime) }} · {{ action.operatorName || '操作人未记录' }}</div>
+              <button v-if="action.traceId && action.groupId" type="button" class="action-retry" @click="openAction(action)">
+                {{ action.actionName }} · {{ formatTime(action.actionTime) }} · {{ action.operatorName || '操作人未记录' }}
+              </button>
+              <template v-else>
+                <strong>{{ action.actionName }}</strong>
+                <div>{{ formatTime(action.actionTime) }} · {{ action.operatorName || '操作人未记录' }}</div>
+              </template>
+              <ul v-if="expandedAction === action.eventKey" class="action-list">
+                <li v-for="child in action.children || []" :key="child.eventKey">
+                  {{ child.actionName }} · {{ formatTime(child.actionTime) }} · {{ child.operatorName || '操作人未记录' }}
+                </li>
+                <li v-if="!action.children?.length">暂无同组子项</li>
+              </ul>
             </li>
           </ul>
           <span v-else>未查到关联业务动作记录</span>
@@ -54,8 +65,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { attachmentRefApi, type AttachmentDocumentTypeItem, type AttachmentRefActions } from '@/api/system/attachmentRef'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { attachmentRefApi, type AttachmentDocumentTypeItem, type AttachmentRefActions, type AttachmentRefAction } from '@/api/system/attachmentRef'
 import {
   AttachmentDocumentStatusEnum,
   AttachmentSourceTypeEnum,
@@ -78,6 +89,13 @@ const props = withDefaults(defineProps<{
   visible?: boolean
 }>(), { visible: true })
 
+const openTraceGroup = inject<((traceId: string, groupId: string) => void) | null>('jjx.openTraceGroup', null)
+const expandedAction = ref('')
+function openAction(action: AttachmentRefAction) {
+  if (openTraceGroup && action.traceId && action.groupId) openTraceGroup(action.traceId, action.groupId)
+  else expandedAction.value = expandedAction.value === action.eventKey ? '' : action.eventKey
+}
+
 const referenceId = computed(() => {
   const id = props.refId ?? props.row?.refId
   return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : null
@@ -94,6 +112,7 @@ const uploadTime = computed(() => referenceId.value ? actionDetail.value?.upload
 async function loadActions() {
   const current = ++requestId
   const id = referenceId.value
+  expandedAction.value = ''
   actionDetail.value = null
   error.value = ''
   loading.value = false

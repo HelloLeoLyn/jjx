@@ -155,7 +155,7 @@ public class QuotationController extends BaseController {
      * 报价单转为订单
      */
     @Operation(summary = "报价单转为订单")
-    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'quotation'", bizId = "#quotationId", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).COMPLETED.getLabel()", action = LogActions.QUOTATION_CONVERT)
+    @Log(module = "报价单管理", businessType = BusinessType.UPDATE, bizType = "'sales_order'", bizId = "#result?.data", bizStatus = "T(com.jjx.sales.enums.QuotationStatus).COMPLETED.getLabel()", action = LogActions.QUOTATION_CONVERT)
     @SaCheckPermission(value = {"sales:quotation:edit", "sales:order:add"}, mode = cn.dev33.satoken.annotation.SaMode.AND)
     @PostMapping("/convert/{quotationId}")
     public Result<Object> convert(@PathVariable Long quotationId,

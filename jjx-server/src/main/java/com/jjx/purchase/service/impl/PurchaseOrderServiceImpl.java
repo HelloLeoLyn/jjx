@@ -212,6 +212,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             log.setBusinessType(1); // 新增
             log.setOperUrl("order.create");
             log.setBizType("purchase_order");
+            log.setAction("创建采购订单");
             log.setBizId(String.valueOf(order.getOrderId()));
             log.setTraceId(order.getTraceId());
             log.setBizStatus(PurchaseOrderStatusEnum.getByValue(order.getApprovalStatus()).getLabel());

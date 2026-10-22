@@ -3,10 +3,8 @@ package com.jjx.trace.service.impl;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.sales.domain.entity.SalesQuotationFlow;
 import com.jjx.sales.mapper.QuotationFlowMapper;
@@ -52,22 +50,18 @@ public class TraceServiceImpl implements TraceService {
         if (traceId == null || traceId.isBlank()) {
             return PageResult.build(Collections.emptyList(), 0);
         }
-        // 先取整条 trace 的日志再归并、最后按归并后的条数分页：否则一对「附件 + 保存」会被页码切开，
-        // 总数也会和页面上看到的事件数不一致。一条 trace 只对应一次业务操作链，量级有限。
+        // 整条 trace 分组后再分页，保证主事件与子项不会被页码切开。
         LambdaQueryWrapper<SysOperLog> query = Wrappers.<SysOperLog>lambdaQuery()
                 .eq(SysOperLog::getTraceId, traceId)
-                // 工程主数据归产品；读时排除历史误挂记录，保留 NULL 类型的旧日志。
-                .and(w -> w.isNull(SysOperLog::getBizType)
-                        .or().notIn(SysOperLog::getBizType, List.of("bom", "routing")))
                 .orderByAsc(SysOperLog::getCreateTime)
                 .orderByAsc(SysOperLog::getId);
-        applyScope(query, scope);
+        // trace 查询按用户口径全显示，scope 不截断跨来源动作。
         List<SysOperLog> logs = sysOperLogMapper.selectList(query);
         List<UnifiedTraceEventVO> events = enrichWorkSpecHistory(TraceEventAggregator.mergeAttachmentEvents(
                 logs.stream().map(this::fromLog).toList()));
         int size = Math.min(Math.max(pageSize, 1), 100);
         int num = Math.max(pageNum, 1);
-        int from = Math.min((num - 1) * size, events.size());
+        int from = (int) Math.min((long) (num - 1) * size, events.size());
         int to = Math.min(from + size, events.size());
         PageResult<UnifiedTraceEventVO> result = new PageResult<>();
         result.setRecords(new ArrayList<>(events.subList(from, to)));
@@ -100,10 +94,18 @@ public class TraceServiceImpl implements TraceService {
         }
         applyScope(query, scope);
         query.orderByAsc(SysOperLog::getCreateTime).orderByAsc(SysOperLog::getId);
-        IPage<SysOperLog> page = sysOperLogMapper.selectPage(
-                new Page<>(Math.max(pageNum, 1), Math.min(Math.max(pageSize, 1), 100)), query);
-        List<UnifiedTraceEventVO> records = enrichWorkSpecHistory(page.getRecords().stream().map(this::fromLog).toList());
-        return PageResult.of(page, records);
+        var records = enrichWorkSpecHistory(TraceEventAggregator.mergeAttachmentEvents(
+                sysOperLogMapper.selectList(query).stream().map(this::fromLog).toList()));
+        int size = Math.min(Math.max(pageSize, 1), 100);
+        int num = Math.max(pageNum, 1);
+        int from = (int) Math.min((long) (num - 1) * size, records.size());
+        var result = new PageResult<UnifiedTraceEventVO>();
+        result.setRecords(new ArrayList<>(records.subList(from, Math.min(from + size, records.size()))));
+        result.setTotal(records.size());
+        result.setPageNum(num);
+        result.setPageSize(size);
+        result.setTotalPages((records.size() + size - 1) / size);
+        return result;
     }
 
     @Override
@@ -182,6 +184,7 @@ public class TraceServiceImpl implements TraceService {
         event.setModule(moduleOf(log.getModule()));
         event.setBizType(log.getBizType());
         event.setBizId(log.getBizId());
+        event.setGroupId(log.getOperGroupId());
         event.setBusinessType(log.getBusinessType());
         event.setOperUrl(log.getOperUrl());
         event.setOperParam(log.getOperParam());

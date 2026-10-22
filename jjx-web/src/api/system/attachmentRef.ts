@@ -69,6 +69,9 @@ export interface AttachmentRefItem {
 
 /** 当前引用的动作摘要；后端按引用实际来源鉴权，不返回其它单据的日志。 */
 export interface AttachmentRefAction {
+  traceId?: string | null
+  groupId?: string | null
+  children?: AttachmentRefAction[]
   eventKey: string
   actionName: string
   actionTime: string | null

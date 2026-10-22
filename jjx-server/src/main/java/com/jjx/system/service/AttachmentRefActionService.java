@@ -59,7 +59,7 @@ public class AttachmentRefActionService {
         // idx_biz 将读取范围限定为当前单据；JSON 在应用侧严格解析，兼容历史无效 oper_param。
         String logSource = "work_spec".equals(source) ? "product" : source;
         List<Map<String, Object>> logs = jdbc.queryForList("""
-            SELECT id,action,create_time,real_name,username,oper_url,detail,oper_param
+            SELECT id,action,create_time,real_name,username,oper_url,detail,oper_param,trace_id,oper_group_id
             FROM sys_oper_log WHERE biz_type=? AND biz_id=? AND status=? AND create_time>=?
               AND (detail IS NOT NULL OR oper_param LIKE '%attachmentRefIds%')
             ORDER BY create_time,id
@@ -88,7 +88,24 @@ public class AttachmentRefActionService {
             if (name == null || name.isBlank()) continue;
             String operator = person(text(log, "real_name"));
             if (operator == null) operator = person(text(log, "username"));
-            Action event = new Action("log:" + number(log, "id"), name, time(log, "create_time"), operator);
+            List<Action> children = new ArrayList<>();
+            String groupId = text(log, "oper_group_id");
+            String traceId = text(log, "trace_id");
+            if (groupId != null && traceId != null && !attachmentEvent) {
+                // 详情降级只展开当前已鉴权单据的同组动作，不泄露其它来源。
+                for (var child : jdbc.queryForList("""
+                        SELECT id,action,create_time,real_name,username FROM sys_oper_log
+                        WHERE oper_group_id=? AND trace_id=? AND biz_type=? AND biz_id=? AND id<>?
+                        ORDER BY create_time,id
+                        """, groupId, traceId, logSource, String.valueOf(sourceId), number(log, "id"))) {
+                    String childOperator = person(text(child, "real_name"));
+                    if (childOperator == null) childOperator = person(text(child, "username"));
+                    children.add(new Action("log:" + number(child, "id"), text(child, "action"),
+                            time(child, "create_time"), childOperator));
+                }
+            }
+            Action event = new Action("log:" + number(log, "id"), name, time(log, "create_time"), operator,
+                    traceId, groupId, List.copyOf(children));
             if (attachmentEvent) {
                 references.add(event);
                 if (sourceOperId == null && joined == null && "附件新增".equals(name)) joined = event;
@@ -98,6 +115,8 @@ public class AttachmentRefActionService {
         }
         // 支持业务流水的来源以其记录为准，避免同一动作在普通日志中再次出现。
         if (business.isEmpty()) business.addAll(fallback);
+        else fallback.stream().filter(action -> "报价转订单".equals(action.actionName()))
+                .forEach(business::add);
         business.sort(Comparator.comparing(Action::actionTime, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Action::eventKey));
         // 新引用按来源主键确认加入时间；历史空主键保留精确新增日志兜底。

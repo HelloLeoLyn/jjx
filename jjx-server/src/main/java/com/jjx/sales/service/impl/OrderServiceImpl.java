@@ -223,7 +223,8 @@ public class OrderServiceImpl implements IOrderService {
             log.setModule("销售订单");
             log.setBusinessType(1); // 新增
             log.setOperUrl("order.create");
-            log.setBizType("order");
+            log.setBizType("sales_order");
+            log.setAction("创建销售订单");
             log.setBizId(String.valueOf(order.getOrderId()));
             log.setTraceId(order.getTraceId());
             log.setBizStatus(SalesOrderStatusEnum.getByValue(order.getOrderStatus()).getLabel());
@@ -587,7 +588,7 @@ public class OrderServiceImpl implements IOrderService {
             newLog.setModule("销售订单管理");
             newLog.setBusinessType(1); // 新增
             newLog.setOperUrl("/sales/orders/" + orderId + "/copy");
-            newLog.setBizType("order");
+            newLog.setBizType("sales_order");
             newLog.setBizId(String.valueOf(copy.getOrderId()));
             newLog.setTraceId(copy.getTraceId());
             newLog.setBizStatus(SalesOrderStatusEnum.getByValue(copy.getOrderStatus()).getLabel());
@@ -612,7 +613,7 @@ public class OrderServiceImpl implements IOrderService {
             operLog.setModule("销售订单管理");
             operLog.setBusinessType(2); // 修改
             operLog.setOperUrl("/sales/orders/" + orderId + "/copy");
-            operLog.setBizType("order");
+            operLog.setBizType("sales_order");
             operLog.setBizId(String.valueOf(orderId));
             operLog.setTraceId(source.getTraceId());
             operLog.setBizStatus(SalesOrderStatusEnum.getByValue(source.getOrderStatus()).getLabel());

@@ -22,13 +22,31 @@
 
     <template v-else>
       <el-table
+        ref="eventTable"
         :data="events"
+        :expand-row-keys="expandedRows"
+        :row-class-name="({ row }: { row: TraceEvent }) => groupId && row.groupId === groupId ? 'target-group' : ''"
         size="small"
         border
         highlight-current-row
         row-key="eventId"
         class="event-table"
       >
+        <el-table-column type="expand" width="40">
+          <template #default="{ row }">
+            <div v-if="row.children?.length" class="group-children">
+              <div v-for="child in row.children" :key="child.eventId" class="group-child">
+                {{ sourceLabel(child) }} · {{ formatTime(child.time) }} ·
+                <el-link type="primary" @click="selectEvent(child)">{{ child.actionTitle }}</el-link>
+                · {{ child.operatorName || '-' }}
+              </div>
+            </div>
+            <span v-else>无同组子项</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源" min-width="140">
+          <template #default="{ row }">{{ sourceLabel(row) }}</template>
+        </el-table-column>
         <el-table-column label="时间" width="165">
           <template #default="scope">{{ formatTime(scope.row.time) }}</template>
         </el-table-column>
@@ -156,7 +174,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { Download, Loading } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { attachmentApi } from '@/api/system/attachment'
@@ -191,6 +209,8 @@ interface ReviewHistory {
 
 interface TraceEvent {
   eventId: string
+  groupId?: string
+  children?: TraceEvent[]
   time?: string
   bizStatus?: string
   action?: string
@@ -216,6 +236,7 @@ interface TraceEvent {
 
 const props = defineProps<{
   traceId?: string
+  groupId?: string
   bizType?: string
   bizId?: string
   module?: string
@@ -227,6 +248,14 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'update:modelValue', value: boolean): void
 }>()
+
+const eventTable = ref<any>()
+const expandedRows = ref<string[]>([])
+function sourceLabel(row: TraceEvent): string {
+  const label = formatBizModule(row.module, row.bizType)
+  if (props.bizType === row.bizType && props.bizId === String(row.bizId)) return `本单动作 · ${label}`
+  return `${label}${row.bizId ? ' #' + row.bizId : ''} 动作`
+}
 
 const visible = ref(false)
 const loading = ref(false)
@@ -241,23 +270,26 @@ const total = ref(0)
 const reviewCache = new Map<string, ReviewHistory[]>()
 
 const scopeLabel = computed(() =>
-  props.scope === 'work_spec' ? '仅看产品作业规范' : undefined
+  !props.traceId && props.scope === 'work_spec' ? '仅看产品作业规范' : undefined
 )
 
-type TraceParams = Pick<typeof props, 'traceId' | 'bizType' | 'bizId' | 'scope'>
+type TraceParams = Pick<typeof props, 'traceId' | 'bizType' | 'bizId' | 'scope' | 'groupId'>
 let loadedKey: string | undefined
+let requestVersion = 0
 const inFlight = new Map<string, Promise<void>>()
 
 watch(
-  () => [props.modelValue, props.traceId, props.bizType, props.bizId, props.scope] as const,
-  ([open, traceId, bizType, bizId, scope]) => {
+  () => [props.modelValue, props.traceId, props.bizType, props.bizId, props.scope, props.groupId] as const,
+  ([open, traceId, bizType, bizId, scope, groupId]) => {
     visible.value = open
     if (!open) {
       loadedKey = undefined
+      requestVersion++
+      inFlight.clear()
       return
     }
-    const snapshot: TraceParams = { traceId, bizType, bizId, scope }
-    const key = JSON.stringify([traceId, bizType, bizId, scope])
+    const snapshot: TraceParams = { traceId, bizType, bizId, scope, groupId }
+    const key = JSON.stringify([traceId, bizType, bizId, scope, groupId])
     if (loadedKey === key) return
     loadedKey = key
     resetAndLoad(snapshot)
@@ -310,11 +342,12 @@ function handleClose() {
 function resetAndLoad(snapshot: TraceParams) {
   pageNum.value = 1
   selectedEvent.value = null
-  return loadEvents(snapshot)
+  expandedRows.value = []
+  return loadEvents(snapshot, true)
 }
 
-function loadEvents(snapshot: TraceParams = props): Promise<void> {
-  const { traceId, bizType, bizId, scope } = snapshot
+function loadEvents(snapshot: TraceParams = props, locate = false): Promise<void> {
+  const { traceId, bizType, bizId, scope, groupId } = snapshot
   if (!traceId && !(bizType && bizId)) return Promise.resolve()
   const params: Record<string, any> = {
     pageNum: pageNum.value,
@@ -326,29 +359,56 @@ function loadEvents(snapshot: TraceParams = props): Promise<void> {
     params.bizType = bizType
     params.bizId = bizId
   }
-  if (scope) params.scope = scope
+  if (scope && !traceId) params.scope = scope
 
   // 仅复用尚未完成的同参数请求；分页、每页条数及刷新不受已加载 key 限制。
-  const key = JSON.stringify([traceId, bizType, bizId, scope, params.pageNum, params.pageSize])
+  const key = JSON.stringify([traceId, bizType, bizId, scope, groupId, locate, params.pageNum, params.pageSize])
   const pending = inFlight.get(key)
   if (pending) return pending
 
+  const version = ++requestVersion
   const promise = (async () => {
     loading.value = true
     try {
-      const response = await request.get('/api/trace/events', { params })
-      const data = (response as any)?.data || {}
+      let response = await request.get('/api/trace/events', { params })
+      if (version !== requestVersion) return
+      let data = (response as any)?.data || {}
+      if (locate && groupId) {
+        // 按主事件分页寻找目标；找不到时仍显示第一页，不把列表留空。
+        const first = data
+        let targetPage = 1
+        while (!(data.records || []).some((row: TraceEvent) => row.groupId === groupId)
+               && targetPage * params.pageSize < Number(data.total || 0)) {
+          targetPage++
+          response = await request.get('/api/trace/events', { params: { ...params, pageNum: targetPage } })
+          if (version !== requestVersion) return
+          data = (response as any)?.data || {}
+        }
+        if ((data.records || []).some((row: TraceEvent) => row.groupId === groupId)) pageNum.value = targetPage
+        else data = first
+      }
       events.value = (data.records || []).map(enrichEvent)
       total.value = Number(data.total || 0)
+      loading.value = false
       selectedEvent.value = null
+      if (locate && groupId) {
+        const target = events.value.find(row => row.groupId === groupId)
+        if (target) {
+          expandedRows.value = [target.eventId]
+          selectedEvent.value = target
+          await nextTick()
+          eventTable.value?.$el?.querySelector('.target-group')?.scrollIntoView({ block: 'nearest' })
+        }
+      }
     } catch {
+      if (version !== requestVersion) return
       events.value = []
       total.value = 0
     } finally {
-      loading.value = false
+      if (version === requestVersion) loading.value = false
     }
   })().finally(() => {
-    inFlight.delete(key)
+    if (inFlight.get(key) === promise) inFlight.delete(key)
   })
   inFlight.set(key, promise)
   return promise
@@ -361,6 +421,7 @@ function enrichEvent(row: any): TraceEvent {
   const isReview = row.businessType === 6
   return {
     ...row,
+    children: (row.children || []).map(enrichEvent),
     actionTitle: buildActionTitle(row),
     changes: detail.changes,
     attachments: detail.attachments,
@@ -372,6 +433,7 @@ function enrichEvent(row: any): TraceEvent {
 /** 流水标题：module（去"管理"后缀）+ 业务类型枚举，如「产品BOM - 修改」 */
 function buildActionTitle(row: any): string {
   const action = (row.action || '').trim()
+  if (action && row.operUrl === 'order.create' && String(row.operParam || '').startsWith(action + ' ')) return row.operParam
   if (action) return action
   const module = displayModule(row.module)?.replace(/管理$/, '')
   const bizLabel = BusinessTypeEnum.getLabel(row.businessType)
@@ -527,6 +589,8 @@ function downloadUrl(attachment: TraceAttachment): string {
 </script>
 
 <style scoped>
+.group-children { padding: 8px 24px; }
+.group-child + .group-child { margin-top: 8px; }
 .toolbar {
   display: flex;
   justify-content: space-between;
