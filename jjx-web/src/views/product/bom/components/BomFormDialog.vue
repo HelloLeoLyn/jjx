@@ -117,7 +117,7 @@
         <el-button link type="primary" @click="downloadImportTemplate">
           <el-icon><Download /></el-icon>下载导入模板（.xlsx）
         </el-button>
-        <span class="template-hint">必填：材料名称、规格（乘/跳）、模数；其余列可空。列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜基数｜预计不良｜最低投料｜实际投料（首行表头，数据从第 2 行起；预计不良填小数，如 0.05＝5%）。用量由基数÷模数计算，应用料再计入损耗；Excel的单用量、实发数量、数量、应用料列不作为计算输入。</span>
+        <span class="template-hint">必填：材料名称、规格（乘/跳）、模数；其余列可空。也支持单列「规格及模数」（如 340*305mm=8PCS、315宽跳75mm=2PCS、6个/PCS；基数缺省 1），此时不需要单独的规格/模数列。列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜基数｜预计不良｜最低投料｜实际投料（首行表头，数据从第 2 行起；预计不良填小数，如 0.05＝5%）。用量由基数÷模数计算，应用料再计入损耗；Excel的单用量、实发数量、数量、应用料列不作为计算输入。</span>
       </div>
     </div>
 
@@ -162,6 +162,7 @@ import ProductSelector from '@/components/Selector/ProductSelector.vue'
 import type { EngineeringBomFormData, EngineeringBomItem } from '@/types/product/bom'
 import type { ProductItem } from '@/types/product'
 import * as XLSX from 'xlsx'
+import { parseSpecModule } from './bomSpecImport'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 
 interface Props {
@@ -448,8 +449,9 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
 
   const ALIAS: Record<string, string[]> = {
     seq: ['项次', '序号'],
-    name: ['原料品名', '材料名称', '品名'],
+    name: ['原料品名', '材料名称', '品名', '材料'],
     item: ['项目', '项目名称'],
+    combined: ['规格及模数'],
     spec: ['规格'],
     unit: ['单位'],
     module: ['模数'],
@@ -465,8 +467,12 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
   const matchKey = (cell: any): string | null => {
     const t = String(cell ?? '').trim()
     if (!t) return null
+    // 先精确匹配，避免「规格及模数」被「规格」抢先命中。
     for (const key of Object.keys(ALIAS)) {
-      if (ALIAS[key].some((n) => t === n || t.includes(n))) return key
+      if (ALIAS[key].some((n) => t === n)) return key
+    }
+    for (const key of Object.keys(ALIAS)) {
+      if (ALIAS[key].some((n) => t.includes(n))) return key
     }
     return null
   }
@@ -482,14 +488,19 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       const k = matchKey(cell)
       if (k && m[k] === undefined) m[k] = idx
     })
-    if (m.name !== undefined && m.spec !== undefined && m.module !== undefined) {
+    if (
+      m.name !== undefined &&
+      ((m.spec !== undefined && m.module !== undefined) || m.combined !== undefined)
+    ) {
       headerRowIndex = i
       col = m
       break
     }
   }
   if (headerRowIndex === -1) {
-    ElMessage.warning('未找到表头行（至少需要「品名」「规格」「模数」三列）')
+    ElMessage.warning(
+      '未找到表头行（需要「品名/材料」+「规格」「模数」，或「品名/材料」+「规格及模数」）'
+    )
     return items
   }
 
@@ -511,17 +522,35 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     if (!materialName) continue
     if (/合计|总计|小计/i.test(materialName)) continue
 
-    // 必填：品名 / 规格 / 模数；缺任一则该行不导入
-    const spec = cellOf(row, 'spec')
-    const moduleRaw = cellOf(row, 'module')
-    if (!spec || !moduleRaw) {
+    // 分列模式：品名/规格/模数；单列模式：品名/规格及模数
+    const combinedRaw = cellOf(row, 'combined')
+    let spec = cellOf(row, 'spec')
+    let moduleRaw = cellOf(row, 'module')
+    let split = cellOf(row, 'split')
+    let baseRaw = cellOf(row, 'base')
+    let fromCombined = false
+
+    if (combinedRaw) {
+      const parsed = parseSpecModule(combinedRaw)
+      if (!parsed) {
+        missingRows.push(i + 1)
+        continue
+      }
+      spec = parsed.specification
+      moduleRaw = String(parsed.moduleQty)
+      split = parsed.split
+      baseRaw = String(parsed.baseQty)
+      fromCombined = true
+    }
+
+    if (!moduleRaw || (!spec && !fromCombined)) {
       missingRows.push(i + 1)
       continue
     }
 
     const itemName = cellOf(row, 'item', false)
     const actualRaw = cellOf(row, 'actualIssue')
-    const baseQty = num(cellOf(row, 'base'), 1) || 1
+    const baseQty = num(baseRaw, 1) || 1
     const moduleQty = num(moduleRaw, 1) || 1
 
     const item: EngineeringBomItem = {
@@ -535,7 +564,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       // 项目为空即公共物料；未匹配的项目名称保留并提示核对。
       isCommon: !String(itemName || '').trim(),
       specification: spec,
-      split: cellOf(row, 'split'),
+      split,
       unit: cellOf(row, 'unit') || 'PCS',
       quantity: calculateBomQuantity(baseQty, moduleQty) ?? 0,
       actualIssueQty: actualRaw ? num(actualRaw) : undefined,
@@ -543,8 +572,9 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       baseQty,
       moduleQty,
       minIssueQty: num(cellOf(row, 'minIssue')),
-      widthMm: num(cellOf(row, 'width')),
-      lengthMm: num(cellOf(row, 'length')),
+      // 单列「规格及模数」不拆宽长，整段留在 specification。
+      widthMm: fromCombined ? 0 : num(cellOf(row, 'width')),
+      lengthMm: fromCombined ? 0 : num(cellOf(row, 'length')),
       remark: cellOf(row, 'remark'),
       sortOrder: items.length + 1,
     }
@@ -553,7 +583,9 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
   }
 
   if (missingRows.length) {
-    ElMessage.warning(`有 ${missingRows.length} 行缺少必填项（品名/规格/模数），已跳过：第 ${missingRows.join('、')} 行`)
+    ElMessage.warning(
+      `有 ${missingRows.length} 行缺少必填项或规格及模数无法解析，已跳过：第 ${missingRows.join('、')} 行`
+    )
   }
 
   return items
