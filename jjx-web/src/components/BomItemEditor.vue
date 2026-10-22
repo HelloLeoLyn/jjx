@@ -53,7 +53,7 @@
       class="bom-item-table"
     >
       <!-- 序号列 - 拖拽手柄 -->
-      <el-table-column label="序号" width="50" align="center" fixed="left">
+      <el-table-column label="组合 / 独立材料" width="185" align="center" fixed="left">
         <template #default="scope">
           <div class="drag-cell">
             <el-icon class="drag-handle"><Rank /></el-icon>
@@ -63,7 +63,7 @@
             <el-icon v-else size="small" color="#e56706">
               <WarningFilled />
             </el-icon>
-            <span v-if="comboNoOf(scope.$index)" class="row-index">{{ comboNoOf(scope.$index) }}</span>
+            <span class="row-index">{{ comboLabelOf(scope.$index) }}</span>
           </div>
         </template>
       </el-table-column>
@@ -295,6 +295,7 @@ import { debounce } from 'lodash-es'
 import type { EngineeringBomItem, BomMaterialMatchItem } from '@/types/product/bom'
 import { BomItemReviewStatusEnum } from '@/enums/product'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
+import { bomGroupRows } from '@/utils/bomGroups'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import StandardProcessSelector from '@/components/Selector/StandardProcessSelector.vue'
@@ -441,42 +442,24 @@ function toSubmitItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
 
 /** 遍历树（含所有层级） */
 /** 组合判定：连续且「项目」相同的行视为同一组合（项目为空视为未分组） */
-const comboKeyOf = (row: EngineeringBomItem): string =>
-  (row.processId != null && Number(row.processId) > 0
-    ? `p:${row.processId}`
-    : row.processName && row.processName.trim()
-      ? `n:${row.processName.trim()}`
-      : '')
+const draftGroups = computed(() => bomGroupRows(items.value))
 
 /** 每行的组合首行（组内其它行都挂到它），未分组返回 null */
 const comboLeaderOf = (row: EngineeringBomItem): EngineeringBomItem | null => {
-  const list = items.value
-  const key = comboKeyOf(row)
-  if (!key) return null
-  const idx = list.indexOf(row)
+  const idx = items.value.indexOf(row)
   if (idx < 0) return null
-  let startIdx = idx
-  while (startIdx > 0 && comboKeyOf(list[startIdx - 1]) === key) startIdx -= 1
-  const leader = list[startIdx]
-  return leader === row ? null : leader
+  const entry = draftGroups.value[idx]
+  const leader = draftGroups.value.find(group => group.groupKey === entry.groupKey)?.item
+  return leader && leader !== row ? leader : null
 }
 
 /** 序号列：组合序号（连续同项目为一组，1、2、3…）+ 组内合并 */
 const comboRuns = computed(() => {
-  const runs: { start: number; size: number; no: number }[] = []
-  let no = 0
-  let i = 0
-  while (i < items.value.length) {
-    const key = comboKeyOf(items.value[i])
-    let j = i + 1
-    while (key && j < items.value.length && comboKeyOf(items.value[j]) === key) j += 1
-    const size = key ? j - i : 1
-    if (key) no += 1
-    runs.push({ start: i, size, no: key ? no : 0 })
-    i += size
-  }
-  return runs
+  return draftGroups.value.filter(group => group.span > 0)
+    .map(group => ({ start: group.index, size: group.span, no: group.number }))
 })
+
+const comboLabelOf = (index: number): string => draftGroups.value[index]?.label || ''
 
 const comboNoOf = (index: number): number => {
   const run = comboRuns.value.find((r) => index >= r.start && index < r.start + r.size)

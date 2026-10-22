@@ -45,14 +45,14 @@ describe('BOM 五列打印数据', () => {
     ])
     expect(pages.flat().every((row) => row.number === 1)).toBe(true)
   })
-  it('同名不同工序不合并，空 ID 按名称及类别分组，子材料不遗漏', () => {
+  it('同名不同工序不合并，无ID按名称分组，子材料不遗漏', () => {
     const rows = bomPrintRows([
       { processId: 1, processName: '冲切', children: [{ processId: 2, processName: '冲切' }] },
       { processName: '导光', processCategory: 'PANEL' },
       { processName: '导光', processCategory: 'PANEL' },
       { processName: '导光', processCategory: 'UP_LINE' },
     ])
-    expect(rows.map((row) => row.number)).toEqual([1, 2, 3, 3, 4])
+    expect(rows.map((row) => row.number)).toEqual([1, 2, 3, 3, 3])
   })
   it('空表和超高单行仍保留内容，不生成空白前页', () => {
     expect(paginateBomRows([], [], 90)).toEqual([[]])

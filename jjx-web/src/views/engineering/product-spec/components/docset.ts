@@ -23,6 +23,7 @@ import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreview'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
+import { bomGroupRows } from '@/utils/bomGroups'
 import {
   parseSnapshotStrict,
   parseDocsetSnapshot,
@@ -121,6 +122,7 @@ export function documentFileCaption(file: DocFile): string {
   return parts.join(' · ')
 }
 export interface DocsetData {
+  published?: boolean
   product: Record<string, any>
   bom: Record<string, any>
   routing: Record<string, any>
@@ -255,7 +257,8 @@ export function groupProjectMaterials(rows: Record<string, any>[]): Record<strin
 }
 export function projectMaterialPrintRows(data: DocsetData): Record<string, any>[] {
   const bom = flatten(data.bom.items || [])
-  if (data.workSpec.projectMaterials === undefined) return groupProjectMaterials(bom)
+  if (data.workSpec.projectMaterials === undefined)
+    return data.published ? groupProjectMaterials(bom) : groupBomMaterials(bom)
   return data.workSpec.projectMaterials.flatMap((group) =>
     group.materials.map((row, index) => ({
       ...row,
@@ -267,6 +270,13 @@ export function projectMaterialPrintRows(data: DocsetData): Record<string, any>[
       projectSpan: index === 0 ? group.materials.length : 0,
     }))
   )
+}
+/** 仅用于BOM回退；独立维护的项目材料及其快照沿用自己的组模型。 */
+export function groupBomMaterials(rows: Record<string, any>[]): Record<string, any>[] {
+  return bomGroupRows(rows, true).map(group => ({
+    ...group.item, projectGroup: group.number, projectGroupKey: group.groupKey,
+    projectSpan: group.span, bomGroupLabel: group.label,
+  }))
 }
 /** 刀模位置按 BOM 行（展平后）对齐取值，与纸张行序一致。map 优先；该行无 map 值时回退旧版多行文本（dieLocationText，按行对齐）。 */
 export function dieLocationRows(
@@ -577,6 +587,7 @@ export function buildDocsetFromSnapshot(
 ): DocsetData {
   const snapshot = parseDocsetSnapshot(snapshotJson)
   const data: DocsetData = {
+    published: true,
     product: {
       productId,
       productCode: snapshot.productCode || productCode || '',
@@ -603,6 +614,7 @@ export async function buildDocsetFromLegacyRefs(
   productName = ''
 ): Promise<DocsetData> {
   const data: DocsetData = {
+    published: true,
     product: { productId, productCode: productCode || '', productName: productName || '' },
     bom: {},
     routing: {},

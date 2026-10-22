@@ -20,6 +20,12 @@ function editor(rows) {
   const statuses = Object.fromEntries(['DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'PENDING_REMOVE']
     .map((name, index) => [name, { value: index + 1 }]))
   const mocks = {
+    '@/utils/bomGroups': (() => {
+      const source = fs.readFileSync(path.resolve(__dirname, '../../utils/bomGroups.ts'), 'utf8')
+      const loaded = { exports: {} }
+      vm.runInNewContext(`(function(exports){${ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText}})`)(loaded.exports)
+      return loaded.exports
+    })(),
     vue: { ...vue, onMounted() {}, onUnmounted() {} },
     'element-plus': { ElMessage: {}, ElMessageBox: {} },
     '@element-plus/icons-vue': {},

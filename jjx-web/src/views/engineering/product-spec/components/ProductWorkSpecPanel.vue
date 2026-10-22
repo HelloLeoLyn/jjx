@@ -249,7 +249,7 @@
                     v-if="projectMaterialIcon($index)"
                     :name="projectMaterialIcon($index)"
                     :size="16"
-                  /><span>{{ row.processName || '—' }}</span>
+                  /><span>{{ projectMaterialGroups[$index]?.bomGroupLabel || row.processName || '—' }}</span>
                 </div></template
               ></el-table-column
             >
@@ -521,6 +521,7 @@ import {
   flattenedBom,
   projectMaterialFromBom,
   groupProjectMaterials,
+  groupBomMaterials,
   renderFile,
   type DocsetData,
 } from './docset'
@@ -663,7 +664,11 @@ const projectMaterialRows = computed(
       ? flattenProjectMaterials(data.value.workSpec.projectMaterials)
       : bomRows.value)
 )
-const projectMaterialGroups = computed(() => groupProjectMaterials(projectMaterialRows.value))
+const projectMaterialGroups = computed(() =>
+  projectMaterialDraft.value !== null || data.value?.workSpec.projectMaterials !== undefined
+    ? groupProjectMaterials(projectMaterialRows.value)
+    : groupBomMaterials(projectMaterialRows.value)
+)
 /** 序号按项目组重新编号（1、2、3…），不沿用同名重复组的 groupNo。 */
 const projectMaterialDisplayNo = computed<Record<number, number>>(() => {
   const result: Record<number, number> = {}

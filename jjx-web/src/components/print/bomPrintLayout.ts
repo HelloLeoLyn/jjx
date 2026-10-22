@@ -1,5 +1,8 @@
+import { bomGroupRows } from '@/utils/bomGroups'
 /** BOM 打印独立适配；与作业规范 workSpecMaterialSpec 保持相同规格拼接口径。 */
 export interface BomPrintItem {
+  itemId?: number | null
+  parentMaterialId?: number | null
   processId?: number | string | null
   processName?: string | null
   processCategory?: string | null
@@ -56,6 +59,7 @@ export interface BomPrintRow {
   groupKey: string
   number: number
   span: number
+  label: string
 }
 
 export function bomPrintRows(items: BomPrintItem[]): BomPrintRow[] {
@@ -66,17 +70,9 @@ export function bomPrintRows(items: BomPrintItem[]): BomPrintRow[] {
       if (row.children?.length) visit(row.children)
     })
   visit(items)
-  let number = 0
-  let previous = ''
-  return flat.map((item, key) => {
-    const groupKey =
-      item.processId != null
-        ? `id:${item.processId}`
-        : JSON.stringify([text(item.processName), text(item.processCategory)])
-    if (key === 0 || groupKey !== previous) number++
-    previous = groupKey
-    return { item, key, groupKey, number, span: 1 }
-  })
+  return bomGroupRows(flat, true).map(row => ({
+    item: row.item, key: row.index, groupKey: row.groupKey, number: row.number, span: 1, label: row.label,
+  }))
 }
 
 /** 每页独立计算 rowspan；跨页组沿用序号，避免 rowspan 越过物理页边界。 */
