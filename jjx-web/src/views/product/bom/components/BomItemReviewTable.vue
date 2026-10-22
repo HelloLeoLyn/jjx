@@ -8,7 +8,7 @@
         </span>
       </div>
     </template>
-    <div class="batch-toolbar">
+    <div v-if="canOperate" class="batch-toolbar">
       <el-button
         v-hasPermi="['engineering:bom:approve']"
         type="success"
@@ -24,14 +24,24 @@
       </div>
     </el-alert>
     <el-table
+      ref="tableRef"
       :data="items"
+      row-key="itemId"
       border
       style="width: 100%"
       height="360"
       :row-class-name="rowClass"
       @selection-change="selectedRows = $event"
     >
-      <el-table-column type="selection" width="45" :selectable="canSelect" />
+      <el-table-column v-if="canOperate" type="selection" width="45" :selectable="canSelect" reserve-selection />
+      <el-table-column label="组合 / 项目" min-width="240">
+        <template #default="{ $index }">
+          <div>{{ groups[$index]?.label }}</div>
+          <el-button v-if="canOperate && groups[$index]?.span && groups[$index]?.size > 1"
+            link type="primary" :disabled="!groupSelectable(groups[$index].groupKey)"
+            @click="selectGroup(groups[$index].groupKey)">选择本组待审</el-button>
+        </template>
+      </el-table-column>
       <el-table-column label="行状态" width="110" align="center">
         <template #default="{ row }">
           <div class="status-cell">
@@ -48,12 +58,14 @@
         <template #default="{ row }">
           <div class="material-cell">
             <BomMaterialSelector
+              v-if="canOperate && !batchBusy && busyItemId == null && rowStatus(row) !== BomItemReviewStatusEnum.PENDING_REMOVE.value"
               :material-id="row.materialId"
               :material-name="row.materialName"
               @select="(material) => emit('link', row, material)"
               @create="(keyword) => emit('create', row, keyword)"
             />
-            <el-tag v-if="row.materialId" type="success" size="small">
+            <span v-else>{{ row.materialName || '—' }}</span>
+            <el-tag v-if="hasMaterial(row)" type="success" size="small">
               {{ row.materialCode || '已关联' }}
             </el-tag>
             <el-tag v-else type="warning" size="small">未关联</el-tag>
@@ -77,11 +89,17 @@
         </template>
       </el-table-column>
       <el-table-column label="单位" prop="unit" width="70" align="center" />
+      <el-table-column label="基数" prop="baseQty" width="80" align="right" />
+      <el-table-column label="模数" prop="moduleQty" width="80" align="right" />
+      <el-table-column label="损耗率(%)" prop="lossRate" width="100" align="right" />
       <el-table-column label="用量" width="85" align="right">
-        <template #default="{ row }">{{ formatQty(row.quantity) }}</template>
+        <template #default="{ row }">{{ formatQty(unitQuantity(row)) }}</template>
+      </el-table-column>
+      <el-table-column label="应用料" width="95" align="right">
+        <template #default="{ row }">{{ formatQty(appliedQuantity(row)) }}</template>
       </el-table-column>
       <el-table-column label="备注" prop="remark" width="140" show-overflow-tooltip />
-      <el-table-column label="操作" width="220" fixed="right" align="center">
+      <el-table-column v-if="canOperate" label="操作" width="220" fixed="right" align="center">
         <template #default="{ row }">
           <template v-if="rowStatus(row) === BomItemReviewStatusEnum.PENDING_REMOVE.value">
             <el-tag v-if="row.removeConfirmed" type="success" size="small">已确认移除</el-tag>
@@ -89,7 +107,7 @@
               v-else
               link
               type="danger"
-              :disabled="batchBusy"
+              :disabled="batchBusy || busyItemId != null"
               :loading="busyItemId === row.itemId"
               @click="emit('review', row, 'CONFIRM_REMOVE')"
               >确认移除</el-button
@@ -99,14 +117,14 @@
             <el-button
               link
               type="success"
-              :disabled="batchBusy || !row.materialId || busyItemId === row.itemId"
+              :disabled="batchBusy || !hasMaterial(row) || busyItemId != null"
               @click="emit('review', row, 'APPROVE')"
               >通过</el-button
             >
             <el-button
               link
               type="danger"
-              :disabled="batchBusy"
+              :disabled="batchBusy || busyItemId != null"
               :loading="busyItemId === row.itemId"
               @click="emit('review', row, 'REJECT')"
               >驳回</el-button
@@ -122,16 +140,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { WarningFilled } from '@element-plus/icons-vue'
 import type { EngineeringBomItem, BomItemBatchReviewResult, BomOriginalValues } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import { BomItemReviewStatusEnum } from '@/enums/product'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import { bomGroupRows } from '@/utils/bomGroups'
+import { calculateBomQuantity } from '@/utils/bomQuantity'
+import { hasPermi } from '@/directives'
 
 const props = withDefaults(
   defineProps<{
     items: EngineeringBomItem[]
+    bomId?: number
+    canReview?: boolean
     busyItemId?: number
     batchBusy?: boolean
     batchFailures?: BomItemBatchReviewResult['failed']
@@ -140,6 +163,8 @@ const props = withDefaults(
   }>(),
   {
     items: () => [],
+    bomId: undefined,
+    canReview: true,
     busyItemId: undefined,
     batchBusy: false,
     batchFailures: () => [],
@@ -172,15 +197,43 @@ const emit = defineEmits<{
 
 const rowStatus = (row: EngineeringBomItem): number =>
   row.reviewStatus ?? BomItemReviewStatusEnum.DRAFT.value
+const hasMaterial = (row: EngineeringBomItem) => row.materialId != null && Number(row.materialId) > 0
 
 const selectedRows = ref<EngineeringBomItem[]>([])
+const tableRef = ref()
+const groups = computed(() => bomGroupRows(props.items, true))
+const canOperate = computed(() => props.canReview && hasPermi(['engineering:bom:approve']))
+const eligible = (row: EngineeringBomItem) =>
+  canOperate.value && row.itemId != null && row.itemId > 0
+  && (props.bomId == null || row.bomId == null || row.bomId === props.bomId)
+  && rowStatus(row) === BomItemReviewStatusEnum.PENDING.value
 const canSelect = (row: EngineeringBomItem) =>
-  !props.batchBusy && row.itemId != null && rowStatus(row) === BomItemReviewStatusEnum.PENDING.value
-const selectedIds = computed(() =>
-  selectedRows.value
-    .filter((row) => row.itemId != null && rowStatus(row) === BomItemReviewStatusEnum.PENDING.value)
-    .map((row) => row.itemId!)
-)
+  !props.batchBusy && props.busyItemId == null && eligible(row)
+const selectedIds = computed(() => {
+  const ids = new Set(selectedRows.value.map(row => row.itemId))
+  return props.items.filter(row => ids.has(row.itemId) && eligible(row)).map(row => row.itemId!)
+})
+const groupSelectable = (key: string) => groups.value.some(group => group.groupKey === key && canSelect(group.item))
+function selectGroup(key: string) {
+  for (const group of groups.value) {
+    if (group.groupKey === key && canSelect(group.item)) tableRef.value?.toggleRowSelection(group.item, true)
+  }
+}
+watch(() => props.bomId, () => { selectedRows.value = []; tableRef.value?.clearSelection() })
+watch([() => props.items, canOperate], async () => {
+  const selected = new Set(selectedRows.value.map(row => row.itemId))
+  selectedRows.value = props.items.filter(row => selected.has(row.itemId) && eligible(row))
+  await nextTick()
+  for (const row of props.items) {
+    if (selected.has(row.itemId) && !eligible(row)) tableRef.value?.toggleRowSelection(row, false)
+  }
+})
+const unitQuantity = (row: EngineeringBomItem) => calculateBomQuantity(row.baseQty, row.moduleQty) ?? row.quantity
+const appliedQuantity = (row: EngineeringBomItem) => {
+  const quantity = Number(unitQuantity(row))
+  const loss = Number(row.lossRate || 0)
+  return Number.isFinite(quantity) && Number.isFinite(loss) ? quantity * (1 + loss / 100) : undefined
+}
 
 const blockingRows = computed(() =>
   (props.items || []).filter((row) => {
@@ -188,7 +241,7 @@ const blockingRows = computed(() =>
     if (status === BomItemReviewStatusEnum.PENDING_REMOVE.value) {
       return !row.removeConfirmed
     }
-    return status !== BomItemReviewStatusEnum.APPROVED.value || !row.materialId
+    return status !== BomItemReviewStatusEnum.APPROVED.value || !hasMaterial(row)
   })
 )
 

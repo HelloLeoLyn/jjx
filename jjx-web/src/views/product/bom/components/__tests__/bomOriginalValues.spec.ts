@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/utils/request', () => ({ default: { get: vi.fn() } }))
+vi.mock('@/directives', () => ({ hasPermi: () => true }))
 import request from '@/utils/request'
 import { loadBomOriginalValues, originalValuesFromDetail } from '@/api/product/bomOriginalValues'
 import { BomSaveLogResult } from '@/types/product/bom'

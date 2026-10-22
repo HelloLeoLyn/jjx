@@ -20,6 +20,8 @@
 
     <BomItemReviewTable
       :items="bomDetailList"
+      :bom-id="detail.bomId"
+      :can-review="detail.approveStatus === BomStatusEnum.REVIEWING.value"
       :busy-item-id="busyItemId"
       :batch-busy="batchBusy"
       :batch-failures="batchFailures"
