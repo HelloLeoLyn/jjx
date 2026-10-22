@@ -861,6 +861,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
     @Override
     public java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId, BigDecimal supplementQuantity) {
+        return previewPick(workOrderId, supplementQuantity, null);
+    }
+
+    /** dev-20261022-019：groupBy=GROUP 时按组合（连续同项目）聚合返回，默认 null/FLAT 保持原平铺行为。 */
+    @Override
+    public java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId, BigDecimal supplementQuantity, String groupBy) {
         java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
         boolean supplementPreview = supplementQuantity != null;
         if (supplementPreview && supplementQuantity.signum() <= 0) {
@@ -935,6 +941,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             row.put("bomItemId", bomItem.getItemId());
             row.put("materialCode", bomItem.getMaterialCode());
             row.put("materialName", bomItem.getMaterialName());
+            row.put("processId", bomItem.getProcessId());
+            row.put("processName", bomItem.getProcessName());
             row.put("specification", bomItem.getSpecification() != null ? bomItem.getSpecification() : "");
             row.put("unit", bomItem.getUnit() != null ? bomItem.getUnit() : "PCS");
             row.put("baseQty", bomItem.getBaseQty());
@@ -996,7 +1004,101 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 }
             }
         }
+        if (groupBy != null && "GROUP".equalsIgnoreCase(groupBy)) {
+            return groupPreviewRowsByProcess(rows);
+        }
         return rows;
+    }
+
+    /**
+     * dev-20261022-019：把平铺领料预览按「组合」聚合——连续且项目相同的行归为一组。
+     * 半成品档案按项目名做一次匹配（material_type=S），匹配不到标记 semiMatched=false，由前端提示建档。
+     */
+    private java.util.List<java.util.Map<String, Object>> groupPreviewRowsByProcess(
+            java.util.List<java.util.Map<String, Object>> rows) {
+        java.util.List<java.util.Map<String, Object>> groups = new java.util.ArrayList<>();
+        int index = 0;
+        while (index < rows.size()) {
+            java.util.Map<String, Object> first = rows.get(index);
+            String key = previewProcessKey(first);
+            java.util.List<java.util.Map<String, Object>> children = new java.util.ArrayList<>();
+            children.add(first);
+            int next = index + 1;
+            while (key != null && next < rows.size() && key.equals(previewProcessKey(rows.get(next)))) {
+                children.add(rows.get(next));
+                next++;
+            }
+            if (key == null) {
+                // 无项目的独立材料：单独成组（groupKey 为空），保持可辨认
+                groups.add(singleRowGroup(first));
+                index++;
+                continue;
+            }
+            java.util.Map<String, Object> group = new java.util.LinkedHashMap<>();
+            group.put("groupKey", key);
+            group.put("processId", first.get("processId"));
+            group.put("processName", first.get("processName"));
+            group.put("isGroup", true);
+            java.math.BigDecimal sum = java.math.BigDecimal.ZERO;
+            boolean insufficient = false;
+            for (java.util.Map<String, Object> child : children) {
+                Object qty = child.get("qtyPick");
+                if (qty instanceof java.math.BigDecimal bd) sum = sum.add(bd);
+                if (Boolean.TRUE.equals(child.get("insufficient"))) insufficient = true;
+            }
+            group.put("qtyPick", sum);
+            group.put("insufficient", insufficient);
+            group.put("children", children);
+            fillSemiMaterial(group, String.valueOf(first.get("processName")));
+            groups.add(group);
+            index = next;
+        }
+        return groups;
+    }
+
+    private java.util.Map<String, Object> singleRowGroup(java.util.Map<String, Object> row) {
+        java.util.Map<String, Object> group = new java.util.LinkedHashMap<>();
+        group.put("groupKey", "");
+        group.put("processId", null);
+        group.put("processName", null);
+        group.put("isGroup", false);
+        group.put("qtyPick", row.get("qtyPick"));
+        group.put("insufficient", row.get("insufficient"));
+        java.util.List<java.util.Map<String, Object>> children = new java.util.ArrayList<>();
+        children.add(row);
+        group.put("children", children);
+        group.put("semiMatched", false);
+        return group;
+    }
+
+    private String previewProcessKey(java.util.Map<String, Object> row) {
+        Object pid = row.get("processId");
+        Object pname = row.get("processName");
+        if (pid != null && !String.valueOf(pid).isBlank() && !"null".equals(String.valueOf(pid))) {
+            return "p:" + pid;
+        }
+        if (pname != null && !String.valueOf(pname).isBlank()) {
+            return "n:" + String.valueOf(pname).trim();
+        }
+        return null;
+    }
+
+    /** 组合 -> 半成品档案匹配（按项目名 + material_type=S），匹配不到时标记 semiMatched=false */
+    private void fillSemiMaterial(java.util.Map<String, Object> group, String processName) {
+        group.put("semiMatched", false);
+        group.put("semiMaterialId", null);
+        if (processName == null || processName.isBlank()) return;
+        try {
+            List<java.util.Map<String, Object>> found = jdbcTemplate.queryForList(
+                    "SELECT material_id FROM inventory_material WHERE material_name=? AND material_type='S' AND status=1 LIMIT 1",
+                    processName.trim());
+            if (!found.isEmpty()) {
+                group.put("semiMatched", true);
+                group.put("semiMaterialId", found.get(0).get("material_id"));
+            }
+        } catch (Exception e) {
+            log.warn("组合半成品匹配失败: processName={}, err={}", processName, e.getMessage());
+        }
     }
 
     /**

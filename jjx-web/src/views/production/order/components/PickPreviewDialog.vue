@@ -69,6 +69,36 @@
             </el-form-item>
           </el-form>
         </div>
+        <div class="group-head">
+          <el-checkbox v-model="groupView" @change="onGroupViewChange">按组合查看</el-checkbox>
+          <span class="group-hint">组合 = 连续相同项目；半成品按项目名匹配档案（匹配不到需先建档）</span>
+        </div>
+        <table v-if="groupView" class="doc-items group-summary">
+          <thead>
+            <tr>
+              <th style="width: 8%">序号</th>
+              <th>组合 / 项目</th>
+              <th style="width: 12%">材料项</th>
+              <th style="width: 12%">合计实领</th>
+              <th style="width: 22%">半成品档案</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(g, i) in groups" :key="i">
+              <td class="col-center">{{ i + 1 }}</td>
+              <td>{{ g.processName || '独立材料' }}</td>
+              <td class="col-center">{{ (g.children || []).length }}</td>
+              <td class="col-center">{{ fmtNum(g.qtyPick) }}</td>
+              <td>
+                <el-tag v-if="g.semiMatched" type="success" size="small">已匹配</el-tag>
+                <el-tag v-else type="warning" size="small">未匹配（需建半成品档案）</el-tag>
+              </td>
+            </tr>
+            <tr v-if="!groups.length">
+              <td colspan="5" class="col-center">无组合数据</td>
+            </tr>
+          </tbody>
+        </table>
         <div class="doc-title">领 料 单（预览）</div>
         <div class="doc-info">
           <div class="info-item"><span class="info-label">工单号</span>{{ orderNo }}</div>
@@ -226,6 +256,33 @@ const loading = ref(false)
 const submitting = ref(false)
 const errorMsg = ref('')
 const rows = ref<any[]>([])
+/** dev-20261022-019：按组合查看（汇总），仅展示，不改变平铺领料的扣账口径 */
+const groupView = ref(false)
+const groups = ref<any[]>([])
+
+async function loadGroups() {
+  if (!groupView.value || !props.workOrderId) {
+    groups.value = []
+    return
+  }
+  try {
+    const { materialPickApi } = await import('@/api/inventory/materialPick')
+    const res: any = await materialPickApi.pickPreview(
+      props.workOrderId,
+      isSupplement.value && supplementQuantity.value ? Number(supplementQuantity.value) : undefined,
+      'GROUP',
+    )
+    groups.value = (res?.data || []) as any[]
+  } catch (error) {
+    console.warn('读取组合视图失败:', error)
+    groups.value = []
+  }
+}
+
+function onGroupViewChange() {
+  void loadGroups()
+}
+
 let previewRequestId = 0
 
 // 主料行（可调整）
@@ -401,6 +458,12 @@ async function handleConfirm() {
 }
 </script>
 
+<style scoped>
+.group-head { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }
+.group-hint { color: var(--el-text-color-secondary); font-size: 12px; }
+.group-summary { margin-bottom: 10px; }
+.group-summary td { vertical-align: middle; }
+</style>
 <style scoped>
 .preview-body {
   max-height: 70vh;

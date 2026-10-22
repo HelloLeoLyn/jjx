@@ -73,6 +73,10 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId);
 
     /** 报废补产领料预览：按本次补产数量展开BOM，不扣减原工单已领数量。 */
+    /** dev-20261022-019：groupBy=GROUP 按组合聚合，null/FLAT 为原平铺 */
+    java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId,
+            java.math.BigDecimal supplementQuantity, String groupBy);
+
     java.util.List<java.util.Map<String, Object>> previewPick(Long workOrderId,
                                                               java.math.BigDecimal supplementQuantity);
 
