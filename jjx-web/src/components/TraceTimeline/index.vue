@@ -3,7 +3,6 @@
     v-model="visible"
     title="业务事件流"
     size="880px"
-    @open="resetAndLoad"
     @close="handleClose"
   >
     <div class="toolbar">
@@ -245,25 +244,26 @@ const scopeLabel = computed(() =>
   props.scope === 'work_spec' ? '仅看产品作业规范' : undefined
 )
 
-watch(
-  () => props.modelValue,
-  (value) => {
-    visible.value = value
-  }
-)
-watch(
-  () => props.traceId,
-  () => {
-    if (props.modelValue) resetAndLoad()
-  }
-)
-watch(
-  () => [props.bizType, props.bizId, props.scope] as const,
-  () => {
-    if (props.modelValue) resetAndLoad()
-  }
-)
+type TraceParams = Pick<typeof props, 'traceId' | 'bizType' | 'bizId' | 'scope'>
+let loadedKey: string | undefined
+const inFlight = new Map<string, Promise<void>>()
 
+watch(
+  () => [props.modelValue, props.traceId, props.bizType, props.bizId, props.scope] as const,
+  ([open, traceId, bizType, bizId, scope]) => {
+    visible.value = open
+    if (!open) {
+      loadedKey = undefined
+      return
+    }
+    const snapshot: TraceParams = { traceId, bizType, bizId, scope }
+    const key = JSON.stringify([traceId, bizType, bizId, scope])
+    if (loadedKey === key) return
+    loadedKey = key
+    resetAndLoad(snapshot)
+  },
+  { flush: 'post', immediate: true }
+)
 
 /** 该操作是否有详情（变更/审核意见/附件）——有才可点击查看 */
 function hasDetail(event: TraceEvent): boolean {
@@ -307,38 +307,51 @@ function handleClose() {
   emit('update:modelValue', false)
 }
 
-function resetAndLoad() {
+function resetAndLoad(snapshot: TraceParams) {
   pageNum.value = 1
   selectedEvent.value = null
-  loadEvents()
+  return loadEvents(snapshot)
 }
 
-async function loadEvents() {
-  if (!props.traceId && !(props.bizType && props.bizId)) return
-  loading.value = true
-  try {
-    const params: Record<string, any> = {
-      pageNum: pageNum.value,
-      pageSize: pageSize.value,
-    }
-    if (props.traceId) {
-      params.traceId = props.traceId
-    } else {
-      params.bizType = props.bizType
-      params.bizId = props.bizId
-    }
-    if (props.scope) params.scope = props.scope
-    const response = await request.get('/api/trace/events', { params })
-    const data = (response as any)?.data || {}
-    events.value = (data.records || []).map(enrichEvent)
-    total.value = Number(data.total || 0)
-    selectedEvent.value = null
-  } catch {
-    events.value = []
-    total.value = 0
-  } finally {
-    loading.value = false
+function loadEvents(snapshot: TraceParams = props): Promise<void> {
+  const { traceId, bizType, bizId, scope } = snapshot
+  if (!traceId && !(bizType && bizId)) return Promise.resolve()
+  const params: Record<string, any> = {
+    pageNum: pageNum.value,
+    pageSize: pageSize.value,
   }
+  if (traceId) {
+    params.traceId = traceId
+  } else {
+    params.bizType = bizType
+    params.bizId = bizId
+  }
+  if (scope) params.scope = scope
+
+  // 仅复用尚未完成的同参数请求；分页、每页条数及刷新不受已加载 key 限制。
+  const key = JSON.stringify([traceId, bizType, bizId, scope, params.pageNum, params.pageSize])
+  const pending = inFlight.get(key)
+  if (pending) return pending
+
+  const promise = (async () => {
+    loading.value = true
+    try {
+      const response = await request.get('/api/trace/events', { params })
+      const data = (response as any)?.data || {}
+      events.value = (data.records || []).map(enrichEvent)
+      total.value = Number(data.total || 0)
+      selectedEvent.value = null
+    } catch {
+      events.value = []
+      total.value = 0
+    } finally {
+      loading.value = false
+    }
+  })().finally(() => {
+    inFlight.delete(key)
+  })
+  inFlight.set(key, promise)
+  return promise
 }
 
 /** 后端只透传原文，前端解析 detail；标题按 businessType 枚举映射，不做 URL 语义判断 */
