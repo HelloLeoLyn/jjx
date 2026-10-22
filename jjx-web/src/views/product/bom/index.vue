@@ -117,52 +117,46 @@
 
     <el-switch
       v-model="queryParams.showAllVersions"
-      active-text="显示全部版本"
-      @change="handleQuery"
+      active-text="全部展开/收起"
+      @change="handleExpandAll"
     />
     <!-- 数据表格 -->
     <el-card class="table-card" shadow="never">
       <el-table
-        :key="listRevision"
+        :key="tableKey"
+        ref="bomTableRef"
         v-loading="loading"
         :data="bomList"
-        row-key="bomId"
+        :row-key="getRowKey"
+        :lazy="true"
+        :load="loadVersions"
+        :tree-props="{ hasChildren: 'hasVersionChildren', children: 'versions' }"
         @selection-change="handleSelectionChange"
       >
-        <el-table-column v-if="!queryParams.showAllVersions" type="expand">
-          <template #default="scope">
-            <BomVersionTimeline
-              :bom-code="scope.row.bomCode"
-              :actions="bomActions"
-              @action="handleBomAction"
-              @view="handleView"
-            />
-          </template>
-        </el-table-column>
-        <el-table-column type="selection" width="55" align="center" />
+        <el-table-column type="selection" width="55" align="center" :selectable="isParentRow" />
         <el-table-column label="BOM编码" align="center" prop="bomCode" min-width="160">
           <template #default="scope">
-            <el-button link type="primary" @click="handleView(scope.row)">{{
-              scope.row.bomCode
-            }}</el-button>
+            <el-button
+              v-if="isParentRow(scope.row)"
+              link
+              type="primary"
+              @click="handleView(scope.row)"
+              >{{ scope.row.bomCode }}</el-button
+            >
           </template>
         </el-table-column>
         <el-table-column label="BOM版本" align="center" prop="bomVersion" width="140">
           <template #default="scope">
-            {{ scope.row.bomVersion }}
+            <el-button link type="primary" @click="handleView(scope.row)">{{
+              scope.row.bomVersion
+            }}</el-button>
             <el-tag v-if="scope.row.isCurrent" type="success">现行</el-tag>
-            <el-tag v-else-if="!queryParams.showAllVersions" type="warning">待设现行</el-tag>
+            <el-tag v-else-if="isParentRow(scope.row)" type="warning">待设现行</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="版本数" prop="versionCount" width="80" />
-        <el-table-column label="最近更新时间" width="180">
-          <template #default="scope">{{
-            parseTime(scope.row.updateTime || scope.row.createTime)
-          }}</template>
+        <el-table-column label="版本数" prop="versionCount" width="80">
+          <template #default="{ row }">{{ isParentRow(row) ? row.versionCount : '' }}</template>
         </el-table-column>
-        <el-table-column label="产品编码" align="center" prop="productCode" width="170" />
-        <el-table-column label="产品名称" align="center" prop="productName" width="170" />
-
         <el-table-column label="审核状态" prop="approveStatus" width="100">
           <template #default="scope">
             <el-tag :type="ProductEnum.bomStatus.getTagProps(scope.row.approveStatus)?.type">
@@ -182,16 +176,38 @@
         </el-table-column>
         <el-table-column label="创建时间" align="center" prop="createTime" width="180">
           <template #default="scope">
-            <span>{{ parseTime(scope.row.createTime) }}</span>
+            <span>{{
+              parseTime(
+                isParentRow(scope.row)
+                  ? scope.row.updateTime || scope.row.createTime
+                  : scope.row.createTime
+              )
+            }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="备注" align="center" prop="remark" min-width="180" />
+        <el-table-column label="产品编码" align="center" width="170">
+          <template #default="{ row }">{{ isParentRow(row) ? row.productCode : '' }}</template>
+        </el-table-column>
+        <el-table-column label="产品名称" align="center" width="170">
+          <template #default="{ row }">{{ isParentRow(row) ? row.productName : '' }}</template>
+        </el-table-column>
         <TableActionColumn
           :actions="bomActions"
           min-width="300"
           display="text"
           @action="handleBomAction"
-        />
+        >
+          <template #before="{ row }">
+            <el-button
+              v-if="versionErrors[getRowKey(row)]"
+              link
+              type="danger"
+              @click="retryVersions(row)"
+            >
+              重试加载版本
+            </el-button>
+          </template>
+        </TableActionColumn>
       </el-table>
 
       <!-- 分页 -->
@@ -200,7 +216,7 @@
         :total="total"
         v-model:page="queryParams.pageNum"
         v-model:limit="queryParams.pageSize"
-        @pagination="getList"
+        @pagination="handlePageChange"
       />
     </el-card>
 
@@ -226,13 +242,13 @@ defineOptions({
   name: 'EngineeringBom',
 })
 
-import { ref, reactive, onMounted, watch, computed } from 'vue'
+import { ref, reactive, onMounted, watch, computed, nextTick } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { TableInstance } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
 import { parseTime, parseDate } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
-import BomVersionTimeline from './components/BomVersionTimeline.vue'
 import BomDetail from './components/BomDetail.vue'
 import BomApproveDialog from './components/BomApproveDialog.vue'
 import BomFormDialog from './components/BomFormDialog.vue'
@@ -311,9 +327,94 @@ const canEditSelected = computed(() => !single.value && canEditBom(selectedBom.v
 const selectedBomId = ref<number | undefined>(undefined)
 const selectedBomForApprove = ref<number | undefined>(undefined)
 
-// 表格数据
-const bomList = ref<EngineeringBom[]>([])
+// 父行保留完整业务数据，子行通过模板留空摘要列，操作仍使用该版本的 bomId。
+type BomTreeRow = EngineeringBom & {
+  rowType: 'code' | 'version'
+  hasVersionChildren: boolean
+  versions?: BomTreeRow[]
+}
+const bomList = ref<BomTreeRow[]>([])
+const bomTableRef = ref<TableInstance>()
 const listRevision = ref(0)
+const tableKey = computed(() => JSON.stringify({ ...queryParams, revision: listRevision.value }))
+const getRowKey = (row: BomTreeRow) =>
+  row.rowType === 'version' ? `ver:${row.bomId}` : `code:${row.bomCode}`
+const isParentRow = (row: BomTreeRow) => row.rowType !== 'version'
+const versionErrors = ref<Record<string, boolean>>({})
+let versionRequests = new Map<string, Promise<BomTreeRow[]>>()
+let listRequestId = 0
+
+// 重建表格时丢弃本页缓存；旧请求只能完成旧表格的 resolve，不能写入新表格。
+watch(
+  tableKey,
+  () => {
+    versionRequests = new Map()
+    versionErrors.value = {}
+    handleSelectionChange([])
+  },
+  { flush: 'sync' }
+)
+
+const loadVersions = async (
+  row: BomTreeRow,
+  _treeNode: unknown,
+  resolve: (children: BomTreeRow[]) => void
+) => {
+  if (!isParentRow(row) || !row.hasVersionChildren) {
+    resolve([])
+    return
+  }
+  const key = getRowKey(row)
+  const generation = tableKey.value
+  let request = versionRequests.get(key)
+  if (!request) {
+    request = productBomApi.getBomVersions(row.bomCode).then((response) =>
+      (response.data || []).map(
+        (version): BomTreeRow => ({
+          ...version,
+          rowType: 'version',
+          hasVersionChildren: false,
+        })
+      )
+    )
+    versionRequests.set(key, request)
+  }
+  try {
+    const children = await request
+    resolve(generation === tableKey.value ? children : [])
+  } catch {
+    resolve([])
+    if (generation !== tableKey.value) return
+    versionRequests.delete(key)
+    versionErrors.value[key] = true
+    ElMessage.warning('版本加载失败，请点击该 BOM 行的「重试加载版本」')
+  }
+}
+
+const expandParents = async () => {
+  const generation = tableKey.value
+  await nextTick()
+  if (generation !== tableKey.value || !queryParams.showAllVersions) return
+  bomList.value
+    .filter((row) => row.hasVersionChildren)
+    .forEach((row) => {
+      // Element Plus 的公开展开方法会触发同一个 lazy load，避免预取与展开各发一次请求。
+      bomTableRef.value?.toggleRowExpansion(row, true)
+    })
+}
+
+const handleExpandAll = async () => {
+  // 收起时重建表格，同时清理 Element Plus 的懒加载缓存和在途请求归属。
+  if (!queryParams.showAllVersions) listRevision.value++
+  else await expandParents()
+}
+
+const retryVersions = async (row: BomTreeRow) => {
+  listRevision.value++
+  await nextTick()
+  if (queryParams.showAllVersions) await expandParents()
+  else bomTableRef.value?.toggleRowExpansion(row, true)
+}
 
 // 字典选项
 const bomStatusOptions = BomStatusEnum.items.map((item) => ({
@@ -323,22 +424,41 @@ const bomStatusOptions = BomStatusEnum.items.map((item) => ({
 
 // 获取BOM列表
 const getList = async () => {
+  const requestId = ++listRequestId
   loading.value = true
+  listRevision.value++
+  bomList.value = []
   try {
-    const response = await productBomApi.listEngineeringBom(queryParams)
-    handleSelectionChange([])
-    bomList.value = response.data?.records || []
+    // 页面始终按编码分页；开关只控制展开与导出口径。
+    const response = await productBomApi.listEngineeringBom({
+      ...queryParams,
+      showAllVersions: false,
+    })
+    if (requestId !== listRequestId) return
+    bomList.value = (response.data?.records || []).map(
+      (bom): BomTreeRow => ({
+        ...bom,
+        rowType: 'code',
+        hasVersionChildren: (bom.versionCount || 0) > 1,
+      })
+    )
     total.value = response.data?.total || 0
-    listRevision.value++
+    if (queryParams.showAllVersions) await expandParents()
   } catch (error) {
     console.error('获取BOM列表失败:', error)
   } finally {
-    loading.value = false
+    if (requestId === listRequestId) loading.value = false
   }
+}
+
+const handlePageChange = () => {
+  queryParams.showAllVersions = false
+  getList()
 }
 
 // 搜索按钮操作
 const handleQuery = () => {
+  queryParams.showAllVersions = false
   queryParams.pageNum = 1
   getList()
 }
@@ -364,7 +484,8 @@ const resetQuery = () => {
 }
 
 // 多选框选中数据
-const handleSelectionChange = (selection: EngineeringBom[]) => {
+const handleSelectionChange = (rows: EngineeringBom[]) => {
+  const selection = rows.filter((row) => (row as BomTreeRow).rowType !== 'version')
   ids.value = selection.map((item) => item.bomId)
   selectedBom.value = selection.length === 1 ? selection[0] : null
   single.value = selection.length !== 1
@@ -418,7 +539,7 @@ const handleExport = () => {
   ElMessageBox.confirm(
     queryParams.showAllVersions
       ? '导出当前筛选的全部版本（包含历史版本），不受分页限制？'
-      : '导出当前筛选的每个BOM现行/最新版本；历史版本请打开「显示全部版本」后导出。',
+      : '导出当前筛选的每个BOM现行/最新版本；历史版本请打开「全部展开/收起」后导出。',
     '导出范围',
     {
       confirmButtonText: '确定',
