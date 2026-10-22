@@ -8,7 +8,8 @@
           placement="bottom"
         >
           <el-switch
-            v-model="quickMode"
+            :model-value="quickMode"
+            @change="setQuickMode"
             active-text="快速模式"
             inactive-text="常规模式"
             inline-prompt
@@ -93,10 +94,15 @@
               v-else
               :material-id="scope.row.materialId"
               :material-name="scope.row.materialName"
+              confirm-selection
+              @draft-change="(draft) => handleMaterialDraft(scope.row, draft)"
               @select="(material) => handleMaterialSelect(material, scope.row)"
               @clear="handleMaterialClear(scope.row)"
               @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
             />
+            <span v-if="materialDrafts[String(scope.row.itemId)] !== undefined" class="material-draft-hint">
+              未确认的搜索文字：{{ materialDrafts[String(scope.row.itemId)] || '（空）' }}
+            </span>
             <!-- <el-tag
               v-if="quickMode && !scope.row.materialId"
               size="small"
@@ -340,6 +346,20 @@ const refreshLoading = ref(false)
 const tableHeight = ref(400)
 // 快速模式（dev-20261020-029）：直接录材料名称+规格，materialId 可空
 const quickMode = ref(false)
+const materialDrafts = ref<Record<string, string>>({})
+function handleMaterialDraft(row: EngineeringBomItem, draft: { text: string; pending: boolean }) {
+  const key = String(row.itemId)
+  if (draft.pending) materialDrafts.value[key] = draft.text
+  else delete materialDrafts.value[key]
+}
+function setQuickMode(value: string | number | boolean) {
+  const pendingRow = items.value.find(row => materialDrafts.value[String(row.itemId)] !== undefined && !isPendingRemove(row))
+  if (pendingRow) {
+    void markRowError(pendingRow, '请先选择候选物料或取消搜索修改，再切换模式')
+    return
+  }
+  quickMode.value = Boolean(value)
+}
 
 /** 行审核状态（历史数据缺省按草稿展示） */
 const rowReviewStatus = (row: EngineeringBomItem): number =>
@@ -544,6 +564,7 @@ onUnmounted(() => {
  */
 const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomItem) => {
   if (!material) return
+  delete materialDrafts.value[String(row.itemId)]
 
   row.materialId = material.materialId || 0
   row.materialCode = material.materialCode
@@ -606,6 +627,7 @@ watch(
     if (isUpdating) return
     if (JSON.stringify(newVal) !== JSON.stringify(toSubmitItems(items.value))) {
       items.value = toFlatItems(newVal)
+      materialDrafts.value = {}
       walkTree(items.value, matchProjectByName)
       // 初始化也先按当前基数/模数重算用量，再计算应用料。
       walkTree(items.value, recalcAppliedIssue)
@@ -883,6 +905,7 @@ async function markRowError(item: EngineeringBomItem, message: string) {
   await nextTick()
   const row = tableRef.value?.$el?.querySelector('tr.bom-row-error') as HTMLElement | null
   row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  row?.querySelector<HTMLInputElement>('.material-name-cell input')?.focus()
 }
 
 function handleRowClick(row: EngineeringBomItem) {
@@ -920,6 +943,7 @@ function handleSplitChange(row: EngineeringBomItem, value?: number | null) {
 let creatingRow: EngineeringBomItem | null = null
 
 const handleMaterialClear = (row: EngineeringBomItem) => {
+  delete materialDrafts.value[String(row.itemId)]
   row.materialId = 0
   row.materialCode = ''
   row.materialName = ''
@@ -1040,6 +1064,7 @@ const getQuantityStep = (unit: string) => {
 defineExpose({
   getItems: () => toSubmitItems(items.value),
   clearItems: () => {
+    materialDrafts.value = {}
     items.value = []
     selectedItems.value = []
   },
@@ -1053,6 +1078,10 @@ defineExpose({
     walkTree(items.value, (item) => {
       if (failures.length) return
       if (isPendingRemove(item)) return
+      if (!quickMode.value && materialDrafts.value[String(item.itemId)] !== undefined) {
+        failures.push({ item, message: `第${items.value.indexOf(item) + 1}行物料搜索尚未确认，请选择候选物料或取消修改` })
+        return
+      }
       if (!item.materialName?.trim()) {
         failures.push({ item, message: '材料名称不能为空' })
         return
@@ -1083,6 +1112,11 @@ defineExpose({
 </script>
 
 <style scoped lang="scss">
+.material-draft-hint {
+  display: block;
+  color: var(--el-color-warning);
+  font-size: 12px;
+}
 /* 编辑行/错误行（dev-20261022-020）：点中=系统浅蓝，聚焦=蓝色左边框，错误=红色优先 */
 .bom-item-table :deep(.el-table__body tr:focus-within > td) {
   background: #ecf5ff !important;

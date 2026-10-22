@@ -9,6 +9,7 @@ const { parse, compileScript } = require('vue/compiler-sfc')
 
 // 执行真实 SFC setup 和提交方法；隔离子组件、网络和浏览器生命周期。
 function editor(rows) {
+  const notices = []
   const filename = path.resolve(__dirname, '../BomItemEditor.vue')
   const { descriptor } = parse(fs.readFileSync(filename, 'utf8'), { filename })
   const compiled = compileScript(descriptor, { id: 'bom-groups-regression' })
@@ -27,7 +28,7 @@ function editor(rows) {
       return loaded.exports
     })(),
     vue: { ...vue, onMounted() {}, onUnmounted() {} },
-    'element-plus': { ElMessage: {}, ElMessageBox: {} },
+    'element-plus': { ElMessage: { warning: message => notices.push(message) }, ElMessageBox: {} },
     '@element-plus/icons-vue': {},
     'lodash-es': { debounce: () => Object.assign(() => {}, { cancel() {} }) },
     '@/enums/product': { BomItemReviewStatusEnum: statuses },
@@ -46,7 +47,7 @@ function editor(rows) {
   const state = mod.exports.default.setup(vue.reactive({ modelValue: rows }), {
     expose(value) { exposed = value }, emit() {},
   })
-  return { state, getItems: () => Array.from(exposed.getItems(), (row) => ({ ...row })) }
+  return { state, notices, validateItems: () => exposed.validateItems(), getItems: () => Array.from(exposed.getItems(), (row) => ({ ...row })) }
 }
 
 const material = (name, project, itemId) => ({
@@ -86,4 +87,43 @@ test('编辑回填后重排或清空项目，提交时保留真实行号并重�
   state.items.value[1].processName = ''
   assert.deepEqual(getItems().map((row) => row.parentMaterialId), [null, null])
   assert.deepEqual(getItems().map((row) => row.itemId), [11, 10])
+})
+
+test('已关联行和Excel导入行的搜索草稿阻止保存，选择候选后立即读取新载荷', async () => {
+  for (const materialId of [0, 5]) {
+    const { state, notices, validateItems, getItems } = editor([{ ...material('旧名', '模切', 10), materialId }])
+    const row = state.items.value[0]
+    let scrolled = false, focused = false
+    state.tableRef.value = { $el: { querySelector: () => ({ scrollIntoView() { scrolled = true }, querySelector: () => ({ focus() { focused = true } }) }) } }
+    state.handleMaterialDraft(row, { text: '新搜索', pending: true })
+    assert.equal(validateItems(), false)
+    await new Promise(setImmediate)
+    assert.equal(state.errorRowKey.value, 10)
+    assert.ok(scrolled && focused)
+    assert.match(notices.at(-1), /第1行.*尚未确认/)
+    assert.equal(getItems()[0].materialName, '旧名')
+    state.handleMaterialSelect({ materialId: 9, materialCode: 'NEW', materialName: '新物料', specification: '新规格', unit: 'KG' }, row)
+    assert.equal(validateItems(), true)
+    assert.equal(getItems()[0].materialId, 9)
+    assert.equal(getItems()[0].materialName, '新物料')
+    assert.equal(getItems()[0].specification, '新规格')
+    assert.equal(getItems()[0].unit, 'KG')
+  }
+})
+
+test('未确认草稿先拦模式切换，取消后可快速修改原文，清空不保留旧物料', () => {
+  const { state, validateItems, getItems } = editor([{ ...material('旧名', '', 10), materialId: 5 }])
+  const row = state.items.value[0]
+  state.handleMaterialDraft(row, { text: '候选搜索', pending: true })
+  state.setQuickMode(true)
+  assert.equal(state.quickMode.value, false)
+  state.handleMaterialDraft(row, { text: '旧名', pending: false })
+  state.setQuickMode(true)
+  row.materialName = '快速原文'
+  assert.equal(validateItems(), true)
+  assert.equal(getItems()[0].materialName, '快速原文')
+  state.handleMaterialClear(row)
+  assert.equal(getItems()[0].materialId, 0)
+  assert.equal(getItems()[0].materialName, '')
+  assert.equal(validateItems(), false)
 })

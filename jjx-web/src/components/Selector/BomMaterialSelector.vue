@@ -1,5 +1,6 @@
 <template>
   <EditableSearchSelect
+    :key="selectorRevision"
     :model-value="materialId"
     :display-value="materialName"
     :options="options"
@@ -12,6 +13,8 @@
     placeholder="输入物料名称搜索"
     size="small"
     keep-text-on-blur
+    :track-input="confirmSelection"
+    @draft="handleDraft"
     @search="search"
     @select="selectMaterial"
     @clear="clear"
@@ -22,6 +25,10 @@
       {{ item.materialName }} · {{ item.specification || '无规格' }}
     </template>
     <template #footer>
+      <div v-if="pending" role="status" class="bom-search-pending">
+        搜索文字尚未确认，请选择候选物料，或取消修改
+        <el-button link @click="cancelDraft">取消修改</el-button>
+      </div>
       <div v-if="failed" style="padding: 6px 10px; font-size: 12px; color: var(--el-color-danger)">
         查询失败，<el-button link type="primary" size="small" @click="retry">重试</el-button>
       </div>
@@ -41,12 +48,27 @@ import type { InventoryMaterial } from '@/types/inventory/material'
 import EditableSearchSelect from './EditableSearchSelect.vue'
 import { hasPermi } from '@/directives'
 
-const props = defineProps<{ materialId?: number; materialName?: string }>()
+const props = withDefaults(defineProps<{ materialId?: number; materialName?: string; confirmSelection?: boolean }>(), { confirmSelection: false })
 const emit = defineEmits<{
   (e: 'select', material: InventoryMaterial): void
   (e: 'clear'): void
   (e: 'create', keyword: string): void
+  (e: 'draft-change', value: { text: string; pending: boolean }): void
 }>()
+
+const pending = ref(false)
+function handleDraft(value: { text: string; composing: boolean }) {
+  if (!props.confirmSelection) return
+  pending.value = value.composing || value.text !== (props.materialName || '')
+  emit('draft-change', { text: value.text, pending: pending.value })
+}
+const selectorRevision = ref(0)
+function cancelDraft() {
+  pending.value = false
+  emit('draft-change', { text: props.materialName || '', pending: false })
+  search('')
+  selectorRevision.value++
+}
 
 const options = ref<InventoryMaterial[]>([])
 const keyword = ref('')
@@ -121,7 +143,11 @@ function loadMore() {
 }
 
 function selectMaterial(item: InventoryMaterial) {
-  if (item) emit('select', item)
+  if (item) {
+    pending.value = false
+    if (props.confirmSelection) emit('draft-change', { text: item.materialName || '', pending: false })
+    emit('select', item)
+  }
 }
 
 function retry() {
@@ -129,6 +155,8 @@ function retry() {
 }
 
 function clear() {
+  pending.value = false
+  if (props.confirmSelection) emit('draft-change', { text: '', pending: false })
   search('')
   emit('clear')
 }

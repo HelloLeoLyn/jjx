@@ -15,7 +15,7 @@
       @blur="onBlur"
       @clear="onClear"
       @keydown.esc.stop="close"
-      @keydown.enter.prevent="onEnter"
+      @keydown.enter="onEnter"
     >
       <template v-if="$slots.prefix" #prefix>
         <slot name="prefix" />
@@ -109,6 +109,8 @@ interface Props {
   createLabel?: string
   /** 失焦时不回滚已输入文本（仅当使用方显式开启；默认保持原回滚行为） */
   keepTextOnBlur?: boolean
+  /** 显式启用搜索草稿通知，默认不改变现有调用方行为。 */
+  trackInput?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -130,6 +132,7 @@ const props = withDefaults(defineProps<Props>(), {
   showCreate: false,
   createLabel: '',
   keepTextOnBlur: false,
+  trackInput: false,
 })
 
 const emit = defineEmits<{
@@ -139,6 +142,7 @@ const emit = defineEmits<{
   (e: 'search', keyword: string): void
   (e: 'load-more'): void
   (e: 'create', keyword: string): void
+  (e: 'draft', value: { text: string; composing: boolean }): void
 }>()
 
 const anchorRef = ref<HTMLElement | null>(null)
@@ -177,12 +181,14 @@ function onFocus() {
 function onInput(value: string) {
   text.value = value
   open.value = true
+  if (props.trackInput) emit('draft', { text: value, composing })
   if (composing) return
   emit('search', value)
 }
 
 function onCompositionStart() {
   composing = true
+  if (props.trackInput) emit('draft', { text: text.value, composing: true })
 }
 
 async function onCompositionEnd(event: CompositionEvent) {
@@ -225,7 +231,9 @@ function close() {
   open.value = false
 }
 
-function onEnter() {
+function onEnter(event?: Event) {
+  if (composing) return
+  event?.preventDefault()
   if (!open.value) return
   const first = props.groups && props.groups.length ? props.groups[0] && props.groups[0].items[0] : (props.options || [])[0]
   if (first) pick(first)
