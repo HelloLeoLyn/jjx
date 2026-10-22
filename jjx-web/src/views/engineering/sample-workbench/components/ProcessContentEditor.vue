@@ -8,33 +8,24 @@
           :remark="pc.operationRemark"
         />
         <template v-else>
-          <el-tooltip
+          <!-- 2026-10-22：作业说明改为只读展示（在工艺路线明细维护），不再双击弹窗编辑（dev-20261022-011） -->
+          <el-tag
             v-for="(it, ii) in pc.items"
             :key="ii"
-            content="双击编辑作业说明"
-            placement="top"
-            :disabled="!(it.hasWorkInstruction === 1 || it.workInstruction)"
+            size="small"
+            :closable="!readonly && pc.editing"
+            :disable-transitions="false"
+            class="process-item-tag"
+            @close="$emit('remove-item', Number(ii))"
           >
-            <span class="instruction-trigger" @dblclick.stop="openInstructionEditor(it)">
-              <el-tag
-                size="small"
-                :closable="!readonly && pc.editing"
-                :disable-transitions="false"
-                class="process-item-tag"
-                @close="$emit('remove-item', Number(ii))"
-              >
-                <IconStepBadge
-                  v-if="it.icon"
-                  :icon="it.icon || ''"
-                  :size="16"
-                  :index="it.hasIndex === 1 ? (it.indexNumber ?? null) : undefined"
-                  :work-instruction="it.workInstruction"
-                  @update:index="(n: number) => $emit('update-index', it, n)"
-                />
-                <span v-else>{{ it.processName }}</span>
-              </el-tag>
-            </span>
-          </el-tooltip>
+            <IconStepBadge
+              v-if="it.icon"
+              :icon="it.icon || ''"
+              :size="16"
+              :work-instruction="it.workInstruction"
+            />
+            <span v-else>{{ it.processName }}</span>
+          </el-tag>
           <el-button
             v-if="!readonly && pc.editing"
             size="small"
@@ -49,31 +40,8 @@
         </template>
       </div>
     </div>
-    <el-dialog
-      v-model="instructionDialogVisible"
-      title="编辑作业说明"
-      width="420px"
-      append-to-body
-      @closed="instructionEditingItem = null"
-    >
-      <el-input
-        v-model="instructionDraft"
-        type="textarea"
-        :rows="3"
-        maxlength="80"
-        show-word-limit
-        autofocus
-        placeholder="作业说明（可选，如：线路外形）"
-        @keyup.esc="closeInstructionEditor"
-      />
-      <template #footer>
-        <el-button @click="closeInstructionEditor">取消</el-button>
-        <el-button type="primary" @click="saveInstructionEditor">确定</el-button>
-      </template>
-    </el-dialog>
 </template>
 <script setup lang="ts">
-import { ref } from 'vue'
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
 import ProcessOperation from '@/components/ProcessOperation/index.vue'
 import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
@@ -94,32 +62,9 @@ function operationItems(items: any[]): ProcessOperationItem[] {
   }))
 }
 
-const instructionEditingItem = ref<any | null>(null)
-const instructionDialogVisible = ref(false)
-const instructionDraft = ref('')
-
-function openInstructionEditor(item: any) {
-  instructionEditingItem.value = item
-  instructionDraft.value = item.workInstruction || ''
-  instructionDialogVisible.value = true
-}
-
-function closeInstructionEditor() {
-  instructionEditingItem.value = null
-  instructionDialogVisible.value = false
-}
-
-function saveInstructionEditor() {
-  if (instructionEditingItem.value) {
-    instructionEditingItem.value.workInstruction = instructionDraft.value.trim()
-  }
-  closeInstructionEditor()
-}
-
 </script>
 <style scoped>
 .pc-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
 .pc-items { flex: 1; min-width: 0; }
 .process-item-tag { margin-right: 6px; margin-bottom: 4px; cursor: default; }
-.instruction-trigger { display: inline-flex; cursor: text; }
 </style>

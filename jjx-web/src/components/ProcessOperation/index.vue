@@ -26,14 +26,7 @@
               v-if="item.icon"
               :icon="item.icon"
               :size="32"
-              :index="item.hasIndex === 0 ? undefined : item.indexNumber"
               :work-instruction="item.workInstruction"
-              :edit-work-instruction="item.hasWorkInstruction === 1 || !!item.workInstruction"
-              :editable="editable"
-              @update:index="(value: number) => emit('update:index', index, value)"
-              @update:work-instruction="
-                (value: string) => emit('update:work-instruction', index, value)
-              "
             />
             <span v-else class="icon-placeholder">工</span>
           </div>
@@ -58,14 +51,7 @@
               v-if="item.icon"
               :icon="item.icon"
               :size="32"
-              :index="item.hasIndex === 0 ? undefined : item.indexNumber"
               :work-instruction="item.workInstruction"
-              :edit-work-instruction="item.hasWorkInstruction === 1 || !!item.workInstruction"
-              :editable="editable"
-              @update:index="(value: number) => emit('update:index', index, value)"
-              @update:work-instruction="
-                (value: string) => emit('update:work-instruction', index, value)
-              "
             />
             <span v-else class="icon-placeholder">工</span>
           </div>
