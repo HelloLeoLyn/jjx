@@ -23,6 +23,7 @@
       :busy-item-id="busyItemId"
       :batch-busy="batchBusy"
       :batch-failures="batchFailures"
+      :original-values="originalValues"
       @batch-approve="handleBatchApprove"
       @review="handleRowReview"
       @link="handleLinkMaterial"
@@ -73,6 +74,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
+import request from '@/utils/request'
 import type {
   EngineeringBom,
   EngineeringBomItem,
@@ -145,6 +147,41 @@ const batchFailures = ref<BomItemBatchReviewResult['failed']>([])
 const approveCheckReady = ref(false)
 const busyItemId = ref<number | undefined>(undefined)
 
+/**
+ * 最近一次保存的「改动前值」（dev-20261022-021）。
+ * 来源：该 BOM 最近一条「修改BOM」操作日志的 changes，格式 材料名称[物料编码]:旧→新 / 规格[物料编码]:旧→新。
+ * 只用于审核页对比展示，不落库。
+ */
+const originalValues = ref<Record<string, { materialName?: string; specification?: string }>>({})
+
+const loadOriginalValues = async () => {
+  originalValues.value = {}
+  if (!props.bomId) return
+  try {
+    const res: any = await request.get('/api/trace/events', {
+      params: { bizType: 'bom', bizId: props.bomId, pageNum: 1, pageSize: 20 },
+    })
+    const records: any[] = res?.data?.records || []
+    const latest = records.find((row) => (row.action || '').includes('修改BOM'))
+    if (!latest?.detail) return
+    const detailData = typeof latest.detail === 'string' ? JSON.parse(latest.detail) : latest.detail
+    const changes: string[] = detailData?.changes || []
+    const map: Record<string, { materialName?: string; specification?: string }> = {}
+    for (const line of changes) {
+      const matched = /^(材料名称|规格)\[([^\]]+)\]:(.*)→(.*)$/.exec(line)
+      if (!matched) continue
+      const [, field, code, oldValue] = matched
+      const entry = (map[code] = map[code] || {})
+      const normalized = oldValue === '空' ? '' : oldValue
+      if (field === '材料名称') entry.materialName = normalized
+      else entry.specification = normalized
+    }
+    originalValues.value = map
+  } catch (error) {
+    console.warn('读取BOM变更流水失败（不影响审核）:', error)
+  }
+}
+
 // 审核表单
 const approveForm = ref<ApprovalOpinion>({ result: ApprovalResultEnum.APPROVE, remark: '' })
 const approveFormRef = ref<InstanceType<typeof ApprovalOpinionForm>>()
@@ -174,6 +211,7 @@ const loadBomDetail = async () => {
     return
   }
   await refreshApproveCheck()
+  await loadOriginalValues()
   approveForm.value.result = ApprovalResultEnum.APPROVE
   approveForm.value.remark = ''
 }

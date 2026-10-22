@@ -589,6 +589,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 // 2026-09-04 修复（dev-1404）：明细 diff 补 基数(base_qty)/模数(module_qty)，
                 // 原只比 quantity 导致改模数/基数（含空→值、值→空）流水无记录；统一 diffDecimal 防 BigDecimal scale 误报
                 String label = matLabel(e.getValue());
+                // dev-20261022-021：审核页需要对比"原材料名称/原规格"，把这两项也纳入变更记录。
+                // 标签里带物料编码（稳定标识）而不是名称，改名后仍能按行对上。
+                String codeLabel = (oldIt.getMaterialCode() != null && !oldIt.getMaterialCode().isBlank())
+                        ? oldIt.getMaterialCode() : label;
+                changeRecorder.diff(changes, "材料名称[" + codeLabel + "]",
+                        oldIt.getMaterialName(), e.getValue().getMaterialName());
+                changeRecorder.diff(changes, "规格[" + codeLabel + "]",
+                        oldIt.getSpecification(), e.getValue().getSpecification());
                 changeRecorder.diffDecimal(changes, "用量(" + label + ")",
                         oldIt.getQuantity(), calculatedUnitQuantity(e.getValue().getBaseQty(),
                                 e.getValue().getModuleQty(), e.getValue().getQuantity()));

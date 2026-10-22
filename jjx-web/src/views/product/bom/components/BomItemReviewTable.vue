@@ -61,6 +61,21 @@
         </template>
       </el-table-column>
       <el-table-column label="规格型号" prop="specification" width="130" show-overflow-tooltip />
+      <!-- dev-20261022-021：原值对比列（取最近一次保存流水的改动前值，没有记录显示 —） -->
+      <el-table-column label="原材料名称" width="170" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span :class="{ 'old-value-changed': hasOriginal(row, 'materialName') }">
+            {{ originalOf(row, 'materialName') }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column label="原规格型号" width="130" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span :class="{ 'old-value-changed': hasOriginal(row, 'specification') }">
+            {{ originalOf(row, 'specification') }}
+          </span>
+        </template>
+      </el-table-column>
       <el-table-column label="单位" prop="unit" width="70" align="center" />
       <el-table-column label="用量" width="85" align="right">
         <template #default="{ row }">{{ formatQty(row.quantity) }}</template>
@@ -120,9 +135,33 @@ const props = withDefaults(
     busyItemId?: number
     batchBusy?: boolean
     batchFailures?: BomItemBatchReviewResult['failed']
+    /** 最近一次保存的改动前值：key = 物料编码，value = { materialName, specification } */
+    originalValues?: Record<string, { materialName?: string; specification?: string }>
   }>(),
-  { items: () => [], busyItemId: undefined, batchBusy: false, batchFailures: () => [] }
+  {
+    items: () => [],
+    busyItemId: undefined,
+    batchBusy: false,
+    batchFailures: () => [],
+    originalValues: () => ({}),
+  }
 )
+
+/** 取该行的原值；没有流水记录时显示 — */
+const originalOf = (row: EngineeringBomItem, field: 'materialName' | 'specification'): string => {
+  const key = row.materialCode || ''
+  const entry = key ? props.originalValues?.[key] : undefined
+  const value = entry?.[field]
+  return value === undefined || value === null || value === '' ? '—' : value
+}
+
+/** 原值与现值不同才高亮（新增行/无记录不高亮） */
+const hasOriginal = (row: EngineeringBomItem, field: 'materialName' | 'specification'): boolean => {
+  const key = row.materialCode || ''
+  const entry = key ? props.originalValues?.[key] : undefined
+  if (!entry || entry[field] === undefined) return false
+  return (entry[field] || '') !== ((row as any)[field] || '')
+}
 
 const emit = defineEmits<{
   (e: 'batch-approve', itemIds: number[]): void
@@ -164,6 +203,10 @@ const formatQty = (value: number | string | undefined) => {
 </script>
 
 <style scoped>
+.old-value-changed {
+  color: var(--el-color-warning);
+  font-weight: 600;
+}
 .batch-toolbar {
   margin-bottom: 10px;
 }
