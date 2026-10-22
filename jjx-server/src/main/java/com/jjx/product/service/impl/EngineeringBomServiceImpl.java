@@ -321,6 +321,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
         // 变更明细：主表 + 明细行对比（保存前采集）
         List<String> changes = new java.util.ArrayList<>();
+        List<Map<String, Object>> groupChanges = buildGroupChanges(existingBom.getBomId(), dto);
         try {
             buildBomDiff(changes, existingBom, dto);
         } catch (Exception e) {
@@ -351,7 +352,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
         com.jjx.product.domain.vo.EngineeringBomEditVO vo = new com.jjx.product.domain.vo.EngineeringBomEditVO();
         vo.setSuccess(true);
-        vo.setDetailMessage(changes.isEmpty() ? null : changeRecorder.toDetailJson(changes));
+        if (!groupChanges.isEmpty()) {
+            changes.add("组合归属或顺序调整：" + groupChanges.size() + "行");
+        }
+        var detail = cn.hutool.json.JSONUtil.createObj();
+        detail.set("changes", changes);
+        detail.set("attachments", List.of());
+        detail.set("groupChanges", groupChanges);
+        vo.setDetailMessage(changes.isEmpty() ? null : detail.toString());
         ProductEnums.BomStatus latestStatus = ProductEnums.BomStatus.fromValue(bom.getApproveStatus());
         vo.setBizStatus(latestStatus != null ? latestStatus.getLabel() : null);
         return vo;
@@ -378,8 +386,16 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         Set<Long> kept = new HashSet<>();
         if (dto.getItems() != null) {
             List<EngineeringBomItemDTO> ordered = parentFirstItems(dto.getItems());
+            Set<Long> removedIds = new HashSet<>();
+            for (EngineeringBomItemDTO row : ordered) {
+                if (Boolean.TRUE.equals(row.getRemoveRequested())) removedIds.add(row.getItemId());
+            }
             for (EngineeringBomItemDTO itemDTO : ordered) {
                 Long parentRef = itemDTO.getParentMaterialId();
+                if (parentRef != null && removedIds.contains(parentRef)
+                        && !Boolean.TRUE.equals(itemDTO.getRemoveRequested())) {
+                    throw new BusinessException("组合首行待移除，请先拆组或同时移除组内材料");
+                }
                 if (parentRef != null && parentRef < 0) {
                     Long realParent = tempIdToReal.get(parentRef);
                     if (realParent == null) {
@@ -412,8 +428,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 // 待移除行：审核员确认前不改内容；工程侧撤销移除时按指纹恢复
                 if (oldStatus == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
                     if (!Boolean.TRUE.equals(itemDTO.getRemoveRequested())) {
-                        boolean same = old.getApprovedFingerprint() != null
-                                && old.getApprovedFingerprint().equals(fingerprint(incoming));
+                        boolean same = !contentChanged(old, incoming);
                         copyItemContent(incoming, old);
                         old.setReviewStatus(same
                                 ? ProductEnums.BomItemReviewStatus.APPROVED.getValue()
@@ -440,7 +455,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     if (changed) {
                         old.setReviewStatus(ProductEnums.BomItemReviewStatus.PENDING.getValue());
                         clearApproval(old);
-                    } else if (old.getApprovedFingerprint() == null || old.getApprovedFingerprint().isBlank()) {
+                    } else if (!Objects.equals(old.getApprovedFingerprint(), fingerprint(old))) {
                         // 历史行没有指纹：内容未变时收养当前指纹，避免无故退回待审核
                         old.setApprovedFingerprint(fingerprint(old));
                     }
@@ -457,6 +472,21 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 markPendingRemove(old);
             } else if (status != ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
                 productBomItemMapper.deleteById(old.getItemId());
+            }
+        }
+        // 以落库结果复核，覆盖省略行删除及已审核子行转待移除的混合状态。
+        List<EngineeringBomItem> remaining = productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
+        Map<Long, EngineeringBomItem> byId = new HashMap<>();
+        for (EngineeringBomItem row : remaining) byId.put(row.getItemId(), row);
+        for (EngineeringBomItem row : remaining) {
+            Set<Long> path = new HashSet<>();
+            EngineeringBomItem cursor = row;
+            while (cursor.getParentMaterialId() != null) {
+                if (!path.add(cursor.getItemId()) || !byId.containsKey(cursor.getParentMaterialId())) {
+                    throw new BusinessException("组合首行仍被保留的材料引用，请先拆组或完成移除审核");
+                }
+                cursor = byId.get(cursor.getParentMaterialId());
             }
         }
     }
@@ -553,15 +583,23 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     /** 已通过行内容是否变化（指纹为空的历史行按未变化处理） */
     private boolean contentChanged(EngineeringBomItem stored, EngineeringBomItem incoming) {
         String approved = stored.getApprovedFingerprint();
-        if (approved == null || approved.isBlank()) {
-            return false;
-        }
-        return !approved.equals(fingerprint(incoming));
+        if (!Objects.equals(stored.getParentMaterialId(), incoming.getParentMaterialId())) return true;
+        if (approved == null || approved.isBlank()) return !legacyFingerprint(stored).equals(legacyFingerprint(incoming));
+        return !approved.equals(fingerprint(incoming)) && !approved.equals(legacyFingerprint(incoming));
     }
 
     /** 行内容指纹：业务字段规范串的 SHA-256 */
     static String fingerprint(EngineeringBomItem item) {
         if (item == null) return null;
+        // 列宽64：算法域标识参与散列，不增加持久化指纹长度。
+        return hash("group-v1\u0001" + legacyCanonical(item) + "\u0001" + num(item.getParentMaterialId()));
+    }
+
+    static String legacyFingerprint(EngineeringBomItem item) {
+        return hash(legacyCanonical(item));
+    }
+
+    private static String legacyCanonical(EngineeringBomItem item) {
         String canonical = String.join("\u0001",
                 num(item.getMaterialId()), text(item.getMaterialCode()), text(item.getMaterialName()),
                 text(item.getSpecification()), text(item.getUnit()), dec(item.getQuantity()),
@@ -570,6 +608,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 dec(item.getWidthMm()), dec(item.getLengthMm()), text(item.getSplit()),
                 num(item.getProcessId()), text(item.getProcessName()), text(item.getSourceType()),
                 text(item.getLayer()), text(item.getPositionNo()));
+        return canonical;
+    }
+
+    private static String hash(String canonical) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(canonical.getBytes(StandardCharsets.UTF_8));
@@ -586,6 +628,31 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
     private static String text(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    /** 按稳定行号记录归属与排序；同物料多行不会互相覆盖。请求临时编号原样留在日志。 */
+    private List<Map<String, Object>> buildGroupChanges(Long bomId, EngineeringBomDTO dto) {
+        Map<Long, EngineeringBomItem> oldById = new HashMap<>();
+        for (EngineeringBomItem row : productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId))) {
+            oldById.put(row.getItemId(), row);
+        }
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        if (dto.getItems() == null) return result;
+        for (EngineeringBomItemDTO row : dto.getItems()) {
+            EngineeringBomItem old = oldById.get(row.getItemId());
+            if (old == null) continue;
+            if (Objects.equals(old.getParentMaterialId(), row.getParentMaterialId())
+                    && Objects.equals(old.getItemOrder(), row.getItemOrder())) continue;
+            Map<String, Object> change = new java.util.LinkedHashMap<>();
+            change.put("itemId", row.getItemId());
+            change.put("oldParentMaterialId", old.getParentMaterialId());
+            change.put("newParentMaterialId", row.getParentMaterialId());
+            change.put("oldItemOrder", old.getItemOrder());
+            change.put("newItemOrder", row.getItemOrder());
+            result.add(change);
+        }
+        return result;
     }
 
     private static String num(Long value) {
@@ -916,14 +983,29 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         newBom.setIsCurrent(false);
         productBomMapper.insert(newBom);
 
-        // 复制明细
+        // 两遍复制：先获得新行号，再映射归属；禁止把旧版本行号带入新版本。
         List<EngineeringBomItem> oldItems = productBomItemMapper.selectList(
-                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId)
+                        .orderByAsc(EngineeringBomItem::getItemOrder).orderByAsc(EngineeringBomItem::getItemId));
+        Map<Long, EngineeringBomItem> originals = new HashMap<>();
+        for (EngineeringBomItem row : oldItems) originals.put(row.getItemId(), row);
+        for (EngineeringBomItem row : oldItems) {
+            Set<Long> path = new HashSet<>();
+            EngineeringBomItem cursor = row;
+            while (cursor.getParentMaterialId() != null) {
+                if (!path.add(cursor.getItemId()) || !originals.containsKey(cursor.getParentMaterialId())) {
+                    throw new BusinessException("原BOM组合归属存在悬空或循环，不能复制版本");
+                }
+                cursor = originals.get(cursor.getParentMaterialId());
+            }
+        }
+        Map<Long, EngineeringBomItem> copies = new HashMap<>();
         for (EngineeringBomItem item : oldItems) {
             EngineeringBomItem newItem = new EngineeringBomItem();
             cn.hutool.core.bean.BeanUtil.copyProperties(item, newItem);
             newItem.setItemId(null);
             newItem.setBomId(newBom.getBomId());
+            newItem.setParentMaterialId(null);
             // 复制出的行重新走审核：全部草稿、清审核痕迹（dev-20261020-029）
             newItem.setReviewStatus(ProductEnums.BomItemReviewStatus.DRAFT.getValue());
             newItem.setRejectReason(null);
@@ -934,6 +1016,17 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             newItem.setRemoveConfirmedBy(null);
             newItem.setRemoveConfirmedTime(null);
             productBomItemMapper.insert(newItem);
+            copies.put(item.getItemId(), newItem);
+        }
+        for (EngineeringBomItem old : oldItems) {
+            if (old.getParentMaterialId() == null) continue;
+            EngineeringBomItem parent = copies.get(old.getParentMaterialId());
+            if (parent == null || Objects.equals(old.getItemId(), old.getParentMaterialId())) {
+                throw new BusinessException("原BOM组合归属无效，不能复制版本");
+            }
+            EngineeringBomItem child = copies.get(old.getItemId());
+            child.setParentMaterialId(parent.getItemId());
+            productBomItemMapper.updateById(child);
         }
 
         calculateBomCost(newBom.getBomId());

@@ -10,6 +10,8 @@ import com.jjx.product.domain.dto.EngineeringBomDTO;
 import com.jjx.product.domain.dto.EngineeringBomItemDTO;
 import com.jjx.product.mapper.EngineeringBomItemMapper;
 import com.jjx.product.mapper.EngineeringBomMapper;
+import com.jjx.product.mapper.ProductMapper;
+import com.jjx.product.enums.ProductEnums;
 import com.jjx.product.service.IEngineeringBomService;
 import com.jjx.system.service.OperLogChangeRecorder;
 import org.apache.ibatis.datasource.unpooled.UnpooledDataSource;
@@ -51,7 +53,7 @@ class BomGroupPersistenceTest {
         createTable(EngineeringBom.class);
         createTable(EngineeringBomItem.class);
         var implementation = new EngineeringBomServiceImpl(session.getMapper(EngineeringBomMapper.class),
-                session.getMapper(EngineeringBomItemMapper.class), null, new EngineeringBomConverterImpl(),
+                session.getMapper(EngineeringBomItemMapper.class), mock(ProductMapper.class), new EngineeringBomConverterImpl(),
                 null, null, null, null, mock(OperLogChangeRecorder.class), null);
         var proxy = new ProxyFactory(implementation);
         proxy.setInterfaces(IEngineeringBomService.class);
@@ -177,5 +179,112 @@ class BomGroupPersistenceTest {
                 payload(row(-1, -2L, "甲", 1), row(-2, -1L, "乙", 2))));
         assertEquals(0, db.queryForObject("SELECT COUNT(*) FROM engineering_bom", Integer.class));
         assertEquals(0, db.queryForObject("SELECT COUNT(*) FROM engineering_bom_item", Integer.class));
+    }
+
+    @Test
+    void copyRemapsEveryParentToNewVersionAndClearsApprovalWithoutChangingOriginal() {
+        Long bomId = service.createBomReturnId(payload(row(-1, null, "甲", 1), row(-2, -1L, "乙", 2)));
+        var original = service.getBomItems(bomId);
+        db.update("UPDATE engineering_bom_item SET approved_fingerprint='old', approved_by='审核员', review_status=? WHERE bom_id=?",
+                ProductEnums.BomItemReviewStatus.APPROVED.getValue(), bomId);
+        var copied = service.copyAsNewVersion(bomId, "V2.0");
+        var rows = service.getBomItems(copied.getBomId());
+        assertEquals(2, rows.size());
+        assertEquals(rows.get(0).getItemId(), rows.get(1).getParentMaterialId());
+        assertNotEquals(original.get(0).getItemId(), rows.get(0).getItemId());
+        assertEquals(original.get(0).getItemId(), service.getBomItems(bomId).get(1).getParentMaterialId());
+        for (var row : rows) {
+            assertEquals(copied.getBomId(), row.getBomId());
+            assertEquals(ProductEnums.BomItemReviewStatus.DRAFT.getValue(), row.getReviewStatus());
+            assertNull(row.getApprovedFingerprint());
+            assertNull(row.getApprovedBy());
+        }
+    }
+
+    @Test
+    void invalidVersionParentRollsBackNewVersionAndAllCopiedRows() {
+        Long bomId = service.createBomReturnId(payload(row(-1, null, "甲", 1), row(-2, -1L, "乙", 2)));
+        db.update("UPDATE engineering_bom_item SET parent_material_id=99999 WHERE bom_id=? AND item_order=2", bomId);
+        assertThrows(RuntimeException.class, () -> service.copyAsNewVersion(bomId, "V2.0"));
+        assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM engineering_bom", Integer.class));
+        assertEquals(2, db.queryForObject("SELECT COUNT(*) FROM engineering_bom_item", Integer.class));
+    }
+
+    @Test
+    void legacyApprovalIsAdoptedWithoutDowngradeButRegroupingRequiresReviewAndLogsBothDuplicateRows() {
+        Long bomId = service.createBomReturnId(payload(row(-1, null, "同料", 1), row(-2, -1L, "同料", 2)));
+        var stored = service.getBomItems(bomId);
+        for (var it : stored) {
+            db.update("UPDATE engineering_bom_item SET approved_fingerprint=?,review_status=? WHERE item_id=?",
+                    EngineeringBomServiceImpl.legacyFingerprint(it), ProductEnums.BomItemReviewStatus.APPROVED.getValue(), it.getItemId());
+        }
+        var unchanged = payload(row(stored.get(0).getItemId(), null, "同料", 1),
+                row(stored.get(1).getItemId(), stored.get(0).getItemId(), "同料", 2));
+        unchanged.setBomId(bomId);
+        service.updateBomWithDetail(unchanged);
+        for (var it : service.getBomItems(bomId)) {
+            assertEquals(ProductEnums.BomItemReviewStatus.APPROVED.getValue(), it.getReviewStatus());
+            assertEquals(64, it.getApprovedFingerprint().length());
+            assertEquals(EngineeringBomServiceImpl.fingerprint(it), it.getApprovedFingerprint());
+        }
+        var regroup = payload(row(stored.get(1).getItemId(), null, "同料", 1),
+                row(stored.get(0).getItemId(), stored.get(1).getItemId(), "同料", 2));
+        regroup.setBomId(bomId);
+        var detail = cn.hutool.json.JSONUtil.parseObj(service.updateBomWithDetail(regroup).getDetailMessage());
+        assertEquals(2, detail.getJSONArray("groupChanges").size());
+        assertTrue(service.getBomItems(bomId).stream().allMatch(it ->
+                it.getReviewStatus().equals(ProductEnums.BomItemReviewStatus.PENDING.getValue())));
+    }
+
+    @Test
+    void removingLeaderWhileRetainingChildRollsBackAndCannotLeaveDanglingReference() {
+        Long bomId = service.createBomReturnId(payload(row(-1, null, "甲", 1), row(-2, -1L, "乙", 2)));
+        var stored = service.getBomItems(bomId);
+        var leader = row(stored.get(0).getItemId(), null, "甲", 1);
+        leader.setRemoveRequested(true);
+        var edit = payload(leader, row(stored.get(1).getItemId(), leader.getItemId(), "乙", 2));
+        edit.setBomId(bomId);
+        assertThrows(RuntimeException.class, () -> service.updateBomWithDetail(edit));
+        assertEquals(2, service.getBomItems(bomId).size());
+        assertEquals(leader.getItemId(), service.getBomItems(bomId).get(1).getParentMaterialId());
+    }
+
+    @Test
+    void cyclicOldVersionCannotBeCopied() {
+        Long bomId = service.createBomReturnId(payload(row(-1, null, "甲", 1), row(-2, -1L, "乙", 2)));
+        var stored = service.getBomItems(bomId);
+        db.update("UPDATE engineering_bom_item SET parent_material_id=? WHERE item_id=?",
+                stored.get(1).getItemId(), stored.get(0).getItemId());
+        assertThrows(RuntimeException.class, () -> service.copyAsNewVersion(bomId, "V2.0"));
+        assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM engineering_bom", Integer.class));
+        assertEquals(2, db.queryForObject("SELECT COUNT(*) FROM engineering_bom_item", Integer.class));
+    }
+
+    @Test
+    void omittingMixedStatusGroupCannotDeleteLeaderAndLeaveApprovedChildDangling() {
+        Long bomId = service.createBomReturnId(payload(row(-1, null, "甲", 1), row(-2, -1L, "乙", 2)));
+        var stored = service.getBomItems(bomId);
+        db.update("UPDATE engineering_bom_item SET review_status=? WHERE item_id=?",
+                ProductEnums.BomItemReviewStatus.APPROVED.getValue(), stored.get(1).getItemId());
+        var edit = payload();
+        edit.setBomId(bomId);
+        assertThrows(RuntimeException.class, () -> service.updateBomWithDetail(edit));
+        assertEquals(2, service.getBomItems(bomId).size());
+        assertEquals(ProductEnums.BomItemReviewStatus.APPROVED.getValue(), service.getBomItems(bomId).get(1).getReviewStatus());
+    }
+
+    @Test
+    void pendingRemovalChildRetainsContentAndBlocksDeletingItsLeader() {
+        Long bomId = service.createBomReturnId(payload(row(-1, null, "甲", 1), row(-2, -1L, "乙", 2)));
+        var stored = service.getBomItems(bomId);
+        db.update("UPDATE engineering_bom_item SET review_status=? WHERE item_id=?",
+                ProductEnums.BomItemReviewStatus.PENDING_REMOVE.getValue(), stored.get(1).getItemId());
+        var child = row(stored.get(1).getItemId(), null, "乙", 2);
+        child.setRemoveRequested(true);
+        var edit = payload(child);
+        edit.setBomId(bomId);
+        assertThrows(RuntimeException.class, () -> service.updateBomWithDetail(edit));
+        assertEquals(2, service.getBomItems(bomId).size());
+        assertEquals(stored.get(0).getItemId(), service.getBomItems(bomId).get(1).getParentMaterialId());
     }
 }
