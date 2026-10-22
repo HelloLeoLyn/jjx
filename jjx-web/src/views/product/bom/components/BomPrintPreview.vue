@@ -1,98 +1,97 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="`BOM 作业指导书预览 · ${bomCode || ''}`"
-    width="1200px"
+    :title="`BOM 材料表预览 · ${bomCode || ''}`"
+    width="850px"
     append-to-body
     :close-on-click-modal="false"
     destroy-on-close
     class="bom-print-dialog"
+    @opened="layoutPages"
   >
-    <div class="print-toolbar no-print">
-      <el-button type="primary" icon="Printer" @click="doPrint">🖨 打印</el-button>
-      <span class="print-tip">打印时仅输出作业指导书内容（@media print 控制）</span>
+    <div class="print-toolbar">
+      <el-button type="primary" icon="Printer" :disabled="measuring || printing" @click="doPrint"
+        >打印</el-button
+      >
+      <span> A4 纵向 · 仅打印材料表 · 共 {{ pages.length }} 页</span>
     </div>
-
-    <!-- ==================== 打印区域（57.webp 样式） ==================== -->
-    <div class="guide-sheet">
-      <div class="gs-header">
-        <div class="gs-title">薄膜开关 作业指导书</div>
-        <div class="gs-sub">
-          产品：{{ productName || '-' }}（{{ productCode || '-' }}） · BOM：{{ bomCode || '-' }} V{{ bomVersion || '-' }}
-        </div>
-      </div>
-
-      <div class="gs-body">
-        <!-- 左栏：物料清单 -->
-        <div class="gs-left">
-          <div class="gs-section-title">一、物料清单</div>
-          <table class="gs-table">
+    <div class="preview-scroll">
+      <div ref="printContent" class="bom-print-content">
+        <article v-for="(page, pageIndex) in pages" :key="pageIndex" class="bom-paper">
+          <header class="paper-header">
+            <h1>产 品 作 业 规 范<span v-if="pageIndex">（续）</span></h1>
+            <div class="paper-meta">
+              产品：{{ productName || '-' }}（{{ productCode || '-' }}） · BOM：{{
+                bomCode || '-'
+              }}
+              V{{ bomVersion || '-' }}
+            </div>
+          </header>
+          <table class="material-table">
+            <colgroup>
+              <col style="width: 7%" />
+              <col style="width: 19%" />
+              <col style="width: 29%" />
+              <col style="width: 30%" />
+              <col style="width: 15%" />
+            </colgroup>
             <thead>
               <tr>
-                <th style="width:36px">序号</th>
-                <th style="width:70px">项目</th>
-                <th style="width:110px">材料</th>
-                <th style="width:120px">规格及模数</th>
-                <th style="width:70px">用量</th>
-                <th style="width:56px">单位</th>
+                <th>序号</th>
+                <th>项目</th>
+                <th>材料</th>
+                <th>规格及模数</th>
+                <th>刀模位置</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(it, i) in materialList" :key="i">
-                <td class="c">{{ i + 1 }}</td>
-                <td>{{ it.processName || '-' }}</td>
-                <td>{{ it.materialName || '-' }}</td>
-                <td>{{ buildSpec(it) }}</td>
-                <td class="c">{{ fmt(it.quantity) }}</td>
-                <td class="c">{{ it.unit || '-' }}</td>
+              <tr v-for="row in page" :key="row.key" data-material-row>
+                <td v-if="row.span" :rowspan="row.span" class="center">{{ row.number }}</td>
+                <td v-if="row.span" :rowspan="row.span" class="center">
+                  <div class="project">
+                    <ProcessIcon
+                      :icon="processFor(row.item)?.icon"
+                      :name="row.item.processName || processFor(row.item)?.processName || '未指定'"
+                      :category="row.item.processCategory || processFor(row.item)?.processCategory"
+                      :size="24"
+                    />
+                    <span>{{
+                      row.item.processName || processFor(row.item)?.processName || '-'
+                    }}</span>
+                  </div>
+                </td>
+                <td>{{ row.item.materialName || '-' }}</td>
+                <td>{{ bomMaterialSpec(row.item) }}</td>
+                <td>{{ row.item.dieLocation || '-' }}</td>
               </tr>
-              <tr v-if="!materialList.length">
-                <td colspan="6" class="empty">暂无物料</td>
+              <tr v-if="!page.length">
+                <td colspan="5" class="center">暂无物料</td>
               </tr>
             </tbody>
           </table>
-        </div>
-
-        <!-- 右栏：作业流程 -->
-        <div class="gs-right">
-          <div class="gs-section-title">二、作业流程</div>
-          <div v-for="group in flowGroups" :key="group.label" class="flow-group">
-            <div class="flow-label">{{ group.label }}</div>
-            <ol class="flow-list">
-              <li v-for="(p, i) in group.items" :key="i">
-                <span class="flow-name">{{ p.processName || '-' }}</span>
-                <span v-if="p.customLaborHours || p.standardLaborHours" class="flow-time">
-                  {{ fmtHours(p.customLaborHours || p.standardLaborHours) }}h
-                </span>
-                <span v-if="p.description" class="flow-note">{{ p.description }}</span>
-              </li>
-              <li v-if="!group.items.length" class="flow-empty">—</li>
-            </ol>
-          </div>
-        </div>
-      </div>
-
-      <div class="gs-footer">
-        <span>工程确认：__________ 日期：__________</span>
-        <span class="gs-date">打印时间：{{ printTime }}</span>
+          <footer class="paper-footer">{{ pageIndex + 1 }}／{{ pages.length }}页</footer>
+        </article>
       </div>
     </div>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { productRouteApi } from '@/api/product/routing'
+import ProcessIcon from '@/components/ProcessIcon.vue'
+import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
+import {
+  bomMaterialSpec,
+  bomPrintRows,
+  paginateBomRows,
+  type BomPrintItem,
+  type BomPrintRow,
+} from '@/components/print/bomPrintLayout'
 
-/**
- * BOM 作业指导书打印预览（57.webp 样式）
- * 左栏：物料清单（来自当前 BOM items）
- * 右栏：作业流程（来自产品当前工艺路线，按 process_category 分组）
- */
 const props = defineProps<{
   modelValue: boolean
-  items?: any[]
+  items?: BomPrintItem[]
   bomCode?: string
   bomName?: string
   bomVersion?: string
@@ -100,77 +99,117 @@ const props = defineProps<{
   productCode?: string
   productName?: string
 }>()
-
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: boolean): void
-}>()
-
+const emit = defineEmits<{ (e: 'update:modelValue', value: boolean): void }>()
 const visible = computed({
   get: () => props.modelValue,
-  set: (v) => emit('update:modelValue', v),
+  set: (value) => emit('update:modelValue', value),
 })
+const { processes } = useEnabledProcesses()
+const processMap = computed(
+  () => new Map(processes.value.map((item) => [String(item.processId), item]))
+)
+const processFor = (item: BomPrintItem) => processMap.value.get(String(item.processId))
+const rows = computed(() => bomPrintRows(props.items || []))
+const pages = ref<BomPrintRow[][]>([[]])
+const printContent = ref<HTMLElement>()
+const measuring = ref(true)
+const printing = ref(false)
+let layoutVersion = 0
 
-const printTime = ref('')
-const routingItems = ref<any[]>([])
-
-// 物料清单（当前 BOM items）
-const materialList = computed(() => props.items || [])
-
-// 规格及模数：specification + 模数（如 285×360mm=4PCS）
-function buildSpec(it: any): string {
-  const parts: string[] = []
-  if (it.specification) parts.push(it.specification)
-  if (it.moduleQty) parts.push(`模数${it.moduleQty}`)
-  return parts.join(' ') || '-'
-}
-
-// 作业流程：按 process_category 分组
-const flowGroups = computed(() => {
-  const cats = [
-    { key: 'PANEL', label: '面板作业流程' },
-    { key: 'UP_LINE', label: '上线作业流程' },
-    { key: 'DOWN_LINE', label: '下线作业流程' },
-  ]
-  const sorted = [...routingItems.value].sort(
-    (a, b) => (a.processOrder || 999) - (b.processOrder || 999)
+async function layoutPages() {
+  const version = ++layoutVersion
+  if (!visible.value) return
+  measuring.value = true
+  // 先在与纸张相同宽度下测量每行；测量时不合并，给长项目名称预留足够高度。
+  pages.value = [rows.value.map((row) => ({ ...row, span: 1 }))]
+  await nextTick()
+  await document.fonts.ready
+  if (version !== layoutVersion || !visible.value) return
+  const paper = printContent.value?.querySelector<HTMLElement>('.bom-paper')
+  if (!paper) return
+  const height = (selector: string) =>
+    paper.querySelector(selector)?.getBoundingClientRect().height || 0
+  const rowHeights = Array.from(
+    paper.querySelectorAll('[data-material-row]'),
+    (row) => row.getBoundingClientRect().height
   )
-  return cats.map((c) => ({
-    label: c.label,
-    items: sorted.filter((p) => (p.processCategory || '') === c.key),
-  }))
-})
-
-function fmt(v: any): string {
-  if (v === null || v === undefined || v === '') return '-'
-  const n = Number(v)
-  return Number.isNaN(n) ? String(v) : String(n)
+  // 276mm 比 A4 的可打印高度（297 - 2*10）少 1mm，另留边框/舍入余量。
+  const capacity =
+    (276 * 96) / 25.4 - height('.paper-header') - height('thead') - height('.paper-footer') - 10
+  pages.value = paginateBomRows(rows.value, rowHeights, capacity)
+  await nextTick()
+  if (version === layoutVersion) measuring.value = false
 }
 
-function fmtHours(v: any): string {
-  const n = Number(v) || 0
-  return String(n)
-}
-
-// 打开时拉取产品当前工艺路线（作业流程数据源）
 watch(
-  () => props.modelValue,
-  async (v) => {
-    if (!v) return
-    printTime.value = new Date().toLocaleString('zh-CN')
-    routingItems.value = []
-    if (!props.productId) return
-    try {
-      const res = await productRouteApi.getCurrentProductRoute(props.productId)
-      routingItems.value = res?.data?.items || []
-    } catch (e: any) {
-      ElMessage.warning('加载产品工艺路线失败，作业流程可能为空')
-    }
-  }
+  () => [
+    props.modelValue,
+    props.items,
+    props.productName,
+    props.productCode,
+    props.bomCode,
+    props.bomVersion,
+    processes.value,
+  ],
+  layoutPages,
+  { deep: true, flush: 'post' }
 )
 
-// 打印
-function doPrint() {
-  window.print()
+async function doPrint() {
+  await layoutPages()
+  if (measuring.value || !printContent.value) return
+  printing.value = true
+  // 独立文档打印，避免 BOM 编辑弹窗和主页面混入，也不改变父页面的全局打印样式。
+  const frame = document.createElement('iframe')
+  frame.style.cssText = 'position:fixed;width:0;height:0;border:0;'
+  frame.title = 'BOM 材料表打印'
+  document.body.appendChild(frame)
+  try {
+    const doc = frame.contentDocument!
+    const win = frame.contentWindow!
+    doc.open()
+    doc.write(
+      '<!doctype html><html><head><meta charset="UTF-8"><title>BOM 材料表</title></head><body></body></html>'
+    )
+    doc.close()
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+    const loaded: Promise<void>[] = []
+    for (const style of styles) {
+      const clone = style.cloneNode(true) as HTMLElement
+      if (clone.tagName === 'LINK')
+        loaded.push(
+          new Promise((resolve, reject) => {
+            clone.onload = () => resolve()
+            clone.onerror = () => reject(new Error('打印样式加载失败'))
+          })
+        )
+      doc.head.appendChild(clone)
+    }
+    const printStyle = doc.createElement('style')
+    printStyle.textContent =
+      '@page { size: A4 portrait; margin: 10mm; } html, body { margin: 0; padding: 0; background: white; }'
+    doc.head.appendChild(printStyle)
+    // SvgIcon 使用页面内 symbol；打印文档也需要同一份 sprite。
+    document.querySelectorAll('svg').forEach((svg) => {
+      if (!svg.querySelector('symbol')) return
+      const sprite = svg.cloneNode(true) as SVGElement
+      sprite.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;'
+      doc.body.appendChild(sprite)
+    })
+    doc.body.appendChild(printContent.value.cloneNode(true))
+    await Promise.all(loaded)
+    await doc.fonts.ready
+    await new Promise<void>((resolve) => win.requestAnimationFrame(() => resolve()))
+    win.addEventListener('afterprint', () => frame.remove(), { once: true })
+    win.focus()
+    win.print()
+  } catch (error) {
+    console.error('BOM 材料表打印失败:', error)
+    frame.remove()
+    ElMessage.error('打印准备失败，请重试')
+  } finally {
+    printing.value = false
+  }
 }
 </script>
 
@@ -180,149 +219,107 @@ function doPrint() {
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
-}
-.print-tip {
   font-size: 12px;
-  color: #909399;
 }
-
-/* ==================== 作业指导书（57.webp 样式） ==================== */
-.guide-sheet {
-  background: #fff;
-  border: 2px solid #333;
-  padding: 18px 20px;
+.preview-scroll {
+  overflow: auto;
+  background: #eee;
+}
+.bom-print-content {
+  color: #252525;
+  font-family: SimSun, 'Songti SC', serif;
   font-size: 13px;
-  color: #000;
-  line-height: 1.6;
+  line-height: 1.2;
 }
-.gs-header {
-  text-align: center;
-  border-bottom: 2px solid #333;
-  padding-bottom: 8px;
-  margin-bottom: 12px;
-}
-.gs-title {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 4px;
-}
-.gs-sub {
-  font-size: 12px;
-  margin-top: 4px;
-}
-.gs-body {
+.bom-paper {
+  box-sizing: border-box;
+  width: 190mm;
+  min-height: 276mm;
+  margin: 12px auto;
+  padding: 0;
+  background: white;
   display: flex;
-  gap: 16px;
+  flex-direction: column;
 }
-.gs-left {
-  flex: 1.1;
-  min-width: 0;
+.paper-header {
+  flex: none;
+  overflow-wrap: anywhere;
 }
-.gs-right {
-  flex: 1;
-  min-width: 0;
-  border-left: 2px solid #333;
-  padding-left: 16px;
-}
-.gs-section-title {
-  font-weight: 700;
-  font-size: 14px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid #333;
-  padding-bottom: 4px;
-}
-.gs-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.gs-table th,
-.gs-table td {
-  border: 1px solid #333;
-  padding: 4px 6px;
-  text-align: left;
-}
-.gs-table th {
-  background: #eee;
-  font-weight: 600;
-}
-.gs-table .c {
-  text-align: center;
-}
-.gs-table .empty {
-  text-align: center;
-  color: #999;
-  padding: 12px 0;
-}
-.flow-group {
-  margin-bottom: 10px;
-}
-.flow-label {
-  font-weight: 700;
-  font-size: 13px;
-  background: #eee;
-  border: 1px solid #333;
-  padding: 3px 8px;
-  margin-bottom: 4px;
-}
-.flow-list {
+h1 {
+  height: 65px;
   margin: 0;
-  padding-left: 20px;
-  font-size: 12px;
-}
-.flow-list li {
-  margin-bottom: 3px;
-}
-.flow-name {
-  font-weight: 600;
-}
-.flow-time {
-  color: #555;
-  margin-left: 6px;
-  font-size: 11px;
-}
-.flow-note {
-  display: block;
-  color: #666;
-  font-size: 11px;
-}
-.flow-empty {
-  color: #999;
-  list-style: none;
-}
-.gs-footer {
   display: flex;
-  justify-content: space-between;
-  margin-top: 16px;
-  border-top: 1px dashed #333;
-  padding-top: 8px;
+  align-items: center;
+  justify-content: center;
+  font-size: 27px;
+  font-weight: 400;
+  letter-spacing: 5px;
+  text-decoration: underline;
+  text-underline-offset: 7px;
+}
+h1 span {
+  font-size: 13px;
+  letter-spacing: 0;
+}
+.paper-meta {
+  padding: 6px 4px;
+}
+.material-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  flex: none;
+}
+.material-table th,
+.material-table td {
+  border: 1px solid #333;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.material-table th {
+  height: 32px;
+  font-size: 14px;
+}
+.material-table td {
+  height: 22px;
+}
+.center {
+  text-align: center;
+}
+.project {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.project span {
+  min-width: 0;
+}
+.paper-footer {
+  margin-top: auto;
+  text-align: right;
+  padding: 6px 0;
+  flex: none;
   font-size: 12px;
 }
-
-/* ==================== 打印控制 ==================== */
 @media print {
-  .no-print {
-    display: none !important;
+  .bom-paper {
+    margin: 0;
+    break-after: page;
   }
-  .bom-print-dialog {
-    position: static !important;
+  .bom-paper:last-child {
+    break-after: auto;
   }
-  .bom-print-dialog :deep(.el-dialog) {
-    width: 100% !important;
-    max-height: none !important;
-    box-shadow: none !important;
-    border: none !important;
+  .material-table thead {
+    display: table-header-group;
   }
-  .bom-print-dialog :deep(.el-dialog__header),
-  .bom-print-dialog :deep(.el-dialog__footer) {
-    display: none !important;
+  .material-table tr {
+    break-inside: avoid;
   }
-  .bom-print-dialog :deep(.el-overlay) {
-    position: static !important;
-    background: #fff !important;
-    overflow: visible !important;
-  }
-  body {
+  .bom-print-content {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
