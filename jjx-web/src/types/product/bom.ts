@@ -195,3 +195,10 @@ export interface BomItemBatchReviewResult {
   successIds: number[]
   failed: { itemId: number; reason: string }[]
 }
+
+/** SysOperLog的数字结果；现有OperResultEnum使用字符串，不能用于此接口。 */
+export enum BomSaveLogResult {
+  SUCCESS = 1,
+}
+
+export type BomOriginalValues = Record<string, { materialName?: string | null; specification?: string | null }>

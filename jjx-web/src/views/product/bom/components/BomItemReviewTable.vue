@@ -124,7 +124,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { WarningFilled } from '@element-plus/icons-vue'
-import type { EngineeringBomItem, BomItemBatchReviewResult } from '@/types/product/bom'
+import type { EngineeringBomItem, BomItemBatchReviewResult, BomOriginalValues } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import { BomItemReviewStatusEnum } from '@/enums/product'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
@@ -135,8 +135,8 @@ const props = withDefaults(
     busyItemId?: number
     batchBusy?: boolean
     batchFailures?: BomItemBatchReviewResult['failed']
-    /** 最近一次保存的改动前值：key = 物料编码，value = { materialName, specification } */
-    originalValues?: Record<string, { materialName?: string; specification?: string }>
+    /** 最近一次成功保存的改动前值，key为稳定itemId。 */
+    originalValues?: BomOriginalValues
   }>(),
   {
     items: () => [],
@@ -149,7 +149,7 @@ const props = withDefaults(
 
 /** 取该行的原值；没有流水记录时显示 — */
 const originalOf = (row: EngineeringBomItem, field: 'materialName' | 'specification'): string => {
-  const key = row.materialCode || ''
+  const key = row.itemId == null ? '' : String(row.itemId)
   const entry = key ? props.originalValues?.[key] : undefined
   const value = entry?.[field]
   return value === undefined || value === null || value === '' ? '—' : value
@@ -157,7 +157,7 @@ const originalOf = (row: EngineeringBomItem, field: 'materialName' | 'specificat
 
 /** 原值与现值不同才高亮（新增行/无记录不高亮） */
 const hasOriginal = (row: EngineeringBomItem, field: 'materialName' | 'specification'): boolean => {
-  const key = row.materialCode || ''
+  const key = row.itemId == null ? '' : String(row.itemId)
   const entry = key ? props.originalValues?.[key] : undefined
   if (!entry || entry[field] === undefined) return false
   return (entry[field] || '') !== ((row as any)[field] || '')

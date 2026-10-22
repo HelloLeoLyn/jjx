@@ -322,6 +322,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // 变更明细：主表 + 明细行对比（保存前采集）
         List<String> changes = new java.util.ArrayList<>();
         List<Map<String, Object>> groupChanges = buildGroupChanges(existingBom.getBomId(), dto);
+        List<Map<String, Object>> itemChanges = buildOriginalValueChanges(existingBom.getBomId(), dto);
         try {
             buildBomDiff(changes, existingBom, dto);
         } catch (Exception e) {
@@ -359,7 +360,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         detail.set("changes", changes);
         detail.set("attachments", List.of());
         detail.set("groupChanges", groupChanges);
-        vo.setDetailMessage(changes.isEmpty() ? null : detail.toString());
+        detail.set("itemChanges", itemChanges);
+        vo.setDetailMessage(changes.isEmpty() && itemChanges.isEmpty() ? null : detail.toString());
         ProductEnums.BomStatus latestStatus = ProductEnums.BomStatus.fromValue(bom.getApproveStatus());
         vo.setBizStatus(latestStatus != null ? latestStatus.getLabel() : null);
         return vo;
@@ -655,6 +657,33 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return result;
     }
 
+    /** 改名前值按明细ID而非物料ID对应：未建档、同料多行和换物料仍保留各自原文。 */
+    private List<Map<String, Object>> buildOriginalValueChanges(Long bomId, EngineeringBomDTO dto) {
+        Map<Long, EngineeringBomItem> oldById = new HashMap<>();
+        for (EngineeringBomItem row : productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId))) {
+            oldById.put(row.getItemId(), row);
+        }
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        if (dto.getItems() == null) return result;
+        for (EngineeringBomItemDTO row : dto.getItems()) {
+            EngineeringBomItem old = oldById.get(row.getItemId());
+            if (old == null || Boolean.TRUE.equals(row.getRemoveRequested())) continue;
+            for (String field : List.of("materialName", "specification")) {
+                String oldValue = "materialName".equals(field) ? old.getMaterialName() : old.getSpecification();
+                String newValue = "materialName".equals(field) ? row.getMaterialName() : row.getSpecification();
+                if (Objects.equals(oldValue, newValue)) continue;
+                Map<String, Object> change = new java.util.LinkedHashMap<>();
+                change.put("itemId", row.getItemId());
+                change.put("field", field);
+                change.put("oldValue", oldValue);
+                change.put("newValue", newValue);
+                result.add(change);
+            }
+        }
+        return result;
+    }
+
     private static String num(Long value) {
         return value == null ? "" : String.valueOf(value);
     }
@@ -672,7 +701,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     }
 
     /**
-     * BOM 变更对比：主表字段 + 明细行（按 materialId 键对比，明细为全量替换）
+     * BOM 变更对比：主表字段 + 按稳定itemId对比的明细行。
      */
     private void buildBomDiff(List<String> changes, EngineeringBom old, EngineeringBomDTO dto) {
         changeRecorder.diff(changes, "BOM版本", old.getBomVersion(), dto.getBomVersion());
@@ -694,12 +723,13 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                         .eq(EngineeringBomItem::getBomId, dto.getBomId()));
         java.util.Map<Long, EngineeringBomItem> oldByMat = new java.util.HashMap<>();
         for (EngineeringBomItem it : oldItems) {
-            if (it.getMaterialId() != null) oldByMat.put(it.getMaterialId(), it);
+            if (it.getItemId() != null) oldByMat.put(it.getItemId(), it);
         }
         java.util.Map<Long, EngineeringBomItemDTO> newByMat = new java.util.HashMap<>();
         if (dto.getItems() != null) {
             for (EngineeringBomItemDTO it : dto.getItems()) {
-                if (it.getMaterialId() != null) newByMat.put(it.getMaterialId(), it);
+                if (it.getItemId() != null) newByMat.put(it.getItemId(), it);
+                else changes.add("新增物料:" + matLabel(it));
             }
         }
         for (java.util.Map.Entry<Long, EngineeringBomItemDTO> e : newByMat.entrySet()) {
@@ -738,7 +768,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             }
         }
         for (EngineeringBomItem oldIt : oldItems) {
-            if (oldIt.getMaterialId() != null && !newByMat.containsKey(oldIt.getMaterialId())) {
+            if (oldIt.getItemId() != null && !newByMat.containsKey(oldIt.getItemId())) {
                 changes.add("移除物料:" + matLabel(oldIt));
             }
         }
@@ -746,15 +776,15 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // 按「新旧共同物料」的相对先后比较：仅纯增/删的记录上面已出，这里只补真实顺序被调整的情况。
         java.util.List<Long> oldSeq = new java.util.ArrayList<>();
         for (EngineeringBomItem it : oldItems) {
-            if (it.getMaterialId() != null && !oldSeq.contains(it.getMaterialId())) {
-                oldSeq.add(it.getMaterialId());
+            if (it.getItemId() != null && !oldSeq.contains(it.getItemId())) {
+                oldSeq.add(it.getItemId());
             }
         }
         java.util.List<Long> newSeq = new java.util.ArrayList<>();
         if (dto.getItems() != null) {
             for (EngineeringBomItemDTO it : dto.getItems()) {
-                if (it.getMaterialId() != null && !newSeq.contains(it.getMaterialId())) {
-                    newSeq.add(it.getMaterialId());
+                if (it.getItemId() != null && !newSeq.contains(it.getItemId())) {
+                    newSeq.add(it.getItemId());
                 }
             }
         }

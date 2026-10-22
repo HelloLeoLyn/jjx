@@ -287,4 +287,27 @@ class BomGroupPersistenceTest {
         assertEquals(2, service.getBomItems(bomId).size());
         assertEquals(stored.get(0).getItemId(), service.getBomItems(bomId).get(1).getParentMaterialId());
     }
+
+    @Test
+    void originalValuesUseItemIdsForDuplicateUnlinkedMaterialsAndOnlyLatestSave() {
+        Long bomId = service.createBomReturnId(payload(row(-1, null, "旧]→甲\n原文", 1), row(-2, -1L, "旧乙", 2)));
+        var stored = service.getBomItems(bomId);
+        var first = row(stored.get(0).getItemId(), null, "新甲", 1);
+        first.setMaterialId(999L); // 同一行同时换物料，原文仍按itemId对应。
+        var second = row(stored.get(1).getItemId(), first.getItemId(), "新乙", 2);
+        first.setSpecification("新规格");
+        var edit = payload(first, second);
+        edit.setBomId(bomId);
+        var detail = cn.hutool.json.JSONUtil.parseObj(service.updateBomWithDetail(edit).getDetailMessage());
+        var changes = detail.getJSONArray("itemChanges");
+        assertEquals(3, changes.size());
+        assertEquals(first.getItemId(), changes.getJSONObject(0).getLong("itemId"));
+        assertEquals("旧]→甲\n原文", changes.getJSONObject(0).getStr("oldValue"));
+        assertEquals(second.getItemId(), changes.getJSONObject(2).getLong("itemId"));
+        first.setMaterialName("再改甲");
+        detail = cn.hutool.json.JSONUtil.parseObj(service.updateBomWithDetail(edit).getDetailMessage());
+        assertEquals(1, detail.getJSONArray("itemChanges").size());
+        assertEquals("新甲", detail.getJSONArray("itemChanges").getJSONObject(0).getStr("oldValue"));
+        assertNull(service.updateBomWithDetail(edit).getDetailMessage(), "无变化保存不能复用前次旧值");
+    }
 }
