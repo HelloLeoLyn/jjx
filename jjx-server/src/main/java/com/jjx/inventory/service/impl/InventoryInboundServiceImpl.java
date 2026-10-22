@@ -2575,7 +2575,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     }
                 }
                 String materialType = material.getMaterialType();
+                // dev-20261022-018：半成品(S) 与原材料同组处理，避免落入"既无默认仓也无匹配类型"的回退分支
                 if (MaterialEnums.Type.RAW.getValue().equals(materialType)
+                        || MaterialEnums.Type.SEMI.getValue().equals(materialType)
                         || MaterialEnums.Type.INK.getValue().equals(materialType)
                         || MaterialEnums.Type.AUXILIARY.getValue().equals(materialType)) {
                     rawQuantity = rawQuantity.add(quantity);
