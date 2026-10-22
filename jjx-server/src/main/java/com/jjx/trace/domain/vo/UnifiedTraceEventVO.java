@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 public class UnifiedTraceEventVO {
     private String eventId;
     private String groupId;
-    private java.util.List<UnifiedTraceEventVO> children = java.util.List.of();
+    private java.util.List<UnifiedTraceEventVO> children = null;
     private LocalDateTime time;
     private String bizStatus;
     private String action;

@@ -1,115 +1,117 @@
 <template>
   <div class="product-code-generator">
-    <el-row :gutter="16">
-      <el-col :span="12">
-        <el-form-item label="面板结构" required>
-          <el-select
-            v-model="state.panelType"
-            placeholder="面板类型"
-            style="width: 100%"
-            :disabled="disabled"
-          >
-            <el-option
-              v-for="o in PANEL_TYPE_OPTIONS"
-              :key="o.value"
-              :label="o.label"
-              :value="o.value"
-            />
-          </el-select>
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
-        <el-form-item label="面板特征" required>
-          <el-select
-            v-model="state.panelFeature"
-            placeholder="面板特征"
-            style="width: 100%"
-            :disabled="disabled"
-          >
-            <el-option
-              v-for="o in PANEL_FEATURE_OPTIONS"
-              :key="o.value"
-              :label="o.label"
-              :value="o.value"
-            />
-          </el-select>
-        </el-form-item>
-      </el-col>
-    </el-row>
+    <el-form label-width="auto">
+      <el-row :gutter="16">
+        <el-col :span="12">
+          <el-form-item label="面板结构" required>
+            <el-select
+              v-model="state.panelType"
+              placeholder="面板类型"
+              style="width: 100%"
+              :disabled="disabled"
+            >
+              <el-option
+                v-for="o in PANEL_TYPE_OPTIONS"
+                :key="o.value"
+                :label="o.label"
+                :value="o.value"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="面板特征" required>
+            <el-select
+              v-model="state.panelFeature"
+              placeholder="面板特征"
+              style="width: 100%"
+              :disabled="disabled"
+            >
+              <el-option
+                v-for="o in PANEL_FEATURE_OPTIONS"
+                :key="o.value"
+                :label="o.label"
+                :value="o.value"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
 
-    <el-row :gutter="16">
-      <el-col :span="12">
-        <el-form-item label="线路类型" required>
-          <el-select
-            v-model="state.circuitType"
-            placeholder="线路类型"
-            style="width: 100%"
-            :disabled="disabled"
-          >
-            <el-option
-              v-for="o in CIRCUIT_TYPE_OPTIONS"
-              :key="o.value"
-              :label="o.label"
-              :value="o.value"
+      <el-row :gutter="16">
+        <el-col :span="12">
+          <el-form-item label="线路类型" required>
+            <el-select
+              v-model="state.circuitType"
+              placeholder="线路类型"
+              style="width: 100%"
+              :disabled="disabled"
+            >
+              <el-option
+                v-for="o in CIRCUIT_TYPE_OPTIONS"
+                :key="o.value"
+                :label="o.label"
+                :value="o.value"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="线路特征" required>
+            <el-select
+              v-model="state.circuitFeature"
+              placeholder="线路特征"
+              style="width: 100%"
+              :disabled="disabled"
+            >
+              <el-option
+                v-for="o in CIRCUIT_FEATURE_OPTIONS"
+                :key="o.value"
+                :label="o.label"
+                :value="o.value"
+              />
+            </el-select>
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <!-- 序号（2026-09-30 dev-20260930-011）：默认自动取号，可手填 1~4 位（超过 999 给 4 位） -->
+      <el-row :gutter="16">
+        <el-col :span="12">
+          <el-form-item label="序号">
+            <el-input
+              v-model="state.serialNo"
+              placeholder="点「取号」自动取，或手填 1~4 位数字"
+              maxlength="4"
+              :disabled="disabled || !serialEditable"
+              @input="onSerialInput"
+              @blur="onSerialBlur"
+            >
+              <template v-if="!hideGenerate" #append>
+                <el-button
+                  :icon="Refresh"
+                  :loading="generating"
+                  :disabled="disabled || !serialEditable"
+                  @click="handleGenerate"
+                  >取号</el-button
+                >
+              </template>
+            </el-input>
+            <div class="code-hint">不满 3 位自动补 0（9 → 009）；序号超过 999 直接给 4 位</div>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="产品编码">
+            <el-input
+              :model-value="preview?.productCode || ''"
+              placeholder="选择编码要素后自动生成"
+              readonly
+              class="code-preview"
             />
-          </el-select>
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
-        <el-form-item label="线路特征" required>
-          <el-select
-            v-model="state.circuitFeature"
-            placeholder="线路特征"
-            style="width: 100%"
-            :disabled="disabled"
-          >
-            <el-option
-              v-for="o in CIRCUIT_FEATURE_OPTIONS"
-              :key="o.value"
-              :label="o.label"
-              :value="o.value"
-            />
-          </el-select>
-        </el-form-item>
-      </el-col>
-    </el-row>
-    <!-- 序号（2026-09-30 dev-20260930-011）：默认自动取号，可手填 1~4 位（超过 999 给 4 位） -->
-    <el-row :gutter="16">
-      <el-col :span="12">
-        <el-form-item label="序号">
-          <el-input
-            v-model="state.serialNo"
-            placeholder="点「取号」自动取，或手填 1~4 位数字"
-            maxlength="4"
-            :disabled="disabled || !serialEditable"
-            @input="onSerialInput"
-            @blur="onSerialBlur"
-          >
-            <template v-if="!hideGenerate" #append>
-              <el-button
-                :icon="Refresh"
-                :loading="generating"
-                :disabled="disabled || !serialEditable"
-                @click="handleGenerate"
-                >取号</el-button
-              >
-            </template>
-          </el-input>
-          <div class="code-hint">不满 3 位自动补 0（9 → 009）；序号超过 999 直接给 4 位</div>
-        </el-form-item>
-      </el-col>
-      <el-col :span="12">
-        <el-form-item label="产品编码">
-          <el-input
-            :model-value="preview?.productCode || ''"
-            placeholder="选择编码要素后自动生成"
-            readonly
-            class="code-preview"
-          />
-          <div v-if="hint" class="code-hint">{{ hint }}</div>
-        </el-form-item>
-      </el-col>
-    </el-row>
+            <div v-if="hint" class="code-hint">{{ hint }}</div>
+          </el-form-item>
+        </el-col>
+      </el-row>
+    </el-form>
   </div>
 </template>
 
@@ -154,7 +156,7 @@ const props = withDefaults(
     hideGenerate: false,
     serialEditable: true,
     disabled: false,
-  },
+  }
 )
 
 const emit = defineEmits<{
@@ -240,7 +242,9 @@ async function handleGenerate() {
 
 /** 序号输入：只留数字、最多 4 位（2026-09-30 dev-20260930-011） */
 function onSerialInput(value: string) {
-  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 4)
+  const digits = String(value ?? '')
+    .replace(/\D/g, '')
+    .slice(0, 4)
   if (digits !== value) state.value.serialNo = digits
 }
 

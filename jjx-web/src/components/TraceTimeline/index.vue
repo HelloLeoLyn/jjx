@@ -1,10 +1,5 @@
 <template>
-  <el-drawer
-    v-model="visible"
-    title="业务事件流"
-    size="880px"
-    @close="handleClose"
-  >
+  <el-drawer v-model="visible" title="业务事件流" size="880px" @close="handleClose">
     <div class="toolbar">
       <span class="toolbar-hint">按时间正序展示业务操作</span>
       <div class="toolbar-actions">
@@ -25,28 +20,17 @@
         ref="eventTable"
         :data="events"
         :expand-row-keys="expandedRows"
-        :row-class-name="({ row }: { row: TraceEvent }) => groupId && row.groupId === groupId ? 'target-group' : ''"
+        :row-class-name="
+          ({ row }: { row: TraceEvent }) =>
+            groupId && row.groupId === groupId ? 'target-group' : ''
+        "
         size="small"
         border
         highlight-current-row
         row-key="eventId"
         class="event-table"
       >
-        <el-table-column type="expand" width="40">
-          <template #default="{ row }">
-            <div v-if="row.children?.length" class="group-children">
-              <div v-for="child in row.children" :key="child.eventId" class="group-child">
-                {{ sourceLabel(child) }} · {{ formatTime(child.time) }} ·
-                <el-link type="primary" @click="selectEvent(child)">{{ child.actionTitle }}</el-link>
-                · {{ child.operatorName || '-' }}
-              </div>
-            </div>
-            <span v-else>无同组子项</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="来源" min-width="140">
-          <template #default="{ row }">{{ sourceLabel(row) }}</template>
-        </el-table-column>
+        <el-table-column label="功能" min-width="140" prop="action"> </el-table-column>
         <el-table-column label="时间" width="165">
           <template #default="scope">{{ formatTime(scope.row.time) }}</template>
         </el-table-column>
@@ -253,7 +237,8 @@ const eventTable = ref<any>()
 const expandedRows = ref<string[]>([])
 function sourceLabel(row: TraceEvent): string {
   const label = formatBizModule(row.module, row.bizType)
-  if (props.bizType === row.bizType && props.bizId === String(row.bizId)) return `本单动作 · ${label}`
+  if (props.bizType === row.bizType && props.bizId === String(row.bizId))
+    return `本单动作 · ${label}`
   return `${label}${row.bizId ? ' #' + row.bizId : ''} 动作`
 }
 
@@ -279,7 +264,15 @@ let requestVersion = 0
 const inFlight = new Map<string, Promise<void>>()
 
 watch(
-  () => [props.modelValue, props.traceId, props.bizType, props.bizId, props.scope, props.groupId] as const,
+  () =>
+    [
+      props.modelValue,
+      props.traceId,
+      props.bizType,
+      props.bizId,
+      props.scope,
+      props.groupId,
+    ] as const,
   ([open, traceId, bizType, bizId, scope, groupId]) => {
     visible.value = open
     if (!open) {
@@ -362,7 +355,16 @@ function loadEvents(snapshot: TraceParams = props, locate = false): Promise<void
   if (scope && !traceId) params.scope = scope
 
   // 仅复用尚未完成的同参数请求；分页、每页条数及刷新不受已加载 key 限制。
-  const key = JSON.stringify([traceId, bizType, bizId, scope, groupId, locate, params.pageNum, params.pageSize])
+  const key = JSON.stringify([
+    traceId,
+    bizType,
+    bizId,
+    scope,
+    groupId,
+    locate,
+    params.pageNum,
+    params.pageSize,
+  ])
   const pending = inFlight.get(key)
   if (pending) return pending
 
@@ -377,14 +379,19 @@ function loadEvents(snapshot: TraceParams = props, locate = false): Promise<void
         // 按主事件分页寻找目标；找不到时仍显示第一页，不把列表留空。
         const first = data
         let targetPage = 1
-        while (!(data.records || []).some((row: TraceEvent) => row.groupId === groupId)
-               && targetPage * params.pageSize < Number(data.total || 0)) {
+        while (
+          !(data.records || []).some((row: TraceEvent) => row.groupId === groupId) &&
+          targetPage * params.pageSize < Number(data.total || 0)
+        ) {
           targetPage++
-          response = await request.get('/api/trace/events', { params: { ...params, pageNum: targetPage } })
+          response = await request.get('/api/trace/events', {
+            params: { ...params, pageNum: targetPage },
+          })
           if (version !== requestVersion) return
           data = (response as any)?.data || {}
         }
-        if ((data.records || []).some((row: TraceEvent) => row.groupId === groupId)) pageNum.value = targetPage
+        if ((data.records || []).some((row: TraceEvent) => row.groupId === groupId))
+          pageNum.value = targetPage
         else data = first
       }
       events.value = (data.records || []).map(enrichEvent)
@@ -392,12 +399,14 @@ function loadEvents(snapshot: TraceParams = props, locate = false): Promise<void
       loading.value = false
       selectedEvent.value = null
       if (locate && groupId) {
-        const target = events.value.find(row => row.groupId === groupId)
+        const target = events.value.find((row) => row.groupId === groupId)
         if (target) {
           expandedRows.value = [target.eventId]
           selectedEvent.value = target
           await nextTick()
-          eventTable.value?.$el?.querySelector('.target-group')?.scrollIntoView({ block: 'nearest' })
+          eventTable.value?.$el
+            ?.querySelector('.target-group')
+            ?.scrollIntoView({ block: 'nearest' })
         }
       }
     } catch {
@@ -433,7 +442,12 @@ function enrichEvent(row: any): TraceEvent {
 /** 流水标题：module（去"管理"后缀）+ 业务类型枚举，如「产品BOM - 修改」 */
 function buildActionTitle(row: any): string {
   const action = (row.action || '').trim()
-  if (action && row.operUrl === 'order.create' && String(row.operParam || '').startsWith(action + ' ')) return row.operParam
+  if (
+    action &&
+    row.operUrl === 'order.create' &&
+    String(row.operParam || '').startsWith(action + ' ')
+  )
+    return row.operParam
   if (action) return action
   const module = displayModule(row.module)?.replace(/管理$/, '')
   const bizLabel = BusinessTypeEnum.getLabel(row.businessType)
@@ -589,8 +603,12 @@ function downloadUrl(attachment: TraceAttachment): string {
 </script>
 
 <style scoped>
-.group-children { padding: 8px 24px; }
-.group-child + .group-child { margin-top: 8px; }
+.group-children {
+  padding: 8px 24px;
+}
+.group-child + .group-child {
+  margin-top: 8px;
+}
 .toolbar {
   display: flex;
   justify-content: space-between;

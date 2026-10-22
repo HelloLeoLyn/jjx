@@ -3,7 +3,14 @@
   明细行 📎资料 → 产品文件库（按 product_id/编码挂载，保存建档后可用）
 -->
 <template>
-  <el-dialog :title="title" v-model="visible" width="1300px" append-to-body @close="handleClose">
+  <el-dialog
+    :title="title"
+    v-model="visible"
+    max-width="1300px"
+    width="80%"
+    append-to-body
+    @close="handleClose"
+  >
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px">
       <el-row>
         <el-col :span="12">
@@ -161,15 +168,18 @@
             <span>{{ formatCurrency(scope.row.amount) }}</span>
           </template>
         </el-table-column>
-        <el-table-column :min-width="180" align="center" :fixed="false" label="操作">
+        <el-table-column :min-width="180" align="center" fixed="right" label="操作">
           <template #header>
             <span>操作</span
             ><el-button type="primary" @click="addItem" size="small" text>添加明细</el-button>
           </template>
           <template #default="scope">
-            <el-button link type="primary" @click="openCodeGen(scope.row)">新建产品</el-button>
+            <el-button link type="primary" size="small" @click="openCodeGen(scope.row)"
+              >新建</el-button
+            >
             <el-button
               link
+              size="small"
               type="warning"
               :disabled="!scope.row.productCode"
               @click="openRowAttachment(scope.row)"
@@ -178,6 +188,7 @@
             <el-button
               v-if="formData.quotationType === 1 || formData.quotationType === 2"
               link
+              size="small"
               type="danger"
               @click="removeItem(scope.$index)"
               >删除</el-button
@@ -185,29 +196,9 @@
           </template>
         </el-table-column>
       </el-table>
-      <!--
-      <el-row>
-        <el-col :span="24" style="text-align: right">
-          <el-button type="primary" icon="Plus" @click="addItem">添加明细</el-button>
-          <span v-if="formData.quotationType === 2" class="sample-limit-tip"
-            >样品明细通过编码生成器添加（可多条）</span
-          >
-        </el-col>
-      </el-row> -->
+
       <el-row>
         <el-col :span="24">
-          <!-- 整单级附件（dev-20261016-071：旧 AttachmentCenter → Upload + Manager，共用同一份会话队列）：
-               上传只进「待保存」，随单据「保存」落定（001 §7-1 方案 A）；
-               附件区「保存」（row-save/batch-save）= 只提交附件信息类改动，不落定。
-               明细行「上传附件」只当上传入口（带该行产品归属），看/管以本列表为准。 -->
-          <!-- <AttachmentUpload
-            :session="session"
-            class="attach-block"
-            drop-zone
-            button-text="上传整单附件"
-            @uploaded="(item) => session.registerUploaded(item.pending, item.ownership)"
-            @error="onAttachError"
-          /> -->
           <AttachmentManager
             :session="session"
             class="attach-block"

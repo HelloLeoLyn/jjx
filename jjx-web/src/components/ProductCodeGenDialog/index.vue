@@ -9,7 +9,7 @@
   <el-dialog
     :title="title"
     v-model="visible"
-    width="560px"
+    width="800px"
     append-to-body
     destroy-on-close
     @close="handleClose"
@@ -74,7 +74,7 @@ const props = withDefaults(
     title: '生成产品编码',
     showProductName: false,
     initProductName: '',
-  },
+  }
 )
 
 const emit = defineEmits<{
@@ -112,7 +112,7 @@ watch(
       nameTouched.value = false
       productName.value = props.initProductName || ''
     }
-  },
+  }
 )
 
 watch(visible, (val) => emit('update:modelValue', val))
@@ -135,7 +135,7 @@ watch(
     ) {
       genRef.value?.generate()
     }
-  },
+  }
 )
 
 // 产品名称未手改时跟随编码
@@ -143,7 +143,7 @@ watch(
   () => codeParams.value?.productCode,
   (code) => {
     if (props.showProductName && code && !nameTouched.value) productName.value = code
-  },
+  }
 )
 
 // 同号自动避让：生成的流水号与本单其他已用号重复时，自动 +1 重试
@@ -161,7 +161,7 @@ watch(
       guard++
     }
     codeState.serialNo = normalizeSerial(String(next))
-  },
+  }
 )
 
 const handleConfirm = () => {
