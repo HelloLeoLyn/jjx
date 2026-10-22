@@ -141,7 +141,7 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
       }
       await sampleOrderApi.saveScheme(orderId.value, { engineeringNote: submittedNote !== savedNote.value ? submittedNote : undefined, roundNo: card.value?.sampleRound || 1, items: planChanged ? items : undefined, standaloneMaterials: planChanged ? independent.map(row => ({
         layerName: row.layerName || '', materialName: row.name, specification: row.spec, quantity: row.qty, unit: row.unit,
-        materialId: row.materialId, materialCode: row.materialCode, projectIds: JSON.stringify(row.projectIds || []), moduleQty: row.moduleQty, baseQty: row.baseQty,
+        materialId: row.materialId, materialCode: row.materialCode, projectIds: JSON.stringify(row.projectIds || []), moduleQty: row.moduleQty, baseQty: row.baseQty, split: row.split,
       })) : undefined })
       savedNote.value = submittedNote
       card.value.engineeringNote = submittedNote

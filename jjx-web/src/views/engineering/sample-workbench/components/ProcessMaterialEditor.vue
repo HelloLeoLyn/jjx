@@ -63,6 +63,23 @@
               <span v-else>{{ normalized(row).moduleQty ?? '待核对' }}</span>
             </template>
           </el-table-column>
+          <el-table-column label="跳距" width="120">
+            <template #default="{ row }">
+              <div v-if="pc.editing && !readonly" style="display: flex; align-items: center; gap: 4px">
+                <el-input-number
+                  :model-value="splitNumber(row.split)"
+                  :min="0"
+                  :precision="0"
+                  :step="1"
+                  :controls="false"
+                  size="small"
+                  style="width: 78px"
+                  @update:model-value="(value) => setMaterialSplit(row, value)"
+                /><span>mm</span>
+              </div>
+              <span v-else>{{ row.split || '—' }}</span>
+            </template>
+          </el-table-column>
           <el-table-column label="基数" width="90">
             <template #default="{ row }">
               <el-input-number
@@ -114,7 +131,7 @@
     </div>
 </template>
 <script setup lang="ts">
-import { normalizeMaterial as normalized } from '../composables/sampleMaterials'
+import { normalizeMaterial as normalized, splitNumber, setMaterialSplit } from '../composables/sampleMaterials'
 import EditableSearchSelect from '@/components/Selector/EditableSearchSelect.vue'
 defineProps<{
   pc: any

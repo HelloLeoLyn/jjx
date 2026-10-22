@@ -48,6 +48,8 @@ public class SalesSampleBom {
     private String projectIds;
     /** 与标准BOM一致：用量=基数/模数 */
     private BigDecimal moduleQty;
+    /** 跳距，正整数mm；历史未填为null。 */
+    private String split;
     private BigDecimal baseQty;
 
     /** 备注 */

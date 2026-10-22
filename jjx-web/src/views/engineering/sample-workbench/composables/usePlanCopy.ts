@@ -151,6 +151,7 @@ export function usePlanCopy(context: PlanCopyContext) {
           materialCode: row.materialCode,
           baseQty: row.baseQty,
           moduleQty: row.moduleQty,
+          split: row.split,
           projectIds,
           projectInherited: false,
           layerName: row.layerName || '',
@@ -272,6 +273,7 @@ export function usePlanCopy(context: PlanCopyContext) {
         materialCode: m.materialCode || '',
         baseQty: m.baseQty ?? 1,
         moduleQty: m.moduleQty ?? 1,
+        split: m.split,
         projectIds: m.projectIds || [],
       }))
       list[ti].materials = JSON.stringify([...base, ...add])

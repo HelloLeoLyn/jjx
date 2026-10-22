@@ -80,6 +80,8 @@ public class SampleTransferPreviewVO {
         /** 项目候选与标准BOM数量参数 */
         private java.util.List<Long> projectIds;
         private BigDecimal moduleQty;
+        /** 跳距，正整数mm；历史未填为null。 */
+        private String split;
         private BigDecimal baseQty;
         /** 物料名称（原始） */
         private String name;

@@ -102,6 +102,23 @@
           <span v-else>{{ row.moduleQty ?? '待核对' }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="跳距" width="120">
+        <template #default="{ row }">
+          <div v-if="!readonly" style="display: flex; align-items: center; gap: 4px">
+            <el-input-number
+              :model-value="splitNumber(row.split)"
+              :min="0"
+              :precision="0"
+              :step="1"
+              :controls="false"
+              size="small"
+              style="width: 78px"
+              @update:model-value="(value) => { setMaterialSplit(row, value); $emit('update', row) }"
+            /><span>mm</span>
+          </div>
+          <span v-else>{{ row.split || '—' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="基数" width="90">
         <template #default="{ row }">
           <el-input-number
@@ -153,9 +170,10 @@
 </template>
 
 <script setup lang="ts">
+import { splitNumber, setMaterialSplit } from '../composables/sampleMaterials'
 /**
  * BOM 物料清单卡（dev-20260811-008 组件化；dev-20261015-017 支持直接编辑）
- * 列：材料｜项目｜规格｜模数｜基数｜单位；与卡片材料共用同一份草稿。
+ * 列：材料｜项目｜规格｜模数｜跳距｜基数｜单位；与卡片材料共用同一份草稿。
  * dev-20261018-007：新增 showTransfer（默认 true），仅控制资料转移区显示，transfer 事件不变。
  */
 const props = withDefaults(

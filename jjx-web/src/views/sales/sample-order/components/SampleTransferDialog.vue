@@ -160,6 +160,9 @@
                 >{{ scope.row.qty ?? '-' }} {{ scope.row.unit || '' }}</template
               >
             </el-table-column>
+            <el-table-column label="跳距" width="100">
+              <template #default="scope">{{ scope.row.split || '—' }}</template>
+            </el-table-column>
             <el-table-column label="自动匹配" min-width="210">
               <template #default="scope">
                 <el-tag v-if="scope.row.matched" size="small" type="success" effect="plain">

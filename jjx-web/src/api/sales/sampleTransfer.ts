@@ -39,6 +39,8 @@ export interface SampleMaterialItem {
   matched: boolean
   /** 项目候选（标准工序ID列表，可空/组合，dev-20261015-017） */
   projectIds?: number[] | null
+  /** 跳距：整数mm，可空 */
+  split?: string | null
   moduleQty?: number | null
   baseQty?: number | null
 }
@@ -107,6 +109,8 @@ export interface MaterialMapping {
   unit: string | null
   processId?: number | null
   isCommon?: boolean
+  /** 跳距：整数mm，可空 */
+  split?: string | null
   moduleQty?: number | null
   baseQty?: number | null
   projectIds?: number[] | null

@@ -241,6 +241,7 @@ export function useSampleBom(context: SampleBomContext) {
           materialCode: row.materialCode,
           baseQty: row.baseQty,
           moduleQty: row.moduleQty,
+          split: row.split,
           projectIds,
           projectInherited: false,
           layerName: row.layerName || '',

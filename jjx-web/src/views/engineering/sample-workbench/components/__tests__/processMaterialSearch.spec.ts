@@ -37,6 +37,7 @@ vi.mock('element-plus/es/components/table-column/style/css', () => ({}))
 vi.mock('element-plus/es/components/tooltip/style/css', () => ({}))
 
 import ProcessMaterialEditor from '../ProcessMaterialEditor.vue'
+import { ElInputNumber } from 'element-plus'
 import EditableSearchSelect from '@/components/Selector/EditableSearchSelect.vue'
 
 const A = { materialId: 1, materialName: '铜箔A', specification: '35um', materialCode: 'MAT-A', unit: 'M' }
@@ -194,6 +195,34 @@ describe('ProcessMaterialEditor 材料可编辑搜索', () => {
 
     expect(w.text()).toContain('铜箔A')
     expect(w.findComponent(EditableSearchSelect).exists()).toBe(false)
+    w.unmount()
+  })
+})
+
+
+describe('打样工序跳距输入', () => {
+  it('输入整数以mm写入原草稿，清空不补默认值', async () => {
+    const pc: any = makePc()
+    pc.materialRows[0].split = '50mm'
+    const w = mountIt(pc)
+    const input = w.findAllComponents(ElInputNumber)[1]
+    expect(input.props('modelValue')).toBe(50)
+    input.vm.$emit('update:modelValue', 60)
+    await nextTick()
+    expect(pc.materialRows[0].split).toBe('60mm')
+    expect(pc.materialRows[0].qty).toBe(2.5)
+    input.vm.$emit('update:modelValue', undefined)
+    await nextTick()
+    expect(pc.materialRows[0].split).toBe('')
+    w.unmount()
+  })
+  it('历史只读显示原跳距，未填显示横线', () => {
+    const pc = makePc(false)
+    pc.materials = JSON.stringify([{ name: '铜', split: '50mm' }, { name: '胶' }])
+    const w = mountIt(pc, true)
+    expect(w.text()).toContain('50mm')
+    expect(w.text()).toContain('—')
+    expect(w.findAllComponents(ElInputNumber)).toHaveLength(0)
     w.unmount()
   })
 })

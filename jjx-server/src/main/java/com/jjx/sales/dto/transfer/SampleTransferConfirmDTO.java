@@ -86,6 +86,8 @@ public class SampleTransferConfirmDTO {
         private Long processId;
         private Boolean isCommon;
         private BigDecimal moduleQty;
+        /** 跳距，正整数mm；历史未填为null。 */
+        private String split;
         private BigDecimal baseQty;
         private List<Long> projectIds;
         /** 用量 */

@@ -257,6 +257,7 @@ export interface SampleProductPlan {
 
 // 成品方案带出的材料（工序 materials JSON 键名沿用）
 export interface SampleProductPlanMaterial {
+  split?: string | null
   name?: string
   spec?: string
   qty?: number
@@ -269,6 +270,8 @@ export interface SampleBomItem {
   materialId?: number
   materialCode?: string
   projectIds?: string
+  /** 跳距：整数mm，可空 */
+  split?: string | null
   moduleQty?: number
   baseQty?: number
   bomId?: number

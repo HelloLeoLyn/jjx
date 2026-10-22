@@ -205,6 +205,9 @@
                 </el-table-column>
                 <el-table-column prop="spec" label="规格" min-width="110" />
                 <el-table-column prop="moduleQty" label="模数" width="70" />
+                <el-table-column label="跳距" width="100">
+                  <template #default="{ row }">{{ row.split || '—' }}</template>
+                </el-table-column>
                 <el-table-column prop="baseQty" label="基数" width="70" />
                 <el-table-column prop="unit" label="单位" width="70" />
               </el-table>

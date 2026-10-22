@@ -1299,6 +1299,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     agg.put("materialCode", bom.getMaterialCode());
                     agg.put("projectIds", parseSampleProjects(bom.getProjectIds()));
                     agg.put("moduleQty", bom.getModuleQty());
+                    agg.put("split", bom.getSplit());
                     agg.put("baseQty", bom.getBaseQty());
                     aggMats.add(agg);
                 }
@@ -1823,6 +1824,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 m.put("unit", bi.getUnit());
                 m.put("materialId", bi.getMaterialId());
                 m.put("materialCode", bi.getMaterialCode());
+                m.put("split", bi.getSplit());
                 m.put("isCommon", Boolean.TRUE.equals(bi.getIsCommon()));
                 unlinked.add(m);
                 continue;
@@ -1869,6 +1871,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         m.put("unit", bi.getUnit());
                         m.put("materialId", bi.getMaterialId());
                         m.put("materialCode", bi.getMaterialCode());
+                        m.put("split", bi.getSplit());
                         arr.add(m);
                     }
                     try {
@@ -2214,6 +2217,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             java.math.BigDecimal[] quantities = SampleMaterialQuantity.normalize(item.getBaseQty(), item.getModuleQty(), item.getQuantity());
             item.setBaseQty(quantities[0]);
             item.setModuleQty(quantities[1]);
+            item.setSplit(normalizeSampleSplit(item.getSplit()));
             item.setQuantity(quantities[2]);
             parseSampleProjects(item.getProjectIds());
             item.setBomId(null);
@@ -2882,6 +2886,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         java.math.BigDecimal[] quantities = SampleMaterialQuantity.normalize(sampleDecimal(m.get("baseQty")), sampleDecimal(m.get("moduleQty")), sampleDecimal(m.get("qty")));
                         item.setBaseQty(quantities[0]);
                         item.setModuleQty(quantities[1]);
+                        item.setSplit(normalizeSampleSplit(m.get("split")));
                         item.setName(m.get("name") != null ? m.get("name").toString() : null);
                         item.setSpec(m.get("spec") != null ? m.get("spec").toString() : null);
                         if (m.get("qty") != null) {
@@ -2932,6 +2937,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             item.setProjectIds(parseSampleProjects(bom.getProjectIds()));
             var quantities = SampleMaterialQuantity.normalize(bom.getBaseQty(), bom.getModuleQty(), bom.getQuantity());
             item.setBaseQty(quantities[0]); item.setModuleQty(quantities[1]); item.setQty(quantities[2]);
+            item.setSplit(normalizeSampleSplit(bom.getSplit()));
             var match = bom.getMaterialId() != null ? inventoryMaterialMapper.selectById(bom.getMaterialId()) : matchStandardMaterial(bom.getMaterialName(), stdMaterials);
             item.setMatched(match != null);
             if (match != null) {
@@ -3006,6 +3012,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
             var quantities = SampleMaterialQuantity.normalize(mm.getBaseQty(), mm.getModuleQty(), mm.getQty());
             mm.setBaseQty(quantities[0]); mm.setModuleQty(quantities[1]); mm.setQty(quantities[2]);
+            mm.setSplit(normalizeSampleSplit(mm.getSplit()));
         }
         if (!choices.isEmpty()) throw new BusinessException("材料已变化，请刷新资料转移预览后重新确认");
 
@@ -3115,6 +3122,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                         item.setProcessName(mm.getProcessId() == null ? null : standardProcessMapper.selectById(mm.getProcessId()).getProcessName());
                         item.setIsCommon(Boolean.TRUE.equals(mm.getIsCommon()));
                         item.setBaseQty(mm.getBaseQty()); item.setModuleQty(mm.getModuleQty());
+                        item.setSplit(mm.getSplit());
                         item.setItemOrder(itemOrder++);
                         bomItemMapper.insert(item);
                     }
@@ -3432,6 +3440,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             mm.setMaterialId(source.getMatchedMaterialId()); mm.setMaterialName(source.getMatchedMaterialName());
             mm.setSpec(source.getSpec()); mm.setQty(source.getQty()); mm.setUnit(source.getUnit());
             mm.setModuleQty(source.getModuleQty()); mm.setBaseQty(source.getBaseQty()); mm.setProjectIds(source.getProjectIds());
+            mm.setSplit(source.getSplit());
             if (source.getProjectIds() != null && source.getProjectIds().size() == 1) mm.setProcessId(source.getProjectIds().getFirst());
             materialMappings.add(mm);
         }
@@ -4889,6 +4898,17 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         } catch (Exception e) { throw new BusinessException("项目须为有效标准工序ID列表"); }
     }
 
+    private String normalizeSampleSplit(Object raw) {
+        if (raw == null || raw.toString().isBlank()) return null;
+        String value = raw.toString().trim();
+        if (!value.matches("[0-9]+(?:mm)?")) throw new BusinessException("跳距须为正整数，单位mm，或留空");
+        String digits = value.endsWith("mm") ? value.substring(0, value.length() - 2) : value;
+        var number = new java.math.BigInteger(digits);
+        if (number.signum() == 0) return null;
+        if (number.compareTo(new java.math.BigInteger("9007199254740991")) > 0) throw new BusinessException("跳距超出有效整数范围");
+        return number + "mm";
+    }
+
     private String normalizeSampleMaterials(String json) {
         if (json == null || json.isBlank()) return null;
         try {
@@ -4897,6 +4917,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             for (var row : rows) {
                 var quantities = SampleMaterialQuantity.normalize(sampleDecimal(row.get("baseQty")), sampleDecimal(row.get("moduleQty")), sampleDecimal(row.get("qty")));
                 row.put("baseQty", quantities[0]); row.put("moduleQty", quantities[1]); row.put("qty", quantities[2]);
+                if (row.containsKey("split")) row.put("split", normalizeSampleSplit(row.get("split")));
                 if (row.containsKey("projectIds")) row.put("projectIds", parseSampleProjects(row.get("projectIds")));
             }
             return mapper.writeValueAsString(rows);

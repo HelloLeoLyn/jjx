@@ -55,16 +55,19 @@ describe('统一保存打样方案', () => {
     const { context: c, persistence: p } = fixture()
     c.note.value = '整份备注'
     c.planList.value[0].operationRemark = '新工艺'
+    c.planList.value[0].materials = JSON.stringify([{ name: '工序材料', qty: 1, split: '60mm' }])
     c.printList.value.push({ printName: '印刷', materials: '[]', category: 'PANEL', status: 0 })
-    c.standaloneMaterials.value.push({ name: '独立材料', qty: 1, baseQty: 1, moduleQty: 1, unit: 'PCS' })
+    c.standaloneMaterials.value.push({ name: '独立材料', qty: 1, baseQty: 1, moduleQty: 1, unit: 'PCS', split: '50mm' })
     expect(await p.savePlan()).toBe(true)
     expect(api.saveScheme).toHaveBeenCalledTimes(1)
     const body = api.saveScheme.mock.calls[0][1]
     expect(body.engineeringNote).toBe('整份备注')
     expect(body.items).toHaveLength(2)
     expect(body.items[0].processId).toBe(41)
+    expect(JSON.parse(body.items[0].materials)[0].split).toBe('60mm')
     expect(body.items[1].majorCategory).toBe('PRINT')
     expect(body.standaloneMaterials[0].materialName).toBe('独立材料')
+    expect(body.standaloneMaterials[0].split).toBe('50mm')
     expect(api.startEngineering).not.toHaveBeenCalled()
   })
   it('保存失败保留工序、印刷、BOM、备注草稿且保持未保存', async () => {
