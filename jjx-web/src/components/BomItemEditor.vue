@@ -48,6 +48,7 @@
       :height="tableHeight"
       @selection-change="handleSelectionChange"
       @row-click="handleRowClick"
+      :span-method="comboSpan"
       :row-class-name="rowClassName"
       class="bom-item-table"
     >
@@ -62,7 +63,7 @@
             <el-icon v-else size="small" color="#e56706">
               <WarningFilled />
             </el-icon>
-            <!-- <span class="row-index">{{ scope.row.sortOrder }}</span> -->
+            <span v-if="comboNoOf(scope.$index)" class="row-index">{{ comboNoOf(scope.$index) }}</span>
           </div>
         </template>
       </el-table-column>
@@ -117,35 +118,18 @@
           />
         </template>
       </el-table-column>
-      <!-- 组合容器（dev-20261022-017）：勾选=本行是半成品父行；子行在「所属组合」里选择它 -->
-      <el-table-column label="组合" width="70" align="center">
+      <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数） -->
+      <el-table-column label="模数" prop="moduleQty" align="center" width="80">
         <template #default="scope">
-          <el-checkbox
-            v-model="scope.row.isGroup"
+          <el-input-number
+            v-model="scope.row.moduleQty"
+            :min="1"
+            :precision="0"
+            :step="1"
             size="small"
-            title="勾选后本行作为组合容器（半成品），其数量按基数、模数固定为 1"
-            @change="handleGroupToggle(scope.row)"
+            controls-position="right"
+            @change="handleModuleQtyChange(scope.row)"
           />
-        </template>
-      </el-table-column>
-      <el-table-column label="所属组合" width="150">
-        <template #default="scope">
-          <el-select
-            v-if="!scope.row.isGroup"
-            v-model="scope.row.parentMaterialId"
-            size="small"
-            clearable
-            placeholder="独立材料"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="group in groupOptions"
-              :key="group.itemId"
-              :label="group.materialName || group.materialCode || '未命名组合'"
-              :value="group.itemId"
-            />
-          </el-select>
-          <span v-else class="group-parent-hint">容器</span>
         </template>
       </el-table-column>
       <el-table-column label="跳距" prop="split" width="90">
@@ -260,14 +244,14 @@
       <!-- 操作列 -->
       <el-table-column label="操作" min-width="120" align="center" fixed="right">
         <template #default="scope">
-          <el-button
+          <!-- <el-button
             v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
             link
             type="primary"
             size="small"
             @click="handleCreateMaterial(scope.row, scope.row.materialName || '')"
             >建档</el-button
-          >
+          > -->
           <el-button
             v-if="isPendingRemove(scope.row)"
             link
@@ -436,13 +420,6 @@ function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
     if (copy.itemId == null) copy.itemId = nextTempItemId()
     return copy
   })
-  // dev-20261022-017：被子行引用的行标记为组合容器（前端标记，不落库）
-  const parentIds = new Set(
-    flat.map((row) => row.parentMaterialId).filter((id): id is number => typeof id === 'number')
-  )
-  for (const row of flat) {
-    if (row.itemId != null && parentIds.has(row.itemId)) row.isGroup = true
-  }
   return flat
 }
 
@@ -455,11 +432,9 @@ function toSubmitItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
   return (list || []).map((it, idx) => {
     const copy: EngineeringBomItem = { ...it }
     delete copy.children
-    copy.parentMaterialId = it.parentMaterialId ?? null
-    // 组合容器：模数固定 1，用量按基数派生
-    if (copy.isGroup) {
-      copy.moduleQty = 1
-    }
+    // 组合：同一「项目」连续多行视为一组，组内除首行外都挂到首行（落库 parent_material_id）
+    const leader = comboLeaderOf(it)
+    copy.parentMaterialId = leader && leader !== it ? leader.itemId ?? null : null
     copy.sortOrder = idx + 1
     copy.removeRequested = !!it.removeRequested
     return copy
@@ -467,22 +442,55 @@ function toSubmitItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
 }
 
 /** 遍历树（含所有层级） */
-/** 组合容器候选（供子行「所属组合」下拉使用） */
-const groupOptions = computed(() =>
-  items.value.filter(
-    (row): row is EngineeringBomItem & { itemId: number } =>
-      row.isGroup === true && !isPendingRemove(row) && row.itemId != null
-  )
-)
+/** 组合判定：连续且「项目」相同的行视为同一组合（项目为空视为未分组） */
+const comboKeyOf = (row: EngineeringBomItem): string =>
+  (row.processId != null && Number(row.processId) > 0
+    ? `p:${row.processId}`
+    : row.processName && row.processName.trim()
+      ? `n:${row.processName.trim()}`
+      : '')
 
-/** 勾选/取消组合容器：父行不挂父、模数固定 1、用量按基数派生 */
-const handleGroupToggle = (row: EngineeringBomItem) => {
-  if (row.isGroup) {
-    row.parentMaterialId = null
-    row.moduleQty = 1
-    if (!row.baseQty) row.baseQty = 1
+/** 每行的组合首行（组内其它行都挂到它），未分组返回 null */
+const comboLeaderOf = (row: EngineeringBomItem): EngineeringBomItem | null => {
+  const list = items.value
+  const key = comboKeyOf(row)
+  if (!key) return null
+  const idx = list.indexOf(row)
+  if (idx < 0) return null
+  let startIdx = idx
+  while (startIdx > 0 && comboKeyOf(list[startIdx - 1]) === key) startIdx -= 1
+  const leader = list[startIdx]
+  return leader === row ? null : leader
+}
+
+/** 序号列：组合序号（连续同项目为一组，1、2、3…）+ 组内合并 */
+const comboRuns = computed(() => {
+  const runs: { start: number; size: number; no: number }[] = []
+  let no = 0
+  let i = 0
+  while (i < items.value.length) {
+    const key = comboKeyOf(items.value[i])
+    let j = i + 1
+    while (key && j < items.value.length && comboKeyOf(items.value[j]) === key) j += 1
+    const size = key ? j - i : 1
+    if (key) no += 1
+    runs.push({ start: i, size, no: key ? no : 0 })
+    i += size
   }
-  recalcAppliedIssue(row)
+  return runs
+})
+
+const comboNoOf = (index: number): number => {
+  const run = comboRuns.value.find((r) => index >= r.start && index < r.start + r.size)
+  return run ? run.no : 0
+}
+
+/** 序号列合并：同一组合合并成一个单元格 */
+const comboSpan = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
+  if (columnIndex !== 0) return [1, 1]
+  const run = comboRuns.value.find((r) => rowIndex >= r.start && rowIndex < r.start + r.size)
+  if (!run || run.size <= 1 || rowIndex !== run.start) return [1, 1]
+  return [run.size, 1]
 }
 
 function walkTree(tree: EngineeringBomItem[], fn: (row: EngineeringBomItem) => void) {
@@ -1063,13 +1071,6 @@ defineExpose({
     walkTree(items.value, (item) => {
       if (failures.length) return
       if (isPendingRemove(item)) return
-      // dev-20261022-017：组合容器只校验"已选半成品"，不校验材料名称/规格/数量
-      if (item.isGroup) {
-        if (!item.materialId || Number(item.materialId) <= 0) {
-          failures.push({ item, message: '组合行必须选择一个半成品物料' })
-        }
-        return
-      }
       if (!item.materialName?.trim()) {
         failures.push({ item, message: '材料名称不能为空' })
         return

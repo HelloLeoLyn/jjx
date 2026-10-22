@@ -83,8 +83,7 @@
       <el-table-column label="备注" prop="remark" width="140" show-overflow-tooltip />
       <el-table-column label="操作" width="220" fixed="right" align="center">
         <template #default="{ row }">
-          <el-tag v-if="isGroupParent(row)" type="info" size="small">组合容器（无需审核）</el-tag>
-          <template v-else-if="rowStatus(row) === BomItemReviewStatusEnum.PENDING_REMOVE.value">
+          <template v-if="rowStatus(row) === BomItemReviewStatusEnum.PENDING_REMOVE.value">
             <el-tag v-if="row.removeConfirmed" type="success" size="small">已确认移除</el-tag>
             <el-button
               v-else
@@ -175,22 +174,8 @@ const rowStatus = (row: EngineeringBomItem): number =>
   row.reviewStatus ?? BomItemReviewStatusEnum.DRAFT.value
 
 const selectedRows = ref<EngineeringBomItem[]>([])
-/** 组合容器（被子行引用的行）不参与行审核（dev-20261022-017） */
-const parentIds = computed(() => {
-  const ids = new Set<number>()
-  for (const row of props.items || []) {
-    if (typeof row.parentMaterialId === 'number' && row.parentMaterialId > 0) ids.add(row.parentMaterialId)
-  }
-  return ids
-})
-const isGroupParent = (row: EngineeringBomItem) =>
-  row.itemId != null && parentIds.value.has(row.itemId)
-
 const canSelect = (row: EngineeringBomItem) =>
-  !props.batchBusy &&
-  row.itemId != null &&
-  !isGroupParent(row) &&
-  rowStatus(row) === BomItemReviewStatusEnum.PENDING.value
+  !props.batchBusy && row.itemId != null && rowStatus(row) === BomItemReviewStatusEnum.PENDING.value
 const selectedIds = computed(() =>
   selectedRows.value
     .filter((row) => row.itemId != null && rowStatus(row) === BomItemReviewStatusEnum.PENDING.value)

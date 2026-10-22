@@ -459,26 +459,6 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 productBomItemMapper.deleteById(old.getItemId());
             }
         }
-        // dev-20261022-017：组合父行只做容器，不参与行审核——凡被子行引用的行直接置为审核通过，
-        // 避免父行以"草稿/待审核"阻塞整单批准（其子行仍逐行审核）。
-        List<Long> parentIds = productBomItemMapper.selectList(
-                        new LambdaQueryWrapper<EngineeringBomItem>()
-                                .eq(EngineeringBomItem::getBomId, bomId)
-                                .isNotNull(EngineeringBomItem::getParentMaterialId))
-                .stream()
-                .map(EngineeringBomItem::getParentMaterialId)
-                .filter(java.util.Objects::nonNull)
-                .distinct()
-                .toList();
-        if (!parentIds.isEmpty()) {
-            productBomItemMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<EngineeringBomItem>()
-                    .eq(EngineeringBomItem::getBomId, bomId)
-                    .in(EngineeringBomItem::getItemId, parentIds)
-                    .set(EngineeringBomItem::getReviewStatus,
-                            ProductEnums.BomItemReviewStatus.APPROVED.getValue())
-                    .set(EngineeringBomItem::getRejectReason, null)
-                    .set(EngineeringBomItem::getRemoveConfirmed, false));
-        }
     }
 
     /** 新行/草稿默认状态与审核痕迹清零 */
