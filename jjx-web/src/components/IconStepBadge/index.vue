@@ -52,7 +52,7 @@
     <template #reference>
       <div class="icon-step-badge">
         <SvgIcon :name="icon" :size="size" />
-        <span v-if="subscriptText" class="subscript" :title="subscriptText" @click="onJump">
+        <span v-if="subscriptText" class="subscript" :title="subscriptText">
           {{ subscriptText }}
         </span>
       </div>
@@ -75,20 +75,26 @@ import SvgIcon from '@/components/SvgIcon/index.vue'
  *  - 作业说明通过 editWorkInstruction 显式启用；统一草稿、确认和取消。
  *  - 只读时点击下标数字 → emit jump。
  */
-const props = defineProps<{
-  icon: string
-  /** 描述文本（可能含 <jump>N</jump> 标记） */
-  description?: string
-  size?: number
-  /** index 模式：显式下标数字（优先于 description 解析） */
-  index?: number | null
-  /** 本次工序作业说明，按工程图习惯显示在图标下标位置 */
-  workInstruction?: string
-  /** 是否允许编辑数字下标 */
-  editable?: boolean
-  /** 使用同一弹层编辑作业说明，默认仍为数字下标模式 */
-  editWorkInstruction?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    icon: string
+    /** 描述文本（可能含 <jump>N</jump> 标记；历史兼容，不再驱动角标） */
+    description?: string
+    size?: number
+    /** index 模式：显式下标数字（历史兼容，不再驱动角标） */
+    index?: number | null
+    /** 本次工序作业说明，按工程图习惯显示在图标下标位置 */
+    workInstruction?: string
+    /** 是否允许点击图标弹层编辑；默认关闭（只读） */
+    editable?: boolean
+    /** 使用同一弹层编辑作业说明，默认仍为数字下标模式 */
+    editWorkInstruction?: boolean
+  }>(),
+  {
+    editable: false,
+    editWorkInstruction: false,
+  }
+)
 
 const emit = defineEmits<{
   (e: 'update-description', value: string): void
@@ -109,7 +115,7 @@ const commonWorkInstructions = [
   '贴保护膜',
 ]
 const canEdit = computed(
-  () => props.editable !== false && (props.editWorkInstruction || props.index !== undefined)
+  () => props.editable === true && (props.editWorkInstruction || props.index !== undefined)
 )
 const draftValid = computed(
   () =>
@@ -130,9 +136,8 @@ const stepNum = computed<number | null>(() => {
   return m ? Number(m[1]) : null
 })
 
-const subscriptText = computed(
-  () => props.workInstruction || (stepNum.value !== null ? String(stepNum.value) : '')
-)
+// 角标只显示本次工序作业说明全文；不再回退 index / <jump>N</jump> 数字（dev-20261022-009）。
+const subscriptText = computed(() => (props.workInstruction || '').trim())
 
 function openInput() {
   draftNum.value = stepNum.value
@@ -167,10 +172,7 @@ function confirm() {
   inputVisible.value = false
 }
 
-// 跳转（页面挂空函数）
-function onJump() {
-  if (!canEdit.value && stepNum.value !== null) emit('jump', stepNum.value)
-}
+// 跳转事件签名保留；角标默认只读，不再由点击角标触发（dev-20261022-009）。
 </script>
 
 <style scoped>
