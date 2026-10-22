@@ -92,6 +92,15 @@
               >{{ group.processes.length }} 道工序 · {{ group.materials.length }} 条材料</small
             >
           </div>
+          <label class="group-note">
+            <span>工序备注</span>
+            <input
+              v-model="group.remark"
+              class="cell-input"
+              :aria-label="`${group.key}工序备注`"
+              placeholder="填写工序说明"
+            />
+          </label>
           <div class="group-actions">
             <button
               :disabled="groupIndex === 0"
@@ -116,118 +125,52 @@
               {{ collapsed.has(group.key) ? '展开 ＋' : '收起 −' }}
             </button>
           </div>
-          <div class="group-identity">
-            <div class="summary-label">组合材料</div>
-            <p class="material-summary">
-              {{ group.materials.map(materialLabel).join(' ＋ ') || '暂无材料' }}
-            </p>
-            <template v-if="group.processes.length > 1"
-              ><label class="summary-label" :for="`group-remark-${group.key}`"
-                >组合整体备注 <small>预览项</small></label
-              ><textarea
-                :id="`group-remark-${group.key}`"
-                v-model="group.remark"
-                class="group-remark"
-                placeholder="整个组合的补充说明"
-                rows="1"
-              />
-            </template>
-          </div>
         </div>
         <div v-if="!collapsed.has(group.key)" class="group-content">
-          <div class="group-tables">
-            <div class="table-scroll">
-              <table class="process-table">
-                <thead>
-                  <tr>
-                    <th class="process-col">工序子项目</th>
-                    <th>材料摘要</th>
-                    <th class="instruction-col">作业说明</th>
-                    <th class="remark-col">工序备注</th>
-                    <th class="operation-col">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="process in group.processes"
-                    :key="process.key"
-                    :class="{ 'selected-process': filters[group.key] === process.key }"
+          <section
+            v-for="process in group.processes"
+            :key="process.key"
+            class="process-section"
+            :data-process="process.key"
+          >
+            <div class="process-heading">
+              <div class="process-identity">
+                <span class="badge-space">
+                  <ProcessIcon :icon="process.icon" :name="process.name" :size="30" />
+                  <span
+                    v-if="process.instruction"
+                    class="instruction-subscript"
+                    :title="process.instruction"
+                    >{{ process.instruction }}</span
                   >
-                    <td>
-                      <button
-                        class="process-select"
-                        :aria-label="`查看${process.name}材料`"
-                        @click="filterProcess(group, process.key)"
-                      >
-                        <span class="badge-space"
-                          ><ProcessIcon :icon="process.icon" :name="process.name" :size="30" /><span
-                            v-if="process.instruction"
-                            class="instruction-subscript"
-                            :title="process.instruction"
-                            >{{ process.instruction }}</span
-                          ></span
-                        ><span class="process-name"
-                          >{{ process.name }}<small>{{ process.key.toUpperCase() }}</small></span
-                        >
-                      </button>
-                    </td>
-                    <td>
-                      <div class="material-chips">
-                        <span v-for="m in processMaterials(group, process.key)" :key="m.key">{{
-                          materialLabel(m)
-                        }}</span
-                        ><span
-                          v-if="!processMaterials(group, process.key).length"
-                          class="empty-text"
-                          >暂无材料</span
-                        >
-                      </div>
-                    </td>
-                    <td>
-                      <input
-                        v-model="process.instruction"
-                        class="cell-input instruction-input"
-                        maxlength="80"
-                        :aria-label="`${process.name}作业说明`"
-                        placeholder="填写作业说明"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        v-model="process.remark"
-                        class="cell-input"
-                        :aria-label="`${process.name}工序备注`"
-                        placeholder="填写工序说明"
-                      />
-                    </td>
-                    <td>
-                      <div class="row-actions">
-                        <button class="text-button" @click="openAddMaterial(group, process.key)">
-                          ＋材料</button
-                        ><button class="text-button subdued" @click="showProcess(process)">
-                          详情</button
-                        ><button
-                          class="text-button danger"
-                          title="删除子工序"
-                          @click="removeProcess(group, process)"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="material-toolbar">
-              <div class="material-tools">
-                <select v-model="filters[group.key]" :aria-label="`${group.key}材料筛选`">
-                  <option value="">全部子工序</option>
-                  <option v-for="p in group.processes" :key="p.key" :value="p.key">
-                    {{ p.name }}
-                  </option></select
-                ><button class="text-button" @click="openAddMaterial(group, filters[group.key])">
-                  ＋ 添加材料
+                </span>
+                <b>{{ process.name }}</b>
+              </div>
+              <label class="process-field"
+                ><span>作业说明</span
+                ><input
+                  v-model="process.instruction"
+                  class="cell-input instruction-input"
+                  maxlength="80"
+                  :aria-label="`${process.name}作业说明`"
+                  placeholder="填写作业说明"
+              /></label>
+              <label class="process-field process-note"
+                ><span>子工序备注</span
+                ><input
+                  v-model="process.remark"
+                  class="cell-input"
+                  :aria-label="`${process.name}子工序备注`"
+                  placeholder="填写子工序说明"
+              /></label>
+              <div class="row-actions">
+                <button class="text-button subdued" @click="showProcess(process)">详情</button
+                ><button
+                  class="text-button danger"
+                  title="删除子工序"
+                  @click="removeProcess(group, process)"
+                >
+                  删除子工序
                 </button>
               </div>
             </div>
@@ -235,28 +178,31 @@
               <table class="material-table">
                 <thead>
                   <tr>
-                    <th class="owner-col">所属子工序</th>
                     <th class="material-name-col">子材料名称</th>
                     <th class="spec-col">规格</th>
                     <th class="number-col">模数</th>
                     <th class="number-col">基数</th>
                     <th class="split-col">跳距</th>
-                    <th class="operation-col">操作</th>
+                    <th class="operation-col">
+                      <div class="material-operation-heading">
+                        <span>操作</span
+                        ><button
+                          class="text-button"
+                          :aria-label="`为${process.name}添加材料`"
+                          @click="openAddMaterial(group, process.key)"
+                        >
+                          ＋ 添加材料
+                        </button>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="m in visibleMaterials(group)" :key="m.key" :data-material="m.key">
-                    <td>
-                      <select
-                        v-model="m.ownerKey"
-                        class="owner-select"
-                        :aria-label="`${m.key}所属子工序`"
-                      >
-                        <option v-for="p in group.processes" :key="p.key" :value="p.key">
-                          {{ p.name }}
-                        </option>
-                      </select>
-                    </td>
+                  <tr
+                    v-for="m in processMaterials(group, process.key)"
+                    :key="m.key"
+                    :data-material="m.key"
+                  >
                     <td>
                       <div class="material-name">
                         <span class="material-dot" :class="{ unregistered: !m.registered }"></span
@@ -329,16 +275,13 @@
                       </div>
                     </td>
                   </tr>
-                  <tr v-if="!visibleMaterials(group).length">
-                    <td colspan="7" class="empty-material">此处暂无材料，点击“添加材料”录入。</td>
+                  <tr v-if="!processMaterials(group, process.key).length">
+                    <td colspan="6" class="empty-material">此处暂无材料，点击“添加材料”录入。</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <div class="group-footnote">
-              材料随所属子工序保存 · 参数可直接编辑 · 组合材料由明细自动汇总
-            </div>
-          </div>
+          </section>
         </div>
       </article>
       <div class="drop-zone">
@@ -349,12 +292,9 @@
     <el-dialog v-model="addVisible" title="添加材料" width="460px" append-to-body>
       <el-form label-position="top"
         ><el-form-item label="所属子工序"
-          ><el-select v-model="newMaterial.ownerKey" style="width: 100%"
-            ><el-option
-              v-for="p in addTarget?.processes || []"
-              :key="p.key"
-              :label="p.name"
-              :value="p.key" /></el-select></el-form-item
+          ><span class="fixed-owner">{{
+            addTarget?.processes.find((p) => p.key === newMaterial.ownerKey)?.name
+          }}</span></el-form-item
         ><el-form-item label="材料名称"
           ><el-input v-model="newMaterial.name" placeholder="如：离型膜" /></el-form-item
         ><el-form-item label="规格"
@@ -388,14 +328,13 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ProcessIcon from '@/components/ProcessIcon.vue'
-import { createGroup, materialLabel, nextKey, processLibrary, processMaterials } from './model'
+import { createGroup, nextKey, processLibrary, processMaterials } from './model'
 import type { UicGroup, UicMaterial, UicProcess } from './model'
 const groups = defineModel<UicGroup[]>({ required: true })
 const libraryVisible = ref(true)
 const search = ref('')
 const selected = ref<string[]>([])
 const collapsed = reactive(new Set<string>(['led']))
-const filters = reactive<Record<string, string>>({ single: '', composite: '', led: '' })
 const filteredLibrary = computed(() =>
   processLibrary.filter((p) => p.name.includes(search.value.trim()))
 )
@@ -405,7 +344,6 @@ const allCollapsed = computed(
 function addGroup(names: string[]) {
   const group = createGroup([...names])
   groups.value.push(group)
-  filters[group.key] = ''
   selected.value = []
   ElMessage.success('已添加工序项目')
 }
@@ -449,12 +387,6 @@ function moveGroup(index: number, offset: number) {
   const [group] = groups.value.splice(index, 1)
   groups.value.splice(target, 0, group)
 }
-function filterProcess(group: UicGroup, key: string) {
-  filters[group.key] = filters[group.key] === key ? '' : key
-}
-function visibleMaterials(group: UicGroup) {
-  return group.materials.filter((m) => !filters[group.key] || m.ownerKey === filters[group.key])
-}
 async function removeGroup(group: UicGroup) {
   try {
     await ElMessageBox.confirm('从本页预览移除此工序项目及材料？', '删除预览项目', {
@@ -473,11 +405,10 @@ function removeProcess(group: UicGroup, process: UicProcess) {
     return
   }
   if (processMaterials(group, process.key).length) {
-    ElMessage.warning('请先在材料明细中调整材料归属，再删除此子工序')
+    ElMessage.warning('请先删除此子项目的材料，再删除子工序')
     return
   }
   group.processes = group.processes.filter((p) => p.key !== process.key)
-  if (filters[group.key] === process.key) filters[group.key] = ''
 }
 function registerMaterial(material: UicMaterial) {
   material.registered = true
@@ -486,10 +417,10 @@ function registerMaterial(material: UicMaterial) {
 const addVisible = ref(false)
 const addTarget = ref<UicGroup | null>(null)
 const newMaterial = reactive({ ownerKey: '', name: '', spec: '' })
-function openAddMaterial(group: UicGroup, ownerKey?: string) {
+function openAddMaterial(group: UicGroup, ownerKey: string) {
   addTarget.value = group
   Object.assign(newMaterial, {
-    ownerKey: ownerKey || (group.processes.length === 1 ? group.processes[0].key : ''),
+    ownerKey,
     name: '',
     spec: '',
   })
@@ -745,14 +676,63 @@ function showMaterial(group: UicGroup, m: UicMaterial) {
 .group-content {
   min-width: 0;
 }
-.group-identity {
-  flex-basis: 100%;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+.group-note {
+  display: flex;
   align-items: center;
-  gap: 6px 12px;
-  padding-top: 10px;
-  border-top: 1px solid #e8edf3;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
+  color: #8998ac;
+  font-size: 11px;
+}
+.group-note > span {
+  white-space: nowrap;
+}
+.group-note .cell-input {
+  border-color: #e6ecf3;
+  background: white;
+}
+.process-section + .process-section {
+  border-top: 5px solid #f2f5f9;
+}
+.process-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px 6px;
+  flex-wrap: wrap;
+}
+.process-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 145px;
+  font-size: 12px;
+  color: #536983;
+}
+.process-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 175px;
+  font-size: 10px;
+  color: #8998ac;
+}
+.process-field > span {
+  white-space: nowrap;
+}
+.process-note {
+  flex: 1.3;
+}
+.material-operation-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+.fixed-owner {
+  color: #536983;
 }
 .combined-icons {
   display: flex;
@@ -773,45 +753,6 @@ function showMaterial(group: UicGroup, m: UicMaterial) {
 .icon-plus {
   font-size: 14px;
   color: #9cadc2;
-}
-.summary-label {
-  color: #97a5b7;
-  font-size: 11px;
-}
-.summary-label small {
-  font-size: 9px;
-  color: #b3bdc9;
-}
-.material-summary {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.9;
-  color: #647a96;
-  overflow-wrap: anywhere;
-}
-.group-remark {
-  font-size: 11px;
-  line-height: 1.7;
-  width: 100%;
-  resize: vertical;
-  border: 1px solid #e6ecf3;
-  border-radius: 4px;
-  padding: 4px 7px;
-  background: white;
-  color: #718197;
-  outline: 0;
-}
-.group-tables {
-  min-width: 0;
-}
-.material-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 5px 16px;
-  background: #f7fafc;
-  border-top: 1px solid #e4ebf3;
-  border-bottom: 1px solid #edf1f6;
 }
 .table-scroll {
   overflow-x: auto;
@@ -836,29 +777,11 @@ td {
   font-size: 12px;
   vertical-align: middle;
 }
-.process-table {
-  min-width: 770px;
-}
-.process-table td {
-  height: 78px;
-}
 .material-table {
   min-width: 770px;
 }
-.process-col {
-  width: 185px;
-}
-.instruction-col {
-  width: 144px;
-}
-.remark-col {
-  width: 150px;
-}
 .operation-col {
   width: 130px;
-}
-.owner-col {
-  width: 118px;
 }
 .material-name-col {
   width: 190px;
@@ -871,17 +794,6 @@ td {
 }
 .split-col {
   width: 100px;
-}
-.process-select {
-  border: 0;
-  background: transparent;
-  text-align: left;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0;
-  color: #344860;
-  width: 100%;
 }
 .badge-space {
   position: relative;
@@ -905,39 +817,6 @@ td {
   background: #fff;
   padding-left: 2px;
   z-index: 1;
-}
-.process-name {
-  font-size: 12px;
-  margin-top: -8px;
-}
-.process-name small {
-  display: block;
-  font-size: 9px;
-  color: #b1bac7;
-  margin-top: 5px;
-}
-.material-chips {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-.material-chips span {
-  font-size: 10px;
-  color: #76879c;
-  background: #f2f5f9;
-  border-radius: 3px;
-  padding: 4px 6px;
-  word-break: break-word;
-}
-.material-chips .empty-text {
-  background: transparent;
-  color: #bec6d1;
-}
-.selected-process {
-  background: #f5f9ff;
-}
-.selected-process .instruction-subscript {
-  background: #f5f9ff;
 }
 .cell-input {
   width: 100%;
@@ -989,30 +868,6 @@ td {
 }
 .text-button:disabled {
   color: #bac4d1;
-}
-.material-tools {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-}
-.material-tools select {
-  border: 1px solid #e0e8f0;
-  border-radius: 4px;
-  padding: 4px 6px;
-  color: #73879f;
-  font-size: 10px;
-  background: white;
-  max-width: 145px;
-}
-.owner-select {
-  width: 100%;
-  border: 1px solid #dbe7f4;
-  border-radius: 4px;
-  padding: 6px;
-  color: #5e84ae;
-  font-size: 10px;
-  background: #f5f9fe;
-  outline: 0;
 }
 .material-name {
   display: flex;
