@@ -48,6 +48,9 @@ import java.util.Set;
 @Service
 public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,EngineeringBom> implements IEngineeringBomService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+
     private final EngineeringBomMapper productBomMapper;
     private final EngineeringBomItemMapper productBomItemMapper;
     private final ProductMapper productMapper;
@@ -1465,6 +1468,56 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                         statusDto.getRemark(), null);
             }
         }
+    }
+
+    @Override
+    public BatchItemReviewResult reviewItemsBatch(BatchItemReviewRequest request) {
+        if (request == null || request.bomId() == null || request.itemIds() == null
+                || request.itemIds().isEmpty() || !"APPROVE".equals(request.action())) {
+            throw new BusinessException("批量审核需提供BOM、明细ID且动作只能为APPROVE");
+        }
+        var successIds = new java.util.ArrayList<Long>();
+        var failed = new java.util.ArrayList<ItemReviewFailure>();
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        transaction.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        for (Long itemId : new java.util.LinkedHashSet<>(request.itemIds())) {
+            try {
+                transaction.executeWithoutResult(status -> {
+                    if (itemId == null) throw new BusinessException("明细ID不能为空");
+                    // 锁定后校验，避免并发批量重复写审核日志。
+                    EngineeringBomItem item = productBomItemMapper.selectOne(
+                            new LambdaQueryWrapper<EngineeringBomItem>()
+                                    .eq(EngineeringBomItem::getItemId, itemId).last("FOR UPDATE"));
+                    if (item == null) throw new BusinessException("BOM明细不存在");
+                    if (!Objects.equals(item.getBomId(), request.bomId())) {
+                        throw new BusinessException("该明细不属于指定BOM");
+                    }
+                    if (item.getMaterialId() == null || item.getMaterialId() <= 0) {
+                        throw new BusinessException("该行尚未关联物料");
+                    }
+                    if (Objects.equals(item.getReviewStatus(), ProductEnums.BomItemReviewStatus.APPROVED.getValue())) {
+                        return;
+                    }
+                    if (!Objects.equals(item.getReviewStatus(), ProductEnums.BomItemReviewStatus.PENDING.getValue())) {
+                        throw new BusinessException("只有待审核行才能批量通过");
+                    }
+                    BomItemReviewDTO dto = new BomItemReviewDTO();
+                    dto.setItemId(itemId);
+                    dto.setAction("APPROVE");
+                    dto.setRemark(request.remark());
+                    // 当前行的显式事务覆盖单行逻辑及日志写入，异常由模板回滚。
+                    reviewItem(dto);
+                });
+                successIds.add(itemId);
+            } catch (Exception e) {
+                failed.add(new ItemReviewFailure(itemId,
+                        e instanceof BusinessException ? e.getMessage() : "该行审核失败，请稍后重试"));
+                if (!(e instanceof BusinessException)) {
+                    log.error("BOM明细批量审核失败，itemId=" + itemId, e);
+                }
+            }
+        }
+        return new BatchItemReviewResult(successIds, failed);
     }
 
     private static String itemActionName(String action) {

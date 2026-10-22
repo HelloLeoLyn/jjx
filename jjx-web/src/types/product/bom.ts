@@ -181,3 +181,15 @@ export interface EngineeringBomVO {
   updateBy: string
   items: EngineeringBomItem[]
 }
+
+export interface BomItemBatchReviewRequest {
+  bomId: number
+  itemIds: number[]
+  action: 'APPROVE'
+  remark?: string
+}
+
+export interface BomItemBatchReviewResult {
+  successIds: number[]
+  failed: { itemId: number; reason: string }[]
+}

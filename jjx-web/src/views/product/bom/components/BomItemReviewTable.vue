@@ -8,14 +8,34 @@
         </span>
       </div>
     </template>
-    <el-table :data="items" border style="width: 100%" height="360" :row-class-name="rowClass">
+    <div class="batch-toolbar">
+      <el-button
+        v-hasPermi="['engineering:bom:approve']"
+        type="success"
+        :loading="batchBusy"
+        :disabled="!selectedIds.length || busyItemId != null"
+        @click="emit('batch-approve', selectedIds)"
+        >批量通过 {{ selectedIds.length }} 行</el-button
+      >
+    </div>
+    <el-alert v-if="batchFailures.length" type="warning" :closable="false" title="以下明细未通过">
+      <div v-for="failure in batchFailures" :key="failure.itemId">
+        itemId {{ failure.itemId }}：{{ failure.reason }}
+      </div>
+    </el-alert>
+    <el-table
+      :data="items"
+      border
+      style="width: 100%"
+      height="360"
+      :row-class-name="rowClass"
+      @selection-change="selectedRows = $event"
+    >
+      <el-table-column type="selection" width="45" :selectable="canSelect" />
       <el-table-column label="行状态" width="110" align="center">
         <template #default="{ row }">
           <div class="status-cell">
-            <el-tag
-              :type="BomItemReviewStatusEnum.getTagProps(rowStatus(row)).type"
-              size="small"
-            >
+            <el-tag :type="BomItemReviewStatusEnum.getTagProps(rowStatus(row)).type" size="small">
               {{ BomItemReviewStatusEnum.getLabel(rowStatus(row)) }}
             </el-tag>
             <el-tooltip v-if="row.rejectReason" :content="row.rejectReason">
@@ -54,6 +74,7 @@
               v-else
               link
               type="danger"
+              :disabled="batchBusy"
               :loading="busyItemId === row.itemId"
               @click="emit('review', row, 'CONFIRM_REMOVE')"
               >确认移除</el-button
@@ -63,13 +84,14 @@
             <el-button
               link
               type="success"
-              :disabled="!row.materialId || busyItemId === row.itemId"
+              :disabled="batchBusy || !row.materialId || busyItemId === row.itemId"
               @click="emit('review', row, 'APPROVE')"
               >通过</el-button
             >
             <el-button
               link
               type="danger"
+              :disabled="batchBusy"
               :loading="busyItemId === row.itemId"
               @click="emit('review', row, 'REJECT')"
               >驳回</el-button
@@ -85,19 +107,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { WarningFilled } from '@element-plus/icons-vue'
-import type { EngineeringBomItem } from '@/types/product/bom'
+import type { EngineeringBomItem, BomItemBatchReviewResult } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import { BomItemReviewStatusEnum } from '@/enums/product'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 
 const props = withDefaults(
-  defineProps<{ items: EngineeringBomItem[]; busyItemId?: number }>(),
-  { items: () => [], busyItemId: undefined }
+  defineProps<{
+    items: EngineeringBomItem[]
+    busyItemId?: number
+    batchBusy?: boolean
+    batchFailures?: BomItemBatchReviewResult['failed']
+  }>(),
+  { items: () => [], busyItemId: undefined, batchBusy: false, batchFailures: () => [] }
 )
 
 const emit = defineEmits<{
+  (e: 'batch-approve', itemIds: number[]): void
   (e: 'link', row: EngineeringBomItem, material: InventoryMaterial): void
   (e: 'create', row: EngineeringBomItem, keyword: string): void
   (e: 'review', row: EngineeringBomItem, action: 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE'): void
@@ -105,6 +133,15 @@ const emit = defineEmits<{
 
 const rowStatus = (row: EngineeringBomItem): number =>
   row.reviewStatus ?? BomItemReviewStatusEnum.DRAFT.value
+
+const selectedRows = ref<EngineeringBomItem[]>([])
+const canSelect = (row: EngineeringBomItem) =>
+  !props.batchBusy && row.itemId != null && rowStatus(row) === BomItemReviewStatusEnum.PENDING.value
+const selectedIds = computed(() =>
+  selectedRows.value
+    .filter((row) => row.itemId != null && rowStatus(row) === BomItemReviewStatusEnum.PENDING.value)
+    .map((row) => row.itemId!)
+)
 
 const blockingRows = computed(() =>
   (props.items || []).filter((row) => {
@@ -127,6 +164,9 @@ const formatQty = (value: number | string | undefined) => {
 </script>
 
 <style scoped>
+.batch-toolbar {
+  margin-bottom: 10px;
+}
 .card-header {
   display: flex;
   align-items: center;

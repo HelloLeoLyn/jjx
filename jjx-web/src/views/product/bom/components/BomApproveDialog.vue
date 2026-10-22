@@ -21,6 +21,9 @@
     <BomItemReviewTable
       :items="bomDetailList"
       :busy-item-id="busyItemId"
+      :batch-busy="batchBusy"
+      :batch-failures="batchFailures"
+      @batch-approve="handleBatchApprove"
       @review="handleRowReview"
       @link="handleLinkMaterial"
       @create="handleCreateMaterial"
@@ -45,6 +48,12 @@
           type="primary"
           v-hasPermi="['engineering:bom:approve']"
           :loading="submitting"
+          :disabled="
+            batchBusy ||
+            busyItemId != null ||
+            (approveForm.result === ApprovalResultEnum.APPROVE &&
+              (!approveCheckReady || blockingIssues.length > 0))
+          "
           @click="handleSubmit"
         >
           {{ approveForm.result === ApprovalResultEnum.APPROVE ? '批准BOM' : '驳回BOM' }}
@@ -68,6 +77,7 @@ import type {
   EngineeringBom,
   EngineeringBomItem,
   BomCheckIssue,
+  BomItemBatchReviewResult,
 } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import { ProductActions, BomStatusEnum } from '@/enums/product'
@@ -130,6 +140,9 @@ const createEmptyDetail = (): EngineeringBom => ({
 const detail = reactive<EngineeringBom>(createEmptyDetail())
 const bomDetailList = ref<EngineeringBomItem[]>([])
 const blockingIssues = ref<BomCheckIssue[]>([])
+const batchBusy = ref(false)
+const batchFailures = ref<BomItemBatchReviewResult['failed']>([])
+const approveCheckReady = ref(false)
 const busyItemId = ref<number | undefined>(undefined)
 
 // 审核表单
@@ -167,9 +180,11 @@ const loadBomDetail = async () => {
 
 const refreshApproveCheck = async () => {
   if (!props.bomId) return
+  approveCheckReady.value = false
   try {
     const res = await productBomApi.checkBomForApprove(props.bomId)
     blockingIssues.value = res.data || []
+    approveCheckReady.value = true
   } catch (error) {
     console.error('BOM批准条件体检失败:', error)
     blockingIssues.value = []
@@ -189,13 +204,15 @@ const resetData = () => {
   bomDetailList.value = []
   blockingIssues.value = []
   busyItemId.value = undefined
+  batchFailures.value = []
+  approveCheckReady.value = false
   approveForm.value.result = ApprovalResultEnum.APPROVE
   approveForm.value.remark = ''
   approveFormRef.value?.clearValidate()
 }
 
 const handleClose = () => {
-  if (submitting.value) {
+  if (submitting.value || batchBusy.value) {
     ElMessage.warning('正在提交，请稍候...')
     return
   }
@@ -209,6 +226,30 @@ const handleClose = () => {
       emit('close')
     })
     .catch(() => {})
+}
+
+const handleBatchApprove = async (itemIds: number[]) => {
+  if (!props.bomId || batchBusy.value || busyItemId.value != null || !itemIds.length) return
+  batchBusy.value = true
+  approveCheckReady.value = false
+  batchFailures.value = []
+  try {
+    const res = await productBomApi.reviewBomItemsBatch({
+      bomId: props.bomId,
+      itemIds,
+      action: 'APPROVE',
+    })
+    if (!res.data) throw new Error('批量审核未返回结果')
+    batchFailures.value = res.data.failed
+    ElMessage[res.data.failed.length ? 'warning' : 'success'](
+      `批量通过 ${res.data.successIds.length} 行，失败 ${res.data.failed.length} 行`
+    )
+    await refreshAfterAction()
+  } catch (error: any) {
+    ElMessage.error(error?.message || '批量审核或刷新失败，请重新加载BOM审核弹窗')
+  } finally {
+    batchBusy.value = false
+  }
 }
 
 // 行级审核：通过 / 驳回 / 确认移除
@@ -323,6 +364,10 @@ const handleSubmit = async () => {
 
   if (approveForm.value.result === ApprovalResultEnum.APPROVE) {
     await refreshApproveCheck()
+    if (!approveCheckReady.value) {
+      ElMessage.error('批准条件体检失败，请重新加载审核弹窗后重试')
+      return
+    }
     if (blockingIssues.value.length) {
       ElMessageBox.alert(
         `仍有 ${blockingIssues.value.length} 项未满足批准条件：请先逐行审核通过、关联物料并确认待移除行。`,

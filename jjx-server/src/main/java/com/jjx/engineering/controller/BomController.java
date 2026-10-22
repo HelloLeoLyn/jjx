@@ -40,6 +40,12 @@ public class BomController extends BaseController {
 
     private final IEngineeringBomService productBomService;
 
+    @ExceptionHandler(cn.dev33.satoken.exception.NotPermissionException.class)
+    @ResponseStatus(org.springframework.http.HttpStatus.FORBIDDEN)
+    public Result<Void> permissionDenied(cn.dev33.satoken.exception.NotPermissionException exception) {
+        return Result.error(com.jjx.common.exception.BusinessExceptionEnum.NO_PERMISSION.getCode(), "无BOM审核操作权限");
+    }
+
     /**
      * 获取BOM列表
      */
@@ -174,6 +180,14 @@ public class BomController extends BaseController {
     public Result<Void> reviewItem(@Validated @RequestBody com.jjx.product.domain.dto.BomItemReviewDTO dto) {
         productBomService.reviewItem(dto);
         return Result.success();
+    }
+
+    @Operation(summary = "BOM明细批量通过")
+    @PostMapping("/item/review/batch")
+    @SaCheckPermission("engineering:bom:approve")
+    public Result<IEngineeringBomService.BatchItemReviewResult> reviewItemsBatch(
+            @Validated @RequestBody IEngineeringBomService.BatchItemReviewRequest request) {
+        return Result.success(productBomService.reviewItemsBatch(request));
     }
 
     /**

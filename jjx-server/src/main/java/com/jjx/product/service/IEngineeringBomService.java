@@ -137,6 +137,20 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
      */
     void reviewItem(com.jjx.product.domain.dto.BomItemReviewDTO dto);
 
+    /** 批量只允许通过；每行独立事务，已通过行幂等成功。 */
+    record BatchItemReviewRequest(
+            @jakarta.validation.constraints.NotNull Long bomId,
+            @jakarta.validation.constraints.NotEmpty List<@jakarta.validation.constraints.NotNull Long> itemIds,
+            @jakarta.validation.constraints.NotNull
+            @jakarta.validation.constraints.Pattern(regexp = "APPROVE") String action,
+            String remark) {}
+
+    record ItemReviewFailure(Long itemId, String reason) {}
+    record BatchItemReviewResult(List<Long> successIds, List<ItemReviewFailure> failed) {}
+
+    BatchItemReviewResult reviewItemsBatch(BatchItemReviewRequest request);
+
+
     /**
      * BOM 物料全量同步：批量按「名称+规格」匹配物料库（只读，不改任何数据）。
      * 供编辑器「全量同步」按钮回填未关联的导入行。

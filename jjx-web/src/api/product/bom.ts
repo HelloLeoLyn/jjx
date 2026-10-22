@@ -9,6 +9,8 @@ import type {
   BomMaterialMatchItem,
   BomMaterialMatchResult,
   BomItemReviewRequest,
+  BomItemBatchReviewRequest,
+  BomItemBatchReviewResult,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
 // ==================== BomAPI ====================
@@ -96,6 +98,10 @@ export const productBomApi = {
    * BOM 明细行级审核：通过/驳回/确认移除/关联物料（逐行写流水）
    * 2026-10-21 dev-20261020-029
    */
+  reviewBomItemsBatch(data: BomItemBatchReviewRequest) {
+    return request.post<R<BomItemBatchReviewResult>>('/engineering/bom/item/review/batch', data)
+  },
+
   reviewBomItem(data: BomItemReviewRequest) {
     return request.put('/engineering/bom/item/review', data)
   },
