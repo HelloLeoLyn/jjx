@@ -639,6 +639,7 @@ public class InquiryServiceImpl implements IInquiryService {
                                               String bizStatus, LocalDateTime createTime,
                                               String operParam, String detail) {
         SysOperLog operLog = new SysOperLog();
+        operLog.setOperGroupId(org.slf4j.MDC.get(com.jjx.common.filter.CorrelationIdFilter.MDC_KEY));
         operLog.setModule(module);
         operLog.setBusinessType(businessType.getCode());
         operLog.setOperUrl("/sales/inquiry/convert");

@@ -219,6 +219,7 @@ public class OrderServiceImpl implements IOrderService {
     private void saveOrderCreateLog(SalesOrder order) {
         try {
             SysOperLog log = new SysOperLog();
+            log.setOperGroupId(org.slf4j.MDC.get(com.jjx.common.filter.CorrelationIdFilter.MDC_KEY));
             log.setModule("销售订单");
             log.setBusinessType(1); // 新增
             log.setOperUrl("order.create");
@@ -582,6 +583,7 @@ public class OrderServiceImpl implements IOrderService {
         // DEV：给新单写操作日志（带新单自身 traceId，供新单查看流水链路）
         try {
             SysOperLog newLog = new SysOperLog();
+            newLog.setOperGroupId(org.slf4j.MDC.get(com.jjx.common.filter.CorrelationIdFilter.MDC_KEY));
             newLog.setModule("销售订单管理");
             newLog.setBusinessType(1); // 新增
             newLog.setOperUrl("/sales/orders/" + orderId + "/copy");
@@ -606,6 +608,7 @@ public class OrderServiceImpl implements IOrderService {
         // DEV：给原单写“被复制”操作日志（原单流水可追溯复制来源，双向可查）
         try {
             SysOperLog operLog = new SysOperLog();
+            operLog.setOperGroupId(org.slf4j.MDC.get(com.jjx.common.filter.CorrelationIdFilter.MDC_KEY));
             operLog.setModule("销售订单管理");
             operLog.setBusinessType(2); // 修改
             operLog.setOperUrl("/sales/orders/" + orderId + "/copy");

@@ -1,5 +1,8 @@
 package com.jjx.system.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jjx.common.enums.YesNoEnum;
 import com.jjx.system.domain.entity.SysErrorLog;
 import com.jjx.system.domain.entity.SysLoginLog;
 import com.jjx.system.domain.entity.SysOperLog;
@@ -8,12 +11,16 @@ import com.jjx.system.mapper.SysLoginLogMapper;
 import com.jjx.system.mapper.SysOperLogMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -21,6 +28,9 @@ import java.util.List;
 public class LogSaveService {
 
     private final SysOperLogMapper operLogMapper;
+    @Autowired
+    private JdbcTemplate attachmentRefJdbc;
+    private static final ObjectMapper ATTACHMENT_JSON = new ObjectMapper();
     private final SysLoginLogMapper loginLogMapper;
     private final SysErrorLogMapper errorLogMapper;
     // 库存等单据血缘反查 traceId；工程主数据不继承订单链路。
@@ -38,6 +48,7 @@ public class LogSaveService {
     public void saveOperLog(SysOperLog operLog) {
         try {
             operLogMapper.insert(operLog);
+            fillSourceOperId(operLog);
         } catch (Exception e) {
             log.error("保存操作日志失败: {}", e.getMessage());
         }
@@ -54,6 +65,55 @@ public class LogSaveService {
         }
         for (SysOperLog operLog : operLogs) {
             operLogMapper.insert(operLog);
+            fillSourceOperId(operLog);
+        }
+    }
+
+    /** 日志对象已在请求/事务回调登记时携带 operGroupId，这里不读取工作线程 MDC。 */
+    private void fillSourceOperId(SysOperLog operLog) {
+        if (operLog.getId() == null || !YesNoEnum.YES.getCode().equals(operLog.getStatus())) return;
+        // 修改/解除引用不能成为“加入本单”的来源日志。
+        if (operLog.getOperUrl() != null && operLog.getOperUrl().startsWith("attachment.ref.")
+                && !"attachment.ref.附件新增".equals(operLog.getOperUrl())) return;
+        Set<Long> refIds = new LinkedHashSet<>();
+        JsonNode detail = readAttachmentJson(operLog.getDetail());
+        JsonNode attachments = detail.path("attachments");
+        if (attachments.isArray()) {
+            for (JsonNode item : attachments) addRefId(item.path("refId"), refIds);
+        }
+        collectParamRefIds(readAttachmentJson(operLog.getOperParam()), refIds);
+        for (Long refId : refIds) {
+            // 原始加入关系只写一次；重复日志/重复回调不覆盖已有来源。
+            attachmentRefJdbc.update("UPDATE sys_attachment_ref SET source_oper_id=? WHERE id=? AND source_oper_id IS NULL",
+                    operLog.getId(), refId);
+        }
+    }
+
+    private JsonNode readAttachmentJson(String value) {
+        if (value == null || value.isBlank()) return ATTACHMENT_JSON.nullNode();
+        try {
+            JsonNode node = ATTACHMENT_JSON.readTree(value);
+            return node == null ? ATTACHMENT_JSON.nullNode() : node;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            // oper_param 允许普通文本；无有效 JSON 时没有可回填的精确引用。
+            return ATTACHMENT_JSON.nullNode();
+        }
+    }
+
+    private void collectParamRefIds(JsonNode node, Set<Long> refIds) {
+        // 切面按方法参数名包装 DTO，兼容 {dto:{attachmentRefIds:[...]}}。
+        if (node.isObject()) {
+            JsonNode ids = node.path("attachmentRefIds");
+            if (ids.isArray()) for (JsonNode id : ids) addRefId(id, refIds);
+            node.elements().forEachRemaining(child -> collectParamRefIds(child, refIds));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) collectParamRefIds(child, refIds);
+        }
+    }
+
+    private void addRefId(JsonNode node, Set<Long> refIds) {
+        if (node.isIntegralNumber() && node.canConvertToLong() && node.longValue() > 0) {
+            refIds.add(node.longValue());
         }
     }
 

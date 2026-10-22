@@ -10,6 +10,8 @@ public class SysAttachmentRef {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long attachmentId;
+    /** 建立本引用的操作日志主键；历史数据允许为空。 */
+    private Long sourceOperId;
     private String sourceType;
     private Long sourceId;
     private String sourceNo;

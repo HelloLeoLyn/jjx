@@ -34,7 +34,7 @@ public class AttachmentRefActionService {
         StpUtil.checkLogin();
         if (refId == null || refId <= 0) throw new BusinessException("附件引用不存在");
         List<Map<String, Object>> refs = jdbc.queryForList("""
-            SELECT r.attachment_id,r.source_type,r.source_id,r.ref_state,r.create_by AS ref_creator,
+            SELECT r.attachment_id,r.source_type,r.source_id,r.source_oper_id,r.ref_state,r.create_by AS ref_creator,
                    r.create_time AS ref_created_at,a.create_by AS uploaded_by,a.create_time AS uploaded_at
             FROM sys_attachment_ref r JOIN sys_attachment a ON a.id=r.attachment_id
             WHERE r.id=? AND r.deleted=? AND a.deleted=?
@@ -64,7 +64,20 @@ public class AttachmentRefActionService {
               AND (detail IS NOT NULL OR oper_param LIKE '%attachmentRefIds%')
             ORDER BY create_time,id
             """, logSource, String.valueOf(sourceId), YesNoEnum.YES.getCode(), createdAt);
+        Long sourceOperId = number(ref, "source_oper_id");
         Action joined = null;
+        if (sourceOperId != null) {
+            List<Map<String, Object>> sourceLogs = jdbc.queryForList("""
+                SELECT id,action,create_time,real_name,username FROM sys_oper_log WHERE id=?
+                """, sourceOperId);
+            if (sourceLogs.size() == 1) {
+                Map<String, Object> sourceLog = sourceLogs.getFirst();
+                String operator = person(text(sourceLog, "real_name"));
+                if (operator == null) operator = person(text(sourceLog, "username"));
+                joined = new Action("log:" + sourceOperId, text(sourceLog, "action"),
+                        time(sourceLog, "create_time"), operator);
+            }
+        }
         for (Map<String, Object> log : logs) {
             String url = text(log, "oper_url");
             boolean attachmentEvent = url != null && url.startsWith("attachment.ref.");
@@ -78,7 +91,7 @@ public class AttachmentRefActionService {
             Action event = new Action("log:" + number(log, "id"), name, time(log, "create_time"), operator);
             if (attachmentEvent) {
                 references.add(event);
-                if (joined == null && "附件新增".equals(name)) joined = event;
+                if (sourceOperId == null && joined == null && "附件新增".equals(name)) joined = event;
             } else {
                 fallback.add(event);
             }
@@ -87,7 +100,7 @@ public class AttachmentRefActionService {
         if (business.isEmpty()) business.addAll(fallback);
         business.sort(Comparator.comparing(Action::actionTime, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(Action::eventKey));
-        // 草稿转正沿用引用 create_time；只有精确的新增日志才能证明正式加入时间。
+        // 新引用按来源主键确认加入时间；历史空主键保留精确新增日志兜底。
         return new AttachmentRefActionsVO(refId, person(text(ref, "uploaded_by")), time(ref, "uploaded_at"),
                 joined == null ? null : joined.operatorName(), joined == null ? null : joined.actionTime(),
                 List.copyOf(business), List.copyOf(references));

@@ -207,6 +207,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private void savePurchaseCreateLog(PurchaseOrder order) {
         try {
             com.jjx.system.domain.entity.SysOperLog log = new com.jjx.system.domain.entity.SysOperLog();
+            log.setOperGroupId(org.slf4j.MDC.get(com.jjx.common.filter.CorrelationIdFilter.MDC_KEY));
             log.setModule("purchase_order");
             log.setBusinessType(1); // 新增
             log.setOperUrl("order.create");

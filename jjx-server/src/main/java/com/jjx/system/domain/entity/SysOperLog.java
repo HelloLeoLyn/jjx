@@ -25,6 +25,8 @@ public class SysOperLog {
     private String bizType;
     private String bizId;
     private String traceId;
+    /** 创建日志对象时捕获请求上下文，随对象显式传入异步执行器，工作线程不读取 MDC。 */
+    private String operGroupId = org.slf4j.MDC.get(com.jjx.common.filter.CorrelationIdFilter.MDC_KEY);
     private String bizStatus;
     private String action;
     /** 详情（JSON，如附件列表 {"attachments":[{id,fileName}]}） */

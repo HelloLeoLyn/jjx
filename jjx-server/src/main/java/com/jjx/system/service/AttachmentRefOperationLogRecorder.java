@@ -53,6 +53,7 @@ public class AttachmentRefOperationLogRecorder {
         if (sourceType == null || sourceType.isBlank() || sourceId == null || attachmentId == null) return;
 
         SysOperLog event = new SysOperLog();
+        event.setOperGroupId(org.slf4j.MDC.get(com.jjx.common.filter.CorrelationIdFilter.MDC_KEY));
         event.setModule(moduleOf(sourceType));
         event.setBusinessType(businessType);
         event.setOperUrl("attachment.ref." + action);

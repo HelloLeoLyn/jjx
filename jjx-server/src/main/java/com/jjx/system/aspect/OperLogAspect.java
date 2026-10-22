@@ -50,6 +50,7 @@ public class OperLogAspect {
     public Object around(ProceedingJoinPoint point, Log logAnnotation) throws Throwable {
         long startTime = System.currentTimeMillis();
         SysOperLog operLog = new SysOperLog();
+        operLog.setOperGroupId(org.slf4j.MDC.get(com.jjx.common.filter.CorrelationIdFilter.MDC_KEY));
 
         try {
             // 填充基础信息
