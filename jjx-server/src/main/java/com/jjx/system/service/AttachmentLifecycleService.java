@@ -87,9 +87,22 @@ public class AttachmentLifecycleService {
         } catch (Exception ex) { throw new BusinessException("无法计算上传文件SHA-256"); }
         if (!existing.isEmpty()) {
             SysAttachment file = existing.get(0);
-            access.checkRead(file);
-            if (!hash.equals(file.getSha256())) throw new BusinessException("同一requestKey不能上传不同文件");
-            return file.getId();
+            // 2026-10-22（dev-20261022-015）：旧行可能是"已解绑但状态仍是 BOUND / owner 为空 / 已过期"的孤儿，
+            // 此时 checkRead 必然失败。不能把"无权查看"抛给正在重新上传的用户，改为让位新建：
+            // 旧行 upload_key 置 NULL（其余字段与状态不动、不删数据），本次继续走新建流程。
+            boolean readable = true;
+            try {
+                access.checkRead(file);
+            } catch (RuntimeException ex) {
+                readable = false;
+                log.warn("上传幂等命中不可读旧附件，让位新建：attachmentId={}, reason={}", file.getId(), ex.getMessage());
+                jdbc.update("UPDATE sys_attachment SET upload_key=NULL WHERE id=? AND upload_key=?", file.getId(), key);
+                existing = java.util.List.of();
+            }
+            if (readable) {
+                if (!hash.equals(file.getSha256())) throw new BusinessException("同一requestKey不能上传不同文件");
+                return file.getId();
+            }
         }
         String name = input.getOriginalFilename();
         if (name == null || name.isBlank() || name.length() > 255) throw new BusinessException("文件名无效");
