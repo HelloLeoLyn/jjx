@@ -187,7 +187,7 @@ async function doPrint() {
     }
     const printStyle = doc.createElement('style')
     printStyle.textContent =
-      '@page { size: A4 portrait; margin: 10mm; } html, body { margin: 0; padding: 0; background: white; }'
+      '@page { size: A4 portrait; margin: 10mm; } html, body { margin: 0; padding: 0; background: white; } .bom-print-content, .bom-print-content * { visibility: visible !important; }'
     doc.head.appendChild(printStyle)
     // SvgIcon 使用页面内 symbol；打印文档也需要同一份 sprite。
     document.querySelectorAll('svg').forEach((svg) => {
