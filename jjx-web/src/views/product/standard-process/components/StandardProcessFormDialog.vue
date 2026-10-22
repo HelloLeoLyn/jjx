@@ -105,24 +105,6 @@
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="是否带下标" prop="hasIndex">
-              <el-checkbox
-                :model-value="formData.hasIndex === 1"
-                @change="(v: boolean | string | number) => (formData.hasIndex = v ? 1 : 0)"
-              >
-                带下标（在工艺路线中需输入下标数字，如 ④）
-              </el-checkbox>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="是否带作业说明" prop="hasWorkInstruction">
-              <el-checkbox
-                :model-value="formData.hasWorkInstruction === 1"
-                @change="(v: boolean | string | number) => (formData.hasWorkInstruction = v ? 1 : 0)"
-              >带作业说明（使用时填写，如：线路外形）</el-checkbox>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
             <el-form-item label="设备类型" prop="equipmentType">
               <el-input v-model="formData.equipmentType" placeholder="请输入设备类型" />
             </el-form-item>
