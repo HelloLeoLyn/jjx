@@ -849,7 +849,7 @@ loadDetail()
   margin: 0 0 8px;
 }
 .wb-page {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 16px 8px;
 }

@@ -117,7 +117,13 @@
         <el-button link type="primary" @click="downloadImportTemplate">
           <el-icon><Download /></el-icon>下载导入模板（.xlsx）
         </el-button>
-        <span class="template-hint">必填：材料名称、规格（乘/跳）、模数；其余列可空。也支持单列「规格及模数」（如 340*305mm=8PCS、315宽跳75mm=2PCS、6个/PCS；基数缺省 1），此时不需要单独的规格/模数列。列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜基数｜预计不良｜最低投料｜实际投料（首行表头，数据从第 2 行起；预计不良填小数，如 0.05＝5%）。用量由基数÷模数计算，应用料再计入损耗；Excel的单用量、实发数量、数量、应用料列不作为计算输入。</span>
+        <span class="template-hint"
+          >必填：材料名称、规格（乘/跳）、模数；其余列可空。也支持单列「规格及模数」（如
+          340*305mm=8PCS、315宽跳75mm=2PCS、6个/PCS；基数缺省
+          1），此时不需要单独的规格/模数列。列顺序：序号｜项目名称｜材料名称｜单位｜宽度｜规格（乘/跳）｜长度｜模数｜基数｜预计不良｜最低投料｜实际投料（首行表头，数据从第
+          2 行起；预计不良填小数，如
+          0.05＝5%）。用量由基数÷模数计算，应用料再计入损耗；Excel的单用量、实发数量、数量、应用料列不作为计算输入。</span
+        >
       </div>
     </div>
 
@@ -130,9 +136,11 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button v-if="formData.items?.length" icon="Printer" @click="printPreviewVisible = true">打印预览</el-button>
-        <el-button @click="handleCancel">取 消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">保 存</el-button>
+        <el-button v-if="formData.items?.length" icon="Printer" @click="printPreviewVisible = true"
+          >打印预览</el-button
+        >
+        <el-button @click="handleCancel">关 闭</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitForm">保存</el-button>
       </div>
     </template>
 
@@ -209,11 +217,13 @@ const title = computed(() => (props.bomId ? '修改BOM' : '新增BOM'))
 // 编辑回填时，把当前产品对象传给 ProductSelector，让其能显示产品名称
 const productOptions = computed<ProductItem[]>(() => {
   if (formData.productId && formData.productName) {
-    return [{
-      productId: formData.productId,
-      productCode: formData.productCode,
-      productName: formData.productName,
-    } as ProductItem]
+    return [
+      {
+        productId: formData.productId,
+        productCode: formData.productCode,
+        productName: formData.productName,
+      } as ProductItem,
+    ]
   }
   return []
 })
@@ -236,14 +246,16 @@ const formData = reactive<EngineeringBomFormData>({
 
 // 表单验证规则
 const rules = reactive<FormRules>({
-  productId: [{
-    required: true,
-    trigger: 'change',
-    validator: (_rule, value, callback) => {
-      if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) callback()
-      else callback(new Error('请选择有效产品'))
+  productId: [
+    {
+      required: true,
+      trigger: 'change',
+      validator: (_rule, value, callback) => {
+        if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) callback()
+        else callback(new Error('请选择有效产品'))
+      },
     },
-  }],
+  ],
   bomVersion: [{ message: '请输入BOM版本', trigger: 'blur' }],
   bomName: [{ required: true, message: '请输入BOM名称', trigger: 'blur' }],
   bomCode: [{ required: true, message: '请输入BOM编码', trigger: 'blur' }],
@@ -255,7 +267,8 @@ const handleProductChange = (productId: number | null, product: any) => {
   const oldCode = formData.productCode
   const oldName = formData.productName
   // 空白或仍沿用自动名称时，随产品更新；手工名称与编辑回填不被覆盖。
-  const hasDefaultName = !formData.bomName.trim() ||
+  const hasDefaultName =
+    !formData.bomName.trim() ||
     (!!oldCode && formData.bomName === `${oldCode}-BOM`) ||
     (!!oldName && formData.bomName === `${oldName}-BOM`)
   if (!product) {
@@ -367,8 +380,18 @@ const handleImportExceed = () => {
  */
 const downloadImportTemplate = () => {
   const header = [
-    '序号', '项目名称', '材料名称（必填）', '单位', '宽度', '规格（乘/跳）（必填）', '长度',
-    '模数（必填）', '基数', '预计不良', '最低投料', '实际投料',
+    '序号',
+    '项目名称',
+    '材料名称（必填）',
+    '单位',
+    '宽度',
+    '规格（乘/跳）（必填）',
+    '长度',
+    '模数（必填）',
+    '基数',
+    '预计不良',
+    '最低投料',
+    '实际投料',
   ]
   const sample = [
     [1, '示例-主体', '白卡纸 300g', '张', 787, '*', 1092, 1, 1000, 0.05, '', ''],
@@ -415,7 +438,9 @@ const parseExcelFile = (file: File) => {
       // 将解析后的数据填充到 formData.items
       formData.items = [...formData.items, ...items]
       ElMessage.success(`成功解析并添加 ${items.length} 项物料，可在表格中拖拽调整顺序`)
-      const noProject = items.filter((it) => it.processId == null && !!it.processName?.trim()).length
+      const noProject = items.filter(
+        (it) => it.processId == null && !!it.processName?.trim()
+      ).length
       if (noProject > 0) {
         ElMessageBox.alert(
           `本次导入有 ${noProject} 行项目名称尚未匹配工序，请选择对应项目，或清空项目作为公共物料。`,
@@ -591,7 +616,6 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
   return items
 }
 
-
 // ==================== 表单操作 ====================
 
 // 表单重置
@@ -680,8 +704,8 @@ const doSave = async (): Promise<boolean> => {
 const submitForm = async () => {
   const ok = await doSave()
   if (!ok) return
-  suppressGuard.value = true
-  visible.value = false
+  // suppressGuard.value = true
+  // visible.value = false
 }
 
 /** 未保存离开拦截：true=允许离开，false=继续编辑。 */
