@@ -74,9 +74,18 @@
       >
         <div class="group-header">
           <div class="group-title">
-            <span class="group-number">{{ String(groupIndex + 1).padStart(2, '0') }}</span
-            ><b>{{ group.processes.map((p) => p.name).join(' ＋ ') }}</b
-            ><span class="group-kind" :class="{ composite: group.processes.length > 1 }">{{
+            <span class="group-number">{{ String(groupIndex + 1).padStart(2, '0') }}</span>
+            <div class="combined-icons">
+              <template v-for="(process, pi) in group.processes" :key="process.key"
+                ><span v-if="pi" class="icon-plus">＋</span>
+                <div class="group-icon">
+                  <ProcessIcon :icon="process.icon" :name="process.name" :size="38" /><span>{{
+                    process.name
+                  }}</span>
+                </div></template
+              >
+            </div>
+            <span class="group-kind" :class="{ composite: group.processes.length > 1 }">{{
               group.processes.length > 1 ? '组合工序' : '单工序'
             }}</span
             ><small
@@ -107,20 +116,7 @@
               {{ collapsed.has(group.key) ? '展开 ＋' : '收起 −' }}
             </button>
           </div>
-        </div>
-        <div v-if="!collapsed.has(group.key)" class="group-content">
           <div class="group-identity">
-            <span class="section-caption">工序项目</span>
-            <div class="combined-icons">
-              <template v-for="(process, pi) in group.processes" :key="process.key"
-                ><span v-if="pi" class="icon-plus">＋</span>
-                <div class="group-icon">
-                  <ProcessIcon :icon="process.icon" :name="process.name" :size="38" /><span>{{
-                    process.name
-                  }}</span>
-                </div></template
-              >
-            </div>
             <div class="summary-label">组合材料</div>
             <p class="material-summary">
               {{ group.materials.map(materialLabel).join(' ＋ ') || '暂无材料' }}
@@ -133,15 +129,13 @@
                 v-model="group.remark"
                 class="group-remark"
                 placeholder="整个组合的补充说明"
-                rows="3"
+                rows="1"
               />
             </template>
           </div>
+        </div>
+        <div v-if="!collapsed.has(group.key)" class="group-content">
           <div class="group-tables">
-            <div class="section-heading">
-              <span><i class="section-icon">Ⅰ</i> 工序明细</span
-              ><small>作业说明同步显示在图标右下角</small>
-            </div>
             <div class="table-scroll">
               <table class="process-table">
                 <thead>
@@ -225,11 +219,7 @@
                 </tbody>
               </table>
             </div>
-            <div class="section-heading material-heading">
-              <span
-                ><i class="section-icon material-section-icon">Ⅱ</i> 材料明细
-                <em>{{ visibleMaterials(group).length }}</em></span
-              >
+            <div class="material-toolbar">
               <div class="material-tools">
                 <select v-model="filters[group.key]" :aria-label="`${group.key}材料筛选`">
                   <option value="">全部子工序</option>
@@ -685,6 +675,7 @@ function showMaterial(group: UicGroup, m: UicMaterial) {
 }
 .group-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   padding: 13px 16px;
@@ -752,67 +743,60 @@ function showMaterial(group: UicGroup, m: UicMaterial) {
   margin-left: 10px;
 }
 .group-content {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
+  min-width: 0;
 }
 .group-identity {
-  border-right: 1px solid #e8edf3;
-  padding: 18px 14px;
-  background: #fcfdff;
-}
-.section-caption {
-  font-size: 10px;
-  color: #a0acbc;
-  letter-spacing: 1px;
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px 12px;
+  padding-top: 10px;
+  border-top: 1px solid #e8edf3;
 }
 .combined-icons {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-start;
-  margin-top: 20px;
-  margin-bottom: 22px;
+  gap: 10px;
+  align-items: center;
 }
 .group-icon {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
 }
 .group-icon span {
-  font-size: 10px;
-  color: #71839b;
+  font-size: 13px;
+  font-weight: 600;
+  color: #536983;
 }
 .icon-plus {
   font-size: 14px;
   color: #9cadc2;
-  margin-top: 11px;
 }
 .summary-label {
-  display: block;
   color: #97a5b7;
-  font-size: 10px;
-  margin-top: 20px;
+  font-size: 11px;
 }
 .summary-label small {
   font-size: 9px;
   color: #b3bdc9;
 }
 .material-summary {
+  margin: 0;
   font-size: 11px;
   line-height: 1.9;
   color: #647a96;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .group-remark {
   font-size: 11px;
   line-height: 1.7;
   width: 100%;
   resize: vertical;
-  margin-top: 8px;
   border: 1px solid #e6ecf3;
   border-radius: 4px;
-  padding: 7px;
+  padding: 4px 7px;
   background: white;
   color: #718197;
   outline: 0;
@@ -820,42 +804,14 @@ function showMaterial(group: UicGroup, m: UicMaterial) {
 .group-tables {
   min-width: 0;
 }
-.section-heading {
-  height: 41px;
+.material-toolbar {
   display: flex;
+  justify-content: flex-end;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  font-size: 11px;
-  color: #536983;
-  border-bottom: 1px solid #edf1f6;
-  gap: 12px;
-}
-.section-heading > span {
-  font-weight: 600;
-}
-.section-heading small {
-  font-size: 10px;
-  color: #a0acbc;
-}
-.section-icon {
-  font-style: normal;
-  color: #7795ba;
-  margin-right: 8px;
-}
-.material-section-icon {
-  color: #6d9d8d;
-}
-.material-heading {
+  padding: 5px 16px;
   background: #f7fafc;
   border-top: 1px solid #e4ebf3;
-  height: 44px;
-}
-.material-heading em {
-  font-size: 10px;
-  font-style: normal;
-  margin-left: 6px;
-  color: #94a2b6;
+  border-bottom: 1px solid #edf1f6;
 }
 .table-scroll {
   overflow-x: auto;
@@ -1153,14 +1109,8 @@ td {
     grid-template-columns: 175px minmax(0, 1fr);
     gap: 12px;
   }
-  .group-content {
-    grid-template-columns: 115px minmax(0, 1fr);
-  }
   .group-title small {
     display: none;
-  }
-  .group-identity {
-    padding: 16px 10px;
   }
   .group-actions {
     gap: 3px;
@@ -1169,9 +1119,6 @@ td {
     padding: 10px;
   }
   .group-kind {
-    display: none;
-  }
-  .section-heading small {
     display: none;
   }
 }
@@ -1190,12 +1137,6 @@ td {
     width: 48%;
   }
   .library-tip {
-    display: none;
-  }
-  .group-content {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .group-identity {
     display: none;
   }
   .plan-heading .heading-actions > span {
