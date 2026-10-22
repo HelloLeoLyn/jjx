@@ -207,6 +207,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      * 创建BOM，返回新 BOM id（失败返回 null），供 @Log bizId 使用
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long createBomReturnId(EngineeringBomDTO dto) {
         EngineeringBom bom = bomConverter.toEntity(dto);
         bom.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
@@ -268,14 +269,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             return;
         }
 
-        for (EngineeringBomItemDTO itemDTO : items) {
-            EngineeringBomItem item = toBomItemEntity(itemDTO);
-            if (item == null) {
-                continue;
-            }
-            item.setBomId(bomId);
-            productBomItemMapper.insert(item);
-        }
+        // 新增与修改共用临时行号映射，避免把 -1 等前端编号直接写为主键。
+        EngineeringBomDTO payload = new EngineeringBomDTO();
+        payload.setBomId(bomId);
+        payload.setItems(items);
+        mergeBomItems(payload);
     }
 
     /**
@@ -303,6 +301,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      * 更新BOM（含变更明细，供 @Log detail 展示）
      */
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public com.jjx.product.domain.vo.EngineeringBomEditVO updateBomWithDetail(EngineeringBomDTO dto) {
         if (dto.getBomId() == null) {
             throw new BusinessException("BOM ID不能为空");
@@ -365,8 +364,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      */
     private void mergeBomItems(EngineeringBomDTO dto) {
         Long bomId = dto.getBomId();
-        // dev-20261022-017：组合容器——父行先落库拿到真实 id，再落子行并回填 parent_material_id。
-        // 前端新增行用负数临时 itemId 表示父子引用，这里用 tempIdToReal 做映射。
+        // dev-20261022-017：组合首行先落库，再用真实行号回填组内后续行。
+        // 映射仅作用于实体，不改写请求 DTO，保留日志/调用方的原始临时引用。
         java.util.Map<Long, Long> tempIdToReal = new HashMap<>();
         List<EngineeringBomItem> stored = productBomItemMapper.selectList(
                 new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
@@ -378,10 +377,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
         Set<Long> kept = new HashSet<>();
         if (dto.getItems() != null) {
-            List<EngineeringBomItemDTO> ordered = new java.util.ArrayList<>(dto.getItems());
-            // 父行（无 parent）先处理，保证子行引用时父行已插入
-            ordered.sort(java.util.Comparator.comparingInt(it ->
-                    it.getParentMaterialId() == null || it.getParentMaterialId() <= 0 ? 0 : 1));
+            List<EngineeringBomItemDTO> ordered = parentFirstItems(dto.getItems());
             for (EngineeringBomItemDTO itemDTO : ordered) {
                 Long parentRef = itemDTO.getParentMaterialId();
                 if (parentRef != null && parentRef < 0) {
@@ -389,19 +385,23 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     if (realParent == null) {
                         throw new BusinessException("组合父行未能保存，无法确定子行归属");
                     }
-                    itemDTO.setParentMaterialId(realParent);
+                    parentRef = realParent;
+                } else if (parentRef != null) {
+                    parentRef = tempIdToReal.getOrDefault(parentRef, parentRef);
                 }
                 Long incomingTempId = itemDTO.getItemId();
                 EngineeringBomItem incoming = toBomItemEntity(itemDTO);
                 if (incoming == null) continue;
+                incoming.setParentMaterialId(parentRef != null && parentRef > 0 ? parentRef : null);
                 incoming.setBomId(bomId);
-                EngineeringBomItem old = itemDTO.getItemId() == null ? null : storedById.get(itemDTO.getItemId());
+                EngineeringBomItem old = itemDTO.getItemId() == null || itemDTO.getItemId() <= 0
+                        ? null : storedById.get(itemDTO.getItemId());
                 if (old == null) {
                     incoming.setItemId(null);
                     applyDraftStatus(incoming);
                     productBomItemMapper.insert(incoming);
                     if (incoming.getItemId() != null) kept.add(incoming.getItemId());
-                    if (incomingTempId != null && incomingTempId < 0 && incoming.getItemId() != null) {
+                    if (incomingTempId != null && incoming.getItemId() != null) {
                         tempIdToReal.put(incomingTempId, incoming.getItemId());
                     }
                     continue;
@@ -459,6 +459,41 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 productBomItemMapper.deleteById(old.getItemId());
             }
         }
+    }
+
+    /** 按依赖保存，不能把负数父编号当成无父行；同时拒绝悬空引用和环。 */
+    private List<EngineeringBomItemDTO> parentFirstItems(List<EngineeringBomItemDTO> items) {
+        Set<Long> incomingIds = new HashSet<>();
+        for (EngineeringBomItemDTO item : items) {
+            if (item == null) throw new BusinessException("BOM明细行不能为空");
+            if (item.getItemId() != null && !incomingIds.add(item.getItemId())) {
+                throw new BusinessException("BOM明细行编号重复");
+            }
+        }
+        List<EngineeringBomItemDTO> remaining = new java.util.ArrayList<>(items);
+        List<EngineeringBomItemDTO> ordered = new java.util.ArrayList<>();
+        Set<Long> resolved = new HashSet<>();
+        while (!remaining.isEmpty()) {
+            int previousSize = remaining.size();
+            var iterator = remaining.iterator();
+            while (iterator.hasNext()) {
+                EngineeringBomItemDTO item = iterator.next();
+                Long parent = item.getParentMaterialId();
+                if (parent != null && parent != 0) {
+                    if (!incomingIds.contains(parent)) {
+                        throw new BusinessException("组合首行不在本次BOM明细中，无法确定材料归属");
+                    }
+                    if (!resolved.contains(parent)) continue;
+                }
+                ordered.add(item);
+                if (item.getItemId() != null) resolved.add(item.getItemId());
+                iterator.remove();
+            }
+            if (remaining.size() == previousSize) {
+                throw new BusinessException("BOM组合关系存在循环引用");
+            }
+        }
+        return ordered;
     }
 
     /** 新行/草稿默认状态与审核痕迹清零 */

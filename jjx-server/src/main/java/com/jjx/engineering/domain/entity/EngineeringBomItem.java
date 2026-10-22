@@ -30,6 +30,7 @@ public class EngineeringBomItem {
     /**
      * 父节点明细ID（指向本表item_id，NULL=根节点，树形结构）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long parentMaterialId;
 
     /**
@@ -91,6 +92,7 @@ public class EngineeringBomItem {
     /**
      * 项目（标准工序）引用 engineering_standard_process.process_id
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long processId;
 
     /**

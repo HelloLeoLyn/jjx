@@ -398,16 +398,14 @@ const unitOptions = [
 
 const hasSelected = computed(() => selectedItems.value.length > 0)
 
-// ======== 明细行工具（2026-10-10 dev-20261010-017：恢复平铺，取消子物料层级） ========
-// 说明：子物料（parent_material_id 树形）实测未使用、无下游依赖，已回退为平铺列表并恢复拖拽排序；
-// 后端 parent_material_id 字段与历史数据保留不动（此处统一按 null 写回）。
+// ======== 明细行工具：界面平铺，连续同项目行的组合关系写入 parent_material_id ========
 
 // 新增/复制行分配的临时负数 id：唯一、稳定，供 el-table row-key 与拖拽使用；
-// 提交后端时由 toSubmitItems() 剥离（新增行 itemId 仍为空，不改变接口约定）。
+// 提交时保留临时编号供组合引用，后端统一映射为数据库生成的真实行号。
 let tempItemIdSeq = -1
 const nextTempItemId = () => tempItemIdSeq--
 
-/** 外部平铺数据 → 内部行（补稳定临时 id；强制无层级） */
+/** 外部平铺数据 → 内部行（补稳定临时 id） */
 function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
   const flat = (list || []).map((it) => {
     const copy: EngineeringBomItem = { ...it }
@@ -489,7 +487,8 @@ const comboNoOf = (index: number): number => {
 const comboSpan = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
   if (columnIndex !== 0) return [1, 1]
   const run = comboRuns.value.find((r) => rowIndex >= r.start && rowIndex < r.start + r.size)
-  if (!run || run.size <= 1 || rowIndex !== run.start) return [1, 1]
+  if (!run || run.size <= 1) return [1, 1]
+  if (rowIndex !== run.start) return [0, 0]
   return [run.size, 1]
 }
 
