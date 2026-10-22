@@ -247,6 +247,8 @@ TRUNCATE engineering_bom_item;
 
 TRUNCATE engineering_bom;
 
+TRUNCATE engineering_standard_process_usage;
+
 -- v5：标准工序保留不清（基础档案）
 -- TRUNCATE engineering_standard_process;
 

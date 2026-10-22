@@ -128,23 +128,43 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="跳距" prop="split" width="110">
+      <el-table-column label="跳距" prop="split" width="90">
         <template #default="scope">
           <el-input-number
             :model-value="splitNumber(scope.row.split)"
             :min="0"
-            :precision="0"
-            :step="1"
             size="small"
-            controls-position="right"
-            style="width: 82px"
+            :controls="false"
+            :precision="0"
             @update:model-value="(value) => handleSplitChange(scope.row, value)"
-          /><span class="split-unit">mm</span>
+          >
+            <template #suffix>
+              <span>mm</span>
+            </template>
+          </el-input-number>
         </template>
       </el-table-column>
-
+      <!-- 基数 -->
+      <el-table-column label="基数" prop="baseQty" align="center" width="60">
+        <template #header>
+          <span>基数</span>
+          <el-tooltip content="产品单位用量/每个项目标准用量" placement="top">
+            <el-icon class="info-icon"><InfoFilled /></el-icon>
+          </el-tooltip>
+        </template>
+        <template #default="scope">
+          <el-input-number
+            v-model="scope.row.baseQty"
+            :controls="false"
+            :min="1"
+            :precision="0"
+            size="small"
+            @change="handleBaseQtyChange(scope.row)"
+          />
+        </template>
+      </el-table-column>
       <!-- 单位 -->
-      <el-table-column label="单位" prop="unit" width="100">
+      <el-table-column label="单位" prop="unit" width="80">
         <template #default="scope">
           <el-select
             v-model="scope.row.unit"
@@ -161,21 +181,6 @@
               :value="item.value"
             />
           </el-select>
-        </template>
-      </el-table-column>
-
-      <!-- 基数 -->
-      <el-table-column label="基数" prop="baseQty" align="center" width="60">
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.baseQty"
-            :min="1"
-            :precision="0"
-            :step="1"
-            size="small"
-            controls-position="right"
-            @change="handleBaseQtyChange(scope.row)"
-          />
         </template>
       </el-table-column>
 
@@ -197,12 +202,12 @@
         </template>
       </el-table-column>
       <!-- 最低投料量 -->
-      <el-table-column label="最低投料量" prop="minIssueQty" align="center" width="110">
+      <el-table-column label="最低投料量" prop="minIssueQty" align="center" width="100">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.minIssueQty"
             :min="0"
-            :precision="4"
+            :precision="0"
             :step="1"
             size="small"
             controls-position="right"

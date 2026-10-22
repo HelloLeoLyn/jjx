@@ -16,16 +16,13 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="物料名称" prop="materialName">
-            <el-input v-model="form.materialName" placeholder="请输入物料名称" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-row :gutter="20">
-        <el-col :span="12">
           <el-form-item label="物料类型" prop="materialType">
-            <el-select v-model="form.materialType" placeholder="请选择" style="width: 100%" @change="handleMaterialTypeChange">
+            <el-select
+              v-model="form.materialType"
+              placeholder="请选择"
+              style="width: 100%"
+              @change="handleMaterialTypeChange"
+            >
               <el-option
                 v-for="opt in MaterialTypeEnum.items"
                 :key="opt.value"
@@ -35,11 +32,18 @@
             </el-select>
           </el-form-item>
         </el-col>
+      </el-row>
+
+      <el-row :gutter="20">
         <el-col :span="12">
-          <el-form-item label="单位" prop="unit">
-            <el-input v-model="form.unit" placeholder="如：PCS、KG" />
+          <el-form-item label="物料名称" prop="materialName">
+            <el-input v-model="form.materialName" placeholder="请输入物料名称" />
           </el-form-item>
         </el-col>
+        <el-col :span="12">
+          <el-form-item label="规格型号" prop="specification">
+            <el-input v-model="form.specification" placeholder="请输入规格型号" /> </el-form-item
+        ></el-col>
       </el-row>
       <el-form-item label="物料标签">
         <el-select
@@ -61,9 +65,10 @@
       </el-form-item>
       <el-row :gutter="20">
         <el-col :span="12">
-          <el-form-item label="规格型号" prop="specification">
-            <el-input v-model="form.specification" placeholder="请输入规格型号" /> </el-form-item
-        ></el-col>
+          <el-form-item label="单位" prop="unit">
+            <el-input v-model="form.unit" placeholder="如：PCS、KG" />
+          </el-form-item>
+        </el-col>
         <el-col :span="12">
           <el-form-item label="机种" prop="materialNameEn">
             <el-input
@@ -270,7 +275,9 @@ const handleMaterialTypeChange = () => {
 const loadTagOptions = async () => {
   const res = await materialApi.getTags()
   tagOptions.value = (res.data || []).flatMap((tag) =>
-    tag.tagId == null ? [] : [{ tagId: tag.tagId, tagName: tag.tagName || tag.tagCode || String(tag.tagId) }]
+    tag.tagId == null
+      ? []
+      : [{ tagId: tag.tagId, tagName: tag.tagName || tag.tagCode || String(tag.tagId) }]
   )
 }
 
