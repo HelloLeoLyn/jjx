@@ -43,8 +43,11 @@
       border
       style="width: 100%"
       row-key="itemId"
+      highlight-current-row
+      :current-row-key="currentRowKey"
       :height="tableHeight"
       @selection-change="handleSelectionChange"
+      @row-click="handleRowClick"
       :row-class-name="rowClassName"
       class="bom-item-table"
     >
@@ -326,6 +329,8 @@ const emit = defineEmits<Emits>()
 // ==================== 响应式数据 ====================
 
 const tableRef = ref()
+const errorRowKey = ref<number | string | null>(null)
+const currentRowKey = ref<number | string | undefined>(undefined)
 const items = ref<EngineeringBomItem[]>([])
 const selectedItems = ref<EngineeringBomItem[]>([])
 const tableLoading = ref(false)
@@ -821,11 +826,30 @@ const handleSyncMaterials = async () => {
 
 /** 行标黄：未匹配（浅黄） / 多义待确认（深黄） */
 const rowClassName = ({ row }: { row: EngineeringBomItem }) => {
+  if (errorRowKey.value != null && String(row.itemId) === String(errorRowKey.value)) {
+    return 'bom-row-error'
+  }
   if (isPendingRemove(row)) return 'bom-row-pending-remove'
   const flag = syncFlags.value[String(row.itemId)]
   if (flag === 'AMBIGUOUS') return 'bom-row-ambiguous'
   if (flag === 'NOT_FOUND') return 'bom-row-unmatched'
   return ''
+}
+
+/** 校验失败：红行 + 滚动到可见；toast 只作补充。 */
+async function markRowError(item: EngineeringBomItem, message: string) {
+  errorRowKey.value = item.itemId ?? null
+  ElMessage.warning(message)
+  await nextTick()
+  const row = tableRef.value?.$el?.querySelector('tr.bom-row-error') as HTMLElement | null
+  row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
+function handleRowClick(row: EngineeringBomItem) {
+  currentRowKey.value = row.itemId ?? undefined
+  if (errorRowKey.value != null && String(errorRowKey.value) === String(row.itemId)) {
+    errorRowKey.value = null
+  }
 }
 
 /** 行标黄原因（悬浮提示） */
@@ -985,39 +1009,54 @@ defineExpose({
       return false
     }
 
-    let ok = true
+    const failures: Array<{ item: EngineeringBomItem; message: string }> = []
     walkTree(items.value, (item) => {
-      if (!ok) return
+      if (failures.length) return
       if (isPendingRemove(item)) return
       if (!item.materialName?.trim()) {
-        ElMessage.warning('材料名称不能为空')
-        ok = false
+        failures.push({ item, message: '材料名称不能为空' })
         return
       }
-      if (!item.specification?.trim()) {
-        ElMessage.warning(`材料 "${item.materialName}" 的规格型号不能为空`)
-        ok = false
-        return
-      }
-      // 常规模式必须选已建档物料；快速模式允许未建档先入审核
+      // 规格型号不必填（dev-20261022-020）；其余校验保留并定位到行。
       if (!quickMode.value && (!item.materialId || Number(item.materialId) <= 0)) {
-        ElMessage.warning(`请为材料 "${item.materialName}" 选择物料，或切换快速模式`)
-        ok = false
+        failures.push({
+          item,
+          message: `请为材料 "${item.materialName}" 选择物料，或切换快速模式`,
+        })
         return
       }
       if (item.quantity <= 0) {
-        ElMessage.warning(`物料 "${item.materialName}" 数量必须大于0`)
-        ok = false
+        failures.push({ item, message: `物料 "${item.materialName}" 数量必须大于0` })
       }
     })
 
-    return ok
+    if (failures.length) {
+      const [failure] = failures
+      void markRowError(failure.item, failure.message)
+      return false
+    }
+    errorRowKey.value = null
+    return true
   },
   reorderItems,
 })
 </script>
 
 <style scoped lang="scss">
+/* 编辑行/错误行（dev-20261022-020）：点中=系统浅蓝，聚焦=蓝色左边框，错误=红色优先 */
+.bom-item-table :deep(.el-table__body tr:focus-within > td) {
+  background: #ecf5ff !important;
+}
+.bom-item-table :deep(.el-table__body tr:focus-within) {
+  box-shadow: inset 3px 0 0 #409eff;
+}
+.bom-item-table :deep(.el-table__body tr.bom-row-error > td) {
+  background: #fef0f0 !important;
+}
+.bom-item-table :deep(.el-table__body tr.bom-row-error) {
+  box-shadow: inset 3px 0 0 #f56c6c;
+}
+
 .bom-item-editor {
   width: 100%;
   background: #fff;

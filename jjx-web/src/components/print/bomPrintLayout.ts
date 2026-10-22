@@ -9,6 +9,9 @@ export interface BomPrintItem {
   lengthMm?: number | null
   split?: string | null
   moduleQty?: number | null
+  /** 单位（PCS/个）与基数：计件回退显示用 */
+  unit?: string | null
+  baseQty?: number | null
   dieLocation?: string | null
   children?: BomPrintItem[]
 }
@@ -22,10 +25,24 @@ export function bomMaterialSpec(row: BomPrintItem): string {
     width > 0 && Number.isFinite(width) && length > 0 && Number.isFinite(length)
       ? `${width}*${length}mm`
       : text(row.specification)
-  // BOM 缺少规格时不输出孤立的模数/跳距，也不使用内部用量替代规格。
-  if (!specification) return '-'
+  const moduleRaw = row.moduleQty
+  const module = Number(moduleRaw)
+  const moduleMissing =
+    moduleRaw == null || text(moduleRaw) === '' || !Number.isFinite(module)
+  const unit = text(row.unit).toUpperCase()
+  const base = Number(row.baseQty)
+  // BOM 缺少规格：基数=1 且模数为空或 0<模数<1 时按计件显示 1个/PCS（dev-20261022-020）。
+  if (!specification) {
+    if (
+      (unit === 'PCS' || unit === '个') &&
+      base === 1 &&
+      (moduleMissing || (module > 0 && module < 1))
+    ) {
+      return '1个/PCS'
+    }
+    return '-'
+  }
   const split = text(row.split)
-  const module = Number(row.moduleQty)
   return (
     specification +
     (split ? `跳${split}` : '') +

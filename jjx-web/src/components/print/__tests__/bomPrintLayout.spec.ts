@@ -14,6 +14,11 @@ describe('BOM 五列打印数据', () => {
     expect(bomMaterialSpec({ specification: 'PET', moduleQty: NaN })).toBe('PET')
     expect(bomMaterialSpec({ moduleQty: 12 })).toBe('-')
     expect(bomMaterialSpec({})).toBe('-')
+    // 计件回退（dev-20261022-020）：基数1、模数为空或 0<模数<1 → 1个/PCS
+    expect(bomMaterialSpec({ baseQty: 1, unit: 'PCS' })).toBe('1个/PCS')
+    expect(bomMaterialSpec({ baseQty: 1, unit: '个', moduleQty: 0.5 })).toBe('1个/PCS')
+    expect(bomMaterialSpec({ baseQty: 1, unit: 'PCS', moduleQty: 1 })).toBe('-')
+    expect(bomMaterialSpec({ baseQty: 2, unit: 'PCS' })).toBe('-')
   })
   it('连续项目只编一个序号，分隔后再次出现则为新组', () => {
     const rows = bomPrintRows([
