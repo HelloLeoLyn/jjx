@@ -1,3 +1,4 @@
+import { assignMaterial, materialOwner, resolveMaterialOwners } from './sampleProcessGroups'
 import { normalizeMaterial, projectIdsOf } from './sampleMaterials'
 import { createCardEditSessions } from './planDraft'
 import { ref, onScopeDispose, type Ref } from 'vue'
@@ -41,9 +42,12 @@ export function useProcessMaterials(readonlyMode: Readonly<Ref<boolean>>, genUid
   }
 
   // 材料行
-  function addMaterialRow(pc: any) {
+  function addMaterialRow(pc: any, itemKey?: string) {
     if (readonlyMode.value) return
-    pc.materialRows.push(emptyRow(pc))
+    const row = emptyRow(pc)
+    const owner = itemKey ? pc.items?.find((item: any) => item.itemKey === itemKey) : materialOwner(pc, row)
+    if (owner) assignMaterial(row, owner)
+    pc.materialRows.push(row)
   }
 
   // 进入编辑：初始化材料行
@@ -52,7 +56,7 @@ export function useProcessMaterials(readonlyMode: Readonly<Ref<boolean>>, genUid
     editSessions.begin(pc)
     pc.editing = true
     if (!pc.materialRows.length) {
-      pc.materialRows = (parseMaterials(pc.materials) || []).map((m: any) => emptyRow(pc, m))
+      pc.materialRows = resolveMaterialOwners(pc, parseMaterials(pc.materials) || []).map((m: any) => emptyRow(pc, m))
       if (!pc.materialRows.length) addMaterialRow(pc)
     }
   }

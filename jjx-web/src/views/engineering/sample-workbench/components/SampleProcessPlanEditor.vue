@@ -13,7 +13,9 @@
     <el-card class="col-plan" shadow="never">
       <template #header>
         <span style="font-weight: 600">打样工序计划</span>
-        <span class="desc">{{ hasUnsavedChanges ? '有未保存修改（需保存打样方案）' : '已保存' }}</span>
+        <span class="desc">{{
+          hasUnsavedChanges ? '有未保存修改（需保存打样方案）' : '已保存'
+        }}</span>
         <el-button
           v-if="!readonly"
           size="small"
@@ -66,7 +68,7 @@
               @material-cleared="(row: any) => onMaterialCleared(row)"
               @load-more-material="(row: any) => onMaterialLoadMore(row)"
               @select-visible="(row: any, v: boolean) => onSelectVisibleChange(row, v)"
-              @add-material-row="addMaterialRow(pc)"
+              @add-material-row="(key: string) => addMaterialRow(pc, key)"
               @create-material="(m: any) => openMaterialCreate(pc, m)"
               @edit="startEdit(pc)"
               @cancel-edit="cancelEdit(pc)"
@@ -138,7 +140,7 @@ export interface PlanEditorController {
   removePlanCard: (pc: any) => void
   cancelEdit: (pc: any) => void
   finishEdit: (pc: any) => void
-  addMaterialRow: (pc: any) => void
+  addMaterialRow: (pc: any, itemKey?: string) => void
   startEdit: (pc: any) => void
   openCardPicker: (pc: any) => void
   openBatchMaterial: () => void
@@ -153,8 +155,45 @@ export interface PlanEditorController {
   openMaterialCreate: (pc: any, m: any) => void
 }
 const props = defineProps<{ controller: PlanEditorController; readonly?: boolean }>()
-const { batchMode, batchSelected, batchCategory, savingPlan, hasUnsavedChanges, frequentMaterials, planTabs, categoryOptions, cardsByTab, saveStateText, parseMaterials, toggleBatchMode, toggleBatchSelect, toggleBatchSelectAll, savePlan, addFrequentMaterial, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, removeCardItem, removePlanCard, cancelEdit, finishEdit, addMaterialRow, startEdit, openCardPicker, openBatchMaterial, batchDelete, applyBatchCategory, onUpdateIndex, searchMaterials, onMaterialSelected, onMaterialCleared, onMaterialLoadMore, onSelectVisibleChange, openMaterialCreate } = toRefs(props.controller)
-
+const {
+  batchMode,
+  batchSelected,
+  batchCategory,
+  savingPlan,
+  hasUnsavedChanges,
+  frequentMaterials,
+  planTabs,
+  categoryOptions,
+  cardsByTab,
+  saveStateText,
+  parseMaterials,
+  toggleBatchMode,
+  toggleBatchSelect,
+  toggleBatchSelectAll,
+  savePlan,
+  addFrequentMaterial,
+  onPlanDrop,
+  onCardDrop,
+  onCardDragOver,
+  onCardDragLeave,
+  removeCardItem,
+  removePlanCard,
+  cancelEdit,
+  finishEdit,
+  addMaterialRow,
+  startEdit,
+  openCardPicker,
+  openBatchMaterial,
+  batchDelete,
+  applyBatchCategory,
+  onUpdateIndex,
+  searchMaterials,
+  onMaterialSelected,
+  onMaterialCleared,
+  onMaterialLoadMore,
+  onSelectVisibleChange,
+  openMaterialCreate,
+} = toRefs(props.controller)
 
 // activePlanTab 双向绑定（v-model:active-plan-tab）
 const activePlanTab = defineModel<string>('activePlanTab')
@@ -164,7 +203,12 @@ const activePlanTab = defineModel<string>('activePlanTab')
 </script>
 
 <style scoped>
-.col-plan :deep(.el-card__header) { position: sticky; top: 0; z-index: 5; background: #fff; }
+.col-plan :deep(.el-card__header) {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+}
 
 .mid-row {
   display: flex;

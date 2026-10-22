@@ -1,3 +1,4 @@
+import { assignMaterial, materialOwner } from './sampleProcessGroups'
 import { computed, reactive, ref, type Ref } from 'vue'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialApi } from '@/api/inventory/material'
@@ -79,7 +80,7 @@ export function useSampleBom(context: SampleBomContext) {
       rowsFor(pc).forEach((row, index) => {
         if (!String(row?.name || '').trim()) return
         // 稳定 uid：按内容键缓存，删行后索引位移不会串搜索态（dev-20261015-026）
-        const key = `${pc.uid}|${row.materialId ?? ''}|${row.name ?? ''}|${row.spec ?? ''}`
+        const key = `${pc.uid}|${row.processItemKey || ''}|${row.materialId ?? ''}|${row.name ?? ''}|${row.spec ?? ''}`
         out.push({
           ...normalizeMaterial(row, projectIdsOf(pc)),
           ownerUid: pc.uid,
@@ -109,7 +110,14 @@ export function useSampleBom(context: SampleBomContext) {
     if (!pc) return
     const rows = [...rowsFor(pc)]
     if (srcIndex < 0 || srcIndex >= rows.length) return
-    rows[srcIndex] = { ...rows[srcIndex], ...normalizeMaterial(value, projectIdsOf(pc)) }
+    const previous = rows[srcIndex]
+    const next = { ...previous, ...normalizeMaterial(value, projectIdsOf(pc)) }
+    if (pc.items && JSON.stringify(previous.projectIds || []) !== JSON.stringify(next.projectIds || [])) {
+      delete next.processItemKey
+      const owner = materialOwner(pc, next)
+      if (owner) assignMaterial(next, owner)
+    }
+    rows[srcIndex] = next
     applyRows(pc, rows)
     markOwnerDirty?.(pc)
   }

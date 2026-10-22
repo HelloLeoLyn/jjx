@@ -1,3 +1,5 @@
+import { workbenchProcessItems, materialOwner } from './sampleProcessGroups'
+import { materialValues } from './planDraft'
 import { useSampleBom } from './useSampleBom'
 import { projectIdsOf } from './sampleMaterials'
 import { useProcessMaterials } from './useProcessMaterials'
@@ -388,19 +390,7 @@ export function useSampleWorkbench() {
     return {
       uid: extra.uid || `new-${genUid()}`,
       processOrder: extra.processOrder ?? 0,
-      items: items.map((i: any) => ({
-        stdProcessId: i.stdProcessId ?? i.processId ?? null,
-        processName: i.processName,
-        processType: i.processType || '',
-        processCategory: i.processCategory || '',
-        icon: i.icon || '',
-        processId: i.processId ?? null,
-        // DEV-777：下标（hasIndex 来自标准工序，indexNumber 用户输入）
-        hasIndex: i.hasIndex ?? 0,
-        hasWorkInstruction: i.hasWorkInstruction ?? 0,
-        indexNumber: i.indexNumber ?? null,
-        workInstruction: i.workInstruction ?? i.processNote ?? '',
-      })),
+      items: workbenchProcessItems(items),
       category: extra.category ?? '',
       majorCategory: extra.majorCategory ?? 'ASSEMBLY',
       draggingOver: false,
@@ -505,6 +495,9 @@ export function useSampleWorkbench() {
     for (const i of items) {
       if (existing.has(i.processId)) continue
       target.items.push({
+        itemKey: `new-${genUid()}`,
+        workInstruction: i.workInstruction ?? i.processNote ?? '',
+        subProcessRemark: '',
         stdProcessId: i.processId,
         processName: i.processName,
         processType: i.processType,
@@ -589,7 +582,6 @@ export function useSampleWorkbench() {
     startEdit(pc)
     markDirty(pc)
     clearDragOver()
-    maybePromptIndex(pc.items[0])
   }
 
   // 拖到卡片 → 追加组合（去重），并自动进入编辑状态
@@ -601,6 +593,9 @@ export function useSampleWorkbench() {
     if (!pc.items.some((i: any) => i.stdProcessId === data.processId)) {
       const enriched = enrichProcess(data)
       pc.items.push({
+        itemKey: `new-${genUid()}`,
+        workInstruction: enriched.workInstruction ?? enriched.processNote ?? '',
+        subProcessRemark: '',
         stdProcessId: enriched.processId,
         processName: enriched.processName,
         processType: enriched.processType || '',
@@ -612,7 +607,6 @@ export function useSampleWorkbench() {
         indexNumber: null,
       })
       markDirty(pc)
-      maybePromptIndex(pc.items[pc.items.length - 1])
     }
     if (!pc.editing) startEdit(pc)
   }
@@ -632,6 +626,11 @@ export function useSampleWorkbench() {
   // 移除卡片内标准工序
   function removeCardItem(pc: any, idx: number) {
     if (readonlyMode.value) return
+    const item = pc.items[idx]
+    if (materialValues(pc).some((row: any) => materialOwner(pc, row) === item)) {
+      ElMessage.warning('请先删除或分配此子工序的材料，再移除子工序')
+      return
+    }
     // 只移除标准工序，卡片保留（可再拖入）；删卡片走右下角删除按钮
     pc.items.splice(idx, 1)
     markDirty(pc)

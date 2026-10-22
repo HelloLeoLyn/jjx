@@ -205,7 +205,7 @@ describe('打样工序跳距输入', () => {
     const pc: any = makePc()
     pc.materialRows[0].split = '50mm'
     const w = mountIt(pc)
-    const input = w.findAllComponents(ElInputNumber)[1]
+    const input = w.findAllComponents(ElInputNumber).find(input => input.props('ariaLabel') === '跳距（mm）')!
     expect(input.props('modelValue')).toBe(50)
     input.vm.$emit('update:modelValue', 60)
     await nextTick()

@@ -1,3 +1,4 @@
+import { mergeProcessMaterials } from './sampleProcessGroups'
 import { ref, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
@@ -87,7 +88,7 @@ export function usePlanCopy(context: PlanCopyContext) {
         status: SampleProcessStatusEnum.TODO.value,
         operationRemark: first.remark || '',
         // 打样材料是「卡片级」：卡片材料 = 卡内各行材料的并集（组合卡片需合并子工序材料，dev-20261012-012 修复）
-        materials: mergeCardMaterials(rows),
+        materials: mergeProcessMaterials(enriched),
       })
       planList.value.push(pc)
       added++
@@ -102,18 +103,6 @@ export function usePlanCopy(context: PlanCopyContext) {
       addedPrint++
     }
     return { added, addedPrint }
-  }
-
-  // 合并卡内各行材料为卡片级材料（去重：materialId|name|spec）；无则 null
-  function mergeCardMaterials(rows: any[]): string | null {
-    const map = new Map<string, any>()
-    for (const r of rows) {
-      for (const m of parseMaterials(r.materials) || []) {
-        const key = `${m?.materialId ?? ''}|${m?.name ?? ''}|${m?.spec ?? ''}`
-        if (!map.has(key)) map.set(key, m)
-      }
-    }
-    return map.size ? JSON.stringify([...map.values()]) : null
   }
 
   /**

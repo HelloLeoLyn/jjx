@@ -1,3 +1,4 @@
+import { materialOwner, mergeProcessMaterials, processParams, resolveMaterialOwners } from './sampleProcessGroups'
 import { materialValues } from './planDraft'
 import { normalizeMaterial, projectIdsOf, serializeMaterial, validateMaterials } from './sampleMaterials'
 import { planFingerprint } from './planDraft'
@@ -90,7 +91,9 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
       let independent: any[] = []
       if (planChanged) {
         for (const pc of [...planList.value, ...validPrints]) {
-          const rows = materialValues(pc).map(row => normalizeMaterial(row, projectIdsOf(pc)))
+          const values = materialValues(pc).map(row => normalizeMaterial(row, projectIdsOf(pc)))
+          const rows = pc.items ? resolveMaterialOwners(pc, values) : values
+          if (pc.items && rows.some(row => !materialOwner(pc, row))) throw new Error('请先为待分配材料选择所属子工序')
           const error = validateMaterials(rows)
           if (error) throw new Error(error)
           pc.materials = rows.length ? JSON.stringify(rows.map(serializeMaterial)) : null
@@ -111,6 +114,7 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
               majorCategory: 'ASSEMBLY',
               materials: pc.materials,
               processNote: it.workInstruction || null,
+              customProcessParams: processParams(it),
               remark: pc.operationRemark || null,
               status: pc.status ?? SampleProcessStatusEnum.TODO.value,
               indexNumber: it.indexNumber ?? undefined, // DEV-777：下标数字
@@ -219,7 +223,7 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
           category: first.processCategory || '',
           status: first.status ?? SampleProcessStatusEnum.TODO.value,
           operationRemark: first.remark || '',
-          materials: first.materials || null,
+          materials: mergeProcessMaterials(enriched),
           durationMinutes: first.durationMinutes ?? null,
           startTime: first.startTime || null,
           endTime: first.endTime || null,
