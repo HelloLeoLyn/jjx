@@ -365,6 +365,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      */
     private void mergeBomItems(EngineeringBomDTO dto) {
         Long bomId = dto.getBomId();
+        // dev-20261022-017：组合容器——父行先落库拿到真实 id，再落子行并回填 parent_material_id。
+        // 前端新增行用负数临时 itemId 表示父子引用，这里用 tempIdToReal 做映射。
+        java.util.Map<Long, Long> tempIdToReal = new HashMap<>();
         List<EngineeringBomItem> stored = productBomItemMapper.selectList(
                 new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
         Map<Long, EngineeringBomItem> storedById = new HashMap<>();
@@ -375,7 +378,20 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
         Set<Long> kept = new HashSet<>();
         if (dto.getItems() != null) {
-            for (EngineeringBomItemDTO itemDTO : dto.getItems()) {
+            List<EngineeringBomItemDTO> ordered = new java.util.ArrayList<>(dto.getItems());
+            // 父行（无 parent）先处理，保证子行引用时父行已插入
+            ordered.sort(java.util.Comparator.comparingInt(it ->
+                    it.getParentMaterialId() == null || it.getParentMaterialId() <= 0 ? 0 : 1));
+            for (EngineeringBomItemDTO itemDTO : ordered) {
+                Long parentRef = itemDTO.getParentMaterialId();
+                if (parentRef != null && parentRef < 0) {
+                    Long realParent = tempIdToReal.get(parentRef);
+                    if (realParent == null) {
+                        throw new BusinessException("组合父行未能保存，无法确定子行归属");
+                    }
+                    itemDTO.setParentMaterialId(realParent);
+                }
+                Long incomingTempId = itemDTO.getItemId();
                 EngineeringBomItem incoming = toBomItemEntity(itemDTO);
                 if (incoming == null) continue;
                 incoming.setBomId(bomId);
@@ -385,6 +401,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     applyDraftStatus(incoming);
                     productBomItemMapper.insert(incoming);
                     if (incoming.getItemId() != null) kept.add(incoming.getItemId());
+                    if (incomingTempId != null && incomingTempId < 0 && incoming.getItemId() != null) {
+                        tempIdToReal.put(incomingTempId, incoming.getItemId());
+                    }
                     continue;
                 }
                 kept.add(old.getItemId());
@@ -439,6 +458,26 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             } else if (status != ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
                 productBomItemMapper.deleteById(old.getItemId());
             }
+        }
+        // dev-20261022-017：组合父行只做容器，不参与行审核——凡被子行引用的行直接置为审核通过，
+        // 避免父行以"草稿/待审核"阻塞整单批准（其子行仍逐行审核）。
+        List<Long> parentIds = productBomItemMapper.selectList(
+                        new LambdaQueryWrapper<EngineeringBomItem>()
+                                .eq(EngineeringBomItem::getBomId, bomId)
+                                .isNotNull(EngineeringBomItem::getParentMaterialId))
+                .stream()
+                .map(EngineeringBomItem::getParentMaterialId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (!parentIds.isEmpty()) {
+            productBomItemMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<EngineeringBomItem>()
+                    .eq(EngineeringBomItem::getBomId, bomId)
+                    .in(EngineeringBomItem::getItemId, parentIds)
+                    .set(EngineeringBomItem::getReviewStatus,
+                            ProductEnums.BomItemReviewStatus.APPROVED.getValue())
+                    .set(EngineeringBomItem::getRejectReason, null)
+                    .set(EngineeringBomItem::getRemoveConfirmed, false));
         }
     }
 

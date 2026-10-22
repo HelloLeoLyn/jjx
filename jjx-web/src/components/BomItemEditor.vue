@@ -117,18 +117,35 @@
           />
         </template>
       </el-table-column>
-      <!-- 模数 -->
-      <el-table-column label="模数" prop="moduleQty" align="center" width="80">
+      <!-- 组合容器（dev-20261022-017）：勾选=本行是半成品父行；子行在「所属组合」里选择它 -->
+      <el-table-column label="组合" width="70" align="center">
         <template #default="scope">
-          <el-input-number
-            v-model="scope.row.moduleQty"
-            :min="1"
-            :precision="0"
-            :step="1"
+          <el-checkbox
+            v-model="scope.row.isGroup"
             size="small"
-            controls-position="right"
-            @change="handleModuleQtyChange(scope.row)"
+            title="勾选后本行作为组合容器（半成品），其数量按基数、模数固定为 1"
+            @change="handleGroupToggle(scope.row)"
           />
+        </template>
+      </el-table-column>
+      <el-table-column label="所属组合" width="150">
+        <template #default="scope">
+          <el-select
+            v-if="!scope.row.isGroup"
+            v-model="scope.row.parentMaterialId"
+            size="small"
+            clearable
+            placeholder="独立材料"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="group in groupOptions"
+              :key="group.itemId"
+              :label="group.materialName || group.materialCode || '未命名组合'"
+              :value="group.itemId"
+            />
+          </el-select>
+          <span v-else class="group-parent-hint">容器</span>
         </template>
       </el-table-column>
       <el-table-column label="跳距" prop="split" width="90">
@@ -408,8 +425,8 @@ const nextTempItemId = () => tempItemIdSeq--
 
 /** 外部平铺数据 → 内部行（补稳定临时 id；强制无层级） */
 function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
-  return (list || []).map((it) => {
-    const copy: EngineeringBomItem = { ...it, parentMaterialId: null }
+  const flat = (list || []).map((it) => {
+    const copy: EngineeringBomItem = { ...it }
     delete copy.children
     if (copy.reviewStatus == null) copy.reviewStatus = BomItemReviewStatusEnum.DRAFT.value
     // 待移除行回填时必须继续带 removeRequested，否则保存会被当成“撤销移除”
@@ -419,22 +436,55 @@ function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
     if (copy.itemId == null) copy.itemId = nextTempItemId()
     return copy
   })
+  // dev-20261022-017：被子行引用的行标记为组合容器（前端标记，不落库）
+  const parentIds = new Set(
+    flat.map((row) => row.parentMaterialId).filter((id): id is number => typeof id === 'number')
+  )
+  for (const row of flat) {
+    if (row.itemId != null && parentIds.has(row.itemId)) row.isGroup = true
+  }
+  return flat
 }
 
-/** 内部行 → 提交/对外数据（保序、写回 sortOrder、剥离临时 id、强制无层级） */
+/**
+ * 内部行 → 提交/对外数据（保序、写回 sortOrder）。
+ * dev-20261022-017：保留负数临时 itemId 与 parentMaterialId —— 后端用临时 id 映射父子关系，
+ * 新增子行必须能指到同批新增的父行。
+ */
 function toSubmitItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
   return (list || []).map((it, idx) => {
     const copy: EngineeringBomItem = { ...it }
     delete copy.children
-    copy.parentMaterialId = null
+    copy.parentMaterialId = it.parentMaterialId ?? null
+    // 组合容器：模数固定 1，用量按基数派生
+    if (copy.isGroup) {
+      copy.moduleQty = 1
+    }
     copy.sortOrder = idx + 1
     copy.removeRequested = !!it.removeRequested
-    if (copy.itemId != null && Number(copy.itemId) < 0) copy.itemId = undefined
     return copy
   })
 }
 
 /** 遍历树（含所有层级） */
+/** 组合容器候选（供子行「所属组合」下拉使用） */
+const groupOptions = computed(() =>
+  items.value.filter(
+    (row): row is EngineeringBomItem & { itemId: number } =>
+      row.isGroup === true && !isPendingRemove(row) && row.itemId != null
+  )
+)
+
+/** 勾选/取消组合容器：父行不挂父、模数固定 1、用量按基数派生 */
+const handleGroupToggle = (row: EngineeringBomItem) => {
+  if (row.isGroup) {
+    row.parentMaterialId = null
+    row.moduleQty = 1
+    if (!row.baseQty) row.baseQty = 1
+  }
+  recalcAppliedIssue(row)
+}
+
 function walkTree(tree: EngineeringBomItem[], fn: (row: EngineeringBomItem) => void) {
   const walk = (nodes: EngineeringBomItem[]) => {
     nodes.forEach((n) => {
@@ -1013,6 +1063,13 @@ defineExpose({
     walkTree(items.value, (item) => {
       if (failures.length) return
       if (isPendingRemove(item)) return
+      // dev-20261022-017：组合容器只校验"已选半成品"，不校验材料名称/规格/数量
+      if (item.isGroup) {
+        if (!item.materialId || Number(item.materialId) <= 0) {
+          failures.push({ item, message: '组合行必须选择一个半成品物料' })
+        }
+        return
+      }
       if (!item.materialName?.trim()) {
         failures.push({ item, message: '材料名称不能为空' })
         return
@@ -1223,6 +1280,10 @@ defineExpose({
   }
 }
 
+.group-parent-hint {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
 .material-name-cell {
   display: flex;
   align-items: center;

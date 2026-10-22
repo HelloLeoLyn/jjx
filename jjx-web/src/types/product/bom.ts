@@ -49,8 +49,10 @@ export interface EngineeringBomItem {
   removeConfirmedTime?: string
   /** 编辑时请求移除该行（已通过行将转待移除） */
   removeRequested?: boolean
-  /** 父节点明细ID（NULL=根节点，树形结构） */
+  /** 父节点明细ID（NULL=根节点；组合子行指向组合父行） */
   parentMaterialId?: number | null
+  /** 前端标记：本行是否组合容器（半成品父行），不落库 */
+  isGroup?: boolean
   /** 子节点（树形表格用） */
   children?: EngineeringBomItem[]
   materialId: number
