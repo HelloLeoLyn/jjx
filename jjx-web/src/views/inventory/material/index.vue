@@ -26,7 +26,12 @@
       @refresh="getList"
     >
       <template #batch-actions>
-        <el-button type="danger" size="small" v-hasPermi="['inventory:material:delete']" @click="() => handleDelete(null)">
+        <el-button
+          type="danger"
+          size="small"
+          v-hasPermi="['inventory:material:delete']"
+          @click="() => handleDelete(null)"
+        >
           批量删除
         </el-button>
       </template>
@@ -45,35 +50,22 @@
         <el-table-column label="原名称" width="200" show-overflow-tooltip>
           <template #default="{ row }">{{ originalNameOf(row) }}</template>
         </el-table-column>
-        <el-table-column label="物料名称" prop="materialName" width="200" show-overflow-tooltip />
+
+        <el-table-column label="物料名称" prop="materialName" width="220" show-overflow-tooltip />
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ categoryNameOf(row) }}</template>
         </el-table-column>
         <el-table-column label="材料" prop="materialGrade" width="110" />
         <el-table-column label="型号" prop="model" width="120" show-overflow-tooltip />
         <el-table-column label="颜色" prop="color" width="90" />
-        <el-table-column label="机种" prop="materialNameEn" width="200" show-overflow-tooltip />
-        <el-table-column label="物料类型" prop="materialType" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag :type="MaterialTypeEnum.getTagProps(row.materialType).type as any" size="small">
-              {{ MaterialTypeEnum.getLabel(row.materialType) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="物料标签" min-width="180">
-          <template #default="{ row }">
-            <el-tag v-for="tag in row.tags || []" :key="tag.tagId" size="small" class="material-tag">
-              {{ tag.tagName }}
-            </el-tag>
-            <span v-if="!row.tags?.length">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="规格型号" prop="specification" width="150" show-overflow-tooltip />
+        <el-table-column label="品牌" prop="brand" width="120" show-overflow-tooltip />
+        <el-table-column label="尺寸" prop="size" width="140" show-overflow-tooltip />
         <el-table-column label="单位" prop="unit" width="80" align="center" />
         <el-table-column label="安全库存" prop="safeStock" width="100" align="right" />
         <el-table-column label="标准单价" prop="standardPrice" width="120" align="right">
           <template #default="{ row }"> ¥ {{ formatCurrency(row.standardPrice) }} </template>
         </el-table-column>
+        <el-table-column label="供应商" prop="supplierName" width="200" />
         <el-table-column label="状态" prop="status" width="80" align="center">
           <template #default="{ row }">
             <el-switch
@@ -84,11 +76,30 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="供应商" prop="supplierName" width="200" />
+        <el-table-column label="物料标签" min-width="180">
+          <template #default="{ row }">
+            <el-tag
+              v-for="tag in row.tags || []"
+              :key="tag.tagId"
+              size="small"
+              class="material-tag"
+            >
+              {{ tag.tagName }}
+            </el-tag>
+            <span v-if="!row.tags?.length">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
         <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
-            <el-button link type="primary" v-hasPermi="['inventory:material:edit']" @click="handleEdit(row)">编辑</el-button>
+            <el-button
+              link
+              type="primary"
+              v-hasPermi="['inventory:material:edit']"
+              @click="handleEdit(row)"
+              >编辑</el-button
+            >
             <el-button
               link
               type="primary"
@@ -97,7 +108,13 @@
             >
               重新生成
             </el-button>
-            <el-button link type="danger" v-hasPermi="['inventory:material:delete']" @click="handleDelete(row)">删除</el-button>
+            <el-button
+              link
+              type="danger"
+              v-hasPermi="['inventory:material:delete']"
+              @click="handleDelete(row)"
+              >删除</el-button
+            >
           </template>
         </el-table-column>
       </el-table>
@@ -140,7 +157,6 @@
       @success="getList"
     />
   </div>
-
 </template>
 
 <script setup lang="ts">
@@ -169,7 +185,6 @@ import {
   loadMaterialCategoryOptions,
   type MaterialCategoryOption,
 } from '@/components/inventory/materialMasterFields'
-import { MaterialTypeEnum } from '@/enums/inventory/MaterialEnum'
 import { parseOriginalName } from '@/components/inventory/materialRegenerate'
 import type { UploadInstance } from 'element-plus'
 import { openLabelPrint } from '@/utils/labelPrint'
@@ -234,8 +249,12 @@ const regenerateMaterialId = ref<number | null>(null)
 // 导入（2026-08-13 通用 ExcelImportDialog 组件）
 const importDialogVisible = ref(false)
 const importTip =
-  '新模板列：品类 / 材料 / 型号 / 颜色 / 品牌 / 尺寸（可选）+ 物料名称、规格等；' +
-  '旧模板（仅 物料名称 + 规格）仍可导入，系统按名称自动识别品类与材料。'
+  '1）请先查看模板中的「填写说明」页；数据页第2行为示例，必须删除后从第2行填写真实数据。' +
+  '2）表头(*)为必填提示：物料名称须提供，其余按品类必填矩阵填写；建议明确品类。' +
+  '3）材料23词、颜色13色及逐列含义见说明页；名称按“材料+型号+颜色（品牌）”填写。' +
+  '4）尺寸可选，格式为“宽×长/厚”，缺省mm，可写cm/m/inch。' +
+  '5）旧模板（仅物料名称+规格）仍兼容；系统尝试识别品类和结构化字段，缺少品类必填项时须补齐后重试。' +
+  '6）本入口导入物料档案，数量列不写入库存；请勿把说明文字放入数据区。'
 
 // 品类下拉（接口不可用时用本地种子列表兜底）
 const categoryOptions = ref<MaterialCategoryOption[]>([])
@@ -363,9 +382,7 @@ const handleToolbarClick = (key: string) => {
 // 导出
 const handleExport = () => {
   const loading = ElLoading.service({ text: '导出中...', lock: true })
-  materialApi
-    .export(queryParams)
-    .finally(() => loading.close())
+  materialApi.export(queryParams).finally(() => loading.close())
 }
 
 onMounted(async () => {

@@ -325,6 +325,16 @@ public final class ExcelUtils {
     public static void downloadTemplate(HttpServletResponse response,
                                         Class<?> clazz,
                                         String templateName) {
+        downloadTemplate(response, clazz, templateName, Collections.emptySet(), null);
+    }
+
+    /**
+     * 带独立填写说明的模板；标记仅用于展示，不改变 DTO 的导入必填校验。
+     * instructions 为 null 时保留通用模板原有结构。
+     */
+    public static void downloadTemplate(HttpServletResponse response, Class<?> clazz,
+                                        String templateName, Set<String> markedFields,
+                                        List<String[]> instructions) {
         try {
             List<ExcelColumnMeta> columnMetas = getColumnMetas(clazz);
 
@@ -332,13 +342,17 @@ public final class ExcelUtils {
                 Sheet sheet = workbook.createSheet(templateName);
 
                 // 创建表头
-                writeTemplateHeader(sheet, columnMetas);
+                writeTemplateHeader(sheet, columnMetas, markedFields);
 
                 // 添加示例数据
                 addExampleData(sheet, columnMetas);
 
-                // 添加说明行
-                addInstructionRow(sheet, columnMetas);
+                // 独立说明页始终放在数据页之后，导入仍读取第一张表。
+                if (instructions == null) {
+                    addInstructionRow(sheet, columnMetas);
+                } else {
+                    addInstructionSheet(workbook, columnMetas, instructions);
+                }
 
                 // 设置列宽
                 autoSizeColumns(sheet, columnMetas.size());
@@ -357,17 +371,45 @@ public final class ExcelUtils {
     /**
      * 写入模板表头
      */
-    private static void writeTemplateHeader(Sheet sheet, List<ExcelColumnMeta> columnMetas) {
+    private static void writeTemplateHeader(Sheet sheet, List<ExcelColumnMeta> columnMetas, Set<String> markedFields) {
         Row headerRow = sheet.createRow(0);
         CellStyle headerStyle = createHeaderStyle(sheet.getWorkbook());
 
         for (int i = 0; i < columnMetas.size(); i++) {
             Cell cell = headerRow.createCell(i);
             ExcelColumnMeta meta = columnMetas.get(i);
-            String headerName = meta.isRequired() ? meta.getHeaderName() + "(*)" : meta.getHeaderName();
+            String headerName = meta.isRequired() || markedFields.contains(meta.getFieldName())
+                    ? meta.getHeaderName() + "(*)" : meta.getHeaderName();
             cell.setCellValue(headerName);
             cell.setCellStyle(headerStyle);
         }
+    }
+
+    /** 逐列说明由 DTO 注解生成，业务规则由调用方提供。 */
+    private static void addInstructionSheet(Workbook workbook, List<ExcelColumnMeta> columnMetas,
+                                            List<String[]> instructions) {
+        Sheet sheet = workbook.createSheet("填写说明");
+        sheet.setColumnWidth(0, 30 * 256);
+        sheet.setColumnWidth(1, 100 * 256);
+        CellStyle style = workbook.createCellStyle();
+        style.setWrapText(true);
+        style.setVerticalAlignment(VerticalAlignment.TOP);
+        List<String[]> rows = new ArrayList<>(instructions);
+        rows.add(new String[]{"逐列说明", "列名及填写含义（顺序与数据页一致）"});
+        for (ExcelColumnMeta meta : columnMetas) {
+            rows.add(new String[]{meta.getHeaderName(), meta.getComment()});
+        }
+        for (int i = 0; i < rows.size(); i++) {
+            Row row = sheet.createRow(i);
+            String[] values = rows.get(i);
+            row.setHeightInPoints(18 * Math.max(2, (values[1].length() + 44) / 45));
+            for (int j = 0; j < values.length; j++) {
+                Cell cell = row.createCell(j);
+                cell.setCellValue(values[j]);
+                cell.setCellStyle(style);
+            }
+        }
+        sheet.createFreezePane(0, 1);
     }
 
     /**

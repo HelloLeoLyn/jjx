@@ -16,6 +16,7 @@ import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryMaterialCategory;
 import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.dto.imports.MaterialImportDTO;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.dto.query.MaterialCheckDTO;
 import com.jjx.inventory.dto.query.MaterialQueryDTO;
 import com.jjx.inventory.dto.save.MaterialSaveDTO;
@@ -53,6 +54,8 @@ import java.util.Map;
 public class InventoryMaterialController extends BaseController {
 
     private final InventoryMaterialService materialService;
+
+    private final InventoryMaterialMapper materialMapper;
 
     private final InventoryMaterialCategoryService categoryService;
 
@@ -307,7 +310,30 @@ public class InventoryMaterialController extends BaseController {
      */
     @PostMapping("/importTemplate")
     public void importTemplate(HttpServletResponse response) {
-        ExcelUtils.downloadTemplate(response, MaterialImportDTO.class, "物料导入模板");
+        Map<String, String> labels = Map.of(
+                "material_grade", "材料", "model", "型号", "color", "颜色", "brand", "品牌",
+                "specification", "规格", "size", "尺寸", "search_keywords", "别名");
+        java.util.Set<String> markedFields = new java.util.HashSet<>();
+        markedFields.add("materialName");
+        List<String[]> instructions = new ArrayList<>();
+        instructions.add(new String[]{"使用步骤", "保留第一张表为数据页，第1行为表头；第2行为示例，必须删除示例行后从第2行填写真实数据。不要把说明复制到数据区。"});
+        instructions.add(new String[]{"必填标记(*)", "物料名称须提供（兼容从旧材料列回填）；其余星号表示部分品类必填，并非所有品类均必填，详见下方矩阵。"});
+        instructions.add(new String[]{"名称规则", "材料+型号+颜色（品牌），无空格、缺项跳过，品牌用全角括号。例如：PC膜11008透明（3M）。请自行填写名称，本次不改变导入命名行为。"});
+        instructions.add(new String[]{"尺寸格式", "宽×长/厚，缺省 mm，可写 cm/m/inch。例如：100×200/0.2；尺寸可选，填写时须符合格式及品类校验。"});
+        instructions.add(new String[]{"旧模板兼容", "仅含物料名称+规格的旧模板仍可导入，旧材料列也可作为名称。系统尝试从名称推断品类、材料、型号、颜色等，从规格提取尺寸；推断不全仍按品类必填校验，须补列补值后重试，并非免校验。"});
+        instructions.add(new String[]{"材料词表（23词）", "PET保护膜、PE保护膜、EVA泡棉、VHB胶带、PC膜、PET膜、PVC膜、PE膜、离型纸、离型膜、标签纸、胶带、泡棉、灯、螺丝、垫片、不锈钢、铜、铝、油墨、箱、袋、其他"});
+        instructions.add(new String[]{"颜色词表（13色）", "透明、咖啡色、白色、黑色、黄色、红色、蓝色、绿色、灰色、银色、金色、紫色、橙色"});
+        instructions.add(new String[]{"品类必填矩阵", "以下读取下载时 inventory_material_required_field 配置；列出品类额外必填字段，未列字段不代表禁止填写。配置变更后请重新下载。"});
+        for (MaterialCategoryOptionVO category : materialService.getCategoryOptions()) {
+            List<String> required = materialMapper.selectRequiredFields(category.getCategoryCode());
+            for (String field : required) {
+                markedFields.add("material_grade".equals(field) ? "materialGrade" : field);
+            }
+            String fields = required.isEmpty() ? "无额外必填字段"
+                    : String.join("、", required.stream().map(field -> labels.getOrDefault(field, field)).toList());
+            instructions.add(new String[]{category.getCategoryCode() + " " + category.getCategoryName(), fields});
+        }
+        ExcelUtils.downloadTemplate(response, MaterialImportDTO.class, "物料导入模板", markedFields, instructions);
     }
 
 
