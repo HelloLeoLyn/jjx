@@ -28,6 +28,14 @@ export function readOriginalRefs(
   }
 }
 
+/**
+ * 列表「原名称」列（dev-20261023-020）：只取 remark 的【原名称】内容，没有则返回空串。
+ * 与 readOriginalRefs 同一正则口径，不回退到当前名称——列表要能看出"有没有原名称"。
+ */
+export function parseOriginalName(remark: string | undefined): string {
+  return (remark || '').match(ORIGINAL_NAME_PATTERN)?.[1]?.trim() || ''
+}
+
 const pad = (value: number) => String(value).padStart(2, '0')
 
 /** 留痕：保留原备注，末尾追加【重生成】时间 + 操作人。 */

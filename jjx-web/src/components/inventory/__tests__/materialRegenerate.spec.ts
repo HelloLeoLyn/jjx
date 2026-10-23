@@ -3,6 +3,7 @@ import {
   appendRegenerateTrace,
   buildSizePreview,
   isRollCategory,
+  parseOriginalName,
   readOriginalRefs,
 } from '../materialRegenerate'
 import { composeMaterialName } from '../materialMasterFields'
@@ -87,6 +88,27 @@ describe('buildSizePreview', () => {
     expect(isRollCategory('AUX-ADHESIVE')).toBe(true)
     expect(isRollCategory('RM-PAPER')).toBe(true)
     expect(isRollCategory('RM-FILM')).toBe(false)
+  })
+})
+
+describe('parseOriginalName（列表原名称列）', () => {
+  it('取【原名称】与【原规格】之间的文本', () => {
+    expect(parseOriginalName('【原名称】0.125中砂PC(尚昇)【原规格】470')).toBe('0.125中砂PC(尚昇)')
+  })
+
+  it('前面带其它标记时不串入', () => {
+    expect(
+      parseOriginalName('原供应商:兴富成(未匹配)【原名称】8B35 0.175(兴富成）亮面【原规格】230')
+    ).toBe('8B35 0.175(兴富成）亮面')
+  })
+
+  it('含【重生成】等后续标记时只取原名称', () => {
+    expect(parseOriginalName('【原名称】旧名A\n【重生成】2026-10-23 18:00 hermes')).toBe('旧名A')
+  })
+
+  it('没有【原名称】标记返回空串（列表显示 -）', () => {
+    expect(parseOriginalName('普通备注')).toBe('')
+    expect(parseOriginalName(undefined)).toBe('')
   })
 })
 

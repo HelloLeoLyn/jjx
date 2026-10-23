@@ -42,6 +42,9 @@
       >
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="物料编码" prop="materialCode" width="150" />
+        <el-table-column label="原名称" width="200" show-overflow-tooltip>
+          <template #default="{ row }">{{ originalNameOf(row) }}</template>
+        </el-table-column>
         <el-table-column label="物料名称" prop="materialName" width="200" show-overflow-tooltip />
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ categoryNameOf(row) }}</template>
@@ -167,6 +170,7 @@ import {
   type MaterialCategoryOption,
 } from '@/components/inventory/materialMasterFields'
 import { MaterialTypeEnum } from '@/enums/inventory/MaterialEnum'
+import { parseOriginalName } from '@/components/inventory/materialRegenerate'
 import type { UploadInstance } from 'element-plus'
 import { openLabelPrint } from '@/utils/labelPrint'
 
@@ -251,6 +255,9 @@ const categoryNameOf = (row: InventoryMaterial) => {
     categoryOptions.value.find((item) => item.categoryId === row.categoryId)?.categoryName || '-'
   )
 }
+
+// 列表列的「原名称」：remark 里由回填脚本写入的【原名称】，便于核对重写后的名称（dev-20261023-020）
+const originalNameOf = (row: InventoryMaterial) => parseOriginalName(row.remark) || '-'
 
 // 获取列表
 const getList = async () => {
