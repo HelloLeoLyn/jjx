@@ -91,16 +91,9 @@
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="44" align="center" :selectable="isParentRow" />
-        <el-table-column label="产品" min-width="230" show-overflow-tooltip>
-          <template #default="{ row }">
-            <div v-if="isParentRow(row)" class="product-cell">
-              <el-button link type="primary" class="product-name" @click="handleView(row)">{{
-                row.productName || '未命名产品'
-              }}</el-button>
-              <span class="secondary-text product-code">{{ row.productCode || '—' }}</span>
-            </div>
-            <span v-else class="version-row-label">版本记录</span>
-          </template>
+        <el-table-column label="产品编码" width="230" show-overflow-tooltip prop="productCode">
+        </el-table-column>
+        <el-table-column label="产品名称" min-width="230" show-overflow-tooltip prop="productName">
         </el-table-column>
         <el-table-column label="BOM 编码" min-width="170" show-overflow-tooltip>
           <template #default="{ row }">
@@ -122,7 +115,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="版本记录" width="115">
+        <el-table-column label="版本数量" width="115">
           <template #default="{ row }">
             <el-button
               v-if="isParentRow(row) && row.hasVersionChildren"
@@ -130,7 +123,7 @@
               type="primary"
               @click="toggleVersions(row)"
             >
-              全部版本 {{ row.versionCount }}
+              {{ row.versionCount }}
             </el-button>
             <span v-else-if="isParentRow(row)" class="secondary-text">单版本</span>
           </template>
@@ -156,7 +149,7 @@
         <TableActionColumn
           :actions="bomActions"
           :width="245"
-          :max-visible="0"
+          :max-visible="3"
           display="text"
           @action="handleBomAction"
         >
@@ -165,6 +158,7 @@
               v-if="canEditBom(row)"
               v-hasPermi="['engineering:bom:edit']"
               link
+              size="small"
               type="primary"
               @click="handleUpdate(row)"
               >修改</el-button
@@ -173,6 +167,7 @@
               v-if="ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.SUBMIT)"
               v-hasPermi="['engineering:bom:add']"
               link
+              size="small"
               type="primary"
               @click="handleSubmitApprove(row)"
               >提交审核</el-button
@@ -181,6 +176,7 @@
               v-if="ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.APPROVE)"
               v-hasPermi="['engineering:bom:approve']"
               link
+              size="small"
               type="primary"
               @click="handleApprove(row)"
               >审核</el-button
@@ -189,6 +185,7 @@
               v-if="row.approveStatus === BomStatusEnum.APPROVED.value && !row.isCurrent"
               v-hasPermi="['engineering:bom:edit']"
               link
+              size="small"
               type="primary"
               @click="handleSetDefaultBom(row)"
               >设为现行</el-button
@@ -196,6 +193,7 @@
             <el-button
               v-if="versionErrors[getRowKey(row)]"
               link
+              size="small"
               type="danger"
               @click="retryVersions(row)"
               >重试加载版本</el-button
