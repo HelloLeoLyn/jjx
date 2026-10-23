@@ -7,6 +7,8 @@
     :close-on-click-modal="false"
     @close="handleCancel"
   >
+    <el-alert v-if="fallbackCategoryCount > 0" type="warning" :closable="false"
+      :title="`未匹配品类已归入其他 ${fallbackCategoryCount} 条`" />
     <!-- 上传区域 -->
     <div v-if="!parsed" class="import-upload-area">
       <el-upload
@@ -229,6 +231,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import { stockApi } from '@/api/inventory/stock'
 import { materialApi } from '@/api/inventory/material'
+import { loadMaterialCategoryOptions, materialImportSaveWithCategory, readImportedCategoryFields, type ImportedCategoryFields } from './materialMasterFields'
 import { WarehouseEnum } from '@/enums/inventory'
 import MaterialFormDialog from './MaterialFormDialog.vue'
 import { materialCreatePresetFromImport, type MaterialCreatePreset } from './materialCreateDefaults'
@@ -237,7 +240,7 @@ import * as XLSX from 'xlsx'
 import type { UploadInstance } from 'element-plus'
 
 // 导入行数据类型
-export interface ImportRow {
+export interface ImportRow extends ImportedCategoryFields {
   materialName: string
   specification: string
   quantity: number
@@ -295,6 +298,7 @@ const importDTO = reactive({
 const checkAllLoading = ref(false)
 // 建档全部加载状态
 const createAllLoading = ref(false)
+const fallbackCategoryCount = ref(0)
 // 高级字段展开/收起
 const showExtraFields = ref(false)
 
@@ -305,6 +309,7 @@ const createPreset = ref<MaterialCreatePreset>()
 
 // 重置状态
 const resetState = () => {
+  fallbackCategoryCount.value = 0
   parsed.value = false
   parsingLoading.value = false
   importLoading.value = false
@@ -461,6 +466,7 @@ const handleParseFile = async () => {
         const supplierName = supplierMatch ? supplierMatch[1] : ''
 
         return {
+          ...readImportedCategoryFields(item),
           materialName: name,
           specification: spec,
           quantity: isNaN(qty) ? 0 : qty,
@@ -638,30 +644,29 @@ const handleCreateAll = async () => {
   let successCount = 0
   let failCount = 0
 
+  const categories = await loadMaterialCategoryOptions()
+  const failures: string[] = []
   for (const row of uncreatedRows) {
     try {
       // 生成物料编码
       const codeRes = await materialApi.generateCode()
-      const saveData = {
-        materialCode: codeRes.data || '',
-        materialName: row.materialName,
-        materialType: 'R',
-        specification: row.specification,
-        unit: 'PCS',
-        supplierName: row.supplierName || '',
-      }
+      const { payload: saveData, usedFallback } = materialImportSaveWithCategory(row, codeRes.data || '', categories)
       await materialApi.add(saveData as any)
+      if (usedFallback) fallbackCategoryCount.value++
       row.checked = true
       row.materialCode = saveData.materialCode
       successCount++
     } catch (error) {
+      failures.push(`${row.materialName}：${error instanceof Error ? error.message : String(error)}`)
       console.error(`建档 "${row.materialName}" 失败:`, error)
       failCount++
     }
   }
 
   createAllLoading.value = false
-  ElMessage.success(`建档完成：成功 ${successCount} 条，失败 ${failCount} 条`)
+  const summary = `建档完成：成功 ${successCount} 条，失败 ${failCount} 条${fallbackCategoryCount.value ? `；未匹配品类已归入其他 ${fallbackCategoryCount.value} 条` : ''}`
+  if (failCount) ElMessage.error(`${summary}；${failures.join('；')}`)
+  else ElMessage.success(summary)
 }
 
 // 打开建档弹窗：预填导入行信息，保存后回填当前行
@@ -714,7 +719,7 @@ const handleImport = async () => {
     }
 
     await stockApi.batchImport(validData)
-    ElMessage.success(`成功导入 ${validData.length} 条数据`)
+    ElMessage.success(`成功导入 ${validData.length} 条数据${fallbackCategoryCount.value ? `；未匹配品类已归入其他 ${fallbackCategoryCount.value} 条` : ''}`)
     dialogVisible.value = false
     emit('success')
   } catch (error) {

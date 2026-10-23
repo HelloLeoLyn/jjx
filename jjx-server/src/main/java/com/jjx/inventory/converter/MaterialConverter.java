@@ -3,6 +3,8 @@ package com.jjx.inventory.converter;
 import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.dto.vo.MaterialVO;
 import org.mapstruct.Mapper;
+import org.mapstruct.Context;
+import java.util.Map;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
 
@@ -17,10 +19,10 @@ public interface MaterialConverter {
     @Mapping(target = "defaultLocationName", ignore = true)
     @Mapping(target = "currentStock", ignore = true)
     @Mapping(target = "createByName", ignore = true)
-    @Mapping(target = "categoryName", ignore = true)
+    @Mapping(target = "categoryName", expression = "java(categoryNames.get(entity.getCategoryId()))")
     @Mapping(target = "availableStock", ignore = true)
     @Mapping(target = "tags", ignore = true)
-    MaterialVO toVO(InventoryMaterial entity);
+    MaterialVO toVO(InventoryMaterial entity, @Context Map<Long, String> categoryNames);
 
-    List<MaterialVO> toVOList(List<InventoryMaterial> list);
+    List<MaterialVO> toVOList(List<InventoryMaterial> list, @Context Map<Long, String> categoryNames);
 }

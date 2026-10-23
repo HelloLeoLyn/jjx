@@ -7,6 +7,8 @@
     destroy-on-close
     :close-on-click-modal="false"
   >
+    <el-alert v-if="fallbackCategoryCount > 0" type="warning" :closable="false"
+      :title="`未匹配品类已归入其他 ${fallbackCategoryCount} 条`" />
     <!-- 步骤1：选择文件 -->
     <div v-if="step === 1">
       <el-upload
@@ -198,7 +200,7 @@ import * as XLSX from 'xlsx'
 import { stockApi, type StockBatchCheckItemVO } from '@/api/inventory/stock'
 import { warehouseApi } from '@/api/inventory/warehouse'
 import { materialApi } from '@/api/inventory/material'
-import { materialSaveFromImport } from './materialCreateDefaults'
+import { loadMaterialCategoryOptions, materialImportSaveWithCategory, readImportedCategoryFields } from './materialMasterFields'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [boolean]; success: [] }>()
@@ -241,6 +243,7 @@ const pagedErrorRows = computed(() => {
 })
 
 const importResult = ref<any>(null)
+const fallbackCategoryCount = ref(0)
 
 watch(
   () => props.visible,
@@ -253,6 +256,7 @@ watch(
       checkResults.value = []
       errorRows.value = []
       importResult.value = null
+      fallbackCategoryCount.value = 0
       loadWarehouseOptions()
     }
   }
@@ -346,6 +350,7 @@ const parseFile = async () => {
 
         rows.push({
           rowIndex: idx + 1,
+          ...readImportedCategoryFields(item),
           materialName: name,
           specification: spec,
           quantity: qty,
@@ -442,21 +447,28 @@ const handleCreateMaterials = async () => {
   creating.value = true
   let successCount = 0
   let failCount = 0
+  const failures: string[] = []
   try {
+    const categories = await loadMaterialCategoryOptions()
     for (const row of notFoundRows) {
       try {
         const codeRes = await materialApi.generateCode()
-        await materialApi.add(materialSaveFromImport(row, codeRes.data || '') as any)
+        const { payload, usedFallback } = materialImportSaveWithCategory(row, codeRes.data || '', categories)
+        await materialApi.add(payload as any)
+        if (usedFallback) fallbackCategoryCount.value++
         // 更新本行校验结果为 ok（重新校验时会用）
         row.materialName = row.materialName
         row._forceOk = true
         successCount++
       } catch (e) {
+        failures.push(`${row.materialName}：${e instanceof Error ? e.message : String(e)}`)
         console.error(`建档 "${row.materialName}" 失败:`, e)
         failCount++
       }
     }
-    ElMessage.success(`建档完成：成功 ${successCount} 条，失败 ${failCount} 条`)
+    const summary = `建档完成：成功 ${successCount} 条，失败 ${failCount} 条${fallbackCategoryCount.value ? `；未匹配品类已归入其他 ${fallbackCategoryCount.value} 条` : ''}`
+    if (failCount) ElMessage.error(`${summary}；${failures.join('；')}`)
+    else ElMessage.success(summary)
     // 建档后重新校验（未建档行应变为 ok）
     await handleBatchCheck()
   } finally {

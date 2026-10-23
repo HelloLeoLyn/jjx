@@ -2,6 +2,8 @@ package com.jjx.inventory.controller;
 
 import com.jjx.common.constant.LogActions;
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaCheckLogin;
+import com.jjx.inventory.dto.vo.MaterialCategoryOptionVO;
 import cn.dev33.satoken.annotation.SaMode;
 import com.jjx.common.core.page.PageResult;
 import com.jjx.common.core.result.Result;
@@ -82,6 +84,12 @@ public class InventoryMaterialController extends BaseController {
     @GetMapping("/list")
     public Result<List<MaterialVO>> list(MaterialQueryDTO queryDTO) {
         return Result.success(materialService.selectList(queryDTO));
+    }
+
+    @GetMapping("/category-options")
+    @SaCheckLogin
+    public Result<List<MaterialCategoryOptionVO>> categoryOptions() {
+        return Result.success(materialService.getCategoryOptions());
     }
 
     @GetMapping("/tags")

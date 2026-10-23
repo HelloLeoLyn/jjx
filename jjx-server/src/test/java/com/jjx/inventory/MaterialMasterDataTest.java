@@ -43,6 +43,7 @@ class MaterialMasterDataTest {
     @Mock InventoryMaterialMapper mapper;
     @Mock RedisSequenceService sequence;
     @Mock ISysTagService tags;
+    @Mock com.jjx.inventory.service.InventoryMaterialCategoryService categories;
     @InjectMocks InventoryMaterialServiceImpl service;
 
     @BeforeEach void setup() {
@@ -85,7 +86,7 @@ class MaterialMasterDataTest {
         InventoryMaterial m = material(); m.setMaterialType("A");
         assertTrue(service.create(m, List.of(), "codex"));
         assertEquals("R", m.getMaterialType());
-        var vo = Mappers.getMapper(MaterialConverter.class).toVO(m);
+        var vo = Mappers.getMapper(MaterialConverter.class).toVO(m, Map.of(2L, "片材/膜材"));
         assertEquals(m.getMaterialGrade(), vo.getMaterialGrade()); assertEquals(m.getSize(), vo.getSize());
         assertEquals(m.getBrand(), vo.getBrand()); assertEquals(m.getSearchKeywords(), vo.getSearchKeywords());
     }
@@ -168,6 +169,33 @@ class MaterialMasterDataTest {
         assertEquals("胶带", inserted.getValue().getMaterialGrade());
     }
 
+    @Test void listMapsCategoryNamesInOneBatch() {
+        var first = material(); first.setMaterialId(1L);
+        var second = material(); second.setMaterialId(2L);
+        var category = new com.jjx.inventory.domain.InventoryMaterialCategory();
+        category.setCategoryId(2L); category.setCategoryName("片材/膜材");
+        when(mapper.selectList(any())).thenReturn(List.of(first, second));
+        when(categories.listByIds(List.of(2L))).thenReturn(List.of(category));
+        var list = service.selectList(new MaterialQueryDTO());
+        assertEquals(List.of("片材/膜材", "片材/膜材"), list.stream().map(com.jjx.inventory.dto.vo.MaterialVO::getCategoryName).toList());
+        verify(categories, times(1)).listByIds(List.of(2L));
+        verify(mapper, never()).selectCategory(anyLong());
+    }
+
+    @Test void categoryOptionsRequireLoginWithoutPermissionPoint() throws Exception {
+        var method = com.jjx.inventory.controller.InventoryMaterialController.class.getMethod("categoryOptions");
+        assertNotNull(method.getAnnotation(cn.dev33.satoken.annotation.SaCheckLogin.class));
+        assertNull(method.getAnnotation(cn.dev33.satoken.annotation.SaCheckPermission.class));
+        when(categories.listMaps(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(List.of(category()));
+        var options = service.getCategoryOptions();
+        assertEquals(2L, options.get(0).getCategoryId());
+        assertEquals("R", options.get(0).getMaterialType());
+        assertEquals("片材/膜材", options.get(0).getCategoryName());
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(categories).listMaps(wrapper.capture());
+        assertTrue(wrapper.getValue().getSqlSegment().contains("status"));
+    }
+
     /** 显式启用时使用真实业务库；整段事务回滚，不留测试物料、不调用库存路径。 */
     @Test
     @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "JJX_MATERIAL_DB_TEST", matches = "true")
@@ -196,13 +224,36 @@ class MaterialMasterDataTest {
                     }));
         configuration.addInterceptor(new com.jjx.framework.config.MyBatisPlusConfig().mybatisPlusInterceptor());
         configuration.addMapper(InventoryMaterialMapper.class);
+        configuration.addMapper(com.jjx.inventory.mapper.InventoryMaterialCategoryMapper.class);
         var factory = new com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder().build(configuration);
         String suffix = Long.toString(System.nanoTime());
         try (var session = factory.openSession(false)) {
             InventoryMaterialMapper realMapper = session.getMapper(InventoryMaterialMapper.class);
             ReflectionTestUtils.setField(service, "materialMapper", realMapper);
+            var categoryMapper = session.getMapper(com.jjx.inventory.mapper.InventoryMaterialCategoryMapper.class);
+            when(categories.listByIds(anyCollection())).thenAnswer(call -> categoryMapper.selectByIds(call.getArgument(0)));
+            when(categories.listMaps(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenAnswer(call -> categoryMapper.selectMaps(call.getArgument(0)));
             when(tags.resolveBizIdsFilter(eq("inventory_material"), isNull(), isNull())).thenReturn(null);
             try {
+                assertEquals(11, service.getCategoryOptions().size());
+                for (String type : List.of("R", "A")) {
+                    var option = service.getCategoryOptions().stream()
+                            .filter(c -> c.getCategoryCode().equals("OTHER-" + type)).findFirst().orElseThrow();
+                    InventoryMaterial batch = new InventoryMaterial();
+                    batch.setMaterialCode("TEST015-" + type + "-" + suffix);
+                    batch.setMaterialName("批量建档验证" + type);
+                    batch.setCategoryId(option.getCategoryId()); batch.setMaterialType(type); batch.setUnit("PCS");
+                    assertTrue(service.create(batch, List.of(), "codex"));
+                    session.clearCache();
+                    assertEquals(option.getCategoryId(), realMapper.selectById(batch.getMaterialId()).getCategoryId());
+                    MaterialQueryDTO batchQuery = new MaterialQueryDTO(); batchQuery.setMaterialCode(batch.getMaterialCode());
+                    var list = service.selectList(batchQuery);
+                    assertEquals(1, list.size());
+                    assertEquals(option.getCategoryName(), list.get(0).getCategoryName());
+                    assertEquals(option.getCategoryName(), service.getDetailById(batch.getMaterialId()).getCategoryName());
+                    System.out.println("REAL_DB_015 code=" + batch.getMaterialCode() + " categoryId="
+                            + list.get(0).getCategoryId() + " categoryName=" + list.get(0).getCategoryName());
+                }
                 InventoryMaterial saved = material(); saved.setMaterialCode("TEST012-" + suffix); saved.setStatus(com.jjx.common.enums.StatusEnum.NORMAL.getCode()); saved.setUnit("PCS");
                 assertTrue(service.create(saved, List.of(), "codex"));
                 session.clearCache();
@@ -249,6 +300,8 @@ class MaterialMasterDataTest {
                 session.rollback(true);
                 session.clearCache();
             }
+            assertNull(realMapper.selectByCode("TEST015-R-" + suffix));
+            assertNull(realMapper.selectByCode("TEST015-A-" + suffix));
             assertNull(realMapper.selectByCode("TEST012-" + suffix));
             assertNull(realMapper.selectByCode("TEST012-new-import-" + suffix));
             assertNull(realMapper.selectByCode("TEST012-old-import-" + suffix));

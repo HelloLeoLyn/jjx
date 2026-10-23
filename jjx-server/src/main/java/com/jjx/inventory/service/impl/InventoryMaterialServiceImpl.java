@@ -26,6 +26,10 @@ import com.jjx.inventory.dto.imports.MaterialImportDTO;
 import com.jjx.inventory.dto.query.MaterialCheckDTO;
 import com.jjx.inventory.dto.query.MaterialQueryDTO;
 import com.jjx.inventory.dto.vo.MaterialVO;
+import com.jjx.inventory.dto.vo.MaterialCategoryOptionVO;
+import com.jjx.inventory.domain.InventoryMaterialCategory;
+import com.jjx.inventory.service.InventoryMaterialCategoryService;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.jjx.inventory.enums.ProcessGroup;
 import com.jjx.inventory.enums.MaterialEnums;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
@@ -54,6 +58,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     private static final String MATERIAL_BIZ_TYPE = "inventory_material";
 
     private final InventoryMaterialMapper materialMapper;
+    private final InventoryMaterialCategoryService categoryService;
     /** 2026-09-21（dev-20260921-013）：库存事件改手写 payload。 */
     private final com.jjx.event.EventPublisher eventPublisher;
     private final InventoryStockMapper stockMapper;
@@ -87,8 +92,37 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         Page<InventoryMaterial> page = new Page<>(queryDTO.getPageNum(), queryDTO.getPageSize());
         materialMapper.selectPage(page, wrapper);
         List<InventoryMaterial> records = page.getRecords();
-        List<MaterialVO> voList = enrichTags(materialConverter.toVOList(records));
+        List<MaterialVO> voList = enrichTags(convertMaterials(records));
         return PageResult.of(page, voList);
+    }
+
+    @Override
+    public List<MaterialCategoryOptionVO> getCategoryOptions() {
+        return categoryService.listMaps(new QueryWrapper<InventoryMaterialCategory>()
+                .select("category_id", "category_code", "category_name", "material_type")
+                .eq("status", StatusEnum.NORMAL.getCode()).orderByAsc("sort_order", "category_id"))
+                .stream().map(row -> {
+                    MaterialCategoryOptionVO option = new MaterialCategoryOptionVO();
+                    option.setCategoryId(((Number) row.get("category_id")).longValue());
+                    option.setCategoryCode((String) row.get("category_code"));
+                    option.setCategoryName((String) row.get("category_name"));
+                    option.setMaterialType((String) row.get("material_type"));
+                    return option;
+                }).toList();
+    }
+
+    /** 一次批量读取关联品类；包含停用品类，历史物料名称仍可显示。 */
+    private List<MaterialVO> convertMaterials(List<InventoryMaterial> materials) {
+        if (materials.isEmpty()) return List.of();
+        List<Long> ids = materials.stream().map(InventoryMaterial::getCategoryId)
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        Map<Long, String> names = new HashMap<>();
+        if (!ids.isEmpty()) {
+            for (InventoryMaterialCategory category : categoryService.listByIds(ids)) {
+                names.put(category.getCategoryId(), category.getCategoryName());
+            }
+        }
+        return materialConverter.toVOList(materials, names);
     }
 
     private @NonNull LambdaQueryWrapper<InventoryMaterial> buildQueryWrapper(MaterialQueryDTO queryDTO) {
@@ -135,7 +169,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     @Override
     public MaterialVO getDetailById(Long id) {
         InventoryMaterial material = materialMapper.selectById(id);
-        return enrichTags(materialConverter.toVO(material));
+        return enrichTags(material == null ? null : convertMaterials(List.of(material)).get(0));
     }
 
     @Override
@@ -354,7 +388,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         IPage<InventoryMaterial> page = new Page<InventoryMaterial>().setSize(queryDTO.getPageSize())
                 .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);
-        List<MaterialVO> voList = enrichTags(materialConverter.toVOList(page.getRecords()));
+        List<MaterialVO> voList = enrichTags(convertMaterials(page.getRecords()));
         return PageResult.of(page, voList);
     }
 
@@ -468,7 +502,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     public List<MaterialVO> selectList(MaterialQueryDTO queryDTO) {
         LambdaQueryWrapper<InventoryMaterial> queryWrapper = buildQueryWrapper(queryDTO);
         List<InventoryMaterial> inventoryMaterials = materialMapper.selectList(queryWrapper);
-        return enrichTags(materialConverter.toVOList(inventoryMaterials));
+        return enrichTags(convertMaterials(inventoryMaterials));
     }
 
     @Override
@@ -501,7 +535,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (material == null) {
             return null;
         }
-        return enrichTags(materialConverter.toVO(material));
+        return enrichTags(material == null ? null : convertMaterials(List.of(material)).get(0));
     }
 
     private static String getProcessGroup(MaterialImportDTO dto) {

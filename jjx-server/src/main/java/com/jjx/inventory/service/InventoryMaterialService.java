@@ -16,6 +16,8 @@ import java.util.Map;
  */
 public interface InventoryMaterialService extends IService<InventoryMaterial> {
 
+    List<com.jjx.inventory.dto.vo.MaterialCategoryOptionVO> getCategoryOptions();
+
     /**
      * 分页查询物料列表
      */

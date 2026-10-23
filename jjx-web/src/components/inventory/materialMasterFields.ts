@@ -1,4 +1,6 @@
-import { materialCategoryApi } from '@/api/inventory/materialCategory'
+import request from '@/utils/request'
+import type { R } from '@/types'
+import { materialSaveFromImport, type MaterialImportRow } from './materialCreateDefaults'
 
 /**
  * 物料主数据字段口径（dev-20261023-008）。
@@ -89,8 +91,7 @@ export interface MaterialCategoryOption {
 
 /**
  * 品类兜底列表。
- * 后端 /inventory/material-category/* 要求 inventory:category:list，而该权限点未在 sys_menu 注册，
- * 非超管会 403；接口不可用时用这份与 inventory_material_category 初始化一致的种子数据兜底。
+ * 优先读取仅登录可用的物料品类选项接口；接口不可用时使用初始化种子兜底。
  * 接口可用时以接口返回为准（含 categoryId）。
  */
 export const MATERIAL_CATEGORY_SEED: MaterialCategoryOption[] = [
@@ -206,15 +207,11 @@ export function findMissingRequiredFields(
   })
 }
 
-function flattenCategories(list: any[]): any[] {
-  return (list || []).flatMap((item) => [item, ...flattenCategories(item?.children || [])])
-}
-
-/** 读取品类下拉；接口不可用（缺权限点）时退回种子列表。 */
+/** 读取品类下拉；接口不可用时退回种子列表。 */
 export async function loadMaterialCategoryOptions(): Promise<MaterialCategoryOption[]> {
   try {
-    const res = await materialCategoryApi.getTree({ status: '1' } as any)
-    const options = flattenCategories(res.data || [])
+    const res = await request.get<R<MaterialCategoryOption[]>>('/inventory/material/category-options')
+    const options = (res.data || [])
       .filter((item) => item?.categoryId != null)
       .map((item) => ({
         categoryId: Number(item.categoryId),
@@ -226,9 +223,52 @@ export async function loadMaterialCategoryOptions(): Promise<MaterialCategoryOpt
     console.warn('[material] 品类接口返回为空，改用本地种子列表')
   } catch (error) {
     console.warn(
-      '[material] 品类接口不可用（inventory:category:list 未注册），改用本地种子列表',
+      '[material] 品类接口不可用，改用本地种子列表',
       error
     )
   }
   return MATERIAL_CATEGORY_SEED.map((item) => ({ ...item }))
+}
+
+export interface ImportedCategoryFields {
+  categoryId?: number | string
+  categoryCode?: string
+  categoryName?: string
+  materialType?: string
+  material_type?: string
+}
+
+/** 两个库存导入入口均保留行内品类和大类。 */
+export function readImportedCategoryFields(row: Record<string, any>): ImportedCategoryFields {
+  return {
+    categoryId: row.categoryId || row.category_id || row['品类ID'],
+    categoryCode: row.categoryCode || row.category_code || row['品类编码'],
+    categoryName: row.categoryName || row.category_name || row['品类'] || row['品类名称'],
+    materialType: row.materialType || row.material_type || row['物料类型'] || row['大类'],
+  }
+}
+
+/** 缺失/未匹配品类按大类归入其他；兜底也不存在时明确拒绝建档。 */
+export function materialImportSaveWithCategory(
+  row: MaterialImportRow & ImportedCategoryFields,
+  materialCode: string,
+  options: MaterialCategoryOption[]
+) {
+  const matched = options.find((item) =>
+    (row.categoryId != null && String(item.categoryId) === String(row.categoryId)) ||
+    (!!row.categoryCode && item.categoryCode === row.categoryCode.trim()) ||
+    (!!row.categoryName && [item.categoryName, item.categoryCode].includes(row.categoryName.trim()))
+  )
+  const type = (row.materialType || row.material_type || 'R').trim()
+  const materialType = ['A', '辅助材料', '辅料'].includes(type) ? 'A' : 'R'
+  const category = matched || options.find((item) => item.categoryCode === `OTHER-${materialType}`)
+  if (!category?.categoryId) throw new Error(`未找到${materialType === 'A' ? '辅助材料' : '原材料'}默认品类，无法建档`)
+  return {
+    payload: {
+      ...materialSaveFromImport(row, materialCode),
+      categoryId: category.categoryId,
+      materialType: category.materialType || deriveMaterialType(category.categoryCode),
+    },
+    usedFallback: !matched,
+  }
 }

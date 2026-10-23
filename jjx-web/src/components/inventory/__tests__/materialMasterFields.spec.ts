@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import request from '@/utils/request'
+vi.mock('@/utils/request', () => ({ default: { get: vi.fn() } }))
 import {
   MATERIAL_CATEGORY_SEED,
+  loadMaterialCategoryOptions,
+  materialImportSaveWithCategory,
+  readImportedCategoryFields,
   MATERIAL_COLOR_OPTIONS,
   MATERIAL_GRADE_OPTIONS,
   composeMaterialName,
@@ -120,5 +125,40 @@ describe('findMissingRequiredFields', () => {
       'specification',
       'brand',
     ])
+  })
+})
+
+describe('批量建档品类', () => {
+  it.each(['R', 'A'])('缺少品类按 %s 归入其他', (type) => {
+    const result = materialImportSaveWithCategory({ materialName: '测试', material_type: type }, 'M1', MATERIAL_CATEGORY_SEED)
+    expect(result.payload.categoryId).toBe(type === 'A' ? 11 : 10)
+    expect(result.payload.materialType).toBe(type)
+    expect(result.usedFallback).toBe(true)
+  })
+  it('保留行内品类，品类决定大类', () => {
+    const fields = readImportedCategoryFields({ 品类: '电子元件', material_type: 'R' })
+    const result = materialImportSaveWithCategory(fields, 'M2', MATERIAL_CATEGORY_SEED)
+    expect(result.payload.categoryId).toBe(6)
+    expect(result.payload.materialType).toBe('A')
+    expect(result.usedFallback).toBe(false)
+  })
+  it('未匹配品类提示兜底；默认品类不存在则明确失败', () => {
+    expect(materialImportSaveWithCategory({ categoryName: '不存在' }, 'M3', MATERIAL_CATEGORY_SEED).usedFallback).toBe(true)
+    expect(() => materialImportSaveWithCategory({}, 'M3', [])).toThrow('默认品类')
+  })
+  it('优先使用仅登录接口返回的真实 ID', async () => {
+    const options = [{ categoryId: 99, categoryCode: 'OTHER-A', categoryName: '其他（辅助材料）', materialType: 'A' }]
+    vi.mocked(request.get).mockResolvedValueOnce({ data: options })
+    expect(await loadMaterialCategoryOptions()).toEqual(options)
+    expect(request.get).toHaveBeenCalledWith('/inventory/material/category-options')
+    expect(materialImportSaveWithCategory({ materialType: 'A' }, 'M4', options).payload.categoryId).toBe(99)
+  })
+  it('接口失败或空数据时保留种子兜底', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(request.get).mockRejectedValueOnce(new Error('offline'))
+    expect(await loadMaterialCategoryOptions()).toEqual(MATERIAL_CATEGORY_SEED)
+    vi.mocked(request.get).mockResolvedValueOnce({ data: [] })
+    expect(await loadMaterialCategoryOptions()).toEqual(MATERIAL_CATEGORY_SEED)
+    warn.mockRestore()
   })
 })
