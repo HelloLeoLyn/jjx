@@ -45,6 +45,12 @@ describe('BOM 导入：规格及模数单列反推（dev-20261022-016）', () =>
     })
   })
 
+  it('规格为 0/0.0 时归一为空，不产生 0=1PCS', () => {
+    expect(parseSpecModule('0=1PCS')?.specification).toBe('')
+    expect(parseSpecModule('0.0=1PCS')?.specification).toBe('')
+    expect(parseSpecModule('0.00跳75mm=2PCS')?.specification).toBe('')
+  })
+
   it('无法解析或空值返回 null', () => {
     expect(parseSpecModule('')).toBeNull()
     expect(parseSpecModule('随便一段文字')).toBeNull()

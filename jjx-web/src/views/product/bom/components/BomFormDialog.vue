@@ -538,6 +538,9 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     const v = parseFloat(String(s).replace(/[^\d.]/g, ''))
     return Number.isNaN(v) ? dflt : v
   }
+  // 规格纯零值（0/0.0/0.00）按空处理，避免落库后打印 0=1PCS。
+  const normalizeSpec = (value: string): string =>
+    /^0+(?:\.0+)?$/.test(value.trim()) ? '' : value
 
   for (let i = headerRowIndex + 1; i < rows.length; i++) {
     const row = rows[i]
@@ -549,7 +552,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
 
     // 分列模式：品名/规格/模数；单列模式：品名/规格及模数
     const combinedRaw = cellOf(row, 'combined')
-    let spec = cellOf(row, 'spec')
+    let spec = normalizeSpec(cellOf(row, 'spec'))
     let moduleRaw = cellOf(row, 'module')
     let split = cellOf(row, 'split')
     let baseRaw = cellOf(row, 'base')
@@ -561,14 +564,15 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
         missingRows.push(i + 1)
         continue
       }
-      spec = parsed.specification
+      spec = normalizeSpec(parsed.specification)
       moduleRaw = String(parsed.moduleQty)
       split = parsed.split
       baseRaw = String(parsed.baseQty)
       fromCombined = true
     }
 
-    if (!moduleRaw || (!spec && !fromCombined)) {
+    // 规格不必填（dev-20261022-020）；分列/单列都只要求模数可解析。
+    if (!moduleRaw) {
       missingRows.push(i + 1)
       continue
     }
@@ -609,7 +613,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
 
   if (missingRows.length) {
     ElMessage.warning(
-      `有 ${missingRows.length} 行缺少必填项或规格及模数无法解析，已跳过：第 ${missingRows.join('、')} 行`
+      `有 ${missingRows.length} 行缺少模数或规格及模数无法解析，已跳过：第 ${missingRows.join('、')} 行`
     )
   }
 

@@ -225,7 +225,9 @@ export function projectMaterialFromBom(
     materialName: row.materialName || '',
     processId: row.processId,
     processName: row.processName || '',
-    specification: row.specification || '',
+    specification: isZeroSpec(String(row.specification ?? '').trim())
+      ? ''
+      : row.specification || '',
     params: '',
     widthMm: row.widthMm,
     lengthMm: row.lengthMm,
@@ -311,6 +313,11 @@ export function detailTextLines(text: string, color?: string): PaperTextLine[] {
   return paperLines(text, 44).map((line) => ({ text: line, color }))
 }
 
+/** 规格纯零值（0/0.0/0.00）按空处理，避免打印出 0=1PCS。 */
+function isZeroSpec(value: string): boolean {
+  return /^0+(?:\.0+)?$/.test(value.trim())
+}
+
 export function plain(value: unknown): string {
   return String(value ?? '')
     .replace(/<[^>]*>/g, '')
@@ -335,8 +342,13 @@ export function workSpecMaterialSpec(row?: Record<string, any> | null): string {
     length = Number(row.lengthMm)
   const hasWidth = Number.isFinite(width) && width > 0
   const hasLength = Number.isFinite(length) && length > 0
+  const rawSpecification = plain(row.specification)
   const specification =
-    hasWidth && hasLength ? width + '*' + length + 'mm' : plain(row.specification)
+    hasWidth && hasLength
+      ? width + '*' + length + 'mm'
+      : isZeroSpec(rawSpecification)
+        ? ''
+        : rawSpecification
   const module = Number(row.moduleQty)
   const split = plain(row.split)
   if (split) {

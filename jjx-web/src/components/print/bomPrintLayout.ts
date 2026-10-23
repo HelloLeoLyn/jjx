@@ -24,10 +24,14 @@ const text = (value: unknown) => (value == null ? '' : String(value).trim())
 export function bomMaterialSpec(row: BomPrintItem): string {
   const width = Number(row.widthMm)
   const length = Number(row.lengthMm)
+  const rawSpecification = text(row.specification)
+  // 规格纯零值（0/0.0）按空处理，避免打印出 0=1PCS（dev-20261023-010）。
   const specification =
     width > 0 && Number.isFinite(width) && length > 0 && Number.isFinite(length)
       ? `${width}*${length}mm`
-      : text(row.specification)
+      : /^0+(?:\.0+)?$/.test(rawSpecification)
+        ? ''
+        : rawSpecification
   const moduleRaw = row.moduleQty
   const module = Number(moduleRaw)
   const moduleMissing =

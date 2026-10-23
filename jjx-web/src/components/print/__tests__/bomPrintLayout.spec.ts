@@ -19,6 +19,9 @@ describe('BOM 五列打印数据', () => {
     expect(bomMaterialSpec({ baseQty: 1, unit: '个', moduleQty: 0.5 })).toBe('1个/PCS')
     expect(bomMaterialSpec({ baseQty: 1, unit: 'PCS', moduleQty: 1 })).toBe('-')
     expect(bomMaterialSpec({ baseQty: 2, unit: 'PCS' })).toBe('-')
+    // 规格纯零值按空处理（dev-20261023-010）
+    expect(bomMaterialSpec({ specification: '0', moduleQty: 1 })).toBe('-')
+    expect(bomMaterialSpec({ specification: '0.0', moduleQty: 2 })).toBe('-')
   })
   it('连续项目只编一个序号，分隔后再次出现则为新组', () => {
     const rows = bomPrintRows([
