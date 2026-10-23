@@ -58,8 +58,8 @@ export interface BomPrintRow {
   key: number
   groupKey: string
   number: number
+  displayNumber: number
   span: number
-  label: string
 }
 
 export function bomPrintRows(items: BomPrintItem[]): BomPrintRow[] {
@@ -70,8 +70,13 @@ export function bomPrintRows(items: BomPrintItem[]): BomPrintRow[] {
       if (row.children?.length) visit(row.children)
     })
   visit(items)
-  return bomGroupRows(flat, true).map(row => ({
-    item: row.item, key: row.index, groupKey: row.groupKey, number: row.number, span: 1, label: row.label,
+  return bomGroupRows(flat, true).map((row) => ({
+    item: row.item,
+    key: row.index,
+    groupKey: row.groupKey,
+    number: row.number,
+    displayNumber: row.displayNumber,
+    span: 1,
   }))
 }
 
@@ -80,7 +85,7 @@ export function mergeBomPage(rows: BomPrintRow[]): BomPrintRow[] {
   const result = rows.map((row) => ({ ...row, span: 0 }))
   for (let i = 0; i < result.length; ) {
     let end = i + 1
-    while (end < result.length && result[end].number === result[i].number) end++
+    while (end < result.length && result[end].groupKey === result[i].groupKey) end++
     result[i].span = end - i
     i = end
   }

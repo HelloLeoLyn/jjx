@@ -34,18 +34,28 @@ export function bomGroupRows<T extends BomGroupItem>(items: T[], saved = false) 
       previous = project
       groupKey = `run:${run}`
     }
-    return { item, index, leader, groupKey, legacy, invalid, number: 0, size: 0, span: 1, label: '' }
+    return { item, index, leader, groupKey, legacy, invalid, number: 0, displayNumber: 0, size: 0, span: 1, label: '' }
   })
   const sizes = new Map<string, number>()
   const numbers = new Map<string, number>()
+  const displayNumbers = new Map<string, number>()
   for (const row of rows) {
     sizes.set(row.groupKey, (sizes.get(row.groupKey) || 0) + 1)
     if (!numbers.has(row.groupKey)) numbers.set(row.groupKey, numbers.size + 1)
+  }
+  let displayNumber = 0
+  for (const row of rows) {
+    if (!displayNumbers.has(row.groupKey)) {
+      const hasProject = !!bomProjectKey(explicit ? row.leader : row.item)
+      const shouldDisplay = explicit ? sizes.get(row.groupKey)! > 1 || hasProject : hasProject
+      displayNumbers.set(row.groupKey, shouldDisplay ? ++displayNumber : 0)
+    }
   }
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     row.size = sizes.get(row.groupKey)!
     row.number = numbers.get(row.groupKey)!
+    row.displayNumber = displayNumbers.get(row.groupKey)!
     row.span = i > 0 && rows[i - 1].groupKey === row.groupKey ? 0 : 1
     if (row.span) while (i + row.span < rows.length && rows[i + row.span].groupKey === row.groupKey) row.span++
     const project = (explicit ? row.leader : row.item).processName?.trim() || '未选项目'

@@ -55,7 +55,7 @@
               :data-overflow-title="materialLabel(i) + '项目'"
               :title="plain(row?.processName)"
               >{{ plain(row?.processName) }}</span
-            ><sub v-if="specTemplate === 'B' && row">{{ row.projectGroup }}</sub>
+            ><sub v-if="row?.projectGroup">{{ row.projectGroup }}</sub>
           </td>
           <td :style="columnFont('materialName', 'Content')">
             <span

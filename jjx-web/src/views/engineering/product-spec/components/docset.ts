@@ -274,7 +274,7 @@ export function projectMaterialPrintRows(data: DocsetData): Record<string, any>[
 /** 仅用于BOM回退；独立维护的项目材料及其快照沿用自己的组模型。 */
 export function groupBomMaterials(rows: Record<string, any>[]): Record<string, any>[] {
   return bomGroupRows(rows, true).map(group => ({
-    ...group.item, projectGroup: group.number, projectGroupKey: group.groupKey,
+    ...group.item, projectGroup: group.displayNumber, projectGroupKey: group.groupKey,
     projectSpan: group.span, bomGroupLabel: group.label,
   }))
 }

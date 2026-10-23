@@ -6,9 +6,9 @@
         <span class="total-count">共 {{ items.length }} 项</span>
       </div>
     </template>
-    <el-table :data="items" border style="width: 100%" :height="height" :stripe="stripe">
-      <el-table-column label="组合 / 独立材料" min-width="215" align="center">
-        <template #default="{ $index }">{{ groups[$index]?.label }}</template>
+    <el-table :data="items" border style="width: 100%" :height="height" :stripe="stripe" :span-method="groupSpan">
+      <el-table-column label="序号" width="60" align="center">
+        <template #default="{ $index }">{{ groups[$index]?.displayNumber || '' }}</template>
       </el-table-column>
       <el-table-column label="行状态" width="105" align="center">
         <template #default="{ row }">
@@ -72,6 +72,14 @@ const props = withDefaults(
   { height: 300, stripe: false }
 )
 const groups = computed(() => bomGroupRows(props.items, true))
+const groupSpan = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
+  if (columnIndex !== 0) return [1, 1]
+  const group = groups.value[rowIndex]
+  if (!group) return [1, 1]
+  if (group.span === 0) return [0, 0]
+  if (group.span <= 1) return [1, 1]
+  return rowIndex === group.index ? [group.span, 1] : [0, 0]
+}
 const formatNumber = (value: number | string) => {
   if (value === undefined || value === null) return '0'
   const num = typeof value === 'string' ? parseFloat(value) : value

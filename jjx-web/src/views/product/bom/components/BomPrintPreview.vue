@@ -46,9 +46,8 @@
             </thead>
             <tbody>
               <tr v-for="row in page" :key="row.key" data-material-row>
-                <td v-if="row.span" :rowspan="row.span" class="center">{{ row.number }}</td>
+                <td v-if="row.span" :rowspan="row.span" class="center">{{ row.displayNumber || '' }}</td>
                 <td v-if="row.span" :rowspan="row.span" class="center">
-                  <small>{{ row.label }}</small>
                   <div class="project">
                     <ProcessIcon
                       :icon="processFor(row.item)?.icon"

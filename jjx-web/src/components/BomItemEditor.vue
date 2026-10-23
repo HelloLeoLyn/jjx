@@ -54,7 +54,7 @@
       class="bom-item-table"
     >
       <!-- 序号列 - 拖拽手柄 -->
-      <el-table-column label="组合 / 独立材料" width="185" align="center" fixed="left">
+      <el-table-column label="序号" width="50" align="center" fixed="left">
         <template #default="scope">
           <div class="drag-cell">
             <el-icon class="drag-handle"><Rank /></el-icon>
@@ -64,7 +64,7 @@
             <el-icon v-else size="small" color="#e56706">
               <WarningFilled />
             </el-icon>
-            <span class="row-index">{{ comboLabelOf(scope.$index) }}</span>
+            <span v-if="comboNoOf(scope.$index)" class="row-index">{{ comboNoOf(scope.$index) }}</span>
           </div>
         </template>
       </el-table-column>
@@ -100,9 +100,6 @@
               @clear="handleMaterialClear(scope.row)"
               @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
             />
-            <span v-if="materialDrafts[String(scope.row.itemId)] !== undefined" class="material-draft-hint">
-              未确认的搜索文字：{{ materialDrafts[String(scope.row.itemId)] || '（空）' }}
-            </span>
             <!-- <el-tag
               v-if="quickMode && !scope.row.materialId"
               size="small"
@@ -476,10 +473,8 @@ const comboLeaderOf = (row: EngineeringBomItem): EngineeringBomItem | null => {
 /** 序号列：组合序号（连续同项目为一组，1、2、3…）+ 组内合并 */
 const comboRuns = computed(() => {
   return draftGroups.value.filter(group => group.span > 0)
-    .map(group => ({ start: group.index, size: group.span, no: group.number }))
+    .map(group => ({ start: group.index, size: group.span, no: group.displayNumber }))
 })
-
-const comboLabelOf = (index: number): string => draftGroups.value[index]?.label || ''
 
 const comboNoOf = (index: number): number => {
   const run = comboRuns.value.find((r) => index >= r.start && index < r.start + r.size)
@@ -1112,11 +1107,6 @@ defineExpose({
 </script>
 
 <style scoped lang="scss">
-.material-draft-hint {
-  display: block;
-  color: var(--el-color-warning);
-  font-size: 12px;
-}
 /* 编辑行/错误行（dev-20261022-020）：点中=系统浅蓝，聚焦=蓝色左边框，错误=红色优先 */
 .bom-item-table :deep(.el-table__body tr:focus-within > td) {
   background: #ecf5ff !important;
