@@ -5,6 +5,9 @@
       <el-descriptions title="参考（只读）" :column="2" border size="small">
         <el-descriptions-item label="原名称">{{ refs.name }}</el-descriptions-item>
         <el-descriptions-item label="原规格">{{ refs.specification }}</el-descriptions-item>
+        <el-descriptions-item label="备注" :span="2">
+          <div class="remark-block">{{ original?.remark || '-' }}</div>
+        </el-descriptions-item>
       </el-descriptions>
 
       <el-divider content-position="left">可编辑属性</el-divider>
@@ -113,19 +116,24 @@
             v-model="form.specification"
             type="textarea"
             :rows="2"
-            placeholder="工艺描述：中砂面 / 雾面 / 离型力 / 克重等"
+            placeholder="如 0.38mm 幼砂加硬 / 120g 白色 / 离型力 10-15g"
             @input="clearFieldError('specification')"
           />
+          <div class="regen-hint">
+            填工艺 / 材质描述：厚度或克重、砂面（中砂/幼砂/雾面）、离型力、胶系、耐温、封装等；
+            尺寸（宽×长/厚）请填上面的「尺寸」框，不要在这里重复写宽×长。
+          </div>
         </el-form-item>
 
         <el-form-item label="名称" prop="materialName">
           <el-input v-model="form.materialName" placeholder="默认按规则自动生成，可手改" @input="handleNameInput">
             <template #append>
-              <el-button :disabled="!manualNamed" @click="restoreAutoName">恢复自动</el-button>
+              <el-button @click="restoreOriginalName">恢复原名称</el-button>
+              <el-button @click="regenerateName">重新生成</el-button>
             </template>
           </el-input>
           <div class="regen-hint" :class="{ manual: manualNamed }">
-            {{ manualNamed ? '手动命名：已停止自动同步（点「恢复自动」可回到规则生成）' : '自动命名：随材料/型号/颜色/品牌实时更新' }}
+            {{ manualNamed ? '手动命名：已停止自动同步（点「重新生成」按规则重算，或点「恢复原名称」回到原名称）' : '自动命名：随材料/型号/颜色/品牌实时更新' }}
           </div>
         </el-form-item>
       </el-form>
@@ -256,9 +264,17 @@ const handleNameInput = () => {
   manualNamed.value = true
 }
 
-const restoreAutoName = () => {
+/** 按规则重算名称，并恢复自动同步。 */
+const regenerateName = () => {
   manualNamed.value = false
   form.materialName = autoName.value
+}
+
+/** 回到参考区原名称（remark 的【原名称】优先，否则当前名称），保持手动命名态。 */
+const restoreOriginalName = () => {
+  const original = refs.value.name === '-' ? '' : refs.value.name
+  manualNamed.value = true
+  form.materialName = original
 }
 
 const handleCategoryChange = () => {
@@ -398,5 +414,11 @@ watch(
 
 .regen-tag {
   margin-left: 8px;
+}
+
+.remark-block {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
 }
 </style>
