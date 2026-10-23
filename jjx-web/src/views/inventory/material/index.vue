@@ -82,10 +82,18 @@
           </template>
         </el-table-column>
         <el-table-column label="供应商" prop="supplierName" width="200" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button link type="primary" v-hasPermi="['inventory:material:edit']" @click="handleEdit(row)">编辑</el-button>
+            <el-button
+              link
+              type="primary"
+              v-hasPermi="['inventory:material:edit']"
+              @click="handleRegenerate(row)"
+            >
+              重新生成
+            </el-button>
             <el-button link type="danger" v-hasPermi="['inventory:material:delete']" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -102,6 +110,13 @@
 
     <!-- 物料详情弹窗（不再跳路由页） -->
     <MaterialDetailDialog v-model="detailVisible" :material-id="detailMaterialId" />
+
+    <!-- 重新生成（单项，按规则重算属性，逐项可改） -->
+    <MaterialRegenerateDialog
+      v-model="regenerateVisible"
+      :material-id="regenerateMaterialId"
+      @success="getList"
+    />
 
     <!-- 物料表单对话框 -->
     <MaterialFormDialog
@@ -140,6 +155,7 @@ import Toolbar from '@/components/common-ui/Toolbar.vue'
 import TagQuerySelect from '@/components/TagQuerySelect.vue'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
+import MaterialRegenerateDialog from '@/components/inventory/MaterialRegenerateDialog.vue'
 import { materialApi } from '@/api/inventory/material'
 import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import { formatCurrency } from '@/utils/format'
@@ -208,6 +224,8 @@ const dialogVisible = ref(false)
 const editingMaterialId = ref<number | null>(null)
 const detailVisible = ref(false)
 const detailMaterialId = ref<number | null>(null)
+const regenerateVisible = ref(false)
+const regenerateMaterialId = ref<number | null>(null)
 
 // 导入（2026-08-13 通用 ExcelImportDialog 组件）
 const importDialogVisible = ref(false)
@@ -290,6 +308,12 @@ const handleEdit = (row: any) => {
 // 表单提交成功回调
 const handleFormSuccess = () => {
   getList()
+}
+
+// 重新生成（单项）
+const handleRegenerate = (row: any) => {
+  regenerateMaterialId.value = row.materialId
+  regenerateVisible.value = true
 }
 
 // 查看详情（弹窗，不跳路由页）
