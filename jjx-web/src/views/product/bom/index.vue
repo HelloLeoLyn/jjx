@@ -1,42 +1,39 @@
 <template>
   <div class="app-container">
-    <!-- 搜索区域 -->
-    <el-card class="search-card" shadow="never">
-      <el-form :model="queryParams" ref="queryForm" :inline="true" label-width="80px">
+    <el-card class="bom-list-card" shadow="never">
+      <el-form
+        ref="queryForm"
+        :model="queryParams"
+        class="bom-search"
+        label-position="top"
+        @submit.prevent
+      >
         <el-form-item label="产品编码" prop="productCode">
           <el-input
             v-model="queryParams.productCode"
-            placeholder="请输入产品编码"
+            placeholder="输入产品编码"
             clearable
-            style="width: 200px"
             @keyup.enter="handleQuery"
           />
         </el-form-item>
         <el-form-item label="产品名称" prop="productName">
           <el-input
             v-model="queryParams.productName"
-            placeholder="请输入产品名称"
+            placeholder="输入产品名称"
             clearable
-            style="width: 200px"
             @keyup.enter="handleQuery"
           />
         </el-form-item>
         <el-form-item label="BOM名称" prop="bomName">
           <el-input
             v-model="queryParams.bomName"
-            placeholder="请输入BOM名称"
+            placeholder="输入BOM名称"
             clearable
-            style="width: 200px"
             @keyup.enter="handleQuery"
           />
         </el-form-item>
-        <el-form-item label="BOM状态" prop="approveStatus">
-          <el-select
-            v-model="queryParams.approveStatus"
-            placeholder="请选择BOM状态"
-            clearable
-            style="width: 200px"
-          >
+        <el-form-item label="审核状态" prop="approveStatus">
+          <el-select v-model="queryParams.approveStatus" placeholder="全部状态" clearable>
             <el-option
               v-for="dict in bomStatusOptions"
               :key="dict.value"
@@ -45,167 +42,164 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item>
+        <div class="search-actions">
           <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
           <el-button icon="Refresh" @click="resetQuery">重置</el-button>
-        </el-form-item>
+        </div>
       </el-form>
-    </el-card>
 
-    <!-- 操作按钮区域 -->
-    <el-card class="operation-card" shadow="never">
-      <el-row :gutter="10" class="mb8">
-        <el-col :span="1.5">
+      <div class="bom-toolbar">
+        <div class="toolbar-main">
           <el-button
             type="primary"
-            plain
             icon="Plus"
             v-hasPermi="['engineering:bom:add']"
             @click="handleAdd"
-            >新增</el-button
+            >新增 BOM</el-button
           >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="success"
-            plain
-            icon="Edit"
-            :disabled="!canEditSelected"
-            @click="() => handleUpdate()"
-            v-hasPermi="['engineering:bom:edit']"
-            >修改</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="danger"
-            plain
-            icon="Delete"
-            :disabled="multiple || !canDeleteSelected"
-            @click="() => handleDelete()"
-            v-hasPermi="['engineering:bom:delete']"
-            >删除</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button type="warning" plain icon="Download" @click="handleExport">导出</el-button>
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="info"
-            plain
-            icon="Check"
-            :disabled="single"
-            @click="() => handleApprove()"
-            v-hasPermi="['engineering:bom:approve']"
-            >审核</el-button
-          >
-        </el-col>
-        <el-col :span="1.5">
-          <el-button
-            type="success"
-            plain
-            icon="CopyDocument"
-            v-hasPermi="['engineering:bom:add']"
-            :disabled="single"
-            @click="handleCopySelected"
-            >复制BOM</el-button
-          >
-        </el-col>
-      </el-row>
-    </el-card>
+          <template v-if="ids.length">
+            <span class="selection-count">已选 {{ ids.length }} 项</span>
+            <el-button
+              v-hasPermi="['engineering:bom:delete']"
+              :disabled="ids.length !== 1 || !canDeleteSelected"
+              @click="() => handleDelete()"
+              >删除所选</el-button
+            >
+          </template>
+        </div>
+        <div class="toolbar-secondary">
+          <el-switch
+            v-model="queryParams.showAllVersions"
+            active-text="展开全部版本"
+            @change="handleExpandAll"
+          />
+          <el-button icon="Download" @click="handleExport">导出</el-button>
+        </div>
+      </div>
 
-    <el-switch
-      v-model="queryParams.showAllVersions"
-      active-text="全部展开/收起"
-      @change="handleExpandAll"
-    />
-    <!-- 数据表格 -->
-    <el-card class="table-card" shadow="never">
       <el-table
         :key="tableKey"
         ref="bomTableRef"
+        class="bom-list-table"
         v-loading="loading"
         :data="bomList"
         :row-key="getRowKey"
         :lazy="true"
         :load="loadVersions"
         :tree-props="{ hasChildren: 'hasVersionChildren', children: 'versions' }"
+        :row-class-name="({ row }) => (isParentRow(row) ? '' : 'bom-version-row')"
         @selection-change="handleSelectionChange"
       >
-        <el-table-column type="selection" width="55" align="center" :selectable="isParentRow" />
-        <el-table-column label="BOM编码" align="center" prop="bomCode" min-width="160">
-          <template #default="scope">
+        <el-table-column type="selection" width="44" align="center" :selectable="isParentRow" />
+        <el-table-column label="产品" min-width="230" show-overflow-tooltip>
+          <template #default="{ row }">
+            <div v-if="isParentRow(row)" class="product-cell">
+              <el-button link type="primary" class="product-name" @click="handleView(row)">{{
+                row.productName || '未命名产品'
+              }}</el-button>
+              <span class="secondary-text product-code">{{ row.productCode || '—' }}</span>
+            </div>
+            <span v-else class="version-row-label">版本记录</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="BOM 编码" min-width="170" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-button v-if="isParentRow(row)" link type="primary" @click="handleView(row)">{{
+              row.bomCode
+            }}</el-button>
+          </template>
+        </el-table-column>
+        <el-table-column label="版本" width="145">
+          <template #default="{ row }">
+            <div class="version-cell">
+              <el-button link type="primary" @click="handleView(row)">{{
+                row.bomVersion
+              }}</el-button>
+              <el-tag v-if="row.isCurrent" size="small" type="success" effect="plain">现行</el-tag>
+              <el-tag v-else-if="isParentRow(row)" size="small" type="info" effect="plain"
+                >待设现行</el-tag
+              >
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="版本记录" width="115">
+          <template #default="{ row }">
             <el-button
-              v-if="isParentRow(scope.row)"
+              v-if="isParentRow(row) && row.hasVersionChildren"
               link
               type="primary"
-              @click="handleView(scope.row)"
-              >{{ scope.row.bomCode }}</el-button
+              @click="toggleVersions(row)"
             >
+              全部版本 {{ row.versionCount }}
+            </el-button>
+            <span v-else-if="isParentRow(row)" class="secondary-text">单版本</span>
           </template>
         </el-table-column>
-        <el-table-column label="BOM版本" align="center" prop="bomVersion" width="140">
-          <template #default="scope">
-            <el-button link type="primary" @click="handleView(scope.row)">{{
-              scope.row.bomVersion
-            }}</el-button>
-            <el-tag v-if="scope.row.isCurrent" type="success">现行</el-tag>
-            <el-tag v-else-if="isParentRow(scope.row)" type="warning">待设现行</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="版本数" prop="versionCount" width="80">
-          <template #default="{ row }">{{ isParentRow(row) ? row.versionCount : '' }}</template>
-        </el-table-column>
-        <el-table-column label="审核状态" prop="approveStatus" width="100">
-          <template #default="scope">
-            <el-tag :type="ProductEnum.bomStatus.getTagProps(scope.row.approveStatus)?.type">
-              {{ ProductEnum.bomStatus.getLabel(scope.row.approveStatus) }}
+        <el-table-column label="审核状态" width="105">
+          <template #default="{ row }">
+            <el-tag
+              size="small"
+              :type="ProductEnum.bomStatus.getTagProps(row.approveStatus)?.type"
+              effect="light"
+            >
+              {{ ProductEnum.bomStatus.getLabel(row.approveStatus) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="生效日期" align="center" prop="effectiveDate" width="120">
-          <template #default="scope">
-            <span>{{ parseDate(scope.row.effectiveDate) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="失效日期" align="center" prop="expiryDate" width="120">
-          <template #default="scope">
-            <span>{{ parseDate(scope.row.expiryDate) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="创建时间" align="center" prop="createTime" width="180">
-          <template #default="scope">
-            <span>{{
-              parseTime(
-                isParentRow(scope.row)
-                  ? scope.row.updateTime || scope.row.createTime
-                  : scope.row.createTime
-              )
+        <el-table-column label="更新时间" width="165">
+          <template #default="{ row }">
+            <span class="secondary-text">{{
+              parseTime(row.updateTime || row.createTime) || '—'
             }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="产品编码" align="center" width="170">
-          <template #default="{ row }">{{ isParentRow(row) ? row.productCode : '' }}</template>
-        </el-table-column>
-        <el-table-column label="产品名称" align="center" width="170">
-          <template #default="{ row }">{{ isParentRow(row) ? row.productName : '' }}</template>
-        </el-table-column>
         <TableActionColumn
           :actions="bomActions"
-          min-width="300"
+          :width="245"
+          :max-visible="0"
           display="text"
           @action="handleBomAction"
         >
           <template #before="{ row }">
             <el-button
+              v-if="canEditBom(row)"
+              v-hasPermi="['engineering:bom:edit']"
+              link
+              type="primary"
+              @click="handleUpdate(row)"
+              >修改</el-button
+            >
+            <el-button
+              v-if="ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.SUBMIT)"
+              v-hasPermi="['engineering:bom:add']"
+              link
+              type="primary"
+              @click="handleSubmitApprove(row)"
+              >提交审核</el-button
+            >
+            <el-button
+              v-if="ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.APPROVE)"
+              v-hasPermi="['engineering:bom:approve']"
+              link
+              type="primary"
+              @click="handleApprove(row)"
+              >审核</el-button
+            >
+            <el-button
+              v-if="row.approveStatus === BomStatusEnum.APPROVED.value && !row.isCurrent"
+              v-hasPermi="['engineering:bom:edit']"
+              link
+              type="primary"
+              @click="handleSetDefaultBom(row)"
+              >设为现行</el-button
+            >
+            <el-button
               v-if="versionErrors[getRowKey(row)]"
               link
               type="danger"
               @click="retryVersions(row)"
+              >重试加载版本</el-button
             >
-              重试加载版本
-            </el-button>
           </template>
         </TableActionColumn>
       </el-table>
@@ -247,7 +241,7 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { TableInstance } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
-import { parseTime, parseDate } from '@/utils/format'
+import { parseTime } from '@/utils/format'
 import TraceTimeline from '@/components/TraceTimeline/index.vue'
 import BomDetail from './components/BomDetail.vue'
 import BomApproveDialog from './components/BomApproveDialog.vue'
@@ -259,37 +253,10 @@ import type { TableAction } from '@/components/common-ui/TableActionColumn/types
 const canEditBom = (bom?: EngineeringBom | null) =>
   !!bom && BomStatusEnum.canDo(bom.approveStatus, ProductActions.EDIT)
 
+// 次要动作统一收进「更多」，权限仍由公共操作列校验。
 const bomActions: TableAction<EngineeringBom>[] = [
-  { key: 'trace', label: '流水' },
   { key: 'copy', label: '复制BOM', permission: 'engineering:bom:add' },
-  {
-    key: 'edit',
-    label: '修改',
-    permission: 'engineering:bom:edit',
-    visible: ({ row }) => canEditBom(row),
-  },
-
-  {
-    key: 'submit',
-    label: '提交审核',
-    type: 'warning',
-    permission: 'engineering:bom:add',
-    visible: ({ row }) => ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.SUBMIT),
-  },
-  {
-    key: 'approve',
-    label: '审核',
-    type: 'warning',
-    permission: 'engineering:bom:approve',
-    visible: ({ row }) => ProductEnum.bomStatus.canDo(row.approveStatus, ProductActions.APPROVE),
-  },
-  {
-    key: 'setDefault',
-    label: '设为默认',
-    type: 'success',
-    permission: 'engineering:bom:edit',
-    visible: ({ row }) => row.approveStatus === BomStatusEnum.APPROVED.value && !row.isCurrent,
-  },
+  { key: 'trace', label: '流水' },
   {
     key: 'delete',
     label: '删除',
@@ -315,15 +282,12 @@ const queryParams = reactive<EngineeringBomQueryParams>({
 // 响应式数据
 const loading = ref(false)
 const ids = ref<number[]>([])
-const single = ref(true)
-const multiple = ref(true)
 const total = ref(0)
 const open = ref(false)
 const bomFormRef = ref<InstanceType<typeof BomFormDialog>>()
 const bomDetailOpen = ref(false)
 const bomApproveOpen = ref(false)
 const selectedBom = ref<EngineeringBom | null>(null)
-const canEditSelected = computed(() => !single.value && canEditBom(selectedBom.value))
 const selectedBomId = ref<number | undefined>(undefined)
 const selectedBomForApprove = ref<number | undefined>(undefined)
 
@@ -388,6 +352,12 @@ const loadVersions = async (
     versionRequests.delete(key)
     versionErrors.value[key] = true
     ElMessage.warning('版本加载失败，请点击该 BOM 行的「重试加载版本」')
+  }
+}
+
+const toggleVersions = (row: BomTreeRow) => {
+  if (isParentRow(row) && row.hasVersionChildren) {
+    bomTableRef.value?.toggleRowExpansion(row)
   }
 }
 
@@ -488,8 +458,6 @@ const handleSelectionChange = (rows: EngineeringBom[]) => {
   const selection = rows.filter((row) => (row as BomTreeRow).rowType !== 'version')
   ids.value = selection.map((item) => item.bomId)
   selectedBom.value = selection.length === 1 ? selection[0] : null
-  single.value = selection.length !== 1
-  multiple.value = !selection.length
   // 勾选中有不可删除状态（已批准/审核中等）则禁用批量删除（2026-08-08）
   canDeleteSelected.value =
     selection.length > 0 &&
@@ -516,16 +484,20 @@ const handleUpdate = (row?: EngineeringBom) => {
   open.value = true
 }
 
-// 删除按钮操作
+// 删除接口一次处理一个版本；多选时不把首行误当作全部所选。
 const handleDelete = (row?: EngineeringBom) => {
-  const bomIds = row?.bomId || ids.value[0]
-  ElMessageBox.confirm('是否确认删除BOM编码为"' + bomIds + '"的数据项？', '警告', {
+  const bom = row || selectedBom.value
+  if (!bom || !ProductEnum.bomStatus.canDo(bom.approveStatus, ProductActions.DELETE)) {
+    ElMessage.warning('请选择一项可删除的BOM')
+    return
+  }
+  ElMessageBox.confirm(`是否确认删除 BOM【${bom.bomCode}】的 ${bom.bomVersion} 版本？`, '警告', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning',
   })
     .then(() => {
-      return productBomApi.removeEngineeringBom(bomIds)
+      return productBomApi.removeEngineeringBom(bom.bomId)
     })
     .then(() => {
       getList()
@@ -539,7 +511,7 @@ const handleExport = () => {
   ElMessageBox.confirm(
     queryParams.showAllVersions
       ? '导出当前筛选的全部版本（包含历史版本），不受分页限制？'
-      : '导出当前筛选的每个BOM现行/最新版本；历史版本请打开「全部展开/收起」后导出。',
+      : '导出当前筛选的每个BOM现行/最新版本；历史版本请打开「展开全部版本」后导出。',
     '导出范围',
     {
       confirmButtonText: '确定',
@@ -651,11 +623,6 @@ const handleView = (row: EngineeringBom) => {
   bomDetailOpen.value = true
 }
 
-const handleCopySelected = () => {
-  if (!selectedBom.value) return
-  handleCopyBom(selectedBom.value)
-}
-
 const handleBomAction = (key: string, row: EngineeringBom) => {
   if (key === 'copy') handleCopyBom(row)
   if (key === 'edit') handleUpdate(row)
@@ -744,15 +711,146 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <style scoped>
-.search-card {
-  margin-bottom: 20px;
+.bom-list-card :deep(.el-card__body) {
+  padding: 20px;
 }
 
-.operation-card {
-  margin-bottom: 20px;
+.bom-search {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr)) minmax(130px, 0.8fr) auto;
+  align-items: end;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
-.table-card {
-  margin-bottom: 20px;
+.bom-search :deep(.el-form-item) {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.bom-search :deep(.el-form-item__label) {
+  margin-bottom: 6px;
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+}
+
+.bom-search :deep(.el-select) {
+  width: 100%;
+}
+
+.search-actions,
+.bom-toolbar,
+.toolbar-main,
+.toolbar-secondary,
+.version-cell {
+  display: flex;
+  align-items: center;
+}
+
+.search-actions {
+  padding-bottom: 1px;
+}
+
+.bom-toolbar {
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 0;
+}
+
+.toolbar-main,
+.toolbar-secondary {
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.toolbar-main :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.selection-count,
+.secondary-text,
+.version-row-label {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.bom-list-table :deep(th.el-table__cell) {
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-regular);
+  font-weight: 500;
+  height: 42px;
+}
+
+.bom-list-table :deep(td.el-table__cell) {
+  padding: 12px 0;
+}
+
+.bom-list-table :deep(.bom-version-row) {
+  --el-table-tr-bg-color: var(--el-fill-color-lighter);
+}
+
+.bom-list-table :deep(.bom-version-row td.el-table__cell) {
+  padding: 9px 0;
+}
+
+.product-cell {
+  display: inline-flex;
+  vertical-align: middle;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: calc(100% - 30px);
+  gap: 5px;
+}
+
+.product-name {
+  max-width: 100%;
+  font-weight: 500;
+}
+
+.product-name :deep(span),
+.product-code {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.version-cell {
+  gap: 8px;
+}
+
+@media (max-width: 1100px) {
+  .bom-search {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .search-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .bom-list-card :deep(.el-card__body) {
+    padding: 12px;
+  }
+
+  .bom-search {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bom-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .bom-list-table :deep(.el-table-fixed-column--right) {
+    position: static !important;
+  }
+
+  .bom-list-table :deep(.el-table-fixed-column--right::before) {
+    display: none;
+  }
 }
 </style>

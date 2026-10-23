@@ -15,7 +15,7 @@ function setup() {
   const code = ts.transpileModule(script.content, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText
-  const calls = { versions: [], lists: [], warnings: [], exports: [] }
+  const calls = { versions: [], lists: [], warnings: [], exports: [], deletes: [] }
   const api = {
     listEngineeringBom: async (params) => {
       calls.lists.push({ ...params })
@@ -29,6 +29,7 @@ function setup() {
       calls.versions.push(code)
       return { data: [bom(12, code), bom(11, code)] }
     },
+    removeEngineeringBom: async (id) => { calls.deletes.push(id) },
   }
   const status = { items: [], canDo: () => true }
   const mod = { exports: {} }
@@ -180,5 +181,42 @@ test('列表始终按编码分页，导出沿用全部展开开关的版本口�
       await new Promise((resolve) => setImmediate(resolve))
       assert.equal(h.calls.exports.at(-1).showAllVersions, showAllVersions)
     }
+  } finally { h.stop() }
+})
+
+test('版本数入口只展开多版本父行，版本详情和审核使用各自版本ID', async () => {
+  const h = setup()
+  try {
+    await h.state.getList()
+    const [parent, single] = h.state.bomList.value
+    const child = { ...parent, bomId: 11, rowType: 'version', hasVersionChildren: false }
+    const toggles = []
+    h.state.bomTableRef.value = { toggleRowExpansion: (row) => toggles.push(row.bomId) }
+    h.state.toggleVersions(parent)
+    h.state.toggleVersions(single)
+    h.state.toggleVersions(child)
+    assert.deepEqual(toggles, [12])
+    h.state.handleView(child)
+    assert.equal(h.state.selectedBomId.value, 11)
+    h.state.handleApprove(child)
+    assert.equal(h.state.selectedBomForApprove.value, 11)
+    h.state.openTrace(child)
+    assert.equal(h.state.traceBomId.value, 11)
+  } finally { h.stop() }
+})
+
+test('所选删除只允许一条记录，版本行的更多删除使用该版本ID', async () => {
+  const h = setup()
+  try {
+    await h.state.getList()
+    h.state.handleSelectionChange(h.state.bomList.value)
+    h.state.handleDelete()
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(h.calls.deletes.length, 0)
+    assert.match(h.calls.warnings.at(-1), /一项/)
+    const child = { ...h.state.bomList.value[0], bomId: 11, rowType: 'version' }
+    h.state.handleBomAction('delete', child)
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.deepEqual(h.calls.deletes, [11])
   } finally { h.stop() }
 })
