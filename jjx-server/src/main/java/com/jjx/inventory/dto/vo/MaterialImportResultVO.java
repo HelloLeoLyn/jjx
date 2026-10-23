@@ -31,12 +31,20 @@ public class MaterialImportResultVO {
         private String materialName;
         /** 失败原因 */
         private String reason;
+
+        /** 缺失/校验失败的列名（如「材料」「颜色」「规格」），非列相关失败为 null */
+        private String column;
     }
 
     public void addFail(Integer rowIndex, String materialName, String reason) {
+        addFail(rowIndex, materialName, null, reason);
+    }
+
+    public void addFail(Integer rowIndex, String materialName, String column, String reason) {
         FailDetail d = new FailDetail();
         d.setRowIndex(rowIndex);
         d.setMaterialName(materialName);
+        d.setColumn(column);
         d.setReason(reason);
         failDetails.add(d);
         failCount = failDetails.size();

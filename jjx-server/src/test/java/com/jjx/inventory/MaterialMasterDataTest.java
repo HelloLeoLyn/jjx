@@ -31,6 +31,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -194,6 +195,122 @@ class MaterialMasterDataTest {
         var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
         verify(categories).listMaps(wrapper.capture());
         assertTrue(wrapper.getValue().getSqlSegment().contains("status"));
+    }
+
+    @Test void importComposesNameFromStructuredFieldsWhenNameBlank() throws Exception {
+        when(mapper.findCategory(anyString())).thenReturn(category());
+        when(mapper.selectCategory(2L)).thenReturn(category());
+        when(mapper.selectRequiredFields("RM-FILM")).thenReturn(List.of("material_grade", "color", "specification"));
+        when(sequence.generateBusinessNumberByTypeWithPrefix(anyString(), anyString(), anyString(), anyInt(), anyLong())).thenReturn("TEST012");
+        var rows = workbook(new String[]{"品类", "材料", "型号", "颜色", "品牌", "尺寸", "规格"},
+                new String[]{"RM-FILM", "PC膜", "F200", "透明", "3M", "300×305", "雾面"});
+        var result = service.importMaterial(rows, "codex");
+        assertEquals(1, result.getSuccessCount(), () -> result.getFailDetails().toString());
+        var inserted = ArgumentCaptor.forClass(InventoryMaterial.class);
+        verify(mapper).insert(inserted.capture());
+        assertEquals("PC膜F200透明（3M）", inserted.getValue().getMaterialName());
+    }
+
+    @Test void importKeepsManualNameAndLegacyName() throws Exception {
+        when(mapper.findCategory(anyString())).thenReturn(category());
+        when(mapper.selectCategory(2L)).thenReturn(category());
+        when(mapper.selectRequiredFields("RM-FILM")).thenReturn(List.of("material_grade", "color", "specification"));
+        when(sequence.generateBusinessNumberByTypeWithPrefix(anyString(), anyString(), anyString(), anyInt(), anyLong())).thenReturn("TEST012");
+        var manual = workbook(new String[]{"物料名称", "品类", "材料", "型号", "颜色", "规格"},
+                new String[]{"人工命名A", "RM-FILM", "PC膜", "F200", "透明", "雾面"});
+        assertEquals(1, service.importMaterial(manual, "codex").getSuccessCount());
+        var legacy = workbook(new String[]{"材料", "规格"}, new String[]{"PC透明旧模板X", "雾面300*305mm"});
+        assertEquals(1, service.importMaterial(legacy, "codex").getSuccessCount());
+        var inserted = ArgumentCaptor.forClass(InventoryMaterial.class);
+        verify(mapper, times(2)).insert(inserted.capture());
+        assertEquals("人工命名A", inserted.getAllValues().get(0).getMaterialName());
+        assertEquals("PC透明旧模板X", inserted.getAllValues().get(1).getMaterialName());
+    }
+
+    @Test void importPrecheckReportsMissingColumn() throws Exception {
+        when(mapper.findCategory(anyString())).thenReturn(category());
+        when(mapper.selectRequiredFields("RM-FILM")).thenReturn(List.of("material_grade", "color", "specification"));
+        var rows = workbook(new String[]{"物料名称", "品类", "材料", "规格"},
+                new String[]{"缺颜色物料", "RM-FILM", "PC膜", "雾面"});
+        var result = service.importMaterial(rows, "codex");
+        assertEquals(0, result.getSuccessCount());
+        assertEquals(1, result.getFailCount());
+        String reason = result.getFailDetails().get(0).getReason();
+        assertTrue(reason.contains("缺【颜色】列"), reason);
+        assertTrue(reason.contains("RM-FILM"), reason);
+        verify(mapper, never()).insert(any(InventoryMaterial.class));
+    }
+
+    @Test void importSkipsExistingByAttributesInsteadOfName() throws Exception {
+        when(mapper.findCategory(anyString())).thenReturn(category());
+        when(mapper.selectRequiredFields("RM-FILM")).thenReturn(List.of("material_grade", "color", "specification"));
+        when(mapper.selectCount(any())).thenReturn(1L);
+        var rows = workbook(new String[]{"物料名称", "品类", "材料", "型号", "颜色", "尺寸", "规格"},
+                new String[]{"换了个写法", "RM-FILM", "PC膜", "F200", "透明", "300×305", "雾面"});
+        var result = service.importMaterial(rows, "codex");
+        assertEquals(1, result.getSkipCount());
+        assertEquals(0, result.getSuccessCount());
+        verify(mapper, never()).insert(any(InventoryMaterial.class));
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper).selectCount(wrapper.capture());
+        String sql = wrapper.getValue().getSqlSegment();
+        for (String column : List.of("category_id", "material_grade", "model", "color", "brand", "size", "specification")) {
+            assertTrue(sql.contains("IFNULL(" + column), sql);
+        }
+        assertFalse(sql.contains("material_name"), sql);
+    }
+
+    @Test void importRejectsDuplicateRowsInFile() throws Exception {
+        when(mapper.findCategory(anyString())).thenReturn(category());
+        when(mapper.selectRequiredFields("RM-FILM")).thenReturn(List.of("material_grade", "color", "specification"));
+        try (var wb = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = wb.createSheet();
+            var head = sheet.createRow(0);
+            String[] headers = {"物料名称", "品类", "材料", "型号", "颜色", "尺寸", "规格"};
+            for (int i = 0; i < headers.length; i++) head.createCell(i).setCellValue(headers[i]);
+            for (int r = 1; r <= 2; r++) {
+                var row = sheet.createRow(r);
+                String[] values = {"写法" + r, "RM-FILM", "PC膜", "F200", "透明", "300×305", "雾面"};
+                for (int i = 0; i < values.length; i++) row.createCell(i).setCellValue(values[i]);
+            }
+            wb.write(out);
+            var list = ExcelUtils.importExcel(new MockMultipartFile("file", "test.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", out.toByteArray()), MaterialImportDTO.class);
+            var result = service.importMaterial(list, "codex");
+            assertEquals(0, result.getSuccessCount());
+            assertEquals(2, result.getFailCount());
+            assertTrue(result.getFailDetails().get(0).getReason().contains("文件内重复行"));
+        }
+        verify(mapper, never()).insert(any(InventoryMaterial.class));
+    }
+
+    @Test void importNewColumnsLandAndStockQuantityColumnIgnored() throws Exception {
+        when(mapper.findCategory(anyString())).thenReturn(category());
+        when(mapper.selectCategory(2L)).thenReturn(category());
+        when(mapper.selectRequiredFields("RM-FILM")).thenReturn(List.of("material_grade", "color", "specification"));
+        when(sequence.generateBusinessNumberByTypeWithPrefix(anyString(), anyString(), anyString(), anyInt(), anyLong())).thenReturn("TEST012");
+        var rows = workbook(
+                new String[]{"物料名称", "品类", "材料", "颜色", "规格", "别名", "标准单价", "采购周期(天)",
+                        "安全库存", "最高库存", "再订货点", "保质期(天)", "预警提前天数", "批次控制", "数量"},
+                new String[]{"新字段物料", "RM-FILM", "PC膜", "透明", "雾面", "老料号A", "12.5", "7",
+                        "5", "100", "3", "365", "15", "是", "999"});
+        var result = service.importMaterial(rows, "codex");
+        assertEquals(1, result.getSuccessCount(), () -> result.getFailDetails().toString());
+        var inserted = ArgumentCaptor.forClass(InventoryMaterial.class);
+        verify(mapper).insert(inserted.capture());
+        InventoryMaterial saved = inserted.getValue();
+        assertEquals("老料号A", saved.getSearchKeywords());
+        assertEquals(0, saved.getStandardPrice().compareTo(new BigDecimal("12.5")));
+        assertEquals(7, saved.getLeadTime());
+        assertEquals(0, saved.getSafeStock().compareTo(new BigDecimal("5")));
+        assertEquals(0, saved.getMaxStock().compareTo(new BigDecimal("100")));
+        assertEquals(0, saved.getReorderPoint().compareTo(new BigDecimal("3")));
+        assertEquals(365, saved.getShelfLife());
+        assertEquals(15, saved.getExpiryAlertDays());
+        assertEquals(Boolean.TRUE, saved.getBatchControl());
+        // 「数量」列已从模板删除：旧文件里的数量列不写库存（导入不碰库存数量）
+        assertTrue(Arrays.stream(MaterialImportDTO.class.getDeclaredFields())
+                .noneMatch(field -> "currentStock".equals(field.getName())));
     }
 
     /** 显式启用时使用真实业务库；整段事务回滚，不留测试物料、不调用库存路径。 */

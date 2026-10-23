@@ -400,29 +400,48 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             return result;
         }
 
-        int successCount = 0;
-        int skipCount = 0;
-        // DEV-702：文件内重复检测（材料+规格+供应商）
-        java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
-        for (MaterialImportDTO dto : importList) {
-            // 名称兼容先完成，错误由逐行导入捕获。
-            if (StringUtils.isBlank(dto.getMaterialName())) dto.setMaterialName(dto.getMaterialGrade());
-            String k = (dto.getMaterialName() == null ? "" : dto.getMaterialName().trim())
-                    + "|" + (dto.getSpecification() == null ? "" : dto.getSpecification().trim())
-                    + "|" + (dto.getSupplierName() == null ? "" : dto.getSupplierName().trim());
-            dupCountMap.merge(k, 1, Integer::sum);
-        }
+        // 1) 整表预检（dev-20261023-019）：归一 → 品类 → 名称 → 按品类必填矩阵与尺寸规则校验，逐行给出缺失列
+        List<ImportRow> rows = new ArrayList<>();
+        Map<String, Integer> keyCountMap = new HashMap<>();
         for (int i = 0; i < importList.size(); i++) {
             MaterialImportDTO dto = importList.get(i);
             int excelRow = i + 2; // 第1行表头，数据从第2行开始
             try {
                 normalizeImport(dto);
-                // 文件内重复检测
-                String dupKey = (dto.getMaterialName() == null ? "" : dto.getMaterialName().trim())
-                        + "|" + (dto.getSpecification() == null ? "" : dto.getSpecification().trim())
-                        + "|" + (dto.getSupplierName() == null ? "" : dto.getSupplierName().trim());
-                if (dupCountMap.getOrDefault(dupKey, 0) > 1) {
-                    result.addFail(excelRow, dto.getMaterialName(), "文件内重复行（同一材料+规格+供应商出现 " + dupCountMap.get(dupKey) + " 次），请删除重复行或合并");
+                Map<String, Object> category = resolveImportCategory(dto);
+                if (StringUtils.isBlank(dto.getMaterialName())) {
+                    String composed = composeImportName(dto.getMaterialGrade(), dto.getModel(), dto.getColor(), dto.getBrand());
+                    if (StringUtils.isBlank(composed)) {
+                        throw new BusinessException("缺【物料名称】列：请填写名称，或填写【材料/型号/颜色/品牌】自动生成");
+                    }
+                    dto.setMaterialName(composed);
+                }
+                validateImportRow(dto, category);
+                ImportRow row = new ImportRow(excelRow, dto, category, importDedupeKey(dto));
+                rows.add(row);
+                keyCountMap.merge(row.key(), 1, Integer::sum);
+            } catch (Exception e) {
+                log.warn("导入第{}条预检失败: {}", excelRow, e.getMessage());
+                result.addFail(excelRow, dto.getMaterialName(), e.getMessage());
+            }
+        }
+
+        int successCount = 0;
+        int skipCount = 0;
+        for (ImportRow row : rows) {
+            MaterialImportDTO dto = row.dto();
+            int excelRow = row.excelRow();
+            try {
+                int sameRows = keyCountMap.getOrDefault(row.key(), 0);
+                if (sameRows > 1) {
+                    result.addFail(excelRow, dto.getMaterialName(),
+                            "文件内重复行（同一 品类+材料+型号+颜色+品牌+尺寸+规格 出现 " + sameRows + " 次），请删除重复行或合并");
+                    continue;
+                }
+
+                // 与库内已存在判定：按结构化属性去重，不再用「名称+规格+供应商」（dev-20261023-019）
+                if (importMaterialExists(dto, row.category())) {
+                    skipCount++;
                     continue;
                 }
 
@@ -430,26 +449,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 String supplierName = StringUtils.trimToNull(dto.getSupplierName());
                 PurchaseSupplierVO purchaseSupplierVO = supplierName == null ? null
                         : purchaseSupplierService.selectSupplierByName(supplierName);
-                // 检查是否已存在（按物料名称+规格+供应商去重）
-                LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
-                wrapper.eq(InventoryMaterial::getMaterialName, dto.getMaterialName());
-                if (dto.getSpecification() != null && !dto.getSpecification().isEmpty()) {
-                    wrapper.eq(InventoryMaterial::getSpecification, dto.getSpecification());
-                }
-                if (supplierName != null) {
-                    wrapper.eq(InventoryMaterial::getSupplierName, supplierName);
-                }
 
-                Long existCount = materialMapper.selectCount(wrapper);
-                if (existCount != null && existCount > 0) {
-                    skipCount++;
-                    continue;
-                }
-
-                // 生成物料编码
-                Map<String, Object> category = materialMapper.findCategory(dto.getCategoryName());
-                if (category == null) throw new BusinessException("品类不存在：" + dto.getCategoryName());
-                dto.setMaterialType((String) category.get("material_type"));
+                dto.setMaterialType((String) row.category().get("material_type"));
                 String materialCode = generateMaterialCode(dto.getMaterialType());
 
                 // 创建物料实体
@@ -459,23 +460,32 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 material.setMaterialNameEn(dto.getMaterialNameEn());
                 material.setMaterialType(dto.getMaterialType());
                 material.setSpecification(dto.getSpecification());
-                material.setCategoryId(((Number) category.get("category_id")).longValue());
+                material.setCategoryId(((Number) row.category().get("category_id")).longValue());
                 material.setMaterialGrade(dto.getMaterialGrade());
                 material.setModel(dto.getModel());
                 material.setColor(dto.getColor());
                 material.setBrand(dto.getBrand());
                 material.setSize(dto.getSize());
+                material.setSearchKeywords(StringUtils.trimToNull(dto.getSearchKeywords()));
                 validateMasterData(material, null);
                 material.setUnit(dto.getUnit());
                 material.setSupplierId(purchaseSupplierVO != null ? purchaseSupplierVO.getSupplierId() : null);
                 material.setSupplierName(supplierName);
                 material.setRemark(dto.getRemark());
                 material.setStatus(StatusEnum.NORMAL.getCode());
-                material.setSafeStock(BigDecimal.ZERO);
-                material.setMaxStock(BigDecimal.ZERO);
-                material.setReorderPoint(BigDecimal.ZERO);
-                material.setBatchControl(false);
-                material.setExpiryAlertDays(30);
+                BigDecimal safeStock = importDecimal(dto.getSafeStock(), "安全库存");
+                BigDecimal maxStock = importDecimal(dto.getMaxStock(), "最高库存");
+                BigDecimal reorderPoint = importDecimal(dto.getReorderPoint(), "再订货点");
+                material.setSafeStock(safeStock == null ? BigDecimal.ZERO : safeStock);
+                material.setMaxStock(maxStock == null ? BigDecimal.ZERO : maxStock);
+                material.setReorderPoint(reorderPoint == null ? BigDecimal.ZERO : reorderPoint);
+                material.setStandardPrice(importDecimal(dto.getStandardPrice(), "标准单价"));
+                material.setLeadTime(importInteger(dto.getLeadTime(), "采购周期"));
+                material.setShelfLife(importInteger(dto.getShelfLife(), "保质期"));
+                Integer alertDays = importInteger(dto.getExpiryAlertDays(), "预警提前天数");
+                material.setExpiryAlertDays(alertDays == null ? 30 : alertDays);
+                Boolean batchControl = importBoolean(dto.getBatchControl(), "批次控制");
+                material.setBatchControl(batchControl != null && batchControl);
                 material.setProcessGroup(getProcessGroup(dto));
                 materialMapper.insert(material);
 
@@ -487,7 +497,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 successCount++;
 
             } catch (Exception e) {
-                log.error("导入第{}条数据失败: {}", i + 1, dto.getMaterialName(), e);
+                log.error("导入第{}条数据失败: {}", excelRow, dto.getMaterialName(), e);
                 result.addFail(excelRow, dto.getMaterialName(), e.getMessage());
             }
         }
@@ -642,7 +652,11 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (categoryId != null && category == null) throw new BusinessException("品类不存在：" + categoryId);
         if (existing == null && category == null) throw new BusinessException("品类不能为空");
         if (category != null) {
-            material.setMaterialType((String) category.get("material_type"));
+            String categoryType = (String) category.get("material_type");
+            // 品类查询结果缺大类时保留调用方已带出的类型，避免被 null 覆盖（dev-20261023-019）
+            if (StringUtils.isNotBlank(categoryType)) {
+                material.setMaterialType(categoryType);
+            }
         } else if (material.getMaterialType() == null && existing != null) {
             material.setMaterialType(existing.getMaterialType());
         }
@@ -676,54 +690,234 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 .eq(StringUtils.isNotBlank(dto.getBrand()), InventoryMaterial::getBrand, dto.getBrand());
     }
 
+    /** 材料受控复合词（23 个，与前端 materialMasterFields 同一份口径）。 */
+    private static final List<String> IMPORT_MATERIAL_GRADES = List.of(
+            "PET保护膜", "PE保护膜", "EVA泡棉", "VHB胶带", "PC膜", "PET膜", "PVC膜", "PE膜",
+            "离型纸", "离型膜", "标签纸", "胶带", "泡棉", "灯", "螺丝", "垫片", "不锈钢",
+            "铜", "铝", "油墨", "箱", "袋", "其他");
+
+    /** 颜色词表（13 色）。 */
+    private static final List<String> IMPORT_COLORS = List.of(
+            "透明", "咖啡色", "白色", "黑色", "黄色", "红色", "蓝色", "绿色", "灰色", "银色",
+            "金色", "紫色", "橙色");
+
+    private record ImportRow(int excelRow, MaterialImportDTO dto, Map<String, Object> category, String key) { }
+
+    private static String nz(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    /**
+     * 名称 = 材料 + 型号 + 颜色（品牌）：无空格、缺项跳过、品牌全角括号。
+     * 与前端 jjx-web/src/components/inventory/materialMasterFields.ts 的 composeMaterialName 等价。
+     */
+    static String composeImportName(String materialGrade, String model, String color, String brand) {
+        StringBuilder name = new StringBuilder();
+        for (String part : List.of(nz(materialGrade), nz(model), nz(color))) {
+            name.append(part);
+        }
+        String brandText = nz(brand);
+        if (brandText.isEmpty()) return name.toString();
+        if (name.length() == 0) return brandText;
+        return name + "（" + brandText + "）";
+    }
+
+    private static boolean isControlledGrade(String value) {
+        return value != null && IMPORT_MATERIAL_GRADES.contains(value.trim());
+    }
+
+    /** 品类解析：编码或名称都认，统一归一为品类编码并带出大类。 */
+    private Map<String, Object> resolveImportCategory(MaterialImportDTO dto) {
+        String value = StringUtils.trimToNull(dto.getCategoryName());
+        if (value == null) throw new BusinessException("缺【品类】列：请填写品类编码或完整名称");
+        Map<String, Object> category = materialMapper.findCategory(value);
+        if (category == null) throw new BusinessException("品类不存在：" + value);
+        dto.setCategoryName((String) category.get("category_code"));
+        dto.setMaterialType((String) category.get("material_type"));
+        return category;
+    }
+
+    private String importFieldValue(MaterialImportDTO dto, String key) {
+        return switch (key) {
+            case "materialGrade" -> dto.getMaterialGrade();
+            case "model" -> dto.getModel();
+            case "color" -> dto.getColor();
+            case "brand" -> dto.getBrand();
+            case "specification" -> dto.getSpecification();
+            case "size" -> dto.getSize();
+            case "searchKeywords" -> dto.getSearchKeywords();
+            default -> null;
+        };
+    }
+
+    /** 整表预检：按品类必填矩阵检查，错误信息指明缺哪一列。 */
+    private void validateImportRow(MaterialImportDTO dto, Map<String, Object> category) {
+        String categoryCode = (String) category.get("category_code");
+        for (String column : materialMapper.selectRequiredFields(categoryCode)) {
+            String key = MASTER_COLUMNS.entrySet().stream().filter(e -> e.getValue().equals(column))
+                    .map(Map.Entry::getKey).findFirst().orElse(null);
+            if (key == null) throw new BusinessException("不支持的物料必填规则：" + column);
+            if (StringUtils.isBlank(importFieldValue(dto, key))) {
+                throw new BusinessException("缺【" + FIELD_LABELS.getOrDefault(key, key) + "】列（品类 "
+                        + categoryCode + " 必填）");
+            }
+        }
+        if (StringUtils.isNotBlank(dto.getSize())) {
+            try {
+                com.jjx.inventory.util.MaterialSizeParser.parse(dto.getSize(), categoryCode);
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException(e.getMessage());
+            }
+        }
+        // 数值列提前解析，避免落库阶段才报错
+        importDecimal(dto.getStandardPrice(), "标准单价");
+        importDecimal(dto.getSafeStock(), "安全库存");
+        importDecimal(dto.getMaxStock(), "最高库存");
+        importDecimal(dto.getReorderPoint(), "再订货点");
+        importInteger(dto.getLeadTime(), "采购周期");
+        importInteger(dto.getShelfLife(), "保质期");
+        importInteger(dto.getExpiryAlertDays(), "预警提前天数");
+        importBoolean(dto.getBatchControl(), "批次控制");
+    }
+
+    /**
+     * 去重键：品类 + 材料 + 型号 + 颜色 + 品牌 + 尺寸 + 规格（品牌用于区分不同品牌，避免误判同一物料）。
+     * 若型号/尺寸/规格全空（无区分属性），追加名称，避免把不同物料误判为重复。
+     */
+    private String importDedupeKey(MaterialImportDTO dto) {
+        String base = String.join("|",
+                nz(dto.getCategoryName()), nz(dto.getMaterialGrade()), nz(dto.getModel()),
+                nz(dto.getColor()), nz(dto.getBrand()), nz(dto.getSize()), nz(dto.getSpecification()));
+        return hasDistinguishingAttribute(dto) ? base : base + "|" + nz(dto.getMaterialName());
+    }
+
+    private static boolean hasDistinguishingAttribute(MaterialImportDTO dto) {
+        return !nz(dto.getModel()).isEmpty() || !nz(dto.getSize()).isEmpty() || !nz(dto.getSpecification()).isEmpty();
+    }
+
+    /** 库内已存在判定：按结构化属性比对，不再用「名称+规格+供应商」。 */
+    private boolean importMaterialExists(MaterialImportDTO dto, Map<String, Object> category) {
+        LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
+        wrapper.apply("IFNULL(category_id, 0) = {0}", ((Number) category.get("category_id")).longValue())
+                .apply("IFNULL(material_grade, '') = {0}", nz(dto.getMaterialGrade()))
+                .apply("IFNULL(model, '') = {0}", nz(dto.getModel()))
+                .apply("IFNULL(color, '') = {0}", nz(dto.getColor()))
+                .apply("IFNULL(brand, '') = {0}", nz(dto.getBrand()))
+                .apply("IFNULL(size, '') = {0}", nz(dto.getSize()))
+                .apply("IFNULL(specification, '') = {0}", nz(dto.getSpecification()));
+        if (!hasDistinguishingAttribute(dto)) {
+            wrapper.eq(InventoryMaterial::getMaterialName, dto.getMaterialName());
+        }
+        Long existCount = materialMapper.selectCount(wrapper);
+        return existCount != null && existCount > 0;
+    }
+
+    private static BigDecimal importDecimal(String raw, String label) {
+        if (StringUtils.isBlank(raw)) return null;
+        try {
+            BigDecimal value = new BigDecimal(raw.trim());
+            if (value.signum() < 0) throw new BusinessException("【" + label + "】不能为负数：" + raw);
+            return value;
+        } catch (NumberFormatException e) {
+            throw new BusinessException("【" + label + "】不是有效数字：" + raw);
+        }
+    }
+
+    private static Integer importInteger(String raw, String label) {
+        if (StringUtils.isBlank(raw)) return null;
+        try {
+            int value = Integer.parseInt(raw.trim());
+            if (value < 0) throw new BusinessException("【" + label + "】不能为负数：" + raw);
+            return value;
+        } catch (NumberFormatException e) {
+            throw new BusinessException("【" + label + "】不是整数：" + raw);
+        }
+    }
+
+    private static Boolean importBoolean(String raw, String label) {
+        if (StringUtils.isBlank(raw)) return null;
+        return switch (raw.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "是", "true", "1", "y", "yes", "启用", "开" -> Boolean.TRUE;
+            case "否", "false", "0", "n", "no", "禁用", "关" -> Boolean.FALSE;
+            default -> throw new BusinessException("【" + label + "】只接受 是/否（true/false/1/0/启用/禁用）：" + raw);
+        };
+    }
+
     private void normalizeImport(MaterialImportDTO dto) {
-        if (StringUtils.isBlank(dto.getMaterialName())) dto.setMaterialName(dto.getMaterialGrade());
-        if (StringUtils.isBlank(dto.getMaterialName())) throw new BusinessException("物料名称不能为空");
-        String name = dto.getMaterialName();
-        // 旧模板「材料」是名称；新模板「材料」是结构化复合词。
+        String explicitName = StringUtils.trimToNull(dto.getMaterialName());
+        String gradeInput = StringUtils.trimToNull(dto.getMaterialGrade());
+        // 旧模板「材料」列放的是名称：不是受控复合词时按旧名称处理，名称不改写
+        boolean legacyMaterialColumn = gradeInput != null && !isControlledGrade(gradeInput);
+        String inferenceName = explicitName != null ? explicitName
+                : legacyMaterialColumn ? gradeInput
+                : composeImportName(gradeInput, dto.getModel(), dto.getColor(), dto.getBrand());
         if (StringUtils.isBlank(dto.getCategoryName())) {
-            String text = name.toUpperCase(java.util.Locale.ROOT);
-            String categoryCode;
-            if (text.matches(".*(离型纸|离型膜|标签纸|纸材).*")) categoryCode = "RM-PAPER";
-            else if (text.matches(".*(保护膜|双面胶|VHB).*")) categoryCode = "RM-ADHESIVE";
-            else if (text.matches(".*(胶带|胶水|3M).*")) categoryCode = "AUX-ADHESIVE";
-            else if (text.matches(".*(LED|灯|电阻|电容|连接器|IC).*")) categoryCode = "AUX-ELEC";
-            else if (text.matches(".*(螺丝|垫片|弹片|铆钉|铜|铝).*")) categoryCode = "AUX-HARDWARE";
-            else if (text.matches(".*(油墨).*")) categoryCode = "RM-INK";
-            else if (text.matches(".*(PC|PET|PVC|PP|PE|膜|片材).*")) categoryCode = "RM-FILM";
-            else if (text.matches(".*(纸箱|袋|泡棉|标签).*")) categoryCode = "AUX-PACK";
-            else if (text.matches(".*(刀模|治具|砂纸|手套).*")) categoryCode = "AUX-TOOL";
-            else categoryCode = "A".equals(dto.getMaterialType()) ? "OTHER-A" : "OTHER-R";
-            dto.setCategoryName(categoryCode);
+            dto.setCategoryName(inferImportCategoryCode(inferenceName, dto.getMaterialType()));
         }
-        if (StringUtils.isBlank(dto.getMaterialGrade()) || name.equals(dto.getMaterialGrade())) {
-            String text = name.toUpperCase(java.util.Locale.ROOT);
-            String grade = null;
-            for (String candidate : List.of("PET保护膜", "PE保护膜", "EVA泡棉", "VHB胶带", "PC膜", "PET膜", "PVC膜", "PE膜", "离型纸", "离型膜", "标签纸", "胶带", "泡棉", "灯", "螺丝", "垫片", "不锈钢", "铜", "铝", "油墨", "箱", "袋", "其他")) {
-                if (text.contains(candidate.toUpperCase(java.util.Locale.ROOT))) { grade = candidate; break; }
-            }
-            if (grade == null && text.contains("PC")) grade = "PC膜";
-            if (grade == null && text.contains("PET")) grade = "PET膜";
-            if (grade == null && text.contains("PVC")) grade = "PVC膜";
-            if (grade == null && text.contains("LED")) grade = "灯";
-            if (grade == null && text.startsWith("3M")) grade = "胶带";
-            dto.setMaterialGrade(grade == null ? "其他" : grade);
+        if (explicitName == null && legacyMaterialColumn) {
+            dto.setMaterialName(gradeInput);
         }
-        if (StringUtils.isBlank(dto.getColor())) {
-            for (String color : List.of("透明", "咖啡色", "白色", "黑色", "黄色", "红色", "蓝色", "绿色", "灰色", "银色", "金色", "紫色", "橙色")) {
-                if (name.contains(color)) { dto.setColor(color); break; }
-            }
+        if (legacyMaterialColumn) {
+            dto.setMaterialGrade(null);
         }
-        if (StringUtils.isBlank(dto.getBrand()) && name.toUpperCase(java.util.Locale.ROOT).startsWith("3M")) dto.setBrand("3M");
-        if (StringUtils.isBlank(dto.getModel())) {
-            String text = name.replaceFirst("(?i)^3M", "");
-            String pattern = name.toUpperCase(java.util.Locale.ROOT).startsWith("3M")
-                    ? "^\\s*([A-Za-z0-9][A-Za-z0-9#/_.*-]*)"
-                    : "(?i)(?<![A-Za-z0-9.])[A-Za-z][A-Za-z0-9#/_.*-]*[0-9][A-Za-z0-9#/_.*-]*|(?<![0-9.])[0-9]+[A-Za-z][A-Za-z0-9#/_.*-]*";
-            var model = java.util.regex.Pattern.compile(pattern).matcher(text);
-            if (model.find()) dto.setModel(model.group());
+        if (StringUtils.isBlank(dto.getMaterialGrade())) {
+            dto.setMaterialGrade(inferImportGrade(inferenceName));
         }
-        if (StringUtils.isBlank(dto.getSize())) dto.setSize(com.jjx.inventory.util.MaterialSizeParser.extractLegacy(dto.getSpecification()));
+        if (StringUtils.isBlank(dto.getColor())) dto.setColor(inferImportColor(inferenceName));
+        if (StringUtils.isBlank(dto.getBrand())
+                && inferenceName.toUpperCase(java.util.Locale.ROOT).startsWith("3M")) {
+            dto.setBrand("3M");
+        }
+        if (StringUtils.isBlank(dto.getModel())) dto.setModel(inferImportModel(inferenceName));
+        if (StringUtils.isBlank(dto.getSize())) {
+            dto.setSize(com.jjx.inventory.util.MaterialSizeParser.extractLegacy(dto.getSpecification()));
+        }
+    }
+
+    private static String inferImportCategoryCode(String name, String materialType) {
+        String text = nz(name).toUpperCase(java.util.Locale.ROOT);
+        if (text.matches(".*(离型纸|离型膜|标签纸|纸材).*")) return "RM-PAPER";
+        if (text.matches(".*(保护膜|双面胶|VHB).*")) return "RM-ADHESIVE";
+        if (text.matches(".*(胶带|胶水|3M).*")) return "AUX-ADHESIVE";
+        if (text.matches(".*(LED|灯|电阻|电容|连接器|IC).*")) return "AUX-ELEC";
+        if (text.matches(".*(螺丝|垫片|弹片|铆钉|铜|铝).*")) return "AUX-HARDWARE";
+        if (text.matches(".*(油墨).*")) return "RM-INK";
+        if (text.matches(".*(PC|PET|PVC|PP|PE|膜|片材).*")) return "RM-FILM";
+        if (text.matches(".*(纸箱|袋|泡棉|标签).*")) return "AUX-PACK";
+        if (text.matches(".*(刀模|治具|砂纸|手套).*")) return "AUX-TOOL";
+        return "A".equals(materialType) ? "OTHER-A" : "OTHER-R";
+    }
+
+    private static String inferImportGrade(String name) {
+        String text = nz(name).toUpperCase(java.util.Locale.ROOT);
+        for (String candidate : IMPORT_MATERIAL_GRADES) {
+            if (text.contains(candidate.toUpperCase(java.util.Locale.ROOT))) return candidate;
+        }
+        if (text.contains("PC")) return "PC膜";
+        if (text.contains("PET")) return "PET膜";
+        if (text.contains("PVC")) return "PVC膜";
+        if (text.contains("LED")) return "灯";
+        if (text.startsWith("3M")) return "胶带";
+        return "其他";
+    }
+
+    private static String inferImportColor(String name) {
+        String text = nz(name);
+        for (String color : IMPORT_COLORS) {
+            if (text.contains(color)) return color;
+        }
+        return null;
+    }
+
+    private static String inferImportModel(String name) {
+        String text = nz(name);
+        if (text.isEmpty()) return null;
+        String body = text.replaceFirst("(?i)^3M", "");
+        String pattern = text.toUpperCase(java.util.Locale.ROOT).startsWith("3M")
+                ? "^\\s*([A-Za-z0-9][A-Za-z0-9#/_.*-]*)"
+                : "(?i)(?<![A-Za-z0-9.])[A-Za-z][A-Za-z0-9#/_.*-]*[0-9][A-Za-z0-9#/_.*-]*|(?<![0-9.])[0-9]+[A-Za-z][A-Za-z0-9#/_.*-]*";
+        var model = java.util.regex.Pattern.compile(pattern).matcher(body);
+        return model.find() ? model.group() : null;
     }
 
     private void validateMaterialType(String materialType) {

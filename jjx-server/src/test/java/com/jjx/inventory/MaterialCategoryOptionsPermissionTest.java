@@ -28,7 +28,7 @@ class MaterialCategoryOptionsPermissionTest {
             category.setCategoryId(10L); category.setCategoryCode("OTHER-R");
             category.setCategoryName("其他（原材料）"); category.setMaterialType("R");
             when(service.getCategoryOptions()).thenReturn(List.of(category));
-            var mvc = MockMvcBuilders.standaloneSetup(new InventoryMaterialController(service, null, null, null))
+            var mvc = MockMvcBuilders.standaloneSetup(new InventoryMaterialController(service, null, null, null, null))
                     .addInterceptors(new SaInterceptor(handle -> StpUtil.checkLogin())).build();
             mvc.perform(get("/inventory/material/category-options"))
                     .andExpect(status().isOk())
