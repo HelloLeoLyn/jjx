@@ -19,6 +19,11 @@ export interface InventoryMaterial {
   /** 尺寸：宽×长/厚，缺省 mm */
   size?: string
   unit: string
+  /** 库存视图字段（MaterialVO 返回，只读展示） */
+  currentStock?: number
+  availableStock?: number
+  reservedStock?: number
+  inTransitStock?: number
   safeStock: number
   maxStock: number
   reorderPoint: number

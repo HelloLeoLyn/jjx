@@ -100,6 +100,9 @@
       />
     </el-card>
 
+    <!-- 物料详情弹窗（不再跳路由页） -->
+    <MaterialDetailDialog v-model="detailVisible" :material-id="detailMaterialId" />
+
     <!-- 物料表单对话框 -->
     <MaterialFormDialog
       v-model="dialogVisible"
@@ -136,6 +139,7 @@ import SearchForm from '@/components/common-ui/SearchForm.vue'
 import Toolbar from '@/components/common-ui/Toolbar.vue'
 import TagQuerySelect from '@/components/TagQuerySelect.vue'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
+import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
 import { materialApi } from '@/api/inventory/material'
 import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import { formatCurrency } from '@/utils/format'
@@ -202,6 +206,8 @@ const single = ref(true)
 const multiple = ref(true)
 const dialogVisible = ref(false)
 const editingMaterialId = ref<number | null>(null)
+const detailVisible = ref(false)
+const detailMaterialId = ref<number | null>(null)
 
 // 导入（2026-08-13 通用 ExcelImportDialog 组件）
 const importDialogVisible = ref(false)
@@ -286,9 +292,10 @@ const handleFormSuccess = () => {
   getList()
 }
 
-// 查看详情
+// 查看详情（弹窗，不跳路由页）
 const handleView = (row: any) => {
-  router.push(`/inventory/material/detail/${row.materialId}`)
+  detailMaterialId.value = row.materialId
+  detailVisible.value = true
 }
 
 const handleDelete = (row: any) => {
