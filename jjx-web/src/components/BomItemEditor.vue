@@ -4,7 +4,7 @@
     <div class="editor-header">
       <div class="header-left">
         <el-tooltip
-          content="快速模式：材料名称+规格必填，允许未建档先提交审核；审核员再匹配或新建物料"
+          content="快速模式：材料名称必填，规格型号选填，允许未建档先提交审核；审核员再匹配或新建物料"
           placement="bottom"
         >
           <el-switch
@@ -117,7 +117,7 @@
         <template #default="scope">
           <el-input
             v-model="scope.row.specification"
-            placeholder="必填"
+            placeholder="选填"
             size="small"
             maxlength="500"
           />

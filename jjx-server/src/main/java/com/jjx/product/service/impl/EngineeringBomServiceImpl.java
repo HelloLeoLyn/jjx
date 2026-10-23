@@ -1393,12 +1393,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 issues.add(issue(iid, code, name, "reviewStatus",
                         "行状态为「" + rowStatus.getLabel() + "」，需逐行审核通过"));
             }
-            // 材料原文（快速模式）：名称、规格必填；未建档允许先入审核
+            // 材料原文（快速模式）：名称必填，规格选填；未建档允许先入审核
             if (org.apache.commons.lang3.StringUtils.isBlank(it.getMaterialName())) {
                 issues.add(issue(iid, code, name, "materialName", "材料名称不能为空"));
-            }
-            if (org.apache.commons.lang3.StringUtils.isBlank(it.getSpecification())) {
-                issues.add(issue(iid, code, name, "specification", "规格型号不能为空"));
             }
             // 物料关联：批准时必须已匹配有效物料
             if (it.getMaterialId() == null || it.getMaterialId() <= 0) {
