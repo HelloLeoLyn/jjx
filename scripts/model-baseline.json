@@ -140,6 +140,13 @@
   ],
   "approvedNewTables": [
     {
+      "table": "inventory_attribute_template",
+      "taskCode": "dev-20261024-001",
+      "date": "2026-10-24",
+      "proposalLink": "jjx-docs/task-docs/dev-20261024-001-plan.md",
+      "reason": "用户授权按新模型分阶段实施；末级分类一对一绑定带字段类型、单位、候选、必填约束的属性模板，物料JSON按其校验；复用分类表及通用字典，不新建材质关系表或归档表。"
+    },
+    {
       "table": "sales_customer_contact",
       "taskCode": "dev-20261018-030",
       "date": "2026-10-18",

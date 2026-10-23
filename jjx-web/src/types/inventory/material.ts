@@ -62,6 +62,13 @@ export interface InventoryMaterial {
   materialId: number
   materialCode: string
   materialName: string
+  originalName?: string | null
+  originalSpecification?: string | null
+  materialMeta?: string | null
+  materialForm?: string | null
+  attributeJson?: string | null
+  isCustomerSupplied?: boolean
+  isSample?: boolean
   materialNameEn?: string
   materialType: string
   categoryId?: number
@@ -73,7 +80,7 @@ export interface InventoryMaterial {
   brand?: string
   /** 别名/常用叫法，参与搜索 */
   searchKeywords?: string
-  /** 尺寸：宽×长/厚，缺省 mm */
+  /** 新模型尺寸：宽或宽×长，单位mm；厚度单独存品类属性 */
   size?: string
   /** 规格补充（属性生成的规格文本之外，≤30 字） */
   specSupplement?: string
@@ -110,6 +117,11 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   materialName?: string
   materialNameEn?: string
   materialType?: string
+  materialMeta?: string
+  materialForm?: string
+  masterDataOnly?: boolean
+  isCustomerSupplied?: boolean
+  isSample?: boolean
   tagIds?: number[]
   tagMatchMode?: 'AND' | 'OR'
   categoryId?: number
@@ -138,6 +150,9 @@ export interface MaterialQueryDTO extends PageQuery {
   categoryId?: number
   materialType?: string
   materialGrade?: string
+  materialMeta?: string
+  materialForm?: string
+  masterDataOnly?: boolean
   model?: string
   color?: string
   brand?: string

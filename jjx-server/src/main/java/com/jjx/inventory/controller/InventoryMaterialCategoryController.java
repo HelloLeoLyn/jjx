@@ -52,6 +52,7 @@ public class InventoryMaterialCategoryController {
     @Log(module = "物料分类管理", businessType = BusinessType.INSERT, bizType = "'material_category'", bizId = "#dto.categoryId", action = LogActions.MAT_CATEGORY_CREATE)
     @SaCheckPermission("inventory:category:add")
     public Result<Boolean> add(@RequestBody CategorySaveDTO dto) {
+        assertLegacyCategory(dto.getParentId());
         InventoryMaterialCategory entity = new InventoryMaterialCategory();
         BeanUtils.copyProperties(dto, entity);
         return Result.success(categoryService.save(entity));
@@ -62,6 +63,8 @@ public class InventoryMaterialCategoryController {
     @Log(module = "物料分类管理", businessType = BusinessType.UPDATE, bizType = "'material_category'", bizId = "#dto.categoryId", action = LogActions.MAT_CATEGORY_EDIT)
     @SaCheckPermission("inventory:category:edit")
     public Result<Boolean> update(@RequestBody CategoryUpdateDTO dto) {
+        assertLegacyCategory(dto.getCategoryId());
+        assertLegacyCategory(dto.getParentId());
         InventoryMaterialCategory entity = new InventoryMaterialCategory();
         BeanUtils.copyProperties(dto,entity);
         return Result.success(categoryService.updateById(entity));
@@ -72,6 +75,7 @@ public class InventoryMaterialCategoryController {
     @Log(module = "物料分类管理", businessType = BusinessType.DELETE, bizType = "'material_category'", bizId = "#categoryId", action = LogActions.MAT_CATEGORY_DELETE)
     @SaCheckPermission("inventory:category:remove")
     public Result<Boolean> delete(@PathVariable Long categoryId) {
+        assertLegacyCategory(categoryId);
         return Result.success(categoryService.deleteWithCheck(categoryId));
     }
 
@@ -81,6 +85,19 @@ public class InventoryMaterialCategoryController {
     @SaCheckPermission("inventory:category:edit")
     public Result<Boolean> updateStatus(@PathVariable Long categoryId,
                                         @RequestParam String status) {
+        assertLegacyCategory(categoryId);
         return Result.success(categoryService.updateStatus(categoryId, status));
+    }
+
+    private void assertLegacyCategory(Long id) {
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        while (id != null && id != 0L && seen.add(id)) {
+            InventoryMaterialCategory category = categoryService.getById(id);
+            if (category == null) return;
+            if (com.jjx.inventory.master.MaterialMasterCatalog.ROOT_TYPES.containsKey(category.getCategoryCode())) {
+                throw new com.jjx.common.exception.BusinessException("新模型分类请通过物料分类与模板配置维护");
+            }
+            id = category.getParentId();
+        }
     }
 }

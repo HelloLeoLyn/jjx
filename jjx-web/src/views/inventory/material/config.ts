@@ -1,35 +1,43 @@
 // views/inventory/material/config.ts
 import type { SearchOptions, ToolbarOptions, TableOptions } from '@/components/common-ui/type'
-import { MaterialTypeEnum, MaterialStatusEnum } from '@/enums/inventory/MaterialEnum'
-import {
-  MATERIAL_COLOR_OPTIONS,
-  MATERIAL_GRADE_OPTIONS,
-} from '@/components/inventory/materialMasterFields'
+import { MaterialRootTypeEnum, MaterialStatusEnum } from '@/enums/inventory/MaterialEnum'
 
 // 搜索配置
 export const searchOptions: SearchOptions[] = [
-  {
-    prop: 'materialCode',
-    label: '物料编码',
-    type: 'input',
-  },
+  // {
+  //   prop: 'materialCode',
+  //   label: '物料编码',
+  //   type: 'input',
+  // },
   {
     prop: 'materialName',
     label: '物料名称',
     type: 'input',
   },
   {
-    prop: 'categoryId',
-    label: '品类',
+    prop: 'materialType',
+    label: '物料类型',
     type: 'select',
-    // 选项运行时由 index.vue 按 /inventory/material-category/tree 或本地种子列表注入
+    options: MaterialRootTypeEnum.items,
+  },
+  {
+    prop: 'materialMeta',
+    label: '物料材质',
+    type: 'select',
     options: [],
   },
   {
-    prop: 'materialGrade',
-    label: '材料',
+    prop: 'categoryId',
+    label: '品类',
     type: 'select',
-    options: MATERIAL_GRADE_OPTIONS.map((value) => ({ value, label: value })),
+    // 选项由新模型分类接口注入，只提供末级品类。
+    options: [],
+  },
+  {
+    prop: 'materialForm',
+    label: '形态',
+    type: 'select',
+    options: [],
   },
   {
     prop: 'model',
@@ -40,18 +48,46 @@ export const searchOptions: SearchOptions[] = [
     prop: 'color',
     label: '颜色',
     type: 'select',
-    options: MATERIAL_COLOR_OPTIONS.map((value) => ({ value, label: value })),
+    options: [],
+  },
+  {
+    prop: 'brand',
+    label: '品牌',
+    type: 'select',
+    options: [],
+  },
+  {
+    prop: 'isCustomerSupplied',
+    label: '客供专用',
+    type: 'select',
+    options: [
+      { value: true, label: '是' },
+      { value: false, label: '否' },
+    ],
+  },
+  {
+    prop: 'isSample',
+    label: '样品专用',
+    type: 'select',
+    options: [
+      { value: true, label: '是' },
+      { value: false, label: '否' },
+    ],
   },
   {
     prop: 'specification',
     label: '规格型号',
     type: 'input',
   },
+
   {
-    prop: 'materialType',
-    label: '物料类型',
+    prop: 'masterDataOnly',
+    label: '档案范围',
     type: 'select',
-    options: MaterialTypeEnum.items,
+    options: [
+      { value: true, label: '新模型物料' },
+      { value: false, label: '待归类物料' },
+    ],
   },
   {
     prop: 'tagIds',
@@ -76,6 +112,13 @@ export const toolbarOptions: ToolbarOptions[] = [
     permission: 'inventory:material:add',
   },
   {
+    key: 'master-settings',
+    label: '分类与模板',
+    type: 'info',
+    icon: 'Setting',
+    permission: 'inventory:category:edit',
+  },
+  {
     key: 'import',
     label: '导入',
     type: 'success',
@@ -84,10 +127,17 @@ export const toolbarOptions: ToolbarOptions[] = [
   },
   {
     key: 'export',
-    label: '导出',
+    label: '导出新模型',
     type: 'warning',
     icon: 'Download',
     // permission: 'inventory:material:export', // 后端无导出接口/权限点，暂不启用
+  },
+  {
+    key: 'migration-export',
+    label: '导出待归类',
+    type: 'info',
+    icon: 'Download',
+    permission: 'inventory:material:view',
   },
   {
     key: 'print-label',

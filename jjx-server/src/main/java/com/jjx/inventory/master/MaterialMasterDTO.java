@@ -1,0 +1,42 @@
+package com.jjx.inventory.master;
+
+import lombok.Data;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+
+/** 完整主数据表单；不接收类型或模板ID，服务端沿分类树解析。 */
+@Data
+public class MaterialMasterDTO {
+    private Long materialId;
+    private String materialCode;
+    private Long categoryId;
+    private String originalName;
+    private String originalSpecification;
+    private String materialMeta;
+    private String materialForm;
+    private String model;
+    private String color;
+    private String brand;
+    private String size;
+    private String unit;
+    private Map<String, Object> attributeJson;
+    private Boolean isCustomerSupplied;
+    private Boolean isSample;
+    private String searchKeywords;
+    private String specSupplement;
+    private String remark;
+    private Long supplierId;
+    private String supplierName;
+    private Long defaultWarehouseId;
+    private Long defaultLocationId;
+    private BigDecimal safeStock;
+    private BigDecimal maxStock;
+    private BigDecimal reorderPoint;
+    private BigDecimal standardPrice;
+    private Integer leadTime;
+    private Boolean batchControl;
+    private Integer shelfLife;
+    private Integer expiryAlertDays;
+    private List<Long> tagIds;
+}

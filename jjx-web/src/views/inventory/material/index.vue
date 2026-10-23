@@ -51,15 +51,46 @@
           <template #default="{ row }">{{ originalNameOf(row) }}</template>
         </el-table-column>
 
-        <el-table-column label="物料名称" prop="materialName" width="220" show-overflow-tooltip />
+        <el-table-column
+          label="原规格"
+          prop="originalSpecification"
+          width="200"
+          show-overflow-tooltip
+        />
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ categoryNameOf(row) }}</template>
         </el-table-column>
-        <el-table-column label="材料" prop="materialGrade" width="110" />
+        <el-table-column label="材质" width="110"
+          ><template #default="{ row }">{{
+            dictionaryText('material_meta', row.materialMeta)
+          }}</template></el-table-column
+        >
+        <el-table-column label="形态" width="90"
+          ><template #default="{ row }">{{
+            dictionaryText('form', row.materialForm)
+          }}</template></el-table-column
+        >
         <el-table-column label="型号" prop="model" width="120" show-overflow-tooltip />
-        <el-table-column label="颜色" prop="color" width="90" />
-        <el-table-column label="品牌" prop="brand" width="120" show-overflow-tooltip />
+        <el-table-column label="颜色" width="90"
+          ><template #default="{ row }">{{
+            dictionaryText('color', row.color)
+          }}</template></el-table-column
+        >
+        <el-table-column label="品牌" width="120"
+          ><template #default="{ row }">{{
+            dictionaryText('brand', row.brand)
+          }}</template></el-table-column
+        >
         <el-table-column label="尺寸" prop="size" width="140" show-overflow-tooltip />
+        <el-table-column label="生成规格" prop="specification" width="230" show-overflow-tooltip />
+        <el-table-column label="客供专用" width="90"
+          ><template #default="{ row }">{{
+            row.isCustomerSupplied ? '是' : '否'
+          }}</template></el-table-column
+        >
+        <el-table-column label="样品专用" width="90"
+          ><template #default="{ row }">{{ row.isSample ? '是' : '否' }}</template></el-table-column
+        >
         <el-table-column label="单位" prop="unit" width="80" align="center" />
         <el-table-column label="安全库存" prop="safeStock" width="100" align="right" />
         <el-table-column label="标准单价" prop="standardPrice" width="120" align="right">
@@ -70,8 +101,8 @@
           <template #default="{ row }">
             <el-switch
               v-model="row.status"
-              :active-value="1"
-              :inactive-value="0"
+              :active-value="CommonStatusEnum.NORMAL.value"
+              :inactive-value="CommonStatusEnum.DISABLED.value"
               @change="handleStatusChange(row)"
             />
           </template>
@@ -90,6 +121,7 @@
           </template>
         </el-table-column>
         <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
+        <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
         <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
@@ -104,10 +136,9 @@
               link
               type="primary"
               v-hasPermi="['inventory:material:edit']"
-              @click="handleRegenerate(row)"
+              @click="handleEdit(row)"
+              >重新生成</el-button
             >
-              重新生成
-            </el-button>
             <el-button
               link
               type="danger"
@@ -131,13 +162,6 @@
     <!-- 物料详情弹窗（不再跳路由页） -->
     <MaterialDetailDialog v-model="detailVisible" :material-id="detailMaterialId" />
 
-    <!-- 重新生成（单项，按规则重算属性，逐项可改） -->
-    <MaterialRegenerateDialog
-      v-model="regenerateVisible"
-      :material-id="regenerateMaterialId"
-      @success="getList"
-    />
-
     <!-- 物料表单对话框 -->
     <MaterialFormDialog
       v-model="dialogVisible"
@@ -145,17 +169,8 @@
       @success="handleFormSuccess"
     />
 
-    <!-- 通用导入弹窗（2026-08-13，含结果/失败明细） -->
-    <ExcelImportDialog
-      :visible="importDialogVisible"
-      @update:visible="importDialogVisible = $event"
-      title="导入物料"
-      :import-api="materialApi.importExcel"
-      :template-api="materialApi.downloadImportTemplate"
-      template-name="物料导入模板.xlsx"
-      :tip="importTip"
-      @success="getList"
-    />
+    <MaterialMasterImportDialog v-model="importDialogVisible" @success="getList" />
+    <MaterialMasterSettingsDialog v-model="settingsVisible" @success="loadCategoryOptions" />
   </div>
 </template>
 
@@ -167,26 +182,23 @@ defineOptions({
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
-import * as XLSX from 'xlsx'
 import SearchForm from '@/components/common-ui/SearchForm.vue'
 import Toolbar from '@/components/common-ui/Toolbar.vue'
 import TagQuerySelect from '@/components/TagQuerySelect.vue'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
-import MaterialRegenerateDialog from '@/components/inventory/MaterialRegenerateDialog.vue'
+import MaterialMasterImportDialog from '@/components/inventory/MaterialMasterImportDialog.vue'
+import MaterialMasterSettingsDialog from '@/components/inventory/MaterialMasterSettingsDialog.vue'
+import { materialMasterApi } from '@/api/inventory/materialMaster'
+import { downloadMaterialBlob } from '@/components/inventory/materialMasterModel'
+import { CommonStatusEnum } from '@/enums/common/StatusEnum'
+import type { MaterialMasterCategory, MaterialDictionaries } from '@/types/inventory/materialMaster'
 import { materialApi } from '@/api/inventory/material'
-import ExcelImportDialog from '@/components/ExcelImportDialog/index.vue'
 import { formatCurrency } from '@/utils/format'
 import type { InventoryMaterial, InventoryMaterialQueryParams } from '@/types/inventory/material'
 import type { SearchOptions, ToolbarOptions } from '@/components/common-ui/type'
 import { searchOptions, toolbarOptions } from './config'
-import {
-  loadMaterialCategoryOptions,
-  type MaterialCategoryOption,
-} from '@/components/inventory/materialMasterFields'
 import { parseOriginalName } from '@/components/inventory/materialRegenerate'
-import type { UploadInstance } from 'element-plus'
 import { openLabelPrint } from '@/utils/labelPrint'
 
 const router = useRouter()
@@ -204,10 +216,13 @@ const toolbarButtons: ToolbarOptions[] = toolbarOptions
 // 查询参数
 const queryParams = reactive<InventoryMaterialQueryParams>({
   pageNum: 1,
-  pageSize: 10,
+  pageSize: 50,
   materialCode: '',
   materialName: '',
   materialType: '',
+  masterDataOnly: true,
+  materialMeta: '',
+  materialForm: '',
   tagIds: [],
   tagMatchMode: 'AND',
   categoryId: undefined,
@@ -243,27 +258,41 @@ const dialogVisible = ref(false)
 const editingMaterialId = ref<number | null>(null)
 const detailVisible = ref(false)
 const detailMaterialId = ref<number | null>(null)
-const regenerateVisible = ref(false)
-const regenerateMaterialId = ref<number | null>(null)
+const settingsVisible = ref(false)
 
-// 导入（2026-08-13 通用 ExcelImportDialog 组件）
+// 按末级品类生成模板并做整表预检。
 const importDialogVisible = ref(false)
-const importTip =
-  '1）请先查看模板中的「填写说明」页；数据页第2行为示例，必须删除后从第2行填写真实数据。' +
-  '2）表头(*)为必填提示：物料名称须提供，其余按品类必填矩阵填写；建议明确品类。' +
-  '3）材料23词、颜色13色及逐列含义见说明页；名称按“材料+型号+颜色（品牌）”填写。' +
-  '4）尺寸可选，格式为“宽×长/厚”，缺省mm，可写cm/m/inch。' +
-  '5）旧模板（仅物料名称+规格）仍兼容；系统尝试识别品类和结构化字段，缺少品类必填项时须补齐后重试。' +
-  '6）本入口导入物料档案，数量列不写入库存；请勿把说明文字放入数据区。'
 
-// 品类下拉（接口不可用时用本地种子列表兜底）
-const categoryOptions = ref<MaterialCategoryOption[]>([])
+const categoryOptions = ref<MaterialMasterCategory[]>([])
+const dictionaries = ref<MaterialDictionaries>({})
+const dictionaryText = (dict: string, code?: string) =>
+  dictionaries.value[dict]?.find((o) => o.code === code)?.label || code || '-'
 const loadCategoryOptions = async () => {
-  const options = await loadMaterialCategoryOptions()
+  const [categoryResponse, dictResponse] = await Promise.all([
+    materialMasterApi.categories(),
+    materialMasterApi.dictionaries(),
+  ])
+  const options = categoryResponse.data || []
   categoryOptions.value = options
+  dictionaries.value = dictResponse.data || {}
   const field = searchFields.value.find((item) => item.prop === 'categoryId')
   if (field) {
-    field.options = options.map((item) => ({ value: item.categoryId, label: item.categoryName }))
+    field.options = options
+      .filter((item) => item.selectable)
+      .map((item) => ({ value: item.categoryId, label: item.pathName }))
+  }
+  for (const [prop, dict] of Object.entries({
+    materialMeta: 'material_meta',
+    materialForm: 'form',
+    color: 'color',
+    brand: 'brand',
+  })) {
+    const filter = searchFields.value.find((item) => item.prop === prop)
+    if (filter)
+      filter.options = (dictionaries.value[dict] || []).map((o) => ({
+        value: o.code,
+        label: o.label,
+      }))
   }
 }
 
@@ -271,12 +300,15 @@ const loadCategoryOptions = async () => {
 const categoryNameOf = (row: InventoryMaterial) => {
   if (row.categoryId == null) return '-'
   return (
-    categoryOptions.value.find((item) => item.categoryId === row.categoryId)?.categoryName || '-'
+    categoryOptions.value.find((item) => item.categoryId === row.categoryId)?.pathName ||
+    row.categoryName ||
+    '-'
   )
 }
 
 // 列表列的「原名称」：remark 里由回填脚本写入的【原名称】，便于核对重写后的名称（dev-20261023-020）
-const originalNameOf = (row: InventoryMaterial) => parseOriginalName(row.remark) || '-'
+const originalNameOf = (row: InventoryMaterial) =>
+  row.originalName || parseOriginalName(row.remark) || '-'
 
 // 获取列表
 const getList = async () => {
@@ -285,7 +317,6 @@ const getList = async () => {
     const res = await materialApi.page(queryParams)
     materialList.value = res.data?.records || []
     total.value = res.data?.total || 0
-    console.log(total.value)
   } finally {
     loading.value = false
   }
@@ -302,11 +333,17 @@ const handleReset = () => {
   queryParams.materialCode = ''
   queryParams.materialName = ''
   queryParams.materialType = ''
+  queryParams.masterDataOnly = true
+  queryParams.materialMeta = ''
+  queryParams.materialForm = ''
   queryParams.status = ''
   queryParams.categoryId = undefined
   queryParams.materialGrade = ''
   queryParams.model = ''
   queryParams.color = ''
+  queryParams.brand = ''
+  queryParams.isCustomerSupplied = undefined
+  queryParams.isSample = undefined
   queryParams.tagIds = []
   queryParams.tagMatchMode = 'AND'
   getList()
@@ -334,12 +371,6 @@ const handleEdit = (row: any) => {
 // 表单提交成功回调
 const handleFormSuccess = () => {
   getList()
-}
-
-// 重新生成（单项）
-const handleRegenerate = (row: any) => {
-  regenerateMaterialId.value = row.materialId
-  regenerateVisible.value = true
 }
 
 // 查看详情（弹窗，不跳路由页）
@@ -370,6 +401,11 @@ const handleToolbarClick = (key: string) => {
   if (key === 'add') handleAdd()
   if (key === 'import') importDialogVisible.value = true
   if (key === 'export') handleExport()
+  if (key === 'master-settings') settingsVisible.value = true
+  if (key === 'migration-export')
+    materialMasterApi
+      .exportMigrationCandidates()
+      .then((blob) => downloadMaterialBlob(blob, '待归类物料.xlsx'))
   if (key === 'print-label') {
     if (!ids.value.length) {
       ElMessage.warning('请先选择要打印的物料')
@@ -382,7 +418,10 @@ const handleToolbarClick = (key: string) => {
 // 导出
 const handleExport = () => {
   const loading = ElLoading.service({ text: '导出中...', lock: true })
-  materialApi.export(queryParams).finally(() => loading.close())
+  materialMasterApi
+    .exportExcel(queryParams)
+    .then((blob) => downloadMaterialBlob(blob, '物料主数据.xlsx'))
+    .finally(() => loading.close())
 }
 
 onMounted(async () => {

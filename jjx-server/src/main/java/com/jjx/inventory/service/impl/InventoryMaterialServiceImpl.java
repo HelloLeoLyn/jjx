@@ -643,6 +643,9 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     /** 新增校验全部规则；编辑仅校验实际变化的字段（含显式清空）。 */
     private void validateMasterData(InventoryMaterial material, InventoryMaterial existing) {
+        if (material.getOriginalName() != null || existing != null && existing.getOriginalName() != null) {
+            throw new BusinessException("新模型物料请使用新版物料保存入口");
+        }
         if (existing != null && material.getSuppliedFields().contains("categoryId") && material.getCategoryId() == null) {
             throw new BusinessException("品类不能为空");
         }
@@ -652,6 +655,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (categoryId != null && category == null) throw new BusinessException("品类不存在：" + categoryId);
         if (existing == null && category == null) throw new BusinessException("品类不能为空");
         if (category != null) {
+            if (isNewModelCategory(category)) throw new BusinessException("该品类请使用新版物料保存入口");
             String categoryType = (String) category.get("material_type");
             // 品类查询结果缺大类时保留调用方已带出的类型，避免被 null 覆盖（dev-20261023-019）
             if (StringUtils.isNotBlank(categoryType)) {
@@ -684,6 +688,12 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     private static void applyAttributeFilters(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {
+        wrapper.eq(StringUtils.isNotBlank(dto.getMaterialMeta()), InventoryMaterial::getMaterialMeta, dto.getMaterialMeta())
+                .eq(StringUtils.isNotBlank(dto.getMaterialForm()), InventoryMaterial::getMaterialForm, dto.getMaterialForm())
+                .eq(dto.getIsCustomerSupplied() != null, InventoryMaterial::getIsCustomerSupplied, dto.getIsCustomerSupplied())
+                .eq(dto.getIsSample() != null, InventoryMaterial::getIsSample, dto.getIsSample());
+        if (Boolean.TRUE.equals(dto.getMasterDataOnly())) wrapper.isNotNull(InventoryMaterial::getOriginalName);
+        if (Boolean.FALSE.equals(dto.getMasterDataOnly())) wrapper.isNull(InventoryMaterial::getOriginalName);
         wrapper.eq(StringUtils.isNotBlank(dto.getMaterialGrade()), InventoryMaterial::getMaterialGrade, dto.getMaterialGrade())
                 .eq(StringUtils.isNotBlank(dto.getModel()), InventoryMaterial::getModel, dto.getModel())
                 .eq(StringUtils.isNotBlank(dto.getColor()), InventoryMaterial::getColor, dto.getColor())
@@ -732,9 +742,21 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (value == null) throw new BusinessException("缺【品类】列：请填写品类编码或完整名称");
         Map<String, Object> category = materialMapper.findCategory(value);
         if (category == null) throw new BusinessException("品类不存在：" + value);
+        if (isNewModelCategory(category)) throw new BusinessException("该品类请下载新版按品类导入模板");
         dto.setCategoryName((String) category.get("category_code"));
         dto.setMaterialType((String) category.get("material_type"));
         return category;
+    }
+
+    private boolean isNewModelCategory(Map<String, Object> category) {
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (int depth = 0; category != null && depth < 4; depth++) {
+            if (com.jjx.inventory.master.MaterialMasterCatalog.ROOT_TYPES.containsKey(category.get("category_code"))) return true;
+            Object parent = category.get("parent_id");
+            if (!(parent instanceof Number number) || number.longValue() == 0 || !seen.add(number.longValue())) return false;
+            category = materialMapper.selectCategory(number.longValue());
+        }
+        return false;
     }
 
     private String importFieldValue(MaterialImportDTO dto, String key) {

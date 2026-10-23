@@ -38,6 +38,11 @@ public class MaterialQueryDTO extends PageQuery{
 
     private String specification;
     private String materialGrade;
+    private String materialMeta;
+    private String materialForm;
+    private Boolean masterDataOnly;
+    private Boolean isCustomerSupplied;
+    private Boolean isSample;
     private String model;
     private String color;
     private String brand;

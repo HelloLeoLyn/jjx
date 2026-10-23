@@ -51,6 +51,16 @@ public class InventoryMaterial extends BaseEntity {
     private String searchKeywords;
     private String size;
 
+    /** 新模型来源与标准字段；属性JSON是品类特有属性的唯一写入源。 */
+    private String originalName;
+    private String originalSpecification;
+    private String materialMeta;
+    private String materialForm;
+    private String attributeJson;
+    private String specSupplement;
+    private Boolean isCustomerSupplied;
+    private Boolean isSample;
+
 
     /** 基本计量单位 */
     private String unit;

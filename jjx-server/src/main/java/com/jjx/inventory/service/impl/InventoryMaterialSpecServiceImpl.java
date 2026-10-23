@@ -76,6 +76,7 @@ public class InventoryMaterialSpecServiceImpl implements InventoryMaterialSpecSe
             throw new BusinessException("参数不能为空");
         }
         InventoryMaterial material = resolveMaterial(dto);
+        if (material.getOriginalName() != null) throw new BusinessException("新模型物料属性须随物料表单一次保存");
         String categoryCode = StringUtils.hasText(dto.getCategoryCode())
                 ? dto.getCategoryCode().trim()
                 : resolveCategoryCode(material.getCategoryId());

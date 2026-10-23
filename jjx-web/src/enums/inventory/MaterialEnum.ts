@@ -1,5 +1,15 @@
 // src/enums/inventory/MaterialEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
+
+/** 新模型类型由分类树根节点确定；这里只提供稳定编码和展示。 */
+export const MaterialRootTypeEnum = createNamedEnum(
+  {
+    RAW: { value: 'R', label: '原材料', tagProps: { type: 'danger' } },
+    SEMI: { value: 'S', label: '半成品', tagProps: { type: 'warning' } },
+    FINISHED: { value: 'F', label: '成品', tagProps: { type: 'success' } },
+  },
+  { type: 'info' }
+)
 
 /**
  * 物料类型枚举

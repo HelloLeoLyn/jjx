@@ -355,6 +355,7 @@ TRUNCATE inventory_storage_location;
 
 -- v7：物料及分类保留不清（基础档案）
 -- TRUNCATE inventory_material_category;
+-- 保留 inventory_attribute_template（物料主数据属性模板，dev-20261024-001；与分类/字典一同保留）
 -- TRUNCATE inventory_material;
 
 -- v8：仓库保留不清（基础档案，出库单创建依赖默认仓库）
@@ -456,6 +457,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 -- 权限：sys_user / sys_role / sys_menu / sys_role_menu / sys_user_role / sys_dept
 --       sys_dept 已按 83_rebuild_sys_dept_org.sql 新组织架构重建（16 部门），本脚本不清
 -- 配置：sys_config / sys_dict / sys_dict_item / sys_event_config
+-- 物料属性模板：inventory_attribute_template（dev-20261024-001，随物料分类保留）
 -- 事件基建：sys_event_last_payload（事件最近一次 payload 缓存，事件配置页试渲染用；v18 起保留，与 sys_event_config 同类）
 -- 事件基建：sys_event_var（事件变量累积表，键集合漂移收敛用；source=collected/manual，与 sys_event_config 同类，保留）
 -- 质量模板：quality_template_registry
