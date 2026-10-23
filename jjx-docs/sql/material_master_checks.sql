@@ -44,8 +44,9 @@ WHERE m.original_name IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM JSON_TABLE(t.attribute_schema,'$.fields[*]' COLUMNS(field_key VARCHAR(50) PATH '$.key')) fields WHERE fields.field_key=attributes.attr_key);
 
 WITH RECURSIVE category_tree AS (
-  SELECT category_id,category_code,category_level,CAST(category_code AS CHAR(500)) AS visited,
-         CASE category_code WHEN 'RAW' THEN 'R' WHEN 'SEMI' THEN 'S' WHEN 'FINISHED' THEN 'F' END AS root_type,1 AS depth
+  SELECT category_id,category_code,category_level,
+         CAST(category_code AS CHAR(500) CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS visited,
+         (CASE category_code WHEN 'RAW' THEN 'R' WHEN 'SEMI' THEN 'S' WHEN 'FINISHED' THEN 'F' END) COLLATE utf8mb4_unicode_ci AS root_type,1 AS depth
   FROM inventory_material_category
   WHERE category_code IN ('RAW','SEMI','FINISHED') AND (parent_id IS NULL OR parent_id=0)
   UNION ALL

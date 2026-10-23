@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-23",
-  "tableCountBaseline": 135,
+  "generatedAt": "2026-10-24",
+  "tableCountBaseline": 136,
   "tables": [
     "archive_production_quality_inspection",
     "archive_production_quality_inspection_item",
@@ -24,6 +24,7 @@
     "hr_dept_mapping",
     "hr_employee",
     "inventory_alert_log",
+    "inventory_attribute_template",
     "inventory_inbound_item",
     "inventory_inbound_order",
     "inventory_iqc_batch",
