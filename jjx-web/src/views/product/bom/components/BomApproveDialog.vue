@@ -82,7 +82,7 @@ import type {
   BomItemBatchReviewResult,
 } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
-import { ProductActions, BomStatusEnum } from '@/enums/product'
+import { ProductActions, BomStatusEnum, BomItemReviewStatusEnum } from '@/enums/product'
 import { ApprovalResultEnum } from '@/enums/common/ApprovalEnum'
 import ApprovalOpinionForm from '@/components/Approval/ApprovalOpinionForm.vue'
 import type { ApprovalOpinion } from '@/components/Approval/types'
@@ -201,6 +201,24 @@ const refreshAfterAction = async () => {
   await refreshApproveCheck()
 }
 
+/**
+ * 2026-10-23：行内审核只改这一行，不再调整单详情 + 整单体检（用户口径）。
+ * 整单批准前的最终校验仍由后端 approveEngineeringBom 负责。
+ */
+const applyRowPatchLocally = (itemIds: number[], patch: (row: EngineeringBomItem) => void) => {
+  for (const row of bomDetailList.value) {
+    if (row.itemId != null && itemIds.includes(row.itemId)) patch(row)
+  }
+}
+
+/** 把已处理行从"待处理清单"里移除，避免整单批准按钮被过期体检结果一直卡住 */
+const dropBlockingIssuesFor = (itemIds: number[]) => {
+  if (!blockingIssues.value.length) return
+  blockingIssues.value = blockingIssues.value.filter(
+    (issue) => issue.itemId == null || !itemIds.includes(issue.itemId),
+  )
+}
+
 const resetData = () => {
   Object.assign(detail, createEmptyDetail())
   bomDetailList.value = []
@@ -246,9 +264,12 @@ const handleBatchApprove = async (itemIds: number[]) => {
     ElMessage[res.data.failed.length ? 'warning' : 'success'](
       `批量通过 ${res.data.successIds.length} 行，失败 ${res.data.failed.length} 行`
     )
-    await refreshAfterAction()
+    applyRowPatchLocally(res.data.successIds, (target) => {
+      target.reviewStatus = BomItemReviewStatusEnum.APPROVED.value
+    })
+    dropBlockingIssuesFor(res.data.successIds)
   } catch (error: any) {
-    ElMessage.error(error?.message || '批量审核或刷新失败，请重新加载BOM审核弹窗')
+    ElMessage.error(error?.message || '批量审核失败，请重新加载BOM审核弹窗')
   } finally {
     batchBusy.value = false
   }
@@ -294,7 +315,13 @@ const handleRowReview = async (row: EngineeringBomItem, action: RowAction) => {
           ? '该行已驳回，BOM已退回工程修改'
           : '已确认移除'
     )
-    await refreshAfterAction()
+    const rowId = row.itemId
+    applyRowPatchLocally([rowId], (target) => {
+      if (action === 'APPROVE') target.reviewStatus = BomItemReviewStatusEnum.APPROVED.value
+      else if (action === 'REJECT') target.reviewStatus = BomItemReviewStatusEnum.REJECTED.value
+      else target.removeConfirmed = true
+    })
+    dropBlockingIssuesFor([rowId])
     if (action === 'REJECT') {
       // 行驳回会整单退回工程修改，关闭审核窗并刷新列表
       emit('success', {
@@ -323,7 +350,13 @@ const handleLinkMaterial = async (row: EngineeringBomItem, material: InventoryMa
       materialId: material.materialId,
     })
     ElMessage.success('已关联物料，请继续审核该行')
-    await refreshAfterAction()
+    applyRowPatchLocally([row.itemId], (target) => {
+      target.materialId = material.materialId
+      target.materialCode = material.materialCode ?? ''
+      target.materialName = material.materialName ?? ''
+      target.specification = material.specification ?? ''
+    })
+    dropBlockingIssuesFor([row.itemId])
   } catch (error: any) {
     console.error('关联物料失败:', error)
     ElMessage.error(error?.message || '关联物料失败')
