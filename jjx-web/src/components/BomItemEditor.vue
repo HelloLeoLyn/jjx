@@ -64,7 +64,9 @@
             <el-icon v-else size="small" color="#e56706">
               <WarningFilled />
             </el-icon>
-            <span v-if="comboNoOf(scope.$index)" class="row-index">{{ comboNoOf(scope.$index) }}</span>
+            <span v-if="comboNoOf(scope.$index)" class="row-index">{{
+              comboNoOf(scope.$index)
+            }}</span>
           </div>
         </template>
       </el-table-column>
@@ -209,7 +211,7 @@
         </template>
       </el-table-column>
       <!-- 最低投料量 -->
-      <el-table-column label="最低投料量" prop="minIssueQty" align="center" width="100">
+      <el-table-column label="最低投料量" prop="minIssueQty" align="center" width="80">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.minIssueQty"
@@ -223,38 +225,33 @@
         </template>
       </el-table-column>
       <!-- 应用料（含损耗，只读） -->
-      <el-table-column label="应用料" prop="appliedQty" align="center" width="90">
+      <el-table-column label="应用料" prop="appliedQty" align="center" width="70">
         <template #default="scope">{{ formatQty(scope.row.appliedQty) }}</template>
       </el-table-column>
 
       <!-- 行审核状态（dev-20261020-029） -->
-      <el-table-column label="行状态" width="105" align="center">
+      <el-table-column label="行状态" width="80" align="center">
         <template #default="scope">
           <div class="row-status-cell">
-            <el-tag
-              :type="BomItemReviewStatusEnum.getTagProps(rowReviewStatus(scope.row)).type"
-              size="small"
-            >
-              {{ BomItemReviewStatusEnum.getLabel(rowReviewStatus(scope.row)) }}
-            </el-tag>
-            <el-tooltip v-if="scope.row.rejectReason" :content="scope.row.rejectReason">
-              <el-icon class="reject-icon"><WarningFilled /></el-icon>
+            <el-tooltip :content="scope.row.rejectReason || '无'" placement="top">
+              <el-tag
+                :type="BomItemReviewStatusEnum.getTagProps(rowReviewStatus(scope.row)).type"
+                size="small"
+              >
+                {{ BomItemReviewStatusEnum.getLabel(rowReviewStatus(scope.row)) }}
+              </el-tag>
             </el-tooltip>
           </div>
         </template>
       </el-table-column>
 
       <!-- 操作列 -->
-      <el-table-column label="操作" min-width="120" align="center" fixed="right">
+      <el-table-column label="操作" min-width="120" align="left" fixed="right">
         <template #default="scope">
-          <!-- <el-button
-            v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
-            link
-            type="primary"
-            size="small"
-            @click="handleCreateMaterial(scope.row, scope.row.materialName || '')"
-            >建档</el-button
-          > -->
+          <el-button link type="primary" size="small" @click="handleCopyItem(scope.row)"
+            >复制</el-button
+          >
+
           <el-button
             v-if="isPendingRemove(scope.row)"
             link
@@ -263,13 +260,21 @@
             @click="handleUndoRemove(scope.row)"
             >撤销移除</el-button
           >
-          <el-button link type="primary" @click="handleCopyItem(scope.row)">复制</el-button>
           <el-button
             v-if="!isPendingRemove(scope.row)"
             link
+            size="small"
             type="danger"
             @click="handleDeleteItem(scope.row)"
             >删除</el-button
+          >
+          <el-button
+            v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
+            link
+            type="primary"
+            size="small"
+            @click="handleCreateMaterial(scope.row, scope.row.materialName || '')"
+            >建档</el-button
           >
         </template>
       </el-table-column>
@@ -350,7 +355,9 @@ function handleMaterialDraft(row: EngineeringBomItem, draft: { text: string; pen
   else delete materialDrafts.value[key]
 }
 function setQuickMode(value: string | number | boolean) {
-  const pendingRow = items.value.find(row => materialDrafts.value[String(row.itemId)] !== undefined && !isPendingRemove(row))
+  const pendingRow = items.value.find(
+    (row) => materialDrafts.value[String(row.itemId)] !== undefined && !isPendingRemove(row)
+  )
   if (pendingRow) {
     void markRowError(pendingRow, '请先选择候选物料或取消搜索修改，再切换模式')
     return
@@ -450,7 +457,7 @@ function toSubmitItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
     delete copy.children
     // 组合：同一「项目」连续多行视为一组，组内除首行外都挂到首行（落库 parent_material_id）
     const leader = comboLeaderOf(it)
-    copy.parentMaterialId = leader && leader !== it ? leader.itemId ?? null : null
+    copy.parentMaterialId = leader && leader !== it ? (leader.itemId ?? null) : null
     copy.sortOrder = idx + 1
     copy.removeRequested = !!it.removeRequested
     return copy
@@ -466,14 +473,15 @@ const comboLeaderOf = (row: EngineeringBomItem): EngineeringBomItem | null => {
   const idx = items.value.indexOf(row)
   if (idx < 0) return null
   const entry = draftGroups.value[idx]
-  const leader = draftGroups.value.find(group => group.groupKey === entry.groupKey)?.item
+  const leader = draftGroups.value.find((group) => group.groupKey === entry.groupKey)?.item
   return leader && leader !== row ? leader : null
 }
 
 /** 序号列：组合序号（连续同项目为一组，1、2、3…）+ 组内合并 */
 const comboRuns = computed(() => {
-  return draftGroups.value.filter(group => group.span > 0)
-    .map(group => ({ start: group.index, size: group.span, no: group.displayNumber }))
+  return draftGroups.value
+    .filter((group) => group.span > 0)
+    .map((group) => ({ start: group.index, size: group.span, no: group.displayNumber }))
 })
 
 const comboNoOf = (index: number): number => {
@@ -1074,7 +1082,10 @@ defineExpose({
       if (failures.length) return
       if (isPendingRemove(item)) return
       if (!quickMode.value && materialDrafts.value[String(item.itemId)] !== undefined) {
-        failures.push({ item, message: `第${items.value.indexOf(item) + 1}行物料搜索尚未确认，请选择候选物料或取消修改` })
+        failures.push({
+          item,
+          message: `第${items.value.indexOf(item) + 1}行物料搜索尚未确认，请选择候选物料或取消修改`,
+        })
         return
       }
       if (!item.materialName?.trim()) {

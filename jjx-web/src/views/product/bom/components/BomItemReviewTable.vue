@@ -34,7 +34,13 @@
       @selection-change="selectedRows = $event"
       :span-method="groupSpan"
     >
-      <el-table-column v-if="canOperate" type="selection" width="45" :selectable="canSelect" reserve-selection />
+      <el-table-column
+        v-if="canOperate"
+        type="selection"
+        width="45"
+        :selectable="canSelect"
+        reserve-selection
+      />
       <el-table-column label="序号" width="55" align="center">
         <template #default="{ $index }">
           {{ groups[$index]?.displayNumber || '' }}
@@ -44,9 +50,14 @@
       <el-table-column label="项目" min-width="160">
         <template #default="{ row, $index }">
           <div>{{ row.processName || '—' }}</div>
-          <el-button v-if="canOperate && groups[$index]?.span && groups[$index]?.size > 1"
-            link type="primary" :disabled="!groupSelectable(groups[$index].groupKey)"
-            @click="selectGroup(groups[$index].groupKey)">选择本组待审</el-button>
+          <el-button
+            v-if="canOperate && groups[$index]?.span && groups[$index]?.size > 1"
+            link
+            type="primary"
+            :disabled="!groupSelectable(groups[$index].groupKey)"
+            @click="selectGroup(groups[$index].groupKey)"
+            >选择本组待审</el-button
+          >
         </template>
       </el-table-column>
       <el-table-column label="行状态" width="110" align="center">
@@ -55,17 +66,26 @@
             <el-tag :type="BomItemReviewStatusEnum.getTagProps(rowStatus(row)).type" size="small">
               {{ BomItemReviewStatusEnum.getLabel(rowStatus(row)) }}
             </el-tag>
-            <el-tooltip v-if="row.rejectReason" :content="row.rejectReason">
-              <el-icon class="reject-icon"><WarningFilled /></el-icon>
-            </el-tooltip>
           </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="原材料名称" width="170" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span :class="{ 'old-value-changed': hasOriginal(row, 'materialName') }">
+            {{ originalOf(row, 'materialName') }}
+          </span>
         </template>
       </el-table-column>
       <el-table-column label="材料名称（匹配已有 / 新建）" min-width="250">
         <template #default="{ row }">
           <div class="material-cell">
             <BomMaterialSelector
-              v-if="canOperate && !batchBusy && busyItemId == null && rowStatus(row) !== BomItemReviewStatusEnum.PENDING_REMOVE.value"
+              v-if="
+                canOperate &&
+                !batchBusy &&
+                busyItemId == null &&
+                rowStatus(row) !== BomItemReviewStatusEnum.PENDING_REMOVE.value
+              "
               :material-id="row.materialId"
               :material-name="row.materialName"
               @select="(material) => emit('link', row, material)"
@@ -79,15 +99,6 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="规格型号" prop="specification" width="130" show-overflow-tooltip />
-      <!-- dev-20261022-021：原值对比列（取最近一次保存流水的改动前值，没有记录显示 —） -->
-      <el-table-column label="原材料名称" width="170" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span :class="{ 'old-value-changed': hasOriginal(row, 'materialName') }">
-            {{ originalOf(row, 'materialName') }}
-          </span>
-        </template>
-      </el-table-column>
       <el-table-column label="原规格型号" width="130" show-overflow-tooltip>
         <template #default="{ row }">
           <span :class="{ 'old-value-changed': hasOriginal(row, 'specification') }">
@@ -95,6 +106,9 @@
           </span>
         </template>
       </el-table-column>
+      <el-table-column label="规格型号" prop="specification" width="130" show-overflow-tooltip />
+      <!-- dev-20261022-021：原值对比列（取最近一次保存流水的改动前值，没有记录显示 —） -->
+
       <el-table-column label="单位" prop="unit" width="70" align="center" />
       <el-table-column label="基数" prop="baseQty" width="80" align="right" />
       <el-table-column label="模数" prop="moduleQty" width="80" align="right" />
@@ -105,7 +119,7 @@
       <el-table-column label="应用料" width="95" align="right">
         <template #default="{ row }">{{ formatQty(appliedQuantity(row)) }}</template>
       </el-table-column>
-      <el-table-column label="备注" prop="remark" width="140" show-overflow-tooltip />
+      <!-- <el-table-column label="备注" prop="remark" width="140" show-overflow-tooltip /> -->
       <el-table-column v-if="canOperate" label="操作" width="220" fixed="right" align="center">
         <template #default="{ row }">
           <template v-if="rowStatus(row) === BomItemReviewStatusEnum.PENDING_REMOVE.value">
@@ -149,7 +163,11 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from 'vue'
 import { WarningFilled } from '@element-plus/icons-vue'
-import type { EngineeringBomItem, BomItemBatchReviewResult, BomOriginalValues } from '@/types/product/bom'
+import type {
+  EngineeringBomItem,
+  BomItemBatchReviewResult,
+  BomOriginalValues,
+} from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import { BomItemReviewStatusEnum } from '@/enums/product'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
@@ -204,24 +222,28 @@ const emit = defineEmits<{
 
 const rowStatus = (row: EngineeringBomItem): number =>
   row.reviewStatus ?? BomItemReviewStatusEnum.DRAFT.value
-const hasMaterial = (row: EngineeringBomItem) => row.materialId != null && Number(row.materialId) > 0
+const hasMaterial = (row: EngineeringBomItem) =>
+  row.materialId != null && Number(row.materialId) > 0
 
 const selectedRows = ref<EngineeringBomItem[]>([])
 const tableRef = ref()
 const groups = computed(() => bomGroupRows(props.items, true))
 const canOperate = computed(() => props.canReview && hasPermi(['engineering:bom:approve']))
 const eligible = (row: EngineeringBomItem) =>
-  canOperate.value && row.itemId != null && row.itemId > 0
-  && (props.bomId == null || row.bomId == null || row.bomId === props.bomId)
-  && rowStatus(row) === BomItemReviewStatusEnum.PENDING.value
+  canOperate.value &&
+  row.itemId != null &&
+  row.itemId > 0 &&
+  (props.bomId == null || row.bomId == null || row.bomId === props.bomId) &&
+  rowStatus(row) === BomItemReviewStatusEnum.PENDING.value
 const canSelect = (row: EngineeringBomItem) =>
   !props.batchBusy && props.busyItemId == null && eligible(row)
 const selectedIds = computed(() => {
-  const ids = new Set(selectedRows.value.map(row => row.itemId))
-  return props.items.filter(row => ids.has(row.itemId) && eligible(row)).map(row => row.itemId!)
+  const ids = new Set(selectedRows.value.map((row) => row.itemId))
+  return props.items.filter((row) => ids.has(row.itemId) && eligible(row)).map((row) => row.itemId!)
 })
-const groupSelectable = (key: string) => groups.value.some(group => group.groupKey === key && canSelect(group.item))
-const groupColumnIndex = computed(() => canOperate.value ? 1 : 0)
+const groupSelectable = (key: string) =>
+  groups.value.some((group) => group.groupKey === key && canSelect(group.item))
+const groupColumnIndex = computed(() => (canOperate.value ? 1 : 0))
 const groupSpan = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
   if (columnIndex !== groupColumnIndex.value) return [1, 1]
   const group = groups.value[rowIndex]
@@ -232,23 +254,33 @@ const groupSpan = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: n
 }
 function selectGroup(key: string) {
   for (const group of groups.value) {
-    if (group.groupKey === key && canSelect(group.item)) tableRef.value?.toggleRowSelection(group.item, true)
+    if (group.groupKey === key && canSelect(group.item))
+      tableRef.value?.toggleRowSelection(group.item, true)
   }
 }
-watch(() => props.bomId, () => { selectedRows.value = []; tableRef.value?.clearSelection() })
+watch(
+  () => props.bomId,
+  () => {
+    selectedRows.value = []
+    tableRef.value?.clearSelection()
+  }
+)
 watch([() => props.items, canOperate], async () => {
-  const selected = new Set(selectedRows.value.map(row => row.itemId))
-  selectedRows.value = props.items.filter(row => selected.has(row.itemId) && eligible(row))
+  const selected = new Set(selectedRows.value.map((row) => row.itemId))
+  selectedRows.value = props.items.filter((row) => selected.has(row.itemId) && eligible(row))
   await nextTick()
   for (const row of props.items) {
     if (selected.has(row.itemId) && !eligible(row)) tableRef.value?.toggleRowSelection(row, false)
   }
 })
-const unitQuantity = (row: EngineeringBomItem) => calculateBomQuantity(row.baseQty, row.moduleQty) ?? row.quantity
+const unitQuantity = (row: EngineeringBomItem) =>
+  calculateBomQuantity(row.baseQty, row.moduleQty) ?? row.quantity
 const appliedQuantity = (row: EngineeringBomItem) => {
   const quantity = Number(unitQuantity(row))
   const loss = Number(row.lossRate || 0)
-  return Number.isFinite(quantity) && Number.isFinite(loss) ? quantity * (1 + loss / 100) : undefined
+  return Number.isFinite(quantity) && Number.isFinite(loss)
+    ? quantity * (1 + loss / 100)
+    : undefined
 }
 
 const blockingRows = computed(() =>
