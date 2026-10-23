@@ -24,7 +24,7 @@
     @load-more="loadMore"
   >
     <template #option="{ item }">
-      {{ item.materialName }} · {{ item.specification || '无规格' }}
+      {{ optionLabel(item) }}
     </template>
     <template #footer>
       <div v-if="pending" role="status" class="bom-search-pending">
@@ -42,7 +42,7 @@
 /**
  * BOM 行「物料名称」选择器（dev-20261018-011）
  * 由 el-select 改为可编辑搜索框（EditableSearchSelect）：选中后文字可直接删改并续搜。
- * 保留：远程搜索 400ms 防抖（至少 2 字符）、加载更多、新建物料入口（权限在父级/指令侧）、已选回填、清空。
+ * 保留：非空文字远程搜索 400ms 防抖、加载更多、新建物料入口（权限在父级/指令侧）、已选回填、清空。
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { materialApi } from '@/api/inventory/material'
@@ -89,6 +89,11 @@ const BOM_MATERIAL_PERMS = [
 const canCreate = computed(() => hasPermi(BOM_MATERIAL_PERMS))
 
 const labelOf = (item: InventoryMaterial) => item.materialName || ''
+const optionLabel = (item: InventoryMaterial) =>
+  [item.materialName, item.model, item.specification]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(' · ')
 
 // 显示「新建物料」入口：搜过 & 有非空关键字 & 没有与关键字完全同名的物料
 // 2026-10-21：同名不同规格是常态（库内单个名称最多 43 个规格），只在 100% 同名时才隐藏建档行
@@ -129,7 +134,7 @@ async function fetchPage(id: number, nextPage: number) {
 function search(value: string) {
   clearTimeout(timer)
   const id = ++requestId
-  keyword.value = value.trim()
+  keyword.value = value.replace(/[\s\u3000]+/g, ' ').trim()
   options.value = []
   total.value = 0
   searched.value = false

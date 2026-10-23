@@ -21,6 +21,10 @@ public class MaterialVO {
     private Long categoryId;
     private String categoryName;
     private String specification;
+    private String materialGrade;
+    private String model;
+    private String color;
+    private String brand;
     private String unit;
     private BigDecimal unitConv;
     private String unitAlt;

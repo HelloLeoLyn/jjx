@@ -9,6 +9,10 @@ export interface InventoryMaterial {
   materialType: string
   categoryId?: number
   specification?: string
+  materialGrade?: string
+  model?: string
+  color?: string
+  brand?: string
   unit: string
   safeStock: number
   maxStock: number

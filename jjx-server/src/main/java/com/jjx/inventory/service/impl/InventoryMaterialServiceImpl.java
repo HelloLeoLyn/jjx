@@ -291,12 +291,12 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     @Override
     public PageResult<MaterialVO> search(MaterialQueryDTO queryDTO) {
-        // 按编码/名称/英文名/规格模糊匹配（采购订单物料选择等远程搜索共用）
+        // 统一检索生成列（采购订单物料选择等远程搜索共用）。
         // 8-08 修复：无任何查询条件时不再拼 and() 空括号（SQL: WHERE () 语法错误），直接查全部
         LambdaQueryWrapper<InventoryMaterial> wrapper = new LambdaQueryWrapper<>();
         String keyword = queryDTO.getKeyword();
         if (keyword != null) {
-            keyword = StringUtils.trimToNull(keyword.replaceAll("[\\s\\u3000]+", " "));
+            keyword = StringUtils.trimToNull(keyword.replaceAll("(?U)\\s+", " "));
         }
         String code = queryDTO.getMaterialCode();
         String name = queryDTO.getMaterialName();
@@ -308,11 +308,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             List<String> ranks = new java.util.ArrayList<>();
             String param = "#{" + wrapper.getParamAlias() + ".paramNameValuePairs.";
             for (String term : terms) {
-                // 词内四字段 OR，词间 AND；名称和规格可分别命中不同词。
-                wrapper.and(w -> w.like(InventoryMaterial::getMaterialCode, term)
-                        .or().like(InventoryMaterial::getMaterialName, term)
-                        .or().like(InventoryMaterial::getMaterialNameEn, term)
-                        .or().like(InventoryMaterial::getSpecification, term));
+                // 每词在 search_blob 上 LIKE，词间 AND；值使用绑定参数。
+                wrapper.apply("search_blob LIKE {0}", "%" + term + "%");
                 // 每词独立绑定比较值，SQL 片段只拼接内部生成的参数名。
                 String key = "rank" + ranks.size();
                 wrapper.getParamNameValuePairs().put(key + "Exact", term);
@@ -349,6 +346,25 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);
         List<MaterialVO> voList = enrichTags(materialConverter.toVOList(page.getRecords()));
+        // 属性列尚未纳入共享实体；仅为当前搜索页批量补齐，避免影响其他物料入口。
+        if (!voList.isEmpty()) {
+            var attributesQuery = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<InventoryMaterial>();
+            attributesQuery.select("material_id", "material_grade", "model", "color", "brand")
+                    .in("material_id", voList.stream().map(MaterialVO::getMaterialId).toList());
+            Map<Long, Map<String, Object>> attributesById = new HashMap<>();
+            for (Map<String, Object> attributes : materialMapper.selectMaps(attributesQuery)) {
+                attributesById.put(((Number) attributes.get("material_id")).longValue(), attributes);
+            }
+            for (MaterialVO vo : voList) {
+                Map<String, Object> attributes = attributesById.get(vo.getMaterialId());
+                if (attributes != null) {
+                    vo.setMaterialGrade((String) attributes.get("material_grade"));
+                    vo.setModel((String) attributes.get("model"));
+                    vo.setColor((String) attributes.get("color"));
+                    vo.setBrand((String) attributes.get("brand"));
+                }
+            }
+        }
         return PageResult.of(page, voList);
     }
 
