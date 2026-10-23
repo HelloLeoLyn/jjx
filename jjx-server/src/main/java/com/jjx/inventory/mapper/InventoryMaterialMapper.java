@@ -16,6 +16,15 @@ import java.util.List;
 @Mapper
 public interface InventoryMaterialMapper extends BaseMapper<InventoryMaterial> {
 
+    @Select("SELECT category_id, category_code, category_name, material_type FROM inventory_material_category WHERE category_id = #{id}")
+    java.util.Map<String, Object> selectCategory(@Param("id") Long id);
+
+    @Select("SELECT category_id, category_code, category_name, material_type FROM inventory_material_category WHERE category_code = #{value} OR category_name = #{value} LIMIT 1")
+    java.util.Map<String, Object> findCategory(@Param("value") String value);
+
+    @Select("SELECT field_key FROM inventory_material_required_field WHERE category_code = #{code} AND required = 1")
+    List<String> selectRequiredFields(@Param("code") String code);
+
     /**
      * 根据物料编码查询
      */

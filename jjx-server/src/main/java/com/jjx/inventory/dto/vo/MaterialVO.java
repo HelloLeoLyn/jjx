@@ -21,6 +21,9 @@ public class MaterialVO {
     private Long categoryId;
     private String categoryName;
     private String specification;
+    private String searchKeywords;
+    private String size;
+
     private String materialGrade;
     private String model;
     private String color;

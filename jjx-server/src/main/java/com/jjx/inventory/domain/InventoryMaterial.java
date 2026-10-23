@@ -44,6 +44,13 @@ public class InventoryMaterial extends BaseEntity {
 
     /** 规格型号/技术参数 */
     private String specification;
+    private String materialGrade;
+    private String model;
+    private String color;
+    private String brand;
+    private String searchKeywords;
+    private String size;
+
 
     /** 基本计量单位 */
     private String unit;
@@ -103,4 +110,7 @@ public class InventoryMaterial extends BaseEntity {
     private Integer status;
 
     private String processGroup;
+
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private java.util.Set<String> suppliedFields = new java.util.HashSet<>();
 }

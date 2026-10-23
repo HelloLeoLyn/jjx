@@ -37,6 +37,11 @@ public class MaterialQueryDTO extends PageQuery{
     private Long categoryId;
 
     private String specification;
+    private String materialGrade;
+    private String model;
+    private String color;
+    private String brand;
+
 
     private String status;
 

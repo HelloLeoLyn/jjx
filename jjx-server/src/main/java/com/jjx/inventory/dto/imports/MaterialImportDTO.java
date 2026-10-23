@@ -9,7 +9,7 @@ import lombok.Data;
 @Data
 public class MaterialImportDTO {
 
-    @ExcelColumn(value = "材料", order = 1, required = true, comment = "物料名称")
+    @ExcelColumn(value = "物料名称", order = 1, comment = "旧模板材料列可继续用作名称")
     private String materialName;
 
     @ExcelColumn(value = "规格", order = 2, comment = "规格型号")
@@ -38,4 +38,16 @@ public class MaterialImportDTO {
 
     @ExcelColumn(value = "材料标签", order = 7, comment = "多个用斜杠分隔；支持 大类*明细 两级，自动建档")
     private String tagTexts;
+    @ExcelColumn(value = "品类", order = 8, comment = "品类编码或完整名称")
+    private String categoryName;
+    @ExcelColumn(value = "材料", order = 9, comment = "如PC膜、PE保护膜；旧模板此列仍可为物料名称")
+    private String materialGrade;
+    @ExcelColumn(value = "型号", order = 10)
+    private String model;
+    @ExcelColumn(value = "颜色", order = 11)
+    private String color;
+    @ExcelColumn(value = "品牌", order = 12)
+    private String brand;
+    @ExcelColumn(value = "尺寸", order = 13, comment = "宽×长/厚，缺省mm，可写cm/m/inch")
+    private String size;
 }

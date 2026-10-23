@@ -17,6 +17,13 @@ public class MaterialSaveDTO {
     private String materialType;
     private Long categoryId;
     private String specification;
+    private String materialGrade;
+    private String model;
+    private String color;
+    private String brand;
+    private String searchKeywords;
+    private String size;
+
     private String unit;
     private BigDecimal unitConv;
     private String unitAlt;

@@ -127,6 +127,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (queryDTO.getStatus() != null && !queryDTO.getStatus().isEmpty()) {
             wrapper.eq(InventoryMaterial::getStatus, queryDTO.getStatus());
         }
+        applyAttributeFilters(wrapper, queryDTO);
         wrapper.orderByDesc(InventoryMaterial::getCreateTime).orderByDesc(InventoryMaterial::getMaterialId);
         return wrapper;
     }
@@ -145,7 +146,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean create(InventoryMaterial material, List<Long> tagIds, String operName) {
-        validateMaterialType(material.getMaterialType());
+        validateMasterData(material, null);
         // 检查编码是否已存在
         if (existsByCode(material.getMaterialCode())) {
             log.error("物料编码已存在: {}", material.getMaterialCode());
@@ -165,22 +166,29 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean update(InventoryMaterial material, List<Long> tagIds, String operName) {
-        validateMaterialType(material.getMaterialType());
         InventoryMaterial existing = materialMapper.selectById(material.getMaterialId());
         if (existing == null) {
             log.error("物料不存在: {}", material.getMaterialId());
             return false;
         }
 
-        // 检查编码是否重复（如果修改了编码）
-        if (!existing.getMaterialCode().equals(material.getMaterialCode())) {
+        validateMasterData(material, existing);
+        // 编辑DTO不传编码时保留原编码。
+        if (material.getMaterialCode() != null && !existing.getMaterialCode().equals(material.getMaterialCode())) {
             if (existsByCode(material.getMaterialCode())) {
                 log.error("物料编码已存在: {}", material.getMaterialCode());
                 return false;
             }
         }
 
-        boolean updated = materialMapper.updateById(material) > 0;
+        // MyBatis默认跳过null；显式清空选填字段需单独SET，省略字段保持原值。
+        LambdaUpdateWrapper<InventoryMaterial> patch = new LambdaUpdateWrapper<>();
+        patch.eq(InventoryMaterial::getMaterialId, material.getMaterialId());
+        for (String key : material.getSuppliedFields()) {
+            String column = MASTER_COLUMNS.get(key);
+            if (column != null && fieldValue(material, key) == null) patch.setSql(column + " = NULL");
+        }
+        boolean updated = materialMapper.update(material, patch) > 0;
         if (updated) {
             setMaterialTags(material.getMaterialId(), tagIds, operName);
         }
@@ -339,6 +347,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (queryDTO.getSupplierId() != null) {
             wrapper.eq(InventoryMaterial::getSupplierId, queryDTO.getSupplierId());
         }
+        applyAttributeFilters(wrapper, queryDTO);
         wrapper.eq(InventoryMaterial::getStatus, StatusEnum.NORMAL.getCode())
                 .orderByDesc(InventoryMaterial::getCreateTime)
                 .orderByDesc(InventoryMaterial::getMaterialId);
@@ -346,25 +355,6 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 .setCurrent(queryDTO.getPageNum());
         materialMapper.selectPage(page, wrapper);
         List<MaterialVO> voList = enrichTags(materialConverter.toVOList(page.getRecords()));
-        // 属性列尚未纳入共享实体；仅为当前搜索页批量补齐，避免影响其他物料入口。
-        if (!voList.isEmpty()) {
-            var attributesQuery = new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<InventoryMaterial>();
-            attributesQuery.select("material_id", "material_grade", "model", "color", "brand")
-                    .in("material_id", voList.stream().map(MaterialVO::getMaterialId).toList());
-            Map<Long, Map<String, Object>> attributesById = new HashMap<>();
-            for (Map<String, Object> attributes : materialMapper.selectMaps(attributesQuery)) {
-                attributesById.put(((Number) attributes.get("material_id")).longValue(), attributes);
-            }
-            for (MaterialVO vo : voList) {
-                Map<String, Object> attributes = attributesById.get(vo.getMaterialId());
-                if (attributes != null) {
-                    vo.setMaterialGrade((String) attributes.get("material_grade"));
-                    vo.setModel((String) attributes.get("model"));
-                    vo.setColor((String) attributes.get("color"));
-                    vo.setBrand((String) attributes.get("brand"));
-                }
-            }
-        }
         return PageResult.of(page, voList);
     }
 
@@ -381,6 +371,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         // DEV-702：文件内重复检测（材料+规格+供应商）
         java.util.Map<String, Integer> dupCountMap = new java.util.HashMap<>();
         for (MaterialImportDTO dto : importList) {
+            // 名称兼容先完成，错误由逐行导入捕获。
+            if (StringUtils.isBlank(dto.getMaterialName())) dto.setMaterialName(dto.getMaterialGrade());
             String k = (dto.getMaterialName() == null ? "" : dto.getMaterialName().trim())
                     + "|" + (dto.getSpecification() == null ? "" : dto.getSpecification().trim())
                     + "|" + (dto.getSupplierName() == null ? "" : dto.getSupplierName().trim());
@@ -390,6 +382,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             MaterialImportDTO dto = importList.get(i);
             int excelRow = i + 2; // 第1行表头，数据从第2行开始
             try {
+                normalizeImport(dto);
                 // 文件内重复检测
                 String dupKey = (dto.getMaterialName() == null ? "" : dto.getMaterialName().trim())
                         + "|" + (dto.getSpecification() == null ? "" : dto.getSpecification().trim())
@@ -420,7 +413,9 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 }
 
                 // 生成物料编码
-                validateMaterialType(dto.getMaterialType());
+                Map<String, Object> category = materialMapper.findCategory(dto.getCategoryName());
+                if (category == null) throw new BusinessException("品类不存在：" + dto.getCategoryName());
+                dto.setMaterialType((String) category.get("material_type"));
                 String materialCode = generateMaterialCode(dto.getMaterialType());
 
                 // 创建物料实体
@@ -430,6 +425,13 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 material.setMaterialNameEn(dto.getMaterialNameEn());
                 material.setMaterialType(dto.getMaterialType());
                 material.setSpecification(dto.getSpecification());
+                material.setCategoryId(((Number) category.get("category_id")).longValue());
+                material.setMaterialGrade(dto.getMaterialGrade());
+                material.setModel(dto.getModel());
+                material.setColor(dto.getColor());
+                material.setBrand(dto.getBrand());
+                material.setSize(dto.getSize());
+                validateMasterData(material, null);
                 material.setUnit(dto.getUnit());
                 material.setSupplierId(purchaseSupplierVO != null ? purchaseSupplierVO.getSupplierId() : null);
                 material.setSupplierName(supplierName);
@@ -506,9 +508,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         ProcessGroup processGroup = ProcessGroup.fromCode(dto.getProcessGroup());
         if (processGroup == null) {
             processGroup = ProcessGroup.fromName(dto.getProcessGroup());
-            return processGroup.getCode();
         }
-        return null;
+        return processGroup.getCode();
     }
 
     /**
@@ -574,6 +575,121 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             case INK -> "INK";
             case AUXILIARY -> "AUX";
         };
+    }
+
+    private static final Map<String, String> MASTER_COLUMNS = Map.of(
+            "materialGrade", "material_grade", "model", "model", "color", "color", "brand", "brand",
+            "searchKeywords", "search_keywords", "size", "size", "specification", "specification");
+    private static final Map<String, String> FIELD_LABELS = Map.of(
+            "materialGrade", "材料", "model", "型号", "color", "颜色", "brand", "品牌",
+            "size", "尺寸", "specification", "规格", "searchKeywords", "别名");
+
+    private static String fieldValue(InventoryMaterial material, String key) {
+        return switch (key) {
+            case "materialGrade" -> material.getMaterialGrade();
+            case "model" -> material.getModel();
+            case "color" -> material.getColor();
+            case "brand" -> material.getBrand();
+            case "size" -> material.getSize();
+            case "specification" -> material.getSpecification();
+            case "searchKeywords" -> material.getSearchKeywords();
+            default -> null;
+        };
+    }
+
+    /** 新增校验全部规则；编辑仅校验实际变化的字段（含显式清空）。 */
+    private void validateMasterData(InventoryMaterial material, InventoryMaterial existing) {
+        if (existing != null && material.getSuppliedFields().contains("categoryId") && material.getCategoryId() == null) {
+            throw new BusinessException("品类不能为空");
+        }
+        Long categoryId = material.getCategoryId() != null ? material.getCategoryId()
+                : existing == null ? null : existing.getCategoryId();
+        Map<String, Object> category = categoryId == null ? null : materialMapper.selectCategory(categoryId);
+        if (categoryId != null && category == null) throw new BusinessException("品类不存在：" + categoryId);
+        if (existing == null && category == null) throw new BusinessException("品类不能为空");
+        if (category != null) {
+            material.setMaterialType((String) category.get("material_type"));
+        } else if (material.getMaterialType() == null && existing != null) {
+            material.setMaterialType(existing.getMaterialType());
+        }
+        validateMaterialType(material.getMaterialType());
+        String categoryCode = category == null ? null : (String) category.get("category_code");
+        if (categoryCode != null) {
+            for (String column : materialMapper.selectRequiredFields(categoryCode)) {
+                String key = MASTER_COLUMNS.entrySet().stream().filter(e -> e.getValue().equals(column))
+                        .map(Map.Entry::getKey).findFirst().orElse(null);
+                if (key == null) throw new BusinessException("不支持的物料必填规则：" + column);
+                String value = fieldValue(material, key);
+                boolean supplied = value != null || material.getSuppliedFields().contains(key);
+                boolean changed = existing == null || (supplied && !java.util.Objects.equals(value, fieldValue(existing, key)));
+                if (changed && StringUtils.isBlank(value)) throw new BusinessException(FIELD_LABELS.get(key) + "不能为空");
+            }
+        }
+        boolean sizeChanged = existing == null || !java.util.Objects.equals(material.getSize(), existing.getSize());
+        if (StringUtils.isNotBlank(material.getSize()) && sizeChanged) {
+            try {
+                com.jjx.inventory.util.MaterialSizeParser.parse(material.getSize(), categoryCode);
+            } catch (IllegalArgumentException e) {
+                throw new BusinessException(e.getMessage());
+            }
+        }
+    }
+
+    private static void applyAttributeFilters(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {
+        wrapper.eq(StringUtils.isNotBlank(dto.getMaterialGrade()), InventoryMaterial::getMaterialGrade, dto.getMaterialGrade())
+                .eq(StringUtils.isNotBlank(dto.getModel()), InventoryMaterial::getModel, dto.getModel())
+                .eq(StringUtils.isNotBlank(dto.getColor()), InventoryMaterial::getColor, dto.getColor())
+                .eq(StringUtils.isNotBlank(dto.getBrand()), InventoryMaterial::getBrand, dto.getBrand());
+    }
+
+    private void normalizeImport(MaterialImportDTO dto) {
+        if (StringUtils.isBlank(dto.getMaterialName())) dto.setMaterialName(dto.getMaterialGrade());
+        if (StringUtils.isBlank(dto.getMaterialName())) throw new BusinessException("物料名称不能为空");
+        String name = dto.getMaterialName();
+        // 旧模板「材料」是名称；新模板「材料」是结构化复合词。
+        if (StringUtils.isBlank(dto.getCategoryName())) {
+            String text = name.toUpperCase(java.util.Locale.ROOT);
+            String categoryCode;
+            if (text.matches(".*(离型纸|离型膜|标签纸|纸材).*")) categoryCode = "RM-PAPER";
+            else if (text.matches(".*(保护膜|双面胶|VHB).*")) categoryCode = "RM-ADHESIVE";
+            else if (text.matches(".*(胶带|胶水|3M).*")) categoryCode = "AUX-ADHESIVE";
+            else if (text.matches(".*(LED|灯|电阻|电容|连接器|IC).*")) categoryCode = "AUX-ELEC";
+            else if (text.matches(".*(螺丝|垫片|弹片|铆钉|铜|铝).*")) categoryCode = "AUX-HARDWARE";
+            else if (text.matches(".*(油墨).*")) categoryCode = "RM-INK";
+            else if (text.matches(".*(PC|PET|PVC|PP|PE|膜|片材).*")) categoryCode = "RM-FILM";
+            else if (text.matches(".*(纸箱|袋|泡棉|标签).*")) categoryCode = "AUX-PACK";
+            else if (text.matches(".*(刀模|治具|砂纸|手套).*")) categoryCode = "AUX-TOOL";
+            else categoryCode = "A".equals(dto.getMaterialType()) ? "OTHER-A" : "OTHER-R";
+            dto.setCategoryName(categoryCode);
+        }
+        if (StringUtils.isBlank(dto.getMaterialGrade()) || name.equals(dto.getMaterialGrade())) {
+            String text = name.toUpperCase(java.util.Locale.ROOT);
+            String grade = null;
+            for (String candidate : List.of("PET保护膜", "PE保护膜", "EVA泡棉", "VHB胶带", "PC膜", "PET膜", "PVC膜", "PE膜", "离型纸", "离型膜", "标签纸", "胶带", "泡棉", "灯", "螺丝", "垫片", "不锈钢", "铜", "铝", "油墨", "箱", "袋", "其他")) {
+                if (text.contains(candidate.toUpperCase(java.util.Locale.ROOT))) { grade = candidate; break; }
+            }
+            if (grade == null && text.contains("PC")) grade = "PC膜";
+            if (grade == null && text.contains("PET")) grade = "PET膜";
+            if (grade == null && text.contains("PVC")) grade = "PVC膜";
+            if (grade == null && text.contains("LED")) grade = "灯";
+            if (grade == null && text.startsWith("3M")) grade = "胶带";
+            dto.setMaterialGrade(grade == null ? "其他" : grade);
+        }
+        if (StringUtils.isBlank(dto.getColor())) {
+            for (String color : List.of("透明", "咖啡色", "白色", "黑色", "黄色", "红色", "蓝色", "绿色", "灰色", "银色", "金色", "紫色", "橙色")) {
+                if (name.contains(color)) { dto.setColor(color); break; }
+            }
+        }
+        if (StringUtils.isBlank(dto.getBrand()) && name.toUpperCase(java.util.Locale.ROOT).startsWith("3M")) dto.setBrand("3M");
+        if (StringUtils.isBlank(dto.getModel())) {
+            String text = name.replaceFirst("(?i)^3M", "");
+            String pattern = name.toUpperCase(java.util.Locale.ROOT).startsWith("3M")
+                    ? "^\\s*([A-Za-z0-9][A-Za-z0-9#/_.*-]*)"
+                    : "(?i)(?<![A-Za-z0-9.])[A-Za-z][A-Za-z0-9#/_.*-]*[0-9][A-Za-z0-9#/_.*-]*|(?<![0-9.])[0-9]+[A-Za-z][A-Za-z0-9#/_.*-]*";
+            var model = java.util.regex.Pattern.compile(pattern).matcher(text);
+            if (model.find()) dto.setModel(model.group());
+        }
+        if (StringUtils.isBlank(dto.getSize())) dto.setSize(com.jjx.inventory.util.MaterialSizeParser.extractLegacy(dto.getSpecification()));
     }
 
     private void validateMaterialType(String materialType) {
