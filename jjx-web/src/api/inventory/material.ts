@@ -5,6 +5,9 @@ import type {
   MaterialSaveDTO,
   MaterialUpdateDTO,
   MaterialQueryDTO,
+  MaterialSpecAttrDef,
+  MaterialSpecValues,
+  MaterialSpecValuesSaveDTO,
 } from '@/types/inventory/material'
 import type { PageResult, R } from '@/types'
 import type { SysTag } from '@/types/system/tag'
@@ -156,6 +159,27 @@ export const materialApi = {
   // 生成物料编码
   generateCode(materialType?: string) {
     return request.get<R<string>>('/inventory/material/code', { params: { materialType } })
+  },
+
+  // ==================== 规格属性（dev-20261023-022） ====================
+
+  // 按品类取规格属性定义（表单渲染输入项）
+  getSpecAttrDefs(categoryCode?: string) {
+    return request.get<R<MaterialSpecAttrDef[]>>('/inventory/material/spec/attr-defs', {
+      params: { categoryCode },
+    })
+  },
+
+  // 取物料当前规格属性值（编辑回显）
+  getSpecValues(materialId: number | string) {
+    return request.get<R<MaterialSpecValues>>('/inventory/material/spec/values', {
+      params: { materialId },
+    })
+  },
+
+  // 保存规格属性并重算规格文本
+  saveSpecValues(data: MaterialSpecValuesSaveDTO) {
+    return request.put<R<MaterialSpecValues>>('/inventory/material/spec/values', data)
   },
 }
 

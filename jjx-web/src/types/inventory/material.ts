@@ -1,5 +1,62 @@
 import type { PageQuery } from '@/types'
 import type { SysTag } from '@/types/system/tag'
+
+// ==================== 规格属性（dev-20261023-022） ====================
+
+/** 规格属性录入类型：数值 / 区间 / 下拉 / 文本 */
+export type MaterialSpecInputType = 'number' | 'range' | 'select' | 'text'
+
+/** 品类规格属性定义（后端 inventory_material_spec_attr_def） */
+export interface MaterialSpecAttrDef {
+  id?: number
+  categoryCode: string
+  attrCode: string
+  attrName: string
+  inputType: MaterialSpecInputType
+  unit?: string | null
+  options?: string[]
+  required?: boolean
+  sortOrder?: number
+}
+
+/** 单个属性的取值：数值型用 value；区间型 value + value2；下拉/文本用 value */
+export interface MaterialSpecValueInput {
+  attrCode: string
+  value?: string
+  value2?: string
+}
+
+/** 物料已保存的属性值 */
+export interface MaterialSpecValue {
+  attrCode: string
+  attrName?: string
+  unit?: string | null
+  valueText?: string | null
+  valueNum?: number | null
+  valueNum2?: number | null
+}
+
+/** 属性定义 + 当前值 + 生成文本 */
+export interface MaterialSpecValues {
+  materialId?: number
+  materialCode?: string
+  categoryCode?: string
+  specification?: string | null
+  supplement?: string | null
+  defs: MaterialSpecAttrDef[]
+  values: MaterialSpecValue[]
+}
+
+/** 保存规格属性：新增用 materialCode（新增接口不返回主键），编辑用 materialId */
+export interface MaterialSpecValuesSaveDTO {
+  materialId?: number
+  materialCode?: string
+  categoryCode?: string
+  supplement?: string
+  createMode?: boolean
+  attributes: MaterialSpecValueInput[]
+}
+
 // 物料实体
 export interface InventoryMaterial {
   materialId: number
@@ -18,6 +75,8 @@ export interface InventoryMaterial {
   searchKeywords?: string
   /** 尺寸：宽×长/厚，缺省 mm */
   size?: string
+  /** 规格补充（属性生成的规格文本之外，≤30 字） */
+  specSupplement?: string
   unit: string
   /** 库存视图字段（MaterialVO 返回，只读展示） */
   currentStock?: number

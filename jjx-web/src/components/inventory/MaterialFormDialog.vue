@@ -131,7 +131,30 @@
         </el-col>
       </el-row>
 
-      <el-form-item label="规格" prop="specification" :required="isRequired('specification')" :error="fieldErrors.specification">
+      <template v-if="specAttrMode">
+        <el-divider content-position="left">规格（按品类属性填写）</el-divider>
+        <MaterialSpecFields
+          v-model="specInputs"
+          v-model:supplement="specSupplement"
+          :defs="specDefs"
+          :preview-fallback="legacySpecText"
+        />
+        <el-alert
+          v-if="specLegacyHint"
+          :title="specLegacyHint"
+          type="info"
+          :closable="false"
+          show-icon
+          class="spec-legacy-hint"
+        />
+      </template>
+      <el-form-item
+        v-else
+        label="规格"
+        prop="specification"
+        :required="isRequired('specification')"
+        :error="fieldErrors.specification"
+      >
         <el-input
           v-model="form.specification"
           type="textarea"
@@ -254,17 +277,24 @@ import {
   MATERIAL_FIELD_LABELS,
   MATERIAL_GRADE_OPTIONS,
   composeMaterialName,
+  composeSpecification,
   deriveMaterialType,
   findMissingRequiredFields,
+  findMissingSpecAttrs,
+  guessSpecValues,
   loadMaterialCategoryOptions,
   requiredMaterialFields,
+  specValueToInput,
   splitLegacyMaterialName,
   type MaterialCategoryOption,
+  type MaterialSpecInputValue,
 } from './materialMasterFields'
+import MaterialSpecFields from './MaterialSpecFields.vue'
 import type {
   MaterialSaveDTO,
   MaterialUpdateDTO,
   InventoryMaterial,
+  MaterialSpecAttrDef,
 } from '@/types/inventory/material'
 
 interface Props {
@@ -370,6 +400,138 @@ const categoryHint = computed(() =>
 
 const isRequired = (key: string) => requiredMaterialFields(categoryCode.value).includes(key)
 
+// ==================== 规格属性（dev-20261023-022） ====================
+// 规格由品类属性组合成文本后写回 inventory_material.specification；
+// 没有配置属性的品类（其他/耗材工具）仍走自由填写，特殊物料不阻断。
+const specDefs = ref<MaterialSpecAttrDef[]>([])
+const specInputs = ref<Record<string, MaterialSpecInputValue>>({})
+const specSupplement = ref('')
+const loadedSpecCode = ref('')
+
+const specAttrMode = computed(() => specDefs.value.length > 0)
+const composedSpec = computed(() =>
+  specAttrMode.value
+    ? composeSpecification(specDefs.value, specInputs.value, specSupplement.value)
+    : ''
+)
+/** 未填属性时保留历史规格文本（历史物料尚未结构化，不能被空属性清空）。 */
+const legacySpecText = computed(() => {
+  if (!form.materialId || composedSpec.value) return ''
+  return (original.value?.specification || '').trim()
+})
+const specLegacyHint = computed(() => {
+  if (!form.materialId) return ''
+  const before = (original.value?.specification || '').trim()
+  if (!before) return ''
+  if (!composedSpec.value) {
+    return `历史规格尚未结构化：「${before}」。填了属性才会替换，不填则原样保留。`
+  }
+  if (before !== composedSpec.value) {
+    return `保存后规格将由属性组合生成（原文本：「${before}」）。`
+  }
+  return ''
+})
+
+const loadSpecValues = async (materialId: number) => {
+  try {
+    const res = await materialApi.getSpecValues(materialId)
+    const data = res.data
+    specDefs.value = data?.defs || []
+    const savedByCode = new Map((data?.values || []).map((item) => [item.attrCode, item]))
+    const inputs: Record<string, MaterialSpecInputValue> = {}
+    specDefs.value.forEach((def) => {
+      inputs[def.attrCode] = specValueToInput(def, savedByCode.get(def.attrCode))
+    })
+    specInputs.value = inputs
+    specSupplement.value = data?.supplement || ''
+    loadedSpecCode.value = data?.categoryCode || categoryCode.value
+  } catch (error) {
+    console.warn('[material] 规格属性加载失败，回退自由填写', error)
+    specDefs.value = []
+    specInputs.value = {}
+    specSupplement.value = ''
+  }
+}
+
+const loadSpecForCreate = async (code: string) => {
+  try {
+    const res = await materialApi.getSpecAttrDefs(code)
+    specDefs.value = res.data || []
+    specInputs.value = {}
+    specSupplement.value = ''
+    if (specDefs.value.length) {
+      // 存量与新增都先按型号/名称/尺寸反推草稿，人工确认；不落库。
+      specInputs.value = guessSpecValues(specDefs.value, {
+        model: form.model,
+        size: form.size,
+        materialName: displayName.value || presetName.value,
+      })
+      form.specification = composeSpecification(specDefs.value, specInputs.value, '')
+    } else {
+      form.specification = form.materialId ? form.specification : ''
+    }
+  } catch (error) {
+    console.warn('[material] 规格属性定义加载失败，回退自由填写', error)
+    specDefs.value = []
+    specInputs.value = {}
+    specSupplement.value = ''
+  }
+}
+
+/** 品类变化才重取属性定义；编辑时同时回显已存取值。 */
+watch(categoryCode, async (code) => {
+  if (!visible.value) return
+  if (!code) {
+    specDefs.value = []
+    specInputs.value = {}
+    specSupplement.value = ''
+    loadedSpecCode.value = ''
+    return
+  }
+  if (code === loadedSpecCode.value) return
+  loadedSpecCode.value = code
+  if (form.materialId) {
+    await loadSpecValues(form.materialId)
+  } else {
+    await loadSpecForCreate(code)
+  }
+})
+
+/** 属性变化 → 规格文本跟着变；编辑老物料且属性全空时保留原文本。 */
+watch(composedSpec, (value) => {
+  if (!specAttrMode.value) return
+  if (value) {
+    form.specification = value
+    clearFieldError('specification')
+  } else if (!form.materialId) {
+    form.specification = ''
+  }
+})
+
+const persistSpecValues = async (materialId: number | null, materialCode: string) => {
+  if (!specAttrMode.value) return
+  const attributes = specDefs.value.map((def) => {
+    const input = specInputs.value[def.attrCode] || {}
+    return { attrCode: def.attrCode, value: input.value || '', value2: input.value2 || '' }
+  })
+  try {
+    const res = await materialApi.saveSpecValues({
+      materialId: materialId || undefined,
+      materialCode,
+      categoryCode: categoryCode.value,
+      supplement: specSupplement.value.trim(),
+      createMode: !materialId,
+      attributes,
+    })
+    const saved = res.data?.specification
+    if (saved) form.specification = saved
+  } catch (error) {
+    // 物料主数据已保存，规格文本也已随主表单写入；这里失败只影响属性明细与统计。
+    console.error('规格属性保存失败:', error)
+    ElMessage.warning('物料已保存，但规格属性未写入；请重新打开编辑后再保存一次')
+  }
+}
+
 /** 名称只读自动生成；编辑老物料且主数据没动时保留原名称，避免历史名称被改写。 */
 const generatedName = computed(() =>
   composeMaterialName({
@@ -425,6 +587,10 @@ const resetForm = () => {
   form.remark = ''
   original.value = null
   presetName.value = ''
+  specDefs.value = []
+  specInputs.value = {}
+  specSupplement.value = ''
+  loadedSpecCode.value = ''
   Object.keys(fieldErrors).forEach((key) => delete fieldErrors[key])
 }
 
@@ -499,6 +665,8 @@ const loadMaterialInfo = async (materialId: number) => {
       searchKeywords: form.searchKeywords,
       materialName: res.data?.materialName || '',
     }
+    // 编辑：回显规格属性（品类没有属性配置时自动回退自由填写）
+    await loadSpecValues(materialId)
   } catch (error) {
     ElMessage.error('加载物料信息失败')
   }
@@ -547,6 +715,15 @@ const submitForm = () => {
       return
     }
 
+    // 新增时按品类属性必填校验（编辑老物料不阻塞：历史数据没有属性值）
+    if (specAttrMode.value && !form.materialId) {
+      const missingAttrs = findMissingSpecAttrs(specDefs.value, specInputs.value)
+      if (missingAttrs.length) {
+        ElMessage.error(`请补全规格属性：${missingAttrs.map((def) => def.attrName).join('、')}`)
+        return
+      }
+    }
+
     submitting.value = true
     try {
       if (form.materialId) {
@@ -581,6 +758,7 @@ const submitForm = () => {
           updateData.categoryId = form.categoryId
         }
         await materialApi.update(updateData)
+        await persistSpecValues(form.materialId, form.materialCode)
         ElMessage.success('修改成功')
         visible.value = false
         emit('success', { ...form, materialName: name } as unknown as InventoryMaterial)
@@ -611,6 +789,7 @@ const submitForm = () => {
           size: form.size,
         }
         await materialApi.add(saveData)
+        await persistSpecValues(null, form.materialCode)
         ElMessage.success('新增成功')
         visible.value = false
         // 新增后查询完整物料信息返回
@@ -668,5 +847,9 @@ watch(
   color: #909399;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.spec-legacy-hint {
+  margin: 0 0 12px;
 }
 </style>
