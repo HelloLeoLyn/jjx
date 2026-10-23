@@ -1,6 +1,6 @@
 <template>
-  <el-dialog :title="title" v-model="visible" width="700px" append-to-body>
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
+  <el-dialog :title="title" v-model="visible" width="820px" append-to-body>
+    <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="物料编码" prop="materialCode">
@@ -10,41 +10,137 @@
               :readonly="!!form.materialId"
             >
               <template #append>
-                <el-button :icon="Search" @click="handleGenerateCode" />
+                <el-button :icon="Search" @click="handleGenerateCode()" />
               </template>
             </el-input>
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="物料类型" prop="materialType">
+          <el-form-item label="品类" prop="categoryId">
             <el-select
-              v-model="form.materialType"
-              placeholder="请选择"
+              v-model="form.categoryId"
+              placeholder="请选择品类"
+              filterable
+              clearable
               style="width: 100%"
-              @change="handleMaterialTypeChange"
+              @change="handleCategoryChange"
             >
               <el-option
-                v-for="opt in MaterialTypeEnum.items"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
+                v-for="item in categoryOptions"
+                :key="item.categoryId"
+                :label="item.categoryName"
+                :value="item.categoryId"
               />
             </el-select>
+            <div v-if="categoryHint" class="field-hint">{{ categoryHint }}</div>
           </el-form-item>
         </el-col>
       </el-row>
 
       <el-row :gutter="20">
         <el-col :span="12">
-          <el-form-item label="物料名称" prop="materialName">
-            <el-input v-model="form.materialName" placeholder="请输入物料名称" />
+          <el-form-item label="大类">
+            <el-input :model-value="materialTypeLabel" readonly placeholder="由品类带出" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="规格型号" prop="specification">
-            <el-input v-model="form.specification" placeholder="请输入规格型号" /> </el-form-item
-        ></el-col>
+          <el-form-item label="机种" prop="materialNameEn">
+            <el-input v-model="form.materialNameEn" placeholder="如：JST263" />
+          </el-form-item>
+        </el-col>
       </el-row>
+
+      <el-divider content-position="left">主数据</el-divider>
+
+      <el-row :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="材料" prop="materialGrade" :required="isRequired('materialGrade')" :error="fieldErrors.materialGrade">
+            <el-select
+              v-model="form.materialGrade"
+              placeholder="请选择材料"
+              filterable
+              clearable
+              style="width: 100%"
+              @change="clearFieldError('materialGrade')"
+            >
+              <el-option v-for="item in MATERIAL_GRADE_OPTIONS" :key="item" :label="item" :value="item" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="型号" prop="model" :required="isRequired('model')" :error="fieldErrors.model">
+            <el-input
+              v-model="form.model"
+              placeholder="如：PET125、3M5604、M1.6*3"
+              @input="clearFieldError('model')"
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="颜色" prop="color" :required="isRequired('color')" :error="fieldErrors.color">
+            <el-select
+              v-model="form.color"
+              placeholder="请选择颜色"
+              filterable
+              clearable
+              style="width: 100%"
+              @change="clearFieldError('color')"
+            >
+              <el-option v-for="item in MATERIAL_COLOR_OPTIONS" :key="item" :label="item" :value="item" />
+            </el-select>
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="品牌" prop="brand" :required="isRequired('brand')" :error="fieldErrors.brand">
+            <el-input
+              v-model="form.brand"
+              placeholder="选填，如：3M"
+              @input="clearFieldError('brand')"
+            />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-form-item label="别名">
+        <el-input v-model="form.searchKeywords" placeholder="选填：常用叫法/旧料号，便于搜索" />
+      </el-form-item>
+
+      <el-form-item label="物料名称">
+        <el-input :model-value="displayName" readonly placeholder="由 材料+型号+颜色（品牌） 自动生成" />
+        <div class="field-hint">只读：材料 + 型号 + 颜色（品牌），无空格，缺项自动跳过</div>
+      </el-form-item>
+
+      <el-row :gutter="20">
+        <el-col :span="12">
+          <el-form-item label="尺寸" prop="size" :error="fieldErrors.size">
+            <el-input
+              v-model="form.size"
+              clearable
+              placeholder="如 300 / 300×305 / 300×1.0 / 0.3m×1.0，缺省 mm"
+              @input="clearFieldError('size')"
+            />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12">
+          <el-form-item label="单位" prop="unit">
+            <el-input v-model="form.unit" placeholder="如：PCS、KG" />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
+      <el-form-item label="规格" prop="specification" :required="isRequired('specification')" :error="fieldErrors.specification">
+        <el-input
+          v-model="form.specification"
+          type="textarea"
+          :rows="2"
+          placeholder="工艺描述：中砂面 / 雾面 / 离型力 / 克重等"
+          @input="clearFieldError('specification')"
+        />
+      </el-form-item>
+
       <el-form-item label="物料标签">
         <el-select
           v-model="form.tagIds"
@@ -63,19 +159,7 @@
           />
         </el-select>
       </el-form-item>
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <el-form-item label="单位" prop="unit">
-            <el-input v-model="form.unit" placeholder="如：PCS、KG" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="机种" prop="materialNameEn">
-            <el-input
-              v-model="form.materialNameEn"
-              placeholder="请输入机种（如：JST263）"
-            /> </el-form-item></el-col
-      ></el-row>
+
       <el-divider content-position="left">库存参数</el-divider>
 
       <el-row :gutter="20">
@@ -165,6 +249,18 @@ import {
   MATERIAL_DEFAULT_TYPE,
   MATERIAL_DEFAULT_UNIT,
 } from './materialCreateDefaults'
+import {
+  MATERIAL_COLOR_OPTIONS,
+  MATERIAL_FIELD_LABELS,
+  MATERIAL_GRADE_OPTIONS,
+  composeMaterialName,
+  deriveMaterialType,
+  findMissingRequiredFields,
+  loadMaterialCategoryOptions,
+  requiredMaterialFields,
+  splitLegacyMaterialName,
+  type MaterialCategoryOption,
+} from './materialMasterFields'
 import type {
   MaterialSaveDTO,
   MaterialUpdateDTO,
@@ -189,6 +285,18 @@ interface Emits {
   (e: 'success', material: InventoryMaterial): void
 }
 
+interface MasterSnapshot {
+  categoryId: number | null
+  materialGrade: string
+  model: string
+  color: string
+  brand: string
+  specification: string
+  size: string
+  searchKeywords: string
+  materialName: string
+}
+
 const props = withDefaults(defineProps<Props>(), {
   modelValue: false,
   materialId: null,
@@ -207,14 +315,25 @@ const title = computed(() => (props.materialId ? '编辑物料' : '新增物料'
 const submitting = ref(false)
 const formRef = ref()
 const tagOptions = ref<Array<{ tagId: number; tagName: string }>>([])
+const categoryOptions = ref<MaterialCategoryOption[]>([])
+const original = ref<MasterSnapshot | null>(null)
+const presetName = ref('')
+const fieldErrors = reactive<Record<string, string>>({})
 
 const form = reactive({
   materialId: null as number | null,
   materialCode: '',
   materialName: '',
   materialType: MATERIAL_DEFAULT_TYPE,
+  categoryId: null as number | null,
   tagIds: [] as number[],
   materialNameEn: '',
+  materialGrade: '',
+  model: '',
+  color: '',
+  brand: '',
+  searchKeywords: '',
+  size: '',
   specification: '',
   unit: MATERIAL_DEFAULT_UNIT,
   safeStock: 0,
@@ -229,11 +348,53 @@ const form = reactive({
   remark: '',
 })
 
-const rules = {
+const rules = computed(() => ({
   materialCode: [{ required: true, message: '请输入物料编码', trigger: 'blur' }],
-  materialName: [{ required: true, message: '请输入物料名称', trigger: 'blur' }],
-  materialType: [{ required: true, message: '请选择物料类型', trigger: 'change' }],
+  categoryId: form.materialId
+    ? []
+    : [{ required: true, message: '请选择品类', trigger: 'change' }],
   unit: [{ required: true, message: '请输入单位', trigger: 'blur' }],
+}))
+
+const currentCategory = computed(
+  () => categoryOptions.value.find((item) => item.categoryId === form.categoryId) || null
+)
+const categoryCode = computed(() => currentCategory.value?.categoryCode || '')
+const materialTypeLabel = computed(() => {
+  const type = deriveMaterialType(categoryCode.value) || form.materialType
+  return type ? `${type} · ${MaterialTypeEnum.getLabel(type)}` : ''
+})
+const categoryHint = computed(() =>
+  form.materialId && !form.categoryId ? '历史物料未设品类，可留空保存' : ''
+)
+
+const isRequired = (key: string) => requiredMaterialFields(categoryCode.value).includes(key)
+
+/** 名称只读自动生成；编辑老物料且主数据没动时保留原名称，避免历史名称被改写。 */
+const generatedName = computed(() =>
+  composeMaterialName({
+    materialGrade: form.materialGrade,
+    model: form.model,
+    color: form.color,
+    brand: form.brand,
+  })
+)
+const masterDirty = computed(() => {
+  if (!original.value) return true
+  return (['materialGrade', 'model', 'color', 'brand'] as const).some(
+    (key) => (form[key] || '') !== (original.value?.[key] || '')
+  )
+})
+const displayName = computed(() => {
+  if (form.materialId) {
+    if (!masterDirty.value) return original.value?.materialName || generatedName.value
+    return generatedName.value || original.value?.materialName || ''
+  }
+  return generatedName.value || presetName.value
+})
+
+const clearFieldError = (key: string) => {
+  delete fieldErrors[key]
 }
 
 const resetForm = () => {
@@ -241,8 +402,15 @@ const resetForm = () => {
   form.materialCode = ''
   form.materialName = ''
   form.materialType = MATERIAL_DEFAULT_TYPE
+  form.categoryId = null
   form.tagIds = []
   form.materialNameEn = ''
+  form.materialGrade = ''
+  form.model = ''
+  form.color = ''
+  form.brand = ''
+  form.searchKeywords = ''
+  form.size = ''
   form.specification = ''
   form.unit = MATERIAL_DEFAULT_UNIT
   form.safeStock = 0
@@ -255,11 +423,14 @@ const resetForm = () => {
   form.shelfLife = null
   form.expiryAlertDays = MATERIAL_DEFAULT_EXPIRY_ALERT_DAYS
   form.remark = ''
+  original.value = null
+  presetName.value = ''
+  Object.keys(fieldErrors).forEach((key) => delete fieldErrors[key])
 }
 
-const handleGenerateCode = async () => {
+const handleGenerateCode = async (materialType?: string) => {
   try {
-    const res = await materialApi.generateCode(form.materialType)
+    const res = await materialApi.generateCode(materialType || form.materialType)
     if (res.data) {
       form.materialCode = res.data
     }
@@ -268,8 +439,12 @@ const handleGenerateCode = async () => {
   }
 }
 
-const handleMaterialTypeChange = () => {
+/** 品类决定大类（只读带出）与必填矩阵；新增时按大类重取编码。 */
+const handleCategoryChange = () => {
+  const type = deriveMaterialType(categoryCode.value)
+  if (type) form.materialType = type
   if (!form.materialId) handleGenerateCode()
+  Object.keys(fieldErrors).forEach((key) => delete fieldErrors[key])
 }
 
 const loadTagOptions = async () => {
@@ -281,29 +456,107 @@ const loadTagOptions = async () => {
   )
 }
 
+const loadCategoryOptions = async () => {
+  categoryOptions.value = await loadMaterialCategoryOptions()
+}
+
+const ensureCategoryOption = (categoryId?: number | null, categoryName?: string) => {
+  if (!categoryId) return
+  if (categoryOptions.value.some((item) => item.categoryId === categoryId)) return
+  categoryOptions.value = [
+    ...categoryOptions.value,
+    {
+      categoryId,
+      categoryCode: '',
+      categoryName: categoryName || `品类#${categoryId}`,
+      materialType: '',
+    },
+  ]
+}
+
 const loadMaterialInfo = async (materialId: number) => {
   try {
     const res = await materialApi.getInfo(String(materialId))
     Object.assign(form, res.data)
+    form.categoryId = res.data?.categoryId ?? null
+    form.materialGrade = res.data?.materialGrade || ''
+    form.model = res.data?.model || ''
+    form.color = res.data?.color || ''
+    form.brand = res.data?.brand || ''
+    form.searchKeywords = res.data?.searchKeywords || ''
+    form.size = res.data?.size || ''
+    form.specification = res.data?.specification || ''
     form.tagIds = (res.data?.tags || []).flatMap((tag) => (tag.tagId == null ? [] : [tag.tagId]))
+    ensureCategoryOption(res.data?.categoryId, res.data?.categoryName)
+    original.value = {
+      categoryId: form.categoryId,
+      materialGrade: form.materialGrade,
+      model: form.model,
+      color: form.color,
+      brand: form.brand,
+      specification: form.specification,
+      size: form.size,
+      searchKeywords: form.searchKeywords,
+      materialName: res.data?.materialName || '',
+    }
   } catch (error) {
     ElMessage.error('加载物料信息失败')
   }
+}
+
+const collectMasterValues = () => ({
+  materialGrade: form.materialGrade,
+  model: form.model,
+  color: form.color,
+  brand: form.brand,
+  specification: form.specification,
+})
+
+/** 编辑提交：空值区分「原本就空（不提交）」与「本次清空（提交 null）」。 */
+const patchValue = (value: string | undefined, before: string | undefined) => {
+  const current = (value || '').trim()
+  if (current) return current
+  if ((before || '').trim()) return null
+  return undefined
 }
 
 const submitForm = () => {
   formRef.value.validate(async (valid: boolean) => {
     if (!valid) return
 
+    Object.keys(fieldErrors).forEach((key) => delete fieldErrors[key])
+    const name = displayName.value
+    if (!name) {
+      ElMessage.error('请先填写材料/型号/颜色以自动生成物料名称')
+      return
+    }
+
+    const categoryChanged =
+      !!form.materialId && !!original.value && original.value.categoryId !== form.categoryId
+    const missing = findMissingRequiredFields(
+      collectMasterValues(),
+      categoryCode.value,
+      form.materialId ? original.value || undefined : undefined,
+      categoryChanged
+    )
+    if (missing.length) {
+      missing.forEach((key) => {
+        fieldErrors[key] = `${MATERIAL_FIELD_LABELS[key] || key}必填`
+      })
+      ElMessage.error(`请补全：${missing.map((key) => MATERIAL_FIELD_LABELS[key] || key).join('、')}`)
+      return
+    }
+
     submitting.value = true
     try {
       if (form.materialId) {
+        const before = original.value
         const updateData: MaterialUpdateDTO = {
           materialId: form.materialId,
           materialCode: form.materialCode,
-          materialName: form.materialName,
+          materialName: name,
           materialType: form.materialType,
-          specification: form.specification,
+          specification: patchValue(form.specification, before?.specification),
           unit: form.unit,
           safeStock: form.safeStock,
           maxStock: form.maxStock,
@@ -316,16 +569,27 @@ const submitForm = () => {
           expiryAlertDays: form.expiryAlertDays,
           remark: form.remark,
           tagIds: form.tagIds,
+          materialGrade: patchValue(form.materialGrade, before?.materialGrade),
+          model: patchValue(form.model, before?.model),
+          color: patchValue(form.color, before?.color),
+          brand: patchValue(form.brand, before?.brand),
+          searchKeywords: patchValue(form.searchKeywords, before?.searchKeywords),
+          size: patchValue(form.size, before?.size),
+        }
+        // 历史物料本无品类时留空不改，避免被后端「品类不能为空」拦住
+        if (form.categoryId != null || before?.categoryId != null) {
+          updateData.categoryId = form.categoryId
         }
         await materialApi.update(updateData)
         ElMessage.success('修改成功')
         visible.value = false
-        emit('success', { ...form } as unknown as InventoryMaterial)
+        emit('success', { ...form, materialName: name } as unknown as InventoryMaterial)
       } else {
         const saveData: MaterialSaveDTO = {
           materialCode: form.materialCode,
-          materialName: form.materialName,
+          materialName: name,
           materialType: form.materialType,
+          categoryId: form.categoryId ?? undefined,
           specification: form.specification,
           unit: form.unit,
           safeStock: form.safeStock,
@@ -339,13 +603,19 @@ const submitForm = () => {
           expiryAlertDays: form.expiryAlertDays,
           remark: form.remark,
           tagIds: form.tagIds,
+          materialGrade: form.materialGrade,
+          model: form.model,
+          color: form.color,
+          brand: form.brand,
+          searchKeywords: form.searchKeywords,
+          size: form.size,
         }
         await materialApi.add(saveData)
         ElMessage.success('新增成功')
         visible.value = false
         // 新增后查询完整物料信息返回
         const res = await materialApi.getByCode(form.materialCode)
-        emit('success', res.data || ({ ...form } as unknown as InventoryMaterial))
+        emit('success', res.data || ({ ...form, materialName: name } as unknown as InventoryMaterial))
       }
     } catch (error) {
       console.error('提交失败:', error)
@@ -365,14 +635,22 @@ watch(
     if (newVal) {
       resetForm()
       loadTagOptions()
+      loadCategoryOptions()
       if (props.materialId) {
         loadMaterialInfo(props.materialId)
       } else {
         // 自动生成编码
         handleGenerateCode()
-        // 如果有预填数据，填充到表单
+        // 如果有预填数据，把旧名称反解成结构化字段（旧模板/BOM 行兼容）
         if (props.presetData) {
-          if (props.presetData.materialName) form.materialName = props.presetData.materialName
+          if (props.presetData.materialName) {
+            presetName.value = props.presetData.materialName
+            const parsed = splitLegacyMaterialName(props.presetData.materialName)
+            if (parsed.materialGrade) form.materialGrade = parsed.materialGrade
+            if (parsed.model) form.model = parsed.model
+            if (parsed.color) form.color = parsed.color
+            if (parsed.brand) form.brand = parsed.brand
+          }
           if (props.presetData.specification) form.specification = props.presetData.specification
           if (props.presetData.unit) form.unit = props.presetData.unit
           if (props.presetData.supplierName) form.supplierName = props.presetData.supplierName
@@ -383,3 +661,12 @@ watch(
   }
 )
 </script>
+
+<style scoped>
+.field-hint {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
+}
+</style>

@@ -1,6 +1,10 @@
 // views/inventory/material/config.ts
 import type { SearchOptions, ToolbarOptions, TableOptions } from '@/components/common-ui/type'
 import { MaterialTypeEnum, MaterialStatusEnum } from '@/enums/inventory/MaterialEnum'
+import {
+  MATERIAL_COLOR_OPTIONS,
+  MATERIAL_GRADE_OPTIONS,
+} from '@/components/inventory/materialMasterFields'
 
 // 搜索配置
 export const searchOptions: SearchOptions[] = [
@@ -13,6 +17,30 @@ export const searchOptions: SearchOptions[] = [
     prop: 'materialName',
     label: '物料名称',
     type: 'input',
+  },
+  {
+    prop: 'categoryId',
+    label: '品类',
+    type: 'select',
+    // 选项运行时由 index.vue 按 /inventory/material-category/tree 或本地种子列表注入
+    options: [],
+  },
+  {
+    prop: 'materialGrade',
+    label: '材料',
+    type: 'select',
+    options: MATERIAL_GRADE_OPTIONS.map((value) => ({ value, label: value })),
+  },
+  {
+    prop: 'model',
+    label: '型号',
+    type: 'input',
+  },
+  {
+    prop: 'color',
+    label: '颜色',
+    type: 'select',
+    options: MATERIAL_COLOR_OPTIONS.map((value) => ({ value, label: value })),
   },
   {
     prop: 'specification',
@@ -79,6 +107,21 @@ export const tableOptions: TableOptions[] = [
     label: '物料名称',
     prop: 'materialName',
     width: 200,
+  },
+  {
+    label: '品类',
+    prop: 'categoryName',
+    width: 140,
+  },
+  {
+    label: '材料',
+    prop: 'materialGrade',
+    width: 110,
+  },
+  {
+    label: '型号',
+    prop: 'model',
+    width: 120,
   },
   {
     label: '物料类型',

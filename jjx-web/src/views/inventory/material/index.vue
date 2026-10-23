@@ -43,7 +43,13 @@
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="物料编码" prop="materialCode" width="150" />
         <el-table-column label="物料名称" prop="materialName" width="200" show-overflow-tooltip />
-        <el-table-column label="机种" prop="materialNameEn" width="200" />
+        <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
+          <template #default="{ row }">{{ categoryNameOf(row) }}</template>
+        </el-table-column>
+        <el-table-column label="材料" prop="materialGrade" width="110" />
+        <el-table-column label="型号" prop="model" width="120" show-overflow-tooltip />
+        <el-table-column label="颜色" prop="color" width="90" />
+        <el-table-column label="机种" prop="materialNameEn" width="200" show-overflow-tooltip />
         <el-table-column label="物料类型" prop="materialType" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="MaterialTypeEnum.getTagProps(row.materialType).type as any" size="small">
@@ -109,6 +115,7 @@
       :import-api="materialApi.importExcel"
       :template-api="materialApi.downloadImportTemplate"
       template-name="物料导入模板.xlsx"
+      :tip="importTip"
       @success="getList"
     />
   </div>
@@ -135,6 +142,10 @@ import { formatCurrency } from '@/utils/format'
 import type { InventoryMaterial, InventoryMaterialQueryParams } from '@/types/inventory/material'
 import type { SearchOptions, ToolbarOptions } from '@/components/common-ui/type'
 import { searchOptions, toolbarOptions } from './config'
+import {
+  loadMaterialCategoryOptions,
+  type MaterialCategoryOption,
+} from '@/components/inventory/materialMasterFields'
 import { MaterialTypeEnum } from '@/enums/inventory/MaterialEnum'
 import type { UploadInstance } from 'element-plus'
 import { openLabelPrint } from '@/utils/labelPrint'
@@ -143,8 +154,8 @@ const router = useRouter()
 
 // ==================== 配置 ====================
 
-// 搜索表单配置
-const searchFields: SearchOptions[] = searchOptions
+// 搜索表单配置（品类选项异步注入，见 loadCategoryOptions）
+const searchFields = ref<SearchOptions[]>(searchOptions.map((item) => ({ ...item })))
 
 // 工具栏配置
 const toolbarButtons: ToolbarOptions[] = toolbarOptions
@@ -160,6 +171,10 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   materialType: '',
   tagIds: [],
   tagMatchMode: 'AND',
+  categoryId: undefined,
+  materialGrade: '',
+  model: '',
+  color: '',
   specification: '',
   status: '',
 })
@@ -190,6 +205,28 @@ const editingMaterialId = ref<number | null>(null)
 
 // 导入（2026-08-13 通用 ExcelImportDialog 组件）
 const importDialogVisible = ref(false)
+const importTip =
+  '新模板列：品类 / 材料 / 型号 / 颜色 / 品牌 / 尺寸（可选）+ 物料名称、规格等；' +
+  '旧模板（仅 物料名称 + 规格）仍可导入，系统按名称自动识别品类与材料。'
+
+// 品类下拉（接口不可用时用本地种子列表兜底）
+const categoryOptions = ref<MaterialCategoryOption[]>([])
+const loadCategoryOptions = async () => {
+  const options = await loadMaterialCategoryOptions()
+  categoryOptions.value = options
+  const field = searchFields.value.find((item) => item.prop === 'categoryId')
+  if (field) {
+    field.options = options.map((item) => ({ value: item.categoryId, label: item.categoryName }))
+  }
+}
+
+// 列表列的品类名：后端 MaterialVO.categoryName 未赋值，这里按已加载品类映射
+const categoryNameOf = (row: InventoryMaterial) => {
+  if (row.categoryId == null) return '-'
+  return (
+    categoryOptions.value.find((item) => item.categoryId === row.categoryId)?.categoryName || '-'
+  )
+}
 
 // 获取列表
 const getList = async () => {
@@ -216,6 +253,10 @@ const handleReset = () => {
   queryParams.materialName = ''
   queryParams.materialType = ''
   queryParams.status = ''
+  queryParams.categoryId = undefined
+  queryParams.materialGrade = ''
+  queryParams.model = ''
+  queryParams.color = ''
   queryParams.tagIds = []
   queryParams.tagMatchMode = 'AND'
   getList()
@@ -291,6 +332,7 @@ const handleExport = () => {
 
 onMounted(async () => {
   getList()
+  loadCategoryOptions()
 })
 </script>
 

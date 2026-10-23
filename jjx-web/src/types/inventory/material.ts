@@ -8,11 +8,16 @@ export interface InventoryMaterial {
   materialNameEn?: string
   materialType: string
   categoryId?: number
+  categoryName?: string
   specification?: string
   materialGrade?: string
   model?: string
   color?: string
   brand?: string
+  /** 别名/常用叫法，参与搜索 */
+  searchKeywords?: string
+  /** 尺寸：宽×长/厚，缺省 mm */
+  size?: string
   unit: string
   safeStock: number
   maxStock: number
@@ -45,6 +50,10 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   tagMatchMode?: 'AND' | 'OR'
   categoryId?: number
   specification?: string
+  materialGrade?: string
+  model?: string
+  color?: string
+  brand?: string
   status?: string
   batchControl?: boolean
   supplierId?: number
@@ -64,6 +73,10 @@ export interface MaterialQueryDTO extends PageQuery {
   supplierId?: number
   categoryId?: number
   materialType?: string
+  materialGrade?: string
+  model?: string
+  color?: string
+  brand?: string
   tagId?: number
 }
 // 物料保存DTO
@@ -71,7 +84,14 @@ export interface MaterialSaveDTO {
   materialCode: string
   materialName: string
   materialType: string
+  categoryId?: number
   specification?: string
+  materialGrade?: string
+  model?: string
+  color?: string
+  brand?: string
+  searchKeywords?: string
+  size?: string
   unit: string
   safeStock: number
   maxStock: number
@@ -92,7 +112,15 @@ export interface MaterialUpdateDTO {
   materialCode?: string
   materialName?: string
   materialType?: string
-  specification?: string
+  categoryId?: number | null
+  specification?: string | null
+  /** 传 null 表示显式清空；不传（undefined）表示保持原值 */
+  materialGrade?: string | null
+  model?: string | null
+  color?: string | null
+  brand?: string | null
+  searchKeywords?: string | null
+  size?: string | null
   unit?: string
   safeStock?: number
   maxStock?: number
