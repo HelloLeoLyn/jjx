@@ -119,8 +119,27 @@
               >确认移除</el-button
             >
           </template>
+          <template v-else-if="rowStatus(row) === BomItemReviewStatusEnum.DRAFT.value">
+            <el-tag type="info" size="small">未提交</el-tag>
+          </template>
           <template v-else>
+            <!-- 2026-10-23：按行状态显示动作——已通过不再给「通过」，需要反悔直接驳回（dev-20261023-001） -->
+            <el-tag
+              v-if="rowStatus(row) === BomItemReviewStatusEnum.APPROVED.value"
+              type="success"
+              size="small"
+              style="margin-right: 6px"
+              >已通过</el-tag
+            >
+            <el-tag
+              v-else-if="rowStatus(row) === BomItemReviewStatusEnum.REJECTED.value"
+              type="danger"
+              size="small"
+              style="margin-right: 6px"
+              >已驳回</el-tag
+            >
             <el-button
+              v-if="rowStatus(row) !== BomItemReviewStatusEnum.APPROVED.value"
               link
               type="success"
               :disabled="batchBusy || !hasMaterial(row) || busyItemId != null"
