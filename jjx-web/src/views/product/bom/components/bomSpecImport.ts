@@ -23,10 +23,12 @@ export function parseSpecModule(raw: unknown): ParsedSpecModule | null {
   // 通用：规格[跳跳距]=模数PCS
   const combined = text.match(/^(.*?)(?:跳(.*?))?=\s*(\d+(?:\.\d+)?)\s*PCS$/i)
   if (!combined) return null
-  const specification = (combined[1] || '').trim()
+  const rawSpecification = (combined[1] || '').trim()
+  // 规格纯零值按空处理（dev-20261023-010），避免落库/打印 0=1PCS。
+  const specification = /^0+(?:\.0+)?$/.test(rawSpecification) ? '' : rawSpecification
   const split = (combined[2] || '').trim()
   const moduleQty = Number(combined[3])
   if (!Number.isFinite(moduleQty) || moduleQty <= 0) return null
-  if (!specification && !split) return null
+  if (!rawSpecification && !split) return null
   return { specification, split, moduleQty, baseQty: 1 }
 }
