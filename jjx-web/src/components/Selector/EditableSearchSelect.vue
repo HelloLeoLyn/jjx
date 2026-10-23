@@ -111,6 +111,8 @@ interface Props {
   keepTextOnBlur?: boolean
   /** 显式启用搜索草稿通知，默认不改变现有调用方行为。 */
   trackInput?: boolean
+  /** 弹层最小宽度；默认 200 保持其它选择器现状。 */
+  minWidth?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -133,6 +135,7 @@ const props = withDefaults(defineProps<Props>(), {
   createLabel: '',
   keepTextOnBlur: false,
   trackInput: false,
+  minWidth: 200,
 })
 
 const emit = defineEmits<{
@@ -168,7 +171,11 @@ watch(
 
 function measure() {
   const el = anchorRef.value
-  if (el) popperWidth.value = Math.max(200, Math.round(el.getBoundingClientRect().width))
+  if (el)
+    popperWidth.value = Math.max(
+      props.minWidth,
+      Math.round(el.getBoundingClientRect().width)
+    )
 }
 
 function onFocus() {

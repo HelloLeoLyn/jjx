@@ -7,6 +7,8 @@
     option-key="materialId"
     :label-of="labelOf"
     :loading="loading"
+    :loading-more="loadingMore"
+    :min-width="460"
     :total="total"
     :show-create="showCreate"
     :create-label="'新建物料「' + keyword + '」'"
@@ -73,6 +75,7 @@ function cancelDraft() {
 const options = ref<InventoryMaterial[]>([])
 const keyword = ref('')
 const loading = ref(false)
+const loadingMore = ref(false)
 const failed = ref(false)
 const searched = ref(false)
 const total = ref(0)
@@ -136,10 +139,14 @@ function search(value: string) {
   if (loading.value) timer = setTimeout(() => fetchPage(id, 1), 400)
 }
 
-function loadMore() {
-  if (loading.value || !keyword.value) return
-  loading.value = true
-  void fetchPage(requestId, page + 1)
+async function loadMore() {
+  if (loading.value || loadingMore.value || !keyword.value) return
+  loadingMore.value = true
+  try {
+    await fetchPage(requestId, page + 1)
+  } finally {
+    loadingMore.value = false
+  }
 }
 
 function selectMaterial(item: InventoryMaterial) {
