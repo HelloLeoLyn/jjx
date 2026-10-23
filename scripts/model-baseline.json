@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-21",
-  "tableCountBaseline": 132,
+  "generatedAt": "2026-10-23",
+  "tableCountBaseline": 133,
   "tables": [
     "archive_production_quality_inspection",
     "archive_production_quality_inspection_item",
@@ -35,6 +35,7 @@
     "inventory_item",
     "inventory_material",
     "inventory_material_category",
+    "inventory_material_required_field",
     "inventory_outbound_item",
     "inventory_outbound_order",
     "inventory_stock",
@@ -212,6 +213,13 @@
       "date": "2026-10-21",
       "proposalLink": "jjx-docs/sql/migrations/applied/297_standard_process_usage.sql",
       "reason": "全公司标准工序使用量日聚合表（process_id+period_date 唯一键，按 COUNT(DISTINCT bom_id) 计，供「常用」tab 排序）：用户 2026-10-21 在任务卡 dev-20261021-018 中拍板建表，迁移 297 已执行。"
+    },
+    {
+      "table": "inventory_material_required_field",
+      "taskCode": "dev-20261023-006",
+      "date": "2026-10-23",
+      "proposalLink": "jjx-docs/history/material-master-normalization-design-dev-20261023-005.md",
+      "reason": "物料品类必填字段规则表（品类×字段）：品类决定材料/型号/颜色/规格/品牌的必填口径，配置化避免写死代码；用户 2026-10-23 在物料主数据规范化方案中授权建表，迁移 300 已执行。"
     }
   ],
   "typeSuffixAllowlist": [
