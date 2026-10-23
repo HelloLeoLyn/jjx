@@ -249,7 +249,7 @@
                     v-if="projectMaterialIcon($index)"
                     :name="projectMaterialIcon($index)"
                     :size="16"
-                  /><span>{{ projectMaterialGroups[$index]?.bomGroupLabel || row.processName || '—' }}</span>
+                  /><span>{{ row.processName || '—' }}</span>
                 </div></template
               ></el-table-column
             >
