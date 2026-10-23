@@ -32,11 +32,18 @@
       height="360"
       :row-class-name="rowClass"
       @selection-change="selectedRows = $event"
+      :span-method="groupSpan"
     >
       <el-table-column v-if="canOperate" type="selection" width="45" :selectable="canSelect" reserve-selection />
-      <el-table-column label="组合 / 项目" min-width="240">
+      <el-table-column label="序号" width="55" align="center">
         <template #default="{ $index }">
-          <div>{{ groups[$index]?.label }}</div>
+          {{ groups[$index]?.displayNumber || '' }}
+          <span class="sr-only">{{ groups[$index]?.label }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="项目" min-width="160">
+        <template #default="{ row, $index }">
+          <div>{{ row.processName || '—' }}</div>
           <el-button v-if="canOperate && groups[$index]?.span && groups[$index]?.size > 1"
             link type="primary" :disabled="!groupSelectable(groups[$index].groupKey)"
             @click="selectGroup(groups[$index].groupKey)">选择本组待审</el-button>
@@ -214,6 +221,15 @@ const selectedIds = computed(() => {
   return props.items.filter(row => ids.has(row.itemId) && eligible(row)).map(row => row.itemId!)
 })
 const groupSelectable = (key: string) => groups.value.some(group => group.groupKey === key && canSelect(group.item))
+const groupColumnIndex = computed(() => canOperate.value ? 1 : 0)
+const groupSpan = ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
+  if (columnIndex !== groupColumnIndex.value) return [1, 1]
+  const group = groups.value[rowIndex]
+  if (!group) return [1, 1]
+  if (group.span === 0) return [0, 0]
+  if (group.span <= 1) return [1, 1]
+  return rowIndex === group.index ? [group.span, 1] : [0, 0]
+}
 function selectGroup(key: string) {
   for (const group of groups.value) {
     if (group.groupKey === key && canSelect(group.item)) tableRef.value?.toggleRowSelection(group.item, true)
@@ -259,6 +275,17 @@ const formatQty = (value: number | string | undefined) => {
 .old-value-changed {
   color: var(--el-color-warning);
   font-weight: 600;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .batch-toolbar {
   margin-bottom: 10px;
