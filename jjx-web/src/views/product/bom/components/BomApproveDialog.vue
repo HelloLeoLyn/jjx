@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" :title="dialogTitle" width="1250px" :before-close="handleClose">
+  <el-dialog v-model="visible" :title="dialogTitle" width="1400px" :before-close="handleClose">
     <BomBasicInfo :detail="detail" />
 
     <el-alert
@@ -25,7 +25,6 @@
       :busy-item-id="busyItemId"
       :batch-busy="batchBusy"
       :batch-failures="batchFailures"
-      :original-values="originalValues"
       @batch-approve="handleBatchApprove"
       @review="handleRowReview"
       @link="handleLinkMaterial"
@@ -76,8 +75,6 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
-import { loadBomOriginalValues } from '@/api/product/bomOriginalValues'
-import type { BomOriginalValues } from '@/types/product/bom'
 import type {
   EngineeringBom,
   EngineeringBomItem,
@@ -150,27 +147,6 @@ const batchFailures = ref<BomItemBatchReviewResult['failed']>([])
 const approveCheckReady = ref(false)
 const busyItemId = ref<number | undefined>(undefined)
 
-/**
- * 最近一次保存的「改动前值」（dev-20261022-021）。
- * 来源：该BOM最近成功保存日志的结构化itemChanges，按稳定itemId对应。
- * 只用于审核页对比展示，不落库。
- */
-const originalValues = ref<BomOriginalValues>({})
-let originalValuesRequest = 0
-
-const loadOriginalValues = async () => {
-  originalValues.value = {}
-  const bomId = props.bomId
-  const version = ++originalValuesRequest
-  if (!bomId) return
-  try {
-    const values = await loadBomOriginalValues(bomId)
-    if (version === originalValuesRequest && bomId === props.bomId) originalValues.value = values
-  } catch (error) {
-    console.warn('读取BOM变更流水失败（不影响审核）:', error)
-  }
-}
-
 // 审核表单
 const approveForm = ref<ApprovalOpinion>({ result: ApprovalResultEnum.APPROVE, remark: '' })
 const approveFormRef = ref<InstanceType<typeof ApprovalOpinionForm>>()
@@ -200,7 +176,6 @@ const loadBomDetail = async () => {
     return
   }
   await refreshApproveCheck()
-  await loadOriginalValues()
   approveForm.value.result = ApprovalResultEnum.APPROVE
   approveForm.value.remark = ''
 }
@@ -227,8 +202,6 @@ const refreshAfterAction = async () => {
 }
 
 const resetData = () => {
-  originalValuesRequest++
-  originalValues.value = {}
   Object.assign(detail, createEmptyDetail())
   bomDetailList.value = []
   blockingIssues.value = []

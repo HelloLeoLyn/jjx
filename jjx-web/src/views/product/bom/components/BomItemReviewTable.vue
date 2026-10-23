@@ -50,14 +50,6 @@
       <el-table-column label="项目" min-width="160">
         <template #default="{ row, $index }">
           <div>{{ row.processName || '—' }}</div>
-          <el-button
-            v-if="canOperate && groups[$index]?.span && groups[$index]?.size > 1"
-            link
-            type="primary"
-            :disabled="!groupSelectable(groups[$index].groupKey)"
-            @click="selectGroup(groups[$index].groupKey)"
-            >选择本组待审</el-button
-          >
         </template>
       </el-table-column>
       <el-table-column label="行状态" width="110" align="center">
@@ -69,12 +61,9 @@
           </div>
         </template>
       </el-table-column>
+      <!-- 2026-10-22：临时对照列，直接取当前行值，不落库、不查流水（dev-20261022-021） -->
       <el-table-column label="原材料名称" width="170" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span :class="{ 'old-value-changed': hasOriginal(row, 'materialName') }">
-            {{ originalOf(row, 'materialName') }}
-          </span>
-        </template>
+        <template #default="{ row }">{{ row.materialName || '—' }}</template>
       </el-table-column>
       <el-table-column label="材料名称（匹配已有 / 新建）" min-width="250">
         <template #default="{ row }">
@@ -100,11 +89,7 @@
         </template>
       </el-table-column>
       <el-table-column label="原规格型号" width="130" show-overflow-tooltip>
-        <template #default="{ row }">
-          <span :class="{ 'old-value-changed': hasOriginal(row, 'specification') }">
-            {{ originalOf(row, 'specification') }}
-          </span>
-        </template>
+        <template #default="{ row }">{{ row.specification || '—' }}</template>
       </el-table-column>
       <el-table-column label="规格型号" prop="specification" width="130" show-overflow-tooltip />
       <!-- dev-20261022-021：原值对比列（取最近一次保存流水的改动前值，没有记录显示 —） -->
@@ -166,7 +151,6 @@ import { WarningFilled } from '@element-plus/icons-vue'
 import type {
   EngineeringBomItem,
   BomItemBatchReviewResult,
-  BomOriginalValues,
 } from '@/types/product/bom'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import { BomItemReviewStatusEnum } from '@/enums/product'
@@ -183,8 +167,6 @@ const props = withDefaults(
     busyItemId?: number
     batchBusy?: boolean
     batchFailures?: BomItemBatchReviewResult['failed']
-    /** 最近一次成功保存的改动前值，key为稳定itemId。 */
-    originalValues?: BomOriginalValues
   }>(),
   {
     items: () => [],
@@ -193,26 +175,10 @@ const props = withDefaults(
     busyItemId: undefined,
     batchBusy: false,
     batchFailures: () => [],
-    originalValues: () => ({}),
   }
 )
 
 /** 取该行的原值；没有流水记录时显示 — */
-const originalOf = (row: EngineeringBomItem, field: 'materialName' | 'specification'): string => {
-  const key = row.itemId == null ? '' : String(row.itemId)
-  const entry = key ? props.originalValues?.[key] : undefined
-  const value = entry?.[field]
-  return value === undefined || value === null || value === '' ? '—' : value
-}
-
-/** 原值与现值不同才高亮（新增行/无记录不高亮） */
-const hasOriginal = (row: EngineeringBomItem, field: 'materialName' | 'specification'): boolean => {
-  const key = row.itemId == null ? '' : String(row.itemId)
-  const entry = key ? props.originalValues?.[key] : undefined
-  if (!entry || entry[field] === undefined) return false
-  return (entry[field] || '') !== ((row as any)[field] || '')
-}
-
 const emit = defineEmits<{
   (e: 'batch-approve', itemIds: number[]): void
   (e: 'link', row: EngineeringBomItem, material: InventoryMaterial): void
@@ -304,10 +270,6 @@ const formatQty = (value: number | string | undefined) => {
 </script>
 
 <style scoped>
-.old-value-changed {
-  color: var(--el-color-warning);
-  font-weight: 600;
-}
 .sr-only {
   position: absolute;
   width: 1px;
