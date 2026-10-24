@@ -245,11 +245,10 @@ onMounted(loadProcesses)
 
 .picker-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* 窄栏自适应列数，避免 4 列固定宽度把内容撑出横向滚动（dev-20261024-011） */
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: 8px;
-  max-height: 300px;
-  overflow-y: auto;
-  padding-right: 4px;
+  padding-right: 0;
 }
 
 /* 顶部横向布局（dev-20261022-014）：工序横排自动换行，限高内部滚动；默认布局不受影响 */
@@ -258,8 +257,7 @@ onMounted(loadProcesses)
   flex-wrap: wrap;
   align-content: flex-start;
   gap: 8px;
-  max-height: 220px;
-  overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
 }
 .work-project-picker.layout-horizontal .proc-item {
@@ -288,8 +286,17 @@ onMounted(loadProcesses)
 }
 
 .proc-emoji {
-  font-size: 26px;
-  line-height: 1;
+  /* 无图标时的兜底：与 svg 图标同高，弱化，避免「导光片」这类空 icon 条目显得过大 */
+  font-size: 18px;
+  line-height: 24px;
+  height: 24px;
+  opacity: 0.55;
+}
+
+.proc-item .svg-icon {
+  width: 24px;
+  height: 24px;
+  vertical-align: top;
 }
 
 .proc-name {
@@ -338,6 +345,13 @@ onMounted(loadProcesses)
   height: 32px;
   line-height: 32px;
   font-size: 12px;
+}
+
+/* 内容区只允许纵向滚动；横向溢出裁掉（狭长左栏 / 小屏）（dev-20261024-011） */
+.struct-tabs :deep(.el-tabs__content) {
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-height: 360px;
 }
 
 .picker-count {

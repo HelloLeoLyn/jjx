@@ -289,6 +289,9 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* 左栏很窄，左右内边距压到 5px，把宽度让给工序卡片（dev-20261024-011） */
+  padding-left: 5px;
+  padding-right: 5px;
 }
 .picker-resizer {
   flex: 0 0 6px;
