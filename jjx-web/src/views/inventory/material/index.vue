@@ -7,6 +7,14 @@
       @search="handleQuery"
       @reset="handleReset"
     >
+      <template #supplierId>
+        <SupplierSelector
+          v-model="supplierIdModel"
+          :remote="true"
+          style="width: 190px"
+          @update:model-value="handleQuery"
+        />
+      </template>
       <template #tagIds>
         <TagQuerySelect
           v-model="tagIdsModel"
@@ -56,13 +64,13 @@
         border
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="物料编码" prop="materialCode" width="150" />
-        <el-table-column
+        <!-- <el-table-column label="物料编码" prop="materialCode" width="150" /> -->
+        <!-- <el-table-column
           label="原规格"
           prop="originalSpecification"
           width="200"
           show-overflow-tooltip
-        />
+        /> -->
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ categoryNameOf(row) }}</template>
         </el-table-column>
@@ -230,6 +238,7 @@ import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import SearchForm from '@/components/common-ui/SearchForm.vue'
 import Toolbar from '@/components/common-ui/Toolbar.vue'
 import TagQuerySelect from '@/components/TagQuerySelect.vue'
+import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
 import MaterialRegenerateDialog from '@/components/inventory/MaterialRegenerateDialog.vue'
@@ -266,7 +275,7 @@ const toolbarButtons: ToolbarOptions[] = toolbarOptions
 // 查询参数
 const queryParams = reactive<InventoryMaterialQueryParams>({
   pageNum: 1,
-  pageSize: 50,
+  pageSize: 20,
   keyword: '',
   materialCode: '',
   materialName: '',
@@ -276,6 +285,7 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   tagIds: [],
   tagMatchMode: 'AND',
   classStatus: '',
+  supplierId: undefined,
   categoryId: undefined,
   materialGrade: '',
   model: '',
@@ -289,6 +299,12 @@ const tagIdsModel = computed({
   get: () => queryParams.tagIds ?? [],
   set: (value: number[]) => {
     queryParams.tagIds = value
+  },
+})
+const supplierIdModel = computed({
+  get: () => queryParams.supplierId,
+  set: (value: number | string | undefined) => {
+    queryParams.supplierId = value == null || value === '' ? undefined : Number(value)
   },
 })
 const tagMatchModeModel = computed({
@@ -391,6 +407,7 @@ const handleReset = () => {
   queryParams.materialForm = ''
   queryParams.status = ''
   queryParams.classStatus = ''
+  queryParams.supplierId = undefined
   queryParams.categoryId = undefined
   queryParams.materialGrade = ''
   queryParams.model = ''

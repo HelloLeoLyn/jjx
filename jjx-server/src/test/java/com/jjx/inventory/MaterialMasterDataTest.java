@@ -406,6 +406,7 @@ class MaterialMasterDataTest {
         assertTrue(sql.contains("search_blob LIKE"), sql);
         assertTrue(sql.contains("inventory_material_category"), sql);
         assertTrue(sql.contains("name_path LIKE"), sql);
+        assertTrue(sql.contains("supplier_name LIKE"), sql);
     }
 
     @Test void classificationUsesRootAndSecondLevelWithoutLegacyTypesOrDefaults() {

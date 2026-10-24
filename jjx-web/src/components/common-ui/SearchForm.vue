@@ -1,7 +1,7 @@
 <template>
   <el-card class="search-card" shadow="never">
     <el-form :model="formData" :inline="true">
-      <template v-for="field in fields" :key="field.prop">
+      <template v-for="field in visibleFields" :key="field.prop">
         <el-form-item :label="field.label" :style="field.block ? 'width:100%;margin-right:0' : undefined">
           <!-- 输入框 -->
           <template v-if="field.type === 'input'">
@@ -69,13 +69,17 @@
       <el-form-item>
         <el-button type="primary" @click="handleSearch">搜索</el-button>
         <el-button @click="handleReset">重置</el-button>
+        <el-button v-if="advancedFields.length" link type="primary" @click="advancedOpen = !advancedOpen">
+          {{ advancedOpen ? '收起筛选' : `更多筛选（${advancedFields.length}）` }}
+          <span v-if="advancedUsedCount" class="advanced-used">已用 {{ advancedUsedCount }}</span>
+        </el-button>
       </el-form-item>
     </el-form>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import type { SearchOptions } from '@/components/common-ui/type'
 interface Props {
   modelValue: Record<string, any>
@@ -94,6 +98,27 @@ const emit = defineEmits<Emits>()
 
 // 使用 reactive 来控制表单数据
 const formData = reactive({ ...props.modelValue })
+
+// 高级筛选折叠（dev-20261024-025）：默认收起；任一高级字段有值时自动展开
+const advancedOpen = ref(false)
+const advancedFields = computed(() => props.fields.filter((field) => field.advanced))
+const visibleFields = computed(() =>
+  advancedOpen.value ? props.fields : props.fields.filter((field) => !field.advanced)
+)
+const isEmptyValue = (value: unknown) =>
+  value == null ||
+  value === '' ||
+  (Array.isArray(value) && value.length === 0)
+const advancedUsedCount = computed(
+  () => advancedFields.value.filter((field) => !isEmptyValue(formData[field.prop])).length
+)
+watch(
+  () => advancedUsedCount.value,
+  (count) => {
+    if (count > 0) advancedOpen.value = true
+  },
+  { immediate: true }
+)
 
 /**
  * 回写父级查询对象。
@@ -160,5 +185,10 @@ const handleReset = () => {
 <style scoped>
 .search-card {
   margin-bottom: 16px;
+}
+.advanced-used {
+  margin-left: 6px;
+  font-size: 12px;
+  color: #e6a23c;
 }
 </style>

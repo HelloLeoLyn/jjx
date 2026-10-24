@@ -715,7 +715,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
      */
     private static void applyKeywordMatch(LambdaQueryWrapper<InventoryMaterial> wrapper, String term) {
         String like = "%" + term + "%";
-        wrapper.apply("(search_blob LIKE {0} OR EXISTS (SELECT 1 FROM inventory_material_category c "
+        wrapper.apply("(search_blob LIKE {0} OR supplier_name LIKE {0} "
+                + "OR EXISTS (SELECT 1 FROM inventory_material_category c "
                 + "WHERE c.category_id = inventory_material.category_id "
                 + "AND (c.name_path LIKE {0} OR c.category_name LIKE {0})))", like);
     }

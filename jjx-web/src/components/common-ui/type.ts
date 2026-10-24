@@ -34,6 +34,8 @@ export interface SearchOptions {
   options?: Array<{ value: any; label: string }>
   /** 是否独占一行（custom 类字段如标签筛选常用，dev-20260912-009） */
   block?: boolean
+  /** 高级筛选：默认折叠，有值时自动展开（dev-20261024-025） */
+  advanced?: boolean
 }
 
 export interface FormOptions {

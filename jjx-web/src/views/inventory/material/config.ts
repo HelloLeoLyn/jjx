@@ -12,20 +12,17 @@ export const searchOptions: SearchOptions[] = [
     type: 'input',
   },
   {
-    prop: 'materialName',
-    label: '物料名称',
-    type: 'input',
-  },
-  {
     prop: 'rootType',
     label: '物料类型',
     type: 'select',
+    advanced: true,
     options: MaterialRootTypeEnum.items,
   },
   {
     prop: 'materialMeta',
     label: '物料材质',
     type: 'select',
+    advanced: true,
     options: [],
   },
   {
@@ -45,24 +42,28 @@ export const searchOptions: SearchOptions[] = [
     prop: 'materialForm',
     label: '形态',
     type: 'select',
+    advanced: true,
     options: [],
   },
   {
     prop: 'color',
     label: '颜色',
     type: 'select',
+    advanced: true,
     options: [],
   },
   {
     prop: 'brand',
     label: '品牌',
     type: 'select',
+    advanced: true,
     options: [],
   },
   {
     prop: 'isCustomerSupplied',
     label: '客供专用',
     type: 'select',
+    advanced: true,
     options: [
       { value: true, label: '是' },
       { value: false, label: '否' },
@@ -72,6 +73,7 @@ export const searchOptions: SearchOptions[] = [
     prop: 'isSample',
     label: '样品专用',
     type: 'select',
+    advanced: true,
     options: [
       { value: true, label: '是' },
       { value: false, label: '否' },
@@ -83,6 +85,13 @@ export const searchOptions: SearchOptions[] = [
     label: '物料标签',
     type: 'custom',
     block: true,
+    advanced: true,
+  },
+  {
+    prop: 'supplierId',
+    label: '供应商',
+    type: 'custom',
+    advanced: true,
   },
   {
     prop: 'status',
