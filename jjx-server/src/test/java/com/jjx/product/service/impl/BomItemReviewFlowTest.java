@@ -16,6 +16,7 @@ import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.mapper.ProductStandardProcessMapper;
 import com.jjx.system.service.ReviewFlowService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -43,6 +44,12 @@ import static org.mockito.Mockito.*;
 class BomItemReviewFlowTest {
 
     @InjectMocks EngineeringBomServiceImpl service;
+    @Mock BomSpecificationService bomSpecificationService;
+
+    @BeforeEach
+    void injectSpecificationService() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "bomSpecificationService", bomSpecificationService);
+    }
     @Mock EngineeringBomMapper bomMapper;
     @Mock EngineeringBomItemMapper itemMapper;
     @Mock ProductMapper productMapper;

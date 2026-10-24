@@ -669,23 +669,26 @@ const loadBomData = async (bomId: number) => {
 
 /** 保存（供「确定」与「保存并离开」共用）；成功返回 true，失败/校验不过返回 false 且不清数据。 */
 const doSave = async (): Promise<boolean> => {
-  if (!bomFormRef.value) return false
-  try {
-    await bomFormRef.value.validate()
-  } catch {
-    return false
-  }
-  // 保存前按当前模式校验（快速模式名称+规格必填；常规模式必须选物料）
-  if (!bomItemEditorRef.value?.validateItems()) return false
-  // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
-  formData.items = bomItemEditorRef.value.getItems()
-  const longProject = formData.items.find((item) => (item.processName?.length || 0) > 200)
-  if (longProject) {
-    ElMessage.warning(`物料 "${longProject.materialName}" 的项目名称不能超过200个字符`)
-    return false
-  }
+  if (!bomFormRef.value || submitting.value) return false
   submitting.value = true
   try {
+    try {
+      await bomFormRef.value.validate()
+    } catch {
+      return false
+    }
+    // 等待选料生成完成，并核对最新物料属性；失败时保留编辑内容供重试。
+    if (bomItemEditorRef.value?.prepareSpecifications &&
+        !(await bomItemEditorRef.value.prepareSpecifications())) return false
+    // 保存前按当前模式校验（快速模式材料名称必填；常规模式必须选物料）
+    if (!bomItemEditorRef.value?.validateItems()) return false
+    // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
+    formData.items = bomItemEditorRef.value.getItems()
+    const longProject = formData.items.find((item) => (item.processName?.length || 0) > 200)
+    if (longProject) {
+      ElMessage.warning(`物料 "${longProject.materialName}" 的项目名称不能超过200个字符`)
+      return false
+    }
     if (formData.bomId !== undefined) {
       await productBomApi.editEngineeringBom(formData as any)
       ElMessage.success('修改成功')

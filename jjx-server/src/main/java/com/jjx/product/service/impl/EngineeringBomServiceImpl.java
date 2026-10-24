@@ -51,6 +51,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.transaction.PlatformTransactionManager transactionManager;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private BomSpecificationService bomSpecificationService;
+
     private final EngineeringBomMapper productBomMapper;
     private final EngineeringBomItemMapper productBomItemMapper;
     private final ProductMapper productMapper;
@@ -490,6 +493,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 }
                 cursor = byId.get(cursor.getParentMaterialId());
             }
+        }
+        if (remaining.stream().anyMatch(row -> row.getMaterialId() != null && row.getMaterialId() > 0)) {
+            bomSpecificationService.record(bomId, remaining);
         }
     }
 
@@ -942,10 +948,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     try {
                         com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectById(it.getMaterialId());
                         it.setMaterialType(mat == null ? null : inventoryMaterialMapper.materialTypeOf(mat.getCategoryId()));
-                        // dev-20261024-023：带出物料当前系统生成规格，供前端判定「系统生成 / 人工改写」
-                        it.setMaterialSpecification(mat == null ? null : mat.getSpecification());
                     } catch (Exception ignored) { }
                 }
+            }
+            if (items.stream().anyMatch(row -> row.getMaterialId() != null && row.getMaterialId() > 0)) {
+                bomSpecificationService.enrich(bomId, items);
             }
         }
         return items;

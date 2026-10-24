@@ -38,6 +38,7 @@ import static org.mockito.Mockito.mock;
 class BomGroupPersistenceTest {
     IEngineeringBomService service;
     JdbcTemplate db;
+    com.jjx.inventory.master.MaterialMasterService materialMaster;
 
     @BeforeEach
     void setup() {
@@ -48,13 +49,23 @@ class BomGroupPersistenceTest {
         configuration.setEnvironment(new Environment("bom-groups", new SpringManagedTransactionFactory(), source));
         configuration.addMapper(EngineeringBomMapper.class);
         configuration.addMapper(EngineeringBomItemMapper.class);
+        configuration.addMapper(com.jjx.system.mapper.SysOperLogMapper.class);
         var session = new SqlSessionTemplate(new MybatisSqlSessionFactoryBuilder().build(configuration));
         db = new JdbcTemplate(source);
         createTable(EngineeringBom.class);
         createTable(EngineeringBomItem.class);
+        createTable(com.jjx.system.domain.entity.SysOperLog.class);
         var implementation = new EngineeringBomServiceImpl(session.getMapper(EngineeringBomMapper.class),
                 session.getMapper(EngineeringBomItemMapper.class), mock(ProductMapper.class), new EngineeringBomConverterImpl(),
                 null, null, null, null, mock(OperLogChangeRecorder.class), null);
+        var materials = mock(com.jjx.inventory.mapper.InventoryMaterialMapper.class);
+        materialMaster = mock(com.jjx.inventory.master.MaterialMasterService.class);
+        var material = new com.jjx.inventory.domain.InventoryMaterial();
+        org.mockito.Mockito.when(materials.selectById(org.mockito.ArgumentMatchers.anyLong())).thenReturn(material);
+        org.mockito.Mockito.when(materialMaster.specificationPreview(material)).thenReturn(
+                new com.jjx.inventory.master.MaterialMasterService.SpecificationPreview("系统规格", true, "属性生成"));
+        org.springframework.test.util.ReflectionTestUtils.setField(implementation, "bomSpecificationService",
+                new BomSpecificationService(materialMaster, materials, session.getMapper(com.jjx.system.mapper.SysOperLogMapper.class)));
         var proxy = new ProxyFactory(implementation);
         proxy.setInterfaces(IEngineeringBomService.class);
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source),
@@ -290,6 +301,7 @@ class BomGroupPersistenceTest {
 
     @Test
     void originalValuesUseItemIdsForDuplicateUnlinkedMaterialsAndOnlyLatestSave() {
+        try (var security = org.mockito.Mockito.mockStatic(com.jjx.system.utils.SecurityUtils.class)) {
         Long bomId = service.createBomReturnId(payload(row(-1, null, "旧]→甲\n原文", 1), row(-2, -1L, "旧乙", 2)));
         var stored = service.getBomItems(bomId);
         var first = row(stored.get(0).getItemId(), null, "新甲", 1);
@@ -309,5 +321,35 @@ class BomGroupPersistenceTest {
         assertEquals(1, detail.getJSONArray("itemChanges").size());
         assertEquals("新甲", detail.getJSONArray("itemChanges").getJSONObject(0).getStr("oldValue"));
         assertNull(service.updateBomWithDetail(edit).getDetailMessage(), "无变化保存不能复用前次旧值");
+        }
+    }
+
+    @Test
+    void specificationCheckpointUsesRealIdsAndRollsBackTogetherWithBomSave() {
+        try (var security = org.mockito.Mockito.mockStatic(com.jjx.system.utils.SecurityUtils.class)) {
+            var linked = row(-1, null, "PET", 1);
+            linked.setMaterialId(8L);
+            linked.setSpecification("系统规格");
+            Long bomId = service.createBomReturnId(payload(linked));
+            assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM sys_oper_log", Integer.class));
+            var stored = service.getBomItems(bomId).get(0);
+            assertTrue(stored.getItemId() > 0);
+            assertEquals("系统规格", stored.getSpecificationBaseline());
+            assertFalse(stored.getSpecificationManual());
+            String detail = db.queryForObject("SELECT detail FROM sys_oper_log", String.class);
+            assertEquals(stored.getItemId(), cn.hutool.json.JSONUtil.parseObj(detail)
+                    .getJSONArray("specifications").getJSONObject(0).getLong("itemId"));
+
+            db.execute("ALTER TABLE sys_oper_log ADD CONSTRAINT reject_test_spec CHECK (detail NOT LIKE '%BLOCK%')");
+            var editRow = row(stored.getItemId(), null, "不应保存的新名称", 1);
+            editRow.setMaterialId(8L);
+            editRow.setSpecification("BLOCK");
+            var edit = payload(editRow);
+            edit.setBomId(bomId);
+            assertThrows(RuntimeException.class, () -> service.updateBomWithDetail(edit));
+            assertEquals("PET", service.getBomItems(bomId).get(0).getMaterialName());
+            assertEquals("系统规格", service.getBomItems(bomId).get(0).getSpecification());
+            assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM sys_oper_log", Integer.class));
+        }
     }
 }

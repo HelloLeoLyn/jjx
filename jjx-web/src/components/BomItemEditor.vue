@@ -120,12 +120,19 @@
             placeholder="选填"
             size="small"
             maxlength="500"
+            @input="markManualSpec(scope.row)"
           />
           <div v-if="isManualSpec(scope.row)" class="spec-manual">
             <el-tag size="small" type="warning">已改写</el-tag>
             <el-button link type="primary" size="small" @click="restoreAutoSpec(scope.row)">
               恢复系统生成
             </el-button>
+          </div>
+          <div v-if="specErrors[String(scope.row.itemId)]" class="spec-error">
+            规格生成失败，请点击刷新重试
+          </div>
+          <div v-if="isManualSpec(scope.row) && specSourceChanged(scope.row)" class="spec-error">
+            物料属性已变，当前为人工改写，请复核
           </div>
         </template>
       </el-table-column>
@@ -310,13 +317,14 @@ import type { EngineeringBomItem, BomMaterialMatchItem } from '@/types/product/b
 import { BomItemReviewStatusEnum } from '@/enums/product'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import { bomGroupRows } from '@/utils/bomGroups'
-import { autoSpecOf, isManualSpec, specFollowValue } from './bomSpecMode'
+import { autoSpecOf, isManualSpec, specFollowValue, specSourceChanged } from './bomSpecMode'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import StandardProcessSelector from '@/components/Selector/StandardProcessSelector.vue'
 import { useEnabledProcesses } from '@/composables/useEnabledProcesses'
 import { productBomApi } from '@/api/product/bom'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
+import { materialMasterApi } from '@/api/inventory/materialMaster'
 import Sortable from 'sortablejs'
 
 // ==================== Props & Emits ====================
@@ -356,6 +364,9 @@ const tableHeight = ref(400)
 // 快速模式（dev-20261020-029）：直接录材料名称+规格，materialId 可空
 const quickMode = ref(false)
 const materialDrafts = ref<Record<string, string>>({})
+const specErrors = ref<Record<string, boolean>>({})
+const specRequests = new Map<string, Promise<void>>()
+const specVersions = new Map<string, number>()
 function handleMaterialDraft(row: EngineeringBomItem, draft: { text: string; pending: boolean }) {
   const key = String(row.itemId)
   if (draft.pending) materialDrafts.value[key] = draft.text
@@ -582,14 +593,74 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   // dev-20261024-023：选料带入系统生成规格；物料无规格时保留原手填值，不用空串覆盖
   const autoSpec = (material.specification || '').trim()
   row.materialSpecification = autoSpec
+  row.specificationBaseline = autoSpec
+  row.specificationManual = false
   if (autoSpec) row.specification = autoSpec
   row.unit = material.unit || 'PCS'
   row.materialType = material.rootType || undefined
   row.create = false
   recalcAppliedIssue(row)
+  void loadAutoSpec(row, true)
 }
 
-/** 规格跟随系统生成：仅空值补齐；人工改写不覆盖（dev-20261024-023） */
+function markManualSpec(row: EngineeringBomItem) {
+  row.specificationManual = row.specification !== autoSpecOf(row)
+}
+
+/** 复用物料详情中的服务端属性生成结果，不把库存规格文本当作生成器。 */
+function loadAutoSpec(row: EngineeringBomItem, selected = false): Promise<void> {
+  const key = String(row.itemId)
+  const materialId = row.materialId
+  const version = (specVersions.get(key) || 0) + 1
+  specVersions.set(key, version)
+  const request = (async () => {
+    try {
+      const response = await materialMasterApi.detail(materialId)
+      if (!response.data) throw new Error('物料详情为空')
+      const current = items.value.find((item) => String(item.itemId) === key)
+      if (!current || current.materialId !== materialId || specVersions.get(key) !== version) return
+      const preview = response.data.specificationGeneration
+      if (!preview) throw new Error('物料详情未返回属性生成结果')
+      const auto = (preview.specification || '').trim()
+      const previous = autoSpecOf(current)
+      const manual = previous ? isManualSpec(current) : !!current.specificationManual
+      current.specificationManual = manual
+      current.materialSpecification = auto
+      // 选料后的异步返回不能覆盖用户刚输入的规格；刷新保留已有人工值。
+      if (selected && !manual && auto) current.specification = auto
+      else {
+        if (!manual && previous) current.specificationBaseline = previous
+        followAutoSpec(current)
+      }
+      if (!isManualSpec(current)) current.specificationBaseline = auto
+      delete specErrors.value[key]
+    } catch (error) {
+      const current = items.value.find((item) => String(item.itemId) === key)
+      if (current?.materialId === materialId && specVersions.get(key) === version) {
+        specErrors.value[key] = true
+        console.error('BOM规格生成失败:', error)
+      }
+    } finally {
+      if (specVersions.get(key) === version) specRequests.delete(key)
+    }
+  })()
+  specRequests.set(key, request)
+  return request
+}
+
+async function prepareSpecifications(): Promise<boolean> {
+  await Promise.all(specRequests.values())
+  await Promise.all(items.value.filter((row) => Number(row.materialId) > 0 && !isPendingRemove(row))
+    .map((row) => loadAutoSpec(row)))
+  const failed = items.value.find((row) => !isPendingRemove(row) && specErrors.value[String(row.itemId)])
+  if (failed) {
+    await markRowError(failed, `物料「${failed.materialName}」规格生成失败，请刷新重试`)
+    return false
+  }
+  return true
+}
+
+/** 空值及已知旧自动值跟随系统规格；人工改写不覆盖（dev-20261024-023）。 */
 function followAutoSpec(row: EngineeringBomItem) {
   const next = specFollowValue(row)
   if (next !== null) row.specification = next
@@ -598,7 +669,11 @@ function followAutoSpec(row: EngineeringBomItem) {
 /** 恢复为物料当前系统生成规格（dev-20261024-023） */
 function restoreAutoSpec(row: EngineeringBomItem) {
   const auto = autoSpecOf(row)
-  if (auto) row.specification = auto
+  if (auto) {
+    row.specification = auto
+    row.specificationBaseline = auto
+    row.specificationManual = false
+  }
 }
 
 /**
@@ -840,7 +915,7 @@ const destroySortable = () => {
 const handleRefresh = async () => {
   refreshLoading.value = true
   try {
-    ElMessage.success('刷新成功')
+    if (await prepareSpecifications()) ElMessage.success('规格已按最新物料属性刷新')
   } finally {
     refreshLoading.value = false
   }
@@ -975,6 +1050,12 @@ const handleMaterialClear = (row: EngineeringBomItem) => {
   row.materialCode = ''
   row.materialName = ''
   row.specification = ''
+  row.materialSpecification = undefined
+  row.specificationBaseline = undefined
+  row.specificationManual = false
+  specVersions.set(String(row.itemId), (specVersions.get(String(row.itemId)) || 0) + 1)
+  specRequests.delete(String(row.itemId))
+  delete specErrors.value[String(row.itemId)]
   row.unit = 'PCS'
   row.materialType = undefined
   row.create = false
@@ -1089,6 +1170,7 @@ const getQuantityStep = (unit: string) => {
 // ==================== 暴露方法 ====================
 
 defineExpose({
+  prepareSpecifications,
   getItems: () => toSubmitItems(items.value),
   clearItems: () => {
     materialDrafts.value = {}
@@ -1105,6 +1187,10 @@ defineExpose({
     walkTree(items.value, (item) => {
       if (failures.length) return
       if (isPendingRemove(item)) return
+      if (specRequests.has(String(item.itemId)) || specErrors.value[String(item.itemId)]) {
+        failures.push({ item, message: `物料「${item.materialName}」规格尚未生成，请稍后或刷新重试` })
+        return
+      }
       if (!quickMode.value && materialDrafts.value[String(item.itemId)] !== undefined) {
         failures.push({
           item,
@@ -1353,5 +1439,9 @@ defineExpose({
   align-items: center;
   gap: 4px;
   margin-top: 2px;
+}
+.spec-error {
+  color: var(--el-color-danger);
+  font-size: 12px;
 }
 </style>

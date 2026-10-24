@@ -177,3 +177,28 @@ test('保存遵循编辑器草稿校验，确认候选后立即保存读取当�
   assert.equal(calls[0].items[0].materialId, 9)
   assert.equal(calls[0].items[0].materialName, '新物料')
 })
+
+test('BOM保存等待规格生成；生成失败不提交，成功后读取最新规格', async () => {
+  const { state, calls } = form()
+  state.handleProductChange(42, product)
+  state.bomFormRef.value = { validate: async () => {} }
+  let ready = false, resolve
+  let pending = new Promise(done => { resolve = done })
+  state.bomItemEditorRef.value = {
+    prepareSpecifications: async () => { await pending; return ready },
+    validateItems: () => true,
+    getItems: () => [{ materialId: 9, materialName: 'PET', specification: '厚度:0.2mm' }],
+  }
+  const saving = state.doSave()
+  await Promise.resolve()
+  assert.equal(calls.length, 0)
+  assert.equal(state.submitting.value, true)
+  assert.equal(await state.doSave(), false, '生成过程中重复点保存不能重复提交')
+  resolve()
+  assert.equal(await saving, false)
+  assert.equal(calls.length, 0)
+  ready = true
+  pending = Promise.resolve()
+  assert.equal(await state.doSave(), true)
+  assert.equal(calls[0].items[0].specification, '厚度:0.2mm')
+})

@@ -231,6 +231,14 @@ public class EngineeringBomItem {
     @TableField(exist = false)
     private String materialSpecification;
 
+    /** 上次保存时的系统规格，仅由操作日志带出，不落业务表。 */
+    @TableField(exist = false)
+    private String specificationBaseline;
+
+    /** 上次保存时规格与系统值不同；用于保留人工清空的值。 */
+    @TableField(exist = false)
+    private Boolean specificationManual;
+
     /**
      * 实际用量（非数据库字段，通过 quantity * (1 + lossRate/100) 计算）
      */

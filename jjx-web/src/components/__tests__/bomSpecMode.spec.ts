@@ -38,4 +38,15 @@ describe('bomSpecMode（dev-20261024-023）', () => {
   it('与系统值一致：无需改动', () => {
     expect(specFollowValue({ materialId: 1, specification: '0.175mm', materialSpecification: '0.175mm' })).toBeNull()
   })
+
+  it('保存日志证明旧值曾为系统值：属性变化后自动跟随', () => {
+    const row = { materialId: 1, specification: '旧系统值', materialSpecification: '新系统值', specificationBaseline: '旧系统值' }
+    expect(isManualSpec(row)).toBe(false)
+    expect(specFollowValue(row)).toBe('新系统值')
+  })
+
+  it('人工清空保留；手填后再次等于系统值即恢复自动', () => {
+    expect(specFollowValue({ materialId: 1, specification: '', materialSpecification: '系统值', specificationManual: true })).toBeNull()
+    expect(isManualSpec({ materialId: 1, specification: '系统值', materialSpecification: '系统值', specificationManual: true })).toBe(false)
+  })
 })

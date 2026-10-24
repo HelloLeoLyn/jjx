@@ -75,6 +75,10 @@ export interface EngineeringBomItem {
   materialType?: string
   /** 物料主数据当前的系统生成规格（查询带出，不落库；dev-20261024-023） */
   materialSpecification?: string
+  /** 上次保存时的系统生成规格（从操作日志带出，不落业务表） */
+  specificationBaseline?: string
+  /** 保留人工清空的规格；与当前系统值相同时仍回到自动模式 */
+  specificationManual?: boolean
   lossRate: number
   remark?: string
   sortOrder: number

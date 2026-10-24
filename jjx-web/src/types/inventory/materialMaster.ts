@@ -91,6 +91,7 @@ export type MaterialMasterRecord = InventoryMaterial & {
   isSample?: boolean
 }
 export interface MaterialMasterDetail {
+  specificationGeneration?: { specification: string | null; generated: boolean; message: string }
   material: MaterialMasterRecord
   attributes: Record<string, AttributeValue>
   configuration: MaterialMasterConfiguration | null
