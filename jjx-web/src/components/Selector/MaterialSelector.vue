@@ -1,4 +1,3 @@
-<!-- components/Selector/MaterialSelector.vue -->
 <template>
   <EditableSearchSelect
     :model-value="selectedValue"
@@ -10,24 +9,33 @@
     :clearable="clearable"
     :disabled="disabled"
     :size="size"
-    :loading="loading"
+    :loading="effLoading"
+    :loading-more="loadingMore"
+    :min-width="520"
+    :total="displayOptions.length"
     class="material-selector"
     @search="handleRemoteSearch"
     @select="onPick"
     @clear="handleClear"
-  />
+    @load-more="loadMore"
+  >
+    <template #option="{ item }">
+      <MaterialSearchOption :item="item" />
+    </template>
+  </EditableSearchSelect>
 </template>
 
 <script setup lang="ts">
 /**
- * 物料选择器（dev-20261018-011 改为可编辑搜索框）
- * v-model 语义、valueType、远程搜索防抖、外部 options、自动选首项均保留。
+ * 物料选择器（dev-20261024-018 公共搜索升级）
+ * v-model 语义、valueType、外部 options、自动选首项保留；
+ * 搜索改用 useMaterialSearch：修复把分页对象当数组（records）的问题，支持多词/分页/失败重试。
  */
-import { ref, computed, onBeforeUnmount } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed } from 'vue'
 import type { InventoryMaterial } from '@/types/inventory/material'
-import { materialApi } from '@/api/inventory/material'
 import EditableSearchSelect from './EditableSearchSelect.vue'
+import MaterialSearchOption from './MaterialSearchOption.vue'
+import { useMaterialSearch } from './useMaterialSearch'
 
 interface Props {
   modelValue: InventoryMaterial | number | string | null
@@ -62,15 +70,20 @@ const emit = defineEmits<{
   clear: []
 }>()
 
-const remoteOptions = ref<InventoryMaterial[]>([])
-const loading = ref(false)
-const keyword = ref('')
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-const displayOptions = computed(() => {
-  if (props.options && props.options.length > 0) return props.options
-  return remoteOptions.value
+const search = useMaterialSearch({
+  debounceMs: props.debounceDelay,
+  minKeywordLength: props.minKeywordLength,
+  pageSize: 10,
+  onFirstPage: (items) => {
+    emit('search', search.keyword.value)
+    if (props.autoSelectFirst && items.length > 0 && props.modelValue == null) onPick(items[0])
+  },
 })
+
+const external = computed(() => (props.options || []).length > 0)
+const displayOptions = computed(() => (external.value ? props.options : search.items.value))
+const effLoading = computed(() => (external.value ? false : search.loading.value))
+const loadingMore = computed(() => (external.value ? false : search.loadingMore.value))
 
 const selectedValue = computed(() => {
   if (props.modelValue == null) return null
@@ -91,13 +104,18 @@ const selectedLabel = computed(() => {
   if (props.modelValue == null) return ''
   const hit = displayOptions.value.find(matchesModel)
   if (hit) return getOptionLabel(hit)
-  return typeof props.modelValue === 'object' ? '' : String(props.modelValue)
+  if (typeof props.modelValue === 'object') {
+    return props.modelValue.materialName
+      ? getOptionLabel(props.modelValue as InventoryMaterial)
+      : ''
+  }
+  return String(props.modelValue)
 })
 
-const getOptionLabel = (item: InventoryMaterial) => {
-  const spec = item.specification ? ' - ' + item.specification : ''
-  return item.materialName + ' (' + item.materialCode + ')' + spec
-}
+const getOptionLabel = (item: InventoryMaterial) =>
+  [item.materialName || '', item.materialCode ? `(${item.materialCode})` : '']
+    .filter(Boolean)
+    .join(' ')
 
 function onPick(material: InventoryMaterial) {
   if (!material) return
@@ -116,44 +134,22 @@ function onPick(material: InventoryMaterial) {
   }
 }
 
-const handleRemoteSearch = (query: string) => {
-  keyword.value = query
-  if (debounceTimer) clearTimeout(debounceTimer)
+function handleRemoteSearch(query: string) {
   if (props.options && props.options.length > 0) return
-  if (!query || query.length < props.minKeywordLength) {
-    remoteOptions.value = []
-    return
-  }
-  debounceTimer = setTimeout(async () => {
-    loading.value = true
-    try {
-      const res = await materialApi.search({ keyword: query } as any)
-      if (res.code === 200 && res.data) {
-        remoteOptions.value = (res as any).data
-        emit('search', query)
-        if (props.autoSelectFirst && remoteOptions.value.length > 0) {
-          onPick(remoteOptions.value[0])
-        }
-      }
-    } catch (error) {
-      ElMessage.error('搜索失败')
-    } finally {
-      loading.value = false
-    }
-  }, props.debounceDelay)
+  search.search(query)
 }
 
-const handleClear = () => {
-  remoteOptions.value = []
-  keyword.value = ''
+async function loadMore() {
+  if (external.value) return
+  await search.loadMore()
+}
+
+function handleClear() {
+  search.reset()
   emit('update:modelValue', null)
   emit('change', null, null)
   emit('clear')
 }
-
-onBeforeUnmount(() => {
-  if (debounceTimer) clearTimeout(debounceTimer)
-})
 </script>
 
 <style scoped>
