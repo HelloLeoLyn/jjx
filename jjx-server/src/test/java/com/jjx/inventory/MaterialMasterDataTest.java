@@ -442,4 +442,24 @@ class MaterialMasterDataTest {
         assertTrue(sql.contains("category_path")); assertFalse(sql.contains("material_type"));
         query.setRootType("A"); assertThrows(BusinessException.class, () -> service.selectEntities(query));
     }
+    @Test void classStatusFiltersAreSharedByListSearchAndPaging() {
+        when(mapper.selectList(any())).thenReturn(List.of());
+        var query = new MaterialQueryDTO();
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        query.setClassStatus("unclassified"); service.selectEntities(query);
+        verify(mapper).selectList(wrapper.capture());
+        assertTrue(wrapper.getValue().getSqlSegment().contains("category_id IS NULL"));
+        query.setClassStatus("rule_unconfirmed"); service.search(query);
+        verify(mapper).selectPage(any(), wrapper.capture());
+        String sql = wrapper.getValue().getSqlSegment();
+        assertTrue(sql.contains("class_source =")); assertTrue(sql.contains("class_confirmed ="));
+        assertTrue(((com.baomidou.mybatisplus.core.conditions.AbstractWrapper)wrapper.getValue()).getParamNameValuePairs().values().contains("RULE"));
+        clearInvocations(mapper);
+        query.setClassStatus("confirmed"); service.pageQuery(query);
+        verify(mapper).selectPage(any(), wrapper.capture());
+        assertTrue(wrapper.getValue().getSqlSegment().contains("class_confirmed ="));
+        assertTrue(((com.baomidou.mybatisplus.core.conditions.AbstractWrapper)wrapper.getValue()).getParamNameValuePairs().values().contains(true));
+        query.setClassStatus("bogus"); assertThrows(BusinessException.class, () -> service.selectList(query));
+    }
+
 }

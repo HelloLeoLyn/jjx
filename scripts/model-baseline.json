@@ -141,6 +141,13 @@
   ],
   "approvedNewTables": [
     {
+      "table": "inventory_material_classify_rule",
+      "taskCode": "dev-20261024-004",
+      "date": "2026-10-24",
+      "proposalLink": "jjx-docs/history/material-master-target-model-dev-20261024-003.md",
+      "reason": "归类闭环需要可配置的关键词→分类规则库，属定稿方案 §7 要求"
+    },
+    {
       "table": "inventory_attribute_template",
       "taskCode": "dev-20261024-001",
       "date": "2026-10-24",

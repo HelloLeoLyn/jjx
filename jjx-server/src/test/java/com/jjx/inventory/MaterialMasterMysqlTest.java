@@ -9,6 +9,7 @@ import com.jjx.event.EventPublisher;
 import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.mapper.*;
 import com.jjx.inventory.master.*;
+import com.jjx.inventory.classify.*;
 import com.jjx.inventory.service.InventoryMaterialService;
 import com.jjx.purchase.mapper.PurchaseSupplierMapper;
 import com.jjx.system.mapper.SysDictItemMapper;
@@ -58,7 +59,8 @@ class MaterialMasterMysqlTest {
         var existing = jdbc.queryForList("SHOW COLUMNS FROM inventory_material").stream().map(row -> row.get("Field").toString()).collect(java.util.stream.Collectors.toSet());
         Map<String, String> additions = Map.of("original_name", "VARCHAR(200)", "original_specification", "VARCHAR(500)",
                 "material_meta", "VARCHAR(30)", "material_form", "VARCHAR(20)", "attribute_json", "JSON",
-                "is_customer_supplied", "TINYINT", "is_sample", "TINYINT");
+                "is_customer_supplied", "TINYINT", "is_sample", "TINYINT",
+                "class_source", "VARCHAR(10)", "class_confirmed", "TINYINT NOT NULL DEFAULT 0");
         for (var entry : additions.entrySet()) if (!existing.contains(entry.getKey())) jdbc.execute("ALTER TABLE inventory_material ADD COLUMN " + entry.getKey() + " " + entry.getValue());
         temporaryLike("inventory_material_category");
         temporaryLike("sys_dict_item");
@@ -95,7 +97,7 @@ class MaterialMasterMysqlTest {
         tags = mock(ISysTagService.class); when(tags.getBizTags(anyString(), anyLong())).thenReturn(List.of());
         var manager = new DataSourceTransactionManager(dataSource);
         service = proxy(new MaterialMasterService(catalog, locks, materialMapper, numbers, mock(PurchaseSupplierMapper.class), tags, mock(EventPublisher.class), mapper), manager);
-        excel = proxy(new MaterialMasterExcelService(catalog, service, materialMapper, mapper), manager);
+        excel = proxy(new MaterialMasterExcelService(catalog, service, materialMapper, mapper, new MaterialClassifyService(mock(MaterialClassifyRuleMapper.class), materialMapper, locks, catalog, mapper)), manager);
         configurationService = proxy(new MaterialMasterConfigurationService(catalog, locks, categoryMapper, templateMapper, materialMapper, mapper), manager);
     }
 
@@ -170,7 +172,11 @@ class MaterialMasterMysqlTest {
 
     private MockMultipartFile file(boolean invalidSecond) throws Exception {
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.template(900003L)))) {
-            for (int i=0;i<2;i++) { var row=workbook.getSheetAt(0).createRow(i+2); row.createCell(0).setCellValue("批量PC"+i); row.createCell(15).setCellValue(invalidSecond && i==1 ? "错误厚度" : "0.175"); }
+            var sheet = workbook.getSheetAt(0);
+            for (int i=0;i<2;i++) {
+                var row=sheet.createRow(i+2); row.createCell(0).setCellValue("RAW_BASE_PC"); row.createCell(1).setCellValue("批量PC"+i);
+                for (var cell : sheet.getRow(1)) if ("厚度(mm)".equals(cell.getStringCellValue())) row.createCell(cell.getColumnIndex()).setCellValue(invalidSecond && i==1 ? "错误厚度" : "0.175");
+            }
             var output = new ByteArrayOutputStream(); workbook.write(output);
             return new MockMultipartFile("file","pc.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",output.toByteArray());
         }
@@ -194,10 +200,10 @@ class MaterialMasterMysqlTest {
     @Test void migrationByIdRequiresEditPermissionAndPreservesCodeAndBusinessParameters() throws Exception {
         initialize();
         var old = service.save(pc("迁移前"),"Codex-test");
-        jdbc.update("UPDATE inventory_material SET original_name=NULL,attribute_json=NULL,safe_stock=7,standard_price=1.25 WHERE material_id=?",old.getMaterialId());
+        jdbc.update("UPDATE inventory_material SET original_name=NULL,attribute_json=NULL,class_confirmed=0,safe_stock=7,standard_price=1.25 WHERE material_id=?",old.getMaterialId());
         MockMultipartFile migration;
         try (XSSFWorkbook workbook=new XSSFWorkbook(new ByteArrayInputStream(file(false).getBytes()))) {
-            workbook.getSheetAt(0).getRow(2).createCell(14).setCellValue(old.getMaterialId().toString());
+            workbook.getSheetAt(0).getRow(2).createCell(15).setCellValue(old.getMaterialId().toString());
             var output=new ByteArrayOutputStream();workbook.write(output);
             migration=new MockMultipartFile("file","migration.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",output.toByteArray());
         }

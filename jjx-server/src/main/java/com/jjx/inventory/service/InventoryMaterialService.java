@@ -84,6 +84,9 @@ public interface InventoryMaterialService extends IService<InventoryMaterial> {
     /** 生成编码 */
     String generateCode(Long categoryId);
 
+    /** 未归类新物料使用中性MAT编号，不默认补分类、不重编历史编码。 */
+    String generateUnclassifiedCode();
+
     /**
      * 校验物料是否存在（根据名称、规格等条件）
      * @param checkDTO 校验条件（名称、规格、供应商等）

@@ -81,15 +81,16 @@ public class MaterialMasterController extends BaseController {
 
     @GetMapping("/import-template")
     @SaCheckPermission(value = {"inventory:material:add", "inventory:material:import"}, mode = SaMode.OR)
-    public void importTemplate(@RequestParam Long categoryId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+    public void importTemplate(@RequestParam(required = false) Long categoryId, jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
         download(response, excelService.template(categoryId), "material-template.xlsx");
     }
 
     @PostMapping("/import")
     @SaCheckPermission(value = {"inventory:material:add", "inventory:material:import"}, mode = SaMode.OR)
     public Result<MaterialMasterExcelService.ImportResult> importExcel(@RequestParam org.springframework.web.multipart.MultipartFile file,
-            @RequestParam Long categoryId, @RequestParam(defaultValue = "true") boolean preview) {
-        return Result.success(excelService.importExcel(file, categoryId, preview, getUsername(), cn.dev33.satoken.stp.StpUtil.hasPermission("inventory:material:edit")));
+            @RequestParam(required = false) Long categoryId, @RequestParam(defaultValue = "true") boolean preview,
+            @RequestParam(defaultValue = "false") boolean autoClassify) {
+        return Result.success(excelService.importExcel(file, categoryId, preview, getUsername(), cn.dev33.satoken.stp.StpUtil.hasPermission("inventory:material:edit"), autoClassify));
     }
 
     @GetMapping("/export")

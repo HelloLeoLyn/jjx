@@ -79,7 +79,7 @@ class MaterialMasterDatabaseTest {
         tags = proxy(new SysTagServiceImpl(session.getMapper(SysTagMapper.class), session.getMapper(SysTagRelMapper.class)));
         service = proxy(new MaterialMasterService(catalog, session.getMapper(MaterialMasterMapper.class), materialMapper,
                 numbers, mock(PurchaseSupplierMapper.class), tags, mock(EventPublisher.class), objectMapper));
-        excel = proxy(new MaterialMasterExcelService(catalog, service, materialMapper, objectMapper));
+        excel = proxy(new MaterialMasterExcelService(catalog, service, materialMapper, objectMapper, mock(com.jjx.inventory.classify.MaterialClassifyService.class)));
     }
 
     @SuppressWarnings("unchecked") private static <T> T proxy(T target) {

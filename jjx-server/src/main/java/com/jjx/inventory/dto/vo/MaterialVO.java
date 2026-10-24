@@ -18,6 +18,8 @@ public class MaterialVO {
     private String materialName;
     private Long categoryId;
     private String categoryName;
+    private String classSource;
+    private Boolean classConfirmed;
     /** 分类根中文名，未归类时为空。 */
     private String categoryRootName;
     private String rootType;

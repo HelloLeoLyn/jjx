@@ -66,15 +66,16 @@ public class MaterialMasterService {
 
     /** 同时供保存和导入预检使用，不写库、不生成业务编号。 */
     public Prepared prepare(MaterialMasterDTO dto) {
-        if (dto == null || dto.getCategoryId() == null) throw new BusinessException("请选择末级品类");
+        if (dto == null) throw new BusinessException("物料不能为空");
         if (dto.getMaterialId() != null && materialMapper.selectById(dto.getMaterialId()) == null) throw new BusinessException("待更新物料不存在");
-        MaterialMasterCatalog.Configuration config = catalog.configuration(dto.getCategoryId());
-        MaterialAttributeSchema schema = config.schema();
+        MaterialMasterCatalog.Configuration config = dto.getCategoryId() == null ? null : catalog.configuration(dto.getCategoryId());
+        MaterialAttributeSchema schema = config == null
+                ? new MaterialAttributeSchema(1, List.of(), false, null, null, "PCS", List.of()) : config.schema();
         String name = text(dto.getOriginalName(), "原名称", 200, true);
         String originalSpec = text(dto.getOriginalSpecification(), "原规格", 500, false);
         String meta = fallback(dto.getMaterialMeta(), schema.defaultMeta());
         if (meta == null && schema.metaOptions().size() == 1) meta = schema.metaOptions().get(0);
-        if (meta != null && !schema.metaOptions().contains(meta)) throw new BusinessException("材质不在该品类允许范围");
+        if (config != null && meta != null && !schema.metaOptions().contains(meta)) throw new BusinessException("材质不在该品类允许范围");
         if (meta == null && schema.metaRequired()) throw new BusinessException("请选择材质");
         String form = fallback(dto.getMaterialForm(), schema.defaultForm());
         String unit = fallback(dto.getUnit(), schema.defaultUnit());
@@ -103,10 +104,11 @@ public class MaterialMasterService {
         material.setSize(text(dto.getSize(), "尺寸", 50, false));
         material.setSearchKeywords(text(dto.getSearchKeywords(), "别名", 500, false));
         material.setRemark(text(dto.getRemark(), "业务备注", 1000, false));
-        material.setSpecification(specification.isEmpty() ? null : specification);
+        material.setSpecification(config == null ? originalSpec : specification.isEmpty() ? null : specification);
         material.setIsCustomerSupplied(Boolean.TRUE.equals(dto.getIsCustomerSupplied()));
         material.setIsSample(Boolean.TRUE.equals(dto.getIsSample()));
-        MaterialAttributeColumns.apply(material, attributes, config.template().getTemplateId());
+        if (config != null) MaterialAttributeColumns.apply(material, attributes, config.template().getTemplateId());
+        else { material.setTemplateId(null); material.setThickness(null); material.setWidthSize(null); }
         Map<String, Object> storedAttributes = new LinkedHashMap<>(attributes);
         if (meta != null) storedAttributes.put("material", meta);
         try { material.setAttributeJson(objectMapper.writeValueAsString(storedAttributes)); }
@@ -134,21 +136,31 @@ public class MaterialMasterService {
 
     @Transactional(rollbackFor = Exception.class)
     public InventoryMaterial save(MaterialMasterDTO dto, String operator) {
-        if (dto == null || dto.getCategoryId() == null) throw new BusinessException("请选择末级品类");
+        return save(dto, operator, com.jjx.inventory.classify.MaterialClassSource.MANUAL);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public InventoryMaterial save(MaterialMasterDTO dto, String operator, com.jjx.inventory.classify.MaterialClassSource source) {
+        if (dto == null) throw new BusinessException("物料不能为空");
         // 与模板维护取得相同顺序的锁，防止校验通过后模板被改写。
-        if (masterMapper.lockCategory(dto.getCategoryId()) == null || masterMapper.lockTemplate(dto.getCategoryId()) == null) throw new BusinessException("分类或模板不存在");
+        if (dto.getCategoryId() != null && (masterMapper.lockCategory(dto.getCategoryId()) == null || masterMapper.lockTemplate(dto.getCategoryId()) == null)) throw new BusinessException("分类或模板不存在");
         Prepared prepared = prepare(dto);
         InventoryMaterial material = prepared.material();
         boolean creating = material.getMaterialId() == null;
         InventoryMaterial existing = creating ? null : masterMapper.lockMaterial(material.getMaterialId());
         if (!creating && existing == null) throw new BusinessException("物料不存在");
+        if (existing != null && source != com.jjx.inventory.classify.MaterialClassSource.MANUAL && Boolean.TRUE.equals(existing.getClassConfirmed()))
+            throw new BusinessException("人工确认物料不能被导入覆盖");
         if (existing != null) preserveParameters(material, existing, dto);
         if (existing != null && !Objects.equals(existing.getUnit(), material.getUnit()) && masterMapper.transactionCount(existing.getMaterialId()) > 0) throw new BusinessException("已有库存流水，不能直接修改基本计量单位");
+        material.setClassSource(material.getCategoryId() == null ? null : source.name());
+        // 显式选择品类的表单/导入均已按模板校验；只有规则推断需要后续人工确认。
+        material.setClassConfirmed(material.getCategoryId() != null && source != com.jjx.inventory.classify.MaterialClassSource.RULE);
         material.setUpdateBy(operator);
         material.setUpdateTime(LocalDateTime.now());
         if (creating) {
             String code = text(dto.getMaterialCode(), "物料编码", 50, false);
-            material.setMaterialCode(code == null ? materialService.generateCode(material.getCategoryId()) : code);
+            material.setMaterialCode(code == null ? (material.getCategoryId() == null ? materialService.generateUnclassifiedCode() : materialService.generateCode(material.getCategoryId())) : code);
             if (materialService.existsByCode(material.getMaterialCode())) throw new BusinessException("物料编码已存在");
             material.setStatus(StatusEnum.NORMAL.getCode());
             material.setCreateBy(operator);
@@ -161,6 +173,7 @@ public class MaterialMasterService {
             // 完整表单显式SET空值；库存余额和历史单据不在本次写入列中。
             Map<String, Object> columns = new LinkedHashMap<>();
             columns.put("category_id", material.getCategoryId());
+            columns.put("class_source", material.getClassSource()); columns.put("class_confirmed", material.getClassConfirmed());
             columns.put("original_name", material.getOriginalName()); columns.put("original_specification", material.getOriginalSpecification());
             columns.put("material_name", material.getMaterialName()); columns.put("material_meta", material.getMaterialMeta());
             columns.put("material_form", material.getMaterialForm()); columns.put("material_grade", material.getMaterialGrade());

@@ -36,6 +36,10 @@ public class InventoryMaterial extends BaseEntity {
     /** 物料分类ID */
     private Long categoryId;
 
+    /** 归类来源与人工确认标记；仅归类服务和主数据入口写入。 */
+    private String classSource;
+    private Boolean classConfirmed;
+
     /** 规格型号/技术参数 */
     private String specification;
     private String materialGrade;

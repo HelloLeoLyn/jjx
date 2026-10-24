@@ -38,6 +38,9 @@ public class MaterialQueryDTO extends PageQuery{
 
     private Long categoryId;
 
+    /** unclassified / rule_unconfirmed / confirmed */
+    private String classStatus;
+
     private String specification;
     private String materialGrade;
     private String materialMeta;

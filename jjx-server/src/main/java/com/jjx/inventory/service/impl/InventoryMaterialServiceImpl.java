@@ -623,6 +623,13 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 "material", prefix, "", 6, minSequence);
     }
 
+    @Override
+    public String generateUnclassifiedCode() {
+        Long maximum = materialMapper.selectMaxCodeSequence();
+        return redisSequenceService.generateBusinessNumberByTypeWithPrefix("material", "MAT", "", 6,
+                maximum == null || maximum <= 0 ? 0L : maximum + 1);
+    }
+
     /** 物料保存服务仅在属性保存时写入这三列；其它调用不能独立覆盖。 */
     private boolean synchronizeAttributeColumns(InventoryMaterial material, InventoryMaterial existing) {
         material.setTemplateId(null); material.setThickness(null); material.setWidthSize(null);
@@ -713,6 +720,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     private static void applyAttributeFilters(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {
+        com.jjx.inventory.classify.MaterialClassStatus.filter(wrapper, dto.getClassStatus());
         if (StringUtils.isNotBlank(dto.getRootType())) MaterialClassification.filterType(wrapper, dto.getRootType());
         wrapper.eq(StringUtils.isNotBlank(dto.getMaterialMeta()), InventoryMaterial::getMaterialMeta, dto.getMaterialMeta())
                 .eq(StringUtils.isNotBlank(dto.getMaterialForm()), InventoryMaterial::getMaterialForm, dto.getMaterialForm())
