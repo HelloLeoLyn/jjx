@@ -9,7 +9,7 @@
               v-model="formData[field.prop]"
               :placeholder="`请输入${field.label}`"
               clearable
-              style="width: 180px"
+              :style="{ width: `${field.width ?? 180}px` }"
               @input="handleInput"
               @keyup.enter="handleSearch"
             />

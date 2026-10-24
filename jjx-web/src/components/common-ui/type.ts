@@ -36,6 +36,8 @@ export interface SearchOptions {
   block?: boolean
   /** 高级筛选：默认折叠，有值时自动展开（dev-20261024-025） */
   advanced?: boolean
+  /** 控件宽度（px），不传保持原默认（input 180 / select 150）（dev-20261024-026） */
+  width?: number
 }
 
 export interface FormOptions {

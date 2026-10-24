@@ -8,8 +8,9 @@ export const searchOptions: SearchOptions[] = [
   // 统一模糊搜索（dev-20261024-024）：名称/编码/型号/别名/规格/分类，空格分词 AND
   {
     prop: 'keyword',
-    label: '物料搜索',
+    label: '搜索词',
     type: 'input',
+    width: 340,
   },
   {
     prop: 'rootType',
