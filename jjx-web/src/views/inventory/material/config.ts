@@ -88,15 +88,6 @@ export const searchOptions: SearchOptions[] = [
   },
 
   {
-    prop: 'masterDataOnly',
-    label: '档案范围',
-    type: 'select',
-    options: [
-      { value: true, label: '新模型物料' },
-      { value: false, label: '待归类物料' },
-    ],
-  },
-  {
     prop: 'tagIds',
     label: '物料标签',
     type: 'custom',

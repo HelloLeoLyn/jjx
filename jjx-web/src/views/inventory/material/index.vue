@@ -270,7 +270,6 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   materialCode: '',
   materialName: '',
   rootType: '',
-  masterDataOnly: true,
   materialMeta: '',
   materialForm: '',
   tagIds: [],
@@ -386,7 +385,6 @@ const handleReset = () => {
   queryParams.materialCode = ''
   queryParams.materialName = ''
   queryParams.rootType = ''
-  queryParams.masterDataOnly = true
   queryParams.materialMeta = ''
   queryParams.materialForm = ''
   queryParams.status = ''

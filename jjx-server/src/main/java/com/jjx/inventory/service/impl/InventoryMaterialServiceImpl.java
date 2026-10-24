@@ -720,14 +720,17 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     private static void applyAttributeFilters(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {
-        com.jjx.inventory.classify.MaterialClassStatus.filter(wrapper, dto.getClassStatus());
+        // 查询接口忽略未知状态；有效三态继续复用既定过滤口径。
+        switch (java.util.Objects.toString(dto.getClassStatus(), "")) {
+            case "unclassified", "rule_unconfirmed", "confirmed" ->
+                    com.jjx.inventory.classify.MaterialClassStatus.filter(wrapper, dto.getClassStatus());
+            default -> { }
+        }
         if (StringUtils.isNotBlank(dto.getRootType())) MaterialClassification.filterType(wrapper, dto.getRootType());
         wrapper.eq(StringUtils.isNotBlank(dto.getMaterialMeta()), InventoryMaterial::getMaterialMeta, dto.getMaterialMeta())
                 .eq(StringUtils.isNotBlank(dto.getMaterialForm()), InventoryMaterial::getMaterialForm, dto.getMaterialForm())
                 .eq(dto.getIsCustomerSupplied() != null, InventoryMaterial::getIsCustomerSupplied, dto.getIsCustomerSupplied())
                 .eq(dto.getIsSample() != null, InventoryMaterial::getIsSample, dto.getIsSample());
-        if (Boolean.TRUE.equals(dto.getMasterDataOnly())) wrapper.isNotNull(InventoryMaterial::getOriginalName);
-        if (Boolean.FALSE.equals(dto.getMasterDataOnly())) wrapper.isNull(InventoryMaterial::getOriginalName);
         wrapper.eq(StringUtils.isNotBlank(dto.getMaterialGrade()), InventoryMaterial::getMaterialGrade, dto.getMaterialGrade())
                 .eq(StringUtils.isNotBlank(dto.getModel()), InventoryMaterial::getModel, dto.getModel())
                 .eq(StringUtils.isNotBlank(dto.getColor()), InventoryMaterial::getColor, dto.getColor())

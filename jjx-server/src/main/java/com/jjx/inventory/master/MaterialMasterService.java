@@ -60,7 +60,6 @@ public class MaterialMasterService {
     }
 
     public List<InventoryMaterial> selectForExport(com.jjx.inventory.dto.query.MaterialQueryDTO query) {
-        query.setMasterDataOnly(true);
         return materialService.selectEntities(query);
     }
 

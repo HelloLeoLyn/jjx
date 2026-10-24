@@ -124,7 +124,6 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   materialName?: string
   materialMeta?: string
   materialForm?: string
-  masterDataOnly?: boolean
   isCustomerSupplied?: boolean
   isSample?: boolean
   tagIds?: number[]
@@ -159,7 +158,6 @@ export interface MaterialQueryDTO extends PageQuery {
   materialGrade?: string
   materialMeta?: string
   materialForm?: string
-  masterDataOnly?: boolean
   model?: string
   color?: string
   brand?: string

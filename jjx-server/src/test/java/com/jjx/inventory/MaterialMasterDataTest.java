@@ -443,6 +443,7 @@ class MaterialMasterDataTest {
         query.setRootType("A"); assertThrows(BusinessException.class, () -> service.selectEntities(query));
     }
     @Test void classStatusFiltersAreSharedByListSearchAndPaging() {
+        when(tags.resolveBizIdsFilter(anyString(), any(), any())).thenReturn(null);
         when(mapper.selectList(any())).thenReturn(List.of());
         var query = new MaterialQueryDTO();
         var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
@@ -454,12 +455,54 @@ class MaterialMasterDataTest {
         String sql = wrapper.getValue().getSqlSegment();
         assertTrue(sql.contains("class_source =")); assertTrue(sql.contains("class_confirmed ="));
         assertTrue(((com.baomidou.mybatisplus.core.conditions.AbstractWrapper)wrapper.getValue()).getParamNameValuePairs().values().contains("RULE"));
+        assertTrue(((com.baomidou.mybatisplus.core.conditions.AbstractWrapper)wrapper.getValue()).getParamNameValuePairs().values().contains(false));
         clearInvocations(mapper);
         query.setClassStatus("confirmed"); service.pageQuery(query);
         verify(mapper).selectPage(any(), wrapper.capture());
         assertTrue(wrapper.getValue().getSqlSegment().contains("class_confirmed ="));
         assertTrue(((com.baomidou.mybatisplus.core.conditions.AbstractWrapper)wrapper.getValue()).getParamNameValuePairs().values().contains(true));
-        query.setClassStatus("bogus"); assertThrows(BusinessException.class, () -> service.selectList(query));
+    }
+
+    @Test void noFilterAndUnknownClassStatusKeepAllMaterialsWithNullOriginalNames() {
+        when(tags.resolveBizIdsFilter(anyString(), any(), any())).thenReturn(null);
+        InventoryMaterial unclassified = new InventoryMaterial();
+        unclassified.setMaterialId(1L);
+        InventoryMaterial rule = new InventoryMaterial();
+        rule.setMaterialId(2L); rule.setClassSource("RULE"); rule.setClassConfirmed(false);
+        InventoryMaterial confirmed = new InventoryMaterial();
+        confirmed.setMaterialId(3L); confirmed.setClassConfirmed(true);
+        List<InventoryMaterial> all = List.of(unclassified, rule, confirmed);
+        assertTrue(all.stream().allMatch(m -> m.getOriginalName() == null));
+        when(mapper.selectList(any())).thenReturn(all);
+        var query = new MaterialQueryDTO();
+        for (String classStatus : Arrays.asList(null, "", "bogus")) {
+            for (Boolean legacyFlag : Arrays.asList(null, true, false)) {
+                clearInvocations(mapper);
+                query.setClassStatus(classStatus); query.setMasterDataOnly(legacyFlag);
+                assertEquals(all, service.selectEntities(query));
+                var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+                verify(mapper).selectList(wrapper.capture());
+                // 无 WHERE 条件，分页/排序口径不变；兼容旧客户端携带的 masterDataOnly。
+                assertEquals("ORDER BY create_time DESC,material_id DESC", wrapper.getValue().getSqlSegment().trim());
+            }
+        }
+        query.setClassStatus("bogus");
+        assertEquals(3, service.selectList(query).size());
+        assertDoesNotThrow(() -> service.pageQuery(query));
+        assertDoesNotThrow(() -> service.search(query));
+    }
+
+    @Test void masterExportUsesTheSameQueryWithoutInjectingLegacyScope() {
+        var query = new MaterialQueryDTO(); query.setClassStatus("confirmed");
+        var master = new com.jjx.inventory.master.MaterialMasterService(null, null, mapper,
+                service, null, null, null, new ObjectMapper());
+        master.selectForExport(query);
+        assertNull(query.getMasterDataOnly());
+        assertEquals("confirmed", query.getClassStatus());
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper).selectList(wrapper.capture());
+        assertTrue(wrapper.getValue().getSqlSegment().contains("class_confirmed ="));
+        assertFalse(wrapper.getValue().getSqlSegment().contains("original_name"));
     }
 
 }
