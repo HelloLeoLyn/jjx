@@ -22,8 +22,10 @@
                 browse-on-focus
                 :keep-text-on-blur="false"
                 :create-permissions="['engineering:sample:workbench']"
+                :confirm-selection="true"
                 @select="(item) => $emit('material-selected', row, item)"
                 @clear="$emit('material-cleared', row)"
+                @draft-change="(draft) => onMaterialDraft(row, draft)"
                 @create="(keyword) => matCreate(row, keyword)"
               />
             </template>
@@ -152,6 +154,12 @@ const emit = defineEmits<{
   (e: 'remove-material', index: number): void
   (e: 'create-material', row: any): void
 }>()
+
+
+function onMaterialDraft(row: any, draft: { pending: boolean; text: string }) {
+  row.__matDraftPending = !!draft.pending
+  row.__matDraftText = draft.pending ? String(draft.text || '') : ''
+}
 
 function matCreate(row: any, keyword: string) {
   row._matKw = String(keyword || '').trim()

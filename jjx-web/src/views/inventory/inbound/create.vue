@@ -121,7 +121,8 @@
               v-model="row.materialCode"
               value-type="materialCode"
               placeholder="搜索并选择材料"
-              @change="handleChange"
+              @change="(value: any, material: any) => handleChange(row, value, material)"
+              @clear="handleMaterialClear(row)"
             />
           </template>
         </el-table-column>
@@ -293,6 +294,7 @@ import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
 import type { InboundCreateParams, InboundItemCreateParams } from '@/types/inventory/inbound'
 import type { InventoryWarehouse } from '@/types/inventory/warehouse'
 import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
+import { applyMaterialSelection, clearMaterialSelection } from './inboundMaterial'
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const fileInputRef = ref<HTMLInputElement>()
@@ -776,10 +778,18 @@ const parseNumber = (value: string, fieldName: string): number => {
   }
   return num
 }
-const handleChange = (returnValue: any, material: any) => {
-  // ✅ material 就是完整的 InventoryMaterial 对象
-  console.log('returnValue:', returnValue)
-  console.log('完整对象:', material)
+/**
+ * 物料选择（dev-20261024-019 wave B）：按档案回填 ID/名称/规格/单位；
+ * 未选中档案（只有文字）时清空旧 ID，避免"文字变了、ID 还是旧的"。
+ */
+const handleChange = (row: any, _value: any, material: any) => {
+  const picked = applyMaterialSelection(row, material)
+  if (picked) calculateAmount(row)
+}
+
+/** 清空选择：同步清掉旧 materialId，防止清空后仍提交旧档案 */
+const handleMaterialClear = (row: any) => {
+  clearMaterialSelection(row)
 }
 /**
  * 解析日期

@@ -20,6 +20,9 @@ export function normalizeMaterial(source: any, defaultProjects: number[] = []) {
   return row
 }
 export function validateMaterials(rows: any[]): string | null {
+  // dev-20261024-019 wave B：搜索框里还有未确认的文字时，禁止保存/审核（不能静默用旧 materialId）
+  const pending = rows.find(row => row.__matDraftPending === true)
+  if (pending) return `材料「${pending.name || pending.__matDraftText || '未命名'}」搜索尚未确认，请选择候选物料或取消修改`
   const invalid = rows.find(row => !Number.isInteger(row.baseQty) || row.baseQty < 1 || !Number.isInteger(row.moduleQty) || row.moduleQty < 1)
   if (invalid) return `材料「${invalid.name || '未命名'}」模数、基数须为至少1的整数，请核对历史用量`
   const badSplit = rows.find(row => row.split != null && row.split !== '' && splitNumber(row.split) == null)
@@ -33,6 +36,9 @@ export function projectIdsOf(pc: any): number[] {
 export function serializeMaterial(row: any) {
   const rest = { ...row }
   delete rest.projectInherited
+  // dev-20261024-019：未确认标记只用于保存前阻断，不进 materials JSON
+  delete rest.__matDraftPending
+  delete rest.__matDraftText
   return rest
 }
 

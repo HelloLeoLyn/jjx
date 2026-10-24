@@ -212,13 +212,15 @@
         browse-on-focus
         :keep-text-on-blur="false"
         :create-permissions="SAMPLE_MATERIAL_PERMS"
+        :confirm-selection="true"
         @select="(material) => pickerMaterial = material"
         @clear="pickerMaterial = null"
+        @draft-change="(draft) => pickerDraft = draft"
         @create="openCreateMaterial"
       />
       <template #footer>
         <el-button @click="pickerVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!pickerMaterial" @click="confirmMaterial"
+        <el-button type="primary" :disabled="!pickerMaterial || !!pickerDraft?.pending" @click="confirmMaterial"
           >添加</el-button
         >
       </template>
@@ -388,6 +390,7 @@ function isLast(row: any) {
 // 材料选择弹窗
 const pickerVisible = ref(false)
 const pickerMaterial = ref<any>(null)
+const pickerDraft = ref<{ pending: boolean; text: string } | null>(null)
 const pickerTarget = ref<any>(null)
 
 // 建档入口（同款）：权限跟随打样工作台；搜过且无同名物料时出现

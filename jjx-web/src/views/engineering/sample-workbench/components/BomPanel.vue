@@ -17,8 +17,10 @@
             browse-on-focus
             :keep-text-on-blur="false"
             :allow-create="false"
+            :confirm-selection="true"
             @select="(material) => $emit('select', row, material)"
             @clear="$emit('clear', row)"
+            @draft-change="(draft) => onMaterialDraft(row, draft)"
           />
           <span v-else>{{ row.name || '-' }}</span>
         </template>
@@ -173,6 +175,12 @@ const emit = defineEmits<{
   (e: 'clear', row: any): void
   (e: 'transfer'): void
 }>()
+
+
+function onMaterialDraft(row: any, draft: { pending: boolean; text: string }) {
+  row.__matDraftPending = !!draft.pending
+  row.__matDraftText = draft.pending ? String(draft.text || '') : ''
+}
 
 function projectNames(row: any): string[] {
   const ids: number[] = row.projectIds || []
