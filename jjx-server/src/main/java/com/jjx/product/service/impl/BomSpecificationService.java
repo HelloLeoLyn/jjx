@@ -3,7 +3,6 @@ package com.jjx.product.service.impl;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
-import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.master.MaterialMasterService;
 import com.jjx.system.annotation.BusinessType;
@@ -18,7 +17,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.*;
 
-/** BOM 规格的属性生成与保存时对照值；对照值复用操作日志，不增加业务表列。 */
+/** 返回原始规格来源并保存前端对照值；显示组合由前端维护，复用操作日志。 */
 @Service
 @RequiredArgsConstructor
 public class BomSpecificationService {
@@ -28,10 +27,6 @@ public class BomSpecificationService {
     private final SysOperLogMapper logMapper;
 
     public record Snapshot(Long itemId, Long materialId, String specification, String automaticSpecification) { }
-
-    private String automatic(InventoryMaterial material) {
-        return material == null ? "" : text(materialMasterService.specificationPreview(material).specification());
-    }
 
     public void enrich(Long bomId, List<EngineeringBomItem> items) {
         List<EngineeringBomItem> linked = items.stream().filter(BomSpecificationService::linked).toList();
@@ -49,25 +44,26 @@ public class BomSpecificationService {
                 snapshots.put(snapshot.itemId(), snapshot);
             }
         }
-        Map<Long, String> automatic = new HashMap<>();
+        Map<Long, Map<String, Object>> sources = new HashMap<>();
         for (EngineeringBomItem item : linked) {
-            String current = automatic.computeIfAbsent(item.getMaterialId(), id -> automatic(materialMapper.selectById(id)));
-            item.setMaterialSpecification(current);
+            item.setMaterialSpecificationSource(sources.computeIfAbsent(item.getMaterialId(), id ->
+                    materialMasterService.specificationSource(materialMapper.selectById(id))));
+            item.setMaterialSpecification(null);
             Snapshot snapshot = snapshots.get(item.getItemId());
             // 外部改写或重新关联后不能套用旧对照值；历史无记录时仅比较当前值，不覆盖原文。
             boolean valid = snapshot != null && Objects.equals(snapshot.materialId(), item.getMaterialId())
                     && text(snapshot.specification()).equals(text(item.getSpecification()));
-            item.setSpecificationBaseline(valid ? text(snapshot.automaticSpecification()) : current);
+            item.setSpecificationBaseline(valid ? text(snapshot.automaticSpecification()) : null);
             item.setSpecificationManual(valid && !text(snapshot.specification()).equals(text(snapshot.automaticSpecification())));
         }
     }
 
     /** 与 BOM 保存处于同一事务；保存失败不留下对照日志，临时行号只记录实际落库后的 ID。 */
-    public void record(Long bomId, List<EngineeringBomItem> items) {
-        Map<Long, String> automatic = new HashMap<>();
-        List<Snapshot> snapshots = items.stream().filter(BomSpecificationService::linked).map(item ->
+    public void record(Long bomId, List<EngineeringBomItem> items, Map<Long, String> automatic) {
+        List<Snapshot> snapshots = items.stream().filter(BomSpecificationService::linked)
+                .filter(item -> automatic.containsKey(item.getItemId())).map(item ->
                 new Snapshot(item.getItemId(), item.getMaterialId(), text(item.getSpecification()),
-                        automatic.computeIfAbsent(item.getMaterialId(), id -> automatic(materialMapper.selectById(id))))).toList();
+                        text(automatic.get(item.getItemId())))).toList();
         if (snapshots.isEmpty()) return;
         SysOperLog log = new SysOperLog();
         log.setBizType("bom");

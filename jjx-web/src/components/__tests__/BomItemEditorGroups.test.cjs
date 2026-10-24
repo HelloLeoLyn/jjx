@@ -7,6 +7,14 @@ const ts = require('typescript')
 const vue = require('vue')
 const { parse, compileScript } = require('vue/compiler-sfc')
 
+function loadUtility(name) {
+  const loaded = { exports: {} }
+  const source = fs.readFileSync(path.resolve(__dirname, `../${name}.ts`), 'utf8')
+  vm.runInNewContext(`(function(exports,require){${ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText}})`)(
+    loaded.exports, dependency => loadUtility(dependency.replace('./', '')))
+  return loaded.exports
+}
+
 // 执行真实 SFC setup 和提交方法；隔离子组件、网络和浏览器生命周期。
 function editor(rows, detail) {
   const notices = []
@@ -22,14 +30,10 @@ function editor(rows, detail) {
     .map((name, index) => [name, { value: index + 1 }]))
   const mocks = {
     '@/api/inventory/materialMaster': { materialMasterApi: { detail: id => detail ? detail(id) : Promise.resolve({
-      data: { specificationGeneration: { specification: state.items.value.find(row => row.materialId === id)?.materialSpecification || '' } },
+      data: { material: { size: state.items.value.find(row => row.materialId === id)?.materialSpecification || '' }, attributes: {}, configuration: null },
     }) } },
-    './bomSpecMode': (() => {
-      const loaded = { exports: {} }
-      const source = fs.readFileSync(path.resolve(__dirname, '../bomSpecMode.ts'), 'utf8')
-      vm.runInNewContext(`(function(exports){${ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText}})`)(loaded.exports)
-      return loaded.exports
-    })(),
+    './bomSpecMode': loadUtility('bomSpecMode'),
+    './bomSpecification': loadUtility('bomSpecification'),
     '@/utils/bomGroups': (() => {
       const source = fs.readFileSync(path.resolve(__dirname, '../../utils/bomGroups.ts'), 'utf8')
       const loaded = { exports: {} }
@@ -111,7 +115,7 @@ test('已关联行和Excel导入行的搜索草稿阻止保存，选择候选后
     assert.ok(scrolled && focused)
     assert.match(notices.at(-1), /第1行.*尚未确认/)
     assert.equal(getItems()[0].materialName, '旧名')
-    state.handleMaterialSelect({ materialId: 9, materialCode: 'NEW', materialName: '新物料', specification: '新规格', unit: 'KG' }, row)
+    state.handleMaterialSelect({ materialId: 9, materialCode: 'NEW', materialName: '新物料', size: '新规格', unit: 'KG' }, row)
     await state.prepareSpecifications()
     assert.equal(validateItems(), true)
     assert.equal(getItems()[0].materialId, 9)
@@ -121,7 +125,7 @@ test('已关联行和Excel导入行的搜索草稿阻止保存，选择候选后
   }
 })
 
-const generated = specification => ({ data: { specificationGeneration: { specification, generated: true } } })
+const generated = specification => ({ data: { material: { size: specification }, attributes: {}, configuration: null } })
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 
 test('物料已存规格为空时，选料使用属性生成结果；保存前重新生成最新属性', async () => {
@@ -134,6 +138,23 @@ test('物料已存规格为空时，选料使用属性生成结果；保存前�
   await state.prepareSpecifications()
   assert.equal(getItems()[0].specification, '厚度:0.2mm')
   assert.equal(state.isManualSpec(state.items.value[0]), false)
+})
+
+test('重新打开使用后端原始尺寸；提交对照值由前端计算；空尺寸按原始属性生成', async () => {
+  const source = { size: '30*90mm', attributes: {}, schema: null }
+  const e = editor([{ ...material('PET', '', 10), materialId: 8, specification: '30*80mm', specificationBaseline: '30*80mm', materialSpecificationSource: source }])
+  assert.equal(e.getItems()[0].specification, '30*90mm')
+  assert.equal(e.getItems()[0].materialSpecification, '30*90mm')
+  const detail = { data: { material: { size: '' }, attributes: { force_g: 280, has_dimple: true, plating: '镀镍' }, configuration: { schema: { fields: [
+    { key: 'force_g', type: 'decimal', unit: 'gf' },
+    { key: 'has_dimple', type: 'boolean', true_label: '带点', false_label: '无点' },
+    { key: 'plating', type: 'string' },
+  ] } } } }
+  const selected = editor([material('旧料', '', 10)], async () => detail)
+  selected.state.handleMaterialSelect({ materialId: 9, materialName: '弹片', specification: '后端旧格式，不应采用' }, selected.state.items.value[0])
+  await selected.state.prepareSpecifications()
+  assert.equal(selected.getItems()[0].specification, '280gf 带点镀镍')
+  assert.equal(selected.getItems()[0].materialSpecification, '280gf 带点镀镍')
 })
 
 test('重新打开时旧自动值跟随新属性；手填值和人工清空值保留；恢复后回到自动', async () => {

@@ -54,6 +54,15 @@ public class MaterialMasterService {
         return specificationPreview(material, catalog.specificationSchema(material.getCategoryId()));
     }
 
+    /** 只读原始事实；BOM 的显示组合规则由前端维护。 */
+    public Map<String, Object> specificationSource(InventoryMaterial material) {
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("size", material == null ? null : material.getSize());
+        source.put("attributes", material == null ? Map.of() : readAttributes(material.getAttributeJson()));
+        source.put("schema", material == null ? null : catalog.specificationSchema(material.getCategoryId()));
+        return source;
+    }
+
     private SpecificationPreview specificationPreview(InventoryMaterial material, MaterialAttributeSchema schema) {
         if (schema == null || schema.fields().isEmpty())
             return new SpecificationPreview(material.getSpecification(), false, "未生成：未归类、分类无启用模板或模板无属性，保留原规格；不接受外部 specification 文本");

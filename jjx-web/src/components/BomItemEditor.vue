@@ -113,7 +113,7 @@
         </template>
       </el-table-column>
       <!-- 规格型号（dev-20261024-023：默认取物料系统生成值，可手改，可恢复） -->
-      <el-table-column label="规格型号" prop="specification" width="150">
+      <el-table-column label="规格" prop="specification" width="150">
         <template #default="scope">
           <el-input
             v-model="scope.row.specification"
@@ -318,6 +318,7 @@ import { BomItemReviewStatusEnum } from '@/enums/product'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import { bomGroupRows } from '@/utils/bomGroups'
 import { autoSpecOf, isManualSpec, specFollowValue, specSourceChanged } from './bomSpecMode'
+import { generateBomSpecification, specificationSource } from './bomSpecification'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import StandardProcessSelector from '@/components/Selector/StandardProcessSelector.vue'
@@ -453,6 +454,7 @@ function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
   const flat = (list || []).map((it) => {
     const copy: EngineeringBomItem = { ...it }
     delete copy.children
+    if (Number(it.materialId) > 0 && it.materialSpecificationSource) copy.materialSpecification = autoSpecOf(it)
     if (copy.reviewStatus == null) copy.reviewStatus = BomItemReviewStatusEnum.DRAFT.value
     // 待移除行回填时必须继续带 removeRequested，否则保存会被当成“撤销移除”
     copy.removeRequested =
@@ -472,6 +474,7 @@ function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
 function toSubmitItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
   return (list || []).map((it, idx) => {
     const copy: EngineeringBomItem = { ...it }
+    if (Number(it.materialId) > 0 && it.materialSpecificationSource) copy.materialSpecification = autoSpecOf(it)
     delete copy.children
     // 组合：同一「项目」连续多行视为一组，组内除首行外都挂到首行（落库 parent_material_id）
     const leader = comboLeaderOf(it)
@@ -591,7 +594,8 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   row.materialCode = material.materialCode
   row.materialName = material.materialName
   // dev-20261024-023：选料带入系统生成规格；物料无规格时保留原手填值，不用空串覆盖
-  const autoSpec = (material.specification || '').trim()
+  const autoSpec = (material.size || '').trim()
+  delete row.materialSpecificationSource
   row.materialSpecification = autoSpec
   row.specificationBaseline = autoSpec
   row.specificationManual = false
@@ -619,12 +623,12 @@ function loadAutoSpec(row: EngineeringBomItem, selected = false): Promise<void> 
       if (!response.data) throw new Error('物料详情为空')
       const current = items.value.find((item) => String(item.itemId) === key)
       if (!current || current.materialId !== materialId || specVersions.get(key) !== version) return
-      const preview = response.data.specificationGeneration
-      if (!preview) throw new Error('物料详情未返回属性生成结果')
-      const auto = (preview.specification || '').trim()
+      const source = specificationSource(response.data)
+      const auto = generateBomSpecification(source)
       const previous = autoSpecOf(current)
       const manual = previous ? isManualSpec(current) : !!current.specificationManual
       current.specificationManual = manual
+      current.materialSpecificationSource = source
       current.materialSpecification = auto
       // 选料后的异步返回不能覆盖用户刚输入的规格；刷新保留已有人工值。
       if (selected && !manual && auto) current.specification = auto
@@ -1051,6 +1055,7 @@ const handleMaterialClear = (row: EngineeringBomItem) => {
   row.materialName = ''
   row.specification = ''
   row.materialSpecification = undefined
+  delete row.materialSpecificationSource
   row.specificationBaseline = undefined
   row.specificationManual = false
   specVersions.set(String(row.itemId), (specVersions.get(String(row.itemId)) || 0) + 1)

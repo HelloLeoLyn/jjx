@@ -34,6 +34,10 @@ public class EngineeringBomItemDTO {
     /** 规格型号 */
     private String specification;
 
+    /** 前端本次组合出的自动规格，仅用于既有操作日志对照，不落业务表。 */
+    @jakarta.validation.constraints.Size(max = 500, message = "自动规格不能超过500字")
+    private String materialSpecification;
+
     /** 跳距（含单位，如50mm） */
     @jakarta.validation.constraints.Size(max = 50, message = "跳距不能超过50个字符")
     private String split;

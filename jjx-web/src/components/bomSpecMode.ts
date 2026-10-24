@@ -7,6 +7,9 @@
  * - 物料未建档 / 物料无系统规格 → 无法判定，不标记、不覆盖
  */
 
+import { generateBomSpecification } from './bomSpecification'
+import type { BomSpecificationSource } from './bomSpecification'
+
 export interface SpecRowLike {
   materialId?: number | null
   specification?: string | null
@@ -14,10 +17,12 @@ export interface SpecRowLike {
   materialSpecification?: string | null
   specificationBaseline?: string | null
   specificationManual?: boolean
+  materialSpecificationSource?: BomSpecificationSource | null
 }
 
 /** 物料当前的系统生成规格（空串 = 没有可用系统值） */
 export function autoSpecOf(row?: SpecRowLike | null): string {
+  if (row?.materialSpecificationSource) return generateBomSpecification(row.materialSpecificationSource)
   return String(row?.materialSpecification ?? '').trim()
 }
 

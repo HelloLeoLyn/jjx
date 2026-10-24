@@ -62,8 +62,7 @@ class BomGroupPersistenceTest {
         materialMaster = mock(com.jjx.inventory.master.MaterialMasterService.class);
         var material = new com.jjx.inventory.domain.InventoryMaterial();
         org.mockito.Mockito.when(materials.selectById(org.mockito.ArgumentMatchers.anyLong())).thenReturn(material);
-        org.mockito.Mockito.when(materialMaster.specificationPreview(material)).thenReturn(
-                new com.jjx.inventory.master.MaterialMasterService.SpecificationPreview("系统规格", true, "属性生成"));
+        org.mockito.Mockito.when(materialMaster.specificationSource(material)).thenReturn(java.util.Map.of("size", "系统规格", "attributes", java.util.Map.of()));
         org.springframework.test.util.ReflectionTestUtils.setField(implementation, "bomSpecificationService",
                 new BomSpecificationService(materialMaster, materials, session.getMapper(com.jjx.system.mapper.SysOperLogMapper.class)));
         var proxy = new ProxyFactory(implementation);
@@ -92,6 +91,7 @@ class BomGroupPersistenceTest {
         row.setItemId(id);
         row.setParentMaterialId(parent);
         row.setMaterialId(0L);
+        row.setMaterialSpecification("系统规格");
         row.setMaterialName(name);
         row.setProcessId(7L);
         row.setProcessName("模切");

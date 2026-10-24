@@ -30,8 +30,8 @@ class BomSpecificationServiceTest {
         material.setMaterialId(8L);
         material.setSpecification(""); // 库存规格为空，仍必须通过属性生成器。
         when(materials.selectById(8L)).thenReturn(material);
-        when(master.specificationPreview(material)).thenReturn(
-                new MaterialMasterService.SpecificationPreview("厚度:0.2mm", true, "属性生成"));
+        when(master.specificationSource(material)).thenReturn(java.util.Map.of("size", "0.2mm", "attributes", java.util.Map.of()));
+        when(master.specificationSource(null)).thenReturn(java.util.Map.of("size", "", "attributes", java.util.Map.of()));
     }
 
     EngineeringBomItem row(long id, String spec) {
@@ -48,7 +48,7 @@ class BomSpecificationServiceTest {
             security.when(SecurityUtils::getUsername).thenReturn("engineer");
             security.when(SecurityUtils::getDisplayName).thenReturn("工程员");
             security.when(SecurityUtils::getUserId).thenReturn(7L);
-            service.record(1L, rows);
+            service.record(1L, rows, rows.stream().collect(java.util.stream.Collectors.toMap(EngineeringBomItem::getItemId, row -> "0.2mm")));
         }
         var saved = ArgumentCaptor.forClass(SysOperLog.class);
         verify(logs).insert(saved.capture());
@@ -60,17 +60,19 @@ class BomSpecificationServiceTest {
         var old = row(10, "历史原文");
         var empty = row(11, "");
         service.enrich(1L, List.of(old, empty));
-        assertEquals("厚度:0.2mm", old.getMaterialSpecification());
+        assertNull(old.getMaterialSpecification());
+        assertEquals("0.2mm", old.getMaterialSpecificationSource().get("size"));
         assertEquals("历史原文", old.getSpecification());
         assertEquals("", empty.getSpecification());
-        assertEquals("厚度:0.2mm", old.getSpecificationBaseline());
-        verify(master, times(1)).specificationPreview(material);
+        assertNull(old.getSpecificationBaseline());
+        verify(master, times(1)).specificationSource(material);
+        verify(master, never()).specificationPreview(any());
         verify(logs, never()).insert(any(SysOperLog.class));
     }
 
     @Test
     void savedCheckpointSurvivesReopenAndDistinguishesAutoManualAndManuallyClearedValues() {
-        var auto = row(10, "厚度:0.2mm");
+        var auto = row(10, "0.2mm");
         var manual = row(11, "工程手填");
         var cleared = row(12, "");
         var saved = record(List.of(auto, manual, cleared));
@@ -81,21 +83,20 @@ class BomSpecificationServiceTest {
         assertEquals(3, snapshots.size());
         assertEquals(10L, snapshots.getJSONObject(0).getLong("itemId"));
         when(logs.selectOne(any())).thenReturn(saved);
-        when(master.specificationPreview(material)).thenReturn(
-                new MaterialMasterService.SpecificationPreview("厚度:0.3mm", true, "属性生成"));
+        when(master.specificationSource(material)).thenReturn(java.util.Map.of("size", "0.3mm", "attributes", java.util.Map.of()));
         service.enrich(1L, List.of(auto, manual, cleared));
-        assertEquals("厚度:0.2mm", auto.getSpecificationBaseline());
+        assertEquals("0.2mm", auto.getSpecificationBaseline());
         assertFalse(auto.getSpecificationManual());
         assertTrue(manual.getSpecificationManual());
         assertTrue(cleared.getSpecificationManual());
-        assertEquals("厚度:0.3mm", auto.getMaterialSpecification());
+        assertEquals("0.3mm", auto.getMaterialSpecificationSource().get("size"));
         assertEquals("工程手填", manual.getSpecification());
         assertEquals("", cleared.getSpecification());
     }
 
     @Test
     void checkpointDoesNotApplyAfterAnExternalEditOrMaterialRelink() {
-        var saved = record(List.of(row(10, "厚度:0.2mm")));
+        var saved = record(List.of(row(10, "0.2mm")));
         when(logs.selectOne(any())).thenReturn(saved);
         var changed = row(10, "外部改写");
         service.enrich(1L, List.of(changed));
@@ -103,10 +104,10 @@ class BomSpecificationServiceTest {
         changed.setMaterialId(9L);
         var other = new InventoryMaterial();
         when(materials.selectById(9L)).thenReturn(other);
-        when(master.specificationPreview(other)).thenReturn(
-                new MaterialMasterService.SpecificationPreview("另一物料规格", true, "属性生成"));
+        when(master.specificationSource(other)).thenReturn(java.util.Map.of("size", "另一物料规格", "attributes", java.util.Map.of()));
         service.enrich(1L, List.of(changed));
-        assertEquals("另一物料规格", changed.getSpecificationBaseline());
+        assertNull(changed.getSpecificationBaseline());
+        assertEquals("另一物料规格", changed.getMaterialSpecificationSource().get("size"));
         assertEquals("外部改写", changed.getSpecification());
     }
 
@@ -115,7 +116,7 @@ class BomSpecificationServiceTest {
         var missing = row(10, "原手填值");
         missing.setMaterialId(99L);
         service.enrich(1L, List.of(missing));
-        assertEquals("", missing.getMaterialSpecification());
+        assertEquals("", missing.getMaterialSpecificationSource().get("size"));
         assertEquals("原手填值", missing.getSpecification());
     }
 }

@@ -380,6 +380,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // dev-20261022-017：组合首行先落库，再用真实行号回填组内后续行。
         // 映射仅作用于实体，不改写请求 DTO，保留日志/调用方的原始临时引用。
         java.util.Map<Long, Long> tempIdToReal = new HashMap<>();
+        Map<Long, String> specificationValues = new HashMap<>();
         List<EngineeringBomItem> stored = productBomItemMapper.selectList(
                 new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
         Map<Long, EngineeringBomItem> storedById = new HashMap<>();
@@ -417,10 +418,16 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 incoming.setBomId(bomId);
                 EngineeringBomItem old = itemDTO.getItemId() == null || itemDTO.getItemId() <= 0
                         ? null : storedById.get(itemDTO.getItemId());
+                if (old != null && itemDTO.getMaterialSpecification() != null) {
+                    specificationValues.put(old.getItemId(), itemDTO.getMaterialSpecification());
+                }
                 if (old == null) {
                     incoming.setItemId(null);
                     applyDraftStatus(incoming);
                     productBomItemMapper.insert(incoming);
+                    if (incoming.getItemId() != null && itemDTO.getMaterialSpecification() != null) {
+                        specificationValues.put(incoming.getItemId(), itemDTO.getMaterialSpecification());
+                    }
                     if (incoming.getItemId() != null) kept.add(incoming.getItemId());
                     if (incomingTempId != null && incoming.getItemId() != null) {
                         tempIdToReal.put(incomingTempId, incoming.getItemId());
@@ -495,7 +502,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             }
         }
         if (remaining.stream().anyMatch(row -> row.getMaterialId() != null && row.getMaterialId() > 0)) {
-            bomSpecificationService.record(bomId, remaining);
+            bomSpecificationService.record(bomId, remaining, specificationValues);
         }
     }
 

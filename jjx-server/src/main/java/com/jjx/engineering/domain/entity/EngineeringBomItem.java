@@ -226,10 +226,14 @@ public class EngineeringBomItem {
     private String materialType;
 
     /**
-     * 物料主数据当前的系统生成规格（dev-20261024-023：查询时带出，仅用于前端判定"系统/手改"，不落库）
+     * 前端组合出的默认规格，仅作提交与日志对照；查询默认值从原始来源组合，不落业务表。
      */
     @TableField(exist = false)
     private String materialSpecification;
+
+    /** 当前物料的原始尺寸/属性/模板，前端负责组合默认规格。 */
+    @TableField(exist = false)
+    private java.util.Map<String, Object> materialSpecificationSource;
 
     /** 上次保存时的系统规格，仅由操作日志带出，不落业务表。 */
     @TableField(exist = false)

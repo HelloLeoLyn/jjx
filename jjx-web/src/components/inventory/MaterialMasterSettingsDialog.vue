@@ -145,7 +145,7 @@
                 <template #default="{ row }"><el-checkbox :model-value="isCommonAttribute(row)" @update:model-value="value => row.common = !!value" /></template>
               </el-table-column>
               <el-table-column label="参与规格" width="90">
-                <template #default="{ row }"><el-checkbox :model-value="row.in_spec !== false" @update:model-value="value => row.in_spec = !!value" /></template>
+                <template #default="{ row }"><el-checkbox :model-value="participatesInSpecification(row)" @update:model-value="value => row.in_spec = !!value" /></template>
               </el-table-column>
               <el-table-column label="规格排序" width="110">
                 <template #default="{ row }"><el-input-number v-model="row.spec_order" :min="0" :max="10000" :controls="false" style="width: 85px" /></template>
@@ -240,6 +240,7 @@ import { MaterialAttributeTypeEnum } from '@/enums/inventory/MaterialAttributeEn
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import { isCommonAttribute } from './materialMasterModel'
 import { addRecommendedAttributes } from './materialAttributePresets'
+import { participatesInSpecification } from '../bomSpecification'
 import type {
   MaterialAttributeField,
   MaterialAttributeSchema,
