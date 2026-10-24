@@ -153,6 +153,17 @@ public class BomController extends BaseController {
     }
 
     /**
+     * BOM 批量关联已有物料（dev-20261024-020）：逐行确认、逐行校验，部分失败可定位重试。
+     */
+    @Operation(summary = "BOM批量关联物料")
+    @PostMapping("/batch-link-materials")
+    @SaCheckPermission("engineering:bom:approve")
+    public Result<com.jjx.product.domain.vo.BomMaterialBatchResultVO> batchLinkMaterials(
+            @Validated @RequestBody com.jjx.product.domain.dto.BomMaterialBatchLinkDTO dto) {
+        return Result.success(productBomService.batchLinkMaterials(dto));
+    }
+
+    /**
      * BOM 提交审核前数据完整性体检（只读，供前端提交前预检展示）
      * 2026-10-07 dev-20261007-006
      */

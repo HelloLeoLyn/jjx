@@ -1508,6 +1508,20 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                         java.util.Collections.emptyList());
             }
             r.setMatchCount(candidates.size());
+            java.util.List<com.jjx.product.domain.vo.BomMaterialMatchResultVO.Candidate> candidatesVo =
+                    new java.util.ArrayList<>();
+            for (com.jjx.inventory.domain.InventoryMaterial cm : candidates) {
+                com.jjx.product.domain.vo.BomMaterialMatchResultVO.Candidate c =
+                        new com.jjx.product.domain.vo.BomMaterialMatchResultVO.Candidate();
+                c.setMaterialId(cm.getMaterialId());
+                c.setMaterialCode(cm.getMaterialCode());
+                c.setMaterialName(cm.getMaterialName());
+                c.setSpecification(cm.getSpecification());
+                c.setSize(cm.getSize());
+                c.setUnit(cm.getUnit());
+                candidatesVo.add(c);
+            }
+            r.setCandidates(candidatesVo);
             if (candidates.size() == 1) {
                 // 唯一命中：可自动回填
                 com.jjx.inventory.domain.InventoryMaterial m = candidates.get(0);
@@ -1524,6 +1538,107 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             results.add(r);
         }
         return results;
+    }
+
+    @Override
+    public com.jjx.product.domain.vo.BomMaterialBatchResultVO batchLinkMaterials(
+            com.jjx.product.domain.dto.BomMaterialBatchLinkDTO dto) {
+        if (dto == null || dto.getBomId() == null) {
+            throw new BusinessException("BOM不能为空");
+        }
+        if (dto.getLinks() == null || dto.getLinks().isEmpty()) {
+            throw new BusinessException("请选择要关联的行");
+        }
+        if (dto.getLinks().size() > 200) {
+            throw new BusinessException("单次最多处理200行");
+        }
+        com.jjx.engineering.domain.entity.EngineeringBom bom = productBomMapper.selectById(dto.getBomId());
+        if (bom == null) {
+            throw new BusinessException("BOM不存在");
+        }
+        if (!Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.REVIEWING.getValue())) {
+            throw new BusinessException("只有审核中的BOM才能批量关联物料");
+        }
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        for (com.jjx.product.domain.dto.BomMaterialBatchLinkDTO.Link link : dto.getLinks()) {
+            if (link == null || link.getItemId() == null) {
+                throw new BusinessException("明细ID不能为空");
+            }
+            if (!seen.add(link.getItemId())) {
+                throw new BusinessException("同一明细重复提交：" + link.getItemId());
+            }
+        }
+        com.jjx.product.domain.vo.BomMaterialBatchResultVO result =
+                new com.jjx.product.domain.vo.BomMaterialBatchResultVO();
+        result.setTotal(dto.getLinks().size());
+        for (com.jjx.product.domain.dto.BomMaterialBatchLinkDTO.Link link : dto.getLinks()) {
+            com.jjx.product.domain.vo.BomMaterialBatchResultVO.Row row =
+                    new com.jjx.product.domain.vo.BomMaterialBatchResultVO.Row();
+            row.setItemId(link.getItemId());
+            try {
+                if (link.getMaterialId() == null || link.getMaterialId() <= 0) {
+                    throw new BusinessException("未选择物料");
+                }
+                com.jjx.engineering.domain.entity.EngineeringBomItem item =
+                        productBomItemMapper.selectById(link.getItemId());
+                if (item == null) {
+                    throw new BusinessException("BOM明细不存在");
+                }
+                if (!Objects.equals(item.getBomId(), dto.getBomId())) {
+                    throw new BusinessException("该明细不属于当前BOM");
+                }
+                ProductEnums.BomItemReviewStatus from =
+                        ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus());
+                if (from == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                    throw new BusinessException("待移除行不能关联物料");
+                }
+                com.jjx.inventory.domain.InventoryMaterial material =
+                        inventoryMaterialMapper.selectById(link.getMaterialId());
+                if (material == null) {
+                    throw new BusinessException("物料不存在");
+                }
+                if (Objects.equals(item.getMaterialId(), material.getMaterialId())) {
+                    row.setSuccess(true);
+                    row.setMessage("已关联该物料，无需重复");
+                    row.setMaterialId(material.getMaterialId());
+                    row.setMaterialCode(material.getMaterialCode());
+                } else {
+                    item.setMaterialId(material.getMaterialId());
+                    item.setMaterialCode(material.getMaterialCode());
+                    if (org.apache.commons.lang3.StringUtils.isBlank(item.getUnit())) {
+                        item.setUnit(material.getUnit());
+                    }
+                    if (from == ProductEnums.BomItemReviewStatus.APPROVED) {
+                        item.setReviewStatus(ProductEnums.BomItemReviewStatus.PENDING.getValue());
+                        clearApproval(item);
+                    }
+                    productBomItemMapper.updateById(item);
+                    reviewFlowService.record("engineering_bom_item", item.getItemId(), "LINK_MATERIAL", "关联物料",
+                            from.getLabel(),
+                            ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus()).getLabel(),
+                            buildItemReviewComment(item,
+                                    "关联：" + material.getMaterialName() + " / " + material.getMaterialCode()),
+                            null);
+                    row.setSuccess(true);
+                    row.setMessage("已关联");
+                    row.setMaterialId(material.getMaterialId());
+                    row.setMaterialCode(material.getMaterialCode());
+                }
+            } catch (Exception e) {
+                row.setSuccess(false);
+                row.setMessage(e.getMessage() == null ? "关联失败" : e.getMessage());
+            }
+            result.getRows().add(row);
+        }
+        int success = 0;
+        for (com.jjx.product.domain.vo.BomMaterialBatchResultVO.Row r : result.getRows()) {
+            if (r.isSuccess()) {
+                success++;
+            }
+        }
+        result.setSuccessCount(success);
+        result.setFailedCount(result.getTotal() - success);
+        return result;
     }
 
     /**

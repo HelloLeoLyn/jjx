@@ -140,6 +140,29 @@ export interface BomMaterialMatchResult {
   materialCode?: string
   unit?: string
   matchCount: number
+  /** 候选档案（dev-20261024-020）：人工确认用，唯一/多候选都返回 */
+  candidates?: Array<{
+    materialId?: number
+    materialCode?: string
+    materialName?: string
+    specification?: string
+    size?: string
+    unit?: string
+  }>
+}
+
+/** BOM 批量关联物料结果（dev-20261024-020） */
+export interface BomMaterialBatchResult {
+  total: number
+  successCount: number
+  failedCount: number
+  rows: Array<{
+    itemId: number
+    success: boolean
+    message?: string
+    materialId?: number
+    materialCode?: string
+  }>
 }
 export interface EngineeringBom {
   versionCount?: number

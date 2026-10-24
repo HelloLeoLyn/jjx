@@ -11,6 +11,7 @@ import type {
   BomItemReviewRequest,
   BomItemBatchReviewRequest,
   BomItemBatchReviewResult,
+  BomMaterialBatchResult,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
 // ==================== BomAPI ====================
@@ -76,6 +77,10 @@ export const productBomApi = {
    */
   matchMaterials(items: BomMaterialMatchItem[]) {
     return request.post<R<BomMaterialMatchResult[]>>('/engineering/bom/match-materials', items)
+  },
+  /** BOM 批量关联物料（dev-20261024-020）：逐行确认后一次提交 */
+  batchLinkMaterials(payload: { bomId: number; links: Array<{ itemId: number; materialId: number }> }) {
+    return request.post<R<BomMaterialBatchResult>>('/engineering/bom/batch-link-materials', payload)
   },
 
   /**

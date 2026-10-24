@@ -26,6 +26,7 @@
       :batch-busy="batchBusy"
       :batch-failures="batchFailures"
       @batch-approve="handleBatchApprove"
+      @batch-link="handleBatchLink"
       @review="handleRowReview"
       @link="handleLinkMaterial"
       @unlink="handleUnlinkMaterial"
@@ -69,6 +70,13 @@
       :preset-data="materialPreset"
       @success="handleMaterialCreated"
     />
+
+    <BomMaterialBatchDialog
+      v-model="batchDialogVisible"
+      :rows="batchRows"
+      :submitting="batchSubmitting"
+      @confirm="handleBatchConfirm"
+    />
   </el-dialog>
 </template>
 
@@ -90,6 +98,8 @@ import type { ApprovalOpinion } from '@/components/Approval/types'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import BomBasicInfo from './BomBasicInfo.vue'
 import BomItemReviewTable from './BomItemReviewTable.vue'
+import BomMaterialBatchDialog from './BomMaterialBatchDialog.vue'
+import { buildBatchRows, type BatchRow } from './bomMaterialBatch'
 
 type RowAction = 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE'
 
@@ -142,6 +152,52 @@ const createEmptyDetail = (): EngineeringBom => ({
 
 const detail = reactive<EngineeringBom>(createEmptyDetail())
 const bomDetailList = ref<EngineeringBomItem[]>([])
+// 批量关联（dev-20261024-020）：匹配只作推荐，人工确认后才写库
+const batchDialogVisible = ref(false)
+const batchRows = ref<BatchRow[]>([])
+const batchSubmitting = ref(false)
+
+/** 批量关联入口：按原文匹配候选（只作推荐），再打开人工确认弹窗 */
+const handleBatchLink = async (itemIds: number[]) => {
+  const targets = bomDetailList.value.filter((item) => itemIds.includes(Number(item.itemId)))
+  if (!targets.length) return
+  try {
+    const payload = targets.map((item, index) => ({
+      index,
+      name: item.materialName || '',
+      spec: item.specification || '',
+    }))
+    const res = await productBomApi.matchMaterials(payload)
+    batchRows.value = buildBatchRows(targets, res.data || [])
+    batchDialogVisible.value = true
+  } catch (e: any) {
+    ElMessage.error(e?.message || '匹配候选失败')
+  }
+}
+
+/** 确认批量关联：只提交人工选中的行；部分失败原样提示，可重试 */
+const handleBatchConfirm = async (links: Array<{ itemId: number; materialId: number }>) => {
+  if (!links.length) return
+  batchSubmitting.value = true
+  try {
+    const res = await productBomApi.batchLinkMaterials({ bomId: Number(props.bomId), links })
+    const result = res.data
+    if (result?.failedCount) {
+      ElMessage.warning(
+        `已关联 ${result.successCount} 行，失败 ${result.failedCount} 行（可重新打开重试）`
+      )
+    } else {
+      ElMessage.success(`已关联 ${result?.successCount ?? links.length} 行`)
+    }
+    batchDialogVisible.value = false
+    await loadBomDetail()
+    await refreshApproveCheck()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '批量关联失败')
+  } finally {
+    batchSubmitting.value = false
+  }
+}
 const blockingIssues = ref<BomCheckIssue[]>([])
 const batchBusy = ref(false)
 const batchFailures = ref<BomItemBatchReviewResult['failed']>([])

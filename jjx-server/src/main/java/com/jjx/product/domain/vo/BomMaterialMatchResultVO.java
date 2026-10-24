@@ -31,4 +31,20 @@ public class BomMaterialMatchResultVO {
 
     /** 候选数量（NOT_FOUND=0，MATCHED=1，AMBIGUOUS>1） */
     private Integer matchCount;
+
+    /**
+     * 候选档案明细（dev-20261024-020）：唯一/多候选都返回，供人工确认；
+     * 关键词命中只作推荐，前端不得因唯一命中而静默确定。
+     */
+    private java.util.List<Candidate> candidates;
+
+    @Data
+    public static class Candidate {
+        private Long materialId;
+        private String materialCode;
+        private String materialName;
+        private String specification;
+        private String size;
+        private String unit;
+    }
 }

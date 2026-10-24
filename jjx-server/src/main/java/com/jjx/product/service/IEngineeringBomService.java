@@ -156,6 +156,10 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
      * 供编辑器「全量同步」按钮回填未关联的导入行。
      * 2026-10-10 dev-20261010-002
      */
+    /** BOM 批量关联物料（dev-20261024-020）：逐行校验归属/状态，部分失败不影响成功行。 */
+    com.jjx.product.domain.vo.BomMaterialBatchResultVO batchLinkMaterials(
+            com.jjx.product.domain.dto.BomMaterialBatchLinkDTO dto);
+
     List<com.jjx.product.domain.vo.BomMaterialMatchResultVO> matchMaterials(
             List<com.jjx.product.domain.dto.BomMaterialMatchItemDTO> items);
 

@@ -17,6 +17,14 @@
         @click="emit('batch-approve', selectedIds)"
         >批量通过 {{ selectedIds.length }} 行</el-button
       >
+      <el-button
+        v-hasPermi="['engineering:bom:approve']"
+        type="primary"
+        plain
+        :disabled="!batchLinkIds.length || busyItemId != null"
+        @click="emit('batch-link', batchLinkIds)"
+        >批量关联材料 {{ batchLinkIds.length }} 行</el-button
+      >
     </div>
     <el-alert v-if="batchFailures.length" type="warning" :closable="false" title="以下明细未通过">
       <div v-for="failure in batchFailures" :key="failure.itemId">
@@ -214,6 +222,7 @@ const props = withDefaults(
 /** 取该行的原值；没有流水记录时显示 — */
 const emit = defineEmits<{
   (e: 'batch-approve', itemIds: number[]): void
+  (e: 'batch-link', itemIds: number[]): void
   (e: 'link', row: EngineeringBomItem, material: InventoryMaterial): void
   (e: 'unlink', row: EngineeringBomItem): void
   (e: 'create', row: EngineeringBomItem, keyword: string): void
@@ -226,6 +235,15 @@ const hasMaterial = (row: EngineeringBomItem) =>
   row.materialId != null && Number(row.materialId) > 0
 
 const selectedRows = ref<EngineeringBomItem[]>([])
+/** 可批量关联的选中行：未关联且非待移除（dev-20261024-020） */
+const batchLinkIds = computed(() =>
+  selectedRows.value
+    .filter(
+      (row) =>
+        !hasMaterial(row) && rowStatus(row) !== BomItemReviewStatusEnum.PENDING_REMOVE.value
+    )
+    .map((row) => Number(row.itemId))
+)
 const tableRef = ref()
 const groups = computed(() => bomGroupRows(props.items, true))
 const canOperate = computed(() => props.canReview && hasPermi(['engineering:bom:approve']))
