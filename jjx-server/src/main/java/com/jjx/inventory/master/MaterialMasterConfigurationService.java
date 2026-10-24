@@ -97,7 +97,8 @@ public class MaterialMasterConfigurationService {
         catch (Exception e) { throw new BusinessException("模板序列化失败"); }
         if (existing != null && materialCount(dto.categoryId()) > 0) {
             try {
-                if (!MaterialAttributeSchema.parse(existing.getAttributeSchema(), objectMapper).equals(dto.attributeSchema()) || StatusEnum.DISABLE.getCode().equals(dto.status())) fail("已有物料引用模板，结构与启用状态不能直接修改；需先完成版本迁移");
+                if (StatusEnum.DISABLE.getCode().equals(dto.status())) fail("已有物料引用模板，不能直接停用");
+                requireCompatibleUpdate(MaterialAttributeSchema.parse(existing.getAttributeSchema(), objectMapper), dto.attributeSchema(), objectMapper);
             } catch (BusinessException e) { throw e; }
             catch (Exception e) { throw new BusinessException("现有模板格式错误"); }
         }
@@ -109,6 +110,29 @@ public class MaterialMasterConfigurationService {
         entity.setUpdateBy(operator); entity.setUpdateTime(LocalDateTime.now());
         if (existing == null) { entity.setCreateBy(operator); templates.insert(entity); } else templates.updateById(entity);
         return entity;
+    }
+
+    /** 已使用模板允许增加无默认值的可选字段，以及调整纯显示元数据。 */
+    public static void requireCompatibleUpdate(MaterialAttributeSchema old, MaterialAttributeSchema next, ObjectMapper mapper) {
+        var previous = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(old);
+        var updated = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(next);
+        previous.remove("fields"); updated.remove("fields");
+        if (!previous.equals(updated)) fail("已有物料引用模板，不能改变材质、单位或默认值等模板契约");
+        Map<String, MaterialAttributeSchema.Field> fields = new LinkedHashMap<>();
+        next.fields().forEach(field -> fields.put(field.key(), field));
+        for (var field : old.fields()) {
+            var replacement = fields.remove(field.key());
+            if (replacement == null) fail("已有物料引用模板，不能删除属性：" + field.label());
+            var before = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(field);
+            var after = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(replacement);
+            var displayOnly = List.of("label", "common", "in_spec", "spec_order", "true_label", "false_label");
+            before.remove(displayOnly); after.remove(displayOnly);
+            if (!before.equals(after)) fail("已有物料引用模板，不能改变属性类型、单位、选项、条件或默认值：" + field.label());
+        }
+        for (var field : fields.values()) {
+            if (field.required() || field.defaultValue() != null && !field.defaultValue().isNull()) fail("已使用模板只能新增无默认值的可选属性：" + field.label());
+            if (field.key().equals("thickness_mm")) fail("厚度请在统一尺寸组件中编辑");
+        }
     }
 
     private boolean hasChildren(Long id) { return categories.selectCount(new LambdaQueryWrapper<InventoryMaterialCategory>().eq(InventoryMaterialCategory::getParentId, id)) > 0; }

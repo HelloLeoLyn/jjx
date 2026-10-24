@@ -217,7 +217,7 @@ import MaterialAttributeFields from './MaterialAttributeFields.vue'
 import MaterialSizeEditor from './MaterialSizeEditor.vue'
 import { mergeLegacyThickness, parseMaterialSize } from './materialSize'
 import {
-  COMMON_ATTRIBUTE_KEYS,
+  isCommonAttribute,
   attributeVisible,
   changeMasterCategory,
   effectiveMasterName,
@@ -276,12 +276,12 @@ const materialLabel = computed(
 )
 const commonKeys = computed(() =>
   (configuration.value?.schema.fields || [])
-    .filter((f) => f.key !== 'thickness_mm' && COMMON_ATTRIBUTE_KEYS.includes(f.key))
+    .filter((f) => f.key !== 'thickness_mm' && isCommonAttribute(f))
     .map((f) => f.key)
 )
 const lowKeys = computed(() =>
   (configuration.value?.schema.fields || [])
-    .filter((f) => f.key !== 'thickness_mm' && !COMMON_ATTRIBUTE_KEYS.includes(f.key))
+    .filter((f) => f.key !== 'thickness_mm' && !isCommonAttribute(f))
     .map((f) => f.key)
 )
 

@@ -18,6 +18,11 @@ export interface MaterialAttributeField {
   precision?: number | null
   default?: AttributeValue
   visible_when?: Record<string, string> | null
+  common?: boolean | null
+  in_spec?: boolean | null
+  spec_order?: number | null
+  true_label?: string | null
+  false_label?: string | null
 }
 export interface MaterialAttributeSchema {
   version: number

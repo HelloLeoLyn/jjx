@@ -22,7 +22,11 @@ public record MaterialAttributeSchema(
     public record Field(String key, String label, String type, String unit, boolean required,
                         List<Option> options, BigDecimal min, BigDecimal max, Integer precision,
                         @JsonProperty("default") JsonNode defaultValue,
-                        @JsonProperty("visible_when") Map<String, String> visibleWhen) { }
+                        @JsonProperty("visible_when") Map<String, String> visibleWhen,
+                        Boolean common, @JsonProperty("in_spec") Boolean inSpec,
+                        @JsonProperty("spec_order") Integer specOrder,
+                        @JsonProperty("true_label") String trueLabel,
+                        @JsonProperty("false_label") String falseLabel) { }
 
     public static final Set<String> TYPES = Set.of("enum", "multienum", "string", "integer", "decimal", "boolean");
 
@@ -51,6 +55,8 @@ public record MaterialAttributeSchema(
             if (f.label == null || f.label.isBlank() || !labels.add(f.label) || f.type == null || !TYPES.contains(f.type)) fail("属性名称重复或类型无效：" + f.key);
             if (f.min != null && f.max != null && f.min.compareTo(f.max) > 0) fail("属性数值范围错误：" + f.label);
             if (f.precision != null && (f.precision < 0 || f.precision > 8)) fail("属性精度范围为0至8：" + f.label);
+            if (f.specOrder != null && (f.specOrder < 0 || f.specOrder > 10000)) fail("规格排序须为0至10000：" + f.label);
+            if (f.trueLabel != null && f.trueLabel.length() > 50 || f.falseLabel != null && f.falseLabel.length() > 50) fail("布尔显示文字不能超过50字：" + f.label);
             if (f.type.equals("enum") || f.type.equals("multienum")) {
                 if (f.options == null || f.options.isEmpty()) fail("枚举缺少选项：" + f.label);
                 Set<String> codes = new HashSet<>();

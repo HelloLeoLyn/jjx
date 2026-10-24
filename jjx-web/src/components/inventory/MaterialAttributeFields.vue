@@ -28,7 +28,8 @@
       placeholder="未确认可留空"
       @update:model-value="setValue(field.key, $event)"
     >
-      <el-option label="是" :value="true" /><el-option label="否" :value="false" />
+      <el-option :label="field.true_label || '是'" :value="true" />
+      <el-option :label="field.false_label || '否'" :value="false" />
     </el-select>
     <div v-else-if="field.type === 'integer' || field.type === 'decimal'" class="numeric-field">
       <el-input-number

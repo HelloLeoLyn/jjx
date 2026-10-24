@@ -22,6 +22,10 @@ export const COMMON_ATTRIBUTE_KEYS = [
   'ink_type',
 ]
 
+export function isCommonAttribute(field: MaterialAttributeField): boolean {
+  return field.common ?? COMMON_ATTRIBUTE_KEYS.includes(field.key)
+}
+
 const labelOf = (options: DictionaryOption[] | undefined, code?: string | null) =>
   code ? options?.find((o) => o.code === code)?.label || code : ''
 

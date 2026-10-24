@@ -141,6 +141,37 @@
               <el-table-column label="必填" width="70"
                 ><template #default="{ row }"><el-checkbox v-model="row.required" /></template
               ></el-table-column>
+              <el-table-column label="常用" width="70">
+                <template #default="{ row }"><el-checkbox :model-value="isCommonAttribute(row)" @update:model-value="value => row.common = !!value" /></template>
+              </el-table-column>
+              <el-table-column label="参与规格" width="90">
+                <template #default="{ row }"><el-checkbox :model-value="row.in_spec !== false" @update:model-value="value => row.in_spec = !!value" /></template>
+              </el-table-column>
+              <el-table-column label="规格排序" width="110">
+                <template #default="{ row }"><el-input-number v-model="row.spec_order" :min="0" :max="10000" :controls="false" style="width: 85px" /></template>
+              </el-table-column>
+              <el-table-column label="显示条件" width="200">
+                <template #default="{ row }">
+                  <el-select :model-value="conditionKey(row)" clearable placeholder="始终显示" @update:model-value="value => setConditionKey(row, value)">
+                    <el-option v-for="field in schema.fields.filter(f => f.key !== row.key && !Object.keys(f.visible_when || {}).length)"
+                      :key="field.key" :value="field.key" :label="field.label" />
+                  </el-select>
+                  <el-select v-if="conditionKey(row) && conditionOptions(row).length" :model-value="conditionValue(row)"
+                    placeholder="满足此选项时显示" @update:model-value="value => setConditionValue(row, value)">
+                    <el-option v-for="option in conditionOptions(row)" :key="option.code" :value="option.code" :label="option.label" />
+                  </el-select>
+                  <el-input v-else-if="conditionKey(row)" :model-value="conditionValue(row)" placeholder="满足此值时显示"
+                    @update:model-value="value => setConditionValue(row, value)" />
+                </template>
+              </el-table-column>
+              <el-table-column label="是／否显示文字" width="150">
+                <template #default="{ row }">
+                  <template v-if="row.type === 'boolean'">
+                    <el-input v-model="row.true_label" placeholder="是，例如带点" maxlength="50" />
+                    <el-input v-model="row.false_label" placeholder="否，例如无点" maxlength="50" />
+                  </template>
+                </template>
+              </el-table-column>
               <el-table-column label="选项（每行编码=名称）"
                 ><template #default="{ row }">
                   <el-input
@@ -176,8 +207,9 @@
               >
             </el-table>
             <el-button style="margin-top: 12px" @click="addField">增加属性</el-button>
+            <el-button style="margin-top: 12px" @click="addCommonFields">补充本品类常用属性</el-button>
             <el-alert
-              title="已有物料引用后，模板结构不能直接修改，需先安排版本迁移。"
+              title="已有物料的模板可新增无默认值的可选属性、调整显示设置；删除、改类型或单位等需另行处理。常用属性补入草稿后，检查并保存才生效。"
               type="info"
               :closable="false"
               style="margin-top: 12px"
@@ -206,6 +238,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 import { MaterialAttributeTypeEnum } from '@/enums/inventory/MaterialAttributeEnum'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
+import { isCommonAttribute } from './materialMasterModel'
+import { addRecommendedAttributes } from './materialAttributePresets'
 import type {
   MaterialAttributeField,
   MaterialAttributeSchema,
@@ -323,7 +357,27 @@ async function loadTemplate(id: number) {
   }
 }
 function addField() {
-  schema.value.fields.push({ key: '', label: '', type: 'string', required: false })
+  schema.value.fields.push({ key: '', label: '', type: 'string', required: false, common: true, in_spec: true, spec_order: schema.value.fields.length + 1 })
+}
+
+function addCommonFields() {
+  const category = categories.value.find(c => c.categoryId === templateCategoryId.value)
+  const added = addRecommendedAttributes(schema.value, category?.categoryCode || '')
+  ElMessage.success(`已补充 ${added} 项可选属性，请检查后保存模板`)
+}
+const conditionKey = (field: MaterialAttributeField) => Object.keys(field.visible_when || {})[0] || ''
+const conditionValue = (field: MaterialAttributeField) => field.visible_when?.[conditionKey(field)] || ''
+function setConditionKey(field: MaterialAttributeField, key?: string) {
+  field.visible_when = key ? { [key]: '' } : undefined
+}
+function setConditionValue(field: MaterialAttributeField, value: string) {
+  const key = conditionKey(field)
+  if (key) field.visible_when = { ...field.visible_when, [key]: value }
+}
+function conditionOptions(field: MaterialAttributeField) {
+  const dependency = schema.value.fields.find(f => f.key === conditionKey(field))
+  if (dependency?.type === 'boolean') return [{ code: 'true', label: dependency.true_label || '是' }, { code: 'false', label: dependency.false_label || '否' }]
+  return dependency?.options || []
 }
 function optionText(field: MaterialAttributeField) {
   return (field.options || []).map((o) => `${o.code}=${o.label}`).join('\n')
