@@ -1,19 +1,30 @@
 <template>
   <div class="plan-editor">
-    <el-card class="picker-card" shadow="never">
-      <div class="picker-bar">
-        <div class="picker-bar-title">
-          <span style="font-weight: 600">添加标准工序</span>
-          <span class="desc">选结构 → 拖拽工序到下方卡片组合</span>
+    <!-- 标准工序库：左侧竖栏，默认 300px，可拖动调宽（220–400）（dev-20261024-010） -->
+    <div class="picker-col" :class="{ collapsed: pickerCollapsed }" :style="{ width: pickerColWidth }">
+      <el-card class="picker-card" shadow="never">
+        <div class="picker-bar">
+          <div class="picker-bar-title">
+            <span class="picker-title">标准工序</span>
+            <span class="desc">点选 / 拖到右侧计划</span>
+          </div>
+          <el-button class="picker-toggle" size="small" link @click="togglePicker">
+            {{ pickerCollapsed ? '展开' : '收起' }}
+          </el-button>
         </div>
-        <el-button class="picker-toggle" size="small" link @click="pickerExpanded = !pickerExpanded">
-          {{ pickerExpanded ? '收起标准工序' : '展开标准工序' }}
-        </el-button>
-      </div>
-      <div v-show="pickerExpanded" class="picker-body" data-test="picker-body">
-        <WorkProjectPicker :readonly="readonly" layout="horizontal" />
-      </div>
-    </el-card>
+        <div v-show="!pickerCollapsed" class="picker-body" data-test="picker-body">
+          <WorkProjectPicker :readonly="readonly" />
+        </div>
+      </el-card>
+    </div>
+
+    <div
+      v-show="!pickerCollapsed"
+      class="picker-resizer"
+      data-test="picker-resizer"
+      title="拖动调整标准工序栏宽度"
+      @mousedown.prevent="startResize"
+    ></div>
 
     <el-card class="col-plan" shadow="never">
       <template #header>
@@ -109,8 +120,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, toRefs } from 'vue'
+import { computed, onBeforeUnmount, ref, toRefs } from 'vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
+import { clampPickerWidth, readPickerWidth, savePickerWidth } from './samplePlanLayout'
 import SampleProcessPlanItem from './SampleProcessPlanItem.vue'
 import FrequentMaterialsBar from './FrequentMaterialsBar.vue'
 import BatchToolbar from './BatchToolbar.vue'
@@ -204,7 +216,35 @@ const {
 const activePlanTab = defineModel<string>('activePlanTab')
 
 /** 顶部标准工序库默认收起，避免挤压下方工序材料编辑区（dev-20261022-014）。 */
-const pickerExpanded = ref(false)
+// 左侧标准工序栏：默认展开、宽 300（dev-20261024-010）
+const pickerCollapsed = ref(false)
+const pickerWidth = ref(readPickerWidth(typeof localStorage === 'undefined' ? null : localStorage))
+const pickerColWidth = computed(() => `${pickerCollapsed.value ? 40 : pickerWidth.value}px`)
+const togglePicker = () => {
+  pickerCollapsed.value = !pickerCollapsed.value
+}
+
+let resizeStartX = 0
+let resizeStartWidth = 0
+const onResizeMove = (event: MouseEvent) => {
+  pickerWidth.value = clampPickerWidth(resizeStartWidth + (event.clientX - resizeStartX))
+}
+const stopResize = () => {
+  window.removeEventListener('mousemove', onResizeMove)
+  window.removeEventListener('mouseup', stopResize)
+  savePickerWidth(typeof localStorage === 'undefined' ? null : localStorage, pickerWidth.value)
+}
+const startResize = (event: MouseEvent) => {
+  if (pickerCollapsed.value) return
+  resizeStartX = event.clientX
+  resizeStartWidth = pickerWidth.value
+  window.addEventListener('mousemove', onResizeMove)
+  window.addEventListener('mouseup', stopResize)
+}
+onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', onResizeMove)
+  window.removeEventListener('mouseup', stopResize)
+})
 
 // 模板中直接使用 props 定义的属性名（Vue 自动可用，保持响应性）
 // 注意：不在此处解构 props，避免失去响应式
@@ -220,12 +260,43 @@ const pickerExpanded = ref(false)
 
 .plan-editor {
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  align-items: stretch;
+  gap: 0;
   margin-bottom: 14px;
+}
+.picker-col {
+  flex: 0 0 auto;
+  min-width: 40px;
+  max-width: 400px;
+  display: flex;
+  transition: width 0.15s ease;
+}
+.picker-col.collapsed .picker-title,
+.picker-col.collapsed .desc {
+  display: none;
+}
+.picker-col.collapsed .picker-bar {
+  justify-content: center;
+  padding: 0;
+}
+.picker-col .el-card {
+  height: 100%;
 }
 .picker-card {
   width: 100%;
+}
+.picker-card :deep(.el-card__body) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.picker-resizer {
+  flex: 0 0 6px;
+  cursor: col-resize;
+  border-left: 1px solid #ebeef5;
+}
+.picker-resizer:hover {
+  background: #f2f6fc;
 }
 .picker-bar {
   display: flex;
@@ -246,10 +317,13 @@ const pickerExpanded = ref(false)
 .picker-body {
   margin-top: 10px;
   min-height: 0;
+  flex: 1;
+  overflow: auto;
 }
 .col-plan {
-  width: 100%;
+  flex: 1 1 auto;
   min-width: 0;
+  margin-left: 10px;
 }
 .desc {
   font-size: 12px;

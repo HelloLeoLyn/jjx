@@ -167,8 +167,9 @@ function makeController(overrides: Record<string, any> = {}) {
   })
 }
 
-describe('SampleProcessPlanEditor 顶部标准工序库默认收起', () => {
-  it('默认收起、可展开/收起且不重建选择器，保存仍走控制器', async () => {
+describe('SampleProcessPlanEditor 左侧标准工序栏', () => {
+  it('默认展开宽 300、可收起/展开且不重建选择器，保存仍走控制器', async () => {
+    localStorage.removeItem('jjx.sample.planPickerWidth')
     const controller = makeController()
     const wrapper = mount(SampleProcessPlanEditor, {
       props: { controller, readonly: false },
@@ -182,17 +183,21 @@ describe('SampleProcessPlanEditor 顶部标准工序库默认收起', () => {
       },
     })
 
-    // dev-20261022-014：选择器移到顶部，默认收起；展开/收起只切 v-show，不重建实例
+    // dev-20261024-010：标准工序库改左侧竖栏，默认展开 300px，可收起（40px 轨道），只切 v-show 不重建
     const toggle = wrapper.find('.picker-toggle')
     expect(toggle.exists()).toBe(true)
-    expect(shown(wrapper.find('[data-test="picker-body"]'))).toBe(false)
+    const col = wrapper.find('.picker-col')
+    expect(col.attributes('style')).toContain('300px')
+    expect(shown(wrapper.find('[data-test="picker-body"]'))).toBe(true)
+    expect(wrapper.find('[data-test="picker-resizer"]').exists()).toBe(true)
     const picker = wrapper.find('work-project-picker-stub')
     expect(picker.exists()).toBe(true)
-    expect(picker.attributes('layout')).toBe('horizontal')
-    await toggle.trigger('click')
-    expect(shown(wrapper.find('[data-test="picker-body"]'))).toBe(true)
+    expect(picker.attributes('layout')).toBeUndefined()
     await toggle.trigger('click')
     expect(shown(wrapper.find('[data-test="picker-body"]'))).toBe(false)
+    expect(wrapper.find('.picker-col').attributes('style')).toContain('40px')
+    await toggle.trigger('click')
+    expect(shown(wrapper.find('[data-test="picker-body"]'))).toBe(true)
     expect(wrapper.find('work-project-picker-stub').exists()).toBe(true)
     // 拖拽落点（新建卡片区域）仍在
     expect(wrapper.find('.plan-scroll').exists()).toBe(true)
