@@ -90,24 +90,8 @@ export interface MaterialCategoryOption {
   materialType?: string
 }
 
-/**
- * 品类兜底列表。
- * 优先读取仅登录可用的物料品类选项接口；接口不可用时使用初始化种子兜底。
- * 接口可用时以接口返回为准（含 categoryId）。
- */
-export const MATERIAL_CATEGORY_SEED: MaterialCategoryOption[] = [
-  { categoryId: 1, categoryCode: 'RM-INK', categoryName: '油墨印刷', materialType: 'R' },
-  { categoryId: 2, categoryCode: 'RM-FILM', categoryName: '片材/膜材', materialType: 'R' },
-  { categoryId: 3, categoryCode: 'RM-PAPER', categoryName: '纸材（离型纸/离型膜）', materialType: 'R' },
-  { categoryId: 4, categoryCode: 'RM-ADHESIVE', categoryName: '胶粘类-原材', materialType: 'R' },
-  { categoryId: 5, categoryCode: 'AUX-ADHESIVE', categoryName: '胶粘类-辅料', materialType: 'A' },
-  { categoryId: 6, categoryCode: 'AUX-ELEC', categoryName: '电子元件', materialType: 'A' },
-  { categoryId: 7, categoryCode: 'AUX-HARDWARE', categoryName: '五金件', materialType: 'A' },
-  { categoryId: 8, categoryCode: 'AUX-PACK', categoryName: '包材', materialType: 'A' },
-  { categoryId: 9, categoryCode: 'AUX-TOOL', categoryName: '耗材工具', materialType: 'A' },
-  { categoryId: 10, categoryCode: 'OTHER-R', categoryName: '其他（原材料）', materialType: 'R' },
-  { categoryId: 11, categoryCode: 'OTHER-A', categoryName: '其他（辅助材料）', materialType: 'A' },
-]
+// 品类下拉唯一真源 = /inventory/material/category-options（分类树收口后由后端下发）。
+// dev-20261024-006：删除本地 11 条旧一级品类镜像，避免接口与前端两份分类并存。
 
 /** 大类（物料类型 R/A）由品类编码带出，只读展示。 */
 export function deriveMaterialType(categoryCode?: string): string {
@@ -208,7 +192,7 @@ export function findMissingRequiredFields(
   })
 }
 
-/** 读取品类下拉；接口不可用时退回种子列表。 */
+/** 读取品类下拉；接口不可用或为空时返回空数组（由调用方提示，不再使用本地镜像兜底）。 */
 export async function loadMaterialCategoryOptions(): Promise<MaterialCategoryOption[]> {
   try {
     const res = await request.get<R<MaterialCategoryOption[]>>('/inventory/material/category-options')
@@ -221,14 +205,11 @@ export async function loadMaterialCategoryOptions(): Promise<MaterialCategoryOpt
         materialType: item.materialType || deriveMaterialType(item.categoryCode),
       }))
     if (options.length) return options
-    console.warn('[material] 品类接口返回为空，改用本地种子列表')
+    console.warn('[material] 品类接口返回为空，请检查分类树与权限')
   } catch (error) {
-    console.warn(
-      '[material] 品类接口不可用，改用本地种子列表',
-      error
-    )
+    console.warn('[material] 品类接口不可用，请检查分类树与权限', error)
   }
-  return MATERIAL_CATEGORY_SEED.map((item) => ({ ...item }))
+  return []
 }
 
 export interface ImportedCategoryFields {

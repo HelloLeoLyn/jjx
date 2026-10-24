@@ -17,6 +17,8 @@ public class MaterialCategoryVO {
     private Long parentId;
     private String parentName;
     private Integer categoryLevel;
+    /** 中文全路径，如 原材料/辅材/保护膜（dev-20261024-006） */
+    private String namePath;
     private Integer sortOrder;
     private String status;
     private String remark;

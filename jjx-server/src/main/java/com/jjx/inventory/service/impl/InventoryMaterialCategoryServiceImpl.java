@@ -110,6 +110,7 @@ public class InventoryMaterialCategoryServiceImpl
         vo.setCategoryName(category.getCategoryName());
         vo.setParentId(category.getParentId());
         vo.setCategoryLevel(category.getCategoryLevel());
+        vo.setNamePath(category.getNamePath());
         vo.setSortOrder(category.getSortOrder());
         vo.setStatus(category.getStatus());
         vo.setRemark(category.getRemark());
@@ -117,6 +118,90 @@ public class InventoryMaterialCategoryServiceImpl
         vo.setUpdateTime(category.getUpdateTime());
         vo.setChildren(new ArrayList<>());
         return vo;
+    }
+
+    /**
+     * 维护分类层级/编码路径/中文全路径（dev-20261024-006）。
+     * 新增时父节点必须已存在；不可写到三级以下。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean save(InventoryMaterialCategory entity) {
+        applyPaths(entity, null);
+        return super.save(entity);
+    }
+
+    /** 父级或名称变化时重算本节点并递归刷新所有子节点。 */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateById(InventoryMaterialCategory entity) {
+        InventoryMaterialCategory existing = entity.getCategoryId() == null ? null
+                : materialCategoryMapper.selectById(entity.getCategoryId());
+        if (existing == null) {
+            return super.updateById(entity);
+        }
+        boolean pathChanged = applyPaths(entity, existing);
+        boolean updated = super.updateById(entity);
+        if (updated && pathChanged) {
+            refreshChildPaths(entity.getCategoryId());
+        }
+        return updated;
+    }
+
+    /** 计算 category_path / name_path / category_level；返回路径是否需要向下传播。 */
+    private boolean applyPaths(InventoryMaterialCategory entity, InventoryMaterialCategory existing) {
+        Long parentId = entity.getParentId() != null ? entity.getParentId()
+                : existing == null || existing.getParentId() == null ? 0L : existing.getParentId();
+        String code = StringUtils.defaultIfBlank(entity.getCategoryCode(),
+                existing == null ? null : existing.getCategoryCode());
+        String name = StringUtils.defaultIfBlank(entity.getCategoryName(),
+                existing == null ? null : existing.getCategoryName());
+        InventoryMaterialCategory parent = parentId == null || parentId == 0L ? null
+                : materialCategoryMapper.selectById(parentId);
+        String parentCodePath = parent == null ? ""
+                : StringUtils.defaultIfBlank(parent.getCategoryPath(), parent.getCategoryCode());
+        String parentNamePath = parent == null ? ""
+                : StringUtils.defaultIfBlank(parent.getNamePath(), parent.getCategoryName());
+        int level = parent == null || parent.getCategoryLevel() == null ? 1 : parent.getCategoryLevel() + 1;
+        entity.setParentId(parent == null ? 0L : parentId);
+        entity.setCategoryLevel(level);
+        entity.setCategoryPath(parent == null ? code : parentCodePath + "/" + code);
+        entity.setNamePath(parent == null ? name : parentNamePath + "/" + name);
+        if (existing == null) {
+            return true;
+        }
+        return !java.util.Objects.equals(existing.getParentId(), entity.getParentId())
+                || !java.util.Objects.equals(existing.getCategoryName(), name)
+                || !java.util.Objects.equals(existing.getCategoryCode(), code)
+                || !java.util.Objects.equals(existing.getCategoryPath(), entity.getCategoryPath())
+                || !java.util.Objects.equals(existing.getNamePath(), entity.getNamePath());
+    }
+
+    /** 递归刷新子节点路径（树最多三级；seen 防环）。 */
+    private void refreshChildPaths(Long parentId) {
+        refreshChildPaths(parentId, new java.util.HashSet<>());
+    }
+
+    private void refreshChildPaths(Long parentId, java.util.Set<Long> seen) {
+        if (parentId == null || !seen.add(parentId)) {
+            return;
+        }
+        InventoryMaterialCategory parent = materialCategoryMapper.selectById(parentId);
+        if (parent == null) {
+            return;
+        }
+        List<InventoryMaterialCategory> children = materialCategoryMapper.selectList(
+                new LambdaQueryWrapper<InventoryMaterialCategory>()
+                        .eq(InventoryMaterialCategory::getParentId, parentId));
+        for (InventoryMaterialCategory child : children) {
+            child.setCategoryLevel(parent.getCategoryLevel() == null ? 2 : parent.getCategoryLevel() + 1);
+            child.setCategoryPath(StringUtils.defaultIfBlank(parent.getCategoryPath(), parent.getCategoryCode())
+                    + "/" + child.getCategoryCode());
+            child.setNamePath(StringUtils.defaultIfBlank(parent.getNamePath(), parent.getCategoryName())
+                    + "/" + child.getCategoryName());
+            materialCategoryMapper.updateById(child);
+            refreshChildPaths(child.getCategoryId(), seen);
+        }
     }
 
     @Override

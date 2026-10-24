@@ -313,6 +313,19 @@ class MaterialMasterDataTest {
                 .noneMatch(field -> "currentStock".equals(field.getName())));
     }
 
+    @Test void keywordSearchMatchesCategoryNamePathToo() {
+        when(mapper.selectList(any())).thenReturn(List.of());
+        MaterialQueryDTO dto = new MaterialQueryDTO();
+        dto.setKeyword("保护膜");
+        service.selectEntities(dto);
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper).selectList(wrapper.capture());
+        String sql = wrapper.getValue().getSqlSegment();
+        assertTrue(sql.contains("search_blob LIKE"), sql);
+        assertTrue(sql.contains("inventory_material_category"), sql);
+        assertTrue(sql.contains("name_path LIKE"), sql);
+    }
+
     /** 显式启用时使用真实业务库；整段事务回滚，不留测试物料、不调用库存路径。 */
     @Test
     @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "JJX_MATERIAL_DB_TEST", matches = "true")

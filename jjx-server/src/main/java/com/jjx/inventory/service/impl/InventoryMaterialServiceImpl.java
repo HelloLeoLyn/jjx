@@ -133,6 +133,14 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (queryDTO.getMaterialName() != null && !queryDTO.getMaterialName().isEmpty()) {
             wrapper.like(InventoryMaterial::getMaterialName, queryDTO.getMaterialName());
         }
+        // 列表/导出也支持关键词：同时匹配 search_blob 与分类中文全路径（dev-20261024-006）
+        if (StringUtils.isNotBlank(queryDTO.getKeyword())) {
+            for (String term : queryDTO.getKeyword().trim().split("\\s+")) {
+                if (StringUtils.isNotBlank(term)) {
+                    applyKeywordMatch(wrapper, term);
+                }
+            }
+        }
         if (StringUtils.isNotBlank(queryDTO.getMaterialType())) {
             wrapper.eq(InventoryMaterial::getMaterialType, queryDTO.getMaterialType());
         }
@@ -350,8 +358,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             List<String> ranks = new java.util.ArrayList<>();
             String param = "#{" + wrapper.getParamAlias() + ".paramNameValuePairs.";
             for (String term : terms) {
-                // 每词在 search_blob 上 LIKE，词间 AND；值使用绑定参数。
-                wrapper.apply("search_blob LIKE {0}", "%" + term + "%");
+                // 每词匹配 search_blob 或分类名/中文全路径，词间 AND；值使用绑定参数（dev-20261024-006）。
+                applyKeywordMatch(wrapper, term);
                 // 每词独立绑定比较值，SQL 片段只拼接内部生成的参数名。
                 String key = "rank" + ranks.size();
                 wrapper.getParamNameValuePairs().put(key + "Exact", term);
@@ -685,6 +693,17 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 throw new BusinessException(e.getMessage());
             }
         }
+    }
+
+    /**
+     * 关键词命中：物料检索列 search_blob，或分类名/中文全路径（name_path）。
+     * 用 EXISTS 子查询等价 JOIN，避免破坏既有 resultMap 与分页计数（dev-20261024-006）。
+     */
+    private static void applyKeywordMatch(LambdaQueryWrapper<InventoryMaterial> wrapper, String term) {
+        String like = "%" + term + "%";
+        wrapper.apply("(search_blob LIKE {0} OR EXISTS (SELECT 1 FROM inventory_material_category c "
+                + "WHERE c.category_id = inventory_material.category_id "
+                + "AND (c.name_path LIKE {0} OR c.category_name LIKE {0})))", like);
     }
 
     private static void applyAttributeFilters(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {

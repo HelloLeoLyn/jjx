@@ -38,8 +38,11 @@ public class InventoryMaterialCategory extends BaseEntity {
     /** 层级：1一级/2二级/3三级 */
     private Integer categoryLevel;
 
-    /** 分类路径，如：/1/2/3 */
+    /** 分类路径（编码），如：RAW/RAW_AUX/RAW_AUX_PROTECT */
     private String categoryPath;
+
+    /** 中文全路径，如：原材料/辅材/保护膜（dev-20261024-006，搜索与展示用） */
+    private String namePath;
 
     /** 排序序号 */
     private Integer sortOrder;

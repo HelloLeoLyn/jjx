@@ -29,7 +29,13 @@ import { materialApi } from '@/api/inventory/material'
 import request from '@/utils/request'
 import StockImportDialog from '../StockImportDialog.vue'
 import StockBatchImportDialog from '../StockBatchImportDialog.vue'
-import { MATERIAL_CATEGORY_SEED } from '../materialMasterFields'
+
+// 分类树收口后前端不再内置品类镜像（dev-20261024-006）；测试自备最小夹具。
+const TEST_CATEGORIES = [
+  { categoryId: 6, categoryCode: 'AUX-ELEC', categoryName: '电子元件', materialType: 'A' },
+  { categoryId: 10, categoryCode: 'OTHER-R', categoryName: '其他（原材料）', materialType: 'R' },
+  { categoryId: 11, categoryCode: 'OTHER-A', categoryName: '其他（辅助材料）', materialType: 'A' },
+]
 
 vi.mock('@/utils/request', () => ({ default: { get: vi.fn() } }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { generateCode: vi.fn(), add: vi.fn() } }))
@@ -43,7 +49,7 @@ vi.mock('element-plus', async (importOriginal) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.mocked(request.get).mockResolvedValue({ data: MATERIAL_CATEGORY_SEED })
+  vi.mocked(request.get).mockResolvedValue({ data: TEST_CATEGORIES })
   vi.mocked(materialApi.generateCode).mockResolvedValue({ data: 'TEST015' } as any)
   vi.mocked(materialApi.add).mockResolvedValue({ code: 200 } as any)
 })
