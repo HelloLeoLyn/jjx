@@ -19,29 +19,6 @@ export interface RegenerationResult {
   evidence: string[]
 }
 
-/**
- * 从 remark 里取迁移期【原名称】：取【原名称】与【原规格】/【重生成】之间的文本；无标记返回空串。
- * 用途：迁移期核对被重写的名称（dev-20261023-020 引入，dev-20261024-004 按用户裁定恢复）。
- */
-export function parseOriginalName(remark?: string | null): string {
-  const text = (remark || '').trim()
-  if (!text) return ''
-  const marker = '【原名称】'
-  const start = text.indexOf(marker)
-  if (start < 0) return ''
-  const rest = text.slice(start + marker.length)
-  const stops = ['【原规格】', '【重生成】']
-    .map((token) => rest.indexOf(token))
-    .filter((index) => index >= 0)
-  const end = stops.length ? Math.min(...stops) : rest.length
-  return rest
-    .slice(0, end)
-    .replace(/^[\s:：]+/, '')
-    .replace(/[\s:：]+$/, '')
-    .replace(/\s*\n\s*/g, ' ')
-    .trim()
-}
-
 export function buildRegeneration(
   current: RegenerationSnapshot,
   generated: { name: string; specification: string; specGenerated?: boolean },

@@ -27,10 +27,13 @@ public class MaterialMasterAuditService {
         List<Problem> problems = new ArrayList<>();
         int pending = 0, modern = 0; long supplied = 0, samples = 0;
         for (InventoryMaterial material : all) {
-            if (material.getOriginalName() == null) { pending++; continue; }
-            modern++;
+            if (material.getCategoryId() == null) {
+                pending++;
+                problems.add(new Problem(material.getMaterialId(), material.getMaterialName(), "未归类"));
+            } else modern++;
             if (Boolean.TRUE.equals(material.getIsCustomerSupplied())) supplied++;
             if (Boolean.TRUE.equals(material.getIsSample())) samples++;
+            if (material.getCategoryId() == null) continue;
             try {
                 var config = catalog.configuration(material.getCategoryId());
                 distribution.merge(config.category().pathName(), 1L, Long::sum);
@@ -46,18 +49,15 @@ public class MaterialMasterAuditService {
 
     public byte[] migrationCandidates() {
         List<InventoryMaterial> pending = materials.selectList(new LambdaQueryWrapper<InventoryMaterial>()
-                .isNull(InventoryMaterial::getOriginalName).orderByAsc(InventoryMaterial::getMaterialId));
-        String[] headers={"物料ID","原名称（来源留痕）","原规格（来源留痕）","当前名称","当前规格","当前尺寸","单位","供应商","业务备注（原样保留）","待确认品类编码"};
+                .isNull(InventoryMaterial::getCategoryId).orderByAsc(InventoryMaterial::getMaterialId));
+        String[] headers={"物料ID","原文说明","当前名称","当前规格","当前尺寸","单位","供应商","业务备注（原样保留）","待确认品类编码"};
         try (XSSFWorkbook workbook=new XSSFWorkbook()) {
             var sheet=workbook.createSheet("待确认物料"); var header=sheet.createRow(0);
             for(int i=0;i<headers.length;i++){header.createCell(i).setCellValue(headers[i]);sheet.setColumnWidth(i,25*256);}
             int index=0;
             for(InventoryMaterial material:pending){
                 var row=sheet.createRow(++index);
-                var source=MaterialSourceValues.from(material);
-                String name=source.originalName();
-                String spec=source.originalSpecification();
-                String[] values={material.getMaterialId().toString(),name,spec,material.getMaterialName(),material.getSpecification(),material.getSize(),material.getUnit(),material.getSupplierName(),material.getRemark(),""};
+                String[] values={material.getMaterialId().toString(),"原文已归档至 Excel",material.getMaterialName(),material.getSpecification(),material.getSize(),material.getUnit(),material.getSupplierName(),material.getRemark(),""};
                 for(int i=0;i<values.length;i++)row.createCell(i).setCellValue(values[i]==null?"":values[i]);
             }
             sheet.createFreezePane(0,1); var out=new ByteArrayOutputStream();workbook.write(out);return out.toByteArray();

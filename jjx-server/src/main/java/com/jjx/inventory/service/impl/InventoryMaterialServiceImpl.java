@@ -673,7 +673,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     /** 新增校验全部规则；编辑仅校验实际变化的字段（含显式清空）。 */
     private void validateMasterData(InventoryMaterial material, InventoryMaterial existing) {
-        if (material.getOriginalName() != null || existing != null && existing.getOriginalName() != null) {
+        if (isNewModelMaterial(material) || existing != null && isNewModelMaterial(existing)) {
             throw new BusinessException("新模型物料请使用新版物料保存入口");
         }
         if (existing != null && material.getSuppliedFields().contains("categoryId") && material.getCategoryId() == null) {
@@ -785,6 +785,10 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (isNewModelCategory(category)) throw new BusinessException("该品类请下载新版按品类导入模板");
         dto.setCategoryName((String) category.get("category_code"));
         return category;
+    }
+
+    private boolean isNewModelMaterial(InventoryMaterial material) {
+        return material.getCategoryId() != null && isNewModelCategory(materialMapper.selectCategory(material.getCategoryId()));
     }
 
     private boolean isNewModelCategory(Map<String, Object> category) {

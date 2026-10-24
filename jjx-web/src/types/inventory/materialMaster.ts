@@ -84,8 +84,6 @@ export interface MaterialMasterForm {
   tagIds: number[]
 }
 export type MaterialMasterRecord = InventoryMaterial & {
-  originalName?: string | null
-  originalSpecification?: string | null
   materialMeta?: string | null
   materialForm?: string | null
   attributeJson?: string | null

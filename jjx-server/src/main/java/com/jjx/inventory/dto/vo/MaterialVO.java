@@ -26,8 +26,6 @@ public class MaterialVO {
     private String specification;
     private String searchKeywords;
     private String size;
-    private String originalName;
-    private String originalSpecification;
     private String materialMeta;
     private String materialForm;
     private String attributeJson;

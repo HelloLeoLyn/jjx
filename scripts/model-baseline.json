@@ -37,8 +37,6 @@
     "inventory_material",
     "inventory_material_category",
     "inventory_material_required_field",
-    "inventory_material_spec_attr_def",
-    "inventory_material_spec_value",
     "inventory_outbound_item",
     "inventory_outbound_order",
     "inventory_stock",
@@ -237,20 +235,6 @@
       "date": "2026-10-23",
       "proposalLink": "jjx-docs/history/material-master-normalization-design-dev-20261023-005.md",
       "reason": "物料品类必填字段规则表（品类×字段）：品类决定材料/型号/颜色/规格/品牌的必填口径，配置化避免写死代码；用户 2026-10-23 在物料主数据规范化方案中授权建表，迁移 300 已执行。"
-    },
-    {
-      "table": "inventory_material_spec_attr_def",
-      "taskCode": "dev-20261023-022",
-      "date": "2026-10-23",
-      "proposalLink": "jjx-docs/history/material-spec-attributes-dev-20261023-022.md",
-      "reason": "品类规格属性定义（按品类的属性名/录入类型/单位/选项/必填），解决规格自由文本无人会填（全库 77% 空）；用户 2026-10-23「按你的建议来」拍板建表"
-    },
-    {
-      "table": "inventory_material_spec_value",
-      "taskCode": "dev-20261023-022",
-      "date": "2026-10-23",
-      "proposalLink": "jjx-docs/history/material-spec-attributes-dev-20261023-022.md",
-      "reason": "物料规格属性值（material_id+attr_code 唯一），供按属性等值/区间筛选；规格文本仍写回 inventory_material.specification 作为下游唯一口径"
     }
   ],
   "typeSuffixAllowlist": [

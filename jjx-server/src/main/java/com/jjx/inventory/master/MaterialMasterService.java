@@ -119,8 +119,7 @@ public class MaterialMasterService {
         MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(dto.getCategoryId());
         MaterialAttributeSchema schema = config == null
                 ? new MaterialAttributeSchema(1, List.of(), false, null, null, "PCS", List.of()) : config.schema();
-        String name = text(dto.getOriginalName(), "原名称", 200, true);
-        String originalSpec = text(dto.getOriginalSpecification(), "原规格", 500, false);
+        String name = text(dto.getMaterialName(), "物料名称", 200, true);
         String meta = fallback(dto.getMaterialMeta(), schema.defaultMeta());
         if (meta == null && schema.metaOptions().size() == 1) meta = schema.metaOptions().get(0);
         if (config != null && meta != null && !schema.metaOptions().contains(meta)) throw new BusinessException("材质不在该品类允许范围");
@@ -137,8 +136,6 @@ public class MaterialMasterService {
         validateSize(dto.getSize());
         InventoryMaterial material = new InventoryMaterial();
         BeanUtils.copyProperties(dto, material);
-        material.setOriginalName(name);
-        material.setOriginalSpecification(originalSpec);
         material.setMaterialName(name);
         material.setMaterialMeta(meta);
         material.setMaterialForm(form);
@@ -150,7 +147,7 @@ public class MaterialMasterService {
         material.setSize(text(dto.getSize(), "尺寸", 50, false));
         material.setSearchKeywords(text(dto.getSearchKeywords(), "别名", 500, false));
         material.setRemark(text(dto.getRemark(), "业务备注", 1000, false));
-        material.setSpecification(old == null ? originalSpec : old.getSpecification());
+        material.setSpecification(old == null ? null : old.getSpecification());
         material.setIsCustomerSupplied(Boolean.TRUE.equals(dto.getIsCustomerSupplied()));
         material.setIsSample(Boolean.TRUE.equals(dto.getIsSample()));
         if (config != null) MaterialAttributeColumns.apply(material, attributes, config.template().getTemplateId());
@@ -224,7 +221,6 @@ public class MaterialMasterService {
             Map<String, Object> columns = new LinkedHashMap<>();
             columns.put("category_id", material.getCategoryId());
             columns.put("class_source", material.getClassSource()); columns.put("class_confirmed", material.getClassConfirmed());
-            columns.put("original_name", material.getOriginalName()); columns.put("original_specification", material.getOriginalSpecification());
             columns.put("material_name", material.getMaterialName()); columns.put("material_meta", material.getMaterialMeta());
             columns.put("material_form", material.getMaterialForm()); columns.put("material_grade", material.getMaterialGrade());
             columns.put("model", material.getModel()); columns.put("color", material.getColor()); columns.put("brand", material.getBrand());

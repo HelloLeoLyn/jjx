@@ -65,12 +65,6 @@
       >
         <el-table-column type="selection" width="55" align="center" />
         <!-- <el-table-column label="物料编码" prop="materialCode" width="150" /> -->
-        <!-- <el-table-column
-          label="原规格"
-          prop="originalSpecification"
-          width="200"
-          show-overflow-tooltip
-        /> -->
         <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
         <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
@@ -146,15 +140,6 @@
               {{ MaterialClassStatusEnum.getLabel(resolveClassStatus(row)) }}
             </el-tag>
           </template>
-        </el-table-column>
-        <el-table-column label="原名称" width="200" show-overflow-tooltip>
-          <template #header>
-            <span
-              title="迁移期辅助列：用于核对被重写的名称；566 条归类确认、original_* 清理后一起下线"
-              >原名称</span
-            >
-          </template>
-          <template #default="{ row }">{{ originalNameOf(row) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
@@ -251,7 +236,6 @@ import MaterialMasterImportDialog from '@/components/inventory/MaterialMasterImp
 import MaterialMasterSettingsDialog from '@/components/inventory/MaterialMasterSettingsDialog.vue'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import { downloadMaterialBlob } from '@/components/inventory/materialMasterModel'
-import { parseOriginalName } from '@/components/inventory/materialRegenerate'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 import type { MaterialMasterCategory, MaterialDictionaries } from '@/types/inventory/materialMaster'
 import { materialApi } from '@/api/inventory/material'
@@ -445,9 +429,7 @@ const handleFormSuccess = () => {
   getList()
 }
 
-// 迁移期辅助列：优先主表 original_name，其次 remark 的【原名称】（dev-20261024-004 用户裁定恢复）
-const originalNameOf = (row: InventoryMaterial) =>
-  row.originalName || parseOriginalName(row.remark) || '-'
+
 
 // 归类三态行高亮：未归类标黄提示，但不禁用编辑（dev-20261024-004 阶段三）
 const classRowName = ({ row }: { row: InventoryMaterial }) =>

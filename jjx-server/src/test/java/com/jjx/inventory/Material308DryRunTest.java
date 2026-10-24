@@ -82,7 +82,7 @@ class Material308DryRunTest {
     }
     private InventoryMaterial pending(String name) {
         var material=new InventoryMaterial();material.setMaterialCode("T308"+UUID.randomUUID().toString().replace("-",""));
-        material.setMaterialName(name);material.setOriginalName(name);material.setUnit("PCS");material.setAttributeJson("{\"material\":\"PC\"}");
+        material.setMaterialName(name);material.setUnit("PCS");material.setAttributeJson("{\"material\":\"PC\"}");
         material.setCreateBy("codex-308-test");material.setCreateTime(java.time.LocalDateTime.now());material.setUpdateBy("codex-308-test");material.setUpdateTime(java.time.LocalDateTime.now());
         materials.insert(material);return material;
     }
@@ -169,16 +169,16 @@ class Material308DryRunTest {
         assertEquals(1,excel.importExcel(legacy,null,true,"codex",false,false).successCount());
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material WHERE material_code LIKE 'T308%'",Integer.class));
         assertEquals(1,excel.importExcel(legacy,null,false,"codex",false,true).successCount());
-        var material=jdbc.queryForMap("SELECT category_id,class_source,class_confirmed,original_name,original_specification FROM inventory_material WHERE material_code LIKE 'T308%'");
+        var material=jdbc.queryForMap("SELECT category_id,class_source,class_confirmed,material_name,specification FROM inventory_material WHERE material_code LIKE 'T308%'");
         assertNull(material.get("category_id"));assertNull(material.get("class_source"));assertEquals(false,material.get("class_confirmed"));
-        assertEquals("308旧模板无法识别",material.get("original_name"));assertEquals("原始规格",material.get("original_specification"));
+        assertEquals("308旧模板无法识别",material.get("material_name"));assertNull(material.get("specification"));
     }
     @Test void autoRuleAndExplicitCategoryImportsWriteDistinctSources() throws Exception {
         rule("308规则PC","RAW_BASE_PC",MaterialClassifyRule.MatchField.NAME,1);
         var file=file(new String[]{"品类","原名称","厚度(mm)"},new String[]{"","308规则PC","0.175"},new String[]{"RAW_BASE_PC","308指定PC","0.175"});
         var result=excel.importExcel(file,null,false,"codex",false,true);assertTrue(result.errors().isEmpty(),result.errors().toString());assertEquals(2,result.successCount());
-        assertEquals("RULE",jdbc.queryForObject("SELECT class_source FROM inventory_material WHERE original_name='308规则PC'",String.class));
-        assertEquals("IMPORT",jdbc.queryForObject("SELECT class_source FROM inventory_material WHERE original_name='308指定PC'",String.class));
+        assertEquals("RULE",jdbc.queryForObject("SELECT class_source FROM inventory_material WHERE material_name='308规则PC'",String.class));
+        assertEquals("IMPORT",jdbc.queryForObject("SELECT class_source FROM inventory_material WHERE material_name='308指定PC'",String.class));
         assertEquals(1,count("confirmed"));
     }
     @Test void confirmationRequiresTemplateFieldsAndUnknownAttributeKeysAreRejected() throws Exception {
@@ -207,11 +207,11 @@ class Material308DryRunTest {
         assertEquals(1,classify.listRules().size());
     }
     @Test void classifiedImportRequiresFieldsAndCannotOverwriteManualConfirmation() throws Exception {
-        var dto=new MaterialMasterDTO();dto.setCategoryId(pcId);dto.setOriginalName("308人工确认PC");dto.setAttributeJson(Map.of("thickness_mm",0.175));
+        var dto=new MaterialMasterDTO();dto.setCategoryId(pcId);dto.setMaterialName("308人工确认PC");dto.setAttributeJson(Map.of("thickness_mm",0.175));
         var confirmed=master.save(dto,"codex");assertTrue(confirmed.getClassConfirmed());assertEquals("MANUAL",confirmed.getClassSource());
         var result=excel.importExcel(file(new String[]{"品类","原名称","物料ID（更新时填写）"},new String[]{"RAW_BASE_PC","308企图覆盖",confirmed.getMaterialId().toString()}),null,false,"codex",true,true);
         assertEquals(0,result.successCount());assertTrue(result.errors().get(0).contains("不能覆盖"));
-        assertEquals("308人工确认PC",materials.selectById(confirmed.getMaterialId()).getOriginalName());
+        assertEquals("308人工确认PC",materials.selectById(confirmed.getMaterialId()).getMaterialName());
     }
 
 }

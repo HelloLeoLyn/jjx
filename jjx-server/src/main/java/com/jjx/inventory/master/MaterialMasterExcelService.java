@@ -29,7 +29,7 @@ public class MaterialMasterExcelService {
     private final ObjectMapper objectMapper;
     private final MaterialClassifyService classifyService;
     public record ImportResult(boolean preview, int successCount, List<String> errors) { }
-    private static final List<String> COMMON_HEADERS = List.of("原名称", "原规格", "材质", "形态", "尺寸(mm)", "颜色", "型号", "品牌", "单位", "供应商", "是否客供专用", "是否样品专用", "别名", "业务备注", "物料ID（更新时填写）", "标准单价", "采购周期(天)", "安全库存", "最高库存", "再订货点", "保质期(天)", "预警提前天数", "批次控制");
+    private static final List<String> COMMON_HEADERS = List.of("物料名称", "规格", "材质", "形态", "尺寸(mm)", "颜色", "型号", "品牌", "单位", "供应商", "是否客供专用", "是否样品专用", "别名", "业务备注", "物料ID（更新时填写）", "标准单价", "采购周期(天)", "安全库存", "最高库存", "再订货点", "保质期(天)", "预警提前天数", "批次控制");
 
     /** 品类列逐行选择；属性列为启用品类模板字段的并集，不绑定单个品类。 */
     public byte[] template(Long ignoredCategoryId) {
@@ -81,7 +81,7 @@ public class MaterialMasterExcelService {
         List<MaterialMasterDTO> rows = new ArrayList<>(); List<MaterialClassSource> sources = new ArrayList<>();
         List<String> errors = new ArrayList<>(); Map<String, Long> existingKeys = new HashMap<>();
         Set<String> fileKeys = new HashSet<>(); Set<Long> updateIds = new HashSet<>();
-        for (InventoryMaterial material : materials.selectList(new LambdaQueryWrapper<InventoryMaterial>().isNotNull(InventoryMaterial::getOriginalName)))
+        for (InventoryMaterial material : materials.selectList(new LambdaQueryWrapper<InventoryMaterial>()))
             existingKeys.put(identity(material), material.getMaterialId());
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -96,7 +96,7 @@ public class MaterialMasterExcelService {
                 fallbackCategoryId = config.category().categoryId();
             }
             Row header = sheet.getRow(headerIndex);
-            if (header == null) throw new BusinessException("缺【原名称】列");
+            if (header == null) throw new BusinessException("缺【物料名称】列");
             Map<String, Integer> columns = new LinkedHashMap<>();
             for (int i = 0; i < header.getLastCellNum(); i++) {
                 String label = headerAlias(cell(header, i));
@@ -110,14 +110,15 @@ public class MaterialMasterExcelService {
                     if (blank(row, Math.max(header.getLastCellNum(), row.getLastCellNum()))) continue;
                     for (int i = 0; i < row.getLastCellNum(); i++) if (!cell(row, i).isBlank() && cell(header, i).isBlank()) throw new BusinessException("第" + (i + 1) + "列缺表头");
                     MaterialMasterDTO dto = new MaterialMasterDTO();
-                    dto.setOriginalName(requiredColumn(row, columns, "原名称"));
-                    dto.setOriginalSpecification(value(row, columns, "原规格"));
+                    dto.setMaterialName(requiredColumn(row, columns, "物料名称"));
+                    // Excel规格只供本次自动归类匹配；保存规格统一由模板生成。
+                    String inputSpecification = value(row, columns, "规格");
                     String category = value(row, columns, "品类");
                     MaterialClassSource source = MaterialClassSource.IMPORT;
                     if (!category.isBlank()) dto.setCategoryId(resolveCategory(category));
                     else if (fallbackCategoryId != null) dto.setCategoryId(fallbackCategoryId);
                     else if (autoClassify) {
-                        var match = classifyService.match(dto.getOriginalName(), dto.getOriginalSpecification());
+                        var match = classifyService.match(dto.getMaterialName(), inputSpecification);
                         if (match != null) { dto.setCategoryId(match.categoryId()); source = MaterialClassSource.RULE; }
                     }
                     String id = value(row, columns, "物料ID（更新时填写）");
@@ -166,7 +167,7 @@ public class MaterialMasterExcelService {
                         throw new BusinessException("该品类不支持列：" + column);
                     dto.setAttributeJson(attributes);
                     InventoryMaterial prepared = service.prepare(dto).material(); String key = identity(prepared);
-                    if (!fileKeys.add(key) || existingKeys.containsKey(key) && !Objects.equals(existingKeys.get(key), dto.getMaterialId())) throw new BusinessException("与文件其他行或库内新模型物料重复");
+                    if (!fileKeys.add(key) || existingKeys.containsKey(key) && !Objects.equals(existingKeys.get(key), dto.getMaterialId())) throw new BusinessException("与文件其他行或库内物料重复");
                     rows.add(dto); sources.add(source);
                 } catch (BusinessException e) { errors.add("第" + (index + 1) + "行：" + e.getMessage()); }
             }
@@ -186,8 +187,8 @@ public class MaterialMasterExcelService {
     private static String fieldHeader(MaterialAttributeSchema.Field field) { return field.label() + (field.unit() == null ? "" : "(" + field.unit() + ")"); }
     private static String headerAlias(String value) {
         return switch (value) {
-            case "名称", "物料名称", "材料" -> "原名称";
-            case "规格" -> "原规格";
+            case "名称", "原名称", "材料" -> "物料名称";
+            case "原规格" -> "规格";
             case "品类编码" -> "品类";
             case "尺寸" -> "尺寸(mm)";
             case "备注" -> "业务备注";
@@ -237,7 +238,7 @@ public class MaterialMasterExcelService {
 
     public byte[] export(Long categoryId) {
         List<InventoryMaterial> list = materials.selectList(new LambdaQueryWrapper<InventoryMaterial>()
-                .isNotNull(InventoryMaterial::getOriginalName).eq(categoryId != null, InventoryMaterial::getCategoryId, categoryId)
+                .eq(categoryId != null, InventoryMaterial::getCategoryId, categoryId)
                 .orderByAsc(InventoryMaterial::getMaterialId));
         return exportRows(list);
     }
@@ -247,7 +248,7 @@ public class MaterialMasterExcelService {
     }
 
     private byte[] exportRows(List<InventoryMaterial> list) {
-        List<String> headers = List.of("序号", "物料ID", "物料编码", "原名称", "原规格", "一级分类", "二级分类", "三级分类", "材质", "形态", "尺寸(mm)", "颜色", "型号", "品牌", "供应商", "基本单位", "是否客供专用", "是否样品专用", "属性JSON", "当前名称", "生成规格");
+        List<String> headers = List.of("序号", "物料ID", "物料编码", "一级分类", "二级分类", "三级分类", "材质", "形态", "尺寸(mm)", "颜色", "型号", "品牌", "供应商", "基本单位", "是否客供专用", "是否样品专用", "属性JSON", "当前名称", "生成规格");
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("物料主数据"); Row header = sheet.createRow(0);
             for (int i = 0; i < headers.size(); i++) { put(header, i, headers.get(i)); sheet.setColumnWidth(i, 20 * 256); }
@@ -258,7 +259,7 @@ public class MaterialMasterExcelService {
                 var configuration = material.getCategoryId() == null ? null : configs.computeIfAbsent(material.getCategoryId(), catalog::configuration);
                 var path = configuration == null ? List.<MaterialMasterCatalog.Category>of() : configuration.path();
                 Row row = sheet.createRow(++index);
-                String[] values = {String.valueOf(index), material.getMaterialId().toString(), material.getMaterialCode(), material.getOriginalName(), material.getOriginalSpecification(),
+                String[] values = {String.valueOf(index), material.getMaterialId().toString(), material.getMaterialCode(),
                         path.isEmpty() ? "" : path.get(0).categoryName(), path.size() > 1 ? path.get(1).categoryName() : "", path.size() > 2 ? path.get(2).categoryName() : "",
                         dictionaryLabel(dictionaries, "material_meta", material.getMaterialMeta()), dictionaryLabel(dictionaries, "form", material.getMaterialForm()), material.getSize(),
                         dictionaryLabel(dictionaries, "color", material.getColor()), material.getModel(), dictionaryLabel(dictionaries, "brand", material.getBrand()), material.getSupplierName(), material.getUnit(),
@@ -296,7 +297,7 @@ public class MaterialMasterExcelService {
     private static void put(Row row, int column, String value) { row.createCell(column).setCellValue(value == null ? "" : value); }
     private static byte[] bytes(Workbook workbook) throws Exception { ByteArrayOutputStream out = new ByteArrayOutputStream(); workbook.write(out); return out.toByteArray(); }
     private String identity(InventoryMaterial material) {
-        try { return objectMapper.writeValueAsString(Arrays.asList(material.getCategoryId(), material.getOriginalName(), material.getOriginalSpecification(), material.getMaterialMeta(), material.getMaterialForm(), material.getModel(), material.getColor(), material.getBrand(), material.getSize(), material.getUnit(), service.readAttributes(material.getAttributeJson()))); }
+        try { return objectMapper.writeValueAsString(Arrays.asList(material.getCategoryId(), material.getMaterialName(), material.getMaterialMeta(), material.getMaterialForm(), material.getModel(), material.getColor(), material.getBrand(), material.getSize(), material.getUnit(), service.readAttributes(material.getAttributeJson()))); }
         catch (Exception e) { throw new BusinessException("物料重复性检查失败"); }
     }
 }

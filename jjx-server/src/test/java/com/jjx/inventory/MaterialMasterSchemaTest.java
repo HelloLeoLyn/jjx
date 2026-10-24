@@ -79,11 +79,11 @@ class MaterialMasterSchemaTest {
         assertFalse(electronics.compose(Map.of("component_type", "LED", "pin_count", 4)).contains(pinLabel + ":"));
     }
 
-    @Test void sourcesPreferExplicitOriginalMarkersAndNeverBackfillGeneratedTextIntoOriginalSpec() {
-        var material = new InventoryMaterial(); material.setMaterialName("拼接后的名称"); material.setSpecification("生成规格");
-        material.setRemark("原供应商:地博(未匹配)【原名称】0.175中砂面PC-DB6842【原规格】300*305");
-        assertEquals(new MaterialSourceValues("0.175中砂面PC-DB6842","300*305"),MaterialSourceValues.from(material));
-        material.setOriginalName("已确认来源"); material.setOriginalSpecification(null);
-        assertEquals(new MaterialSourceValues("已确认来源",null),MaterialSourceValues.from(material));
+    @Test void archivedSourcesStayEmptyAndRemarkIsUntouched() {
+        var material = new InventoryMaterial(); material.setMaterialName("当前名称"); material.setSpecification("生成规格");
+        String remark = "【原名称】旧名【原规格】300*305";
+        material.setRemark(remark);
+        assertEquals(new MaterialSourceValues(null, null), MaterialSourceValues.from(material));
+        assertEquals(remark, material.getRemark());
     }
 }

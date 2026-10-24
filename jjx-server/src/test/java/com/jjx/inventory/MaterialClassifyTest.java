@@ -76,9 +76,9 @@ class MaterialClassifyTest {
         var values=update.getValue().getParamNameValuePairs().values();
         assertTrue(values.containsAll(List.of(3L,33L,"MANUAL",true,"codex")));
     }
-    @Test void defaultRulePreviewDoesNotWriteAndUsesOriginalSources() {
+    @Test void defaultRulePreviewDoesNotWriteAndUsesCurrentValues() {
         target();when(rules.selectList(any())).thenReturn(List.of(rule(1,"保护膜",MaterialClassifyRule.MatchField.NAME,true)));
-        var material=new InventoryMaterial();material.setMaterialId(1L);material.setMaterialName("PC");material.setRemark("【原名称】PET保护膜【原规格】透明");
+        var material=new InventoryMaterial();material.setMaterialId(1L);material.setMaterialName("PET保护膜");material.setRemark("【原名称】无关旧名【原规格】透明");
         when(materials.selectList(any())).thenReturn(List.of(material));
         var result=service.applyRules(false,"codex");assertTrue(result.dryRun());assertEquals(1,result.changes().size());
         verifyNoInteractions(locks);verify(materials,never()).update(any(),any());

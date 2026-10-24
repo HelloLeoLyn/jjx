@@ -138,7 +138,7 @@ class MaterialMasterDataTest {
                 "unit",List.of(new com.jjx.inventory.master.MaterialMasterCatalog.DictionaryOption("M","米"))));
         var master = new com.jjx.inventory.master.MaterialMasterService(catalog, mock(com.jjx.inventory.master.MaterialMasterMapper.class), mapper,
                 service, mock(com.jjx.purchase.mapper.PurchaseSupplierMapper.class), tags, mock(com.jjx.event.EventPublisher.class), new ObjectMapper());
-        var dto = new com.jjx.inventory.master.MaterialMasterDTO(); dto.setCategoryId(2L); dto.setOriginalName("PC样例");
+        var dto = new com.jjx.inventory.master.MaterialMasterDTO(); dto.setCategoryId(2L); dto.setMaterialName("PC样例");
         dto.setSize("300×305"); dto.setTemplateId(999L); dto.setThickness("伪造"); dto.setAttributeJson(Map.of("thickness_mm", new BigDecimal("0.175")));
         var saved = master.prepare(dto).material();
         assertEquals(71L, saved.getTemplateId()); assertEquals("0.175", saved.getThickness()); assertEquals("300×305", saved.getWidthSize());
@@ -148,17 +148,14 @@ class MaterialMasterDataTest {
         var cleared = master.prepare(dto).material(); assertNull(cleared.getThickness()); assertNull(cleared.getWidthSize());
     }
 
-    @Test void derivedFieldsIgnoreClientInputAndLegacySpecWritesAreDisabled() throws Exception {
+    @Test void derivedAndRetiredFieldsIgnoreClientInput() throws Exception {
         var dto = new ObjectMapper().readValue("{\"templateId\":999,\"thickness\":\"fake\",\"widthSize\":\"fake\"}", MaterialUpdateDTO.class);
         assertNull(dto.getTemplateId()); assertNull(dto.getThickness()); assertNull(dto.getWidthSize());
-        var adapter = new com.jjx.inventory.service.impl.InventoryMaterialSpecServiceImpl(mapper,
-                mock(com.jjx.inventory.mapper.InventoryMaterialCategoryMapper.class), new ObjectMapper());
-        assertTrue(adapter.listDefs("RM-FILM").isEmpty());
-        assertTrue(assertThrows(BusinessException.class, () -> adapter.save(new com.jjx.inventory.dto.update.MaterialSpecValuesDTO())).getMessage().contains("已停用"));
-        var m = material(); m.setCategoryId(null); m.setAttributeJson("{\"thickness_mm\":0.175}");
-        when(mapper.selectById(12L)).thenReturn(m);
-        assertEquals("0.175", adapter.getByMaterialId(12L).getValues().get(0).getValueText());
-        verify(mapper, never()).insert(any(InventoryMaterial.class));
+        var masterDto = new ObjectMapper().readValue("{\"materialName\":\"当前名称\",\"originalName\":\"已归档\",\"originalSpecification\":\"已归档\"}", com.jjx.inventory.master.MaterialMasterDTO.class);
+        assertEquals("当前名称", masterDto.getMaterialName());
+        var table = TableInfoHelper.getTableInfo(InventoryMaterial.class);
+        assertTrue(table.getFieldList().stream().noneMatch(f -> f.getColumn().startsWith("original_")));
+
     }
 
     @Test void missingRequiredRejectedWithFieldName() {
@@ -477,7 +474,7 @@ class MaterialMasterDataTest {
         assertTrue(((com.baomidou.mybatisplus.core.conditions.AbstractWrapper)wrapper.getValue()).getParamNameValuePairs().values().contains(true));
     }
 
-    @Test void noFilterAndUnknownClassStatusKeepAllMaterialsWithNullOriginalNames() {
+    @Test void noFilterAndUnknownClassStatusKeepAllMaterials() {
         when(tags.resolveBizIdsFilter(anyString(), any(), any())).thenReturn(null);
         InventoryMaterial unclassified = new InventoryMaterial();
         unclassified.setMaterialId(1L);
@@ -486,7 +483,6 @@ class MaterialMasterDataTest {
         InventoryMaterial confirmed = new InventoryMaterial();
         confirmed.setMaterialId(3L); confirmed.setClassConfirmed(true);
         List<InventoryMaterial> all = List.of(unclassified, rule, confirmed);
-        assertTrue(all.stream().allMatch(m -> m.getOriginalName() == null));
         when(mapper.selectList(any())).thenReturn(all);
         var query = new MaterialQueryDTO();
         for (String classStatus : Arrays.asList(null, "", "bogus")) {
@@ -517,6 +513,44 @@ class MaterialMasterDataTest {
         verify(mapper).selectList(wrapper.capture());
         assertTrue(wrapper.getValue().getSqlSegment().contains("class_confirmed ="));
         assertFalse(wrapper.getValue().getSqlSegment().contains("original_name"));
+    }
+
+    @Test void retiredSourceFieldsDoNotAffectAuditOrUnclassifiedExport() throws Exception {
+        var pending = new InventoryMaterial(); pending.setMaterialId(1L); pending.setMaterialCode("UNCLASSIFIED");
+        pending.setMaterialName("当前名称"); pending.setIsCustomerSupplied(true);
+        pending.setRemark("【原名称】旧名【原规格】旧规格");
+        when(mapper.selectList(any())).thenReturn(List.of(pending));
+        var catalog = mock(com.jjx.inventory.master.MaterialMasterCatalog.class);
+        var master = mock(com.jjx.inventory.master.MaterialMasterService.class);
+        var audit = new com.jjx.inventory.master.MaterialMasterAuditService(mapper, catalog, master).inspect();
+        assertEquals(1, audit.total()); assertEquals(1, audit.pendingMigration()); assertEquals(0, audit.newModel());
+        assertEquals(1, audit.customerSuppliedCount()); assertEquals("未归类", audit.problems().get(0).reason());
+        assertEquals(new com.jjx.inventory.master.MaterialSourceValues(null, null), com.jjx.inventory.master.MaterialSourceValues.from(pending));
+        clearInvocations(mapper);
+        var excel = new com.jjx.inventory.master.MaterialMasterExcelService(catalog, master, mapper, new ObjectMapper(),
+                mock(com.jjx.inventory.classify.MaterialClassifyService.class));
+        try (var workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(excel.export(null)))) {
+            var sheet = workbook.getSheetAt(0); assertEquals(1, sheet.getLastRowNum());
+            var headers = java.util.stream.StreamSupport.stream(sheet.getRow(0).spliterator(), false).map(Object::toString).toList();
+            assertFalse(headers.contains("原名称")); assertFalse(headers.contains("原规格"));
+            assertEquals("当前名称", sheet.getRow(1).getCell(headers.indexOf("当前名称")).getStringCellValue());
+        }
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper).selectList(wrapper.capture());
+        assertFalse(wrapper.getValue().getSqlSegment().contains("original_"));
+        assertFalse(wrapper.getValue().getSqlSegment().contains("class_confirmed"));
+        assertEquals("【原名称】旧名【原规格】旧规格", pending.getRemark());
+    }
+
+    @Test void legacyUpdateCannotMoveNewModelMaterialToLegacyCategory() {
+        var existing = material(); existing.setMaterialId(12L); existing.setCategoryId(3L);
+        when(mapper.selectById(12L)).thenReturn(existing);
+        when(mapper.selectCategory(2L)).thenReturn(category());
+        when(mapper.selectCategory(3L)).thenReturn(Map.of("category_code", "RAW_BASE_PC", "parent_id", 4L));
+        when(mapper.selectCategory(4L)).thenReturn(Map.of("category_code", "RAW"));
+        var input = material(); input.setMaterialId(12L);
+        assertTrue(assertThrows(BusinessException.class, () -> service.update(input, List.of(), "codex")).getMessage().contains("新版物料保存入口"));
+        verify(mapper, never()).update(any(), any());
     }
 
 }

@@ -102,7 +102,6 @@ class MaterialMasterNamingDatabaseTest {
             tx.setRollbackOnly();
             // 仅在回滚事务内构造未归类及分类树拦截场景，不改持久数据。
             if (unclassified) jdbc.update("UPDATE inventory_material SET category_id=NULL WHERE material_id=?", id);
-            else jdbc.update("UPDATE inventory_material SET original_name=NULL WHERE material_id=?", id);
             Map<String, Object> before = row(id);
             var stockBefore = jdbc.queryForList("SELECT * FROM inventory_stock WHERE material_id=? ORDER BY stock_id", id);
             var batchesBefore = jdbc.queryForList("SELECT * FROM inventory_stock_item WHERE material_id=? ORDER BY item_id", id);
@@ -196,7 +195,7 @@ class MaterialMasterNamingDatabaseTest {
         new TransactionTemplate(manager).executeWithoutResult(tx -> {
             tx.setRollbackOnly();
             jdbc.update("UPDATE inventory_material SET category_id=NULL,specification='未归类历史规格' WHERE material_id=?", id);
-            var dto = new MaterialMasterDTO(); dto.setMaterialId(id); dto.setOriginalName("未归类保存");
+            var dto = new MaterialMasterDTO(); dto.setMaterialId(id); dto.setMaterialName("未归类保存");
             dto.setUnit((String) original.get("unit")); dto.setAttributeJson(Map.of());
             var saved = service.save(dto, "codex-test");
             assertNull(saved.getCategoryId());
@@ -219,7 +218,7 @@ class MaterialMasterNamingDatabaseTest {
                 tx.setRollbackOnly();
                 try {
                     String content = json.writeValueAsString(Map.of("materialId", id, "categoryId", original.get("category_id"),
-                            "originalName", "HTTP规格事务验证", "attributeJson", Map.of("thickness_mm", 0.5),
+                            "materialName", "HTTP规格事务验证", "originalName", "忽略旧字段", "originalSpecification", "忽略旧规格", "attributeJson", Map.of("thickness_mm", 0.5),
                             "size", "500", "specification", "外部伪造规格"));
                     var saved = mvc.perform(put("/inventory/material/master").contentType(MediaType.APPLICATION_JSON).content(content)).andReturn().getResponse();
                     assertEquals(200, saved.getStatus());
@@ -249,7 +248,7 @@ class MaterialMasterNamingDatabaseTest {
     private static MaterialMasterDTO form(Long id) {
         var dto = new MaterialMasterDTO(); dto.setMaterialId(id);
         dto.setCategoryId(((Number) row(id).get("category_id")).longValue());
-        dto.setOriginalName("规格事务测试"); dto.setAttributeJson(Map.of());
+        dto.setMaterialName("规格事务测试"); dto.setAttributeJson(Map.of());
         return dto;
     }
 

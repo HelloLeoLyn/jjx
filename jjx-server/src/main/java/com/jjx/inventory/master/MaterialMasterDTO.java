@@ -20,8 +20,7 @@ public class MaterialMasterDTO {
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private String widthSize;
 
-    private String originalName;
-    private String originalSpecification;
+    private String materialName;
     private String materialMeta;
     private String materialForm;
     private String model;

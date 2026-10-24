@@ -312,8 +312,6 @@ RETAINED_TABLES=(
   inventory_warehouse inventory_item
   # 物料必填矩阵（品类→字段，迁移 300）：基础配置，随分类保留，清掉会让导入/保存报缺列
   inventory_material_required_field
-  # 302 属性表已停用（目标模型 §5.4：表保留、标注废弃、代码不再读写），随退役卡处理，清库不碰
-  inventory_material_spec_attr_def inventory_material_spec_value
   product product_category product_config_model product_config_option
   sys_tag sys_tag_rel hr_employee hr_dept_mapping
   engineering_die engineering_screen_frame engineering_screen_plate

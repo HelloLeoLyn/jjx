@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("inventory_material")
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class InventoryMaterial extends BaseEntity {
 
     private static final long serialVersionUID = 1L;
@@ -50,8 +51,6 @@ public class InventoryMaterial extends BaseEntity {
     private String size;
 
     /** 新模型来源与标准字段；属性JSON是品类特有属性的唯一写入源。 */
-    private String originalName;
-    private String originalSpecification;
     private String materialMeta;
     private String materialForm;
     private String attributeJson;

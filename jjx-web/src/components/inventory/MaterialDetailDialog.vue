@@ -9,12 +9,7 @@
         <el-descriptions-item label="物料名称">{{
           text(material.materialName)
         }}</el-descriptions-item>
-        <el-descriptions-item label="原名称">{{
-          text(material.originalName)
-        }}</el-descriptions-item>
-        <el-descriptions-item label="原规格">{{
-          text(material.originalSpecification)
-        }}</el-descriptions-item>
+        <el-descriptions-item label="原文说明" :span="2">原文已归档至 Excel</el-descriptions-item>
         <el-descriptions-item label="品类">{{ categoryName }}</el-descriptions-item>
         <el-descriptions-item label="大类">{{ materialTypeText }}</el-descriptions-item>
         <el-descriptions-item label="材料">{{ text(material.materialGrade) }}</el-descriptions-item>

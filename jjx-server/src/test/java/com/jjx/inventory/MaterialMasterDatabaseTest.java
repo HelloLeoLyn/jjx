@@ -122,14 +122,14 @@ class MaterialMasterDatabaseTest {
         String code = "T002DB" + UUID.randomUUID().toString().replace("-", "");
         var dto = new MaterialMasterDTO();
         dto.setCategoryId(category("RAW_BASE_PC")); dto.setMaterialCode(code);
-        dto.setOriginalName("阶段6事务验证PC"); dto.setOriginalSpecification("来源300*305"); dto.setSize("300×305");
+        dto.setMaterialName("阶段6事务验证PC"); dto.setSize("300×305");
         dto.setAttributeJson(Map.of("thickness_mm", new BigDecimal("0.175"), "surface_treatment", List.of("MEDIUM_SAND", "HARD_COATED"), "anti_uv", false));
         var availableTags = tags.listTags("material_attribute", null, 1);
         List<Long> selectedTags = availableTags.isEmpty() ? List.of() : List.of(availableTags.get(0).getTagId());
         dto.setTagIds(selectedTags);
         InventoryMaterial saved = service.save(dto, "Codex-db-test");
         assertEquals(category("RAW_BASE_PC"), saved.getCategoryId()); assertEquals("PC", saved.getMaterialMeta()); assertEquals("FILM", saved.getMaterialForm());
-        assertEquals("来源300*305", saved.getOriginalSpecification()); assertFalse(service.detail(saved.getMaterialId()).attributes().get("anti_uv").equals(true));
+        assertNull(service.detail(saved.getMaterialId()).source().originalSpecification()); assertFalse(service.detail(saved.getMaterialId()).attributes().get("anti_uv").equals(true));
         assertEquals(selectedTags.size(), tags.getBizTags("inventory_material", saved.getMaterialId()).size());
         dto.setMaterialId(saved.getMaterialId()); dto.setModel("DB6842"); service.save(dto, "Codex-db-test");
         dto.setModel(null); assertNull(service.save(dto, "Codex-db-test").getModel());

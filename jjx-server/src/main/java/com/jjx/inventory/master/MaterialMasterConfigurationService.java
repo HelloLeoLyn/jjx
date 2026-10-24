@@ -70,7 +70,7 @@ public class MaterialMasterConfigurationService {
             entity.setCreateBy(operator);
         } else if (!Objects.equals(current.getCategoryCode(), dto.categoryCode())) fail("分类编码不能修改");
         entity.setCategoryName(dto.categoryName().trim()); entity.setParentId(dto.parentId());
-        entity.setCategoryLevel(parent.categoryLevel() + 1); entity.setMaterialType(parent.materialType());
+        entity.setCategoryLevel(parent.categoryLevel() + 1);
         String parentPath = categories.selectById(parent.categoryId()).getCategoryPath();
         entity.setCategoryPath((parentPath == null || parentPath.isBlank() ? parent.categoryCode() : parentPath) + "/" + entity.getCategoryCode());
         entity.setStatus((dto.status() == null ? StatusEnum.NORMAL.getCode() : dto.status()).toString());

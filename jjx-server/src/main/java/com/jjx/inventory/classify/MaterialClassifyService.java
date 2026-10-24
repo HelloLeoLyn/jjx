@@ -137,9 +137,8 @@ public class MaterialClassifyService {
         List<Change> changes = new ArrayList<>(); List<Item> failures = new ArrayList<>();
         for (var material : materials.selectList(new LambdaQueryWrapper<InventoryMaterial>()
                 .isNull(InventoryMaterial::getCategoryId).orderByAsc(InventoryMaterial::getMaterialId))) {
-            var source = MaterialSourceValues.from(material);
             Match match;
-            try { match = match(source.originalName(), source.originalSpecification(), candidates); }
+            try { match = match(material.getMaterialName(), material.getSpecification(), candidates); }
             catch (BusinessException e) { failures.add(new Item(material.getMaterialId(), false, e.getMessage())); continue; }
             if (match == null) continue;
             if (confirm) {
@@ -149,9 +148,8 @@ public class MaterialClassifyService {
                 if (current == null || current.getCategoryId() != null) {
                     failures.add(new Item(material.getMaterialId(), false, "物料已删除或已归类，未覆盖")); continue;
                 }
-                // 来源可能在预览后变化，实际写入前以锁定后的事实重新匹配。
-                var currentSource = MaterialSourceValues.from(current);
-                Match currentMatch = match(currentSource.originalName(), currentSource.originalSpecification(), candidates);
+                // 当前名称/规格可能在预览后变化，实际写入前以锁定后的事实重新匹配。
+                Match currentMatch = match(current.getMaterialName(), current.getSpecification(), candidates);
                 if (currentMatch == null || !currentMatch.equals(match) || !Objects.equals(currentConfig.template().getTemplateId(), match.templateId())) {
                     failures.add(new Item(material.getMaterialId(), false, "来源或模板已变化，请重新预览")); continue;
                 }

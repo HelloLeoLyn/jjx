@@ -57,8 +57,7 @@ class MaterialMasterMysqlTest {
 
     private void initialize() throws Exception {
         var existing = jdbc.queryForList("SHOW COLUMNS FROM inventory_material").stream().map(row -> row.get("Field").toString()).collect(java.util.stream.Collectors.toSet());
-        Map<String, String> additions = Map.of("original_name", "VARCHAR(200)", "original_specification", "VARCHAR(500)",
-                "material_meta", "VARCHAR(30)", "material_form", "VARCHAR(20)", "attribute_json", "JSON",
+        Map<String, String> additions = Map.of("material_meta", "VARCHAR(30)", "material_form", "VARCHAR(20)", "attribute_json", "JSON",
                 "is_customer_supplied", "TINYINT", "is_sample", "TINYINT",
                 "class_source", "VARCHAR(10)", "class_confirmed", "TINYINT NOT NULL DEFAULT 0");
         for (var entry : additions.entrySet()) if (!existing.contains(entry.getKey())) jdbc.execute("ALTER TABLE inventory_material ADD COLUMN " + entry.getKey() + " " + entry.getValue());
@@ -68,7 +67,7 @@ class MaterialMasterMysqlTest {
         for (String code : MaterialMasterCatalog.DICTIONARIES) jdbc.update("INSERT INTO sys_dict(dict_code,dict_name,dict_group,sort_order,is_active,deleted,tenant_id) VALUES (?,?,'inventory',0,1,0,1)",code,code);
         jdbc.execute("CREATE TEMPORARY TABLE inventory_transaction (material_id BIGINT) ENGINE=InnoDB");
         jdbc.execute("CREATE TEMPORARY TABLE inventory_attribute_template (template_id BIGINT AUTO_INCREMENT PRIMARY KEY,template_code VARCHAR(50),template_name VARCHAR(100),category_id BIGINT UNIQUE,attribute_schema JSON,status INT,create_by VARCHAR(64),update_by VARCHAR(64),create_time DATETIME,update_time DATETIME) ENGINE=InnoDB");
-        jdbc.update("INSERT INTO inventory_material_category(category_id,category_code,category_name,parent_id,category_level,status,material_type) VALUES (900001,'RAW','原材料',0,1,'1','R'),(900002,'RAW_BASE','基材',900001,2,'1','R'),(900003,'RAW_BASE_PC','PC膜/片',900002,3,'1','R'),(900004,'RAW_AUX','辅材',900001,2,'1','R'),(900005,'RAW_AUX_ELECTRONIC','电子元件',900004,3,'1','R')");
+        jdbc.update("INSERT INTO inventory_material_category(category_id,category_code,category_name,parent_id,category_level,status,category_path) VALUES (900001,'RAW','原材料',0,1,'1','RAW'),(900002,'RAW_BASE','基材',900001,2,'1','RAW/RAW_BASE'),(900003,'RAW_BASE_PC','PC膜/片',900002,3,'1','RAW/RAW_BASE/RAW_BASE_PC'),(900004,'RAW_AUX','辅材',900001,2,'1','RAW/RAW_AUX'),(900005,'RAW_AUX_ELECTRONIC','电子元件',900004,3,'1','RAW/RAW_AUX/RAW_AUX_ELECTRONIC')");
         String pc = """
                 {"version":1,"meta_options":["PC"],"default_meta":"PC","default_form":"FILM","default_unit":"M","fields":[
                 {"key":"thickness_mm","label":"厚度","type":"decimal","unit":"mm","min":0.0001,"max":1000,"precision":4,"required":true},
@@ -115,8 +114,8 @@ class MaterialMasterMysqlTest {
         jdbc.execute(ddl);
     }
     private MaterialMasterDTO pc(String name) {
-        var dto = new MaterialMasterDTO(); dto.setCategoryId(900003L); dto.setOriginalName(name);
-        dto.setOriginalSpecification("来源300*305"); dto.setSize("300×305"); dto.setAttributeJson(Map.of("thickness_mm", 0.175)); return dto;
+        var dto = new MaterialMasterDTO(); dto.setCategoryId(900003L); dto.setMaterialName(name);
+        dto.setSize("300×305"); dto.setAttributeJson(Map.of("thickness_mm", 0.175)); return dto;
     }
 
     @Test void clearsDerivedColumnsOnMasterEdit() throws Exception {
@@ -135,7 +134,7 @@ class MaterialMasterMysqlTest {
         assertThrows(BusinessException.class, () -> catalog.configuration(900002L));
         InventoryMaterial material = service.save(pc("测试来源PC"), "Codex-test");
         assertEquals(900003L, material.getCategoryId()); assertEquals("PC", material.getMaterialMeta()); assertEquals("FILM", material.getMaterialForm());
-        assertEquals("来源300*305", material.getOriginalSpecification()); assertEquals("厚度:0.175mm", material.getSpecification());
+        assertNull(com.jjx.inventory.master.MaterialSourceValues.from(material).originalSpecification()); assertEquals("厚度:0.175mm", material.getSpecification());
         assertNotNull(material.getTemplateId());
         assertEquals("0.175", material.getThickness()); assertEquals("300×305", material.getWidthSize());
         assertEquals("PC", jdbc.queryForObject("SELECT attr_meta FROM inventory_material WHERE material_id=?", String.class, material.getMaterialId()));
@@ -200,7 +199,7 @@ class MaterialMasterMysqlTest {
     @Test void migrationByIdRequiresEditPermissionAndPreservesCodeAndBusinessParameters() throws Exception {
         initialize();
         var old = service.save(pc("迁移前"),"Codex-test");
-        jdbc.update("UPDATE inventory_material SET original_name=NULL,attribute_json=NULL,class_confirmed=0,safe_stock=7,standard_price=1.25 WHERE material_id=?",old.getMaterialId());
+        jdbc.update("UPDATE inventory_material SET attribute_json=NULL,class_confirmed=0,safe_stock=7,standard_price=1.25 WHERE material_id=?",old.getMaterialId());
         MockMultipartFile migration;
         try (XSSFWorkbook workbook=new XSSFWorkbook(new ByteArrayInputStream(file(false).getBytes()))) {
             workbook.getSheetAt(0).getRow(2).createCell(15).setCellValue(old.getMaterialId().toString());
@@ -211,8 +210,8 @@ class MaterialMasterMysqlTest {
         assertEquals(0,rejected.successCount());assertTrue(rejected.errors().stream().anyMatch(e->e.contains("编辑权限")));
         assertEquals(2,excel.importExcel(migration,900003L,false,"Codex-test",true).successCount());
         assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material",Integer.class));
-        var row=jdbc.queryForMap("SELECT material_code,original_name,safe_stock,standard_price FROM inventory_material WHERE material_id=?",old.getMaterialId());
-        assertEquals(old.getMaterialCode(),row.get("material_code"));assertEquals("批量PC0",row.get("original_name"));
+        var row=jdbc.queryForMap("SELECT material_code,material_name,safe_stock,standard_price FROM inventory_material WHERE material_id=?",old.getMaterialId());
+        assertEquals(old.getMaterialCode(),row.get("material_code"));assertEquals("批量PC0",row.get("material_name"));
         assertEquals(0,new java.math.BigDecimal("7").compareTo((java.math.BigDecimal)row.get("safe_stock")));
         assertEquals(0,new java.math.BigDecimal("1.25").compareTo((java.math.BigDecimal)row.get("standard_price")));
     }

@@ -32,8 +32,6 @@ public class InventoryMaterialCategory extends BaseEntity {
     /** 父分类ID，0表示顶级分类 */
     private Long parentId;
 
-    /** 根节点派生的接入类型，不是可独立编辑的第二分类。 */
-    private String materialType;
 
     /** 层级：1一级/2二级/3三级 */
     private Integer categoryLevel;

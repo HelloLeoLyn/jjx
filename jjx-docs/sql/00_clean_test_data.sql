@@ -470,9 +470,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 --               inventory_item（统一库存物品主数据，由物料派生，与物料同级）
 --               sales_customer_address（客户收货地址簿，随客户档案保留；迁移 247，dev-20261008-029）
 -- 物料必填矩阵：inventory_material_required_field（品类→字段，迁移 300；基础配置，随分类保留）
--- 302 属性表（dev-20261023-022 方案）已停用：目标模型 §5.4「表保留、标注废弃、代码不再读写」，
---   当前 attr_def 27 行 / spec_value 0 行；退役另走迁移卡，清库脚本不删
---   inventory_material_spec_attr_def / inventory_material_spec_value
+-- 302 旧规格属性双表已由迁移309退役（dev-20261024-015），不再列入保留名单。
 -- 产品基础资料：product / product_category / product_config_model / product_config_option（v14 起保留）
 -- 标签：sys_tag / sys_tag_rel（v14 起保留）
 -- 人事基础档案：hr_employee（员工档案）/ hr_dept_mapping（导入部门映射）
