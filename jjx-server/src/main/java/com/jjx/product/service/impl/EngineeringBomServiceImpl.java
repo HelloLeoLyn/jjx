@@ -1632,6 +1632,23 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     clearApproval(item);
                 }
             }
+            case "UNLINK_MATERIAL" -> {
+                if (item.getMaterialId() == null) {
+                    throw new BusinessException("该行尚未关联物料，无需解除");
+                }
+                // 解除关联必须受控落定：updateById 会跳过 null，这里显式置空并回读
+                LambdaUpdateWrapper<EngineeringBomItem> clearLink = new LambdaUpdateWrapper<>();
+                clearLink.eq(EngineeringBomItem::getItemId, item.getItemId())
+                        .set(EngineeringBomItem::getMaterialId, null)
+                        .set(EngineeringBomItem::getMaterialCode, null);
+                productBomItemMapper.update(null, clearLink);
+                item.setMaterialId(null);
+                item.setMaterialCode(null);
+                if (from == ProductEnums.BomItemReviewStatus.APPROVED) {
+                    item.setReviewStatus(ProductEnums.BomItemReviewStatus.PENDING.getValue());
+                    clearApproval(item);
+                }
+            }
             default -> throw new BusinessException("未支持的审核动作：" + dto.getAction());
         }
         productBomItemMapper.updateById(item);
@@ -1709,6 +1726,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             case "REJECT" -> "行审核驳回";
             case "CONFIRM_REMOVE" -> "确认移除";
             case "LINK_MATERIAL" -> "关联物料";
+            case "UNLINK_MATERIAL" -> "解除关联物料";
             default -> action;
         };
     }

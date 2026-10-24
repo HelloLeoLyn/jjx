@@ -93,7 +93,7 @@ export interface EngineeringBomItem {
 /** BOM 明细行级审核请求（dev-20261020-029） */
 export interface BomItemReviewRequest {
   itemId: number
-  action: 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE' | 'LINK_MATERIAL'
+  action: 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE' | 'LINK_MATERIAL' | 'UNLINK_MATERIAL'
   remark?: string
   materialId?: number
 }

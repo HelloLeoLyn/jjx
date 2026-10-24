@@ -84,7 +84,21 @@
             <el-tag v-if="hasMaterial(row)" type="success" size="small">
               {{ row.materialCode || '已关联' }}
             </el-tag>
-            <el-tag v-else type="warning" size="small">未关联</el-tag>
+            <el-button
+              v-if="
+                hasMaterial(row) &&
+                canOperate &&
+                !batchBusy &&
+                busyItemId == null &&
+                rowStatus(row) !== BomItemReviewStatusEnum.PENDING_REMOVE.value
+              "
+              link
+              type="danger"
+              :loading="busyItemId === row.itemId"
+              @click="emit('unlink', row)"
+              >解除关联</el-button
+            >
+            <el-tag v-else-if="!hasMaterial(row)" type="warning" size="small">未关联</el-tag>
           </div>
         </template>
       </el-table-column>
@@ -201,6 +215,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'batch-approve', itemIds: number[]): void
   (e: 'link', row: EngineeringBomItem, material: InventoryMaterial): void
+  (e: 'unlink', row: EngineeringBomItem): void
   (e: 'create', row: EngineeringBomItem, keyword: string): void
   (e: 'review', row: EngineeringBomItem, action: 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE'): void
 }>()

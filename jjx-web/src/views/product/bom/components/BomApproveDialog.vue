@@ -28,6 +28,7 @@
       @batch-approve="handleBatchApprove"
       @review="handleRowReview"
       @link="handleLinkMaterial"
+      @unlink="handleUnlinkMaterial"
       @create="handleCreateMaterial"
     />
 
@@ -360,6 +361,23 @@ const handleLinkMaterial = async (row: EngineeringBomItem, material: InventoryMa
   } catch (error: any) {
     console.error('关联物料失败:', error)
     ElMessage.error(error?.message || '关联物料失败')
+  } finally {
+    busyItemId.value = undefined
+  }
+}
+
+// 解除关联：受控落定后以接口回读为准，不拿前端临时覆盖冒充已保存
+const handleUnlinkMaterial = async (row: EngineeringBomItem) => {
+  if (!row.itemId) return
+  busyItemId.value = row.itemId
+  try {
+    await productBomApi.reviewBomItem({ itemId: row.itemId, action: 'UNLINK_MATERIAL' })
+    ElMessage.success('已解除物料关联，该行需重新关联后才能通过')
+    await loadBomDetail()
+  } catch (error: any) {
+    console.error('解除关联失败:', error)
+    ElMessage.error(error?.message || '解除关联失败')
+    await loadBomDetail()
   } finally {
     busyItemId.value = undefined
   }
