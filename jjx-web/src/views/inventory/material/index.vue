@@ -71,6 +71,8 @@
           width="200"
           show-overflow-tooltip
         /> -->
+        <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
+        <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ categoryNameOf(row) }}</template>
         </el-table-column>
@@ -107,9 +109,9 @@
         >
         <el-table-column label="单位" prop="unit" width="80" align="center" />
         <el-table-column label="安全库存" prop="safeStock" width="100" align="right" />
-        <el-table-column label="标准单价" prop="standardPrice" width="120" align="right">
+        <!-- <el-table-column label="标准单价" prop="standardPrice" width="120" align="right">
           <template #default="{ row }"> ¥ {{ formatCurrency(row.standardPrice) }} </template>
-        </el-table-column>
+        </el-table-column> -->
         <el-table-column label="供应商" prop="supplierName" width="200" />
         <el-table-column label="状态" prop="status" width="80" align="center">
           <template #default="{ row }">
@@ -134,8 +136,7 @@
             <span v-if="!row.tags?.length">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
-        <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
+
         <el-table-column label="归类状态" width="150" align="center">
           <template #default="{ row }">
             <el-tag
