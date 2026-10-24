@@ -104,6 +104,10 @@ export interface InventoryMaterial {
   shelfLife?: number
   expiryAlertDays: number
   status: string
+  /** 归类来源：RULE/MANUAL/IMPORT，NULL=未归类（后端 MaterialVO，dev-20261024-004 阶段三） */
+  classSource?: string | null
+  /** 是否人工确认归类 */
+  classConfirmed?: boolean | null
   remark?: string
   createTime?: string
   updateTime?: string
@@ -131,6 +135,8 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   model?: string
   color?: string
   brand?: string
+  /** 归类三态：unclassified / rule_unconfirmed / confirmed */
+  classStatus?: string
   status?: string
   batchControl?: boolean
   supplierId?: number

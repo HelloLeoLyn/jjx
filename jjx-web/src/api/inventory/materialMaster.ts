@@ -25,11 +25,11 @@ export const materialMasterApi = {
       : request.post<R<MaterialMasterRecord>>(base, data),
   downloadTemplate: (categoryId: number) =>
     request.get<Blob>(`${base}/import-template`, { params: { categoryId }, responseType: 'blob' }),
-  importExcel: (file: File, categoryId: number, preview: boolean) => {
+  importExcel: (file: File, categoryId: number | undefined, preview: boolean, autoClassify = false) => {
     const data = new FormData()
     data.append('file', file)
     return request.post<R<MaterialImportResult>>(`${base}/import`, data, {
-      params: { categoryId, preview },
+      params: { categoryId, preview, autoClassify },
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },

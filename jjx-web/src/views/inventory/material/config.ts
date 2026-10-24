@@ -1,6 +1,7 @@
 // views/inventory/material/config.ts
 import type { SearchOptions, ToolbarOptions, TableOptions } from '@/components/common-ui/type'
 import { MaterialRootTypeEnum, MaterialStatusEnum } from '@/enums/inventory/MaterialEnum'
+import { MaterialClassStatusEnum } from '@/enums/inventory/MaterialClassEnum'
 
 // 搜索配置
 export const searchOptions: SearchOptions[] = [
@@ -25,6 +26,12 @@ export const searchOptions: SearchOptions[] = [
     label: '物料材质',
     type: 'select',
     options: [],
+  },
+  {
+    prop: 'classStatus',
+    label: '归类状态',
+    type: 'select',
+    options: MaterialClassStatusEnum.items.map((item) => ({ value: item.value, label: item.label })),
   },
   {
     prop: 'categoryId',
@@ -110,6 +117,13 @@ export const toolbarOptions: ToolbarOptions[] = [
     type: 'primary',
     icon: 'Plus',
     permission: 'inventory:material:add',
+  },
+  {
+    key: 'classify-rules',
+    label: '归类规则',
+    type: 'info',
+    icon: 'SetUp',
+    permission: 'inventory:material:edit',
   },
   {
     key: 'master-settings',
