@@ -112,8 +112,8 @@
           </div>
         </template>
       </el-table-column>
-      <!-- 规格型号 -->
-      <el-table-column label="规格型号" prop="specification" width="100">
+      <!-- 规格型号（dev-20261024-023：默认取物料系统生成值，可手改，可恢复） -->
+      <el-table-column label="规格型号" prop="specification" width="150">
         <template #default="scope">
           <el-input
             v-model="scope.row.specification"
@@ -121,6 +121,12 @@
             size="small"
             maxlength="500"
           />
+          <div v-if="isManualSpec(scope.row)" class="spec-manual">
+            <el-tag size="small" type="warning">已改写</el-tag>
+            <el-button link type="primary" size="small" @click="restoreAutoSpec(scope.row)">
+              恢复系统生成
+            </el-button>
+          </div>
         </template>
       </el-table-column>
       <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数） -->
@@ -304,6 +310,7 @@ import type { EngineeringBomItem, BomMaterialMatchItem } from '@/types/product/b
 import { BomItemReviewStatusEnum } from '@/enums/product'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import { bomGroupRows } from '@/utils/bomGroups'
+import { autoSpecOf, isManualSpec, specFollowValue } from './bomSpecMode'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import StandardProcessSelector from '@/components/Selector/StandardProcessSelector.vue'
@@ -572,11 +579,26 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   row.materialId = material.materialId || 0
   row.materialCode = material.materialCode
   row.materialName = material.materialName
-  row.specification = material.specification || ''
+  // dev-20261024-023：选料带入系统生成规格；物料无规格时保留原手填值，不用空串覆盖
+  const autoSpec = (material.specification || '').trim()
+  row.materialSpecification = autoSpec
+  if (autoSpec) row.specification = autoSpec
   row.unit = material.unit || 'PCS'
   row.materialType = material.rootType || undefined
   row.create = false
   recalcAppliedIssue(row)
+}
+
+/** 规格跟随系统生成：仅空值补齐；人工改写不覆盖（dev-20261024-023） */
+function followAutoSpec(row: EngineeringBomItem) {
+  const next = specFollowValue(row)
+  if (next !== null) row.specification = next
+}
+
+/** 恢复为物料当前系统生成规格（dev-20261024-023） */
+function restoreAutoSpec(row: EngineeringBomItem) {
+  const auto = autoSpecOf(row)
+  if (auto) row.specification = auto
 }
 
 /**
@@ -634,6 +656,8 @@ watch(
       walkTree(items.value, matchProjectByName)
       // 初始化也先按当前基数/模数重算用量，再计算应用料。
       walkTree(items.value, recalcAppliedIssue)
+      // dev-20261024-023：规格为空的行自动跟随物料系统规格；人工改写不覆盖
+      walkTree(items.value, followAutoSpec)
     }
   },
   { immediate: true, deep: true }
@@ -1321,5 +1345,13 @@ defineExpose({
 .reject-icon {
   color: var(--el-color-danger);
   cursor: help;
+}
+
+/* dev-20261024-023：规格型号「已改写」标记 + 恢复入口 */
+.spec-manual {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
 }
 </style>

@@ -942,6 +942,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     try {
                         com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectById(it.getMaterialId());
                         it.setMaterialType(mat == null ? null : inventoryMaterialMapper.materialTypeOf(mat.getCategoryId()));
+                        // dev-20261024-023：带出物料当前系统生成规格，供前端判定「系统生成 / 人工改写」
+                        it.setMaterialSpecification(mat == null ? null : mat.getSpecification());
                     } catch (Exception ignored) { }
                 }
             }

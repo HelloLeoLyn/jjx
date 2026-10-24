@@ -73,6 +73,8 @@ export interface EngineeringBomItem {
   actualIssueQty?: number
   /** 物料类型（R=板材/卷材） */
   materialType?: string
+  /** 物料主数据当前的系统生成规格（查询带出，不落库；dev-20261024-023） */
+  materialSpecification?: string
   lossRate: number
   remark?: string
   sortOrder: number

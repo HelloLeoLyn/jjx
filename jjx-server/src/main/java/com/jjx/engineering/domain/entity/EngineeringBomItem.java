@@ -226,6 +226,12 @@ public class EngineeringBomItem {
     private String materialType;
 
     /**
+     * 物料主数据当前的系统生成规格（dev-20261024-023：查询时带出，仅用于前端判定"系统/手改"，不落库）
+     */
+    @TableField(exist = false)
+    private String materialSpecification;
+
+    /**
      * 实际用量（非数据库字段，通过 quantity * (1 + lossRate/100) 计算）
      */
     @TableField(exist = false)
