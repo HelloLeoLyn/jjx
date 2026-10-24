@@ -356,3 +356,599 @@ openpyxl 回读实际 Excel：566 条业务行、7 列，编码/当前名称/原
 开工 preflight 因 006 的 305 待执行迁移报红，本轮按用户只读阶段授权继续，不执行该迁移。mvn/vue-tsc 未跑（无 Java/前端改动）；业务写入、007 新字段、模板回填与真实库回填回滚未验证，属于后续应用阶段。
 
 需要人工优先复核 757 条（未归类/medium/low/属性冲突并集），其中未归类 566；RAW_INK、SEMI、FINISHED 与两个 OTHER 叶子本轮零命中。建议先补齐纯型号与灯/光学胶等描述的人工归类规则，保持当前分类树，等 007 后由用户确认再应用。
+
+## 阶段二：正式分类与属性回填（2026-10-24）
+
+执行者：codex。用户明确授权本轮批量 UPDATE；执行完成后提交待审核，执行者自查不替代独立验收。
+仅新增 `scripts/material-reclassify-apply.py` 并追加本报表；阶段一脚本、007/004 文件、备份未修改或暂存。沿用已有 INDEX 登记。
+
+### 备份与应用护栏
+
+用户手工备份：`jjx-docs/sql/backups/jjx_erp_db_backup_20261024-1143.sql`，133 表，排除 hr_employee。
+SHA-256：`c135680fa7dbf797dd881ece796eb801e21c559cde8df2d2191a9af17ae19332`。
+备份中的物料结构尚无306新增列；独立逐条对照时，template_id/thickness/width_size 按306定义的初始NULL处理，其余业务字段直接与备份比较。未恢复备份、未创建新备份、未创建迁移、未启停服务。
+
+脚本直接加载阶段一模块、调用 classify/summary；分类及厚宽/材质/颜色/型号/品牌提取不复制规则。五列排序摘要仍为 `af15c9cbfb616f6b02f70beaa615fc75b62d17ddd75912eae9a187d27ee4843a`；逐类数量、1041命中/566未归类均与阶段一相同。
+先 dry-run 生成源数据/配置/目标三重摘要；apply 必须匹配计划。每批先锁定、复核分类/模板/字典，再 SELECT FOR UPDATE 逐列核对主键、编码、原事实与人工字段；每行UPDATE影响数必须1，写后全列核验才COMMIT。异常回滚当前批，不自动重试；已提交批次不自动回滚，修复后需重新 dry-run 再续跑。
+
+写列限于分类、模板、属性及客供/样品标记，加 update_by/update_time 审计列；生成列只核对、不直接更新。material_type 不在写入白名单，分类不读取它；全行读取仅为防护和前后比较。任务开工前已核实 status=1/assignee_name=codex/start_time 非空。
+
+### 属性口径
+
+厚度、宽度写阶段一提取原样串（乘号沿用阶段一归一）。无单位数字不补单位，C/#/T/g不猜成mm。模板 thickness_mm 仅由明确mm/um/μm/µm/cm及中文同义单位换算，并校验范围、精度；无单位0.175写主列thickness=0.175，JSON不猜单位。
+其他模板字段仅认原事实中明确的模板枚举标签/布尔标记；重叠标签认最长项，单选多值冲突留空、多选保留明确项；遵守visible_when。缺失字符串、数值、必填属性留空，不套默认值，不填OTHER，不把未知布尔补false。历史回填的必填缺口需人工补全后再走正常保存校验。
+
+材质复用阶段一提取值，映射有效字典代码并限制在meta_options（硅胶→SILICONE、铝→AL、铜→CU、不锈钢→STEEL）；无依据/不在候选中留空。形态仅认原事实中的字面字典标签，多个形态冲突留空，不按模板默认值猜测。
+attribute_json自定义键仅来自模板fields；另沿用既有MaterialMasterService保存契约的material材质镜像，供attr_meta生成列使用。color/brand经字典归一比较，model按原串；所有非空现值均保留，缺少提取值/字典候选时不填。
+客供关键词为名称/备注中的“客供/客户供料/客户提供”，样品为“样品”；只置1。566条未归类不写分类、模板和属性，其中42条仅置标记。
+
+### 分类分布对比
+
+| 分类码 | 回填前 | 阶段一目标 | 回填后 |
+| --- | --- | --- | --- |
+| RAW_BASE_PC | 1 | 165 | 165 |
+| RAW_BASE_PET | 0 | 194 | 194 |
+| RAW_BASE_PVC | 0 | 7 | 7 |
+| RAW_BASE_PMMA | 0 | 32 | 32 |
+| RAW_BASE_OTHER | 0 | 0 | 0 |
+| RAW_AUX_PROTECT | 0 | 116 | 116 |
+| RAW_AUX_RELEASE | 0 | 78 | 78 |
+| RAW_AUX_TAPE | 0 | 205 | 205 |
+| RAW_AUX_FOAM | 0 | 24 | 24 |
+| RAW_AUX_FOIL | 0 | 11 | 11 |
+| RAW_AUX_OPTICAL | 0 | 9 | 9 |
+| RAW_AUX_ELECTRONIC | 0 | 200 | 200 |
+| RAW_AUX_OTHER | 0 | 0 | 0 |
+| RAW_INK | 0 | 0 | 0 |
+| SEMI | 0 | 0 | 0 |
+| FINISHED | 0 | 0 | 0 |
+| 未归类 | 1606 | 566 | 566 |
+
+实际更新1083行：1041行分类属性＋42行未归类仅标记；6批200/200/200/200/200/83。客供25、样品27（全量标记，可重叠）。RM001623按规则由PC分类/材质改为PET，模板2；TRANSPARENT颜色、125型号原样保留，形态无事实依据留空。
+
+### 属性填充率
+
+| 指标 | 回填前 | 回填后 | 占全量1607 | 占已归类1041 |
+| --- | --- | --- | --- | --- |
+| JSON非NULL（含空对象） | 1 | 1041 | 64.78% | 100.00% |
+| JSON有实际内容 | 0 | 762 | 47.42% | 73.20% |
+| JSON含模板自定义字段（剔除材质镜像） | 0 | 499 | 31.05% | 47.93% |
+| 厚度 | 0 | 344 | 21.41% | 33.05% |
+| 宽度 | 0 | 840 | 52.27% | 80.69% |
+| 材质 | 1 | 526 | 32.73% | 50.53% |
+| 形态 | 1 | 334 | 20.78% | 32.08% |
+
+模板绑定0→1041；template_id空值1607→566，仅属于未归类。JSON非NULL1041，其中762个有内容、279个空对象；499条有模板自定义属性。其余未知属性如实留空。
+
+### 串行验证、真实退出码
+
+凭据由MYSQL_PWD环境变量传入，工作目录 `/home/administrator/jjx`。
+
+| 命令/核对 | 退出码 | 实际结果 |
+| --- | --- | --- |
+| `python3 scripts/material-reclassify-apply.py --dry-run` | 0 | 1041/566与阶段一逐类一致；计划1083行 |
+| `python3 scripts/material-reclassify-apply.py --rollback-check` | 0 | 首批200条真实UPDATE后ROLLBACK；全量54列恢复原值 |
+| `python3 scripts/material-reclassify-apply.py --apply` 第一次 | 0 | 六批1083行；全列核验通过 |
+| `python3 scripts/material-reclassify-apply.py --apply` 第二次 | 0 | 更新0行、提交0批，数据和审计时间均未改动 |
+| 下列校验SQL（mysql） | 0 | 分类空566/模板空566/错绑0/臆造0/模板外键0 |
+| 备份逐条对照＋既有Excel编码集合（临时只读脚本） | 0 | material_type全1607条相等，566集合相等，435项冲突保留 |
+| 脚本语法/SQL字面量/写列白名单/单位反例断言 | 0 | 175um可换算0.175mm；无单位0.175及125#不猜mm |
+
+预应用排错记录：初次dry-run误按分类启用代码0过滤，退出1且未写库；对照真实库、StatusEnum.NORMAL=1修正。初次rollback-check漏投影生成列，退出1并回滚当前批；查库仍1607/分类空1606/模板空1607，补齐预期后重跑退出0。独立备份核对初次因备份没有306新增列退出1（只读）；按迁移初始NULL处理后退出0。失败记录不当作成功。
+
+校验SQL原文：
+
+```sql
+START TRANSACTION READ ONLY;
+SELECT COUNT(*) AS total,SUM(category_id IS NULL) AS category_null,
+ SUM(template_id IS NULL) AS template_null,
+ SUM(category_id IS NOT NULL AND template_id IS NULL) AS classified_template_missing,
+ SUM(category_id IS NULL AND template_id IS NOT NULL) AS unclassified_template_present,
+ SUM(attribute_json IS NOT NULL) AS json_present,
+ SUM(COALESCE(JSON_LENGTH(attribute_json),0)>0) AS json_nonempty,
+ SUM(NULLIF(thickness,'') IS NOT NULL) AS thickness_nonempty,
+ SUM(NULLIF(width_size,'') IS NOT NULL) AS width_nonempty,
+ SUM(NULLIF(material_meta,'') IS NOT NULL) AS material_meta_nonempty,
+ SUM(NULLIF(material_form,'') IS NOT NULL) AS material_form_nonempty,
+ SUM(is_customer_supplied) AS customer_supplied,SUM(is_sample) AS sample
+FROM inventory_material;
+SELECT c.category_code,COUNT(*) AS materials FROM inventory_material m
+ LEFT JOIN inventory_material_category c ON c.category_id=m.category_id
+ GROUP BY c.category_code ORDER BY c.category_code;
+SELECT COUNT(*) AS template_category_mismatch FROM inventory_material m
+ JOIN inventory_attribute_template t ON t.template_id=m.template_id
+ WHERE m.category_id<>t.category_id;
+SELECT COUNT(*) AS unclassified_with_invented_values FROM inventory_material
+ WHERE category_id IS NULL AND (template_id IS NOT NULL OR attribute_json IS NOT NULL
+ OR NULLIF(thickness,'') IS NOT NULL OR NULLIF(width_size,'') IS NOT NULL
+ OR NULLIF(material_meta,'') IS NOT NULL OR NULLIF(material_form,'') IS NOT NULL);
+SELECT COUNT(*) AS unknown_template_keys FROM inventory_material m
+ JOIN inventory_attribute_template t ON t.template_id=m.template_id
+ JOIN JSON_TABLE(JSON_KEYS(m.attribute_json),'$[*]' COLUMNS (attr_key VARCHAR(50) PATH '$')) k
+ WHERE k.attr_key<>'material' AND NOT JSON_CONTAINS(JSON_EXTRACT(t.attribute_schema,'$.fields[*].key'),JSON_QUOTE(k.attr_key));
+SELECT material_type,COUNT(*) AS material_count FROM inventory_material GROUP BY material_type;
+SELECT material_code,c.category_code,template_id,thickness,width_size,material_meta,material_form,color,model,brand,attribute_json
+ FROM inventory_material m LEFT JOIN inventory_material_category c ON c.category_id=m.category_id
+ WHERE material_code IN ('RM000006','RM000473','RM001482','AUX000786','RM001623') ORDER BY material_code;
+COMMIT;
+```
+
+独立核对结果：
+
+```json
+{
+  "verified": true,
+  "total": 1607,
+  "unclassified_exact_set": 566,
+  "unclassified_excel_exact_set": 566,
+  "unclassified_classification_attribute_changes": 0,
+  "preserved_existing": {
+    "model": 1596,
+    "brand": 764,
+    "color": 349
+  },
+  "conflicts_preserved": 435,
+  "material_type": {
+    "A": 780,
+    "R": 827
+  },
+  "before_type_sha": "cb8bad7a7884d3a83ece992f7822ff9156f06c99d1f5a1e50c6b9c64778d7470",
+  "after_type_sha": "cb8bad7a7884d3a83ece992f7822ff9156f06c99d1f5a1e50c6b9c64778d7470",
+  "flags_match_keywords": true,
+  "mysql_exit_code": 0
+}
+```
+
+原非空color349/model1596/brand764均逐条与用户备份相等；material_type仍为A780/R827，编码—类型排序JSON的SHA-256前后相同（见上），不按新分类改写旧类型。
+反例：RM000473（T4901PET保护膜）落RAW_AUX_PROTECT/template6/PET；RM000006为PC、厚度0.175、宽度300×305；AUX000786（DP-025TA）与RM001482（F150）仍分类/模板/属性NULL，不用型号或冻结编码硬判。
+566条未归类的分类、模板、厚宽、材质、形态、颜色、型号、品牌逐条与回填前相等；仅42条命中关键词置标记。
+未归类清单：`/home/administrator/物料未归类清单_20261024.xlsx`（沿用阶段一，未改写、不入git）；openpyxl回读566行，编码集合与真实库category_id IS NULL完全相等。
+
+### 人工字段冲突清单（全部保留现值）
+
+435项、429条物料：color0/model242/brand193。区别于阶段一3条“提取候选自身冲突”；本清单是已有人工值与唯一提取值的差异，已逐项与应用后真实库核对。
+
+| 物料编码 | 字段 | 保留现值 | 提取值（未覆盖） |
+| --- | --- | --- | --- |
+| AUX000595 | brand | 閩盛 | 3M |
+| AUX000596 | brand | 鑫旺达 | 3M |
+| AUX000598 | brand | 诚田佳 | 3M |
+| AUX000599 | brand | 伟壹昊 | 3M |
+| AUX000600 | brand | 鑫旺达 | 3M |
+| AUX000601 | brand | 閩盛 | 3M |
+| AUX000604 | brand | 万绰 | 3M |
+| AUX000605 | brand | 万绰 | 3M |
+| AUX000606 | brand | 万绰 | 3M |
+| AUX000607 | brand | 万绰 | 3M |
+| AUX000608 | brand | 鑫旺达 | 3M |
+| AUX000609 | model | 3M9469 | 3M9469PC |
+| AUX000609 | brand | 万绰 | 3M |
+| AUX000610 | model | 3M9469 | 3M9469PC |
+| AUX000610 | brand | 万绰 | 3M |
+| AUX000611 | brand | 伟壹昊 | 3M |
+| AUX000612 | brand | 伟壹昊 | 3M |
+| AUX000613 | brand | 伟壹昊 | 3M |
+| AUX000614 | brand | 伟壹昊 | 3M |
+| AUX000615 | model | 3M9473 | 3M9473PC |
+| AUX000615 | brand | 闽盛 | 3M |
+| AUX000616 | model | 3M9473 | 3M9473PC |
+| AUX000616 | brand | 鑫旺达 | 3M |
+| AUX000617 | brand | 閩盛 | 3M |
+| AUX000618 | brand | 閩盛 | 3M |
+| AUX000619 | brand | 閩盛 | 3M |
+| AUX000620 | brand | 万绰 | 3M |
+| AUX000621 | brand | 万绰 | 3M |
+| AUX000622 | brand | 万绰 | 3M |
+| AUX000623 | brand | 万绰 | 3M |
+| AUX000624 | brand | 万绰 | 3M |
+| AUX000625 | brand | 万绰 | 3M |
+| AUX000626 | brand | 万绰 | 3M |
+| AUX000628 | brand | 鑫旺达 | 3M |
+| AUX000629 | brand | 伟壹昊 | 3M |
+| AUX000630 | brand | 伟壹昊 | 3M |
+| AUX000631 | brand | 伟壹昊 | 3M |
+| AUX000632 | brand | 鑫旺达 | 3M |
+| AUX000633 | brand | 伟壹昊 | 3M |
+| AUX000634 | brand | 鑫旺达 | 3M |
+| AUX000635 | brand | 伟壹昊 | 3M |
+| AUX000636 | brand | 伟壹昊 | 3M |
+| AUX000637 | brand | 常疆 | 3M |
+| AUX000638 | brand | 万绰 | 3M |
+| AUX000639 | brand | 万绰 | 3M |
+| AUX000640 | brand | 万绰 | 3M |
+| AUX000641 | brand | 万绰 | 3M |
+| AUX000642 | brand | 万绰 | 3M |
+| AUX000643 | brand | 万绰 | 3M |
+| AUX000644 | brand | 万绰 | 3M |
+| AUX000645 | brand | 万绰 | 3M |
+| AUX000646 | brand | 万绰 | 3M |
+| AUX000647 | brand | 万绰 | 3M |
+| AUX000648 | brand | 万绰 | 3M |
+| AUX000649 | brand | 万绰 | 3M |
+| AUX000650 | brand | 万绰 | 3M |
+| AUX000651 | brand | 万绰 | 3M |
+| AUX000652 | brand | 万绰 | 3M |
+| AUX000653 | brand | 万绰 | 3M |
+| AUX000654 | brand | 万绰 | 3M |
+| AUX000655 | brand | 万绰 | 3M |
+| AUX000656 | brand | 万绰 | 3M |
+| AUX000657 | brand | 万绰 | 3M |
+| AUX000658 | brand | 万绰 | 3M |
+| AUX000659 | brand | 万绰 | 3M |
+| AUX000660 | brand | 万绰 | 3M |
+| AUX000661 | brand | 万绰 | 3M |
+| AUX000662 | brand | 万绰 | 3M |
+| AUX000663 | brand | 万绰 | 3M |
+| AUX000664 | brand | 万绰 | 3M |
+| AUX000665 | brand | 万绰 | 3M |
+| AUX000666 | brand | 万绰 | 3M |
+| AUX000667 | brand | 万绰 | 3M |
+| AUX000668 | brand | 万绰 | 3M |
+| AUX000669 | brand | 万绰 | 3M |
+| AUX000670 | brand | 万绰 | 3M |
+| AUX000671 | brand | 万绰 | 3M |
+| AUX000672 | brand | 万绰 | 3M |
+| AUX000673 | brand | 万绰 | 3M |
+| AUX000674 | brand | 万绰 | 3M |
+| AUX000675 | brand | 万绰 | 3M |
+| AUX000676 | brand | 万绰 | 3M |
+| AUX000677 | brand | 万绰 | 3M |
+| AUX000678 | brand | 万绰 | 3M |
+| AUX000679 | brand | 万绰 | 3M |
+| AUX000680 | brand | 万绰 | 3M |
+| AUX000681 | brand | 万绰 | 3M |
+| AUX000682 | brand | 万绰 | 3M |
+| AUX000683 | brand | 万绰 | 3M |
+| AUX000684 | brand | 万绰 | 3M |
+| AUX000685 | brand | 万绰 | 3M |
+| AUX000686 | brand | 万绰 | 3M |
+| AUX000687 | brand | 万绰 | 3M |
+| AUX000688 | brand | 万绰 | 3M |
+| AUX000689 | brand | 万绰 | 3M |
+| AUX000690 | brand | 万绰 | 3M |
+| AUX000691 | brand | 万绰 | 3M |
+| AUX000692 | brand | 万绰 | 3M |
+| AUX000693 | brand | 万绰 | 3M |
+| AUX000694 | brand | 万绰 | 3M |
+| AUX000695 | brand | 万绰 | 3M |
+| AUX000696 | brand | 万绰 | 3M |
+| AUX000697 | brand | 万绰 | 3M |
+| AUX000698 | brand | 万绰 | 3M |
+| AUX000699 | brand | 万绰 | 3M |
+| AUX000700 | brand | 万绰 | 3M |
+| AUX000701 | brand | 万绰 | 3M |
+| AUX000702 | brand | 万绰 | 3M |
+| AUX000703 | brand | 万绰 | 3M |
+| AUX000704 | brand | 万绰 | 3M |
+| AUX000705 | brand | 万绰 | 3M |
+| AUX000706 | brand | 万绰 | 3M |
+| AUX000707 | brand | 万绰 | 3M |
+| AUX000708 | brand | 万绰 | 3M |
+| AUX000709 | brand | 万绰 | 3M |
+| AUX000710 | brand | 万绰 | 3M |
+| AUX000711 | brand | 万绰 | 3M |
+| AUX000712 | brand | 万绰 | 3M |
+| AUX000713 | brand | 万绰 | 3M |
+| AUX000714 | brand | 万绰 | 3M |
+| AUX000715 | brand | 万绰 | 3M |
+| AUX000716 | brand | 万绰 | 3M |
+| AUX000717 | brand | 万绰 | 3M |
+| AUX000718 | brand | 万绰 | 3M |
+| AUX000719 | brand | 万绰 | 3M |
+| AUX000720 | brand | 万绰 | 3M |
+| AUX000721 | brand | 万绰 | 3M |
+| AUX000722 | brand | 万绰 | 3M |
+| AUX000723 | brand | 万绰 | 3M |
+| AUX000724 | brand | 万绰 | 3M |
+| AUX000725 | brand | 万绰 | 3M |
+| AUX000726 | brand | 万绰 | 3M |
+| AUX000727 | brand | 万绰 | 3M |
+| AUX000728 | brand | 万绰 | 3M |
+| AUX000729 | brand | 万绰 | 3M |
+| AUX000730 | brand | 万绰 | 3M |
+| AUX000731 | brand | 万绰 | 3M |
+| AUX000732 | brand | 万绰 | 3M |
+| AUX000733 | brand | 伟壹昊 | 3M |
+| AUX000734 | brand | 伟壹昊 | 3M |
+| AUX000735 | brand | 伟壹昊 | 3M |
+| AUX000736 | brand | 伟壹昊 | 3M |
+| AUX000737 | brand | 伟壹昊 | 3M |
+| AUX000738 | brand | 万绰 | 3M |
+| AUX000739 | brand | 万绰 | 3M |
+| AUX000740 | brand | 万绰 | 3M |
+| AUX000741 | brand | 万绰 | 3M |
+| AUX000742 | brand | 万绰 | 3M |
+| AUX000743 | brand | 万绰 | 3M |
+| AUX000744 | brand | 万绰 | 3M |
+| AUX000745 | brand | 万绰 | 3M |
+| AUX000746 | brand | 万绰 | 3M |
+| AUX000747 | brand | 万绰 | 3M |
+| AUX000748 | brand | 万绰 | 3M |
+| AUX000749 | brand | 万绰 | 3M |
+| AUX000750 | brand | 万绰 | 3M |
+| AUX000751 | brand | 万绰 | 3M |
+| AUX000752 | brand | 万绰 | 3M |
+| AUX000753 | brand | 万绰 | 3M |
+| AUX000754 | brand | 万绰 | 3M |
+| AUX000755 | brand | 万绰 | 3M |
+| AUX000756 | brand | 万绰 | 3M |
+| AUX000757 | brand | 万绰 | 3M |
+| AUX000758 | brand | 万绰 | 3M |
+| AUX000759 | brand | 万绰 | 3M |
+| AUX000760 | brand | 鑫旺达 | 3M |
+| AUX000761 | brand | 閩盛 | 3M |
+| AUX000762 | brand | 伟壹昊 | 3M |
+| AUX000763 | brand | 伟壹昊 | 3M |
+| AUX000764 | brand | 伟壹昊 | 3M |
+| AUX000765 | brand | 伟壹昊 | 3M |
+| AUX000766 | brand | 伟壹昊 | 3M |
+| AUX000767 | brand | 万绰 | 3M |
+| AUX000768 | brand | 万绰 | 3M |
+| AUX000769 | brand | 万绰 | 3M |
+| AUX000770 | brand | 万绰 | 3M |
+| AUX000772 | brand | 鑫旺达 | 3M |
+| AUX000773 | model | 3M9485 | 3M9485PC |
+| AUX000774 | model | 3M9485 | 3M9485PC |
+| AUX000775 | brand | 閩盛 | 3M |
+| AUX000776 | brand | 万绰 | 3M |
+| AUX000777 | brand | 伟壹昊 | 3M |
+| AUX000778 | brand | 伟壹昊 | 3M |
+| AUX000779 | brand | 万绰 | 3M |
+| AUX000780 | brand | 伟壹昊 | 3M |
+| AUX000781 | brand | 万绰 | 3M |
+| AUX000782 | brand | 万绰 | 3M |
+| AUX000783 | brand | 万绰 | 3M |
+| AUX000784 | brand | 万绰 | 3M |
+| AUX000785 | brand | 万绰 | 3M |
+| AUX000897 | model | DST-10 | DST-10/ |
+| AUX000902 | brand | 閩盛 | tesa |
+| AUX000907 | brand | 万绰 | 3M |
+| AUX000908 | brand | 鑫旺达 | tesa |
+| AUX000909 | model | 3M9415 | 3M9415PC |
+| AUX000909 | brand | 万绰 | 3M |
+| AUX001020 | model | HJ-8428FRN 2.5 | HJ-8428FRN |
+| AUX001367 | model | J | R-07 |
+| AUX001558 | model | 4701-30-20062 | 3M9495MP |
+| AUX001558 | brand | 罗杰斯泡棉 | 3M |
+| RM000006 | model | 0.175 | PC-DB6842 |
+| RM000007 | model | 0.175 | PC-DB6842 |
+| RM000008 | model | 0.175 | PC-DB6842 |
+| RM000009 | model | 0.175 | PC-DB6842 |
+| RM000010 | model | 0.175 | PC-DB6842 |
+| RM000011 | model | 0.175 DB6842 | PC-DB6842 |
+| RM000012 | model | 0.175 | PC35 |
+| RM000014 | model | 0.175mm32 | PC32 |
+| RM000015 | model | 0.175mm32 | PC32 |
+| RM000018 | model | 0.25 | PC-DB6842 |
+| RM000019 | model | 0.25 | PC-DB6842 |
+| RM000020 | model | 0.25 | PC35 |
+| RM000025 | model | 0.375 | PC-DB6842 |
+| RM000026 | model | 0.38 | PC-835 |
+| RM000028 | model | 0.5 | PC-DB6842 |
+| RM000029 | model | 0.5 | PC-DB6842 |
+| RM000030 | model | 0.5 | PC-DB6842 |
+| RM000111 | model | 1.5 | DB6811 |
+| RM000196 | model | 50# | PET50# |
+| RM000197 | model | 50# | PET50# |
+| RM000198 | model | 50# | PET50# |
+| RM000199 | model | 50# | PET50# |
+| RM000200 | model | 50# | PET50# |
+| RM000201 | model | 50# | PET50# |
+| RM000202 | model | 50# | PET50# |
+| RM000203 | model | 50# | PET50# |
+| RM000204 | model | 50# | PET50# |
+| RM000205 | model | 50# | PET50# |
+| RM000206 | model | 50# | PET50# |
+| RM000207 | model | 50# | PET50# |
+| RM000208 | model | 75# | PET75# |
+| RM000209 | model | 75# | PET75# |
+| RM000210 | model | 75# | PET75# |
+| RM000211 | model | 75# | PET75# |
+| RM000212 | model | 75# | PET75# |
+| RM000213 | model | 100# | PET100# |
+| RM000214 | model | 100# | PET100# |
+| RM000215 | model | 100# | PET100# |
+| RM000216 | model | 100# | PET100# |
+| RM000217 | model | 100# | PET100# |
+| RM000218 | model | 100# | PET100# |
+| RM000219 | model | 100# | PET100# |
+| RM000220 | model | 100# | PET100# |
+| RM000221 | model | 100# | PET100# |
+| RM000222 | model | 125# | PET125# |
+| RM000223 | model | 125# | PET125# |
+| RM000224 | model | 125# | PET125# |
+| RM000225 | model | 188# | PET188# |
+| RM000226 | model | 188# | PET188# |
+| RM000227 | model | 250 | PET250 |
+| RM000228 | model | 250 | PET250 |
+| RM000229 | model | 250 | PET250 |
+| RM000230 | model | 250 | PET250 |
+| RM000231 | model | 350 FF-SS-12 | PET350 |
+| RM000232 | model | 50# | PET50# |
+| RM000233 | model | 125# | PET125# |
+| RM000234 | model | 125# | PET125# |
+| RM000235 | model | 188# | PET188# |
+| RM000236 | model | 188# | PET188# |
+| RM000237 | model | 188# | PET188# |
+| RM000238 | model | 188# | PET188# |
+| RM000239 | model | 188# | PET188# |
+| RM000240 | model | 188# | PET188# |
+| RM000241 | model | 188# | PET188# |
+| RM000242 | model | 188# | PET188# |
+| RM000243 | model | 188# | PET188# |
+| RM000244 | model | 188# | PET188# |
+| RM000245 | model | 250# | PET250# |
+| RM000246 | model | 250# | PET250# |
+| RM000247 | model | 250# | PET250# |
+| RM000248 | model | 250# | PET250# |
+| RM000249 | model | 250# | PET250# |
+| RM000257 | model | 50# | PET50# |
+| RM000258 | model | 50# | PET50# |
+| RM000259 | model | 50# | PET50# |
+| RM000260 | model | 50# | PET50# |
+| RM000261 | model | 50# | PET50# |
+| RM000262 | model | 50# | PET50# |
+| RM000263 | model | 75# | PET75# |
+| RM000264 | model | 75# | PET75# |
+| RM000265 | model | 75# | PET75# |
+| RM000266 | model | 100# | PET100# |
+| RM000267 | model | 100# | PET100# |
+| RM000268 | model | 100# | PET100# |
+| RM000269 | model | 100# | PET100# |
+| RM000270 | model | 100# | PET100# |
+| RM000271 | model | 100# | PET100# |
+| RM000272 | model | 100# | PET100# |
+| RM000273 | model | 100# | PET100# |
+| RM000274 | model | 100# | PET100# |
+| RM000275 | model | 100# | PET100# |
+| RM000276 | model | 100# | PET100# |
+| RM000277 | model | 100# | PET100# |
+| RM000278 | model | 100# | PET100# |
+| RM000279 | model | 100# | PET100# |
+| RM000280 | model | 100# | PET100# |
+| RM000281 | model | 100# | PET100# |
+| RM000282 | model | 100# | PET100# |
+| RM000283 | model | 100# | PET100# |
+| RM000284 | model | 100# | PET100# |
+| RM000285 | model | 100# | PET100# |
+| RM000286 | model | 125# | PET125# |
+| RM000287 | model | 125# | PET125# |
+| RM000288 | model | 125# | PET125# |
+| RM000289 | model | 125# | PET125# |
+| RM000290 | model | 125# | PET125# |
+| RM000291 | model | 125# | PET125# |
+| RM000292 | model | 125# | PET125# |
+| RM000293 | model | 125# | PET125# |
+| RM000294 | model | 125# | PET125# |
+| RM000295 | model | 125# | PET125# |
+| RM000296 | model | 125# | PET125# |
+| RM000297 | model | 125# | PET125# |
+| RM000298 | model | 125# | PET125# |
+| RM000299 | model | 125# | PET125# |
+| RM000300 | model | 125# | PET125# |
+| RM000301 | model | 125# | PET125# |
+| RM000302 | model | 125# | PET125# |
+| RM000303 | model | 125# | PET125# |
+| RM000304 | model | 125# | PET125# |
+| RM000305 | model | 125# | PET125# |
+| RM000306 | model | 125# | PET125# |
+| RM000307 | model | 125# | PET125# |
+| RM000308 | model | 125# | PET125# |
+| RM000309 | model | 125# | PET125# |
+| RM000310 | model | 125# | PET125# |
+| RM000311 | model | 125# | PET125# |
+| RM000312 | model | 125# | PET125# |
+| RM000313 | model | 125# | PET125# |
+| RM000314 | model | 125# | PET125# |
+| RM000315 | model | 125# | PET125# |
+| RM000316 | model | 125# | PET125# |
+| RM000317 | model | 125# | PET125# |
+| RM000318 | model | 125# | PET125# |
+| RM000319 | model | 125# | PET125# |
+| RM000320 | model | 125# | PET125# |
+| RM000321 | model | 125# | PET125# |
+| RM000322 | model | 125# | PET125# |
+| RM000323 | model | 125# | PET125# |
+| RM000324 | model | 125# | PET125# |
+| RM000325 | model | DK11 | DK11PET125 |
+| RM000326 | model | 125-PY2M | PET125-PY2M |
+| RM000327 | model | 125-PY2M | PET125-PY2M |
+| RM000328 | model | 125-PY2M | PET125-PY2M |
+| RM000329 | model | 125-PY2M | PET125-PY2M |
+| RM000330 | model | 125-PY2M | PET125-PY2M |
+| RM000331 | model | 125-PY2M | PET125-PY2M |
+| RM000332 | model | 188# | PET188# |
+| RM000333 | model | 188# | PET188# |
+| RM000334 | model | 188# | PET188# |
+| RM000335 | model | 188# | PET188# |
+| RM000336 | model | 188# | PET188# |
+| RM000337 | model | 250# | PET250# |
+| RM000338 | model | 250# | PET250# |
+| RM000339 | model | 250# | PET250# |
+| RM000340 | model | 250# | PET250# |
+| RM000341 | model | 350# | PET350# |
+| RM000342 | model | 350# | PET350# |
+| RM000343 | model | 350# | PET350# |
+| RM000366 | model | 188# | PET188# |
+| RM000367 | model | 100# | PET100# |
+| RM000368 | model | 125# | PET125# |
+| RM000369 | model | 125# | PET125# |
+| RM000370 | model | 125# | PET125# |
+| RM000371 | model | 188 | PET188 |
+| RM000372 | model | 188 | PET188 |
+| RM000373 | model | 188 | PET188 |
+| RM000374 | model | 188 | PET188 |
+| RM000375 | model | 188 | PET188 |
+| RM000376 | model | 188 | PET188 |
+| RM000377 | model | 188 | PET188 |
+| RM000378 | model | 188 | PET188 |
+| RM000379 | model | 188 | PET188 |
+| RM000380 | model | 188# | PET188# |
+| RM000381 | model | 188 | PET188 |
+| RM000382 | model | 188 | PET188 |
+| RM000383 | model | 188 | PET188 |
+| RM000384 | model | 188 | PET188 |
+| RM000385 | model | 188 | PET188 |
+| RM000386 | model | 188# | PET188# |
+| RM000387 | model | 188 | PET188 |
+| RM000388 | model | 188 | PET188 |
+| RM000389 | model | 188 | PET188 |
+| RM000390 | model | 188# | PET188# |
+| RM000392 | model | 188# | PET188# |
+| RM000393 | model | 250 | PET250 |
+| RM000394 | model | 250 | PET250 |
+| RM000395 | model | 250# | PET250# |
+| RM000397 | model | 250# | PET250# |
+| RM000398 | model | 250# | PET250# |
+| RM000399 | model | 250# | PET250# |
+| RM000452 | model | IYHG95-15 | IYHG95-15/90g |
+| RM000453 | model | IYHG95-15 | IYHG95-15/90g |
+| RM000473 | model | T4901 | T4901PET |
+| RM000474 | model | T4901 | T4901PET |
+| RM000475 | model | T4901 | T4901PET |
+| RM000476 | model | T4901 | T4901PET |
+| RM000477 | model | T4901 | T4901PET |
+| RM000478 | model | T4901 | T4901PET |
+| RM000479 | model | T4901 | T4901PET |
+| RM000480 | model | T4901 | T4901PET |
+| RM000481 | model | T4901 | T4901PET |
+| RM000482 | model | T4901 | T4901PET |
+| RM000483 | model | T4901 | T4901PET |
+| RM000484 | model | T4901 | T4901PET |
+| RM000485 | model | T4901 | T4901PET |
+| RM000486 | model | T4901 | T4901PET |
+| RM000487 | model | T4901 | T4901PET |
+| RM000488 | model | T4901 | T4901PET |
+| RM000489 | model | T4901 | T4901PET |
+| RM000490 | model | T4901 | T4901PET |
+| RM000491 | model | T4901 | T4901PET |
+| RM000492 | model | T4901 | T4901PET |
+| RM000493 | model | T4901 | T4901PET |
+| RM000494 | model | T4901 | T4901PET |
+| RM000495 | model | T4901 | T4901PET |
+| RM000496 | model | T4901 | T4901PET |
+| RM000497 | model | T4901 | T4901PET |
+| RM000498 | model | T4901 | T4901PET |
+| RM000499 | model | T4901 | T4901PET |
+| RM000500 | model | T4901 | T4901PET |
+| RM000951 | model | T4000 0.5 | T4000 |
+| RM000952 | model | T4000 1.0 | T4000 |
+| RM000953 | model | T4000 1.0 | T4000 |
+| RM000967 | brand | 易碎 | tesa |
+| RM000992 | brand | 万绰 | 3M |
+| RM000993 | brand | 万绰 | 3M |
+| RM000994 | brand | 万绰 | 3M |
+| RM000999 | model | 125# | PET125# |
+| RM001000 | model | 100# | PET100# |
+| RM001570 | model | 188 | PET188 |
+| RM001576 | model | -250 | PET-250 |
+| RM001578 | model | -188 | PET-188 |
+| RM001608 | model | 125 | PET125 |
+| RM001623 | model | 125 | PET125 |
+
+### 交付与待审核事项
+
+仅交付应用脚本及本报表，不暂存backups/任何文件。mvn/vue-tsc未跑（没有Java/前端改动）。文档门禁、Git差异检查、表基线最终结果追加于下。
+遗留：566条未归类待人工补证；435项人工字段差异保留待业务核对；缺失模板属性待人工补全，不臆造。
+
+最终门禁（2026-10-24，codex）：`npm run check:docs`退出0（history264/modules4/task-docs54，原基线未扩）；`bash scripts/check-model-baseline.sh`退出0（当前136/基线136，未批准新表0）；`git diff --check`退出0。mvn/vue-tsc未跑。本次2个文件，backups/及其他任务在制内容不纳入提交。
