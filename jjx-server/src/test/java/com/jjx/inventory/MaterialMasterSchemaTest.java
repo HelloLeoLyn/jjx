@@ -63,13 +63,14 @@ class MaterialMasterSchemaTest {
         assertThrows(BusinessException.class, () -> optical.validateAttributes(Map.of("optical_type", "DIFFUSER", "haze_pct", 101), mapper));
     }
 
-    @Test void dimensionsSeparateThicknessAndRequirePositiveValues() {
-        for (String size : List.of("300", "300×305", "300*305", "300.5x400")) assertDoesNotThrow(() -> MaterialMasterService.validateSize(size));
-        for (String size : List.of("300×305×0.175", "0×300", "-10", "0.3m×1.0", "300mm")) assertThrows(BusinessException.class, () -> MaterialMasterService.validateSize(size));
+    @Test void dimensionsIncludeThicknessAndRequirePositiveValues() {
+        for (String size : List.of("300", "300×305", "300*305", "300.5x400", "300×305×0.175", "300mm", "914**0.175mm", "Φ8*0.05mm")) assertDoesNotThrow(() -> MaterialMasterService.validateSize(size));
+        for (String size : List.of("0×300", "-10", "0.3m×1.0", "300mmmm", "1*2*3*4", "***")) assertThrows(BusinessException.class, () -> MaterialMasterService.validateSize(size));
     }
 
     @Test void renderingMatchesPreviewWithVisibilityEmptyValuesAndDerivedDimensions() throws Exception {
         var schema = seeds().get("TPL_PC");
+        assertEquals("尺寸:30*90mm", schema.compose(Map.of(), null, "30*90mm"));
         assertEquals("厚度:0.175mm；表面处理:中砂；抗UV:否；尺寸:300×305mm",
                 schema.compose(Map.of("surface_treatment", List.of("MEDIUM_SAND"), "anti_uv", false), "0.175", "300×305"));
         assertEquals("厚度:0.25mm", schema.compose(Map.of("thickness_mm", new BigDecimal("0.2500"),

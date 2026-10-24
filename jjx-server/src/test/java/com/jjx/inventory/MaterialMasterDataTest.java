@@ -141,7 +141,9 @@ class MaterialMasterDataTest {
         var dto = new com.jjx.inventory.master.MaterialMasterDTO(); dto.setCategoryId(2L); dto.setMaterialName("PC样例");
         dto.setSize("300×305"); dto.setTemplateId(999L); dto.setThickness("伪造"); dto.setAttributeJson(Map.of("thickness_mm", new BigDecimal("0.175")));
         var saved = master.prepare(dto).material();
-        assertEquals(71L, saved.getTemplateId()); assertEquals("0.175", saved.getThickness()); assertEquals("300×305", saved.getWidthSize());
+        assertEquals(71L, saved.getTemplateId()); assertEquals("0.175", saved.getThickness()); assertEquals("300*305*0.175", saved.getWidthSize());
+        assertEquals("300*305*0.175", saved.getSize());
+        assertFalse(master.readAttributes(saved.getAttributeJson()).containsKey("thickness_mm"));
         assertTrue(saved.getAttributeJson().contains("\"material\":\"PC\""));
         assertFalse(master.readAttributes(saved.getAttributeJson()).containsKey("material"));
         dto.setAttributeJson(Map.of()); dto.setSize(null);

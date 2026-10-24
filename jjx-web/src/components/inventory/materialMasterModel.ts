@@ -172,7 +172,10 @@ export function previewMasterSpecification(
             : String(value)
     return [`${f.label}:${display}${f.unit || ''}`]
   })
-  if (dimensions.widthSize?.trim()) parts.push(`尺寸:${dimensions.widthSize.trim()}mm`)
+  if (dimensions.widthSize?.trim()) {
+    const size = dimensions.widthSize.trim()
+    parts.push(`尺寸:${size}${/mm$/i.test(size) ? '' : 'mm'}`)
+  }
   return parts.join('；')
 }
 

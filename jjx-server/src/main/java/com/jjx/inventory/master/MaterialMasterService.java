@@ -132,8 +132,15 @@ public class MaterialMasterService {
         dictionaryLabel(dictionaries, "unit", unit, true);
         dictionaryLabel(dictionaries, "color", dto.getColor(), false);
         dictionaryLabel(dictionaries, "brand", dto.getBrand(), false);
-        Map<String, Object> attributes = schema.validateAttributes(dto.getAttributeJson(), objectMapper);
-        validateSize(dto.getSize());
+        Map<String, Object> inputAttributes = new LinkedHashMap<>(dto.getAttributeJson() == null ? Map.of() : dto.getAttributeJson());
+        String size = MaterialSizeValue.mergeLegacy(dto.getSize(), inputAttributes.get("thickness_mm"));
+        // 历史未知格式只允许原样保留，不能把新输入的无效格式当成合法尺寸。
+        if (old == null || !Objects.equals(size, old.getSize())) validateSize(size);
+        String thickness = MaterialSizeValue.thickness(size);
+        if (thickness != null && schema.fields().stream().anyMatch(f -> f.key().equals("thickness_mm"))) {
+            inputAttributes.put("thickness_mm", new BigDecimal(thickness));
+        }
+        Map<String, Object> attributes = schema.validateAttributes(inputAttributes, objectMapper);
         InventoryMaterial material = new InventoryMaterial();
         BeanUtils.copyProperties(dto, material);
         material.setMaterialName(name);
@@ -144,7 +151,7 @@ public class MaterialMasterService {
         material.setModel(text(dto.getModel(), "型号", 100, false));
         material.setBrand(text(dto.getBrand(), "品牌", 50, false));
         material.setColor(text(dto.getColor(), "颜色", 20, false));
-        material.setSize(text(dto.getSize(), "尺寸", 50, false));
+        material.setSize(text(size, "尺寸", 50, false));
         material.setSearchKeywords(text(dto.getSearchKeywords(), "别名", 500, false));
         material.setRemark(text(dto.getRemark(), "业务备注", 1000, false));
         material.setSpecification(old == null ? null : old.getSpecification());
@@ -153,6 +160,7 @@ public class MaterialMasterService {
         if (config != null) MaterialAttributeColumns.apply(material, attributes, config.template().getTemplateId());
         else { material.setTemplateId(null); material.setThickness(null); material.setWidthSize(null); }
         Map<String, Object> storedAttributes = new LinkedHashMap<>(attributes);
+        if (MaterialSizeValue.parts(size) != null) storedAttributes.remove("thickness_mm");
         if (meta != null) storedAttributes.put("material", meta);
         try { material.setAttributeJson(objectMapper.writeValueAsString(storedAttributes)); }
         catch (Exception e) { throw new BusinessException("属性无法序列化"); }
@@ -252,9 +260,7 @@ public class MaterialMasterService {
     }
 
     public static void validateSize(String size) {
-        if (size == null || size.isBlank()) return;
-        if (!size.matches("\\s*\\d+(?:\\.\\d+)?(?:\\s*[×xX*]\\s*\\d+(?:\\.\\d+)?)?\\s*")) throw new BusinessException("尺寸仅填写宽或宽×长，单位mm；厚度请填品类属性");
-        for (String part : size.trim().split("[×xX*]")) if (new BigDecimal(part.trim()).signum() <= 0) throw new BusinessException("尺寸必须大于0");
+        MaterialSizeValue.validate(size);
     }
 
     private static void preserveParameters(InventoryMaterial material, InventoryMaterial old, MaterialMasterDTO dto) {

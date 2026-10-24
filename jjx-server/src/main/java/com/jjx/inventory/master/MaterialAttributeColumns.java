@@ -11,8 +11,8 @@ public final class MaterialAttributeColumns {
 
     public static void apply(InventoryMaterial material, Map<String, Object> attributes, Long templateId) {
         if (templateId == null) throw new BusinessException("所选分类未配置属性模板");
-        Object thickness = attributes.get("thickness_mm");
-        if (thickness == null) thickness = attributes.get("gram_weight_gsm");
+        Object thickness = MaterialSizeValue.thickness(material.getSize());
+        if (thickness == null) thickness = attributes.get("thickness_mm");
         material.setTemplateId(templateId);
         material.setThickness(text(thickness, 30, "厚度/克重"));
         material.setWidthSize(text(material.getSize(), 50, "尺寸"));

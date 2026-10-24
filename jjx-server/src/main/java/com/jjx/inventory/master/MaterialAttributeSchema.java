@@ -88,7 +88,7 @@ public record MaterialAttributeSchema(
             boolean missing = value == null || value.isNull() || value.isTextual() && value.asText().isBlank() || value.isArray() && value.isEmpty();
             boolean visible = visible(f, candidate);
             if (!visible && !missing) fail("属性不适用于当前选项：" + f.label);
-            if (visible && f.required && missing) fail(f.label + "不能为空");
+            if (visible && f.required && missing && !f.key.equals("thickness_mm")) fail(f.label + "不能为空");
             if (!missing) {
                 validateValue(f, value);
                 result.put(f.key, mapper.convertValue(value, Object.class));
@@ -153,7 +153,8 @@ public record MaterialAttributeSchema(
             else display = value.toString();
             parts.add(f.label + ":" + display + (f.unit == null ? "" : f.unit));
         }
-        if (widthSize != null && !widthSize.isBlank()) parts.add("尺寸:" + widthSize.trim() + "mm");
+        if (widthSize != null && !widthSize.isBlank()) parts.add("尺寸:" + widthSize.trim()
+                + (widthSize.trim().matches("(?i).*mm$") ? "" : "mm"));
         String text = String.join("；", parts);
         if (text.length() > 500) fail("生成规格超过500字，请精简属性内容");
         return text;

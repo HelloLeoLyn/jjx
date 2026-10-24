@@ -110,12 +110,9 @@
               /></el-select> </el-form-item
           ></el-col>
         </el-row>
-        <el-form-item label="尺寸（mm）"
-          ><el-input
-            v-model="form.size"
-            maxlength="50"
-            placeholder="宽或宽×长，例如914、300×305；厚度填下方属性"
-        /></el-form-item>
+        <el-form-item label="尺寸">
+          <MaterialSizeEditor v-model="form.size" @valid-change="sizeValid = $event" />
+        </el-form-item>
         <el-form-item label="档案标记">
           <el-checkbox v-model="form.isCustomerSupplied">客供专用</el-checkbox
           ><el-checkbox v-model="form.isSample">样品专用</el-checkbox>
@@ -217,6 +214,8 @@ import type {
   MaterialMasterForm,
 } from '@/types/inventory/materialMaster'
 import MaterialAttributeFields from './MaterialAttributeFields.vue'
+import MaterialSizeEditor from './MaterialSizeEditor.vue'
+import { mergeLegacyThickness, parseMaterialSize } from './materialSize'
 import {
   COMMON_ATTRIBUTE_KEYS,
   attributeVisible,
@@ -254,6 +253,7 @@ const tags = ref<SysTag[]>([])
 const loading = ref(false)
 const configurationLoading = ref(false)
 const saving = ref(false)
+const sizeValid = ref(true)
 const loadError = ref('')
 const expanded = ref<string[]>([])
 let session = 0
@@ -276,12 +276,12 @@ const materialLabel = computed(
 )
 const commonKeys = computed(() =>
   (configuration.value?.schema.fields || [])
-    .filter((f) => COMMON_ATTRIBUTE_KEYS.includes(f.key))
+    .filter((f) => f.key !== 'thickness_mm' && COMMON_ATTRIBUTE_KEYS.includes(f.key))
     .map((f) => f.key)
 )
 const lowKeys = computed(() =>
   (configuration.value?.schema.fields || [])
-    .filter((f) => !COMMON_ATTRIBUTE_KEYS.includes(f.key))
+    .filter((f) => f.key !== 'thickness_mm' && !COMMON_ATTRIBUTE_KEYS.includes(f.key))
     .map((f) => f.key)
 )
 
@@ -344,6 +344,7 @@ async function selectCategory(id: number) {
 }
 
 async function initialize() {
+  sizeValid.value = true
   const currentSession = ++session
   categoryRequest++
   loading.value = true
@@ -383,6 +384,7 @@ async function initialize() {
         !!material.materialName &&
         material.materialName !== previewMasterName(form, dictionaries.value)
       form.attributeJson = detail.attributes
+      form.size = mergeLegacyThickness(form.size, detail.attributes.thickness_mm)
       form.tagIds = detail.tags.flatMap((tag) => (tag.tagId == null ? [] : [tag.tagId]))
       configuration.value = detail.configuration ?? undefined
       if (!detail.configuration) form.categoryId = null
@@ -403,6 +405,7 @@ async function initialize() {
 }
 
 async function save() {
+  if (!sizeValid.value) return void ElMessage.warning('请先修正尺寸')
   if (
     saving.value ||
     !configuration.value ||
@@ -417,6 +420,7 @@ async function save() {
   const missing = configuration.value.schema.fields.find(
     (f) =>
       f.required &&
+      f.key !== 'thickness_mm' &&
       attributeVisible(f, form.attributeJson) &&
       (form.attributeJson[f.key] == null ||
         form.attributeJson[f.key] === '' ||
@@ -431,6 +435,7 @@ async function save() {
       materialName: finalName,
       attributeJson: pruneAttributes(configuration.value.schema, form.attributeJson),
     } as MaterialMasterForm
+    if (parseMaterialSize(form.size)) delete payload.attributeJson.thickness_mm
     delete payload.nameManual
     const response = await materialMasterApi.save(payload)
     if (!response.data?.materialId) throw Error('保存响应缺少物料信息')
