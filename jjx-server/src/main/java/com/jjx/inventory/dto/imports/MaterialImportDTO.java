@@ -26,17 +26,11 @@ public class MaterialImportDTO {
     @ExcelColumn(value = "备注", order = 4, comment = "备注信息")
     private String remark;
 
-    @ExcelColumn(value = "机种", order = 5, comment = "机种名称")
-    private String materialNameEn;
-
     @ExcelColumn(value = "单位", order = 6, comment = "计量单位，如PCS、卷，可空")
     private String unit;
 
     @ExcelColumn(value = "项目", order = 7, comment = "工序项目编码或中文名称；先按编码匹配，再按中文名称匹配，空值或未匹配时归为其他类型物料（O）")
     private String processGroup;
-
-    @ExcelColumn(value = "材料类型", order = 8, comment = "历史兼容列；最终材料类型由品类带出，缺省品类时用于其他原料/辅料兜底")
-    private String materialType;
 
     @ExcelColumn(value = "材料标签", order = 9, comment = "多个用斜杠分隔；支持 大类*明细 两级，自动建档")
     private String tagTexts;

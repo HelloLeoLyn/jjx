@@ -22,7 +22,6 @@ export function emptyMasterForm(): MaterialMasterForm {
     isCustomerSupplied: false,
     isSample: false,
     searchKeywords: '',
-    specSupplement: '',
     remark: '',
     supplierName: '',
     batchControl: false,
@@ -61,7 +60,6 @@ export function changeMasterCategory(
   form.materialForm = config.schema.default_form || ''
   form.unit = config.schema.default_unit || ''
   form.attributeJson = attributeDefaults(config.schema)
-  form.specSupplement = ''
 }
 
 export function pruneAttributes(
@@ -78,7 +76,7 @@ export function pruneAttributes(
 export function previewMasterSpecification(
   schema: MaterialAttributeSchema | undefined,
   values: Record<string, AttributeValue>,
-  supplement: string
+  supplement = ''
 ): string {
   const parts = (schema?.fields || []).flatMap((f) => {
     const value = values[f.key]

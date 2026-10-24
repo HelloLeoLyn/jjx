@@ -16,10 +16,10 @@ import java.util.List;
 @Mapper
 public interface InventoryMaterialMapper extends BaseMapper<InventoryMaterial> {
 
-    @Select("SELECT category_id, category_code, category_name, material_type, parent_id FROM inventory_material_category WHERE category_id = #{id}")
+    @Select("SELECT category_id, category_code, category_name, category_path, name_path, parent_id FROM inventory_material_category WHERE category_id = #{id}")
     java.util.Map<String, Object> selectCategory(@Param("id") Long id);
 
-    @Select("SELECT category_id, category_code, category_name, material_type, parent_id FROM inventory_material_category WHERE category_code = #{value} OR category_name = #{value} LIMIT 1")
+    @Select("SELECT category_id, category_code, category_name, category_path, name_path, parent_id FROM inventory_material_category WHERE category_code = #{value} OR category_name = #{value} LIMIT 1")
     java.util.Map<String, Object> findCategory(@Param("value") String value);
 
     @Select("SELECT field_key FROM inventory_material_required_field WHERE category_code = #{code} AND required = 1")
@@ -28,6 +28,11 @@ public interface InventoryMaterialMapper extends BaseMapper<InventoryMaterial> {
     /** 属性保存使用所选分类的模板，不采信客户端template_id。 */
     @Select("SELECT template_id FROM inventory_attribute_template WHERE category_id = #{id}")
     Long selectTemplateId(@Param("id") Long id);
+
+    /** 无分类返回null，调用方不得默认填原料/辅料。 */
+    default String materialTypeOf(Long categoryId) {
+        return com.jjx.inventory.util.MaterialClassification.materialTypeOf(categoryId == null ? null : selectCategory(categoryId));
+    }
 
     /**
      * 根据物料编码查询

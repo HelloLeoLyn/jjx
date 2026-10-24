@@ -45,7 +45,6 @@ public class InventoryMaterialSpecServiceImpl implements InventoryMaterialSpecSe
             vo.setCategoryCode(category == null ? null : category.getCategoryCode());
         }
         vo.setSpecification(material.getSpecification());
-        vo.setSupplement(material.getSpecSupplement());
         vo.setDefs(List.of());
         List<MaterialSpecValueVO> values = new ArrayList<>();
         if (material.getAttributeJson() != null && !material.getAttributeJson().isBlank()) {

@@ -87,9 +87,9 @@ class MaterialSpecMysqlTest {
     /** 直接插一行物料（回滚内），返回物料ID。 */
     private Long material(String code, String specification) {
         String materialCode = code + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
-        jdbc.update("INSERT INTO inventory_material (material_code, material_name, material_type, category_id, "
-                        + "specification, unit, create_by, update_by) VALUES (?,?,?,?,?,?,?,?)",
-                materialCode, "规格属性测试" + materialCode, "R", null, specification, "PCS", "test", "test");
+        jdbc.update("INSERT INTO inventory_material (material_code, material_name, category_id, "
+                        + "specification, unit, create_by, update_by) VALUES (?,?,?,?,?,?,?)",
+                materialCode, "规格属性测试" + materialCode, null, specification, "PCS", "test", "test");
         return jdbc.queryForObject("SELECT material_id FROM inventory_material WHERE material_code=?",
                 Long.class, materialCode);
     }

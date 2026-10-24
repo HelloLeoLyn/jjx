@@ -574,7 +574,7 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   row.materialName = material.materialName
   row.specification = material.specification || ''
   row.unit = material.unit || 'PCS'
-  row.materialType = material.materialType
+  row.materialType = material.rootType || undefined
   row.create = false
   recalcAppliedIssue(row)
 }

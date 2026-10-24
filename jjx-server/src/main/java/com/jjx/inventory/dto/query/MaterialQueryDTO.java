@@ -20,7 +20,9 @@ public class MaterialQueryDTO extends PageQuery{
 
     private String materialName;
 
-    private String materialType;
+    /** 分类根筛选R/S/F；不对应主表列。 */
+    private String rootType;
+
 
     /**
      * @deprecated 单值标签筛选，已由 tagIds + tagMatchMode 取代（dev-20260912-007）

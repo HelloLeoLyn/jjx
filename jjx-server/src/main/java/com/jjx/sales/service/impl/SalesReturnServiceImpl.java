@@ -226,9 +226,8 @@ public class SalesReturnServiceImpl extends ServiceImpl<SalesReturnMapper, Sales
                     // 产品→F 成品物料解析（口径唯一处）：库存只有物料，退货入库按物料加回；
                     // 解析不到说明该产品无成品物料，回滚报错（红线：产品不入库存）
                     InventoryMaterial mat = ri.getProductId() == null ? null : materialMapper.selectOne(
-                            new LambdaQueryWrapper<InventoryMaterial>()
-                                    .eq(InventoryMaterial::getProductId, ri.getProductId())
-                                    .eq(InventoryMaterial::getMaterialType, "F"));
+                            com.jjx.inventory.util.MaterialClassification.filterType(new LambdaQueryWrapper<InventoryMaterial>()
+                                    .eq(InventoryMaterial::getProductId, ri.getProductId()), "F"));
                     if (mat == null) {
                         throw new BusinessException("产品[" + (ri.getProductCode() == null ? ri.getProductId() : ri.getProductCode())
                                 + "]无成品物料(F)，无法自动入库，请先建档成品物料");

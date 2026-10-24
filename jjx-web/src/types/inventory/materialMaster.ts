@@ -66,7 +66,6 @@ export interface MaterialMasterForm {
   isCustomerSupplied: boolean
   isSample: boolean
   searchKeywords: string
-  specSupplement: string
   remark: string
   supplierId?: number | null
   supplierName: string
@@ -88,7 +87,6 @@ export type MaterialMasterRecord = InventoryMaterial & {
   materialMeta?: string | null
   materialForm?: string | null
   attributeJson?: string | null
-  specSupplement?: string | null
   isCustomerSupplied?: boolean
   isSample?: boolean
 }

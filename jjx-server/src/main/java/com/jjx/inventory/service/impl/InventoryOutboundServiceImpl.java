@@ -1012,7 +1012,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
     /**
      * dev-20261022-019：把平铺领料预览按「组合」聚合——连续且项目相同的行归为一组。
-     * 半成品档案按项目名做一次匹配（material_type=S），匹配不到标记 semiMatched=false，由前端提示建档。
+     * 半成品档案按项目名做一次匹配（分类根SEMI），匹配不到标记 semiMatched=false，由前端提示建档。
      */
     private java.util.List<java.util.Map<String, Object>> groupPreviewRowsByProcess(
             java.util.List<java.util.Map<String, Object>> rows) {
@@ -1083,14 +1083,14 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return null;
     }
 
-    /** 组合 -> 半成品档案匹配（按项目名 + material_type=S），匹配不到时标记 semiMatched=false */
+    /** 组合 -> 半成品档案匹配（按项目名 + 分类根SEMI），匹配不到时标记 semiMatched=false */
     private void fillSemiMaterial(java.util.Map<String, Object> group, String processName) {
         group.put("semiMatched", false);
         group.put("semiMaterialId", null);
         if (processName == null || processName.isBlank()) return;
         try {
             List<java.util.Map<String, Object>> found = jdbcTemplate.queryForList(
-                    "SELECT material_id FROM inventory_material WHERE material_name=? AND material_type='S' AND status=1 LIMIT 1",
+                    "SELECT m.material_id FROM inventory_material m JOIN inventory_material_category c ON c.category_id=m.category_id WHERE m.material_name=? AND SUBSTRING_INDEX(c.category_path, '/', 1)='SEMI' AND m.status=1 LIMIT 1",
                     processName.trim());
             if (!found.isEmpty()) {
                 group.put("semiMatched", true);
@@ -1985,7 +1985,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         int sort = 1;
         for (com.jjx.sales.domain.entity.SalesOrderProduct product : products) {
             InventoryOutboundItem outItem = new InventoryOutboundItem();
-            // 查成品物料档案（发布时自动创建，material_type='F'）
+            // 查成品物料档案（发布时自动创建，分类根FINISHED）
             com.jjx.inventory.domain.InventoryItem inventoryItem = inventoryItemService.ensure(
                     com.jjx.inventory.enums.InventoryItemTypeEnum.PRODUCT, product.getProductId(),
                     product.getProductCode(), product.getProductName(), null, "PCS");

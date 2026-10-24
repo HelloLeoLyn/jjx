@@ -9,6 +9,7 @@ import java.util.List;
  * 物料更新参数DTO
  */
 @Data
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class MaterialUpdateDTO {
 
     @com.fasterxml.jackson.annotation.JsonIgnore
@@ -17,8 +18,6 @@ public class MaterialUpdateDTO {
 
     private Long materialId;
     private String materialName;
-    private String materialNameEn;
-    private String materialType;
     private Long categoryId;
     /** 服务端由属性与分类派生，不接受独立写入。 */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
@@ -51,8 +50,6 @@ public class MaterialUpdateDTO {
     /** 成本单价（人定，099） */
     private BigDecimal costPrice;
 
-    /** 成本单价来源（最近采购价/人工指定/初始，099） */
-    private String costPriceFrom;
     private Integer leadTime;
     private Long supplierId;
     private String supplierName;

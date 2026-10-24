@@ -82,7 +82,7 @@ public interface InventoryMaterialService extends IService<InventoryMaterial> {
     List<InventoryMaterial> selectEntities(MaterialQueryDTO queryDTO);
 
     /** 生成编码 */
-    String generateCode(String materialType);
+    String generateCode(Long categoryId);
 
     /**
      * 校验物料是否存在（根据名称、规格等条件）

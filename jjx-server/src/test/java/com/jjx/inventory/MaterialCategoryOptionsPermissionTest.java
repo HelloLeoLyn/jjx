@@ -26,7 +26,7 @@ class MaterialCategoryOptionsPermissionTest {
             var service = mock(InventoryMaterialService.class);
             var category = new MaterialCategoryOptionVO();
             category.setCategoryId(10L); category.setCategoryCode("OTHER-R");
-            category.setCategoryName("其他（原材料）"); category.setMaterialType("R");
+            category.setCategoryName("其他（原材料）"); category.setRootType("R"); category.setCategoryRootName("原材料");
             when(service.getCategoryOptions()).thenReturn(List.of(category));
             var mvc = MockMvcBuilders.standaloneSetup(new InventoryMaterialController(service, null, null, null, null))
                     .addInterceptors(new SaInterceptor(handle -> StpUtil.checkLogin())).build();
@@ -34,7 +34,7 @@ class MaterialCategoryOptionsPermissionTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data[0].categoryId").value(10))
                     .andExpect(jsonPath("$.data[0].categoryName").value("其他（原材料）"))
-                    .andExpect(jsonPath("$.data[0].materialType").value("R"));
+                    .andExpect(jsonPath("$.data[0].rootType").value("R"));
             verify(logic, atLeastOnce()).checkLogin();
             verify(logic, never()).getPermissionList(any());
         } finally {

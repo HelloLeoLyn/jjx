@@ -33,12 +33,6 @@ public class InventoryMaterial extends BaseEntity {
     /** 物料名称 */
     private String materialName;
 
-    /** 英文名称 */
-    private String materialNameEn;
-
-    /** 物料类型：R原材料/S半成品/F成品/A辅助材料 */
-    private String materialType;
-
     /** 物料分类ID */
     private Long categoryId;
 
@@ -61,7 +55,6 @@ public class InventoryMaterial extends BaseEntity {
     private Long templateId;
     private String thickness;
     private String widthSize;
-    private String specSupplement;
     private Boolean isCustomerSupplied;
     private Boolean isSample;
 
@@ -98,13 +91,6 @@ public class InventoryMaterial extends BaseEntity {
 
     /** 成本单价（人定，099定稿：初始=最近采购价，采购价变化→提醒人工确认，不自动覆盖） */
     private BigDecimal costPrice;
-
-    /** 成本单价来源（最近采购价/人工指定/初始，099） */
-    private String costPriceFrom;
-
-    /** 成本单价确认时间（099） */
-    @com.fasterxml.jackson.annotation.JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    private java.time.LocalDateTime costPriceTime;
 
     /** 采购提前期(天) */
     private Integer leadTime;

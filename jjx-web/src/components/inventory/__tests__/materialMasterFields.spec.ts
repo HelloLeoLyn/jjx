@@ -8,7 +8,6 @@ import {
   MATERIAL_COLOR_OPTIONS,
   MATERIAL_GRADE_OPTIONS,
   composeMaterialName,
-  deriveMaterialType,
   findMissingRequiredFields,
   requiredMaterialFields,
   splitLegacyMaterialName,
@@ -81,14 +80,7 @@ describe('splitLegacyMaterialName', () => {
   })
 })
 
-describe('deriveMaterialType / requiredMaterialFields', () => {
-  it('大类由品类编码带出', () => {
-    expect(deriveMaterialType('RM-FILM')).toBe('R')
-    expect(deriveMaterialType('AUX-ADHESIVE')).toBe('A')
-    expect(deriveMaterialType('OTHER-A')).toBe('A')
-    expect(deriveMaterialType()).toBe('')
-  })
-
+describe('requiredMaterialFields', () => {
   it('必填矩阵按品类取值', () => {
     expect(requiredMaterialFields('AUX-ADHESIVE')).toEqual(['model', 'specification', 'brand'])
     expect(requiredMaterialFields('AUX-ELEC')).toEqual(['model', 'color'])
@@ -124,35 +116,32 @@ describe('findMissingRequiredFields', () => {
 
 // 分类树收口后前端不再内置品类镜像；测试用最小夹具代替接口返回。
 const TEST_CATEGORIES: MaterialCategoryOption[] = [
-  { categoryId: 6, categoryCode: 'AUX-ELEC', categoryName: '电子元件', materialType: 'A' },
-  { categoryId: 10, categoryCode: 'OTHER-R', categoryName: '其他（原材料）', materialType: 'R' },
-  { categoryId: 11, categoryCode: 'OTHER-A', categoryName: '其他（辅助材料）', materialType: 'A' },
+  { categoryId: 6, categoryCode: 'RAW_AUX_ELECTRONIC', categoryName: '电子元件', rootType: 'R', categoryRootName: '原材料' },
+  { categoryId: 10, categoryCode: 'RAW_BASE_OTHER', categoryName: '其他基材', rootType: 'R', categoryRootName: '原材料' },
+  { categoryId: 11, categoryCode: 'RAW_AUX_OTHER', categoryName: '其他辅材', rootType: 'R', categoryRootName: '原材料' },
 ]
 
 describe('批量建档品类', () => {
-  it.each(['R', 'A'])('缺少品类按 %s 归入其他', (type) => {
-    const result = materialImportSaveWithCategory({ materialName: '测试', material_type: type }, 'M1', TEST_CATEGORIES)
-    expect(result.payload.categoryId).toBe(type === 'A' ? 11 : 10)
-    expect(result.payload.materialType).toBe(type)
-    expect(result.usedFallback).toBe(true)
+  it('缺少品类不会默认归入原料或辅料', () => {
+    expect(() => materialImportSaveWithCategory({ materialName: '测试' }, 'M1', TEST_CATEGORIES)).toThrow('未归类')
   })
   it('保留行内品类，品类决定大类', () => {
     const fields = readImportedCategoryFields({ 品类: '电子元件', material_type: 'R' })
     const result = materialImportSaveWithCategory(fields, 'M2', TEST_CATEGORIES)
     expect(result.payload.categoryId).toBe(6)
-    expect(result.payload.materialType).toBe('A')
+    expect(result.payload).not.toHaveProperty('materialType')
     expect(result.usedFallback).toBe(false)
   })
   it('未匹配品类提示兜底；默认品类不存在则明确失败', () => {
-    expect(materialImportSaveWithCategory({ categoryName: '不存在' }, 'M3', TEST_CATEGORIES).usedFallback).toBe(true)
-    expect(() => materialImportSaveWithCategory({}, 'M3', [])).toThrow('默认品类')
+    expect(() => materialImportSaveWithCategory({ categoryName: '不存在' }, 'M3', TEST_CATEGORIES)).toThrow('未归类')
+    expect(() => materialImportSaveWithCategory({}, 'M3', [])).toThrow('未归类')
   })
   it('优先使用仅登录接口返回的真实 ID', async () => {
-    const options = [{ categoryId: 99, categoryCode: 'OTHER-A', categoryName: '其他（辅助材料）', materialType: 'A' }]
+    const options = [{ categoryId: 99, categoryCode: 'RAW_AUX_OTHER', categoryName: '其他辅材', rootType: 'R', categoryRootName: '原材料' }]
     vi.mocked(request.get).mockResolvedValueOnce({ data: options })
     expect(await loadMaterialCategoryOptions()).toEqual(options)
     expect(request.get).toHaveBeenCalledWith('/inventory/material/category-options')
-    expect(materialImportSaveWithCategory({ materialType: 'A' }, 'M4', options).payload.categoryId).toBe(99)
+    expect(materialImportSaveWithCategory({ categoryId: 99 }, 'M4', options).payload.categoryId).toBe(99)
   })
   it('接口失败或空数据时返回空数组（不再用本地镜像兜底）', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

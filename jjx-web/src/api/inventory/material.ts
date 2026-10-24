@@ -157,8 +157,8 @@ export const materialApi = {
   },
 
   // 生成物料编码
-  generateCode(materialType?: string) {
-    return request.get<R<string>>('/inventory/material/code', { params: { materialType } })
+  generateCode(categoryId?: number) {
+    return request.get<R<string>>('/inventory/material/code', { params: { categoryId } })
   },
 
   // ==================== 规格属性（dev-20261023-022） ====================

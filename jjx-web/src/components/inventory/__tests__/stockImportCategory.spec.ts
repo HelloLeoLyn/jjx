@@ -32,10 +32,9 @@ import StockBatchImportDialog from '../StockBatchImportDialog.vue'
 
 // 分类树收口后前端不再内置品类镜像（dev-20261024-006）；测试自备最小夹具。
 const TEST_CATEGORIES = [
-  { categoryId: 6, categoryCode: 'AUX-ELEC', categoryName: '电子元件', materialType: 'A' },
-  { categoryId: 10, categoryCode: 'OTHER-R', categoryName: '其他（原材料）', materialType: 'R' },
-  { categoryId: 11, categoryCode: 'OTHER-A', categoryName: '其他（辅助材料）', materialType: 'A' },
+  { categoryId: 6, categoryCode: 'RAW_AUX_ELECTRONIC', categoryName: '电子元件', rootType: 'R' },
 ]
+
 
 vi.mock('@/utils/request', () => ({ default: { get: vi.fn() } }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { generateCode: vi.fn(), add: vi.fn() } }))
@@ -68,19 +67,29 @@ for (const [name, component, rowsKey, handler] of [
       state[rowsKey] = [{ materialName: '无品类测试', checked: false, _checkResult: { errors: [{ type: 'NOT_FOUND' }] }, ...row }]
       return { wrapper, state }
     }
-    it.each(['R', 'A'])('无品类 %s 行提交默认品类并显示结果提示', async (type) => {
-      const { wrapper, state } = mountRow({ material_type: type })
+    it('缺少品类时拒绝建档，不分配编码和默认类型', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const { wrapper, state } = mountRow({})
+      await state[handler]()
+      expect(materialApi.generateCode).not.toHaveBeenCalled()
+      expect(materialApi.add).not.toHaveBeenCalled()
+      expect(ElMessage.error).toHaveBeenCalledWith(expect.stringContaining('未归类'))
+      wrapper.unmount()
+      error.mockRestore()
+    })
+    it('显式品类先传分类ID生成编码，保存载荷不含旧类型', async () => {
+      const { wrapper, state } = mountRow({ categoryId: 6 })
       await state[handler]()
       await nextTick()
-      expect(materialApi.add).toHaveBeenCalledWith(expect.objectContaining({ categoryId: type === 'A' ? 11 : 10, materialType: type }))
-      expect(ElMessage.success).toHaveBeenCalledWith(expect.stringContaining('未匹配品类已归入其他'))
-      expect(wrapper.find('el-alert-stub').attributes('title')).toContain('未匹配品类已归入其他 1 条')
+      expect(materialApi.generateCode).toHaveBeenCalledWith(6)
+      expect(materialApi.add).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 6, materialCode: 'TEST015' }))
+      expect(vi.mocked(materialApi.add).mock.calls[0][0]).not.toHaveProperty('materialType')
       wrapper.unmount()
     })
     it('服务端建档失败显示失败原因，不计入成功归类', async () => {
       const error = vi.spyOn(console, 'error').mockImplementation(() => {})
       vi.mocked(materialApi.add).mockRejectedValueOnce(new Error('品类不存在'))
-      const { wrapper, state } = mountRow({})
+      const { wrapper, state } = mountRow({ categoryId: 6 })
       await state[handler]()
       expect(ElMessage.error).toHaveBeenCalledWith(expect.stringContaining('品类不存在'))
       expect(state.fallbackCategoryCount).toBe(0)

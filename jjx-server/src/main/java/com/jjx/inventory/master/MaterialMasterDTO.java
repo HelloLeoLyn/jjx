@@ -7,6 +7,7 @@ import java.util.Map;
 
 /** 完整主数据表单；类型与模板ID由服务端沿分类树解析。 */
 @Data
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class MaterialMasterDTO {
     private Long materialId;
     private String materialCode;
@@ -32,7 +33,6 @@ public class MaterialMasterDTO {
     private Boolean isCustomerSupplied;
     private Boolean isSample;
     private String searchKeywords;
-    private String specSupplement;
     private String remark;
     private Long supplierId;
     private String supplierName;

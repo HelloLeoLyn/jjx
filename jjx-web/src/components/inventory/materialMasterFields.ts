@@ -87,21 +87,12 @@ export interface MaterialCategoryOption {
   categoryId: number
   categoryCode: string
   categoryName: string
-  materialType?: string
+  rootType?: string | null
+  categoryRootName?: string | null
 }
 
 // 品类下拉唯一真源 = /inventory/material/category-options（分类树收口后由后端下发）。
 // dev-20261024-006：删除本地 11 条旧一级品类镜像，避免接口与前端两份分类并存。
-
-/** 大类（物料类型 R/A）由品类编码带出，只读展示。 */
-export function deriveMaterialType(categoryCode?: string): string {
-  if (!categoryCode) return ''
-  if (categoryCode.startsWith('RM-')) return 'R'
-  if (categoryCode.startsWith('AUX-')) return 'A'
-  if (categoryCode === 'OTHER-A') return 'A'
-  if (categoryCode === 'OTHER-R') return 'R'
-  return ''
-}
 
 /** 必填字段（按矩阵顺序）。 */
 export function requiredMaterialFields(categoryCode?: string): string[] {
@@ -202,7 +193,8 @@ export async function loadMaterialCategoryOptions(): Promise<MaterialCategoryOpt
         categoryId: Number(item.categoryId),
         categoryCode: item.categoryCode || '',
         categoryName: item.categoryName || item.categoryCode || String(item.categoryId),
-        materialType: item.materialType || deriveMaterialType(item.categoryCode),
+        rootType: item.rootType ?? null,
+        categoryRootName: item.categoryRootName ?? null,
       }))
     if (options.length) return options
     console.warn('[material] 品类接口返回为空，请检查分类树与权限')
@@ -216,21 +208,18 @@ export interface ImportedCategoryFields {
   categoryId?: number | string
   categoryCode?: string
   categoryName?: string
-  materialType?: string
-  material_type?: string
 }
 
-/** 两个库存导入入口均保留行内品类和大类。 */
+/** 两个库存导入入口只保留明确品类，不采信旧类型。 */
 export function readImportedCategoryFields(row: Record<string, any>): ImportedCategoryFields {
   return {
     categoryId: row.categoryId || row.category_id || row['品类ID'],
     categoryCode: row.categoryCode || row.category_code || row['品类编码'],
     categoryName: row.categoryName || row.category_name || row['品类'] || row['品类名称'],
-    materialType: row.materialType || row.material_type || row['物料类型'] || row['大类'],
   }
 }
 
-/** 缺失/未匹配品类按大类归入其他；兜底也不存在时明确拒绝建档。 */
+/** 缺失/未匹配品类明确拒绝建档，不按旧类型或编码兜底归类。 */
 export function materialImportSaveWithCategory(
   row: MaterialImportRow & ImportedCategoryFields,
   materialCode: string,
@@ -241,15 +230,12 @@ export function materialImportSaveWithCategory(
     (!!row.categoryCode && item.categoryCode === row.categoryCode.trim()) ||
     (!!row.categoryName && [item.categoryName, item.categoryCode].includes(row.categoryName.trim()))
   )
-  const type = (row.materialType || row.material_type || 'R').trim()
-  const materialType = ['A', '辅助材料', '辅料'].includes(type) ? 'A' : 'R'
-  const category = matched || options.find((item) => item.categoryCode === `OTHER-${materialType}`)
-  if (!category?.categoryId) throw new Error(`未找到${materialType === 'A' ? '辅助材料' : '原材料'}默认品类，无法建档`)
+  const category = matched
+  if (!category?.categoryId) throw new Error('物料未归类，请先选择明确品类后建档')
   return {
     payload: {
       ...materialSaveFromImport(row, materialCode),
       categoryId: category.categoryId,
-      materialType: category.materialType || deriveMaterialType(category.categoryCode),
     },
     usedFallback: !matched,
   }
@@ -261,7 +247,7 @@ export function materialImportSaveWithCategory(
  * 规格属性口径（与服务端 MaterialSpecComposer 同一规则的前端预览）：
  * 1）规格由品类属性组合成文本，写回 inventory_material.specification，下游只读这段文本；
  * 2）数值 = 数字 + 单位；区间 = 下限-上限 + 单位；下拉/文本原样；
- * 3）补充说明 ≤30 字，用「；」接在生成文本之后，单独存 spec_supplement；
+ * 3）补充说明 ≤30 字，用「；」接在生成文本之后，仅用于旧规格预览（主表不再保存补充列）；
  * 4）总长 ≤200 字，单段 ≤40 字（打印「规格及模数」不能过长）。
  */
 export const MATERIAL_SPEC_MAX_SUPPLEMENT = 30

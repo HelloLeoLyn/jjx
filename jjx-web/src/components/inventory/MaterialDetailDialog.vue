@@ -42,9 +42,6 @@
         <el-descriptions-item label="状态">
           <el-tag :type="statusTag.type" size="small">{{ statusTag.label }}</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="机种">{{
-          text(material.materialNameEn)
-        }}</el-descriptions-item>
         <el-descriptions-item label="批次管理">{{
           material.batchControl ? '启用' : '禁用'
         }}</el-descriptions-item>
@@ -141,9 +138,8 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
-import { MaterialStatusEnum, MaterialTypeEnum } from '@/enums/inventory/MaterialEnum'
+import { MaterialStatusEnum } from '@/enums/inventory/MaterialEnum'
 import {
-  deriveMaterialType,
   loadMaterialCategoryOptions,
   type MaterialCategoryOption,
 } from './materialMasterFields'
@@ -224,10 +220,10 @@ const categoryName = computed(
     '-'
 )
 
-const materialTypeText = computed(() => {
-  const type = material.value?.materialType || deriveMaterialType(category.value?.categoryCode)
-  return type ? `${type} · ${MaterialTypeEnum.getLabel(type)}` : '-'
-})
+const materialTypeText = computed(() =>
+  masterDetail.value?.configuration?.path[0]?.categoryName || material.value?.categoryRootName ||
+  category.value?.categoryRootName || '未归类'
+)
 
 const statusTag = computed(() => {
   const status = material.value?.status as number | string | undefined

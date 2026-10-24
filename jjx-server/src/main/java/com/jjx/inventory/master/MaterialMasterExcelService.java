@@ -26,7 +26,7 @@ public class MaterialMasterExcelService {
     private final InventoryMaterialMapper materials;
     private final ObjectMapper objectMapper;
     public record ImportResult(boolean preview, int successCount, List<String> errors) { }
-    private static final List<String> COMMON_HEADERS = List.of("原名称", "原规格", "材质", "形态", "尺寸(mm)", "颜色", "型号", "品牌", "单位", "供应商", "是否客供专用", "是否样品专用", "别名", "规格补充", "业务备注", "物料ID（更新时填写）");
+    private static final List<String> COMMON_HEADERS = List.of("原名称", "原规格", "材质", "形态", "尺寸(mm)", "颜色", "型号", "品牌", "单位", "供应商", "是否客供专用", "是否样品专用", "别名", "业务备注", "物料ID（更新时填写）");
 
     public byte[] template(Long categoryId) {
         var configuration = catalog.configuration(categoryId);
@@ -97,7 +97,7 @@ public class MaterialMasterExcelService {
                     for (int extra = headers.size(); extra < row.getLastCellNum(); extra++) if (!cell(row,extra).isBlank()) throw new BusinessException("包含模板之外的列");
                     if (blank(row, headers.size())) continue;
                     MaterialMasterDTO dto = new MaterialMasterDTO(); dto.setCategoryId(categoryId);
-                    String id = cell(row, 15);
+                    String id = cell(row, 14);
                     if (!id.isBlank()) {
                         if (!allowUpdate) throw new BusinessException("更新或迁移现有物料还需要物料编辑权限");
                         try { dto.setMaterialId(Long.parseLong(id)); } catch (NumberFormatException e) { throw new BusinessException("物料ID必须为整数"); }
@@ -110,7 +110,7 @@ public class MaterialMasterExcelService {
                     dto.setModel(cell(row, 6)); dto.setBrand(dictionaryCode(dictionaries, "brand", cell(row, 7)));
                     dto.setUnit(dictionaryCode(dictionaries, "unit", cell(row, 8))); dto.setSupplierName(cell(row, 9));
                     dto.setIsCustomerSupplied(bool(cell(row, 10))); dto.setIsSample(bool(cell(row, 11)));
-                    dto.setSearchKeywords(cell(row, 12)); dto.setSpecSupplement(cell(row, 13)); dto.setRemark(cell(row, 14));
+                    dto.setSearchKeywords(cell(row, 12)); dto.setRemark(cell(row, 13));
                     Map<String, Object> attributes = new LinkedHashMap<>();
                     for (int i = 0; i < configuration.schema().fields().size(); i++) {
                         var field = configuration.schema().fields().get(i);

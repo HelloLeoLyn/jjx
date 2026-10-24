@@ -72,9 +72,9 @@ export interface InventoryMaterial {
   readonly widthSize?: string | null
   isCustomerSupplied?: boolean
   isSample?: boolean
-  materialNameEn?: string
-  materialType: string
   categoryId?: number
+  readonly rootType?: string | null
+  readonly categoryRootName?: string | null
   categoryName?: string
   specification?: string
   materialGrade?: string
@@ -86,7 +86,6 @@ export interface InventoryMaterial {
   /** 新模型尺寸：宽或宽×长，单位mm；厚度单独存品类属性 */
   size?: string
   /** 规格补充（属性生成的规格文本之外，≤30 字） */
-  specSupplement?: string
   unit: string
   /** 库存视图字段（MaterialVO 返回，只读展示） */
   currentStock?: number
@@ -115,11 +114,10 @@ export interface InventoryMaterial {
 
 // 物料查询参数
 export interface InventoryMaterialQueryParams extends PageQuery {
+  rootType?: string
   materialId?: number
   materialCode?: string
   materialName?: string
-  materialNameEn?: string
-  materialType?: string
   materialMeta?: string
   materialForm?: string
   masterDataOnly?: boolean
@@ -145,13 +143,13 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   orderDirection?: string
 }
 export interface MaterialQueryDTO extends PageQuery {
+  rootType?: string
   keyword?: string
   materialCode?: string
   materialName?: string
   specification?: string
   supplierId?: number
   categoryId?: number
-  materialType?: string
   materialGrade?: string
   materialMeta?: string
   materialForm?: string
@@ -169,7 +167,6 @@ export interface MaterialSaveDTO {
   readonly widthSize?: string | null
   materialCode: string
   materialName: string
-  materialType: string
   categoryId?: number
   specification?: string
   materialGrade?: string
@@ -201,7 +198,6 @@ export interface MaterialUpdateDTO {
   materialId: number
   materialCode?: string
   materialName?: string
-  materialType?: string
   categoryId?: number | null
   specification?: string | null
   /** 传 null 表示显式清空；不传（undefined）表示保持原值 */
@@ -230,6 +226,8 @@ export interface MaterialUpdateDTO {
 
 export interface MaterialCategoryQueryParams extends PageQuery {
   categoryCode?: string
+  readonly rootType?: string | null
+  readonly categoryRootName?: string | null
   categoryName?: string
   parentId?: number
   status?: string

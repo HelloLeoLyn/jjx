@@ -17,11 +17,8 @@ public class MaterialExportVO {
     @ExcelColumn(value = "物料名称", order = 2)
     private String materialName;
 
-    @ExcelColumn(value = "机种", order = 3)
-    private String materialNameEn;
-
     @ExcelColumn(value = "物料类型", order = 4)
-    private String materialTypeDesc;
+    private String categoryRootName;
 
     @ExcelColumn(value = "物料分类", order = 5)
     private String categoryName;

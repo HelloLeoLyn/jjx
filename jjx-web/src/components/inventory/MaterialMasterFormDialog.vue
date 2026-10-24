@@ -132,9 +132,6 @@
             />
           </el-collapse-item>
         </el-collapse>
-        <el-form-item label="规格补充"
-          ><el-input v-model="form.specSupplement" maxlength="30" show-word-limit
-        /></el-form-item>
         <el-form-item label="规格预览"
           ><span>{{ specificationPreview || '填写属性后自动生成' }}</span></el-form-item
         >
@@ -214,7 +211,6 @@ const props = defineProps<{
     specification?: string
     unit?: string
     supplierName?: string
-    materialType?: string
   }
 }>()
 const emit = defineEmits<{
@@ -244,7 +240,7 @@ const materialOptions = computed(() =>
   )
 )
 const specificationPreview = computed(() =>
-  previewMasterSpecification(configuration.value?.schema, form.attributeJson, form.specSupplement)
+  previewMasterSpecification(configuration.value?.schema, form.attributeJson)
 )
 type NumericKey =
   | 'safeStock'

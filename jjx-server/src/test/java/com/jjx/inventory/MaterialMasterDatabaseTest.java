@@ -75,7 +75,7 @@ class MaterialMasterDatabaseTest {
                 session.getMapper(SysDictMapper.class), objectMapper);
         var numbers = mock(InventoryMaterialService.class);
         when(numbers.existsByCode(anyString())).thenAnswer(invocation -> materialMapper.selectByCode(invocation.getArgument(0)) != null);
-        when(numbers.generateCode(anyString())).thenAnswer(invocation -> "T002DB" + UUID.randomUUID().toString().replace("-", ""));
+        when(numbers.generateCode(anyLong())).thenAnswer(invocation -> "T002DB" + UUID.randomUUID().toString().replace("-", ""));
         tags = proxy(new SysTagServiceImpl(session.getMapper(SysTagMapper.class), session.getMapper(SysTagRelMapper.class)));
         service = proxy(new MaterialMasterService(catalog, session.getMapper(MaterialMasterMapper.class), materialMapper,
                 numbers, mock(PurchaseSupplierMapper.class), tags, mock(EventPublisher.class), objectMapper));
@@ -128,7 +128,7 @@ class MaterialMasterDatabaseTest {
         List<Long> selectedTags = availableTags.isEmpty() ? List.of() : List.of(availableTags.get(0).getTagId());
         dto.setTagIds(selectedTags);
         InventoryMaterial saved = service.save(dto, "Codex-db-test");
-        assertEquals("R", saved.getMaterialType()); assertEquals("PC", saved.getMaterialMeta()); assertEquals("FILM", saved.getMaterialForm());
+        assertEquals(category("RAW_BASE_PC"), saved.getCategoryId()); assertEquals("PC", saved.getMaterialMeta()); assertEquals("FILM", saved.getMaterialForm());
         assertEquals("来源300*305", saved.getOriginalSpecification()); assertFalse(service.detail(saved.getMaterialId()).attributes().get("anti_uv").equals(true));
         assertEquals(selectedTags.size(), tags.getBizTags("inventory_material", saved.getMaterialId()).size());
         dto.setMaterialId(saved.getMaterialId()); dto.setModel("DB6842"); service.save(dto, "Codex-db-test");
@@ -157,7 +157,7 @@ class MaterialMasterDatabaseTest {
             Map<Integer,String> values = Map.ofEntries(Map.entry(0,"正式库Excel事务验证"),Map.entry(1,"来源300*305"),
                     Map.entry(2,"PC"),Map.entry(3,"膜"),Map.entry(4,"300×305"),Map.entry(5,"透明"),
                     Map.entry(6,"DB6842"),Map.entry(7,"地博"),Map.entry(8,"米"),Map.entry(10,"否"),Map.entry(11,"否"),
-                    Map.entry(16,"0.175"),Map.entry(17,"中砂、加硬"),Map.entry(21,"否"));
+                    Map.entry(15,"0.175"),Map.entry(16,"中砂、加硬"),Map.entry(20,"否"));
             values.forEach((column,value) -> row.createCell(column).setCellValue(value));
             var output = new ByteArrayOutputStream(); workbook.write(output);
             file = new MockMultipartFile("file","pc.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",output.toByteArray());

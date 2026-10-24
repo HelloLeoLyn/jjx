@@ -649,8 +649,9 @@ const handleCreateAll = async () => {
   for (const row of uncreatedRows) {
     try {
       // 生成物料编码
-      const codeRes = await materialApi.generateCode()
-      const { payload: saveData, usedFallback } = materialImportSaveWithCategory(row, codeRes.data || '', categories)
+      const { payload: saveData, usedFallback } = materialImportSaveWithCategory(row, '', categories)
+      const codeRes = await materialApi.generateCode(saveData.categoryId)
+      saveData.materialCode = codeRes.data || ''
       await materialApi.add(saveData as any)
       if (usedFallback) fallbackCategoryCount.value++
       row.checked = true

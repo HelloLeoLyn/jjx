@@ -23,7 +23,6 @@ import com.jjx.inventory.dto.save.MaterialSaveDTO;
 import com.jjx.inventory.dto.update.MaterialUpdateDTO;
 import com.jjx.inventory.dto.vo.MaterialExportVO;
 import com.jjx.inventory.dto.vo.MaterialVO;
-import com.jjx.inventory.enums.MaterialEnums;
 import com.jjx.inventory.service.InventoryMaterialCategoryService;
 import com.jjx.inventory.service.InventoryMaterialService;
 import com.jjx.inventory.service.InventoryWarehouseService;
@@ -102,8 +101,8 @@ public class InventoryMaterialController extends BaseController {
     }
 
     @GetMapping("/code")
-    public Result<String> code(@RequestParam(required = false) String materialType) {
-        return Result.success(materialService.generateCode(materialType));
+    public Result<String> code(@RequestParam(required = false) Long categoryId) {
+        return Result.success(materialService.generateCode(categoryId));
     }
 
     /**
@@ -241,8 +240,11 @@ public class InventoryMaterialController extends BaseController {
 
         // 列表VO未做关联字段填充，导出时补齐分类名/默认仓库名
         Map<Long, String> categoryMap = new HashMap<>();
+        Map<Long, String> rootNames = new HashMap<>();
         for (InventoryMaterialCategory category : categoryService.list()) {
             categoryMap.put(category.getCategoryId(), category.getCategoryName());
+            rootNames.put(category.getCategoryId(), com.jjx.inventory.util.MaterialClassification.rootNameOf(
+                    category.getCategoryPath() == null ? null : Map.of("category_path", category.getCategoryPath())));
         }
         Map<Long, String> warehouseMap = new HashMap<>();
         for (InventoryWarehouse warehouse : warehouseService.list()) {
@@ -253,8 +255,7 @@ public class InventoryMaterialController extends BaseController {
         for (InventoryMaterial entity : list) {
             MaterialExportVO row = new MaterialExportVO();
             BeanUtils.copyProperties(entity, row);
-            MaterialEnums.Type type = MaterialEnums.Type.fromValue(entity.getMaterialType());
-            row.setMaterialTypeDesc(type == null ? entity.getMaterialType() : type.getLabel());
+            row.setCategoryRootName(rootNames.get(entity.getCategoryId()));
             row.setCategoryName(
                     entity.getCategoryId() == null ? null : categoryMap.get(entity.getCategoryId()));
             row.setDefaultWarehouseName(entity.getDefaultWarehouseId() == null ? null

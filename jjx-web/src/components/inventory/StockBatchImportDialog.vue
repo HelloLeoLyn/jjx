@@ -452,8 +452,9 @@ const handleCreateMaterials = async () => {
     const categories = await loadMaterialCategoryOptions()
     for (const row of notFoundRows) {
       try {
-        const codeRes = await materialApi.generateCode()
-        const { payload, usedFallback } = materialImportSaveWithCategory(row, codeRes.data || '', categories)
+        const { payload, usedFallback } = materialImportSaveWithCategory(row, '', categories)
+        const codeRes = await materialApi.generateCode(payload.categoryId)
+        payload.materialCode = codeRes.data || ''
         await materialApi.add(payload as any)
         if (usedFallback) fallbackCategoryCount.value++
         // 更新本行校验结果为 ok（重新校验时会用）

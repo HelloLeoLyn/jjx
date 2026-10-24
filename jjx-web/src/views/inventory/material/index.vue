@@ -219,7 +219,7 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   pageSize: 50,
   materialCode: '',
   materialName: '',
-  materialType: '',
+  rootType: '',
   masterDataOnly: true,
   materialMeta: '',
   materialForm: '',
@@ -332,7 +332,7 @@ const handleQuery = () => {
 const handleReset = () => {
   queryParams.materialCode = ''
   queryParams.materialName = ''
-  queryParams.materialType = ''
+  queryParams.rootType = ''
   queryParams.masterDataOnly = true
   queryParams.materialMeta = ''
   queryParams.materialForm = ''

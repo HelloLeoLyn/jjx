@@ -160,12 +160,10 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
 import { useUserStore } from '@/store/modules/user'
-import { MaterialTypeEnum } from '@/enums/inventory/MaterialEnum'
 import {
   MATERIAL_COLOR_OPTIONS,
   MATERIAL_FIELD_LABELS,
   MATERIAL_GRADE_OPTIONS,
-  deriveMaterialType,
   findMissingRequiredFields,
   loadMaterialCategoryOptions,
   requiredMaterialFields,
@@ -231,10 +229,7 @@ const categoryCode = computed(
   () =>
     categoryOptions.value.find((item) => item.categoryId === form.categoryId)?.categoryCode || ''
 )
-const materialTypeText = computed(() => {
-  const type = deriveMaterialType(categoryCode.value) || original.value?.materialType || ''
-  return type ? `${type} · ${MaterialTypeEnum.getLabel(type)}` : ''
-})
+const materialTypeText = computed(() => categoryOptions.value.find((item) => item.categoryId === form.categoryId)?.categoryRootName || '未归类')
 
 const autoName = computed(() =>
   buildAutoName({
@@ -364,7 +359,6 @@ const submit = () => {
         materialId: original.value.materialId,
         materialName: form.materialName.trim(),
         categoryId: form.categoryId,
-        materialType: deriveMaterialType(categoryCode.value) || original.value.materialType,
         materialGrade: form.materialGrade || null,
         model: form.model || null,
         color: form.color || null,

@@ -8,5 +8,6 @@ public class MaterialCategoryOptionVO {
     private Long categoryId;
     private String categoryCode;
     private String categoryName;
-    private String materialType;
+    private String rootType;
+    private String categoryRootName;
 }

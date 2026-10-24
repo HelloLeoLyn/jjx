@@ -1,3 +1,21 @@
+vi.mock('element-plus/es/components/alert/style/css', () => ({}))
+vi.mock('element-plus/es/components/base/style/css', () => ({}))
+vi.mock('element-plus/es/components/button/style/css', () => ({}))
+vi.mock('element-plus/es/components/checkbox/style/css', () => ({}))
+vi.mock('element-plus/es/components/col/style/css', () => ({}))
+vi.mock('element-plus/es/components/collapse/style/css', () => ({}))
+vi.mock('element-plus/es/components/collapse-item/style/css', () => ({}))
+vi.mock('element-plus/es/components/dialog/style/css', () => ({}))
+vi.mock('element-plus/es/components/divider/style/css', () => ({}))
+vi.mock('element-plus/es/components/form/style/css', () => ({}))
+vi.mock('element-plus/es/components/form-item/style/css', () => ({}))
+vi.mock('element-plus/es/components/input/style/css', () => ({}))
+vi.mock('element-plus/es/components/input-number/style/css', () => ({}))
+vi.mock('element-plus/es/components/option/style/css', () => ({}))
+vi.mock('element-plus/es/components/row/style/css', () => ({}))
+vi.mock('element-plus/es/components/select/style/css', () => ({}))
+vi.mock('element-plus/es/components/skeleton/style/css', () => ({}))
+vi.mock('element-plus/es/components/switch/style/css', () => ({}))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -17,7 +35,8 @@ const mocks = vi.hoisted(() => ({
 }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: mocks }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { getTags: mocks.tags } }))
-vi.mock('element-plus', () => ({
+vi.mock('element-plus', async (importOriginal) => ({
+  ...await importOriginal<typeof import('element-plus')>(),
   ElMessage: { success: mocks.success, error: mocks.error, warning: mocks.warning },
 }))
 const Slot = defineComponent({ template: '<div><slot /><slot name="footer" /></div>' })

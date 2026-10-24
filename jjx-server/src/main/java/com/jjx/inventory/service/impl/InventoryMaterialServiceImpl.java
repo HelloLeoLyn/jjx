@@ -31,7 +31,7 @@ import com.jjx.inventory.domain.InventoryMaterialCategory;
 import com.jjx.inventory.service.InventoryMaterialCategoryService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.jjx.inventory.enums.ProcessGroup;
-import com.jjx.inventory.enums.MaterialEnums;
+import com.jjx.inventory.util.MaterialClassification;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.service.InventoryMaterialService;
@@ -99,14 +99,15 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     @Override
     public List<MaterialCategoryOptionVO> getCategoryOptions() {
         return categoryService.listMaps(new QueryWrapper<InventoryMaterialCategory>()
-                .select("category_id", "category_code", "category_name", "material_type")
+                .select("category_id", "category_code", "category_name", "category_path", "name_path")
                 .eq("status", StatusEnum.NORMAL.getCode()).orderByAsc("sort_order", "category_id"))
                 .stream().map(row -> {
                     MaterialCategoryOptionVO option = new MaterialCategoryOptionVO();
                     option.setCategoryId(((Number) row.get("category_id")).longValue());
                     option.setCategoryCode((String) row.get("category_code"));
                     option.setCategoryName((String) row.get("category_name"));
-                    option.setMaterialType((String) row.get("material_type"));
+                    option.setRootType(MaterialClassification.materialTypeOf(row));
+                    option.setCategoryRootName(MaterialClassification.rootNameOf(row));
                     return option;
                 }).toList();
     }
@@ -117,12 +118,21 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         List<Long> ids = materials.stream().map(InventoryMaterial::getCategoryId)
                 .filter(java.util.Objects::nonNull).distinct().toList();
         Map<Long, String> names = new HashMap<>();
+        Map<Long, InventoryMaterialCategory> classified = new HashMap<>();
         if (!ids.isEmpty()) {
             for (InventoryMaterialCategory category : categoryService.listByIds(ids)) {
                 names.put(category.getCategoryId(), category.getCategoryName());
+                classified.put(category.getCategoryId(), category);
             }
         }
-        return materialConverter.toVOList(materials, names);
+        List<MaterialVO> result = materialConverter.toVOList(materials, names);
+        result.forEach(vo -> {
+            InventoryMaterialCategory category = classified.get(vo.getCategoryId());
+            Map<String, Object> path = category == null || category.getCategoryPath() == null ? null : Map.of("category_path", category.getCategoryPath());
+            vo.setCategoryRootName(MaterialClassification.rootNameOf(path));
+            vo.setRootType(MaterialClassification.materialTypeOf(path));
+        });
+        return result;
     }
 
     private @NonNull LambdaQueryWrapper<InventoryMaterial> buildQueryWrapper(MaterialQueryDTO queryDTO) {
@@ -140,9 +150,6 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                     applyKeywordMatch(wrapper, term);
                 }
             }
-        }
-        if (StringUtils.isNotBlank(queryDTO.getMaterialType())) {
-            wrapper.eq(InventoryMaterial::getMaterialType, queryDTO.getMaterialType());
         }
         // 按标签筛选（dev-20260912-007 公共助手）：tagIds + tagMatchMode；兼容单值 tagId
         java.util.List<Long> tagIds = queryDTO.getTagIds();
@@ -387,8 +394,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         } else if (StringUtils.isNotBlank(code) || StringUtils.isNotBlank(name)) {
             wrapper.and(w -> {
                 w.like(StringUtils.isNotBlank(code), InventoryMaterial::getMaterialCode, code)
-                        .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialName, name)
-                        .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialNameEn, name);
+                        .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialName, name);
             });
         }
         if (queryDTO.getCategoryId() != null) {
@@ -466,15 +472,12 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 PurchaseSupplierVO purchaseSupplierVO = supplierName == null ? null
                         : purchaseSupplierService.selectSupplierByName(supplierName);
 
-                dto.setMaterialType((String) row.category().get("material_type"));
-                String materialCode = generateMaterialCode(dto.getMaterialType());
+                String materialCode = generateMaterialCode(((Number) row.category().get("category_id")).longValue());
 
                 // 创建物料实体
                 InventoryMaterial material = new InventoryMaterial();
                 material.setMaterialCode(materialCode);
                 material.setMaterialName(dto.getMaterialName());
-                material.setMaterialNameEn(dto.getMaterialNameEn());
-                material.setMaterialType(dto.getMaterialType());
                 material.setSpecification(dto.getSpecification());
                 material.setCategoryId(((Number) row.category().get("category_id")).longValue());
                 material.setMaterialGrade(dto.getMaterialGrade());
@@ -537,8 +540,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     @Override
-    public String generateCode(String materialType) {
-        return generateMaterialCode(materialType);
+    public String generateCode(Long categoryId) {
+        return generateMaterialCode(categoryId);
     }
 
     @Override
@@ -611,30 +614,13 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
      * 例如：RM001601、AUX001574。
      * 注意：新增前该序列需已接续存量最大流水，否则会从 1 起致撞号（dev-20261009-032）。
      */
-    private String generateMaterialCode(String materialType) {
-        String prefix = resolveMaterialCodePrefix(materialType);
+    private String generateMaterialCode(Long categoryId) {
+        String prefix = MaterialClassification.codePrefixOf(categoryId == null ? null : materialMapper.selectCategory(categoryId));
         // 存量兜底：清库/回滚会把 material 序号清零，取「存量最大流水+1」作下限，避免从 1 撞存量
         Long maxSeq = materialMapper.selectMaxCodeSequence();
         long minSequence = (maxSeq == null || maxSeq <= 0) ? 0L : maxSeq + 1;
         return redisSequenceService.generateBusinessNumberByTypeWithPrefix(
                 "material", prefix, "", 6, minSequence);
-    }
-
-    /**
-     * 按物料类型解析编码前缀；未传或无效时兼容使用 MTR。
-     */
-    private String resolveMaterialCodePrefix(String materialType) {
-        MaterialEnums.Type type = MaterialEnums.Type.fromValue(materialType);
-        if (type == null) {
-            return "MTR";
-        }
-        return switch (type) {
-            case FINISHED -> "FG";
-            case SEMI -> "SFG";
-            case RAW -> "RM";
-            case INK -> "INK";
-            case AUXILIARY -> "AUX";
-        };
     }
 
     /** 物料保存服务仅在属性保存时写入这三列；其它调用不能独立覆盖。 */
@@ -692,15 +678,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (existing == null && category == null) throw new BusinessException("品类不能为空");
         if (category != null) {
             if (isNewModelCategory(category)) throw new BusinessException("该品类请使用新版物料保存入口");
-            String categoryType = (String) category.get("material_type");
-            // 品类查询结果缺大类时保留调用方已带出的类型，避免被 null 覆盖（dev-20261023-019）
-            if (StringUtils.isNotBlank(categoryType)) {
-                material.setMaterialType(categoryType);
-            }
-        } else if (material.getMaterialType() == null && existing != null) {
-            material.setMaterialType(existing.getMaterialType());
         }
-        validateMaterialType(material.getMaterialType());
         String categoryCode = category == null ? null : (String) category.get("category_code");
         if (categoryCode != null) {
             for (String column : materialMapper.selectRequiredFields(categoryCode)) {
@@ -735,6 +713,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     }
 
     private static void applyAttributeFilters(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {
+        if (StringUtils.isNotBlank(dto.getRootType())) MaterialClassification.filterType(wrapper, dto.getRootType());
         wrapper.eq(StringUtils.isNotBlank(dto.getMaterialMeta()), InventoryMaterial::getMaterialMeta, dto.getMaterialMeta())
                 .eq(StringUtils.isNotBlank(dto.getMaterialForm()), InventoryMaterial::getMaterialForm, dto.getMaterialForm())
                 .eq(dto.getIsCustomerSupplied() != null, InventoryMaterial::getIsCustomerSupplied, dto.getIsCustomerSupplied())
@@ -791,7 +770,6 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (category == null) throw new BusinessException("品类不存在：" + value);
         if (isNewModelCategory(category)) throw new BusinessException("该品类请下载新版按品类导入模板");
         dto.setCategoryName((String) category.get("category_code"));
-        dto.setMaterialType((String) category.get("material_type"));
         return category;
     }
 
@@ -921,7 +899,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 : legacyMaterialColumn ? gradeInput
                 : composeImportName(gradeInput, dto.getModel(), dto.getColor(), dto.getBrand());
         if (StringUtils.isBlank(dto.getCategoryName())) {
-            dto.setCategoryName(inferImportCategoryCode(inferenceName, dto.getMaterialType()));
+            dto.setCategoryName(inferImportCategoryCode(inferenceName));
         }
         if (explicitName == null && legacyMaterialColumn) {
             dto.setMaterialName(gradeInput);
@@ -943,7 +921,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         }
     }
 
-    private static String inferImportCategoryCode(String name, String materialType) {
+    private static String inferImportCategoryCode(String name) {
         String text = nz(name).toUpperCase(java.util.Locale.ROOT);
         if (text.matches(".*(离型纸|离型膜|标签纸|纸材).*")) return "RM-PAPER";
         if (text.matches(".*(保护膜|双面胶|VHB).*")) return "RM-ADHESIVE";
@@ -954,7 +932,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (text.matches(".*(PC|PET|PVC|PP|PE|膜|片材).*")) return "RM-FILM";
         if (text.matches(".*(纸箱|袋|泡棉|标签).*")) return "AUX-PACK";
         if (text.matches(".*(刀模|治具|砂纸|手套).*")) return "AUX-TOOL";
-        return "A".equals(materialType) ? "OTHER-A" : "OTHER-R";
+        return null; // 没有明确分类证据时拒绝导入，不默认归入R/A。
     }
 
     private static String inferImportGrade(String name) {
@@ -987,12 +965,6 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 : "(?i)(?<![A-Za-z0-9.])[A-Za-z][A-Za-z0-9#/_.*-]*[0-9][A-Za-z0-9#/_.*-]*|(?<![0-9.])[0-9]+[A-Za-z][A-Za-z0-9#/_.*-]*";
         var model = java.util.regex.Pattern.compile(pattern).matcher(body);
         return model.find() ? model.group() : null;
-    }
-
-    private void validateMaterialType(String materialType) {
-        if (MaterialEnums.Type.fromValue(materialType) == null) {
-            throw new BusinessException("无效的物料类型：" + materialType);
-        }
     }
 
     private void setMaterialTags(Long materialId, List<Long> tagIds, String operName) {

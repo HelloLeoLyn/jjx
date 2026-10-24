@@ -37,7 +37,7 @@ public class MaterialMasterAuditService {
                 var dto = new MaterialMasterDTO(); BeanUtils.copyProperties(material, dto);
                 dto.setAttributeJson(service.readAttributes(material.getAttributeJson()));
                 var prepared = service.prepare(dto).material();
-                if (!Objects.equals(material.getMaterialType(), prepared.getMaterialType())) problems.add(new Problem(material.getMaterialId(),material.getMaterialName(),"类型与分类根节点不一致"));
+                if (materials.materialTypeOf(material.getCategoryId()) == null) problems.add(new Problem(material.getMaterialId(),material.getMaterialName(),"分类路径无法派生类型"));
                 if (!Objects.equals(material.getSpecification(), prepared.getSpecification())) problems.add(new Problem(material.getMaterialId(),material.getMaterialName(),"规格文本与属性生成结果不一致"));
             } catch (RuntimeException e) { problems.add(new Problem(material.getMaterialId(),material.getMaterialName(),e.getMessage())); }
         }

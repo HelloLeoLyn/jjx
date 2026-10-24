@@ -20,7 +20,6 @@ defineProps<{
     specification?: string
     unit?: string
     supplierName?: string
-    materialType?: string
   }
 }>()
 const emit = defineEmits<{

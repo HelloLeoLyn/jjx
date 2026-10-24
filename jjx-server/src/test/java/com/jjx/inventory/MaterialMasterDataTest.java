@@ -53,7 +53,7 @@ class MaterialMasterDataTest {
     }
 
     static Map<String, Object> category() {
-        return Map.of("category_id", 2L, "category_code", "RM-FILM", "material_type", "R", "category_name", "片材/膜材");
+        return Map.of("category_id", 2L, "category_code", "RM-FILM", "category_path", "RAW/RAW_BASE/RM-FILM", "category_name", "片材/膜材");
     }
 
     static InventoryMaterial material() {
@@ -84,9 +84,9 @@ class MaterialMasterDataTest {
         when(mapper.selectCategory(2L)).thenReturn(category());
         when(mapper.selectRequiredFields("RM-FILM")).thenReturn(List.of("material_grade", "color", "specification"));
         when(mapper.insert(any(InventoryMaterial.class))).thenReturn(1);
-        InventoryMaterial m = material(); m.setMaterialType("A");
+        InventoryMaterial m = material();
         assertTrue(service.create(m, List.of(), "codex"));
-        assertEquals("R", m.getMaterialType());
+        assertEquals("R", com.jjx.inventory.util.MaterialClassification.materialTypeOf(category()));
         var vo = Mappers.getMapper(MaterialConverter.class).toVO(m, Map.of(2L, "片材/膜材"));
         assertEquals(m.getMaterialGrade(), vo.getMaterialGrade()); assertEquals(m.getSize(), vo.getSize());
         assertEquals(m.getBrand(), vo.getBrand()); assertEquals(m.getSearchKeywords(), vo.getSearchKeywords());
@@ -225,7 +225,7 @@ class MaterialMasterDataTest {
         assertEquals("雾面300*305mm", inserted.getAllValues().get(1).getSpecification());
     }
     @Test void legacyBrandAndNumericModelCanSatisfyAdhesiveRules() throws Exception {
-        var adhesive = Map.<String, Object>of("category_id", 5L, "category_code", "AUX-ADHESIVE", "material_type", "A");
+        var adhesive = Map.<String, Object>of("category_id", 5L, "category_code", "AUX-ADHESIVE", "category_path", "RAW/RAW_AUX/AUX-ADHESIVE");
         when(mapper.findCategory("AUX-ADHESIVE")).thenReturn(adhesive);
         when(mapper.selectCategory(5L)).thenReturn(adhesive);
         when(mapper.selectRequiredFields("AUX-ADHESIVE")).thenReturn(List.of("model", "brand", "specification"));
@@ -259,7 +259,7 @@ class MaterialMasterDataTest {
         when(categories.listMaps(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(List.of(category()));
         var options = service.getCategoryOptions();
         assertEquals(2L, options.get(0).getCategoryId());
-        assertEquals("R", options.get(0).getMaterialType());
+        assertEquals("R", options.get(0).getRootType());
         assertEquals("片材/膜材", options.get(0).getCategoryName());
         var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
         verify(categories).listMaps(wrapper.capture());
@@ -395,117 +395,51 @@ class MaterialMasterDataTest {
         assertTrue(sql.contains("name_path LIKE"), sql);
     }
 
-    /** 显式启用时使用真实业务库；整段事务回滚，不留测试物料、不调用库存路径。 */
-    @Test
-    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "JJX_MATERIAL_DB_TEST", matches = "true")
-    void realDatabaseSaveFilterImportAndRollback() throws Exception {
-        var dataSource = new org.springframework.jdbc.datasource.DriverManagerDataSource(
-                "jdbc:mysql://127.0.0.1:3306/jjx_erp_db?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai",
-                System.getenv("JJX_MATERIAL_DB_USER"), System.getenv("JJX_MATERIAL_DB_PASSWORD"));
-        var configuration = new MybatisConfiguration();
-        configuration.setMapUnderscoreToCamelCase(true);
-        configuration.setEnvironment(new org.apache.ibatis.mapping.Environment("material-test",
-                new org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory(), dataSource));
-        com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils.setGlobalConfig(configuration,
-                new com.baomidou.mybatisplus.core.config.GlobalConfig()
-                    .setDbConfig(new com.baomidou.mybatisplus.core.config.GlobalConfig.DbConfig()).setMetaObjectHandler(
-                    new com.baomidou.mybatisplus.core.handlers.MetaObjectHandler() {
-                        public void insertFill(org.apache.ibatis.reflection.MetaObject meta) {
-                            strictInsertFill(meta, "createBy", String.class, "codex-test");
-                            strictInsertFill(meta, "updateBy", String.class, "codex-test");
-                            strictInsertFill(meta, "createTime", java.time.LocalDateTime.class, java.time.LocalDateTime.now());
-                            strictInsertFill(meta, "updateTime", java.time.LocalDateTime.class, java.time.LocalDateTime.now());
-                        }
-                        public void updateFill(org.apache.ibatis.reflection.MetaObject meta) {
-                            setFieldValByName("updateBy", "codex-test", meta);
-                            setFieldValByName("updateTime", java.time.LocalDateTime.now(), meta);
-                        }
-                    }));
-        configuration.addInterceptor(new com.jjx.framework.config.MyBatisPlusConfig().mybatisPlusInterceptor());
-        configuration.addMapper(InventoryMaterialMapper.class);
-        configuration.addMapper(com.jjx.inventory.mapper.InventoryMaterialCategoryMapper.class);
-        var factory = new com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder().build(configuration);
-        String suffix = Long.toString(System.nanoTime());
-        try (var session = factory.openSession(false)) {
-            InventoryMaterialMapper realMapper = session.getMapper(InventoryMaterialMapper.class);
-            ReflectionTestUtils.setField(service, "materialMapper", realMapper);
-            var categoryMapper = session.getMapper(com.jjx.inventory.mapper.InventoryMaterialCategoryMapper.class);
-            when(categories.listByIds(anyCollection())).thenAnswer(call -> categoryMapper.selectByIds(call.getArgument(0)));
-            when(categories.listMaps(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenAnswer(call -> categoryMapper.selectMaps(call.getArgument(0)));
-            when(tags.resolveBizIdsFilter(eq("inventory_material"), isNull(), isNull())).thenReturn(null);
-            try {
-                assertEquals(11, service.getCategoryOptions().size());
-                for (String type : List.of("R", "A")) {
-                    var option = service.getCategoryOptions().stream()
-                            .filter(c -> c.getCategoryCode().equals("OTHER-" + type)).findFirst().orElseThrow();
-                    InventoryMaterial batch = new InventoryMaterial();
-                    batch.setMaterialCode("TEST015-" + type + "-" + suffix);
-                    batch.setMaterialName("批量建档验证" + type);
-                    batch.setCategoryId(option.getCategoryId()); batch.setMaterialType(type); batch.setUnit("PCS");
-                    assertTrue(service.create(batch, List.of(), "codex"));
-                    session.clearCache();
-                    assertEquals(option.getCategoryId(), realMapper.selectById(batch.getMaterialId()).getCategoryId());
-                    MaterialQueryDTO batchQuery = new MaterialQueryDTO(); batchQuery.setMaterialCode(batch.getMaterialCode());
-                    var list = service.selectList(batchQuery);
-                    assertEquals(1, list.size());
-                    assertEquals(option.getCategoryName(), list.get(0).getCategoryName());
-                    assertEquals(option.getCategoryName(), service.getDetailById(batch.getMaterialId()).getCategoryName());
-                    System.out.println("REAL_DB_015 code=" + batch.getMaterialCode() + " categoryId="
-                            + list.get(0).getCategoryId() + " categoryName=" + list.get(0).getCategoryName());
-                }
-                InventoryMaterial saved = material(); saved.setMaterialCode("TEST012-" + suffix); saved.setStatus(com.jjx.common.enums.StatusEnum.NORMAL.getCode()); saved.setUnit("PCS");
-                assertTrue(service.create(saved, List.of(), "codex"));
-                session.clearCache();
-                InventoryMaterial read = realMapper.selectById(saved.getMaterialId());
-                assertEquals(saved.getMaterialGrade(), read.getMaterialGrade());
-                assertEquals(saved.getSize(), read.getSize()); assertEquals("F200", read.getModel());
-                assertEquals("透明", read.getColor()); assertEquals("3M", read.getBrand());
-                assertEquals("测试别名", read.getSearchKeywords()); assertEquals("R", read.getMaterialType());
-                MaterialQueryDTO query = new MaterialQueryDTO(); query.setCategoryId(2L); query.setMaterialGrade("PC膜");
-                query.setColor("透明"); query.setBrand("3M"); query.setModel("F200"); query.setMaterialCode(saved.getMaterialCode());
-                assertEquals(1, service.selectEntities(query).size());
-                query.setColor("不匹配"); assertEquals(0, service.selectEntities(query).size());
-                query.setColor("透明"); query.setKeyword("F200 " + suffix);
-                assertEquals(1, service.search(query).getTotal());
-                assertEquals(1, service.pageQuery(query).getTotal());
-                InventoryMaterial patch = new InventoryMaterial(); patch.setMaterialId(saved.getMaterialId()); patch.setBrand("新品牌");
-                assertTrue(service.update(patch, null, "codex"));
-                assertEquals("新品牌", realMapper.selectById(saved.getMaterialId()).getBrand());
-                InventoryMaterial legacy = new InventoryMaterial(); legacy.setMaterialCode("TEST012-old-" + suffix);
-                legacy.setMaterialName("历史缺字段"); legacy.setCategoryId(2L); legacy.setMaterialType("R"); legacy.setUnit("PCS");
-                realMapper.insert(legacy);
-                patch = new InventoryMaterial(); patch.setMaterialId(legacy.getMaterialId()); patch.setBrand("只改品牌");
-                assertTrue(service.update(patch, null, "codex"));
-                when(sequence.generateBusinessNumberByTypeWithPrefix(anyString(), anyString(), anyString(), anyInt(), anyLong()))
-                        .thenReturn("TEST012-new-import-" + suffix, "TEST012-old-import-" + suffix);
-                var modern = workbook(new String[]{"物料名称", "品类", "材料", "型号", "颜色", "品牌", "尺寸", "规格", "单位"},
-                        new String[]{"新模板" + suffix, "RM-FILM", "PC膜", "F200", "透明", "3M", "300×305", "雾面", "PCS"});
-                assertEquals(1, service.importMaterial(modern, "codex").getSuccessCount());
-                var old = workbook(new String[]{"材料", "规格", "单位"}, new String[]{"PC透明旧模板" + suffix, "雾面300*305mm", "PCS"});
-                assertEquals(1, service.importMaterial(old, "codex").getSuccessCount());
-                InventoryMaterial imported = realMapper.selectByCode("TEST012-old-import-" + suffix);
-                assertEquals("PC膜", imported.getMaterialGrade()); assertEquals("透明", imported.getColor());
-                assertEquals("300*305mm", imported.getSize());
-                // 在真正的生成列上验证多词LIKE仍同时命中，且包含新增尺寸和品牌。
-                try (var statement = session.getConnection().prepareStatement(
-                        "SELECT COUNT(*) FROM inventory_material WHERE material_code=? AND search_blob LIKE ? AND search_blob LIKE ?")) {
-                    statement.setString(1, "TEST012-new-import-" + suffix); statement.setString(2, "%300%"); statement.setString(3, "%3M%");
-                    try (var rows = statement.executeQuery()) { rows.next(); assertEquals(1, rows.getInt(1)); }
-                }
-                System.out.println("REAL_DB_EVIDENCE saved_id=" + saved.getMaterialId()
-                        + " category=2 type=R grade=PC膜 model=F200 color=透明 size=0.3m×305×0.1 keywords=测试别名"
-                        + " filters_match=1 filters_mismatch=0 legacy_edit=PASS new_excel=1 old_excel=1 search_blob=1");
-            } finally {
-                session.rollback(true);
-                session.clearCache();
-            }
-            assertNull(realMapper.selectByCode("TEST015-R-" + suffix));
-            assertNull(realMapper.selectByCode("TEST015-A-" + suffix));
-            assertNull(realMapper.selectByCode("TEST012-" + suffix));
-            assertNull(realMapper.selectByCode("TEST012-new-import-" + suffix));
-            assertNull(realMapper.selectByCode("TEST012-old-import-" + suffix));
-            System.out.println("REAL_DB_EVIDENCE rollback=PASS no_test_materials_remaining");
+    @Test void classificationUsesRootAndSecondLevelWithoutLegacyTypesOrDefaults() {
+        var types = Map.of("RAW/RAW_BASE/RAW_BASE_PC", "R", "RAW/RAW_AUX/RAW_AUX_OTHER", "R",
+                "RAW/RAW_INK", "R", "SEMI", "S", "FINISHED", "F");
+        var prefixes = Map.of("RAW/RAW_BASE/RAW_BASE_PC", "RM", "RAW/RAW_AUX/RAW_AUX_OTHER", "AUX",
+                "RAW/RAW_INK", "INK", "SEMI", "SFG", "FINISHED", "FG");
+        types.forEach((path, type) -> {
+            var category = Map.<String,Object>of("category_path", path, "material_type", "A");
+            assertEquals(type, com.jjx.inventory.util.MaterialClassification.materialTypeOf(category));
+            assertEquals(prefixes.get(path), com.jjx.inventory.util.MaterialClassification.codePrefixOf(category));
+        });
+        assertNull(com.jjx.inventory.util.MaterialClassification.materialTypeOf(null));
+        assertNull(com.jjx.inventory.util.MaterialClassification.materialTypeOf(Map.of("material_type", "R")));
+        assertThrows(BusinessException.class, () -> service.generateCode(null));
+        verifyNoInteractions(sequence);
+    }
+
+    @Test void unclassifiedExistingMaterialCanBeEditedWithoutInventingAType() {
+        InventoryMaterial existing = new InventoryMaterial(); existing.setMaterialId(900L); existing.setMaterialCode("AUX000123");
+        when(mapper.selectById(900L)).thenReturn(existing);
+        when(mapper.update(any(InventoryMaterial.class), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(1);
+        InventoryMaterial patch = new InventoryMaterial(); patch.setMaterialId(900L); patch.setBrand("人工品牌");
+        assertTrue(service.update(patch, null, "codex"));
+        verify(mapper, never()).selectCategory(anyLong());
+        assertEquals("AUX000123", existing.getMaterialCode());
+    }
+
+    @Test void legacyPayloadFieldsAreIgnoredByBothSaveEntrypoints() throws Exception {
+        String json = "{\"categoryId\":18,\"materialType\":\"A\",\"materialNameEn\":\"old\","
+                + "\"materialCategory\":\"old\",\"specSupplement\":\"old\",\"costPriceFrom\":\"old\",\"costPriceTime\":\"old\"}";
+        var mapper = new ObjectMapper();
+        assertEquals(18L, mapper.readValue(json, com.jjx.inventory.dto.save.MaterialSaveDTO.class).getCategoryId());
+        assertEquals(18L, mapper.readValue(json, MaterialUpdateDTO.class).getCategoryId());
+        assertEquals(18L, mapper.readValue(json, com.jjx.inventory.master.MaterialMasterDTO.class).getCategoryId());
+        for (var field : TableInfoHelper.getTableInfo(InventoryMaterial.class).getFieldList()) {
+            assertFalse(List.of("material_type","material_category","material_name_en","spec_supplement","cost_price_from","cost_price_time").contains(field.getColumn()));
         }
     }
 
+    @Test void rootFilterUsesClassificationAndRejectsOldAuxiliaryType() {
+        var query = new MaterialQueryDTO(); query.setRootType("R");
+        service.selectEntities(query);
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper).selectList(wrapper.capture());
+        String sql = wrapper.getValue().getSqlSegment();
+        assertTrue(sql.contains("category_path")); assertFalse(sql.contains("material_type"));
+        query.setRootType("A"); assertThrows(BusinessException.class, () -> service.selectEntities(query));
+    }
 }

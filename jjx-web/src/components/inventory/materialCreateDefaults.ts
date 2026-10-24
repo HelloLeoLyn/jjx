@@ -2,9 +2,8 @@ import type { MaterialSaveDTO } from '@/types/inventory/material'
 
 /**
  * 物料建档默认值（dev-20261021-026）：
- * MaterialFormDialog、库存单条导入、库存批量导入共用，禁止各处再硬编码 R / PCS。
+ * MaterialFormDialog、库存单条导入、库存批量导入共用；业务类型只从分类派生，不默认归类。
  */
-export const MATERIAL_DEFAULT_TYPE = 'R'
 export const MATERIAL_DEFAULT_UNIT = 'PCS'
 export const MATERIAL_DEFAULT_EXPIRY_ALERT_DAYS = 30
 
@@ -13,7 +12,6 @@ export interface MaterialCreatePreset {
   specification?: string
   unit?: string
   supplierName?: string
-  materialType?: string
 }
 
 export interface MaterialImportRow {
@@ -28,7 +26,6 @@ export function materialCreatePresetFromImport(row: MaterialImportRow): Material
     materialName: row.materialName || '',
     specification: row.specification || '',
     supplierName: row.supplierName || '',
-    materialType: MATERIAL_DEFAULT_TYPE,
     unit: MATERIAL_DEFAULT_UNIT,
   }
 }
@@ -41,7 +38,6 @@ export function materialSaveFromImport(
   return {
     materialCode,
     materialName: row.materialName || '',
-    materialType: MATERIAL_DEFAULT_TYPE,
     specification: row.specification || '',
     unit: MATERIAL_DEFAULT_UNIT,
     supplierName: row.supplierName || '',

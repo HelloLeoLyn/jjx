@@ -15,7 +15,7 @@ export const searchOptions: SearchOptions[] = [
     type: 'input',
   },
   {
-    prop: 'materialType',
+    prop: 'rootType',
     label: '物料类型',
     type: 'select',
     options: MaterialRootTypeEnum.items,
@@ -175,10 +175,9 @@ export const tableOptions: TableOptions[] = [
   },
   {
     label: '物料类型',
-    prop: 'materialType',
+    prop: 'categoryRootName',
     width: 100,
     align: 'center',
-    slot: 'materialType',
   },
   {
     label: '规格型号',

@@ -934,13 +934,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 .orderByAsc(EngineeringBomItem::getItemOrder)
                 .orderByAsc(EngineeringBomItem::getItemId);
         List<EngineeringBomItem> items = productBomItemMapper.selectList(queryWrapper);
-        // 带出物料类型（R=板材/卷材，前端展示用）
+        // 带出分类根类型（R含基材/辅材/油墨，未归类为null）
         if (items != null) {
             for (EngineeringBomItem it : items) {
+                it.setMaterialType(null);
                 if (it.getMaterialId() != null) {
                     try {
                         com.jjx.inventory.domain.InventoryMaterial mat = inventoryMaterialMapper.selectById(it.getMaterialId());
-                        if (mat != null) it.setMaterialType(mat.getMaterialType());
+                        it.setMaterialType(mat == null ? null : inventoryMaterialMapper.materialTypeOf(mat.getCategoryId()));
                     } catch (Exception ignored) { }
                 }
             }

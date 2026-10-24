@@ -18,11 +18,6 @@
               <span>{{ material.materialName }}</span>
             </el-form-item>
           </el-col>
-          <el-col :span="12">
-            <el-form-item label="机种">
-              <span>{{ material.materialNameEn }}</span>
-            </el-form-item>
-          </el-col>
         </el-row>
 
         <el-form-item label="物料标签">
@@ -129,7 +124,6 @@ import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
 import { formatCurrency } from '@/utils/format'
 import type { InventoryMaterial } from '@/types/inventory/material'
-import { MaterialTypeEnum } from '@/enums/inventory/MaterialEnum'
 
 const route = useRoute()
 const router = useRouter()
@@ -139,8 +133,6 @@ const material = ref<InventoryMaterial>({
   materialId: 0,
   materialCode: '',
   materialName: '',
-  materialNameEn: '',
-  materialType: '',
   categoryId: undefined,
   specification: '',
   unit: '',
@@ -162,7 +154,7 @@ const material = ref<InventoryMaterial>({
 })
 
 const typeLabel = computed(() => {
-  return MaterialTypeEnum.getLabel(material.value.materialType) || '-'
+  return material.value.categoryRootName || '未归类'
 })
 
 const getMaterialDetail = async () => {

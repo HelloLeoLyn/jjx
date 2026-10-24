@@ -2574,12 +2574,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                                 material.getMaterialCode(), defaultWarehouseId);
                     }
                 }
-                String materialType = material.getMaterialType();
+                String materialType = inventoryMaterialMapper.materialTypeOf(material.getCategoryId());
                 // dev-20261022-018：半成品(S) 与原材料同组处理，避免落入"既无默认仓也无匹配类型"的回退分支
                 if (MaterialEnums.Type.RAW.getValue().equals(materialType)
-                        || MaterialEnums.Type.SEMI.getValue().equals(materialType)
-                        || MaterialEnums.Type.INK.getValue().equals(materialType)
-                        || MaterialEnums.Type.AUXILIARY.getValue().equals(materialType)) {
+                        || MaterialEnums.Type.SEMI.getValue().equals(materialType)) {
                     rawQuantity = rawQuantity.add(quantity);
                 } else if (MaterialEnums.Type.FINISHED.getValue().equals(materialType)) {
                     finishedQuantity = finishedQuantity.add(quantity);
@@ -2796,7 +2794,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // 3. 创建入库明细
         // 2026-09-21 订正注释（原写「物料=成品物料档案 F类型，产品ID→物料ID映射」与实现不符）：
         // 成品入库身份走 inventory_item(item_type=PRODUCT)，material_id 故意留空 ——
-        // 全库没有 F 类成品物料档案（inventory_material.material_type='F' 为 0 行），
+        // 全库没有 F 类成品物料档案（旧分类口径成品档案为 0 行），
         // 所以成品不参与「按 material_id」的库存/流水关联与安全库存预警（设计口径，非漏写）。
         InventoryInboundItem inboundItem = new InventoryInboundItem();
         inboundItem.setInboundId(order.getInboundId());

@@ -9,12 +9,11 @@ import java.util.List;
  * 物料新增参数DTO
  */
 @Data
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class MaterialSaveDTO {
 
     private String materialCode;
     private String materialName;
-    private String materialNameEn;
-    private String materialType;
     private Long categoryId;
     /** 服务端由属性与分类派生，不接受独立写入。 */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)

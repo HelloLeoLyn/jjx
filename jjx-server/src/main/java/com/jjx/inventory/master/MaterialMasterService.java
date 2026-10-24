@@ -43,7 +43,7 @@ public class MaterialMasterService {
         InventoryMaterial material = materialMapper.selectById(id);
         if (material == null) throw new BusinessException("物料不存在");
         MaterialMasterCatalog.Configuration config = null;
-        if (material.getOriginalName() != null) config = catalog.configuration(material.getCategoryId());
+        if (material.getCategoryId() != null) config = catalog.configuration(material.getCategoryId());
         return new Detail(material, readAttributes(material.getAttributeJson()), config,
                 tagService.getBizTags("inventory_material", id), MaterialSourceValues.from(material));
     }
@@ -85,9 +85,7 @@ public class MaterialMasterService {
         dictionaryLabel(dictionaries, "color", dto.getColor(), false);
         dictionaryLabel(dictionaries, "brand", dto.getBrand(), false);
         Map<String, Object> attributes = schema.validateAttributes(dto.getAttributeJson(), objectMapper);
-        String supplement = text(dto.getSpecSupplement(), "规格补充", 30, false);
         String specification = schema.compose(attributes);
-        if (supplement != null) specification = specification.isEmpty() ? supplement : specification + "；" + supplement;
         if (specification.length() > 500) throw new BusinessException("生成规格超过500字");
         validateSize(dto.getSize());
         InventoryMaterial material = new InventoryMaterial();
@@ -98,7 +96,6 @@ public class MaterialMasterService {
         material.setMaterialMeta(meta);
         material.setMaterialForm(form);
         material.setMaterialGrade(text(metaLabel + formLabel, "材料显示名", 30, false));
-        material.setMaterialType(config.category().materialType());
         material.setUnit(unit);
         material.setModel(text(dto.getModel(), "型号", 100, false));
         material.setBrand(text(dto.getBrand(), "品牌", 50, false));
@@ -106,7 +103,6 @@ public class MaterialMasterService {
         material.setSize(text(dto.getSize(), "尺寸", 50, false));
         material.setSearchKeywords(text(dto.getSearchKeywords(), "别名", 500, false));
         material.setRemark(text(dto.getRemark(), "业务备注", 1000, false));
-        material.setSpecSupplement(supplement);
         material.setSpecification(specification.isEmpty() ? null : specification);
         material.setIsCustomerSupplied(Boolean.TRUE.equals(dto.getIsCustomerSupplied()));
         material.setIsSample(Boolean.TRUE.equals(dto.getIsSample()));
@@ -152,7 +148,7 @@ public class MaterialMasterService {
         material.setUpdateTime(LocalDateTime.now());
         if (creating) {
             String code = text(dto.getMaterialCode(), "物料编码", 50, false);
-            material.setMaterialCode(code == null ? materialService.generateCode(material.getMaterialType()) : code);
+            material.setMaterialCode(code == null ? materialService.generateCode(material.getCategoryId()) : code);
             if (materialService.existsByCode(material.getMaterialCode())) throw new BusinessException("物料编码已存在");
             material.setStatus(StatusEnum.NORMAL.getCode());
             material.setCreateBy(operator);
@@ -164,7 +160,7 @@ public class MaterialMasterService {
             update.eq("material_id", material.getMaterialId());
             // 完整表单显式SET空值；库存余额和历史单据不在本次写入列中。
             Map<String, Object> columns = new LinkedHashMap<>();
-            columns.put("category_id", material.getCategoryId()); columns.put("material_type", material.getMaterialType());
+            columns.put("category_id", material.getCategoryId());
             columns.put("original_name", material.getOriginalName()); columns.put("original_specification", material.getOriginalSpecification());
             columns.put("material_name", material.getMaterialName()); columns.put("material_meta", material.getMaterialMeta());
             columns.put("material_form", material.getMaterialForm()); columns.put("material_grade", material.getMaterialGrade());
@@ -173,7 +169,7 @@ public class MaterialMasterService {
             columns.put("template_id", material.getTemplateId()); columns.put("thickness", material.getThickness());
             columns.put("width_size", material.getWidthSize());
             columns.put("attribute_json", material.getAttributeJson()); columns.put("specification", material.getSpecification());
-            columns.put("spec_supplement", material.getSpecSupplement()); columns.put("search_keywords", material.getSearchKeywords());
+            columns.put("search_keywords", material.getSearchKeywords());
             columns.put("is_customer_supplied", material.getIsCustomerSupplied()); columns.put("is_sample", material.getIsSample());
             columns.put("supplier_id", material.getSupplierId()); columns.put("supplier_name", material.getSupplierName());
             columns.put("remark", material.getRemark()); columns.put("safe_stock", material.getSafeStock());

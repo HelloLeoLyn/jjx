@@ -16,10 +16,11 @@ public class MaterialVO {
     private Long materialId;
     private String materialCode;
     private String materialName;
-    private String materialNameEn;
-    private String materialType;
     private Long categoryId;
     private String categoryName;
+    /** 分类根中文名，未归类时为空。 */
+    private String categoryRootName;
+    private String rootType;
     private String specification;
     private String searchKeywords;
     private String size;
@@ -32,7 +33,6 @@ public class MaterialVO {
     private Long templateId;
     private String thickness;
     private String widthSize;
-    private String specSupplement;
     private Boolean isCustomerSupplied;
     private Boolean isSample;
 

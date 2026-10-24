@@ -91,7 +91,7 @@ class MaterialMasterMysqlTest {
         var locks = session.getMapper(MaterialMasterMapper.class);
         catalog = new MaterialMasterCatalog(categoryMapper, templateMapper, session.getMapper(SysDictItemMapper.class), session.getMapper(SysDictMapper.class), mapper);
         InventoryMaterialService numbers = mock(InventoryMaterialService.class);
-        when(numbers.generateCode(anyString())).thenAnswer(i -> "T001" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
+        when(numbers.generateCode(anyLong())).thenAnswer(i -> "T001" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
         tags = mock(ISysTagService.class); when(tags.getBizTags(anyString(), anyLong())).thenReturn(List.of());
         var manager = new DataSourceTransactionManager(dataSource);
         service = proxy(new MaterialMasterService(catalog, locks, materialMapper, numbers, mock(PurchaseSupplierMapper.class), tags, mock(EventPublisher.class), mapper), manager);
@@ -132,7 +132,7 @@ class MaterialMasterMysqlTest {
         assertEquals(2, catalog.categories().stream().filter(MaterialMasterCatalog.Category::selectable).count());
         assertThrows(BusinessException.class, () -> catalog.configuration(900002L));
         InventoryMaterial material = service.save(pc("测试来源PC"), "Codex-test");
-        assertEquals("R", material.getMaterialType()); assertEquals("PC", material.getMaterialMeta()); assertEquals("FILM", material.getMaterialForm());
+        assertEquals(900003L, material.getCategoryId()); assertEquals("PC", material.getMaterialMeta()); assertEquals("FILM", material.getMaterialForm());
         assertEquals("来源300*305", material.getOriginalSpecification()); assertEquals("厚度:0.175mm", material.getSpecification());
         assertNotNull(material.getTemplateId());
         assertEquals("0.175", material.getThickness()); assertEquals("300×305", material.getWidthSize());
@@ -170,7 +170,7 @@ class MaterialMasterMysqlTest {
 
     private MockMultipartFile file(boolean invalidSecond) throws Exception {
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.template(900003L)))) {
-            for (int i=0;i<2;i++) { var row=workbook.getSheetAt(0).createRow(i+2); row.createCell(0).setCellValue("批量PC"+i); row.createCell(16).setCellValue(invalidSecond && i==1 ? "错误厚度" : "0.175"); }
+            for (int i=0;i<2;i++) { var row=workbook.getSheetAt(0).createRow(i+2); row.createCell(0).setCellValue("批量PC"+i); row.createCell(15).setCellValue(invalidSecond && i==1 ? "错误厚度" : "0.175"); }
             var output = new ByteArrayOutputStream(); workbook.write(output);
             return new MockMultipartFile("file","pc.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",output.toByteArray());
         }
@@ -197,7 +197,7 @@ class MaterialMasterMysqlTest {
         jdbc.update("UPDATE inventory_material SET original_name=NULL,attribute_json=NULL,safe_stock=7,standard_price=1.25 WHERE material_id=?",old.getMaterialId());
         MockMultipartFile migration;
         try (XSSFWorkbook workbook=new XSSFWorkbook(new ByteArrayInputStream(file(false).getBytes()))) {
-            workbook.getSheetAt(0).getRow(2).createCell(15).setCellValue(old.getMaterialId().toString());
+            workbook.getSheetAt(0).getRow(2).createCell(14).setCellValue(old.getMaterialId().toString());
             var output=new ByteArrayOutputStream();workbook.write(output);
             migration=new MockMultipartFile("file","migration.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",output.toByteArray());
         }
