@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  attachCreatedMaterial,
   batchStatusLabel,
   buildBatchLinks,
   buildBatchRows,
@@ -74,6 +75,26 @@ describe('bomMaterialBatch（dev-20261024-020）', () => {
     expect(batchStatusLabel('MATCHED')).toBe('唯一候选')
     expect(batchStatusLabel('AMBIGUOUS')).toBe('多候选')
     expect(batchStatusLabel('NOT_FOUND')).toBe('未匹配')
+  })
+
+  it('新建档案后挂到同原文的行并选中（同名同规格共用一份）', () => {
+    const rows: BatchRow[] = [
+      { itemId: 1, originalName: 'PET', originalSpec: '0.1', status: 'NOT_FOUND', matchCount: 0, candidates: [] },
+      { itemId: 2, originalName: 'PET', originalSpec: '0.1', status: 'NOT_FOUND', matchCount: 0, candidates: [] },
+      { itemId: 3, originalName: 'PC', originalSpec: '', status: 'NOT_FOUND', matchCount: 0, candidates: [] },
+    ]
+    const attached = attachCreatedMaterial(rows, 1, {
+      materialId: 99,
+      materialCode: 'M99',
+      materialName: 'PET',
+      specification: '0.1',
+      unit: 'KG',
+    })
+    expect(attached).toBe(2)
+    expect(rows[0].selectedMaterialId).toBe(99)
+    expect(rows[1].selectedMaterialId).toBe(99)
+    expect(rows[2].selectedMaterialId).toBeUndefined()
+    expect(buildBatchLinks(rows)).toHaveLength(2)
   })
 
   it('取消（未确认）不产生载荷', () => {

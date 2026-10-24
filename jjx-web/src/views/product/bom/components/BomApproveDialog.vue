@@ -76,6 +76,13 @@
       :rows="batchRows"
       :submitting="batchSubmitting"
       @confirm="handleBatchConfirm"
+      @create="handleBatchCreate"
+    />
+
+    <MaterialFormDialog
+      v-model="batchCreateVisible"
+      :preset-data="batchCreatePreset"
+      @success="handleBatchMaterialCreated"
     />
   </el-dialog>
 </template>
@@ -99,7 +106,7 @@ import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import BomBasicInfo from './BomBasicInfo.vue'
 import BomItemReviewTable from './BomItemReviewTable.vue'
 import BomMaterialBatchDialog from './BomMaterialBatchDialog.vue'
-import { buildBatchRows, type BatchRow } from './bomMaterialBatch'
+import { attachCreatedMaterial, buildBatchRows, type BatchRow } from './bomMaterialBatch'
 
 type RowAction = 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE'
 
@@ -156,6 +163,38 @@ const bomDetailList = ref<EngineeringBomItem[]>([])
 const batchDialogVisible = ref(false)
 const batchRows = ref<BatchRow[]>([])
 const batchSubmitting = ref(false)
+// 批量弹窗内建档（dev-20261024-021）：复用官方主数据表单，建档后套用到同原文行
+const batchCreateVisible = ref(false)
+const batchCreatePreset = ref<Record<string, any>>({})
+const batchCreateItemId = ref(0)
+
+/** 打开官方建档表单，预填原文 */
+const handleBatchCreate = (itemId: number) => {
+  const row = batchRows.value.find((item) => item.itemId === itemId)
+  if (!row) return
+  batchCreateItemId.value = itemId
+  batchCreatePreset.value = {
+    materialName: row.originalName,
+    specification: row.originalSpec,
+  }
+  batchCreateVisible.value = true
+}
+
+/** 建档成功：挂到同原文的所有行并选中，等确认后统一关联 */
+const handleBatchMaterialCreated = (material: InventoryMaterial) => {
+  if (!material?.materialId) return
+  const attached = attachCreatedMaterial(batchRows.value, batchCreateItemId.value, {
+    materialId: material.materialId,
+    materialCode: material.materialCode,
+    materialName: material.materialName,
+    specification: material.specification,
+    size: (material as any).size,
+    unit: material.unit,
+  })
+  if (attached) {
+    ElMessage.success(`已建档并套用到 ${attached} 行，确认后一起关联`)
+  }
+}
 
 /** 批量关联入口：按原文匹配候选（只作推荐），再打开人工确认弹窗 */
 const handleBatchLink = async (itemIds: number[]) => {

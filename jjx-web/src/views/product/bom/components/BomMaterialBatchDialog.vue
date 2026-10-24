@@ -39,7 +39,12 @@
               :value="c.materialId"
             />
           </el-select>
-          <span v-else class="muted">无候选（本卡只关联已有档案）</span>
+          <div v-else class="create-cell">
+            <span class="muted">无候选</span>
+            <el-button link type="primary" size="small" @click="emit('create', row.itemId)">
+              建档
+            </el-button>
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="目标预览" min-width="320">
@@ -94,6 +99,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'confirm', links: Array<{ itemId: number; materialId: number }>): void
+  (e: 'create', itemId: number): void
 }>()
 
 const links = computed(() => buildBatchLinks(props.rows))
@@ -108,5 +114,10 @@ const links = computed(() => buildBatchLinks(props.rows))
   margin-right: 12px;
   color: #606266;
   font-size: 12px;
+}
+.create-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 </style>

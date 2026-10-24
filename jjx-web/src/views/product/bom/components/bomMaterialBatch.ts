@@ -69,6 +69,31 @@ export function batchStatusTagType(status: BatchRow['status']): 'success' | 'war
   return 'info'
 }
 
+/**
+ * 新建档案后挂到同原文的行（dev-20261024-021）：
+ * 同名+同规格的重复 BOM 行共用一份新档案；只做候选追加与选中，不写库。
+ */
+export function attachCreatedMaterial(
+  rows: BatchRow[],
+  sourceItemId: number,
+  material: BatchCandidate
+): number {
+  const source = rows.find((row) => row.itemId === sourceItemId)
+  if (!source || !material.materialId) return 0
+  const keyOf = (row: BatchRow) => `${row.originalName.trim()}|${row.originalSpec.trim()}`
+  const targetKey = keyOf(source)
+  let attached = 0
+  for (const row of rows) {
+    if (keyOf(row) !== targetKey) continue
+    if (!row.candidates.some((c) => c.materialId === material.materialId)) {
+      row.candidates.push({ ...material })
+    }
+    row.selectedMaterialId = material.materialId
+    attached++
+  }
+  return attached
+}
+
 /** 提交前检查：至少选中一行；同一行不会被重复提交（由数组结构保证） */
 export function validateBatchSelection(rows: BatchRow[]): string | null {
   const links = buildBatchLinks(rows)
