@@ -93,6 +93,26 @@ describe('useMaterialSearch 公共物料搜索', () => {
     error.mockRestore()
   })
 
+  it('空关键词浏览失败后重试会重新发请求（复核缺陷 3）', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(materialApi.search)
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(page([5], 1) as any)
+    const { search } = withSearch({ browseOnFocus: true })
+    search.browse()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(search.failed.value).toBe(true)
+    expect(materialApi.search).toHaveBeenCalledTimes(1)
+
+    search.retry()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(materialApi.search).toHaveBeenCalledTimes(2)
+    expect(materialApi.search).toHaveBeenLastCalledWith({ keyword: '', pageNum: 1, pageSize: 10 })
+    expect(search.failed.value).toBe(false)
+    expect(search.items.value.map((item) => item.materialId)).toEqual([5])
+    error.mockRestore()
+  })
+
   it('reset 清空状态并作废在途请求', async () => {
     vi.mocked(materialApi.search).mockResolvedValue(page([1]) as any)
     const { search } = withSearch()

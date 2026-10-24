@@ -3,8 +3,9 @@
     <div class="row-main">
       <span class="name">{{ item.materialName || '未填写名称' }}</span>
       <span class="code">{{ item.materialCode || '无编码' }}</span>
-      <el-tag v-if="item.isCustomerSupplied" size="small" type="warning" effect="plain">客供</el-tag>
-      <el-tag v-if="item.isSample" size="small" type="info" effect="plain">样品</el-tag>
+      <!-- 用轻量标签替代 el-tag：避免把 element-plus 组件样式带进公共选择器依赖（复核修复） -->
+      <span v-if="item.isCustomerSupplied" class="badge badge-supplied">客供</span>
+      <span v-if="item.isSample" class="badge badge-sample">样品</span>
     </div>
     <div class="row-meta">
       <span v-if="item.categoryName">品类：{{ item.categoryName }}</span>
@@ -58,6 +59,26 @@ const expanded = ref(false)
 }
 .missing {
   color: #c0c4cc;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid transparent;
+}
+.badge-supplied {
+  color: #e6a23c;
+  border-color: #f3d19e;
+  background: #fdf6ec;
+}
+.badge-sample {
+  color: #909399;
+  border-color: #dcdfe6;
+  background: #f4f4f5;
 }
 .row-remark {
   font-size: 12px;

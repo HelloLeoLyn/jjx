@@ -60,7 +60,9 @@
               <slot name="option" :item="item">{{ labelOf(item) }}</slot>
             </div>
           </template>
-          <div v-if="!(groups && groups.length) && !options.length" class="ess-state">无匹配项</div>
+          <div v-if="!(groups && groups.length) && !options.length && !failed" class="ess-state">
+            无匹配项
+          </div>
         </template>
 
         <slot name="footer" />
@@ -92,6 +94,8 @@ import { computed, nextTick, ref, watch } from 'vue'
 interface Props {
   modelValue?: number | string | null
   displayValue?: string | null
+  /** 查询失败时不再显示「无匹配项」，由调用方渲染失败与重试（dev-20261024-018 复核修复） */
+  failed?: boolean
   placeholder?: string
   size?: 'large' | 'default' | 'small'
   disabled?: boolean

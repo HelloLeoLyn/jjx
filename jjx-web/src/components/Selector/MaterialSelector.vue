@@ -12,7 +12,8 @@
     :loading="effLoading"
     :loading-more="loadingMore"
     :min-width="520"
-    :total="displayOptions.length"
+    :failed="effFailed"
+    :total="effTotal"
     class="material-selector"
     @search="handleRemoteSearch"
     @select="onPick"
@@ -21,6 +22,12 @@
   >
     <template #option="{ item }">
       <MaterialSearchOption :item="item" />
+    </template>
+    <template #footer>
+      <div v-if="effFailed" class="material-search-failed">
+        查询失败，
+        <el-button link type="primary" size="small" @click="search.retry()">重试</el-button>
+      </div>
     </template>
   </EditableSearchSelect>
 </template>
@@ -84,6 +91,9 @@ const external = computed(() => (props.options || []).length > 0)
 const displayOptions = computed(() => (external.value ? props.options : search.items.value))
 const effLoading = computed(() => (external.value ? false : search.loading.value))
 const loadingMore = computed(() => (external.value ? false : search.loadingMore.value))
+const effFailed = computed(() => (external.value ? false : search.failed.value))
+// 分页总数必须取后端 total，不能用当前页条数（复核缺陷 1）
+const effTotal = computed(() => (external.value ? displayOptions.value.length : search.total.value))
 
 const selectedValue = computed(() => {
   if (props.modelValue == null) return null
@@ -155,5 +165,10 @@ function handleClear() {
 <style scoped>
 .material-selector {
   width: 100%;
+}
+.material-search-failed {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--el-color-danger);
 }
 </style>

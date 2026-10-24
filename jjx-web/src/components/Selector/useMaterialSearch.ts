@@ -117,6 +117,15 @@ export function useMaterialSearch(options: MaterialSearchOptions = {}) {
   }
 
   function retry() {
+    // 空关键词浏览模式下失败，重试也必须直接发请求，不能走 search('') 被当成「无关键词」跳过
+    if (!keyword.value && options.browseOnFocus) {
+      cancelPending()
+      const id = requestId
+      loading.value = true
+      failed.value = false
+      void fetchPage(id, 1)
+      return
+    }
     search(keyword.value)
   }
 
