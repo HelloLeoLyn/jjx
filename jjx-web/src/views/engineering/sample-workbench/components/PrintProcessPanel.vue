@@ -202,34 +202,23 @@
 
     <!-- 材料选择弹窗 -->
     <el-dialog v-model="pickerVisible" title="添加材料" width="480px" append-to-body>
-      <el-select
-        v-model="pickerMaterialId"
-        filterable
-        remote
-        :remote-method="searchMaterial"
-        :loading="pickerLoading"
-        placeholder="搜索物料档案"
-        style="width: 100%"
-      >
-        <el-option
-          v-for="opt in pickerOptions"
-          :key="opt.materialId"
-          :label="`${opt.materialName}${opt.specification ? ' ' + opt.specification : ''} (${opt.materialCode || ''})`"
-          :value="opt.materialId"
-        />
-      </el-select>
-      <div v-if="pickerShowCreate" style="margin-top: 8px">
-        <el-button
-          link
-          type="primary"
-          v-hasPermi="SAMPLE_MATERIAL_PERMS"
-          @click="openCreateMaterial"
-          >新建物料「{{ pickerKeyword }}」</el-button
-        >
-      </div>
+      <BomMaterialSelector
+        v-if="pickerVisible"
+        :material-id="pickerMaterial?.materialId"
+        :material-name="pickerMaterial?.materialName"
+        :specification="pickerMaterial?.specification"
+        :material-code="pickerMaterial?.materialCode"
+        show-material-code
+        browse-on-focus
+        :keep-text-on-blur="false"
+        :create-permissions="SAMPLE_MATERIAL_PERMS"
+        @select="(material) => pickerMaterial = material"
+        @clear="pickerMaterial = null"
+        @create="openCreateMaterial"
+      />
       <template #footer>
         <el-button @click="pickerVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!pickerMaterialId" @click="confirmMaterial"
+        <el-button type="primary" :disabled="!pickerMaterial" @click="confirmMaterial"
           >添加</el-button
         >
       </template>
@@ -247,7 +236,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { materialApi } from '@/api/inventory/material'
+import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import { getProcessHistory } from '@/api/sales/sampleOrder'
 import { ProcessStatusEnum } from '@/enums/product/process'
 import PrintFieldAutocomplete from '@/components/print/PrintFieldAutocomplete.vue'
@@ -398,72 +387,41 @@ function isLast(row: any) {
 
 // 材料选择弹窗
 const pickerVisible = ref(false)
-const pickerLoading = ref(false)
-const pickerOptions = ref<any[]>([])
-const pickerMaterialId = ref<number | null>(null)
+const pickerMaterial = ref<any>(null)
 const pickerTarget = ref<any>(null)
 
 // 建档入口（同款）：权限跟随打样工作台；搜过且无同名物料时出现
 const SAMPLE_MATERIAL_PERMS = ['engineering:sample:workbench']
-const pickerKeyword = ref('')
-const pickerSearched = ref(false)
 const matFormVisible = ref(false)
 const matFormPreset = ref<{ materialName?: string; unit?: string }>({})
-const pickerShowCreate = computed(() => {
-  const kw = pickerKeyword.value
-  if (!pickerSearched.value || !kw) return false
-  return !pickerOptions.value.some((o) => (o.materialName || '').trim() === kw)
-})
-function openCreateMaterial() {
-  matFormPreset.value = { materialName: pickerKeyword.value, unit: 'PCS' }
+function openCreateMaterial(keyword: string) {
+  matFormPreset.value = { materialName: keyword, unit: 'PCS' }
   matFormVisible.value = true
 }
 function onMaterialCreated(mat: any) {
   matFormVisible.value = false
   if (mat && mat.materialId) {
-    pickerOptions.value = [
-      mat,
-      ...pickerOptions.value.filter((o) => o.materialId !== mat.materialId),
-    ]
-    pickerMaterialId.value = mat.materialId
+    pickerMaterial.value = mat
     ElMessage.success(`已建档「${mat.materialName}」，请点“添加”加入本工序`)
   }
 }
 
-async function openMaterialPicker(row: any) {
+function openMaterialPicker(row: any) {
   pickerTarget.value = row
-  pickerMaterialId.value = null
-  pickerOptions.value = []
+  pickerMaterial.value = null
   pickerVisible.value = true
-  await searchMaterial('')
-}
-
-async function searchMaterial(query: string) {
-  pickerKeyword.value = (query || '').trim()
-  pickerLoading.value = true
-  try {
-    const params: any = { pageNum: 1, pageSize: 20 }
-    if (pickerKeyword.value) params.materialName = pickerKeyword.value
-    const res: any = await materialApi.search(params)
-    pickerOptions.value = res?.data?.records || res?.data || []
-    pickerSearched.value = true
-  } catch {
-    pickerOptions.value = []
-  } finally {
-    pickerLoading.value = false
-  }
 }
 
 function confirmMaterial() {
   const row = pickerTarget.value
-  const opt = pickerOptions.value.find((o) => o.materialId === pickerMaterialId.value)
+  const opt = pickerMaterial.value
   if (!row || !opt) return
   const mats = props.parseMaterials(row.materials) || []
   mats.push({
     name: opt.materialName,
     spec: opt.specification || '',
     qty: 1,
-    unit: opt.unitName || '',
+    unit: opt.unit || opt.unitName || 'PCS',
     materialId: opt.materialId,
     materialCode: opt.materialCode || '',
   })

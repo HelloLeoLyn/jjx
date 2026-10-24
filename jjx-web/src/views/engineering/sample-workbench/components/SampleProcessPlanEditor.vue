@@ -79,11 +79,8 @@
               @remove-item="(i: number) => removeCardItem(pc, i)"
               @update-index="(it: any, n: number) => onUpdateIndex(pc, it, n)"
               @open-picker="openCardPicker(pc)"
-              @search-material="(q: string, row: any) => searchMaterials(q, row)"
               @material-selected="(row: any, v: any) => onMaterialSelected(row, v)"
               @material-cleared="(row: any) => onMaterialCleared(row)"
-              @load-more-material="(row: any) => onMaterialLoadMore(row)"
-              @select-visible="(row: any, v: boolean) => onSelectVisibleChange(row, v)"
               @add-material-row="(key: string) => addMaterialRow(pc, key)"
               @create-material="(m: any) => openMaterialCreate(pc, m)"
               @edit="startEdit(pc)"
@@ -164,11 +161,8 @@ export interface PlanEditorController {
   batchDelete: () => void
   applyBatchCategory: (cat: string | undefined) => void
   onUpdateIndex: (pc: any, item: any, n: number) => void
-  searchMaterials: (q: string, row: any) => void
   onMaterialSelected: (row: any, v: any) => void
   onMaterialCleared: (row: any) => void
-  onMaterialLoadMore: (row: any) => void
-  onSelectVisibleChange: (row: any, v: boolean) => void
   openMaterialCreate: (pc: any, m: any) => void
 }
 const props = defineProps<{ controller: PlanEditorController; readonly?: boolean }>()
@@ -204,11 +198,8 @@ const {
   batchDelete,
   applyBatchCategory,
   onUpdateIndex,
-  searchMaterials,
   onMaterialSelected,
   onMaterialCleared,
-  onMaterialLoadMore,
-  onSelectVisibleChange,
   openMaterialCreate,
 } = toRefs(props.controller)
 

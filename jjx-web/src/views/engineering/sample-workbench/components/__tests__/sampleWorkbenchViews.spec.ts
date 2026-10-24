@@ -74,6 +74,10 @@ import SampleExecutionView from '../SampleExecutionView.vue'
 import SampleInfoCard from '../SampleInfoCard.vue'
 import { SampleProcessStatusEnum } from '@/enums/sales'
 
+import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
+import EditableSearchSelect from '@/components/Selector/EditableSearchSelect.vue'
+import { materialApi } from '@/api/inventory/material'
+vi.mock('@/api/inventory/material', () => ({ materialApi: { search: vi.fn() } }))
 const shared = vi.hoisted(() => ({ state: null as any }))
 vi.mock('../../composables/useSampleWorkbench', () => ({ useSampleWorkbench: () => shared.state }))
 vi.mock('@/components/attachment/AttachmentCenter.vue', () => ({
@@ -245,7 +249,7 @@ beforeEach(() => {
     cardPickerIds: ref([]),
     indexDialogName: ref(''),
     indexDialogValue: ref(1),
-    batchMaterialOptions: ref([]),
+    batchMaterial: ref(null),
     copyOverwrite: ref(false),
     allProcesses: ref([]),
     historyOrders: ref([]),
@@ -269,13 +273,13 @@ beforeEach(() => {
   state.planEditor = reactive({ planList: state.planList.value })
   shared.state = state
 })
-function openPage() {
+function openPage(teleportStub = true) {
   return mount(Workbench, {
     attachTo: document.body,
     global: {
       directives: { hasPermi: {} },
       stubs: {
-        Teleport: true,
+        Teleport: teleportStub,
         ElDialog: {
           props: ['modelValue', 'title'],
           template: '<section v-if="modelValue"><slot /><slot name="footer" /></section>',
@@ -449,4 +453,31 @@ describe('工程打样工作台双视图接入', () => {
     spy.mockRestore()
     w.unmount()
   })
+})
+
+
+it('批量添加弹窗挂载真实公共物料搜索，PET 008回填对象并支持清空', async () => {
+  vi.useFakeTimers()
+  state.batchMaterialVisible.value = true
+  vi.mocked(materialApi.search).mockReset().mockResolvedValue({ data: { records: [
+    { materialId: 11, materialName: 'PET', specification: '008', materialCode: 'MAT-PET', unit: 'M' },
+  ], total: 1 } } as any)
+  const wrapper = openPage(false)
+  try {
+    const selector = wrapper.getComponent(BomMaterialSelector)
+    const input = selector.get('input')
+    await input.trigger('focus'); await input.setValue('PET 008')
+    await vi.advanceTimersByTimeAsync(450)
+    expect(materialApi.search).toHaveBeenLastCalledWith({ keyword: 'PET 008', pageNum: 1, pageSize: 10 })
+    ;(document.body.querySelector('.ess-option') as HTMLElement).click()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state.batchMaterial.value).toMatchObject({ materialId: 11, materialName: 'PET', specification: '008' })
+    expect(state.confirmBatchMaterial).not.toHaveBeenCalled()
+    selector.getComponent(EditableSearchSelect).vm.$emit('clear')
+    expect(state.batchMaterial.value).toBeNull()
+    expect(selector.props('allowCreate')).toBe(false)
+  } finally {
+    wrapper.unmount()
+    vi.useRealTimers()
+  }
 })

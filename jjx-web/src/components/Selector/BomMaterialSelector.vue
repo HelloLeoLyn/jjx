@@ -2,7 +2,7 @@
   <EditableSearchSelect
     :key="selectorRevision"
     :model-value="materialId"
-    :display-value="materialName"
+    :display-value="displayValue"
     :options="options"
     option-key="materialId"
     :label-of="labelOf"
@@ -14,8 +14,9 @@
     :create-label="'新建物料「' + keyword + '」'"
     placeholder="输入物料名称搜索"
     size="small"
-    keep-text-on-blur
+    :keep-text-on-blur="keepTextOnBlur"
     :track-input="confirmSelection"
+    @focusin="onFocus"
     @draft="handleDraft"
     @search="search"
     @select="selectMaterial"
@@ -40,9 +41,10 @@
 
 <script setup lang="ts">
 /**
- * BOM 行「物料名称」选择器（dev-20261018-011）
+ * 公共物料选择器：BOM 行与打样工作台共用（dev-20261018-011 / dev-20261024-013）
  * 由 el-select 改为可编辑搜索框（EditableSearchSelect）：选中后文字可直接删改并续搜。
- * 保留：非空文字远程搜索 400ms 防抖、加载更多、新建物料入口（权限在父级/指令侧）、已选回填、清空。
+ * 统一 keyword 多词搜索、400ms 防抖、分页和请求隔离；默认保留 BOM 草稿/权限语义。
+ * 工作台可显式开启编码回显、空词浏览，并传入原有建档权限；无建档入口的场景关闭 allowCreate。
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { materialApi } from '@/api/inventory/material'
@@ -50,7 +52,25 @@ import type { InventoryMaterial } from '@/types/inventory/material'
 import EditableSearchSelect from './EditableSearchSelect.vue'
 import { hasPermi } from '@/directives'
 
-const props = withDefaults(defineProps<{ materialId?: number; materialName?: string; confirmSelection?: boolean }>(), { confirmSelection: false })
+const props = withDefaults(defineProps<{
+  materialId?: number
+  materialName?: string
+  specification?: string
+  materialCode?: string
+  showMaterialCode?: boolean
+  confirmSelection?: boolean
+  keepTextOnBlur?: boolean
+  browseOnFocus?: boolean
+  allowCreate?: boolean
+  createPermissions?: string[]
+}>(), {
+  confirmSelection: false,
+  keepTextOnBlur: true,
+  browseOnFocus: false,
+  allowCreate: true,
+  showMaterialCode: false,
+  createPermissions: () => ['engineering:bom:add', 'engineering:bom:edit', 'inventory:material:add'],
+})
 const emit = defineEmits<{
   (e: 'select', material: InventoryMaterial): void
   (e: 'clear'): void
@@ -80,20 +100,20 @@ const failed = ref(false)
 const searched = ref(false)
 const total = ref(0)
 
-// 建档入口权限：工程编 BOM 可顺手补材料；审核员凭 inventory:material:add 在审核页补档（dev-20261020-029 D）
-const BOM_MATERIAL_PERMS = [
-  'engineering:bom:add',
-  'engineering:bom:edit',
-  'inventory:material:add',
-]
-const canCreate = computed(() => hasPermi(BOM_MATERIAL_PERMS))
+// 默认沿用 BOM/物料建档权限；工作台显式传自己的原有权限，不扩大入口授权。
+const canCreate = computed(() => props.allowCreate && hasPermi(props.createPermissions))
 
-const labelOf = (item: InventoryMaterial) => item.materialName || ''
-const optionLabel = (item: InventoryMaterial) =>
-  [item.materialName, item.model, item.specification]
+const optionLabel = (item: Partial<InventoryMaterial>) => {
+  const label = [item.materialName, item.model, item.specification]
     .map((part) => part?.trim())
     .filter(Boolean)
     .join(' · ')
+  return label + (props.showMaterialCode && item.materialCode ? ` (${item.materialCode})` : '')
+}
+const labelOf = (item: InventoryMaterial) => props.showMaterialCode ? optionLabel(item) : item.materialName || ''
+const displayValue = computed(() => props.showMaterialCode && props.materialId
+  ? optionLabel(props)
+  : props.materialName || '')
 
 // 显示「新建物料」入口：搜过 & 有非空关键字 & 没有与关键字完全同名的物料
 // 2026-10-21：同名不同规格是常态（库内单个名称最多 43 个规格），只在 100% 同名时才隐藏建档行
@@ -116,7 +136,13 @@ async function fetchPage(id: number, nextPage: number) {
     })
     if (id !== requestId) return
     if (!res.data) throw new Error('物料查询未返回分页数据')
-    options.value = nextPage === 1 ? res.data.records : [...options.value, ...res.data.records]
+    const records = res.data.records
+    const seen = new Set(options.value.map((item) => item.materialId))
+    options.value = nextPage === 1 ? records : [...options.value, ...records.filter((item) => {
+      if (seen.has(item.materialId)) return false
+      seen.add(item.materialId)
+      return true
+    })]
     total.value = res.data.total
     page = nextPage
     searched.value = true
@@ -140,17 +166,24 @@ function search(value: string) {
   searched.value = false
   failed.value = false
   page = 1
-  loading.value = !!keyword.value
+  loadingMore.value = false
+  loading.value = !!keyword.value || props.browseOnFocus
   if (loading.value) timer = setTimeout(() => fetchPage(id, 1), 400)
 }
 
+function onFocus() {
+  if (props.browseOnFocus && !searched.value && !loading.value) search(keyword.value)
+}
+
 async function loadMore() {
-  if (loading.value || loadingMore.value || !keyword.value) return
+  if (loading.value || loadingMore.value || failed.value || options.value.length >= total.value) return
+  if (!keyword.value && !props.browseOnFocus) return
+  const id = requestId
   loadingMore.value = true
   try {
-    await fetchPage(requestId, page + 1)
+    await fetchPage(id, page + 1)
   } finally {
-    loadingMore.value = false
+    if (id === requestId) loadingMore.value = false
   }
 }
 

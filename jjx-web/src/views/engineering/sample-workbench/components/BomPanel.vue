@@ -4,45 +4,22 @@
       <span style="font-weight: 600">BOM 物料清单</span>
       <span class="desc">卡片材料与独立材料共用同一份草稿</span>
     </template>
-    <el-table v-if="bomList.length > 0" :data="bomList" size="small" border style="width: 100%">
+    <el-table v-if="bomList.length > 0" :data="bomList" row-key="uid" size="small" border style="width: 100%">
       <el-table-column label="材料" min-width="170">
         <template #default="{ row }">
-          <el-select
+          <BomMaterialSelector
             v-if="!readonly"
-            v-model="row.materialId"
-            filterable
-            remote
-            clearable
-            :remote-method="(q: string) => $emit('search', row, q)"
-            :loading="stateOf(row.uid).loading"
-            :popper-class="`bom-material-popper-${row.uid}`"
-            placeholder="搜索物料档案"
-            style="width: 100%"
-            size="small"
-            @change="(v: any) => $emit('select', row, v)"
-            @visible-change="(v: boolean) => $emit('visible', row, v)"
-          >
-            <el-option
-              v-for="opt in optionsFor(row)"
-              :key="opt.materialId"
-              :label="`${opt.materialName}${opt.specification ? ' ' + opt.specification : ''} (${opt.materialCode || ''})`"
-              :value="opt.materialId"
-            />
-            <el-option
-              v-if="stateOf(row.uid).loading"
-              value="__loading__"
-              disabled
-              style="text-align: center; color: #909399; font-size: 12px"
-              >加载中…</el-option
-            >
-            <el-option
-              v-else-if="stateOf(row.uid).options.length && stateOf(row.uid).total > stateOf(row.uid).options.length"
-              value="__more__"
-              disabled
-              style="text-align: center; color: #909399; font-size: 12px"
-              >下拉加载更多（还有 {{ stateOf(row.uid).total - stateOf(row.uid).options.length }} 条）</el-option
-            >
-          </el-select>
+            :material-id="row.materialId"
+            :material-name="row.name"
+            :specification="row.spec"
+            :material-code="row.materialCode"
+            show-material-code
+            browse-on-focus
+            :keep-text-on-blur="false"
+            :allow-create="false"
+            @select="(material) => $emit('select', row, material)"
+            @clear="$emit('clear', row)"
+          />
           <span v-else>{{ row.name || '-' }}</span>
         </template>
       </el-table-column>
@@ -170,6 +147,7 @@
 </template>
 
 <script setup lang="ts">
+import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import { splitNumber, setMaterialSplit } from '../composables/sampleMaterials'
 /**
  * BOM 物料清单卡（dev-20260811-008 组件化；dev-20261015-017 支持直接编辑）
@@ -181,7 +159,6 @@ const props = withDefaults(
     bomList: any[]
     projects?: any[]
     readonly?: boolean
-    stateOf: (uid: string) => any
     /** 是否显示「资料转移」区；默认 true 兼容既有调用方，false 时仅隐藏、不改 transfer 事件（dev-20261018-007） */
     showTransfer?: boolean
   }>(),
@@ -192,27 +169,10 @@ const emit = defineEmits<{
   (e: 'update', row: any): void
   (e: 'remove', row: any): void
   (e: 'add'): void
-  (e: 'search', row: any, query: string): void
-  (e: 'select', row: any, materialId: number): void
-  (e: 'visible', row: any, visible: boolean): void
+  (e: 'select', row: any, material: any): void
+  (e: 'clear', row: any): void
   (e: 'transfer'): void
 }>()
-
-function optionsFor(row: any): any[] {
-  const list: any[] = props.stateOf(row.uid)?.options || []
-  if (row.materialId && !list.some((o: any) => o.materialId === row.materialId)) {
-    return [
-      {
-        materialId: row.materialId,
-        materialName: row.name,
-        specification: row.spec,
-        materialCode: row.materialCode,
-      },
-      ...list,
-    ]
-  }
-  return list
-}
 
 function projectNames(row: any): string[] {
   const ids: number[] = row.projectIds || []

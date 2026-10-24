@@ -18,6 +18,8 @@ import { nextTick, reactive } from 'vue'
 
 import PrintProcessPanel from '../PrintProcessPanel.vue'
 
+vi.mock('@/components/inventory/MaterialFormDialog.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/directives', () => ({ hasPermi: () => true }))
 vi.mock('@/api/sales/sampleOrder', () => ({
   getProcessHistory: vi.fn().mockResolvedValue({ data: { printNames: ['丝印', '移印'], colorNos: [], inkNos: [] } }),
 }))

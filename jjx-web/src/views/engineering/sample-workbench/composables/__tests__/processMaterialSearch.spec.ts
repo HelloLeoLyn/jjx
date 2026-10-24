@@ -1,272 +1,126 @@
-/**
- * 工序材料搜索/回填契约测试（dev-20261018-035）
- *
- * 覆盖：
- * 1）输入关键词不改已选材料身份与档案快照；
- * 2）旧请求晚返回不覆盖新结果（每行独立请求序号）；
- * 3）选中新结果才更新身份/快照，模数、基数等行数据保持；
- * 4）显式清空解除身份与快照，并作废在途请求；
- * 5）搜索失败不冒充零结果（保留候选 + 失败标记 + 可重试）；
- * 6）加载更多沿用同一关键词、去重、防重复翻页。
- *
- * 运行（带内存笼子，禁止裸跑）：
- *   cd /home/administrator/jjx/jjx-web
- *   systemd-run --user --scope -p MemoryMax=1G -p MemorySwapMax=0 -- timeout 120 npx vitest run \
- *     src/views/engineering/sample-workbench/composables/__tests__/processMaterialSearch.spec.ts --maxWorkers=1
- */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+/** dev-20261024-013：搜索归公共选择器；工序/BOM保持原归属、草稿与整单保存契约。 */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, reactive, ref } from 'vue'
-
-vi.mock('@/api/inventory/material', () => ({ materialApi: { search: vi.fn() } }))
-
-import { materialApi } from '@/api/inventory/material'
 import { useProcessMaterials } from '../useProcessMaterials'
+import { useSampleBom } from '../useSampleBom'
+import { usePlanPersistence } from '../usePlanPersistence'
+import { useSampleWorkbench } from '../useSampleWorkbench'
+import { assignMaterial } from '../sampleProcessGroups'
 
-const searchMock = vi.mocked(materialApi.search)
+vi.mock('@/utils/request', () => ({ default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } }))
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: { orderId: '10' } }), useRouter: () => ({}), onBeforeRouteLeave: vi.fn() }))
+vi.mock('@/composables/useDict', () => ({ useDict: () => ({ options: ref([]) }) }))
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((r) => (resolve = r))
-  return { promise, resolve }
-}
-
-function page(records: any[], total = records.length) {
-  return { data: { records, total } }
-}
-
-const A = { materialId: 1, materialName: '铜箔A', specification: '35um', materialCode: 'MAT-A', unit: 'M' }
-const B = { materialId: 2, materialName: '铜箔B', specification: '70um', materialCode: 'MAT-B', unit: 'M' }
+const api = vi.hoisted(() => ({ saveScheme: vi.fn(), listProcesses: vi.fn(), startEngineering: vi.fn() }))
+vi.mock('@/api/sales/sampleOrder', () => ({ sampleOrderApi: api }))
+vi.mock('element-plus', () => ({ ElMessage: { success: vi.fn(), warning: vi.fn(), error: vi.fn() }, ElMessageBox: { confirm: vi.fn() } }))
+const PET = { materialId: 11, materialName: 'PET', specification: '008', materialCode: 'MAT-PET', unit: 'M' }
 
 function fixture() {
-  const scope = effectScope()
-  const materials = scope.run(() => useProcessMaterials(ref(false), (() => {
-    let n = 0
-    return () => `uid-${++n}`
-  })()))!
-  const pc = { items: [{ stdProcessId: 41 }], materialRows: [] as any[], materials: '[]' }
-  materials.addMaterialRow(pc)
-  const row: any = pc.materialRows[0]
-  return { scope, materials, pc, row }
+  const readonlyMode = ref(false)
+  let uid = 0
+  const materials = useProcessMaterials(readonlyMode, () => `m-${++uid}`)
+  const pc = reactive({ uid: 'pc-1', category: 'PANEL', editing: true, status: 1,
+    items: [{ itemKey: 'one', stdProcessId: 41, processId: 41, processName: '冲型' }],
+    materialRows: [] as any[], materials: '[]', saveState: 'synced' })
+  materials.addMaterialRow(pc, 'one')
+  return { readonlyMode, materials, pc, row: pc.materialRows[0] }
 }
-
-let ctx: ReturnType<typeof fixture>
-beforeEach(() => { searchMock.mockReset(); ctx = fixture() })
-afterEach(() => { ctx.scope.stop() })
-
-describe('工序材料搜索：关键词与已选身份分离', () => {
-  it('选中后只改输入关键词，不动 materialId / 编码 / 规格 / 单位', async () => {
-    const { materials, row } = ctx
-    searchMock.mockResolvedValueOnce(page([A]))
-    await materials.searchMaterials('铜箔', row, 1, false)
-    materials.onMaterialSelected(row, A)
-    expect(row).toMatchObject({ materialId: 1, materialCode: 'MAT-A', name: '铜箔A', spec: '35um', unit: 'M' })
-
-    searchMock.mockResolvedValueOnce(page([B]))
-    await materials.searchMaterials('铜箔B', row, 1, false)
-
-    // 只是在搜新词：身份与快照保持原样
-    expect(row.materialId).toBe(1)
-    expect(row.materialCode).toBe('MAT-A')
-    expect(row.name).toBe('铜箔A')
-    expect(row.spec).toBe('35um')
-    expect(row.unit).toBe('M')
-    expect(row.lastQuery).toBe('铜箔B')
-    expect(row.options.map((o: any) => o.materialId)).toEqual([2])
-  })
-
-  it('选中新结果时才切换身份与档案快照，模数、基数不被换料覆盖', async () => {
-    const { materials, row } = ctx
-    row.moduleQty = 3
-    row.baseQty = 10
-    materials.onMaterialSelected(row, B)
-
-    expect(row).toMatchObject({ materialId: 2, materialCode: 'MAT-B', name: '铜箔B', spec: '70um', unit: 'M' })
-    expect(row.moduleQty).toBe(3)
-    expect(row.baseQty).toBe(10)
-    // 选中项补进候选，供面板高亮
-    expect(row.options.some((o: any) => o.materialId === 2)).toBe(true)
-  })
-
-  it('显式清空解除身份与关联快照，不留旧ID配新名称', () => {
-    const { materials, row } = ctx
-    materials.onMaterialSelected(row, A)
-    materials.clearMaterialRow(row)
-
-    expect(row.materialId).toBeUndefined()
-    expect(row.materialCode).toBe('')
-    expect(row.name).toBe('')
-    expect(row.spec).toBe('')
-    expect(row.options).toEqual([])
-  })
+beforeEach(() => {
+  vi.clearAllMocks()
+  api.saveScheme.mockResolvedValue({})
+  api.listProcesses.mockResolvedValue({ data: [] })
 })
 
-describe('工序材料搜索：并发与失败', () => {
-  it('旧请求晚返回不覆盖新结果，也不把 loading 卡死', async () => {
-    const { materials, row } = ctx
-    const slow = deferred<any>()
-    const fast = deferred<any>()
-    searchMock.mockReturnValueOnce(slow.promise).mockReturnValueOnce(fast.promise)
-
-    const p1 = materials.searchMaterials('铜', row, 1, false)
-    const p2 = materials.searchMaterials('铜箔B', row, 1, false)
-
-    fast.resolve(page([B]))
-    await p2
-    expect(row.options.map((o: any) => o.materialId)).toEqual([2])
-    expect(row.loading).toBe(false)
-
-    slow.resolve(page([A]))
-    await p1
-    expect(row.options.map((o: any) => o.materialId)).toEqual([2]) // 旧响应整包丢弃
-    expect(row.lastQuery).toBe('铜箔B')
-    expect(row.loading).toBe(false)
-  })
-
-  it('搜索失败保留候选并标记 searchFailed，重试成功后清除标记', async () => {
-    const { materials, row } = ctx
-    searchMock.mockResolvedValueOnce(page([A]))
-    await materials.searchMaterials('铜箔', row, 1, false)
-
-    searchMock.mockRejectedValueOnce(new Error('网络错误'))
-    await materials.searchMaterials('铜箔X', row, 1, false)
-    expect(row.searchFailed).toBe(true)
-    expect(row.loading).toBe(false)
-    expect(row.options.length).toBe(1) // 不冒充零结果
-
-    searchMock.mockResolvedValueOnce(page([B]))
-    await materials.searchMaterials(row.lastQuery, row, 1, false)
-    expect(row.searchFailed).toBe(false)
-    expect(row.options.map((o: any) => o.materialId)).toEqual([2])
-  })
-
-  it('清空后旧请求晚返回也不能写回已解绑的行', async () => {
-    const { materials, row } = ctx
-    const pending = deferred<any>()
-    searchMock.mockReturnValueOnce(pending.promise)
-    const p = materials.searchMaterials('铜箔', row, 1, false)
-
+describe('公共搜索结果回填工序材料', () => {
+  it('选中完整对象更新身份快照，模数/基数/跳距/子工序归属保留；清空同步解绑', () => {
+    const { materials, row } = fixture()
+    Object.assign(row, { moduleQty: 3, baseQty: 9, split: '50mm' })
+    materials.onMaterialSelected(row, PET)
+    expect(row).toMatchObject({ materialId: 11, materialCode: 'MAT-PET', name: 'PET', spec: '008', unit: 'M',
+      moduleQty: 3, baseQty: 9, split: '50mm', processItemKey: 'one' })
     materials.clearMaterialRow(row)
-    pending.resolve(page([A]))
-    await p
-
-    expect(row.materialId).toBeUndefined()
-    expect(row.name).toBe('')
-    expect(row.options).toEqual([])
-    expect(row.loading).toBe(false)
+    expect(row).toMatchObject({ materialId: undefined, materialCode: '', name: '', spec: '', unit: 'PCS',
+      moduleQty: 3, baseQty: 9, split: '50mm', processItemKey: 'one' })
   })
-
-  it('加载更多沿用同一关键词、翻页追加去重、重复点击不并页', async () => {
-    const { materials, row } = ctx
-    const first = Array.from({ length: 20 }, (_, i) => ({ materialId: i + 1, materialName: `M${i + 1}` }))
-    searchMock.mockResolvedValueOnce(page(first, 40))
-    await materials.searchMaterials('M', row, 1, false)
-    expect(row.options.length).toBe(20)
-    expect(row.total).toBe(40)
-
-    searchMock.mockResolvedValueOnce(page([...first.slice(0, 5), { materialId: 21, materialName: 'M21' }]))
-    await materials.loadMoreMaterials(row)
-
-    const second = searchMock.mock.calls[searchMock.mock.calls.length - 1][0] as any
-    expect(second.materialName).toBe('M') // 与第一页同关键词
-    expect(second.pageNum).toBe(2)
-    expect(row.options.length).toBe(21) // 重复项不再追加
-    expect(row.options[row.options.length - 1].materialId).toBe(21)
-
-    // 已加载到 total 时不再翻页
-    row.total = 21
-    const before = searchMock.mock.calls.length
-    await materials.loadMoreMaterials(row)
-    expect(searchMock.mock.calls.length).toBe(before)
+  it('建档预填搜索关键词；成功回填目标行，保留另一行和数量归属', () => {
+    const { materials, pc, row } = fixture()
+    materials.addMaterialRow(pc, 'one')
+    row._matKw = 'PET 008'; row.baseQty = 6
+    materials.openMaterialCreate(pc, row)
+    expect(materials.materialPreset.value.materialName).toBe('PET 008')
+    materials.onMaterialCreated(PET)
+    expect(row).toMatchObject({ name: 'PET', materialId: 11, spec: '008', baseQty: 6, processItemKey: 'one' })
+    expect(pc.materialRows[1].materialId).toBeUndefined()
   })
-
-  it('输入防抖：连续输入只按最后一个关键词请求一次', async () => {
-    vi.useFakeTimers()
-    try {
-      const { materials, row } = ctx
-      searchMock.mockResolvedValue(page([A]))
-      materials.debouncedSearchMaterials('铜', row, 1, false)
-      materials.debouncedSearchMaterials('铜箔', row, 1, false)
-      expect(searchMock).not.toHaveBeenCalled()
-
-      vi.advanceTimersByTime(320)
-      await vi.runOnlyPendingTimersAsync()
-      expect(searchMock).toHaveBeenCalledTimes(1)
-      expect((searchMock.mock.calls[0][0] as any).materialName).toBe('铜箔')
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-})
-
-describe('工序材料搜索：行间隔离与历史回显', () => {
-  it('多行并行搜索各自回填本行，不串行也不互相覆盖', async () => {
-    const { materials, pc } = ctx
-    materials.addMaterialRow(pc)
-    const [row1, row2] = pc.materialRows as any[]
-    const d1 = deferred<any>()
-    const d2 = deferred<any>()
-    searchMock.mockReturnValueOnce(d1.promise).mockReturnValueOnce(d2.promise)
-
-    const p1 = materials.searchMaterials('铜箔A', row1, 1, false)
-    const p2 = materials.searchMaterials('铜箔B', row2, 1, false)
-
-    d2.resolve(page([B]))
-    d1.resolve(page([A]))
-    await Promise.all([p1, p2])
-
-    expect(row1.options.map((o: any) => o.materialId)).toEqual([1])
-    expect(row2.options.map((o: any) => o.materialId)).toEqual([2])
-    expect(row1.lastQuery).toBe('铜箔A')
-    expect(row2.lastQuery).toBe('铜箔B')
-  })
-
-  it('删行后旧响应晚返回不会复活该行或写回别的行', async () => {
-    const { materials, pc } = ctx
-    materials.addMaterialRow(pc)
-    const [row1, row2] = pc.materialRows as any[]
-    const pending = deferred<any>()
-    searchMock.mockReturnValueOnce(pending.promise)
-    const p = materials.searchMaterials('铜箔', row1, 1, false)
-
-    pc.materialRows.splice(0, 1) // 删掉正在搜的行
-    pending.resolve(page([A]))
-    await p
-
-    expect(pc.materialRows.length).toBe(1)
-    expect(pc.materialRows[0]).toBe(row2)
-    expect(row2.options).toEqual([])
-    expect(row1.loading).toBe(false)
-  })
-
-  it('进入编辑按已存材料回显名称并保留模数/基数，不显示裸ID', () => {
-    const { materials } = ctx
-    const pc = reactive({
-      items: [{ stdProcessId: 41 }],
-      materialRows: [] as any[],
-      editing: false,
-      materials: JSON.stringify([{ name: '铜箔A', spec: '35um', materialId: 7, materialCode: 'MAT-7', unit: 'M', baseQty: 9, moduleQty: 4, qty: 2.25 }]),
-    })
+  it('历史行进入编辑仍回显档案快照；只读禁止加行、选择和清空', () => {
+    const { materials, readonlyMode, pc } = fixture()
+    pc.editing = false; pc.materialRows = []
+    pc.materials = JSON.stringify([{ name: 'PET', spec: '008', materialId: 11, materialCode: 'MAT-PET',
+      unit: 'M', baseQty: 9, moduleQty: 3, qty: 3 }])
     materials.startEdit(pc)
-
-    const row: any = pc.materialRows[0]
-    expect(pc.editing).toBe(true)
-    expect(row.name).toBe('铜箔A')
-    expect(row.materialId).toBe(7)
-    expect(row.moduleQty).toBe(4)
-    expect(row.baseQty).toBe(9)
-    expect(row.options).toEqual([])
-    expect(row.lastQuery).toBe('')
+    expect(pc.materialRows[0]).toMatchObject({ name: 'PET', materialId: 11, baseQty: 9, moduleQty: 3 })
+    readonlyMode.value = true
+    materials.addMaterialRow(pc)
+    materials.clearMaterialRow(pc.materialRows[0])
+    materials.onMaterialSelected(pc.materialRows[0], { ...PET, materialId: 99 })
+    expect(pc.materialRows).toHaveLength(1)
+    expect(pc.materialRows[0].materialId).toBe(11)
   })
+})
 
-  it('只读模式不进入编辑也不允许加材料行', () => {
+describe('BOM公共选择器结果写回及整单保存', () => {
+  it('换料写回正确子工序，独立材料单独保存，清空保留数量和归属', async () => {
+    const { readonlyMode, pc } = fixture()
+    pc.items.push({ itemKey: 'two', stdProcessId: 42, processId: 42, processName: '组装' })
+    pc.materialRows = pc.items.map(item => assignMaterial({ name: '旧材料', materialId: 1, spec: '旧规格',
+      qty: 2, unit: 'M', moduleQty: 2, baseQty: 4, split: '50mm' }, item))
+    const context = { readonlyMode, orderId: ref(10), card: ref({ sampleRound: 1, engineeringNote: '' }),
+      planList: ref<any[]>([pc]), printList: ref<any[]>([]), markOwnerDirty: vi.fn() }
+    const bom = useSampleBom(context)
+    const persistence = usePlanPersistence({ ...context, standaloneMaterials: bom.standaloneMaterials,
+      note: ref(''), allProcesses: ref<any[]>([]), makeCard: vi.fn(), makePrintRow: vi.fn(),
+      loadBom: vi.fn(), refreshCard: vi.fn(), loadSummary: vi.fn(), canSave: () => true })
+    persistence.markSaved()
+    const target = bom.bomList.value[1]
+    bom.onBomMaterialSelected(target, PET)
+    expect(pc.materialRows[0].materialId).toBe(1)
+    expect(pc.materialRows[1]).toMatchObject({ materialId: 11, name: 'PET', spec: '008', processItemKey: 'two',
+      baseQty: 4, moduleQty: 2, split: '50mm' })
+    expect(context.markOwnerDirty).toHaveBeenCalledWith(pc)
+    bom.addMaterial()
+    const standalone = bom.bomList.value.find(row => row.ownerUid == null)!
+    bom.onBomMaterialSelected(standalone, PET)
+    expect(await persistence.savePlan()).toBe(true)
+    const payload = api.saveScheme.mock.calls[0][1]
+    const secondMaterials = JSON.parse(payload.items[1].materials)
+    expect(secondMaterials).toHaveLength(2)
+    expect(secondMaterials.find((row: any) => row.processItemKey === 'two')).toMatchObject({ materialId: 11, name: 'PET', spec: '008', processItemKey: 'two' })
+    expect(payload.standaloneMaterials[0]).toMatchObject({ materialId: 11, materialName: 'PET', specification: '008' })
+    bom.clearBomMaterial(bom.bomList.value.find(row => row.ownerUid == null)!)
+    expect(bom.standaloneMaterials.value[0]).toMatchObject({ materialId: undefined, name: '', spec: '', baseQty: 1 })
+  })
+})
+
+
+describe('批量添加材料使用完整公共候选', () => {
+  it('确认才添加到选中卡片，保持原数量/归属；重新打开清除上次候选', () => {
     const scope = effectScope()
-    const readonly = ref(true)
-    const materials = scope.run(() => useProcessMaterials(readonly, () => 'uid-ro'))!
-    const pc = reactive({ items: [], materialRows: [] as any[], editing: false, materials: '[]' })
-    materials.startEdit(pc)
-    materials.addMaterialRow(pc)
-    expect(pc.editing).toBe(false)
-    expect(pc.materialRows.length).toBe(0)
+    const workbench = scope.run(() => useSampleWorkbench())!
+    const { pc } = fixture()
+    workbench.planList.value = [pc, { ...pc, uid: 'pc-2', materialRows: [], materials: '[]' }]
+    workbench.batchSelected.value = new Set(['pc-1'])
+    workbench.openBatchMaterial()
+    workbench.batchMaterial.value = PET
+    expect(pc.materialRows).toHaveLength(1)
+    workbench.confirmBatchMaterial()
+    expect(pc.materialRows).toHaveLength(2)
+    expect(pc.materialRows[1]).toMatchObject({ name: 'PET', spec: '008', materialId: 11,
+      materialCode: 'MAT-PET', unit: 'M', baseQty: 1, moduleQty: 1, projectIds: [41] })
+    expect(workbench.planList.value[1].materialRows).toHaveLength(0)
+    expect(workbench.batchMaterialVisible.value).toBe(false)
+    workbench.openBatchMaterial()
+    expect(workbench.batchMaterial.value).toBeNull()
     scope.stop()
   })
 })

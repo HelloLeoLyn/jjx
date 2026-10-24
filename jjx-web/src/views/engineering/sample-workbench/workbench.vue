@@ -68,14 +68,12 @@
             :readonly="readonlyMode"
             :bom-list="bomList"
             :projects="allProcesses"
-            :state-of="bomStateOf"
             :show-transfer="false"
             @update="updateMaterial"
             @remove="removeMaterial"
             @add="addMaterial"
-            @search="debouncedSearchBomMaterials"
             @select="onBomMaterialSelected"
-            @visible="onBomVisible"
+            @clear="clearBomMaterial"
           />
         </template>
         <template #note>
@@ -530,28 +528,25 @@
 
     <!-- 批量添加材料弹窗 -->
     <el-dialog v-model="batchMaterialVisible" title="批量添加材料" width="460px" append-to-body>
-      <el-select
-        v-model="batchMaterialId"
-        filterable
-        remote
-        :remote-method="(q: string) => searchBatchMaterial(q)"
-        :loading="batchMaterialLoading"
-        placeholder="搜索物料档案"
-        style="width: 100%"
-      >
-        <el-option
-          v-for="opt in batchMaterialOptions"
-          :key="opt.materialId"
-          :label="`${opt.materialName}${opt.specification ? ' ' + opt.specification : ''} (${opt.materialCode || ''})`"
-          :value="opt.materialId"
-        />
-      </el-select>
+      <BomMaterialSelector
+        v-if="batchMaterialVisible"
+        :material-id="batchMaterial?.materialId"
+        :material-name="batchMaterial?.materialName"
+        :specification="batchMaterial?.specification"
+        :material-code="batchMaterial?.materialCode"
+        show-material-code
+        browse-on-focus
+        :keep-text-on-blur="false"
+        :allow-create="false"
+        @select="(material) => batchMaterial = material"
+        @clear="batchMaterial = null"
+      />
       <div style="font-size: 12px; color: #909399; margin-top: 8px">
         将添加到 {{ batchSelected.size }} 张选中卡片的材料列表
       </div>
       <template #footer>
         <el-button @click="batchMaterialVisible = false">取消</el-button>
-        <el-button type="primary" :disabled="!batchMaterialId" @click="confirmBatchMaterial"
+        <el-button type="primary" :disabled="!batchMaterial" @click="confirmBatchMaterial"
           >添加</el-button
         >
       </template>
@@ -576,6 +571,7 @@ import SampleProcessPlanEditor from './components/SampleProcessPlanEditor.vue'
 import SamplePlanView from './components/SamplePlanView.vue'
 import SampleExecutionView from './components/SampleExecutionView.vue'
 import BomPanel from './components/BomPanel.vue'
+import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import NoteFilesPanel from './components/NoteFilesPanel.vue'
 import DefectRecordPanel from './components/DefectRecordPanel.vue'
 import PrintProcessPanel from './components/PrintProcessPanel.vue'
@@ -621,11 +617,8 @@ const {
   applyBatchCategory,
   batchDelete,
   batchMaterialVisible,
-  batchMaterialId,
-  batchMaterialOptions,
-  batchMaterialLoading,
+  batchMaterial,
   openBatchMaterial,
-  searchBatchMaterial,
   confirmBatchMaterial,
   historyCopyVisible,
   historyOrders,
@@ -684,10 +677,6 @@ const {
   finishEdit,
   addMaterialRow,
   startEdit,
-  searchMaterials,
-  debouncedSearchMaterials,
-  onSelectVisibleChange,
-  loadMoreMaterials,
   onMaterialSelected,
   materialCreateVisible,
   materialPreset,
@@ -711,10 +700,8 @@ const {
   updateMaterial,
   removeMaterial,
   addMaterial,
-  bomStateOf,
-  debouncedSearchBomMaterials,
   onBomMaterialSelected,
-  onBomVisible,
+  clearBomMaterial,
   customerFileList,
   goBack,
   loadDetail,

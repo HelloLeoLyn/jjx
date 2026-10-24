@@ -12,7 +12,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadProps } from 'element-plus'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
-import { materialApi } from '@/api/inventory/material'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import { useDict } from '@/composables/useDict'
 import { SampleProcessStatusEnum } from '@/enums/sales'
@@ -124,32 +123,14 @@ export function useSampleWorkbench() {
   }
   // 批量添加材料
   const batchMaterialVisible = ref(false)
-  const batchMaterialId = ref<number | null>(null)
-  const batchMaterialOptions = ref<any[]>([])
-  const batchMaterialLoading = ref(false)
+  const batchMaterial = ref<any>(null)
   function openBatchMaterial() {
     batchMaterialVisible.value = true
-    batchMaterialId.value = null
-    batchMaterialOptions.value = []
-    searchBatchMaterial('')
-  }
-  async function searchBatchMaterial(query: string) {
-    batchMaterialLoading.value = true
-    try {
-      const params: any = { pageNum: 1, pageSize: 20 }
-      if (query.trim()) params.materialName = query.trim()
-      const res: any = await materialApi.search(params)
-      batchMaterialOptions.value = res?.data?.records || res?.data || []
-    } catch {
-      batchMaterialOptions.value = []
-    } finally {
-      batchMaterialLoading.value = false
-    }
+    batchMaterial.value = null
   }
   function confirmBatchMaterial() {
     if (readonlyMode.value) return
-    if (!batchMaterialId.value) return
-    const mat = batchMaterialOptions.value.find((o) => o.materialId === batchMaterialId.value)
+    const mat = batchMaterial.value
     if (!mat) return
     batchSelectedCards().forEach((pc) => {
       const mats = parseMaterials(pc.materials) || []
@@ -189,7 +170,7 @@ export function useSampleWorkbench() {
       markDirty(pc)
     })
     batchMaterialVisible.value = false
-    batchMaterialId.value = null
+    batchMaterial.value = null
     ElMessage.success('已批量添加材料')
   }
 
@@ -316,11 +297,11 @@ export function useSampleWorkbench() {
   let processesLoaded = false
   let processesPromise: Promise<void> | null = null
   let processWarned = false
-  const { standaloneMaterials, bomList, stateOf: bomStateOf, loadBom, updateMaterial, removeMaterial, addMaterial, clearStandalone, debouncedSearchBomMaterials, onBomMaterialSelected, onBomVisible } = useSampleBom({ orderId, card, planList, printList, readonlyMode, markOwnerDirty: markDirty })
+  const { standaloneMaterials, bomList, loadBom, updateMaterial, removeMaterial, addMaterial, clearStandalone, onBomMaterialSelected, clearBomMaterial } = useSampleBom({ orderId, card, planList, printList, readonlyMode, markOwnerDirty: markDirty })
 
 
-  const { addMaterialRow, startEdit, cancelEdit, finishEdit, searchMaterials, debouncedSearchMaterials, onSelectVisibleChange,
-    loadMoreMaterials, onMaterialSelected, clearMaterialRow, materialCreateVisible, materialPreset, openMaterialCreate,
+  const { addMaterialRow, startEdit, cancelEdit, finishEdit,
+    onMaterialSelected, clearMaterialRow, materialCreateVisible, materialPreset, openMaterialCreate,
     onMaterialCreated, parseMaterials } = useProcessMaterials(readonlyMode, genUid)
   const { historyCopyVisible, copyOverwrite, historyOrders, historyLoading, historySelected,
     historyCopying, openHistoryCopy, confirmHistoryCopy, copyPrevLoading, historySelectedRound,
@@ -920,7 +901,7 @@ export function useSampleWorkbench() {
   )
 
   // 仅计划面板所需的能力；内部 refs 保持响应式，不复制业务数据。
-  const planEditor = reactive({ batchMode, batchSelected, batchCategory, savingPlan, hasUnsavedChanges, frequentMaterials, planTabs, categoryOptions, cardsByTab, saveStateText, parseMaterials, toggleBatchMode, toggleBatchSelect, toggleBatchSelectAll, savePlan, addFrequentMaterial, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, removeCardItem, removePlanCard, cancelEdit, finishEdit, addMaterialRow, startEdit, openCardPicker, openBatchMaterial, batchDelete, applyBatchCategory, onUpdateIndex, searchMaterials: debouncedSearchMaterials, onMaterialSelected, onMaterialCleared: clearMaterialRow, onMaterialLoadMore: loadMoreMaterials, onSelectVisibleChange, openMaterialCreate })
+  const planEditor = reactive({ batchMode, batchSelected, batchCategory, savingPlan, hasUnsavedChanges, frequentMaterials, planTabs, categoryOptions, cardsByTab, saveStateText, parseMaterials, toggleBatchMode, toggleBatchSelect, toggleBatchSelectAll, savePlan, addFrequentMaterial, onPlanDrop, onCardDrop, onCardDragOver, onCardDragLeave, removeCardItem, removePlanCard, cancelEdit, finishEdit, addMaterialRow, startEdit, openCardPicker, openBatchMaterial, batchDelete, applyBatchCategory, onUpdateIndex, onMaterialSelected, onMaterialCleared: clearMaterialRow, openMaterialCreate })
 
   return {
     planEditor,
@@ -952,11 +933,8 @@ export function useSampleWorkbench() {
     applyBatchCategory,
     batchDelete,
     batchMaterialVisible,
-    batchMaterialId,
-    batchMaterialOptions,
-    batchMaterialLoading,
+    batchMaterial,
     openBatchMaterial,
-    searchBatchMaterial,
     confirmBatchMaterial,
     historyCopyVisible,
     historyOrders,
@@ -1016,10 +994,6 @@ export function useSampleWorkbench() {
     finishEdit,
     addMaterialRow,
     startEdit,
-    searchMaterials,
-    debouncedSearchMaterials,
-    onSelectVisibleChange,
-    loadMoreMaterials,
     onMaterialSelected,
     materialCreateVisible,
     materialPreset,
@@ -1044,10 +1018,8 @@ export function useSampleWorkbench() {
     updateMaterial,
     removeMaterial,
     addMaterial,
-    bomStateOf,
-    debouncedSearchBomMaterials,
     onBomMaterialSelected,
-    onBomVisible,
+    clearBomMaterial,
     customerFileList,
     goBack,
     loadDetail,

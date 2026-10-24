@@ -22,6 +22,8 @@ import SampleProcessPlanItem from '../SampleProcessPlanItem.vue'
 import BomPanel from '../BomPanel.vue'
 import PrintProcessPanel from '../PrintProcessPanel.vue'
 
+vi.mock('@/components/inventory/MaterialFormDialog.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/directives', () => ({ hasPermi: () => true }))
 vi.mock('@/api/sales/sampleOrder', () => ({
   getProcessHistory: vi.fn().mockResolvedValue({ data: { printNames: [], colorNos: [], inkNos: [] } }),
 }))

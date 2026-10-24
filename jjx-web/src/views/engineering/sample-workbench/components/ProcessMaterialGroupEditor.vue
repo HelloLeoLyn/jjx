@@ -111,11 +111,8 @@
         :rows="rowsFor(item)"
         :parse-materials="parseMaterials"
         :add-label="`为${item.processName}添加材料`"
-        @search-material="(q, row) => $emit('search-material', q, row)"
         @material-selected="(row, value) => $emit('material-selected', row, value)"
         @material-cleared="(row) => $emit('material-cleared', row)"
-        @load-more-material="(row) => $emit('load-more-material', row)"
-        @select-visible="(row, visible) => $emit('select-visible', row, visible)"
         @add-material-row="$emit('add-material-row', item.itemKey)"
         @remove-material="(index) => removeMaterial(rowsFor(item)[index])"
         @create-material="(row) => $emit('create-material', row)"
@@ -166,11 +163,8 @@ const emit = defineEmits<{
   (e: 'toggle-select', selected: boolean): void
   (e: 'remove-item', index: number): void
   (e: 'open-picker'): void
-  (e: 'search-material', query: string, row: any): void
   (e: 'material-selected', row: any, value: any): void
   (e: 'material-cleared', row: any): void
-  (e: 'load-more-material', row: any): void
-  (e: 'select-visible', row: any, visible: boolean): void
   (e: 'add-material-row', itemKey: string): void
   (e: 'create-material', row: any): void
 }>()

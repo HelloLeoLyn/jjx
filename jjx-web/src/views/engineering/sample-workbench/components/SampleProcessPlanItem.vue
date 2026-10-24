@@ -19,11 +19,8 @@
       :parse-materials="parseMaterials"
       @remove-item="(index: number) => $emit('remove-item', index)"
       @open-picker="$emit('open-picker')"
-      @search-material="(q: string, row: any) => $emit('search-material', q, row)"
       @material-selected="(row: any, value: any) => $emit('material-selected', row, value)"
       @material-cleared="(row: any) => $emit('material-cleared', row)"
-      @load-more-material="(row: any) => $emit('load-more-material', row)"
-      @select-visible="(row: any, visible: boolean) => $emit('select-visible', row, visible)"
       @add-material-row="(key: string) => $emit('add-material-row', key)"
       @create-material="(row: any) => $emit('create-material', row)"
     />
@@ -66,11 +63,8 @@ const emit = defineEmits<{
   (e: 'remove-item', idx: number): void
   (e: 'update-index', item: any, n: number): void
   (e: 'open-picker'): void
-  (e: 'search-material', q: string, row: any): void
   (e: 'material-selected', row: any, v: any): void
   (e: 'material-cleared', row: any): void
-  (e: 'load-more-material', row: any): void
-  (e: 'select-visible', row: any, v: boolean): void
   (e: 'add-material-row', itemKey: string): void
   (e: 'create-material', m: any): void
   (e: 'edit'): void

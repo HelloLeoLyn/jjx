@@ -3,7 +3,7 @@
  *
  * 覆盖：
  * 1）已选材料在输入框内显示名称+规格+编码，不显示裸ID；
- * 2）输入文字只发 search-material，不改该行 materialId / 快照；
+ * 2）输入文字由公共选择器按keyword搜索，不改该行 materialId / 快照；
  * 3）选中候选项以完整物料对象回传（material-selected），由父级更新身份；
  * 4）显式清空发 material-cleared，不在组件内私改身份；
  * 5）查询失败给重试入口，且不提供「新建物料」诱导；
@@ -18,7 +18,7 @@
  *   systemd-run --user --scope -p MemoryMax=1G -p MemorySwapMax=0 -- timeout 120 npx vitest run \
  *     src/views/engineering/sample-workbench/components/__tests__/processMaterialSearch.spec.ts --maxWorkers=1
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h, nextTick, reactive } from 'vue'
 
@@ -36,6 +36,10 @@ vi.mock('element-plus/es/components/table/style/css', () => ({}))
 vi.mock('element-plus/es/components/table-column/style/css', () => ({}))
 vi.mock('element-plus/es/components/tooltip/style/css', () => ({}))
 
+vi.mock('@/api/inventory/material', () => ({ materialApi: { search: vi.fn() } }))
+vi.mock('@/directives', () => ({ hasPermi: () => true }))
+import { materialApi } from '@/api/inventory/material'
+import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import ProcessMaterialEditor from '../ProcessMaterialEditor.vue'
 import { ElInputNumber } from 'element-plus'
 import EditableSearchSelect from '@/components/Selector/EditableSearchSelect.vue'
@@ -105,9 +109,8 @@ function mountIt(pc: any, readonly = false) {
   })
 }
 
-afterEach(() => {
-  document.body.innerHTML = ''
-})
+beforeEach(() => { vi.useFakeTimers(); vi.mocked(materialApi.search).mockReset() })
+afterEach(() => { vi.useRealTimers(); document.body.innerHTML = '' })
 
 describe('ProcessMaterialEditor 材料可编辑搜索', () => {
   it('已选材料显示名称而不是裸ID，并复用公共可编辑搜索框', () => {
@@ -115,22 +118,22 @@ describe('ProcessMaterialEditor 材料可编辑搜索', () => {
     const w = mountIt(pc)
     const input = w.findComponent(EditableSearchSelect).find('input')
 
-    expect((input.element as HTMLInputElement).value).toBe('铜箔A 35um (MAT-A)')
+    expect((input.element as HTMLInputElement).value).toBe('铜箔A · 35um (MAT-A)')
     w.unmount()
   })
 
-  it('只改输入文字：发 search-material，不改该行 materialId 与档案快照', async () => {
+  it('PET 008使用公共keyword搜索，不改该行 materialId 与档案快照', async () => {
     const pc = makePc()
     const row = pc.materialRows[0]
     const w = mountIt(pc)
     const input = w.findComponent(EditableSearchSelect).find('input')
 
+    vi.mocked(materialApi.search).mockResolvedValueOnce({ data: { records: [B], total: 1 } } as any)
     await input.trigger('focus')
-    await input.setValue('铜箔B')
-
-    const [, emittedRow] = w.emitted('search-material')?.[0] as any[]
-    expect((w.emitted('search-material')?.[0] as any[])[0]).toBe('铜箔B')
-    expect(emittedRow).toBe(row)
+    await input.setValue('PET  008')
+    await vi.advanceTimersByTimeAsync(450)
+    expect(w.findComponent(BomMaterialSelector).exists()).toBe(true)
+    expect(materialApi.search).toHaveBeenCalledExactlyOnceWith({ keyword: 'PET 008', pageNum: 1, pageSize: 10 })
     expect(row.materialId).toBe(1)
     expect(row.name).toBe('铜箔A')
     expect(row.spec).toBe('35um')
@@ -165,27 +168,36 @@ describe('ProcessMaterialEditor 材料可编辑搜索', () => {
     w.unmount()
   })
 
-  it('查询失败：给重试入口且不提供新建物料诱导', async () => {
+  it('查询失败给公共重试入口且不提供新建物料，重试沿用当前关键词', async () => {
     const pc = makePc()
-    const row = pc.materialRows[0]
-    row.searchFailed = true
     const w = mountIt(pc)
     const input = w.findComponent(EditableSearchSelect).find('input')
-
+    vi.mocked(materialApi.search).mockRejectedValueOnce(new Error('网络失败'))
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
     await input.trigger('focus')
-    await input.setValue('不存在的物料')
-    await nextTick()
-
+    await input.setValue('PET 008')
+    await vi.advanceTimersByTimeAsync(450)
     expect(document.body.querySelector('.ess-create')).toBeNull()
-
-    const retryBtn = Array.from(document.body.querySelectorAll('.mat-failed button')).find((b) =>
-      (b.textContent || '').includes('重试')
-    ) as HTMLElement
+    const retryBtn = Array.from(document.body.querySelectorAll('button')).find(b => b.textContent?.includes('重试'))!
     expect(retryBtn).toBeTruthy()
+    vi.mocked(materialApi.search).mockResolvedValueOnce({ data: { records: [B], total: 1 } } as any)
     retryBtn.click()
-    await nextTick()
-    const emissions = w.emitted('search-material') as any[][]
-    expect(emissions[emissions.length - 1][0]).toBe('铜箔A') // 沿用上次关键词，不是失败时的乱打文字
+    await vi.advanceTimersByTimeAsync(450)
+    expect(materialApi.search).toHaveBeenLastCalledWith({ keyword: 'PET 008', pageNum: 1, pageSize: 10 })
+    expect(pc.materialRows[0].materialId).toBe(1)
+    w.unmount(); log.mockRestore()
+  })
+
+  it('公共建档入口把关键词和目标行交给原有建档流程', async () => {
+    const pc = makePc()
+    const w = mountIt(pc)
+    vi.mocked(materialApi.search).mockResolvedValueOnce({ data: { records: [], total: 0 } } as any)
+    const input = w.get('input')
+    await input.trigger('focus'); await input.setValue('新PET')
+    await vi.advanceTimersByTimeAsync(450)
+    ;(document.body.querySelector('.ess-create') as HTMLElement).click()
+    expect(w.emitted('create-material')?.[0]).toEqual([pc.materialRows[0]])
+    expect(pc.materialRows[0]._matKw).toBe('新PET')
     w.unmount()
   })
 
