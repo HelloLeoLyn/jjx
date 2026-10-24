@@ -8,6 +8,7 @@ export interface RegenerationSnapshot {
 }
 
 export interface RegenerationResult {
+  remark?: string
   currentName: string
   currentSpec: string
   generatedName: string
@@ -43,13 +44,15 @@ export function parseOriginalName(remark?: string | null): string {
 export function buildRegeneration(
   current: RegenerationSnapshot,
   generated: { name: string; specification: string },
-  evidence: string[]
+  evidence: string[],
+  remark?: string
 ): RegenerationResult {
   const currentName = (current.materialName || '').trim()
   const currentSpec = (current.specification || '').trim()
   const generatedName = (generated.name || '').trim()
   const generatedSpec = (generated.specification || '').trim()
   return {
+    remark,
     currentName,
     currentSpec,
     generatedName,

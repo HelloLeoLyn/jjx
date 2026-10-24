@@ -3,16 +3,24 @@
     <el-skeleton v-if="loading" :rows="6" animated />
     <template v-else-if="result">
       <el-descriptions :column="1" border size="small">
-        <el-descriptions-item label="当前名称">{{ result.currentName || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="当前名称">{{
+          result.currentName || '—'
+        }}</el-descriptions-item>
         <el-descriptions-item label="生成名称">
           {{ result.generatedName || '—' }}
-          <el-tag v-if="result.nameChanged" size="small" type="warning" class="diff-tag">有变化</el-tag>
+          <el-tag v-if="result.nameChanged" size="small" type="warning" class="diff-tag"
+            >有变化</el-tag
+          >
           <el-tag v-else size="small" type="success" class="diff-tag">一致</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="当前规格">{{ result.currentSpec || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="当前规格">{{
+          result.currentSpec || '—'
+        }}</el-descriptions-item>
         <el-descriptions-item label="生成规格">
           {{ result.generatedSpec || '—' }}
-          <el-tag v-if="result.specChanged" size="small" type="warning" class="diff-tag">有变化</el-tag>
+          <el-tag v-if="result.specChanged" size="small" type="warning" class="diff-tag"
+            >有变化</el-tag
+          >
           <el-tag v-else size="small" type="success" class="diff-tag">一致</el-tag>
         </el-descriptions-item>
       </el-descriptions>
@@ -20,11 +28,7 @@
       <el-form label-width="96px" class="regen-form">
         <el-form-item label="最终名称">
           <el-input v-model="finalName" maxlength="200" />
-          <el-checkbox
-            v-if="result.nameChanged"
-            v-model="adoptGenerated"
-            class="adopt-check"
-          >
+          <el-checkbox v-if="result.nameChanged" v-model="adoptGenerated" class="adopt-check">
             采用生成名称（会替换当前人工确认的名称）
           </el-checkbox>
         </el-form-item>
@@ -34,12 +38,13 @@
       </el-form>
 
       <div class="evidence">
-        <div class="evidence-title">依据</div>
+        <div class="evidence-title">依据参考</div>
         <div class="evidence-line">名称：材料 + 型号 + 颜色（品牌）</div>
         <div v-if="result.evidence.length" class="evidence-line">
           规格：{{ result.evidence.join('；') }}
         </div>
         <div v-else class="evidence-line">规格：该分类暂无属性值，生成值为空</div>
+        <div class="evidence-line">注：{{ result.remark }}</div>
       </div>
     </template>
     <el-empty v-else description="未找到物料信息" />
@@ -70,10 +75,10 @@ import {
 } from './materialRegenerate'
 import type { AttributeValue, MaterialDictionaries } from '@/types/inventory/materialMaster'
 
-const props = withDefaults(
-  defineProps<{ modelValue: boolean; materialId?: number | null }>(),
-  { modelValue: false, materialId: null }
-)
+const props = withDefaults(defineProps<{ modelValue: boolean; materialId?: number | null }>(), {
+  modelValue: false,
+  materialId: null,
+})
 const emit = defineEmits<{ (e: 'update:modelValue', value: boolean): void; (e: 'success'): void }>()
 
 const visible = computed({
@@ -128,7 +133,12 @@ async function load(materialId: number) {
     const attributes = (detail.attributes || {}) as Record<string, AttributeValue>
     const generatedSpec = previewMasterSpecification(detail.configuration?.schema, attributes)
     const evidence = attributeEvidence(detail.configuration?.schema, attributes)
-    result.value = buildRegeneration(detail.material, { name: generatedName, specification: generatedSpec }, evidence)
+    result.value = buildRegeneration(
+      detail.material,
+      { name: generatedName, specification: generatedSpec },
+      evidence,
+      detail.material.remark || undefined
+    )
     finalName.value = result.value.currentName || result.value.generatedName
     finalSpec.value = result.value.generatedSpec
   } catch (error) {
