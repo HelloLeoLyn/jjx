@@ -56,7 +56,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { materialApi } from '@/api/inventory/material'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import {
   attributeEvidence,
@@ -144,10 +143,10 @@ async function save() {
   saving.value = true
   try {
     // 只改名称与规格，不动分类/属性/供应商/库存
-    await materialApi.update({
-      materialId: props.materialId,
+    await materialMasterApi.updateNaming(props.materialId, {
       materialName: finalName.value.trim(),
       specification: finalSpec.value.trim(),
+      reason: `名称：材料 + 型号 + 颜色（品牌）；规格：${result.value.evidence.join('；') || '该分类暂无属性值'}`,
     })
     ElMessage.success('名称与规格已更新')
     visible.value = false

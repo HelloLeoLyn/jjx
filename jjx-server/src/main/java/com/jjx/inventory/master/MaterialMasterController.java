@@ -52,6 +52,15 @@ public class MaterialMasterController extends BaseController {
         return Result.success(service.save(dto, getUsername()));
     }
 
+    @PutMapping("/{id:\\d+}/naming")
+    @SaCheckPermission("inventory:material:edit")
+    @com.jjx.system.annotation.Log(module = "物料管理", businessType = com.jjx.system.annotation.BusinessType.UPDATE,
+            bizType = "'material'", bizId = "#id", action = "重算名称与规格", detail = "#result.data.detail")
+    public Result<MaterialMasterService.NamingResult> updateNaming(@PathVariable Long id,
+            @RequestBody MaterialMasterService.NamingPatch patch) {
+        return Result.success(service.updateNaming(id, patch, getUsername()));
+    }
+
     @PutMapping("/category")
     @SaCheckPermission(value = {"inventory:category:add", "inventory:category:edit"}, mode = SaMode.OR)
     public Result<com.jjx.inventory.domain.InventoryMaterialCategory> saveCategory(@RequestBody MaterialMasterConfigurationService.CategorySave dto) {

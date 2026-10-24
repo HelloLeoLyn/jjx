@@ -19,6 +19,14 @@ export const materialMasterApi = {
   configuration: (categoryId: number) =>
     request.get<R<MaterialMasterConfiguration>>(`${base}/configuration/${categoryId}`),
   detail: (id: number) => request.get<R<MaterialMasterDetail>>(`${base}/${id}`),
+  updateNaming: (
+    id: number,
+    data: { materialName: string; specification: string; reason?: string }
+  ) =>
+    request.put<R<{ material: MaterialMasterRecord; detail: string }>>(
+      `${base}/${id}/naming`,
+      data
+    ),
   save: (data: MaterialMasterForm) =>
     data.materialId
       ? request.put<R<MaterialMasterRecord>>(base, data)

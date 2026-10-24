@@ -39,6 +39,40 @@ public class MaterialMasterService {
                          MaterialMasterCatalog.Configuration configuration, List<SysTag> tags, MaterialSourceValues source) { }
     public record Prepared(InventoryMaterial material, List<Long> tagIds) { }
 
+    /** 命名补丁不接收主数据表单，避免绕过模板校验修改其它字段。 */
+    public record NamingPatch(String materialName, String specification, String reason) {
+        @com.fasterxml.jackson.annotation.JsonAnySetter
+        public void rejectOtherField(String field, Object value) {
+            throw new BusinessException("命名补丁不支持字段：" + field);
+        }
+    }
+    public record NamingResult(InventoryMaterial material, String detail) { }
+
+    @Transactional(rollbackFor = Exception.class)
+    public NamingResult updateNaming(Long id, NamingPatch patch, String operator) {
+        if (patch == null) throw new BusinessException("命名补丁不能为空");
+        String name = text(patch.materialName(), "物料名称", 200, true);
+        String specification = text(patch.specification(), "规格", 500, false);
+        String reason = text(patch.reason(), "重算依据", 1000, false);
+        InventoryMaterial existing = masterMapper.lockMaterial(id);
+        if (existing == null) throw new BusinessException("物料不存在");
+        List<String> changes = new ArrayList<>();
+        if (!Objects.equals(existing.getMaterialName(), name))
+            changes.add("名称：" + Objects.toString(existing.getMaterialName(), "空") + " → " + name);
+        if (!Objects.equals(existing.getSpecification(), specification))
+            changes.add("规格：" + Objects.toString(existing.getSpecification(), "空") + " → " + Objects.toString(specification, "空"));
+        if (changes.isEmpty()) return new NamingResult(existing, com.jjx.system.utils.OperLogDetailBuilder.changes(changes));
+        UpdateWrapper<InventoryMaterial> update = new UpdateWrapper<>();
+        update.eq("material_id", id).set("material_name", name).set("specification", specification)
+                .set("update_by", operator).set("update_time", LocalDateTime.now());
+        if (materialMapper.update(null, update) != 1) throw new BusinessException("物料命名修改失败");
+        if (reason != null) changes.add("重算依据：" + reason);
+        var payload = EventPublishSupport.payload("material", id, existing.getMaterialCode());
+        payload.put("materialName", name);
+        EventPublishSupport.fireAfterCommit(eventPublisher, "inventory.material.updated", payload);
+        return new NamingResult(materialMapper.selectById(id), com.jjx.system.utils.OperLogDetailBuilder.changes(changes));
+    }
+
     public Detail detail(Long id) {
         InventoryMaterial material = materialMapper.selectById(id);
         if (material == null) throw new BusinessException("物料不存在");
