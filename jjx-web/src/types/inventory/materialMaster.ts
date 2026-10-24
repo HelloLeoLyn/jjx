@@ -47,6 +47,9 @@ export interface MaterialMasterConfiguration {
   schema: MaterialAttributeSchema
 }
 export interface MaterialMasterForm {
+  readonly templateId?: number | null
+  readonly thickness?: string | null
+  readonly widthSize?: string | null
   materialId?: number
   materialCode?: string
   categoryId: number | null

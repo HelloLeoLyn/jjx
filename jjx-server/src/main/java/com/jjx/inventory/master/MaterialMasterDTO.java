@@ -5,12 +5,20 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
-/** 完整主数据表单；不接收类型或模板ID，服务端沿分类树解析。 */
+/** 完整主数据表单；类型与模板ID由服务端沿分类树解析。 */
 @Data
 public class MaterialMasterDTO {
     private Long materialId;
     private String materialCode;
     private Long categoryId;
+    /** 服务端由属性与分类派生，不接受独立写入。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private Long templateId;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String thickness;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String widthSize;
+
     private String originalName;
     private String originalSpecification;
     private String materialMeta;

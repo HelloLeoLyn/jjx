@@ -107,12 +107,24 @@ class MaterialMasterMysqlTest {
     @AfterEach void close() { if (dataSource != null) dataSource.destroy(); }
     private void temporaryLike(String table) {
         String ddl = jdbc.queryForMap("SHOW CREATE TABLE " + table).get("Create Table").toString();
-        ddl = ddl.replaceFirst("CREATE TABLE", "CREATE TEMPORARY TABLE").replaceAll(",\\s*CONSTRAINT [^\\n]+", "");
+        ddl = ddl.replaceFirst("CREATE TABLE", "CREATE TEMPORARY TABLE")
+                .replaceAll("(?m)^\\s*CONSTRAINT[^\\n]*\\n", "")
+                .replaceAll(",\\s*\\) ENGINE", "\n) ENGINE");
         jdbc.execute(ddl);
     }
     private MaterialMasterDTO pc(String name) {
         var dto = new MaterialMasterDTO(); dto.setCategoryId(900003L); dto.setOriginalName(name);
         dto.setOriginalSpecification("来源300*305"); dto.setSize("300×305"); dto.setAttributeJson(Map.of("thickness_mm", 0.175)); return dto;
+    }
+
+    @Test void clearsDerivedColumnsOnMasterEdit() throws Exception {
+        initialize();
+        InventoryMaterial saved = service.save(pc("清空属性验证"), "Codex-test");
+        jdbc.update("UPDATE inventory_attribute_template SET attribute_schema=JSON_SET(attribute_schema,'$.fields[0].required',false) WHERE category_id=900003");
+        var dto = pc("清空属性验证"); dto.setMaterialId(saved.getMaterialId()); dto.setAttributeJson(Map.of()); dto.setSize(null);
+        InventoryMaterial edited = service.save(dto, "Codex-test");
+        assertNotNull(edited.getTemplateId()); assertNull(edited.getThickness()); assertNull(edited.getWidthSize());
+        assertNull(jdbc.queryForObject("SELECT attr_thickness_num FROM inventory_material WHERE material_id=?", java.math.BigDecimal.class, edited.getMaterialId()));
     }
 
     @Test void savesDefaultsDerivesTypeAndPreservesSourceWithNoLegacyAttributeWrites() throws Exception {
@@ -122,6 +134,10 @@ class MaterialMasterMysqlTest {
         InventoryMaterial material = service.save(pc("测试来源PC"), "Codex-test");
         assertEquals("R", material.getMaterialType()); assertEquals("PC", material.getMaterialMeta()); assertEquals("FILM", material.getMaterialForm());
         assertEquals("来源300*305", material.getOriginalSpecification()); assertEquals("厚度:0.175mm", material.getSpecification());
+        assertNotNull(material.getTemplateId());
+        assertEquals("0.175", material.getThickness()); assertEquals("300×305", material.getWidthSize());
+        assertEquals("PC", jdbc.queryForObject("SELECT attr_meta FROM inventory_material WHERE material_id=?", String.class, material.getMaterialId()));
+        assertEquals(0, new java.math.BigDecimal("0.1750").compareTo(jdbc.queryForObject("SELECT attr_thickness_num FROM inventory_material WHERE material_id=?", java.math.BigDecimal.class, material.getMaterialId())));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
         assertEquals(0.175, ((Number) service.detail(material.getMaterialId()).attributes().get("thickness_mm")).doubleValue());
         var dto = pc("改名"); dto.setMaterialId(material.getMaterialId()); dto.setModel("M001"); service.save(dto,"Codex-test");

@@ -92,6 +92,75 @@ class MaterialMasterDataTest {
         assertEquals(m.getBrand(), vo.getBrand()); assertEquals(m.getSearchKeywords(), vo.getSearchKeywords());
     }
 
+    @Test void attributeSaveDerivesColumnsAndConverterReturnsThem() {
+        when(mapper.selectCategory(2L)).thenReturn(category());
+        when(mapper.selectTemplateId(2L)).thenReturn(71L);
+        when(mapper.insert(any(InventoryMaterial.class))).thenReturn(1);
+        var m = material(); m.setSize("300×305");
+        m.setTemplateId(999L); m.setThickness("伪造"); m.setWidthSize("伪造");
+        m.setAttributeJson("{\"thickness_mm\":0.175}");
+        assertTrue(service.create(m, List.of(), "codex"));
+        assertEquals(71L, m.getTemplateId()); assertEquals("0.175", m.getThickness()); assertEquals("300×305", m.getWidthSize());
+        var vo = Mappers.getMapper(MaterialConverter.class).toVO(m, Map.of());
+        assertEquals(71L, vo.getTemplateId()); assertEquals("0.175", vo.getThickness()); assertEquals("300×305", vo.getWidthSize());
+    }
+
+    @Test void attributeEditClearsRemovedDerivedValuesButUnrelatedEditDoesNotWriteThem() {
+        var old = material(); old.setMaterialId(12L); old.setThickness("0.175"); old.setWidthSize("300×305");
+        when(mapper.selectById(12L)).thenReturn(old);
+        when(mapper.selectCategory(2L)).thenReturn(category());
+        when(mapper.selectTemplateId(2L)).thenReturn(71L);
+        when(mapper.update(any(InventoryMaterial.class), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(1);
+        var patch = new InventoryMaterial(); patch.setMaterialId(12L); patch.setAttributeJson("{}");
+        patch.setSuppliedFields(new java.util.HashSet<>(List.of("attributeJson", "size")));
+        assertTrue(service.update(patch, null, "codex"));
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper.class);
+        verify(mapper).update(eq(patch), wrapper.capture());
+        assertTrue(wrapper.getValue().getSqlSet().contains("thickness="));
+        assertTrue(wrapper.getValue().getSqlSet().contains("width_size="));
+        assertNull(patch.getThickness()); assertNull(patch.getWidthSize());
+        clearInvocations(mapper);
+        var brandOnly = new InventoryMaterial(); brandOnly.setMaterialId(12L); brandOnly.setBrand("新品牌");
+        brandOnly.setTemplateId(999L); brandOnly.setThickness("独立覆盖");
+        assertTrue(service.update(brandOnly, null, "codex"));
+        assertNull(brandOnly.getTemplateId()); assertNull(brandOnly.getThickness());
+        verify(mapper, never()).selectTemplateId(anyLong());
+    }
+
+    @Test void masterPreparationUsesCategoryTemplateAndWritesJsonMaterialMirror() {
+        var catalog = mock(com.jjx.inventory.master.MaterialMasterCatalog.class);
+        var template = new com.jjx.inventory.master.InventoryAttributeTemplate(); template.setTemplateId(71L);
+        var category = new com.jjx.inventory.master.MaterialMasterCatalog.Category(2L,"RAW_BASE_PC","PC",1L,3,"R","原材料/基材/PC",true,1,1);
+        var schema = com.jjx.inventory.master.MaterialAttributeSchema.parse(
+                "{\"version\":1,\"meta_options\":[\"PC\"],\"default_meta\":\"PC\",\"default_unit\":\"M\",\"fields\":[{\"key\":\"thickness_mm\",\"label\":\"厚度\",\"type\":\"decimal\"}]}", new ObjectMapper());
+        when(catalog.configuration(2L)).thenReturn(new com.jjx.inventory.master.MaterialMasterCatalog.Configuration(category, List.of(category), template, schema));
+        when(catalog.dictionaries()).thenReturn(Map.of("material_meta",List.of(new com.jjx.inventory.master.MaterialMasterCatalog.DictionaryOption("PC","PC")),
+                "unit",List.of(new com.jjx.inventory.master.MaterialMasterCatalog.DictionaryOption("M","米"))));
+        var master = new com.jjx.inventory.master.MaterialMasterService(catalog, mock(com.jjx.inventory.master.MaterialMasterMapper.class), mapper,
+                service, mock(com.jjx.purchase.mapper.PurchaseSupplierMapper.class), tags, mock(com.jjx.event.EventPublisher.class), new ObjectMapper());
+        var dto = new com.jjx.inventory.master.MaterialMasterDTO(); dto.setCategoryId(2L); dto.setOriginalName("PC样例");
+        dto.setSize("300×305"); dto.setTemplateId(999L); dto.setThickness("伪造"); dto.setAttributeJson(Map.of("thickness_mm", new BigDecimal("0.175")));
+        var saved = master.prepare(dto).material();
+        assertEquals(71L, saved.getTemplateId()); assertEquals("0.175", saved.getThickness()); assertEquals("300×305", saved.getWidthSize());
+        assertTrue(saved.getAttributeJson().contains("\"material\":\"PC\""));
+        assertFalse(master.readAttributes(saved.getAttributeJson()).containsKey("material"));
+        dto.setAttributeJson(Map.of()); dto.setSize(null);
+        var cleared = master.prepare(dto).material(); assertNull(cleared.getThickness()); assertNull(cleared.getWidthSize());
+    }
+
+    @Test void derivedFieldsIgnoreClientInputAndLegacySpecWritesAreDisabled() throws Exception {
+        var dto = new ObjectMapper().readValue("{\"templateId\":999,\"thickness\":\"fake\",\"widthSize\":\"fake\"}", MaterialUpdateDTO.class);
+        assertNull(dto.getTemplateId()); assertNull(dto.getThickness()); assertNull(dto.getWidthSize());
+        var adapter = new com.jjx.inventory.service.impl.InventoryMaterialSpecServiceImpl(mapper,
+                mock(com.jjx.inventory.mapper.InventoryMaterialCategoryMapper.class), new ObjectMapper());
+        assertTrue(adapter.listDefs("RM-FILM").isEmpty());
+        assertTrue(assertThrows(BusinessException.class, () -> adapter.save(new com.jjx.inventory.dto.update.MaterialSpecValuesDTO())).getMessage().contains("已停用"));
+        var m = material(); m.setCategoryId(null); m.setAttributeJson("{\"thickness_mm\":0.175}");
+        when(mapper.selectById(12L)).thenReturn(m);
+        assertEquals("0.175", adapter.getByMaterialId(12L).getValues().get(0).getValueText());
+        verify(mapper, never()).insert(any(InventoryMaterial.class));
+    }
+
     @Test void missingRequiredRejectedWithFieldName() {
         when(mapper.selectCategory(2L)).thenReturn(category());
         when(mapper.selectRequiredFields("RM-FILM")).thenReturn(List.of("color"));

@@ -12,6 +12,8 @@ import java.util.Map;
 /**
  * 物料规格属性值 Mapper（dev-20261023-022）。
  */
+/** @deprecated 302历史表仅保留归档，生产服务不再调用。 */
+@Deprecated
 @Mapper
 public interface InventoryMaterialSpecValueMapper extends BaseMapper<InventoryMaterialSpecValue> {
 

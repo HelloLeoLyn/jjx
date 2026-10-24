@@ -25,6 +25,10 @@ public interface InventoryMaterialMapper extends BaseMapper<InventoryMaterial> {
     @Select("SELECT field_key FROM inventory_material_required_field WHERE category_code = #{code} AND required = 1")
     List<String> selectRequiredFields(@Param("code") String code);
 
+    /** 属性保存使用所选分类的模板，不采信客户端template_id。 */
+    @Select("SELECT template_id FROM inventory_attribute_template WHERE category_id = #{id}")
+    Long selectTemplateId(@Param("id") Long id);
+
     /**
      * 根据物料编码查询
      */

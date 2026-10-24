@@ -16,6 +16,14 @@ public class MaterialSaveDTO {
     private String materialNameEn;
     private String materialType;
     private Long categoryId;
+    /** 服务端由属性与分类派生，不接受独立写入。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private Long templateId;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String thickness;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String widthSize;
+
     private String specification;
     private String materialGrade;
     private String model;
@@ -23,6 +31,7 @@ public class MaterialSaveDTO {
     private String brand;
     private String searchKeywords;
     private String size;
+    private String attributeJson;
 
     private String unit;
     private BigDecimal unitConv;

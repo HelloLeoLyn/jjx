@@ -57,6 +57,10 @@ public class InventoryMaterial extends BaseEntity {
     private String materialMeta;
     private String materialForm;
     private String attributeJson;
+    /** 属性保存入口派生；数据库生成列不进入实体写入路径。 */
+    private Long templateId;
+    private String thickness;
+    private String widthSize;
     private String specSupplement;
     private Boolean isCustomerSupplied;
     private Boolean isSample;

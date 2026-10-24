@@ -50,7 +50,12 @@ public class MaterialMasterService {
 
     public Map<String, Object> readAttributes(String json) {
         if (json == null || json.isBlank()) return Map.of();
-        try { return objectMapper.readValue(json, new TypeReference<LinkedHashMap<String, Object>>() { }); }
+        try {
+            Map<String, Object> attributes = objectMapper.readValue(json, new TypeReference<LinkedHashMap<String, Object>>() { });
+            // material是材质的存储镜像，表单字段仍由模板校验，避免把镜像当作品类自定义属性。
+            attributes.remove("material");
+            return attributes;
+        }
         catch (Exception e) { throw new BusinessException("物料属性数据格式错误"); }
     }
 
@@ -105,7 +110,10 @@ public class MaterialMasterService {
         material.setSpecification(specification.isEmpty() ? null : specification);
         material.setIsCustomerSupplied(Boolean.TRUE.equals(dto.getIsCustomerSupplied()));
         material.setIsSample(Boolean.TRUE.equals(dto.getIsSample()));
-        try { material.setAttributeJson(objectMapper.writeValueAsString(attributes)); }
+        MaterialAttributeColumns.apply(material, attributes, config.template().getTemplateId());
+        Map<String, Object> storedAttributes = new LinkedHashMap<>(attributes);
+        if (meta != null) storedAttributes.put("material", meta);
+        try { material.setAttributeJson(objectMapper.writeValueAsString(storedAttributes)); }
         catch (Exception e) { throw new BusinessException("属性无法序列化"); }
         if (dto.getSupplierId() != null) {
             var supplier = supplierMapper.selectById(dto.getSupplierId());
@@ -162,6 +170,8 @@ public class MaterialMasterService {
             columns.put("material_form", material.getMaterialForm()); columns.put("material_grade", material.getMaterialGrade());
             columns.put("model", material.getModel()); columns.put("color", material.getColor()); columns.put("brand", material.getBrand());
             columns.put("size", material.getSize()); columns.put("unit", material.getUnit());
+            columns.put("template_id", material.getTemplateId()); columns.put("thickness", material.getThickness());
+            columns.put("width_size", material.getWidthSize());
             columns.put("attribute_json", material.getAttributeJson()); columns.put("specification", material.getSpecification());
             columns.put("spec_supplement", material.getSpecSupplement()); columns.put("search_keywords", material.getSearchKeywords());
             columns.put("is_customer_supplied", material.getIsCustomerSupplied()); columns.put("is_sample", material.getIsSample());

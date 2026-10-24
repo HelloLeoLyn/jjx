@@ -189,6 +189,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
     @Transactional(rollbackFor = Exception.class)
     public boolean create(InventoryMaterial material, List<Long> tagIds, String operName) {
         validateMasterData(material, null);
+        synchronizeAttributeColumns(material, null);
         // 检查编码是否已存在
         if (existsByCode(material.getMaterialCode())) {
             log.error("物料编码已存在: {}", material.getMaterialCode());
@@ -215,6 +216,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         }
 
         validateMasterData(material, existing);
+        boolean attributesSaved = synchronizeAttributeColumns(material, existing);
         // 编辑DTO不传编码时保留原编码。
         if (material.getMaterialCode() != null && !existing.getMaterialCode().equals(material.getMaterialCode())) {
             if (existsByCode(material.getMaterialCode())) {
@@ -229,6 +231,12 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         for (String key : material.getSuppliedFields()) {
             String column = MASTER_COLUMNS.get(key);
             if (column != null && fieldValue(material, key) == null) patch.setSql(column + " = NULL");
+        }
+        if (attributesSaved) {
+            // JSON清空或厚度/尺寸移除时也必须显式清空派生值。
+            if (material.getAttributeJson() == null) patch.set(InventoryMaterial::getAttributeJson, null);
+            if (material.getThickness() == null) patch.set(InventoryMaterial::getThickness, null);
+            if (material.getWidthSize() == null) patch.set(InventoryMaterial::getWidthSize, null);
         }
         boolean updated = materialMapper.update(material, patch) > 0;
         if (updated) {
@@ -627,6 +635,26 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             case INK -> "INK";
             case AUXILIARY -> "AUX";
         };
+    }
+
+    /** 物料保存服务仅在属性保存时写入这三列；其它调用不能独立覆盖。 */
+    private boolean synchronizeAttributeColumns(InventoryMaterial material, InventoryMaterial existing) {
+        material.setTemplateId(null); material.setThickness(null); material.setWidthSize(null);
+        boolean supplied = material.getAttributeJson() != null || material.getSuppliedFields().contains("attributeJson");
+        if (!supplied) return false;
+        Long categoryId = material.getCategoryId() != null ? material.getCategoryId() : existing == null ? null : existing.getCategoryId();
+        Map<String, Object> attributes;
+        try {
+            attributes = material.getAttributeJson() == null ? Map.of() : new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(material.getAttributeJson(), new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new BusinessException("物料属性数据格式错误");
+        }
+        if (attributes == null) throw new BusinessException("物料属性必须为JSON对象");
+        if (existing != null && material.getSize() == null && !material.getSuppliedFields().contains("size")) material.setSize(existing.getSize());
+        com.jjx.inventory.master.MaterialAttributeColumns.apply(material, attributes,
+                categoryId == null ? null : materialMapper.selectTemplateId(categoryId));
+        return true;
     }
 
     private static final Map<String, String> MASTER_COLUMNS = Map.of(

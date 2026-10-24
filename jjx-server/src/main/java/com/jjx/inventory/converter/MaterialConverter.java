@@ -22,6 +22,9 @@ public interface MaterialConverter {
     @Mapping(target = "categoryName", expression = "java(categoryNames.get(entity.getCategoryId()))")
     @Mapping(target = "availableStock", ignore = true)
     @Mapping(target = "tags", ignore = true)
+    @Mapping(target = "templateId", source = "templateId")
+    @Mapping(target = "thickness", source = "thickness")
+    @Mapping(target = "widthSize", source = "widthSize")
     MaterialVO toVO(InventoryMaterial entity, @Context Map<Long, String> categoryNames);
 
     List<MaterialVO> toVOList(List<InventoryMaterial> list, @Context Map<Long, String> categoryNames);

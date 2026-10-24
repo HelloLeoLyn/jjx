@@ -6,7 +6,7 @@ import type { SysTag } from '@/types/system/tag'
 /** 规格属性录入类型：数值 / 区间 / 下拉 / 文本 */
 export type MaterialSpecInputType = 'number' | 'range' | 'select' | 'text'
 
-/** 品类规格属性定义（后端 inventory_material_spec_attr_def） */
+/** 旧规格接口兼容类型（302属性表已停用） */
 export interface MaterialSpecAttrDef {
   id?: number
   categoryCode: string
@@ -67,6 +67,9 @@ export interface InventoryMaterial {
   materialMeta?: string | null
   materialForm?: string | null
   attributeJson?: string | null
+  readonly templateId?: number | null
+  readonly thickness?: string | null
+  readonly widthSize?: string | null
   isCustomerSupplied?: boolean
   isSample?: boolean
   materialNameEn?: string
@@ -160,6 +163,10 @@ export interface MaterialQueryDTO extends PageQuery {
 }
 // 物料保存DTO
 export interface MaterialSaveDTO {
+  attributeJson?: string | null
+  readonly templateId?: number | null
+  readonly thickness?: string | null
+  readonly widthSize?: string | null
   materialCode: string
   materialName: string
   materialType: string
@@ -187,6 +194,10 @@ export interface MaterialSaveDTO {
 
 // 物料更新DTO
 export interface MaterialUpdateDTO {
+  attributeJson?: string | null
+  readonly templateId?: number | null
+  readonly thickness?: string | null
+  readonly widthSize?: string | null
   materialId: number
   materialCode?: string
   materialName?: string

@@ -8,8 +8,6 @@ import com.jjx.inventory.dto.update.MaterialSpecValuesDTO;
 import com.jjx.inventory.dto.vo.MaterialSpecValuesVO;
 import com.jjx.inventory.mapper.InventoryMaterialCategoryMapper;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
-import com.jjx.inventory.mapper.InventoryMaterialSpecAttrDefMapper;
-import com.jjx.inventory.mapper.InventoryMaterialSpecValueMapper;
 import com.jjx.inventory.service.InventoryMaterialSpecService;
 import com.jjx.inventory.service.impl.InventoryMaterialSpecServiceImpl;
 import org.junit.jupiter.api.AfterEach;
@@ -27,20 +25,15 @@ import org.springframework.transaction.annotation.AnnotationTransactionAttribute
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * 规格属性服务真实库验证（dev-20261023-022）：真实 MySQL + Mapper + 事务代理，每项回滚，不启服务。
- * 判据：属性组合写回 specification；属性明细落 spec_value；属性全空不清空历史文本；
- * 未配置属性的品类拒绝写入且保留自由填写。
+ * 阶段A判据：从attribute_json回显，旧保存接口拒绝写入，302历史表和规格文本保持不变。
  */
 @EnabledIfEnvironmentVariable(named = "JJX_TEST_MYSQL", matches = "1")
 class MaterialSpecMysqlTest {
@@ -63,8 +56,6 @@ class MaterialSpecMysqlTest {
 
         MybatisConfiguration config = new MybatisConfiguration();
         config.setMapUnderscoreToCamelCase(true);
-        config.addMapper(InventoryMaterialSpecAttrDefMapper.class);
-        config.addMapper(InventoryMaterialSpecValueMapper.class);
         config.addMapper(InventoryMaterialMapper.class);
         config.addMapper(InventoryMaterialCategoryMapper.class);
         MybatisSqlSessionFactoryBean bean = new MybatisSqlSessionFactoryBean();
@@ -74,10 +65,8 @@ class MaterialSpecMysqlTest {
         SqlSessionTemplate session = new SqlSessionTemplate(bean.getObject());
 
         InventoryMaterialSpecServiceImpl impl = new InventoryMaterialSpecServiceImpl(
-                session.getMapper(InventoryMaterialSpecAttrDefMapper.class),
-                session.getMapper(InventoryMaterialSpecValueMapper.class),
                 session.getMapper(InventoryMaterialMapper.class),
-                session.getMapper(InventoryMaterialCategoryMapper.class));
+                session.getMapper(InventoryMaterialCategoryMapper.class), new com.fasterxml.jackson.databind.ObjectMapper());
         ProxyFactory factory = new ProxyFactory(impl);
         factory.addAdvice(new TransactionInterceptor(manager, new AnnotationTransactionAttributeSource()));
         specService = (InventoryMaterialSpecService) factory.getProxy();
@@ -96,120 +85,28 @@ class MaterialSpecMysqlTest {
     }
 
     /** 直接插一行物料（回滚内），返回物料ID。 */
-    private Long material(String code, long categoryId, String specification) {
+    private Long material(String code, String specification) {
         String materialCode = code + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         jdbc.update("INSERT INTO inventory_material (material_code, material_name, material_type, category_id, "
                         + "specification, unit, create_by, update_by) VALUES (?,?,?,?,?,?,?,?)",
-                materialCode, "规格属性测试" + materialCode, "R", categoryId, specification, "PCS", "test", "test");
+                materialCode, "规格属性测试" + materialCode, "R", null, specification, "PCS", "test", "test");
         return jdbc.queryForObject("SELECT material_id FROM inventory_material WHERE material_code=?",
                 Long.class, materialCode);
     }
 
-    private static MaterialSpecValuesDTO.Item item(String attrCode, String value, String value2) {
-        MaterialSpecValuesDTO.Item i = new MaterialSpecValuesDTO.Item();
-        i.setAttrCode(attrCode);
-        i.setValue(value);
-        i.setValue2(value2);
-        return i;
-    }
-
     @Test
-    void composesAndPersistsAttributesForFilm() {
-        Long id = material("T022A", 2L, null); // 2 = RM-FILM
-        MaterialSpecValuesDTO dto = new MaterialSpecValuesDTO();
-        dto.setMaterialId(id);
-        dto.setCategoryCode("RM-FILM");
-        dto.setCreateMode(true);
-        dto.setSupplement("客供");
-        dto.setAttributes(List.of(item("thickness", "0.38", null),
-                item("surface", "幼砂加硬", null), item("adhesive_side", "双面", null)));
-
-        MaterialSpecValuesVO vo = specService.save(dto);
-
-        assertEquals("0.38mm 幼砂加硬 双面；客供", vo.getSpecification());
-        Map<String, Object> row = jdbc.queryForMap(
-                "SELECT specification, spec_supplement FROM inventory_material WHERE material_id=?", id);
-        assertEquals("0.38mm 幼砂加硬 双面；客供", row.get("specification"));
-        assertEquals("客供", row.get("spec_supplement"));
-        assertEquals(3, jdbc.queryForObject(
-                "SELECT COUNT(*) FROM inventory_material_spec_value WHERE material_id=?", Integer.class, id));
-        assertEquals(0, new BigDecimal("0.38").compareTo(jdbc.queryForObject(
-                "SELECT value_num FROM inventory_material_spec_value WHERE material_id=? AND attr_code='thickness'",
-                BigDecimal.class, id)));
-        assertEquals("幼砂加硬", jdbc.queryForObject(
-                "SELECT value_text FROM inventory_material_spec_value WHERE material_id=? AND attr_code='surface'",
-                String.class, id));
-        assertNotNull(vo.getDefs());
-        assertTrue(vo.getDefs().size() >= 3);
-    }
-
-    @Test
-    void keepsLegacySpecTextWhenAttributesAreEmpty() {
-        Long id = material("T022B", 2L, "旧口径 250×3.5m");
-        MaterialSpecValuesDTO dto = new MaterialSpecValuesDTO();
-        dto.setMaterialId(id);
-        dto.setCategoryCode("RM-FILM");
-        dto.setCreateMode(false);
-        dto.setAttributes(List.of());
-
-        MaterialSpecValuesVO vo = specService.save(dto);
-
-        // 反例保护：编辑历史物料（无属性值）不能把已有规格清空
-        assertEquals("旧口径 250×3.5m", vo.getSpecification());
-        assertEquals("旧口径 250×3.5m", jdbc.queryForObject(
-                "SELECT specification FROM inventory_material WHERE material_id=?", String.class, id));
-        assertEquals(0, jdbc.queryForObject(
-                "SELECT COUNT(*) FROM inventory_material_spec_value WHERE material_id=?", Integer.class, id));
-    }
-
-    @Test
-    void rejectsMissingRequiredAttributeOnCreate() {
-        Long id = material("T022C", 2L, null);
-        MaterialSpecValuesDTO dto = new MaterialSpecValuesDTO();
-        dto.setMaterialId(id);
-        dto.setCategoryCode("RM-FILM");
-        dto.setCreateMode(true);
-        dto.setAttributes(List.of(item("surface", "光面", null)));
-
-        BusinessException error = assertThrows(BusinessException.class, () -> specService.save(dto));
-        assertTrue(error.getMessage().contains("厚度"), error.getMessage());
-        // 校验先于写入：失败时不留半条属性
-        assertEquals(0, jdbc.queryForObject(
-                "SELECT COUNT(*) FROM inventory_material_spec_value WHERE material_id=?", Integer.class, id));
-    }
-
-    @Test
-    void rejectsIllegalOptionWithoutPartialWrite() {
-        Long id = material("T022D", 2L, null);
-        MaterialSpecValuesDTO dto = new MaterialSpecValuesDTO();
-        dto.setMaterialId(id);
-        dto.setCategoryCode("RM-FILM");
-        dto.setAttributes(List.of(item("thickness", "0.38", null), item("surface", "磨砂", null)));
-
-        assertThrows(BusinessException.class, () -> specService.save(dto));
-        assertEquals(0, jdbc.queryForObject(
-                "SELECT COUNT(*) FROM inventory_material_spec_value WHERE material_id=?", Integer.class, id));
-    }
-
-    @Test
-    void emptyCategoryKeepsFreeTextPath() {
-        Long id = material("T022E", 10L, "手工填写的历史规格"); // 10 = OTHER-R，未配置属性
-        MaterialSpecValuesDTO dto = new MaterialSpecValuesDTO();
-        dto.setMaterialId(id);
-        dto.setCreateMode(false);
-        dto.setAttributes(List.of());
-
-        MaterialSpecValuesVO vo = specService.save(dto);
+    void readsJsonAndRejectsLegacyWrites() {
+        Long id = material("T007A", "历史规格");
+        jdbc.update("UPDATE inventory_material SET attribute_json=? WHERE material_id=?", "{\"thickness_mm\":0.38}", id);
+        long oldValues = jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material_spec_value", Long.class);
+        MaterialSpecValuesVO vo = specService.getByMaterialId(id);
+        assertEquals("历史规格", vo.getSpecification());
         assertTrue(vo.getDefs().isEmpty());
-        assertEquals("手工填写的历史规格", vo.getSpecification());
-
-        // 反例：未配置属性的品类不允许传属性值，否则会悄悄覆盖自由文本
-        MaterialSpecValuesDTO withAttrs = new MaterialSpecValuesDTO();
-        withAttrs.setMaterialId(id);
-        withAttrs.setAttributes(List.of(item("thickness", "0.38", null)));
-        BusinessException error = assertThrows(BusinessException.class, () -> specService.save(withAttrs));
-        assertTrue(error.getMessage().contains("未配置规格属性"), error.getMessage());
-        assertEquals("手工填写的历史规格", jdbc.queryForObject(
-                "SELECT specification FROM inventory_material WHERE material_id=?", String.class, id));
+        assertEquals("thickness_mm", vo.getValues().get(0).getAttrCode());
+        assertEquals("0.38", vo.getValues().get(0).getValueText());
+        var dto = new MaterialSpecValuesDTO(); dto.setMaterialId(id);
+        assertTrue(assertThrows(BusinessException.class, () -> specService.save(dto)).getMessage().contains("已停用"));
+        assertEquals(oldValues, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material_spec_value", Long.class));
+        assertEquals("历史规格", jdbc.queryForObject("SELECT specification FROM inventory_material WHERE material_id=?", String.class, id));
     }
 }
