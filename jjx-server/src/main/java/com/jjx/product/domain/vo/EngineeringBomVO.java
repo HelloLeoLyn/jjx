@@ -19,6 +19,9 @@ public class EngineeringBomVO {
     /** BOM编码 */
     private String bomCode;
 
+    /** BOM名称，编辑回填必须返回已保存的名称。 */
+    private String bomName;
+
     /** 产品ID */
     private Long productId;
 
