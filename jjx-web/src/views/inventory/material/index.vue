@@ -47,10 +47,6 @@
       >
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="物料编码" prop="materialCode" width="150" />
-        <el-table-column label="原名称" width="200" show-overflow-tooltip>
-          <template #default="{ row }">{{ originalNameOf(row) }}</template>
-        </el-table-column>
-
         <el-table-column
           label="原规格"
           prop="originalSpecification"
@@ -122,7 +118,7 @@
         </el-table-column>
         <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
         <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
-        <el-table-column label="操作" width="260" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button
@@ -136,8 +132,8 @@
               link
               type="primary"
               v-hasPermi="['inventory:material:edit']"
-              @click="handleEdit(row)"
-              >重新生成</el-button
+              @click="handleRegenerate(row)"
+              >重算名称与规格</el-button
             >
             <el-button
               link
@@ -161,6 +157,11 @@
 
     <!-- 物料详情弹窗（不再跳路由页） -->
     <MaterialDetailDialog v-model="detailVisible" :material-id="detailMaterialId" />
+    <MaterialRegenerateDialog
+      v-model="regenerateVisible"
+      :material-id="regenerateMaterialId"
+      @success="getList"
+    />
 
     <!-- 物料表单对话框 -->
     <MaterialFormDialog
@@ -187,6 +188,7 @@ import Toolbar from '@/components/common-ui/Toolbar.vue'
 import TagQuerySelect from '@/components/TagQuerySelect.vue'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
+import MaterialRegenerateDialog from '@/components/inventory/MaterialRegenerateDialog.vue'
 import MaterialMasterImportDialog from '@/components/inventory/MaterialMasterImportDialog.vue'
 import MaterialMasterSettingsDialog from '@/components/inventory/MaterialMasterSettingsDialog.vue'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
@@ -198,7 +200,6 @@ import { formatCurrency } from '@/utils/format'
 import type { InventoryMaterial, InventoryMaterialQueryParams } from '@/types/inventory/material'
 import type { SearchOptions, ToolbarOptions } from '@/components/common-ui/type'
 import { searchOptions, toolbarOptions } from './config'
-import { parseOriginalName } from '@/components/inventory/materialRegenerate'
 import { openLabelPrint } from '@/utils/labelPrint'
 
 const router = useRouter()
@@ -258,6 +259,8 @@ const dialogVisible = ref(false)
 const editingMaterialId = ref<number | null>(null)
 const detailVisible = ref(false)
 const detailMaterialId = ref<number | null>(null)
+const regenerateVisible = ref(false)
+const regenerateMaterialId = ref<number | null>(null)
 const settingsVisible = ref(false)
 
 // 按末级品类生成模板并做整表预检。
@@ -305,10 +308,6 @@ const categoryNameOf = (row: InventoryMaterial) => {
     '-'
   )
 }
-
-// 列表列的「原名称」：remark 里由回填脚本写入的【原名称】，便于核对重写后的名称（dev-20261023-020）
-const originalNameOf = (row: InventoryMaterial) =>
-  row.originalName || parseOriginalName(row.remark) || '-'
 
 // 获取列表
 const getList = async () => {
@@ -371,6 +370,12 @@ const handleEdit = (row: any) => {
 // 表单提交成功回调
 const handleFormSuccess = () => {
   getList()
+}
+
+// 重算名称与规格（只改名称/规格，不写分类与属性）
+const handleRegenerate = (row: any) => {
+  regenerateMaterialId.value = row.materialId
+  regenerateVisible.value = true
 }
 
 // 查看详情（弹窗，不跳路由页）

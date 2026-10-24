@@ -53,8 +53,10 @@ export interface MaterialMasterForm {
   materialId?: number
   materialCode?: string
   categoryId: number | null
-  originalName: string
-  originalSpecification: string
+  /** 正式名称：默认按 材料+型号+颜色（品牌）生成，可人工改（dev-20261024-004） */
+  materialName: string
+  /** 前端标记：用户手改过名称后停止自动同步，不提交给后端 */
+  nameManual?: boolean
   materialMeta: string
   materialForm: string
   model: string

@@ -8,7 +8,8 @@
   >
     <el-skeleton v-if="loading" :rows="8" animated />
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
-    <el-form v-if="!loading" ref="formRef" :model="form" label-width="120px">
+    <div v-if="!loading" class="master-layout">
+    <el-form ref="formRef" :model="form" label-width="120px" class="master-form">
       <el-form-item label="品类" required>
         <el-select
           :model-value="form.categoryId"
@@ -30,17 +31,20 @@
         configuration?.path[0]?.categoryName || '选择品类后自动确定'
       }}</el-form-item>
       <el-form-item v-if="form.materialCode" label="物料编码">{{ form.materialCode }}</el-form-item>
-      <el-form-item label="原名称" required
-        ><el-input v-model="form.originalName" maxlength="200" placeholder="物料真实名称，保留原貌"
-      /></el-form-item>
-      <el-form-item label="原规格"
-        ><el-input
-          v-model="form.originalSpecification"
-          maxlength="500"
-          type="textarea"
-          :rows="2"
-          placeholder="来源规格，按原文保留"
-      /></el-form-item>
+      <el-form-item label="名称" required>
+        <el-input v-model="form.materialName" maxlength="200" @input="onNameInput">
+          <template #append>
+            <el-button :disabled="!form.nameManual" @click="restoreAutoName">恢复自动</el-button>
+          </template>
+        </el-input>
+        <div class="field-hint" :class="{ manual: form.nameManual }">
+          {{
+            form.nameManual
+              ? '手动命名：已停止自动同步（点「恢复自动」回到 材料+型号+颜色（品牌））'
+              : '自动命名：材料 + 型号 + 颜色（品牌），无空格、缺项跳过'
+          }}
+        </div>
+      </el-form-item>
       <el-row :gutter="16">
         <el-col :span="12"
           ><el-form-item label="材质" :required="configuration?.schema.meta_required">
@@ -115,26 +119,21 @@
         ><el-checkbox v-model="form.isSample">样品专用</el-checkbox>
       </el-form-item>
       <template v-if="configuration">
-        <el-divider content-position="left"
-          >{{ configuration.category.categoryName }}属性</el-divider
-        >
+        <el-divider content-position="left">规格属性</el-divider>
         <MaterialAttributeFields
           v-model="form.attributeJson"
           :schema="configuration.schema"
-          :required-only="true"
+          :keys="commonKeys"
         />
-        <el-collapse v-model="expanded">
-          <el-collapse-item title="选填属性" name="attributes">
+        <el-collapse v-if="lowKeys.length" v-model="expanded">
+          <el-collapse-item :title="`低频属性（${lowKeys.length}）`" name="low">
             <MaterialAttributeFields
               v-model="form.attributeJson"
               :schema="configuration.schema"
-              :required-only="false"
+              :keys="lowKeys"
             />
           </el-collapse-item>
         </el-collapse>
-        <el-form-item label="规格预览"
-          ><span>{{ specificationPreview || '填写属性后自动生成' }}</span></el-form-item
-        >
       </template>
       <el-form-item label="别名"
         ><el-input v-model="form.searchKeywords" maxlength="500"
@@ -168,6 +167,27 @@
         ><el-input v-model="form.remark" type="textarea" maxlength="1000" :rows="2"
       /></el-form-item>
     </el-form>
+
+    <!-- 右侧固定预览（dev-20261024-004） -->
+    <aside class="master-preview" data-test="master-preview">
+      <div class="preview-title">预览</div>
+      <div class="preview-block">
+        <div class="preview-label">最终名称</div>
+        <div class="preview-value">{{ previewName || '待填写材料/型号/颜色' }}</div>
+        <div v-if="form.nameManual" class="preview-tag">手动命名</div>
+      </div>
+      <div class="preview-block">
+        <div class="preview-label">规格</div>
+        <div class="preview-value">{{ specificationPreview || '填写属性后自动生成' }}</div>
+      </div>
+      <div class="preview-block">
+        <div class="preview-label">分类 / 材质</div>
+        <div class="preview-sub">{{ configuration?.path?.[0]?.categoryName || '未归类' }}</div>
+        <div class="preview-sub">{{ materialLabel || '材质未选' }}</div>
+      </div>
+      <div class="preview-note">预览规则与后端保存同源；保存后以此为准。</div>
+    </aside>
+    </div>
     <template #footer>
       <el-button :disabled="saving" @click="visible = false">取消</el-button>
       <el-button
@@ -196,9 +216,12 @@ import type {
 } from '@/types/inventory/materialMaster'
 import MaterialAttributeFields from './MaterialAttributeFields.vue'
 import {
+  COMMON_ATTRIBUTE_KEYS,
   attributeVisible,
   changeMasterCategory,
+  effectiveMasterName,
   emptyMasterForm,
+  previewMasterName,
   previewMasterSpecification,
   pruneAttributes,
 } from './materialMasterModel'
@@ -242,6 +265,40 @@ const materialOptions = computed(() =>
 const specificationPreview = computed(() =>
   previewMasterSpecification(configuration.value?.schema, form.attributeJson)
 )
+const previewName = computed(() => effectiveMasterName(form, dictionaries.value))
+const materialLabel = computed(
+  () =>
+    dictionaries.value.material_meta?.find((o) => o.code === form.materialMeta)?.label ||
+    form.materialMeta ||
+    ''
+)
+const commonKeys = computed(() =>
+  (configuration.value?.schema.fields || [])
+    .filter((f) => COMMON_ATTRIBUTE_KEYS.includes(f.key))
+    .map((f) => f.key)
+)
+const lowKeys = computed(() =>
+  (configuration.value?.schema.fields || [])
+    .filter((f) => !COMMON_ATTRIBUTE_KEYS.includes(f.key))
+    .map((f) => f.key)
+)
+
+function onNameInput() {
+  form.nameManual = true
+}
+function restoreAutoName() {
+  form.nameManual = false
+  form.materialName = previewMasterName(form, dictionaries.value)
+}
+
+// 未手动命名时随材料/型号/颜色/品牌实时同步（dev-20261024-004）
+watch(
+  () => [form.materialMeta, form.model, form.color, form.brand, form.nameManual] as const,
+  () => {
+    if (!form.nameManual) form.materialName = previewMasterName(form, dictionaries.value)
+  },
+  { immediate: true }
+)
 type NumericKey =
   | 'safeStock'
   | 'maxStock'
@@ -263,10 +320,12 @@ const numericFields: { key: NumericKey; label: string; precision: number }[] = [
 async function selectCategory(id: number) {
   const request = ++categoryRequest
   const currentSession = session
+  const hadAttributes = Object.keys(form.attributeJson || {}).length > 0
   configuration.value = undefined
   configurationLoading.value = true
   form.categoryId = id
   form.attributeJson = {}
+  if (hadAttributes) ElMessage.info('已按新分类清理不适用的属性，请重新选择该分类的属性')
   try {
     const response = await materialMasterApi.configuration(id)
     if (request !== categoryRequest || currentSession !== session) return
@@ -317,17 +376,18 @@ async function initialize() {
       }
       form.materialId = material.materialId
       form.materialCode = material.materialCode
-      form.originalName =
-        detail.source?.originalName ?? material.originalName ?? material.materialName ?? ''
-      form.originalSpecification =
-        detail.source?.originalSpecification ?? material.originalSpecification ?? ''
+      form.materialName = material.materialName || ''
+      form.nameManual =
+        !!material.materialName && material.materialName !== previewMasterName(form, dictionaries.value)
       form.attributeJson = detail.attributes
       form.tagIds = detail.tags.flatMap((tag) => (tag.tagId == null ? [] : [tag.tagId]))
       configuration.value = detail.configuration ?? undefined
       if (!detail.configuration) form.categoryId = null
     } else if (props.presetData) {
-      form.originalName = props.presetData.materialName || ''
-      form.originalSpecification = props.presetData.specification || ''
+      if (props.presetData.materialName) {
+        form.materialName = props.presetData.materialName
+        form.nameManual = true
+      }
       form.unit = props.presetData.unit || ''
       form.supplierName = props.presetData.supplierName || ''
     }
@@ -348,7 +408,8 @@ async function save() {
     configurationLoading.value
   )
     return
-  if (!form.originalName.trim()) return void ElMessage.warning('请填写原名称')
+  const finalName = effectiveMasterName(form, dictionaries.value).trim()
+  if (!finalName) return void ElMessage.warning('请填写名称，或先选择材料/型号/颜色自动生成')
   if (!form.unit) return void ElMessage.warning('请选择基本单位')
   const missing = configuration.value.schema.fields.find(
     (f) =>
@@ -362,10 +423,13 @@ async function save() {
   if (missing) return void ElMessage.warning(`请填写${missing.label}`)
   saving.value = true
   try {
-    const response = await materialMasterApi.save({
+    const payload = {
       ...form,
+      materialName: finalName,
       attributeJson: pruneAttributes(configuration.value.schema, form.attributeJson),
-    })
+    } as MaterialMasterForm
+    delete payload.nameManual
+    const response = await materialMasterApi.save(payload)
     if (!response.data?.materialId) throw Error('保存响应缺少物料信息')
     ElMessage.success('物料保存成功')
     visible.value = false
@@ -393,5 +457,63 @@ watch(
 <style scoped>
 .el-collapse {
   margin-bottom: 18px;
+}
+.master-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.master-form {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.master-preview {
+  flex: 0 0 240px;
+  position: sticky;
+  top: 0;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 12px;
+  background: #fafcff;
+}
+.preview-title {
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.preview-block {
+  margin-bottom: 12px;
+}
+.preview-label {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+.preview-value {
+  font-size: 14px;
+  color: #303133;
+  word-break: break-all;
+  line-height: 1.5;
+}
+.preview-sub {
+  font-size: 12px;
+  color: #606266;
+}
+.preview-tag {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #e6a23c;
+}
+.preview-note {
+  font-size: 11px;
+  color: #c0c4cc;
+}
+.field-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #909399;
+}
+.field-hint.manual {
+  color: #e6a23c;
 }
 </style>

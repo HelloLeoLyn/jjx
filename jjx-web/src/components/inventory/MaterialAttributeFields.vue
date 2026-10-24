@@ -61,6 +61,8 @@ const props = defineProps<{
   schema: MaterialAttributeSchema
   modelValue: Record<string, AttributeValue>
   requiredOnly?: boolean
+  /** 只渲染这些 key（用于「常用属性 / 低频属性」分组，dev-20261024-004） */
+  keys?: string[]
 }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: Record<string, AttributeValue>): void
@@ -70,7 +72,8 @@ const fields = computed(() =>
   props.schema.fields.filter(
     (f) =>
       attributeVisible(f, values.value) &&
-      (props.requiredOnly === undefined || f.required === props.requiredOnly)
+      (props.requiredOnly === undefined || f.required === props.requiredOnly) &&
+      (!props.keys || props.keys.includes(f.key))
   )
 )
 function setValue(key: string, value: AttributeValue) {

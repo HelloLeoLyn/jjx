@@ -147,7 +147,7 @@ describe('物料一次保存与异步品类切换', () => {
     await flushPromises()
     expect(mocks.save).toHaveBeenCalledTimes(1)
     expect(mocks.save.mock.calls[0][0]).toMatchObject({
-      originalName: '测试原名称',
+      materialName: '测试原名称',
       categoryId: 2,
       materialMeta: 'PC',
       unit: 'M',
