@@ -18,7 +18,8 @@
         }}</el-descriptions-item>
         <el-descriptions-item label="生成规格">
           {{ result.generatedSpec || '—' }}
-          <el-tag v-if="result.specChanged" size="small" type="warning" class="diff-tag"
+          <el-tag v-if="!result.specGenerated" size="small" type="info" class="diff-tag">未生成</el-tag>
+          <el-tag v-else-if="result.specChanged" size="small" type="warning" class="diff-tag"
             >有变化</el-tag
           >
           <el-tag v-else size="small" type="success" class="diff-tag">一致</el-tag>
@@ -32,9 +33,7 @@
             采用生成名称（会替换当前人工确认的名称）
           </el-checkbox>
         </el-form-item>
-        <el-form-item label="最终规格">
-          <el-input v-model="finalSpec" type="textarea" :rows="3" maxlength="500" />
-        </el-form-item>
+        <div class="evidence-line">如需调整请回编辑改属性/厚度/尺寸</div>
       </el-form>
 
       <div class="evidence">
@@ -43,7 +42,9 @@
         <div v-if="result.evidence.length" class="evidence-line">
           规格：{{ result.evidence.join('；') }}
         </div>
-        <div v-else class="evidence-line">规格：该分类暂无属性值，生成值为空</div>
+        <div v-else class="evidence-line">
+          规格：{{ result.specGenerated ? '按模板属性/厚度/尺寸生成，缺项跳过' : '未生成，保留原规格' }}
+        </div>
         <div class="evidence-line">注：{{ result.remark }}</div>
       </div>
     </template>
@@ -90,13 +91,12 @@ const loading = ref(false)
 const saving = ref(false)
 const result = ref<RegenerationResult | null>(null)
 const finalName = ref('')
-const finalSpec = ref('')
 const adoptGenerated = ref(false)
 
 const canSave = computed(
   () =>
     !!result.value &&
-    hasRegenerationChanges(result.value, finalName.value, finalSpec.value) &&
+    hasRegenerationChanges(result.value, finalName.value) &&
     !!finalName.value.trim() &&
     !saving.value
 )
@@ -131,16 +131,22 @@ async function load(materialId: number) {
       dictionaries
     )
     const attributes = (detail.attributes || {}) as Record<string, AttributeValue>
-    const generatedSpec = previewMasterSpecification(detail.configuration?.schema, attributes)
+    const generatedSpec = previewMasterSpecification(detail.configuration?.schema, attributes, {
+      thickness: detail.material.thickness,
+      widthSize: detail.material.widthSize,
+    })
     const evidence = attributeEvidence(detail.configuration?.schema, attributes)
     result.value = buildRegeneration(
       detail.material,
-      { name: generatedName, specification: generatedSpec },
+      {
+        name: generatedName,
+        specification: generatedSpec,
+        specGenerated: !!detail.configuration?.schema.fields.length,
+      },
       evidence,
       detail.material.remark || undefined
     )
     finalName.value = result.value.currentName || result.value.generatedName
-    finalSpec.value = result.value.generatedSpec
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '加载物料信息失败')
   } finally {
@@ -155,7 +161,6 @@ async function save() {
     // 只改名称与规格，不动分类/属性/供应商/库存
     await materialMasterApi.updateNaming(props.materialId, {
       materialName: finalName.value.trim(),
-      specification: finalSpec.value.trim(),
       reason: `名称：材料 + 型号 + 颜色（品牌）；规格：${result.value.evidence.join('；') || '该分类暂无属性值'}`,
     })
     ElMessage.success('名称与规格已更新')

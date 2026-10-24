@@ -42,14 +42,16 @@ public class MaterialMasterController extends BaseController {
     @SaCheckPermission(value = {"inventory:material:add", "engineering:bom:add", "engineering:bom:edit"}, mode = SaMode.OR)
     public Result<InventoryMaterial> create(@RequestBody MaterialMasterDTO dto) {
         if (dto.getMaterialId() != null) throw new com.jjx.common.exception.BusinessException("新增不能指定物料ID");
-        return Result.success(service.save(dto, getUsername()));
+        InventoryMaterial saved = service.save(dto, getUsername());
+        return Result.success(saved, service.specificationPreview(saved).message());
     }
 
     @PutMapping
     @SaCheckPermission("inventory:material:edit")
     public Result<InventoryMaterial> update(@RequestBody MaterialMasterDTO dto) {
         if (dto.getMaterialId() == null) throw new com.jjx.common.exception.BusinessException("修改必须指定物料ID");
-        return Result.success(service.save(dto, getUsername()));
+        InventoryMaterial saved = service.save(dto, getUsername());
+        return Result.success(saved, service.specificationPreview(saved).message());
     }
 
     @PutMapping("/{id:\\d+}/naming")
@@ -58,7 +60,8 @@ public class MaterialMasterController extends BaseController {
             bizType = "'material'", bizId = "#id", action = "重算名称与规格", detail = "#result.data.detail")
     public Result<MaterialMasterService.NamingResult> updateNaming(@PathVariable Long id,
             @RequestBody MaterialMasterService.NamingPatch patch) {
-        return Result.success(service.updateNaming(id, patch, getUsername()));
+        var saved = service.updateNaming(id, patch, getUsername());
+        return Result.success(saved, saved.specificationGeneration().message());
     }
 
     @PutMapping("/category")

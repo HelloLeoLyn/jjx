@@ -13,6 +13,7 @@ export interface RegenerationResult {
   currentSpec: string
   generatedName: string
   generatedSpec: string
+  specGenerated: boolean
   nameChanged: boolean
   specChanged: boolean
   evidence: string[]
@@ -43,20 +44,22 @@ export function parseOriginalName(remark?: string | null): string {
 
 export function buildRegeneration(
   current: RegenerationSnapshot,
-  generated: { name: string; specification: string },
+  generated: { name: string; specification: string; specGenerated?: boolean },
   evidence: string[],
   remark?: string
 ): RegenerationResult {
   const currentName = (current.materialName || '').trim()
   const currentSpec = (current.specification || '').trim()
   const generatedName = (generated.name || '').trim()
-  const generatedSpec = (generated.specification || '').trim()
+  const specGenerated = generated.specGenerated !== false
+  const generatedSpec = specGenerated ? (generated.specification || '').trim() : currentSpec
   return {
     remark,
     currentName,
     currentSpec,
     generatedName,
     generatedSpec,
+    specGenerated,
     nameChanged: currentName !== generatedName,
     specChanged: currentSpec !== generatedSpec,
     evidence,
@@ -72,8 +75,7 @@ export function resolveFinalName(result: RegenerationResult, adoptGenerated: boo
 /** 完全无变化时不重复保存。 */
 export function hasRegenerationChanges(
   result: RegenerationResult,
-  finalName: string,
-  finalSpec: string
+  finalName: string
 ): boolean {
-  return finalName.trim() !== result.currentName || finalSpec.trim() !== result.currentSpec
+  return finalName.trim() !== result.currentName || result.specChanged
 }

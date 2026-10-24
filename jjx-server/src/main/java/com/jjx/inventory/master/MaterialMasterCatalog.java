@@ -60,6 +60,24 @@ public class MaterialMasterCatalog {
     }
 
     public Configuration configuration(Long categoryId) {
+        return configuration(categoryId, true);
+    }
+
+    /** 保存/重算允许尚未绑定模板的分类；分类路径校验仍然保留。 */
+    public Configuration optionalConfiguration(Long categoryId) {
+        return categoryId == null ? null : configuration(categoryId, false);
+    }
+
+    /** 命名重算不重新判定分类合法性；没有绑定模板的历史分类仍可保留原规格。 */
+    public MaterialAttributeSchema specificationSchema(Long categoryId) {
+        if (categoryId == null) return null;
+        InventoryAttributeTemplate template = templateMapper.selectOne(new LambdaQueryWrapper<InventoryAttributeTemplate>()
+                .eq(InventoryAttributeTemplate::getCategoryId, categoryId));
+        return template == null || !StatusEnum.NORMAL.getCode().equals(template.getStatus())
+                ? null : MaterialAttributeSchema.parse(template.getAttributeSchema(), objectMapper);
+    }
+
+    private Configuration configuration(Long categoryId, boolean requireTemplate) {
         Map<Long, InventoryMaterialCategory> byId = new HashMap<>();
         allCategories().forEach(c -> byId.put(c.getCategoryId(), c));
         List<InventoryMaterialCategory> path = path(categoryId, byId, true);
@@ -67,7 +85,10 @@ public class MaterialMasterCatalog {
         if (byId.values().stream().anyMatch(c -> Objects.equals(categoryId, c.getParentId()))) throw new BusinessException("请选择末级品类");
         InventoryAttributeTemplate template = templateMapper.selectOne(new LambdaQueryWrapper<InventoryAttributeTemplate>()
                 .eq(InventoryAttributeTemplate::getCategoryId, categoryId));
-        if (template == null || !StatusEnum.NORMAL.getCode().equals(template.getStatus())) throw new BusinessException("该品类尚未配置启用的属性模板");
+        if (template == null || !StatusEnum.NORMAL.getCode().equals(template.getStatus())) {
+            if (requireTemplate) throw new BusinessException("该品类尚未配置启用的属性模板");
+            return null;
+        }
         MaterialAttributeSchema schema = MaterialAttributeSchema.parse(template.getAttributeSchema(), objectMapper);
         List<Category> ancestors = new ArrayList<>();
         for (int i = 0; i < path.size(); i++) ancestors.add(toCategory(path.get(i), path.subList(0, i + 1), i == path.size() - 1));

@@ -68,6 +68,17 @@ class MaterialMasterSchemaTest {
         for (String size : List.of("300×305×0.175", "0×300", "-10", "0.3m×1.0", "300mm")) assertThrows(BusinessException.class, () -> MaterialMasterService.validateSize(size));
     }
 
+    @Test void renderingMatchesPreviewWithVisibilityEmptyValuesAndDerivedDimensions() throws Exception {
+        var schema = seeds().get("TPL_PC");
+        assertEquals("厚度:0.175mm；表面处理:中砂；抗UV:否；尺寸:300×305mm",
+                schema.compose(Map.of("surface_treatment", List.of("MEDIUM_SAND"), "anti_uv", false), "0.175", "300×305"));
+        assertEquals("厚度:0.25mm", schema.compose(Map.of("thickness_mm", new BigDecimal("0.2500"),
+                "surface_treatment", List.of(), "flame_rating", ""), "9", null));
+        var electronics = seeds().get("TPL_ELECTRONIC");
+        String pinLabel = electronics.fields().stream().filter(f -> f.key().equals("pin_count")).findFirst().orElseThrow().label();
+        assertFalse(electronics.compose(Map.of("component_type", "LED", "pin_count", 4)).contains(pinLabel + ":"));
+    }
+
     @Test void sourcesPreferExplicitOriginalMarkersAndNeverBackfillGeneratedTextIntoOriginalSpec() {
         var material = new InventoryMaterial(); material.setMaterialName("拼接后的名称"); material.setSpecification("生成规格");
         material.setRemark("原供应商:地博(未匹配)【原名称】0.175中砂面PC-DB6842【原规格】300*305");

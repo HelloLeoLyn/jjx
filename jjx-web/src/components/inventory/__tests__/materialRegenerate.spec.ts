@@ -124,7 +124,7 @@ describe('重算名称与规格', () => {
     )
     expect(result.nameChanged).toBe(false)
     expect(result.specChanged).toBe(false)
-    expect(hasRegenerationChanges(result, result.currentName, result.currentSpec)).toBe(false)
+    expect(hasRegenerationChanges(result, result.currentName)).toBe(false)
   })
 
   it('默认保留当前人工名称，勾选后才采用生成名称', () => {
@@ -140,9 +140,11 @@ describe('重算名称与规格', () => {
 
   it('最终值不同于当前值才算需要保存', () => {
     const result = buildRegeneration(current, generated, [])
-    expect(hasRegenerationChanges(result, '人工名称', '旧规格')).toBe(false)
-    expect(hasRegenerationChanges(result, '人工名称', generated.specification)).toBe(true)
-    expect(hasRegenerationChanges(result, generated.name, generated.specification)).toBe(true)
+    expect(hasRegenerationChanges(result, '人工名称')).toBe(true)
+    expect(hasRegenerationChanges(result, generated.name)).toBe(true)
+    const unavailable = buildRegeneration(current, { ...generated, specGenerated: false }, [])
+    expect(unavailable.generatedSpec).toBe('旧规格')
+    expect(hasRegenerationChanges(unavailable, '人工名称')).toBe(false)
   })
 })
 
@@ -206,7 +208,6 @@ describe('重算弹窗命名补丁保存', () => {
     expect(mocks.updateNaming).toHaveBeenCalledTimes(1)
     expect(mocks.updateNaming).toHaveBeenCalledWith(7, {
       materialName: '人工确认新名称',
-      specification: '',
       reason: expect.stringContaining('名称：材料 + 型号 + 颜色（品牌）'),
     })
     expect(mocks.legacyUpdate).not.toHaveBeenCalled()
@@ -221,7 +222,11 @@ describe('重算弹窗命名补丁保存', () => {
   it('最终值无变化时禁用保存，不提交', async () => {
     const wrapper = createDialog()
     await flushPromises()
-    await wrapper.findAll('input')[2].setValue('旧规格')
+    expect(wrapper.findAll('input:not([type=checkbox])')).toHaveLength(1)
+    expect(wrapper.find('textarea').exists()).toBe(false)
+    expect(wrapper.text()).toContain('未生成')
+    expect(wrapper.text()).toContain('旧规格')
+    expect(wrapper.text()).toContain('如需调整请回编辑改属性/厚度/尺寸')
     const save = wrapper.findAll('button')[1]
     expect(save.element.disabled).toBe(true)
     await save.trigger('click')
@@ -243,11 +248,41 @@ describe('重算弹窗命名补丁保存', () => {
     wrapper.unmount()
   })
 
+  it('规格只读，按同一模型预览厚度和尺寸，规格变化可单独保存', async () => {
+    mocks.detail.mockResolvedValue({ data: {
+      material: { materialId: 7, materialName: '人工名称', specification: '旧规格', thickness: '0.175', widthSize: '300×305' },
+      attributes: {},
+      configuration: { schema: { fields: [{ key: 'thickness_mm', label: '厚度', type: 'decimal', unit: 'mm' }] } },
+    } })
+    const wrapper = createDialog()
+    await flushPromises()
+    expect(wrapper.text()).toContain('厚度:0.175mm；尺寸:300×305mm')
+    expect(wrapper.findAll('input:not([type=checkbox])')).toHaveLength(1)
+    await wrapper.findAll('button')[1].trigger('click')
+    await flushPromises()
+    expect(mocks.updateNaming).toHaveBeenCalledWith(7, {
+      materialName: '人工名称', reason: expect.any(String),
+    })
+    wrapper.unmount()
+  })
+
+  it('空模板保留历史规格，不能误报规格变化', async () => {
+    mocks.detail.mockResolvedValue({ data: {
+      material: current, attributes: {}, configuration: { schema: { fields: [] } },
+    } })
+    const wrapper = createDialog()
+    await flushPromises()
+    expect(wrapper.text()).toContain('未生成')
+    expect(wrapper.text()).toContain('旧规格')
+    expect(wrapper.findAll('button')[1].element.disabled).toBe(true)
+    wrapper.unmount()
+  })
+
   it('API 使用 master 命名补丁 URL', async () => {
     const { materialMasterApi } = await vi.importActual<
       typeof import('@/api/inventory/materialMaster')
     >('@/api/inventory/materialMaster')
-    const payload = { materialName: '名称', specification: '' }
+    const payload = { materialName: '名称' }
     await materialMasterApi.updateNaming(7, payload)
     expect(mocks.put).toHaveBeenCalledWith('/inventory/material/master/7/naming', payload)
   })

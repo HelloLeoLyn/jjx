@@ -130,17 +130,30 @@ public record MaterialAttributeSchema(
     }
 
     public String compose(Map<String, Object> values) {
+        return compose(values, null, null);
+    }
+
+    /** 与前端预览同口径：模板顺序、可见属性、厚度列兜底、尺寸固定mm。 */
+    public String compose(Map<String, Object> attributes, String thickness, String widthSize) {
+        Map<String, Object> values = new LinkedHashMap<>(attributes);
+        if (thickness != null && !thickness.isBlank()) {
+            fields.stream().filter(f -> f.key.equals("thickness_mm") || f.key.equals("gram_weight_gsm"))
+                    .findFirst().ifPresent(f -> values.putIfAbsent(f.key, thickness));
+        }
         List<String> parts = new ArrayList<>();
         for (Field f : fields) {
             Object value = values.get(f.key);
-            if (value == null) continue;
+            if (!visible(f, values) || value == null || value.toString().isBlank()
+                    || value instanceof List<?> list && list.isEmpty()) continue;
             String display;
             if (value instanceof Boolean b) display = b ? "是" : "否";
             else if (f.type.equals("enum")) display = label(f, value.toString());
             else if (value instanceof List<?> list) display = String.join("、", list.stream().map(v -> label(f, v.toString())).toList());
+            else if (value instanceof Number number) display = new BigDecimal(number.toString()).stripTrailingZeros().toPlainString();
             else display = value.toString();
             parts.add(f.label + ":" + display + (f.unit == null ? "" : f.unit));
         }
+        if (widthSize != null && !widthSize.isBlank()) parts.add("尺寸:" + widthSize.trim() + "mm");
         String text = String.join("；", parts);
         if (text.length() > 500) fail("生成规格超过500字，请精简属性内容");
         return text;

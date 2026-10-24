@@ -265,7 +265,7 @@ const materialOptions = computed(() =>
   )
 )
 const specificationPreview = computed(() =>
-  previewMasterSpecification(configuration.value?.schema, form.attributeJson)
+  previewMasterSpecification(configuration.value?.schema, form.attributeJson, { widthSize: form.size })
 )
 const previewName = computed(() => effectiveMasterName(form, dictionaries.value))
 const materialLabel = computed(

@@ -36,8 +36,10 @@ public class MaterialMasterService {
     private final ObjectMapper objectMapper;
 
     public record Detail(InventoryMaterial material, Map<String, Object> attributes,
-                         MaterialMasterCatalog.Configuration configuration, List<SysTag> tags, MaterialSourceValues source) { }
+                         MaterialMasterCatalog.Configuration configuration, List<SysTag> tags, MaterialSourceValues source,
+                         SpecificationPreview specificationGeneration) { }
     public record Prepared(InventoryMaterial material, List<Long> tagIds) { }
+    public record SpecificationPreview(String specification, boolean generated, String message) { }
 
     /** 命名补丁不接收主数据表单，避免绕过模板校验修改其它字段。 */
     public record NamingPatch(String materialName, String specification, String reason) {
@@ -46,22 +48,34 @@ public class MaterialMasterService {
             throw new BusinessException("命名补丁不支持字段：" + field);
         }
     }
-    public record NamingResult(InventoryMaterial material, String detail) { }
+    public record NamingResult(InventoryMaterial material, String detail, SpecificationPreview specificationGeneration) { }
+
+    public SpecificationPreview specificationPreview(InventoryMaterial material) {
+        return specificationPreview(material, catalog.specificationSchema(material.getCategoryId()));
+    }
+
+    private SpecificationPreview specificationPreview(InventoryMaterial material, MaterialAttributeSchema schema) {
+        if (schema == null || schema.fields().isEmpty())
+            return new SpecificationPreview(material.getSpecification(), false, "未生成：未归类、分类无启用模板或模板无属性，保留原规格；不接受外部 specification 文本");
+        String specification = schema.compose(readAttributes(material.getAttributeJson()), material.getThickness(), material.getWidthSize());
+        return new SpecificationPreview(specification.isEmpty() ? null : specification, true, "规格已由模板属性/厚度/尺寸生成；不接受外部 specification 文本");
+    }
 
     @Transactional(rollbackFor = Exception.class)
     public NamingResult updateNaming(Long id, NamingPatch patch, String operator) {
         if (patch == null) throw new BusinessException("命名补丁不能为空");
         String name = text(patch.materialName(), "物料名称", 200, true);
-        String specification = text(patch.specification(), "规格", 500, false);
         String reason = text(patch.reason(), "重算依据", 1000, false);
         InventoryMaterial existing = masterMapper.lockMaterial(id);
         if (existing == null) throw new BusinessException("物料不存在");
+        SpecificationPreview preview = specificationPreview(existing);
+        String specification = preview.specification(); // patch.specification 故意忽略，只允许模型渲染结果。
         List<String> changes = new ArrayList<>();
         if (!Objects.equals(existing.getMaterialName(), name))
             changes.add("名称：" + Objects.toString(existing.getMaterialName(), "空") + " → " + name);
         if (!Objects.equals(existing.getSpecification(), specification))
             changes.add("规格：" + Objects.toString(existing.getSpecification(), "空") + " → " + Objects.toString(specification, "空"));
-        if (changes.isEmpty()) return new NamingResult(existing, com.jjx.system.utils.OperLogDetailBuilder.changes(changes));
+        if (changes.isEmpty()) return new NamingResult(existing, com.jjx.system.utils.OperLogDetailBuilder.changes(changes), preview);
         UpdateWrapper<InventoryMaterial> update = new UpdateWrapper<>();
         update.eq("material_id", id).set("material_name", name).set("specification", specification)
                 .set("update_by", operator).set("update_time", LocalDateTime.now());
@@ -70,16 +84,16 @@ public class MaterialMasterService {
         var payload = EventPublishSupport.payload("material", id, existing.getMaterialCode());
         payload.put("materialName", name);
         EventPublishSupport.fireAfterCommit(eventPublisher, "inventory.material.updated", payload);
-        return new NamingResult(materialMapper.selectById(id), com.jjx.system.utils.OperLogDetailBuilder.changes(changes));
+        return new NamingResult(materialMapper.selectById(id), com.jjx.system.utils.OperLogDetailBuilder.changes(changes), preview);
     }
 
     public Detail detail(Long id) {
         InventoryMaterial material = materialMapper.selectById(id);
         if (material == null) throw new BusinessException("物料不存在");
-        MaterialMasterCatalog.Configuration config = null;
-        if (material.getCategoryId() != null) config = catalog.configuration(material.getCategoryId());
+        MaterialAttributeSchema schema = catalog.specificationSchema(material.getCategoryId());
+        MaterialMasterCatalog.Configuration config = schema == null ? null : catalog.optionalConfiguration(material.getCategoryId());
         return new Detail(material, readAttributes(material.getAttributeJson()), config,
-                tagService.getBizTags("inventory_material", id), MaterialSourceValues.from(material));
+                tagService.getBizTags("inventory_material", id), MaterialSourceValues.from(material), specificationPreview(material, schema));
     }
 
     public Map<String, Object> readAttributes(String json) {
@@ -100,8 +114,9 @@ public class MaterialMasterService {
     /** 同时供保存和导入预检使用，不写库、不生成业务编号。 */
     public Prepared prepare(MaterialMasterDTO dto) {
         if (dto == null) throw new BusinessException("物料不能为空");
-        if (dto.getMaterialId() != null && materialMapper.selectById(dto.getMaterialId()) == null) throw new BusinessException("待更新物料不存在");
-        MaterialMasterCatalog.Configuration config = dto.getCategoryId() == null ? null : catalog.configuration(dto.getCategoryId());
+        InventoryMaterial old = dto.getMaterialId() == null ? null : materialMapper.selectById(dto.getMaterialId());
+        if (dto.getMaterialId() != null && old == null) throw new BusinessException("待更新物料不存在");
+        MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(dto.getCategoryId());
         MaterialAttributeSchema schema = config == null
                 ? new MaterialAttributeSchema(1, List.of(), false, null, null, "PCS", List.of()) : config.schema();
         String name = text(dto.getOriginalName(), "原名称", 200, true);
@@ -119,8 +134,6 @@ public class MaterialMasterService {
         dictionaryLabel(dictionaries, "color", dto.getColor(), false);
         dictionaryLabel(dictionaries, "brand", dto.getBrand(), false);
         Map<String, Object> attributes = schema.validateAttributes(dto.getAttributeJson(), objectMapper);
-        String specification = schema.compose(attributes);
-        if (specification.length() > 500) throw new BusinessException("生成规格超过500字");
         validateSize(dto.getSize());
         InventoryMaterial material = new InventoryMaterial();
         BeanUtils.copyProperties(dto, material);
@@ -137,7 +150,7 @@ public class MaterialMasterService {
         material.setSize(text(dto.getSize(), "尺寸", 50, false));
         material.setSearchKeywords(text(dto.getSearchKeywords(), "别名", 500, false));
         material.setRemark(text(dto.getRemark(), "业务备注", 1000, false));
-        material.setSpecification(config == null ? originalSpec : specification.isEmpty() ? null : specification);
+        material.setSpecification(old == null ? originalSpec : old.getSpecification());
         material.setIsCustomerSupplied(Boolean.TRUE.equals(dto.getIsCustomerSupplied()));
         material.setIsSample(Boolean.TRUE.equals(dto.getIsSample()));
         if (config != null) MaterialAttributeColumns.apply(material, attributes, config.template().getTemplateId());
@@ -146,6 +159,7 @@ public class MaterialMasterService {
         if (meta != null) storedAttributes.put("material", meta);
         try { material.setAttributeJson(objectMapper.writeValueAsString(storedAttributes)); }
         catch (Exception e) { throw new BusinessException("属性无法序列化"); }
+        material.setSpecification(specificationPreview(material, config == null ? null : schema).specification());
         if (dto.getSupplierId() != null) {
             var supplier = supplierMapper.selectById(dto.getSupplierId());
             if (supplier == null) throw new BusinessException("供应商不存在");
@@ -176,7 +190,10 @@ public class MaterialMasterService {
     public InventoryMaterial save(MaterialMasterDTO dto, String operator, com.jjx.inventory.classify.MaterialClassSource source) {
         if (dto == null) throw new BusinessException("物料不能为空");
         // 与模板维护取得相同顺序的锁，防止校验通过后模板被改写。
-        if (dto.getCategoryId() != null && (masterMapper.lockCategory(dto.getCategoryId()) == null || masterMapper.lockTemplate(dto.getCategoryId()) == null)) throw new BusinessException("分类或模板不存在");
+        if (dto.getCategoryId() != null) {
+            if (masterMapper.lockCategory(dto.getCategoryId()) == null) throw new BusinessException("分类不存在");
+            masterMapper.lockTemplate(dto.getCategoryId());
+        }
         Prepared prepared = prepare(dto);
         InventoryMaterial material = prepared.material();
         boolean creating = material.getMaterialId() == null;

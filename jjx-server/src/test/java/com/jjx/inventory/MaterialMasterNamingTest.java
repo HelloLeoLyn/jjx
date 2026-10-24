@@ -28,7 +28,7 @@ class MaterialMasterNamingTest {
     private final MaterialMasterMapper locks = mock(MaterialMasterMapper.class);
     private final InventoryMaterialMapper materials = mock(InventoryMaterialMapper.class);
     private final ObjectMapper json = new ObjectMapper();
-    private final MaterialMasterService service = new MaterialMasterService(null, locks, materials, null,
+    private final MaterialMasterService service = new MaterialMasterService(mock(com.jjx.inventory.master.MaterialMasterCatalog.class), locks, materials, null,
             null, null, mock(EventPublisher.class), json);
     private InventoryMaterial existing;
 
@@ -47,11 +47,12 @@ class MaterialMasterNamingTest {
         String columns = update.getValue().getSqlSet();
         assertEquals(List.of("material_name", "specification", "update_by", "update_time"),
                 java.util.Arrays.stream(columns.split(",")).map(s -> s.substring(0, s.indexOf('='))).toList());
-        assertTrue(update.getValue().getParamNameValuePairs().containsValue(null), "允许清空规格");
+        assertTrue(update.getValue().getParamNameValuePairs().containsValue("旧规格"), "未归类保留历史规格并忽略外部文本");
+        assertFalse(result.specificationGeneration().generated());
+        assertTrue(result.specificationGeneration().message().contains("未生成"));
         var detail = json.readTree(result.detail()).get("changes");
         assertEquals("名称：人工名称 → 新名称", detail.get(0).asText());
-        assertEquals("规格：旧规格 → 空", detail.get(1).asText());
-        assertEquals("重算依据：厚度重算", detail.get(2).asText());
+        assertEquals("重算依据：厚度重算", detail.get(1).asText());
         var method = MaterialMasterController.class.getMethod("updateNaming", Long.class, MaterialMasterService.NamingPatch.class);
         assertArrayEquals(new String[]{"inventory:material:edit"}, method.getAnnotation(cn.dev33.satoken.annotation.SaCheckPermission.class).value());
         var context = new StandardEvaluationContext();
@@ -64,7 +65,6 @@ class MaterialMasterNamingTest {
         assertThrows(BusinessException.class, () -> service.updateNaming(1L, null, "codex"));
         for (String name : java.util.Arrays.asList(null, " ", "名".repeat(201)))
             assertThrows(BusinessException.class, () -> service.updateNaming(1L, new MaterialMasterService.NamingPatch(name, null, null), "codex"));
-        assertThrows(BusinessException.class, () -> service.updateNaming(1L, new MaterialMasterService.NamingPatch("名称", "规".repeat(501), null), "codex"));
         assertThrows(BusinessException.class, () -> service.updateNaming(1L, new MaterialMasterService.NamingPatch("名称", null, "据".repeat(1001)), "codex"));
         verifyNoInteractions(materials);
     }
@@ -73,6 +73,14 @@ class MaterialMasterNamingTest {
         service.updateNaming(1L, new MaterialMasterService.NamingPatch(" 人工名称 ", "旧规格", null), "codex");
         verifyNoInteractions(materials);
         assertThrows(BusinessException.class, () -> service.updateNaming(1L, new MaterialMasterService.NamingPatch("新名称", null, null), "codex"));
+    }
+
+    @Test void evenOversizedExternalSpecificationIsIgnoredAndCannotClearHistory() {
+        var result = service.updateNaming(1L,
+                new MaterialMasterService.NamingPatch("人工名称", "伪造".repeat(1000), null), "codex");
+        assertEquals("旧规格", result.material().getSpecification());
+        assertFalse(result.specificationGeneration().generated());
+        verifyNoInteractions(materials);
     }
 
     @Test void rejectsEveryNonNamingInputEvenWhenGlobalUnknownPropertiesAreIgnored() throws Exception {

@@ -133,7 +133,7 @@ class MaterialMasterDataTest {
         var category = new com.jjx.inventory.master.MaterialMasterCatalog.Category(2L,"RAW_BASE_PC","PC",1L,3,"R","原材料/基材/PC",true,1,1);
         var schema = com.jjx.inventory.master.MaterialAttributeSchema.parse(
                 "{\"version\":1,\"meta_options\":[\"PC\"],\"default_meta\":\"PC\",\"default_unit\":\"M\",\"fields\":[{\"key\":\"thickness_mm\",\"label\":\"厚度\",\"type\":\"decimal\"}]}", new ObjectMapper());
-        when(catalog.configuration(2L)).thenReturn(new com.jjx.inventory.master.MaterialMasterCatalog.Configuration(category, List.of(category), template, schema));
+        when(catalog.optionalConfiguration(2L)).thenReturn(new com.jjx.inventory.master.MaterialMasterCatalog.Configuration(category, List.of(category), template, schema));
         when(catalog.dictionaries()).thenReturn(Map.of("material_meta",List.of(new com.jjx.inventory.master.MaterialMasterCatalog.DictionaryOption("PC","PC")),
                 "unit",List.of(new com.jjx.inventory.master.MaterialMasterCatalog.DictionaryOption("M","米"))));
         var master = new com.jjx.inventory.master.MaterialMasterService(catalog, mock(com.jjx.inventory.master.MaterialMasterMapper.class), mapper,

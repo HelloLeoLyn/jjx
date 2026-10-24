@@ -140,8 +140,16 @@ export function attributeEvidence(
 export function previewMasterSpecification(
   schema: MaterialAttributeSchema | undefined,
   values: Record<string, AttributeValue>,
-  supplement = ''
+  dimensions: { thickness?: string | null; widthSize?: string | null } | '' = {}
 ): string {
+  if (!schema?.fields.length) return ''
+  // 属性详情旧调用仅传空串；不再接受任意规格补充文本。
+  if (dimensions === '') dimensions = {}
+  values = { ...values }
+  const thicknessField = schema.fields.find((f) => ['thickness_mm', 'gram_weight_gsm'].includes(f.key))
+  if (thicknessField && values[thicknessField.key] == null && dimensions.thickness?.trim()) {
+    values[thicknessField.key] = dimensions.thickness
+  }
   const parts = (schema?.fields || []).flatMap((f) => {
     const value = values[f.key]
     if (
@@ -164,7 +172,7 @@ export function previewMasterSpecification(
             : String(value)
     return [`${f.label}:${display}${f.unit || ''}`]
   })
-  if (supplement.trim()) parts.push(supplement.trim())
+  if (dimensions.widthSize?.trim()) parts.push(`尺寸:${dimensions.widthSize.trim()}mm`)
   return parts.join('；')
 }
 
