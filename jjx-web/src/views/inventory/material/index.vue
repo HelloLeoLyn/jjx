@@ -267,6 +267,7 @@ const toolbarButtons: ToolbarOptions[] = toolbarOptions
 const queryParams = reactive<InventoryMaterialQueryParams>({
   pageNum: 1,
   pageSize: 50,
+  keyword: '',
   materialCode: '',
   materialName: '',
   rootType: '',
@@ -382,6 +383,7 @@ const handleQuery = () => {
 
 // 重置
 const handleReset = () => {
+  queryParams.keyword = ''
   queryParams.materialCode = ''
   queryParams.materialName = ''
   queryParams.rootType = ''

@@ -118,6 +118,8 @@ export interface InventoryMaterial {
 
 // 物料查询参数
 export interface InventoryMaterialQueryParams extends PageQuery {
+  /** 统一模糊搜索：名称/编码/型号/别名/规格/分类，多词空格 AND（dev-20261024-024） */
+  keyword?: string
   rootType?: string
   materialId?: number
   materialCode?: string

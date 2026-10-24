@@ -5,11 +5,12 @@ import { MaterialClassStatusEnum } from '@/enums/inventory/MaterialClassEnum'
 
 // 搜索配置
 export const searchOptions: SearchOptions[] = [
-  // {
-  //   prop: 'materialCode',
-  //   label: '物料编码',
-  //   type: 'input',
-  // },
+  // 统一模糊搜索（dev-20261024-024）：名称/编码/型号/别名/规格/分类，空格分词 AND
+  {
+    prop: 'keyword',
+    label: '物料搜索',
+    type: 'input',
+  },
   {
     prop: 'materialName',
     label: '物料名称',
@@ -47,11 +48,6 @@ export const searchOptions: SearchOptions[] = [
     options: [],
   },
   {
-    prop: 'model',
-    label: '型号',
-    type: 'input',
-  },
-  {
     prop: 'color',
     label: '颜色',
     type: 'select',
@@ -80,11 +76,6 @@ export const searchOptions: SearchOptions[] = [
       { value: true, label: '是' },
       { value: false, label: '否' },
     ],
-  },
-  {
-    prop: 'specification',
-    label: '规格型号',
-    type: 'input',
   },
 
   {

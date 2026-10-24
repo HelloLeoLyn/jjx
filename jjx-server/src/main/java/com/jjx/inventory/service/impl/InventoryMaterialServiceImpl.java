@@ -165,7 +165,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             }
         }
         if (queryDTO.getSpecification() != null && !queryDTO.getSpecification().isEmpty()) {
-            wrapper.eq(InventoryMaterial::getSpecification, queryDTO.getSpecification());
+            // 文本框语义是「包含」，不能精确匹配（dev-20261024-024）
+            wrapper.like(InventoryMaterial::getSpecification, queryDTO.getSpecification());
         }
         if (queryDTO.getSupplierId() != null) {
             wrapper.eq(InventoryMaterial::getSupplierId, queryDTO.getSupplierId());
@@ -732,7 +733,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 .eq(dto.getIsCustomerSupplied() != null, InventoryMaterial::getIsCustomerSupplied, dto.getIsCustomerSupplied())
                 .eq(dto.getIsSample() != null, InventoryMaterial::getIsSample, dto.getIsSample());
         wrapper.eq(StringUtils.isNotBlank(dto.getMaterialGrade()), InventoryMaterial::getMaterialGrade, dto.getMaterialGrade())
-                .eq(StringUtils.isNotBlank(dto.getModel()), InventoryMaterial::getModel, dto.getModel())
+                // 型号是自由文本，按「包含」匹配（dev-20261024-024）
+                .like(StringUtils.isNotBlank(dto.getModel()), InventoryMaterial::getModel, dto.getModel())
                 .eq(StringUtils.isNotBlank(dto.getColor()), InventoryMaterial::getColor, dto.getColor())
                 .eq(StringUtils.isNotBlank(dto.getBrand()), InventoryMaterial::getBrand, dto.getBrand());
     }

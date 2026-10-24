@@ -382,6 +382,19 @@ class MaterialMasterDataTest {
                 .noneMatch(field -> "currentStock".equals(field.getName())));
     }
 
+    @Test void textFiltersUseContainsSemantics() {
+        when(mapper.selectList(any())).thenReturn(List.of());
+        MaterialQueryDTO dto = new MaterialQueryDTO();
+        dto.setModel("F20");
+        dto.setSpecification("雾面");
+        service.selectEntities(dto);
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper).selectList(wrapper.capture());
+        String sql = wrapper.getValue().getSqlSegment();
+        assertTrue(sql.contains("model LIKE"), sql);
+        assertTrue(sql.contains("specification LIKE"), sql);
+    }
+
     @Test void keywordSearchMatchesCategoryNamePathToo() {
         when(mapper.selectList(any())).thenReturn(List.of());
         MaterialQueryDTO dto = new MaterialQueryDTO();
