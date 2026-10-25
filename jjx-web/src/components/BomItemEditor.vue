@@ -70,7 +70,7 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="项目" prop="processName" width="120">
+      <el-table-column label="项目" prop="processName" width="80">
         <template #default="scope">
           <StandardProcessSelector
             :mode="PROJECT_PICKER_MODE"
@@ -82,7 +82,7 @@
         </template>
       </el-table-column>
       <!-- 物料名称：常规模式选物料；快速模式直接录材料原文（dev-20261020-029 A） -->
-      <el-table-column label="物料名称" prop="materialName" min-width="200">
+      <el-table-column label="物料名称" prop="materialName" min-width="140">
         <template #default="scope">
           <div class="material-name-cell">
             <el-input
@@ -113,7 +113,7 @@
         </template>
       </el-table-column>
       <!-- 规格型号（dev-20261024-023：默认取物料系统生成值，可手改，可恢复） -->
-      <el-table-column label="规格" prop="specification" width="150">
+      <el-table-column label="规格" prop="specification" width="120">
         <template #default="scope">
           <el-input
             v-model="scope.row.specification"
@@ -137,15 +137,14 @@
         </template>
       </el-table-column>
       <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数） -->
-      <el-table-column label="模数" prop="moduleQty" align="center" width="80">
+      <el-table-column label="模数" prop="moduleQty" align="center" width="60">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.moduleQty"
             :min="1"
             :precision="0"
-            :step="1"
+            :controls="false"
             size="small"
-            controls-position="right"
             @change="handleModuleQtyChange(scope.row)"
           />
         </template>
@@ -224,15 +223,14 @@
         </template>
       </el-table-column>
       <!-- 最低投料量 -->
-      <el-table-column label="最低投料量" prop="minIssueQty" align="center" width="80">
+      <el-table-column label="最低投料量" prop="minIssueQty" align="center" width="60">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.minIssueQty"
             :min="0"
             :precision="0"
-            :step="1"
             size="small"
-            controls-position="right"
+            :controls="false"
             @change="recalcAppliedIssue(scope.row)"
           />
         </template>
@@ -654,9 +652,14 @@ function loadAutoSpec(row: EngineeringBomItem, selected = false): Promise<void> 
 
 async function prepareSpecifications(): Promise<boolean> {
   await Promise.all(specRequests.values())
-  await Promise.all(items.value.filter((row) => Number(row.materialId) > 0 && !isPendingRemove(row))
-    .map((row) => loadAutoSpec(row)))
-  const failed = items.value.find((row) => !isPendingRemove(row) && specErrors.value[String(row.itemId)])
+  await Promise.all(
+    items.value
+      .filter((row) => Number(row.materialId) > 0 && !isPendingRemove(row))
+      .map((row) => loadAutoSpec(row))
+  )
+  const failed = items.value.find(
+    (row) => !isPendingRemove(row) && specErrors.value[String(row.itemId)]
+  )
   if (failed) {
     await markRowError(failed, `物料「${failed.materialName}」规格生成失败，请刷新重试`)
     return false
@@ -1193,7 +1196,10 @@ defineExpose({
       if (failures.length) return
       if (isPendingRemove(item)) return
       if (specRequests.has(String(item.itemId)) || specErrors.value[String(item.itemId)]) {
-        failures.push({ item, message: `物料「${item.materialName}」规格尚未生成，请稍后或刷新重试` })
+        failures.push({
+          item,
+          message: `物料「${item.materialName}」规格尚未生成，请稍后或刷新重试`,
+        })
         return
       }
       if (!quickMode.value && materialDrafts.value[String(item.itemId)] !== undefined) {

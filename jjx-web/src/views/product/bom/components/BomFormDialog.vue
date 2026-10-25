@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="visible"
-    width="1400px"
+    width="1300px"
     append-to-body
     :fullscreen="isFullscreen"
     destroy-on-close
@@ -539,8 +539,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
     return Number.isNaN(v) ? dflt : v
   }
   // 规格纯零值（0/0.0/0.00）按空处理，避免落库后打印 0=1PCS。
-  const normalizeSpec = (value: string): string =>
-    /^0+(?:\.0+)?$/.test(value.trim()) ? '' : value
+  const normalizeSpec = (value: string): string => (/^0+(?:\.0+)?$/.test(value.trim()) ? '' : value)
 
   for (let i = headerRowIndex + 1; i < rows.length; i++) {
     const row = rows[i]
@@ -678,8 +677,11 @@ const doSave = async (): Promise<boolean> => {
       return false
     }
     // 等待选料生成完成，并核对最新物料属性；失败时保留编辑内容供重试。
-    if (bomItemEditorRef.value?.prepareSpecifications &&
-        !(await bomItemEditorRef.value.prepareSpecifications())) return false
+    if (
+      bomItemEditorRef.value?.prepareSpecifications &&
+      !(await bomItemEditorRef.value.prepareSpecifications())
+    )
+      return false
     // 保存前按当前模式校验（快速模式材料名称必填；常规模式必须选物料）
     if (!bomItemEditorRef.value?.validateItems()) return false
     // 直接读取编辑器，避免选料后立即保存遗漏防抖中的回填。
