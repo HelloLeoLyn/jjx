@@ -156,7 +156,14 @@
                             fontSettings[`flow${cell.column}OperationContent` as WorkSpecFontArea]
                           "
                         />
-                        <sub v-if="workSpecStepSubscript(item)" data-overflow-part>{{
+                        <span
+                          v-else-if="workSpecSymbolText(item)"
+                          class="symbol-text"
+                          data-overflow-part
+                          :title="workSpecSymbolText(item)"
+                          >{{ workSpecSymbolText(item) }}</span
+                        >
+                        <sub v-if="item.icon && workSpecStepSubscript(item)" data-overflow-part>{{
                           workSpecStepSubscript(item)
                         }}</sub>
                       </span>
@@ -258,6 +265,7 @@ import {
   plain,
   workSpecMaterialSpec,
   workSpecStepSubscript,
+  workSpecSymbolText,
   workSpecOperationRemark,
   type DocsetData,
   type DocPage,
@@ -866,5 +874,13 @@ footer {
     width: 100%;
     height: 278mm;
   }
+}
+.symbol-text {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 2px;
+  line-height: 1.1;
+  word-break: break-all;
+  vertical-align: middle;
 }
 </style>

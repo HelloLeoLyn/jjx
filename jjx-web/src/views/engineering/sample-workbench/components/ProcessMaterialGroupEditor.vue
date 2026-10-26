@@ -21,6 +21,9 @@
               :work-instruction="item.workInstruction"
               :editable="false"
             />
+            <span v-if="symbolText(item)" class="symbol-text" :title="symbolText(item)">{{
+              symbolText(item)
+            }}</span>
             <span>{{ item.processName }}</span>
           </div>
         </template>
@@ -69,6 +72,9 @@
             :work-instruction="item.workInstruction"
             :editable="false"
           />
+          <span v-if="symbolText(item)" class="symbol-text" :title="symbolText(item)">{{
+            symbolText(item)
+          }}</span>
           <b>{{ item.processName }}</b>
         </div>
         <label class="child-field"
@@ -146,6 +152,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
+
+// 空 icon = 文字符号工序：符号只取作业说明（dev-20261026-006）
+const symbolText = (item: { icon?: string | null; workInstruction?: string | null }) =>
+  item.icon ? '' : (item.workInstruction || '').trim()
 import ProcessMaterialEditor from './ProcessMaterialEditor.vue'
 import { assignMaterial, materialOwner } from '../composables/sampleProcessGroups'
 const props = defineProps<{
@@ -322,5 +332,13 @@ function assignTo(row: any, key: string) {
 }
 .child-process :deep(.el-table) {
   font-size: 12px;
+}
+.symbol-text {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 2px;
+  line-height: 1.1;
+  word-break: break-all;
+  vertical-align: middle;
 }
 </style>

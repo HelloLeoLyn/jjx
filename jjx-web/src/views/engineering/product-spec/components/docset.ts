@@ -368,6 +368,11 @@ export function workSpecMaterialSpec(row?: Record<string, any> | null): string {
   }
   return ''
 }
+/** 空 icon = 文字符号工序：预览/打印用作业说明文本当符号（dev-20261026-006）。 */
+export function workSpecSymbolText(item: Record<string, any>): string {
+  return plain(item.icon) ? '' : plain(item.workInstruction)
+}
+
 export function workSpecStepSubscript(item: Record<string, any>): string {
   return [item.indexNumber == null ? '' : String(item.indexNumber), plain(item.workInstruction)]
     .filter(Boolean)

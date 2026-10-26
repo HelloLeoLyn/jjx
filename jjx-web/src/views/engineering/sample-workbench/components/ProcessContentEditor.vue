@@ -24,6 +24,9 @@
               :size="16"
               :work-instruction="it.workInstruction"
             />
+            <span v-else-if="symbolText(it)" class="symbol-text" :title="symbolText(it)">{{
+              symbolText(it)
+            }}</span>
             <span v-else>{{ it.processName }}</span>
           </el-tag>
           <el-button
@@ -43,6 +46,10 @@
 </template>
 <script setup lang="ts">
 import IconStepBadge from '@/components/IconStepBadge/index.vue'
+
+// 空 icon = 文字符号工序：符号只取作业说明（dev-20261026-006）
+const symbolText = (item: { icon?: string | null; workInstruction?: string | null }) =>
+  item.icon ? '' : (item.workInstruction || '').trim()
 import ProcessOperation from '@/components/ProcessOperation/index.vue'
 import type { ProcessOperationItem } from '@/components/ProcessOperation/types'
 defineProps<{ pc: any; readonly?: boolean }>()
@@ -67,4 +74,12 @@ function operationItems(items: any[]): ProcessOperationItem[] {
 .pc-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
 .pc-items { flex: 1; min-width: 0; }
 .process-item-tag { margin-right: 6px; margin-bottom: 4px; cursor: default; }
+.symbol-text {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 2px;
+  line-height: 1.1;
+  word-break: break-all;
+  vertical-align: middle;
+}
 </style>

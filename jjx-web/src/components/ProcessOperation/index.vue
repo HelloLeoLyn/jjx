@@ -28,7 +28,7 @@
               :size="32"
               :work-instruction="item.workInstruction"
             />
-            <span v-else class="icon-placeholder">工</span>
+            <span v-else-if="symbolText(item)" class="symbol-text" :title="symbolText(item)">{{ symbolText(item) }}</span>
           </div>
           <button
             v-if="editable"
@@ -53,7 +53,7 @@
               :size="32"
               :work-instruction="item.workInstruction"
             />
-            <span v-else class="icon-placeholder">工</span>
+            <span v-else-if="symbolText(item)" class="symbol-text" :title="symbolText(item)">{{ symbolText(item) }}</span>
           </div>
           <button
             v-if="editable"
@@ -118,6 +118,10 @@ const emit = defineEmits<{
   (event: 'update:work-instruction', itemIndex: number, value: string): void
   (event: 'remove', itemIndex: number): void
 }>()
+
+// 空 icon = 文字符号工序：符号只取作业说明，不拿工序名、不拼序号（dev-20261026-006）
+const symbolText = (item: ProcessOperationItem) =>
+  item.icon ? '' : (item.workInstruction || '').trim()
 
 const localItems = ref<ProcessOperationItem[]>(props.draggable ? [...props.items] : [])
 watch(
@@ -229,17 +233,15 @@ function onRemove(event: SortableEvent) {
   justify-content: flex-start;
   color: var(--el-color-primary);
 }
-.icon-placeholder {
-  display: flex;
-  width: 24px;
-  height: 24px;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  border: 1px dashed currentColor;
-  border-radius: 6px;
+.symbol-text {
+  display: block;
+  max-width: 30px;
+  max-height: 28px;
+  overflow: hidden;
   font-size: 11px;
-  line-height: 1;
+  line-height: 13px;
+  word-break: break-all;
+  color: var(--el-color-primary);
 }
 .remove-item {
   position: absolute;
