@@ -691,13 +691,19 @@ const doSave = async (): Promise<boolean> => {
       ElMessage.warning(`物料 "${longProject.materialName}" 的项目名称不能超过200个字符`)
       return false
     }
+    // 基线对应本次实际提交的内容，不能把请求期间新增的修改误记为已保存。
+    const savedSnapshot = fullFormSnapshot()
     if (formData.bomId !== undefined) {
       await productBomApi.editEngineeringBom(formData as any)
       ElMessage.success('修改成功')
     } else {
-      await productBomApi.addEngineeringBom(formData as any)
+      const response = await productBomApi.addEngineeringBom(formData as any)
+      const bomId = Number(response?.data)
+      if (Number.isSafeInteger(bomId) && bomId > 0) formData.bomId = bomId
       ElMessage.success('新增成功')
     }
+    baseline.value = savedSnapshot
+    recomputeDirty()
     emit('success')
     return true
   } catch (error) {
@@ -713,8 +719,10 @@ const doSave = async (): Promise<boolean> => {
 const submitForm = async () => {
   const ok = await doSave()
   if (!ok) return
-  // suppressGuard.value = true
-  // visible.value = false
+  recomputeDirty()
+  if (isDirty.value) return
+  suppressGuard.value = true
+  visible.value = false
 }
 
 /** 未保存离开拦截：true=允许离开，false=继续编辑。 */
@@ -733,7 +741,9 @@ const resolveLeave = async (): Promise<boolean> => {
       closeOnPressEscape: false,
     })
     // 保存并离开：保存成功才离开；校验不过/接口失败留在弹窗。
-    return await doSave()
+    const saved = await doSave()
+    recomputeDirty()
+    return saved && !isDirty.value
   } catch (action) {
     // 放弃修改 → 离开；X / Esc（close）→ 继续编辑
     return action === 'cancel'
