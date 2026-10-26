@@ -312,6 +312,8 @@ RETAINED_TABLES=(
   inventory_warehouse inventory_item
   # 物料必填矩阵（品类→字段，迁移 300）：基础配置，随分类保留，清掉会让导入/保存报缺列
   inventory_material_required_field
+  # 物料关键词归类规则（迁移 308）：基础配置，随物料分类保留
+  inventory_material_classify_rule
   product product_category product_config_model product_config_option
   sys_tag sys_tag_rel hr_employee hr_dept_mapping
   engineering_die engineering_screen_frame engineering_screen_plate

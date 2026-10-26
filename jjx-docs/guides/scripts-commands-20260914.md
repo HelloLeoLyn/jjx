@@ -108,6 +108,7 @@
 - 危险等级：🟢 无参数/`--domains`=只读体检（不写库）／🔴 `--execute` 真清理（固定顺序：体检 → 校验手工备份 → 人工确认 → 执行）。
 - 前置：`--execute` 必须**在终端手工执行**（agent/管道一律拒绝）；确认方式=手工输入库名 `jjx_erp_db`；**已有今天的全库备份**（默认 `JJX_BACKUP_DIR`＝仓库内 `jjx-docs/sql/backups/`，或 `--backup`/`JJX_CLEAN_BACKUP` 指定）——2026-09-28 起脚本**不再自动备份**、只校验手工备份存在才放行；备份必须排除 `hr_employee`。
 - 域参数：`--domains <逗号分隔>`，可选 `purchase` / `inventory` / `quality`，可组合；域模式跳过 `sys_task` 清理。
+- 物料归类配置：`inventory_material_classify_rule`（迁移 308 的关键词归类规则）列入保留白名单，随物料分类保留，全量及域清理均不删除。
 - 产品口径（2026-10-13 起）：全量清理**一律包含产品资料**（`product_config_option`、`product_config_model`、`product`、`product_category`，随后清理无业务引用的 PRODUCT 库存身份，MATERIAL 身份保留），不再需要单独参数或单独执行；`--include-products` 保留兼容、等价默认，`--domains` 域模式下忽略（域模式不含产品）。清产品不能区分正式与测试产品。
 - 产品关联保护：预览及人工确认后检查保留表的 `product_id` / `product_code` 和产品相关标签关系，存在引用（含已有悬空引用）即中止；关联业务表先清，产品资料后清。查询失败即中止，显示数据库错误。启用后清理完核验四张产品表及 PRODUCT 库存身份均为零，并在执行日志记录 `include_products` / `domains`。
 - 命令：

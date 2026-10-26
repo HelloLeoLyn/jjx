@@ -470,6 +470,7 @@ DELETE FROM inventory_item WHERE item_type = 'PRODUCT' AND NOT EXISTS (SELECT 1 
 --               inventory_item（统一库存物品主数据，由物料派生，与物料同级）
 --               sales_customer_address（客户收货地址簿，随客户档案保留；迁移 247，dev-20261008-029）
 -- 物料必填矩阵：inventory_material_required_field（品类→字段，迁移 300；基础配置，随分类保留）
+-- 物料归类规则：inventory_material_classify_rule（关键词→品类，迁移 308；基础配置，随分类保留）
 -- 302 旧规格属性双表已由迁移309退役（dev-20261024-015），不再列入保留名单。
 -- 产品基础资料：product / product_category / product_config_model / product_config_option（v14 起保留）
 -- 标签：sys_tag / sys_tag_rel（v14 起保留）
