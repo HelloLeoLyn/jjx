@@ -292,8 +292,9 @@
               ><template #default="{ row }"
                 ><template v-if="projectMaterialDraft"
                   ><el-input
-                    v-model="row.params"
-                    :placeholder="workSpecMaterialSpec(row) || '自动计算'" /></template
+                    :model-value="row.params || workSpecMaterialSpec(row)"
+                    maxlength="500"
+                    @update:model-value="(value: string) => (row.params = value)" /></template
                 ><span v-else class="multiline">{{
                   row.params || workSpecMaterialSpec(row)
                 }}</span></template
