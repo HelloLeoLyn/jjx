@@ -313,3 +313,4 @@
 | dev-20261024-003 | material-master-target-model-dev-20261024-003.md | 物料主数据目标模型定稿：原则（原名称/原规格为唯一原始事实）、与原始方案 11 项对照、删6列加3列+2生成列、属性单轨、重新生成与归类闭环、name_path 分类名搜索；拆分为 006/007/008 三张实施卡 |
 
 | dev-20261024-007 | material-drop-legacy-coverage-dev-20261024-007.md | 阶段 B 删六列覆盖清单与应用证据：307正式应用、跨模块适配、SQL冒烟与验证 |
+| dev-20261026-009 | material-spec-piece-unit-rule-dev-20261026-009.md | 计件材料「规格及模数」口径统一：计件（无尺寸无跳距、模数1）改打「规格+N个/PCS」；收敛为 utils/materialSpec 单一实现，作业规范/BOM打印/定版三处同源 |

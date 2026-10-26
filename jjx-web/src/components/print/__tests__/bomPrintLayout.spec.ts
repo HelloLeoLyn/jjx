@@ -17,7 +17,8 @@ describe('BOM 五列打印数据', () => {
     // 计件回退（dev-20261022-020）：基数1、模数为空或 0<模数<1 → 1个/PCS
     expect(bomMaterialSpec({ baseQty: 1, unit: 'PCS' })).toBe('1个/PCS')
     expect(bomMaterialSpec({ baseQty: 1, unit: '个', moduleQty: 0.5 })).toBe('1个/PCS')
-    expect(bomMaterialSpec({ baseQty: 1, unit: 'PCS', moduleQty: 1 })).toBe('-')
+    // 计件且模数=1：与作业规范/定版统一为 1个/PCS（dev-20261026-009，原为 '-'）
+    expect(bomMaterialSpec({ baseQty: 1, unit: 'PCS', moduleQty: 1 })).toBe('1个/PCS')
     expect(bomMaterialSpec({ baseQty: 2, unit: 'PCS' })).toBe('-')
     // 规格纯零值按空处理（dev-20261023-010）
     expect(bomMaterialSpec({ specification: '0', moduleQty: 1 })).toBe('-')

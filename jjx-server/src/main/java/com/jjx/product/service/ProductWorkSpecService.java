@@ -836,21 +836,44 @@ public class ProductWorkSpecService {
         return node;
     }
 
-    /** 与 B 版 workSpecMaterialSpec 自动计算保持一致；只在定版副本上固化生效文本。 */
+    /**
+     * 与前端 `@/utils/materialSpec.composeMaterialSpec` 同一判定顺序（dev-20261026-009）；
+     * 只在定版副本上固化生效文本，前端正文/打印同源。
+     */
     public String projectMaterialParams(JsonNode row) {
         String override = row.path("params").asText("");
         if (!override.isEmpty()) return override;
         var width = row.path("widthMm").decimalValue(); var length = row.path("lengthMm").decimalValue();
-        String specification = width.signum() > 0 && length.signum() > 0
-            ? decimalText(width) + "*" + decimalText(length) + "mm" : row.path("specification").asText("");
-        String split = row.path("split").asText(""); var module = row.path("moduleQty").decimalValue();
+        boolean hasSize = width.signum() > 0 && length.signum() > 0;
+        String specification = hasSize
+            ? decimalText(width) + "*" + decimalText(length) + "mm" : row.path("specification").asText("").trim();
+        // 规格纯零值按空处理，避免定版写出 0=1PCS（同前端 dev-20261023-010 口径）。
+        if (!hasSize && specification.matches("0+(?:\\.0+)?")) specification = "";
+        String split = row.path("split").asText("").trim();
+        String moduleText = row.path("moduleQty").isNull() || row.path("moduleQty").isMissingNode()
+            ? "" : row.path("moduleQty").asText("").trim();
+        boolean moduleMissing = moduleText.isEmpty();
+        java.math.BigDecimal module = java.math.BigDecimal.ZERO;
+        if (!moduleMissing) {
+            try { module = new java.math.BigDecimal(moduleText); }
+            catch (NumberFormatException e) { moduleMissing = true; }
+        }
+        String unit = row.path("unit").asText("").toUpperCase(java.util.Locale.ROOT);
+        boolean piece = "PCS".equals(unit) || "个".equals(unit);
+        var base = row.path("baseQty").decimalValue();
+        var baseQty = base.signum() > 0 ? base : java.math.BigDecimal.ONE;
+        // ① 计件材料：规格 + N个/PCS（无尺寸、无跳距、模数=1）
+        if (piece && !moduleMissing && module.compareTo(java.math.BigDecimal.ONE) == 0
+            && split.isEmpty() && width.signum() <= 0 && length.signum() <= 0)
+            return specification + decimalText(baseQty.divide(module, 4, java.math.RoundingMode.HALF_UP)) + "个/PCS";
         String suffix = module.signum() > 0 ? "=" + decimalText(module) + "PCS" : "";
+        // ② 卷料/拼版：规格(+跳距)=模数PCS
         if (!split.isEmpty()) return specification + "跳" + split + suffix;
         if (!specification.isEmpty()) return specification + suffix;
-        String unit = row.path("unit").asText("").toUpperCase(java.util.Locale.ROOT);
-        var base = row.path("baseQty").decimalValue();
-        if (("PCS".equals(unit) || "个".equals(unit)) && module.compareTo(java.math.BigDecimal.ONE) == 0 && base.signum() > 0)
-            return decimalText(base.divide(module, 4, java.math.RoundingMode.HALF_UP)) + "个/PCS";
+        // ③ 无规格的计件兜底：基数=1 且模数为空或 0<模数<1（同 BOM 打印 dev-20261022-020）
+        if (piece && baseQty.compareTo(java.math.BigDecimal.ONE) == 0
+            && (moduleMissing || (module.signum() > 0 && module.compareTo(java.math.BigDecimal.ONE) < 0)))
+            return "1个/PCS";
         return "";
     }
     private String decimalText(java.math.BigDecimal value) { return value.stripTrailingZeros().toPlainString(); }

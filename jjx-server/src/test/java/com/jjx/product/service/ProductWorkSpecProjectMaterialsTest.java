@@ -151,6 +151,32 @@ class ProductWorkSpecProjectMaterialsTest {
         assertEquals("新规格", service.get(1L).path("projectMaterials").get(0).path("materials").get(0).path("specification").asText());
     }
 
+    /** 与前端 materialSpec.spec.ts 同一组样例（dev-20261026-009）：三处口径必须一致。 */
+    @Test void paramsFollowSharedMaterialSpecRule() throws Exception {
+        // ① 计件材料：规格 + N个/PCS
+        assertEquals("0.6T 020 蓝灯1个/PCS", service.projectMaterialParams(json.readTree(
+            "{\"specification\":\"0.6T 020 蓝灯\",\"unit\":\"PCS\",\"moduleQty\":1,\"baseQty\":1}")));
+        assertEquals("0.6T 020 蓝灯2个/PCS", service.projectMaterialParams(json.readTree(
+            "{\"specification\":\"0.6T 020 蓝灯\",\"unit\":\"PCS\",\"moduleQty\":1,\"baseQty\":2}")));
+        assertEquals("0.6T 020 蓝灯1个/PCS", service.projectMaterialParams(json.readTree(
+            "{\"specification\":\"0.6T 020 蓝灯\",\"unit\":\"个\",\"moduleQty\":1}")));
+        // ② 拼版/卷料口径不变
+        assertEquals("290*135mm=30PCS", service.projectMaterialParams(json.readTree(
+            "{\"widthMm\":290,\"lengthMm\":135,\"moduleQty\":30}")));
+        assertEquals("110跳50mm=5PCS", service.projectMaterialParams(json.readTree(
+            "{\"specification\":\"110\",\"split\":\"50mm\",\"moduleQty\":5}")));
+        // ③ 模数>1 仍走 =模数PCS；模数为空只输出规格
+        assertEquals("0.6T 020 蓝灯=3PCS", service.projectMaterialParams(json.readTree(
+            "{\"specification\":\"0.6T 020 蓝灯\",\"unit\":\"PCS\",\"moduleQty\":3}")));
+        assertEquals("PET 0.1mm", service.projectMaterialParams(json.readTree(
+            "{\"specification\":\"PET 0.1mm\",\"unit\":\"PCS\"}")));
+        // ④ 无规格的计件兜底
+        assertEquals("1个/PCS", service.projectMaterialParams(json.readTree(
+            "{\"unit\":\"PCS\",\"baseQty\":1}")));
+        assertEquals("", service.projectMaterialParams(json.readTree(
+            "{\"unit\":\"PCS\",\"baseQty\":2}")));
+    }
+
     @Test void paramsOverrideIsLiteralAndFreezeDoesNotAlterDraft() throws Exception {
         var row = json.readTree("{\"widthMm\":100,\"lengthMm\":200,\"moduleQty\":2,\"split\":\"3\",\"params\":\"\"}");
         assertEquals("100*200mm跳3=2PCS", service.projectMaterialParams(row));

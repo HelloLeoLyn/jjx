@@ -22,7 +22,7 @@ import {
 import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'
 import type { FileImage } from '@/components/product/productFilePreview'
-import { calculateBomQuantity } from '@/utils/bomQuantity'
+import { composeMaterialSpec, isZeroSpec, plainText } from '@/utils/materialSpec'
 import { bomGroupRows } from '@/utils/bomGroups'
 import {
   parseSnapshotStrict,
@@ -313,16 +313,8 @@ export function detailTextLines(text: string, color?: string): PaperTextLine[] {
   return paperLines(text, 44).map((line) => ({ text: line, color }))
 }
 
-/** 规格纯零值（0/0.0/0.00）按空处理，避免打印出 0=1PCS。 */
-function isZeroSpec(value: string): boolean {
-  return /^0+(?:\.0+)?$/.test(value.trim())
-}
-
-export function plain(value: unknown): string {
-  return String(value ?? '')
-    .replace(/<[^>]*>/g, '')
-    .trim()
-}
+/** 去掉富文本标签；实现与打印共用 @/utils/materialSpec.plainText。 */
+export const plain = plainText
 /** B模板规格独立成列，保留尺寸与跳距，不拼接模数或基数。 */
 export function workSpecMaterialDimensions(row?: Record<string, any> | null): string {
   if (!row) return ''
@@ -335,39 +327,11 @@ export function workSpecMaterialDimensions(row?: Record<string, any> | null): st
   const split = plain(row.split)
   return specification + (split ? '跳' + split : '')
 }
-/** 作业规范只组合BOM事实；尺寸0视为未填，计件材料使用不含损耗的单位用量。 */
-export function workSpecMaterialSpec(row?: Record<string, any> | null): string {
-  if (!row) return ''
-  const width = Number(row.widthMm),
-    length = Number(row.lengthMm)
-  const hasWidth = Number.isFinite(width) && width > 0
-  const hasLength = Number.isFinite(length) && length > 0
-  const rawSpecification = plain(row.specification)
-  const specification =
-    hasWidth && hasLength
-      ? width + '*' + length + 'mm'
-      : isZeroSpec(rawSpecification)
-        ? ''
-        : rawSpecification
-  const module = Number(row.moduleQty)
-  const split = plain(row.split)
-  if (split) {
-    return (
-      specification +
-      '跳' +
-      split +
-      (Number.isFinite(module) && module > 0 ? '=' + module + 'PCS' : '')
-    )
-  }
-  if (specification)
-    return specification + (Number.isFinite(module) && module > 0 ? '=' + module + 'PCS' : '')
-  const unit = plain(row.unit).toUpperCase()
-  if (!hasWidth && !hasLength && (unit === 'PCS' || unit === '个') && module === 1) {
-    const quantity = calculateBomQuantity(row.baseQty, row.moduleQty)
-    if (quantity !== undefined) return quantity + '个/PCS'
-  }
-  return ''
-}
+/**
+ * 作业规范「规格及模数」：只组合 BOM 事实，尺寸 0 视为未填。
+ * 判定顺序与 BOM 打印、定版固化同源 → `@/utils/materialSpec`（dev-20261026-009）。
+ */
+export const workSpecMaterialSpec = composeMaterialSpec
 /** 空 icon = 文字符号工序：预览/打印用作业说明文本当符号（dev-20261026-006）。 */
 export function workSpecSymbolText(item: Record<string, any>): string {
   return plain(item.icon) ? '' : plain(item.workInstruction)

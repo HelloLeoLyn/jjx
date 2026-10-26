@@ -1,5 +1,6 @@
 import { bomGroupRows } from '@/utils/bomGroups'
-/** BOM 打印独立适配；与作业规范 workSpecMaterialSpec 保持相同规格拼接口径。 */
+import { composeMaterialSpec } from '@/utils/materialSpec'
+/** BOM 打印独立适配；规格拼接口径与作业规范/定版同源（@/utils/materialSpec）。 */
 export interface BomPrintItem {
   itemId?: number | null
   parentMaterialId?: number | null
@@ -19,42 +20,12 @@ export interface BomPrintItem {
   children?: BomPrintItem[]
 }
 
-const text = (value: unknown) => (value == null ? '' : String(value).trim())
-
+/**
+ * 规格及模数：判定顺序只在 @/utils/materialSpec 维护一份（作业规范/定版同源）；
+ * 这里只把「没有任何可打印内容」渲染成 '-'（打印占位）。
+ */
 export function bomMaterialSpec(row: BomPrintItem): string {
-  const width = Number(row.widthMm)
-  const length = Number(row.lengthMm)
-  const rawSpecification = text(row.specification)
-  // 规格纯零值（0/0.0）按空处理，避免打印出 0=1PCS（dev-20261023-010）。
-  const specification =
-    width > 0 && Number.isFinite(width) && length > 0 && Number.isFinite(length)
-      ? `${width}*${length}mm`
-      : /^0+(?:\.0+)?$/.test(rawSpecification)
-        ? ''
-        : rawSpecification
-  const moduleRaw = row.moduleQty
-  const module = Number(moduleRaw)
-  const moduleMissing =
-    moduleRaw == null || text(moduleRaw) === '' || !Number.isFinite(module)
-  const unit = text(row.unit).toUpperCase()
-  const base = Number(row.baseQty)
-  // BOM 缺少规格：基数=1 且模数为空或 0<模数<1 时按计件显示 1个/PCS（dev-20261022-020）。
-  if (!specification) {
-    if (
-      (unit === 'PCS' || unit === '个') &&
-      base === 1 &&
-      (moduleMissing || (module > 0 && module < 1))
-    ) {
-      return '1个/PCS'
-    }
-    return '-'
-  }
-  const split = text(row.split)
-  return (
-    specification +
-    (split ? `跳${split}` : '') +
-    (Number.isFinite(module) && module > 0 ? `=${module}PCS` : '')
-  )
+  return composeMaterialSpec(row) || '-'
 }
 
 export interface BomPrintRow {
