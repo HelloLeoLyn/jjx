@@ -136,7 +136,7 @@ class MaterialMasterMysqlTest {
         assertEquals(900003L, material.getCategoryId()); assertEquals("PC", material.getMaterialMeta()); assertEquals("FILM", material.getMaterialForm());
         assertNull(com.jjx.inventory.master.MaterialSourceValues.from(material).originalSpecification()); assertEquals("厚度:0.175mm", material.getSpecification());
         assertNotNull(material.getTemplateId());
-        assertEquals("0.175", material.getThickness()); assertEquals("300×305", material.getWidthSize());
+        assertEquals("0.175", material.getThickness()); assertEquals("300*305", material.getWidthSize());
         assertEquals("PC", jdbc.queryForObject("SELECT attr_meta FROM inventory_material WHERE material_id=?", String.class, material.getMaterialId()));
         assertEquals(0, new java.math.BigDecimal("0.1750").compareTo(jdbc.queryForObject("SELECT attr_thickness_num FROM inventory_material WHERE material_id=?", java.math.BigDecimal.class, material.getMaterialId())));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));

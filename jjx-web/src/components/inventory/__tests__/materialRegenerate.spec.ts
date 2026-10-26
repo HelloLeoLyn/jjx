@@ -231,7 +231,7 @@ describe('重算弹窗命名补丁保存', () => {
     } })
     const wrapper = createDialog()
     await flushPromises()
-    expect(wrapper.text()).toContain('厚度:0.175mm；尺寸:300×305mm')
+    expect(wrapper.text()).toContain('厚度:0.175mm；尺寸:300*305mm')
     expect(wrapper.findAll('input:not([type=checkbox])')).toHaveLength(1)
     await wrapper.findAll('button')[1].trigger('click')
     await flushPromises()

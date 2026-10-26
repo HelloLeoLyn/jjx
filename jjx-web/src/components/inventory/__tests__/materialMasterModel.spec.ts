@@ -118,7 +118,7 @@ describe('新模型物料表单', () => {
     expect(previewMasterSpecification(film, {}, { widthSize: '30*90mm' })).toBe('尺寸:30*90mm')
     expect(
       previewMasterSpecification(film, { thickness_mm: 0.175, surface: ['SAND', 'HARD'] }, { widthSize: '300×305' })
-    ).toBe('厚度:0.175mm；表面:中砂、加硬；尺寸:300×305mm')
+    ).toBe('厚度:0.175mm；表面:中砂、加硬；尺寸:300*305mm')
     expect(
       previewMasterSpecification(
         schema,

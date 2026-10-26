@@ -4,16 +4,19 @@ import com.jjx.common.exception.BusinessException;
 import java.math.BigDecimal;
 import java.util.Arrays;
 
-/** size 为尺寸事实；旧厚度列仅作查询兼容，不接受独立录入。 */
+/** size 为尺寸事实；旧厚度列仅作查询兼容，不接受独立录入。分隔符统一半角 *，输入兼容 ×、x、X 与全角 ＊。 */
 public final class MaterialSizeValue {
     private MaterialSizeValue() { }
+
+    /** 尺寸分隔符：历史 ×、字母 x/X 与全角 ＊ 都按同一分隔符识别，输出统一为 *。 */
+    private static final String SEPARATORS = "[×xX*＊]";
 
     public static String[] parts(String size) {
         if (size == null || size.isBlank()) return new String[0];
         String body = size.trim().replaceFirst("(?i)mm$", "").trim();
         boolean round = body.matches("^[ΦφØø⌀].*");
         if (round) body = body.substring(1).trim();
-        String[] parts = body.split("[×xX*]", -1);
+        String[] parts = body.split(SEPARATORS, -1);
         if (parts.length > (round ? 2 : 3) || Arrays.stream(parts).allMatch(String::isBlank)) return null;
         for (int i = 0; i < parts.length; i++) {
             parts[i] = parts[i].trim();
@@ -25,6 +28,20 @@ public final class MaterialSizeValue {
     public static void validate(String size) {
         if (size != null && size.length() > 50) throw new BusinessException("尺寸不能超过50字");
         if (parts(size) == null) throw new BusinessException("尺寸请填宽*长*厚或Φ直径*厚，数值须大于0，可带mm；缺项保留位置");
+    }
+
+    /** 可识别尺寸统一为半角 *；Φ、缺项占位与单位原样保留，无法识别的原文不改写。 */
+    public static String normalize(String size) {
+        if (size == null || size.isBlank()) return size;
+        String text = size.trim();
+        if (parts(text) == null) return text;
+        String unit = text.matches("(?i).*mm$") ? text.substring(text.length() - 2) : "";
+        String body = (unit.isEmpty() ? text : text.substring(0, text.length() - 2)).trim();
+        boolean round = body.matches("^[ΦφØø⌀].*");
+        if (round) body = body.substring(1).trim();
+        String[] values = body.split(SEPARATORS, -1);
+        for (int i = 0; i < values.length; i++) values[i] = values[i].trim();
+        return (round ? "Φ" : "") + String.join("*", values) + unit;
     }
 
     public static String thickness(String size) {

@@ -159,8 +159,10 @@ public record MaterialAttributeSchema(
             else display = value.toString();
             parts.add(f.label + ":" + display + (f.unit == null ? "" : f.unit));
         }
-        if (widthSize != null && !widthSize.isBlank()) parts.add("尺寸:" + widthSize.trim()
-                + (widthSize.trim().matches("(?i).*mm$") ? "" : "mm"));
+        if (widthSize != null && !widthSize.isBlank()) {
+            String size = MaterialSizeValue.normalize(widthSize.trim());
+            parts.add("尺寸:" + size + (size.matches("(?i).*mm$") ? "" : "mm"));
+        }
         String text = String.join("；", parts);
         if (text.length() > 500) fail("生成规格超过500字，请精简属性内容");
         return text;

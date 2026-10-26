@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import { composeMaterialSize, emptySizeParts, parseMaterialSize } from './materialSize'
+import { composeMaterialSize, emptySizeParts, normalizeMaterialSize, parseMaterialSize } from './materialSize'
 import type { MaterialSizeParts } from './materialSize'
 
 const props = defineProps<{ modelValue: string }>()
@@ -47,6 +47,14 @@ watch(() => props.modelValue, value => {
   if (result) Object.assign(parts, result)
   error.value = ''
   emit('valid-change', true)
+  // 回显即收敛：可识别尺寸统一为半角 *，不要求用户再改动某个分项才生效。
+  if (result) {
+    const normalized = normalizeMaterialSize(value)
+    if (normalized !== value) {
+      ownValue = normalized
+      emit('update:modelValue', normalized)
+    }
+  }
 }, { immediate: true })
 
 function publish() {

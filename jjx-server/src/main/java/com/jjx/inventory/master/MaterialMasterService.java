@@ -142,7 +142,7 @@ public class MaterialMasterService {
         dictionaryLabel(dictionaries, "color", dto.getColor(), false);
         dictionaryLabel(dictionaries, "brand", dto.getBrand(), false);
         Map<String, Object> inputAttributes = new LinkedHashMap<>(dto.getAttributeJson() == null ? Map.of() : dto.getAttributeJson());
-        String size = MaterialSizeValue.mergeLegacy(dto.getSize(), inputAttributes.get("thickness_mm"));
+        String size = MaterialSizeValue.normalize(MaterialSizeValue.mergeLegacy(dto.getSize(), inputAttributes.get("thickness_mm")));
         // 历史未知格式只允许原样保留，不能把新输入的无效格式当成合法尺寸。
         if (old == null || !Objects.equals(size, old.getSize())) validateSize(size);
         String thickness = MaterialSizeValue.thickness(size);

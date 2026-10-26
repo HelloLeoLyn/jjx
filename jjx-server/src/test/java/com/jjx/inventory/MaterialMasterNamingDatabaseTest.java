@@ -149,10 +149,10 @@ class MaterialMasterNamingDatabaseTest {
             dto.setSize("300×305");
             dto.setAttributeJson(Map.of("thickness_mm", 0.175, "surface_treatment", List.of("MEDIUM_SAND")));
             var before = service.save(dto, "codex-test");
-            assertEquals("厚度:0.175mm；表面处理:中砂；尺寸:300×305mm", before.getSpecification());
+            assertEquals("厚度:0.175mm；表面处理:中砂；尺寸:300*305mm", before.getSpecification());
             dto.setAttributeJson(Map.of("thickness_mm", 0.25));
             var changed = service.save(dto, "codex-test");
-            assertEquals("厚度:0.25mm；尺寸:300×305mm", changed.getSpecification());
+            assertEquals("厚度:0.25mm；尺寸:300*305mm", changed.getSpecification());
             dto.setAttributeJson(Map.of()); dto.setSize(null);
             var cleared = service.save(dto, "codex-test");
             assertNull(cleared.getSpecification()); assertNull(cleared.getThickness()); assertNull(cleared.getWidthSize());

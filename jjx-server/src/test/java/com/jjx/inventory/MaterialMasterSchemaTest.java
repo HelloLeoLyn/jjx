@@ -71,8 +71,9 @@ class MaterialMasterSchemaTest {
     @Test void renderingMatchesPreviewWithVisibilityEmptyValuesAndDerivedDimensions() throws Exception {
         var schema = seeds().get("TPL_PC");
         assertEquals("尺寸:30*90mm", schema.compose(Map.of(), null, "30*90mm"));
-        assertEquals("厚度:0.175mm；表面处理:中砂；抗UV:否；尺寸:300×305mm",
+        assertEquals("厚度:0.175mm；表面处理:中砂；抗UV:否；尺寸:300*305mm",
                 schema.compose(Map.of("surface_treatment", List.of("MEDIUM_SAND"), "anti_uv", false), "0.175", "300×305"));
+        assertEquals("尺寸:300*305mm", schema.compose(Map.of(), null, "300x305"));
         assertEquals("厚度:0.25mm", schema.compose(Map.of("thickness_mm", new BigDecimal("0.2500"),
                 "surface_treatment", List.of(), "flame_rating", ""), "9", null));
         var electronics = seeds().get("TPL_ELECTRONIC");

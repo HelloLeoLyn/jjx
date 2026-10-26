@@ -7,6 +7,7 @@ import type {
   MaterialMasterForm,
 } from '@/types/inventory/materialMaster'
 import { composeMaterialName } from './materialMasterFields'
+import { normalizeMaterialSize } from './materialSize'
 
 /** 属性分组口径：常用属性默认展开，其余放进「低频属性」折叠（dev-20261024-004）。 */
 export const COMMON_ATTRIBUTE_KEYS = [
@@ -177,7 +178,7 @@ export function previewMasterSpecification(
     return [`${f.label}:${display}${f.unit || ''}`]
   })
   if (dimensions.widthSize?.trim()) {
-    const size = dimensions.widthSize.trim()
+    const size = normalizeMaterialSize(dimensions.widthSize)
     parts.push(`尺寸:${size}${/mm$/i.test(size) ? '' : 'mm'}`)
   }
   return parts.join('；')
