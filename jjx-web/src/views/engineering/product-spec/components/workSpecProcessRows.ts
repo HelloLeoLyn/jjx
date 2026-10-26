@@ -12,7 +12,12 @@ export function processRowsForGroup(
     const rowMajor = row.majorCategory || inheritedMajor
     const rowCategory = row.processCategory || inheritedCategory
     const matches = rowMajor === major && rowCategory === category
-    const children = processRowsForGroup(row.children || [], major, category, rowMajor, rowCategory)
+    // 冲型组装的组合按父级流程归组；子件自身类别不再拆散组合。
+    // 只调整展示副本，印刷查询仍按原始子件分类独立展开。
+    const childRows = major === 'ASSEMBLY' && rowMajor === major
+      ? (row.children || []).map(child => ({ ...child, processCategory: rowCategory }))
+      : row.children || []
+    const children = processRowsForGroup(childRows, major, category, rowMajor, rowCategory)
     if (major === 'PRINT') return [...(matches ? [{ ...row, processCategory: rowCategory }] : []), ...children]
     if (row.children?.length) {
       return matches && children.length ? [{ ...row, children, processCategory: rowCategory }] : children
