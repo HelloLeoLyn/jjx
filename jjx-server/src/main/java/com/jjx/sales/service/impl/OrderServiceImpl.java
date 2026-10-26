@@ -459,6 +459,8 @@ public class OrderServiceImpl implements IOrderService {
                 if (!java.util.Objects.equals(oi.getUnit(), ni.getUnit())) {
                     changes.add("明细" + label + " 单位:" + oi.getUnit() + "→" + ni.getUnit());
                 }
+                changeRecorder.diff(changes, "明细" + label + " 交期天数", oi.getDeliveryDays(), ni.getDeliveryDays());
+                changeRecorder.diff(changes, "明细" + label + " 预计交期", oi.getEstimatedDeliveryDate(), ni.getEstimatedDeliveryDate());
             }
         }
         for (SalesOrderProductVO oi : oldItems) {
@@ -575,6 +577,8 @@ public class OrderServiceImpl implements IOrderService {
                 dto.setSpecification(it.getSpecification());
                 dto.setCustomerMaterialNo(it.getCustomerMaterialNo());
                 dto.setLineRemark(it.getLineRemark());
+                dto.setDeliveryDays(it.getDeliveryDays());
+                dto.setEstimatedDeliveryDate(it.getEstimatedDeliveryDate());
                 dto.setRemark(it.getRemark());
                 dtos.add(dto);
             }
@@ -1064,6 +1068,11 @@ public class OrderServiceImpl implements IOrderService {
         if (customerId == null) throw new BusinessException("客户不能为空");
         for (SalesOrderProductDTO item : items) {
             if (item == null) throw new BusinessException("产品明细不能为空");
+            // 兼容旧前端用0表达未填；新输入使用正整数或空值。
+            if (Integer.valueOf(0).equals(item.getDeliveryDays())) item.setDeliveryDays(null);
+            if (item.getDeliveryDays() != null && item.getDeliveryDays() < 1) {
+                throw new BusinessException("交期天数须大于0，可留空");
+            }
             if (item.getProductId() == null && StringUtils.hasText(item.getProductCode())) {
                 Product matched = productMapper.selectOne(new LambdaQueryWrapper<Product>()
                         .eq(Product::getProductCode, item.getProductCode().trim()).last("LIMIT 1"));

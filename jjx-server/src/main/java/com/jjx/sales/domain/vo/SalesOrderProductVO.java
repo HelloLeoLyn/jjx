@@ -55,6 +55,12 @@ public class SalesOrderProductVO {
     @Schema(description = "行备注")
     private String lineRemark;
 
+    @Schema(description = "交期天数")
+    private Integer deliveryDays;
+
+    @Schema(description = "预计交期")
+    private java.time.LocalDate estimatedDeliveryDate;
+
     @Schema(description = "创建时间", example = "2026-04-20 10:00:00")
     private Date createTime;
 

@@ -69,6 +69,13 @@ public class SalesOrderProductDTO {
     @Schema(description = "行备注")
     private String lineRemark;
 
+    @Min(value = 0, message = "交期天数不能为负数")
+    @Schema(description = "交期天数，可为空")
+    private Integer deliveryDays;
+
+    @Schema(description = "预计交期，可为空；不按交期天数自动推算")
+    private java.time.LocalDate estimatedDeliveryDate;
+
     // 与报价建档相同的编码参数，只写新产品 spec_json，不属于订单行持久字段。
     private String serialNo;
     private String panelType;

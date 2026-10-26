@@ -263,13 +263,19 @@
       </el-table-column>
       <el-table-column label="交期(天)" prop="deliveryDays" width="100">
         <template #default="scope">
-          <el-input
+          <el-input-number
             v-model="scope.row.deliveryDays"
             :min="1"
             :precision="0"
             style="width: 100%"
-            type="number"
+            controls-position="right"
           />
+        </template>
+      </el-table-column>
+      <el-table-column label="预计交期" prop="estimatedDeliveryDate" width="180">
+        <template #default="scope">
+          <el-date-picker v-model="scope.row.estimatedDeliveryDate" type="date"
+            value-format="YYYY-MM-DD" placeholder="预计交期" style="width: 100%" />
         </template>
       </el-table-column>
       <el-table-column label="行备注" prop="lineRemark" min-width="120">
@@ -1213,7 +1219,7 @@ async function prefillFromSample(sampleId: number) {
       quantity: Number(p.quantity ?? 0),
       unitPrice: Number(p.unitPrice ?? 0),
       amount: Number((p.quantity ?? 0) * (p.unitPrice ?? 0)),
-      deliveryDays: 0,
+      deliveryDays: null,
       customRequirements: '',
       customerMaterialNo: p.customerMaterialNo || '',
       lineRemark: p.lineRemark || '',

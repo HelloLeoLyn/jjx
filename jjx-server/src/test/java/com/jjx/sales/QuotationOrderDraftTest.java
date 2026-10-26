@@ -96,9 +96,14 @@ class QuotationOrderDraftTest {
     @Test void inheritsOnlyAnExplicitCommonDeliveryDateInsteadOfQuotationValidity() {
         var date = java.time.LocalDate.of(2026,12,2);
         quote.setValidUntil(java.time.LocalDate.of(2026,11,25));
-        when(items.selectList(any())).thenReturn(List.of(deliveryItem("P1",date),deliveryItem("P2",date)));
+        var rows=List.of(deliveryItem("P1",date),deliveryItem("P2",date));
+        when(items.selectList(any())).thenReturn(rows);
+        rows.getFirst().setDeliveryDays(12);
         var expected = java.util.Date.from(date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant());
         assertEquals(expected,service.getOrderDraft(1L).getOrder().getDeliveryDate());
+        var inherited=service.getOrderDraft(1L).getOrder().getItems().getFirst();
+        assertEquals(12,inherited.getDeliveryDays());
+        assertEquals(date,inherited.getEstimatedDeliveryDate());
     }
 
     @Test void mixedMissingAndRelativeDeliveryDatesRequireOrderDateConfirmation() {

@@ -1138,6 +1138,8 @@ public class QuotationServiceImpl implements IQuotationService {
                     if (product != null) item.setSpecification(product.getSpecJson());
                 }
                 item.setQuantity(qi.getQuantity());
+                item.setDeliveryDays(qi.getDeliveryDays());
+                item.setEstimatedDeliveryDate(qi.getEstimatedDeliveryDate());
                 item.setUnitPrice(qi.getUnitPrice());
                 item.setUnit(qi.getUnit());
                 item.setAmount(qi.getAmount());

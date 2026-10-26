@@ -22,7 +22,8 @@ export interface OrderItem extends Partial<ProductCodeState> {
   quantity: number
   unitPrice: number
   amount: number
-  deliveryDays: number
+  deliveryDays?: number | null
+  estimatedDeliveryDate?: string | null
   customRequirements: string
   customerMaterialNo?: string
   lineRemark?: string

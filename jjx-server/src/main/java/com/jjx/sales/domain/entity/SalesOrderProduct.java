@@ -83,4 +83,8 @@ public class SalesOrderProduct{
      */
     private String lineRemark;
 
+    /** 订单保存时的产品行交期快照；历史空值不推断。 */
+    private Integer deliveryDays;
+    private java.time.LocalDate estimatedDeliveryDate;
+
 }

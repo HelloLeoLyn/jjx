@@ -222,6 +222,26 @@ class OrderProductEntryParityTest {
         assertLinked(id, 8, "P8", "档案8", "订单规格");
         assertEquals(0, service.selectOrderById(id).getFinalAmount().compareTo(new BigDecimal("25.60")));
     }
+    @Test void productDeliverySurvivesOrderCreateEditAndClear() {
+        archive(8,1,true);
+        var line=item(8L,"P8");
+        line.setDeliveryDays(12);line.setEstimatedDeliveryDate(java.time.LocalDate.of(2026,12,2));
+        long id=service.insertOrder(add(line));
+        var saved=service.selectOrderById(id).getItems().getFirst();
+        assertEquals(12,saved.getDeliveryDays());
+        assertEquals(java.time.LocalDate.of(2026,12,2),saved.getEstimatedDeliveryDate());
+        var changed=item(8L,"P8");changed.setId(saved.getId());
+        changed.setDeliveryDays(20);changed.setEstimatedDeliveryDate(java.time.LocalDate.of(2026,12,10));
+        assertTrue(service.updateOrder(edit(id,changed)));
+        var reloaded=service.selectOrderById(id).getItems().getFirst();
+        assertEquals(20,reloaded.getDeliveryDays());
+        assertEquals(java.time.LocalDate.of(2026,12,10),reloaded.getEstimatedDeliveryDate());
+        var cleared=item(8L,"P8");cleared.setId(reloaded.getId());
+        assertTrue(service.updateOrder(edit(id,cleared)));
+        var empty=service.selectOrderById(id).getItems().getFirst();
+        assertNull(empty.getDeliveryDays());assertNull(empty.getEstimatedDeliveryDate());
+    }
+
     @Test void newProductCreateAndEditUseRealCustomerDraftEntry() {
         var i = item(null, " NEW "); i.setSpecification("行规格"); i.setSerialNo("001"); i.setPanelType("A");
         long id = service.insertOrder(add(i)); long product = i.getProductId();

@@ -65,7 +65,7 @@ watch(quotationId, async id => {
     const order = res.data.order
     initialData.value = { ...order, shippingAddress: order.deliveryAddress || '', salesPersonId: order.salesManagerId,
       salesPersonName: order.salesManagerName, amountBreakdownConfirmed: true,
-      items: (order.items || []).map(item => ({ ...item, specification: item.specification || '', deliveryDays: item.deliveryDays || 0 })) }
+      items: (order.items || []).map(item => ({ ...item, specification: item.specification || '', deliveryDays: item.deliveryDays ?? null })) }
     ready.value = true
   } catch (error: any) { if (request === loadRequest) loadError.value = error?.message || '读取报价预填资料失败，请重新打开' }
 }, { immediate: true })

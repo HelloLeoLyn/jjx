@@ -27,11 +27,14 @@ describe('quotation conversion add page', () => {
   it('passes an inherited delivery date to the order form and leaves missing dates blank', async () => {
     for (const deliveryDate of ['2026-12-02', undefined]) {
       api.getOrderDraft.mockResolvedValueOnce({ data: { sourceVersion: 'delivery-version', order: {
-        customerId: 7, deliveryDate, items: [],
+        customerId: 7, deliveryDate, items: [{deliveryDays:12,estimatedDeliveryDate:'2026-12-02'}],
       } } })
       const wrapper=mount(AddPage)
       await flushPromises()
       expect(wrapper.findComponent({name:'OrderFormStub'}).props('initialData').deliveryDate).toBe(deliveryDate)
+      expect(wrapper.findComponent({name:'OrderFormStub'}).props('initialData').items[0]).toMatchObject({
+        deliveryDays:12,estimatedDeliveryDate:'2026-12-02',
+      })
       expect(api.convert).not.toHaveBeenCalled()
       wrapper.unmount()
     }
