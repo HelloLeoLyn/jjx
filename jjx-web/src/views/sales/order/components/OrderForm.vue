@@ -73,6 +73,9 @@
             value-format="YYYY-MM-DD"
             style="width: 100%"
           />
+          <span v-if="props.sourceQuotationId && !form.deliveryDate" class="el-form-item__extra">
+            报价未提供统一的预计交期，请确认本单交货日期。
+          </span>
         </el-form-item>
       </el-col>
     </el-row>

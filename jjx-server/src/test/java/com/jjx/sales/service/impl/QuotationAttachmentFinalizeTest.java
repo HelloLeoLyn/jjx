@@ -197,7 +197,7 @@ class QuotationAttachmentFinalizeTest {
                 + "id BIGINT AUTO_INCREMENT PRIMARY KEY, upload_state VARCHAR(20), expires_at TIMESTAMP,"
                 + "trace_id VARCHAR(32), deleted TINYINT NOT NULL DEFAULT 0, file_name VARCHAR(255))");
         jdbc.execute("CREATE TABLE sys_attachment_ref("
-                + "id BIGINT AUTO_INCREMENT PRIMARY KEY, attachment_id BIGINT, source_type VARCHAR(50) NOT NULL,"
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY, attachment_id BIGINT, source_oper_id BIGINT, source_type VARCHAR(50) NOT NULL,"
                 + "source_id BIGINT, source_no VARCHAR(100), product_id BIGINT, product_code VARCHAR(64),"
                 + "document_type VARCHAR(100), display_name VARCHAR(255), remark VARCHAR(500),"
                 + "sort_order INT NOT NULL DEFAULT 0, deleted TINYINT NOT NULL DEFAULT 0, create_by VARCHAR(64),"
@@ -264,6 +264,27 @@ class QuotationAttachmentFinalizeTest {
         dto.setTotalAmount(BigDecimal.TEN);
         dto.setAttachments(new ArrayList<>(List.of(attachment)));
         return dto;
+    }
+
+    @Test
+    void quotationDeliverySurvivesCreateAndEditThroughTheRealItemMapper() {
+        init();
+        SalesQuotationAddDTO dto = newQuotationRequest("SALES_QUOTATION_ATTACHMENT");
+        dto.setAttachments(List.of());
+        var entity=converter.toEntity(dto);
+        var item=entity.getItems().getFirst();
+        item.setDeliveryDays(12); item.setEstimatedDeliveryDate(LocalDate.of(2026,12,2));
+        try (MockedStatic<StpUtil> auth=login()) {
+            Long id=service.insertQuotation(dto);
+            var saved=service.getItems(id).getFirst();
+            assertEquals(12,saved.getDeliveryDays());
+            assertEquals(LocalDate.of(2026,12,2),saved.getEstimatedDeliveryDate());
+            item.setDeliveryDays(20); item.setEstimatedDeliveryDate(LocalDate.of(2026,12,10));
+            service.updateQuotation(entity);
+            var reloaded=service.getItems(id).getFirst();
+            assertEquals(20,reloaded.getDeliveryDays());
+            assertEquals(LocalDate.of(2026,12,10),reloaded.getEstimatedDeliveryDate());
+        }
     }
 
     // ---------------------------------------------------------------- 用例

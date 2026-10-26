@@ -168,6 +168,30 @@
             <span>{{ formatCurrency(scope.row.amount) }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="交期(天)" prop="deliveryDays" width="150">
+          <template #default="scope">
+            <el-input-number
+              v-model="scope.row.deliveryDays"
+              :min="1"
+              :precision="0"
+              controls-position="right"
+              aria-label="交期天数"
+              style="width: 100%"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="预计交期" prop="estimatedDeliveryDate" width="180">
+          <template #default="scope">
+            <el-date-picker
+              v-model="scope.row.estimatedDeliveryDate"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="请选择预计交期"
+              aria-label="预计交期"
+              style="width: 100%"
+            />
+          </template>
+        </el-table-column>
         <el-table-column :min-width="180" align="center" fixed="right" label="操作">
           <template #header>
             <span>操作</span
@@ -683,6 +707,10 @@ const handleSubmit = () => {
         // 2026-09-02：单价必须大于0（样品明细不得免费/零价）
         if (item.unitPrice <= 0) {
           ElMessage.warning('单价必须大于0')
+          return
+        }
+        if (item.deliveryDays != null && (!Number.isInteger(item.deliveryDays) || item.deliveryDays < 1)) {
+          ElMessage.warning('交期天数须为大于0的整数，可留空')
           return
         }
       }

@@ -87,4 +87,39 @@ class QuotationOrderDraftTest {
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         assertFalse(mapper.readValue("{\"quotationConversionValidated\":true}", SalesOrderAddDTO.class).isQuotationConversionValidated());
     }
+
+    private SalesQuotationItem deliveryItem(String code, java.time.LocalDate date) {
+        var row = new SalesQuotationItem(); row.setProductCode(code); row.setProductName(code);
+        row.setQuantity(1); row.setEstimatedDeliveryDate(date); return row;
+    }
+
+    @Test void inheritsOnlyAnExplicitCommonDeliveryDateInsteadOfQuotationValidity() {
+        var date = java.time.LocalDate.of(2026,12,2);
+        quote.setValidUntil(java.time.LocalDate.of(2026,11,25));
+        when(items.selectList(any())).thenReturn(List.of(deliveryItem("P1",date),deliveryItem("P2",date)));
+        var expected = java.util.Date.from(date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant());
+        assertEquals(expected,service.getOrderDraft(1L).getOrder().getDeliveryDate());
+    }
+
+    @Test void mixedMissingAndRelativeDeliveryDatesRequireOrderDateConfirmation() {
+        var date = java.time.LocalDate.of(2026,12,2);
+        quote.setValidUntil(java.time.LocalDate.of(2026,11,25));
+        for (var rows : List.of(
+                List.of(deliveryItem("P1",date),deliveryItem("P2",date.plusDays(1))),
+                List.of(deliveryItem("P1",date),deliveryItem("P2",null)),
+                List.of(deliveryItem("P1",null)))) {
+            rows.getFirst().setDeliveryDays(30);
+            when(items.selectList(any())).thenReturn(rows);
+            assertNull(service.getOrderDraft(1L).getOrder().getDeliveryDate());
+        }
+    }
+
+    @Test void editingDeliveryMakesAnEarlierQuotationDraftStale() {
+        var row=deliveryItem("P1",java.time.LocalDate.of(2026,12,2));
+        when(items.selectList(any())).thenReturn(List.of(row));
+        var draft=service.getOrderDraft(1L);
+        row.setDeliveryDays(15);
+        assertThrows(BusinessException.class,()->service.convertToOrder(1L,draft));
+        verifyNoInteractions(orders);
+    }
 }

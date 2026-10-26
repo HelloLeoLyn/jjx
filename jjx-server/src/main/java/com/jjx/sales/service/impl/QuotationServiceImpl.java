@@ -357,6 +357,9 @@ public class QuotationServiceImpl implements IQuotationService {
     private void validateCustomerProducts(SalesQuotation quotation, SalesQuotation existing) {
         if (quotation.getItems() == null) return;
         for (SalesQuotationItem item : quotation.getItems()) {
+            if (item.getDeliveryDays() != null && item.getDeliveryDays() < 1) {
+                throw new BusinessException("交期天数须为大于0的整数，可留空");
+            }
             if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isBlank()) {
                 Product matched = productMapper.selectOne(new LambdaQueryWrapper<Product>()
                         .eq(Product::getProductCode, item.getProductCode().trim()).last("LIMIT 1"));
@@ -1097,7 +1100,7 @@ public class QuotationServiceImpl implements IQuotationService {
         orderDTO.setOrderType(com.jjx.sales.enums.SalesOrderTypeEnum.STANDARD.getCode());
         orderDTO.setContactPerson(quotation.getContactPerson()); orderDTO.setContactPhone(quotation.getContactPhone());
         orderDTO.setSalesManagerId(quotation.getSalesPersonId()); orderDTO.setSalesManagerName(quotation.getSalesPersonName());
-        if (quotation.getValidUntil() != null) orderDTO.setDeliveryDate(java.util.Date.from(quotation.getValidUntil().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()));
+        // 报价有效期只约束报价有效性，不能用作订单交货日期。
         orderDTO.setRemark("由报价单[" + quotation.getQuotationNo() + "]转换");
         // 记录来源报价单（正向引用）
         orderDTO.setQuotationId(quotationId);
@@ -1116,6 +1119,12 @@ public class QuotationServiceImpl implements IQuotationService {
         List<SalesQuotationItem> quotationItems = quotationItemMapper.selectList(
                 new LambdaQueryWrapper<SalesQuotationItem>().eq(SalesQuotationItem::getQuotationId, quotationId));
         if (quotationItems != null && !quotationItems.isEmpty()) {
+            // 只有全部行给出同一明确交期时自动继承；有缺项/不同日期/仅天数时由销售确认。
+            LocalDate commonDate = quotationItems.getFirst().getEstimatedDeliveryDate();
+            if (commonDate != null && quotationItems.stream()
+                    .allMatch(item -> commonDate.equals(item.getEstimatedDeliveryDate()))) {
+                orderDTO.setDeliveryDate(java.util.Date.from(commonDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant()));
+            }
             List<com.jjx.sales.domain.dto.SalesOrderProductDTO> items = new ArrayList<>();
             for (SalesQuotationItem qi : quotationItems) {
                 com.jjx.sales.domain.dto.SalesOrderProductDTO item = new com.jjx.sales.domain.dto.SalesOrderProductDTO();

@@ -1,3 +1,8 @@
+vi.mock('element-plus/es/components/base/style/css', () => ({}))
+vi.mock('element-plus/es/components/page-header/style/css', () => ({}))
+vi.mock('element-plus/es/components/card/style/css', () => ({}))
+vi.mock('element-plus/es/components/alert/style/css', () => ({}))
+vi.mock('element-plus/es/components/button/style/css', () => ({}))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import AddPage from '../../add.vue'
@@ -19,6 +24,18 @@ beforeEach(() => {
   api.getOrderDraft.mockResolvedValue({ data: { sourceVersion: 'v31', order: { customerId: 7, customerName: 'Customer', contactPerson: 'Contact', deliveryAddress: 'Address', salesManagerId: 3, salesManagerName: 'Sales', items: [{ productId: 9, productCode: 'P9', productName: 'Product', quantity: 3, unitPrice: 10 }] } } })
 })
 describe('quotation conversion add page', () => {
+  it('passes an inherited delivery date to the order form and leaves missing dates blank', async () => {
+    for (const deliveryDate of ['2026-12-02', undefined]) {
+      api.getOrderDraft.mockResolvedValueOnce({ data: { sourceVersion: 'delivery-version', order: {
+        customerId: 7, deliveryDate, items: [],
+      } } })
+      const wrapper=mount(AddPage)
+      await flushPromises()
+      expect(wrapper.findComponent({name:'OrderFormStub'}).props('initialData').deliveryDate).toBe(deliveryDate)
+      expect(api.convert).not.toHaveBeenCalled()
+      wrapper.unmount()
+    }
+  })
   it('only reads preview and maps source data; cancel creates no order', async () => {
     const w = mount(AddPage); await flushPromises()
     expect(api.getOrderDraft).toHaveBeenCalledWith(31)
