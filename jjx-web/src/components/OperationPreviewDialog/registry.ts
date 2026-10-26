@@ -48,6 +48,7 @@ export interface OperationContext {
   attachmentIds: number[]
   /** 新通道（附件双写收口 dev-20261014-028）：已绑定的附件引用 ID（sys_attachment_ref.id） */
   attachmentRefIds: number[]
+  operationGroupId?: string
 }
 
 export interface OperationDef {
@@ -67,6 +68,8 @@ export interface OperationDef {
   fields?: OperationField[]
   /** 是否允许挂证据（截图/文件/文档） */
   evidence?: boolean
+  /** 本次弹窗的证据与业务确认共用请求操作组。 */
+  groupEvidence?: boolean
   /** 上传证据时预选二级类型，用户仍可在附件行修改。 */
   evidenceDefaultDocumentType?: string
   /** 触发的系统事件 code（对应 sys_event_config.event_code），用于事件预告 */
@@ -89,10 +92,11 @@ export const quotationOperations: OperationDef[] = [
     fromStatus: [0],
     toStatus: 5,
     evidence: true,
+    groupEvidence: true,
     evidenceDefaultDocumentType: 'SALES_QUOTATION_REVIEW_EVIDENCE',
     events: ['quotation.submitted'],
-    api: ({ bizId, attachmentRefIds }) =>
-      quotationApi.submitReview(bizId, attachmentRefIds.length ? attachmentRefIds : undefined),
+    api: ({ bizId, attachmentRefIds, operationGroupId }) =>
+      quotationApi.submitReview(bizId, attachmentRefIds.length ? attachmentRefIds : undefined, operationGroupId),
   },
   {
     key: 'quotation.approve',
@@ -104,14 +108,16 @@ export const quotationOperations: OperationDef[] = [
       { key: 'remark', label: '审核意见', type: 'textarea', placeholder: '选填，审核意见/说明' },
     ],
     evidence: true,
+    groupEvidence: true,
     evidenceDefaultDocumentType: 'SALES_QUOTATION_REVIEW_EVIDENCE',
     events: ['quotation.reviewed'],
-    api: ({ bizId, values, attachmentRefIds }) =>
+    api: ({ bizId, values, attachmentRefIds, operationGroupId }) =>
       quotationApi.review(
         bizId,
         true,
         values.remark,
-        attachmentRefIds.length ? attachmentRefIds : undefined
+        attachmentRefIds.length ? attachmentRefIds : undefined,
+        operationGroupId
       ),
   },
   {
@@ -130,14 +136,16 @@ export const quotationOperations: OperationDef[] = [
       },
     ],
     evidence: true,
+    groupEvidence: true,
     evidenceDefaultDocumentType: 'SALES_QUOTATION_REVIEW_EVIDENCE',
     events: ['quotation.reviewed'],
-    api: ({ bizId, values, attachmentRefIds }) =>
+    api: ({ bizId, values, attachmentRefIds, operationGroupId }) =>
       quotationApi.review(
         bizId,
         false,
         values.remark,
-        attachmentRefIds.length ? attachmentRefIds : undefined
+        attachmentRefIds.length ? attachmentRefIds : undefined,
+        operationGroupId
       ),
   },
   {

@@ -187,6 +187,9 @@ public class OperLogAspect {
             if (result instanceof Result<?> resultObj) {
                 if (resultObj.getCode() == 200) {
                     operLog.setStatus(YesNoEnum.YES.getCode());
+                    if (requestAttributes instanceof ServletRequestAttributes servlet) {
+                        applyQuotationFlowDetail(operLog, servlet.getRequest());
+                    }
                 } else {
                     operLog.setStatus(YesNoEnum.NO.getCode());
                     operLog.setErrorMsg(resultObj.getMsg());
@@ -324,6 +327,16 @@ public class OperLogAspect {
         StandardEvaluationContext ctx = new StandardEvaluationContext();
         ctx.addPropertyAccessor(new MapAccessor());
         return ctx;
+    }
+
+    /** 仅接受当前报价请求中已持久化的流水身份，保留原有 detail。 */
+    void applyQuotationFlowDetail(SysOperLog operLog, HttpServletRequest request) {
+        if (!"quotation".equals(operLog.getBizType())
+                || !(request.getAttribute("jjx.quotationFlowLog") instanceof Map<?, ?> flow)
+                || !Objects.equals(operLog.getBizId(), String.valueOf(flow.get("quotationId")))) return;
+        var detail = operLog.getDetail() == null ? JSONUtil.createObj() : JSONUtil.parseObj(operLog.getDetail());
+        detail.set("reviewFlowId", flow.get("reviewFlowId"));
+        operLog.setDetail(detail.toString());
     }
 
     void applyDetail(StandardEvaluationContext ctx, String expression, SysOperLog operLog) {

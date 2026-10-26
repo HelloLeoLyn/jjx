@@ -176,6 +176,8 @@ const props = withDefaults(
     viewPerm?: string
     editPerm?: string
     traceId?: string
+    /** 同次操作的证据上传、绑定与业务确认共用，未传时保持逐请求分组。 */
+    operationGroupId?: string
     maxSizeMB?: number
     accept?: string[]
     /** sourceId 有值时是否上传后立即绑定 */
@@ -258,6 +260,7 @@ const refs = useAttachmentRefs({
   sourceId: toRef(props, 'sourceId'),
   draftId: toRef(props, 'draftId'),
   traceId: toRef(props, 'traceId'),
+  operationGroupId: toRef(props, 'operationGroupId'),
   readonly: toRef(props, 'readonly'),
   locked: toRef(props, 'locked'),
   viewPerm: toRef(props, 'viewPerm'),

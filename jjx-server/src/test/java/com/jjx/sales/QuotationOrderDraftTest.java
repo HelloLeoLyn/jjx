@@ -29,7 +29,11 @@ class QuotationOrderDraftTest {
     com.jjx.system.service.AttachmentDocumentTypeService documentTypes = mock(com.jjx.system.service.AttachmentDocumentTypeService.class);
     SalesQuotation quote;
     QuotationServiceImpl service;
+    org.mockito.MockedStatic<com.jjx.system.utils.SecurityUtils> login;
     @BeforeEach void setup() {
+        login = mockStatic(com.jjx.system.utils.SecurityUtils.class);
+        login.when(com.jjx.system.utils.SecurityUtils::getUserId).thenReturn(7L);
+        login.when(com.jjx.system.utils.SecurityUtils::getDisplayName).thenReturn("报价经办人");
         service = service(QuotationServiceImpl.class, Map.of(QuotationMapper.class, quotations, SalesQuotationItemMapper.class, items,
                 IOrderService.class, orders, QuotationFlowMapper.class, flows, SysAttachmentRefMapper.class, attachments, com.jjx.system.service.AttachmentDocumentTypeService.class, documentTypes));
         quote = new SalesQuotation(); quote.setQuotationId(1L); quote.setCustomerId(7L); quote.setCustomerName("customer"); quote.setQuotationNo("Q1");
@@ -39,6 +43,7 @@ class QuotationOrderDraftTest {
         when(items.selectList(any())).thenReturn(List.of(item)); when(flows.insert(any(SalesQuotationFlow.class))).thenReturn(1);
         when(quotations.updateById(any(SalesQuotation.class))).thenReturn(1); when(orders.insertOrder(any())).thenReturn(9L);
     }
+    @AfterEach void clearLogin() { login.close(); }
     @Test void previewHasNoWritesAndCopiesSource() {
         var draft = service.getOrderDraft(1L); assertEquals("contact", draft.getOrder().getContactPerson());
         assertEquals("trace", draft.getOrder().getTraceId()); assertNull(draft.getOrder().getOrderNo());
@@ -53,6 +58,8 @@ class QuotationOrderDraftTest {
     }
     @Test void successUsesInternalFlagAndSourceThenRejectsRepeat() {
         var draft = service.getOrderDraft(1L); assertEquals(9L, service.convertToOrder(1L, draft));
+        verify(flows).insert(argThat((SalesQuotationFlow flow) -> flow.getOperatorId().equals(7L)
+                && flow.getOperatorName().equals("报价经办人")));
         verify(orders).insertOrder(argThat(d -> d.isQuotationConversionValidated() && d.getQuotationId().equals(1L) && d.getTraceId().equals("trace")));
         assertThrows(BusinessException.class, () -> service.convertToOrder(1L, draft));
     }

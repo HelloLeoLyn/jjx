@@ -63,6 +63,7 @@ export interface UseAttachmentRefsOptions {
   /** 新建单据草稿标识：同一张未保存单据复用同一值，用于隔离待绑定队列 */
   draftId?: Ref<string> | string
   traceId?: Ref<string> | string
+  operationGroupId?: Ref<string | undefined> | string
   readonly?: Ref<boolean> | boolean
   locked?: Ref<boolean> | boolean
   editPerm?: Ref<string> | string
@@ -620,6 +621,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
       throw new Error('缺少草稿标识（draftId）：新建单据必须提供唯一 draftId 才能上传附件，避免多个单据共用待绑定队列')
     }
     const uploadIdentity = storageKey.value
+    const operationGroupId = unwrap(options.operationGroupId, undefined)
     const uploadDraftKey = draftKey.value
     // 归属上下文在发起时固定（dev-20261016-048）：显式传入优先，否则用实例默认；不随后续切换改变。
     const uploadProductId = context ? (context.productId ?? null) : (productId.value ?? null)
@@ -632,7 +634,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
     const sha = await sha256Of(file)
     const requestKey = await buildRequestKey(uploadDraftKey, file, sha)
     // 未保存单据上传时带草稿信息：后端同事务落一条草稿引用（dev-20261016-009）
-    const res: any = await attachmentRefApi.tempUpload(file, requestKey, onProgress, uploadDrawingMeta, draft)
+    const res: any = await attachmentRefApi.tempUpload(file, requestKey, onProgress, uploadDrawingMeta, draft, operationGroupId)
     if (uploadIdentity !== storageKey.value) {
       throw new Error('文件已上传到原草稿，请恢复原草稿查看')
     }
@@ -668,7 +670,7 @@ export function useAttachmentRefs(options: UseAttachmentRefsOptions) {
   }
 
   async function bindOne(entry: PendingEntry, body: AttachmentRefCreateBody): Promise<number> {
-    const res: any = await attachmentRefApi.createRef(body)
+    const res: any = await attachmentRefApi.createRef(body, unwrap(options.operationGroupId, undefined))
     const refId = Number(res?.data)
     if (!refId) throw new Error(res?.msg || '绑定失败')
     removePending(entry.attachmentId)

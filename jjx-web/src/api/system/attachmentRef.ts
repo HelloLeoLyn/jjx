@@ -163,7 +163,7 @@ export const attachmentRefApi = {
   /** TEMP 上传：requestKey 必须 16~100 位 [A-Za-z0-9_-]，同键同内容重传幂等返回原 attachmentId。
    *  meta 为可选图纸元数据（dev-20261014-029）：非空时写入 sys_attachment 图纸列；不传行为不变。 */
   tempUpload(file: File, requestKey: string, onProgress?: (percent: number) => void, meta?: AttachmentDrawingMetadata | null,
-    draft?: { sourceType: string; productId?: number | null; draftKey: string } | null): AxiosPromise<number> {
+    draft?: { sourceType: string; productId?: number | null; draftKey: string } | null, operationGroupId?: string): AxiosPromise<number> {
     const data = new FormData()
     data.append('file', file)
     data.append('requestKey', requestKey)
@@ -184,7 +184,7 @@ export const attachmentRefApi = {
       url: '/system/attachment/refs/temp',
       method: 'post',
       data,
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': 'multipart/form-data', ...(operationGroupId ? { 'X-Request-Id': operationGroupId } : {}) },
       timeout: 120000,
       onUploadProgress: (event) => {
         if (event.total) onProgress?.(Math.round((event.loaded * 100) / event.total))
@@ -210,8 +210,9 @@ export const attachmentRefApi = {
   },
 
   /** 建立引用（同来源同附件同产品幂等：返回原 refId） */
-  createRef(body: AttachmentRefCreateBody): AxiosPromise<number> {
-    return request({ url: '/system/attachment/refs', method: 'post', data: body })
+  createRef(body: AttachmentRefCreateBody, operationGroupId?: string): AxiosPromise<number> {
+    return request({ url: '/system/attachment/refs', method: 'post', data: body,
+      headers: operationGroupId ? { 'X-Request-Id': operationGroupId } : undefined })
   },
 
   /** 按来源查询引用（主键 refId） */

@@ -164,6 +164,7 @@ import request from '@/utils/request'
 import { attachmentApi } from '@/api/system/attachment'
 import { attachmentRefApi } from '@/api/system/attachmentRef'
 import { BusinessTypeEnum } from '@/enums/system/LogEnum'
+import { matchReview, type ReviewHistory } from './reviewMatch'
 
 interface TraceAttachment {
   id: number
@@ -172,27 +173,14 @@ interface TraceAttachment {
 }
 
 interface TraceDetail {
+  reviewFlowId?: string
   changes: string[]
   attachments: TraceAttachment[]
 }
 
-/** /api/trace/reviews 返回的审核流水记录 */
-interface ReviewHistory {
-  flowId?: string
-  roundNo?: number
-  actionCode?: string
-  actionName?: string
-  fromStatus?: string | number | null
-  toStatus?: string | number | null
-  operatorName?: string
-  comment?: string
-  attachmentIds?: string
-  attachmentRefs?: { refId: number; fileName?: string }[]
-  createTime?: string
-}
-
 interface TraceEvent {
   eventId: string
+  reviewFlowId?: string
   groupId?: string
   children?: TraceEvent[]
   time?: string
@@ -333,6 +321,7 @@ function handleClose() {
 }
 
 function resetAndLoad(snapshot: TraceParams) {
+  reviewCache.clear()
   pageNum.value = 1
   selectedEvent.value = null
   expandedRows.value = []
@@ -430,6 +419,7 @@ function enrichEvent(row: any): TraceEvent {
   const isReview = row.businessType === 6
   return {
     ...row,
+    reviewFlowId: detail.reviewFlowId,
     children: (row.children || []).map(enrichEvent),
     actionTitle: buildActionTitle(row),
     changes: detail.changes,
@@ -511,34 +501,12 @@ async function loadRowContent(row: TraceEvent) {
   }
 }
 
-/** 按时间最近匹配该行对应的审核记录（审核记录 actionCode 与日志行 actionCode 不做语义猜测，直接按时间就近） */
-function matchReview(reviews: ReviewHistory[], row: TraceEvent): ReviewHistory | null {
-  if (!reviews?.length) return null
-  const list = reviews
-  const target = row.time
-    ? new Date(String(row.time).replace('T', ' ').replace(' ', 'T')).getTime()
-    : NaN
-  if (!Number.isFinite(target)) return list[list.length - 1] || null
-  let best: ReviewHistory | null = null
-  let bestDiff = Number.MAX_SAFE_INTEGER
-  for (const review of list) {
-    if (!review.createTime) continue
-    const t = new Date(String(review.createTime).replace('T', ' ').replace(' ', 'T')).getTime()
-    if (Number.isNaN(t)) continue
-    const diff = Math.abs(t - target)
-    if (diff < bestDiff) {
-      bestDiff = diff
-      best = review
-    }
-  }
-  return best || list[list.length - 1] || null
-}
-
 function parseDetail(detail?: string | null): TraceDetail {
   if (!detail) return { changes: [], attachments: [] }
   try {
     const parsed = JSON.parse(detail)
     return {
+      reviewFlowId: typeof parsed?.reviewFlowId === 'string' ? parsed.reviewFlowId : undefined,
       changes: Array.isArray(parsed?.changes) ? parsed.changes : [],
       attachments: Array.isArray(parsed?.attachments) ? parsed.attachments : [],
     }

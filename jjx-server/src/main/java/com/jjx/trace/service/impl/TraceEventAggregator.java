@@ -42,6 +42,9 @@ public final class TraceEventAggregator {
             var members = groups.get(key);
             var primary = members.stream().min(java.util.Comparator
                     .comparingInt(TraceEventAggregator::primaryPriority)
+                    // 同组审核失败后重试成功，成功动作作主项，失败记录仍保留为子项。
+                    .thenComparingInt(item -> java.util.Objects.equals(item.getResult(),
+                            com.jjx.common.enums.YesNoEnum.YES.getCode()) ? 0 : 1)
                     .thenComparing(UnifiedTraceEventVO::getTime,
                             java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))).orElseThrow();
             primary.setChildren(members.stream().filter(item -> item != primary).toList());

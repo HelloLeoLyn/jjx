@@ -846,11 +846,19 @@ public class QuotationServiceImpl implements IQuotationService {
         flow.setActionName(actionName);
         flow.setFromStatus(fromStatus);
         flow.setToStatus(toStatus);
-        flow.setOperatorName("系统");
+        flow.setOperatorId(SecurityUtils.getUserId());
+        flow.setOperatorName(SecurityUtils.getDisplayName());
         flow.setRemark(remark);
         flow.setAttachmentRefIds(AttachmentRefUtils.toJson(attachmentRefIds));
         flow.setCreateTime(LocalDateTime.now());
         if (quotationFlowMapper.insert(flow) != 1) throw new BusinessException("保存报价附件留痕失败");
+        // 由本次请求的 @Log 保存精确流水身份；不新增日志，也不按时间猜测关联。
+        var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        if (flow.getFlowId() != null
+                && attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet) {
+            servlet.getRequest().setAttribute("jjx.quotationFlowLog", Map.of(
+                    "quotationId", quotation.getQuotationId(), "reviewFlowId", "qf-" + flow.getFlowId()));
+        }
     }
 
     private void validateFlowAttachments(Long quotationId, String legacyIds, List<Long> refIds) {

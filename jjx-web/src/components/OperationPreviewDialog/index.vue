@@ -90,10 +90,11 @@
         </div>
         <AttachmentCenter
           v-if="evidenceSourceType && bizId"
-          :key="`${evidenceSourceType}-${bizId}`"
+          :key="`${evidenceSourceType}-${bizId}-${operationGroupId || ''}`"
           ref="evidenceCenter"
           :source-type="evidenceSourceType"
           :source-id="bizId"
+          :operation-group-id="operationGroupId"
           variant="upload-compact"
           :ref-ids-filter="visibleEvidenceRefIds"
           :view-perm="evidenceViewPerm"
@@ -195,6 +196,7 @@ const visible = computed({
 })
 
 const submitting = ref(false)
+const operationGroupId = ref<string>()
 const formValues = ref<Record<string, any>>({})
 const uploadedIds: number[] = []
 /** 本次弹窗内成功绑定的引用 ID：证据区只展示这些，避免把单据已有附件误当成本次证据 */
@@ -297,6 +299,7 @@ function onEvidenceBound(payload: { refId: number }) {
 
 // ===== 确认执行 =====
 async function confirm() {
+  if (submitting.value) return
   const op = props.operation
   if (!op || !props.bizId) return
 
@@ -330,6 +333,7 @@ async function confirm() {
       values: { ...formValues.value },
       attachmentIds: [...uploadedIds],
       attachmentRefIds: [...boundRefIds],
+      operationGroupId: operationGroupId.value,
     })
     ElMessage.success(op.successText || `${op.name}成功`)
     emit('success', {
@@ -349,9 +353,12 @@ async function confirm() {
 
 // 打开时初始化
 watch(
-  () => props.modelValue,
-  async (val) => {
+  () => [props.modelValue, props.operation?.key, props.bizId] as const,
+  async ([val]) => {
     if (val) {
+      operationGroupId.value = props.operation?.groupEvidence
+        ? globalThis.crypto?.randomUUID?.() || `op-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+        : undefined
       formValues.value = {}
       for (const field of props.operation?.fields || []) {
         formValues.value[field.key] =
@@ -362,7 +369,8 @@ watch(
       visibleEvidenceRefIds.value = []
       await loadEventsAndRoles()
     }
-  }
+  },
+  { immediate: true }
 )
 </script>
 

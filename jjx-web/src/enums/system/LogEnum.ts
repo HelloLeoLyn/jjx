@@ -1,5 +1,11 @@
 // src/enums/system/LogEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
+
+/** sys_oper_log.status，与后端 YesNoEnum 对齐。 */
+export const OperLogStatusEnum = createNamedEnum({
+  SUCCESS: { value: 1, label: '成功', tagProps: { type: 'success' } },
+  FAILURE: { value: 0, label: '失败', tagProps: { type: 'danger' } },
+}, { type: 'info' })
 
 /**
  * 业务类型枚举（与后端 @Log#businessType 枚举对齐：BusinessType.java）

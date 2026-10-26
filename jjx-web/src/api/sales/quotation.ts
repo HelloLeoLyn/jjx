@@ -164,19 +164,21 @@ export const quotationApi = {
   },
 
   // 提交报价单审核（附件双写收口 dev-20261014-028：改传附件引用 ID，不再传老字段）
-  submitReview(quotationId: number, attachmentRefIds?: number[]): AxiosPromise<void> {
+  submitReview(quotationId: number, attachmentRefIds?: number[], operationGroupId?: string): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/submit-review/${quotationId}`,
       method: 'put',
+      headers: operationGroupId ? { 'X-Request-Id': operationGroupId } : undefined,
       params: attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : undefined,
     })
   },
 
   // 审核报价单（通过/驳回）
-  review(quotationId: number, approved: boolean, remark?: string, attachmentRefIds?: number[]): AxiosPromise<void> {
+  review(quotationId: number, approved: boolean, remark?: string, attachmentRefIds?: number[], operationGroupId?: string): AxiosPromise<void> {
     return request({
       url: `/sales/quotation/review/${quotationId}`,
       method: 'put',
+      headers: operationGroupId ? { 'X-Request-Id': operationGroupId } : undefined,
       params: { approved, remark, ...(attachmentRefIds?.length ? { attachmentRefIds: attachmentRefIds.join(',') } : {}) },
     })
   },

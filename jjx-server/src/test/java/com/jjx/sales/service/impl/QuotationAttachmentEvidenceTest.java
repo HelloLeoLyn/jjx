@@ -57,6 +57,7 @@ class QuotationAttachmentEvidenceTest {
             case "send" -> target.sendQuotation(10L,legacy,refs);
             case "submit" -> target.submitReview(10L,legacy,refs);
             case "review" -> target.reviewQuotation(10L,true,"ok",legacy,refs);
+            case "reviewReject" -> target.reviewQuotation(10L,false,"需修改",legacy,refs);
             case "status" -> target.updateQuotationStatus(10L,QuotationStatus.ACCEPTED.getValue(),legacy,refs);
             case "confirm" -> target.confirmQuotation(10L,legacy,refs);
             case "reject" -> target.rejectQuotation(10L,null,legacy,refs);
@@ -64,28 +65,44 @@ class QuotationAttachmentEvidenceTest {
             default -> throw new AssertionError(action);
         }
     }
-    @ParameterizedTest @ValueSource(strings={"send","submit","review","status","confirm","reject","modify"})
+    @ParameterizedTest @ValueSource(strings={"send","submit","review","reviewReject","status","confirm","reject","modify"})
     void allActionsRejectLegacyBeforeChangingStatus(String action) {
         assertThrows(BusinessException.class,()->act(service,action,"900",List.of()));
         verifyNoInteractions(quotationMapper,quotationFlowMapper);
     }
-    @ParameterizedTest @ValueSource(strings={"send","submit","review","status","confirm","reject","modify"})
+    @ParameterizedTest @ValueSource(strings={"send","submit","review","reviewReject","status","confirm","reject","modify"})
     void allActionsPersistRefIdentityInsteadOfFileIdentity(String action) {
         validRef();
         var status=switch(action) {case "send" -> QuotationStatus.APPROVED; case "submit" -> QuotationStatus.DRAFT;
-            case "review" -> QuotationStatus.PENDING_REVIEW; case "modify" -> QuotationStatus.COMPLETED; default -> QuotationStatus.SENT;};
+            case "review","reviewReject" -> QuotationStatus.PENDING_REVIEW; case "modify" -> QuotationStatus.COMPLETED; default -> QuotationStatus.SENT;};
         quotation(status);
         if(action.equals("send")||action.equals("submit")) {
             doNothing().when(service).recalcQuotationAmounts(10L);
             when(quotationItemMapper.selectCount(any())).thenReturn(1L);
         }
         when(quotationMapper.updateById(any(SalesQuotation.class))).thenReturn(1);
-        when(quotationFlowMapper.insert(any(SalesQuotationFlow.class))).thenReturn(1);
-        try(var security=mockStatic(SecurityUtils.class)) {act(service,action,null,List.of(100L));}
+        var request = new org.springframework.mock.web.MockHttpServletRequest();
+        org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                new org.springframework.web.context.request.ServletRequestAttributes(request));
+        when(quotationFlowMapper.insert(any(SalesQuotationFlow.class))).thenAnswer(call -> {
+            ((SalesQuotationFlow) call.getArgument(0)).setFlowId(42L);
+            return 1;
+        });
+        try(var security=mockStatic(SecurityUtils.class)) {
+            security.when(SecurityUtils::getUserId).thenReturn(7L);
+            security.when(SecurityUtils::getDisplayName).thenReturn("报价审核员");
+            act(service,action,null,List.of(100L));
+        } finally {
+            org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+        }
         var captured=ArgumentCaptor.forClass(SalesQuotationFlow.class);
         verify(quotationFlowMapper).insert(captured.capture());
         assertEquals("[100]",captured.getValue().getAttachmentRefIds());
         assertNull(captured.getValue().getAttachmentIds());
+        assertEquals(7L,captured.getValue().getOperatorId());
+        assertEquals("报价审核员",captured.getValue().getOperatorName());
+        assertEquals(java.util.Map.of("quotationId",10L,"reviewFlowId","qf-42"),
+                request.getAttribute("jjx.quotationFlowLog"));
     }
     @Test void otherQuotationRefIsRejected() {
         var ref=new SysAttachmentRef();ref.setSourceType("quotation");ref.setSourceId(20L);
@@ -111,7 +128,9 @@ class QuotationAttachmentEvidenceTest {
         var factory=new ProxyFactory(service);factory.setProxyTargetClass(true);
         factory.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(ds),new AnnotationTransactionAttributeSource()));
         var transactional=(QuotationServiceImpl)factory.getProxy();
-        assertThrows(IllegalStateException.class,()->transactional.confirmQuotation(10L,null,List.of()));
+        try(var security=mockStatic(SecurityUtils.class)) {
+            assertThrows(IllegalStateException.class,()->transactional.confirmQuotation(10L,null,List.of()));
+        }
         assertEquals(QuotationStatus.SENT.getValue(),jdbc.queryForObject("SELECT status FROM test_status WHERE id=10",Integer.class));
         verifyNoInteractions(eventPublisher);
     }

@@ -81,6 +81,31 @@ afterEach(() => {
 })
 
 describe('TraceTimeline 证据附件', () => {
+  it('从日志detail取明确ID，连续同秒审核展示第二条的意见和附件', async () => {
+    get.mockImplementation((url: string) => Promise.resolve({ data: url === '/api/trace/events'
+      ? { total: 1, records: [{ eventId: 'oper-12', time: '2026-10-26 15:44:14',
+        action: '审核报价单', businessType: 6, bizType: 'quotation', bizId: '1', result: 1,
+        detail: JSON.stringify({ reviewFlowId: 'qf-2' }) }] }
+      : [
+        { flowId: 'qf-1', createTime: '2026-10-26 15:44:14', actionCode: 'APPROVE', comment: '旧意见' },
+        { flowId: 'qf-2', createTime: '2026-10-26 15:44:14', actionCode: 'APPROVE', comment: '本轮意见',
+          attachmentRefs: [{ refId: 2, fileName: '本轮需求.jpg' }] },
+      ],
+    }) as any)
+    wrapper = mount(TraceTimeline, {
+      props: { modelValue: true, bizType: 'quotation', bizId: '1' },
+      global: { stubs: { ElDrawer: defineComponent({
+        name: 'ElDrawerStub', emits: ['open'], template: '<div><slot/></div>',
+      }) } },
+    })
+    await flushPromises()
+    await wrapper.findAll('.el-link').find((item) => item.text().includes('审核报价单'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('本轮意见')
+    expect(wrapper.text()).not.toContain('旧意见')
+    expect(wrapper.findAll('.attachment-image')).toHaveLength(1)
+  })
+
   it('审核流水回填同一附件时不重复显示附件名', async () => {
     wrapper = mount(TraceTimeline, {
       props: { modelValue: true, traceId: 'trace-1' },
