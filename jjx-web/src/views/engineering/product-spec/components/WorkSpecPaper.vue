@@ -65,7 +65,7 @@
             <SvgIcon
               v-if="row?.icon"
               :name="row.icon"
-              :size="fontSettings.materialProjectContent"
+              :size="fontSettings.materialProjectIcon"
             /><span
               v-else
               class="cell-single"
@@ -214,9 +214,7 @@
                         <SvgIcon
                           v-if="item.icon"
                           :name="item.icon"
-                          :size="
-                            fontSettings[`flow${cell.column}OperationContent` as WorkSpecFontArea]
-                          "
+                          :size="fontSettings[`flow${cell.column}Icon` as WorkSpecFontArea]"
                         />
                         <span
                           v-else-if="workSpecSymbolText(item)"

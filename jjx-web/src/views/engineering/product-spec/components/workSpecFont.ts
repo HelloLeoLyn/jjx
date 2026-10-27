@@ -33,6 +33,7 @@ export type WorkSpecFontColumn = typeof materialFontColumns[number]['key'] | typ
   | 'materialModule' | 'materialBase'
 export type WorkSpecFontArea = 'title' | 'notesTitle' | 'notes' | 'footer' | 'structureTitle' | 'structureCaption'
   | `${WorkSpecFontColumn}Title` | `${WorkSpecFontColumn}Content`
+  | 'materialProjectIcon' | 'flow0Icon' | 'flow1Icon' | 'flow2Icon'
 export type WorkSpecFontSettings = Record<WorkSpecFontArea, number>
 interface FontArea { key: WorkSpecFontArea; label: string; group: string; defaultSize: number }
 const legacyFontAreas: FontArea[] = [
@@ -53,15 +54,27 @@ const legacyFontAreas: FontArea[] = [
       defaultSize: column.key.endsWith('Operation') ? 12 : 13 },
   ]),
 ]
-export const workSpecFontAreas: FontArea[] = [
-  ...legacyFontAreas,
-  ...(['materialModule', 'materialBase'] as const).flatMap((key): FontArea[] => [
+const moduleBaseFontAreas: FontArea[] = (['materialModule', 'materialBase'] as const).flatMap(
+  (key): FontArea[] => [
     { key: `${key}Title`, label: `${key === 'materialModule' ? '模数' : '基数'} · 标题`, group: '材料表', defaultSize: 14 },
     { key: `${key}Content`, label: `${key === 'materialModule' ? '模数' : '基数'} · 内容`, group: '材料表', defaultSize: 13 },
-  ]),
+  ]
+)
+/** 图标尺寸独立设置：默认18px，不随该格文字字号变化。 */
+const iconFontAreas: FontArea[] = [
+  { key: 'materialProjectIcon', label: '项目 · 图标', group: '材料表', defaultSize: 18 },
+  { key: 'flow0Icon', label: '图标', group: '面板作业流程', defaultSize: 18 },
+  { key: 'flow1Icon', label: '图标', group: '上线作业流程', defaultSize: 18 },
+  { key: 'flow2Icon', label: '图标', group: '下线作业流程', defaultSize: 18 },
 ]
+/** v4 序列化顺序（加入图标项之前），仅用于解析旧打印链接。 */
+const v4FontAreas: FontArea[] = [...legacyFontAreas, ...moduleBaseFontAreas]
+export const workSpecFontAreas: FontArea[] = [...v4FontAreas, ...iconFontAreas]
 export const workSpecFontGroups = ['常规', '材料表', '面板作业流程', '上线作业流程', '下线作业流程'].map(label => ({
-  label, areas: legacyFontAreas.filter(area => area.group === label && area.key !== 'materialEmbossValueTitle'),
+  label,
+  areas: [...legacyFontAreas, ...iconFontAreas].filter(
+    area => area.group === label && area.key !== 'materialEmbossValueTitle'
+  ),
 }))
 export function workSpecFontGroupsForTemplate(template: WorkSpecTemplate) {
   if (template === 'A') return workSpecFontGroups
@@ -69,7 +82,9 @@ export function workSpecFontGroupsForTemplate(template: WorkSpecTemplate) {
   const groups = workSpecFontGroups.map(group => ({
     label: group.label,
     areas: group.label === '材料表'
-      ? workSpecFontAreas.filter(area => columns.some(key => area.key === `${key}Title` || area.key === `${key}Content`))
+      ? workSpecFontAreas.filter(area =>
+          area.key === 'materialProjectIcon'
+          || columns.some(key => area.key === `${key}Title` || area.key === `${key}Content`))
           .map(area => ({ ...area, label: area.label.replace('规格及模数', '规格') }))
       : group.areas.map(area => ({ ...area, label: area.label.replace('加工与变更', '备注与变更') })),
   }))
@@ -93,8 +108,10 @@ export function parseWorkSpecFontSettings(value?: string | null): WorkSpecFontSe
   const version = tokens[0].startsWith('v') ? tokens.shift() : 'legacy'
   if (tokens.some(token => !token.trim())) return settings
   const parts = tokens.map(Number)
-  if (version === 'v4' || version === 'v3') {
-    const areas = version === 'v4' ? workSpecFontAreas : legacyFontAreas
+  if (version === 'v5' || version === 'v4' || version === 'v3') {
+    const areas = version === 'v5'
+      ? workSpecFontAreas
+      : version === 'v4' ? v4FontAreas : legacyFontAreas
     if (parts.length !== areas.length || !validSizes(parts)) return settings
     areas.forEach((area, index) => { settings[area.key] = parts[index] })
     return settings
@@ -103,6 +120,7 @@ export function parseWorkSpecFontSettings(value?: string | null): WorkSpecFontSe
     if (parts.length !== 8 || !validSizes(parts)) return settings
     const [title, materialTitle, materialContent, flowTitle, flowContent, notesTitle, notes, footer] = parts
     for (const area of workSpecFontAreas) {
+      if (area.key.endsWith('Icon')) continue
       if (area.group === '材料表') settings[area.key] = area.key.endsWith('Title') ? materialTitle : materialContent
       if (area.group.endsWith('作业流程')) settings[area.key] = area.key.endsWith('Title') ? flowTitle : flowContent
     }
@@ -112,6 +130,7 @@ export function parseWorkSpecFontSettings(value?: string | null): WorkSpecFontSe
   if (version !== 'legacy' || parts.length !== 5 || parts.some(part => !Number.isInteger(part) || part < -3 || part > 6)) return settings
   const [title, materials, flows, notes, footer] = parts
   for (const area of workSpecFontAreas) {
+    if (area.key.endsWith('Icon')) continue
     if (area.group === '材料表') settings[area.key] += materials
     if (area.group.endsWith('作业流程') || area.key.startsWith('structure')) settings[area.key] += flows
   }
@@ -125,5 +144,5 @@ function validSizes(parts: number[]): boolean {
   return parts.every(part => Number.isInteger(part) && part >= WORK_SPEC_FONT_MIN && part <= WORK_SPEC_FONT_MAX)
 }
 export function serializeWorkSpecFontSettings(settings: WorkSpecFontSettings): string {
-  return 'v4,' + workSpecFontAreas.map(area => settings[area.key]).join(',')
+  return 'v5,' + workSpecFontAreas.map(area => settings[area.key]).join(',')
 }

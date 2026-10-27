@@ -5,7 +5,12 @@ import ProductSpecPreview from '../ProductSpecPreview.vue'
 import WorkSpecPaper from '../WorkSpecPaper.vue'
 import { normalizeWorkSpec } from '@/api/product/workSpec'
 import { makePages, workSpecFlowSource, type DocsetData } from '../docset'
-import { defaultWorkSpecFontSettings } from '../workSpecFont'
+import {
+  defaultWorkSpecFontSettings,
+  parseWorkSpecFontSettings,
+  serializeWorkSpecFontSettings,
+  workSpecFontAreas,
+} from '../workSpecFont'
 import { parseWorkSpecCellFonts } from '../workSpecCellFont'
 
 vi.mock('element-plus/es/components/loading/style/css', () => ({}))
@@ -44,7 +49,7 @@ function fixture(): DocsetData {
 }
 
 describe('单格字号的纸张与分页标识', () => {
-  it.each(['A', 'B'] as const)('%s模板只覆盖指定工序文字，图形尺寸仍继承列设置', template => {
+  it.each(['A', 'B'] as const)('%s模板只覆盖指定工序文字，图形尺寸按独立图标设置', template => {
     const data = fixture()
     data.routing.items[0].icon = '面板'
     const page = template === 'A' ? makePages(data, ['spec'], [], {}, {}, 'A')[0] : workSpecFlowSource(data)
@@ -53,7 +58,23 @@ describe('单格字号的纸张与分页标识', () => {
     wrappers.push(wrapper)
     expect(wrapper.get('[data-work-spec-cell="flow0-id-41"]').attributes('data-cell-font')).toBe('8')
     expect(wrapper.get('[data-work-spec-cell="flow0-id-42"]').attributes('data-cell-font')).toBe('12')
-    expect(wrapper.get('svg').attributes('width')).toBe('12')
+    expect(wrapper.get('svg').attributes('width')).toBe('18')
+  })
+  it('图标尺寸独立：改文字字号不动图标，改图标项才生效', () => {
+    const data = fixture()
+    data.routing.items[0].icon = '面板'
+    const settings = defaultWorkSpecFontSettings()
+    const page = workSpecFlowSource(data)
+    const paper = (fontSettings: typeof settings) =>
+      mount(WorkSpecPaper, { props: { data, page, pageIndex: 0, pageCount: 1,
+        specTemplate: 'B', fontSettings } })
+    const textOnly = paper({ ...settings, flow0OperationContent: 7 })
+    wrappers.push(textOnly)
+    expect(textOnly.get('svg').attributes('width')).toBe('18')
+    expect(textOnly.get('[data-work-spec-cell="flow0-id-41"]').attributes('data-cell-font')).toBe('7')
+    const iconOnly = paper({ ...settings, flow0Icon: 24 })
+    wrappers.push(iconOnly)
+    expect(iconOnly.get('svg').attributes('width')).toBe('24')
   })
   it('材料表、加工要求、结构图、页脚都有单格键，默认取列字号，覆盖后按格生效', () => {
     const data = fixture()
@@ -85,6 +106,22 @@ describe('单格字号的纸张与分页标识', () => {
       wrappers.push(wrapper)
       expect(wrapper.get('[data-work-spec-cell="flow0-id-114"]').attributes('data-cell-font')).toBe('7')
     }
+  })
+})
+
+describe('图标尺寸设置项', () => {
+  it('默认18px，序列化为v5可回读；v4旧链接图标回落默认', () => {
+    const settings = defaultWorkSpecFontSettings()
+    expect([
+      settings.materialProjectIcon, settings.flow0Icon, settings.flow1Icon, settings.flow2Icon,
+    ]).toEqual([18, 18, 18, 18])
+    const text = serializeWorkSpecFontSettings({ ...settings, flow0Icon: 24, flow0OperationContent: 9 })
+    expect(text.startsWith('v5,')).toBe(true)
+    expect(parseWorkSpecFontSettings(text)).toMatchObject({ flow0Icon: 24, flow0OperationContent: 9 })
+    const legacyCount = workSpecFontAreas.length - 4
+    const restored = parseWorkSpecFontSettings('v4,' + Array(legacyCount).fill(12).join(','))
+    expect(restored.title).toBe(12)
+    expect(restored.flow0Icon).toBe(18)
   })
 })
 
