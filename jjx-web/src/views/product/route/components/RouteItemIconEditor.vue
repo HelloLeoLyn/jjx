@@ -85,11 +85,7 @@
                     <el-empty description="拖拽图标到此处新增组合" :image-size="80" />
                   </div>
                 </template>
-                <el-table-column label="序号" width="60" align="center">
-                  <template #default="scope">
-                    {{ scope.row.groupOrder }}
-                  </template>
-                </el-table-column>
+                <el-table-column type="index" label="序号" width="60" align="center" />
 
                 <el-table-column label="组合工序" min-width="280">
                   <template #default="scope">
