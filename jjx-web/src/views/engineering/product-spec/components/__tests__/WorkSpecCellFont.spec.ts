@@ -55,6 +55,27 @@ describe('单格字号的纸张与分页标识', () => {
     expect(wrapper.get('[data-work-spec-cell="flow0-id-42"]').attributes('data-cell-font')).toBe('12')
     expect(wrapper.get('svg').attributes('width')).toBe('12')
   })
+  it('材料表、加工要求、结构图、页脚都有单格键，默认取列字号，覆盖后按格生效', () => {
+    const data = fixture()
+    data.bom.items = [{
+      materialCode: 'M1', materialName: '面材', specification: '100*200mm', quantity: 1, unit: 'PCS',
+      dieLocation: '位置1', sortOrder: 0, processName: '面板',
+    }]
+    const settings = defaultWorkSpecFontSettings()
+    const page = makePages(data, ['spec'], [], {}, {}, 'A')[0]
+    const wrapper = mount(WorkSpecPaper, { props: { data, page, pageIndex: 0, pageCount: 1,
+      specTemplate: 'A', fontSettings: settings, cellFonts: { 'mat0-name': 9, note: 10, footer: 11 } } })
+    wrappers.push(wrapper)
+    const fontOf = (key: string) => wrapper.get(`[data-work-spec-cell="${key}"]`).attributes('data-cell-font')
+    expect(fontOf('mat0-number')).toBe(String(settings.materialNumberContent))
+    expect(fontOf('mat0-spec')).toBe(String(settings.materialSpecContent))
+    expect(fontOf('mat0-die')).toBe(String(settings.materialDieContent))
+    expect(fontOf('mat0-name')).toBe('9')
+    expect(fontOf('note')).toBe('10')
+    expect(fontOf('change')).toBe(String(settings.notes))
+    expect(fontOf('struct-title')).toBe(String(settings.structureTitle))
+    expect(fontOf('footer')).toBe('11')
+  })
   it('A续页与B连续测量源引用相同工序键', () => {
     const data = fixture()
     data.routing.items = Array.from({ length: 16 }, (_, i) => ({ itemId: i + 100, majorCategory: 'ASSEMBLY', processCategory: 'PANEL', workInstruction: `工序${i}` }))
@@ -70,7 +91,7 @@ describe('单格字号的纸张与分页标识', () => {
 // 模拟B分页后的静态HTML，验证父级事件代理而非Vue子节点监听。
 const SheetsStub = defineComponent({
   name: 'ProductSpecSheets', props: ['pages', 'fontSettings', 'cellFonts'], emits: ['layout'],
-  template: `<div class="doc-sheets"><div v-html="'<table><tr><td data-work-spec-cell=&quot;flow0-id-41&quot; data-cell-label=&quot;面板第1道作业流程&quot; tabindex=&quot;0&quot;><span>文字工序</span></td><td data-work-spec-cell=&quot;flow0-id-42&quot; data-cell-label=&quot;面板第2道作业流程&quot; tabindex=&quot;0&quot;>另一格</td></tr></table>'" /></div>`,
+  template: `<div class="doc-sheets"><div v-html="'<table><tr><td data-work-spec-cell=&quot;flow0-id-41&quot; data-cell-label=&quot;面板第1道作业流程&quot; tabindex=&quot;0&quot;><span>文字工序</span></td><td data-work-spec-cell=&quot;flow0-id-42&quot; data-cell-label=&quot;面板第2道作业流程&quot; tabindex=&quot;0&quot;>另一格</td></tr><tr><td data-work-spec-cell=&quot;mat0-name&quot; data-cell-label=&quot;材料第1项 · 材料&quot; data-cell-font=&quot;10&quot;><span class=&quot;material-name&quot;>面材</span></td></tr></table>'" /></div>`,
 })
 async function preview(initialCellFontSettings?: string) {
   mocks.load.mockResolvedValue(fixture())
@@ -100,8 +121,21 @@ describe('预览选格、复原与打印设置传递', () => {
     await wrapper.findAll('button').find(b => b.text() === '恢复默认')!.trigger('click')
     expect(sheets.props('cellFonts')).toEqual({})
   })
+  it('材料表格子同样可选可复原，默认字号取该格当前字号', async () => {
+    const wrapper = await preview()
+    const sheets = wrapper.findComponent(SheetsStub)
+    await wrapper.get('[data-work-spec-cell="mat0-name"] .material-name').trigger('click')
+    const input = wrapper.get('.cell-font-control').findComponent({ name: 'ElInputNumber' })
+    expect(input.props('modelValue')).toBe(10)
+    input.vm.$emit('update:modelValue', 9)
+    await flushPromises()
+    expect(sheets.props('cellFonts')).toEqual({ 'mat0-name': 9 })
+    await wrapper.findAll('button').find(b => b.text() === '该格恢复默认')!.trigger('click')
+    expect(sheets.props('cellFonts')).toEqual({})
+  })
   it('打印窗口收到相同单格设置，重开预览保留；更换产品清除上个产品覆盖', async () => {
-    const wrapper = await preview('flow0-id-41:8')
+    const fonts = { 'flow0-id-41': 8, 'mat0-name': 10, note: 9 }
+    const wrapper = await preview('flow0-id-41:8;mat0-name:10;note:9')
     const sheets = wrapper.findComponent(SheetsStub)
     sheets.vm.$emit('layout', 'spec-0', [])
     await flushPromises()
@@ -109,9 +143,9 @@ describe('预览选格、复原与打印设置传递', () => {
     await wrapper.findAll('button').find(b => b.text() === '打印所选文档')!.trigger('click')
     expect(open).toHaveBeenCalledTimes(1)
     const params = new URL(String(open.mock.calls[0][0]), 'https://jjx.test').searchParams
-    expect(parseWorkSpecCellFonts(params.get('cellFonts'))).toEqual({ 'flow0-id-41': 8 })
+    expect(parseWorkSpecCellFonts(params.get('cellFonts'))).toEqual(fonts)
     const reopened = await preview(params.get('cellFonts')!)
-    expect(reopened.findComponent(SheetsStub).props('cellFonts')).toEqual({ 'flow0-id-41': 8 })
+    expect(reopened.findComponent(SheetsStub).props('cellFonts')).toEqual(fonts)
     await wrapper.setProps({ productId: 43, initialCellFontSettings: undefined })
     await flushPromises()
     expect(wrapper.findComponent(SheetsStub).props('cellFonts')).toEqual({})

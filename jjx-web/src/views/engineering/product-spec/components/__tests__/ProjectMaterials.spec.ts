@@ -304,6 +304,15 @@ describe('项目材料独立清单与B版打印', () => {
       ).toEqual(
         flattenProjectMaterials(source.workSpec.projectMaterials).map((row) => row.dieLocation)
       )
+      // 分页克隆保留材料表单格键：每行材料各一份，合并的项目/序号格沿用组首行键。
+      const keys = Array.from(
+        doc.querySelectorAll<HTMLElement>('td[data-work-spec-cell^="mat"]'),
+        (el) => el.dataset.workSpecCell!
+      )
+      expect(new Set(keys.filter((key) => key.endsWith('-name'))).size).toBe(18)
+      expect(new Set(keys.filter((key) => key.endsWith('-spec'))).size).toBe(18)
+      expect(keys).toContain('mat0-number')
+      expect(keys).toContain('mat0-project')
     } finally {
       height.mockRestore()
       scroll.mockRestore()

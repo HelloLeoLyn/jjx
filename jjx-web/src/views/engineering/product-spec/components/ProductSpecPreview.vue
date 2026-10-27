@@ -143,7 +143,7 @@
         </el-checkbox-group>
         <div class="nav-foot">已选 {{ selectedSections.length }} 项 · {{ pages.length }} 页</div>
       </aside>
-      <main class="paper-stage" @click="selectOperationCell" @keydown="selectOperationCell">
+      <main class="paper-stage" @click="selectPaperCell" @keydown="selectPaperCell">
         <div v-if="pendingCount" class="render-progress no-print">
           正在展开附件，还有 {{ pendingCount }} 个文件…
         </div>
@@ -172,7 +172,7 @@
         <p>设置实际字号（px），每列标题与内容分别调整；打印使用当前设置。</p>
         <div class="cell-font-control">
           <strong>单格文字字号</strong>
-          <p>点击纸张中的作业流程格单独调整。文字保持单行，超宽自动缩小，最低 {{ WORK_SPEC_FONT_MIN }}px；图形图标尺寸保持不变。</p>
+          <p>点击纸张中的任意单元格（材料表、加工要求、变更内容、结构图、页脚、作业流程）单独调整，未设置的格沿用该列字号；超宽时自动缩小，最低 {{ WORK_SPEC_FONT_MIN }}px；图形图标尺寸保持不变。</p>
           <template v-if="selectedCell">
             <span class="selected-cell-label">{{ selectedCell.label }}</span>
             <el-input-number
@@ -191,7 +191,7 @@
             <el-button link type="primary" @click="resetSelectedCellFont">该格恢复默认</el-button>
             <p class="selected-cell-text">{{ selectedCell.text }}</p>
           </template>
-          <p>橙框表示缩至最小字号仍超宽，选中格子可在此查看全文。</p>
+          <p>单格字号只作用于本次预览与打印，不随作业规范保存。橙框表示缩至最小字号仍超宽，选中格子可在此查看全文。</p>
         </div>
         <el-collapse v-model="openFontGroups">
           <el-collapse-item v-for="group in visibleFontGroups" :key="group.label" :name="group.label" :title="group.label">
@@ -318,9 +318,10 @@ const generateOverflowAppendix = ref(
 const zoom = ref(props.paperOnly ? 100 : 80)
 const fontSettings = ref<WorkSpecFontSettings>(parseWorkSpecFontSettings(props.initialFontSettings))
 const cellFonts = ref<WorkSpecCellFonts>(parseWorkSpecCellFonts(props.initialCellFontSettings))
-const selectedCell = ref<{ key: string; label: string; column: number; text: string }>()
+const selectedCell = ref<{ key: string; label: string; text: string; defaultSize: number }>()
 const selectedCellDefaultSize = computed(() =>
-  fontSettings.value[`flow${selectedCell.value?.column ?? 0}OperationContent` as keyof WorkSpecFontSettings]
+  selectedCell.value?.defaultSize
+  ?? fontSettings.value.flow0OperationContent
 )
 const selectedCellSize = computed({
   get: () => (selectedCell.value && cellFonts.value[selectedCell.value.key]) ?? selectedCellDefaultSize.value,
@@ -329,16 +330,21 @@ const selectedCellSize = computed({
       cellFonts.value = { ...cellFonts.value, [selectedCell.value.key]: size }
   },
 })
-function selectOperationCell(event: MouseEvent | KeyboardEvent) {
+function selectPaperCell(event: MouseEvent | KeyboardEvent) {
   if (props.paperOnly || !(event.target instanceof Element)) return
-  const cell = event.target.closest<HTMLElement>('td[data-work-spec-cell]')
+  const cell = event.target.closest<HTMLElement>('[data-work-spec-cell]')
   if (!cell) return
   if (event instanceof KeyboardEvent) {
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
   }
   const key = cell.dataset.workSpecCell!
-  selectedCell.value = { key, label: cell.dataset.cellLabel || '', column: Number(key[4]), text: cell.textContent?.trim() || '' }
+  selectedCell.value = {
+    key,
+    label: cell.dataset.cellLabel || '',
+    text: cell.textContent?.trim() || '',
+    defaultSize: Number(cell.dataset.cellFont) || fontSettings.value.flow0OperationContent,
+  }
 }
 function resetSelectedCellFont() {
   if (!selectedCell.value) return

@@ -121,11 +121,11 @@ function totalLabor(rows: Record<string, any>[]): string {
 .measured-canvas :deep(.a4-canvas) { height:297mm; min-height:297mm; overflow:hidden; }
 .measured-page { height:278mm; }
 .layout-pending { height:278mm; }
-.cell-font-editable :deep(td[data-work-spec-cell]) { cursor:pointer; }
+.cell-font-editable :deep([data-work-spec-cell]) { cursor:pointer; }
 @media screen {
-  .cell-font-editable :deep(td[data-work-spec-cell]:hover),
-  .cell-font-editable :deep(td[data-cell-font-selected]) { outline:2px solid #409eff; outline-offset:-2px; }
-  :deep(td[data-cell-font-overflow]) { box-shadow:inset 0 0 0 2px #e6a23c; }
+  .cell-font-editable :deep([data-work-spec-cell]:hover),
+  .cell-font-editable :deep([data-cell-font-selected]) { outline:2px solid #409eff; outline-offset:-2px; }
+  :deep([data-cell-font-overflow]) { box-shadow:inset 0 0 0 2px #e6a23c; }
 }
 .doc-sheets { display:flex; flex-direction:column; align-items:center; gap:24px; }
 .spec-canvas :deep(.a4-canvas) { width:210mm; border:0; }

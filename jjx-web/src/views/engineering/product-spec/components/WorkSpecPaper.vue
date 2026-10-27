@@ -41,6 +41,10 @@
             class="center material-number"
             :rowspan="specTemplate === 'B' ? row?.projectSpan || 1 : 1"
             :style="columnFont('materialNumber', 'Content')"
+            :data-work-spec-cell="materialCellKeyFor(i, 'number')"
+            :data-cell-label="materialLabel(i) + '序号'"
+            :data-cell-font="materialCellFont(i, 'number', 'materialNumberContent')"
+            data-cell-fit
           >
             {{
               specTemplate === 'B'
@@ -53,6 +57,10 @@
             class="center material-project"
             :rowspan="specTemplate === 'B' ? row?.projectSpan || 1 : 1"
             :style="columnFont('materialProject', 'Content')"
+            :data-work-spec-cell="materialCellKeyFor(i, 'project')"
+            :data-cell-label="materialLabel(i) + '项目'"
+            :data-cell-font="materialCellFont(i, 'project', 'materialProjectContent')"
+            data-cell-fit
           >
             <SvgIcon
               v-if="row?.icon"
@@ -66,7 +74,13 @@
               >{{ plain(row?.processName) }}</span
             >
           </td>
-          <td :style="columnFont('materialName', 'Content')">
+          <td
+            :style="columnFont('materialName', 'Content')"
+            :data-work-spec-cell="materialCellKeyFor(i, 'name')"
+            :data-cell-label="materialLabel(i) + '材料'"
+            :data-cell-font="materialCellFont(i, 'name', 'materialNameContent')"
+            data-cell-fit
+          >
             <span
               class="material-name"
               :data-overflow-title="materialLabel(i) + '材料'"
@@ -74,7 +88,13 @@
               >{{ row?.materialName || row?.materialCode }}</span
             >
           </td>
-          <td :style="columnFont('materialSpec', 'Content')">
+          <td
+            :style="columnFont('materialSpec', 'Content')"
+            :data-work-spec-cell="materialCellKeyFor(i, 'spec')"
+            :data-cell-label="materialLabel(i) + '规格及模数'"
+            :data-cell-font="materialCellFont(i, 'spec', 'materialSpecContent')"
+            data-cell-fit
+          >
             <span
               class="cell-single"
               :data-overflow-title="materialLabel(i) + '规格及模数'"
@@ -83,14 +103,34 @@
               >{{ materialSpec(row) }}</span
             >
           </td>
-          <td class="die-position" :style="columnFont('materialDie', 'Content')">
+          <td
+            class="die-position"
+            :style="columnFont('materialDie', 'Content')"
+            :data-work-spec-cell="materialCellKeyFor(i, 'die')"
+            :data-cell-label="materialLabel(i) + '刀模位置'"
+            :data-cell-font="materialCellFont(i, 'die', 'materialDieContent')"
+          >
             {{ page.diePositionRows?.[i] }}
           </td>
           <template v-if="i < embossFields.length">
-            <td class="emboss-label" :style="columnFont('materialEmboss', 'Content')">
+            <td
+              class="emboss-label"
+              :style="columnFont('materialEmboss', 'Content')"
+              :data-work-spec-cell="materialCellKeyFor(i, 'emboss')"
+              :data-cell-label="materialLabel(i) + '凹凸条件'"
+              :data-cell-font="materialCellFont(i, 'emboss', 'materialEmbossContent')"
+              data-cell-fit
+            >
               {{ embossFields[i]?.label }}
             </td>
-            <td class="center emboss-value" :style="columnFont('materialEmbossValue', 'Content')">
+            <td
+              class="center emboss-value"
+              :style="columnFont('materialEmbossValue', 'Content')"
+              :data-work-spec-cell="materialCellKeyFor(i, 'embossValue')"
+              :data-cell-label="materialLabel(i) + '凹凸条件数值'"
+              :data-cell-font="materialCellFont(i, 'embossValue', 'materialEmbossValueContent')"
+              data-cell-fit
+            >
               {{ embossValue(embossFields[i]?.key, embossFields[i]?.unit) }}
             </td>
           </template>
@@ -105,6 +145,9 @@
               data-overflow-title="加工要求"
               :data-overflow-repeat="page.continuation ? 'true' : undefined"
               :style="{ color: data.workSpec.requirementsColor }"
+              data-work-spec-cell="note"
+              data-cell-label="加工要求"
+              :data-cell-font="cellFont('note', 'notes')"
             >
               {{ page.engineeringNotes }}
             </div>
@@ -129,6 +172,10 @@
               colspan="3"
               class="structure-title"
               :style="fontSize('structureTitle')"
+              data-work-spec-cell="struct-title"
+              data-cell-label="结构图标题"
+              :data-cell-font="cellFont('struct-title', 'structureTitle')"
+              data-cell-fit
             >
               产 品 结 构 图
             </th>
@@ -205,6 +252,9 @@
                 v-if="structureCaption"
                 class="structure-caption"
                 :style="fontSize('structureCaption')"
+                data-work-spec-cell="struct-cap"
+                data-cell-label="结构图说明"
+                :data-cell-font="cellFont('struct-cap', 'structureCaption')"
               >
                 {{ structureCaption }}
               </div>
@@ -241,6 +291,9 @@
           class="changes-content"
           data-overflow-title="变更内容"
           :data-overflow-repeat="page.continuation ? 'true' : undefined"
+          data-work-spec-cell="change"
+          data-cell-label="变更内容"
+          :data-cell-font="cellFont('change', 'notes')"
         >
           <div
             v-for="(line, i) in page.changeLines"
@@ -262,7 +315,12 @@
         <span v-else>{{ data.workSpec.issueUnit }}</span>
       </div>
     </div>
-    <footer>
+    <footer
+      data-work-spec-cell="footer"
+      data-cell-label="页脚"
+      :data-cell-font="cellFont('footer', 'footer')"
+      data-cell-fit
+    >
       <span>名称：{{ data.product.productName }}</span
       ><span>编号：{{ data.product.productCode }}</span
       ><span>发行日期：{{ shortDate(effectiveIssueDate) }}</span
@@ -288,7 +346,12 @@ import {
 } from './docset'
 
 import { useWorkSpecOverflow } from './useWorkSpecOverflow'
-import { fitWorkSpecOperationCells, workSpecCellKey, type WorkSpecCellFonts } from './workSpecCellFont'
+import {
+  fitWorkSpecCells,
+  materialCellKey,
+  workSpecCellKey,
+  type WorkSpecCellFonts,
+} from './workSpecCellFont'
 import {
   materialFontColumns,
   type WorkSpecTemplate,
@@ -354,6 +417,17 @@ function operationCellFont(column: number, row: Record<string, any>, number: num
   return props.cellFonts?.[workSpecCellKey(column, row, number)]
     ?? props.fontSettings[`flow${column}OperationContent` as WorkSpecFontArea]
 }
+/** 单格字号：有覆盖用覆盖值，否则用该格所属列/区域的字号。 */
+function cellFont(key: string, area: WorkSpecFontArea) {
+  return props.cellFonts?.[key] ?? props.fontSettings[area]
+}
+/** 材料行键取整页行序，续页与当前页接续，与序号列口径一致。 */
+function materialCellKeyFor(index: number, column: string) {
+  return materialCellKey((props.page.continuation || 0) * materialCapacity.value + index, column)
+}
+function materialCellFont(index: number, column: string, area: WorkSpecFontArea) {
+  return cellFont(materialCellKeyFor(index, column), area)
+}
 const { measure } = useWorkSpecOverflow(
   paper,
   () =>
@@ -369,7 +443,7 @@ const { measure } = useWorkSpecOverflow(
       props.generateOverflowAppendix,
     ]),
   (lines) => emit('overflow', lines),
-  fitWorkSpecOperationCells
+  fitWorkSpecCells
 )
 defineExpose({ measure })
 function materialLabel(index: number) {
