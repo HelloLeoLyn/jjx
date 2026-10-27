@@ -36,12 +36,21 @@
           :key="i"
           :data-material-group="specTemplate === 'B' ? row?.projectGroupKey : undefined"
         >
-          <td class="center" :style="columnFont('materialNumber', 'Content')">
-            {{ (page.continuation || 0) * materialCapacity + i + 1 }}
+          <td
+            v-if="specTemplate !== 'B' || !row || row.projectSpan"
+            class="center material-number"
+            :rowspan="specTemplate === 'B' ? row?.projectSpan || 1 : 1"
+            :style="columnFont('materialNumber', 'Content')"
+          >
+            {{
+              specTemplate === 'B'
+                ? (row?.projectNo ?? '')
+                : (page.continuation || 0) * materialCapacity + i + 1
+            }}
           </td>
           <td
             v-if="specTemplate !== 'B' || !row || row.projectSpan"
-            class="center"
+            class="center material-project"
             :rowspan="specTemplate === 'B' ? row?.projectSpan || 1 : 1"
             :style="columnFont('materialProject', 'Content')"
           >
@@ -55,7 +64,7 @@
               :data-overflow-title="materialLabel(i) + '项目'"
               :title="plain(row?.processName)"
               >{{ plain(row?.processName) }}</span
-            ><sub v-if="row?.projectGroup">{{ row.projectGroup }}</sub>
+            >
           </td>
           <td :style="columnFont('materialName', 'Content')">
             <span

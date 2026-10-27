@@ -39,7 +39,7 @@ describe('BOM各入口共用组合归属', () => {
     const groups = bomGroupRows(items, true)
     const printed = bomPrintRows(items)
     expect(printed.map(row => row.number)).toEqual(groups.map(row => row.number))
-    expect(groupBomMaterials(items).map(row => row.projectGroup)).toEqual(groups.map(row => row.number))
+    expect(groupBomMaterials(items).map(row => row.projectNo)).toEqual(groups.map(row => row.number))
     const pages = paginateBomRows(printed, [30, 30, 30, 30], 40)
     expect(pages.flat().map(row => row.key)).toEqual([0, 1, 2, 3])
     expect(pages.flat().map(row => row.number)).toEqual([1, 1, 2, 3])
@@ -50,9 +50,9 @@ describe('BOM各入口共用组合归属', () => {
     expect(projectMaterialPrintRows(data)).toEqual([])
     data.workSpec.projectMaterials = [{ groupNo: 9, groupKey: 'own', projectName: '独立项目', materials: [{ materialName: '独立料' }] }] as any
     expect(projectMaterialPrintRows(data)[0].materialName).toBe('独立料')
-    expect(projectMaterialPrintRows(data)[0].projectGroup).toBe(9)
+    expect(projectMaterialPrintRows(data)[0].projectNo).toBe(1)
     delete data.workSpec.projectMaterials
-    expect(projectMaterialPrintRows(data).map(row => row.projectGroup)).toEqual([1, 2])
+    expect(projectMaterialPrintRows(data).map(row => row.projectNo)).toEqual([1, 2])
     data.published = true
     expect(projectMaterialPrintRows(data).every(row => row.bomGroupLabel === undefined)).toBe(true)
   })

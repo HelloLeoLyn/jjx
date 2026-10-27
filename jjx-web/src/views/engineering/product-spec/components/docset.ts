@@ -242,43 +242,57 @@ export function projectMaterialFromBom(
     sourceBom: Object.fromEntries(materialSourceFields.map((key) => [key, String(row[key] ?? '')])),
   }
 }
-/** 只合并连续项目；同一项目再次出现时组号递增。 */
+/** 打印序号：按项目组顺序编号 1、2、3…，组内每行带同一个号，仅组首行渲染。 */
+function numberProjectGroups(rows: Record<string, any>[]): Record<string, any>[] {
+  let number = 0
+  return rows.map((row) => {
+    if (row.projectSpan) number++
+    return { ...row, projectNo: number || undefined }
+  })
+}
+/** 只合并连续项目；每组一个序号、一个项目格。 */
 export function groupProjectMaterials(rows: Record<string, any>[]): Record<string, any>[] {
   const groups = nestProjectMaterials(rows as ProjectMaterial[])
-  return groups.flatMap((group) =>
-    group.materials.map((row, index) => ({
-      ...row,
-      processId: group.processId,
-      processName: group.projectName,
-      icon: group.projectIcon,
-      projectGroup: group.groupNo,
-      projectGroupKey: group.groupKey,
-      projectSpan: index === 0 ? group.materials.length : 0,
-    }))
+  return numberProjectGroups(
+    groups.flatMap((group) =>
+      group.materials.map((row, index) => ({
+        ...row,
+        processId: group.processId,
+        processName: group.projectName,
+        icon: group.projectIcon,
+        projectGroupKey: group.groupKey,
+        projectSpan: index === 0 ? group.materials.length : 0,
+      }))
+    )
   )
 }
 export function projectMaterialPrintRows(data: DocsetData): Record<string, any>[] {
   const bom = flatten(data.bom.items || [])
   if (data.workSpec.projectMaterials === undefined)
     return data.published ? groupProjectMaterials(bom) : groupBomMaterials(bom)
-  return data.workSpec.projectMaterials.flatMap((group) =>
-    group.materials.map((row, index) => ({
-      ...row,
-      processId: group.processId,
-      processName: group.projectName,
-      icon: group.projectIcon || bom.find((item) => item.processId === group.processId)?.icon,
-      projectGroup: group.groupNo,
-      projectGroupKey: group.groupKey,
-      projectSpan: index === 0 ? group.materials.length : 0,
-    }))
+  return numberProjectGroups(
+    data.workSpec.projectMaterials.flatMap((group) =>
+      group.materials.map((row, index) => ({
+        ...row,
+        processId: group.processId,
+        processName: group.projectName,
+        icon: group.projectIcon || bom.find((item) => item.processId === group.processId)?.icon,
+        projectGroupKey: group.groupKey,
+        projectSpan: index === 0 ? group.materials.length : 0,
+      }))
+    )
   )
 }
 /** 仅用于BOM回退；独立维护的项目材料及其快照沿用自己的组模型。 */
 export function groupBomMaterials(rows: Record<string, any>[]): Record<string, any>[] {
-  return bomGroupRows(rows, true).map(group => ({
-    ...group.item, projectGroup: group.displayNumber, projectGroupKey: group.groupKey,
-    projectSpan: group.span, bomGroupLabel: group.label,
-  }))
+  return numberProjectGroups(
+    bomGroupRows(rows, true).map((group) => ({
+      ...group.item,
+      projectGroupKey: group.groupKey,
+      projectSpan: group.span,
+      bomGroupLabel: group.label,
+    }))
+  )
 }
 /** 刀模位置按 BOM 行（展平后）对齐取值，与纸张行序一致。map 优先；该行无 map 值时回退旧版多行文本（dieLocationText，按行对齐）。 */
 export function dieLocationRows(
@@ -999,17 +1013,23 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
 
   function addMaterials(table: HTMLTableElement) {
     const rows = Array.from(table.tBodies[0]?.rows || []).map((row) => clone(row))
+    let numberCell: HTMLTableCellElement | undefined
     let projectCell: HTMLTableCellElement | undefined
     let remaining = 0
+    // B 版序号与项目都按项目组跨行合并，分页前先展开成每行一份，跨页后再按组重建。
     for (const row of rows) {
       if (remaining > 0 && projectCell) {
+        if (numberCell) row.insertBefore(clone(numberCell), row.cells[0])
         row.insertBefore(clone(projectCell), row.cells[1])
         remaining--
       } else {
+        numberCell = row.cells[0] ? clone(row.cells[0]) : undefined
         projectCell = row.cells[1] ? clone(row.cells[1]) : undefined
         remaining = (projectCell?.rowSpan || 1) - 1
       }
+      if (numberCell) numberCell.rowSpan = 1
       if (projectCell) projectCell.rowSpan = 1
+      if (row.cells[0]) row.cells[0].rowSpan = 1
       if (row.cells[1]) row.cells[1].rowSpan = 1
     }
     const conditions = rows.slice(0, 6).map((row) => Array.from(row.cells).slice(5).map(clone))
@@ -1046,20 +1066,27 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
       rightCells()
       if (!fits()) throw new Error('材料单行超过A4可用高度，请检查字号或加工要求')
     }
-    // 跨页时重建项目单元格，保留同一个组序号；右侧凹凸/加工要求仍按原列定位。
+    // 跨页时重建序号与项目两列的合并，同组延续到下一页仍是同一个序号；
+    // 右侧凹凸/加工要求仍按原列定位。
     for (const printedPage of pages)
       for (const materialTable of printedPage.querySelectorAll<HTMLTableElement>(
         'table.materials'
       )) {
-        let first: HTMLTableCellElement | undefined, group: string | undefined
+        let group: string | undefined
+        let numberFirst: HTMLTableCellElement | undefined
+        let projectFirst: HTMLTableCellElement | undefined
         for (const row of Array.from(materialTable.tBodies[0]?.rows || [])) {
           const next = row.dataset.materialGroup
-          const cell = row.cells[1]
-          if (next && next === group && first) {
-            first.rowSpan++
-            cell.remove()
+          if (next && next === group && projectFirst) {
+            projectFirst.rowSpan++
+            row.cells[1].remove()
+            if (numberFirst) {
+              numberFirst.rowSpan++
+              row.cells[0].remove()
+            }
           } else {
-            first = cell
+            numberFirst = row.cells[0]
+            projectFirst = row.cells[1]
             group = next
           }
         }

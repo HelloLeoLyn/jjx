@@ -55,7 +55,7 @@ function data(): DocsetData {
 describe('项目材料独立清单与B版打印', () => {
   it('连续项目合并，隔行同名为新组，空项目不合并', () => {
     const rows = groupProjectMaterials(flattenProjectMaterials(data().workSpec.projectMaterials!))
-    expect(rows.map((row) => row.projectGroup)).toEqual([1, 1, 1, 2, 1, 2])
+    expect(rows.map((row) => row.projectNo)).toEqual([1, 1, 2, 3, 4, 5])
     expect(rows.map((row) => row.projectSpan)).toEqual([2, 0, 1, 1, 1, 1])
   })
   it('旧平铺读取无损，新保存只写项目组，三个材料只打印一个项目图标', () => {
@@ -102,7 +102,7 @@ describe('项目材料独立清单与B版打印', () => {
         .filter(Boolean)
     ).toEqual(['面1', '面2', '面3'])
     expect(wrapper.findAll('.test-icon')).toHaveLength(1)
-    expect(wrapper.get('td[rowspan="3"]').text()).toBe('1')
+    expect(wrapper.get('td.material-number[rowspan="3"]').text()).toBe('1')
     wrapper.unmount()
   })
   it('B读独立材料/顺序/刀模，A仍读BOM；历史缺失时回退', () => {
@@ -122,7 +122,7 @@ describe('项目材料独立清单与B版打印', () => {
     source.workSpec.projectMaterials = []
     expect(workSpecFlowSource(source).rows).toHaveLength(0)
   })
-  it('保留旧表头，图标+每组单序号，无图标回退名称', () => {
+  it('保留旧表头，图标+每组单序号放序号列，无图标回退名称', () => {
     const source = data()
     source.workSpec.projectMaterials![0].projectIcon = 'panel'
     const wrapper = mount(WorkSpecPaper, {
@@ -142,10 +142,17 @@ describe('项目材料独立清单与B版打印', () => {
     expect(table.get('thead').text()).toContain('规格及模数')
     expect(table.get('thead').text()).not.toContain('用量')
     expect(table.get('thead').text()).not.toContain('单位')
-    expect(table.findAll('td[rowspan="2"]')).toHaveLength(1)
+    expect(table.findAll('td.material-number[rowspan="2"]')).toHaveLength(1)
+    expect(table.findAll('td.material-project[rowspan="2"]')).toHaveLength(1)
     expect(table.findAll('.test-icon')).toHaveLength(1)
-    expect(table.findAll('sub').map((node) => node.text())).toEqual(['1', '1', '2', '1', '2'])
-    expect(table.text()).toContain('线路1')
+    expect(
+      table
+        .findAll('td.material-number')
+        .map((node) => node.text())
+        .filter(Boolean)
+    ).toEqual(['1', '2', '3', '4', '5'])
+    expect(table.findAll('sub')).toHaveLength(0)
+    expect(table.text()).toContain('线路')
     wrapper.unmount()
   })
   it('从BOM复制一次，编辑不会改BOM', () => {
@@ -271,7 +278,9 @@ describe('项目材料独立清单与B版打印', () => {
       doc.innerHTML = html.join('')
       const tables = Array.from(doc.querySelectorAll('table.materials'))
       expect(tables.length).toBeGreaterThan(1)
-      expect(tables.every((table) => table.querySelector('sub')?.textContent === '1')).toBe(true)
+      expect(
+        tables.map((table) => table.querySelector('td.material-number')?.textContent?.trim())
+      ).toEqual(['1', '1', '2'])
       for (const table of tables) {
         const keys = new Set(
           Array.from(
@@ -279,7 +288,13 @@ describe('项目材料独立清单与B版打印', () => {
             (row) => (row as HTMLElement).dataset.materialGroup
           )
         )
-        expect(table.querySelectorAll('sub').length).toBe(keys.size)
+        const numbers = Array.from(
+          table.querySelectorAll<HTMLTableCellElement>('td.material-number')
+        ).filter((cell) => cell.textContent?.trim())
+        expect(numbers.length).toBe(keys.size)
+        expect(numbers.reduce((sum, cell) => sum + cell.rowSpan, 0)).toBe(
+          table.querySelectorAll('tbody tr[data-material-group]').length
+        )
       }
       expect(Array.from(doc.querySelectorAll('.material-name'), (el) => el.textContent)).toEqual(
         flattenProjectMaterials(source.workSpec.projectMaterials).map((row) => row.materialName)
