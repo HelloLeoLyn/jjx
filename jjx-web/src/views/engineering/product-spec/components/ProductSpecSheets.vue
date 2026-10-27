@@ -1,15 +1,15 @@
 <template>
-  <div class="doc-sheets">
+  <div ref="sheetRoot" class="doc-sheets" :class="{ 'cell-font-editable': cellFontEditable }">
     <div v-if="specTemplate === 'B'" ref="flowSource" class="flow-source" aria-hidden="true">
-      <WorkSpecPaper :data="data" :page="workSpecFlowSource(data)" :page-index="0" :page-count="1"
-        :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" spec-template="B" />
+      <WorkSpecPaper ref="flowPaper" :data="data" :page="workSpecFlowSource(data)" :page-index="0" :page-count="1"
+        :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :cell-fonts="cellFonts" spec-template="B" />
     </div>
     <div v-for="(page, pageIndex) in pages" :key="page.key" :id="`doc-page-${pageIndex}`" class="sheet-slot">
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
       <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print', 'work-spec-canvas': page.kind === 'spec' || (page.kind === 'spec-details' && page.section === 'spec'), 'measured-canvas': !!page.flowHtml || page.flowPending }" :padding-mm="9" :scale="1">
         <div v-if="page.flowHtml" class="measured-page" v-html="workSpecFlowPageHtml(page.flowHtml, pageIndex, pages.length)" />
         <div v-else-if="page.flowPending" class="layout-pending">正在按 A4 测量分页…</div>
-        <WorkSpecPaper v-else-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :spec-template="specTemplate" :generate-overflow-appendix="generateOverflowAppendix" />
+        <WorkSpecPaper v-else-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :cell-fonts="cellFonts" :spec-template="specTemplate" :generate-overflow-appendix="generateOverflowAppendix" />
         <InkMixingPaper v-else-if="page.kind === 'ink'" :product-code="data.product.productCode" />
         <article v-else class="paper-form" :class="{ 'appendix-form': page.kind === 'spec-details' && page.section === 'spec' }">
           <header v-if="page.section !== 'customer' && page.section !== 'atlas'" class="paper-heading">
@@ -51,12 +51,15 @@ import InkMixingPaper from './InkMixingPaper.vue'
 import { plain, documentFileCaption, workSpecFlowSource, paginateMeasuredWorkSpec, type DocsetData, type DocPage, type PaperTextLine } from './docset'
 import { workSpecFlowPageHtml } from './workSpecFlowPagination'
 import type { WorkSpecFontSettings, WorkSpecTemplate } from './workSpecFont'
+import type { WorkSpecCellFonts } from './workSpecCellFont'
 
-const props = withDefaults(defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string; fontSettings: WorkSpecFontSettings; specTemplate?: WorkSpecTemplate; generateOverflowAppendix?: boolean }>(), { specTemplate: 'A', generateOverflowAppendix: false })
+const props = withDefaults(defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string; fontSettings: WorkSpecFontSettings; cellFonts?: WorkSpecCellFonts; selectedCellKey?: string; cellFontEditable?: boolean; specTemplate?: WorkSpecTemplate; generateOverflowAppendix?: boolean }>(), { specTemplate: 'A', generateOverflowAppendix: false })
 const emit = defineEmits<{ layout: [key: string, lines: PaperTextLine[]]; flowLayout: [pages: string[]]; flowError: [message: string] }>()
 const workPapers = ref<InstanceType<typeof WorkSpecPaper>[]>([])
 const printPapers = ref<InstanceType<typeof PrintSpecPaper>[]>([])
 const flowSource = ref<HTMLElement>()
+const flowPaper = ref<InstanceType<typeof WorkSpecPaper>>()
+const sheetRoot = ref<HTMLElement>()
 let generation = 0
 let disposed = false
 async function measureFlow() {
@@ -65,6 +68,7 @@ async function measureFlow() {
   try {
     await nextTick()
     await document.fonts.ready
+    await flowPaper.value?.measure()
     const source = flowSource.value?.querySelector<HTMLElement>('.work-paper')
     if (!source?.clientWidth) return
     await Promise.all(Array.from(source.querySelectorAll('img'), image => image.decode()))
@@ -75,10 +79,17 @@ async function measureFlow() {
       emit('flowError', error instanceof Error ? error.message : '作业规范分页失败')
   }
 }
-watch(() => [props.data, props.specTemplate, props.fontSettings, props.structureImage, props.structureCaption], () => {
+watch(() => [props.data, props.specTemplate, props.fontSettings, props.cellFonts, props.structureImage, props.structureCaption], () => {
   emit('flowLayout', [])
   void measureFlow()
 }, { deep: true, flush: 'post' })
+watch(() => [props.pages, props.selectedCellKey, props.cellFontEditable], async () => {
+  await nextTick()
+  for (const cell of sheetRoot.value?.querySelectorAll<HTMLElement>('[data-work-spec-cell]') || []) {
+    cell.toggleAttribute('data-cell-font-selected', !!props.cellFontEditable && cell.dataset.workSpecCell === props.selectedCellKey)
+    if (!props.cellFontEditable) cell.removeAttribute('tabindex')
+  }
+}, { immediate: true, flush: 'post' })
 onMounted(() => {
   document.fonts.addEventListener('loadingdone', measureFlow)
   void measureFlow()
@@ -110,6 +121,12 @@ function totalLabor(rows: Record<string, any>[]): string {
 .measured-canvas :deep(.a4-canvas) { height:297mm; min-height:297mm; overflow:hidden; }
 .measured-page { height:278mm; }
 .layout-pending { height:278mm; }
+.cell-font-editable :deep(td[data-work-spec-cell]) { cursor:pointer; }
+@media screen {
+  .cell-font-editable :deep(td[data-work-spec-cell]:hover),
+  .cell-font-editable :deep(td[data-cell-font-selected]) { outline:2px solid #409eff; outline-offset:-2px; }
+  :deep(td[data-cell-font-overflow]) { box-shadow:inset 0 0 0 2px #e6a23c; }
+}
 .doc-sheets { display:flex; flex-direction:column; align-items:center; gap:24px; }
 .spec-canvas :deep(.a4-canvas) { width:210mm; border:0; }
 .work-spec-canvas :deep(.a4-canvas) { width:210mm; height:297mm; min-height:297mm; border:0; }

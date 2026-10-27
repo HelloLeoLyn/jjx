@@ -143,7 +143,7 @@
         </el-checkbox-group>
         <div class="nav-foot">已选 {{ selectedSections.length }} 项 · {{ pages.length }} 页</div>
       </aside>
-      <main class="paper-stage">
+      <main class="paper-stage" @click="selectOperationCell" @keydown="selectOperationCell">
         <div v-if="pendingCount" class="render-progress no-print">
           正在展开附件，还有 {{ pendingCount }} 个文件…
         </div>
@@ -158,6 +158,9 @@
             :structure-image="structureImage"
             :structure-caption="structureCaption"
             :font-settings="fontSettings"
+            :cell-fonts="cellFonts"
+            :selected-cell-key="selectedCell?.key"
+            :cell-font-editable="!paperOnly"
             :spec-template="selectedTemplate"
             :generate-overflow-appendix="generateOverflowAppendix"
           />
@@ -167,6 +170,29 @@
       <aside v-if="!paperOnly && selectedSections.includes('spec')" class="font-panel no-print">
         <strong>作业规范字号</strong>
         <p>设置实际字号（px），每列标题与内容分别调整；打印使用当前设置。</p>
+        <div class="cell-font-control">
+          <strong>单格文字字号</strong>
+          <p>点击纸张中的作业流程格单独调整。文字保持单行，超宽自动缩小，最低 {{ WORK_SPEC_FONT_MIN }}px；图形图标尺寸保持不变。</p>
+          <template v-if="selectedCell">
+            <span class="selected-cell-label">{{ selectedCell.label }}</span>
+            <el-input-number
+              v-model="selectedCellSize"
+              :value-on-clear="selectedCellDefaultSize"
+              :min="WORK_SPEC_FONT_MIN"
+              :max="WORK_SPEC_FONT_MAX"
+              :step="1"
+              :step-strictly="true"
+              size="small"
+              controls-position="right"
+              aria-label="选中作业流程格文字字号"
+              style="width: 120px"
+            />
+            <p>设置值为字号上限，过长时仍会自动缩小。</p>
+            <el-button link type="primary" @click="resetSelectedCellFont">该格恢复默认</el-button>
+            <p class="selected-cell-text">{{ selectedCell.text }}</p>
+          </template>
+          <p>橙框表示缩至最小字号仍超宽，选中格子可在此查看全文。</p>
+        </div>
         <el-collapse v-model="openFontGroups">
           <el-collapse-item v-for="group in visibleFontGroups" :key="group.label" :name="group.label" :title="group.label">
             <label v-for="area in group.areas" :key="area.key" class="font-control">
@@ -228,6 +254,7 @@ import {
   type WorkSpecFontSettings,
   type WorkSpecTemplate,
 } from './workSpecFont'
+import { parseWorkSpecCellFonts, serializeWorkSpecCellFonts, type WorkSpecCellFonts } from './workSpecCellFont'
 
 const props = withDefaults(
   defineProps<{
@@ -241,6 +268,7 @@ const props = withDefaults(
     initialSections?: string[]
     initialFiles?: string[]
     initialFontSettings?: string
+    initialCellFontSettings?: string
     initialTemplate?: WorkSpecTemplate
   }>(),
   { standalone: false, autoPrint: false, paperOnly: false }
@@ -289,11 +317,41 @@ const generateOverflowAppendix = ref(
 )
 const zoom = ref(props.paperOnly ? 100 : 80)
 const fontSettings = ref<WorkSpecFontSettings>(parseWorkSpecFontSettings(props.initialFontSettings))
+const cellFonts = ref<WorkSpecCellFonts>(parseWorkSpecCellFonts(props.initialCellFontSettings))
+const selectedCell = ref<{ key: string; label: string; column: number; text: string }>()
+const selectedCellDefaultSize = computed(() =>
+  fontSettings.value[`flow${selectedCell.value?.column ?? 0}OperationContent` as keyof WorkSpecFontSettings]
+)
+const selectedCellSize = computed({
+  get: () => (selectedCell.value && cellFonts.value[selectedCell.value.key]) ?? selectedCellDefaultSize.value,
+  set: (size: number) => {
+    if (selectedCell.value && Number.isInteger(size) && size >= WORK_SPEC_FONT_MIN && size <= WORK_SPEC_FONT_MAX)
+      cellFonts.value = { ...cellFonts.value, [selectedCell.value.key]: size }
+  },
+})
+function selectOperationCell(event: MouseEvent | KeyboardEvent) {
+  if (props.paperOnly || !(event.target instanceof Element)) return
+  const cell = event.target.closest<HTMLElement>('td[data-work-spec-cell]')
+  if (!cell) return
+  if (event instanceof KeyboardEvent) {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+  }
+  const key = cell.dataset.workSpecCell!
+  selectedCell.value = { key, label: cell.dataset.cellLabel || '', column: Number(key[4]), text: cell.textContent?.trim() || '' }
+}
+function resetSelectedCellFont() {
+  if (!selectedCell.value) return
+  const next = { ...cellFonts.value }
+  delete next[selectedCell.value.key]
+  cellFonts.value = next
+}
 const selectedTemplate = ref<WorkSpecTemplate>(normalizeWorkSpecTemplate(props.initialTemplate))
 const visibleFontGroups = computed(() => workSpecFontGroupsForTemplate('A'))
 const openFontGroups = ref(['常规', '材料表'])
 function resetFontSettings() {
   fontSettings.value = defaultWorkSpecFontSettings()
+  cellFonts.value = {}
 }
 let generation = 0
 let queueRunning = false
@@ -393,6 +451,7 @@ async function load() {
   const current = ++generation
   releaseImages()
   data.value = undefined
+  selectedCell.value = undefined
   overflow.value = {}
   fileErrors.value = {}
   error.value = ''
@@ -522,6 +581,7 @@ async function printDocuments() {
       sections: selectedSections.value.join(','),
       files: selectedFiles.value.join(','),
       fonts: serializeWorkSpecFontSettings(fontSettings.value),
+      cellFonts: serializeWorkSpecCellFonts(cellFonts.value),
       template: selectedTemplate.value,
       generateOverflowAppendix: generateOverflowAppendix.value ? '1' : '0',
       print: '1',
@@ -563,12 +623,15 @@ async function printDocuments() {
     ElMessage.error('图片尚未加载完成，请重新加载后打印')
   }
 }
-watch(() => [props.productId, props.versionId], load, { immediate: true })
+watch(() => [props.productId, props.versionId], (_, previous) => {
+  if (previous) cellFonts.value = parseWorkSpecCellFonts(props.initialCellFontSettings)
+  void load()
+}, { immediate: true })
 defineExpose({ reload: load })
 watch(requestedFiles, expandFiles)
 watch(selectedTemplate, () => { overflow.value = {} })
 watch(
-  fontSettings,
+  [fontSettings, cellFonts],
   () => {
     overflow.value = {}
   },
@@ -768,6 +831,9 @@ onBeforeUnmount(() => {
   font-size: 11px;
   line-height: 1.5;
 }
+.cell-font-control { margin:12px 0; padding:10px 0; border-block:1px solid #e4e7ed; }
+.selected-cell-label { display:block; margin-bottom:8px; font-size:12px; }
+.selected-cell-text { overflow-wrap:anywhere; max-height:160px; overflow:auto; }
 .font-control {
   display: block;
   margin: 12px 0;

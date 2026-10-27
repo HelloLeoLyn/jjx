@@ -147,7 +147,13 @@
               <td class="center" :style="flowFont(cell.column, 'Number', 'Content')">
                 {{ cell.number }}
               </td>
-              <td :style="flowFont(cell.column, 'Operation', 'Content')">
+              <td
+                :style="flowFont(cell.column, 'Operation', 'Content')"
+                :data-work-spec-cell="cell.item ? workSpecCellKey(cell.column, cell.item, cell.number) : undefined"
+                :data-cell-label="cell.item ? `${cell.label}第${cell.number}道作业流程` : undefined"
+                :data-cell-font="cell.item ? operationCellFont(cell.column, cell.item, cell.number) : undefined"
+                :tabindex="cell.item ? 0 : undefined"
+              >
                 <div
                   v-if="cell.item"
                   class="operation"
@@ -282,6 +288,7 @@ import {
 } from './docset'
 
 import { useWorkSpecOverflow } from './useWorkSpecOverflow'
+import { fitWorkSpecOperationCells, workSpecCellKey, type WorkSpecCellFonts } from './workSpecCellFont'
 import {
   materialFontColumns,
   type WorkSpecTemplate,
@@ -299,6 +306,7 @@ const props = withDefaults(
     structureImage?: string
     structureCaption?: string
     fontSettings: WorkSpecFontSettings
+    cellFonts?: WorkSpecCellFonts
     specTemplate?: WorkSpecTemplate
     generateOverflowAppendix?: boolean
   }>(),
@@ -342,6 +350,10 @@ function flowFont(
 ) {
   return columnFont(`flow${column}${role}` as WorkSpecFontColumn, part)
 }
+function operationCellFont(column: number, row: Record<string, any>, number: number) {
+  return props.cellFonts?.[workSpecCellKey(column, row, number)]
+    ?? props.fontSettings[`flow${column}OperationContent` as WorkSpecFontArea]
+}
 const { measure } = useWorkSpecOverflow(
   paper,
   () =>
@@ -352,10 +364,12 @@ const { measure } = useWorkSpecOverflow(
       props.page.changeLines,
       props.page.continuation,
       props.fontSettings,
+      props.cellFonts,
       props.specTemplate,
       props.generateOverflowAppendix,
     ]),
-  (lines) => emit('overflow', lines)
+  (lines) => emit('overflow', lines),
+  fitWorkSpecOperationCells
 )
 defineExpose({ measure })
 function materialLabel(index: number) {
@@ -889,7 +903,30 @@ footer {
   max-width: 100%;
   padding: 0 2px;
   line-height: 1.1;
-  word-break: break-all;
+  white-space: nowrap;
+  word-break: normal;
   vertical-align: middle;
+}
+/* 单行文字按可用宽度缩小，不能由连续分页样式重新放开换行。 */
+.flows td[data-work-spec-cell] .operation {
+  width: 100%;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.flows .operation-symbols,
+.flows .symbol,
+.flows .symbol sub,
+.flows .operation-remark {
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  max-width: none;
+  max-height: none;
+}
+.flows .symbol-text {
+  flex-shrink: 0;
+  max-width: none;
 }
 </style>

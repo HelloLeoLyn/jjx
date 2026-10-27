@@ -3,7 +3,7 @@ import { detailTextLines, type PaperTextLine } from './docset'
 
 /** 对最终字体、实际单元格尺寸进行测量；缩放不参与scroll/client尺寸比较。 */
 export function useWorkSpecOverflow(root: Ref<HTMLElement | undefined>, contentKey: () => string,
-  report: (lines: PaperTextLine[]) => void) {
+  report: (lines: PaperTextLine[]) => void, prepare?: (root: HTMLElement) => void) {
   let disposed = false
   let generation = 0
   let observer: ResizeObserver | undefined
@@ -19,6 +19,7 @@ export function useWorkSpecOverflow(root: Ref<HTMLElement | undefined>, contentK
     await nextTick()
     await document.fonts.ready
     if (disposed || current !== generation || !root.value?.clientWidth) return
+    prepare?.(root.value)
     const lines: PaperTextLine[] = []
     for (const element of root.value.querySelectorAll<HTMLElement>('[data-overflow-title]')) {
       const overflow = overflows(element)

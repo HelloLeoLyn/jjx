@@ -7,6 +7,7 @@
     :initial-sections="initialSections"
     :initial-files="initialFiles"
     :initial-font-settings="initialFontSettings"
+    :initial-cell-font-settings="route.query.cellFonts == null ? undefined : String(route.query.cellFonts)"
     :initial-template="normalizeWorkSpecTemplate(route.query.template)"
     :auto-print="route.query.print === '1'"
     standalone
