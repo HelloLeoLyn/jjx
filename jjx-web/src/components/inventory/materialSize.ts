@@ -56,3 +56,33 @@ export function mergeLegacyThickness(size: string, thickness: unknown): string {
   parts.thickness = value
   return composeMaterialSize(parts)
 }
+
+/** 编辑与提交仅使用数值字段；文本只供预览和列表展示。 */
+export interface MaterialSizeValue {
+  widthMm: number | null
+  lengthMm: number | null
+  thicknessMm: number | null
+  sizeUnit: string
+}
+
+export const emptyMaterialSize = (): MaterialSizeValue => ({ widthMm: null, lengthMm: null, thicknessMm: null, sizeUnit: 'mm' })
+
+export function validateMaterialDimensions(value: MaterialSizeValue): void {
+  for (const [number, scale, integers, label] of [
+    [value.widthMm, 2, 8, '宽'], [value.lengthMm, 2, 10, '长'], [value.thicknessMm, 4, 6, '厚'],
+  ] as const) {
+    if (number == null) continue
+    const precision = Number(number.toFixed(scale))
+    if (!Number.isFinite(number) || number <= 0 || number >= 10 ** integers || precision !== number) {
+      throw new Error(`${label}须为大于0的数值，最多${scale}位小数`)
+    }
+  }
+  if (!['mm', 'cm', 'm'].includes(value.sizeUnit)) throw new Error('尺寸单位只允许 mm/cm/m')
+}
+
+export function renderMaterialDimensions(value: { widthMm?: number | null; lengthMm?: number | null; thicknessMm?: number | null; sizeUnit?: string | null }, round = false): string {
+  const values = round ? [value.widthMm, value.thicknessMm] : [value.widthMm, value.lengthMm, value.thicknessMm]
+  while (values.length && values.at(-1) == null) values.pop()
+  if (!values.length) return ''
+  return `${round ? 'Φ' : ''}${values.map(v => v == null ? '' : String(v)).join('*')}${value.sizeUnit || 'mm'}`
+}

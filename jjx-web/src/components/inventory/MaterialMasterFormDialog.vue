@@ -111,7 +111,7 @@
           ></el-col>
         </el-row>
         <el-form-item label="尺寸">
-          <MaterialSizeEditor v-model="form.size" @valid-change="sizeValid = $event" />
+          <MaterialSizeEditor v-model="dimensions" @valid-change="sizeValid = $event" />
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="8">
@@ -246,7 +246,8 @@ import type {
 } from '@/types/inventory/materialMaster'
 import MaterialAttributeFields from './MaterialAttributeFields.vue'
 import MaterialSizeEditor from './MaterialSizeEditor.vue'
-import { mergeLegacyThickness, parseMaterialSize } from './materialSize'
+import { emptyMaterialSize, renderMaterialDimensions } from './materialSize'
+import type { MaterialSizeValue } from './materialSize'
 import {
   isCommonAttribute,
   attributeVisible,
@@ -276,7 +277,11 @@ const visible = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
-const form = reactive<MaterialMasterForm>(emptyMasterForm())
+const form = reactive<MaterialMasterForm>({ ...emptyMasterForm(), ...emptyMaterialSize() })
+const dimensions = computed<MaterialSizeValue>({
+  get: () => ({ widthMm: form.widthMm ?? null, lengthMm: form.lengthMm ?? null, thicknessMm: form.thicknessMm ?? null, sizeUnit: form.sizeUnit || 'mm' }),
+  set: value => Object.assign(form, value),
+})
 const categories = ref<MaterialMasterCategory[]>([])
 const dictionaries = ref<MaterialDictionaries>({})
 const configuration = ref<MaterialMasterConfiguration>()
@@ -288,8 +293,7 @@ const sizeValid = ref(true)
 /** 口径由服务端按「填了克重→GRAMMAGE，有厚度→THICKNESS，否则 SIZE」判定，这里只回显。 */
 const specBasisLabel = computed(() => {
   if (form.grammage) return '克重（GRAMMAGE）'
-  const parsed = parseMaterialSize(form.size)
-  return parsed?.thickness ? '厚度（THICKNESS）' : '仅尺寸（SIZE）'
+  return form.thicknessMm != null ? '厚度（THICKNESS）' : '仅尺寸（SIZE）'
 })
 const loadError = ref('')
 const expanded = ref<string[]>([])
@@ -301,9 +305,15 @@ const materialOptions = computed(() =>
     configuration.value?.schema.meta_options.includes(o.code)
   )
 )
-const specificationPreview = computed(() =>
-  previewMasterSpecification(configuration.value?.schema, form.attributeJson, { widthSize: form.size })
-)
+const specificationPreview = computed(() => {
+  const schema = configuration.value?.schema
+  if (!schema?.fields.length) return ''
+  const attributes = { ...form.attributeJson }
+  delete attributes.thickness_mm
+  const text = previewMasterSpecification(schema, attributes, { thickness: String(form.grammage ?? form.thicknessMm ?? '') })
+  const size = renderMaterialDimensions(dimensions.value)
+  return [text, size ? `尺寸:${size}` : ''].filter(Boolean).join('；')
+})
 const previewName = computed(() => effectiveMasterName(form, dictionaries.value))
 const materialLabel = computed(
   () =>
@@ -388,7 +398,7 @@ async function initialize() {
   loadError.value = ''
   configuration.value = undefined
   configurationLoading.value = false
-  Object.assign(form, emptyMasterForm(), {
+  Object.assign(form, emptyMasterForm(), emptyMaterialSize(), {
     materialId: undefined,
     materialCode: undefined,
     supplierId: null,
@@ -421,7 +431,7 @@ async function initialize() {
         !!material.materialName &&
         material.materialName !== previewMasterName(form, dictionaries.value)
       form.attributeJson = detail.attributes
-      form.size = mergeLegacyThickness(form.size, detail.attributes.thickness_mm)
+      delete form.attributeJson.thickness_mm
       form.tagIds = detail.tags.flatMap((tag) => (tag.tagId == null ? [] : [tag.tagId]))
       configuration.value = detail.configuration ?? undefined
       if (!detail.configuration) form.categoryId = null
@@ -443,7 +453,7 @@ async function initialize() {
 
 async function save() {
   if (!sizeValid.value) return void ElMessage.warning('请先修正尺寸')
-  if (form.grammage && parseMaterialSize(form.size)?.thickness)
+  if (form.grammage && form.thicknessMm != null)
     return void ElMessage.warning('克重与厚度只能选一种口径，请清掉尺寸里的厚度')
   if (
     saving.value ||
@@ -469,13 +479,13 @@ async function save() {
   if (missing) return void ElMessage.warning(`请填写${missing.label}`)
   saving.value = true
   try {
+    const { size: _size, nameManual: _nameManual, ...fields } = form
     const payload = {
-      ...form,
+      ...fields,
       materialName: finalName,
       attributeJson: pruneAttributes(configuration.value.schema, form.attributeJson),
-    } as MaterialMasterForm
-    if (parseMaterialSize(form.size)) delete payload.attributeJson.thickness_mm
-    delete payload.nameManual
+    }
+    delete payload.attributeJson.thickness_mm
     const response = await materialMasterApi.save(payload)
     if (!response.data?.materialId) throw Error('保存响应缺少物料信息')
     ElMessage.success('物料保存成功')

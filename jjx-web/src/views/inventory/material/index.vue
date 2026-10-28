@@ -223,6 +223,7 @@ defineOptions({
   name: 'InventoryMaterial',
 })
 
+import { renderMaterialDimensions } from '@/components/inventory/materialSize'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
@@ -330,13 +331,9 @@ const categoryOptions = ref<MaterialMasterCategory[]>([])
 const dictionaries = ref<MaterialDictionaries>({})
 const dictionaryText = (dict: string, code?: string) =>
   dictionaries.value[dict]?.find((o) => o.code === code)?.label || code || '-'
-/** 尺寸展示：优先用结构化数值（宽×长×厚，mm），缺数值时回落到 size 原文。 */
+/** 尺寸展示：从数值拼装，缺项保留位置。 */
 const materialSizeText = (row: InventoryMaterial) => {
-  const values = [row.widthMm, row.lengthMm, row.thicknessMm].filter(
-    (value): value is number => typeof value === 'number'
-  )
-  if (!values.length) return row.size || '-'
-  return values.join('×') + (row.sizeUnit || 'mm')
+  return renderMaterialDimensions(row).replace(/\*/g, '×') || '-'
 }
 /** 规格口径：厚度/克重/仅尺寸；有公差时一并显示。 */
 const specBasisText = (row: InventoryMaterial) => {

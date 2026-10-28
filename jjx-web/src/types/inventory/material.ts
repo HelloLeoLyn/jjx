@@ -10,6 +10,7 @@ export interface InventoryMaterial {
   materialForm?: string | null
   attributeJson?: string | null
   readonly templateId?: number | null
+  /** 历史响应类型兼容；新接口不返回。 */
   readonly thickness?: string | null
   readonly widthSize?: string | null
   isCustomerSupplied?: boolean
@@ -25,9 +26,9 @@ export interface InventoryMaterial {
   brand?: string
   /** 别名/常用叫法，参与搜索 */
   searchKeywords?: string
-  /** 新模型尺寸：宽或宽×长，单位mm；厚度单独存品类属性 */
-  size?: string
-  /** 尺寸数值真源（后端由 size 同源派生，只读） */
+  /** 后端由数值字段拼装的只读尺寸展示值。 */
+  readonly size?: string
+  /** 尺寸数值真源。 */
   widthMm?: number | null
   lengthMm?: number | null
   thicknessMm?: number | null
@@ -122,8 +123,6 @@ export interface MaterialQueryDTO extends PageQuery {
 export interface MaterialSaveDTO {
   attributeJson?: string | null
   readonly templateId?: number | null
-  readonly thickness?: string | null
-  readonly widthSize?: string | null
   materialCode: string
   materialName: string
   categoryId?: number
@@ -133,7 +132,10 @@ export interface MaterialSaveDTO {
   color?: string
   brand?: string
   searchKeywords?: string
-  size?: string
+  widthMm?: number | null
+  lengthMm?: number | null
+  thicknessMm?: number | null
+  sizeUnit?: string | null
   unit: string
   safeStock: number
   maxStock: number
@@ -152,8 +154,6 @@ export interface MaterialSaveDTO {
 export interface MaterialUpdateDTO {
   attributeJson?: string | null
   readonly templateId?: number | null
-  readonly thickness?: string | null
-  readonly widthSize?: string | null
   materialId: number
   materialCode?: string
   materialName?: string
@@ -165,7 +165,10 @@ export interface MaterialUpdateDTO {
   color?: string | null
   brand?: string | null
   searchKeywords?: string | null
-  size?: string | null
+  widthMm?: number | null
+  lengthMm?: number | null
+  thicknessMm?: number | null
+  sizeUnit?: string | null
   unit?: string
   safeStock?: number
   maxStock?: number
