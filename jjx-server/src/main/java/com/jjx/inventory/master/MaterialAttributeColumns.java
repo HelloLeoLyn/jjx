@@ -3,16 +3,15 @@ package com.jjx.inventory.master;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.domain.InventoryMaterial;
 import java.math.BigDecimal;
-import java.util.Map;
 
 /** 属性保存时同源派生查询列；生成列由数据库维护。dev-20261024-007 */
 public final class MaterialAttributeColumns {
     private MaterialAttributeColumns() { }
 
-    public static void apply(InventoryMaterial material, Map<String, Object> attributes, Long templateId) {
+    public static void apply(InventoryMaterial material, Long templateId) {
         if (templateId == null) throw new BusinessException("所选分类未配置属性模板");
+        // 厚度只认尺寸（size）同源解析，不再接受属性 JSON 里的 thickness_mm 作为第二入口。
         Object thickness = MaterialSizeValue.thickness(material.getSize());
-        if (thickness == null) thickness = attributes.get("thickness_mm");
         material.setTemplateId(templateId);
         material.setThickness(text(thickness, 30, "厚度/克重"));
         material.setWidthSize(text(material.getSize(), 50, "尺寸"));

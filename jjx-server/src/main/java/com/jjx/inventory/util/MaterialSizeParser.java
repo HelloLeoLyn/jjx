@@ -2,7 +2,6 @@ package com.jjx.inventory.util;
 
 import java.math.BigDecimal;
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 /** 物料尺寸唯一解析入口。每段单位独立，内部统一为毫米，原始输入由调用方保留。 */
@@ -14,11 +13,10 @@ public final class MaterialSizeParser {
     private static final String PART = NUMBER + "\\s*" + UNIT;
     private static final Pattern DIMENSION = Pattern.compile("^(" + NUMBER + ")\\s*(" + UNIT + ")$", Pattern.CASE_INSENSITIVE);
     private static final Pattern LEGACY = Pattern.compile("(?<![A-Za-z\\d.])" + PART + "(?:\\s*[×xX*＊]\\s*" + PART + "){1,2}", Pattern.CASE_INSENSITIVE);
-    private static final Set<String> ROLL_CATEGORIES = Set.of("RM-ADHESIVE", "AUX-ADHESIVE", "RM-PAPER");
+    public record Dimensions(BigDecimal widthMm, BigDecimal lengthMm, BigDecimal thicknessMm) { }
 
-    public record Dimensions(BigDecimal widthMm, BigDecimal lengthMm, BigDecimal thicknessMm) {}
-
-    public static Dimensions parse(String size, String categoryCode) {
+    /** 两段按宽×长、三段按宽×长×厚；不再按品类猜卷料（旧品类码已废弃）。 */
+    public static Dimensions parse(String size) {
         if (size == null || size.isBlank()) return new Dimensions(null, null, null);
         if (size.length() > 50) throw new IllegalArgumentException("尺寸不能超过50个字符");
         String[] parts = size.trim().split("[×xX*＊]", -1);
@@ -36,9 +34,7 @@ public final class MaterialSizeParser {
             values[i] = new BigDecimal(match.group(1)).multiply(factor);
             if (values[i].signum() <= 0) throw new IllegalArgumentException("尺寸必须大于0");
         }
-        boolean roll = ROLL_CATEGORIES.contains(categoryCode);
         if (parts.length == 1) return new Dimensions(values[0], null, null);
-        if (parts.length == 2 && roll) return new Dimensions(values[0], null, values[1]);
         return new Dimensions(values[0], values[1], parts.length == 3 ? values[2] : null);
     }
 

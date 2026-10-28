@@ -145,9 +145,19 @@ public class MaterialMasterService {
         String size = MaterialSizeValue.normalize(MaterialSizeValue.mergeLegacy(dto.getSize(), inputAttributes.get("thickness_mm")));
         // 历史未知格式只允许原样保留，不能把新输入的无效格式当成合法尺寸。
         if (old == null || !Objects.equals(size, old.getSize())) validateSize(size);
-        String thickness = MaterialSizeValue.thickness(size);
-        if (thickness != null && schema.fields().stream().anyMatch(f -> f.key().equals("thickness_mm"))) {
-            inputAttributes.put("thickness_mm", new BigDecimal(thickness));
+        MaterialSizeValue.SizeSpec sizeSpec = MaterialSizeValue.spec(size);
+        boolean sizeChanged = old == null || !Objects.equals(size, old.getSize());
+        String specBasis = dto.getGrammage() != null ? "GRAMMAGE"
+                : sizeSpec != null && sizeSpec.thicknessMm() != null ? "THICKNESS"
+                : sizeSpec != null ? "SIZE" : null;
+        // 口径校验：克重与厚度互斥，克重口径仍必须有宽度；只在新增/改尺寸/改克重时拦，历史数据不阻塞。
+        if (dto.getGrammage() != null || sizeChanged) {
+            if (dto.getGrammage() != null && dto.getGrammage().signum() <= 0) throw new BusinessException("克重必须大于0");
+            if ("GRAMMAGE".equals(specBasis)) {
+                if (sizeSpec != null && sizeSpec.thicknessMm() != null) throw new BusinessException("克重与厚度只能选一种口径，请清掉尺寸里的厚度");
+                if (sizeSpec == null || sizeSpec.widthMm() == null) throw new BusinessException("克重口径仍需填宽度（尺寸首个数值）");
+            }
+            if ("THICKNESS".equals(specBasis) && sizeSpec.widthMm() == null) throw new BusinessException("填了厚度时仍需填宽度");
         }
         Map<String, Object> attributes = schema.validateAttributes(inputAttributes, objectMapper);
         InventoryMaterial material = new InventoryMaterial();
@@ -161,12 +171,19 @@ public class MaterialMasterService {
         material.setBrand(text(dto.getBrand(), "品牌", 50, false));
         material.setColor(text(dto.getColor(), "颜色", 20, false));
         material.setSize(text(size, "尺寸", 50, false));
+        material.setWidthMm(sizeSpec == null ? null : sizeSpec.widthMm());
+        material.setLengthMm(sizeSpec == null ? null : sizeSpec.lengthMm());
+        material.setThicknessMm(sizeSpec == null ? null : sizeSpec.thicknessMm());
+        material.setSizeUnit(sizeSpec == null ? null : sizeSpec.unit());
+        material.setSpecBasis(specBasis);
+        material.setGrammage(dto.getGrammage());
+        material.setThicknessTolerance(dto.getThicknessTolerance());
         material.setSearchKeywords(text(dto.getSearchKeywords(), "别名", 500, false));
         material.setRemark(text(dto.getRemark(), "业务备注", 1000, false));
         material.setSpecification(old == null ? null : old.getSpecification());
         material.setIsCustomerSupplied(Boolean.TRUE.equals(dto.getIsCustomerSupplied()));
         material.setIsSample(Boolean.TRUE.equals(dto.getIsSample()));
-        if (config != null) MaterialAttributeColumns.apply(material, attributes, config.template().getTemplateId());
+        if (config != null) MaterialAttributeColumns.apply(material, config.template().getTemplateId());
         else { material.setTemplateId(null); material.setThickness(null); material.setWidthSize(null); }
         Map<String, Object> storedAttributes = new LinkedHashMap<>(attributes);
         if (MaterialSizeValue.parts(size) != null) storedAttributes.remove("thickness_mm");

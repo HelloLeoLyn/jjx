@@ -646,7 +646,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         }
         if (attributes == null) throw new BusinessException("物料属性必须为JSON对象");
         if (existing != null && material.getSize() == null && !material.getSuppliedFields().contains("size")) material.setSize(existing.getSize());
-        com.jjx.inventory.master.MaterialAttributeColumns.apply(material, attributes,
+        com.jjx.inventory.master.MaterialAttributeColumns.apply(material,
                 categoryId == null ? null : materialMapper.selectTemplateId(categoryId));
         return true;
     }
@@ -702,7 +702,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         boolean sizeChanged = existing == null || !java.util.Objects.equals(material.getSize(), existing.getSize());
         if (StringUtils.isNotBlank(material.getSize()) && sizeChanged) {
             try {
-                com.jjx.inventory.util.MaterialSizeParser.parse(material.getSize(), categoryCode);
+                com.jjx.inventory.util.MaterialSizeParser.parse(material.getSize());
             } catch (IllegalArgumentException e) {
                 throw new BusinessException(e.getMessage());
             }
@@ -829,7 +829,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         }
         if (StringUtils.isNotBlank(dto.getSize())) {
             try {
-                com.jjx.inventory.util.MaterialSizeParser.parse(dto.getSize(), categoryCode);
+                com.jjx.inventory.util.MaterialSizeParser.parse(dto.getSize());
             } catch (IllegalArgumentException e) {
                 throw new BusinessException(e.getMessage());
             }

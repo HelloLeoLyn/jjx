@@ -33,6 +33,13 @@ public class MaterialVO {
     private Long templateId;
     private String thickness;
     private String widthSize;
+    private BigDecimal widthMm;
+    private BigDecimal lengthMm;
+    private BigDecimal thicknessMm;
+    private BigDecimal grammage;
+    private BigDecimal thicknessTolerance;
+    private String sizeUnit;
+    private String specBasis;
     private Boolean isCustomerSupplied;
     private Boolean isSample;
 

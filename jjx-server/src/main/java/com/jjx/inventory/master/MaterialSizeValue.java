@@ -51,6 +51,26 @@ public final class MaterialSizeValue {
         return parts.length > index && !parts[index].isEmpty() ? parts[index] : null;
     }
 
+    /** 结构化尺寸（宽/长/厚，mm）；与 size 文本同源，识别不了返回 null。 */
+    public record SizeSpec(BigDecimal widthMm, BigDecimal lengthMm, BigDecimal thicknessMm, String unit) { }
+
+    public static SizeSpec spec(String size) {
+        String[] parts = parts(size);
+        if (parts == null || parts.length == 0) return null;
+        boolean round = size != null && size.trim().matches("^[ΦφØø⌀].*");
+        BigDecimal first = decimal(parts[0]);
+        BigDecimal second = parts.length > 1 ? decimal(parts[1]) : null;
+        BigDecimal third = parts.length > 2 ? decimal(parts[2]) : null;
+        // 圆形料：Φ直径*厚；方形料：宽*长(*厚)。
+        return round
+                ? new SizeSpec(first, null, second, "mm")
+                : new SizeSpec(first, second, third, "mm");
+    }
+
+    private static BigDecimal decimal(String value) {
+        return value == null || value.isBlank() ? null : new BigDecimal(value);
+    }
+
     public static String mergeLegacy(String size, Object thickness) {
         if (thickness == null || thickness.toString().isBlank() || thickness(size) != null) return size;
         String[] parts = parts(size);

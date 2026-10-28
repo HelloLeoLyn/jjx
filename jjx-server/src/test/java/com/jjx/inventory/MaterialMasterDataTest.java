@@ -65,15 +65,17 @@ class MaterialMasterDataTest {
     }
 
     @Test void unitsAndCategorySemantics() {
-        var sheet = MaterialSizeParser.parse("0.3m×30.5cm×0.01inch", "RM-FILM");
+        var sheet = MaterialSizeParser.parse("0.3m×30.5cm×0.01inch");
         assertEquals(0, sheet.widthMm().compareTo(new BigDecimal("300")));
         assertEquals(0, sheet.lengthMm().compareTo(new BigDecimal("305")));
         assertEquals(0, sheet.thicknessMm().compareTo(new BigDecimal("0.254")));
-        var roll = MaterialSizeParser.parse("300×1.0", "RM-ADHESIVE");
-        assertNull(roll.lengthMm()); assertEquals(0, roll.thicknessMm().compareTo(BigDecimal.ONE));
-        assertNull(MaterialSizeParser.parse("300", "RM-FILM").lengthMm());
+        // 两段一律按宽×长（不再按旧品类码猜卷料），厚度只在第三段。
+        var twoParts = MaterialSizeParser.parse("300×1.0");
+        assertEquals(0, twoParts.lengthMm().compareTo(BigDecimal.ONE));
+        assertNull(twoParts.thicknessMm());
+        assertNull(MaterialSizeParser.parse("300").lengthMm());
         for (String invalid : List.of("300×", "-1", "0×30", "1×2×3×4", "300foo")) {
-            assertThrows(IllegalArgumentException.class, () -> MaterialSizeParser.parse(invalid, "RM-FILM"));
+            assertThrows(IllegalArgumentException.class, () -> MaterialSizeParser.parse(invalid));
         }
         assertEquals("300*305mm", MaterialSizeParser.extractLegacy("雾面300*305mm"));
         assertNull(MaterialSizeParser.extractLegacy("雾面"));
@@ -96,13 +98,18 @@ class MaterialMasterDataTest {
         when(mapper.selectCategory(2L)).thenReturn(category());
         when(mapper.selectTemplateId(2L)).thenReturn(71L);
         when(mapper.insert(any(InventoryMaterial.class))).thenReturn(1);
-        var m = material(); m.setSize("300×305");
+        var m = material(); m.setSize("300×305×0.175");
         m.setTemplateId(999L); m.setThickness("伪造"); m.setWidthSize("伪造");
-        m.setAttributeJson("{\"thickness_mm\":0.175}");
+        m.setAttributeJson("{}");
         assertTrue(service.create(m, List.of(), "codex"));
-        assertEquals(71L, m.getTemplateId()); assertEquals("0.175", m.getThickness()); assertEquals("300×305", m.getWidthSize());
+        assertEquals(71L, m.getTemplateId()); assertEquals("0.175", m.getThickness()); assertEquals("300×305×0.175", m.getWidthSize());
         var vo = Mappers.getMapper(MaterialConverter.class).toVO(m, Map.of());
-        assertEquals(71L, vo.getTemplateId()); assertEquals("0.175", vo.getThickness()); assertEquals("300×305", vo.getWidthSize());
+        assertEquals(71L, vo.getTemplateId()); assertEquals("0.175", vo.getThickness()); assertEquals("300×305×0.175", vo.getWidthSize());
+        // 属性 JSON 里的 thickness_mm 不再是第二入口：尺寸没厚度时厚度保持为空。
+        var noThickness = material(); noThickness.setSize("300×305");
+        noThickness.setAttributeJson("{\"thickness_mm\":0.175}");
+        assertTrue(service.create(noThickness, List.of(), "codex"));
+        assertNull(noThickness.getThickness());
     }
 
     @Test void attributeEditClearsRemovedDerivedValuesButUnrelatedEditDoesNotWriteThem() {

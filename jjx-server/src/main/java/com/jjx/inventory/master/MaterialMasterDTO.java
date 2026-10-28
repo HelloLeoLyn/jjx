@@ -19,6 +19,20 @@ public class MaterialMasterDTO {
     private String thickness;
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private String widthSize;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private BigDecimal widthMm;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private BigDecimal lengthMm;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private BigDecimal thicknessMm;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String sizeUnit;
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String specBasis;
+    /** 克重 g/m²：与厚度二选一，填了即判定为克重口径。 */
+    private BigDecimal grammage;
+    /** 厚度公差 ±mm。 */
+    private BigDecimal thicknessTolerance;
 
     private String materialName;
     private String materialMeta;

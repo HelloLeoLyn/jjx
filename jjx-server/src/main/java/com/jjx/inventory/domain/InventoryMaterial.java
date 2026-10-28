@@ -58,6 +58,16 @@ public class InventoryMaterial extends BaseEntity {
     private Long templateId;
     private String thickness;
     private String widthSize;
+    /** 尺寸数值真源（mm）；由 size 同源派生，展示列仍用 size/thickness/widthSize。 */
+    private BigDecimal widthMm;
+    private BigDecimal lengthMm;
+    private BigDecimal thicknessMm;
+    /** 克重 g/m²，specBasis=GRAMMAGE 时使用。 */
+    private BigDecimal grammage;
+    private BigDecimal thicknessTolerance;
+    private String sizeUnit;
+    /** 规格口径：THICKNESS/GRAMMAGE/SIZE。 */
+    private String specBasis;
     private Boolean isCustomerSupplied;
     private Boolean isSample;
 
