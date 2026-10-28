@@ -33,7 +33,7 @@ class MaterialClassifyTest {
         var category = new MaterialMasterCatalog.Category(3L,"RAW_AUX_PROTECT","保护膜",2L,3,"R","原材料/辅材/保护膜",true,1,1);
         var template = new InventoryAttributeTemplate(); template.setTemplateId(33L);
         config = new MaterialMasterCatalog.Configuration(category,List.of(category),template,
-                new MaterialAttributeSchema(1,List.of(),false,null,null,"PCS",List.of()));
+                new MaterialAttributeSchema(1,List.of(),false,null,null,"PCS",List.of(),null));
     }
     private MaterialClassifyRule rule(long id, String keyword, MaterialClassifyRule.MatchField field, boolean enabled) {
         var rule=new MaterialClassifyRule(); rule.setId(id);rule.setKeyword(keyword);rule.setMatchField(field);

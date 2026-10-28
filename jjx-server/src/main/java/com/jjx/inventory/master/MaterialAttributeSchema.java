@@ -16,7 +16,9 @@ public record MaterialAttributeSchema(
         @JsonProperty("default_meta") String defaultMeta,
         @JsonProperty("default_form") String defaultForm,
         @JsonProperty("default_unit") String defaultUnit,
-        List<Field> fields) {
+        List<Field> fields,
+        /** 命名规则：勾选参与命名的字段与顺序；为空表示未配置。 */
+        @JsonProperty("name_pattern") MaterialNamingPattern namePattern) {
 
     public record Option(String code, String label) { }
     public record Field(String key, String label, String type, String unit, boolean required,
@@ -47,6 +49,7 @@ public record MaterialAttributeSchema(
         if (new HashSet<>(metaOptions).size() != metaOptions.size()) fail("模板材质候选重复");
         if (metaRequired && metaOptions.isEmpty()) fail("材质必填时必须配置材质候选");
         if (defaultMeta != null && !metaOptions.contains(defaultMeta)) fail("默认材质不在候选范围");
+        if (namePattern != null) namePattern.validate(this);
         Set<String> keys = new HashSet<>();
         Set<String> labels = new HashSet<>();
         for (Field f : fields) {

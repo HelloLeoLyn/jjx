@@ -226,6 +226,57 @@
             </el-table>
             <el-button style="margin-top: 12px" @click="addField">增加属性</el-button>
             <el-button style="margin-top: 12px" @click="addCommonFields">补充本品类常用属性</el-button>
+            <el-divider content-position="left">命名规则（勾选参与命名的字段，按勾选顺序拼装）</el-divider>
+            <div class="naming-rule">
+              <div class="naming-tokens">
+                <el-checkbox
+                  v-for="token in namingTokens"
+                  :key="token.key"
+                  :model-value="namePattern.fields.includes(token.key)"
+                  @update:model-value="(value) => toggleNameField(token.key, !!value)"
+                  >{{ token.label }}</el-checkbox
+                >
+              </div>
+              <div v-if="namePattern.fields.length" class="naming-order">
+                <div v-for="(field, index) in namePattern.fields" :key="field" class="naming-order-row">
+                  <span class="naming-order-label">{{ namingLabel(field) }}</span>
+                  <el-button link :disabled="index === 0" @click="moveNameField(index, -1)">上移</el-button>
+                  <el-button
+                    link
+                    :disabled="index === namePattern.fields.length - 1"
+                    @click="moveNameField(index, 1)"
+                    >下移</el-button
+                  >
+                  <el-button link type="danger" @click="toggleNameField(field, false)">移除</el-button>
+                </div>
+              </div>
+              <el-form-item label="分隔符">
+                <el-radio-group v-model="namePattern.separator">
+                  <el-radio-button label=" ">空格</el-radio-button>
+                  <el-radio-button label="-">-</el-radio-button>
+                  <el-radio-button label="">无</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label="缺值处理">
+                <el-radio-group v-model="namePattern.empty">
+                  <el-radio-button label="skip">跳过</el-radio-button>
+                  <el-radio-button label="placeholder">占位 —</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-button :loading="namingLoading" @click="previewNaming">预览命名</el-button>
+              <span v-if="namingMessage" class="naming-message">{{ namingMessage }}</span>
+              <el-table
+                v-if="namingSamples.length"
+                :data="namingSamples"
+                border
+                size="small"
+                style="margin-top: 8px"
+              >
+                <el-table-column label="物料编码" prop="materialCode" width="150" />
+                <el-table-column label="当前名称" prop="oldName" />
+                <el-table-column label="按规则生成" prop="newName" />
+              </el-table>
+            </div>
             <el-alert
               title="已有物料的模板可新增无默认值的可选属性、调整显示设置；删除、改类型或单位等需另行处理。常用属性补入草稿后，检查并保存才生效。"
               type="info"
@@ -262,6 +313,8 @@ import { participatesInSpecification } from '../bomSpecification'
 import type {
   MaterialAttributeField,
   MaterialAttributeSchema,
+  MaterialNamingPattern,
+  MaterialNamingPreview,
   MaterialDictionaries,
   MaterialMasterCategory,
 } from '@/types/inventory/materialMaster'
@@ -290,6 +343,55 @@ const templateCode = ref(''),
 const templateStatus = ref<number>(CommonStatusEnum.NORMAL.value)
 const templateLoading = ref(false)
 const schema = ref<MaterialAttributeSchema>({ version: 1, meta_options: [], fields: [] })
+/** 命名规则：勾选字段 + 顺序 + 分隔符 + 缺值处理，保存进 attribute_schema.name_pattern。 */
+const namePattern = ref<MaterialNamingPattern>({ fields: [], separator: ' ', empty: 'skip' })
+const namingLoading = ref(false)
+const namingSamples = ref<MaterialNamingPreview['samples']>([])
+const namingMessage = ref('')
+const COMMON_NAMING_TOKENS = [
+  { key: 'brand', label: '品牌' },
+  { key: 'model', label: '型号' },
+  { key: 'color', label: '颜色' },
+  { key: 'meta', label: '材质' },
+  { key: 'form', label: '形态' },
+  { key: 'unit', label: '单位' },
+  { key: 'thickness_mm', label: '厚度(mm)' },
+  { key: 'width', label: '宽(mm)' },
+  { key: 'length', label: '长(mm)' },
+  { key: 'grammage', label: '克重' },
+]
+/** 可选字段 = 公共字段 + 本品类属性字段（品类不同，可勾选的属性就不同）。 */
+const namingTokens = computed(() => [
+  ...COMMON_NAMING_TOKENS,
+  ...schema.value.fields
+    .filter((field) => field.key && !COMMON_NAMING_TOKENS.some((token) => token.key === field.key))
+    .map((field) => ({ key: field.key, label: field.label || field.key })),
+])
+const namingLabel = (key: string) => namingTokens.value.find((token) => token.key === key)?.label || key
+function toggleNameField(key: string, checked: boolean) {
+  const rest = namePattern.value.fields.filter((field) => field !== key)
+  namePattern.value.fields = checked ? [...rest, key] : rest
+}
+function moveNameField(index: number, offset: -1 | 1) {
+  const fields = namePattern.value.fields
+  const target = index + offset
+  if (target < 0 || target >= fields.length) return
+  const [field] = fields.splice(index, 1)
+  fields.splice(target, 0, field)
+}
+async function previewNaming() {
+  if (!templateCategoryId.value) return
+  namingLoading.value = true
+  try {
+    const response = await materialMasterApi.previewNaming(templateCategoryId.value, namePattern.value)
+    namingSamples.value = response.data?.samples || []
+    namingMessage.value = response.data?.message || ''
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '命名预览失败')
+  } finally {
+    namingLoading.value = false
+  }
+}
 const editableCategories = computed(() => categories.value.filter((c) => c.categoryLevel > 1))
 const leaves = computed(() =>
   categories.value.filter((c) => !categories.value.some((child) => child.parentId === c.categoryId))
@@ -354,6 +456,9 @@ async function loadTemplate(id: number) {
   const request = ++templateRequest
   templateLoading.value = true
   schema.value = { version: 1, meta_options: [], fields: [] }
+  namePattern.value = { fields: [], separator: ' ', empty: 'skip' }
+  namingSamples.value = []
+  namingMessage.value = ''
   templateCode.value = ''
   templateName.value = ''
   const category = categories.value.find((c) => c.categoryId === id)
@@ -366,6 +471,13 @@ async function loadTemplate(id: number) {
       return
     }
     schema.value = response.data.schema
+    namePattern.value = response.data.schema.name_pattern
+      ? {
+          fields: [...response.data.schema.name_pattern.fields],
+          separator: response.data.schema.name_pattern.separator || ' ',
+          empty: response.data.schema.name_pattern.empty === 'placeholder' ? 'placeholder' : 'skip',
+        }
+      : { fields: [], separator: ' ', empty: 'skip' }
     templateCode.value = response.data.template.templateCode
     templateName.value = response.data.template.templateName
     templateStatus.value = response.data.template.status
@@ -431,7 +543,7 @@ async function saveTemplate() {
       categoryId: templateCategoryId.value,
       templateCode: templateCode.value,
       templateName: templateName.value,
-      attributeSchema: schema.value,
+      attributeSchema: { ...schema.value, name_pattern: namePattern.value },
       status: templateStatus.value,
     })
     await refresh()
@@ -467,3 +579,12 @@ async function removeTemplate() {
   }
 }
 </script>
+
+<style scoped>
+.naming-rule { margin-top: 8px; }
+.naming-tokens { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; }
+.naming-order { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.naming-order-row { display: flex; align-items: center; gap: 4px; }
+.naming-order-label { min-width: 90px; color: var(--el-text-color-regular); }
+.naming-message { margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px; }
+</style>

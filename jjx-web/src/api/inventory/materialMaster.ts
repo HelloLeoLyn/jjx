@@ -7,6 +7,7 @@ import type {
   MaterialMasterDetail,
   MaterialMasterForm,
   MaterialMasterRecord,
+  MaterialNamingPreview,
   MaterialDictionaries,
   MaterialImportResult,
 } from '@/types/inventory/materialMaster'
@@ -57,6 +58,9 @@ export const materialMasterApi = {
     >(`${base}/audit`),
   saveCategory: (data: unknown) => request.put<R<unknown>>(`${base}/category`, data),
   saveTemplate: (data: unknown) => request.put<R<unknown>>(`${base}/template`, data),
+  /** 命名规则预览：只读试算，按品类取最近 5 条物料 */
+  previewNaming: (categoryId: number, namePattern: unknown) =>
+    request.post<R<MaterialNamingPreview>>(`${base}/naming/preview`, { categoryId, namePattern }),
   template: (id: number) =>
     request.get<
       R<{

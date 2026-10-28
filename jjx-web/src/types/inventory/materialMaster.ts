@@ -32,6 +32,19 @@ export interface MaterialAttributeSchema {
   default_form?: string | null
   default_unit?: string | null
   fields: MaterialAttributeField[]
+  /** 命名规则：勾选参与命名的字段与顺序（品类维度配置，dev-20261028-005） */
+  name_pattern?: MaterialNamingPattern | null
+}
+export interface MaterialNamingPattern {
+  /** 字段编码：公共字段 brand/model/color/meta/form/unit + 本品类属性字段 */
+  fields: string[]
+  separator: string
+  /** 缺值处理：skip 跳过 / placeholder 占位 — */
+  empty: 'skip' | 'placeholder'
+}
+export interface MaterialNamingPreview {
+  samples: { materialId: number; materialCode: string; oldName: string; newName: string | null }[]
+  message: string
 }
 export interface MaterialMasterCategory {
   categoryId: number

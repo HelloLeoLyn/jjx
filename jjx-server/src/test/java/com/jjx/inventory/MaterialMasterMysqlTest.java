@@ -161,7 +161,7 @@ class MaterialMasterMysqlTest {
         var material = service.save(pc("使用模板"),"Codex-test");
         var schema = catalog.configuration(900003L).schema();
         assertDoesNotThrow(() -> configurationService.saveTemplate(new MaterialMasterConfigurationService.TemplateSave("TPL_PC","改显示名",900003L,schema,1),"Codex-test"));
-        var changed = new MaterialAttributeSchema(2,schema.metaOptions(),schema.metaRequired(),schema.defaultMeta(),schema.defaultForm(),schema.defaultUnit(),List.of());
+        var changed = new MaterialAttributeSchema(2,schema.metaOptions(),schema.metaRequired(),schema.defaultMeta(),schema.defaultForm(),schema.defaultUnit(),List.of(),null);
         assertThrows(BusinessException.class, () -> configurationService.saveTemplate(new MaterialMasterConfigurationService.TemplateSave("TPL_PC","PC",900003L,changed,1),"Codex-test"));
         jdbc.update("INSERT INTO inventory_transaction(material_id) VALUES (?)",material.getMaterialId());
         var dto = pc("使用模板"); dto.setMaterialId(material.getMaterialId()); dto.setUnit("PCS");

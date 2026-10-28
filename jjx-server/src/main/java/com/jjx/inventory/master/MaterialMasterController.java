@@ -84,6 +84,15 @@ public class MaterialMasterController extends BaseController {
         return Result.success(configurationService.templateDetail(categoryId));
     }
 
+    public record NamingPreviewRequest(Long categoryId, MaterialNamingPattern namePattern) { }
+
+    /** 命名规则预览：只读试算，按品类取最近 5 条物料给新旧名对照。 */
+    @PostMapping("/naming/preview")
+    @SaCheckPermission(value = {"inventory:category:list", "inventory:material:view"}, mode = SaMode.OR)
+    public Result<MaterialMasterService.NamingPreview> previewNaming(@RequestBody NamingPreviewRequest request) {
+        return Result.success(service.previewNaming(request.categoryId(), request.namePattern()));
+    }
+
     @DeleteMapping("/template/{categoryId}")
     @SaCheckPermission("inventory:category:edit")
     public Result<Void> removeTemplate(@PathVariable Long categoryId) {

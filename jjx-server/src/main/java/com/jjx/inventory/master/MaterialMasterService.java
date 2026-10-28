@@ -38,6 +38,30 @@ public class MaterialMasterService {
     public record Detail(InventoryMaterial material, Map<String, Object> attributes,
                          MaterialMasterCatalog.Configuration configuration, List<SysTag> tags, MaterialSourceValues source,
                          SpecificationPreview specificationGeneration) { }
+
+    /** 命名规则预览：按品类取样最多 5 条，给出旧名→新名对照，不改库。 */
+    public record NamingSample(Long materialId, String materialCode, String oldName, String newName) { }
+    public record NamingPreview(List<NamingSample> samples, String message) { }
+
+    /** 命名规则预览（只读）：按品类取样 5 条物料，用传入规则试算新旧名对照。 */
+    public NamingPreview previewNaming(Long categoryId, MaterialNamingPattern pattern) {
+        if (categoryId == null) throw new BusinessException("请选择末级品类");
+        MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(categoryId);
+        if (config == null) throw new BusinessException("该品类未配置属性模板");
+        MaterialAttributeSchema schema = config.schema();
+        MaterialNamingPattern normalized = pattern == null ? MaterialNamingPattern.defaults() : pattern.normalized();
+        normalized.validate(schema);
+        List<InventoryMaterial> materials = materialMapper.selectList(new LambdaQueryWrapper<InventoryMaterial>()
+                .eq(InventoryMaterial::getCategoryId, categoryId)
+                .orderByDesc(InventoryMaterial::getMaterialId)
+                .last("LIMIT 5"));
+        List<NamingSample> samples = new ArrayList<>();
+        for (InventoryMaterial material : materials) {
+            samples.add(new NamingSample(material.getMaterialId(), material.getMaterialCode(),
+                    material.getMaterialName(), normalized.compose(material, schema)));
+        }
+        return new NamingPreview(samples, materials.isEmpty() ? "该品类暂无物料，规则只影响后续新建" : "预览取该品类最近 5 条物料");
+    }
     public record Prepared(InventoryMaterial material, List<Long> tagIds) { }
     public record SpecificationPreview(String specification, boolean generated, String message) { }
 
@@ -127,7 +151,7 @@ public class MaterialMasterService {
         if (dto.getMaterialId() != null && old == null) throw new BusinessException("待更新物料不存在");
         MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(dto.getCategoryId());
         MaterialAttributeSchema schema = config == null
-                ? new MaterialAttributeSchema(1, List.of(), false, null, null, "PCS", List.of()) : config.schema();
+                ? new MaterialAttributeSchema(1, List.of(), false, null, null, "PCS", List.of(), null) : config.schema();
         String name = text(dto.getMaterialName(), "物料名称", 200, true);
         String meta = fallback(dto.getMaterialMeta(), schema.defaultMeta());
         if (meta == null && schema.metaOptions().size() == 1) meta = schema.metaOptions().get(0);
