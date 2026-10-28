@@ -18,7 +18,7 @@ import java.util.Set;
 public record MaterialNamingPattern(List<String> fields, String separator, String empty) {
 
     public static final List<String> COMMON_TOKENS =
-            List.of("brand", "model", "color", "meta", "form", "unit");
+            List.of("brand", "model", "color", "meta", "form", "unit", "size");
     public static final String DEFAULT_SEPARATOR = " ";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -75,6 +75,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             case "meta" -> material.getMaterialMeta();
             case "form" -> material.getMaterialForm();
             case "unit" -> material.getUnit();
+            case "size" -> sizeText(material, spec);
             case "width" -> decimalText(firstNonNull(material.getWidthMm(), spec == null ? null : spec.widthMm()));
             case "length" -> decimalText(firstNonNull(material.getLengthMm(), spec == null ? null : spec.lengthMm()));
             case "thickness_mm" -> decimalText(firstNonNull(material.getThicknessMm(), spec == null ? null : spec.thicknessMm()));
@@ -90,6 +91,19 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     private static String decimalText(java.math.BigDecimal value) {
         if (value == null) return null;
         return value.stripTrailingZeros().toPlainString();
+    }
+
+    /** 结构化尺寸：宽×长×厚（有则带），统一 × 与 mm；无结构值时原样返回 size 文本。 */
+    private static String sizeText(InventoryMaterial material, MaterialSizeValue.SizeSpec spec) {
+        java.math.BigDecimal width = firstNonNull(material.getWidthMm(), spec == null ? null : spec.widthMm());
+        java.math.BigDecimal length = firstNonNull(material.getLengthMm(), spec == null ? null : spec.lengthMm());
+        java.math.BigDecimal thickness = firstNonNull(material.getThicknessMm(), spec == null ? null : spec.thicknessMm());
+        if (width == null && length == null && thickness == null) return material.getSize();
+        List<String> parts = new ArrayList<>();
+        if (width != null) parts.add(decimalText(width));
+        if (length != null) parts.add(decimalText(length));
+        if (thickness != null) parts.add(decimalText(thickness));
+        return String.join("×", parts) + (material.getSizeUnit() == null ? "mm" : material.getSizeUnit());
     }
 
     /** 颜色存代码，命名用名称；映射缺失时回退代码。 */

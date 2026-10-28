@@ -68,6 +68,13 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 尺寸复合字段输出宽乘长乘厚并带单位() {
+        var pattern = new MaterialNamingPattern(
+                List.of("meta", "model", "size", "color"), " ", "skip");
+        assertEquals("PET 125 300×305×0.175mm 黑", pattern.compose(material(), SCHEMA));
+    }
+
+    @Test
     void 模板JSON里可带命名规则且能往返解析() {
         String json = "{\"version\":1,\"meta_options\":[\"PET\"],\"fields\":[],"
                 + "\"name_pattern\":{\"fields\":[\"brand\",\"model\"],\"separator\":\"-\",\"empty\":\"skip\"}}";

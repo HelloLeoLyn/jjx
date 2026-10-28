@@ -381,6 +381,7 @@ const COMMON_NAMING_TOKENS = [
   { key: 'meta', label: '材质' },
   { key: 'form', label: '形态' },
   { key: 'unit', label: '单位' },
+  { key: 'size', label: '尺寸(宽×长×厚)' },
   { key: 'thickness_mm', label: '厚度(mm)' },
   { key: 'width', label: '宽(mm)' },
   { key: 'length', label: '长(mm)' },
