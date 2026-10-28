@@ -64,9 +64,9 @@
         border
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
         <el-table-column label="物料编码" prop="materialCode" width="150" />
         <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
+        <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ categoryNameOf(row) }}</template>
         </el-table-column>
