@@ -55,6 +55,15 @@ export interface MaterialMasterForm {
   readonly templateId?: number | null
   readonly thickness?: string | null
   readonly widthSize?: string | null
+  readonly widthMm?: number | null
+  readonly lengthMm?: number | null
+  readonly thicknessMm?: number | null
+  readonly sizeUnit?: string | null
+  readonly specBasis?: string | null
+  /** 克重 g/m²：与厚度二选一，填了即克重口径 */
+  grammage?: number | null
+  /** 厚度公差 ±mm */
+  thicknessTolerance?: number | null
   materialId?: number
   materialCode?: string
   categoryId: number | null

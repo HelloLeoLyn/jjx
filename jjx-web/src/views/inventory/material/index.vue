@@ -64,7 +64,7 @@
         border
       >
         <el-table-column type="selection" width="55" align="center" />
-        <!-- <el-table-column label="物料编码" prop="materialCode" width="150" /> -->
+        <el-table-column label="物料编码" prop="materialCode" width="150" />
         <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
         <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
@@ -91,7 +91,12 @@
             dictionaryText('brand', row.brand)
           }}</template></el-table-column
         >
-        <el-table-column label="尺寸" prop="size" width="140" show-overflow-tooltip />
+        <el-table-column label="尺寸" width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ materialSizeText(row) }}</template>
+        </el-table-column>
+        <el-table-column label="规格口径" width="130" show-overflow-tooltip>
+          <template #default="{ row }">{{ specBasisText(row) }}</template>
+        </el-table-column>
         <el-table-column label="生成规格" prop="specification" width="230" show-overflow-tooltip />
         <el-table-column label="客供专用" width="90"
           ><template #default="{ row }">{{
@@ -325,6 +330,26 @@ const categoryOptions = ref<MaterialMasterCategory[]>([])
 const dictionaries = ref<MaterialDictionaries>({})
 const dictionaryText = (dict: string, code?: string) =>
   dictionaries.value[dict]?.find((o) => o.code === code)?.label || code || '-'
+/** 尺寸展示：优先用结构化数值（宽×长×厚，mm），缺数值时回落到 size 原文。 */
+const materialSizeText = (row: InventoryMaterial) => {
+  const values = [row.widthMm, row.lengthMm, row.thicknessMm].filter(
+    (value): value is number => typeof value === 'number'
+  )
+  if (!values.length) return row.size || '-'
+  return values.join('×') + (row.sizeUnit || 'mm')
+}
+/** 规格口径：厚度/克重/仅尺寸；有公差时一并显示。 */
+const specBasisText = (row: InventoryMaterial) => {
+  const basis =
+    row.specBasis === 'GRAMMAGE'
+      ? `克重 ${row.grammage ?? '-'}g`
+      : row.specBasis === 'THICKNESS'
+        ? '厚度'
+        : row.specBasis === 'SIZE'
+          ? '仅尺寸'
+          : '-'
+  return row.thicknessTolerance ? `${basis} ±${row.thicknessTolerance}` : basis
+}
 const loadCategoryOptions = async () => {
   const [categoryResponse, dictResponse] = await Promise.all([
     materialMasterApi.categories(),

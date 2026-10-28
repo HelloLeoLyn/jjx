@@ -113,6 +113,37 @@
         <el-form-item label="尺寸">
           <MaterialSizeEditor v-model="form.size" @valid-change="sizeValid = $event" />
         </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="8">
+            <el-form-item label="克重(g/m²)">
+              <el-input-number
+                v-model="form.grammage"
+                :min="0"
+                :precision="2"
+                :controls="false"
+                style="width: 100%"
+                aria-label="克重"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="厚度公差(±mm)">
+              <el-input-number
+                v-model="form.thicknessTolerance"
+                :min="0"
+                :precision="4"
+                :controls="false"
+                style="width: 100%"
+                aria-label="厚度公差"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="规格口径">
+              <el-input :model-value="specBasisLabel" readonly aria-label="规格口径" />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="档案标记">
           <el-checkbox v-model="form.isCustomerSupplied">客供专用</el-checkbox
           ><el-checkbox v-model="form.isSample">样品专用</el-checkbox>
@@ -254,6 +285,12 @@ const loading = ref(false)
 const configurationLoading = ref(false)
 const saving = ref(false)
 const sizeValid = ref(true)
+/** 口径由服务端按「填了克重→GRAMMAGE，有厚度→THICKNESS，否则 SIZE」判定，这里只回显。 */
+const specBasisLabel = computed(() => {
+  if (form.grammage) return '克重（GRAMMAGE）'
+  const parsed = parseMaterialSize(form.size)
+  return parsed?.thickness ? '厚度（THICKNESS）' : '仅尺寸（SIZE）'
+})
 const loadError = ref('')
 const expanded = ref<string[]>([])
 let session = 0
@@ -406,6 +443,8 @@ async function initialize() {
 
 async function save() {
   if (!sizeValid.value) return void ElMessage.warning('请先修正尺寸')
+  if (form.grammage && parseMaterialSize(form.size)?.thickness)
+    return void ElMessage.warning('克重与厚度只能选一种口径，请清掉尺寸里的厚度')
   if (
     saving.value ||
     !configuration.value ||

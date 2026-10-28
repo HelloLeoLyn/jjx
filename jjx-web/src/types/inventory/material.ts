@@ -27,6 +27,17 @@ export interface InventoryMaterial {
   searchKeywords?: string
   /** 新模型尺寸：宽或宽×长，单位mm；厚度单独存品类属性 */
   size?: string
+  /** 尺寸数值真源（后端由 size 同源派生，只读） */
+  widthMm?: number | null
+  lengthMm?: number | null
+  thicknessMm?: number | null
+  /** 克重 g/m²（specBasis=GRAMMAGE 时使用） */
+  grammage?: number | null
+  /** 厚度公差 ±mm */
+  thicknessTolerance?: number | null
+  sizeUnit?: string | null
+  /** 规格口径：THICKNESS/GRAMMAGE/SIZE */
+  specBasis?: string | null
   /** 规格补充（属性生成的规格文本之外，≤30 字） */
   unit: string
   /** 库存视图字段（MaterialVO 返回，只读展示） */

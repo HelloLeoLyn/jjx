@@ -42,6 +42,8 @@ export function emptyMasterForm(): MaterialMasterForm {
     brand: '',
     size: '',
     unit: '',
+    grammage: null,
+    thicknessTolerance: null,
     attributeJson: {},
     isCustomerSupplied: false,
     isSample: false,
