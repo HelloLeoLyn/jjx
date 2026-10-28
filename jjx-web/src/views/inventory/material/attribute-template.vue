@@ -5,9 +5,7 @@
         <span style="font-weight: 600">属性模板</span>
         <span class="desc">按末级品类维护属性字段；precision 仅数值/整数生效（0–8），default 按 JSON 原生类型</span>
       </template>
-      <MaterialMasterSettingsDialog
-        :model-value="true"
-        embedded
+      <MaterialMasterSettingsPanel
         initial-tab="template"
         focus-section="template"
         @success="onSuccess"
@@ -18,7 +16,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import MaterialMasterSettingsDialog from '@/components/inventory/MaterialMasterSettingsDialog.vue'
+import MaterialMasterSettingsPanel from '@/components/inventory/MaterialMasterSettingsPanel.vue'
 
 defineOptions({ name: 'MaterialAttributeTemplate' })
 
