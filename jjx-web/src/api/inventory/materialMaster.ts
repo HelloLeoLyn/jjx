@@ -8,6 +8,7 @@ import type {
   MaterialMasterForm,
   MaterialMasterRecord,
   MaterialNamingPreview,
+  MaterialRenameReport,
   MaterialDictionaries,
   MaterialImportResult,
 } from '@/types/inventory/materialMaster'
@@ -61,6 +62,12 @@ export const materialMasterApi = {
   /** 命名规则预览：只读试算，按品类取最近 5 条物料 */
   previewNaming: (categoryId: number, namePattern: unknown) =>
     request.post<R<MaterialNamingPreview>>(`${base}/naming/preview`, { categoryId, namePattern }),
+  /** 批量改名预演（按品类已保存规则） */
+  renameChanges: (categoryId: number, limit = 50) =>
+    request.get<R<MaterialRenameReport>>(`${base}/naming/changes`, { params: { categoryId, limit } }),
+  /** 批量改名执行（只改差异行，逐条留痕） */
+  applyRename: (categoryId: number) =>
+    request.post<R<number>>(`${base}/naming/apply`, { categoryId }),
   template: (id: number) =>
     request.get<
       R<{

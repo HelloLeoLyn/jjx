@@ -93,6 +93,23 @@ public class MaterialMasterController extends BaseController {
         return Result.success(service.previewNaming(request.categoryId(), request.namePattern()));
     }
 
+    public record RenameRequest(Long categoryId) { }
+
+    /** 批量改名预演：按品类已保存的命名规则算差异，只读。 */
+    @GetMapping("/naming/changes")
+    @SaCheckPermission(value = {"inventory:category:list", "inventory:material:view"}, mode = SaMode.OR)
+    public Result<MaterialMasterService.RenameReport> renameChanges(@RequestParam Long categoryId,
+            @RequestParam(required = false) Integer limit) {
+        return Result.success(service.previewRename(categoryId, limit));
+    }
+
+    /** 批量改名执行：只改差异行，逐条留痕。 */
+    @PostMapping("/naming/apply")
+    @SaCheckPermission("inventory:material:edit")
+    public Result<Integer> applyRename(@RequestBody RenameRequest request) {
+        return Result.success(service.applyRename(request.categoryId(), getUsername()));
+    }
+
     @DeleteMapping("/template/{categoryId}")
     @SaCheckPermission("inventory:category:edit")
     public Result<Void> removeTemplate(@PathVariable Long categoryId) {

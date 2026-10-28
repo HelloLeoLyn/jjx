@@ -276,6 +276,31 @@
                 <el-table-column label="当前名称" prop="oldName" />
                 <el-table-column label="按规则生成" prop="newName" />
               </el-table>
+              <el-divider />
+              <el-button :loading="renameLoading" @click="previewRename">预览改名差异</el-button>
+              <el-button
+                type="danger"
+                plain
+                :disabled="!renameReport || !renameReport.changeable"
+                @click="applyRename"
+                >按规则批量改名（{{ renameReport?.changeable ?? 0 }} 条）</el-button
+              >
+              <span v-if="renameReport" class="naming-message">{{ renameReport.message }}</span>
+              <el-table
+                v-if="renameReport?.samples.length"
+                :data="renameReport.samples"
+                border
+                size="small"
+                max-height="260"
+                style="margin-top: 8px"
+              >
+                <el-table-column label="物料编码" prop="materialCode" width="150" />
+                <el-table-column label="当前名称" prop="oldName" />
+                <el-table-column label="按规则生成" prop="newName" />
+                <el-table-column label="说明" width="120">
+                  <template #default="{ row }">{{ skipText(row.skipReason) }}</template>
+                </el-table-column>
+              </el-table>
             </div>
             <el-alert
               title="已有物料的模板可新增无默认值的可选属性、调整显示设置；删除、改类型或单位等需另行处理。常用属性补入草稿后，检查并保存才生效。"
@@ -315,6 +340,7 @@ import type {
   MaterialAttributeSchema,
   MaterialNamingPattern,
   MaterialNamingPreview,
+  MaterialRenameReport,
   MaterialDictionaries,
   MaterialMasterCategory,
 } from '@/types/inventory/materialMaster'
@@ -392,6 +418,44 @@ async function previewNaming() {
     namingLoading.value = false
   }
 }
+const renameLoading = ref(false)
+const renameReport = ref<MaterialRenameReport>()
+const skipText = (reason: string | null) =>
+  reason === 'blank' ? '规则为空，跳过' : reason === 'same' ? '已一致' : '将改名'
+async function previewRename() {
+  if (!templateCategoryId.value) return
+  renameLoading.value = true
+  try {
+    const response = await materialMasterApi.renameChanges(templateCategoryId.value)
+    renameReport.value = response.data ?? undefined
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '改名预演失败')
+  } finally {
+    renameLoading.value = false
+  }
+}
+async function applyRename() {
+  if (!templateCategoryId.value || !renameReport.value?.changeable) return
+  try {
+    await ElMessageBox.confirm(
+      `将按当前命名规则改 ${renameReport.value.changeable} 条物料名称，逐条留痕，是否继续？`,
+      '批量改名'
+    )
+  } catch {
+    return
+  }
+  renameLoading.value = true
+  try {
+    const response = await materialMasterApi.applyRename(templateCategoryId.value)
+    ElMessage.success(`已改名 ${response.data ?? 0} 条`)
+    emit('success')
+    renameLoading.value = false
+    await previewRename()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '批量改名失败')
+    renameLoading.value = false
+  }
+}
 const editableCategories = computed(() => categories.value.filter((c) => c.categoryLevel > 1))
 const leaves = computed(() =>
   categories.value.filter((c) => !categories.value.some((child) => child.parentId === c.categoryId))
@@ -459,6 +523,7 @@ async function loadTemplate(id: number) {
   namePattern.value = { fields: [], separator: ' ', empty: 'skip' }
   namingSamples.value = []
   namingMessage.value = ''
+  renameReport.value = undefined
   templateCode.value = ''
   templateName.value = ''
   const category = categories.value.find((c) => c.categoryId === id)

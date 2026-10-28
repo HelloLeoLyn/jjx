@@ -46,6 +46,20 @@ export interface MaterialNamingPreview {
   samples: { materialId: number; materialCode: string; oldName: string; newName: string | null }[]
   message: string
 }
+export interface MaterialRenameChange {
+  materialId: number
+  materialCode: string
+  oldName: string
+  newName: string | null
+  /** null 表示会改名；blank=规则生成空名、same=与当前名称一致 */
+  skipReason: string | null
+}
+export interface MaterialRenameReport {
+  total: number
+  changeable: number
+  samples: MaterialRenameChange[]
+  message: string
+}
 export interface MaterialMasterCategory {
   categoryId: number
   categoryCode: string

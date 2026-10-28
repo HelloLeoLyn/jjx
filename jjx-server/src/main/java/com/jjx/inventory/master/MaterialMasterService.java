@@ -43,6 +43,66 @@ public class MaterialMasterService {
     public record NamingSample(Long materialId, String materialCode, String oldName, String newName) { }
     public record NamingPreview(List<NamingSample> samples, String message) { }
 
+    public record RenameChange(Long materialId, String materialCode, String oldName, String newName, String skipReason) { }
+    public record RenameReport(int total, int changeable, List<RenameChange> samples, String message) { }
+
+    /**
+     * 批量改名预演（只读）：按品类规则算出每条物料的新名称，列出会改/跳过及原因。
+     * 跳过原因：rule 未配置规则、blank 规则生成空名、same 与当前名称一致。
+     */
+    public RenameReport previewRename(Long categoryId, Integer limit) {
+        MaterialAttributeSchema schema = requireNamingSchema(categoryId);
+        MaterialNamingPattern pattern = schema.namePattern();
+        List<InventoryMaterial> materials = materialMapper.selectList(new LambdaQueryWrapper<InventoryMaterial>()
+                .eq(InventoryMaterial::getCategoryId, categoryId)
+                .orderByAsc(InventoryMaterial::getMaterialId));
+        int changeable = 0;
+        List<RenameChange> samples = new ArrayList<>();
+        int max = limit == null || limit <= 0 ? 50 : Math.min(limit, 500);
+        for (InventoryMaterial material : materials) {
+            String generated = pattern.compose(material, schema);
+            String skip = generated == null || generated.isBlank() ? "blank"
+                    : Objects.equals(generated, material.getMaterialName()) ? "same" : null;
+            if (skip == null) changeable++;
+            if (samples.size() < max) {
+                samples.add(new RenameChange(material.getMaterialId(), material.getMaterialCode(),
+                        material.getMaterialName(), generated, skip));
+            }
+        }
+        return new RenameReport(materials.size(), changeable, samples,
+                "共 " + materials.size() + " 条，可改名 " + changeable + " 条，明细最多返回 " + max + " 条");
+    }
+
+    /** 按品类规则批量改名：只改差异行，逐条走 updateNaming 以保留审计与事件。 */
+    @Transactional(rollbackFor = Exception.class)
+    public int applyRename(Long categoryId, String operator) {
+        MaterialAttributeSchema schema = requireNamingSchema(categoryId);
+        MaterialNamingPattern pattern = schema.namePattern();
+        List<InventoryMaterial> materials = materialMapper.selectList(new LambdaQueryWrapper<InventoryMaterial>()
+                .eq(InventoryMaterial::getCategoryId, categoryId)
+                .orderByAsc(InventoryMaterial::getMaterialId));
+        int changed = 0;
+        for (InventoryMaterial material : materials) {
+            String generated = pattern.compose(material, schema);
+            if (generated == null || generated.isBlank() || Objects.equals(generated, material.getMaterialName())) continue;
+            updateNaming(material.getMaterialId(),
+                    new NamingPatch(generated, null, "按品类命名规则重算"), operator);
+            changed++;
+        }
+        return changed;
+    }
+
+    private MaterialAttributeSchema requireNamingSchema(Long categoryId) {
+        if (categoryId == null) throw new BusinessException("请选择末级品类");
+        MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(categoryId);
+        if (config == null) throw new BusinessException("该品类未配置属性模板");
+        MaterialAttributeSchema schema = config.schema();
+        if (schema.namePattern() == null || schema.namePattern().normalized().fields().isEmpty())
+            throw new BusinessException("该品类未配置命名规则");
+        schema.namePattern().validate(schema);
+        return schema;
+    }
+
     /** 命名规则预览（只读）：按品类取样 5 条物料，用传入规则试算新旧名对照。 */
     public NamingPreview previewNaming(Long categoryId, MaterialNamingPattern pattern) {
         if (categoryId == null) throw new BusinessException("请选择末级品类");
