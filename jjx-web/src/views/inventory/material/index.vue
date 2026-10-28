@@ -64,8 +64,8 @@
         border
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="物料编码" prop="materialCode" width="150" />
         <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
+        <el-table-column label="物料编码" prop="materialCode" width="150" />
         <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ categoryNameOf(row) }}</template>
@@ -94,10 +94,19 @@
         <el-table-column label="尺寸" width="180" show-overflow-tooltip>
           <template #default="{ row }">{{ materialSizeText(row) }}</template>
         </el-table-column>
+        <el-table-column label="克重(g/m²)" width="120" align="right">
+          <template #default="{ row }">{{ row.grammage == null ? '-' : row.grammage }}</template>
+        </el-table-column>
         <el-table-column label="规格口径" width="130" show-overflow-tooltip>
           <template #default="{ row }">{{ specBasisText(row) }}</template>
         </el-table-column>
-        <el-table-column label="生成规格" prop="specification" width="230" show-overflow-tooltip />
+        <el-table-column
+          v-if="showGeneratedSpec"
+          label="生成规格"
+          prop="specification"
+          width="230"
+          show-overflow-tooltip
+        />
         <el-table-column label="客供专用" width="90"
           ><template #default="{ row }">{{
             row.isCustomerSupplied ? '是' : '否'
@@ -182,6 +191,9 @@
         </el-table-column>
       </el-table>
 
+      <div class="table-options">
+        <el-checkbox v-model="showGeneratedSpec">显示生成规格</el-checkbox>
+      </div>
       <pagination
         v-show="total > 0"
         :total="total"
@@ -322,6 +334,8 @@ const classifyVisible = ref(false)
 const classifyIds = ref<number[]>([])
 const classifyNames = ref<string[]>([])
 const rulesVisible = ref(false)
+// 生成规格默认隐藏（dev-20261028-013），需要时勾选显示
+const showGeneratedSpec = ref(false)
 const settingsVisible = ref(false)
 
 // 按末级品类生成模板并做整表预检。
@@ -567,6 +581,9 @@ onMounted(async () => {
 
 .material-tag {
   margin-right: 4px;
+}
+.table-options {
+  margin: 8px 0;
 }
 
 :deep(.el-table .row-unclassified) {
