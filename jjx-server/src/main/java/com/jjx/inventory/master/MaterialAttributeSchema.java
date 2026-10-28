@@ -31,6 +31,8 @@ public record MaterialAttributeSchema(
                         @JsonProperty("false_label") String falseLabel) { }
 
     public static final Set<String> TYPES = Set.of("enum", "multienum", "string", "integer", "decimal", "boolean");
+    /** 属性单位白名单：无量纲留空；避免 mm/MM/毫米 混写。 */
+    public static final Set<String> UNITS = Set.of("%", "g/m²", "g", "kg/m³", "mm", "μm", "N", "gf", "℃", "s");
 
     public static MaterialAttributeSchema parse(String json, ObjectMapper mapper) {
         try {
@@ -56,6 +58,7 @@ public record MaterialAttributeSchema(
             if (f == null) fail("属性定义不能为空");
             if (f.key == null || !f.key.matches("[a-z][a-z0-9_]{0,49}") || !keys.add(f.key)) fail("属性编码无效或重复");
             if (f.label == null || f.label.isBlank() || !labels.add(f.label) || f.type == null || !TYPES.contains(f.type)) fail("属性名称重复或类型无效：" + f.key);
+            if (f.unit != null && !f.unit.isBlank() && !UNITS.contains(f.unit.trim())) fail("属性单位不在允许范围：" + f.label + "（" + f.unit + "）");
             if (f.min != null && f.max != null && f.min.compareTo(f.max) > 0) fail("属性数值范围错误：" + f.label);
             if (f.precision != null && (f.precision < 0 || f.precision > 8)) fail("属性精度范围为0至8：" + f.label);
             if (f.specOrder != null && (f.specOrder < 0 || f.specOrder > 10000)) fail("规格排序须为0至10000：" + f.label);

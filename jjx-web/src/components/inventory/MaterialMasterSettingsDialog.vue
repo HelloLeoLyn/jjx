@@ -135,8 +135,17 @@
                       :label="o.label"
                     /> </el-select></template
               ></el-table-column>
-              <el-table-column label="单位" width="90"
-                ><template #default="{ row }"><el-input v-model="row.unit" /></template
+              <el-table-column label="单位" width="120"
+                ><template #default="{ row }"
+                  ><el-select
+                    v-model="row.unit"
+                    clearable
+                    filterable
+                    allow-create
+                    default-first-option
+                    placeholder="无量纲"
+                    style="width: 100%"
+                    ><el-option v-for="unit in UNIT_OPTIONS" :key="unit" :label="unit" :value="unit" /></el-select></template
               ></el-table-column>
               <el-table-column label="必填" width="70"
                 ><template #default="{ row }"><el-checkbox v-model="row.required" /></template
@@ -387,6 +396,8 @@ const COMMON_NAMING_TOKENS = [
   { key: 'length', label: '长(mm)' },
   { key: 'grammage', label: '克重' },
 ]
+/** 属性单位白名单：与后端 MaterialAttributeSchema.UNITS 一致，避免 mm/MM/毫米 混写。 */
+const UNIT_OPTIONS = ['%', 'g/m²', 'g', 'kg/m³', 'mm', 'μm', 'N', 'gf', '℃', 's']
 /** 可选字段 = 公共字段 + 本品类属性字段（品类不同，可勾选的属性就不同）。 */
 const namingTokens = computed(() => [
   ...COMMON_NAMING_TOKENS,
