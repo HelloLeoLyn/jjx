@@ -205,6 +205,24 @@
                   ></template
                 ></el-table-column
               >
+              <el-table-column label="顺序" width="110">
+                <template #default="{ $index }">
+                  <el-button
+                    link
+                    :disabled="$index === 0"
+                    aria-label="上移属性"
+                    @click="moveField($index, -1)"
+                    >上移</el-button
+                  >
+                  <el-button
+                    link
+                    :disabled="$index === schema.fields.length - 1"
+                    aria-label="下移属性"
+                    @click="moveField($index, 1)"
+                    >下移</el-button
+                  >
+                </template>
+              </el-table-column>
             </el-table>
             <el-button style="margin-top: 12px" @click="addField">增加属性</el-button>
             <el-button style="margin-top: 12px" @click="addCommonFields">补充本品类常用属性</el-button>
@@ -359,6 +377,15 @@ async function loadTemplate(id: number) {
 }
 function addField() {
   schema.value.fields.push({ key: '', label: '', type: 'string', required: false, common: true, in_spec: true, spec_order: schema.value.fields.length + 1 })
+}
+
+/** 调整属性显示顺序；规格排序（spec_order）由用户在该列单独维护，不随移动自动改写。 */
+function moveField(index: number, offset: -1 | 1) {
+  const fields = schema.value.fields
+  const target = index + offset
+  if (target < 0 || target >= fields.length) return
+  const [field] = fields.splice(index, 1)
+  fields.splice(target, 0, field)
 }
 
 function addCommonFields() {

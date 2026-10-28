@@ -41,4 +41,25 @@ describe('属性模板界面保存', () => {
     }) }))
     wrapper.unmount()
   })
+  it('属性支持上移/下移与删除，顺序按调整后的数组提交', async () => {
+    const wrapper = mount(MaterialMasterSettingsDialog, { props: { modelValue: false }, global: { stubs: {
+      ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true,
+    } } })
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    const state = wrapper.vm as any
+    state.templateCategoryId = 2
+    await state.loadTemplate(2)
+    await flushPromises()
+    state.addField()
+    state.schema.fields[1].key = 'b'
+    state.schema.fields.push({ key: 'c', label: 'C', type: 'string', required: false, common: true, in_spec: true, spec_order: 3 })
+    state.moveField(2, -1)
+    expect(state.schema.fields.map((field: any) => field.key)).toEqual(['component_type', 'c', 'b'])
+    state.moveField(0, 1)
+    expect(state.schema.fields.map((field: any) => field.key)).toEqual(['c', 'component_type', 'b'])
+    state.schema.fields.splice(2, 1)
+    expect(state.schema.fields.map((field: any) => field.key)).toEqual(['c', 'component_type'])
+    wrapper.unmount()
+  })
 })
