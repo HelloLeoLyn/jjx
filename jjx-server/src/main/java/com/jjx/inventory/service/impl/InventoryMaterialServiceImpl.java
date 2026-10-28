@@ -941,15 +941,17 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     private static String inferImportCategoryCode(String name) {
         String text = nz(name).toUpperCase(java.util.Locale.ROOT);
-        if (text.matches(".*(离型纸|离型膜|标签纸|纸材).*")) return "RM-PAPER";
-        if (text.matches(".*(保护膜|双面胶|VHB).*")) return "RM-ADHESIVE";
-        if (text.matches(".*(胶带|胶水|3M).*")) return "AUX-ADHESIVE";
-        if (text.matches(".*(LED|灯|电阻|电容|连接器|IC).*")) return "AUX-ELEC";
-        if (text.matches(".*(螺丝|垫片|弹片|铆钉|铜|铝).*")) return "AUX-HARDWARE";
-        if (text.matches(".*(油墨).*")) return "RM-INK";
-        if (text.matches(".*(PC|PET|PVC|PP|PE|膜|片材).*")) return "RM-FILM";
-        if (text.matches(".*(纸箱|袋|泡棉|标签).*")) return "AUX-PACK";
-        if (text.matches(".*(刀模|治具|砂纸|手套).*")) return "AUX-TOOL";
+        // 现分类树的末级品类码（旧 RM-FILM / AUX-ELEC 一套已废弃）。
+        if (text.matches(".*(离型纸|离型膜|标签纸|纸材).*")) return "RAW_AUX_RELEASE";
+        if (text.matches(".*(保护膜|双面胶|VHB).*")) return "RAW_AUX_PROTECT";
+        if (text.matches(".*(胶带|胶水|3M).*")) return "RAW_AUX_TAPE";
+        if (text.matches(".*(LED|灯|电阻|电容|连接器|IC).*")) return "RAW_AUX_ELECTRONIC";
+        if (text.matches(".*(泡棉|硅胶|EVA).*")) return "RAW_AUX_FOAM";
+        if (text.matches(".*(五金|螺丝|垫片|弹片|铆钉|铜|铝).*")) return "RAW_AUX_OTHER";
+        if (text.matches(".*(油墨).*")) return "RAW_INK";
+        if (text.matches(".*(PC|PET|PVC|PP|PE|膜|片材).*")) return "RAW_BASE_PET";
+        if (text.matches(".*(纸箱|袋|标签).*")) return "RAW_AUX_OTHER";
+        if (text.matches(".*(刀模|治具|砂纸|手套).*")) return "RAW_AUX_OTHER";
         return null; // 没有明确分类证据时拒绝导入，不默认归入R/A。
     }
 

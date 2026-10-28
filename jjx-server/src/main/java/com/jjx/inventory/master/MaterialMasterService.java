@@ -293,7 +293,31 @@ public class MaterialMasterService {
                     .stream().map(SysTag::getTagId).toList());
             if (!allowed.containsAll(tags)) throw new BusinessException("物料标签不存在或已停用");
         }
+        validateRequiredColumns(material, config, dto.getMaterialId() == null);
         return new Prepared(material, tags);
+    }
+
+    /** 品类必填列（inventory_material_required_field，已按现分类树挂码）；新建时强制，编辑不追溯历史行。 */
+    private void validateRequiredColumns(InventoryMaterial material, MaterialMasterCatalog.Configuration config,
+                                         boolean creating) {
+        if (!creating || config == null) return;
+        Map<String, String> labels = Map.of(
+                "material_grade", "材料显示名", "model", "型号", "color", "颜色",
+                "specification", "规格", "brand", "品牌");
+        for (String column : materialMapper.selectRequiredFields(config.category().categoryCode())) {
+            String value = switch (column) {
+                case "material_grade" -> material.getMaterialGrade();
+                case "model" -> material.getModel();
+                case "color" -> material.getColor();
+                case "specification" -> material.getSpecification();
+                case "brand" -> material.getBrand();
+                default -> null;
+            };
+            if (value == null || value.isBlank()) {
+                throw new BusinessException(labels.getOrDefault(column, column) + "不能为空（"
+                        + config.category().categoryName() + " 必填）");
+            }
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)

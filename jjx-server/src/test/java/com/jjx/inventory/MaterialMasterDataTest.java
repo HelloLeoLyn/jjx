@@ -230,11 +230,12 @@ class MaterialMasterDataTest {
         assertEquals("300*305mm", inserted.getAllValues().get(1).getSize());
         assertEquals("雾面300*305mm", inserted.getAllValues().get(1).getSpecification());
     }
-    @Test void legacyBrandAndNumericModelCanSatisfyAdhesiveRules() throws Exception {
-        var adhesive = Map.<String, Object>of("category_id", 5L, "category_code", "AUX-ADHESIVE", "category_path", "RAW/RAW_AUX/AUX-ADHESIVE");
-        when(mapper.findCategory("AUX-ADHESIVE")).thenReturn(adhesive);
+    @Test void legacyBrandAndNumericModelCanSatisfyTapeRules() throws Exception {
+        // 导入推断已改现分类树码：3M/胶带 → RAW_AUX_TAPE
+        var adhesive = Map.<String, Object>of("category_id", 5L, "category_code", "RAW_AUX_TAPE", "category_path", "RAW/RAW_AUX/RAW_AUX_TAPE");
+        when(mapper.findCategory("RAW_AUX_TAPE")).thenReturn(adhesive);
         when(mapper.selectCategory(5L)).thenReturn(adhesive);
-        when(mapper.selectRequiredFields("AUX-ADHESIVE")).thenReturn(List.of("model", "brand", "specification"));
+        when(mapper.selectRequiredFields("RAW_AUX_TAPE")).thenReturn(List.of("model", "brand", "specification"));
         when(sequence.generateBusinessNumberByTypeWithPrefix(anyString(), anyString(), anyString(), anyInt(), anyLong())).thenReturn("TEST012");
         var legacy = workbook(new String[]{"材料", "规格"}, new String[]{"3M5604", "300×1.0"});
         assertEquals(1, service.importMaterial(legacy, "codex").getSuccessCount());
