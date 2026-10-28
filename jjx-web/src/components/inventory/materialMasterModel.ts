@@ -50,6 +50,7 @@ export function emptyMasterForm(): MaterialMasterForm {
     searchKeywords: '',
     remark: '',
     supplierName: '',
+    supplierMaterialName: '',
     batchControl: false,
     tagIds: [],
     safeStock: 0,

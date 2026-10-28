@@ -117,6 +117,9 @@ public class InventoryMaterial extends BaseEntity {
     /** 主要供应商名称 */
     private String supplierName;
 
+    /** 供应商侧品名/叫法：采购下单与来料核对用，内部单据仍用 materialName */
+    private String supplierMaterialName;
+
     /** 默认仓库ID */
     private Long defaultWarehouseId;
 

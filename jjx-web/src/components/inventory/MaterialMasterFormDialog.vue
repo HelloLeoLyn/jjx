@@ -193,6 +193,12 @@
         <el-form-item label="主要供应商"
           ><el-input v-model="form.supplierName" maxlength="200" @input="form.supplierId = null"
         /></el-form-item>
+        <el-form-item label="供应商品名"
+          ><el-input
+            v-model="form.supplierMaterialName"
+            maxlength="200"
+            placeholder="供应商自己的叫法/料号，采购单据与来料核对用"
+        /></el-form-item>
         <el-form-item label="业务备注"
           ><el-input v-model="form.remark" type="textarea" maxlength="1000" :rows="2"
         /></el-form-item>

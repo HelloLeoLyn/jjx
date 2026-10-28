@@ -40,6 +40,8 @@ public class MaterialMasterDTO {
     private String remark;
     private Long supplierId;
     private String supplierName;
+    /** 供应商侧品名/叫法 */
+    private String supplierMaterialName;
     private Long defaultWarehouseId;
     private Long defaultLocationId;
     private BigDecimal safeStock;

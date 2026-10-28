@@ -274,6 +274,7 @@ public class MaterialMasterService {
             if (supplier == null) throw new BusinessException("供应商不存在");
             material.setSupplierName(supplier.getSupplierName());
         } else material.setSupplierName(text(dto.getSupplierName(), "供应商", 200, false));
+        material.setSupplierMaterialName(text(dto.getSupplierMaterialName(), "供应商品名", 200, false));
         for (BigDecimal number : Arrays.asList(dto.getSafeStock(), dto.getMaxStock(), dto.getReorderPoint(), dto.getStandardPrice())) {
             if (number != null && (number.signum() < 0 || number.stripTrailingZeros().scale() > 4 || number.precision() - number.scale() > 8)) throw new BusinessException("库存及价格参数须为有效的非负数，最多4位小数");
         }
@@ -369,6 +370,7 @@ public class MaterialMasterService {
             columns.put("search_keywords", material.getSearchKeywords());
             columns.put("is_customer_supplied", material.getIsCustomerSupplied()); columns.put("is_sample", material.getIsSample());
             columns.put("supplier_id", material.getSupplierId()); columns.put("supplier_name", material.getSupplierName());
+            columns.put("supplier_material_name", material.getSupplierMaterialName());
             columns.put("remark", material.getRemark()); columns.put("safe_stock", material.getSafeStock());
             columns.put("max_stock", material.getMaxStock()); columns.put("reorder_point", material.getReorderPoint());
             columns.put("standard_price", material.getStandardPrice()); columns.put("lead_time", material.getLeadTime());

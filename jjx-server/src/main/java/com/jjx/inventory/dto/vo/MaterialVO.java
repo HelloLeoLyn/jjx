@@ -58,6 +58,7 @@ public class MaterialVO {
     private Integer leadTime;
     private Long supplierId;
     private String supplierName;
+    private String supplierMaterialName;
     private Long defaultWarehouseId;
     private String defaultWarehouseName;
     private Long defaultLocationId;

@@ -54,6 +54,8 @@ export interface InventoryMaterial {
   // 后端 MaterialVO 同时返回 supplierId/supplierName（物料默认供应商）
   supplierId?: number
   supplierName?: string
+  /** 供应商侧品名/叫法：采购下单与来料核对用 */
+  supplierMaterialName?: string
   batchControl: boolean
   shelfLife?: number
   expiryAlertDays: number

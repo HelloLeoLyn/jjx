@@ -111,6 +111,8 @@ export interface MaterialMasterForm {
   remark: string
   supplierId?: number | null
   supplierName: string
+  /** 供应商侧品名/叫法 */
+  supplierMaterialName?: string
   defaultWarehouseId?: number | null
   defaultLocationId?: number | null
   safeStock?: number | null
