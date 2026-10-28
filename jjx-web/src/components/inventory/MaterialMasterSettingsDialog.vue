@@ -1,10 +1,13 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="物料分类与属性模板"
-    width="1000px"
-    append-to-body
+    :title="embedded ? '' : '物料分类与属性模板'"
+    :width="embedded ? '100%' : '1000px'"
+    :append-to-body="!embedded"
+    :modal="!embedded"
+    :show-close="!embedded"
     :close-on-click-modal="false"
+    :class="{ 'material-settings-embedded': embedded }"
   >
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <el-tabs v-model="tab">
@@ -60,7 +63,7 @@
         </el-form>
       </el-tab-pane>
       <el-tab-pane label="属性模板" name="template">
-        <el-form label-width="110px">
+        <el-form v-show="focusSection !== 'naming'" label-width="110px">
           <el-form-item label="末级品类" required
             ><el-select v-model="templateCategoryId" filterable @change="loadTemplate">
               <el-option
@@ -135,6 +138,54 @@
                       :label="o.label"
                     /> </el-select></template
               ></el-table-column>
+              <el-table-column label="精度" width="90">
+                <template #default="{ row }">
+                  <el-input-number
+                    v-model="row.precision"
+                    :min="0"
+                    :max="8"
+                    :precision="0"
+                    :controls="false"
+                    :disabled="!isNumericType(row.type)"
+                    style="width: 72px"
+                    placeholder="-"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="默认值" width="150">
+                <template #default="{ row }">
+                  <el-select
+                    v-if="row.type === 'boolean'"
+                    v-model="row.default"
+                    clearable
+                    style="width: 100%"
+                  >
+                    <el-option label="是" :value="true" />
+                    <el-option label="否" :value="false" />
+                  </el-select>
+                  <el-input-number
+                    v-else-if="isNumericType(row.type)"
+                    v-model="row.default"
+                    :controls="false"
+                    style="width: 100%"
+                  />
+                  <el-select
+                    v-else-if="row.type === 'enum' || row.type === 'multienum'"
+                    v-model="row.default"
+                    clearable
+                    filterable
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="o in row.options || []"
+                      :key="o.code"
+                      :label="o.label"
+                      :value="o.code"
+                    />
+                  </el-select>
+                  <el-input v-else v-model="row.default" clearable />
+                </template>
+              </el-table-column>
               <el-table-column label="单位" width="120"
                 ><template #default="{ row }"
                   ><el-select
@@ -236,7 +287,7 @@
             <el-button style="margin-top: 12px" @click="addField">增加属性</el-button>
             <el-button style="margin-top: 12px" @click="addCommonFields">补充本品类常用属性</el-button>
             <el-divider content-position="left">命名规则（勾选参与命名的字段，按勾选顺序拼装）</el-divider>
-            <div class="naming-rule">
+            <div v-show="focusSection !== 'template'" class="naming-rule">
               <div class="naming-tokens">
                 <el-checkbox
                   v-for="token in namingTokens"
@@ -353,15 +404,26 @@ import type {
   MaterialDictionaries,
   MaterialMasterCategory,
 } from '@/types/inventory/materialMaster'
-const props = defineProps<{ modelValue: boolean }>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    /** 页面内嵌模式：属性模板页 / 命名规则页与弹窗共用这一份实现（dev-20261028-010） */
+    embedded?: boolean
+    initialTab?: 'categories' | 'template'
+    /** 嵌入时只显示模板字段或只显示命名规则 */
+    focusSection?: 'template' | 'naming'
+  }>(),
+  { embedded: false, initialTab: 'categories', focusSection: 'template' }
+)
 const emit = defineEmits<{ (e: 'update:modelValue', value: boolean): void; (e: 'success'): void }>()
 const visible = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
-const tab = ref('categories'),
+const tab = ref(props.initialTab),
   error = ref(''),
   busy = ref(false)
+const isNumericType = (type?: string) => type === 'decimal' || type === 'integer'
 const categories = ref<MaterialMasterCategory[]>([]),
   dictionaries = ref<MaterialDictionaries>({})
 const categoryEditId = ref<number>(),
