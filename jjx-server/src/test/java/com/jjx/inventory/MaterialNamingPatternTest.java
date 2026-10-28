@@ -31,7 +31,7 @@ class MaterialNamingPatternTest {
         material.setModel("125");
         material.setColor("BLACK");
         material.setMaterialMeta("PET");
-        material.setSize("300×305×0.175");
+        material.setSizeUnit("mm");
         material.setWidthMm(new java.math.BigDecimal("300"));
         material.setLengthMm(new java.math.BigDecimal("305"));
         material.setThicknessMm(new java.math.BigDecimal("0.175"));

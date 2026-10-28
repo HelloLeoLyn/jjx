@@ -122,8 +122,8 @@ class MaterialMasterDatabaseTest {
         String code = "T002DB" + UUID.randomUUID().toString().replace("-", "");
         var dto = new MaterialMasterDTO();
         dto.setCategoryId(category("RAW_BASE_PC")); dto.setMaterialCode(code);
-        dto.setMaterialName("阶段6事务验证PC"); dto.setSize("300×305");
-        dto.setAttributeJson(Map.of("thickness_mm", new BigDecimal("0.175"), "surface_treatment", List.of("MEDIUM_SAND", "HARD_COATED"), "anti_uv", false));
+        dto.setMaterialName("阶段6事务验证PC"); dto.setWidthMm(new java.math.BigDecimal("300")); dto.setLengthMm(new java.math.BigDecimal("305")); dto.setThicknessMm(new BigDecimal("0.175")); dto.setSizeUnit("mm");
+        dto.setAttributeJson(Map.of("surface_treatment", List.of("MEDIUM_SAND", "HARD_COATED"), "anti_uv", false));
         var availableTags = tags.listTags("material_attribute", null, 1);
         List<Long> selectedTags = availableTags.isEmpty() ? List.of() : List.of(availableTags.get(0).getTagId());
         dto.setTagIds(selectedTags);

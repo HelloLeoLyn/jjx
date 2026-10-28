@@ -240,11 +240,18 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             String column = MASTER_COLUMNS.get(key);
             if (column != null && fieldValue(material, key) == null) patch.setSql(column + " = NULL");
         }
+        for (String field : List.of("widthMm", "lengthMm", "thicknessMm", "sizeUnit")) {
+            if (!material.getSuppliedFields().contains(field)) continue;
+            switch (field) {
+                case "widthMm" -> { if (material.getWidthMm() == null) patch.set(InventoryMaterial::getWidthMm, null); }
+                case "lengthMm" -> { if (material.getLengthMm() == null) patch.set(InventoryMaterial::getLengthMm, null); }
+                case "thicknessMm" -> { if (material.getThicknessMm() == null) patch.set(InventoryMaterial::getThicknessMm, null); }
+                case "sizeUnit" -> { if (material.getSizeUnit() == null) patch.set(InventoryMaterial::getSizeUnit, "mm"); }
+            }
+        }
         if (attributesSaved) {
-            // JSON清空或厚度/尺寸移除时也必须显式清空派生值。
+            // 显式清空属性 JSON。
             if (material.getAttributeJson() == null) patch.set(InventoryMaterial::getAttributeJson, null);
-            if (material.getThickness() == null) patch.set(InventoryMaterial::getThickness, null);
-            if (material.getWidthSize() == null) patch.set(InventoryMaterial::getWidthSize, null);
         }
         boolean updated = materialMapper.update(material, patch) > 0;
         if (updated) {
@@ -485,7 +492,10 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 material.setModel(dto.getModel());
                 material.setColor(dto.getColor());
                 material.setBrand(dto.getBrand());
-                material.setSize(dto.getSize());
+                var dimensions = com.jjx.inventory.util.MaterialSizeParser.parse(dto.getSize());
+                material.setWidthMm(dimensions.widthMm()); material.setLengthMm(dimensions.lengthMm());
+                material.setThicknessMm(dimensions.thicknessMm()); material.setSizeUnit("mm");
+                material.setSpecBasis(dimensions.thicknessMm() == null ? "SIZE" : "THICKNESS");
                 material.setSearchKeywords(StringUtils.trimToNull(dto.getSearchKeywords()));
                 validateMasterData(material, null);
                 material.setUnit(dto.getUnit());
@@ -631,9 +641,9 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 maximum == null || maximum <= 0 ? 0L : maximum + 1);
     }
 
-    /** 物料保存服务仅在属性保存时写入这三列；其它调用不能独立覆盖。 */
+    /** 模板归属仅在属性保存时同步；尺寸数值由独立字段维护。 */
     private boolean synchronizeAttributeColumns(InventoryMaterial material, InventoryMaterial existing) {
-        material.setTemplateId(null); material.setThickness(null); material.setWidthSize(null);
+        material.setTemplateId(null);
         boolean supplied = material.getAttributeJson() != null || material.getSuppliedFields().contains("attributeJson");
         if (!supplied) return false;
         Long categoryId = material.getCategoryId() != null ? material.getCategoryId() : existing == null ? null : existing.getCategoryId();
@@ -645,7 +655,11 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             throw new BusinessException("物料属性数据格式错误");
         }
         if (attributes == null) throw new BusinessException("物料属性必须为JSON对象");
-        if (existing != null && material.getSize() == null && !material.getSuppliedFields().contains("size")) material.setSize(existing.getSize());
+        if (attributes.containsKey("thickness_mm")) {
+            attributes.remove("thickness_mm");
+            try { material.setAttributeJson(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(attributes)); }
+            catch (Exception e) { throw new BusinessException("物料属性无法序列化"); }
+        }
         com.jjx.inventory.master.MaterialAttributeColumns.apply(material,
                 categoryId == null ? null : materialMapper.selectTemplateId(categoryId));
         return true;
@@ -653,7 +667,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     private static final Map<String, String> MASTER_COLUMNS = Map.of(
             "materialGrade", "material_grade", "model", "model", "color", "color", "brand", "brand",
-            "searchKeywords", "search_keywords", "size", "size", "specification", "specification");
+            "searchKeywords", "search_keywords", "specification", "specification");
     private static final Map<String, String> FIELD_LABELS = Map.of(
             "materialGrade", "材料", "model", "型号", "color", "颜色", "brand", "品牌",
             "size", "尺寸", "specification", "规格", "searchKeywords", "别名");
@@ -699,13 +713,10 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 if (changed && StringUtils.isBlank(value)) throw new BusinessException(FIELD_LABELS.get(key) + "不能为空");
             }
         }
-        boolean sizeChanged = existing == null || !java.util.Objects.equals(material.getSize(), existing.getSize());
-        if (StringUtils.isNotBlank(material.getSize()) && sizeChanged) {
-            try {
-                com.jjx.inventory.util.MaterialSizeParser.parse(material.getSize());
-            } catch (IllegalArgumentException e) {
-                throw new BusinessException(e.getMessage());
-            }
+        var dimensions = com.jjx.inventory.master.MaterialSizeValue.validate(material.getWidthMm(), material.getLengthMm(),
+                material.getThicknessMm(), material.getSizeUnit());
+        if (existing == null || material.getSizeUnit() != null || material.getSuppliedFields().contains("sizeUnit")) {
+            material.setSizeUnit(dimensions.unit());
         }
     }
 
@@ -868,8 +879,12 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 .apply("IFNULL(model, '') = {0}", nz(dto.getModel()))
                 .apply("IFNULL(color, '') = {0}", nz(dto.getColor()))
                 .apply("IFNULL(brand, '') = {0}", nz(dto.getBrand()))
-                .apply("IFNULL(size, '') = {0}", nz(dto.getSize()))
                 .apply("IFNULL(specification, '') = {0}", nz(dto.getSpecification()));
+        var dimensions = com.jjx.inventory.util.MaterialSizeParser.parse(dto.getSize());
+        wrapper.apply("width_mm <=> {0}", dimensions.widthMm())
+                .apply("length_mm <=> {0}", dimensions.lengthMm())
+                .apply("thickness_mm <=> {0}", dimensions.thicknessMm())
+                .eq(InventoryMaterial::getSizeUnit, "mm");
         if (!hasDistinguishingAttribute(dto)) {
             wrapper.eq(InventoryMaterial::getMaterialName, dto.getMaterialName());
         }

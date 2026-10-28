@@ -10,6 +10,7 @@ import argparse
 from collections import Counter
 from datetime import datetime
 import hashlib
+from decimal import Decimal
 import json
 import os
 from pathlib import Path
@@ -20,11 +21,59 @@ import sys
 
 REPO = Path(__file__).resolve().parents[1]
 FIELDS = ('material_code', 'material_name', 'specification', 'size', 'remark')
-# 固定 SQL：只读五列，不筛旧状态，不依赖 007 新列，不读旧分类/类型。
-READ_SQL = """START TRANSACTION READ ONLY;
-SELECT JSON_ARRAY(material_code,material_name,specification,size,remark)
-FROM inventory_material ORDER BY material_code;
-COMMIT;"""
+# size 只作为五列审计输出的渲染值，不再读取旧数据库列。
+def render_size(row):
+    values = [row.get(k) for k in ('width_mm', 'length_mm', 'thickness_mm')]
+    count = 3 if values[2] is not None else 2 if values[1] is not None else 1
+    if all(v is None for v in values):
+        return None
+    return '*'.join('' if v is None else format(Decimal(str(v)).normalize(), 'f')
+                    for v in values[:count]) + (row.get('size_unit') or 'mm')
+
+
+def dimensions(size, thickness=''):
+    """历史提取文本仅在此转为数值；不把 C/#/T/g 等口径猜成毫米。"""
+    values = []
+    for part in re.split(r'[×xX*＊]', size or ''):
+        if not part.strip():
+            values.append(None)
+            continue
+        match = re.fullmatch(r'\s*(\d+(?:\.\d+)?)\s*(mm|毫米|cm|厘米|m|米|um|μm|µm|微米)?\s*', part, re.I)
+        if not match:
+            raise ValueError('无法转换历史尺寸：' + size)
+        factor = {'cm': '10', '厘米': '10', 'm': '1000', '米': '1000',
+                  'um': '.001', 'μm': '.001', 'µm': '.001', '微米': '.001'}.get((match[2] or '').lower(), '1')
+        value = Decimal(match[1]) * Decimal(factor)
+        if value <= 0:
+            raise ValueError('尺寸须大于0：' + size)
+        values.append(value)
+    if len(values) > 3:
+        raise ValueError('尺寸最多三维：' + size)
+    values += [None] * (3 - len(values))
+    if values[2] is None and thickness:
+        match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(mm|毫米|cm|厘米|um|μm|µm|微米)?', thickness, re.I)
+        if match:
+            values[2] = Decimal(match[1]) * Decimal({'cm': '10', '厘米': '10', 'um': '.001',
+                'μm': '.001', 'µm': '.001', '微米': '.001'}.get((match[2] or '').lower(), '1'))
+            if values[2] <= 0:
+                raise ValueError('厚度须大于0')
+    for value, scale, integers in zip(values, (2, 2, 4), (8, 10, 6)):
+        if value is not None and (max(0, -value.normalize().as_tuple().exponent) > scale or value >= Decimal(10) ** integers):
+            raise ValueError('尺寸数值超出列精度：' + (size or thickness))
+    return dict(zip(('width_mm', 'length_mm', 'thickness_mm', 'size_unit'),
+                    [float(v) if v is not None else None for v in values] + ['mm']))
+
+
+def size_sql():
+    def number(column):
+        return "IFNULL(TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM CAST(" + column + " AS CHAR))), '')"
+    w, l, t = (number(c) for c in ('width_mm', 'length_mm', 'thickness_mm'))
+    return ("CASE WHEN width_mm IS NULL AND length_mm IS NULL AND thickness_mm IS NULL THEN NULL ELSE CONCAT("
+            + w + ", IF(length_mm IS NOT NULL OR thickness_mm IS NOT NULL, CONCAT('*', " + l
+            + "), ''), IF(thickness_mm IS NOT NULL, CONCAT('*', " + t + "), ''), size_unit) END")
+
+
+READ_SQL = "START TRANSACTION READ ONLY; SELECT JSON_ARRAY(material_code,material_name,specification," + size_sql() + ",remark) FROM inventory_material ORDER BY material_code; COMMIT;"
 CATEGORIES = {
     'RAW_BASE_PC': 'PC膜/片', 'RAW_BASE_PET': 'PET膜/片',
     'RAW_BASE_PVC': 'PVC', 'RAW_BASE_PMMA': 'PMMA/压克力',
@@ -262,7 +311,7 @@ def report(path, rows, results, excel_path):
              '状态：阶段一输出，任务保持进行中；待 007 后、用户确认试算结果再应用。', '',
              '## 背景与依据', '',
              '目标模型见 [定稿](material-master-target-model-dev-20261024-003.md) §1/§3/§9。当前定稿 §8 是导入，未含卡面所说优先级；本次规则顺序直接采用用户本轮明确指令。',
-             '仅 SELECT inventory_material 的 material_code/material_name/specification/size/remark，全量读取，不按旧状态过滤；不读旧分类、旧 material_grade 或 material_type，不依赖 007 新列。',
+             '仅 SELECT inventory_material 的编码/名称/规格/尺寸数值列/备注，尺寸现拼；全量读取，不按旧状态过滤，不读旧分类、旧 material_grade 或 material_type。',
              '唯一事实取 remark 的【原名称】【原规格】；原名称缺失才回退当前名称，标 low。任一原始标记缺失亦标低置信；原规格空串保留，缺失不回退当前规格/尺寸。当前规格/尺寸仅供 Excel 对照。',
              'R13 仅使用原始文本显式“类型:F/S”或“成品/半成品”声明，F→FINISHED、S→SEMI；不读旧 material_type，不用冻结编码反推分类，名称中的 F150/S200 不视为类型。没有明确声明时保持未归类。',
              'R03 在用户“胶粘类”关键词基础上含字面“胶带”；PMMA 含中文同义词“压克力/亚克力”。未命中绝不塞入 OTHER；零条分类保持展示。', '',

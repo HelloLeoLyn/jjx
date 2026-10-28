@@ -146,16 +146,16 @@ class MaterialMasterNamingDatabaseTest {
         new TransactionTemplate(manager).executeWithoutResult(tx -> {
             tx.setRollbackOnly();
             var dto = form(id);
-            dto.setSize("300×305");
-            dto.setAttributeJson(Map.of("thickness_mm", 0.175, "surface_treatment", List.of("MEDIUM_SAND")));
+            dto.setWidthMm(new java.math.BigDecimal("300")); dto.setLengthMm(new java.math.BigDecimal("305")); dto.setThicknessMm(null); dto.setSizeUnit("mm");
+            dto.setThicknessMm(new java.math.BigDecimal("0.175")); dto.setAttributeJson(Map.of("surface_treatment", List.of("MEDIUM_SAND")));
             var before = service.save(dto, "codex-test");
-            assertEquals("厚度:0.175mm；表面处理:中砂；尺寸:300*305mm", before.getSpecification());
-            dto.setAttributeJson(Map.of("thickness_mm", 0.25));
+            assertEquals("表面处理:中砂；尺寸:300*305*0.175mm", before.getSpecification());
+            dto.setThicknessMm(new java.math.BigDecimal("0.25")); dto.setAttributeJson(Map.of());
             var changed = service.save(dto, "codex-test");
-            assertEquals("厚度:0.25mm；尺寸:300*305mm", changed.getSpecification());
-            dto.setAttributeJson(Map.of()); dto.setSize(null);
+            assertEquals("尺寸:300*305*0.25mm", changed.getSpecification());
+            dto.setAttributeJson(Map.of()); dto.setWidthMm(null); dto.setLengthMm(null); dto.setThicknessMm(null); dto.setSizeUnit("mm");
             var cleared = service.save(dto, "codex-test");
-            assertNull(cleared.getSpecification()); assertNull(cleared.getThickness()); assertNull(cleared.getWidthSize());
+            assertNull(cleared.getSpecification()); assertNull(cleared.getThicknessMm()); assertNull(cleared.getWidthMm());
             System.out.println("SPEC_SAVE id=" + id + " before=" + before.getSpecification() + " changed="
                     + changed.getSpecification() + " cleared=" + cleared.getSpecification());
         });
@@ -218,20 +218,20 @@ class MaterialMasterNamingDatabaseTest {
                 tx.setRollbackOnly();
                 try {
                     String content = json.writeValueAsString(Map.of("materialId", id, "categoryId", original.get("category_id"),
-                            "materialName", "HTTP规格事务验证", "originalName", "忽略旧字段", "originalSpecification", "忽略旧规格", "attributeJson", Map.of("thickness_mm", 0.5),
-                            "size", "500", "specification", "外部伪造规格"));
+                            "materialName", "HTTP规格事务验证", "attributeJson", Map.of(),
+                            "widthMm", 500, "thicknessMm", 0.5, "sizeUnit", "mm", "specification", "外部伪造规格"));
                     var saved = mvc.perform(put("/inventory/material/master").contentType(MediaType.APPLICATION_JSON).content(content)).andReturn().getResponse();
                     assertEquals(200, saved.getStatus());
                     var body = json.readTree(saved.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
                     assertEquals(200, body.get("code").asInt());
-                    assertEquals("厚度:0.5mm；尺寸:500mm", body.at("/data/specification").asText());
+                    assertEquals("尺寸:500**0.5mm", body.at("/data/specification").asText());
                     assertTrue(body.get("msg").asText().contains("不接受外部 specification"));
                     var naming = mvc.perform(put("/inventory/material/master/" + id + "/naming")
                             .contentType(MediaType.APPLICATION_JSON).content("{\"materialName\":\"HTTP命名\",\"specification\":\"外部伪造规格\"}"))
                             .andReturn().getResponse();
                     assertEquals(200, naming.getStatus());
                     var result = json.readTree(naming.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
-                    assertEquals("厚度:0.5mm；尺寸:500mm", result.at("/data/material/specification").asText());
+                    assertEquals("尺寸:500**0.5mm", result.at("/data/material/specification").asText());
                     assertTrue(result.at("/data/specificationGeneration/generated").asBoolean());
                     assertFalse(row(id).get("specification").toString().contains("伪造"));
                     System.out.println("SPEC_HTTP save=" + body.at("/data/specification") + " naming=" + result.at("/data/material/specification") + " externalIgnored=true");

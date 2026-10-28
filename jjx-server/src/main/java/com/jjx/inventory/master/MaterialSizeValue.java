@@ -4,9 +4,37 @@ import com.jjx.common.exception.BusinessException;
 import java.math.BigDecimal;
 import java.util.Arrays;
 
-/** size 为尺寸事实；旧厚度列仅作查询兼容，不接受独立录入。分隔符统一半角 *，输入兼容 ×、x、X 与全角 ＊。 */
+/** 数值尺寸校验与只读渲染；文本解析仅供历史导入使用。 */
 public final class MaterialSizeValue {
     private MaterialSizeValue() { }
+
+    public static SizeSpec validate(BigDecimal width, BigDecimal length, BigDecimal thickness, String unit) {
+        positive(width, 2, 8, "宽");
+        positive(length, 2, 10, "长");
+        positive(thickness, 4, 6, "厚");
+        String normalizedUnit = unit == null || unit.isBlank() ? "mm" : unit.trim();
+        if (!java.util.Set.of("mm", "cm", "m").contains(normalizedUnit)) throw new BusinessException("尺寸单位只允许 mm/cm/m");
+        return new SizeSpec(width, length, thickness, normalizedUnit);
+    }
+
+    private static void positive(BigDecimal value, int scale, int integers, String label) {
+        if (value != null && (value.signum() <= 0 || value.stripTrailingZeros().scale() > scale
+                || value.precision() - value.scale() > integers)) {
+            throw new BusinessException(label + "须为大于0的数值，最多" + scale + "位小数");
+        }
+    }
+
+    /** 缺项保留位置，避免将宽*厚误读成宽*长；单位仅在有尺寸时展示。 */
+    public static String render(BigDecimal width, BigDecimal length, BigDecimal thickness, String unit) {
+        if (width == null && length == null && thickness == null) return null;
+        String[] values = {number(width), number(length), number(thickness)};
+        int count = thickness != null ? 3 : length != null ? 2 : 1;
+        return String.join("*", Arrays.copyOf(values, count)) + (unit == null ? "mm" : unit);
+    }
+
+    private static String number(BigDecimal value) {
+        return value == null ? "" : value.stripTrailingZeros().toPlainString();
+    }
 
     /** 尺寸分隔符：历史 ×、字母 x/X 与全角 ＊ 都按同一分隔符识别，输出统一为 *。 */
     private static final String SEPARATORS = "[×xX*＊]";

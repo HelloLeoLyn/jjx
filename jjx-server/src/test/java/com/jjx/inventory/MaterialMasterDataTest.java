@@ -60,7 +60,7 @@ class MaterialMasterDataTest {
         InventoryMaterial m = new InventoryMaterial();
         m.setMaterialCode("TEST012"); m.setMaterialName("测试PC膜"); m.setCategoryId(2L);
         m.setMaterialGrade("PC膜"); m.setModel("F200"); m.setColor("透明"); m.setBrand("3M");
-        m.setSize("0.3m×305×0.1"); m.setSpecification("中砂面"); m.setSearchKeywords("测试别名");
+        m.setWidthMm(new java.math.BigDecimal("300.0")); m.setLengthMm(new java.math.BigDecimal("305")); m.setThicknessMm(new java.math.BigDecimal("0.1")); m.setSizeUnit("mm"); m.setSpecification("中砂面"); m.setSearchKeywords("测试别名");
         return m;
     }
 
@@ -98,39 +98,39 @@ class MaterialMasterDataTest {
         when(mapper.selectCategory(2L)).thenReturn(category());
         when(mapper.selectTemplateId(2L)).thenReturn(71L);
         when(mapper.insert(any(InventoryMaterial.class))).thenReturn(1);
-        var m = material(); m.setSize("300×305×0.175");
-        m.setTemplateId(999L); m.setThickness("伪造"); m.setWidthSize("伪造");
+        var m = material(); m.setWidthMm(new java.math.BigDecimal("300")); m.setLengthMm(new java.math.BigDecimal("305")); m.setThicknessMm(new java.math.BigDecimal("0.175")); m.setSizeUnit("mm");
+        m.setTemplateId(999L);
         m.setAttributeJson("{}");
         assertTrue(service.create(m, List.of(), "codex"));
-        assertEquals(71L, m.getTemplateId()); assertEquals("0.175", m.getThickness()); assertEquals("300×305×0.175", m.getWidthSize());
+        assertEquals(71L, m.getTemplateId()); assertEquals(new BigDecimal("0.175"), m.getThicknessMm()); assertEquals("300*305*0.175mm", m.getSize());
         var vo = Mappers.getMapper(MaterialConverter.class).toVO(m, Map.of());
-        assertEquals(71L, vo.getTemplateId()); assertEquals("0.175", vo.getThickness()); assertEquals("300×305×0.175", vo.getWidthSize());
+        assertEquals(71L, vo.getTemplateId()); assertEquals(new BigDecimal("0.175"), vo.getThicknessMm()); assertEquals("300*305*0.175mm", vo.getSize());
         // 属性 JSON 里的 thickness_mm 不再是第二入口：尺寸没厚度时厚度保持为空。
-        var noThickness = material(); noThickness.setSize("300×305");
+        var noThickness = material(); noThickness.setWidthMm(new java.math.BigDecimal("300")); noThickness.setLengthMm(new java.math.BigDecimal("305")); noThickness.setThicknessMm(null); noThickness.setSizeUnit("mm");
         noThickness.setAttributeJson("{\"thickness_mm\":0.175}");
         assertTrue(service.create(noThickness, List.of(), "codex"));
-        assertNull(noThickness.getThickness());
+        assertNull(noThickness.getThicknessMm());
     }
 
     @Test void attributeEditClearsRemovedDerivedValuesButUnrelatedEditDoesNotWriteThem() {
-        var old = material(); old.setMaterialId(12L); old.setThickness("0.175"); old.setWidthSize("300×305");
+        var old = material(); old.setMaterialId(12L); old.setThicknessMm(new BigDecimal("0.175"));
         when(mapper.selectById(12L)).thenReturn(old);
         when(mapper.selectCategory(2L)).thenReturn(category());
         when(mapper.selectTemplateId(2L)).thenReturn(71L);
         when(mapper.update(any(InventoryMaterial.class), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(1);
         var patch = new InventoryMaterial(); patch.setMaterialId(12L); patch.setAttributeJson("{}");
-        patch.setSuppliedFields(new java.util.HashSet<>(List.of("attributeJson", "size")));
+        patch.setSuppliedFields(new java.util.HashSet<>(List.of("attributeJson", "widthMm", "lengthMm", "thicknessMm")));
         assertTrue(service.update(patch, null, "codex"));
         var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper.class);
         verify(mapper).update(eq(patch), wrapper.capture());
-        assertTrue(wrapper.getValue().getSqlSet().contains("thickness="));
-        assertTrue(wrapper.getValue().getSqlSet().contains("width_size="));
-        assertNull(patch.getThickness()); assertNull(patch.getWidthSize());
+        assertTrue(wrapper.getValue().getSqlSet().contains("thickness_mm="));
+        assertTrue(wrapper.getValue().getSqlSet().contains("width_mm="));
+        assertNull(patch.getThicknessMm()); assertNull(patch.getWidthMm());
         clearInvocations(mapper);
         var brandOnly = new InventoryMaterial(); brandOnly.setMaterialId(12L); brandOnly.setBrand("新品牌");
-        brandOnly.setTemplateId(999L); brandOnly.setThickness("独立覆盖");
+        brandOnly.setTemplateId(999L);
         assertTrue(service.update(brandOnly, null, "codex"));
-        assertNull(brandOnly.getTemplateId()); assertNull(brandOnly.getThickness());
+        assertNull(brandOnly.getTemplateId()); assertNull(brandOnly.getThicknessMm());
         verify(mapper, never()).selectTemplateId(anyLong());
     }
 
@@ -146,24 +146,24 @@ class MaterialMasterDataTest {
         var master = new com.jjx.inventory.master.MaterialMasterService(catalog, mock(com.jjx.inventory.master.MaterialMasterMapper.class), mapper,
                 service, mock(com.jjx.purchase.mapper.PurchaseSupplierMapper.class), tags, mock(com.jjx.event.EventPublisher.class), new ObjectMapper());
         var dto = new com.jjx.inventory.master.MaterialMasterDTO(); dto.setCategoryId(2L); dto.setMaterialName("PC样例");
-        dto.setSize("300×305"); dto.setTemplateId(999L); dto.setThickness("伪造"); dto.setAttributeJson(Map.of("thickness_mm", new BigDecimal("0.175")));
+        dto.setWidthMm(new java.math.BigDecimal("300")); dto.setLengthMm(new java.math.BigDecimal("305")); dto.setThicknessMm(null); dto.setSizeUnit("mm"); dto.setTemplateId(999L); dto.setThicknessMm(new BigDecimal("0.175")); dto.setAttributeJson(Map.of("thickness_mm", new BigDecimal("0.175")));
         var saved = master.prepare(dto).material();
-        assertEquals(71L, saved.getTemplateId()); assertEquals("0.175", saved.getThickness()); assertEquals("300*305*0.175", saved.getWidthSize());
-        assertEquals("300*305*0.175", saved.getSize());
+        assertEquals(71L, saved.getTemplateId()); assertEquals(new BigDecimal("0.175"), saved.getThicknessMm());
+        assertEquals("300*305*0.175mm", saved.getSize());
         assertFalse(master.readAttributes(saved.getAttributeJson()).containsKey("thickness_mm"));
         assertTrue(saved.getAttributeJson().contains("\"material\":\"PC\""));
         assertFalse(master.readAttributes(saved.getAttributeJson()).containsKey("material"));
-        dto.setAttributeJson(Map.of()); dto.setSize(null);
-        var cleared = master.prepare(dto).material(); assertNull(cleared.getThickness()); assertNull(cleared.getWidthSize());
+        dto.setAttributeJson(Map.of()); dto.setWidthMm(null); dto.setLengthMm(null); dto.setThicknessMm(null); dto.setSizeUnit("mm");
+        var cleared = master.prepare(dto).material(); assertNull(cleared.getThicknessMm()); assertNull(cleared.getWidthMm());
     }
 
     @Test void derivedAndRetiredFieldsIgnoreClientInput() throws Exception {
         var dto = new ObjectMapper().readValue("{\"templateId\":999,\"thickness\":\"fake\",\"widthSize\":\"fake\"}", MaterialUpdateDTO.class);
-        assertNull(dto.getTemplateId()); assertNull(dto.getThickness()); assertNull(dto.getWidthSize());
+        assertNull(dto.getTemplateId()); assertNull(dto.getThicknessMm()); assertNull(dto.getWidthMm());
         var masterDto = new ObjectMapper().readValue("{\"materialName\":\"当前名称\",\"originalName\":\"已归档\",\"originalSpecification\":\"已归档\"}", com.jjx.inventory.master.MaterialMasterDTO.class);
         assertEquals("当前名称", masterDto.getMaterialName());
         var table = TableInfoHelper.getTableInfo(InventoryMaterial.class);
-        assertTrue(table.getFieldList().stream().noneMatch(f -> f.getColumn().startsWith("original_")));
+        assertTrue(table.getFieldList().stream().noneMatch(f -> f.getColumn().startsWith("original_") || List.of("size", "thickness", "width_size", "attr_thickness_num").contains(f.getColumn())));
 
     }
 
@@ -330,9 +330,10 @@ class MaterialMasterDataTest {
         var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
         verify(mapper).selectCount(wrapper.capture());
         String sql = wrapper.getValue().getSqlSegment();
-        for (String column : List.of("category_id", "material_grade", "model", "color", "brand", "size", "specification")) {
+        for (String column : List.of("category_id", "material_grade", "model", "color", "brand", "specification")) {
             assertTrue(sql.contains("IFNULL(" + column), sql);
         }
+        for (String column : List.of("width_mm", "length_mm", "thickness_mm")) assertTrue(sql.contains(column + " <=>"), sql);
         assertFalse(sql.contains("material_name"), sql);
     }
 

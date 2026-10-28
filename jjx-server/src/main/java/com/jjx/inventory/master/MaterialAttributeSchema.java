@@ -167,7 +167,7 @@ public record MaterialAttributeSchema(
         }
         if (widthSize != null && !widthSize.isBlank()) {
             String size = MaterialSizeValue.normalize(widthSize.trim());
-            parts.add("尺寸:" + size + (size.matches("(?i).*mm$") ? "" : "mm"));
+            parts.add("尺寸:" + size + (size.matches("(?i).*(?:mm|cm|m)$") ? "" : "mm"));
         }
         String text = String.join("；", parts);
         if (text.length() > 500) fail("生成规格超过500字，请精简属性内容");

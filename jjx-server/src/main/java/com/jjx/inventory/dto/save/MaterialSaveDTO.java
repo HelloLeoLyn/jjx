@@ -18,10 +18,6 @@ public class MaterialSaveDTO {
     /** 服务端由属性与分类派生，不接受独立写入。 */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private Long templateId;
-    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
-    private String thickness;
-    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
-    private String widthSize;
 
     private String specification;
     private String materialGrade;
@@ -29,7 +25,10 @@ public class MaterialSaveDTO {
     private String color;
     private String brand;
     private String searchKeywords;
-    private String size;
+    private BigDecimal widthMm;
+    private BigDecimal lengthMm;
+    private BigDecimal thicknessMm;
+    private String sizeUnit;
     private String attributeJson;
 
     private String unit;

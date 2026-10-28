@@ -29,4 +29,17 @@ class MaterialSizeValueTest {
         assertEquals("30*90mmmm", MaterialSizeValue.normalize("30*90mmmm"));
         assertEquals(null, MaterialSizeValue.normalize(null));
     }
+    @Test void numericDimensionsValidateStoragePrecisionAndRenderMissingPositions() {
+        var w = new java.math.BigDecimal("300.00");
+        var t = new java.math.BigDecimal("0.1750");
+        assertEquals("300**0.175mm", MaterialSizeValue.render(w, null, t, "mm"));
+        assertEquals("300cm", MaterialSizeValue.render(w, null, null, "cm"));
+        assertNull(MaterialSizeValue.render(null, null, null, "mm"));
+        assertEquals("cm", MaterialSizeValue.validate(w, null, null, " cm ").unit());
+        for (String invalid : new String[]{"0", "-1", "1.001", "100000000"}) {
+            assertThrows(RuntimeException.class, () -> MaterialSizeValue.validate(new java.math.BigDecimal(invalid), null, null, "mm"));
+        }
+        assertThrows(RuntimeException.class, () -> MaterialSizeValue.validate(w, null, t, "inch"));
+        assertThrows(RuntimeException.class, () -> MaterialSizeValue.validate(w, null, new java.math.BigDecimal("0.00001"), "mm"));
+    }
 }

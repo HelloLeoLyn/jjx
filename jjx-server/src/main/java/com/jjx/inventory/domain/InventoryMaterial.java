@@ -48,7 +48,6 @@ public class InventoryMaterial extends BaseEntity {
     private String color;
     private String brand;
     private String searchKeywords;
-    private String size;
 
     /** 新模型来源与标准字段；属性JSON是品类特有属性的唯一写入源。 */
     private String materialMeta;
@@ -56,9 +55,7 @@ public class InventoryMaterial extends BaseEntity {
     private String attributeJson;
     /** 属性保存入口派生；数据库生成列不进入实体写入路径。 */
     private Long templateId;
-    private String thickness;
-    private String widthSize;
-    /** 尺寸数值真源（mm）；由 size 同源派生，展示列仍用 size/thickness/widthSize。 */
+    /** 尺寸数值真源；尺寸文本仅在读取时生成。 */
     private BigDecimal widthMm;
     private BigDecimal lengthMm;
     private BigDecimal thicknessMm;
@@ -71,6 +68,12 @@ public class InventoryMaterial extends BaseEntity {
     private Boolean isCustomerSupplied;
     private Boolean isSample;
 
+
+    /** 尺寸只读展示值，不映射数据库列。 */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String getSize() {
+        return com.jjx.inventory.master.MaterialSizeValue.render(widthMm, lengthMm, thicknessMm, sizeUnit);
+    }
 
     /** 基本计量单位 */
     private String unit;

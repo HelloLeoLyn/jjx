@@ -70,7 +70,6 @@ class MaterialMasterMysqlTest {
         jdbc.update("INSERT INTO inventory_material_category(category_id,category_code,category_name,parent_id,category_level,status,category_path) VALUES (900001,'RAW','原材料',0,1,'1','RAW'),(900002,'RAW_BASE','基材',900001,2,'1','RAW/RAW_BASE'),(900003,'RAW_BASE_PC','PC膜/片',900002,3,'1','RAW/RAW_BASE/RAW_BASE_PC'),(900004,'RAW_AUX','辅材',900001,2,'1','RAW/RAW_AUX'),(900005,'RAW_AUX_ELECTRONIC','电子元件',900004,3,'1','RAW/RAW_AUX/RAW_AUX_ELECTRONIC')");
         String pc = """
                 {"version":1,"meta_options":["PC"],"default_meta":"PC","default_form":"FILM","default_unit":"M","fields":[
-                {"key":"thickness_mm","label":"厚度","type":"decimal","unit":"mm","min":0.0001,"max":1000,"precision":4,"required":true},
                 {"key":"anti_uv","label":"抗UV","type":"boolean","required":false}]}
                 """;
         String electronic = """
@@ -85,7 +84,7 @@ class MaterialMasterMysqlTest {
         for (Class<?> type : List.of(InventoryMaterialMapper.class, InventoryMaterialCategoryMapper.class, SysDictItemMapper.class, SysDictMapper.class, AttributeTemplateMapper.class, MaterialMasterMapper.class)) config.addMapper(type);
         MybatisSqlSessionFactoryBean bean = new MybatisSqlSessionFactoryBean(); bean.setDataSource(dataSource); bean.setConfiguration(config); bean.setGlobalConfig(new GlobalConfig().setBanner(false));
         var session = new SqlSessionTemplate(bean.getObject());
-        mapper = new ObjectMapper();
+        mapper = new ObjectMapper().findAndRegisterModules();
         var materialMapper = session.getMapper(InventoryMaterialMapper.class);
         var categoryMapper = session.getMapper(InventoryMaterialCategoryMapper.class);
         var templateMapper = session.getMapper(AttributeTemplateMapper.class);
@@ -114,18 +113,17 @@ class MaterialMasterMysqlTest {
         jdbc.execute(ddl);
     }
     private MaterialMasterDTO pc(String name) {
-        var dto = new MaterialMasterDTO(); dto.setCategoryId(900003L); dto.setMaterialName(name);
-        dto.setSize("300×305"); dto.setAttributeJson(Map.of("thickness_mm", 0.175)); return dto;
+        var dto = new MaterialMasterDTO(); dto.setCategoryId(900003L); dto.setMaterialName(name); dto.setColor("BLACK");
+        dto.setWidthMm(new java.math.BigDecimal("300")); dto.setLengthMm(new java.math.BigDecimal("305")); dto.setThicknessMm(null); dto.setSizeUnit("mm"); dto.setThicknessMm(new java.math.BigDecimal("0.175")); dto.setAttributeJson(Map.of()); return dto;
     }
 
     @Test void clearsDerivedColumnsOnMasterEdit() throws Exception {
         initialize();
         InventoryMaterial saved = service.save(pc("清空属性验证"), "Codex-test");
-        jdbc.update("UPDATE inventory_attribute_template SET attribute_schema=JSON_SET(attribute_schema,'$.fields[0].required',false) WHERE category_id=900003");
-        var dto = pc("清空属性验证"); dto.setMaterialId(saved.getMaterialId()); dto.setAttributeJson(Map.of()); dto.setSize(null);
+        var dto = pc("清空属性验证"); dto.setMaterialId(saved.getMaterialId()); dto.setAttributeJson(Map.of()); dto.setWidthMm(null); dto.setLengthMm(null); dto.setThicknessMm(null); dto.setSizeUnit("mm");
         InventoryMaterial edited = service.save(dto, "Codex-test");
-        assertNotNull(edited.getTemplateId()); assertNull(edited.getThickness()); assertNull(edited.getWidthSize());
-        assertNull(jdbc.queryForObject("SELECT attr_thickness_num FROM inventory_material WHERE material_id=?", java.math.BigDecimal.class, edited.getMaterialId()));
+        assertNotNull(edited.getTemplateId()); assertNull(edited.getThicknessMm()); assertNull(edited.getWidthMm());
+        assertNull(jdbc.queryForObject("SELECT thickness_mm FROM inventory_material WHERE material_id=?", java.math.BigDecimal.class, edited.getMaterialId()));
     }
 
     @Test void savesDefaultsDerivesTypeAndPreservesSourceWithNoLegacyAttributeWrites() throws Exception {
@@ -134,13 +132,13 @@ class MaterialMasterMysqlTest {
         assertThrows(BusinessException.class, () -> catalog.configuration(900002L));
         InventoryMaterial material = service.save(pc("测试来源PC"), "Codex-test");
         assertEquals(900003L, material.getCategoryId()); assertEquals("PC", material.getMaterialMeta()); assertEquals("FILM", material.getMaterialForm());
-        assertNull(com.jjx.inventory.master.MaterialSourceValues.from(material).originalSpecification()); assertEquals("厚度:0.175mm", material.getSpecification());
+        assertNull(com.jjx.inventory.master.MaterialSourceValues.from(material).originalSpecification()); assertEquals("尺寸:300*305*0.175mm", material.getSpecification());
         assertNotNull(material.getTemplateId());
-        assertEquals("0.175", material.getThickness()); assertEquals("300*305", material.getWidthSize());
+        assertEquals(0, new java.math.BigDecimal("0.175").compareTo(material.getThicknessMm())); assertEquals("300*305*0.175mm", material.getSize());
         assertEquals("PC", jdbc.queryForObject("SELECT attr_meta FROM inventory_material WHERE material_id=?", String.class, material.getMaterialId()));
-        assertEquals(0, new java.math.BigDecimal("0.1750").compareTo(jdbc.queryForObject("SELECT attr_thickness_num FROM inventory_material WHERE material_id=?", java.math.BigDecimal.class, material.getMaterialId())));
+        assertEquals(0, new java.math.BigDecimal("0.1750").compareTo(jdbc.queryForObject("SELECT thickness_mm FROM inventory_material WHERE material_id=?", java.math.BigDecimal.class, material.getMaterialId())));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
-        assertEquals(0.175, ((Number) service.detail(material.getMaterialId()).attributes().get("thickness_mm")).doubleValue());
+        assertFalse(service.detail(material.getMaterialId()).attributes().containsKey("thickness_mm"));
         var dto = pc("改名"); dto.setMaterialId(material.getMaterialId()); dto.setModel("M001"); service.save(dto,"Codex-test");
         dto.setModel(null); assertNull(service.save(dto,"Codex-test").getModel());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
@@ -148,7 +146,7 @@ class MaterialMasterMysqlTest {
 
     @Test void validationAndPostInsertFailureLeaveNoPartialMaterial() throws Exception {
         initialize();
-        var dto = pc("非法属性"); dto.setAttributeJson(Map.of("thickness_mm", "0.175mm"));
+        var dto = pc("非法属性"); dto.setThicknessMm(new java.math.BigDecimal("-0.175"));
         assertThrows(BusinessException.class, () -> service.save(dto,"Codex-test"));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
         doThrow(new BusinessException("标签写入失败")).when(tags).setBizTags(anyString(),anyLong(),anyList(),anyString());
@@ -174,7 +172,14 @@ class MaterialMasterMysqlTest {
             var sheet = workbook.getSheetAt(0);
             for (int i=0;i<2;i++) {
                 var row=sheet.createRow(i+2); row.createCell(0).setCellValue("RAW_BASE_PC"); row.createCell(1).setCellValue("批量PC"+i);
-                for (var cell : sheet.getRow(1)) if ("厚度(mm)".equals(cell.getStringCellValue())) row.createCell(cell.getColumnIndex()).setCellValue(invalidSecond && i==1 ? "错误厚度" : "0.175");
+                for (var cell : sheet.getRow(1)) {
+                    String header = cell.getStringCellValue();
+                    if ("颜色".equals(header)) row.createCell(cell.getColumnIndex()).setCellValue("BLACK");
+                    if ("宽(mm)".equals(header)) row.createCell(cell.getColumnIndex()).setCellValue("300");
+                    if ("长(mm)".equals(header)) row.createCell(cell.getColumnIndex()).setCellValue("305");
+                    if ("厚(mm)".equals(header)) row.createCell(cell.getColumnIndex()).setCellValue(invalidSecond && i==1 ? "错误厚度" : "0.175");
+                    if ("尺寸单位".equals(header)) row.createCell(cell.getColumnIndex()).setCellValue("mm");
+                }
             }
             var output = new ByteArrayOutputStream(); workbook.write(output);
             return new MockMultipartFile("file","pc.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",output.toByteArray());
@@ -193,7 +198,7 @@ class MaterialMasterMysqlTest {
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material",Integer.class));
         reset(tags); when(tags.getBizTags(anyString(),anyLong())).thenReturn(List.of());
         assertEquals(2,excel.importExcel(file(false),900003L,false,"Codex-test",false).successCount());
-        try (XSSFWorkbook exported=new XSSFWorkbook(new ByteArrayInputStream(excel.export(null)))) { assertEquals(2,exported.getSheetAt(0).getLastRowNum()); assertEquals("原材料",exported.getSheetAt(0).getRow(1).getCell(5).getStringCellValue()); }
+        try (XSSFWorkbook exported=new XSSFWorkbook(new ByteArrayInputStream(excel.export(null)))) { assertEquals(2,exported.getSheetAt(0).getLastRowNum()); assertEquals("原材料",exported.getSheetAt(0).getRow(1).getCell(3).getStringCellValue()); }
     }
 
     @Test void migrationByIdRequiresEditPermissionAndPreservesCodeAndBusinessParameters() throws Exception {
@@ -202,7 +207,9 @@ class MaterialMasterMysqlTest {
         jdbc.update("UPDATE inventory_material SET attribute_json=NULL,class_confirmed=0,safe_stock=7,standard_price=1.25 WHERE material_id=?",old.getMaterialId());
         MockMultipartFile migration;
         try (XSSFWorkbook workbook=new XSSFWorkbook(new ByteArrayInputStream(file(false).getBytes()))) {
-            workbook.getSheetAt(0).getRow(2).createCell(15).setCellValue(old.getMaterialId().toString());
+            for (var cell : workbook.getSheetAt(0).getRow(1))
+                if ("物料ID（更新时填写）".equals(cell.getStringCellValue()))
+                    workbook.getSheetAt(0).getRow(2).createCell(cell.getColumnIndex()).setCellValue(old.getMaterialId().toString());
             var output=new ByteArrayOutputStream();workbook.write(output);
             migration=new MockMultipartFile("file","migration.xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",output.toByteArray());
         }
@@ -214,6 +221,30 @@ class MaterialMasterMysqlTest {
         assertEquals(old.getMaterialCode(),row.get("material_code"));assertEquals("批量PC0",row.get("material_name"));
         assertEquals(0,new java.math.BigDecimal("7").compareTo((java.math.BigDecimal)row.get("safe_stock")));
         assertEquals(0,new java.math.BigDecimal("1.25").compareTo((java.math.BigDecimal)row.get("standard_price")));
+    }
+
+    @Test void numericContractRoundTripsAndOldTemplateIsRejected() throws Exception {
+        initialize();
+        var columns = jdbc.queryForList("SHOW COLUMNS FROM inventory_material").stream().map(r -> r.get("Field").toString()).toList();
+        for (String retired : List.of("size", "thickness", "width_size", "attr_thickness_num")) assertFalse(columns.contains(retired));
+        var dto = mapper.readValue("{\"materialName\":\"数值尺寸\",\"categoryId\":900003,\"color\":\"BLACK\",\"widthMm\":30,\"lengthMm\":90,\"thicknessMm\":0.175,\"sizeUnit\":\"cm\",\"size\":\"伪造\"}", MaterialMasterDTO.class);
+        var saved = service.save(dto, "Codex-test");
+        assertEquals("30*90*0.175cm", mapper.readTree(mapper.writeValueAsString(saved)).get("size").asText());
+        assertEquals("30*90*0.175cm", service.detail(saved.getMaterialId()).material().getSize());
+        assertTrue(jdbc.queryForObject("SELECT search_blob FROM inventory_material WHERE material_id=?", String.class, saved.getMaterialId()).contains(saved.getSize()));
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.export(null)))) {
+            var sheet = workbook.getSheetAt(0);
+            assertEquals(sheet.getRow(0).getLastCellNum(), sheet.getRow(1).getLastCellNum());
+            assertEquals("尺寸(mm)", sheet.getRow(0).getCell(8).getStringCellValue());
+            assertEquals(saved.getSize(), sheet.getRow(1).getCell(8).getStringCellValue());
+        }
+        try (XSSFWorkbook workbook = new XSSFWorkbook()) {
+            var sheet = workbook.createSheet(); var header = sheet.createRow(0);
+            header.createCell(0).setCellValue("物料名称"); header.createCell(1).setCellValue("尺寸(mm)");
+            var output = new ByteArrayOutputStream(); workbook.write(output);
+            var old = new MockMultipartFile("file", "old.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", output.toByteArray());
+            assertTrue(assertThrows(BusinessException.class, () -> excel.importExcel(old, null, true, "Codex-test", false)).getMessage().contains("缺【宽(mm)】列"));
+        }
     }
 
     @Test void exactMigrationSeedsExecuteAndAreIdempotentInSessionTemporaryTables() throws Exception {

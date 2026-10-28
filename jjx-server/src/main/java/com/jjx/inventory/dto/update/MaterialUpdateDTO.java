@@ -22,10 +22,6 @@ public class MaterialUpdateDTO {
     /** 服务端由属性与分类派生，不接受独立写入。 */
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private Long templateId;
-    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
-    private String thickness;
-    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
-    private String widthSize;
 
     private String specification;
     private String materialGrade;
@@ -33,7 +29,10 @@ public class MaterialUpdateDTO {
     private String color;
     private String brand;
     private String searchKeywords;
-    private String size;
+    private BigDecimal widthMm;
+    private BigDecimal lengthMm;
+    private BigDecimal thicknessMm;
+    private String sizeUnit;
     private String attributeJson;
 
     private String unit;
@@ -93,10 +92,25 @@ public class MaterialUpdateDTO {
         this.searchKeywords = value;
         suppliedFields.add("searchKeywords");
     }
-    @com.fasterxml.jackson.annotation.JsonSetter("size")
-    public void setSize(String value) {
-        this.size = value;
-        suppliedFields.add("size");
+    @com.fasterxml.jackson.annotation.JsonSetter("widthMm")
+    public void setWidthMm(BigDecimal value) {
+        this.widthMm = value;
+        suppliedFields.add("widthMm");
+    }
+    @com.fasterxml.jackson.annotation.JsonSetter("lengthMm")
+    public void setLengthMm(BigDecimal value) {
+        this.lengthMm = value;
+        suppliedFields.add("lengthMm");
+    }
+    @com.fasterxml.jackson.annotation.JsonSetter("thicknessMm")
+    public void setThicknessMm(BigDecimal value) {
+        this.thicknessMm = value;
+        suppliedFields.add("thicknessMm");
+    }
+    @com.fasterxml.jackson.annotation.JsonSetter("sizeUnit")
+    public void setSizeUnit(String value) {
+        this.sizeUnit = value;
+        suppliedFields.add("sizeUnit");
     }
     @com.fasterxml.jackson.annotation.JsonSetter("specification")
     public void setSpecification(String value) {

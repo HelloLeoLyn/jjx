@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
-"""物料主数据回填 v2（dev-20261023-012 后）：填 size、按属性重写名称、修正品牌/材料。
+"""物料主数据回填 v2（dev-20261023-012 后）：填尺寸数值、按属性重写名称、修正品牌/材料。
 
 规则（用户 2026-10-23 定稿）：
 - 名称 = 材料 + 型号 + 颜色（品牌），无空格、缺项跳过、品牌全角括号；
 - 材料为复合词（PE保护膜/PC膜/EVA泡棉/胶带/灯/离型膜/标签纸…），识别不到留空，不写"其他"；
 - 品牌只取括号内容（排除数字/状态词/封装词）；
 - 型号保留规格档（0.125、15C、50#、DB6842、PET125、3M5604…）；
-- size = 从 remark 里【原规格】+ 名称尺寸解析，宽在前、缺省 mm；
+- 数值尺寸 = 从 remark 里【原规格】+ 名称尺寸解析，宽在前、缺省 mm；
 - specification 只保留工艺描述（纯尺寸文本清空；原值已在 remark）。
 
 用法：python3 scripts/material-normalize-backfill-v2.py [--apply]
 """
 import argparse, csv, os, re, subprocess, sys, time
+import importlib.util
+from pathlib import Path
+
+_size_spec = importlib.util.spec_from_file_location("material_sizes", Path(__file__).with_name("material-reclassify-dryrun.py"))
+_size_values = importlib.util.module_from_spec(_size_spec)
+sys.dont_write_bytecode = True
+_size_spec.loader.exec_module(_size_values)
 
 DB = os.environ.get('JJX_DB_NAME', 'jjx_erp_db')
 RO = ['mysql', '-h127.0.0.1', '-ujjx_ro', '-N', '-B', DB]
@@ -173,7 +180,9 @@ def main():
     n=0
     for mid,newname,size,newspec,material,model,color,brand in upd:
         sets=[]
-        if size: sets.append("size='%s'" % size.replace("'","''"))
+        if size:
+            sets.extend(k + '=' + ('NULL' if v is None else "'mm'" if k == 'size_unit' else str(v))
+                        for k, v in _size_values.dimensions(size).items())
         if newname: sets.append("material_name='%s'" % newname.replace("'","''"))
         sets.append("material_grade=%s" % ("NULL" if not material else "'"+material.replace("'","''")+"'"))
         sets.append("model=%s" % ("NULL" if not model else "'"+model.replace("'","''")+"'"))

@@ -31,8 +31,6 @@ public class MaterialVO {
     private String attributeJson;
     /** 属性保存入口派生；数据库生成列不进入实体写入路径。 */
     private Long templateId;
-    private String thickness;
-    private String widthSize;
     private BigDecimal widthMm;
     private BigDecimal lengthMm;
     private BigDecimal thicknessMm;

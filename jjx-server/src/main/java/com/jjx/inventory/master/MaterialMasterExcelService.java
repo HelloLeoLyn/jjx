@@ -29,14 +29,14 @@ public class MaterialMasterExcelService {
     private final ObjectMapper objectMapper;
     private final MaterialClassifyService classifyService;
     public record ImportResult(boolean preview, int successCount, List<String> errors) { }
-    private static final List<String> COMMON_HEADERS = List.of("物料名称", "规格", "材质", "形态", "尺寸(mm)", "颜色", "型号", "品牌", "单位", "供应商", "是否客供专用", "是否样品专用", "别名", "业务备注", "物料ID（更新时填写）", "标准单价", "采购周期(天)", "安全库存", "最高库存", "再订货点", "保质期(天)", "预警提前天数", "批次控制");
+    private static final List<String> COMMON_HEADERS = List.of("物料名称", "规格", "材质", "形态", "宽(mm)", "长(mm)", "厚(mm)", "尺寸单位", "颜色", "型号", "品牌", "单位", "供应商", "是否客供专用", "是否样品专用", "别名", "业务备注", "物料ID（更新时填写）", "标准单价", "采购周期(天)", "安全库存", "最高库存", "再订货点", "保质期(天)", "预警提前天数", "批次控制");
 
     /** 品类列逐行选择；属性列为启用品类模板字段的并集，不绑定单个品类。 */
     public byte[] template(Long ignoredCategoryId) {
         List<MaterialMasterCatalog.Category> categories = catalog.categories().stream().filter(MaterialMasterCatalog.Category::selectable).toList();
         LinkedHashSet<String> columns = new LinkedHashSet<>();
         columns.add("品类"); columns.addAll(COMMON_HEADERS);
-        for (var category : categories) catalog.configuration(category.categoryId()).schema().fields().forEach(f -> columns.add(fieldHeader(f)));
+        for (var category : categories) catalog.configuration(category.categoryId()).schema().fields().stream().filter(f -> !f.key().equals("thickness_mm")).forEach(f -> columns.add(fieldHeader(f)));
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("物料录入");
             put(sheet.createRow(0), 0, "物料导入1A：品类填编码；空品类可选自动归类，未命中进入未归类；按每行品类校验属性");
@@ -102,6 +102,9 @@ public class MaterialMasterExcelService {
                 String label = headerAlias(cell(header, i));
                 if (!label.isBlank() && columns.putIfAbsent(label, i) != null) throw new BusinessException("重复列：" + label);
             }
+            for (String label : List.of("宽(mm)", "长(mm)", "厚(mm)", "尺寸单位")) {
+                if (!columns.containsKey(label)) throw new BusinessException("缺【" + label + "】列，请重新下载导入模板");
+            }
             if (sheet.getLastRowNum() - headerIndex > 2000) throw new BusinessException("每次最多导入2000行");
             for (int index = headerIndex + 1; index <= sheet.getLastRowNum(); index++) {
                 Row row = sheet.getRow(index);
@@ -131,7 +134,11 @@ public class MaterialMasterExcelService {
                     }
                     dto.setMaterialMeta(dictionaryCode(dictionaries, "material_meta", value(row, columns, "材质")));
                     dto.setMaterialForm(dictionaryCode(dictionaries, "form", value(row, columns, "形态")));
-                    dto.setSize(value(row, columns, "尺寸(mm)")); dto.setColor(dictionaryCode(dictionaries, "color", value(row, columns, "颜色")));
+                    dto.setWidthMm(decimal(value(row, columns, "宽(mm)"), "宽(mm)"));
+                    dto.setLengthMm(decimal(value(row, columns, "长(mm)"), "长(mm)"));
+                    dto.setThicknessMm(decimal(value(row, columns, "厚(mm)"), "厚(mm)"));
+                    dto.setSizeUnit(value(row, columns, "尺寸单位"));
+                    dto.setColor(dictionaryCode(dictionaries, "color", value(row, columns, "颜色")));
                     dto.setModel(value(row, columns, "型号")); dto.setBrand(dictionaryCode(dictionaries, "brand", value(row, columns, "品牌")));
                     dto.setUnit(dictionaryCode(dictionaries, "unit", value(row, columns, "单位"))); dto.setSupplierName(value(row, columns, "供应商"));
                     dto.setIsCustomerSupplied(bool(value(row, columns, "是否客供专用"))); dto.setIsSample(bool(value(row, columns, "是否样品专用")));
@@ -150,6 +157,7 @@ public class MaterialMasterExcelService {
                         var schema = catalog.configuration(dto.getCategoryId()).schema();
                         if (dto.getMaterialMeta() != null && !schema.metaOptions().contains(dto.getMaterialMeta())) throw new BusinessException("【材质】越界：" + value(row, columns, "材质"));
                         for (var field : schema.fields()) {
+                            if (field.key().equals("thickness_mm")) continue;
                             String label = fieldHeader(field); allowedHeaders.add(label);
                             String raw = value(row, columns, label);
                             if (!raw.isBlank()) attributes.put(field.key(), parseField(field, raw));

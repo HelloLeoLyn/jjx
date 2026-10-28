@@ -150,7 +150,8 @@ public class MaterialMasterService {
     private SpecificationPreview specificationPreview(InventoryMaterial material, MaterialAttributeSchema schema) {
         if (schema == null || schema.fields().isEmpty())
             return new SpecificationPreview(material.getSpecification(), false, "未生成：未归类、分类无启用模板或模板无属性，保留原规格；不接受外部 specification 文本");
-        String specification = schema.compose(readAttributes(material.getAttributeJson()), material.getThickness(), material.getWidthSize());
+        String specification = schema.compose(readAttributes(material.getAttributeJson()), material.getGrammage() != null ? material.getGrammage().stripTrailingZeros().toPlainString()
+                : material.getThicknessMm() == null ? null : material.getThicknessMm().stripTrailingZeros().toPlainString(), material.getSize());
         return new SpecificationPreview(specification.isEmpty() ? null : specification, true, "规格已由模板属性/厚度/尺寸生成；不接受外部 specification 文本");
     }
 
@@ -226,23 +227,17 @@ public class MaterialMasterService {
         dictionaryLabel(dictionaries, "color", dto.getColor(), false);
         dictionaryLabel(dictionaries, "brand", dto.getBrand(), false);
         Map<String, Object> inputAttributes = new LinkedHashMap<>(dto.getAttributeJson() == null ? Map.of() : dto.getAttributeJson());
-        String size = MaterialSizeValue.normalize(MaterialSizeValue.mergeLegacy(dto.getSize(), inputAttributes.get("thickness_mm")));
-        // 历史未知格式只允许原样保留，不能把新输入的无效格式当成合法尺寸。
-        if (old == null || !Objects.equals(size, old.getSize())) validateSize(size);
-        MaterialSizeValue.SizeSpec sizeSpec = MaterialSizeValue.spec(size);
-        boolean sizeChanged = old == null || !Objects.equals(size, old.getSize());
+        MaterialSizeValue.SizeSpec sizeSpec = MaterialSizeValue.validate(dto.getWidthMm(), dto.getLengthMm(), dto.getThicknessMm(), dto.getSizeUnit());
         String specBasis = dto.getGrammage() != null ? "GRAMMAGE"
-                : sizeSpec != null && sizeSpec.thicknessMm() != null ? "THICKNESS"
-                : sizeSpec != null ? "SIZE" : null;
-        // 口径校验：克重与厚度互斥，克重口径仍必须有宽度；只在新增/改尺寸/改克重时拦，历史数据不阻塞。
-        if (dto.getGrammage() != null || sizeChanged) {
-            if (dto.getGrammage() != null && dto.getGrammage().signum() <= 0) throw new BusinessException("克重必须大于0");
-            if ("GRAMMAGE".equals(specBasis)) {
-                if (sizeSpec != null && sizeSpec.thicknessMm() != null) throw new BusinessException("克重与厚度只能选一种口径，请清掉尺寸里的厚度");
-                if (sizeSpec == null || sizeSpec.widthMm() == null) throw new BusinessException("克重口径仍需填宽度（尺寸首个数值）");
-            }
-            if ("THICKNESS".equals(specBasis) && sizeSpec.widthMm() == null) throw new BusinessException("填了厚度时仍需填宽度");
+                : sizeSpec.thicknessMm() != null ? "THICKNESS" : "SIZE";
+        if (dto.getGrammage() != null && dto.getGrammage().signum() <= 0) throw new BusinessException("克重必须大于0");
+        if ("GRAMMAGE".equals(specBasis)) {
+            if (sizeSpec.thicknessMm() != null) throw new BusinessException("克重与厚度只能选一种口径，请清掉厚度");
+            if (sizeSpec.widthMm() == null) throw new BusinessException("克重口径仍需填宽度");
         }
+        if ("THICKNESS".equals(specBasis) && sizeSpec.widthMm() == null) throw new BusinessException("填了厚度时仍需填宽度");
+        // 厚度属性是历史模板定义，不能再成为尺寸写入入口。
+        inputAttributes.remove("thickness_mm");
         Map<String, Object> attributes = schema.validateAttributes(inputAttributes, objectMapper);
         InventoryMaterial material = new InventoryMaterial();
         BeanUtils.copyProperties(dto, material);
@@ -254,7 +249,6 @@ public class MaterialMasterService {
         material.setModel(text(dto.getModel(), "型号", 100, false));
         material.setBrand(text(dto.getBrand(), "品牌", 50, false));
         material.setColor(text(dto.getColor(), "颜色", 20, false));
-        material.setSize(text(size, "尺寸", 50, false));
         material.setWidthMm(sizeSpec == null ? null : sizeSpec.widthMm());
         material.setLengthMm(sizeSpec == null ? null : sizeSpec.lengthMm());
         material.setThicknessMm(sizeSpec == null ? null : sizeSpec.thicknessMm());
@@ -268,9 +262,9 @@ public class MaterialMasterService {
         material.setIsCustomerSupplied(Boolean.TRUE.equals(dto.getIsCustomerSupplied()));
         material.setIsSample(Boolean.TRUE.equals(dto.getIsSample()));
         if (config != null) MaterialAttributeColumns.apply(material, config.template().getTemplateId());
-        else { material.setTemplateId(null); material.setThickness(null); material.setWidthSize(null); }
+        else material.setTemplateId(null);
         Map<String, Object> storedAttributes = new LinkedHashMap<>(attributes);
-        if (MaterialSizeValue.parts(size) != null) storedAttributes.remove("thickness_mm");
+        storedAttributes.remove("thickness_mm");
         if (meta != null) storedAttributes.put("material", meta);
         try { material.setAttributeJson(objectMapper.writeValueAsString(storedAttributes)); }
         catch (Exception e) { throw new BusinessException("属性无法序列化"); }
@@ -366,9 +360,11 @@ public class MaterialMasterService {
             columns.put("material_name", material.getMaterialName()); columns.put("material_meta", material.getMaterialMeta());
             columns.put("material_form", material.getMaterialForm()); columns.put("material_grade", material.getMaterialGrade());
             columns.put("model", material.getModel()); columns.put("color", material.getColor()); columns.put("brand", material.getBrand());
-            columns.put("size", material.getSize()); columns.put("unit", material.getUnit());
-            columns.put("template_id", material.getTemplateId()); columns.put("thickness", material.getThickness());
-            columns.put("width_size", material.getWidthSize());
+            columns.put("width_mm", material.getWidthMm()); columns.put("length_mm", material.getLengthMm());
+            columns.put("thickness_mm", material.getThicknessMm()); columns.put("size_unit", material.getSizeUnit());
+            columns.put("grammage", material.getGrammage()); columns.put("thickness_tolerance", material.getThicknessTolerance());
+            columns.put("spec_basis", material.getSpecBasis()); columns.put("unit", material.getUnit());
+            columns.put("template_id", material.getTemplateId());
             columns.put("attribute_json", material.getAttributeJson()); columns.put("specification", material.getSpecification());
             columns.put("search_keywords", material.getSearchKeywords());
             columns.put("is_customer_supplied", material.getIsCustomerSupplied()); columns.put("is_sample", material.getIsSample());

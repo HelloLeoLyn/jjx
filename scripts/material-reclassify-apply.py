@@ -8,7 +8,6 @@
 
 import argparse
 from collections import Counter
-from decimal import Decimal
 from enum import IntEnum
 import hashlib
 import importlib.util
@@ -33,7 +32,7 @@ spec = importlib.util.spec_from_file_location('material_dryrun', REPO / 'scripts
 dryrun = importlib.util.module_from_spec(spec)
 sys.dont_write_bytecode = True
 spec.loader.exec_module(dryrun)
-WRITE_COLUMNS = {'category_id', 'template_id', 'thickness', 'width_size', 'attribute_json',
+WRITE_COLUMNS = {'category_id', 'template_id', 'width_mm', 'length_mm', 'thickness_mm', 'size_unit', 'attribute_json',
                  'material_meta', 'material_form', 'color', 'model', 'brand',
                  'is_customer_supplied', 'is_sample'}
 
@@ -145,19 +144,11 @@ def template_values(result, row, schema):
     """把已有提取结果投影到模板；额外模板字段仅认字面选项/布尔标记。"""
     text = facts(row)
     attrs = {}
-    thickness = result['attributes']['thickness']
-    # 无单位厚度原样写主列；不把 C/#/T/g 或无单位数字猜成 mm。
-    number = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(mm|毫米|um|μm|µm|微米|cm|厘米)', thickness, re.I)
     for field in schema['fields']:
         key, kind = field['key'], field['type']
-        if key == 'thickness_mm' and number:
-            factor = {'mm': '1', '毫米': '1', 'um': '.001', 'μm': '.001', 'µm': '.001',
-                      '微米': '.001', 'cm': '10', '厘米': '10'}[number[2].lower()]
-            value = Decimal(number[1]) * Decimal(factor)
-            if (Decimal(str(field.get('min', 0))) <= value <= Decimal(str(field.get('max', 1000)))
-                    and max(0, -value.normalize().as_tuple().exponent) <= field.get('precision', 4)):
-                attrs[key] = float(value)
-        elif kind in ('enum', 'multienum'):
+        if key == 'thickness_mm':
+            continue
+        if kind in ('enum', 'multienum'):
             # 排除“其他”兜底，重叠标签只认最长项（中高粘不能同时算高粘）。
             options = [o for o in field.get('options', []) if o['code'] != 'OTHER'
                        and re.search(re.escape(o['label']), text, re.I)]
@@ -189,7 +180,8 @@ def plan_rows(rows, config):
             raise ValueError('模板未启用或分类存在多模板')
         templates[cid] = (tid, schema)
     plans, conflicts = [], []
-    results = [dryrun.classify([row[c] for c in dryrun.FIELDS]) for row in rows]
+    results = [dryrun.classify([dryrun.render_size(row) if c == 'size' else row[c]
+                               for c in dryrun.FIELDS]) for row in rows]
     if dict(Counter(r['target_category'] or '未归类' for r in results)) != EXPECTED:
         raise ValueError('分类分布与阶段一不一致，停止')
     for row, result in zip(rows, results):
@@ -211,9 +203,8 @@ def plan_rows(rows, config):
             if meta:
                 attrs['material'] = meta
             target.update(category_id=cid, template_id=tid, attribute_json=attrs,
-                          thickness=extracted['thickness'] or None,
-                          width_size=extracted['width_size'] or None,
                           material_meta=meta, material_form=form_value(facts(row), config))
+            target.update(dryrun.dimensions(extracted['width_size'], extracted['thickness']))
             for column in ('color', 'model', 'brand'):
                 extracted_value = extracted[column]
                 value = extracted_value if column == 'model' else dictionary(config, column, extracted_value)
@@ -245,7 +236,7 @@ def statistics(rows, config):
                 category_null=sum(r['category_id'] is None for r in rows),
                 template_null=sum(r['template_id'] is None for r in rows),
                 **{k: sum(r[k] is not None and r[k] != '' for r in rows)
-                   for k in ('thickness', 'width_size', 'material_meta', 'material_form')},
+                   for k in ('width_mm', 'length_mm', 'thickness_mm', 'material_meta', 'material_form')},
                 attribute_json_present=sum(r['attribute_json'] is not None for r in rows),
                 attribute_json_nonempty=sum(bool(r['attribute_json']) for r in rows),
                 template_field_nonempty=sum(bool({k: v for k, v in (r['attribute_json'] or {}).items()
@@ -274,12 +265,9 @@ def project_row(row, changes):
     # 对照306及现存search_blob表达式核对生成列；这些列始终不进入UPDATE白名单。
     meta = (result['attribute_json'] or {}).get('material')
     result['attr_meta'] = meta if isinstance(meta, str) else None
-    thickness = (result['thickness'] or '').strip()
-    result['attr_thickness_num'] = float(Decimal(thickness)) if re.fullmatch(
-        r'[0-9]{1,8}(\.[0-9]{1,4})?', thickness) else None
-    result['search_blob'] = ' '.join(result[k] or '' for k in (
+    result['search_blob'] = ' '.join([str(result[k] or '') for k in (
         'material_name', 'material_name_en', 'material_code', 'model', 'material_grade',
-        'color', 'specification', 'search_keywords', 'size', 'brand'))
+        'color', 'specification', 'search_keywords')] + [dryrun.render_size(result) or '', result['brand'] or ''])
     return result
 
 
@@ -348,12 +336,12 @@ def main():
             raise ValueError('任务必须进行中、已记开始时间且执行者codex')
         columns = [c[0] for c in db.query("SELECT JSON_ARRAY(COLUMN_NAME) FROM information_schema.COLUMNS "
                     "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='inventory_material' ORDER BY ORDINAL_POSITION")]
-        if len(columns) != 54:
-            raise ValueError('物料表不是007A预期54列，停止')
+        if not WRITE_COLUMNS <= set(columns) or {'size', 'thickness', 'width_size', 'attr_thickness_num'} & set(columns):
+            raise ValueError('物料尺寸列不是数值契约，停止')
         config = read_config(db)
         rows = read_materials(db, columns)
         db.query('COMMIT')
-        original_rows = [[r[k] for k in dryrun.FIELDS] for r in rows]
+        original_rows = [[dryrun.render_size(r) if k == 'size' else r[k] for k in dryrun.FIELDS] for r in rows]
         # 阶段一摘要使用不排序键的五列数组序列，与原脚本完全一致。
         source_sha = hashlib.sha256(json.dumps(original_rows, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
         if len(rows) != 1607 or source_sha != STAGE_ONE_SHA:
