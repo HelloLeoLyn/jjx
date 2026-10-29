@@ -66,15 +66,14 @@
       </el-col>
       <el-col :span="12">
         <el-form-item label="交货日期" prop="deliveryDate">
-          <el-date-picker
-            v-model="form.deliveryDate"
-            type="date"
-            placeholder="请选择交货日期"
-            value-format="YYYY-MM-DD"
-            style="width: 100%"
+          <el-input
+            :model-value="latestEstimatedDeliveryDate() || '待明细填写预计交期'"
+            readonly
+            placeholder="按明细预计交期自动取最晚日期"
+            title="整单齐套出货日 = 明细中预计交期最晚的那一天（自动推算，不手填）"
           />
-          <span v-if="props.sourceQuotationId && !form.deliveryDate" class="el-form-item__extra">
-            报价未提供统一的预计交期，请确认本单交货日期。
+          <span class="el-form-item__extra">
+            自动取明细预计交期的最晚日期（齐套出货口径），明细未填则不落值。
           </span>
         </el-form-item>
       </el-col>
@@ -1135,6 +1134,16 @@ function localToday(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** 订单头交货日期：明细预计交期的最晚值（齐套出货口径，dev-20261029-003） */
+function latestEstimatedDeliveryDate(): string {
+  const dates = (form.items || [])
+    .map((item: any) => item?.estimatedDeliveryDate)
+    .filter(Boolean)
+    .map((value: any) => String(value).slice(0, 10))
+    .sort()
+  return dates.length ? dates[dates.length - 1] : ''
+}
+
 /** 交期天数：由 预计交期 − 订单日期 推算（与后端同口径，dev-20261029-002） */
 function deliveryDaysOf(row: any): number | null {
   const estimated = row?.estimatedDeliveryDate
@@ -1428,6 +1437,8 @@ watch(
 
 // 提交表单（重写：保存订单后再上传附件）
 const submitForm = async (): Promise<boolean> => {
+  // 头交货日期由明细推算后提交（后端同样重算，前端只保证校验通过）
+  form.deliveryDate = latestEstimatedDeliveryDate()
   if (props.sampleOrderId) {
     if (conversionLoading.value || conversionError.value) return false
     if (returnToSourceOrder.value) return (await returnPanel.value?.confirmReturn()) ?? false

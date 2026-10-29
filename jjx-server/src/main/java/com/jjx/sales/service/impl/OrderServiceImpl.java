@@ -201,6 +201,7 @@ public class OrderServiceImpl implements IOrderService {
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType(), dto.getCustomerId());
             normalizeDeliveryDays(dto.getItems(), dto.getOrderDate());
+            dto.setDeliveryDate(latestEstimated(dto.getItems()));
             ensureProductIds(dto.getItems(), dto.getCustomerId());
             dto.getItems().forEach(i -> i.setOrderId(entity.getOrderId()));
             orderProductService.batchAdd(dto.getItems());
@@ -276,6 +277,7 @@ public class OrderServiceImpl implements IOrderService {
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType(), dto.getCustomerId());
             normalizeDeliveryDays(dto.getItems(), dto.getOrderDate());
+            dto.setDeliveryDate(latestEstimated(dto.getItems()));
             ensureProductIds(dto.getItems(), dto.getCustomerId());
             dto.getItems().forEach(i -> i.setOrderId(dto.getOrderId()));
             boolean ok = orderProductService.replaceItems(dto.getOrderId(), dto.getItems());
@@ -1382,6 +1384,16 @@ public class OrderServiceImpl implements IOrderService {
             long days = java.time.temporal.ChronoUnit.DAYS.between(base, estimated);
             item.setDeliveryDays(days > 0 ? (int) days : null);
         }
+    }
+
+    /** 订单头交货日期 = 明细预计交期的最晚值（齐套出货口径，dev-20261029-003）。 */
+    private static java.util.Date latestEstimated(List<SalesOrderProductDTO> items) {
+        if (items == null) return null;
+        java.time.LocalDate latest = items.stream().filter(java.util.Objects::nonNull)
+                .map(SalesOrderProductDTO::getEstimatedDeliveryDate)
+                .filter(java.util.Objects::nonNull)
+                .max(java.time.LocalDate::compareTo).orElse(null);
+        return latest == null ? null : java.sql.Date.valueOf(latest);
     }
 }
 
