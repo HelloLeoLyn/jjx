@@ -27,12 +27,26 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="类型">{{
-          configuration?.path[0]?.categoryName || '选择品类后自动确定'
-        }}</el-form-item>
+
         <el-form-item v-if="form.materialCode" label="物料编码">{{
           form.materialCode
         }}</el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="主要供应商"
+              ><el-input
+                v-model="form.supplierName"
+                maxlength="200"
+                @input="form.supplierId = null" /></el-form-item
+          ></el-col>
+          <el-col :span="12">
+            <el-form-item label="供应商品名"
+              ><el-input
+                v-model="form.supplierMaterialName"
+                maxlength="200"
+                placeholder="供应商自己的叫法/料号，采购单据与来料核对用" /></el-form-item
+          ></el-col>
+        </el-row>
         <el-form-item label="名称" required>
           <el-input v-model="form.materialName" maxlength="200" @input="onNameInput">
             <template #append>
@@ -190,15 +204,7 @@
             <el-form-item label="批次管理"><el-switch v-model="form.batchControl" /></el-form-item>
           </el-collapse-item>
         </el-collapse>
-        <el-form-item label="主要供应商"
-          ><el-input v-model="form.supplierName" maxlength="200" @input="form.supplierId = null"
-        /></el-form-item>
-        <el-form-item label="供应商品名"
-          ><el-input
-            v-model="form.supplierMaterialName"
-            maxlength="200"
-            placeholder="供应商自己的叫法/料号，采购单据与来料核对用"
-        /></el-form-item>
+
         <el-form-item label="业务备注"
           ><el-input v-model="form.remark" type="textarea" maxlength="1000" :rows="2"
         /></el-form-item>
@@ -264,6 +270,7 @@ import {
   previewMasterSpecification,
   pruneAttributes,
 } from './materialMasterModel'
+import { el } from 'element-plus/es/locale/index.mjs'
 
 const props = defineProps<{
   modelValue: boolean
@@ -285,8 +292,13 @@ const visible = computed({
 })
 const form = reactive<MaterialMasterForm>({ ...emptyMasterForm(), ...emptyMaterialSize() })
 const dimensions = computed<MaterialSizeValue>({
-  get: () => ({ widthMm: form.widthMm ?? null, lengthMm: form.lengthMm ?? null, thicknessMm: form.thicknessMm ?? null, sizeUnit: form.sizeUnit || 'mm' }),
-  set: value => Object.assign(form, value),
+  get: () => ({
+    widthMm: form.widthMm ?? null,
+    lengthMm: form.lengthMm ?? null,
+    thicknessMm: form.thicknessMm ?? null,
+    sizeUnit: form.sizeUnit || 'mm',
+  }),
+  set: (value) => Object.assign(form, value),
 })
 const categories = ref<MaterialMasterCategory[]>([])
 const dictionaries = ref<MaterialDictionaries>({})
@@ -316,7 +328,9 @@ const specificationPreview = computed(() => {
   if (!schema?.fields.length) return ''
   const attributes = { ...form.attributeJson }
   delete attributes.thickness_mm
-  const text = previewMasterSpecification(schema, attributes, { thickness: String(form.grammage ?? form.thicknessMm ?? '') })
+  const text = previewMasterSpecification(schema, attributes, {
+    thickness: String(form.grammage ?? form.thicknessMm ?? ''),
+  })
   const size = renderMaterialDimensions(dimensions.value)
   return [text, size ? `尺寸:${size}` : ''].filter(Boolean).join('；')
 })
