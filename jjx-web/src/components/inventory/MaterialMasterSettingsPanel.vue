@@ -54,7 +54,7 @@
         </el-form>
       </el-tab-pane>
       <el-tab-pane label="属性模板" name="template">
-        <el-form v-show="focusSection !== 'naming'" label-width="110px">
+        <el-form label-width="110px">
           <el-form-item label="末级品类" required
             ><el-select v-model="templateCategoryId" filterable @change="loadTemplate">
               <el-option
@@ -65,6 +65,7 @@
               /> </el-select
           ></el-form-item>
           <template v-if="templateCategoryId">
+          <template v-if="focusSection !== 'naming'">
             <el-form-item label="模板编码"><el-input v-model="templateCode" /></el-form-item>
             <el-form-item label="模板名称"><el-input v-model="templateName" /></el-form-item>
             <el-form-item label="启用"
@@ -277,7 +278,8 @@
             </el-table>
             <el-button style="margin-top: 12px" @click="addField">增加属性</el-button>
             <el-button style="margin-top: 12px" @click="addCommonFields">补充本品类常用属性</el-button>
-            <el-divider content-position="left">命名规则（勾选参与命名的字段，按勾选顺序拼装）</el-divider>
+          </template>
+            <el-divider v-if="focusSection !== 'template'" content-position="left">命名规则（勾选参与命名的字段，按勾选顺序拼装）</el-divider>
             <div v-show="focusSection !== 'template'" class="naming-rule">
               <div class="naming-tokens">
                 <el-checkbox
