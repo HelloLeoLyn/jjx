@@ -62,7 +62,7 @@
       :rows="showRefs ? displayRefRows : []"
       :can-edit="canEdit"
       :readonly-type="compactMode && !editableDocumentType"
-      :document-types="documentTypes"
+      :document-types="selectableTypes"
       :source-type="sourceType"
       :source-no="sourceNo"
       :lock-reason="lockReason"
@@ -102,7 +102,7 @@
         :row="metaRow"
         :ref-id="metaRow?.id"
         :visible="metaVisible"
-        :document-types="documentTypes"
+        :document-types="selectableTypes"
         :source-type="props.sourceType"
       />
       <el-form label-width="80px" :disabled="!canEdit">
@@ -184,6 +184,8 @@ const props = withDefaults(
     autoBind?: boolean
     /** 新上传待绑定项的默认二级类型；调用方仍可编辑。 */
     defaultDocumentType?: string
+    /** 可选：本入口只允许这些二级资料类型（不传=按字典与来源过滤后的全部）。 */
+    allowedDocumentTypes?: string[]
     /** 上传入口改为拖拽落区（替代 header 的小按钮）；默认 false 保持按钮形态 */
     dropZone?: boolean
     /** 单据产品（单产品单据传值，多产品单据不传）；写引用时随 product_id 落库 */
@@ -231,6 +233,7 @@ const props = withDefaults(
     ],
     autoBind: true,
     defaultDocumentType: '',
+    allowedDocumentTypes: undefined,
     dropZone: false,
     productId: null,
     productCode: null,
@@ -269,6 +272,13 @@ const refs = useAttachmentRefs({
   productCode: toRef(props, 'productCode'),
   drawingMeta: toRef(props, 'drawingMeta'),
 })
+/** 本入口可选的二级资料类型：调用方白名单收敛；不传=字典+来源过滤后的全部（dev-20261029-005） */
+const selectableTypes = computed(() =>
+  props.allowedDocumentTypes?.length
+    ? documentTypes.value.filter((type) => props.allowedDocumentTypes!.includes(type.item_key))
+    : documentTypes.value
+)
+
 const {
   refRows,
   legacyOnlyRows,
@@ -587,6 +597,8 @@ defineExpose({
   pendingCount,
   /** 资料类型字典（一级+二级），供调用方在延后绑定前选择类型 */
   documentTypes,
+  /** 按 allowedDocumentTypes 收敛后的可选二级类型 */
+  selectableTypes,
   /** 保存前校验用：待绑定队列中尚未选择二级资料类型的条数（dev-20261015-032） */
   getMissingTypeCount: () => pendingMissingTypeCount.value,
   uploading,
