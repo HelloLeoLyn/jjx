@@ -585,6 +585,8 @@ defineExpose({
   refresh: () => Promise.all([load(), loadTrace()]),
   bindPending,
   pendingCount,
+  /** 资料类型字典（一级+二级），供调用方在延后绑定前选择类型 */
+  documentTypes,
   /** 保存前校验用：待绑定队列中尚未选择二级资料类型的条数（dev-20261015-032） */
   getMissingTypeCount: () => pendingMissingTypeCount.value,
   uploading,

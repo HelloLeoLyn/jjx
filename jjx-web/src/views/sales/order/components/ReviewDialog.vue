@@ -54,12 +54,24 @@
       </el-form-item>
 
       <!-- 审核通过与驳回都保存本次选用的资料引用。 -->
+      <el-form-item v-if="(attachmentCenter?.pendingCount ?? 0) > 0" label="审核资料类型" required>
+        <el-select v-model="reviewDocType" placeholder="选择待绑定附件的资料类型" style="width: 100%">
+          <el-option
+            v-for="item in attachmentDocTypes"
+            :key="item.item_key"
+            :label="item.label"
+            :value="item.item_key"
+          />
+        </el-select>
+        <span class="review-doc-tip">提交审核时按此类型绑定本次上传的附件</span>
+      </el-form-item>
       <AttachmentCenter
         ref="attachmentCenter"
         source-type="sales_order"
         :source-id="props.orderId || null"
         :trace-id="orderDetail?.traceId"
         variant="upload-only"
+        :auto-bind="false"
         :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"
         view-perm="sales:order:view"
         edit-perm="sales:order:edit"
@@ -140,6 +152,9 @@ const formData = ref({
 // 本次审核已绑定的订单附件引用 ID（选填）
 const attachmentRefIds = ref<number[]>([])
 const attachmentCenter = ref<InstanceType<typeof AttachmentCenter> | null>(null)
+/** 待绑定审核附件统一使用的二级资料类型（延后绑定，dev-20261029-004） */
+const reviewDocType = ref('')
+const attachmentDocTypes = computed(() => attachmentCenter.value?.documentTypes ?? [])
 
 // 只记录绑定成功的引用，临时文件 ID 不进入审核流水
 function onBound(id: number) {
@@ -215,9 +230,28 @@ const handleConfirm = async () => {
     } catch {
       return
     }
-    if (attachmentCenter.value?.uploading || attachmentCenter.value?.pendingCount) {
-      ElMessage.warning('请等待审核资料上传并绑定完成')
+    if (attachmentCenter.value?.uploading) {
+      ElMessage.warning('附件仍在上传，请稍候再提交')
       return
+    }
+    // 延后绑定（dev-20261029-004）：提交审核时把待绑定附件一次性绑成引用，再随审核结果提交
+    const pendingCount = attachmentCenter.value?.pendingCount ?? 0
+    if (pendingCount) {
+      if (!reviewDocType.value) {
+        ElMessage.warning('请选择审核资料类型后再提交')
+        return
+      }
+      const result = await attachmentCenter.value!.bindPending({ documentType: reviewDocType.value })
+      if (result.failed?.length) {
+        const detail = result.failed.map((item) => `${item.fileName}：${item.message}`).join('；')
+        ElMessage.warning(`附件未能绑定：${detail}`)
+        return
+      }
+      for (const item of result.bound || []) onBound(item.refId)
+      if (result.status === 'document-not-saved') {
+        ElMessage.warning('单据尚未保存，无法绑定附件')
+        return
+      }
     }
     if (formData.value.result === 'approve') {
       // 审核通过时只提交已绑定的引用 ID
