@@ -112,11 +112,13 @@ public class MaterialMasterConfigurationService {
         return entity;
     }
 
-    /** 已使用模板允许增加无默认值的可选字段，以及调整纯显示元数据。 */
+    /** 已使用模板允许增加无默认值的可选字段，以及调整纯显示元数据（含命名规则）。 */
     public static void requireCompatibleUpdate(MaterialAttributeSchema old, MaterialAttributeSchema next, ObjectMapper mapper) {
         var previous = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(old);
         var updated = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(next);
-        previous.remove("fields"); updated.remove("fields");
+        // fields 与 name_pattern 都属于“可调整的显示/命名规则”，不构成模板契约（dev-20261029-023）
+        previous.remove(List.of("fields", "name_pattern"));
+        updated.remove(List.of("fields", "name_pattern"));
         if (!previous.equals(updated)) fail("已有物料引用模板，不能改变材质、单位或默认值等模板契约");
         Map<String, MaterialAttributeSchema.Field> fields = new LinkedHashMap<>();
         next.fields().forEach(field -> fields.put(field.key(), field));

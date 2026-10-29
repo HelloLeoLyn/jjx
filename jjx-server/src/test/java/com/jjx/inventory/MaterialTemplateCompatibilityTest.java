@@ -32,6 +32,15 @@ class MaterialTemplateCompatibilityTest {
         }
     }
 
+    @Test void namingRuleCanChangeOnTemplateAlreadyInUse() {
+        var old = schema(oldField);
+        var next = MaterialAttributeSchema.parse(
+                "{\"version\":1,\"meta_options\":[],\"default_unit\":\"PCS\",\"fields\":[" + oldField + "],"
+                        + "\"name_pattern\":{\"fields\":[\"meta\",\"model\"],\"separator\":\"-\",\"empty\":\"skip\"}}",
+                mapper);
+        assertDoesNotThrow(() -> MaterialMasterConfigurationService.requireCompatibleUpdate(old, next, mapper));
+    }
+
     @Test void renderingMetadataSurvivesSerializationAndUnknownKeysStillFail() throws Exception {
         var schema = schema(oldField.replace("\"required\":false", "\"required\":false,\"common\":true,\"in_spec\":false,\"spec_order\":9"));
         assertEquals(mapper.valueToTree(schema), mapper.valueToTree(MaterialAttributeSchema.parse(mapper.writeValueAsString(schema), mapper)));
