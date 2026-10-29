@@ -265,38 +265,33 @@ describe('QuotationFormDialog 切换客户后联系人/电话（dev-20261020-005
 })
 
 describe('报价交期录入', () => {
-  it('编辑回填交期天数和预计日期，修改后作为保存源提交，不改变报价有效期', async () => {
+  it('交期天数改为按预计交期推算展示，修改预计日期后作为保存源提交', async () => {
     const { wrapper, formData } = mountDialog({ items: [{
       productId: 9, productCode: 'P009', productName: '产品九', quantity: 1,
       unitPrice: 10, amount: 10, unit: 'PCS', deliveryDays: 12, estimatedDeliveryDate: '2026-12-02',
     }] })
     await flushPromises()
-    const days = wrapper.findAllComponents({ name: 'ElInputNumber' })
-      .find((field: any) => field.props('modelValue') === 12)
+    // 交期(天) 不再可手填：没有绑定交期天数的数字输入框
+    const daysInput = wrapper.findAllComponents({ name: 'ElInputNumber' })
+      .find((field: any) => field.props('aria-label') === '交期天数')
     const date = wrapper.findAllComponents({ name: 'ElDatePicker' })
       .find((field: any) => field.props('modelValue') === '2026-12-02')
-    expect(days).toBeTruthy()
+    expect(daysInput).toBeFalsy()
     expect(date).toBeTruthy()
-    days!.vm.$emit('update:modelValue', 20)
     date!.vm.$emit('update:modelValue', '2026-12-10')
     await clickSave(wrapper)
     expect(wrapper.emitted('submit')).toHaveLength(1)
-    expect(formData.items[0]).toMatchObject({ deliveryDays: 20, estimatedDeliveryDate: '2026-12-10' })
+    expect(formData.items[0]).toMatchObject({ estimatedDeliveryDate: '2026-12-10' })
     expect(formData.validUntil).toBe('2026-11-19')
     wrapper.unmount()
   })
 
-  it('未填交期不自动造日期，非法交期天数被阻止提交', async () => {
+  it('未填预计交期不自动造日期', async () => {
     const { wrapper, formData } = mountDialog()
     await flushPromises()
     await clickSave(wrapper)
     expect(wrapper.emitted('submit')).toHaveLength(1)
     expect(formData.items[0].estimatedDeliveryDate).toBeUndefined()
-    for (const value of [0, -1, 1.5]) {
-      formData.items[0].deliveryDays = value
-      await clickSave(wrapper)
-      expect(wrapper.emitted('submit')).toHaveLength(1)
-    }
     wrapper.unmount()
   })
 })

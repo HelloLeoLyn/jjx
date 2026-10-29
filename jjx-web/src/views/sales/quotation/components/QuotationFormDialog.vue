@@ -168,16 +168,9 @@
             <span>{{ formatCurrency(scope.row.amount) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="交期(天)" prop="deliveryDays" width="150">
+        <el-table-column label="交期(天)" width="110" align="center">
           <template #default="scope">
-            <el-input-number
-              v-model="scope.row.deliveryDays"
-              :min="1"
-              :precision="0"
-              controls-position="right"
-              aria-label="交期天数"
-              style="width: 100%"
-            />
+            <span :title="'按 预计交期 − 报价日期 推算'">{{ deliveryDaysOf(scope.row) ?? '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="预计交期" prop="estimatedDeliveryDate" width="180">
@@ -417,6 +410,16 @@ const codeGenInitState = ref<Partial<ProductCodeState>>({})
 const qShortName = ref('')
 /** 当前生效客户 ID：区分「换客户」与「同一客户重选」（dev-20261020-005） */
 const activeCustomerId = ref<number | null>(null)
+/** 交期天数：由 预计交期 − 报价日期 推算（唯一真源是日期，dev-20261028-016） */
+function deliveryDaysOf(row: any): number | null {
+  const estimated = row?.estimatedDeliveryDate
+  const base = props.formData?.quotationDate
+  if (!estimated || !base) return null
+  const days = Math.round(
+    (new Date(`${estimated}T00:00:00`).getTime() - new Date(`${base}T00:00:00`).getTime()) / 86400000
+  )
+  return days > 0 ? days : null
+}
 
 /** 本单已占用的流水号（排除当前编辑行自身；新增行 codeGenRow 为 null 时取全部） */
 const usedSerialsForCodeGen = computed(() => {
@@ -709,10 +712,7 @@ const handleSubmit = () => {
           ElMessage.warning('单价必须大于0')
           return
         }
-        if (item.deliveryDays != null && (!Number.isInteger(item.deliveryDays) || item.deliveryDays < 1)) {
-          ElMessage.warning('交期天数须为大于0的整数，可留空')
-          return
-        }
+        // 交期天数改由 预计交期 − 报价日期 推算（dev-20261028-016），不再校验手填值
       }
       // 两种报价类型均禁止重复产品编码，与后端保持一致
       const seen = new Map<string, number>()

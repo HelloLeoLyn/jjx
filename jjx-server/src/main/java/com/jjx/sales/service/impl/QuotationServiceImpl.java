@@ -353,13 +353,18 @@ public class QuotationServiceImpl implements IQuotationService {
         return quotation.getQuotationId();
     }
 
+    private static Integer deliveryDays(java.time.LocalDate base, java.time.LocalDate estimated) {
+        if (base == null || estimated == null) return null;
+        long days = java.time.temporal.ChronoUnit.DAYS.between(base, estimated);
+        return days > 0 ? (int) days : null;
+    }
+
     /** 已有产品始终校验客户归属；报价阶段不再限制产品发布状态（dev-20261019-012）。 */
     private void validateCustomerProducts(SalesQuotation quotation, SalesQuotation existing) {
         if (quotation.getItems() == null) return;
         for (SalesQuotationItem item : quotation.getItems()) {
-            if (item.getDeliveryDays() != null && item.getDeliveryDays() < 1) {
-                throw new BusinessException("交期天数须为大于0的整数，可留空");
-            }
+            // 交期以「预计交期」为唯一真源：天数由 预计交期 − 报价日期 推算，客户端传值一律忽略（dev-20261028-016）
+            item.setDeliveryDays(deliveryDays(quotation.getQuotationDate(), item.getEstimatedDeliveryDate()));
             if (item.getProductId() == null && item.getProductCode() != null && !item.getProductCode().isBlank()) {
                 Product matched = productMapper.selectOne(new LambdaQueryWrapper<Product>()
                         .eq(Product::getProductCode, item.getProductCode().trim()).last("LIMIT 1"));
