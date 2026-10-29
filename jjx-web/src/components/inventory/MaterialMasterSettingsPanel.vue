@@ -1,7 +1,7 @@
 <template>
   <div class="material-settings-panel">
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-tabs v-model="tab">
+    <el-tabs v-model="tab" :class="{ 'single-section': singleSection }">
       <el-tab-pane label="分类" name="categories">
         <el-form label-width="110px">
           <el-form-item label="维护分类">
@@ -403,11 +403,13 @@ import type {
 } from '@/types/inventory/materialMaster'
 const props = withDefaults(
   defineProps<{
+    /** 独立页面使用：隐藏分类/属性模板的 tab 头，只显示 initialTab 指向的那一页（dev-20261029-022） */
+    singleSection?: boolean
     initialTab?: 'categories' | 'template'
     /** 只显示模板字段或只显示命名规则 */
     focusSection?: 'template' | 'naming'
   }>(),
-  { initialTab: 'categories', focusSection: 'template' }
+  { singleSection: false, initialTab: 'categories', focusSection: 'template' }
 )
 const emit = defineEmits<{ (e: 'success'): void }>()
 const tab = ref(props.initialTab),
@@ -719,6 +721,11 @@ async function removeTemplate() {
 </script>
 
 <style scoped>
+/* 独立页面（物料分类 / 属性模板 / 命名规则）只显示自己那一页，不出现平级 tab 头 */
+.single-section :deep(.el-tabs__header) {
+  display: none;
+}
+
 .naming-rule { margin-top: 8px; }
 .naming-tokens { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; }
 .naming-order { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }

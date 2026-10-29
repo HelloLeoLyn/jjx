@@ -6,6 +6,7 @@
         <span class="desc">勾选参与命名的字段并按顺序拼装；预览命名与批量改名</span>
       </template>
       <MaterialMasterSettingsPanel
+        single-section
         initial-tab="template"
         focus-section="naming"
         @success="onSuccess"

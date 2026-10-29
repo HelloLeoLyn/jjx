@@ -6,6 +6,7 @@
         <span class="desc">按末级品类维护属性字段；precision 仅数值/整数生效（0–8），default 按 JSON 原生类型</span>
       </template>
       <MaterialMasterSettingsPanel
+        single-section
         initial-tab="template"
         focus-section="template"
         @success="onSuccess"
