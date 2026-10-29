@@ -3763,14 +3763,25 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             return new ArrayList<>();
         }
 
+        Set<Long> materialIds = items.stream()
+                .map(InventoryInboundItem::getMaterialId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, String> supplierMaterialNames = materialIds.isEmpty()
+                ? Map.of()
+                : inventoryMaterialMapper.selectBatchIds(materialIds).stream()
+                        .collect(Collectors.toMap(
+                                InventoryMaterial::getMaterialId,
+                                InventoryMaterial::getSupplierMaterialName,
+                                (left, right) -> left));
         List<InboundItemVO> result = new ArrayList<>();
         for (InventoryInboundItem item : items) {
-            result.add(convertToItemVO(item));
+            result.add(convertToItemVO(item, supplierMaterialNames.get(item.getMaterialId())));
         }
         return result;
     }
 
-    private InboundItemVO convertToItemVO(InventoryInboundItem item) {
+    private InboundItemVO convertToItemVO(InventoryInboundItem item, String supplierMaterialName) {
         if (item == null) {
             return null;
         }
@@ -3781,6 +3792,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         vo.setMaterialId(item.getMaterialId());
         vo.setMaterialCode(item.getMaterialCode());
         vo.setMaterialName(item.getMaterialName());
+        vo.setSupplierMaterialName(supplierMaterialName);
         vo.setSpecification(item.getSpecification());
         vo.setUnit(item.getUnit());
         vo.setQuantity(item.getQuantity());

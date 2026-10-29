@@ -15,6 +15,8 @@ public class InboundItemVO {
     private Long materialId;
     private String materialCode;
     private String materialName;
+    /** 供应商侧品名/叫法；内部物料名称仍由 materialName 表示。 */
+    private String supplierMaterialName;
     private String specification;
     private String unit;
     private BigDecimal quantity;

@@ -18,6 +18,7 @@
       <el-table-column type="index" label="序号" width="60" align="center" />
       <el-table-column label="物料编码" prop="materialCode" width="150" />
       <el-table-column label="物料名称" prop="materialName" min-width="180" show-overflow-tooltip />
+      <el-table-column label="供应商品名" prop="supplierMaterialName" min-width="180" show-overflow-tooltip />
       <el-table-column label="批次" prop="batchNo" min-width="150" />
       <el-table-column label="收货数量" prop="quantity" width="100" align="right" />
       <el-table-column label="检验结论" width="100" align="center">

@@ -21,10 +21,12 @@ public interface InventoryIqcQuarantineMapper extends BaseMapper<InventoryIqcQua
                    inbound.supplier_id,
                    inbound.supplier_name,
                    inbound.source_no,
+                   material.supplier_material_name,
                    lot.lot_no,
                    COALESCE(NULLIF(lot.defect_reason, ''), lot.remark) AS defect_reason
             FROM inventory_iqc_quarantine q
             LEFT JOIN inventory_inbound_order inbound ON inbound.inbound_id = q.inbound_id
+            LEFT JOIN inventory_material material ON material.material_id = q.material_id
             LEFT JOIN quality_lot lot ON lot.lot_id = q.lot_id
             <where>
                 <if test="query.pendingOnly != null and query.pendingOnly">
@@ -67,10 +69,12 @@ public interface InventoryIqcQuarantineMapper extends BaseMapper<InventoryIqcQua
                    inbound.supplier_id,
                    inbound.supplier_name,
                    inbound.source_no,
+                   material.supplier_material_name,
                    lot.lot_no,
                    COALESCE(NULLIF(lot.defect_reason, ''), lot.remark) AS defect_reason
             FROM inventory_iqc_quarantine q
             LEFT JOIN inventory_inbound_order inbound ON inbound.inbound_id = q.inbound_id
+            LEFT JOIN inventory_material material ON material.material_id = q.material_id
             LEFT JOIN quality_lot lot ON lot.lot_id = q.lot_id
             WHERE q.inbound_id = #{inboundId}
             ORDER BY q.quarantine_id

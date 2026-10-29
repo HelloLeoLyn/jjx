@@ -37,6 +37,7 @@ export interface PurchaseOrderItem {
   materialId?: string
   materialCode: string
   materialName: string
+  supplierMaterialName?: string
   materialSpec?: string
   unit: string
   quantity: number

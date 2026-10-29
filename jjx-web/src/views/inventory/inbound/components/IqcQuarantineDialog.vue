@@ -9,6 +9,7 @@
     <el-table v-loading="loading" :data="rows" border>
       <el-table-column prop="materialCode" label="物料编码" width="150" />
       <el-table-column prop="materialName" label="物料名称" min-width="160" />
+      <el-table-column prop="supplierMaterialName" label="供应商品名" min-width="160" />
       <el-table-column prop="quantity" label="原始隔离" width="100" />
       <el-table-column prop="remainingQuantity" label="剩余数量" width="100" />
       <el-table-column label="处置状态" width="100"

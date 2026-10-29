@@ -16,6 +16,7 @@
     <el-table v-loading="loading" :data="items" border class="posting-table">
       <el-table-column prop="materialCode" label="物料编码" width="150" />
       <el-table-column prop="materialName" label="物料名称" min-width="180" />
+      <el-table-column prop="supplierMaterialName" label="供应商品名" min-width="180" />
       <el-table-column prop="quantity" label="收货数量" width="110" align="right" />
       <el-table-column label="可用入库" width="120" align="right">
         <template #default="{ row }">{{ Number(row.acceptedQuantity || 0) }}</template>

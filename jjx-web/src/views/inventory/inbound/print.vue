@@ -29,6 +29,7 @@
               <th style="width: 42px">序号</th>
               <th>物料编码</th>
               <th>物料名称</th>
+              <th>供应商品名</th>
               <th>规格</th>
               <th>批次</th>
               <th>收货数</th>
@@ -44,6 +45,7 @@
               <td>{{ index + 1 }}</td>
               <td>{{ display(item.materialCode) }}</td>
               <td>{{ display(item.materialName) }}</td>
+              <td>{{ display(item.supplierMaterialName) }}</td>
               <td>{{ display(item.specification) }}</td>
               <td>{{ display(item.batchNo) }}</td>
               <td>{{ display(item.quantity) }} {{ item.unit || '' }}</td>
@@ -53,7 +55,7 @@
           </tbody>
           <tfoot>
             <tr>
-              <th colspan="5">合计</th>
+              <th colspan="6">合计</th>
               <td>{{ display(incomingQuantity) }}</td>
               <td>{{ display(qualifiedTotal) }}</td>
               <td>{{ display(rejectedTotal) }}</td>

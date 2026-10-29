@@ -119,6 +119,7 @@ export interface InboundItemVO {
   materialId: string
   materialCode: string
   materialName: string
+  supplierMaterialName?: string
   specification: string
   unit: string
   batchNo?: string

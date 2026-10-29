@@ -13,6 +13,8 @@ import com.jjx.common.enums.ApproveStatusEnum;
 import com.jjx.purchase.domain.vo.PurchaseBatchCheckItemVO;
 import com.jjx.purchase.domain.vo.PurchaseOrderItemVO;
 import com.jjx.purchase.domain.vo.PurchaseOrderVO;
+import com.jjx.inventory.domain.InventoryMaterial;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.purchase.mapper.PurchaseOrderItemMapper;
 import com.jjx.purchase.mapper.PurchaseReceiptInboundMapper;
 import com.jjx.purchase.service.IPurchaseDocumentService;
@@ -46,6 +48,7 @@ public class PurchaseReceiptController extends BaseController {
 
     private final IPurchaseOrderService purchaseOrderService;
     private final PurchaseOrderItemMapper orderItemMapper;
+    private final InventoryMaterialMapper materialMapper;
     /** 收货票据（独立权限域 purchase:receipt:doc:*，dev-20260923-004）。 */
     private final IPurchaseDocumentService purchaseDocumentService;
     private final com.jjx.purchase.service.PurchaseReceiptAttachmentService receiptAttachments;
@@ -164,6 +167,8 @@ public class PurchaseReceiptController extends BaseController {
                         .eq(PurchaseOrderItem::getMaterialId, materialId)
                         .orderByDesc(PurchaseOrderItem::getItemId)
         );
+        InventoryMaterial material = materialMapper.selectById(materialId);
+        String supplierMaterialName = material == null ? null : material.getSupplierMaterialName();
         return Result.success(
                 items.stream()
                         .map(item -> {
@@ -172,6 +177,7 @@ public class PurchaseReceiptController extends BaseController {
                             vo.setMaterialId(item.getMaterialId());
                             vo.setMaterialCode(item.getMaterialCode());
                             vo.setMaterialName(item.getMaterialName());
+                            vo.setSupplierMaterialName(supplierMaterialName);
                             vo.setMaterialSpec(item.getMaterialSpec());
                             vo.setUnit(item.getUnit());
                             vo.setQuantity(item.getQuantity());

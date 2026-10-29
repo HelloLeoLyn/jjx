@@ -64,6 +64,7 @@ public interface PurchaseConverter {
     /**
      * PurchaseOrderItem → PurchaseOrderItemVO
      */
+    @Mapping(target = "supplierMaterialName", ignore = true)
     PurchaseOrderItemVO toItemVO(PurchaseOrderItem entity);
 
     /**

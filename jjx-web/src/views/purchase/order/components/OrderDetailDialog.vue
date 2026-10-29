@@ -87,6 +87,7 @@
           <el-table-column label="序号" type="index" width="60" align="center" />
           <el-table-column label="物料编码" prop="materialCode" width="140" />
           <el-table-column label="物料名称" prop="materialName" width="140" />
+          <el-table-column label="供应商品名" prop="supplierMaterialName" width="140" />
           <el-table-column label="规格型号" prop="materialSpec" width="120" />
           <el-table-column label="单位" prop="unit" width="60" />
           <el-table-column label="数量" prop="quantity" width="80" align="right" />

@@ -37,6 +37,11 @@ public class PurchaseOrderItemVO {
     private String materialName;
 
     /**
+     * 供应商侧品名/叫法
+     */
+    private String supplierMaterialName;
+
+    /**
      * 物料规格
      */
     private String materialSpec;

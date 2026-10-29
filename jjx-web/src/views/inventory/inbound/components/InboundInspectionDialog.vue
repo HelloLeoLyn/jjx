@@ -27,6 +27,7 @@
         </el-table-column>
         <el-table-column label="物料编码" prop="materialCode" width="130" />
         <el-table-column label="物料名称" prop="materialName" min-width="150" />
+        <el-table-column label="供应商品名" prop="supplierMaterialName" min-width="150" />
         <el-table-column label="IQC 状态" width="100">
           <template #default="{ row }">
             <el-tag :type="QualityReviewStatusEnum.getTagProps(row.reviewStatus || '').type">

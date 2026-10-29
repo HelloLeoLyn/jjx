@@ -41,6 +41,7 @@
       </el-table-column>
       <el-table-column prop="materialCode" label="物料编码" width="140" />
       <el-table-column prop="materialName" label="物料名称" min-width="160" />
+      <el-table-column prop="supplierMaterialName" label="供应商品名" min-width="160" />
       <el-table-column label="批次" width="140">
         <template #default="{ row }">{{ qualityBatchNo(row) }}</template>
       </el-table-column>

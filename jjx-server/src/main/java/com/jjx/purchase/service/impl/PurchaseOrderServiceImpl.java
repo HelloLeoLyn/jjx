@@ -44,6 +44,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 采购订单服务实现类
@@ -118,7 +119,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         wrapper.eq(PurchaseOrderItem::getOrderId, orderId);
         wrapper.orderByAsc(PurchaseOrderItem::getItemOrder);
         List<PurchaseOrderItem> items = orderItemMapper.selectList(wrapper);
-        return purchaseConverter.toItemVOList(items);
+        return toItemVOListWithSupplierMaterialName(items);
     }
 
     @Override
@@ -933,7 +934,33 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         itemWrapper.eq(PurchaseOrderItem::getOrderId, orderId);
         itemWrapper.orderByAsc(PurchaseOrderItem::getItemOrder);
         List<PurchaseOrderItem> items = orderItemMapper.selectList(itemWrapper);
-        return purchaseConverter.toItemVOList(items);
+        return toItemVOListWithSupplierMaterialName(items);
+    }
+
+    /**
+     * 采购明细统一批量补充供应商品名，避免按明细逐条查询物料主数据。
+     */
+    private List<PurchaseOrderItemVO> toItemVOListWithSupplierMaterialName(List<PurchaseOrderItem> items) {
+        List<PurchaseOrderItemVO> itemVOs = purchaseConverter.toItemVOList(items);
+        if (itemVOs == null || itemVOs.isEmpty()) {
+            return itemVOs;
+        }
+
+        Set<Long> materialIds = itemVOs.stream()
+                .map(PurchaseOrderItemVO::getMaterialId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (materialIds.isEmpty()) {
+            return itemVOs;
+        }
+
+        Map<Long, String> supplierMaterialNames = materialMapper.selectBatchIds(materialIds).stream()
+                .collect(Collectors.toMap(
+                        com.jjx.inventory.domain.InventoryMaterial::getMaterialId,
+                        com.jjx.inventory.domain.InventoryMaterial::getSupplierMaterialName,
+                        (left, right) -> left));
+        itemVOs.forEach(item -> item.setSupplierMaterialName(supplierMaterialNames.get(item.getMaterialId())));
+        return itemVOs;
     }
 
     @Override

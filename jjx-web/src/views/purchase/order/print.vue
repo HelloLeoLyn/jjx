@@ -83,6 +83,7 @@
               <th style="width: 5%">序号</th>
               <th style="width: 12%">物料编码</th>
               <th>物料名称</th>
+              <th>供应商品名</th>
               <th style="width: 10%">规格</th>
               <th style="width: 6%">单位</th>
               <th style="width: 10%">数量</th>
@@ -96,6 +97,7 @@
               <td class="col-center">{{ idx + 1 }}</td>
               <td>{{ item.materialCode }}</td>
               <td>{{ item.materialName }}</td>
+              <td>{{ item.supplierMaterialName || '-' }}</td>
               <td>{{ item.materialSpec || '-' }}</td>
               <td class="col-center">{{ item.unit || '-' }}</td>
               <td class="col-right">{{ fmtNum(item.quantity) }}</td>
@@ -104,7 +106,7 @@
               <td></td>
             </tr>
             <tr v-if="!itemsList.length">
-              <td colspan="9" class="col-center">无明细</td>
+              <td colspan="10" class="col-center">无明细</td>
             </tr>
           </tbody>
         </table>
@@ -185,6 +187,7 @@
             <tr>
               <th style="width: 7%">项次</th>
               <th style="width: 20%">品名</th>
+              <th style="width: 19%">供应商品名</th>
               <th style="width: 19%">规格</th>
               <th style="width: 8%">单位</th>
               <th style="width: 10%">数量</th>
@@ -197,6 +200,7 @@
             <tr v-for="(item, idx) in itemsList" :key="idx">
               <td class="col-center">{{ idx + 1 }}</td>
               <td>{{ item.materialName || '' }}</td>
+              <td>{{ item.supplierMaterialName || '' }}</td>
               <td>{{ item.materialSpec || '' }}</td>
               <td class="col-center">{{ item.unit || '' }}</td>
               <td class="col-right">{{ fmtNum(item.quantity) }}</td>
@@ -206,11 +210,11 @@
             </tr>
             <tr v-if="!itemsList.length">
               <td></td>
-              <td colspan="6" class="col-center">以下空白</td>
+              <td colspan="7" class="col-center">以下空白</td>
               <td></td>
             </tr>
             <tr class="qr024-total-row">
-              <td colspan="6"></td>
+              <td colspan="7"></td>
               <th>合计:</th>
               <td class="col-right">{{ fmtMoney(info.orderTotalAmount) }}</td>
             </tr>
