@@ -18,7 +18,8 @@ import java.util.Set;
 public record MaterialNamingPattern(List<String> fields, String separator, String empty) {
 
     public static final List<String> COMMON_TOKENS =
-            List.of("brand", "model", "color", "meta", "form", "unit");
+            List.of("brand", "model", "color", "meta", "form", "unit",
+                    "width", "length", "thickness_mm", "grammage");
     public static final String DEFAULT_SEPARATOR = " ";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 

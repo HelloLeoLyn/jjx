@@ -68,6 +68,12 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 尺寸与克重字段属于允许的公共字段() {
+        var pattern = new MaterialNamingPattern(List.of("width", "length", "thickness_mm", "grammage"), " ", "skip");
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> pattern.validate(SCHEMA));
+    }
+
+    @Test
     void 模板JSON里可带命名规则且能往返解析() {
         String json = "{\"version\":1,\"meta_options\":[\"PET\"],\"fields\":[],"
                 + "\"name_pattern\":{\"fields\":[\"brand\",\"model\"],\"separator\":\"-\",\"empty\":\"skip\"}}";

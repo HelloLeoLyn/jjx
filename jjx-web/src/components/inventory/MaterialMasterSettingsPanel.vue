@@ -316,8 +316,12 @@
                   <el-radio-button label="placeholder">占位 —</el-radio-button>
                 </el-radio-group>
               </el-form-item>
-              <el-button :loading="namingLoading" @click="previewNaming">预览命名</el-button>
+              <el-button :loading="namingLoading" @click="previewNaming()">刷新效果示例</el-button>
               <span v-if="namingMessage" class="naming-message">{{ namingMessage }}</span>
+              <el-divider content-position="left">效果示例（该品类最近 5 条物料）</el-divider>
+              <div v-if="!namingSamples.length" class="naming-message">
+                该品类暂无可预览的物料；规则仍可保存，仅对以后新建/改名生效。
+              </div>
               <el-table
                 v-if="namingSamples.length"
                 :data="namingSamples"
@@ -464,7 +468,7 @@ function moveNameField(index: number, offset: -1 | 1) {
   const [field] = fields.splice(index, 1)
   fields.splice(target, 0, field)
 }
-async function previewNaming() {
+async function previewNaming(quiet = false) {
   if (!templateCategoryId.value) return
   namingLoading.value = true
   try {
@@ -472,11 +476,28 @@ async function previewNaming() {
     namingSamples.value = response.data?.samples || []
     namingMessage.value = response.data?.message || ''
   } catch (e) {
-    ElMessage.error(e instanceof Error ? e.message : '命名预览失败')
+    if (!quiet) ElMessage.error(e instanceof Error ? e.message : '命名预览失败')
   } finally {
     namingLoading.value = false
   }
 }
+
+// 效果示例自动跟着规则变：改品类/勾选/排序/分隔符后 300ms 自动重算（dev-20261029-021）
+let previewTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => [
+    templateCategoryId.value,
+    namePattern.value.fields.join(','),
+    namePattern.value.separator,
+    namePattern.value.empty,
+  ],
+  () => {
+    if (!templateCategoryId.value) return
+    if (previewTimer) clearTimeout(previewTimer)
+    previewTimer = setTimeout(() => void previewNaming(true), 300)
+  },
+  { immediate: true }
+)
 const renameLoading = ref(false)
 const renameReport = ref<MaterialRenameReport>()
 const skipText = (reason: string | null) =>
