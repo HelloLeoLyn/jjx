@@ -62,6 +62,9 @@ export const materialMasterApi = {
   /** 命名规则预览：只读试算，按品类取最近 5 条物料 */
   previewNaming: (categoryId: number, namePattern: unknown) =>
     request.post<R<MaterialNamingPreview>>(`${base}/naming/preview`, { categoryId, namePattern }),
+  /** 命名规则渲染：用当前表单值按该品类已保存规则生成名称（不写库） */
+  renderNaming: (categoryId: number, material: unknown) =>
+    request.post<R<string | null>>(`${base}/naming/render`, { categoryId, material }),
   /** 批量改名预演（按品类已保存规则） */
   renameChanges: (categoryId: number, limit = 50) =>
     request.get<R<MaterialRenameReport>>(`${base}/naming/changes`, { params: { categoryId, limit } }),

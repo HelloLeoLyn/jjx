@@ -220,6 +220,11 @@
           <div class="preview-value">{{ previewName || '待填写材料/型号/颜色' }}</div>
           <div v-if="form.nameManual" class="preview-tag">手动命名</div>
         </div>
+        <div class="preview-block" data-test="naming-rule-preview">
+          <div class="preview-label">命名规则</div>
+          <div v-if="nameRuleText" class="preview-sub">{{ nameRuleText }}</div>
+          <div class="preview-value">{{ ruleName || (nameRuleText ? '按当前填写暂无可生成内容' : '该品类未配置命名规则') }}</div>
+        </div>
         <div class="preview-block">
           <div class="preview-label">规格</div>
           <div class="preview-value">{{ specificationPreview || '填写属性后自动生成' }}</div>
@@ -344,7 +349,69 @@ const specificationPreview = computed(() => {
   const size = renderMaterialDimensions(dimensions.value)
   return [text, size ? `尺寸:${size}` : ''].filter(Boolean).join('；')
 })
-const previewName = computed(() => effectiveMasterName(form, dictionaries.value))
+const previewName = computed(() =>
+  form.nameManual ? effectiveMasterName(form, dictionaries.value) : (ruleName.value || effectiveMasterName(form, dictionaries.value))
+)
+
+/** 命名规则文本：字段名带各自 1 字符分隔符，便于操作员看懂当前规则 */
+const nameRuleText = computed(() => {
+  const pattern = configuration.value?.schema?.name_pattern
+  if (!pattern || !pattern.fields?.length) return ''
+  const labelOf = (key: string) => {
+    const fixed: Record<string, string> = {
+      brand: '品牌', model: '型号', color: '颜色', meta: '材质', form: '形态', unit: '单位',
+      width: '宽', length: '长', thickness_mm: '厚', grammage: '克重',
+    }
+    return fixed[key] || configuration.value?.schema?.fields?.find((f) => f.key === key)?.label || key
+  }
+  return pattern.fields
+    .map((key, index) => {
+      const sep = pattern.separators?.[key] ?? (index === 0 ? '' : pattern.separator ?? ' ')
+      const token = sep === ' ' ? '␠' : sep
+      return `${token}${labelOf(key)}`
+    })
+    .join(' ')
+})
+
+/** 按规则生成的名字（后端无状态渲染，单一实现） */
+const ruleName = ref('')
+let ruleTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => [
+    form.categoryId, form.materialMeta, form.materialForm, form.model, form.color, form.brand,
+    form.unit, form.widthMm, form.lengthMm, form.thicknessMm, form.grammage, form.sizeUnit,
+    JSON.stringify(form.attributeJson || {}),
+  ],
+  () => {
+    if (!form.categoryId || !configuration.value?.schema?.name_pattern) {
+      ruleName.value = ''
+      return
+    }
+    if (ruleTimer) clearTimeout(ruleTimer)
+    ruleTimer = setTimeout(async () => {
+      try {
+        const response = await materialMasterApi.renderNaming(form.categoryId!, {
+          materialMeta: form.materialMeta,
+          materialForm: form.materialForm,
+          model: form.model,
+          color: form.color,
+          brand: form.brand,
+          unit: form.unit,
+          widthMm: form.widthMm ?? null,
+          lengthMm: form.lengthMm ?? null,
+          thicknessMm: form.thicknessMm ?? null,
+          grammage: form.grammage ?? null,
+          sizeUnit: form.sizeUnit || 'mm',
+          attributeJson: form.attributeJson || {},
+        })
+        ruleName.value = response.data || ''
+      } catch {
+        ruleName.value = ''
+      }
+    }, 300)
+  },
+  { immediate: true }
+)
 const materialLabel = computed(
   () =>
     dictionaries.value.material_meta?.find((o) => o.code === form.materialMeta)?.label ||
@@ -505,7 +572,8 @@ async function save() {
     configurationLoading.value
   )
     return
-  const finalName = effectiveMasterName(form, dictionaries.value).trim()
+  const finalName = (form.nameManual ? '' : ruleName.value || '') .trim()
+    || effectiveMasterName(form, dictionaries.value).trim()
   if (!finalName) return void ElMessage.warning('请填写名称，或先选择材料/型号/颜色自动生成')
   if (!form.unit) return void ElMessage.warning('请选择基本单位')
   const missing = configuration.value.schema.fields.find(

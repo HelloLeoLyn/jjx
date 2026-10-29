@@ -103,6 +103,37 @@ public class MaterialMasterService {
         return schema;
     }
 
+    /** 无状态渲染：用“当前表单值”按该品类已保存的命名规则生成名称，不写库（dev-20261029-025）。 */
+    public String renderNaming(Long categoryId, MaterialMasterDTO draft) {
+        if (categoryId == null) throw new BusinessException("请选择末级品类");
+        MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(categoryId);
+        if (config == null) return null;
+        MaterialAttributeSchema schema = config.schema();
+        MaterialNamingPattern pattern = schema.namePattern();
+        if (pattern == null || pattern.normalized().fields().isEmpty()) return null;
+        InventoryMaterial material = new InventoryMaterial();
+        if (draft != null) {
+            material.setBrand(draft.getBrand());
+            material.setModel(draft.getModel());
+            material.setColor(draft.getColor());
+            material.setUnit(draft.getUnit());
+            material.setWidthMm(draft.getWidthMm());
+            material.setLengthMm(draft.getLengthMm());
+            material.setThicknessMm(draft.getThicknessMm());
+            material.setGrammage(draft.getGrammage());
+            material.setSizeUnit(draft.getSizeUnit());
+            material.setMaterialMeta(fallback(draft.getMaterialMeta(), schema.defaultMeta()));
+            material.setMaterialForm(fallback(draft.getMaterialForm(), schema.defaultForm()));
+            try {
+                material.setAttributeJson(objectMapper.writeValueAsString(
+                        draft.getAttributeJson() == null ? Map.of() : draft.getAttributeJson()));
+            } catch (Exception e) {
+                material.setAttributeJson("{}");
+            }
+        }
+        return pattern.compose(material, schema);
+    }
+
     /** 命名规则预览（只读）：按品类取样 5 条物料，用传入规则试算新旧名对照。 */
     public NamingPreview previewNaming(Long categoryId, MaterialNamingPattern pattern) {
         if (categoryId == null) throw new BusinessException("请选择末级品类");
