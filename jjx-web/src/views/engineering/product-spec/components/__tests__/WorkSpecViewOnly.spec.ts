@@ -106,6 +106,15 @@ vi.mock('@/api/system/attachmentRef', () => ({
 vi.mock('@/api/system/attachment', () => ({
   attachmentApi: { list: vi.fn().mockResolvedValue({ data: [] }) },
 }))
+vi.mock('@/api/product/standardProcess', () => ({
+  loadCommonStandardProcesses: vi.fn().mockResolvedValue([]),
+  standardProcessApi: {
+    getEnabledProcesses: vi.fn().mockResolvedValue({ data: [] }),
+  },
+}))
+vi.mock('@/components/Selector/StandardProcessSelector.vue', () => ({
+  default: { template: '<div class="standard-process-stub" />' },
+}))
 vi.mock('@/api/product/workSpec', async (original) => ({
   ...(await original<typeof import('@/api/product/workSpec')>()),
   productWorkSpecApi: {
@@ -291,27 +300,31 @@ describe('项目材料独立编辑', () => {
             : '.section-heading button'
         )
         .find((node) => node.text() === text)!
+    const paramsInputs = () =>
+      section()
+        .findAll('.el-table__body-wrapper .el-input__inner')
+        .filter((_, index) => index % 2 === 0)
     await action('编辑').trigger('click')
     await flushPromises()
-    await section().findAll('.el-table__body-wrapper tbody textarea')[0].setValue('人工规格\n2模')
+    await paramsInputs()[0].setValue('人工规格\n2模')
     await action('恢复规格及模数').trigger('click')
     await flushPromises()
     expect(
       (
-        section().findAll('.el-table__body-wrapper tbody textarea')[0]
-          .element as HTMLTextAreaElement
+        paramsInputs()[0]
+          .element as HTMLInputElement
       ).value
-    ).toBe('')
-    await section().findAll('.el-table__body-wrapper tbody textarea')[0].setValue('人工规格\n2模')
+    ).toBe('100mm')
+    await paramsInputs()[0].setValue('人工规格\n2模')
     await action('新增').trigger('click')
     await flushPromises()
-    expect(section().findAll('.el-table__body-wrapper tbody textarea')).toHaveLength(3)
+    expect(paramsInputs()).toHaveLength(3)
     await action('删除').trigger('click')
     await flushPromises()
-    expect(section().findAll('.el-table__body-wrapper tbody textarea')).toHaveLength(2)
+    expect(paramsInputs()).toHaveLength(2)
     await action('下移').trigger('click')
     await flushPromises()
-    await section().findAll('.el-table__body-wrapper tbody textarea')[0].setValue('胶参数')
+    await paramsInputs()[0].setValue('胶参数')
     await action('保存').trigger('click')
     await flushPromises()
     expect(errors.mock.calls).toEqual([])
@@ -326,8 +339,8 @@ describe('项目材料独立编辑', () => {
     await flushPromises()
     expect(
       (
-        section().findAll('.el-table__body-wrapper tbody textarea')[0]
-          .element as HTMLTextAreaElement
+        paramsInputs()[0]
+          .element as HTMLInputElement
       ).value
     ).toBe('胶参数')
   })

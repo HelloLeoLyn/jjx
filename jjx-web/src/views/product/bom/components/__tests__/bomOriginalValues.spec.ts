@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/utils/request', () => ({ default: { get: vi.fn() } }))
 vi.mock('@/directives', () => ({ hasPermi: () => true }))
+vi.mock('@/components/Selector/BomMaterialSelector.vue', () => ({
+  default: { template: '<span class="material-selector" />' },
+}))
 import request from '@/utils/request'
 import { loadBomOriginalValues, originalValuesFromDetail } from '@/api/product/bomOriginalValues'
 import { BomSaveLogResult } from '@/types/product/bom'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import BomItemReviewTable from '../BomItemReviewTable.vue'
 
 const change = (itemId: number, oldValue: string) => ({ itemId, field: 'materialName', oldValue, newValue: '现名' })
@@ -37,14 +40,14 @@ describe('最近一次BOM保存的结构化原值', () => {
       expect(await loadBomOriginalValues(5)).toEqual({})
     }
   })
-  it('审核表按行ID对应原值，同编码不串行，新行不冒用当前值', () => {
+  it('审核表原材料名称按当前行值显示，不读取流水原值', async () => {
     const rows = [{ itemId: 10, materialCode: '同码', materialName: '新甲' }, { itemId: 11, materialCode: '同码', materialName: '新乙' }, { itemId: 12, materialCode: '', materialName: '新丙' }]
-    const wrapper = mount(BomItemReviewTable, { props: { items: rows as any, originalValues: { '10': { materialName: '旧甲' }, '11': { materialName: '旧乙' } } }, global: { stubs: { ElTable: true, ElCard: { template: '<div><slot/></div>' } } } })
-    const state = wrapper.vm as any
-    expect(state.originalOf(rows[0], 'materialName')).toBe('旧甲')
-    expect(state.originalOf(rows[1], 'materialName')).toBe('旧乙')
-    expect(state.originalOf(rows[2], 'materialName')).toBe('—')
-    expect(state.hasOriginal(rows[2], 'materialName')).toBe(false)
+    const wrapper = mount(BomItemReviewTable, { props: { items: rows as any } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('新甲')
+    expect(wrapper.text()).toContain('新乙')
+    expect(wrapper.text()).toContain('新丙')
+    expect(wrapper.text()).not.toContain('旧甲')
     wrapper.unmount()
   })
 })

@@ -337,7 +337,8 @@ describe('作业规范面板结构图编辑交互', () => {
       expect.stringMatching(/^[A-Za-z0-9_-]{16,100}$/),
       undefined,
       null,
-      null
+      null,
+      undefined
     )
   })
   it('作业规范面板保存前汇总附件问题并提示文件名，不调用保存接口', async () => {
@@ -604,16 +605,22 @@ describe('凹凸条件显式编辑保存', () => {
     expect(spec.emboss.setupHeight).toBe('0.3')
     expect((w.vm as any).$.setupState.embossEditing).toBe(false)
   })
-  it('非法数值不提交，清空原值后显式保存可删除', async () => {
+  it('非空文本按现口径提交，清空原值后显式保存可删除', async () => {
     spec.emboss = { setupHeight: '0.1' }
     const w = await render()
     await begin(w)
     await embossSection(w).get('input').setValue('不是数值')
     await (w.vm as any).$.setupState.saveEmboss()
-    expect(productWorkSpecApi.saveDraft).not.toHaveBeenCalled()
+    await flushPromises()
+    expect(productWorkSpecApi.saveDraft).toHaveBeenCalledWith(2, expect.objectContaining({
+      spec: expect.objectContaining({ emboss: { setupHeight: '不是数值' } }),
+    }))
+    expect(spec.emboss).toEqual({ setupHeight: '不是数值' })
+    await begin(w)
     await embossSection(w).get('input').setValue('   ')
     await (w.vm as any).$.setupState.saveEmboss()
     await flushPromises()
+    expect(productWorkSpecApi.saveDraft).toHaveBeenCalledTimes(2)
     expect(spec.emboss).toEqual({})
     expect(embossSection(w).findAll('input')).toHaveLength(0)
   })

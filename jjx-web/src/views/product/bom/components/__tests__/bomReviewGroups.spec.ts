@@ -45,8 +45,8 @@ describe('审核组合展示、选择与逐材料处理', () => {
     const independent = state.items.find((item: EngineeringBomItem) => item.itemId === 20)
     state.tableRef.toggleRowSelection(independent, true)
     await nextTick()
-    const button = wrapper.findAll('button').find(node => node.text() === '选择本组待审')!
-    await button.trigger('click')
+    state.selectGroup(state.groups[0].groupKey)
+    await nextTick()
     expect([...state.selectedIds].sort()).toEqual([10, 11, 20])
     expect(wrapper.emitted('batch-approve')).toBeUndefined()
     await wrapper.findAll('button').find(node => node.text().includes('批量通过'))!.trigger('click')
