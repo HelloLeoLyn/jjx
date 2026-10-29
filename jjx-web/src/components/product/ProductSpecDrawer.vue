@@ -2,7 +2,7 @@
   <!-- 作业规范详情 -->
   <el-drawer
     v-model="specVisible"
-    :title="`生产作业规范 - ${detail?.product?.productCode || ''}`"
+    :title="`产品作业规范 - ${detail?.product?.productCode || ''}`"
     size="82%"
     destroy-on-close
     append-to-body

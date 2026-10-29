@@ -50,10 +50,11 @@
         row-key="categoryId"
         :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
         @selection-change="handleSelectionChange"
+        border
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="分类编码" align="center" prop="categoryCode" width="160" />
-        <el-table-column label="分类名称" align="center" prop="categoryName" width="180" />
+        <!-- <el-table-column label="分类编码" align="left" prop="categoryCode" width="200" /> -->
+        <el-table-column label="分类名称" align="left" prop="categoryName" width="180" />
         <el-table-column label="分类级别" align="center" prop="categoryLevel" width="100" />
         <el-table-column label="排序" align="center" prop="sortOrder" width="80" />
         <el-table-column label="状态" prop="status" width="100">
