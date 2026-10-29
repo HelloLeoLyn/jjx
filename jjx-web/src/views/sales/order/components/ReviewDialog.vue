@@ -59,7 +59,8 @@
         source-type="sales_order"
         :source-id="props.orderId || null"
         :trace-id="orderDetail?.traceId"
-        variant="upload-only"
+        variant="upload-compact"
+        editable-document-type
         :default-document-type="REVIEW_DEFAULT_DOC_TYPE"
         :allowed-document-types="REVIEW_DOCUMENT_TYPES"
         :accept="['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']"
