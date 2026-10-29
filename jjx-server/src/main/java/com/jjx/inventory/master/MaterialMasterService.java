@@ -103,6 +103,38 @@ public class MaterialMasterService {
         return schema;
     }
 
+    public record SpecSample(Long materialId, String materialCode, String oldSpec, String newSpec) { }
+    public record SpecPreview(List<SpecSample> samples, String message) { }
+
+    /** 规格模板预览：按品类取最近 5 条物料，给出“当前规格 → 按模板生成”对照（dev-20261029-029）。 */
+    public SpecPreview previewSpecification(Long categoryId) {
+        if (categoryId == null) throw new BusinessException("请选择末级品类");
+        MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(categoryId);
+        if (config == null) throw new BusinessException("该品类未配置属性模板");
+        MaterialAttributeSchema schema = config.schema();
+        List<InventoryMaterial> materials = materialMapper.selectList(new LambdaQueryWrapper<InventoryMaterial>()
+                .eq(InventoryMaterial::getCategoryId, categoryId)
+                .orderByDesc(InventoryMaterial::getMaterialId)
+                .last("LIMIT 5"));
+        List<SpecSample> samples = new ArrayList<>();
+        for (InventoryMaterial material : materials) {
+            samples.add(new SpecSample(material.getMaterialId(), material.getMaterialCode(),
+                    material.getSpecification(), generateSpecification(schema, material)));
+        }
+        return new SpecPreview(samples, materials.isEmpty() ? "该品类暂无物料，模板只影响以后生成" : "预览取该品类最近 5 条物料");
+    }
+
+    private String generateSpecification(MaterialAttributeSchema schema, InventoryMaterial material) {
+        Map<String, Object> attributes = readAttributes(material.getAttributeJson());
+        if (schema.hasSpecPattern()) {
+            return schema.specification(attributes, material.getWidthMm(), material.getLengthMm(),
+                    material.getThicknessMm(), material.getSizeUnit());
+        }
+        String legacyThickness = material.getGrammage() != null ? material.getGrammage().stripTrailingZeros().toPlainString()
+                : material.getThicknessMm() == null ? null : material.getThicknessMm().stripTrailingZeros().toPlainString();
+        return schema.compose(attributes, legacyThickness, material.getSize());
+    }
+
     /** 无状态渲染：用当前表单值按品类已保存的规格模板生成规格文本，不写库（dev-20261029-027）。 */
     public String renderSpecification(Long categoryId, MaterialMasterDTO draft) {
         if (categoryId == null) throw new BusinessException("请选择末级品类");

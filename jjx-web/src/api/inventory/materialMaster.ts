@@ -62,6 +62,12 @@ export const materialMasterApi = {
   /** 命名规则预览：只读试算，按品类取最近 5 条物料 */
   previewNaming: (categoryId: number, namePattern: unknown) =>
     request.post<R<MaterialNamingPreview>>(`${base}/naming/preview`, { categoryId, namePattern }),
+  /** 规格模板预览：按品类取最近 5 条物料对照当前规格与模板生成规格 */
+  specPreview: (categoryId: number) =>
+    request.post<R<{ samples: { materialId: number; materialCode: string; oldSpec: string | null; newSpec: string | null }[]; message: string }>>(
+      `${base}/spec/preview`,
+      { categoryId }
+    ),
   /** 规格模板渲染：用当前表单值按已保存模板生成规格文本（不写库） */
   renderSpec: (categoryId: number, material: unknown) =>
     request.post<R<string | null>>(`${base}/spec/render`, { categoryId, material }),

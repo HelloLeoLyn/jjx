@@ -84,6 +84,13 @@ public class MaterialMasterController extends BaseController {
         return Result.success(configurationService.templateDetail(categoryId));
     }
 
+    /** 规格模板预览：按品类取最近 5 条物料，给“当前规格 → 按模板生成”对照（只读）。 */
+    @PostMapping("/spec/preview")
+    @SaCheckPermission(value = {"inventory:category:list", "inventory:material:view"}, mode = SaMode.OR)
+    public Result<MaterialMasterService.SpecPreview> previewSpecification(@RequestBody SpecRenderRequest request) {
+        return Result.success(service.previewSpecification(request.categoryId()));
+    }
+
     public record SpecRenderRequest(Long categoryId, MaterialMasterDTO material) { }
 
     /** 规格模板渲染：用当前表单值按已保存模板生成规格文本（不写库）。 */

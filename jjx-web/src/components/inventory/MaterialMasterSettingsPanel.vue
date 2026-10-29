@@ -371,8 +371,8 @@
                 </el-table-column>
               </el-table>
             </div>
-            <el-divider v-if="focusSection !== 'naming'" content-position="left">规格模板（生成规格的字段顺序与分隔符）</el-divider>
-            <div v-show="focusSection !== 'naming'" class="naming-rule">
+            <el-divider v-if="focusSection !== 'template'" content-position="left">规格模板（生成规格的字段顺序与分隔符）</el-divider>
+            <div v-show="focusSection !== 'template'" class="naming-rule">
               <div class="naming-tokens">
                 <el-checkbox
                   v-for="token in specTokens"
@@ -414,6 +414,13 @@
                 <el-switch v-model="specPattern.with_unit" />
               </el-form-item>
               <span class="naming-message">留空字段不输出；未配置时沿用旧的“字段:值；尺寸”拼接。</span>
+              <el-divider content-position="left">效果示例（该品类最近 5 条物料）</el-divider>
+              <div v-if="!specSamples.length" class="naming-message">该品类暂无可预览的物料；模板只影响以后生成。</div>
+              <el-table v-if="specSamples.length" :data="specSamples" border size="small" style="margin-top: 8px">
+                <el-table-column label="物料编码" prop="materialCode" width="150" />
+                <el-table-column label="当前规格" prop="oldSpec" />
+                <el-table-column label="按模板生成" prop="newSpec" />
+              </el-table>
             </div>
             <el-alert
               title="已有物料的模板可新增无默认值的可选属性、调整显示设置；删除、改类型或单位等需另行处理。常用属性补入草稿后，检查并保存才生效。"
@@ -494,6 +501,31 @@ const specPattern = ref<{ fields: { key: string; sep: string }[]; show_label: bo
   show_label: false,
   with_unit: true,
 })
+const specSamples = ref<{ materialId: number; materialCode: string; oldSpec: string | null; newSpec: string | null }[]>([])
+const specLoading = ref(false)
+let specTimer: ReturnType<typeof setTimeout> | undefined
+async function previewSpecification(quiet = false) {
+  if (!templateCategoryId.value) return
+  specLoading.value = true
+  try {
+    const response = await materialMasterApi.specPreview(templateCategoryId.value)
+    specSamples.value = response.data?.samples || []
+  } catch (e) {
+    if (!quiet) ElMessage.error(e instanceof Error ? e.message : '规格预览失败')
+  } finally {
+    specLoading.value = false
+  }
+}
+watch(
+  () => [templateCategoryId.value, JSON.stringify(specPattern.value)],
+  () => {
+    if (!templateCategoryId.value) return
+    if (specTimer) clearTimeout(specTimer)
+    specTimer = setTimeout(() => void previewSpecification(true), 300)
+  },
+  { immediate: true }
+)
+
 const SPEC_DIM_TOKENS = [
   { key: 'width', label: '宽' },
   { key: 'length', label: '长' },
