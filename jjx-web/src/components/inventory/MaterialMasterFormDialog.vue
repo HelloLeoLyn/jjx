@@ -338,7 +338,10 @@ const materialOptions = computed(() =>
     configuration.value?.schema.meta_options.includes(o.code)
   )
 )
+/** 规格模板生成结果（后端统一实现，dev-20261029-027） */
+const specText = ref('')
 const specificationPreview = computed(() => {
+  if (configuration.value?.schema?.spec_pattern?.fields?.length) return specText.value
   const schema = configuration.value?.schema
   if (!schema?.fields.length) return ''
   const attributes = { ...form.attributeJson }
@@ -390,7 +393,7 @@ watch(
     if (ruleTimer) clearTimeout(ruleTimer)
     ruleTimer = setTimeout(async () => {
       try {
-        const response = await materialMasterApi.renderNaming(form.categoryId!, {
+        const draft = {
           materialMeta: form.materialMeta,
           materialForm: form.materialForm,
           model: form.model,
@@ -403,7 +406,14 @@ watch(
           grammage: form.grammage ?? null,
           sizeUnit: form.sizeUnit || 'mm',
           attributeJson: form.attributeJson || {},
-        })
+        }
+        try {
+          const specResponse = await materialMasterApi.renderSpec(form.categoryId!, draft)
+          specText.value = specResponse.data || ''
+        } catch {
+          specText.value = ''
+        }
+        const response = await materialMasterApi.renderNaming(form.categoryId!, draft)
         ruleName.value = response.data || ''
       } catch {
         ruleName.value = ''

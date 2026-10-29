@@ -84,6 +84,15 @@ public class MaterialMasterController extends BaseController {
         return Result.success(configurationService.templateDetail(categoryId));
     }
 
+    public record SpecRenderRequest(Long categoryId, MaterialMasterDTO material) { }
+
+    /** 规格模板渲染：用当前表单值按已保存模板生成规格文本（不写库）。 */
+    @PostMapping("/spec/render")
+    @SaCheckPermission(value = {"inventory:category:list", "inventory:material:view"}, mode = SaMode.OR)
+    public Result<String> renderSpecification(@RequestBody SpecRenderRequest request) {
+        return Result.success(service.renderSpecification(request.categoryId(), request.material()));
+    }
+
     public record NamingRenderRequest(Long categoryId, MaterialMasterDTO material) { }
 
     /** 命名规则渲染：用当前表单值按已保存规则生成名称（不写库，dev-20261029-025）。 */

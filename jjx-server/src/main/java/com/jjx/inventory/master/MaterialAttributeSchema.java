@@ -18,7 +18,22 @@ public record MaterialAttributeSchema(
         @JsonProperty("default_unit") String defaultUnit,
         List<Field> fields,
         /** 命名规则：勾选参与命名的字段与顺序；为空表示未配置。 */
-        @JsonProperty("name_pattern") MaterialNamingPattern namePattern) {
+        @JsonProperty("name_pattern") MaterialNamingPattern namePattern,
+        /** 规格模板：字段顺序 + 每字段 1 字符分隔符；为空时回落旧拼接（dev-20261029-027）。 */
+        @JsonProperty("spec_pattern") SpecPattern specPattern) {
+
+    public MaterialAttributeSchema(int version, List<String> metaOptions, boolean metaRequired, String defaultMeta,
+                                   String defaultForm, String defaultUnit, List<Field> fields,
+                                   MaterialNamingPattern namePattern) {
+        this(version, metaOptions, metaRequired, defaultMeta, defaultForm, defaultUnit, fields, namePattern, null);
+    }
+
+    /** 规格模板：showLabel=是否输出“字段名:”，withUnit=是否带单位。 */
+    public record SpecPattern(List<SpecField> fields,
+                              @JsonProperty("show_label") boolean showLabel,
+                              @JsonProperty("with_unit") boolean withUnit) {
+        public record SpecField(String key, String sep) { }
+    }
 
     public record Option(String code, String label) { }
     public record Field(String key, String label, String type, String unit, boolean required,
@@ -52,6 +67,14 @@ public record MaterialAttributeSchema(
         if (metaRequired && metaOptions.isEmpty()) fail("材质必填时必须配置材质候选");
         if (defaultMeta != null && !metaOptions.contains(defaultMeta)) fail("默认材质不在候选范围");
         if (namePattern != null) namePattern.validate(this);
+        if (specPattern != null && specPattern.fields() != null) {
+            Set<String> specKeys = new HashSet<>(Set.of("width", "length", "thickness_mm"));
+            fields.forEach(field -> specKeys.add(field.key()));
+            for (SpecPattern.SpecField item : specPattern.fields()) {
+                if (item == null || item.key() == null || item.key().isBlank()) continue;
+                if (!specKeys.contains(item.key().trim())) fail("规格模板含未知字段：" + item.key());
+            }
+        }
         Set<String> keys = new HashSet<>();
         Set<String> labels = new HashSet<>();
         for (Field f : fields) {
@@ -139,6 +162,73 @@ public record MaterialAttributeSchema(
         Set<String> codes = new HashSet<>();
         f.options.forEach(o -> codes.add(o.code));
         return codes;
+    }
+
+    public boolean hasSpecPattern() {
+        return specPattern != null && specPattern.fields() != null && !specPattern.fields().isEmpty();
+    }
+
+    /** 规格文本：配了 spec_pattern 用模板，否则回落旧拼接（dev-20261029-027）。 */
+    public String specification(Map<String, Object> attributes, java.math.BigDecimal widthMm,
+                                java.math.BigDecimal lengthMm, java.math.BigDecimal thicknessMm, String sizeUnit) {
+        if (specPattern == null || specPattern.fields() == null || specPattern.fields().isEmpty()) {
+            return compose(attributes, thicknessMm == null ? null : thicknessMm.stripTrailingZeros().toPlainString(),
+                    MaterialSizeValue.render(widthMm, lengthMm, thicknessMm, sizeUnit));
+        }
+        Map<String, Object> values = new LinkedHashMap<>(attributes);
+        StringBuilder text = new StringBuilder();
+        boolean first = true;
+        for (SpecPattern.SpecField item : specPattern.fields()) {
+            if (item == null || item.key() == null || item.key().isBlank()) continue;
+            String key = item.key().trim();
+            String display = dimension(key, widthMm, lengthMm, thicknessMm, sizeUnit, values);
+            if (display == null || display.isBlank()) continue;
+            if (specPattern.showLabel()) display = specLabel(key) + ":" + display;
+            if (specPattern.withUnit()) display += specUnit(key, sizeUnit);
+            String sep = item.sep() == null || item.sep().isEmpty() ? "；" : item.sep().substring(0, 1);
+            if (!first) text.append(sep);
+            text.append(display);
+            first = false;
+        }
+        String result = text.toString();
+        if (result.length() > 500) fail("生成规格超过500字，请精简属性内容");
+        return result.isEmpty() ? null : result;
+    }
+
+    private String dimension(String key, java.math.BigDecimal widthMm, java.math.BigDecimal lengthMm,
+                             java.math.BigDecimal thicknessMm, String sizeUnit, Map<String, Object> values) {
+        java.math.BigDecimal value = switch (key) {
+            case "width" -> widthMm;
+            case "length" -> lengthMm;
+            case "thickness_mm" -> thicknessMm;
+            default -> null;
+        };
+        if (value != null) return value.stripTrailingZeros().toPlainString();
+        Object raw = values.get(key);
+        if (raw == null || raw.toString().isBlank()) return null;
+        Field definition = fields.stream().filter(f -> f.key().equals(key)).findFirst().orElse(null);
+        if (raw instanceof Boolean b) return b ? (definition != null && definition.trueLabel() != null ? definition.trueLabel() : "是")
+                : (definition != null && definition.falseLabel() != null ? definition.falseLabel() : "否");
+        if (definition != null && "enum".equals(definition.type())) return label(definition, raw.toString());
+        if (raw instanceof List<?> list) return String.join("、", list.stream().map(Object::toString).toList());
+        if (raw instanceof Number number) return new java.math.BigDecimal(number.toString()).stripTrailingZeros().toPlainString();
+        return raw.toString();
+    }
+
+    private String specLabel(String key) {
+        return switch (key) {
+            case "width" -> "宽";
+            case "length" -> "长";
+            case "thickness_mm" -> "厚";
+            default -> fields.stream().filter(f -> f.key().equals(key)).map(Field::label).findFirst().orElse(key);
+        };
+    }
+
+    private String specUnit(String key, String sizeUnit) {
+        if ("width".equals(key) || "length".equals(key) || "thickness_mm".equals(key))
+            return sizeUnit == null || sizeUnit.isBlank() ? "mm" : sizeUnit;
+        return fields.stream().filter(f -> f.key().equals(key)).map(Field::unit)
+                .filter(u -> u != null && !u.isBlank()).findFirst().orElse("");
     }
 
     public String compose(Map<String, Object> values) {

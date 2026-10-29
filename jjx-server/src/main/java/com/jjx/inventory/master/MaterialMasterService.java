@@ -103,6 +103,22 @@ public class MaterialMasterService {
         return schema;
     }
 
+    /** 无状态渲染：用当前表单值按品类已保存的规格模板生成规格文本，不写库（dev-20261029-027）。 */
+    public String renderSpecification(Long categoryId, MaterialMasterDTO draft) {
+        if (categoryId == null) throw new BusinessException("请选择末级品类");
+        MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(categoryId);
+        if (config == null || draft == null) return null;
+        MaterialAttributeSchema schema = config.schema();
+        Map<String, Object> attributes = draft.getAttributeJson() == null ? Map.of() : draft.getAttributeJson();
+        if (schema.hasSpecPattern()) {
+            return schema.specification(attributes, draft.getWidthMm(), draft.getLengthMm(), draft.getThicknessMm(), draft.getSizeUnit());
+        }
+        String legacyThickness = draft.getGrammage() != null ? draft.getGrammage().stripTrailingZeros().toPlainString()
+                : draft.getThicknessMm() == null ? null : draft.getThicknessMm().stripTrailingZeros().toPlainString();
+        return schema.compose(attributes, legacyThickness,
+                com.jjx.inventory.master.MaterialSizeValue.render(draft.getWidthMm(), draft.getLengthMm(), draft.getThicknessMm(), draft.getSizeUnit()));
+    }
+
     /** 无状态渲染：用“当前表单值”按该品类已保存的命名规则生成名称，不写库（dev-20261029-025）。 */
     public String renderNaming(Long categoryId, MaterialMasterDTO draft) {
         if (categoryId == null) throw new BusinessException("请选择末级品类");
@@ -181,8 +197,13 @@ public class MaterialMasterService {
     private SpecificationPreview specificationPreview(InventoryMaterial material, MaterialAttributeSchema schema) {
         if (schema == null || schema.fields().isEmpty())
             return new SpecificationPreview(material.getSpecification(), false, "未生成：未归类、分类无启用模板或模板无属性，保留原规格；不接受外部 specification 文本");
-        String specification = schema.compose(readAttributes(material.getAttributeJson()), material.getGrammage() != null ? material.getGrammage().stripTrailingZeros().toPlainString()
-                : material.getThicknessMm() == null ? null : material.getThicknessMm().stripTrailingZeros().toPlainString(), material.getSize());
+        Map<String, Object> previewAttributes = readAttributes(material.getAttributeJson());
+        String legacyThickness = material.getGrammage() != null ? material.getGrammage().stripTrailingZeros().toPlainString()
+                : material.getThicknessMm() == null ? null : material.getThicknessMm().stripTrailingZeros().toPlainString();
+        String specification = schema.hasSpecPattern()
+                ? schema.specification(previewAttributes, material.getWidthMm(), material.getLengthMm(),
+                        material.getThicknessMm(), material.getSizeUnit())
+                : schema.compose(previewAttributes, legacyThickness, material.getSize());
         return new SpecificationPreview(specification.isEmpty() ? null : specification, true, "规格已由模板属性/厚度/尺寸生成；不接受外部 specification 文本");
     }
 

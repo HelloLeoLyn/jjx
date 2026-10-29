@@ -371,6 +371,50 @@
                 </el-table-column>
               </el-table>
             </div>
+            <el-divider v-if="focusSection !== 'naming'" content-position="left">规格模板（生成规格的字段顺序与分隔符）</el-divider>
+            <div v-show="focusSection !== 'naming'" class="naming-rule">
+              <div class="naming-tokens">
+                <el-checkbox
+                  v-for="token in specTokens"
+                  :key="token.key"
+                  :model-value="specPattern.fields.some((item) => item.key === token.key)"
+                  @update:model-value="(value) => toggleSpecField(token.key, !!value)"
+                  >{{ token.label }}</el-checkbox
+                >
+              </div>
+              <div v-if="specPattern.fields.length" class="naming-order">
+                <div v-for="(item, index) in specPattern.fields" :key="item.key" class="naming-order-row">
+                  <span class="naming-order-label">{{ specLabel(item.key) }}</span>
+                  <el-input
+                    :model-value="item.sep"
+                    maxlength="1"
+                    class="naming-sep-input"
+                    placeholder="分隔"
+                    title="该字段前的分隔符，只能 1 个字符；留空=紧贴上一个字段"
+                    @update:model-value="(value: any) => setSpecSep(index, value)"
+                  />
+                  <el-button link @click="setSpecSep(index, '；')">；</el-button>
+                  <el-button link @click="setSpecSep(index, ',')">,</el-button>
+                  <el-button link @click="setSpecSep(index, '×')">×</el-button>
+                  <el-button link @click="setSpecSep(index, '')">无</el-button>
+                  <el-button link :disabled="index === 0" @click="moveSpecField(index, -1)">上移</el-button>
+                  <el-button
+                    link
+                    :disabled="index === specPattern.fields.length - 1"
+                    @click="moveSpecField(index, 1)"
+                    >下移</el-button
+                  >
+                  <el-button link type="danger" @click="toggleSpecField(item.key, false)">移除</el-button>
+                </div>
+              </div>
+              <el-form-item label="显示字段名">
+                <el-switch v-model="specPattern.show_label" />
+              </el-form-item>
+              <el-form-item label="带单位">
+                <el-switch v-model="specPattern.with_unit" />
+              </el-form-item>
+              <span class="naming-message">留空字段不输出；未配置时沿用旧的“字段:值；尺寸”拼接。</span>
+            </div>
             <el-alert
               title="已有物料的模板可新增无默认值的可选属性、调整显示设置；删除、改类型或单位等需另行处理。常用属性补入草稿后，检查并保存才生效。"
               type="info"
@@ -444,6 +488,40 @@ const templateCode = ref(''),
 const templateStatus = ref<number>(CommonStatusEnum.NORMAL.value)
 const templateLoading = ref(false)
 const schema = ref<MaterialAttributeSchema>({ version: 1, meta_options: [], fields: [] })
+/** 规格模板：字段顺序 + 每字段 1 字符分隔符 + 是否显示字段名/带单位，存入 attribute_schema.spec_pattern（dev-20261029-027）。 */
+const specPattern = ref<{ fields: { key: string; sep: string }[]; show_label: boolean; with_unit: boolean }>({
+  fields: [],
+  show_label: false,
+  with_unit: true,
+})
+const SPEC_DIM_TOKENS = [
+  { key: 'width', label: '宽' },
+  { key: 'length', label: '长' },
+  { key: 'thickness_mm', label: '厚' },
+]
+const specTokens = computed(() => [
+  ...SPEC_DIM_TOKENS,
+  ...schema.value.fields.filter((f) => f.key).map((f) => ({ key: f.key, label: f.label || f.key })),
+])
+function specLabel(key: string) {
+  return specTokens.value.find((token) => token.key === key)?.label || key
+}
+function toggleSpecField(key: string, checked: boolean) {
+  const rest = specPattern.value.fields.filter((item) => item.key !== key)
+  specPattern.value.fields = checked ? [...rest, { key, sep: rest.length ? '；' : '' }] : rest
+}
+function moveSpecField(index: number, offset: -1 | 1) {
+  const fields = specPattern.value.fields
+  const target = index + offset
+  if (target < 0 || target >= fields.length) return
+  const [item] = fields.splice(index, 1)
+  fields.splice(target, 0, item)
+}
+function setSpecSep(index: number, value: string | number) {
+  const next = String(value ?? '').slice(0, 1)
+  specPattern.value.fields[index] = { ...specPattern.value.fields[index], sep: next }
+}
+
 /** 命名规则：勾选字段 + 顺序 + 分隔符 + 缺值处理，保存进 attribute_schema.name_pattern。 */
 const namePattern = ref<MaterialNamingPattern>({ fields: [], separator: ' ', empty: 'skip' })
 const namingLoading = ref(false)
@@ -622,6 +700,7 @@ async function loadTemplate(id: number) {
   templateLoading.value = true
   schema.value = { version: 1, meta_options: [], fields: [] }
   namePattern.value = { fields: [], separator: ' ', empty: 'skip', separators: {} }
+  specPattern.value = { fields: [], show_label: false, with_unit: true }
   namingSamples.value = []
   namingMessage.value = ''
   renameReport.value = undefined
@@ -637,6 +716,13 @@ async function loadTemplate(id: number) {
       return
     }
     schema.value = response.data.schema
+    specPattern.value = response.data.schema.spec_pattern
+      ? {
+          fields: (response.data.schema.spec_pattern.fields || []).map((item: any) => ({ key: item.key, sep: item.sep || '' })),
+          show_label: !!response.data.schema.spec_pattern.show_label,
+          with_unit: response.data.schema.spec_pattern.with_unit !== false,
+        }
+      : { fields: [], show_label: false, with_unit: true }
     namePattern.value = response.data.schema.name_pattern
       ? {
           fields: [...response.data.schema.name_pattern.fields],
@@ -710,7 +796,7 @@ async function saveTemplate() {
       categoryId: templateCategoryId.value,
       templateCode: templateCode.value,
       templateName: templateName.value,
-      attributeSchema: { ...schema.value, name_pattern: namePattern.value },
+      attributeSchema: { ...schema.value, name_pattern: namePattern.value, spec_pattern: specPattern.value },
       status: templateStatus.value,
     })
     await refresh()

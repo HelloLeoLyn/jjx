@@ -34,6 +34,8 @@ export interface MaterialAttributeSchema {
   fields: MaterialAttributeField[]
   /** 命名规则：勾选参与命名的字段与顺序（品类维度配置，dev-20261028-005） */
   name_pattern?: MaterialNamingPattern | null
+  /** 规格模板：生成规格的字段顺序与分隔符（dev-20261029-027） */
+  spec_pattern?: MaterialSpecPattern | null
 }
 export interface MaterialNamingPattern {
   /** 字段编码：公共字段 brand/model/color/meta/form/unit + 本品类属性字段 */
@@ -44,6 +46,11 @@ export interface MaterialNamingPattern {
   separators?: Record<string, string>
   /** 缺值处理：skip 跳过 / placeholder 占位 — */
   empty: 'skip' | 'placeholder'
+}
+export interface MaterialSpecPattern {
+  fields: { key: string; sep: string }[]
+  show_label: boolean
+  with_unit: boolean
 }
 export interface MaterialNamingPreview {
   samples: { materialId: number; materialCode: string; oldName: string; newName: string | null }[]
