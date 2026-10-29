@@ -440,6 +440,7 @@ public class AttachmentRefService {
             : body.getItems().stream().filter(Objects::nonNull).toList();
         if (items == null || items.isEmpty()) throw new BusinessException("请选择要修改的附件");
         if (items.size() > 500) throw new BusinessException("单次最多修改 500 条");
+        boolean silentLog = Boolean.TRUE.equals(body.getSilent());
         // 同一 refId 只处理第一条，避免同批内自相矛盾
         Map<Long, AttachmentRefBatchItem> unique = new LinkedHashMap<>();
         for (AttachmentRefBatchItem item : items) {
@@ -518,7 +519,8 @@ public class AttachmentRefService {
             jdbc.update("UPDATE sys_attachment_ref SET document_type=?,display_name=?,remark=?,sort_order=?,update_by=?,update_time=NOW() WHERE id=? AND deleted=0",
                 type, displayName, remark, sortOrder, StpUtil.getLoginIdAsString(), id);
             SysAttachment file = lockedFiles.get(id);
-            recordRefChange(ref, file, BusinessType.UPDATE.getCode(), "附件资料修改", changes,
+            if (!silentLog)
+                recordRefChange(ref, file, BusinessType.UPDATE.getCode(), "附件资料修改", changes,
                 traceIdOf(ref, traceIds));
         }
         renumber(affected);

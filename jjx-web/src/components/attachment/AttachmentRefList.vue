@@ -120,6 +120,8 @@ const props = defineProps<{
     canEdit: boolean
     /** 资料类型字典（父组件已加载，避免重复请求） */
     documentTypes: AttachmentDocumentTypeItem[]
+  /** 改类型时不写变更日志（审核弹窗专用，dev-20261029-014） */
+  suppressChangeLog?: boolean
     sourceType: string
     sourceNo?: string
     /** 业务锁定原因（如"已审核，不可再改"）：有值时写操作按钮置灰并显示原因（dev-20261015-028） */
@@ -261,7 +263,7 @@ async function flushTypeEdits(): Promise<boolean> {
   const items = Object.entries(typeEdits.value).map(([refId, documentType]) => ({ refId: Number(refId), documentType }))
   if (!items.length) return true
   try {
-    await attachmentRefApi.batchUpdate(items)
+    await attachmentRefApi.batchUpdate(items, !!props.suppressChangeLog)
     typeEdits.value = {}
     emit('changed')
     return true
@@ -289,7 +291,7 @@ async function inlineSave(
 ): Promise<boolean> {
   savingId.value = row.id
   try {
-    await attachmentRefApi.batchUpdate([{ refId: row.id, ...patch }])
+    await attachmentRefApi.batchUpdate([{ refId: row.id, ...patch }], !!props.suppressChangeLog)
     ElMessage.success('已保存')
     emit('changed')
     return true
@@ -325,7 +327,8 @@ async function applyBatchType() {
   batchSaving.value = true
   try {
     await attachmentRefApi.batchUpdate(
-      ids.map((refId) => ({ refId, documentType: batchDocumentType.value }))
+      ids.map((refId) => ({ refId, documentType: batchDocumentType.value })),
+      !!props.suppressChangeLog
     )
     ElMessage.success(`已批量设置 ${ids.length} 条类型`)
     batchTypeVisible.value = false

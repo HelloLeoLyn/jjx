@@ -231,8 +231,9 @@ export const attachmentRefApi = {
   },
 
   /** 批量修改引用元数据（按行部分更新：每条只传要改的字段；一次事务） */
-  batchUpdate(items: AttachmentRefBatchItemBody[]): AxiosPromise<number> {
-    return request({ url: '/system/attachment/refs/batch', method: 'put', data: { items } })
+  /** @param silent true 时不写「附件资料修改」变更日志（审核弹窗内改类型时使用） */
+  batchUpdate(items: AttachmentRefBatchItemBody[], silent = false): AxiosPromise<number> {
+    return request({ url: '/system/attachment/refs/batch', method: 'put', data: { items, silent } })
   },
 
   /** 批量解除引用（逗号分隔 refId；一次事务；不动物理文件） */

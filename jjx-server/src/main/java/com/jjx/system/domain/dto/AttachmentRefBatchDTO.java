@@ -20,4 +20,7 @@ public class AttachmentRefBatchDTO {
     @Size(max = 500, message = "单次最多修改 500 条")
     @Valid
     private List<AttachmentRefBatchItem> items;
+
+    /** 静默：true 时不写「附件资料修改」变更日志（用于审核弹窗内改类型，由审核日志统一记录）。 */
+    private Boolean silent;
 }

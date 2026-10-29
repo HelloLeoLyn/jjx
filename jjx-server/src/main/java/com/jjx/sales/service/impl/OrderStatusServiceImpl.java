@@ -156,6 +156,15 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         publishOrderEvent("order.review_started", orderId);
     }
 
+    /** 审核日志补订单号：OperLogAspect 读取后并进 detail.changes（dev-20261029-014）。 */
+    private static void markOrderNoForReviewLog(SalesOrder order) {
+        var attrs = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        if (attrs instanceof org.springframework.web.context.request.ServletRequestAttributes servlet
+                && order != null && order.getOrderNo() != null) {
+            servlet.getRequest().setAttribute("jjx.orderReviewOrderNo", order.getOrderNo());
+        }
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void approveOrder(ReviewDTO reviewDTO) {
@@ -166,6 +175,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (order == null) {
             throw new BusinessException("订单不存在");
         }
+        markOrderNoForReviewLog(order);
 
         // 2. 检查状态是否为审核中
         SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());
@@ -233,6 +243,7 @@ public class OrderStatusServiceImpl implements IOrderStatusService {
         if (order == null) {
             throw new BusinessException("订单不存在");
         }
+        markOrderNoForReviewLog(order);
 
         // 2. 检查状态是否为审核中
         SalesOrderStatusEnum currentStatus = SalesOrderStatusEnum.getByValue(order.getOrderStatus());

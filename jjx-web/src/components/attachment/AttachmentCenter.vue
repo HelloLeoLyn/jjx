@@ -65,6 +65,7 @@
       :document-types="selectableTypes"
       :source-type="sourceType"
       :source-no="sourceNo"
+      :suppress-change-log="suppressChangeLog"
       :lock-reason="lockReason"
       :actions="compactMode ? COMPACT_ACTIONS : actions"
       @save="emit('save')"
@@ -186,6 +187,8 @@ const props = withDefaults(
     defaultDocumentType?: string
     /** 可选：本入口只允许这些二级资料类型（不传=按字典与来源过滤后的全部）。 */
     allowedDocumentTypes?: string[]
+    /** 可选：改类型时不写「附件资料修改」变更日志（审核弹窗专用，dev-20261029-014）。 */
+    suppressChangeLog?: boolean
     /** 上传入口改为拖拽落区（替代 header 的小按钮）；默认 false 保持按钮形态 */
     dropZone?: boolean
     /** 单据产品（单产品单据传值，多产品单据不传）；写引用时随 product_id 落库 */
@@ -234,6 +237,7 @@ const props = withDefaults(
     autoBind: true,
     defaultDocumentType: '',
     allowedDocumentTypes: undefined,
+    suppressChangeLog: false,
     dropZone: false,
     productId: null,
     productCode: null,

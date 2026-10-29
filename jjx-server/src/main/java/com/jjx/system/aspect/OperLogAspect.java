@@ -184,6 +184,20 @@ public class OperLogAspect {
                 }
             }
 
+            // 审核类日志补订单号（dev-20261029-014）：服务端在请求属性里给出，避免列表“目标”为空
+            if (requestAttributes instanceof ServletRequestAttributes reviewServlet
+                    && reviewServlet.getRequest().getAttribute("jjx.orderReviewOrderNo") instanceof String orderNo
+                    && !orderNo.isBlank()) {
+                var detailObj = operLog.getDetail() == null ? JSONUtil.createObj() : JSONUtil.parseObj(operLog.getDetail());
+                var changeList = detailObj.getJSONArray("changes");
+                if (changeList == null) {
+                    changeList = JSONUtil.createArray();
+                    detailObj.set("changes", changeList);
+                }
+                changeList.add("订单号：" + orderNo);
+                operLog.setDetail(detailObj.toString());
+            }
+
             if (result instanceof Result<?> resultObj) {
                 if (resultObj.getCode() == 200) {
                     operLog.setStatus(YesNoEnum.YES.getCode());
