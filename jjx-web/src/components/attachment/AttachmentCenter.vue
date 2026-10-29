@@ -272,12 +272,15 @@ const refs = useAttachmentRefs({
   productCode: toRef(props, 'productCode'),
   drawingMeta: toRef(props, 'drawingMeta'),
 })
-/** 本入口可选的二级资料类型：调用方白名单收敛；不传=字典+来源过滤后的全部（dev-20261029-005） */
-const selectableTypes = computed(() =>
-  props.allowedDocumentTypes?.length
-    ? documentTypes.value.filter((type) => props.allowedDocumentTypes!.includes(type.item_key))
-    : documentTypes.value
-)
+/** 本入口可选的二级资料类型：调用方白名单收敛；不传=字典+来源过滤后的全部（dev-20261029-005）
+ *  注意：一级大类（attachment_category）必须保留，否则前端按 parent 分组会退化成扁平列表。 */
+const selectableTypes = computed(() => {
+  const allowed = props.allowedDocumentTypes
+  if (!allowed?.length) return documentTypes.value
+  return documentTypes.value.filter(
+    (type) => type.dict_code === 'attachment_category' || allowed.includes(type.item_key)
+  )
+})
 
 const {
   refRows,
