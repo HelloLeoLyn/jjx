@@ -293,6 +293,18 @@
               <div v-if="namePattern.fields.length" class="naming-order">
                 <div v-for="(field, index) in namePattern.fields" :key="field" class="naming-order-row">
                   <span class="naming-order-label">{{ namingLabel(field) }}</span>
+                  <el-input
+                    :model-value="fieldSeparator(field)"
+                    maxlength="1"
+                    class="naming-sep-input"
+                    placeholder="分隔"
+                    title="该字段前的分隔符，只能 1 个字符；留空=紧贴上一个字段"
+                    @update:model-value="(value: any) => setNameSeparator(field, value)"
+                  />
+                  <el-button link @click="setNameSeparator(field, ' ')">空格</el-button>
+                  <el-button link @click="setNameSeparator(field, '-')">-</el-button>
+                  <el-button link @click="setNameSeparator(field, '×')">×</el-button>
+                  <el-button link @click="setNameSeparator(field, '')">无</el-button>
                   <el-button link :disabled="index === 0" @click="moveNameField(index, -1)">上移</el-button>
                   <el-button
                     link
@@ -463,6 +475,20 @@ function toggleNameField(key: string, checked: boolean) {
   const rest = namePattern.value.fields.filter((field) => field !== key)
   namePattern.value.fields = checked ? [...rest, key] : rest
 }
+/** 该字段当前生效的分隔符（未单配时取全局分隔符） */
+function fieldSeparator(field: string): string {
+  const map = namePattern.value.separators || {}
+  return Object.prototype.hasOwnProperty.call(map, field)
+    ? map[field]
+    : (namePattern.value.separator ?? ' ')
+}
+
+/** 设置单字段分隔符：只允许 1 个字符，空串表示紧贴上一个字段 */
+function setNameSeparator(field: string, value: string | number) {
+  const next = String(value ?? '').slice(0, 1)
+  namePattern.value.separators = { ...(namePattern.value.separators || {}), [field]: next }
+}
+
 function moveNameField(index: number, offset: -1 | 1) {
   const fields = namePattern.value.fields
   const target = index + offset
@@ -595,7 +621,7 @@ async function loadTemplate(id: number) {
   const request = ++templateRequest
   templateLoading.value = true
   schema.value = { version: 1, meta_options: [], fields: [] }
-  namePattern.value = { fields: [], separator: ' ', empty: 'skip' }
+  namePattern.value = { fields: [], separator: ' ', empty: 'skip', separators: {} }
   namingSamples.value = []
   namingMessage.value = ''
   renameReport.value = undefined
@@ -615,6 +641,7 @@ async function loadTemplate(id: number) {
       ? {
           fields: [...response.data.schema.name_pattern.fields],
           separator: response.data.schema.name_pattern.separator || ' ',
+          separators: { ...(response.data.schema.name_pattern.separators || {}) },
           empty: response.data.schema.name_pattern.empty === 'placeholder' ? 'placeholder' : 'skip',
         }
       : { fields: [], separator: ' ', empty: 'skip' }
@@ -731,5 +758,6 @@ async function removeTemplate() {
 .naming-order { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
 .naming-order-row { display: flex; align-items: center; gap: 4px; }
 .naming-order-label { min-width: 90px; color: var(--el-text-color-regular); }
+.naming-sep-input { width: 56px; }
 .naming-message { margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px; }
 </style>

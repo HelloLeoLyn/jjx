@@ -68,6 +68,19 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 每个字段可配单字符分隔符并连写() {
+        var pattern = new MaterialNamingPattern(
+                List.of("meta", "model", "width", "thickness_mm"), " ", "skip",
+                Map.of("model", " ", "width", "W", "thickness_mm", "T"));
+        // 分隔符可单字符自定义：字母当分隔符就等价于加前缀
+        assertEquals("PET 125W300T0.175", pattern.compose(material(), SCHEMA));
+        var tight = new MaterialNamingPattern(
+                List.of("meta", "model", "width"), " ", "skip",
+                Map.of("model", "", "width", ""));
+        assertEquals("PET125300", tight.compose(material(), SCHEMA));
+    }
+
+    @Test
     void 尺寸与克重字段属于允许的公共字段() {
         var pattern = new MaterialNamingPattern(List.of("width", "length", "thickness_mm", "grammage"), " ", "skip");
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> pattern.validate(SCHEMA));

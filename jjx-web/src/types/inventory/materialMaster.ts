@@ -38,7 +38,10 @@ export interface MaterialAttributeSchema {
 export interface MaterialNamingPattern {
   /** 字段编码：公共字段 brand/model/color/meta/form/unit + 本品类属性字段 */
   fields: string[]
+  /** 全局分隔符（字段未单配时使用） */
   separator: string
+  /** 每个字段自己的分隔符：1 个字符，空串=紧贴上一个字段（dev-20261029-024） */
+  separators?: Record<string, string>
   /** 缺值处理：skip 跳过 / placeholder 占位 — */
   empty: 'skip' | 'placeholder'
 }

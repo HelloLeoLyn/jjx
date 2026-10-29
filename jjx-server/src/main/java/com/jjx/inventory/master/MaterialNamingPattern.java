@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjx.inventory.domain.InventoryMaterial;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +16,14 @@ import java.util.Set;
  * 可用字段 = 公共字段（brand/model/color/meta/form/unit）+ 本品类属性模板里的字段编码；
  * 取值优先用物料主数据列，属性字段取 attribute_json（枚举按选项名称输出）。
  */
-public record MaterialNamingPattern(List<String> fields, String separator, String empty) {
+public record MaterialNamingPattern(List<String> fields, String separator, String empty,
+                                    /** 每个字段自己的分隔符（1 个字符，空=紧贴上一个）；缺省回落到 separator（dev-20261029-024）。 */
+                                    Map<String, String> separators) {
+
+    /** 兼容旧规则：只有全局分隔符。 */
+    public MaterialNamingPattern(List<String> fields, String separator, String empty) {
+        this(fields, separator, empty, Map.of());
+    }
 
     public static final List<String> COMMON_TOKENS =
             List.of("brand", "model", "color", "meta", "form", "unit",
@@ -35,7 +43,16 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         }
         String sep = separator == null || separator.isEmpty() ? DEFAULT_SEPARATOR : separator.substring(0, 1);
         String emptyMode = "placeholder".equals(empty) ? "placeholder" : "skip";
-        return new MaterialNamingPattern(List.copyOf(keys), sep, emptyMode);
+        Map<String, String> perField = new LinkedHashMap<>();
+        if (separators != null) {
+            for (String key : keys) {
+                String value = separators.get(key);
+                if (value == null) continue;
+                // 分隔符只能 1 个字符；空串表示紧贴上一个字段
+                perField.put(key, value.isEmpty() ? "" : value.substring(0, 1));
+            }
+        }
+        return new MaterialNamingPattern(List.copyOf(keys), sep, emptyMode, Map.copyOf(perField));
     }
 
     /** 允许的字段：公共字段 + 本品类属性字段。 */
@@ -55,16 +72,19 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         if (pattern.fields().isEmpty()) return null;
         Map<String, Object> attributes = readAttributes(material.getAttributeJson());
         MaterialSizeValue.SizeSpec spec = MaterialSizeValue.spec(material.getSize());
-        List<String> parts = new ArrayList<>();
+        StringBuilder text = new StringBuilder();
+        boolean first = true;
         for (String field : pattern.fields()) {
             String value = valueOf(material, schema, attributes, spec, field);
-            if (value == null || value.isBlank()) {
-                if ("placeholder".equals(pattern.empty())) parts.add("—");
-                continue;
-            }
-            parts.add(value.trim());
+            String part = value == null || value.isBlank()
+                    ? ("placeholder".equals(pattern.empty()) ? "—" : null)
+                    : value.trim();
+            if (part == null) continue;
+            if (!first) text.append(pattern.separators().getOrDefault(field, pattern.separator()));
+            text.append(part);
+            first = false;
         }
-        return parts.isEmpty() ? null : String.join(pattern.separator(), parts);
+        return text.isEmpty() ? null : text.toString();
     }
 
     private static String valueOf(InventoryMaterial material, MaterialAttributeSchema schema,
