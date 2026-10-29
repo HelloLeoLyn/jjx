@@ -200,6 +200,7 @@ public class OrderServiceImpl implements IOrderService {
         if(insert>0){
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType(), dto.getCustomerId());
+            normalizeDeliveryDays(dto.getItems(), dto.getOrderDate());
             ensureProductIds(dto.getItems(), dto.getCustomerId());
             dto.getItems().forEach(i -> i.setOrderId(entity.getOrderId()));
             orderProductService.batchAdd(dto.getItems());
@@ -274,6 +275,7 @@ public class OrderServiceImpl implements IOrderService {
         if(insert>0){
             // 校验并处理产品明细
             validateOrderItems(dto.getItems(), dto.getOrderType(), dto.getCustomerId());
+            normalizeDeliveryDays(dto.getItems(), dto.getOrderDate());
             ensureProductIds(dto.getItems(), dto.getCustomerId());
             dto.getItems().forEach(i -> i.setOrderId(dto.getOrderId()));
             boolean ok = orderProductService.replaceItems(dto.getOrderId(), dto.getItems());
@@ -1368,4 +1370,18 @@ public class OrderServiceImpl implements IOrderService {
                 break;
         }
     }
+
+    /** 交期以「预计交期」为唯一真源：明细天数 = 预计交期 − 订单日期，客户端传值一律忽略（dev-20261029-002）。 */
+    private static void normalizeDeliveryDays(List<SalesOrderProductDTO> items, java.util.Date orderDate) {
+        if (items == null || items.isEmpty() || orderDate == null) return;
+        java.time.LocalDate base = new java.sql.Date(orderDate.getTime()).toLocalDate();
+        for (SalesOrderProductDTO item : items) {
+            if (item == null) continue;
+            java.time.LocalDate estimated = item.getEstimatedDeliveryDate();
+            if (estimated == null) { item.setDeliveryDays(null); continue; }
+            long days = java.time.temporal.ChronoUnit.DAYS.between(base, estimated);
+            item.setDeliveryDays(days > 0 ? (int) days : null);
+        }
+    }
 }
+

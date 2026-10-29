@@ -261,15 +261,9 @@
           <span>{{ formatCurrency(scope.row.amount) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="交期(天)" prop="deliveryDays" width="100">
+      <el-table-column label="交期(天)" width="100" align="center">
         <template #default="scope">
-          <el-input-number
-            v-model="scope.row.deliveryDays"
-            :min="1"
-            :precision="0"
-            style="width: 100%"
-            controls-position="right"
-          />
+          <span :title="'按 预计交期 − 订单日期 推算'">{{ deliveryDaysOf(scope.row) ?? '-' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="预计交期" prop="estimatedDeliveryDate" width="180">
@@ -1139,6 +1133,17 @@ function fmtDate(d: any): string {
 function localToday(): string {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** 交期天数：由 预计交期 − 订单日期 推算（与后端同口径，dev-20261029-002） */
+function deliveryDaysOf(row: any): number | null {
+  const estimated = row?.estimatedDeliveryDate
+  const base = fmtDate(form.orderDate)
+  if (!estimated || !base) return null
+  const days = Math.round(
+    (new Date(`${String(estimated).slice(0, 10)}T00:00:00`).getTime() - new Date(`${base}T00:00:00`).getTime()) / 86400000
+  )
+  return days > 0 ? days : null
 }
 
 /**

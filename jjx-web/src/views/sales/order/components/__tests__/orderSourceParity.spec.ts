@@ -263,27 +263,23 @@ async function upload(w: any, fileName: string, ownership: any) {
 }
 
 describe('销售订单来源链路与 traceId 归属', () => {
-  it('编辑订单重开显示产品行交期，保存修改和清空均透传', async () => {
+  it('编辑订单重开显示产品行交期，保存与清空以预计交期为源', async () => {
     api.getOrder.mockResolvedValue({ code:200,data:orderData({items:[{
       ...row(),deliveryDays:12,estimatedDeliveryDate:'2026-12-02',
     }]}) })
     const w=await mountOrderForm(true)
-    const days=w.findAllComponents({name:'ElInputNumber'}).find((input:any)=>
-      input.props('modelValue')===12 && input.props('controlsPosition')==='right')
     const date=w.findAllComponents({name:'ElDatePicker'}).find((input:any)=>input.props('modelValue')==='2026-12-02')
-    expect(days).toBeTruthy();expect(date).toBeTruthy()
-    days!.vm.$emit('update:modelValue',20)
+    expect(date).toBeTruthy()
     date!.vm.$emit('update:modelValue','2026-12-10')
     await nextTick()
     expect(await w.vm.submitForm()).toBe(true)
     expect(api.updateOrder.mock.calls.at(-1)![0].items[0]).toMatchObject({
-      deliveryDays:20,estimatedDeliveryDate:'2026-12-10',
+      estimatedDeliveryDate:'2026-12-10',
     })
-    w.vm.form.items[0].deliveryDays=null
     w.vm.form.items[0].estimatedDeliveryDate=null
     expect(await w.vm.submitForm()).toBe(true)
     expect(api.updateOrder.mock.calls.at(-1)![0].items[0]).toMatchObject({
-      deliveryDays:null,estimatedDeliveryDate:null,
+      estimatedDeliveryDate:null,
     })
   })
 
