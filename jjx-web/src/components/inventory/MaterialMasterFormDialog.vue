@@ -58,7 +58,7 @@
           <div class="field-hint" :class="{ manual: form.nameManual }">
             {{
               form.nameManual
-                ? '手动命名：已停止自动同步（点「恢复自动」回到 材料+型号+颜色（品牌））'
+                ? '手动命名：已停止自动同步（点「恢复自动」回到按命名规则生成）'
                 : '自动命名：材料 + 型号 + 颜色（品牌），无空格、缺项跳过'
             }}
           </div>
@@ -432,16 +432,19 @@ const lowKeys = computed(() =>
 function onNameInput() {
   form.nameManual = true
 }
+/** 自动命名：优先按品类命名规则生成，未配置规则才回落旧逻辑（dev-20261029-026） */
+const autoName = computed(() => ruleName.value || previewMasterName(form, dictionaries.value))
+
 function restoreAutoName() {
   form.nameManual = false
-  form.materialName = previewMasterName(form, dictionaries.value)
+  form.materialName = autoName.value
 }
 
 // 未手动命名时随材料/型号/颜色/品牌实时同步（dev-20261024-004）
 watch(
-  () => [form.materialMeta, form.model, form.color, form.brand, form.nameManual] as const,
+  () => [form.materialMeta, form.model, form.color, form.brand, form.nameManual, autoName.value] as const,
   () => {
-    if (!form.nameManual) form.materialName = previewMasterName(form, dictionaries.value)
+    if (!form.nameManual) form.materialName = autoName.value
   },
   { immediate: true }
 )
