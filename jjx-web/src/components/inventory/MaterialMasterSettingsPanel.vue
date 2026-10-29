@@ -304,6 +304,7 @@
                   <el-button link @click="setNameSeparator(field, ' ')">空格</el-button>
                   <el-button link @click="setNameSeparator(field, '-')">-</el-button>
                   <el-button link @click="setNameSeparator(field, '×')">×</el-button>
+                  <el-button link @click="setNameSeparator(field, '*')">*</el-button>
                   <el-button link @click="setNameSeparator(field, '')">无</el-button>
                   <el-button link :disabled="index === 0" @click="moveNameField(index, -1)">上移</el-button>
                   <el-button
@@ -396,6 +397,7 @@
                   <el-button link @click="setSpecSep(index, '；')">；</el-button>
                   <el-button link @click="setSpecSep(index, ',')">,</el-button>
                   <el-button link @click="setSpecSep(index, '×')">×</el-button>
+                  <el-button link @click="setSpecSep(index, '*')">*</el-button>
                   <el-button link @click="setSpecSep(index, '')">无</el-button>
                   <el-button link :disabled="index === 0" @click="moveSpecField(index, -1)">上移</el-button>
                   <el-button
