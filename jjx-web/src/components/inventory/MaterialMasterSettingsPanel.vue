@@ -109,7 +109,7 @@
                 <el-option
                   v-for="o in dictionaries.unit"
                   :key="o.code"
-                  :label="o.label"
+                  :label="`${o.label}/${o.code}`"
                   :value="o.code"
                 /> </el-select
             ></el-form-item>
