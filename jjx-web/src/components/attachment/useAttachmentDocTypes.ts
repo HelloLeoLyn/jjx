@@ -29,8 +29,11 @@ export function useAttachmentDocTypes(
     const ext = typeof t.ext_data === 'string' ? safeJson(t.ext_data) : t.ext_data
     const parent = (ext as any)?.parent
     if (!parent) return null
+    const parentKey = String(parent).toLowerCase()
     return (
-      documentTypes.value.find((x) => x.item_key === parent && x.dict_code === 'attachment_category') || null
+      documentTypes.value.find(
+        (x) => x.item_key.toLowerCase() === parentKey && x.dict_code === 'attachment_category',
+      ) || null
     )
   }
 
