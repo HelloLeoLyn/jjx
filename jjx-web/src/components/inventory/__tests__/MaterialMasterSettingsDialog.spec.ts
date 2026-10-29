@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
-import MaterialMasterSettingsDialog from '../MaterialMasterSettingsDialog.vue'
+import MaterialMasterSettingsPanel from '../MaterialMasterSettingsPanel.vue'
 
 const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), template: vi.fn(), saveTemplate: vi.fn() }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: api }))
@@ -21,10 +21,9 @@ describe('属性模板界面保存', () => {
     api.saveTemplate.mockResolvedValue({ data: {} })
   })
   it('用户补常用属性并配置显示设置后，真实保存方法提交完整模板元数据', async () => {
-    const wrapper = mount(MaterialMasterSettingsDialog, { props: { modelValue: false }, global: { stubs: {
+    const wrapper = mount(MaterialMasterSettingsPanel, { global: { stubs: {
       ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true,
     } } })
-    await wrapper.setProps({ modelValue: true })
     await flushPromises()
     const state = wrapper.vm as any
     state.templateCategoryId = 2
@@ -42,10 +41,9 @@ describe('属性模板界面保存', () => {
     wrapper.unmount()
   })
   it('属性支持上移/下移与删除，顺序按调整后的数组提交', async () => {
-    const wrapper = mount(MaterialMasterSettingsDialog, { props: { modelValue: false }, global: { stubs: {
+    const wrapper = mount(MaterialMasterSettingsPanel, { global: { stubs: {
       ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true,
     } } })
-    await wrapper.setProps({ modelValue: true })
     await flushPromises()
     const state = wrapper.vm as any
     state.templateCategoryId = 2

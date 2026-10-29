@@ -40,6 +40,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     css: false,
+    // element-plus 默认被 externalize，Node 直接 require 其 theme-chalk/*.css 会抛
+    // "Unknown file extension .css"；inline 后由 Vite 处理样式导入（dev-20261029-007）
+    server: { deps: { inline: [/element-plus/] } },
     include: ["src/**/__tests__/**/*.spec.ts"],
     exclude: ["**/node_modules/**"],
   },
