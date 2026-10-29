@@ -288,18 +288,20 @@ public class MaterialMasterService {
                     .stream().map(SysTag::getTagId).toList());
             if (!allowed.containsAll(tags)) throw new BusinessException("物料标签不存在或已停用");
         }
-        validateRequiredColumns(material, config, dto.getMaterialId() == null);
+        validateRequiredColumns(material, config, dto.getMaterialId() == null, Boolean.TRUE.equals(dto.getFromBom()));
         return new Prepared(material, tags);
     }
 
     /** 品类必填列（inventory_material_required_field，已按现分类树挂码）；新建时强制，编辑不追溯历史行。 */
     private void validateRequiredColumns(InventoryMaterial material, MaterialMasterCatalog.Configuration config,
-                                         boolean creating) {
+                                         boolean creating, boolean fromBom) {
         if (!creating || config == null) return;
         Map<String, String> labels = Map.of(
                 "material_grade", "材料显示名", "model", "型号", "color", "颜色",
                 "specification", "规格", "brand", "品牌");
         for (String column : materialMapper.selectRequiredFields(config.category().categoryCode())) {
+            // BOM 快速建档场景颜色常未知：该入口不强制颜色，其它必填照常（dev-20261029-016）
+            if (fromBom && "color".equals(column)) continue;
             String value = switch (column) {
                 case "material_grade" -> material.getMaterialGrade();
                 case "model" -> material.getModel();

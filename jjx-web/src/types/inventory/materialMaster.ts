@@ -91,6 +91,8 @@ export interface MaterialMasterForm {
   thicknessTolerance?: number | null
   materialId?: number
   materialCode?: string
+  /** BOM 快速建档入口：后端放宽颜色必填（dev-20261029-016） */
+  fromBom?: boolean
   categoryId: number | null
   /** 正式名称：默认按 材料+型号+颜色（品牌）生成，可人工改（dev-20261024-004） */
   materialName: string

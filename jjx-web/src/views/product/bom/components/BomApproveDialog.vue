@@ -68,6 +68,7 @@
     <MaterialFormDialog
       v-model="materialFormVisible"
       :preset-data="materialPreset"
+      from-bom
       @success="handleMaterialCreated"
     />
 
@@ -82,6 +83,7 @@
     <MaterialFormDialog
       v-model="batchCreateVisible"
       :preset-data="batchCreatePreset"
+      from-bom
       @success="handleBatchMaterialCreated"
     />
   </el-dialog>

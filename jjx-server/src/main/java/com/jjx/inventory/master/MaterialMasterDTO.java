@@ -21,6 +21,8 @@ public class MaterialMasterDTO {
     private String sizeUnit;
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     private String specBasis;
+    /** 来自 BOM 快速建档：仅放宽“颜色”必填，其它必填仍校验（dev-20261029-016）。 */
+    private Boolean fromBom;
     /** 克重 g/m²：与厚度二选一，填了即判定为克重口径。 */
     private BigDecimal grammage;
     /** 厚度公差 ±mm。 */

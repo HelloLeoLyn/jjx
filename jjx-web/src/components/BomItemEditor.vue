@@ -293,6 +293,7 @@
     <MaterialFormDialog
       v-model="materialFormVisible"
       :preset-data="materialPreset"
+      from-bom
       @success="handleMaterialCreated"
     />
   </div>

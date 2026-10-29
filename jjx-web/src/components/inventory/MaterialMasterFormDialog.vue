@@ -33,12 +33,14 @@
         }}</el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="主要供应商"
-              ><el-input
-                v-model="form.supplierName"
-                maxlength="200"
-                @input="form.supplierId = null" /></el-form-item
-          ></el-col>
+            <el-form-item label="主要供应商">
+              <SupplierSelector
+                :model-value="form.supplierId ?? undefined"
+                :remote="true"
+                style="width: 100%"
+                @update:model-value="onSupplierChange"
+              />
+            </el-form-item></el-col>
           <el-col :span="12">
             <el-form-item label="供应商品名"
               ><el-input
@@ -258,7 +260,8 @@ import type {
 } from '@/types/inventory/materialMaster'
 import MaterialAttributeFields from './MaterialAttributeFields.vue'
 import MaterialSizeEditor from './MaterialSizeEditor.vue'
-import { emptyMaterialSize, renderMaterialDimensions } from './materialSize'
+import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
+import { emptyMaterialSize, parseMaterialSize, renderMaterialDimensions } from './materialSize'
 import type { MaterialSizeValue } from './materialSize'
 import {
   isCommonAttribute,
@@ -275,6 +278,8 @@ import { el } from 'element-plus/es/locale/index.mjs'
 const props = defineProps<{
   modelValue: boolean
   materialId?: number | null
+  /** 来自 BOM 快速建档：后端对该入口放宽“颜色必填”（dev-20261029-016） */
+  fromBom?: boolean
   presetData?: {
     materialName?: string
     specification?: string
@@ -309,6 +314,11 @@ const configurationLoading = ref(false)
 const saving = ref(false)
 const sizeValid = ref(true)
 /** 口径由服务端按「填了克重→GRAMMAGE，有厚度→THICKNESS，否则 SIZE」判定，这里只回显。 */
+function onSupplierChange(id?: string | number | null) {
+  form.supplierId = id == null || id === '' ? null : Number(id)
+  if (form.supplierId == null) form.supplierName = ''
+}
+
 const specBasisLabel = computed(() => {
   if (form.grammage) return '克重（GRAMMAGE）'
   return form.thicknessMm != null ? '厚度（THICKNESS）' : '仅尺寸（SIZE）'
@@ -462,6 +472,18 @@ async function initialize() {
       }
       form.unit = props.presetData.unit || ''
       form.supplierName = props.presetData.supplierName || ''
+      // BOM 行的规格（如 340*305mm）解析到宽/长/厚/单位（dev-20261029-016）
+      if (props.presetData.specification) {
+        const parsedSpec = parseMaterialSize(props.presetData.specification)
+        if (parsedSpec) {
+          Object.assign(form, {
+            widthMm: parsedSpec.width ? Number(parsedSpec.width) : null,
+            lengthMm: parsedSpec.length ? Number(parsedSpec.length) : null,
+            thicknessMm: parsedSpec.thickness ? Number(parsedSpec.thickness) : null,
+            sizeUnit: parsedSpec.unit || 'mm',
+          })
+        }
+      }
     }
   } catch (error) {
     if (currentSession === session)
@@ -504,6 +526,7 @@ async function save() {
       ...fields,
       materialName: finalName,
       attributeJson: pruneAttributes(configuration.value.schema, form.attributeJson),
+      fromBom: props.fromBom === true,
     }
     delete payload.attributeJson.thickness_mm
     const response = await materialMasterApi.save(payload)
