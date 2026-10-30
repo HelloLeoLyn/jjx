@@ -73,7 +73,8 @@ const fields = computed(() =>
   props.schema.fields.filter(
     (f) =>
       attributeVisible(f, values.value) &&
-      (props.requiredOnly === undefined || f.required === props.requiredOnly) &&
+      // 注意：Vue 对未传的 Boolean 属性会补成 false，所以只能按“显式 true 才过滤必填”处理（dev-20261030-014）
+      (!props.requiredOnly || f.required === true) &&
       (!props.keys || props.keys.includes(f.key))
   )
 )
