@@ -157,6 +157,27 @@ class MaterialMasterDataTest {
         var cleared = master.prepare(dto).material(); assertNull(cleared.getThicknessMm()); assertNull(cleared.getWidthMm());
     }
 
+    /** 只填厚度合法（dev-20261030-016）：不再要求补宽度，尺寸文本不带前导占位。 */
+    @Test void masterPreparationAllowsThicknessWithoutWidth() {
+        var catalog = mock(com.jjx.inventory.master.MaterialMasterCatalog.class);
+        var template = new com.jjx.inventory.master.InventoryAttributeTemplate(); template.setTemplateId(71L);
+        var category = new com.jjx.inventory.master.MaterialMasterCatalog.Category(2L,"RAW_BASE_PC","PC",1L,3,"R","原材料/基材/PC",true,1,1);
+        var schema = com.jjx.inventory.master.MaterialAttributeSchema.parse(
+                "{\"version\":1,\"meta_options\":[\"PC\"],\"default_meta\":\"PC\",\"default_unit\":\"M\",\"fields\":[]}", new ObjectMapper());
+        when(catalog.optionalConfiguration(2L)).thenReturn(new com.jjx.inventory.master.MaterialMasterCatalog.Configuration(category, List.of(category), template, schema));
+        when(catalog.dictionaries()).thenReturn(Map.of("material_meta",List.of(new com.jjx.inventory.master.MaterialMasterCatalog.DictionaryOption("PC","PC")),
+                "unit",List.of(new com.jjx.inventory.master.MaterialMasterCatalog.DictionaryOption("M","米"))));
+        var master = new com.jjx.inventory.master.MaterialMasterService(catalog, mock(com.jjx.inventory.master.MaterialMasterMapper.class), mapper,
+                service, mock(com.jjx.purchase.mapper.PurchaseSupplierMapper.class), tags, mock(com.jjx.event.EventPublisher.class), new ObjectMapper());
+        var dto = new com.jjx.inventory.master.MaterialMasterDTO(); dto.setCategoryId(2L); dto.setMaterialName("只填厚度PC");
+        dto.setThicknessMm(new BigDecimal("0.175")); dto.setSizeUnit("mm");
+        var saved = master.prepare(dto).material();
+        assertNull(saved.getWidthMm());
+        assertEquals(new BigDecimal("0.175"), saved.getThicknessMm());
+        assertEquals("THICKNESS", saved.getSpecBasis());
+        assertEquals("0.175mm", saved.getSize());
+    }
+
     @Test void derivedAndRetiredFieldsIgnoreClientInput() throws Exception {
         var dto = new ObjectMapper().readValue("{\"templateId\":999,\"thickness\":\"fake\",\"widthSize\":\"fake\"}", MaterialUpdateDTO.class);
         assertNull(dto.getTemplateId()); assertNull(dto.getThicknessMm()); assertNull(dto.getWidthMm());

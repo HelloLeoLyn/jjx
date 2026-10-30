@@ -359,7 +359,7 @@ public class MaterialMasterService {
             if (sizeSpec.thicknessMm() != null) throw new BusinessException("克重与厚度只能选一种口径，请清掉厚度");
             if (sizeSpec.widthMm() == null) throw new BusinessException("克重口径仍需填宽度");
         }
-        if ("THICKNESS".equals(specBasis) && sizeSpec.widthMm() == null) throw new BusinessException("填了厚度时仍需填宽度");
+        // 厚度口径不要求宽度（只填厚度合法，dev-20261030-016）；克重口径仍需宽度。
         // 厚度属性是历史模板定义，不能再成为尺寸写入入口。
         inputAttributes.remove("thickness_mm");
         Map<String, Object> attributes = schema.validateAttributes(inputAttributes, objectMapper);

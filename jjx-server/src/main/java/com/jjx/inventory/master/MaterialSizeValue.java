@@ -24,12 +24,17 @@ public final class MaterialSizeValue {
         }
     }
 
-    /** 缺项保留位置，避免将宽*厚误读成宽*长；单位仅在有尺寸时展示。 */
+    /** 缺项保留位置，避免将宽*厚误读成宽*长；首个有值项之前的缺位不补占位（只填厚度即 0.175mm）。 */
     public static String render(BigDecimal width, BigDecimal length, BigDecimal thickness, String unit) {
-        if (width == null && length == null && thickness == null) return null;
-        String[] values = {number(width), number(length), number(thickness)};
-        int count = thickness != null ? 3 : length != null ? 2 : 1;
-        return String.join("*", Arrays.copyOf(values, count)) + (unit == null ? "mm" : unit);
+        BigDecimal[] values = {width, length, thickness};
+        int first = 0;
+        while (first < values.length && values[first] == null) first++;
+        int last = values.length - 1;
+        while (last >= first && values[last] == null) last--;
+        if (first > last) return null;
+        String[] text = new String[last - first + 1];
+        for (int i = first; i <= last; i++) text[i - first] = number(values[i]);
+        return String.join("*", text) + (unit == null ? "mm" : unit);
     }
 
     private static String number(BigDecimal value) {

@@ -81,7 +81,9 @@ export function validateMaterialDimensions(value: MaterialSizeValue): void {
 }
 
 export function renderMaterialDimensions(value: { widthMm?: number | null; lengthMm?: number | null; thicknessMm?: number | null; sizeUnit?: string | null }, round = false): string {
-  const values = round ? [value.widthMm, value.thicknessMm] : [value.widthMm, value.lengthMm, value.thicknessMm]
+  // 缺项保留中间位置；首个有值项之前的缺位不补占位（只填厚度即 0.175mm，dev-20261030-016）
+  const values = [...(round ? [value.widthMm, value.thicknessMm] : [value.widthMm, value.lengthMm, value.thicknessMm])]
+  while (values.length && values[0] == null) values.shift()
   while (values.length && values.at(-1) == null) values.pop()
   if (!values.length) return ''
   return `${round ? 'Φ' : ''}${values.map(v => v == null ? '' : String(v)).join('*')}${value.sizeUnit || 'mm'}`

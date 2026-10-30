@@ -33,6 +33,9 @@ class MaterialSizeValueTest {
         var w = new java.math.BigDecimal("300.00");
         var t = new java.math.BigDecimal("0.1750");
         assertEquals("300**0.175mm", MaterialSizeValue.render(w, null, t, "mm"));
+        // 只填厚度合法：前导缺位不补占位（dev-20261030-016）
+        assertEquals("0.175mm", MaterialSizeValue.render(null, null, t, "mm"));
+        assertEquals("305*0.175mm", MaterialSizeValue.render(null, new java.math.BigDecimal("305"), t, "mm"));
         assertEquals("300cm", MaterialSizeValue.render(w, null, null, "cm"));
         assertNull(MaterialSizeValue.render(null, null, null, "mm"));
         assertEquals("cm", MaterialSizeValue.validate(w, null, null, " cm ").unit());

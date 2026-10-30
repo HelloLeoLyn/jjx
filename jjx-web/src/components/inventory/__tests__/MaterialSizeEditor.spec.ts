@@ -85,6 +85,9 @@ describe('专用数值尺寸编辑组件', () => {
   })
   it('数值预览保留缺项，单位和厚度精度与后端一致', () => {
     expect(renderMaterialDimensions({ widthMm: 914, thicknessMm: 0.175, sizeUnit: 'm' })).toBe('914**0.175m')
+    // 只填厚度合法：前导缺位不补占位（dev-20261030-016）
+    expect(renderMaterialDimensions({ thicknessMm: 0.175, sizeUnit: 'mm' })).toBe('0.175mm')
+    expect(renderMaterialDimensions({ thicknessMm: 0.05, sizeUnit: 'mm' }, true)).toBe('Φ0.05mm')
     expect(renderMaterialDimensions(emptyMaterialSize())).toBe('')
     expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), thicknessMm: 0.00001 })).toThrow()
     expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), sizeUnit: 'inch' })).toThrow()
