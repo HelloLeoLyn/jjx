@@ -166,17 +166,8 @@
         </el-form-item>
         <template v-if="configuration">
           <el-divider content-position="left">规格属性</el-divider>
-          <MaterialAttributeFields
-            v-model="form.attributeJson"
-            :schema="configuration.schema"
-            :keys="commonKeys"
-          />
-          <MaterialAttributeFields
-            v-if="lowKeys.length"
-            v-model="form.attributeJson"
-            :schema="configuration.schema"
-            :keys="lowKeys"
-          />
+          <!-- 单块渲染全部属性：不再按常用/低频分组，避免字段被分组逻辑吃掉（dev-20261030-013） -->
+          <MaterialAttributeFields v-model="form.attributeJson" :schema="configuration.schema" />
         </template>
         <el-form-item label="别名"
           ><el-input v-model="form.searchKeywords" maxlength="500"
@@ -268,7 +259,6 @@ import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
 import { emptyMaterialSize, parseMaterialSize, renderMaterialDimensions } from './materialSize'
 import type { MaterialSizeValue } from './materialSize'
 import {
-  isCommonAttribute,
   attributeVisible,
   changeMasterCategory,
   effectiveMasterName,
@@ -448,16 +438,6 @@ const materialLabel = computed(
     dictionaries.value.material_meta?.find((o) => o.code === form.materialMeta)?.label ||
     form.materialMeta ||
     ''
-)
-const commonKeys = computed(() =>
-  (configuration.value?.schema.fields || [])
-    .filter((f) => f.key !== 'thickness_mm' && isCommonAttribute(f))
-    .map((f) => f.key)
-)
-const lowKeys = computed(() =>
-  (configuration.value?.schema.fields || [])
-    .filter((f) => f.key !== 'thickness_mm' && !isCommonAttribute(f))
-    .map((f) => f.key)
 )
 
 function onNameInput() {
