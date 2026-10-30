@@ -582,6 +582,8 @@ const COMMON_NAMING_TOKENS = [
   { key: 'width', label: '宽(mm)' },
   { key: 'length', label: '长(mm)' },
   { key: 'grammage', label: '克重' },
+  { key: 'customersupplied', label: '客供' },
+  { key: 'sampleonly', label: '样品' },
 ]
 /** 属性单位白名单：与后端 MaterialAttributeSchema.UNITS 一致，避免 mm/MM/毫米 混写。 */
 const UNIT_OPTIONS = ['%', 'g/m²', 'g', 'kg/m³', 'mm', 'μm', 'N', 'gf', '℃', 's']

@@ -81,6 +81,17 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 客供与样品为真才输出文字() {
+        var material = material();
+        material.setIsCustomerSupplied(true);
+        material.setIsSample(false);
+        var pattern = new MaterialNamingPattern(List.of("meta", "customersupplied", "sampleonly"), " ", "skip");
+        assertEquals("PET 客供", pattern.compose(material, SCHEMA));
+        material.setIsSample(true);
+        assertEquals("PET 客供 样品", pattern.compose(material, SCHEMA));
+    }
+
+    @Test
     void 尺寸与克重字段属于允许的公共字段() {
         var pattern = new MaterialNamingPattern(List.of("width", "length", "thickness_mm", "grammage"), " ", "skip");
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> pattern.validate(SCHEMA));

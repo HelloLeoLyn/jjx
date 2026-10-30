@@ -27,7 +27,8 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
 
     public static final List<String> COMMON_TOKENS =
             List.of("brand", "model", "color", "meta", "form", "unit",
-                    "width", "length", "thickness_mm", "grammage");
+                    "width", "length", "thickness_mm", "grammage",
+                    "customersupplied", "sampleonly");
     public static final String DEFAULT_SEPARATOR = " ";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -100,6 +101,9 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             case "length" -> decimalText(firstNonNull(material.getLengthMm(), spec == null ? null : spec.lengthMm()));
             case "thickness_mm" -> decimalText(firstNonNull(material.getThicknessMm(), spec == null ? null : spec.thicknessMm()));
             case "grammage" -> decimalText(material.getGrammage());
+            // 档案标记：为真才输出文字，为假/空不输出（避免名称里出现“非客供”）
+            case "customersupplied" -> Boolean.TRUE.equals(material.getIsCustomerSupplied()) ? "客供" : null;
+            case "sampleonly" -> Boolean.TRUE.equals(material.getIsSample()) ? "样品" : null;
             default -> optionText(schema, attributes, field);
         };
     }
