@@ -290,6 +290,10 @@
                   >{{ token.label }}</el-checkbox
                 >
               </div>
+              <div class="naming-actions">
+                <el-button link type="primary" @click="selectAllNaming">全选</el-button>
+                <el-button link @click="resetNaming">重置</el-button>
+              </div>
               <div v-if="namePattern.fields.length" class="naming-order">
                 <div
                   v-for="(field, index) in namePattern.fields"
@@ -402,6 +406,10 @@
                   @update:model-value="(value) => toggleSpecField(token.key, !!value)"
                   >{{ token.label }}</el-checkbox
                 >
+              </div>
+              <div class="naming-actions">
+                <el-button link type="primary" @click="selectAllSpec">全选</el-button>
+                <el-button link @click="resetSpec">重置</el-button>
               </div>
               <div v-if="specPattern.fields.length" class="naming-order">
                 <div
@@ -658,6 +666,26 @@ function toggleNameField(key: string, checked: boolean) {
   const rest = namePattern.value.fields.filter((field) => field !== key)
   namePattern.value.fields = checked ? [...rest, key] : rest
 }
+/** 命名规则：全选当前品类的全部可选项 */
+function selectAllNaming() {
+  namePattern.value.fields = namingTokens.value.map((token) => token.key)
+}
+/** 命名规则：清空选择，分隔符与缺值恢复默认 */
+function resetNaming() {
+  namePattern.value = { fields: [], separator: ' ', empty: 'skip', separators: {} }
+}
+/** 规格模板：全选当前品类的全部可选项（首项无分隔符，其余默认 ；） */
+function selectAllSpec() {
+  specPattern.value.fields = specTokens.value.map((token, index) => ({
+    key: token.key,
+    sep: index === 0 ? '' : '；',
+  }))
+}
+/** 规格模板：清空选择并恢复默认显示设置 */
+function resetSpec() {
+  specPattern.value = { fields: [], show_label: false, with_unit: true, unit_position: 'end' }
+}
+
 /** 该字段当前生效的分隔符（未单配时取全局分隔符） */
 function fieldSeparator(field: string): string {
   const map = namePattern.value.separators || {}
@@ -970,6 +998,7 @@ async function removeTemplate() {
 .naming-order-row { display: flex; align-items: center; gap: 4px; }
 .naming-order-label { min-width: 90px; color: var(--el-text-color-regular); }
 .naming-sep-input { width: 56px; }
+.naming-actions { display: flex; gap: 8px; margin: -4px 0 8px; }
 .naming-order-no { min-width: 18px; text-align: right; color: var(--el-text-color-placeholder); font-size: 12px; }
 .naming-order-row { cursor: grab; }
 .naming-order-row.dragging { background: var(--el-color-primary-light-9); }
