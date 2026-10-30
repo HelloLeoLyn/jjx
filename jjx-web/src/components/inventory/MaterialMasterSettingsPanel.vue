@@ -584,10 +584,13 @@ const SPEC_DIM_TOKENS = [
   { key: 'length', label: '长' },
   { key: 'thickness_mm', label: '厚' },
 ]
-const specTokens = computed(() => [
-  ...SPEC_DIM_TOKENS,
-  ...schema.value.fields.filter((f) => f.key).map((f) => ({ key: f.key, label: f.label || f.key })),
-])
+const specTokens = computed(() => {
+  if (fieldOptions.value.length) return fieldOptions.value.map((o) => ({ key: o.key, label: o.label }))
+  return [
+    ...SPEC_DIM_TOKENS,
+    ...schema.value.fields.filter((f) => f.key).map((f) => ({ key: f.key, label: f.label || f.key })),
+  ]
+})
 function specLabel(key: string) {
   return specTokens.value.find((token) => token.key === key)?.label || key
 }
@@ -605,6 +608,17 @@ function moveSpecField(index: number, offset: -1 | 1) {
 function setSpecSep(index: number, value: string | number) {
   const next = String(value ?? '').slice(0, 1)
   specPattern.value.fields[index] = { ...specPattern.value.fields[index], sep: next }
+}
+
+/** 命名/规格可选字段（后端 /naming/fields 提供，新增字段无需改前端） */
+const fieldOptions = ref<{ key: string; label: string; group: string }[]>([])
+async function loadFieldOptions(categoryId?: number) {
+  try {
+    const response = await materialMasterApi.fieldOptions(categoryId)
+    fieldOptions.value = response.data || []
+  } catch {
+    fieldOptions.value = []
+  }
 }
 
 /** 命名规则：勾选字段 + 顺序 + 分隔符 + 缺值处理，保存进 attribute_schema.name_pattern。 */
@@ -630,12 +644,15 @@ const COMMON_NAMING_TOKENS = [
 /** 属性单位白名单：与后端 MaterialAttributeSchema.UNITS 一致，避免 mm/MM/毫米 混写。 */
 const UNIT_OPTIONS = ['%', 'g/m²', 'g', 'kg/m³', 'mm', 'μm', 'N', 'gf', '℃', 's']
 /** 可选字段 = 公共字段 + 本品类属性字段（品类不同，可勾选的属性就不同）。 */
-const namingTokens = computed(() => [
-  ...COMMON_NAMING_TOKENS,
-  ...schema.value.fields
-    .filter((field) => field.key && !COMMON_NAMING_TOKENS.some((token) => token.key === field.key))
-    .map((field) => ({ key: field.key, label: field.label || field.key })),
-])
+const namingTokens = computed(() => {
+  if (fieldOptions.value.length) return fieldOptions.value.map((o) => ({ key: o.key, label: o.label }))
+  return [
+    ...COMMON_NAMING_TOKENS,
+    ...schema.value.fields
+      .filter((field) => field.key && !COMMON_NAMING_TOKENS.some((token) => token.key === field.key))
+      .map((field) => ({ key: field.key, label: field.label || field.key })),
+  ]
+})
 const namingLabel = (key: string) => namingTokens.value.find((token) => token.key === key)?.label || key
 function toggleNameField(key: string, checked: boolean) {
   const rest = namePattern.value.fields.filter((field) => field !== key)
@@ -805,6 +822,7 @@ async function loadTemplate(id: number) {
   templateLoading.value = true
   schema.value = { version: 1, meta_options: [], fields: [] }
   namePattern.value = { fields: [], separator: ' ', empty: 'skip', separators: {} }
+  void loadFieldOptions(id)
   specPattern.value = { fields: [], show_label: false, with_unit: true, unit_position: 'end' }
   namingSamples.value = []
   namingMessage.value = ''
@@ -821,6 +839,7 @@ async function loadTemplate(id: number) {
       return
     }
     schema.value = response.data.schema
+    void loadFieldOptions(id)
     specPattern.value = response.data.schema.spec_pattern
       ? {
           fields: (response.data.schema.spec_pattern.fields || []).map((item: any) => ({ key: item.key, sep: item.sep || '' })),

@@ -70,7 +70,8 @@ public record MaterialAttributeSchema(
         if (defaultMeta != null && !metaOptions.contains(defaultMeta)) fail("默认材质不在候选范围");
         if (namePattern != null) namePattern.validate(this);
         if (specPattern != null && specPattern.fields() != null) {
-            Set<String> specKeys = new HashSet<>(Set.of("width", "length", "thickness_mm"));
+            // 规格模板与命名规则共用同一份可选项清单（dev-20261030-006）
+            Set<String> specKeys = new HashSet<>(MaterialNamingPattern.COMMON_TOKENS);
             fields.forEach(field -> specKeys.add(field.key()));
             for (SpecPattern.SpecField item : specPattern.fields()) {
                 if (item == null || item.key() == null || item.key().isBlank()) continue;
@@ -171,8 +172,13 @@ public record MaterialAttributeSchema(
     }
 
     /** 规格文本：配了 spec_pattern 用模板，否则回落旧拼接（dev-20261029-027）。 */
-    public String specification(Map<String, Object> attributes, java.math.BigDecimal widthMm,
-                                java.math.BigDecimal lengthMm, java.math.BigDecimal thicknessMm, String sizeUnit) {
+    /** 规格文本：字段取值与命名规则共用 MaterialNamingPattern 的注册表（dev-20261030-006）。 */
+    public String specification(com.jjx.inventory.domain.InventoryMaterial material,
+                                Map<String, Object> attributes, String categoryName) {
+        java.math.BigDecimal widthMm = material == null ? null : material.getWidthMm();
+        java.math.BigDecimal lengthMm = material == null ? null : material.getLengthMm();
+        java.math.BigDecimal thicknessMm = material == null ? null : material.getThicknessMm();
+        String sizeUnit = material == null ? null : material.getSizeUnit();
         if (specPattern == null || specPattern.fields() == null || specPattern.fields().isEmpty()) {
             return compose(attributes, thicknessMm == null ? null : thicknessMm.stripTrailingZeros().toPlainString(),
                     MaterialSizeValue.render(widthMm, lengthMm, thicknessMm, sizeUnit));
@@ -183,10 +189,11 @@ public record MaterialAttributeSchema(
         String lastUnit = "";
         String position = specPattern.unitPosition() == null || specPattern.unitPosition().isBlank()
                 ? (specPattern.withUnit() ? "each" : "none") : specPattern.unitPosition().trim().toLowerCase();
+        MaterialSizeValue.SizeSpec spec = material == null ? null : MaterialSizeValue.spec(material.getSize());
         for (SpecPattern.SpecField item : specPattern.fields()) {
             if (item == null || item.key() == null || item.key().isBlank()) continue;
             String key = item.key().trim();
-            String display = dimension(key, widthMm, lengthMm, thicknessMm, sizeUnit, values);
+            String display = MaterialNamingPattern.tokenValue(material, this, values, spec, key, categoryName);
             if (display == null || display.isBlank()) continue;
             if (specPattern.showLabel()) display = specLabel(key) + ":" + display;
             String unit = specUnit(key, sizeUnit);

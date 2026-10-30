@@ -91,6 +91,13 @@ public class MaterialMasterController extends BaseController {
         return Result.success(service.previewSpecification(request.categoryId()));
     }
 
+    /** 命名/规格可选字段：公共字段 + 该品类属性字段。 */
+    @GetMapping("/naming/fields")
+    @SaCheckPermission(value = {"inventory:category:list", "inventory:material:view"}, mode = SaMode.OR)
+    public Result<List<MaterialMasterService.FieldOption>> fieldOptions(@RequestParam(required = false) Long categoryId) {
+        return Result.success(service.fieldOptions(categoryId));
+    }
+
     public record SpecRenderRequest(Long categoryId, MaterialMasterDTO material) { }
 
     /** 规格模板渲染：用当前表单值按已保存模板生成规格文本（不写库）。 */

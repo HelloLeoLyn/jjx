@@ -25,10 +25,31 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         this(fields, separator, empty, Map.of());
     }
 
-    public static final List<String> COMMON_TOKENS =
-            List.of("brand", "model", "color", "meta", "form", "unit",
-                    "width", "length", "thickness_mm", "grammage",
-                    "customersupplied", "sampleonly", "category");
+    /** 命名/规格共用的可选项真源（新增字段只改这里，前端自动出现）。 */
+    public static final java.util.LinkedHashMap<String, String> COMMON_LABELS = new java.util.LinkedHashMap<>();
+    static {
+        COMMON_LABELS.put("category", "品类");
+        COMMON_LABELS.put("brand", "品牌");
+        COMMON_LABELS.put("meta", "材质");
+        COMMON_LABELS.put("form", "形态");
+        COMMON_LABELS.put("model", "型号");
+        COMMON_LABELS.put("color", "颜色");
+        COMMON_LABELS.put("unit", "单位");
+        COMMON_LABELS.put("width", "宽");
+        COMMON_LABELS.put("length", "长");
+        COMMON_LABELS.put("thickness_mm", "厚度");
+        COMMON_LABELS.put("tolerance", "厚度公差");
+        COMMON_LABELS.put("grammage", "克重");
+        COMMON_LABELS.put("basis", "规格口径");
+        COMMON_LABELS.put("supplier", "供应商");
+        COMMON_LABELS.put("suppliermaterialname", "供应商品名");
+        COMMON_LABELS.put("keywords", "别名");
+        COMMON_LABELS.put("remark", "备注");
+        COMMON_LABELS.put("customersupplied", "客供");
+        COMMON_LABELS.put("sampleonly", "样品");
+        COMMON_LABELS.put("status", "状态");
+    }
+    public static final List<String> COMMON_TOKENS = List.copyOf(COMMON_LABELS.keySet());
     public static final String DEFAULT_SEPARATOR = " ";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -93,6 +114,13 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         return text.isEmpty() ? null : text.toString();
     }
 
+    /** 供规格模板复用同一套字段取值（dev-20261030-006）。 */
+    public static String tokenValue(InventoryMaterial material, MaterialAttributeSchema schema,
+                                    Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
+                                    String categoryName) {
+        return valueOf(material, schema, attributes, spec, field, categoryName);
+    }
+
     private static String valueOf(InventoryMaterial material, MaterialAttributeSchema schema,
                                   Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
                                   String categoryName) {
@@ -111,6 +139,13 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             case "customersupplied" -> Boolean.TRUE.equals(material.getIsCustomerSupplied()) ? "客供" : null;
             case "sampleonly" -> Boolean.TRUE.equals(material.getIsSample()) ? "样品" : null;
             case "category" -> categoryName;
+            case "tolerance" -> decimalText(material.getThicknessTolerance());
+            case "basis" -> material.getSpecBasis();
+            case "supplier" -> material.getSupplierName();
+            case "suppliermaterialname" -> material.getSupplierMaterialName();
+            case "keywords" -> material.getSearchKeywords();
+            case "remark" -> material.getRemark();
+            case "status" -> material.getStatus() == null ? null : String.valueOf(material.getStatus());
             default -> optionText(schema, attributes, field);
         };
     }

@@ -126,11 +126,30 @@ public class MaterialMasterService {
         return new SpecPreview(samples, materials.isEmpty() ? "该品类暂无物料，模板只影响以后生成" : "预览取该品类最近 5 条物料");
     }
 
+    public record FieldOption(String key, String label, String group) { }
+
+    /** 命名/规格可选字段清单：公共字段 + 该品类属性字段（唯一真源，新增字段无需改前端）。 */
+    public List<FieldOption> fieldOptions(Long categoryId) {
+        List<FieldOption> options = new ArrayList<>();
+        MaterialNamingPattern.COMMON_LABELS.forEach((key, label) -> options.add(new FieldOption(key, label, "公共")));
+        MaterialMasterCatalog.Configuration config = categoryId == null ? null : catalog.optionalConfiguration(categoryId);
+        if (config != null) {
+            config.schema().fields().forEach(field -> options.add(new FieldOption(field.key(), field.label(), "属性")));
+        }
+        return options;
+    }
+
+    /** 品类名（供 category 字段使用，失败返回 null）。 */
+    private String categoryNameOf(Long categoryId) {
+        if (categoryId == null) return null;
+        MaterialMasterCatalog.Configuration configuration = catalog.optionalConfiguration(categoryId);
+        return configuration == null ? null : configuration.category().categoryName();
+    }
+
     private String generateSpecification(MaterialAttributeSchema schema, InventoryMaterial material) {
         Map<String, Object> attributes = readAttributes(material.getAttributeJson());
         if (schema.hasSpecPattern()) {
-            return schema.specification(attributes, material.getWidthMm(), material.getLengthMm(),
-                    material.getThicknessMm(), material.getSizeUnit());
+            return schema.specification(material, attributes, categoryNameOf(material.getCategoryId()));
         }
         String legacyThickness = material.getGrammage() != null ? material.getGrammage().stripTrailingZeros().toPlainString()
                 : material.getThicknessMm() == null ? null : material.getThicknessMm().stripTrailingZeros().toPlainString();
@@ -145,7 +164,27 @@ public class MaterialMasterService {
         MaterialAttributeSchema schema = config.schema();
         Map<String, Object> attributes = draft.getAttributeJson() == null ? Map.of() : draft.getAttributeJson();
         if (schema.hasSpecPattern()) {
-            return schema.specification(attributes, draft.getWidthMm(), draft.getLengthMm(), draft.getThicknessMm(), draft.getSizeUnit());
+            InventoryMaterial draftMaterial = new InventoryMaterial();
+            draftMaterial.setWidthMm(draft.getWidthMm());
+            draftMaterial.setLengthMm(draft.getLengthMm());
+            draftMaterial.setThicknessMm(draft.getThicknessMm());
+            draftMaterial.setSizeUnit(draft.getSizeUnit());
+            draftMaterial.setGrammage(draft.getGrammage());
+            draftMaterial.setThicknessTolerance(draft.getThicknessTolerance());
+            draftMaterial.setSpecBasis(draft.getSpecBasis());
+            draftMaterial.setModel(draft.getModel());
+            draftMaterial.setColor(draft.getColor());
+            draftMaterial.setBrand(draft.getBrand());
+            draftMaterial.setMaterialMeta(draft.getMaterialMeta());
+            draftMaterial.setMaterialForm(draft.getMaterialForm());
+            draftMaterial.setUnit(draft.getUnit());
+            draftMaterial.setSupplierName(draft.getSupplierName());
+            draftMaterial.setSupplierMaterialName(draft.getSupplierMaterialName());
+            draftMaterial.setRemark(draft.getRemark());
+            draftMaterial.setSearchKeywords(draft.getSearchKeywords());
+            draftMaterial.setIsCustomerSupplied(draft.getIsCustomerSupplied());
+            draftMaterial.setIsSample(draft.getIsSample());
+            return schema.specification(draftMaterial, attributes, config.category().categoryName());
         }
         String legacyThickness = draft.getGrammage() != null ? draft.getGrammage().stripTrailingZeros().toPlainString()
                 : draft.getThicknessMm() == null ? null : draft.getThicknessMm().stripTrailingZeros().toPlainString();
@@ -235,8 +274,7 @@ public class MaterialMasterService {
         String legacyThickness = material.getGrammage() != null ? material.getGrammage().stripTrailingZeros().toPlainString()
                 : material.getThicknessMm() == null ? null : material.getThicknessMm().stripTrailingZeros().toPlainString();
         String specification = schema.hasSpecPattern()
-                ? schema.specification(previewAttributes, material.getWidthMm(), material.getLengthMm(),
-                        material.getThicknessMm(), material.getSizeUnit())
+                ? schema.specification(material, previewAttributes, categoryNameOf(material.getCategoryId()))
                 : schema.compose(previewAttributes, legacyThickness, material.getSize());
         return new SpecificationPreview(specification.isEmpty() ? null : specification, true, "规格已由模板属性/厚度/尺寸生成；不接受外部 specification 文本");
     }
