@@ -291,7 +291,18 @@
                 >
               </div>
               <div v-if="namePattern.fields.length" class="naming-order">
-                <div v-for="(field, index) in namePattern.fields" :key="field" class="naming-order-row">
+                <div
+                  v-for="(field, index) in namePattern.fields"
+                  :key="field"
+                  class="naming-order-row"
+                  draggable="true"
+                  :class="{ dragging: dragState?.kind === 'naming' && dragState?.index === index }"
+                  @dragstart="startDrag('naming', index)"
+                  @dragover.prevent
+                  @drop="dropAt('naming', index)"
+                  @dragend="endDrag"
+                >
+                  <span class="naming-order-no">{{ index + 1 }}</span>
                   <span class="naming-order-label">{{ namingLabel(field) }}</span>
                   <el-input
                     :model-value="fieldSeparator(field)"
@@ -306,13 +317,22 @@
                   <el-button link @click="setNameSeparator(field, '×')">×</el-button>
                   <el-button link @click="setNameSeparator(field, '*')">*</el-button>
                   <el-button link @click="setNameSeparator(field, '')">无</el-button>
-                  <el-button link :disabled="index === 0" @click="moveNameField(index, -1)">上移</el-button>
                   <el-button
                     link
+                    :icon="ArrowUp"
+                    :disabled="index === 0"
+                    aria-label="上移"
+                    title="上移"
+                    @click="moveNameField(index, -1)"
+                  />
+                  <el-button
+                    link
+                    :icon="ArrowDown"
                     :disabled="index === namePattern.fields.length - 1"
+                    aria-label="下移"
+                    title="下移"
                     @click="moveNameField(index, 1)"
-                    >下移</el-button
-                  >
+                  />
                   <el-button link type="danger" @click="toggleNameField(field, false)">移除</el-button>
                 </div>
               </div>
@@ -384,7 +404,18 @@
                 >
               </div>
               <div v-if="specPattern.fields.length" class="naming-order">
-                <div v-for="(item, index) in specPattern.fields" :key="item.key" class="naming-order-row">
+                <div
+                  v-for="(item, index) in specPattern.fields"
+                  :key="item.key"
+                  class="naming-order-row"
+                  draggable="true"
+                  :class="{ dragging: dragState?.kind === 'spec' && dragState?.index === index }"
+                  @dragstart="startDrag('spec', index)"
+                  @dragover.prevent
+                  @drop="dropAt('spec', index)"
+                  @dragend="endDrag"
+                >
+                  <span class="naming-order-no">{{ index + 1 }}</span>
                   <span class="naming-order-label">{{ specLabel(item.key) }}</span>
                   <el-input
                     :model-value="item.sep"
@@ -399,13 +430,22 @@
                   <el-button link @click="setSpecSep(index, '×')">×</el-button>
                   <el-button link @click="setSpecSep(index, '*')">*</el-button>
                   <el-button link @click="setSpecSep(index, '')">无</el-button>
-                  <el-button link :disabled="index === 0" @click="moveSpecField(index, -1)">上移</el-button>
                   <el-button
                     link
+                    :icon="ArrowUp"
+                    :disabled="index === 0"
+                    aria-label="上移"
+                    title="上移"
+                    @click="moveSpecField(index, -1)"
+                  />
+                  <el-button
+                    link
+                    :icon="ArrowDown"
                     :disabled="index === specPattern.fields.length - 1"
+                    aria-label="下移"
+                    title="下移"
                     @click="moveSpecField(index, 1)"
-                    >下移</el-button
-                  >
+                  />
                   <el-button link type="danger" @click="toggleSpecField(item.key, false)">移除</el-button>
                 </div>
               </div>
@@ -455,6 +495,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 import { MaterialAttributeTypeEnum } from '@/enums/inventory/MaterialAttributeEnum'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
@@ -611,6 +652,23 @@ function fieldSeparator(field: string): string {
 function setNameSeparator(field: string, value: string | number) {
   const next = String(value ?? '').slice(0, 1)
   namePattern.value.separators = { ...(namePattern.value.separators || {}), [field]: next }
+}
+
+const dragState = ref<{ kind: 'naming' | 'spec'; index: number } | null>(null)
+function startDrag(kind: 'naming' | 'spec', index: number) {
+  dragState.value = { kind, index }
+}
+function endDrag() {
+  dragState.value = null
+}
+/** 拖拽落位：同类型列表内把 from 移到 to（dev-20261030-004） */
+function dropAt(kind: 'naming' | 'spec', index: number) {
+  const from = dragState.value
+  dragState.value = null
+  if (!from || from.kind !== kind || from.index === index) return
+  const list: any[] = kind === 'naming' ? namePattern.value.fields : (specPattern.value.fields as any[])
+  const [item] = list.splice(from.index, 1)
+  list.splice(index, 0, item)
 }
 
 function moveNameField(index: number, offset: -1 | 1) {
@@ -892,5 +950,10 @@ async function removeTemplate() {
 .naming-order-row { display: flex; align-items: center; gap: 4px; }
 .naming-order-label { min-width: 90px; color: var(--el-text-color-regular); }
 .naming-sep-input { width: 56px; }
+.naming-order-no { min-width: 18px; text-align: right; color: var(--el-text-color-placeholder); font-size: 12px; }
+.naming-order-row { cursor: grab; }
+.naming-order-row.dragging { background: var(--el-color-primary-light-9); }
+.naming-order-row .el-button { opacity: 0.35; }
+.naming-order-row:hover .el-button { opacity: 1; }
 .naming-message { margin-left: 8px; color: var(--el-text-color-secondary); font-size: 12px; }
 </style>
