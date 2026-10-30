@@ -59,8 +59,9 @@ public class MaterialMasterService {
         int changeable = 0;
         List<RenameChange> samples = new ArrayList<>();
         int max = limit == null || limit <= 0 ? 50 : Math.min(limit, 500);
+        String categoryName = catalog.optionalConfiguration(categoryId).category().categoryName();
         for (InventoryMaterial material : materials) {
-            String generated = pattern.compose(material, schema);
+            String generated = pattern.compose(material, schema, categoryName);
             String skip = generated == null || generated.isBlank() ? "blank"
                     : Objects.equals(generated, material.getMaterialName()) ? "same" : null;
             if (skip == null) changeable++;
@@ -82,8 +83,9 @@ public class MaterialMasterService {
                 .eq(InventoryMaterial::getCategoryId, categoryId)
                 .orderByAsc(InventoryMaterial::getMaterialId));
         int changed = 0;
+        String categoryName = catalog.optionalConfiguration(categoryId).category().categoryName();
         for (InventoryMaterial material : materials) {
-            String generated = pattern.compose(material, schema);
+            String generated = pattern.compose(material, schema, categoryName);
             if (generated == null || generated.isBlank() || Objects.equals(generated, material.getMaterialName())) continue;
             updateNaming(material.getMaterialId(),
                     new NamingPatch(generated, null, "按品类命名规则重算"), operator);
@@ -179,7 +181,7 @@ public class MaterialMasterService {
                 material.setAttributeJson("{}");
             }
         }
-        return pattern.compose(material, schema);
+        return pattern.compose(material, schema, config.category().categoryName());
     }
 
     /** 命名规则预览（只读）：按品类取样 5 条物料，用传入规则试算新旧名对照。 */
@@ -197,7 +199,7 @@ public class MaterialMasterService {
         List<NamingSample> samples = new ArrayList<>();
         for (InventoryMaterial material : materials) {
             samples.add(new NamingSample(material.getMaterialId(), material.getMaterialCode(),
-                    material.getMaterialName(), normalized.compose(material, schema)));
+                    material.getMaterialName(), normalized.compose(material, schema, config.category().categoryName())));
         }
         return new NamingPreview(samples, materials.isEmpty() ? "该品类暂无物料，规则只影响后续新建" : "预览取该品类最近 5 条物料");
     }

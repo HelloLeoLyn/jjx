@@ -28,7 +28,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     public static final List<String> COMMON_TOKENS =
             List.of("brand", "model", "color", "meta", "form", "unit",
                     "width", "length", "thickness_mm", "grammage",
-                    "customersupplied", "sampleonly");
+                    "customersupplied", "sampleonly", "category");
     public static final String DEFAULT_SEPARATOR = " ";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -69,6 +69,11 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
 
     /** 生成名称；缺值按 skip（跳过）或 placeholder（占位 —）处理。 */
     public String compose(InventoryMaterial material, MaterialAttributeSchema schema) {
+        return compose(material, schema, null);
+    }
+
+    /** 生成名称（可带品类名，供 category 字段使用，dev-20261030-005）。 */
+    public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName) {
         MaterialNamingPattern pattern = normalized();
         if (pattern.fields().isEmpty()) return null;
         Map<String, Object> attributes = readAttributes(material.getAttributeJson());
@@ -76,7 +81,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         StringBuilder text = new StringBuilder();
         boolean first = true;
         for (String field : pattern.fields()) {
-            String value = valueOf(material, schema, attributes, spec, field);
+            String value = valueOf(material, schema, attributes, spec, field, categoryName);
             String part = value == null || value.isBlank()
                     ? ("placeholder".equals(pattern.empty()) ? "—" : null)
                     : value.trim();
@@ -89,7 +94,8 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     }
 
     private static String valueOf(InventoryMaterial material, MaterialAttributeSchema schema,
-                                  Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field) {
+                                  Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
+                                  String categoryName) {
         return switch (field) {
             case "brand" -> material.getBrand();
             case "model" -> material.getModel();
@@ -104,6 +110,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             // 档案标记：为真才输出文字，为假/空不输出（避免名称里出现“非客供”）
             case "customersupplied" -> Boolean.TRUE.equals(material.getIsCustomerSupplied()) ? "客供" : null;
             case "sampleonly" -> Boolean.TRUE.equals(material.getIsSample()) ? "样品" : null;
+            case "category" -> categoryName;
             default -> optionText(schema, attributes, field);
         };
     }

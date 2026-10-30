@@ -81,6 +81,14 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 品类名可作为命名段() {
+        var pattern = new MaterialNamingPattern(List.of("category", "model"), " ", "skip");
+        assertEquals("PET膜/片 125", pattern.compose(material(), SCHEMA, "PET膜/片"));
+        // 未传品类名时该段不输出
+        assertEquals("125", pattern.compose(material(), SCHEMA));
+    }
+
+    @Test
     void 客供与样品为真才输出文字() {
         var material = material();
         material.setIsCustomerSupplied(true);
