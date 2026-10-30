@@ -34,20 +34,13 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         COMMON_LABELS.put("form", "形态");
         COMMON_LABELS.put("model", "型号");
         COMMON_LABELS.put("color", "颜色");
-        COMMON_LABELS.put("unit", "单位");
         COMMON_LABELS.put("width", "宽");
         COMMON_LABELS.put("length", "长");
         COMMON_LABELS.put("thickness_mm", "厚度");
-        COMMON_LABELS.put("tolerance", "厚度公差");
         COMMON_LABELS.put("grammage", "克重");
-        COMMON_LABELS.put("basis", "规格口径");
         COMMON_LABELS.put("supplier", "供应商");
-        COMMON_LABELS.put("suppliermaterialname", "供应商品名");
-        COMMON_LABELS.put("keywords", "别名");
-        COMMON_LABELS.put("remark", "备注");
         COMMON_LABELS.put("customersupplied", "客供");
         COMMON_LABELS.put("sampleonly", "样品");
-        COMMON_LABELS.put("status", "状态");
     }
     public static final List<String> COMMON_TOKENS = List.copyOf(COMMON_LABELS.keySet());
     public static final String DEFAULT_SEPARATOR = " ";
@@ -130,7 +123,6 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             case "color" -> colorText(material.getColor());
             case "meta" -> material.getMaterialMeta();
             case "form" -> material.getMaterialForm();
-            case "unit" -> material.getUnit();
             case "width" -> decimalText(firstNonNull(material.getWidthMm(), spec == null ? null : spec.widthMm()));
             case "length" -> decimalText(firstNonNull(material.getLengthMm(), spec == null ? null : spec.lengthMm()));
             case "thickness_mm" -> decimalText(firstNonNull(material.getThicknessMm(), spec == null ? null : spec.thicknessMm()));
@@ -139,13 +131,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             case "customersupplied" -> Boolean.TRUE.equals(material.getIsCustomerSupplied()) ? "客供" : null;
             case "sampleonly" -> Boolean.TRUE.equals(material.getIsSample()) ? "样品" : null;
             case "category" -> categoryName;
-            case "tolerance" -> decimalText(material.getThicknessTolerance());
-            case "basis" -> material.getSpecBasis();
             case "supplier" -> material.getSupplierName();
-            case "suppliermaterialname" -> material.getSupplierMaterialName();
-            case "keywords" -> material.getSearchKeywords();
-            case "remark" -> material.getRemark();
-            case "status" -> material.getStatus() == null ? null : String.valueOf(material.getStatus());
             default -> optionText(schema, attributes, field);
         };
     }
