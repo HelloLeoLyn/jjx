@@ -81,6 +81,16 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 颜色代码输出中文且中文原样保留() {
+        var material = material();
+        material.setColor("GREEN");
+        var pattern = new MaterialNamingPattern(List.of("model", "color"), " ", "skip");
+        assertEquals("125 绿色", pattern.compose(material, SCHEMA));
+        material.setColor("蓝色");
+        assertEquals("125 蓝色", pattern.compose(material, SCHEMA));
+    }
+
+    @Test
     void 品类名可作为命名段() {
         var pattern = new MaterialNamingPattern(List.of("category", "model"), " ", "skip");
         assertEquals("PET膜/片 125", pattern.compose(material(), SCHEMA, "PET膜/片"));

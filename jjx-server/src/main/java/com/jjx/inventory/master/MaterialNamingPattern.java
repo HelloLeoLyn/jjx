@@ -148,7 +148,9 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     /** 颜色存代码，命名用名称；映射缺失时回退代码。 */
     private static String colorText(String code) {
         if (code == null || code.isBlank()) return null;
-        return switch (code) {
+        // 已经是中文（字典里直接存中文色名）就原样输出
+        if (code.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.HAN)) return code;
+        return switch (code.trim().toUpperCase()) {
             case "BLACK" -> "黑";
             case "WHITE" -> "白";
             case "YELLOW" -> "黄";
@@ -157,6 +159,16 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             case "GRAY" -> "灰";
             case "SILVER" -> "银";
             case "TRANSPARENT" -> "透明";
+            case "GREEN" -> "绿色";
+            case "ORANGE" -> "橙色";
+            case "PURPLE" -> "紫色";
+            case "BROWN" -> "棕色";
+            case "PINK" -> "粉色";
+            case "GOLD" -> "金色";
+            case "GOLDEN" -> "金色";
+            case "CLEAR" -> "透明";
+            case "NATURAL" -> "本色";
+            case "MILKY" -> "乳白";
             default -> code;
         };
     }
