@@ -50,13 +50,31 @@ public class MaterialMasterCatalog {
                 .eq(InventoryAttributeTemplate::getStatus, StatusEnum.NORMAL.getCode()))
                 .forEach(t -> templateCategories.add(t.getCategoryId()));
         List<Category> result = new ArrayList<>();
+        List<String> resultKeys = new ArrayList<>();
         for (InventoryMaterialCategory category : all) {
             List<InventoryMaterialCategory> path = path(category.getCategoryId(), byId, false);
             if (path.isEmpty() || !includeDisabled && path.stream().anyMatch(c -> !enabled(c))) continue;
             boolean leaf = all.stream().noneMatch(c -> Objects.equals(category.getCategoryId(), c.getParentId()));
             result.add(toCategory(category, path, leaf && templateCategories.contains(category.getCategoryId())));
+            resultKeys.add(treeKey(path));
         }
-        return result;
+        // 按分类树序返回：一级 sort → 二级 sort → 末级 sort → id（dev-20261030-009）
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < result.size(); i++) order.add(i);
+        order.sort(Comparator.comparing(resultKeys::get));
+        List<Category> sorted = new ArrayList<>();
+        for (Integer index : order) sorted.add(result.get(index));
+        return sorted;
+    }
+
+    /** 树序遍历键：把每一级的 (sortOrder, id) 拼成可比较字符串，保证同级按设置序号、再按 id。 */
+    private static String treeKey(List<InventoryMaterialCategory> path) {
+        StringBuilder key = new StringBuilder();
+        for (InventoryMaterialCategory node : path) {
+            int sort = node.getSortOrder() == null ? Integer.MAX_VALUE : node.getSortOrder();
+            key.append(String.format("%010d#%010d;", sort, node.getCategoryId()));
+        }
+        return key.toString();
     }
 
     public Configuration configuration(Long categoryId) {
