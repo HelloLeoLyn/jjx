@@ -244,6 +244,32 @@ class MaterialMasterDataTest {
         assertThrows(BusinessException.class, () -> service.selectEntities(invalid));
     }
 
+    /** 列筛选（dev-20261030-018）：批次控制、低库存子查询、创建时间范围；非法日期拒绝。 */
+    @Test void listFiltersByBatchControlLowStockAndCreatedRange() {
+        when(mapper.selectList(any())).thenReturn(List.of());
+        MaterialQueryDTO dto = new MaterialQueryDTO();
+        dto.setBatchControl(true); dto.setLowStock(true);
+        dto.setCreateTimeStart("2026-10-01"); dto.setCreateTimeEnd("2026-10-30");
+        service.selectEntities(dto);
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper).selectList(wrapper.capture());
+        String sql = wrapper.getValue().getSqlSegment();
+        assertTrue(sql.contains("batch_control ="), sql);
+        assertTrue(sql.contains("EXISTS (SELECT 1 FROM inventory_stock s"), sql);
+        assertTrue(sql.contains("create_time >="), sql);
+        assertTrue(sql.contains("create_time <"), sql);
+        // 低库存选否：取反，含从未入库的物料
+        clearInvocations(mapper);
+        MaterialQueryDTO notLow = new MaterialQueryDTO(); notLow.setLowStock(false);
+        service.selectEntities(notLow);
+        verify(mapper).selectList(wrapper.capture());
+        assertTrue(wrapper.getValue().getSqlSegment().contains("NOT EXISTS (SELECT 1 FROM inventory_stock s"),
+                wrapper.getValue().getSqlSegment());
+        // 日期格式非法直接拒绝
+        MaterialQueryDTO invalid = new MaterialQueryDTO(); invalid.setCreateTimeStart("2026/10/01");
+        assertThrows(BusinessException.class, () -> service.selectEntities(invalid));
+    }
+
     /** 元件类型下拉选项由模板属性定义合并而来（dev-20261030-017）。 */
     @Test void catalogMergesAttributeOptionsAcrossTemplates() {
         var templateMapper = mock(com.jjx.inventory.master.AttributeTemplateMapper.class);

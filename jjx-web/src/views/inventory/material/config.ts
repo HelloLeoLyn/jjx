@@ -87,6 +87,33 @@ export const searchOptions: SearchOptions[] = [
       { value: false, label: '否' },
     ],
   },
+  {
+    prop: 'batchControl',
+    label: '批次控制',
+    type: 'select',
+    advanced: true,
+    options: [
+      { value: true, label: '是' },
+      { value: false, label: '否' },
+    ],
+  },
+  {
+    prop: 'lowStock',
+    label: '低库存',
+    type: 'select',
+    advanced: true,
+    // 低库存 = 安全库存>0 且现有库存小于安全库存（dev-20261030-018）
+    options: [
+      { value: true, label: '是' },
+      { value: false, label: '否' },
+    ],
+  },
+  {
+    prop: 'createTimeRange',
+    label: '创建时间',
+    type: 'daterange',
+    advanced: true,
+  },
 
   {
     prop: 'tagIds',

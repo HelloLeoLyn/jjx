@@ -178,8 +178,33 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
             wrapper.eq(InventoryMaterial::getStatus, queryDTO.getStatus());
         }
         applyAttributeFilters(wrapper, queryDTO);
+        applyColumnFilters(wrapper, queryDTO);
         wrapper.orderByDesc(InventoryMaterial::getCreateTime).orderByDesc(InventoryMaterial::getMaterialId);
         return wrapper;
+    }
+
+    /** 列表列筛选：批次控制、低库存、创建时间范围（dev-20261030-018）。 */
+    private static void applyColumnFilters(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {
+        if (dto.getBatchControl() != null) wrapper.eq(InventoryMaterial::getBatchControl, dto.getBatchControl());
+        if (dto.getLowStock() != null) {
+            // 低库存 = 安全库存>0 且现有总量小于安全库存；false 取反（含从未入库的物料）
+            String shortage = "EXISTS (SELECT 1 FROM inventory_stock s WHERE s.material_id = inventory_material.material_id"
+                    + " AND IFNULL(inventory_material.safe_stock, 0) > 0"
+                    + " AND s.total_quantity < inventory_material.safe_stock)";
+            wrapper.apply(Boolean.TRUE.equals(dto.getLowStock()) ? shortage : "NOT " + shortage);
+        }
+        java.time.LocalDate start = queryDate(dto.getCreateTimeStart(), "创建开始日期");
+        java.time.LocalDate end = queryDate(dto.getCreateTimeEnd(), "创建结束日期");
+        if (start != null) wrapper.ge(InventoryMaterial::getCreateTime, start.atStartOfDay());
+        if (end != null) wrapper.lt(InventoryMaterial::getCreateTime, end.plusDays(1).atStartOfDay());
+    }
+
+    /** 查询日期：接受 YYYY-MM-DD 或带时间的字符串，取前 10 位日期。 */
+    private static java.time.LocalDate queryDate(String text, String label) {
+        if (StringUtils.isBlank(text)) return null;
+        String day = text.trim().substring(0, Math.min(10, text.trim().length()));
+        try { return java.time.LocalDate.parse(day); }
+        catch (RuntimeException e) { throw new BusinessException(label + "格式应为 YYYY-MM-DD：" + text); }
     }
 
     @Override

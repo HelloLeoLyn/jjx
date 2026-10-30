@@ -136,4 +136,41 @@ describe('物料列表默认查询与归类筛选', () => {
     expect(requests.at(-1)?.attributeKey).toBe('')
     expect(requests.at(-1)?.attributeValue).toBe('')
   })
+
+  it('创建时间范围拆成后端两个日期参数，批次控制/低库存原样提交（dev-20261030-018）', async () => {
+    const requests: Record<string, unknown>[] = []
+    page.mockImplementation(async (params) => {
+      requests.push({ ...params })
+      return { data: { records: [], total: 0 } }
+    })
+    wrapper = shallowMount(MaterialList, {
+      global: { directives: { hasPermi: {}, loading: {} } },
+    })
+    await flushPromises()
+    const search = wrapper.findComponent({ name: 'SearchForm' })
+    const fields = search.props('fields') as Array<{ prop: string; type?: string }>
+    for (const prop of ['batchControl', 'lowStock', 'createTimeRange']) {
+      expect(fields.some((field) => field.prop === prop)).toBe(true)
+    }
+    expect(fields.find((field) => field.prop === 'createTimeRange')?.type).toBe('daterange')
+    Object.assign(search.props('modelValue'), {
+      batchControl: true,
+      lowStock: true,
+      createTimeRange: ['2026-10-01', '2026-10-30'],
+    })
+    search.vm.$emit('search')
+    await flushPromises()
+    const latest = requests.at(-1) as Record<string, unknown>
+    expect(latest.batchControl).toBe(true)
+    expect(latest.lowStock).toBe(true)
+    expect(latest.createTimeStart).toBe('2026-10-01')
+    expect(latest.createTimeEnd).toBe('2026-10-30')
+    // 日期范围本身不提交
+    expect(latest).not.toHaveProperty('createTimeRange')
+    search.vm.$emit('reset')
+    await flushPromises()
+    const reset = requests.at(-1) as Record<string, unknown>
+    expect(reset.createTimeStart).toBe('')
+    expect(reset.createTimeEnd).toBe('')
+  })
 })

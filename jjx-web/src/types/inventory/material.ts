@@ -95,6 +95,8 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   /** 属性筛选：attribute_json 里的属性编码 + 取值（如 component_type=LED，dev-20261030-017） */
   attributeKey?: string
   attributeValue?: string
+  /** 创建时间范围（前端日期选择器绑定，提交时拆成 createTimeStart/End，dev-20261030-018） */
+  createTimeRange?: string[]
   /** 归类三态：unclassified / rule_unconfirmed / confirmed */
   classStatus?: string
   status?: string

@@ -91,7 +91,8 @@
             dictionaryText('brand', row.brand)
           }}</template></el-table-column
         >
-        <el-table-column label="尺寸" width="180" show-overflow-tooltip>
+        <!-- 生成规格已含尺寸，勾选后用它替代尺寸列，避免同信息两列重复（dev-20261030-018） -->
+        <el-table-column v-if="!showGeneratedSpec" label="尺寸" width="180" show-overflow-tooltip>
           <template #default="{ row }">{{ materialSizeText(row) }}</template>
         </el-table-column>
         <el-table-column label="克重(g/m²)" width="120" align="right">
@@ -192,7 +193,7 @@
       </el-table>
 
       <div class="table-options">
-        <el-checkbox v-model="showGeneratedSpec">显示生成规格</el-checkbox>
+        <el-checkbox v-model="showGeneratedSpec">用生成规格替代尺寸列</el-checkbox>
       </div>
       <pagination
         v-show="total > 0"
@@ -292,6 +293,11 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   categoryId: undefined,
   attributeKey: '',
   attributeValue: '',
+  batchControl: undefined,
+  lowStock: undefined,
+  createTimeRange: [],
+  createTimeStart: '',
+  createTimeEnd: '',
   materialGrade: '',
   model: '',
   color: '',
@@ -419,9 +425,14 @@ const categoryNameOf = (row: InventoryMaterial) => {
 const getList = async () => {
   // 属性筛选：选了元件类型才带属性编码，避免后端按空值筛选（dev-20261030-017）
   queryParams.attributeKey = queryParams.attributeValue ? 'component_type' : ''
+  // 创建时间范围映射成后端两个日期参数，日期范围本身不提交（dev-20261030-018）
+  const [createdFrom, createdTo] = queryParams.createTimeRange ?? []
+  queryParams.createTimeStart = createdFrom || ''
+  queryParams.createTimeEnd = createdTo || ''
+  const { createTimeRange: _createTimeRange, ...payload } = queryParams
   loading.value = true
   try {
-    const res = await materialApi.page(queryParams)
+    const res = await materialApi.page(payload)
     materialList.value = res.data?.records || []
     total.value = res.data?.total || 0
   } finally {
@@ -457,6 +468,11 @@ const handleReset = () => {
   queryParams.tagMatchMode = 'AND'
   queryParams.attributeKey = ''
   queryParams.attributeValue = ''
+  queryParams.batchControl = undefined
+  queryParams.lowStock = undefined
+  queryParams.createTimeRange = []
+  queryParams.createTimeStart = ''
+  queryParams.createTimeEnd = ''
   getList()
 }
 
