@@ -51,6 +51,8 @@ export interface MaterialSpecPattern {
   fields: { key: string; sep: string }[]
   show_label: boolean
   with_unit: boolean
+  /** each=每项带单位 / end=只在末尾带一次（默认）/ none=不带 */
+  unit_position?: 'each' | 'end' | 'none'
 }
 export interface MaterialNamingPreview {
   samples: { materialId: number; materialCode: string; oldName: string; newName: string | null }[]

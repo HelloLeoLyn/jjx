@@ -412,8 +412,12 @@
               <el-form-item label="显示字段名">
                 <el-switch v-model="specPattern.show_label" />
               </el-form-item>
-              <el-form-item label="带单位">
-                <el-switch v-model="specPattern.with_unit" />
+              <el-form-item label="单位位置">
+                <el-radio-group v-model="specPattern.unit_position">
+                  <el-radio-button label="end">只在末尾</el-radio-button>
+                  <el-radio-button label="each">每项都带</el-radio-button>
+                  <el-radio-button label="none">不带</el-radio-button>
+                </el-radio-group>
               </el-form-item>
               <span class="naming-message">留空字段不输出；未配置时沿用旧的“字段:值；尺寸”拼接。</span>
               <el-divider content-position="left">效果示例（该品类最近 5 条物料）</el-divider>
@@ -498,10 +502,16 @@ const templateStatus = ref<number>(CommonStatusEnum.NORMAL.value)
 const templateLoading = ref(false)
 const schema = ref<MaterialAttributeSchema>({ version: 1, meta_options: [], fields: [] })
 /** 规格模板：字段顺序 + 每字段 1 字符分隔符 + 是否显示字段名/带单位，存入 attribute_schema.spec_pattern（dev-20261029-027）。 */
-const specPattern = ref<{ fields: { key: string; sep: string }[]; show_label: boolean; with_unit: boolean }>({
+const specPattern = ref<{
+  fields: { key: string; sep: string }[]
+  show_label: boolean
+  with_unit: boolean
+  unit_position: 'each' | 'end' | 'none'
+}>({
   fields: [],
   show_label: false,
   with_unit: true,
+  unit_position: 'end',
 })
 const specSamples = ref<{ materialId: number; materialCode: string; oldSpec: string | null; newSpec: string | null }[]>([])
 const specLoading = ref(false)
@@ -734,7 +744,7 @@ async function loadTemplate(id: number) {
   templateLoading.value = true
   schema.value = { version: 1, meta_options: [], fields: [] }
   namePattern.value = { fields: [], separator: ' ', empty: 'skip', separators: {} }
-  specPattern.value = { fields: [], show_label: false, with_unit: true }
+  specPattern.value = { fields: [], show_label: false, with_unit: true, unit_position: 'end' }
   namingSamples.value = []
   namingMessage.value = ''
   renameReport.value = undefined
@@ -755,8 +765,9 @@ async function loadTemplate(id: number) {
           fields: (response.data.schema.spec_pattern.fields || []).map((item: any) => ({ key: item.key, sep: item.sep || '' })),
           show_label: !!response.data.schema.spec_pattern.show_label,
           with_unit: response.data.schema.spec_pattern.with_unit !== false,
+          unit_position: (response.data.schema.spec_pattern.unit_position as 'each' | 'end' | 'none') || 'end',
         }
-      : { fields: [], show_label: false, with_unit: true }
+      : { fields: [], show_label: false, with_unit: true, unit_position: 'end' }
     namePattern.value = response.data.schema.name_pattern
       ? {
           fields: [...response.data.schema.name_pattern.fields],

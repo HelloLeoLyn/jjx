@@ -29,9 +29,11 @@ public record MaterialAttributeSchema(
     }
 
     /** 规格模板：showLabel=是否输出“字段名:”，withUnit=是否带单位。 */
+    /** unit_position：each=每项带单位 / end=只在末尾带一次 / none=不带单位（缺省按 with_unit 兼容旧数据）。 */
     public record SpecPattern(List<SpecField> fields,
                               @JsonProperty("show_label") boolean showLabel,
-                              @JsonProperty("with_unit") boolean withUnit) {
+                              @JsonProperty("with_unit") boolean withUnit,
+                              @JsonProperty("unit_position") String unitPosition) {
         public record SpecField(String key, String sep) { }
     }
 
@@ -178,18 +180,24 @@ public record MaterialAttributeSchema(
         Map<String, Object> values = new LinkedHashMap<>(attributes);
         StringBuilder text = new StringBuilder();
         boolean first = true;
+        String lastUnit = "";
+        String position = specPattern.unitPosition() == null || specPattern.unitPosition().isBlank()
+                ? (specPattern.withUnit() ? "each" : "none") : specPattern.unitPosition().trim().toLowerCase();
         for (SpecPattern.SpecField item : specPattern.fields()) {
             if (item == null || item.key() == null || item.key().isBlank()) continue;
             String key = item.key().trim();
             String display = dimension(key, widthMm, lengthMm, thicknessMm, sizeUnit, values);
             if (display == null || display.isBlank()) continue;
             if (specPattern.showLabel()) display = specLabel(key) + ":" + display;
-            if (specPattern.withUnit()) display += specUnit(key, sizeUnit);
+            String unit = specUnit(key, sizeUnit);
+            if ("each".equals(position)) display += unit;
+            lastUnit = unit;
             String sep = item.sep() == null || item.sep().isEmpty() ? "；" : item.sep().substring(0, 1);
             if (!first) text.append(sep);
             text.append(display);
             first = false;
         }
+        if ("end".equals(position) && !first && !lastUnit.isEmpty()) text.append(lastUnit);
         String result = text.toString();
         if (result.length() > 500) fail("生成规格超过500字，请精简属性内容");
         return result.isEmpty() ? null : result;
