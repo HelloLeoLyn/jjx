@@ -48,6 +48,12 @@ vi.mock('@/api/inventory/materialMaster', () => ({
   materialMasterApi: {
     categories: async () => ({ data: [] }),
     dictionaries: async () => ({ data: {} }),
+    attributeOptions: async () => ({
+      data: [
+        { code: 'LED', label: 'LED' },
+        { code: 'CONNECTOR', label: '连接器' },
+      ],
+    }),
   },
 }))
 
@@ -74,7 +80,8 @@ describe('物料列表默认查询与归类筛选', () => {
     expect(requests).toHaveLength(1)
     expect(requests[0]).not.toHaveProperty('masterDataOnly')
     expect(requests[0].classStatus).toBe('')
-    expect(requests[0].pageSize).toBe(50)
+    // 默认每页条数由 dev-20261024-025 改为 20（本断言原写 50 已过期，dev-20261030-017 修正）
+    expect(requests[0].pageSize).toBe(20)
 
     const search = wrapper.findComponent({ name: 'SearchForm' })
     const fields = search.props('fields') as Array<{ prop: string; options?: unknown[] }>
@@ -93,5 +100,40 @@ describe('物料列表默认查询与归类筛选', () => {
     await flushPromises()
     expect(requests.at(-1)?.classStatus).toBe('')
     expect(requests.at(-1)).not.toHaveProperty('masterDataOnly')
+  })
+
+  it('元件类型筛选带属性编码提交，重置后清空（dev-20261030-017）', async () => {
+    const requests: Record<string, unknown>[] = []
+    page.mockImplementation(async (params) => {
+      requests.push({ ...params })
+      return { data: { records: [], total: 1 } }
+    })
+    wrapper = shallowMount(MaterialList, {
+      global: { directives: { hasPermi: {}, loading: {} } },
+    })
+    await flushPromises()
+    const search = wrapper.findComponent({ name: 'SearchForm' })
+    const fields = search.props('fields') as Array<{
+      prop: string
+      label?: string
+      options?: Array<{ value: unknown; label: string }>
+    }>
+    const componentType = fields.find((field) => field.prop === 'attributeValue')
+    expect(componentType?.label).toBe('元件类型')
+    expect(componentType?.options).toEqual([
+      { value: 'LED', label: 'LED' },
+      { value: 'CONNECTOR', label: '连接器' },
+    ])
+    // 未选元件类型：不带属性编码
+    expect(requests[0].attributeKey).toBe('')
+    search.props('modelValue').attributeValue = 'LED'
+    search.vm.$emit('search')
+    await flushPromises()
+    expect(requests.at(-1)?.attributeKey).toBe('component_type')
+    expect(requests.at(-1)?.attributeValue).toBe('LED')
+    search.vm.$emit('reset')
+    await flushPromises()
+    expect(requests.at(-1)?.attributeKey).toBe('')
+    expect(requests.at(-1)?.attributeValue).toBe('')
   })
 })

@@ -749,6 +749,16 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 .like(StringUtils.isNotBlank(dto.getModel()), InventoryMaterial::getModel, dto.getModel())
                 .eq(StringUtils.isNotBlank(dto.getColor()), InventoryMaterial::getColor, dto.getColor())
                 .eq(StringUtils.isNotBlank(dto.getBrand()), InventoryMaterial::getBrand, dto.getBrand());
+        applyAttributeValueFilter(wrapper, dto);
+    }
+
+    /** 属性值筛选：attribute_json 里的属性编码取值相等（如 元件类型 component_type=LED，dev-20261030-017）。 */
+    private static void applyAttributeValueFilter(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {
+        String key = StringUtils.trimToNull(dto.getAttributeKey());
+        String value = StringUtils.trimToNull(dto.getAttributeValue());
+        if (key == null || value == null) return;
+        if (!key.matches("[a-z][a-z0-9_]{0,49}")) throw new BusinessException("属性筛选字段无效：" + key);
+        wrapper.apply("JSON_UNQUOTE(JSON_EXTRACT(attribute_json, CONCAT('$.\"', {0}, '\"'))) = {1}", key, value);
     }
 
     /** 材料受控复合词（23 个，与前端 materialMasterFields 同一份口径）。 */

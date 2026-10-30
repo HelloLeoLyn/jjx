@@ -225,6 +225,42 @@ class MaterialMasterDataTest {
         assertTrue(wrapper.getValue().getCustomSqlSegment().contains("brand"));
     }
 
+    /** 属性筛选（dev-20261030-017）：按 attribute_json 属性编码取值精确过滤，非法编码拒绝。 */
+    @Test void listFiltersByAttributeValue() {
+        when(mapper.selectList(any())).thenReturn(List.of());
+        MaterialQueryDTO dto = new MaterialQueryDTO(); dto.setAttributeKey("component_type"); dto.setAttributeValue("LED");
+        service.selectEntities(dto);
+        service.selectEntities(new MaterialQueryDTO());
+        var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper, times(2)).selectList(wrapper.capture());
+        var captured = wrapper.getAllValues();
+        String filtered = captured.get(0).getSqlSegment();
+        assertTrue(filtered.contains("JSON_UNQUOTE(JSON_EXTRACT(attribute_json"), filtered);
+        // 没选属性值时不拼该条件
+        String plain = captured.get(captured.size() - 1).getSqlSegment();
+        assertFalse(plain.contains("JSON_EXTRACT"), plain);
+        // 非法属性编码直接拒绝，不做拼接
+        MaterialQueryDTO invalid = new MaterialQueryDTO(); invalid.setAttributeKey("x'; DROP TABLE"); invalid.setAttributeValue("LED");
+        assertThrows(BusinessException.class, () -> service.selectEntities(invalid));
+    }
+
+    /** 元件类型下拉选项由模板属性定义合并而来（dev-20261030-017）。 */
+    @Test void catalogMergesAttributeOptionsAcrossTemplates() {
+        var templateMapper = mock(com.jjx.inventory.master.AttributeTemplateMapper.class);
+        var template = new com.jjx.inventory.master.InventoryAttributeTemplate();
+        template.setCategoryId(29L); template.setStatus(1);
+        template.setAttributeSchema("{\"version\":1,\"meta_options\":[],\"fields\":[{\"key\":\"component_type\",\"label\":\"元件类型\",\"type\":\"enum\",\"required\":true,\"options\":[{\"code\":\"LED\",\"label\":\"LED\"},{\"code\":\"CONNECTOR\",\"label\":\"连接器\"}]}]}");
+        when(templateMapper.selectList(any())).thenReturn(List.of(template));
+        var catalog = new com.jjx.inventory.master.MaterialMasterCatalog(
+                mock(com.jjx.inventory.mapper.InventoryMaterialCategoryMapper.class), templateMapper,
+                mock(com.jjx.system.mapper.SysDictItemMapper.class), mock(com.jjx.system.mapper.SysDictMapper.class), new ObjectMapper());
+        var options = catalog.attributeOptions("component_type");
+        assertEquals(2, options.size());
+        assertEquals("LED", options.get(0).code());
+        assertEquals("连接器", options.get(1).label());
+        assertTrue(catalog.attributeOptions("bad key").isEmpty());
+    }
+
     static List<MaterialImportDTO> workbook(String[] headers, String[] values) throws Exception {
         try (var wb = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             var sheet = wb.createSheet(); var head = sheet.createRow(0); var row = sheet.createRow(1);

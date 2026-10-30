@@ -92,6 +92,9 @@ export interface InventoryMaterialQueryParams extends PageQuery {
   model?: string
   color?: string
   brand?: string
+  /** 属性筛选：attribute_json 里的属性编码 + 取值（如 component_type=LED，dev-20261030-017） */
+  attributeKey?: string
+  attributeValue?: string
   /** 归类三态：unclassified / rule_unconfirmed / confirmed */
   classStatus?: string
   status?: string

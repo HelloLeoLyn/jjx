@@ -290,6 +290,8 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   classStatus: '',
   supplierId: undefined,
   categoryId: undefined,
+  attributeKey: '',
+  attributeValue: '',
   materialGrade: '',
   model: '',
   color: '',
@@ -388,6 +390,19 @@ const loadCategoryOptions = async () => {
         label: o.label,
       }))
   }
+  // 元件类型下拉：取电子元件品类模板的 component_type 选项（dev-20261030-017）
+  const componentTypeFilter = searchFields.value.find((item) => item.prop === 'attributeValue')
+  if (componentTypeFilter) {
+    try {
+      const optionResponse = await materialMasterApi.attributeOptions('component_type')
+      componentTypeFilter.options = (optionResponse.data || []).map((o) => ({
+        value: o.code,
+        label: o.label,
+      }))
+    } catch {
+      componentTypeFilter.options = []
+    }
+  }
 }
 
 // 列表列的品类名：后端 MaterialVO.categoryName 未赋值，这里按已加载品类映射
@@ -402,6 +417,8 @@ const categoryNameOf = (row: InventoryMaterial) => {
 
 // 获取列表
 const getList = async () => {
+  // 属性筛选：选了元件类型才带属性编码，避免后端按空值筛选（dev-20261030-017）
+  queryParams.attributeKey = queryParams.attributeValue ? 'component_type' : ''
   loading.value = true
   try {
     const res = await materialApi.page(queryParams)
@@ -438,6 +455,8 @@ const handleReset = () => {
   queryParams.isSample = undefined
   queryParams.tagIds = []
   queryParams.tagMatchMode = 'AND'
+  queryParams.attributeKey = ''
+  queryParams.attributeValue = ''
   getList()
 }
 

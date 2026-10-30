@@ -18,6 +18,9 @@ export const materialMasterApi = {
   categories: (includeDisabled = false) =>
     request.get<R<MaterialMasterCategory[]>>(`${base}/categories`, { params: { includeDisabled } }),
   dictionaries: () => request.get<R<MaterialDictionaries>>(`${base}/dictionaries`),
+  /** 属性字段可选值（跨品类合并同名字段，如 component_type 元件类型，dev-20261030-017） */
+  attributeOptions: (key: string) =>
+    request.get<R<{ code: string; label: string }[]>>(`${base}/attribute-options`, { params: { key } }),
   configuration: (categoryId: number) =>
     request.get<R<MaterialMasterConfiguration>>(`${base}/configuration/${categoryId}`),
   detail: (id: number) => request.get<R<MaterialMasterDetail>>(`${base}/${id}`),
