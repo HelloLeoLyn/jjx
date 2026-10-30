@@ -225,23 +225,27 @@ class MaterialMasterDataTest {
         assertTrue(wrapper.getValue().getCustomSqlSegment().contains("brand"));
     }
 
-    /** 属性筛选（dev-20261030-017）：按 attribute_json 属性编码取值精确过滤，非法编码拒绝。 */
-    @Test void listFiltersByAttributeValue() {
+    /** 属性筛选（dev-20261030-019）：attributeFilters JSON 数组，逐条 AND，非法参数拒绝。 */
+    @Test void listFiltersByAttributeFiltersJson() {
         when(mapper.selectList(any())).thenReturn(List.of());
-        MaterialQueryDTO dto = new MaterialQueryDTO(); dto.setAttributeKey("component_type"); dto.setAttributeValue("LED");
+        MaterialQueryDTO dto = new MaterialQueryDTO();
+        dto.setAttributeFilters("[{\"key\":\"component_type\",\"value\":\"LED\"},{\"key\":\"mount_type\",\"value\":\"SMD\"}]");
         service.selectEntities(dto);
-        service.selectEntities(new MaterialQueryDTO());
         var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
-        verify(mapper, times(2)).selectList(wrapper.capture());
-        var captured = wrapper.getAllValues();
-        String filtered = captured.get(0).getSqlSegment();
-        assertTrue(filtered.contains("JSON_UNQUOTE(JSON_EXTRACT(attribute_json"), filtered);
-        // 没选属性值时不拼该条件
-        String plain = captured.get(captured.size() - 1).getSqlSegment();
-        assertFalse(plain.contains("JSON_EXTRACT"), plain);
-        // 非法属性编码直接拒绝，不做拼接
-        MaterialQueryDTO invalid = new MaterialQueryDTO(); invalid.setAttributeKey("x'; DROP TABLE"); invalid.setAttributeValue("LED");
-        assertThrows(BusinessException.class, () -> service.selectEntities(invalid));
+        verify(mapper).selectList(wrapper.capture());
+        String sql = wrapper.getValue().getSqlSegment();
+        assertEquals(2, sql.split("JSON_UNQUOTE\\(JSON_EXTRACT\\(attribute_json", -1).length - 1, sql);
+        // 没传属性筛选时不拼该条件
+        clearInvocations(mapper);
+        service.selectEntities(new MaterialQueryDTO());
+        verify(mapper).selectList(wrapper.capture());
+        assertFalse(wrapper.getValue().getSqlSegment().contains("JSON_EXTRACT"), wrapper.getValue().getSqlSegment());
+        // 参数校验：非数组、缺字段、非法编码、超量都拒绝
+        for (String bad : new String[]{"not-json", "{}", "[{\"key\":\"\",\"value\":\"LED\"}]",
+                "[{\"key\":\"x'; DROP TABLE\",\"value\":\"LED\"}]"}) {
+            MaterialQueryDTO invalid = new MaterialQueryDTO(); invalid.setAttributeFilters(bad);
+            assertThrows(BusinessException.class, () -> service.selectEntities(invalid), bad);
+        }
     }
 
     /** 列筛选（dev-20261030-018）：批次控制、低库存子查询、创建时间范围；非法日期拒绝。 */
@@ -268,23 +272,6 @@ class MaterialMasterDataTest {
         // 日期格式非法直接拒绝
         MaterialQueryDTO invalid = new MaterialQueryDTO(); invalid.setCreateTimeStart("2026/10/01");
         assertThrows(BusinessException.class, () -> service.selectEntities(invalid));
-    }
-
-    /** 元件类型下拉选项由模板属性定义合并而来（dev-20261030-017）。 */
-    @Test void catalogMergesAttributeOptionsAcrossTemplates() {
-        var templateMapper = mock(com.jjx.inventory.master.AttributeTemplateMapper.class);
-        var template = new com.jjx.inventory.master.InventoryAttributeTemplate();
-        template.setCategoryId(29L); template.setStatus(1);
-        template.setAttributeSchema("{\"version\":1,\"meta_options\":[],\"fields\":[{\"key\":\"component_type\",\"label\":\"元件类型\",\"type\":\"enum\",\"required\":true,\"options\":[{\"code\":\"LED\",\"label\":\"LED\"},{\"code\":\"CONNECTOR\",\"label\":\"连接器\"}]}]}");
-        when(templateMapper.selectList(any())).thenReturn(List.of(template));
-        var catalog = new com.jjx.inventory.master.MaterialMasterCatalog(
-                mock(com.jjx.inventory.mapper.InventoryMaterialCategoryMapper.class), templateMapper,
-                mock(com.jjx.system.mapper.SysDictItemMapper.class), mock(com.jjx.system.mapper.SysDictMapper.class), new ObjectMapper());
-        var options = catalog.attributeOptions("component_type");
-        assertEquals(2, options.size());
-        assertEquals("LED", options.get(0).code());
-        assertEquals("连接器", options.get(1).label());
-        assertTrue(catalog.attributeOptions("bad key").isEmpty());
     }
 
     static List<MaterialImportDTO> workbook(String[] headers, String[] values) throws Exception {

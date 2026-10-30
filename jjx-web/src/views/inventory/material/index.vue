@@ -237,7 +237,7 @@ defineOptions({
 })
 
 import { renderMaterialDimensions } from '@/components/inventory/materialSize'
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import SearchForm from '@/components/common-ui/SearchForm.vue'
@@ -291,8 +291,7 @@ const queryParams = reactive<InventoryMaterialQueryParams>({
   classStatus: '',
   supplierId: undefined,
   categoryId: undefined,
-  attributeKey: '',
-  attributeValue: '',
+  attributeFilters: '',
   batchControl: undefined,
   lowStock: undefined,
   createTimeRange: [],
@@ -396,20 +395,72 @@ const loadCategoryOptions = async () => {
         label: o.label,
       }))
   }
-  // 元件类型下拉：取电子元件品类模板的 component_type 选项（dev-20261030-017）
-  const componentTypeFilter = searchFields.value.find((item) => item.prop === 'attributeValue')
-  if (componentTypeFilter) {
-    try {
-      const optionResponse = await materialMasterApi.attributeOptions('component_type')
-      componentTypeFilter.options = (optionResponse.data || []).map((o) => ({
-        value: o.code,
-        label: o.label,
-      }))
-    } catch {
-      componentTypeFilter.options = []
-    }
+}
+
+/**
+ * 品类属性筛选（dev-20261030-019）：选中品类后按模板把可筛属性（枚举/布尔）加成筛选字段，
+ * 每项对应一个 attr__<属性编码> 参数，提交时聚合成 attributeFilters JSON。
+ */
+interface AttributeFilterField {
+  prop: string
+  key: string
+  label: string
+}
+
+const attributeFilterFields = ref<AttributeFilterField[]>([])
+let attributeSyncToken = 0
+
+const clearAttributeFilters = () => {
+  for (const field of attributeFilterFields.value) delete (queryParams as Record<string, unknown>)[field.prop]
+  attributeFilterFields.value = []
+  searchFields.value = searchFields.value.filter((item) => !item.prop.startsWith('attr__'))
+}
+
+const syncAttributeFilters = async () => {
+  const token = ++attributeSyncToken
+  const categoryId = queryParams.categoryId
+  clearAttributeFilters()
+  if (!categoryId) return
+  try {
+    const response = await materialMasterApi.configuration(categoryId)
+    // 品类切换后旧请求返回直接丢弃，避免把上一品类的属性塞进来
+    if (token !== attributeSyncToken) return
+    const fields = (response.data?.schema?.fields || [])
+      .filter(
+        (field) =>
+          field.key !== 'thickness_mm' &&
+          (field.type === 'enum' || field.type === 'boolean') &&
+          (field.type === 'boolean' || (field.options?.length ?? 0) > 0)
+      )
+      .slice(0, 8)
+    attributeFilterFields.value = fields.map((field) => ({
+      prop: `attr__${field.key}`,
+      key: field.key,
+      label: field.label,
+    }))
+    searchFields.value = [
+      ...searchFields.value,
+      ...fields.map((field) => ({
+        prop: `attr__${field.key}`,
+        label: field.label,
+        type: 'select' as const,
+        advanced: true,
+        options:
+          field.type === 'boolean'
+            ? [
+                { value: 'true', label: '是' },
+                { value: 'false', label: '否' },
+              ]
+            : (field.options || []).map((o) => ({ value: o.code, label: o.label })),
+      })),
+    ]
+  } catch {
+    // 品类未绑模板/加载失败：不加属性筛选，列表照常查
+    if (token === attributeSyncToken) clearAttributeFilters()
   }
 }
+
+watch(() => queryParams.categoryId, () => void syncAttributeFilters())
 
 // 列表列的品类名：后端 MaterialVO.categoryName 未赋值，这里按已加载品类映射
 const categoryNameOf = (row: InventoryMaterial) => {
@@ -423,13 +474,19 @@ const categoryNameOf = (row: InventoryMaterial) => {
 
 // 获取列表
 const getList = async () => {
-  // 属性筛选：选了元件类型才带属性编码，避免后端按空值筛选（dev-20261030-017）
-  queryParams.attributeKey = queryParams.attributeValue ? 'component_type' : ''
+  // 属性筛选：只有填了值的属性才提交，聚合成 attributeFilters JSON（dev-20261030-019）
+  const attributeFilters = attributeFilterFields.value
+    .map((field) => ({ key: field.key, value: (queryParams as Record<string, unknown>)[field.prop] }))
+    .filter((item) => item.value != null && item.value !== '')
+    .map((item) => ({ key: item.key, value: String(item.value) }))
+  queryParams.attributeFilters = attributeFilters.length ? JSON.stringify(attributeFilters) : ''
   // 创建时间范围映射成后端两个日期参数，日期范围本身不提交（dev-20261030-018）
   const [createdFrom, createdTo] = queryParams.createTimeRange ?? []
   queryParams.createTimeStart = createdFrom || ''
   queryParams.createTimeEnd = createdTo || ''
   const { createTimeRange: _createTimeRange, ...payload } = queryParams
+  // 动态属性筛选字段按 attr__<key> 挂在查询对象上，只用于聚合，不直接提交
+  for (const field of attributeFilterFields.value) delete (payload as Record<string, unknown>)[field.prop]
   loading.value = true
   try {
     const res = await materialApi.page(payload)
@@ -466,8 +523,9 @@ const handleReset = () => {
   queryParams.isSample = undefined
   queryParams.tagIds = []
   queryParams.tagMatchMode = 'AND'
-  queryParams.attributeKey = ''
-  queryParams.attributeValue = ''
+  queryParams.attributeFilters = ''
+  // 动态属性筛选字段随品类清空（dev-20261030-019）
+  clearAttributeFilters()
   queryParams.batchControl = undefined
   queryParams.lowStock = undefined
   queryParams.createTimeRange = []

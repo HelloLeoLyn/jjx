@@ -40,13 +40,6 @@ export const searchOptions: SearchOptions[] = [
     options: [],
   },
   {
-    prop: 'attributeValue',
-    label: '元件类型',
-    type: 'select',
-    // 电子元件品类的 component_type 属性值，选项由 attribute-options 接口注入（dev-20261030-017）
-    options: [],
-  },
-  {
     prop: 'materialForm',
     label: '形态',
     type: 'select',

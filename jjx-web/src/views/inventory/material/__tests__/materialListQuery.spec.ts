@@ -48,11 +48,24 @@ vi.mock('@/api/inventory/materialMaster', () => ({
   materialMasterApi: {
     categories: async () => ({ data: [] }),
     dictionaries: async () => ({ data: {} }),
-    attributeOptions: async () => ({
-      data: [
-        { code: 'LED', label: 'LED' },
-        { code: 'CONNECTOR', label: '连接器' },
-      ],
+    configuration: async () => ({
+      data: {
+        schema: {
+          fields: [
+            {
+              key: 'component_type',
+              label: '元件类型',
+              type: 'enum',
+              options: [
+                { code: 'LED', label: 'LED' },
+                { code: 'CONNECTOR', label: '连接器' },
+              ],
+            },
+            { key: 'package', label: '封装', type: 'string', options: null },
+            { key: 'thickness_mm', label: '厚度', type: 'decimal', options: null },
+          ],
+        },
+      },
     }),
   },
 }))
@@ -102,7 +115,7 @@ describe('物料列表默认查询与归类筛选', () => {
     expect(requests.at(-1)).not.toHaveProperty('masterDataOnly')
   })
 
-  it('元件类型筛选带属性编码提交，重置后清空（dev-20261030-017）', async () => {
+  it('选中品类后按模板生成属性筛选，提交聚合为 attributeFilters（dev-20261030-019）', async () => {
     const requests: Record<string, unknown>[] = []
     page.mockImplementation(async (params) => {
       requests.push({ ...params })
@@ -113,28 +126,35 @@ describe('物料列表默认查询与归类筛选', () => {
     })
     await flushPromises()
     const search = wrapper.findComponent({ name: 'SearchForm' })
+    // 没选品类：没有属性筛选项，也不带 attributeFilters
+    expect(requests[0].attributeFilters).toBe('')
+    expect((search.props('fields') as Array<{ prop: string }>).some((field) => field.prop.startsWith('attr__'))).toBe(false)
+    // 选了品类：按模板出现枚举属性（封装/厚度这类非枚举不进筛选）
+    Object.assign(search.props('modelValue'), { categoryId: 29 })
+    await flushPromises()
     const fields = search.props('fields') as Array<{
       prop: string
       label?: string
       options?: Array<{ value: unknown; label: string }>
     }>
-    const componentType = fields.find((field) => field.prop === 'attributeValue')
+    const componentType = fields.find((field) => field.prop === 'attr__component_type')
     expect(componentType?.label).toBe('元件类型')
     expect(componentType?.options).toEqual([
       { value: 'LED', label: 'LED' },
       { value: 'CONNECTOR', label: '连接器' },
     ])
-    // 未选元件类型：不带属性编码
-    expect(requests[0].attributeKey).toBe('')
-    search.props('modelValue').attributeValue = 'LED'
+    expect(fields.some((field) => field.prop === 'attr__package')).toBe(false)
+    expect(fields.some((field) => field.prop === 'attr__thickness_mm')).toBe(false)
+    Object.assign(search.props('modelValue'), { 'attr__component_type': 'LED' })
     search.vm.$emit('search')
     await flushPromises()
-    expect(requests.at(-1)?.attributeKey).toBe('component_type')
-    expect(requests.at(-1)?.attributeValue).toBe('LED')
+    const latest = requests.at(-1) as Record<string, unknown>
+    expect(latest.attributeFilters).toBe('[{"key":"component_type","value":"LED"}]')
+    // 动态字段本身不提交
+    expect(latest).not.toHaveProperty('attr__component_type')
     search.vm.$emit('reset')
     await flushPromises()
-    expect(requests.at(-1)?.attributeKey).toBe('')
-    expect(requests.at(-1)?.attributeValue).toBe('')
+    expect((requests.at(-1) as Record<string, unknown>).attributeFilters).toBe('')
   })
 
   it('创建时间范围拆成后端两个日期参数，批次控制/低库存原样提交（dev-20261030-018）', async () => {

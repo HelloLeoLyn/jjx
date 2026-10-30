@@ -52,9 +52,8 @@ public class MaterialQueryDTO extends PageQuery{
     private String color;
     private String brand;
 
-    /** 属性筛选：按 attribute_json 里的属性编码精确匹配（如 component_type=LED，dev-20261030-017）。 */
-    private String attributeKey;
-    private String attributeValue;
+    /** 属性筛选：JSON 数组 [{"key":"component_type","value":"LED"}]，多条件 AND（dev-20261030-019）。 */
+    private String attributeFilters;
 
 
     private String status;

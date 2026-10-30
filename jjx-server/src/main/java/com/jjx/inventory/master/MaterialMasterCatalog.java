@@ -162,26 +162,6 @@ public class MaterialMasterCatalog {
         return result;
     }
 
-    /** 属性字段的可选值：跨品类合并同名字段（如 component_type 元件类型），供列表搜索下拉使用（dev-20261030-017）。 */
-    public List<DictionaryOption> attributeOptions(String key) {
-        if (key == null || !key.matches("[a-z][a-z0-9_]{0,49}")) return List.of();
-        Map<String, String> merged = new LinkedHashMap<>();
-        for (InventoryAttributeTemplate template : templateMapper.selectList(new LambdaQueryWrapper<InventoryAttributeTemplate>()
-                .eq(InventoryAttributeTemplate::getStatus, StatusEnum.NORMAL.getCode()))) {
-            MaterialAttributeSchema schema;
-            try { schema = MaterialAttributeSchema.parse(template.getAttributeSchema(), objectMapper); }
-            catch (RuntimeException ignored) { continue; }
-            for (MaterialAttributeSchema.Field field : schema.fields()) {
-                if (!key.equals(field.key()) || field.options() == null) continue;
-                for (MaterialAttributeSchema.Option option : field.options()) {
-                    String label = option.label() == null || option.label().isBlank() ? option.code() : option.label();
-                    merged.putIfAbsent(option.code(), label);
-                }
-            }
-        }
-        return merged.entrySet().stream().map(e -> new DictionaryOption(e.getKey(), e.getValue())).toList();
-    }
-
     public String dictionaryLabel(String dict, String code, boolean required) {
         if (code == null || code.isBlank()) {
             if (required) throw new BusinessException(dict + "不能为空");

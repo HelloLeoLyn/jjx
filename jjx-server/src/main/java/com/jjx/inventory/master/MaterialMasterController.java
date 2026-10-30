@@ -30,12 +30,6 @@ public class MaterialMasterController extends BaseController {
     @SaCheckLogin
     public Result<Map<String, List<MaterialMasterCatalog.DictionaryOption>>> dictionaries() { return Result.success(catalog.dictionaries()); }
 
-    @GetMapping("/attribute-options")
-    @SaCheckLogin
-    public Result<List<MaterialMasterCatalog.DictionaryOption>> attributeOptions(@RequestParam String key) {
-        return Result.success(catalog.attributeOptions(key));
-    }
-
     @GetMapping("/configuration/{categoryId}")
     @SaCheckLogin
     public Result<MaterialMasterCatalog.Configuration> configuration(@PathVariable Long categoryId) { return Result.success(catalog.configuration(categoryId)); }

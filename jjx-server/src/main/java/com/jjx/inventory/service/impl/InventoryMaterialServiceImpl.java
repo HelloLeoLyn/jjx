@@ -56,6 +56,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
 
     private static final String MATERIAL_TAG_GROUP = "material_attribute";
     private static final String MATERIAL_BIZ_TYPE = "inventory_material";
+    /** 查询参数里的 JSON（属性筛选）解析用。 */
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final InventoryMaterialMapper materialMapper;
     private final InventoryMaterialCategoryService categoryService;
@@ -774,16 +776,25 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 .like(StringUtils.isNotBlank(dto.getModel()), InventoryMaterial::getModel, dto.getModel())
                 .eq(StringUtils.isNotBlank(dto.getColor()), InventoryMaterial::getColor, dto.getColor())
                 .eq(StringUtils.isNotBlank(dto.getBrand()), InventoryMaterial::getBrand, dto.getBrand());
-        applyAttributeValueFilter(wrapper, dto);
+        applyAttributeValueFilters(wrapper, dto);
     }
 
-    /** 属性值筛选：attribute_json 里的属性编码取值相等（如 元件类型 component_type=LED，dev-20261030-017）。 */
-    private static void applyAttributeValueFilter(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {
-        String key = StringUtils.trimToNull(dto.getAttributeKey());
-        String value = StringUtils.trimToNull(dto.getAttributeValue());
-        if (key == null || value == null) return;
-        if (!key.matches("[a-z][a-z0-9_]{0,49}")) throw new BusinessException("属性筛选字段无效：" + key);
-        wrapper.apply("JSON_UNQUOTE(JSON_EXTRACT(attribute_json, CONCAT('$.\"', {0}, '\"'))) = {1}", key, value);
+    /** 属性值筛选：attributeFilters 为 JSON 数组，逐条按 attribute_json 的属性编码取等值，条件间 AND。 */
+    private static void applyAttributeValueFilters(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {
+        String json = StringUtils.trimToNull(dto.getAttributeFilters());
+        if (json == null) return;
+        com.fasterxml.jackson.databind.JsonNode items;
+        try { items = JSON.readTree(json); }
+        catch (Exception e) { throw new BusinessException("属性筛选参数格式错误"); }
+        if (items == null || !items.isArray()) throw new BusinessException("属性筛选参数格式错误");
+        if (items.size() > 20) throw new BusinessException("属性筛选条件最多 20 条");
+        for (com.fasterxml.jackson.databind.JsonNode item : items) {
+            String key = item.path("key").asText(null);
+            String value = item.path("value").asText(null);
+            if (StringUtils.isBlank(key) || StringUtils.isBlank(value)) throw new BusinessException("属性筛选条件缺少字段或取值");
+            if (!key.matches("[a-z][a-z0-9_]{0,49}")) throw new BusinessException("属性筛选字段无效：" + key);
+            wrapper.apply("JSON_UNQUOTE(JSON_EXTRACT(attribute_json, CONCAT('$.\"', {0}, '\"'))) = {1}", key, value.trim());
+        }
     }
 
     /** 材料受控复合词（23 个，与前端 materialMasterFields 同一份口径）。 */
