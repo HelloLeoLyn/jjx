@@ -127,7 +127,8 @@ describe('版本打印清单（dev-20261019-021）', () => {
     else mocks.load.mockResolvedValue(data)
     Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
     const wrapper = mount(ProductSpecPreview, {
-      props: { productId: 42, versionId: frozen ? 10 : undefined, initialSections: ['spec'] },
+      // 本用例断言的是打印清单/结构图下发，与模板版式无关；显式 A 版避免默认 B 版的测量分页门禁
+      props: { productId: 42, versionId: frozen ? 10 : undefined, initialSections: ['spec'], initialTemplate: 'A' },
     })
     wrappers.push(wrapper)
     await flushPromises()
@@ -147,7 +148,8 @@ describe('版本打印清单（dev-20261019-021）', () => {
   it('预览内附页默认关闭，勾选/取消立即更新纸张；重新加载保留选择', async () => {
     mocks.load.mockResolvedValue({ product: {}, bom: { items: [] }, routing: { items: [] },
       workSpec: normalizeWorkSpec({}), files: [], warnings: [] })
-    const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'] } })
+    // 附页口径按 A 版断言（B 版为 DOM 测量分页，另有用例覆盖）
+    const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'], initialTemplate: 'A' } })
     wrappers.push(wrapper)
     await flushPromises()
     const state = (wrapper.vm as any).$.setupState

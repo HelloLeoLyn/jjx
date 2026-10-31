@@ -8,7 +8,7 @@
     :initial-files="initialFiles"
     :initial-font-settings="initialFontSettings"
     :initial-cell-font-settings="route.query.cellFonts == null ? undefined : String(route.query.cellFonts)"
-    :initial-template="normalizeWorkSpecTemplate(route.query.template)"
+    :initial-template="initialWorkSpecTemplate(route.query.template)"
     :auto-print="route.query.print === '1'"
     standalone
   />
@@ -18,7 +18,7 @@
 import { useRoute } from 'vue-router'
 import ProductSpecPreview from './components/ProductSpecPreview.vue'
 import { documentSections } from './components/docset'
-import { normalizeWorkSpecTemplate } from './components/workSpecFont'
+import { initialWorkSpecTemplate } from './components/workSpecFont'
 
 const route = useRoute()
 const productId = Number(route.params.productId)

@@ -15,8 +15,16 @@ export const materialFontColumnsB = [
   materialFontColumns[4],
 ] as const
 export type WorkSpecTemplate = 'A' | 'B'
-export function normalizeWorkSpecTemplate(value?: unknown): WorkSpecTemplate {
-  return value === 'B' ? 'B' : 'A'
+/** 打印预览/打印页的默认模板：用户 2026-10-31 口径，默认 B 版（dev-20261031-006）。 */
+export const DEFAULT_WORK_SPEC_TEMPLATE: WorkSpecTemplate = 'B'
+export function normalizeWorkSpecTemplate(value?: unknown, fallback: WorkSpecTemplate = 'A'): WorkSpecTemplate {
+  return value === 'A' || value === 'B' ? value : fallback
+}
+/**
+ * 预览/打印页的初始模板：打印预览默认 B 版；客供资料（paperOnly）与其它无模板选择的入口保持 A 版不变。
+ */
+export function initialWorkSpecTemplate(value?: unknown, paperOnly = false): WorkSpecTemplate {
+  return normalizeWorkSpecTemplate(value, paperOnly ? 'A' : DEFAULT_WORK_SPEC_TEMPLATE)
 }
 const flowFontColumns = [
   { key: 'flow0Number', label: '序号', group: '面板作业流程' },

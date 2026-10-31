@@ -248,7 +248,7 @@ import {
   parseWorkSpecFontSettings,
   serializeWorkSpecFontSettings,
   workSpecFontGroupsForTemplate,
-  normalizeWorkSpecTemplate,
+  initialWorkSpecTemplate,
   WORK_SPEC_FONT_MIN,
   WORK_SPEC_FONT_MAX,
   type WorkSpecFontSettings,
@@ -352,7 +352,8 @@ function resetSelectedCellFont() {
   delete next[selectedCell.value.key]
   cellFonts.value = next
 }
-const selectedTemplate = ref<WorkSpecTemplate>(normalizeWorkSpecTemplate(props.initialTemplate))
+// 打印预览默认 B 版；客供资料（paperOnly，无模板选择）保持 A 版（dev-20261031-006）
+const selectedTemplate = ref<WorkSpecTemplate>(initialWorkSpecTemplate(props.initialTemplate, props.paperOnly))
 const visibleFontGroups = computed(() => workSpecFontGroupsForTemplate('A'))
 const openFontGroups = ref(['常规', '材料表'])
 function resetFontSettings() {

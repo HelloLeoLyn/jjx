@@ -7,9 +7,12 @@ import { normalizeWorkSpec } from '@/api/product/workSpec'
 import { makePages, workSpecFlowSource, type DocsetData } from '../docset'
 import {
   defaultWorkSpecFontSettings,
+  initialWorkSpecTemplate,
+  normalizeWorkSpecTemplate,
   parseWorkSpecFontSettings,
   serializeWorkSpecFontSettings,
   workSpecFontAreas,
+  DEFAULT_WORK_SPEC_TEMPLATE,
 } from '../workSpecFont'
 import { parseWorkSpecCellFonts } from '../workSpecCellFont'
 
@@ -109,6 +112,28 @@ describe('单格字号的纸张与分页标识', () => {
   })
 })
 
+describe('作业规范模板默认值', () => {
+  it('打印预览/打印页默认 B 版，显式 A 仍按 A（dev-20261031-006）', () => {
+    expect(DEFAULT_WORK_SPEC_TEMPLATE).toBe('B')
+    expect(initialWorkSpecTemplate(undefined)).toBe('B')
+    expect(initialWorkSpecTemplate('')).toBe('B')
+    expect(initialWorkSpecTemplate('C')).toBe('B')
+    expect(initialWorkSpecTemplate('A')).toBe('A')
+    expect(initialWorkSpecTemplate('B')).toBe('B')
+  })
+
+  it('客供资料（paperOnly）默认仍是 A 版，不被打印预览默认值带偏', () => {
+    expect(initialWorkSpecTemplate(undefined, true)).toBe('A')
+    expect(initialWorkSpecTemplate('B', true)).toBe('B')
+    expect(initialWorkSpecTemplate('A', true)).toBe('A')
+  })
+
+  it('normalizeWorkSpecTemplate 的缺省回落保持 A，不影响其它调用点', () => {
+    expect(normalizeWorkSpecTemplate(undefined)).toBe('A')
+    expect(normalizeWorkSpecTemplate('B')).toBe('B')
+  })
+})
+
 describe('材料表默认字号', () => {
   it('项目内容默认 18，序号/规格及模数 13，其余内容列 12（dev-20261031-005）', () => {
     const settings = defaultWorkSpecFontSettings()
@@ -146,17 +171,36 @@ describe('图标尺寸设置项', () => {
 
 // 模拟B分页后的静态HTML，验证父级事件代理而非Vue子节点监听。
 const SheetsStub = defineComponent({
-  name: 'ProductSpecSheets', props: ['pages', 'fontSettings', 'cellFonts'], emits: ['layout'],
+  name: 'ProductSpecSheets', props: ['pages', 'fontSettings', 'cellFonts', 'specTemplate'], emits: ['layout'],
   template: `<div class="doc-sheets"><div v-html="'<table><tr><td data-work-spec-cell=&quot;flow0-id-41&quot; data-cell-label=&quot;面板第1道作业流程&quot; tabindex=&quot;0&quot;><span>文字工序</span></td><td data-work-spec-cell=&quot;flow0-id-42&quot; data-cell-label=&quot;面板第2道作业流程&quot; tabindex=&quot;0&quot;>另一格</td></tr><tr><td data-work-spec-cell=&quot;mat0-name&quot; data-cell-label=&quot;材料第1项 · 材料&quot; data-cell-font=&quot;10&quot;><span class=&quot;material-name&quot;>面材</span></td></tr></table>'" /></div>`,
 })
+// 既有用例按 A 版布局断言（改版默认值由「作业规范模板默认值」用例覆盖），故显式传 A
 async function preview(initialCellFontSettings?: string) {
   mocks.load.mockResolvedValue(fixture())
-  const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'], initialCellFontSettings },
+  const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'], initialCellFontSettings, initialTemplate: 'A' },
     global: { stubs: { ProductSpecSheets: SheetsStub } } })
   wrappers.push(wrapper)
   await flushPromises()
   return wrapper
 }
+describe('预览默认模板', () => {
+  it('未指定模板时打印预览给纸张传 B 版（dev-20261031-006）', async () => {
+    mocks.load.mockResolvedValue(fixture())
+    const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'] },
+      global: { stubs: { ProductSpecSheets: SheetsStub } } })
+    wrappers.push(wrapper)
+    await flushPromises()
+    expect(wrapper.findComponent(SheetsStub).props('specTemplate')).toBe('B')
+  })
+  it('客供资料（paperOnly）仍按 A 版渲染', async () => {
+    mocks.load.mockResolvedValue(fixture())
+    const wrapper = mount(ProductSpecPreview, { props: { productId: 42, initialSections: ['spec'], paperOnly: true },
+      global: { stubs: { ProductSpecSheets: SheetsStub } } })
+    wrappers.push(wrapper)
+    await flushPromises()
+    expect(wrapper.findComponent(SheetsStub).props('specTemplate')).toBe('A')
+  })
+})
 describe('预览选格、复原与打印设置传递', () => {
   it('静态分页HTML可选格、键盘切换，覆盖不串格；单格复原及全部复原都生效', async () => {
     const wrapper = await preview()
