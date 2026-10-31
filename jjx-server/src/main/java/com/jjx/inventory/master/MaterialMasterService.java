@@ -276,7 +276,11 @@ public class MaterialMasterService {
         String specification = schema.hasSpecPattern()
                 ? schema.specification(material, previewAttributes, categoryNameOf(material.getCategoryId()))
                 : schema.compose(previewAttributes, legacyThickness, material.getSize());
-        return new SpecificationPreview(specification.isEmpty() ? null : specification, true, "规格已由模板属性/厚度/尺寸生成；不接受外部 specification 文本");
+        // 模板字段当前全无值时规格模板渲染结果是 null 或空串（MaterialAttributeSchema.specification:210），
+        // 统一归一为 null，避免调用方解引用空值（dev-20261031-001）。
+        if (specification == null || specification.isBlank())
+            return new SpecificationPreview(null, false, "未生成：规格模板字段当前均无值，规格留空；不接受外部 specification 文本");
+        return new SpecificationPreview(specification, true, "规格已由模板属性/厚度/尺寸生成；不接受外部 specification 文本");
     }
 
     @Transactional(rollbackFor = Exception.class)

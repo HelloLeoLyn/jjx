@@ -206,6 +206,33 @@ class MaterialMasterNamingDatabaseTest {
         System.out.println("SPEC_UNCLASSIFIED_SAVE rollback verified id=" + id);
     }
 
+    /** 规格模板字段全无值时渲染结果为 null：保存/详情/命名重算都不得 NPE（dev-20261031-001）。 */
+    @Test void emptyPatternRenderDoesNotThrowOnSaveDetailAndNaming() {
+        Long id = materialId();
+        Map<String, Object> original = row(id);
+        new TransactionTemplate(manager).executeWithoutResult(tx -> {
+            tx.setRollbackOnly();
+            var dto = form(id);
+            dto.setWidthMm(null); dto.setLengthMm(null); dto.setThicknessMm(null);
+            dto.setGrammage(null); dto.setSizeUnit("mm"); dto.setAttributeJson(Map.of());
+            var saved = service.save(dto, "codex-test");
+            assertNull(saved.getSpecification());
+            var preview = service.specificationPreview(saved);
+            assertNull(preview.specification());
+            assertFalse(preview.generated());
+            assertTrue(preview.message().contains("未生成"));
+            var detail = service.detail(id);
+            assertNull(detail.specificationGeneration().specification());
+            assertFalse(detail.specificationGeneration().generated());
+            var naming = service.updateNaming(id, new MaterialMasterService.NamingPatch("空规格重算", "伪造", null), "codex-test");
+            assertNull(naming.material().getSpecification());
+            assertFalse(naming.specificationGeneration().generated());
+            System.out.println("SPEC_EMPTY_RENDER id=" + id + " saveSpec=null detailSpec=null namingSpec=null generated=false");
+        });
+        assertEquals(original, row(id));
+        System.out.println("SPEC_EMPTY_RENDER rollback verified id=" + id);
+    }
+
     @Test void httpNamingAndSaveIgnoreExternalSpecificationAgainstRealDatabase() throws Exception {
         Long id = materialId();
         Map<String, Object> original = row(id);
