@@ -496,20 +496,13 @@ function moduleText(row?: Record<string, any> | null) {
   const value = Number(raw)
   return Number.isFinite(value) && value > 0 ? String(Number(value.toFixed(4))) : ''
 }
-/** B 版「基数」列：计件材料保留「N个/PCS」口径，其余 baseQty>1 才显示。 */
+/** B 版「基数」列：直接取 BOM 的 baseQty（1 也显示，不再做“等于 1 就留空”的过滤）。 */
 function baseText(row?: Record<string, any> | null) {
   if (!row) return ''
-  const unit = plain(row.unit).toUpperCase()
-  const module = Number(row.moduleQty)
-  const baseRaw = Number(row.baseQty)
-  const base = Number.isFinite(baseRaw) && baseRaw > 0 ? baseRaw : 1
-  const divisor = Number.isFinite(module) && module > 0 ? module : 1
-  if (unit === 'PCS' || unit === '个') {
-    const perPiece = Number((base / divisor).toFixed(4))
-    if (perPiece !== 1) return `${perPiece}个/PCS`
-    return base > 1 ? String(base) : ''
-  }
-  return base > 1 ? String(Number(base.toFixed(4))) : ''
+  const raw = row.baseQty
+  if (raw == null || plain(raw) === '') return ''
+  const value = Number(raw)
+  return Number.isFinite(value) ? String(Number(value.toFixed(4))) : plain(raw)
 }
 /** 凹凸横条的短标签：去掉「凹凸」前缀（横条左标签已写明）。 */
 function embossShortLabel(label: string) {

@@ -81,6 +81,8 @@ describe('B 版材料表拆列与两条横条（dev-20261031-007）', () => {
     expect(wrapper.find('.materials .engineering-notes').exists()).toBe(false)
     expect(wrapper.find('.materials .emboss-label').exists()).toBe(false)
     expect(wrapper.get('td.material-module').text()).toBe('3')
+    // 基数直接取 BOM baseQty，等于 1 也要显示（不再留空）
+    expect(wrapper.get('td.material-base').text()).toBe('1')
   })
 
   it('凹凸条件横条：6 格 3×2，首页出现、续页不出现', () => {
