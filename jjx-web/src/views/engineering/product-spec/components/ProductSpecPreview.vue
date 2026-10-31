@@ -18,7 +18,11 @@
           <el-option label="模板 A" value="A" />
           <el-option label="模板 B" value="B" />
         </el-select>
-        <el-checkbox v-if="!paperOnly && selectedSections.includes('spec')" v-model="generateOverflowAppendix">
+        <!-- B 版取消附页：内容超页由分页承接（dev-20261031-007），只有 A 版保留原附页开关。 -->
+        <el-checkbox
+          v-if="!paperOnly && selectedSections.includes('spec') && selectedTemplate === 'A'"
+          v-model="generateOverflowAppendix"
+        >
           生成工程内容附页
         </el-checkbox>
         <el-button text @click="zoom = Math.max(50, zoom - 10)">−</el-button><span>{{ zoom }}%</span
@@ -354,7 +358,8 @@ function resetSelectedCellFont() {
 }
 // 打印预览默认 B 版；客供资料（paperOnly，无模板选择）保持 A 版（dev-20261031-006）
 const selectedTemplate = ref<WorkSpecTemplate>(initialWorkSpecTemplate(props.initialTemplate, props.paperOnly))
-const visibleFontGroups = computed(() => workSpecFontGroupsForTemplate('A'))
+// 面板分组跟随当前模板：A 版原样，B 版显示拆列后的规格/模数/基数与凹凸横条项（dev-20261031-007）
+const visibleFontGroups = computed(() => workSpecFontGroupsForTemplate(selectedTemplate.value))
 const openFontGroups = ref(['常规', '材料表'])
 function resetFontSettings() {
   fontSettings.value = defaultWorkSpecFontSettings()

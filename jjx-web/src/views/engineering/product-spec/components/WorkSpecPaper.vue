@@ -3,14 +3,24 @@
     ref="paper"
     class="work-paper"
     :class="{ continuous: specTemplate === 'B', 'inline-content': !generateOverflowAppendix }"
+    :data-spec-template="specTemplate"
     :style="fontStyle"
   >
     <header class="work-title">
       产 品 作 业 规 范<span v-if="page.continuation">（续）</span>
     </header>
     <table class="grid materials">
-      <!-- A/B 共用模板 A 的列宽及右侧凹凸/加工要求。 -->
-      <colgroup>
+      <!-- A 版沿用原七列（含右侧凹凸/加工要求）；B 版七列为 序号/项目/材料/规格/模数/基数/刀模位置（dev-20261031-007）。 -->
+      <colgroup v-if="specTemplate === 'B'">
+        <col style="width: 5%" />
+        <col style="width: 8%" />
+        <col style="width: 30%" />
+        <col style="width: 24%" />
+        <col style="width: 9%" />
+        <col style="width: 9%" />
+        <col style="width: 15%" />
+      </colgroup>
+      <colgroup v-else>
         <col style="width: 5%" />
         <col style="width: 5%" />
         <col style="width: calc(100% / 3 - 10%)" />
@@ -22,7 +32,7 @@
       <thead>
         <tr>
           <th
-            v-for="column in materialFontColumns"
+            v-for="column in materialColumns"
             :key="column.key"
             :style="columnFont(column.key, 'Title')"
           >
@@ -91,18 +101,40 @@
           <td
             :style="columnFont('materialSpec', 'Content')"
             :data-work-spec-cell="materialCellKeyFor(i, 'spec')"
-            :data-cell-label="materialLabel(i) + '规格及模数'"
+            :data-cell-label="materialLabel(i) + specLabel"
             :data-cell-font="materialCellFont(i, 'spec', 'materialSpecContent')"
             data-cell-fit
           >
             <span
               class="cell-single"
-              :data-overflow-title="materialLabel(i) + '规格及模数'"
+              :data-overflow-title="materialLabel(i) + specLabel"
               :class="{ 'manual-params': specTemplate === 'B' && row?.params }"
-              :title="materialSpec(row)"
-              >{{ materialSpec(row) }}</span
+              :title="specCell(row)"
+              >{{ specCell(row) }}</span
             >
           </td>
+          <template v-if="specTemplate === 'B'">
+            <td
+              class="center material-module"
+              :style="columnFont('materialModule', 'Content')"
+              :data-work-spec-cell="materialCellKeyFor(i, 'module')"
+              :data-cell-label="materialLabel(i) + '模数'"
+              :data-cell-font="materialCellFont(i, 'module', 'materialModuleContent')"
+              data-cell-fit
+            >
+              {{ moduleText(row) }}
+            </td>
+            <td
+              class="center material-base"
+              :style="columnFont('materialBase', 'Content')"
+              :data-work-spec-cell="materialCellKeyFor(i, 'base')"
+              :data-cell-label="materialLabel(i) + '基数'"
+              :data-cell-font="materialCellFont(i, 'base', 'materialBaseContent')"
+              data-cell-fit
+            >
+              {{ baseText(row) }}
+            </td>
+          </template>
           <td
             class="die-position"
             :style="columnFont('materialDie', 'Content')"
@@ -112,7 +144,7 @@
           >
             {{ page.diePositionRows?.[i] }}
           </td>
-          <template v-if="i < embossFields.length">
+          <template v-if="specTemplate !== 'B' && i < embossFields.length">
             <td
               class="emboss-label"
               :style="columnFont('materialEmboss', 'Content')"
@@ -135,7 +167,7 @@
             </td>
           </template>
           <td
-            v-else-if="i === embossFields.length"
+            v-else-if="specTemplate !== 'B' && i === embossFields.length"
             :rowspan="materialCapacity - embossFields.length"
             colspan="2"
             class="engineering-notes"
@@ -155,6 +187,22 @@
         </tr>
       </tbody>
     </table>
+    <!-- B 版凹凸条件横条：单据级参数，只出现在第一页（dev-20261031-007）。 -->
+    <div
+      v-if="specTemplate === 'B' && !page.continuation"
+      class="emboss-strip"
+      data-work-spec-cell="emboss"
+      data-cell-label="凹凸条件"
+      :data-cell-font="cellFont('emboss', 'materialEmbossContent')"
+    >
+      <div class="vertical-label">凹凸</div>
+      <div class="emboss-grid" :style="fontSize('materialEmbossContent')">
+        <div v-for="field in embossFields" :key="field.key" class="emboss-item">
+          <span class="emboss-key">{{ embossShortLabel(field.label) }}</span>
+          <span class="emboss-val">{{ embossValue(field.key, field.unit) }}</span>
+        </div>
+      </div>
+    </div>
     <!-- 三组流程使用同一表格行，结构图跨7行，上线表头占第8行。 -->
     <table class="grid flows">
       <colgroup>
@@ -282,6 +330,21 @@
       <span>合计工时</span>
       <div>{{ totalLabor(allOperations) }}</div>
     </div>
+    <!-- B 版备注横条：从材料表右侧搬到变更内容上方（dev-20261031-007）。 -->
+    <div v-if="specTemplate === 'B'" class="notes-strip">
+      <div class="vertical-label">备注</div>
+      <div
+        class="notes-strip-content"
+        data-overflow-title="备注"
+        :data-overflow-repeat="page.continuation ? 'true' : undefined"
+        :style="{ color: data.workSpec.requirementsColor }"
+        data-work-spec-cell="note"
+        data-cell-label="备注"
+        :data-cell-font="cellFont('note', 'notes')"
+      >
+        {{ page.engineeringNotes }}
+      </div>
+    </div>
     <div class="issuance">
       <div class="vertical-label">变更内容</div>
       <div class="changes">
@@ -352,6 +415,7 @@ import {
 } from './workSpecCellFont'
 import {
   materialFontColumns,
+  materialFontColumnsB,
   type WorkSpecTemplate,
   type WorkSpecFontSettings,
   type WorkSpecFontArea,
@@ -373,6 +437,16 @@ const props = withDefaults(
   }>(),
   { specTemplate: 'A', generateOverflowAppendix: false }
 )
+/** B 版列集合（序号/项目/材料/规格/模数/基数/刀模位置），A 版保持原七列。 */
+const materialColumns = computed(() =>
+  props.specTemplate === 'B' ? materialFontColumnsB : materialFontColumns
+)
+/** 规格列的选格标签：B 版叫「规格」，A 版仍是「规格及模数」。 */
+const specLabel = computed(() => (props.specTemplate === 'B' ? '规格' : '规格及模数'))
+/** 规格列文字：B 版拆列后只放规格本身，A 版保持原「规格及模数」组合口径。 */
+function specCell(row?: Record<string, any> | null) {
+  return props.specTemplate === 'B' ? specCellText(row) : materialSpec(row)
+}
 const materialCapacity = computed(() =>
   props.specTemplate === 'B'
     ? Math.max(14, props.page.rows?.length || 0, props.page.diePositionRows?.length || 0)
@@ -380,6 +454,46 @@ const materialCapacity = computed(() =>
 )
 function materialSpec(row?: Record<string, any> | null) {
   return props.specTemplate === 'B' && row?.params ? row.params : workSpecMaterialSpec(row)
+}
+/** B 版「规格」列：手填 params 优先；否则尺寸（宽*长mm 或规格文本）+ 跳距。 */
+function specCellText(row?: Record<string, any> | null) {
+  if (!row) return ''
+  if (row.params) return String(row.params)
+  const width = Number(row.widthMm)
+  const length = Number(row.lengthMm)
+  const size =
+    Number.isFinite(width) && width > 0 && Number.isFinite(length) && length > 0
+      ? `${width}*${length}mm`
+      : plain(row.specification)
+  const split = plain(row.split)
+  return [size, split ? `跳${split}` : ''].filter(Boolean).join(' ')
+}
+/** B 版「模数」列：moduleQty，空值留空。 */
+function moduleText(row?: Record<string, any> | null) {
+  if (!row) return ''
+  const raw = row.moduleQty
+  if (raw == null || plain(raw) === '') return ''
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? String(Number(value.toFixed(4))) : ''
+}
+/** B 版「基数」列：计件材料保留「N个/PCS」口径，其余 baseQty>1 才显示。 */
+function baseText(row?: Record<string, any> | null) {
+  if (!row) return ''
+  const unit = plain(row.unit).toUpperCase()
+  const module = Number(row.moduleQty)
+  const baseRaw = Number(row.baseQty)
+  const base = Number.isFinite(baseRaw) && baseRaw > 0 ? baseRaw : 1
+  const divisor = Number.isFinite(module) && module > 0 ? module : 1
+  if (unit === 'PCS' || unit === '个') {
+    const perPiece = Number((base / divisor).toFixed(4))
+    if (perPiece !== 1) return `${perPiece}个/PCS`
+    return base > 1 ? String(base) : ''
+  }
+  return base > 1 ? String(Number(base.toFixed(4))) : ''
+}
+/** 凹凸横条的短标签：去掉「凹凸」前缀（横条左标签已写明）。 */
+function embossShortLabel(label: string) {
+  return label.replace(/^凹凸/, '')
 }
 const emit = defineEmits<{ overflow: [lines: PaperTextLine[]] }>()
 /**
@@ -609,6 +723,26 @@ function shortDate(value?: string | null) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* B 版：单元格文字换行撑高（最多 3 行，3 行仍放不下由 fitWorkSpecCells 缩字号兜底，不省略号）。 */
+[data-spec-template='B'] .materials tbody tr {
+  height: auto;
+  min-height: 22px;
+}
+[data-spec-template='B'] .materials td {
+  height: auto;
+  min-height: 22px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+[data-spec-template='B'] .materials td .cell-single,
+[data-spec-template='B'] .materials .material-name {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-height: 3.6em;
+  overflow: hidden;
+}
 .material-name {
   display: block;
   font-size: 12px;
@@ -630,6 +764,66 @@ function shortDate(value?: string | null) {
 .materials td.engineering-notes {
   vertical-align: top;
   padding: 8px 5px;
+}
+/* B 版凹凸条件横条：2 行高、6 格 3 列 × 2 行，只在第一页出现（dev-20261031-007）。 */
+.emboss-strip {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid #333;
+  min-height: 46px;
+}
+.emboss-strip .vertical-label {
+  border-left: 1px solid #333;
+}
+.emboss-grid {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 22px;
+  align-content: center;
+}
+.emboss-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  min-width: 0;
+  border-right: 1px solid #333;
+  line-height: 1.2;
+}
+.emboss-item:nth-child(3n) {
+  border-right: 0;
+}
+.emboss-key {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.emboss-val {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* B 版备注横条：2 行高、全宽，位置在变更内容上方（dev-20261031-007）。 */
+.notes-strip {
+  display: flex;
+  flex-shrink: 0;
+  min-height: 54px;
+  border-top: 1px solid #333;
+  border-bottom: 1px solid #333;
+}
+.notes-strip .vertical-label {
+  border-left: 1px solid #333;
+}
+.notes-strip-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 9px 15px;
+  line-height: 18px;
+  font-size: var(--font-notes);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .notes-content {
   height: 159px;

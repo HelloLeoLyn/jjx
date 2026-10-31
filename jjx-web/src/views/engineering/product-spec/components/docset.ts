@@ -772,7 +772,8 @@ export function makePages(
       const details = pages
         .filter((page) => page.kind === 'spec')
         .flatMap((page) => overflow[page.key] || [])
-      for (let i = 0; generateOverflowAppendix && i < details.length; i += 48)
+      // B 版取消工程内容附页：超页由测量分页承接（dev-20261031-007），附页只服务 A 版。
+      for (let i = 0; generateOverflowAppendix && specTemplate === 'A' && i < details.length; i += 48)
         pages.push({
           key: 'spec-details-' + i,
           section: 'spec',
@@ -1032,39 +1033,21 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
       if (row.cells[0]) row.cells[0].rowSpan = 1
       if (row.cells[1]) row.cells[1].rowSpan = 1
     }
-    const conditions = rows.slice(0, 6).map((row) => Array.from(row.cells).slice(5).map(clone))
-    const notes = table.querySelector<HTMLTableCellElement>('.engineering-notes')
+    // B 版材料表为纯表格（七列，凹凸与备注已移到独立横条），分页只按行高切分（dev-20261031-007）。
     let current = tableFragment(table)
-    // 每个片段沿用 A 的右侧凹凸/加工要求与列宽；正文编号取源行，不按固定容量重算。
-    function rightCells() {
-      const fragmentRows = Array.from(current.body.rows)
-      fragmentRows.forEach((row, index) => {
-        while (row.cells.length > 5) row.deleteCell(5)
-        if (index < 6) row.append(...(conditions[index] || []).map(clone))
-        else if (index === 6 && notes) {
-          const cell = clone(notes)
-          cell.rowSpan = fragmentRows.length - 6
-          row.append(cell)
-        }
-      })
-    }
     for (const row of rows) {
       const copy = clone(row)
-      while (copy.cells.length > 5) copy.deleteCell(5)
       current.body.append(copy)
-      rightCells()
       if (fits()) continue
       copy.remove()
-      rightCells()
       if (!current.body.rows.length) {
         current.fragment.remove()
-        if (!hasContent()) throw new Error('材料单行超过A4可用高度，请检查字号或加工要求')
+        if (!hasContent()) throw new Error('材料单行超过A4可用高度，请检查字号')
       }
       nextPage()
       current = tableFragment(table)
       current.body.append(copy)
-      rightCells()
-      if (!fits()) throw new Error('材料单行超过A4可用高度，请检查字号或加工要求')
+      if (!fits()) throw new Error('材料单行超过A4可用高度，请检查字号')
     }
     // 跨页时重建序号与项目两列的合并，同组延续到下一页仍是同一个序号；
     // 右侧凹凸/加工要求仍按原列定位。
@@ -1240,6 +1223,7 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
       if (fits()) continue
       copy.remove()
       if (child.querySelector('.changes-content')) splitTextBlock(child, '.changes-content')
+      else if (child.querySelector('.notes-strip-content')) splitTextBlock(child, '.notes-strip-content')
       else throw new Error('内容块无法放入A4，请减小字号')
     }
     return pages.map((item) => item.outerHTML)

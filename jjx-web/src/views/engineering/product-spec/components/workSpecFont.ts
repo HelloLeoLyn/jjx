@@ -92,17 +92,15 @@ export function workSpecFontGroupsForTemplate(template: WorkSpecTemplate) {
   const groups = workSpecFontGroups.map(group => ({
     label: group.label,
     areas: group.label === '材料表'
+      // B 版材料表拆成 序号/项目/材料/规格/模数/基数/刀模位置 七列；凹凸条件搬成横条后仍归在材料表分组（dev-20261031-007）。
       ? workSpecFontAreas.filter(area =>
           area.key === 'materialProjectIcon'
+          || area.key === 'materialEmbossTitle'
+          || area.key === 'materialEmbossContent'
           || columns.some(key => area.key === `${key}Title` || area.key === `${key}Content`))
           .map(area => ({ ...area, label: area.label.replace('规格及模数', '规格') }))
-      : group.areas.map(area => ({ ...area, label: area.label.replace('加工与变更', '备注与变更') })),
+      : group.areas.map(area => ({ ...area, label: area.label.replace('加工与变更', '备注') })),
   }))
-  groups.splice(1, 0, {
-    label: '顶部信息',
-    areas: legacyFontAreas.filter(area => ['materialEmbossTitle', 'materialEmbossContent', 'materialEmbossValueContent'].includes(area.key))
-      .map(area => ({ ...area, label: area.key === 'materialEmbossTitle' ? '凹凸条件 · 标题' : area.label })),
-  })
   return groups
 }
 /** 实际字号，单位px；v4增加B模数/基数列，兼容v3、v2及旧增量参数。 */

@@ -2,8 +2,10 @@ import { WORK_SPEC_FONT_MAX, WORK_SPEC_FONT_MIN } from './workSpecFont'
 
 /** 仅影响当前打印排版；键跟随工序/材料行/固定区域，不依赖分页后的页号或 DOM 行号。 */
 export type WorkSpecCellFonts = Record<string, number>
-const MATERIAL_COLUMNS = 'number|project|name|spec|die|emboss|embossValue'
-const FIXED_KEYS = 'note|change|struct-title|struct-cap|footer'
+// module/base 为 B 版拆列后的新键；emboss/embossValue 保留以兼容 A 版与旧打印链接（dev-20261031-007）。
+const MATERIAL_COLUMNS = 'number|project|name|spec|module|base|die|emboss|embossValue'
+// emboss 为 B 版凹凸条件横条的单格键。
+const FIXED_KEYS = 'note|change|emboss|struct-title|struct-cap|footer'
 const CELL_KEY = new RegExp(
   `^(?:flow[0-2]-(?:id|row)-\\d+|mat\\d+-(?:${MATERIAL_COLUMNS})|(?:${FIXED_KEYS}))$`
 )

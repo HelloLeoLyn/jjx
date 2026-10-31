@@ -139,7 +139,11 @@ describe('项目材料独立清单与B版打印', () => {
       },
     })
     const table = wrapper.get('.materials')
-    expect(table.get('thead').text()).toContain('规格及模数')
+    // B 版拆成 规格/模数/基数 三列（dev-20261031-007）
+    expect(table.get('thead').text()).toContain('规格')
+    expect(table.get('thead').text()).toContain('模数')
+    expect(table.get('thead').text()).toContain('基数')
+    expect(table.get('thead').text()).not.toContain('规格及模数')
     expect(table.get('thead').text()).not.toContain('用量')
     expect(table.get('thead').text()).not.toContain('单位')
     expect(table.findAll('td.material-number[rowspan="2"]')).toHaveLength(1)
@@ -230,7 +234,9 @@ describe('项目材料独立清单与B版打印', () => {
     row.params = ''
     row.moduleQty = 3
     wrapper = paper()
-    expect(wrapper.text()).toContain('100*200mm=3PCS')
+    // 拆列后规格只放尺寸，模数单独成列，不再拼成「100*200mm=3PCS」
+    expect(wrapper.find('td.material-module').text()).toBe('3')
+    expect(wrapper.find('.materials').text()).toContain('100*200mm')
     expect(wrapper.find('.manual-params').exists()).toBe(false)
     wrapper.unmount()
     const a = mount(WorkSpecPaper, {

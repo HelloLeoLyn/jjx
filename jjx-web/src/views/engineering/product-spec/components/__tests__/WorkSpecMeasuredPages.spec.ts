@@ -23,17 +23,24 @@ describe('作业规范按测量结果出纸', () => {
     expect(pages.map(page => page.flowHtml)).toEqual(html)
     expect(pages.some(page => page.flowPending)).toBe(false)
   })
-  it.each(['A', 'B'] as const)('%s附页默认关闭，手动开启与取消不改变主表分页', template => {
+  it('A附页默认关闭，手动开启与取消不改变主表分页', () => {
     const data = fixture(25)
-    const measured = template === 'B' ? ['<article>首张</article>', '<article>续张</article>'] : []
-    const overflow = { [template === 'B' ? 'spec-b-0' : 'spec-0']: [{ text: '加工要求（完整内容）' }, { text: '被裁切的全文' }] }
-    const build = (enabled?: boolean) => makePages(data, ['spec'], [], {}, overflow, template, measured, enabled)
+    const overflow = { 'spec-0': [{ text: '加工要求（完整内容）' }, { text: '被裁切的全文' }] }
+    const build = (enabled?: boolean) => makePages(data, ['spec'], [], {}, overflow, 'A', [], enabled)
     const original = build()
     expect(original.some(page => page.kind === 'spec-details')).toBe(false)
     const enabled = build(true)
     expect(enabled.filter(page => page.kind === 'spec')).toEqual(original.filter(page => page.kind === 'spec'))
     expect(enabled.find(page => page.kind === 'spec-details')?.detailLines).toEqual(Object.values(overflow)[0])
     expect(build(false)).toEqual(original)
+  })
+  it('B取消工程内容附页：即使开启也不生成 spec-details，超页由测量分页承接（dev-20261031-007）', () => {
+    const data = fixture(25)
+    const measured = ['<article>首张</article>', '<article>续张</article>']
+    const overflow = { 'spec-b-0': [{ text: '加工要求（完整内容）' }, { text: '被裁切的全文' }] }
+    const build = (enabled?: boolean) => makePages(data, ['spec'], [], {}, overflow, 'B', measured, enabled)
+    expect(build(true).some(page => page.kind === 'spec-details')).toBe(false)
+    expect(build(true).filter(page => page.kind === 'spec').map(page => page.flowHtml)).toEqual(measured)
   })
   it('A保留原有14行分页，不受B的测量HTML影响', () => {
     const pages = makePages(fixture(25), ['spec'], [], {}, {}, 'A', ['不应使用'])
