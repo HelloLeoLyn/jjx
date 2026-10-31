@@ -807,15 +807,15 @@ function shortDate(value?: string | null) {
   writing-mode: vertical-rl;
   text-align: center;
   vertical-align: middle;
-  letter-spacing: 8px;
-  font-size: 17px;
+  /* 两个字竖排必须能装进 44px 的横条：17px 字 + 8px 字距 = 50px 会顶破上下边线，看起来就像边框变粗变黑 */
+  letter-spacing: 4px;
+  font-size: 15px;
   line-height: 1;
 }
 .emboss-strip .strip-label {
   height: 44px;
 }
-.notes-strip .strip-label,
-.notes-strip-content {
+.notes-strip .strip-label {
   height: 54px;
 }
 /* 凹凸 6 格：3 列 × 2 行，每格 22px；竖线 + 第一行下横线，最后一行由横条底边收口 */
