@@ -96,10 +96,11 @@ export function getSuppliersByType(supplierType: string) {
 }
 
 // 查询活跃供应商列表
-export function getActiveSuppliers() {
+export function getActiveSuppliers(keyword?: string) {
   return request({
     url: '/purchase/supplier/active',
     method: 'get',
+    params: keyword ? { keyword } : undefined,
   })
 }
 

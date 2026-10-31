@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { getActiveSuppliers, listSupplier, getSupplier } from '@/api/purchase/supplier'
 import type { PurchaseSupplier } from '@/types/purchase'
 
@@ -53,6 +53,8 @@ interface Props {
   width?: string
   /** 是否只加载活跃供应商 */
   activeOnly?: boolean
+  /** 远程搜索防抖毫秒数（0 表示不防抖，默认 300，与 CustomerSelector 同口径） */
+  debounceDelay?: number
 }
 
 interface Emits {
@@ -71,6 +73,7 @@ const props = withDefaults(defineProps<Props>(), {
   showCode: false,
   width: '100%',
   activeOnly: true,
+  debounceDelay: 300,
 })
 
 const emit = defineEmits<Emits>()
@@ -119,38 +122,54 @@ const filterableValue = computed(() => props.filterable ?? true)
 const remoteValue = computed(() => props.remote ?? false)
 const loadingValue = computed(() => loading.value)
 
-// 加载供应商列表
+// 请求序号：慢响应不能覆盖后发请求的结果（dev-20261031-003）
+let requestSeq = 0
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// 加载供应商列表；keyword 为远程搜索关键字（活跃模式下按名称/编码模糊匹配）
 const loadSuppliers = async (keyword?: string) => {
+  const seq = ++requestSeq
+  const trimmed = keyword?.trim() ?? ''
   loading.value = true
   try {
     if (props.activeOnly) {
-      const res = await getActiveSuppliers()
+      const res = await getActiveSuppliers(trimmed || undefined)
+      if (seq !== requestSeq) return
       supplierList.value = (res as any).data || []
     } else {
       const params: any = { pageNum: 1, pageSize: 200 }
-      if (keyword) {
-        params.supplierName = keyword
+      if (trimmed) {
+        params.supplierName = trimmed
       }
       const res = await listSupplier(params)
+      if (seq !== requestSeq) return
       supplierList.value = (res as any).data?.records || (res as any).data || []
     }
   } catch (error) {
+    if (seq !== requestSeq) return
     console.error('加载供应商列表失败:', error)
     supplierList.value = []
   } finally {
-    loading.value = false
-    suppliersLoaded.value = true
-    await ensureCurrentSupplier()
+    if (seq === requestSeq) {
+      loading.value = false
+      suppliersLoaded.value = true
+      await ensureCurrentSupplier()
+    }
   }
 }
 
-// 远程搜索方法
+// 远程搜索方法：防抖后再请求，避免每次按键打一次接口
 const remoteMethod = (query: string) => {
-  if (query) {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  if (props.debounceDelay <= 0) {
+    debounceTimer = null
     loadSuppliers(query)
-  } else {
-    loadSuppliers()
+    return
   }
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null
+    loadSuppliers(query)
+  }, props.debounceDelay)
 }
 
 // 用户选择才发送 change；补加载不会清空订单明细或覆盖名称。
@@ -172,6 +191,11 @@ watch(
 // 初始化加载
 onMounted(() => {
   loadSuppliers()
+})
+
+onUnmounted(() => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = null
 })
 
 // 暴露方法

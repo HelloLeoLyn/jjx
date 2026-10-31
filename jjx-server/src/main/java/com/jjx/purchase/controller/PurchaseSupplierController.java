@@ -144,8 +144,9 @@ public class PurchaseSupplierController extends BaseController {
     @Operation(summary = "查询活跃供应商列表")
     @SaCheckPermission("purchase:supplier:view")
     @GetMapping("/active")
-    public Result<List<PurchaseSupplierVO>> getActiveSuppliers() {
-        return Result.success(supplierService.selectActiveSuppliers());
+    public Result<List<PurchaseSupplierVO>> getActiveSuppliers(
+            @RequestParam(required = false) String keyword) {
+        return Result.success(supplierService.selectActiveSuppliers(keyword));
     }
 
     /**

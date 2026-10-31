@@ -385,8 +385,19 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
 
     @Override
     public List<PurchaseSupplierVO> selectActiveSuppliers() {
+        return selectActiveSuppliers(null);
+    }
+
+    /** 下拉远程搜索：名称或编码模糊匹配；keyword 为空时等价于全量活跃供应商。 */
+    @Override
+    public List<PurchaseSupplierVO> selectActiveSuppliers(String keyword) {
         LambdaQueryWrapper<PurchaseSupplier> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(PurchaseSupplier::getStatus, StatusEnum.NORMAL.getCode()); // 正常状态
+        if (StringUtils.isNotBlank(keyword)) {
+            String like = keyword.trim();
+            wrapper.and(w -> w.like(PurchaseSupplier::getSupplierName, like)
+                    .or().like(PurchaseSupplier::getSupplierCode, like));
+        }
         wrapper.orderByDesc(PurchaseSupplier::getEvaluationScore);
 
         List<PurchaseSupplier> suppliers = supplierMapper.selectList(wrapper);

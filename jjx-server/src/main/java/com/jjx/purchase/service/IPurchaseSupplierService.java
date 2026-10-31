@@ -126,6 +126,14 @@ public interface IPurchaseSupplierService {
     List<PurchaseSupplierVO> selectActiveSuppliers();
 
     /**
+     * 查询活跃供应商列表（下拉远程搜索；keyword 按名称或编码模糊匹配，为空时返回全部活跃供应商）
+     *
+     * @param keyword 关键字，可空
+     * @return 活跃供应商列表
+     */
+    List<PurchaseSupplierVO> selectActiveSuppliers(String keyword);
+
+    /**
      * 根据评估分数查询优质供应商
      *
      * @param minScore 最低评估分数
