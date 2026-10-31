@@ -109,4 +109,36 @@ describe('B 版材料表拆列与两条横条（dev-20261031-007）', () => {
     expect(wrapper.find('.notes-strip').exists()).toBe(false)
     expect(wrapper.get('.materials thead').text()).toContain('规格及模数')
   })
+
+  it('B 版材料表与流程表都有默认高度：材料不足 12 行补空行，工序不足按 12/4/12 补', () => {
+    const wrapper = paper('B', 0)
+    // 只有 1 条材料，仍要占满 12 行——否则空行会塌掉，纸面看起来只剩有内容的几行
+    expect(wrapper.findAll('.materials tbody tr')).toHaveLength(12)
+    expect(wrapper.findAll('.materials .material-name').filter((span) => span.text())).toHaveLength(1)
+    const flowRows = wrapper.findAll('.flows tbody tr')
+    expect(flowRows).toHaveLength(12)
+    // 上线列被结构图占 8 行，只剩 4 行可放工序
+    const lastRow = flowRows[flowRows.length - 1]
+    expect(lastRow.findAll('td')).toHaveLength(9)
+  })
+
+  it('B 版材料超 12 行时表格随内容加行（流体，不截断）', () => {
+    const data = fixture()
+    data.bom.items = Array.from({ length: 15 }, (_, i) =>
+      item({ itemId: i + 1, materialName: `材料${i + 1}`, sortOrder: i })
+    )
+    const wrapper = mount(WorkSpecPaper, {
+      props: {
+        data,
+        page: workSpecFlowSource(data),
+        pageIndex: 0,
+        pageCount: 1,
+        specTemplate: 'B',
+        fontSettings: defaultWorkSpecFontSettings(),
+      },
+      global: { stubs: { SvgIcon: true } },
+    })
+    wrappers.push(wrapper)
+    expect(wrapper.findAll('.materials tbody tr')).toHaveLength(15)
+  })
 })

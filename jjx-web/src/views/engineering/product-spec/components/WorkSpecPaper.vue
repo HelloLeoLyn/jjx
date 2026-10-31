@@ -449,7 +449,7 @@ function specCell(row?: Record<string, any> | null) {
 }
 const materialCapacity = computed(() =>
   props.specTemplate === 'B'
-    ? Math.max(14, props.page.rows?.length || 0, props.page.diePositionRows?.length || 0)
+    ? Math.max(12, props.page.rows?.length || 0, props.page.diePositionRows?.length || 0)
     : 14
 )
 function materialSpec(row?: Record<string, any> | null) {
@@ -580,7 +580,7 @@ const flowRows = computed(() =>
       length:
         props.specTemplate === 'B'
           ? Math.max(
-              14,
+              12,
               ...(props.page.groups || []).map(
                 (group, column) => group.rows.length + (column === 1 ? 8 : 0)
               )
@@ -594,7 +594,12 @@ const flowRows = computed(() =>
         return {
           column,
           label: group.label,
-          number: (props.page.continuation || 0) * (column === 1 ? 6 : 14) + rowIndex + 1,
+          // B 版每页最小 12 行（上线列被结构图占 8 行，只剩 4 行），A 版仍是 14/6。
+          number:
+            (props.page.continuation || 0) *
+              (props.specTemplate === 'B' ? (column === 1 ? 4 : 12) : column === 1 ? 6 : 14) +
+            rowIndex +
+            1,
           item: group.rows[rowIndex],
         }
       }),
@@ -723,14 +728,13 @@ function shortDate(value?: string | null) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* B 版：单元格文字换行撑高（最多 3 行，3 行仍放不下由 fitWorkSpecCells 缩字号兜底，不省略号）。 */
+/* B 版：行高 22px 是「默认高度」（CSS 表格里 height 即最小高度，内容多了自动长高，不超不收缩）。
+   注意不能改成 height:auto——表格行的 min-height 无效，空行会塌成 0 高度，材料表看起来只剩有内容的行。 */
 [data-spec-template='B'] .materials tbody tr {
-  height: auto;
-  min-height: 22px;
+  height: 22px;
 }
 [data-spec-template='B'] .materials td {
-  height: auto;
-  min-height: 22px;
+  height: 22px;
   white-space: normal;
   overflow-wrap: anywhere;
   vertical-align: middle;
