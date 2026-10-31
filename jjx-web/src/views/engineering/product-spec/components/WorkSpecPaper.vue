@@ -961,6 +961,10 @@ function shortDate(value?: string | null) {
   border-bottom: 1px solid #333;
   align-items: stretch;
 }
+/* B 版：流程表已经画了底边，工时条再画上边会叠成 2px 黑线（模块交界处看起来最明显）。 */
+[data-spec-template='B'] .hours {
+  border-top: 0;
+}
 .hours span {
   width: 110px;
   border-right: 1px solid #333;
