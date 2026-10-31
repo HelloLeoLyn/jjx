@@ -288,6 +288,8 @@ const refreshApproveCheck = async () => {
   } catch (error) {
     console.error('BOM批准条件体检失败:', error)
     blockingIssues.value = []
+    // 体检接口抖动不能让批准按钮永久禁用：真正的不合规仍由后端 approveEngineeringBom 拦截（dev-20261031-004）
+    approveCheckReady.value = true
   }
 }
 
@@ -349,7 +351,6 @@ const handleClose = () => {
 const handleBatchApprove = async (itemIds: number[]) => {
   if (!props.bomId || batchBusy.value || busyItemId.value != null || !itemIds.length) return
   batchBusy.value = true
-  approveCheckReady.value = false
   batchFailures.value = []
   try {
     const res = await productBomApi.reviewBomItemsBatch({
@@ -362,13 +363,16 @@ const handleBatchApprove = async (itemIds: number[]) => {
     ElMessage[res.data.failed.length ? 'warning' : 'success'](
       `批量通过 ${res.data.successIds.length} 行，失败 ${res.data.failed.length} 行`
     )
-    applyRowPatchLocally(res.data.successIds, (target) => {
-      target.reviewStatus = BomItemReviewStatusEnum.APPROVED.value
-    })
-    dropBlockingIssuesFor(res.data.successIds)
   } catch (error: any) {
     ElMessage.error(error?.message || '批量审核失败，请重新加载BOM审核弹窗')
   } finally {
+    // 批量结果落定后回读整单详情与体检：批准按钮的启用条件以服务端口径为准，
+    // 不再靠本地补丁推算（否则 approveCheckReady 停在被置 false 的旧状态，必须关窗重开，dev-20261031-004）
+    try {
+      await refreshAfterAction()
+    } catch (error) {
+      console.error('批量审核后回读BOM详情失败:', error)
+    }
     batchBusy.value = false
   }
 }
