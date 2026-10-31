@@ -1210,7 +1210,9 @@ export function paginateMeasuredWorkSpec(source: HTMLElement): string[] {
     nextPage()
     for (const child of Array.from(source.children) as HTMLElement[]) {
       if (child === sourceHeader || child === sourceFooter) continue
-      if (child.tagName === 'TABLE') {
+      // 凹凸/备注横条虽然也是 <table>（为了与材料表列宽对齐），但按整块内容处理，不参与行切分。
+      const stripBlock = child.classList.contains('emboss-strip') || child.classList.contains('notes-strip')
+      if (child.tagName === 'TABLE' && !stripBlock) {
         addTable(child as HTMLTableElement)
         continue
       }

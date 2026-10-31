@@ -187,22 +187,32 @@
         </tr>
       </tbody>
     </table>
-    <!-- B 版凹凸条件横条：单据级参数，只出现在第一页（dev-20261031-007）。 -->
-    <div
+    <!-- B 版凹凸条件横条：与材料表同一套表格列宽（首列 5% 对齐序号列），只在第一页出现（dev-20261031-007）。 -->
+    <table
       v-if="specTemplate === 'B' && !page.continuation"
       class="emboss-strip"
       data-work-spec-cell="emboss"
       data-cell-label="凹凸条件"
       :data-cell-font="cellFont('emboss', 'materialEmbossContent')"
     >
-      <div class="vertical-label">凹凸</div>
-      <div class="emboss-grid" :style="fontSize('materialEmbossContent')">
-        <div v-for="field in embossFields" :key="field.key" class="emboss-item">
-          <span class="emboss-key">{{ embossShortLabel(field.label) }}</span>
-          <span class="emboss-val">{{ embossValue(field.key, field.unit) }}</span>
-        </div>
-      </div>
-    </div>
+      <colgroup>
+        <col style="width: 5%" />
+        <col style="width: 95%" />
+      </colgroup>
+      <tbody>
+        <tr>
+          <td class="strip-label">凹凸</td>
+          <td class="strip-body">
+            <div class="emboss-grid" :style="fontSize('materialEmbossContent')">
+              <div v-for="field in embossFields" :key="field.key" class="emboss-item">
+                <span class="emboss-key">{{ embossShortLabel(field.label) }}</span>
+                <span class="emboss-val">{{ embossValue(field.key, field.unit) }}</span>
+              </div>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
     <!-- 三组流程使用同一表格行，结构图跨7行，上线表头占第8行。 -->
     <table class="grid flows">
       <colgroup>
@@ -330,21 +340,31 @@
       <span>合计工时</span>
       <div>{{ totalLabor(allOperations) }}</div>
     </div>
-    <!-- B 版备注横条：从材料表右侧搬到变更内容上方（dev-20261031-007）。 -->
-    <div v-if="specTemplate === 'B'" class="notes-strip">
-      <div class="vertical-label">备注</div>
-      <div
-        class="notes-strip-content"
-        data-overflow-title="备注"
-        :data-overflow-repeat="page.continuation ? 'true' : undefined"
-        :style="{ color: data.workSpec.requirementsColor }"
-        data-work-spec-cell="note"
-        data-cell-label="备注"
-        :data-cell-font="cellFont('note', 'notes')"
-      >
-        {{ page.engineeringNotes }}
-      </div>
-    </div>
+    <!-- B 版备注横条：与材料表同一套表格列宽（首列 5% 对齐序号列），位于变更内容上方（dev-20261031-007）。 -->
+    <table v-if="specTemplate === 'B'" class="notes-strip">
+      <colgroup>
+        <col style="width: 5%" />
+        <col style="width: 95%" />
+      </colgroup>
+      <tbody>
+        <tr>
+          <td class="strip-label">备注</td>
+          <td class="strip-body">
+            <div
+              class="notes-strip-content"
+              data-overflow-title="备注"
+              :data-overflow-repeat="page.continuation ? 'true' : undefined"
+              :style="{ color: data.workSpec.requirementsColor }"
+              data-work-spec-cell="note"
+              data-cell-label="备注"
+              :data-cell-font="cellFont('note', 'notes')"
+            >
+              {{ page.engineeringNotes }}
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
     <div class="issuance">
       <div class="vertical-label">变更内容</div>
       <div class="changes">
@@ -769,26 +789,49 @@ function shortDate(value?: string | null) {
   vertical-align: top;
   padding: 8px 5px;
 }
-/* B 版凹凸条件横条：2 行高、6 格 3 列 × 2 行，只在第一页出现（dev-20261031-007）。 */
-.emboss-strip {
-  display: flex;
+/* B 版凹凸/备注横条：与材料表同一套表格结构（首列 5% = 序号列），
+   列宽由浏览器的表格布局算法算出，竖线天然对齐，不再用 flex + 百分比去猜（dev-20261031-007）。 */
+.emboss-strip,
+.notes-strip {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
   flex-shrink: 0;
-  border-bottom: 1px solid #333;
-  min-height: 46px;
 }
-/* 竖标签按材料表序号列的宽度（5%）定宽，竖线才能和序号列对齐；border-box 让 1px 边线不额外撑宽 */
-[data-spec-template='B'] .emboss-strip .vertical-label,
-[data-spec-template='B'] .notes-strip .vertical-label {
-  width: 5%;
+.emboss-strip td,
+.notes-strip td {
+  border-right: 1px solid #333;
+  border-bottom: 1px solid #333;
+  padding: 0;
   box-sizing: border-box;
 }
+.emboss-strip tr > td:last-child,
+.notes-strip tr > td:last-child {
+  border-right: 0;
+}
+.emboss-strip .strip-label,
+.notes-strip .strip-label {
+  writing-mode: vertical-rl;
+  text-align: center;
+  vertical-align: middle;
+  letter-spacing: 8px;
+  font-size: 17px;
+  line-height: 1;
+}
+.emboss-strip .strip-label {
+  height: 44px;
+}
+.notes-strip .strip-label,
+.notes-strip-content {
+  height: 54px;
+}
+/* 凹凸 6 格：3 列 × 2 行，每格 22px；竖线 + 第一行下横线，最后一行由横条底边收口 */
 .emboss-grid {
-  flex: 1;
-  min-width: 0;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-auto-rows: 22px;
   align-content: center;
+  min-height: 44px;
 }
 .emboss-item {
   display: flex;
@@ -796,16 +839,14 @@ function shortDate(value?: string | null) {
   gap: 4px;
   padding: 0 6px;
   min-width: 0;
-  /* 每条内容都要格线：右侧竖线 + 第一行下横线，最后一行由横条底边收口 */
   border-right: 1px solid #333;
-  border-bottom: 1px solid #333;
   line-height: 1.2;
 }
 .emboss-item:nth-child(3n) {
   border-right: 0;
 }
-.emboss-item:nth-child(n + 4) {
-  border-bottom: 0;
+.emboss-item:nth-child(-n + 3) {
+  border-bottom: 1px solid #333;
 }
 .emboss-key {
   white-space: nowrap;
@@ -816,18 +857,8 @@ function shortDate(value?: string | null) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* B 版备注横条：2 行高、全宽，位置在变更内容上方（dev-20261031-007）。 */
-.notes-strip {
-  display: flex;
-  flex-shrink: 0;
-  min-height: 54px;
-  border-top: 1px solid #333;
-  border-bottom: 1px solid #333;
-}
-
+/* B 版备注横条正文：2 行占位，超出按分页续排 */
 .notes-strip-content {
-  flex: 1;
-  min-width: 0;
   min-height: 36px;
   padding: 9px 15px;
   line-height: 18px;

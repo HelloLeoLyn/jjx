@@ -86,7 +86,9 @@ describe('B 版材料表拆列与两条横条（dev-20261031-007）', () => {
   it('凹凸条件横条：6 格 3×2，首页出现、续页不出现', () => {
     const first = paper('B', 0)
     const strip = first.get('.emboss-strip')
-    expect(strip.get('.vertical-label').text()).toBe('凹凸')
+    expect(strip.get('.strip-label').text()).toBe('凹凸')
+    // 与材料表同一套表格列宽：首列 5% 对齐序号列，不是 flex + 百分比
+    expect(strip.find('colgroup col').attributes('style')).toContain('width: 5%')
     expect(first.findAll('.emboss-item')).toHaveLength(6)
     expect(strip.text()).toContain('调机高度')
     expect(paper('B', 1).find('.emboss-strip').exists()).toBe(false)
@@ -95,7 +97,8 @@ describe('B 版材料表拆列与两条横条（dev-20261031-007）', () => {
   it('备注横条在工时下方、变更内容上方，文字取加工要求', () => {
     const wrapper = paper('B', 0)
     const strip = wrapper.get('.notes-strip')
-    expect(strip.get('.vertical-label').text()).toBe('备注')
+    expect(strip.get('.strip-label').text()).toBe('备注')
+    expect(strip.find('colgroup col').attributes('style')).toContain('width: 5%')
     expect(strip.text()).toContain('加工要求：公差±0.1')
     const classes = wrapper.findAll('article > *').map((node) => node.classes().join('.'))
     expect(classes.indexOf('notes-strip')).toBeGreaterThan(classes.indexOf('hours'))
