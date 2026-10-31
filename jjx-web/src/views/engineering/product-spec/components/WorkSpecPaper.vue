@@ -776,8 +776,11 @@ function shortDate(value?: string | null) {
   border-bottom: 1px solid #333;
   min-height: 46px;
 }
-.emboss-strip .vertical-label {
-  border-left: 1px solid #333;
+/* 竖标签按材料表序号列的宽度（5%）定宽，竖线才能和序号列对齐；border-box 让 1px 边线不额外撑宽 */
+[data-spec-template='B'] .emboss-strip .vertical-label,
+[data-spec-template='B'] .notes-strip .vertical-label {
+  width: 5%;
+  box-sizing: border-box;
 }
 .emboss-grid {
   flex: 1;
@@ -793,11 +796,16 @@ function shortDate(value?: string | null) {
   gap: 4px;
   padding: 0 6px;
   min-width: 0;
+  /* 每条内容都要格线：右侧竖线 + 第一行下横线，最后一行由横条底边收口 */
   border-right: 1px solid #333;
+  border-bottom: 1px solid #333;
   line-height: 1.2;
 }
 .emboss-item:nth-child(3n) {
   border-right: 0;
+}
+.emboss-item:nth-child(n + 4) {
+  border-bottom: 0;
 }
 .emboss-key {
   white-space: nowrap;
@@ -816,9 +824,7 @@ function shortDate(value?: string | null) {
   border-top: 1px solid #333;
   border-bottom: 1px solid #333;
 }
-.notes-strip .vertical-label {
-  border-left: 1px solid #333;
-}
+
 .notes-strip-content {
   flex: 1;
   min-width: 0;
