@@ -109,6 +109,25 @@ describe('单格字号的纸张与分页标识', () => {
   })
 })
 
+describe('材料表默认字号', () => {
+  it('项目内容默认 18，序号/规格及模数 13，其余内容列 12（dev-20261031-005）', () => {
+    const settings = defaultWorkSpecFontSettings()
+    expect(settings.materialProjectContent).toBe(18)
+    expect(settings.materialNumberContent).toBe(13)
+    expect(settings.materialSpecContent).toBe(13)
+    expect([settings.materialNameContent, settings.materialDieContent, settings.materialEmbossValueContent])
+      .toEqual([12, 12, 12])
+    // 标题字号不受内容列默认值影响
+    expect(settings.materialProjectTitle).toBe(14)
+  })
+
+  it('旧打印链接里的项目内容字号仍按链接值解析，不被新默认覆盖', () => {
+    const override = serializeWorkSpecFontSettings({ ...defaultWorkSpecFontSettings(), materialProjectContent: 12 })
+    expect(parseWorkSpecFontSettings(override).materialProjectContent).toBe(12)
+    expect(parseWorkSpecFontSettings(null).materialProjectContent).toBe(18)
+  })
+})
+
 describe('图标尺寸设置项', () => {
   it('默认18px，序列化为v5可回读；v4旧链接图标回落默认', () => {
     const settings = defaultWorkSpecFontSettings()

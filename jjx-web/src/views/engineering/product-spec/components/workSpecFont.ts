@@ -46,7 +46,9 @@ const legacyFontAreas: FontArea[] = [
   ...materialFontColumns.flatMap((column): FontArea[] => [
     { key: `${column.key}Title`, label: `${column.label} · 标题`, group: '材料表', defaultSize: 14 },
     { key: `${column.key}Content`, label: `${column.label} · 内容`, group: '材料表',
-      defaultSize: ['materialNumber', 'materialProject', 'materialSpec'].includes(column.key) ? 13 : 12 },
+      // 项目内容默认 18（用户 2026-10-31 口径，dev-20261031-005）；序号/规格及模数维持 13，其余列 12
+      defaultSize: column.key === 'materialProject' ? 18
+        : ['materialNumber', 'materialSpec'].includes(column.key) ? 13 : 12 },
   ]),
   ...flowFontColumns.flatMap((column): FontArea[] => [
     { key: `${column.key}Title`, label: `${column.label} · 标题`, group: column.group, defaultSize: 14 },
