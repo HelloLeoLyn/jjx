@@ -1893,7 +1893,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         vo.setRows(rows);
         vo.setProcessCount(rows.size());
-        vo.setMaterialCount(materialCount);
+        // 材料以 BOM 为准整份带出（dev-20261102-004）：挂不上工序的材料也计入总数并随 unlinkedMaterials 返回，
+        // 前端放进「独立材料」；否则界面只显示挂上工序的那几条（YL001MWOL 13 条里仅 2 条能挂工序）。
+        vo.setMaterialCount(materialCount + unlinked.size());
         vo.setUnlinkedMaterials(unlinked);
         vo.setEligible(true);
         return vo;

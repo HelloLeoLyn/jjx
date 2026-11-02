@@ -244,40 +244,37 @@ export function usePlanCopy(context: PlanCopyContext) {
       ElMessage.warning('成品方案没有可带出的工序')
       return
     }
-    // BOM 材料不静默丢弃（硬要求）：无工序的材料一律暂挂到首道工序；区分「整单通用」与「未挂工序」两类提示
+    // 材料以 BOM 为准整份带出（dev-20261102-004）：能挂工序的随行挂上，挂不上的放进「独立材料」，不再暂挂首道工序。
     const unlinked: any[] = pp.unlinkedMaterials || []
-    const pendingUnlinked = unlinked.filter((m: any) => !m.isCommon) // 未挂工序（待核对）
-    const commonMats = unlinked.filter((m: any) => !!m.isCommon) // 整单通用（合法）
+    const pendingUnlinked = unlinked.filter((m: any) => !m.isCommon) // 未挂工序（待分配）
+    const commonMats = unlinked.filter((m: any) => !!m.isCommon) // 整单通用
     let unlinkedNote = ''
     if (unlinked.length) {
-      const idx = list.findIndex((r: any) => r.majorCategory !== 'PRINT')
-      const ti = idx >= 0 ? idx : 0
-      const base = parseMaterials(list[ti].materials) || []
+      if (copyOverwrite.value) standaloneMaterials.value = []
       const add = unlinked.map((m: any) => ({
         name: m.name,
         spec: m.spec || '',
-        qty: m.qty ?? 1,
         unit: m.unit || 'PCS',
-        materialId: m.materialId,
-        materialCode: m.materialCode || '',
+        qty: m.qty ?? 1,
         baseQty: m.baseQty ?? 1,
         moduleQty: m.moduleQty ?? 1,
         split: m.split,
+        materialId: m.materialId,
+        materialCode: m.materialCode || '',
         projectIds: m.projectIds || [],
+        projectInherited: false,
       }))
-      list[ti].materials = JSON.stringify([...base, ...add])
+      standaloneMaterials.value = [...standaloneMaterials.value, ...add]
       const parts: string[] = []
-      if (commonMats.length) {
-        parts.push(
-          `${commonMats.length} 条整单通用材料（${commonMats.map((m: any) => m.name).join('、')}）已暂挂到首道工序「${list[ti].processName}」`,
-        )
-      }
       if (pendingUnlinked.length) {
         parts.push(
-          `${pendingUnlinked.length} 条未挂工序材料（${pendingUnlinked.map((m: any) => m.name).join('、')}）已暂挂到首道工序「${list[ti].processName}」，请核对归属`,
+          `${pendingUnlinked.length} 条未挂工序材料（${pendingUnlinked.map((m: any) => m.name).join('、')}）`,
         )
       }
-      if (parts.length) unlinkedNote = `；另有 ${parts.join('；')}`
+      if (commonMats.length) {
+        parts.push(`${commonMats.length} 条整单通用材料（${commonMats.map((m: any) => m.name).join('、')}）`)
+      }
+      if (parts.length) unlinkedNote = `${parts.join('；')}已放入「独立材料」，请按需分配到工序`
     }
     productPlanCopying.value = true
     try {

@@ -454,6 +454,9 @@
                 <el-descriptions-item label="带出内容">
                   工序 {{ productPlan.processCount || 0 }} 道 · 材料
                   {{ productPlan.materialCount || 0 }} 条
+                  <template v-if="planUnlinkedCount"
+                    >（其中 {{ planUnlinkedCount }} 条未分配，带出后进「独立材料」）</template
+                  >
                 </el-descriptions-item>
               </el-descriptions>
               <div style="font-size: 12px; color: #909399; margin-top: 10px; line-height: 1.6">
@@ -476,7 +479,7 @@
                     >未挂工序：{{ planPendingNames }}<br
                   /></template>
                   <template v-if="planCommonNames">整单通用：{{ planCommonNames }}<br /></template>
-                  带出时都会暂放到首道工序，请在工序里核对（不会静默丢失）。
+                  带出时全部保留，对不上工序的会放进「独立材料」区，请按需分配到工序（不会静默丢失）。
                 </div>
               </el-alert>
             </template>
@@ -756,6 +759,8 @@ const planPendingNames = computed(() =>
     .map((m: any) => m.name)
     .join('、')
 )
+/** 未挂工序/整单通用的材料条数（材料以 BOM 为准整份带出，这些会进「独立材料」） */
+const planUnlinkedCount = computed(() => (productPlan.value?.unlinkedMaterials || []).length)
 const planCommonNames = computed(() =>
   (productPlan.value?.unlinkedMaterials || [])
     .filter((m: any) => !!m.isCommon)
