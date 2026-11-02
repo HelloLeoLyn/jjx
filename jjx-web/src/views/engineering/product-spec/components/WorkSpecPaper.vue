@@ -970,9 +970,6 @@ function shortDate(value?: string | null) {
 [data-spec-template='B'] .hours {
   border-top: 0;
 }
-[data-spec-template='B'] .issuance {
-  border-bottom: 1px solid #333;
-}
 [data-spec-template='B'] footer {
   border-top: 0;
 }
@@ -1132,6 +1129,23 @@ footer {
 .work-paper > :not(footer) {
   outline: 1.5px solid #222;
   outline-offset: -1.5px;
+}
+/* B 版：原来每个模块各画一圈 1.5px #222 外框，相邻两块在交界处叠成约 3px 的深黑线
+   （用户反馈“模块交界处特别粗”，实测 3.0px）。改为只画“左右边线”，顶边给首块、底边给末块：
+   整页仍是一圈 1.5px 的 #222 外框，模块之间只剩单条 1px 的表格线（dev-20261031-007）。 */
+[data-spec-template='B'] > :not(footer) {
+  outline: 0;
+  border-left: 1.5px solid #222;
+  border-right: 1.5px solid #222;
+  box-sizing: border-box;
+}
+/* 顶边给标题、底边给变更内容块：不能用 :first/:last-of-type，它会按元素类型各命中一个
+   （表格和 div 各算一次），导致工时条、备注条也吃到 1.5px 边线，交界又变成 2.5px。 */
+[data-spec-template='B'] .work-title {
+  border-top: 1.5px solid #222;
+}
+[data-spec-template='B'] .issuance {
+  border-bottom: 1.5px solid #222;
 }
 .inline-content:not(.continuous):not(.flow-page)
   :is(
