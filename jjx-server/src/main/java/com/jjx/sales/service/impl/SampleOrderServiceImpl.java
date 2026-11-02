@@ -1809,13 +1809,23 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         List<EngineeringRoutingItemVO> parents = (rvo != null && rvo.getItems() != null)
                 ? rvo.getItems() : new ArrayList<>();
 
-        // BOM 材料：按 process_id 挂到对应工序（未挂工序的材料不打样侧挂载，留人工）
+        // BOM 材料：按 process_id 挂到对应工序。
+        // 材料不静默丢弃（2026-11-02 dev-20261102-007）：process_id 为空、或该工序不在本次工艺路线里，
+        // 一律进 unlinkedMaterials 由前端放进「独立材料」；否则像 YL001MWOL 那样 13 条只剩 2 条。
         List<EngineeringBomItem> bomItems = bomItemMapper.selectList(
                 new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bom.getBomId()));
+        Set<Long> routedProcessIds = new LinkedHashSet<>();
+        for (EngineeringRoutingItemVO parent : parents) {
+            if (parent.getProcessId() != null) routedProcessIds.add(parent.getProcessId());
+            if (parent.getChildren() != null)
+                for (EngineeringRoutingItemVO child : parent.getChildren())
+                    if (child.getProcessId() != null) routedProcessIds.add(child.getProcessId());
+        }
         Map<Long, List<EngineeringBomItem>> matsByProcess = new LinkedHashMap<>();
         List<Map<String, Object>> unlinked = new ArrayList<>();
         for (EngineeringBomItem bi : bomItems) {
-            if (bi.getProcessId() == null) {
+            boolean attachedToRouting = bi.getProcessId() != null && routedProcessIds.contains(bi.getProcessId());
+            if (!attachedToRouting) {
                 // 项目为空即公共物料；旧is_common列不再作为独立判断依据。
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("name", bi.getMaterialName());
@@ -1826,6 +1836,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 m.put("materialCode", bi.getMaterialCode());
                 m.put("split", bi.getSplit());
                 m.put("isCommon", Boolean.TRUE.equals(bi.getIsCommon()));
+                // 有工序但工艺路线里没有这道工序：标出来便于核对，前端仍按「未挂工序」展示
+                m.put("processId", bi.getProcessId());
                 unlinked.add(m);
                 continue;
             }
