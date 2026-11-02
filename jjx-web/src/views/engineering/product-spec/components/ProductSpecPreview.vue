@@ -143,28 +143,28 @@
                 <div v-if="fileErrors[file.key]" class="file-error">{{ fileErrors[file.key] }}</div>
               </div>
             </el-checkbox-group>
-          </div>
-        </el-checkbox-group>
-        <!-- 空块开关：与上面勾选图集同一套交互；默认都打印，取消勾选即不占用纸面高度（仅 B 版，dev-20261102-002） -->
-        <template v-if="selectedTemplate === 'B'">
-        <div class="nav-heading empty-block-heading">
-          <strong>作业规范空块</strong>
-        </div>
-        <p class="nav-tip">内容为空时才会占用高度，取消勾选可收掉、把位置让给材料与流程。</p>
-        <el-checkbox-group v-model="visibleEmptyBlocks" class="empty-block-choices">
-          <div v-for="block in workSpecEmptyBlocks" :key="block.key" class="empty-block-choice">
-            <el-checkbox
-              :value="block.key"
-              :label="block.key"
-              :disabled="emptyBlockHasContent(block.key)"
+            <!-- 空块勾选：挂在「产品作业规范」这一栏内，和该栏的文件勾选排在一起（dev-20261102-002） -->
+            <div
+              v-if="section.key === 'spec' && selectedTemplate === 'B'"
+              class="empty-block-choices"
             >
-              <span class="section-label">{{ block.label }}</span>
-            </el-checkbox>
-            <span v-if="emptyBlockHasContent(block.key)" class="empty-block-hint">有内容，必须打印</span>
-            <span v-else class="empty-block-hint empty">空</span>
+              <div class="empty-block-title">空块（取消勾选即不占版面）</div>
+              <el-checkbox-group v-model="visibleEmptyBlocks">
+                <div v-for="block in workSpecEmptyBlocks" :key="block.key" class="empty-block-choice">
+                  <el-checkbox
+                    :value="block.key"
+                    :label="block.key"
+                    :disabled="emptyBlockHasContent(block.key)"
+                  >
+                    <span class="section-label">{{ block.label }}</span>
+                  </el-checkbox>
+                  <span v-if="emptyBlockHasContent(block.key)" class="empty-block-hint">有内容，必须打印</span>
+                  <span v-else class="empty-block-hint empty">空</span>
+                </div>
+              </el-checkbox-group>
+            </div>
           </div>
         </el-checkbox-group>
-        </template>
         <div class="nav-foot">已选 {{ selectedSections.length }} 项 · {{ pages.length }} 页</div>
       </aside>
       <main class="paper-stage" @click="selectPaperCell" @keydown="selectPaperCell">
@@ -813,27 +813,27 @@ onBeforeUnmount(() => {
   padding: 7px 10px;
   margin-bottom: 5px;
 }
-/* 空块勾选：沿用目录区卡片样式（dev-20261102-002） */
-.empty-block-heading {
-  margin-top: 10px;
-  border-top: 1px solid #eef1f6;
-  padding-top: 8px;
-}
+/* 空块勾选：挂在「产品作业规范」栏内，与该栏文件勾选同样的缩进（dev-20261102-002） */
 .empty-block-choices {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 6px;
+  margin: 6px 0 1px 22px;
+}
+.empty-block-title {
+  font-size: 11px;
+  color: #9aa6b6;
+  margin-bottom: 2px;
 }
 .empty-block-choice {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 2px 10px;
 }
 .empty-block-choice :deep(.el-checkbox) {
   margin-right: 0;
+  height: 25px;
+}
+.empty-block-choice :deep(.el-checkbox__label) {
+  font-size: 11px;
 }
 .empty-block-hint {
   font-size: 12px;

@@ -214,6 +214,11 @@ describe('空块勾选（dev-20261102-002）', () => {
     expect(choices.map(node => node.text())).toEqual([
       '凹凸条件空', '备注空', '变更内容空',
     ])
+    // 位置：必须挂在「产品作业规范」这一栏里，而不是目录底部单独一组
+    const specSection = wrapper
+      .findAll('.nav-section')
+      .find(node => node.text().includes('产品作业规范'))!
+    expect(specSection.find('.empty-block-choices').exists()).toBe(true)
     expect(wrapper.findComponent(SheetsStub).props('hiddenBlocks')).toEqual([])
 
     // 取消「备注」勾选（点真实 checkbox，让 el-checkbox-group 收到变更）
