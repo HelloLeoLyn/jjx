@@ -288,17 +288,22 @@
                 >
               </template></el-table-column
             >
-            <el-table-column label="规格及模数" min-width="220"
+            <!-- 与纸张 B 版同口径：规格 / 模数 / 基数 三列分开，规格可手填覆盖（dev-20261102-001） -->
+            <el-table-column label="规格" min-width="150"
               ><template #default="{ row }"
                 ><template v-if="projectMaterialDraft"
                   ><el-input
-                    :model-value="row.params || workSpecMaterialSpec(row)"
+                    :model-value="projectMaterialSpecText(row)"
                     maxlength="500"
                     @update:model-value="(value: string) => (row.params = value)" /></template
-                ><span v-else class="multiline">{{
-                  row.params || workSpecMaterialSpec(row)
-                }}</span></template
+                ><span v-else class="multiline">{{ projectMaterialSpecText(row) }}</span></template
               ></el-table-column
+            >
+            <el-table-column label="模数" width="80" align="center"
+              ><template #default="{ row }">{{ projectMaterialModule(row) }}</template></el-table-column
+            >
+            <el-table-column label="基数" width="80" align="center"
+              ><template #default="{ row }">{{ projectMaterialBase(row) }}</template></el-table-column
             >
 
             <el-table-column label="刀模位置" min-width="130"
@@ -317,7 +322,7 @@
                 ><template v-if="projectMaterialDraft"
                   ><el-button link @click="addProjectMaterialGroup($index)">新增</el-button
                   ><el-button link @click="restoreProjectMaterialSpec(row)"
-                    >恢复规格及模数</el-button
+                    >恢复规格</el-button
                   ><el-button link type="danger" @click="projectMaterialDraft.splice($index, 1)"
                     >删除</el-button
                   ><el-button link :disabled="$index === 0" @click="moveProjectMaterial($index, -1)"
@@ -515,7 +520,6 @@ import RouteFormDialog from '@/views/product/route/components/RouteFormDialog.vu
 import {
   documentFileCaption,
   loadDocset,
-  workSpecMaterialSpec,
   plain,
   dieLocationKey,
   dieLocationLabel,
@@ -773,9 +777,35 @@ function selectProjectMaterial(index: number, selected: string) {
     data.value?.workSpec
   )
 }
-/** 恢复规格及模数：清空手动覆盖 params，回到 workSpecMaterialSpec 的自动值。 */
+/** 恢复规格：清空手动覆盖 params，回到按 BOM 事实计算的规格值。 */
 function restoreProjectMaterialSpec(row: ProjectMaterial) {
   row.params = ''
+}
+/** 规格列：手填覆盖 params 优先，否则 尺寸（宽*长mm 或规格文本）+ 跳距，与纸张 B 版同口径。 */
+function projectMaterialSpecText(row: ProjectMaterial | Record<string, any>) {
+  if (row.params) return String(row.params)
+  const width = Number(row.widthMm)
+  const length = Number(row.lengthMm)
+  const size =
+    Number.isFinite(width) && width > 0 && Number.isFinite(length) && length > 0
+      ? `${width}*${length}mm`
+      : plain(row.specification)
+  const split = plain(row.split)
+  return [size, split ? `跳${split}` : ''].filter(Boolean).join(' ')
+}
+/** 模数列：BOM moduleQty，空值显示 —。 */
+function projectMaterialModule(row: Record<string, any>) {
+  const raw = row.moduleQty
+  if (raw == null || plain(raw) === '') return '—'
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? String(Number(value.toFixed(4))) : '—'
+}
+/** 基数列：BOM baseQty，空值显示 —。 */
+function projectMaterialBase(row: Record<string, any>) {
+  const raw = row.baseQty
+  if (raw == null || plain(raw) === '') return '—'
+  const value = Number(raw)
+  return Number.isFinite(value) ? String(Number(value.toFixed(4))) : String(raw)
 }
 function moveProjectMaterial(index: number, delta: number) {
   const rows = projectMaterialDraft.value

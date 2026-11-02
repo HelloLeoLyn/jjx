@@ -101,7 +101,7 @@ vi.mock('@/views/product/route/components/RouteFormDialog.vue', () => ({
 
 import Panel from '../ProductWorkSpecPanel.vue'
 import { normalizeWorkSpec, productWorkSpecApi } from '@/api/product/workSpec'
-import { loadDocset, workSpecMaterialSpec } from '../docset'
+import { loadDocset } from '../docset'
 
 const bomRow = {
   materialId: 1,
@@ -153,14 +153,16 @@ async function mountEditing() {
 const materialSection = (wrapper: any) =>
   wrapper.findAll('.data-section').find((node: any) => node.find('h3').text() === '项目材料')!
 
-const specInput = (wrapper: any) =>
-  materialSection(wrapper).find('.el-table__body-wrapper tbody tr').findAll('td')[3].find('input')
+const rowCells = (wrapper: any) =>
+  materialSection(wrapper).find('.el-table__body-wrapper tbody tr').findAll('td')
+const specInput = (wrapper: any) => rowCells(wrapper)[3].find('input')
+const cellText = (wrapper: any, index: number) => rowCells(wrapper)[index].text()
 
-describe('项目材料规格及模数编辑预填（dev-20261026-008）', () => {
-  it('点编辑后规格及模数值直接写在输入框里，不是只有灰色提示', async () => {
+describe('项目材料规格/模数/基数三列（dev-20261102-001）', () => {
+  it('规格/模数/基数分三列，规格点编辑后直接写在输入框里，不是只有灰色提示', async () => {
     const wrapper = await mountEditing()
-    const expected = workSpecMaterialSpec({ ...bomRow, params: '' })
-    expect(expected).toBeTruthy()
+    // 无宽长时规格回落到规格文本；模数/基数取 BOM 的 moduleQty/baseQty
+    const expected = bomRow.specification
     await materialSection(wrapper)
       .findAll('.section-heading button')
       .find((node: any) => node.text() === '编辑')!
@@ -168,11 +170,13 @@ describe('项目材料规格及模数编辑预填（dev-20261026-008）', () => 
     await flushPromises()
     const input = specInput(wrapper)
     expect((input.element as HTMLInputElement).value).toBe(expected)
-    expect((input.element as HTMLInputElement).value).not.toBe('')
+    expect(cellText(wrapper, 4)).toBe('1')
+    expect(cellText(wrapper, 5)).toBe('1')
+    expect(materialSection(wrapper).text()).not.toContain('规格及模数')
     wrapper.unmount()
   })
 
-  it('改动后按人工文本保存；清空回到自动值（等同恢复规格及模数）', async () => {
+  it('改动后按人工文本保存；清空回到自动规格', async () => {
     const wrapper = await mountEditing()
     await materialSection(wrapper)
       .findAll('.section-heading button')
@@ -182,9 +186,7 @@ describe('项目材料规格及模数编辑预填（dev-20261026-008）', () => 
     await specInput(wrapper).setValue('人工规格 2模')
     expect((specInput(wrapper).element as HTMLInputElement).value).toBe('人工规格 2模')
     await specInput(wrapper).setValue('')
-    expect((specInput(wrapper).element as HTMLInputElement).value).toBe(
-      workSpecMaterialSpec({ ...bomRow, params: '' })
-    )
+    expect((specInput(wrapper).element as HTMLInputElement).value).toBe(bomRow.specification)
     wrapper.unmount()
   })
 })
