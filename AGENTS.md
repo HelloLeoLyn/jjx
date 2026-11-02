@@ -105,6 +105,15 @@ Also for chat output (**unified 3-level numbering**, 2026-10-11): when listing o
 - Every reply ends with a `待你决定` list containing **all still-open items** in one place, each with a fixed number that is never renumbered: answered items keep their number and are marked 已定, new items are appended at the end.
 - The owner may then answer with a single short line (e.g. `1B 2B 3A`); never require answering questions spread across several earlier messages.
 
+## Frontend vs backend — decide before building (2026-11-02, task dev-20261102-005)
+
+Before writing any new feature, decide where the logic belongs; do not add a backend field just to make a screen easier to render.
+
+- **Frontend (default):** display-only derived values (totals, counts, page counts, diffs), interaction state and non-persisted toggles (print options, per-cell font size, drafts), and list sorting/filtering/paging — compute them from the API payload the screen already receives.
+- **Backend:** anything persisted, cross-client consistent or audited (state-machine transitions, permissions, stock ledger, money/tax, uniqueness checks), transactional writes, cross-table validation, large aggregations (never pull a whole table to the client), and rules where a mistake costs money (balances, lots, cost).
+- **One implementation per rule:** never compute the same value in both layers. Pick the layer, and say so in the commit/remark so the next agent does not add the second copy.
+- **Unsure:** ask the owner one short question with a recommendation before coding — do not guess.
+
 ## Tool failure and recovery rules
 
 - `sys_task.remark` is `varchar(500)`: check `CHAR_LENGTH` before writing and query it again afterward. Never suppress database errors with `2>/dev/null` or an empty catch.
