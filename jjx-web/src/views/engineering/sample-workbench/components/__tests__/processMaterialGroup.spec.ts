@@ -53,6 +53,18 @@ describe('独立工序材料组件', () => {
     expect(pc.materialRows.map((row) => row.name)).toEqual(['材料0'])
     wrapper.unmount()
   })
+  it('图标工序不再重复显示工序名称（图标已表达），无图标工序仍显示名称（dev-20261102-007）', async () => {
+    const { pc, wrapper } = fixture()
+    pc.items[0].icon = '面板冲孔'
+    await wrapper.vm.$nextTick()
+    const names = wrapper.findAll('.child-name')
+    // 图标工序：不渲染可见的 <b> 名称，但名称仍保留在 DOM 里（visually-hidden，供读屏与检索）
+    expect(names[0].find('b').exists()).toBe(false)
+    expect(names[0].text()).toContain('面板')
+    // 无图标工序：照旧显示名称
+    expect(names[1].find('b').text()).toBe('下线')
+    wrapper.unmount()
+  })
   it('空子表仍显示，历史模糊归属保留在待分配区', async () => {
     const { pc, wrapper } = fixture()
     pc.materialRows = [{ name: '历史材料', uid: 'legacy' }] as any

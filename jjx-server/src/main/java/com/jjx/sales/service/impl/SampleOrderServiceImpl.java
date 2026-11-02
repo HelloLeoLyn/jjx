@@ -1833,9 +1833,6 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         int roundNo = (profile != null && profile.getSampleRound() != null) ? profile.getSampleRound() : 1;
-        String stamp = new java.text.SimpleDateFormat("yyyy-MM-dd").format(new Date());
-        String sourceTag = "[成品方案 BOM " + (bomVersion != null ? bomVersion : "")
-                + " / ROUTING " + (routingVersion != null ? routingVersion : "") + " @" + stamp + "]";
 
         List<SalesSampleProcess> rows = new ArrayList<>();
         int cardOrder = 0;
@@ -1882,9 +1879,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     materialCount += arr.size();
                 }
                 row.setMaterials(matsJson);
-                // 说明：description 优先；work_instruction 并入备注，并追加来源标记（快照可追溯）
-                row.setProcessNote(it.getDescription());
-                row.setRemark(joinNonEmpty(it.getRemark(), it.getWorkInstruction(), sourceTag));
+                // 作业说明只取工艺路线的 work_instruction（2026-11-02 dev-20261102-007）：
+                // 不再把 description（标准工序描述）当作业说明，也不把作业说明/来源标记拼进工序备注。
+                row.setProcessNote(it.getWorkInstruction());
+                row.setRemark(it.getRemark());
                 // 印刷自定义参数原样透传（前端 makePrintRow 解析 printName/colorNo/inkNo/screenNo）
                 row.setCustomProcessParams(it.getCustomProcessParams());
                 rows.add(row);

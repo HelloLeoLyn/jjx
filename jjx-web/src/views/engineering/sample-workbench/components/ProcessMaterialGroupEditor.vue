@@ -64,7 +64,7 @@
       :data-process="item.itemKey"
     >
       <div class="child-heading">
-        <div class="child-name">
+        <div class="child-name" :title="item.processName">
           <IconStepBadge
             v-if="item.icon"
             :icon="item.icon"
@@ -75,7 +75,9 @@
           <span v-if="symbolText(item)" class="symbol-text" :title="symbolText(item)">{{
             symbolText(item)
           }}</span>
-          <b>{{ item.processName }}</b>
+          <!-- 图标工序靠图标识别，不再重复显示名称，避免与右侧作业说明挤成一片（dev-20261102-007） -->
+          <b v-if="!item.icon" :title="item.processName">{{ item.processName }}</b>
+          <span v-else class="visually-hidden">{{ item.processName }}</span>
         </div>
         <label class="child-field"
           ><span>作业说明</span>
@@ -332,6 +334,17 @@ function assignTo(row: any, key: string) {
 }
 .child-process :deep(.el-table) {
   font-size: 12px;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .symbol-text {
   display: inline-block;
