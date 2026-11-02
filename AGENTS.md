@@ -100,6 +100,11 @@ DB：迁移 267 / sys_menu·sys_role_menu / 删 menu404+授权、405/406 重挂 
 
 Also for chat output (**unified 3-level numbering**, 2026-10-11): when listing options / checklists / hierarchy / steps, use level 1 `1）2）`, level 2 `A) B)`, level 3 `a) b)` — same symbol per level, no level skipping; numbering applies only to enumerations (options/steps), never to prose or conclusion sentences.
 
+**Numbering must be stable across turns (2026-11-02, task dev-20261102-003, user rule).** The owner reads only the latest reply, so a decision must never depend on an earlier message:
+- Section headers carry **no** numbering (no `一、二、三`, no `第X节`); use a plain short heading (`原因`, `方案`, `待你决定`). References in the text use the item **name** or its fixed number, never a section number — section numbers drift and the owner cannot follow them.
+- Every reply ends with a `待你决定` list containing **all still-open items** in one place, each with a fixed number that is never renumbered: answered items keep their number and are marked 已定, new items are appended at the end.
+- The owner may then answer with a single short line (e.g. `1B 2B 3A`); never require answering questions spread across several earlier messages.
+
 ## Tool failure and recovery rules
 
 - `sys_task.remark` is `varchar(500)`: check `CHAR_LENGTH` before writing and query it again afterward. Never suppress database errors with `2>/dev/null` or an empty catch.
