@@ -145,6 +145,26 @@
             </el-checkbox-group>
           </div>
         </el-checkbox-group>
+        <!-- 空块开关：与上面勾选图集同一套交互；默认都打印，取消勾选即不占用纸面高度（仅 B 版，dev-20261102-002） -->
+        <template v-if="selectedTemplate === 'B'">
+        <div class="nav-heading empty-block-heading">
+          <strong>作业规范空块</strong>
+        </div>
+        <p class="nav-tip">内容为空时才会占用高度，取消勾选可收掉、把位置让给材料与流程。</p>
+        <el-checkbox-group v-model="visibleEmptyBlocks" class="empty-block-choices">
+          <div v-for="block in workSpecEmptyBlocks" :key="block.key" class="empty-block-choice">
+            <el-checkbox
+              :value="block.key"
+              :label="block.key"
+              :disabled="emptyBlockHasContent(block.key)"
+            >
+              <span class="section-label">{{ block.label }}</span>
+            </el-checkbox>
+            <span v-if="emptyBlockHasContent(block.key)" class="empty-block-hint">有内容，必须打印</span>
+            <span v-else class="empty-block-hint empty">空</span>
+          </div>
+        </el-checkbox-group>
+        </template>
         <div class="nav-foot">已选 {{ selectedSections.length }} 项 · {{ pages.length }} 页</div>
       </aside>
       <main class="paper-stage" @click="selectPaperCell" @keydown="selectPaperCell">
@@ -167,6 +187,7 @@
             :cell-font-editable="!paperOnly"
             :spec-template="selectedTemplate"
             :generate-overflow-appendix="generateOverflowAppendix"
+            :hidden-blocks="hiddenEmptyBlocks"
           />
         </div>
         <el-empty v-else-if="!loading && !error" description="勾选左侧文档，查看纸张预览" />
@@ -248,6 +269,13 @@ import {
   type PaperTextLine,
 } from './docset'
 import {
+  WORK_SPEC_EMPTY_BLOCK_KEYS,
+  parseHiddenBlocks,
+  serializeHiddenBlocks,
+  workSpecEmptyBlocks,
+  type WorkSpecEmptyBlockKey,
+} from './workSpecBlocks'
+import {
   defaultWorkSpecFontSettings,
   parseWorkSpecFontSettings,
   serializeWorkSpecFontSettings,
@@ -274,6 +302,7 @@ const props = withDefaults(
     initialFontSettings?: string
     initialCellFontSettings?: string
     initialTemplate?: WorkSpecTemplate
+    initialHiddenBlocks?: string
   }>(),
   { standalone: false, autoPrint: false, paperOnly: false }
 )
@@ -358,6 +387,24 @@ function resetSelectedCellFont() {
 }
 // 打印预览默认 B 版；客供资料（paperOnly，无模板选择）保持 A 版（dev-20261031-006）
 const selectedTemplate = ref<WorkSpecTemplate>(initialWorkSpecTemplate(props.initialTemplate, props.paperOnly))
+/** 空块显示开关：默认三个都打印；取消勾选即从纸面移除并让出高度（dev-20261102-002）。 */
+const visibleEmptyBlocks = ref<WorkSpecEmptyBlockKey[]>(
+  WORK_SPEC_EMPTY_BLOCK_KEYS.filter((key) => !parseHiddenBlocks(props.initialHiddenBlocks).includes(key))
+)
+const hiddenEmptyBlocks = computed(() => serializeHiddenBlocks(
+  WORK_SPEC_EMPTY_BLOCK_KEYS.filter((key) => !visibleEmptyBlocks.value.includes(key))
+).split(',').filter(Boolean) as WorkSpecEmptyBlockKey[])
+/** 只有空块才允许取消勾选；有内容时必须打印，避免误删正文。 */
+function emptyBlockHasContent(key: WorkSpecEmptyBlockKey) {
+  const spec = data.value?.workSpec
+  if (!spec) return false
+  if (key === 'emboss') {
+    const emboss = (spec.emboss || {}) as Record<string, unknown>
+    return Object.values(emboss).some((v) => String(v ?? '').trim() !== '')
+  }
+  if (key === 'notes') return String(spec.engineeringRequirements || '').trim() !== ''
+  return (spec.changes || []).some((change) => change.print && String(change.text || '').trim() !== '')
+}
 // 面板分组跟随当前模板：A 版原样，B 版显示拆列后的规格/模数/基数与凹凸横条项（dev-20261031-007）
 const visibleFontGroups = computed(() => workSpecFontGroupsForTemplate(selectedTemplate.value))
 const openFontGroups = ref(['常规', '材料表'])
@@ -596,6 +643,7 @@ async function printDocuments() {
       cellFonts: serializeWorkSpecCellFonts(cellFonts.value),
       template: selectedTemplate.value,
       generateOverflowAppendix: generateOverflowAppendix.value ? '1' : '0',
+      ...(hiddenEmptyBlocks.value.length ? { hideBlocks: serializeHiddenBlocks(hiddenEmptyBlocks.value) } : {}),
       print: '1',
     })
     if (props.versionId) {
@@ -764,6 +812,36 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   padding: 7px 10px;
   margin-bottom: 5px;
+}
+/* 空块勾选：沿用目录区卡片样式（dev-20261102-002） */
+.empty-block-heading {
+  margin-top: 10px;
+  border-top: 1px solid #eef1f6;
+  padding-top: 8px;
+}
+.empty-block-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.empty-block-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 10px;
+}
+.empty-block-choice :deep(.el-checkbox) {
+  margin-right: 0;
+}
+.empty-block-hint {
+  font-size: 12px;
+  color: #b7c0cc;
+  white-space: nowrap;
+}
+.empty-block-hint.empty {
+  color: #e6a23c;
 }
 .nav-section.chosen {
   background: #f4f7fc;

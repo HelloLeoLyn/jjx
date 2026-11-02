@@ -146,4 +146,42 @@ describe('B 版材料表拆列与两条横条（dev-20261031-007）', () => {
     wrappers.push(wrapper)
     expect(wrapper.findAll('.materials tbody tr')).toHaveLength(15)
   })
+
+  it('空块开关：取消勾选后凹凸/备注/变更内容不渲染，发行单位仍保留（dev-20261102-002）', () => {
+    const data = fixture()
+    const mountWith = (hiddenBlocks?: Array<'emboss' | 'notes' | 'change'>) => {
+      const wrapper = mount(WorkSpecPaper, {
+        props: {
+          data,
+          page: { ...workSpecFlowSource(data), continuation: 0 },
+          pageIndex: 0,
+          pageCount: 1,
+          specTemplate: 'B',
+          fontSettings: defaultWorkSpecFontSettings(),
+          hiddenBlocks,
+        },
+        global: { stubs: { SvgIcon: true } },
+      })
+      wrappers.push(wrapper)
+      return wrapper
+    }
+
+    const shown = mountWith()
+    expect(shown.find('.emboss-strip').exists()).toBe(true)
+    expect(shown.find('.notes-strip').exists()).toBe(true)
+    expect(shown.text()).toContain('变更内容')
+
+    const hidden = mountWith(['emboss', 'notes', 'change'])
+    expect(hidden.find('.emboss-strip').exists()).toBe(false)
+    expect(hidden.find('.notes-strip').exists()).toBe(false)
+    expect(hidden.text()).not.toContain('变更内容')
+    // 发行单位/批准章位置不能跟着隐藏
+    expect(hidden.text()).toContain('发行单位')
+
+    // 只隐藏其中一块时其它块照常渲染
+    const partial = mountWith(['notes'])
+    expect(partial.find('.emboss-strip').exists()).toBe(true)
+    expect(partial.find('.notes-strip').exists()).toBe(false)
+    expect(partial.text()).toContain('变更内容')
+  })
 })

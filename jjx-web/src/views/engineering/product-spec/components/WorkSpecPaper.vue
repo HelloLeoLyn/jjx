@@ -189,7 +189,7 @@
     </table>
     <!-- B 版凹凸条件横条：与材料表同一套表格列宽（首列 5% 对齐序号列），只在第一页出现（dev-20261031-007）。 -->
     <table
-      v-if="specTemplate === 'B' && !page.continuation"
+      v-if="specTemplate === 'B' && !page.continuation && blockShown('emboss')"
       class="emboss-strip"
       data-work-spec-cell="emboss"
       data-cell-label="凹凸条件"
@@ -341,7 +341,7 @@
       <div>{{ totalLabor(allOperations) }}</div>
     </div>
     <!-- B 版备注横条：与材料表同一套表格列宽（首列 5% 对齐序号列），位于变更内容上方（dev-20261031-007）。 -->
-    <table v-if="specTemplate === 'B'" class="notes-strip">
+    <table v-if="specTemplate === 'B' && blockShown('notes')" class="notes-strip">
       <colgroup>
         <col style="width: 5%" />
         <col style="width: 95%" />
@@ -366,6 +366,7 @@
       </tbody>
     </table>
     <div class="issuance">
+      <template v-if="blockShown('change')">
       <div class="vertical-label">变更内容</div>
       <div class="changes">
         <div
@@ -386,6 +387,7 @@
           </div>
         </div>
       </div>
+      </template>
       <div class="vertical-label">发行单位</div>
       <div class="issuer">
         <div v-if="data.workSpec.approved" class="approval">
@@ -441,6 +443,7 @@ import {
   type WorkSpecFontArea,
   type WorkSpecFontColumn,
 } from './workSpecFont'
+import type { WorkSpecEmptyBlockKey } from './workSpecBlocks'
 
 const props = withDefaults(
   defineProps<{
@@ -454,9 +457,15 @@ const props = withDefaults(
     cellFonts?: WorkSpecCellFonts
     specTemplate?: WorkSpecTemplate
     generateOverflowAppendix?: boolean
+    /** 预览里被取消勾选的空块（emboss/notes/change）：只影响本次打印会话（dev-20261102-002） */
+    hiddenBlocks?: WorkSpecEmptyBlockKey[]
   }>(),
   { specTemplate: 'A', generateOverflowAppendix: false }
 )
+/** 空块开关：默认全部渲染，未包含在 hiddenBlocks 里就显示。 */
+function blockShown(key: WorkSpecEmptyBlockKey) {
+  return !(props.hiddenBlocks || []).includes(key)
+}
 /** B 版列集合（序号/项目/材料/规格/模数/基数/刀模位置），A 版保持原七列。 */
 const materialColumns = computed(() =>
   props.specTemplate === 'B' ? materialFontColumnsB : materialFontColumns
@@ -566,6 +575,7 @@ const { measure } = useWorkSpecOverflow(
       props.cellFonts,
       props.specTemplate,
       props.generateOverflowAppendix,
+      props.hiddenBlocks,
     ]),
   (lines) => emit('overflow', lines),
   fitWorkSpecCells

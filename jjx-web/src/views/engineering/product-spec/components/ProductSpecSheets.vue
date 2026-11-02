@@ -2,14 +2,14 @@
   <div ref="sheetRoot" class="doc-sheets" :class="{ 'cell-font-editable': cellFontEditable }">
     <div v-if="specTemplate === 'B'" ref="flowSource" class="flow-source" aria-hidden="true">
       <WorkSpecPaper ref="flowPaper" :data="data" :page="workSpecFlowSource(data)" :page-index="0" :page-count="1"
-        :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :cell-fonts="cellFonts" spec-template="B" />
+        :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :cell-fonts="cellFonts" :hidden-blocks="hiddenBlocks" spec-template="B" />
     </div>
     <div v-for="(page, pageIndex) in pages" :key="page.key" :id="`doc-page-${pageIndex}`" class="sheet-slot">
       <div class="page-caption no-print"><span>{{ page.title }}</span><span>{{ pageIndex + 1 }} / {{ pages.length }}</span></div>
       <A4Canvas :class="{ 'spec-canvas': page.kind === 'spec' || page.section === 'print', 'work-spec-canvas': page.kind === 'spec' || (page.kind === 'spec-details' && page.section === 'spec'), 'measured-canvas': !!page.flowHtml || page.flowPending }" :padding-mm="9" :scale="1">
         <div v-if="page.flowHtml" class="measured-page" v-html="workSpecFlowPageHtml(page.flowHtml, pageIndex, pages.length)" />
         <div v-else-if="page.flowPending" class="layout-pending">正在按 A4 测量分页…</div>
-        <WorkSpecPaper v-else-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :cell-fonts="cellFonts" :spec-template="specTemplate" :generate-overflow-appendix="generateOverflowAppendix" />
+        <WorkSpecPaper v-else-if="page.kind === 'spec'" ref="workPapers" @overflow="emit('layout', page.key, $event)" :data="data" :page="page" :page-index="pageIndex" :page-count="pages.length" :structure-image="structureImage" :structure-caption="structureCaption" :font-settings="fontSettings" :cell-fonts="cellFonts" :spec-template="specTemplate" :generate-overflow-appendix="generateOverflowAppendix" :hidden-blocks="hiddenBlocks" />
         <InkMixingPaper v-else-if="page.kind === 'ink'" :product-code="data.product.productCode" />
         <article v-else class="paper-form" :class="{ 'appendix-form': page.kind === 'spec-details' && page.section === 'spec' }">
           <header v-if="page.section !== 'customer' && page.section !== 'atlas'" class="paper-heading">
@@ -50,10 +50,11 @@ import ColorCheckPaper from './ColorCheckPaper.vue'
 import InkMixingPaper from './InkMixingPaper.vue'
 import { plain, documentFileCaption, workSpecFlowSource, paginateMeasuredWorkSpec, type DocsetData, type DocPage, type PaperTextLine } from './docset'
 import { workSpecFlowPageHtml } from './workSpecFlowPagination'
+import type { WorkSpecEmptyBlockKey } from './workSpecBlocks'
 import type { WorkSpecFontSettings, WorkSpecTemplate } from './workSpecFont'
 import type { WorkSpecCellFonts } from './workSpecCellFont'
 
-const props = withDefaults(defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string; fontSettings: WorkSpecFontSettings; cellFonts?: WorkSpecCellFonts; selectedCellKey?: string; cellFontEditable?: boolean; specTemplate?: WorkSpecTemplate; generateOverflowAppendix?: boolean }>(), { specTemplate: 'A', generateOverflowAppendix: false })
+const props = withDefaults(defineProps<{ data: DocsetData; pages: DocPage[]; structureImage?: string; structureCaption?: string; fontSettings: WorkSpecFontSettings; cellFonts?: WorkSpecCellFonts; selectedCellKey?: string; cellFontEditable?: boolean; specTemplate?: WorkSpecTemplate; generateOverflowAppendix?: boolean; hiddenBlocks?: WorkSpecEmptyBlockKey[] }>(), { specTemplate: 'A', generateOverflowAppendix: false })
 const emit = defineEmits<{ layout: [key: string, lines: PaperTextLine[]]; flowLayout: [pages: string[]]; flowError: [message: string] }>()
 const workPapers = ref<InstanceType<typeof WorkSpecPaper>[]>([])
 const printPapers = ref<InstanceType<typeof PrintSpecPaper>[]>([])

@@ -9,6 +9,7 @@
     :initial-font-settings="initialFontSettings"
     :initial-cell-font-settings="route.query.cellFonts == null ? undefined : String(route.query.cellFonts)"
     :initial-template="initialWorkSpecTemplate(route.query.template)"
+    :initial-hidden-blocks="route.query.hideBlocks == null ? undefined : String(route.query.hideBlocks)"
     :auto-print="route.query.print === '1'"
     standalone
   />

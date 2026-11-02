@@ -171,7 +171,7 @@ describe('图标尺寸设置项', () => {
 
 // 模拟B分页后的静态HTML，验证父级事件代理而非Vue子节点监听。
 const SheetsStub = defineComponent({
-  name: 'ProductSpecSheets', props: ['pages', 'fontSettings', 'cellFonts', 'specTemplate'], emits: ['layout'],
+  name: 'ProductSpecSheets', props: ['pages', 'fontSettings', 'cellFonts', 'specTemplate', 'hiddenBlocks'], emits: ['layout'],
   template: `<div class="doc-sheets"><div v-html="'<table><tr><td data-work-spec-cell=&quot;flow0-id-41&quot; data-cell-label=&quot;面板第1道作业流程&quot; tabindex=&quot;0&quot;><span>文字工序</span></td><td data-work-spec-cell=&quot;flow0-id-42&quot; data-cell-label=&quot;面板第2道作业流程&quot; tabindex=&quot;0&quot;>另一格</td></tr><tr><td data-work-spec-cell=&quot;mat0-name&quot; data-cell-label=&quot;材料第1项 · 材料&quot; data-cell-font=&quot;10&quot;><span class=&quot;material-name&quot;>面材</span></td></tr></table>'" /></div>`,
 })
 // 既有用例按 A 版布局断言（改版默认值由「作业规范模板默认值」用例覆盖），故显式传 A
@@ -201,6 +201,39 @@ describe('预览默认模板', () => {
     expect(wrapper.findComponent(SheetsStub).props('specTemplate')).toBe('A')
   })
 })
+describe('空块勾选（dev-20261102-002）', () => {
+  it('B 版默认三块全选；取消备注后纸张收到 hiddenBlocks；有内容的块禁止取消', async () => {
+    mocks.load.mockResolvedValue(fixture())
+    const wrapper = mount(ProductSpecPreview, {
+      props: { productId: 42, initialSections: ['spec'], initialTemplate: 'B' },
+      global: { stubs: { ProductSpecSheets: SheetsStub } },
+    })
+    wrappers.push(wrapper)
+    await flushPromises()
+    const choices = wrapper.findAll('.empty-block-choice')
+    expect(choices.map(node => node.text())).toEqual([
+      '凹凸条件空', '备注空', '变更内容空',
+    ])
+    expect(wrapper.findComponent(SheetsStub).props('hiddenBlocks')).toEqual([])
+
+    // 取消「备注」勾选（点真实 checkbox，让 el-checkbox-group 收到变更）
+    await choices[1].find('input[type="checkbox"]').setValue(false)
+    await flushPromises()
+    expect(wrapper.findComponent(SheetsStub).props('hiddenBlocks')).toEqual(['notes'])
+  })
+
+  it('A 版不显示空块勾选组（凹凸/备注横条只存在于 B 版）', async () => {
+    mocks.load.mockResolvedValue(fixture())
+    const wrapper = mount(ProductSpecPreview, {
+      props: { productId: 42, initialSections: ['spec'], initialTemplate: 'A' },
+      global: { stubs: { ProductSpecSheets: SheetsStub } },
+    })
+    wrappers.push(wrapper)
+    await flushPromises()
+    expect(wrapper.findAll('.empty-block-choice')).toHaveLength(0)
+  })
+})
+
 describe('预览选格、复原与打印设置传递', () => {
   it('静态分页HTML可选格、键盘切换，覆盖不串格；单格复原及全部复原都生效', async () => {
     const wrapper = await preview()
