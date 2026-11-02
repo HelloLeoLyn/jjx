@@ -961,6 +961,21 @@ function shortDate(value?: string | null) {
   border-bottom: 1px solid #333;
   align-items: stretch;
 }
+/* B 版模块交界线统一口径：一律由「上方模块的底边」画，一条只画一次。
+   材料表→凹凸→流程表→合计工时→备注→变更内容→页脚 七段交界不再混用“下块画顶边”，
+   避免表格合并边框与 div 边框两套渲染方式的深浅/粗细差异（dev-20261031-007）。 */
+[data-spec-template='B'] .flows tfoot td {
+  border-bottom: 1px solid #333;
+}
+[data-spec-template='B'] .hours {
+  border-top: 0;
+}
+[data-spec-template='B'] .issuance {
+  border-bottom: 1px solid #333;
+}
+[data-spec-template='B'] footer {
+  border-top: 0;
+}
 
 .hours span {
   width: 110px;
