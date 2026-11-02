@@ -453,7 +453,7 @@
                 </el-descriptions-item>
                 <el-descriptions-item label="带出内容">
                   工序 {{ productPlan.processCount || 0 }} 道 · 材料
-                  {{ productPlan.materialCount || 0 }} 条
+                  {{ planMaterialTotal }} 条
                   <template v-if="planUnlinkedCount"
                     >（其中 {{ planUnlinkedCount }} 条未分配，带出后进「独立材料」）</template
                   >
@@ -562,6 +562,7 @@ import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { useSampleWorkbench } from './composables/useSampleWorkbench'
+import { countPlanMaterials } from './composables/planCounts'
 import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
 import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTransferDialog.vue'
@@ -761,6 +762,10 @@ const planPendingNames = computed(() =>
 )
 /** 未挂工序/整单通用的材料条数（材料以 BOM 为准整份带出，这些会进「独立材料」） */
 const planUnlinkedCount = computed(() => (productPlan.value?.unlinkedMaterials || []).length)
+/** 材料总条数：前端按 rows+unlinkedMaterials 自己算，不用后端的派生字段（dev-20261102-006） */
+const planMaterialTotal = computed(() =>
+  countPlanMaterials(productPlan.value?.rows, productPlan.value?.unlinkedMaterials)
+)
 const planCommonNames = computed(() =>
   (productPlan.value?.unlinkedMaterials || [])
     .filter((m: any) => !!m.isCommon)
