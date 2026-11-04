@@ -118,8 +118,9 @@ public class MaterialMasterCatalog {
         Set<Long> seen = new HashSet<>();
         while (id != null && id != 0L) {
             InventoryMaterialCategory c = byId.get(id);
-            if (c == null || !seen.add(id) || path.size() == 3) {
-                if (required) throw new BusinessException("分类路径无效或超过三级");
+            // 2026-11-04 dev-20261104-008：层级上限由三级放到四级（电子元件/辅料 → LED/端子/塑体…）。
+            if (c == null || !seen.add(id) || path.size() == 4) {
+                if (required) throw new BusinessException("分类路径无效或超过四级");
                 return List.of();
             }
             path.add(0, c);

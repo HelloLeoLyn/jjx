@@ -122,7 +122,7 @@ public class InventoryMaterialCategoryServiceImpl
 
     /**
      * 维护分类层级/编码路径/中文全路径（dev-20261024-006）。
-     * 新增时父节点必须已存在；不可写到三级以下。
+     * 新增时父节点必须已存在；层级上限见 MaterialMasterConfigurationService（2026-11-04 起为四级）。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -177,7 +177,7 @@ public class InventoryMaterialCategoryServiceImpl
                 || !java.util.Objects.equals(existing.getNamePath(), entity.getNamePath());
     }
 
-    /** 递归刷新子节点路径（树最多三级；seen 防环）。 */
+    /** 递归刷新子节点路径（支持四级；seen 防环）。 */
     private void refreshChildPaths(Long parentId) {
         refreshChildPaths(parentId, new java.util.HashSet<>());
     }

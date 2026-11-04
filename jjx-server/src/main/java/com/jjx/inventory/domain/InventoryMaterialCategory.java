@@ -33,7 +33,7 @@ public class InventoryMaterialCategory extends BaseEntity {
     private Long parentId;
 
 
-    /** 层级：1一级/2二级/3三级 */
+    /** 层级：1一级/2二级/3三级/4四级 */
     private Integer categoryLevel;
 
     /** 分类路径（编码），如：RAW/RAW_AUX/RAW_AUX_PROTECT */

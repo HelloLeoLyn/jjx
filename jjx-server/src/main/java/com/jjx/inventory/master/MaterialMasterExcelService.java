@@ -286,7 +286,7 @@ public class MaterialMasterExcelService {
     }
 
     private byte[] exportRows(List<InventoryMaterial> list) {
-        List<String> headers = List.of("序号", "物料ID", "物料编码", "一级分类", "二级分类", "三级分类", "材质", "形态", "尺寸(mm)", "颜色", "型号", "品牌", "供应商", "供应商品名", "基本单位", "是否客供专用", "是否样品专用", "属性JSON", "当前名称", "生成规格");
+        List<String> headers = List.of("序号", "物料ID", "物料编码", "一级分类", "二级分类", "三级分类", "四级分类", "材质", "形态", "尺寸(mm)", "颜色", "型号", "品牌", "供应商", "供应商品名", "基本单位", "是否客供专用", "是否样品专用", "属性JSON", "当前名称", "生成规格");
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("物料主数据"); Row header = sheet.createRow(0);
             for (int i = 0; i < headers.size(); i++) { put(header, i, headers.get(i)); sheet.setColumnWidth(i, 20 * 256); }
@@ -299,6 +299,7 @@ public class MaterialMasterExcelService {
                 Row row = sheet.createRow(++index);
                 String[] values = {String.valueOf(index), material.getMaterialId().toString(), material.getMaterialCode(),
                         path.isEmpty() ? "" : path.get(0).categoryName(), path.size() > 1 ? path.get(1).categoryName() : "", path.size() > 2 ? path.get(2).categoryName() : "",
+                        path.size() > 3 ? path.get(3).categoryName() : "",
                         dictionaryLabel(dictionaries, "material_meta", material.getMaterialMeta()), dictionaryLabel(dictionaries, "form", material.getMaterialForm()), material.getSize(),
                         dictionaryLabel(dictionaries, "color", material.getColor()), material.getModel(), dictionaryLabel(dictionaries, "brand", material.getBrand()), material.getSupplierName(), material.getSupplierMaterialName(), material.getUnit(),
                         Boolean.TRUE.equals(material.getIsCustomerSupplied()) ? "是" : "否", Boolean.TRUE.equals(material.getIsSample()) ? "是" : "否", material.getAttributeJson(), material.getMaterialName(), material.getSpecification()};
