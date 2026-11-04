@@ -32,8 +32,21 @@ public class MaterialMasterExcelService {
     private static final List<String> COMMON_HEADERS = List.of("物料名称", "规格", "材质", "形态", "宽(mm)", "长(mm)", "厚(mm)", "尺寸单位", "颜色", "型号", "品牌", "单位", "供应商", "供应商品名", "是否客供专用", "是否样品专用", "别名", "业务备注", "物料ID（更新时填写）", "标准单价", "采购周期(天)", "安全库存", "最高库存", "再订货点", "保质期(天)", "预警提前天数", "批次控制");
 
     /** 品类列逐行选择；属性列为启用品类模板字段的并集，不绑定单个品类。 */
-    public byte[] template(Long ignoredCategoryId) {
-        List<MaterialMasterCatalog.Category> categories = catalog.categories().stream().filter(MaterialMasterCatalog.Category::selectable).toList();
+    public byte[] template(Long categoryId) {
+        // 2026-11-04 dev-20261104-008：选定分类时只导出该分类的属性列（列瘦身）；未选则维持全量宽表兼容。
+        // 只能选叶子（已配模板）分类：父级有子类时要求改选子分类，避免导入挂到不可选的父级上。
+        MaterialMasterCatalog.Category chosen = categoryId == null ? null
+                : catalog.categories(true).stream().filter(c -> c.categoryId().equals(categoryId)).findFirst()
+                        .orElseThrow(() -> new BusinessException("分类不存在"));
+        if (chosen != null && !chosen.selectable()) {
+            var children = catalog.categories(true).stream()
+                    .filter(c -> chosen.categoryId().equals(c.parentId()))
+                    .map(MaterialMasterCatalog.Category::categoryName).toList();
+            throw new BusinessException(children.isEmpty()
+                    ? "该分类未配置属性模板，不能下载模板" : "该分类下有子类，请选择具体子分类：" + String.join(" / ", children));
+        }
+        List<MaterialMasterCatalog.Category> categories = chosen != null ? List.of(chosen)
+                : catalog.categories().stream().filter(MaterialMasterCatalog.Category::selectable).toList();
         LinkedHashSet<String> columns = new LinkedHashSet<>();
         columns.add("品类"); columns.addAll(COMMON_HEADERS);
         for (var category : categories) catalog.configuration(category.categoryId()).schema().fields().stream().filter(f -> !f.key().equals("thickness_mm")).forEach(f -> columns.add(fieldHeader(f)));

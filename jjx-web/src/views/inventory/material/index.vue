@@ -7,6 +7,23 @@
       @search="handleQuery"
       @reset="handleReset"
     >
+      <template #subCategoryId>
+        <el-select
+          v-model="subCategoryIdModel"
+          placeholder="选择子类"
+          clearable
+          filterable
+          style="width: 190px"
+          @change="onSubCategoryChange"
+        >
+          <el-option
+            v-for="item in subCategoryOptions"
+            :key="item.categoryId"
+            :label="item.categoryName"
+            :value="item.categoryId"
+          />
+        </el-select>
+      </template>
       <template #supplierId>
         <SupplierSelector
           v-model="supplierIdModel"
@@ -270,6 +287,15 @@ const router = useRouter()
 
 // 搜索表单配置（品类选项异步注入，见 loadCategoryOptions）
 const searchFields = ref<SearchOptions[]>(searchOptions.map((item) => ({ ...item })))
+/** 两级品类筛选：父级（品类）+ 子类（仅父级有子类时出现，dev-20261104-008） */
+const parentCategoryIdModel = ref<number | undefined>(undefined)
+const subCategoryIdModel = ref<number | undefined>(undefined)
+const subCategoryOptions = computed(() =>
+  parentCategoryIdModel.value == null
+    ? []
+    : categoryOptions.value.filter((c) => c.parentId === parentCategoryIdModel.value && c.selectable)
+)
+
 
 // 工具栏配置
 const toolbarButtons: ToolbarOptions[] = toolbarOptions
@@ -368,6 +394,51 @@ const specBasisText = (row: InventoryMaterial) => {
           : '-'
   return row.thicknessTolerance ? `${basis} ±${row.thicknessTolerance}` : basis
 }
+/** 是否存在可选子类（第 4 级）。 */
+const hasSubCategory = (id?: number | null) =>
+  id != null && categoryOptions.value.some((c) => c.parentId === id && c.selectable)
+/** 按所选品类动态增删「子类」筛选字段；选父级时列出它的子类。 */
+function syncSubCategoryField(parentId?: number | null) {
+  const children = parentId == null
+    ? []
+    : categoryOptions.value.filter((c) => c.parentId === parentId && c.selectable)
+  const exists = searchFields.value.some((item) => item.prop === 'subCategoryId')
+  if (!children.length) {
+    if (exists) searchFields.value = searchFields.value.filter((item) => item.prop !== 'subCategoryId')
+    return
+  }
+  const optionsMapped = children.map((c) => ({ value: c.categoryId, label: c.categoryName }))
+  if (exists) {
+    const field = searchFields.value.find((item) => item.prop === 'subCategoryId')!
+    field.options = optionsMapped
+    return
+  }
+  const index = searchFields.value.findIndex((item) => item.prop === 'categoryId')
+  searchFields.value.splice(index + 1, 0, {
+    prop: 'subCategoryId',
+    label: '子类',
+    type: 'select',
+    options: optionsMapped,
+  } as any)
+}
+/** 子类选择写回品类筛选条件：选子类=精确匹配，清空=回到父级（含子类）。 */
+function onSubCategoryChange(value?: number | null) {
+  queryParams.categoryId = (value ?? parentCategoryIdModel.value ?? undefined) as any
+  handleQuery()
+}
+
+watch(
+  () => queryParams.categoryId,
+  (value) => {
+    const id = value as number | undefined
+    if (id !== parentCategoryIdModel.value) {
+      parentCategoryIdModel.value = id
+      subCategoryIdModel.value = undefined
+    }
+    syncSubCategoryField(id)
+  }
+)
+
 const loadCategoryOptions = async () => {
   const [categoryResponse, dictResponse] = await Promise.all([
     materialMasterApi.categories(),
@@ -376,12 +447,14 @@ const loadCategoryOptions = async () => {
   const options = categoryResponse.data || []
   categoryOptions.value = options
   dictionaries.value = dictResponse.data || {}
+  // 品类下拉：可选叶子 + 有子类的父级（dev-20261104-008 两级筛选）
   const field = searchFields.value.find((item) => item.prop === 'categoryId')
   if (field) {
     field.options = options
-      .filter((item) => item.selectable)
+      .filter((item) => (item.categoryLevel ?? 0) >= 2 && (item.selectable || hasSubCategory(item.categoryId)))
       .map((item) => ({ value: item.categoryId, label: item.pathName }))
   }
+  syncSubCategoryField(queryParams.categoryId as number | undefined)
   for (const [prop, dict] of Object.entries({
     materialMeta: 'material_meta',
     materialForm: 'form',

@@ -10,19 +10,37 @@
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
     <div v-if="!loading" class="master-layout">
       <el-form ref="formRef" :model="form" label-width="120px" class="master-form">
+        <!-- 品类 + 子类两级（dev-20261104-008）：只有该品类存在子类时才出现第二个选择器，落库只存子类 id -->
         <el-form-item label="品类" required>
           <el-select
-            :model-value="form.categoryId"
+            :model-value="parentCategoryId ?? undefined"
             filterable
-            placeholder="选择末级品类"
+            placeholder="选择品类"
+            style="width: 100%"
+            :disabled="saving"
+            @change="selectParentCategory"
+          >
+            <el-option
+              v-for="category in parentCategoryOptions"
+              :key="category.categoryId"
+              :label="category.pathName"
+              :value="category.categoryId"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="subCategoryOptions.length" label="子类" required>
+          <el-select
+            :model-value="form.categoryId ?? undefined"
+            filterable
+            placeholder="选择子类"
             style="width: 100%"
             :disabled="saving"
             @change="selectCategory"
           >
             <el-option
-              v-for="category in leafCategories"
+              v-for="category in subCategoryOptions"
               :key="category.categoryId"
-              :label="category.pathName"
+              :label="category.categoryName"
               :value="category.categoryId"
             />
           </el-select>
@@ -322,6 +340,28 @@ const expanded = ref<string[]>([])
 let session = 0
 let categoryRequest = 0
 const leafCategories = computed(() => categories.value.filter((c) => c.selectable))
+/** 品类下拉：可选叶子 + 有子类的父级（第 4 级子类只在子类下拉里出现）。 */
+const parentCategoryId = ref<number | null>(null)
+const hasChildren = (id?: number | null) => id != null && categories.value.some((c) => c.parentId === id)
+const parentCategoryOptions = computed(() =>
+  categories.value.filter((c) => (c.categoryLevel ?? 0) >= 2 && (c.selectable || hasChildren(c.categoryId)))
+)
+const subCategoryOptions = computed(() =>
+  parentCategoryId.value == null
+    ? []
+    : categories.value.filter((c) => c.parentId === parentCategoryId.value && c.selectable)
+)
+/** 选品类：有子类则等子类再加载模板，没有子类就直接按叶子加载。 */
+async function selectParentCategory(id: number) {
+  parentCategoryId.value = id
+  if (hasChildren(id)) {
+    configuration.value = undefined
+    form.categoryId = null
+    form.attributeJson = {}
+    return
+  }
+  await selectCategory(id)
+}
 const materialOptions = computed(() =>
   (dictionaries.value.material_meta || []).filter((o) =>
     configuration.value?.schema.meta_options.includes(o.code)
@@ -525,6 +565,7 @@ async function initialize() {
     defaultLocationId: null,
   })
   expanded.value = []
+  parentCategoryId.value = null
   try {
     const [categoryResponse, dictResponse, tagResponse, detailResponse] = await Promise.all([
       materialMasterApi.categories(),
@@ -554,6 +595,9 @@ async function initialize() {
       form.tagIds = detail.tags.flatMap((tag) => (tag.tagId == null ? [] : [tag.tagId]))
       configuration.value = detail.configuration ?? undefined
       if (!detail.configuration) form.categoryId = null
+      // 回显：物料挂在子类时，品类下拉显示其父级
+      const self = categories.value.find((c) => c.categoryId === form.categoryId)
+      parentCategoryId.value = self?.parentId != null && hasChildren(self.parentId) ? self.parentId : form.categoryId ?? null
     } else if (props.presetData) {
       if (props.presetData.materialName) {
         form.materialName = props.presetData.materialName
@@ -583,6 +627,8 @@ async function initialize() {
 }
 
 async function save() {
+  if (!form.categoryId)
+    return void ElMessage.warning(parentCategoryId.value != null ? '请选择子类' : '请选择品类')
   if (!sizeValid.value) return void ElMessage.warning('请先修正尺寸')
   if (form.grammage && form.thicknessMm != null)
     return void ElMessage.warning('克重与厚度只能选一种口径，请清掉尺寸里的厚度')

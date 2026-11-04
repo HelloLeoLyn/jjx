@@ -36,7 +36,7 @@ export const searchOptions: SearchOptions[] = [
     prop: 'categoryId',
     label: '品类',
     type: 'select',
-    // 选项由新模型分类接口注入，只提供末级品类。
+    // 选项由新模型分类接口注入：可选叶子 + 有子类的父级（dev-20261104-008）
     options: [],
   },
   {

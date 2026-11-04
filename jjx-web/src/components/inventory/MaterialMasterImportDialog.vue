@@ -7,12 +7,11 @@
     :close-on-click-modal="false"
   >
     <el-form label-width="100px">
-      <el-form-item label="品类（可选）">
+      <el-form-item label="品类/子类（必选）">
         <el-select
           v-model="categoryId"
           filterable
-          clearable
-          placeholder="留空＝使用 1A 统一模板（按行【品类】列）"
+          placeholder="选择要导入的品类或子类（有子类时必须选到子类）"
           style="width: 100%"
           :disabled="busy"
         >
@@ -23,7 +22,7 @@
             :value="category.categoryId"
           />
         </el-select>
-        <div class="hint">1A 模板按每行【品类】列校验属性；留空品类且开启自动归类时，未命中的行走未归类。</div>
+        <div class="hint">模板按所选品类/子类只导出该分类的属性列；有子类的品类（如电子元件/辅料）必须选到子类。</div>
       </el-form-item>
       <el-form-item label="自动归类">
         <el-switch v-model="autoClassify" :disabled="busy || !!categoryId" />
@@ -39,7 +38,7 @@
       /></el-form-item>
     </el-form>
     <el-alert
-      title="先下载对应品类模板。迁移现有物料时填写物料ID，保留原ID与编码；需要编辑权限。整表预检通过后导入，任一行失败不会部分写入。"
+      title="先选品类/子类并下载对应模板。迁移现有物料时填写物料ID，保留原ID与编码；需要编辑权限。整表预检通过后导入，任一行失败不会部分写入。"
       type="info"
       :closable="false"
     />
