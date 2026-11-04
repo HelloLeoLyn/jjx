@@ -38,16 +38,18 @@ const plan = {
       processOrder: 1,
       processName: '面板冲孔',
       majorCategory: 'ASSEMBLY',
-      materials: JSON.stringify([{ name: 'F200', qty: 0.125, unit: 'M' }]),
+      materials: null,
     },
     {
       processOrder: 2,
       processName: '下线',
       majorCategory: 'ASSEMBLY',
-      materials: JSON.stringify([{ name: 'PET-125', qty: 0.25, unit: 'M' }]),
+      materials: null,
     },
   ],
   unlinkedMaterials: [
+    { name: 'F200', spec: '', qty: 0.125, unit: 'M', isCommon: false },
+    { name: 'PET-125', spec: '', qty: 0.25, unit: 'M', isCommon: false },
     { name: 'PC-0.254', spec: '0.254', qty: 0.0167, unit: 'M', isCommon: false },
     { name: 'SDT-25', spec: '', qty: 0.5, unit: 'M', isCommon: false },
     { name: 'PET-100白色', spec: '', qty: 0.5, unit: 'ROLL', isCommon: false },
@@ -64,17 +66,19 @@ describe('成品方案复制：材料以 BOM 为准整份带出（dev-20261102-0
     await copy.loadProductPlan()
     await copy.confirmProductPlanCopy()
 
-    // 卡片材料保持原样：只有能挂上工序的那 2 条
-    expect(JSON.parse(context.planList.value[0].materials).map((m: any) => m.name)).toEqual(['F200'])
-    expect(JSON.parse(context.planList.value[1].materials).map((m: any) => m.name)).toEqual(['PET-125'])
-    // 4 条对不上工序的材料全部进独立材料，名称与单位保留
+    // 工序行不再带材料（BOM 复制 BOM，不挂工序）
+    expect(context.planList.value[0].materials).toBeNull()
+    expect(context.planList.value[1].materials).toBeNull()
+    // BOM 材料整份进「独立材料」，名称与单位保留
     expect(context.standaloneMaterials.value.map((m: any) => m.name)).toEqual([
+      'F200',
+      'PET-125',
       'PC-0.254',
       'SDT-25',
       'PET-100白色',
       'PET保护膜-WG008',
     ])
-    expect(context.standaloneMaterials.value.map((m: any) => m.unit)).toEqual(['M', 'M', 'ROLL', 'ROLL'])
+    expect(context.standaloneMaterials.value.map((m: any) => m.unit)).toEqual(['M', 'M', 'M', 'M', 'ROLL', 'ROLL'])
     // 提示文案指向独立材料
     expect(message.alert).toHaveBeenCalled()
     expect(String(message.alert.mock.calls[0][0])).toContain('独立材料')
@@ -93,6 +97,6 @@ describe('成品方案复制：材料以 BOM 为准整份带出（dev-20261102-0
     copy.copyOverwrite.value = true
     await copy.confirmProductPlanCopy()
     expect(context.standaloneMaterials.value.map((m: any) => m.name)).not.toContain('手工旧行')
-    expect(context.standaloneMaterials.value).toHaveLength(4)
+    expect(context.standaloneMaterials.value).toHaveLength(6)
   })
 })

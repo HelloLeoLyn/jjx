@@ -454,7 +454,10 @@
                 <el-descriptions-item label="带出内容">
                   工序 {{ productPlan.processCount || 0 }} 道 · 材料
                   {{ planMaterialTotal }} 条
-                  <template v-if="planUnlinkedCount"
+                  <template v-if="planUnlinkedCount === planMaterialTotal"
+                    >（全部进「独立材料」，不挂工序）</template
+                  >
+                  <template v-else-if="planUnlinkedCount"
                     >（其中 {{ planUnlinkedCount }} 条未分配，带出后进「独立材料」）</template
                   >
                 </el-descriptions-item>

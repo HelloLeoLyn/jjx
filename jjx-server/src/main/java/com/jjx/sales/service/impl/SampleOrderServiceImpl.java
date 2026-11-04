@@ -1809,46 +1809,32 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         List<EngineeringRoutingItemVO> parents = (rvo != null && rvo.getItems() != null)
                 ? rvo.getItems() : new ArrayList<>();
 
-        // BOM 材料：按 process_id 挂到对应工序。
-        // 材料不静默丢弃（2026-11-02 dev-20261102-007）：process_id 为空、或该工序不在本次工艺路线里，
-        // 一律进 unlinkedMaterials 由前端放进「独立材料」；否则像 YL001MWOL 那样 13 条只剩 2 条。
+        // BOM 材料整份带出，不按工序匹配（2026-11-04 dev-20261104-001，用户口径：
+        // 「工序复制工序、BOM 复制 BOM」；BOM 材料挂的是项目，和工艺路线的工序不是一套，
+        // 过去按 process_id 匹配导致 YL001MWOL 13 条只剩 2 条）。
+        // 全部材料作为材料清单返回（unlinkedMaterials），由前端放进「独立材料」区；
+        // processId 一并返回仅作核对参考，不再据此挂到工序行上。
         List<EngineeringBomItem> bomItems = bomItemMapper.selectList(
                 new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bom.getBomId()));
-        Set<Long> routedProcessIds = new LinkedHashSet<>();
-        for (EngineeringRoutingItemVO parent : parents) {
-            if (parent.getProcessId() != null) routedProcessIds.add(parent.getProcessId());
-            if (parent.getChildren() != null)
-                for (EngineeringRoutingItemVO child : parent.getChildren())
-                    if (child.getProcessId() != null) routedProcessIds.add(child.getProcessId());
-        }
-        Map<Long, List<EngineeringBomItem>> matsByProcess = new LinkedHashMap<>();
         List<Map<String, Object>> unlinked = new ArrayList<>();
         for (EngineeringBomItem bi : bomItems) {
-            boolean attachedToRouting = bi.getProcessId() != null && routedProcessIds.contains(bi.getProcessId());
-            if (!attachedToRouting) {
-                // 项目为空即公共物料；旧is_common列不再作为独立判断依据。
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("name", bi.getMaterialName());
-                m.put("spec", bi.getSpecification());
-                m.put("qty", bi.getQuantity());
-                m.put("unit", bi.getUnit());
-                m.put("materialId", bi.getMaterialId());
-                m.put("materialCode", bi.getMaterialCode());
-                m.put("split", bi.getSplit());
-                m.put("isCommon", Boolean.TRUE.equals(bi.getIsCommon()));
-                // 有工序但工艺路线里没有这道工序：标出来便于核对，前端仍按「未挂工序」展示
-                m.put("processId", bi.getProcessId());
-                unlinked.add(m);
-                continue;
-            }
-            matsByProcess.computeIfAbsent(bi.getProcessId(), k -> new ArrayList<>()).add(bi);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("name", bi.getMaterialName());
+            m.put("spec", bi.getSpecification());
+            m.put("qty", bi.getQuantity());
+            m.put("unit", bi.getUnit());
+            m.put("materialId", bi.getMaterialId());
+            m.put("materialCode", bi.getMaterialCode());
+            m.put("split", bi.getSplit());
+            m.put("isCommon", Boolean.TRUE.equals(bi.getIsCommon()));
+            m.put("processId", bi.getProcessId());
+            unlinked.add(m);
         }
 
         int roundNo = (profile != null && profile.getSampleRound() != null) ? profile.getSampleRound() : 1;
 
         List<SalesSampleProcess> rows = new ArrayList<>();
         int cardOrder = 0;
-        int materialCount = 0;
         for (EngineeringRoutingItemVO parent : parents) {
             List<EngineeringRoutingItemVO> cardItems =
                     (parent.getChildren() != null && !parent.getChildren().isEmpty())
@@ -1867,30 +1853,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                 row.setProcessOrder(cardOrder);
                 row.setProcessCategory(it.getProcessCategory());
                 row.setStatus(0);
-                // 材料 JSON：键名沿用打样侧现有约定（name/spec/qty/unit/materialId/materialCode）
-                String matsJson = null;
-                List<EngineeringBomItem> mats = matsByProcess.get(it.getProcessId());
-                if (mats != null && !mats.isEmpty()) {
-                    List<Map<String, Object>> arr = new ArrayList<>();
-                    for (EngineeringBomItem bi : mats) {
-                        Map<String, Object> m = new LinkedHashMap<>();
-                        m.put("name", bi.getMaterialName());
-                        m.put("spec", bi.getSpecification());
-                        m.put("qty", bi.getQuantity());
-                        m.put("unit", bi.getUnit());
-                        m.put("materialId", bi.getMaterialId());
-                        m.put("materialCode", bi.getMaterialCode());
-                        m.put("split", bi.getSplit());
-                        arr.add(m);
-                    }
-                    try {
-                        matsJson = objectMapper.writeValueAsString(arr);
-                    } catch (Exception e) {
-                        log.warn("成品方案带出-材料序列化失败 processId={}: {}", it.getProcessId(), e.getMessage());
-                    }
-                    materialCount += arr.size();
-                }
-                row.setMaterials(matsJson);
+                // 工序行只带工序；材料统一由 unlinkedMaterials 整份带出（dev-20261104-001）
+                row.setMaterials(null);
                 // 作业说明只取工艺路线的 work_instruction（2026-11-02 dev-20261102-007）：
                 // 不再把 description（标准工序描述）当作业说明，也不把作业说明/来源标记拼进工序备注。
                 row.setProcessNote(it.getWorkInstruction());
@@ -1905,7 +1869,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         vo.setProcessCount(rows.size());
         // 只返回挂上工序的材料条数；界面上的「材料总数（含未分配）」由前端用 rows+unlinkedMaterials 自行计算
         // （2026-11-02 dev-20261102-006：纯展示口径不在后端造派生数字）。
-        vo.setMaterialCount(materialCount);
+        vo.setMaterialCount(unlinked.size());
         vo.setUnlinkedMaterials(unlinked);
         vo.setEligible(true);
         return vo;
