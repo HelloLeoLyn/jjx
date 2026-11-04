@@ -48,9 +48,9 @@ const plan = {
     },
   ],
   unlinkedMaterials: [
-    { name: 'F200', spec: '', qty: 0.125, unit: 'M', isCommon: false },
-    { name: 'PET-125', spec: '', qty: 0.25, unit: 'M', isCommon: false },
-    { name: 'PC-0.254', spec: '0.254', qty: 0.0167, unit: 'M', isCommon: false },
+    { name: 'F200', spec: '', qty: 0.125, unit: 'M', isCommon: false, processId: 17 },
+    { name: 'PET-125', spec: '', qty: 0.25, unit: 'M', isCommon: false, processId: 38 },
+    { name: 'PC-0.254', spec: '0.254', qty: 0.0167, unit: 'M', isCommon: false, processId: 78 },
     { name: 'SDT-25', spec: '', qty: 0.5, unit: 'M', isCommon: false },
     { name: 'PET-100白色', spec: '', qty: 0.5, unit: 'ROLL', isCommon: false },
     { name: 'PET保护膜-WG008', spec: '', qty: 0.5, unit: 'ROLL', isCommon: true },
@@ -79,6 +79,10 @@ describe('成品方案复制：材料以 BOM 为准整份带出（dev-20261102-0
       'PET保护膜-WG008',
     ])
     expect(context.standaloneMaterials.value.map((m: any) => m.unit)).toEqual(['M', 'M', 'M', 'M', 'ROLL', 'ROLL'])
+    // 「项目」列跟着带出：有 processId 的材料落成 projectIds
+    expect(context.standaloneMaterials.value[0].projectIds).toEqual([17])
+    expect(context.standaloneMaterials.value[1].projectIds).toEqual([38])
+    expect(context.standaloneMaterials.value[2].projectIds).toEqual([78])
     // 提示文案指向独立材料
     expect(message.alert).toHaveBeenCalled()
     expect(String(message.alert.mock.calls[0][0])).toContain('独立材料')

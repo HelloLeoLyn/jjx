@@ -1828,6 +1828,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             m.put("split", bi.getSplit());
             m.put("isCommon", Boolean.TRUE.equals(bi.getIsCommon()));
             m.put("processId", bi.getProcessId());
+            // 「项目」= 该材料用在哪些标准工序：BOM 行上的 process_id 直接带出，前端落成 projectIds（dev-20261104-001）
+            m.put("projectIds", bi.getProcessId() == null ? new ArrayList<Long>() : new ArrayList<>(List.of(bi.getProcessId())));
             unlinked.add(m);
         }
 

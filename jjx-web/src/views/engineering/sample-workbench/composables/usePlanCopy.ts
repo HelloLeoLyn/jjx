@@ -261,7 +261,13 @@ export function usePlanCopy(context: PlanCopyContext) {
         split: m.split,
         materialId: m.materialId,
         materialCode: m.materialCode || '',
-        projectIds: m.projectIds || [],
+        // 项目：接口给了 projectIds 就用它；否则用 BOM 行的 processId 落成单项目（dev-20261104-001）
+        projectIds:
+          Array.isArray(m.projectIds) && m.projectIds.length
+            ? m.projectIds
+            : m.processId != null
+              ? [Number(m.processId)]
+              : [],
         projectInherited: false,
       }))
       standaloneMaterials.value = [...standaloneMaterials.value, ...add]
