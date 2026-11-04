@@ -173,9 +173,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
         if (queryDTO.getSupplierId() != null) {
             wrapper.eq(InventoryMaterial::getSupplierId, queryDTO.getSupplierId());
         }
-        if (queryDTO.getCategoryId() != null) {
-            wrapper.eq(InventoryMaterial::getCategoryId, queryDTO.getCategoryId());
-        }
+        applyCategoryFilter(wrapper, queryDTO.getCategoryId());
         if (queryDTO.getStatus() != null && !queryDTO.getStatus().isEmpty()) {
             wrapper.eq(InventoryMaterial::getStatus, queryDTO.getStatus());
         }
@@ -432,9 +430,7 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                         .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialName, name);
             });
         }
-        if (queryDTO.getCategoryId() != null) {
-            wrapper.eq(InventoryMaterial::getCategoryId, queryDTO.getCategoryId());
-        }
+        applyCategoryFilter(wrapper, queryDTO.getCategoryId());
         if (queryDTO.getSupplierId() != null) {
             wrapper.eq(InventoryMaterial::getSupplierId, queryDTO.getSupplierId());
         }
@@ -757,6 +753,26 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 + "OR EXISTS (SELECT 1 FROM inventory_material_category c "
                 + "WHERE c.category_id = inventory_material.category_id "
                 + "AND (c.name_path LIKE {0} OR c.category_name LIKE {0})))", like);
+    }
+
+    /**
+     * 品类筛选（2026-11-04 dev-20261104-008）：选父级时包含它的所有子类。
+     * 电子元件/辅料已拆出第 4 级子类，物料挂在子类上，选父级必须能查出来。
+     */
+    private void applyCategoryFilter(LambdaQueryWrapper<InventoryMaterial> wrapper, Long categoryId) {
+        if (categoryId == null) return;
+        InventoryMaterialCategory self = categoryService.getById(categoryId);
+        String path = self == null ? null : self.getCategoryPath();
+        if (path == null || path.isBlank()) {
+            wrapper.eq(InventoryMaterial::getCategoryId, categoryId);
+            return;
+        }
+        List<Long> ids = categoryService.list(new LambdaQueryWrapper<InventoryMaterialCategory>()
+                        .and(w -> w.eq(InventoryMaterialCategory::getCategoryId, categoryId)
+                                .or().likeRight(InventoryMaterialCategory::getCategoryPath, path + "/")))
+                .stream().map(InventoryMaterialCategory::getCategoryId).toList();
+        if (ids.isEmpty()) wrapper.eq(InventoryMaterial::getCategoryId, categoryId);
+        else wrapper.in(InventoryMaterial::getCategoryId, ids);
     }
 
     private static void applyAttributeFilters(LambdaQueryWrapper<InventoryMaterial> wrapper, MaterialQueryDTO dto) {

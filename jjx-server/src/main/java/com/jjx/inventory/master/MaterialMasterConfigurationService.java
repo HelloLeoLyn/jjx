@@ -51,7 +51,11 @@ public class MaterialMasterConfigurationService {
         if (dto.parentId() == null || dto.parentId() == 0L) fail("一级类型固定为原材料、半成品、成品，请在现有节点下建分类");
         if (locks.lockCategory(dto.parentId()) == null) fail("上级分类不存在");
         MaterialMasterCatalog.Category parent = catalog.categories().stream().filter(c -> c.categoryId().equals(dto.parentId())).findFirst().orElseThrow(() -> new BusinessException("上级分类不在启用的新模型分类树内"));
-        if (parent.categoryLevel() >= 3 || template(parent.categoryId()) != null) fail("上级分类已有录入模板或已到三级，不能再增加子分类");
+        // 2026-11-04 dev-20261104-008：层级放开到四级（业内"分类树深度允许不齐"，目前只有电子元件/辅料需要子类）。
+        // 父级已有模板时允许加子类，但必须先把它下面的物料迁到子类，否则物料会挂在不可选的父级上。
+        if (parent.categoryLevel() >= 4) fail("已到四级分类，不能再增加子分类");
+        if (template(parent.categoryId()) != null && materialCount(parent.categoryId()) > 0)
+            fail("上级分类已有录入模板且存在物料，请先把物料迁到子分类后再增加子分类");
         InventoryMaterialCategory current = dto.categoryId() == null ? null : categories.selectById(dto.categoryId());
         if (dto.categoryId() != null && current == null) fail("分类不存在");
         if (current != null) {

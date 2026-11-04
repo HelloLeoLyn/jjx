@@ -797,7 +797,7 @@ const leaves = computed(() =>
 )
 const parentCategories = computed(() =>
   categories.value.filter(
-    (c) => c.categoryLevel < 3 && !c.selectable && c.categoryId !== categoryEditId.value
+    (c) => c.categoryLevel < 4 && c.categoryId !== categoryEditId.value
   )
 )
 const allowedMeta = computed(() =>

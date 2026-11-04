@@ -188,10 +188,26 @@ public class MaterialMasterExcelService {
         return new ImportResult(preview, rows.size(), List.of());
     }
 
+    /**
+     * 解析导入行的「品类」列（2026-11-04 dev-20261104-008）：只接受可选（叶子且已配模板）分类。
+     * 填了父级（如 RAW_AUX_ELECTRONIC）时给出明确提示，让用户改填子类，避免物料挂到不可选的父级。
+     */
     private Long resolveCategory(String value) {
-        var matches = catalog.categories().stream().filter(c -> c.selectable() && (c.categoryCode().equals(value) || c.categoryName().equals(value) || c.pathName().equals(value))).toList();
-        if (matches.size() != 1) throw new BusinessException("【品类】不存在、已停用或名称不唯一：" + value);
-        return matches.get(0).categoryId();
+        var all = catalog.categories(true);
+        var matches = all.stream()
+                .filter(c -> c.categoryCode().equals(value) || c.categoryName().equals(value) || c.pathName().equals(value))
+                .toList();
+        if (matches.isEmpty()) throw new BusinessException("【品类】不存在或已停用：" + value);
+        var selectable = matches.stream().filter(MaterialMasterCatalog.Category::selectable).toList();
+        if (selectable.size() == 1) return selectable.get(0).categoryId();
+        if (selectable.isEmpty()) {
+            var parent = matches.get(0);
+            var children = all.stream().filter(c -> parent.categoryId().equals(c.parentId()))
+                    .map(MaterialMasterCatalog.Category::categoryName).toList();
+            if (!children.isEmpty())
+                throw new BusinessException("【品类】" + value + " 下有子类，请填具体子类：" + String.join(" / ", children));
+        }
+        throw new BusinessException("【品类】名称不唯一或已停用：" + value);
     }
     private static String fieldHeader(MaterialAttributeSchema.Field field) { return field.label() + (field.unit() == null ? "" : "(" + field.unit() + ")"); }
     private static String headerAlias(String value) {
