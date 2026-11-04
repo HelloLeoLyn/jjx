@@ -133,6 +133,46 @@ beforeEach(() => {
   })
 })
 
+describe('品类/子类两级选择（dev-20261104-008）', () => {
+  const cat = (id: number, name: string, level: number, parentId: number | null, selectable: boolean) => ({
+    categoryId: id,
+    categoryCode: `C${id}`,
+    categoryName: name,
+    parentId,
+    categoryLevel: level,
+    materialType: 'R',
+    pathName: `原材料/${name}`,
+    selectable,
+  })
+  it('品类下拉含"有子类的父级"，选中父级才出现子类，且不调用模板接口', async () => {
+    mocks.categories.mockResolvedValue({
+      data: [
+        cat(13, '原材料', 1, 0, false),
+        cat(17, '辅材', 2, 13, false),
+        cat(18, 'PC膜/片', 3, 17, true),
+        cat(29, '电子元件/辅料', 3, 17, false),
+        cat(32, 'LED', 4, 29, true),
+        cat(33, '端子', 4, 29, true),
+      ],
+    })
+    const wrapper = create()
+    await flushPromises()
+    const state = (wrapper.vm as any).$.setupState
+    // 父级（29，有子类）与普通叶子（18）都在品类下拉里
+    expect(state.parentCategoryOptions.map((c: any) => c.categoryId)).toEqual([17, 18, 29])
+    expect(state.subCategoryOptions).toEqual([])
+
+    // 选父级 29：不加载模板，等选子类
+    await state.selectParentCategory(29)
+    expect(state.subCategoryOptions.map((c: any) => c.categoryName)).toEqual(['LED', '端子'])
+    expect(mocks.configuration).not.toHaveBeenCalled()
+
+    // 选子类 32：按子类加载模板
+    await state.selectCategory(32)
+    expect(mocks.configuration).toHaveBeenCalledWith(32)
+  })
+})
+
 describe('物料一次保存与异步品类切换', () => {
   it('新建只调用一次主数据保存，成功后返回完整物料', async () => {
     const wrapper = create()

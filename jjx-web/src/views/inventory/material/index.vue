@@ -451,7 +451,10 @@ const loadCategoryOptions = async () => {
   const field = searchFields.value.find((item) => item.prop === 'categoryId')
   if (field) {
     field.options = options
-      .filter((item) => (item.categoryLevel ?? 0) >= 2 && (item.selectable || hasSubCategory(item.categoryId)))
+      .filter((item) => {
+        const level = item.categoryLevel ?? 0
+        return (level === 2 || level === 3) && (item.selectable || hasSubCategory(item.categoryId))
+      })
       .map((item) => ({ value: item.categoryId, label: item.pathName }))
   }
   syncSubCategoryField(queryParams.categoryId as number | undefined)

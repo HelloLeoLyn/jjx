@@ -344,7 +344,11 @@ const leafCategories = computed(() => categories.value.filter((c) => c.selectabl
 const parentCategoryId = ref<number | null>(null)
 const hasChildren = (id?: number | null) => id != null && categories.value.some((c) => c.parentId === id)
 const parentCategoryOptions = computed(() =>
-  categories.value.filter((c) => (c.categoryLevel ?? 0) >= 2 && (c.selectable || hasChildren(c.categoryId)))
+  categories.value.filter((c) => {
+    const level = c.categoryLevel ?? 0
+    // 品类下拉只到第 3 级：第 4 级子类只在「子类」下拉里出现，避免父子重复
+    return (level === 2 || level === 3) && (c.selectable || hasChildren(c.categoryId))
+  })
 )
 const subCategoryOptions = computed(() =>
   parentCategoryId.value == null
