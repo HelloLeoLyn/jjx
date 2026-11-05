@@ -19,10 +19,10 @@
         <el-descriptions-item label="生成规格">
           {{ result.generatedSpec || '—' }}
           <el-tag v-if="!result.specGenerated" size="small" type="info" class="diff-tag">未生成</el-tag>
-          <el-tag v-else-if="result.specChanged" size="small" type="warning" class="diff-tag"
+          <el-tag v-if="result.specChanged" size="small" type="warning" class="diff-tag"
             >有变化</el-tag
           >
-          <el-tag v-else size="small" type="success" class="diff-tag">一致</el-tag>
+          <el-tag v-else-if="result.specGenerated" size="small" type="success" class="diff-tag">一致</el-tag>
         </el-descriptions-item>
       </el-descriptions>
 
@@ -38,13 +38,8 @@
 
       <div class="evidence">
         <div class="evidence-title">依据参考</div>
-        <div class="evidence-line">名称：材料 + 型号 + 颜色（品牌）</div>
-        <div v-if="result.evidence.length" class="evidence-line">
-          规格：{{ result.evidence.join('；') }}
-        </div>
-        <div v-else class="evidence-line">
-          规格：{{ result.specGenerated ? '按模板属性/厚度/尺寸生成，缺项跳过' : '未生成，保留原规格' }}
-        </div>
+        <div class="evidence-line">名称：{{ nameEvidence }}</div>
+        <div class="evidence-line">规格：{{ result.evidence.join('；') }}</div>
         <div class="evidence-line">注：{{ result.remark }}</div>
       </div>
     </template>
@@ -63,18 +58,14 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
-import {
-  attributeEvidence,
-  previewMasterName,
-  previewMasterSpecification,
-} from './materialMasterModel'
+import { previewMasterName } from './materialMasterModel'
 import {
   buildRegeneration,
   hasRegenerationChanges,
   resolveFinalName,
   type RegenerationResult,
 } from './materialRegenerate'
-import type { AttributeValue, MaterialDictionaries } from '@/types/inventory/materialMaster'
+import type { MaterialDictionaries } from '@/types/inventory/materialMaster'
 
 const props = withDefaults(defineProps<{ modelValue: boolean; materialId?: number | null }>(), {
   modelValue: false,
@@ -92,6 +83,8 @@ const saving = ref(false)
 const result = ref<RegenerationResult | null>(null)
 const finalName = ref('')
 const adoptGenerated = ref(false)
+const nameEvidence = ref('')
+let loadRequest = 0
 
 const canSave = computed(
   () =>
@@ -106,6 +99,7 @@ watch(adoptGenerated, () => {
 })
 
 async function load(materialId: number) {
+  const request = ++loadRequest
   loading.value = true
   result.value = null
   adoptGenerated.value = false
@@ -114,43 +108,54 @@ async function load(materialId: number) {
       materialMasterApi.detail(materialId),
       materialMasterApi.dictionaries(),
     ])
+    if (request !== loadRequest) return
     const detail = detailResponse.data
     if (!detail) {
       ElMessage.error('未找到物料信息')
       return
     }
     const dictionaries: MaterialDictionaries = dictResponse.data || {}
-    const material = detail.material as unknown as Record<string, unknown>
-    const generatedName = previewMasterName(
-      {
-        materialMeta: String(material.materialMeta ?? ''),
-        model: String(material.model ?? ''),
-        color: String(material.color ?? ''),
-        brand: String(material.brand ?? ''),
-      },
-      dictionaries
-    )
-    const attributes = (detail.attributes || {}) as Record<string, AttributeValue>
-    const generatedSpec = previewMasterSpecification(detail.configuration?.schema, attributes, {
-      thickness: detail.material.thickness,
-      widthSize: detail.material.widthSize,
-    })
-    const evidence = attributeEvidence(detail.configuration?.schema, attributes)
+    const material = detail.material
+    const specification = detail.specificationGeneration
+    if (!specification) throw new Error('规格生成结果加载失败，请稍后重试')
+    // 与新增/编辑共用后端命名规则；仅无规则/无生成内容时沿用相同的旧名称回退。
+    const namingResponse = material.categoryId
+      ? await materialMasterApi.renderNaming(material.categoryId, {
+          ...material,
+          attributeJson: detail.attributes || {},
+        })
+      : null
+    if (request !== loadRequest) return
+    const generatedName =
+      namingResponse?.data ||
+      previewMasterName(
+        {
+          materialMeta: String(material.materialMeta ?? ''),
+          model: String(material.model ?? ''),
+          color: String(material.color ?? ''),
+          brand: String(material.brand ?? ''),
+        },
+        dictionaries
+      )
+    nameEvidence.value = namingResponse?.data
+      ? '按该品类当前命名规则生成（与新增/编辑共用）'
+      : '品类规则未生成名称，回退材料 + 型号 + 颜色（品牌）（与新增/编辑相同）'
     result.value = buildRegeneration(
       detail.material,
       {
         name: generatedName,
-        specification: generatedSpec,
-        specGenerated: !!detail.configuration?.schema.fields.length,
+        specification: specification.specification,
+        specGenerated: specification.generated,
       },
-      evidence,
+      [specification.message],
       detail.material.remark || undefined
     )
     finalName.value = result.value.currentName || result.value.generatedName
   } catch (error) {
+    if (request !== loadRequest) return
     ElMessage.error(error instanceof Error ? error.message : '加载物料信息失败')
   } finally {
-    loading.value = false
+    if (request === loadRequest) loading.value = false
   }
 }
 
@@ -161,7 +166,7 @@ async function save() {
     // 只改名称与规格，不动分类/属性/供应商/库存
     await materialMasterApi.updateNaming(props.materialId, {
       materialName: finalName.value.trim(),
-      reason: `名称：材料 + 型号 + 颜色（品牌）；规格：${result.value.evidence.join('；') || '该分类暂无属性值'}`,
+      reason: `名称：${nameEvidence.value}；规格：${result.value.evidence.join('；')}`,
     })
     ElMessage.success('名称与规格已更新')
     visible.value = false
@@ -177,6 +182,11 @@ watch(
   () => [props.modelValue, props.materialId] as const,
   ([open, id]) => {
     if (open && id) void load(id)
+    else {
+      loadRequest++
+      result.value = null
+      loading.value = false
+    }
   },
   { immediate: true }
 )

@@ -1,6 +1,6 @@
 /**
  * 单条「重算名称与规格」纯逻辑（dev-20261024-004）。
- * 只负责对比与最终取值；生成规则本身复用 materialMasterModel / materialMasterFields，避免第二套规则。
+ * 只负责对比与最终取值；名称与规格生成规则由后端提供。
  */
 export interface RegenerationSnapshot {
   materialName?: string | null
@@ -21,7 +21,7 @@ export interface RegenerationResult {
 
 export function buildRegeneration(
   current: RegenerationSnapshot,
-  generated: { name: string; specification: string; specGenerated?: boolean },
+  generated: { name: string; specification: string | null; specGenerated?: boolean },
   evidence: string[],
   remark?: string
 ): RegenerationResult {
@@ -29,7 +29,8 @@ export function buildRegeneration(
   const currentSpec = (current.specification || '').trim()
   const generatedName = (generated.name || '').trim()
   const specGenerated = generated.specGenerated !== false
-  const generatedSpec = specGenerated ? (generated.specification || '').trim() : currentSpec
+  // generated=false 也可能表示模板无值、保存时会清空，最终规格必须服从后端返回值。
+  const generatedSpec = (generated.specification || '').trim()
   return {
     remark,
     currentName,

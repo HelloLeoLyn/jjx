@@ -23,6 +23,7 @@ import {
 const mocks = vi.hoisted(() => ({
   detail: vi.fn(),
   dictionaries: vi.fn(),
+  renderNaming: vi.fn(),
   updateNaming: vi.fn(),
   legacyUpdate: vi.fn(),
   success: vi.fn(),
@@ -117,7 +118,9 @@ describe('重算名称与规格', () => {
     const result = buildRegeneration(current, generated, [])
     expect(hasRegenerationChanges(result, '人工名称')).toBe(true)
     expect(hasRegenerationChanges(result, generated.name)).toBe(true)
-    const unavailable = buildRegeneration(current, { ...generated, specGenerated: false }, [])
+    const unavailable = buildRegeneration(current, {
+      ...generated, specification: current.specification, specGenerated: false,
+    }, [])
     expect(unavailable.generatedSpec).toBe('旧规格')
     expect(hasRegenerationChanges(unavailable, '人工名称')).toBe(false)
   })
@@ -136,10 +139,12 @@ describe('重算弹窗命名补丁保存', () => {
         },
         attributes: {},
         configuration: null,
+        specificationGeneration: { specification: '旧规格', generated: false, message: '未生成：无模板，保留原规格' },
       },
     })
     mocks.dictionaries.mockResolvedValue({ data: { material_meta: [{ code: 'PC', label: 'PC' }] } })
     mocks.updateNaming.mockResolvedValue({ data: {} })
+    mocks.renderNaming.mockResolvedValue({ data: null })
   })
 
   it('展示差异并保留人工名称，只有勾选才替换且提示替换人工名称', async () => {
@@ -183,7 +188,7 @@ describe('重算弹窗命名补丁保存', () => {
     expect(mocks.updateNaming).toHaveBeenCalledTimes(1)
     expect(mocks.updateNaming).toHaveBeenCalledWith(7, {
       materialName: '人工确认新名称',
-      reason: expect.stringContaining('名称：材料 + 型号 + 颜色（品牌）'),
+      reason: expect.stringContaining('回退材料 + 型号 + 颜色（品牌）'),
     })
     expect(mocks.legacyUpdate).not.toHaveBeenCalled()
     expect(wrapper.emitted('success')).toBeUndefined()
@@ -223,15 +228,18 @@ describe('重算弹窗命名补丁保存', () => {
     wrapper.unmount()
   })
 
-  it('规格只读，按同一模型预览厚度和尺寸，规格变化可单独保存', async () => {
+  it('规格只读，直接采用后端保存预览，规格变化可单独保存', async () => {
     mocks.detail.mockResolvedValue({ data: {
       material: { materialId: 7, materialName: '人工名称', specification: '旧规格', thickness: '0.175', widthSize: '300×305' },
       attributes: {},
       configuration: { schema: { fields: [{ key: 'thickness_mm', label: '厚度', type: 'decimal', unit: 'mm' }] } },
+      specificationGeneration: { specification: '0.175*300*305mm', generated: true, message: '按当前规格模板生成' },
     } })
     const wrapper = createDialog()
     await flushPromises()
-    expect(wrapper.text()).toContain('厚度:0.175mm；尺寸:300*305mm')
+    expect(wrapper.text()).toContain('0.175*300*305mm')
+    expect(wrapper.text()).not.toContain('厚度:0.175mm；尺寸:300*305mm')
+    expect(wrapper.text()).toContain('按当前规格模板生成')
     expect(wrapper.findAll('input:not([type=checkbox])')).toHaveLength(1)
     await wrapper.findAll('button')[1].trigger('click')
     await flushPromises()
@@ -244,11 +252,135 @@ describe('重算弹窗命名补丁保存', () => {
   it('空模板保留历史规格，不能误报规格变化', async () => {
     mocks.detail.mockResolvedValue({ data: {
       material: current, attributes: {}, configuration: { schema: { fields: [] } },
+      specificationGeneration: { specification: '旧规格', generated: false, message: '未生成：无模板，保留原规格' },
     } })
     const wrapper = createDialog()
     await flushPromises()
     expect(wrapper.text()).toContain('未生成')
     expect(wrapper.text()).toContain('旧规格')
+    expect(wrapper.findAll('button')[1].element.disabled).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('名称复用新增编辑的后端品类规则，默认保留人工名称，勾选才提交生成名称', async () => {
+    const material = {
+      materialId: 7, categoryId: 23, materialName: '人工名称', specification: '旧规格',
+      materialMeta: 'PC', model: '11008', color: '透明', brand: 'BOMING',
+      widthMm: 300, lengthMm: 305, thicknessMm: 0.175, sizeUnit: 'mm',
+      isCustomerSupplied: true, isSample: true,
+      attributeJson: '{"adhesive_type":"ACRYLIC"}',
+    }
+    const attributes = { adhesive_type: 'ACRYLIC' }
+    mocks.detail.mockResolvedValue({ data: {
+      material, attributes,
+      configuration: { schema: { fields: [], name_pattern: { fields: ['brand', 'model'] } } },
+      specificationGeneration: { specification: '旧规格', generated: true, message: '按规格模板生成' },
+    } })
+    mocks.renderNaming.mockResolvedValue({ data: '博明 11008 透明' })
+    const wrapper = createDialog()
+    await flushPromises()
+    expect(mocks.renderNaming).toHaveBeenCalledWith(23, { ...material, attributeJson: attributes })
+    expect(wrapper.text()).toContain('博明 11008 透明')
+    expect(wrapper.text()).toContain('按该品类当前命名规则生成')
+    expect(wrapper.text()).not.toContain('PC11008透明（BOMING）')
+    expect(wrapper.findAll('input')[0].element.value).toBe('人工名称')
+    expect(wrapper.findAll('button')[1].element.disabled).toBe(true)
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+    expect(wrapper.findAll('input')[0].element.value).toBe('博明 11008 透明')
+    await wrapper.findAll('button')[1].trigger('click')
+    await flushPromises()
+    expect(mocks.updateNaming).toHaveBeenCalledWith(7, {
+      materialName: '博明 11008 透明', reason: expect.stringContaining('按该品类当前命名规则生成'),
+    })
+    wrapper.unmount()
+  })
+
+  it('后端模板无值需要清空规格时，预览显示空值且允许单独保存清空', async () => {
+    mocks.detail.mockResolvedValue({ data: {
+      material: current, attributes: {}, configuration: null,
+      specificationGeneration: { specification: null, generated: false, message: '未生成：模板字段当前均无值，规格留空' },
+    } })
+    const wrapper = createDialog()
+    await flushPromises()
+    const generatedSpec = wrapper.findAllComponents(Description).find((item) => item.props('label') === '生成规格')!
+    expect(generatedSpec.text()).not.toContain('旧规格')
+    expect(generatedSpec.text()).toContain('—')
+    expect(generatedSpec.text()).toContain('有变化')
+    expect(wrapper.text()).toContain('模板字段当前均无值，规格留空')
+    expect(wrapper.findAll('button')[1].element.disabled).toBe(false)
+    await wrapper.findAll('button')[1].trigger('click')
+    await flushPromises()
+    expect(mocks.updateNaming).toHaveBeenCalledWith(7, {
+      materialName: '人工名称', reason: expect.stringContaining('规格留空'),
+    })
+    wrapper.unmount()
+  })
+
+  it.each([null, ''])('品类规则返回%j时，与新增编辑一样回退旧名称生成', async (name) => {
+    mocks.detail.mockResolvedValue({ data: {
+      material: { ...current, categoryId: 23, materialMeta: 'PC', model: '11008' },
+      attributes: {}, configuration: null,
+      specificationGeneration: { specification: '旧规格', generated: false, message: '保留原规格' },
+    } })
+    mocks.renderNaming.mockResolvedValue({ data: name })
+    const wrapper = createDialog()
+    await flushPromises()
+    expect(mocks.renderNaming).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('回退材料 + 型号 + 颜色（品牌）')
+    await wrapper.find('input[type="checkbox"]').setValue(true)
+    expect(wrapper.findAll('input')[0].element.value).toBe('PC11008')
+    wrapper.unmount()
+  })
+
+  it('命名接口报错时不回退旧规则，也不允许保存', async () => {
+    mocks.detail.mockResolvedValue({ data: {
+      material: { ...current, categoryId: 23 }, attributes: {}, configuration: null,
+      specificationGeneration: { specification: '新规格', generated: true, message: '按规格模板生成' },
+    } })
+    mocks.renderNaming.mockRejectedValue(new Error('命名规则加载失败'))
+    const wrapper = createDialog()
+    await flushPromises()
+    expect(mocks.error).toHaveBeenCalledWith('命名规则加载失败')
+    expect(wrapper.findAll('button')[1].element.disabled).toBe(true)
+    await wrapper.findAll('button')[1].trigger('click')
+    expect(mocks.updateNaming).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('缺少后端规格结果时不显示旧算法预览，也不允许保存', async () => {
+    mocks.detail.mockResolvedValue({ data: {
+      material: current, attributes: {}, configuration: null,
+    } })
+    const wrapper = createDialog()
+    await flushPromises()
+    expect(mocks.error).toHaveBeenCalledWith('规格生成结果加载失败，请稍后重试')
+    expect(wrapper.findAll('button')[1].element.disabled).toBe(true)
+    expect(mocks.updateNaming).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('关闭弹窗后命名响应迟到，不覆盖重新打开的另一条物料', async () => {
+    let finish!: (value: unknown) => void
+    mocks.detail.mockResolvedValueOnce({ data: {
+      material: { ...current, categoryId: 23 }, attributes: {}, configuration: null,
+      specificationGeneration: { specification: '旧规格', generated: true, message: '按规格模板生成' },
+    } })
+    mocks.renderNaming.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const wrapper = createDialog()
+    await flushPromises()
+    await wrapper.setProps({ modelValue: false })
+    mocks.detail.mockResolvedValueOnce({ data: {
+      material: { materialId: 8, materialName: '另一条物料', specification: '另一规格' },
+      attributes: {}, configuration: null,
+      specificationGeneration: { specification: '另一规格', generated: false, message: '保留原规格' },
+    } })
+    await wrapper.setProps({ modelValue: true, materialId: 8 })
+    await flushPromises()
+    finish({ data: '迟到的旧物料名称' })
+    await flushPromises()
+    expect(wrapper.findAll('input')[0].element.value).toBe('另一条物料')
+    expect(wrapper.text()).toContain('另一规格')
+    expect(wrapper.text()).not.toContain('迟到的旧物料名称')
     expect(wrapper.findAll('button')[1].element.disabled).toBe(true)
     wrapper.unmount()
   })
