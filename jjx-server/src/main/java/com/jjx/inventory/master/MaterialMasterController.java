@@ -4,7 +4,15 @@ import cn.dev33.satoken.annotation.*;
 import com.jjx.common.core.result.Result;
 import com.jjx.framework.common.controller.BaseController;
 import com.jjx.inventory.domain.InventoryMaterial;
+import com.jjx.common.enums.StatusEnum;
+import com.jjx.common.exception.BusinessException;
+import com.jjx.system.domain.dto.SysDictItemDTO;
+import com.jjx.system.domain.entity.SysDictItem;
+import com.jjx.system.service.SysDictService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +26,67 @@ public class MaterialMasterController extends BaseController {
     private final MaterialMasterConfigurationService configurationService;
     private final MaterialMasterExcelService excelService;
     private final MaterialMasterAuditService auditService;
+    private final SysDictService dictService;
+
+    private static final List<String> MATERIAL_DICTIONARIES = List.of("brand", "color", "form", "unit");
+
+    /** 维护列表包含停用项，避免停用后无法重新启用。 */
+    @GetMapping("/dictionaries/{dictCode}/items")
+    @SaCheckPermission("inventory:material:dict:view")
+    public Result<List<SysDictItem>> dictionaryItems(@PathVariable String dictCode) {
+        checkMaterialDictionary(dictCode);
+        return Result.success(dictService.selectItemsByDictCode(dictCode));
+    }
+
+    public enum DictionaryAction { CREATE, UPDATE, DELETE, STATUS }
+    public record DictionaryMutation(@NotNull DictionaryAction action, @Valid SysDictItemDTO item,
+                                     Long itemId, Integer isActive) { }
+
+    /** 只代理物料字典写入；唯一性校验、持久化及缓存失效仍由原字典服务负责。 */
+    @PostMapping("/dictionaries/{dictCode}/items")
+    @SaCheckPermission("inventory:material:dict:edit")
+    public Result<Void> mutateDictionaryItem(@PathVariable String dictCode,
+            @Validated @RequestBody DictionaryMutation request) {
+        checkMaterialDictionary(dictCode);
+        var action = request.action();
+        var item = request.item();
+        if (action == DictionaryAction.CREATE || action == DictionaryAction.UPDATE) {
+            if (item == null) throw new BusinessException("字典项不能为空");
+            if (!dictCode.equals(item.getDictCode())) throw new BusinessException("字典编码与路径不一致");
+            checkDictionaryStatus(item.getIsActive());
+        }
+        if (action == DictionaryAction.CREATE) {
+            if (item.getItemId() != null) throw new BusinessException("新增不能指定字典项ID");
+            return toAjax(dictService.insertDictItem(item));
+        }
+        Long itemId = action == DictionaryAction.UPDATE ? item.getItemId() : request.itemId();
+        var existing = dictService.selectItemsByDictCode(dictCode).stream()
+                .filter(row -> row.getItemId().equals(itemId)).findFirst()
+                .orElseThrow(() -> new BusinessException("字典项不存在或不属于当前物料字典"));
+        return switch (action) {
+            case UPDATE -> {
+                if (!existing.getItemKey().equals(item.getItemKey()))
+                    throw new BusinessException("字典键不可修改");
+                yield toAjax(dictService.updateDictItem(item));
+            }
+            case DELETE -> toAjax(dictService.deleteDictItemByIds(new Long[]{itemId}));
+            case STATUS -> {
+                checkDictionaryStatus(request.isActive());
+                yield toAjax(dictService.changeDictItemStatus(itemId, request.isActive()));
+            }
+            default -> throw new BusinessException("不支持的字典操作");
+        };
+    }
+
+    private static void checkMaterialDictionary(String dictCode) {
+        if (!MATERIAL_DICTIONARIES.contains(dictCode))
+            throw new BusinessException("物料字典仅允许 brand/color/form/unit");
+    }
+
+    private static void checkDictionaryStatus(Integer status) {
+        if (!StatusEnum.NORMAL.getCode().equals(status) && !StatusEnum.DISABLE.getCode().equals(status))
+            throw new BusinessException("字典项状态只能为启用或禁用");
+    }
 
     @GetMapping("/categories")
     @SaCheckLogin

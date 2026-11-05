@@ -96,7 +96,6 @@
     "src/views/sales/tracking/index.vue|status-comparison|if (row.prodStatus === 4) return 'warning' // 生产完成，待发货": 1,
     "src/views/sales/tracking/index.vue|status-comparison|if (row.prodStatus === 4) return '待发货'": 1,
     "src/views/sales/tracking/index.vue|status-comparison|type: r.deliveryStatus === 4 ? 'success' : r.deliveryStatus === 5 ? 'danger' : 'primary',": 1,
-    "src/views/system/dict/components/DictItemDialog.vue|status-comparison|const statusText = newStatus === 1 ? '启用' : '禁用'": 1,
     "src/views/system/dict/index.vue|status-comparison|const statusText = newStatus === 1 ? '启用' : '禁用'": 1,
     "src/views/system/user/index.vue|status-comparison|{{ row.status === 0 ? '正常' : '停用' }}": 1,
     "src/views/system/user/index.vue|status-comparison|<el-tag :type=\"row.status === 0 ? 'success' : 'danger'\" size=\"small\">": 1,

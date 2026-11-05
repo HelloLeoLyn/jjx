@@ -1,6 +1,7 @@
 import request from '@/utils/request'
 import type { R } from '@/types'
 import type { InventoryMaterialQueryParams } from '@/types/inventory/material'
+import type { SysDictItem, SysDictItemDTO } from '@/types/system/dict'
 import type {
   MaterialMasterCategory,
   MaterialMasterConfiguration,
@@ -14,7 +15,17 @@ import type {
 } from '@/types/inventory/materialMaster'
 
 const base = '/inventory/material/master'
+export type MaterialDictionaryCode = 'brand' | 'color' | 'form' | 'unit'
+type DictionaryMutation =
+  | { action: 'CREATE' | 'UPDATE'; item: SysDictItemDTO }
+  | { action: 'DELETE'; itemId: number }
+  | { action: 'STATUS'; itemId: number; isActive: number }
+
 export const materialMasterApi = {
+  dictionaryItems: (dictCode: MaterialDictionaryCode) =>
+    request.get<R<SysDictItem[]>>(`${base}/dictionaries/${dictCode}/items`),
+  mutateDictionaryItem: (dictCode: MaterialDictionaryCode, data: DictionaryMutation) =>
+    request.post<R<void>>(`${base}/dictionaries/${dictCode}/items`, data),
   categories: (includeDisabled = false) =>
     request.get<R<MaterialMasterCategory[]>>(`${base}/categories`, { params: { includeDisabled } }),
   dictionaries: () => request.get<R<MaterialDictionaries>>(`${base}/dictionaries`),

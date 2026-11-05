@@ -70,7 +70,7 @@
         <el-form-item label="名称" required>
           <el-input v-model="form.materialName" maxlength="200" @input="onNameInput">
             <template #append>
-              <el-button :disabled="!form.nameManual" @click="restoreAutoName">恢复自动</el-button>
+              <el-button :disabled="!form.nameManual" @click="restoreAutoName">自动生成</el-button>
             </template>
           </el-input>
           <div class="field-hint" :class="{ manual: form.nameManual }">
@@ -345,7 +345,8 @@ let categoryRequest = 0
 const leafCategories = computed(() => categories.value.filter((c) => c.selectable))
 /** 品类下拉：可选叶子 + 有子类的父级（第 4 级子类只在子类下拉里出现）。 */
 const parentCategoryId = ref<number | null>(null)
-const hasChildren = (id?: number | null) => id != null && categories.value.some((c) => c.parentId === id)
+const hasChildren = (id?: number | null) =>
+  id != null && categories.value.some((c) => c.parentId === id)
 const parentCategoryOptions = computed(() =>
   categories.value.filter((c) => {
     const level = c.categoryLevel ?? 0
@@ -400,7 +401,11 @@ const specificationPreview = computed(() => {
   const text = previewMasterSpecification(schema, attributes, {
     thickness: String(form.grammage ?? form.thicknessMm ?? ''),
   })
-  const size = renderMaterialDimensions(dimensions.value, false, configuration.value?.schema.spec_pattern?.fields)
+  const size = renderMaterialDimensions(
+    dimensions.value,
+    false,
+    configuration.value?.schema.spec_pattern?.fields
+  )
   return [text, size ? `尺寸:${size}` : ''].filter(Boolean).join('；')
 })
 const previewName = computed(() =>
@@ -459,7 +464,11 @@ watch(
     JSON.stringify(configuration.value?.schema.spec_pattern),
   ],
   () => {
-    if (!form.categoryId || (!configuration.value?.schema?.name_pattern && !configuration.value?.schema?.spec_pattern?.fields.length)) {
+    if (
+      !form.categoryId ||
+      (!configuration.value?.schema?.name_pattern &&
+        !configuration.value?.schema?.spec_pattern?.fields.length)
+    ) {
       ruleName.value = ''
       specText.value = ''
       return
@@ -621,7 +630,10 @@ async function initialize() {
       if (!detail.configuration) form.categoryId = null
       // 回显：物料挂在子类时，品类下拉显示其父级
       const self = categories.value.find((c) => c.categoryId === form.categoryId)
-      parentCategoryId.value = self?.parentId != null && hasChildren(self.parentId) ? self.parentId : form.categoryId ?? null
+      parentCategoryId.value =
+        self?.parentId != null && hasChildren(self.parentId)
+          ? self.parentId
+          : (form.categoryId ?? null)
     } else if (props.presetData) {
       if (props.presetData.materialName) {
         form.materialName = props.presetData.materialName

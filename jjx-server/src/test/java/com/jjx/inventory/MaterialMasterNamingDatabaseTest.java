@@ -131,7 +131,7 @@ class MaterialMasterNamingDatabaseTest {
                     + " allOtherBusinessColumnsEqual=true stockAndBatchesUnchanged=true");
             if (!unclassified) {
                 var patch = new InventoryMaterial(); patch.setMaterialId(id); patch.setMaterialName("旧接口反例");
-                assertEquals("该品类请使用新版物料保存入口", assertThrows(BusinessException.class,
+                assertEquals("新模型物料请使用新版物料保存入口", assertThrows(BusinessException.class,
                         () -> legacy.update(patch, null, "codex-test")).getMessage());
                 assertEquals(after, row(id));
             }
@@ -149,10 +149,10 @@ class MaterialMasterNamingDatabaseTest {
             dto.setWidthMm(new java.math.BigDecimal("300")); dto.setLengthMm(new java.math.BigDecimal("305")); dto.setThicknessMm(null); dto.setSizeUnit("mm");
             dto.setThicknessMm(new java.math.BigDecimal("0.175")); dto.setAttributeJson(Map.of("surface_treatment", List.of("MEDIUM_SAND")));
             var before = service.save(dto, "codex-test");
-            assertEquals("表面处理:中砂；尺寸:300*305*0.175mm", before.getSpecification());
+            assertEquals("0.175*300*305mm", before.getSpecification());
             dto.setThicknessMm(new java.math.BigDecimal("0.25")); dto.setAttributeJson(Map.of());
             var changed = service.save(dto, "codex-test");
-            assertEquals("尺寸:300*305*0.25mm", changed.getSpecification());
+            assertEquals("0.25*300*305mm", changed.getSpecification());
             dto.setAttributeJson(Map.of()); dto.setWidthMm(null); dto.setLengthMm(null); dto.setThicknessMm(null); dto.setSizeUnit("mm");
             var cleared = service.save(dto, "codex-test");
             assertNull(cleared.getSpecification()); assertNull(cleared.getThicknessMm()); assertNull(cleared.getWidthMm());
@@ -172,7 +172,8 @@ class MaterialMasterNamingDatabaseTest {
             tx.setRollbackOnly();
             jdbc.update("UPDATE inventory_material SET specification='历史有效规格' WHERE material_id=?", id);
             for (boolean empty : List.of(false, true)) {
-                if (empty) jdbc.update("UPDATE inventory_attribute_template SET status=1,attribute_schema=JSON_SET(attribute_schema,'$.fields',JSON_ARRAY()) WHERE category_id=?", category);
+                // 空模板同时清除引用属性的命名/规格规则，避免构造出无效模板。
+                if (empty) jdbc.update("UPDATE inventory_attribute_template SET status=1,attribute_schema=JSON_REMOVE(JSON_SET(attribute_schema,'$.fields',JSON_ARRAY()),'$.name_pattern','$.spec_pattern') WHERE category_id=?", category);
                 else jdbc.update("UPDATE inventory_attribute_template SET status=0 WHERE category_id=?", category);
                 var before = row(id);
                 var naming = service.updateNaming(id, new MaterialMasterService.NamingPatch("保留历史规格", "伪造规格", null), "codex-test");
@@ -236,7 +237,7 @@ class MaterialMasterNamingDatabaseTest {
     @Test void httpNamingAndSaveIgnoreExternalSpecificationAgainstRealDatabase() throws Exception {
         Long id = materialId();
         Map<String, Object> original = row(id);
-        var controller = new MaterialMasterController(catalog, service, null, null, null);
+        var controller = new MaterialMasterController(catalog, service, null, null, null, null);
         var mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(json)).build();
         try (var stp = mockStatic(StpUtil.class)) {
@@ -251,14 +252,14 @@ class MaterialMasterNamingDatabaseTest {
                     assertEquals(200, saved.getStatus());
                     var body = json.readTree(saved.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
                     assertEquals(200, body.get("code").asInt());
-                    assertEquals("尺寸:500**0.5mm", body.at("/data/specification").asText());
+                    assertEquals("0.5*500mm", body.at("/data/specification").asText());
                     assertTrue(body.get("msg").asText().contains("不接受外部 specification"));
                     var naming = mvc.perform(put("/inventory/material/master/" + id + "/naming")
                             .contentType(MediaType.APPLICATION_JSON).content("{\"materialName\":\"HTTP命名\",\"specification\":\"外部伪造规格\"}"))
                             .andReturn().getResponse();
                     assertEquals(200, naming.getStatus());
                     var result = json.readTree(naming.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
-                    assertEquals("尺寸:500**0.5mm", result.at("/data/material/specification").asText());
+                    assertEquals("0.5*500mm", result.at("/data/material/specification").asText());
                     assertTrue(result.at("/data/specificationGeneration/generated").asBoolean());
                     assertFalse(row(id).get("specification").toString().contains("伪造"));
                     System.out.println("SPEC_HTTP save=" + body.at("/data/specification") + " naming=" + result.at("/data/material/specification") + " externalIgnored=true");
