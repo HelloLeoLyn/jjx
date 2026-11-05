@@ -35,6 +35,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     public static final java.util.LinkedHashMap<String, String> COMMON_LABELS = new java.util.LinkedHashMap<>();
     static {
         COMMON_LABELS.put("category", "品类");
+        COMMON_LABELS.put("categoryprefix", "品类前缀");
         COMMON_LABELS.put("brand", "品牌");
         COMMON_LABELS.put("meta", "材质");
         COMMON_LABELS.put("form", "形态");
@@ -94,7 +95,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         }
     }
 
-    /** 型号缺值始终跳过；空全局分隔符转为逐字段紧贴，保留旧命名规则的归一行为。 */
+    /** 型号一般字段缺值跳过，品类前缀缺失报错；空全局分隔符转为逐字段紧贴，保留旧命名规则的归一行为。 */
     public MaterialNamingPattern forModel() {
         Map<String, String> perField = new LinkedHashMap<>();
         if ("".equals(separator)) normalized().fields().forEach(key -> perField.put(key, ""));
@@ -131,6 +132,12 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     /** 品牌、颜色统一使用调用方提供的字典名称，缺失时回退原始代码。 */
     public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName,
                           String brandLabel, String colorLabel) {
+        return compose(material, schema, categoryName, brandLabel, colorLabel, null);
+    }
+
+    /** 调用方传入品类前缀，缺失时明确报错，预览与新建共用。 */
+    public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName,
+                          String brandLabel, String colorLabel, String categoryPrefix) {
         MaterialNamingPattern pattern = normalized();
         if (pattern.fields().isEmpty()) return null;
         Map<String, Object> attributes = readAttributes(material.getAttributeJson());
@@ -138,7 +145,8 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         StringBuilder text = new StringBuilder();
         boolean first = true;
         for (String field : pattern.fields()) {
-            String value = valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, colorLabel);
+            String value = "categoryprefix".equals(field) ? requireCategoryPrefix(categoryPrefix)
+                    : valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, colorLabel);
             if (value != null && !value.isBlank() && pattern.units().containsKey(field)) {
                 value = MaterialSizeValue.segment(new java.math.BigDecimal(value), pattern.units().get(field), null).value();
             }
@@ -188,6 +196,12 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             case "supplier" -> material.getSupplierName();
             default -> optionText(schema, attributes, field);
         };
+    }
+
+    public static String requireCategoryPrefix(String modelPrefix) {
+        if (modelPrefix == null || modelPrefix.isBlank())
+            throw new com.jjx.common.exception.BusinessException("品类型号前缀未配置，请先在物料分类中配置型号前缀");
+        return modelPrefix;
     }
 
     private static java.math.BigDecimal firstNonNull(java.math.BigDecimal primary, java.math.BigDecimal fallback) {

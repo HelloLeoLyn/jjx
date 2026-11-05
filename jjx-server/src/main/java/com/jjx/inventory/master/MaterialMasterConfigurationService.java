@@ -25,7 +25,7 @@ public class MaterialMasterConfigurationService {
     private final ObjectMapper objectMapper;
 
     public record CategorySave(Long categoryId, String categoryCode, String categoryName, Long parentId,
-                               Integer sortOrder, Integer status) { }
+                               Integer sortOrder, Integer status, String modelPrefix) { }
     public record TemplateSave(String templateCode, String templateName, Long categoryId,
                                MaterialAttributeSchema attributeSchema, Integer status) { }
     public record TemplateDetail(InventoryAttributeTemplate template, MaterialAttributeSchema schema) { }
@@ -73,6 +73,8 @@ public class MaterialMasterConfigurationService {
             entity.setCategoryCode(dto.categoryCode());
             entity.setCreateBy(operator);
         } else if (!Objects.equals(current.getCategoryCode(), dto.categoryCode())) fail("分类编码不能修改");
+        entity.setModelPrefix(dto.modelPrefix());
+        com.jjx.inventory.service.impl.InventoryMaterialCategoryServiceImpl.validateModelPrefix(entity, categories);
         entity.setCategoryName(dto.categoryName().trim()); entity.setParentId(dto.parentId());
         entity.setCategoryLevel(parent.categoryLevel() + 1);
         String parentPath = categories.selectById(parent.categoryId()).getCategoryPath();

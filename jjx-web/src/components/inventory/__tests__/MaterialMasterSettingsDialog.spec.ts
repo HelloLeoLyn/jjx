@@ -3,7 +3,7 @@ import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import MaterialMasterSettingsPanel from '../MaterialMasterSettingsPanel.vue'
 
-const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), template: vi.fn(), saveTemplate: vi.fn(), specPreview: vi.fn(), fieldOptions: vi.fn(), previewNaming: vi.fn() }))
+const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), template: vi.fn(), saveTemplate: vi.fn(), specPreview: vi.fn(), fieldOptions: vi.fn(), previewNaming: vi.fn(), saveCategory: vi.fn() }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: api }))
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal<typeof import('element-plus')>()
@@ -22,6 +22,7 @@ describe('属性模板界面保存', () => {
       version: 1, meta_options: [], default_unit: 'PCS', fields: [{ key: 'component_type', label: '元件类型', type: 'enum', required: true, options: [{ code: 'SPRING', label: '弹片' }] }],
     } } })
     api.saveTemplate.mockResolvedValue({ data: {} })
+    api.saveCategory.mockResolvedValue({ data: {} })
     api.previewNaming.mockResolvedValue({ data: { samples: [] } })
     api.fieldOptions.mockResolvedValue({ data: [] })
     api.specPreview.mockResolvedValue({ data: { samples: [] } })
@@ -88,7 +89,7 @@ describe('属性模板界面保存', () => {
 
   it('型号规则共享字段候选但排除自身，单位/顺序/分隔符保存完整', async () => {
     api.fieldOptions.mockResolvedValue({ data: [
-      { key: 'model', label: '型号' }, { key: 'meta', label: '材质' }, { key: 'thickness_mm', label: '厚度' },
+      { key: 'model', label: '型号' }, { key: 'categoryprefix', label: '品类前缀' }, { key: 'thickness_mm', label: '厚度' },
     ] })
     const wrapper = mount(MaterialMasterSettingsPanel, { props: { focusSection: 'naming' }, global: { stubs: {
       ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true,
@@ -98,16 +99,33 @@ describe('属性模板界面保存', () => {
     state.templateCategoryId = 2
     await state.loadTemplate(2)
     await flushPromises()
-    expect(state.modelTokens.map((t: any) => t.key)).toEqual(['meta', 'thickness_mm'])
+    expect(state.modelTokens.map((t: any) => t.key)).toEqual(['categoryprefix', 'thickness_mm'])
     state.toggleModelField('thickness_mm', true)
-    state.toggleModelField('meta', true)
+    state.toggleModelField('categoryprefix', true)
     state.moveModelField(1, -1)
     state.setModelSeparator('thickness_mm', '')
     state.setModelUnit('thickness_mm', 'μm')
     await state.saveTemplate()
     expect(api.saveTemplate).toHaveBeenCalledWith(expect.objectContaining({ attributeSchema: expect.objectContaining({
-      model_pattern: { fields: ['meta', 'thickness_mm'], separator: '', empty: 'skip', separators: { thickness_mm: '' }, units: { thickness_mm: 'μm' } },
+      model_pattern: { fields: ['categoryprefix', 'thickness_mm'], separator: '', empty: 'skip', separators: { thickness_mm: '' }, units: { thickness_mm: 'μm' } },
     }) }))
+    wrapper.unmount()
+  })
+
+  it('分类编辑带回型号前缀，修改后通过现有保存入口提交', async () => {
+    api.categories.mockResolvedValue({ data: [{ categoryId: 2, categoryCode: 'RAW_BASE_PC', categoryName: 'PC膜/片',
+      modelPrefix: 'PC', pathName: '原材料/基材/PC膜/片', parentId: 1, categoryLevel: 3 }] })
+    const wrapper = mount(MaterialMasterSettingsPanel, { global: { stubs: {
+      ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true,
+    } } })
+    await flushPromises()
+    const state = wrapper.vm as any
+    state.categoryEditId = 2
+    state.editCategory(2)
+    expect(state.categoryForm.modelPrefix).toBe('PC')
+    state.categoryForm.modelPrefix = 'PCX'
+    await state.saveCategory()
+    expect(api.saveCategory).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 2, modelPrefix: 'PCX' }))
     wrapper.unmount()
   })
 

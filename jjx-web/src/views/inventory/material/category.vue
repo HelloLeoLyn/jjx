@@ -55,6 +55,7 @@
         <el-table-column type="selection" width="55" align="center" />
         <!-- <el-table-column label="分类编码" align="left" prop="categoryCode" width="200" /> -->
         <el-table-column label="分类名称" align="left" prop="categoryName" width="180" />
+        <el-table-column label="型号前缀" prop="modelPrefix" width="120" />
         <el-table-column label="分类级别" align="center" prop="categoryLevel" width="100" />
         <el-table-column label="排序" align="center" prop="sortOrder" width="80" />
         <el-table-column label="状态" prop="status" width="100">
@@ -131,6 +132,14 @@
           <el-col :span="12">
             <el-form-item label="分类名称" prop="categoryName">
               <el-input v-model="form.categoryName" placeholder="请输入分类名称" maxlength="100" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="型号前缀" prop="modelPrefix">
+              <el-input v-model="form.modelPrefix" placeholder="2～8位大写字母或数字" maxlength="8" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -228,6 +237,7 @@ const categoryTreeOptions = ref<MaterialCategoryItem[]>([])
 const form = reactive<MaterialCategoryFormData>({
   parentId: 0,
   categoryCode: '',
+  modelPrefix: '',
   categoryName: '',
   categoryLevel: 1,
   sortOrder: 0,
@@ -246,6 +256,10 @@ const queryParams = reactive({
 
 // 表单验证规则
 const rules = {
+  modelPrefix: [
+    { required: true, message: '请输入型号前缀', trigger: 'blur' },
+    { pattern: /^[A-Z0-9]{2,8}$/, message: '型号前缀须为2～8位大写字母或数字', trigger: 'blur' },
+  ],
   parentId: [{ required: true, message: '请选择父级分类', trigger: 'change' }],
   categoryCode: [
     { required: true, message: '请输入分类编码', trigger: 'blur' },
@@ -452,6 +466,7 @@ const resetForm = () => {
   Object.assign(form, {
     parentId: 0,
     categoryCode: '',
+    modelPrefix: '',
     categoryName: '',
     categoryLevel: 1,
     sortOrder: 0,

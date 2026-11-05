@@ -107,6 +107,7 @@ public class InventoryMaterialCategoryServiceImpl
         MaterialCategoryVO vo = new MaterialCategoryVO();
         vo.setCategoryId(category.getCategoryId());
         vo.setCategoryCode(category.getCategoryCode());
+        vo.setModelPrefix(category.getModelPrefix());
         vo.setCategoryName(category.getCategoryName());
         vo.setParentId(category.getParentId());
         vo.setCategoryLevel(category.getCategoryLevel());
@@ -127,6 +128,7 @@ public class InventoryMaterialCategoryServiceImpl
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean save(InventoryMaterialCategory entity) {
+        validateModelPrefix(entity, materialCategoryMapper);
         applyPaths(entity, null);
         return super.save(entity);
     }
@@ -140,12 +142,31 @@ public class InventoryMaterialCategoryServiceImpl
         if (existing == null) {
             return super.updateById(entity);
         }
+        validateModelPrefix(entity, materialCategoryMapper);
         boolean pathChanged = applyPaths(entity, existing);
         boolean updated = super.updateById(entity);
         if (updated && pathChanged) {
             refreshChildPaths(entity.getCategoryId());
         }
         return updated;
+    }
+
+    /** 两个品类保存入口共用必填、格式及唯一性校验；锁定读排除自身。 */
+    public static void validateModelPrefix(InventoryMaterialCategory entity, InventoryMaterialCategoryMapper mapper) {
+        String prefix = entity.getModelPrefix();
+        if (prefix == null || prefix.isBlank()) {
+            throw new com.jjx.common.exception.BusinessException("型号前缀不能为空，请配置品类型号前缀");
+        }
+        if (!prefix.matches("[A-Z0-9]{2,8}")) {
+            throw new com.jjx.common.exception.BusinessException("型号前缀须为2～8位大写字母或数字");
+        }
+        var query = new LambdaQueryWrapper<InventoryMaterialCategory>()
+                .eq(InventoryMaterialCategory::getModelPrefix, prefix)
+                .ne(entity.getCategoryId() != null, InventoryMaterialCategory::getCategoryId, entity.getCategoryId())
+                .last("LIMIT 1 FOR UPDATE");
+        if (!mapper.selectList(query).isEmpty()) {
+            throw new com.jjx.common.exception.BusinessException("型号前缀已被其他品类使用：" + prefix);
+        }
     }
 
     /** 计算 category_path / name_path / category_level；返回路径是否需要向下传播。 */

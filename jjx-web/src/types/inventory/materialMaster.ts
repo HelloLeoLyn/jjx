@@ -85,6 +85,7 @@ export interface MaterialRenameReport {
   message: string
 }
 export interface MaterialMasterCategory {
+  modelPrefix?: string
   categoryId: number
   categoryCode: string
   categoryName: string

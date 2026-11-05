@@ -27,7 +27,14 @@ public class MaterialMasterCatalog {
     public static final List<String> DICTIONARIES = List.of("material_meta", "form", "color", "unit", "brand");
 
     public record Category(Long categoryId, String categoryCode, String categoryName, Long parentId,
-                           int categoryLevel, String materialType, String pathName, boolean selectable, Integer sortOrder, Integer status) { }
+                           int categoryLevel, String materialType, String pathName, boolean selectable, Integer sortOrder, Integer status, String modelPrefix) {
+        public Category(Long categoryId, String categoryCode, String categoryName, Long parentId,
+                        int categoryLevel, String materialType, String pathName, boolean selectable,
+                        Integer sortOrder, Integer status) {
+            this(categoryId, categoryCode, categoryName, parentId, categoryLevel, materialType, pathName,
+                    selectable, sortOrder, status, null);
+        }
+    }
     public record Configuration(Category category, List<Category> path, InventoryAttributeTemplate template,
                                 MaterialAttributeSchema schema) { }
     public record DictionaryOption(String code, String label) { }
@@ -143,7 +150,8 @@ public class MaterialMasterCatalog {
         return new Category(category.getCategoryId(), category.getCategoryCode(), category.getCategoryName(), category.getParentId(),
                 path.size(), ROOT_TYPES.get(path.get(0).getCategoryCode()),
                 String.join(" / ", path.stream().map(InventoryMaterialCategory::getCategoryName).toList()), selectable,
-                category.getSortOrder(), enabled(category) ? StatusEnum.NORMAL.getCode() : StatusEnum.DISABLE.getCode());
+                category.getSortOrder(), enabled(category) ? StatusEnum.NORMAL.getCode() : StatusEnum.DISABLE.getCode(),
+                category.getModelPrefix());
     }
 
     private static boolean enabled(InventoryMaterialCategory c) { return StatusEnum.NORMAL.getCode().toString().equals(c.getStatus()); }

@@ -96,7 +96,7 @@ public class MaterialMasterExcelService {
         var dictionaries = catalog.dictionaries();
         List<MaterialMasterDTO> rows = new ArrayList<>(); List<MaterialClassSource> sources = new ArrayList<>();
         List<String> errors = new ArrayList<>(); Map<String, Long> existingKeys = new HashMap<>();
-        Set<String> fileKeys = new HashSet<>(); Set<Long> updateIds = new HashSet<>();
+        Set<String> fileKeys = new HashSet<>(); Set<String> fileModels = new HashSet<>(); Set<Long> updateIds = new HashSet<>();
         for (InventoryMaterial material : materials.selectList(new LambdaQueryWrapper<InventoryMaterial>()))
             existingKeys.put(identity(material), material.getMaterialId());
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
@@ -196,6 +196,10 @@ public class MaterialMasterExcelService {
                         throw new BusinessException("该品类不支持列：" + column);
                     dto.setAttributeJson(attributes);
                     InventoryMaterial prepared = service.prepare(dto).material(); String key = identity(prepared);
+                    service.requireUniqueModel(prepared);
+                    if (prepared.getModel() != null && !prepared.getModel().isBlank()
+                            && !fileModels.add(prepared.getModel().toUpperCase(Locale.ROOT)))
+                        throw new BusinessException("型号与文件其他行重复：" + prepared.getModel());
                     if (!fileKeys.add(key) || existingKeys.containsKey(key) && !Objects.equals(existingKeys.get(key), dto.getMaterialId())) throw new BusinessException("与文件其他行或库内物料重复");
                     rows.add(dto); sources.add(source);
                 } catch (BusinessException e) { errors.add("第" + (index + 1) + "行：" + e.getMessage()); }

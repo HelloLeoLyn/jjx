@@ -61,7 +61,7 @@ public class MaterialMasterService {
         int max = limit == null || limit <= 0 ? 50 : Math.min(limit, 500);
         String categoryName = catalog.optionalConfiguration(categoryId).category().categoryName();
         for (InventoryMaterial material : materials) {
-            String generated = pattern.compose(material, schema, categoryName, brandLabelOf(material), colorLabelOf(material));
+            String generated = pattern.compose(material, schema, categoryName, brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()));
             String skip = generated == null || generated.isBlank() ? "blank"
                     : Objects.equals(generated, material.getMaterialName()) ? "same" : null;
             if (skip == null) changeable++;
@@ -85,7 +85,7 @@ public class MaterialMasterService {
         int changed = 0;
         String categoryName = catalog.optionalConfiguration(categoryId).category().categoryName();
         for (InventoryMaterial material : materials) {
-            String generated = pattern.compose(material, schema, categoryName, brandLabelOf(material), colorLabelOf(material));
+            String generated = pattern.compose(material, schema, categoryName, brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()));
             if (generated == null || generated.isBlank() || Objects.equals(generated, material.getMaterialName())) continue;
             updateNaming(material.getMaterialId(),
                     new NamingPatch(generated, null, "按品类命名规则重算"), operator);
@@ -137,6 +137,11 @@ public class MaterialMasterService {
             config.schema().fields().forEach(field -> options.add(new FieldOption(field.key(), field.label(), "属性")));
         }
         return options;
+    }
+
+    private String categoryPrefixOf(Long categoryId) {
+        var config = catalog.optionalConfiguration(categoryId);
+        return config == null ? null : config.category().modelPrefix();
     }
 
     /** 品牌字典显示名（命名里显示中文，dev-20261105-004）：取不到时返回 null，回落存库代码。 */
@@ -229,7 +234,10 @@ public class MaterialMasterService {
         var config = catalog.optionalConfiguration(categoryId);
         if (config == null) return null;
         var rule = pattern == null ? config.schema().modelPattern() : pattern;
-        if (rule != null) rule.validateModel(config.schema());
+        if (rule != null) {
+            rule.validateModel(config.schema());
+            if (!rule.normalized().fields().isEmpty()) MaterialNamingPattern.requireCategoryPrefix(config.category().modelPrefix());
+        }
         return renderPattern(config, draft, rule == null ? null : rule.forModel());
     }
 
@@ -238,6 +246,7 @@ public class MaterialMasterService {
         if (pattern == null || pattern.normalized().fields().isEmpty()) return null;
         MaterialAttributeSchema schema = config.schema();
         InventoryMaterial material = new InventoryMaterial();
+        material.setCategoryId(config.category().categoryId());
         if (draft != null) {
             material.setBrand(draft.getBrand());
             material.setModel(draft.getModel());
@@ -263,7 +272,7 @@ public class MaterialMasterService {
                 material.setAttributeJson("{}");
             }
         }
-        return pattern.compose(material, schema, config.category().categoryName(), brandLabelOf(material), colorLabelOf(material));
+        return pattern.compose(material, schema, config.category().categoryName(), brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()));
     }
 
     /** 命名规则预览（只读）：按品类取样 5 条物料，用传入规则试算新旧名对照。 */
@@ -281,7 +290,7 @@ public class MaterialMasterService {
         List<NamingSample> samples = new ArrayList<>();
         for (InventoryMaterial material : materials) {
             samples.add(new NamingSample(material.getMaterialId(), material.getMaterialCode(),
-                    material.getMaterialName(), normalized.compose(material, schema, config.category().categoryName(), brandLabelOf(material), colorLabelOf(material))));
+                    material.getMaterialName(), normalized.compose(material, schema, config.category().categoryName(), brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()))));
         }
         return new NamingPreview(samples, materials.isEmpty() ? "该品类暂无物料，规则只影响后续新建" : "预览取该品类最近 5 条物料");
     }
@@ -456,8 +465,9 @@ public class MaterialMasterService {
         material.setSupplierMaterialName(text(dto.getSupplierMaterialName(), "供应商品名", 200, false));
         if (old == null && material.getModel() == null && schema.modelPattern() != null) {
             schema.modelPattern().validateModel(schema);
+            if (!schema.modelPattern().normalized().fields().isEmpty()) MaterialNamingPattern.requireCategoryPrefix(config.category().modelPrefix());
             material.setModel(text(schema.modelPattern().forModel().compose(material, schema,
-                    config.category().categoryName(), brandLabelOf(material), colorLabelOf(material)), "型号", 100, false));
+                    config.category().categoryName(), brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId())), "型号", 100, false));
         }
         material.setSpecification(specificationPreview(material, config == null ? null : schema).specification());
         for (BigDecimal number : Arrays.asList(dto.getSafeStock(), dto.getMaxStock(), dto.getReorderPoint(), dto.getStandardPrice())) {
@@ -579,16 +589,14 @@ public class MaterialMasterService {
         return materialMapper.selectById(material.getMaterialId());
     }
 
-    /** 类别锁串行化同品类保存；锁定读避免 RR 快照漏掉刚提交的型号。空型号不参与。 */
-    private void requireUniqueModel(InventoryMaterial material) {
+    /** 全局型号查重；锁定读避免 RR 快照漏掉刚提交的型号。空型号不参与。 */
+    public void requireUniqueModel(InventoryMaterial material) {
         if (material.getModel() == null || material.getModel().isBlank()) return;
         var query = new LambdaQueryWrapper<InventoryMaterial>()
-                .eq(material.getCategoryId() != null, InventoryMaterial::getCategoryId, material.getCategoryId())
-                .isNull(material.getCategoryId() == null, InventoryMaterial::getCategoryId)
                 .eq(InventoryMaterial::getModel, material.getModel())
                 .ne(material.getMaterialId() != null, InventoryMaterial::getMaterialId, material.getMaterialId())
                 .last("LIMIT 1 FOR UPDATE");
-        if (!materialMapper.selectList(query).isEmpty()) throw new BusinessException("同品类型号重复，请修改型号：" + material.getModel());
+        if (!materialMapper.selectList(query).isEmpty()) throw new BusinessException("型号已存在（全局唯一），请修改型号：" + material.getModel());
     }
 
     public static void validateSize(String size) {

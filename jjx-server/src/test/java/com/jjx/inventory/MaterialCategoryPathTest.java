@@ -29,6 +29,9 @@ class MaterialCategoryPathTest {
 
     private void bindBaseMapper() {
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), "category-test"),
+                InventoryMaterialCategory.class);
     }
 
     @Test
@@ -41,7 +44,7 @@ class MaterialCategoryPathTest {
         when(mapper.insert(any(InventoryMaterialCategory.class))).thenReturn(1);
 
         InventoryMaterialCategory child = new InventoryMaterialCategory();
-        child.setCategoryCode("RAW_AUX"); child.setCategoryName("辅材"); child.setParentId(13L);
+        child.setModelPrefix("AUX"); child.setCategoryCode("RAW_AUX"); child.setCategoryName("辅材"); child.setParentId(13L);
         assertTrue(service.save(child));
 
         assertEquals(2, child.getCategoryLevel());
@@ -59,15 +62,15 @@ class MaterialCategoryPathTest {
         oldRoot.setCategoryId(13L); oldRoot.setCategoryCode("RAW"); oldRoot.setCategoryName("原料");
         oldRoot.setParentId(0L); oldRoot.setCategoryLevel(1); oldRoot.setCategoryPath("RAW"); oldRoot.setNamePath("原料");
         InventoryMaterialCategory renamed = new InventoryMaterialCategory();
-        renamed.setCategoryId(13L); renamed.setCategoryName("原材料"); renamed.setParentId(0L); renamed.setCategoryCode("RAW");
+        renamed.setModelPrefix("RAW"); renamed.setCategoryId(13L); renamed.setCategoryName("原材料"); renamed.setParentId(0L); renamed.setCategoryCode("RAW");
         // 第一次取旧值用于比较，刷新子节点时父节点已更新为新值
         when(mapper.selectById(13L)).thenReturn(oldRoot, renamed);
         when(mapper.updateById(any(InventoryMaterialCategory.class))).thenReturn(1);
 
         InventoryMaterialCategory child = new InventoryMaterialCategory();
-        child.setCategoryId(17L); child.setCategoryCode("RAW_AUX"); child.setCategoryName("辅材");
+        child.setCategoryId(17L); child.setModelPrefix("AUX"); child.setCategoryCode("RAW_AUX"); child.setCategoryName("辅材");
         child.setParentId(13L); child.setCategoryLevel(2); child.setCategoryPath("RAW/RAW_AUX"); child.setNamePath("原料/辅材");
-        when(mapper.selectList(any())).thenReturn(List.of(child));
+        when(mapper.selectList(any())).thenReturn(List.of(), List.of(child));
 
         assertTrue(service.updateById(renamed));
         assertEquals("原材料", renamed.getNamePath());
@@ -75,4 +78,20 @@ class MaterialCategoryPathTest {
         verify(mapper, times(2)).updateById(updated.capture());
         assertEquals("原材料/辅材", updated.getAllValues().get(1).getNamePath());
     }
+    @Test void emptyInvalidAndDuplicatePrefixesFailOnSaveAndEdit() {
+        bindBaseMapper();
+        var category = new InventoryMaterialCategory(); category.setCategoryId(7L);
+        when(mapper.selectById(7L)).thenReturn(category);
+        for (String prefix : java.util.Arrays.asList(null, "", " ", "A", "ABCDEFGHI", "pet", "P-T")) {
+            category.setModelPrefix(prefix);
+            assertThrows(com.jjx.common.exception.BusinessException.class, () -> service.save(category));
+            assertThrows(com.jjx.common.exception.BusinessException.class, () -> service.updateById(category));
+        }
+        category.setModelPrefix("PET");
+        when(mapper.selectList(any())).thenReturn(List.of(new InventoryMaterialCategory()));
+        assertThrows(com.jjx.common.exception.BusinessException.class, () -> service.save(category));
+        verify(mapper, never()).insert(any(InventoryMaterialCategory.class));
+        verify(mapper, never()).updateById(any(InventoryMaterialCategory.class));
+    }
+
 }

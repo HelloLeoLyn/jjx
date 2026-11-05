@@ -25,6 +25,8 @@ public class InventoryMaterialCategory extends BaseEntity {
 
     /** 分类编码 */
     private String categoryCode;
+    /** 型号前缀，保存时必填（2～8位大写字母或数字）。 */
+    private String modelPrefix;
 
     /** 分类名称 */
     private String categoryName;

@@ -201,6 +201,7 @@ export interface MaterialCategoryQueryParams extends PageQuery {
 }
 
 export interface MaterialCategoryFormData {
+  modelPrefix: string
   categoryId?: number
   parentId: number
   categoryCode: string
@@ -217,6 +218,7 @@ export interface MaterialCategoryListResult extends PageQuery {
 }
 
 export interface MaterialCategoryItem {
+  modelPrefix?: string
   categoryId: number
   parentId: number
   categoryCode: string

@@ -62,12 +62,16 @@ class MaterialMasterMysqlTest {
                 "class_source", "VARCHAR(10)", "class_confirmed", "TINYINT NOT NULL DEFAULT 0");
         for (var entry : additions.entrySet()) if (!existing.contains(entry.getKey())) jdbc.execute("ALTER TABLE inventory_material ADD COLUMN " + entry.getKey() + " " + entry.getValue());
         temporaryLike("inventory_material_category");
+        if (jdbc.queryForList("SHOW COLUMNS FROM inventory_material_category").stream()
+                .noneMatch(row -> "model_prefix".equals(row.get("Field"))))
+            jdbc.execute("ALTER TABLE inventory_material_category ADD COLUMN model_prefix VARCHAR(8) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         temporaryLike("sys_dict_item");
         temporaryLike("sys_dict");
         for (String code : MaterialMasterCatalog.DICTIONARIES) jdbc.update("INSERT INTO sys_dict(dict_code,dict_name,dict_group,sort_order,is_active,deleted,tenant_id) VALUES (?,?,'inventory',0,1,0,1)",code,code);
         jdbc.execute("CREATE TEMPORARY TABLE inventory_transaction (material_id BIGINT) ENGINE=InnoDB");
         jdbc.execute("CREATE TEMPORARY TABLE inventory_attribute_template (template_id BIGINT AUTO_INCREMENT PRIMARY KEY,template_code VARCHAR(50),template_name VARCHAR(100),category_id BIGINT UNIQUE,attribute_schema JSON,status INT,create_by VARCHAR(64),update_by VARCHAR(64),create_time DATETIME,update_time DATETIME) ENGINE=InnoDB");
         jdbc.update("INSERT INTO inventory_material_category(category_id,category_code,category_name,parent_id,category_level,status,category_path) VALUES (900001,'RAW','原材料',0,1,'1','RAW'),(900002,'RAW_BASE','基材',900001,2,'1','RAW/RAW_BASE'),(900003,'RAW_BASE_PC','PC膜/片',900002,3,'1','RAW/RAW_BASE/RAW_BASE_PC'),(900004,'RAW_AUX','辅材',900001,2,'1','RAW/RAW_AUX'),(900005,'RAW_AUX_ELECTRONIC','电子元件',900004,3,'1','RAW/RAW_AUX/RAW_AUX_ELECTRONIC')");
+        jdbc.update("UPDATE inventory_material_category SET model_prefix=CASE category_code WHEN 'RAW_BASE_PC' THEN 'PC' ELSE NULL END");
         String pc = """
                 {"version":1,"meta_options":["PC"],"default_meta":"PC","default_form":"FILM","default_unit":"M","fields":[
                 {"key":"anti_uv","label":"抗UV","type":"boolean","required":false}]}
@@ -244,6 +248,77 @@ class MaterialMasterMysqlTest {
             var output = new ByteArrayOutputStream(); workbook.write(output);
             var old = new MockMultipartFile("file", "old.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", output.toByteArray());
             assertTrue(assertThrows(BusinessException.class, () -> excel.importExcel(old, null, true, "Codex-test", false)).getMessage().contains("缺【宽(mm)】列"));
+        }
+    }
+
+    @Test void requiredEditablePrefixesAreUniqueAndModelRuleChangesTakeEffect() throws Exception {
+        initialize();
+        for (String invalid : Arrays.asList(null, "", " ", "P", "ABCDEFGHI", "pc", "P-C")) {
+            var dto = new MaterialMasterConfigurationService.CategorySave(900003L, "RAW_BASE_PC", "PC膜/片", 900002L, 0, 1, invalid);
+            assertThrows(BusinessException.class, () -> configurationService.saveCategory(dto, "Codex-test"));
+        }
+        var duplicate = new MaterialMasterConfigurationService.CategorySave(null, "RAW_BASE_TEST", "重复前缀", 900002L, 0, 1, "PC");
+        assertThrows(BusinessException.class, () -> configurationService.saveCategory(duplicate, "Codex-test"));
+        assertEquals(5, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material_category", Integer.class));
+        var edit = new MaterialMasterConfigurationService.CategorySave(900003L, "RAW_BASE_PC", "PC膜/片", 900002L, 0, 1, "PCX");
+        configurationService.saveCategory(edit, "Codex-test");
+        assertEquals("PCX", catalog.configuration(900003L).category().modelPrefix());
+        var initial = catalog.configuration(900003L).schema();
+        var next = mapper.readTree(mapper.writeValueAsString(initial));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) next).set("model_pattern", mapper.readTree(
+                "{\"fields\":[\"categoryprefix\",\"grammage\"],\"separator\":\"-\",\"empty\":\"skip\"}"));
+        configurationService.saveTemplate(new MaterialMasterConfigurationService.TemplateSave(
+                "TPL_PC", "PC", 900003L, MaterialAttributeSchema.parse(next.toString(), mapper), 1), "Codex-test");
+        var draft = pc("规则改克重"); draft.setThicknessMm(null); draft.setGrammage(new java.math.BigDecimal("80"));
+        assertEquals("PCX-80", service.renderModel(900003L, draft, null));
+        assertEquals("PCX-80", service.save(draft, "Codex-test").getModel());
+        jdbc.update("UPDATE inventory_material_category SET model_prefix=NULL WHERE category_id=900003");
+        assertTrue(assertThrows(BusinessException.class, () -> service.save(draft, "Codex-test")).getMessage().contains("配置型号前缀"));
+        assertThrows(BusinessException.class, () -> service.renderModel(900003L, draft, null));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+    }
+
+    @Test void globalModelsExcludeSelfAndBlanksAndImportsRejectDuplicatesWithoutWrites() throws Exception {
+        initialize();
+        var first = pc("第一品类"); first.setModel("GLOBAL125");
+        var saved = service.save(first, "Codex-test");
+        var category = configurationService.saveCategory(new MaterialMasterConfigurationService.CategorySave(
+                null, "RAW_BASE_TEST", "另一品类", 900002L, 0, 1, "PC2"), "Codex-test");
+        configurationService.saveTemplate(new MaterialMasterConfigurationService.TemplateSave(
+                "TPL_PC2", "另一品类", category.getCategoryId(), catalog.configuration(900003L).schema(), 1), "Codex-test");
+        var other = pc("不同品类同型号"); other.setCategoryId(category.getCategoryId()); other.setModel("global125");
+        assertTrue(assertThrows(BusinessException.class, () -> service.save(other, "Codex-test")).getMessage().contains("全局唯一"));
+        first.setMaterialId(saved.getMaterialId());
+        assertDoesNotThrow(() -> service.save(first, "Codex-test"));
+        service.save(pc("空型号一"), "Codex-test"); service.save(pc("空型号二"), "Codex-test");
+        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+        var conflict = modelFile("GLOBAL125", "NEW200");
+        var result = excel.importExcel(conflict, null, false, "Codex-test", false);
+        assertEquals(0, result.successCount());
+        assertTrue(result.errors().stream().anyMatch(error -> error.contains("第2行") && error.contains("全局唯一")), result.errors().toString());
+        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+        result = excel.importExcel(modelFile("FILE125", "file125"), null, false, "Codex-test", false);
+        assertEquals(0, result.successCount());
+        assertTrue(result.errors().stream().anyMatch(error -> error.contains("第3行") && error.contains("文件其他行重复")), result.errors().toString());
+        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+    }
+
+    private MockMultipartFile modelFile(String first, String second) throws Exception {
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet(); var header = sheet.createRow(0);
+            String[] columns = {"物料名称", "品类", "型号", "宽(mm)", "长(mm)", "厚(mm)", "尺寸单位", "颜色"};
+            for (int i = 0; i < columns.length; i++) header.createCell(i).setCellValue(columns[i]);
+            for (int i = 0; i < 2; i++) {
+                var row = sheet.createRow(i + 1);
+                row.createCell(0).setCellValue("型号导入" + i);
+                // 两行属于不同品类，证明文件查重跨品类。
+                row.createCell(1).setCellValue(i == 0 ? "RAW_BASE_PC" : "RAW_BASE_TEST");
+                row.createCell(2).setCellValue(i == 0 ? first : second);
+                row.createCell(3).setCellValue("300"); row.createCell(4).setCellValue("305"); row.createCell(5).setCellValue("0.175");
+                row.createCell(7).setCellValue("BLACK");
+            }
+            workbook.write(output);
+            return new MockMultipartFile("file", "models.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", output.toByteArray());
         }
     }
 

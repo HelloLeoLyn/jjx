@@ -47,7 +47,7 @@ class MaterialModelPatternTest {
     }
     void configure(long categoryId, String rule) {
         var category = new MaterialMasterCatalog.Category(categoryId, "TEST" + categoryId, "PET膜/片", 1L, 3,
-                "R", "原材料/PET膜/片", true, 1, 1);
+                "R", "原材料/PET膜/片", true, 1, 1, "PET");
         var template = new InventoryAttributeTemplate(); template.setTemplateId(categoryId);
         when(catalog.optionalConfiguration(categoryId)).thenReturn(new MaterialMasterCatalog.Configuration(
                 category, List.of(category), template, schema(rule)));
@@ -92,19 +92,14 @@ class MaterialModelPatternTest {
         assertTrue(set.contains("model=")); assertTrue(values.containsValue("旧型号"));
         dto.setModel(""); assertNull(service.prepare(dto).material().getModel());
     }
-    @Test void duplicatesAreRejectedInCreateAndEditButCategoryAndSelfAreScopedInQuery() {
+    @Test void duplicatesAreGlobalInCreateAndEditAndSelfIsExcluded() {
         var duplicate = new InventoryMaterial(); duplicate.setModel("PET125"); duplicate.setCategoryId(2L);
-        // Simulate existing rows only in category 2, and inspect the actual generated predicate below.
-        when(materials.selectList(any(Wrapper.class))).thenAnswer(call -> {
-            LambdaQueryWrapper<InventoryMaterial> q = call.getArgument(0);
-            q.getSqlSegment();
-            return q.getParamNameValuePairs().containsValue(2L) ? List.of(duplicate) : List.of();
-        });
-        assertTrue(assertThrows(BusinessException.class, () -> service.save(draft(), "codex")).getMessage().contains("同品类型号重复"));
-        verify(materials, never()).insert(any(InventoryMaterial.class));
+        when(materials.selectList(any(Wrapper.class))).thenReturn(List.of(duplicate));
+        assertTrue(assertThrows(BusinessException.class, () -> service.save(draft(), "codex")).getMessage().contains("全局唯一"));
         configure(3L, pattern);
         var other = draft(); other.setCategoryId(3L);
-        assertEquals("PET125", service.save(other, "codex").getModel());
+        assertThrows(BusinessException.class, () -> service.save(other, "codex"));
+        verify(materials, never()).insert(any(InventoryMaterial.class));
         var old = new InventoryMaterial(); old.setMaterialId(7L); old.setUnit("PCS");
         when(materials.selectById(7L)).thenReturn(old); when(locks.lockMaterial(7L)).thenReturn(old);
         var edit = draft(); edit.setMaterialId(7L); edit.setModel("PET125");
@@ -112,11 +107,33 @@ class MaterialModelPatternTest {
         var queries = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
         verify(materials, times(3)).selectList(queries.capture());
         var query = queries.getValue();
-        assertTrue(query.getSqlSegment().contains("category_id ="));
+        assertFalse(query.getSqlSegment().contains("category_id"));
         assertTrue(query.getSqlSegment().contains("model ="));
         assertTrue(query.getSqlSegment().contains("material_id <>"));
         assertTrue(query.getSqlSegment().endsWith("FOR UPDATE"));
         assertTrue(query.getParamNameValuePairs().containsValue(7L));
+        when(materials.selectList(any(Wrapper.class))).thenReturn(List.of());
+        assertDoesNotThrow(() -> service.save(edit, "codex"));
+    }
+    @Test void categoryPrefixIsUsedForGenerationAndPreviewAndMissingPrefixFails() {
+        String rule = pattern.replace("meta", "categoryprefix");
+        configure(2L, rule);
+        var original = catalog.optionalConfiguration(2L);
+        var category = new MaterialMasterCatalog.Category(2L, "RAW_AUX_RELEASE_FILM", "离型膜", 1L, 3,
+                "R", "原材料/离型膜", true, 1, 1, "RF");
+        when(catalog.optionalConfiguration(2L)).thenReturn(new MaterialMasterCatalog.Configuration(
+                category, List.of(category), original.template(), schema(rule)));
+        assertEquals("RF125", service.save(draft(), "codex").getModel());
+        assertEquals("RF125", service.renderModel(2L, draft(), null));
+        category = new MaterialMasterCatalog.Category(2L, "RAW_AUX_RELEASE_FILM", "离型膜", 1L, 3,
+                "R", "原材料/离型膜", true, 1, 1, null);
+        when(catalog.optionalConfiguration(2L)).thenReturn(new MaterialMasterCatalog.Configuration(
+                category, List.of(category), original.template(), schema(rule)));
+        assertTrue(assertThrows(BusinessException.class, () -> service.save(draft(), "codex")).getMessage().contains("配置型号前缀"));
+        assertThrows(BusinessException.class, () -> service.renderModel(2L, draft(), null));
+        // 即使操作员规则未选前缀，只要实际生成型号，缺前缀也必须报错。
+        assertThrows(BusinessException.class, () -> service.renderModel(2L, draft(), new MaterialNamingPattern(List.of("meta"), "", "skip")));
+        assertThrows(BusinessException.class, () -> MaterialNamingPattern.requireCategoryPrefix(" "));
     }
     @Test void emptyModelsNeverParticipateInUniqueness() {
         configure(2L, "null"); service.save(draft(), "codex");

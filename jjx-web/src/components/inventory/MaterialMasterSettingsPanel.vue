@@ -34,6 +34,9 @@
               :disabled="!!categoryEditId"
               placeholder="大写字母、数字和下划线"
           /></el-form-item>
+          <el-form-item label="型号前缀" required>
+            <el-input v-model="categoryForm.modelPrefix" maxlength="8" placeholder="2～8位大写字母或数字" />
+          </el-form-item>
           <el-form-item label="分类名称" required
             ><el-input v-model="categoryForm.categoryName" maxlength="100"
           /></el-form-item>
@@ -424,12 +427,12 @@
                 </el-radio-group>
               </el-form-item>
               <el-button @click="previewModel">刷新型号示例</el-button>
-              <span class="naming-message">缺值跳过；尺寸按所选单位换算，型号内不带单位文字。</span>
+              <span class="naming-message">品类前缀缺失时需先配置；其他缺值跳过；尺寸按所选单位换算，型号内不带单位文字。</span>
               <el-table v-if="modelSamples.length" :data="modelSamples" border size="small" style="margin-top: 8px">
                 <el-table-column label="参考物料编码" prop="materialCode" width="150" />
                 <el-table-column label="型号生成示例" prop="newName" />
               </el-table>
-              <div v-else class="naming-message">该品类暂无示例；选择材质与厚度后，新建物料表单会带出型号。</div>
+              <div v-else class="naming-message">该品类暂无示例；配置品类前缀并填写规则所需字段后，新建物料表单会带出型号。</div>
             </div>
             <el-divider v-if="focusSection !== 'template'" content-position="left">规格模板（生成规格的字段顺序与分隔符）</el-divider>
             <div v-show="focusSection !== 'template'" class="naming-rule">
@@ -591,6 +594,7 @@ const categoryEditId = ref<number>(),
 const categoryForm = reactive({
   parentId: undefined as number | undefined,
   categoryCode: '',
+  modelPrefix: '',
   categoryName: '',
   sortOrder: 0,
   status: CommonStatusEnum.NORMAL.value as number,
@@ -643,7 +647,7 @@ const SPEC_DIM_TOKENS = [
   { key: 'thickness_mm', label: '厚' },
 ]
 const specTokens = computed(() => {
-  if (fieldOptions.value.length) return fieldOptions.value.map((o) => ({ key: o.key, label: o.label }))
+  if (fieldOptions.value.length) return fieldOptions.value.filter(o => o.key !== 'categoryprefix').map((o) => ({ key: o.key, label: o.label }))
   return [
     ...SPEC_DIM_TOKENS,
     ...schema.value.fields.filter((f) => f.key).map((f) => ({ key: f.key, label: f.label || f.key })),
@@ -743,6 +747,7 @@ const namingLoading = ref(false)
 const namingSamples = ref<MaterialNamingPreview['samples']>([])
 const namingMessage = ref('')
 const COMMON_NAMING_TOKENS = [
+  { key: 'categoryprefix', label: '品类前缀' },
   { key: 'brand', label: '品牌' },
   { key: 'model', label: '型号' },
   { key: 'color', label: '颜色' },
@@ -937,6 +942,7 @@ function editCategory(id?: number) {
   Object.assign(categoryForm, {
     parentId: category?.parentId ?? undefined,
     categoryCode: category?.categoryCode || '',
+    modelPrefix: category?.modelPrefix || '',
     categoryName: category?.categoryName || '',
     sortOrder: category?.sortOrder ?? 0,
     status: category?.status ?? CommonStatusEnum.NORMAL.value,
