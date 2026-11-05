@@ -65,6 +65,39 @@ export interface MaterialSizeValue {
   sizeUnit: string
 }
 
+export interface MaterialSizeContext {
+  unit?: string | null
+  materialForm?: string | null
+}
+
+/** 唯一判据与 Java 一致；FILM、M 不推断为卷材。 */
+export const isRollMaterial = (context: MaterialSizeContext): boolean => context.unit === 'ROLL'
+
+/** 十进制移位后四舍五入，避免 1005mm → 1.005m 在二进制 toFixed 中舍为 1。 */
+function roundedDisplay(value: number, shift: number, decimals: number): string {
+  const move = (number: number, places: number) => {
+    const [coefficient, exponent = '0'] = String(number).split('e')
+    return Number(`${coefficient}e${Number(exponent) + places}`)
+  }
+  return String(move(Math.round(move(value, shift + decimals)), -decimals))
+}
+
+export function displayMaterialDimension(value: number, key: 'widthMm' | 'lengthMm' | 'thicknessMm', context: MaterialSizeContext): string {
+  if (!isRollMaterial(context)) return String(value)
+  if (key === 'thicknessMm') return `${roundedDisplay(value, 3, 1)}μm`
+  if (key === 'lengthMm') return `${roundedDisplay(value, -3, 2)}m`
+  return `${value}mm`
+}
+
+/** 厚度显式带 μm 时换算为 mm；裸数沿用原有 mm 输入语义。 */
+export function parseMaterialThickness(text: string): number | null {
+  const raw = text.trim()
+  if (!raw) return null
+  const microns = /^(\d+(?:\.\d+)?)\s*[μµ]m$/.exec(raw)
+  if (microns) return Number(`${microns[1]}e-3`)
+  return /^\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : NaN
+}
+
 export const emptyMaterialSize = (): MaterialSizeValue => ({ widthMm: null, lengthMm: null, thicknessMm: null, sizeUnit: 'mm' })
 
 export function validateMaterialDimensions(value: MaterialSizeValue): void {
@@ -80,7 +113,12 @@ export function validateMaterialDimensions(value: MaterialSizeValue): void {
   if (!['mm', 'cm', 'm'].includes(value.sizeUnit)) throw new Error('尺寸单位只允许 mm/cm/m')
 }
 
-export function renderMaterialDimensions(value: { widthMm?: number | null; lengthMm?: number | null; thicknessMm?: number | null; sizeUnit?: string | null }, round = false): string {
+export function renderMaterialDimensions(value: { widthMm?: number | null; lengthMm?: number | null; thicknessMm?: number | null; sizeUnit?: string | null } & MaterialSizeContext, round = false, context: MaterialSizeContext = value): string {
+  if (isRollMaterial(context)) {
+    const entries = (['thicknessMm', 'widthMm', 'lengthMm'] as const).map(key => ({ key, value: value[key] }))
+    // 每段已有独立单位，缺项与后端 spec_pattern 一样跳过，不会误读尺寸身份。
+    return entries.flatMap(entry => entry.value == null ? [] : [displayMaterialDimension(entry.value, entry.key, context)]).join('*')
+  }
   // 缺项保留中间位置；首个有值项之前的缺位不补占位（只填厚度即 0.175mm，dev-20261030-016）
   const values = [...(round ? [value.widthMm, value.thicknessMm] : [value.widthMm, value.lengthMm, value.thicknessMm])]
   while (values.length && values[0] == null) values.shift()

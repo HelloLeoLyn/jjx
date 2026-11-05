@@ -179,9 +179,10 @@ public record MaterialAttributeSchema(
         java.math.BigDecimal lengthMm = material == null ? null : material.getLengthMm();
         java.math.BigDecimal thicknessMm = material == null ? null : material.getThicknessMm();
         String sizeUnit = material == null ? null : material.getSizeUnit();
+        String materialUnit = material == null ? null : material.getUnit();
         if (specPattern == null || specPattern.fields() == null || specPattern.fields().isEmpty()) {
             return compose(attributes, thicknessMm == null ? null : thicknessMm.stripTrailingZeros().toPlainString(),
-                    MaterialSizeValue.render(widthMm, lengthMm, thicknessMm, sizeUnit));
+                    MaterialSizeValue.renderDisplay(widthMm, lengthMm, thicknessMm, sizeUnit, materialUnit), materialUnit);
         }
         Map<String, Object> values = new LinkedHashMap<>(attributes);
         StringBuilder text = new StringBuilder();
@@ -189,14 +190,28 @@ public record MaterialAttributeSchema(
         String lastUnit = "";
         String position = specPattern.unitPosition() == null || specPattern.unitPosition().isBlank()
                 ? (specPattern.withUnit() ? "each" : "none") : specPattern.unitPosition().trim().toLowerCase();
+        if (MaterialSizeValue.isRoll(materialUnit)) position = "each";
         MaterialSizeValue.SizeSpec spec = material == null ? null : MaterialSizeValue.spec(material.getSize());
         for (SpecPattern.SpecField item : specPattern.fields()) {
             if (item == null || item.key() == null || item.key().isBlank()) continue;
             String key = item.key().trim();
-            String display = MaterialNamingPattern.tokenValue(material, this, values, spec, key, categoryName);
+            String display;
+            String unit = specUnit(key, sizeUnit);
+            if (MaterialSizeValue.isRoll(materialUnit)
+                    && Set.of("width", "length", "thickness_mm").contains(key)) {
+                // 结构化缺项不能再从 getSize() 的紧凑文本反解析，否则仅厚度会被误作宽度。
+                BigDecimal value = switch (key) {
+                    case "width" -> widthMm;
+                    case "length" -> lengthMm;
+                    default -> thicknessMm;
+                };
+                if (value == null) continue;
+                var segment = MaterialSizeValue.displaySegment(value, key, materialUnit, sizeUnit);
+                display = segment.value();
+                unit = segment.unit();
+            } else display = MaterialNamingPattern.tokenValue(material, this, values, spec, key, categoryName);
             if (display == null || display.isBlank()) continue;
             if (specPattern.showLabel()) display = specLabel(key) + ":" + display;
-            String unit = specUnit(key, sizeUnit);
             if ("each".equals(position)) display += unit;
             lastUnit = unit;
             String sep = item.sep() == null || item.sep().isEmpty() ? "；" : item.sep().substring(0, 1);
@@ -252,6 +267,10 @@ public record MaterialAttributeSchema(
 
     /** 与前端预览同口径：模板顺序、可见属性、厚度列兜底、尺寸固定mm。 */
     public String compose(Map<String, Object> attributes, String thickness, String widthSize) {
+        return compose(attributes, thickness, widthSize, null);
+    }
+
+    private String compose(Map<String, Object> attributes, String thickness, String widthSize, String materialUnit) {
         Map<String, Object> values = new LinkedHashMap<>(attributes);
         if (thickness != null && !thickness.isBlank()) {
             fields.stream().filter(f -> f.key.equals("thickness_mm") || f.key.equals("gram_weight_gsm"))
@@ -268,7 +287,13 @@ public record MaterialAttributeSchema(
             else if (value instanceof List<?> list) display = String.join("、", list.stream().map(v -> label(f, v.toString())).toList());
             else if (value instanceof Number number) display = new BigDecimal(number.toString()).stripTrailingZeros().toPlainString();
             else display = value.toString();
-            parts.add(f.label + ":" + display + (f.unit == null ? "" : f.unit));
+            String unit = f.unit == null ? "" : f.unit;
+            if (MaterialSizeValue.isRoll(materialUnit) && "thickness_mm".equals(f.key)) {
+                var segment = MaterialSizeValue.displaySegment(new BigDecimal(display), f.key, materialUnit, "mm");
+                display = segment.value();
+                unit = segment.unit();
+            }
+            parts.add(f.label + ":" + display + unit);
         }
         if (widthSize != null && !widthSize.isBlank()) {
             String size = MaterialSizeValue.normalize(widthSize.trim());

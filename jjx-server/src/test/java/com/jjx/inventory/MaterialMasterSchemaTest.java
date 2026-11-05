@@ -5,6 +5,7 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.master.MaterialAttributeSchema;
 import com.jjx.inventory.master.MaterialMasterService;
 import com.jjx.inventory.master.MaterialSourceValues;
+import com.jjx.inventory.master.MaterialSizeValue;
 import com.jjx.inventory.domain.InventoryMaterial;
 import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
@@ -16,6 +17,64 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MaterialMasterSchemaTest {
     private final ObjectMapper mapper = new ObjectMapper();
+
+    @Test void rollSpecificationUsesSegmentUnitsAndLeavesOtherUnitsAndNamingUntouched() {
+        var material = new InventoryMaterial();
+        material.setUnit("ROLL"); material.setMaterialForm("FILM"); material.setSizeUnit("mm");
+        material.setWidthMm(new BigDecimal("315")); material.setLengthMm(new BigDecimal("1000000"));
+        material.setThicknessMm(new BigDecimal("0.254"));
+        for (String position : List.of("end", "each", "none")) {
+            var schema = MaterialAttributeSchema.parse("""
+                    {"version":1,"meta_options":[],"fields":[],"spec_pattern":{
+                     "fields":[{"key":"thickness_mm","sep":"*"},{"key":"width","sep":"*"},{"key":"length","sep":"*"}],
+                     "with_unit":true,"unit_position":"%s"}}
+                    """.formatted(position), mapper);
+            material.setUnit("ROLL");
+            assertEquals("254μm*315mm*1000m", schema.specification(material, Map.of(), null));
+            var naming = new com.jjx.inventory.master.MaterialNamingPattern(List.of("thickness_mm", "width", "length"), "*", "skip");
+            assertEquals("0.254*315*1000000", naming.compose(material, schema));
+            for (String unit : List.of("M", "PCS", "PIN")) {
+                material.setUnit(unit);
+                String expected = switch (position) {
+                    case "end" -> "0.254*315*1000000mm";
+                    case "each" -> "0.254mm*315mm*1000000mm";
+                    default -> "0.254*315*1000000";
+                };
+                assertEquals(expected, schema.specification(material, Map.of(), null));
+            }
+            material.setUnit("ROLL"); material.setWidthMm(null); material.setLengthMm(null);
+            assertEquals("254μm", schema.specification(material, Map.of(), null));
+            material.setWidthMm(new BigDecimal("315"));
+            assertEquals("254μm*315mm", schema.specification(material, Map.of(), null));
+            material.setThicknessMm(null);
+            assertEquals("315mm", schema.specification(material, Map.of(), null));
+            material.setThicknessMm(new BigDecimal("0.254")); material.setLengthMm(new BigDecimal("1000000"));
+            for (int mask = 0; mask < 8; mask++) {
+                material.setThicknessMm((mask & 1) == 0 ? null : new BigDecimal("0.254"));
+                material.setWidthMm((mask & 2) == 0 ? null : new BigDecimal("315"));
+                material.setLengthMm((mask & 4) == 0 ? null : new BigDecimal("1000000"));
+                assertEquals(MaterialSizeValue.renderDisplay(material.getWidthMm(), material.getLengthMm(), material.getThicknessMm(), "mm", "ROLL"),
+                        schema.specification(material, Map.of(), null));
+            }
+        }
+        var fallback = MaterialAttributeSchema.parse("{\"version\":1,\"meta_options\":[],\"fields\":[]}", mapper);
+        assertEquals("尺寸:254μm*315mm*1000m", fallback.specification(material, Map.of(), null));
+        material.setWidthMm(null); material.setLengthMm(null);
+        assertEquals("尺寸:254μm", fallback.specification(material, Map.of(), null));
+        material.setUnit("PCS"); material.setSizeUnit(null); material.setWidthMm(new BigDecimal("315"));
+        assertEquals("尺寸:315**0.254mm", fallback.specification(material, Map.of(), null));
+    }
+
+    @Test void fallbackRollThicknessAttributesUseMicronsWithoutChangingLegacyCompose() throws Exception {
+        var schema = seeds().get("TPL_PC");
+        var material = new InventoryMaterial(); material.setUnit("ROLL");
+        material.setThicknessMm(new BigDecimal("0.254"));
+        assertEquals("厚度:254μm；尺寸:254μm", schema.specification(material, Map.of(), null));
+        assertEquals("厚度:254μm；尺寸:254μm", schema.specification(material, Map.of("thickness_mm", new BigDecimal("0.254")), null));
+        material.setUnit("M");
+        assertEquals("厚度:0.254mm；尺寸:0.254mm", schema.specification(material, Map.of(), null));
+        assertEquals("厚度:0.254mm", schema.compose(Map.of(), "0.254", null));
+    }
 
     private Map<String, MaterialAttributeSchema> seeds() throws Exception {
         Path path = Path.of("../jjx-docs/sql/migrations/304_material_master_catalog.sql");

@@ -145,7 +145,12 @@
           ></el-col>
         </el-row>
         <el-form-item label="尺寸">
-          <MaterialSizeEditor v-model="dimensions" @valid-change="sizeValid = $event" />
+          <MaterialSizeEditor
+            v-model="dimensions"
+            :unit="form.unit"
+            :material-form="form.materialForm"
+            @valid-change="sizeValid = $event"
+          />
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="8">

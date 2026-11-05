@@ -28,11 +28,33 @@ vi.mock('element-plus/es/components/switch/style/css', () => ({}))
 const Input = defineComponent({ props: ['modelValue'], emits: ['update:modelValue'],
   template: `<input :value="modelValue" @input="$emit('update:modelValue', $event.target.value)" />` })
 const Select = defineComponent({ props: ['modelValue'], emits: ['change', 'update:modelValue'], template: '<div><slot /></div>' })
-function create(value: MaterialSizeValue) {
-  return mount(MaterialSizeEditor, { props: { modelValue: value },
+function create(value: MaterialSizeValue, unit?: string) {
+  return mount(MaterialSizeEditor, { props: { modelValue: value, unit },
     global: { stubs: { ElInput: Input, ElSelect: Select, ElOption: true } } })
 }
 describe('专用数值尺寸编辑组件', () => {
+  it('卷材厚度录μm提交mm，重开回显μm，切换M恢复原样', async () => {
+    const value = { ...emptyMaterialSize(), widthMm: 315, lengthMm: 1000000 }
+    const wrapper = create(value, 'ROLL')
+    await wrapper.findAll('input')[2].setValue('254μm')
+    const stored = { ...value, thicknessMm: 0.254 }
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([stored])
+    expect(wrapper.text()).toContain('254μm*315mm*1000m')
+    wrapper.unmount()
+    const reopened = create(stored, 'ROLL')
+    expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['315', '1000000', '254μm'])
+    expect(reopened.emitted('update:modelValue')).toBeUndefined()
+    await reopened.setProps({ unit: 'M' })
+    expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['315', '1000000', '0.254'])
+    expect(reopened.text()).toContain('315*1000000*0.254mm')
+    reopened.unmount()
+  })
+  it('卷材厚宽缺长仍为宽字段，不自动切为直径', () => {
+    const wrapper = create({ ...emptyMaterialSize(), widthMm: 315, thicknessMm: 0.254 }, 'ROLL')
+    expect(wrapper.findAll('input')).toHaveLength(3)
+    expect(wrapper.text()).toContain('254μm*315mm')
+    wrapper.unmount()
+  })
   it('回显不写回，编辑厚度只输出四字段对象，不改动输入对象', async () => {
     const value = { ...emptyMaterialSize(), widthMm: 30, lengthMm: 90 }
     const wrapper = create(value)

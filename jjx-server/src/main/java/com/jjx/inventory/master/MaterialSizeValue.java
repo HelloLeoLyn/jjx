@@ -2,6 +2,7 @@ package com.jjx.inventory.master;
 
 import com.jjx.common.exception.BusinessException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Arrays;
 
 /** 数值尺寸校验与只读渲染；文本解析仅供历史导入使用。 */
@@ -39,6 +40,49 @@ public final class MaterialSizeValue {
 
     private static String number(BigDecimal value) {
         return value == null ? "" : value.stripTrailingZeros().toPlainString();
+    }
+
+    /** 卷材唯一依据为计量单位 ROLL；形态与 M 等其他单位不参与推断。 */
+    public static boolean isRoll(String unit) {
+        return "ROLL".equals(unit);
+    }
+
+    public record DisplaySegment(String value, String unit) {
+        public String text() { return value + unit; }
+    }
+
+    /** 只读显示换算；输入仍是 mm，不改变存储、校验或命名规则取值。 */
+    public static DisplaySegment displaySegment(BigDecimal value, String key, String unit, String sizeUnit) {
+        String displayUnit = sizeUnit == null || sizeUnit.isBlank() ? "mm" : sizeUnit;
+        if (isRoll(unit)) {
+            switch (key) {
+                case "thickness_mm" -> {
+                    value = value == null ? null : value.movePointRight(3).setScale(1, RoundingMode.HALF_UP);
+                    displayUnit = "μm";
+                }
+                case "width" -> displayUnit = "mm";
+                case "length" -> {
+                    value = value == null ? null : value.movePointLeft(3).setScale(2, RoundingMode.HALF_UP);
+                    displayUnit = "m";
+                }
+                default -> { }
+            }
+        }
+        return new DisplaySegment(number(value), displayUnit);
+    }
+
+    /** 卷材按厚/宽/卷长逐段带单位；其他物料严格沿用原 render。 */
+    public static String renderDisplay(BigDecimal width, BigDecimal length, BigDecimal thickness,
+                                       String sizeUnit, String unit) {
+        if (!isRoll(unit)) return render(width, length, thickness, sizeUnit);
+        BigDecimal[] values = {thickness, width, length};
+        String[] keys = {"thickness_mm", "width", "length"};
+        java.util.List<String> text = new java.util.ArrayList<>();
+        for (int i = 0; i < values.length; i++) {
+            if (values[i] != null) text.add(displaySegment(values[i], keys[i], unit, sizeUnit).text());
+        }
+        if (text.isEmpty()) return null;
+        return String.join("*", text);
     }
 
     /** 尺寸分隔符：历史 ×、字母 x/X 与全角 ＊ 都按同一分隔符识别，输出统一为 *。 */
