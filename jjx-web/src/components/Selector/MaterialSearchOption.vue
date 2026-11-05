@@ -1,8 +1,11 @@
 <template>
   <div class="material-search-option">
     <div class="row-main">
-      <span class="name">{{ item.materialName || '未填写名称' }}</span>
-      <span class="code">{{ item.materialCode || '无编码' }}</span>
+      <span class="name" :class="{ missing: !item.materialName }">{{ item.materialName || '未填写名称' }}</span>
+      <span class="code" :class="{ missing: !item.materialCode }">{{ item.materialCode || '无编码' }}</span>
+      <span class="specification" :class="{ missing: !item.specification }">
+        {{ item.specification ? '规格：' + item.specification : '规格：未填写' }}
+      </span>
       <!-- 用轻量标签替代 el-tag：避免把 element-plus 组件样式带进公共选择器依赖（复核修复） -->
       <span v-if="item.isCustomerSupplied" class="badge badge-supplied">客供</span>
       <span v-if="item.isSample" class="badge badge-sample">样品</span>
@@ -10,7 +13,9 @@
     <div class="row-meta">
       <span v-if="item.categoryName">品类：{{ item.categoryName }}</span>
       <span v-else class="missing">品类：未归类</span>
-      <span>{{ item.specification ? '规格：' + item.specification : '规格：未填写' }}</span>
+      <span v-if="item.model">型号：{{ item.model }}</span>
+      <span v-if="item.supplierName">供应商：{{ item.supplierName }}</span>
+      <span v-if="item.supplierMaterialName">供应商品名：{{ item.supplierMaterialName }}</span>
       <span v-if="item.size">尺寸：{{ item.size }}</span>
       <span v-if="item.unit">单位：{{ item.unit }}</span>
       <span v-if="item.materialMeta">材质：{{ item.materialMeta }}</span>
@@ -36,6 +41,8 @@ const expanded = ref(false)
 .material-search-option {
   padding: 2px 0;
   line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .row-main {
   display: flex;
@@ -43,12 +50,21 @@ const expanded = ref(false)
   gap: 8px;
   flex-wrap: wrap;
 }
+.row-main > span,
+.row-meta > span {
+  min-width: 0;
+  max-width: 100%;
+}
 .name {
   font-weight: 600;
 }
 .code {
   font-size: 12px;
   color: #909399;
+}
+.specification {
+  font-size: 12px;
+  color: #606266;
 }
 .row-meta {
   display: flex;
