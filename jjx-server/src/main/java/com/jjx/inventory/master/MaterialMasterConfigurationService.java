@@ -122,8 +122,8 @@ public class MaterialMasterConfigurationService {
         var previous = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(old);
         var updated = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(next);
         // 属性显示、命名与规格模板（含字段显示单位）可调整，不改物料事实或已保存规格。
-        previous.remove(List.of("fields", "name_pattern", "spec_pattern"));
-        updated.remove(List.of("fields", "name_pattern", "spec_pattern"));
+        previous.remove(List.of("fields", "name_pattern", "spec_pattern", "model_pattern"));
+        updated.remove(List.of("fields", "name_pattern", "spec_pattern", "model_pattern"));
         if (!previous.equals(updated)) fail("已有物料引用模板，不能改变材质、单位或默认值等模板契约");
         Map<String, MaterialAttributeSchema.Field> fields = new LinkedHashMap<>();
         next.fields().forEach(field -> fields.put(field.key(), field));

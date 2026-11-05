@@ -220,17 +220,40 @@ public class MaterialMasterService {
         if (config == null) return null;
         MaterialAttributeSchema schema = config.schema();
         MaterialNamingPattern pattern = schema.namePattern();
+        return renderPattern(config, draft, pattern);
+    }
+
+    /** 型号只读渲染；可传尚未保存的规则供配置页预览。 */
+    public String renderModel(Long categoryId, MaterialMasterDTO draft, MaterialNamingPattern pattern) {
+        if (categoryId == null) throw new BusinessException("请选择末级品类");
+        var config = catalog.optionalConfiguration(categoryId);
+        if (config == null) return null;
+        var rule = pattern == null ? config.schema().modelPattern() : pattern;
+        if (rule != null) rule.validateModel(config.schema());
+        return renderPattern(config, draft, rule == null ? null : rule.forModel());
+    }
+
+    private String renderPattern(MaterialMasterCatalog.Configuration config, MaterialMasterDTO draft,
+                                 MaterialNamingPattern pattern) {
         if (pattern == null || pattern.normalized().fields().isEmpty()) return null;
+        MaterialAttributeSchema schema = config.schema();
         InventoryMaterial material = new InventoryMaterial();
         if (draft != null) {
             material.setBrand(draft.getBrand());
             material.setModel(draft.getModel());
             material.setColor(draft.getColor());
-            material.setUnit(draft.getUnit());
+            material.setUnit(fallback(draft.getUnit(), schema.defaultUnit()));
             material.setWidthMm(draft.getWidthMm());
             material.setLengthMm(draft.getLengthMm());
             material.setThicknessMm(draft.getThicknessMm());
             material.setGrammage(draft.getGrammage());
+            material.setSupplierName(draft.getSupplierName());
+            if (draft.getSupplierId() != null) {
+                var supplier = supplierMapper.selectById(draft.getSupplierId());
+                if (supplier != null) material.setSupplierName(supplier.getSupplierName());
+            }
+            material.setIsCustomerSupplied(draft.getIsCustomerSupplied());
+            material.setIsSample(draft.getIsSample());
             material.setMaterialMeta(resolveMaterialMeta(draft.getMaterialMeta(), schema));
             material.setMaterialForm(fallback(draft.getMaterialForm(), schema.defaultForm()));
             try {
@@ -425,13 +448,18 @@ public class MaterialMasterService {
         if (meta != null) storedAttributes.put("material", meta);
         try { material.setAttributeJson(objectMapper.writeValueAsString(storedAttributes)); }
         catch (Exception e) { throw new BusinessException("属性无法序列化"); }
-        material.setSpecification(specificationPreview(material, config == null ? null : schema).specification());
         if (dto.getSupplierId() != null) {
             var supplier = supplierMapper.selectById(dto.getSupplierId());
             if (supplier == null) throw new BusinessException("供应商不存在");
             material.setSupplierName(supplier.getSupplierName());
         } else material.setSupplierName(text(dto.getSupplierName(), "供应商", 200, false));
         material.setSupplierMaterialName(text(dto.getSupplierMaterialName(), "供应商品名", 200, false));
+        if (old == null && material.getModel() == null && schema.modelPattern() != null) {
+            schema.modelPattern().validateModel(schema);
+            material.setModel(text(schema.modelPattern().forModel().compose(material, schema,
+                    config.category().categoryName(), brandLabelOf(material), colorLabelOf(material)), "型号", 100, false));
+        }
+        material.setSpecification(specificationPreview(material, config == null ? null : schema).specification());
         for (BigDecimal number : Arrays.asList(dto.getSafeStock(), dto.getMaxStock(), dto.getReorderPoint(), dto.getStandardPrice())) {
             if (number != null && (number.signum() < 0 || number.stripTrailingZeros().scale() > 4 || number.precision() - number.scale() > 8)) throw new BusinessException("库存及价格参数须为有效的非负数，最多4位小数");
         }
@@ -495,6 +523,7 @@ public class MaterialMasterService {
         if (existing != null && source != com.jjx.inventory.classify.MaterialClassSource.MANUAL && Boolean.TRUE.equals(existing.getClassConfirmed()))
             throw new BusinessException("人工确认物料不能被导入覆盖");
         if (existing != null) preserveParameters(material, existing, dto);
+        requireUniqueModel(material);
         if (existing != null && !Objects.equals(existing.getUnit(), material.getUnit()) && masterMapper.transactionCount(existing.getMaterialId()) > 0) throw new BusinessException("已有库存流水，不能直接修改基本计量单位");
         material.setClassSource(material.getCategoryId() == null ? null : source.name());
         // 显式选择品类的表单/导入均已按模板校验；只有规则推断需要后续人工确认。
@@ -548,6 +577,18 @@ public class MaterialMasterService {
         payload.put("materialName", material.getMaterialName());
         EventPublishSupport.fireAfterCommit(eventPublisher, creating ? "inventory.material.created" : "inventory.material.updated", payload);
         return materialMapper.selectById(material.getMaterialId());
+    }
+
+    /** 类别锁串行化同品类保存；锁定读避免 RR 快照漏掉刚提交的型号。空型号不参与。 */
+    private void requireUniqueModel(InventoryMaterial material) {
+        if (material.getModel() == null || material.getModel().isBlank()) return;
+        var query = new LambdaQueryWrapper<InventoryMaterial>()
+                .eq(material.getCategoryId() != null, InventoryMaterial::getCategoryId, material.getCategoryId())
+                .isNull(material.getCategoryId() == null, InventoryMaterial::getCategoryId)
+                .eq(InventoryMaterial::getModel, material.getModel())
+                .ne(material.getMaterialId() != null, InventoryMaterial::getMaterialId, material.getMaterialId())
+                .last("LIMIT 1 FOR UPDATE");
+        if (!materialMapper.selectList(query).isEmpty()) throw new BusinessException("同品类型号重复，请修改型号：" + material.getModel());
     }
 
     public static void validateSize(String size) {

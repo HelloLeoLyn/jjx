@@ -24,7 +24,15 @@ public record MaterialAttributeSchema(
         /** 命名规则：勾选参与命名的字段与顺序；为空表示未配置。 */
         @JsonProperty("name_pattern") MaterialNamingPattern namePattern,
         /** 规格模板：字段顺序 + 每字段 1 字符分隔符；为空时回落旧拼接（dev-20261029-027）。 */
-        @JsonProperty("spec_pattern") SpecPattern specPattern) {
+        @JsonProperty("spec_pattern") SpecPattern specPattern,
+        @JsonProperty("model_pattern") MaterialNamingPattern modelPattern) {
+
+    /** 保持既有命名/规格调用的构造方式。 */
+    public MaterialAttributeSchema(int version, List<String> metaOptions, boolean metaRequired, String defaultMeta,
+                                   String defaultForm, String defaultUnit, List<Field> fields,
+                                   MaterialNamingPattern namePattern, SpecPattern specPattern) {
+        this(version, metaOptions, metaRequired, defaultMeta, defaultForm, defaultUnit, fields, namePattern, specPattern, null);
+    }
 
     public MaterialAttributeSchema(int version, List<String> metaOptions, boolean metaRequired, String defaultMeta,
                                    String defaultForm, String defaultUnit, List<Field> fields,
@@ -87,6 +95,7 @@ public record MaterialAttributeSchema(
         if (metaRequired && metaOptions.isEmpty()) fail("材质必填时必须配置材质候选");
         if (defaultMeta != null && !metaOptions.contains(defaultMeta)) fail("默认材质不在候选范围");
         if (namePattern != null) namePattern.validate(this);
+        if (modelPattern != null) modelPattern.validateModel(this);
         if (specPattern != null && specPattern.fields() != null) {
             // 规格模板与命名规则共用同一份可选项清单（dev-20261030-006）
             Set<String> specKeys = new HashSet<>(MaterialNamingPattern.COMMON_TOKENS);

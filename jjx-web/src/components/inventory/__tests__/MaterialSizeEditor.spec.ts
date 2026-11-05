@@ -121,7 +121,7 @@ describe('专用数值尺寸编辑组件', () => {
   })
 })
 
-const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), configuration: vi.fn(), detail: vi.fn(), save: vi.fn(), tags: vi.fn(), renderSpec: vi.fn() }))
+const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), configuration: vi.fn(), detail: vi.fn(), save: vi.fn(), tags: vi.fn(), renderSpec: vi.fn(), renderModel: vi.fn(), renderNaming: vi.fn() }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: api }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { getTags: api.tags } }))
 vi.mock('element-plus', async importOriginal => ({
@@ -143,6 +143,8 @@ function form(materialId?: number) {
   } } })
 }
 beforeEach(() => {
+  api.renderModel.mockReset().mockResolvedValue({ data: 'PET125' })
+  api.renderNaming.mockResolvedValue({ data: 'PET125名称' })
   api.categories.mockResolvedValue({ data: [configuration.category] })
   api.dictionaries.mockResolvedValue({ data: { material_meta: [{ code: 'PC', label: 'PC' }], unit: [{ code: 'M', label: '米' }] } })
   api.configuration.mockResolvedValue({ data: configuration })
@@ -227,4 +229,83 @@ describe('物料表单数值尺寸保存', () => {
     wrapper.unmount()
   })
 
+})
+
+const modelConfiguration = { ...configuration, schema: { ...configuration.schema,
+  meta_options: ['PET'], default_meta: 'PET',
+  model_pattern: { fields: ['meta', 'thickness_mm'], separator: '', empty: 'skip', units: { thickness_mm: 'μm' } },
+} }
+async function newModelForm() {
+  api.configuration.mockResolvedValue({ data: modelConfiguration })
+  const wrapper = form()
+  await flushPromises()
+  wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
+  await flushPromises()
+  const state = wrapper.vm as any
+  state.form.thicknessMm = 0.125
+  await flushPromises()
+  return wrapper
+}
+describe('新建物料型号生成与手改保护', () => {
+  it('新建按后端规则带出，手改后保存保留原值，后续改尺寸也不覆盖', async () => {
+    const wrapper = await newModelForm()
+    await new Promise(resolve => setTimeout(resolve, 350))
+    await flushPromises()
+    expect(api.renderModel).toHaveBeenCalledWith(2, expect.objectContaining({ thicknessMm: 0.125 }))
+    expect(wrapper.get<HTMLInputElement>('[data-test="material-model"]').element.value).toBe('PET125')
+    await wrapper.get('[data-test="material-model"]').setValue('PET125A')
+    ;(wrapper.vm as any).form.thicknessMm = 0.254
+    await new Promise(resolve => setTimeout(resolve, 350))
+    await wrapper.findAll('button').find(b => b.text() === '保存物料')!.trigger('click')
+    await flushPromises()
+    expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ model: 'PET125A' }))
+    wrapper.unmount()
+  })
+  it('未手改时，保存前刷新型号以覆盖尚未完成的防抖预览', async () => {
+    const wrapper = await newModelForm()
+    await wrapper.findAll('button').find(b => b.text() === '保存物料')!.trigger('click')
+    await flushPromises()
+    expect(api.renderModel).toHaveBeenCalled()
+    expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ model: 'PET125' }))
+    wrapper.unmount()
+  })
+  it('正在请求的旧响应不能覆盖用户手改', async () => {
+    let resolve!: (response: { data: string }) => void
+    api.renderModel.mockReturnValue(new Promise(done => { resolve = done }))
+    const wrapper = await newModelForm()
+    await new Promise(done => setTimeout(done, 350))
+    expect(api.renderModel).toHaveBeenCalled()
+    await wrapper.get('[data-test="material-model"]').setValue('PET125A')
+    resolve({ data: 'PET125' })
+    await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('[data-test="material-model"]').element.value).toBe('PET125A')
+    wrapper.unmount()
+  })
+  it('编辑已有物料即使有规则也不预览或改写型号', async () => {
+    api.detail.mockResolvedValue({ data: {
+      material: { materialId: 100, materialName: '旧名称', categoryId: 2, model: '旧型号', unit: 'M' },
+      attributes: {}, tags: [], configuration: modelConfiguration,
+    } })
+    const wrapper = form(100)
+    await flushPromises()
+    ;(wrapper.vm as any).form.thicknessMm = 0.254
+    await new Promise(resolve => setTimeout(resolve, 350))
+    await wrapper.findAll('button').find(b => b.text() === '保存物料')!.trigger('click')
+    await flushPromises()
+    expect(api.renderModel).not.toHaveBeenCalled()
+    expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ model: '旧型号' }))
+    wrapper.unmount()
+  })
+  it('未配规则时维持人工型号，不调用生成接口', async () => {
+    const wrapper = form()
+    await flushPromises()
+    wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
+    await flushPromises()
+    await wrapper.get('[data-test="material-model"]').setValue('人工型号')
+    await wrapper.findAll('button').find(b => b.text() === '保存物料')!.trigger('click')
+    await flushPromises()
+    expect(api.renderModel).not.toHaveBeenCalled()
+    expect(api.save).toHaveBeenCalledWith(expect.objectContaining({ model: '人工型号' }))
+    wrapper.unmount()
+  })
 })

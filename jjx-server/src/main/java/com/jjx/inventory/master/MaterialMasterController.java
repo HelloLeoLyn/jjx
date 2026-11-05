@@ -185,6 +185,13 @@ public class MaterialMasterController extends BaseController {
         return Result.success(service.renderNaming(request.categoryId(), request.material()));
     }
 
+    /** 型号规则渲染：用当前表单值按已保存规则预览内部型号（只读）。 */
+    @PostMapping("/model/render")
+    @SaCheckPermission(value = {"inventory:category:list", "inventory:material:view"}, mode = SaMode.OR)
+    public Result<String> renderModel(@RequestBody NamingRenderRequest request) {
+        return Result.success(service.renderModel(request.categoryId(), request.material(), null));
+    }
+
     public record NamingPreviewRequest(Long categoryId, MaterialNamingPattern namePattern) { }
 
     /** 命名规则预览：只读试算，按品类取最近 5 条物料给新旧名对照。 */

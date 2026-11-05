@@ -34,6 +34,8 @@ export interface MaterialAttributeSchema {
   fields: MaterialAttributeField[]
   /** 命名规则：勾选参与命名的字段与顺序（品类维度配置，dev-20261028-005） */
   name_pattern?: MaterialNamingPattern | null
+  /** 内部型号规则：仅新建生效，禁止 model 自引用。 */
+  model_pattern?: MaterialNamingPattern | null
   /** 规格模板：生成规格的字段顺序与分隔符（dev-20261029-027） */
   spec_pattern?: MaterialSpecPattern | null
 }
@@ -44,6 +46,8 @@ export interface MaterialNamingPattern {
   separator: string
   /** 每个字段自己的分隔符：1 个字符，空串=紧贴上一个字段（dev-20261029-024） */
   separators?: Record<string, string>
+  /** 尺寸输出单位；由后端模板引擎换算。 */
+  units?: Record<string, MaterialDimensionUnit>
   /** 缺值处理：skip 跳过 / placeholder 占位 — */
   empty: 'skip' | 'placeholder'
 }

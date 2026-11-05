@@ -396,6 +396,41 @@
                 </el-table-column>
               </el-table>
             </div>
+            <el-divider v-if="focusSection !== 'template'" content-position="left">型号规则</el-divider>
+            <div v-show="focusSection !== 'template'" class="naming-rule" data-test="model-pattern">
+              <div class="naming-message">仅新建物料自动带出，可手改；未勾选字段时人工填写。编辑与批量重算不改变型号。</div>
+              <div class="naming-tokens">
+                <el-checkbox v-for="token in modelTokens" :key="token.key"
+                  :model-value="modelPattern.fields.includes(token.key)"
+                  @update:model-value="value => toggleModelField(token.key, !!value)">{{ token.label }}</el-checkbox>
+              </div>
+              <div v-for="(field, index) in modelPattern.fields" :key="field" class="naming-order-row">
+                <span class="naming-order-no">{{ index + 1 }}</span>
+                <span class="naming-order-label">{{ namingLabel(field) }}</span>
+                <el-input :model-value="modelPattern.separators?.[field] ?? modelPattern.separator" maxlength="1"
+                  class="naming-sep-input" placeholder="分隔" title="字段前分隔符，空串表示紧贴"
+                  @update:model-value="value => setModelSeparator(field, value)" />
+                <el-select v-if="isDimensionField(field)" :model-value="modelPattern.units?.[field] || 'mm'"
+                  :aria-label="`${namingLabel(field)}型号单位`" style="width: 100px" @update:model-value="value => setModelUnit(field, value)">
+                  <el-option v-for="unit in dimensionUnits" :key="unit" :label="unit" :value="unit" />
+                </el-select>
+                <el-button link :icon="ArrowUp" :disabled="index === 0" aria-label="型号字段上移" @click="moveModelField(index, -1)" />
+                <el-button link :icon="ArrowDown" :disabled="index === modelPattern.fields.length - 1" aria-label="型号字段下移" @click="moveModelField(index, 1)" />
+                <el-button link type="danger" @click="toggleModelField(field, false)">移除</el-button>
+              </div>
+              <el-form-item label="分隔符">
+                <el-radio-group v-model="modelPattern.separator">
+                  <el-radio-button label=" ">空格</el-radio-button><el-radio-button label="-">-</el-radio-button><el-radio-button label="">无</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-button @click="previewModel">刷新型号示例</el-button>
+              <span class="naming-message">缺值跳过；尺寸按所选单位换算，型号内不带单位文字。</span>
+              <el-table v-if="modelSamples.length" :data="modelSamples" border size="small" style="margin-top: 8px">
+                <el-table-column label="参考物料编码" prop="materialCode" width="150" />
+                <el-table-column label="型号生成示例" prop="newName" />
+              </el-table>
+              <div v-else class="naming-message">该品类暂无示例；选择材质与厚度后，新建物料表单会带出型号。</div>
+            </div>
             <el-divider v-if="focusSection !== 'template'" content-position="left">规格模板（生成规格的字段顺序与分隔符）</el-divider>
             <div v-show="focusSection !== 'template'" class="naming-rule">
               <div class="naming-tokens">
@@ -513,7 +548,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
@@ -658,6 +693,52 @@ async function loadFieldOptions(categoryId?: number) {
 
 /** 命名规则：勾选字段 + 顺序 + 分隔符 + 缺值处理，保存进 attribute_schema.name_pattern。 */
 const namePattern = ref<MaterialNamingPattern>({ fields: [], separator: ' ', empty: 'skip' })
+const modelPattern = ref<MaterialNamingPattern>({ fields: [], separator: '', empty: 'skip' })
+const modelSamples = ref<MaterialNamingPreview['samples']>([])
+const modelTokens = computed(() => namingTokens.value.filter(token => token.key !== 'model'))
+function toggleModelField(key: string, checked: boolean) {
+  const rest = modelPattern.value.fields.filter(field => field !== key)
+  modelPattern.value.fields = checked ? [...rest, key] : rest
+}
+function moveModelField(index: number, offset: number) {
+  const fields = modelPattern.value.fields
+  const target = index + offset
+  if (target < 0 || target >= fields.length) return
+  const [field] = fields.splice(index, 1)
+  fields.splice(target, 0, field)
+}
+function setModelSeparator(field: string, value: string | number) {
+  modelPattern.value.separators = { ...modelPattern.value.separators, [field]: String(value ?? '').slice(0, 1) }
+}
+function setModelUnit(field: string, value: string) {
+  modelPattern.value.units = { ...modelPattern.value.units, [field]: value as MaterialDimensionUnit }
+}
+let modelPreviewRequest = 0
+async function previewModel() {
+  const categoryId = templateCategoryId.value
+  const request = ++modelPreviewRequest
+  if (!categoryId) return
+  try {
+    const rule = modelPattern.value
+    const separators = rule.separator === ''
+      ? { ...Object.fromEntries(rule.fields.map(field => [field, ''])), ...rule.separators }
+      : rule.separators
+    const response = await materialMasterApi.previewNaming(categoryId, { ...rule, separators, empty: 'skip' })
+    if (request === modelPreviewRequest) modelSamples.value = response.data?.samples || []
+  } catch (e) {
+    if (request === modelPreviewRequest) {
+      modelSamples.value = []
+      ElMessage.error(e instanceof Error ? e.message : '型号示例生成失败')
+    }
+  }
+}
+let modelPreviewTimer: ReturnType<typeof setTimeout> | undefined
+watch(() => [templateCategoryId.value, JSON.stringify(modelPattern.value)], () => {
+  modelPreviewRequest++
+  modelSamples.value = []
+  if (modelPreviewTimer) clearTimeout(modelPreviewTimer)
+  if (templateCategoryId.value) modelPreviewTimer = setTimeout(() => void previewModel(), 300)
+})
 const namingLoading = ref(false)
 const namingSamples = ref<MaterialNamingPreview['samples']>([])
 const namingMessage = ref('')
@@ -780,6 +861,10 @@ watch(
   },
   { immediate: true }
 )
+onBeforeUnmount(() => {
+  modelPreviewRequest++
+  if (modelPreviewTimer) clearTimeout(modelPreviewTimer)
+})
 const renameLoading = ref(false)
 const renameReport = ref<MaterialRenameReport>()
 const skipText = (reason: string | null) =>
@@ -876,6 +961,8 @@ async function loadTemplate(id: number) {
   templateLoading.value = true
   schema.value = { version: 1, meta_options: [], fields: [] }
   namePattern.value = { fields: [], separator: ' ', empty: 'skip', separators: {} }
+  modelPattern.value = { fields: [], separator: '', empty: 'skip' }
+  modelSamples.value = []
   void loadFieldOptions(id)
   specPattern.value = { fields: [], show_label: false, with_unit: true, unit_position: 'end' }
   namingSamples.value = []
@@ -902,8 +989,12 @@ async function loadTemplate(id: number) {
           unit_position: (response.data.schema.spec_pattern.unit_position as 'each' | 'end' | 'none') || 'end',
         }
       : { fields: [], show_label: false, with_unit: true, unit_position: 'end' }
+    modelPattern.value = response.data.schema.model_pattern
+      ? JSON.parse(JSON.stringify(response.data.schema.model_pattern))
+      : { fields: [], separator: '', empty: 'skip' }
     namePattern.value = response.data.schema.name_pattern
       ? {
+          ...response.data.schema.name_pattern,
           fields: [...response.data.schema.name_pattern.fields],
           separator: response.data.schema.name_pattern.separator || ' ',
           separators: { ...(response.data.schema.name_pattern.separators || {}) },
@@ -975,7 +1066,7 @@ async function saveTemplate() {
       categoryId: templateCategoryId.value,
       templateCode: templateCode.value,
       templateName: templateName.value,
-      attributeSchema: { ...schema.value, name_pattern: namePattern.value, spec_pattern: specPattern.value },
+      attributeSchema: { ...schema.value, name_pattern: namePattern.value, model_pattern: { ...modelPattern.value, empty: 'skip' }, spec_pattern: specPattern.value },
       status: templateStatus.value,
     })
     await refresh()

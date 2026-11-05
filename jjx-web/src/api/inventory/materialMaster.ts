@@ -90,6 +90,9 @@ export const materialMasterApi = {
   /** 命名规则渲染：用当前表单值按该品类已保存规则生成名称（不写库） */
   renderNaming: (categoryId: number, material: unknown) =>
     request.post<R<string | null>>(`${base}/naming/render`, { categoryId, material }),
+  /** 新建表单型号预览：生成逻辑只在后端实现。 */
+  renderModel: (categoryId: number, material: unknown) =>
+    request.post<R<string | null>>(`${base}/model/render`, { categoryId, material }),
   /** 批量改名预演（按品类已保存规则） */
   renameChanges: (categoryId: number, limit = 50) =>
     request.get<R<MaterialRenameReport>>(`${base}/naming/changes`, { params: { categoryId, limit } }),

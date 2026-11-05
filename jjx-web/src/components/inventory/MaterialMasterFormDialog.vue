@@ -111,7 +111,7 @@
           ></el-col>
           <el-col :span="12"
             ><el-form-item label="型号"
-              ><el-input v-model="form.model" maxlength="100" /></el-form-item
+              ><el-input v-model="form.model" maxlength="100" data-test="material-model" @input="onModelInput" /></el-form-item
           ></el-col>
           <el-col :span="12"
             ><el-form-item label="颜色">
@@ -263,7 +263,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import { materialApi } from '@/api/inventory/material'
@@ -390,6 +390,52 @@ watch(
     if (categoryMaterialMeta.value) form.materialMeta = categoryMaterialMeta.value
   }
 )
+/** 型号预览只用于新建；手改后停止同步，异步旧响应不能覆盖手改或新会话。 */
+const modelManual = ref(false)
+let modelRequest = 0
+let modelTimer: ReturnType<typeof setTimeout> | undefined
+function onModelInput() {
+  modelManual.value = true
+  modelRequest++
+}
+function modelDraft() {
+  return {
+    materialMeta: form.materialMeta, materialForm: form.materialForm, unit: form.unit,
+    brand: form.brand, color: form.color,
+    widthMm: form.widthMm, lengthMm: form.lengthMm, thicknessMm: form.thicknessMm,
+    grammage: form.grammage, attributeJson: form.attributeJson,
+    supplierId: form.supplierId, supplierName: form.supplierName,
+    isCustomerSupplied: form.isCustomerSupplied, isSample: form.isSample,
+  }
+}
+async function refreshModel() {
+  if (props.materialId || form.materialId || modelManual.value || !form.categoryId ||
+      !configuration.value?.schema.model_pattern?.fields.length) return true
+  const request = ++modelRequest
+  const currentSession = session
+  const categoryId = form.categoryId
+  const response = await materialMasterApi.renderModel(categoryId, modelDraft())
+  if (request === modelRequest && currentSession === session && categoryId === form.categoryId &&
+      !props.materialId && !form.materialId && !modelManual.value && visible.value) {
+    form.model = response.data || ''
+    return true
+  }
+  return currentSession === session && categoryId === form.categoryId && visible.value && modelManual.value
+}
+watch(() => [visible.value, form.categoryId, JSON.stringify(modelDraft()),
+  JSON.stringify(configuration.value?.schema.model_pattern)], () => {
+  modelRequest++
+  if (modelTimer) clearTimeout(modelTimer)
+  if (!visible.value || loading.value || props.materialId || form.materialId || modelManual.value) return
+  modelTimer = setTimeout(() => {
+    void refreshModel().catch(error => ElMessage.error(error instanceof Error ? error.message : '型号生成失败'))
+  }, 300)
+})
+onBeforeUnmount(() => {
+  modelRequest++
+  if (modelTimer) clearTimeout(modelTimer)
+  if (ruleTimer) clearTimeout(ruleTimer)
+})
 /** 规格模板生成结果（后端统一实现，dev-20261029-027） */
 const specText = ref('')
 const specificationPreview = computed(() => {
@@ -584,6 +630,9 @@ async function selectCategory(id: number) {
 
 async function initialize() {
   sizeValid.value = true
+  modelManual.value = false
+  modelRequest++
+  if (modelTimer) clearTimeout(modelTimer)
   const currentSession = ++session
   categoryRequest++
   loading.value = true
@@ -675,6 +724,22 @@ async function save() {
     configurationLoading.value
   )
     return
+  // 保存前刷新尚未手改的型号，避免在 300ms 预览防抖窗口内提交旧值。
+  saving.value = true
+  try {
+    if (modelTimer) clearTimeout(modelTimer)
+    if (!(await refreshModel())) return void ElMessage.warning('物料信息已变化，请重试保存')
+    if (!form.materialId && configuration.value.schema.model_pattern?.fields.length &&
+        !form.nameManual && configuration.value.schema.name_pattern) {
+      const response = await materialMasterApi.renderNaming(form.categoryId, { ...modelDraft(), model: form.model })
+      ruleName.value = response.data || ''
+    }
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '型号预览失败，请重试')
+    return
+  } finally {
+    saving.value = false
+  }
   const finalName =
     (form.nameManual ? '' : ruleName.value || '').trim() ||
     effectiveMasterName(form, dictionaries.value).trim()

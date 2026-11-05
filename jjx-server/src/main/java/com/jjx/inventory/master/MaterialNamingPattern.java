@@ -18,7 +18,13 @@ import java.util.Set;
  */
 public record MaterialNamingPattern(List<String> fields, String separator, String empty,
                                     /** 每个字段自己的分隔符（1 个字符，空=紧贴上一个）；缺省回落到 separator（dev-20261029-024）。 */
-                                    Map<String, String> separators) {
+                                    Map<String, String> separators,
+                                    /** 尺寸字段的输出单位；不配置保持原值，不输出单位文字。 */
+                                    Map<String, String> units) {
+
+    public MaterialNamingPattern(List<String> fields, String separator, String empty, Map<String, String> separators) {
+        this(fields, separator, empty, separators, Map.of());
+    }
 
     /** 兼容旧规则：只有全局分隔符。 */
     public MaterialNamingPattern(List<String> fields, String separator, String empty) {
@@ -32,6 +38,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         COMMON_LABELS.put("brand", "品牌");
         COMMON_LABELS.put("meta", "材质");
         COMMON_LABELS.put("form", "形态");
+        COMMON_LABELS.put("unit", "单位");
         COMMON_LABELS.put("model", "型号");
         COMMON_LABELS.put("color", "颜色");
         COMMON_LABELS.put("width", "宽");
@@ -67,18 +74,39 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
                 perField.put(key, value.isEmpty() ? "" : value.substring(0, 1));
             }
         }
-        return new MaterialNamingPattern(List.copyOf(keys), sep, emptyMode, Map.copyOf(perField));
+        return new MaterialNamingPattern(List.copyOf(keys), sep, emptyMode, Map.copyOf(perField),
+                units == null ? Map.of() : Map.copyOf(units));
     }
 
     /** 允许的字段：公共字段 + 本品类属性字段。 */
     public void validate(MaterialAttributeSchema schema) {
         Set<String> allowed = new LinkedHashSet<>(COMMON_TOKENS);
         if (schema != null) schema.fields().forEach(field -> allowed.add(field.key()));
+        if (units != null) units.forEach((key, unit) -> {
+            if (!MaterialAttributeSchema.DIMENSION_KEYS.contains(key)
+                    || !MaterialAttributeSchema.DIMENSION_UNITS.contains(unit))
+                throw new com.jjx.common.exception.BusinessException("规则尺寸单位只允许宽、长、厚使用 mm/cm/m/μm");
+        });
         for (String field : normalized().fields()) {
             if (!allowed.contains(field)) {
                 throw new com.jjx.common.exception.BusinessException("命名规则含未知字段：" + field);
             }
         }
+    }
+
+    /** 型号缺值始终跳过；空全局分隔符转为逐字段紧贴，保留旧命名规则的归一行为。 */
+    public MaterialNamingPattern forModel() {
+        Map<String, String> perField = new LinkedHashMap<>();
+        if ("".equals(separator)) normalized().fields().forEach(key -> perField.put(key, ""));
+        if (separators != null) perField.putAll(separators);
+        return new MaterialNamingPattern(fields, separator, "skip", perField, units);
+    }
+
+    /** 型号与命名共用字段白名单，型号不允许引用自身。 */
+    public void validateModel(MaterialAttributeSchema schema) {
+        if (normalized().fields().contains("model"))
+            throw new com.jjx.common.exception.BusinessException("型号规则不能包含型号自身（model）");
+        validate(schema);
     }
 
     /** 生成名称；缺值按 skip（跳过）或 placeholder（占位 —）处理。 */
@@ -111,6 +139,9 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         boolean first = true;
         for (String field : pattern.fields()) {
             String value = valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, colorLabel);
+            if (value != null && !value.isBlank() && pattern.units().containsKey(field)) {
+                value = MaterialSizeValue.segment(new java.math.BigDecimal(value), pattern.units().get(field), null).value();
+            }
             String part = value == null || value.isBlank()
                     ? ("placeholder".equals(pattern.empty()) ? "—" : null)
                     : value.trim();
@@ -145,6 +176,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
             case "color" -> colorLabel == null || colorLabel.isBlank() ? material.getColor() : colorLabel;
             case "meta" -> material.getMaterialMeta();
             case "form" -> material.getMaterialForm();
+            case "unit" -> material.getUnit();
             case "width" -> decimalText(firstNonNull(material.getWidthMm(), spec == null ? null : spec.widthMm()));
             case "length" -> decimalText(firstNonNull(material.getLengthMm(), spec == null ? null : spec.lengthMm()));
             case "thickness_mm" -> decimalText(firstNonNull(material.getThicknessMm(), spec == null ? null : spec.thicknessMm()));
