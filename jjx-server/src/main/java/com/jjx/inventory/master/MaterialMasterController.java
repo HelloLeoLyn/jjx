@@ -99,6 +99,19 @@ public class MaterialMasterController extends BaseController {
     @SaCheckLogin
     public Result<Map<String, List<MaterialMasterCatalog.DictionaryOption>>> dictionaries() { return Result.success(catalog.dictionaries()); }
 
+    @GetMapping("/categories/{categoryId}/required-fields")
+    @SaCheckPermission("inventory:category:list")
+    public Result<Map<String, Boolean>> requiredFields(@PathVariable Long categoryId) {
+        return Result.success(service.requiredFields(categoryId));
+    }
+
+    @PutMapping("/categories/{categoryId}/required-fields")
+    @SaCheckPermission("inventory:category:edit")
+    public Result<Void> saveRequiredFields(@PathVariable Long categoryId, @RequestBody Map<String, Object> fields) {
+        service.saveRequiredFields(categoryId, fields);
+        return Result.success();
+    }
+
     @GetMapping("/configuration/{categoryId}")
     @SaCheckLogin
     public Result<MaterialMasterCatalog.Configuration> configuration(@PathVariable Long categoryId) { return Result.success(catalog.configuration(categoryId)); }
@@ -135,10 +148,21 @@ public class MaterialMasterController extends BaseController {
 
     @PutMapping("/category")
     @SaCheckPermission(value = {"inventory:category:add", "inventory:category:edit"}, mode = SaMode.OR)
-    public Result<com.jjx.inventory.domain.InventoryMaterialCategory> saveCategory(@RequestBody MaterialMasterConfigurationService.CategorySave dto) {
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public Result<com.jjx.inventory.domain.InventoryMaterialCategory> saveCategory(@RequestBody MaterialCategorySaveDTO dto) {
         // 创建和修改分别核验，避免有新增权限即能修改已有节点。
         cn.dev33.satoken.stp.StpUtil.checkPermission(dto.categoryId() == null ? "inventory:category:add" : "inventory:category:edit");
-        return Result.success(configurationService.saveCategory(dto, getUsername()));
+        if (dto.requiredFields() != null) {
+            cn.dev33.satoken.stp.StpUtil.checkPermission("inventory:category:edit");
+            service.validateRequiredFields(dto.requiredFields());
+        }
+        var category = configurationService.saveCategory(dto.category(), getUsername());
+        if (dto.requiredFields() != null) service.saveRequiredFields(category.getCategoryId(), dto.requiredFields());
+        if (dto.remark() != null) {
+            service.saveCategoryRemark(category.getCategoryId(), dto.remark());
+            category.setRemark(dto.remark());
+        }
+        return Result.success(category);
     }
 
     @PutMapping("/template")

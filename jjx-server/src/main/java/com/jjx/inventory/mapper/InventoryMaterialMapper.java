@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.Insert;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,6 +25,14 @@ public interface InventoryMaterialMapper extends BaseMapper<InventoryMaterial> {
 
     @Select("SELECT field_key FROM inventory_material_required_field WHERE category_code = #{code} AND required = 1")
     List<String> selectRequiredFields(@Param("code") String code);
+
+    @Insert("INSERT INTO inventory_material_required_field (category_code, field_key, required) " +
+            "VALUES (#{code}, #{field}, #{required}) ON DUPLICATE KEY UPDATE required = VALUES(required)")
+    int upsertRequiredField(@Param("code") String code, @Param("field") String field,
+                            @Param("required") boolean required);
+
+    @Update("UPDATE inventory_material_category SET remark = #{remark} WHERE category_id = #{id}")
+    int updateCategoryRemark(@Param("id") Long id, @Param("remark") String remark);
 
     /** 属性保存使用所选分类的模板，不采信客户端template_id。 */
     @Select("SELECT template_id FROM inventory_attribute_template WHERE category_id = #{id}")

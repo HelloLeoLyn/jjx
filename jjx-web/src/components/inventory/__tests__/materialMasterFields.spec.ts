@@ -8,8 +8,6 @@ import {
   MATERIAL_COLOR_OPTIONS,
   MATERIAL_GRADE_OPTIONS,
   composeMaterialName,
-  findMissingRequiredFields,
-  requiredMaterialFields,
   splitLegacyMaterialName,
 } from '../materialMasterFields'
 import type { MaterialCategoryOption } from '../materialMasterFields'
@@ -77,40 +75,6 @@ describe('splitLegacyMaterialName', () => {
   it('解析不出结构化字段时整体留在型号，名称不丢', () => {
     expect(splitLegacyMaterialName('其他F200')).toEqual({ materialGrade: '其他', model: 'F200' })
     expect(splitLegacyMaterialName('定制件')).toEqual({ model: '定制件' })
-  })
-})
-
-describe('requiredMaterialFields', () => {
-  it('必填矩阵按品类取值', () => {
-    expect(requiredMaterialFields('AUX-ADHESIVE')).toEqual(['model', 'specification', 'brand'])
-    expect(requiredMaterialFields('AUX-ELEC')).toEqual(['model', 'color'])
-    expect(requiredMaterialFields('AUX-TOOL')).toEqual([])
-  })
-})
-
-describe('findMissingRequiredFields', () => {
-  const values = { materialGrade: 'PET膜', model: '', color: '', specification: '' }
-
-  it('新增按矩阵报缺失', () => {
-    expect(findMissingRequiredFields(values, 'RM-FILM')).toEqual(['color', 'specification'])
-  })
-
-  it('编辑历史缺失不阻塞', () => {
-    const originals = { materialGrade: 'PET膜', model: '', color: '', specification: '' }
-    expect(findMissingRequiredFields(values, 'RM-FILM', originals)).toEqual([])
-  })
-
-  it('编辑清空原有必填值要报错', () => {
-    const originals = { materialGrade: 'PET膜', model: '', color: '透明', specification: '' }
-    expect(findMissingRequiredFields(values, 'RM-FILM', originals)).toEqual(['color'])
-  })
-
-  it('品类变更时按新品类全量校验', () => {
-    expect(findMissingRequiredFields(values, 'AUX-ADHESIVE', {}, true)).toEqual([
-      'model',
-      'specification',
-      'brand',
-    ])
   })
 })
 

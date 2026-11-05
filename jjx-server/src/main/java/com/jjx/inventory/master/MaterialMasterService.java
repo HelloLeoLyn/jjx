@@ -35,6 +35,39 @@ public class MaterialMasterService {
     private final EventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
 
+    private static final List<String> REQUIRED_FIELD_KEYS =
+            List.of("material_grade", "model", "color", "specification", "brand");
+
+    public Map<String, Boolean> requiredFields(Long categoryId) {
+        var category = materialMapper.selectCategory(categoryId);
+        if (category == null) throw new BusinessException("分类不存在");
+        var required = materialMapper.selectRequiredFields((String) category.get("category_code"));
+        Map<String, Boolean> result = new LinkedHashMap<>();
+        REQUIRED_FIELD_KEYS.forEach(key -> result.put(key, required.contains(key)));
+        return result;
+    }
+
+    public void validateRequiredFields(Map<String, Object> fields) {
+        if (fields == null || !fields.keySet().equals(new HashSet<>(REQUIRED_FIELD_KEYS))
+                || fields.values().stream().anyMatch(value -> !(value instanceof Boolean)))
+            throw new BusinessException("必填字段须为 material_grade/model/color/specification/brand 五个布尔值");
+    }
+
+    /** 与物料新建使用同一品类锁；五个布尔值一次提交，不保留旧的勾选。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveRequiredFields(Long categoryId, Map<String, Object> fields) {
+        validateRequiredFields(fields);
+        if (categoryId == null || masterMapper.lockCategory(categoryId) == null)
+            throw new BusinessException("分类不存在");
+        var category = materialMapper.selectCategory(categoryId);
+        String code = (String) category.get("category_code");
+        REQUIRED_FIELD_KEYS.forEach(key -> materialMapper.upsertRequiredField(code, key, (Boolean) fields.get(key)));
+    }
+
+    public void saveCategoryRemark(Long categoryId, String remark) {
+        materialMapper.updateCategoryRemark(categoryId, text(remark, "备注", 200, false));
+    }
+
     public record Detail(InventoryMaterial material, Map<String, Object> attributes,
                          MaterialMasterCatalog.Configuration configuration, List<SysTag> tags, MaterialSourceValues source,
                          SpecificationPreview specificationGeneration) { }

@@ -7,7 +7,7 @@ import { materialSaveFromImport, type MaterialImportRow } from './materialCreate
  *
  * 后端 dev-20261023-012 已把 material_grade/model/color/brand/search_keywords/size
  * 落到 inventory_material，并按 inventory_material_required_field 做服务端必填校验。
- * 这里集中前端下拉词表、名称拼装、旧名称解析与必填矩阵，避免各处再散写。
+ * 这里集中前端下拉词表、名称拼装、旧名称解析，避免各处再散写。
  */
 
 /** 材料：受控复合词（与后端 InventoryMaterialServiceImpl 导入解析候选表同一份，23 个）。 */
@@ -54,24 +54,6 @@ export const MATERIAL_COLOR_OPTIONS = [
   '橙色',
 ]
 
-/**
- * 必填矩阵：inventory_material_required_field 的前端镜像（按品类编码）。
- * 服务端仍会校验，这里只负责提前提示；后端接口补出后应改为读取接口。
- */
-export const MATERIAL_REQUIRED_FIELDS: Record<string, string[]> = {
-  'RM-FILM': ['materialGrade', 'color', 'specification'],
-  'RM-PAPER': ['materialGrade', 'color', 'specification'],
-  'RM-ADHESIVE': ['materialGrade', 'color', 'specification'],
-  'RM-INK': ['color', 'specification'],
-  'AUX-ADHESIVE': ['model', 'specification', 'brand'],
-  'AUX-ELEC': ['model', 'color'],
-  'AUX-HARDWARE': ['materialGrade', 'model', 'specification'],
-  'AUX-PACK': ['specification'],
-  'AUX-TOOL': [],
-  'OTHER-R': [],
-  'OTHER-A': [],
-}
-
 export const MATERIAL_FIELD_LABELS: Record<string, string> = {
   materialGrade: '材料',
   model: '型号',
@@ -92,12 +74,6 @@ export interface MaterialCategoryOption {
 
 // 品类下拉唯一真源 = /inventory/material/category-options（分类树收口后由后端下发）。
 // dev-20261024-006：删除本地 11 条旧一级品类镜像，避免接口与前端两份分类并存。
-
-/** 必填字段（按矩阵顺序）。 */
-export function requiredMaterialFields(categoryCode?: string): string[] {
-  if (!categoryCode) return []
-  return MATERIAL_REQUIRED_FIELDS[categoryCode] || []
-}
 
 export interface MaterialMasterValues {
   materialGrade?: string
@@ -157,29 +133,6 @@ export function splitLegacyMaterialName(name: string): MaterialMasterValues {
   const model = rest.replace(/^[-_·\s]+|[-_·\s]+$/g, '')
   if (model) result.model = model
   return result
-}
-
-/**
- * 必填校验（前端预检）。
- * - 新增：矩阵内字段为空即报。
- * - 编辑：只校验"本次改动"——原有值被清空、或品类发生变化时按新品类全量校验；
- *   历史就为空的字段不阻塞保存（与服务端 suppliedFields 口径一致）。
- */
-export function findMissingRequiredFields(
-  values: MaterialMasterValues,
-  categoryCode: string | undefined,
-  originals?: MaterialMasterValues,
-  forceAll = false
-): string[] {
-  const required = requiredMaterialFields(categoryCode)
-  if (!required.length) return []
-  return required.filter((key) => {
-    const value = ((values as Record<string, string | undefined>)[key] || '').trim()
-    if (value) return false
-    if (!originals || forceAll) return true
-    const before = ((originals as Record<string, string | undefined>)[key] || '').trim()
-    return before !== ''
-  })
 }
 
 /** 读取品类下拉；接口不可用或为空时返回空数组（由调用方提示，不再使用本地镜像兜底）。 */

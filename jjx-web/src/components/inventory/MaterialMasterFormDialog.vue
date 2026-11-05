@@ -82,6 +82,11 @@
           </div>
         </el-form-item>
         <el-row :gutter="16">
+          <el-col :span="24">
+            <el-form-item label="材料显示名" :required="commonFieldRequired('material_grade')">
+              {{ materialDisplayName || '选择材质和形态后生成' }}
+            </el-form-item>
+          </el-col>
           <el-col v-if="!categoryMaterialMeta" :span="12"
             ><el-form-item label="材质" :required="configuration?.schema.meta_required">
               <el-select
@@ -110,11 +115,11 @@
               /></el-select> </el-form-item
           ></el-col>
           <el-col :span="12"
-            ><el-form-item label="型号"
+            ><el-form-item label="型号" :required="commonFieldRequired('model')"
               ><el-input v-model="form.model" maxlength="100" data-test="material-model" @input="onModelInput" /></el-form-item
           ></el-col>
           <el-col :span="12"
-            ><el-form-item label="颜色">
+            ><el-form-item label="颜色" :required="commonFieldRequired('color')">
               <el-select v-model="form.color" clearable filterable style="width: 100%"
                 ><el-option
                   v-for="o in dictionaries.color"
@@ -124,7 +129,7 @@
               /></el-select> </el-form-item
           ></el-col>
           <el-col :span="12"
-            ><el-form-item label="品牌">
+            ><el-form-item label="品牌" :required="commonFieldRequired('brand')">
               <el-select v-model="form.brand" clearable filterable style="width: 100%"
                 ><el-option
                   v-for="o in dictionaries.brand"
@@ -144,6 +149,9 @@
               /></el-select> </el-form-item
           ></el-col>
         </el-row>
+        <el-form-item label="规格" :required="commonFieldRequired('specification')">
+          {{ specificationPreview || '填写规格属性和尺寸后生成' }}
+        </el-form-item>
         <el-form-item label="尺寸">
           <MaterialSizeEditor
             v-model="dimensions"
@@ -274,6 +282,8 @@ import type {
   MaterialMasterCategory,
   MaterialMasterConfiguration,
   MaterialMasterForm,
+  MaterialRequiredFields,
+  MaterialRequiredFieldKey,
 } from '@/types/inventory/materialMaster'
 import MaterialAttributeFields from './MaterialAttributeFields.vue'
 import MaterialSizeEditor from './MaterialSizeEditor.vue'
@@ -323,6 +333,14 @@ const dimensions = computed<MaterialSizeValue>({
 const categories = ref<MaterialMasterCategory[]>([])
 const dictionaries = ref<MaterialDictionaries>({})
 const configuration = ref<MaterialMasterConfiguration>()
+const requiredFields = ref<MaterialRequiredFields>()
+function commonFieldRequired(key: MaterialRequiredFieldKey) {
+  return !props.materialId && !form.materialId && !(props.fromBom && key === 'color') && requiredFields.value?.[key] === true
+}
+const materialDisplayName = computed(() => {
+  const label = (dict: string, code: string) => code ? dictionaries.value[dict]?.find(o => o.code === code)?.label || code : ''
+  return `${label('material_meta', form.materialMeta)}${label('form', form.materialForm)}`.trim()
+})
 const tags = ref<SysTag[]>([])
 const loading = ref(false)
 const configurationLoading = ref(false)
@@ -363,7 +381,11 @@ const subCategoryOptions = computed(() =>
 async function selectParentCategory(id: number) {
   parentCategoryId.value = id
   if (hasChildren(id)) {
+    categoryRequest++
+    modelRequest++
     configuration.value = undefined
+    requiredFields.value = undefined
+    configurationLoading.value = false
     form.categoryId = null
     form.attributeJson = {}
     return
@@ -609,14 +631,20 @@ async function selectCategory(id: number) {
   const currentSession = session
   const hadAttributes = Object.keys(form.attributeJson || {}).length > 0
   configuration.value = undefined
+  requiredFields.value = undefined
   configurationLoading.value = true
   form.categoryId = id
   form.attributeJson = {}
   if (hadAttributes) ElMessage.info('已按新分类清理不适用的属性，请重新选择该分类的属性')
   try {
-    const response = await materialMasterApi.configuration(id)
+    const [response, requiredResponse] = await Promise.all([
+      materialMasterApi.configuration(id),
+      props.materialId || form.materialId ? Promise.resolve(null) : materialMasterApi.requiredFields(id),
+    ])
     if (request !== categoryRequest || currentSession !== session) return
     if (!response.data) throw Error('品类模板加载失败')
+    if (!props.materialId && !form.materialId && !requiredResponse?.data) throw Error('必填字段加载失败，请重新选择品类')
+    requiredFields.value = requiredResponse?.data ?? undefined
     configuration.value = response.data
     changeMasterCategory(form, response.data)
   } catch (error) {
@@ -638,6 +666,7 @@ async function initialize() {
   loading.value = true
   loadError.value = ''
   configuration.value = undefined
+  requiredFields.value = undefined
   configurationLoading.value = false
   Object.assign(form, emptyMasterForm(), emptyMaterialSize(), {
     materialId: undefined,
@@ -745,6 +774,31 @@ async function save() {
     effectiveMasterName(form, dictionaries.value).trim()
   if (!finalName) return void ElMessage.warning('请填写名称，或先选择材料/型号/颜色自动生成')
   if (!form.unit) return void ElMessage.warning('请选择基本单位')
+  if (!props.materialId && !form.materialId) {
+    if (!requiredFields.value) return void ElMessage.warning('必填字段尚未加载，请重新选择品类')
+    const values: Record<MaterialRequiredFieldKey, string> = {
+      material_grade: materialDisplayName.value, model: form.model, color: form.color,
+      specification: '', brand: form.brand,
+    }
+    if (commonFieldRequired('specification')) {
+      // 保存前取当前草稿的后端规格，避免防抖中的旧预览导致误报。
+      saving.value = true
+      try {
+        const response = await materialMasterApi.renderSpec(form.categoryId, { ...form })
+        values.specification = response.data || ''
+      } catch (error) {
+        ElMessage.error(error instanceof Error ? error.message : '规格预览失败，请重试')
+        return
+      } finally {
+        saving.value = false
+      }
+    }
+    const labels: Record<MaterialRequiredFieldKey, string> = {
+      material_grade: '材料显示名', model: '型号', color: '颜色', specification: '规格', brand: '品牌',
+    }
+    const missingField = (Object.keys(labels) as MaterialRequiredFieldKey[]).find(key => commonFieldRequired(key) && !values[key]?.trim())
+    if (missingField) return void ElMessage.warning(`${labels[missingField]}不能为空（${configuration.value.category.categoryName} 必填）`)
+  }
   const missing = configuration.value.schema.fields.find(
     (f) =>
       f.required &&

@@ -12,6 +12,7 @@ import type {
   MaterialRenameReport,
   MaterialDictionaries,
   MaterialImportResult,
+  MaterialRequiredFields,
 } from '@/types/inventory/materialMaster'
 
 const base = '/inventory/material/master'
@@ -28,6 +29,10 @@ export const materialMasterApi = {
     request.post<R<void>>(`${base}/dictionaries/${dictCode}/items`, data),
   categories: (includeDisabled = false) =>
     request.get<R<MaterialMasterCategory[]>>(`${base}/categories`, { params: { includeDisabled } }),
+  requiredFields: (categoryId: number) =>
+    request.get<R<MaterialRequiredFields>>(`${base}/categories/${categoryId}/required-fields`),
+  saveRequiredFields: (categoryId: number, fields: MaterialRequiredFields) =>
+    request.put<R<void>>(`${base}/categories/${categoryId}/required-fields`, fields),
   dictionaries: () => request.get<R<MaterialDictionaries>>(`${base}/dictionaries`),
   configuration: (categoryId: number) =>
     request.get<R<MaterialMasterConfiguration>>(`${base}/configuration/${categoryId}`),

@@ -1,6 +1,9 @@
 import type { InventoryMaterial } from './material'
 import type { SysTag } from '@/types/system/tag'
 
+export type MaterialRequiredFieldKey = 'material_grade' | 'model' | 'color' | 'specification' | 'brand'
+export type MaterialRequiredFields = Record<MaterialRequiredFieldKey, boolean>
+
 export type AttributeValue = string | number | boolean | string[] | null
 export interface DictionaryOption {
   code: string

@@ -106,7 +106,11 @@
 
     <!-- 添加或修改分类对话框 -->
     <el-dialog :title="title" v-model="open" width="600px" append-to-body>
-      <el-form ref="categoryFormRef" :model="form" :rules="rules" label-width="120px">
+      <el-form ref="categoryFormRef" v-loading="requiredFieldsLoading" :model="form" :rules="rules" label-width="120px">
+        <el-form-item v-if="form.categoryId" label="必填字段">
+          <el-checkbox v-for="field in requiredFieldOptions" :key="field.key" v-model="requiredFields[field.key]"
+            :disabled="requiredFieldsLoading || saving">{{ field.label }}</el-checkbox>
+        </el-form-item>
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="父级分类" prop="parentId">
@@ -193,7 +197,7 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button type="primary" @click="submitForm">确 定</el-button>
+          <el-button type="primary" :disabled="requiredFieldsLoading || !!requiredFieldsError" :loading="saving" @click="submitForm">确 定</el-button>
           <el-button @click="cancel">取 消</el-button>
         </div>
       </template>
@@ -210,6 +214,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import SearchForm from '@/components/common-ui/SearchForm.vue'
 import type { SearchOptions } from '@/components/common-ui/type'
 import { materialCategoryApi } from '@/api/inventory/materialCategory'
+import { materialMasterApi } from '@/api/inventory/materialMaster'
+import type { MaterialRequiredFields, MaterialRequiredFieldKey } from '@/types/inventory/materialMaster'
 import type {
   MaterialCategoryItem,
   MaterialCategoryFormData,
@@ -228,6 +234,15 @@ const loading = ref(false)
 const showSearch = ref(true)
 const open = ref(false)
 const title = ref('')
+const saving = ref(false)
+const requiredFieldsLoading = ref(false)
+const requiredFieldsError = ref('')
+let requiredFieldsRequest = 0
+const requiredFields = ref<MaterialRequiredFields>({ material_grade: false, model: false, color: false, specification: false, brand: false })
+const requiredFieldOptions: { key: MaterialRequiredFieldKey; label: string }[] = [
+  { key: 'material_grade', label: '材质' }, { key: 'model', label: '型号' },
+  { key: 'color', label: '颜色' }, { key: 'specification', label: '规格' }, { key: 'brand', label: '品牌' },
+]
 
 // 表格数据
 const categoryTree = ref<MaterialCategoryItem[]>([])
@@ -387,7 +402,7 @@ const handleAddChild = (row: MaterialCategoryItem) => {
 }
 
 // 修改分类
-const handleUpdate = (row?: MaterialCategoryItem) => {
+const handleUpdate = async (row?: MaterialCategoryItem) => {
   resetForm()
   const categoryId = row?.categoryId || ids.value[0]
   if (categoryId) {
@@ -396,6 +411,20 @@ const handleUpdate = (row?: MaterialCategoryItem) => {
       Object.assign(form, category)
       open.value = true
       title.value = '修改材料分类'
+      const request = ++requiredFieldsRequest
+      requiredFieldsLoading.value = true
+      try {
+        const response = await materialMasterApi.requiredFields(categoryId)
+        if (request !== requiredFieldsRequest) return
+        if (!response.data) throw Error('必填字段加载失败，请重新打开品类编辑')
+        requiredFields.value = response.data
+      } catch (error) {
+        if (request !== requiredFieldsRequest) return
+        requiredFieldsError.value = '必填字段加载失败，请重新打开品类编辑'
+        ElMessage.error(requiredFieldsError.value)
+      } finally {
+        if (request === requiredFieldsRequest) requiredFieldsLoading.value = false
+      }
     }
   }
 }
@@ -431,13 +460,14 @@ const handleDelete = async (row?: MaterialCategoryItem) => {
 
 // 提交表单
 const submitForm = async () => {
-  if (!categoryFormRef.value) return
+  if (!categoryFormRef.value || saving.value || requiredFieldsLoading.value || requiredFieldsError.value) return
 
   try {
     await categoryFormRef.value.validate()
+    saving.value = true
 
     if (form.categoryId) {
-      await materialCategoryApi.update(form)
+      await materialMasterApi.saveCategory({ ...form, status: Number(form.status), requiredFields: { ...requiredFields.value } })
       ElMessage.success('修改成功')
     } else {
       await materialCategoryApi.add(form)
@@ -449,6 +479,8 @@ const submitForm = async () => {
   } catch (error) {
     console.error('提交失败:', error)
     ElMessage.error('提交失败')
+  } finally {
+    saving.value = false
   }
 }
 
@@ -460,10 +492,15 @@ const cancel = () => {
 
 // 重置表单
 const resetForm = () => {
+  requiredFieldsRequest++
+  requiredFieldsLoading.value = false
+  requiredFieldsError.value = ''
+  requiredFields.value = { material_grade: false, model: false, color: false, specification: false, brand: false }
   if (categoryFormRef.value) {
     categoryFormRef.value.resetFields()
   }
   Object.assign(form, {
+    categoryId: undefined,
     parentId: 0,
     categoryCode: '',
     modelPrefix: '',

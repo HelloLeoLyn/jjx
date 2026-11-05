@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => ({
   categories: vi.fn(),
   dictionaries: vi.fn(),
   configuration: vi.fn(),
+  requiredFields: vi.fn(),
+  renderSpec: vi.fn(),
   detail: vi.fn(),
   save: vi.fn(),
   tags: vi.fn(),
@@ -89,9 +91,9 @@ const config = (id: number, name: string): MaterialMasterConfiguration => ({
     fields: [],
   },
 })
-const create = () =>
+const create = (props: { materialId?: number; fromBom?: boolean } = {}) =>
   mount(MaterialMasterFormDialog, {
-    props: { modelValue: true },
+    props: { modelValue: true, ...props },
     global: {
       stubs: {
         ElDialog: Slot,
@@ -125,6 +127,8 @@ beforeEach(() => {
     data: { material_meta: [{ code: 'PC', label: 'PC' }], unit: [{ code: 'M', label: '米' }] },
   })
   mocks.tags.mockResolvedValue({ data: [] })
+  mocks.requiredFields.mockResolvedValue({ data: { material_grade: false, model: false, color: false, specification: false, brand: false } })
+  mocks.renderSpec.mockResolvedValue({ data: '300mm' })
   mocks.configuration.mockImplementation((id) =>
     Promise.resolve({ data: config(id, id === 2 ? 'PC' : 'PET') })
   )
@@ -238,6 +242,120 @@ describe('物料一次保存与异步品类切换', () => {
       config(3, 'PET').schema
     )
     expect(wrapper.findAllComponents(Select)[0].props('modelValue')).toBe(3)
+    wrapper.unmount()
+  })
+})
+
+
+describe('公共字段必填读取品类配置', () => {
+  const rules = (fields = {}) => ({ data: { material_grade: false, model: false, color: false, specification: false, brand: false, ...fields } })
+  const stateOf = (wrapper: ReturnType<typeof create>) => (wrapper.vm as any).$.setupState
+
+  it('取消颜色必填后允许空颜色新建；下次打开读取最新配置', async () => {
+    mocks.requiredFields.mockResolvedValue(rules({ color: true }))
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(2)
+    expect(state.commonFieldRequired('color')).toBe(true)
+    await state.save()
+    expect(mocks.warning).toHaveBeenCalledWith('颜色不能为空（PC 必填）')
+    expect(mocks.save).not.toHaveBeenCalled()
+    mocks.requiredFields.mockResolvedValue(rules())
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    await state.selectCategory(2)
+    expect(state.commonFieldRequired('color')).toBe(false)
+    await state.save()
+    expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ color: '', categoryId: 2 }))
+    expect(mocks.requiredFields).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('勾选品牌后显示必填星号，空品牌保存被前端拦截且文案与后端一致', async () => {
+    mocks.requiredFields.mockResolvedValue(rules({ brand: true }))
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(2)
+    expect(wrapper.findAll('[label="品牌"]').some(item => item.attributes('required') !== undefined)).toBe(true)
+    await state.save()
+    expect(mocks.warning).toHaveBeenCalledWith('品牌不能为空（PC 必填）')
+    expect(mocks.save).not.toHaveBeenCalled()
+    state.form.brand = '3M'
+    await state.save()
+    expect(mocks.save).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('规格必填用保存前的服务端规格渲染结果，不采信旧预览', async () => {
+    mocks.requiredFields.mockResolvedValue(rules({ specification: true }))
+    mocks.renderSpec.mockResolvedValueOnce({ data: null })
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(2)
+    await state.save()
+    expect(mocks.warning).toHaveBeenCalledWith('规格不能为空（PC 必填）')
+    expect(mocks.save).not.toHaveBeenCalled()
+    await state.save()
+    expect(mocks.save).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('必填读取失败阻止保存，旧响应不会覆盖新选择或父级选择', async () => {
+    mocks.requiredFields.mockRejectedValueOnce(Error('必填读取失败'))
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(2)
+    expect(state.configuration).toBeUndefined()
+    await state.save()
+    expect(mocks.save).not.toHaveBeenCalled()
+    let resolveOld!: (value: unknown) => void
+    mocks.requiredFields.mockImplementation(id => id === 2 ? new Promise(resolve => { resolveOld = resolve }) : Promise.resolve(rules({ brand: true })))
+    const old = state.selectCategory(2)
+    await state.selectCategory(3)
+    resolveOld(rules({ color: true }))
+    await old
+    expect(state.commonFieldRequired('brand')).toBe(true)
+    expect(state.commonFieldRequired('color')).toBe(false)
+    const pending = state.selectCategory(2)
+    state.categories.push({ ...config(4, '子类').category, parentId: 3 })
+    await state.selectParentCategory(3)
+    resolveOld(rules({ color: true }))
+    await pending
+    expect(state.configuration).toBeUndefined()
+    expect(state.form.categoryId).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('编辑已有物料即使切换品类也不追溯公共字段必填', async () => {
+    mocks.detail.mockResolvedValue({ data: {
+      material: { materialId: 100, categoryId: 2, materialName: '已有物料', unit: 'M' },
+      attributes: {}, tags: [], configuration: config(2, 'PC'),
+    } })
+    const wrapper = create({ materialId: 100 })
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(3)
+    await state.save()
+    expect(mocks.requiredFields).not.toHaveBeenCalled()
+    expect(state.commonFieldRequired('brand')).toBe(false)
+    expect(mocks.save).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('BOM 快速建档仍豁免颜色，其余勾选照常校验', async () => {
+    mocks.requiredFields.mockResolvedValue(rules({ color: true, brand: true }))
+    const wrapper = create({ fromBom: true })
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(2)
+    expect(state.commonFieldRequired('color')).toBe(false)
+    await state.save()
+    expect(mocks.warning).toHaveBeenCalledWith('品牌不能为空（PC 必填）')
     wrapper.unmount()
   })
 })
