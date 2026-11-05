@@ -332,7 +332,7 @@ public class MaterialMasterExcelService {
     private static String dictionaryCode(Map<String, List<MaterialMasterCatalog.DictionaryOption>> dictionaries, String dict, String value) {
         if (value.isBlank()) return null;
         List<String> matches = dictionaries.getOrDefault(dict, List.of()).stream().filter(o -> o.code().equals(value) || o.label().equals(value)).map(MaterialMasterCatalog.DictionaryOption::code).distinct().toList();
-        if (matches.size() != 1) throw new BusinessException("字典值不存在或名称不唯一：" + value);
+        if (matches.size() != 1) throw new BusinessException("字典值不存在或名称不唯一：" + value + "（" + dict + "）");
         return matches.get(0);
     }
     private static String dictionaryLabel(Map<String, List<MaterialMasterCatalog.DictionaryOption>> dictionaries, String dict, String value) {
