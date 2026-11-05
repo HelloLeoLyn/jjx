@@ -1490,7 +1490,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Override
     @Transactional(rollbackFor = Exception.class)
     public java.util.List<java.util.Map<String, Object>> previewSamplePick(Long sampleOrderId) {
-        com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectById(sampleOrderId);
+        // 入参沿用 sales_order.order_id，与 BOM、出库来源一致，并非样品扩展表主键。
+        com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectByOrderId(sampleOrderId);
         if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
         // 已领数量（Σ 该样品单已生成的领料明细，按物料名称汇总）
         java.util.Map<String, BigDecimal> issuedByName = new HashMap<>();
@@ -1536,7 +1537,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSamplePick(Long sampleOrderId, java.util.List<java.util.Map<String, Object>> items) {
-        com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectById(sampleOrderId);
+        com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectByOrderId(sampleOrderId);
         if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
         if (items == null || items.isEmpty()) throw new BusinessException("打样领料明细不能为空");
         // 样品单号 = 关联订单号
