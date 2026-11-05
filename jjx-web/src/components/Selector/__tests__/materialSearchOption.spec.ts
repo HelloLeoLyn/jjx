@@ -6,6 +6,7 @@ vi.mock('element-plus/es/components/base/style/css', () => ({}))
 vi.mock('element-plus/es/components/button/style/css', () => ({}))
 
 import MaterialSearchOption from '../MaterialSearchOption.vue'
+import { MATERIAL_SEARCH_OPTION_FIELDS } from '../materialSearchOptionFields'
 
 enableAutoUnmount(afterEach)
 
@@ -106,5 +107,28 @@ describe('物料搜索候选行展示', () => {
     expect(button.text()).toBe('展开备注')
     expect(wrapper.find('.remark-text').exists()).toBe(false)
     expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('改配置数组即可增删字段与调整所在行，无需改组件', () => {
+    MATERIAL_SEARCH_OPTION_FIELDS.push({ key: 'safeStock', row: 1, label: '安全库存：' })
+    try {
+      const wrapper = mount(MaterialSearchOption, { props: { item: material({ safeStock: 12 }) } })
+      expect(spanTexts(wrapper, '.row-main')).toContain('安全库存：12')
+    } finally {
+      MATERIAL_SEARCH_OPTION_FIELDS.pop()
+    }
+
+    const spec = MATERIAL_SEARCH_OPTION_FIELDS.find(field => field.key === 'specification')!
+    const originalRow = spec.row
+    spec.row = 2
+    try {
+      const moved = mount(MaterialSearchOption, { props: { item: material() } })
+      expect(spanTexts(moved, '.row-main')).toEqual(['PET保护膜', 'MAT-PET'])
+      expect(spanTexts(moved, '.row-meta')).toEqual([
+        '规格：0.08mm', '品类：保护膜', '单位：卷',
+      ])
+    } finally {
+      spec.row = originalRow
+    }
   })
 })

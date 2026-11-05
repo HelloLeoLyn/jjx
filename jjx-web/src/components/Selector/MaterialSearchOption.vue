@@ -1,24 +1,21 @@
 <template>
   <div class="material-search-option">
     <div class="row-main">
-      <span class="name" :class="{ missing: !item.materialName }">{{ item.materialName || '未填写名称' }}</span>
-      <span class="code" :class="{ missing: !item.materialCode }">{{ item.materialCode || '无编码' }}</span>
-      <span class="specification" :class="{ missing: !item.specification }">
-        {{ item.specification ? '规格：' + item.specification : '规格：未填写' }}
-      </span>
+      <span
+        v-for="field in mainFields"
+        :key="field.key"
+        :class="[field.className, field.emphasis, { missing: isBlank(item, field) }]"
+      >{{ fieldText(item, field) }}</span>
       <!-- 用轻量标签替代 el-tag：避免把 element-plus 组件样式带进公共选择器依赖（复核修复） -->
       <span v-if="item.isCustomerSupplied" class="badge badge-supplied">客供</span>
       <span v-if="item.isSample" class="badge badge-sample">样品</span>
     </div>
     <div class="row-meta">
-      <span v-if="item.categoryName">品类：{{ item.categoryName }}</span>
-      <span v-else class="missing">品类：未归类</span>
-      <span v-if="item.model">型号：{{ item.model }}</span>
-      <span v-if="item.supplierName">供应商：{{ item.supplierName }}</span>
-      <span v-if="item.supplierMaterialName">供应商品名：{{ item.supplierMaterialName }}</span>
-      <span v-if="item.size">尺寸：{{ item.size }}</span>
-      <span v-if="item.unit">单位：{{ item.unit }}</span>
-      <span v-if="item.materialMeta">材质：{{ item.materialMeta }}</span>
+      <span
+        v-for="field in metaFields"
+        :key="field.key"
+        :class="{ missing: isBlank(item, field) }"
+      >{{ fieldText(item, field) }}</span>
     </div>
     <div v-if="item.remark" class="row-remark">
       <el-button link type="primary" size="small" @click.stop="expanded = !expanded">
@@ -30,11 +27,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+/**
+ * 物料搜索候选行（BOM 物料选择器与通用物料选择器共用）。
+ * 显示哪些字段、顺序、所在行、空值占位都在 materialSearchOptionFields.ts 里配，本组件只负责渲染。
+ */
+import { computed, ref } from 'vue'
 import type { InventoryMaterial } from '@/types/inventory/material'
+import { fieldText, fieldsOfRow, isBlank } from './materialSearchOptionFields'
 
-defineProps<{ item: InventoryMaterial }>()
+const props = defineProps<{ item: InventoryMaterial }>()
 const expanded = ref(false)
+const mainFields = computed(() => fieldsOfRow(props.item, 1))
+const metaFields = computed(() => fieldsOfRow(props.item, 2))
 </script>
 
 <style scoped>
@@ -55,10 +59,12 @@ const expanded = ref(false)
   min-width: 0;
   max-width: 100%;
 }
-.name {
+.name,
+.strong {
   font-weight: 600;
 }
-.code {
+.code,
+.muted {
   font-size: 12px;
   color: #909399;
 }
