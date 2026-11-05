@@ -176,6 +176,14 @@
               @click="handleConfirm(row)"
               >{{ row.outboundType === 'production' ? '确认发料' : '确认出库' }}</el-button
             >
+            <el-button
+              v-if="row.sourceType === 'sample' && (row.status === OutboundOrderStatusEnum.PENDING.value || row.status === OutboundOrderStatusEnum.APPROVED.value)"
+              link
+              type="danger"
+              v-hasPermi="['inventory:outbound:edit']"
+              @click="handleCancelSamplePick(row)"
+              >作废</el-button
+            >
           </template>
         </el-table-column>
       </el-table>
@@ -492,6 +500,29 @@ async function handleRejectPick(row: OutboundVO) {
     await getList()
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '驳回失败')
+  }
+}
+async function handleCancelSamplePick(row: OutboundVO) {
+  try {
+    const result = await ElMessageBox.prompt(
+      '作废后将释放预占库存，库存数量不变。请填写作废原因并确认。',
+      `作废打样领料单 ${row.outboundNo}`,
+      {
+        inputValidator: (value) => Boolean(value?.trim()) || '请填写作废原因',
+        confirmButtonText: '确认作废',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+    const res = await outboundApi.cancel(String(row.outboundId), result.value.trim())
+    if (!res.data) {
+      ElMessage.error('作废失败，请刷新后确认单据状态')
+      return
+    }
+    ElMessage.success('已作废并释放预占库存')
+    await getList()
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '作废失败')
   }
 }
 // dev-20261008-018：来源列统一显示「来源类型 + 来源单号」

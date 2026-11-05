@@ -535,8 +535,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                         material.getUnit()).getInventoryItemId());
             }
 
-            // DEV-20260909-001 方案A：生产领料确认发料 = 预占转实扣——先释放本单预占，后续 FIFO 扣减才能扣到
-            if ("work_order".equals(order.getSourceType())) {
+            // 生产/打样领料确认出库：先释放本单预占，后续 FIFO 才能扣到已预占的库存。
+            if (hasPickReservation(order)) {
                 releasePickStock(item.getMaterialId(), item.getQuantity());
             }
 
@@ -737,7 +737,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         // DEV-20260909-001 方案A：取消领料单释放预占
-        if ("work_order".equals(order.getSourceType())) {
+        if (hasPickReservation(order)) {
             releasePickItems(outboundId);
         }
 
@@ -770,7 +770,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         // DEV-20260909-001 方案A：已驳回/已取消的领料单重新提交 → 重新预占（与生成时口径一致）
-        if ("work_order".equals(order.getSourceType())
+        if (hasPickReservation(order)
                 && (InventoryOrderStatusEnum.REJECTED.getValue().equals(status)
                     || InventoryOrderStatusEnum.CANCELLED.getValue().equals(status))) {
             reservePickItems(outboundId);
@@ -827,7 +827,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         // DEV-20260909-001 方案A：驳回领料单释放预占（库存还给可用池）
-        if ("work_order".equals(order.getSourceType())) {
+        if (hasPickReservation(order)) {
             releasePickItems(outboundId);
         }
 
@@ -1408,6 +1408,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             log.warn("查询已领料量失败: {}", e.getMessage());
         }
         return pickedMap;
+    }
+
+    /** 生产与打样领料均在建单时预占，共用释放及重新提交时的预占规则。 */
+    private boolean hasPickReservation(InventoryOutboundOrder order) {
+        return "work_order".equals(order.getSourceType()) || "sample".equals(order.getSourceType());
     }
 
     /**
