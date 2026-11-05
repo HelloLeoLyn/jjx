@@ -27,8 +27,6 @@
               :value="category.categoryId"
             />
           </el-select>
-          <!-- TEMP 调试（dev-20261104-008 排查用，确认后删除） -->
-          <pre class="category-debug">{{ categoryDebugText }}</pre>
         </el-form-item>
         <el-form-item v-if="subCategoryOptions.length" label="子类" required>
           <el-select
@@ -351,19 +349,6 @@ const parentCategoryOptions = computed(() =>
     // 品类下拉只到第 3 级：第 4 级子类只在「子类」下拉里出现，避免父子重复
     return (level === 2 || level === 3) && (c.selectable || hasChildren(c.categoryId))
   })
-)
-/** TEMP 调试：把接口拿到的分类数据与下拉选项直接打到页面，确认 29 与子类是否到达前端。 */
-const categoryDebugText = computed(() =>
-  [
-    `分类总数: ${categories.value.length}`,
-    `下拉选项(${parentCategoryOptions.value.length}): ` +
-      parentCategoryOptions.value.map((c) => `${c.categoryId}:${c.categoryName}[L${c.categoryLevel},sel=${c.selectable}]`).join(' | '),
-    '电子元件相关: ' +
-      categories.value
-        .filter((c) => c.categoryId === 29 || c.parentId === 29)
-        .map((c) => `${c.categoryId}:${c.categoryName}[L${c.categoryLevel},sel=${c.selectable},parent=${c.parentId}]`)
-        .join(' | '),
-  ].join('\n')
 )
 const subCategoryOptions = computed(() =>
   parentCategoryId.value == null
@@ -771,16 +756,5 @@ watch(
 }
 .field-hint.manual {
   color: #e6a23c;
-}
-.category-debug {
-  margin: 4px 0 0;
-  padding: 6px;
-  max-height: 120px;
-  overflow: auto;
-  background: #f6f8fa;
-  border: 1px dashed #c0c4cc;
-  font-size: 11px;
-  line-height: 1.4;
-  white-space: pre-wrap;
 }
 </style>
