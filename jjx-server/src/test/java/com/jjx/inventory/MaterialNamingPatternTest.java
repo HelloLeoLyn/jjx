@@ -110,6 +110,19 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 品牌可传入字典显示名且缺省回落原值() {
+        var material = material();
+        material.setBrand("BOMING");
+        material.setModel("B-KT-2.54/U");
+        var pattern = new MaterialNamingPattern(List.of("brand", "model"), " ", "skip");
+        // 传字典名：名称里显示中文
+        assertEquals("博明 B-KT-2.54/U", pattern.compose(material, SCHEMA, null, "博明"));
+        // 不传：保持原值（历史调用与单测不受影响）
+        assertEquals("BOMING B-KT-2.54/U", pattern.compose(material, SCHEMA, null, null));
+        assertEquals("BOMING B-KT-2.54/U", pattern.compose(material, SCHEMA));
+    }
+
+    @Test
     void 尺寸与克重字段属于允许的公共字段() {
         var pattern = new MaterialNamingPattern(List.of("width", "length", "thickness_mm", "grammage"), " ", "skip");
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> pattern.validate(SCHEMA));

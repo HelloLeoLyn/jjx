@@ -88,6 +88,15 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
 
     /** 生成名称（可带品类名，供 category 字段使用，dev-20261030-005）。 */
     public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName) {
+        return compose(material, schema, categoryName, null);
+    }
+
+    /**
+     * 生成名称（brandLabel 为品牌的字典显示名，dev-20261105-004）。
+     * 品牌列存的是字典代码（BOMING/DIBO），命名要显示中文（博明/地博），故由调用方传入 label；
+     * 传 null 时回落到原值，保持单元测试与旧调用不变。
+     */
+    public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName, String brandLabel) {
         MaterialNamingPattern pattern = normalized();
         if (pattern.fields().isEmpty()) return null;
         Map<String, Object> attributes = readAttributes(material.getAttributeJson());
@@ -95,7 +104,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         StringBuilder text = new StringBuilder();
         boolean first = true;
         for (String field : pattern.fields()) {
-            String value = valueOf(material, schema, attributes, spec, field, categoryName);
+            String value = valueOf(material, schema, attributes, spec, field, categoryName, brandLabel);
             String part = value == null || value.isBlank()
                     ? ("placeholder".equals(pattern.empty()) ? "—" : null)
                     : value.trim();
@@ -111,14 +120,21 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     public static String tokenValue(InventoryMaterial material, MaterialAttributeSchema schema,
                                     Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
                                     String categoryName) {
-        return valueOf(material, schema, attributes, spec, field, categoryName);
+        return tokenValue(material, schema, attributes, spec, field, categoryName, null);
+    }
+
+    /** 同上，可传品牌字典显示名（dev-20261105-004）。 */
+    public static String tokenValue(InventoryMaterial material, MaterialAttributeSchema schema,
+                                    Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
+                                    String categoryName, String brandLabel) {
+        return valueOf(material, schema, attributes, spec, field, categoryName, brandLabel);
     }
 
     private static String valueOf(InventoryMaterial material, MaterialAttributeSchema schema,
                                   Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
-                                  String categoryName) {
+                                  String categoryName, String brandLabel) {
         return switch (field) {
-            case "brand" -> material.getBrand();
+            case "brand" -> brandLabel == null || brandLabel.isBlank() ? material.getBrand() : brandLabel;
             case "model" -> material.getModel();
             case "color" -> colorText(material.getColor());
             case "meta" -> material.getMaterialMeta();
