@@ -9,13 +9,11 @@ import java.util.Arrays;
 public final class MaterialSizeValue {
     private MaterialSizeValue() { }
 
-    public static SizeSpec validate(BigDecimal width, BigDecimal length, BigDecimal thickness, String unit) {
+    public static SizeSpec validate(BigDecimal width, BigDecimal length, BigDecimal thickness, String unusedSizeUnit) {
         positive(width, 2, 8, "宽");
         positive(length, 2, 10, "长");
         positive(thickness, 4, 6, "厚");
-        String normalizedUnit = unit == null || unit.isBlank() ? "mm" : unit.trim();
-        if (!java.util.Set.of("mm", "cm", "m").contains(normalizedUnit)) throw new BusinessException("尺寸单位只允许 mm/cm/m");
-        return new SizeSpec(width, length, thickness, normalizedUnit);
+        return new SizeSpec(width, length, thickness, "mm");
     }
 
     private static void positive(BigDecimal value, int scale, int integers, String label) {
@@ -26,7 +24,8 @@ public final class MaterialSizeValue {
     }
 
     /** 缺项保留位置，避免将宽*厚误读成宽*长；首个有值项之前的缺位不补占位（只填厚度即 0.175mm）。 */
-    public static String render(BigDecimal width, BigDecimal length, BigDecimal thickness, String unit) {
+    // 历史调用仍传入整行单位；该参数已停用，结构化数值的缺省展示固定 mm。
+    public static String render(BigDecimal width, BigDecimal length, BigDecimal thickness, String unusedSizeUnit) {
         BigDecimal[] values = {width, length, thickness};
         int first = 0;
         while (first < values.length && values[first] == null) first++;
@@ -35,7 +34,7 @@ public final class MaterialSizeValue {
         if (first > last) return null;
         String[] text = new String[last - first + 1];
         for (int i = first; i <= last; i++) text[i - first] = number(values[i]);
-        return String.join("*", text) + (unit == null ? "mm" : unit);
+        return String.join("*", text) + "mm";
     }
 
     private static String number(BigDecimal value) {

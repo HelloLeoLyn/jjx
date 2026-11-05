@@ -179,7 +179,6 @@ public class MaterialMasterService {
             draftMaterial.setWidthMm(draft.getWidthMm());
             draftMaterial.setLengthMm(draft.getLengthMm());
             draftMaterial.setThicknessMm(draft.getThicknessMm());
-            draftMaterial.setSizeUnit(draft.getSizeUnit());
             draftMaterial.setGrammage(draft.getGrammage());
             draftMaterial.setThicknessTolerance(draft.getThicknessTolerance());
             draftMaterial.setSpecBasis(draft.getSpecBasis());
@@ -200,7 +199,7 @@ public class MaterialMasterService {
         String legacyThickness = draft.getGrammage() != null ? draft.getGrammage().stripTrailingZeros().toPlainString()
                 : draft.getThicknessMm() == null ? null : draft.getThicknessMm().stripTrailingZeros().toPlainString();
         return schema.compose(attributes, legacyThickness,
-                com.jjx.inventory.master.MaterialSizeValue.render(draft.getWidthMm(), draft.getLengthMm(), draft.getThicknessMm(), draft.getSizeUnit()));
+                com.jjx.inventory.master.MaterialSizeValue.render(draft.getWidthMm(), draft.getLengthMm(), draft.getThicknessMm(), null));
     }
 
     /** 无状态渲染：用“当前表单值”按该品类已保存的命名规则生成名称，不写库（dev-20261029-025）。 */
@@ -221,7 +220,6 @@ public class MaterialMasterService {
             material.setLengthMm(draft.getLengthMm());
             material.setThicknessMm(draft.getThicknessMm());
             material.setGrammage(draft.getGrammage());
-            material.setSizeUnit(draft.getSizeUnit());
             material.setMaterialMeta(resolveMaterialMeta(draft.getMaterialMeta(), schema));
             material.setMaterialForm(fallback(draft.getMaterialForm(), schema.defaultForm()));
             try {
@@ -376,7 +374,7 @@ public class MaterialMasterService {
         dictionaryLabel(dictionaries, "color", dto.getColor(), false);
         dictionaryLabel(dictionaries, "brand", dto.getBrand(), false);
         Map<String, Object> inputAttributes = new LinkedHashMap<>(dto.getAttributeJson() == null ? Map.of() : dto.getAttributeJson());
-        MaterialSizeValue.SizeSpec sizeSpec = MaterialSizeValue.validate(dto.getWidthMm(), dto.getLengthMm(), dto.getThicknessMm(), dto.getSizeUnit());
+        MaterialSizeValue.SizeSpec sizeSpec = MaterialSizeValue.validate(dto.getWidthMm(), dto.getLengthMm(), dto.getThicknessMm(), null);
         String specBasis = dto.getGrammage() != null ? "GRAMMAGE"
                 : sizeSpec.thicknessMm() != null ? "THICKNESS" : "SIZE";
         if (dto.getGrammage() != null && dto.getGrammage().signum() <= 0) throw new BusinessException("克重必须大于0");
@@ -389,7 +387,7 @@ public class MaterialMasterService {
         inputAttributes.remove("thickness_mm");
         Map<String, Object> attributes = schema.validateAttributes(inputAttributes, objectMapper);
         InventoryMaterial material = new InventoryMaterial();
-        BeanUtils.copyProperties(dto, material);
+        BeanUtils.copyProperties(dto, material, "sizeUnit");
         material.setMaterialName(name);
         material.setMaterialMeta(meta);
         material.setMaterialForm(form);
@@ -401,7 +399,6 @@ public class MaterialMasterService {
         material.setWidthMm(sizeSpec == null ? null : sizeSpec.widthMm());
         material.setLengthMm(sizeSpec == null ? null : sizeSpec.lengthMm());
         material.setThicknessMm(sizeSpec == null ? null : sizeSpec.thicknessMm());
-        material.setSizeUnit(sizeSpec == null ? null : sizeSpec.unit());
         material.setSpecBasis(specBasis);
         material.setGrammage(dto.getGrammage());
         material.setThicknessTolerance(dto.getThicknessTolerance());
@@ -513,7 +510,7 @@ public class MaterialMasterService {
             columns.put("material_form", material.getMaterialForm()); columns.put("material_grade", material.getMaterialGrade());
             columns.put("model", material.getModel()); columns.put("color", material.getColor()); columns.put("brand", material.getBrand());
             columns.put("width_mm", material.getWidthMm()); columns.put("length_mm", material.getLengthMm());
-            columns.put("thickness_mm", material.getThicknessMm()); columns.put("size_unit", material.getSizeUnit());
+            columns.put("thickness_mm", material.getThicknessMm());
             columns.put("grammage", material.getGrammage()); columns.put("thickness_tolerance", material.getThicknessTolerance());
             columns.put("spec_basis", material.getSpecBasis()); columns.put("unit", material.getUnit());
             columns.put("template_id", material.getTemplateId());

@@ -36,7 +36,8 @@ export interface InventoryMaterial {
   grammage?: number | null
   /** 厚度公差 ±mm */
   thicknessTolerance?: number | null
-  sizeUnit?: string | null
+  /** 历史返回列，尺寸录入与显示不再使用。 */
+  readonly sizeUnit?: string | null
   /** 规格口径：THICKNESS/GRAMMAGE/SIZE */
   specBasis?: string | null
   /** 规格补充（属性生成的规格文本之外，≤30 字） */
@@ -141,7 +142,6 @@ export interface MaterialSaveDTO {
   widthMm?: number | null
   lengthMm?: number | null
   thicknessMm?: number | null
-  sizeUnit?: string | null
   unit: string
   safeStock: number
   maxStock: number
@@ -174,7 +174,6 @@ export interface MaterialUpdateDTO {
   widthMm?: number | null
   lengthMm?: number | null
   thicknessMm?: number | null
-  sizeUnit?: string | null
   unit?: string
   safeStock?: number
   maxStock?: number

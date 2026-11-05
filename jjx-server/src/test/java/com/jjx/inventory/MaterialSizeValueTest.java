@@ -21,11 +21,13 @@ class MaterialSizeValueTest {
         });
         var excel = new com.jjx.inventory.master.MaterialMasterExcelService(catalog, service, materials,
                 new com.fasterxml.jackson.databind.ObjectMapper(), null);
-        for (String thickness : new String[]{"254μm", "254µm", "254um", "0.254", "0.254mm", "0.0254cm", "0.000254m", "错误μm"}) {
+        for (String thickness : new String[]{"254μm", "254µm", "254um", "0.254", "0.254mm", "0.0254cm", "0.000254m", "错误μm", "DEFAULT_CM"}) {
             try (var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook(); var out = new java.io.ByteArrayOutputStream()) {
                 var sheet = workbook.createSheet(); var header = sheet.createRow(0); var row = sheet.createRow(1);
                 String[] headers = {"物料名称", "宽(mm)", "长(mm)", "厚(mm)", "尺寸单位"};
-                String[] values = {"尺寸导入", "315mm", "1000m", thickness, "mm"};
+                String[] values = thickness.equals("DEFAULT_CM")
+                        ? new String[]{"尺寸导入", "31.5", "100000", "0.0254", "cm"}
+                        : new String[]{"尺寸导入", "315mm", "1000m", thickness, thickness.equals("0.254") ? "mm" : "cm"};
                 for (int i = 0; i < headers.length; i++) {
                     header.createCell(i).setCellValue(headers[i]); row.createCell(i).setCellValue(values[i]);
                 }
@@ -43,6 +45,7 @@ class MaterialSizeValueTest {
                     var saved = org.mockito.ArgumentCaptor.forClass(com.jjx.inventory.master.MaterialMasterDTO.class);
                     org.mockito.Mockito.verify(service).save(saved.capture(), org.mockito.ArgumentMatchers.eq("codex"),
                             org.mockito.ArgumentMatchers.eq(com.jjx.inventory.classify.MaterialClassSource.IMPORT));
+                    assertNull(saved.getValue().getSizeUnit());
                     assertEquals(0, new java.math.BigDecimal("0.254").compareTo(saved.getValue().getThicknessMm()));
                     assertEquals(0, new java.math.BigDecimal("315").compareTo(saved.getValue().getWidthMm()));
                     assertEquals(0, new java.math.BigDecimal("1000000").compareTo(saved.getValue().getLengthMm()));
@@ -105,13 +108,13 @@ class MaterialSizeValueTest {
         // 只填厚度合法：前导缺位不补占位（dev-20261030-016）
         assertEquals("0.175mm", MaterialSizeValue.render(null, null, t, "mm"));
         assertEquals("305*0.175mm", MaterialSizeValue.render(null, new java.math.BigDecimal("305"), t, "mm"));
-        assertEquals("300cm", MaterialSizeValue.render(w, null, null, "cm"));
+        assertEquals("300mm", MaterialSizeValue.render(w, null, null, "cm"));
         assertNull(MaterialSizeValue.render(null, null, null, "mm"));
-        assertEquals("cm", MaterialSizeValue.validate(w, null, null, " cm ").unit());
+        assertEquals("mm", MaterialSizeValue.validate(w, null, null, " cm ").unit());
         for (String invalid : new String[]{"0", "-1", "1.001", "100000000"}) {
             assertThrows(RuntimeException.class, () -> MaterialSizeValue.validate(new java.math.BigDecimal(invalid), null, null, "mm"));
         }
-        assertThrows(RuntimeException.class, () -> MaterialSizeValue.validate(w, null, t, "inch"));
+        assertEquals("mm", MaterialSizeValue.validate(w, null, t, "inch").unit());
         assertThrows(RuntimeException.class, () -> MaterialSizeValue.validate(w, null, new java.math.BigDecimal("0.00001"), "mm"));
     }
 }

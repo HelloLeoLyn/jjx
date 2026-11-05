@@ -86,7 +86,7 @@ afterEach(() => {
 
 describe('物料列表默认查询与归类筛选', () => {
   it('混合品类逐行按字段单位显示尺寸，保留×分隔符和缺省行为', async () => {
-    const dimensions = { widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254, sizeUnit: 'mm' }
+    const dimensions = { widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254, sizeUnit: 'cm' }
     const records = [
       { ...dimensions, categoryId: 29, unit: 'PCS' },
       { ...dimensions, categoryId: 30, unit: 'ROLL' },

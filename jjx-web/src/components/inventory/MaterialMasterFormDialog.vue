@@ -317,7 +317,6 @@ const dimensions = computed<MaterialSizeValue>({
     widthMm: form.widthMm ?? null,
     lengthMm: form.lengthMm ?? null,
     thicknessMm: form.thicknessMm ?? null,
-    sizeUnit: form.sizeUnit || 'mm',
   }),
   set: (value) => Object.assign(form, value),
 })
@@ -456,7 +455,6 @@ watch(
     form.lengthMm,
     form.thicknessMm,
     form.grammage,
-    form.sizeUnit,
     JSON.stringify(form.attributeJson || {}),
     JSON.stringify(configuration.value?.schema.spec_pattern),
   ],
@@ -480,7 +478,6 @@ watch(
           lengthMm: form.lengthMm ?? null,
           thicknessMm: form.thicknessMm ?? null,
           grammage: form.grammage ?? null,
-          sizeUnit: form.sizeUnit || 'mm',
           attributeJson: form.attributeJson || {},
         }
         try {
@@ -640,7 +637,6 @@ async function initialize() {
             widthMm: parsedSpec.width ? Number(parsedSpec.width) : null,
             lengthMm: parsedSpec.length ? Number(parsedSpec.length) : null,
             thicknessMm: parsedSpec.thickness ? Number(parsedSpec.thickness) : null,
-            sizeUnit: parsedSpec.unit || 'mm',
           })
         }
       }

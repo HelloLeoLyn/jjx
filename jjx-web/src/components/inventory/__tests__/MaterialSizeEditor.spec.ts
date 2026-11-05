@@ -33,17 +33,21 @@ function create(value: MaterialSizeValue, dimensionFields?: import('../materialS
     global: { stubs: { ElInput: Input, ElSelect: Select, ElOption: true } } })
 }
 describe('专用数值尺寸编辑组件', () => {
-  it('所有品类厚度录μm提交mm，按字段单位回显，移除配置恢复原样', async () => {
+  it('三个尺寸按模板单位录入、回显，移除配置恢复mm', async () => {
     const value = { ...emptyMaterialSize(), widthMm: 315, lengthMm: 1000000 }
     const fields = [{ key: 'thickness_mm', sep: '*', unit: 'μm' as const }, { key: 'width', sep: '*' }, { key: 'length', sep: '*', unit: 'm' as const }]
     const wrapper = create(value, fields)
-    await wrapper.findAll('input')[2].setValue('254μm')
+    await wrapper.findAll('input')[0].setValue('315')
+    await wrapper.findAll('input')[1].setValue('1000')
+    await wrapper.findAll('input')[2].setValue('254')
+    expect(wrapper.find('[aria-label="尺寸单位"]').exists()).toBe(false)
+    expect(wrapper.findAllComponents(Select)).toHaveLength(4)
     const stored = { ...value, thicknessMm: 0.254 }
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([stored])
     expect(wrapper.text()).toContain('254μm*315mm*1000m')
     wrapper.unmount()
     const reopened = create(stored, fields)
-    expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['315', '1000000', '254μm'])
+    expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['315', '1000', '254'])
     expect(reopened.emitted('update:modelValue')).toBeUndefined()
     await reopened.setProps({ dimensionFields: [] })
     expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['315', '1000000', '0.254'])
@@ -52,12 +56,12 @@ describe('专用数值尺寸编辑组件', () => {
   })
   it('显示舍入不改变源厚度，修改宽度仍提交原始mm', async () => {
     const wrapper = create({ ...emptyMaterialSize(), widthMm: 315, lengthMm: 1000, thicknessMm: 0.2541 }, [{ key: 'thickness_mm', sep: '*', unit: 'μm', scale: 0 }])
-    expect(wrapper.findAll('input')[2].element.value).toBe('254μm')
+    expect(wrapper.findAll('input')[2].element.value).toBe('254')
     await wrapper.findAll('input')[0].setValue('320')
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ widthMm: 320, thicknessMm: 0.2541 })
     wrapper.unmount()
   })
-  it('回显不写回，编辑厚度只输出四字段对象，不改动输入对象', async () => {
+  it('回显不写回，编辑厚度只输出三个mm字段，不改动输入对象', async () => {
     const value = { ...emptyMaterialSize(), widthMm: 30, lengthMm: 90 }
     const wrapper = create(value)
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
@@ -89,13 +93,13 @@ describe('专用数值尺寸编辑组件', () => {
     await wrapper.findAll('input')[1].setValue('0.05')
     wrapper.findAllComponents(Select)[1].vm.$emit('update:modelValue', 'cm')
     await flushPromises()
-    const value = { widthMm: 8, lengthMm: null, thicknessMm: 0.05, sizeUnit: 'cm' }
+    const value = { widthMm: 80, lengthMm: null, thicknessMm: 0.05 }
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([value])
     await wrapper.setProps({ modelValue: value })
-    expect(wrapper.text()).toContain('Φ8*0.05cm')
+    expect(wrapper.text()).toContain('Φ80*0.05mm')
     wrapper.unmount()
     const reopened = create(value)
-    expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['8', '0.05'])
+    expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['80', '0.05'])
     reopened.unmount()
   })
   it('已有长度时切换直径不会静默丢失数值', async () => {
@@ -108,13 +112,12 @@ describe('专用数值尺寸编辑组件', () => {
     wrapper.unmount()
   })
   it('数值预览保留缺项，单位和厚度精度与后端一致', () => {
-    expect(renderMaterialDimensions({ widthMm: 914, thicknessMm: 0.175, sizeUnit: 'm' })).toBe('914**0.175m')
+    expect(renderMaterialDimensions({ widthMm: 914, thicknessMm: 0.175, sizeUnit: 'm' })).toBe('914**0.175mm')
     // 只填厚度合法：前导缺位不补占位（dev-20261030-016）
     expect(renderMaterialDimensions({ thicknessMm: 0.175, sizeUnit: 'mm' })).toBe('0.175mm')
     expect(renderMaterialDimensions({ thicknessMm: 0.05, sizeUnit: 'mm' }, true)).toBe('Φ0.05mm')
     expect(renderMaterialDimensions(emptyMaterialSize())).toBe('')
     expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), thicknessMm: 0.00001 })).toThrow()
-    expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), sizeUnit: 'inch' })).toThrow()
   })
 })
 
@@ -147,7 +150,7 @@ beforeEach(() => {
   api.save.mockClear().mockResolvedValue({ data: { materialId: 100 } })
 })
 describe('物料表单数值尺寸保存', () => {
-  it('新增请求直提四字段，既不提交size也不提交厚度属性', async () => {
+  it('新增请求直提三个mm字段，既不提交size也不提交厚度属性', async () => {
     const wrapper = form()
     await flushPromises()
     wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
@@ -162,12 +165,13 @@ describe('物料表单数值尺寸保存', () => {
     await flushPromises()
     expect(api.save).toHaveBeenCalledTimes(1)
     const payload = api.save.mock.calls[0][0]
-    expect(payload).toMatchObject({ widthMm: 300, lengthMm: 305, thicknessMm: 0.175, sizeUnit: 'cm' })
+    expect(payload).toMatchObject({ widthMm: 3000, lengthMm: 305, thicknessMm: 0.175 })
     expect(payload).not.toHaveProperty('size')
+    expect(payload).not.toHaveProperty('sizeUnit')
     expect(payload.attributeJson).not.toHaveProperty('thickness_mm')
     wrapper.unmount()
   })
-  it('编辑以服务端数值回显，清空厚度提交null并保留宽长和单位', async () => {
+  it('编辑以服务端数值回显，清空厚度提交null并保留宽长', async () => {
     api.detail.mockResolvedValue({ data: {
       material: { materialId: 100, materialName: '数值PC', categoryId: 2, materialMeta: 'PC', unit: 'M',
         size: '错误文本不参与回显', widthMm: 30, lengthMm: 90, thicknessMm: 0.175, sizeUnit: 'm' },
@@ -180,8 +184,27 @@ describe('物料表单数值尺寸保存', () => {
     await editor.findAll('input')[2].setValue('')
     await wrapper.findAll('button').find(b => b.text() === '保存物料')!.trigger('click')
     await flushPromises()
-    expect(api.save.mock.calls[0][0]).toMatchObject({ materialId: 100, widthMm: 30, lengthMm: 90, thicknessMm: null, sizeUnit: 'm' })
+    expect(api.save.mock.calls[0][0]).toMatchObject({ materialId: 100, widthMm: 30, lengthMm: 90, thicknessMm: null })
     expect(api.save.mock.calls[0][0]).not.toHaveProperty('size')
+    expect(api.save.mock.calls[0][0]).not.toHaveProperty('sizeUnit')
+    wrapper.unmount()
+  })
+  it('编辑按三个字段单位回显，直接保存保留原始mm且不提交旧单位', async () => {
+    const fields = [{ key: 'thickness_mm', sep: '*', unit: 'μm' as const, scale: 1 }, { key: 'width', sep: '*', unit: 'mm' as const }, { key: 'length', sep: '*', unit: 'm' as const, scale: 2 }]
+    api.detail.mockResolvedValue({ data: {
+      material: { materialId: 100, materialName: '保护膜', categoryId: 2, unit: 'M', widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254, sizeUnit: 'cm' },
+      attributes: {}, tags: [], configuration: { ...configuration, schema: { ...configuration.schema, spec_pattern: { fields } } },
+    } })
+    const wrapper = form(100)
+    await flushPromises()
+    const editor = wrapper.findComponent(MaterialSizeEditor)
+    expect(editor.findAll('input').map(i => i.element.value)).toEqual(['315', '1000', '254'])
+    expect(editor.findAllComponents(Select).slice(1).map(c => c.props('modelValue'))).toEqual(['mm', 'm', 'μm'])
+    expect(editor.emitted('update:modelValue')).toBeUndefined()
+    await wrapper.findAll('button').find(b => b.text() === '保存物料')!.trigger('click')
+    await flushPromises()
+    expect(api.save.mock.calls[0][0]).toMatchObject({ widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254 })
+    expect(api.save.mock.calls[0][0]).not.toHaveProperty('sizeUnit')
     wrapper.unmount()
   })
   it('无命名规则的品类仍请求字段单位规格预览，并传给尺寸编辑器', async () => {
@@ -195,8 +218,8 @@ describe('物料表单数值尺寸保存', () => {
     const editor = wrapper.findComponent(MaterialSizeEditor)
     expect(editor.props('dimensionFields')).toEqual(fields)
     await editor.findAll('input')[0].setValue('315')
-    await editor.findAll('input')[1].setValue('1000000')
-    await editor.findAll('input')[2].setValue('254μm')
+    await editor.findAll('input')[1].setValue('1000')
+    await editor.findAll('input')[2].setValue('254')
     await new Promise(resolve => setTimeout(resolve, 350))
     await flushPromises()
     expect(api.renderSpec).toHaveBeenCalledWith(2, expect.objectContaining({ thicknessMm: 0.254 }))

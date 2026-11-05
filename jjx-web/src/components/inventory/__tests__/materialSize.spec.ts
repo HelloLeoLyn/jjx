@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { displayDimensionOf, composeMaterialSize, mergeLegacyThickness, normalizeMaterialSize, parseMaterialSize, parseMaterialThickness, renderMaterialDimensions, validateMaterialDimensions, emptyMaterialSize } from '../materialSize'
+import { displayDimensionOf, composeMaterialSize, mergeLegacyThickness, normalizeMaterialSize, parseMaterialSize, parseMaterialDimension, renderMaterialDimensions, validateMaterialDimensions, emptyMaterialSize } from '../materialSize'
 
 describe('统一尺寸值', () => {
   it('字段单位决定显示，与物料计量单位无关，未配置仍逐字回落', () => {
@@ -12,7 +12,7 @@ describe('统一尺寸值', () => {
     for (const unit of ['ROLL', 'M', 'PCS', 'PIN']) {
       const row = { ...value, unit }
       expect(renderMaterialDimensions(row, false, fields)).toBe('254μm*315mm*1000m')
-      expect(renderMaterialDimensions(row)).toBe('315*1000000*0.254mm')
+      expect(renderMaterialDimensions({ ...row, sizeUnit: 'cm' })).toBe('315*1000000*0.254mm')
     }
     expect(renderMaterialDimensions({ widthMm: 300, thicknessMm: 0.175 })).toBe('300**0.175mm')
     expect(renderMaterialDimensions({ thicknessMm: 0.175 })).toBe('0.175mm')
@@ -21,18 +21,22 @@ describe('统一尺寸值', () => {
     expect(displayDimensionOf(0.175, 'mm', 2)).toBe('0.18')
     expect(displayDimensionOf(0.2541, 'μm', 0)).toBe('254')
   })
-  it('μm厚度仅在输入边界换算，存储与size_unit仍用原有契约', () => {
-    expect(parseMaterialThickness('254μm')).toBe(0.254)
-    expect(parseMaterialThickness(' 254.1 μm ')).toBe(0.2541)
-    expect(parseMaterialThickness('254µm')).toBe(0.254)
-    expect(parseMaterialThickness('0.254')).toBe(0.254)
-    expect(parseMaterialThickness('')).toBeNull()
-    expect(parseMaterialThickness('254um')).toBe(0.254)
-    expect(parseMaterialThickness('0.254mm')).toBe(0.254)
-    expect(parseMaterialThickness('0.0254cm')).toBe(0.254)
-    expect(parseMaterialThickness('0.000254m')).toBe(0.254)
-    expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), thicknessMm: parseMaterialThickness('254μm') })).not.toThrow()
-    expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), sizeUnit: 'μm' })).toThrow()
+  it('三个尺寸按各自单位折算mm，显式后缀优先', () => {
+    expect(parseMaterialDimension('254μm')).toBe(0.254)
+    expect(parseMaterialDimension(' 254.1 μm ')).toBe(0.2541)
+    expect(parseMaterialDimension('254µm')).toBe(0.254)
+    expect(parseMaterialDimension('0.254')).toBe(0.254)
+    expect(parseMaterialDimension('')).toBeNull()
+    expect(parseMaterialDimension('254um')).toBe(0.254)
+    expect(parseMaterialDimension('0.254mm')).toBe(0.254)
+    expect(parseMaterialDimension('0.0254cm')).toBe(0.254)
+    expect(parseMaterialDimension('0.000254m')).toBe(0.254)
+    expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), thicknessMm: parseMaterialDimension('254μm') })).not.toThrow()
+    expect(parseMaterialDimension('254', 'μm')).toBe(0.254)
+    expect(parseMaterialDimension('1000', 'm')).toBe(1000000)
+    expect(parseMaterialDimension('31.5', 'cm')).toBe(315)
+    expect(parseMaterialDimension('254μm', 'cm')).toBe(0.254)
+    expect(parseMaterialDimension('错误', 'm')).toBeNaN()
   })
   it('原尺寸可拆分，已有单位不重复追加，未提供的单位不擅自补入', () => {
     expect(composeMaterialSize(parseMaterialSize('30*90mm')!)).toBe('30*90mm')

@@ -192,9 +192,9 @@ describe('重算信息纯展示函数', () => {
       schema,
       { brand: [{ code: 'B', label: '博明' }] }
     )
-    expect(values).toHaveLength(12)
+    expect(values).toHaveLength(11)
     expect(values.find((v) => v.key === 'brand')?.value).toBe('博明')
-    expect(values.find((v) => v.key === 'thickness_mm')?.value).toBe('0.175')
+    expect(values.find((v) => v.key === 'thickness_mm')?.value).toBe('175μm')
     expect(values.find((v) => v.key === 'attribute:adhesive')?.value).toBe('丙烯酸')
     expect(values.find((v) => v.key === 'attribute:count')).toMatchObject({
       value: '0',
@@ -207,6 +207,15 @@ describe('重算信息纯展示函数', () => {
     expect(values.find((v) => v.key === 'attribute:missing')?.empty).toBe(true)
     expect(values.find((v) => v.key === 'width')?.empty).toBe(true)
     expect(values.some((v) => v.key === 'attribute:optional')).toBe(false)
+  })
+
+  it('尺寸参与值按三个模板字段单位展示，旧整行单位不再参与', () => {
+    const fields = [{ key: 'thickness_mm', sep: '*', unit: 'μm' as const, scale: 1 }, { key: 'width', sep: '*', unit: 'mm' as const }, { key: 'length', sep: '*', unit: 'm' as const, scale: 2 }]
+    const values = regenerationValues({ widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254, sizeUnit: 'cm' }, {}, { ...schema, spec_pattern: { fields } }, {})
+    expect(values.find(v => v.key === 'thickness_mm')).toMatchObject({ label: '厚度（μm）', value: '254μm' })
+    expect(values.find(v => v.key === 'width')).toMatchObject({ label: '宽（mm）', value: '315mm' })
+    expect(values.find(v => v.key === 'length')).toMatchObject({ label: '长（m）', value: '1000m' })
+    expect(values.some(v => v.key === 'sizeUnit')).toBe(false)
   })
 
   it('未生成原因区分未归类、无启用模板、字段全空，不推算生成结果', () => {
@@ -547,7 +556,8 @@ describe('重算弹窗命名补丁保存', () => {
     mocks.renderNaming.mockResolvedValue({ data: '博明 11008 透明' })
     const wrapper = createDialog()
     await flushPromises()
-    expect(mocks.renderNaming).toHaveBeenCalledWith(23, { ...material, attributeJson: attributes })
+    const { sizeUnit: _legacySizeUnit, ...namingMaterial } = material
+    expect(mocks.renderNaming).toHaveBeenCalledWith(23, { ...namingMaterial, attributeJson: attributes })
     expect(wrapper.text()).toContain('博明 11008 透明')
     expect(wrapper.text()).toContain('按该品类当前命名规则生成')
     expect(wrapper.text()).not.toContain('PC11008透明（BOMING）')

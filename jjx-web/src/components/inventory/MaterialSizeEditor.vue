@@ -5,15 +5,14 @@
         <el-option label="宽／长／厚" :value="false" />
         <el-option label="直径／厚" :value="true" />
       </el-select>
-      <el-input :model-value="parts.widthMm" :aria-label="round ? '直径' : '宽'" inputmode="decimal"
-        :placeholder="round ? '直径' : '宽'" @update:model-value="value => setPart('widthMm', value)" />
-      <el-input v-if="!round" :model-value="parts.lengthMm" aria-label="长" placeholder="长" inputmode="decimal"
-        @update:model-value="value => setPart('lengthMm', value)" />
-      <el-input :model-value="parts.thicknessMm" aria-label="厚" placeholder="厚" inputmode="decimal"
-        @update:model-value="value => setPart('thicknessMm', value)" />
-      <el-select :model-value="parts.sizeUnit" aria-label="尺寸单位" @update:model-value="value => setPart('sizeUnit', value)">
-        <el-option label="mm" value="mm" /><el-option label="cm" value="cm" /><el-option label="m" value="m" />
-      </el-select>
+      <div v-for="key in visibleKeys" :key="key" class="dimension-input">
+        <el-input :model-value="parts[key]" :aria-label="label(key)" :placeholder="label(key)" inputmode="decimal"
+          @update:model-value="value => setPart(key, value)" />
+        <el-select :model-value="units[key]" :aria-label="`${label(key)}单位`"
+          @update:model-value="value => setUnit(key, value)">
+          <el-option v-for="unit in dimensionUnits" :key="unit" :label="unit" :value="unit" />
+        </el-select>
+      </div>
     </div>
     <div class="size-preview">{{ preview || '未填写尺寸' }}</div>
     <div v-if="error" role="alert" class="size-error">{{ error }}</div>
@@ -22,18 +21,25 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { dimensionField, displayDimensionOf, emptyMaterialSize, parseMaterialThickness, renderMaterialDimensions, validateMaterialDimensions } from './materialSize'
+import { dimensionField, displayDimensionOf, emptyMaterialSize, parseMaterialDimension, renderMaterialDimensions, validateMaterialDimensions } from './materialSize'
 import type { MaterialDimensionFields, MaterialSizeValue } from './materialSize'
+import type { MaterialDimensionUnit } from '@/types/inventory/materialMaster'
 
 const props = defineProps<{ modelValue: MaterialSizeValue; dimensionFields?: MaterialDimensionFields }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: MaterialSizeValue): void
   (e: 'valid-change', valid: boolean): void
 }>()
-const parts = reactive({ widthMm: '', lengthMm: '', thicknessMm: '', sizeUnit: 'mm' })
+type DimensionKey = keyof MaterialSizeValue
+const keys: DimensionKey[] = ['widthMm', 'lengthMm', 'thicknessMm']
+const dimensionUnits: MaterialDimensionUnit[] = ['mm', 'cm', 'm', 'μm']
+const parts = reactive({ widthMm: '', lengthMm: '', thicknessMm: '' })
+const units = reactive<Record<DimensionKey, MaterialDimensionUnit>>({ widthMm: 'mm', lengthMm: 'mm', thicknessMm: 'mm' })
+const source = reactive(emptyMaterialSize())
 const round = ref(false)
 const error = ref('')
-const thicknessMm = ref<number | null>(null)
+const visibleKeys = computed(() => keys.filter(key => !round.value || key !== 'lengthMm'))
+const label = (key: DimensionKey) => ({ widthMm: round.value ? '直径' : '宽', lengthMm: '长', thicknessMm: '厚' })[key]
 let ownValue: MaterialSizeValue | undefined
 const preview = computed(() => {
   if (error.value) return ''
@@ -46,20 +52,19 @@ watch(() => [props.modelValue, props.dimensionFields] as const, ([value], previo
   }
   ownValue = undefined
   const dimensions = { ...emptyMaterialSize(), ...value }
-  thicknessMm.value = dimensions.thicknessMm
-  for (const key of ['widthMm', 'lengthMm', 'thicknessMm'] as const) parts[key] = dimensions[key] == null ? '' : String(dimensions[key])
-  const thicknessField = dimensionField(props.dimensionFields || [], 'thicknessMm')
-  if (thicknessField?.unit && dimensions.thicknessMm != null) {
-    parts.thicknessMm = displayDimensionOf(dimensions.thicknessMm, thicknessField.unit, thicknessField.scale) + thicknessField.unit
+  for (const key of keys) {
+    source[key] = dimensions[key]
+    const field = dimensionField(props.dimensionFields || [], key)
+    units[key] = field?.unit || 'mm'
+    const valueMm = dimensions[key]
+    parts[key] = valueMm == null ? '' : displayDimensionOf(valueMm, units[key], field?.scale)
   }
-  parts.sizeUnit = dimensions.sizeUnit
   round.value = dimensions.widthMm != null && dimensions.lengthMm == null && dimensions.thicknessMm != null
   check(dimensions)
 }, { immediate: true, deep: true })
 
 function numericValue(): MaterialSizeValue {
-  const number = (text: string) => !text.trim() ? null : /^\d+(?:\.\d+)?$/.test(text.trim()) ? Number(text) : NaN
-  return { widthMm: number(parts.widthMm), lengthMm: number(parts.lengthMm), thicknessMm: thicknessMm.value, sizeUnit: parts.sizeUnit }
+  return { ...source }
 }
 function check(value: MaterialSizeValue) {
   try {
@@ -79,9 +84,16 @@ function publish() {
   ownValue = value
   emit('update:modelValue', value)
 }
-function setPart(key: keyof typeof parts, value: string) {
+function setPart(key: DimensionKey, value: string) {
+  if (parts[key] === value) return
   parts[key] = value
-  if (key === 'thicknessMm') thicknessMm.value = parseMaterialThickness(value)
+  source[key] = parseMaterialDimension(value, units[key])
+  publish()
+}
+function setUnit(key: DimensionKey, unit: MaterialDimensionUnit) {
+  if (units[key] === unit) return
+  units[key] = unit
+  source[key] = parseMaterialDimension(parts[key], unit)
   publish()
 }
 function setRound(value: boolean) {
@@ -99,6 +111,9 @@ function setRound(value: boolean) {
 .size-fields { display: flex; gap: 8px; }
 .size-fields > * { flex: 1; min-width: 65px; }
 .size-fields > :first-child { flex: 1.8; }
+.dimension-input { display: flex; flex: 2; gap: 4px; min-width: 0; }
+.dimension-input .el-input { flex: 1; min-width: 0; }
+.dimension-input .el-select { width: 76px; flex: 0 0 76px; }
 .size-preview { color: var(--el-text-color-secondary); font-size: 12px; }
 .size-error { color: var(--el-color-danger); font-size: 12px; }
 </style>

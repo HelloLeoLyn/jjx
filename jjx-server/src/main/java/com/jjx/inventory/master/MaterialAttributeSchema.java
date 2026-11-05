@@ -200,10 +200,9 @@ public record MaterialAttributeSchema(
         java.math.BigDecimal widthMm = material == null ? null : material.getWidthMm();
         java.math.BigDecimal lengthMm = material == null ? null : material.getLengthMm();
         java.math.BigDecimal thicknessMm = material == null ? null : material.getThicknessMm();
-        String sizeUnit = material == null ? null : material.getSizeUnit();
         if (specPattern == null || specPattern.fields() == null || specPattern.fields().isEmpty()) {
             return compose(attributes, thicknessMm == null ? null : thicknessMm.stripTrailingZeros().toPlainString(),
-                    MaterialSizeValue.render(widthMm, lengthMm, thicknessMm, sizeUnit));
+                    MaterialSizeValue.render(widthMm, lengthMm, thicknessMm, null));
         }
         Map<String, Object> values = new LinkedHashMap<>(attributes);
         StringBuilder text = new StringBuilder();
@@ -218,7 +217,7 @@ public record MaterialAttributeSchema(
             if (item == null || item.key() == null || item.key().isBlank()) continue;
             String key = item.key().trim();
             String display;
-            String unit = specUnit(key, sizeUnit);
+            String unit = specUnit(key);
             if (DIMENSION_KEYS.contains(key) && configuredDimensions) {
                 BigDecimal value = switch (key) {
                     case "width" -> widthMm;
@@ -255,9 +254,9 @@ public record MaterialAttributeSchema(
         };
     }
 
-    private String specUnit(String key, String sizeUnit) {
+    private String specUnit(String key) {
         if ("width".equals(key) || "length".equals(key) || "thickness_mm".equals(key))
-            return sizeUnit == null || sizeUnit.isBlank() ? "mm" : sizeUnit;
+            return "mm";
         return fields.stream().filter(f -> f.key().equals(key)).map(Field::unit)
                 .filter(u -> u != null && !u.isBlank()).findFirst().orElse("");
     }

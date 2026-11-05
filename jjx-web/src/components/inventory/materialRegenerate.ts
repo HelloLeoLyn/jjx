@@ -2,6 +2,7 @@
  * 单条「重算名称与规格」纯逻辑（dev-20261024-004）。
  * 只负责对比与最终取值；名称与规格生成规则由后端提供。
  */
+import { dimensionField, displayDimensionOf } from './materialSize'
 import type {
   AttributeValue,
   MaterialAttributeSchema,
@@ -140,10 +141,14 @@ export function regenerationValues(
     ['model', '型号', material.model],
     ['color', '颜色', material.color, 'color'],
     ['brand', '品牌', material.brand, 'brand'],
-    ['thickness_mm', '厚度（源值 mm）', material.thicknessMm],
-    ['width', '宽（源值 mm）', material.widthMm],
-    ['length', '长（源值 mm）', material.lengthMm],
-    ['sizeUnit', '尺寸单位', material.sizeUnit],
+    ...(['thicknessMm', 'widthMm', 'lengthMm'] as const).map(key => {
+      const field = dimensionField(schema?.spec_pattern?.fields || [], key)
+      const unit = field?.unit || 'mm'
+      const label = { thicknessMm: '厚度', widthMm: '宽', lengthMm: '长' }[key]
+      const fieldKey = { thicknessMm: 'thickness_mm', widthMm: 'width', lengthMm: 'length' }[key]
+      const value = material[key]
+      return [fieldKey, `${label}（${unit}）`, value == null ? null : `${displayDimensionOf(value, unit, field?.scale)}${unit}`] as [string, string, AttributeValue]
+    }),
   ]
   return [
     ...base.map(([key, label, value, dictionary]) => ({

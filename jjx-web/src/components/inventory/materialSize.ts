@@ -64,7 +64,6 @@ export interface MaterialSizeValue {
   widthMm: number | null
   lengthMm: number | null
   thicknessMm: number | null
-  sizeUnit: string
 }
 
 /** 十进制移位后四舍五入，避免 1005mm → 1.005m 在二进制 toFixed 中舍为 1。 */
@@ -90,17 +89,17 @@ export function dimensionField(fields: MaterialDimensionFields, key: keyof typeo
   return fields.find(field => field.key === dimensionKey[key])
 }
 
-/** 厚度显式带 μm 时换算为 mm；裸数沿用原有 mm 输入语义。 */
-export function parseMaterialThickness(text: string): number | null {
+/** 每个尺寸按自身单位解析，统一输出 mm；显式后缀优先。 */
+export function parseMaterialDimension(text: string, unit: MaterialDimensionUnit = 'mm'): number | null {
   const raw = text.trim()
   if (!raw) return null
   const dimension = /^(\d+(?:\.\d+)?)\s*(mm|cm|m|[μµ]m|um)?$/i.exec(raw)
   if (!dimension) return NaN
-  const shift = { mm: 0, cm: 1, m: 3, 'μm': -3, 'µm': -3, um: -3 }[dimension[2]?.toLowerCase() || 'mm']!
+  const shift = { mm: 0, cm: 1, m: 3, 'μm': -3, 'µm': -3, um: -3 }[dimension[2]?.toLowerCase() || unit]!
   return Number(`${dimension[1]}e${shift}`)
 }
 
-export const emptyMaterialSize = (): MaterialSizeValue => ({ widthMm: null, lengthMm: null, thicknessMm: null, sizeUnit: 'mm' })
+export const emptyMaterialSize = (): MaterialSizeValue => ({ widthMm: null, lengthMm: null, thicknessMm: null })
 
 export function validateMaterialDimensions(value: MaterialSizeValue): void {
   for (const [number, scale, integers, label] of [
@@ -112,7 +111,6 @@ export function validateMaterialDimensions(value: MaterialSizeValue): void {
       throw new Error(`${label}须为大于0的数值，最多${scale}位小数`)
     }
   }
-  if (!['mm', 'cm', 'm'].includes(value.sizeUnit)) throw new Error('尺寸单位只允许 mm/cm/m')
 }
 
 export function renderMaterialDimensions(value: { widthMm?: number | null; lengthMm?: number | null; thicknessMm?: number | null; sizeUnit?: string | null }, round = false, fields: MaterialDimensionFields = []): string {
@@ -123,7 +121,7 @@ export function renderMaterialDimensions(value: { widthMm?: number | null; lengt
     return fields.flatMap(field => {
       const key = keys.find(key => dimensionKey[key] === field.key)
       if (!key || value[key] == null || (round && key === 'lengthMm')) return []
-      const unit = field.unit || value.sizeUnit || 'mm'
+      const unit = field.unit || 'mm'
       const text = field.unit != null || field.scale != null
         ? displayDimensionOf(value[key]!, field.unit || 'mm', field.scale) : String(value[key])
       return [`${text}${unit}`]
@@ -134,5 +132,5 @@ export function renderMaterialDimensions(value: { widthMm?: number | null; lengt
   while (values.length && values[0] == null) values.shift()
   while (values.length && values.at(-1) == null) values.pop()
   if (!values.length) return ''
-  return `${round ? 'Φ' : ''}${values.map(v => v == null ? '' : String(v)).join('*')}${value.sizeUnit || 'mm'}`
+  return `${round ? 'Φ' : ''}${values.map(v => v == null ? '' : String(v)).join('*')}mm`
 }

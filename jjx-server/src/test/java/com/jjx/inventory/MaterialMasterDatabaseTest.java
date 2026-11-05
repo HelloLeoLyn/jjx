@@ -59,7 +59,7 @@ class MaterialMasterDatabaseTest {
                 System.getenv().getOrDefault("DB_USER", "root"), System.getenv().getOrDefault("DB_PASS", "123456"));
         manager = new DataSourceTransactionManager(source);
         jdbc = new JdbcTemplate(source);
-        assertEquals("304", jdbc.queryForObject("SELECT config_value FROM sys_config WHERE config_key='ops.schema.version'", String.class));
+        assertTrue(Integer.parseInt(jdbc.queryForObject("SELECT config_value FROM sys_config WHERE config_key='ops.schema.version'", String.class)) >= 304);
         MybatisConfiguration config = new MybatisConfiguration();
         config.setMapUnderscoreToCamelCase(true);
         for (Class<?> type : List.of(InventoryMaterialMapper.class, InventoryMaterialCategoryMapper.class,
@@ -93,6 +93,55 @@ class MaterialMasterDatabaseTest {
     @AfterAll static void noTestRowsRemain() {
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material WHERE material_code LIKE 'T002DB%'", Integer.class));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_attribute_template WHERE template_code LIKE 'T002DB%'", Integer.class));
+    }
+
+    @Test void perFieldUnitsSaveAndReopenWithoutChangingMmAndExcelUsesDefaultUnits() throws Exception {
+        Long categoryId = category("RAW_AUX_PROTECT");
+        var schema = catalog.configuration(categoryId).schema();
+        var dto = new MaterialMasterDTO();
+        dto.setCategoryId(categoryId); dto.setMaterialName("T002DB尺寸单位验证");
+        dto.setMaterialMeta("PE"); dto.setFromBom(true);
+        dto.setWidthMm(new BigDecimal("315")); dto.setLengthMm(new BigDecimal("1000000"));
+        dto.setThicknessMm(new BigDecimal("0.254"));
+        var saved = service.save(dto, "codex-size-test");
+        Long materialId = saved.getMaterialId();
+        String expected = "254μm*315mm 1000m";
+        assertEquals(expected, service.detail(materialId).specificationGeneration().specification());
+        assertEquals(expected, schema.specification(saved, Map.of(), null));
+        // 历史列仅在本次新建测试行中设置；保存不得读取它渲染、不得改写它。
+        jdbc.update("UPDATE inventory_material SET size_unit='cm' WHERE material_id=?", materialId);
+        dto.setMaterialId(materialId);
+        saved = service.save(dto, "codex-size-test");
+        var row = jdbc.queryForMap("SELECT width_mm,length_mm,thickness_mm,size_unit FROM inventory_material WHERE material_id=?", materialId);
+        assertEquals(0, new BigDecimal("315").compareTo((BigDecimal) row.get("width_mm")));
+        assertEquals(0, new BigDecimal("1000000").compareTo((BigDecimal) row.get("length_mm")));
+        assertEquals(0, new BigDecimal("0.254").compareTo((BigDecimal) row.get("thickness_mm")));
+        assertEquals("cm", row.get("size_unit"));
+        assertEquals(expected, service.detail(materialId).specificationGeneration().specification());
+        assertEquals("315*1000000*0.254mm", saved.getSize());
+        for (boolean explicit : new boolean[]{true, false}) {
+            try (var workbook = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+                var sheet = workbook.createSheet(); var header = sheet.createRow(0); var input = sheet.createRow(1);
+                String importName = "T002DB尺寸导入" + UUID.randomUUID().toString();
+                String[] headers = {"颜色", "品类", "物料名称", "材质", "宽(mm)", "长(mm)", "厚(mm)", "尺寸单位"};
+                String[] values = {catalog.dictionaries().get("color").get(0).code(), "RAW_AUX_PROTECT", importName, "PE",
+                        explicit ? "315mm" : "31.5", explicit ? "1000m" : "100000", explicit ? "254μm" : "0.0254", "cm"};
+                for (int i = 0; i < headers.length; i++) {
+                    header.createCell(i).setCellValue(headers[i]); input.createCell(i).setCellValue(values[i]);
+                }
+                workbook.write(out);
+                var result = excel.importExcel(new MockMultipartFile("file", "sizes.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", out.toByteArray()), null, false, "codex-size-test", false);
+                assertEquals(List.of(), result.errors()); assertEquals(1, result.successCount());
+                Long importedId = jdbc.queryForObject("SELECT material_id FROM inventory_material WHERE material_name=?", Long.class, importName);
+                var imported = service.detail(importedId).material();
+                assertEquals(0, new BigDecimal("315").compareTo(imported.getWidthMm()));
+                assertEquals(0, new BigDecimal("1000000").compareTo(imported.getLengthMm()));
+                assertEquals(0, new BigDecimal("0.254").compareTo(imported.getThicknessMm()));
+                assertEquals(expected, service.detail(importedId).specificationGeneration().specification());
+            }
+        }
+        System.out.println("尺寸单位真实库事务：新增/重开/原值保存/Excel显式单位及cm默认值均为315/1000000/0.254mm；测试结束回滚");
     }
 
     @Test void actualCatalogHasThreeRootsNineteenNodesAndSixteenUsableTemplates() {

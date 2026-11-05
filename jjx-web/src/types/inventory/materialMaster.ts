@@ -103,7 +103,6 @@ export interface MaterialMasterForm {
   widthMm?: number | null
   lengthMm?: number | null
   thicknessMm?: number | null
-  sizeUnit?: string | null
   readonly specBasis?: string | null
   /** 克重 g/m²：与厚度二选一，填了即克重口径 */
   grammage?: number | null

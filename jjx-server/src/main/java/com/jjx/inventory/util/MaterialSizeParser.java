@@ -17,6 +17,11 @@ public final class MaterialSizeParser {
 
     /** 两段按宽×长、三段按宽×长×厚；不再按品类猜卷料（旧品类码已废弃）。 */
     public static Dimensions parse(String size) {
+        return parse(size, "mm");
+    }
+
+    /** 无后缀的单元格使用调用方提供的默认单位，显式单位优先。 */
+    public static Dimensions parse(String size, String defaultUnit) {
         if (size == null || size.isBlank()) return new Dimensions(null, null, null);
         if (size.length() > 50) throw new IllegalArgumentException("尺寸不能超过50个字符");
         String[] parts = size.trim().split("[×xX*＊]", -1);
@@ -25,12 +30,14 @@ public final class MaterialSizeParser {
         for (int i = 0; i < parts.length; i++) {
             var match = DIMENSION.matcher(parts[i].trim());
             if (!match.matches()) throw new IllegalArgumentException("尺寸格式错误：" + parts[i]);
-            BigDecimal factor = switch (match.group(2).toLowerCase(Locale.ROOT)) {
+            String unit = match.group(2).isBlank() ? defaultUnit : match.group(2);
+            BigDecimal factor = switch (unit.toLowerCase(Locale.ROOT)) {
                 case "μm", "µm", "um" -> new BigDecimal("0.001");
                 case "cm", "厘米" -> BigDecimal.TEN;
                 case "m", "米" -> new BigDecimal("1000");
                 case "in", "inch", "英寸", "\"" -> new BigDecimal("25.4");
-                default -> BigDecimal.ONE;
+                case "mm", "毫米", "" -> BigDecimal.ONE;
+                default -> throw new IllegalArgumentException("不支持的尺寸单位：" + unit);
             };
             values[i] = new BigDecimal(match.group(1)).multiply(factor);
             if (values[i].signum() <= 0) throw new IllegalArgumentException("尺寸必须大于0");

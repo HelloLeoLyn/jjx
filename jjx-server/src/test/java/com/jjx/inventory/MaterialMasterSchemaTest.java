@@ -19,7 +19,7 @@ class MaterialMasterSchemaTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Test void fieldUnitsApplyToEveryMaterialAndNamingKeepsMm() {
-        var material = new InventoryMaterial(); material.setSizeUnit("mm");
+        var material = new InventoryMaterial(); material.setSizeUnit("cm");
         material.setWidthMm(new BigDecimal("315")); material.setLengthMm(new BigDecimal("1000000"));
         material.setThicknessMm(new BigDecimal("0.254"));
         var schema = MaterialAttributeSchema.parse("""
@@ -50,6 +50,7 @@ class MaterialMasterSchemaTest {
         var fallback = seeds().get("TPL_PC");
         for (String unit : List.of("ROLL", "M", "PCS")) {
             material.setUnit(unit);
+            material.setSizeUnit("m");
             material.setWidthMm(null);
             assertEquals("厚度:0.175mm；尺寸:0.175mm", fallback.specification(material, Map.of(), null));
             material.setWidthMm(new BigDecimal("300"));
@@ -119,7 +120,7 @@ class MaterialMasterSchemaTest {
         assertEquals("254μm*315mm*1000m", service.specificationPreview(material).specification());
         assertEquals("旧规格快照", material.getSpecification());
         var draft = new com.jjx.inventory.master.MaterialMasterDTO();
-        draft.setWidthMm(material.getWidthMm()); draft.setLengthMm(material.getLengthMm()); draft.setThicknessMm(material.getThicknessMm()); draft.setSizeUnit("mm");
+        draft.setWidthMm(material.getWidthMm()); draft.setLengthMm(material.getLengthMm()); draft.setThicknessMm(material.getThicknessMm()); draft.setSizeUnit("m");
         assertEquals("254μm*315mm*1000m", service.renderSpecification(1L, draft));
         org.mockito.Mockito.verifyNoInteractions(materials);
     }

@@ -204,13 +204,14 @@ async function load(materialId: number) {
     }
     const dictionaries: MaterialDictionaries = dictResponse.data || {}
     const material = detail.material
+    const { sizeUnit: _legacySizeUnit, ...namingMaterial } = material
     const specification = detail.specificationGeneration
     if (!specification) throw new Error('规格生成结果加载失败，请稍后重试')
     // 与新增/编辑共用后端命名规则；仅无规则/无生成内容时沿用相同的旧名称回退。
     const [namingResponse, configurationResult] = await Promise.all([
       material.categoryId
         ? materialMasterApi.renderNaming(material.categoryId, {
-            ...material,
+            ...namingMaterial,
             attributeJson: detail.attributes || {},
           })
         : Promise.resolve(null),

@@ -152,10 +152,13 @@ public class MaterialMasterExcelService {
                     dto.setMaterialMeta(MaterialMasterService.categoryDefinesMaterial(schema) ? schema.defaultMeta()
                             : dictionaryCode(dictionaries, "material_meta", value(row, columns, "材质")));
                     dto.setMaterialForm(dictionaryCode(dictionaries, "form", value(row, columns, "形态")));
-                    dto.setWidthMm(dimension(value(row, columns, "宽(mm)"), "宽(mm)"));
-                    dto.setLengthMm(dimension(value(row, columns, "长(mm)"), "长(mm)"));
-                    dto.setThicknessMm(dimension(value(row, columns, "厚(mm)"), "厚(mm)"));
-                    dto.setSizeUnit(value(row, columns, "尺寸单位"));
+                    String defaultSizeUnit = value(row, columns, "尺寸单位");
+                    if (defaultSizeUnit.isBlank()) defaultSizeUnit = "mm";
+                    if (!Set.of("mm", "cm", "m", "μm").contains(defaultSizeUnit))
+                        throw new BusinessException("【尺寸单位】只允许 mm/cm/m/μm");
+                    dto.setWidthMm(dimension(value(row, columns, "宽(mm)"), "宽(mm)", defaultSizeUnit));
+                    dto.setLengthMm(dimension(value(row, columns, "长(mm)"), "长(mm)", defaultSizeUnit));
+                    dto.setThicknessMm(dimension(value(row, columns, "厚(mm)"), "厚(mm)", defaultSizeUnit));
                     dto.setColor(dictionaryCode(dictionaries, "color", value(row, columns, "颜色")));
                     dto.setModel(value(row, columns, "型号")); dto.setBrand(dictionaryCode(dictionaries, "brand", value(row, columns, "品牌")));
                     dto.setUnit(dictionaryCode(dictionaries, "unit", value(row, columns, "单位"))); dto.setSupplierName(value(row, columns, "供应商"));
@@ -248,11 +251,12 @@ public class MaterialMasterExcelService {
         try { return new BigDecimal(value); }
         catch (NumberFormatException e) { throw new BusinessException("【" + label + "】必须为数字"); }
     }
-    /** 裸数仍按 mm；显式单位复用尺寸解析器，货币/库存等列仍只接受数字。 */
-    private static BigDecimal dimension(String value, String label) {
-        if (!value.matches("(?i)(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)\\s*(?:mm|cm|m|[μµ]m|um)"))
-            return decimal(value, label);
-        try { return MaterialSizeParser.parse(value).widthMm(); }
+    /** 显式单位优先；裸数使用「尺寸单位」列默认值，提交仍为 mm。 */
+    private static BigDecimal dimension(String value, String label, String defaultUnit) {
+        if (value.isBlank()) return null;
+        if (!value.matches("(?i)(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)\\s*(?:mm|cm|m|[μµ]m|um)?"))
+            throw new BusinessException("【" + label + "】请填写数值，可带 mm/cm/m/μm");
+        try { return MaterialSizeParser.parse(value, defaultUnit).widthMm(); }
         catch (IllegalArgumentException e) { throw new BusinessException("【" + label + "】" + e.getMessage()); }
     }
     private static Integer integer(String value, String label) {
