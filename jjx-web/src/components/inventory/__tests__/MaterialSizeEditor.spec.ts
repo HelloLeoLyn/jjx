@@ -28,31 +28,33 @@ vi.mock('element-plus/es/components/switch/style/css', () => ({}))
 const Input = defineComponent({ props: ['modelValue'], emits: ['update:modelValue'],
   template: `<input :value="modelValue" @input="$emit('update:modelValue', $event.target.value)" />` })
 const Select = defineComponent({ props: ['modelValue'], emits: ['change', 'update:modelValue'], template: '<div><slot /></div>' })
-function create(value: MaterialSizeValue, unit?: string) {
-  return mount(MaterialSizeEditor, { props: { modelValue: value, unit },
+function create(value: MaterialSizeValue, dimensionFields?: import('../materialSize').MaterialDimensionFields) {
+  return mount(MaterialSizeEditor, { props: { modelValue: value, dimensionFields },
     global: { stubs: { ElInput: Input, ElSelect: Select, ElOption: true } } })
 }
 describe('专用数值尺寸编辑组件', () => {
-  it('卷材厚度录μm提交mm，重开回显μm，切换M恢复原样', async () => {
+  it('所有品类厚度录μm提交mm，按字段单位回显，移除配置恢复原样', async () => {
     const value = { ...emptyMaterialSize(), widthMm: 315, lengthMm: 1000000 }
-    const wrapper = create(value, 'ROLL')
+    const fields = [{ key: 'thickness_mm', sep: '*', unit: 'μm' as const }, { key: 'width', sep: '*' }, { key: 'length', sep: '*', unit: 'm' as const }]
+    const wrapper = create(value, fields)
     await wrapper.findAll('input')[2].setValue('254μm')
     const stored = { ...value, thicknessMm: 0.254 }
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([stored])
     expect(wrapper.text()).toContain('254μm*315mm*1000m')
     wrapper.unmount()
-    const reopened = create(stored, 'ROLL')
+    const reopened = create(stored, fields)
     expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['315', '1000000', '254μm'])
     expect(reopened.emitted('update:modelValue')).toBeUndefined()
-    await reopened.setProps({ unit: 'M' })
+    await reopened.setProps({ dimensionFields: [] })
     expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['315', '1000000', '0.254'])
     expect(reopened.text()).toContain('315*1000000*0.254mm')
     reopened.unmount()
   })
-  it('卷材厚宽缺长仍为宽字段，不自动切为直径', () => {
-    const wrapper = create({ ...emptyMaterialSize(), widthMm: 315, thicknessMm: 0.254 }, 'ROLL')
-    expect(wrapper.findAll('input')).toHaveLength(3)
-    expect(wrapper.text()).toContain('254μm*315mm')
+  it('显示舍入不改变源厚度，修改宽度仍提交原始mm', async () => {
+    const wrapper = create({ ...emptyMaterialSize(), widthMm: 315, lengthMm: 1000, thicknessMm: 0.2541 }, [{ key: 'thickness_mm', sep: '*', unit: 'μm', scale: 0 }])
+    expect(wrapper.findAll('input')[2].element.value).toBe('254μm')
+    await wrapper.findAll('input')[0].setValue('320')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toMatchObject({ widthMm: 320, thicknessMm: 0.2541 })
     wrapper.unmount()
   })
   it('回显不写回，编辑厚度只输出四字段对象，不改动输入对象', async () => {
@@ -116,7 +118,7 @@ describe('专用数值尺寸编辑组件', () => {
   })
 })
 
-const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), configuration: vi.fn(), detail: vi.fn(), save: vi.fn(), tags: vi.fn() }))
+const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), configuration: vi.fn(), detail: vi.fn(), save: vi.fn(), tags: vi.fn(), renderSpec: vi.fn() }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: api }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { getTags: api.tags } }))
 vi.mock('element-plus', async importOriginal => ({
@@ -182,4 +184,24 @@ describe('物料表单数值尺寸保存', () => {
     expect(api.save.mock.calls[0][0]).not.toHaveProperty('size')
     wrapper.unmount()
   })
+  it('无命名规则的品类仍请求字段单位规格预览，并传给尺寸编辑器', async () => {
+    const fields = [{ key: 'thickness_mm', sep: '*', unit: 'μm' as const }, { key: 'width', sep: '*' }, { key: 'length', sep: '*', unit: 'm' as const }]
+    api.configuration.mockResolvedValue({ data: { ...configuration, schema: { ...configuration.schema, spec_pattern: { fields, with_unit: true, show_label: false, unit_position: 'each' } } } })
+    api.renderSpec.mockResolvedValue({ data: '254μm*315mm*1000m' })
+    const wrapper = form()
+    await flushPromises()
+    wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
+    await flushPromises()
+    const editor = wrapper.findComponent(MaterialSizeEditor)
+    expect(editor.props('dimensionFields')).toEqual(fields)
+    await editor.findAll('input')[0].setValue('315')
+    await editor.findAll('input')[1].setValue('1000000')
+    await editor.findAll('input')[2].setValue('254μm')
+    await new Promise(resolve => setTimeout(resolve, 350))
+    await flushPromises()
+    expect(api.renderSpec).toHaveBeenCalledWith(2, expect.objectContaining({ thicknessMm: 0.254 }))
+    expect(wrapper.find('[data-test="master-preview"]').text()).toContain('254μm*315mm*1000m')
+    wrapper.unmount()
+  })
+
 })

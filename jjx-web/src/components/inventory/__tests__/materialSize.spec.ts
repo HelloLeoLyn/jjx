@@ -1,23 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { composeMaterialSize, mergeLegacyThickness, normalizeMaterialSize, parseMaterialSize, parseMaterialThickness, renderMaterialDimensions, validateMaterialDimensions, emptyMaterialSize } from '../materialSize'
+import { displayDimensionOf, composeMaterialSize, mergeLegacyThickness, normalizeMaterialSize, parseMaterialSize, parseMaterialThickness, renderMaterialDimensions, validateMaterialDimensions, emptyMaterialSize } from '../materialSize'
 
 describe('统一尺寸值', () => {
-  it('卷材按厚μm/宽mm/卷长m显示，与Java缺项和四舍五入口径一致', () => {
-    const value = { unit: 'ROLL', materialForm: 'FILM', widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254, sizeUnit: 'mm' }
-    expect(renderMaterialDimensions(value)).toBe('254μm*315mm*1000m')
-    expect(renderMaterialDimensions({ ...value, widthMm: null, lengthMm: null })).toBe('254μm')
-    expect(renderMaterialDimensions({ ...value, thicknessMm: null, lengthMm: null })).toBe('315mm')
-    expect(renderMaterialDimensions({ ...value, lengthMm: null }, true)).toBe('254μm*315mm')
-    expect(renderMaterialDimensions({ ...value, widthMm: null })).toBe('254μm*1000m')
-    expect(renderMaterialDimensions({ ...value, widthMm: null, lengthMm: null, thicknessMm: null })).toBe('')
-    expect(renderMaterialDimensions({ ...value, thicknessMm: 0.2541, lengthMm: 1005 })).toBe('254.1μm*315mm*1.01m')
-    for (const sizeUnit of ['mm', 'cm', 'm', '', null]) {
-      expect(renderMaterialDimensions({ ...value, sizeUnit })).toBe('254μm*315mm*1000m')
-      for (const unit of ['M', 'PCS', 'PIN', '', null]) {
-        expect(renderMaterialDimensions({ ...value, unit, sizeUnit })).toBe(`315*1000000*0.254${sizeUnit || 'mm'}`)
-        expect(renderMaterialDimensions({ ...value, unit, sizeUnit, lengthMm: null })).toBe(`315**0.254${sizeUnit || 'mm'}`)
-      }
+  it('字段单位决定显示，与物料计量单位无关，未配置仍逐字回落', () => {
+    const value = { widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254, sizeUnit: 'mm' }
+    const fields = [{ key: 'thickness_mm', sep: '*', unit: 'μm' as const }, { key: 'width', sep: '*' }, { key: 'length', sep: '*', unit: 'm' as const }]
+    expect(renderMaterialDimensions(value, false, fields)).toBe('254μm*315mm*1000m')
+    expect(renderMaterialDimensions({ ...value, widthMm: null, lengthMm: null }, false, fields)).toBe('254μm')
+    expect(renderMaterialDimensions({ ...value, widthMm: null, lengthMm: null, thicknessMm: null }, false, fields)).toBe('')
+    expect(renderMaterialDimensions({ ...value, thicknessMm: 0.2541, lengthMm: 1005 }, false, fields)).toBe('254.1μm*315mm*1.01m')
+    for (const unit of ['ROLL', 'M', 'PCS', 'PIN']) {
+      const row = { ...value, unit }
+      expect(renderMaterialDimensions(row, false, fields)).toBe('254μm*315mm*1000m')
+      expect(renderMaterialDimensions(row)).toBe('315*1000000*0.254mm')
     }
+    expect(renderMaterialDimensions({ widthMm: 300, thicknessMm: 0.175 })).toBe('300**0.175mm')
+    expect(renderMaterialDimensions({ thicknessMm: 0.175 })).toBe('0.175mm')
+    expect(displayDimensionOf(315, 'cm')).toBe('31.5')
+    expect(displayDimensionOf(0.175, 'mm')).toBe('0.175')
+    expect(displayDimensionOf(0.175, 'mm', 2)).toBe('0.18')
+    expect(displayDimensionOf(0.2541, 'μm', 0)).toBe('254')
   })
   it('μm厚度仅在输入边界换算，存储与size_unit仍用原有契约', () => {
     expect(parseMaterialThickness('254μm')).toBe(0.254)
@@ -25,7 +27,10 @@ describe('统一尺寸值', () => {
     expect(parseMaterialThickness('254µm')).toBe(0.254)
     expect(parseMaterialThickness('0.254')).toBe(0.254)
     expect(parseMaterialThickness('')).toBeNull()
-    expect(parseMaterialThickness('254mm')).toBeNaN()
+    expect(parseMaterialThickness('254um')).toBe(0.254)
+    expect(parseMaterialThickness('0.254mm')).toBe(0.254)
+    expect(parseMaterialThickness('0.0254cm')).toBe(0.254)
+    expect(parseMaterialThickness('0.000254m')).toBe(0.254)
     expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), thicknessMm: parseMaterialThickness('254μm') })).not.toThrow()
     expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), sizeUnit: 'μm' })).toThrow()
   })

@@ -48,9 +48,14 @@ vi.mock('@/api/inventory/materialMaster', () => ({
   materialMasterApi: {
     categories: async () => ({ data: [] }),
     dictionaries: async () => ({ data: {} }),
-    configuration: async () => ({
+    configuration: async (categoryId: number) => ({
       data: {
         schema: {
+          spec_pattern: categoryId === 29 ? { fields: [
+            { key: 'thickness_mm', sep: '*', unit: 'μm' },
+            { key: 'width', sep: '*' },
+            { key: 'length', sep: '*', unit: 'm' },
+          ] } : null,
           fields: [
             {
               key: 'component_type',
@@ -80,6 +85,22 @@ afterEach(() => {
 })
 
 describe('物料列表默认查询与归类筛选', () => {
+  it('混合品类逐行按字段单位显示尺寸，保留×分隔符和缺省行为', async () => {
+    const dimensions = { widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254, sizeUnit: 'mm' }
+    const records = [
+      { ...dimensions, categoryId: 29, unit: 'PCS' },
+      { ...dimensions, categoryId: 30, unit: 'ROLL' },
+      { widthMm: 300, thicknessMm: 0.175 },
+    ]
+    page.mockResolvedValue({ data: { records, total: records.length } })
+    wrapper = shallowMount(MaterialList, { global: { directives: { hasPermi: {}, loading: {} } } })
+    await flushPromises()
+    const state = wrapper.vm as any
+    expect(state.materialSizeText(records[0])).toBe('254μm×315mm×1000m')
+    expect(state.materialSizeText(records[1])).toBe('315×1000000×0.254mm')
+    expect(state.materialSizeText(records[2])).toBe('300××0.175mm')
+  })
+
   it('首屏和重置不携带旧档案范围，三态选择原样提交', async () => {
     const requests: Record<string, unknown>[] = []
     page.mockImplementation(async (params) => {

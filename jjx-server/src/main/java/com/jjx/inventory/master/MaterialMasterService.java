@@ -108,7 +108,7 @@ public class MaterialMasterService {
     public record SpecSample(Long materialId, String materialCode, String oldSpec, String newSpec) { }
     public record SpecPreview(List<SpecSample> samples, String message) { }
 
-    /** 规格模板预览：按品类取最近 5 条物料，给出“当前规格 → 按模板生成”对照（dev-20261029-029）。 */
+    /** 规格模板预览：读取已保存的字段单位配置，按品类取最近 5 条物料，给出“当前规格 → 按模板生成”对照（dev-20261029-029）。 */
     public SpecPreview previewSpecification(Long categoryId) {
         if (categoryId == null) throw new BusinessException("请选择末级品类");
         MaterialMasterCatalog.Configuration config = catalog.optionalConfiguration(categoryId);
@@ -279,7 +279,7 @@ public class MaterialMasterService {
     }
 
     private SpecificationPreview specificationPreview(InventoryMaterial material, MaterialAttributeSchema schema) {
-        if (schema == null || schema.fields().isEmpty())
+        if (schema == null || schema.fields().isEmpty() && !schema.hasSpecPattern())
             return new SpecificationPreview(material.getSpecification(), false, "未生成：未归类、分类无启用模板或模板无属性，保留原规格；不接受外部 specification 文本");
         Map<String, Object> previewAttributes = readAttributes(material.getAttributeJson());
         String legacyThickness = material.getGrammage() != null ? material.getGrammage().stripTrailingZeros().toPlainString()

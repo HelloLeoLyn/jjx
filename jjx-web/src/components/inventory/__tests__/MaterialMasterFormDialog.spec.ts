@@ -179,7 +179,9 @@ describe('物料一次保存与异步品类切换', () => {
     await flushPromises()
     wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
     await flushPromises()
-    await wrapper.findAllComponents(Input)[0].find('input').setValue('测试原名称')
+    // 名称输入独立于前面的供应商品名；以语义定位，避免字段插入导致错填。
+    const nameInput = wrapper.findAllComponents(Input).find(input => input.attributes('maxlength') === '200' && !input.attributes('placeholder'))!
+    await nameInput.find('input').setValue('测试原名称')
     await wrapper
       .findAll('button')
       .find((b) => b.text() === '保存物料')!

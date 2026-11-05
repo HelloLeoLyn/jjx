@@ -18,62 +18,110 @@ import static org.junit.jupiter.api.Assertions.*;
 class MaterialMasterSchemaTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
-    @Test void rollSpecificationUsesSegmentUnitsAndLeavesOtherUnitsAndNamingUntouched() {
-        var material = new InventoryMaterial();
-        material.setUnit("ROLL"); material.setMaterialForm("FILM"); material.setSizeUnit("mm");
+    @Test void fieldUnitsApplyToEveryMaterialAndNamingKeepsMm() {
+        var material = new InventoryMaterial(); material.setSizeUnit("mm");
         material.setWidthMm(new BigDecimal("315")); material.setLengthMm(new BigDecimal("1000000"));
         material.setThicknessMm(new BigDecimal("0.254"));
+        var schema = MaterialAttributeSchema.parse("""
+                {"version":1,"meta_options":[],"fields":[],"spec_pattern":{
+                 "fields":[{"key":"thickness_mm","sep":"*","unit":"μm"},{"key":"width","sep":"*"},{"key":"length","sep":"*","unit":"m"}],
+                 "with_unit":true,"unit_position":"each"}}
+                """, mapper);
+        var naming = new com.jjx.inventory.master.MaterialNamingPattern(List.of("thickness_mm", "width", "length"), "*", "skip");
+        for (String unit : List.of("ROLL", "M", "PCS", "PIN")) {
+            material.setUnit(unit);
+            assertEquals("254μm*315mm*1000m", schema.specification(material, Map.of(), null));
+            assertEquals("0.254*315*1000000", naming.compose(material, schema));
+        }
+        for (int mask = 0; mask < 8; mask++) {
+            material.setThicknessMm((mask & 1) == 0 ? null : new BigDecimal("0.254"));
+            material.setWidthMm((mask & 2) == 0 ? null : new BigDecimal("315"));
+            material.setLengthMm((mask & 4) == 0 ? null : new BigDecimal("1000000"));
+            List<String> expected = new ArrayList<>();
+            if ((mask & 1) != 0) expected.add("254μm");
+            if ((mask & 2) != 0) expected.add("315mm");
+            if ((mask & 4) != 0) expected.add("1000m");
+            assertEquals(expected.isEmpty() ? null : String.join("*", expected), schema.specification(material, Map.of(), null));
+        }
+    }
+
+    @Test void unconfiguredTemplatesKeepExactOutputForAllMaterialUnits() throws Exception {
+        var material = new InventoryMaterial(); material.setThicknessMm(new BigDecimal("0.175"));
+        var fallback = seeds().get("TPL_PC");
+        for (String unit : List.of("ROLL", "M", "PCS")) {
+            material.setUnit(unit);
+            material.setWidthMm(null);
+            assertEquals("厚度:0.175mm；尺寸:0.175mm", fallback.specification(material, Map.of(), null));
+            material.setWidthMm(new BigDecimal("300"));
+            assertEquals("厚度:0.175mm；尺寸:300**0.175mm", fallback.specification(material, Map.of(), null));
+        }
+        material.setLengthMm(new BigDecimal("305"));
         for (String position : List.of("end", "each", "none")) {
             var schema = MaterialAttributeSchema.parse("""
                     {"version":1,"meta_options":[],"fields":[],"spec_pattern":{
-                     "fields":[{"key":"thickness_mm","sep":"*"},{"key":"width","sep":"*"},{"key":"length","sep":"*"}],
+                     "fields":[{"key":"width","sep":"*"},{"key":"length","sep":"*"},{"key":"thickness_mm","sep":"*"}],
                      "with_unit":true,"unit_position":"%s"}}
                     """.formatted(position), mapper);
-            material.setUnit("ROLL");
-            assertEquals("254μm*315mm*1000m", schema.specification(material, Map.of(), null));
-            var naming = new com.jjx.inventory.master.MaterialNamingPattern(List.of("thickness_mm", "width", "length"), "*", "skip");
-            assertEquals("0.254*315*1000000", naming.compose(material, schema));
-            for (String unit : List.of("M", "PCS", "PIN")) {
-                material.setUnit(unit);
-                String expected = switch (position) {
-                    case "end" -> "0.254*315*1000000mm";
-                    case "each" -> "0.254mm*315mm*1000000mm";
-                    default -> "0.254*315*1000000";
-                };
-                assertEquals(expected, schema.specification(material, Map.of(), null));
-            }
-            material.setUnit("ROLL"); material.setWidthMm(null); material.setLengthMm(null);
-            assertEquals("254μm", schema.specification(material, Map.of(), null));
-            material.setWidthMm(new BigDecimal("315"));
-            assertEquals("254μm*315mm", schema.specification(material, Map.of(), null));
-            material.setThicknessMm(null);
-            assertEquals("315mm", schema.specification(material, Map.of(), null));
-            material.setThicknessMm(new BigDecimal("0.254")); material.setLengthMm(new BigDecimal("1000000"));
-            for (int mask = 0; mask < 8; mask++) {
-                material.setThicknessMm((mask & 1) == 0 ? null : new BigDecimal("0.254"));
-                material.setWidthMm((mask & 2) == 0 ? null : new BigDecimal("315"));
-                material.setLengthMm((mask & 4) == 0 ? null : new BigDecimal("1000000"));
-                assertEquals(MaterialSizeValue.renderDisplay(material.getWidthMm(), material.getLengthMm(), material.getThicknessMm(), "mm", "ROLL"),
-                        schema.specification(material, Map.of(), null));
-            }
+            assertEquals(switch (position) {
+                case "end" -> "300*305*0.175mm";
+                case "each" -> "300mm*305mm*0.175mm";
+                default -> "300*305*0.175";
+            }, schema.specification(material, Map.of(), null));
         }
-        var fallback = MaterialAttributeSchema.parse("{\"version\":1,\"meta_options\":[],\"fields\":[]}", mapper);
-        assertEquals("尺寸:254μm*315mm*1000m", fallback.specification(material, Map.of(), null));
-        material.setWidthMm(null); material.setLengthMm(null);
-        assertEquals("尺寸:254μm", fallback.specification(material, Map.of(), null));
-        material.setUnit("PCS"); material.setSizeUnit(null); material.setWidthMm(new BigDecimal("315"));
-        assertEquals("尺寸:315**0.254mm", fallback.specification(material, Map.of(), null));
     }
 
-    @Test void fallbackRollThicknessAttributesUseMicronsWithoutChangingLegacyCompose() throws Exception {
-        var schema = seeds().get("TPL_PC");
-        var material = new InventoryMaterial(); material.setUnit("ROLL");
-        material.setThicknessMm(new BigDecimal("0.254"));
-        assertEquals("厚度:254μm；尺寸:254μm", schema.specification(material, Map.of(), null));
-        assertEquals("厚度:254μm；尺寸:254μm", schema.specification(material, Map.of("thickness_mm", new BigDecimal("0.254")), null));
-        material.setUnit("M");
-        assertEquals("厚度:0.254mm；尺寸:0.254mm", schema.specification(material, Map.of(), null));
-        assertEquals("厚度:0.254mm", schema.compose(Map.of(), "0.254", null));
+    @Test void validatesDisplayConfigurationAndPreservesAttributeUnits() {
+        String json = """
+                {"version":1,"meta_options":[],"fields":[
+                 {"key":"weight","label":"克重","type":"decimal","unit":"g/m²"},
+                 {"key":"force","label":"离型力","type":"decimal","unit":"gf"}],"spec_pattern":{
+                 "fields":[{"key":"thickness_mm","sep":"*","unit":"μm","scale":0},
+                 {"key":"weight","sep":"*"},{"key":"force","sep":"*"}],"unit_position":"each"}}
+                """;
+        var material = new InventoryMaterial(); material.setThicknessMm(new BigDecimal("0.2541"));
+        var schema = MaterialAttributeSchema.parse(json, mapper);
+        assertEquals("254μm*80g/m²*25gf", schema.specification(material, Map.of("weight", 80, "force", 25), null));
+        for (String invalid : List.of(json.replace("μm", "inch"), json.replace("\"scale\":0", "\"scale\":7"),
+                json.replace("\"scale\":0", "\"scale\":-1"), json.replace("\"scale\":0", "\"scale\":1.5"),
+                json.replace("\"scale\":0", "\"scale\":\"2\""), json.replace("\"key\":\"thickness_mm\"", "\"key\":\"weight\""))) {
+            assertThrows(BusinessException.class, () -> MaterialAttributeSchema.parse(invalid, mapper));
+        }
+        assertThrows(BusinessException.class, () -> MaterialAttributeSchema.parse(json.replace("{\"key\":\"weight\",\"sep\":\"*\"}", "{\"key\":\"weight\",\"sep\":\"*\",\"scale\":2}"), mapper));
+    }
+
+    @Test void usedTemplatesAllowDimensionDisplayChangesButRejectAttributeUnitChanges() {
+        String json = """
+                {"version":1,"meta_options":[],"fields":[{"key":"force","label":"离型力","type":"decimal","unit":"gf"}],
+                 "spec_pattern":{"fields":[{"key":"thickness_mm","sep":"*"}],"unit_position":"each"}}
+                """;
+        var old = MaterialAttributeSchema.parse(json, mapper);
+        var next = MaterialAttributeSchema.parse(json.replace("\"key\":\"thickness_mm\"", "\"key\":\"thickness_mm\",\"unit\":\"μm\",\"scale\":0"), mapper);
+        assertDoesNotThrow(() -> com.jjx.inventory.master.MaterialMasterConfigurationService.requireCompatibleUpdate(old, next, mapper));
+        var invalid = MaterialAttributeSchema.parse(json.replace("gf", "N"), mapper);
+        assertThrows(BusinessException.class, () -> com.jjx.inventory.master.MaterialMasterConfigurationService.requireCompatibleUpdate(old, invalid, mapper));
+    }
+
+    @Test void servicePreviewUsesSavedFieldUnitsWithoutChangingStoredSpecification() {
+        var schema = MaterialAttributeSchema.parse("""
+                {"version":1,"meta_options":[],"fields":[],"spec_pattern":{
+                 "fields":[{"key":"thickness_mm","sep":"*","unit":"μm"},{"key":"width","sep":"*"},{"key":"length","sep":"*","unit":"m"}],
+                 "unit_position":"each"}}
+                """, mapper);
+        var catalog = org.mockito.Mockito.mock(com.jjx.inventory.master.MaterialMasterCatalog.class);
+        var materials = org.mockito.Mockito.mock(com.jjx.inventory.mapper.InventoryMaterialMapper.class);
+        var service = new MaterialMasterService(catalog, null, materials, null, null, null, null, mapper);
+        var category = new com.jjx.inventory.master.MaterialMasterCatalog.Category(1L, "TEST", "测试品类", null, 1, "R", "测试品类", true, 0, 1);
+        org.mockito.Mockito.when(catalog.optionalConfiguration(1L)).thenReturn(new com.jjx.inventory.master.MaterialMasterCatalog.Configuration(category, List.of(category), null, schema));
+        org.mockito.Mockito.when(catalog.specificationSchema(1L)).thenReturn(schema);
+        var material = new InventoryMaterial(); material.setCategoryId(1L); material.setUnit("PCS");
+        material.setWidthMm(new BigDecimal("315")); material.setLengthMm(new BigDecimal("1000000")); material.setThicknessMm(new BigDecimal("0.254"));
+        material.setSpecification("旧规格快照");
+        assertEquals("254μm*315mm*1000m", service.specificationPreview(material).specification());
+        assertEquals("旧规格快照", material.getSpecification());
+        var draft = new com.jjx.inventory.master.MaterialMasterDTO();
+        draft.setWidthMm(material.getWidthMm()); draft.setLengthMm(material.getLengthMm()); draft.setThicknessMm(material.getThicknessMm()); draft.setSizeUnit("mm");
+        assertEquals("254μm*315mm*1000m", service.renderSpecification(1L, draft));
+        org.mockito.Mockito.verifyNoInteractions(materials);
     }
 
     private Map<String, MaterialAttributeSchema> seeds() throws Exception {

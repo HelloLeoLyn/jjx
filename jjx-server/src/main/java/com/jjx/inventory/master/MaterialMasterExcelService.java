@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
+import com.jjx.inventory.util.MaterialSizeParser;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddressList;
@@ -151,9 +152,9 @@ public class MaterialMasterExcelService {
                     dto.setMaterialMeta(MaterialMasterService.categoryDefinesMaterial(schema) ? schema.defaultMeta()
                             : dictionaryCode(dictionaries, "material_meta", value(row, columns, "材质")));
                     dto.setMaterialForm(dictionaryCode(dictionaries, "form", value(row, columns, "形态")));
-                    dto.setWidthMm(decimal(value(row, columns, "宽(mm)"), "宽(mm)"));
-                    dto.setLengthMm(decimal(value(row, columns, "长(mm)"), "长(mm)"));
-                    dto.setThicknessMm(decimal(value(row, columns, "厚(mm)"), "厚(mm)"));
+                    dto.setWidthMm(dimension(value(row, columns, "宽(mm)"), "宽(mm)"));
+                    dto.setLengthMm(dimension(value(row, columns, "长(mm)"), "长(mm)"));
+                    dto.setThicknessMm(dimension(value(row, columns, "厚(mm)"), "厚(mm)"));
                     dto.setSizeUnit(value(row, columns, "尺寸单位"));
                     dto.setColor(dictionaryCode(dictionaries, "color", value(row, columns, "颜色")));
                     dto.setModel(value(row, columns, "型号")); dto.setBrand(dictionaryCode(dictionaries, "brand", value(row, columns, "品牌")));
@@ -246,6 +247,13 @@ public class MaterialMasterExcelService {
         if (value.isBlank()) return null;
         try { return new BigDecimal(value); }
         catch (NumberFormatException e) { throw new BusinessException("【" + label + "】必须为数字"); }
+    }
+    /** 裸数仍按 mm；显式单位复用尺寸解析器，货币/库存等列仍只接受数字。 */
+    private static BigDecimal dimension(String value, String label) {
+        if (!value.matches("(?i)(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)\\s*(?:mm|cm|m|[μµ]m|um)"))
+            return decimal(value, label);
+        try { return MaterialSizeParser.parse(value).widthMm(); }
+        catch (IllegalArgumentException e) { throw new BusinessException("【" + label + "】" + e.getMessage()); }
     }
     private static Integer integer(String value, String label) {
         BigDecimal number = decimal(value, label);

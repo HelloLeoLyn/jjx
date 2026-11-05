@@ -454,6 +454,18 @@
                     title="下移"
                     @click="moveSpecField(index, 1)"
                   />
+                  <template v-if="isDimensionField(item.key)">
+                    <label>单位</label>
+                    <el-select :model-value="item.unit || ''" :aria-label="`${specLabel(item.key)}单位`" style="width: 125px"
+                      @update:model-value="value => setSpecUnit(index, value)">
+                      <el-option label="沿用原单位" value="" />
+                      <el-option v-for="unit in dimensionUnits" :key="unit" :label="unit" :value="unit" />
+                    </el-select>
+                    <label>小数位</label>
+                    <el-input-number v-model="item.scale" :min="0" :max="6" :precision="0" placeholder="默认"
+                      :aria-label="`${specLabel(item.key)}小数位`" style="width: 110px" />
+                    <span class="naming-message" :data-test="`unit-example-${item.key}`">{{ dimensionExample(item) }}</span>
+                  </template>
                   <el-button link type="danger" @click="toggleSpecField(item.key, false)">移除</el-button>
                 </div>
               </div>
@@ -467,7 +479,7 @@
                   <el-radio-button label="none">不带</el-radio-button>
                 </el-radio-group>
               </el-form-item>
-              <span class="naming-message">留空字段不输出；未配置时沿用旧的“字段:值；尺寸”拼接。</span>
+              <span class="naming-message">留空字段不输出；未配置时沿用旧的“字段:值；尺寸”拼接。小数位默认：μm 1 位、cm/m 2 位、mm 保留原精度，均去尾零。不同单位逐项显示请选择“每项都带”。</span>
               <el-divider content-position="left">效果示例（该品类最近 5 条物料）</el-divider>
               <div v-if="!specSamples.length" class="naming-message">该品类暂无可预览的物料；模板只影响以后生成。</div>
               <el-table v-if="specSamples.length" :data="specSamples" border size="small" style="margin-top: 8px">
@@ -508,9 +520,12 @@ import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 import { MaterialAttributeTypeEnum } from '@/enums/inventory/MaterialAttributeEnum'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import { isCommonAttribute } from './materialMasterModel'
+import { displayDimensionOf } from './materialSize'
 import { addRecommendedAttributes } from './materialAttributePresets'
 import { participatesInSpecification } from '../bomSpecification'
 import type {
+  MaterialDimensionUnit,
+  MaterialSpecField,
   MaterialAttributeField,
   MaterialAttributeSchema,
   MaterialNamingPattern,
@@ -552,7 +567,7 @@ const templateLoading = ref(false)
 const schema = ref<MaterialAttributeSchema>({ version: 1, meta_options: [], fields: [] })
 /** 规格模板：字段顺序 + 每字段 1 字符分隔符 + 是否显示字段名/带单位，存入 attribute_schema.spec_pattern（dev-20261029-027）。 */
 const specPattern = ref<{
-  fields: { key: string; sep: string }[]
+  fields: MaterialSpecField[]
   show_label: boolean
   with_unit: boolean
   unit_position: 'each' | 'end' | 'none'
@@ -599,6 +614,18 @@ const specTokens = computed(() => {
     ...schema.value.fields.filter((f) => f.key).map((f) => ({ key: f.key, label: f.label || f.key })),
   ]
 })
+const dimensionUnits: MaterialDimensionUnit[] = ['mm', 'cm', 'm', 'μm']
+const isDimensionField = (key: string) => ['width', 'length', 'thickness_mm'].includes(key)
+function setSpecUnit(index: number, unit: MaterialDimensionUnit | '') {
+  const field = specPattern.value.fields[index]
+  if (unit) field.unit = unit
+  else delete field.unit
+}
+function dimensionExample(field: MaterialSpecField): string {
+  const value = field.key === 'thickness_mm' ? 0.254 : field.key === 'length' ? 1000000 : 315
+  const unit = field.unit || 'mm'
+  return `示例：${value}mm → ${displayDimensionOf(value, unit, field.scale)}${unit}`
+}
 function specLabel(key: string) {
   return specTokens.value.find((token) => token.key === key)?.label || key
 }
@@ -952,6 +979,7 @@ async function saveTemplate() {
       status: templateStatus.value,
     })
     await refresh()
+    await previewSpecification()
     ElMessage.success('模板已保存')
     emit('success')
   } catch (e) {

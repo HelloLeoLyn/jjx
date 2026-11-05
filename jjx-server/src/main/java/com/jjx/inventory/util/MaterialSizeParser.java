@@ -9,7 +9,7 @@ public final class MaterialSizeParser {
     private MaterialSizeParser() {}
 
     private static final String NUMBER = "(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+)";
-    private static final String UNIT = "(?:mm|cm|inch|in|m|毫米|厘米|米|英寸|\")?";
+    private static final String UNIT = "(?:mm|cm|μm|µm|um|inch|in|m|毫米|厘米|米|英寸|\")?";
     private static final String PART = NUMBER + "\\s*" + UNIT;
     private static final Pattern DIMENSION = Pattern.compile("^(" + NUMBER + ")\\s*(" + UNIT + ")$", Pattern.CASE_INSENSITIVE);
     private static final Pattern LEGACY = Pattern.compile("(?<![A-Za-z\\d.])" + PART + "(?:\\s*[×xX*＊]\\s*" + PART + "){1,2}", Pattern.CASE_INSENSITIVE);
@@ -26,6 +26,7 @@ public final class MaterialSizeParser {
             var match = DIMENSION.matcher(parts[i].trim());
             if (!match.matches()) throw new IllegalArgumentException("尺寸格式错误：" + parts[i]);
             BigDecimal factor = switch (match.group(2).toLowerCase(Locale.ROOT)) {
+                case "μm", "µm", "um" -> new BigDecimal("0.001");
                 case "cm", "厘米" -> BigDecimal.TEN;
                 case "m", "米" -> new BigDecimal("1000");
                 case "in", "inch", "英寸", "\"" -> new BigDecimal("25.4");

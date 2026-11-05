@@ -1,3 +1,5 @@
+import type { MaterialDimensionUnit, MaterialSpecField } from '@/types/inventory/materialMaster'
+
 /** 尺寸唯一编辑值：宽*长*厚；缺项保留位置，圆形为 Φ直径*厚。分隔符统一半角 *，输入兼容 ×、x/X 与全角 ＊。 */
 export interface MaterialSizeParts {
   round: boolean
@@ -65,14 +67,6 @@ export interface MaterialSizeValue {
   sizeUnit: string
 }
 
-export interface MaterialSizeContext {
-  unit?: string | null
-  materialForm?: string | null
-}
-
-/** 唯一判据与 Java 一致；FILM、M 不推断为卷材。 */
-export const isRollMaterial = (context: MaterialSizeContext): boolean => context.unit === 'ROLL'
-
 /** 十进制移位后四舍五入，避免 1005mm → 1.005m 在二进制 toFixed 中舍为 1。 */
 function roundedDisplay(value: number, shift: number, decimals: number): string {
   const move = (number: number, places: number) => {
@@ -82,20 +76,28 @@ function roundedDisplay(value: number, shift: number, decimals: number): string 
   return String(move(Math.round(move(value, shift + decimals)), -decimals))
 }
 
-export function displayMaterialDimension(value: number, key: 'widthMm' | 'lengthMm' | 'thicknessMm', context: MaterialSizeContext): string {
-  if (!isRollMaterial(context)) return String(value)
-  if (key === 'thicknessMm') return `${roundedDisplay(value, 3, 1)}μm`
-  if (key === 'lengthMm') return `${roundedDisplay(value, -3, 2)}m`
-  return `${value}mm`
+/** 单位只影响显示，源值始终是 mm；mm 缺省保留原精度。 */
+export function displayDimensionOf(valueMm: number, unit: MaterialDimensionUnit = 'mm', scale?: number | null): string {
+  const shift = { mm: 0, cm: -1, m: -3, μm: 3 }[unit]
+  const decimals = scale ?? (unit === 'μm' ? 1 : unit === 'mm' ? undefined : 2)
+  return decimals == null ? String(valueMm) : roundedDisplay(valueMm, shift, decimals)
+}
+
+/** 字段键保持与规格模板一致，供列表、表单与编辑器共用。 */
+export type MaterialDimensionFields = readonly MaterialSpecField[]
+export const dimensionKey = { widthMm: 'width', lengthMm: 'length', thicknessMm: 'thickness_mm' } as const
+export function dimensionField(fields: MaterialDimensionFields, key: keyof typeof dimensionKey): MaterialSpecField | undefined {
+  return fields.find(field => field.key === dimensionKey[key])
 }
 
 /** 厚度显式带 μm 时换算为 mm；裸数沿用原有 mm 输入语义。 */
 export function parseMaterialThickness(text: string): number | null {
   const raw = text.trim()
   if (!raw) return null
-  const microns = /^(\d+(?:\.\d+)?)\s*[μµ]m$/.exec(raw)
-  if (microns) return Number(`${microns[1]}e-3`)
-  return /^\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : NaN
+  const dimension = /^(\d+(?:\.\d+)?)\s*(mm|cm|m|[μµ]m|um)?$/i.exec(raw)
+  if (!dimension) return NaN
+  const shift = { mm: 0, cm: 1, m: 3, 'μm': -3, 'µm': -3, um: -3 }[dimension[2]?.toLowerCase() || 'mm']!
+  return Number(`${dimension[1]}e${shift}`)
 }
 
 export const emptyMaterialSize = (): MaterialSizeValue => ({ widthMm: null, lengthMm: null, thicknessMm: null, sizeUnit: 'mm' })
@@ -113,11 +115,19 @@ export function validateMaterialDimensions(value: MaterialSizeValue): void {
   if (!['mm', 'cm', 'm'].includes(value.sizeUnit)) throw new Error('尺寸单位只允许 mm/cm/m')
 }
 
-export function renderMaterialDimensions(value: { widthMm?: number | null; lengthMm?: number | null; thicknessMm?: number | null; sizeUnit?: string | null } & MaterialSizeContext, round = false, context: MaterialSizeContext = value): string {
-  if (isRollMaterial(context)) {
-    const entries = (['thicknessMm', 'widthMm', 'lengthMm'] as const).map(key => ({ key, value: value[key] }))
-    // 每段已有独立单位，缺项与后端 spec_pattern 一样跳过，不会误读尺寸身份。
-    return entries.flatMap(entry => entry.value == null ? [] : [displayMaterialDimension(entry.value, entry.key, context)]).join('*')
+export function renderMaterialDimensions(value: { widthMm?: number | null; lengthMm?: number | null; thicknessMm?: number | null; sizeUnit?: string | null }, round = false, fields: MaterialDimensionFields = []): string {
+  const configured = fields.filter(field => Object.values(dimensionKey).includes(field.key as typeof dimensionKey[keyof typeof dimensionKey]) && (field.unit != null || field.scale != null))
+  if (configured.length) {
+    // 配置了独立单位时每段带单位；段序来自模板，缺项跳过。
+    const keys = Object.keys(dimensionKey) as (keyof typeof dimensionKey)[]
+    return fields.flatMap(field => {
+      const key = keys.find(key => dimensionKey[key] === field.key)
+      if (!key || value[key] == null || (round && key === 'lengthMm')) return []
+      const unit = field.unit || value.sizeUnit || 'mm'
+      const text = field.unit != null || field.scale != null
+        ? displayDimensionOf(value[key]!, field.unit || 'mm', field.scale) : String(value[key])
+      return [`${text}${unit}`]
+    }).join('*')
   }
   // 缺项保留中间位置；首个有值项之前的缺位不补占位（只填厚度即 0.175mm，dev-20261030-016）
   const values = [...(round ? [value.widthMm, value.thicknessMm] : [value.widthMm, value.lengthMm, value.thicknessMm])]

@@ -91,6 +91,7 @@ public class MaterialMasterConfigurationService {
         validateStatus(dto.status());
         if (dto.templateCode() == null || !dto.templateCode().matches("[A-Z][A-Z0-9_]{0,49}") || dto.templateName() == null || dto.templateName().isBlank() || dto.templateName().length() > 100) fail("模板编码或名称无效");
         if (dto.attributeSchema() == null) fail("模板定义不能为空");
+        // 包含规格字段显示单位白名单、尺寸三键及小数位范围校验；不修改历史模板。
         dto.attributeSchema().validateDefinition();
         for (String meta : dto.attributeSchema().metaOptions()) catalog.dictionaryLabel("material_meta", meta, true);
         catalog.dictionaryLabel("form", dto.attributeSchema().defaultForm(), false);
@@ -120,9 +121,9 @@ public class MaterialMasterConfigurationService {
     public static void requireCompatibleUpdate(MaterialAttributeSchema old, MaterialAttributeSchema next, ObjectMapper mapper) {
         var previous = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(old);
         var updated = mapper.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(next);
-        // fields 与 name_pattern 都属于“可调整的显示/命名规则”，不构成模板契约（dev-20261029-023）
-        previous.remove(List.of("fields", "name_pattern"));
-        updated.remove(List.of("fields", "name_pattern"));
+        // 属性显示、命名与规格模板（含字段显示单位）可调整，不改物料事实或已保存规格。
+        previous.remove(List.of("fields", "name_pattern", "spec_pattern"));
+        updated.remove(List.of("fields", "name_pattern", "spec_pattern"));
         if (!previous.equals(updated)) fail("已有物料引用模板，不能改变材质、单位或默认值等模板契约");
         Map<String, MaterialAttributeSchema.Field> fields = new LinkedHashMap<>();
         next.fields().forEach(field -> fields.put(field.key(), field));

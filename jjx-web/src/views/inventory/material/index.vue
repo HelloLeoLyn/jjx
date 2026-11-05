@@ -254,6 +254,7 @@ defineOptions({
 })
 
 import { renderMaterialDimensions } from '@/components/inventory/materialSize'
+import type { MaterialDimensionFields } from '@/components/inventory/materialSize'
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
@@ -376,11 +377,23 @@ const importDialogVisible = ref(false)
 
 const categoryOptions = ref<MaterialMasterCategory[]>([])
 const dictionaries = ref<MaterialDictionaries>({})
+const dimensionFields = ref<Record<number, MaterialDimensionFields>>({})
 const dictionaryText = (dict: string, code?: string) =>
   dictionaries.value[dict]?.find((o) => o.code === code)?.label || code || '-'
 /** 尺寸展示：从数值拼装，缺项保留位置。 */
 const materialSizeText = (row: InventoryMaterial) => {
-  return renderMaterialDimensions(row).replace(/\*/g, '×') || '-'
+  return renderMaterialDimensions(row, false, row.categoryId == null ? [] : dimensionFields.value[row.categoryId]).replace(/\*/g, '×') || '-'
+}
+/** 只加载当前页涉及的品类配置，尺寸显示在前端计算。 */
+async function loadDimensionFields() {
+  const categoryIds = [...new Set(materialList.value.flatMap(row => row.categoryId == null ? [] : [row.categoryId]))]
+  const results = await Promise.allSettled(categoryIds.map(id => materialMasterApi.configuration(id)))
+  const fields: Record<number, MaterialDimensionFields> = {}
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') fields[categoryIds[index]] = result.value.data?.schema.spec_pattern?.fields || []
+    else console.warn('物料列表尺寸配置加载失败', categoryIds[index], result.reason)
+  })
+  dimensionFields.value = fields
 }
 /** 规格口径：厚度/克重/仅尺寸；有公差时一并显示。 */
 const specBasisText = (row: InventoryMaterial) => {
@@ -447,6 +460,7 @@ const loadCategoryOptions = async () => {
   const options = categoryResponse.data || []
   categoryOptions.value = options
   dictionaries.value = dictResponse.data || {}
+  await loadDimensionFields()
   // 品类下拉：可选叶子 + 有子类的父级（dev-20261104-008 两级筛选）
   const field = searchFields.value.find((item) => item.prop === 'categoryId')
   if (field) {
@@ -568,6 +582,7 @@ const getList = async () => {
     const res = await materialApi.page(payload)
     materialList.value = res.data?.records || []
     total.value = res.data?.total || 0
+    await loadDimensionFields()
   } finally {
     loading.value = false
   }

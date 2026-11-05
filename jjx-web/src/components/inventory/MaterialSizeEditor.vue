@@ -1,15 +1,15 @@
 <template>
   <div class="material-size-editor">
     <div class="size-fields">
-      <el-select v-if="!isRoll" :model-value="round" aria-label="尺寸形状" @update:model-value="setRound">
+      <el-select :model-value="round" aria-label="尺寸形状" @update:model-value="setRound">
         <el-option label="宽／长／厚" :value="false" />
         <el-option label="直径／厚" :value="true" />
       </el-select>
       <el-input :model-value="parts.widthMm" :aria-label="round ? '直径' : '宽'" inputmode="decimal"
         :placeholder="round ? '直径' : '宽'" @update:model-value="value => setPart('widthMm', value)" />
-      <el-input v-if="isRoll || !round" :model-value="parts.lengthMm" aria-label="长" placeholder="长" inputmode="decimal"
+      <el-input v-if="!round" :model-value="parts.lengthMm" aria-label="长" placeholder="长" inputmode="decimal"
         @update:model-value="value => setPart('lengthMm', value)" />
-      <el-input :model-value="parts.thicknessMm" aria-label="厚" :placeholder="isRoll ? '厚（可填254μm）' : '厚'" inputmode="decimal"
+      <el-input :model-value="parts.thicknessMm" aria-label="厚" placeholder="厚" inputmode="decimal"
         @update:model-value="value => setPart('thicknessMm', value)" />
       <el-select :model-value="parts.sizeUnit" aria-label="尺寸单位" @update:model-value="value => setPart('sizeUnit', value)">
         <el-option label="mm" value="mm" /><el-option label="cm" value="cm" /><el-option label="m" value="m" />
@@ -22,10 +22,10 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { displayMaterialDimension, emptyMaterialSize, isRollMaterial, parseMaterialThickness, renderMaterialDimensions, validateMaterialDimensions } from './materialSize'
-import type { MaterialSizeValue } from './materialSize'
+import { dimensionField, displayDimensionOf, emptyMaterialSize, parseMaterialThickness, renderMaterialDimensions, validateMaterialDimensions } from './materialSize'
+import type { MaterialDimensionFields, MaterialSizeValue } from './materialSize'
 
-const props = defineProps<{ modelValue: MaterialSizeValue; unit?: string | null; materialForm?: string | null }>()
+const props = defineProps<{ modelValue: MaterialSizeValue; dimensionFields?: MaterialDimensionFields }>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: MaterialSizeValue): void
   (e: 'valid-change', valid: boolean): void
@@ -33,29 +33,33 @@ const emit = defineEmits<{
 const parts = reactive({ widthMm: '', lengthMm: '', thicknessMm: '', sizeUnit: 'mm' })
 const round = ref(false)
 const error = ref('')
-const isRoll = computed(() => isRollMaterial(props))
+const thicknessMm = ref<number | null>(null)
 let ownValue: MaterialSizeValue | undefined
 const preview = computed(() => {
   if (error.value) return ''
-  return renderMaterialDimensions(numericValue(), round.value, props)
+  return renderMaterialDimensions(numericValue(), round.value, props.dimensionFields)
 })
-watch(() => [props.modelValue, props.unit, props.materialForm] as const, ([value], previous) => {
-  if (previous && previous[1] === props.unit && previous[2] === props.materialForm && ownValue && Object.keys(ownValue).every(k => value[k as keyof MaterialSizeValue] === ownValue![k as keyof MaterialSizeValue])) {
+watch(() => [props.modelValue, props.dimensionFields] as const, ([value], previous) => {
+  if (previous && previous[1] === props.dimensionFields && ownValue && Object.keys(ownValue).every(k => value[k as keyof MaterialSizeValue] === ownValue![k as keyof MaterialSizeValue])) {
     ownValue = undefined
     return
   }
   ownValue = undefined
   const dimensions = { ...emptyMaterialSize(), ...value }
+  thicknessMm.value = dimensions.thicknessMm
   for (const key of ['widthMm', 'lengthMm', 'thicknessMm'] as const) parts[key] = dimensions[key] == null ? '' : String(dimensions[key])
-  if (isRoll.value && dimensions.thicknessMm != null) parts.thicknessMm = displayMaterialDimension(dimensions.thicknessMm, 'thicknessMm', props)
+  const thicknessField = dimensionField(props.dimensionFields || [], 'thicknessMm')
+  if (thicknessField?.unit && dimensions.thicknessMm != null) {
+    parts.thicknessMm = displayDimensionOf(dimensions.thicknessMm, thicknessField.unit, thicknessField.scale) + thicknessField.unit
+  }
   parts.sizeUnit = dimensions.sizeUnit
-  round.value = !isRoll.value && dimensions.widthMm != null && dimensions.lengthMm == null && dimensions.thicknessMm != null
+  round.value = dimensions.widthMm != null && dimensions.lengthMm == null && dimensions.thicknessMm != null
   check(dimensions)
 }, { immediate: true, deep: true })
 
 function numericValue(): MaterialSizeValue {
   const number = (text: string) => !text.trim() ? null : /^\d+(?:\.\d+)?$/.test(text.trim()) ? Number(text) : NaN
-  return { widthMm: number(parts.widthMm), lengthMm: number(parts.lengthMm), thicknessMm: parseMaterialThickness(parts.thicknessMm), sizeUnit: parts.sizeUnit }
+  return { widthMm: number(parts.widthMm), lengthMm: number(parts.lengthMm), thicknessMm: thicknessMm.value, sizeUnit: parts.sizeUnit }
 }
 function check(value: MaterialSizeValue) {
   try {
@@ -77,6 +81,7 @@ function publish() {
 }
 function setPart(key: keyof typeof parts, value: string) {
   parts[key] = value
+  if (key === 'thicknessMm') thicknessMm.value = parseMaterialThickness(value)
   publish()
 }
 function setRound(value: boolean) {

@@ -42,47 +42,25 @@ public final class MaterialSizeValue {
         return value == null ? "" : value.stripTrailingZeros().toPlainString();
     }
 
-    /** 卷材唯一依据为计量单位 ROLL；形态与 M 等其他单位不参与推断。 */
-    public static boolean isRoll(String unit) {
-        return "ROLL".equals(unit);
-    }
-
-    public record DisplaySegment(String value, String unit) {
+    public record Segment(String value, String unit) {
         public String text() { return value + unit; }
     }
 
-    /** 只读显示换算；输入仍是 mm，不改变存储、校验或命名规则取值。 */
-    public static DisplaySegment displaySegment(BigDecimal value, String key, String unit, String sizeUnit) {
-        String displayUnit = sizeUnit == null || sizeUnit.isBlank() ? "mm" : sizeUnit;
-        if (isRoll(unit)) {
-            switch (key) {
-                case "thickness_mm" -> {
-                    value = value == null ? null : value.movePointRight(3).setScale(1, RoundingMode.HALF_UP);
-                    displayUnit = "μm";
-                }
-                case "width" -> displayUnit = "mm";
-                case "length" -> {
-                    value = value == null ? null : value.movePointLeft(3).setScale(2, RoundingMode.HALF_UP);
-                    displayUnit = "m";
-                }
-                default -> { }
-            }
+    /** 显示单位配置只换算 mm 数值；缺省精度去尾零，不影响存储或命名。 */
+    public static Segment segment(BigDecimal valueMm, String unit, Integer scale) {
+        String displayUnit = unit == null || unit.isBlank() ? "mm" : unit;
+        BigDecimal value = valueMm;
+        Integer decimals = scale;
+        switch (displayUnit) {
+            case "μm" -> { if (value != null) value = value.movePointRight(3); if (decimals == null) decimals = 1; }
+            case "cm" -> { if (value != null) value = value.movePointLeft(1); if (decimals == null) decimals = 2; }
+            case "m" -> { if (value != null) value = value.movePointLeft(3); if (decimals == null) decimals = 2; }
+            case "mm" -> { }
+            default -> throw new BusinessException("尺寸显示单位只允许 mm/cm/m/μm");
         }
-        return new DisplaySegment(number(value), displayUnit);
-    }
-
-    /** 卷材按厚/宽/卷长逐段带单位；其他物料严格沿用原 render。 */
-    public static String renderDisplay(BigDecimal width, BigDecimal length, BigDecimal thickness,
-                                       String sizeUnit, String unit) {
-        if (!isRoll(unit)) return render(width, length, thickness, sizeUnit);
-        BigDecimal[] values = {thickness, width, length};
-        String[] keys = {"thickness_mm", "width", "length"};
-        java.util.List<String> text = new java.util.ArrayList<>();
-        for (int i = 0; i < values.length; i++) {
-            if (values[i] != null) text.add(displaySegment(values[i], keys[i], unit, sizeUnit).text());
-        }
-        if (text.isEmpty()) return null;
-        return String.join("*", text);
+        if (decimals != null && (decimals < 0 || decimals > 6)) throw new BusinessException("尺寸显示小数位须为0至6");
+        if (value != null && decimals != null) value = value.setScale(decimals, RoundingMode.HALF_UP);
+        return new Segment(number(value), displayUnit);
     }
 
     /** 尺寸分隔符：历史 ×、字母 x/X 与全角 ＊ 都按同一分隔符识别，输出统一为 *。 */

@@ -1,6 +1,10 @@
 package com.jjx.inventory.master;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjx.common.exception.BusinessException;
@@ -34,7 +38,18 @@ public record MaterialAttributeSchema(
                               @JsonProperty("show_label") boolean showLabel,
                               @JsonProperty("with_unit") boolean withUnit,
                               @JsonProperty("unit_position") String unitPosition) {
-        public record SpecField(String key, String sep) { }
+        public record SpecField(String key, String sep, String unit,
+                                @JsonDeserialize(using = ScaleDeserializer.class) Integer scale) {
+            public SpecField(String key, String sep) { this(key, sep, null, null); }
+        }
+
+        /** 禁止 Jackson 将 1.5 小数位静默截断成 1。 */
+        public static final class ScaleDeserializer extends JsonDeserializer<Integer> {
+            @Override public Integer deserialize(JsonParser parser, DeserializationContext context) throws java.io.IOException {
+                if (!parser.isExpectedNumberIntToken()) throw new BusinessException("尺寸显示小数位须为0至6的整数");
+                return parser.getIntValue();
+            }
+        }
     }
 
     public record Option(String code, String label) { }
@@ -46,6 +61,9 @@ public record MaterialAttributeSchema(
                         @JsonProperty("spec_order") Integer specOrder,
                         @JsonProperty("true_label") String trueLabel,
                         @JsonProperty("false_label") String falseLabel) { }
+
+    public static final Set<String> DIMENSION_KEYS = Set.of("width", "length", "thickness_mm");
+    public static final Set<String> DIMENSION_UNITS = Set.of("mm", "cm", "m", "μm");
 
     public static final Set<String> TYPES = Set.of("enum", "multienum", "string", "integer", "decimal", "boolean");
     /** 属性单位白名单：无量纲留空；避免 mm/MM/毫米 混写。 */
@@ -76,6 +94,10 @@ public record MaterialAttributeSchema(
             for (SpecPattern.SpecField item : specPattern.fields()) {
                 if (item == null || item.key() == null || item.key().isBlank()) continue;
                 if (!specKeys.contains(item.key().trim())) fail("规格模板含未知字段：" + item.key());
+                if ((item.unit() != null || item.scale() != null) && !DIMENSION_KEYS.contains(item.key().trim()))
+                    fail("只有宽、长、厚允许配置显示单位和小数位：" + item.key());
+                if (item.unit() != null && !DIMENSION_UNITS.contains(item.unit())) fail("尺寸显示单位只允许 mm/cm/m/μm");
+                if (item.scale() != null && (item.scale() < 0 || item.scale() > 6)) fail("尺寸显示小数位须为0至6");
             }
         }
         Set<String> keys = new HashSet<>();
@@ -179,10 +201,9 @@ public record MaterialAttributeSchema(
         java.math.BigDecimal lengthMm = material == null ? null : material.getLengthMm();
         java.math.BigDecimal thicknessMm = material == null ? null : material.getThicknessMm();
         String sizeUnit = material == null ? null : material.getSizeUnit();
-        String materialUnit = material == null ? null : material.getUnit();
         if (specPattern == null || specPattern.fields() == null || specPattern.fields().isEmpty()) {
             return compose(attributes, thicknessMm == null ? null : thicknessMm.stripTrailingZeros().toPlainString(),
-                    MaterialSizeValue.renderDisplay(widthMm, lengthMm, thicknessMm, sizeUnit, materialUnit), materialUnit);
+                    MaterialSizeValue.render(widthMm, lengthMm, thicknessMm, sizeUnit));
         }
         Map<String, Object> values = new LinkedHashMap<>(attributes);
         StringBuilder text = new StringBuilder();
@@ -190,25 +211,25 @@ public record MaterialAttributeSchema(
         String lastUnit = "";
         String position = specPattern.unitPosition() == null || specPattern.unitPosition().isBlank()
                 ? (specPattern.withUnit() ? "each" : "none") : specPattern.unitPosition().trim().toLowerCase();
-        if (MaterialSizeValue.isRoll(materialUnit)) position = "each";
+        boolean configuredDimensions = specPattern.fields().stream().filter(Objects::nonNull)
+                .anyMatch(field -> field.key() != null && DIMENSION_KEYS.contains(field.key()) && (field.unit() != null || field.scale() != null));
         MaterialSizeValue.SizeSpec spec = material == null ? null : MaterialSizeValue.spec(material.getSize());
         for (SpecPattern.SpecField item : specPattern.fields()) {
             if (item == null || item.key() == null || item.key().isBlank()) continue;
             String key = item.key().trim();
             String display;
             String unit = specUnit(key, sizeUnit);
-            if (MaterialSizeValue.isRoll(materialUnit)
-                    && Set.of("width", "length", "thickness_mm").contains(key)) {
-                // 结构化缺项不能再从 getSize() 的紧凑文本反解析，否则仅厚度会被误作宽度。
+            if (DIMENSION_KEYS.contains(key) && configuredDimensions) {
                 BigDecimal value = switch (key) {
                     case "width" -> widthMm;
                     case "length" -> lengthMm;
                     default -> thicknessMm;
                 };
+                // 库中结构化字段是 mm；不从紧凑尺寸文本反推缺失维度。
                 if (value == null) continue;
-                var segment = MaterialSizeValue.displaySegment(value, key, materialUnit, sizeUnit);
+                var segment = MaterialSizeValue.segment(value, item.unit(), item.scale());
                 display = segment.value();
-                unit = segment.unit();
+                if (item.unit() != null) unit = segment.unit();
             } else display = MaterialNamingPattern.tokenValue(material, this, values, spec, key, categoryName);
             if (display == null || display.isBlank()) continue;
             if (specPattern.showLabel()) display = specLabel(key) + ":" + display;
@@ -223,26 +244,6 @@ public record MaterialAttributeSchema(
         String result = text.toString();
         if (result.length() > 500) fail("生成规格超过500字，请精简属性内容");
         return result.isEmpty() ? null : result;
-    }
-
-    private String dimension(String key, java.math.BigDecimal widthMm, java.math.BigDecimal lengthMm,
-                             java.math.BigDecimal thicknessMm, String sizeUnit, Map<String, Object> values) {
-        java.math.BigDecimal value = switch (key) {
-            case "width" -> widthMm;
-            case "length" -> lengthMm;
-            case "thickness_mm" -> thicknessMm;
-            default -> null;
-        };
-        if (value != null) return value.stripTrailingZeros().toPlainString();
-        Object raw = values.get(key);
-        if (raw == null || raw.toString().isBlank()) return null;
-        Field definition = fields.stream().filter(f -> f.key().equals(key)).findFirst().orElse(null);
-        if (raw instanceof Boolean b) return b ? (definition != null && definition.trueLabel() != null ? definition.trueLabel() : "是")
-                : (definition != null && definition.falseLabel() != null ? definition.falseLabel() : "否");
-        if (definition != null && "enum".equals(definition.type())) return label(definition, raw.toString());
-        if (raw instanceof List<?> list) return String.join("、", list.stream().map(Object::toString).toList());
-        if (raw instanceof Number number) return new java.math.BigDecimal(number.toString()).stripTrailingZeros().toPlainString();
-        return raw.toString();
     }
 
     private String specLabel(String key) {
@@ -267,10 +268,6 @@ public record MaterialAttributeSchema(
 
     /** 与前端预览同口径：模板顺序、可见属性、厚度列兜底、尺寸固定mm。 */
     public String compose(Map<String, Object> attributes, String thickness, String widthSize) {
-        return compose(attributes, thickness, widthSize, null);
-    }
-
-    private String compose(Map<String, Object> attributes, String thickness, String widthSize, String materialUnit) {
         Map<String, Object> values = new LinkedHashMap<>(attributes);
         if (thickness != null && !thickness.isBlank()) {
             fields.stream().filter(f -> f.key.equals("thickness_mm") || f.key.equals("gram_weight_gsm"))
@@ -288,11 +285,6 @@ public record MaterialAttributeSchema(
             else if (value instanceof Number number) display = new BigDecimal(number.toString()).stripTrailingZeros().toPlainString();
             else display = value.toString();
             String unit = f.unit == null ? "" : f.unit;
-            if (MaterialSizeValue.isRoll(materialUnit) && "thickness_mm".equals(f.key)) {
-                var segment = MaterialSizeValue.displaySegment(new BigDecimal(display), f.key, materialUnit, "mm");
-                display = segment.value();
-                unit = segment.unit();
-            }
             parts.add(f.label + ":" + display + unit);
         }
         if (widthSize != null && !widthSize.isBlank()) {

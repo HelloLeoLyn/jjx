@@ -147,8 +147,7 @@
         <el-form-item label="尺寸">
           <MaterialSizeEditor
             v-model="dimensions"
-            :unit="form.unit"
-            :material-form="form.materialForm"
+            :dimension-fields="configuration?.schema.spec_pattern?.fields"
             @valid-change="sizeValid = $event"
           />
         </el-form-item>
@@ -402,7 +401,7 @@ const specificationPreview = computed(() => {
   const text = previewMasterSpecification(schema, attributes, {
     thickness: String(form.grammage ?? form.thicknessMm ?? ''),
   })
-  const size = renderMaterialDimensions(dimensions.value)
+  const size = renderMaterialDimensions(dimensions.value, false, configuration.value?.schema.spec_pattern?.fields)
   return [text, size ? `尺寸:${size}` : ''].filter(Boolean).join('；')
 })
 const previewName = computed(() =>
@@ -459,10 +458,12 @@ watch(
     form.grammage,
     form.sizeUnit,
     JSON.stringify(form.attributeJson || {}),
+    JSON.stringify(configuration.value?.schema.spec_pattern),
   ],
   () => {
-    if (!form.categoryId || !configuration.value?.schema?.name_pattern) {
+    if (!form.categoryId || (!configuration.value?.schema?.name_pattern && !configuration.value?.schema?.spec_pattern?.fields.length)) {
       ruleName.value = ''
+      specText.value = ''
       return
     }
     if (ruleTimer) clearTimeout(ruleTimer)
@@ -488,8 +489,10 @@ watch(
         } catch {
           specText.value = ''
         }
-        const response = await materialMasterApi.renderNaming(form.categoryId!, draft)
-        ruleName.value = response.data || ''
+        if (configuration.value?.schema.name_pattern) {
+          const response = await materialMasterApi.renderNaming(form.categoryId!, draft)
+          ruleName.value = response.data || ''
+        } else ruleName.value = ''
       } catch {
         ruleName.value = ''
       }

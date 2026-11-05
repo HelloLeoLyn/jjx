@@ -47,8 +47,16 @@ export interface MaterialNamingPattern {
   /** 缺值处理：skip 跳过 / placeholder 占位 — */
   empty: 'skip' | 'placeholder'
 }
+export type MaterialDimensionUnit = 'mm' | 'cm' | 'm' | 'μm'
+export interface MaterialSpecField {
+  key: string
+  sep: string
+  /** 仅 width / length / thickness_mm；未配置沿用原单位和原数值 */
+  unit?: MaterialDimensionUnit | null
+  scale?: number | null
+}
 export interface MaterialSpecPattern {
-  fields: { key: string; sep: string }[]
+  fields: MaterialSpecField[]
   show_label: boolean
   with_unit: boolean
   /** each=每项带单位 / end=只在末尾带一次（默认）/ none=不带 */
