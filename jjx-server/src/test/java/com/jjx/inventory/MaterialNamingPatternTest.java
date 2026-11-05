@@ -49,7 +49,7 @@ class MaterialNamingPatternTest {
     @Test
     void 缺值可占位且分隔符取首个字符() {
         var pattern = new MaterialNamingPattern(List.of("brand", "color", "unit"), "-", "placeholder");
-        assertEquals("3M-黑-—", pattern.compose(material(), SCHEMA));
+        assertEquals("3M-黑色-—", pattern.compose(material(), SCHEMA, null, null, "黑色"));
     }
 
     @Test
@@ -81,13 +81,26 @@ class MaterialNamingPatternTest {
     }
 
     @Test
-    void 颜色代码输出中文且中文原样保留() {
+    void 颜色使用传入字典名称且中文原样保留() {
         var material = material();
         material.setColor("GREEN");
         var pattern = new MaterialNamingPattern(List.of("model", "color"), " ", "skip");
-        assertEquals("125 绿色", pattern.compose(material, SCHEMA));
+        assertEquals("125 绿色", pattern.compose(material, SCHEMA, null, null, "绿色"));
         material.setColor("蓝色");
         assertEquals("125 蓝色", pattern.compose(material, SCHEMA));
+    }
+
+    @Test
+    void 颜色不内置映射且缺失或空白字典名称均回退原代码() {
+        var material = material();
+        var pattern = new MaterialNamingPattern(List.of("color"), " ", "skip");
+        for (String code : List.of("BROWN", "BLACK", "WHITE", "SILVER", "TRANSPARENT", "UNKNOWN_COLOR", "茶色")) {
+            material.setColor(code);
+            assertEquals(code, pattern.compose(material, SCHEMA));
+            assertEquals(code, pattern.compose(material, SCHEMA, null, null, " "));
+        }
+        material.setColor(null);
+        assertNull(pattern.compose(material, SCHEMA));
     }
 
     @Test

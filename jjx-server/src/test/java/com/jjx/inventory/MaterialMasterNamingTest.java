@@ -11,9 +11,16 @@ import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.master.MaterialMasterController;
 import com.jjx.inventory.master.MaterialMasterMapper;
 import com.jjx.inventory.master.MaterialMasterService;
+import com.jjx.inventory.master.MaterialMasterCatalog;
+import com.jjx.inventory.master.MaterialMasterDTO;
+import com.jjx.inventory.master.MaterialAttributeSchema;
+import com.jjx.inventory.master.MaterialNamingPattern;
 import com.jjx.system.annotation.Log;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
@@ -28,9 +35,16 @@ class MaterialMasterNamingTest {
     private final MaterialMasterMapper locks = mock(MaterialMasterMapper.class);
     private final InventoryMaterialMapper materials = mock(InventoryMaterialMapper.class);
     private final ObjectMapper json = new ObjectMapper();
-    private final MaterialMasterService service = new MaterialMasterService(mock(com.jjx.inventory.master.MaterialMasterCatalog.class), locks, materials, null,
+    private final MaterialMasterCatalog catalog = mock(MaterialMasterCatalog.class);
+    private final MaterialMasterService service = new MaterialMasterService(catalog, locks, materials, null,
             null, null, mock(EventPublisher.class), json);
     private InventoryMaterial existing;
+
+    @BeforeAll static void initMaterialMetadata() {
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), "naming-test"), InventoryMaterial.class);
+    }
 
     @BeforeEach void setup() {
         existing = new InventoryMaterial(); existing.setMaterialId(1L); existing.setMaterialCode("RM001");
@@ -89,5 +103,75 @@ class MaterialMasterNamingTest {
         for (String field : List.of("categoryId", "attributeJson", "templateId", "supplierId", "safeStock", "materialCode", "materialId", "updateBy"))
             assertThrows(com.fasterxml.jackson.core.JsonProcessingException.class, () -> json.readValue(
                     "{\"materialName\":\"名称\",\"" + field + "\":1}", MaterialMasterService.NamingPatch.class), field);
+    }
+
+    private MaterialNamingPattern configureColorNaming() {
+        var pattern = new MaterialNamingPattern(List.of("brand", "model", "color"), "-", "skip");
+        var schema = new MaterialAttributeSchema(1, List.of(), false, null, null, null, List.of(), pattern);
+        var category = new MaterialMasterCatalog.Category(1L, "TEST", "测试品类", null, 3,
+                "R", "测试品类", true, null, null);
+        when(catalog.optionalConfiguration(1L)).thenReturn(
+                new MaterialMasterCatalog.Configuration(category, List.of(category), null, schema));
+        when(catalog.dictionaryLabel("brand", "BOMING", false)).thenReturn("博明");
+        existing.setBrand("BOMING"); existing.setModel("125"); existing.setCategoryId(1L);
+        when(materials.selectList(any(Wrapper.class))).thenReturn(List.of(existing));
+        return pattern;
+    }
+
+    @ParameterizedTest
+    @CsvSource({"BROWN,茶色", "BLACK,黑色", "WHITE,白色", "SILVER,银色", "TRANSPARENT,透明",
+            "UNKNOWN_COLOR,UNKNOWN_COLOR", "蓝色,蓝色"})
+    void allNamingPreviewsUseDictionaryLabelsWithoutWriting(String code, String expectedColor) {
+        var pattern = configureColorNaming();
+        existing.setColor(code);
+        if (code.equals(expectedColor)) {
+            when(catalog.dictionaryLabel("color", code, false)).thenThrow(new BusinessException("字典选项不存在"));
+        } else {
+            when(catalog.dictionaryLabel("color", code, false)).thenReturn(expectedColor);
+        }
+        var draft = new MaterialMasterDTO();
+        draft.setBrand(existing.getBrand()); draft.setModel(existing.getModel()); draft.setColor(code);
+        String expected = "博明-125-" + expectedColor;
+        assertEquals(expected, service.renderNaming(1L, draft));
+        assertEquals(expected, service.previewNaming(1L, pattern).samples().get(0).newName());
+        var preview = service.previewRename(1L, 5);
+        assertEquals(expected, preview.samples().get(0).newName());
+        assertEquals(1, preview.changeable());
+        assertEquals("人工名称", existing.getMaterialName(), "预览不得改写存量名称");
+        verify(catalog, times(3)).dictionaryLabel("color", code, false);
+        verify(materials, never()).update(any(), any(Wrapper.class));
+        verify(locks, never()).lockMaterial(anyLong());
+    }
+
+    @Test void blankOrMissingDictionaryLabelFallsBackToOriginalColor() {
+        configureColorNaming();
+        var draft = new MaterialMasterDTO(); draft.setColor("BROWN");
+        when(catalog.dictionaryLabel("color", "BROWN", false)).thenReturn(null, " ");
+        assertEquals("BROWN", service.renderNaming(1L, draft));
+        assertEquals("BROWN", service.renderNaming(1L, draft));
+        draft.setColor(null);
+        assertNull(service.renderNaming(1L, draft));
+        verify(catalog, never()).dictionaryLabel("color", null, false);
+    }
+
+    @Test void applyingDictionaryColorRenameOnlyWritesDifferentRowsAndKeepsAudit() throws Exception {
+        configureColorNaming();
+        existing.setColor("BROWN");
+        var unchanged = new InventoryMaterial();
+        unchanged.setMaterialId(2L); unchanged.setBrand("BOMING"); unchanged.setModel("125");
+        unchanged.setColor("BROWN"); unchanged.setMaterialName("博明-125-茶色");
+        when(catalog.dictionaryLabel("color", "BROWN", false)).thenReturn("茶色");
+        when(materials.selectList(any(Wrapper.class))).thenReturn(List.of(existing, unchanged));
+        when(materials.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        when(materials.selectById(1L)).thenReturn(existing);
+
+        assertEquals(1, service.applyRename(1L, "codex"));
+        verify(locks).lockMaterial(1L);
+        verify(locks, never()).lockMaterial(2L);
+        var update = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(materials).update(isNull(), update.capture());
+        assertTrue(update.getValue().getParamNameValuePairs().containsValue("博明-125-茶色"));
+        assertTrue(update.getValue().getParamNameValuePairs().containsValue("codex"));
+        assertEquals("博明-125-茶色", unchanged.getMaterialName());
     }
 }

@@ -97,6 +97,12 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
      * 传 null 时回落到原值，保持单元测试与旧调用不变。
      */
     public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName, String brandLabel) {
+        return compose(material, schema, categoryName, brandLabel, null);
+    }
+
+    /** 品牌、颜色统一使用调用方提供的字典名称，缺失时回退原始代码。 */
+    public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName,
+                          String brandLabel, String colorLabel) {
         MaterialNamingPattern pattern = normalized();
         if (pattern.fields().isEmpty()) return null;
         Map<String, Object> attributes = readAttributes(material.getAttributeJson());
@@ -104,7 +110,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         StringBuilder text = new StringBuilder();
         boolean first = true;
         for (String field : pattern.fields()) {
-            String value = valueOf(material, schema, attributes, spec, field, categoryName, brandLabel);
+            String value = valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, colorLabel);
             String part = value == null || value.isBlank()
                     ? ("placeholder".equals(pattern.empty()) ? "—" : null)
                     : value.trim();
@@ -127,16 +133,16 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     public static String tokenValue(InventoryMaterial material, MaterialAttributeSchema schema,
                                     Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
                                     String categoryName, String brandLabel) {
-        return valueOf(material, schema, attributes, spec, field, categoryName, brandLabel);
+        return valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, null);
     }
 
     private static String valueOf(InventoryMaterial material, MaterialAttributeSchema schema,
                                   Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
-                                  String categoryName, String brandLabel) {
+                                  String categoryName, String brandLabel, String colorLabel) {
         return switch (field) {
             case "brand" -> brandLabel == null || brandLabel.isBlank() ? material.getBrand() : brandLabel;
             case "model" -> material.getModel();
-            case "color" -> colorText(material.getColor());
+            case "color" -> colorLabel == null || colorLabel.isBlank() ? material.getColor() : colorLabel;
             case "meta" -> material.getMaterialMeta();
             case "form" -> material.getMaterialForm();
             case "width" -> decimalText(firstNonNull(material.getWidthMm(), spec == null ? null : spec.widthMm()));
@@ -159,34 +165,6 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     private static String decimalText(java.math.BigDecimal value) {
         if (value == null) return null;
         return value.stripTrailingZeros().toPlainString();
-    }
-
-    /** 颜色存代码，命名用名称；映射缺失时回退代码。 */
-    private static String colorText(String code) {
-        if (code == null || code.isBlank()) return null;
-        // 已经是中文（字典里直接存中文色名）就原样输出
-        if (code.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.HAN)) return code;
-        return switch (code.trim().toUpperCase()) {
-            case "BLACK" -> "黑";
-            case "WHITE" -> "白";
-            case "YELLOW" -> "黄";
-            case "RED" -> "红";
-            case "BLUE" -> "蓝";
-            case "GRAY" -> "灰";
-            case "SILVER" -> "银";
-            case "TRANSPARENT" -> "透明";
-            case "GREEN" -> "绿色";
-            case "ORANGE" -> "橙色";
-            case "PURPLE" -> "紫色";
-            case "BROWN" -> "棕色";
-            case "PINK" -> "粉色";
-            case "GOLD" -> "金色";
-            case "GOLDEN" -> "金色";
-            case "CLEAR" -> "透明";
-            case "NATURAL" -> "本色";
-            case "MILKY" -> "乳白";
-            default -> code;
-        };
     }
 
     /** 属性值转文字：枚举/多枚举输出选项名称，布尔输出是/否文字，其余原样。 */
