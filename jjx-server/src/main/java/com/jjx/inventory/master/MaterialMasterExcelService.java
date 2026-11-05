@@ -49,6 +49,8 @@ public class MaterialMasterExcelService {
                 : catalog.categories().stream().filter(MaterialMasterCatalog.Category::selectable).toList();
         LinkedHashSet<String> columns = new LinkedHashSet<>();
         columns.add("品类"); columns.addAll(COMMON_HEADERS);
+        if (chosen != null && MaterialMasterService.categoryDefinesMaterial(catalog.configuration(categoryId).schema()))
+            columns.remove("材质");
         for (var category : categories) catalog.configuration(category.categoryId()).schema().fields().stream().filter(f -> !f.key().equals("thickness_mm")).forEach(f -> columns.add(fieldHeader(f)));
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("物料录入");
@@ -145,7 +147,9 @@ public class MaterialMasterExcelService {
                         var current = materials.selectById(dto.getMaterialId());
                         if (current != null && Boolean.TRUE.equals(current.getClassConfirmed())) throw new BusinessException("人工确认物料请在编辑入口修改，导入不能覆盖");
                     }
-                    dto.setMaterialMeta(dictionaryCode(dictionaries, "material_meta", value(row, columns, "材质")));
+                    var schema = dto.getCategoryId() == null ? null : catalog.configuration(dto.getCategoryId()).schema();
+                    dto.setMaterialMeta(MaterialMasterService.categoryDefinesMaterial(schema) ? schema.defaultMeta()
+                            : dictionaryCode(dictionaries, "material_meta", value(row, columns, "材质")));
                     dto.setMaterialForm(dictionaryCode(dictionaries, "form", value(row, columns, "形态")));
                     dto.setWidthMm(decimal(value(row, columns, "宽(mm)"), "宽(mm)"));
                     dto.setLengthMm(decimal(value(row, columns, "长(mm)"), "长(mm)"));
@@ -168,8 +172,7 @@ public class MaterialMasterExcelService {
                     if (!batchControl.isBlank()) dto.setBatchControl(bool(batchControl));
                     Map<String, Object> attributes = new LinkedHashMap<>(); Set<String> allowedHeaders = new HashSet<>(COMMON_HEADERS); allowedHeaders.add("品类");
                     if (dto.getCategoryId() != null) {
-                        var schema = catalog.configuration(dto.getCategoryId()).schema();
-                        if (dto.getMaterialMeta() != null && !schema.metaOptions().contains(dto.getMaterialMeta())) throw new BusinessException("【材质】越界：" + value(row, columns, "材质"));
+                        if (dto.getMaterialMeta() != null && !schema.metaOptions().contains(dto.getMaterialMeta())) throw new BusinessException("材质不在该品类允许范围：" + value(row, columns, "材质"));
                         for (var field : schema.fields()) {
                             if (field.key().equals("thickness_mm")) continue;
                             String label = fieldHeader(field); allowedHeaders.add(label);

@@ -82,7 +82,7 @@
           </div>
         </el-form-item>
         <el-row :gutter="16">
-          <el-col :span="12"
+          <el-col v-if="!categoryMaterialMeta" :span="12"
             ><el-form-item label="材质" :required="configuration?.schema.meta_required">
               <el-select
                 v-model="form.materialMeta"
@@ -370,6 +370,21 @@ const materialOptions = computed(() =>
   (dictionaries.value.material_meta || []).filter((o) =>
     configuration.value?.schema.meta_options.includes(o.code)
   )
+)
+/** 仅控制表单显示与草稿同步，最终落值由后端按模板确定。 */
+const categoryMaterialMeta = computed(() => {
+  const schema = configuration.value?.schema
+  return schema?.meta_required === true &&
+    schema.meta_options.length === 1 &&
+    schema.default_meta === schema.meta_options[0]
+    ? schema.default_meta
+    : null
+})
+watch(
+  () => [categoryMaterialMeta.value, form.materialMeta],
+  () => {
+    if (categoryMaterialMeta.value) form.materialMeta = categoryMaterialMeta.value
+  }
 )
 /** 规格模板生成结果（后端统一实现，dev-20261029-027） */
 const specText = ref('')

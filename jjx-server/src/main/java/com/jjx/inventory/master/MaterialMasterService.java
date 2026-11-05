@@ -175,7 +175,7 @@ public class MaterialMasterService {
             draftMaterial.setModel(draft.getModel());
             draftMaterial.setColor(draft.getColor());
             draftMaterial.setBrand(draft.getBrand());
-            draftMaterial.setMaterialMeta(draft.getMaterialMeta());
+            draftMaterial.setMaterialMeta(categoryDefinesMaterial(schema) ? schema.defaultMeta() : draft.getMaterialMeta());
             draftMaterial.setMaterialForm(draft.getMaterialForm());
             draftMaterial.setUnit(draft.getUnit());
             draftMaterial.setSupplierName(draft.getSupplierName());
@@ -211,7 +211,7 @@ public class MaterialMasterService {
             material.setThicknessMm(draft.getThicknessMm());
             material.setGrammage(draft.getGrammage());
             material.setSizeUnit(draft.getSizeUnit());
-            material.setMaterialMeta(fallback(draft.getMaterialMeta(), schema.defaultMeta()));
+            material.setMaterialMeta(resolveMaterialMeta(draft.getMaterialMeta(), schema));
             material.setMaterialForm(fallback(draft.getMaterialForm(), schema.defaultForm()));
             try {
                 material.setAttributeJson(objectMapper.writeValueAsString(
@@ -333,6 +333,16 @@ public class MaterialMasterService {
         return materialService.selectEntities(query);
     }
 
+    /** 材质已由品类唯一确定；保存、预览与 Excel 共用模板判定。 */
+    static boolean categoryDefinesMaterial(MaterialAttributeSchema schema) {
+        return schema != null && schema.metaRequired() && schema.metaOptions().size() == 1
+                && Objects.equals(schema.defaultMeta(), schema.metaOptions().get(0));
+    }
+
+    private static String resolveMaterialMeta(String input, MaterialAttributeSchema schema) {
+        return categoryDefinesMaterial(schema) ? schema.defaultMeta() : fallback(input, schema.defaultMeta());
+    }
+
     /** 同时供保存和导入预检使用，不写库、不生成业务编号。 */
     public Prepared prepare(MaterialMasterDTO dto) {
         if (dto == null) throw new BusinessException("物料不能为空");
@@ -342,7 +352,7 @@ public class MaterialMasterService {
         MaterialAttributeSchema schema = config == null
                 ? new MaterialAttributeSchema(1, List.of(), false, null, null, "PCS", List.of(), null) : config.schema();
         String name = text(dto.getMaterialName(), "物料名称", 200, true);
-        String meta = fallback(dto.getMaterialMeta(), schema.defaultMeta());
+        String meta = resolveMaterialMeta(dto.getMaterialMeta(), schema);
         if (meta == null && schema.metaOptions().size() == 1) meta = schema.metaOptions().get(0);
         if (config != null && meta != null && !schema.metaOptions().contains(meta)) throw new BusinessException("材质不在该品类允许范围");
         if (meta == null && schema.metaRequired()) throw new BusinessException("请选择材质");
