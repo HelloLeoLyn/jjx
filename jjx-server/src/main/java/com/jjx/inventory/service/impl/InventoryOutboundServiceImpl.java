@@ -77,6 +77,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
     private final InventoryAlertService alertService;
     private final com.jjx.sales.mapper.SalesOrderProductMapper salesOrderProductMapper;
+    private final InventoryAlertServiceImpl inventoryAlertService;
+
     // 打样领料（dev-20260929-023）
     private final com.jjx.sales.mapper.SalesSampleOrderMapper sampleOrderMapper;
     private final com.jjx.sales.mapper.SalesSampleBomMapper sampleBomMapper;
@@ -1493,6 +1495,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 入参沿用 sales_order.order_id，与 BOM、出库来源一致，并非样品扩展表主键。
         com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectByOrderId(sampleOrderId);
         if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
+        try {
+            inventoryAlertService.checkSampleShortage(sampleOrderId);
+        } catch (Exception e) {
+            log.warn("样品单[{}]刷新缺料预警失败，继续领料预览", sampleOrderId, e);
+        }
         return buildSamplePickPreview(sampleOrderId, sample);
     }
 
@@ -1535,12 +1542,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             m.put("unit", row.getUnit());
             m.put("baseQty", row.getBaseQty());
             m.put("moduleQty", row.getModuleQty());
-            BigDecimal unitQuantity = sampleUnitQuantity(row);
+            BigDecimal unitQuantity = InventoryAlertServiceImpl.sampleUnitQuantity(row);
             m.put("unitQuantity", unitQuantity);
             // 样品 BOM 无 loss_rate / min_issue_qty：损耗按 0，不加最低投料量下限。
-            BigDecimal demand = unitQuantity
-                    .multiply(BigDecimal.valueOf(Objects.requireNonNullElse(sample.getSampleQty(), 0)))
-                    .setScale(0, java.math.RoundingMode.UP);
+            BigDecimal demand = InventoryAlertServiceImpl.sampleDemand(row, sample.getSampleQty());
             m.put("quantity", demand);
             BigDecimal issued = mat == null ? BigDecimal.ZERO
                     : issuedByMaterial.getOrDefault(mat.getMaterialId(), BigDecimal.ZERO);
@@ -1552,19 +1557,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                         : Objects.requireNonNullElse(stock.getAvailableQuantity(), BigDecimal.ZERO);
             }
             m.put("availableQuantity", available);
+            m.put("gap", InventoryAlertServiceImpl.sampleGap(demand, available));
             result.add(m);
         }
         return result;
-    }
-
-    private static BigDecimal sampleUnitQuantity(com.jjx.sales.domain.entity.SalesSampleBom row) {
-        // 与生产 BOM calculatedUnitQuantity 一致；有效基数、模数优先于库中既存用量 quantity。
-        BigDecimal base = row.getBaseQty();
-        BigDecimal module = row.getModuleQty();
-        if (base != null && base.signum() > 0 && module != null && module.signum() > 0) {
-            return base.divide(module, 4, java.math.RoundingMode.HALF_UP);
-        }
-        return Objects.requireNonNullElse(row.getQuantity(), BigDecimal.ZERO);
     }
 
     @Override

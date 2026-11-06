@@ -40,6 +40,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class SampleStandaloneMaterialPersistenceTest {
 
+    @Mock com.jjx.inventory.service.impl.InventoryAlertServiceImpl inventoryAlertService;
     @Mock OrderMapper orderMapper;
     @Mock SalesSampleBomMapper sampleBomMapper;
     @Mock SalesSampleProcessMapper sampleProcessMapper;
@@ -68,6 +69,19 @@ class SampleStandaloneMaterialPersistenceTest {
 
     private static void assertValue(String expected, BigDecimal actual) {
         assertEquals(0, new BigDecimal(expected).compareTo(actual), "expected " + expected + " but was " + actual);
+    }
+
+    @Test
+    void engineeringAcceptanceOnlyReturnsMissingBomNoticeAndNeverChecksShortage() {
+        when(orderMapper.selectById(10L)).thenAnswer(call -> order(SampleOrderStatusEnum.REQUEST.getValue()));
+        when(orderMapper.acceptEngineering(anyLong(), any(), any(), any())).thenReturn(1);
+        when(sampleBomMapper.selectCount(any())).thenReturn(0L, 1L);
+        try (MockedStatic<SecurityUtils> security = mockStatic(SecurityUtils.class)) {
+            security.when(SecurityUtils::getRealName).thenReturn("测试工程师");
+            assertEquals("尚未编制打样 BOM", service.acceptEngineering(10L).getParams().get("sampleBomNotice"));
+            assertEquals(null, service.acceptEngineering(10L).getParams().get("sampleBomNotice"));
+        }
+        org.mockito.Mockito.verifyNoInteractions(inventoryAlertService);
     }
 
     @Test

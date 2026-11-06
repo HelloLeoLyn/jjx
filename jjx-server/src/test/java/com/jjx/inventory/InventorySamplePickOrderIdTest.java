@@ -37,6 +37,7 @@ import static org.mockito.Mockito.*;
 /** 订单ID与样品扩展主键刻意不相等；仅使用仓储替身，不写业务库。 */
 @ExtendWith(MockitoExtension.class)
 class InventorySamplePickOrderIdTest {
+    @Mock com.jjx.inventory.service.impl.InventoryAlertServiceImpl inventoryAlertService;
     @Mock SalesSampleOrderMapper sampleOrderMapper;
     @Mock SalesSampleBomMapper sampleBomMapper;
     @Mock OrderMapper salesOrderMapper;

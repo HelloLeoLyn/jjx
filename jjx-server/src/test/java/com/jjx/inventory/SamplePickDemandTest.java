@@ -37,6 +37,7 @@ import static org.mockito.Mockito.*;
 /** BOM 轮次过滤使用隔离 H2 的真实 Mapper；单据写入用替身，不连接业务库。 */
 @ExtendWith(MockitoExtension.class)
 class SamplePickDemandTest {
+    @Mock com.jjx.inventory.service.impl.InventoryAlertServiceImpl inventoryAlertService;
     @Mock InventoryOutboundOrderMapper outboundOrderMapper;
     @Mock InventoryOutboundItemMapper outboundItemMapper;
     @Mock InventoryMaterialMapper materialMapper;
@@ -85,6 +86,8 @@ class SamplePickDemandTest {
         assertEquals("10×20", row.get("specification"));
         assertEquals("PCS", row.get("unit"));
         assertEquals(BigDecimal.ZERO, row.get("availableQuantity"));
+        assertEquals(new BigDecimal(expected), row.get("gap"));
+        verify(inventoryAlertService).checkSampleShortage(7L);
     }
 
     @ParameterizedTest
@@ -206,6 +209,17 @@ class SamplePickDemandTest {
         assertEquals(new BigDecimal("3"), order.getValue().getTotalQuantity());
         verify(outboundItemMapper, times(2)).insert(any(InventoryOutboundItem.class));
         verify(outboundItemMapper).selectByOutboundId(100L); // 沿用原预占入口
+    }
+
+    @Test void previewGapClearsWhenStockCoversDemandAndRefreshFailureDoesNotBlock() {
+        bom(7L, 1, 11L, "材料", "1");
+        material(11L);
+        var stock = new InventoryStock();
+        stock.setAvailableQuantity(new BigDecimal("3"));
+        when(stockMapper.selectByMaterialId(11L)).thenReturn(stock);
+        doThrow(new IllegalStateException("预警存储失败")).when(inventoryAlertService).checkSampleShortage(7L);
+        assertEquals(BigDecimal.ZERO, service.previewSamplePick(7L).get(0).get("gap"));
+        verify(inventoryAlertService).checkSampleShortage(7L);
     }
 
     private void bom(Long orderId, int round, Long materialId, String name, String quantity) {

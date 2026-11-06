@@ -36,6 +36,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class SampleMaterialSplitTransferTest {
+    @Mock com.jjx.inventory.service.impl.InventoryAlertServiceImpl inventoryAlertService;
     @Mock OrderMapper orderMapper;
     @Mock SalesSampleProcessMapper sampleProcessMapper;
     @Mock SalesSampleBomMapper sampleBomMapper;

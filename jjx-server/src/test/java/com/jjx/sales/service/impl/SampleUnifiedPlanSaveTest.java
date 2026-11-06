@@ -30,6 +30,7 @@ import static org.mockito.ArgumentMatchers.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class SampleUnifiedPlanSaveTest {
+    @Mock com.jjx.inventory.service.impl.InventoryAlertServiceImpl inventoryAlertService;
     @Mock OrderMapper orders;
     @Mock SalesSampleProcessMapper processes;
     @Mock SalesSampleBomMapper materials;
@@ -74,6 +75,45 @@ class SampleUnifiedPlanSaveTest {
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(ds),new AnnotationTransactionAttributeSource()));
         service=(SampleOrderServiceImpl) proxy.getProxy();
     }
+    @Test void shortageRefreshRunsOnlyAfterBomCommitAndSeesCommittedMaterials() {
+        doAnswer(call -> {
+            // 新连接能看到材料，证明不是在 BOM 未提交时计算；真实预警服务使用 REQUIRES_NEW。
+            try (var connection = jdbc.getDataSource().getConnection();
+                 var statement = connection.createStatement();
+                 var result = statement.executeQuery("SELECT name FROM test_bom")) {
+                assertTrue(result.next());
+                assertEquals("新独立材料", result.getString(1));
+            }
+            return null;
+        }).when(inventoryAlertService).checkSampleShortage(10L);
+        try (var security = mockStatic(SecurityUtils.class)) {
+            service.saveProcessPlan(10L, request());
+        }
+        verify(inventoryAlertService).checkSampleShortage(10L);
+    }
+
+    @Test void outerRollbackAfterBomSaveDoesNotRefreshAlerts() {
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(
+                new DataSourceTransactionManager(jdbc.getDataSource()));
+        try (var security = mockStatic(SecurityUtils.class)) {
+            transaction.executeWithoutResult(status -> {
+                service.saveProcessPlan(10L, request());
+                verifyNoInteractions(inventoryAlertService);
+                status.setRollbackOnly();
+            });
+        }
+        verifyNoInteractions(inventoryAlertService);
+        assertEquals("旧材料", jdbc.queryForObject("SELECT name FROM test_bom", String.class));
+    }
+
+    @Test void shortageRefreshFailureDoesNotUndoBomCommit() {
+        doThrow(new IllegalStateException("预警暂时不可用")).when(inventoryAlertService).checkSampleShortage(10L);
+        try (var security = mockStatic(SecurityUtils.class)) {
+            service.saveProcessPlan(10L, request());
+        }
+        assertEquals("新独立材料", jdbc.queryForObject("SELECT name FROM test_bom", String.class));
+    }
+
     List<SalesSampleProcess> readProcesses() {
         return jdbc.query("SELECT * FROM test_process ORDER BY id",(rs,n)->{
             var row=new SalesSampleProcess();row.setProcessId(rs.getLong("id"));row.setProcessName(rs.getString("name"));

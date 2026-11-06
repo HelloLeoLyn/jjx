@@ -24,6 +24,11 @@ import com.jjx.product.mapper.EngineeringBomItemMapper;
 import com.jjx.sales.domain.entity.SalesOrder;
 import com.jjx.sales.domain.entity.SalesOrderProduct;
 import com.jjx.sales.mapper.OrderMapper;
+import com.jjx.sales.domain.entity.SalesSampleBom;
+import com.jjx.sales.mapper.SalesSampleBomMapper;
+import com.jjx.sales.mapper.SalesSampleOrderMapper;
+import com.jjx.inventory.enums.AlertTypeEnum;
+import org.springframework.transaction.annotation.Propagation;
 import com.jjx.sales.mapper.SalesOrderProductMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +54,8 @@ import com.jjx.system.utils.SecurityUtils;
 public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapper, InventoryAlertLog>
         implements InventoryAlertService {
 
+    private final SalesSampleBomMapper sampleBomMapper;
+    private final SalesSampleOrderMapper sampleOrderMapper;
     private final InventoryAlertLogMapper alertLogMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryMaterialMapper materialMapper;
@@ -116,6 +123,93 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     public void checkOrderShortage(Long orderId) {
         // 兼容调用（发送确认/客户确认自动触发）：忽略明细
         checkOrderShortageWithDetail(orderId);
+    }
+
+    /**
+     * 打样缺料独立重算：提交后回调也必须开启新事务；订单行锁保证同单并发刷新串行。
+     * 仅写预警，不调整库存、不扣在途、不阻断样品 BOM 或领料流程。
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    public void checkSampleShortage(Long sampleOrderId) {
+        SalesOrder order = orderMapper.selectByIdForUpdate(sampleOrderId);
+        var sample = sampleOrderMapper.selectByOrderId(sampleOrderId);
+        if (order == null || sample == null) return;
+        List<InventoryAlertLog> oldAlerts = alertLogMapper.selectList(
+                new LambdaQueryWrapper<InventoryAlertLog>()
+                        .eq(InventoryAlertLog::getAlertType, AlertTypeEnum.SAMPLE_SHORTAGE.getCode())
+                        .eq(InventoryAlertLog::getOrderNo, order.getOrderNo())
+                        .in(InventoryAlertLog::getStatus, 0, 1));
+        for (InventoryAlertLog old : oldAlerts) {
+            old.setStatus(3);
+            old.setProcessRemark("打样缺料重算，旧预警失效");
+            alertLogMapper.updateById(old);
+        }
+        for (SalesSampleBom row : sampleBomMapper.selectList(new LambdaQueryWrapper<SalesSampleBom>()
+                .eq(SalesSampleBom::getOrderId, sampleOrderId)
+                .eq(SalesSampleBom::getRoundNo, Objects.requireNonNullElse(sample.getSampleRound(), 1)))) {
+            // 与领料预览一致：有档案 ID 时不再按名称误配，历史无 ID 才回退名称。
+            InventoryMaterial material = row.getMaterialId() != null
+                    ? materialMapper.selectById(row.getMaterialId())
+                    : materialMapper.selectOne(new LambdaQueryWrapper<InventoryMaterial>()
+                            .eq(InventoryMaterial::getMaterialName, row.getMaterialName()).last("LIMIT 1"));
+            if (material == null) {
+                // 预警表要求物料 ID/编码非空；未匹配档案的历史 BOM 行由领料预览提示处理。
+                log.warn("样品单[{}] BOM[{}]未匹配物料档案，跳过库存预警", sampleOrderId, row.getBomId());
+                continue;
+            }
+            InventoryStock stock = stockMapper.selectByMaterialId(material.getMaterialId());
+            BigDecimal available = stock == null ? BigDecimal.ZERO
+                    : Objects.requireNonNullElse(stock.getAvailableQuantity(), BigDecimal.ZERO);
+            BigDecimal demand = sampleDemand(row, sample.getSampleQty());
+            BigDecimal gap = sampleGap(demand, available);
+            if (gap.signum() <= 0) continue;
+            InventoryAlertLog alert = new InventoryAlertLog();
+            alert.setAlertType(AlertTypeEnum.SAMPLE_SHORTAGE.getCode());
+            alert.setAlertLevel("warning");
+            alert.setStatus(0);
+            alert.setOrderNo(order.getOrderNo());
+            alert.setMaterialId(material.getMaterialId());
+            alert.setMaterialCode(material.getMaterialCode());
+            alert.setMaterialName(row.getMaterialName());
+            alert.setCurrentStock(available);
+            alert.setSuggestion("建议补货 " + gap.stripTrailingZeros().toPlainString());
+            alert.setAlertMessage("样品单[" + order.getOrderNo() + "]缺料：物料[" + alert.getMaterialCode()
+                    + "] " + row.getMaterialName() + " 需求" + demand.stripTrailingZeros().toPlainString()
+                    + " 可用" + available.stripTrailingZeros().toPlainString()
+                    + " 缺口" + gap.stripTrailingZeros().toPlainString());
+            alert.setAlertTime(LocalDateTime.now());
+            alertLogMapper.insert(alert);
+        }
+    }
+
+    /** 只查当前页样品单的未处理预警，不把全表预警拉到前端。 */
+    public java.util.Set<String> sampleShortageOrderNos(List<String> orderNos) {
+        if (orderNos.isEmpty()) return java.util.Set.of();
+        return alertLogMapper.selectList(new LambdaQueryWrapper<InventoryAlertLog>()
+                        .select(InventoryAlertLog::getOrderNo)
+                        .eq(InventoryAlertLog::getAlertType, AlertTypeEnum.SAMPLE_SHORTAGE.getCode())
+                        .in(InventoryAlertLog::getStatus, 0, 1)
+                        .in(InventoryAlertLog::getOrderNo, orderNos))
+                .stream().map(InventoryAlertLog::getOrderNo).collect(java.util.stream.Collectors.toSet());
+    }
+
+    /** dev-20261106-010 既定口径，预览和预警共用，保持四位单位用量精度。 */
+    public static BigDecimal sampleUnitQuantity(SalesSampleBom row) {
+        BigDecimal base = row.getBaseQty();
+        BigDecimal module = row.getModuleQty();
+        if (base != null && base.signum() > 0 && module != null && module.signum() > 0) {
+            return base.divide(module, 4, java.math.RoundingMode.HALF_UP);
+        }
+        return Objects.requireNonNullElse(row.getQuantity(), BigDecimal.ZERO);
+    }
+
+    public static BigDecimal sampleDemand(SalesSampleBom row, Integer sampleQty) {
+        return sampleUnitQuantity(row).multiply(BigDecimal.valueOf(Objects.requireNonNullElse(sampleQty, 0)))
+                .setScale(0, java.math.RoundingMode.UP);
+    }
+
+    public static BigDecimal sampleGap(BigDecimal demand, BigDecimal available) {
+        return demand.subtract(available).max(BigDecimal.ZERO);
     }
 
     @Override

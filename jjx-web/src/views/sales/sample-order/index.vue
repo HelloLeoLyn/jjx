@@ -70,6 +70,7 @@
             <el-tag :type="statusTagType(scope.row.sampleStatus)" size="small">
               {{ statusLabel(scope.row.sampleStatus) }}
             </el-tag>
+            <el-tag v-if="scope.row.params?.sampleShortage" type="danger" size="small">缺料</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="工程接单" width="110" align="center">
@@ -228,11 +229,18 @@
       append-to-body
     >
       <p>
-        打样数量：{{ pickSample?.sampleQty ?? '-' }} {{ pickSample?.unit || '' }}；
-        单位用量 = 基数 ÷ 模数（两者均大于 0，否则使用 BOM 用量）；
-        需求 = 单位用量 × 打样数量（向上取整）
+        打样数量：{{ pickSample?.sampleQty ?? '-' }} {{ pickSample?.unit || '' }}； 单位用量 = 基数
+        ÷ 模数（两者均大于 0，否则使用 BOM 用量）； 需求 = 单位用量 × 打样数量（向上取整）
       </p>
-      <el-table :data="pickRows" size="small" border>
+      <el-table
+        :data="pickRows"
+        size="small"
+        border
+        :row-class-name="
+          ({ row }: { row: SamplePickPreviewRow }) =>
+            Number(row.gap) > 0 ? 'sample-shortage-row' : ''
+        "
+      >
         <el-table-column
           label="物料名称"
           prop="materialName"
@@ -258,6 +266,12 @@
         </el-table-column>
         <el-table-column label="可用" width="80" align="right">
           <template #default="{ row }">{{ row.availableQuantity ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="缺口" width="100" align="right">
+          <template #default="{ row }">
+            <span v-if="Number(row.gap) > 0" class="sample-shortage-gap">缺 {{ row.gap }}</span>
+            <span v-else>-</span>
+          </template>
         </el-table-column>
         <el-table-column label="本次领料" width="140">
           <template #default="{ row }">
@@ -1081,6 +1095,7 @@ async function openSamplePick(row: any) {
   try {
     const res: any = await outboundApi.samplePickPreview(sampleOrderId)
     const rows: SamplePickPreviewRow[] = res?.data || []
+    getList()
     pickRows.value = rows.map((r) => ({
       ...r,
       pickQty: Math.max(0, Number(r.quantity || 0) - Number(r.issuedQuantity || 0)),
@@ -1274,6 +1289,18 @@ function openPreview(opKey: string, row: any) {
       fields: (op.fields || []).map((f) =>
         f.key === 'sampleQty' ? { ...f, defaultValue: row.sampleQty } : f
       ),
+    }
+  }
+  if (opKey === 'sample.accept') {
+    const acceptOperation = op
+    op = {
+      ...op,
+      api: async (args: Parameters<typeof acceptOperation.api>[0]) => {
+        const response = await acceptOperation.api(args)
+        const notice = response?.data?.params?.sampleBomNotice
+        if (notice) ElMessage.info(notice)
+        return response
+      },
     }
   }
   const operation = op
@@ -1496,6 +1523,15 @@ onActivated(() => {
 </script>
 
 <style scoped lang="scss">
+:deep(.sample-shortage-row) {
+  --el-table-tr-bg-color: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+.sample-shortage-gap {
+  color: var(--el-color-danger);
+  font-weight: 600;
+}
+
 .app-container {
   padding: 20px;
 }

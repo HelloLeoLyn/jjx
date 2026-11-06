@@ -11,6 +11,7 @@ export const AlertTypeEnum = createEnum({
     { value: 'expiry', label: '保质期', tagProps: { type: 'danger' } },
     { value: 'obsolete', label: '呆滞料', tagProps: { type: 'info' } },
     { value: 'order_shortage', label: '订单缺料', tagProps: { type: 'danger' } },
+    { value: 'sample_shortage', label: '打样缺料', tagProps: { type: 'danger' } },
   ],
   defaultTag: { type: 'info' },
 })

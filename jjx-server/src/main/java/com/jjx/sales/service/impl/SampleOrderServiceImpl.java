@@ -77,6 +77,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Lazy
     private ISampleOrderService self;
 
+    private final com.jjx.inventory.service.impl.InventoryAlertServiceImpl inventoryAlertService;
     private final OrderMapper orderMapper;
     private final com.jjx.sales.mapper.SalesSampleOrderMapper sampleOrderMapper;
     /** 2026-09-21（dev-20260921-013）：sample.transferred 改手写 payload 用。 */
@@ -1641,7 +1642,12 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         log.info("样品单[{}] 工程接单: {}（状态 {} → 打样中）", current.getOrderNo(), acceptorName, status);
-        return orderMapper.selectById(orderId);
+        SalesOrder accepted = orderMapper.selectById(orderId);
+        boolean missingBom = sampleBomMapper.selectCount(new LambdaQueryWrapper<SalesSampleBom>()
+                .eq(SalesSampleBom::getOrderId, orderId)
+                .eq(SalesSampleBom::getRoundNo, java.util.Objects.requireNonNullElse(current.getSampleRound(), 1))) == 0;
+        if (missingBom) accepted.getParams().put("sampleBomNotice", "尚未编制打样 BOM");
+        return accepted;
     }
 
     /**
@@ -2208,8 +2214,27 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             if (item.getUnit() == null) item.setUnit("PCS");
             sampleBomMapper.insert(item);
         }
+        refreshSampleShortageAfterCommit(orderId);
         log.info("样品单[{}] 保存打样BOM {} 条 (round={})", orderId, items.size(), round);
         return sampleBomMapper.selectByOrderId(orderId);
+    }
+
+    private void refreshSampleShortageAfterCommit(Long orderId) {
+        Runnable refresh = () -> {
+            try {
+                inventoryAlertService.checkSampleShortage(orderId);
+            } catch (Exception e) {
+                log.warn("样品单[{}]保存成功后刷新缺料预警失败", orderId, e);
+            }
+        };
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCommit() { refresh.run(); }
+                    });
+        } else {
+            refresh.run();
+        }
     }
 
     /**
@@ -4495,6 +4520,11 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         Page<SalesOrder> page = orderMapper.selectPage(
                 new Page<>(queryDTO.getPageNum(), queryDTO.getPageSize()), wrapper);
         fillSampleTransferSummary(page.getRecords());
+        Set<String> shortageNos = inventoryAlertService.sampleShortageOrderNos(page.getRecords().stream()
+                .map(SalesOrder::getOrderNo).filter(java.util.Objects::nonNull).toList());
+        for (SalesOrder order : page.getRecords()) {
+            order.getParams().put("sampleShortage", shortageNos.contains(order.getOrderNo()));
+        }
         return PageResult.of(page, page.getRecords());
     }
 

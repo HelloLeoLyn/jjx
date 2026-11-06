@@ -116,6 +116,8 @@ export interface SamplePickPreviewRow {
   issuedQuantity?: number
   /** 当前可用量 */
   availableQuantity?: number
+  /** max(0, 当前轮 BOM 需求 - 当前可用量)，由后端计算 */
+  gap: number
 }
 
 // 打样领料提交明细
