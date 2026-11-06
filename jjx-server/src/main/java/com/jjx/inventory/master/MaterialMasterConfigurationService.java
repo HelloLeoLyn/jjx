@@ -2,6 +2,8 @@ package com.jjx.inventory.master;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jjx.common.enums.StatusEnum;
 import com.jjx.common.exception.BusinessException;
 import com.jjx.inventory.domain.InventoryMaterial;
@@ -29,6 +31,57 @@ public class MaterialMasterConfigurationService {
     public record TemplateSave(String templateCode, String templateName, Long categoryId,
                                MaterialAttributeSchema attributeSchema, Integer status) { }
     public record TemplateDetail(InventoryAttributeTemplate template, MaterialAttributeSchema schema) { }
+    public record PatternSave(Long categoryId, String block, JsonNode pattern) { }
+    private static final Set<String> PATTERN_BLOCKS = Set.of("name_pattern", "model_pattern", "spec_pattern");
+
+    /** 在分类锁内读取最新模板，只替换指定规则；其它块不接受客户端快照。 */
+    @Transactional(rollbackFor = Exception.class)
+    public TemplateDetail savePattern(PatternSave dto, String operator) {
+        if (dto == null || dto.categoryId() == null || dto.block() == null || !PATTERN_BLOCKS.contains(dto.block())
+                || dto.pattern() == null || !dto.pattern().isObject() || !dto.pattern().path("fields").isArray())
+            fail("请选择分类和单个规则块，并提交含 fields 数组的规则对象");
+        if (locks.lockCategory(dto.categoryId()) == null) fail("分类不存在");
+        if (catalog.categories().stream().noneMatch(c -> c.categoryId().equals(dto.categoryId()))) fail("分类不在启用的新模型分类树内");
+        if (hasChildren(dto.categoryId())) fail("模板只能绑定末级分类");
+        InventoryAttributeTemplate existing = locks.lockTemplate(dto.categoryId());
+        if (existing == null) fail("请先保存属性字段，建立模板后再保存规则");
+        MaterialAttributeSchema old = MaterialAttributeSchema.parse(existing.getAttributeSchema(), objectMapper);
+        ObjectNode merged;
+        try { merged = (ObjectNode) objectMapper.readTree(existing.getAttributeSchema()); }
+        catch (Exception e) { throw new BusinessException("现有模板格式错误"); }
+        merged.set(dto.block(), dto.pattern());
+        MaterialAttributeSchema next = MaterialAttributeSchema.parse(merged.toString(), objectMapper);
+        if (materialCount(dto.categoryId()) > 0) requireCompatibleUpdate(old, next, objectMapper);
+        // 目标块也沿用现有 DTO 序列化，不能把请求中的未知 JSON 字段带入模板结构。
+        merged.set(dto.block(), objectMapper.valueToTree(switch (dto.block()) {
+            case "name_pattern" -> next.namePattern();
+            case "model_pattern" -> next.modelPattern();
+            default -> next.specPattern();
+        }));
+        // 只写 attribute_schema 与审计列，保留其余 JSON 节点的原值。
+        InventoryAttributeTemplate patch = new InventoryAttributeTemplate();
+        patch.setTemplateId(existing.getTemplateId());
+        patch.setAttributeSchema(merged.toString());
+        patch.setUpdateBy(operator); patch.setUpdateTime(LocalDateTime.now());
+        templates.updateById(patch);
+        existing.setAttributeSchema(patch.getAttributeSchema());
+        return new TemplateDetail(existing, next);
+    }
+
+    /** 属性字段独立保存，规则从锁内最新值承接，避免字段页覆盖刚保存的规则。 */
+    @Transactional(rollbackFor = Exception.class)
+    public TemplateDetail saveTemplateFields(TemplateSave dto, String operator) {
+        if (dto == null || dto.categoryId() == null || dto.attributeSchema() == null
+                || locks.lockCategory(dto.categoryId()) == null) fail("请选择末级分类并提交模板定义");
+        InventoryAttributeTemplate existing = locks.lockTemplate(dto.categoryId());
+        MaterialAttributeSchema current = existing == null ? null : MaterialAttributeSchema.parse(existing.getAttributeSchema(), objectMapper);
+        MaterialAttributeSchema fields = dto.attributeSchema();
+        MaterialAttributeSchema merged = new MaterialAttributeSchema(fields.version(), fields.metaOptions(), fields.metaRequired(),
+                fields.defaultMeta(), fields.defaultForm(), fields.defaultUnit(), fields.fields(),
+                current == null ? null : current.namePattern(), current == null ? null : current.specPattern(), current == null ? null : current.modelPattern());
+        InventoryAttributeTemplate saved = saveTemplate(new TemplateSave(dto.templateCode(), dto.templateName(), dto.categoryId(), merged, dto.status()), operator);
+        return new TemplateDetail(saved, merged);
+    }
 
     public TemplateDetail templateDetail(Long categoryId) {
         if (catalog.categories(true).stream().noneMatch(c -> c.categoryId().equals(categoryId))) fail("分类不在新模型分类树内");

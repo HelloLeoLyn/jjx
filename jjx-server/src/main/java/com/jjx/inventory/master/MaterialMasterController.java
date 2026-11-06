@@ -171,6 +171,18 @@ public class MaterialMasterController extends BaseController {
         return Result.success(configurationService.saveTemplate(dto, getUsername()));
     }
 
+    @PutMapping("/template/pattern")
+    @SaCheckPermission("inventory:category:edit")
+    public Result<MaterialMasterConfigurationService.TemplateDetail> savePattern(@RequestBody MaterialMasterConfigurationService.PatternSave dto) {
+        return Result.success(configurationService.savePattern(dto, getUsername()));
+    }
+
+    @PutMapping("/template/fields")
+    @SaCheckPermission("inventory:category:edit")
+    public Result<MaterialMasterConfigurationService.TemplateDetail> saveTemplateFields(@RequestBody MaterialMasterConfigurationService.TemplateSave dto) {
+        return Result.success(configurationService.saveTemplateFields(dto, getUsername()));
+    }
+
     @GetMapping("/template/{categoryId}")
     @SaCheckPermission("inventory:category:list")
     public Result<MaterialMasterConfigurationService.TemplateDetail> template(@PathVariable Long categoryId) {

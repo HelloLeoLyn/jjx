@@ -1,7 +1,7 @@
 <template>
   <div class="material-settings-panel">
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <el-tabs v-model="tab" :class="{ 'single-section': singleSection }">
+    <el-tabs v-model="tab" :before-leave="beforeOuterLeave" :class="{ 'single-section': singleSection }">
       <el-tab-pane label="分类" name="categories">
         <el-form label-width="110px">
           <el-form-item label="维护分类">
@@ -57,9 +57,9 @@
         </el-form>
       </el-tab-pane>
       <el-tab-pane label="属性模板" name="template">
-        <el-form label-width="110px">
+        <el-form label-width="110px" :disabled="busy || templateLoading">
           <el-form-item label="末级品类" required
-            ><el-select v-model="templateCategoryId" filterable @change="loadTemplate">
+            ><el-select :model-value="templateCategoryId" :disabled="busy || templateLoading" filterable @update:model-value="changeTemplateCategory">
               <el-option
                 v-for="c in leaves"
                 :key="c.categoryId"
@@ -68,7 +68,12 @@
               /> </el-select
           ></el-form-item>
           <template v-if="templateCategoryId">
-          <template v-if="focusSection !== 'naming'">
+          <div v-if="focusSection !== 'template'" class="rule-summary" data-test="rule-summary">
+            <el-button v-for="item in ruleBlocks" :key="item.key" link :data-test="`summary-${item.key}`"
+              @click="jumpToBlock(item.key)">{{ item.label }}：{{ ruleSummary(item.key) }}</el-button>
+          </div>
+          <el-tabs v-model="activeBlock" :before-leave="beforeBlockLeave" class="block-tabs">
+          <el-tab-pane v-if="focusSection !== 'naming'" :label="blockTitle('fields', '属性字段')" name="fields">
             <el-form-item label="模板编码"><el-input v-model="templateCode" /></el-form-item>
             <el-form-item label="模板名称"><el-input v-model="templateName" /></el-form-item>
             <el-form-item label="启用"
@@ -281,9 +286,26 @@
             </el-table>
             <el-button style="margin-top: 12px" @click="addField">增加属性</el-button>
             <el-button style="margin-top: 12px" @click="addCommonFields">补充本品类常用属性</el-button>
-          </template>
-            <el-divider v-if="focusSection !== 'template'" content-position="left">命名规则（勾选参与命名的字段，按勾选顺序拼装）</el-divider>
-            <div v-show="focusSection !== 'template'" class="naming-rule">
+            <el-alert
+              title="已有物料的模板可新增无默认值的可选属性、调整显示设置；删除、改类型或单位等需另行处理。常用属性补入草稿后，检查并保存才生效。"
+              type="info"
+              :closable="false"
+              style="margin-top: 12px"
+            />
+            <el-button
+              type="primary"
+              :loading="busy"
+              :disabled="templateLoading"
+              style="margin-top: 12px"
+              @click="saveTemplate"
+              >保存属性字段</el-button
+            >
+            <el-button type="danger" plain :disabled="busy" @click="removeTemplate"
+              >移除未使用模板</el-button
+            >
+          </el-tab-pane>
+          <el-tab-pane v-if="focusSection !== 'template'" :label="blockTitle('name_pattern', '命名规则')" name="name_pattern">
+            <div class="naming-rule">
               <div class="naming-tokens">
                 <el-checkbox
                   v-for="token in namingTokens"
@@ -399,8 +421,10 @@
                 </el-table-column>
               </el-table>
             </div>
-            <el-divider v-if="focusSection !== 'template'" content-position="left">型号规则</el-divider>
-            <div v-show="focusSection !== 'template'" class="naming-rule" data-test="model-pattern">
+            <el-button type="primary" :loading="busy" :disabled="!templateExists || templateLoading" @click="savePattern('name_pattern')">保存本块</el-button>
+          </el-tab-pane>
+          <el-tab-pane v-if="focusSection !== 'template'" :label="blockTitle('model_pattern', '型号规则')" name="model_pattern">
+            <div class="naming-rule" data-test="model-pattern">
               <div class="naming-message">仅新建物料自动带出，可手改；未勾选字段时人工填写。编辑与批量重算不改变型号。</div>
               <div class="naming-tokens">
                 <el-checkbox v-for="token in modelTokens" :key="token.key"
@@ -434,8 +458,10 @@
               </el-table>
               <div v-else class="naming-message">该品类暂无示例；配置品类前缀并填写规则所需字段后，新建物料表单会带出型号。</div>
             </div>
-            <el-divider v-if="focusSection !== 'template'" content-position="left">规格模板（生成规格的字段顺序与分隔符）</el-divider>
-            <div v-show="focusSection !== 'template'" class="naming-rule">
+            <el-button type="primary" :loading="busy" :disabled="!templateExists || templateLoading" @click="savePattern('model_pattern')">保存本块</el-button>
+          </el-tab-pane>
+          <el-tab-pane v-if="focusSection !== 'template'" :label="blockTitle('spec_pattern', '规格模板')" name="spec_pattern">
+            <div class="naming-rule">
               <div class="naming-tokens">
                 <el-checkbox
                   v-for="token in specTokens"
@@ -526,23 +552,10 @@
                 <el-table-column label="按模板生成" prop="newSpec" />
               </el-table>
             </div>
-            <el-alert
-              title="已有物料的模板可新增无默认值的可选属性、调整显示设置；删除、改类型或单位等需另行处理。常用属性补入草稿后，检查并保存才生效。"
-              type="info"
-              :closable="false"
-              style="margin-top: 12px"
-            />
-            <el-button
-              type="primary"
-              :loading="busy"
-              :disabled="templateLoading"
-              style="margin-top: 12px"
-              @click="saveTemplate"
-              >保存模板</el-button
-            >
-            <el-button type="danger" plain :disabled="busy" @click="removeTemplate"
-              >移除未使用模板</el-button
-            >
+            <el-button type="primary" :loading="busy" :disabled="!templateExists || templateLoading" @click="savePattern('spec_pattern')">保存本块</el-button>
+          </el-tab-pane>
+          </el-tabs>
+          <el-alert v-if="!templateExists && focusSection !== 'template'" title="请先在属性字段入口建立模板，再保存规则。" type="info" :closable="false" />
           </template>
         </el-form>
       </el-tab-pane>
@@ -563,6 +576,8 @@ import { addRecommendedAttributes } from './materialAttributePresets'
 import { participatesInSpecification } from '../bomSpecification'
 import type {
   MaterialDimensionUnit,
+  MaterialPatternBlock,
+  MaterialPatternSave,
   MaterialSpecField,
   MaterialAttributeField,
   MaterialAttributeSchema,
@@ -577,10 +592,10 @@ const props = withDefaults(
     /** 独立页面使用：隐藏分类/属性模板的 tab 头，只显示 initialTab 指向的那一页（dev-20261029-022） */
     singleSection?: boolean
     initialTab?: 'categories' | 'template'
-    /** 只显示模板字段或只显示命名规则 */
+    /** 指定时保留原入口范围：template 只看字段，naming 只看三套规则；未指定时展示四块。 */
     focusSection?: 'template' | 'naming'
   }>(),
-  { singleSection: false, initialTab: 'categories', focusSection: 'template' }
+  { singleSection: false, initialTab: 'categories' }
 )
 const emit = defineEmits<{ (e: 'success'): void }>()
 const tab = ref(props.initialTab),
@@ -698,6 +713,69 @@ async function loadFieldOptions(categoryId?: number) {
 /** 命名规则：勾选字段 + 顺序 + 分隔符 + 缺值处理，保存进 attribute_schema.name_pattern。 */
 const namePattern = ref<MaterialNamingPattern>({ fields: [], separator: ' ', empty: 'skip' })
 const modelPattern = ref<MaterialNamingPattern>({ fields: [], separator: '', empty: 'skip' })
+type TemplateBlock = 'fields' | MaterialPatternBlock
+const activeBlock = ref<TemplateBlock>(props.focusSection === 'naming' ? 'name_pattern' : 'fields')
+const templateExists = ref(false)
+const loadedCategoryId = ref<number>()
+const ruleBlocks: { key: MaterialPatternBlock; label: string }[] = [
+  { key: 'name_pattern', label: '命名规则' },
+  { key: 'model_pattern', label: '型号规则' },
+  { key: 'spec_pattern', label: '规格模板' },
+]
+const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
+const baselines = reactive<Record<TemplateBlock, string>>({ fields: '', name_pattern: '', model_pattern: '', spec_pattern: '' })
+function patternDraft(block: MaterialPatternBlock) {
+  return block === 'name_pattern' ? namePattern.value : block === 'model_pattern' ? modelPattern.value : specPattern.value
+}
+function fieldSnapshot() {
+  const { name_pattern, model_pattern, spec_pattern, ...fields } = schema.value
+  return JSON.stringify({ fields, code: templateCode.value, name: templateName.value, status: templateStatus.value })
+}
+function captureBaselines() {
+  baselines.fields = fieldSnapshot()
+  ruleBlocks.forEach(({ key }) => { baselines[key] = JSON.stringify(patternDraft(key)) })
+}
+function isDirty(block: TemplateBlock) {
+  return !!loadedCategoryId.value && baselines[block] !== (block === 'fields' ? fieldSnapshot() : JSON.stringify(patternDraft(block)))
+}
+const hasUnsaved = computed(() => isDirty('fields') || ruleBlocks.some(({ key }) => isDirty(key)))
+function blockTitle(block: TemplateBlock, label: string) { return `${label}${isDirty(block) ? '（未保存）' : ''}` }
+async function confirmSwitch(message: string) {
+  try {
+    await ElMessageBox.confirm(message, '有未保存的修改', { confirmButtonText: '继续切换', cancelButtonText: '留在本块', type: 'warning' })
+    return true
+  } catch { return false }
+}
+async function beforeBlockLeave(next: string | number, previous: string | number) {
+  if (next === previous) return true
+  if (busy.value || templateLoading.value) return false
+  // 摘要已确认后更新 v-model，Element Plus 会再调用一次钩子，此时无需重复询问。
+  if (next === activeBlock.value) return true
+  return !isDirty(previous as TemplateBlock) || confirmSwitch('本块尚未保存，切换后会保留草稿，请返回本块保存。是否继续切换？')
+}
+async function beforeOuterLeave(next: string | number, previous: string | number) {
+  if (next === previous) return true
+  if (busy.value || templateLoading.value) return false
+  return previous !== 'template' || !hasUnsaved.value || confirmSwitch('模板中有未保存的修改，切换后会保留草稿。是否继续切换？')
+}
+async function jumpToBlock(block: MaterialPatternBlock) {
+  if (await beforeBlockLeave(block, activeBlock.value)) activeBlock.value = block
+}
+async function changeTemplateCategory(id: number) {
+  if (id === templateCategoryId.value || busy.value || templateLoading.value) return
+  if (hasUnsaved.value && !await confirmSwitch('当前品类有未保存的修改，切换品类会丢弃这些草稿。是否继续切换？')) return
+  templateCategoryId.value = id
+  await loadTemplate(id)
+}
+function canSave() { return !templateLoading.value && !busy.value && loadedCategoryId.value === templateCategoryId.value && !!loadedCategoryId.value }
+/** 摘要展示已保存的配置；仅翻译字段标签，不在前端实现生成规则。 */
+function ruleSummary(block: MaterialPatternBlock) {
+  const pattern = schema.value[block]
+  if (!pattern?.fields?.length) return '未配置'
+  return block === 'spec_pattern'
+    ? (pattern as NonNullable<MaterialAttributeSchema['spec_pattern']>).fields.map(item => specLabel(item.key)).join(' + ')
+    : (pattern as MaterialNamingPattern).fields.map(namingLabel).join(' + ')
+}
 const modelSamples = ref<MaterialNamingPreview['samples']>([])
 const modelTokens = computed(() => namingTokens.value.filter(token => token.key !== 'model'))
 function toggleModelField(key: string, checked: boolean) {
@@ -868,6 +946,8 @@ watch(
 )
 onBeforeUnmount(() => {
   modelPreviewRequest++
+  if (specTimer) clearTimeout(specTimer)
+  if (previewTimer) clearTimeout(previewTimer)
   if (modelPreviewTimer) clearTimeout(modelPreviewTimer)
 })
 const renameLoading = ref(false)
@@ -972,7 +1052,10 @@ async function saveCategory() {
 }
 async function loadTemplate(id: number) {
   const request = ++templateRequest
+  templateExists.value = false
+  loadedCategoryId.value = undefined
   templateLoading.value = true
+  error.value = ''
   schema.value = { version: 1, meta_options: [], fields: [] }
   namePattern.value = { fields: [], separator: ' ', empty: 'skip', separators: {} }
   modelPattern.value = { fields: [], separator: '', empty: 'skip' }
@@ -993,11 +1076,12 @@ async function loadTemplate(id: number) {
       templateStatus.value = CommonStatusEnum.NORMAL.value
       return
     }
-    schema.value = response.data.schema
+    templateExists.value = true
+    schema.value = clone(response.data.schema)
     void loadFieldOptions(id)
     specPattern.value = response.data.schema.spec_pattern
       ? {
-          fields: (response.data.schema.spec_pattern.fields || []).map((item: any) => ({ key: item.key, sep: item.sep || '' })),
+          fields: (response.data.schema.spec_pattern.fields || []).map(item => ({ ...item, sep: item.sep || '' })),
           show_label: !!response.data.schema.spec_pattern.show_label,
           with_unit: response.data.schema.spec_pattern.with_unit !== false,
           unit_position: (response.data.schema.spec_pattern.unit_position as 'each' | 'end' | 'none') || 'end',
@@ -1010,7 +1094,7 @@ async function loadTemplate(id: number) {
       ? {
           ...response.data.schema.name_pattern,
           fields: [...response.data.schema.name_pattern.fields],
-          separator: response.data.schema.name_pattern.separator || ' ',
+          separator: response.data.schema.name_pattern.separator ?? ' ',
           separators: { ...(response.data.schema.name_pattern.separators || {}) },
           empty: response.data.schema.name_pattern.empty === 'placeholder' ? 'placeholder' : 'skip',
         }
@@ -1021,7 +1105,10 @@ async function loadTemplate(id: number) {
   } catch (e) {
     if (request === templateRequest) error.value = e instanceof Error ? e.message : '模板加载失败'
   } finally {
-    if (request === templateRequest) templateLoading.value = false
+    if (request === templateRequest) {
+      templateLoading.value = false
+      if (!error.value) { loadedCategoryId.value = id; captureBaselines() }
+    }
   }
 }
 function addField() {
@@ -1072,23 +1159,51 @@ function setOptions(field: MaterialAttributeField, value: string) {
     })
 }
 async function saveTemplate() {
-  if (templateLoading.value || busy.value) return
+  if (!canSave()) return
   busy.value = true
   error.value = ''
   try {
-    await materialMasterApi.saveTemplate({
+    const { name_pattern, model_pattern, spec_pattern, ...fields } = schema.value
+    const response = await materialMasterApi.saveTemplateFields({
       categoryId: templateCategoryId.value,
       templateCode: templateCode.value,
       templateName: templateName.value,
-      attributeSchema: { ...schema.value, name_pattern: namePattern.value, model_pattern: { ...modelPattern.value, empty: 'skip' }, spec_pattern: specPattern.value },
+      attributeSchema: clone(fields),
       status: templateStatus.value,
     })
+    if (!response.data) throw new Error('属性字段保存结果为空，请重新加载确认')
+    // 只确认属性块；规则草稿与它们的未保存标记保留。
+    schema.value = { ...response.data.schema }
+    templateExists.value = true
+    baselines.fields = fieldSnapshot()
     await refresh()
-    await previewSpecification()
-    ElMessage.success('模板已保存')
+    ElMessage.success('属性字段已保存')
     emit('success')
   } catch (e) {
     error.value = e instanceof Error ? e.message : '模板保存失败'
+  } finally {
+    busy.value = false
+  }
+}
+async function savePattern(block: MaterialPatternBlock) {
+  if (!canSave() || !templateExists.value || !templateCategoryId.value) return
+  busy.value = true
+  error.value = ''
+  const pattern = clone(patternDraft(block))
+  try {
+    const response = await materialMasterApi.savePattern({ categoryId: templateCategoryId.value, block, pattern } as MaterialPatternSave)
+    if (!response.data) throw new Error('规则保存结果为空，请重新加载确认')
+    // 回读只合入本块，不重载整个表单，不覆盖其它块的草稿。
+    const saved = response.data.schema[block]
+    if (block === 'spec_pattern') schema.value.spec_pattern = saved as MaterialAttributeSchema['spec_pattern']
+    else schema.value[block] = saved as MaterialNamingPattern | null
+    baselines[block] = JSON.stringify(pattern)
+    if (block === 'spec_pattern') await previewSpecification()
+    if (block === 'name_pattern') renameReport.value = undefined
+    ElMessage.success('本块已保存')
+    emit('success')
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '规则保存失败'
   } finally {
     busy.value = false
   }
@@ -1120,10 +1235,12 @@ async function removeTemplate() {
 
 <style scoped>
 /* 独立页面（物料分类 / 属性模板 / 命名规则）只显示自己那一页，不出现平级 tab 头 */
-.single-section :deep(.el-tabs__header) {
+.single-section > :deep(.el-tabs__header) {
   display: none;
 }
 
+.rule-summary { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 12px; }
+.block-tabs { margin-top: 12px; }
 .naming-rule { margin-top: 8px; }
 .naming-tokens { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; }
 .naming-order { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }

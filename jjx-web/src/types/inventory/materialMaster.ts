@@ -54,6 +54,15 @@ export interface MaterialNamingPattern {
   /** 缺值处理：skip 跳过 / placeholder 占位 — */
   empty: 'skip' | 'placeholder'
 }
+export type MaterialPatternBlock = 'name_pattern' | 'model_pattern' | 'spec_pattern'
+export type MaterialPatternSave = { categoryId: number } & (
+  | { block: 'name_pattern' | 'model_pattern'; pattern: MaterialNamingPattern }
+  | { block: 'spec_pattern'; pattern: MaterialSpecPattern }
+)
+export interface MaterialTemplateDetail {
+  template: MaterialMasterConfiguration['template']
+  schema: MaterialAttributeSchema
+}
 export type MaterialDimensionUnit = 'mm' | 'cm' | 'm' | 'μm'
 export interface MaterialSpecField {
   key: string

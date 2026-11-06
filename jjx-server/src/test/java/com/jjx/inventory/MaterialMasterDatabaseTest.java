@@ -49,6 +49,7 @@ class MaterialMasterDatabaseTest {
     private static DataSourceTransactionManager manager;
     private static MaterialMasterCatalog catalog;
     private static MaterialMasterService service;
+    private static MaterialMasterConfigurationService configuration;
     private static ISysTagService tags;
     private static MaterialMasterExcelService excel;
     private TransactionStatus transaction;
@@ -79,6 +80,8 @@ class MaterialMasterDatabaseTest {
         tags = proxy(new SysTagServiceImpl(session.getMapper(SysTagMapper.class), session.getMapper(SysTagRelMapper.class)));
         service = proxy(new MaterialMasterService(catalog, session.getMapper(MaterialMasterMapper.class), materialMapper,
                 numbers, mock(PurchaseSupplierMapper.class), tags, mock(EventPublisher.class), objectMapper));
+        configuration = proxy(new MaterialMasterConfigurationService(catalog, session.getMapper(MaterialMasterMapper.class),
+                session.getMapper(InventoryMaterialCategoryMapper.class), session.getMapper(AttributeTemplateMapper.class), materialMapper, objectMapper));
         excel = proxy(new MaterialMasterExcelService(catalog, service, materialMapper, objectMapper, mock(com.jjx.inventory.classify.MaterialClassifyService.class)));
     }
 
@@ -93,6 +96,63 @@ class MaterialMasterDatabaseTest {
     @AfterAll static void noTestRowsRemain() {
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material WHERE material_code LIKE 'T002DB%'", Integer.class));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_attribute_template WHERE template_code LIKE 'T002DB%'", Integer.class));
+    }
+
+    /** 本任务只调用配置服务，真实库内逐块回读；外层事务回滚，不留配置变更。 */
+    @Test void patternBlocksSaveIndependentlyAndFieldsCannotOverwriteThem() throws Exception {
+        Long categoryId = category("RAW_BASE_PC");
+        ObjectMapper mapper = new ObjectMapper();
+        var original = configuration.templateDetail(categoryId);
+        var before = mapper.readTree(original.template().getAttributeSchema());
+        var spec = mapper.readTree("""
+                {"fields":[{"key":"thickness_mm","sep":"","unit":"μm","scale":1},{"key":"width","sep":"*"}],
+                 "show_label":false,"with_unit":true,"unit_position":"each"}
+                """);
+        configuration.savePattern(new MaterialMasterConfigurationService.PatternSave(categoryId, "spec_pattern", spec), "codex-pattern-test");
+        var afterSpec = mapper.readTree(configuration.templateDetail(categoryId).template().getAttributeSchema());
+        var storedSpec = mapper.valueToTree(mapper.treeToValue(spec, MaterialAttributeSchema.SpecPattern.class));
+        assertEquals(storedSpec, afterSpec.get("spec_pattern"));
+        var expected = before.deepCopy(); ((com.fasterxml.jackson.databind.node.ObjectNode) expected).set("spec_pattern", storedSpec);
+        assertEquals(expected, afterSpec, "保存规格只允许规格节点变化");
+        var naming = mapper.readTree("""
+                {"fields":["brand","model"],"separator":"-","empty":"skip"}
+                """);
+        configuration.savePattern(new MaterialMasterConfigurationService.PatternSave(categoryId, "name_pattern", naming), "codex-pattern-test");
+        var afterName = mapper.readTree(configuration.templateDetail(categoryId).template().getAttributeSchema());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) expected).set("name_pattern", mapper.valueToTree(mapper.treeToValue(naming, MaterialNamingPattern.class)));
+        assertEquals(expected, afterName, "先后保存规则互不覆盖");
+        var model = mapper.readTree("""
+                {"fields":["categoryprefix","thickness_mm"],"separator":"","empty":"skip","units":{"thickness_mm":"μm"}}
+                """);
+        configuration.savePattern(new MaterialMasterConfigurationService.PatternSave(categoryId, "model_pattern", model), "codex-pattern-test");
+        var old = original.template();
+        // 客户端仍携带旧规则快照：属性保存必须采用锁内最新规则。
+        configuration.saveTemplateFields(new MaterialMasterConfigurationService.TemplateSave(old.getTemplateCode(), old.getTemplateName(),
+                categoryId, original.schema(), old.getStatus()), "codex-pattern-test");
+        var detailAfterFields = configuration.templateDetail(categoryId);
+        var afterFields = mapper.readTree(detailAfterFields.template().getAttributeSchema());
+        assertEquals(mapper.treeToValue(spec, MaterialAttributeSchema.SpecPattern.class), detailAfterFields.schema().specPattern());
+        assertEquals(naming, ((com.fasterxml.jackson.databind.node.ObjectNode) afterFields.get("name_pattern").deepCopy()).without(List.of("separators", "units")));
+        assertEquals(model.get("fields"), afterFields.get("model_pattern").get("fields"));
+        assertEquals(before.get("fields"), afterFields.get("fields"));
+    }
+
+    @Test void patternSaveRejectsInvalidParametersAndExistingValidationStillApplies() throws Exception {
+        Long categoryId = category("RAW_BASE_PC");
+        ObjectMapper mapper = new ObjectMapper();
+        String before = configuration.templateDetail(categoryId).template().getAttributeSchema();
+        for (var dto : List.of(
+                new MaterialMasterConfigurationService.PatternSave(null, "spec_pattern", mapper.createObjectNode()),
+                new MaterialMasterConfigurationService.PatternSave(categoryId, "fields", mapper.createObjectNode()),
+                new MaterialMasterConfigurationService.PatternSave(categoryId, "spec_pattern", mapper.createArrayNode()),
+                new MaterialMasterConfigurationService.PatternSave(categoryId, "spec_pattern", mapper.createObjectNode()),
+                new MaterialMasterConfigurationService.PatternSave(categoryId, "name_pattern", null),
+                new MaterialMasterConfigurationService.PatternSave(categoryId, "model_pattern", mapper.readTree("{\"fields\":[\"model\"]}")),
+                new MaterialMasterConfigurationService.PatternSave(categoryId, "spec_pattern", mapper.readTree("{\"fields\":[{\"key\":\"width\",\"unit\":\"inch\"}]}")),
+                new MaterialMasterConfigurationService.PatternSave(categoryId, "name_pattern", mapper.readTree("{\"fields\":[\"unknown_attribute\"]}")))) {
+            assertThrows(com.jjx.common.exception.BusinessException.class, () -> configuration.savePattern(dto, "codex-pattern-test"));
+            assertEquals(before, configuration.templateDetail(categoryId).template().getAttributeSchema());
+        }
     }
 
     @Test void perFieldUnitsSaveAndReopenWithoutChangingMmAndExcelUsesDefaultUnits() throws Exception {

@@ -13,6 +13,8 @@ import type {
   MaterialDictionaries,
   MaterialImportResult,
   MaterialRequiredFields,
+  MaterialPatternSave,
+  MaterialTemplateDetail,
 } from '@/types/inventory/materialMaster'
 
 const base = '/inventory/material/master'
@@ -75,6 +77,8 @@ export const materialMasterApi = {
     >(`${base}/audit`),
   saveCategory: (data: unknown) => request.put<R<unknown>>(`${base}/category`, data),
   saveTemplate: (data: unknown) => request.put<R<unknown>>(`${base}/template`, data),
+  savePattern: (data: MaterialPatternSave) => request.put<R<MaterialTemplateDetail>>(`${base}/template/pattern`, data),
+  saveTemplateFields: (data: unknown) => request.put<R<MaterialTemplateDetail>>(`${base}/template/fields`, data),
   /** 命名规则预览：只读试算，按品类取最近 5 条物料 */
   previewNaming: (categoryId: number, namePattern: unknown) =>
     request.post<R<MaterialNamingPreview>>(`${base}/naming/preview`, { categoryId, namePattern }),

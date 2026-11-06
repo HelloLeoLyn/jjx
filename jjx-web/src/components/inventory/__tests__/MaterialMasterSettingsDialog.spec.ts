@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import MaterialMasterSettingsPanel from '../MaterialMasterSettingsPanel.vue'
+import MaterialMasterSettingsDialog from '../MaterialMasterSettingsDialog.vue'
+import { ElMessageBox } from 'element-plus'
 
-const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), template: vi.fn(), saveTemplate: vi.fn(), specPreview: vi.fn(), fieldOptions: vi.fn(), previewNaming: vi.fn(), saveCategory: vi.fn() }))
+const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), template: vi.fn(), saveTemplate: vi.fn(), savePattern: vi.fn(), saveTemplateFields: vi.fn(), specPreview: vi.fn(), fieldOptions: vi.fn(), previewNaming: vi.fn(), saveCategory: vi.fn() }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: api }))
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal<typeof import('element-plus')>()
-  return { ...actual, ElMessage: { success: vi.fn(), error: vi.fn() }, ElMessageBox: {} }
+  return { ...actual, ElMessage: { success: vi.fn(), error: vi.fn() }, ElMessageBox: { confirm: vi.fn() } }
 })
 const Slot = defineComponent({ template: '<div><slot /></div>' })
 const Button = defineComponent({ emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' })
@@ -21,7 +23,8 @@ describe('属性模板界面保存', () => {
     api.template.mockResolvedValue({ data: { template: { templateCode: 'TPL_ELECTRONIC', templateName: '电子元件', status: 1 }, schema: {
       version: 1, meta_options: [], default_unit: 'PCS', fields: [{ key: 'component_type', label: '元件类型', type: 'enum', required: true, options: [{ code: 'SPRING', label: '弹片' }] }],
     } } })
-    api.saveTemplate.mockResolvedValue({ data: {} })
+    api.saveTemplateFields.mockImplementation(async (data) => ({ data: { template: {}, schema: JSON.parse(JSON.stringify(data.attributeSchema)) } }))
+    api.savePattern.mockImplementation(async (data) => ({ data: { template: {}, schema: { [data.block]: JSON.parse(JSON.stringify(data.pattern)) } } }))
     api.saveCategory.mockResolvedValue({ data: {} })
     api.previewNaming.mockResolvedValue({ data: { samples: [] } })
     api.fieldOptions.mockResolvedValue({ data: [] })
@@ -42,7 +45,7 @@ describe('属性模板界面保存', () => {
     dimple.spec_order = 8
     dimple.common = false
     await state.saveTemplate()
-    expect(api.saveTemplate).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 2, attributeSchema: expect.objectContaining({
+    expect(api.saveTemplateFields).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 2, attributeSchema: expect.objectContaining({
       fields: expect.arrayContaining([expect.objectContaining({ key: 'has_dimple', common: false, in_spec: true, spec_order: 8, true_label: '带点', visible_when: { component_type: 'SPRING' } })]),
     }) }))
     wrapper.unmount()
@@ -80,8 +83,8 @@ describe('属性模板界面保存', () => {
     await flushPromises()
     expect(wrapper.find('[data-test="unit-example-thickness_mm"]').text()).toContain('0.254mm → 254μm')
     api.specPreview.mockClear().mockResolvedValue({ data: { samples: [{ materialId: 1, materialCode: 'RM001', oldSpec: '旧规格', newSpec: '254μm*315mm*1000m' }] } })
-    await state.saveTemplate()
-    expect(api.saveTemplate).toHaveBeenCalledWith(expect.objectContaining({ attributeSchema: expect.objectContaining({ spec_pattern: expect.objectContaining({ fields: expect.arrayContaining([expect.objectContaining({ key: 'thickness_mm', unit: 'μm', scale: 1 })]) }) }) }))
+    await state.savePattern('spec_pattern')
+    expect(api.savePattern).toHaveBeenCalledWith({ categoryId: 2, block: 'spec_pattern', pattern: expect.objectContaining({ fields: expect.arrayContaining([expect.objectContaining({ key: 'thickness_mm', unit: 'μm', scale: 1 })]) }) })
     expect(api.specPreview).toHaveBeenCalledWith(2)
     expect(state.specSamples[0]).toMatchObject({ oldSpec: '旧规格', newSpec: '254μm*315mm*1000m' })
     wrapper.unmount()
@@ -105,10 +108,8 @@ describe('属性模板界面保存', () => {
     state.moveModelField(1, -1)
     state.setModelSeparator('thickness_mm', '')
     state.setModelUnit('thickness_mm', 'μm')
-    await state.saveTemplate()
-    expect(api.saveTemplate).toHaveBeenCalledWith(expect.objectContaining({ attributeSchema: expect.objectContaining({
-      model_pattern: { fields: ['categoryprefix', 'thickness_mm'], separator: '', empty: 'skip', separators: { thickness_mm: '' }, units: { thickness_mm: 'μm' } },
-    }) }))
+    await state.savePattern('model_pattern')
+    expect(api.savePattern).toHaveBeenCalledWith({ categoryId: 2, block: 'model_pattern', pattern: { fields: ['categoryprefix', 'thickness_mm'], separator: '', empty: 'skip', separators: { thickness_mm: '' }, units: { thickness_mm: 'μm' } } })
     wrapper.unmount()
   })
 
@@ -176,6 +177,179 @@ describe('属性模板界面保存', () => {
     state.categoryForm.modelPrefix = 'LED'
     await state.saveCategory()
     expect(api.saveCategory).toHaveBeenCalledWith(expect.objectContaining({ categoryId: editId, modelPrefix: 'LED' }))
+    wrapper.unmount()
+  })
+
+  const editableStubs = { ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true,
+    ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true }
+  async function loadedPanel(props = {}) {
+    const wrapper = mount(MaterialMasterSettingsPanel, { props, global: { stubs: editableStubs } })
+    await flushPromises()
+    const state = wrapper.vm as any
+    state.templateCategoryId = 2
+    await state.loadTemplate(2)
+    await flushPromises()
+    return { wrapper, state }
+  }
+  it('四个子页签各自标记未保存，切换只提示一次，取消留在本块且不丢草稿', async () => {
+    const { wrapper, state } = await loadedPanel({ initialTab: 'template' })
+    expect(wrapper.find('.block-tabs').exists()).toBe(true)
+    expect(state.isDirty('name_pattern')).toBe(false)
+    state.activeBlock = 'name_pattern'
+    state.toggleNameField('brand', true)
+    await flushPromises()
+    expect(state.blockTitle('name_pattern', '命名规则')).toBe('命名规则（未保存）')
+    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel')
+    await wrapper.get('[data-test="summary-model_pattern"]').trigger('click')
+    await flushPromises()
+    expect(state.activeBlock).toBe('name_pattern')
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    expect(state.namePattern.fields).toEqual(['brand'])
+    vi.mocked(ElMessageBox.confirm).mockResolvedValueOnce('confirm')
+    await wrapper.get('[data-test="summary-model_pattern"]').trigger('click')
+    await flushPromises()
+    expect(state.activeBlock).toBe('model_pattern')
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(2)
+    expect(state.isDirty('name_pattern')).toBe(true)
+    await state.savePattern('name_pattern')
+    expect(state.isDirty('name_pattern')).toBe(false)
+    expect(state.blockTitle('name_pattern', '命名规则')).toBe('命名规则')
+    vi.mocked(ElMessageBox.confirm).mockClear()
+    expect(await state.beforeBlockLeave('spec_pattern', 'name_pattern')).toBe(true)
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('规格保存只发本块，命名草稿保留；依次保存两块后摘要反映已保存配置', async () => {
+    const { wrapper, state } = await loadedPanel()
+    state.toggleNameField('brand', true)
+    state.toggleModelField('categoryprefix', true)
+    state.toggleSpecField('width', true)
+    await state.savePattern('spec_pattern')
+    expect(api.savePattern).toHaveBeenLastCalledWith({ categoryId: 2, block: 'spec_pattern', pattern: expect.objectContaining({ fields: [{ key: 'width', sep: '' }] }) })
+    expect(state.isDirty('spec_pattern')).toBe(false)
+    expect(state.isDirty('name_pattern')).toBe(true)
+    expect(state.isDirty('model_pattern')).toBe(true)
+    expect(state.namePattern.fields).toEqual(['brand'])
+    expect(wrapper.get('[data-test="summary-spec_pattern"]').text()).toContain('宽')
+    expect(wrapper.get('[data-test="summary-name_pattern"]').text()).toContain('未配置')
+    await state.savePattern('name_pattern')
+    expect(state.schema.spec_pattern.fields).toEqual([{ key: 'width', sep: '' }])
+    expect(wrapper.get('[data-test="summary-name_pattern"]').text()).toContain('品牌')
+    expect(api.saveTemplate).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('保存失败不清除标记，字段保存不提交规则草稿', async () => {
+    const { wrapper, state } = await loadedPanel()
+    state.toggleNameField('brand', true)
+    api.savePattern.mockRejectedValueOnce(new Error('保存失败'))
+    await state.savePattern('name_pattern')
+    expect(state.isDirty('name_pattern')).toBe(true)
+    expect(state.error).toBe('保存失败')
+    state.schema.fields[0].label = '新的属性名称'
+    await state.saveTemplate()
+    expect(state.isDirty('fields')).toBe(false)
+    expect(state.isDirty('name_pattern')).toBe(true)
+    const submitted = api.saveTemplateFields.mock.calls[0][0].attributeSchema
+    expect(submitted).not.toHaveProperty('name_pattern')
+    expect(submitted).not.toHaveProperty('model_pattern')
+    expect(submitted).not.toHaveProperty('spec_pattern')
+    wrapper.unmount()
+  })
+  it('切换品类与外层页签也拦截草稿，取消时不加载其它品类', async () => {
+    const { wrapper, state } = await loadedPanel()
+    state.toggleNameField('brand', true)
+    vi.mocked(ElMessageBox.confirm).mockRejectedValue('cancel')
+    const calls = api.template.mock.calls.length
+    await state.changeTemplateCategory(3)
+    expect(state.templateCategoryId).toBe(2)
+    expect(api.template).toHaveBeenCalledTimes(calls)
+    expect(await state.beforeOuterLeave('categories', 'template')).toBe(false)
+    wrapper.unmount()
+  })
+  it('回载保留规格单位和精度，摘要按字段顺序展示并可直接跳转', async () => {
+    const fixture = (await api.template()).data
+    fixture.schema.spec_pattern = { fields: [{ key: 'thickness_mm', sep: '', unit: 'μm', scale: 1 }, { key: 'width', sep: '*' }], with_unit: true, unit_position: 'each' }
+    fixture.schema.name_pattern = { fields: ['brand', 'model'], separator: '', empty: 'skip' }
+    fixture.schema.model_pattern = { fields: ['categoryprefix', 'thickness_mm'], separator: '', empty: 'skip' }
+    api.template.mockResolvedValue({ data: fixture })
+    const { wrapper, state } = await loadedPanel()
+    expect(state.specPattern.fields[0]).toMatchObject({ unit: 'μm', scale: 1 })
+    expect(state.namePattern.separator).toBe('')
+    expect(state.ruleSummary('name_pattern')).toBe('品牌 + 型号')
+    expect(state.ruleSummary('model_pattern')).toBe('品类前缀 + 厚度(mm)')
+    for (const key of ['name_pattern', 'model_pattern', 'spec_pattern']) {
+      await wrapper.get(`[data-test="summary-${key}"]`).trigger('click')
+      await flushPromises()
+      expect(state.activeBlock).toBe(key)
+    }
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it.each(['template', 'naming'] as const)('focusSection=%s 保持入口可见范围，singleSection 只隐藏外层页签', async (focusSection) => {
+    const { wrapper, state } = await loadedPanel({ focusSection, singleSection: true, initialTab: 'template' })
+    expect(state.tab).toBe('template')
+    expect(wrapper.find('.single-section').exists()).toBe(true)
+    expect(wrapper.find('.block-tabs').exists()).toBe(true)
+    expect(wrapper.find('[data-test="model-pattern"]').exists()).toBe(focusSection === 'naming')
+    expect(wrapper.find('[data-test="rule-summary"]').exists()).toBe(focusSection === 'naming')
+    expect(wrapper.findAll('button').some(b => b.text() === '增加属性')).toBe(focusSection === 'template')
+    expect(state.activeBlock).toBe(focusSection === 'naming' ? 'name_pattern' : 'fields')
+    wrapper.unmount()
+  })
+  it('弹窗继续透传 initialTab、focusSection 与保存成功事件', async () => {
+    const wrapper = mount(MaterialMasterSettingsDialog, { props: { modelValue: true, initialTab: 'template', focusSection: 'naming' }, global: { stubs: { ElDialog: Slot, MaterialMasterSettingsPanel: true } } })
+    const panel = wrapper.getComponent(MaterialMasterSettingsPanel)
+    expect(panel.props()).toMatchObject({ initialTab: 'template', focusSection: 'naming', singleSection: false })
+    panel.vm.$emit('success')
+    expect(wrapper.emitted('success')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('真实 el-tabs 点击经 before-leave 拦截，确认后切换保留草稿，保存后无需再确认', async () => {
+    const wrapper = mount(MaterialMasterSettingsPanel, { props: { initialTab: 'template' }, global: { stubs: {
+      ...editableStubs, ElTabs: false, ElTabPane: false,
+    } } })
+    await flushPromises()
+    const state = wrapper.vm as any
+    state.templateCategoryId = 2
+    await state.loadTemplate(2)
+    await flushPromises()
+    expect(wrapper.findAll('.block-tabs [role="tab"]').map(t => t.text())).toEqual(['属性字段', '命名规则', '型号规则', '规格模板'])
+    await wrapper.get('#tab-name_pattern').trigger('click')
+    await flushPromises()
+    state.toggleNameField('brand', true)
+    await flushPromises()
+    expect(wrapper.get('#tab-name_pattern').text()).toContain('未保存')
+    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel')
+    await wrapper.get('#tab-model_pattern').trigger('click')
+    await flushPromises()
+    expect(state.activeBlock).toBe('name_pattern')
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    vi.mocked(ElMessageBox.confirm).mockResolvedValueOnce('confirm')
+    await wrapper.get('#tab-model_pattern').trigger('click')
+    await flushPromises()
+    expect(state.activeBlock).toBe('model_pattern')
+    expect(state.namePattern.fields).toEqual(['brand'])
+    await wrapper.get('#tab-name_pattern').trigger('click')
+    await flushPromises()
+    const namePane = wrapper.get('#pane-name_pattern')
+    await namePane.findAll('button').find(b => b.text() === '保存本块')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('#tab-name_pattern').text()).not.toContain('未保存')
+    vi.mocked(ElMessageBox.confirm).mockClear()
+    await wrapper.get('#tab-spec_pattern').trigger('click')
+    await flushPromises()
+    expect(state.activeBlock).toBe('spec_pattern')
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    await wrapper.get('#tab-name_pattern').trigger('click')
+    await flushPromises()
+    state.toggleNameField('model', true)
+    vi.mocked(ElMessageBox.confirm).mockResolvedValue('confirm')
+    await wrapper.get('[data-test="summary-model_pattern"]').trigger('click')
+    await flushPromises()
+    expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
+    expect(state.activeBlock).toBe('model_pattern')
+    expect(wrapper.get('#tab-model_pattern').attributes('aria-selected')).toBe('true')
     wrapper.unmount()
   })
 
