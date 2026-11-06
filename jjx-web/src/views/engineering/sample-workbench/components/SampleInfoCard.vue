@@ -17,6 +17,12 @@
         }}</el-tag>
         <span class="info-actions">
           <el-button
+            v-hasPermi="['inventory:inbound:add']"
+            size="small"
+            @click.stop="$emit('return')"
+            >退料</el-button
+          >
+          <el-button
             size="small"
             icon="CopyDocument"
             :disabled="readonly"
@@ -200,6 +206,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  (e: 'return'): void
   (e: 'clear'): void
   (e: 'transfer'): void
   (e: 'historyCopy'): void

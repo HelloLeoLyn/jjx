@@ -13,8 +13,40 @@ import type {
   IqcPendingVO,
 } from '@/types/inventory/inbound'
 
+export interface SampleReturnPreviewRow {
+  returnKey: string
+  inventoryItemId: string | number
+  materialId: string | number
+  materialCode: string
+  materialName: string
+  specification?: string
+  unit?: string
+  batchNo: string
+  warehouseId: string | number
+  locationId?: string | number
+  issuedQty: number
+  returnedQty: number
+  returnableQty: number
+}
+
 // 入库管理API
 export const inboundApi = {
+  sampleReturnPreview(sampleOrderId: string | number) {
+    return request.get<R<SampleReturnPreviewRow[]>>(
+      `/inventory/inbound/sample-return-preview/${sampleOrderId}`
+    )
+  },
+
+  sampleReturn(
+    sampleOrderId: string | number,
+    items: { returnKey: string; quantity: number }[],
+    reason?: string
+  ) {
+    return request.post<R<string | number>>('/inventory/inbound/sample-return', items, {
+      params: { sampleOrderId, reason },
+    })
+  },
+
   // IQC 采购收货单及检验进度（分页）
   iqcList(params: {
     pageNum: number

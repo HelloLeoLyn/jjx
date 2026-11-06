@@ -11,6 +11,7 @@
       :summary="summary"
       :saving="saving"
       :customer-file-list="customerFileList"
+      @return="returnVisible = true"
       @history-copy="handleOpenCopy"
       @clear="handleClearCurrentRound"
       @transfer="runCurrentAction(handleTransfer)"
@@ -18,6 +19,12 @@
       @reject="handleReject"
       @view-inquiry="openInquiryDetail"
       @view-quotation="openQuotationDetail"
+    />
+    <SampleReturnDialog
+      v-model="returnVisible"
+      :sample-order-id="orderId"
+      :sample-order-no="card.orderNo"
+      @success="refreshReturnStock"
     />
     <!-- 轮次切换（全局，冲型组装/印刷共用，2026-08-12 布局调整） -->
     <el-tabs v-model="activeRound" style="margin-bottom: 10px">
@@ -570,6 +577,7 @@ import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 import WorkProjectPicker from '@/views/sales/sample-order/components/WorkProjectPicker.vue'
 import SampleTransferDialog from '@/views/sales/sample-order/components/SampleTransferDialog.vue'
 import SampleInfoCard from './components/SampleInfoCard.vue'
+import SampleReturnDialog from './components/SampleReturnDialog.vue'
 import QuotationDetailDialog from '@/views/sales/quotation/components/QuotationDetailDialog.vue'
 import InquiryDetailDialog from '@/views/sales/inquiry/components/InquiryDetailDialog.vue'
 import SourceDocSummaryDialog from './components/SourceDocSummaryDialog.vue'
@@ -726,6 +734,10 @@ const {
 } = useSampleWorkbench()
 
 // 切换视图只改变显示；方案状态与业务动作仍由原 composable 持有。
+const returnVisible = ref(false)
+async function refreshReturnStock() {
+  await Promise.all([refreshCard(), loadBom()])
+}
 const activeView = ref<'plan' | 'execution'>('plan')
 const infoCardRef = ref<InstanceType<typeof SampleInfoCard>>()
 const canWriteCurrent = computed(() => isCurrentRound.value && !readonlyMode.value)

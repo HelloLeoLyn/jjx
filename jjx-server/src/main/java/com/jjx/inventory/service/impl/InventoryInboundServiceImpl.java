@@ -98,6 +98,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final com.jjx.inventory.service.OrderStockReserveService orderStockReserveService;
     private final com.jjx.inventory.mapper.InventoryItemMapper inventoryItemMapper;
     private final com.jjx.sales.mapper.OrderMapper salesOrderMapper;
+    private final com.jjx.sales.mapper.SalesSampleOrderMapper sampleOrderMapper;
     /** 2026-09-21 dev-20260921-039：拒收回库按发货单明细回冲。 */
     private final com.jjx.sales.mapper.SalesDeliveryMapper salesDeliveryMapper;
     private final com.jjx.sales.mapper.SalesDeliveryItemMapper salesDeliveryItemMapper;
@@ -1937,6 +1938,9 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
         String sourceNo = order.getSourceNo();
         boolean hasSourceNo = sourceNo != null && !sourceNo.isBlank();
+        if (com.jjx.inventory.enums.InboundTypeEnum.SAMPLE_RETURN.getCode().equals(order.getSourceType())) {
+            return "打样退料（样品单 " + (hasSourceNo ? sourceNo : "-") + "）";
+        }
         if ("FQC_CONCESSION".equals(order.getSourceType())) {
             return "成品不良让步处置 " + (hasSourceNo ? sourceNo : "-");
         }
@@ -2117,6 +2121,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     .eq(InventoryStockItem::getStatus, 1);
             if (item.getLocationId() != null) {
                 wrapper.eq(InventoryStockItem::getLocationId, item.getLocationId());
+            }
+            if (com.jjx.inventory.enums.InboundTypeEnum.SAMPLE_RETURN.getCode().equals(order.getInboundType())) {
+                wrapper.eq(InventoryStockItem::getWarehouseId, order.getWarehouseId());
+                if (item.getLocationId() == null) wrapper.isNull(InventoryStockItem::getLocationId);
             }
             InventoryStockItem existing = stockItemMapper.selectOne(wrapper);
 
@@ -3018,6 +3026,169 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         return io.getInboundId();
     }
 
+    // 打样退料沿用返工退料建单、审批、确认链路；可退量只在后端核算。
+    private record SampleReturnKey(Long inventoryItemId, Long materialId, String batchNo,
+                                   Long warehouseId, Long locationId) {}
+
+    public List<Map<String, Object>> sampleReturnPreview(Long sampleOrderId) {
+        if (sampleOrderId == null || sampleOrderMapper.selectByOrderId(sampleOrderId) == null) {
+            throw new BusinessException("样品单不存在: " + sampleOrderId);
+        }
+        Map<SampleReturnKey, Map<String, Object>> byKey = new LinkedHashMap<>();
+        var issuedOrders = outboundOrderMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryOutboundOrder>()
+                        .eq(com.jjx.inventory.domain.InventoryOutboundOrder::getSourceType, "sample")
+                        .eq(com.jjx.inventory.domain.InventoryOutboundOrder::getSourceId, sampleOrderId)
+                        .eq(com.jjx.inventory.domain.InventoryOutboundOrder::getOutboundType,
+                                com.jjx.inventory.enums.OutboundTypeEnum.SAMPLE.getCode())
+                        .eq(com.jjx.inventory.domain.InventoryOutboundOrder::getOrderStatus,
+                                InventoryOrderStatusEnum.COMPLETED.getValue())
+                        .orderByAsc(com.jjx.inventory.domain.InventoryOutboundOrder::getOutboundId));
+        for (var order : issuedOrders) {
+            for (var item : outboundItemMapper.selectByOutboundId(order.getOutboundId())) {
+                SampleReturnKey key = new SampleReturnKey(item.getInventoryItemId(), item.getMaterialId(),
+                        item.getBatchNo(), order.getWarehouseId(), item.getLocationId());
+                Map<String, Object> row = byKey.computeIfAbsent(key, k -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("returnKey", String.valueOf(item.getItemId()));
+                    m.put("inventoryItemId", item.getInventoryItemId());
+                    m.put("materialId", item.getMaterialId());
+                    m.put("materialCode", item.getMaterialCode());
+                    m.put("materialName", item.getMaterialName());
+                    m.put("specification", item.getSpecification());
+                    m.put("unit", item.getUnit());
+                    m.put("unitPrice", item.getUnitPrice());
+                    m.put("batchNo", item.getBatchNo());
+                    m.put("warehouseId", order.getWarehouseId());
+                    m.put("locationId", item.getLocationId());
+                    m.put("issuedQty", BigDecimal.ZERO);
+                    m.put("returnedQty", BigDecimal.ZERO);
+                    return m;
+                });
+                // 同批次多条发料明细按最小明细ID稳定寻址，不依赖相同 sort_order 的返回顺序。
+                if (item.getItemId() < Long.parseLong(String.valueOf(row.get("returnKey")))) {
+                    row.put("returnKey", String.valueOf(item.getItemId()));
+                }
+                row.put("issuedQty", ((BigDecimal) row.get("issuedQty")).add(nzQty(item.getQuantity())));
+            }
+        }
+        var returnedOrders = inboundOrderMapper.selectList(new LambdaQueryWrapper<InventoryInboundOrder>()
+                .eq(InventoryInboundOrder::getInboundType, com.jjx.inventory.enums.InboundTypeEnum.SAMPLE_RETURN.getCode())
+                .eq(InventoryInboundOrder::getSourceType, com.jjx.inventory.enums.InboundTypeEnum.SAMPLE_RETURN.getCode())
+                .eq(InventoryInboundOrder::getSourceId, sampleOrderId)
+                .eq(InventoryInboundOrder::getOrderStatus, InventoryOrderStatusEnum.COMPLETED.getValue()));
+        for (var order : returnedOrders) {
+            for (var item : inboundItemMapper.selectByInboundId(order.getInboundId())) {
+                Map<String, Object> row = byKey.get(new SampleReturnKey(item.getInventoryItemId(), item.getMaterialId(),
+                        item.getBatchNo(), order.getWarehouseId(), item.getLocationId()));
+                if (row != null) {
+                    row.put("returnedQty", ((BigDecimal) row.get("returnedQty")).add(nzQty(item.getQuantity())));
+                }
+            }
+        }
+        for (var row : byKey.values()) {
+            row.put("returnableQty", ((BigDecimal) row.get("issuedQty"))
+                    .subtract((BigDecimal) row.get("returnedQty")).max(BigDecimal.ZERO));
+        }
+        return new ArrayList<>(byKey.values());
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Long createSampleReturnInbound(Long sampleOrderId, List<Map<String, Object>> items, String reason) {
+        if (sampleOrderId == null || items == null || items.isEmpty()) {
+            throw new BusinessException("打样退料必须关联样品单且明细不能为空");
+        }
+        // 与同一样品单领料共用来源订单行锁；锁后才读取已退量，防止并发超退/单号冲突。
+        var sampleOrder = salesOrderMapper.selectByIdForUpdate(sampleOrderId);
+        if (sampleOrder == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
+        Map<String, Map<String, Object>> preview = sampleReturnPreview(sampleOrderId).stream()
+                .collect(Collectors.toMap(r -> String.valueOf(r.get("returnKey")), r -> r));
+        Map<String, BigDecimal> requested = new LinkedHashMap<>();
+        for (var row : items) {
+            if (row == null) throw new BusinessException("打样退料明细不能为空");
+            BigDecimal quantity;
+            try {
+                quantity = new BigDecimal(String.valueOf(row.get("quantity")));
+            } catch (NumberFormatException e) {
+                throw new BusinessException("退料数量格式不正确");
+            }
+            if (quantity.signum() < 0 || quantity.stripTrailingZeros().scale() > 4) {
+                throw new BusinessException("退料数量不能为负且最多保留4位小数");
+            }
+            if (quantity.signum() == 0) continue;
+            String key = String.valueOf(row.get("returnKey"));
+            if (!preview.containsKey(key)) throw new BusinessException("没有对应的已完成打样发料记录，请刷新后重试");
+            requested.merge(key, quantity, BigDecimal::add);
+        }
+        if (requested.isEmpty()) throw new BusinessException("请填写本次退料数量");
+        Long warehouseId = null;
+        for (var entry : requested.entrySet()) {
+            var source = preview.get(entry.getKey());
+            BigDecimal allowed = (BigDecimal) source.get("returnableQty");
+            if (entry.getValue().compareTo(allowed) > 0) {
+                throw new BusinessException("物料[" + source.get("materialCode") + "]退料量 " + entry.getValue()
+                        + " 超过可退量 " + allowed);
+            }
+            if (source.get("inventoryItemId") == null || source.get("batchNo") == null
+                    || String.valueOf(source.get("batchNo")).isBlank() || source.get("warehouseId") == null) {
+                throw new BusinessException("原发料记录缺少库存身份、批次或仓库，无法退料");
+            }
+            Long sourceWarehouseId = (Long) source.get("warehouseId");
+            if (warehouseId != null && !warehouseId.equals(sourceWarehouseId)) {
+                throw new BusinessException("不同仓库的物料请分次退料");
+            }
+            warehouseId = sourceWarehouseId;
+        }
+        // 所有数量（含重复行合计）校验完毕后才落单；取消单同样占用序号。
+        String prefix = "SRT-" + sampleOrder.getOrderNo() + "-";
+        Long existing = inboundOrderMapper.selectCount(new LambdaQueryWrapper<InventoryInboundOrder>()
+                .likeRight(InventoryInboundOrder::getInboundNo, prefix));
+        InventoryInboundOrder order = new InventoryInboundOrder();
+        order.setInboundNo(prefix + (existing + 1));
+        order.setInboundType(com.jjx.inventory.enums.InboundTypeEnum.SAMPLE_RETURN.getCode());
+        order.setSourceType(com.jjx.inventory.enums.InboundTypeEnum.SAMPLE_RETURN.getCode());
+        order.setSourceId(sampleOrderId);
+        order.setSourceNo(sampleOrder.getOrderNo());
+        order.setWarehouseId(warehouseId);
+        order.setInboundDate(LocalDate.now());
+        order.setOrderStatus(InventoryOrderStatusEnum.DRAFT.getValue());
+        order.setRemark("打样退料（样品单 " + sampleOrder.getOrderNo()
+                + (reason == null || reason.isBlank() ? "" : "，原因：" + reason.trim()) + "）");
+        inboundOrderMapper.insert(order);
+        BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        int sort = 1;
+        for (var entry : requested.entrySet()) {
+            var source = preview.get(entry.getKey());
+            InventoryInboundItem item = new InventoryInboundItem();
+            item.setInboundId(order.getInboundId());
+            item.setInventoryItemId((Long) source.get("inventoryItemId"));
+            item.setMaterialId((Long) source.get("materialId"));
+            item.setMaterialCode((String) source.get("materialCode"));
+            item.setMaterialName((String) source.get("materialName"));
+            item.setSpecification((String) source.get("specification"));
+            item.setUnit((String) source.get("unit"));
+            item.setBatchNo((String) source.get("batchNo"));
+            item.setLocationId((Long) source.get("locationId"));
+            item.setQuantity(entry.getValue());
+            item.setUnitPrice((BigDecimal) source.get("unitPrice"));
+            item.setAmount(nzQty(item.getUnitPrice()).multiply(item.getQuantity()));
+            item.setSortOrder(sort++);
+            inboundItemMapper.insert(item);
+            totalQty = totalQty.add(item.getQuantity());
+            totalAmount = totalAmount.add(item.getAmount());
+        }
+        order.setTotalQuantity(totalQty);
+        order.setTotalAmount(totalAmount);
+        order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        inboundOrderMapper.updateById(order);
+        if (!approve(order.getInboundId(), null, null, "打样退料")
+                || !confirm(order.getInboundId(), null, null)) {
+            throw new BusinessException("打样退料审批或过账失败");
+        }
+        return order.getInboundId();
+    }
+
     private static BigDecimal nzQty(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
@@ -3749,6 +3920,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             case "PURCHASE", "PURCHASE_ORDER" -> "采购入库";
             case "PRODUCTION", "PRODUCTION_FINISH" -> "生产入库";
             case "RETURN" -> "退货入库";
+            case "SAMPLE_RETURN" -> com.jjx.inventory.enums.InboundTypeEnum.SAMPLE_RETURN.getLabel();
             case "TRANSFER" -> "调拨入库";
             case "OTHER" -> "其他入库";
             case "IQC_RELEASE" -> "让步接收入库";

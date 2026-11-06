@@ -21,6 +21,7 @@
             <el-option label="采购入库" value="purchase" />
             <el-option label="生产入库" value="production" />
             <el-option label="退货入库" value="return" />
+            <el-option label="打样退料入库" value="sample_return" />
             <el-option label="调拨入库" value="transfer" />
             <el-option label="其他入库" value="other" />
             <el-option label="让步接收入库" value="iqc_release" />

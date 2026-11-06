@@ -21,6 +21,7 @@ export const TransactionTypeEnum = createEnum({
 export const SourceTypeEnum = createEnum({
   items: [
     { value: 'purchase', label: '采购入库', tagProps: { type: 'primary' } },
+    { value: 'sample_return', label: '打样退料入库', tagProps: { type: 'success' } },
     { value: 'production', label: '生产工单', tagProps: { type: 'warning' } },
     { value: 'sales', label: '销售订单', tagProps: { type: 'success' } },
     { value: 'stocktake', label: '盘点单', tagProps: { type: 'info' } },

@@ -13,6 +13,7 @@ public enum InboundTypeEnum {
     PURCHASE("purchase", "采购入库"),
     PRODUCTION("production", "生产入库"),
     RETURN("return", "退货入库"),
+    SAMPLE_RETURN("sample_return", "打样退料入库"),
     TRANSFER("transfer", "调拨入库"),
     ADJUST("adjust", "盘盈入库"),
     IQC_RELEASE("iqc_release", "让步接收入库"),

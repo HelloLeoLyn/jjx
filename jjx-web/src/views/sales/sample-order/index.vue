@@ -221,6 +221,13 @@
       @success="getList"
     />
 
+    <SampleReturnDialog
+      v-if="returnSample"
+      v-model="returnVisible"
+      :sample-order-id="returnSample.orderId"
+      :sample-order-no="returnSample.orderNo"
+      @success="getList"
+    />
     <!-- 打样领料：预览 + 改数量（JJX-QR-031 抬头「打样领料单」） -->
     <el-dialog
       v-model="pickVisible"
@@ -317,6 +324,7 @@ import { useUserStore } from '@/store/modules/user'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { orderApi } from '@/api/sales/order'
 import { outboundApi } from '@/api/inventory/outbound'
+import SampleReturnDialog from '@/views/engineering/sample-workbench/components/SampleReturnDialog.vue'
 import type { SamplePickPreviewRow } from '@/types/inventory/outbound'
 import type { SampleOrderQueryParams } from '@/api/sales/sampleOrder'
 import { quotationApi } from '@/api/sales/quotation'
@@ -1142,7 +1150,16 @@ async function submitSamplePick() {
   }
 }
 
+const returnVisible = ref(false)
+const returnSample = ref<any>(null)
+function openSampleReturn(row: any) {
+  if (!row?.orderId) return
+  returnSample.value = row
+  returnVisible.value = true
+}
+
 const sampleActions: TableAction<any>[] = [
+  { key: 'return', label: '退料', type: 'primary', permission: 'inventory:inbound:add' },
   { key: 'trace', label: '查看流水', type: 'info' },
   {
     key: 'edit',
@@ -1251,6 +1268,7 @@ const sampleActions: TableAction<any>[] = [
 const handleSampleAction = (key: string, row: any) => {
   const handlers: Record<string, () => void> = {
     pick: () => void openSamplePick(row),
+    return: () => openSampleReturn(row),
     print: () => handlePrint(row),
     reqsign: () => openRequisitionSign(row),
     trace: () => showTrace(row),

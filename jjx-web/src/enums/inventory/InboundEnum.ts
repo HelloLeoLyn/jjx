@@ -9,6 +9,7 @@ export const InboundTypeEnum = createEnum({
     { value: 'purchase', label: '采购入库', tagProps: { type: 'primary' } },
     { value: 'production', label: '生产入库', tagProps: { type: 'success' } },
     { value: 'return', label: '退货入库', tagProps: { type: 'warning' } },
+    { value: 'sample_return', label: '打样退料入库', tagProps: { type: 'success' } },
     { value: 'transfer', label: '调拨入库', tagProps: { type: 'info' } },
     { value: 'adjust', label: '盘盈入库', tagProps: { type: 'danger' } },
     // IQC 处置联动自动生成的入库单（dev-20260929-013）
@@ -75,6 +76,7 @@ export const InboundSourceTypeEnum = createEnum({
     { value: 'production', label: '生产工单', tagProps: { type: 'primary' } },
     { value: 'production_finish', label: '生产工单', tagProps: { type: 'primary' } },
     { value: 'sales_return', label: '销售退货', tagProps: { type: 'primary' } },
+    { value: 'sample_return', label: '打样退料', tagProps: { type: 'success' } },
     { value: 'fqc_concession', label: '成品让步处置', tagProps: { type: 'warning' } },
     { value: 'iqc_release', label: '来料让步处置', tagProps: { type: 'warning' } },
     { value: 'iqc_rework', label: '来料返工处置', tagProps: { type: 'warning' } },
@@ -142,7 +144,11 @@ export function isReverseInbound(
   inboundNo?: string | null,
   totalQuantity?: number | string | null
 ): boolean {
-  if (String(inboundNo || '').trim().endsWith('-R')) {
+  if (
+    String(inboundNo || '')
+      .trim()
+      .endsWith('-R')
+  ) {
     return true
   }
   const quantity = Number(totalQuantity)
@@ -154,10 +160,7 @@ export function isReverseInbound(
  * 生产来源的 PENDING 语义是「等仓库确认入库」，不是通用审批的「待审批」；
  * 采购侧维持「待审批」。
  */
-export function inboundStatusLabel(
-  status?: number | null,
-  ctx: InboundLabelContext = {}
-): string {
+export function inboundStatusLabel(status?: number | null, ctx: InboundLabelContext = {}): string {
   if (status === undefined || status === null) {
     return ctx.fallbackName || '-'
   }

@@ -37,6 +37,7 @@ import java.util.Map;
 public class InventoryInboundController {
 
     private final InventoryInboundService inboundService;
+    private final com.jjx.inventory.service.impl.InventoryInboundServiceImpl sampleReturnService;
 
     @GetMapping("/list")
     @Operation(summary = "分页查询入库单")
@@ -97,6 +98,23 @@ public class InventoryInboundController {
                                          @RequestParam(required = false) String reason,
                                          @RequestBody java.util.List<java.util.Map<String, Object>> items) {
         return Result.success(inboundService.createProductionReturnInbound(orderId, ncrId, items, reason));
+    }
+
+    @GetMapping("/sample-return-preview/{sampleOrderId}")
+    @Operation(summary = "打样退料预览（仅已完成发料，含原批次与可退量）")
+    @SaCheckPermission("inventory:inbound:add")
+    public Result<List<Map<String, Object>>> sampleReturnPreview(@PathVariable Long sampleOrderId) {
+        return Result.success(sampleReturnService.sampleReturnPreview(sampleOrderId));
+    }
+
+    @PostMapping("/sample-return")
+    @Operation(summary = "打样退料入库（回原批次，自动审批与过账）")
+    @SaCheckPermission("inventory:inbound:add")
+    @Log(module = "入库管理", businessType = BusinessType.INSERT, bizType = "'inbound'", bizId = "#result.data", action = LogActions.INBOUND_CREATE)
+    public Result<Long> sampleReturn(@RequestParam Long sampleOrderId,
+                                     @RequestParam(required = false) String reason,
+                                     @RequestBody List<Map<String, Object>> items) {
+        return Result.success(sampleReturnService.createSampleReturnInbound(sampleOrderId, items, reason));
     }
 
     @PostMapping("/cancel/{inboundId}")
