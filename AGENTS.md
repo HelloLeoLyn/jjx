@@ -23,6 +23,12 @@ Judge the request type BEFORE touching anything:
 Unsure which it is → treat it as discuss and ask three things first: what to touch, where, what the deliverable is.
 Writing files is legitimate only as part of an executed task (backups / migrations / doc registration are part of the task, not "顺便"). Full rule: `jjx-docs/standards/CONVENTIONS.md` §9.
 
+**"动手" five actions, all需要当轮明确授权（2026-11-06 user rule, dev-20261106-012）**: writing/editing files, changing the database, creating or editing a `sys_task` card, **changing a task's status**, and starting a process (agent, build, dispatch) are each an execution action. None of them may be inferred from a correction, a complaint, a design confirmation, or an earlier "可以" in a different context.
+
+- **"登记" ≠ "派工"**: registering a card only writes the card. Dispatching (starting Codex/OpenClaw, or setting status=1 + assignee) needs its own explicit word (派 / 开工 / 执行).
+- When the sentence is a correction or a clarification of the agent's understanding, answer only; ask "要我做吗" once and wait.
+- Every message that performs any of the five actions must start with a line `依据：用户上一条说的"…"` quoting the authorization. If no such quote exists, the action is out of bounds.
+
 ## Service lifecycle — explicit user instruction required
 
 - Never start, stop, restart, reload, kill, or replace a running service/process unless the user explicitly requests that exact lifecycle operation in the current request.
