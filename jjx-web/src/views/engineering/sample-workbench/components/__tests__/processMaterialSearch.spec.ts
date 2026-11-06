@@ -41,6 +41,7 @@ vi.mock('@/directives', () => ({ hasPermi: () => true }))
 import { materialApi } from '@/api/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import ProcessMaterialEditor from '../ProcessMaterialEditor.vue'
+import BomPanel from '../BomPanel.vue'
 import { ElInputNumber } from 'element-plus'
 import EditableSearchSelect from '@/components/Selector/EditableSearchSelect.vue'
 
@@ -111,6 +112,23 @@ function mountIt(pc: any, readonly = false) {
 
 beforeEach(() => { vi.useFakeTimers(); vi.mocked(materialApi.search).mockReset() })
 afterEach(() => { vi.useRealTimers(); document.body.innerHTML = '' })
+
+describe('BomPanel 复制材料空基/模（dev-20261106-015）', () => {
+  it('只读单元格显示待核对，不显示1', () => {
+    const wrapper = mount(BomPanel, {
+      props: {
+        readonly: true,
+        bomList: [{ uid: 'copied-null', name: '待核对基材', baseQty: null, moduleQty: null, qty: 1 }],
+      },
+      global: { stubs: { ElTable: ElTableStub, ElTableColumn: ElTableColumnStub } },
+    })
+    const cells = wrapper.findAll('td')
+    expect(cells).not.toHaveLength(0)
+    expect(cells.filter(cell => cell.text() === '待核对')).toHaveLength(2)
+    expect(cells.some(cell => cell.text() === '1')).toBe(false)
+    wrapper.unmount()
+  })
+})
 
 describe('ProcessMaterialEditor 材料可编辑搜索', () => {
   it('已选材料显示名称而不是裸ID，并复用公共可编辑搜索框', () => {

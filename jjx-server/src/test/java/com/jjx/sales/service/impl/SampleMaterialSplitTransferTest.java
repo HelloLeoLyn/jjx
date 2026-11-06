@@ -72,6 +72,43 @@ class SampleMaterialSplitTransferTest {
         var rows=service.previewTransfer(10L).getSampleMaterials();
         assertEquals(List.of("50mm","60mm"), rows.stream().map(row->row.getSplit()).toList());
     }
+    @Test void transferKeepsExactProcessAndStandaloneBaseAndModule() {
+        var process = sampleProcessMapper.selectByOrderId(10L).getFirst();
+        process.setMaterials("[{\"name\":\"面板\",\"materialId\":1,\"qty\":1,\"baseQty\":3,\"moduleQty\":4,\"projectIds\":[]}]");
+        var independent = sampleBomMapper.selectByOrderId(10L).getFirst();
+        independent.setBaseQty(new BigDecimal("6"));
+        independent.setModuleQty(new BigDecimal("8"));
+        var preview = service.previewTransfer(10L).getSampleMaterials();
+        assertEquals(new BigDecimal("3"), preview.get(0).getBaseQty());
+        assertEquals(new BigDecimal("4"), preview.get(0).getModuleQty());
+        assertEquals(new BigDecimal("6"), preview.get(1).getBaseQty());
+        assertEquals(new BigDecimal("8"), preview.get(1).getModuleQty());
+
+        prepareBomWrite();
+        var dto = new SampleTransferConfirmDTO();
+        dto.setOrderId(10L);
+        try (var security = mockStatic(SecurityUtils.class)) {
+            assertEquals("BOM_CAPTURED", assertThrows(IllegalStateException.class,
+                    () -> service.confirmTransfer(dto)).getMessage());
+        }
+        var capture = ArgumentCaptor.forClass(EngineeringBomItem.class);
+        verify(bomItemMapper, times(2)).insert(capture.capture());
+        var written = capture.getAllValues();
+        assertEquals(new BigDecimal("3"), written.get(0).getBaseQty());
+        assertEquals(new BigDecimal("4"), written.get(0).getModuleQty());
+        assertEquals(new BigDecimal("6"), written.get(1).getBaseQty());
+        assertEquals(new BigDecimal("8"), written.get(1).getModuleQty());
+        written.forEach(row -> assertEquals(0, new BigDecimal("0.75").compareTo(row.getQuantity())));
+    }
+
+    @Test void processMaterialNormalizationKeepsExplicitBaseAndModule() throws Exception {
+        String normalized = org.springframework.test.util.ReflectionTestUtils.invokeMethod(service,
+                "normalizeSampleMaterials", "[{\"name\":\"面板\",\"qty\":1,\"baseQty\":6,\"moduleQty\":8}]");
+        var row = new com.fasterxml.jackson.databind.ObjectMapper().readTree(normalized).get(0);
+        assertEquals(6, row.get("baseQty").asInt());
+        assertEquals(8, row.get("moduleQty").asInt());
+        assertEquals(0, new BigDecimal("0.75").compareTo(row.get("qty").decimalValue()));
+    }
     void prepareBomWrite() {
         var prod=new SalesOrderProductVO();prod.setProductId(20L);prod.setProductCode("P20");prod.setProductName("产品");
         when(orderProductService.getListByOrderId(10L)).thenReturn(List.of(prod));

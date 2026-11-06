@@ -72,7 +72,8 @@ export function useSampleBom(context: SampleBomContext) {
     }
     standaloneMaterials.value.forEach((row, index) => {
       const key = `bom|${row.materialId ?? ''}|${row.name ?? ''}|${row.spec ?? ''}`
-      out.push({ ...normalizeMaterial(row), ownerUid: null, srcIndex: index, uid: stableUid(key) })
+      // 加载/历史复制已归一；投影保留成品方案复制的空基/模，供页面提示待核对。
+      out.push({ ...row, ownerUid: null, srcIndex: index, uid: stableUid(key) })
     })
     return out
   })

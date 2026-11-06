@@ -1822,6 +1822,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             m.put("name", bi.getMaterialName());
             m.put("spec", bi.getSpecification());
             m.put("qty", bi.getQuantity());
+            m.put("baseQty", bi.getBaseQty());
+            m.put("moduleQty", bi.getModuleQty());
             m.put("unit", bi.getUnit());
             m.put("materialId", bi.getMaterialId());
             m.put("materialCode", bi.getMaterialCode());

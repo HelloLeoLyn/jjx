@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { usePlanCopy } from '../usePlanCopy'
+import { useSampleBom } from '../useSampleBom'
 
 const api = vi.hoisted(() => ({ listBom: vi.fn(), listProcesses: vi.fn(), getProductPlan: vi.fn() }))
 const message = vi.hoisted(() => ({ alert: vi.fn(() => Promise.resolve()), success: vi.fn(), warning: vi.fn(), error: vi.fn() }))
@@ -25,8 +26,10 @@ function fixture() {
     genUid: () => 'uid',
     parseMaterials: (json?: string | null) => JSON.parse(json || '[]'),
   }
+  const bom = useSampleBom(context)
+  context.standaloneMaterials = bom.standaloneMaterials
   const copy = usePlanCopy(context)
-  return { context, copy }
+  return { context, copy, bom }
 }
 
 const plan = {
@@ -60,6 +63,52 @@ const plan = {
 beforeEach(() => vi.clearAllMocks())
 
 describe('成品方案复制：材料以 BOM 为准整份带出（dev-20261102-004）', () => {
+  it('基数3/模数4原样复制，不被默认1/1覆盖', async () => {
+    api.getProductPlan.mockResolvedValue({ data: {
+      ...plan, unlinkedMaterials: [{ name: '基材', qty: 0.75, baseQty: 3, moduleQty: 4 }],
+    } })
+    const { context, copy, bom } = fixture()
+    await copy.loadProductPlan()
+    await copy.confirmProductPlanCopy()
+    expect(context.standaloneMaterials.value[0]).toMatchObject({ baseQty: 3, moduleQty: 4, qty: 0.75 })
+    expect(bom.bomList.value[0]).toMatchObject({ baseQty: 3, moduleQty: 4, qty: 0.75 })
+  })
+
+  it.each([
+    { baseQty: null, moduleQty: null },
+    {},
+    { baseQty: 3, moduleQty: null },
+    { baseQty: null, moduleQty: 4 },
+  ])('源基/模缺失保持空值，不按用量反推或补1：%j', async (quantities) => {
+    api.getProductPlan.mockResolvedValue({ data: {
+      ...plan, unlinkedMaterials: [{ name: '待核对基材', qty: 1, ...quantities }],
+    } })
+    const { context, copy, bom } = fixture()
+    await copy.loadProductPlan()
+    await copy.confirmProductPlanCopy()
+    expect(context.standaloneMaterials.value[0]).toMatchObject({
+      baseQty: quantities.baseQty ?? null, moduleQty: quantities.moduleQty ?? null,
+    })
+    expect(bom.bomList.value[0]).toMatchObject({
+      baseQty: quantities.baseQty ?? null, moduleQty: quantities.moduleQty ?? null,
+    })
+  })
+
+  it.each(['round', 'order'])('历史轮次/其他样品的3/4复制行为不变：%s', async (source) => {
+    api.listProcesses.mockResolvedValue({ data: plan.rows })
+    api.listBom.mockResolvedValue({ data: [{
+      roundNo: 1, materialName: '历史基材', quantity: 0.75, baseQty: 3, moduleQty: 4,
+    }] })
+    const { context, copy } = fixture()
+    if (source === 'round') {
+      await copy.copyRoundFrom(1)
+    } else {
+      copy.historySelected.value = { orderId: 9, sampleRound: 1 }
+      await copy.confirmHistoryCopy()
+    }
+    expect(context.standaloneMaterials.value[0]).toMatchObject({ baseQty: 3, moduleQty: 4, qty: 0.75 })
+  })
+
   it('挂不上工序的材料进「独立材料」，不再暂挂首道工序', async () => {
     api.getProductPlan.mockResolvedValue({ data: plan })
     const { context, copy } = fixture()
