@@ -4,11 +4,13 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.inventory.domain.InventoryOutboundItem;
 import com.jjx.inventory.domain.InventoryOutboundOrder;
+import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryWarehouse;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
 import com.jjx.inventory.mapper.InventoryOutboundItemMapper;
 import com.jjx.inventory.mapper.InventoryOutboundOrderMapper;
 import com.jjx.inventory.mapper.InventoryStockItemMapper;
+import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.mapper.InventoryWarehouseMapper;
 import com.jjx.inventory.service.impl.InventoryOutboundServiceImpl;
 import com.jjx.sales.domain.entity.SalesOrder;
@@ -41,6 +43,7 @@ class InventorySamplePickOrderIdTest {
     @Mock InventoryOutboundOrderMapper outboundOrderMapper;
     @Mock InventoryOutboundItemMapper outboundItemMapper;
     @Mock InventoryStockItemMapper stockItemMapper;
+    @Mock InventoryStockMapper stockMapper;
     @Mock InventoryMaterialMapper materialMapper;
     @Mock InventoryWarehouseMapper outboundWarehouseMapper;
     @Mock RedisSequenceService redisSequenceService;
@@ -79,7 +82,18 @@ class InventorySamplePickOrderIdTest {
         SalesOrder source = new SalesOrder();
         source.setOrderId(2L);
         source.setOrderNo("SP261102001");
-        when(salesOrderMapper.selectById(2L)).thenReturn(source);
+        when(salesOrderMapper.selectByIdForUpdate(2L)).thenReturn(source);
+        SalesSampleBom bom = new SalesSampleBom();
+        bom.setOrderId(2L);
+        bom.setMaterialId(11L);
+        bom.setMaterialName("测试材料");
+        bom.setQuantity(new BigDecimal("99")); // 不使用陈旧快照，基数/模数得出单位用量 3
+        bom.setBaseQty(new BigDecimal("3"));
+        bom.setModuleQty(BigDecimal.ONE);
+        when(sampleBomMapper.selectList(any())).thenReturn(List.of(bom));
+        InventoryMaterial material = new InventoryMaterial();
+        material.setMaterialId(11L);
+        when(materialMapper.selectById(11L)).thenReturn(material);
         InventoryWarehouse warehouse = new InventoryWarehouse();
         warehouse.setWarehouseId(7L);
         when(outboundWarehouseMapper.selectOne(any())).thenReturn(warehouse);
@@ -119,7 +133,9 @@ class InventorySamplePickOrderIdTest {
                 () -> service.createSamplePick(99L, pickItems()));
 
         assertEquals("样品单不存在: 99", error.getMessage());
-        verifyNoInteractions(redisSequenceService, salesOrderMapper, outboundOrderMapper,
+        verify(salesOrderMapper).selectByIdForUpdate(99L);
+        verifyNoMoreInteractions(salesOrderMapper);
+        verifyNoInteractions(redisSequenceService, outboundOrderMapper,
                 outboundItemMapper, stockItemMapper, outboundWarehouseMapper);
     }
 
@@ -127,6 +143,8 @@ class InventorySamplePickOrderIdTest {
         SalesSampleOrder sample = new SalesSampleOrder();
         sample.setSampleOrderId(1L);
         sample.setOrderId(2L);
+        sample.setSampleQty(1);
+        sample.setSampleRound(1);
         return sample;
     }
 

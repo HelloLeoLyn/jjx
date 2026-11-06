@@ -224,12 +224,13 @@
     <el-dialog
       v-model="pickVisible"
       :title="`打样领料 - ${pickSample?.orderNo || ''}`"
-      width="1000px"
+      width="1250px"
       append-to-body
     >
       <p>
         打样数量：{{ pickSample?.sampleQty ?? '-' }} {{ pickSample?.unit || '' }}；
-        需求 = 单件用量 × 打样数量（向上取整）
+        单位用量 = 基数 ÷ 模数（两者均大于 0，否则使用 BOM 用量）；
+        需求 = 单位用量 × 打样数量（向上取整）
       </p>
       <el-table :data="pickRows" size="small" border>
         <el-table-column
@@ -248,6 +249,9 @@
         </el-table-column>
         <el-table-column label="规格" prop="specification" min-width="150" show-overflow-tooltip />
         <el-table-column label="单位" prop="unit" width="70" align="center" />
+        <el-table-column label="模数" prop="moduleQty" width="80" align="right" />
+        <el-table-column label="基数" prop="baseQty" width="80" align="right" />
+        <el-table-column label="单位用量" prop="unitQuantity" width="100" align="right" />
         <el-table-column label="BOM需求" prop="quantity" width="90" align="right" />
         <el-table-column label="已领" width="80" align="right">
           <template #default="{ row }">{{ row.issuedQuantity ?? 0 }}</template>

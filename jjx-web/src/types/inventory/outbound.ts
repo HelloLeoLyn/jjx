@@ -106,7 +106,11 @@ export interface SamplePickPreviewRow {
   materialName: string
   specification?: string | null
   unit?: string | null
-  /** 样品BOM单件用量 × 打样数量，向上取整（由后端计算） */
+  baseQty?: number | null
+  moduleQty?: number | null
+  /** 后端按有效基数÷模数计算，否则回退 BOM quantity */
+  unitQuantity: number
+  /** 单位用量 × 打样数量，向上取整；无损耗、无最低投料量下限（由后端计算） */
   quantity: number
   /** 已领数量 */
   issuedQuantity?: number

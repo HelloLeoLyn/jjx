@@ -87,6 +87,31 @@ class SamplePickDemandTest {
         assertEquals(BigDecimal.ZERO, row.get("availableQuantity"));
     }
 
+    @ParameterizedTest
+    @CsvSource({"1,1,1.0000,2", "1,4,0.2500,1", "3,4,0.7500,2", "1,3,0.3333,1", "2,3,0.6667,2"})
+    void recalculatesUnitQuantityFromBaseAndModuleInsteadOfStoredQuantity(
+            String base, String module, String unitQuantity, String demand) {
+        bom(7L, 1, 11L, "材料", "99", base, module);
+        material(11L);
+        var row = service.previewSamplePick(7L).get(0);
+        assertDecimal(base, row.get("baseQty"));
+        assertDecimal(module, row.get("moduleQty"));
+        assertEquals(new BigDecimal(unitQuantity), row.get("unitQuantity"));
+        assertEquals(new BigDecimal(demand), row.get("quantity"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({",4", "3,", ",", "0,4", "3,0", "-1,4", "3,-1"})
+    void missingOrNonPositiveBaseOrModuleFallsBackToStoredQuantity(String base, String module) {
+        bom(7L, 1, 11L, "材料", "0.6", base, module);
+        material(11L);
+        var row = service.previewSamplePick(7L).get(0);
+        assertDecimal(base, row.get("baseQty"));
+        assertDecimal(module, row.get("moduleQty"));
+        assertDecimal("0.6", row.get("unitQuantity"));
+        assertEquals(new BigDecimal("2"), row.get("quantity")); // ceil(0.6 × 2)
+    }
+
     @Test void currentRoundExcludesOldRoundAndOtherOrders() {
         sample.setSampleRound(2);
         bom(7L, 1, 11L, "第一轮", "100");
@@ -127,12 +152,12 @@ class SamplePickDemandTest {
     }
 
     @Test void splitRequestCannotExceedRemainingDemandAndWritesNothing() {
-        bom(7L, 1, 11L, "材料", "2"); // 需求 4，已领 1，剩余 3
+        bom(7L, 1, 11L, "材料", "99", "3", "4"); // ceil(0.75 × 2)=2，已领 1，剩余 1
         material(11L);
         issued(issue(11L, "材料", "1"));
         var error = assertThrows(BusinessException.class,
-                () -> service.createSamplePick(7L, List.of(item(11L, "2"), item(11L, "2"))));
-        assertTrue(error.getMessage().contains("剩余可领 3"));
+                () -> service.createSamplePick(7L, List.of(item(11L, "1"), item(11L, "1"))));
+        assertTrue(error.getMessage().contains("剩余可领 1"));
         verify(outboundOrderMapper, never()).insert(any(InventoryOutboundOrder.class));
         verify(outboundItemMapper, never()).insert(any(InventoryOutboundItem.class));
         verifyNoInteractions(redisSequenceService, outboundWarehouseMapper, stockItemMapper, transactionMapper);
@@ -162,8 +187,8 @@ class SamplePickDemandTest {
     }
 
     @Test void acceptsExactlyRemainingDemandAcrossRepeatedBomAndRequestRows() {
-        bom(7L, 1, 11L, "材料", "1");
-        bom(7L, 1, 11L, "材料", "1"); // 合计需求 4，同料已领 1 只扣一次
+        bom(7L, 1, 11L, "材料", "99", "3", "4");
+        bom(7L, 1, 11L, "材料", "99", "3", "4"); // 每行需求 2，合计 4，已领 1 只扣一次
         material(11L);
         issued(issue(11L, "材料", "1"));
         var warehouse = new InventoryWarehouse();
@@ -184,15 +209,27 @@ class SamplePickDemandTest {
     }
 
     private void bom(Long orderId, int round, Long materialId, String name, String quantity) {
+        bom(orderId, round, materialId, name, quantity, null, null);
+    }
+
+    private void bom(Long orderId, int round, Long materialId, String name, String quantity,
+                     String base, String module) {
         var bom = new SalesSampleBom();
         bom.setOrderId(orderId);
         bom.setRoundNo(round);
         bom.setMaterialId(materialId);
         bom.setMaterialName(name);
         bom.setQuantity(new BigDecimal(quantity));
+        bom.setBaseQty(base == null ? null : new BigDecimal(base));
+        bom.setModuleQty(module == null ? null : new BigDecimal(module));
         bom.setSpecification("10×20");
         bom.setUnit("PCS");
         bomMapper.insert(bom);
+    }
+
+    private void assertDecimal(String expected, Object actual) {
+        if (expected == null) assertNull(actual);
+        else assertEquals(0, new BigDecimal(expected).compareTo((BigDecimal) actual));
     }
 
     private void material(Long id) {

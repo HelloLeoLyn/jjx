@@ -1533,7 +1533,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             m.put("materialName", row.getMaterialName());
             m.put("specification", row.getSpecification());
             m.put("unit", row.getUnit());
-            BigDecimal demand = Objects.requireNonNullElse(row.getQuantity(), BigDecimal.ZERO)
+            m.put("baseQty", row.getBaseQty());
+            m.put("moduleQty", row.getModuleQty());
+            BigDecimal unitQuantity = sampleUnitQuantity(row);
+            m.put("unitQuantity", unitQuantity);
+            // 样品 BOM 无 loss_rate / min_issue_qty：损耗按 0，不加最低投料量下限。
+            BigDecimal demand = unitQuantity
                     .multiply(BigDecimal.valueOf(Objects.requireNonNullElse(sample.getSampleQty(), 0)))
                     .setScale(0, java.math.RoundingMode.UP);
             m.put("quantity", demand);
@@ -1550,6 +1555,16 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             result.add(m);
         }
         return result;
+    }
+
+    private static BigDecimal sampleUnitQuantity(com.jjx.sales.domain.entity.SalesSampleBom row) {
+        // 与生产 BOM calculatedUnitQuantity 一致；有效基数、模数优先于库中既存用量 quantity。
+        BigDecimal base = row.getBaseQty();
+        BigDecimal module = row.getModuleQty();
+        if (base != null && base.signum() > 0 && module != null && module.signum() > 0) {
+            return base.divide(module, 4, java.math.RoundingMode.HALF_UP);
+        }
+        return Objects.requireNonNullElse(row.getQuantity(), BigDecimal.ZERO);
     }
 
     @Override

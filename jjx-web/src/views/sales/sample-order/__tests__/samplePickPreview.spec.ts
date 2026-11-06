@@ -59,6 +59,7 @@ let wrapper: ReturnType<typeof shallowMount>
 const row = (extra = {}) => ({
   materialId: 11, materialCode: 'M11', materialName: '材料',
   specification: '10×20', unit: 'PCS', quantity: 2, issuedQuantity: 1, availableQuantity: 0,
+  baseQty: 3, moduleQty: 4, unitQuantity: 0.75,
   ...extra,
 })
 async function open(rows = [row()]) {
@@ -83,13 +84,17 @@ describe('打样领料预览与提交', () => {
     vi.restoreAllMocks()
   })
 
-  it('显示打样数量、规格、单位和后端需求，默认扣除已领', async () => {
+  it('显示打样数量、规格、单位、模数、基数、单位用量和后端需求，默认扣除已领', async () => {
     await open()
     const dialog = wrapper.get('[data-pick-dialog]')
     expect(dialog.text()).toContain('打样数量：2 PCS')
-    expect(dialog.text()).toContain('需求 = 单件用量 × 打样数量（向上取整）')
+    expect(dialog.text()).toContain('单位用量 = 基数 ÷ 模数')
+    expect(dialog.text()).toContain('需求 = 单位用量 × 打样数量（向上取整）')
     expect(dialog.get('[data-column="规格"]').text()).toContain('10×20')
     expect(dialog.get('[data-column="单位"]').text()).toContain('PCS')
+    expect(dialog.get('[data-column="模数"]').text()).toContain('4')
+    expect(dialog.get('[data-column="基数"]').text()).toContain('3')
+    expect(dialog.get('[data-column="单位用量"]').text()).toContain('0.75')
     expect(dialog.get('[data-column="BOM需求"]').text()).toContain('2')
     const input = wrapper.findComponent({ name: 'ElInputNumber' })
     expect(input.props('modelValue')).toBe(1)
@@ -98,9 +103,16 @@ describe('打样领料预览与提交', () => {
   })
 
   it('直接展示后端已向上取整的需求，前端不再乘打样数量', async () => {
-    await open([row({ quantity: 1, issuedQuantity: 0 })])
+    await open([row({ baseQty: 1, moduleQty: 4, unitQuantity: 0.25, quantity: 1, issuedQuantity: 0 })])
     expect(wrapper.get('[data-column="BOM需求"]').text()).toContain('1')
     expect(wrapper.findComponent({ name: 'ElInputNumber' }).props('modelValue')).toBe(1)
+  })
+
+  it('缺少模数时展示后端回退的单位用量与需求', async () => {
+    await open([row({ baseQty: 3, moduleQty: null, unitQuantity: 0.6, quantity: 2, issuedQuantity: 0 })])
+    expect(wrapper.get('[data-column="单位用量"]').text()).toContain('0.6')
+    expect(wrapper.get('[data-column="BOM需求"]').text()).toContain('2')
+    expect(wrapper.findComponent({ name: 'ElInputNumber' }).props('modelValue')).toBe(2)
   })
 
   it('未匹配物料禁用输入、给出提示且不参与提交，生成后打开打印页', async () => {
