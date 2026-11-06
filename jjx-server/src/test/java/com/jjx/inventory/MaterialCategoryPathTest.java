@@ -78,6 +78,24 @@ class MaterialCategoryPathTest {
         verify(mapper, times(2)).updateById(updated.capture());
         assertEquals("原材料/辅材", updated.getAllValues().get(1).getNamePath());
     }
+    @Test void parentWithEnabledChildrenCanSaveWithoutPrefixThroughLegacyEdit() {
+        bindBaseMapper();
+        var existing = new InventoryMaterialCategory();
+        existing.setCategoryId(7L); existing.setCategoryCode("RAW_AUX"); existing.setCategoryName("辅材");
+        existing.setParentId(0L); existing.setCategoryLevel(1);
+        existing.setCategoryPath("RAW_AUX"); existing.setNamePath("辅材");
+        when(mapper.selectById(7L)).thenReturn(existing);
+        when(mapper.selectCount(any())).thenReturn(1L);
+        when(mapper.updateById(any(InventoryMaterialCategory.class))).thenReturn(1);
+        for (String prefix : java.util.Arrays.asList(null, "", " ")) {
+            var edited = new InventoryMaterialCategory();
+            edited.setCategoryId(7L); edited.setModelPrefix(prefix);
+            assertTrue(service.updateById(edited));
+        }
+        verify(mapper, times(3)).updateById(any(InventoryMaterialCategory.class));
+        verify(mapper, never()).selectList(any());
+    }
+
     @Test void emptyInvalidAndDuplicatePrefixesFailOnSaveAndEdit() {
         bindBaseMapper();
         var category = new InventoryMaterialCategory(); category.setCategoryId(7L);

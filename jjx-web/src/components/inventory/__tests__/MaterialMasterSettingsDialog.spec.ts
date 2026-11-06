@@ -129,4 +129,54 @@ describe('属性模板界面保存', () => {
     wrapper.unmount()
   })
 
+  it.each([
+    { name: '有启用子类的父级', editId: 2, childStatus: 1, required: false },
+    { name: '只有停用子类的品类', editId: 2, childStatus: 0, required: true },
+    { name: '没有子类的叶子', editId: 3, childStatus: 1, required: true },
+    { name: '新建叶子', editId: undefined, childStatus: 1, required: true },
+  ])('$name 的前缀必填星号与提交预检一致', async ({ editId, childStatus, required }) => {
+    api.categories.mockResolvedValue({ data: [
+      { categoryId: 2, categoryCode: 'RAW_AUX_ELECTRONIC', categoryName: '电子元件',
+        pathName: '原材料/辅材/电子元件', parentId: 1, categoryLevel: 3, status: 1 },
+      { categoryId: 3, categoryCode: 'RAW_AUX_LED', categoryName: 'LED',
+        pathName: '原材料/辅材/电子元件/LED', parentId: 2, categoryLevel: 4, status: childStatus },
+    ] })
+    const FormItem = defineComponent({ props: { label: String, required: Boolean }, template: '<div><slot /></div>' })
+    const wrapper = mount(MaterialMasterSettingsPanel, { global: { stubs: {
+      ...stubs, ElFormItem: FormItem, ElButton: Button, ElTableColumn: true, ElInput: true,
+      ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true,
+    } } })
+    await flushPromises()
+    const state = wrapper.vm as any
+    state.categoryEditId = editId
+    state.editCategory(editId)
+    await flushPromises()
+    const prefixItem = wrapper.findAllComponents(FormItem).find(item => item.props('label') === '型号前缀')!
+    expect(prefixItem.props('required')).toBe(required)
+    for (const modelPrefix of ['', ' ']) {
+      api.saveCategory.mockClear()
+      state.categoryForm.modelPrefix = modelPrefix
+      await state.saveCategory()
+      if (required) {
+        expect(api.saveCategory).not.toHaveBeenCalled()
+        expect(state.error).toContain('型号前缀不能为空')
+      } else {
+        expect(api.saveCategory).toHaveBeenCalledWith(expect.objectContaining({ categoryId: editId, modelPrefix }))
+        expect(state.error).toBe('')
+      }
+    }
+    if (required) {
+      for (const invalid of ['P', 'pc', 'P-C']) {
+        state.categoryForm.modelPrefix = invalid
+        await state.saveCategory()
+        expect(api.saveCategory).not.toHaveBeenCalled()
+        expect(state.error).toContain('型号前缀须为2～8位')
+      }
+    }
+    state.categoryForm.modelPrefix = 'LED'
+    await state.saveCategory()
+    expect(api.saveCategory).toHaveBeenCalledWith(expect.objectContaining({ categoryId: editId, modelPrefix: 'LED' }))
+    wrapper.unmount()
+  })
+
 })

@@ -233,14 +233,20 @@ class MaterialMasterMysqlTest {
         for (String retired : List.of("size", "thickness", "width_size", "attr_thickness_num")) assertFalse(columns.contains(retired));
         var dto = mapper.readValue("{\"materialName\":\"数值尺寸\",\"categoryId\":900003,\"color\":\"BLACK\",\"widthMm\":30,\"lengthMm\":90,\"thicknessMm\":0.175,\"sizeUnit\":\"cm\",\"size\":\"伪造\"}", MaterialMasterDTO.class);
         var saved = service.save(dto, "Codex-test");
-        assertEquals("30*90*0.175cm", mapper.readTree(mapper.writeValueAsString(saved)).get("size").asText());
-        assertEquals("30*90*0.175cm", service.detail(saved.getMaterialId()).material().getSize());
+        // 宽/长/厚均以 mm 入库；旧 sizeUnit 不参与结构化尺寸渲染。
+        assertEquals("30*90*0.175mm", mapper.readTree(mapper.writeValueAsString(saved)).get("size").asText());
+        assertEquals("30*90*0.175mm", service.detail(saved.getMaterialId()).material().getSize());
+        assertEquals(0, new java.math.BigDecimal("30").compareTo(saved.getWidthMm()));
+        assertEquals(0, new java.math.BigDecimal("90").compareTo(saved.getLengthMm()));
+        assertEquals(0, new java.math.BigDecimal("0.175").compareTo(saved.getThicknessMm()));
         assertTrue(jdbc.queryForObject("SELECT search_blob FROM inventory_material WHERE material_id=?", String.class, saved.getMaterialId()).contains(saved.getSize()));
         try (XSSFWorkbook workbook = new XSSFWorkbook(new ByteArrayInputStream(excel.export(null)))) {
             var sheet = workbook.getSheetAt(0);
             assertEquals(sheet.getRow(0).getLastCellNum(), sheet.getRow(1).getLastCellNum());
-            assertEquals("尺寸(mm)", sheet.getRow(0).getCell(8).getStringCellValue());
-            assertEquals(saved.getSize(), sheet.getRow(1).getCell(8).getStringCellValue());
+            // 四级分类导出列已加入，尺寸列随之位于第 10 列。
+            assertEquals("四级分类", sheet.getRow(0).getCell(6).getStringCellValue());
+            assertEquals("尺寸(mm)", sheet.getRow(0).getCell(9).getStringCellValue());
+            assertEquals(saved.getSize(), sheet.getRow(1).getCell(9).getStringCellValue());
         }
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             var sheet = workbook.createSheet(); var header = sheet.createRow(0);
@@ -276,6 +282,42 @@ class MaterialMasterMysqlTest {
         assertTrue(assertThrows(BusinessException.class, () -> service.save(draft, "Codex-test")).getMessage().contains("配置型号前缀"));
         assertThrows(BusinessException.class, () -> service.renderModel(900003L, draft, null));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+    }
+
+    @Test void parentsAllowBlankPrefixesButLeavesIncludingDisabledChildrenStillRequireThem() throws Exception {
+        initialize();
+        var child = configurationService.saveCategory(new MaterialMasterConfigurationService.CategorySave(
+                null, "RAW_AUX_LED", "LED", 900005L, 0, 1, "LED"), "Codex-test");
+        for (String blank : Arrays.asList(null, "", " ")) {
+            var parent = new MaterialMasterConfigurationService.CategorySave(
+                    900005L, "RAW_AUX_ELECTRONIC", "电子元件", 900004L, 0, 1, blank);
+            assertDoesNotThrow(() -> configurationService.saveCategory(parent, "Codex-test"));
+            assertEquals(blank, jdbc.queryForObject("SELECT model_prefix FROM inventory_material_category WHERE category_id=900005", String.class));
+            var leaf = new MaterialMasterConfigurationService.CategorySave(
+                    child.getCategoryId(), "RAW_AUX_LED", "LED", 900005L, 0, 1, blank);
+            assertTrue(assertThrows(BusinessException.class, () -> configurationService.saveCategory(leaf, "Codex-test"))
+                    .getMessage().contains("型号前缀不能为空"));
+            var newLeaf = new MaterialMasterConfigurationService.CategorySave(
+                    null, "RAW_BASE_EMPTY", "空前缀叶子", 900002L, 0, 1, blank);
+            assertThrows(BusinessException.class, () -> configurationService.saveCategory(newLeaf, "Codex-test"));
+        }
+        var duplicateParent = new MaterialMasterConfigurationService.CategorySave(
+                900005L, "RAW_AUX_ELECTRONIC", "电子元件", 900004L, 0, 1, "PC");
+        assertTrue(assertThrows(BusinessException.class, () -> configurationService.saveCategory(duplicateParent, "Codex-test"))
+                .getMessage().contains("已被其他品类使用"));
+        var uniqueParent = new MaterialMasterConfigurationService.CategorySave(
+                900005L, "RAW_AUX_ELECTRONIC", "电子元件", 900004L, 0, 1, "ELEC");
+        assertDoesNotThrow(() -> configurationService.saveCategory(uniqueParent, "Codex-test"));
+        assertDoesNotThrow(() -> configurationService.saveCategory(uniqueParent, "Codex-test"));
+        jdbc.update("UPDATE inventory_material_category SET status='0' WHERE category_id=?", child.getCategoryId());
+        for (String invalid : Arrays.asList(null, "", " ", "P", "pc", "P-C")) {
+            var nowLeaf = new MaterialMasterConfigurationService.CategorySave(
+                    900005L, "RAW_AUX_ELECTRONIC", "电子元件", 900004L, 0, 1, invalid);
+            assertThrows(BusinessException.class, () -> configurationService.saveCategory(nowLeaf, "Codex-test"));
+        }
+        assertEquals("ELEC", jdbc.queryForObject("SELECT model_prefix FROM inventory_material_category WHERE category_id=900005", String.class));
+        assertEquals("LED", jdbc.queryForObject("SELECT model_prefix FROM inventory_material_category WHERE category_id=?", String.class, child.getCategoryId()));
+        assertEquals(6, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material_category", Integer.class));
     }
 
     @Test void globalModelsExcludeSelfAndBlanksAndImportsRejectDuplicatesWithoutWrites() throws Exception {
@@ -328,7 +370,14 @@ class MaterialMasterMysqlTest {
                 .replace("CREATE TABLE IF NOT EXISTS inventory_attribute_template", "CREATE TEMPORARY TABLE IF NOT EXISTS inventory_attribute_template")
                 .replaceAll(",\\s*CONSTRAINT [^\\n]+", ""); // MySQL会话临时表不支持外键；正式FK验收仍须实际迁移。
         executeStatements(ddl);
-        String seeds=migration("304_material_master_catalog.sql"); executeStatements(seeds); executeStatements(seeds);
+        // 304 使用历史分类 material_type；当前由分类树根节点推导类型。
+        // 只移除分类 INSERT 的已删列及对应值，保留种子内容、条件与幂等断言。
+        String seeds=migration("304_material_master_catalog.sql").lines().map(line ->
+                line.startsWith("INSERT INTO inventory_material_category ")
+                        ? line.replace(",material_type,", ",").replaceAll(",'[RSF]',(?=[123],)", ",")
+                        : line).collect(java.util.stream.Collectors.joining("\n"));
+        assertFalse(seeds.contains("material_type"));
+        executeStatements(seeds); executeStatements(seeds);
         assertEquals(16,jdbc.queryForObject("SELECT COUNT(*) FROM inventory_attribute_template",Integer.class));
         assertEquals(19,jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material_category",Integer.class));
         assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material_category WHERE parent_id=0",Integer.class));

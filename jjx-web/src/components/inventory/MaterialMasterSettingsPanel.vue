@@ -34,7 +34,7 @@
               :disabled="!!categoryEditId"
               placeholder="大写字母、数字和下划线"
           /></el-form-item>
-          <el-form-item label="型号前缀" required>
+          <el-form-item label="型号前缀" :required="categoryPrefixRequired">
             <el-input v-model="categoryForm.modelPrefix" maxlength="8" placeholder="2～8位大写字母或数字" />
           </el-form-item>
           <el-form-item label="分类名称" required
@@ -909,6 +909,10 @@ async function applyRename() {
   }
 }
 const editableCategories = computed(() => categories.value.filter((c) => c.categoryLevel > 1))
+// 仅用于表单提示与提交预检；保存规则由后端统一校验。
+const categoryPrefixRequired = computed(() => !categoryEditId.value || !categories.value.some(
+  child => child.parentId === categoryEditId.value && child.status === CommonStatusEnum.NORMAL.value
+))
 const leaves = computed(() =>
   categories.value.filter((c) => !categories.value.some((child) => child.parentId === c.categoryId))
 )
@@ -952,6 +956,10 @@ async function saveCategory() {
   busy.value = true
   error.value = ''
   try {
+    if (categoryPrefixRequired.value) {
+      if (!categoryForm.modelPrefix?.trim()) throw new Error('型号前缀不能为空，请配置品类型号前缀')
+      if (!/^[A-Z0-9]{2,8}$/.test(categoryForm.modelPrefix)) throw new Error('型号前缀须为2～8位大写字母或数字')
+    }
     await materialMasterApi.saveCategory({ ...categoryForm, categoryId: categoryEditId.value })
     await refresh()
     ElMessage.success('分类已保存')

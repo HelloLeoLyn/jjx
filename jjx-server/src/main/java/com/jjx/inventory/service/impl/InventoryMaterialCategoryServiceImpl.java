@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.jjx.common.enums.StatusEnum;
 import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.domain.InventoryMaterialCategory;
 import com.jjx.inventory.dto.query.CategoryQueryDTO;
@@ -151,13 +152,20 @@ public class InventoryMaterialCategoryServiceImpl
         return updated;
     }
 
-    /** 两个品类保存入口共用必填、格式及唯一性校验；锁定读排除自身。 */
+    /** 两个保存入口共用：无启用子类的叶子必填且校验格式；非空前缀均须唯一。 */
     public static void validateModelPrefix(InventoryMaterialCategory entity, InventoryMaterialCategoryMapper mapper) {
+        boolean leaf = entity.getCategoryId() == null || mapper.selectCount(
+                new LambdaQueryWrapper<InventoryMaterialCategory>()
+                        .eq(InventoryMaterialCategory::getParentId, entity.getCategoryId())
+                        .eq(InventoryMaterialCategory::getStatus, StatusEnum.NORMAL.getCode().toString())) == 0;
         String prefix = entity.getModelPrefix();
         if (prefix == null || prefix.isBlank()) {
-            throw new com.jjx.common.exception.BusinessException("型号前缀不能为空，请配置品类型号前缀");
+            if (leaf) {
+                throw new com.jjx.common.exception.BusinessException("型号前缀不能为空，请配置品类型号前缀");
+            }
+            return;
         }
-        if (!prefix.matches("[A-Z0-9]{2,8}")) {
+        if (leaf && !prefix.matches("[A-Z0-9]{2,8}")) {
             throw new com.jjx.common.exception.BusinessException("型号前缀须为2～8位大写字母或数字");
         }
         var query = new LambdaQueryWrapper<InventoryMaterialCategory>()
