@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 vi.mock('element-plus/es/components/base/style/css', () => ({}))
 vi.mock('element-plus/es/components/button/style/css', () => ({}))
 vi.mock('element-plus/es/components/input/style/css', () => ({}))
 vi.mock('element-plus/es/components/popover/style/css', () => ({}))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { search: vi.fn() } }))
+vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: { detail: vi.fn() } }))
+vi.mock('@/components/inventory/MaterialFormDialog.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/components/Selector/StandardProcessSelector.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('@/composables/useEnabledProcesses', () => ({ useEnabledProcesses: () => ({ processes: [] }) }))
+vi.mock('sortablejs', () => ({ default: { create: () => ({ destroy() {} }) } }))
 vi.mock('@/directives', () => ({ hasPermi: vi.fn(() => true) }))
 import { hasPermi } from '@/directives'
 import { materialApi } from '@/api/inventory/material'
+import { materialMasterApi } from '@/api/inventory/materialMaster'
+import BomItemEditor from '../../BomItemEditor.vue'
 import BomMaterialSelector from '../BomMaterialSelector.vue'
 import EditableSearchSelect from '../EditableSearchSelect.vue'
 
@@ -196,4 +203,74 @@ it('没有工作台权限时不显示建档入口', async () => {
     wrapper.unmount()
     vi.mocked(hasPermi).mockReturnValue(true)
   }
+})
+
+const mountEditor = () => shallowMount(BomItemEditor, {
+  props: { modelValue: [{ itemId: 1, materialId: 0, materialName: '旧物料', specification: '旧尺寸串', quantity: 1, unit: 'PCS' }] },
+  global: { stubs: { ElTable: { template: '<div><div class="el-table__body-wrapper"><table><tbody /></table></div></div>' } } },
+})
+const masterDetail = (specification: string, attributes = {}, configuration: unknown = null) => ({
+  data: { material: { specification, size: '450×225×0.8' }, attributes, configuration },
+})
+
+describe('BOM选料、恢复自动与批量刷新使用档案规格', () => {
+  it('选料立即带入档案规格；手改受保护，恢复和刷新同源', async () => {
+    vi.mocked(materialMasterApi.detail).mockReset().mockResolvedValue(masterDetail('档案规格') as any)
+    const wrapper = mountEditor()
+    try {
+      const state = (wrapper.vm as any).$.setupState
+      const row = state.items[0]
+      state.handleMaterialSelect({ materialId: 9, materialName: 'PC', specification: '档案规格', size: '450×225×0.8' }, row)
+      expect(row.specification).toBe('档案规格')
+      await flushPromises()
+      expect(row.specification).toBe('档案规格')
+      row.specification = '手填值'
+      state.markManualSpec(row)
+      expect(state.isManualSpec(row)).toBe(true)
+      await state.handleRefresh()
+      expect(row.specification).toBe('手填值')
+      state.restoreAutoSpec(row)
+      expect(row.specification).toBe('档案规格')
+      expect(state.isManualSpec(row)).toBe(false)
+      vi.mocked(materialMasterApi.detail).mockResolvedValue(masterDetail('最新档案规格') as any)
+      await state.handleRefresh()
+      expect(row.specification).toBe('最新档案规格')
+      expect(row.specificationBaseline).toBe('最新档案规格')
+    } finally { wrapper.unmount() }
+  })
+
+  it.each([false, true])('档案规格为空时清除旧行规格，尺寸不顶替；属性兜底=%s', async (fallback) => {
+    const configuration = fallback ? { schema: { fields: [{ key: 'force_g', type: 'decimal', unit: 'gf' }] } } : null
+    vi.mocked(materialMasterApi.detail).mockReset().mockResolvedValue(masterDetail('', { force_g: 280 }, configuration) as any)
+    const wrapper = mountEditor()
+    try {
+      const state = (wrapper.vm as any).$.setupState
+      const row = state.items[0]
+      state.handleMaterialSelect({ materialId: 9, materialName: 'PC', specification: '', size: '450×225×0.8' }, row)
+      expect(row.specification).toBe('')
+      await flushPromises()
+      expect(row.specification).toBe(fallback ? '280gf' : '')
+      await state.handleRefresh()
+      expect(row.specification).toBe(fallback ? '280gf' : '')
+    } finally { wrapper.unmount() }
+  })
+
+  it('选料详情异步返回时保留刚输入的规格，恢复自动仍取档案', async () => {
+    const pending = deferredPage()
+    vi.mocked(materialMasterApi.detail).mockReset().mockReturnValue(pending.promise)
+    const wrapper = mountEditor()
+    try {
+      const state = (wrapper.vm as any).$.setupState
+      const row = state.items[0]
+      state.handleMaterialSelect({ materialId: 9, materialName: 'PC', specification: '档案规格', size: '450×225×0.8' }, row)
+      row.specification = '刚输入的值'
+      state.markManualSpec(row)
+      pending.resolve(masterDetail('档案规格'))
+      await flushPromises()
+      expect(row.specification).toBe('刚输入的值')
+      expect(state.isManualSpec(row)).toBe(true)
+      state.restoreAutoSpec(row)
+      expect(row.specification).toBe('档案规格')
+    } finally { wrapper.unmount() }
+  })
 })

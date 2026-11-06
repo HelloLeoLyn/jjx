@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { autoSpecOf, currentSpecOf, isManualSpec, specFollowValue } from '../bomSpecMode'
+import { specificationSource } from '../bomSpecification'
+import type { MaterialMasterDetail } from '@/types/inventory/materialMaster'
 
 describe('bomSpecMode（dev-20261024-023）', () => {
   it('autoSpecOf / currentSpecOf 会 trim，空值返回空串', () => {
@@ -48,5 +50,19 @@ describe('bomSpecMode（dev-20261024-023）', () => {
   it('人工清空保留；手填后再次等于系统值即恢复自动', () => {
     expect(specFollowValue({ materialId: 1, specification: '', materialSpecification: '系统值', specificationManual: true })).toBeNull()
     expect(isManualSpec({ materialId: 1, specification: '系统值', materialSpecification: '系统值', specificationManual: true })).toBe(false)
+  })
+
+  it('详情来源供手改判定和自动跟随共用档案规格，忽略尺寸', () => {
+    const source = specificationSource({
+      material: { specification: '档案规格', size: '450×225×0.8' },
+      attributes: {}, configuration: null,
+    } as MaterialMasterDetail)
+    const row = { materialId: 1, specification: '旧自动规格', specificationBaseline: '旧自动规格', materialSpecificationSource: source }
+    expect(autoSpecOf(row)).toBe('档案规格')
+    expect(isManualSpec(row)).toBe(false)
+    expect(specFollowValue(row)).toBe('档案规格')
+    row.specification = '手填值'
+    expect(isManualSpec(row)).toBe(true)
+    expect(specFollowValue(row)).toBeNull()
   })
 })

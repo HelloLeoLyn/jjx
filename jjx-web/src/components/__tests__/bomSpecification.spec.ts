@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { generateBomSpecification, joinSpecificationValues } from '../bomSpecification'
-import type { MaterialAttributeSchema } from '@/types/inventory/materialMaster'
+import { generateBomSpecification, joinSpecificationValues, specificationSource } from '../bomSpecification'
+import type { MaterialAttributeSchema, MaterialMasterDetail } from '@/types/inventory/materialMaster'
 
 const schema: MaterialAttributeSchema = { version: 1, meta_options: [], fields: [
   { key: 'component_type', label: '元件类型', type: 'enum', required: true, options: [{ code: 'SPRING', label: '弹片' }] },
@@ -10,14 +10,27 @@ const schema: MaterialAttributeSchema = { version: 1, meta_options: [], fields: 
   { key: 'remark', label: '备注', type: 'string', required: false, in_spec: false },
 ] }
 describe('BOM前端唯一规格组合器', () => {
-  it('尺寸原文优先，不加标题、不追加单位、不拼其他属性', () => {
+  it('档案规格优先于尺寸和属性，不加标题、不追加单位', () => {
     for (const size of ['30*90mm', '30*90', 'Φ8*0.05mm']) {
-      expect(generateBomSpecification({ size, schema, attributes: { force_g: 280 } })).toBe(size)
+      expect(generateBomSpecification({ specification: '  档案规格  ', size, schema, attributes: { force_g: 280 } })).toBe('档案规格')
     }
   })
-  it('空尺寸按模板顺序和值生成弹片规格，不输出标题或备注', () => {
-    expect(generateBomSpecification({ size: '', schema, attributes: { component_type: 'SPRING', force_g: 280, has_dimple: true, plating: 'NI', remark: '不要拼入' } }))
+  it('档案规格为空时忽略尺寸，按模板顺序和值生成弹片规格', () => {
+    expect(generateBomSpecification({ specification: ' ', size: '30*90mm', schema, attributes: { component_type: 'SPRING', force_g: 280, has_dimple: true, plating: 'NI', remark: '不要拼入' } }))
       .toBe('280gf 带点镀镍')
+  })
+  it('只有尺寸而无档案规格和可用属性时保持空串', () => {
+    for (const specification of [undefined, null, '', '  ']) {
+      expect(generateBomSpecification({ specification, size: '450×225×0.8' })).toBe('')
+    }
+  })
+  it('物料详情提取档案已存规格，不采用尺寸或预览重算值', () => {
+    const detail = {
+      material: { specification: '450*225mm', size: '450×225×0.8' },
+      attributes: { force_g: 280 }, configuration: { schema },
+      specificationGeneration: { specification: '预览值', generated: true, message: '' },
+    } as MaterialMasterDetail
+    expect(generateBomSpecification(specificationSource(detail))).toBe('450*225mm')
   })
   it('中文连写，英文数字只在相邻属性边界加单空格', () => {
     expect(joinSpecificationValues(['带点', '镀镍'])).toBe('带点镀镍')

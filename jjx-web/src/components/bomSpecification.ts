@@ -1,13 +1,14 @@
 import type { AttributeValue, MaterialAttributeField, MaterialAttributeSchema, MaterialMasterDetail } from '@/types/inventory/materialMaster'
 
 export interface BomSpecificationSource {
+  specification?: string | null
   size?: string | null
   attributes?: Record<string, AttributeValue>
   schema?: MaterialAttributeSchema | null
 }
 
 export function specificationSource(detail: MaterialMasterDetail): BomSpecificationSource {
-  return { size: detail.material.size, attributes: detail.attributes, schema: detail.configuration?.schema }
+  return { specification: detail.material.specification, size: detail.material.size, attributes: detail.attributes, schema: detail.configuration?.schema }
 }
 
 export function participatesInSpecification(field: MaterialAttributeField): boolean {
@@ -20,10 +21,10 @@ export function joinSpecificationValues(values: string[]): string {
   return parts.map((part, index) => (index && /[A-Za-z0-9]/.test(parts[index - 1] + part) ? ' ' : '') + part).join('')
 }
 
-/** BOM 唯一默认规格组合器。后端只提供原始尺寸、属性和模板。 */
+/** BOM 默认取物料档案规格；档案为空时才由前端按现有属性模板兜底，尺寸不参与。 */
 export function generateBomSpecification(source: BomSpecificationSource): string {
-  const size = source.size?.trim()
-  if (size) return size
+  const specification = source.specification?.trim()
+  if (specification) return specification
   const values = source.attributes || {}
   const fields = (source.schema?.fields || []).map((field, index) => ({ field, index }))
     .filter(({ field }) => participatesInSpecification(field))

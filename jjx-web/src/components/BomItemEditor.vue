@@ -592,13 +592,13 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   row.materialId = material.materialId || 0
   row.materialCode = material.materialCode
   row.materialName = material.materialName
-  // dev-20261024-023：选料带入系统生成规格；物料无规格时保留原手填值，不用空串覆盖
-  const autoSpec = (material.size || '').trim()
+  // 选料带入档案规格；空规格先留空，等待详情中的属性模板兜底。
+  const autoSpec = (material.specification || '').trim()
   delete row.materialSpecificationSource
   row.materialSpecification = autoSpec
   row.specificationBaseline = autoSpec
   row.specificationManual = false
-  if (autoSpec) row.specification = autoSpec
+  row.specification = autoSpec
   row.unit = material.unit || 'PCS'
   row.materialType = material.rootType || undefined
   row.create = false
@@ -610,7 +610,7 @@ function markManualSpec(row: EngineeringBomItem) {
   row.specificationManual = row.specification !== autoSpecOf(row)
 }
 
-/** 复用物料详情中的服务端属性生成结果，不把库存规格文本当作生成器。 */
+/** 选料和批量刷新共用档案规格来源，档案为空时按原属性模板兜底。 */
 function loadAutoSpec(row: EngineeringBomItem, selected = false): Promise<void> {
   const key = String(row.itemId)
   const materialId = row.materialId
@@ -674,7 +674,7 @@ function followAutoSpec(row: EngineeringBomItem) {
   if (next !== null) row.specification = next
 }
 
-/** 恢复为物料当前系统生成规格（dev-20261024-023） */
+/** 恢复为物料当前档案规格（档案为空时按原属性模板兜底）。 */
 function restoreAutoSpec(row: EngineeringBomItem) {
   const auto = autoSpecOf(row)
   if (auto) {
@@ -923,7 +923,7 @@ const destroySortable = () => {
 const handleRefresh = async () => {
   refreshLoading.value = true
   try {
-    if (await prepareSpecifications()) ElMessage.success('规格已按最新物料属性刷新')
+    if (await prepareSpecifications()) ElMessage.success('规格已按最新物料档案刷新')
   } finally {
     refreshLoading.value = false
   }
