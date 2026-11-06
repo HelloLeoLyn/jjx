@@ -390,11 +390,21 @@
       </template>
       <div class="vertical-label">发行单位</div>
       <div class="issuer">
-        <div v-if="data.workSpec.approved" class="approval">
-          <div>{{ data.workSpec.issueUnit }}</div>
-          <div>{{ shortDate(effectiveIssueDate) }}</div>
-          <div>已批准</div>
-        </div>
+        <svg
+          v-if="data.workSpec.approved"
+          class="approval"
+          viewBox="0 0 100 100"
+          role="img"
+          aria-label="工程部批准章"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <title>{{ data.workSpec.issueUnit || '工程部' }} {{ approvalDate }} 已批准</title>
+          <circle cx="50" cy="50" r="48" />
+          <path d="M 4.75 34 H 95.25 M 4.75 66 H 95.25" />
+          <text x="50" y="25">{{ data.workSpec.issueUnit || '工程部' }}</text>
+          <text x="50" y="55" class="approval-date">{{ approvalDate }}</text>
+          <text x="50" y="83">已批准</text>
+        </svg>
         <span v-else>{{ data.workSpec.issueUnit }}</span>
       </div>
     </div>
@@ -526,6 +536,10 @@ const effectiveIssueDate = computed<string | null>(
   () =>
     props.data.workSpec.issueDate ||
     (props.data.workSpec.approved ? props.data.workSpec.confirmedAt || null : null)
+)
+// 印章展示版本批准日期；旧版本未记录批准时间时沿用其发行日期，不取当前日期。
+const approvalDate = computed(() =>
+  shortDate(props.data.workSpec.confirmedAt || props.data.workSpec.issueDate || null)
 )
 const paper = ref<HTMLElement>()
 const fontStyle = computed(() => ({
@@ -1061,22 +1075,26 @@ function shortDate(value?: string | null) {
 .approval {
   width: 95px;
   height: 95px;
-  border: 2px solid red;
-  border-radius: 50%;
-  color: red;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  overflow: hidden;
-  font-size: 14px;
+  max-width: 100%;
+  flex-shrink: 0;
+  color: #ed1c24;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
 }
-.approval div {
-  padding: 3px;
+.approval circle,
+.approval path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
 }
-.approval div:nth-child(2) {
-  border-top: 1px solid red;
-  border-bottom: 1px solid red;
-  font-size: 12px;
+.approval text {
+  fill: currentColor;
+  font-family: 'SimSun', 'Songti SC', serif;
+  font-size: 15px;
+  text-anchor: middle;
+}
+.approval .approval-date {
+  font-size: 13px;
 }
 footer {
   margin-top: auto;
@@ -1117,8 +1135,6 @@ footer {
 .notes-content,
 .changes,
 .issuer,
-.approval,
-.approval div:nth-child(2),
 .hours div {
   font-size: var(--font-notes);
 }

@@ -70,6 +70,24 @@ function paper(template: 'A' | 'B', continuation = 0) {
 }
 
 describe('B 版材料表拆列与两条横条（dev-20261031-007）', () => {
+  it('批准章仅在批准后显示，并使用批准日期而非发行日期', async () => {
+    const wrapper = paper('B')
+    expect(wrapper.find('svg.approval').exists()).toBe(false)
+    const data = fixture()
+    data.workSpec.approved = true
+    data.workSpec.confirmedAt = '2026-11-06 10:00:00'
+    data.workSpec.issueDate = '2026-11-01'
+    await wrapper.setProps({ data })
+    const stamp = wrapper.get('svg.approval')
+    expect(stamp.findAll('text').map((node) => node.text())).toEqual([
+      '工程部', '26-11-06', '已批准',
+    ])
+    expect(wrapper.get('footer').text()).toContain('26-11-01')
+    data.workSpec.confirmedAt = undefined
+    await wrapper.setProps({ data: { ...data, workSpec: { ...data.workSpec } } })
+    expect(wrapper.get('.approval-date').text()).toBe('26-11-01')
+  })
+
   it('B 版表头拆成 规格/模数/基数，材料表里不再有凹凸列与加工要求块', () => {
     const wrapper = paper('B')
     const head = wrapper.get('.materials thead').text()
