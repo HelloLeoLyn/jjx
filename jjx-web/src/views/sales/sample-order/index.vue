@@ -224,9 +224,13 @@
     <el-dialog
       v-model="pickVisible"
       :title="`打样领料 - ${pickSample?.orderNo || ''}`"
-      width="780px"
+      width="1000px"
       append-to-body
     >
+      <p>
+        打样数量：{{ pickSample?.sampleQty ?? '-' }} {{ pickSample?.unit || '' }}；
+        需求 = 单件用量 × 打样数量（向上取整）
+      </p>
       <el-table :data="pickRows" size="small" border>
         <el-table-column
           label="物料名称"
@@ -242,6 +246,8 @@
             <el-tag v-else size="small" type="danger">未匹配</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="规格" prop="specification" min-width="150" show-overflow-tooltip />
+        <el-table-column label="单位" prop="unit" width="70" align="center" />
         <el-table-column label="BOM需求" prop="quantity" width="90" align="right" />
         <el-table-column label="已领" width="80" align="right">
           <template #default="{ row }">{{ row.issuedQuantity ?? 0 }}</template>

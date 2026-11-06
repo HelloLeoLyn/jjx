@@ -1493,25 +1493,38 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 入参沿用 sales_order.order_id，与 BOM、出库来源一致，并非样品扩展表主键。
         com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectByOrderId(sampleOrderId);
         if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
-        // 已领数量（Σ 该样品单已生成的领料明细，按物料名称汇总）
+        return buildSamplePickPreview(sampleOrderId, sample);
+    }
+
+    private List<Map<String, Object>> buildSamplePickPreview(
+            Long sampleOrderId, com.jjx.sales.domain.entity.SalesSampleOrder sample) {
+        // 优先按物料档案汇总，只有历史明细缺少物料 ID 时才按名称兜底。
+        Map<Long, BigDecimal> issuedByMaterial = new HashMap<>();
         java.util.Map<String, BigDecimal> issuedByName = new HashMap<>();
         for (InventoryOutboundOrder o : outboundOrderMapper.selectList(
                 new LambdaQueryWrapper<InventoryOutboundOrder>()
                         .eq(InventoryOutboundOrder::getSourceType, "sample")
                         .eq(InventoryOutboundOrder::getSourceId, sampleOrderId))) {
             for (InventoryOutboundItem it : outboundItemMapper.selectByOutboundId(o.getOutboundId())) {
-                issuedByName.merge(it.getMaterialName(),
-                        Objects.requireNonNullElse(it.getQuantity(), BigDecimal.ZERO), BigDecimal::add);
+                BigDecimal issued = Objects.requireNonNullElse(it.getQuantity(), BigDecimal.ZERO);
+                if (it.getMaterialId() != null) {
+                    issuedByMaterial.merge(it.getMaterialId(), issued, BigDecimal::add);
+                } else {
+                    issuedByName.merge(it.getMaterialName(), issued, BigDecimal::add);
+                }
             }
         }
         List<java.util.Map<String, Object>> result = new ArrayList<>();
         for (com.jjx.sales.domain.entity.SalesSampleBom row : sampleBomMapper.selectList(
                 new LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesSampleBom>()
                         .eq(com.jjx.sales.domain.entity.SalesSampleBom::getOrderId, sampleOrderId)
+                        .eq(com.jjx.sales.domain.entity.SalesSampleBom::getRoundNo,
+                                Objects.requireNonNullElse(sample.getSampleRound(), 1))
                         .orderByAsc(com.jjx.sales.domain.entity.SalesSampleBom::getBomId))) {
             java.util.Map<String, Object> m = new HashMap<>();
-            // 样品 BOM 只存物料名称 → 按名称匹配物料档案（匹配不到则留空，由用户手工选料）
-            com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectOne(
+            // 新 BOM 优先用档案 ID，历史无 ID 的行沿用名称匹配；未匹配行由页面禁用。
+            com.jjx.inventory.domain.InventoryMaterial mat = row.getMaterialId() != null
+                    ? materialMapper.selectById(row.getMaterialId()) : materialMapper.selectOne(
                     new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
                             .eq(com.jjx.inventory.domain.InventoryMaterial::getMaterialName, row.getMaterialName())
                             .last("LIMIT 1"));
@@ -1520,8 +1533,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             m.put("materialName", row.getMaterialName());
             m.put("specification", row.getSpecification());
             m.put("unit", row.getUnit());
-            m.put("quantity", row.getQuantity());
-            m.put("issuedQuantity", issuedByName.getOrDefault(row.getMaterialName(), BigDecimal.ZERO));
+            BigDecimal demand = Objects.requireNonNullElse(row.getQuantity(), BigDecimal.ZERO)
+                    .multiply(BigDecimal.valueOf(Objects.requireNonNullElse(sample.getSampleQty(), 0)))
+                    .setScale(0, java.math.RoundingMode.UP);
+            m.put("quantity", demand);
+            BigDecimal issued = mat == null ? BigDecimal.ZERO
+                    : issuedByMaterial.getOrDefault(mat.getMaterialId(), BigDecimal.ZERO);
+            m.put("issuedQuantity", issued.add(issuedByName.getOrDefault(row.getMaterialName(), BigDecimal.ZERO)));
             BigDecimal available = BigDecimal.ZERO;
             if (mat != null) {
                 InventoryStock stock = stockMapper.selectByMaterialId(mat.getMaterialId());
@@ -1537,12 +1555,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createSamplePick(Long sampleOrderId, java.util.List<java.util.Map<String, Object>> items) {
+        // 同一样品单串行建单，锁后再读需求和已领，避免两个请求同时通过剩余量校验。
+        com.jjx.sales.domain.entity.SalesOrder srcOrder = salesOrderMapper.selectByIdForUpdate(sampleOrderId);
         com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectByOrderId(sampleOrderId);
         if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
         if (items == null || items.isEmpty()) throw new BusinessException("打样领料明细不能为空");
+        validateSamplePickItems(buildSamplePickPreview(sampleOrderId, sample), items);
         // 样品单号 = 关联订单号
-        com.jjx.sales.domain.entity.SalesOrder srcOrder = sample.getOrderId() == null ? null
-                : salesOrderMapper.selectById(sample.getOrderId());
         String sampleNo = srcOrder != null && srcOrder.getOrderNo() != null
                 ? srcOrder.getOrderNo() : ("SP" + sampleOrderId);
         InventoryOutboundOrder order = new InventoryOutboundOrder();
@@ -1562,7 +1581,6 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             if (item.get("materialId") == null) throw new BusinessException("领料明细缺少物料（请先选定物料）");
             Long materialId = ((Number) item.get("materialId")).longValue();
             BigDecimal qty = new BigDecimal(String.valueOf(item.get("quantity")));
-            if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
             InventoryOutboundItem outItem = new InventoryOutboundItem();
             outItem.setOutboundId(order.getOutboundId());
             outItem.setMaterialId(materialId);
@@ -1587,6 +1605,41 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         reservePickItems(order.getOutboundId());
         log.info("打样领料单已生成(待发料): sampleOrderId={}, outboundId={}, no={}", sampleOrderId, order.getOutboundId(), order.getOutboundNo());
         return order.getOutboundId();
+    }
+
+    private void validateSamplePickItems(List<Map<String, Object>> preview, List<Map<String, Object>> items) {
+        Map<Long, BigDecimal> demandByMaterial = new HashMap<>();
+        Map<Long, BigDecimal> issuedByMaterial = new HashMap<>();
+        for (Map<String, Object> row : preview) {
+            if (row.get("materialId") == null) continue;
+            Long materialId = ((Number) row.get("materialId")).longValue();
+            demandByMaterial.merge(materialId, (BigDecimal) row.get("quantity"), BigDecimal::add);
+            // 同一物料可在多个 BOM 行出现；已领是物料合计，只扣一次。
+            issuedByMaterial.put(materialId, (BigDecimal) row.get("issuedQuantity"));
+        }
+        Map<Long, BigDecimal> requestedByMaterial = new HashMap<>();
+        for (Map<String, Object> item : items) {
+            if (item == null || !(item.get("materialId") instanceof Number)) {
+                throw new BusinessException("领料明细缺少物料（请先选定物料）");
+            }
+            Long materialId = ((Number) item.get("materialId")).longValue();
+            BigDecimal quantity;
+            try {
+                quantity = new BigDecimal(String.valueOf(item.get("quantity")));
+            } catch (NumberFormatException e) {
+                throw new BusinessException("打样领料数量必须大于 0");
+            }
+            if (quantity.signum() <= 0) throw new BusinessException("打样领料数量必须大于 0");
+            requestedByMaterial.merge(materialId, quantity, BigDecimal::add);
+        }
+        for (Map.Entry<Long, BigDecimal> entry : requestedByMaterial.entrySet()) {
+            Long materialId = entry.getKey();
+            BigDecimal remaining = demandByMaterial.getOrDefault(materialId, BigDecimal.ZERO)
+                    .subtract(issuedByMaterial.getOrDefault(materialId, BigDecimal.ZERO)).max(BigDecimal.ZERO);
+            if (entry.getValue().compareTo(remaining) > 0) {
+                throw new BusinessException("打样领料超出剩余需求：物料 " + materialId + "，剩余可领 " + remaining);
+            }
+        }
     }
 
     @Override
