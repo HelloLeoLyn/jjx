@@ -320,6 +320,23 @@ class MaterialMasterMysqlTest {
         assertEquals(6, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material_category", Integer.class));
     }
 
+    @Test void manualSaveRejectsIdenticalDataButAllowsDifferentSupplier() throws Exception {
+        initialize();
+        var a = pc("手工重复验证"); a.setModel("MANUAL1"); a.setSupplierName("供应商甲");
+        var saved = service.save(a, "Codex-test");
+        // 数据完全相同（含供应商）→ 拦
+        var same = pc("手工重复验证"); same.setModel("MANUAL1"); same.setSupplierName("供应商甲");
+        assertTrue(assertThrows(BusinessException.class, () -> service.save(same, "Codex-test"))
+                .getMessage().contains("与已有物料重复"));
+        // 只有供应商不同 → 放行
+        var otherSupplier = pc("手工重复验证"); otherSupplier.setModel("MANUAL1"); otherSupplier.setSupplierName("供应商乙");
+        assertDoesNotThrow(() -> service.save(otherSupplier, "Codex-test"));
+        // 编辑自身不算重复
+        var edit = pc("手工重复验证"); edit.setMaterialId(saved.getMaterialId()); edit.setModel("MANUAL1"); edit.setSupplierName("供应商甲");
+        assertDoesNotThrow(() -> service.save(edit, "Codex-test"));
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+    }
+
     @Test void duplicateModelsAreAllowedWhileIdenticalRowsAreRejectedOnImport() throws Exception {
         initialize();
         var first = pc("同型号一"); first.setModel("GLOBAL125"); first.setSupplierName("供应商甲");

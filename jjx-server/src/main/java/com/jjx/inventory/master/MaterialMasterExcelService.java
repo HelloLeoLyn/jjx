@@ -353,7 +353,7 @@ public class MaterialMasterExcelService {
     private static void put(Row row, int column, String value) { row.createCell(column).setCellValue(value == null ? "" : value); }
     private static byte[] bytes(Workbook workbook) throws Exception { ByteArrayOutputStream out = new ByteArrayOutputStream(); workbook.write(out); return out.toByteArray(); }
     private String identity(InventoryMaterial material) {
-        try { return objectMapper.writeValueAsString(Arrays.asList(material.getCategoryId(), material.getMaterialName(), material.getMaterialMeta(), material.getMaterialForm(), material.getModel(), material.getColor(), material.getBrand(), material.getSize(), material.getUnit(), service.readAttributes(material.getAttributeJson()))); }
-        catch (Exception e) { throw new BusinessException("物料重复性检查失败"); }
+        // 与手工保存共用同一判重键（2026-11-07 dev-20261107-008），避免两套口径。
+        return service.duplicateKey(material);
     }
 }

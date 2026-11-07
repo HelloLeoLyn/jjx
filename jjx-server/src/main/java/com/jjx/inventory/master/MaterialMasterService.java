@@ -567,7 +567,8 @@ public class MaterialMasterService {
             throw new BusinessException("人工确认物料不能被导入覆盖");
         if (existing != null) preserveParameters(material, existing, dto);
         // 型号不再做唯一校验（2026-11-07 dev-20261107-003）：同型号可对应不同供应商/规格；
-        // 重复物料只在数据完全相同时由导入侧 identity 判重拦截。
+        // 手工保存与导入共用同一判重口径：只有各关键字段（含供应商）完全相同才拦（dev-20261107-008）。
+        requireNoDuplicate(material);
         if (existing != null && !Objects.equals(existing.getUnit(), material.getUnit()) && masterMapper.transactionCount(existing.getMaterialId()) > 0) throw new BusinessException("已有库存流水，不能直接修改基本计量单位");
         material.setClassSource(material.getCategoryId() == null ? null : source.name());
         // 显式选择品类的表单/导入均已按模板校验；只有规则推断需要后续人工确认。
@@ -625,6 +626,34 @@ public class MaterialMasterService {
 
     public static void validateSize(String size) {
         MaterialSizeValue.validate(size);
+    }
+
+    /**
+     * 重复物料判重键：品类+名称+材质+形态+型号+颜色+品牌+规格+单位+属性+供应商（2026-11-07 dev-20261107-008）。
+     * 导入的文件内/库内判重与手工保存共用这一个键，避免两套口径。
+     */
+    public String duplicateKey(InventoryMaterial material) {
+        String supplier = material.getSupplierName() == null || material.getSupplierName().isBlank()
+                ? null : material.getSupplierName().trim();
+        try {
+            return objectMapper.writeValueAsString(Arrays.asList(material.getCategoryId(), material.getMaterialName(),
+                    material.getMaterialMeta(), material.getMaterialForm(), material.getModel(), material.getColor(),
+                    material.getBrand(), material.getSize(), material.getUnit(), supplier,
+                    readAttributes(material.getAttributeJson())));
+        } catch (Exception e) { throw new BusinessException("物料重复性检查失败"); }
+    }
+
+    /** 手工新增/编辑用：同名候选里若判重键完全一致则拦；排除自身。 */
+    private void requireNoDuplicate(InventoryMaterial material) {
+        if (material.getMaterialName() == null || material.getMaterialName().isBlank()) return;
+        var query = new LambdaQueryWrapper<InventoryMaterial>()
+                .eq(InventoryMaterial::getMaterialName, material.getMaterialName())
+                .ne(material.getMaterialId() != null, InventoryMaterial::getMaterialId, material.getMaterialId());
+        String key = duplicateKey(material);
+        for (InventoryMaterial other : materialMapper.selectList(query))
+            if (key.equals(duplicateKey(other)))
+                throw new BusinessException("与已有物料重复（品类/名称/材质/形态/型号/颜色/品牌/规格/单位/属性/供应商完全相同）："
+                        + material.getMaterialName());
     }
 
     private static void preserveParameters(InventoryMaterial material, InventoryMaterial old, MaterialMasterDTO dto) {

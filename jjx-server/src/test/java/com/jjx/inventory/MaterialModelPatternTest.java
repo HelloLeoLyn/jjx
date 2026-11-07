@@ -93,8 +93,7 @@ class MaterialModelPatternTest {
         dto.setModel(""); assertNull(service.prepare(dto).material().getModel());
     }
     @Test void duplicateModelsAreAllowedOnCreateAndEdit() {
-        var duplicate = new InventoryMaterial(); duplicate.setModel("PET125"); duplicate.setCategoryId(2L);
-        when(materials.selectList(any(Wrapper.class))).thenReturn(List.of(duplicate));
+        when(materials.selectList(any(Wrapper.class))).thenReturn(List.of());
         // 型号不再做唯一校验（2026-11-07 dev-20261107-003）：同型号不同供应商/规格可并存。
         assertEquals("PET125", service.save(draft(), "codex").getModel());
         configure(3L, pattern);
@@ -104,7 +103,6 @@ class MaterialModelPatternTest {
         when(materials.selectById(7L)).thenReturn(old); when(locks.lockMaterial(7L)).thenReturn(old);
         var edit = draft(); edit.setMaterialId(7L); edit.setModel("PET125");
         assertDoesNotThrow(() -> service.save(edit, "codex"));
-        verify(materials, never()).selectList(any(Wrapper.class));
     }
     @Test void categoryPrefixIsUsedForGenerationAndPreviewAndMissingPrefixFails() {
         String rule = pattern.replace("meta", "categoryprefix");
@@ -126,9 +124,15 @@ class MaterialModelPatternTest {
         assertThrows(BusinessException.class, () -> service.renderModel(2L, draft(), new MaterialNamingPattern(List.of("meta"), "", "skip")));
         assertThrows(BusinessException.class, () -> MaterialNamingPattern.requireCategoryPrefix(" "));
     }
-    @Test void emptyModelsNeverParticipateInUniqueness() {
-        configure(2L, "null"); service.save(draft(), "codex");
-        verify(materials, never()).selectList(any(Wrapper.class));
+    @Test void duplicateCheckUsesFullKeyNotModel() {
+        configure(2L, "null");
+        when(materials.selectList(any(Wrapper.class))).thenReturn(List.of());
+        service.save(draft(), "codex");
+        var queries = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
+        verify(materials).selectList(queries.capture());
+        String sql = queries.getValue().getSqlSegment();
+        assertTrue(sql.contains("material_name ="));
+        assertFalse(sql.contains("model ="));
     }
     @Test void renderSharesUnitsAndDictionaryColorAndDoesNotWrite() {
         var dto = draft();
