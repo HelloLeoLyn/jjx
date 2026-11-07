@@ -5,7 +5,7 @@ import MaterialMasterSettingsPanel from '../MaterialMasterSettingsPanel.vue'
 import MaterialMasterSettingsDialog from '../MaterialMasterSettingsDialog.vue'
 import { ElMessageBox } from 'element-plus'
 
-const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), template: vi.fn(), saveTemplate: vi.fn(), savePattern: vi.fn(), saveTemplateFields: vi.fn(), specPreview: vi.fn(), fieldOptions: vi.fn(), previewNaming: vi.fn(), saveCategory: vi.fn() }))
+const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), template: vi.fn(), saveTemplate: vi.fn(), savePattern: vi.fn(), saveTemplateFields: vi.fn(), specPreview: vi.fn(), fieldOptions: vi.fn(), previewNaming: vi.fn(), detail: vi.fn(), saveCategory: vi.fn() }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: api }))
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal<typeof import('element-plus')>()
@@ -27,6 +27,7 @@ describe('属性模板界面保存', () => {
     api.savePattern.mockImplementation(async (data) => ({ data: { template: {}, schema: { [data.block]: JSON.parse(JSON.stringify(data.pattern)) } } }))
     api.saveCategory.mockResolvedValue({ data: {} })
     api.previewNaming.mockResolvedValue({ data: { samples: [] } })
+    api.detail.mockReset().mockResolvedValue({ data: { material: { supplierMaterialName: '供应商品名', model: '原型号' } } })
     api.fieldOptions.mockResolvedValue({ data: [] })
     api.specPreview.mockResolvedValue({ data: { samples: [] } })
   })
@@ -350,6 +351,70 @@ describe('属性模板界面保存', () => {
     expect(ElMessageBox.confirm).toHaveBeenCalledTimes(1)
     expect(state.activeBlock).toBe('model_pattern')
     expect(wrapper.get('#tab-model_pattern').attributes('aria-selected')).toBe('true')
+    wrapper.unmount()
+  })
+
+  async function modelPanel() {
+    const wrapper = mount(MaterialMasterSettingsPanel, { props: { focusSection: 'naming' }, global: { stubs: {
+      ...stubs, ElButton: Button, ElTableColumn: true, ElInput: true, ElInputNumber: true, ElSwitch: true, ElCheckbox: true, ElAlert: true,
+    } } })
+    await flushPromises()
+    const state = wrapper.vm as any
+    state.templateCategoryId = 2
+    await state.loadTemplate(2)
+    await flushPromises()
+    return { wrapper, state }
+  }
+  const sample = (id = 10) => ({ materialId: id, materialCode: `M${id}`, oldName: '档案名称不是原型号', newName: '生成型号实例' })
+
+  it('型号实例新增供应商品名及原型号，取档案model而非oldName，并缓存参考资料', async () => {
+    const { wrapper, state } = await modelPanel()
+    api.previewNaming.mockResolvedValue({ data: { samples: [sample()] } })
+    api.detail.mockResolvedValue({ data: { material: { supplierMaterialName: '供应商原品名', model: '旧型号0603' } } })
+    await state.previewModel()
+    expect(wrapper.find('[label="供应商品名"]').exists()).toBe(true)
+    expect(wrapper.find('[label="原型号实例"]').exists()).toBe(true)
+    expect(state.modelSamples[0]).toMatchObject({ supplierMaterialName: '供应商原品名', originalModel: '旧型号0603', newName: '生成型号实例' })
+    expect(api.detail).toHaveBeenCalledWith(10)
+    await state.previewModel()
+    expect(api.detail).toHaveBeenCalledTimes(1)
+    api.detail.mockResolvedValue({ data: { material: { supplierMaterialName: '更新品名', model: '更新原型号' } } })
+    await state.previewModel(true)
+    expect(api.detail).toHaveBeenCalledTimes(2)
+    expect(state.modelSamples[0].originalModel).toBe('更新原型号')
+    wrapper.unmount()
+  })
+
+  it('参考资料失败保留生成示例并明确提示，显式刷新可重试', async () => {
+    const { wrapper, state } = await modelPanel()
+    api.previewNaming.mockResolvedValue({ data: { samples: [sample()] } })
+    api.detail.mockRejectedValueOnce(new Error('无查看权限'))
+    await state.previewModel()
+    expect(state.modelSamples[0]).toMatchObject({ newName: '生成型号实例', originalModel: '加载失败', referenceError: true })
+    expect(wrapper.text()).toContain('部分参考物料资料加载失败')
+    await state.previewModel(true)
+    expect(state.modelSamples[0]).toMatchObject({ originalModel: '原型号', supplierMaterialName: '供应商品名' })
+    expect(wrapper.text()).not.toContain('部分参考物料资料加载失败')
+    wrapper.unmount()
+  })
+
+  it('切换品类后旧资料响应不能覆盖新实例，空值明确显示横线', async () => {
+    const { wrapper, state } = await modelPanel()
+    let finishOld!: (value: any) => void
+    api.previewNaming.mockResolvedValue({ data: { samples: [sample()] } })
+    api.detail.mockImplementation((id) => id === 10
+      ? new Promise(resolve => { finishOld = resolve })
+      : Promise.resolve({ data: { material: {} } }))
+    const old = state.previewModel()
+    await flushPromises()
+    state.templateCategoryId = 3
+    await flushPromises()
+    api.previewNaming.mockResolvedValue({ data: { samples: [sample(20)] } })
+    await state.previewModel()
+    finishOld({ data: { material: { model: '迟到旧型号' } } })
+    await old
+    expect(state.modelSamples).toHaveLength(1)
+    expect(state.modelSamples[0]).toMatchObject({ materialId: 20, originalModel: '-', supplierMaterialName: '-' })
     wrapper.unmount()
   })
 

@@ -450,13 +450,16 @@
                   <el-radio-button label=" ">空格</el-radio-button><el-radio-button label="-">-</el-radio-button><el-radio-button label="">无</el-radio-button>
                 </el-radio-group>
               </el-form-item>
-              <el-button @click="previewModel">刷新型号示例</el-button>
+              <el-button @click="previewModel(true)">刷新型号示例</el-button>
               <span class="naming-message">品类前缀缺失时需先配置；其他缺值跳过；尺寸按所选单位换算，型号内不带单位文字。</span>
               <el-table v-if="modelSamples.length" :data="modelSamples" border size="small" style="margin-top: 8px">
                 <el-table-column label="参考物料编码" prop="materialCode" width="150" />
-                <el-table-column label="型号生成示例" prop="newName" />
+                <el-table-column label="供应商品名" prop="supplierMaterialName" min-width="220" show-overflow-tooltip />
+                <el-table-column label="原型号实例" prop="originalModel" min-width="160" show-overflow-tooltip />
+                <el-table-column label="型号生成示例" prop="newName" min-width="160" show-overflow-tooltip />
               </el-table>
               <div v-else class="naming-message">该品类暂无示例；配置品类前缀并填写规则所需字段后，新建物料表单会带出型号。</div>
+              <div v-if="modelSamples.some(sample => sample.referenceError)" class="naming-message" role="status">部分参考物料资料加载失败，生成示例仍保留，可点击「刷新型号示例」重试。</div>
             </div>
             <el-button type="primary" :loading="busy" :disabled="!templateExists || templateLoading" @click="savePattern('model_pattern')">保存本块</el-button>
           </el-tab-pane>
@@ -776,7 +779,22 @@ function ruleSummary(block: MaterialPatternBlock) {
     ? (pattern as NonNullable<MaterialAttributeSchema['spec_pattern']>).fields.map(item => specLabel(item.key)).join(' + ')
     : (pattern as MaterialNamingPattern).fields.map(namingLabel).join(' + ')
 }
-const modelSamples = ref<MaterialNamingPreview['samples']>([])
+type ModelReference = { supplierMaterialName: string; originalModel: string }
+type ModelSample = MaterialNamingPreview['samples'][number] & ModelReference & { referenceError?: boolean }
+const modelSamples = ref<ModelSample[]>([])
+// 同一批参考物料跨规则编辑复用只读资料；显式刷新或切换品类时重新读取。
+const modelReferences = new Map<number, Promise<ModelReference>>()
+function loadModelReference(materialId: number): Promise<ModelReference> {
+  const cached = modelReferences.get(materialId)
+  if (cached) return cached
+  const pending = materialMasterApi.detail(materialId).then(response => {
+    const material = response.data?.material
+    if (!material) throw new Error('参考物料资料为空')
+    return { supplierMaterialName: material.supplierMaterialName || '-', originalModel: material.model || '-' }
+  })
+  modelReferences.set(materialId, pending)
+  return pending
+}
 const modelTokens = computed(() => namingTokens.value.filter(token => token.key !== 'model'))
 function toggleModelField(key: string, checked: boolean) {
   const rest = modelPattern.value.fields.filter(field => field !== key)
@@ -796,9 +814,10 @@ function setModelUnit(field: string, value: string) {
   modelPattern.value.units = { ...modelPattern.value.units, [field]: value as MaterialDimensionUnit }
 }
 let modelPreviewRequest = 0
-async function previewModel() {
+async function previewModel(refreshReferences = false) {
   const categoryId = templateCategoryId.value
   const request = ++modelPreviewRequest
+  if (refreshReferences) modelReferences.clear()
   if (!categoryId) return
   try {
     const rule = modelPattern.value
@@ -806,7 +825,16 @@ async function previewModel() {
       ? { ...Object.fromEntries(rule.fields.map(field => [field, ''])), ...rule.separators }
       : rule.separators
     const response = await materialMasterApi.previewNaming(categoryId, { ...rule, separators, empty: 'skip' })
-    if (request === modelPreviewRequest) modelSamples.value = response.data?.samples || []
+    if (request !== modelPreviewRequest) return
+    const samples = response.data?.samples || []
+    const references = await Promise.allSettled(samples.map(sample => loadModelReference(sample.materialId)))
+    if (request !== modelPreviewRequest) return
+    modelSamples.value = samples.map((sample, index) => {
+      const reference = references[index]
+      return reference.status === 'fulfilled'
+        ? { ...sample, ...reference.value }
+        : { ...sample, supplierMaterialName: '加载失败', originalModel: '加载失败', referenceError: true }
+    })
   } catch (e) {
     if (request === modelPreviewRequest) {
       modelSamples.value = []
@@ -815,7 +843,8 @@ async function previewModel() {
   }
 }
 let modelPreviewTimer: ReturnType<typeof setTimeout> | undefined
-watch(() => [templateCategoryId.value, JSON.stringify(modelPattern.value)], () => {
+watch(() => [templateCategoryId.value, JSON.stringify(modelPattern.value)], (value, previous) => {
+  if (value[0] !== previous?.[0]) modelReferences.clear()
   modelPreviewRequest++
   modelSamples.value = []
   if (modelPreviewTimer) clearTimeout(modelPreviewTimer)
