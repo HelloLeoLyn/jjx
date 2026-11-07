@@ -48,6 +48,8 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         COMMON_LABELS.put("thickness_mm", "厚度");
         COMMON_LABELS.put("grammage", "克重");
         COMMON_LABELS.put("supplier", "供应商");
+        COMMON_LABELS.put("suppliershort", "供应商·简称");
+        COMMON_LABELS.put("supplierabbr", "供应商·缩写");
         COMMON_LABELS.put("customersupplied", "客供");
         COMMON_LABELS.put("sampleonly", "样品");
     }
@@ -148,6 +150,16 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
      */
     public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName,
                           String brandLabel, String colorLabel, String categoryPrefix, String brandAbbr) {
+        return compose(material, schema, categoryName, brandLabel, colorLabel, categoryPrefix, brandAbbr, null, null);
+    }
+
+    /**
+     * 生成名称；brandAbbr 为品牌缩写，supplierShort/supplierAbbr 为供应商简称与缩写（dev-20261107-017）。
+     * 供应商取值回落顺序：缩写 → 简称 → 全名，保证名称里不会出现空段或流水编码。
+     */
+    public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName,
+                          String brandLabel, String colorLabel, String categoryPrefix, String brandAbbr,
+                          String supplierShort, String supplierAbbr) {
         MaterialNamingPattern pattern = normalized();
         if (pattern.fields().isEmpty()) return null;
         Map<String, Object> attributes = readAttributes(material.getAttributeJson());
@@ -156,7 +168,8 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         boolean first = true;
         for (String field : pattern.fields()) {
             String value = "categoryprefix".equals(field) ? requireCategoryPrefix(categoryPrefix)
-                    : valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, colorLabel, brandAbbr);
+                    : valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, colorLabel, brandAbbr,
+                              supplierShort, supplierAbbr);
             if (value != null && !value.isBlank() && pattern.units().containsKey(field)) {
                 value = MaterialSizeValue.segment(new java.math.BigDecimal(value), pattern.units().get(field), null).value();
             }
@@ -189,17 +202,30 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     public static String tokenValue(InventoryMaterial material, MaterialAttributeSchema schema,
                                     Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
                                     String categoryName, String brandLabel, String brandAbbr) {
-        return valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, null, brandAbbr);
+        return tokenValue(material, schema, attributes, spec, field, categoryName, brandLabel, brandAbbr, null, null);
+    }
+
+    /** 同上，可再传供应商简称与缩写（dev-20261107-017）。 */
+    public static String tokenValue(InventoryMaterial material, MaterialAttributeSchema schema,
+                                    Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
+                                    String categoryName, String brandLabel, String brandAbbr,
+                                    String supplierShort, String supplierAbbr) {
+        return valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, null, brandAbbr,
+                supplierShort, supplierAbbr);
     }
 
     private static String valueOf(InventoryMaterial material, MaterialAttributeSchema schema,
                                   Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
-                                  String categoryName, String brandLabel, String colorLabel, String brandAbbr) {
+                                  String categoryName, String brandLabel, String colorLabel, String brandAbbr,
+                                  String supplierShort, String supplierAbbr) {
         return switch (field) {
             case "brand" -> brandLabel == null || brandLabel.isBlank() ? material.getBrand() : brandLabel;
             case "brandabbr" -> brandAbbr == null || brandAbbr.isBlank()
                     ? (brandLabel == null || brandLabel.isBlank() ? material.getBrand() : brandLabel)
                     : brandAbbr;
+            // 供应商：缩写 → 简称 → 全名，逐级回落（dev-20261107-017）
+            case "supplierabbr" -> firstNonBlank(supplierAbbr, supplierShort, material.getSupplierName());
+            case "suppliershort" -> firstNonBlank(supplierShort, material.getSupplierName());
             case "model" -> material.getModel();
             case "color" -> colorLabel == null || colorLabel.isBlank() ? material.getColor() : colorLabel;
             case "meta" -> material.getMaterialMeta();
@@ -226,6 +252,14 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
 
     private static java.math.BigDecimal firstNonNull(java.math.BigDecimal primary, java.math.BigDecimal fallback) {
         return primary != null ? primary : fallback;
+    }
+
+    /** 逐级回落取第一个非空文本（供应商缩写→简称→全名，dev-20261107-017）。 */
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) return value;
+        }
+        return null;
     }
 
     private static String decimalText(java.math.BigDecimal value) {

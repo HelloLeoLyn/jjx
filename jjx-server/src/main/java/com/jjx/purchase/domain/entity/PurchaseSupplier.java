@@ -34,6 +34,16 @@ public class PurchaseSupplier {
     private String supplierName;
 
     /**
+     * 供应商简称（去地域与公司后缀，如 深圳市艾高科电子材料有限公司 → 艾高科）
+     */
+    private String shortName;
+
+    /**
+     * 首字母缩写（大写字母或数字，1-8 位，如 艾高科 → AGK）：物料命名规则「供应商·缩写」取值
+     */
+    private String abbr;
+
+    /**
      * 供应商类型（material原材料/equipment设备/other其他）
      */
     private String supplierType;

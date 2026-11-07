@@ -28,6 +28,16 @@ public class PurchaseSupplierVO {
     private String supplierName;
 
     /**
+     * 供应商简称（命名规则「供应商·简称」用）
+     */
+    private String shortName;
+
+    /**
+     * 首字母缩写（命名规则「供应商·缩写」用）
+     */
+    private String abbr;
+
+    /**
      * 供应商类型（material原材料/equipment设备/other其他）
      */
     private String supplierType;

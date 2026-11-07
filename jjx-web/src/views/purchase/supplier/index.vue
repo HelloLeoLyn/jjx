@@ -134,6 +134,16 @@
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="供应商编码" align="center" prop="supplierCode" width="120" />
         <el-table-column label="供应商名称" align="center" prop="supplierName" width="180" />
+        <el-table-column label="简称" align="center" prop="shortName" width="120">
+          <template #default="scope">
+            <span>{{ scope.row.shortName || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="缩写" align="center" prop="abbr" width="90">
+          <template #default="scope">
+            <span>{{ scope.row.abbr || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="供应商类型" align="center" prop="supplierType" width="120">
           <template #default="scope">
             <span>{{ getSupplierTypeLabel(scope.row.supplierType) }}</span>
@@ -219,6 +229,27 @@
                 v-model="form.supplierName"
                 placeholder="请输入供应商名称"
                 maxlength="100"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="简称" prop="shortName">
+              <el-input
+                v-model="form.shortName"
+                placeholder="去地域与公司后缀，如 艾高科（可留空）"
+                maxlength="50"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="首字母缩写" prop="abbr">
+              <el-input
+                v-model="form.abbr"
+                placeholder="字母或数字 1-8 位，如 AGK（可留空）"
+                maxlength="8"
               />
             </el-form-item>
           </el-col>
@@ -362,6 +393,8 @@
       <el-descriptions :column="2" border>
         <el-descriptions-item label="供应商编码">{{ detail.supplierCode }}</el-descriptions-item>
         <el-descriptions-item label="供应商名称">{{ detail.supplierName }}</el-descriptions-item>
+        <el-descriptions-item label="简称">{{ detail.shortName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="首字母缩写">{{ detail.abbr || '-' }}</el-descriptions-item>
         <el-descriptions-item label="供应商类型">
           {{ getSupplierTypeLabel(detail.supplierType) }}
         </el-descriptions-item>
@@ -551,6 +584,8 @@ const form = reactive({
   supplierId: undefined as number | undefined,
   supplierCode: '',
   supplierName: '',
+  shortName: '',
+  abbr: '',
   supplierType: '',
   tagIds: [] as number[],
   contactPerson: '',
@@ -569,6 +604,8 @@ const detail = reactive({
   supplierId: undefined as number | undefined,
   supplierCode: '',
   supplierName: '',
+  shortName: '',
+  abbr: '',
   supplierType: '',
   contactPerson: '',
   phone: '',
@@ -665,6 +702,17 @@ const rules = reactive<FormRules>({
     },
   ],
   supplierType: [{ required: true, message: '供应商类型不能为空', trigger: 'change' }],
+  shortName: [{ max: 50, message: '简称长度不能超过50个字符', trigger: 'blur' }],
+  abbr: [
+    {
+      // 命名规则「供应商·缩写」取值：字母或数字 1-8 位，可留空（dev-20261107-017）
+      validator: (_rule: any, value: string, callback: any) => {
+        if (!value || /^[A-Za-z0-9]{1,8}$/.test(value.trim())) callback()
+        else callback(new Error('缩写只能是大写字母或数字，1-8 位'))
+      },
+      trigger: 'blur',
+    },
+  ],
   email: [{ type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }],
 })
 
@@ -905,6 +953,8 @@ const resetForm = () => {
     supplierId: undefined,
     supplierCode: '',
     supplierName: '',
+    shortName: '',
+    abbr: '',
     supplierType: '',
     tagIds: [],
     contactPerson: '',

@@ -153,6 +153,20 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 供应商简称与缩写按缩写到简称到全名逐级回落() {
+        var material = material();
+        material.setSupplierName("深圳市艾高科电子材料有限公司");
+        var pattern = new MaterialNamingPattern(List.of("supplierabbr", "suppliershort"), " ", "skip");
+        // 两者都有：缩写优先，简称照常输出（dev-20261107-017）
+        assertEquals("AGK 艾高科", pattern.compose(material, SCHEMA, null, null, null, null, null, "艾高科", "AGK"));
+        // 无缩写：两个字都回落简称
+        assertEquals("艾高科 艾高科", pattern.compose(material, SCHEMA, null, null, null, null, null, "艾高科", null));
+        // 简称与缩写都没有：回落供应商全名
+        assertEquals("深圳市艾高科电子材料有限公司 深圳市艾高科电子材料有限公司",
+                pattern.compose(material, SCHEMA, null, null, null, null, null, null, null));
+    }
+
+    @Test
     void 尺寸与克重字段属于允许的公共字段() {
         var pattern = new MaterialNamingPattern(List.of("width", "length", "thickness_mm", "grammage"), " ", "skip");
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> pattern.validate(SCHEMA));

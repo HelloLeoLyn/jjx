@@ -194,6 +194,9 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
             throw new BusinessException("供应商类型不合法");
         }
 
+        normalizeSupplierText(supplierDTO, true);
+        checkSupplierAbbr(supplierDTO, null);
+
         // 转换实体
         PurchaseSupplier supplier = supplierConverter.toEntity(supplierDTO);
 
@@ -273,6 +276,9 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
             }
         }
 
+        normalizeSupplierText(supplierDTO, false);
+        checkSupplierAbbr(supplierDTO, supplierDTO.getSupplierId());
+
         // 转换实体
         PurchaseSupplier supplier = supplierConverter.toEntity(supplierDTO);
 
@@ -332,6 +338,33 @@ public class PurchaseSupplierServiceImpl extends ServiceImpl<PurchaseSupplierMap
     @Override
     public boolean checkSupplierCodeUnique(String supplierCode) {
         return supplierMapper.checkSupplierCodeUnique(supplierCode) > 0;
+    }
+
+    /**
+     * 简称/缩写归一（dev-20261107-017）：去空格；缩写统一转大写。
+     * 新增时空值存 null；更新时空串表示用户主动清除（null 表示前端未提交该字段，保持原值）。
+     */
+    private void normalizeSupplierText(PurchaseSupplierDTO dto, boolean insert) {
+        if (dto.getShortName() != null) {
+            String shortName = dto.getShortName().trim();
+            dto.setShortName(shortName.isEmpty() ? (insert ? null : "") : shortName);
+        }
+        if (dto.getAbbr() != null) {
+            String abbr = dto.getAbbr().trim().toUpperCase();
+            dto.setAbbr(abbr.isEmpty() ? (insert ? null : "") : abbr);
+        }
+    }
+
+    /** 缩写校验：字母或数字 1-8 位，且未被其它在用供应商占用（软删除行不占号）。 */
+    private void checkSupplierAbbr(PurchaseSupplierDTO dto, Long excludeId) {
+        String abbr = dto.getAbbr();
+        if (abbr == null || abbr.isBlank()) return;
+        if (!abbr.matches("[A-Z0-9]{1,8}")) {
+            throw new BusinessException("供应商缩写只能是大写字母或数字，1-8 位");
+        }
+        if (supplierMapper.checkAbbrUnique(abbr, excludeId) > 0) {
+            throw new BusinessException("供应商缩写已被占用：" + abbr);
+        }
     }
 
     @Override

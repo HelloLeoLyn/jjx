@@ -35,6 +35,17 @@ public interface PurchaseSupplierMapper extends BaseMapper<PurchaseSupplier> {
     int checkSupplierNameUnique(@Param("supplierName") String supplierName);
 
     /**
+     * 检查供应商缩写是否已被占用（排除自身与已删除行，dev-20261107-017）
+     *
+     * @param abbr 大写缩写
+     * @param excludeId 排除的供应商ID（新增传 null）
+     * @return 占用行数
+     */
+    @Select("<script>SELECT COUNT(*) FROM purchase_supplier WHERE abbr = #{abbr} AND del_flag = '0'"
+            + "<if test='excludeId != null'> AND supplier_id != #{excludeId}</if></script>")
+    int checkAbbrUnique(@Param("abbr") String abbr, @Param("excludeId") Long excludeId);
+
+    /**
      * 更新供应商状态
      *
      * @param supplierId 供应商ID

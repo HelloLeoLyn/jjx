@@ -33,6 +33,18 @@ public class PurchaseSupplierDTO {
     private String supplierName;
 
     /**
+     * 供应商简称（物料命名规则「供应商·简称」取值；留空时回落全名）
+     */
+    @Size(max = 50, message = "供应商简称长度不能超过50个字符")
+    private String shortName;
+
+    /**
+     * 首字母缩写（物料命名规则「供应商·缩写」取值；字母或数字 1-8 位，保存时转大写）
+     */
+    @Size(max = 16, message = "供应商缩写长度不能超过16个字符")
+    private String abbr;
+
+    /**
      * 供应商类型（主要供货类别，字典 purchase_supplier_type）：
      * R原材料 / A辅助材料 / I油墨 / F成品 / E设备 / O其他（dev-20260912-003）
      */

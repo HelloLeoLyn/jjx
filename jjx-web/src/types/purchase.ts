@@ -7,6 +7,10 @@ export interface PurchaseSupplier {
   supplierId: number
   supplierCode: string
   supplierName: string
+  /** 供应商简称（命名规则「供应商·简称」取值，dev-20261107-017） */
+  shortName?: string
+  /** 首字母缩写（命名规则「供应商·缩写」取值，字母或数字 1-8 位） */
+  abbr?: string
   supplierType: string
   contactPerson?: string
   phone?: string

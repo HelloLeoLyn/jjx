@@ -857,6 +857,8 @@ const COMMON_NAMING_TOKENS = [
   { key: 'categoryprefix', label: '品类前缀' },
   { key: 'brand', label: '品牌' },
   { key: 'brandabbr', label: '品牌·缩写' },
+  { key: 'suppliershort', label: '供应商·简称' },
+  { key: 'supplierabbr', label: '供应商·缩写' },
   { key: 'model', label: '型号' },
   { key: 'color', label: '颜色' },
   { key: 'meta', label: '材质' },
