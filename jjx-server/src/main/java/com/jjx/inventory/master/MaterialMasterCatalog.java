@@ -179,4 +179,24 @@ public class MaterialMasterCatalog {
         return dictionaries().getOrDefault(dict, List.of()).stream().filter(d -> code.equals(d.code()))
                 .map(DictionaryOption::label).findFirst().orElseThrow(() -> new BusinessException("字典选项不存在或已停用：" + dict + "/" + code));
     }
+
+    /**
+     * 品牌缩写：取品牌字典项 ext_data 里的 abbr（dev-20261107-014）。
+     * 未配置/解析失败返回 null，由调用方回落到品牌中文名；不改变 item_value 存量口径。
+     */
+    public String brandAbbreviation(String code) {
+        if (code == null || code.isBlank()) return null;
+        SysDictItem item = dictMapper.selectList(new LambdaQueryWrapper<SysDictItem>()
+                .eq(SysDictItem::getDictCode, "brand").eq(SysDictItem::getItemValue, code)
+                .eq(SysDictItem::getTenantId, 1L).last("LIMIT 1"))
+                .stream().findFirst().orElse(null);
+        if (item == null || item.getExtData() == null || item.getExtData().isBlank()) return null;
+        try {
+            var node = objectMapper.readTree(item.getExtData()).path("abbr");
+            String abbr = node.isMissingNode() || node.isNull() ? null : node.asText();
+            return abbr == null || abbr.isBlank() ? null : abbr.trim();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
 }

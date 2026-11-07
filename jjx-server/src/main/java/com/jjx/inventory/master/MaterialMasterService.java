@@ -107,7 +107,7 @@ public class MaterialMasterService {
         int max = limit == null || limit <= 0 ? 50 : Math.min(limit, 500);
         String categoryName = catalog.optionalConfiguration(categoryId).category().categoryName();
         for (InventoryMaterial material : materials) {
-            String generated = pattern.compose(material, schema, categoryName, brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()));
+            String generated = pattern.compose(material, schema, categoryName, brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()), brandAbbrOf(material));
             String skip = generated == null || generated.isBlank() ? "blank"
                     : Objects.equals(generated, material.getMaterialName()) ? "same" : null;
             if (skip == null) changeable++;
@@ -131,7 +131,7 @@ public class MaterialMasterService {
         int changed = 0;
         String categoryName = catalog.optionalConfiguration(categoryId).category().categoryName();
         for (InventoryMaterial material : materials) {
-            String generated = pattern.compose(material, schema, categoryName, brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()));
+            String generated = pattern.compose(material, schema, categoryName, brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()), brandAbbrOf(material));
             if (generated == null || generated.isBlank() || Objects.equals(generated, material.getMaterialName())) continue;
             updateNaming(material.getMaterialId(),
                     new NamingPatch(generated, null, "按品类命名规则重算"), operator);
@@ -196,6 +196,16 @@ public class MaterialMasterService {
         try {
             String label = catalog.dictionaryLabel("brand", material.getBrand(), false);
             return label == null || label.isBlank() ? null : label;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** 品牌缩写（字典项 ext_data.abbr，dev-20261107-014）：未配置返回 null，命名规则回落到中文名。 */
+    private String brandAbbrOf(InventoryMaterial material) {
+        if (material == null || material.getBrand() == null || material.getBrand().isBlank()) return null;
+        try {
+            return catalog.brandAbbreviation(material.getBrand());
         } catch (Exception ignored) {
             return null;
         }
@@ -318,7 +328,7 @@ public class MaterialMasterService {
                 material.setAttributeJson("{}");
             }
         }
-        return pattern.compose(material, schema, config.category().categoryName(), brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()));
+        return pattern.compose(material, schema, config.category().categoryName(), brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()), brandAbbrOf(material));
     }
 
     /** 命名规则预览（只读）：按品类取样 5 条物料，用传入规则试算新旧名对照。 */
@@ -336,7 +346,7 @@ public class MaterialMasterService {
         List<NamingSample> samples = new ArrayList<>();
         for (InventoryMaterial material : materials) {
             samples.add(new NamingSample(material.getMaterialId(), material.getMaterialCode(),
-                    material.getMaterialName(), normalized.compose(material, schema, config.category().categoryName(), brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()))));
+                    material.getMaterialName(), normalized.compose(material, schema, config.category().categoryName(), brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()), brandAbbrOf(material))));
         }
         return new NamingPreview(samples, materials.isEmpty() ? "该品类暂无物料，规则只影响后续新建" : "预览取该品类最近 5 条物料");
     }
@@ -513,7 +523,7 @@ public class MaterialMasterService {
             schema.modelPattern().validateModel(schema);
             if (!schema.modelPattern().normalized().fields().isEmpty()) MaterialNamingPattern.requireCategoryPrefix(config.category().modelPrefix());
             material.setModel(text(schema.modelPattern().forModel().compose(material, schema,
-                    config.category().categoryName(), brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId())), "型号", 100, false));
+                    config.category().categoryName(), brandLabelOf(material), colorLabelOf(material), categoryPrefixOf(material.getCategoryId()), brandAbbrOf(material)), "型号", 100, false));
         }
         material.setSpecification(specificationPreview(material, config == null ? null : schema).specification());
         for (BigDecimal number : Arrays.asList(dto.getSafeStock(), dto.getMaxStock(), dto.getReorderPoint(), dto.getStandardPrice())) {

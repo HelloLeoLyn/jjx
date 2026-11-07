@@ -136,6 +136,23 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 品牌缩写勾选后命名用缩写且缺省回落中文名() {
+        var material = material();
+        material.setBrand("GUANCHANG");
+        material.setModel("PC-800");
+        var pattern = new MaterialNamingPattern(List.of("brandabbr", "model"), " ", "skip");
+        // 勾选「品牌·缩写」且字典配了缩写：输出缩写（dev-20261107-014）
+        assertEquals("GC PC-800", pattern.compose(material, SCHEMA, null, "贯昌", null, null, "GC"));
+        // 勾选但该品牌未配缩写：回落中文名
+        assertEquals("贯昌 PC-800", pattern.compose(material, SCHEMA, null, "贯昌", null, null, null));
+        // 中文名也取不到：回落存库代码，与 brand 字段口径一致
+        assertEquals("GUANCHANG PC-800", pattern.compose(material, SCHEMA, null, null, null, null, null));
+        // 未勾选缩写时，即使传了缩写也不使用
+        var plain = new MaterialNamingPattern(List.of("brand", "model"), " ", "skip");
+        assertEquals("贯昌 PC-800", plain.compose(material, SCHEMA, null, "贯昌", null, null, "GC"));
+    }
+
+    @Test
     void 尺寸与克重字段属于允许的公共字段() {
         var pattern = new MaterialNamingPattern(List.of("width", "length", "thickness_mm", "grammage"), " ", "skip");
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> pattern.validate(SCHEMA));

@@ -21,6 +21,9 @@
       <el-table-column label="字典键" prop="itemKey" width="150" />
       <el-table-column label="字典值" prop="itemValue" width="180" />
       <el-table-column label="标签" prop="label" width="100" />
+      <el-table-column v-if="isBrandDict" label="缩写" width="110" align="center">
+        <template #default="{ row }">{{ parseAbbr(row.extData) || '—' }}</template>
+      </el-table-column>
       <el-table-column v-if="isAttachmentType" label="一级分类" width="120">
         <template #default="{ row }">{{ extSummary(row).parent }}</template>
       </el-table-column>
@@ -83,6 +86,9 @@
         <el-form-item label="标签" prop="label">
           <el-input v-model="itemForm.label" placeholder="请输入标签(扩展)" maxlength="50" />
         </el-form-item>
+        <el-form-item v-if="isBrandDict" label="缩写">
+          <el-input v-model="brandAbbr" placeholder="首字母大写缩写，如 CHL / GC（可留空）" maxlength="8" />
+        </el-form-item>
         <template v-if="isAttachmentType">
           <el-form-item label="一级分类" required>
             <el-select v-model="extParent" placeholder="请选择一级分类(parent)" style="width: 100%">
@@ -137,6 +143,7 @@ import { ref, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { dictApi } from '@/api/system/dict'
+import { isValidAbbr, parseAbbr, withAbbr } from './dictExtData'
 import type { SysDictItem, SysDictItemDTO } from '@/types/system/dict'
 import { CommonStatusEnum } from '@/enums/common/StatusEnum'
 
@@ -162,6 +169,11 @@ const itemList = ref<SysDictItem[]>([])
 // ===== 附件资料类型字典：ext_data(parent + sources) 结构化编辑（dev-20261013-007） =====
 /** 仅 attachment_document_type 使用 ext_data；其它字典项不显示 ext_data（避免裸编 JSON 写坏） */
 const isAttachmentType = computed(() => props.dictCode === 'attachment_document_type')
+
+// ===== 物料品牌字典：ext_data(abbr) 品牌缩写（dev-20261107-014） =====
+/** 只对 brand 字典显示缩写列/输入；缩写存 ext_data.abbr，字典值与字典键不变。 */
+const isBrandDict = computed(() => props.dictCode === 'brand')
+const brandAbbr = ref('')
 /** 可选来源（与后端 AttachmentSourcePolicy 白名单对齐） */
 const ATTACHMENT_SOURCES = [
   { value: 'product', label: '产品' },
@@ -277,6 +289,7 @@ const handleAdd = () => {
   }
   extParent.value = ''
   extSources.value = []
+  brandAbbr.value = ''
   loadCategoryOptions()
   itemDialogVisible.value = true
 }
@@ -297,6 +310,10 @@ const handleEdit = (row: SysDictItem) => {
   const { parent, sources } = parseExtData(row.extData)
   extParent.value = parent
   extSources.value = sources
+  if (isBrandDict.value) {
+    brandAbbr.value = parseAbbr(row.extData)
+    itemForm.value.extData = row.extData
+  }
   loadCategoryOptions()
   itemDialogVisible.value = true
 }
@@ -346,6 +363,14 @@ const submitItemForm = async () => {
         parent: extParent.value,
         sources: extSources.value,
       })
+    }
+    // 品牌字典：ext_data.abbr（首字母大写缩写）；留空则不写，命名规则自动回落中文名
+    if (isBrandDict.value) {
+      if (!isValidAbbr(brandAbbr.value)) {
+        ElMessage.warning('品牌缩写只能是大写字母或数字，1-8 位')
+        return
+      }
+      itemForm.value.extData = withAbbr(itemForm.value.extData, brandAbbr.value)
     }
     itemSubmitLoading.value = true
     try {

@@ -856,6 +856,7 @@ const namingMessage = ref('')
 const COMMON_NAMING_TOKENS = [
   { key: 'categoryprefix', label: '品类前缀' },
   { key: 'brand', label: '品牌' },
+  { key: 'brandabbr', label: '品牌·缩写' },
   { key: 'model', label: '型号' },
   { key: 'color', label: '颜色' },
   { key: 'meta', label: '材质' },

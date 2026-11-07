@@ -37,6 +37,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         COMMON_LABELS.put("category", "品类");
         COMMON_LABELS.put("categoryprefix", "品类前缀");
         COMMON_LABELS.put("brand", "品牌");
+        COMMON_LABELS.put("brandabbr", "品牌·缩写");
         COMMON_LABELS.put("meta", "材质");
         COMMON_LABELS.put("form", "形态");
         COMMON_LABELS.put("unit", "单位");
@@ -138,6 +139,15 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     /** 调用方传入品类前缀，缺失时明确报错，预览与新建共用。 */
     public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName,
                           String brandLabel, String colorLabel, String categoryPrefix) {
+        return compose(material, schema, categoryName, brandLabel, colorLabel, categoryPrefix, null);
+    }
+
+    /**
+     * 生成名称；brandAbbr 为品牌缩写（字典项 ext_data.abbr，dev-20261107-014）。
+     * 只有命名规则勾选了「品牌·缩写」才会用到；未配置缩写时回落到品牌中文名。
+     */
+    public String compose(InventoryMaterial material, MaterialAttributeSchema schema, String categoryName,
+                          String brandLabel, String colorLabel, String categoryPrefix, String brandAbbr) {
         MaterialNamingPattern pattern = normalized();
         if (pattern.fields().isEmpty()) return null;
         Map<String, Object> attributes = readAttributes(material.getAttributeJson());
@@ -146,7 +156,7 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         boolean first = true;
         for (String field : pattern.fields()) {
             String value = "categoryprefix".equals(field) ? requireCategoryPrefix(categoryPrefix)
-                    : valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, colorLabel);
+                    : valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, colorLabel, brandAbbr);
             if (value != null && !value.isBlank() && pattern.units().containsKey(field)) {
                 value = MaterialSizeValue.segment(new java.math.BigDecimal(value), pattern.units().get(field), null).value();
             }
@@ -172,14 +182,24 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
     public static String tokenValue(InventoryMaterial material, MaterialAttributeSchema schema,
                                     Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
                                     String categoryName, String brandLabel) {
-        return valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, null);
+        return tokenValue(material, schema, attributes, spec, field, categoryName, brandLabel, null);
+    }
+
+    /** 同上，可传品牌缩写（规格模板用，dev-20261107-014）。 */
+    public static String tokenValue(InventoryMaterial material, MaterialAttributeSchema schema,
+                                    Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
+                                    String categoryName, String brandLabel, String brandAbbr) {
+        return valueOf(material, schema, attributes, spec, field, categoryName, brandLabel, null, brandAbbr);
     }
 
     private static String valueOf(InventoryMaterial material, MaterialAttributeSchema schema,
                                   Map<String, Object> attributes, MaterialSizeValue.SizeSpec spec, String field,
-                                  String categoryName, String brandLabel, String colorLabel) {
+                                  String categoryName, String brandLabel, String colorLabel, String brandAbbr) {
         return switch (field) {
             case "brand" -> brandLabel == null || brandLabel.isBlank() ? material.getBrand() : brandLabel;
+            case "brandabbr" -> brandAbbr == null || brandAbbr.isBlank()
+                    ? (brandLabel == null || brandLabel.isBlank() ? material.getBrand() : brandLabel)
+                    : brandAbbr;
             case "model" -> material.getModel();
             case "color" -> colorLabel == null || colorLabel.isBlank() ? material.getColor() : colorLabel;
             case "meta" -> material.getMaterialMeta();
