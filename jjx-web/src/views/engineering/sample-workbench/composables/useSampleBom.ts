@@ -65,6 +65,7 @@ export function useSampleBom(context: SampleBomContext) {
         out.push({
           ...normalizeMaterial(row, projectIdsOf(pc)),
           ownerUid: pc.uid,
+          sourceLabel: `工序：${materialOwner(pc, row)?.processName || pc.printName || '待分配子工序'}`,
           srcIndex: index,
           uid: stableUid(key),
         })
@@ -73,14 +74,14 @@ export function useSampleBom(context: SampleBomContext) {
     standaloneMaterials.value.forEach((row, index) => {
       const key = `bom|${row.materialId ?? ''}|${row.name ?? ''}|${row.spec ?? ''}`
       // 加载/历史复制已归一；投影保留成品方案复制的空基/模，供页面提示待核对。
-      out.push({ ...row, ownerUid: null, srcIndex: index, uid: stableUid(key) })
+      out.push({ ...row, sourceLabel: '独立材料', ownerUid: null, srcIndex: index, uid: stableUid(key) })
     })
     return out
   })
 
   function updateMaterial(row: any) {
     if (readonlyMode.value) return
-    const { ownerUid, srcIndex, uid, ...value } = row
+    const { ownerUid, srcIndex, uid, sourceLabel, ...value } = row
     if (ownerUid == null) {
       const arr = [...standaloneMaterials.value]
       if (srcIndex < 0 || srcIndex >= arr.length) return

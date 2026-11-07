@@ -2,8 +2,9 @@
   <el-card class="col-bom" shadow="never">
     <template #header>
       <span style="font-weight: 600">BOM 物料清单</span>
-      <span class="desc">卡片材料与独立材料共用同一份草稿</span>
+      <el-button v-if="!readonly" class="add-material" size="small" icon="Plus" @click="$emit('add')">新增材料</el-button>
     </template>
+    <p class="save-hint">{{ readonly ? '当前为只读查看。' : '修改后请点击「保存打样方案」，工序、印刷、BOM和工程备注一起保存。工序来源材料在此编辑或删除，也会同步修改对应工序材料。' }}</p>
     <el-table v-if="bomList.length > 0" :data="bomList" row-key="uid" size="small" border style="width: 100%">
       <el-table-column label="材料" min-width="170">
         <template #default="{ row }">
@@ -25,7 +26,12 @@
           <span v-else>{{ row.name || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="项目" min-width="150">
+      <el-table-column label="材料来源" min-width="170">
+        <template #default="{ row }">
+          <span>{{ row.sourceLabel || '独立材料' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="关联项目" min-width="150">
         <template #default="{ row }">
           <el-select
             v-if="!readonly"
@@ -49,7 +55,7 @@
           </el-select>
           <template v-else>
             <span v-if="projectNames(row).length">{{ projectNames(row).join('、') }}</span>
-            <span v-else>-</span>
+            <span v-else>未关联项目</span>
           </template>
         </template>
       </el-table-column>
@@ -126,16 +132,13 @@
         </template>
       </el-table-column>
       <el-table-column v-if="!readonly" label="操作" width="60" align="center">
-        <template #header>
-          <el-button size="small" plain icon="Plus" @click="$emit('add')"></el-button>
-        </template>
         <template #default="{ row }">
-          <el-button size="small" link type="danger" @click="$emit('remove', row)">删</el-button>
+          <el-button size="small" link type="danger" @click="removeMaterial(row)">删</el-button>
         </template>
       </el-table-column>
     </el-table>
     <div v-else style="color: #999; font-size: 13px">
-      暂无材料（在工序中添加材料，或点右上角 + 直接新增）
+      {{ readonly ? '暂无材料' : '暂无材料，可在工序中添加，或点击「新增材料」直接录入。' }}
     </div>
     <div v-if="showTransfer" class="transfer-zone" data-test="transfer-zone">
       <el-button type="success" size="small" :disabled="readonly" @click="$emit('transfer')"
@@ -151,6 +154,7 @@
 <script setup lang="ts">
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import { splitNumber, setMaterialSplit } from '../composables/sampleMaterials'
+import { confirmSampleMaterialRemoval } from '../composables/confirmSampleMaterialRemoval'
 /**
  * BOM 物料清单卡（dev-20260811-008 组件化；dev-20261015-017 支持直接编辑）
  * 列：材料｜项目｜规格｜模数｜跳距｜基数｜单位；与卡片材料共用同一份草稿。
@@ -175,6 +179,14 @@ const emit = defineEmits<{
   (e: 'clear', row: any): void
   (e: 'transfer'): void
 }>()
+
+async function removeMaterial(row: any) {
+  if (props.readonly) return
+  const impact = row.ownerUid == null
+    ? `将删除独立材料「${row.name || '未选择材料'}」。`
+    : `将删除材料「${row.name}」，并同步删除${row.sourceLabel || '对应工序'}中的这条材料。`
+  if (await confirmSampleMaterialRemoval(1, impact) && !props.readonly) emit('remove', row)
+}
 
 
 function onMaterialDraft(row: any, draft: { pending: boolean; text: string }) {
@@ -205,6 +217,15 @@ function onProjectsChange(row: any, value: number[]) {
   color: #909399;
   font-weight: 400;
   margin-left: 8px;
+}
+.add-material {
+  float: right;
+}
+.save-hint {
+  margin: 0 0 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.6;
 }
 .transfer-zone {
   margin-top: 12px;

@@ -6,6 +6,7 @@ import { useSampleBom } from '../useSampleBom'
 import { usePlanPersistence } from '../usePlanPersistence'
 import { useSampleWorkbench } from '../useSampleWorkbench'
 import { assignMaterial } from '../sampleProcessGroups'
+import { ElMessageBox } from 'element-plus'
 
 vi.mock('@/utils/request', () => ({ default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: { orderId: '10' } }), useRouter: () => ({}), onBeforeRouteLeave: vi.fn() }))
@@ -83,6 +84,7 @@ describe('BOM公共选择器结果写回及整单保存', () => {
       loadBom: vi.fn(), refreshCard: vi.fn(), loadSummary: vi.fn(), canSave: () => true })
     persistence.markSaved()
     const target = bom.bomList.value[1]
+    expect(target.sourceLabel).toBe('工序：组装')
     bom.onBomMaterialSelected(target, PET)
     expect(pc.materialRows[0].materialId).toBe(1)
     expect(pc.materialRows[1]).toMatchObject({ materialId: 11, name: 'PET', spec: '008', processItemKey: 'two',
@@ -90,10 +92,12 @@ describe('BOM公共选择器结果写回及整单保存', () => {
     expect(context.markOwnerDirty).toHaveBeenCalledWith(pc)
     bom.addMaterial()
     const standalone = bom.bomList.value.find(row => row.ownerUid == null)!
+    expect(standalone.sourceLabel).toBe('独立材料')
     bom.onBomMaterialSelected(standalone, PET)
     expect(await persistence.savePlan()).toBe(true)
     const payload = api.saveScheme.mock.calls[0][1]
     const secondMaterials = JSON.parse(payload.items[1].materials)
+    expect(secondMaterials.every((row: any) => row.sourceLabel === undefined)).toBe(true)
     expect(secondMaterials).toHaveLength(2)
     expect(secondMaterials.find((row: any) => row.processItemKey === 'two')).toMatchObject({ materialId: 11, name: 'PET', spec: '008', processItemKey: 'two' })
     expect(payload.standaloneMaterials[0]).toMatchObject({ materialId: 11, materialName: 'PET', specification: '008' })
@@ -104,6 +108,32 @@ describe('BOM公共选择器结果写回及整单保存', () => {
 
 
 describe('批量添加材料使用完整公共候选', () => {
+  it('删除含材料的工序先说明影响，取消保留，确认才删除', async () => {
+    const scope = effectScope()
+    try {
+      const workbench = scope.run(() => useSampleWorkbench())!
+      const { pc } = fixture()
+      pc.materialRows[0].name = 'PET'
+      workbench.planList.value = [pc]
+      vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel')
+      await workbench.removePlanCard(pc)
+      expect(workbench.planList.value).toHaveLength(1)
+      expect(ElMessageBox.confirm).toHaveBeenCalledWith(expect.stringContaining('1 条材料'), expect.any(String), expect.any(Object))
+      vi.mocked(ElMessageBox.confirm).mockResolvedValueOnce('confirm')
+      await workbench.removePlanCard(pc)
+      expect(workbench.planList.value).toHaveLength(0)
+      const print = { uid: 'print-1', printName: '印刷', materials: JSON.stringify([{ name: '油墨' }]) }
+      workbench.printList.value = [print]
+      vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('close')
+      await workbench.removePrintRow(print)
+      expect(workbench.printList.value).toHaveLength(1)
+      vi.mocked(ElMessageBox.confirm).mockResolvedValueOnce('confirm')
+      await workbench.removePrintRow(workbench.printList.value[0])
+      expect(workbench.printList.value).toHaveLength(0)
+    } finally {
+      scope.stop()
+    }
+  })
   it('确认才添加到选中卡片，保持原数量/归属；重新打开清除上次候选', () => {
     const scope = effectScope()
     const workbench = scope.run(() => useSampleWorkbench())!

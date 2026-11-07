@@ -1,5 +1,6 @@
 import { workbenchProcessItems, materialOwner } from './sampleProcessGroups'
 import { materialValues } from './planDraft'
+import { confirmSampleMaterialRemoval } from './confirmSampleMaterialRemoval'
 import { useSampleBom } from './useSampleBom'
 import { projectIdsOf } from './sampleMaterials'
 import { useProcessMaterials } from './useProcessMaterials'
@@ -110,7 +111,8 @@ export function useSampleWorkbench() {
     if (readonlyMode.value) return
     const n = batchSelected.value.size
     if (!n) return
-    ElMessageBox.confirm(`确定删除选中的 ${n} 张卡片？`, '批量删除', {
+    const materialCount = batchSelectedCards().reduce((sum, pc) => sum + materialValues(pc).length, 0)
+    ElMessageBox.confirm(`确定删除选中的 ${n} 张卡片？${materialCount ? `将同时移除其中 ${materialCount} 条工序材料及对应BOM行；独立材料保留。` : ''}点击「保存打样方案」后生效。`, '批量删除', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning',
@@ -433,7 +435,9 @@ export function useSampleWorkbench() {
   }
 
   // 删除印刷行
-  function removePrintRow(row: any) {
+  async function removePrintRow(row: any) {
+    if (readonlyMode.value) return
+    if (!await confirmSampleMaterialRemoval(materialValues(row).length, `将删除印刷工序「${row.printName || '未命名'}」及其材料。独立材料保留。`)) return
     if (readonlyMode.value) return
     const i = printList.value.indexOf(row)
     if (i >= 0) {
@@ -618,7 +622,9 @@ export function useSampleWorkbench() {
   }
 
   // 删除整张卡片（保存计划时生效）
-  function removePlanCard(pc: any) {
+  async function removePlanCard(pc: any) {
+    if (readonlyMode.value) return
+    if (!await confirmSampleMaterialRemoval(materialValues(pc).length, `将删除工序卡片「${pc.items?.map((item: any) => item.processName).join('、') || '未命名'}」及其材料。独立材料保留。`)) return
     if (readonlyMode.value) return
     planList.value = planList.value.filter((x) => x !== pc)
     if (batchSelected.value.has(pc.uid)) {
