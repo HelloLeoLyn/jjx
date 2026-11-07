@@ -35,7 +35,7 @@
               placeholder="大写字母、数字和下划线"
           /></el-form-item>
           <el-form-item label="型号前缀" :required="categoryPrefixRequired">
-            <el-input v-model="categoryForm.modelPrefix" maxlength="8" placeholder="2～8位大写字母或数字" />
+            <el-input v-model="categoryForm.modelPrefix" maxlength="8" placeholder="1～8位大写字母或数字" />
           </el-form-item>
           <el-form-item label="分类名称" required
             ><el-input v-model="categoryForm.categoryName" maxlength="100"
@@ -1038,7 +1038,7 @@ async function saveCategory() {
   try {
     if (categoryPrefixRequired.value) {
       if (!categoryForm.modelPrefix?.trim()) throw new Error('型号前缀不能为空，请配置品类型号前缀')
-      if (!/^[A-Z0-9]{2,8}$/.test(categoryForm.modelPrefix)) throw new Error('型号前缀须为2～8位大写字母或数字')
+      if (!/^[A-Z0-9]{1,8}$/.test(categoryForm.modelPrefix)) throw new Error('型号前缀须为1～8位大写字母或数字')
     }
     await materialMasterApi.saveCategory({ ...categoryForm, categoryId: categoryEditId.value })
     await refresh()

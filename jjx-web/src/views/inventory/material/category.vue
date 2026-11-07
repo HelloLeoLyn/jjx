@@ -143,7 +143,7 @@
         <el-row :gutter="20">
           <el-col :span="24">
             <el-form-item label="型号前缀" prop="modelPrefix">
-              <el-input v-model="form.modelPrefix" placeholder="2～8位大写字母或数字" maxlength="8" />
+              <el-input v-model="form.modelPrefix" placeholder="1～8位大写字母或数字" maxlength="8" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -273,7 +273,7 @@ const queryParams = reactive({
 const rules = {
   modelPrefix: [
     { required: true, message: '请输入型号前缀', trigger: 'blur' },
-    { pattern: /^[A-Z0-9]{2,8}$/, message: '型号前缀须为2～8位大写字母或数字', trigger: 'blur' },
+    { pattern: /^[A-Z0-9]{1,8}$/, message: '型号前缀须为1～8位大写字母或数字', trigger: 'blur' },
   ],
   parentId: [{ required: true, message: '请选择父级分类', trigger: 'change' }],
   categoryCode: [

@@ -165,8 +165,8 @@ public class InventoryMaterialCategoryServiceImpl
             }
             return;
         }
-        if (leaf && !prefix.matches("[A-Z0-9]{2,8}")) {
-            throw new com.jjx.common.exception.BusinessException("型号前缀须为2～8位大写字母或数字");
+        if (leaf && !prefix.matches("[A-Z0-9]{1,8}")) {
+            throw new com.jjx.common.exception.BusinessException("型号前缀须为1～8位大写字母或数字");
         }
         var query = new LambdaQueryWrapper<InventoryMaterialCategory>()
                 .eq(InventoryMaterialCategory::getModelPrefix, prefix)

@@ -31,35 +31,46 @@ export const MATERIAL_SEARCH_OPTION_FIELDS: MaterialSearchOptionField[] = [
   // 第一行：一眼认料的三个字段
   { key: 'materialName', row: 1, missing: '未填写名称', emphasis: 'strong' },
   { key: 'materialCode', row: 1, missing: '无编码', emphasis: 'muted' },
-  { key: 'specification', row: 1, label: '规格：', missing: '规格：未填写', className: 'specification' },
-
+  {
+    key: 'specification',
+    row: 1,
+    label: '规格：',
+    missing: '规格：未填写',
+    className: 'specification',
+  },
+  { key: 'unit', row: 1, label: '单位：' },
   // 第二行：区分同名料与判断可用性的信息
-  { key: 'categoryName', row: 2, label: '品类：', missing: '品类：未归类' },
-  { key: 'model', row: 2, label: '型号：' },
+  // { key: 'categoryName', row: 2, label: '品类：', missing: '品类：未归类' },
+  // { key: 'model', row: 2, label: '型号：' },
   { key: 'supplierName', row: 2, label: '供应商：' },
   { key: 'supplierMaterialName', row: 2, label: '供应商品名：' },
   { key: 'size', row: 2, label: '尺寸：' },
-  { key: 'unit', row: 2, label: '单位：' },
   { key: 'materialMeta', row: 2, label: '材质：' },
 ]
 
 /** 取某一行要展示的字段；字段为空且没配 missing 的自动跳过。 */
 export function fieldsOfRow(
   item: Partial<InventoryMaterial> | null | undefined,
-  row: MaterialSearchOptionRow,
+  row: MaterialSearchOptionRow
 ): MaterialSearchOptionField[] {
   return MATERIAL_SEARCH_OPTION_FIELDS.filter(
-    field => field.row === row && (!isBlank(item, field) || field.missing != null),
+    (field) => field.row === row && (!isBlank(item, field) || field.missing != null)
   )
 }
 
-export function isBlank(item: Partial<InventoryMaterial> | null | undefined, field: MaterialSearchOptionField): boolean {
+export function isBlank(
+  item: Partial<InventoryMaterial> | null | undefined,
+  field: MaterialSearchOptionField
+): boolean {
   const value = item == null ? undefined : item[field.key]
   return value == null || String(value).trim() === ''
 }
 
 /** 渲染文本：有值带前缀，没值用占位（调用方保证没占位的已过滤）。 */
-export function fieldText(item: Partial<InventoryMaterial> | null | undefined, field: MaterialSearchOptionField): string {
+export function fieldText(
+  item: Partial<InventoryMaterial> | null | undefined,
+  field: MaterialSearchOptionField
+): string {
   if (isBlank(item, field)) return field.missing ?? ''
   return (field.label ?? '') + String(item![field.key]).trim()
 }

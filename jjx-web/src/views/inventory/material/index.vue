@@ -83,7 +83,12 @@
         <el-table-column type="selection" width="55" align="center" />
         <el-table-column label="物料编码" prop="materialCode" width="150" />
         <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
-        <el-table-column label="备注" prop="remark" width="200" show-overflow-tooltip />
+        <el-table-column
+          label="供应商品名"
+          prop="supplierMaterialName"
+          width="200"
+          show-overflow-tooltip
+        />
         <el-table-column label="品类" prop="categoryId" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ categoryNameOf(row) }}</template>
         </el-table-column>
@@ -294,9 +299,10 @@ const subCategoryIdModel = ref<number | undefined>(undefined)
 const subCategoryOptions = computed(() =>
   parentCategoryIdModel.value == null
     ? []
-    : categoryOptions.value.filter((c) => c.parentId === parentCategoryIdModel.value && c.selectable)
+    : categoryOptions.value.filter(
+        (c) => c.parentId === parentCategoryIdModel.value && c.selectable
+      )
 )
-
 
 // 工具栏配置
 const toolbarButtons: ToolbarOptions[] = toolbarOptions
@@ -382,15 +388,28 @@ const dictionaryText = (dict: string, code?: string) =>
   dictionaries.value[dict]?.find((o) => o.code === code)?.label || code || '-'
 /** 尺寸展示：从数值拼装，缺项保留位置。 */
 const materialSizeText = (row: InventoryMaterial) => {
-  return renderMaterialDimensions(row, false, row.categoryId == null ? [] : dimensionFields.value[row.categoryId]).replace(/\*/g, '×') || '-'
+  return (
+    renderMaterialDimensions(
+      row,
+      false,
+      row.categoryId == null ? [] : dimensionFields.value[row.categoryId]
+    ).replace(/\*/g, '×') || '-'
+  )
 }
 /** 只加载当前页涉及的品类配置，尺寸显示在前端计算。 */
 async function loadDimensionFields() {
-  const categoryIds = [...new Set(materialList.value.flatMap(row => row.categoryId == null ? [] : [row.categoryId]))]
-  const results = await Promise.allSettled(categoryIds.map(id => materialMasterApi.configuration(id)))
+  const categoryIds = [
+    ...new Set(
+      materialList.value.flatMap((row) => (row.categoryId == null ? [] : [row.categoryId]))
+    ),
+  ]
+  const results = await Promise.allSettled(
+    categoryIds.map((id) => materialMasterApi.configuration(id))
+  )
   const fields: Record<number, MaterialDimensionFields> = {}
   results.forEach((result, index) => {
-    if (result.status === 'fulfilled') fields[categoryIds[index]] = result.value.data?.schema.spec_pattern?.fields || []
+    if (result.status === 'fulfilled')
+      fields[categoryIds[index]] = result.value.data?.schema.spec_pattern?.fields || []
     else console.warn('物料列表尺寸配置加载失败', categoryIds[index], result.reason)
   })
   dimensionFields.value = fields
@@ -412,12 +431,14 @@ const hasSubCategory = (id?: number | null) =>
   id != null && categoryOptions.value.some((c) => c.parentId === id && c.selectable)
 /** 按所选品类动态增删「子类」筛选字段；选父级时列出它的子类。 */
 function syncSubCategoryField(parentId?: number | null) {
-  const children = parentId == null
-    ? []
-    : categoryOptions.value.filter((c) => c.parentId === parentId && c.selectable)
+  const children =
+    parentId == null
+      ? []
+      : categoryOptions.value.filter((c) => c.parentId === parentId && c.selectable)
   const exists = searchFields.value.some((item) => item.prop === 'subCategoryId')
   if (!children.length) {
-    if (exists) searchFields.value = searchFields.value.filter((item) => item.prop !== 'subCategoryId')
+    if (exists)
+      searchFields.value = searchFields.value.filter((item) => item.prop !== 'subCategoryId')
     return
   }
   const optionsMapped = children.map((c) => ({ value: c.categoryId, label: c.categoryName }))
@@ -501,7 +522,8 @@ const attributeFilterFields = ref<AttributeFilterField[]>([])
 let attributeSyncToken = 0
 
 const clearAttributeFilters = () => {
-  for (const field of attributeFilterFields.value) delete (queryParams as Record<string, unknown>)[field.prop]
+  for (const field of attributeFilterFields.value)
+    delete (queryParams as Record<string, unknown>)[field.prop]
   attributeFilterFields.value = []
   searchFields.value = searchFields.value.filter((item) => !item.prop.startsWith('attr__'))
 }
@@ -550,7 +572,10 @@ const syncAttributeFilters = async () => {
   }
 }
 
-watch(() => queryParams.categoryId, () => void syncAttributeFilters())
+watch(
+  () => queryParams.categoryId,
+  () => void syncAttributeFilters()
+)
 
 // 列表列的品类名：后端 MaterialVO.categoryName 未赋值，这里按已加载品类映射
 const categoryNameOf = (row: InventoryMaterial) => {
@@ -566,7 +591,10 @@ const categoryNameOf = (row: InventoryMaterial) => {
 const getList = async () => {
   // 属性筛选：只有填了值的属性才提交，聚合成 attributeFilters JSON（dev-20261030-019）
   const attributeFilters = attributeFilterFields.value
-    .map((field) => ({ key: field.key, value: (queryParams as Record<string, unknown>)[field.prop] }))
+    .map((field) => ({
+      key: field.key,
+      value: (queryParams as Record<string, unknown>)[field.prop],
+    }))
     .filter((item) => item.value != null && item.value !== '')
     .map((item) => ({ key: item.key, value: String(item.value) }))
   queryParams.attributeFilters = attributeFilters.length ? JSON.stringify(attributeFilters) : ''
@@ -576,7 +604,8 @@ const getList = async () => {
   queryParams.createTimeEnd = createdTo || ''
   const { createTimeRange: _createTimeRange, ...payload } = queryParams
   // 动态属性筛选字段按 attr__<key> 挂在查询对象上，只用于聚合，不直接提交
-  for (const field of attributeFilterFields.value) delete (payload as Record<string, unknown>)[field.prop]
+  for (const field of attributeFilterFields.value)
+    delete (payload as Record<string, unknown>)[field.prop]
   loading.value = true
   try {
     const res = await materialApi.page(payload)
@@ -648,8 +677,6 @@ const handleEdit = (row: any) => {
 const handleFormSuccess = () => {
   getList()
 }
-
-
 
 // 归类三态行高亮：未归类标黄提示，但不禁用编辑（dev-20261024-004 阶段三）
 const classRowName = ({ row }: { row: InventoryMaterial }) =>

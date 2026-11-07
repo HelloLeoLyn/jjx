@@ -11,236 +11,266 @@
     <div v-if="!loading">
       <el-form ref="formRef" :model="form" label-width="120px" class="master-form master-layout">
         <section class="master-fields" aria-label="物料录入依据">
-        <!-- 品类 + 子类两级（dev-20261104-008）：只有该品类存在子类时才出现第二个选择器，落库只存子类 id -->
-        <el-form-item label="品类" required>
-          <el-select
-            data-test="material-category"
-            :model-value="parentCategoryId ?? undefined"
-            filterable
-            placeholder="选择品类"
-            style="width: 100%"
-            :disabled="saving"
-            @change="selectParentCategory"
-          >
-            <el-option
-              v-for="category in parentCategoryOptions"
-              :key="category.categoryId"
-              :label="category.pathName"
-              :value="category.categoryId"
+          <!-- 品类 + 子类两级（dev-20261104-008）：只有该品类存在子类时才出现第二个选择器，落库只存子类 id -->
+          <el-form-item label="品类" required>
+            <el-select
+              data-test="material-category"
+              :model-value="parentCategoryId ?? undefined"
+              filterable
+              placeholder="选择品类"
+              style="width: 100%"
+              :disabled="saving"
+              @change="selectParentCategory"
+            >
+              <el-option
+                v-for="category in parentCategoryOptions"
+                :key="category.categoryId"
+                :label="category.pathName"
+                :value="category.categoryId"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="subCategoryOptions.length" label="子类" required>
+            <el-select
+              :model-value="form.categoryId ?? undefined"
+              filterable
+              placeholder="选择子类"
+              style="width: 100%"
+              :disabled="saving"
+              @change="selectCategory"
+            >
+              <el-option
+                v-for="category in subCategoryOptions"
+                :key="category.categoryId"
+                :label="category.categoryName"
+                :value="category.categoryId"
+              />
+            </el-select>
+          </el-form-item>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="主要供应商">
+                <SupplierSelector
+                  :model-value="form.supplierId ?? undefined"
+                  :remote="true"
+                  style="width: 100%"
+                  @update:model-value="onSupplierChange"
+                /> </el-form-item
+            ></el-col>
+            <el-col :span="12">
+              <el-form-item label="供应商品名"
+                ><el-input
+                  v-model="form.supplierMaterialName"
+                  maxlength="200"
+                  placeholder="供应商自己的叫法/料号，采购单据与来料核对用" /></el-form-item
+            ></el-col>
+          </el-row>
+          <el-form-item v-if="form.materialCode" label="物料编码">{{
+            form.materialCode
+          }}</el-form-item>
+          <el-row :gutter="16">
+            <el-col :span="24">
+              <el-form-item label="材料显示名" :required="commonFieldRequired('material_grade')">
+                {{ materialDisplayName || '选择材质和形态后生成' }}
+              </el-form-item>
+            </el-col>
+            <el-col v-if="!categoryMaterialMeta" :span="12"
+              ><el-form-item label="材质" :required="configuration?.schema.meta_required">
+                <el-select
+                  v-model="form.materialMeta"
+                  clearable
+                  :disabled="!materialOptions.length"
+                  placeholder="该品类允许的材质"
+                  style="width: 100%"
+                >
+                  <el-option
+                    v-for="option in materialOptions"
+                    :key="option.code"
+                    :label="option.label"
+                    :value="option.code"
+                  />
+                </el-select> </el-form-item
+            ></el-col>
+            <el-col :span="12"
+              ><el-form-item label="形态">
+                <el-select v-model="form.materialForm" clearable style="width: 100%"
+                  ><el-option
+                    v-for="o in dictionaries.form"
+                    :key="o.code"
+                    :value="o.code"
+                    :label="o.label"
+                /></el-select> </el-form-item
+            ></el-col>
+            <el-col :span="12"
+              ><el-form-item label="颜色" :required="commonFieldRequired('color')">
+                <el-select v-model="form.color" clearable filterable style="width: 100%"
+                  ><el-option
+                    v-for="o in dictionaries.color"
+                    :key="o.code"
+                    :value="o.code"
+                    :label="o.label"
+                /></el-select> </el-form-item
+            ></el-col>
+            <el-col :span="12"
+              ><el-form-item label="品牌" :required="commonFieldRequired('brand')">
+                <el-select v-model="form.brand" clearable filterable style="width: 100%"
+                  ><el-option
+                    v-for="o in dictionaries.brand"
+                    :key="o.code"
+                    :value="o.code"
+                    :label="o.label"
+                /></el-select> </el-form-item
+            ></el-col>
+            <el-col :span="12"
+              ><el-form-item label="基本单位" required>
+                <el-select v-model="form.unit" filterable style="width: 100%"
+                  ><el-option
+                    v-for="o in dictionaries.unit"
+                    :key="o.code"
+                    :value="o.code"
+                    :label="`${o.label}/${o.code}`"
+                /></el-select> </el-form-item
+            ></el-col>
+          </el-row>
+          <el-form-item label="尺寸">
+            <MaterialSizeEditor
+              v-model="dimensions"
+              :dimension-fields="configuration?.schema.spec_pattern?.fields"
+              @valid-change="sizeValid = $event"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="subCategoryOptions.length" label="子类" required>
-          <el-select
-            :model-value="form.categoryId ?? undefined"
-            filterable
-            placeholder="选择子类"
-            style="width: 100%"
-            :disabled="saving"
-            @change="selectCategory"
-          >
-            <el-option
-              v-for="category in subCategoryOptions"
-              :key="category.categoryId"
-              :label="category.categoryName"
-              :value="category.categoryId"
-            />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item v-if="form.materialCode" label="物料编码">{{
-          form.materialCode
-        }}</el-form-item>
-        <el-row :gutter="16">
-          <el-col :span="24">
-            <el-form-item label="材料显示名" :required="commonFieldRequired('material_grade')">
-              {{ materialDisplayName || '选择材质和形态后生成' }}
-            </el-form-item>
-          </el-col>
-          <el-col v-if="!categoryMaterialMeta" :span="12"
-            ><el-form-item label="材质" :required="configuration?.schema.meta_required">
-              <el-select
-                v-model="form.materialMeta"
-                clearable
-                :disabled="!materialOptions.length"
-                placeholder="该品类允许的材质"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="option in materialOptions"
-                  :key="option.code"
-                  :label="option.label"
-                  :value="option.code"
+          </el-form-item>
+          <el-row :gutter="12">
+            <el-col :span="8">
+              <el-form-item label="克重(g/m²)">
+                <el-input-number
+                  v-model="form.grammage"
+                  :min="0"
+                  :precision="2"
+                  :controls="false"
+                  style="width: 100%"
+                  aria-label="克重"
                 />
-              </el-select> </el-form-item
-          ></el-col>
-          <el-col :span="12"
-            ><el-form-item label="形态">
-              <el-select v-model="form.materialForm" clearable style="width: 100%"
-                ><el-option
-                  v-for="o in dictionaries.form"
-                  :key="o.code"
-                  :value="o.code"
-                  :label="o.label"
-              /></el-select> </el-form-item
-          ></el-col>
-          <el-col :span="12"
-            ><el-form-item label="颜色" :required="commonFieldRequired('color')">
-              <el-select v-model="form.color" clearable filterable style="width: 100%"
-                ><el-option
-                  v-for="o in dictionaries.color"
-                  :key="o.code"
-                  :value="o.code"
-                  :label="o.label"
-              /></el-select> </el-form-item
-          ></el-col>
-          <el-col :span="12"
-            ><el-form-item label="品牌" :required="commonFieldRequired('brand')">
-              <el-select v-model="form.brand" clearable filterable style="width: 100%"
-                ><el-option
-                  v-for="o in dictionaries.brand"
-                  :key="o.code"
-                  :value="o.code"
-                  :label="o.label"
-              /></el-select> </el-form-item
-          ></el-col>
-          <el-col :span="12"
-            ><el-form-item label="基本单位" required>
-              <el-select v-model="form.unit" filterable style="width: 100%"
-                ><el-option
-                  v-for="o in dictionaries.unit"
-                  :key="o.code"
-                  :value="o.code"
-                  :label="`${o.label}/${o.code}`"
-              /></el-select> </el-form-item
-          ></el-col>
-        </el-row>
-        <el-form-item label="尺寸">
-          <MaterialSizeEditor
-            v-model="dimensions"
-            :dimension-fields="configuration?.schema.spec_pattern?.fields"
-            @valid-change="sizeValid = $event"
-          />
-        </el-form-item>
-        <el-row :gutter="12">
-          <el-col :span="8">
-            <el-form-item label="克重(g/m²)">
-              <el-input-number
-                v-model="form.grammage"
-                :min="0"
-                :precision="2"
-                :controls="false"
-                style="width: 100%"
-                aria-label="克重"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="厚度公差(±mm)">
-              <el-input-number
-                v-model="form.thicknessTolerance"
-                :min="0"
-                :precision="4"
-                :controls="false"
-                style="width: 100%"
-                aria-label="厚度公差"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="规格口径">
-              <el-input :model-value="specBasisLabel" readonly aria-label="规格口径" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="档案标记">
-          <el-checkbox v-model="form.isCustomerSupplied">客供专用</el-checkbox
-          ><el-checkbox v-model="form.isSample">样品专用</el-checkbox>
-        </el-form-item>
-        <template v-if="configuration">
-          <el-divider content-position="left">规格属性</el-divider>
-          <!-- 单块渲染全部属性：不再按常用/低频分组，避免字段被分组逻辑吃掉（dev-20261030-013） -->
-          <MaterialAttributeFields v-model="form.attributeJson" :schema="configuration.schema" />
-        </template>
-        <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item label="主要供应商">
-              <SupplierSelector
-                :model-value="form.supplierId ?? undefined"
-                :remote="true"
-                style="width: 100%"
-                @update:model-value="onSupplierChange"
-              /> </el-form-item
-          ></el-col>
-          <el-col :span="12">
-            <el-form-item label="供应商品名"
-              ><el-input
-                v-model="form.supplierMaterialName"
-                maxlength="200"
-                placeholder="供应商自己的叫法/料号，采购单据与来料核对用" /></el-form-item
-          ></el-col>
-        </el-row>
-        <el-form-item label="别名"
-          ><el-input v-model="form.searchKeywords" maxlength="500"
-        /></el-form-item>
-        <el-form-item label="物料标签">
-          <el-select v-model="form.tagIds" multiple filterable clearable style="width: 100%">
-            <el-option
-              v-for="tag in tags"
-              :key="tag.tagId"
-              :label="tag.tagName"
-              :value="tag.tagId!"
-            />
-          </el-select>
-        </el-form-item>
-        <el-collapse v-model="expanded">
-          <el-collapse-item title="库存、采购与保质期参数" name="parameters">
-            <el-row :gutter="16">
-              <el-col v-for="field in numericFields" :key="field.key" :span="12">
-                <el-form-item :label="field.label"
-                  ><el-input-number v-model="form[field.key]" :min="0" :precision="field.precision"
-                /></el-form-item>
-              </el-col>
-            </el-row>
-            <el-form-item label="批次管理"><el-switch v-model="form.batchControl" /></el-form-item>
-          </el-collapse-item>
-        </el-collapse>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="厚度公差(±mm)">
+                <el-input-number
+                  v-model="form.thicknessTolerance"
+                  :min="0"
+                  :precision="4"
+                  :controls="false"
+                  style="width: 100%"
+                  aria-label="厚度公差"
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="规格口径">
+                <el-input :model-value="specBasisLabel" readonly aria-label="规格口径" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="档案标记">
+            <el-checkbox v-model="form.isCustomerSupplied">客供专用</el-checkbox
+            ><el-checkbox v-model="form.isSample">样品专用</el-checkbox>
+          </el-form-item>
+          <template v-if="configuration">
+            <el-divider content-position="left">规格属性</el-divider>
+            <!-- 单块渲染全部属性：不再按常用/低频分组，避免字段被分组逻辑吃掉（dev-20261030-013） -->
+            <MaterialAttributeFields v-model="form.attributeJson" :schema="configuration.schema" />
+          </template>
+          <el-collapse v-model="expanded">
+            <el-collapse-item title="库存、采购与保质期参数" name="parameters">
+              <el-row :gutter="16">
+                <el-col v-for="field in numericFields" :key="field.key" :span="12">
+                  <el-form-item :label="field.label"
+                    ><el-input-number
+                      v-model="form[field.key]"
+                      :min="0"
+                      :precision="field.precision"
+                  /></el-form-item>
+                </el-col>
+              </el-row>
+              <el-form-item label="批次管理"
+                ><el-switch v-model="form.batchControl"
+              /></el-form-item>
+            </el-collapse-item>
+          </el-collapse>
 
-        <el-form-item label="业务备注"
-          ><el-input v-model="form.remark" type="textarea" maxlength="1000" :rows="2"
-        /></el-form-item>
+          <el-form-item label="业务备注"
+            ><el-input v-model="form.remark" type="textarea" maxlength="1000" :rows="2"
+          /></el-form-item>
         </section>
 
-      <!-- 三项结果集中编辑/查看；生成规则仍由现有服务提供。 -->
-      <aside class="master-preview" data-test="master-preview">
-        <div class="preview-title">物料信息</div>
-        <div class="preview-sub result-intro">填写左侧资料，在此核对名称、型号与规格。</div>
-        <el-form-item label="名称" label-position="top" required data-test="material-name-field">
-          <el-input v-model="form.materialName" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" maxlength="200" data-test="material-name" @input="onNameInput" />
-          <div class="field-hint" :class="{ manual: form.nameManual }">
-            {{ form.nameManual ? '已手动修改，名称不再自动同步。' : '自动生成，随录入资料更新；也可直接修改。' }}
+        <!-- 三项结果集中编辑/查看；生成规则仍由现有服务提供。 -->
+        <aside class="master-preview" data-test="master-preview">
+          <div class="preview-title">物料信息</div>
+          <div class="preview-sub result-intro">填写左侧资料，在此核对名称、型号与规格。</div>
+          <el-form-item label="名称" label-position="top" required data-test="material-name-field">
+            <el-input
+              v-model="form.materialName"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+              maxlength="200"
+              data-test="material-name"
+              @input="onNameInput"
+            />
+            <div class="field-hint" :class="{ manual: form.nameManual }">
+              {{
+                form.nameManual
+                  ? '已手动修改，名称不再自动同步。'
+                  : '自动生成，随录入资料更新；也可直接修改。'
+              }}
+            </div>
+            <el-button
+              v-if="form.nameManual"
+              size="small"
+              link
+              type="primary"
+              @click="restoreAutoName"
+              >恢复按规则生成</el-button
+            >
+            <details data-test="naming-rule-preview" class="rule-details">
+              <summary>查看命名规则</summary>
+              <div class="preview-sub">
+                {{ nameRuleText || '该品类未配置命名规则，使用默认命名方式。' }}
+              </div>
+            </details>
+          </el-form-item>
+          <el-form-item
+            label="型号"
+            label-position="top"
+            :required="commonFieldRequired('model')"
+            data-test="material-model-field"
+          >
+            <el-input
+              v-model="form.model"
+              maxlength="100"
+              data-test="material-model"
+              @input="onModelInput"
+            />
+            <div class="field-hint">{{ modelHint }}</div>
+          </el-form-item>
+          <el-form-item
+            label="规格"
+            label-position="top"
+            :required="commonFieldRequired('specification')"
+            data-test="material-spec-field"
+          >
+            <div class="preview-value specification-result" role="status">
+              {{ specificationPreview || '填写尺寸与规格属性后生成' }}
+            </div>
+            <div class="field-hint">由规则生成；请在左侧修改尺寸和规格属性。</div>
+          </el-form-item>
+          <div class="preview-block">
+            <div class="preview-label">分类 / 材质</div>
+            <div class="preview-sub">{{ configuration?.path?.[0]?.categoryName || '未归类' }}</div>
+            <div class="preview-sub">{{ materialLabel || '材质未选' }}</div>
           </div>
-          <el-button v-if="form.nameManual" size="small" link type="primary" @click="restoreAutoName">恢复按规则生成</el-button>
-          <details data-test="naming-rule-preview" class="rule-details">
-            <summary>查看命名规则</summary>
-            <div class="preview-sub">{{ nameRuleText || '该品类未配置命名规则，使用默认命名方式。' }}</div>
-          </details>
-        </el-form-item>
-        <el-form-item label="型号" label-position="top" :required="commonFieldRequired('model')" data-test="material-model-field">
-          <el-input v-model="form.model" maxlength="100" data-test="material-model" @input="onModelInput" />
-          <div class="field-hint">{{ modelHint }}</div>
-        </el-form-item>
-        <el-form-item label="规格" label-position="top" :required="commonFieldRequired('specification')" data-test="material-spec-field">
-          <div class="preview-value specification-result" role="status">{{ specificationPreview || '填写尺寸与规格属性后生成' }}</div>
-          <div class="field-hint">由规则生成；请在左侧修改尺寸和规格属性。</div>
-        </el-form-item>
-        <div class="preview-block">
-          <div class="preview-label">分类 / 材质</div>
-          <div class="preview-sub">{{ configuration?.path?.[0]?.categoryName || '未归类' }}</div>
-          <div class="preview-sub">{{ materialLabel || '材质未选' }}</div>
-        </div>
-        <div class="preview-note">生成结果与保存使用相同规则，保存时仍会校验必填项与型号唯一性。</div>
-      </aside>
+          <div class="preview-note">
+            生成结果与保存使用相同规则，保存时仍会校验必填项与型号唯一性。
+          </div>
+        </aside>
       </el-form>
     </div>
     <template #footer>
@@ -321,10 +351,16 @@ const dictionaries = ref<MaterialDictionaries>({})
 const configuration = ref<MaterialMasterConfiguration>()
 const requiredFields = ref<MaterialRequiredFields>()
 function commonFieldRequired(key: MaterialRequiredFieldKey) {
-  return !props.materialId && !form.materialId && !(props.fromBom && key === 'color') && requiredFields.value?.[key] === true
+  return (
+    !props.materialId &&
+    !form.materialId &&
+    !(props.fromBom && key === 'color') &&
+    requiredFields.value?.[key] === true
+  )
 }
 const materialDisplayName = computed(() => {
-  const label = (dict: string, code: string) => code ? dictionaries.value[dict]?.find(o => o.code === code)?.label || code : ''
+  const label = (dict: string, code: string) =>
+    code ? dictionaries.value[dict]?.find((o) => o.code === code)?.label || code : ''
   return `${label('material_meta', form.materialMeta)}${label('form', form.materialForm)}`.trim()
 })
 const tags = ref<SysTag[]>([])
@@ -402,7 +438,8 @@ watch(
 const modelManual = ref(false)
 const modelHint = computed(() => {
   if (modelManual.value) return '已手动修改，型号不再自动同步。'
-  if (props.materialId || form.materialId) return '保留现有型号；修改其他资料不会自动重生成，可直接修改型号。'
+  if (props.materialId || form.materialId)
+    return '保留现有型号；修改其他资料不会自动重生成，可直接修改型号。'
   return configuration.value?.schema.model_pattern?.fields.length
     ? '按当前品类规则自动生成，也可直接修改。'
     : '该品类未配置型号生成规则，请直接填写。'
@@ -415,37 +452,73 @@ function onModelInput() {
 }
 function modelDraft() {
   return {
-    materialMeta: form.materialMeta, materialForm: form.materialForm, unit: form.unit,
-    brand: form.brand, color: form.color,
-    widthMm: form.widthMm, lengthMm: form.lengthMm, thicknessMm: form.thicknessMm,
-    grammage: form.grammage, attributeJson: form.attributeJson,
-    supplierId: form.supplierId, supplierName: form.supplierName,
-    isCustomerSupplied: form.isCustomerSupplied, isSample: form.isSample,
+    materialMeta: form.materialMeta,
+    materialForm: form.materialForm,
+    unit: form.unit,
+    brand: form.brand,
+    color: form.color,
+    widthMm: form.widthMm,
+    lengthMm: form.lengthMm,
+    thicknessMm: form.thicknessMm,
+    grammage: form.grammage,
+    attributeJson: form.attributeJson,
+    supplierId: form.supplierId,
+    supplierName: form.supplierName,
+    isCustomerSupplied: form.isCustomerSupplied,
+    isSample: form.isSample,
   }
 }
 async function refreshModel() {
-  if (props.materialId || form.materialId || modelManual.value || !form.categoryId ||
-      !configuration.value?.schema.model_pattern?.fields.length) return true
+  if (
+    props.materialId ||
+    form.materialId ||
+    modelManual.value ||
+    !form.categoryId ||
+    !configuration.value?.schema.model_pattern?.fields.length
+  )
+    return true
   const request = ++modelRequest
   const currentSession = session
   const categoryId = form.categoryId
   const response = await materialMasterApi.renderModel(categoryId, modelDraft())
-  if (request === modelRequest && currentSession === session && categoryId === form.categoryId &&
-      !props.materialId && !form.materialId && !modelManual.value && visible.value) {
+  if (
+    request === modelRequest &&
+    currentSession === session &&
+    categoryId === form.categoryId &&
+    !props.materialId &&
+    !form.materialId &&
+    !modelManual.value &&
+    visible.value
+  ) {
     form.model = response.data || ''
     return true
   }
-  return currentSession === session && categoryId === form.categoryId && visible.value && modelManual.value
+  return (
+    currentSession === session &&
+    categoryId === form.categoryId &&
+    visible.value &&
+    modelManual.value
+  )
 }
-watch(() => [visible.value, form.categoryId, JSON.stringify(modelDraft()),
-  JSON.stringify(configuration.value?.schema.model_pattern)], () => {
-  modelRequest++
-  if (modelTimer) clearTimeout(modelTimer)
-  if (!visible.value || loading.value || props.materialId || form.materialId || modelManual.value) return
-  modelTimer = setTimeout(() => {
-    void refreshModel().catch(error => ElMessage.error(error instanceof Error ? error.message : '型号生成失败'))
-  }, 300)
-})
+watch(
+  () => [
+    visible.value,
+    form.categoryId,
+    JSON.stringify(modelDraft()),
+    JSON.stringify(configuration.value?.schema.model_pattern),
+  ],
+  () => {
+    modelRequest++
+    if (modelTimer) clearTimeout(modelTimer)
+    if (!visible.value || loading.value || props.materialId || form.materialId || modelManual.value)
+      return
+    modelTimer = setTimeout(() => {
+      void refreshModel().catch((error) =>
+        ElMessage.error(error instanceof Error ? error.message : '型号生成失败')
+      )
+    }, 300)
+  }
+)
 onBeforeUnmount(() => {
   modelRequest++
   if (modelTimer) clearTimeout(modelTimer)
@@ -626,11 +699,14 @@ async function selectCategory(id: number) {
   try {
     const [response, requiredResponse] = await Promise.all([
       materialMasterApi.configuration(id),
-      props.materialId || form.materialId ? Promise.resolve(null) : materialMasterApi.requiredFields(id),
+      props.materialId || form.materialId
+        ? Promise.resolve(null)
+        : materialMasterApi.requiredFields(id),
     ])
     if (request !== categoryRequest || currentSession !== session) return
     if (!response.data) throw Error('品类模板加载失败')
-    if (!props.materialId && !form.materialId && !requiredResponse?.data) throw Error('必填字段加载失败，请重新选择品类')
+    if (!props.materialId && !form.materialId && !requiredResponse?.data)
+      throw Error('必填字段加载失败，请重新选择品类')
     requiredFields.value = requiredResponse?.data ?? undefined
     configuration.value = response.data
     changeMasterCategory(form, response.data)
@@ -745,9 +821,16 @@ async function save() {
   try {
     if (modelTimer) clearTimeout(modelTimer)
     if (!(await refreshModel())) return void ElMessage.warning('物料信息已变化，请重试保存')
-    if (!form.materialId && configuration.value.schema.model_pattern?.fields.length &&
-        !form.nameManual && configuration.value.schema.name_pattern) {
-      const response = await materialMasterApi.renderNaming(form.categoryId, { ...modelDraft(), model: form.model })
+    if (
+      !form.materialId &&
+      configuration.value.schema.model_pattern?.fields.length &&
+      !form.nameManual &&
+      configuration.value.schema.name_pattern
+    ) {
+      const response = await materialMasterApi.renderNaming(form.categoryId, {
+        ...modelDraft(),
+        model: form.model,
+      })
       ruleName.value = response.data || ''
     }
   } catch (error) {
@@ -764,8 +847,11 @@ async function save() {
   if (!props.materialId && !form.materialId) {
     if (!requiredFields.value) return void ElMessage.warning('必填字段尚未加载，请重新选择品类')
     const values: Record<MaterialRequiredFieldKey, string> = {
-      material_grade: materialDisplayName.value, model: form.model, color: form.color,
-      specification: '', brand: form.brand,
+      material_grade: materialDisplayName.value,
+      model: form.model,
+      color: form.color,
+      specification: '',
+      brand: form.brand,
     }
     if (commonFieldRequired('specification')) {
       // 保存前取当前草稿的后端规格，避免防抖中的旧预览导致误报。
@@ -781,10 +867,19 @@ async function save() {
       }
     }
     const labels: Record<MaterialRequiredFieldKey, string> = {
-      material_grade: '材料显示名', model: '型号', color: '颜色', specification: '规格', brand: '品牌',
+      material_grade: '材料显示名',
+      model: '型号',
+      color: '颜色',
+      specification: '规格',
+      brand: '品牌',
     }
-    const missingField = (Object.keys(labels) as MaterialRequiredFieldKey[]).find(key => commonFieldRequired(key) && !values[key]?.trim())
-    if (missingField) return void ElMessage.warning(`${labels[missingField]}不能为空（${configuration.value.category.categoryName} 必填）`)
+    const missingField = (Object.keys(labels) as MaterialRequiredFieldKey[]).find(
+      (key) => commonFieldRequired(key) && !values[key]?.trim()
+    )
+    if (missingField)
+      return void ElMessage.warning(
+        `${labels[missingField]}不能为空（${configuration.value.category.categoryName} 必填）`
+      )
   }
   const missing = configuration.value.schema.fields.find(
     (f) =>
@@ -891,17 +986,40 @@ watch(
   color: #606266;
   line-height: 1.6;
 }
-.result-intro { margin-bottom: 16px; }
-.rule-details { width: 100%; margin-top: 8px; }
-.rule-details summary { cursor: pointer; font-size: 12px; color: #606266; }
-.specification-result { width: 100%; }
+.result-intro {
+  margin-bottom: 16px;
+}
+.rule-details {
+  width: 100%;
+  margin-top: 8px;
+}
+.rule-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #606266;
+}
+.specification-result {
+  width: 100%;
+}
 @media (max-width: 1000px) {
-  .master-layout { flex-direction: column; }
-  .master-fields, .master-preview { width: 100%; box-sizing: border-box; }
-  .master-preview { flex: none; position: static; }
+  .master-layout {
+    flex-direction: column;
+  }
+  .master-fields,
+  .master-preview {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .master-preview {
+    flex: none;
+    position: static;
+  }
 }
 @media (max-width: 600px) {
-  .master-fields :deep(.el-col) { flex: 0 0 100%; max-width: 100%; }
+  .master-fields :deep(.el-col) {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
 }
 .field-hint {
   margin-top: 4px;
