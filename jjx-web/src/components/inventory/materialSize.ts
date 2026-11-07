@@ -85,6 +85,7 @@ export function displayDimensionOf(valueMm: number, unit: MaterialDimensionUnit 
 /** 字段键保持与规格模板一致，供列表、表单与编辑器共用。 */
 export type MaterialDimensionFields = readonly MaterialSpecField[]
 export const dimensionKey = { widthMm: 'width', lengthMm: 'length', thicknessMm: 'thickness_mm' } as const
+export const dimensionAbbreviation = { widthMm: 'W', lengthMm: 'L', thicknessMm: 'T' } as const
 export function dimensionField(fields: MaterialDimensionFields, key: keyof typeof dimensionKey): MaterialSpecField | undefined {
   return fields.find(field => field.key === dimensionKey[key])
 }
@@ -124,13 +125,12 @@ export function renderMaterialDimensions(value: { widthMm?: number | null; lengt
       const unit = field.unit || 'mm'
       const text = field.unit != null || field.scale != null
         ? displayDimensionOf(value[key]!, field.unit || 'mm', field.scale) : String(value[key])
-      return [`${text}${unit}`]
+      return [`${round && key === 'widthMm' ? 'Φ' : dimensionAbbreviation[key]}${text}${unit}`]
     }).join('*')
   }
-  // 缺项保留中间位置；首个有值项之前的缺位不补占位（只填厚度即 0.175mm，dev-20261030-016）
-  const values = [...(round ? [value.widthMm, value.thicknessMm] : [value.widthMm, value.lengthMm, value.thicknessMm])]
-  while (values.length && values[0] == null) values.shift()
-  while (values.length && values.at(-1) == null) values.pop()
-  if (!values.length) return ''
-  return `${round ? 'Φ' : ''}${values.map(v => v == null ? '' : String(v)).join('*')}mm`
+  // 每项明确标识维度和单位，缺项省略，不用占位符猜测含义。
+  return (Object.keys(dimensionKey) as (keyof typeof dimensionKey)[]).flatMap(key => {
+    if (value[key] == null || (round && key === 'lengthMm')) return []
+    return [`${round && key === 'widthMm' ? 'Φ' : dimensionAbbreviation[key]}${value[key]}mm`]
+  }).join('*')
 }

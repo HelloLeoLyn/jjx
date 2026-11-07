@@ -2,16 +2,19 @@
   <div class="material-size-editor">
     <div class="size-fields">
       <el-select :model-value="round" aria-label="尺寸形状" @update:model-value="setRound">
-        <el-option label="宽／长／厚" :value="false" />
-        <el-option label="直径／厚" :value="true" />
+        <el-option label="W / L / T" :value="false" />
+        <el-option label="Φ / T" :value="true" />
       </el-select>
       <div v-for="key in visibleKeys" :key="key" class="dimension-input">
-        <el-input :model-value="parts[key]" :aria-label="label(key)" :placeholder="label(key)" inputmode="decimal"
-          @update:model-value="value => setPart(key, value)" />
-        <el-select :model-value="units[key]" :aria-label="`${label(key)}单位`"
-          @update:model-value="value => setUnit(key, value)">
-          <el-option v-for="unit in dimensionUnits" :key="unit" :label="unit" :value="unit" />
-        </el-select>
+        <label class="dimension-label" :for="`${editorId}-${key}`">{{ abbreviation(key) }}</label>
+        <div class="dimension-control">
+          <el-input :id="`${editorId}-${key}`" :model-value="parts[key]" :aria-label="label(key)" :placeholder="abbreviation(key)" inputmode="decimal"
+            @update:model-value="value => setPart(key, value)" />
+          <el-select :model-value="units[key]" :aria-label="`${label(key)}单位`"
+            @update:model-value="value => setUnit(key, value)">
+            <el-option v-for="unit in dimensionUnits" :key="unit" :label="unit" :value="unit" />
+          </el-select>
+        </div>
       </div>
     </div>
     <div class="size-preview">{{ preview || '未填写尺寸' }}</div>
@@ -20,8 +23,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
-import { dimensionField, displayDimensionOf, emptyMaterialSize, parseMaterialDimension, renderMaterialDimensions, validateMaterialDimensions } from './materialSize'
+import { computed, reactive, ref, watch, useId } from 'vue'
+import { dimensionAbbreviation, dimensionField, displayDimensionOf, emptyMaterialSize, parseMaterialDimension, renderMaterialDimensions, validateMaterialDimensions } from './materialSize'
 import type { MaterialDimensionFields, MaterialSizeValue } from './materialSize'
 import type { MaterialDimensionUnit } from '@/types/inventory/materialMaster'
 
@@ -31,6 +34,8 @@ const emit = defineEmits<{
   (e: 'valid-change', valid: boolean): void
 }>()
 type DimensionKey = keyof MaterialSizeValue
+const editorId = useId()
+const abbreviation = (key: DimensionKey) => round.value && key === 'widthMm' ? 'Φ' : dimensionAbbreviation[key]
 const keys: DimensionKey[] = ['widthMm', 'lengthMm', 'thicknessMm']
 const dimensionUnits: MaterialDimensionUnit[] = ['mm', 'cm', 'm', 'μm']
 const parts = reactive({ widthMm: '', lengthMm: '', thicknessMm: '' })
@@ -111,7 +116,11 @@ function setRound(value: boolean) {
 .size-fields { display: flex; gap: 8px; }
 .size-fields > * { flex: 1; min-width: 65px; }
 .size-fields > :first-child { flex: 1.8; }
-.dimension-input { display: flex; flex: 2; gap: 4px; min-width: 0; }
+.dimension-input { display: flex; flex-direction: column; flex: 2; gap: 4px; min-width: 0; }
+.dimension-label { font-size: 12px; color: var(--el-text-color-regular); line-height: 18px; }
+.dimension-control { display: flex; gap: 4px; min-width: 0; }
+.size-fields { align-items: flex-end; flex-wrap: wrap; }
+.size-fields > .dimension-input { min-width: 140px; }
 .dimension-input .el-input { flex: 1; min-width: 0; }
 .dimension-input .el-select { width: 76px; flex: 0 0 76px; }
 .size-preview { color: var(--el-text-color-secondary); font-size: 12px; }

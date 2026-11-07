@@ -29,7 +29,7 @@
         <el-descriptions-item label="别名">{{
           text(material.searchKeywords)
         }}</el-descriptions-item>
-        <el-descriptions-item label="尺寸">{{ text(material.size) }}</el-descriptions-item>
+        <el-descriptions-item label="尺寸">{{ dimensionText }}</el-descriptions-item>
         <el-descriptions-item label="规格" :span="2">{{
           text(material.specification)
         }}</el-descriptions-item>
@@ -145,6 +145,7 @@ import type {
 } from '@/types/inventory/materialMaster'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import { previewMasterSpecification } from './materialMasterModel'
+import { parseMaterialSize, renderMaterialDimensions } from './materialSize'
 
 interface Props {
   modelValue: boolean
@@ -184,6 +185,9 @@ const attributeRows = computed(() => {
       : []
   })
 })
+const dimensionText = computed(() => material.value
+  ? renderMaterialDimensions(material.value, parseMaterialSize(material.value.size)?.round === true, masterDetail.value?.configuration?.schema.spec_pattern?.fields || []) || text(material.value.size)
+  : '-')
 const categoryOptions = ref<MaterialCategoryOption[]>([])
 
 const text = (value: unknown) => {

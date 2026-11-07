@@ -44,14 +44,16 @@ describe('专用数值尺寸编辑组件', () => {
     expect(wrapper.findAllComponents(Select)).toHaveLength(4)
     const stored = { ...value, thicknessMm: 0.254 }
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([stored])
-    expect(wrapper.text()).toContain('254μm*315mm*1000m')
+    expect(wrapper.text()).toContain('T254μm*W315mm*L1000m')
+    expect(wrapper.findAll('.dimension-label').map(label => label.text())).toEqual(['W', 'L', 'T'])
+    for (const label of wrapper.findAll('.dimension-label')) expect(wrapper.find('input#' + label.attributes('for').replace(/:/g, '\\:')).exists()).toBe(true)
     wrapper.unmount()
     const reopened = create(stored, fields)
     expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['315', '1000', '254'])
     expect(reopened.emitted('update:modelValue')).toBeUndefined()
     await reopened.setProps({ dimensionFields: [] })
     expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['315', '1000000', '0.254'])
-    expect(reopened.text()).toContain('315*1000000*0.254mm')
+    expect(reopened.text()).toContain('W315mm*L1000000mm*T0.254mm')
     reopened.unmount()
   })
   it('显示舍入不改变源厚度，修改宽度仍提交原始mm', async () => {
@@ -69,7 +71,7 @@ describe('专用数值尺寸编辑组件', () => {
     await wrapper.findAll('input')[2].setValue('0.175')
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([{ ...value, thicknessMm: 0.175 }])
     expect(value.thicknessMm).toBeNull()
-    expect(wrapper.text()).toContain('30*90*0.175mm')
+    expect(wrapper.text()).toContain('W30mm*L90mm*T0.175mm')
     wrapper.unmount()
   })
   it('非法值或精度超限阻止保存，修正和清空恢复有效状态', async () => {
@@ -96,7 +98,8 @@ describe('专用数值尺寸编辑组件', () => {
     const value = { widthMm: 80, lengthMm: null, thicknessMm: 0.05 }
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([value])
     await wrapper.setProps({ modelValue: value })
-    expect(wrapper.text()).toContain('Φ80*0.05mm')
+    expect(wrapper.text()).toContain('Φ80mm*T0.05mm')
+    expect(wrapper.findAll('.dimension-label').map(label => label.text())).toEqual(['Φ', 'T'])
     wrapper.unmount()
     const reopened = create(value)
     expect(reopened.findAll('input').map(i => i.element.value)).toEqual(['80', '0.05'])
@@ -111,11 +114,11 @@ describe('专用数值尺寸编辑组件', () => {
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
     wrapper.unmount()
   })
-  it('数值预览保留缺项，单位和厚度精度与后端一致', () => {
-    expect(renderMaterialDimensions({ widthMm: 914, thicknessMm: 0.175, sizeUnit: 'm' })).toBe('914**0.175mm')
+  it('数值预览明确维度并省略缺项，保留单位及厚度精度', () => {
+    expect(renderMaterialDimensions({ widthMm: 914, thicknessMm: 0.175, sizeUnit: 'm' })).toBe('W914mm*T0.175mm')
     // 只填厚度合法：前导缺位不补占位（dev-20261030-016）
-    expect(renderMaterialDimensions({ thicknessMm: 0.175, sizeUnit: 'mm' })).toBe('0.175mm')
-    expect(renderMaterialDimensions({ thicknessMm: 0.05, sizeUnit: 'mm' }, true)).toBe('Φ0.05mm')
+    expect(renderMaterialDimensions({ thicknessMm: 0.175, sizeUnit: 'mm' })).toBe('T0.175mm')
+    expect(renderMaterialDimensions({ thicknessMm: 0.05, sizeUnit: 'mm' }, true)).toBe('T0.05mm')
     expect(renderMaterialDimensions(emptyMaterialSize())).toBe('')
     expect(() => validateMaterialDimensions({ ...emptyMaterialSize(), thicknessMm: 0.00001 })).toThrow()
   })

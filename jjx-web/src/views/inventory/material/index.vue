@@ -258,7 +258,7 @@ defineOptions({
   name: 'InventoryMaterial',
 })
 
-import { renderMaterialDimensions } from '@/components/inventory/materialSize'
+import { parseMaterialSize, renderMaterialDimensions } from '@/components/inventory/materialSize'
 import type { MaterialDimensionFields } from '@/components/inventory/materialSize'
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -386,14 +386,14 @@ const dictionaries = ref<MaterialDictionaries>({})
 const dimensionFields = ref<Record<number, MaterialDimensionFields>>({})
 const dictionaryText = (dict: string, code?: string) =>
   dictionaries.value[dict]?.find((o) => o.code === code)?.label || code || '-'
-/** 尺寸展示：从数值拼装，缺项保留位置。 */
+/** 尺寸展示：L/W/T及每项单位从结构化字段生成，缺项省略。 */
 const materialSizeText = (row: InventoryMaterial) => {
   return (
     renderMaterialDimensions(
       row,
-      false,
+      parseMaterialSize(row.size)?.round === true,
       row.categoryId == null ? [] : dimensionFields.value[row.categoryId]
-    ).replace(/\*/g, '×') || '-'
+    ) || '-'
   )
 }
 /** 只加载当前页涉及的品类配置，尺寸显示在前端计算。 */

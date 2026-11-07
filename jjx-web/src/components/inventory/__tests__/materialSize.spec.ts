@@ -2,20 +2,20 @@ import { describe, expect, it } from 'vitest'
 import { displayDimensionOf, composeMaterialSize, mergeLegacyThickness, normalizeMaterialSize, parseMaterialSize, parseMaterialDimension, renderMaterialDimensions, validateMaterialDimensions, emptyMaterialSize } from '../materialSize'
 
 describe('统一尺寸值', () => {
-  it('字段单位决定显示，与物料计量单位无关，未配置仍逐字回落', () => {
+  it('字段单位决定显示，与物料计量单位无关，未配置仍使用原数值精度', () => {
     const value = { widthMm: 315, lengthMm: 1000000, thicknessMm: 0.254, sizeUnit: 'mm' }
     const fields = [{ key: 'thickness_mm', sep: '*', unit: 'μm' as const }, { key: 'width', sep: '*' }, { key: 'length', sep: '*', unit: 'm' as const }]
-    expect(renderMaterialDimensions(value, false, fields)).toBe('254μm*315mm*1000m')
-    expect(renderMaterialDimensions({ ...value, widthMm: null, lengthMm: null }, false, fields)).toBe('254μm')
+    expect(renderMaterialDimensions(value, false, fields)).toBe('T254μm*W315mm*L1000m')
+    expect(renderMaterialDimensions({ ...value, widthMm: null, lengthMm: null }, false, fields)).toBe('T254μm')
     expect(renderMaterialDimensions({ ...value, widthMm: null, lengthMm: null, thicknessMm: null }, false, fields)).toBe('')
-    expect(renderMaterialDimensions({ ...value, thicknessMm: 0.2541, lengthMm: 1005 }, false, fields)).toBe('254.1μm*315mm*1.01m')
+    expect(renderMaterialDimensions({ ...value, thicknessMm: 0.2541, lengthMm: 1005 }, false, fields)).toBe('T254.1μm*W315mm*L1.01m')
     for (const unit of ['ROLL', 'M', 'PCS', 'PIN']) {
       const row = { ...value, unit }
-      expect(renderMaterialDimensions(row, false, fields)).toBe('254μm*315mm*1000m')
-      expect(renderMaterialDimensions({ ...row, sizeUnit: 'cm' })).toBe('315*1000000*0.254mm')
+      expect(renderMaterialDimensions(row, false, fields)).toBe('T254μm*W315mm*L1000m')
+      expect(renderMaterialDimensions({ ...row, sizeUnit: 'cm' })).toBe('W315mm*L1000000mm*T0.254mm')
     }
-    expect(renderMaterialDimensions({ widthMm: 300, thicknessMm: 0.175 })).toBe('300**0.175mm')
-    expect(renderMaterialDimensions({ thicknessMm: 0.175 })).toBe('0.175mm')
+    expect(renderMaterialDimensions({ widthMm: 300, thicknessMm: 0.175 })).toBe('W300mm*T0.175mm')
+    expect(renderMaterialDimensions({ thicknessMm: 0.175 })).toBe('T0.175mm')
     expect(displayDimensionOf(315, 'cm')).toBe('31.5')
     expect(displayDimensionOf(0.175, 'mm')).toBe('0.175')
     expect(displayDimensionOf(0.175, 'mm', 2)).toBe('0.18')
@@ -68,5 +68,20 @@ describe('统一尺寸值', () => {
     expect(normalizeMaterialSize('300*305mm')).toBe('300*305mm')
     expect(normalizeMaterialSize('按图纸尺寸')).toBe('按图纸尺寸')
     expect(normalizeMaterialSize('30*90mmmm')).toBe('30*90mmmm')
+  })
+})
+
+
+describe('LWT尺寸显示口径', () => {
+  it('全部、部分、圆形尺寸逐项带缩写和单位，不改变输入值', () => {
+    const value = { widthMm: 1040, lengthMm: 100000, thicknessMm: 0.188 }
+    expect(renderMaterialDimensions(value)).toBe('W1040mm*L100000mm*T0.188mm')
+    expect(renderMaterialDimensions({ widthMm: 1040, thicknessMm: 0.188 })).toBe('W1040mm*T0.188mm')
+    expect(renderMaterialDimensions({ lengthMm: 100000 })).toBe('L100000mm')
+    expect(renderMaterialDimensions({ thicknessMm: 0.4 })).toBe('T0.4mm')
+    expect(renderMaterialDimensions({ widthMm: 10, thicknessMm: 0.4 }, true)).toBe('Φ10mm*T0.4mm')
+    expect(renderMaterialDimensions(value, true, [{ key: 'thickness_mm', unit: 'μm' }, { key: 'width', unit: 'mm' }]))
+      .toBe('T188μm*Φ1040mm')
+    expect(value).toEqual({ widthMm: 1040, lengthMm: 100000, thicknessMm: 0.188 })
   })
 })
