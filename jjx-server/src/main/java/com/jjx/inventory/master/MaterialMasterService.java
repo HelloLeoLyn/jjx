@@ -566,7 +566,8 @@ public class MaterialMasterService {
         if (existing != null && source != com.jjx.inventory.classify.MaterialClassSource.MANUAL && Boolean.TRUE.equals(existing.getClassConfirmed()))
             throw new BusinessException("人工确认物料不能被导入覆盖");
         if (existing != null) preserveParameters(material, existing, dto);
-        requireUniqueModel(material);
+        // 型号不再做唯一校验（2026-11-07 dev-20261107-003）：同型号可对应不同供应商/规格；
+        // 重复物料只在数据完全相同时由导入侧 identity 判重拦截。
         if (existing != null && !Objects.equals(existing.getUnit(), material.getUnit()) && masterMapper.transactionCount(existing.getMaterialId()) > 0) throw new BusinessException("已有库存流水，不能直接修改基本计量单位");
         material.setClassSource(material.getCategoryId() == null ? null : source.name());
         // 显式选择品类的表单/导入均已按模板校验；只有规则推断需要后续人工确认。
@@ -620,25 +621,6 @@ public class MaterialMasterService {
         payload.put("materialName", material.getMaterialName());
         EventPublishSupport.fireAfterCommit(eventPublisher, creating ? "inventory.material.created" : "inventory.material.updated", payload);
         return materialMapper.selectById(material.getMaterialId());
-    }
-
-    /**
-     * 型号判重：同一供应商下不允许型号重复，不同供应商可共用同一型号（2026-11-07 dev-20261107-003）。
-     * 锁定读避免 RR 快照漏掉刚提交的型号；空型号不参与；供应商为空时只与同样为空的记录比对。
-     */
-    public void requireUniqueModel(InventoryMaterial material) {
-        if (material.getModel() == null || material.getModel().isBlank()) return;
-        String supplier = material.getSupplierName() == null ? "" : material.getSupplierName().trim();
-        var query = new LambdaQueryWrapper<InventoryMaterial>()
-                .eq(InventoryMaterial::getModel, material.getModel())
-                .ne(material.getMaterialId() != null, InventoryMaterial::getMaterialId, material.getMaterialId());
-        if (supplier.isEmpty())
-            query.and(wrapper -> wrapper.isNull(InventoryMaterial::getSupplierName).or().eq(InventoryMaterial::getSupplierName, ""));
-        else query.eq(InventoryMaterial::getSupplierName, supplier);
-        query.last("LIMIT 1 FOR UPDATE");
-        if (!materialMapper.selectList(query).isEmpty())
-            throw new BusinessException("同供应商下型号已存在，请修改型号：" + material.getModel()
-                    + "（供应商：" + (supplier.isEmpty() ? "未填" : supplier) + "）");
     }
 
     public static void validateSize(String size) {

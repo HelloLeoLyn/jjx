@@ -96,7 +96,7 @@ public class MaterialMasterExcelService {
         var dictionaries = catalog.dictionaries();
         List<MaterialMasterDTO> rows = new ArrayList<>(); List<MaterialClassSource> sources = new ArrayList<>();
         List<String> errors = new ArrayList<>(); Map<String, Long> existingKeys = new HashMap<>();
-        Set<String> fileKeys = new HashSet<>(); Set<String> fileModels = new HashSet<>(); Set<Long> updateIds = new HashSet<>();
+        Set<String> fileKeys = new HashSet<>(); Set<Long> updateIds = new HashSet<>();
         for (InventoryMaterial material : materials.selectList(new LambdaQueryWrapper<InventoryMaterial>()))
             existingKeys.put(identity(material), material.getMaterialId());
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
@@ -196,10 +196,8 @@ public class MaterialMasterExcelService {
                         throw new BusinessException("该品类不支持列：" + column);
                     dto.setAttributeJson(attributes);
                     InventoryMaterial prepared = service.prepare(dto).material(); String key = identity(prepared);
-                    service.requireUniqueModel(prepared);
-                    if (prepared.getModel() != null && !prepared.getModel().isBlank()
-                            && !fileModels.add(modelKey(prepared)))
-                        throw new BusinessException("同供应商下型号与文件其他行重复：" + prepared.getModel());
+                    // 型号不再做唯一校验（2026-11-07 dev-20261107-003）：同型号可对应不同供应商/规格，
+                    // 只有各关键字段完全相同的行才按「重复物料」拦截。
                     if (!fileKeys.add(key) || existingKeys.containsKey(key) && !Objects.equals(existingKeys.get(key), dto.getMaterialId())) throw new BusinessException("与文件其他行或库内物料重复");
                     rows.add(dto); sources.add(source);
                 } catch (BusinessException e) { errors.add("第" + (index + 1) + "行：" + e.getMessage()); }
@@ -357,11 +355,5 @@ public class MaterialMasterExcelService {
     private String identity(InventoryMaterial material) {
         try { return objectMapper.writeValueAsString(Arrays.asList(material.getCategoryId(), material.getMaterialName(), material.getMaterialMeta(), material.getMaterialForm(), material.getModel(), material.getColor(), material.getBrand(), material.getSize(), material.getUnit(), service.readAttributes(material.getAttributeJson()))); }
         catch (Exception e) { throw new BusinessException("物料重复性检查失败"); }
-    }
-
-    /** 文件内型号查重键：型号 + 供应商（不同供应商可共用型号，2026-11-07 dev-20261107-003）。 */
-    private static String modelKey(InventoryMaterial material) {
-        String supplier = material.getSupplierName() == null ? "" : material.getSupplierName().trim();
-        return (material.getModel() + "|" + supplier).toUpperCase(Locale.ROOT);
     }
 }

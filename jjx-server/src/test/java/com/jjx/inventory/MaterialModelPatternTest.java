@@ -92,28 +92,19 @@ class MaterialModelPatternTest {
         assertTrue(set.contains("model=")); assertTrue(values.containsValue("旧型号"));
         dto.setModel(""); assertNull(service.prepare(dto).material().getModel());
     }
-    @Test void duplicatesAreGlobalInCreateAndEditAndSelfIsExcluded() {
+    @Test void duplicateModelsAreAllowedOnCreateAndEdit() {
         var duplicate = new InventoryMaterial(); duplicate.setModel("PET125"); duplicate.setCategoryId(2L);
         when(materials.selectList(any(Wrapper.class))).thenReturn(List.of(duplicate));
-        assertTrue(assertThrows(BusinessException.class, () -> service.save(draft(), "codex")).getMessage().contains("同供应商下型号已存在"));
+        // 型号不再做唯一校验（2026-11-07 dev-20261107-003）：同型号不同供应商/规格可并存。
+        assertEquals("PET125", service.save(draft(), "codex").getModel());
         configure(3L, pattern);
         var other = draft(); other.setCategoryId(3L);
-        assertThrows(BusinessException.class, () -> service.save(other, "codex"));
-        verify(materials, never()).insert(any(InventoryMaterial.class));
+        assertDoesNotThrow(() -> service.save(other, "codex"));
         var old = new InventoryMaterial(); old.setMaterialId(7L); old.setUnit("PCS");
         when(materials.selectById(7L)).thenReturn(old); when(locks.lockMaterial(7L)).thenReturn(old);
         var edit = draft(); edit.setMaterialId(7L); edit.setModel("PET125");
-        assertThrows(BusinessException.class, () -> service.save(edit, "codex"));
-        var queries = ArgumentCaptor.forClass(LambdaQueryWrapper.class);
-        verify(materials, times(3)).selectList(queries.capture());
-        var query = queries.getValue();
-        assertFalse(query.getSqlSegment().contains("category_id"));
-        assertTrue(query.getSqlSegment().contains("model ="));
-        assertTrue(query.getSqlSegment().contains("material_id <>"));
-        assertTrue(query.getSqlSegment().endsWith("FOR UPDATE"));
-        assertTrue(query.getParamNameValuePairs().containsValue(7L));
-        when(materials.selectList(any(Wrapper.class))).thenReturn(List.of());
         assertDoesNotThrow(() -> service.save(edit, "codex"));
+        verify(materials, never()).selectList(any(Wrapper.class));
     }
     @Test void categoryPrefixIsUsedForGenerationAndPreviewAndMissingPrefixFails() {
         String rule = pattern.replace("meta", "categoryprefix");

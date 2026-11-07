@@ -320,38 +320,52 @@ class MaterialMasterMysqlTest {
         assertEquals(6, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material_category", Integer.class));
     }
 
-    @Test void modelsAreUniquePerSupplierAndImportsRejectDuplicatesWithoutWrites() throws Exception {
+    @Test void duplicateModelsAreAllowedWhileIdenticalRowsAreRejectedOnImport() throws Exception {
         initialize();
-        var first = pc("第一品类"); first.setModel("GLOBAL125"); first.setSupplierName("供应商甲");
-        var saved = service.save(first, "Codex-test");
+        var first = pc("同型号一"); first.setModel("GLOBAL125"); first.setSupplierName("供应商甲");
+        service.save(first, "Codex-test");
+        // modelFile 第二行用另一个品类，确保文件查重跨品类
         var category = configurationService.saveCategory(new MaterialMasterConfigurationService.CategorySave(
                 null, "RAW_BASE_TEST", "另一品类", 900002L, 0, 1, "PC2"), "Codex-test");
         configurationService.saveTemplate(new MaterialMasterConfigurationService.TemplateSave(
                 "TPL_PC2", "另一品类", category.getCategoryId(), catalog.configuration(900003L).schema(), 1), "Codex-test");
-        var sameSupplier = pc("不同品类同型号"); sameSupplier.setCategoryId(category.getCategoryId()); sameSupplier.setModel("global125"); sameSupplier.setSupplierName("供应商甲");
-        assertTrue(assertThrows(BusinessException.class, () -> service.save(sameSupplier, "Codex-test")).getMessage().contains("同供应商下型号已存在"));
-        // 同型号不同供应商可并存（2026-11-07 dev-20261107-003）
-        var otherSupplier = pc("不同供应商同型号"); otherSupplier.setCategoryId(category.getCategoryId()); otherSupplier.setModel("global125"); otherSupplier.setSupplierName("供应商乙");
+        // 同型号不同供应商可并存
+        var otherSupplier = pc("同型号二"); otherSupplier.setModel("global125"); otherSupplier.setSupplierName("供应商乙");
         assertDoesNotThrow(() -> service.save(otherSupplier, "Codex-test"));
-        first.setMaterialId(saved.getMaterialId());
-        assertDoesNotThrow(() -> service.save(first, "Codex-test"));
-        service.save(pc("空型号一"), "Codex-test"); service.save(pc("空型号二"), "Codex-test");
-        assertEquals(4, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
-        // 与库内同供应商同型号冲突：整表不写
-        var conflict = modelFile("GLOBAL125", "NEW200", "供应商甲", "供应商甲");
-        var result = excel.importExcel(conflict, null, false, "Codex-test", false);
-        assertEquals(0, result.successCount());
-        assertTrue(result.errors().stream().anyMatch(error -> error.contains("第2行") && error.contains("同供应商下型号已存在")), result.errors().toString());
-        assertEquals(4, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
-        // 文件内同供应商同型号重复 → 报错
-        result = excel.importExcel(modelFile("FILE125", "file125", "供应商丙", "供应商丙"), null, false, "Codex-test", false);
-        assertEquals(0, result.successCount());
-        assertTrue(result.errors().stream().anyMatch(error -> error.contains("第3行") && error.contains("文件其他行重复")), result.errors().toString());
-        assertEquals(4, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
-        // 文件内同型号不同供应商 → 放行
-        result = excel.importExcel(modelFile("OK125", "OK125", "供应商丙", "供应商丁"), null, false, "Codex-test", false);
+        // 同供应商同型号不同规格也可并存
+        var otherSize = pc("同型号三"); otherSize.setModel("global125"); otherSize.setSupplierName("供应商甲");
+        otherSize.setWidthMm(new java.math.BigDecimal("400"));
+        assertDoesNotThrow(() -> service.save(otherSize, "Codex-test"));
+        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+        // 导入：同型号不同供应商 → 放行
+        var result = excel.importExcel(modelFile("OK125", "OK125", "供应商丙", "供应商丁"), null, false, "Codex-test", false);
         assertEquals(2, result.successCount(), result.errors().toString());
-        assertEquals(6, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+        assertEquals(5, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+        // 导入：各关键字段完全相同（含同供应商）的两行 → 仍按重复物料拦截，整表不写
+        result = excel.importExcel(duplicateFile("DUP125", "供应商丙"), null, false, "Codex-test", false);
+        assertEquals(0, result.successCount());
+        assertTrue(result.errors().stream().anyMatch(error -> error.contains("第3行") && error.contains("与文件其他行或库内物料重复")), result.errors().toString());
+        assertEquals(5, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_material", Integer.class));
+    }
+
+    /** 两行完全相同（名称/品类/型号/规格/颜色/供应商一致），用于验证「数据一样才拦」。 */
+    private MockMultipartFile duplicateFile(String model, String supplier) throws Exception {
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet(); var header = sheet.createRow(0);
+            String[] columns = {"物料名称", "品类", "型号", "宽(mm)", "长(mm)", "厚(mm)", "尺寸单位", "颜色", "供应商"};
+            for (int i = 0; i < columns.length; i++) header.createCell(i).setCellValue(columns[i]);
+            for (int i = 0; i < 2; i++) {
+                var row = sheet.createRow(i + 1);
+                row.createCell(0).setCellValue("重复行");
+                row.createCell(1).setCellValue("RAW_BASE_PC");
+                row.createCell(2).setCellValue(model);
+                row.createCell(3).setCellValue("300"); row.createCell(4).setCellValue("305"); row.createCell(5).setCellValue("0.175");
+                row.createCell(7).setCellValue("BLACK");
+                row.createCell(8).setCellValue(supplier);
+            }
+            workbook.write(output);
+            return new MockMultipartFile("file", "duplicates.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", output.toByteArray());
+        }
     }
 
     private MockMultipartFile modelFile(String first, String second, String firstSupplier, String secondSupplier) throws Exception {
