@@ -526,7 +526,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 }
             }
         }
+        boolean samplePick = "sample".equals(order.getSourceType());
+        List<InventoryOutboundItem> actualSampleItems = new ArrayList<>();
         for (InventoryOutboundItem item : outItems) {
+            List<InventoryOutboundItem> sampleBatchItems = new ArrayList<>();
             if (item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) <= 0) continue;
             if (item.getInventoryItemId() == null) {
                 com.jjx.inventory.domain.InventoryMaterial material = materialMapper.selectById(item.getMaterialId());
@@ -550,7 +553,13 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
                     BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
                     if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
-                    applyOutboundDelta(si, deductQty, order, item, operatorId, operatorName);
+                    if (samplePick) {
+                        InventoryOutboundItem actual = sampleIssuedBatchItem(item, si, deductQty);
+                        sampleBatchItems.add(actual);
+                        applyOutboundDelta(si, deductQty, order, actual, operatorId, operatorName);
+                    } else {
+                        applyOutboundDelta(si, deductQty, order, item, operatorId, operatorName);
+                    }
                     remaining = remaining.subtract(deductQty);
                 }
             }
@@ -560,12 +569,56 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
                     BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
                     if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
-                    applyOutboundDelta(si, deductQty, order, item, operatorId, operatorName);
+                    if (samplePick) {
+                        InventoryOutboundItem actual = sampleIssuedBatchItem(item, si, deductQty);
+                        sampleBatchItems.add(actual);
+                        applyOutboundDelta(si, deductQty, order, actual, operatorId, operatorName);
+                    } else {
+                        applyOutboundDelta(si, deductQty, order, item, operatorId, operatorName);
+                    }
                     remaining = remaining.subtract(deductQty);
                 }
             }
             if (remaining.compareTo(BigDecimal.ZERO) > 0) {
                 throw new BusinessException("物料[" + item.getMaterialCode() + "]库存不足，缺少: " + remaining);
+            }
+            if (samplePick) {
+                // 待发料明细按实际扣减批次拆分，总数量与预占/扣减路径保持不变。
+                for (int i = 0; i < sampleBatchItems.size(); i++) {
+                    InventoryOutboundItem actual = sampleBatchItems.get(i);
+                    if (i == 0) {
+                        actual.setItemId(item.getItemId());
+                        int changed = outboundItemMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers
+                                .<InventoryOutboundItem>lambdaUpdate()
+                                .eq(InventoryOutboundItem::getItemId, item.getItemId())
+                                .set(InventoryOutboundItem::getInventoryItemId, actual.getInventoryItemId())
+                                .set(InventoryOutboundItem::getQuantity, actual.getQuantity())
+                                .set(InventoryOutboundItem::getUnitPrice, actual.getUnitPrice())
+                                .set(InventoryOutboundItem::getAmount, actual.getAmount())
+                                .set(InventoryOutboundItem::getBatchNo, actual.getBatchNo())
+                                .set(InventoryOutboundItem::getLocationId, actual.getLocationId()));
+                        if (changed != 1) throw new BusinessException("打样领料金额回填失败");
+                    } else if (outboundItemMapper.insert(actual) != 1) {
+                        throw new BusinessException("打样领料批次明细保存失败");
+                    }
+                    actualSampleItems.add(actual);
+                }
+            }
+        }
+        if (samplePick) {
+            BigDecimal totalAmount = BigDecimal.ZERO;
+            boolean missingCost = false;
+            for (InventoryOutboundItem item : actualSampleItems) {
+                if (item.getAmount() == null) missingCost = true;
+                else totalAmount = totalAmount.add(item.getAmount());
+            }
+            order.setTotalAmount(missingCost ? null : totalAmount);
+            // 显式写 NULL，防止 NOT_NULL 更新策略留下建单时的估价。
+            if (outboundOrderMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers
+                    .<InventoryOutboundOrder>lambdaUpdate()
+                    .eq(InventoryOutboundOrder::getOutboundId, outboundId)
+                    .set(InventoryOutboundOrder::getTotalAmount, order.getTotalAmount())) != 1) {
+                throw new BusinessException("打样领料总金额回填失败");
             }
         }
         // 安全库存检查（移到循环外只调一次，原实现在循环内全量重复执行）
@@ -576,6 +629,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
         boolean updated = outboundOrderMapper.updateById(order) > 0;
+        if (samplePick && !updated) throw new BusinessException("打样领料状态更新失败");
         if (updated && "work_order".equals(order.getSourceType())
                 && com.jjx.inventory.enums.ProductionSupplementReasonEnum.requiresNcr(order.getSupplementReasonType())) {
             productionTaskService.createSupplementRouteTasks(order.getSourceId(),
@@ -706,6 +760,21 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         publishOutboundEvent("inventory.outbound.confirmed", order.getOutboundId());
         return updated;
+    }
+
+    /** 只供打样确认发料使用；生产继续沿用原明细单价及成本累加逻辑。 */
+    private InventoryOutboundItem sampleIssuedBatchItem(InventoryOutboundItem source,
+            InventoryStockItem stock, BigDecimal quantity) {
+        InventoryOutboundItem actual = new InventoryOutboundItem();
+        org.springframework.beans.BeanUtils.copyProperties(source, actual);
+        actual.setItemId(null);
+        actual.setQuantity(quantity);
+        actual.setBatchNo(stock.getBatchNo());
+        actual.setLocationId(stock.getLocationId());
+        actual.setUnitPrice(stock.getUnitCost());
+        actual.setAmount(stock.getUnitCost() == null ? null : quantity.multiply(stock.getUnitCost())
+                .setScale(2, java.math.RoundingMode.HALF_UP));
+        return actual;
     }
 
     private void applyOutboundDelta(InventoryStockItem stock, BigDecimal quantity,
@@ -1585,37 +1654,82 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         order.setOutboundDate(LocalDate.now());
         order.setWarehouseId(getDefaultWarehouseOrThrow().getWarehouseId());
         order.setOrderStatus(InventoryOrderStatusEnum.PENDING.getValue());
+        order.setRemark("[sampleRound=" + Objects.requireNonNullElse(sample.getSampleRound(), 1) + "]");
         outboundOrderMapper.insert(order);
         int sort = 1;
         BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        boolean missingCost = false;
+        Map<Long, BigDecimal> allocatedByBatch = new HashMap<>();
         for (java.util.Map<String, Object> item : items) {
             if (item.get("materialId") == null) throw new BusinessException("领料明细缺少物料（请先选定物料）");
             Long materialId = ((Number) item.get("materialId")).longValue();
             BigDecimal qty = new BigDecimal(String.valueOf(item.get("quantity")));
-            InventoryOutboundItem outItem = new InventoryOutboundItem();
-            outItem.setOutboundId(order.getOutboundId());
-            outItem.setMaterialId(materialId);
-            outItem.setMaterialCode((String) item.get("materialCode"));
-            outItem.setMaterialName((String) item.get("materialName"));
-            outItem.setQuantity(qty);
-            outItem.setSortOrder(sort++);
-            try {
-                List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailable(materialId);
-                if (!fifoItems.isEmpty() && fifoItems.get(0).getLocationId() != null) {
-                    outItem.setLocationId(fifoItems.get(0).getLocationId());
-                }
-            } catch (Exception e) {
-                log.warn("打样领料推荐库位失败(跳过): materialId={}", materialId);
+            List<InventoryStockItem> fifo = stockItemMapper.selectFIFOAvailableForUpdate(materialId);
+            Long locationId = fifo.isEmpty() ? null : fifo.getFirst().getLocationId();
+            // 沿用确认发料的「推荐库位内 FIFO，再全局 FIFO」，只拆金额明细，总需求不变。
+            List<InventoryStockItem> costBatches = new ArrayList<>();
+            if (locationId != null) {
+                fifo.stream().filter(batch -> locationId.equals(batch.getLocationId())).forEach(costBatches::add);
+                fifo.stream().filter(batch -> !locationId.equals(batch.getLocationId())).forEach(costBatches::add);
+            } else costBatches.addAll(fifo);
+            BigDecimal remaining = qty;
+            for (InventoryStockItem batch : costBatches) {
+                BigDecimal available = batch.getQuantity().subtract(batch.getReservedQuantity())
+                        .subtract(allocatedByBatch.getOrDefault(batch.getItemId(), BigDecimal.ZERO));
+                BigDecimal allocated = remaining.min(available);
+                if (allocated.signum() <= 0) continue;
+                InventoryOutboundItem outItem = samplePickCostItem(order, item, materialId,
+                        allocated, locationId, batch, sort++);
+                outboundItemMapper.insert(outItem);
+                if (outItem.getAmount() == null) missingCost = true;
+                else totalAmount = totalAmount.add(outItem.getAmount());
+                allocatedByBatch.merge(batch.getItemId(), allocated, BigDecimal::add);
+                remaining = remaining.subtract(allocated);
+                if (remaining.signum() == 0) break;
+            }
+            if (remaining.signum() > 0) {
+                // 沿用后续预占入口判断库存不足并回滚；没有批次时不猜零成本。
+                outboundItemMapper.insert(samplePickCostItem(order, item, materialId,
+                        remaining, locationId, null, sort++));
+                missingCost = true;
             }
             totalQty = totalQty.add(qty);
-            outboundItemMapper.insert(outItem);
         }
         if (totalQty.signum() <= 0) throw new BusinessException("打样领料明细数量均为 0");
         order.setTotalQuantity(totalQty);
+        order.setTotalAmount(missingCost ? null : totalAmount);
         outboundOrderMapper.updateById(order);
+        if (missingCost) {
+            // 表默认值为 0，实体的 NOT_NULL 更新策略不能清空，须显式写 NULL。
+            outboundOrderMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers
+                    .<InventoryOutboundOrder>lambdaUpdate()
+                    .eq(InventoryOutboundOrder::getOutboundId, order.getOutboundId())
+                    .set(InventoryOutboundOrder::getTotalAmount, null));
+        }
         reservePickItems(order.getOutboundId());
         log.info("打样领料单已生成(待发料): sampleOrderId={}, outboundId={}, no={}", sampleOrderId, order.getOutboundId(), order.getOutboundNo());
         return order.getOutboundId();
+    }
+
+    private InventoryOutboundItem samplePickCostItem(InventoryOutboundOrder order, Map<String, Object> source,
+            Long materialId, BigDecimal quantity, Long locationId, InventoryStockItem batch, int sort) {
+        InventoryOutboundItem item = new InventoryOutboundItem();
+        item.setOutboundId(order.getOutboundId());
+        item.setMaterialId(materialId);
+        item.setMaterialCode((String) source.get("materialCode"));
+        item.setMaterialName((String) source.get("materialName"));
+        item.setQuantity(quantity);
+        item.setLocationId(locationId);
+        item.setSortOrder(sort);
+        item.setRemark(order.getRemark());
+        if (batch != null) {
+            item.setBatchNo(batch.getBatchNo());
+            item.setUnitPrice(batch.getUnitCost());
+            if (batch.getUnitCost() != null) item.setAmount(quantity.multiply(batch.getUnitCost())
+                    .setScale(2, java.math.RoundingMode.HALF_UP));
+        }
+        return item;
     }
 
     private void validateSamplePickItems(List<Map<String, Object>> preview, List<Map<String, Object>> items) {

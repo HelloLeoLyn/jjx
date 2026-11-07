@@ -491,6 +491,23 @@ public class SampleOrderController extends BaseController {
         return Result.success(sampleOrderService.getProductPlan(orderId));
     }
 
+    @Operation(summary = "已发料领料成本合计及批次明细")
+    @SaCheckPermission(value = {"sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @GetMapping("/{orderId}/pick-cost")
+    public Result<ISampleOrderService.PickCostSummary> pickCost(@PathVariable Long orderId,
+            @RequestParam(required = false) Integer roundNo) {
+        return Result.success(sampleOrderService.getPickCostSummary(orderId, roundNo));
+    }
+
+    @Operation(summary = "按领料重算打样成本")
+    @Log(module = "样品单管理", businessType = BusinessType.UPDATE, bizId = "#orderId", action = LogActions.SAMPLE_COST)
+    @SaCheckPermission(value = {"sales:sample:engineering", "engineering:sample:workbench"}, mode = SaMode.OR)
+    @PutMapping("/{orderId}/pick-cost/recalculate")
+    public Result<ISampleOrderService.PickCostSummary> recalculatePickCost(@PathVariable Long orderId,
+            @RequestParam(required = false) Integer roundNo) {
+        return Result.success(sampleOrderService.recalculatePickCost(orderId, roundNo));
+    }
+
     @Operation(summary = "打样汇总（总工时+材料成本估算）")
     @GetMapping("/summary/{orderId}")
     public Result<java.util.Map<String, Object>> summary(@PathVariable Long orderId) {

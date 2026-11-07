@@ -99,6 +99,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private final SysDictItemMapper sysDictItemMapper;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     private final SalesSampleBomMapper sampleBomMapper;
+    private final com.jjx.inventory.mapper.InventoryOutboundOrderMapper sampleOutboundOrderMapper;
+    private final com.jjx.inventory.mapper.InventoryOutboundItemMapper sampleOutboundItemMapper;
     private final com.jjx.system.service.ISysAttachmentService attachmentService;
     /** 附件引用落定（dev-20261017-002）：随单附件在保存事务内经 create() 建引用/草稿行转正。 */
     private final com.jjx.system.service.AttachmentRefService attachmentRefService;
@@ -2244,6 +2246,64 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteSampleBomItem(Long bomId) {
         return sampleBomMapper.deleteById(bomId) > 0;
+    }
+
+    /** 已发料单的金额快照是领料成本来源；读查询不回写样品成本。 */
+    @Override
+    @Transactional(readOnly = true)
+    public PickCostSummary getPickCostSummary(Long orderId, Integer roundNo) {
+        if (sampleOrderMapper.selectByOrderId(orderId) == null) {
+            throw new BusinessException("样品单不存在");
+        }
+        if (roundNo != null && roundNo < 1) throw new BusinessException("打样轮次必须大于零");
+        var orders = sampleOutboundOrderMapper.selectList(
+                new LambdaQueryWrapper<com.jjx.inventory.domain.InventoryOutboundOrder>()
+                        .eq(com.jjx.inventory.domain.InventoryOutboundOrder::getSourceType, "sample")
+                        .eq(com.jjx.inventory.domain.InventoryOutboundOrder::getSourceId, orderId)
+                        .eq(com.jjx.inventory.domain.InventoryOutboundOrder::getOrderStatus,
+                                InventoryOrderStatusEnum.COMPLETED.getValue())
+                        .orderByAsc(com.jjx.inventory.domain.InventoryOutboundOrder::getOutboundId));
+        List<PickCostDetail> details = new ArrayList<>();
+        BigDecimal knownAmount = BigDecimal.ZERO;
+        int missingCostCount = 0;
+        int unknownRoundOrderCount = 0;
+        for (var order : orders) {
+            boolean unknownRound = false;
+            for (var item : sampleOutboundItemMapper.selectByOutboundId(order.getOutboundId())) {
+                // 明细轮次不受取消/驳回改写单头备注影响；历史无轮次单不猜轮次。
+                String remark = item.getRemark() != null && item.getRemark().startsWith("[sampleRound=")
+                        ? item.getRemark() : order.getRemark();
+                boolean hasRound = remark != null && remark.matches("\\[sampleRound=\\d+].*");
+                if (!hasRound) unknownRound = true;
+                if (roundNo != null && (remark == null || !remark.startsWith("[sampleRound=" + roundNo + "]"))) continue;
+                details.add(new PickCostDetail(order.getOutboundId(), order.getOutboundNo(), item.getMaterialId(),
+                        item.getMaterialCode(), item.getMaterialName(), item.getQuantity(),
+                        item.getUnitPrice(), item.getAmount(), item.getBatchNo()));
+                if (item.getAmount() == null || item.getUnitPrice() == null) missingCostCount++;
+                else knownAmount = knownAmount.add(item.getAmount());
+            }
+            if (unknownRound) unknownRoundOrderCount++;
+        }
+        return new PickCostSummary(missingCostCount == 0 ? knownAmount : null, knownAmount,
+                missingCostCount, unknownRoundOrderCount, details);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public PickCostSummary recalculatePickCost(Long orderId, Integer roundNo) {
+        // 与领料建单共用订单行锁，重算及成本写入在同一事务完成。
+        if (orderMapper.selectByIdForUpdate(orderId) == null) throw new BusinessException("样品单不存在");
+        PickCostSummary summary = getPickCostSummary(orderId, roundNo);
+        if (summary.items().isEmpty()) throw new BusinessException("暂无已发料领料明细，不能重算打样成本");
+        if (summary.missingCostCount() > 0) throw new BusinessException("领料明细存在缺失成本，不能覆盖打样成本");
+        if (roundNo != null && summary.unknownRoundOrderCount() > 0) {
+            throw new BusinessException("历史领料单缺少轮次，请按全部轮次重算");
+        }
+        SalesOrder update = new SalesOrder();
+        update.setOrderId(orderId);
+        update.setSampleCost(summary.totalAmount());
+        if (orderMapper.updateById(update) != 1) throw new BusinessException("打样成本更新失败");
+        return summary;
     }
 
     /**

@@ -474,3 +474,23 @@ export interface SampleDefectRecordDTO {
   recordDate?: string
   roundNo?: number
 }
+/** 已确认发料的领料成本；缺价用 null，不能视为零。 */
+export interface SamplePickCostDetail {
+  outboundId: number
+  outboundNo: string
+  materialId: number | null
+  materialCode: string | null
+  materialName: string | null
+  quantity: number
+  unitPrice: number | null
+  amount: number | null
+  batchNo: string | null
+}
+
+export interface SamplePickCostSummary {
+  totalAmount: number | null
+  knownAmount: number
+  missingCostCount: number
+  unknownRoundOrderCount: number
+  items: SamplePickCostDetail[]
+}

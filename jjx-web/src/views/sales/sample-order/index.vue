@@ -140,6 +140,7 @@
       v-model:visible="detailVisible"
       :order-id="detailData?.orderId ?? null"
       @loaded="onDetailLoaded"
+      @cost-recalculated="getList"
       width="1200px"
     />
     <!-- 工程打样工作台（独立路由页，按钮跳转） -->
@@ -228,6 +229,15 @@
       :sample-order-no="returnSample.orderNo"
       @success="getList"
     />
+    <SampleDetail
+      v-model:visible="pickCostVisible"
+      :order-id="pickCostOrder?.orderId"
+      cost-only
+      title="领料成本"
+      width="1000px"
+      @cost-recalculated="getList"
+    />
+
     <!-- 打样领料：预览 + 改数量（JJX-QR-031 抬头「打样领料单」） -->
     <el-dialog
       v-model="pickVisible"
@@ -1151,6 +1161,13 @@ async function submitSamplePick() {
 }
 
 const returnVisible = ref(false)
+const pickCostVisible = ref(false)
+const pickCostOrder = ref<any>(null)
+function openPickCost(row: any) {
+  pickCostOrder.value = row
+  pickCostVisible.value = true
+}
+
 const returnSample = ref<any>(null)
 function openSampleReturn(row: any) {
   if (!row?.orderId) return
@@ -1159,6 +1176,7 @@ function openSampleReturn(row: any) {
 }
 
 const sampleActions: TableAction<any>[] = [
+  { key: 'pickCost', label: '领料成本', type: 'primary', permission: ['sales:sample:view', 'engineering:sample:workbench'] },
   { key: 'return', label: '退料', type: 'primary', permission: 'inventory:inbound:add' },
   { key: 'trace', label: '查看流水', type: 'info' },
   {
@@ -1267,6 +1285,7 @@ const sampleActions: TableAction<any>[] = [
 ]
 const handleSampleAction = (key: string, row: any) => {
   const handlers: Record<string, () => void> = {
+    pickCost: () => void openPickCost(row),
     pick: () => void openSamplePick(row),
     return: () => openSampleReturn(row),
     print: () => handlePrint(row),

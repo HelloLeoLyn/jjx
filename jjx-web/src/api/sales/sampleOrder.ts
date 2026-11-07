@@ -29,6 +29,7 @@ import type {
   SampleSourceQuotation,
   SampleStatusOption,
   SampleSummary,
+  SamplePickCostSummary,
   SampleTransferReminder,
   SampleTransferResult,
 } from '@/types/sales/sampleOrder'
@@ -403,6 +404,23 @@ export const sampleOrderApi = {
     return request<R<void>>({
       url: `/sales/sample-order/bom/${bomId}`,
       method: 'delete',
+    })
+  },
+
+  // 录入打样成本/工时
+  getPickCost(orderId: number, roundNo?: number) {
+    return request<R<SamplePickCostSummary>>({
+      url: `/sales/sample-order/${orderId}/pick-cost`,
+      method: 'get',
+      params: { roundNo },
+    })
+  },
+
+  recalculatePickCost(orderId: number, roundNo?: number) {
+    return request<R<SamplePickCostSummary>>({
+      url: `/sales/sample-order/${orderId}/pick-cost/recalculate`,
+      method: 'put',
+      params: { roundNo },
     })
   },
 

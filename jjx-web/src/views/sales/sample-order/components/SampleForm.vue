@@ -145,6 +145,14 @@
         <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="500" show-word-limit />
       </el-form-item>
 
+      <SampleDetail
+        v-if="editId && (mode === 'inline' || visible)"
+        mode="inline"
+        :key="editId"
+        :order-id="editId"
+        cost-only
+      />
+
       <!-- 附件（dev-20261016-074：新公共组件 AttachmentUpload + AttachmentManager，共用同一份会话队列；
            上传只进「待保存」，随「保存样品单」由后端同事务落定（001 §7-1 方案 A）） -->
       <el-divider content-position="left">附件</el-divider>
@@ -227,6 +235,7 @@ import { ElDialog, ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import type { FormInstance } from 'element-plus'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import SampleDetail from './SampleDetail.vue'
 import { quotationApi } from '@/api/sales/quotation'
 import { searchProduct } from '@/api/product'
 import type {

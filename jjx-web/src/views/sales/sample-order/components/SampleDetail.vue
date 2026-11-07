@@ -2,6 +2,7 @@
   <component :is="mode === 'dialog' ? ElDialog : 'div'" v-bind="dialogProps" @open="onOpen">
     <div v-loading="loading" class="sample-detail">
       <template v-if="data">
+        <template v-if="!costOnly">
         <!-- 主体信息 -->
         <el-descriptions :column="2" border>
           <el-descriptions-item label="样品单号" :span="2">{{ data.orderNo }}</el-descriptions-item>
@@ -69,6 +70,43 @@
           :source-id="data.orderId ?? undefined"
           :trace-id="data.traceId || undefined"
         />
+        </template>
+
+      <div v-if="canReadPickCost" v-loading="pickCostLoading">
+        <div class="pick-cost-fields">
+          <div>打样轮次：
+            <el-select v-model="pickCostRound" clearable placeholder="全部轮次" style="width: 160px" @change="loadPickCost" :disabled="pickCostRecalculating">
+              <el-option v-for="round in data?.sampleRound || 1" :key="round" :value="round" :label="`Round ${round}`" />
+            </el-select>
+          </div>
+          <div>领料成本合计：
+            <strong>{{ pickCostSummary ? formatPickCost(pickCostSummary.totalAmount) : '-' }}</strong>
+          </div>
+          <div>当前打样成本：{{ formatPickCost(data?.sampleCost) }}</div>
+        </div>
+        <el-button v-hasPermi="['sales:sample:engineering', 'engineering:sample:workbench']"
+          type="primary" :loading="pickCostRecalculating" :disabled="!canRecalculatePickCost" @click="recalculatePickCost">
+          按领料重算打样成本
+        </el-button>
+        <p>仅汇总已确认发料的领料单；工时单独记录，不并入领料成本。</p>
+        <el-alert v-if="pickCostSummary?.missingCostCount" type="warning" :closable="false"
+          :title="`${pickCostSummary.missingCostCount} 条明细缺少成本；已知金额小计 ${formatPickCost(pickCostSummary.knownAmount)}，不能重算打样成本。`" />
+        <el-alert v-if="pickCostRound && pickCostSummary?.unknownRoundOrderCount" type="warning" :closable="false"
+          :title="`${pickCostSummary.unknownRoundOrderCount} 张历史领料单缺少轮次，未计入本轮，请选择全部轮次后重算。`" />
+        <el-table :data="pickCostSummary?.items || []" border style="margin-top: 12px">
+          <el-table-column prop="outboundNo" label="领料单号" min-width="150" />
+          <el-table-column prop="materialCode" label="物料编码" min-width="120" />
+          <el-table-column prop="materialName" label="物料名称" min-width="140" />
+          <el-table-column prop="batchNo" label="批次" min-width="130" />
+          <el-table-column prop="quantity" label="数量" width="90" align="right" />
+          <el-table-column label="单价" width="100" align="right">
+            <template #default="{ row }">{{ formatPickCost(row.unitPrice, 4) }}</template>
+          </el-table-column>
+          <el-table-column label="金额" width="100" align="right">
+            <template #default="{ row }">{{ formatPickCost(row.amount) }}</template>
+          </el-table-column>
+        </el-table>
+      </div>
       </template>
     </div>
 
@@ -80,7 +118,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { ElDialog, ElMessage } from 'element-plus'
+import { ElDialog, ElMessage, ElMessageBox } from 'element-plus'
+import { useUserStore } from '@/store/modules/user'
+import type { SamplePickCostSummary } from '@/types/sales/sampleOrder'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { SampleOrderStatusEnum } from '@/enums/sales'
 import type { TagType } from '@/types'
@@ -90,6 +130,7 @@ import { sourceTypeLabel } from './types'
 defineOptions({ name: 'SampleDetail' })
 
 interface Props {
+  costOnly?: boolean
   mode?: SampleDisplayMode
   visible?: boolean
   /** 订单ID（优先） */
@@ -108,6 +149,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   mode: 'dialog',
+  costOnly: false,
   visible: false,
   orderId: null,
   order: null,
@@ -121,6 +163,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   (e: 'update:visible', v: boolean): void
   (e: 'close'): void
+  (e: 'cost-recalculated'): void
   (e: 'loaded', payload: { order: SampleOrder; products: SampleProductItem[] }): void
 }>()
 
@@ -161,7 +204,7 @@ async function loadData() {
   try {
     const [infoRes, prodRes]: any[] = await Promise.all([
       api.value.getInfo(id),
-      api.value.getProducts(id),
+      props.costOnly ? Promise.resolve({ data: [] }) : api.value.getProducts(id),
     ])
     data.value = infoRes?.data || null
     products.value = prodRes?.data || []
@@ -172,6 +215,78 @@ async function loadData() {
     loading.value = false
   }
 }
+
+const userStore = useUserStore()
+const pickCostLoading = ref(false)
+const pickCostRecalculating = ref(false)
+const pickCostRound = ref<number>()
+const pickCostSummary = ref<SamplePickCostSummary | null>(null)
+let pickCostRequestId = 0
+const canReadPickCost = computed(() => userStore.permissions.some(permission =>
+  ['*', '*:*:*', 'sales:sample:view', 'engineering:sample:workbench'].includes(permission)))
+const canRecalculatePickCost = computed(() => !pickCostLoading.value && !!pickCostSummary.value?.items.length
+  && pickCostSummary.value.totalAmount != null
+  && !(pickCostRound.value && pickCostSummary.value.unknownRoundOrderCount))
+
+function formatPickCost(value?: number | null, precision = 2) {
+  return value == null ? '未计价' : Number(value).toFixed(precision)
+}
+
+async function loadPickCost() {
+  const id = data.value?.orderId
+  const requestId = ++pickCostRequestId
+  pickCostSummary.value = null
+  pickCostLoading.value = false
+  if (!id || !canReadPickCost.value || (props.mode === 'dialog' && !props.visible)) return
+  pickCostLoading.value = true
+  try {
+    const res = await sampleOrderApi.getPickCost(id, pickCostRound.value)
+    if (requestId === pickCostRequestId) pickCostSummary.value = res.data
+  } catch (error: any) {
+    if (requestId === pickCostRequestId) ElMessage.error(error?.message || '读取领料成本失败')
+  } finally {
+    if (requestId === pickCostRequestId) pickCostLoading.value = false
+  }
+}
+
+async function recalculatePickCost() {
+  if (!canRecalculatePickCost.value || pickCostRecalculating.value || !data.value) return
+  const order = data.value
+  const round = pickCostRound.value
+  // 确认期间也禁用按钮，避免重复弹窗、切换单据后误写。
+  pickCostRecalculating.value = true
+  try {
+    await ElMessageBox.confirm(
+      `将${order.orderNo}的打样成本 ${formatPickCost(order.sampleCost)} 替换为${round ? `Round ${round}` : '全部轮次'}领料成本合计 ${formatPickCost(pickCostSummary.value?.totalAmount)}，工时保持独立。是否继续？`,
+      '按领料重算打样成本', { type: 'warning', confirmButtonText: '确认重算', cancelButtonText: '取消' }
+    )
+  } catch {
+    pickCostRecalculating.value = false
+    return
+  }
+  if (data.value?.orderId !== order.orderId || (props.mode === 'dialog' && !props.visible)) {
+    pickCostRecalculating.value = false
+    return
+  }
+  try {
+    const res = await sampleOrderApi.recalculatePickCost(order.orderId, round)
+    if (data.value?.orderId === order.orderId) {
+      data.value = { ...data.value, sampleCost: res.data.totalAmount ?? undefined }
+      if (pickCostRound.value === round) pickCostSummary.value = res.data
+    }
+    ElMessage.success('打样成本已按领料重算')
+    emit('cost-recalculated')
+  } catch (error: any) {
+    ElMessage.error(error?.message || '重算打样成本失败')
+  } finally {
+    pickCostRecalculating.value = false
+  }
+}
+
+watch([() => data.value?.orderId, () => props.visible, canReadPickCost], () => {
+  pickCostRound.value = undefined
+  void loadPickCost()
+}, { immediate: true })
 
 // 打开弹窗时加载
 function onOpen() {
@@ -247,6 +362,13 @@ defineExpose({
 </script>
 
 <style scoped lang="scss">
+.pick-cost-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
 .sample-detail {
   min-height: 80px;
 }

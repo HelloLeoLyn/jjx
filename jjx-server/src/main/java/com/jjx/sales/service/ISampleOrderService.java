@@ -10,6 +10,19 @@ import java.util.List;
  */
 public interface ISampleOrderService {
 
+    record PickCostDetail(Long outboundId, String outboundNo, Long materialId,
+                          String materialCode, String materialName, java.math.BigDecimal quantity,
+                          java.math.BigDecimal unitPrice, java.math.BigDecimal amount, String batchNo) {}
+
+    /** totalAmount 在任一明细缺价时为空，knownAmount 只表示已知金额小计。 */
+    record PickCostSummary(java.math.BigDecimal totalAmount, java.math.BigDecimal knownAmount,
+                           int missingCostCount, int unknownRoundOrderCount, List<PickCostDetail> items) {}
+
+    PickCostSummary getPickCostSummary(Long orderId, Integer roundNo);
+
+    /** 显式重算只更新 sample_cost，不包含或修改工时。 */
+    PickCostSummary recalculatePickCost(Long orderId, Integer roundNo);
+
     com.jjx.sales.domain.vo.SalesOrderSampleOptionsVO getSalesOrderSampleOptions(Long sourceOrderId);
 
     /** 一次事务创建多张单产品样品单。 */
