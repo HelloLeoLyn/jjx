@@ -121,7 +121,7 @@ describe('专用数值尺寸编辑组件', () => {
   })
 })
 
-const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), configuration: vi.fn(), detail: vi.fn(), save: vi.fn(), tags: vi.fn(), renderSpec: vi.fn(), renderModel: vi.fn(), renderNaming: vi.fn() }))
+const api = vi.hoisted(() => ({ categories: vi.fn(), dictionaries: vi.fn(), configuration: vi.fn(), detail: vi.fn(), save: vi.fn(), tags: vi.fn(), renderSpec: vi.fn(), renderModel: vi.fn(), renderNaming: vi.fn(), requiredFields: vi.fn() }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: api }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { getTags: api.tags } }))
 vi.mock('element-plus', async importOriginal => ({
@@ -139,10 +139,11 @@ function form(materialId?: number) {
   return mount(MaterialMasterFormDialog, { props: { modelValue: true, materialId }, global: { stubs: {
     ElDialog: Slot, ElForm: Slot, ElFormItem: Slot, ElRow: Slot, ElCol: Slot, ElCollapse: Slot, ElCollapseItem: Slot,
     ElSelect: Select, ElInput: Input, ElButton: Button, ElDivider: Slot, ElCheckbox: Slot, ElInputNumber: true,
-    ElOption: true, ElSwitch: true, ElSkeleton: true, ElAlert: true, MaterialAttributeFields: true,
+    SupplierSelector: true, ElOption: true, ElSwitch: true, ElSkeleton: true, ElAlert: true, MaterialAttributeFields: true,
   } } })
 }
 beforeEach(() => {
+  api.requiredFields.mockResolvedValue({ data: { material_grade: false, model: false, color: false, specification: false, brand: false } })
   api.renderModel.mockReset().mockResolvedValue({ data: 'PET125' })
   api.renderNaming.mockResolvedValue({ data: 'PET125名称' })
   api.categories.mockResolvedValue({ data: [configuration.category] })
@@ -155,7 +156,7 @@ describe('物料表单数值尺寸保存', () => {
   it('新增请求直提三个mm字段，既不提交size也不提交厚度属性', async () => {
     const wrapper = form()
     await flushPromises()
-    wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
+    wrapper.getComponent('[data-test="material-category"]').vm.$emit('change', 2)
     await flushPromises()
     const editor = wrapper.findComponent(MaterialSizeEditor)
     await editor.findAll('input')[0].setValue('300')
@@ -215,7 +216,7 @@ describe('物料表单数值尺寸保存', () => {
     api.renderSpec.mockResolvedValue({ data: '254μm*315mm*1000m' })
     const wrapper = form()
     await flushPromises()
-    wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
+    wrapper.getComponent('[data-test="material-category"]').vm.$emit('change', 2)
     await flushPromises()
     const editor = wrapper.findComponent(MaterialSizeEditor)
     expect(editor.props('dimensionFields')).toEqual(fields)
@@ -239,7 +240,7 @@ async function newModelForm() {
   api.configuration.mockResolvedValue({ data: modelConfiguration })
   const wrapper = form()
   await flushPromises()
-  wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
+  wrapper.getComponent('[data-test="material-category"]').vm.$emit('change', 2)
   await flushPromises()
   const state = wrapper.vm as any
   state.form.thicknessMm = 0.125
@@ -299,7 +300,7 @@ describe('新建物料型号生成与手改保护', () => {
   it('未配规则时维持人工型号，不调用生成接口', async () => {
     const wrapper = form()
     await flushPromises()
-    wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
+    wrapper.getComponent('[data-test="material-category"]').vm.$emit('change', 2)
     await flushPromises()
     await wrapper.get('[data-test="material-model"]').setValue('人工型号')
     await wrapper.findAll('button').find(b => b.text() === '保存物料')!.trigger('click')

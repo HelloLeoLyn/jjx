@@ -2,17 +2,19 @@
   <el-dialog
     v-model="visible"
     :title="materialId ? '编辑物料' : '新增物料'"
-    width="1280px"
+    width="min(1280px, calc(100vw - 24px))"
     append-to-body
     :close-on-click-modal="false"
   >
     <el-skeleton v-if="loading" :rows="8" animated />
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
-    <div v-if="!loading" class="master-layout">
-      <el-form ref="formRef" :model="form" label-width="120px" class="master-form">
+    <div v-if="!loading">
+      <el-form ref="formRef" :model="form" label-width="120px" class="master-form master-layout">
+        <section class="master-fields" aria-label="物料录入依据">
         <!-- 品类 + 子类两级（dev-20261104-008）：只有该品类存在子类时才出现第二个选择器，落库只存子类 id -->
         <el-form-item label="品类" required>
           <el-select
+            data-test="material-category"
             :model-value="parentCategoryId ?? undefined"
             filterable
             placeholder="选择品类"
@@ -50,38 +52,6 @@
           form.materialCode
         }}</el-form-item>
         <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item label="主要供应商">
-              <SupplierSelector
-                :model-value="form.supplierId ?? undefined"
-                :remote="true"
-                style="width: 100%"
-                @update:model-value="onSupplierChange"
-              /> </el-form-item
-          ></el-col>
-          <el-col :span="12">
-            <el-form-item label="供应商品名"
-              ><el-input
-                v-model="form.supplierMaterialName"
-                maxlength="200"
-                placeholder="供应商自己的叫法/料号，采购单据与来料核对用" /></el-form-item
-          ></el-col>
-        </el-row>
-        <el-form-item label="名称" required>
-          <el-input v-model="form.materialName" maxlength="200" @input="onNameInput">
-            <template #append>
-              <el-button :disabled="!form.nameManual" @click="restoreAutoName">自动生成</el-button>
-            </template>
-          </el-input>
-          <div class="field-hint" :class="{ manual: form.nameManual }">
-            {{
-              form.nameManual
-                ? '手动命名：已停止自动同步（点「恢复自动」回到按命名规则生成）'
-                : '自动命名：材料 + 型号 + 颜色（品牌），无空格、缺项跳过'
-            }}
-          </div>
-        </el-form-item>
-        <el-row :gutter="16">
           <el-col :span="24">
             <el-form-item label="材料显示名" :required="commonFieldRequired('material_grade')">
               {{ materialDisplayName || '选择材质和形态后生成' }}
@@ -115,10 +85,6 @@
               /></el-select> </el-form-item
           ></el-col>
           <el-col :span="12"
-            ><el-form-item label="型号" :required="commonFieldRequired('model')"
-              ><el-input v-model="form.model" maxlength="100" data-test="material-model" @input="onModelInput" /></el-form-item
-          ></el-col>
-          <el-col :span="12"
             ><el-form-item label="颜色" :required="commonFieldRequired('color')">
               <el-select v-model="form.color" clearable filterable style="width: 100%"
                 ><el-option
@@ -149,9 +115,6 @@
               /></el-select> </el-form-item
           ></el-col>
         </el-row>
-        <el-form-item label="规格" :required="commonFieldRequired('specification')">
-          {{ specificationPreview || '填写规格属性和尺寸后生成' }}
-        </el-form-item>
         <el-form-item label="尺寸">
           <MaterialSizeEditor
             v-model="dimensions"
@@ -199,6 +162,24 @@
           <!-- 单块渲染全部属性：不再按常用/低频分组，避免字段被分组逻辑吃掉（dev-20261030-013） -->
           <MaterialAttributeFields v-model="form.attributeJson" :schema="configuration.schema" />
         </template>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="主要供应商">
+              <SupplierSelector
+                :model-value="form.supplierId ?? undefined"
+                :remote="true"
+                style="width: 100%"
+                @update:model-value="onSupplierChange"
+              /> </el-form-item
+          ></el-col>
+          <el-col :span="12">
+            <el-form-item label="供应商品名"
+              ><el-input
+                v-model="form.supplierMaterialName"
+                maxlength="200"
+                placeholder="供应商自己的叫法/料号，采购单据与来料核对用" /></el-form-item
+          ></el-col>
+        </el-row>
         <el-form-item label="别名"
           ><el-input v-model="form.searchKeywords" maxlength="500"
         /></el-form-item>
@@ -228,34 +209,39 @@
         <el-form-item label="业务备注"
           ><el-input v-model="form.remark" type="textarea" maxlength="1000" :rows="2"
         /></el-form-item>
-      </el-form>
+        </section>
 
-      <!-- 右侧固定预览（dev-20261024-004） -->
+      <!-- 三项结果集中编辑/查看；生成规则仍由现有服务提供。 -->
       <aside class="master-preview" data-test="master-preview">
-        <div class="preview-title">预览</div>
-        <div class="preview-block">
-          <div class="preview-label">最终名称</div>
-          <div class="preview-value">{{ previewName || '待填写材料/型号/颜色' }}</div>
-          <div v-if="form.nameManual" class="preview-tag">手动命名</div>
-        </div>
-        <div class="preview-block" data-test="naming-rule-preview">
-          <div class="preview-label">命名规则</div>
-          <div v-if="nameRuleText" class="preview-sub">{{ nameRuleText }}</div>
-          <div class="preview-value">
-            {{ ruleName || (nameRuleText ? '按当前填写暂无可生成内容' : '该品类未配置命名规则') }}
+        <div class="preview-title">物料信息</div>
+        <div class="preview-sub result-intro">填写左侧资料，在此核对名称、型号与规格。</div>
+        <el-form-item label="名称" label-position="top" required data-test="material-name-field">
+          <el-input v-model="form.materialName" type="textarea" :autosize="{ minRows: 2, maxRows: 4 }" maxlength="200" data-test="material-name" @input="onNameInput" />
+          <div class="field-hint" :class="{ manual: form.nameManual }">
+            {{ form.nameManual ? '已手动修改，名称不再自动同步。' : '自动生成，随录入资料更新；也可直接修改。' }}
           </div>
-        </div>
-        <div class="preview-block">
-          <div class="preview-label">规格</div>
-          <div class="preview-value">{{ specificationPreview || '填写属性后自动生成' }}</div>
-        </div>
+          <el-button v-if="form.nameManual" size="small" link type="primary" @click="restoreAutoName">恢复按规则生成</el-button>
+          <details data-test="naming-rule-preview" class="rule-details">
+            <summary>查看命名规则</summary>
+            <div class="preview-sub">{{ nameRuleText || '该品类未配置命名规则，使用默认命名方式。' }}</div>
+          </details>
+        </el-form-item>
+        <el-form-item label="型号" label-position="top" :required="commonFieldRequired('model')" data-test="material-model-field">
+          <el-input v-model="form.model" maxlength="100" data-test="material-model" @input="onModelInput" />
+          <div class="field-hint">{{ modelHint }}</div>
+        </el-form-item>
+        <el-form-item label="规格" label-position="top" :required="commonFieldRequired('specification')" data-test="material-spec-field">
+          <div class="preview-value specification-result" role="status">{{ specificationPreview || '填写尺寸与规格属性后生成' }}</div>
+          <div class="field-hint">由规则生成；请在左侧修改尺寸和规格属性。</div>
+        </el-form-item>
         <div class="preview-block">
           <div class="preview-label">分类 / 材质</div>
           <div class="preview-sub">{{ configuration?.path?.[0]?.categoryName || '未归类' }}</div>
           <div class="preview-sub">{{ materialLabel || '材质未选' }}</div>
         </div>
-        <div class="preview-note">预览规则与后端保存同源；保存后以此为准。</div>
+        <div class="preview-note">生成结果与保存使用相同规则，保存时仍会校验必填项与型号唯一性。</div>
       </aside>
+      </el-form>
     </div>
     <template #footer>
       <el-button :disabled="saving" @click="visible = false">取消</el-button>
@@ -414,6 +400,13 @@ watch(
 )
 /** 型号预览只用于新建；手改后停止同步，异步旧响应不能覆盖手改或新会话。 */
 const modelManual = ref(false)
+const modelHint = computed(() => {
+  if (modelManual.value) return '已手动修改，型号不再自动同步。'
+  if (props.materialId || form.materialId) return '保留现有型号；修改其他资料不会自动重生成，可直接修改型号。'
+  return configuration.value?.schema.model_pattern?.fields.length
+    ? '按当前品类规则自动生成，也可直接修改。'
+    : '该品类未配置型号生成规则，请直接填写。'
+})
 let modelRequest = 0
 let modelTimer: ReturnType<typeof setTimeout> | undefined
 function onModelInput() {
@@ -476,12 +469,6 @@ const specificationPreview = computed(() => {
   )
   return [text, size ? `尺寸:${size}` : ''].filter(Boolean).join('；')
 })
-const previewName = computed(() =>
-  form.nameManual
-    ? effectiveMasterName(form, dictionaries.value)
-    : ruleName.value || effectiveMasterName(form, dictionaries.value)
-)
-
 /** 命名规则文本：字段名带各自 1 字符分隔符，便于操作员看懂当前规则 */
 const nameRuleText = computed(() => {
   const pattern = configuration.value?.schema?.name_pattern
@@ -855,13 +842,17 @@ watch(
   align-items: flex-start;
 }
 .master-form {
+  width: 100%;
+}
+.master-fields {
   flex: 1 1 auto;
   min-width: 0;
 }
 .master-preview {
-  flex: 0 0 240px;
+  flex: 0 0 340px;
+  box-sizing: border-box;
   position: sticky;
-  top: 0;
+  top: 12px;
   border: 1px solid #ebeef5;
   border-radius: 6px;
   padding: 12px;
@@ -896,8 +887,21 @@ watch(
   color: #e6a23c;
 }
 .preview-note {
-  font-size: 11px;
-  color: #c0c4cc;
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.6;
+}
+.result-intro { margin-bottom: 16px; }
+.rule-details { width: 100%; margin-top: 8px; }
+.rule-details summary { cursor: pointer; font-size: 12px; color: #606266; }
+.specification-result { width: 100%; }
+@media (max-width: 1000px) {
+  .master-layout { flex-direction: column; }
+  .master-fields, .master-preview { width: 100%; box-sizing: border-box; }
+  .master-preview { flex: none; position: static; }
+}
+@media (max-width: 600px) {
+  .master-fields :deep(.el-col) { flex: 0 0 100%; max-width: 100%; }
 }
 .field-hint {
   margin-top: 4px;

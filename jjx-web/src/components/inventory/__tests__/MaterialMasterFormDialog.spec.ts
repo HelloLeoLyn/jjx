@@ -49,9 +49,9 @@ const Select = defineComponent({
 })
 const Input = defineComponent({
   props: ['modelValue'],
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'input'],
   template:
-    '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+    '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" />',
 })
 const Button = defineComponent({
   props: ['disabled'],
@@ -181,11 +181,11 @@ describe('物料一次保存与异步品类切换', () => {
   it('新建只调用一次主数据保存，成功后返回完整物料', async () => {
     const wrapper = create()
     await flushPromises()
-    wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
+    wrapper.getComponent('[data-test="material-category"]').vm.$emit('change', 2)
     await flushPromises()
     // 名称输入独立于前面的供应商品名；以语义定位，避免字段插入导致错填。
-    const nameInput = wrapper.findAllComponents(Input).find(input => input.attributes('maxlength') === '200' && !input.attributes('placeholder'))!
-    await nameInput.find('input').setValue('测试原名称')
+    const nameInput = wrapper.get('[data-test="material-name"]')
+    await nameInput.setValue('测试原名称')
     await wrapper
       .findAll('button')
       .find((b) => b.text() === '保存物料')!
@@ -207,9 +207,9 @@ describe('物料一次保存与异步品类切换', () => {
     mocks.save.mockRejectedValue(Error('事务回滚'))
     const wrapper = create()
     await flushPromises()
-    wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
+    wrapper.getComponent('[data-test="material-category"]').vm.$emit('change', 2)
     await flushPromises()
-    await wrapper.findAllComponents(Input)[0].find('input').setValue('失败后保留')
+    await wrapper.get('[data-test="material-name"]').setValue('失败后保留')
     await wrapper
       .findAll('button')
       .find((b) => b.text() === '保存物料')!
@@ -218,7 +218,7 @@ describe('物料一次保存与异步品类切换', () => {
     expect(wrapper.emitted('success')).toBeUndefined()
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
     expect(mocks.error).toHaveBeenCalledWith('事务回滚')
-    expect(wrapper.findAllComponents(Input)[0].find('input').element.value).toBe('失败后保留')
+    expect(wrapper.get('[data-test="material-name"]').element.value).toBe('失败后保留')
     wrapper.unmount()
   })
 
@@ -233,8 +233,8 @@ describe('物料一次保存与异步品类切换', () => {
     )
     const wrapper = create()
     await flushPromises()
-    wrapper.findAllComponents(Select)[0].vm.$emit('change', 2)
-    wrapper.findAllComponents(Select)[0].vm.$emit('change', 3)
+    wrapper.getComponent('[data-test="material-category"]').vm.$emit('change', 2)
+    wrapper.getComponent('[data-test="material-category"]').vm.$emit('change', 3)
     await flushPromises()
     resolveOld({ data: config(2, 'PC') })
     await flushPromises()
@@ -356,6 +356,39 @@ describe('公共字段必填读取品类配置', () => {
     expect(state.commonFieldRequired('color')).toBe(false)
     await state.save()
     expect(mocks.warning).toHaveBeenCalledWith('品牌不能为空（PC 必填）')
+    wrapper.unmount()
+  })
+})
+
+
+describe('名称型号规格集中结果区', () => {
+  it('三项各保留一处，移出录入依据；规格只读，右侧仍属于同一表单', async () => {
+    const wrapper = create()
+    await flushPromises()
+    for (const field of ['material-name', 'material-model', 'material-spec-field']) {
+      expect(wrapper.findAll(`[data-test="${field}"]`)).toHaveLength(1)
+      expect(wrapper.get('.master-preview').find(`[data-test="${field}"]`).exists()).toBe(true)
+      expect(wrapper.get('.master-fields').find(`[data-test="${field}"]`).exists()).toBe(false)
+    }
+    expect(wrapper.get('.master-form').find('.master-preview').exists()).toBe(true)
+    expect(wrapper.get('[data-test="material-spec-field"]').find('input').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('材料 + 型号 + 颜色（品牌）')
+    wrapper.unmount()
+  })
+
+  it('右侧名称手改后保留，恢复按钮重新使用当前规则结果', async () => {
+    const wrapper = create()
+    await flushPromises()
+    const state = (wrapper.vm as any).$.setupState
+    await state.selectCategory(2)
+    await wrapper.get('[data-test="material-name"]').setValue('习惯名称')
+    expect(state.form.nameManual).toBe(true)
+    state.ruleName = '规则生成名称'
+    await flushPromises()
+    expect(state.form.materialName).toBe('习惯名称')
+    await wrapper.findAll('button').find(button => button.text() === '恢复按规则生成')!.trigger('click')
+    expect(state.form.nameManual).toBe(false)
+    expect(state.form.materialName).toBe('规则生成名称')
     wrapper.unmount()
   })
 })
