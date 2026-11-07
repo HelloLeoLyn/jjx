@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyCopySource,
   attributeEvidence,
   changeMasterCategory,
   effectiveMasterName,
@@ -125,5 +126,66 @@ describe('新模型物料表单', () => {
         { component_type: 'LED', pin_count: 4, conductive: false }
       )
     ).toBe('元件类型:灯；导电:否')
+  })
+})
+
+describe('复制新增带入档案信息（dev-20261107-016）', () => {
+  it('保留同类档案与属性，清空编码/名称/型号，库存水位归零', () => {
+    const form = emptyMasterForm()
+    const detail = {
+      material: {
+        materialId: 101,
+        materialCode: 'RM001234',
+        materialName: 'PC膜11008透明（3M）',
+        categoryId: 2,
+        materialMeta: 'PC',
+        materialForm: 'FILM',
+        model: '11008',
+        color: 'CLEAR',
+        brand: '3M',
+        unit: 'M',
+        searchKeywords: '老料号',
+        remark: '原备注',
+        supplierId: 9,
+        supplierName: '某某供应商',
+        isCustomerSupplied: true,
+        isSample: false,
+        batchControl: true,
+        standardPrice: 12.5,
+        leadTime: 7,
+        shelfLife: 365,
+        expiryAlertDays: 15,
+        safeStock: 100,
+        maxStock: 200,
+        reorderPoint: 50,
+        widthMm: 300,
+        lengthMm: 305,
+        thicknessMm: 0.175,
+        grammage: 120,
+      },
+      attributes: { thickness_mm: 0.175, surface_treatment: ['MATTE'] },
+      configuration: null,
+      tags: [{ tagId: 3, tagName: 'PET' }, { tagId: null }],
+      source: { originalName: null, originalSpecification: null },
+    } as any
+    applyCopySource(form, detail)
+    expect(form.materialId).toBeUndefined()
+    expect(form.materialCode).toBeUndefined()
+    expect(form.materialName).toBe('')
+    expect(form.nameManual).toBe(false)
+    expect(form.model).toBe('')
+    expect(form.categoryId).toBe(2)
+    expect(form.materialMeta).toBe('PC')
+    expect(form.unit).toBe('M')
+    expect(form.supplierName).toBe('某某供应商')
+    expect(form.attributeJson).toEqual({ thickness_mm: 0.175, surface_treatment: ['MATTE'] })
+    expect(form.tagIds).toEqual([3])
+    expect(form.safeStock).toBe(0)
+    expect(form.maxStock).toBe(0)
+    expect(form.reorderPoint).toBe(0)
+    expect(form.standardPrice).toBe(12.5)
+    expect(form.shelfLife).toBe(365)
+    expect(form.widthMm).toBe(300)
+    expect(form.lengthMm).toBe(305)
   })
 })

@@ -4,6 +4,7 @@ import type {
   MaterialAttributeField,
   MaterialAttributeSchema,
   MaterialMasterConfiguration,
+  MaterialMasterDetail,
   MaterialMasterForm,
 } from '@/types/inventory/materialMaster'
 import { composeMaterialName } from './materialMasterFields'
@@ -87,6 +88,48 @@ export function changeMasterCategory(
   form.materialForm = config.schema.default_form || ''
   form.unit = config.schema.default_unit || ''
   form.attributeJson = attributeDefaults(config.schema)
+}
+
+/**
+ * 复制新增：带入可复用档案信息，清空编码/名称/型号，库存水位归零（dev-20261107-016）。
+ * 尺寸保留待用户确认；属性与标签原样带入。
+ */
+export function applyCopySource(
+  form: MaterialMasterForm,
+  detail: MaterialMasterDetail
+): void {
+  const m = detail.material
+  form.materialId = undefined
+  form.materialCode = undefined
+  form.materialName = ''
+  form.nameManual = false
+  form.categoryId = m.categoryId ?? null
+  form.materialMeta = m.materialMeta || ''
+  form.materialForm = m.materialForm || ''
+  form.model = ''
+  form.color = m.color || ''
+  form.brand = m.brand || ''
+  form.unit = m.unit || ''
+  form.searchKeywords = m.searchKeywords || ''
+  form.remark = m.remark || ''
+  form.supplierId = m.supplierId ?? null
+  form.supplierName = m.supplierName || ''
+  form.isCustomerSupplied = !!m.isCustomerSupplied
+  form.isSample = !!m.isSample
+  form.batchControl = !!m.batchControl
+  form.standardPrice = m.standardPrice ?? null
+  form.leadTime = m.leadTime ?? null
+  form.shelfLife = m.shelfLife ?? null
+  form.expiryAlertDays = m.expiryAlertDays ?? 30
+  form.safeStock = 0
+  form.maxStock = 0
+  form.reorderPoint = 0
+  form.widthMm = m.widthMm ?? null
+  form.lengthMm = m.lengthMm ?? null
+  form.thicknessMm = m.thicknessMm ?? null
+  form.grammage = m.grammage ?? null
+  form.attributeJson = { ...(detail.attributes || {}) }
+  form.tagIds = (detail.tags || []).flatMap((tag) => (tag.tagId == null ? [] : [tag.tagId]))
 }
 
 export function pruneAttributes(

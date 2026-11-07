@@ -8,6 +8,13 @@
   >
     <el-skeleton v-if="loading" :rows="8" animated />
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
+    <el-alert
+      v-if="copySourceName"
+      :title="`复制自「${copySourceName}」：已带入档案信息，请修改型号/尺寸等差异参数后保存`"
+      type="info"
+      :closable="false"
+      style="margin-bottom: 8px"
+    />
     <div v-if="!loading">
       <el-form ref="formRef" :model="form" label-width="120px" class="master-form master-layout">
         <section class="master-fields" aria-label="物料录入依据">
@@ -321,6 +328,7 @@ import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
 import { emptyMaterialSize, parseMaterialSize, renderMaterialDimensions } from './materialSize'
 import type { MaterialSizeValue } from './materialSize'
 import {
+  applyCopySource,
   attributeVisible,
   changeMasterCategory,
   effectiveMasterName,
@@ -336,6 +344,8 @@ const router = useRouter()
 const props = defineProps<{
   modelValue: boolean
   materialId?: number | null
+  /** 复制新增：带入该物料档案信息，清空编码/名称/型号（dev-20261107-016） */
+  copyFromId?: number | null
   /** 来自 BOM 快速建档：后端对该入口放宽“颜色必填”（dev-20261029-016） */
   fromBom?: boolean
   presetData?: {
@@ -395,6 +405,7 @@ const specBasisLabel = computed(() => {
   return form.thicknessMm != null ? '厚度（THICKNESS）' : '仅尺寸（SIZE）'
 })
 const loadError = ref('')
+const copySourceName = ref('')
 const expanded = ref<string[]>([])
 let session = 0
 let categoryRequest = 0
@@ -792,19 +803,29 @@ async function initialize() {
     defaultLocationId: null,
   })
   expanded.value = []
+  copySourceName.value = ''
   parentCategoryId.value = null
   try {
     const [categoryResponse, dictResponse, tagResponse, detailResponse] = await Promise.all([
       materialMasterApi.categories(),
       materialMasterApi.dictionaries(),
       materialApi.getTags(),
-      props.materialId ? materialMasterApi.detail(props.materialId) : Promise.resolve(null),
+      props.materialId
+        ? materialMasterApi.detail(props.materialId)
+        : props.copyFromId
+          ? materialMasterApi.detail(props.copyFromId)
+          : Promise.resolve(null),
     ])
     if (currentSession !== session) return
     categories.value = categoryResponse.data || []
     dictionaries.value = dictResponse.data || {}
     tags.value = tagResponse.data || []
-    if (detailResponse?.data) {
+    if (detailResponse?.data && !props.materialId && props.copyFromId) {
+      const detail = detailResponse.data
+      applyCopySource(form, detail)
+      configuration.value = detail.configuration ?? undefined
+      copySourceName.value = detail.material.materialName || ''
+    } else if (detailResponse?.data) {
       const detail = detailResponse.data
       const material = detail.material
       for (const key of Object.keys(form) as (keyof MaterialMasterForm)[]) {
@@ -968,7 +989,7 @@ async function save() {
 }
 
 watch(
-  () => [props.modelValue, props.materialId] as const,
+  () => [props.modelValue, props.materialId, props.copyFromId] as const,
   ([open]) => {
     if (open) void initialize()
     else {

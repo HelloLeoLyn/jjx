@@ -81,7 +81,11 @@
         border
       >
         <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="物料编码" prop="materialCode" width="150" />
+        <el-table-column label="物料编码" prop="materialCode" width="150">
+          <template #default="{ row }">
+            <el-link type="primary" @click="handleView(row)">{{ row.materialCode }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column label="当前名称" prop="materialName" width="220" show-overflow-tooltip />
         <el-table-column
           label="供应商品名"
@@ -140,9 +144,6 @@
         >
         <el-table-column label="单位" prop="unit" width="80" align="center" />
         <el-table-column label="安全库存" prop="safeStock" width="100" align="right" />
-        <!-- <el-table-column label="标准单价" prop="standardPrice" width="120" align="right">
-          <template #default="{ row }"> ¥ {{ formatCurrency(row.standardPrice) }} </template>
-        </el-table-column> -->
         <el-table-column label="供应商" prop="supplierName" width="200" />
         <el-table-column label="状态" prop="status" width="80" align="center">
           <template #default="{ row }">
@@ -154,39 +155,21 @@
             />
           </template>
         </el-table-column>
-        <el-table-column label="物料标签" min-width="180">
-          <template #default="{ row }">
-            <el-tag
-              v-for="tag in row.tags || []"
-              :key="tag.tagId"
-              size="small"
-              class="material-tag"
-            >
-              {{ tag.tagName }}
-            </el-tag>
-            <span v-if="!row.tags?.length">-</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="归类状态" width="150" align="center">
-          <template #default="{ row }">
-            <el-tag
-              size="small"
-              :type="MaterialClassStatusEnum.getTagProps(resolveClassStatus(row)).type as any"
-            >
-              {{ MaterialClassStatusEnum.getLabel(resolveClassStatus(row)) }}
-            </el-tag>
-          </template>
-        </el-table-column>
         <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleView(row)">详情</el-button>
             <el-button
               link
               type="primary"
               v-hasPermi="['inventory:material:edit']"
               @click="handleEdit(row)"
               >编辑</el-button
+            >
+            <el-button
+              link
+              type="primary"
+              v-hasPermi="['inventory:material:add']"
+              @click="handleCopy(row)"
+              >复制</el-button
             >
             <el-button
               link
@@ -245,6 +228,7 @@
     <MaterialFormDialog
       v-model="dialogVisible"
       :material-id="editingMaterialId"
+      :copy-from-id="copyFromId"
       @success="handleFormSuccess"
     />
 
@@ -366,6 +350,7 @@ const single = ref(true)
 const multiple = ref(true)
 const dialogVisible = ref(false)
 const editingMaterialId = ref<number | null>(null)
+const copyFromId = ref<number | null>(null)
 const detailVisible = ref(false)
 const detailMaterialId = ref<number | null>(null)
 const regenerateVisible = ref(false)
@@ -664,11 +649,13 @@ const handleSelectionChange = (selection: any[]) => {
 // 新增
 const handleAdd = () => {
   editingMaterialId.value = null
+  copyFromId.value = null
   dialogVisible.value = true
 }
 
 // 编辑
 const handleEdit = (row: any) => {
+  copyFromId.value = null
   editingMaterialId.value = row.materialId
   dialogVisible.value = true
 }
@@ -708,6 +695,13 @@ const confirmClass = async (row: InventoryMaterial) => {
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '确认归类失败')
   }
+}
+
+// 复制新增：打开新增弹窗并带入原物料档案（不做后端复制）
+const handleCopy = (row: any) => {
+  editingMaterialId.value = null
+  copyFromId.value = row.materialId
+  dialogVisible.value = true
 }
 
 // 重算名称与规格（只改名称/规格，不写分类与属性）
