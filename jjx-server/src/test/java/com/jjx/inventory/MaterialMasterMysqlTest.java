@@ -259,7 +259,7 @@ class MaterialMasterMysqlTest {
 
     @Test void requiredEditablePrefixesAreUniqueAndModelRuleChangesTakeEffect() throws Exception {
         initialize();
-        for (String invalid : Arrays.asList(null, "", " ", "P", "ABCDEFGHI", "pc", "P-C")) {
+        for (String invalid : Arrays.asList(null, "", " ", "ABCDEFGHI", "pc", "P-C")) {
             var dto = new MaterialMasterConfigurationService.CategorySave(900003L, "RAW_BASE_PC", "PC膜/片", 900002L, 0, 1, invalid);
             assertThrows(BusinessException.class, () -> configurationService.saveCategory(dto, "Codex-test"));
         }
@@ -310,7 +310,7 @@ class MaterialMasterMysqlTest {
         assertDoesNotThrow(() -> configurationService.saveCategory(uniqueParent, "Codex-test"));
         assertDoesNotThrow(() -> configurationService.saveCategory(uniqueParent, "Codex-test"));
         jdbc.update("UPDATE inventory_material_category SET status='0' WHERE category_id=?", child.getCategoryId());
-        for (String invalid : Arrays.asList(null, "", " ", "P", "pc", "P-C")) {
+        for (String invalid : Arrays.asList(null, "", " ", "pc", "P-C")) {
             var nowLeaf = new MaterialMasterConfigurationService.CategorySave(
                     900005L, "RAW_AUX_ELECTRONIC", "电子元件", 900004L, 0, 1, invalid);
             assertThrows(BusinessException.class, () -> configurationService.saveCategory(nowLeaf, "Codex-test"));

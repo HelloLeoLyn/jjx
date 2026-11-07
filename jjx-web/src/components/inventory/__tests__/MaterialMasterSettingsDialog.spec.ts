@@ -167,11 +167,11 @@ describe('属性模板界面保存', () => {
       }
     }
     if (required) {
-      for (const invalid of ['P', 'pc', 'P-C']) {
+      for (const invalid of ['pc', 'P-C', 'ABCDEFGHI']) {
         state.categoryForm.modelPrefix = invalid
         await state.saveCategory()
         expect(api.saveCategory).not.toHaveBeenCalled()
-        expect(state.error).toContain('型号前缀须为2～8位')
+        expect(state.error).toContain('型号前缀须为1～8位')
       }
     }
     state.categoryForm.modelPrefix = 'LED'
