@@ -198,8 +198,8 @@ public class MaterialMasterExcelService {
                     InventoryMaterial prepared = service.prepare(dto).material(); String key = identity(prepared);
                     service.requireUniqueModel(prepared);
                     if (prepared.getModel() != null && !prepared.getModel().isBlank()
-                            && !fileModels.add(prepared.getModel().toUpperCase(Locale.ROOT)))
-                        throw new BusinessException("型号与文件其他行重复：" + prepared.getModel());
+                            && !fileModels.add(modelKey(prepared)))
+                        throw new BusinessException("同供应商下型号与文件其他行重复：" + prepared.getModel());
                     if (!fileKeys.add(key) || existingKeys.containsKey(key) && !Objects.equals(existingKeys.get(key), dto.getMaterialId())) throw new BusinessException("与文件其他行或库内物料重复");
                     rows.add(dto); sources.add(source);
                 } catch (BusinessException e) { errors.add("第" + (index + 1) + "行：" + e.getMessage()); }
@@ -357,5 +357,11 @@ public class MaterialMasterExcelService {
     private String identity(InventoryMaterial material) {
         try { return objectMapper.writeValueAsString(Arrays.asList(material.getCategoryId(), material.getMaterialName(), material.getMaterialMeta(), material.getMaterialForm(), material.getModel(), material.getColor(), material.getBrand(), material.getSize(), material.getUnit(), service.readAttributes(material.getAttributeJson()))); }
         catch (Exception e) { throw new BusinessException("物料重复性检查失败"); }
+    }
+
+    /** 文件内型号查重键：型号 + 供应商（不同供应商可共用型号，2026-11-07 dev-20261107-003）。 */
+    private static String modelKey(InventoryMaterial material) {
+        String supplier = material.getSupplierName() == null ? "" : material.getSupplierName().trim();
+        return (material.getModel() + "|" + supplier).toUpperCase(Locale.ROOT);
     }
 }

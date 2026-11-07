@@ -622,14 +622,23 @@ public class MaterialMasterService {
         return materialMapper.selectById(material.getMaterialId());
     }
 
-    /** 全局型号查重；锁定读避免 RR 快照漏掉刚提交的型号。空型号不参与。 */
+    /**
+     * 型号判重：同一供应商下不允许型号重复，不同供应商可共用同一型号（2026-11-07 dev-20261107-003）。
+     * 锁定读避免 RR 快照漏掉刚提交的型号；空型号不参与；供应商为空时只与同样为空的记录比对。
+     */
     public void requireUniqueModel(InventoryMaterial material) {
         if (material.getModel() == null || material.getModel().isBlank()) return;
+        String supplier = material.getSupplierName() == null ? "" : material.getSupplierName().trim();
         var query = new LambdaQueryWrapper<InventoryMaterial>()
                 .eq(InventoryMaterial::getModel, material.getModel())
-                .ne(material.getMaterialId() != null, InventoryMaterial::getMaterialId, material.getMaterialId())
-                .last("LIMIT 1 FOR UPDATE");
-        if (!materialMapper.selectList(query).isEmpty()) throw new BusinessException("型号已存在（全局唯一），请修改型号：" + material.getModel());
+                .ne(material.getMaterialId() != null, InventoryMaterial::getMaterialId, material.getMaterialId());
+        if (supplier.isEmpty())
+            query.and(wrapper -> wrapper.isNull(InventoryMaterial::getSupplierName).or().eq(InventoryMaterial::getSupplierName, ""));
+        else query.eq(InventoryMaterial::getSupplierName, supplier);
+        query.last("LIMIT 1 FOR UPDATE");
+        if (!materialMapper.selectList(query).isEmpty())
+            throw new BusinessException("同供应商下型号已存在，请修改型号：" + material.getModel()
+                    + "（供应商：" + (supplier.isEmpty() ? "未填" : supplier) + "）");
     }
 
     public static void validateSize(String size) {

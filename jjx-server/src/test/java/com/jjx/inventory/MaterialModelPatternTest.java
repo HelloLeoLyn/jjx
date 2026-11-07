@@ -95,7 +95,7 @@ class MaterialModelPatternTest {
     @Test void duplicatesAreGlobalInCreateAndEditAndSelfIsExcluded() {
         var duplicate = new InventoryMaterial(); duplicate.setModel("PET125"); duplicate.setCategoryId(2L);
         when(materials.selectList(any(Wrapper.class))).thenReturn(List.of(duplicate));
-        assertTrue(assertThrows(BusinessException.class, () -> service.save(draft(), "codex")).getMessage().contains("全局唯一"));
+        assertTrue(assertThrows(BusinessException.class, () -> service.save(draft(), "codex")).getMessage().contains("同供应商下型号已存在"));
         configure(3L, pattern);
         var other = draft(); other.setCategoryId(3L);
         assertThrows(BusinessException.class, () -> service.save(other, "codex"));
