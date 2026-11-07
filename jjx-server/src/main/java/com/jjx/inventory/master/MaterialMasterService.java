@@ -38,6 +38,19 @@ public class MaterialMasterService {
     private static final List<String> REQUIRED_FIELD_KEYS =
             List.of("material_grade", "model", "color", "specification", "brand");
 
+    /** 型号占用查询（dev-20261107-012）：全局唯一，排除自身；返回占用物料摘要或 null。 */
+    public Map<String, Object> modelOccupied(String model, Long excludeId) {
+        if (model == null || model.isBlank()) return null;
+        var wrapper = new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.jjx.inventory.domain.InventoryMaterial>()
+                .eq(com.jjx.inventory.domain.InventoryMaterial::getModel, model.trim())
+                .ne(excludeId != null, com.jjx.inventory.domain.InventoryMaterial::getMaterialId, excludeId)
+                .last("LIMIT 1");
+        var hit = materialMapper.selectOne(wrapper);
+        if (hit == null) return null;
+        return Map.of("materialId", hit.getMaterialId(), "materialCode", hit.getMaterialCode(),
+                "materialName", hit.getMaterialName() == null ? "" : hit.getMaterialName());
+    }
+
     public Map<String, Boolean> requiredFields(Long categoryId) {
         var category = materialMapper.selectCategory(categoryId);
         if (category == null) throw new BusinessException("分类不存在");

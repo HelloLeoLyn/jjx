@@ -100,6 +100,12 @@ export const materialMasterApi = {
   renderNaming: (categoryId: number, material: unknown) =>
     request.post<R<string | null>>(`${base}/naming/render`, { categoryId, material }),
   /** 新建表单型号预览：生成逻辑只在后端实现。 */
+  /** 型号占用查询（全局唯一，排除自身）：返回占用物料摘要或 null（dev-20261107-012） */
+  checkModel: (model: string, excludeId?: number | null) =>
+    request.get<R<{ materialId: number; materialCode: string; materialName: string } | null>>(
+      `${base}/model/check`,
+      { params: { model, excludeId: excludeId ?? undefined } }
+    ),
   renderModel: (categoryId: number, material: unknown) =>
     request.post<R<string | null>>(`${base}/model/render`, { categoryId, material }),
   /** 批量改名预演（按品类已保存规则） */

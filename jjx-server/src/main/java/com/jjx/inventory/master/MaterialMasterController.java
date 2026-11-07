@@ -222,6 +222,13 @@ public class MaterialMasterController extends BaseController {
     }
 
     /** 型号规则渲染：用当前表单值按已保存规则预览内部型号（只读）。 */
+    @GetMapping("/model/check")
+    @SaCheckLogin
+    public Result<java.util.Map<String, Object>> checkModel(@RequestParam String model,
+            @RequestParam(required = false) Long excludeId) {
+        return Result.success(service.modelOccupied(model, excludeId));
+    }
+
     @PostMapping("/model/render")
     @SaCheckPermission(value = {"inventory:category:list", "inventory:material:view"}, mode = SaMode.OR)
     public Result<String> renderModel(@RequestBody NamingRenderRequest request) {

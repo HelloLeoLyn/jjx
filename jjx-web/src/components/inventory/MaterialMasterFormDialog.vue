@@ -248,8 +248,22 @@
               maxlength="100"
               data-test="material-model"
               @input="onModelInput"
-            />
+              @blur="onModelBlur"
+            >
+              <template v-if="canRegenerateModel" #append>
+                <el-button data-test="material-model-regenerate" @click="regenerateModel">
+                  {{ form.materialId ? '按规则重算' : '重新生成' }}
+                </el-button>
+              </template>
+            </el-input>
+            <div v-if="modelDuplicate" class="field-hint model-duplicate">
+              型号已存在（物料编码 {{ modelDuplicate.materialCode }}）
+            </div>
             <div class="field-hint">{{ modelHint }}</div>
+            <div v-if="modelBasisText" class="field-hint">依据：{{ modelBasisText }}</div>
+            <el-button v-if="!modelPatternFields.length" link type="primary" @click="goNamingRule">
+              去配置「型号规则」
+            </el-button>
           </el-form-item>
           <el-form-item
             label="规格"
@@ -288,7 +302,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
 import { materialApi } from '@/api/inventory/material'
 import type { InventoryMaterial } from '@/types/inventory/material'
@@ -316,6 +330,8 @@ import {
   pruneAttributes,
 } from './materialMasterModel'
 import { el } from 'element-plus/es/locale/index.mjs'
+
+const router = useRouter()
 
 const props = defineProps<{
   modelValue: boolean
@@ -444,6 +460,46 @@ const modelHint = computed(() => {
     ? '按当前品类规则自动生成，也可直接修改。'
     : '该品类未配置型号生成规则，请直接填写。'
 })
+const modelDuplicate = ref<{ materialCode?: string } | null>(null)
+const modelPatternFields = computed(() => configuration.value?.schema.model_pattern?.fields || [])
+const modelBasisText = computed(() => {
+  if (!modelPatternFields.value.length) return ''
+  const prefix = configuration.value?.category?.modelPrefix || ''
+  return [prefix ? '前缀 ' + prefix : '', modelPatternFields.value.join(' + ')].filter(Boolean).join('，')
+})
+const canRegenerateModel = computed(() => {
+  if (!modelPatternFields.value.length) return false
+  if (form.materialId) return true
+  return modelManual.value
+})
+async function onModelBlur() {
+  const value = form.model.trim()
+  if (!value) {
+    modelDuplicate.value = null
+    return
+  }
+  try {
+    const response = await materialMasterApi.checkModel(value, form.materialId)
+    modelDuplicate.value = response.data || null
+  } catch {
+    modelDuplicate.value = null
+  }
+}
+async function regenerateModel() {
+  if (form.materialId) {
+    try {
+      await ElMessageBox.confirm('按当前品类型号规则重算型号？保存后仍会校验唯一性。', '按规则重算型号', { type: 'warning' })
+    } catch {
+      return
+    }
+  }
+  modelManual.value = false
+  modelDuplicate.value = null
+  await refreshModel(true)
+}
+function goNamingRule() {
+  router.push('/inventory/material-admin/naming-rule')
+}
 let modelRequest = 0
 let modelTimer: ReturnType<typeof setTimeout> | undefined
 function onModelInput() {
@@ -468,11 +524,10 @@ function modelDraft() {
     isSample: form.isSample,
   }
 }
-async function refreshModel() {
+async function refreshModel(force = false) {
   if (
-    props.materialId ||
-    form.materialId ||
-    modelManual.value ||
+    (!force && (props.materialId || form.materialId)) ||
+    (!force && modelManual.value) ||
     !form.categoryId ||
     !configuration.value?.schema.model_pattern?.fields.length
   )
@@ -485,9 +540,7 @@ async function refreshModel() {
     request === modelRequest &&
     currentSession === session &&
     categoryId === form.categoryId &&
-    !props.materialId &&
-    !form.materialId &&
-    !modelManual.value &&
+    (force || (!props.materialId && !form.materialId && !modelManual.value)) &&
     visible.value
   ) {
     form.model = response.data || ''
@@ -1021,6 +1074,10 @@ watch(
     max-width: 100%;
   }
 }
+.model-duplicate {
+  color: var(--el-color-danger);
+}
+
 .field-hint {
   margin-top: 4px;
   font-size: 12px;
