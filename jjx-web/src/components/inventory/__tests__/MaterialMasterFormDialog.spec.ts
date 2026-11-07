@@ -28,6 +28,8 @@ const mocks = vi.hoisted(() => ({
   configuration: vi.fn(),
   requiredFields: vi.fn(),
   renderSpec: vi.fn(),
+  renderModel: vi.fn(),
+  checkModel: vi.fn(),
   detail: vi.fn(),
   save: vi.fn(),
   tags: vi.fn(),
@@ -129,6 +131,8 @@ beforeEach(() => {
   mocks.tags.mockResolvedValue({ data: [] })
   mocks.requiredFields.mockResolvedValue({ data: { material_grade: false, model: false, color: false, specification: false, brand: false } })
   mocks.renderSpec.mockResolvedValue({ data: '300mm' })
+  mocks.renderModel.mockResolvedValue({ data: 'PC-300' })
+  mocks.checkModel.mockResolvedValue({ data: null })
   mocks.configuration.mockImplementation((id) =>
     Promise.resolve({ data: config(id, id === 2 ? 'PC' : 'PET') })
   )
@@ -389,6 +393,95 @@ describe('名称型号规格集中结果区', () => {
     await wrapper.findAll('button').find(button => button.text() === '恢复按规则生成')!.trigger('click')
     expect(state.form.nameManual).toBe(false)
     expect(state.form.materialName).toBe('规则生成名称')
+    wrapper.unmount()
+  })
+})
+
+describe('型号还原命名（dev-20261107-018）', () => {
+  const stateOf = (wrapper: ReturnType<typeof create>) => (wrapper.vm as any).$.setupState
+  const withPattern = (id = 2): MaterialMasterConfiguration => {
+    const base = config(id, 'PC')
+    return {
+      ...base,
+      schema: {
+        ...base.schema,
+        model_pattern: { fields: ['materialMeta', 'color'], separator: '-', empty: 'skip' },
+      },
+    }
+  }
+
+  it('新建态手改型号后出现「恢复按规则生成」，点击回到自动同步并立即重算', async () => {
+    mocks.configuration.mockResolvedValue({ data: withPattern() })
+    mocks.renderModel.mockResolvedValue({ data: 'PC-BLACK-001' })
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(2)
+    await flushPromises()
+    expect(wrapper.find('[data-test="material-model-restore-auto"]').exists()).toBe(false)
+
+    await wrapper.get('[data-test="material-model"]').setValue('手改型号')
+    expect(state.modelManual).toBe(true)
+    const restore = wrapper.get('[data-test="material-model-restore-auto"]')
+    expect(restore.text()).toBe('恢复按规则生成')
+
+    await restore.trigger('click')
+    await flushPromises()
+    expect(state.modelManual).toBe(false)
+    expect(state.form.model).toBe('PC-BLACK-001')
+    expect(mocks.renderModel).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('新建态「撤销手改」回退到最近规则值，且不请求规则接口', async () => {
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(2)
+    await flushPromises()
+    state.modelAutoValue = 'PC-BLACK-002'
+    await wrapper.get('[data-test="material-model"]').setValue('手改型号')
+    const calls = mocks.renderModel.mock.calls.length
+    const revert = wrapper.get('[data-test="material-model-revert"]')
+    expect(revert.text()).toBe('撤销手改')
+    await revert.trigger('click')
+    await flushPromises()
+    expect(state.form.model).toBe('PC-BLACK-002')
+    expect(state.modelManual).toBe(false)
+    expect(mocks.renderModel.mock.calls.length).toBe(calls)
+    wrapper.unmount()
+  })
+
+  it('编辑态保留「按规则重算」，「撤销修改」回到打开时型号且不发请求', async () => {
+    mocks.detail.mockResolvedValue({
+      data: {
+        material: {
+          materialId: 100,
+          categoryId: 2,
+          materialName: '已有物料',
+          model: 'OLD-001',
+          unit: 'M',
+        },
+        attributes: {},
+        tags: [],
+        configuration: withPattern(),
+      },
+    })
+    const wrapper = create({ materialId: 100 })
+    await flushPromises()
+    const state = stateOf(wrapper)
+    expect(state.modelBaseline).toBe('OLD-001')
+    // el-input 的 #append 插槽在测试 stub 中不渲染，直接断言按钮的显示条件
+    expect(state.canRegenerateModel).toBe(true)
+
+    await wrapper.get('[data-test="material-model"]').setValue('手改型号')
+    const calls = mocks.renderModel.mock.calls.length
+    const revert = wrapper.get('[data-test="material-model-revert"]')
+    expect(revert.text()).toBe('撤销修改')
+    await revert.trigger('click')
+    await flushPromises()
+    expect(state.form.model).toBe('OLD-001')
+    expect(mocks.renderModel.mock.calls.length).toBe(calls)
     wrapper.unmount()
   })
 })

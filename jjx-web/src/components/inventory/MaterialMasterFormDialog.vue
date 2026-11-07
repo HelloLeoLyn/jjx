@@ -266,7 +266,27 @@
             <div v-if="modelDuplicate" class="field-hint model-duplicate">
               型号已存在（物料编码 {{ modelDuplicate.materialCode }}）
             </div>
-            <div class="field-hint">{{ modelHint }}</div>
+            <div class="field-hint" :class="{ manual: modelManual }">{{ modelHint }}</div>
+            <div class="model-restore">
+              <el-button
+                v-if="!form.materialId && modelManual && canRestoreAutoModel"
+                link
+                type="primary"
+                size="small"
+                data-test="material-model-restore-auto"
+                @click="restoreAutoModel"
+                >恢复按规则生成</el-button
+              >
+              <el-button
+                v-if="canRevertModel"
+                link
+                type="primary"
+                size="small"
+                data-test="material-model-revert"
+                @click="revertModel"
+                >{{ form.materialId ? '撤销修改' : '撤销手改' }}</el-button
+              >
+            </div>
             <div v-if="modelBasisText" class="field-hint">依据：{{ modelBasisText }}</div>
             <el-button v-if="!modelPatternFields.length" link type="primary" @click="goNamingRule">
               去配置「型号规则」
@@ -463,6 +483,10 @@ watch(
 )
 /** 型号预览只用于新建；手改后停止同步，异步旧响应不能覆盖手改或新会话。 */
 const modelManual = ref(false)
+/** 最近一次按规则生成的型号：「撤销手改」的本地回退点（新建态）。 */
+const modelAutoValue = ref('')
+/** 打开弹窗时的原型号：「撤销修改」的回退点（编辑态）。 */
+const modelBaseline = ref('')
 const modelHint = computed(() => {
   if (modelManual.value) return '已手动修改，型号不再自动同步。'
   if (props.materialId || form.materialId)
@@ -483,6 +507,34 @@ const canRegenerateModel = computed(() => {
   if (form.materialId) return true
   return modelManual.value
 })
+/** 只有新建态能「恢复自动生成」：编辑态永不自动重算，避免历史型号被悄悄改掉。 */
+const canRestoreAutoModel = computed(
+  () => !form.materialId && modelPatternFields.value.length > 0
+)
+/** 撤销入口只在「当前值与回退点不同」时出现，避免无意义的按钮。 */
+const canRevertModel = computed(() => {
+  const baseline = form.materialId ? modelBaseline.value : modelAutoValue.value
+  return !!baseline && form.model !== baseline
+})
+/** 恢复按规则生成：回到自动同步并立即按当前资料重算（无二次确认）。 */
+async function restoreAutoModel() {
+  if (!canRestoreAutoModel.value) return
+  modelManual.value = false
+  modelDuplicate.value = null
+  modelRequest++
+  if (!(await refreshModel(true))) return
+  void onModelBlur()
+}
+/** 撤销手改：只回退到回退点，不请求规则接口（程序赋值不触发 blur，需主动查重）。 */
+function revertModel() {
+  const baseline = form.materialId ? modelBaseline.value : modelAutoValue.value
+  if (!baseline) return
+  modelRequest++
+  form.model = baseline
+  modelDuplicate.value = null
+  if (!form.materialId) modelManual.value = false
+  void onModelBlur()
+}
 async function onModelBlur() {
   const value = form.model.trim()
   if (!value) {
@@ -555,6 +607,7 @@ async function refreshModel(force = false) {
     visible.value
   ) {
     form.model = response.data || ''
+    modelAutoValue.value = form.model
     return true
   }
   return (
@@ -786,6 +839,8 @@ async function selectCategory(id: number) {
 async function initialize() {
   sizeValid.value = true
   modelManual.value = false
+  modelAutoValue.value = ''
+  modelBaseline.value = ''
   modelRequest++
   if (modelTimer) clearTimeout(modelTimer)
   const currentSession = ++session
@@ -849,6 +904,7 @@ async function initialize() {
         self?.parentId != null && hasChildren(self.parentId)
           ? self.parentId
           : (form.categoryId ?? null)
+      modelBaseline.value = form.model || ''
     } else if (props.presetData) {
       if (props.presetData.materialName) {
         form.materialName = props.presetData.materialName
@@ -1106,5 +1162,10 @@ watch(
 }
 .field-hint.manual {
   color: #e6a23c;
+}
+.model-restore {
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
 }
 </style>
