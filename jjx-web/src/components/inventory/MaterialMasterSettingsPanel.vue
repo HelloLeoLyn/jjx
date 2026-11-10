@@ -325,9 +325,10 @@
                   :key="field"
                   class="naming-order-row"
                   draggable="true"
-                  :class="{ dragging: dragState?.kind === 'naming' && dragState?.index === index }"
-                  @dragstart="startDrag('naming', index)"
-                  @dragover.prevent
+                  :class="dragClasses('naming', index)"
+                  @dragstart="startDrag('naming', index, $event)"
+                  @dragover.prevent="dragOver('naming', index)"
+                  @dragleave.self="clearDropTarget"
                   @drop="dropAt('naming', index)"
                   @dragend="endDrag"
                 >
@@ -335,10 +336,9 @@
                   <span class="naming-order-label">{{ namingLabel(field) }}</span>
                   <el-input
                     :model-value="fieldSeparator(field)"
-                    maxlength="1"
                     class="naming-sep-input"
                     placeholder="分隔"
-                    title="该字段前的分隔符，只能 1 个字符；留空=紧贴上一个字段"
+                    title="该字段前的分隔符，允许 1–3 个字符；留空=紧贴上一个字段"
                     @update:model-value="(value: any) => setNameSeparator(field, value)"
                   />
                   <el-button link @click="setNameSeparator(field, ' ')">空格</el-button>
@@ -396,6 +396,7 @@
                 <el-table-column label="按规则生成" prop="newName" />
               </el-table>
               <el-divider />
+              <div class="naming-message">保存规则不会自动修改存量物料名称；请保存后预览差异，再使用「按规则批量改名」。</div>
               <el-button :loading="renameLoading" @click="previewRename">预览改名差异</el-button>
               <el-button
                 type="danger"
@@ -431,11 +432,19 @@
                   :model-value="modelPattern.fields.includes(token.key)"
                   @update:model-value="value => toggleModelField(token.key, !!value)">{{ token.label }}</el-checkbox>
               </div>
-              <div v-for="(field, index) in modelPattern.fields" :key="field" class="naming-order-row">
+              <div class="naming-actions">
+                <el-button link type="primary" @click="selectAllModel">全选</el-button>
+                <el-button link @click="resetModel">重置</el-button>
+              </div>
+              <div v-for="(field, index) in modelPattern.fields" :key="field" class="naming-order-row"
+                draggable="true" :class="dragClasses('model', index)"
+                @dragstart="startDrag('model', index, $event)"
+                @dragover.prevent="dragOver('model', index)" @dragleave.self="clearDropTarget"
+                @drop="dropAt('model', index)" @dragend="endDrag">
                 <span class="naming-order-no">{{ index + 1 }}</span>
                 <span class="naming-order-label">{{ namingLabel(field) }}</span>
-                <el-input :model-value="modelPattern.separators?.[field] ?? modelPattern.separator" maxlength="1"
-                  class="naming-sep-input" placeholder="分隔" title="字段前分隔符，空串表示紧贴"
+                <el-input :model-value="modelPattern.separators?.[field] ?? modelPattern.separator"
+                  class="naming-sep-input" placeholder="分隔" title="字段前分隔符，允许 1–3 个字符；空串表示紧贴"
                   @update:model-value="value => setModelSeparator(field, value)" />
                 <el-select v-if="isDimensionField(field)" :model-value="modelPattern.units?.[field] || 'mm'"
                   :aria-label="`${namingLabel(field)}型号单位`" style="width: 100px" @update:model-value="value => setModelUnit(field, value)">
@@ -484,9 +493,10 @@
                   :key="item.key"
                   class="naming-order-row"
                   draggable="true"
-                  :class="{ dragging: dragState?.kind === 'spec' && dragState?.index === index }"
-                  @dragstart="startDrag('spec', index)"
-                  @dragover.prevent
+                  :class="dragClasses('spec', index)"
+                  @dragstart="startDrag('spec', index, $event)"
+                  @dragover.prevent="dragOver('spec', index)"
+                  @dragleave.self="clearDropTarget"
                   @drop="dropAt('spec', index)"
                   @dragend="endDrag"
                 >
@@ -494,10 +504,9 @@
                   <span class="naming-order-label">{{ specLabel(item.key) }}</span>
                   <el-input
                     :model-value="item.sep"
-                    maxlength="1"
                     class="naming-sep-input"
                     placeholder="分隔"
-                    title="该字段前的分隔符，只能 1 个字符；留空=紧贴上一个字段"
+                    title="该字段前的分隔符，允许 1–3 个字符；留空=紧贴上一个字段"
                     @update:model-value="(value: any) => setSpecSep(index, value)"
                   />
                   <el-button link @click="setSpecSep(index, '；')">；</el-button>
@@ -698,7 +707,7 @@ function moveSpecField(index: number, offset: -1 | 1) {
   fields.splice(target, 0, item)
 }
 function setSpecSep(index: number, value: string | number) {
-  const next = String(value ?? '').slice(0, 1)
+  const next = String(value ?? '')
   specPattern.value.fields[index] = { ...specPattern.value.fields[index], sep: next }
 }
 
@@ -808,7 +817,7 @@ function moveModelField(index: number, offset: number) {
   fields.splice(target, 0, field)
 }
 function setModelSeparator(field: string, value: string | number) {
-  modelPattern.value.separators = { ...modelPattern.value.separators, [field]: String(value ?? '').slice(0, 1) }
+  modelPattern.value.separators = { ...modelPattern.value.separators, [field]: String(value ?? '') }
 }
 function setModelUnit(field: string, value: string) {
   modelPattern.value.units = { ...modelPattern.value.units, [field]: value as MaterialDimensionUnit }
@@ -916,25 +925,50 @@ function fieldSeparator(field: string): string {
     : (namePattern.value.separator ?? ' ')
 }
 
-/** 设置单字段分隔符：只允许 1 个字符，空串表示紧贴上一个字段 */
+/** 设置单字段分隔符：允许 1–3 个字符，空串表示紧贴上一个字段 */
 function setNameSeparator(field: string, value: string | number) {
-  const next = String(value ?? '').slice(0, 1)
+  const next = String(value ?? '')
   namePattern.value.separators = { ...(namePattern.value.separators || {}), [field]: next }
 }
 
-const dragState = ref<{ kind: 'naming' | 'spec'; index: number } | null>(null)
-function startDrag(kind: 'naming' | 'spec', index: number) {
+function selectAllModel() {
+  modelPattern.value.fields = modelTokens.value.map(token => token.key)
+}
+function resetModel() {
+  modelPattern.value.fields = []
+}
+
+type DragKind = 'naming' | 'model' | 'spec'
+const dropTarget = ref<{ kind: DragKind; index: number } | null>(null)
+function dragClasses(kind: DragKind, index: number) {
+  return {
+    dragging: dragState.value?.kind === kind && dragState.value.index === index,
+    'drop-target': dropTarget.value?.kind === kind && dropTarget.value.index === index,
+  }
+}
+function clearDropTarget() { dropTarget.value = null }
+function dragOver(kind: DragKind, index: number) {
+  dropTarget.value = dragState.value?.kind === kind && dragState.value.index !== index ? { kind, index } : null
+}
+const dragState = ref<{ kind: DragKind; index: number } | null>(null)
+function startDrag(kind: DragKind, index: number, event?: DragEvent) {
+  clearDropTarget()
   dragState.value = { kind, index }
+  if (event?.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', `${kind}:${index}`)
+  }
 }
 function endDrag() {
+  clearDropTarget()
   dragState.value = null
 }
 /** 拖拽落位：同类型列表内把 from 移到 to（dev-20261030-004） */
-function dropAt(kind: 'naming' | 'spec', index: number) {
+function dropAt(kind: DragKind, index: number) {
   const from = dragState.value
-  dragState.value = null
+  endDrag()
   if (!from || from.kind !== kind || from.index === index) return
-  const list: any[] = kind === 'naming' ? namePattern.value.fields : (specPattern.value.fields as any[])
+  const list: any[] = kind === 'naming' ? namePattern.value.fields : kind === 'model' ? modelPattern.value.fields : specPattern.value.fields
   const [item] = list.splice(from.index, 1)
   list.splice(index, 0, item)
 }
@@ -1223,6 +1257,11 @@ async function savePattern(block: MaterialPatternBlock) {
   error.value = ''
   const pattern = clone(patternDraft(block))
   try {
+    const separators = block === 'spec_pattern'
+      ? specPattern.value.fields.map(field => field.sep ?? '')
+      : [((pattern as MaterialNamingPattern).separator ?? ''), ...Object.values((pattern as MaterialNamingPattern).separators ?? {})]
+    if (separators.some(value => Array.from(value).length > 3)) throw new Error('分隔符最多允许3个字符；留空表示紧贴')
+    if (separators.some(value => /[\u0000-\u001f\u007f-\u009f]/.test(value))) throw new Error('分隔符不能包含换行、制表符或其它控制字符')
     const response = await materialMasterApi.savePattern({ categoryId: templateCategoryId.value, block, pattern } as MaterialPatternSave)
     if (!response.data) throw new Error('规则保存结果为空，请重新加载确认')
     // 回读只合入本块，不重载整个表单，不覆盖其它块的草稿。
@@ -1278,10 +1317,11 @@ async function removeTemplate() {
 .naming-order { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
 .naming-order-row { display: flex; align-items: center; gap: 4px; }
 .naming-order-label { min-width: 90px; color: var(--el-text-color-regular); }
-.naming-sep-input { width: 56px; }
+.naming-sep-input { width: 90px; }
 .naming-actions { display: flex; gap: 8px; margin: -4px 0 8px; }
 .naming-order-no { min-width: 18px; text-align: right; color: var(--el-text-color-placeholder); font-size: 12px; }
 .naming-order-row { cursor: grab; }
+.naming-order-row.drop-target { outline: 2px solid var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .naming-order-row.dragging { background: var(--el-color-primary-light-9); }
 .naming-order-row .el-button { opacity: 0.35; }
 .naming-order-row:hover .el-button { opacity: 1; }

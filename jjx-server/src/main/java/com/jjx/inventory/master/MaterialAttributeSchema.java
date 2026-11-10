@@ -23,7 +23,7 @@ public record MaterialAttributeSchema(
         List<Field> fields,
         /** 命名规则：勾选参与命名的字段与顺序；为空表示未配置。 */
         @JsonProperty("name_pattern") MaterialNamingPattern namePattern,
-        /** 规格模板：字段顺序 + 每字段 1 字符分隔符；为空时回落旧拼接（dev-20261029-027）。 */
+        /** 规格模板：字段顺序 + 每字段 1–3 字符分隔符；为空时回落旧拼接（dev-20261029-027）。 */
         @JsonProperty("spec_pattern") SpecPattern specPattern,
         @JsonProperty("model_pattern") MaterialNamingPattern modelPattern) {
 
@@ -102,6 +102,7 @@ public record MaterialAttributeSchema(
             fields.forEach(field -> specKeys.add(field.key()));
             for (SpecPattern.SpecField item : specPattern.fields()) {
                 if (item == null || item.key() == null || item.key().isBlank()) continue;
+                MaterialNamingPattern.validatedSeparator(item.sep());
                 if (!specKeys.contains(item.key().trim())) fail("规格模板含未知字段：" + item.key());
                 if ((item.unit() != null || item.scale() != null) && !DIMENSION_KEYS.contains(item.key().trim()))
                     fail("只有宽、长、厚允许配置显示单位和小数位：" + item.key());
@@ -243,7 +244,7 @@ public record MaterialAttributeSchema(
             if (specPattern.showLabel()) display = specLabel(key) + ":" + display;
             if ("each".equals(position)) display += unit;
             lastUnit = unit;
-            String sep = item.sep() == null || item.sep().isEmpty() ? "；" : item.sep().substring(0, 1);
+            String sep = item.sep() == null ? "；" : MaterialNamingPattern.validatedSeparator(item.sep());
             if (!first) text.append(sep);
             text.append(display);
             first = false;

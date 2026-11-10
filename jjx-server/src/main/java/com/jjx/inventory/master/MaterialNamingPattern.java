@@ -17,7 +17,7 @@ import java.util.Set;
  * 取值优先用物料主数据列，属性字段取 attribute_json（枚举按选项名称输出）。
  */
 public record MaterialNamingPattern(List<String> fields, String separator, String empty,
-                                    /** 每个字段自己的分隔符（1 个字符，空=紧贴上一个）；缺省回落到 separator（dev-20261029-024）。 */
+                                    /** 每个字段自己的分隔符（1–3 个字符，空=紧贴上一个）；缺省回落到 separator（dev-20261029-024）。 */
                                     Map<String, String> separators,
                                     /** 尺寸字段的输出单位；不配置保持原值，不输出单位文字。 */
                                     Map<String, String> units) {
@@ -61,25 +61,34 @@ public record MaterialNamingPattern(List<String> fields, String separator, Strin
         return new MaterialNamingPattern(List.of("brand", "model", "thickness_mm", "width", "length"), DEFAULT_SEPARATOR, "skip");
     }
 
-    /** 归一：去重保序、字段名小写；分隔符取首个字符，缺省空格；empty 只接受 skip/placeholder。 */
+    /** 归一：去重保序、字段名小写；分隔符保留 1–3 个字符，缺省空格；empty 只接受 skip/placeholder。 */
     public MaterialNamingPattern normalized() {
         Set<String> keys = new LinkedHashSet<>();
         for (String field : fields == null ? List.<String>of() : fields) {
             if (field != null && !field.isBlank()) keys.add(field.trim().toLowerCase());
         }
-        String sep = separator == null || separator.isEmpty() ? DEFAULT_SEPARATOR : separator.substring(0, 1);
+        String sep = separator == null || separator.isEmpty() ? DEFAULT_SEPARATOR : validatedSeparator(separator);
         String emptyMode = "placeholder".equals(empty) ? "placeholder" : "skip";
         Map<String, String> perField = new LinkedHashMap<>();
         if (separators != null) {
             for (String key : keys) {
                 String value = separators.get(key);
                 if (value == null) continue;
-                // 分隔符只能 1 个字符；空串表示紧贴上一个字段
-                perField.put(key, value.isEmpty() ? "" : value.substring(0, 1));
+                // 空串表示紧贴上一个字段。
+                perField.put(key, validatedSeparator(value));
             }
         }
         return new MaterialNamingPattern(List.copyOf(keys), sep, emptyMode, Map.copyOf(perField),
                 units == null ? Map.of() : Map.copyOf(units));
+    }
+
+    /** 分隔符保真；由保存、预览与生成共用校验。 */
+    public static String validatedSeparator(String value) {
+        if (value != null && value.codePointCount(0, value.length()) > 3)
+            throw new com.jjx.common.exception.BusinessException("分隔符最多允许3个字符；留空表示紧贴");
+        if (value != null && value.codePoints().anyMatch(Character::isISOControl))
+            throw new com.jjx.common.exception.BusinessException("分隔符不能包含换行、制表符或其它控制字符");
+        return value;
     }
 
     /** 允许的字段：公共字段 + 本品类属性字段。 */

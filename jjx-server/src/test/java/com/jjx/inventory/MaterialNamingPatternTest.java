@@ -40,6 +40,49 @@ class MaterialNamingPatternTest {
     }
 
     @Test
+    void 多字符分隔符归一和序列化回读均保真且空串紧贴() throws Exception {
+        for (String separator : List.of("-", "/-", "-/-", "分隔符", "😀/😀", " / ", " ", "")) {
+            var pattern = new MaterialNamingPattern(List.of("brand", "model"), "-", "skip",
+                    Map.of("model", separator));
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var read = mapper.readValue(mapper.writeValueAsString(pattern.normalized()), MaterialNamingPattern.class);
+            assertEquals(separator, read.separators().get("model"));
+            assertEquals("3M" + separator + "125", read.compose(material(), SCHEMA));
+        }
+        assertEquals("3M/-125", new MaterialNamingPattern(List.of("brand", "model"), "/-", "skip")
+                .compose(material(), SCHEMA));
+        assertEquals("-", new MaterialNamingPattern(List.of("brand", "model"), "-", "skip").normalized().separator());
+    }
+
+    @Test
+    void 超长分隔符在全局逐字段和型号规则均被拒绝() {
+        var global = new MaterialNamingPattern(List.of("brand", "model"), "abcd", "skip");
+        var perField = new MaterialNamingPattern(List.of("brand", "width"), "-", "skip", Map.of("width", "abcd"));
+        assertEquals("分隔符最多允许3个字符；留空表示紧贴", assertThrows(BusinessException.class,
+                () -> global.validate(SCHEMA)).getMessage());
+        assertThrows(BusinessException.class, () -> perField.validate(SCHEMA));
+        assertThrows(BusinessException.class, () -> perField.forModel().validateModel(SCHEMA));
+        var model = new MaterialNamingPattern(List.of("brand", "width"), "", "skip", Map.of("width", "/-"));
+        assertEquals("3M/-300", model.forModel().compose(material(), SCHEMA));
+    }
+
+    @Test
+    void 命名和型号拒绝控制字符且旧单空格保真() {
+        for (String sep : List.of("\n", "\t", "\r", "\u0000", "\u007f", "\u0085")) {
+            var pattern = new MaterialNamingPattern(List.of("brand", "width"), sep, "skip");
+            assertThrows(BusinessException.class, () -> pattern.validate(SCHEMA));
+            var perField = new MaterialNamingPattern(List.of("brand", "width"), " ", "skip", Map.of("width", sep));
+            assertThrows(BusinessException.class, () -> perField.validate(SCHEMA));
+            assertThrows(BusinessException.class, () -> perField.forModel().validateModel(SCHEMA));
+        }
+        for (String sep : List.of(" / ", " ", "")) {
+            var pattern = new MaterialNamingPattern(List.of("brand", "width"), " ", "skip", Map.of("width", sep));
+            assertEquals(sep, pattern.normalized().separators().get("width"));
+            assertEquals("3M" + sep + "300", pattern.forModel().compose(material(), SCHEMA));
+        }
+    }
+
+    @Test
     void 按勾选顺序拼装并跳过缺值() {
         var pattern = new MaterialNamingPattern(
                 List.of("brand", "model", "thickness_mm", "width", "length", "surface_treatment", "unit"), " ", "skip");
@@ -47,7 +90,7 @@ class MaterialNamingPatternTest {
     }
 
     @Test
-    void 缺值可占位且分隔符取首个字符() {
+    void 缺值可占位且使用配置分隔符() {
         var pattern = new MaterialNamingPattern(List.of("brand", "color", "unit"), "-", "placeholder");
         assertEquals("3M-黑色-—", pattern.compose(material(), SCHEMA, null, null, "黑色"));
     }

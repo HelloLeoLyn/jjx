@@ -192,6 +192,94 @@ describe('属性模板界面保存', () => {
     await flushPromises()
     return { wrapper, state }
   }
+  it.each(['name_pattern', 'model_pattern', 'spec_pattern'])('%s 多字符/空串保存回读保真，4字符拒绝保存且中文提示', async block => {
+    const { wrapper, state } = await loadedPanel()
+    state.toggleNameField('brand', true)
+    state.toggleModelField('brand', true)
+    state.toggleSpecField('brand', true)
+    const set = (value: string) => block === 'name_pattern' ? state.setNameSeparator('brand', value)
+      : block === 'model_pattern' ? state.setModelSeparator('brand', value) : state.setSpecSep(0, value)
+    const separator = (pattern: any) => block === 'spec_pattern' ? pattern.fields[0].sep : pattern.separators.brand
+    for (const value of ['-', '/-', '-/-', '😀/😀', ' / ', ' ', '']) {
+      set(value)
+      await state.savePattern(block)
+      expect(separator(state.schema[block])).toBe(value)
+      expect(separator(state.patternDraft(block))).toBe(value)
+      expect(state.error).toBe('')
+    }
+    api.savePattern.mockClear()
+    set('abcd')
+    await state.savePattern(block)
+    expect(api.savePattern).not.toHaveBeenCalled()
+    expect(state.error).toContain('分隔符最多允许3个字符')
+    expect(state.isDirty(block)).toBe(true)
+    for (const value of ['\n', '\t', '\r', '\u0000', '\u007f', '\u0085']) {
+      set(value)
+      await state.savePattern(block)
+      expect(api.savePattern).not.toHaveBeenCalled()
+      expect(state.error).toContain('分隔符不能包含换行、制表符或其它控制字符')
+    }
+    wrapper.unmount()
+  })
+
+  it('型号全选按命名候选顺序且排除自身，重置只清本块字段并标记未保存', async () => {
+    const { wrapper, state } = await loadedPanel()
+    state.toggleNameField('brand', true)
+    state.toggleSpecField('width', true)
+    state.setModelSeparator('brand', '-')
+    state.setModelUnit('width', 'cm')
+    const panel = wrapper.get('[data-test="model-pattern"]')
+    await panel.findAll('button').find(button => button.text() === '全选')!.trigger('click')
+    expect(state.modelPattern.fields).toEqual(state.namingTokens.map((token: any) => token.key).filter((key: string) => key !== 'model'))
+    await state.savePattern('model_pattern')
+    expect(state.isDirty('model_pattern')).toBe(false)
+    await panel.findAll('button').find(button => button.text() === '重置')!.trigger('click')
+    expect(state.modelPattern.fields).toEqual([])
+    expect(state.modelPattern.separators).toEqual({ brand: '-' })
+    expect(state.modelPattern.units).toEqual({ width: 'cm' })
+    expect(state.blockTitle('model_pattern', '型号规则')).toContain('未保存')
+    expect(state.namePattern.fields).toEqual(['brand'])
+    expect(state.specPattern.fields).toEqual([{ key: 'width', sep: '' }])
+    wrapper.unmount()
+  })
+
+  it.each([
+    ['naming', 'name_pattern'], ['model', 'model_pattern'], ['spec', 'spec_pattern'],
+  ])('%s 拖拽有落点高亮，取消/跨块不排序，保存回读保留顺序与字段配置', async (kind, block) => {
+    const { wrapper, state } = await loadedPanel()
+    state.namePattern.fields = ['brand', 'width', 'color']
+    state.modelPattern.fields = ['brand', 'width', 'color']
+    state.modelPattern.units = { width: 'cm' }
+    state.specPattern.fields = [{ key: 'brand', sep: '' }, { key: 'width', sep: '*', unit: 'cm', scale: 2 }, { key: 'color', sep: '-' }]
+    await flushPromises()
+    const fields = () => state.patternDraft(block).fields
+    const keys = () => fields().map((field: any) => typeof field === 'string' ? field : field.key)
+    const groups = wrapper.findAll('.naming-rule').filter(group => group.findAll('.naming-order-row').length)
+    const group = groups[['naming', 'model', 'spec'].indexOf(kind)]
+    let rows = group.findAll('.naming-order-row')
+    await rows[0].trigger('dragstart')
+    await rows[2].trigger('dragover')
+    expect(rows[2].classes()).toContain('drop-target')
+    expect(rows[0].classes()).not.toContain('drop-target')
+    await rows[0].trigger('dragend')
+    expect(group.find('.drop-target').exists()).toBe(false)
+    expect(keys()).toEqual(['brand', 'width', 'color'])
+    state.startDrag(kind, 0)
+    state.dropAt(kind === 'spec' ? 'model' : 'spec', 2)
+    expect(keys()).toEqual(['brand', 'width', 'color'])
+    await rows[0].trigger('dragstart')
+    await rows[2].trigger('dragover')
+    await rows[2].trigger('drop')
+    expect(keys()).toEqual(['width', 'color', 'brand'])
+    expect(group.find('.drop-target').exists()).toBe(false)
+    await state.savePattern(block)
+    expect(state.schema[block].fields).toEqual(fields())
+    expect(state.isDirty(block)).toBe(false)
+    if (kind === 'spec') expect(fields()[0]).toMatchObject({ key: 'width', sep: '*', unit: 'cm', scale: 2 })
+    if (kind === 'model') expect(state.schema[block].units).toEqual({ width: 'cm' })
+    wrapper.unmount()
+  })
+
   it('四个子页签各自标记未保存，切换只提示一次，取消留在本块且不丢草稿', async () => {
     const { wrapper, state } = await loadedPanel({ initialTab: 'template' })
     expect(wrapper.find('.block-tabs').exists()).toBe(true)
