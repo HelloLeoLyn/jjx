@@ -1,6 +1,6 @@
 /**
- * 单条「重算名称与规格」纯逻辑（dev-20261024-004）。
- * 只负责对比与最终取值；名称与规格生成规则由后端提供。
+ * 单条「按规则生成」展示逻辑（dev-20261024-004）。
+ * 只负责对比与最终取值；生成规则由后端提供。
  */
 import { dimensionField, displayDimensionOf } from './materialSize'
 import type {
@@ -53,7 +53,9 @@ export function diffCharacters(current: string, generated: string) {
 
 const fieldLabels: Record<string, string> = {
   category: '品类',
+  categoryprefix: '品类前缀',
   brand: '品牌',
+  brandabbr: '品牌·缩写',
   meta: '材质',
   form: '形态',
   model: '型号',
@@ -63,6 +65,8 @@ const fieldLabels: Record<string, string> = {
   thickness_mm: '厚',
   grammage: '克重',
   supplier: '供应商',
+  suppliershort: '供应商·简称',
+  supplierabbr: '供应商·缩写',
   customersupplied: '客供',
   sampleonly: '样品',
   unit: '单位',
@@ -74,8 +78,14 @@ export function describeRegenerationRules(schema?: MaterialAttributeSchema | nul
     fieldLabels[key] || schema?.fields.find((f) => f.key === key)?.label || key
   const name = schema?.name_pattern
   const spec = schema?.spec_pattern
+  const model = schema?.model_pattern
   const nameSeparator = name?.separator || ' '
   return {
+    model: model?.fields.length
+      ? model.fields.map((key, index) =>
+          `${index ? (model.separators?.[key] ?? model.separator ?? ' ') : ''}${label(key)}`
+        ).join('')
+      : '该品类未配置型号规则，保留原型号',
     name: name?.fields.length
       ? name.fields
           .map(

@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="重算名称与规格" width="860px" append-to-body>
+  <el-dialog v-model="visible" title="按规则生成" width="860px" append-to-body>
     <el-skeleton v-if="loading" :rows="6" animated />
     <template v-else-if="result">
       <div class="diff-legend">差异标记：<del>删除</del> / <ins>新增</ins></div>
@@ -43,6 +43,9 @@
             规格由后端按模板重算、不能手改。如需调整请回编辑改属性/厚度/尺寸。
           </div>
         </template>
+        <div v-if="row.label === '型号' && modelUnavailable" class="evidence-line">
+          {{ modelUnavailable }}
+        </div>
       </section>
 
       <el-form label-width="96px" class="regen-form">
@@ -52,6 +55,15 @@
             采用生成名称（会替换当前人工确认的名称）
           </el-checkbox>
         </el-form-item>
+        <el-form-item label="最终型号">
+          <span data-test="final-model">{{ adoptModel ? generatedModel : currentModel || '—' }}</span>
+          <el-checkbox
+            v-if="generatedModel && generatedModel !== currentModel"
+            v-model="adoptModel"
+            data-test="adopt-model"
+            class="adopt-check"
+          >采用生成型号（会替换当前型号，并更新名称与规格预览）</el-checkbox>
+        </el-form-item>
       </el-form>
 
       <div class="evidence rules">
@@ -59,6 +71,7 @@
         <template v-if="!configurationError">
           <div class="evidence-line rule-text">命名规则：{{ rules.name }}</div>
           <div v-if="rules.nameDetails" class="evidence-line">{{ rules.nameDetails }}</div>
+          <div class="evidence-line rule-text">型号规则：{{ rules.model }}</div>
           <div class="evidence-line rule-text">规格模板：{{ rules.spec }}</div>
           <div v-if="rules.specDetails" class="evidence-line">{{ rules.specDetails }}</div>
         </template>
@@ -92,7 +105,7 @@
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="saving" :disabled="!canSave" @click="save">
-        {{ canSave ? '保存名称并按模板重算规格' : '无变化' }}
+        {{ canSave ? '保存确认结果' : '无变化' }}
       </el-button>
     </template>
   </el-dialog>
@@ -135,6 +148,15 @@ const saving = ref(false)
 const result = ref<RegenerationResult | null>(null)
 const finalName = ref('')
 const adoptGenerated = ref(false)
+const adoptModel = ref(false)
+const currentModel = ref('')
+const generatedModel = ref('')
+const modelUnavailable = ref('')
+const nameVariants = ref({ current: '', generated: '' })
+const specVariants = ref({ current: '', generated: '' })
+const specGeneratedVariants = ref({ current: false, generated: false })
+const specEvidenceVariants = ref({ current: '', generated: '' })
+const specUnavailableVariants = ref({ current: '', generated: '' })
 const nameEvidence = ref('')
 const rules = ref(describeRegenerationRules())
 const participants = ref<RegenerationValue[]>([])
@@ -143,6 +165,10 @@ const configurationError = ref('')
 const comparisonRows = computed(() =>
   result.value
     ? [
+        {
+          label: '型号',
+          diff: diffCharacters(currentModel.value, generatedModel.value || currentModel.value),
+        },
         {
           label: '名称',
           diff: diffCharacters(result.value.currentName, result.value.generatedName),
@@ -159,13 +185,29 @@ let loadRequest = 0
 const canSave = computed(
   () =>
     !!result.value &&
-    hasRegenerationChanges(result.value, finalName.value) &&
+    (hasRegenerationChanges(result.value, finalName.value) ||
+      (adoptModel.value && generatedModel.value !== currentModel.value)) &&
     !!finalName.value.trim() &&
+    !loading.value &&
     !saving.value
 )
 
 watch(adoptGenerated, () => {
   if (result.value) finalName.value = resolveFinalName(result.value, adoptGenerated.value)
+})
+
+watch(adoptModel, () => {
+  if (!result.value) return
+  const variant = adoptModel.value ? 'generated' : 'current'
+  result.value.generatedName = nameVariants.value[variant]
+  result.value.nameChanged = result.value.currentName !== result.value.generatedName
+  result.value.generatedSpec = specVariants.value[variant]
+  result.value.specGenerated = specGeneratedVariants.value[variant]
+  result.value.specChanged = result.value.currentSpec !== result.value.generatedSpec
+  result.value.evidence = [specEvidenceVariants.value[variant]]
+  specUnavailable.value = specUnavailableVariants.value[variant]
+  if (adoptGenerated.value || !result.value.currentName)
+    finalName.value = resolveFinalName(result.value, adoptGenerated.value)
 })
 
 async function readConfiguration(categoryId?: number | null): Promise<{
@@ -191,6 +233,10 @@ async function load(materialId: number) {
   loading.value = true
   result.value = null
   adoptGenerated.value = false
+  adoptModel.value = false
+  currentModel.value = ''
+  generatedModel.value = ''
+  modelUnavailable.value = ''
   try {
     const [detailResponse, dictResponse] = await Promise.all([
       materialMasterApi.detail(materialId),
@@ -208,7 +254,7 @@ async function load(materialId: number) {
     const specification = detail.specificationGeneration
     if (!specification) throw new Error('规格生成结果加载失败，请稍后重试')
     // 与新增/编辑共用后端命名规则；仅无规则/无生成内容时沿用相同的旧名称回退。
-    const [namingResponse, configurationResult] = await Promise.all([
+    const [namingResponse, configurationResult, modelResponse] = await Promise.all([
       material.categoryId
         ? materialMasterApi.renderNaming(material.categoryId, {
             ...namingMaterial,
@@ -216,8 +262,22 @@ async function load(materialId: number) {
           })
         : Promise.resolve(null),
       readConfiguration(material.categoryId),
+      material.categoryId
+        ? materialMasterApi.renderModel(material.categoryId, {
+            ...namingMaterial, attributeJson: detail.attributes || {},
+          })
+        : Promise.resolve(null),
     ])
     if (request !== loadRequest) return
+    currentModel.value = material.model || ''
+    generatedModel.value = configurationResult.error ? '' : (modelResponse?.data || '').trim()
+    modelUnavailable.value = generatedModel.value
+      ? ''
+      : configurationResult.error
+        ? '配置读取失败，无法核实型号规则，保留原型号'
+        : configurationResult.configuration?.schema.model_pattern?.fields.length
+          ? '型号规则未生成有效值，保留原型号'
+          : '该品类未配置型号规则，保留原型号'
     const schema = configurationResult.configuration?.schema
     configurationError.value = configurationResult.error
     rules.value = describeRegenerationRules(schema)
@@ -239,6 +299,52 @@ async function load(materialId: number) {
         },
         dictionaries
       )
+    // 名称和规格的两个候选均由后端生成；切换采用型号只选择候选，不在前端复制规则。
+    const modelDraft = {
+      ...namingMaterial, model: generatedModel.value, attributeJson: detail.attributes || {},
+    }
+    const hasNewModel = !!generatedModel.value && generatedModel.value !== currentModel.value
+    const [newNaming, newSpec] = hasNewModel && material.categoryId
+      ? await Promise.all([
+          materialMasterApi.renderNaming(material.categoryId, modelDraft),
+          schema?.spec_pattern?.fields.length
+            ? materialMasterApi.renderSpec(material.categoryId, modelDraft)
+            : Promise.resolve(null),
+        ])
+      : [null, null]
+    if (request !== loadRequest) return
+    nameVariants.value = {
+      current: generatedName,
+      generated: hasNewModel
+        ? newNaming?.data || previewMasterName({
+            materialMeta: String(material.materialMeta ?? ''), model: generatedModel.value,
+            color: String(material.color ?? ''), brand: String(material.brand ?? ''),
+          }, dictionaries)
+        : generatedName,
+    }
+    specVariants.value = {
+      current: specification.specification || '',
+      generated: hasNewModel && schema?.spec_pattern?.fields.length
+        ? newSpec?.data || '' : specification.specification || '',
+    }
+    specGeneratedVariants.value = {
+      current: specification.generated,
+      generated: hasNewModel && schema?.spec_pattern?.fields.length
+        ? !!newSpec?.data : specification.generated,
+    }
+    specEvidenceVariants.value = {
+      current: specification.message,
+      generated: hasNewModel && schema?.spec_pattern?.fields.length
+        ? newSpec?.data
+          ? '规格已按所选型号及当前规格模板生成'
+          : '未生成：规格模板字段当前均无值，规格留空'
+        : specification.message,
+    }
+    specUnavailableVariants.value = {
+      current: specUnavailable.value,
+      generated: specificationUnavailableReason(material.categoryId, schema,
+        specEvidenceVariants.value.generated, configurationResult.error),
+    }
     nameEvidence.value = namingResponse?.data
       ? '按该品类当前命名规则生成（与新增/编辑共用）'
       : '品类规则未生成名称，回退材料 + 型号 + 颜色（品牌）（与新增/编辑相同）'
@@ -264,16 +370,20 @@ async function load(materialId: number) {
 async function save() {
   if (!result.value || !props.materialId || !canSave.value) return
   saving.value = true
+  const request = loadRequest
   try {
-    // 只改名称与规格，不动分类/属性/供应商/库存
+    // 型号仅传显式采用意图，后端基于锁定的物料重新生成并与名称/规格一起保存。
     await materialMasterApi.updateNaming(props.materialId, {
       materialName: finalName.value.trim(),
+      ...(adoptModel.value ? { adoptGeneratedModel: true } : {}),
       reason: `名称：${nameEvidence.value}；规格：${result.value.evidence.join('；')}`,
     })
-    ElMessage.success('名称与规格已更新')
+    if (request !== loadRequest) return
+    ElMessage.success('物料生成结果已更新')
     visible.value = false
     emit('success')
   } catch (error) {
+    if (request !== loadRequest) return
     ElMessage.error(error instanceof Error ? error.message : '保存失败')
   } finally {
     saving.value = false

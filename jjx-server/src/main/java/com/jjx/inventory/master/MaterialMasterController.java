@@ -139,7 +139,7 @@ public class MaterialMasterController extends BaseController {
     @PutMapping("/{id:\\d+}/naming")
     @SaCheckPermission("inventory:material:edit")
     @com.jjx.system.annotation.Log(module = "物料管理", businessType = com.jjx.system.annotation.BusinessType.UPDATE,
-            bizType = "'material'", bizId = "#id", action = "重算名称与规格", detail = "#result.data.detail")
+            bizType = "'material'", bizId = "#id", action = "按规则生成", detail = "#result.data.detail")
     public Result<MaterialMasterService.NamingResult> updateNaming(@PathVariable Long id,
             @RequestBody MaterialMasterService.NamingPatch patch) {
         var saved = service.updateNaming(id, patch, getUsername());

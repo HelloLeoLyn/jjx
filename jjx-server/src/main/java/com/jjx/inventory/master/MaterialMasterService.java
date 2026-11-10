@@ -375,7 +375,10 @@ public class MaterialMasterService {
     public record SpecificationPreview(String specification, boolean generated, String message) { }
 
     /** 命名补丁不接收主数据表单，避免绕过模板校验修改其它字段。 */
-    public record NamingPatch(String materialName, String specification, String reason) {
+    public record NamingPatch(String materialName, String specification, String reason, Boolean adoptGeneratedModel) {
+        public NamingPatch(String materialName, String specification, String reason) {
+            this(materialName, specification, reason, false);
+        }
         @com.fasterxml.jackson.annotation.JsonAnySetter
         public void rejectOtherField(String field, Object value) {
             throw new BusinessException("命名补丁不支持字段：" + field);
@@ -419,17 +422,34 @@ public class MaterialMasterService {
         String reason = text(patch.reason(), "重算依据", 1000, false);
         InventoryMaterial existing = masterMapper.lockMaterial(id);
         if (existing == null) throw new BusinessException("物料不存在");
-        SpecificationPreview preview = specificationPreview(existing);
+        InventoryMaterial candidate = new InventoryMaterial();
+        BeanUtils.copyProperties(existing, candidate);
+        if (Boolean.TRUE.equals(patch.adoptGeneratedModel())) {
+            var draft = new MaterialMasterDTO();
+            BeanUtils.copyProperties(existing, draft, "attributeJson");
+            draft.setAttributeJson(readAttributes(existing.getAttributeJson()));
+            String model = text(renderModel(existing.getCategoryId(), draft, null), "型号", 100, false);
+            if (model == null) throw new BusinessException("该品类未配置型号规则或未生成有效型号，保留原型号");
+            candidate.setModel(model);
+        }
+        SpecificationPreview preview = specificationPreview(candidate);
         String specification = preview.specification(); // patch.specification 故意忽略，只允许模型渲染结果。
         List<String> changes = new ArrayList<>();
         if (!Objects.equals(existing.getMaterialName(), name))
             changes.add("名称：" + Objects.toString(existing.getMaterialName(), "空") + " → " + name);
         if (!Objects.equals(existing.getSpecification(), specification))
             changes.add("规格：" + Objects.toString(existing.getSpecification(), "空") + " → " + Objects.toString(specification, "空"));
+        boolean modelChanged = !Objects.equals(existing.getModel(), candidate.getModel());
+        if (modelChanged)
+            changes.add("型号：" + Objects.toString(existing.getModel(), "空") + " → " + candidate.getModel());
         if (changes.isEmpty()) return new NamingResult(existing, com.jjx.system.utils.OperLogDetailBuilder.changes(changes), preview);
+        candidate.setMaterialName(name);
+        candidate.setSpecification(specification);
+        requireNoDuplicate(candidate);
         UpdateWrapper<InventoryMaterial> update = new UpdateWrapper<>();
         update.eq("material_id", id).set("material_name", name).set("specification", specification)
                 .set("update_by", operator).set("update_time", LocalDateTime.now());
+        if (modelChanged) update.set("model", candidate.getModel());
         if (materialMapper.update(null, update) != 1) throw new BusinessException("物料命名修改失败");
         if (reason != null) changes.add("重算依据：" + reason);
         var payload = EventPublishSupport.payload("material", id, existing.getMaterialCode());

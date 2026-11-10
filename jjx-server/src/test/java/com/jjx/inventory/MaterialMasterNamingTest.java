@@ -100,9 +100,73 @@ class MaterialMasterNamingTest {
     @Test void rejectsEveryNonNamingInputEvenWhenGlobalUnknownPropertiesAreIgnored() throws Exception {
         json.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         assertEquals("名称", json.readValue("{\"materialName\":\"名称\",\"specification\":\"规格\"}", MaterialMasterService.NamingPatch.class).materialName());
-        for (String field : List.of("categoryId", "attributeJson", "templateId", "supplierId", "safeStock", "materialCode", "materialId", "updateBy"))
+        for (String field : List.of("model", "categoryId", "attributeJson", "templateId", "supplierId", "safeStock", "materialCode", "materialId", "updateBy"))
             assertThrows(com.fasterxml.jackson.core.JsonProcessingException.class, () -> json.readValue(
                     "{\"materialName\":\"名称\",\"" + field + "\":1}", MaterialMasterService.NamingPatch.class), field);
+    }
+
+    private void configureModelGeneration() throws Exception {
+        existing.setCategoryId(1L); existing.setModel("OLD"); existing.setColor("BLACK");
+        var schema = json.readValue("""
+                {"version":1,"meta_options":[],"fields":[],
+                 "model_pattern":{"fields":["categoryprefix","color"],"separator":"-","empty":"skip"},
+                 "spec_pattern":{"fields":[{"key":"model"}],"show_label":false,"with_unit":false}}
+                """, MaterialAttributeSchema.class);
+        var category = new MaterialMasterCatalog.Category(1L, "TEST", "测试品类", null, 3,
+                "R", "测试品类", true, null, null, "TST");
+        when(catalog.optionalConfiguration(1L)).thenReturn(
+                new MaterialMasterCatalog.Configuration(category, List.of(category), null, schema));
+        when(catalog.specificationSchema(1L)).thenReturn(schema);
+        when(catalog.dictionaryLabel("color", "BLACK", false)).thenReturn("黑色");
+    }
+
+    @Test void explicitModelAdoptionGeneratesOnServerAndWritesModelSpecAndAuditTogether() throws Exception {
+        configureModelGeneration();
+        when(materials.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        when(materials.selectById(1L)).thenReturn(existing);
+        var result = service.updateNaming(1L,
+                new MaterialMasterService.NamingPatch("人工名称", "伪造", "采用型号", true), "codex");
+        var update = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(materials).update(isNull(), update.capture());
+        var values = update.getValue().getParamNameValuePairs();
+        assertTrue(update.getValue().getSqlSet().contains("model="));
+        assertTrue(values.containsValue(result.specificationGeneration().specification()));
+        assertTrue(result.specificationGeneration().specification().contains("TST"));
+        assertTrue(result.detail().contains("型号：OLD →"));
+        assertEquals("OLD", existing.getModel(), "锁定的旧对象保留审计原值");
+        assertFalse(update.getValue().getSqlSet().contains("supplier"));
+        assertFalse(update.getValue().getSqlSet().contains("category"));
+    }
+
+    @Test void modelIsPreservedWithoutExplicitAdoptionAndMissingRuleCannotClearIt() {
+        existing.setModel("OLD");
+        when(materials.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        service.updateNaming(1L, new MaterialMasterService.NamingPatch("新名称", null, null), "codex");
+        var update = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(materials).update(isNull(), update.capture());
+        assertFalse(update.getValue().getSqlSet().contains("model="));
+        assertThrows(BusinessException.class, () -> service.updateNaming(1L,
+                new MaterialMasterService.NamingPatch("新名称", null, null, true), "codex"));
+        verify(materials, times(1)).update(isNull(), any(Wrapper.class));
+    }
+
+    @Test void adoptionRejectsExactDuplicateButAllowsSameModelWithDifferentSupplier() throws Exception {
+        configureModelGeneration();
+        var draft = new MaterialMasterDTO(); draft.setColor("BLACK");
+        var duplicate = new InventoryMaterial();
+        org.springframework.beans.BeanUtils.copyProperties(existing, duplicate);
+        duplicate.setMaterialId(2L);
+        duplicate.setModel(service.renderModel(1L, draft, null));
+        duplicate.setMaterialName("新名称");
+        when(materials.selectList(any(Wrapper.class))).thenReturn(List.of(duplicate));
+        assertThrows(BusinessException.class, () -> service.updateNaming(1L,
+                new MaterialMasterService.NamingPatch("新名称", null, null, true), "codex"));
+        verify(materials, never()).update(isNull(), any(Wrapper.class));
+        duplicate.setSupplierName("另一供应商");
+        when(materials.update(isNull(), any(Wrapper.class))).thenReturn(1);
+        assertDoesNotThrow(() -> service.updateNaming(1L,
+                new MaterialMasterService.NamingPatch("新名称", null, null, true), "codex"));
+        verify(materials).update(isNull(), any(Wrapper.class));
     }
 
     private MaterialNamingPattern configureColorNaming() {

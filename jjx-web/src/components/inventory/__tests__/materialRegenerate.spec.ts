@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   dictionaries: vi.fn(),
   configuration: vi.fn(),
   renderNaming: vi.fn(),
+  renderModel: vi.fn(),
+  renderSpec: vi.fn(),
   updateNaming: vi.fn(),
   legacyUpdate: vi.fn(),
   success: vi.fn(),
@@ -302,6 +304,7 @@ describe('重算弹窗命名补丁保存', () => {
     mocks.configuration.mockResolvedValue({ data: null })
     mocks.updateNaming.mockResolvedValue({ data: {} })
     mocks.renderNaming.mockResolvedValue({ data: null })
+    mocks.renderModel.mockResolvedValue({ data: null })
   })
 
   it('展示差异并保留人工名称，只有勾选才替换且提示替换人工名称', async () => {
@@ -375,7 +378,7 @@ describe('重算弹窗命名补丁保存', () => {
     })
     const wrapper = createDialog()
     await flushPromises()
-    expect(wrapper.findAll('.no-diff')).toHaveLength(2)
+    expect(wrapper.findAll('.no-diff')).toHaveLength(3)
     expect(wrapper.findAll('.comparison del, .comparison ins')).toHaveLength(0)
     expect(wrapper.text()).toContain('未生成：未归类')
     expect(wrapper.text()).toContain('该品类未配置命名规则')
@@ -710,6 +713,126 @@ describe('重算弹窗命名补丁保存', () => {
     expect(wrapper.text()).toContain('另一规格')
     expect(wrapper.text()).not.toContain('迟到的旧物料名称')
     expect(wrapper.findAll('button')[1].element.disabled).toBe(true)
+    wrapper.unmount()
+  })
+
+  function prepareModel() {
+    mocks.detail.mockResolvedValue({ data: {
+      material: { materialId: 7, categoryId: 23, materialName: '人工名称', model: 'OLD', specification: 'OLD' },
+      attributes: {},
+      specificationGeneration: { specification: 'OLD', generated: true, message: '按当前规格模板生成' },
+    } })
+    mocks.configuration.mockResolvedValue({ data: { schema: {
+      ...schema, model_pattern: { fields: ['color'], separator: '-', empty: 'skip' },
+      spec_pattern: { fields: [{ key: 'model' }] },
+    } } })
+    mocks.renderModel.mockResolvedValue({ data: 'NEW' })
+    mocks.renderNaming.mockImplementation((_id, draft) => Promise.resolve({ data: `名称-${draft.model}` }))
+    mocks.renderSpec.mockImplementation((_id, draft) => Promise.resolve({ data: draft.model }))
+  }
+
+  it('型号仅预览不默认采用，改名保存不提交型号采用标记', async () => {
+    prepareModel()
+    const wrapper = createDialog()
+    await flushPromises()
+    expect(wrapper.get('[data-field="型号"]').text()).toContain('NEW')
+    expect(wrapper.get('[data-test="final-model"]').text()).toBe('OLD')
+    expect(wrapper.get('[data-test="adopt-model"] input').element.checked).toBe(false)
+    expect(wrapper.findAll('button')[1].element.disabled).toBe(true)
+    await wrapper.get('input:not([type=checkbox])').setValue('人工新名称')
+    await wrapper.findAll('button')[1].trigger('click')
+    await flushPromises()
+    expect(mocks.updateNaming).toHaveBeenCalledWith(7, {
+      materialName: '人工新名称', reason: expect.any(String),
+    })
+    wrapper.unmount()
+  })
+
+  it('先生成型号再生成候选名称，显式采用更新名称规格，取消勾选回旧型号候选', async () => {
+    prepareModel()
+    const wrapper = createDialog()
+    await flushPromises()
+    expect(mocks.renderNaming).toHaveBeenCalledWith(23, expect.objectContaining({ model: 'NEW' }))
+    await wrapper.get('input[type=checkbox]').setValue(true)
+    expect(wrapper.get('input:not([type=checkbox])').element.value).toBe('名称-OLD')
+    await wrapper.get('[data-test="adopt-model"] input').setValue(true)
+    expect(wrapper.get('[data-test="final-model"]').text()).toBe('NEW')
+    expect(wrapper.get('input:not([type=checkbox])').element.value).toBe('名称-NEW')
+    expect(wrapper.get('[data-field="规格"] [data-side="generated"]').text()).toContain('NEW')
+    await wrapper.get('[data-test="adopt-model"] input').setValue(false)
+    expect(wrapper.get('input:not([type=checkbox])').element.value).toBe('名称-OLD')
+    expect(wrapper.get('[data-field="规格"] [data-side="generated"]').text()).toContain('OLD')
+    await wrapper.get('[data-test="adopt-model"] input').setValue(true)
+    await wrapper.findAll('button')[1].trigger('click')
+    await flushPromises()
+    expect(mocks.updateNaming).toHaveBeenCalledWith(7, {
+      materialName: '名称-NEW', adoptGeneratedModel: true, reason: expect.any(String),
+    })
+    wrapper.unmount()
+  })
+
+  it('只采用型号也能保存，并保留人工输入的最终名称', async () => {
+    prepareModel()
+    mocks.renderSpec.mockResolvedValue({ data: 'OLD' })
+    const wrapper = createDialog()
+    await flushPromises()
+    await wrapper.get('[data-test="adopt-model"] input').setValue(true)
+    expect(wrapper.findAll('button')[1].element.disabled).toBe(false)
+    expect(wrapper.get('input:not([type=checkbox])').element.value).toBe('人工名称')
+    await wrapper.get('input:not([type=checkbox])').setValue('人工确认')
+    await wrapper.get('[data-test="adopt-model"] input').setValue(false)
+    await wrapper.get('[data-test="adopt-model"] input').setValue(true)
+    expect(wrapper.get('input:not([type=checkbox])').element.value).toBe('人工确认')
+    await wrapper.findAll('button')[1].trigger('click')
+    await flushPromises()
+    expect(mocks.updateNaming).toHaveBeenCalledWith(7, {
+      materialName: '人工确认', adoptGeneratedModel: true, reason: expect.any(String),
+    })
+    wrapper.unmount()
+  })
+
+  it.each([null, ''])('型号规则返回%j时保留原型号，不提供采用入口', async (model) => {
+    prepareModel()
+    mocks.renderModel.mockResolvedValue({ data: model })
+    const wrapper = createDialog()
+    await flushPromises()
+    expect(wrapper.get('[data-test="final-model"]').text()).toBe('OLD')
+    expect(wrapper.find('[data-test="adopt-model"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('型号规则未生成有效值，保留原型号')
+    expect(mocks.renderNaming).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('型号生成失败不允许保存，重新打开不沿用上次采用状态', async () => {
+    prepareModel()
+    const wrapper = createDialog()
+    await flushPromises()
+    await wrapper.get('[data-test="adopt-model"] input').setValue(true)
+    await wrapper.setProps({ modelValue: false })
+    mocks.renderModel.mockRejectedValue(new Error('型号生成失败'))
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    expect(mocks.error).toHaveBeenCalledWith('型号生成失败')
+    expect(wrapper.findAll('button')[1].element.disabled).toBe(true)
+    expect(mocks.updateNaming).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('关闭重开后迟到的型号不覆盖新弹窗', async () => {
+    prepareModel()
+    let finish!: (value: unknown) => void
+    mocks.renderModel.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const wrapper = createDialog()
+    await flushPromises()
+    await wrapper.setProps({ modelValue: false })
+    mocks.renderModel.mockResolvedValue({ data: null })
+    await wrapper.setProps({ modelValue: true, materialId: 8 })
+    await flushPromises()
+    finish({ data: '迟到的型号' })
+    await flushPromises()
+    expect(wrapper.get('[data-test="final-model"]').text()).toBe('OLD')
+    expect(wrapper.text()).not.toContain('迟到的型号')
+    expect(wrapper.find('[data-test="adopt-model"]').exists()).toBe(false)
     wrapper.unmount()
   })
 

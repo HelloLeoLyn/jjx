@@ -176,7 +176,7 @@
               type="primary"
               v-hasPermi="['inventory:material:edit']"
               @click="handleRegenerate(row)"
-              >重算名称与规格</el-button
+              >按规则生成</el-button
             >
             <el-button
               v-if="resolveClassStatus(row) === 'rule_unconfirmed'"
@@ -704,7 +704,7 @@ const handleCopy = (row: any) => {
   dialogVisible.value = true
 }
 
-// 重算名称与规格（只改名称/规格，不写分类与属性）
+// 按规则生成名称/型号/规格（型号显式采用，不写分类与属性）
 const handleRegenerate = (row: any) => {
   regenerateMaterialId.value = row.materialId
   regenerateVisible.value = true

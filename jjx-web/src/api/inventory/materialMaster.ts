@@ -41,7 +41,7 @@ export const materialMasterApi = {
   detail: (id: number) => request.get<R<MaterialMasterDetail>>(`${base}/${id}`),
   updateNaming: (
     id: number,
-    data: { materialName: string; reason?: string }
+    data: { materialName: string; adoptGeneratedModel?: boolean; reason?: string }
   ) =>
     request.put<R<{ material: MaterialMasterRecord; detail: string }>>(
       `${base}/${id}/naming`,
