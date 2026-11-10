@@ -1290,7 +1290,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
                     }
                 }
                 // 独立BOM材料（sales_sample_bom 当前轮）也纳入快照（dev-20261015-023）
-                for (com.jjx.sales.domain.entity.SalesSampleBom bom : sampleBomMapper.selectByOrderId(orderId)) {
+                for (com.jjx.sales.domain.entity.SalesSampleBom bom : listSampleBom(orderId)) {
                     if (!java.util.Objects.equals(bom.getRoundNo(), round.getRoundNo())) continue;
                     java.util.Map<String, Object> agg = new java.util.LinkedHashMap<>();
                     agg.put("process", bom.getLayerName());
@@ -2171,12 +2171,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     }
 
     /**
-     * 查询打样BOM物料清单
+     * 查询独立打样BOM材料；工序材料已从工序JSON读取，排除其结构化同步行。
      */
     @Override
     @Transactional(readOnly = true)
     public List<SalesSampleBom> listSampleBom(Long orderId) {
-        return sampleBomMapper.selectByOrderId(orderId);
+        return sampleBomMapper.selectByOrderId(orderId).stream()
+                .filter(row -> !isProcessMaterialBom(row)).collect(Collectors.toList());
     }
 
     /**
@@ -2194,8 +2195,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         int round = roundNo != null ? roundNo : (current.getSampleRound() != null ? current.getSampleRound() : 1);
-        List<SalesSampleBom> remaining = sampleBomMapper.selectByOrderId(orderId).stream()
-                .filter(row -> java.util.Objects.equals(row.getRoundNo(), round) && !isProcessMaterialBom(row))
+        List<SalesSampleBom> remaining = listSampleBom(orderId).stream()
+                .filter(row -> java.util.Objects.equals(row.getRoundNo(), round))
                 .collect(Collectors.toCollection(ArrayList::new));
 
         String username = SecurityUtils.getUsername();
@@ -2228,7 +2229,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         for (SalesSampleBom removed : remaining) sampleBomMapper.deleteById(removed.getBomId());
         refreshSampleShortageAfterCommit(orderId);
         log.info("样品单[{}] 保存打样BOM {} 条 (round={})", orderId, items.size(), round);
-        return sampleBomMapper.selectByOrderId(orderId);
+        return listSampleBom(orderId);
     }
 
     // remark 前缀标记同步行；projectIds 继续只存标准工序ID，不能用它判断独立材料。
@@ -3063,7 +3064,7 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             }
         }
         int bomRound = sampleOrder.getSampleRound() == null ? 1 : sampleOrder.getSampleRound();
-        for (SalesSampleBom bom : sampleBomMapper.selectByOrderId(orderId)) {
+        for (SalesSampleBom bom : listSampleBom(orderId)) {
             if (!java.util.Objects.equals(bom.getRoundNo(), bomRound)) continue;
             var item = new com.jjx.sales.domain.vo.SampleTransferPreviewVO.SampleMaterialItem();
             item.setRowKey("bom_" + bom.getBomId());

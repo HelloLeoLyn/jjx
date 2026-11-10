@@ -1,3 +1,4 @@
+import { isProcessMaterialBom } from './useSampleBom'
 import { mergeProcessMaterials } from './sampleProcessGroups'
 import { ref, type Ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -122,7 +123,7 @@ export function usePlanCopy(context: PlanCopyContext) {
     const rounds = rows.map((r: any) => Number(r.roundNo) || 1)
     const round = srcRound != null ? srcRound : rounds.length ? Math.max(...rounds) : null
     const mapped = rows
-      .filter((r: any) => round == null || (Number(r.roundNo) || 1) === round)
+      .filter((r: any) => !isProcessMaterialBom(r) && (round == null || (Number(r.roundNo) || 1) === round))
       .map((row: any) => {
         let projectIds: number[] = []
         try {

@@ -4,6 +4,11 @@ import { sampleOrderApi } from '@/api/sales/sampleOrder'
 import { materialValues } from './planDraft'
 import { normalizeMaterial, projectIdsOf } from './sampleMaterials'
 
+/** 结构化工序镜像不能作为独立材料回读或复制。 */
+export function isProcessMaterialBom(row: { remark?: string | null }): boolean {
+  return String(row.remark || '').startsWith('sample-process-material:')
+}
+
 interface SampleBomContext {
   orderId: Readonly<Ref<number>>
   card: Ref<any>
@@ -169,7 +174,7 @@ export function useSampleBom(context: SampleBomContext) {
     const res = await sampleOrderApi.listBom(orderId.value)
     standaloneMaterials.value = (res.data || [])
       .filter((row: any) => row.roundNo === (card.value.sampleRound || 1)
-        && !String(row.remark || '').startsWith('sample-process-material:'))
+        && !isProcessMaterialBom(row))
       .map((row: any) => {
         let projectIds: number[] = []
         try {

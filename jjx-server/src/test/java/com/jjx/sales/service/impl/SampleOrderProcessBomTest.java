@@ -24,6 +24,11 @@ class SampleOrderProcessBomTest {
     @Mock SalesSampleBomMapper sampleBomMapper;
     @Mock InventoryAlertServiceImpl inventoryAlertService;
     @Mock com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
+    @Mock SalesSampleRoundMapper sampleRoundMapper;
+    @Mock SalesSampleOrderMapper sampleOrderMapper;
+    @Mock com.jjx.system.service.AttachmentEvidenceService attachmentEvidence;
+    @Mock com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
+    @Spy com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules();
     @InjectMocks SampleOrderServiceImpl service;
     final List<SalesSampleBom> bom = new ArrayList<>();
     final List<SalesSampleProcess> plan = new ArrayList<>();
@@ -33,7 +38,7 @@ class SampleOrderProcessBomTest {
         SalesOrder order = new SalesOrder();
         order.setOrderId(1L); order.setDeleted(0); order.setSampleRound(1);
         order.setSampleStatus(SampleOrderStatusEnum.ENGINEERING.getValue());
-        when(orderMapper.selectById(1L)).thenReturn(order);
+        lenient().when(orderMapper.selectById(1L)).thenReturn(order);
         when(sampleBomMapper.selectByOrderId(1L)).thenAnswer(i -> new ArrayList<>(bom));
         lenient().when(sampleBomMapper.insert(any(SalesSampleBom.class))).thenAnswer(i -> {
             SalesSampleBom row = i.getArgument(0); row.setBomId(++sequence); bom.add(row); return 1;
@@ -116,5 +121,44 @@ class SampleOrderProcessBomTest {
         independent();
         try (var security = mockStatic(SecurityUtils.class)) { service.saveSampleBom(1L, 1, List.of()); }
         assertEquals(List.of(process), bom);
+    }
+
+    private SalesSampleProcess processWithMirror() {
+        var process = new SalesSampleProcess();
+        process.setProcessId(32L); process.setRoundNo(1); process.setProcessName("工序"); process.setStatus(2);
+        process.setMaterials("[{\"name\":\"PE\",\"qty\":1}]");
+        var mirror = new SalesSampleBom(); mirror.setBomId(8L); mirror.setRoundNo(1);
+        mirror.setMaterialName("PE"); mirror.setRemark("sample-process-material:32"); bom.add(mirror);
+        return process;
+    }
+
+    @Test void listExcludesOnlyPrefixRowsAndKeepsIndependentMaterialsAcrossRounds() {
+        processWithMirror(); var standalone = independent(); standalone.setRemark("含sample-process-material:的普通备注");
+        var history = new SalesSampleBom(); history.setRoundNo(2); bom.add(history);
+        assertEquals(List.of(standalone, history), service.listSampleBom(1L));
+    }
+
+    @Test void transferIncludesProcessJsonAndIndependentOnceWithoutMirror() {
+        var process = processWithMirror(); independent();
+        when(sampleProcessMapper.selectByOrderId(1L)).thenReturn(new ArrayList<>(List.of(process)));
+        var materials = service.previewTransfer(1L).getSampleMaterials();
+        assertEquals(List.of("PE", "独立材料"), materials.stream().map(row -> row.getName()).toList());
+        assertFalse(materials.stream().anyMatch(row -> "bom_8".equals(row.getRowKey())));
+    }
+
+    @Test void archivedRoundIncludesProcessJsonAndIndependentOnceWithoutMirror() throws Exception {
+        var process = processWithMirror(); independent();
+        var old = new SalesSampleBom(); old.setRoundNo(2); old.setMaterialName("旧轮次"); bom.add(old);
+        orderMapper.selectById(1L).setEngineeringAcceptor("工程师");
+        when(sampleProcessMapper.selectByOrderAndRound(1L, 1)).thenReturn(List.of(process));
+        when(orderMapper.updateSampleStatus(eq(1L), anyInt(), anyInt())).thenReturn(1);
+        when(sampleRoundMapper.insert(any(SalesSampleRound.class))).thenReturn(1);
+        service.markSampleReady(1L, null);
+        var captor = ArgumentCaptor.forClass(SalesSampleRound.class);
+        verify(sampleRoundMapper).insert(captor.capture());
+        var snapshot = objectMapper.readTree(captor.getValue().getBomSnapshot());
+        assertEquals(2, snapshot.size());
+        assertEquals("PE", snapshot.get(0).path("name").asText());
+        assertEquals("独立材料", snapshot.get(1).path("name").asText());
     }
 }
