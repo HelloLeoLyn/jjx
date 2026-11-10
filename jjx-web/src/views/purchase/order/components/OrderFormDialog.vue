@@ -173,6 +173,7 @@
             </el-select>
           </template>
         </el-table-column>
+        <el-table-column label="供应商品名" prop="supplierMaterialName" width="170" show-overflow-tooltip />
         <el-table-column label="规格型号" prop="materialSpec" width="120">
           <template #default="scope">
             <el-input v-model="scope.row.materialSpec" placeholder="自动填充" readonly />
@@ -297,6 +298,7 @@ interface OrderItem {
   materialId?: number
   materialCode: string
   materialName: string
+  supplierMaterialName?: string
   materialSpec?: string
   unit: string
   quantity: number
@@ -363,6 +365,7 @@ const defaultForm: OrderForm = {
     {
       materialCode: '',
       materialName: '',
+      supplierMaterialName: '',
       materialSpec: '',
       unit: '',
       quantity: 0,
@@ -440,6 +443,7 @@ const initForm = async () => {
               materialId: item.materialId,
               materialCode: item.materialCode,
               materialName: item.materialName,
+              supplierMaterialName: item.supplierMaterialName,
               materialSpec: item.materialSpec || '',
               unit: item.unit,
               quantity: item.quantity,
@@ -504,6 +508,7 @@ const loadSupplierMaterials = async (
               materialId: Number(item.materialId),
               materialCode: item.materialCode,
               materialName: item.materialName,
+              supplierMaterialName: item.supplierMaterialName,
               specification: item.materialSpec,
               unit: item.unit,
             }) as InventoryMaterial
@@ -546,6 +551,7 @@ const handleSupplierChange = (supplier: any) => {
         materialId: undefined,
         materialCode: '',
         materialName: '',
+        supplierMaterialName: '',
         materialSpec: '',
         unit: '',
       })
@@ -570,6 +576,7 @@ const handleMaterialChange = (materialId: number | undefined, index: number) => 
       materialId: undefined,
       materialCode: '',
       materialName: '',
+      supplierMaterialName: '',
       materialSpec: '',
       unit: '',
     })
@@ -586,6 +593,7 @@ const handleMaterialChange = (materialId: number | undefined, index: number) => 
     // 清空当前行的物料选择
     form.items[index].materialCode = ''
     form.items[index].materialName = ''
+    form.items[index].supplierMaterialName = ''
     form.items[index].materialSpec = ''
     form.items[index].unit = ''
     form.items[index].materialId = undefined
@@ -595,6 +603,7 @@ const handleMaterialChange = (materialId: number | undefined, index: number) => 
   form.items[index].materialId = material.materialId
   form.items[index].materialCode = material.materialCode || ''
   form.items[index].materialName = material.materialName || ''
+  form.items[index].supplierMaterialName = material.supplierMaterialName || ''
   form.items[index].materialSpec = material.specification || ''
   form.items[index].unit = material.unit || ''
 }
@@ -612,6 +621,7 @@ const addItem = () => {
   form.items.push({
     materialCode: '',
     materialName: '',
+    supplierMaterialName: '',
     materialSpec: '',
     unit: '',
     quantity: 0,
@@ -684,6 +694,7 @@ const handleSubmit = async () => {
         materialId: item.materialId,
         materialCode: item.materialCode,
         materialName: item.materialName,
+        supplierMaterialName: item.supplierMaterialName,
         materialSpec: item.materialSpec,
         unit: item.unit,
         quantity: item.quantity,

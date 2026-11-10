@@ -70,6 +70,7 @@ export interface PurchaseOrder {
 
 // 采购订单明细类型
 export interface PurchaseOrderItem {
+  supplierMaterialName?: string
   itemId?: number
   orderId: number
   materialId: number

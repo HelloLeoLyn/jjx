@@ -922,6 +922,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             newItem.setInspectionRemark(sourceItem.getInspectionRemark());
             newItem.setItemOrder(sourceItem.getItemOrder());
 
+            fillSupplierMaterialName(newItem);
             orderItemMapper.insert(newItem);
         }
 
@@ -937,29 +938,40 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         return toItemVOListWithSupplierMaterialName(items);
     }
 
-    /**
-     * 采购明细统一批量补充供应商品名，避免按明细逐条查询物料主数据。
-     */
+    /** 写单时以档案为准，忽略客户端传入的供应商品名。 */
+    private void fillSupplierMaterialName(PurchaseOrderItem item) {
+        com.jjx.inventory.domain.InventoryMaterial material = item.getMaterialId() == null
+                ? null : materialMapper.selectById(item.getMaterialId());
+        item.setSupplierMaterialName(material == null ? null : material.getSupplierMaterialName());
+    }
+
+    /** 优先读取单据快照；仅缺少快照的旧单批量回退到物料档案。 */
     private List<PurchaseOrderItemVO> toItemVOListWithSupplierMaterialName(List<PurchaseOrderItem> items) {
         List<PurchaseOrderItemVO> itemVOs = purchaseConverter.toItemVOList(items);
         if (itemVOs == null || itemVOs.isEmpty()) {
             return itemVOs;
         }
-
+        // Converter 对该字段有 ignore 配置，在本方法显式承接快照。
+        for (int i = 0; i < items.size(); i++) {
+            itemVOs.get(i).setSupplierMaterialName(items.get(i).getSupplierMaterialName());
+        }
         Set<Long> materialIds = itemVOs.stream()
+                .filter(item -> item.getSupplierMaterialName() == null || item.getSupplierMaterialName().isBlank())
                 .map(PurchaseOrderItemVO::getMaterialId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         if (materialIds.isEmpty()) {
             return itemVOs;
         }
-
         Map<Long, String> supplierMaterialNames = materialMapper.selectBatchIds(materialIds).stream()
+                .filter(material -> material.getSupplierMaterialName() != null)
                 .collect(Collectors.toMap(
                         com.jjx.inventory.domain.InventoryMaterial::getMaterialId,
                         com.jjx.inventory.domain.InventoryMaterial::getSupplierMaterialName,
                         (left, right) -> left));
-        itemVOs.forEach(item -> item.setSupplierMaterialName(supplierMaterialNames.get(item.getMaterialId())));
+        itemVOs.stream()
+                .filter(item -> item.getSupplierMaterialName() == null || item.getSupplierMaterialName().isBlank())
+                .forEach(item -> item.setSupplierMaterialName(supplierMaterialNames.get(item.getMaterialId())));
         return itemVOs;
     }
 
@@ -1069,6 +1081,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                 item.setInquiryStatus(PurchaseInquiryStatus.PENDING.getValue());
             }
 
+            fillSupplierMaterialName(item);
             orderItemMapper.insert(item);
         }
     }
@@ -1546,6 +1559,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             item.setQuantity(new BigDecimal(qty.toString()));
             item.setReceiptStatus(0);
             item.setItemOrder(sort++);
+            fillSupplierMaterialName(item);
             orderItemMapper.insert(item);
         }
         log.info("缺料预警一键生成采购计划单: planId={}, 明细{}条", plan.getOrderId(), sort - 1);
@@ -1600,6 +1614,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             item.setQuantity(new BigDecimal(qty.toString()));
             item.setReceiptStatus(0);
             item.setItemOrder(sort++);
+            fillSupplierMaterialName(item);
             orderItemMapper.insert(item);
         }
         // 自动回写预警：状态→2 + 关联采购单号（复用 batchProcessAlert）

@@ -60,13 +60,19 @@
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="50" align="center" />
-        <el-table-column label="物料编码" prop="materialCode" width="130" />
+        <el-table-column label="物料编码" prop="materialCode" width="130">
+          <template #default="{ row }">
+            <el-link v-if="row.materialId" type="primary" @click="openMaterialDetail(row.materialId)">{{ row.materialCode }}</el-link>
+            <span v-else>{{ row.materialCode }}</span>
+          </template>
+        </el-table-column>
         <el-table-column
           label="物料名称"
           prop="materialName"
           min-width="160"
           show-overflow-tooltip
         />
+        <el-table-column label="供应商品名" prop="supplierMaterialName" width="170" show-overflow-tooltip />
         <el-table-column label="供应商" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">{{ row.supplierName || '-' }}</template>
         </el-table-column>
@@ -109,6 +115,8 @@
         :image-size="80"
       />
     </el-card>
+
+    <MaterialDetailDialog v-model="showMaterialDetail" :material-id="detailMaterialId" />
 
     <!-- 添加物料对话框 -->
     <el-dialog
@@ -204,12 +212,14 @@ import { listSupplier } from '@/api/purchase/supplier'
 import { materialApi } from '@/api/inventory/material'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import TableActionColumn from '@/components/common-ui/TableActionColumn/index.vue'
+import MaterialDetailDialog from '@/components/inventory/MaterialDetailDialog.vue'
 import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
 
 interface PlanRow {
   materialId: number
   materialCode: string
   materialName: string
+  supplierMaterialName?: string
   supplierId?: number
   supplierName?: string
   unit?: string
@@ -229,6 +239,12 @@ function handlePlanAction(key: string, _row: PlanRow, index: number) {
   if (key === 'remove') removeRow(index)
 }
 
+const showMaterialDetail = ref(false)
+const detailMaterialId = ref<number>()
+const openMaterialDetail = (materialId: number) => {
+  detailMaterialId.value = materialId
+  showMaterialDetail.value = true
+}
 const planRows = ref<PlanRow[]>([])
 const loadingSuggestions = ref(false)
 const showAddMaterial = ref(false)
@@ -272,6 +288,7 @@ const loadSuggestions = async () => {
         materialId: s.materialId || 0,
         materialCode: s.materialCode,
         materialName: s.materialName,
+        supplierMaterialName: s.supplierMaterialName,
         supplierId: s.supplierId,
         supplierName: s.supplierName,
         unit: s.unit,
@@ -333,6 +350,7 @@ const confirmAddMaterial = async () => {
       materialId: mat.materialId,
       materialCode: mat.materialCode,
       materialName: mat.materialName,
+      supplierMaterialName: mat.supplierMaterialName,
       supplierId: mat.supplierId,
       supplierName: mat.supplierName,
       unit: mat.unit,
@@ -428,6 +446,7 @@ const doConfirmPlan = async () => {
         materialId: Number(row.materialId),
         materialCode: row.materialCode,
         materialName: row.materialName,
+        supplierMaterialName: row.supplierMaterialName,
         unit: row.unit || 'PCS',
         quantity: row.quantity,
         unitPrice: 0,
@@ -494,6 +513,7 @@ async function prefetchMaterial(materialId: number, alertId?: number) {
       materialId: mat.materialId,
       materialCode: mat.materialCode,
       materialName: mat.materialName,
+      supplierMaterialName: mat.supplierMaterialName,
       unit: mat.unit,
       currentStock: 0,
       suggestQuantity: 0,

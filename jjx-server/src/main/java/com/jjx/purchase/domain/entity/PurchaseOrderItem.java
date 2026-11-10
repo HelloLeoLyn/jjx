@@ -44,6 +44,9 @@ public class PurchaseOrderItem {
      */
     private String materialName;
 
+    /** 供应商品名：写单时从物料档案取得的快照。 */
+    private String supplierMaterialName;
+
     /**
      * 物料规格
      */

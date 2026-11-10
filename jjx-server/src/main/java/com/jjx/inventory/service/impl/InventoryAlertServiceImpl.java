@@ -1329,6 +1329,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             BigDecimal reorderPoint = null;
             Long supplierId = null;
             String supplierName = null;
+            String supplierMaterialName = null;
             try {
                 com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(stock.getMaterialId());
                 if (mat != null && mat.getMaxStock() != null) {
@@ -1340,6 +1341,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 if (mat != null) {
                     supplierId = mat.getSupplierId();
                     supplierName = mat.getSupplierName();
+                    supplierMaterialName = mat.getSupplierMaterialName();
                 }
             } catch (Exception e) {
                 log.warn("查询物料最高库存失败: materialId={}, err={}", stock.getMaterialId(), e.getMessage());
@@ -1378,6 +1380,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             row.put("reason", reason);
             row.put("priority", priority);
             row.put("sourceAlertId", alertId);
+            row.put("supplierMaterialName", supplierMaterialName);
             if (supplierId != null) row.put("supplierId", supplierId);
             if (supplierName != null && !supplierName.isBlank()) row.put("supplierName", supplierName);
             suggestions.add(row);
@@ -1405,11 +1408,13 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
             Long supplierId = null;
             String supplierName = null;
+            String supplierMaterialName = null;
             if (alert.getMaterialId() != null) {
                 com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(alert.getMaterialId());
                 if (mat != null) {
                     supplierId = mat.getSupplierId();
                     supplierName = mat.getSupplierName();
+                    supplierMaterialName = mat.getSupplierMaterialName();
                 }
             }
 
@@ -1427,6 +1432,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             row.put("reason", reasonText);
             row.put("priority", "urgent");
             row.put("sourceAlertId", alert.getAlertId());
+            row.put("supplierMaterialName", supplierMaterialName);
             if (supplierId != null) row.put("supplierId", supplierId);
             if (supplierName != null && !supplierName.isBlank()) row.put("supplierName", supplierName);
             suggestions.add(row);
