@@ -2010,7 +2010,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
 
         // 同步当前工序字段：优先进行中，其次第一个待做，全完成则最后一道
         List<SalesSampleProcess> plan = sampleProcessMapper.selectByOrderAndRound(orderId, roundNo);
-        if (dto.getItems() != null) syncCurrentProcess(orderId, plan);
+        if (dto.getItems() != null) {
+            syncCurrentProcess(orderId, plan);
+            syncProcessMaterialBom(orderId, roundNo, plan);
+        }
 
         log.info("样品单[{}] 保存打样工序计划: Round{} 共{}道", orderId, roundNo, plan.size());
         return plan;
@@ -2191,10 +2194,9 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         }
 
         int round = roundNo != null ? roundNo : (current.getSampleRound() != null ? current.getSampleRound() : 1);
-        // 覆盖当前轮次：先删旧记录
-        sampleBomMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SalesSampleBom>()
-                .eq(SalesSampleBom::getOrderId, orderId)
-                .eq(SalesSampleBom::getRoundNo, round));
+        List<SalesSampleBom> remaining = sampleBomMapper.selectByOrderId(orderId).stream()
+                .filter(row -> java.util.Objects.equals(row.getRoundNo(), round) && !isProcessMaterialBom(row))
+                .collect(Collectors.toCollection(ArrayList::new));
 
         String username = SecurityUtils.getUsername();
         for (SalesSampleBom item : items) {
@@ -2208,6 +2210,13 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             item.setSplit(normalizeSampleSplit(item.getSplit()));
             item.setQuantity(quantities[2]);
             parseSampleProjects(item.getProjectIds());
+            if (isProcessMaterialBom(item)) throw new BusinessException("工序材料请通过打样方案维护");
+            if (item.getUnit() == null) item.setUnit("PCS");
+            SalesSampleBom unchanged = remaining.stream().filter(row -> sampleBomValues(row).equals(sampleBomValues(item))).findFirst().orElse(null);
+            if (unchanged != null) {
+                remaining.remove(unchanged);
+                continue;
+            }
             item.setBomId(null);
             item.setOrderId(orderId);
             item.setRoundNo(round);
@@ -2216,9 +2225,75 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             if (item.getUnit() == null) item.setUnit("PCS");
             sampleBomMapper.insert(item);
         }
+        for (SalesSampleBom removed : remaining) sampleBomMapper.deleteById(removed.getBomId());
         refreshSampleShortageAfterCommit(orderId);
         log.info("样品单[{}] 保存打样BOM {} 条 (round={})", orderId, items.size(), round);
         return sampleBomMapper.selectByOrderId(orderId);
+    }
+
+    // remark 前缀标记同步行；projectIds 继续只存标准工序ID，不能用它判断独立材料。
+    private static final String PROCESS_MATERIAL_BOM = "sample-process-material:";
+
+    private boolean isProcessMaterialBom(SalesSampleBom row) {
+        return row.getRemark() != null && row.getRemark().startsWith(PROCESS_MATERIAL_BOM);
+    }
+
+    /** 工序JSON是编辑/打印镜像，领料与成本继续只读结构化BOM；同事务覆盖同步行。 */
+    private void syncProcessMaterialBom(Long orderId, Integer round, List<SalesSampleProcess> plan) {
+        for (SalesSampleBom old : sampleBomMapper.selectByOrderId(orderId)) {
+            if (round.equals(old.getRoundNo()) && isProcessMaterialBom(old)) sampleBomMapper.deleteById(old.getBomId());
+        }
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (SalesSampleProcess process : plan) {
+            if (process.getMaterials() == null || process.getMaterials().isBlank()) continue;
+            try {
+                var rows = mapper.readValue(process.getMaterials(), new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+                String ownerKey = mapper.readTree(process.getCustomProcessParams() == null ? "{}" : process.getCustomProcessParams())
+                        .path("sampleUic").path("key").asText("");
+                for (var row : rows) {
+                    String materialOwner = java.util.Objects.toString(row.get("processItemKey"), "");
+                    // 兼容历史同一卡片共享JSON，带稳定键的材料只落到所属子工序。
+                    if (!materialOwner.isBlank() && !materialOwner.equals(ownerKey)) continue;
+                    List<Long> projects = parseSampleProjects(row.get("projectIds"));
+                    if (materialOwner.isBlank() && !projects.isEmpty() && !projects.contains(process.getStdProcessId())) continue;
+                    String name = java.util.Objects.toString(row.get("name"), "");
+                    if (name.isBlank()) continue;
+                    String materialKey = row.get("materialId") != null ? "id:" + row.get("materialId")
+                            : "name:" + name + "|" + java.util.Objects.toString(row.get("spec"), "");
+                    if (!seen.add(process.getProcessId() + "|" + materialKey)) continue;
+                    SalesSampleBom bom = new SalesSampleBom();
+                    bom.setOrderId(orderId);
+                    bom.setRoundNo(round);
+                    bom.setLayerName(java.util.Objects.toString(row.get("layerName"), ""));
+                    bom.setMaterialName(name);
+                    bom.setSpecification((String) row.get("spec"));
+                    bom.setMaterialId(row.get("materialId") == null ? null : Long.valueOf(row.get("materialId").toString()));
+                    bom.setMaterialCode((String) row.get("materialCode"));
+                    bom.setUnit(java.util.Objects.toString(row.get("unit"), "PCS"));
+                    var quantities = SampleMaterialQuantity.normalize(sampleDecimal(row.get("baseQty")), sampleDecimal(row.get("moduleQty")), sampleDecimal(row.get("qty")));
+                    bom.setBaseQty(quantities[0]);
+                    bom.setModuleQty(quantities[1]);
+                    bom.setQuantity(quantities[2]);
+                    bom.setSplit(normalizeSampleSplit(row.get("split")));
+                    bom.setProjectIds(mapper.writeValueAsString(process.getStdProcessId() == null ? List.of() : List.of(process.getStdProcessId())));
+                    bom.setRemark(PROCESS_MATERIAL_BOM + process.getProcessId());
+                    bom.setCreateBy(SecurityUtils.getUsername());
+                    sampleBomMapper.insert(bom);
+                }
+            } catch (Exception e) {
+                throw new BusinessException("工序材料同步打样BOM失败：" + e.getMessage());
+            }
+        }
+        refreshSampleShortageAfterCommit(orderId);
+    }
+
+    /** 只比较独立材料的业务值，原样保存时保留记录ID及录入信息。 */
+    private List<Object> sampleBomValues(SalesSampleBom row) {
+        return java.util.Arrays.asList(row.getLayerName(), row.getMaterialName(), row.getSpecification(),
+                row.getMaterialId(), row.getMaterialCode(), parseSampleProjects(row.getProjectIds()),
+                row.getBaseQty(), row.getModuleQty(), row.getQuantity() == null ? null : row.getQuantity().stripTrailingZeros(),
+                row.getUnit(), row.getSplit(), row.getRemark());
     }
 
     private void refreshSampleShortageAfterCommit(Long orderId) {

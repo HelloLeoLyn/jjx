@@ -168,7 +168,8 @@ export function useSampleBom(context: SampleBomContext) {
     if (!orderId.value) return
     const res = await sampleOrderApi.listBom(orderId.value)
     standaloneMaterials.value = (res.data || [])
-      .filter((row: any) => row.roundNo === (card.value.sampleRound || 1))
+      .filter((row: any) => row.roundNo === (card.value.sampleRound || 1)
+        && !String(row.remark || '').startsWith('sample-process-material:'))
       .map((row: any) => {
         let projectIds: number[] = []
         try {
@@ -190,6 +191,7 @@ export function useSampleBom(context: SampleBomContext) {
           projectIds,
           projectInherited: false,
           layerName: row.layerName || '',
+          remark: row.remark,
         })
       })
   }

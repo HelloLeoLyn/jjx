@@ -112,7 +112,8 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
               processName: it.processName,
               processCategory: pc.category || undefined,
               majorCategory: 'ASSEMBLY',
-              materials: pc.materials,
+              // 每个执行工序只保存自己的材料，避免组合卡片把同一材料写入多个工序。
+              materials: JSON.stringify(JSON.parse(pc.materials || '[]').filter((row: any) => materialOwner(pc, row) === it).map(serializeMaterial)),
               processNote: it.workInstruction || null,
               customProcessParams: processParams(it),
               remark: pc.operationRemark || null,
@@ -144,7 +145,7 @@ export function usePlanPersistence(context: PlanPersistenceContext) {
         })
       }
       await sampleOrderApi.saveScheme(orderId.value, { engineeringNote: submittedNote !== savedNote.value ? submittedNote : undefined, roundNo: card.value?.sampleRound || 1, items: planChanged ? items : undefined, standaloneMaterials: planChanged ? independent.map(row => ({
-        layerName: row.layerName || '', materialName: row.name, specification: row.spec, quantity: row.qty, unit: row.unit,
+        layerName: row.layerName || '', remark: row.remark, materialName: row.name, specification: row.spec, quantity: row.qty, unit: row.unit,
         materialId: row.materialId, materialCode: row.materialCode, projectIds: JSON.stringify(row.projectIds || []), moduleQty: row.moduleQty, baseQty: row.baseQty, split: row.split,
       })) : undefined })
       savedNote.value = submittedNote
