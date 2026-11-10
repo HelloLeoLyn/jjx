@@ -28,6 +28,10 @@ const mocks = vi.hoisted(() => ({
   configuration: vi.fn(),
   requiredFields: vi.fn(),
   renderSpec: vi.fn(),
+  renderNaming: vi.fn(),
+  info: vi.fn(),
+  confirm: vi.fn(),
+  hasPermission: vi.fn(),
   renderModel: vi.fn(),
   checkModel: vi.fn(),
   detail: vi.fn(),
@@ -37,11 +41,13 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   warning: vi.fn(),
 }))
+vi.mock('@/composables/usePermission', () => ({ usePermission: () => ({ hasPermission: mocks.hasPermission }) }))
 vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: mocks }))
 vi.mock('@/api/inventory/material', () => ({ materialApi: { getTags: mocks.tags } }))
 vi.mock('element-plus', async (importOriginal) => ({
   ...await importOriginal<typeof import('element-plus')>(),
-  ElMessage: { success: mocks.success, error: mocks.error, warning: mocks.warning },
+  ElMessage: { success: mocks.success, error: mocks.error, warning: mocks.warning, info: mocks.info },
+  ElMessageBox: { confirm: mocks.confirm },
 }))
 const Slot = defineComponent({ template: '<div><slot /><slot name="footer" /></div>' })
 const Select = defineComponent({
@@ -50,10 +56,11 @@ const Select = defineComponent({
   template: '<div><slot /></div>',
 })
 const Input = defineComponent({
+  inheritAttrs: false,
   props: ['modelValue'],
   emits: ['update:modelValue', 'input'],
   template:
-    '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" />',
+    '<input v-bind="$attrs" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value); $emit(\'input\', $event.target.value)" /><slot name="append" />',
 })
 const Button = defineComponent({
   props: ['disabled'],
@@ -93,7 +100,7 @@ const config = (id: number, name: string): MaterialMasterConfiguration => ({
     fields: [],
   },
 })
-const create = (props: { materialId?: number; fromBom?: boolean } = {}) =>
+const create = (props: { materialId?: number; copyFromId?: number; fromBom?: boolean; readonly?: boolean } = {}) =>
   mount(MaterialMasterFormDialog, {
     props: { modelValue: true, ...props },
     global: {
@@ -116,12 +123,16 @@ const create = (props: { materialId?: number; fromBom?: boolean } = {}) =>
         ElSkeleton: true,
         ElAlert: true,
         MaterialAttributeFields: true,
+        SupplierSelector: true,
       },
     },
   })
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.hasPermission.mockReturnValue(true)
+  mocks.confirm.mockResolvedValue(undefined)
+  mocks.renderNaming.mockResolvedValue({ data: '当前规则名称' })
   mocks.categories.mockResolvedValue({
     data: [config(2, 'PC').category, config(3, 'PET').category],
   })
@@ -452,6 +463,7 @@ describe('物料名称撤销修改（dev-20261110-001）', () => {
     const wrapper = create()
     await flushPromises()
     const state = stateOf(wrapper)
+    await state.selectCategory(2)
     state.form.materialName = 'BOM预填名称'
     state.form.nameManual = true
     await flushPromises()
@@ -545,8 +557,7 @@ describe('型号还原命名（dev-20261107-018）', () => {
     await flushPromises()
     const state = stateOf(wrapper)
     expect(state.modelBaseline).toBe('OLD-001')
-    // el-input 的 #append 插槽在测试 stub 中不渲染，直接断言按钮的显示条件
-    expect(state.canRegenerateModel).toBe(true)
+    expect(wrapper.get('[data-test="material-model-regenerate"]').text()).toBe('按规则重算')
 
     await wrapper.get('[data-test="material-model"]').setValue('手改型号')
     const calls = mocks.renderModel.mock.calls.length
@@ -556,6 +567,138 @@ describe('型号还原命名（dev-20261107-018）', () => {
     await flushPromises()
     expect(state.form.model).toBe('OLD-001')
     expect(mocks.renderModel.mock.calls.length).toBe(calls)
+    wrapper.unmount()
+  })
+})
+
+describe('复制回显与常驻规则按钮（dev-20261110-009）', () => {
+  const stateOf = (wrapper: ReturnType<typeof create>) => (wrapper.vm as any).$.setupState
+  const patterned = (): MaterialMasterConfiguration => {
+    const base = config(4, '子类')
+    return { ...base, schema: { ...base.schema,
+      name_pattern: { fields: ['model'], separator: '-', empty: 'skip' },
+      model_pattern: { fields: ['meta'], separator: '-', empty: 'skip' },
+    } }
+  }
+  const detail = (configuration = patterned(), materialName = '历史名称') => ({ data: {
+    material: { materialId: 100, categoryId: 4, materialName, materialMeta: 'PC', model: 'OLD', unit: 'M' },
+    attributes: { surface: 'matte' }, tags: [], configuration,
+  } })
+
+  it('复制打开即回显父子品类，保留模板属性并自动生成名称与型号', async () => {
+    vi.useFakeTimers()
+    mocks.categories.mockResolvedValue({ data: [
+      { ...config(2, '父类').category, selectable: false },
+      { ...config(4, '子类').category, parentId: 2, categoryLevel: 4 },
+    ] })
+    mocks.detail.mockResolvedValue(detail())
+    const wrapper = create({ copyFromId: 100 })
+    try {
+      await flushPromises()
+      const state = stateOf(wrapper)
+      expect(state.parentCategoryId).toBe(2)
+      expect(wrapper.findAllComponents(Select)[0].props('modelValue')).toBe(2)
+      expect(wrapper.findAllComponents(Select)[1].props('modelValue')).toBe(4)
+      expect(state.configuration.schema.model_pattern.fields).toEqual(['meta'])
+      expect(state.form.attributeJson).toEqual({ surface: 'matte' })
+      expect(mocks.requiredFields).toHaveBeenCalledWith(4)
+      await vi.advanceTimersByTimeAsync(650)
+      expect(state.form.model).toBe('PC-300')
+      expect(state.form.materialName).toBe('当前规则名称')
+      expect(state.form.nameManual).toBe(false)
+      expect(wrapper.get('[data-test="material-model-regenerate"]').text()).toBe('重新生成')
+      expect(wrapper.findComponent({ name: 'MaterialAttributeFields' }).exists()).toBe(true)
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it('无父级记录的复制物料回显自身品类', async () => {
+    mocks.detail.mockResolvedValue(detail(config(4, '叶子')))
+    mocks.categories.mockResolvedValue({ data: [{ ...config(4, '叶子').category, parentId: null }] })
+    const wrapper = create({ copyFromId: 100 })
+    await flushPromises()
+    expect(stateOf(wrapper).parentCategoryId).toBe(4)
+    wrapper.unmount()
+  })
+
+  it('自动态按钮可见，点击请求当前资料，重算后继续自动同步', async () => {
+    mocks.configuration.mockResolvedValue({ data: patterned() })
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(4)
+    state.form.brand = '当前品牌'
+    await flushPromises()
+    await wrapper.get('[data-test="material-model-regenerate"]').trigger('click')
+    await flushPromises()
+    expect(state.form.model).toBe('PC-300')
+    expect(state.modelManual).toBe(false)
+    await wrapper.get('[data-test="material-name-generate"]').trigger('click')
+    await flushPromises()
+    expect(mocks.renderNaming).toHaveBeenCalledWith(4, expect.objectContaining({ brand: '当前品牌', model: 'PC-300' }))
+    expect(state.form.materialName).toBe('当前规则名称')
+    expect(state.form.nameManual).toBe(false)
+    expect(mocks.confirm).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('未配规则时明确提示；型号按钮不请求生成且保留手填值', async () => {
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await state.selectCategory(2)
+    await wrapper.get('[data-test="material-model"]').setValue('手填型号')
+    await wrapper.get('[data-test="material-model-regenerate"]').trigger('click')
+    expect(wrapper.text()).toContain('该品类未配置型号规则，请手工填写型号')
+    expect(wrapper.text()).toContain('该品类未配置命名规则')
+    expect(mocks.info).toHaveBeenCalledWith('该品类未配置型号规则，请手工填写型号')
+    expect(mocks.renderModel).not.toHaveBeenCalled()
+    expect(state.form.model).toBe('手填型号')
+    expect(state.modelManual).toBe(true)
+    await wrapper.get('[data-test="material-name-generate"]').trigger('click')
+    expect(mocks.info).toHaveBeenCalledWith(expect.stringContaining('该品类未配置命名规则'))
+    expect(mocks.error).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('编辑名称即使等于旧默认结果也不自动重算；型号重算须确认且可取消', async () => {
+    vi.useFakeTimers()
+    mocks.detail.mockResolvedValue(detail(patterned(), 'PCOLD'))
+    const wrapper = create({ materialId: 100 })
+    try {
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(650)
+      const state = stateOf(wrapper)
+      expect(state.form.materialName).toBe('PCOLD')
+      expect(state.form.model).toBe('OLD')
+      expect(mocks.renderModel).not.toHaveBeenCalled()
+      mocks.confirm.mockRejectedValueOnce('cancel')
+      await wrapper.get('[data-test="material-model-regenerate"]').trigger('click')
+      await flushPromises()
+      expect(mocks.confirm).toHaveBeenCalledOnce()
+      expect(state.form.model).toBe('OLD')
+      expect(mocks.renderModel).not.toHaveBeenCalled()
+      await wrapper.get('[data-test="material-model-regenerate"]').trigger('click')
+      await flushPromises()
+      expect(mocks.confirm).toHaveBeenCalledTimes(2)
+      expect(state.form.model).toBe('PC-300')
+      expect(state.form.materialName).toBe('PCOLD')
+      expect(mocks.save).not.toHaveBeenCalled()
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([{ readonly: true }, { materialId: 100 }, {}])('只读或无相应权限时不显示规则按钮 %j', async (props) => {
+    mocks.detail.mockResolvedValue(detail())
+    mocks.hasPermission.mockReturnValue(!!('readonly' in props))
+    const wrapper = create(props)
+    await flushPromises()
+    expect(wrapper.find('[data-test="material-name-generate"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="material-model-regenerate"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

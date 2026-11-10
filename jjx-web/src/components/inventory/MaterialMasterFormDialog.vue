@@ -229,17 +229,21 @@
                   : '自动生成，随录入资料更新；也可直接修改。'
               }}
             </div>
+            <div v-if="configuration && !hasNameRule" class="field-hint">
+              该品类未配置命名规则，使用默认命名方式；也可手工填写名称。
+            </div>
             <el-button
-              v-if="form.nameManual"
+              v-if="canEditMaterial"
               size="small"
               link
               type="primary"
               data-test="material-name-generate"
+              :disabled="saving || configurationLoading || !!loadError"
               @click="restoreAutoName"
               >按规则生成</el-button
             >
             <el-button
-              v-if="canRevertName"
+              v-if="canEditMaterial && canRevertName"
               size="small"
               link
               type="primary"
@@ -268,7 +272,7 @@
               @blur="onModelBlur"
             >
               <template v-if="canRegenerateModel" #append>
-                <el-button data-test="material-model-regenerate" @click="regenerateModel">
+                <el-button data-test="material-model-regenerate" :disabled="saving || configurationLoading || !!loadError" @click="regenerateModel">
                   {{ form.materialId ? '按规则重算' : '重新生成' }}
                 </el-button>
               </template>
@@ -277,9 +281,12 @@
               型号已存在（物料编码 {{ modelDuplicate.materialCode }}）
             </div>
             <div class="field-hint" :class="{ manual: modelManual }">{{ modelHint }}</div>
+            <div v-if="configuration && !modelPatternFields.length" class="field-hint">
+              该品类未配置型号规则，请手工填写型号。
+            </div>
             <div class="model-restore">
               <el-button
-                v-if="!form.materialId && modelManual && canRestoreAutoModel"
+                v-if="canEditMaterial && !form.materialId && modelManual && canRestoreAutoModel"
                 link
                 type="primary"
                 size="small"
@@ -288,7 +295,7 @@
                 >恢复按规则生成</el-button
               >
               <el-button
-                v-if="canRevertModel"
+                v-if="canEditMaterial && canRevertModel"
                 link
                 type="primary"
                 size="small"
@@ -367,12 +374,14 @@ import {
   previewMasterSpecification,
   pruneAttributes,
 } from './materialMasterModel'
-import { el } from 'element-plus/es/locale/index.mjs'
+import { usePermission } from '@/composables/usePermission'
+import { Permissions } from '@/enums/permissions'
 
 const router = useRouter()
 
 const props = defineProps<{
   modelValue: boolean
+  readonly?: boolean
   materialId?: number | null
   /** 复制新增：带入该物料档案信息，清空编码/名称/型号（dev-20261107-016） */
   copyFromId?: number | null
@@ -385,6 +394,12 @@ const props = defineProps<{
     supplierName?: string
   }
 }>()
+const { hasPermission } = usePermission()
+const canEditMaterial = computed(() =>
+  !props.readonly && hasPermission(
+    props.materialId ? Permissions.INVENTORY_MATERIAL_EDIT : Permissions.INVENTORY_MATERIAL_ADD
+  )
+)
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'success', material: InventoryMaterial): void
@@ -512,11 +527,7 @@ const modelBasisText = computed(() => {
   const prefix = configuration.value?.category?.modelPrefix || ''
   return [prefix ? '前缀 ' + prefix : '', modelPatternFields.value.join(' + ')].filter(Boolean).join('，')
 })
-const canRegenerateModel = computed(() => {
-  if (!modelPatternFields.value.length) return false
-  if (form.materialId) return true
-  return modelManual.value
-})
+const canRegenerateModel = computed(() => canEditMaterial.value)
 /** 只有新建态能「恢复自动生成」：编辑态永不自动重算，避免历史型号被悄悄改掉。 */
 const canRestoreAutoModel = computed(
   () => !form.materialId && modelPatternFields.value.length > 0
@@ -559,6 +570,11 @@ async function onModelBlur() {
   }
 }
 async function regenerateModel() {
+  if (!canEditMaterial.value || saving.value || configurationLoading.value || loadError.value) return
+  if (!modelPatternFields.value.length) {
+    ElMessage.info(form.categoryId ? '该品类未配置型号规则，请手工填写型号' : '请先选择品类')
+    return
+  }
   if (form.materialId) {
     try {
       await ElMessageBox.confirm('按当前品类型号规则重算型号？保存后仍会校验唯一性。', '按规则重算型号', { type: 'warning' })
@@ -568,7 +584,11 @@ async function regenerateModel() {
   }
   modelManual.value = false
   modelDuplicate.value = null
-  await refreshModel(true)
+  try {
+    await refreshModel(true)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '型号生成失败')
+  }
 }
 function goNamingRule() {
   router.push('/inventory/material-admin/naming-rule')
@@ -630,6 +650,7 @@ async function refreshModel(force = false) {
 watch(
   () => [
     visible.value,
+    loading.value,
     form.categoryId,
     JSON.stringify(modelDraft()),
     JSON.stringify(configuration.value?.schema.model_pattern),
@@ -799,7 +820,23 @@ function revertName() {
   nameUndo.value = null
 }
 
-function restoreAutoName() {
+const hasNameRule = computed(() => !!configuration.value?.schema.name_pattern?.fields.length)
+async function restoreAutoName() {
+  if (!canEditMaterial.value || saving.value || configurationLoading.value || loadError.value) return
+  if (!form.categoryId) return void ElMessage.info('请先选择品类')
+  if (hasNameRule.value) {
+    const currentSession = session
+    const categoryId = form.categoryId
+    try {
+      const response = await materialMasterApi.renderNaming(categoryId, { ...modelDraft(), model: form.model })
+      if (currentSession !== session || categoryId !== form.categoryId || !visible.value) return
+      ruleName.value = response.data || ''
+    } catch (error) {
+      return void ElMessage.error(error instanceof Error ? error.message : '名称生成失败')
+    }
+  } else {
+    ElMessage.info('该品类未配置命名规则，使用默认命名方式；也可手工填写名称')
+  }
   rememberName()
   form.nameManual = false
   form.materialName = autoName.value
@@ -917,6 +954,9 @@ async function initialize() {
       const detail = detailResponse.data
       applyCopySource(form, detail)
       configuration.value = detail.configuration ?? undefined
+      const requiredResponse = await materialMasterApi.requiredFields(form.categoryId!)
+      if (currentSession !== session) return
+      requiredFields.value = requiredResponse.data ?? undefined
       copySourceName.value = detail.material.materialName || ''
     } else if (detailResponse?.data) {
       const detail = detailResponse.data
@@ -929,20 +969,13 @@ async function initialize() {
       form.materialCode = material.materialCode
       form.materialName = material.materialName || ''
       nameBaseline.value = form.materialName
-      form.nameManual =
-        !!material.materialName &&
-        material.materialName !== previewMasterName(form, dictionaries.value)
+      // 历史名称无论是否碰巧等于默认生成值，都须显式点击后才重算。
+      form.nameManual = true
       form.attributeJson = detail.attributes
       delete form.attributeJson.thickness_mm
       form.tagIds = detail.tags.flatMap((tag) => (tag.tagId == null ? [] : [tag.tagId]))
       configuration.value = detail.configuration ?? undefined
       if (!detail.configuration) form.categoryId = null
-      // 回显：物料挂在子类时，品类下拉显示其父级
-      const self = categories.value.find((c) => c.categoryId === form.categoryId)
-      parentCategoryId.value =
-        self?.parentId != null && hasChildren(self.parentId)
-          ? self.parentId
-          : (form.categoryId ?? null)
       modelBaseline.value = form.model || ''
     } else if (props.presetData) {
       if (props.presetData.materialName) {
@@ -963,6 +996,12 @@ async function initialize() {
         }
       }
     }
+    // 编辑和复制共用回显口径，不触发品类切换以免清空带入的属性。
+    const self = categories.value.find((c) => c.categoryId === form.categoryId)
+    parentCategoryId.value =
+      self?.parentId != null && hasChildren(self.parentId)
+        ? self.parentId
+        : (form.categoryId ?? null)
   } catch (error) {
     if (currentSession === session)
       loadError.value = error instanceof Error ? error.message : '物料数据加载失败，请关闭后重试'
