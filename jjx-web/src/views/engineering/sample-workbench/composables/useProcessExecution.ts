@@ -10,6 +10,8 @@ interface ExecutionContext {
   refreshCard: () => Promise<void>
   loadSummary: () => Promise<void>
   loadRounds?: () => Promise<void>
+  /** 打样备料状态（dev-20261110-003）：state=NONE 未备料 / PARTIAL 备料中 / FULL 齐套 */
+  pickStatus?: Readonly<Ref<any>>
 }
 
 /**
@@ -19,10 +21,25 @@ interface ExecutionContext {
  * 执行后只回写本卡片的执行数据，不整表重载覆盖其他草稿。
  */
 export function useProcessExecution(context: ExecutionContext) {
-  const { readonlyMode, orderId, savingPlan, refreshCard, loadSummary, loadRounds } = context
+  const { readonlyMode, orderId, savingPlan, refreshCard, loadSummary, loadRounds, pickStatus } = context
+
+  /** 未备料时禁止开始/完成工序；备料中只提示不拦（部分发料场景）。 */
+  function pickBlockReason(): string | null {
+    if (!pickStatus || pickStatus.value?.state !== 'NONE') return null
+    return '本单尚未生成领料单或未发料：请先到 销售 → 样品单 生成领料单，或确认无料消耗后再推进工序'
+  }
+
+  /** 备料中：允许继续，但每次推进给一次强提示。 */
+  function warnPartialPick() {
+    if (pickStatus?.value?.state === 'PARTIAL') {
+      ElMessage.warning('本单领料尚未全部发料（备料中），请确认已领到实际需要的材料')
+    }
+  }
 
   /** 当前卡片是否可执行：只有本卡自身状态参与判断，其他草稿不阻断。 */
   function blockReason(pc: any): string | null {
+    const pickReason = pickBlockReason()
+    if (pickReason) return pickReason
     if (pc.advancing) return '该工序正在提交，请勿重复操作'
     if (savingPlan.value) return '工序计划保存中，请稍后再操作'
     if (pc.editing) return '当前工序有未保存的修改，请先保存计划'
@@ -38,6 +55,8 @@ export function useProcessExecution(context: ExecutionContext) {
 
   /** 印刷行是否可执行（与卡片同口径）。 */
   function printBlockReason(row: any): string | null {
+    const pickReason = pickBlockReason()
+    if (pickReason) return pickReason
     if (row.advancing) return '该印刷工序正在提交，请勿重复操作'
     if (savingPlan.value) return '工序计划保存中，请稍后再操作'
     if (!row.processId) return '该印刷工序还未保存，请先保存计划'
@@ -71,6 +90,7 @@ export function useProcessExecution(context: ExecutionContext) {
       ElMessage.warning(printReason)
       return
     }
+    warnPartialPick()
     const next =
       row.status === SampleProcessStatusEnum.DOING.value
         ? SampleProcessStatusEnum.DONE.value
@@ -103,6 +123,7 @@ export function useProcessExecution(context: ExecutionContext) {
       ElMessage.warning(reason)
       return
     }
+    warnPartialPick()
     const next =
       pc.status === SampleProcessStatusEnum.DOING.value
         ? SampleProcessStatusEnum.DONE.value

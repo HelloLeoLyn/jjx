@@ -1564,12 +1564,76 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         // 入参沿用 sales_order.order_id，与 BOM、出库来源一致，并非样品扩展表主键。
         com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectByOrderId(sampleOrderId);
         if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
+        // 生成领料单前置（dev-20261110-003）：状态必须是工程打样中，且当前轮次已有 BOM 行。
+        validateSamplePickReady(sampleOrderId, sample);
         try {
             inventoryAlertService.checkSampleShortage(sampleOrderId);
         } catch (Exception e) {
             log.warn("样品单[{}]刷新缺料预警失败，继续领料预览", sampleOrderId, e);
         }
         return buildSamplePickPreview(sampleOrderId, sample);
+    }
+
+    /**
+     * 打样领料前置校验（dev-20261110-003）：状态须为「工程打样中」，当前轮次须已有打样 BOM。
+     * 只校验"能不能生成领料单"，不校验库存是否充足——缺料由预警提示、不阻断流程。
+     */
+    private void validateSamplePickReady(Long sampleOrderId, com.jjx.sales.domain.entity.SalesSampleOrder sample) {
+        if (!com.jjx.sales.enums.SampleOrderStatusEnum.ENGINEERING.getValue().equals(sample.getSampleStatus())) {
+            String current = java.util.Arrays.stream(com.jjx.sales.enums.SampleOrderStatusEnum.values())
+                    .filter(item -> item.getValue().equals(sample.getSampleStatus()))
+                    .map(com.jjx.sales.enums.SampleOrderStatusEnum::getLabel).findFirst().orElse("未知状态");
+            throw new BusinessException("只有「工程打样中」的样品单可以生成领料单，当前状态：" + current);
+        }
+        Integer roundNo = Objects.requireNonNullElse(sample.getSampleRound(), 1);
+        Long bomRows = sampleBomMapper.selectCount(new LambdaQueryWrapper<com.jjx.sales.domain.entity.SalesSampleBom>()
+                .eq(com.jjx.sales.domain.entity.SalesSampleBom::getOrderId, sampleOrderId)
+                .eq(com.jjx.sales.domain.entity.SalesSampleBom::getRoundNo, roundNo));
+        if (bomRows == null || bomRows == 0) {
+            throw new BusinessException("当前轮次 Round" + roundNo + " 还没有打样 BOM，请先编制打样材料后再生成领料单");
+        }
+    }
+
+    /**
+     * 打样备料状态（dev-20261110-003）：由 source_type=sample 的出库单派生，不新增字段。
+     * NONE=未备料（无单）/ PARTIAL=备料中（有单但未全部完成）/ FULL=齐套（全部已完成）；已取消单不计入。
+     */
+    @Override
+    public java.util.Map<String, Object> samplePickStatus(Long sampleOrderId) {
+        com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectByOrderId(sampleOrderId);
+        if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
+        List<InventoryOutboundOrder> orders = outboundOrderMapper.selectList(new LambdaQueryWrapper<InventoryOutboundOrder>()
+                .eq(InventoryOutboundOrder::getSourceType, "sample")
+                .eq(InventoryOutboundOrder::getSourceId, sampleOrderId)
+                .orderByAsc(InventoryOutboundOrder::getOutboundId));
+        List<Map<String, Object>> items = new ArrayList<>();
+        int completed = 0;
+        int cancelled = 0;
+        for (InventoryOutboundOrder order : orders) {
+            if (InventoryOrderStatusEnum.CANCELLED.getValue().equals(order.getOrderStatus())) {
+                cancelled++;
+                continue;
+            }
+            if (InventoryOrderStatusEnum.COMPLETED.getValue().equals(order.getOrderStatus())) completed++;
+            Map<String, Object> row = new HashMap<>();
+            row.put("outboundId", order.getOutboundId());
+            row.put("outboundNo", order.getOutboundNo());
+            row.put("status", order.getOrderStatus());
+            var statusEnum = InventoryOrderStatusEnum.getByValue(order.getOrderStatus());
+            row.put("statusLabel", statusEnum == null ? "未知" : statusEnum.getLabel());
+            items.add(row);
+        }
+        String state = items.isEmpty() ? "NONE" : completed == items.size() ? "FULL" : "PARTIAL";
+        String label = "NONE".equals(state) ? "未备料" : "FULL".equals(state) ? "齐套" : "备料中";
+        Map<String, Object> result = new HashMap<>();
+        result.put("state", state);
+        result.put("label", label);
+        result.put("orderCount", items.size());
+        result.put("completedCount", completed);
+        result.put("cancelledCount", cancelled);
+        result.put("orders", items);
+        result.put("roundNo", Objects.requireNonNullElse(sample.getSampleRound(), 1));
+        return result;
     }
 
     private List<Map<String, Object>> buildSamplePickPreview(
@@ -1640,6 +1704,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         com.jjx.sales.domain.entity.SalesSampleOrder sample = sampleOrderMapper.selectByOrderId(sampleOrderId);
         if (sample == null) throw new BusinessException("样品单不存在: " + sampleOrderId);
         if (items == null || items.isEmpty()) throw new BusinessException("打样领料明细不能为空");
+        validateSamplePickReady(sampleOrderId, sample);
         validateSamplePickItems(buildSamplePickPreview(sampleOrderId, sample), items);
         // 样品单号 = 关联订单号
         String sampleNo = srcOrder != null && srcOrder.getOrderNo() != null
@@ -1702,10 +1767,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         outboundOrderMapper.updateById(order);
         if (missingCost) {
             // 表默认值为 0，实体的 NOT_NULL 更新策略不能清空，须显式写 NULL。
-            outboundOrderMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers
-                    .<InventoryOutboundOrder>lambdaUpdate()
-                    .eq(InventoryOutboundOrder::getOutboundId, order.getOutboundId())
-                    .set(InventoryOutboundOrder::getTotalAmount, null));
+            // 用字符串列名更新：lambda 写法依赖实体 TableInfo，隔离/单测环境未扫描 mapper 时会抛
+            // "can not find lambda cache for this entity"（dev-20261110-003 一并修好）。
+            outboundOrderMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<InventoryOutboundOrder>()
+                    .eq("outbound_id", order.getOutboundId())
+                    .set("total_amount", null));
         }
         reservePickItems(order.getOutboundId());
         log.info("打样领料单已生成(待发料): sampleOrderId={}, outboundId={}, no={}", sampleOrderId, order.getOutboundId(), order.getOutboundNo());

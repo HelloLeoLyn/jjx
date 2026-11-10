@@ -260,3 +260,14 @@ export interface PickItemPayload {
   materialCode?: string
   quantity: number
 }
+
+/** 打样备料状态（由打样出库单派生，dev-20261110-003） */
+export interface SamplePickStatus {
+  state: 'NONE' | 'PARTIAL' | 'FULL'
+  label: string
+  orderCount: number
+  completedCount: number
+  cancelledCount: number
+  roundNo: number
+  orders: { outboundId: number; outboundNo: string; status: number; statusLabel: string }[]
+}

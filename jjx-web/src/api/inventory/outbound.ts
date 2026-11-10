@@ -15,6 +15,7 @@ import type {
   PickOrderPrintVO,
   SamplePickPreviewRow,
   SamplePickItemPayload,
+  SamplePickStatus,
   ProductPickRow,
 } from '@/types/inventory/outbound'
 
@@ -44,6 +45,11 @@ export const outboundApi = {
   // 打样领料（从样品单创建）
   createSamplePick(sampleOrderId: number, items: SamplePickItemPayload[]) {
     return request.post<R<number>>(`/inventory/outbound/sample-pick/${sampleOrderId}`, items)
+  },
+
+  // 打样备料状态（未备料/备料中/齐套；按打样出库单派生，dev-20261110-003）
+  samplePickStatus(sampleOrderId: number) {
+    return request.get<R<SamplePickStatus>>(`/inventory/outbound/sample-pick/status/${sampleOrderId}`)
   },
 
   // 某产品关联的领料记录（打样领料 + 生产领料；作业规范页只读，dev-20261011-026）

@@ -103,6 +103,7 @@
         :advance-plan="advancePlan"
         :exec-block-reason="execBlockReason"
         :print-block-reason="printBlockReason"
+        :pick-status="pickStatus"
         @mark-ready="runCurrentAction(handleMarkReady)"
         @view-files="showFiles"
       />
@@ -619,6 +620,7 @@ const {
   advancePrint,
   execBlockReason,
   printBlockReason,
+  pickStatus,
   frequentMaterials,
   saveStateText,
   markDirty,

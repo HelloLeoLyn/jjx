@@ -13,6 +13,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadProps } from 'element-plus'
 import request from '@/utils/request'
 import { sampleOrderApi } from '@/api/sales/sampleOrder'
+import { outboundApi } from '@/api/inventory/outbound'
 import { standardProcessApi } from '@/api/product/standardProcess'
 import { useDict } from '@/composables/useDict'
 import { SampleProcessStatusEnum } from '@/enums/sales'
@@ -316,8 +317,21 @@ export function useSampleWorkbench() {
     loadBom, refreshCard, loadSummary, note: toRef(form, 'note'), canSave: () => isCurrentRound.value,
     ensureProcessesLoaded: loadAllProcesses, resolveProcessById,
   })
+
+  // 打样备料状态（dev-20261110-003）：由 source_type=sample 的出库单派生，不新增字段
+  const pickStatus = ref<any>(null)
+  async function loadPickStatus() {
+    if (!orderId.value) return
+    try {
+      const res: any = await outboundApi.samplePickStatus(orderId.value)
+      pickStatus.value = res?.data || null
+    } catch {
+      pickStatus.value = null
+    }
+  }
+
   const { advancePrint, advancePlan, blockReason: execBlockReason, printBlockReason } = useProcessExecution({
-    readonlyMode, orderId, savingPlan, refreshCard, loadSummary, loadRounds,
+    readonlyMode, orderId, savingPlan, refreshCard, loadSummary, loadRounds, pickStatus,
   })
   async function fetchProcessesOnce() {
     const res: any = await request.get('/engineering/standard-processes/page', {
@@ -758,6 +772,7 @@ export function useSampleWorkbench() {
         loadSummary(),
         loadAllProcesses(),
         loadFrequentMaterials(),
+        loadPickStatus(),
       ])
       markSaved()
     } catch (e: any) {
@@ -862,12 +877,18 @@ export function useSampleWorkbench() {
       ElMessage.error(`还有 ${unfinished.length} 道工序未完成（${unfinished.slice(0, 3).join('、')}${unfinished.length > 3 ? '…' : ''}），请先完成全部工序`)
       return
     }
+    // 未备料兜底（dev-20261110-003）：本轮从未生成过领料单时二次确认，不静默跳过
+    const neverPicked = pickStatus.value?.state === 'NONE'
     try {
-      await ElMessageBox.confirm('确认样品制作完成？将进入待送样状态', '标记完成', {
-        confirmButtonText: '确认',
-        cancelButtonText: '取消',
-        type: 'success',
-      })
+      await ElMessageBox.confirm(
+        neverPicked ? '本轮还没有生成过领料单。确认无料消耗，直接标记样品完成？' : '确认样品制作完成？将进入待送样状态',
+        neverPicked ? '未备料确认' : '标记完成',
+        {
+          confirmButtonText: neverPicked ? '确认无料消耗，继续' : '确认',
+          cancelButtonText: '取消',
+          type: neverPicked ? 'warning' : 'success',
+        },
+      )
       await sampleOrderApi.markReady(orderId.value)
       ElMessage.success('已标记完成，待送样')
       goBack()
@@ -926,6 +947,8 @@ export function useSampleWorkbench() {
     advancePrint,
     execBlockReason,
     printBlockReason,
+    pickStatus,
+    loadPickStatus,
     frequentMaterials,
     saveStateText,
     markDirty,

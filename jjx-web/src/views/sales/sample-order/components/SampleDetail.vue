@@ -91,6 +91,8 @@
         <p>仅汇总已确认发料的领料单；工时单独记录，不并入领料成本。</p>
         <el-alert v-if="pickCostSummary?.missingCostCount" type="warning" :closable="false"
           :title="`${pickCostSummary.missingCostCount} 条明细缺少成本；已知金额小计 ${formatPickCost(pickCostSummary.knownAmount)}，不能重算打样成本。`" />
+        <el-alert v-if="pickCostSummary && !pickCostSummary.items?.length" type="info" :closable="false"
+          title="当前轮次还没有已发料的领料单，尚未产生领料成本：请先生成领料单并完成发料，或切换「全部轮次」查看。" />
         <el-alert v-if="pickCostRound && pickCostSummary?.unknownRoundOrderCount" type="warning" :closable="false"
           :title="`${pickCostSummary.unknownRoundOrderCount} 张历史领料单缺少轮次，未计入本轮，请选择全部轮次后重算。`" />
         <el-table :data="pickCostSummary?.items || []" border style="margin-top: 12px">

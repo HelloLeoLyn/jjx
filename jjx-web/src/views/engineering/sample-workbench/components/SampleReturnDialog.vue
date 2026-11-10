@@ -19,7 +19,7 @@
       :data="rows"
       border
       style="margin-top: 12px"
-      empty-text="暂无已完成发料的可退明细"
+      empty-text="暂无可退明细：需先完成发料（出库单状态=已完成）后才能退料"
     >
       <el-table-column prop="materialCode" label="物料编码" width="130" />
       <el-table-column prop="materialName" label="物料名称" min-width="140" />

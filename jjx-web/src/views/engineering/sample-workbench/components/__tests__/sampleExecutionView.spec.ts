@@ -360,4 +360,23 @@ describe('SampleExecutionView 打样执行视图', () => {
     expect(wrapper.text()).toContain('毛边')
     expect(wrapper.text()).not.toContain('展开历史记录')
   })
+
+  it('备料状态标签按派生状态展示（dev-20261110-003）', async () => {
+    const none = mountView({ pickStatus: { state: 'NONE', label: '未备料', orderCount: 0, completedCount: 0 } })
+    await flushPromises()
+    expect(none.text()).toContain('备料：未备料')
+
+    const partial = mountView({ pickStatus: { state: 'PARTIAL', label: '备料中', orderCount: 2, completedCount: 1 } })
+    await flushPromises()
+    expect(partial.text()).toContain('备料：备料中')
+
+    const full = mountView({ pickStatus: { state: 'FULL', label: '齐套', orderCount: 1, completedCount: 1 } })
+    await flushPromises()
+    expect(full.text()).toContain('备料：齐套')
+
+    // 反例：没有备料状态时不渲染标签（历史/只读场景不出现误导文案）
+    const absent = mountView({})
+    await flushPromises()
+    expect(absent.text()).not.toContain('备料：')
+  })
 })

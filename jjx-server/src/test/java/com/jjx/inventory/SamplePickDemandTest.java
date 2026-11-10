@@ -72,7 +72,22 @@ class SamplePickDemandTest {
         sample.setOrderId(7L);
         sample.setSampleQty(2);
         sample.setSampleRound(1);
+        // dev-20261110-003：生成领料单要求「工程打样中」，fixture 按该状态构造
+        sample.setSampleStatus(com.jjx.sales.enums.SampleOrderStatusEnum.ENGINEERING.getValue());
         when(sampleOrderMapper.selectByOrderId(7L)).thenReturn(sample);
+    }
+
+    @Test
+    void 非工程打样中或本轮无BOM时不能生成领料单() {
+        // 状态不是工程打样中：直接拦下并说明当前状态
+        sample.setSampleStatus(com.jjx.sales.enums.SampleOrderStatusEnum.SAMPLE_READY.getValue());
+        var statusError = assertThrows(BusinessException.class, () -> service.previewSamplePick(7L));
+        assertTrue(statusError.getMessage().contains("工程打样中"));
+
+        // 状态正确但本轮没有 BOM：提示先编制打样材料
+        sample.setSampleStatus(com.jjx.sales.enums.SampleOrderStatusEnum.ENGINEERING.getValue());
+        var bomError = assertThrows(BusinessException.class, () -> service.previewSamplePick(7L));
+        assertTrue(bomError.getMessage().contains("还没有打样 BOM"));
     }
 
     @ParameterizedTest

@@ -117,6 +117,12 @@ public interface InventoryOutboundService extends IService<InventoryOutboundOrde
     Long createSamplePick(Long sampleOrderId, java.util.List<java.util.Map<String, Object>> items);
 
     /**
+     * 打样备料状态（按 source_type=sample 的出库单派生；dev-20261110-003）
+     * state: NONE 未备料 / PARTIAL 备料中 / FULL 齐套
+     */
+    java.util.Map<String, Object> samplePickStatus(Long sampleOrderId);
+
+    /**
      * 销售出库（从销售订单创建）
      */
     Long createFromSales(Long salesOrderId);

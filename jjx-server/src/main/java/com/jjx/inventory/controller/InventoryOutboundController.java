@@ -149,6 +149,13 @@ public class InventoryOutboundController {
         return Result.success(outboundService.previewSamplePick(sampleOrderId));
     }
 
+    @GetMapping("/sample-pick/status/{sampleOrderId}")
+    @Operation(summary = "打样备料状态（未备料/备料中/齐套，按打样出库单派生；dev-20261110-003）")
+    @SaCheckPermission(value = {"inventory:outbound:view", "sales:sample:view", "engineering:sample:workbench"}, mode = SaMode.OR)
+    public Result<java.util.Map<String, Object>> samplePickStatus(@PathVariable Long sampleOrderId) {
+        return Result.success(outboundService.samplePickStatus(sampleOrderId));
+    }
+
     @PostMapping("/sample-pick/{sampleOrderId}")
     @Operation(summary = "打样领料（从样品单创建，复用出库/预占/确认发料；单号 PICK-样品单号-序号）")
     @Log(module = "出库管理", businessType = BusinessType.INSERT, bizType = "'outbound'", bizId = "#sampleOrderId", action = LogActions.OUTBOUND_PRODUCTION_PICK)

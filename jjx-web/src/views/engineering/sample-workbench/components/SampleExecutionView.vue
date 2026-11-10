@@ -5,6 +5,14 @@
       <div class="exec-bar-row">
         <div class="exec-bar-info">
           <span class="title">打样执行</span>
+          <el-tag
+            v-if="pickStatus?.label"
+            :type="pickTagType"
+            size="small"
+            effect="plain"
+            :title="pickStatusHint"
+            >备料：{{ pickStatus.label }}</el-tag
+          >
           <span class="sub">
             Round {{ roundNo }} · 按计划开始 / 完成工序，未保存或保存中的工序不可推进
           </span>
@@ -56,8 +64,9 @@
  */
 import ExecutionTimeline from './ExecutionTimeline.vue'
 import DefectRecordPanel from './DefectRecordPanel.vue'
+import { computed } from 'vue'
 
-defineProps<{
+const props = defineProps<{
   readonly: boolean
   orderId: number
   roundNo: number
@@ -70,7 +79,26 @@ defineProps<{
   advancePlan?: (pc: any) => void
   execBlockReason?: (pc: any) => string | null
   printBlockReason?: (row: any) => string | null
+  /** 打样备料状态（dev-20261110-003）：{ state: NONE|PARTIAL|FULL, label, orderCount, completedCount } */
+  pickStatus?: { state: string; label: string; orderCount?: number; completedCount?: number } | null
 }>()
+
+/** 备料状态颜色：未备料红、备料中黄、齐套绿。 */
+const pickTagType = computed(() => {
+  const state = props.pickStatus?.state
+  return state === 'NONE' ? 'danger' : state === 'PARTIAL' ? 'warning' : 'success'
+})
+
+/** 鼠标悬停说明：写清当前备料情况与可做的动作。 */
+const pickStatusHint = computed(() => {
+  const status = props.pickStatus
+  if (!status) return '尚未获取备料状态'
+  if (status.state === 'NONE') return '本轮还没有生成领料单：工序推进会被拦截，请先到销售→样品单生成领料单，或确认无料消耗'
+  if (status.state === 'PARTIAL') {
+    return `已生成 ${status.orderCount ?? 0} 张领料单，其中 ${status.completedCount ?? 0} 张已发料：可继续执行，请确认材料已领`
+  }
+  return `领料单 ${status.orderCount ?? 0} 张已全部发料（齐套）`
+})
 
 const emit = defineEmits<{
   (e: 'mark-ready'): void

@@ -53,6 +53,7 @@ class InventorySamplePickOrderIdTest {
     @Test
     void previewFindsSampleWithDifferentExtensionIdAndKeepsIssuedQuantity() {
         when(sampleOrderMapper.selectByOrderId(2L)).thenReturn(sample());
+        when(sampleBomMapper.selectCount(any())).thenReturn(1L);
         SalesSampleBom bom = new SalesSampleBom();
         bom.setOrderId(2L);
         bom.setMaterialName("测试材料");
@@ -80,6 +81,7 @@ class InventorySamplePickOrderIdTest {
     @Test
     void createLinksOutboundToOrderInsteadOfExtensionId() {
         when(sampleOrderMapper.selectByOrderId(2L)).thenReturn(sample());
+        when(sampleBomMapper.selectCount(any())).thenReturn(1L);
         SalesOrder source = new SalesOrder();
         source.setOrderId(2L);
         source.setOrderNo("SP261102001");
@@ -146,6 +148,8 @@ class InventorySamplePickOrderIdTest {
         sample.setOrderId(2L);
         sample.setSampleQty(1);
         sample.setSampleRound(1);
+        // dev-20261110-003：生成领料单要求「工程打样中」
+        sample.setSampleStatus(com.jjx.sales.enums.SampleOrderStatusEnum.ENGINEERING.getValue());
         return sample;
     }
 
