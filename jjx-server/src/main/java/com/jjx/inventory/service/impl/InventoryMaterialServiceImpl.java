@@ -430,6 +430,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                         .or().like(StringUtils.isNotBlank(name), InventoryMaterial::getMaterialName, name);
             });
         }
+        wrapper.apply(StringUtils.isNotBlank(queryDTO.getSpecification()),
+                "IFNULL(specification, '') = {0}", queryDTO.getSpecification());
         applyCategoryFilter(wrapper, queryDTO.getCategoryId());
         if (queryDTO.getSupplierId() != null) {
             wrapper.eq(InventoryMaterial::getSupplierId, queryDTO.getSupplierId());

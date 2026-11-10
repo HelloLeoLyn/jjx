@@ -125,6 +125,22 @@ class MaterialMasterSchemaTest {
         org.mockito.Mockito.verifyNoInteractions(materials);
     }
 
+    @Test void bomSpecificationSourceReturnsStoredSpecificationWithoutComposingAttributes() {
+        var catalog = org.mockito.Mockito.mock(com.jjx.inventory.master.MaterialMasterCatalog.class);
+        var service = new MaterialMasterService(catalog, null, null, null, null, null, null, mapper);
+        var material = new InventoryMaterial();
+        material.setSpecification("450*225mm");
+        material.setAttributeJson("{\"coating\":\"单面加硬\"}");
+        var source = service.specificationSource(material);
+        assertEquals("450*225mm", source.get("specification"));
+        assertEquals(Map.of("coating", "单面加硬"), source.get("attributes"));
+        assertTrue(source.containsKey("size"));
+        assertTrue(source.containsKey("schema"));
+        material.setSpecification("");
+        assertEquals("", service.specificationSource(material).get("specification"));
+        assertNull(service.specificationSource(null).get("specification"));
+    }
+
     private Map<String, MaterialAttributeSchema> seeds() throws Exception {
         Path path = Path.of("../jjx-docs/sql/migrations/304_material_master_catalog.sql");
         if (!Files.exists(path)) path = Path.of("../jjx-docs/sql/migrations/applied/304_material_master_catalog.sql");

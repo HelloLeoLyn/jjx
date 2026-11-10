@@ -460,6 +460,29 @@ class MaterialMasterDataTest {
                 .noneMatch(field -> "currentStock".equals(field.getName())));
     }
 
+    @Test void searchSpecificationIsOptionalExactAndParameterBound() {
+        var query = new MaterialQueryDTO();
+        for (String specification : Arrays.asList(null, "", "   ", "195mm*80mm", "a' OR 1=1 --")) {
+            clearInvocations(mapper);
+            query.setSpecification(specification);
+            service.search(query);
+            var wrapper = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+            verify(mapper).selectPage(any(), wrapper.capture());
+            String sql = wrapper.getValue().getSqlSegment();
+            boolean filtered = specification != null && !specification.isBlank();
+            assertEquals(filtered, sql.contains("IFNULL(specification, '') ="), sql);
+            assertFalse(sql.contains("specification LIKE"), sql);
+            assertTrue(sql.endsWith("ORDER BY create_time DESC,material_id DESC"), sql);
+            if (filtered) {
+                assertFalse(sql.contains(specification), sql);
+                assertTrue(((com.baomidou.mybatisplus.core.conditions.AbstractWrapper) wrapper.getValue())
+                        .getParamNameValuePairs().containsValue(specification));
+            } else {
+                assertEquals("(status = #{ew.paramNameValuePairs.MPGENVAL1}) ORDER BY create_time DESC,material_id DESC", sql);
+            }
+        }
+    }
+
     @Test void textFiltersUseContainsSemantics() {
         when(mapper.selectList(any())).thenReturn(List.of());
         MaterialQueryDTO dto = new MaterialQueryDTO();

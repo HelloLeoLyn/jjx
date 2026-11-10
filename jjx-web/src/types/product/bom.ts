@@ -74,14 +74,10 @@ export interface EngineeringBomItem {
   actualIssueQty?: number
   /** 物料类型（R=板材/卷材） */
   materialType?: string
-  /** 前端组合出的默认规格，随保存提交到日志，不落业务表 */
+  /** 物料档案规格对照值，不落业务表 */
   materialSpecification?: string
-  /** 原始尺寸、属性和模板；默认规格由前端组合。 */
+  /** 物料档案规格及原始尺寸、属性和模板。 */
   materialSpecificationSource?: BomSpecificationSource
-  /** 上次保存时的系统生成规格（从操作日志带出，不落业务表） */
-  specificationBaseline?: string
-  /** 保留人工清空的规格；与当前系统值相同时仍回到自动模式 */
-  specificationManual?: boolean
   lossRate: number
   remark?: string
   sortOrder: number

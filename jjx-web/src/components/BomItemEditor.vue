@@ -112,7 +112,6 @@
           </div>
         </template>
       </el-table-column>
-      <!-- 规格型号（dev-20261024-023：默认取物料系统生成值，可手改，可恢复） -->
       <el-table-column label="规格" prop="specification" width="120">
         <template #default="scope">
           <el-input
@@ -120,20 +119,11 @@
             placeholder="选填"
             size="small"
             maxlength="500"
-            @input="markManualSpec(scope.row)"
+            @input="invalidateSpecificationMatch(scope.row)"
+            @blur="queueSpecificationMatch(scope.row)"
+            @keydown.enter="queueSpecificationMatch(scope.row)"
+            @paste="nextTick(() => queueSpecificationMatch(scope.row))"
           />
-          <div v-if="isManualSpec(scope.row)" class="spec-manual">
-            <el-tag size="small" type="warning">已改写</el-tag>
-            <el-button link type="primary" size="small" @click="restoreAutoSpec(scope.row)">
-              恢复系统生成
-            </el-button>
-          </div>
-          <div v-if="specErrors[String(scope.row.itemId)]" class="spec-error">
-            规格生成失败，请点击刷新重试
-          </div>
-          <div v-if="isManualSpec(scope.row) && specSourceChanged(scope.row)" class="spec-error">
-            物料属性已变，当前为人工改写，请复核
-          </div>
         </template>
       </el-table-column>
       <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数） -->
@@ -290,6 +280,19 @@
         </template>
       </el-table-column>
     </el-table>
+    <el-dialog v-model="candidateVisible" title="按规格选择物料" width="720px">
+      <el-table :data="specCandidates" border>
+        <el-table-column prop="materialCode" label="编码" />
+        <el-table-column prop="materialName" label="名称" />
+        <el-table-column prop="specification" label="规格" />
+        <el-table-column prop="categoryName" label="品类" />
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="chooseSpecificationCandidate(row)">选择</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
     <MaterialFormDialog
       v-model="materialFormVisible"
       :preset-data="materialPreset"
@@ -316,7 +319,8 @@ import type { EngineeringBomItem, BomMaterialMatchItem } from '@/types/product/b
 import { BomItemReviewStatusEnum } from '@/enums/product'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import { bomGroupRows } from '@/utils/bomGroups'
-import { autoSpecOf, isManualSpec, specFollowValue, specSourceChanged } from './bomSpecMode'
+import { autoSpecOf } from './bomSpecMode'
+import { materialApi } from '@/api/inventory/material'
 import { generateBomSpecification, specificationSource } from './bomSpecification'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
@@ -578,6 +582,9 @@ onUnmounted(() => {
   window.removeEventListener('resize', calculateTableHeight)
   emitChange.cancel()
   destroySortable()
+  disposed = true
+  matchTimers.forEach(clearTimeout)
+  matchTimers.clear()
 })
 
 // ==================== 物料选择处理 ====================
@@ -592,26 +599,20 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   row.materialId = material.materialId || 0
   row.materialCode = material.materialCode
   row.materialName = material.materialName
-  // 选料带入档案规格；空规格先留空，等待详情中的属性模板兜底。
-  const autoSpec = (material.specification || '').trim()
+  invalidateSpecificationMatch(row)
+  const autoSpec = material.specification ?? ''
   delete row.materialSpecificationSource
   row.materialSpecification = autoSpec
-  row.specificationBaseline = autoSpec
-  row.specificationManual = false
   row.specification = autoSpec
   row.unit = material.unit || 'PCS'
   row.materialType = material.rootType || undefined
   row.create = false
   recalcAppliedIssue(row)
-  void loadAutoSpec(row, true)
+  void loadAutoSpec(row)
 }
 
-function markManualSpec(row: EngineeringBomItem) {
-  row.specificationManual = row.specification !== autoSpecOf(row)
-}
-
-/** 选料和批量刷新共用档案规格来源，档案为空时按原属性模板兜底。 */
-function loadAutoSpec(row: EngineeringBomItem, selected = false): Promise<void> {
+/** 详情只更新档案对照值，不覆盖 BOM 行规格和用户输入。 */
+function loadAutoSpec(row: EngineeringBomItem): Promise<void> {
   const key = String(row.itemId)
   const materialId = row.materialId
   const version = (specVersions.get(key) || 0) + 1
@@ -620,28 +621,16 @@ function loadAutoSpec(row: EngineeringBomItem, selected = false): Promise<void> 
     try {
       const response = await materialMasterApi.detail(materialId)
       if (!response.data) throw new Error('物料详情为空')
-      const current = items.value.find((item) => String(item.itemId) === key)
-      if (!current || current.materialId !== materialId || specVersions.get(key) !== version) return
+      const current = items.value.find(item => String(item.itemId) === key)
+      if (disposed || !current || current.materialId !== materialId || specVersions.get(key) !== version) return
       const source = specificationSource(response.data)
-      const auto = generateBomSpecification(source)
-      const previous = autoSpecOf(current)
-      const manual = previous ? isManualSpec(current) : !!current.specificationManual
-      current.specificationManual = manual
       current.materialSpecificationSource = source
-      current.materialSpecification = auto
-      // 选料后的异步返回不能覆盖用户刚输入的规格；刷新保留已有人工值。
-      if (selected && !manual && auto) current.specification = auto
-      else {
-        if (!manual && previous) current.specificationBaseline = previous
-        followAutoSpec(current)
-      }
-      if (!isManualSpec(current)) current.specificationBaseline = auto
+      current.materialSpecification = generateBomSpecification(source)
       delete specErrors.value[key]
     } catch (error) {
-      const current = items.value.find((item) => String(item.itemId) === key)
-      if (current?.materialId === materialId && specVersions.get(key) === version) {
+      if (specVersions.get(key) === version) {
         specErrors.value[key] = true
-        console.error('BOM规格生成失败:', error)
+        console.error('BOM物料档案读取失败:', error)
       }
     } finally {
       if (specVersions.get(key) === version) specRequests.delete(key)
@@ -649,6 +638,101 @@ function loadAutoSpec(row: EngineeringBomItem, selected = false): Promise<void> 
   })()
   specRequests.set(key, request)
   return request
+}
+
+const matchVersions = new Map<string, number>()
+const matchTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const candidateVisible = ref(false)
+const specCandidates = ref<InventoryMaterial[]>([])
+interface SpecificationMatchContext {
+  key: string
+  version: number
+  materialId: number
+  specification: string
+}
+let candidateContext: SpecificationMatchContext | null = null
+let disposed = false
+
+function invalidateSpecificationMatch(row: EngineeringBomItem) {
+  const key = String(row.itemId)
+  matchVersions.set(key, (matchVersions.get(key) || 0) + 1)
+  clearTimeout(matchTimers.get(key))
+  matchTimers.delete(key)
+  if (candidateContext?.key === key) {
+    candidateVisible.value = false
+    candidateContext = null
+  }
+}
+
+function matchingRow(context: SpecificationMatchContext) {
+  if (disposed || matchVersions.get(context.key) !== context.version) return undefined
+  return items.value.find(row => String(row.itemId) === context.key &&
+    Number(row.materialId) === context.materialId && row.specification === context.specification)
+}
+
+function queueSpecificationMatch(row: EngineeringBomItem) {
+  invalidateSpecificationMatch(row)
+  if (!(Number(row.materialId) > 0) || row.specification === autoSpecOf(row)) return
+  const context = { key: String(row.itemId), version: matchVersions.get(String(row.itemId))!,
+    materialId: Number(row.materialId), specification: row.specification ?? '' }
+  matchTimers.set(context.key, setTimeout(() => {
+    matchTimers.delete(context.key)
+    void matchSpecification(context)
+  }, 300))
+}
+
+async function matchSpecification(context: SpecificationMatchContext) {
+  try {
+    const detail = await materialMasterApi.detail(context.materialId)
+    if (!detail.data) throw new Error('物料详情为空')
+    let row = matchingRow(context)
+    if (!row) return
+    row.materialSpecificationSource = specificationSource(detail.data)
+    row.materialSpecification = generateBomSpecification(row.materialSpecificationSource)
+    if (context.specification === autoSpecOf(row)) return
+    // search 的空规格参数表示不筛选，不能把返回的任意物料当作空规格命中。
+    if (!context.specification.trim()) {
+      ElMessage.warning('规格为空，请重新选料或填写规格后匹配；已保留输入规格')
+      return
+    }
+    const categoryId = detail.data.material.categoryId ?? undefined
+    const search = async (categoryId?: number) => {
+      const records: InventoryMaterial[] = []
+      for (let pageNum = 1; ; pageNum++) {
+        const response = await materialApi.search({ specification: context.specification, categoryId, pageNum, pageSize: 100 })
+        if (!matchingRow(context)) return []
+        if (!response.data) throw new Error('物料查询结果为空')
+        records.push(...response.data.records)
+        if (!response.data.records.length || records.length >= response.data.total) return records
+      }
+    }
+    let candidates = categoryId == null ? [] : await search(categoryId)
+    if (!matchingRow(context)) return
+    if (!candidates.length) candidates = await search()
+    row = matchingRow(context)
+    if (!row) return
+    if (candidates.length === 1) handleMaterialSelect(candidates[0], row)
+    else if (candidates.length > 1) {
+      candidateContext = context
+      specCandidates.value = candidates
+      candidateVisible.value = true
+    } else {
+      handleCreateMaterial(row, row.materialName || '')
+      creatingMatchContext = context
+    }
+  } catch (error) {
+    if (matchingRow(context)) {
+      console.error('按规格匹配物料失败:', error)
+      ElMessage.error('按规格匹配物料失败，请重试；已保留输入规格')
+    }
+  }
+}
+
+function chooseSpecificationCandidate(material: InventoryMaterial) {
+  const row = candidateContext && matchingRow(candidateContext)
+  if (row) handleMaterialSelect(material, row)
+  candidateVisible.value = false
+  candidateContext = null
 }
 
 async function prepareSpecifications(): Promise<boolean> {
@@ -662,26 +746,10 @@ async function prepareSpecifications(): Promise<boolean> {
     (row) => !isPendingRemove(row) && specErrors.value[String(row.itemId)]
   )
   if (failed) {
-    await markRowError(failed, `物料「${failed.materialName}」规格生成失败，请刷新重试`)
+    await markRowError(failed, `物料「${failed.materialName}」物料档案读取失败，请刷新重试`)
     return false
   }
   return true
-}
-
-/** 空值及已知旧自动值跟随系统规格；人工改写不覆盖（dev-20261024-023）。 */
-function followAutoSpec(row: EngineeringBomItem) {
-  const next = specFollowValue(row)
-  if (next !== null) row.specification = next
-}
-
-/** 恢复为物料当前档案规格（档案为空时按原属性模板兜底）。 */
-function restoreAutoSpec(row: EngineeringBomItem) {
-  const auto = autoSpecOf(row)
-  if (auto) {
-    row.specification = auto
-    row.specificationBaseline = auto
-    row.specificationManual = false
-  }
 }
 
 /**
@@ -739,8 +807,6 @@ watch(
       walkTree(items.value, matchProjectByName)
       // 初始化也先按当前基数/模数重算用量，再计算应用料。
       walkTree(items.value, recalcAppliedIssue)
-      // dev-20261024-023：规格为空的行自动跟随物料系统规格；人工改写不覆盖
-      walkTree(items.value, followAutoSpec)
     }
   },
   { immediate: true, deep: true }
@@ -923,7 +989,7 @@ const destroySortable = () => {
 const handleRefresh = async () => {
   refreshLoading.value = true
   try {
-    if (await prepareSpecifications()) ElMessage.success('规格已按最新物料档案刷新')
+    if (await prepareSpecifications()) ElMessage.success('物料档案对照值已刷新')
   } finally {
     refreshLoading.value = false
   }
@@ -1051,6 +1117,7 @@ function handleSplitChange(row: EngineeringBomItem, value?: number | null) {
   row.split = `${Math.trunc(Number(value))}mm`
 }
 let creatingRow: EngineeringBomItem | null = null
+let creatingMatchContext: SpecificationMatchContext | null = null
 
 const handleMaterialClear = (row: EngineeringBomItem) => {
   delete materialDrafts.value[String(row.itemId)]
@@ -1060,8 +1127,7 @@ const handleMaterialClear = (row: EngineeringBomItem) => {
   row.specification = ''
   row.materialSpecification = undefined
   delete row.materialSpecificationSource
-  row.specificationBaseline = undefined
-  row.specificationManual = false
+  invalidateSpecificationMatch(row)
   specVersions.set(String(row.itemId), (specVersions.get(String(row.itemId)) || 0) + 1)
   specRequests.delete(String(row.itemId))
   delete specErrors.value[String(row.itemId)]
@@ -1072,6 +1138,7 @@ const handleMaterialClear = (row: EngineeringBomItem) => {
 
 const handleCreateMaterial = (row: EngineeringBomItem, keyword: string) => {
   creatingRow = row
+  creatingMatchContext = null
   materialPreset.value = {
     materialName: keyword,
     specification: row.specification || '',
@@ -1088,7 +1155,8 @@ const handleMaterialCreated = (material: InventoryMaterial) => {
   // 父表回填可能重建行对象，按稳定的明细ID找到当前行。
   const row =
     creatingRow?.itemId == null ? creatingRow : findInTree(items.value, Number(creatingRow.itemId))
-  if (row) handleMaterialSelect(material, row)
+  if (row && (!creatingMatchContext || matchingRow(creatingMatchContext))) handleMaterialSelect(material, row)
+  creatingMatchContext = null
   creatingRow = null
 }
 
@@ -1199,7 +1267,7 @@ defineExpose({
       if (specRequests.has(String(item.itemId)) || specErrors.value[String(item.itemId)]) {
         failures.push({
           item,
-          message: `物料「${item.materialName}」规格尚未生成，请稍后或刷新重试`,
+          message: `物料「${item.materialName}」物料档案尚未读取，请稍后或刷新重试`,
         })
         return
       }
@@ -1212,6 +1280,10 @@ defineExpose({
       }
       if (!item.materialName?.trim()) {
         failures.push({ item, message: '材料名称不能为空' })
+        return
+      }
+      if (Number(item.materialId) > 0 && (item.specification ?? '') !== autoSpecOf(item)) {
+        failures.push({ item, message: '规格与物料档案不一致，请重新选料或按规格匹配' })
         return
       }
       // 规格型号不必填（dev-20261022-020）；其余校验保留并定位到行。
@@ -1445,15 +1517,4 @@ defineExpose({
   cursor: help;
 }
 
-/* dev-20261024-023：规格型号「已改写」标记 + 恢复入口 */
-.spec-manual {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 2px;
-}
-.spec-error {
-  color: var(--el-color-danger);
-  font-size: 12px;
-}
 </style>

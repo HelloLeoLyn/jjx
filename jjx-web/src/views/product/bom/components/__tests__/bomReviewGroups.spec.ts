@@ -28,6 +28,14 @@ beforeEach(() => { permission.allowed = true })
 afterEach(() => { mounted.splice(0).forEach(wrapper => wrapper.unmount()); document.body.innerHTML = '' })
 
 describe('审核组合展示、选择与逐材料处理', () => {
+  it('审核页直接显示数据库规格，不显示已改写或属性变化提示', async () => {
+    const wrapper = await table({ items: [{ ...row(10), specification: '450*225mm',
+      materialSpecification: '其它规格', specificationBaseline: '旧规格', specificationManual: true }] })
+    expect(wrapper.text()).toContain('450*225mm')
+    expect(wrapper.text()).not.toContain('已改写')
+    expect(wrapper.text()).not.toContain('物料属性已变')
+  })
+
   it('真实表格显示组合和独立材料、项目及基数模数损耗用量依据', async () => {
     const wrapper = await table()
     expect(wrapper.text()).toContain('组合1 · 模切')

@@ -213,8 +213,8 @@ const masterDetail = (specification: string, attributes = {}, configuration: unk
   data: { material: { specification, size: '450×225×0.8' }, attributes, configuration },
 })
 
-describe('BOM选料、恢复自动与批量刷新使用档案规格', () => {
-  it('选料立即带入档案规格；手改受保护，恢复和刷新同源', async () => {
+describe('BOM选料使用档案规格，刷新保留行原值', () => {
+  it('选料立即带入档案规格；刷新档案对照不改写行值', async () => {
     vi.mocked(materialMasterApi.detail).mockReset().mockResolvedValue(masterDetail('档案规格') as any)
     const wrapper = mountEditor()
     try {
@@ -225,17 +225,13 @@ describe('BOM选料、恢复自动与批量刷新使用档案规格', () => {
       await flushPromises()
       expect(row.specification).toBe('档案规格')
       row.specification = '手填值'
-      state.markManualSpec(row)
-      expect(state.isManualSpec(row)).toBe(true)
+      state.invalidateSpecificationMatch(row)
       await state.handleRefresh()
       expect(row.specification).toBe('手填值')
-      state.restoreAutoSpec(row)
-      expect(row.specification).toBe('档案规格')
-      expect(state.isManualSpec(row)).toBe(false)
       vi.mocked(materialMasterApi.detail).mockResolvedValue(masterDetail('最新档案规格') as any)
       await state.handleRefresh()
-      expect(row.specification).toBe('最新档案规格')
-      expect(row.specificationBaseline).toBe('最新档案规格')
+      expect(row.specification).toBe('手填值')
+      expect(row.materialSpecification).toBe('最新档案规格')
     } finally { wrapper.unmount() }
   })
 
@@ -249,13 +245,13 @@ describe('BOM选料、恢复自动与批量刷新使用档案规格', () => {
       state.handleMaterialSelect({ materialId: 9, materialName: 'PC', specification: '', size: '450×225×0.8' }, row)
       expect(row.specification).toBe('')
       await flushPromises()
-      expect(row.specification).toBe(fallback ? '280gf' : '')
+      expect(row.specification).toBe('')
       await state.handleRefresh()
-      expect(row.specification).toBe(fallback ? '280gf' : '')
+      expect(row.specification).toBe('')
     } finally { wrapper.unmount() }
   })
 
-  it('选料详情异步返回时保留刚输入的规格，恢复自动仍取档案', async () => {
+  it('选料详情异步返回时保留刚输入的规格，仅更新档案对照', async () => {
     const pending = deferredPage()
     vi.mocked(materialMasterApi.detail).mockReset().mockReturnValue(pending.promise)
     const wrapper = mountEditor()
@@ -264,13 +260,11 @@ describe('BOM选料、恢复自动与批量刷新使用档案规格', () => {
       const row = state.items[0]
       state.handleMaterialSelect({ materialId: 9, materialName: 'PC', specification: '档案规格', size: '450×225×0.8' }, row)
       row.specification = '刚输入的值'
-      state.markManualSpec(row)
+      state.invalidateSpecificationMatch(row)
       pending.resolve(masterDetail('档案规格'))
       await flushPromises()
       expect(row.specification).toBe('刚输入的值')
-      expect(state.isManualSpec(row)).toBe(true)
-      state.restoreAutoSpec(row)
-      expect(row.specification).toBe('档案规格')
+      expect(row.materialSpecification).toBe('档案规格')
     } finally { wrapper.unmount() }
   })
 })

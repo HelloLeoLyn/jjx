@@ -116,8 +116,6 @@
       <el-table-column label="规格型号" prop="specification" width="150" show-overflow-tooltip>
         <template #default="{ row }">
           <div>{{ row.specification || '—' }}</div>
-          <el-tag v-if="isManualSpec(row)" type="warning" size="small">已改写，请复核</el-tag>
-          <div v-if="isManualSpec(row) && specSourceChanged(row)">物料属性已变</div>
         </template>
       </el-table-column>
       <!-- dev-20261022-021：原值对比列（取最近一次保存流水的改动前值，没有记录显示 —） -->
@@ -205,7 +203,6 @@ import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import { bomGroupRows } from '@/utils/bomGroups'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import { hasPermi } from '@/directives'
-import { isManualSpec, specSourceChanged } from '@/components/bomSpecMode'
 
 const props = withDefaults(
   defineProps<{

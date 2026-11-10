@@ -30,8 +30,9 @@ function editor(rows, detail) {
     .map((name, index) => [name, { value: index + 1 }]))
   const mocks = {
     '@/api/inventory/materialMaster': { materialMasterApi: { detail: id => detail ? detail(id) : Promise.resolve({
-      data: { material: { size: state.items.value.find(row => row.materialId === id)?.materialSpecification || '' }, attributes: {}, configuration: null },
+      data: { material: { specification: state.items.value.find(row => row.materialId === id)?.materialSpecification || '' }, attributes: {}, configuration: null },
     }) } },
+    '@/api/inventory/material': { materialApi: {} },
     './bomSpecMode': loadUtility('bomSpecMode'),
     './bomSpecification': loadUtility('bomSpecification'),
     '@/utils/bomGroups': (() => {
@@ -55,7 +56,7 @@ function editor(rows, detail) {
     if (name in mocks) return mocks[name]
     throw new Error('Unexpected import: ' + name)
   }
-  vm.runInNewContext(`(function (exports, require, module) {${code}\n})`, { console })(mod.exports, requireMock, mod)
+  vm.runInNewContext(`(function (exports, require, module) {${code}\n})`, { console, setTimeout, clearTimeout })(mod.exports, requireMock, mod)
   let exposed
   const state = mod.exports.default.setup(vue.reactive({ modelValue: rows }), {
     expose(value) { exposed = value }, emit() {},
@@ -115,7 +116,7 @@ test('已关联行和Excel导入行的搜索草稿阻止保存，选择候选后
     assert.ok(scrolled && focused)
     assert.match(notices.at(-1), /第1行.*尚未确认/)
     assert.equal(getItems()[0].materialName, '旧名')
-    state.handleMaterialSelect({ materialId: 9, materialCode: 'NEW', materialName: '新物料', size: '新规格', unit: 'KG' }, row)
+    state.handleMaterialSelect({ materialId: 9, materialCode: 'NEW', materialName: '新物料', specification: '新规格', unit: 'KG' }, row)
     await state.prepareSpecifications()
     assert.equal(validateItems(), true)
     assert.equal(getItems()[0].materialId, 9)
@@ -125,93 +126,13 @@ test('已关联行和Excel导入行的搜索草稿阻止保存，选择候选后
   }
 })
 
-const generated = specification => ({ data: { material: { size: specification }, attributes: {}, configuration: null } })
-const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
-
-test('物料已存规格为空时，选料使用属性生成结果；保存前重新生成最新属性', async () => {
-  let spec = '厚度:0.175mm'
-  const { state, getItems } = editor([material('旧料', '', 10)], async () => generated(spec))
-  state.handleMaterialSelect({ materialId: 8, materialName: 'PET', specification: '', unit: 'PCS' }, state.items.value[0])
-  await state.prepareSpecifications()
-  assert.equal(getItems()[0].specification, '厚度:0.175mm')
-  spec = '厚度:0.2mm'
-  await state.prepareSpecifications()
-  assert.equal(getItems()[0].specification, '厚度:0.2mm')
-  assert.equal(state.isManualSpec(state.items.value[0]), false)
-})
-
-test('重新打开使用后端原始尺寸；提交对照值由前端计算；空尺寸按原始属性生成', async () => {
-  const source = { size: '30*90mm', attributes: {}, schema: null }
-  const e = editor([{ ...material('PET', '', 10), materialId: 8, specification: '30*80mm', specificationBaseline: '30*80mm', materialSpecificationSource: source }])
-  assert.equal(e.getItems()[0].specification, '30*90mm')
-  assert.equal(e.getItems()[0].materialSpecification, '30*90mm')
-  const detail = { data: { material: { size: '' }, attributes: { force_g: 280, has_dimple: true, plating: '镀镍' }, configuration: { schema: { fields: [
-    { key: 'force_g', type: 'decimal', unit: 'gf' },
-    { key: 'has_dimple', type: 'boolean', true_label: '带点', false_label: '无点' },
-    { key: 'plating', type: 'string' },
-  ] } } } }
-  const selected = editor([material('旧料', '', 10)], async () => detail)
-  selected.state.handleMaterialSelect({ materialId: 9, materialName: '弹片', specification: '后端旧格式，不应采用' }, selected.state.items.value[0])
-  await selected.state.prepareSpecifications()
-  assert.equal(selected.getItems()[0].specification, '280gf 带点镀镍')
-  assert.equal(selected.getItems()[0].materialSpecification, '280gf 带点镀镍')
-})
-
-test('重新打开时旧自动值跟随新属性；手填值和人工清空值保留；恢复后回到自动', async () => {
-  const { state, getItems } = editor([
-    { ...material('自动', '', 10), materialId: 8, specification: '旧系统值', materialSpecification: '新系统值', specificationBaseline: '旧系统值', specificationManual: false },
-    { ...material('人工', '', 11), materialId: 9, specification: '手填值', materialSpecification: '新系统值', specificationBaseline: '旧系统值', specificationManual: true },
-    { ...material('清空', '', 12), materialId: 10, specification: '', materialSpecification: '新系统值', specificationBaseline: '旧系统值', specificationManual: true },
-  ], async () => generated('新系统值'))
-  assert.deepEqual(getItems().map(row => row.specification), ['新系统值', '手填值', ''])
-  await state.prepareSpecifications()
-  assert.deepEqual(getItems().map(row => row.specification), ['新系统值', '手填值', ''])
-  assert.equal(state.specSourceChanged(state.items.value[1]), true)
-  await state.prepareSpecifications()
-  assert.equal(state.specSourceChanged(state.items.value[1]), true, '重复刷新不能丢失属性变化提示')
-  state.restoreAutoSpec(state.items.value[1])
-  assert.equal(state.isManualSpec(state.items.value[1]), false)
-  assert.equal(getItems()[1].specification, '新系统值')
-})
-
-test('选料生成过程中手动输入不被异步结果覆盖；清空关联后迟到结果不能回填', async () => {
-  const first = deferred()
-  const { state, getItems } = editor([material('旧料', '', 10)], () => first.promise)
-  state.handleMaterialSelect({ materialId: 8, materialName: 'PET', specification: '' }, state.items.value[0])
-  state.items.value[0].specification = '刚输入的值'
-  state.markManualSpec(state.items.value[0])
-  first.resolve(generated('系统值'))
-  await state.prepareSpecifications()
-  assert.equal(getItems()[0].specification, '刚输入的值')
-  const second = deferred()
-  const cleared = editor([material('旧料', '', 10)], () => second.promise)
-  cleared.state.handleMaterialSelect({ materialId: 8, materialName: 'PET' }, cleared.state.items.value[0])
-  cleared.state.handleMaterialClear(cleared.state.items.value[0])
-  second.resolve(generated('不应回填'))
-  await cleared.state.prepareSpecifications()
-  assert.equal(cleared.getItems()[0].materialId, 0)
-  assert.equal(cleared.getItems()[0].specification, '')
-})
-
-test('快速切换候选时丢弃旧物料结果；生成失败拦保存，刷新成功可恢复', async () => {
-  const old = deferred()
-  let fail = false
-  const e = editor([material('旧料', '', 10)], id => {
-    if (id === 8) return old.promise
-    return fail ? Promise.reject(new Error('预览失败')) : Promise.resolve(generated('新物料规格'))
-  })
-  e.state.handleMaterialSelect({ materialId: 8, materialName: '旧物料' }, e.state.items.value[0])
-  e.state.handleMaterialSelect({ materialId: 9, materialName: '新物料' }, e.state.items.value[0])
-  old.resolve(generated('过期结果'))
-  assert.equal(await e.state.prepareSpecifications(), true)
-  assert.equal(e.getItems()[0].specification, '新物料规格')
-  fail = true
-  assert.equal(await e.state.prepareSpecifications(), false)
+test('打开及刷新只读取档案对照，不覆盖行规格', async () => {
+  const e = editor([{ ...material('PET', '', 10), materialId: 8, specification: '450*225mm', materialSpecificationSource: { specification: '另一个档案值', attributes: { coating: '单面加硬' } } }])
+  assert.equal(e.getItems()[0].specification, '450*225mm')
+  await e.state.prepareSpecifications()
+  assert.equal(e.getItems()[0].specification, '450*225mm')
   assert.equal(e.validateItems(), false)
-  assert.equal(e.getItems()[0].specification, '新物料规格')
-  fail = false
-  assert.equal(await e.state.prepareSpecifications(), true)
-  assert.equal(e.validateItems(), true)
+  assert.match(e.notices.at(-1), /规格与物料档案不一致/)
 })
 
 test('未确认草稿先拦模式切换，取消后可快速修改原文，清空不保留旧物料', () => {

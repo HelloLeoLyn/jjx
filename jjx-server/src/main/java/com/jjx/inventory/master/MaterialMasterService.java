@@ -390,9 +390,10 @@ public class MaterialMasterService {
         return specificationPreview(material, catalog.specificationSchema(material.getCategoryId()));
     }
 
-    /** 只读原始事实；BOM 的显示组合规则由前端维护。 */
+    /** 只读物料档案事实；BOM 直接使用档案规格，不拼装属性。 */
     public Map<String, Object> specificationSource(InventoryMaterial material) {
         Map<String, Object> source = new LinkedHashMap<>();
+        source.put("specification", material == null ? null : material.getSpecification());
         source.put("size", material == null ? null : material.getSize());
         source.put("attributes", material == null ? Map.of() : readAttributes(material.getAttributeJson()));
         source.put("schema", material == null ? null : catalog.specificationSchema(material.getCategoryId()));

@@ -1,68 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { autoSpecOf, currentSpecOf, isManualSpec, specFollowValue } from '../bomSpecMode'
-import { specificationSource } from '../bomSpecification'
-import type { MaterialMasterDetail } from '@/types/inventory/materialMaster'
+import { autoSpecOf, currentSpecOf } from '../bomSpecMode'
 
-describe('bomSpecMode（dev-20261024-023）', () => {
-  it('autoSpecOf / currentSpecOf 会 trim，空值返回空串', () => {
-    expect(autoSpecOf({ materialSpecification: '  0.175mm  ' })).toBe('0.175mm')
-    expect(autoSpecOf({})).toBe('')
-    expect(currentSpecOf({ specification: '  A  ' })).toBe('A')
+describe('BOM档案规格对照', () => {
+  it('保留数据原值，读取不改写行规格', () => {
+    const row = { specification: '旧规格', materialSpecification: '新规格' }
+    expect(autoSpecOf(row)).toBe('新规格')
+    expect(currentSpecOf(row)).toBe('旧规格')
+    expect(row.specification).toBe('旧规格')
+    expect(currentSpecOf({ specification: ' A ' })).toBe(' A ')
   })
-
-  it('未建档行（materialId=0/空）不判定为手改', () => {
-    expect(isManualSpec({ materialId: 0, specification: 'X', materialSpecification: 'Y' })).toBe(false)
-    expect(isManualSpec({ materialId: null, specification: 'X', materialSpecification: 'Y' })).toBe(false)
-  })
-
-  it('与系统值一致 = 系统模式，不标已改写', () => {
-    expect(isManualSpec({ materialId: 1, specification: '0.175mm', materialSpecification: '0.175mm' })).toBe(false)
-  })
-
-  it('与系统值不同 = 人工改写', () => {
-    expect(isManualSpec({ materialId: 1, specification: '手填值', materialSpecification: '0.175mm' })).toBe(true)
-  })
-
-  it('物料无系统规格时：不判定手改，也不用空串覆盖', () => {
-    const row = { materialId: 1, specification: '手填值', materialSpecification: '' }
-    expect(isManualSpec(row)).toBe(false)
-    expect(specFollowValue(row)).toBeNull()
-  })
-
-  it('规格为空：自动跟随系统值', () => {
-    expect(specFollowValue({ materialId: 1, specification: '', materialSpecification: '0.175mm' })).toBe('0.175mm')
-  })
-
-  it('已有手改值：不跟随（不覆盖）', () => {
-    expect(specFollowValue({ materialId: 1, specification: '手填值', materialSpecification: '0.175mm' })).toBeNull()
-  })
-
-  it('与系统值一致：无需改动', () => {
-    expect(specFollowValue({ materialId: 1, specification: '0.175mm', materialSpecification: '0.175mm' })).toBeNull()
-  })
-
-  it('保存日志证明旧值曾为系统值：属性变化后自动跟随', () => {
-    const row = { materialId: 1, specification: '旧系统值', materialSpecification: '新系统值', specificationBaseline: '旧系统值' }
-    expect(isManualSpec(row)).toBe(false)
-    expect(specFollowValue(row)).toBe('新系统值')
-  })
-
-  it('人工清空保留；手填后再次等于系统值即恢复自动', () => {
-    expect(specFollowValue({ materialId: 1, specification: '', materialSpecification: '系统值', specificationManual: true })).toBeNull()
-    expect(isManualSpec({ materialId: 1, specification: '系统值', materialSpecification: '系统值', specificationManual: true })).toBe(false)
-  })
-
-  it('详情来源供手改判定和自动跟随共用档案规格，忽略尺寸', () => {
-    const source = specificationSource({
-      material: { specification: '档案规格', size: '450×225×0.8' },
-      attributes: {}, configuration: null,
-    } as MaterialMasterDetail)
-    const row = { materialId: 1, specification: '旧自动规格', specificationBaseline: '旧自动规格', materialSpecificationSource: source }
-    expect(autoSpecOf(row)).toBe('档案规格')
-    expect(isManualSpec(row)).toBe(false)
-    expect(specFollowValue(row)).toBe('档案规格')
-    row.specification = '手填值'
-    expect(isManualSpec(row)).toBe(true)
-    expect(specFollowValue(row)).toBeNull()
+  it('source 内空规格也不回退到旧值', () => {
+    expect(autoSpecOf({ materialSpecification: '旧值', materialSpecificationSource: { specification: '', attributes: { coating: '单面加硬' } } })).toBe('')
+    expect(autoSpecOf(null)).toBe('')
+    expect(currentSpecOf(null)).toBe('')
   })
 })
