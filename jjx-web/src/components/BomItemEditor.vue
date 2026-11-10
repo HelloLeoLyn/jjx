@@ -114,16 +114,15 @@
       </el-table-column>
       <el-table-column label="规格" prop="specification" width="120">
         <template #default="scope">
+          <span v-if="Number(scope.row.materialId) > 0">{{ autoSpecOf(scope.row) }}</span>
           <el-input
+            v-else-if="quickMode"
             v-model="scope.row.specification"
             placeholder="选填"
             size="small"
             maxlength="500"
-            @input="invalidateSpecificationMatch(scope.row)"
-            @blur="queueSpecificationMatch(scope.row)"
-            @keydown.enter="queueSpecificationMatch(scope.row)"
-            @paste="nextTick(() => queueSpecificationMatch(scope.row))"
           />
+          <span v-else>{{ scope.row.specification }}</span>
         </template>
       </el-table-column>
       <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数） -->
@@ -280,19 +279,6 @@
         </template>
       </el-table-column>
     </el-table>
-    <el-dialog v-model="candidateVisible" title="按规格选择物料" width="720px">
-      <el-table :data="specCandidates" border>
-        <el-table-column prop="materialCode" label="编码" />
-        <el-table-column prop="materialName" label="名称" />
-        <el-table-column prop="specification" label="规格" />
-        <el-table-column prop="categoryName" label="品类" />
-        <el-table-column label="操作" width="80">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="chooseSpecificationCandidate(row)">选择</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-dialog>
     <MaterialFormDialog
       v-model="materialFormVisible"
       :preset-data="materialPreset"
@@ -320,7 +306,6 @@ import { BomItemReviewStatusEnum } from '@/enums/product'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
 import { bomGroupRows } from '@/utils/bomGroups'
 import { autoSpecOf } from './bomSpecMode'
-import { materialApi } from '@/api/inventory/material'
 import { generateBomSpecification, specificationSource } from './bomSpecification'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
@@ -583,8 +568,6 @@ onUnmounted(() => {
   emitChange.cancel()
   destroySortable()
   disposed = true
-  matchTimers.forEach(clearTimeout)
-  matchTimers.clear()
 })
 
 // ==================== 物料选择处理 ====================
@@ -599,7 +582,6 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   row.materialId = material.materialId || 0
   row.materialCode = material.materialCode
   row.materialName = material.materialName
-  invalidateSpecificationMatch(row)
   const autoSpec = material.specification ?? ''
   delete row.materialSpecificationSource
   row.materialSpecification = autoSpec
@@ -640,100 +622,7 @@ function loadAutoSpec(row: EngineeringBomItem): Promise<void> {
   return request
 }
 
-const matchVersions = new Map<string, number>()
-const matchTimers = new Map<string, ReturnType<typeof setTimeout>>()
-const candidateVisible = ref(false)
-const specCandidates = ref<InventoryMaterial[]>([])
-interface SpecificationMatchContext {
-  key: string
-  version: number
-  materialId: number
-  specification: string
-}
-let candidateContext: SpecificationMatchContext | null = null
 let disposed = false
-
-function invalidateSpecificationMatch(row: EngineeringBomItem) {
-  const key = String(row.itemId)
-  matchVersions.set(key, (matchVersions.get(key) || 0) + 1)
-  clearTimeout(matchTimers.get(key))
-  matchTimers.delete(key)
-  if (candidateContext?.key === key) {
-    candidateVisible.value = false
-    candidateContext = null
-  }
-}
-
-function matchingRow(context: SpecificationMatchContext) {
-  if (disposed || matchVersions.get(context.key) !== context.version) return undefined
-  return items.value.find(row => String(row.itemId) === context.key &&
-    Number(row.materialId) === context.materialId && row.specification === context.specification)
-}
-
-function queueSpecificationMatch(row: EngineeringBomItem) {
-  invalidateSpecificationMatch(row)
-  if (!(Number(row.materialId) > 0) || row.specification === autoSpecOf(row)) return
-  const context = { key: String(row.itemId), version: matchVersions.get(String(row.itemId))!,
-    materialId: Number(row.materialId), specification: row.specification ?? '' }
-  matchTimers.set(context.key, setTimeout(() => {
-    matchTimers.delete(context.key)
-    void matchSpecification(context)
-  }, 300))
-}
-
-async function matchSpecification(context: SpecificationMatchContext) {
-  try {
-    const detail = await materialMasterApi.detail(context.materialId)
-    if (!detail.data) throw new Error('物料详情为空')
-    let row = matchingRow(context)
-    if (!row) return
-    row.materialSpecificationSource = specificationSource(detail.data)
-    row.materialSpecification = generateBomSpecification(row.materialSpecificationSource)
-    if (context.specification === autoSpecOf(row)) return
-    // search 的空规格参数表示不筛选，不能把返回的任意物料当作空规格命中。
-    if (!context.specification.trim()) {
-      ElMessage.warning('规格为空，请重新选料或填写规格后匹配；已保留输入规格')
-      return
-    }
-    const categoryId = detail.data.material.categoryId ?? undefined
-    const search = async (categoryId?: number) => {
-      const records: InventoryMaterial[] = []
-      for (let pageNum = 1; ; pageNum++) {
-        const response = await materialApi.search({ specification: context.specification, categoryId, pageNum, pageSize: 100 })
-        if (!matchingRow(context)) return []
-        if (!response.data) throw new Error('物料查询结果为空')
-        records.push(...response.data.records)
-        if (!response.data.records.length || records.length >= response.data.total) return records
-      }
-    }
-    let candidates = categoryId == null ? [] : await search(categoryId)
-    if (!matchingRow(context)) return
-    if (!candidates.length) candidates = await search()
-    row = matchingRow(context)
-    if (!row) return
-    if (candidates.length === 1) handleMaterialSelect(candidates[0], row)
-    else if (candidates.length > 1) {
-      candidateContext = context
-      specCandidates.value = candidates
-      candidateVisible.value = true
-    } else {
-      handleCreateMaterial(row, row.materialName || '')
-      creatingMatchContext = context
-    }
-  } catch (error) {
-    if (matchingRow(context)) {
-      console.error('按规格匹配物料失败:', error)
-      ElMessage.error('按规格匹配物料失败，请重试；已保留输入规格')
-    }
-  }
-}
-
-function chooseSpecificationCandidate(material: InventoryMaterial) {
-  const row = candidateContext && matchingRow(candidateContext)
-  if (row) handleMaterialSelect(material, row)
-  candidateVisible.value = false
-  candidateContext = null
-}
 
 async function prepareSpecifications(): Promise<boolean> {
   await Promise.all(specRequests.values())
@@ -1117,7 +1006,6 @@ function handleSplitChange(row: EngineeringBomItem, value?: number | null) {
   row.split = `${Math.trunc(Number(value))}mm`
 }
 let creatingRow: EngineeringBomItem | null = null
-let creatingMatchContext: SpecificationMatchContext | null = null
 
 const handleMaterialClear = (row: EngineeringBomItem) => {
   delete materialDrafts.value[String(row.itemId)]
@@ -1127,7 +1015,6 @@ const handleMaterialClear = (row: EngineeringBomItem) => {
   row.specification = ''
   row.materialSpecification = undefined
   delete row.materialSpecificationSource
-  invalidateSpecificationMatch(row)
   specVersions.set(String(row.itemId), (specVersions.get(String(row.itemId)) || 0) + 1)
   specRequests.delete(String(row.itemId))
   delete specErrors.value[String(row.itemId)]
@@ -1138,7 +1025,6 @@ const handleMaterialClear = (row: EngineeringBomItem) => {
 
 const handleCreateMaterial = (row: EngineeringBomItem, keyword: string) => {
   creatingRow = row
-  creatingMatchContext = null
   materialPreset.value = {
     materialName: keyword,
     specification: row.specification || '',
@@ -1155,8 +1041,7 @@ const handleMaterialCreated = (material: InventoryMaterial) => {
   // 父表回填可能重建行对象，按稳定的明细ID找到当前行。
   const row =
     creatingRow?.itemId == null ? creatingRow : findInTree(items.value, Number(creatingRow.itemId))
-  if (row && (!creatingMatchContext || matchingRow(creatingMatchContext))) handleMaterialSelect(material, row)
-  creatingMatchContext = null
+  if (row) handleMaterialSelect(material, row)
   creatingRow = null
 }
 
@@ -1283,7 +1168,7 @@ defineExpose({
         return
       }
       if (Number(item.materialId) > 0 && (item.specification ?? '') !== autoSpecOf(item)) {
-        failures.push({ item, message: '规格与物料档案不一致，请重新选料或按规格匹配' })
+        failures.push({ item, message: '规格与物料档案不一致，请在物料名称列重新选料' })
         return
       }
       // 规格型号不必填（dev-20261022-020）；其余校验保留并定位到行。

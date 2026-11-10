@@ -13,7 +13,3 @@ export function autoSpecOf(row?: SpecRowLike | null): string {
   if (row?.materialSpecificationSource) return generateBomSpecification(row.materialSpecificationSource)
   return row?.materialSpecification ?? ''
 }
-
-export function currentSpecOf(row?: SpecRowLike | null): string {
-  return row?.specification ?? ''
-}

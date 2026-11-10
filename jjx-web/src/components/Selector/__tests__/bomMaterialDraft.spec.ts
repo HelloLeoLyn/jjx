@@ -224,13 +224,12 @@ describe('BOM选料使用档案规格，刷新保留行原值', () => {
       expect(row.specification).toBe('档案规格')
       await flushPromises()
       expect(row.specification).toBe('档案规格')
-      row.specification = '手填值'
-      state.invalidateSpecificationMatch(row)
+      row.specification = '外部异常值'
       await state.handleRefresh()
-      expect(row.specification).toBe('手填值')
+      expect(row.specification).toBe('外部异常值')
       vi.mocked(materialMasterApi.detail).mockResolvedValue(masterDetail('最新档案规格') as any)
       await state.handleRefresh()
-      expect(row.specification).toBe('手填值')
+      expect(row.specification).toBe('外部异常值')
       expect(row.materialSpecification).toBe('最新档案规格')
     } finally { wrapper.unmount() }
   })
@@ -251,7 +250,7 @@ describe('BOM选料使用档案规格，刷新保留行原值', () => {
     } finally { wrapper.unmount() }
   })
 
-  it('选料详情异步返回时保留刚输入的规格，仅更新档案对照', async () => {
+  it('选料详情异步返回不掩盖程序写入的不一致规格，仅更新档案对照', async () => {
     const pending = deferredPage()
     vi.mocked(materialMasterApi.detail).mockReset().mockReturnValue(pending.promise)
     const wrapper = mountEditor()
@@ -259,11 +258,10 @@ describe('BOM选料使用档案规格，刷新保留行原值', () => {
       const state = (wrapper.vm as any).$.setupState
       const row = state.items[0]
       state.handleMaterialSelect({ materialId: 9, materialName: 'PC', specification: '档案规格', size: '450×225×0.8' }, row)
-      row.specification = '刚输入的值'
-      state.invalidateSpecificationMatch(row)
+      row.specification = '程序写入的异常值'
       pending.resolve(masterDetail('档案规格'))
       await flushPromises()
-      expect(row.specification).toBe('刚输入的值')
+      expect(row.specification).toBe('程序写入的异常值')
       expect(row.materialSpecification).toBe('档案规格')
     } finally { wrapper.unmount() }
   })
