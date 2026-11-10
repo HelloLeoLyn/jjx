@@ -81,6 +81,8 @@ import com.jjx.system.annotation.Event;
 public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrderMapper, InventoryInboundOrder>
         implements InventoryInboundService {
 
+    private final com.jjx.inventory.mapper.InventoryAlertLogMapper alertLogMapper;
+    private final org.springframework.transaction.PlatformTransactionManager transactionManager;
     private final InventoryInboundOrderMapper inboundOrderMapper;
     private final InventoryInboundItemMapper inboundItemMapper;
     private final InventoryStockItemMapper stockItemMapper;
@@ -494,8 +496,43 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             payload.put("bizType", "inventory");
             payload.put("operatorName", operatorName);
             publishIqcEventAfterCommit("inventory.inbound.confirmed", payload);
+            resolveAlertsAfterInboundCommit(order);
         }
         return confirmed;
+    }
+
+    /** 提交后独立事务：入库回滚不触发，预警写入失败不污染入库事务。 */
+    private void resolveAlertsAfterInboundCommit(InventoryInboundOrder order) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            log.warn("入库确认无事务同步，跳过预警自动解除: {}", order.getInboundNo());
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    var template = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+                    template.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+                    template.executeWithoutResult(tx -> {
+                        List<Long> materialIds = inboundItemMapper.selectByInboundId(order.getInboundId()).stream()
+                                .map(InventoryInboundItem::getMaterialId).filter(Objects::nonNull).distinct().toList();
+                        if (materialIds.isEmpty()) return;
+                        String message = "到货入库自动解除（入库单 " + order.getInboundNo() + "）";
+                        // 单条条件更新避免覆盖并发采购回写的单号与备注；不碰任何库存字段。
+                        alertLogMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<com.jjx.inventory.domain.InventoryAlertLog>()
+                                .in(com.jjx.inventory.domain.InventoryAlertLog::getMaterialId, materialIds)
+                                .in(com.jjx.inventory.domain.InventoryAlertLog::getStatus,
+                                        InventoryAlertServiceImpl.AlertStatus.UNPROCESSED.getValue(),
+                                        InventoryAlertServiceImpl.AlertStatus.PURCHASE_CREATED.getValue())
+                                .set(com.jjx.inventory.domain.InventoryAlertLog::getStatus,
+                                        InventoryAlertServiceImpl.AlertStatus.RESOLVED.getValue())
+                                .setSql("process_remark = CONCAT_WS('；', NULLIF(process_remark, ''), {0})", message));
+                    });
+                } catch (Exception e) {
+                    log.warn("入库已提交，预警自动解除失败: inboundNo={}", order.getInboundNo(), e);
+                }
+            }
+        });
     }
 
     private void validateAllIqcApproved(Long inboundId) {

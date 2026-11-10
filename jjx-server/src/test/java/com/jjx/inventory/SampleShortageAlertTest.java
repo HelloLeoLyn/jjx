@@ -57,7 +57,7 @@ class SampleShortageAlertTest {
                 + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", "sa", "");
         jdbc = new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE inventory_alert_log (alert_id BIGINT AUTO_INCREMENT PRIMARY KEY, "
-                + "alert_type VARCHAR(50),order_no VARCHAR(100),involved_orders INT,alert_level VARCHAR(50),"
+                + "alert_type VARCHAR(50),order_no VARCHAR(100),related_order_no VARCHAR(50),involved_orders INT,alert_level VARCHAR(50),"
                 + "material_id BIGINT NOT NULL,material_code VARCHAR(100) NOT NULL,material_name VARCHAR(100) NOT NULL,current_stock DECIMAL(20,4),"
                 + "safe_stock DECIMAL(20,4),max_stock DECIMAL(20,4),expiry_date DATE,last_outbound_date DATE,"
                 + "alert_message VARCHAR(1000),alert_time TIMESTAMP,status INT,reported_by VARCHAR(100),reported_time TIMESTAMP,"
@@ -126,7 +126,7 @@ class SampleShortageAlertTest {
 
     int active() {
         return jdbc.queryForObject("SELECT COUNT(*) FROM inventory_alert_log WHERE alert_type='sample_shortage' "
-                + "AND order_no='SP7' AND status IN (0,1)", Integer.class);
+                + "AND order_no='SP7' AND status=0", Integer.class);
     }
 
     @Test void repeatedRefreshInvalidatesOldAlertsAndReplenishmentClearsOnlyThisSample() {
@@ -146,7 +146,6 @@ class SampleShortageAlertTest {
         assertEquals("材料11", alert.get("material_name"));
         assertTrue(alert.get("alert_message").toString().contains("需求2 可用0 缺口2"));
         assertEquals("建议补货 2", alert.get("suggestion"));
-        jdbc.update("UPDATE inventory_alert_log SET status=1 WHERE alert_type='sample_shortage' AND order_no='SP7' AND status=0");
         service.checkSampleShortage(7L);
         assertEquals(1, active());
         material(11L, "2");
@@ -176,16 +175,16 @@ class SampleShortageAlertTest {
         bom(7L, 2, 12L, "1", "1", "1");
         material(11L, "0");
         material(12L, "0");
-        seed("sample_shortage", "SP7", 1);
+        seed("sample_shortage", "SP7", 0);
         jdbc.execute("ALTER TABLE inventory_alert_log ADD CONSTRAINT reject_material CHECK (material_id <> 12)");
         assertThrows(RuntimeException.class, () -> service.checkSampleShortage(7L));
         assertEquals(1, active());
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM inventory_alert_log", Integer.class));
-        assertEquals(1, jdbc.queryForObject("SELECT status FROM inventory_alert_log", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT status FROM inventory_alert_log", Integer.class));
     }
 
     @Test void listLookupOnlyReturnsUnprocessedSampleAlertsOnRequestedPage() {
-        seed("sample_shortage", "SP7", 1);
+        seed("sample_shortage", "SP7", 0);
         seed("sample_shortage", "SP8", 2);
         seed("sample_shortage", "SP9", 0);
         seed("order_shortage", "SP8", 0);

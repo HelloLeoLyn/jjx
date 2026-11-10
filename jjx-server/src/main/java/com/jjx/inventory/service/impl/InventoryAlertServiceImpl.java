@@ -54,6 +54,16 @@ import com.jjx.system.utils.SecurityUtils;
 public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapper, InventoryAlertLog>
         implements InventoryAlertService {
 
+    /** 库存预警持久化状态；历史上报状态已由迁移 354 归并。 */
+    public enum AlertStatus {
+        UNPROCESSED(0, "未处理"), PURCHASE_CREATED(2, "已转采购单"), RESOLVED(3, "已解除");
+        private final int value;
+        private final String label;
+        AlertStatus(int value, String label) { this.value = value; this.label = label; }
+        public int getValue() { return value; }
+        public String getLabel() { return label; }
+    }
+
     private final SalesSampleBomMapper sampleBomMapper;
     private final SalesSampleOrderMapper sampleOrderMapper;
     private final InventoryAlertLogMapper alertLogMapper;
@@ -138,9 +148,9 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 new LambdaQueryWrapper<InventoryAlertLog>()
                         .eq(InventoryAlertLog::getAlertType, AlertTypeEnum.SAMPLE_SHORTAGE.getCode())
                         .eq(InventoryAlertLog::getOrderNo, order.getOrderNo())
-                        .in(InventoryAlertLog::getStatus, 0, 1));
+                        .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue()));
         for (InventoryAlertLog old : oldAlerts) {
-            old.setStatus(3);
+            old.setStatus(AlertStatus.RESOLVED.getValue());
             old.setProcessRemark("打样缺料重算，旧预警失效");
             alertLogMapper.updateById(old);
         }
@@ -166,7 +176,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             InventoryAlertLog alert = new InventoryAlertLog();
             alert.setAlertType(AlertTypeEnum.SAMPLE_SHORTAGE.getCode());
             alert.setAlertLevel("warning");
-            alert.setStatus(0);
+            alert.setStatus(AlertStatus.UNPROCESSED.getValue());
             alert.setOrderNo(order.getOrderNo());
             alert.setMaterialId(material.getMaterialId());
             alert.setMaterialCode(material.getMaterialCode());
@@ -188,7 +198,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         return alertLogMapper.selectList(new LambdaQueryWrapper<InventoryAlertLog>()
                         .select(InventoryAlertLog::getOrderNo)
                         .eq(InventoryAlertLog::getAlertType, AlertTypeEnum.SAMPLE_SHORTAGE.getCode())
-                        .in(InventoryAlertLog::getStatus, 0, 1)
+                        .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue())
                         .in(InventoryAlertLog::getOrderNo, orderNos))
                 .stream().map(InventoryAlertLog::getOrderNo).collect(java.util.stream.Collectors.toSet());
     }
@@ -420,9 +430,9 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 new LambdaQueryWrapper<InventoryAlertLog>()
                         .eq(InventoryAlertLog::getAlertType, "order_shortage")
                         .eq(InventoryAlertLog::getOrderNo, orderNo)
-                        .in(InventoryAlertLog::getStatus, 0, 1));
+                        .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue()));
         for (InventoryAlertLog oldAlert : oldShortageAlerts) {
-            oldAlert.setStatus(3);
+            oldAlert.setStatus(AlertStatus.RESOLVED.getValue());
             oldAlert.setProcessRemark("齐套检查重算，旧预警失效");
             alertLogMapper.updateById(oldAlert);
         }
@@ -552,7 +562,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         // 2. 幂等：清掉旧的未处理物料维度缺料预警（demand_shortage）
         alertLogMapper.delete(new LambdaQueryWrapper<InventoryAlertLog>()
                 .eq(InventoryAlertLog::getAlertType, "demand_shortage")
-                .eq(InventoryAlertLog::getStatus, 0));
+                .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue()));
 
         // 3. 两步走汇总：产品维度先扣产品库存→还需生产→BOM展开→物料需求汇总
         Map<Long, BigDecimal> demandMap = new java.util.HashMap<>();
@@ -645,7 +655,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     new LambdaQueryWrapper<InventoryAlertLog>()
                             .eq(InventoryAlertLog::getAlertType, "order_shortage")
                             .eq(InventoryAlertLog::getMaterialId, materialId)
-                            .eq(InventoryAlertLog::getStatus, 0)
+                            .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue())
                             .orderByDesc(InventoryAlertLog::getAlertTime)
                             .last("LIMIT 1"));
             if (existOrderAlerts != null && !existOrderAlerts.isEmpty()) {
@@ -700,7 +710,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         return alertLogMapper.selectCount(new LambdaQueryWrapper<InventoryAlertLog>()
                 .eq(InventoryAlertLog::getAlertType, "order_shortage")
                 .eq(InventoryAlertLog::getOrderNo, order.getOrderNo())
-                .eq(InventoryAlertLog::getStatus, 0));
+                .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue()));
     }
 
     /**
@@ -1102,7 +1112,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     public void checkSafeStockAlert() {
         log.info("检查安全库存预警");
         List<InventoryStock> lowStock = stockMapper.selectLowStock();
-        // 2026-08-18：去重落库（status∈(0,1) 存在则更新，否则新建），修复每次检查重复 INSERT
+        // 2026-08-18：去重落库（status=0 存在则更新，否则新建），修复每次检查重复 INSERT
         for (InventoryStock stock : lowStock) {
             BigDecimal available = stock.getTotalQuantity() != null ? stock.getTotalQuantity() : BigDecimal.ZERO;
             if (stock.getTotalReserved() != null) {
@@ -1130,11 +1140,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             List<InventoryAlertLog> openAlerts = alertLogMapper.selectList(
                     new LambdaQueryWrapper<InventoryAlertLog>()
                             .eq(InventoryAlertLog::getAlertType, "safe_stock")
-                            .in(InventoryAlertLog::getStatus, 0, 1));
+                            .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue()));
             int resolved = 0;
             for (InventoryAlertLog alert : openAlerts) {
                 if (alert.getMaterialId() == null || lowIds.contains(alert.getMaterialId())) continue;
-                alert.setStatus(3);
+                alert.setStatus(AlertStatus.RESOLVED.getValue());
                 alert.setProcessRemark("库存已恢复，自动解除");
                 alertLogMapper.updateById(alert);
                 resolved++;
@@ -1258,49 +1268,16 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         log.info("呆滞料预警检查完成，发现 {} 条", obsolete.size());
     }
 
+    /** dev-20261110-007：保留服务接口契约的空操作实现；HTTP 上报入口已删除。 */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public boolean markRead(Long alertId) {
-        // 2026-08-18：语义升级为「标记已上报」——仓库确认并上报，留痕 reported_by/reported_time
-        InventoryAlertLog alert = alertLogMapper.selectById(alertId);
-        if (alert == null) {
-            log.error("预警不存在: alertId={}", alertId);
-            return false;
-        }
-        // 已处理/已解除的不可再上报
-        if (Objects.equals(alert.getStatus(), 2) || Objects.equals(alert.getStatus(), 3)) {
-            log.warn("预警已处理/已解除，不可上报: alertId={}, status={}", alertId, alert.getStatus());
-            return false;
-        }
-
-        alert.setStatus(1);
-        alert.setReportedBy(SecurityUtils.getUsername());
-        alert.setReportedTime(LocalDateTime.now());
-        return alertLogMapper.updateById(alert) > 0;
+        return true;
     }
 
+    /** dev-20261110-007：兼容旧批量上报调用，不写状态或上报字段。 */
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public boolean batchMarkRead(List<Long> alertIds) {
-        // 2026-08-18：语义升级为「标记已上报」
-        if (alertIds == null || alertIds.isEmpty()) {
-            return false;
-        }
-
-        List<InventoryAlertLog> alerts = alertLogMapper.selectBatchIds(alertIds);
-        String user = SecurityUtils.getUsername();
-        LocalDateTime now = LocalDateTime.now();
-        for (InventoryAlertLog alert : alerts) {
-            // 已处理/已解除的跳过
-            if (Objects.equals(alert.getStatus(), 2) || Objects.equals(alert.getStatus(), 3)) {
-                continue;
-            }
-            alert.setStatus(1);
-            alert.setReportedBy(user);
-            alert.setReportedTime(now);
-        }
-
-        return updateBatchById(alerts);
+        return true;
     }
 
     @Override
@@ -1312,7 +1289,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             return false;
         }
 
-        alert.setStatus(2);
+        alert.setStatus(AlertStatus.PURCHASE_CREATED.getValue());
         alert.setProcessedBy(processedBy);
         alert.setProcessedTime(LocalDateTime.now());
         alert.setProcessRemark(remark);
@@ -1407,14 +1384,14 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         }
 
         // 来源2：未处理的订单缺料 / 样品缺料 / 全局汇总缺料预警（DEV-573 8-04 衔接齐套检查）
-        // 2026-08-18：含已上报(1)——已上报同样进采购待办（修复标记已读后从建议消失的断链）
+        // dev-20261110-007：采购待办只查询未处理预警。
         // dev-20260929-025：**demand_shortage（全局汇总缺料）原先被漏掉** —— 齐套检查产生的
         //   "多单汇总缺料"只会落 demand_shortage，而这里只捞 order_shortage ⇒ 采购计划永远看不到缺口。
         List<InventoryAlertLog> shortageAlerts = alertLogMapper.selectList(
                 new LambdaQueryWrapper<InventoryAlertLog>()
                         .in(InventoryAlertLog::getAlertType, AlertTypeEnum.ORDER_SHORTAGE.getCode(),
                                 AlertTypeEnum.SAMPLE_SHORTAGE.getCode(), "demand_shortage")
-                        .in(InventoryAlertLog::getStatus, 0, 1));
+                        .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue()));
         int lowStockCount = suggestions.size();
         for (InventoryAlertLog alert : shortageAlerts) {
             // 缺口 = 需求 - 可用，建议补货量取缺口（从 alertMessage 冗余在 suggestion 中，优先解析 suggestion）
@@ -1541,7 +1518,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
     @Override
     public boolean batchProcessAlert(java.util.List<Long> alertIds, java.util.List<Long> materialIds,
                                      String relatedOrderNo, String remark) {
-        // 2026-08-18：支持按物料回写——把勾选物料的所有未处理/已上报预警并入处理集合
+        // 2026-08-18：支持按物料回写——把勾选物料的所有未处理预警并入处理集合
         // （补手动添加行无 sourceAlertId、低库存预警复燃场景）
         java.util.Set<Long> idSet = new java.util.HashSet<>();
         if (alertIds != null) idSet.addAll(alertIds);
@@ -1565,15 +1542,16 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             try {
                 InventoryAlertLog alert = alertLogMapper.selectById(alertId);
                 // 2026-08-18：已处理(2)/已解除(3)跳过，防已解除预警被重新置已处理
-                if (alert == null || java.util.Objects.equals(alert.getStatus(), 2)
-                        || java.util.Objects.equals(alert.getStatus(), 3)) {
+                if (alert == null || java.util.Objects.equals(alert.getStatus(), AlertStatus.PURCHASE_CREATED.getValue())
+                        || java.util.Objects.equals(alert.getStatus(), AlertStatus.RESOLVED.getValue())) {
                     continue;
                 }
-                alert.setStatus(2);
+                alert.setStatus(AlertStatus.PURCHASE_CREATED.getValue());
                 alert.setProcessedBy(user);
                 alert.setProcessedTime(java.time.LocalDateTime.now());
                 String r = remark != null ? remark : "";
                 if (relatedOrderNo != null && !relatedOrderNo.isEmpty()) {
+                    alert.setRelatedOrderNo(relatedOrderNo);
                     r = (r.isEmpty() ? "" : r + "；") + "生成采购订单 " + relatedOrderNo;
                 }
                 alert.setProcessRemark(r);
@@ -1589,10 +1567,10 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
     @Override
     public List<AlertVO> getUnprocessed() {
-        // 2026-08-18：含已上报(1)——统计口径为"待处理（未上报+已上报）"
+        // dev-20261110-007：待处理统计仅含未处理预警。
         List<InventoryAlertLog> alerts = alertLogMapper.selectList(
                 new LambdaQueryWrapper<InventoryAlertLog>()
-                        .in(InventoryAlertLog::getStatus, 0, 1)
+                        .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue())
                         .orderByDesc(InventoryAlertLog::getAlertTime)
         );
         return convertToVOList(alerts);
@@ -1604,7 +1582,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 new LambdaQueryWrapper<InventoryAlertLog>()
                         .eq(InventoryAlertLog::getAlertType, alertType)
                         .eq(InventoryAlertLog::getMaterialId, materialId)
-                        .eq(InventoryAlertLog::getStatus, 0)
+                        .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue())
         );
         return count != null && count > 0;
     }
@@ -1617,7 +1595,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         java.util.List<InventoryAlertLog> alerts = alertLogMapper.selectList(
                 new LambdaQueryWrapper<InventoryAlertLog>()
                         .in(InventoryAlertLog::getMaterialId, materialIds)
-                        .in(InventoryAlertLog::getStatus, 0, 1) // 未处理/已读都可回写，已处理(2)跳过
+                        .eq(InventoryAlertLog::getStatus, AlertStatus.UNPROCESSED.getValue()) // 仅未处理可转采购单
         );
         return alerts.stream().map(InventoryAlertLog::getAlertId).collect(java.util.stream.Collectors.toList());
     }
@@ -1698,6 +1676,7 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         vo.setAlertType(alert.getAlertType());
         vo.setAlertLevel(alert.getAlertLevel());
         vo.setOrderNo(alert.getOrderNo());
+        vo.setRelatedOrderNo(alert.getRelatedOrderNo());
         vo.setMaterialId(alert.getMaterialId());
         vo.setMaterialCode(alert.getMaterialCode());
         vo.setMaterialName(alert.getMaterialName());
@@ -1709,6 +1688,12 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         vo.setAlertMessage(alert.getAlertMessage());
         vo.setAlertTime(alert.getAlertTime());
         vo.setStatus(alert.getStatus());
+        for (AlertStatus status : AlertStatus.values()) {
+            if (Objects.equals(alert.getStatus(), status.getValue())) {
+                vo.setStatusName(status.getLabel());
+                break;
+            }
+        }
         vo.setReportedBy(alert.getReportedBy());
         vo.setReportedTime(alert.getReportedTime());
         vo.setProcessedBy(alert.getProcessedBy());

@@ -11,7 +11,7 @@ export const alertApi = {
         size: params.pageSize ?? 10,
         alertType: params.alertType || undefined,
         alertLevel: params.alertLevel || undefined,
-        // 2026-08-18：状态筛选 0未处理/1已上报/2已处理/3已解除，空=全部
+        // 2026-08-18：状态筛选 0未处理/2已转采购单/3已解除，空=全部
         status: params.status === '' || params.status === undefined || params.status === null ? undefined : params.status,
       },
     })
@@ -25,16 +25,6 @@ export const alertApi = {
   // 执行预警检查
   executeCheck() {
     return request.post('/inventory/alert/execute-check')
-  },
-
-  // 标记已读
-  markRead(alertId: number) {
-    return request.post(`/inventory/alert/mark-read/${alertId}`)
-  },
-
-  // 批量标记已读
-  batchMarkRead(alertIds: number[]) {
-    return request.post('/inventory/alert/batch-mark-read', alertIds)
   },
 
 // 批量处理预警（采购计划确认后回写，关联采购订单号；materialIds 为按物料回写，2026-08-18）

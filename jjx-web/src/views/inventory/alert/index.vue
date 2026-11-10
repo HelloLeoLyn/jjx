@@ -98,10 +98,12 @@
             clearable
             style="width: 120px"
           >
-            <el-option label="未处理" value="0" />
-            <el-option label="已上报" value="1" />
-            <el-option label="已处理" value="2" />
-            <el-option label="已解除" value="3" />
+            <el-option
+              v-for="item in AlertEnum.status.items"
+              :key="item.value"
+              :label="item.label"
+              :value="String(item.value)"
+            />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -117,11 +119,6 @@
         <el-col :span="1.5">
           <el-button type="primary" v-hasPermi="['inventory:alert:edit']" @click="handleCheckAlert">
             <el-icon><Refresh /></el-icon>执行预警检查
-          </el-button>
-        </el-col>
-        <el-col :span="1.5">
-          <el-button v-hasPermi="['inventory:alert:edit']" @click="handleBatchMarkRead">
-            <el-icon><Check /></el-icon>批量标记已上报
           </el-button>
         </el-col>
         <el-col :span="1.5">
@@ -229,20 +226,16 @@
         <el-table-column label="关联采购订单" width="140" align="center">
           <template #default="{ row }">
             <el-link
-              v-if="extractPurchaseOrderNo(row.processRemark)"
+              v-if="purchaseOrderNo(row)"
               type="primary"
               :underline="false"
               @click="goPurchaseOrders"
-            >{{ extractPurchaseOrderNo(row.processRemark) }}</el-link>
+            >{{ purchaseOrderNo(row) }}</el-link>
             <span v-else style="color:#c0c4cc">-</span>
           </template>
         </el-table-column>
         <el-table-column label="操作" min-width="170" fixed="right">
           <template #default="{ row }">
-            <!-- 2026-08-18 职责链：仓库只负责上报（status 0→1），处理是采购侧动作（工作台生成采购单回写） -->
-            <el-button v-if="row.status === 0" v-hasPermi="['inventory:alert:edit']" link type="primary" @click="handleMarkRead(row)"
-              >标记已上报</el-button
-            >
             <el-button link type="info" @click="handleViewDetail(row)">详情</el-button>
           </template>
         </el-table-column>
@@ -266,11 +259,15 @@ defineOptions({
 
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Warning, Bell, InfoFilled, Clock, Refresh, Check, Download, Histogram } from '@element-plus/icons-vue'
+import { Warning, Bell, InfoFilled, Clock, Refresh, Download, Histogram } from '@element-plus/icons-vue'
 import { formatNumber } from '@/utils/format'
 import { alertApi } from '@/api/inventory/alert'
 import { AlertEnum } from '@/enums/inventory/AlertEnum'
 import { useRouter } from 'vue-router'
+
+function purchaseOrderNo(row: { relatedOrderNo?: string | null; processRemark?: string | null }): string {
+  return row.relatedOrderNo || extractPurchaseOrderNo(row.processRemark)
+}
 
 // 解析处理备注里的关联采购订单号（如"生成采购订单 PO-xxx"）
 function extractPurchaseOrderNo(remark: string | null | undefined): string {
@@ -398,38 +395,9 @@ const handleCheckAlert = () => {
     .catch(() => {})
 }
 
-// 批量标记已上报（2026-08-18：原"批量标记已读"语义升级）
-const handleBatchMarkRead = () => {
-  if (selectedAlerts.value.length === 0) {
-    ElMessage.warning('请选择要上报的预警')
-    return
-  }
-
-  ElMessageBox.confirm(`确认批量上报选中的 ${selectedAlerts.value.length} 条预警吗？上报后采购侧将看到。`, '提示', { type: 'warning' })
-    .then(async () => {
-      await alertApi.batchMarkRead(selectedAlerts.value.map((i: any) => i.alertId))
-      ElMessage.success('批量上报成功')
-      getList()
-      getStats()
-    })
-    .catch(() => {})
-}
-
 // 导出（预留：接后端导出接口）
 const handleExport = () => {
   ElMessage.info('导出功能开发中')
-}
-
-// 标记已上报（2026-08-18：原"标记已读"语义升级，留痕 reported_by/reported_time）
-const handleMarkRead = async (row: any) => {
-  try {
-    await alertApi.markRead(row.alertId)
-    row.status = 1
-    ElMessage.success('已上报，采购侧将看到该预警')
-    getStats()
-  } catch (e: any) {
-    ElMessage.error(e?.message || '上报失败')
-  }
 }
 
 // 查看详情
@@ -453,21 +421,9 @@ const getAlertLevelTag = (level: string): 'success' | 'warning' | 'info' | 'dang
   return t === 'primary' ? 'info' : t
 }
 
-// 处理状态：0未处理 1已上报 2已处理 3已解除（2026-08-18 职责链）
-const getStatusName = (status: number): string => {
-  const map: Record<number, string> = { 0: '未处理', 1: '已上报', 2: '已处理', 3: '已解除' }
-  return map[status] ?? '未知'
-}
-
-const getStatusTag = (status: number): 'success' | 'warning' | 'info' | 'danger' => {
-  const map: Record<number, 'success' | 'warning' | 'info' | 'danger'> = {
-    0: 'danger',
-    1: 'warning',
-    2: 'success',
-    3: 'info',
-  }
-  return map[status] ?? 'info'
-}
+// 状态展示和筛选统一使用领域枚举。
+const getStatusName = (status: number): string => AlertEnum.status.getLabel(status)
+const getStatusTag = (status: number) => AlertEnum.status.getTagProps(status).type
 
 onMounted(() => {
   getList()

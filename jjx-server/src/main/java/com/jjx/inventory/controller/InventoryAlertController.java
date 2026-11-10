@@ -117,22 +117,6 @@ public class InventoryAlertController {
         return Result.success(alertService.countUnprocessedOrderShortage(orderId));
     }
 
-    @PostMapping("/mark-read/{alertId}")
-    @Operation(summary = "标记预警已读")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertId", action = LogActions.ALERT_MARK_READ)
-    @SaCheckPermission("inventory:alert:edit")
-    public Result<Boolean> markRead(@PathVariable Long alertId) {
-        return Result.success(alertService.markRead(alertId));
-    }
-
-    @PostMapping("/batch-mark-read")
-    @Operation(summary = "批量标记已读")
-    @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertIds[0]", action = LogActions.ALERT_BATCH_MARK_READ)
-    @SaCheckPermission("inventory:alert:edit")
-    public Result<Boolean> batchMarkRead(@RequestBody List<Long> alertIds) {
-        return Result.success(alertService.batchMarkRead(alertIds));
-    }
-
     @PostMapping("/process/{alertId}")
     @Operation(summary = "处理预警")
     @Log(module = "库存预警", businessType = BusinessType.UPDATE, bizType = "'alert'", bizId = "#alertId", action = LogActions.ALERT_PROCESS)

@@ -1,5 +1,5 @@
 // src/enums/inventory/AlertEnum.ts
-import { createEnum } from '../base'
+import { createEnum, createNamedEnum } from '../base'
 
 /**
  * 预警类型枚举
@@ -31,15 +31,11 @@ export const AlertLevelEnum = createEnum({
 /**
  * 预警处理状态枚举
  */
-export const AlertStatusEnum = createEnum({
-  items: [
-    { value: 'new', label: '新预警', tagProps: { type: 'warning' } },
-    { value: 'read', label: '已读', tagProps: { type: 'info' } },
-    { value: 'processed', label: '已处理', tagProps: { type: 'success' } },
-    { value: 'ignored', label: '已忽略', tagProps: { type: 'danger' } },
-  ],
-  defaultTag: { type: 'info' },
-})
+export const AlertStatusEnum = createNamedEnum({
+  UNPROCESSED: { value: 0, label: '未处理', tagProps: { type: 'danger' } },
+  PURCHASE_CREATED: { value: 2, label: '已转采购单', tagProps: { type: 'success' } },
+  RESOLVED: { value: 3, label: '已解除', tagProps: { type: 'info' } },
+}, { type: 'info' })
 
 /**
  * 预警相关枚举统一导出

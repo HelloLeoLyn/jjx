@@ -42,7 +42,7 @@ class InventoryAlertPurchaseSuggestionsTest {
                 + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", "sa", "");
         jdbc = new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE inventory_alert_log (alert_id BIGINT AUTO_INCREMENT PRIMARY KEY, "
-                + "alert_type VARCHAR(50),order_no VARCHAR(100),involved_orders INT,alert_level VARCHAR(50),"
+                + "alert_type VARCHAR(50),order_no VARCHAR(100),related_order_no VARCHAR(50),involved_orders INT,alert_level VARCHAR(50),"
                 + "material_id BIGINT NOT NULL,material_code VARCHAR(100) NOT NULL,material_name VARCHAR(100) NOT NULL,current_stock DECIMAL(20,4),"
                 + "safe_stock DECIMAL(20,4),max_stock DECIMAL(20,4),expiry_date DATE,last_outbound_date DATE,"
                 + "alert_message VARCHAR(1000),alert_time TIMESTAMP,status INT,reported_by VARCHAR(100),reported_time TIMESTAMP,"
@@ -65,7 +65,7 @@ class InventoryAlertPurchaseSuggestionsTest {
     }
     @Test void sampleShortagesReachSuggestionsWithExactGapAndSource() {
         seed(1, 109, "AUX000109", "sample_shortage", "SP261107001", 0, "建议补货 1");
-        seed(2, 105, "RM000105", "sample_shortage", "SP261107001", 1, "建议补货 1");
+        seed(2, 105, "RM000105", "sample_shortage", "SP261107001", 0, "建议补货 1");
         var rows = service.generatePurchaseSuggestions();
         assertEquals(2, rows.size());
         assertEquals(java.util.Set.of("AUX000109", "RM000105"), rows.stream()
@@ -79,7 +79,7 @@ class InventoryAlertPurchaseSuggestionsTest {
     @ParameterizedTest @ValueSource(booleans = {true, false})
     void mergeTakesLargestGapAndSourceInEitherOrder(boolean sampleLarger) {
         seed(1, 109, "AUX000109", "order_shortage", "SO1", 0, "建议补货 " + (sampleLarger ? "2" : "7"));
-        seed(2, 109, "AUX000109", "sample_shortage", "SP1", 1, "建议补货 " + (sampleLarger ? "7" : "2"));
+        seed(2, 109, "AUX000109", "sample_shortage", "SP1", 0, "建议补货 " + (sampleLarger ? "7" : "2"));
         seed(3, 109, "AUX000109", "sample_shortage", "SP1", 0, "建议补货 1");
         var rows = service.generatePurchaseSuggestions();
         assertEquals(1, rows.size());

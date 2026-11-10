@@ -31,6 +31,9 @@ public class InventoryAlertLog extends BaseEntity {
     /** 关联订单号（订单缺料预警用） */
     private String orderNo;
 
+    /** 关联采购订单号（dev-20261110-007） */
+    private String relatedOrderNo;
+
     /** 涉及订单数（全局缺料维度，2026-08-12） */
     private Integer involvedOrders;
 
@@ -71,7 +74,7 @@ public class InventoryAlertLog extends BaseEntity {
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime alertTime;
 
-    /** 处理状态：0未处理 1已上报 2已处理 3已解除（2026-08-18 职责链） */
+    /** 处理状态：0未处理 2已转采购单 3已解除 */
     private Integer status;
 
     /** 上报人（2026-08-18：仓库标记已上报留痕） */
