@@ -10,6 +10,7 @@
 @@
 | 日期 | 文件 | 标题 |
 |---|---|---|
+| 2026-11-10 (dev-20261110-014) | bom-manufacturing-schemes-discussion-dev-20261110-014.md | 多层BOM制造方案讨论纪要：产品主方案、单种产出、多层投入关系及异机接续议题12—15 |
 | 2026-11-10 (dev-20261110-011) | multilevel-bom-multioutput-audit-dev-20261110-011.md | 本地ERP多层BOM与多产出实证排查：真实库/API最小测试、下达及领料阻塞、AUX000107卷料裁切与单位建模建议 |
 | 2026-11-07 (dev-20261107-015) | shunyutong-led-import-dev-20261107-015.md | 舜禹通6条LED正式导入，品牌确认及逐行回查，PPA/停产备注保留 |
 | 2026-10-24 (dev-20261024-004) | material-classify-backend-preparation-dev-20261024-004.md | 物料归类闭环与导入1A：阶段二后端实施及308应用记录 |
