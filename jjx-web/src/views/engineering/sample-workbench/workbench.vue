@@ -20,6 +20,7 @@
       @view-inquiry="openInquiryDetail"
       @view-quotation="openQuotationDetail"
     />
+    <SamplePickDialog ref="samplePickDialog" @success="loadPickStatus" />
     <SampleReturnDialog
       v-model="returnVisible"
       :sample-order-id="orderId"
@@ -50,7 +51,12 @@
         title="工序计划有未保存修改，请在方案编制中保存；切换视图会保留当前修改。"
         style="margin-bottom: 12px"
       />
-      <SamplePlanView v-show="activeView === 'plan'" v-model:major-category="majorCategory">
+      <SamplePlanView
+        v-show="activeView === 'plan'"
+        v-model:major-category="majorCategory"
+        :can-pick="canGeneratePick"
+        @generate-pick="openSamplePick"
+      >
         <template #assembly>
           <SampleProcessPlanEditor
             :readonly="readonlyMode"
@@ -104,6 +110,8 @@
         :exec-block-reason="execBlockReason"
         :print-block-reason="printBlockReason"
         :pick-status="pickStatus"
+        :can-pick="canGeneratePick"
+        @generate-pick="openSamplePick"
         @mark-ready="runCurrentAction(handleMarkReady)"
         @view-files="showFiles"
       />
@@ -584,6 +592,7 @@ import InquiryDetailDialog from '@/views/sales/inquiry/components/InquiryDetailD
 import SourceDocSummaryDialog from './components/SourceDocSummaryDialog.vue'
 import { hasPermi } from '@/directives'
 import SampleProcessPlanEditor from './components/SampleProcessPlanEditor.vue'
+import SamplePickDialog from '@/views/sales/sample-order/components/SamplePickDialog.vue'
 import SamplePlanView from './components/SamplePlanView.vue'
 import SampleExecutionView from './components/SampleExecutionView.vue'
 import BomPanel from './components/BomPanel.vue'
@@ -621,6 +630,7 @@ const {
   execBlockReason,
   printBlockReason,
   pickStatus,
+  loadPickStatus,
   frequentMaterials,
   saveStateText,
   markDirty,
@@ -743,6 +753,13 @@ async function refreshReturnStock() {
 const activeView = ref<'plan' | 'execution'>('plan')
 const infoCardRef = ref<InstanceType<typeof SampleInfoCard>>()
 const canWriteCurrent = computed(() => isCurrentRound.value && !readonlyMode.value)
+// 领料只受当前轮次/编辑权限约束，不使用工序推进的备料门禁。
+const canGeneratePick = computed(() => canWriteCurrent.value && hasPermi('inventory:outbound:add'))
+const samplePickDialog = ref<InstanceType<typeof SamplePickDialog>>()
+function openSamplePick() {
+  if (!canGeneratePick.value) return
+  return samplePickDialog.value?.open({ ...card.value, orderId: orderId.value })
+}
 function runCurrentAction(action: () => unknown) {
   if (!canWriteCurrent.value) return
   return action()

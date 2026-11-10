@@ -72,18 +72,23 @@ import Workbench from '../../workbench.vue'
 import SamplePlanView from '../SamplePlanView.vue'
 import SampleExecutionView from '../SampleExecutionView.vue'
 import SampleInfoCard from '../SampleInfoCard.vue'
+import SamplePickDialog from '@/views/sales/sample-order/components/SamplePickDialog.vue'
 import { SampleProcessStatusEnum } from '@/enums/sales'
 
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
 import EditableSearchSelect from '@/components/Selector/EditableSearchSelect.vue'
 import { materialApi } from '@/api/inventory/material'
 vi.mock('@/api/inventory/material', () => ({ materialApi: { search: vi.fn() } }))
+const pickApi = vi.hoisted(() => ({ preview: vi.fn(), create: vi.fn(), allowed: true }))
+vi.mock('@/api/inventory/outbound', () => ({ outboundApi: {
+  samplePickPreview: pickApi.preview, createSamplePick: pickApi.create,
+} }))
 const shared = vi.hoisted(() => ({ state: null as any }))
 vi.mock('../../composables/useSampleWorkbench', () => ({ useSampleWorkbench: () => shared.state }))
 vi.mock('@/components/attachment/AttachmentCenter.vue', () => ({
   default: { name: 'AttachmentCenter', template: '<div data-test="attachment-center" />' },
 }))
-vi.mock('@/directives', () => ({ hasPermi: () => true }))
+vi.mock('@/directives', () => ({ hasPermi: () => pickApi.allowed }))
 vi.mock('@/api/sales/sampleOrder', () => ({
   sampleOrderApi: { listDefects: vi.fn(async () => ({ data: [] })) },
 }))
@@ -198,6 +203,9 @@ vi.stubGlobal(
 let state: any
 beforeEach(() => {
   document.body.innerHTML = ''
+  pickApi.allowed = true
+  pickApi.preview.mockReset().mockResolvedValue({ data: [{ materialId: 11, materialName: '材料', quantity: 2, issuedQuantity: 1 }] })
+  pickApi.create.mockReset().mockResolvedValue({ data: 123 })
   state = new Proxy({} as Record<string, any>, {
     get(target, key: string) {
       if (!(key in target)) target[key] = vi.fn()
@@ -480,4 +488,55 @@ it('批量添加弹窗挂载真实公共物料搜索，PET 008回填对象并支
     wrapper.unmount()
     vi.useRealTimers()
   }
+})
+
+
+describe('领料入口收拢 dev-20261106-016', () => {
+  it.each(['plan', 'execution'])('%s 未备料且工序被门禁拦截时仍可预览生成，并刷新备料标签', async (view) => {
+    state.pickStatus = ref({ state: 'NONE', label: '未备料' })
+    state.loadPickStatus = vi.fn(async () => {
+      state.pickStatus.value = { state: 'PARTIAL', label: '备料中' }
+    })
+    const print = vi.spyOn(window, 'open').mockReturnValue(null)
+    const w = openPage()
+    await selectView(w, view)
+    const owner = w.findComponent(view === 'plan' ? SamplePlanView : SampleExecutionView)
+    const button = owner.findAll('button').find(b => b.text() === '生成领料单')!
+    expect(button.exists()).toBe(true)
+    expect(button.attributes('disabled')).toBeUndefined()
+    await button.trigger('click')
+    await flushPromises()
+    expect(pickApi.preview).toHaveBeenCalledWith(8801)
+    const dialog = w.findComponent(SamplePickDialog)
+    expect(dialog.text()).toContain('BOM需求')
+    const submit = dialog.findAll('button').find(b => b.text() === '生成领料单')!
+    await submit.trigger('click')
+    await flushPromises()
+    expect(pickApi.create).toHaveBeenCalledWith(8801, [{ materialId: 11, materialCode: undefined, materialName: '材料', quantity: 1 }])
+    expect(state.loadPickStatus).toHaveBeenCalledTimes(1)
+    expect(w.findComponent(SampleExecutionView).text()).toContain('备料：备料中')
+    expect(print).toHaveBeenCalledWith('/print/outbound/123', '_blank')
+    w.unmount()
+    print.mockRestore()
+  })
+
+  it('无出库新增权限时，方案与执行页均无领料入口', async () => {
+    pickApi.allowed = false
+    const w = openPage()
+    await flushPromises()
+    for (const component of [SamplePlanView, SampleExecutionView]) {
+      expect(w.findComponent(component).text()).not.toContain('生成领料单')
+    }
+    expect(pickApi.preview).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('只读工作台不开放领料写入', async () => {
+    state.readonlyMode.value = true
+    const w = openPage()
+    await flushPromises()
+    expect(w.findComponent(SamplePlanView).text()).not.toContain('生成领料单')
+    expect(w.findComponent(SampleExecutionView).text()).not.toContain('生成领料单')
+    w.unmount()
+  })
 })

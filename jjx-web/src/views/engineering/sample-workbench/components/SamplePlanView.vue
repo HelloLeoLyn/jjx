@@ -1,5 +1,8 @@
 <template>
   <div class="sample-plan-view">
+    <div v-if="canPick">
+      <el-button size="small" type="primary" @click="emit('generate-pick')">生成领料单</el-button>
+    </div>
     <!-- 大类标签：冲型组装 / 印刷；切换只改展示，草稿仍由父级 workbench 持有 -->
     <el-tabs v-model="majorCategory" class="plan-major-tabs">
       <el-tab-pane label="🛠 冲型组装" name="ASSEMBLY">
@@ -47,6 +50,9 @@ import { ref } from 'vue'
  * - BOM 默认折叠，展开/收起不卸载插槽内容（不丢草稿、不重建组件）
  * - 保存仍由父级 planEditor 控制器负责，本视图不发起请求
  */
+defineProps<{ canPick?: boolean }>()
+const emit = defineEmits<{ (e: 'generate-pick'): void }>()
+
 const majorCategory = defineModel<string>('majorCategory', { default: 'ASSEMBLY' })
 const materialsExpanded = ref(false)
 </script>

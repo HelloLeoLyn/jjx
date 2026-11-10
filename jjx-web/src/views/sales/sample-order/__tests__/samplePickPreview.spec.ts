@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, defineComponent, h, inject, provide } from 'vue'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import SampleOrders from '../index.vue'
+import { SampleOrderStatusEnum } from '@/enums/sales'
+import SamplePickDialog from '../components/SamplePickDialog.vue'
 
-const api = vi.hoisted(() => ({ preview: vi.fn(), create: vi.fn(), error: vi.fn() }))
+const api = vi.hoisted(() => ({ preview: vi.fn(), create: vi.fn(), error: vi.fn(), permissions: [] as string[] }))
 vi.mock('@/api/inventory/outbound', () => ({
   outboundApi: { samplePickPreview: api.preview, createSamplePick: api.create },
 }))
@@ -11,7 +13,7 @@ vi.mock('@/api/sales/sampleOrder', () => ({
   sampleOrderApi: { page: vi.fn().mockResolvedValue({ data: { records: [], total: 0 } }) },
 }))
 vi.mock('vue-router', () => ({ useRouter: () => ({}), useRoute: () => ({ query: {} }) }))
-vi.mock('@/store/modules/user', () => ({ useUserStore: () => ({ roles: [] }) }))
+vi.mock('@/store/modules/user', () => ({ useUserStore: () => ({ roles: [], getPermissions: api.permissions }) }))
 vi.mock('@/utils/request', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 vi.mock('element-plus', async (original) => ({
   ...await original<typeof import('element-plus')>(),
@@ -29,7 +31,6 @@ vi.mock('../components/SampleReviewPreview.vue', () => ({ default: {} }))
 vi.mock('../components/RequisitionSignDialog.vue', () => ({ default: {} }))
 vi.mock('../components/SampleForm.vue', () => ({ default: {} }))
 vi.mock('../components/SampleDetail.vue', () => ({ default: {} }))
-vi.mock('@/components/common-ui/TableActionColumn/index.vue', () => ({ default: {} }))
 
 const Table = defineComponent({
   props: ['data'],
@@ -68,17 +69,17 @@ async function open(rows = [row()]) {
     global: {
       renderStubDefaultSlot: true,
       directives: { loading: () => {}, hasPermi: () => {} },
-      stubs: { ElTable: Table, ElTableColumn: Column, ElDialog: Dialog },
+      stubs: { TableActionColumn: false, SamplePickDialog: false, ElTable: Table, ElTableColumn: Column, ElDialog: Dialog },
     },
   })
   await flushPromises()
   await (wrapper.vm as any).openSamplePick({ orderId: 7, orderNo: 'SP7', sampleQty: 2, unit: 'PCS' })
   await flushPromises()
-  return wrapper.vm as any
+  return wrapper.findComponent(SamplePickDialog).vm as any
 }
 
 describe('打样领料预览与提交', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { vi.clearAllMocks(); api.permissions = [] })
   afterEach(() => {
     wrapper?.unmount()
     vi.restoreAllMocks()
@@ -127,6 +128,7 @@ describe('打样领料预览与提交', () => {
       materialId: 11, materialCode: 'M11', materialName: '材料', quantity: 1,
     }])
     expect(print).toHaveBeenCalledWith('/print/outbound/123', '_blank')
+    expect(wrapper.findComponent(SamplePickDialog).emitted('success')).toHaveLength(1)
   })
 
   it('后端超领拒绝时展示提示、保留弹窗且不打开打印页', async () => {
@@ -137,5 +139,17 @@ describe('打样领料预览与提交', () => {
     expect(api.error).toHaveBeenCalledWith('打样领料超出剩余需求')
     expect(wrapper.find('[data-pick-dialog]').exists()).toBe(true)
     expect(print).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('销售样品单领料备用入口权限', () => {
+  it.each([true, false])('出库新增权限=%s 时入口显隐一致', async (allowed) => {
+    api.permissions = allowed ? ['inventory:outbound:add'] : []
+    await open()
+    ;(wrapper.vm as any).sampleList = [{ orderId: 7, sampleStatus: SampleOrderStatusEnum.ENGINEERING.value }]
+    await flushPromises()
+    const actions = wrapper.find('.table-action-column')
+    expect(actions.text().includes('生成领料单')).toBe(allowed)
   })
 })

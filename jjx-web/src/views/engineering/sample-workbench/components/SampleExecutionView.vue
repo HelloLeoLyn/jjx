@@ -13,6 +13,9 @@
             :title="pickStatusHint"
             >备料：{{ pickStatus.label }}</el-tag
           >
+          <el-button v-if="canPick" size="small" type="primary" @click="emit('generate-pick')">
+            生成领料单
+          </el-button>
           <span class="sub">
             Round {{ roundNo }} · 按计划开始 / 完成工序，未保存或保存中的工序不可推进
           </span>
@@ -67,6 +70,7 @@ import DefectRecordPanel from './DefectRecordPanel.vue'
 import { computed } from 'vue'
 
 const props = defineProps<{
+  canPick?: boolean
   readonly: boolean
   orderId: number
   roundNo: number
@@ -93,7 +97,7 @@ const pickTagType = computed(() => {
 const pickStatusHint = computed(() => {
   const status = props.pickStatus
   if (!status) return '尚未获取备料状态'
-  if (status.state === 'NONE') return '本轮还没有生成领料单：工序推进会被拦截，请先到销售→样品单生成领料单，或确认无料消耗'
+  if (status.state === 'NONE') return '本轮还没有生成领料单：工序推进会被拦截，请先点击「生成领料单」，或确认无料消耗'
   if (status.state === 'PARTIAL') {
     return `已生成 ${status.orderCount ?? 0} 张领料单，其中 ${status.completedCount ?? 0} 张已发料：可继续执行，请确认材料已领`
   }
@@ -101,6 +105,7 @@ const pickStatusHint = computed(() => {
 })
 
 const emit = defineEmits<{
+  (e: 'generate-pick'): void
   (e: 'mark-ready'): void
   (e: 'view-files'): void
 }>()
