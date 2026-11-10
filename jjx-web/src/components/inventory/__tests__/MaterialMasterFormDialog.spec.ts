@@ -380,7 +380,7 @@ describe('名称型号规格集中结果区', () => {
     wrapper.unmount()
   })
 
-  it('右侧名称手改后保留，恢复按钮重新使用当前规则结果', async () => {
+  it('右侧名称手改后保留，按规则生成按钮重新使用当前规则结果', async () => {
     const wrapper = create()
     await flushPromises()
     const state = (wrapper.vm as any).$.setupState
@@ -390,9 +390,83 @@ describe('名称型号规格集中结果区', () => {
     state.ruleName = '规则生成名称'
     await flushPromises()
     expect(state.form.materialName).toBe('习惯名称')
-    await wrapper.findAll('button').find(button => button.text() === '恢复按规则生成')!.trigger('click')
+    await wrapper.get('[data-test="material-name-generate"]').trigger('click')
     expect(state.form.nameManual).toBe(false)
     expect(state.form.materialName).toBe('规则生成名称')
+    wrapper.unmount()
+  })
+})
+
+describe('物料名称撤销修改（dev-20261110-001）', () => {
+  const stateOf = (wrapper: ReturnType<typeof create>) => (wrapper.vm as any).$.setupState
+
+  it('新增撤销手动改名后恢复按当前资料自动命名，按钮统一叫撤销修改', async () => {
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    state.form.materialMeta = 'PC'
+    await flushPromises()
+    expect(wrapper.find('[data-test="material-name-revert"]').exists()).toBe(false)
+    await wrapper.get('[data-test="material-name"]').setValue('手改名称')
+    await wrapper.get('[data-test="material-name"]').setValue('再次手改')
+    state.form.brand = '新品牌'
+    await flushPromises()
+    const revert = wrapper.get('[data-test="material-name-revert"]')
+    expect(revert.text()).toBe('撤销修改')
+    await revert.trigger('click')
+    expect(state.form.materialName).toBe(state.autoName)
+    expect(state.form.nameManual).toBe(false)
+    expect(wrapper.find('[data-test="material-name-revert"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('编辑撤销回到打开时名称，按规则生成后也能撤销，不保存或改动其他字段', async () => {
+    mocks.detail.mockResolvedValue({ data: {
+      material: { materialId: 100, categoryId: 2, materialName: '历史名称', model: 'OLD', unit: 'M' },
+      attributes: {}, tags: [], configuration: config(2, 'PC'),
+    } })
+    const wrapper = create({ materialId: 100 })
+    await flushPromises()
+    const state = stateOf(wrapper)
+    await wrapper.get('[data-test="material-name"]').setValue('手动改名')
+    state.form.brand = '新品牌'
+    await flushPromises()
+    await wrapper.get('[data-test="material-name-revert"]').trigger('click')
+    await flushPromises()
+    expect(state.form.materialName).toBe('历史名称')
+    expect(state.form.brand).toBe('新品牌')
+    const generate = wrapper.get('[data-test="material-name-generate"]')
+    expect(generate.text()).toBe('按规则生成')
+    await generate.trigger('click')
+    await flushPromises()
+    expect(state.form.materialName).toBe(state.autoName)
+    await wrapper.get('[data-test="material-name-revert"]').trigger('click')
+    await flushPromises()
+    expect(state.form.materialName).toBe('历史名称')
+    expect(mocks.save).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-test="material-name-revert"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('新增预填名称按规则生成后，可撤销回到预填值；重新打开不沿用回退点', async () => {
+    const wrapper = create()
+    await flushPromises()
+    const state = stateOf(wrapper)
+    state.form.materialName = 'BOM预填名称'
+    state.form.nameManual = true
+    await flushPromises()
+    await wrapper.get('[data-test="material-name-generate"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="material-name-revert"]').trigger('click')
+    await flushPromises()
+    expect(state.form.materialName).toBe('BOM预填名称')
+    expect(state.form.nameManual).toBe(true)
+    await wrapper.get('[data-test="material-name"]').setValue('本次修改')
+    await wrapper.setProps({ modelValue: false })
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+    expect(state.nameUndo).toBe(null)
+    expect(wrapper.find('[data-test="material-name-revert"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

@@ -215,12 +215,12 @@
           <div class="preview-sub result-intro">填写左侧资料，在此核对名称、型号与规格。</div>
           <el-form-item label="名称" label-position="top" required data-test="material-name-field">
             <el-input
-              v-model="form.materialName"
+              :model-value="form.materialName"
               type="textarea"
               :autosize="{ minRows: 2, maxRows: 4 }"
               maxlength="200"
               data-test="material-name"
-              @input="onNameInput"
+              @update:model-value="onNameInput"
             />
             <div class="field-hint" :class="{ manual: form.nameManual }">
               {{
@@ -234,8 +234,18 @@
               size="small"
               link
               type="primary"
+              data-test="material-name-generate"
               @click="restoreAutoName"
-              >恢复按规则生成</el-button
+              >按规则生成</el-button
+            >
+            <el-button
+              v-if="canRevertName"
+              size="small"
+              link
+              type="primary"
+              data-test="material-name-revert"
+              @click="revertName"
+              >撤销修改</el-button
             >
             <details data-test="naming-rule-preview" class="rule-details">
               <summary>查看命名规则</summary>
@@ -758,13 +768,39 @@ const materialLabel = computed(
     ''
 )
 
-function onNameInput() {
+// 编辑回退到打开时名称；新增保留第一次手改前的名称和自动同步状态。
+const nameBaseline = ref('')
+const nameUndo = ref<{ value: string; manual: boolean } | null>(null)
+function rememberName() {
+  if (!form.materialId && !nameUndo.value)
+    nameUndo.value = { value: form.materialName, manual: !!form.nameManual }
+}
+function onNameInput(value: string) {
+  rememberName()
   form.nameManual = true
+  form.materialName = value
 }
 /** 自动命名：优先按品类命名规则生成，未配置规则才回落旧逻辑（dev-20261029-026） */
 const autoName = computed(() => ruleName.value || previewMasterName(form, dictionaries.value))
+const nameRevertValue = computed(() =>
+  form.materialId
+    ? nameBaseline.value
+    : nameUndo.value?.manual ? nameUndo.value.value : autoName.value
+)
+const canRevertName = computed(() =>
+  !!(form.materialId || nameUndo.value) && form.materialName !== nameRevertValue.value
+)
+
+function revertName() {
+  const value = nameRevertValue.value
+  // 历史名称必须原样保留，不能因当前规则不同而再次被自动命名覆盖。
+  form.nameManual = form.materialId ? true : (nameUndo.value?.manual ?? false)
+  form.materialName = value
+  nameUndo.value = null
+}
 
 function restoreAutoName() {
+  rememberName()
   form.nameManual = false
   form.materialName = autoName.value
 }
@@ -838,6 +874,8 @@ async function selectCategory(id: number) {
 
 async function initialize() {
   sizeValid.value = true
+  nameBaseline.value = ''
+  nameUndo.value = null
   modelManual.value = false
   modelAutoValue.value = ''
   modelBaseline.value = ''
@@ -890,6 +928,7 @@ async function initialize() {
       form.materialId = material.materialId
       form.materialCode = material.materialCode
       form.materialName = material.materialName || ''
+      nameBaseline.value = form.materialName
       form.nameManual =
         !!material.materialName &&
         material.materialName !== previewMasterName(form, dictionaries.value)
