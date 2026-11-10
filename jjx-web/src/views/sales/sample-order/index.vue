@@ -1033,8 +1033,6 @@ function openSampleReturn(row: any) {
 }
 
 const sampleActions: TableAction<any>[] = [
-  { key: 'pickCost', label: '领料成本', type: 'primary', permission: ['sales:sample:view', 'engineering:sample:workbench'] },
-  { key: 'return', label: '退料', type: 'primary', permission: 'inventory:inbound:add' },
   { key: 'trace', label: '查看流水', type: 'info' },
   {
     key: 'edit',
@@ -1044,13 +1042,25 @@ const sampleActions: TableAction<any>[] = [
   },
 
   {
+    key: 'request',
+    label: '申请打样',
+    permission: 'sales:sample:edit',
+    visible: ({ row }) => isCreated(row),
+  },
+  {
     key: 'pick',
     label: '生成领料单',
     type: 'primary',
     permission: 'inventory:outbound:add',
     visible: ({ row }) => canPicker(row),
   },
-
+  {
+    key: 'pickCost',
+    label: '领料成本',
+    type: 'primary',
+    permission: ['sales:sample:view', 'engineering:sample:workbench'],
+  },
+  { key: 'return', label: '退料', type: 'primary', permission: 'inventory:inbound:add' },
   {
     key: 'reqsign',
     label: '需求单签核',
@@ -1077,12 +1087,6 @@ const sampleActions: TableAction<any>[] = [
     visible: ({ row }) => canGoWorkbench(row),
   },
 
-  {
-    key: 'request',
-    label: '申请打样',
-    permission: 'sales:sample:edit',
-    visible: ({ row }) => isCreated(row),
-  },
   {
     key: 'send',
     label: '送样登记',
@@ -1417,7 +1421,6 @@ onActivated(() => {
 </script>
 
 <style scoped lang="scss">
-
 .app-container {
   padding: 20px;
 }
