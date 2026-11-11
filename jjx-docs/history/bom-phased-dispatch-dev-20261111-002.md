@@ -84,3 +84,24 @@
 完整交接见本地.tmp/bom-dispatch/openclaw-lead-handoff.md，关键验收/派发结论仍须持久化任务记录及本文。新会话接管回执、进度、需用户动作分别写openclaw-lead-accepted.md、openclaw-lead-status.md、openclaw-lead-decision.md。主Codex停止调度，按新负责人派工编码，必要时转述原生013消息。
 
 013当前采购补录后后端38例已由执行者报告通过，前端测试进行；357准备未执行，额外文件与采购原单补录边界已批准。006仍只有只读第一步，后半确认分配未做；007—010未开。推送仍受旧两表基线闸阻断，未扩基线。
+
+## OpenClaw-lead 接管与首轮独立复核（2026-11-11 17:15）
+
+接管：002 assignee 由 Codex-dispatcher CAS 改为 OpenClaw-lead（status=1 不变，remark 460字原值保留，接管说明追加 description；会话 agent:main:explicit:77b04721）。回执 .tmp/bom-dispatch/openclaw-lead-accepted.md。
+
+005 制造BOM窗口：代码级验收通过。独立复跑 4 个测试文件 43 项全过；白名单 0506899f 12 文件全部在卡内；adopt 接口只发 token 不改主方案（BomController:78-82），父保存才持久化；409 保留草稿（BomFormDialog.vue:930-945）。运行态 API 未验，未获服务启动授权。
+
+006 只读净需求：完成全量代码审查，确认 10 类供给口径问题，已改派 Codex 编码（主会话领取），卡在 .tmp/bom-dispatch/next-codex-task.md：
+1）采购把 DRAFT/PENDING 也算确定供应，需只认 APPROVED，草稿/待审批另列计划供应不抵扣；
+2）只取 receipt_status=PENDING，漏部分收货剩余量，需 IN(0,1) 且逐行 GREATEST(quantity-received,0)；
+3）采购行单位未校验，跨单位会静默相加；
+4）采购/生产供给无可核对目的仓，指定 warehouseId 时仍在抵扣；
+5）生产供给未校验工单/BOM 审批与生效，且用持久化 remaining_quantity（完工不递减）会重复计已入库；
+6）卷料 piece→M2 用档案定尺长度自动换算，与 013 逐卷余长冲突，需阻断并要求 unit_factor。
+其余：materialProductionAdapterApplied 恒 true、仓库维度安全库存口径需显式说明、只读语义与未分配供给需在 VO 写明。
+
+013 卷材：已复核 b1776358 + fc03f914，代码级通过。独立复跑 Lifecycle/Concurrency/Compatibility/ReturnCost 4 类 18 例全过；applyDelta 唯一入口、红冲反向单据、采购多卷仅批准未过账且 IQC 全通过可录、合计严格等于 accepted_quantity、confirm 锁行逐卷入库 posted 只更一次。357 未执行，真实 MySQL 生命周期/并发未验。两点确认项与 fc03f914 回写缺口写 .tmp/bom-dispatch/to-roll-013.md。
+
+推送：本地 11 个业务/文档提交仍因旧两表不在表基线被拒，未扩基线、未 noverify。
+
+当前状态：004/005/003 代码级通过待 Owner 终审；006 待 Codex 领取修复；013 代码级通过、真实库待备份与 357；007/008/009/010 未开工（009 已派 Hermes 只读入口调研）。
