@@ -71,6 +71,7 @@ class ManufacturingBomSchemeTest {
     ManufacturingBomService manufacturingTx;
     JdbcTemplate db;
     ProductMapper productMapper;
+    EngineeringBomMapper rawBomMapper;
 
     @BeforeEach
     void setup() {
@@ -120,7 +121,8 @@ class ManufacturingBomSchemeTest {
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source),
                 new AnnotationTransactionAttributeSource()));
         service = (IEngineeringBomService) proxy.getProxy();
-        manufacturing = new ManufacturingBomServiceImpl(service, session.getMapper(EngineeringBomMapper.class), productMapper);
+        rawBomMapper = session.getMapper(EngineeringBomMapper.class);
+        manufacturing = new ManufacturingBomServiceImpl(service, rawBomMapper, productMapper);
         // 实际 HTTP 入口 ManufacturingBomServiceImpl.update 自带 @Transactional 外层事务，单独套代理复现真实快照边界。
         var mfgProxy = new ProxyFactory(manufacturing);
         mfgProxy.setInterfaces(ManufacturingBomService.class);
@@ -544,6 +546,35 @@ class ManufacturingBomSchemeTest {
                                 + "\"schemeChoices\":[{\"materialId\":349,\"isPrimary\":true}]}"))
                 .andExpect(status().isBadRequest());
         verify(bomService, never()).createBomReturnId(any(EngineeringBomDTO.class));
+    }
+
+    @Test
+    void wrapperTakesGraphLockBeforeAnyRead() {
+        long a = scheme(349, "ORDER-A");
+        long b = scheme(350, "ORDER-B");
+        long itemId = db.queryForObject(
+                "SELECT item_id FROM engineering_bom_item WHERE bom_id=?", Long.class, b);
+
+        var row = makeRow(349, a);
+        row.setItemId(itemId);
+        var dto = new com.jjx.product.domain.dto.ManufacturingBomSaveDTO();
+        dto.setBomCode("ORDER-B-UPD");
+        dto.setBomName("ORDER-B-UPD");
+        dto.setOutputType("MATERIAL");
+        dto.setOutputId(350L);
+        dto.setItems(List.of(row));
+
+        var spyMapper = spy(rawBomMapper);
+        var impl = new ManufacturingBomServiceImpl(service, spyMapper, productMapper);
+        var proxy = new ProxyFactory(impl);
+        proxy.setInterfaces(ManufacturingBomService.class);
+        proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(db.getDataSource()),
+                new AnnotationTransactionAttributeSource()));
+        ((ManufacturingBomService) proxy.getProxy()).update(b, dto);
+
+        var order = inOrder(spyMapper);
+        order.verify(spyMapper, atLeastOnce()).lockGraphForMutation();
+        order.verify(spyMapper, atLeastOnce()).selectById(b);
     }
 
     @Test
