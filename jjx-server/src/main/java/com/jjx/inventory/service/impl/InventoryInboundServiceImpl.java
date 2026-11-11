@@ -2910,6 +2910,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 materialName, null, output.unit()).getInventoryItemId());
         inboundItem.setMaterialCode(materialCode);
         inboundItem.setMaterialName(materialName);
+        // dev-20261111-008 实测补：MATERIAL 产出必须把 material_id 落到入库明细，
+        // 否则库存行/流水按 material_id 关联时缺失（样本曾出现 material_id=NULL）；
+        // PRODUCT 产出按既有口径保持为空。
+        if (output.itemType() == InventoryItemTypeEnum.MATERIAL) {
+            inboundItem.setMaterialId(output.sourceId());
+        }
         inboundItem.setLotId(lotId);
         // 068定稿：入库产品数量=最后一道工序/完工检验合格数（052口径 finishedQuantity，非工序汇总 completedQuantity）
         BigDecimal inboundQty = inspectedPassQty != null ? inspectedPassQty
