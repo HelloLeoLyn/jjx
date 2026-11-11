@@ -34,6 +34,10 @@ public class InboundSaveDTO {
  */
 @Data
 class InboundItemSaveDTO {
+    private String rollNo;
+    private Long stockItemId;
+    private BigDecimal rollWidthMm;
+    private BigDecimal rollLengthM;
     private Long materialId;
     private BigDecimal quantity;
     private BigDecimal unitPrice;

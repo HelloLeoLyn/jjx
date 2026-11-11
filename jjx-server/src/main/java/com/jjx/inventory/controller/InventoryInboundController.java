@@ -85,6 +85,15 @@ public class InventoryInboundController {
         return Result.success(inboundService.confirm(inboundId, operatorId, operatorName));
     }
 
+    @PostMapping("/roll-plan/{itemId}")
+    @Operation(summary = "原采购明细补录多卷计划（原收货量与IQC来源不变）")
+    @SaCheckPermission("inventory:inbound:edit")
+    @Log(module = "入库管理", businessType = BusinessType.UPDATE)
+    public Result<Boolean> saveRollPlan(@PathVariable Long itemId,
+            @jakarta.validation.Valid @RequestBody com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO plan) {
+        return Result.success(inboundService.saveRollReceiptPlan(itemId, plan));
+    }
+
     @GetMapping("/return-preview/{ncrId}")
     @Operation(summary = "返工退料预览（dev-20260923-043：该不良单的补料明细 / 已退 / 可退；含原发料批次）")
     public Result<java.util.List<java.util.Map<String, Object>>> returnPreview(@PathVariable Long ncrId) {

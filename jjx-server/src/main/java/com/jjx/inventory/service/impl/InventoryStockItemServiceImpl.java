@@ -28,6 +28,10 @@ import java.util.stream.Collectors;
 public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockItemMapper, InventoryStockItem> implements InventoryStockItemService {
 
     private final InventoryStockItemMapper stockItemMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.inventory.mapper.InventoryTransactionMapper transactionMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.inventory.mapper.InventoryWarehouseMapper warehouseMapper;
     private final InventoryStorageLocationMapper storageLocationMapper;
     private final StockItemConverter stockItemConverter;
 
@@ -57,6 +61,9 @@ public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockIte
         if (StringUtils.isNotBlank(query.getBatchNo())) {
             wrapper.like(InventoryStockItem::getBatchNo, query.getBatchNo());
         }
+        if (StringUtils.isNotBlank(query.getRollNo())) wrapper.like(InventoryStockItem::getRollNo, query.getRollNo());
+        if (Boolean.TRUE.equals(query.getRollOnly())) wrapper.isNotNull(InventoryStockItem::getRollNo);
+        if (Boolean.TRUE.equals(query.getPositiveOnly())) wrapper.gt(InventoryStockItem::getQuantity, java.math.BigDecimal.ZERO);
         if (query.getStatus() != null) {
             wrapper.eq(InventoryStockItem::getStatus, query.getStatus());
         }
@@ -101,12 +108,34 @@ public class InventoryStockItemServiceImpl extends ServiceImpl<InventoryStockIte
     private StockItemVO convertToVO(InventoryStockItem entity) {
         StockItemVO vo = stockItemConverter.toVO(entity);
 
+        if (entity.getRollNo() != null) {
+            java.math.BigDecimal area = entity.getQuantity() == null ? java.math.BigDecimal.ZERO : entity.getQuantity();
+            if (entity.getRollWidthMm() != null && entity.getRollWidthMm().signum() > 0) {
+                vo.setRemainingRollLengthM(area.multiply(java.math.BigDecimal.valueOf(1000))
+                        .divide(entity.getRollWidthMm(), 4, java.math.RoundingMode.HALF_UP));
+                java.math.BigDecimal originalArea = entity.getRollWidthMm().multiply(entity.getOriginalRollLengthM())
+                        .divide(java.math.BigDecimal.valueOf(1000), 4, java.math.RoundingMode.HALF_UP);
+                vo.setPartialRoll(area.signum() > 0 && area.compareTo(originalArea) < 0);
+            }
+            java.util.Map<String, Object> summary = transactionMapper.selectRollRowSummary(entity.getItemId(), entity.getRollNo());
+            vo.setReceivedQuantity(new java.math.BigDecimal(summary.get("receivedQuantity").toString()));
+            vo.setIssuedQuantity(new java.math.BigDecimal(summary.get("issuedQuantity").toString()));
+            vo.setBalanceQuantity(new java.math.BigDecimal(summary.get("balanceQuantity").toString()));
+            if (summary.get("lastOutboundItemId") != null) vo.setLastOutboundItemId(Long.valueOf(summary.get("lastOutboundItemId").toString()));
+        }
+
         // 设置状态名称
         StockItemStatusEnum statusEnum = StockItemStatusEnum.getByValue(entity.getStatus());
         if (statusEnum != null) {
             vo.setStatusName(statusEnum.getLabel());
         }
 
+        if (entity.getWarehouseId() != null && warehouseMapper != null) {
+            var warehouse = warehouseMapper.selectById(entity.getWarehouseId());
+            if (warehouse != null) {
+                vo.setWarehouseCode(warehouse.getWarehouseCode()); vo.setWarehouseName(warehouse.getWarehouseName());
+            }
+        }
         // 填充库位名称（DEV-692）
         if (entity.getLocationId() != null) {
             InventoryStorageLocation loc = storageLocationMapper.selectById(entity.getLocationId());

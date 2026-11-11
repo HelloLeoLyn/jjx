@@ -86,6 +86,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
     private final InventoryInboundOrderMapper inboundOrderMapper;
     private final InventoryInboundItemMapper inboundItemMapper;
     private final InventoryStockItemMapper stockItemMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.inventory.service.InventoryRollService rollService;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
     private final com.jjx.inventory.service.InventoryStockMutationService stockMutationService;
@@ -369,6 +371,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 if (!(obj instanceof Map<?, ?> m)) continue;
                 InventoryInboundItem item = new InventoryInboundItem();
                 item.setInboundId(order.getInboundId());
+                if (m.get("inventoryItemId") != null) item.setInventoryItemId(Long.valueOf(m.get("inventoryItemId").toString()));
                 if (m.get("materialId") != null) item.setMaterialId(Long.valueOf(m.get("materialId").toString()));
                 item.setMaterialCode((String) m.get("materialCode"));
                 item.setMaterialName((String) m.get("materialName"));
@@ -376,6 +379,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 item.setUnit((String) m.get("unit"));
                 if (m.get("quantity") != null) item.setQuantity(new BigDecimal(m.get("quantity").toString()));
                 if (m.get("unitPrice") != null) item.setUnitPrice(new BigDecimal(m.get("unitPrice").toString()));
+                item.setBatchNo((String) m.get("batchNo"));
+                if (m.get("rollNo") != null || m.get("rollWidthMm") != null || m.get("rollLengthM") != null) {
+                    rollService.normalizeInbound(item, m);
+                }
                 BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
                 BigDecimal price = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
                 item.setAmount(qty.multiply(price));
@@ -394,7 +401,11 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                 totalAmt = totalAmt.add(item.getAmount());
             }
             if (!items.isEmpty()) {
-                inboundItemMapper.batchInsert(items);
+                if (items.stream().anyMatch(i -> i.getRollNo() != null)) {
+                    items.forEach(inboundItemMapper::insert);
+                } else {
+                    inboundItemMapper.batchInsert(items);
+                }
                 order.setTotalQuantity(totalQty);
                 order.setTotalAmount(totalAmt);
                 inboundOrderMapper.updateById(order);
@@ -402,6 +413,29 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
         publishInboundEvent("inventory.inbound.created", order.getInboundId());
         return order.getInboundId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveRollReceiptPlan(Long itemId, com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO plan) {
+        Long inboundId = inboundItemMapper.selectInboundIdByItemId(itemId);
+        if (inboundId == null) throw new BusinessException("采购入库明细不存在");
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
+        InventoryInboundItem item = inboundItemMapper.selectByIdForUpdate(itemId);
+        if (order == null || !isPurchaseInbound(order)
+                || !InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus()))
+            throw new BusinessException("请在原采购收货单IQC全部审核通过、确认入库前录卷");
+        if (item == null || Objects.requireNonNullElse(item.getPostedQuantity(), BigDecimal.ZERO).signum() != 0)
+            throw new BusinessException("该明细已过账，卷计划不可修改");
+        validateAllIqcApproved(inboundId);
+        String json = rollService.normalizeReceiptPlan(item, plan == null ? null : plan.getRolls(),
+                Objects.requireNonNullElse(item.getAcceptedQuantity(), BigDecimal.ZERO));
+        // 只写计划，不改原收货量/单价/来源/质量判定/已过账量。
+        int changed = inboundItemMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers
+                .<InventoryInboundItem>lambdaUpdate().eq(InventoryInboundItem::getItemId, itemId)
+                .set(InventoryInboundItem::getRollPlanJson, json));
+        if (changed != 1) throw new BusinessException("卷计划保存失败");
+        return true;
     }
 
     @Override
@@ -2133,7 +2167,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
      * 原 approve 中的加库存逻辑抽取，供 confirm 直接使用
      */
     private void addStock(InventoryInboundOrder order, Long operatorId, String operatorName, String remark) {
-        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(order.getInboundId());
+        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundIdForUpdate(order.getInboundId());
         for (InventoryInboundItem item : items) {
             if (item.getInventoryItemId() == null) {
                 InventoryMaterial material = inventoryMaterialMapper.selectById(item.getMaterialId());
@@ -2151,10 +2185,33 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             BigDecimal quantityToPost = targetQuantity == null ? BigDecimal.ZERO : targetQuantity.subtract(postedQuantity);
             if (quantityToPost.compareTo(BigDecimal.ZERO) <= 0) continue;
 
+            if (item.getRollNo() != null || item.getRollPlanJson() != null) {
+                List<InventoryStockItem> rolls = rollService.receiptStocks(order, item, quantityToPost);
+                Long singleStockId = null;
+                for (InventoryStockItem roll : rolls) {
+                    BigDecimal area = rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM());
+                    InventoryTransaction tx = new InventoryTransaction();
+                    tx.setTransactionType(com.jjx.inventory.enums.TransactionTypeEnum.INBOUND.getCode());
+                    tx.setSourceType(order.getSourceType()); tx.setSourceId(order.getInboundId());
+                    tx.setSourceNo(order.getInboundNo()); tx.setSourceItemId(item.getItemId());
+                    tx.setLotId(item.getLotId()); tx.setUnitCost(item.getUnitPrice());
+                    tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
+                    tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
+                    tx.setRemark(remark != null ? remark : "逐卷入库");
+                    InventoryStockItem saved = stockMutationService.applyDelta(roll, area, tx);
+                    singleStockId = saved.getItemId();
+                }
+                if (rolls.size() == 1) item.setStockItemId(singleStockId);
+                item.setPostedQuantity(postedQuantity.add(quantityToPost));
+                inboundItemMapper.updateById(item);
+                continue;
+            }
+
             // 查找现有批次库存
             LambdaQueryWrapper<InventoryStockItem> wrapper = new LambdaQueryWrapper<InventoryStockItem>()
                     .eq(InventoryStockItem::getInventoryItemId, item.getInventoryItemId())
                     .eq(InventoryStockItem::getBatchNo, item.getBatchNo())
+                    .isNull(InventoryStockItem::getRollNo)
                     .eq(InventoryStockItem::getStatus, 1);
             if (item.getLocationId() != null) {
                 wrapper.eq(InventoryStockItem::getLocationId, item.getLocationId());
@@ -3957,6 +4014,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             case "PURCHASE", "PURCHASE_ORDER" -> "采购入库";
             case "PRODUCTION", "PRODUCTION_FINISH" -> "生产入库";
             case "RETURN" -> "退货入库";
+            case "ROLL_RETURN" -> com.jjx.inventory.enums.InboundTypeEnum.ROLL_RETURN.getLabel();
             case "SAMPLE_RETURN" -> com.jjx.inventory.enums.InboundTypeEnum.SAMPLE_RETURN.getLabel();
             case "TRANSFER" -> "调拨入库";
             case "OTHER" -> "其他入库";
@@ -3996,6 +4054,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
 
         InboundItemVO vo = new InboundItemVO();
+        vo.setStockItemId(item.getStockItemId()); vo.setRollNo(item.getRollNo());
+        vo.setReversalOfItemId(item.getReversalOfItemId()); vo.setRollWidthMm(item.getRollWidthMm());
+        vo.setRollLengthM(item.getRollLengthM()); vo.setSourceOutboundItemId(item.getSourceOutboundItemId());
+        vo.setRollPlan(rollService == null ? java.util.List.of() : rollService.readReceiptPlan(item));
         vo.setInboundItemId(item.getItemId());
         vo.setInboundId(item.getInboundId());
         vo.setMaterialId(item.getMaterialId());

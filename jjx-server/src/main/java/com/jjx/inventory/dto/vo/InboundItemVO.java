@@ -10,6 +10,14 @@ import java.time.LocalDate;
  */
 @Data
 public class InboundItemVO {
+    private java.math.BigDecimal rollWidthMm;
+    private java.math.BigDecimal rollLengthM;
+    private Long sourceOutboundItemId;
+    private Long stockItemId;
+    private String rollNo;
+    private Long reversalOfItemId;
+
+    private java.util.List<com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO.RollEntry> rollPlan;
     private Long inboundItemId;
     private Long inboundId;
     private Long materialId;

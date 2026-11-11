@@ -47,6 +47,15 @@ public class InventoryStockItem implements Serializable {
     private String batchNo;
     private Long iqcBatchId;
 
+    /** 物理卷身份，与供应商/检验批号独立；非卷材为空。 */
+    private String rollNo;
+    /** 原始卷宽(mm)，数量始终以㎡记账。 */
+    private BigDecimal rollWidthMm;
+    /** 首次实收原始卷长(m)，退回不覆盖此事实。 */
+    private BigDecimal originalRollLengthM;
+    /** 原始入库明细，卷材跨位置保持来源。 */
+    private Long sourceInboundItemId;
+
     /** 生产日期 */
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate productionDate;

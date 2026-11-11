@@ -62,6 +62,13 @@ public class InventoryTransaction extends BaseEntity {
     private String batchNo;
     private Long iqcBatchId;
 
+    /** 库存行身份；新流水明确归属，历史流水不补写。 */
+    private Long stockItemId;
+    /** 当前入/出库单据明细身份，结合来源单据解释。 */
+    private Long sourceItemId;
+    /** 物理卷身份，与 batchNo/lotId 独立。 */
+    private String rollNo;
+
     /** 变动数量（正数增加，负数减少） */
     private BigDecimal quantity;
 

@@ -85,6 +85,19 @@ public interface InventoryTransactionMapper extends BaseMapper<InventoryTransact
             "GROUP BY batch_no")
     List<Map<String, Object>> selectBatchFlowSummary(@Param("inventoryItemId") Long inventoryItemId);
 
+    @Select("SELECT * FROM inventory_transaction WHERE roll_no = #{rollNo} " +
+            "ORDER BY transaction_id FOR UPDATE")
+    List<InventoryTransaction> selectRollForUpdate(@Param("rollNo") String rollNo);
+
+    @Select("SELECT COALESCE(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END),0) AS receivedQuantity, " +
+            "COALESCE(SUM(CASE WHEN quantity < 0 THEN -quantity ELSE 0 END),0) AS issuedQuantity, " +
+            "COALESCE(SUM(quantity),0) AS balanceQuantity, " +
+            "(SELECT source_item_id FROM inventory_transaction WHERE roll_no = #{rollNo} " +
+            "AND LOWER(transaction_type) = 'outbound' AND quantity < 0 ORDER BY transaction_id DESC LIMIT 1) AS lastOutboundItemId " +
+            "FROM inventory_transaction WHERE stock_item_id = #{stockItemId} AND roll_no = #{rollNo}")
+    Map<String, Object> selectRollRowSummary(@Param("stockItemId") Long stockItemId, @Param("rollNo") String rollNo);
+
+
     /**
      * 查询指定时间范围内的流水
      */

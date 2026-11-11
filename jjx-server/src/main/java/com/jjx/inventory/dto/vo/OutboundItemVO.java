@@ -8,6 +8,10 @@ import java.math.BigDecimal;
  */
 @Data
 public class OutboundItemVO {
+    private Long stockItemId;
+    private String rollNo;
+    private Long reversalOfItemId;
+
     private Long outboundItemId;
     private Long outboundId;
     private Long materialId;

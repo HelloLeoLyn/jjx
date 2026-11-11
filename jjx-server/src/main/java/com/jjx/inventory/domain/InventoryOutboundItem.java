@@ -31,6 +31,13 @@ public class InventoryOutboundItem extends BaseEntity {
     /** 来源发货明细，合并发货按此释放所属订单预留并核验原始量。 */
     private Long deliveryItemId;
 
+    /** 卷材对应的库存位置行。 */
+    private Long stockItemId;
+    /** 物理卷身份，与来料批次独立。 */
+    private String rollNo;
+    /** 红冲原明细；只在反向凭证填写，不改原单。 */
+    private Long reversalOfItemId;
+
     /** 物料ID */
     private Long materialId;
 

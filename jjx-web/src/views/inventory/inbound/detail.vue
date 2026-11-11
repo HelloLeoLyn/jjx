@@ -148,6 +148,12 @@
         <el-table-column label="生产日期" prop="productionDate" width="110" align="center" />
         <el-table-column label="到期日期" prop="expiryDate" width="110" align="center" />
         <el-table-column label="备注" prop="remark" width="120" />
+        <el-table-column label="卷计划" width="140" fixed="right"><template #default="{ row }">
+          <el-button v-if="row.rollPlan?.length || (userStore.hasPermission('inventory:inbound:edit') && isPurchaseReceipt && inboundData.status === InboundOrderStatusEnum.APPROVED.value && Number(row.postedQuantity || 0) === 0)" link type="primary"
+            @click="planItem = row; planVisible = true">
+            {{ row.rollPlan?.length ? `${row.rollPlan.length}卷 / 查看` : '录入卷计划' }}
+          </el-button>
+        </template></el-table-column>
       </el-table>
     </el-card>
 
@@ -198,6 +204,9 @@
         </el-timeline-item>
       </el-timeline>
     </el-card>
+    <RollReceiptPlanDialog v-model="planVisible" :item="planItem"
+      :readonly="!userStore.hasPermission('inventory:inbound:edit') || inboundData.status !== InboundOrderStatusEnum.APPROVED.value || Number(planItem?.postedQuantity || 0) !== 0"
+      @success="loadInboundDetail" />
   </div>
 </template>
 
@@ -206,15 +215,16 @@ defineOptions({
   name: 'InboundDetail',
 })
 
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundApi } from '@/api/inventory/inbound'
+import RollReceiptPlanDialog from '@/components/inventory/RollReceiptPlanDialog.vue'
 import InboundLotTrace from './components/InboundLotTrace.vue'
 import { getTransactionsByDocNo } from '@/api/inventory/transaction'
 import type { TransactionVO } from '@/api/inventory/transaction'
 import { formatCurrency, formatNumber } from '@/utils/format'
-import type { InboundVO } from '@/types/inventory/inbound'
+import type { InboundVO, InboundItemVO } from '@/types/inventory/inbound'
 import { InboundEnum, InboundOrderStatusEnum } from '@/enums/inventory'
 import { useUserStore } from '@/store/modules/user'
 
@@ -228,6 +238,11 @@ const confirmableStatuses = new Set<number>([
   InboundOrderStatusEnum.APPROVED.value,
 ])
 
+const planVisible = ref(false)
+const planItem = ref<InboundItemVO>()
+const isPurchaseReceipt = computed(() => !!inboundData.value.sourceId && (
+  ['PURCHASE', 'PURCHASE_ORDER'].includes((inboundData.value.sourceType || '').toUpperCase()) || inboundData.value.inboundType?.toLowerCase() === 'purchase'
+))
 const inboundId = ref<string>('')
 const inboundData = ref<InboundVO>({
   inboundId: '',

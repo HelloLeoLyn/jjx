@@ -15,6 +15,7 @@ public class StockItemVO {
 
     /** 明细ID */
     private Long itemId;
+    private Long inventoryItemId;
 
     /** 物料ID */
     private Long materialId;
@@ -52,6 +53,18 @@ public class StockItemVO {
     /** 批次号 */
     private String batchNo;
     private Long iqcBatchId;
+
+    private java.math.BigDecimal receivedQuantity;
+    private java.math.BigDecimal issuedQuantity;
+    private java.math.BigDecimal balanceQuantity;
+    private Long lastOutboundItemId;
+    private String rollNo;
+    private BigDecimal rollWidthMm;
+    private BigDecimal originalRollLengthM;
+    private Long sourceInboundItemId;
+    /** 展示派生值：当前㎡结存÷卷宽，不作为余额落库。 */
+    private BigDecimal remainingRollLengthM;
+    private Boolean partialRoll;
 
     /** 生产日期 */
     @JsonFormat(pattern = "yyyy-MM-dd")

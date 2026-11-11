@@ -38,3 +38,36 @@ export const stockItemApi = {
     })
   },
 }
+
+export interface RollFlow {
+  transactionId: string
+  stockItemId: string
+  sourceItemId?: string
+  sourceType?: string
+  sourceNo?: string
+  transactionType: string
+  quantity: number
+  beforeQuantity: number
+  afterQuantity: number
+  unitCost?: number
+  transactionTime: string
+}
+
+export const rollApi = {
+  area(widthMm: number, lengthM: number) {
+    return request.get<R<number>>('/inventory/roll/area', { params: { widthMm, lengthM } })
+  },
+  flow(rollNo: string) {
+    return request.get<R<RollFlow[]>>('/inventory/roll/flow', { params: { rollNo } })
+  },
+  returnRoll(data: { sourceOutboundItemId: string; rollNo: string; returnedLengthM: number;
+    warehouseId: string; locationId?: string; reason: string }) {
+    return request.post<R<string>>('/inventory/roll/return', data)
+  },
+  reverseReturn(itemId: string, reason: string) {
+    return request.post<R<string>>(`/inventory/roll/reverse-return/${itemId}`, null, { params: { reason } })
+  },
+  reverseIssue(itemId: string, reason: string) {
+    return request.post<R<string>>(`/inventory/roll/reverse-issue/${itemId}`, null, { params: { reason } })
+  },
+}

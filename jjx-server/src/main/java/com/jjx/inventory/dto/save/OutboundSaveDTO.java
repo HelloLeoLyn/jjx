@@ -29,6 +29,8 @@ public class OutboundSaveDTO {
  */
 @Data
 class OutboundItemSaveDTO {
+    private String rollNo;
+    private Long stockItemId;
     private Long materialId;
     private BigDecimal quantity;
     private BigDecimal unitPrice;

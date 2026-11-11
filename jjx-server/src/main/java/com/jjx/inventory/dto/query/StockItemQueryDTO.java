@@ -35,6 +35,10 @@ public class StockItemQueryDTO {
     /** 批次号 */
     private String batchNo;
 
+    private String rollNo;
+    private Boolean rollOnly;
+    private Boolean positiveOnly;
+
     /** 状态：0=未生效，1=生效 */
     private Integer status;
 

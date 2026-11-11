@@ -49,6 +49,9 @@ public interface InventoryInboundService extends IService<InventoryInboundOrder>
      */
     boolean confirm(Long inboundId, Long operatorId, String operatorName);
 
+    /** 原已批准、未过账采购明细补录多卷计划，原收货量与IQC不变。 */
+    boolean saveRollReceiptPlan(Long itemId, com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO plan);
+
     /** 为 FQC NCR 让步处置创建与处置动作幂等关联的待确认成品入库单。 */
     Long createFqcConcessionInbound(Long actionId, Long ncrId, Long orderId, Long lotId,
                                     java.math.BigDecimal quantity);

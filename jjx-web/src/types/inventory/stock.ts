@@ -47,6 +47,9 @@ export interface StockVO {
 
 // 库存批次明细查询参数
 export interface StockItemQueryParams {
+  rollNo?: string
+  rollOnly?: boolean
+  positiveOnly?: boolean
   current?: number
   pageSize?: number
   inventoryItemId?: string
@@ -63,6 +66,14 @@ export interface StockItemQueryParams {
 
 // 库存批次明细VO
 export interface StockItemVO {
+  rollNo?: string
+  rollWidthMm?: number
+  originalRollLengthM?: number
+  sourceInboundItemId?: string
+  remainingRollLengthM?: number
+  partialRoll?: boolean
+  lastOutboundItemId?: string
+  balanceQuantity?: number
   itemId: string
   inventoryItemId: string
   materialId?: string

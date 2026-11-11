@@ -147,12 +147,22 @@
             <el-input v-model="row.batchNo" placeholder="批次号" />
           </template>
         </el-table-column>
-        <el-table-column label="数量" width="120" align="right">
+        <el-table-column label="卷号（逐卷入库时填）" width="180">
+          <template #default="{ row }"><el-input v-model="row.rollNo" maxlength="64" clearable /></template>
+        </el-table-column>
+        <el-table-column label="卷宽(mm)" width="140">
+          <template #default="{ row }"><el-input-number v-model="row.rollWidthMm" :disabled="!row.rollNo" :min="0.0001" :precision="4" :controls="false" @change="previewRollArea(row)" /></template>
+        </el-table-column>
+        <el-table-column label="实收卷长(m)" width="140">
+          <template #default="{ row }"><el-input-number v-model="row.rollLengthM" :disabled="!row.rollNo" :min="0.0001" :precision="4" :controls="false" @change="previewRollArea(row)" /></template>
+        </el-table-column>
+        <el-table-column label="数量（卷材为㎡）" width="120" align="right">
           <template #default="{ row, $index }">
             <el-input-number
               v-model="row.quantity"
+              :disabled="!!row.rollNo"
               :min="0.001"
-              :precision="3"
+              :precision="4"
               :step="1"
               controls-position="right"
               style="width: 100%"
@@ -294,6 +304,7 @@ import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
 import type { InboundCreateParams, InboundItemCreateParams } from '@/types/inventory/inbound'
 import type { InventoryWarehouse } from '@/types/inventory/warehouse'
 import MaterialSelector from '@/components/Selector/MaterialSelector.vue'
+import { rollApi } from '@/api/inventory/stockItem'
 import { applyMaterialSelection, clearMaterialSelection } from './inboundMaterial'
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -301,7 +312,11 @@ const fileInputRef = ref<HTMLInputElement>()
 const loading = ref(false)
 
 // 表单数据
-const formData = reactive<InboundCreateParams>({
+type RollInboundRow = InboundCreateParams['items'][number] & {
+  rollNo?: string; rollWidthMm?: number; rollLengthM?: number; areaRequest?: number
+}
+type RollInboundParams = Omit<InboundCreateParams, 'items'> & { items: RollInboundRow[] }
+const formData = reactive<RollInboundParams>({
   inboundType: 'purchase',
   warehouseId: '',
   supplierId: '',
@@ -848,7 +863,7 @@ const handleSaveDraft = async () => {
   loading.value = true
   try {
     const res = await inboundApi.create(formData)
-    const inboundId = (res as any)?.data?.data?.inboundId
+    const inboundId = String(res.data)
     ElMessage.success('保存草稿成功')
     router.push(`/inventory/inbound/detail/${inboundId}`)
   } catch (error) {
@@ -868,7 +883,7 @@ const handleSubmit = async () => {
       loading.value = true
       try {
         const res = await inboundApi.create(formData)
-        const inboundId = (res as any)?.data?.data?.inboundId
+        const inboundId = String(res.data)
         await inboundApi.submitApprove(inboundId)
         ElMessage.success('提交审批成功')
         router.push(`/inventory/inbound/detail/${inboundId}`)
@@ -880,6 +895,17 @@ const handleSubmit = async () => {
       }
     })
     .catch(() => {})
+}
+
+const previewRollArea = async (row: RollInboundRow) => {
+  if (!row.rollNo || !row.rollWidthMm || !row.rollLengthM) return
+  const requestId = (row.areaRequest || 0) + 1
+  row.areaRequest = requestId
+  const result = await rollApi.area(row.rollWidthMm, row.rollLengthM)
+  if (row.areaRequest === requestId) {
+    row.quantity = Number(result.data)
+    calculateAmount(row)
+  }
 }
 
 // 表单验证
@@ -896,6 +922,13 @@ const validateForm = async (): Promise<boolean> => {
     }
 
     for (const item of formData.items) {
+      if (item.rollNo) {
+        if (!item.rollWidthMm || !item.rollLengthM || !item.batchNo) {
+          ElMessage.warning('逐卷入库请填写卷宽、实收卷长和批次号')
+          return false
+        }
+        await previewRollArea(item)
+      }
       if (!item.materialId) {
         ElMessage.warning('请填写物料信息')
         return false

@@ -20,6 +20,9 @@ public interface InventoryOutboundItemMapper extends BaseMapper<InventoryOutboun
     @Select("SELECT * FROM inventory_outbound_item WHERE outbound_id = #{outboundId} ORDER BY sort_order")
     List<InventoryOutboundItem> selectByOutboundId(@Param("outboundId") Long outboundId);
 
+    @Select("SELECT * FROM inventory_outbound_item WHERE item_id = #{itemId} FOR UPDATE")
+    InventoryOutboundItem selectByIdForUpdate(@Param("itemId") Long itemId);
+
     /**
      * 批量插入出库单明细
      */

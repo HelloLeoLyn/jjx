@@ -7,6 +7,7 @@ import com.jjx.inventory.mapper.InventoryStockItemMapper;
 import com.jjx.inventory.mapper.InventoryStockMapper;
 import com.jjx.inventory.mapper.InventoryTransactionMapper;
 import com.jjx.inventory.service.InventoryStockMutationService;
+import com.jjx.inventory.enums.StockItemStatusEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +46,24 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
             if (locked.getInventoryItemId() == null) locked.setInventoryItemId(requestedInventoryItemId);
             stock = locked;
         }
+        if (stock.getRollNo() != null) {
+            if (transaction.getSourceItemId() == null || stock.getRollWidthMm() == null
+                    || stock.getOriginalRollLengthM() == null || stock.getSourceInboundItemId() == null) {
+                throw new BusinessException("卷材变动必须关联原卷及入/出库明细，请从逐卷收发退入口操作");
+            }
+            if (transaction.getRollNo() != null && !stock.getRollNo().equals(transaction.getRollNo())) {
+                throw new BusinessException("流水卷号与库存卷号不一致");
+            }
+            if ((transaction.getInventoryItemId() != null && !transaction.getInventoryItemId().equals(stock.getInventoryItemId()))
+                    || (transaction.getWarehouseId() != null && !transaction.getWarehouseId().equals(stock.getWarehouseId()))
+                    || (transaction.getLocationId() != null && !transaction.getLocationId().equals(stock.getLocationId()))
+                    || (transaction.getBatchNo() != null && !transaction.getBatchNo().equals(stock.getBatchNo()))) {
+                throw new BusinessException("卷材流水身份与实际库存位置不一致");
+            }
+            if (delta.scale() > 4 && delta.stripTrailingZeros().scale() > 4) {
+                throw new BusinessException("卷材面积最多保留4位小数");
+            }
+        }
         BigDecimal before = stock.getItemId() == null ? BigDecimal.ZERO : value(stock.getQuantity());
         BigDecimal after = before.add(delta);
         if (after.signum() < 0) {
@@ -52,6 +71,9 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
                     + "，当前 " + before.toPlainString() + "，变动 " + delta.toPlainString() + "）");
         }
 
+        if (stock.getRollNo() != null && delta.signum() > 0 && transaction.getUnitCost() != null) {
+            stock.setUnitCost(transaction.getUnitCost());
+        }
         stock.setQuantity(after);
         if (delta.signum() > 0) {
             stock.setLastInboundTime(LocalDateTime.now());
@@ -60,7 +82,7 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
         }
         if (stock.getItemId() == null) {
             stock.setReservedQuantity(value(stock.getReservedQuantity()));
-            stock.setStatus(1);
+            stock.setStatus(StockItemStatusEnum.ACTIVE.getValue());
             stockItemMapper.insert(stock);
         } else {
             stockItemMapper.updateById(stock);
@@ -82,6 +104,11 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
     }
 
     private void fillTransactionIdentity(InventoryTransaction tx, InventoryStockItem stock) {
+        if (tx.getStockItemId() != null && !tx.getStockItemId().equals(stock.getItemId())) {
+            throw new BusinessException("流水库存行与实际变动行不一致");
+        }
+        if (stock.getRollNo() != null) tx.setStockItemId(stock.getItemId());
+        tx.setRollNo(stock.getRollNo());
         if (tx.getInventoryItemId() == null) tx.setInventoryItemId(stock.getInventoryItemId());
         if (tx.getMaterialId() == null) tx.setMaterialId(stock.getMaterialId());
         if (tx.getMaterialCode() == null) tx.setMaterialCode(stock.getMaterialCode());
