@@ -23,7 +23,7 @@
         @click="emit('navigate', nodes.length - 2)"
         >返回上层</el-button
       >
-      <span class="path-hint">逐层显式引用：上层草稿不会因查看下层而改动</span>
+      <span class="path-hint">逐层查看：上层未保存的修改不会因查看下层而丢失</span>
     </div>
   </div>
 </template>
@@ -31,8 +31,9 @@
 <script setup lang="ts">
 /**
  * 制造BOM 层路径（dev-20261111-005）。
- * 只负责展示当前显式引用路径与返回，不判断制造关系、不读写数据：
- * 层级只来自 engineering_bom_item.sub_bom_id，不由分组/规格/模数推断。
+ * 只负责展示当前窗口的层级路径与返回，不判断制造关系、不读写数据：
+ * 已选下层只来自 engineering_bom_item.sub_bom_id；未选方案的已建档物料进入候选时按物料身份展示，
+ * 不由分组/规格/模数推断上下层关系。
  */
 interface ManufacturingBomPathNode {
   /** 投入物料ID（= 该层制造方案的产出物料） */
@@ -55,9 +56,8 @@ const labelOf = (node: ManufacturingBomPathNode): string => {
   if (node.label) return node.label
   const text = [node.materialCode, node.materialName].filter((v) => !!String(v ?? '').trim()).join(' ')
   if (text) return text
-  if (node.materialId != null) return `物料 ${node.materialId}`
-  if (node.bomId != null) return `方案 ${node.bomId}`
-  return '产出'
+  // 不把数据库自增ID当标题；档案未读到时就事论事
+  return node.materialId != null ? '产出物料（档案未读取）' : '当前层'
 }
 
 const nodeKey = (node: ManufacturingBomPathNode, index: number): string =>

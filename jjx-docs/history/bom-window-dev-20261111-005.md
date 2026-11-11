@@ -1,96 +1,95 @@
-﻿# 制造BOM独立窗口（C阶段）：前端窗口、方案选择、采用回填与路径返回
+﻿# 制造BOM独立窗口（C阶段）：前端窗口、方案选择、逐层采用回填与路径返回
 
 任务：dev-20261111-005（总任务 dev-20261111-002 子任务 C）。执行者：Hermes；验收者：Codex（独立验收）。
-日期：2026-11-11，Asia/Shanghai。工作目录：/home/administrator/jjx。
-状态：前端代码与定向组件/API 测试已完成；**运行态联调与 C 验收未进行**，等待 B（dev-20261111-004）主方案/防环等退修复验通过后由 Codex 解锁。
+日期：2026-11-11（Asia/Shanghai），本文最后更新 2026-11-11 15:05 左右（退修第二轮）。工作目录：/home/administrator/jjx。
+状态：前端代码与定向组件/API 测试已完成（**只代表代码与组件测试范围**）；**运行态联调与 C 验收未进行**，等 B（dev-20261111-004）复验通过后由 Codex 解锁。
 
 ## 授权与交付边界
 
-用户本次授权：“继续推进 C（制造BOM独立窗口），只基于既有稳定 DTO/API 完成前端代码与定向组件测试准备”。
+1）用户当前明确指令（原话）：“那如果没什么问题,那就继续推进”——同意继续推进本任务，不是对具体功能细节的逐字授权。
+2）本卡的“前端专卡范围”（只写哪 15 个前端/测试路径、只改 `types/product/index.ts` 的 `ProductVo.schemeRevision` 可选字段、不改 INDEX）来自 **Codex 派发内容**，不是用户逐字原话；两者分开记录，避免把派工文本写成用户承诺。
+3）只写前端与本文档；未改后端、未改迁移/备份/baseline；未暂存或覆盖他人在制（开工与退修基线里 OpenClaw 004 的 `ProductVo.java`、`EngineeringBomServiceImpl.java`、备份日志、356 归档从头到尾未动）。
+4）未启动/重启任何服务，未改运行态；**未执行迁移 356**（见“现场事实复核”第 3 条）。
+5）退修第二轮（本文档更新范围）：新建下层入口、逐层采用回填、新建 BOM 的真实 `schemeRevision`、跨单位换算依据 UI、移除用量计算副本、权限矩阵拆分、预审文字清理、文档事实纠正。
 
-1）只写前端与本文档：派发白名单内的 10 个既有前端文件（实际改动 7 个）、bom/components 下新增 3 个组件、新增 4 个测试文件、`history/INDEX.md` 登记；新增路径均先在 `sys_task.remark/description` 登记后才创建。
-2）未改后端、迁移、备份、baseline；未暂存或覆盖他人在制（开工基线里 OpenClaw 的 356 归档、备份日志与 004 退修源文件全程未动）。
-3）未启动/重启任何服务，未改运行态；未执行迁移 356。
-4）B 尚未整卡验收：本文所有“通过”均指前端编译/定向测试，不等于真实接口联通，更不等于 C 验收。
+## 现场事实复核（2026-11-11 14:52–15:05 只读）
 
-## 现场证据（只读读取，行号以当次源码为准）
+1）`jjx-server/.../engineering/controller/BomController.java:47-82`：`GET /engineering/bom/manufacturing/options`、`POST /engineering/bom/manufacturing`、`PUT /engineering/bom/manufacturing/{bomId}`、`POST /engineering/bom/manufacturing/{bomId}/adopt`；`:176-182` `GET /engineering/bom/{bomId}/scheme-choices`；权限 `engineering:bom:view/add/edit`。本轮未改这些路径。
+2）`EngineeringBomServiceImpl.applySchemeChoices`（`:1974-2056`）当前语义：`isPrimary=true` **只写/替换该 `materialId` 节点**，其他物料节点保持原样；`isPrimary=false/null` 仅代表父 BOM 实际采用、不改主；`cancelPrimary=true` 才移除该物料主方案；`dto.schemeRevision` 与库内 `product.scheme_revision` 不等返回 409 `CONCURRENT_MODIFICATION`；真正写 JSON 而 `schemeRevision` 为空返回 400 `SCHEME_REVISION_REQUIRED`。
+   → 2026-11-11 14:36 上一版记录里“设一个主方案会清掉其他节点”的现场快照**已过时**，以本节为准（该改动属 OpenClaw 004 范围，不是本卡改的）。
+3）迁移账本：`sys_config.ops.schema.version = 356`，`ops.schema.applied` 含 356，`update_time = 2026-11-11 14:07:35`。即**356 已执行并记账**，执行者不是本卡（本卡未执行任何 DDL），此前“356 尚未执行”的说法作废。
+4）可达性校验：`usedMaterialIdsForScheme`（`:2063-2095`）从本次 DTO 根行沿 `sub_bom_id` 逐层展开，只有该显式关联图可达的投入物料才允许写主方案；不可达时抛“父 BOM 未使用该物料，不能设置/取消主方案”。
+5）单位依据：`EngineeringBomItemDTO` 有 `unitFactor/unitFactorBasis(≤200)/unitFactorSource(≤100)`；`validateUnitBasis`（`:1747-1777`）同单位不强制系数，跨单位要求 `unitFactor>0`（≤8 位小数）且 `unitFactorBasis` 非空。
+6）`ProductVo` 已含 `schemeRevision` 字段；`GET /product/{id}` 把它回传由 004 补（本卡只读前端 `types` 可选声明 + 直接 `import { getProductInfo }`，未改该接口）。
+7）`lossRate` 后端仍是 `Integer`（`EngineeringBomItemDTO:81`）：本窗口只收整数，精度改造列入 dev-20261111-006，不在本卡放宽。
 
-1）`jjx-server/.../engineering/controller/BomController.java:47-82`：`GET /engineering/bom/manufacturing/options`、`POST /engineering/bom/manufacturing`、`PUT /engineering/bom/manufacturing/{bomId}`、`POST /engineering/bom/manufacturing/{bomId}/adopt`；`:176-182` `GET /engineering/bom/{bomId}/scheme-choices`；权限 `engineering:bom:view/add/edit`。
-2）`.../product/service/ManufacturingBomService.java`：options/save/update/adopt/getSchemeChoices 五个能力，无“删除方案”“自动发布”入口。
-3）DTO/VO：`ManufacturingBomSaveDTO`（bomCode/bomName/bomVersion/outputType/outputId/effectiveDate/expiryDate/remark/items）、`ManufacturingBomVO`、`ManufacturingSchemeVO`（含 approveStatus/isCurrent/isPrimary/itemCount/selectionToken）、`ManufacturingSchemeChoiceDTO`（materialId/bomId/isPrimary）。
-4）父 BOM 契约：`EngineeringBomDTO` 已含 `schemeChoices` 与 `schemeRevision`；`EngineeringBomVO`（getBomDetail）返回 `schemeRevision` 与 `schemeChoices`，见 `EngineeringBomServiceImpl.getBomDetail`。
-5）主方案写入语义（`EngineeringBomServiceImpl.applySchemeChoices`）：按 `materialId` 节点写 `bomId`；`isPrimary=true` 时清除其他节点标记；**显式 `isPrimary=false` 会把该物料原主降级**；`schemeRevision` 非空时做乐观锁校验，冲突返回 409 `CONCURRENT_MODIFICATION`。
-6）前端入口事实：`BomFormDialog.vue` 的调用方只有 `views/product/bom/index.vue:216` 与 `views/engineering/product-spec/components/ProductWorkSpecPanel.vue:481-486`；`BomItemEditor.vue` 的生产调用方只有 `BomFormDialog.vue:130`。
+## 入口 × 新增/编辑 × 父保存矩阵（本轮逐项复核）
 
-## 入口 × 新增/编辑 × 父保存矩阵（本次逐项核对）
-
-| 入口 | 新增 | 编辑 | 保存对象 | 本次处理 |
+| 入口 | 新增 | 编辑 | 保存对象 | 本轮处理 |
 |---|---|---|---|---|
-| BOM管理页 → BomFormDialog（整单） | 有 | 有 | 父 BOM 主表+明细+schemeChoices（显式调整时） | 材料行操作列新增“制造BOM”入口；采用只回填草稿；父保存才持久化 |
-| 作业规范页 → BomFormDialog（整单） | 无（仅按 bomId 打开编辑） | 有 | 同上 | 与上一入口共用同一组件，行为一致；未新增第二条保存链 |
-| BomItemEditor（共享材料行） | 有 | 有 | 不保存 | 只新增入口按钮与 `updateItem` 回填方法；分组/行审核/复制删除/规格只读/快捷建档/导入均未改语义 |
-| 制造BOM独立窗口 | 新建方案 | 编辑方案 | 制造方案自身（engineering_bom + 明细） | 独立保存；不发布、不改父 BOM、不设 isCurrent |
-| 制造BOM窗口 → 采用此方案 | — | — | 仅前端父草稿 | 调 adopt 取 token 结果后回填该行 `subBomId/sourceType` |
-| 制造BOM窗口 → 设为主方案 | — | — | 仅前端父草稿 | 仅记录显式调整，随父保存提交 |
-| 产品BOM整单保存 | 有 | 有 | 父 BOM + 字段 | 有显式主方案调整时附带 `schemeChoices`+`schemeRevision` |
+| BOM管理页 → BomFormDialog（整单） | 有 | 有 | 父 BOM 主表+明细+schemeChoices（显式调整时） | 材料行操作列“制造BOM”入口；采用只回填草稿；新建 BOM 设主用 `GET /product/{id}` 真实 revision |
+| 作业规范页 → BomFormDialog（整单） | 无（仅按 bomId 打开编辑） | 有 | 同上 | 共用组件，行为一致；编辑用 `getBomDetail` 的 revision |
+| BomItemEditor（共享材料行） | 有 | 有 | 不保存 | 入口仅对已建档、非待移除、**非只读**行显示；`updateItem(itemId, patch)` 按稳定身份回填 |
+| 制造BOM独立窗口（顶层） | 新建方案 | 编辑方案 | 制造方案自身（engineering_bom + 明细） | 独立保存；不发布、不改父 BOM、不设 isCurrent |
+| 制造BOM窗口 → 下层（有 subBomId） | — | 查看/编辑下层方案 | 下层方案自身 | 逐层查看与返回，上层草稿保留 |
+| 制造BOM窗口 → 下层（无 subBomId，已建档物料） | 新建下层方案 | — | 下层方案自身 | 入口“制造BOM”：按该物料拉候选并新建；只读/无权限不进入 |
+| 采用此方案（顶层） | — | — | 仅前端父草稿 | 发 `adopt` 事件给产品BOM行 |
+| 采用此方案（下层） | — | — | 仅直接上层草稿行 | 只回填 `frame.parent` 对应的那一行 `subBomId/sourceType`，父草稿变 dirty |
+| 设为主方案（顶层） | — | — | 仅前端父草稿 | 立即发 `primary-change`，随产品BOM保存提交 |
+| 设为主方案（下层） | — | — | 挂起 | 先记录，显式引用链逐层保存且回到根、图可达后才发 `primary-change` |
+| 产品BOM整单保存 | 有 | 有 | 父 BOM + 字段 | 有显式主方案调整时带 `schemeChoices`+真实 `schemeRevision`；409 保留草稿 |
 
-未改动但仍属白名单的文件：`BomDetailTable.vue`、`BomItemReviewTable.vue`、`views/product/bom/index.vue`（无需变更，避免顺手改动；其分组/审核/入口能力保持原状）。
+未改动但仍属白名单的文件：`BomDetailTable.vue`、`BomItemReviewTable.vue`、`views/product/bom/index.vue`（无需变更，避免顺手改动）。
 
-## 实际改动
+## 权限矩阵（本轮拆分，沿用既有 BOM 权限枚举）
 
-1）`src/types/product/bom.ts`：新增 `ManufacturingOutputType`、`ManufacturingScheme`、`ManufacturingBomDetail`、`ManufacturingBomSavePayload`、`ManufacturingSchemeChoice`；`EngineeringBomItem` 增 `subBomId/sourceType/unitFactor*/itemOrder`；`EngineeringBomFormData` 增 `outputType/outputId/schemeChoices/schemeRevision`；`EngineeringBomVO` 增 `schemeRevision/schemeChoices`。
-2）`src/api/product/bom.ts`：新增 5 个方法，路径与大小写严格照 BomController（`manufacturingOptions/saveManufacturingBom/updateManufacturingBom/adoptManufacturingBom/getBomSchemeChoices`），统一 `R<T>` 封装，adopt 无请求体。父 BOM 回显本次用 `getBomDetail` 一次拿全（含 `schemeRevision/schemeChoices`）；`getBomSchemeChoices` 封装按契约保留，本次 UI 未调用（避免多一次请求）。
-3）`src/enums/product/index.ts`：新增 `ManufacturingOutputTypeEnum`（PRODUCT/MATERIAL，非状态），状态显示复用既有 `BomStatusEnum`；未新增页面级状态映射。
-4）新增 `components/ManufacturingBomPath.vue`：只渲染显式引用路径与“返回上层”，不推断制造关系。
-5）新增 `components/ManufacturingBomItemTable.vue`：投入行编码/名称/档案规格(只读)/单位/模数/基数/跳距/损耗/最低投料/参考用量/下层方案/备注 + 复制、删除、快捷建档；模数基数 >0、最多 4 位小数；无供给方式列、无工艺路线编辑。
-6）新增 `components/ManufacturingBomDialog.vue`：产出身份、候选方案（真实版本与状态、主方案标记）、方案草稿编辑、保存（POST/PUT）、采用、设为主方案、下层下钻与返回；切换/关闭的未保存处理；无产品上下文时明确提示先保存产品。
-7）`components/BomItemEditor.vue`：操作列新增“制造BOM”入口（仅已建档、非待移除行）；新增 `manufacturing` 事件、`updateItem(itemId, patch)`、`canManufacturing` 属性；模数/基数输入放开为 >0、4 位小数，并在 `validateItems` 增加 >0 校验（仅对已填值生效，历史空值行不误拦）。
-8）`components/BomFormDialog.vue`：接入独立窗口；采用结果只回填该行并触发未保存提示；显式主方案记录与随父保存提交（含 revision 阻断）；换产品/重置清空制造方案上下文。
-9）测试：`BomItemEditor.spec.ts`（追加 3 组用例）、新增 `manufacturingBomPath.spec.ts`、`manufacturingBomDialog.spec.ts`、`bomFormManufacturing.spec.ts`、`api/product/__tests__/manufacturingBomApi.spec.ts`。
+| 角色 | 查看候选/明细 | 新建方案 | 编辑已存方案 | 采用 | 设为主方案 |
+|---|---|---|---|---|---|
+| view-only（无 add/edit） | 有 | 无 | 无 | 无 | 无 |
+| add-only | 有 | 有（且可保存新方案） | 无（字段只读、保存被拦） | 有 | 无（属修改产品主方案） |
+| edit-only | 有 | 无 | 有 | 有 | 有 |
+| add+edit | 有 | 有 | 有 | 有 | 有 |
 
-## 保存边界与主方案语义（实现口径）
+实现：`canCreate = !readonly && hasPermi('engineering:bom:add')`；`canEditStored = !readonly && hasPermi('engineering:bom:edit')`；`editable = draft.bomId ? canEditStored : canCreate`；采用 = add 或 edit；只读用户无 subBomId 时不进入新建下层。
 
-1）保存制造BOM：新建 `POST /engineering/bom/manufacturing`，已保存则 `PUT .../{bomId}`；请求带 `outputType=MATERIAL`、`outputId=投入物料ID`；不发布、不改父 BOM、不生成库存/工单。
-2）采用：先要求方案已保存（`bomId>0`）且无未保存修改，再 `POST .../{bomId}/adopt`，把 `{subBomId, sourceType:'make'}` 回填父草稿该行；未保存方案直接拒绝并提示，不会假成功。
-3）父保存才持久化：父 BOM 保存时 `items[].subBomId` 落库；父取消/关闭只丢弃草稿，**不删除、不回滚任何已保存制造方案**（前端无删除调用）。
-4）主方案按 product×material 独立：只有用户点“设为主方案”才写 `schemeChoices=[{materialId,bomId,isPrimary:true}]`；**从不提交 isPrimary=false**，因此采用非主方案不会把该物料原主覆盖掉；行实际采用的方案（subBomId）与主方案（schemeChoices）分开表达。
-5）并发：编辑已保存父 BOM 时，只要提交主方案就必须带 `getBomDetail` 返回的 `schemeRevision`；缺失则阻止保存并提示重新打开（新增 BOM 首次保存尚无详情时如实不传 revision，由后端行锁兜底，已在代码注释说明）。
-6）候选列表只用后端返回的 `approveStatus/version/isCurrent/isPrimary` 展示，不自动审核、不自动生效、不本地改状态。
-7）规格/耗用：档案规格只读；参考用量由既有 `calculateBomQuantity` 展示，落库与耗用权威在后端（D 阶段），本窗口不新增比例/单位换算权威算法；跨单位换算依据沿用后端 `unit_factor*` 字段，本窗口不编辑。
+## 本轮实际改动（相对提交 6842d30a）
 
-## 验证（真实命令与结果）
+1）`ManufacturingBomItemTable.vue`：新增“档案单位/投入单位”分列；跨单位时同列提供 `unitFactor`（正数，≤8 位小数）/`unitFactorBasis`（≤200）/`unitFactorSource`（≤100）填写与回显，改投入单位即清空旧系数避免误用；下层列对已建档但无 `subBomId` 的行提供“制造BOM”入口；移除 `calculateBomQuantity` 计算副本与 `handleRatioChange` 写 `row.quantity`，参考用量只取保存回读值、比例改动只标“待保存后更新”；损耗率限整数并明确校验。
+2）`ManufacturingBomDialog.vue`：`drillDown` 允许已建档物料无 `subBomId` 进入候选并新建（无权限/只读不许）；帧保存父投入行稳定身份（`frameKey + itemId + materialId`），深层采用只回填直接上层目标行并令父草稿 dirty，顶层才 `emit('adopt')`；深层设主挂起，`chainReachable` 校验逐层已保存且图可达后才 `emit('primary-change')`；栈改 `activeIndex` 指针，返回上层后下层帧仍保留用于可达核对；产出头部编码/名称/规格/单位取物料档案（`materialApi.getInfo`），不被父 BOM 行覆盖值冒充；权限矩阵拆分；清理 MATERIAL/可靠产品ID/后端递增/无界等实现文字，方案显示编码+版本。
+3）`BomFormDialog.vue`：新建 BOM 首次设主方案改用 `GET /product/{id}` 的真实 `schemeRevision`（迟到响应按 token+当前产品丢弃，读不到即阻止保存，不默认 0）；编辑继续用 `getBomDetail` 的 revision；409 冲突保留草稿并提示重新核对；换产品/清空产品清空制造方案上下文。
+4）`types/product/bom.ts`：新增 `ManufacturingSchemeLabel`、`ManufacturingBomSaveItem`（quantity 可空，后端重算）；`EngineeringBomItem` 增前端展示用 `archiveUnit/quantityStale`（不落库）。
+5）`types/product/index.ts`：仅新增 `ProductVo.schemeRevision?: number | null`。
+6）`ManufacturingBomPath.vue`：提示与回退文字改为业务表述，不再用 `物料 {id}`/`方案 {id}`。
+7）`BomItemEditor.vue`：制造BOM 入口增加非只读条件。
+8）测试：`manufacturingBomDialog.spec.ts`（16）、`bomFormManufacturing.spec.ts`（12）、`BomItemEditor.spec.ts`（入口只读用例）、`manufacturingBomPath.spec.ts`（回退文字）、`api/product/__tests__/manufacturingBomApi.spec.ts`（契约未变）。
 
-1）定向 Vitest（单 worker、`MemoryMax=1G`、120s，`systemd-run --user --scope`）：
-   A) `manufacturingBomDialog.spec.ts + manufacturingBomPath.spec.ts + bomFormManufacturing.spec.ts + api/product/__tests__/manufacturingBomApi.spec.ts` → 4 files / 33 tests 全过，exit 0。
-   B) `BomItemEditor.spec.ts + Selector/__tests__/bomMaterialDraft.spec.ts + bom/components/__tests__/bomReviewGroups.spec.ts` → 3 files / 28 tests 全过，exit 0。
-   C) 全 `views/product/bom` 目录一次性跑在 1G 限制下被 OOM 杀掉（exit 137），故按上述两批拆分执行；未放宽内存限制。
-2）既有 node:test 回归：`node --test src/components/__tests__/BomItemEditorGroups.test.cjs` → 6/6 通过；`node --test src/views/product/bom/components/__tests__/BomFormDialog.test.cjs` → 15/15 通过（未修改该文件）。
-3）`NODE_OPTIONS=--max-old-space-size=3072 npx vue-tsc --noEmit` → exit 0（3072M，300s 内）。
-4）`npm run check:status-enums` → 存量基线 105 处、新增 0 处；`npm run check:result-case` → 0 处；`git diff --check` → 干净。
-5）`npm run check:docs`（含本文件与 INDEX 登记）见任务记录；未跑 `npm run validate` 全链（本卡未触及库存写入/迁移/表结构）。
+## 关键行为（本轮补齐的部分）
 
-## 已覆盖的行为用例（组件级，模拟 API）
+1）**真正新建多层**：投入半成品行即使没有 `subBomId`，也能进入该物料的候选并新建制造方案；不靠临时成品BOM绕路，也不从分组/规格推断关系。
+2）**逐层采用**：下层采用只回填直接上层那一行（`itemId` 优先，物料已变则拒绝回填并提示），父草稿变 dirty；兄弟材料不变；未保存/取消按当前层提示，不串层。产品→A→B→原料的组件路径：A 保存→下钻 B 新建保存→B 采用回填 A 行→返回 A 保存→顶层采用交给产品BOM→产品BOM最后保存。
+3）**新建 BOM 真实 revision**：新增保存主方案必须带 `GET /product/{id}` 读到的真实版本（用例断言 7 而非 0）；版本未知则阻止保存；切换产品用 token+产品校验丢弃迟到响应；409 保留草稿。
+4）**跨单位换算依据**：同单位不需要系数；跨单位缺系数或缺少依据时前端定位到行提示，后端仍校验；有依据时完整回显并随请求提交；改投入单位后旧系数不整用；不自动计算面积/卷长。
+5）**用量唯一权威在后端**：窗口不计算、不回写 `row.quantity`；未保存改动只显示“待保存后更新”，提交原始 `moduleQty/baseQty` 由后端重算。
 
-1）候选按 MATERIAL+物料+产品上下文请求，回显已采用方案、真实版本与草稿状态，不自动审核。
-2）无已保存方案时为新草稿，采用按钮不可用且不产生 adopt 请求。
-3）只读/无新增编辑权限：可看候选，保存/采用均不发请求。
-4）两次保存：首次 POST（校验 payload 产出身份与空日期为 null），第二次 PUT 同一 bomId，且无发布/采用顺带调用。
-5）采用只发出 `adopt` 事件、不调用任何写接口；未保存时先拦。
-6）主方案：无产品ID 时提示先保存产品且不发事件；显式设主只发事件、不调写接口。
-7）未保存切换/关闭：X 或“继续编辑”不切换/不关闭，“放弃修改”才继续；父保存失败仍留在弹窗。
-8）下层：只对挂了 `subBomId` 的行下钻，按该行物料拉候选；返回上层后上层未保存草稿仍在；无 subBomId 不进入。
-9）合法小数与旧数据：0.5/2.5 通过、0 与 5 位小数被拦、损耗率越界被拦；旧跳距原样保留并进入 payload；未建档行不许保存。
-10）父级：采用只改目标行；行物料已变时拒绝回填；显式主方案 payload 含 `isPrimary:true`+revision 并用响应更新 revision；只采用不设主时 payload 不出现 schemeChoices/revision；缺 revision 时拦截；换产品清空上产品主方案草稿；父取消不产生写请求。
+## 验证（真实命令与结果，2026-11-11 14:5x–15:0x）
+
+1）定向 Vitest（`systemd-run --user --scope -p MemoryMax=1G -p MemorySwapMax=0 -- timeout 120 npx vitest run --no-file-parallelism`）：
+   A) `manufacturingBomDialog.spec.ts + bomFormManufacturing.spec.ts` → 2 files / 28 tests 全过，exit 0。
+   B) `manufacturingBomPath.spec.ts + api/product/__tests__/manufacturingBomApi.spec.ts + components/__tests__/BomItemEditor.spec.ts` → 3 files / 21 tests 全过，exit 0。
+   C) 仍未把整个 `views/product/bom` 目录一次跑（1G 下曾 OOM），按定向小批拆分。
+2）既有 node:test 回归：`node --test .../BomFormDialog.test.cjs .../BomItemEditorGroups.test.cjs` → 21/21 通过（15+6，未修改这两个文件）。
+3）`node --max-old-space-size=2560 node_modules/vue-tsc/bin/vue-tsc.js --noEmit`（`MemoryMax=3072M`、300s 内、单独运行，未与 004 Maven 并行）→ exit 0。先用默认堆跑一次 OOM（exit 134，触发 1.5G 堆上限），显式提高堆后通过，如实记录。
+4）`npm run check:status-enums` → 存量基线 105 处、新增 0 处；`npm run check:result-case` → 0 处；`npm run check:docs` → 通过；`git diff --check` → 干净。
+5）未跑 `npm run validate` 全链（本卡不触及库存写入/迁移/表结构）；未跑后端 mvn（本卡不改后端）。
 
 ## 未验证项与遗留
 
-1）**未做运行态联调**：未启动前后端服务、未调用真实 HTTP；所有接口行为均为模拟替身，不能当作已联通证据。
-2）**B 退修未完成**：主方案语义（含“设一个主方案会清掉其他物料主标记”的后端实现）、并发、32 层环检测、只读采用等问题由 OpenClaw 修复后由 Codex 复验；本卡未依赖未实现能力，也未替 B 兜底。
-3）迁移 356 未执行（本卡不执行 DDL）；前端保存路径依赖的 `sub_bom_id/unit_factor*` 字段需在迁移后生效。
-4）跨单位换算依据（`unitFactor/unitFactorBasis`）本窗口只透传不编辑，跨单位新行/变更行由后端 `UNIT_MISMATCH/UNIT_FACTOR_MISSING` 阻断；是否补换算输入 UI 待 B 复验与用户口径。
-5）D（精确耗用/净需求）未实现，本窗口不展示任何“已实时计算”的耗用或缺口。
-6）C 验收依赖 B 复验通过后的真实联调；本次六行报告中的“验”仅代表前端编译与定向测试。
+1）**未做运行态联调**：未启动前后端服务、未调用真实 HTTP；所有接口行为均为组件测试替身，不能当作已联通证据。
+2）**B（004）仍在退修**：主方案可达性校验、深层设主等由 OpenClaw 修复后由 Codex 复验；本轮前端按已读到的当前契约实现，若 004 改契约需重新对齐。
+3）`lossRate` 小数精度属 dev-20261111-006 后端任务；本窗口当前只收整数，未擅自改后端。
+4）D（精确耗用/净需求）未实现，本窗口不展示任何“已实时计算”的耗用或缺口。
+5）C 验收依赖 B 复验后的真实联调；六行报告中的“验”仅代表前端编译与定向组件测试。
 
 ## 接续
 
-下一步：Codex 复验 B 修复 → 真实接口联调（保存/回读/采用/父保存/scheme-choices）→ C 独立验收。前端如需补换算依据编辑、或候选列表需要按状态过滤，应在验收反馈里明确后再改，不在本卡范围外顺手扩展。
+下一步：Codex 复验 B 修复 → 真实接口联调（新建下层/保存/采用/父保存/scheme-choices/revision 409）→ C 独立验收。若验收要求按状态过滤候选或调整换算交互，另行派工，不在本卡范围外顺手扩展。

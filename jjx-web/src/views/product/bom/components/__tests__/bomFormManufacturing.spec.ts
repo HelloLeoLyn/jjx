@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   listEngineeringBomItem: vi.fn(),
   addEngineeringBom: vi.fn(),
   editEngineeringBom: vi.fn(),
+  getProductInfo: vi.fn(),
   confirm: vi.fn(),
   warning: vi.fn(),
   success: vi.fn(),
@@ -21,6 +22,8 @@ vi.mock('@/api/product/bom', () => ({
     editEngineeringBom: mocks.editEngineeringBom,
   },
 }))
+// 新建 BOM 首次设主方案：用现有 GET /product/{id} 的 ProductVo.schemeRevision（不新增接口）
+vi.mock('@/api/product', () => ({ getProductInfo: mocks.getProductInfo }))
 vi.mock('element-plus', async (importOriginal) => ({
   ...(await importOriginal<typeof import('element-plus')>()),
   ElMessage: {
@@ -165,6 +168,7 @@ beforeEach(() => {
   mocks.listEngineeringBomItem.mockResolvedValue({ data: [baseRow()] })
   mocks.addEngineeringBom.mockResolvedValue({ data: 9 })
   mocks.editEngineeringBom.mockResolvedValue({ data: { success: true, schemeRevision: 8 } })
+  mocks.getProductInfo.mockResolvedValue({ data: { productId: 42, schemeRevision: 7 } })
 })
 
 afterEach(() => {
@@ -303,5 +307,88 @@ describe('父BOM取消与权限边界', () => {
     mocks.confirm.mockRejectedValue('close')
     expect(await state.resolveLeave()).toBe(false)
     expect(mocks.editEngineeringBom).not.toHaveBeenCalled()
+  })
+})
+
+/** 新建产品BOM（尚未保存）：产品已存在，主方案版本必须来自 GET /product/{id} */
+async function newForm(product = { productId: 42, productCode: 'P42', productName: '产品甲' }) {
+  const wrapper = await form()
+  const state = wrapper.vm as any
+  state.handleProductChange(product.productId, product)
+  await flushPromises()
+  state.formData.bomCode = 'P42-BOM'
+  state.formData.bomName = 'P42-BOM'
+  state.formData.effectiveDate = '2026-11-11'
+  state.formData.items = [baseRow()]
+  await flushPromises()
+  state.setBaseline()
+  return { wrapper, state }
+}
+
+describe('新建产品BOM：首次设主方案用真实 revision，不默认 0', () => {
+  it('选定已存在产品后用 GET /product/{id} 读到 revision=7，随新增提交 7', async () => {
+    const { state } = await newForm()
+    state.handlePrimaryChange({ materialId: 349, bomId: 124 })
+    expect(await state.doSave()).toBe(true)
+
+    expect(mocks.getProductInfo).toHaveBeenCalledWith(42)
+    expect(mocks.addEngineeringBom).toHaveBeenCalledTimes(1)
+    const payload = mocks.addEngineeringBom.mock.calls[0][0]
+    expect(payload.schemeRevision).toBe(7)
+    expect(payload.schemeRevision).not.toBe(0)
+    expect(payload.schemeChoices).toEqual([{ materialId: 349, bomId: 124, isPrimary: true }])
+  })
+
+  it('读不到产品主方案版本时阻止保存主方案，不发请求、不默认 0', async () => {
+    mocks.getProductInfo.mockResolvedValue({ data: { productId: 42, schemeRevision: null } })
+    const { state } = await newForm()
+    state.handlePrimaryChange({ materialId: 349, bomId: 124 })
+    expect(await state.doSave()).toBe(false)
+    expect(mocks.addEngineeringBom).not.toHaveBeenCalled()
+    expect(mocks.warning).toHaveBeenCalledWith(
+      '未读取到产品主方案的当前版本，暂时不能保存主方案；请重新选择产品后再试'
+    )
+  })
+
+  it('异步选产品 A→B：A 的迟到版本响应不污染 B', async () => {
+    const pending: Record<number, (value: any) => void> = {}
+    mocks.getProductInfo.mockImplementation(
+      (id: number) => new Promise((resolve) => {
+        pending[id] = resolve
+      })
+    )
+    const wrapper = await form()
+    const state = wrapper.vm as any
+
+    state.handleProductChange(42, { productId: 42, productCode: 'P42', productName: '产品甲' })
+    state.handleProductChange(43, { productId: 43, productCode: 'P43', productName: '产品乙' })
+    await flushPromises()
+
+    pending[43]({ data: { productId: 43, schemeRevision: 9 } })
+    await flushPromises()
+    expect(state.productSchemeRevision).toBe(9)
+
+    // A 的响应晚到：产品已切到 B，不能把 A 的版本写进来
+    pending[42]({ data: { productId: 42, schemeRevision: 7 } })
+    await flushPromises()
+    expect(state.productSchemeRevision).toBe(9)
+    expect(Number(state.formData.productId)).toBe(43)
+  })
+
+  it('并发 409：保存失败但保留草稿，提示他人已修改主方案', async () => {
+    const { state } = await editingForm()
+    mocks.editEngineeringBom.mockRejectedValueOnce({
+      response: { status: 409, data: { msg: 'CONCURRENT_MODIFICATION：主方案已被其他会话修改' } },
+    })
+    state.formData.remark = '并发前的草稿'
+    state.handlePrimaryChange({ materialId: 349, bomId: 124 })
+    expect(await state.doSave()).toBe(false)
+
+    // 草稿与主方案调整都还在，可以核对后重试
+    expect(state.formData.remark).toBe('并发前的草稿')
+    expect(state.schemeChoicesPayload()).toEqual([{ materialId: 349, bomId: 124, isPrimary: true }])
+    expect(mocks.error).toHaveBeenCalledWith(
+      '产品主方案已被其他会话修改，当前编辑内容已保留；请核对后重试'
+    )
   })
 })

@@ -178,6 +178,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules, UploadFile, UploadInstance } from 'element-plus'
 import { FullScreen, UploadFilled, Download } from '@element-plus/icons-vue'
 import { productBomApi } from '@/api/product/bom'
+import { getProductInfo } from '@/api/product'
 import BomItemEditor from '@/components/BomItemEditor.vue'
 import ManufacturingBomDialog from './ManufacturingBomDialog.vue'
 import BomPrintPreview from './BomPrintPreview.vue'
@@ -187,7 +188,7 @@ import type {
   EngineeringBomItem,
   ManufacturingSchemeChoice,
 } from '@/types/product/bom'
-import type { ProductItem } from '@/types/product'
+import type { ProductItem, ProductVo } from '@/types/product'
 import * as XLSX from 'xlsx'
 import { parseSpecModule } from './bomSpecImport'
 import { calculateBomQuantity } from '@/utils/bomQuantity'
@@ -292,6 +293,7 @@ const handleProductChange = (productId: number | null, product: any) => {
     (!!oldName && formData.bomName === `${oldName}-BOM`)
   if (!product) {
     formData.productId = null
+    resetSchemeContext()
     // 2026-09-15：清空产品时同步清掉回填字段——残留会让 productOptions 非空，
     // 且提交时 productCode/productName 与 productId 不一致
     if (oldCode && formData.bomCode === `${oldCode}-BOM`) {
@@ -309,7 +311,11 @@ const handleProductChange = (productId: number | null, product: any) => {
   const productChanged = Number(formData.productId) !== Number(product.productId)
   formData.productId = product.productId
   // 产品隔离：换产品后，上一产品的主方案回显与草稿调整不能沿用到新产品
-  if (productChanged) resetSchemeContext()
+  if (productChanged) {
+    resetSchemeContext()
+    // 新建 BOM 首次设主方案要用真实版本：选定产品后先读一次（迟到响应由 token+产品校验丢弃）
+    void fetchProductSchemeRevision(Number(product.productId))
+  }
   if (hasDefaultName) formData.bomName = `${product.productCode}-BOM`
   formData.bomCode = `${product.productCode}-BOM`
 }
@@ -322,6 +328,10 @@ const manufacturingVisible = ref(false)
 const manufacturingRow = ref<EngineeringBomItem | null>(null)
 /** getBomDetail 返回的 product.scheme_revision（提交主方案时用于乐观锁，防并发覆盖） */
 const schemeRevision = ref<number | null>(null)
+/** 新建 BOM 时用 GET /product/{id} 读到的产品主方案版本（首次设主必带真实值，不能默认 0） */
+const productSchemeRevision = ref<number | null>(null)
+/** 异步选产品的迟到响应保护：只有最后一次请求且产品未变才写回 */
+let productRevisionToken = 0
 /** 产品已保存的主方案选择（只读回显，不整表回写） */
 const savedSchemeChoices = ref<ManufacturingSchemeChoice[]>([])
 /** 用户本次显式调整的主方案：materialId → {materialId,bomId}；未调整的物料不提交 */
@@ -412,6 +422,9 @@ const resetSchemeContext = () => {
   manufacturingRow.value = null
   manufacturingVisible.value = false
   schemeRevision.value = null
+  productSchemeRevision.value = null
+  // 换产品/重置后，之前发出的版本请求结果一律作废
+  productRevisionToken += 1
   savedSchemeChoices.value = []
   primaryChoices.value = {}
 }
@@ -421,6 +434,31 @@ const parseSchemeRevision = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') return null
   const revision = Number(value)
   return Number.isInteger(revision) && revision >= 0 ? revision : null
+}
+
+/**
+ * 新建 BOM 首次设主方案时的真实版本：走现有 GET /product/{id}（ProductVo.schemeRevision），
+ * 不新增表/列/接口，也不默认 0。迟到响应（A 之后又选了 B）按 token+当前产品丢弃。
+ */
+const fetchProductSchemeRevision = async (productId: number): Promise<number | null> => {
+  const target = Number(productId)
+  if (!Number.isSafeInteger(target) || target <= 0) return null
+  // 旧调用方/测试桩可能未提供该接口：按“未读到”处理，绝不默认 0
+  if (typeof getProductInfo !== 'function') return null
+  const token = ++productRevisionToken
+  let revision: number | null = null
+  try {
+    const response: any = await getProductInfo(target)
+    const data: ProductVo | null = response?.data ?? null
+    revision = parseSchemeRevision(data?.schemeRevision)
+  } catch (error) {
+    console.error('读取产品主方案版本失败:', error)
+    revision = null
+  }
+  if (token !== productRevisionToken) return null
+  if (Number(formData.productId) !== target) return null
+  productSchemeRevision.value = revision
+  return revision
 }
 
 // ==================== 未保存离开拦截（dev-20261021-015，沿用工艺路线范式） ====================
@@ -838,21 +876,34 @@ const doSave = async (): Promise<boolean> => {
     const savedSnapshot = fullFormSnapshot()
     const payload: any = { ...formData, items: formData.items }
     const schemeChoices = schemeChoicesPayload()
+    const isEditingBom = formData.bomId !== undefined && formData.bomId !== null
     if (schemeChoices.length) {
-      // 编辑已保存 BOM 时必须带 getBomDetail 的 schemeRevision，防止并发覆盖主方案。
-      const revisionKnown =
-        schemeRevision.value != null && Number.isInteger(Number(schemeRevision.value))
-      if (formData.bomId !== undefined && !revisionKnown) {
-        ElMessage.warning('缺少产品主方案版本信息，请关闭后重新打开产品BOM再保存主方案')
-        return false
+      // 编辑已保存 BOM 用 getBomDetail 的 schemeRevision；新建 BOM 用 GET /product/{id} 的真实版本。
+      // 两条路径都拿不到真实版本时必须阻止保存主方案，不能默认 0 或指望后端兜底。
+      let revision: number | null = null
+      if (isEditingBom) {
+        revision =
+          schemeRevision.value != null && Number.isInteger(Number(schemeRevision.value))
+            ? Number(schemeRevision.value)
+            : null
+        if (revision == null) {
+          ElMessage.warning('缺少产品主方案版本信息，请关闭后重新打开产品BOM再保存主方案')
+          return false
+        }
+      } else {
+        revision = await fetchProductSchemeRevision(Number(formData.productId))
+        if (revision == null) {
+          ElMessage.warning('未读取到产品主方案的当前版本，暂时不能保存主方案；请重新选择产品后再试')
+          return false
+        }
       }
       payload.schemeChoices = schemeChoices
-      if (schemeRevision.value != null) payload.schemeRevision = schemeRevision.value
+      payload.schemeRevision = revision
     } else {
       delete payload.schemeChoices
       delete payload.schemeRevision
     }
-    if (formData.bomId !== undefined) {
+    if (isEditingBom) {
       const response = await productBomApi.editEngineeringBom(payload)
       if (schemeChoices.length) {
         const revision = parseSchemeRevision(response?.data?.schemeRevision)
@@ -865,9 +916,9 @@ const doSave = async (): Promise<boolean> => {
       const bomId = Number(response?.data)
       if (Number.isSafeInteger(bomId) && bomId > 0) formData.bomId = bomId
       if (schemeChoices.length) {
-        const revision = parseSchemeRevision(response?.data?.schemeRevision)
-        if (revision != null) schemeRevision.value = revision
         savedSchemeChoices.value = mergeSavedChoices(savedSchemeChoices.value, schemeChoices)
+        // 新建保存后重新读一次真实版本，供同一会话后续保存主方案使用
+        await fetchProductSchemeRevision(Number(formData.productId))
       }
       ElMessage.success('新增成功')
     }
@@ -875,9 +926,22 @@ const doSave = async (): Promise<boolean> => {
     recomputeDirty()
     emit('success')
     return true
-  } catch (error) {
+  } catch (error: any) {
     console.error('保存BOM失败:', error)
-    ElMessage.error('保存BOM失败')
+    // HTTP 层用独立变量名，避免与企业状态魔法值规则混淆
+    const httpCode = Number(error?.response?.status ?? error?.status ?? error?.code)
+    const message = String(error?.response?.data?.msg || error?.message || '')
+    if (httpCode === 409 || message.includes('CONCURRENT_MODIFICATION')) {
+      // 并发冲突：保留当前草稿，重新取版本号后可再保存
+      ElMessage.error('产品主方案已被其他会话修改，当前编辑内容已保留；请核对后重试')
+      try {
+        await fetchProductSchemeRevision(Number(formData.productId))
+      } catch (refreshError) {
+        console.error('并发冲突后刷新主方案版本失败:', refreshError)
+      }
+    } else {
+      ElMessage.error('保存BOM失败')
+    }
     return false
   } finally {
     submitting.value = false

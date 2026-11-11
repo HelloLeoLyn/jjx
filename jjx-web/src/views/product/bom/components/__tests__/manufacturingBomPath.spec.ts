@@ -48,7 +48,7 @@ describe('制造BOM层路径（只展示显式引用，不推断制造关系）'
       { materialId: 349, materialCode: 'A', materialName: '甲' },
       { materialId: 350 },
     ])
-    expect(wrapper.get('.path-current').text()).toBe('物料 350')
+    expect(wrapper.get('.path-current').text()).toBe('产出物料（档案未读取）')
     await wrapper.get('.path-current').trigger('click')
     expect(wrapper.emitted('navigate')).toBeUndefined()
   })

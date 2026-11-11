@@ -366,6 +366,8 @@ export interface ProductVo {
   createTime: string
   updateTime: string
   filmCount?: number
+  /** 产品主方案并发版本（GET /product/{id} 只读返回；新建 BOM 设主方案时原样回传）。 */
+  schemeRevision?: number | null
 }
 
 export interface CategoryTree {

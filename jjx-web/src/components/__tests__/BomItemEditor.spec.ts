@@ -144,6 +144,12 @@ describe('制造BOM入口（dev-20261111-005）：只对已建档行开放，不
     expect(denied.state.showManufacturing(denied.row)).toBe(false)
     denied.state.handleManufacturing(denied.row)
     expect(denied.wrapper.emitted('manufacturing')).toBeUndefined()
+
+    // 只读用户可查看但不能新建下层：入口整体不显示
+    const readonly = editor(original, { readonly: true })
+    expect(readonly.state.showManufacturing(readonly.row)).toBe(false)
+    readonly.state.handleManufacturing(readonly.row)
+    expect(readonly.wrapper.emitted('manufacturing')).toBeUndefined()
   })
   it('采用制造方案后按 itemId 回填该行，其他行与派生值不受影响', () => {
     const { state, exposed } = editor()

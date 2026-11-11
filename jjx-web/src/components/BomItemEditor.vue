@@ -396,11 +396,15 @@ const isApprovedRow = (row: EngineeringBomItem): boolean =>
   rowReviewStatus(row) === BomItemReviewStatusEnum.APPROVED.value
 
 /**
- * 独立制造BOM入口（dev-20261111-005）：只对有物料档案、未待移除的行开放；
+ * 独立制造BOM入口（dev-20261111-005）：只对有物料档案、未待移除且非只读的行开放；
  * 未建档行先去建档（物料身份是产出身份的前提），不从行内容推断制造关系。
+ * 已有下层方案时进入查看；没有下层方案时进入该物料的候选并新建（只读不允许新建）。
  */
 const showManufacturing = (row: EngineeringBomItem): boolean =>
-  Boolean(props.canManufacturing) && Number(row.materialId) > 0 && !isPendingRemove(row)
+  !props.readonly &&
+  Boolean(props.canManufacturing) &&
+  Number(row.materialId) > 0 &&
+  !isPendingRemove(row)
 
 const handleManufacturing = (row: EngineeringBomItem) => {
   if (!showManufacturing(row)) return

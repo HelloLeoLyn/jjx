@@ -6,6 +6,12 @@ import type { BomSpecificationSource } from '@/components/bomSpecification'
 /** 制造BOM产出身份（对应 Java ManufacturingOutputType；不是状态枚举，不复用 bomType）。 */
 export type ManufacturingOutputType = 'PRODUCT' | 'MATERIAL'
 
+/** 制造方案显示用编码+版本（前端展示，不落库；避免把数据库自增ID当标题）。 */
+export interface ManufacturingSchemeLabel {
+  bomCode?: string
+  bomVersion?: string
+}
+
 /** 某产出对象的候选制造方案（GET /engineering/bom/manufacturing/options）。 */
 export interface ManufacturingScheme {
   bomId: number
@@ -46,6 +52,14 @@ export interface ManufacturingBomDetail {
   items: EngineeringBomItem[]
 }
 
+/**
+ * 保存请求里的投入行：quantity 可为空——未保存的比例改动不把旧参考用量当新值提交，
+ * 由后端按模数/基数重算。
+ */
+export type ManufacturingBomSaveItem = Omit<EngineeringBomItem, 'quantity'> & {
+  quantity?: number
+}
+
 /** 制造BOM保存请求（一种产出、多行投入；不改父BOM、不自动发布）。 */
 export interface ManufacturingBomSavePayload {
   bomId?: number
@@ -57,7 +71,7 @@ export interface ManufacturingBomSavePayload {
   effectiveDate?: string | null
   expiryDate?: string | null
   remark?: string
-  items: EngineeringBomItem[]
+  items: ManufacturingBomSaveItem[]
 }
 
 /** 产品×投入物料的主方案选择（随父产品BOM保存持久化）。 */
@@ -162,6 +176,10 @@ export interface EngineeringBomItem {
   materialType?: string
   /** 物料档案规格对照值，不落业务表 */
   materialSpecification?: string
+  /** 物料档案单位（前端展示用，不落库；用于区分档案单位与 BOM 投入单位） */
+  archiveUnit?: string
+  /** 参考用量因未保存修改而失效（前端标记，不落库；后端重算后以回读值为准） */
+  quantityStale?: boolean
   /** 物料档案规格及原始尺寸、属性和模板。 */
   materialSpecificationSource?: BomSpecificationSource
   lossRate: number
