@@ -125,13 +125,13 @@
           <span v-else>{{ scope.row.specification }}</span>
         </template>
       </el-table-column>
-      <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数） -->
+      <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数）；允许 >0 正小数，最多4位 -->
       <el-table-column label="模数" prop="moduleQty" align="center" width="60">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.moduleQty"
-            :min="1"
-            :precision="0"
+            :min="0"
+            :precision="4"
             :controls="false"
             size="small"
             @change="handleModuleQtyChange(scope.row)"
@@ -166,8 +166,8 @@
           <el-input-number
             v-model="scope.row.baseQty"
             :controls="false"
-            :min="1"
-            :precision="0"
+            :min="0"
+            :precision="4"
             size="small"
             @change="handleBaseQtyChange(scope.row)"
           />
@@ -269,6 +269,14 @@
             >删除</el-button
           >
           <el-button
+            v-if="showManufacturing(scope.row)"
+            link
+            type="primary"
+            size="small"
+            @click="handleManufacturing(scope.row)"
+            >制造BOM</el-button
+          >
+          <el-button
             v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
             link
             type="primary"
@@ -323,12 +331,16 @@ interface Props {
   bomId?: number
   readonly?: boolean
   maxItems?: number
+  /** 是否显示「制造BOM」入口（权限/只读由父级判定；默认显示） */
+  canManufacturing?: boolean
 }
 
 interface Emits {
   (e: 'update:modelValue', value: EngineeringBomItem[]): void
   (e: 'change', value: EngineeringBomItem[]): void
   (e: 'validate', valid: boolean): void
+  /** 打开独立制造BOM窗口（dev-20261111-005）：只传行，不在这里改分组或制造关系 */
+  (e: 'manufacturing', row: EngineeringBomItem): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -336,6 +348,7 @@ const props = withDefaults(defineProps<Props>(), {
   bomId: undefined,
   readonly: false,
   maxItems: 500,
+  canManufacturing: true,
 })
 
 const emit = defineEmits<Emits>()
@@ -381,6 +394,18 @@ const isPendingRemove = (row: EngineeringBomItem): boolean =>
 
 const isApprovedRow = (row: EngineeringBomItem): boolean =>
   rowReviewStatus(row) === BomItemReviewStatusEnum.APPROVED.value
+
+/**
+ * 独立制造BOM入口（dev-20261111-005）：只对有物料档案、未待移除的行开放；
+ * 未建档行先去建档（物料身份是产出身份的前提），不从行内容推断制造关系。
+ */
+const showManufacturing = (row: EngineeringBomItem): boolean =>
+  Boolean(props.canManufacturing) && Number(row.materialId) > 0 && !isPendingRemove(row)
+
+const handleManufacturing = (row: EngineeringBomItem) => {
+  if (!showManufacturing(row)) return
+  emit('manufacturing', row)
+}
 
 // 项目选择器交互模式：'dropdown' 内联下拉 / 'dialog' 分组网格弹窗
 // （2026-10-12 两模式并存，实际效果对比后再定用哪个）
@@ -1134,6 +1159,15 @@ const getQuantityStep = (unit: string) => {
 defineExpose({
   prepareSpecifications,
   getItems: () => toSubmitItems(items.value),
+  /** 采用制造方案后按稳定 itemId 回填该行（只改指定行，不动其他行/分组） */
+  updateItem: (itemId: number, patch: Partial<EngineeringBomItem>): boolean => {
+    const row = items.value.find((item) => Number(item.itemId) === Number(itemId))
+    if (!row) return false
+    Object.assign(row, patch)
+    return true
+  },
+  showManufacturing,
+  handleManufacturing,
   clearItems: () => {
     materialDrafts.value = {}
     items.value = []
@@ -1165,6 +1199,15 @@ defineExpose({
       }
       if (!item.materialName?.trim()) {
         failures.push({ item, message: '材料名称不能为空' })
+        return
+      }
+      // 模数/基数允许 >0 正小数（最多4位）；仅在填写了值时校验，历史空值行不因本规则被拦
+      if (item.moduleQty != null && !(Number(item.moduleQty) > 0)) {
+        failures.push({ item, message: `物料 "${item.materialName}" 模数必须大于0` })
+        return
+      }
+      if (item.baseQty != null && !(Number(item.baseQty) > 0)) {
+        failures.push({ item, message: `物料 "${item.materialName}" 基数必须大于0` })
         return
       }
       if (Number(item.materialId) > 0 && (item.specification ?? '') !== autoSpecOf(item)) {

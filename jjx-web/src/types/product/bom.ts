@@ -2,6 +2,76 @@
 // ==================== 通用类型 ====================
 import type { PageQuery, PageResult } from '@/types/index'
 import type { BomSpecificationSource } from '@/components/bomSpecification'
+
+/** 制造BOM产出身份（对应 Java ManufacturingOutputType；不是状态枚举，不复用 bomType）。 */
+export type ManufacturingOutputType = 'PRODUCT' | 'MATERIAL'
+
+/** 某产出对象的候选制造方案（GET /engineering/bom/manufacturing/options）。 */
+export interface ManufacturingScheme {
+  bomId: number
+  bomCode: string
+  bomName: string
+  bomVersion: string
+  outputType: ManufacturingOutputType
+  outputId: number
+  /** 方案状态，取值复用 BomStatusEnum（1草稿2审核中3已批准4已驳回5已作废）。 */
+  approveStatus: number
+  isCurrent?: boolean
+  /** 当前产品上下文下该物料的主方案；productId 为空时为 null。 */
+  isPrimary?: boolean | null
+  itemCount?: number
+  effectiveDate?: string | null
+  expiryDate?: string | null
+  remark?: string | null
+  /** 采用 token：只证明已保存方案被选中，不落库。 */
+  selectionToken?: string | null
+}
+
+/** 制造BOM保存/回读视图（POST/PUT /engineering/bom/manufacturing）。 */
+export interface ManufacturingBomDetail {
+  bomId: number
+  bomCode: string
+  bomName: string
+  bomVersion: string
+  outputType: ManufacturingOutputType
+  outputId: number
+  productId?: number | null
+  approveStatus?: number
+  isCurrent?: boolean
+  effectiveDate?: string | null
+  expiryDate?: string | null
+  remark?: string | null
+  createTime?: string
+  updateTime?: string
+  items: EngineeringBomItem[]
+}
+
+/** 制造BOM保存请求（一种产出、多行投入；不改父BOM、不自动发布）。 */
+export interface ManufacturingBomSavePayload {
+  bomId?: number
+  bomCode: string
+  bomName: string
+  bomVersion?: string
+  outputType: ManufacturingOutputType
+  outputId: number
+  effectiveDate?: string | null
+  expiryDate?: string | null
+  remark?: string
+  items: EngineeringBomItem[]
+}
+
+/** 产品×投入物料的主方案选择（随父产品BOM保存持久化）。 */
+export interface ManufacturingSchemeChoice {
+  materialId: number
+  bomId: number
+  /** 只有用户明确调整主方案时才传真值；未调整不要传 false，避免覆盖原主。 */
+  isPrimary?: boolean
+  /** 只读回显字段，保存时后端忽略。 */
+  bomCode?: string
+  bomVersion?: string
+  approveStatus?: number
+  warning?: string
+}
 export interface EngineeringBomQueryParams extends PageQuery {
   showAllVersions?: boolean
   bomCode?: string
@@ -28,6 +98,14 @@ export interface EngineeringBomFormData {
   expiryDate?: string
   remark?: string
   items: EngineeringBomItem[]
+  /** 产出类型（PRODUCT/MATERIAL）；历史调用不传按 PRODUCT 兼容。 */
+  outputType?: ManufacturingOutputType
+  /** 产出ID：PRODUCT=productId，MATERIAL=materialId。 */
+  outputId?: number | null
+  /** 用户本次明确调整的产品主方案（只有显式调整才随父保存提交）。 */
+  schemeChoices?: ManufacturingSchemeChoice[]
+  /** 加载详情时的 product.scheme_revision，提交主方案时必带（后端乐观锁）。 */
+  schemeRevision?: number | null
 }
 
 /** BOM 明细行审核状态（dev-20261020-029，对应 Java ProductEnums.BomItemReviewStatus） */
@@ -52,6 +130,14 @@ export interface EngineeringBomItem {
   removeRequested?: boolean
   /** 父节点明细ID（NULL=根节点；组合子行指向组合父行） */
   parentMaterialId?: number | null
+  /** 显式下层制造方案 BOM ID（source_type=make 时使用；不是分组父行） */
+  subBomId?: number | null
+  /** 来源类型：buy 外购 / make 自制；subBomId 非空时必须是 make */
+  sourceType?: string | null
+  /** BOM 单位 → 物料档案单位的换算系数与依据（跨单位时后端必填） */
+  unitFactor?: number | null
+  unitFactorBasis?: string | null
+  unitFactorSource?: string | null
   /** 前端标记：本行是否组合容器（半成品父行），不落库 */
   isGroup?: boolean
   /** 子节点（树形表格用） */
@@ -81,6 +167,8 @@ export interface EngineeringBomItem {
   lossRate: number
   remark?: string
   sortOrder: number
+  /** 后端排序字段别名（engineering_bom_item.item_order）；提交沿用 sortOrder。 */
+  itemOrder?: number
   /** 模数：每份材料可产出产品数量 */
   moduleQty?: number
   /** 跳距（含单位，如50mm） */
@@ -210,6 +298,10 @@ export interface EngineeringBomVO {
   createBy: string
   updateBy: string
   items: EngineeringBomItem[]
+  /** 产品主方案 JSON 当前 revision（父 BOM 保存主方案时必带）。 */
+  schemeRevision?: number | null
+  /** 已保存的产品主方案选择。 */
+  schemeChoices?: ManufacturingSchemeChoice[]
 }
 
 export interface BomItemBatchReviewRequest {

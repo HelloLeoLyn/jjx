@@ -131,6 +131,7 @@
       v-model="formData.items"
       :bom-id="formData.bomId"
       @change="handleItemsChange"
+      @manufacturing="handleManufacturing"
       ref="bomItemEditorRef"
     />
 
@@ -155,6 +156,19 @@
       :product-code="formData.productCode"
       :product-name="formData.productName"
     />
+
+    <!-- 独立制造BOM窗口（dev-20261111-005）：只保存独立方案/回填草稿行，父保存才持久化 -->
+    <ManufacturingBomDialog
+      v-model="manufacturingVisible"
+      :material="manufacturingContext"
+      :product-id="formData.productId"
+      :product-code="formData.productCode"
+      :product-name="formData.productName"
+      :sub-bom-id="manufacturingSubBomId"
+      :primary-bom-id="manufacturingPrimaryBomId"
+      @adopt="handleSchemeAdopt"
+      @primary-change="handlePrimaryChange"
+    />
   </el-dialog>
 </template>
 
@@ -165,9 +179,14 @@ import type { FormInstance, FormRules, UploadFile, UploadInstance } from 'elemen
 import { FullScreen, UploadFilled, Download } from '@element-plus/icons-vue'
 import { productBomApi } from '@/api/product/bom'
 import BomItemEditor from '@/components/BomItemEditor.vue'
+import ManufacturingBomDialog from './ManufacturingBomDialog.vue'
 import BomPrintPreview from './BomPrintPreview.vue'
 import ProductSelector from '@/components/Selector/ProductSelector.vue'
-import type { EngineeringBomFormData, EngineeringBomItem } from '@/types/product/bom'
+import type {
+  EngineeringBomFormData,
+  EngineeringBomItem,
+  ManufacturingSchemeChoice,
+} from '@/types/product/bom'
 import type { ProductItem } from '@/types/product'
 import * as XLSX from 'xlsx'
 import { parseSpecModule } from './bomSpecImport'
@@ -287,9 +306,121 @@ const handleProductChange = (productId: number | null, product: any) => {
   }
   formData.productCode = product.productCode
   formData.productName = product.productName
+  const productChanged = Number(formData.productId) !== Number(product.productId)
   formData.productId = product.productId
+  // 产品隔离：换产品后，上一产品的主方案回显与草稿调整不能沿用到新产品
+  if (productChanged) resetSchemeContext()
   if (hasDefaultName) formData.bomName = `${product.productCode}-BOM`
   formData.bomCode = `${product.productCode}-BOM`
+}
+
+// ==================== 制造BOM方案（dev-20261111-005） ====================
+// 边界：采用只回填父 BOM 草稿行；主方案按 product×material 独立，只有用户显式调整才随父保存；
+// 从不提交 isPrimary=false 覆盖原主；编辑已保存 BOM 时必须带 getBomDetail 的 schemeRevision。
+
+const manufacturingVisible = ref(false)
+const manufacturingRow = ref<EngineeringBomItem | null>(null)
+/** getBomDetail 返回的 product.scheme_revision（提交主方案时用于乐观锁，防并发覆盖） */
+const schemeRevision = ref<number | null>(null)
+/** 产品已保存的主方案选择（只读回显，不整表回写） */
+const savedSchemeChoices = ref<ManufacturingSchemeChoice[]>([])
+/** 用户本次显式调整的主方案：materialId → {materialId,bomId}；未调整的物料不提交 */
+const primaryChoices = ref<Record<number, { materialId: number; bomId: number }>>({})
+
+const manufacturingContext = computed(() => ({
+  materialId: Number(manufacturingRow.value?.materialId) || 0,
+  materialCode: manufacturingRow.value?.materialCode || '',
+  materialName: manufacturingRow.value?.materialName || '',
+  specification:
+    manufacturingRow.value?.materialSpecification || manufacturingRow.value?.specification || '',
+  unit: manufacturingRow.value?.unit || '',
+}))
+
+const manufacturingSubBomId = computed(() => {
+  const subBomId = Number(manufacturingRow.value?.subBomId)
+  return subBomId > 0 ? subBomId : null
+})
+
+const manufacturingPrimaryBomId = computed(() => {
+  const materialId = manufacturingContext.value.materialId
+  if (!materialId) return null
+  const pending = primaryChoices.value[materialId]
+  if (pending) return Number(pending.bomId)
+  const saved = savedSchemeChoices.value.find(
+    (choice) => Number(choice.materialId) === materialId && choice.isPrimary === true
+  )
+  return saved ? Number(saved.bomId) : null
+})
+
+/** 随父保存提交的主方案选择：只有用户显式调整过的物料；不追加 isPrimary=false。 */
+const schemeChoicesPayload = (): ManufacturingSchemeChoice[] =>
+  Object.values(primaryChoices.value).map((choice) => ({
+    materialId: Number(choice.materialId),
+    bomId: Number(choice.bomId),
+    isPrimary: true,
+  }))
+
+const mergeSavedChoices = (
+  existing: ManufacturingSchemeChoice[],
+  choices: ManufacturingSchemeChoice[]
+): ManufacturingSchemeChoice[] => {
+  const rest = existing.filter(
+    (item) => !choices.some((choice) => Number(choice.materialId) === Number(item.materialId))
+  )
+  return [...rest, ...choices.map((choice) => ({ ...choice, isPrimary: true }))]
+}
+
+const handleManufacturing = (row: EngineeringBomItem) => {
+  manufacturingRow.value = row
+  manufacturingVisible.value = true
+}
+
+/**
+ * 采用制造方案：只把本行的 subBomId/sourceType 写回父 BOM 草稿（父保存才持久化）。
+ * 不设主方案、不改其他行、不删除任何独立方案。
+ */
+const handleSchemeAdopt = (payload: { materialId: number; bomId: number }) => {
+  const materialId = Number(payload?.materialId)
+  const bomId = Number(payload?.bomId)
+  if (!materialId || !bomId) return
+  const row = manufacturingRow.value
+  if (!row || Number(row.materialId) !== materialId) {
+    ElMessage.warning('该行物料已变化，请重新打开制造BOM窗口后再采用')
+    return
+  }
+  row.subBomId = bomId
+  row.sourceType = 'make'
+  bomItemEditorRef.value?.updateItem?.(Number(row.itemId), { subBomId: bomId, sourceType: 'make' })
+  recomputeDirty()
+}
+
+/** 用户显式“设为主方案”：只记录草稿调整，随父 BOM 保存同一事务持久化。 */
+const handlePrimaryChange = (payload: { materialId: number; bomId: number }) => {
+  const materialId = Number(payload?.materialId)
+  const bomId = Number(payload?.bomId)
+  if (!materialId || !bomId) return
+  if (!Number(formData.productId)) {
+    ElMessage.warning('请先选择并保存产品，再设置主方案')
+    return
+  }
+  primaryChoices.value = { ...primaryChoices.value, [materialId]: { materialId, bomId } }
+  recomputeDirty()
+}
+
+/** 清除本任务引入的制造方案上下文（重置/换产品时必须清空，避免产品之间串选择）。 */
+const resetSchemeContext = () => {
+  manufacturingRow.value = null
+  manufacturingVisible.value = false
+  schemeRevision.value = null
+  savedSchemeChoices.value = []
+  primaryChoices.value = {}
+}
+
+/** scheme_revision 解析：0 是合法初值，null/空/非法都视为“未加载到”，不能当成 0。 */
+const parseSchemeRevision = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null
+  const revision = Number(value)
+  return Number.isInteger(revision) && revision >= 0 ? revision : null
 }
 
 // ==================== 未保存离开拦截（dev-20261021-015，沿用工艺路线范式） ====================
@@ -317,6 +448,9 @@ const snapshotItems = (items: EngineeringBomItem[]) =>
     minIssueQty: num(item.minIssueQty),
     widthMm: num(item.widthMm),
     lengthMm: num(item.lengthMm),
+    // 制造方案引用也是用户可编辑结果（采用/取消采用必须触发未保存提示）
+    subBomId: num(item.subBomId),
+    sourceType: text(item.sourceType),
   }))
 
 /** 完整快照：表头可编辑字段 + 明细关键列；明细取编辑器当前值，避免只 watch formData 漏判。 */
@@ -331,6 +465,7 @@ const fullFormSnapshot = (): string =>
     expiryDate: text(formData.expiryDate),
     remark: text(formData.remark),
     items: snapshotItems(bomItemEditorRef.value?.getItems?.() || formData.items || []),
+    schemeChoices: schemeChoicesPayload(),
   })
 
 const baseline = ref('')
@@ -646,6 +781,8 @@ const resetForm = () => {
   if (importUploadRef.value) {
     importUploadRef.value.clearFiles()
   }
+  // 制造方案上下文随表单一起重置（换产品/新增绝不沿用上一产品选择）
+  resetSchemeContext()
   setBaseline()
 }
 
@@ -654,6 +791,12 @@ const loadBomData = async (bomId: number) => {
   try {
     const response = await productBomApi.getEngineeringBomInfo(bomId)
     Object.assign(formData, response.data)
+    // 主方案上下文：revision 用于乐观锁，choices 只作只读回显
+    schemeRevision.value = parseSchemeRevision(response?.data?.schemeRevision)
+    savedSchemeChoices.value = Array.isArray(response?.data?.schemeChoices)
+      ? response.data.schemeChoices
+      : []
+    primaryChoices.value = {}
     // 加载BOM明细
     const itemResponse = await productBomApi.listEngineeringBomItem(bomId)
     formData.items = itemResponse.data || []
@@ -693,13 +836,39 @@ const doSave = async (): Promise<boolean> => {
     }
     // 基线对应本次实际提交的内容，不能把请求期间新增的修改误记为已保存。
     const savedSnapshot = fullFormSnapshot()
+    const payload: any = { ...formData, items: formData.items }
+    const schemeChoices = schemeChoicesPayload()
+    if (schemeChoices.length) {
+      // 编辑已保存 BOM 时必须带 getBomDetail 的 schemeRevision，防止并发覆盖主方案。
+      const revisionKnown =
+        schemeRevision.value != null && Number.isInteger(Number(schemeRevision.value))
+      if (formData.bomId !== undefined && !revisionKnown) {
+        ElMessage.warning('缺少产品主方案版本信息，请关闭后重新打开产品BOM再保存主方案')
+        return false
+      }
+      payload.schemeChoices = schemeChoices
+      if (schemeRevision.value != null) payload.schemeRevision = schemeRevision.value
+    } else {
+      delete payload.schemeChoices
+      delete payload.schemeRevision
+    }
     if (formData.bomId !== undefined) {
-      await productBomApi.editEngineeringBom(formData as any)
+      const response = await productBomApi.editEngineeringBom(payload)
+      if (schemeChoices.length) {
+        const revision = parseSchemeRevision(response?.data?.schemeRevision)
+        if (revision != null) schemeRevision.value = revision
+        savedSchemeChoices.value = mergeSavedChoices(savedSchemeChoices.value, schemeChoices)
+      }
       ElMessage.success('修改成功')
     } else {
-      const response = await productBomApi.addEngineeringBom(formData as any)
+      const response = await productBomApi.addEngineeringBom(payload)
       const bomId = Number(response?.data)
       if (Number.isSafeInteger(bomId) && bomId > 0) formData.bomId = bomId
+      if (schemeChoices.length) {
+        const revision = parseSchemeRevision(response?.data?.schemeRevision)
+        if (revision != null) schemeRevision.value = revision
+        savedSchemeChoices.value = mergeSavedChoices(savedSchemeChoices.value, schemeChoices)
+      }
       ElMessage.success('新增成功')
     }
     baseline.value = savedSnapshot

@@ -12,6 +12,11 @@ import type {
   BomItemBatchReviewRequest,
   BomItemBatchReviewResult,
   BomMaterialBatchResult,
+  ManufacturingOutputType,
+  ManufacturingScheme,
+  ManufacturingBomDetail,
+  ManufacturingBomSavePayload,
+  ManufacturingSchemeChoice,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
 // ==================== BomAPI ====================
@@ -162,5 +167,36 @@ export const productBomApi = {
       params,
       responseType: 'blob',
     })
+  },
+
+  // ==================== 制造BOM方案（dev-20261111-004 后端接口，dev-20261111-005 前端接入） ====================
+
+  /** 某产出对象的候选制造方案（含草稿标记；productId 用于回显本产品主方案）。 */
+  manufacturingOptions(params: {
+    outputType: ManufacturingOutputType
+    outputId: number
+    productId?: number | null
+  }) {
+    return request.get<R<ManufacturingScheme[]>>('/engineering/bom/manufacturing/options', { params })
+  },
+
+  /** 新建制造方案并保存明细；不自动发布、不改父 BOM。 */
+  saveManufacturingBom(data: ManufacturingBomSavePayload) {
+    return request.post<R<ManufacturingBomDetail>>('/engineering/bom/manufacturing', data)
+  },
+
+  /** 编辑已保存制造方案；产出身份不可原地改变。 */
+  updateManufacturingBom(bomId: number, data: ManufacturingBomSavePayload) {
+    return request.put<R<ManufacturingBomDetail>>(`/engineering/bom/manufacturing/${bomId}`, data)
+  },
+
+  /** 生成采用 token；不落库、不设主方案，父 BOM 保存时才持久化关联。 */
+  adoptManufacturingBom(bomId: number) {
+    return request.post<R<ManufacturingScheme>>(`/engineering/bom/manufacturing/${bomId}/adopt`, null)
+  },
+
+  /** 查看父产品 BOM 已保存的方案选择（非产品 BOM 返回空列表）。 */
+  getBomSchemeChoices(bomId: number) {
+    return request.get<R<ManufacturingSchemeChoice[]>>(`/engineering/bom/${bomId}/scheme-choices`)
   },
 }

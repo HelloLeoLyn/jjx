@@ -16,10 +16,10 @@ const replacement = { materialId: 9, materialCode: 'NEW', materialName: '新材�
 const detail = (specification = original.specification) => ({ data: { material: { specification, categoryId: 7 }, attributes: { coating: '单面加硬' } } })
 const wrappers: any[] = []
 // Render the real specification slot with the reactive row, without mounting the full table.
-function editor(row: any = original) {
+function editor(row: any = original, props: Record<string, unknown> = {}) {
   const renderedState = shallowRef<any>()
   const wrapper = shallowMount(BomItemEditor, {
-    props: { modelValue: [{ ...row }] },
+    props: { modelValue: [{ ...row }], ...props },
     global: { stubs: {
       Check: true, InfoFilled: true,
       ElTable: { template: '<div class="el-table__body-wrapper"><table><tbody /></table><slot /></div>' },
@@ -118,5 +118,66 @@ describe('BOM规格只读，换料走物料名称列', () => {
     await flushPromises()
     expect(row).toMatchObject(replacement)
     expect(row.materialSpecification).toBe(replacement.specification)
+  })
+})
+
+describe('制造BOM入口（dev-20261111-005）：只对已建档行开放，不改分组/物料', () => {
+  it('已建档、未待移除的行可以打开制造BOM，只发出该行', () => {
+    const { wrapper, state, row } = editor()
+    expect(state.showManufacturing(row)).toBe(true)
+    state.handleManufacturing(row)
+    const payload = wrapper.emitted('manufacturing')?.[0]?.[0] as any
+    expect(payload).toBe(row)
+    expect(payload.materialId).toBe(original.materialId)
+    expect(payload.parentMaterialId).toBeUndefined()
+  })
+  it('未建档行、待移除行、无权限或只读场景不显示入口、不发事件', () => {
+    const unbuilt = editor({ ...original, materialId: 0 })
+    expect(unbuilt.state.showManufacturing(unbuilt.row)).toBe(false)
+    unbuilt.state.handleManufacturing(unbuilt.row)
+    expect(unbuilt.wrapper.emitted('manufacturing')).toBeUndefined()
+
+    const pendingRemove = editor({ ...original, reviewStatus: 5 })
+    expect(pendingRemove.state.showManufacturing(pendingRemove.row)).toBe(false)
+
+    const denied = editor(original, { canManufacturing: false })
+    expect(denied.state.showManufacturing(denied.row)).toBe(false)
+    denied.state.handleManufacturing(denied.row)
+    expect(denied.wrapper.emitted('manufacturing')).toBeUndefined()
+  })
+  it('采用制造方案后按 itemId 回填该行，其他行与派生值不受影响', () => {
+    const { state, exposed } = editor()
+    expect(exposed.updateItem(1, { subBomId: 124, sourceType: 'make' })).toBe(true)
+    const submitted = exposed.getItems()[0]
+    expect(submitted.subBomId).toBe(124)
+    expect(submitted.sourceType).toBe('make')
+    expect(submitted.materialId).toBe(original.materialId)
+    expect(exposed.updateItem(999, { subBomId: 1 })).toBe(false)
+    expect(state.showManufacturing(submitted)).toBe(true)
+  })
+})
+
+describe('父BOM行模数/基数允许正小数（dev-20261111-005）', () => {
+  it('0.5/2.5 合法（用量0.2）；0 与空值以外的非法值被拦，历史空值行不误拦', async () => {
+    const notice = vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
+    const { state, row, exposed } = editor()
+    state.handleMaterialSelect(replacement, row)
+    await flushPromises()
+    expect(await exposed.prepareSpecifications()).toBe(true)
+
+    row.moduleQty = 2.5
+    row.baseQty = 0.5
+    state.recalcAppliedIssue(row)
+    expect(row.quantity).toBe(0.2)
+    expect(exposed.validateItems()).toBe(true)
+
+    row.moduleQty = 0
+    expect(exposed.validateItems()).toBe(false)
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('模数必须大于0'))
+
+    row.moduleQty = 6
+    row.baseQty = 0
+    expect(exposed.validateItems()).toBe(false)
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining('基数必须大于0'))
   })
 })

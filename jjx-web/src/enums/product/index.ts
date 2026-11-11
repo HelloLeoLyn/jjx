@@ -100,6 +100,15 @@ export const BomTypeEnum = createEnum({
 })
 
 /**
+ * 制造BOM产出身份（对应 Java ManufacturingOutputType，dev-20261111-004）
+ * 独立于 BomTypeEnum（engineering/manufacturing）：产出类型是 PRODUCT/MATERIAL，不是状态。
+ */
+export const ManufacturingOutputTypeEnum = {
+  PRODUCT: 'PRODUCT',
+  MATERIAL: 'MATERIAL',
+} as const
+
+/**
  * BOM状态枚举
  * 对应 Java ProductEnums.BomStatus
  */
@@ -447,6 +456,7 @@ export const ProductEnum = {
   bomStatus: BomStatusEnum,
   bomLayer: BomLayerEnum,
   sourceType: SourceTypeEnum,
+  manufacturingOutputType: ManufacturingOutputTypeEnum,
   routeStatus: RouteStatusEnum,
   stepType: StepTypeEnum,
   lifecycleStatus: LifecycleStatusEnum,
