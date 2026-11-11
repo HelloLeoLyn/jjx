@@ -88,4 +88,7 @@ public class ProductVo {
 
     /** 单位 */
     private String unit;
+
+    /** 产品主方案并发版本；首次新建 BOM 设主时由前端原样回传（dev-20261111-004）。 */
+    private Integer schemeRevision;
 }

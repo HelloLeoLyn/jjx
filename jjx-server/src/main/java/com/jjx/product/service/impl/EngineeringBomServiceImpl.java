@@ -2055,24 +2055,40 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return currentRevision + 1;
     }
 
-    /** 本 BOM 实际投入的物料集合；只允许这些物料被本次保存写主方案。 */
+    /**
+     * 本 BOM 实际显式关联图可达的投入物料集合；只允许这些物料被本次保存写主方案。
+     * 根层使用本次 DTO 行（含新增未保存行、待移除行）；下层沿 sub_bom_id 读取已保存行逐层展开，
+     * 按 bomId 缓存访问防环。仅沿显式引用，不按分组或物料来源推断上下层关系。
+     */
     private Set<Long> usedMaterialIdsForScheme(Long bomId, EngineeringBomDTO dto) {
         Set<Long> out = new java.util.LinkedHashSet<>();
+        Set<Long> visitedBoms = new HashSet<>();
+        java.util.ArrayDeque<Long> pendingBoms = new java.util.ArrayDeque<>();
         if (dto != null && dto.getItems() != null) {
+            // 根层以本次请求为准：删除/换方案后的旧下层路径不再展开。
+            if (bomId != null) visitedBoms.add(bomId);
             for (EngineeringBomItemDTO row : dto.getItems()) {
                 if (row == null || Boolean.TRUE.equals(row.getRemoveRequested())) continue;
                 if (row.getMaterialId() != null) out.add(row.getMaterialId());
+                if (row.getSubBomId() != null && visitedBoms.add(row.getSubBomId())) {
+                    pendingBoms.add(row.getSubBomId());
+                }
             }
-            return out;
+        } else if (bomId != null && visitedBoms.add(bomId)) {
+            pendingBoms.add(bomId);
         }
-        if (bomId != null) {
+        while (!pendingBoms.isEmpty()) {
+            Long currentBomId = pendingBoms.poll();
             for (EngineeringBomItem row : productBomItemMapper.selectList(
-                    new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId))) {
+                    new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, currentBomId))) {
                 if (ProductEnums.BomItemReviewStatus.fromValue(row.getReviewStatus())
                         == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
                     continue;
                 }
                 if (row.getMaterialId() != null) out.add(row.getMaterialId());
+                if (row.getSubBomId() != null && visitedBoms.add(row.getSubBomId())) {
+                    pendingBoms.add(row.getSubBomId());
+                }
             }
         }
         return out;

@@ -13,12 +13,18 @@ import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.inventory.domain.InventoryMaterial;
 import com.jjx.inventory.mapper.InventoryMaterialMapper;
+import com.jjx.product.controller.ProductController;
 import com.jjx.product.domain.converter.EngineeringBomConverterImpl;
+import com.jjx.product.domain.converter.ProductConverter;
 import com.jjx.product.domain.dto.EngineeringBomDTO;
 import com.jjx.product.domain.dto.EngineeringBomItemDTO;
 import com.jjx.product.domain.dto.ManufacturingSchemeChoiceDTO;
 import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.vo.ManufacturingSchemeVO;
+import com.jjx.product.domain.vo.ProductVo;
+import com.jjx.product.service.IProductService;
+import com.jjx.product.service.ProductCodeService;
+import com.jjx.product.service.ProductPriceService;
 import com.jjx.product.mapper.EngineeringBomItemMapper;
 import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.mapper.ProductMapper;
@@ -31,6 +37,7 @@ import org.apache.ibatis.datasource.unpooled.UnpooledDataSource;
 import org.apache.ibatis.mapping.Environment;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mapstruct.factory.Mappers;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.mybatis.spring.transaction.SpringManagedTransactionFactory;
 import org.springframework.aop.framework.ProxyFactory;
@@ -640,5 +647,133 @@ class ManufacturingBomSchemeTest {
         var ex = assertThrows(BusinessException.class, () -> service.updateBomWithDetail(stale));
         assertEquals(409, ex.getCode());
         assertTrue(ex.getMessage().contains("CONCURRENT_MODIFICATION"));
+    }
+
+    @Test
+    void productVoExposesPersistedSchemeRevisionForFirstBomSave() throws Exception {
+        var converter = Mappers.getMapper(ProductConverter.class);
+        var entity = new Product();
+        entity.setProductCode("P-VO");
+        entity.setProductName("P-VO");
+        entity.setSchemeRevision(7);
+        var vo = converter.toVO(entity);
+        assertEquals(Integer.valueOf(7), vo.getSchemeRevision(), "GET 产品详情必须回读已持久化 revision");
+        entity.setSchemeRevision(null);
+        assertNull(converter.toVO(entity).getSchemeRevision(), "未知版本必须保持 null，不能用 0 冒充");
+
+        var productService = mock(IProductService.class);
+        when(productService.getProductDetail(11L)).thenReturn(vo);
+        var priceService = mock(ProductPriceService.class);
+        when(priceService.filterPrices(any(ProductVo.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        var controller = new ProductController(productService, mock(ProductCodeService.class), priceService,
+                mock(ProductServiceImpl.class));
+        var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        mvc.perform(get("/product/11"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.schemeRevision").value(7));
+    }
+
+    private EngineeringBomDTO materialScheme(String code, long materialId, List<EngineeringBomItemDTO> rows) {
+        var dto = new EngineeringBomDTO();
+        dto.setBomCode(code);
+        dto.setBomName(code);
+        dto.setBomVersion("V1.0");
+        dto.setOutputType("MATERIAL");
+        dto.setOutputId(materialId);
+        dto.setItems(rows);
+        return dto;
+    }
+
+    /** 产品 → 半成品349 → 下层350：root 直接行只有349，350 在二层显式引用中。 */
+    private long[] deepChain(Product product) {
+        long bottom = scheme(350, "SFG350-BOTTOM");
+        long middle = service.createBomReturnId(materialScheme("SFG349-MIDDLE", 349, List.of(makeRow(350, bottom))));
+        long root = service.createBomReturnId(parent(product.getProductId(), "TOP-DEEP",
+                List.of(makeRow(349, middle)), List.of(choice(350, bottom, true)), 0));
+        return new long[]{bottom, middle, root};
+    }
+
+    @Test
+    void deepReachableMaterialCanSetPrimaryAcrossExplicitSubBomLevels() throws Exception {
+        var product = product("P-DEEP");
+        long[] chain = deepChain(product);
+        long bottom = chain[0];
+        long root = chain[2];
+
+        assertEquals(Integer.valueOf(1), revision(product));
+        assertEquals(bottom, JSON.readTree(savedJson(product)).path("350").path("bomId").asLong(),
+                "二层显式引用可达的物料必须允许设为主方案");
+        assertEquals(Long.valueOf(bottom), manufacturing.getSchemeChoices(root).get(0).getBomId());
+    }
+
+    @Test
+    void nonPrimaryDeepAdoptionDoesNotChangeDeepPrimary() throws Exception {
+        var product = product("P-DEEP");
+        long[] chain = deepChain(product);
+        long bottom = chain[0];
+        long middle = chain[1];
+        long root = chain[2];
+        long otherBottom = scheme(350, "SFG350-BOTTOM-OTHER");
+
+        var adopt = parent(product.getProductId(), "TOP-DEEP", List.of(makeRow(349, middle)),
+                List.of(choice(350, otherBottom, false)), 1);
+        adopt.setBomId(root);
+        assertEquals(Integer.valueOf(1), service.updateBomWithDetail(withStoredItemIds(adopt)).getSchemeRevision(),
+                "非主采用不得推进主方案 revision");
+        assertEquals(bottom, JSON.readTree(savedJson(product)).path("350").path("bomId").asLong(),
+                "非主采用不得改变深层物料原主方案");
+        assertTrue(JSON.readTree(savedJson(product)).path("350").path("isPrimary").asBoolean());
+    }
+
+    @Test
+    void unrelatedMaterialCannotSetPrimary() throws Exception {
+        var product = product("P-DEEP");
+        long[] chain = deepChain(product);
+        long bottom = chain[0];
+        long middle = chain[1];
+        long root = chain[2];
+
+        var unrelated = parent(product.getProductId(), "TOP-DEEP", List.of(makeRow(349, middle)),
+                List.of(choice(999, bottom, true)), 1);
+        unrelated.setBomId(root);
+        var ex = assertThrows(BusinessException.class, () -> service.updateBomWithDetail(withStoredItemIds(unrelated)));
+        assertTrue(ex.getMessage().contains("父 BOM 未使用该物料"), ex.getMessage());
+        assertEquals(Integer.valueOf(1), revision(product), "拒绝后必须同事务回滚");
+        assertEquals(bottom, JSON.readTree(savedJson(product)).path("350").path("bomId").asLong());
+    }
+
+    @Test
+    void removedOrSwitchedRootRowMakesOldDeepPathUnreachable() throws Exception {
+        var product = product("P-DEEP");
+        long[] chain = deepChain(product);
+        long bottom = chain[0];
+        long middle = chain[1];
+        long root = chain[2];
+        long otherMiddle = service.createBomReturnId(materialScheme("SFG349-MIDDLE-OTHER", 349, List.of(buyRow(111))));
+
+        // 切换根行下层方案后，旧 350 路径不再可达。
+        var switched = parent(product.getProductId(), "TOP-DEEP", List.of(makeRow(349, otherMiddle)),
+                List.of(choice(350, bottom, true)), 1);
+        switched.setBomId(root);
+        var switchEx = assertThrows(BusinessException.class,
+                () -> service.updateBomWithDetail(withStoredItemIds(switched)));
+        assertTrue(switchEx.getMessage().contains("父 BOM 未使用该物料"), switchEx.getMessage());
+        assertEquals(bottom, JSON.readTree(savedJson(product)).path("350").path("bomId").asLong());
+
+        // 根行删除（待移除）后，同样不得用旧路径设主。
+        long itemId = db.queryForObject(
+                "SELECT item_id FROM engineering_bom_item WHERE bom_id=?", Long.class, root);
+        var removedRow = makeRow(349, middle);
+        removedRow.setItemId(itemId);
+        removedRow.setRemoveRequested(true);
+        var removed = parent(product.getProductId(), "TOP-DEEP", List.of(removedRow),
+                List.of(choice(350, bottom, true)), 1);
+        removed.setBomId(root);
+        var removeEx = assertThrows(BusinessException.class, () -> service.updateBomWithDetail(removed));
+        assertTrue(removeEx.getMessage().contains("父 BOM 未使用该物料"), removeEx.getMessage());
+        assertEquals(Integer.valueOf(1), revision(product));
+        assertEquals(1L, db.queryForObject(
+                "SELECT COUNT(*) FROM engineering_bom_item WHERE bom_id=?", Long.class, root),
+                "拒绝后根行必须随事务回滚保留");
     }
 }

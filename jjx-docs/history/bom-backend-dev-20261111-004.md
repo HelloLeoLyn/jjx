@@ -63,3 +63,22 @@ Codex 独立复跑 16 项通过后审查退修，本次在原卡、原白名单�
 ## 接续
 
 下一步由 Codex 独立验收本卡。迁移执行、真实库回读、前端 C 接入、D 需求引擎与 F 生产库存均需各自授权；不因本卡代码准备完成而解锁。
+
+## 前后端契约补齐（2026-11-11 14:5x，同卡 dev-20261111-004 第三轮）
+
+Codex 独立复跑 06301838/7758f2e1 的 37 项测试全过后，本轮只补两个联调契约缺口，不重新设计、不改 D/F、不动前端与迁移。
+
+1）产品详情暴露主方案版本：`ProductVo` 新增 `Integer schemeRevision`。`Product.schemeRevision` 已持久化，`ProductConverter` 为同名自动映射，`GET /product/{productId}` 经既有 `getProductDetail → productConverter.toVO` 直接回读，无新接口/表/列。未知版本保持 null，不默认 0；服务端写 JSON 必带 revision 的规则不变。首次新建产品 BOM 尚未有 bomId 时，前端可直接取该字段作为设主提交的 `schemeRevision`。
+
+2）多层产品主方案上下文：`usedMaterialIdsForScheme` 从“只收父 BOM 直接行”改为“本次父 BOM 显式关联图可达投入集合”。根层使用本次 DTO 行（跳过待移除行，新增未保存行可参与），下层沿 `sub_bom_id` 读取已保存行逐层展开；按 bomId 缓存访问防重复/防环，只沿显式引用，不猜分组或物料来源。仅可达材料可设/取消主方案，无关材料仍拒绝；非主采用不改产品主方案；不改 quantity 或 source_type。根行删除或切换下层方案后，旧路径不再展开。
+
+验证：
+- `MAVEN_OPTS=-Xmx768m timeout 180 mvn -o -q -Dtest=ManufacturingBomSchemeTest -DargLine=-Xmx512m -DforkCount=1 test` → 23 项，0 failures / 0 errors / 0 skipped。
+- `MAVEN_OPTS=-Xmx768m timeout 180 mvn -o -q -Dtest=ManufacturingBomCycleTest -DargLine=-Xmx512m -DforkCount=1 test` → 9 项，0 failures / 0 errors。
+- 新增反例/正例：产品详情 VO 与 MVC 回读 revision=7、未知版本 null；产品→349→350 二层可达设主成功；同产品非主采用不改深层主且 revision 不增；无关材料设主拒绝并回滚；根行切换/待移除后旧 350 路径拒绝且事务回滚。
+- 本轮未启动/重启服务，未调用真实 HTTP 业务库，未执行 DDL，未改前端/INDEX/备份/356 归档。
+
+稳定接口变更清单（本轮）：
+- `ProductVo.schemeRevision` 新增只读字段；`GET /product/{id}` 返回该值。
+- 产品主方案设主上限从“直接投入”扩展为“显式制造图可达投入”；无 DTO/表结构变化。
+- 005 新建产品 BOM 可直接使用 `ProductVo.schemeRevision` 取真实版本。
