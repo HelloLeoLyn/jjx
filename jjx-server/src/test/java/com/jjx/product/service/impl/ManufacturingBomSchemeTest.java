@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.mybatis.spring.transaction.SpringManagedTransactionFactory;
 import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -454,6 +455,83 @@ class ManufacturingBomSchemeTest {
         } finally {
             StpUtil.setStpLogic(original);
         }
+    }
+
+    @Test
+    void unusedDraftPrimarySameMaterialDoesNotBlockApprovedNonPrimaryReference() throws Exception {
+        var p1 = product("P1");
+        long draftX = scheme(349, "SFG349-X-DRAFT"); // 新建默认草稿
+        long approvedY = scheme(349, "SFG349-Y-APPROVED");
+        db.update("UPDATE engineering_bom SET approve_status=3 WHERE bom_id=?", approvedY);
+
+        long parentId = service.createBomReturnId(parent(p1.getProductId(), "TOP-P1",
+                List.of(makeRow(349, approvedY)), List.of(choice(349, draftX, true)), 0));
+        // 产品主方案 X 是草稿，但当前父 BOM 实际显式引用的是已批准 Y。
+        assertEquals(draftX, JSON.readTree(savedJson(p1)).path("349").path("bomId").asLong());
+
+        assertTrue(service.submitApprove(parentId), "未使用的同材料草稿主方案不得阻断审批");
+        assertEquals(Integer.valueOf(2), service.getBomDetail(parentId).getApproveStatus());
+    }
+
+    @Test
+    void directMaterialRowIsNotForcedIntoManufactureByUnusedProductPrimary() throws Exception {
+        var p1 = product("P1");
+        long draftX = scheme(349, "SFG349-X-DRAFT");
+        service.createBomReturnId(parent(p1.getProductId(), 349, draftX, 0));
+        assertEquals(draftX, JSON.readTree(savedJson(p1)).path("349").path("bomId").asLong());
+
+        // 普通直接大料行（buy，无 sub_bom_id）不能因产品另有该料主方案而被强制制造。
+        long direct = service.createBomReturnId(parent(p1.getProductId(), "DIRECT-TOP",
+                List.of(buyRow(349)), null, null));
+        assertTrue(service.submitApprove(direct));
+        assertEquals(Integer.valueOf(2), service.getBomDetail(direct).getApproveStatus());
+    }
+
+    @Test
+    void explicitlyReferencedDraftSchemeStillBlocksSubmit() {
+        var p1 = product("P1");
+        long draftX = scheme(349, "SFG349-X-DRAFT");
+        long approvedY = scheme(349, "SFG349-Y-APPROVED");
+        db.update("UPDATE engineering_bom SET approve_status=3 WHERE bom_id=?", approvedY);
+
+        // 主方案是已批准 Y，但当前 BOM 行实际引用草稿 X：审批仍必须拒绝实际引用草稿。
+        long parentId = service.createBomReturnId(parent(p1.getProductId(), "TOP-P1",
+                List.of(makeRow(349, draftX)), List.of(choice(349, approvedY, true)), 0));
+        var ex = assertThrows(BusinessException.class, () -> service.submitApprove(parentId));
+        assertTrue(ex.getMessage().contains("SUB_BOM_NOT_APPROVED"), ex.getMessage());
+    }
+
+    private static final String MVC_ITEMS =
+            "\"items\":[{\"materialId\":110,\"materialCode\":\"M110\",\"materialName\":\"物料110\","
+                    + "\"unit\":\"PCS\",\"sourceType\":\"buy\",\"moduleQty\":1,\"baseQty\":1,\"itemOrder\":1}]";
+
+    @Test
+    void mvcCancelPrimaryWithoutBomIdPassesBeanValidation() throws Exception {
+        var bomService = mock(IEngineeringBomService.class);
+        when(bomService.createBomReturnId(any(EngineeringBomDTO.class))).thenReturn(9L);
+        var controller = new BomController(bomService);
+        var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(post("/engineering/bom").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bomCode\":\"MVC-CANCEL\",\"bomName\":\"MVC-CANCEL\","
+                                + "\"outputType\":\"PRODUCT\",\"outputId\":1," + MVC_ITEMS + ","
+                                + "\"schemeChoices\":[{\"materialId\":349,\"cancelPrimary\":true}]}"))
+                .andExpect(status().isOk());
+        verify(bomService).createBomReturnId(any(EngineeringBomDTO.class));
+    }
+
+    @Test
+    void mvcAdoptionWithoutBomIdIsRejectedBeforeService() throws Exception {
+        var bomService = mock(IEngineeringBomService.class);
+        var controller = new BomController(bomService);
+        var mvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        mvc.perform(post("/engineering/bom").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bomCode\":\"MVC-ADOPT\",\"bomName\":\"MVC-ADOPT\","
+                                + "\"outputType\":\"PRODUCT\",\"outputId\":1," + MVC_ITEMS + ","
+                                + "\"schemeChoices\":[{\"materialId\":349,\"isPrimary\":true}]}"))
+                .andExpect(status().isBadRequest());
+        verify(bomService, never()).createBomReturnId(any(EngineeringBomDTO.class));
     }
 
     @Test

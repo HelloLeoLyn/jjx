@@ -44,6 +44,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ProductWorkSpecVersionService {
+    /** 作业规范版本状态；新工单/新订单绑定只允许 PUBLISHED，历史读取按持久化 ID 不变。 */
+    private static final String STATUS_PUBLISHED = "PUBLISHED";
+    private static final String STATUS_RETIRED = "RETIRED";
+
     @org.springframework.beans.factory.annotation.Autowired private ProductWorkSpecService draftService;
 
     private final ProductWorkSpecMapper workSpecMapper;
@@ -196,7 +200,7 @@ public class ProductWorkSpecVersionService {
         version.setOutputType("PRODUCT");
         version.setOutputId(productId);
         version.setVersionNo(versionNo);
-        version.setStatus("PUBLISHED");
+        version.setStatus(STATUS_PUBLISHED);
         version.setChangeSummary(changeSummary);
         version.setManifestHash(sha256(manifest));
         version.setPublishedAt(publishedAt);
@@ -250,6 +254,11 @@ public class ProductWorkSpecVersionService {
             if (!type.equals(versionType) || !java.util.Objects.equals(outputId, versionOutputId)) {
                 throw new BusinessException("作业规范版本与产出身份不一致（versionId=" + explicitVersionId + "）");
             }
+            // 新绑定必须已发布：停用（RETIRED）等非发布版本不得再绑新工单；历史已绑读取走持久化 ID，不经本方法。
+            if (!STATUS_PUBLISHED.equals(version.getStatus())) {
+                throw new BusinessException("SNAPSHOT_NOT_PUBLISHED：作业规范版本未发布（versionId="
+                        + explicitVersionId + "，当前状态 " + version.getStatus() + "）");
+            }
             return version;
         }
         ProductWorkSpecVersion latest = versionMapper.selectLatestPublishedByOutput(type, outputId);
@@ -266,13 +275,13 @@ public class ProductWorkSpecVersionService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ProductWorkSpecVersion retire(Long versionId) {
-        return changeStatus(versionId, "RETIRED", "该版本已停用");
+        return changeStatus(versionId, STATUS_RETIRED, "该版本已停用");
     }
 
     /** 恢复版本（RETIRED → PUBLISHED；dev-20261011-033）。 */
     @Transactional(rollbackFor = Exception.class)
     public ProductWorkSpecVersion restore(Long versionId) {
-        return changeStatus(versionId, "PUBLISHED", "该版本已是启用状态");
+        return changeStatus(versionId, STATUS_PUBLISHED, "该版本已是启用状态");
     }
 
     /** 仅改 status；不做物理删除（保留版本与历史绑定）。 */
@@ -289,7 +298,7 @@ public class ProductWorkSpecVersionService {
         versionMapper.updateById(version);
         if (draftService != null) {
             ObjectNode before = json.createObjectNode().put("versionId", versionId).put("versionNo", version.getVersionNo());
-            draftService.recordOperation(version.getProductId(), "RETIRED".equals(target) ? "停用版本" : "恢复版本", before, before.deepCopy().put("status", target));
+            draftService.recordOperation(version.getProductId(), STATUS_RETIRED.equals(target) ? "停用版本" : "恢复版本", before, before.deepCopy().put("status", target));
         }
         return versionMapper.selectById(versionId);
     }

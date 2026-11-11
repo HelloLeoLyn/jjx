@@ -33,6 +33,12 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -48,7 +54,7 @@ class ManufacturingBomCycleTest {
     @BeforeEach
     void setup() {
         var source = new UnpooledDataSource("org.h2.Driver",
-                "jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
+                "jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000", "sa", "");
         var configuration = new MybatisConfiguration();
         configuration.setMapUnderscoreToCamelCase(true);
         configuration.setEnvironment(new Environment("mfg-cycle", new SpringManagedTransactionFactory(), source));
@@ -226,6 +232,97 @@ class ManufacturingBomCycleTest {
         a.setOutputId(7001L);
         a.setItems(List.of(row(7002, "make", b), row(7003, "make", c)));
         assertNotNull(service.createBomReturnId(a), "共享 DAG 不是环，不应被误判");
+    }
+
+    @Test
+    void concurrentCrossReferenceIsSerializedAndOnlyOneCommitWins() throws Exception {
+        long a = createScheme("CONC-A", 349, row(110, "buy", null));
+        long b = createScheme("CONC-B", 350, row(111, "buy", null));
+        var aToB = updatePayload(a, 349, row(350, "make", b));
+        var bToA = updatePayload(b, 350, row(349, "make", a));
+
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        Callable<String> first = () -> {
+            start.await();
+            try {
+                service.updateBomWithDetail(aToB);
+                return "OK";
+            } catch (BusinessException ex) {
+                return ex.getMessage();
+            }
+        };
+        Callable<String> second = () -> {
+            start.await();
+            try {
+                service.updateBomWithDetail(bToA);
+                return "OK";
+            } catch (BusinessException ex) {
+                return ex.getMessage();
+            }
+        };
+        Future<String> f1 = pool.submit(first);
+        Future<String> f2 = pool.submit(second);
+        start.countDown();
+        String r1;
+        String r2;
+        try {
+            r1 = f1.get(20, TimeUnit.SECONDS);
+            r2 = f2.get(20, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        long ok = ("OK".equals(r1) ? 1 : 0) + ("OK".equals(r2) ? 1 : 0);
+        assertEquals(1, ok, "并发互引只能有一个事务提交成功: " + r1 + " / " + r2);
+        assertTrue((r1 + " / " + r2).contains("BOM_CYCLE"), "失败方必须因成环被拒绝: " + r1 + " / " + r2);
+        assertEquals(1L, db.queryForObject(
+                "SELECT COUNT(*) FROM engineering_bom_item WHERE sub_bom_id IS NOT NULL", Long.class),
+                "最终图只能留下一条有向边，不能形成 A→B→A");
+    }
+
+    @Test
+    void graphLockBlocksSecondWriterUntilFirstCommitsThenRechecksGraph() throws Exception {
+        long a = createScheme("LOCK-A", 349, row(110, "buy", null));
+        long b = createScheme("LOCK-B", 350, row(111, "buy", null));
+        var bToA = updatePayload(b, 350, row(349, "make", a));
+
+        CountDownLatch committed = new CountDownLatch(1);
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        Future<String> writer = pool.submit(() -> {
+            committed.await();
+            try {
+                service.updateBomWithDetail(bToA);
+                return "OK";
+            } catch (BusinessException ex) {
+                return ex.getMessage();
+            }
+        });
+        String result;
+        try {
+            try (var conn = db.getDataSource().getConnection()) {
+                conn.setAutoCommit(false);
+                try (var st = conn.createStatement()) {
+                    st.executeQuery("SELECT bom_id FROM engineering_bom ORDER BY bom_id FOR UPDATE").close();
+                }
+                committed.countDown();
+                Thread.sleep(800);
+                assertFalse(writer.isDone(), "第二个写者必须在数据库图锁上等待，不能凭快照读直接提交");
+                // 先持锁事务写入 A→B 后提交；等待者恢复后必须重读已提交图并发现 B→A 成环。
+                try (var st = conn.createStatement()) {
+                    st.executeUpdate("UPDATE engineering_bom_item SET source_type='make', sub_bom_id=" + b
+                            + " WHERE bom_id=" + a);
+                }
+                conn.commit();
+            }
+            result = writer.get(20, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertTrue(result.contains("BOM_CYCLE"), "锁释放后必须重读已提交图并拒绝成环: " + result);
+        assertEquals(1L, db.queryForObject(
+                "SELECT COUNT(*) FROM engineering_bom_item WHERE sub_bom_id IS NOT NULL", Long.class));
     }
 
     @Test

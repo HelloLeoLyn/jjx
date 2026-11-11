@@ -19,6 +19,15 @@ public interface EngineeringBomMapper extends BaseMapper<EngineeringBom> {
     EngineeringBom selectForUpdate(@Param("bomId") Long bomId);
 
     /**
+     * 显式下层引用变更的全局串行化锁（dev-20261111-004）。
+     * 在事务内按 bom_id 固定顺序锁定全部 BOM 行；所有会写 sub_bom_id 的保存都先取本锁，
+     * 避免 A→B 与 B→A 两个事务各自快照读通过校验后互写形成环。锁为数据库行锁，跨实例有效；
+     * 本语句必须是该事务的第一条数据库语句，失败时随事务回滚自动释放。
+     */
+    @Select("SELECT bom_id FROM engineering_bom ORDER BY bom_id FOR UPDATE")
+    List<Long> lockGraphForMutation();
+
+    /**
      * 查询BOM总数
      */
     @Select({

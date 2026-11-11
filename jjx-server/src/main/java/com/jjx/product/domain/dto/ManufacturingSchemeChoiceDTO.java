@@ -1,5 +1,7 @@
 package com.jjx.product.domain.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
@@ -14,8 +16,7 @@ public class ManufacturingSchemeChoiceDTO {
     @NotNull(message = "物料不能为空")
     private Long materialId;
 
-    /** 被选择的制造方案 engineering_bom.bom_id。 */
-    @NotNull(message = "制造方案不能为空")
+    /** 被选择的制造方案 engineering_bom.bom_id；取消主方案（cancelPrimary=true）时可为空。 */
     private Long bomId;
 
     /** 是否本产品该物料的主方案；true=设/替换该物料主方案，false/null=仅父BOM实际采用，不改主方案。 */
@@ -23,6 +24,13 @@ public class ManufacturingSchemeChoiceDTO {
 
     /** 显式取消该物料主方案；true 时只移除本物料映射，bomId 可为空。 */
     private Boolean cancelPrimary;
+
+    /** 设主/普通采用必须选择制造方案；显式取消不需 bomId。BeanValidation 与 service 双重兜底。 */
+    @AssertTrue(message = "制造方案不能为空")
+    @JsonIgnore
+    public boolean isBomIdPresentWhenRequired() {
+        return Boolean.TRUE.equals(cancelPrimary) || bomId != null;
+    }
 
     // ===== 只读回显字段（保存时忽略） =====
     private String bomCode;

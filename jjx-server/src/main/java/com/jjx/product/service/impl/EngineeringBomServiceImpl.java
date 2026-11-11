@@ -327,6 +327,17 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return updateBomWithDetail(dto).isSuccess();
     }
 
+    /** 本次保存是否会写入显式下层方案引用（sub_bom_id）；纯粹删除引用不会新增环，无需取图锁。 */
+    private boolean hasExplicitSubBom(List<EngineeringBomItemDTO> items) {
+        if (items == null) return false;
+        for (EngineeringBomItemDTO row : items) {
+            if (row != null && !Boolean.TRUE.equals(row.getRemoveRequested()) && row.getSubBomId() != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * 更新BOM（含变更明细，供 @Log detail 展示）
      */
@@ -335,6 +346,12 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     public com.jjx.product.domain.vo.EngineeringBomEditVO updateBomWithDetail(EngineeringBomDTO dto) {
         if (dto.getBomId() == null) {
             throw new BusinessException("BOM ID不能为空");
+        }
+
+        // 显式下层引用变更先取全局图锁：必须是本事务第一条数据库语句，且排在父行锁之前。
+        // 数据库行锁跨实例有效，固定 bom_id 顺序避免 A→B/B→A 并发快照读各自通过后成环。
+        if (hasExplicitSubBom(dto.getItems())) {
+            productBomMapper.lockGraphForMutation();
         }
 
         // 检查BOM是否存在；父保存锁行，避免并发覆盖明细。
@@ -1897,8 +1914,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     }
 
     /**
-     * 产品主方案校验：只校验本 BOM 实际使用的物料及本次适用主方案。
-     * 未被本 BOM 使用的候选草稿不得阻断其他 BOM；坏 JSON 明确阻断，不静默当空。
+     * 产品主方案校验：只校验本 BOM 行实际显式引用的方案（sub_bom_id）。
+     * 产品 JSON 主方案未被实际引用时（例如同材料另有已批准非主方案、或只是直接大料行），
+     * 不得因其草稿阻断审批；坏 JSON 仍明确阻断，不静默当空。
      */
     private String validateSavedSchemeChoices(EngineeringBom bom) {
         if (ManufacturingOutputType.normalize(bom.getOutputType()) != ManufacturingOutputType.PRODUCT
@@ -1914,18 +1932,23 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             return ex.getMessage();
         }
         if (choices.isEmpty()) return null;
-        Set<Long> usedMaterials = new java.util.LinkedHashSet<>();
+        // 只认本 BOM 行的显式引用（sub_bom_id → materialId）：产品 JSON 主方案只是默认选择，
+        // 未被本 BOM 实际引用时不得因其未批准阻断审批；直接大料行也不会被强制制造。
+        Map<Long, Set<Long>> explicitRefs = new HashMap<>();
         for (EngineeringBomItem item : productBomItemMapper.selectList(
                 new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bom.getBomId()))) {
             if (ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus())
                     == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
                 continue;
             }
-            if (item.getMaterialId() != null) usedMaterials.add(item.getMaterialId());
+            if (item.getSubBomId() == null || item.getMaterialId() == null) continue;
+            explicitRefs.computeIfAbsent(item.getSubBomId(), k -> new java.util.LinkedHashSet<>())
+                    .add(item.getMaterialId());
         }
         for (ManufacturingSchemeChoiceDTO choice : choices) {
             if (!Boolean.TRUE.equals(choice.getIsPrimary())) continue;
-            if (!usedMaterials.contains(choice.getMaterialId())) continue;
+            Set<Long> refMaterials = explicitRefs.get(choice.getBomId());
+            if (refMaterials == null || !refMaterials.contains(choice.getMaterialId())) continue;
             EngineeringBom child = productBomMapper.selectById(choice.getBomId());
             if (child == null) {
                 return "SUB_BOM_NOT_FOUND：产品主方案引用不存在（bomId=" + choice.getBomId() + "）";
@@ -1979,9 +2002,13 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             if (cancel && primary) {
                 throw new BusinessException("取消主方案与设为主方案不能同时提交（materialId=" + choice.getMaterialId() + "）");
             }
+            // 设主/普通采用必须有 bomId；仅显式取消允许为空（与 DTO BeanValidation 双重兜底）。
+            if (!cancel && choice.getBomId() == null) {
+                throw new BusinessException("制造方案不能为空（materialId=" + choice.getMaterialId() + "）");
+            }
             if (!cancel && !primary) {
                 // 非主采用：父 BOM 实际采用由行 sub_bom_id 表达，不覆盖产品主方案。
-                if (choice.getBomId() != null) validateSchemeChoiceChild(choice);
+                validateSchemeChoiceChild(choice);
                 continue;
             }
             if (!usedMaterials.contains(choice.getMaterialId())) {

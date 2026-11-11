@@ -87,6 +87,28 @@ class WorkSpecMaterialVersionTest {
     }
 
     @Test
+    void explicitBindingRequiresPublishedButHistoricalReadKeepsRetiredVersion() {
+        var published = version(1L, "PRODUCT", 1L, "V1.0");
+        var retired = version(1L, "PRODUCT", 1L, "V1.1");
+        retired.setStatus("RETIRED");
+        versionMapper.updateById(retired);
+
+        // 新绑定显式指定已发布版本：通过。
+        assertEquals(published.getId(),
+                service.resolvePublishedVersion(published.getId(), "PRODUCT", 1L).getId());
+
+        // 新绑定显式指定已停用版本：拒绝，不能给新工单绑定。
+        var ex = assertThrows(BusinessException.class,
+                () -> service.resolvePublishedVersion(retired.getId(), "PRODUCT", 1L));
+        assertTrue(ex.getMessage().contains("SNAPSHOT_NOT_PUBLISHED"), ex.getMessage());
+
+        // 历史读取按持久化 ID/版本列表保持原行为，停用版本仍在。
+        assertEquals("RETIRED", versionMapper.selectById(retired.getId()).getStatus());
+        assertTrue(service.listByOutput("PRODUCT", 1L).stream()
+                .anyMatch(v -> retired.getId().equals(v.getId())), "停用版本仍应可供历史读取");
+    }
+
+    @Test
     void rejectsCrossTypeExplicitVersionAndMissingMaterialPublication() {
         var productVersion = version(1L, "PRODUCT", 1L, "V1.0");
         version(null, "MATERIAL", 349L, "V1.0");
