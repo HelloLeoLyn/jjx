@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="多层BOM维护交互样机，全部使用虚构数据，仅保存在浏览器本地。">
+  <title>BOM Studio · 多层制造交互样机</title>
+  <link rel="stylesheet" href="./style.css">
+  <script defer src="./model.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div class="demo-banner"><span class="pulse"></span><strong>交互样机</strong><span>全部为虚构数据 · 仅浏览器本地保存 · 不连接业务系统</span><button id="walkthrough" type="button">怎么体验 <span>↗</span></button></div>
+  <div class="shell">
+    <aside class="rail" aria-label="应用导航"><div class="brand" title="BOM Studio">b<span>•</span></div><div class="rail-line"></div><button class="rail-button active" title="产品结构" aria-label="产品结构">▦</button><button class="rail-button" id="rail-library" title="方案库" aria-label="方案库">▤</button><button class="rail-button" id="rail-preview" title="用量试算" aria-label="用量试算">⌁</button><div class="rail-spacer"></div><span class="avatar" title="演示工程师">DE</span></aside>
+    <main>
+      <header class="page-header"><div><div class="eyebrow">ENGINEERING WORKSPACE <span>/</span> 产品定义</div><div class="title-row"><h1>BOM 工作台</h1><span class="pill neutral">交互验证</span></div><p>看清整棵结构，专注维护当前一层。</p></div><div class="header-actions"><select id="scenario" aria-label="选择体验场景"><option value="multi">多层制造 · 修改示例</option><option value="blank">从空白新增 BOM</option></select><button class="button ghost" id="reset">重置样机</button></div></header>
+      <section class="product-card"><div class="product-mark">P</div><div class="product-identity"><div class="overline">DEMO-P100 <span class="dot-separator">·</span> 成品</div><h2 id="product-title">控制面板组件</h2><span>演示规格 · 标准型　／　库存单位 PCS</span></div><div class="product-meta"><span class="meta-label">当前编辑</span><strong id="version-label">R03 · 工作草稿</strong><button id="view-published" class="text-button">查看发布基线 ↗</button></div><div class="product-meta saved-meta"><span class="meta-label">保存范围</span><strong>整个工作区草稿</strong><span id="save-time">尚未保存到本机</span></div></section>
+      <nav class="workspace-nav" aria-label="工作区视图"><div class="view-tabs"><button data-view="structure" class="view-tab active">产品结构 <span id="structure-count">—</span></button><button data-view="library" class="view-tab">制造方案库</button></div><div class="workspace-tools"><span id="dirty-label" class="save-label">● 无未保存修改</span><button id="changes" class="button small">查看变更 <span id="change-count" class="count-badge">0</span></button><button id="save" class="button primary small">保存草稿</button></div></nav>
+      <div id="structure-view" class="workbench">
+        <aside class="tree-panel"><div class="panel-heading"><div><h3>产品结构</h3><span>展开各层，直接切换编辑</span></div><button class="icon-button" id="expand-all" title="展开或收起全部层级" aria-label="展开或收起全部层级">⤢</button></div><label class="tree-search"><span>⌕</span><input id="tree-search" type="search" placeholder="查找物料或方案" aria-label="查找结构"></label><div id="tree" class="tree" role="tree" aria-label="多层BOM结构"></div><div class="tree-legend"><span><i class="legend-square assembly"></i>独立制造</span><span><i class="legend-square raw"></i>直接用料</span><span><i class="legend-dirty"></i>未保存</span></div><div class="tree-footnote">每个制造节点维护自己的投入清单。<br>切换层级保留当前草稿。</div></aside>
+        <section id="editor" class="editor-panel" aria-label="当前层BOM编辑"></section>
+      </div>
+      <section id="library-view" class="library-view" hidden></section>
+      <footer class="workspace-footer"><span><i class="connection-dot"></i> 本地演示工作区</span><span>结构、方案、版本分别表达；保存草稿不会自动批准或投入生产。</span><button class="text-button" id="export">导出样机数据 ↓</button></footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="modal" aria-labelledby="modal-title"><div class="dialog-header"><div><div id="modal-kicker" class="overline"></div><h2 id="modal-title"></h2></div><button class="icon-button" id="modal-close" aria-label="关闭对话框">×</button></div><div id="modal-body" class="dialog-body"></div><div id="modal-footer" class="dialog-footer"></div></dialog>
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+  <aside id="drawer" class="drawer" hidden aria-labelledby="drawer-title"><div class="drawer-heading"><div><div class="overline">MATERIAL REQUIREMENTS</div><h2 id="drawer-title">用量试算</h2></div><button id="drawer-close" class="icon-button" aria-label="关闭试算">×</button></div><div class="drawer-scroll" id="drawer-content"></div></aside>
+  <noscript>此交互样机需要启用 JavaScript。样机不会连接真实业务接口。</noscript>
+</body>
+</html>
