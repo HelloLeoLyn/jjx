@@ -106,6 +106,9 @@
     </el-table>
 
     <template #footer>
+      <el-button v-if="order?.orderId" class="snapshot-entry" @click="snapshotVisible = true">
+        生产资料快照
+      </el-button>
       <el-button @click="visible = false">关闭</el-button>
       <el-button
         type="primary"
@@ -117,14 +120,29 @@
       </el-button>
     </template>
   </el-dialog>
+
+  <!-- 生产资料快照（只读，dev-20261111-009 G2） -->
+  <el-drawer
+    v-model="snapshotVisible"
+    title="生产资料快照（只读）"
+    size="1000px"
+    append-to-body
+    destroy-on-close
+  >
+    <ManufacturingProcessSheet
+      v-if="snapshotVisible && order?.orderId"
+      :order-id="order?.orderId"
+    />
+  </el-drawer>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { productWorkSpecApi } from '@/api/product/workSpec'
 import { workSpecUsageApi, type WorkSpecUsageVO } from '@/api/production/workSpecUsage'
 import { WorkSpecVersionStatusEnum } from '@/enums/product/WorkSpecVersionStatusEnum'
+import ManufacturingProcessSheet from '@/views/engineering/product-spec/components/ManufacturingProcessSheet.vue'
 import type { ProductionOrderVO } from '@/types/production/order'
 
 const props = defineProps<{
@@ -158,6 +176,15 @@ const publishedVersions = computed(() =>
 const usages = ref<WorkSpecUsageVO[]>([])
 const usagesLoading = ref(false)
 const submitting = ref(false)
+
+// 生产资料快照抽屉（只读）：换版弹窗关闭时一并收起，避免残留
+const snapshotVisible = ref(false)
+watch(
+  () => props.visible,
+  (value) => {
+    if (!value) snapshotVisible.value = false
+  },
+)
 
 const form = reactive<{
   specVersionId: number | null
