@@ -47,6 +47,12 @@ public class ProductionOrder{
     @Schema(description = "产品ID")
     private Long productId;
 
+    /** 产出身份：PRODUCT（产品）/ MATERIAL（材料或半成品），与 engineering_bom 同构（dev-20261111-008）。 */
+    private String outputType;
+
+    /** 产出对象ID：PRODUCT→product_id；MATERIAL→inventory_material.material_id。 */
+    private Long outputId;
+
     /** 作业规范发布版本ID；历史空值不推断。 */
     private Long workSpecVersionId;
 

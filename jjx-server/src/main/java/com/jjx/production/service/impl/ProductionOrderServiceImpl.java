@@ -103,6 +103,20 @@ public class ProductionOrderServiceImpl extends ServiceImpl<ProductionOrderMappe
             order.setTraceId(java.util.UUID.randomUUID().toString().replace("-", ""));
         }
         order.setOrderStatus(ProductionOrderStatusEnum.DRAFT.getValue());
+        // 产出身份（dev-20261111-008）：缺省按产品产出，历史行为不变；MATERIAL 必须给产出对象。
+        if (order.getOutputType() == null || order.getOutputType().isBlank()) {
+            order.setOutputType("PRODUCT");
+        }
+        order.setOutputType(order.getOutputType().trim().toUpperCase());
+        if (order.getOutputId() == null) {
+            order.setOutputId(order.getProductId());
+        }
+        if (!"PRODUCT".equals(order.getOutputType()) && !"MATERIAL".equals(order.getOutputType())) {
+            throw new BusinessException("产出身份只能是 PRODUCT 或 MATERIAL：" + order.getOutputType());
+        }
+        if (order.getOutputId() == null) {
+            throw new BusinessException("产出对象不能为空");
+        }
         if (order.getWorkSpecVersionId() != null) {
             workSpecBindingService.requirePublished(order.getProductId(), order.getWorkSpecVersionId());
         }

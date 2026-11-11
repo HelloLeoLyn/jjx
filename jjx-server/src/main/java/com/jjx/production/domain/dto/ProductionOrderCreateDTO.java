@@ -39,6 +39,11 @@ public class ProductionOrderCreateDTO {
     @NotNull(message = "产品ID不能为空")
     private Long productId;
 
+    /** 产出身份，缺省 PRODUCT；MATERIAL 时 outputId 必须给材料ID。 */
+    private String outputType;
+
+    private Long outputId;
+
     /** 作业规范发布版本ID；历史空值不推断。 */
     private Long workSpecVersionId;
 

@@ -44,6 +44,10 @@ public class ProductionOrderVO {
     @Schema(description = "产品ID")
     private Long productId;
 
+    private String outputType;
+
+    private Long outputId;
+
     /** 作业规范发布版本ID；历史空值不推断。 */
     private Long workSpecVersionId;
 
