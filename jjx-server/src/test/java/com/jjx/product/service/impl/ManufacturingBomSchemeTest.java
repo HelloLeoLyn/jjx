@@ -46,6 +46,11 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -63,6 +68,7 @@ class ManufacturingBomSchemeTest {
 
     IEngineeringBomService service;
     ManufacturingBomService manufacturing;
+    ManufacturingBomService manufacturingTx;
     JdbcTemplate db;
     ProductMapper productMapper;
 
@@ -115,6 +121,12 @@ class ManufacturingBomSchemeTest {
                 new AnnotationTransactionAttributeSource()));
         service = (IEngineeringBomService) proxy.getProxy();
         manufacturing = new ManufacturingBomServiceImpl(service, session.getMapper(EngineeringBomMapper.class), productMapper);
+        // 实际 HTTP 入口 ManufacturingBomServiceImpl.update 自带 @Transactional 外层事务，单独套代理复现真实快照边界。
+        var mfgProxy = new ProxyFactory(manufacturing);
+        mfgProxy.setInterfaces(ManufacturingBomService.class);
+        mfgProxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source),
+                new AnnotationTransactionAttributeSource()));
+        manufacturingTx = (ManufacturingBomService) mfgProxy.getProxy();
     }
 
     private void createTable(Class<?> entity) {
@@ -532,6 +544,59 @@ class ManufacturingBomSchemeTest {
                                 + "\"schemeChoices\":[{\"materialId\":349,\"isPrimary\":true}]}"))
                 .andExpect(status().isBadRequest());
         verify(bomService, never()).createBomReturnId(any(EngineeringBomDTO.class));
+    }
+
+    @Test
+    void wrapperTransactionTakesGraphLockBeforeSnapshot() throws Exception {
+        long a = scheme(349, "WRAP-A");
+        long b = scheme(350, "WRAP-B");
+        long bItemId = db.queryForObject(
+                "SELECT item_id FROM engineering_bom_item WHERE bom_id=?", Long.class, b);
+
+        var row = makeRow(349, a);
+        row.setItemId(bItemId);
+        var dto = new com.jjx.product.domain.dto.ManufacturingBomSaveDTO();
+        dto.setBomCode("WRAP-B-UPD");
+        dto.setBomName("WRAP-B-UPD");
+        dto.setOutputType("MATERIAL");
+        dto.setOutputId(350L);
+        dto.setItems(List.of(row));
+
+        CountDownLatch entered = new CountDownLatch(1);
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        Future<String> writer = pool.submit(() -> {
+            entered.await();
+            try {
+                manufacturingTx.update(b, dto);
+                return "OK";
+            } catch (BusinessException ex) {
+                return ex.getMessage();
+            }
+        });
+        String result;
+        try {
+            try (var conn = db.getDataSource().getConnection()) {
+                conn.setAutoCommit(false);
+                try (var st = conn.createStatement()) {
+                    st.executeQuery("SELECT bom_id FROM engineering_bom ORDER BY bom_id FOR UPDATE").close();
+                }
+                entered.countDown();
+                Thread.sleep(800);
+                assertFalse(writer.isDone(), "外层 update 必须在任何普通 SELECT 前等待图锁，快照不能早于锁");
+                try (var st = conn.createStatement()) {
+                    st.executeUpdate("UPDATE engineering_bom_item SET source_type='make', sub_bom_id=" + b
+                            + " WHERE bom_id=" + a);
+                }
+                conn.commit();
+            }
+            result = writer.get(20, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertTrue(result.contains("BOM_CYCLE"), "外层入口锁释放后必须重读已提交图并拒绝成环: " + result);
+        assertEquals(1L, db.queryForObject(
+                "SELECT COUNT(*) FROM engineering_bom_item WHERE sub_bom_id IS NOT NULL", Long.class));
     }
 
     @Test

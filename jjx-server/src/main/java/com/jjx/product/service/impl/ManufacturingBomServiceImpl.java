@@ -9,6 +9,7 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.product.domain.dto.EngineeringBomDTO;
+import com.jjx.product.domain.dto.EngineeringBomItemDTO;
 import com.jjx.product.domain.dto.ManufacturingBomSaveDTO;
 import com.jjx.product.domain.dto.ManufacturingSchemeChoiceDTO;
 import com.jjx.product.domain.entity.Product;
@@ -83,6 +84,8 @@ public class ManufacturingBomServiceImpl implements ManufacturingBomService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ManufacturingBomVO save(ManufacturingBomSaveDTO dto) {
+        // 新建 BOM 的 bom_id 尚未分配/提交，既有行不可能反向引用它，不会形成环；
+        // 因此只需 toBomDTO 的产品存在性读，无需取全局图锁。
         EngineeringBomDTO payload = toBomDTO(dto);
         Long bomId = bomService.createBomReturnId(payload);
         if (bomId == null) {
@@ -94,6 +97,11 @@ public class ManufacturingBomServiceImpl implements ManufacturingBomService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ManufacturingBomVO update(Long bomId, ManufacturingBomSaveDTO dto) {
+        // 外层事务入口先取图锁，必须早于本方法任何普通 SELECT：否则 MySQL RR 快照会早于锁建立，
+        // 内层 DFS 仍读旧快照，A→B / B→A 可各自通过。内层 updateBomWithDetail 重复取锁为同事务持有，无副作用。
+        if (hasExplicitSubBom(dto.getItems())) {
+            bomMapper.lockGraphForMutation();
+        }
         EngineeringBom existing = bomMapper.selectById(bomId);
         if (existing == null) {
             throw new BusinessException("制造BOM不存在（bomId=" + bomId + "）");
@@ -137,6 +145,17 @@ public class ManufacturingBomServiceImpl implements ManufacturingBomService {
         }
         Product product = productMapper.selectById(bom.getProductId());
         return product == null ? List.of() : readChoices(product.getMaterialSchemeJson());
+    }
+
+    /** 保存 DTO 是否包含显式下层方案引用；纯删除引用不会新增环。 */
+    private boolean hasExplicitSubBom(List<EngineeringBomItemDTO> items) {
+        if (items == null) return false;
+        for (EngineeringBomItemDTO row : items) {
+            if (row != null && !Boolean.TRUE.equals(row.getRemoveRequested()) && row.getSubBomId() != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private EngineeringBomDTO toBomDTO(ManufacturingBomSaveDTO dto) {
