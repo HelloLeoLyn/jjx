@@ -40,6 +40,19 @@ public class InventoryInboundItem extends BaseEntity {
     /** 统一库存物品ID */
     private Long inventoryItemId;
 
+    /** 卷材对应的库存位置行。 */
+    private Long stockItemId;
+    /** 物理卷身份，与来料批次独立。 */
+    private String rollNo;
+    /** 红冲原明细；只在反向凭证填写，不改原单。 */
+    private Long reversalOfItemId;
+
+    /** 实收入卷尺寸快照；退回长度保存在退料单，不覆盖原卷长。 */
+    private BigDecimal rollWidthMm;
+    private BigDecimal rollLengthM;
+    /** 普通余卷退料对应的已过账原出库明细。 */
+    private Long sourceOutboundItemId;
+
     /** 物料ID */
     private Long materialId;
 

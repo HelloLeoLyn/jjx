@@ -79,8 +79,7 @@
             clearable
             style="width: 120px"
           >
-            <el-option label="生效" :value="1" />
-            <el-option label="未生效" :value="0" />
+            <el-option v-for="state in StockItemStatusEnum.items" :key="state.value" :label="state.label" :value="state.value" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -98,6 +97,9 @@
     <el-card class="table-card" shadow="never">
       <el-table v-loading="loading" :data="displayList" border style="width: 100%" max-height="420">
         <el-table-column label="批次号" prop="batchNo" width="150" show-overflow-tooltip />
+        <el-table-column label="卷号" prop="rollNo" width="150" show-overflow-tooltip />
+        <el-table-column label="原始尺寸" width="160"><template #default="{ row }">{{ row.rollNo ? `${row.rollWidthMm}mm × ${row.originalRollLengthM}m` : '-' }}</template></el-table-column>
+        <el-table-column label="剩余长度(m)" width="120"><template #default="{ row }">{{ row.rollNo ? row.remainingRollLengthM : '-' }}<el-tag v-if="row.partialRoll" size="small" type="warning">余卷</el-tag></template></el-table-column>
         <el-table-column label="仓库" prop="warehouseName" width="100" />
         <el-table-column label="库位" width="100">
           <template #default="{ row }">{{ row.locationName || '-' }}</template>
@@ -147,7 +149,7 @@
         </el-table-column>
         <el-table-column label="最后入库" prop="lastInboundTime" width="150" align="center" />
         <el-table-column label="最后出库" prop="lastOutboundTime" width="150" align="center" />
-        <el-table-column label="操作" width="110" align="center" fixed="right">
+        <el-table-column label="操作" width="170" align="center" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="canViewFlow"
@@ -157,6 +159,7 @@
               @click="openFlow(row)"
             >变动流水</el-button>
             <span v-else class="no-perm">-</span>
+            <el-button v-if="row.rollNo && row.lastOutboundItemId && isExhausted(row) && canReturnRoll" link type="primary" size="small" @click="returnRow = row; returnVisible = true">余卷退料</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -176,14 +179,31 @@
       :inventory-item-id="flowInventoryItemId"
       :batch-no="flowBatchNo"
     />
+    <RollReturnDialog v-model="returnVisible" :row="returnRow" @success="refreshAll(); getMaterialSummary()" />
+    <el-dialog v-model="rollFlowVisible" :title="`卷材流水：${rollFlowNo}`" width="1000px" append-to-body>
+      <el-table :data="rollFlows" border>
+        <el-table-column prop="sourceNo" label="单据号" width="160" />
+        <el-table-column prop="transactionTime" label="时间" width="170" />
+        <el-table-column label="收(㎡)"><template #default="{ row }">{{ Number(row.quantity) > 0 ? row.quantity : '-' }}</template></el-table-column>
+        <el-table-column label="发(㎡)"><template #default="{ row }">{{ Number(row.quantity) < 0 ? Math.abs(Number(row.quantity)) : '-' }}</template></el-table-column>
+        <el-table-column prop="afterQuantity" label="该库位结存(㎡)" />
+        <el-table-column prop="unitCost" label="过账单位成本" />
+        <el-table-column label="操作" width="110"><template #default="{ row }">
+          <el-button v-if="canReverse(row)" link type="danger" @click="reverseFlow(row)">红冲</el-button>
+        </template></el-table-column>
+      </el-table>
+    </el-dialog>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { stockItemApi } from '@/api/inventory/stockItem'
+import { stockItemApi, rollApi } from '@/api/inventory/stockItem'
+import type { RollFlow } from '@/api/inventory/stockItem'
+import RollReturnDialog from './RollReturnDialog.vue'
+
 import { stockApi } from '@/api/inventory/stock'
 import { formatCurrency } from '@/utils/format'
 import { useUserStore } from '@/store/modules/user'
@@ -217,6 +237,24 @@ const emit = defineEmits<{
 }>()
 
 const userStore = useUserStore()
+const canReturnRoll = computed(() => userStore.hasPermission('inventory:inbound:add') && userStore.hasPermission('inventory:inbound:edit'))
+const returnVisible = ref(false)
+const returnRow = ref<StockItemVO>()
+const rollFlowVisible = ref(false)
+const rollFlowNo = ref('')
+const rollFlows = ref<RollFlow[]>([])
+const canReverse = (row: RollFlow) => !!row.sourceItemId && (
+  (row.sourceType === 'roll_return' && Number(row.quantity) > 0 && canReturnRoll.value) ||
+  (row.transactionType.toLowerCase() === 'outbound' && Number(row.quantity) < 0 && userStore.hasPermission('inventory:outbound:add') && userStore.hasPermission('inventory:outbound:edit'))
+)
+const reverseFlow = async (row: RollFlow) => {
+  const { value: reason } = await ElMessageBox.prompt('请填写红冲原因', '红冲卷材凭证', { inputValidator: (v) => !!v?.trim() || '请填写原因' })
+  if (row.sourceType === 'roll_return') await rollApi.reverseReturn(String(row.sourceItemId), reason)
+  else await rollApi.reverseIssue(String(row.sourceItemId), reason)
+  ElMessage.success('已生成红冲凭证')
+  rollFlows.value = (await rollApi.flow(rollFlowNo.value)).data || []
+  await refreshAll(); await getMaterialSummary()
+}
 const canViewFlow = computed(() => userStore.hasPermission('inventory:transaction:view'))
 
 const dialogVisible = ref(props.visible)
@@ -275,7 +313,7 @@ const locationOptions = ref<{ value: string; label: string }[]>([])
 
 function fmt(v?: number | string | null): string {
   const n = Number(v ?? 0)
-  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : '0'
+  return Number.isFinite(n) ? String(Math.round(n * 10000) / 10000) : '0'
 }
 
 function isExhausted(row: StockItemVO): boolean {
@@ -293,6 +331,7 @@ const summaryIssued = computed(() =>
 /** 表格展示数据：把流水派生的收/发并到批次行上 + 可选隐藏 0 结存 */
 const displayList = computed(() => {
   const rows = itemList.value.map((row) => {
+    if (row.rollNo) return row
     const s = flowSummary.value[row.batchNo]
     return {
       ...row,
@@ -378,7 +417,13 @@ const handleReset = () => {
 }
 
 // 打开变动流水
-const openFlow = (row: StockItemVO) => {
+const openFlow = async (row: StockItemVO) => {
+  if (row.rollNo) {
+    rollFlowNo.value = row.rollNo
+    rollFlows.value = (await rollApi.flow(row.rollNo)).data || []
+    rollFlowVisible.value = true
+    return
+  }
   flowInventoryItemId.value = String(row.inventoryItemId || props.inventoryItemId || '')
   flowBatchNo.value = row.batchNo
   flowVisible.value = true
@@ -388,6 +433,8 @@ const openFlow = (row: StockItemVO) => {
 const handleClose = () => {
   dialogVisible.value = false
   flowVisible.value = false
+  rollFlowVisible.value = false
+  returnVisible.value = false
 }
 
 // 判断是否临期（30天内）

@@ -63,6 +63,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private final com.jjx.event.EventPublisher eventPublisher;
     private final InventoryOutboundItemMapper outboundItemMapper;
     private final InventoryStockItemMapper stockItemMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.inventory.service.InventoryRollService rollService;
     private final InventoryStorageLocationMapper storageLocationMapper;
     private final InventoryStockMapper stockMapper;
     private final InventoryTransactionMapper transactionMapper;
@@ -378,6 +380,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 item.setUnit((String) m.get("unit"));
                 if (m.get("quantity") != null) item.setQuantity(new BigDecimal(m.get("quantity").toString()));
                 if (m.get("unitPrice") != null) item.setUnitPrice(new BigDecimal(m.get("unitPrice").toString()));
+                if (m.get("stockItemId") != null || m.get("rollNo") != null) {
+                    rollService.normalizeOutbound(order, item, m);
+                }
                 BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
                 BigDecimal price = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
                 item.setAmount(qty.multiply(price));
@@ -390,7 +395,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 totalAmt = totalAmt.add(item.getAmount());
             }
             if (!items.isEmpty()) {
-                outboundItemMapper.batchInsert(items);
+                if (items.stream().anyMatch(i -> i.getRollNo() != null)) {
+                    items.forEach(outboundItemMapper::insert);
+                } else {
+                    outboundItemMapper.batchInsert(items);
+                }
                 order.setTotalQuantity(totalQty);
                 order.setTotalAmount(totalAmt);
                 outboundOrderMapper.updateById(order);
@@ -451,6 +460,9 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     item.setUnit((String) m.get("unit"));
                     if (m.get("quantity") != null) item.setQuantity(new BigDecimal(m.get("quantity").toString()));
                     if (m.get("unitPrice") != null) item.setUnitPrice(new BigDecimal(m.get("unitPrice").toString()));
+                    if (m.get("stockItemId") != null || m.get("rollNo") != null) {
+                        rollService.normalizeOutbound(order, item, m);
+                    }
                     BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
                     BigDecimal price = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
                     item.setAmount(qty.multiply(price));
@@ -463,7 +475,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                     totalAmt = totalAmt.add(item.getAmount());
                 }
                 if (!items.isEmpty()) {
-                    outboundItemMapper.batchInsert(items);
+                    if (items.stream().anyMatch(i -> i.getRollNo() != null)) {
+                        items.forEach(outboundItemMapper::insert);
+                    } else {
+                        outboundItemMapper.batchInsert(items);
+                    }
                     order.setTotalQuantity(totalQty);
                     order.setTotalAmount(totalAmt);
                     outboundOrderMapper.updateById(order);
@@ -545,12 +561,20 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 releasePickStock(item.getMaterialId(), item.getQuantity());
             }
 
+            if (item.getStockItemId() != null || item.getRollNo() != null) {
+                InventoryStockItem stock = rollService.issueStock(order, item);
+                if (samplePick) throw new BusinessException("打样逐卷实发需要包装量与需求量分离，请使用专门的整卷领料流程");
+                applyOutboundDelta(stock, item.getQuantity(), order, item, operatorId, operatorName);
+                outboundItemMapper.updateById(item);
+                continue;
+            }
             BigDecimal remaining = item.getQuantity();
             // DEV-693：明细指定了库位 → 先按该库位 FIFO 扣减，不足再从全局 FIFO 补齐
             if (item.getLocationId() != null) {
                 List<InventoryStockItem> locItems = stockItemMapper.selectFIFOAvailableByInventoryItemAndLocation(item.getInventoryItemId(), item.getLocationId());
                 for (InventoryStockItem si : locItems) {
                     if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+                    if (si.getRollNo() != null) throw new BusinessException("物料含逐卷库存，请明确选择卷号并按整卷实发，不能自动拆卷");
                     BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
                     if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
                     if (samplePick) {
@@ -567,6 +591,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                 List<InventoryStockItem> fifoItems = stockItemMapper.selectFIFOAvailableByInventoryItemId(item.getInventoryItemId());
                 for (InventoryStockItem si : fifoItems) {
                     if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
+                    if (si.getRollNo() != null) throw new BusinessException("物料含逐卷库存，请明确选择卷号并按整卷实发，不能自动拆卷");
                     BigDecimal deductQty = remaining.min(si.getQuantity().subtract(si.getReservedQuantity()));
                     if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
                     if (samplePick) {
@@ -626,6 +651,10 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             alertService.checkSafeStockAlert();
         } catch (Exception e) {
             log.warn("安全库存检查失败: {}", e.getMessage());
+        }
+        if (outItems.stream().anyMatch(i -> i.getRollNo() != null)) {
+            order.setTotalAmount(outItems.stream().map(InventoryOutboundItem::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add));
         }
         order.setOrderStatus(InventoryOrderStatusEnum.COMPLETED.getValue());
         boolean updated = outboundOrderMapper.updateById(order) > 0;
@@ -785,6 +814,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         tx.setSourceType(order.getSourceType());
         tx.setSourceId(order.getOutboundId());
         tx.setSourceNo(order.getOutboundNo());
+        tx.setSourceItemId(item.getItemId());
         tx.setUnitCost(item.getUnitPrice());
         tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
         tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getUsername());
@@ -2585,6 +2615,8 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     private static OutboundItemVO convertToItemVO(InventoryOutboundItem item, com.jjx.inventory.mapper.InventoryStorageLocationMapper locMapper) {
         if (item == null) return null;
         OutboundItemVO vo = new OutboundItemVO();
+        vo.setStockItemId(item.getStockItemId()); vo.setRollNo(item.getRollNo());
+        vo.setReversalOfItemId(item.getReversalOfItemId());
         vo.setOutboundItemId(item.getItemId());
         vo.setOutboundId(item.getOutboundId());
         vo.setMaterialId(item.getMaterialId());

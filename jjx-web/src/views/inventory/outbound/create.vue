@@ -119,12 +119,20 @@
             <el-input v-model="row.batchNo" placeholder="批次号" />
           </template>
         </el-table-column>
+        <el-table-column label="整卷实发" width="240">
+          <template #default="{ row }">
+            <el-select v-model="row.stockItemId" placeholder="搜索卷号（非卷材留空）" clearable filterable remote :remote-method="(q: string) => loadRolls(row, q)" @visible-change="(open: boolean) => open && loadRolls(row)" @change="selectRoll(row)">
+              <el-option v-for="roll in row.rollOptions || []" :key="roll.itemId" :value="roll.itemId" :label="`${roll.rollNo} / ${roll.remainingRollLengthM}m / ${roll.quantity}㎡`" />
+            </el-select>
+          </template>
+        </el-table-column>
         <el-table-column label="数量" width="120" align="right">
           <template #default="{ row }">
             <el-input-number
               v-model="row.quantity"
+              :disabled="!!row.stockItemId"
               :min="0.001"
-              :precision="3"
+              :precision="4"
               :step="1"
               controls-position="right"
               style="width: 100%"
@@ -198,6 +206,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import { stockItemApi } from '@/api/inventory/stockItem'
+import type { StockItemVO } from '@/types/inventory/stock'
 import { outboundApi } from '@/api/inventory/outbound'
 import { warehouseApi } from '@/api/inventory/warehouse'
 import { locationApi } from '@/api/inventory/location'
@@ -215,6 +225,9 @@ const isEdit = computed(() => !!route.params.id)
 const outboundId = computed(() => String(route.params.id || ''))
 
 interface OutboundItemRow {
+  stockItemId?: string
+  rollNo?: string
+  rollOptions?: StockItemVO[]
   /** 库存物品ID（成品/原材料的库存身份，出库确认按它扣减）（dev-20260930-038） */
   inventoryItemId: string
   materialId: string
@@ -288,6 +301,8 @@ const loadDetail = async () => {
       const items: any[] = d.items || []
       if (items.length > 0) {
         formData.items = items.map((it) => ({
+          stockItemId: it.stockItemId ? String(it.stockItemId) : undefined,
+          rollNo: it.rollNo || undefined,
           inventoryItemId: it.inventoryItemId ? String(it.inventoryItemId) : '',
           materialId: String(it.materialId ?? ''),
           materialCode: it.materialCode || '',
@@ -336,6 +351,9 @@ const loadWarehouses = async () => {
 const handleWarehouseChange = async (warehouseId: string) => {
   formData.items.forEach((item) => {
     item.locationId = ''
+    item.stockItemId = undefined
+    item.rollNo = undefined
+    item.rollOptions = []
   })
   locationList.value = []
 
@@ -347,12 +365,30 @@ const handleWarehouseChange = async (warehouseId: string) => {
 // 注意：id 已由 v-model 交回（row.inventoryItemId），这里只回填展示字段，**不要**因取不到明细而清 id
 const handleItemChange = (row: OutboundItemRow, item: any) => {
   if (!item) return
+  row.stockItemId = undefined
+  row.rollNo = undefined
+  row.rollOptions = []
   row.inventoryItemId = String(item.inventoryItemId ?? row.inventoryItemId ?? '')
   row.materialId = item.materialId ? String(item.materialId) : ''
   row.materialCode = item.materialCode || ''
   row.materialName = item.materialName || ''
   row.specification = item.specification || ''
   row.unit = item.unit || ''
+}
+
+const loadRolls = async (row: OutboundItemRow, rollNo?: string) => {
+  if (!row.inventoryItemId || !formData.warehouseId) return
+  const res = await stockItemApi.list({ inventoryItemId: row.inventoryItemId, warehouseId: formData.warehouseId, current: 1, pageSize: 100, rollOnly: true, positiveOnly: true, rollNo })
+  row.rollOptions = (res.data?.records || []).filter((roll) => roll.rollNo && Number(roll.availableQuantity) > 0)
+}
+const selectRoll = (row: OutboundItemRow) => {
+  const roll = row.rollOptions?.find((r) => String(r.itemId) === String(row.stockItemId))
+  row.rollNo = roll?.rollNo
+  if (!roll) return
+  row.quantity = Number(roll.quantity)
+  row.batchNo = roll.batchNo
+  row.locationId = roll.locationId ? String(roll.locationId) : ''
+  row.unitPrice = Number(roll.unitCost || 0)
 }
 
 // 出库类型 → 库存物品类型：销售发货=成品；生产领料=原材料；其余不限
@@ -383,6 +419,9 @@ watch(
     const selected = formData.items.filter((it) => it.inventoryItemId)
     if (!selected.length) return
     formData.items.forEach((it) => {
+      it.stockItemId = undefined
+      it.rollNo = undefined
+      it.rollOptions = []
       it.inventoryItemId = ''
       it.materialId = ''
       it.materialCode = ''
@@ -451,6 +490,8 @@ const handleSubmit = async () => {
           sourceNo: formData.sourceNo || undefined,
           remark: formData.remark || undefined,
           items: formData.items.map((item) => ({
+            stockItemId: item.stockItemId || undefined,
+            rollNo: item.rollNo || undefined,
             inventoryItemId: item.inventoryItemId || undefined,
             materialId: item.materialId,
             materialCode: item.materialCode,

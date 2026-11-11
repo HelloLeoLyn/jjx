@@ -55,44 +55,71 @@ SELECT COUNT(*) FROM (
    GROUP BY s.stock_id, s.total_quantity, s.total_reserved
   HAVING s.total_quantity <> IFNULL(SUM(i.quantity), 0)
       OR s.total_reserved <> IFNULL(SUM(i.reserved_quantity), 0)
-) d;" 2>/dev/null || echo "ERR")
+) d;" || echo "ERR")
 
 orphan_detail=$(M "
 SELECT COUNT(*) FROM inventory_stock_item i
  WHERE i.status = 1 AND i.quantity <> 0
-   AND NOT EXISTS (SELECT 1 FROM inventory_stock s WHERE s.inventory_item_id = i.inventory_item_id);" 2>/dev/null || echo "ERR")
+   AND NOT EXISTS (SELECT 1 FROM inventory_stock s WHERE s.inventory_item_id = i.inventory_item_id);" || echo "ERR")
 
 orphan_summary=$(M "
 SELECT COUNT(*) FROM inventory_stock s
- WHERE NOT EXISTS (SELECT 1 FROM inventory_stock_item i WHERE i.inventory_item_id = s.inventory_item_id AND i.status = 1);" 2>/dev/null || echo "ERR")
+ WHERE NOT EXISTS (SELECT 1 FROM inventory_stock_item i WHERE i.inventory_item_id = s.inventory_item_id AND i.status = 1);" || echo "ERR")
 
-# 4) 批次结存 vs 流水派生结存（dev-20260923-017）：以批次身份 = inventory_item_id + batch_no
-ledger_drift=$(M "
-SELECT COUNT(*) FROM (
-  SELECT i.item_id
-    FROM inventory_stock_item i
-    LEFT JOIN (
-      SELECT inventory_item_id, batch_no, SUM(quantity) AS flow_qty
-        FROM inventory_transaction
-       GROUP BY inventory_item_id, batch_no
-    ) t ON t.inventory_item_id = i.inventory_item_id AND t.batch_no = i.batch_no
-   WHERE i.quantity <> IFNULL(t.flow_qty, 0)
-) d;" 2>/dev/null || echo "ERR")
+# 4) 先按批次汇总所有位置/卷，再比流水；逐卷另按 stock_item_id 严格对账。
+# 不把历史无行ID流水分配给新卷，不回写历史。
+batch_drift_sql="
+  SELECT i.inventory_item_id, i.batch_no, i.stock_qty, IFNULL(t.flow_qty,0) AS flow_qty
+    FROM (SELECT inventory_item_id,batch_no,SUM(quantity) AS stock_qty
+            FROM inventory_stock_item GROUP BY inventory_item_id,batch_no) i
+    LEFT JOIN (SELECT inventory_item_id,batch_no,SUM(quantity) AS flow_qty
+                 FROM inventory_transaction GROUP BY inventory_item_id,batch_no) t
+      ON t.inventory_item_id=i.inventory_item_id AND t.batch_no <=> i.batch_no
+   WHERE i.stock_qty <> IFNULL(t.flow_qty,0)"
+ledger_drift=$(M "SELECT COUNT(*) FROM ($batch_drift_sql) d;" || echo "ERR")
 
-# 5) 有流水、无批次行（孤儿流水）
-orphan_tx=$(M "
-SELECT COUNT(*) FROM (
-  SELECT t.inventory_item_id, t.batch_no
+# 5) 原批次孤儿检查保留，再加新卷流水的行/卷/位置身份一致性。
+orphan_batch_sql="
+  SELECT t.inventory_item_id,t.batch_no
     FROM inventory_transaction t
-   WHERE NOT EXISTS (
-      SELECT 1 FROM inventory_stock_item i
-       WHERE i.inventory_item_id = t.inventory_item_id AND i.batch_no = t.batch_no)
-   GROUP BY t.inventory_item_id, t.batch_no
-) d;" 2>/dev/null || echo "ERR")
+   WHERE NOT EXISTS (SELECT 1 FROM inventory_stock_item i
+     WHERE i.inventory_item_id=t.inventory_item_id AND i.batch_no <=> t.batch_no)
+   GROUP BY t.inventory_item_id,t.batch_no"
+orphan_tx=$(M "SELECT COUNT(*) FROM ($orphan_batch_sql) d;" || echo "ERR")
+
+roll_columns=$(M "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE()
+  AND ((table_name='inventory_stock_item' AND column_name='roll_no')
+    OR (table_name='inventory_transaction' AND column_name IN ('stock_item_id','roll_no','source_item_id')));" || echo "ERR")
+roll_drift=0
+roll_orphan=0
+if [ "$roll_columns" = "4" ]; then
+  roll_drift_sql="SELECT i.item_id,i.roll_no,i.quantity,IFNULL(t.flow_qty,0) AS flow_qty
+    FROM inventory_stock_item i LEFT JOIN
+      (SELECT stock_item_id,roll_no,SUM(quantity) AS flow_qty FROM inventory_transaction
+        WHERE stock_item_id IS NOT NULL AND roll_no IS NOT NULL GROUP BY stock_item_id,roll_no) t
+      ON t.stock_item_id=i.item_id AND t.roll_no=i.roll_no
+    WHERE i.roll_no IS NOT NULL AND i.quantity <> IFNULL(t.flow_qty,0)"
+  roll_orphan_sql="SELECT t.transaction_id,t.stock_item_id,t.roll_no
+    FROM inventory_transaction t LEFT JOIN inventory_stock_item i ON i.item_id=t.stock_item_id
+    WHERE (t.roll_no IS NOT NULL OR t.stock_item_id IS NOT NULL) AND
+      (i.item_id IS NULL OR (t.roll_no IS NOT NULL AND t.source_item_id IS NULL) OR NOT (t.inventory_item_id <=> i.inventory_item_id)
+       OR NOT (t.batch_no <=> i.batch_no) OR NOT (t.warehouse_id <=> i.warehouse_id)
+       OR NOT (t.location_id <=> i.location_id) OR NOT (t.roll_no <=> i.roll_no))"
+  roll_drift=$(M "SELECT COUNT(*) FROM ($roll_drift_sql) d;" || echo "ERR")
+  roll_orphan=$(M "SELECT COUNT(*) FROM ($roll_orphan_sql) d;" || echo "ERR")
+  if [[ "$ledger_drift" =~ ^[0-9]+$ && "$roll_drift" =~ ^[0-9]+$ ]]; then ledger_drift=$((ledger_drift + roll_drift)); else ledger_drift=ERR; fi
+  if [[ "$orphan_tx" =~ ^[0-9]+$ && "$roll_orphan" =~ ^[0-9]+$ ]]; then orphan_tx=$((orphan_tx + roll_orphan)); else orphan_tx=ERR; fi
+elif [ "$roll_columns" = "0" ]; then
+  echo "卷材迁移未应用：本次核对旧结构批次合计；未验证逐卷生命周期。"
+else
+  echo "卷材结构不完整，无法执行逐行身份校验：$roll_columns/4"
+  ledger_drift=ERR
+fi
 
 if [ "$drift_rows" = "ERR" ] || [ "$orphan_detail" = "ERR" ] || [ "$orphan_summary" = "ERR" ] \
    || [ "$ledger_drift" = "ERR" ] || [ "$orphan_tx" = "ERR" ]; then
-  echo "对账 SQL 执行失败（表结构变动？）—— 不阻塞"
+  echo "对账 SQL 执行失败（表结构变动？）"
+  [ "$STRICT" = true ] && exit 1
   exit 0
 fi
 
@@ -129,26 +156,17 @@ echo "-- 3) 有汇总、无明细（脏行）：$orphan_summary（期望 0）"
 total=$((drift_rows + orphan_detail + orphan_summary + ledger_drift + orphan_tx))
 echo
 echo "-- 4) 批次结存 ≠ 流水派生结存（流水是唯一真源）：$ledger_drift（期望 0）"
-[ "$ledger_drift" -gt 0 ] && M "
-  SELECT i.material_code, i.batch_no, i.quantity AS 批次结存, IFNULL(t.flow_qty,0) AS 流水派生,
-         i.quantity - IFNULL(t.flow_qty,0) AS 差额
-    FROM inventory_stock_item i
-    LEFT JOIN (
-      SELECT inventory_item_id, batch_no, SUM(quantity) AS flow_qty
-        FROM inventory_transaction
-       GROUP BY inventory_item_id, batch_no
-    ) t ON t.inventory_item_id = i.inventory_item_id AND t.batch_no = i.batch_no
-   WHERE i.quantity <> IFNULL(t.flow_qty, 0);"
+if [ "$ledger_drift" -gt 0 ]; then
+  M "$batch_drift_sql;"
+  [ "$roll_drift" -gt 0 ] && M "$roll_drift_sql;"
+fi
 
 echo
 echo "-- 5) 有流水、无批次行（孤儿流水）：$orphan_tx（期望 0）"
-[ "$orphan_tx" -gt 0 ] && M "
-  SELECT t.inventory_item_id, t.material_code, t.batch_no, SUM(t.quantity) AS 流水合计
-    FROM inventory_transaction t
-   WHERE NOT EXISTS (
-      SELECT 1 FROM inventory_stock_item i
-       WHERE i.inventory_item_id = t.inventory_item_id AND i.batch_no = t.batch_no)
-   GROUP BY t.inventory_item_id, t.material_code, t.batch_no;"
+if [ "$orphan_tx" -gt 0 ]; then
+  M "$orphan_batch_sql;"
+  [ "$roll_orphan" -gt 0 ] && M "$roll_orphan_sql;"
+fi
 
 echo
 if [ "$total" -eq 0 ]; then
