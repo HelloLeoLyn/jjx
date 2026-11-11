@@ -17,6 +17,7 @@ import com.jjx.product.domain.vo.EngineeringBomVO;
 import com.jjx.product.domain.vo.ManufacturingBomVO;
 import com.jjx.product.domain.vo.ManufacturingSchemeVO;
 import com.jjx.product.enums.ManufacturingOutputType;
+import com.jjx.product.enums.ProductEnums;
 import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.mapper.ProductMapper;
 import com.jjx.product.service.IEngineeringBomService;
@@ -233,7 +234,7 @@ public class ManufacturingBomServiceImpl implements ManufacturingBomService {
                     dto.setBomCode(child.getBomCode());
                     dto.setBomVersion(child.getBomVersion());
                     dto.setApproveStatus(child.getApproveStatus());
-                    if (!Objects.equals(child.getApproveStatus(), 3)) {
+                    if (!Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
                         dto.setWarning("SUB_BOM_NOT_APPROVED：所选方案未批准，父 BOM 提交/批准前需先批准");
                     }
                 } else {

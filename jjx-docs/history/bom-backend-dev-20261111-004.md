@@ -14,7 +14,7 @@
 
 1）产出身份：engineering_bom、engineering_routing、product_work_spec_version 增加 output_type/output_id；PRODUCT 兼容历史 product_id，MATERIAL 使用 material_id 且 product_id 允许为空。新增 ManufacturingOutputType 枚举，不复用 BomType/bom_type。
 2）制造方案：新增 /engineering/bom/manufacturing 保存/编辑、/manufacturing/options 候选方案、/{bomId}/adopt 采用 token、/{bomId}/scheme-choices 已保存选择。保存复用 IEngineeringBomService 同一事务和行锁，不自动发布、不改父 BOM、不生成库存/工单。
-3）显式下层引用：engineering_bom_item.sub_bom_id + 索引；保存时校验下层存在、产出 MATERIAL 且 output_id=本行 material_id、自指/祖先环/深度 32；提交/批准再次全图 DFS 并要求下层已批准。buy 挂方案、make 无方案分别阻断；既有未改 make 行保留可保存行为。
+3）显式下层引用：engineering_bom_item.sub_bom_id + 索引；保存时校验下层存在、产出 MATERIAL 且 output_id=本行 material_id、自指/祖先环（迭代三色环校验，不设固定业务深度）；提交/批准再次全图校验并要求下层已批准。buy 挂方案、make 无方案分别阻断；既有未改 make 行保留可保存行为。
 4）主方案同事务：父 BOM 新增/编辑时对 product 行 SELECT ... FOR UPDATE，按 scheme_revision 乐观锁更新 JSON；采用 token 不落库；父取消不删除独立方案；父提交/批准校验 JSON 引用方案已批准且产出匹配。
 5）精度与单位：模数/基数要求 >0、最多 4 位小数，超精度明确报 MODULE_QTY_INVALID/BASE_QTY_INVALID，不落库静默归零；quantity/applied/actual_issue 仍为展示快照，权威是 module/base/loss。新行/变更行跨单位必须有 unit_factor>0 与依据；历史未改行不强制重解释单位。
 6）路线/规范：路线按 output 身份失效/查询当前版本，PRODUCT 才同步 product.current_route_id；作业规范发布写入 PRODUCT 身份，并新增按 output 解析最新发布版本与显式版本归属校验（MATERIAL 缺失返回 MATERIAL_WORK_SPEC_NOT_PUBLISHED）。
@@ -30,9 +30,30 @@
 
 必跑：git diff --check、npm run check:docs（jjx-web）。纯后端未跑前端大构建。
 
+## 退修复验（2026-11-11 14:1x，同卡 dev-20261111-004）
+
+Codex 独立复跑 16 项通过后审查退修，本次在原卡、原白名单内修正，不新建卡、不扩展 D/F。
+
+1）主方案按 product+material 隔离：`applySchemeChoices` 不再批量清空 JSON 全部 `isPrimary`，只写当前 materialId 节点；同产品两种材料可各自保留主方案，改一个不影响另一个，不同产品互不影响。
+2）父 BOM 实际采用与产品主方案分离：`isPrimary=false/null` 仅表示父 BOM 采用，实际采用只落 `engineering_bom_item.sub_bom_id`，不覆盖产品主方案；`isPrimary=true` 只替换本物料主方案；新增可选 `cancelPrimary=true` 只移除本物料主方案（与设主不能同时提交）。只有实际写 JSON 才要求 `schemeRevision`，缺失返回 400 `SCHEME_REVISION_REQUIRED`，旧版本返回 409 `CONCURRENT_MODIFICATION`；读写 revision 一致。旧前端不传 `schemeChoices` 的行为不变；候选仍由 `/manufacturing/options` 按 output 全量查询，不塞入 JSON。
+3）提交/批准只校验本 BOM 实际引用（行 `sub_bom_id`）及本 BOM 投入物料对应的主方案；未被本 BOM 使用的候选草稿不再阻断其他 BOM。坏 JSON 不再 catch 后返回空：读取/校验明确抛出 `SCHEME_JSON_INVALID` 并保留原数据。
+4）移除 `MAX_SUB_BOM_DEPTH=32` 固定业务上限：改为迭代显式栈 + 三色标记环校验，节点查询按 bomId 缓存；共享 DAG 不误判，深链不栈溢出。
+5）`POST /engineering/bom/manufacturing/{bomId}/adopt` 由 `engineering:bom:view` 改为 `engineering:bom:add` / `engineering:bom:edit` OR；只读仍可看 options/detail/scheme-choices 但不能 adopt。service 读取方案状态复用 `ProductEnums.BomStatus.APPROVED`，无新增数字状态字面量。
+
+稳定接口变更清单：
+- 权限：adopt 从 view 改为 add/edit OR（options、detail、scheme-choices 保持 view）。
+- DTO：`ManufacturingSchemeChoiceDTO.cancelPrimary` 新增可选布尔；其余字段不变。
+- 保存语义：`isPrimary=false/null` 不再写产品 JSON；写 JSON 必带 `schemeRevision`；坏 JSON 返回 `SCHEME_JSON_INVALID`。
+- 环校验：不再有 32 层上限，返回 `BOM_CYCLE` 的深链闭环照旧阻断。
+
+验证证据：
+- 失败前：`MAVEN_OPTS=-Xmx2g mvn -o -q -Dtest=ManufacturingBomSchemeTest,ManufacturingBomCycleTest -DargLine=-Xmx512m -DforkCount=1 test` → 16 项，5 failures + 3 errors（跨物料主方案被清、非主采用覆盖主方案、缺 revision 通过、坏 JSON 静默通过、view 可 adopt、40 层链触发 BOM_DEPTH_EXCEEDED）。
+- 通过后：同命令 18 项（补旧调用/采用不落库 2 项后），0 failures / 0 errors；定向回归 17 个既有测试类 108 项，0 failures / 0 errors / 1 skipped。
+- 新增反例覆盖：同产品两材料各主方案与改一个不影响另一个、两产品隔离；非主采用不改主、主方案变更/取消；未用草稿不阻断其他 BOM submit、坏 JSON 阻断且原文保留、缺/旧 revision 拒绝；40 层合法链通过、40 层闭环拒绝、共享子图不误判；view-only adopt 403 且 service 不被调用、edit 可 adopt。
+
 ## 未验证项与遗留
 
-1）迁移 356 未执行。依据用户 2026-09-28 备份口径与本次派发约束，结构变更需用户手工全库备份后才能通过 scripts/db-migrate.sh 执行；本卡没有备份证据，不执行 DDL。
+1）迁移 356 已由外部在目标库账本记账并归档；本次修复未重复执行、未改动 356 文件及备份 WIP。真实业务库保存/审批/回读仍未由本卡重新验证。
 2）未启动/重启任何服务，未调用真实 HTTP 接口。代码依赖 356 的新列，迁移前不得部署或启动新构建。
 3）未做真实业务库保存/审批/回读；H2 测试不能冒充真实 DB 闭环。
 4）未订正 inventory_item MATERIAL 身份错位（7/7 编码名称不一致），F 阶段仍被阻断。

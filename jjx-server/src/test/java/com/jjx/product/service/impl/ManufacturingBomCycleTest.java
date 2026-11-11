@@ -177,6 +177,58 @@ class ManufacturingBomCycleTest {
     }
 
     @Test
+    void deepLegalChainBeyond32LevelsPasses() {
+        long previous = -1L;
+        long top = -1L;
+        for (int i = 1; i <= 40; i++) {
+            long output = 5000L + i;
+            EngineeringBomItemDTO row = previous < 0
+                    ? row(100L, "buy", null)
+                    : row(5000L + i - 1, "make", previous);
+            top = createScheme("CHAIN-" + i, output, row);
+            previous = top;
+        }
+        assertTrue(top > 0, "40 层合法显式链不应被固定深度上限拒绝");
+    }
+
+    @Test
+    void deepClosedLoopRejectedWithoutDepthLimit() {
+        long previous = -1L;
+        long first = -1L;
+        long top = -1L;
+        for (int i = 1; i <= 40; i++) {
+            long output = 6000L + i;
+            EngineeringBomItemDTO row = previous < 0
+                    ? row(100L, "buy", null)
+                    : row(6000L + i - 1, "make", previous);
+            long created = createScheme("LOOP-" + i, output, row);
+            if (first < 0) first = created;
+            previous = created;
+            top = created;
+        }
+        final long firstBom = first;
+        final long topBom = top;
+        var ex = assertThrows(BusinessException.class,
+                () -> service.updateBomWithDetail(updatePayload(firstBom, 6001, row(6040, "make", topBom))));
+        assertTrue(ex.getMessage().contains("BOM_CYCLE"), ex.getMessage());
+    }
+
+    @Test
+    void sharedSubgraphIsNotReportedAsCycle() {
+        long d = createScheme("SHARED-D", 7004, row(100, "buy", null));
+        long b = createScheme("SHARED-B", 7002, row(7004, "make", d));
+        long c = createScheme("SHARED-C", 7003, row(7004, "make", d));
+        var a = new EngineeringBomDTO();
+        a.setBomCode("SHARED-A");
+        a.setBomName("SHARED-A");
+        a.setBomVersion("V1.0");
+        a.setOutputType("MATERIAL");
+        a.setOutputId(7001L);
+        a.setItems(List.of(row(7002, "make", b), row(7003, "make", c)));
+        assertNotNull(service.createBomReturnId(a), "共享 DAG 不是环，不应被误判");
+    }
+
+    @Test
     void unchangedHistoricalMakeRowCanStillBeSaved() {
         long a = createScheme("LEGACY", 349, row(110, "buy", null));
         db.update("UPDATE engineering_bom_item SET source_type='make', sub_bom_id=NULL WHERE bom_id=?", a);

@@ -1,9 +1,14 @@
 package com.jjx.product.service.impl;
 
+import cn.dev33.satoken.interceptor.SaInterceptor;
+import cn.dev33.satoken.stp.StpLogic;
+import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjx.common.exception.BusinessException;
+import com.jjx.engineering.controller.BomController;
 import com.jjx.engineering.domain.entity.EngineeringBom;
 import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.inventory.domain.InventoryMaterial;
@@ -13,6 +18,7 @@ import com.jjx.product.domain.dto.EngineeringBomDTO;
 import com.jjx.product.domain.dto.EngineeringBomItemDTO;
 import com.jjx.product.domain.dto.ManufacturingSchemeChoiceDTO;
 import com.jjx.product.domain.entity.Product;
+import com.jjx.product.domain.vo.ManufacturingSchemeVO;
 import com.jjx.product.mapper.EngineeringBomItemMapper;
 import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.mapper.ProductMapper;
@@ -30,6 +36,8 @@ import org.mybatis.spring.transaction.SpringManagedTransactionFactory;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 
@@ -39,12 +47,18 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** 制造方案保存回读、产品隔离、主方案同事务与草稿/审批边界（dev-20261111-004）。 */
+/** 制造方案保存回读、产品/物料隔离、主方案同事务与草稿/审批边界（dev-20261111-004）。 */
 class ManufacturingBomSchemeTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     IEngineeringBomService service;
     ManufacturingBomService manufacturing;
@@ -71,15 +85,19 @@ class ManufacturingBomSchemeTest {
 
         productMapper = session.getMapper(ProductMapper.class);
         var materials = mock(InventoryMaterialMapper.class);
-        var material = new InventoryMaterial();
-        material.setMaterialId(349L);
-        material.setMaterialCode("SFG000349");
-        material.setMaterialName("半成品349");
-        material.setUnit("PCS");
-        material.setStatus(1);
-        when(materials.selectById(anyLong())).thenReturn(material);
+        when(materials.selectById(anyLong())).thenAnswer(invocation -> {
+            long id = invocation.getArgument(0);
+            var material = new InventoryMaterial();
+            material.setMaterialId(id);
+            material.setMaterialCode("SFG" + id);
+            material.setMaterialName("半成品" + id);
+            material.setUnit("PCS");
+            material.setStatus(1);
+            return material;
+        });
         var materialMaster = mock(com.jjx.inventory.master.MaterialMasterService.class);
-        when(materialMaster.specificationSource(material)).thenReturn(java.util.Map.of("size", "系统规格", "attributes", java.util.Map.of()));
+        when(materialMaster.specificationSource(any()))
+                .thenReturn(java.util.Map.of("size", "系统规格", "attributes", java.util.Map.of()));
 
         var reviewFlow = mock(ReviewFlowService.class);
         var implementation = new EngineeringBomServiceImpl(
@@ -87,8 +105,9 @@ class ManufacturingBomSchemeTest {
                 session.getMapper(EngineeringBomItemMapper.class),
                 productMapper, new EngineeringBomConverterImpl(), null, materials,
                 reviewFlow, null, mock(OperLogChangeRecorder.class), null);
-        org.springframework.test.util.ReflectionTestUtils.setField(implementation, "bomSpecificationService",
+        ReflectionTestUtils.setField(implementation, "bomSpecificationService",
                 new BomSpecificationService(materialMaster, materials, session.getMapper(SysOperLogMapper.class)));
+        ReflectionTestUtils.setField(implementation, "baseMapper", session.getMapper(EngineeringBomMapper.class));
         var proxy = new ProxyFactory(implementation);
         proxy.setInterfaces(IEngineeringBomService.class);
         proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source),
@@ -116,6 +135,7 @@ class ManufacturingBomSchemeTest {
         product.setProductCode(code);
         product.setProductName(code);
         product.setProductStatus(1);
+        product.setSchemeRevision(0);
         productMapper.insert(product);
         return product;
     }
@@ -153,41 +173,70 @@ class ManufacturingBomSchemeTest {
         return dto;
     }
 
-    private EngineeringBomDTO parent(Long productId, long materialId, long childBomId, Integer revision) {
+    private long scheme(long materialId, String code) {
+        return service.createBomReturnId(scheme(code, "V1.0", materialId));
+    }
+
+    private ManufacturingSchemeChoiceDTO choice(long materialId, long bomId, Boolean primary) {
+        var choice = new ManufacturingSchemeChoiceDTO();
+        choice.setMaterialId(materialId);
+        choice.setBomId(bomId);
+        choice.setIsPrimary(primary);
+        return choice;
+    }
+
+    private EngineeringBomDTO parent(Long productId, String code, List<EngineeringBomItemDTO> rows,
+                                     List<ManufacturingSchemeChoiceDTO> choices, Integer revision) {
         var dto = new EngineeringBomDTO();
-        dto.setBomCode("TOP-" + productId + "-" + childBomId);
-        dto.setBomName("成品BOM");
+        dto.setBomCode(code);
+        dto.setBomName(code);
         dto.setBomVersion("V1.0");
         dto.setOutputType("PRODUCT");
         dto.setOutputId(productId);
         dto.setProductId(productId);
-        dto.setItems(List.of(makeRow(materialId, childBomId)));
-        var choice = new ManufacturingSchemeChoiceDTO();
-        choice.setMaterialId(materialId);
-        choice.setBomId(childBomId);
-        choice.setIsPrimary(true);
-        dto.setSchemeChoices(List.of(choice));
+        dto.setItems(rows);
+        dto.setSchemeChoices(choices);
         dto.setSchemeRevision(revision);
         return dto;
+    }
+
+    private EngineeringBomDTO parent(Long productId, long materialId, long childBomId, Integer revision) {
+        return parent(productId, "TOP-" + productId + "-" + childBomId, List.of(makeRow(materialId, childBomId)),
+                List.of(choice(materialId, childBomId, true)), revision);
+    }
+
+    private EngineeringBomDTO withStoredItemIds(EngineeringBomDTO dto) {
+        List<Long> itemIds = db.queryForList(
+                "SELECT item_id FROM engineering_bom_item WHERE bom_id=? ORDER BY item_id", Long.class, dto.getBomId());
+        assertEquals(dto.getItems().size(), itemIds.size(), "行数与库中不一致");
+        for (int i = 0; i < itemIds.size(); i++) {
+            dto.getItems().get(i).setItemId(itemIds.get(i));
+        }
+        return dto;
+    }
+
+    private String savedJson(Product product) {
+        return productMapper.selectById(product.getProductId()).getMaterialSchemeJson();
+    }
+
+    private Integer revision(Product product) {
+        return productMapper.selectById(product.getProductId()).getSchemeRevision();
     }
 
     @Test
     void savesReadsSchemesAndKeepsProductChoicesIsolated() {
         var p1 = product("P1");
         var p2 = product("P2");
-        long child1 = service.createBomReturnId(scheme("SFG349-A", "V1.0", 349));
-        long child2 = service.createBomReturnId(scheme("SFG349-B", "V1.0", 349));
+        long child1 = scheme(349, "SFG349-A");
+        long child2 = scheme(349, "SFG349-B");
 
         long parent1 = service.createBomReturnId(parent(p1.getProductId(), 349, child1, 0));
         long parent2 = service.createBomReturnId(parent(p2.getProductId(), 349, child2, 0));
 
-        var saved1 = productMapper.selectById(p1.getProductId());
-        var saved2 = productMapper.selectById(p2.getProductId());
-        assertEquals(Integer.valueOf(1), saved1.getSchemeRevision());
-        assertEquals(Integer.valueOf(1), saved2.getSchemeRevision());
-        assertTrue(saved1.getMaterialSchemeJson().contains("\"349\""));
-        assertTrue(saved1.getMaterialSchemeJson().contains("\"bomId\":" + child1));
-        assertTrue(saved2.getMaterialSchemeJson().contains("\"bomId\":" + child2));
+        assertEquals(Integer.valueOf(1), revision(p1));
+        assertEquals(Integer.valueOf(1), revision(p2));
+        assertTrue(savedJson(p1).contains("\"bomId\":" + child1));
+        assertTrue(savedJson(p2).contains("\"bomId\":" + child2));
 
         var detail = service.getBomDetail(parent1);
         assertEquals("PRODUCT", detail.getOutputType());
@@ -209,25 +258,208 @@ class ManufacturingBomSchemeTest {
     }
 
     @Test
-    void adoptDoesNotPersistAndDraftReferenceBlocksSubmitButNotSave() {
+    void primaryChoiceIsolatedPerMaterialAndPerProduct() throws Exception {
         var p1 = product("P1");
-        long child = service.createBomReturnId(scheme("SFG349-A", "V1.0", 349));
-        long parentId = service.createBomReturnId(parent(p1.getProductId(), 349, child, 0));
-        var before = productMapper.selectById(p1.getProductId()).getSchemeRevision();
+        var p2 = product("P2");
+        long a1 = scheme(349, "SFG349-A1");
+        long a2 = scheme(349, "SFG349-A2");
+        long b1 = scheme(350, "SFG350-B1");
+
+        long parent1 = service.createBomReturnId(parent(p1.getProductId(), "TOP-P1",
+                List.of(makeRow(349, a1), makeRow(350, b1)),
+                List.of(choice(349, a1, true), choice(350, b1, true)), 0));
+        var root1 = JSON.readTree(savedJson(p1));
+        assertEquals(a1, root1.path("349").path("bomId").asLong());
+        assertTrue(root1.path("349").path("isPrimary").asBoolean());
+        assertEquals(b1, root1.path("350").path("bomId").asLong());
+        assertTrue(root1.path("350").path("isPrimary").asBoolean());
+        assertEquals(Integer.valueOf(1), revision(p1));
+
+        var update = parent(p1.getProductId(), "TOP-P1",
+                List.of(makeRow(349, a2), makeRow(350, b1)),
+                List.of(choice(349, a2, true), choice(350, b1, false)), 1);
+        update.setBomId(parent1);
+        var edit = service.updateBomWithDetail(withStoredItemIds(update));
+        assertEquals(Integer.valueOf(2), edit.getSchemeRevision());
+        var root2 = JSON.readTree(savedJson(p1));
+        assertEquals(a2, root2.path("349").path("bomId").asLong());
+        assertTrue(root2.path("349").path("isPrimary").asBoolean());
+        assertEquals(b1, root2.path("350").path("bomId").asLong(),
+                "改 349 的主方案不得清掉 350 的主方案");
+        assertTrue(root2.path("350").path("isPrimary").asBoolean());
+        assertEquals(Integer.valueOf(2), revision(p1));
+
+        service.createBomReturnId(parent(p2.getProductId(), 349, a1, 0));
+        var rootP1 = JSON.readTree(savedJson(p1));
+        var rootP2 = JSON.readTree(savedJson(p2));
+        assertEquals(a2, rootP1.path("349").path("bomId").asLong());
+        assertEquals(a1, rootP2.path("349").path("bomId").asLong());
+        assertEquals(Integer.valueOf(1), revision(p2));
+    }
+
+    @Test
+    void nonPrimaryAdoptionDoesNotOverwritePrimaryAndPrimaryCanChangeThenCancel() throws Exception {
+        var p1 = product("P1");
+        long a = scheme(349, "SFG349-A");
+        long b = scheme(349, "SFG349-B");
+        long parentId = service.createBomReturnId(parent(p1.getProductId(), 349, a, 0));
+
+        // 父 BOM 实际采用非主方案 B：只有行 sub_bom_id 表达实际采用，产品主方案仍是 A。
+        var adoptNonPrimary = parent(p1.getProductId(), "TOP-P1", List.of(makeRow(349, b)),
+                List.of(choice(349, b, false)), 1);
+        adoptNonPrimary.setBomId(parentId);
+        var edit = service.updateBomWithDetail(withStoredItemIds(adoptNonPrimary));
+        assertEquals(Integer.valueOf(1), edit.getSchemeRevision());
+        var afterAdopt = JSON.readTree(savedJson(p1));
+        assertEquals(a, afterAdopt.path("349").path("bomId").asLong(), "非主采用不得覆盖原主方案");
+        assertTrue(afterAdopt.path("349").path("isPrimary").asBoolean());
+        assertEquals(Long.valueOf(b), service.getBomDetail(parentId).getItems().get(0).getSubBomId());
+
+        // 主方案变更：同一物料显式设主才替换。
+        var changePrimary = parent(p1.getProductId(), "TOP-P1", List.of(makeRow(349, b)),
+                List.of(choice(349, b, true)), 1);
+        changePrimary.setBomId(parentId);
+        assertEquals(Integer.valueOf(2), service.updateBomWithDetail(withStoredItemIds(changePrimary)).getSchemeRevision());
+        var afterChange = JSON.readTree(savedJson(p1));
+        assertEquals(b, afterChange.path("349").path("bomId").asLong());
+        assertTrue(afterChange.path("349").path("isPrimary").asBoolean());
+
+        // 取消主方案：显式 cancelPrimary，只移除该物料的主方案。
+        var cancel = parent(p1.getProductId(), "TOP-P1", List.of(makeRow(349, b)),
+                List.of(cancelChoice(349)), 2);
+        cancel.setBomId(parentId);
+        assertEquals(Integer.valueOf(3), service.updateBomWithDetail(withStoredItemIds(cancel)).getSchemeRevision());
+        assertFalse(JSON.readTree(savedJson(p1)).has("349"));
+        assertTrue(manufacturing.getSchemeChoices(parentId).isEmpty());
+    }
+
+    private ManufacturingSchemeChoiceDTO cancelChoice(long materialId) {
+        var choice = new ManufacturingSchemeChoiceDTO();
+        choice.setMaterialId(materialId);
+        choice.setCancelPrimary(true);
+        return choice;
+    }
+
+    @Test
+    void missingRevisionRejectedWhenJsonWouldChange() throws Exception {
+        var p1 = product("P1");
+        long a = scheme(349, "SFG349-A");
+        long b = scheme(349, "SFG349-B");
+        long parentId = service.createBomReturnId(parent(p1.getProductId(), 349, a, 0));
+        String before = savedJson(p1);
+
+        var noRevision = parent(p1.getProductId(), "TOP-P1", List.of(makeRow(349, b)),
+                List.of(choice(349, b, true)), null);
+        noRevision.setBomId(parentId);
+        var ex = assertThrows(BusinessException.class,
+                () -> service.updateBomWithDetail(withStoredItemIds(noRevision)));
+        assertTrue(ex.getMessage().contains("SCHEME_REVISION_REQUIRED"), ex.getMessage());
+        assertEquals(before, savedJson(p1));
+    }
+
+    @Test
+    void unusedDraftChoiceDoesNotBlockOtherBomSubmit() {
+        var p1 = product("P1");
+        long used = scheme(349, "SFG349-USED");
+        long unusedDraft = scheme(350, "SFG350-DRAFT");
+        long parent1 = service.createBomReturnId(parent(p1.getProductId(), 349, used, 0));
+        // 同一产品的另一张父 BOM 使用 350 草稿方案；该主方案与 parent1 无关。
+        service.createBomReturnId(parent(p1.getProductId(), 350, unusedDraft, 1));
+        db.update("UPDATE engineering_bom SET approve_status=3 WHERE bom_id=?", used);
+
+        assertTrue(service.submitApprove(parent1));
+        assertEquals(Integer.valueOf(2), service.getBomDetail(parent1).getApproveStatus());
+    }
+
+    @Test
+    void adoptDoesNotPersistSchemeRevision() {
+        var p1 = product("P1");
+        long child = scheme(349, "SFG349-A");
+        service.createBomReturnId(parent(p1.getProductId(), 349, child, 0));
+        var before = revision(p1);
 
         var adopted = manufacturing.adopt(child);
         assertNotNull(adopted.getSelectionToken());
-        assertEquals(before, productMapper.selectById(p1.getProductId()).getSchemeRevision());
+        assertEquals(before, revision(p1), "采用 token 不得持久化主方案");
         assertEquals(Integer.valueOf(1), service.getBomDetail(child).getApproveStatus());
+    }
+
+    @Test
+    void legacyCallWithoutSchemeChoicesNeedsNoRevision() {
+        var p1 = product("P1");
+        long child = scheme(349, "SFG349-A");
+        long parentId = service.createBomReturnId(parent(p1.getProductId(), "LEGACY-TOP",
+                List.of(makeRow(349, child)), null, null));
+        assertEquals(Integer.valueOf(0), revision(p1));
+
+        var update = parent(p1.getProductId(), "LEGACY-TOP", List.of(makeRow(349, child)), null, null);
+        update.setBomId(parentId);
+        update.setRemark("旧调用只改 BOM，不传 schemeChoices/schemeRevision");
+        assertNotNull(service.updateBomWithDetail(withStoredItemIds(update)));
+        assertEquals(Integer.valueOf(0), revision(p1), "未实际写 JSON 时不得递增 revision");
+    }
+
+    @Test
+    void draftReferenceBlocksSubmitButNotSave() {
+        var p1 = product("P1");
+        long child = scheme(349, "SFG349-A");
+        long parentId = service.createBomReturnId(parent(p1.getProductId(), 349, child, 0));
 
         var ex = assertThrows(BusinessException.class, () -> service.submitApprove(parentId));
         assertTrue(ex.getMessage().contains("SUB_BOM_NOT_APPROVED"), ex.getMessage());
     }
 
     @Test
+    void malformedSchemeJsonBlocksSubmitAndKeepsOriginalData() {
+        var p1 = product("P1");
+        long child = scheme(349, "SFG349-A");
+        long parentId = service.createBomReturnId(parent(p1.getProductId(), "TOP-P1",
+                List.of(makeRow(349, child)), null, null));
+        db.update("UPDATE engineering_bom SET approve_status=3 WHERE bom_id=?", child);
+        db.update("UPDATE product SET material_scheme_json='{bad' WHERE product_id=?", p1.getProductId());
+
+        var ex = assertThrows(BusinessException.class, () -> service.submitApprove(parentId));
+        assertTrue(ex.getMessage().contains("SCHEME_JSON_INVALID"), ex.getMessage());
+        assertEquals("{bad", savedJson(p1), "坏 JSON 不得被静默清空");
+        assertEquals(Integer.valueOf(1), db.queryForObject(
+                "SELECT approve_status FROM engineering_bom WHERE bom_id=?", Integer.class, parentId));
+    }
+
+    @Test
+    void adoptRejectsViewOnlyAndAllowsEditPermission() throws Exception {
+        StpLogic original = StpUtil.getStpLogic();
+        StpLogic logic = spy(new StpLogic("login"));
+        doReturn(42L).when(logic).getLoginId();
+        StpUtil.setStpLogic(logic);
+        try {
+            var bomService = mock(IEngineeringBomService.class);
+            var mfg = mock(ManufacturingBomService.class);
+            when(mfg.options(any(), any(), any())).thenReturn(List.of());
+            when(mfg.adopt(1L)).thenReturn(new ManufacturingSchemeVO());
+            var controller = new BomController(bomService);
+            ReflectionTestUtils.setField(controller, "manufacturingBomService", mfg);
+            var mvc = MockMvcBuilders.standaloneSetup(controller).addInterceptors(new SaInterceptor()).build();
+
+            doReturn(List.of("engineering:bom:view")).when(logic).getPermissionList(any());
+            mvc.perform(get("/engineering/bom/manufacturing/options")
+                            .param("outputType", "MATERIAL").param("outputId", "349"))
+                    .andExpect(status().isOk());
+            mvc.perform(post("/engineering/bom/manufacturing/1/adopt"))
+                    .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(403));
+            verify(mfg, never()).adopt(anyLong());
+
+            doReturn(List.of("engineering:bom:edit")).when(logic).getPermissionList(any());
+            mvc.perform(post("/engineering/bom/manufacturing/1/adopt")).andExpect(status().isOk());
+            verify(mfg).adopt(1L);
+        } finally {
+            StpUtil.setStpLogic(original);
+        }
+    }
+
+    @Test
     void concurrentSchemeRevisionIsRejected() {
         var p1 = product("P1");
-        long child = service.createBomReturnId(scheme("SFG349-A", "V1.0", 349));
+        long child = scheme(349, "SFG349-A");
         long parentId = service.createBomReturnId(parent(p1.getProductId(), 349, child, 0));
         var stale = parent(p1.getProductId(), 349, child, 0);
         stale.setBomId(parentId);
@@ -235,5 +467,4 @@ class ManufacturingBomSchemeTest {
         assertEquals(409, ex.getCode());
         assertTrue(ex.getMessage().contains("CONCURRENT_MODIFICATION"));
     }
-
 }

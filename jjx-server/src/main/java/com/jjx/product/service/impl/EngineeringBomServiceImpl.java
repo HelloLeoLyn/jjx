@@ -56,7 +56,6 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     /** 产品主方案 JSON 编解码；只用于 product.material_scheme_json，不参与 BOM 行指纹。 */
     private static final ObjectMapper SCHEME_JSON = new ObjectMapper();
     private static final Set<String> SOURCE_TYPES = Set.of("buy", "make");
-    private static final int MAX_SUB_BOM_DEPTH = 32;
 
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.transaction.PlatformTransactionManager transactionManager;
@@ -1789,51 +1788,118 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return null;
     }
 
-    /** 显式引用全图 DFS：同一路径重复即环；超过 32 层阻断，不静默截断。 */
+    /**
+     * 显式引用全图校验：迭代 DFS + 三色标记，不依赖固定业务层数。
+     * 共享 DAG 只按节点查询/遍历一次；同一条访问路径重复出现才是环。
+     */
     private String validateSubBomGraph(Long rootBomId, List<EngineeringBomItem> rows, boolean requireApproved) {
         if (rows == null || rows.isEmpty()) {
             return null;
         }
-        Set<Long> children = new java.util.LinkedHashSet<>();
+        java.util.Set<Long> starts = new java.util.LinkedHashSet<>();
         for (EngineeringBomItem row : rows) {
             if (row.getSubBomId() == null) continue;
             String error = validateSubBomReference(rootBomId, row, requireApproved);
             if (error != null) return error;
-            children.add(row.getSubBomId());
+            starts.add(row.getSubBomId());
         }
-        for (Long child : children) {
-            Set<Long> path = new HashSet<>();
-            if (rootBomId != null) path.add(rootBomId);
-            String error = dfsSubBom(child, path, 1, rootBomId, requireApproved);
+        java.util.Map<Long, java.util.List<Long>> childCache = new java.util.HashMap<>();
+        java.util.Map<Long, Integer> color = new java.util.HashMap<>(); // 1=访问中，2=已完成
+        for (Long start : starts) {
+            String error = walkSubBom(start, rootBomId, requireApproved, childCache, color);
             if (error != null) return error;
         }
         return null;
     }
 
-    private String dfsSubBom(Long bomId, Set<Long> path, int depth, Long rootBomId, boolean requireApproved) {
-        if (depth > MAX_SUB_BOM_DEPTH) {
-            return "BOM_DEPTH_EXCEEDED：显式制造关系超过 " + MAX_SUB_BOM_DEPTH + " 层（bomId=" + bomId + "）";
+    /** 显式栈深度优先；每节点最多展开一次，深链不会栈溢出。 */
+    private String walkSubBom(Long start, Long rootBomId, boolean requireApproved,
+                              java.util.Map<Long, java.util.List<Long>> childCache,
+                              java.util.Map<Long, Integer> color) {
+        if (rootBomId != null && Objects.equals(rootBomId, start)) {
+            return "BOM_CYCLE：显式制造关系形成环，路径=" + rootBomId + " -> " + start;
         }
-        if (rootBomId != null && Objects.equals(rootBomId, bomId)) {
-            return "BOM_CYCLE：显式制造关系形成环，路径=" + path + " -> " + bomId;
+        Integer state = color.get(start);
+        if (state != null && state == 2) return null;
+        if (state != null && state == 1) {
+            return "BOM_CYCLE：显式制造关系形成环（bomId=" + start + "）";
         }
-        if (!path.add(bomId)) {
-            return "BOM_CYCLE：显式制造关系形成环，路径=" + path + " -> " + bomId;
+        SubBomScan startScan = scanSubBomNode(start, rootBomId, requireApproved, childCache);
+        if (startScan.error != null) return startScan.error;
+        java.util.Deque<SubBomFrame> stack = new java.util.ArrayDeque<>();
+        java.util.List<Long> path = new java.util.ArrayList<>();
+        color.put(start, 1);
+        path.add(start);
+        stack.push(new SubBomFrame(start, startScan.children));
+        while (!stack.isEmpty()) {
+            SubBomFrame frame = stack.peek();
+            if (frame.next >= frame.children.size()) {
+                color.put(frame.bomId, 2);
+                stack.pop();
+                path.remove(path.size() - 1);
+                continue;
+            }
+            Long next = frame.children.get(frame.next++);
+            if (rootBomId != null && Objects.equals(rootBomId, next)) {
+                return "BOM_CYCLE：显式制造关系形成环，路径=" + path + " -> " + next;
+            }
+            Integer nextState = color.get(next);
+            if (nextState != null && nextState == 2) continue;
+            if (nextState != null && nextState == 1) {
+                return "BOM_CYCLE：显式制造关系形成环，路径=" + path + " -> " + next;
+            }
+            SubBomScan scan = scanSubBomNode(next, rootBomId, requireApproved, childCache);
+            if (scan.error != null) return scan.error;
+            color.put(next, 1);
+            path.add(next);
+            stack.push(new SubBomFrame(next, scan.children));
         }
-        List<EngineeringBomItem> children = productBomItemMapper.selectList(
+        return null;
+    }
+
+    /** 按节点缓存显式下层引用；同一节点在共享 DAG 中只查库一次。 */
+    private SubBomScan scanSubBomNode(Long bomId, Long rootBomId, boolean requireApproved,
+                                      java.util.Map<Long, java.util.List<Long>> childCache) {
+        java.util.List<Long> cached = childCache.get(bomId);
+        if (cached != null) return new SubBomScan(cached, null);
+        java.util.List<EngineeringBomItem> children = productBomItemMapper.selectList(
                 new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
+        java.util.List<Long> ids = new java.util.ArrayList<>();
         for (EngineeringBomItem child : children) {
             if (child.getSubBomId() == null) continue;
             String error = validateSubBomReference(rootBomId, child, requireApproved);
-            if (error != null) return error;
-            error = dfsSubBom(child.getSubBomId(), path, depth + 1, rootBomId, requireApproved);
-            if (error != null) return error;
+            if (error != null) return new SubBomScan(null, error);
+            ids.add(child.getSubBomId());
         }
-        path.remove(bomId);
-        return null;
+        childCache.put(bomId, ids);
+        return new SubBomScan(ids, null);
     }
 
-    /** 产品主方案 JSON 中的方案在父 BOM 提交/批准时必须已批准且产出匹配。 */
+    private static final class SubBomFrame {
+        private final Long bomId;
+        private final java.util.List<Long> children;
+        private int next;
+
+        private SubBomFrame(Long bomId, java.util.List<Long> children) {
+            this.bomId = bomId;
+            this.children = children;
+        }
+    }
+
+    private static final class SubBomScan {
+        private final java.util.List<Long> children;
+        private final String error;
+
+        private SubBomScan(java.util.List<Long> children, String error) {
+            this.children = children;
+            this.error = error;
+        }
+    }
+
+    /**
+     * 产品主方案校验：只校验本 BOM 实际使用的物料及本次适用主方案。
+     * 未被本 BOM 使用的候选草稿不得阻断其他 BOM；坏 JSON 明确阻断，不静默当空。
+     */
     private String validateSavedSchemeChoices(EngineeringBom bom) {
         if (ManufacturingOutputType.normalize(bom.getOutputType()) != ManufacturingOutputType.PRODUCT
                 || bom.getProductId() == null) {
@@ -1841,7 +1907,25 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
         Product product = productMapper.selectById(bom.getProductId());
         if (product == null) return null;
-        for (ManufacturingSchemeChoiceDTO choice : readSchemeChoices(product.getMaterialSchemeJson())) {
+        List<ManufacturingSchemeChoiceDTO> choices;
+        try {
+            choices = readSchemeChoices(product.getMaterialSchemeJson());
+        } catch (BusinessException ex) {
+            return ex.getMessage();
+        }
+        if (choices.isEmpty()) return null;
+        Set<Long> usedMaterials = new java.util.LinkedHashSet<>();
+        for (EngineeringBomItem item : productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bom.getBomId()))) {
+            if (ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus())
+                    == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                continue;
+            }
+            if (item.getMaterialId() != null) usedMaterials.add(item.getMaterialId());
+        }
+        for (ManufacturingSchemeChoiceDTO choice : choices) {
+            if (!Boolean.TRUE.equals(choice.getIsPrimary())) continue;
+            if (!usedMaterials.contains(choice.getMaterialId())) continue;
             EngineeringBom child = productBomMapper.selectById(choice.getBomId());
             if (child == null) {
                 return "SUB_BOM_NOT_FOUND：产品主方案引用不存在（bomId=" + choice.getBomId() + "）";
@@ -1858,7 +1942,12 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return null;
     }
 
-    /** 父 BOM 显式保存时同事务写产品 JSON；行锁 + scheme_revision 乐观锁。 */
+    /**
+     * 父 BOM 显式保存时同事务写产品主方案 JSON；行锁 + scheme_revision 乐观锁。
+     * 语义：isPrimary=true 只替换该 materialId 的主方案；isPrimary=false/null 表示父 BOM 实际采用，
+     * 由行的 sub_bom_id 表达，不改产品主方案；cancelPrimary=true 只移除该物料主方案。
+     * 只有真正写 JSON 时才要求 schemeRevision，旧前端未传 schemeChoices 不受影响。
+     */
     private Integer applySchemeChoices(EngineeringBomDTO dto, EngineeringBom bom) {
         if (dto.getSchemeChoices() == null || dto.getSchemeChoices().isEmpty()) {
             return null;
@@ -1878,44 +1967,59 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         if (dto.getSchemeRevision() != null && !Objects.equals(dto.getSchemeRevision(), currentRevision)) {
             throw new BusinessException(409, "CONCURRENT_MODIFICATION：主方案已被其他会话修改，请重新加载后重试");
         }
+        Set<Long> usedMaterials = usedMaterialIdsForScheme(
+                dto.getBomId() != null ? dto.getBomId() : bom.getBomId(), dto);
+        List<ManufacturingSchemeChoiceDTO> mutations = new java.util.ArrayList<>();
+        for (ManufacturingSchemeChoiceDTO choice : dto.getSchemeChoices()) {
+            if (choice == null || choice.getMaterialId() == null) {
+                throw new BusinessException("主方案选择必须包含 materialId");
+            }
+            boolean cancel = Boolean.TRUE.equals(choice.getCancelPrimary());
+            boolean primary = Boolean.TRUE.equals(choice.getIsPrimary());
+            if (cancel && primary) {
+                throw new BusinessException("取消主方案与设为主方案不能同时提交（materialId=" + choice.getMaterialId() + "）");
+            }
+            if (!cancel && !primary) {
+                // 非主采用：父 BOM 实际采用由行 sub_bom_id 表达，不覆盖产品主方案。
+                if (choice.getBomId() != null) validateSchemeChoiceChild(choice);
+                continue;
+            }
+            if (!usedMaterials.contains(choice.getMaterialId())) {
+                throw new BusinessException("父 BOM 未使用该物料，不能设置/取消主方案（materialId="
+                        + choice.getMaterialId() + "）");
+            }
+            if (!cancel) validateSchemeChoiceChild(choice);
+            mutations.add(choice);
+        }
+        if (mutations.isEmpty()) {
+            return currentRevision;
+        }
+        if (dto.getSchemeRevision() == null) {
+            throw new BusinessException(400,
+                    "SCHEME_REVISION_REQUIRED：修改产品主方案必须携带 schemeRevision，不能跳过并发校验");
+        }
         ObjectNode root;
         try {
-            JsonNode parsed = product.getMaterialSchemeJson() == null || product.getMaterialSchemeJson().isBlank()
-                    ? null : SCHEME_JSON.readTree(product.getMaterialSchemeJson());
-            root = parsed instanceof ObjectNode ? (ObjectNode) parsed : SCHEME_JSON.createObjectNode();
+            String raw = product.getMaterialSchemeJson();
+            JsonNode parsed = raw == null || raw.isBlank() ? null : SCHEME_JSON.readTree(raw);
+            if (parsed != null && !(parsed instanceof ObjectNode)) {
+                throw new BusinessException("产品主方案 JSON 结构非法（不是对象），请先核对历史数据");
+            }
+            root = parsed == null ? SCHEME_JSON.createObjectNode() : (ObjectNode) parsed;
+        } catch (BusinessException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new BusinessException("产品主方案 JSON 解析失败，请先核对历史数据: " + ex.getMessage());
         }
-        for (ManufacturingSchemeChoiceDTO choice : dto.getSchemeChoices()) {
-            if (choice == null || choice.getMaterialId() == null || choice.getBomId() == null) {
-                throw new BusinessException("主方案选择必须包含 materialId 与 bomId");
+        for (ManufacturingSchemeChoiceDTO choice : mutations) {
+            if (Boolean.TRUE.equals(choice.getCancelPrimary())) {
+                root.remove(String.valueOf(choice.getMaterialId()));
+                continue;
             }
-            EngineeringBom child = productBomMapper.selectById(choice.getBomId());
-            if (child == null) {
-                throw new BusinessException("SUB_BOM_NOT_FOUND：制造方案不存在（bomId=" + choice.getBomId() + "）");
-            }
-            Long childOutputId = child.getOutputId() != null ? child.getOutputId() : child.getProductId();
-            if (ManufacturingOutputType.normalize(child.getOutputType()) != ManufacturingOutputType.MATERIAL
-                    || !Objects.equals(childOutputId, choice.getMaterialId())) {
-                throw new BusinessException("SUB_BOM_OUTPUT_MISMATCH：方案产出与物料不一致（materialId="
-                        + choice.getMaterialId() + "，bomId=" + choice.getBomId() + "）");
-            }
+            // 只改当前物料节点，其他材料的主方案保持原样。
             ObjectNode node = root.withObject("/" + choice.getMaterialId());
             node.put("bomId", choice.getBomId());
-            if (Boolean.TRUE.equals(choice.getIsPrimary())) {
-                java.util.Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-                while (fields.hasNext()) {
-                    Map.Entry<String, JsonNode> entry = fields.next();
-                    if (entry.getValue() instanceof ObjectNode other) {
-                        other.put("isPrimary", false);
-                    }
-                }
-                node.put("isPrimary", true);
-            } else if (choice.getIsPrimary() != null) {
-                node.put("isPrimary", false);
-            } else if (!node.has("isPrimary")) {
-                node.put("isPrimary", false);
-            }
+            node.put("isPrimary", true);
         }
         int updated = productMapper.updateScheme(productId, root.toString(), currentRevision);
         if (updated == 0) {
@@ -1924,38 +2028,85 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return currentRevision + 1;
     }
 
-    /** 读取 product.material_scheme_json；坏数据不静默吞掉，返回空并由调用方决定是否阻断。 */
+    /** 本 BOM 实际投入的物料集合；只允许这些物料被本次保存写主方案。 */
+    private Set<Long> usedMaterialIdsForScheme(Long bomId, EngineeringBomDTO dto) {
+        Set<Long> out = new java.util.LinkedHashSet<>();
+        if (dto != null && dto.getItems() != null) {
+            for (EngineeringBomItemDTO row : dto.getItems()) {
+                if (row == null || Boolean.TRUE.equals(row.getRemoveRequested())) continue;
+                if (row.getMaterialId() != null) out.add(row.getMaterialId());
+            }
+            return out;
+        }
+        if (bomId != null) {
+            for (EngineeringBomItem row : productBomItemMapper.selectList(
+                    new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId))) {
+                if (ProductEnums.BomItemReviewStatus.fromValue(row.getReviewStatus())
+                        == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
+                    continue;
+                }
+                if (row.getMaterialId() != null) out.add(row.getMaterialId());
+            }
+        }
+        return out;
+    }
+
+    /** 校验被选制造方案存在、产出为 MATERIAL 且与投入物料一致；草稿可保存，提交/批准另校验。 */
+    private void validateSchemeChoiceChild(ManufacturingSchemeChoiceDTO choice) {
+        EngineeringBom child = productBomMapper.selectById(choice.getBomId());
+        if (child == null) {
+            throw new BusinessException("SUB_BOM_NOT_FOUND：制造方案不存在（bomId=" + choice.getBomId() + "）");
+        }
+        Long childOutputId = child.getOutputId() != null ? child.getOutputId() : child.getProductId();
+        if (ManufacturingOutputType.normalize(child.getOutputType()) != ManufacturingOutputType.MATERIAL
+                || !Objects.equals(childOutputId, choice.getMaterialId())) {
+            throw new BusinessException("SUB_BOM_OUTPUT_MISMATCH：方案产出与物料不一致（materialId="
+                    + choice.getMaterialId() + "，bomId=" + choice.getBomId() + "）");
+        }
+    }
+
+    /** 读取 product.material_scheme_json；坏数据明确报错，不静默返回空导致审批绕过。 */
     private List<ManufacturingSchemeChoiceDTO> readSchemeChoices(String raw) {
         List<ManufacturingSchemeChoiceDTO> out = new java.util.ArrayList<>();
         if (raw == null || raw.isBlank()) return out;
+        JsonNode root;
         try {
-            JsonNode root = SCHEME_JSON.readTree(raw);
-            if (!(root instanceof ObjectNode)) return out;
-            java.util.Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> entry = fields.next();
-                long materialId = Long.parseLong(entry.getKey());
-                JsonNode value = entry.getValue();
-                if (value == null || !value.hasNonNull("bomId")) continue;
-                ManufacturingSchemeChoiceDTO choice = new ManufacturingSchemeChoiceDTO();
-                choice.setMaterialId(materialId);
-                choice.setBomId(value.path("bomId").asLong());
-                choice.setIsPrimary(value.path("isPrimary").asBoolean(false));
-                EngineeringBom child = productBomMapper.selectById(choice.getBomId());
-                if (child != null) {
-                    choice.setBomCode(child.getBomCode());
-                    choice.setBomVersion(child.getBomVersion());
-                    choice.setApproveStatus(child.getApproveStatus());
-                    if (!Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
-                        choice.setWarning("SUB_BOM_NOT_APPROVED：所选方案未批准，父 BOM 提交/批准前需先批准");
-                    }
-                } else {
-                    choice.setWarning("SUB_BOM_NOT_FOUND：所选方案已不存在");
-                }
-                out.add(choice);
-            }
+            root = SCHEME_JSON.readTree(raw);
         } catch (Exception ex) {
-            log.warn("产品主方案 JSON 解析失败: " + ex.getMessage());
+            throw new BusinessException("SCHEME_JSON_INVALID：产品主方案 JSON 无法解析（保留原数据）: " + ex.getMessage());
+        }
+        if (!(root instanceof ObjectNode)) {
+            throw new BusinessException("SCHEME_JSON_INVALID：产品主方案 JSON 结构不是对象（保留原数据）");
+        }
+        java.util.Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> entry = fields.next();
+            long materialId;
+            try {
+                materialId = Long.parseLong(entry.getKey());
+            } catch (NumberFormatException ex) {
+                throw new BusinessException("SCHEME_JSON_INVALID：主方案物料键非法（" + entry.getKey() + "）");
+            }
+            JsonNode value = entry.getValue();
+            if (value == null || !value.isObject() || !value.hasNonNull("bomId")) {
+                throw new BusinessException("SCHEME_JSON_INVALID：主方案条目缺少 bomId（materialId=" + materialId + "）");
+            }
+            ManufacturingSchemeChoiceDTO choice = new ManufacturingSchemeChoiceDTO();
+            choice.setMaterialId(materialId);
+            choice.setBomId(value.path("bomId").asLong());
+            choice.setIsPrimary(value.path("isPrimary").asBoolean(false));
+            EngineeringBom child = productBomMapper.selectById(choice.getBomId());
+            if (child != null) {
+                choice.setBomCode(child.getBomCode());
+                choice.setBomVersion(child.getBomVersion());
+                choice.setApproveStatus(child.getApproveStatus());
+                if (!Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+                    choice.setWarning("SUB_BOM_NOT_APPROVED：所选方案未批准，父 BOM 提交/批准前需先批准");
+                }
+            } else {
+                choice.setWarning("SUB_BOM_NOT_FOUND：所选方案已不存在");
+            }
+            out.add(choice);
         }
         return out;
     }

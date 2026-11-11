@@ -73,10 +73,10 @@ public class BomController extends BaseController {
         return Result.success(manufacturingBomService.update(bomId, dto));
     }
 
-    /** 生成采用 token；不落库、不设主方案。 */
+    /** 生成采用 token；不落库、不设主方案；只读账号可查看但不能采用。 */
     @Operation(summary = "采用制造方案")
     @PostMapping("/manufacturing/{bomId}/adopt")
-    @SaCheckPermission("engineering:bom:view")
+    @SaCheckPermission(value = {"engineering:bom:add", "engineering:bom:edit"}, mode = SaMode.OR)
     public Result<com.jjx.product.domain.vo.ManufacturingSchemeVO> manufacturingAdopt(@PathVariable Long bomId) {
         return Result.success(manufacturingBomService.adopt(bomId));
     }

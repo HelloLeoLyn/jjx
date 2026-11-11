@@ -18,8 +18,11 @@ public class ManufacturingSchemeChoiceDTO {
     @NotNull(message = "制造方案不能为空")
     private Long bomId;
 
-    /** 是否本产品该物料的主方案。 */
+    /** 是否本产品该物料的主方案；true=设/替换该物料主方案，false/null=仅父BOM实际采用，不改主方案。 */
     private Boolean isPrimary;
+
+    /** 显式取消该物料主方案；true 时只移除本物料映射，bomId 可为空。 */
+    private Boolean cancelPrimary;
 
     // ===== 只读回显字段（保存时忽略） =====
     private String bomCode;
