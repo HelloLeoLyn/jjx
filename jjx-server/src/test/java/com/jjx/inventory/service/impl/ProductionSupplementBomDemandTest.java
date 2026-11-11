@@ -16,6 +16,7 @@ class ProductionSupplementBomDemandTest {
         EngineeringBomItem first = bomItem(1601L, "buy", "1.00");
         EngineeringBomItem duplicate = bomItem(1601L, "buy", "1.00");
         EngineeringBomItem nonPurchased = bomItem(1700L, "make", "2.00");
+        nonPurchased.setSubBomId(99L);
 
         Map<Long, BigDecimal> demand = InventoryOutboundServiceImpl.aggregateSupplementDemand(
                 List.of(first, duplicate, nonPurchased), new BigDecimal("8"));
