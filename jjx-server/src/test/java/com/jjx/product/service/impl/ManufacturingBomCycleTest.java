@@ -1,0 +1,187 @@
+package com.jjx.product.service.impl;
+
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.jjx.common.exception.BusinessException;
+import com.jjx.engineering.domain.entity.EngineeringBom;
+import com.jjx.engineering.domain.entity.EngineeringBomItem;
+import com.jjx.inventory.domain.InventoryMaterial;
+import com.jjx.inventory.mapper.InventoryMaterialMapper;
+import com.jjx.product.domain.converter.EngineeringBomConverterImpl;
+import com.jjx.product.domain.dto.EngineeringBomDTO;
+import com.jjx.product.domain.dto.EngineeringBomItemDTO;
+import com.jjx.product.mapper.EngineeringBomItemMapper;
+import com.jjx.product.mapper.EngineeringBomMapper;
+import com.jjx.product.mapper.ProductMapper;
+import com.jjx.product.service.IEngineeringBomService;
+import com.jjx.system.mapper.SysOperLogMapper;
+import com.jjx.system.service.OperLogChangeRecorder;
+import org.apache.ibatis.datasource.unpooled.UnpooledDataSource;
+import org.apache.ibatis.mapping.Environment;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mybatis.spring.SqlSessionTemplate;
+import org.mybatis.spring.transaction.SpringManagedTransactionFactory;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+/** 显式下层引用：自指/跨版本环/产出不一致/买挂方案/自制无方案（dev-20261111-004）。 */
+class ManufacturingBomCycleTest {
+
+    IEngineeringBomService service;
+    JdbcTemplate db;
+
+    @BeforeEach
+    void setup() {
+        var source = new UnpooledDataSource("org.h2.Driver",
+                "jdbc:h2:mem:" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
+        var configuration = new MybatisConfiguration();
+        configuration.setMapUnderscoreToCamelCase(true);
+        configuration.setEnvironment(new Environment("mfg-cycle", new SpringManagedTransactionFactory(), source));
+        configuration.addMapper(EngineeringBomMapper.class);
+        configuration.addMapper(EngineeringBomItemMapper.class);
+        configuration.addMapper(SysOperLogMapper.class);
+        var session = new SqlSessionTemplate(new MybatisSqlSessionFactoryBuilder().build(configuration));
+        db = new JdbcTemplate(source);
+        createTable(EngineeringBom.class);
+        createTable(EngineeringBomItem.class);
+        createTable(com.jjx.system.domain.entity.SysOperLog.class);
+
+        var materials = mock(InventoryMaterialMapper.class);
+        when(materials.selectById(anyLong())).thenAnswer(invocation -> {
+            long id = invocation.getArgument(0);
+            var material = new InventoryMaterial();
+            material.setMaterialId(id);
+            material.setMaterialCode("M" + id);
+            material.setMaterialName("物料" + id);
+            material.setUnit("PCS");
+            material.setStatus(1);
+            return material;
+        });
+        var materialMaster = mock(com.jjx.inventory.master.MaterialMasterService.class);
+        when(materialMaster.specificationSource(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.Map.of("size", "系统规格", "attributes", java.util.Map.of()));
+        var implementation = new EngineeringBomServiceImpl(
+                session.getMapper(EngineeringBomMapper.class),
+                session.getMapper(EngineeringBomItemMapper.class),
+                mock(ProductMapper.class), new EngineeringBomConverterImpl(), null, materials,
+                null, null, mock(OperLogChangeRecorder.class), null);
+        org.springframework.test.util.ReflectionTestUtils.setField(implementation, "bomSpecificationService",
+                new BomSpecificationService(materialMaster, materials, session.getMapper(SysOperLogMapper.class)));
+        var proxy = new ProxyFactory(implementation);
+        proxy.setInterfaces(IEngineeringBomService.class);
+        proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(source),
+                new AnnotationTransactionAttributeSource()));
+        service = (IEngineeringBomService) proxy.getProxy();
+    }
+
+    private void createTable(Class<?> entity) {
+        var table = TableInfoHelper.getTableInfo(entity);
+        var columns = new StringBuilder(table.getKeyColumn() + " BIGINT AUTO_INCREMENT PRIMARY KEY");
+        for (var field : table.getFieldList()) {
+            Class<?> type = field.getPropertyType();
+            String sqlType = type == String.class ? "VARCHAR(4000)"
+                    : type == LocalDateTime.class ? "TIMESTAMP"
+                    : type == Boolean.class ? "BOOLEAN"
+                    : type == BigDecimal.class ? "DECIMAL(18,8)" : "BIGINT";
+            columns.append(',').append(field.getColumn()).append(' ').append(sqlType);
+        }
+        db.execute("CREATE TABLE " + table.getTableName() + " (" + columns + ")");
+    }
+
+    private EngineeringBomItemDTO row(long materialId, String sourceType, Long subBomId) {
+        var row = new EngineeringBomItemDTO();
+        row.setMaterialId(materialId);
+        row.setMaterialCode("M" + materialId);
+        row.setMaterialName("物料" + materialId);
+        row.setUnit("PCS");
+        row.setSourceType(sourceType);
+        row.setSubBomId(subBomId);
+        row.setModuleQty(BigDecimal.ONE);
+        row.setBaseQty(BigDecimal.ONE);
+        row.setItemOrder(1);
+        return row;
+    }
+
+    private long createScheme(String code, long outputMaterialId, EngineeringBomItemDTO row) {
+        var dto = new EngineeringBomDTO();
+        dto.setBomCode(code);
+        dto.setBomName(code);
+        dto.setBomVersion("V1.0");
+        dto.setOutputType("MATERIAL");
+        dto.setOutputId(outputMaterialId);
+        dto.setItems(List.of(row));
+        return service.createBomReturnId(dto);
+    }
+
+    private EngineeringBomDTO updatePayload(long bomId, long outputMaterialId, EngineeringBomItemDTO row) {
+        row.setItemId(db.queryForObject("SELECT item_id FROM engineering_bom_item WHERE bom_id=?", Long.class, bomId));
+        var dto = new EngineeringBomDTO();
+        dto.setBomId(bomId);
+        dto.setBomCode("UPD-" + bomId);
+        dto.setBomName("UPD");
+        dto.setBomVersion("V1.0");
+        dto.setOutputType("MATERIAL");
+        dto.setOutputId(outputMaterialId);
+        dto.setItems(List.of(row));
+        return dto;
+    }
+
+    @Test
+    void rejectsSelfReference() {
+        long a = createScheme("A", 349, row(110, "buy", null));
+        var ex = assertThrows(BusinessException.class,
+                () -> service.updateBomWithDetail(updatePayload(a, 349, row(349, "make", a))));
+        assertTrue(ex.getMessage().contains("BOM_CYCLE"), ex.getMessage());
+    }
+
+    @Test
+    void rejectsDirectAndAncestorCycles() {
+        long a = createScheme("A", 349, row(110, "buy", null));
+        long b = createScheme("B", 349, row(349, "make", a));
+        var ex2 = assertThrows(BusinessException.class,
+                () -> service.updateBomWithDetail(updatePayload(a, 349, row(349, "make", b))));
+        assertTrue(ex2.getMessage().contains("BOM_CYCLE"), ex2.getMessage());
+    }
+
+    @Test
+    void rejectsOutputMismatchBuyWithSchemeAndMakeWithoutScheme() {
+        long a = createScheme("A", 349, row(110, "buy", null));
+        long c = createScheme("C", 350, row(111, "buy", null));
+
+        var mismatch = assertThrows(BusinessException.class,
+                () -> service.updateBomWithDetail(updatePayload(a, 349, row(351, "make", c))));
+        assertTrue(mismatch.getMessage().contains("SUB_BOM_OUTPUT_MISMATCH"), mismatch.getMessage());
+
+        var buy = assertThrows(BusinessException.class,
+                () -> service.updateBomWithDetail(updatePayload(a, 349, row(349, "buy", c))));
+        assertTrue(buy.getMessage().contains("BUY_WITH_SUB_BOM"), buy.getMessage());
+
+        var make = assertThrows(BusinessException.class,
+                () -> service.updateBomWithDetail(updatePayload(a, 349, row(349, "make", null))));
+        assertTrue(make.getMessage().contains("MAKE_WITHOUT_SCHEME"), make.getMessage());
+    }
+
+    @Test
+    void unchangedHistoricalMakeRowCanStillBeSaved() {
+        long a = createScheme("LEGACY", 349, row(110, "buy", null));
+        db.update("UPDATE engineering_bom_item SET source_type='make', sub_bom_id=NULL WHERE bom_id=?", a);
+        var dto = updatePayload(a, 349, row(110, "make", null));
+        dto.setRemark("历史行只改备注，不强制补方案");
+        assertNotNull(service.updateBomWithDetail(dto));
+    }
+}

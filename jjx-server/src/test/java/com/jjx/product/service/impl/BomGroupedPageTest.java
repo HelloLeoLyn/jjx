@@ -43,7 +43,7 @@ class BomGroupedPageTest {
     void groupsBeforePagingAndKeepsCurrentOrNewestAndFullTimeline() throws Exception {
         try (var session = session("org.h2.Driver", "jdbc:h2:mem:bomGrouped;MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "")) {
             var sql = session.getConnection().createStatement();
-            sql.execute("CREATE TABLE engineering_bom (bom_id BIGINT PRIMARY KEY, bom_code VARCHAR(100), bom_name VARCHAR(100), bom_version VARCHAR(20), version VARCHAR(20), bom_type VARCHAR(30), source_sample_id BIGINT, parent_bom_id BIGINT, product_id BIGINT, approve_status INT, approve_remark VARCHAR(100), is_current BOOLEAN, create_by VARCHAR(30), create_time TIMESTAMP, update_by VARCHAR(30), update_time TIMESTAMP, remark VARCHAR(100), effective_date TIMESTAMP, expiry_date TIMESTAMP)");
+            sql.execute("CREATE TABLE engineering_bom (bom_id BIGINT PRIMARY KEY, bom_code VARCHAR(100), bom_name VARCHAR(100), bom_version VARCHAR(20), version VARCHAR(20), bom_type VARCHAR(30), source_sample_id BIGINT, parent_bom_id BIGINT, product_id BIGINT, output_type VARCHAR(20) DEFAULT 'PRODUCT', output_id BIGINT, approve_status INT, approve_remark VARCHAR(100), is_current BOOLEAN, create_by VARCHAR(30), create_time TIMESTAMP, update_by VARCHAR(30), update_time TIMESTAMP, remark VARCHAR(100), effective_date TIMESTAMP, expiry_date TIMESTAMP)");
             sql.execute("CREATE TABLE product (product_id BIGINT, product_code VARCHAR(100), product_name VARCHAR(100))");
             sql.execute("INSERT INTO product VALUES (1,'P1','产品甲')");
             for (int i = 1; i <= 5; i++) {

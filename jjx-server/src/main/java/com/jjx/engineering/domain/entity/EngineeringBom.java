@@ -61,6 +61,12 @@ public class EngineeringBom {
      */
     private Long productId;
 
+    /** 产出身份：PRODUCT 产品 / MATERIAL 物料（历史空值按 PRODUCT 解释，dev-20261111-004）。 */
+    private String outputType;
+
+    /** 产出ID：PRODUCT 时为 product_id，MATERIAL 时为 inventory_material.material_id。 */
+    private Long outputId;
+
 
     /**
      * 审核状态: 1草稿,2待审批,3已批准,4已驳回

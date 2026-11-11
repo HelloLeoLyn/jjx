@@ -151,4 +151,10 @@ public class Product {
 
     /** 单位 */
     private String unit;
+
+    /** 产品×投入物料主方案 JSON（方案 A，dev-20261111-004）：{"349":{"bomId":124,"isPrimary":true}}。 */
+    private String materialSchemeJson;
+
+    /** 主方案 JSON 乐观锁版本；父 BOM 显式保存时递增。 */
+    private Integer schemeRevision;
 }

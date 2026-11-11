@@ -12,6 +12,10 @@ public class EngineeringRoutingVO {
     private String routingCode;
     private String routingName;
     private Long productId;
+    /** 产出类型：PRODUCT/MATERIAL。 */
+    private String outputType;
+    /** 产出ID。 */
+    private Long outputId;
     private String productCode;
     private String productName;
     private String routingVersion;

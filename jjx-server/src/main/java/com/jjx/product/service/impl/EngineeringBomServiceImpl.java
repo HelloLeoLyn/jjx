@@ -14,6 +14,7 @@ import com.jjx.system.annotation.Event;
 import com.jjx.product.domain.converter.EngineeringBomConverter;
 import com.jjx.product.domain.dto.EngineeringBomDTO;
 import com.jjx.product.domain.dto.EngineeringBomItemDTO;
+import com.jjx.product.domain.dto.ManufacturingSchemeChoiceDTO;
 import com.jjx.product.domain.dto.BomItemReviewDTO;
 import com.jjx.product.domain.dto.UpdateBomStatusDTO;
 import com.jjx.product.domain.entity.Product;
@@ -22,6 +23,7 @@ import com.jjx.engineering.domain.entity.EngineeringBomItem;
 import com.jjx.product.domain.query.EngineeringBomQuery;
 import com.jjx.product.domain.vo.EngineeringBomVO;
 import com.jjx.product.enums.ProductEnums;
+import com.jjx.product.enums.ManufacturingOutputType;
 import com.jjx.product.mapper.EngineeringBomItemMapper;
 import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.mapper.ProductMapper;
@@ -41,12 +43,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * BOM Service实现
  */
 @Service
 public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,EngineeringBom> implements IEngineeringBomService {
+
+    /** 产品主方案 JSON 编解码；只用于 product.material_scheme_json，不参与 BOM 行指纹。 */
+    private static final ObjectMapper SCHEME_JSON = new ObjectMapper();
+    private static final Set<String> SOURCE_TYPES = Set.of("buy", "make");
+    private static final int MAX_SUB_BOM_DEPTH = 32;
 
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.transaction.PlatformTransactionManager transactionManager;
@@ -195,6 +205,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             if (product != null) {
                 vo.setProductCode(product.getProductCode());
                 vo.setProductName(product.getProductName());
+                vo.setSchemeRevision(product.getSchemeRevision());
+                vo.setSchemeChoices(readSchemeChoices(product.getMaterialSchemeJson()));
             }
         }
         return vo;
@@ -212,13 +224,19 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createBomReturnId(EngineeringBomDTO dto) {
+        // 产出身份先归一化：历史调用没有 outputType 时按 PRODUCT/productId 兼容。
+        normalizeOutput(dto);
+        // 新建方案全部按新行校验（正小数/单位依据/显式下层引用）；草稿可引用草稿方案。
+        validateItemRules(null, dto.getOutputType(), dto.getItems(), Map.of(), true);
         EngineeringBom bom = bomConverter.toEntity(dto);
         bom.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         // 未批准的 BOM 不能成为当前/生效版本（dev-20261020-029 F）
         bom.setIsCurrent(false);
+        bom.setOutputType(dto.getOutputType());
+        bom.setOutputId(dto.getOutputId());
 
         // 生成BOM版本
-        generateBomVersion(dto.getProductId(), bom);
+        generateBomVersion(bom);
 
         // 保存BOM主表
         if (!saveBom(bom)) {
@@ -230,8 +248,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
         // 如果是当前版本，更新其他版本为非当前
         if (isCurrentVersion(bom)) {
-            setOtherBomNotCurrent(bom.getProductId(), bom.getBomId());
+            setOtherBomNotCurrent(bom.getOutputType(), bom.getOutputId(), bom.getBomId());
         }
+
+        // 父 BOM 保存才持久化产品主方案；采用 token 本身不落库。
+        applySchemeChoices(dto, bom);
 
         return bom.getBomId();
     }
@@ -241,15 +262,21 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     /**
      * 生成BOM版本号
      */
-    private void generateBomVersion(Long productId, EngineeringBom bom) {
+    private void generateBomVersion(EngineeringBom bom) {
         if (StringUtils.isNotBlank(bom.getBomVersion())) {
             return;
         }
 
-        // 2026-08-10 DEV-765：查该产品所有版本号，统一走公共工具类（比原 selectLatestVersion+replace 更健壮）
+        // 2026-08-10 DEV-765：按产出身份查所有版本号；MATERIAL 没有 product_id。
+        String outputType = ManufacturingOutputType.normalize(bom.getOutputType()).name();
+        Long outputId = bom.getOutputId() != null ? bom.getOutputId() : bom.getProductId();
         java.util.List<String> versions = productBomMapper.selectList(
                         new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringBom>()
-                                .eq(EngineeringBom::getProductId, productId))
+                                .and(w -> w.eq(EngineeringBom::getOutputType, outputType)
+                                        .eq(EngineeringBom::getOutputId, outputId)
+                                        .or()
+                                        .isNull(EngineeringBom::getOutputType)
+                                        .eq(EngineeringBom::getProductId, outputId)))
                 .stream()
                 .map(b -> b.getVersion() != null ? b.getVersion() : b.getBomVersion())
                 .collect(java.util.stream.Collectors.toList());
@@ -286,10 +313,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         return bom.getIsCurrent() != null && bom.getIsCurrent();
     }
 
-    private void setOtherBomNotCurrent(Long productId, Long bomId) {
+    private void setOtherBomNotCurrent(String outputType, Long outputId, Long bomId) {
         LambdaUpdateWrapper<EngineeringBom> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.set(EngineeringBom::getIsCurrent, YesNoEnum.NO.getCode())
-                .eq(EngineeringBom::getProductId,productId)
+                .eq(EngineeringBom::getOutputType, ManufacturingOutputType.normalize(outputType).name())
+                .eq(EngineeringBom::getOutputId, outputId)
                 .ne(EngineeringBom::getBomId,bomId);
         productBomMapper.update(updateWrapper);
     }
@@ -310,17 +338,32 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             throw new BusinessException("BOM ID不能为空");
         }
 
-        // 检查BOM是否存在
-        EngineeringBom existingBom = productBomMapper.selectById(dto.getBomId());
+        // 检查BOM是否存在；父保存锁行，避免并发覆盖明细。
+        EngineeringBom existingBom = productBomMapper.selectForUpdate(dto.getBomId());
+        if (existingBom == null) {
+            // 兼容只读/替身 Mapper 未实现行锁查询的测试环境；真实库两个查询等价。
+            existingBom = productBomMapper.selectById(dto.getBomId());
+        }
         if (existingBom == null) {
             throw new BusinessException("BOM不存在");
         }
+
+        // 产出身份不可原地改变；历史空值按 PRODUCT 兼容。
+        normalizeOutputForUpdate(dto, existingBom);
 
         // 如果BOM已审批，不允许修改
         boolean editable = ProductEnums.BomStatus.fromValue(existingBom.getApproveStatus()).isEditable();
         if (!editable) {
             throw new BusinessException("BOM已审批，不允许修改");
         }
+
+        // 既有未改行保留原保存行为；仅新增/变更行执行新制造规则。
+        Map<Long, EngineeringBomItem> storedRows = new HashMap<>();
+        for (EngineeringBomItem row : productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, dto.getBomId()))) {
+            if (row.getItemId() != null) storedRows.put(row.getItemId(), row);
+        }
+        validateItemRules(dto.getBomId(), dto.getOutputType(), dto.getItems(), storedRows, false);
 
         // 变更明细：主表 + 明细行对比（保存前采集）
         List<String> changes = new java.util.ArrayList<>();
@@ -351,7 +394,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             bom.setIsCurrent(existingBom.getIsCurrent());
         }
         if (bom.getIsCurrent() != null && bom.getIsCurrent()) {
-            setOtherBomNotCurrent(bom.getProductId(), bom.getBomId());
+            setOtherBomNotCurrent(dto.getOutputType(), dto.getOutputId(), bom.getBomId());
         }
 
         com.jjx.product.domain.vo.EngineeringBomEditVO vo = new com.jjx.product.domain.vo.EngineeringBomEditVO();
@@ -367,6 +410,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         vo.setDetailMessage(changes.isEmpty() && itemChanges.isEmpty() ? null : detail.toString());
         ProductEnums.BomStatus latestStatus = ProductEnums.BomStatus.fromValue(bom.getApproveStatus());
         vo.setBizStatus(latestStatus != null ? latestStatus.getLabel() : null);
+        // 父 BOM 保存同事务写产品主方案；返回新 revision 供前端继续编辑。
+        Integer schemeRevision = applySchemeChoices(dto, existingBom);
+        vo.setSchemeRevision(schemeRevision);
+        List<String> warnings = collectSubBomWarnings(dto.getBomId(), dto.getSchemeChoices());
+        vo.setWarnings(warnings.isEmpty() ? null : warnings);
         return vo;
     }
 
@@ -570,6 +618,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     private void copyItemContent(EngineeringBomItem src, EngineeringBomItem dst) {
         dst.setParentMaterialId(src.getParentMaterialId());
         dst.setMaterialId(src.getMaterialId());
+        dst.setSubBomId(src.getSubBomId());
+        dst.setUnitFactor(src.getUnitFactor());
+        dst.setUnitFactorBasis(src.getUnitFactorBasis());
+        dst.setUnitFactorSource(src.getUnitFactorSource());
         dst.setMaterialCode(src.getMaterialCode());
         dst.setMaterialName(src.getMaterialName());
         dst.setSpecification(src.getSpecification());
@@ -599,6 +651,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     private boolean contentChanged(EngineeringBomItem stored, EngineeringBomItem incoming) {
         String approved = stored.getApprovedFingerprint();
         if (!Objects.equals(stored.getParentMaterialId(), incoming.getParentMaterialId())) return true;
+        // 制造关系与换算依据变化必须逐行重新审核；不改变历史指纹算法。
+        if (!Objects.equals(stored.getSubBomId(), incoming.getSubBomId())) return true;
+        if (!sameDecimal(stored.getUnitFactor(), incoming.getUnitFactor())) return true;
+        if (!Objects.equals(text(stored.getUnitFactorBasis()), text(incoming.getUnitFactorBasis()))) return true;
+        if (!Objects.equals(text(stored.getUnitFactorSource()), text(incoming.getUnitFactorSource()))) return true;
         if (approved == null || approved.isBlank()) return !legacyFingerprint(stored).equals(legacyFingerprint(incoming));
         return !approved.equals(fingerprint(incoming)) && !approved.equals(legacyFingerprint(incoming));
     }
@@ -916,10 +973,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         productBomMapper.updateById(bom);
 
         // 将其他BOM设置为非默认
-        setOtherBomNotCurrent(bom.getProductId(), bomId);
+        setOtherBomNotCurrent(bom.getOutputType(), bom.getOutputId(), bomId);
 
         // DEV-771：同步产品 current_bom_id 指针（发布校验用）
-        if (bom.getProductId() != null) {
+        if (ManufacturingOutputType.normalize(bom.getOutputType()) == ManufacturingOutputType.PRODUCT
+                && bom.getProductId() != null) {
             com.jjx.product.domain.entity.Product product = productMapper.selectById(bom.getProductId());
             if (product != null) {
                 product.setCurrentBomId(bomId);
@@ -1266,6 +1324,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 ? dto.getParentMaterialId() : null);
         // 快速模式允许 materialId 为空；0/负数统一归一化为 null（dev-20261020-029 A）
         item.setMaterialId(dto.getMaterialId() != null && dto.getMaterialId() > 0 ? dto.getMaterialId() : null);
+        item.setSubBomId(dto.getSubBomId() != null && dto.getSubBomId() > 0 ? dto.getSubBomId() : null);
+        item.setUnitFactor(dto.getUnitFactor());
+        item.setUnitFactorBasis(dto.getUnitFactorBasis());
+        item.setUnitFactorSource(dto.getUnitFactorSource());
         // 行状态由服务端维护；新实体先给草稿，已有行在 mergeBomItems 中保留原状态
         item.setReviewStatus(ProductEnums.BomItemReviewStatus.DRAFT.getValue());
         item.setRemoveConfirmed(false);
@@ -1299,7 +1361,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     private java.math.BigDecimal calculatedUnitQuantity(java.math.BigDecimal base, java.math.BigDecimal module,
                                                        java.math.BigDecimal legacyQuantity) {
         if (base != null && base.signum() > 0 && module != null && module.signum() > 0) {
-            return base.divide(module, 4, java.math.RoundingMode.HALF_UP);
+            // 原始比例是权威；这里仅生成展示快照。比例过小导致 4 位快照归零时明确阻断，
+            // 不把 0 当成合法用量（dev-20261111-004）。
+            java.math.BigDecimal exact = base.divide(module, 8, java.math.RoundingMode.HALF_UP);
+            java.math.BigDecimal display = exact.setScale(4, java.math.RoundingMode.HALF_UP);
+            if (display.signum() == 0 && exact.signum() > 0) {
+                throw new BusinessException("MODULE_QTY_INVALID：基数/模数比例过小，4 位展示用量会归零；请调整精度");
+            }
+            return display;
         }
         // 缺少有效基数/模数的历史明细保留原用量，由既有审核校验处理。
         return legacyQuantity != null ? legacyQuantity : java.math.BigDecimal.ZERO;
@@ -1318,7 +1387,9 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         item.setQuantity(qty);
         // 应用料
         Integer loss = item.getLossRate() != null ? item.getLossRate() : 0;
-        item.setAppliedQty(qty.multiply(java.math.BigDecimal.valueOf(1 + loss / 100.0))
+        java.math.BigDecimal lossFactor = java.math.BigDecimal.ONE.add(
+                java.math.BigDecimal.valueOf(loss).divide(java.math.BigDecimal.valueOf(100), 6, java.math.RoundingMode.HALF_UP));
+        item.setAppliedQty(qty.multiply(lossFactor)
                 .setScale(4, java.math.RoundingMode.HALF_UP));
         // 实际投料保存单位应用料（含损耗、不取整）
         item.setActualIssueQty(item.getAppliedQty());
@@ -1348,20 +1419,32 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             issues.add(issue(null, null, null, "bomId", "BOM不存在"));
             return issues;
         }
-        // 主表：产品必须存在
-        if (bom.getProductId() == null) {
-            issues.add(issue(null, null, null, "productId", "BOM未关联产品"));
-        } else if (productMapper.selectById(bom.getProductId()) == null) {
-            issues.add(issue(null, null, null, "productId", "关联产品不存在（product_id=" + bom.getProductId() + "）"));
+        // 主表：按产出身份校验存在性（MATERIAL 不再用 product_id 冒充）
+        String outputType = ManufacturingOutputType.normalize(bom.getOutputType()).name();
+        Long outputId = bom.getOutputId() != null ? bom.getOutputId() : bom.getProductId();
+        if (outputId == null) {
+            issues.add(issue(null, null, null, "outputId", "BOM未关联产出对象"));
+        } else if (ManufacturingOutputType.PRODUCT.name().equals(outputType)) {
+            if (productMapper.selectById(outputId) == null) {
+                issues.add(issue(null, null, null, "productId", "关联产品不存在（product_id=" + outputId + "）"));
+            }
+        } else {
+            com.jjx.inventory.domain.InventoryMaterial material = inventoryMaterialMapper.selectById(outputId);
+            if (material == null) {
+                issues.add(issue(null, null, null, "outputId", "产出物料不存在（material_id=" + outputId + "）"));
+            } else if (material.getStatus() != null && material.getStatus() != 1) {
+                issues.add(issue(null, null, null, "outputId", "产出物料已停用（material_id=" + outputId + "）"));
+            }
         }
-        // 主表：同一产品只能有一个当前版本
-        if (Boolean.TRUE.equals(bom.getIsCurrent()) && bom.getProductId() != null) {
+        // 主表：同一产出对象只能有一个当前版本
+        if (Boolean.TRUE.equals(bom.getIsCurrent()) && outputId != null) {
             Long currentCnt = productBomMapper.selectCount(new LambdaQueryWrapper<EngineeringBom>()
-                    .eq(EngineeringBom::getProductId, bom.getProductId())
+                    .eq(EngineeringBom::getOutputType, outputType)
+                    .eq(EngineeringBom::getOutputId, outputId)
                     .eq(EngineeringBom::getIsCurrent, true));
             if (currentCnt != null && currentCnt > 1) {
                 issues.add(issue(null, null, null, "isCurrent",
-                        "同一产品存在 " + currentCnt + " 个当前版本（is_current=1），请先修正"));
+                        "同一产出对象存在 " + currentCnt + " 个当前版本（is_current=1），请先修正"));
             }
         }
         List<EngineeringBomItem> items = productBomItemMapper.selectList(
@@ -1435,15 +1518,37 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 issues.add(issue(iid, code, name, "lossRate", "损耗率须在 0~100 之间"));
             }
             // 来源类型
-            if (it.getSourceType() != null && !"buy".equals(it.getSourceType()) && !"make".equals(it.getSourceType())) {
+            String sourceType = it.getSourceType() == null || it.getSourceType().isBlank()
+                    ? "buy" : it.getSourceType().trim();
+            if (!SOURCE_TYPES.contains(sourceType)) {
                 issues.add(issue(iid, code, name, "sourceType", "来源类型非法（应为 buy/make）"));
             }
-            // 模数 / 基数（用户口径 2026-10-07：非空且 >=1）
-            if (it.getModuleQty() == null || it.getModuleQty().compareTo(java.math.BigDecimal.ONE) < 0) {
-                issues.add(issue(iid, code, name, "moduleQty", "模数不能为空且须 ≥1"));
+            // 来源与显式下层引用：make 必须有方案，buy 不得挂方案
+            if ("buy".equals(sourceType) && it.getSubBomId() != null) {
+                issues.add(issue(iid, code, name, "subBomId", "BUY_WITH_SUB_BOM：外购行不能引用制造方案"));
             }
-            if (it.getBaseQty() == null || it.getBaseQty().compareTo(java.math.BigDecimal.ONE) < 0) {
-                issues.add(issue(iid, code, name, "baseQty", "基数不能为空且须 ≥1"));
+            if ("make".equals(sourceType) && it.getSubBomId() == null) {
+                issues.add(issue(iid, code, name, "subBomId", "MAKE_WITHOUT_SCHEME：自制行必须明确下层制造方案"));
+            }
+            if (it.getSubBomId() != null) {
+                String subError = validateSubBomReference(bomId, it, true);
+                if (subError != null) {
+                    issues.add(issue(iid, code, name, "subBomId", subError));
+                }
+            }
+            // 模数 / 基数（dev-20261111-004：>0 正小数，最多 4 位，拒绝超精度静默归零）
+            String moduleError = validatePositiveDecimal(it.getModuleQty(), "MODULE_QTY_INVALID", 12, 4);
+            if (moduleError != null) {
+                issues.add(issue(iid, code, name, "moduleQty", moduleError));
+            }
+            String baseError = validatePositiveDecimal(it.getBaseQty(), "BASE_QTY_INVALID", 12, 4);
+            if (baseError != null) {
+                issues.add(issue(iid, code, name, "baseQty", baseError));
+            }
+            // 单位依据：跨单位必须有换算系数与依据
+            String unitError = validateUnitBasis(it);
+            if (unitError != null) {
+                issues.add(issue(iid, code, name, "unitFactor", unitError));
             }
             // 项目（标准工序）引用完整性
             if (it.getProcessId() != null) {
@@ -1491,7 +1596,394 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 cur = byId.get(cur).getParentMaterialId();
             }
         }
+        // 显式下层引用全图 DFS：环/深度/未批准子方案，不以“两层截断”伪装通过
+        String graphError = validateSubBomGraph(bomId, items, true);
+        if (graphError != null) {
+            issues.add(issue(null, null, null, "subBomId", graphError));
+        }
+        // 产品主方案引用的方案也必须已批准
+        String schemeError = validateSavedSchemeChoices(bom);
+        if (schemeError != null) {
+            issues.add(issue(null, null, null, "schemeChoices", schemeError));
+        }
         return issues;
+    }
+
+    // ==================== 制造 BOM 身份/精度/单位/防环（dev-20261111-004） ====================
+
+    /** 新增/编辑前归一化产出身份；PRODUCT 兼容历史 productId 调用，MATERIAL 校验物料档案。 */
+    private void normalizeOutput(EngineeringBomDTO dto) {
+        ManufacturingOutputType type = ManufacturingOutputType.normalize(dto.getOutputType());
+        Long outputId = dto.getOutputId() != null ? dto.getOutputId() : dto.getProductId();
+        if (outputId == null) {
+            throw new BusinessException("产出对象不能为空（outputId/productId）");
+        }
+        if (type == ManufacturingOutputType.PRODUCT) {
+            dto.setProductId(outputId);
+        } else {
+            com.jjx.inventory.domain.InventoryMaterial material = inventoryMaterialMapper.selectById(outputId);
+            if (material == null) {
+                throw new BusinessException("产出物料不存在（material_id=" + outputId + "）");
+            }
+            if (material.getStatus() != null && material.getStatus() != 1) {
+                throw new BusinessException("产出物料已停用（material_id=" + outputId + "）");
+            }
+            dto.setProductId(null);
+        }
+        dto.setOutputType(type.name());
+        dto.setOutputId(outputId);
+    }
+
+    /** 编辑时产出身份不可改变；未传时沿用库中身份。 */
+    private void normalizeOutputForUpdate(EngineeringBomDTO dto, EngineeringBom existing) {
+        ManufacturingOutputType existingType = ManufacturingOutputType.normalize(existing.getOutputType());
+        Long existingId = existing.getOutputId() != null ? existing.getOutputId() : existing.getProductId();
+        ManufacturingOutputType type = (dto.getOutputType() == null || dto.getOutputType().isBlank())
+                ? existingType : ManufacturingOutputType.normalize(dto.getOutputType());
+        Long outputId = dto.getOutputId() != null ? dto.getOutputId()
+                : (type == ManufacturingOutputType.PRODUCT && dto.getProductId() != null ? dto.getProductId() : existingId);
+        if (type != existingType || !Objects.equals(outputId, existingId)) {
+            throw new BusinessException("产出身份不可修改（bomId=" + existing.getBomId() + "）");
+        }
+        dto.setOutputType(type.name());
+        dto.setOutputId(existingId);
+        dto.setProductId(type == ManufacturingOutputType.PRODUCT ? existingId : null);
+    }
+
+    /** 保存阶段规则：新行/变更行校验；既有未改行保持原保存行为，不强制重解释历史单位。 */
+    private void validateItemRules(Long bomId, String outputType, List<EngineeringBomItemDTO> items,
+                                   Map<Long, EngineeringBomItem> stored, boolean allNew) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        List<EngineeringBomItem> incoming = new java.util.ArrayList<>();
+        for (EngineeringBomItemDTO row : items) {
+            if (row == null) continue;
+            if (Boolean.TRUE.equals(row.getRemoveRequested())) continue;
+            EngineeringBomItem incomingRow = toBomItemEntity(row);
+            incoming.add(incomingRow);
+            boolean changed = allNew || row.getItemId() == null || row.getItemId() <= 0
+                    || !stored.containsKey(row.getItemId())
+                    || manufacturingContentChanged(stored.get(row.getItemId()), incomingRow);
+            if (!changed) continue;
+            String moduleError = validatePositiveDecimal(row.getModuleQty(), "MODULE_QTY_INVALID", 12, 4);
+            if (moduleError != null) throw new BusinessException(moduleError);
+            String baseError = validatePositiveDecimal(row.getBaseQty(), "BASE_QTY_INVALID", 12, 4);
+            if (baseError != null) throw new BusinessException(baseError);
+            String sourceType = row.getSourceType() == null || row.getSourceType().isBlank()
+                    ? "buy" : row.getSourceType().trim();
+            if (!SOURCE_TYPES.contains(sourceType)) {
+                throw new BusinessException("来源类型非法（应为 buy/make）");
+            }
+            if ("buy".equals(sourceType) && row.getSubBomId() != null) {
+                throw new BusinessException("BUY_WITH_SUB_BOM：外购行不能引用制造方案");
+            }
+            if ("make".equals(sourceType) && row.getSubBomId() == null) {
+                throw new BusinessException("MAKE_WITHOUT_SCHEME：自制行必须明确下层制造方案");
+            }
+            String unitError = validateUnitBasis(incomingRow);
+            if (unitError != null) throw new BusinessException(unitError);
+        }
+        String graphError = validateSubBomGraph(bomId, incoming, false);
+        if (graphError != null) throw new BusinessException(graphError);
+    }
+
+    /** 只有影响制造规则的行内容变化才触发新规则；历史行未改时不重解释单位/来源。 */
+    private boolean manufacturingContentChanged(EngineeringBomItem stored, EngineeringBomItem incoming) {
+        if (stored == null || incoming == null) return true;
+        return !Objects.equals(stored.getMaterialId(), incoming.getMaterialId())
+                || !Objects.equals(stored.getSubBomId(), incoming.getSubBomId())
+                || !Objects.equals(text(stored.getSourceType()), text(incoming.getSourceType()))
+                || !Objects.equals(text(stored.getUnit()), text(incoming.getUnit()))
+                || !sameDecimal(stored.getUnitFactor(), incoming.getUnitFactor())
+                || !Objects.equals(text(stored.getUnitFactorBasis()), text(incoming.getUnitFactorBasis()))
+                || !Objects.equals(text(stored.getUnitFactorSource()), text(incoming.getUnitFactorSource()))
+                || !sameDecimal(stored.getModuleQty(), incoming.getModuleQty())
+                || !sameDecimal(stored.getBaseQty(), incoming.getBaseQty())
+                || !Objects.equals(stored.getLossRate(), incoming.getLossRate());
+    }
+
+    private static boolean sameDecimal(BigDecimal a, BigDecimal b) {
+        return a == null ? b == null : b != null && a.compareTo(b) == 0;
+    }
+
+    /** >0 正小数；拒绝 0/负数/空值；按目标 decimal(precision,scale) 拒绝超精度，避免落库静默归零。 */
+    private String validatePositiveDecimal(BigDecimal value, String code, int precision, int scale) {
+        if (value == null) {
+            return code + "：不能为空";
+        }
+        if (value.signum() <= 0) {
+            return code + "：必须大于 0";
+        }
+        BigDecimal stripped = value.stripTrailingZeros();
+        int actualScale = Math.max(0, stripped.scale());
+        if (actualScale > scale) {
+            return code + "：最多支持 " + scale + " 位小数，拒绝超精度静默归零（输入=" + value.toPlainString() + "）";
+        }
+        int integerDigits = stripped.precision() - stripped.scale();
+        if (integerDigits > precision - scale) {
+            return code + "：整数位超出 decimal(" + precision + "," + scale + ") 上限（输入=" + value.toPlainString() + "）";
+        }
+        return null;
+    }
+
+    /** 单位依据：BOM 单位与档案单位一致无需换算；不一致必须给出正系数和依据。 */
+    private String validateUnitBasis(EngineeringBomItem item) {
+        if (item.getMaterialId() == null || item.getUnit() == null || item.getUnit().isBlank()) {
+            return null;
+        }
+        if (inventoryMaterialMapper == null) {
+            return null;
+        }
+        com.jjx.inventory.domain.InventoryMaterial material = inventoryMaterialMapper.selectById(item.getMaterialId());
+        if (material == null || material.getUnit() == null || material.getUnit().isBlank()) {
+            return null;
+        }
+        boolean same = material.getUnit().trim().equalsIgnoreCase(item.getUnit().trim());
+        if (same) {
+            if (item.getUnitFactor() != null && item.getUnitFactor().signum() <= 0) {
+                return "UNIT_FACTOR_MISSING：换算系数必须大于 0";
+            }
+            return null;
+        }
+        if (item.getUnitFactor() == null || item.getUnitFactor().signum() <= 0) {
+            return "UNIT_FACTOR_MISSING：单位 " + item.getUnit() + " 与档案单位 " + material.getUnit()
+                    + " 不一致，必须填写换算系数";
+        }
+        String factorError = validatePositiveDecimal(item.getUnitFactor(), "UNIT_FACTOR_MISSING", 18, 8);
+        if (factorError != null) {
+            return factorError;
+        }
+        if (item.getUnitFactorBasis() == null || item.getUnitFactorBasis().isBlank()) {
+            return "UNIT_FACTOR_MISSING：跨单位换算必须填写依据（尺寸/批次实测/供应商资料）";
+        }
+        return null;
+    }
+
+    /** 校验单行显式下层引用；rootBomId 为空时只校验存在/输出一致（新建尚未落库）。 */
+    private String validateSubBomReference(Long rootBomId, EngineeringBomItem row, boolean requireApproved) {
+        if (row.getSubBomId() == null) {
+            return null;
+        }
+        if (row.getMaterialId() == null) {
+            return "SUB_BOM_OUTPUT_MISMATCH：投入行未关联物料，无法绑定制造方案";
+        }
+        if (rootBomId != null && Objects.equals(rootBomId, row.getSubBomId())) {
+            return "BOM_CYCLE：方案不能引用自身（bomId=" + rootBomId + "）";
+        }
+        EngineeringBom child = productBomMapper.selectById(row.getSubBomId());
+        if (child == null) {
+            return "SUB_BOM_NOT_FOUND：下层方案不存在（bomId=" + row.getSubBomId() + "）";
+        }
+        if (ManufacturingOutputType.normalize(child.getOutputType()) != ManufacturingOutputType.MATERIAL) {
+            return "SUB_BOM_OUTPUT_MISMATCH：下层方案产出不是物料（bomId=" + child.getBomId() + "）";
+        }
+        Long childOutputId = child.getOutputId() != null ? child.getOutputId() : child.getProductId();
+        if (!Objects.equals(childOutputId, row.getMaterialId())) {
+            return "SUB_BOM_OUTPUT_MISMATCH：下层方案产出物料 " + childOutputId
+                    + " 与本行物料 " + row.getMaterialId() + " 不一致";
+        }
+        if (requireApproved && !Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+            return "SUB_BOM_NOT_APPROVED：下层方案未批准（bomId=" + child.getBomId() + "）";
+        }
+        return null;
+    }
+
+    /** 显式引用全图 DFS：同一路径重复即环；超过 32 层阻断，不静默截断。 */
+    private String validateSubBomGraph(Long rootBomId, List<EngineeringBomItem> rows, boolean requireApproved) {
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        Set<Long> children = new java.util.LinkedHashSet<>();
+        for (EngineeringBomItem row : rows) {
+            if (row.getSubBomId() == null) continue;
+            String error = validateSubBomReference(rootBomId, row, requireApproved);
+            if (error != null) return error;
+            children.add(row.getSubBomId());
+        }
+        for (Long child : children) {
+            Set<Long> path = new HashSet<>();
+            if (rootBomId != null) path.add(rootBomId);
+            String error = dfsSubBom(child, path, 1, rootBomId, requireApproved);
+            if (error != null) return error;
+        }
+        return null;
+    }
+
+    private String dfsSubBom(Long bomId, Set<Long> path, int depth, Long rootBomId, boolean requireApproved) {
+        if (depth > MAX_SUB_BOM_DEPTH) {
+            return "BOM_DEPTH_EXCEEDED：显式制造关系超过 " + MAX_SUB_BOM_DEPTH + " 层（bomId=" + bomId + "）";
+        }
+        if (rootBomId != null && Objects.equals(rootBomId, bomId)) {
+            return "BOM_CYCLE：显式制造关系形成环，路径=" + path + " -> " + bomId;
+        }
+        if (!path.add(bomId)) {
+            return "BOM_CYCLE：显式制造关系形成环，路径=" + path + " -> " + bomId;
+        }
+        List<EngineeringBomItem> children = productBomItemMapper.selectList(
+                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId));
+        for (EngineeringBomItem child : children) {
+            if (child.getSubBomId() == null) continue;
+            String error = validateSubBomReference(rootBomId, child, requireApproved);
+            if (error != null) return error;
+            error = dfsSubBom(child.getSubBomId(), path, depth + 1, rootBomId, requireApproved);
+            if (error != null) return error;
+        }
+        path.remove(bomId);
+        return null;
+    }
+
+    /** 产品主方案 JSON 中的方案在父 BOM 提交/批准时必须已批准且产出匹配。 */
+    private String validateSavedSchemeChoices(EngineeringBom bom) {
+        if (ManufacturingOutputType.normalize(bom.getOutputType()) != ManufacturingOutputType.PRODUCT
+                || bom.getProductId() == null) {
+            return null;
+        }
+        Product product = productMapper.selectById(bom.getProductId());
+        if (product == null) return null;
+        for (ManufacturingSchemeChoiceDTO choice : readSchemeChoices(product.getMaterialSchemeJson())) {
+            EngineeringBom child = productBomMapper.selectById(choice.getBomId());
+            if (child == null) {
+                return "SUB_BOM_NOT_FOUND：产品主方案引用不存在（bomId=" + choice.getBomId() + "）";
+            }
+            Long childOutputId = child.getOutputId() != null ? child.getOutputId() : child.getProductId();
+            if (ManufacturingOutputType.normalize(child.getOutputType()) != ManufacturingOutputType.MATERIAL
+                    || !Objects.equals(childOutputId, choice.getMaterialId())) {
+                return "SUB_BOM_OUTPUT_MISMATCH：产品主方案产出与物料不一致（materialId=" + choice.getMaterialId() + "）";
+            }
+            if (!Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+                return "SUB_BOM_NOT_APPROVED：产品主方案未批准（bomId=" + choice.getBomId() + "）";
+            }
+        }
+        return null;
+    }
+
+    /** 父 BOM 显式保存时同事务写产品 JSON；行锁 + scheme_revision 乐观锁。 */
+    private Integer applySchemeChoices(EngineeringBomDTO dto, EngineeringBom bom) {
+        if (dto.getSchemeChoices() == null || dto.getSchemeChoices().isEmpty()) {
+            return null;
+        }
+        if (ManufacturingOutputType.normalize(dto.getOutputType()) != ManufacturingOutputType.PRODUCT) {
+            throw new BusinessException("只有产品 BOM 可以保存产品主方案选择");
+        }
+        Long productId = dto.getProductId() != null ? dto.getProductId() : bom.getProductId();
+        if (productId == null) {
+            throw new BusinessException("产品 BOM 未关联产品，不能保存主方案选择");
+        }
+        Product product = productMapper.selectSchemeForUpdate(productId);
+        if (product == null) {
+            throw new BusinessException("产品不存在（product_id=" + productId + "）");
+        }
+        int currentRevision = product.getSchemeRevision() == null ? 0 : product.getSchemeRevision();
+        if (dto.getSchemeRevision() != null && !Objects.equals(dto.getSchemeRevision(), currentRevision)) {
+            throw new BusinessException(409, "CONCURRENT_MODIFICATION：主方案已被其他会话修改，请重新加载后重试");
+        }
+        ObjectNode root;
+        try {
+            JsonNode parsed = product.getMaterialSchemeJson() == null || product.getMaterialSchemeJson().isBlank()
+                    ? null : SCHEME_JSON.readTree(product.getMaterialSchemeJson());
+            root = parsed instanceof ObjectNode ? (ObjectNode) parsed : SCHEME_JSON.createObjectNode();
+        } catch (Exception ex) {
+            throw new BusinessException("产品主方案 JSON 解析失败，请先核对历史数据: " + ex.getMessage());
+        }
+        for (ManufacturingSchemeChoiceDTO choice : dto.getSchemeChoices()) {
+            if (choice == null || choice.getMaterialId() == null || choice.getBomId() == null) {
+                throw new BusinessException("主方案选择必须包含 materialId 与 bomId");
+            }
+            EngineeringBom child = productBomMapper.selectById(choice.getBomId());
+            if (child == null) {
+                throw new BusinessException("SUB_BOM_NOT_FOUND：制造方案不存在（bomId=" + choice.getBomId() + "）");
+            }
+            Long childOutputId = child.getOutputId() != null ? child.getOutputId() : child.getProductId();
+            if (ManufacturingOutputType.normalize(child.getOutputType()) != ManufacturingOutputType.MATERIAL
+                    || !Objects.equals(childOutputId, choice.getMaterialId())) {
+                throw new BusinessException("SUB_BOM_OUTPUT_MISMATCH：方案产出与物料不一致（materialId="
+                        + choice.getMaterialId() + "，bomId=" + choice.getBomId() + "）");
+            }
+            ObjectNode node = root.withObject("/" + choice.getMaterialId());
+            node.put("bomId", choice.getBomId());
+            if (Boolean.TRUE.equals(choice.getIsPrimary())) {
+                java.util.Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+                while (fields.hasNext()) {
+                    Map.Entry<String, JsonNode> entry = fields.next();
+                    if (entry.getValue() instanceof ObjectNode other) {
+                        other.put("isPrimary", false);
+                    }
+                }
+                node.put("isPrimary", true);
+            } else if (choice.getIsPrimary() != null) {
+                node.put("isPrimary", false);
+            } else if (!node.has("isPrimary")) {
+                node.put("isPrimary", false);
+            }
+        }
+        int updated = productMapper.updateScheme(productId, root.toString(), currentRevision);
+        if (updated == 0) {
+            throw new BusinessException(409, "CONCURRENT_MODIFICATION：主方案已被其他会话修改，请重新加载后重试");
+        }
+        return currentRevision + 1;
+    }
+
+    /** 读取 product.material_scheme_json；坏数据不静默吞掉，返回空并由调用方决定是否阻断。 */
+    private List<ManufacturingSchemeChoiceDTO> readSchemeChoices(String raw) {
+        List<ManufacturingSchemeChoiceDTO> out = new java.util.ArrayList<>();
+        if (raw == null || raw.isBlank()) return out;
+        try {
+            JsonNode root = SCHEME_JSON.readTree(raw);
+            if (!(root instanceof ObjectNode)) return out;
+            java.util.Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> entry = fields.next();
+                long materialId = Long.parseLong(entry.getKey());
+                JsonNode value = entry.getValue();
+                if (value == null || !value.hasNonNull("bomId")) continue;
+                ManufacturingSchemeChoiceDTO choice = new ManufacturingSchemeChoiceDTO();
+                choice.setMaterialId(materialId);
+                choice.setBomId(value.path("bomId").asLong());
+                choice.setIsPrimary(value.path("isPrimary").asBoolean(false));
+                EngineeringBom child = productBomMapper.selectById(choice.getBomId());
+                if (child != null) {
+                    choice.setBomCode(child.getBomCode());
+                    choice.setBomVersion(child.getBomVersion());
+                    choice.setApproveStatus(child.getApproveStatus());
+                    if (!Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+                        choice.setWarning("SUB_BOM_NOT_APPROVED：所选方案未批准，父 BOM 提交/批准前需先批准");
+                    }
+                } else {
+                    choice.setWarning("SUB_BOM_NOT_FOUND：所选方案已不存在");
+                }
+                out.add(choice);
+            }
+        } catch (Exception ex) {
+            log.warn("产品主方案 JSON 解析失败: " + ex.getMessage());
+        }
+        return out;
+    }
+
+    /** 草稿保存允许引用未批准下层方案，但返回可定位提示。 */
+    private List<String> collectSubBomWarnings(Long bomId, List<ManufacturingSchemeChoiceDTO> choices) {
+        List<String> warnings = new java.util.ArrayList<>();
+        Set<Long> ids = new java.util.LinkedHashSet<>();
+        if (bomId != null) {
+            for (EngineeringBomItem row : productBomItemMapper.selectList(
+                    new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, bomId))) {
+                if (row.getSubBomId() != null) ids.add(row.getSubBomId());
+            }
+        }
+        if (choices != null) {
+            for (ManufacturingSchemeChoiceDTO choice : choices) {
+                if (choice != null && choice.getBomId() != null) ids.add(choice.getBomId());
+            }
+        }
+        for (Long id : ids) {
+            EngineeringBom child = productBomMapper.selectById(id);
+            if (child == null) {
+                warnings.add("SUB_BOM_NOT_FOUND：下层方案不存在（bomId=" + id + "）");
+            } else if (!Objects.equals(child.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+                warnings.add("SUB_BOM_NOT_APPROVED：下层方案未批准（bomId=" + id + "），父 BOM 提交/批准前需先批准");
+            }
+        }
+        return warnings;
     }
 
     @Override

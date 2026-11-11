@@ -14,6 +14,10 @@ import java.util.List;
 @Mapper
 public interface EngineeringBomMapper extends BaseMapper<EngineeringBom> {
 
+    /** 父 BOM 保存行锁，避免并发覆盖正在编辑的明细。 */
+    @Select("SELECT * FROM engineering_bom WHERE bom_id = #{bomId} FOR UPDATE")
+    EngineeringBom selectForUpdate(@Param("bomId") Long bomId);
+
     /**
      * 查询BOM总数
      */

@@ -38,6 +38,18 @@ public class EngineeringBomItem {
      */
     private Long materialId;
 
+    /** 显式下层制造方案 BOM ID（仅 source_type=make 时允许；不是 parent_material_id，dev-20261111-004）。 */
+    private Long subBomId;
+
+    /** BOM 单位与物料档案单位不一致时的换算系数：1 个 BOM 单位 = unit_factor 个档案单位。 */
+    private BigDecimal unitFactor;
+
+    /** 换算依据，如「195mm×50m 卷展开面积」「每张 0.3㎡」；无依据不得跨单位。 */
+    private String unitFactorBasis;
+
+    /** 换算依据来源（档案尺寸/批次实测/供应商资料等）。 */
+    private String unitFactorSource;
+
     /**
      * 行审核状态（dev-20261020-029）：1草稿 2待审核 3审核通过 4审核驳回 5待移除
      */

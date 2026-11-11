@@ -53,6 +53,10 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     private final com.jjx.product.mapper.ProductMapper productMapper;
     private final OperLogChangeRecorder changeRecorder;
 
+    /** MATERIAL 路线产出存在性校验；字段注入避免改变既有测试构造参数。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
+
     @Override
     public List<String> suggestRemarks(RoutingRemarkQueryDTO query) {
         // ID 集合忽略顺序及重复项，单作业与组合使用同一匹配规则。
@@ -84,6 +88,9 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     public EngineeringRoutingVO createRouting(EngineeringRoutingDTO dto) {
         // 检查编码是否重复
         checkCodeUnique(dto.getRoutingCode(), dto.getRoutingVersion());
+
+        // 产出身份显式化：PRODUCT 兼容 productId，MATERIAL 必须有启用物料档案。
+        normalizeOutput(dto);
 
         // 创建路线
         EngineeringRouting routing = new EngineeringRouting();
@@ -120,6 +127,8 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         if (routing == null) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
+
+        normalizeOutputForUpdate(dto, routing);
 
         // 检查状态是否可编辑
         if (!ApproveStatusEnum.getByValue(routing.getApproveStatus()).isEditable()) {
@@ -392,15 +401,18 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
      */
     private EngineeringRoutingVO saveAsNewVersion(EngineeringRouting oldRouting, EngineeringRoutingDTO dto) {
         // 1. 计算新版本号：当前版本主号+1（V1.0 → V2.0）
+        String outputType = com.jjx.product.enums.ManufacturingOutputType.normalize(oldRouting.getOutputType()).name();
+        Long outputId = oldRouting.getOutputId() != null ? oldRouting.getOutputId() : oldRouting.getProductId();
         List<String> versions = list(new LambdaQueryWrapper<EngineeringRouting>()
-                        .eq(EngineeringRouting::getProductId, oldRouting.getProductId()))
+                        .eq(EngineeringRouting::getOutputType, outputType)
+                        .eq(EngineeringRouting::getOutputId, outputId))
                 .stream()
                 .map(r -> r.getVersion() != null ? r.getVersion() : r.getRoutingVersion())
                 .collect(Collectors.toList());
         String newVersion = computeNextRoutingVersion(versions);
 
         // 2. 旧版本失效（该产品所有版本 is_current=0，再设新版本为当前）
-        routingMapper.setAllNotCurrent(oldRouting.getProductId());
+        routingMapper.setAllNotCurrentByOutput(outputType, outputId);
         oldRouting.setIsCurrent(0);
         oldRouting.setUpdateTime(LocalDateTime.now());
         updateById(oldRouting);
@@ -413,6 +425,9 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         newRouting.setRoutingVersion(newVersion);
         newRouting.setIsCurrent(1);
         newRouting.setParentRoutingId(oldRouting.getRoutingId());
+        newRouting.setOutputType(outputType);
+        newRouting.setOutputId(outputId);
+        newRouting.setProductId(oldRouting.getProductId());
         newRouting.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         newRouting.setProcessCount(0);
         newRouting.setTotalLaborHours(BigDecimal.ZERO);
@@ -434,11 +449,13 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         }
 
         // 5. 同步产品表 current_routing_version + 指针（DEV-771：发布校验用 current_route_id）
-        com.jjx.product.domain.entity.Product product = productMapper.selectById(oldRouting.getProductId());
-        if (product != null) {
-            product.setCurrentRoutingVersion(newVersion);
-            product.setCurrentRouteId(newRouting.getRoutingId());
-            productMapper.updateById(product);
+        if (com.jjx.product.enums.ManufacturingOutputType.PRODUCT.name().equals(outputType)) {
+            com.jjx.product.domain.entity.Product product = productMapper.selectById(outputId);
+            if (product != null) {
+                product.setCurrentRoutingVersion(newVersion);
+                product.setCurrentRouteId(newRouting.getRoutingId());
+                productMapper.updateById(product);
+            }
         }
 
         log.info("工艺路线自动升版: {} V{} -> V{}（parent={}）",
@@ -525,8 +542,10 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
 
-        // 设置同一产品的所有路线为非当前
-        routingMapper.setAllNotCurrent(routing.getProductId());
+        // 设置同一产出对象的路线为非当前（MATERIAL 无 product_id）
+        String outputType = com.jjx.product.enums.ManufacturingOutputType.normalize(routing.getOutputType()).name();
+        Long outputId = routing.getOutputId() != null ? routing.getOutputId() : routing.getProductId();
+        routingMapper.setAllNotCurrentByOutput(outputType, outputId);
 
         // 设置当前路线
         routing.setIsCurrent(1);
@@ -535,11 +554,13 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         // dev-20261008-023：同步产品表指针与版本。原 set-current 只改路由 is_current，
         // 不同步 product.current_route_id / current_routing_version → 产品关联当前路线取不到；
         // 此处与"编辑保存自动升版"(:312-318)统一口径。
-        com.jjx.product.domain.entity.Product product = productMapper.selectById(routing.getProductId());
-        if (product != null) {
-            product.setCurrentRouteId(routing.getRoutingId());
-            product.setCurrentRoutingVersion(routing.getRoutingVersion());
-            productMapper.updateById(product);
+        if (com.jjx.product.enums.ManufacturingOutputType.PRODUCT.name().equals(outputType)) {
+            com.jjx.product.domain.entity.Product product = productMapper.selectById(outputId);
+            if (product != null) {
+                product.setCurrentRouteId(routing.getRoutingId());
+                product.setCurrentRoutingVersion(routing.getRoutingVersion());
+                productMapper.updateById(product);
+            }
         }
 
         log.info("设置当前版本成功: {} v{}", routing.getRoutingCode(), routing.getRoutingVersion());
@@ -768,6 +789,56 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         return PageResult.build(voList,resultPage.getTotal());
     }
 
+
+    /** 产出身份归一化：PRODUCT 兼容 productId；MATERIAL 校验启用物料档案。 */
+    private void normalizeOutput(EngineeringRoutingDTO dto) {
+        com.jjx.product.enums.ManufacturingOutputType type;
+        try {
+            type = com.jjx.product.enums.ManufacturingOutputType.normalize(dto.getOutputType());
+        } catch (IllegalArgumentException ex) {
+            throw new BusinessException(ex.getMessage());
+        }
+        Long outputId = dto.getOutputId() != null ? dto.getOutputId() : dto.getProductId();
+        if (outputId == null) {
+            throw new BusinessException("路线产出对象不能为空");
+        }
+        if (type == com.jjx.product.enums.ManufacturingOutputType.PRODUCT) {
+            dto.setProductId(outputId);
+        } else {
+            com.jjx.inventory.domain.InventoryMaterial material = inventoryMaterialMapper == null
+                    ? null : inventoryMaterialMapper.selectById(outputId);
+            if (material == null) {
+                throw new BusinessException("MATERIAL 路线产出物料不存在（material_id=" + outputId + "）");
+            }
+            if (material.getStatus() != null && material.getStatus() != 1) {
+                throw new BusinessException("MATERIAL 路线产出物料已停用（material_id=" + outputId + "）");
+            }
+            dto.setProductId(null);
+            dto.setProductCode(null);
+            dto.setProductName(null);
+        }
+        dto.setOutputType(type.name());
+        dto.setOutputId(outputId);
+    }
+
+    /** 已保存路线的产出身份不可原地改变；未传时沿用库中身份。 */
+    private void normalizeOutputForUpdate(EngineeringRoutingDTO dto, EngineeringRouting existing) {
+        com.jjx.product.enums.ManufacturingOutputType existingType =
+                com.jjx.product.enums.ManufacturingOutputType.normalize(existing.getOutputType());
+        Long existingId = existing.getOutputId() != null ? existing.getOutputId() : existing.getProductId();
+        com.jjx.product.enums.ManufacturingOutputType type =
+                (dto.getOutputType() == null || dto.getOutputType().isBlank())
+                        ? existingType : com.jjx.product.enums.ManufacturingOutputType.normalize(dto.getOutputType());
+        Long outputId = dto.getOutputId() != null ? dto.getOutputId()
+                : (type == com.jjx.product.enums.ManufacturingOutputType.PRODUCT && dto.getProductId() != null
+                ? dto.getProductId() : existingId);
+        if (type != existingType || !Objects.equals(outputId, existingId)) {
+            throw new BusinessException("路线产出身份不可修改（routingId=" + existing.getRoutingId() + "）");
+        }
+        dto.setOutputType(type.name());
+        dto.setOutputId(existingId);
+        dto.setProductId(type == com.jjx.product.enums.ManufacturingOutputType.PRODUCT ? existingId : null);
+    }
 
     /**
      * 检查编码是否唯一

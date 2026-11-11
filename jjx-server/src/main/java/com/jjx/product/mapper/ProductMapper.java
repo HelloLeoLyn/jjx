@@ -7,7 +7,9 @@ import com.jjx.product.domain.entity.Product;
 import com.jjx.product.domain.vo.ProductVo;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.SelectProvider;
+import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.builder.annotation.ProviderContext;
 
 import java.util.Map;
@@ -17,6 +19,17 @@ import java.util.Map;
  */
 @Mapper
 public interface ProductMapper extends BaseMapper<Product> {
+
+    /** 父 BOM 保存时锁产品行，读取主方案 JSON 与乐观锁版本（只取必要列，不覆盖其他字段）。 */
+    @Select("SELECT product_id, material_scheme_json, scheme_revision FROM product WHERE product_id = #{productId} FOR UPDATE")
+    Product selectSchemeForUpdate(@Param("productId") Long productId);
+
+    /** 主方案 JSON 乐观锁更新；影响 0 行表示版本已变化。 */
+    @Update("UPDATE product SET material_scheme_json = #{json}, scheme_revision = COALESCE(scheme_revision, 0) + 1, "
+            + "update_time = CURRENT_TIMESTAMP WHERE product_id = #{productId} AND COALESCE(scheme_revision, 0) = #{revision}")
+    int updateScheme(@Param("productId") Long productId,
+                     @Param("json") String json,
+                     @Param("revision") Integer revision);
     /**
      * 分页查询产品VO（使用 Provider 方式）
      */

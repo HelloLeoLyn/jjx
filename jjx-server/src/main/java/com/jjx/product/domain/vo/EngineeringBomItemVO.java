@@ -30,6 +30,18 @@ public class EngineeringBomItemVO {
      */
     private Long materialId;
 
+    /** 显式下层制造方案 BOM ID。 */
+    private Long subBomId;
+
+    /** BOM 单位 → 档案单位换算系数。 */
+    private BigDecimal unitFactor;
+
+    /** 换算依据。 */
+    private String unitFactorBasis;
+
+    /** 换算依据来源。 */
+    private String unitFactorSource;
+
     /**
      * 物料编码（冗余，便于查询）
      */

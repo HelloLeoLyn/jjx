@@ -25,6 +25,20 @@ public class EngineeringBomItemDTO {
     /** 物料ID（快速模式可空，服务端按材料名称+规格先入审核） */
     private Long materialId;
 
+    /** 显式下层制造方案 BOM ID（source_type=make 时使用；不是分组父行）。 */
+    private Long subBomId;
+
+    /** BOM 单位 → 物料档案单位的换算系数；跨单位时必填且须有依据。 */
+    private BigDecimal unitFactor;
+
+    /** 换算依据说明。 */
+    @jakarta.validation.constraints.Size(max = 200, message = "换算依据不能超过200字")
+    private String unitFactorBasis;
+
+    /** 换算依据来源。 */
+    @jakarta.validation.constraints.Size(max = 100, message = "换算来源不能超过100字")
+    private String unitFactorSource;
+
     /** 物料编码（冗余） */
     private String materialCode;
 

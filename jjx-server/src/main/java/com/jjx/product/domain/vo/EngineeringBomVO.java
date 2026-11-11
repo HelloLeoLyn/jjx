@@ -25,6 +25,12 @@ public class EngineeringBomVO {
     /** 产品ID */
     private Long productId;
 
+    /** 产出类型：PRODUCT/MATERIAL。 */
+    private String outputType;
+
+    /** 产出ID。 */
+    private Long outputId;
+
     /** 产品编码 */
     private String productCode;
 
@@ -74,4 +80,10 @@ public class EngineeringBomVO {
 
     /** 明细 */
     private List<EngineeringBomItem> items;
+
+    /** 产品级主方案 JSON 当前版本（产品 BOM 详情返回，供前端回写乐观锁）。 */
+    private Integer schemeRevision;
+
+    /** 已保存的产品主方案选择。 */
+    private List<com.jjx.product.domain.dto.ManufacturingSchemeChoiceDTO> schemeChoices;
 }

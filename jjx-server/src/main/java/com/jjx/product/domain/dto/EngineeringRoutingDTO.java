@@ -24,6 +24,12 @@ public class EngineeringRoutingDTO {
      */
     private Long productId;
 
+    /** 产出类型：PRODUCT/MATERIAL，空值按 PRODUCT 兼容历史调用。 */
+    private String outputType;
+
+    /** 产出ID：PRODUCT=productId，MATERIAL=materialId。 */
+    private Long outputId;
+
     /**
      * 产品编码
      */

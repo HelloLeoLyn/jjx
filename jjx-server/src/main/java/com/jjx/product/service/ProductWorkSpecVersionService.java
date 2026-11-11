@@ -193,6 +193,8 @@ public class ProductWorkSpecVersionService {
 
         ProductWorkSpecVersion version = new ProductWorkSpecVersion();
         version.setProductId(productId);
+        version.setOutputType("PRODUCT");
+        version.setOutputId(productId);
         version.setVersionNo(versionNo);
         version.setStatus("PUBLISHED");
         version.setChangeSummary(changeSummary);
@@ -219,6 +221,42 @@ public class ProductWorkSpecVersionService {
     @Transactional(readOnly = true)
     public List<ProductWorkSpecVersion> list(Long productId) {
         return versionMapper.selectByProductId(productId);
+    }
+
+    /** 按产出身份查发布版本列表（MATERIAL 没有 product_id，历史空 output 列按 PRODUCT 兼容）。 */
+    @Transactional(readOnly = true)
+    public List<ProductWorkSpecVersion> listByOutput(String outputType, Long outputId) {
+        String type = com.jjx.product.enums.ManufacturingOutputType.normalize(outputType).name();
+        if (outputId == null) return List.of();
+        return versionMapper.selectList(Wrappers.<ProductWorkSpecVersion>lambdaQuery()
+                .apply("COALESCE(output_type,'PRODUCT') = {0}", type)
+                .apply("COALESCE(output_id, product_id) = {0}", outputId)
+                .eq(ProductWorkSpecVersion::getDeleted, 0)
+                .orderByDesc(ProductWorkSpecVersion::getId));
+    }
+
+    /** 新工单/新订单绑定作业规范：显式 ID 优先并校验归属；否则取该输出最新已发布版本。 */
+    @Transactional(readOnly = true)
+    public ProductWorkSpecVersion resolvePublishedVersion(Long explicitVersionId, String outputType, Long outputId) {
+        String type = com.jjx.product.enums.ManufacturingOutputType.normalize(outputType).name();
+        if (explicitVersionId != null) {
+            ProductWorkSpecVersion version = versionMapper.selectById(explicitVersionId);
+            if (version == null || version.getDeleted() != null && version.getDeleted() == 1) {
+                throw new BusinessException("SNAPSHOT_PARTIAL：作业规范版本不存在（versionId=" + explicitVersionId + "）");
+            }
+            String versionType = version.getOutputType() == null || version.getOutputType().isBlank()
+                    ? "PRODUCT" : version.getOutputType();
+            Long versionOutputId = version.getOutputId() != null ? version.getOutputId() : version.getProductId();
+            if (!type.equals(versionType) || !java.util.Objects.equals(outputId, versionOutputId)) {
+                throw new BusinessException("作业规范版本与产出身份不一致（versionId=" + explicitVersionId + "）");
+            }
+            return version;
+        }
+        ProductWorkSpecVersion latest = versionMapper.selectLatestPublishedByOutput(type, outputId);
+        if (latest == null && "MATERIAL".equals(type)) {
+            throw new BusinessException("MATERIAL_WORK_SPEC_NOT_PUBLISHED：物料 " + outputId + " 没有已发布作业规范版本");
+        }
+        return latest;
     }
 
     /**

@@ -16,6 +16,7 @@ import com.jjx.product.domain.vo.EngineeringBomVO;
 import com.jjx.product.enums.ProductEnums;
 import com.jjx.product.mapper.EngineeringBomMapper;
 import com.jjx.product.service.IEngineeringBomService;
+import com.jjx.product.service.ManufacturingBomService;
 import com.jjx.system.annotation.BusinessType;
 import com.jjx.system.annotation.Log;
 import cn.dev33.satoken.annotation.SaCheckPermission;
@@ -39,6 +40,46 @@ import java.util.List;
 public class BomController extends BaseController {
 
     private final IEngineeringBomService productBomService;
+    /** 字段注入保持既有测试的一参构造兼容。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    private ManufacturingBomService manufacturingBomService;
+
+    /** 查询某产出对象的候选制造方案（含草稿标记；productId 用于回显本产品主方案）。 */
+    @Operation(summary = "制造方案候选")
+    @GetMapping("/manufacturing/options")
+    @SaCheckPermission("engineering:bom:view")
+    public Result<List<com.jjx.product.domain.vo.ManufacturingSchemeVO>> manufacturingOptions(
+            @RequestParam String outputType, @RequestParam Long outputId,
+            @RequestParam(required = false) Long productId) {
+        return Result.success(manufacturingBomService.options(outputType, outputId, productId));
+    }
+
+    /** 新建制造方案并保存明细；不自动发布、不改父 BOM。 */
+    @Operation(summary = "新建制造方案")
+    @PostMapping("/manufacturing")
+    @SaCheckPermission("engineering:bom:add")
+    public Result<com.jjx.product.domain.vo.ManufacturingBomVO> manufacturingSave(
+            @Validated @RequestBody com.jjx.product.domain.dto.ManufacturingBomSaveDTO dto) {
+        return Result.success(manufacturingBomService.save(dto));
+    }
+
+    /** 编辑已保存制造方案；产出身份不可原地改变。 */
+    @Operation(summary = "编辑制造方案")
+    @PutMapping("/manufacturing/{bomId}")
+    @SaCheckPermission("engineering:bom:edit")
+    public Result<com.jjx.product.domain.vo.ManufacturingBomVO> manufacturingUpdate(
+            @PathVariable Long bomId,
+            @Validated @RequestBody com.jjx.product.domain.dto.ManufacturingBomSaveDTO dto) {
+        return Result.success(manufacturingBomService.update(bomId, dto));
+    }
+
+    /** 生成采用 token；不落库、不设主方案。 */
+    @Operation(summary = "采用制造方案")
+    @PostMapping("/manufacturing/{bomId}/adopt")
+    @SaCheckPermission("engineering:bom:view")
+    public Result<com.jjx.product.domain.vo.ManufacturingSchemeVO> manufacturingAdopt(@PathVariable Long bomId) {
+        return Result.success(manufacturingBomService.adopt(bomId));
+    }
 
     @ExceptionHandler(cn.dev33.satoken.exception.NotPermissionException.class)
     @ResponseStatus(org.springframework.http.HttpStatus.FORBIDDEN)
@@ -130,6 +171,14 @@ public class BomController extends BaseController {
     @GetMapping("/{bomId}")
     public Result<EngineeringBomVO> getInfo(@PathVariable Long bomId) {
         return Result.success(productBomService.getBomDetail(bomId));
+    }
+
+    /** 查看父产品 BOM 已保存的主方案选择；非产品 BOM 返回空列表。 */
+    @Operation(summary = "父BOM主方案选择")
+    @GetMapping("/{bomId}/scheme-choices")
+    @SaCheckPermission("engineering:bom:view")
+    public Result<List<com.jjx.product.domain.dto.ManufacturingSchemeChoiceDTO>> schemeChoices(@PathVariable Long bomId) {
+        return Result.success(manufacturingBomService.getSchemeChoices(bomId));
     }
 
     /**

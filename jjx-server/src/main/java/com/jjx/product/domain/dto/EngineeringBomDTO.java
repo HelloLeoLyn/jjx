@@ -33,9 +33,14 @@ public class EngineeringBomDTO {
     @NotBlank(message = "BOM版本不能为空",groups = BomGroup.Version.class)
     private String bomVersion;
 
-    /** 产品ID */
-    @NotNull(message = "产品不能为空")
+    /** 产品ID（PRODUCT 产出时必填；MATERIAL 产出时为空，由服务端按 outputType/outputId 校验） */
     private Long productId;
+
+    /** 产出类型：PRODUCT/MATERIAL，空值按 PRODUCT 兼容历史调用。 */
+    private String outputType;
+
+    /** 产出ID：PRODUCT=productId，MATERIAL=materialId。 */
+    private Long outputId;
 
     /** 产品编码（冗余） */
     private String productCode;
@@ -65,4 +70,11 @@ public class EngineeringBomDTO {
     @Size(min = 1, message = "BOM明细至少需要一条")
     @Valid
     private List<EngineeringBomItemDTO> items;
+
+    /** 产品级主方案选择（仅产品 BOM 保存时生效；与父 BOM 同事务持久化）。 */
+    @Valid
+    private List<ManufacturingSchemeChoiceDTO> schemeChoices;
+
+    /** 前端加载时的 scheme_revision；传入则做乐观锁校验。 */
+    private Integer schemeRevision;
 }

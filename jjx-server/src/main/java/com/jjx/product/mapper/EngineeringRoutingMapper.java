@@ -35,6 +35,21 @@ public interface EngineeringRoutingMapper extends BaseMapper<EngineeringRouting>
      */
     @Update("UPDATE engineering_routing SET is_current = 0 WHERE product_id = #{productId}")
     void setAllNotCurrent(@Param("productId") Long productId);
+
+    /** 按产出身份失效当前版本（MATERIAL 路线没有 product_id）。 */
+    @Update("UPDATE engineering_routing SET is_current = 0 WHERE COALESCE(output_type,'PRODUCT') = #{outputType} "
+            + "AND COALESCE(output_id, product_id) = #{outputId}")
+    void setAllNotCurrentByOutput(@Param("outputType") String outputType, @Param("outputId") Long outputId);
+
+    /** 按产出身份查询当前路线。 */
+    @Select("SELECT * FROM engineering_routing WHERE COALESCE(output_type,'PRODUCT') = #{outputType} "
+            + "AND COALESCE(output_id, product_id) = #{outputId} AND is_current = 1")
+    EngineeringRouting selectCurrentByOutput(@Param("outputType") String outputType, @Param("outputId") Long outputId);
+
+    /** 按产出身份查询全部版本。 */
+    @Select("SELECT * FROM engineering_routing WHERE COALESCE(output_type,'PRODUCT') = #{outputType} "
+            + "AND COALESCE(output_id, product_id) = #{outputId} ORDER BY routing_version DESC")
+    List<EngineeringRouting> selectAllVersionsByOutput(@Param("outputType") String outputType, @Param("outputId") Long outputId);
     
     /**
      * 根据审核状态查询
