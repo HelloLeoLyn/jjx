@@ -111,8 +111,23 @@ export interface InboundVO {
   items: InboundItemVO[]
 }
 
+export interface RollReceiptEntry {
+  rollNo: string
+  widthMm?: number
+  lengthM?: number
+  /** 服务端按统一精度计算，只读。 */
+  area?: number
+}
+
 // 入库单明细VO
 export interface InboundItemVO {
+  stockItemId?: string
+  rollNo?: string
+  rollWidthMm?: number
+  rollLengthM?: number
+  sourceOutboundItemId?: string
+  reversalOfItemId?: string
+  rollPlan?: RollReceiptEntry[]
   itemId?: string
   inboundItemId?: string
   inboundId: string

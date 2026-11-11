@@ -17,6 +17,7 @@ public class InboundItemVO {
     private String rollNo;
     private Long reversalOfItemId;
 
+    private java.util.List<com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO.RollEntry> rollPlan;
     private Long inboundItemId;
     private Long inboundId;
     private Long materialId;

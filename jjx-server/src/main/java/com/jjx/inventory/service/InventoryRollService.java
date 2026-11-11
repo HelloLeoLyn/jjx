@@ -2,6 +2,7 @@ package com.jjx.inventory.service;
 
 import com.jjx.inventory.domain.*;
 import com.jjx.inventory.dto.save.RollReturnSaveDTO;
+import com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO.RollEntry;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,9 @@ public interface InventoryRollService {
     BigDecimal area(BigDecimal widthMm, BigDecimal lengthM);
     void normalizeInbound(InventoryInboundItem item, Map<?, ?> input);
     InventoryStockItem initialStock(InventoryInboundOrder order, InventoryInboundItem item, BigDecimal delta);
+    String normalizeReceiptPlan(InventoryInboundItem item, List<RollEntry> entries, BigDecimal target);
+    List<RollEntry> readReceiptPlan(InventoryInboundItem item);
+    List<InventoryStockItem> receiptStocks(InventoryInboundOrder order, InventoryInboundItem item, BigDecimal delta);
     void normalizeOutbound(InventoryOutboundOrder order, InventoryOutboundItem item, Map<?, ?> input);
     InventoryStockItem issueStock(InventoryOutboundOrder order, InventoryOutboundItem item);
     Long returnRoll(RollReturnSaveDTO input);

@@ -47,6 +47,9 @@ public class InventoryInboundItem extends BaseEntity {
     /** 红冲原明细；只在反向凭证填写，不改原单。 */
     private Long reversalOfItemId;
 
+    /** 原采购入库明细的多卷计划；不改原始收货数量，过账后冻结。 */
+    private String rollPlanJson;
+
     /** 实收入卷尺寸快照；退回长度保存在退料单，不覆盖原卷长。 */
     private BigDecimal rollWidthMm;
     private BigDecimal rollLengthM;

@@ -24,6 +24,25 @@ class RollInventoryConcurrencyTest extends RollFixture {
         assertEquals(1,results.stream().filter(Boolean::booleanValue).count());
         eq("4.875",balance()); assertEquals(3,txs.selectCount(null)); consistent();
     }
+    @Test void purchaseRepeatedConfirmCannotDuplicateAnyPlannedRoll() throws Exception {
+        var item=purchaseReceipt("19.5","19.5");
+        inbound.saveRollReceiptPlan(item.getItemId(),plan("PO-A","PO-B"));
+        var results=race(() -> inbound.confirm(item.getInboundId(),1L,"test"), () -> inbound.confirm(item.getInboundId(),1L,"test"));
+        assertEquals(1,results.stream().filter(Boolean::booleanValue).count());
+        assertEquals(2,stocks.selectCount(null)); assertEquals(2,txs.selectCount(null));
+        eq("19.5",inItems.selectById(item.getItemId()).getPostedQuantity()); consistent();
+    }
+    @Test void purchasePlanSaveAndConfirmSerializeWithoutReplacingPostedRolls() throws Exception {
+        var item=purchaseReceipt("19.5","19.5");
+        inbound.saveRollReceiptPlan(item.getItemId(),plan("OLD-A","OLD-B"));
+        var results=race(() -> inbound.confirm(item.getInboundId(),1L,"test"),
+                () -> inbound.saveRollReceiptPlan(item.getItemId(),plan("NEW-A","NEW-B")));
+        assertTrue(results.get(0)); assertEquals(2,stocks.selectCount(null)); assertEquals(2,txs.selectCount(null));
+        var original=inItems.selectById(item.getItemId());
+        var planned=rolls.readReceiptPlan(original).stream().map(com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO.RollEntry::getRollNo).sorted().toList();
+        assertEquals(planned,stocks.selectList(null).stream().map(InventoryStockItem::getRollNo).sorted().toList());
+        eq("19.5",original.getQuantity()); eq("19.5",original.getPostedQuantity()); consistent();
+    }
     private long pendingIssue(long id) {
         var s=stocks.selectById(id);
         return outbound.create(Map.of("outboundType","other","sourceType","other","warehouseId",1L,"items",List.of(Map.of(

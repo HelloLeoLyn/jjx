@@ -9,6 +9,7 @@ export const InboundTypeEnum = createEnum({
     { value: 'purchase', label: '采购入库', tagProps: { type: 'primary' } },
     { value: 'production', label: '生产入库', tagProps: { type: 'success' } },
     { value: 'return', label: '退货入库', tagProps: { type: 'warning' } },
+    { value: 'roll_return', label: '余卷退料入库', tagProps: { type: 'success' } },
     { value: 'sample_return', label: '打样退料入库', tagProps: { type: 'success' } },
     { value: 'transfer', label: '调拨入库', tagProps: { type: 'info' } },
     { value: 'adjust', label: '盘盈入库', tagProps: { type: 'danger' } },

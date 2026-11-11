@@ -7,6 +7,7 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.inventory.domain.*;
 import com.jjx.inventory.dto.save.RollReturnSaveDTO;
+import com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO;
 import com.jjx.inventory.enums.*;
 import com.jjx.inventory.mapper.*;
 import com.jjx.inventory.service.*;
@@ -32,7 +33,12 @@ import static org.mockito.ArgumentMatchers.*;
 /** 隔离 H2、真实 Mapper 和事务；不代表真实 MySQL/API 已验收。 */
 class RollInventoryLifecycleTest extends RollFixture {
     @Test void fiftyRollsShareOneIqcBatchAndReturnHalfWithoutChangingOriginalFacts() {
-        List<Long> stockIds = receive(50);
+        var receipt = purchaseReceipt("487.5","487.5");
+        inbound.saveRollReceiptPlan(receipt.getItemId(), plan(java.util.stream.IntStream.rangeClosed(1,50)
+                .mapToObj(n -> "ROLL-"+n).toArray(String[]::new)));
+        assertTrue(inbound.confirm(receipt.getInboundId(),1L,"test"));
+        List<Long> stockIds = stocks.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<InventoryStockItem>()
+                .orderByAsc(InventoryStockItem::getItemId)).stream().map(InventoryStockItem::getItemId).toList();
         eq("487.5", balance());
         long issueId = issue(stockIds.subList(0,2));
         eq("468", balance());
@@ -46,7 +52,7 @@ class RollInventoryLifecycleTest extends RollFixture {
         eq("50", origin.getOriginalRollLengthM()); eq("4.875", origin.getQuantity());
         eq("9.75", outItems.selectById(issued.getItemId()).getQuantity());
         eq("25", inItems.selectByInboundId(returnedId).get(0).getRollLengthM());
-        assertEquals("IQC-SHARED", origin.getBatchNo()); assertEquals(77L,origin.getIqcBatchId());
+        assertEquals("ORIGINAL-IQC", origin.getBatchNo()); assertEquals(77L,origin.getIqcBatchId());
         consistent();
     }
 
@@ -106,6 +112,48 @@ class RollInventoryLifecycleTest extends RollFixture {
         assertThrows(BusinessException.class,() -> rolls.returnRoll(returnInput(issued,"25",1L,null)));
         consistent();
     }
+    @Test void purchaseAggregatedReceiptPostsAcceptedAreaAsRollsWithoutChangingOriginalLine() {
+        var item=purchaseReceipt("29.25","19.5");
+        assertTrue(inbound.saveRollReceiptPlan(item.getItemId(),plan("PO-R1","PO-R2")));
+        assertFalse(inItems.selectById(item.getItemId()).getRollPlanJson().contains("area"));
+        assertTrue(inbound.confirm(item.getInboundId(),1L,"test"));
+        var original=inItems.selectById(item.getItemId());
+        eq("29.25",original.getQuantity()); eq("19.5",original.getAcceptedQuantity()); eq("19.5",original.getPostedQuantity());
+        assertEquals(900L,original.getLotId()); assertEquals("ORIGINAL-IQC",original.getBatchNo()); assertEquals(77L,original.getIqcBatchId());
+        assertEquals(777L,ins.selectById(item.getInboundId()).getSourceId());
+        assertEquals(1,inItems.selectCount(null)); assertEquals(1,ins.selectCount(null)); assertEquals(2,stocks.selectCount(null));
+        for(var stock:stocks.selectList(null)) { assertEquals(item.getItemId(),stock.getSourceInboundItemId()); eq("50",stock.getOriginalRollLengthM()); }
+        for(var flow:txs.selectList(null)) { assertEquals(item.getItemId(),flow.getSourceItemId()); assertEquals(900L,flow.getLotId()); assertEquals(77L,flow.getIqcBatchId()); }
+        verify(qualityService).addStoredQuantity(900L,bd("19.5000"));
+        assertFalse(inbound.confirm(item.getInboundId(),1L,"test"));
+        assertThrows(BusinessException.class,() -> inbound.saveRollReceiptPlan(item.getItemId(),plan("PO-R3","PO-R4")));
+        eq("19.5",balance()); consistent();
+    }
+
+    @Test void purchasePlanRejectsMismatchUnapprovedIqcAndChangedAllowance() {
+        var item=purchaseReceipt("29.25","19.5");
+        assertThrows(BusinessException.class,() -> inbound.saveRollReceiptPlan(item.getItemId(),plan("ONE")));
+        assertThrows(BusinessException.class,() -> inbound.saveRollReceiptPlan(item.getItemId(),plan("SAME","same")));
+        qualityLots.selectById(900L).setReviewStatus("PENDING");
+        assertThrows(BusinessException.class,() -> inbound.saveRollReceiptPlan(item.getItemId(),plan("A","B")));
+        qualityLots.selectById(900L).setReviewStatus("APPROVED");
+        inbound.saveRollReceiptPlan(item.getItemId(),plan("A","B"));
+        // H2故障夹具：模拟录卷后新一轮IQC改变允收，不可按旧计划继续入库。
+        jdbc.update("UPDATE inventory_inbound_item SET accepted_quantity=9.75 WHERE item_id=?",item.getItemId());
+        assertThrows(BusinessException.class,() -> inbound.confirm(item.getInboundId(),1L,"test"));
+        assertEquals(0,stocks.selectCount(null)); assertEquals(0,txs.selectCount(null)); eq("0",inItems.selectById(item.getItemId()).getPostedQuantity());
+    }
+
+    @Test void purchasePlanSecondRollFailureRollsBackBothRollsAndOriginalPostedTotal() {
+        var item=purchaseReceipt("19.5","19.5");
+        inbound.saveRollReceiptPlan(item.getItemId(),plan("A-GOOD","Z-FAIL"));
+        jdbc.execute("ALTER TABLE inventory_transaction ADD CONSTRAINT deny_second_roll CHECK (roll_no <> 'Z-FAIL')");
+        assertThrows(Exception.class,() -> inbound.confirm(item.getInboundId(),1L,"test"));
+        assertEquals(0,stocks.selectCount(null)); assertEquals(0,txs.selectCount(null)); assertEquals(0,summaries.selectCount(null));
+        eq("0",inItems.selectById(item.getItemId()).getPostedQuantity());
+        eq("19.5",inItems.selectById(item.getItemId()).getQuantity());
+        assertEquals(InventoryOrderStatusEnum.APPROVED.getValue(),ins.selectById(item.getInboundId()).getOrderStatus());
+    }
 }
 
 abstract class RollFixture {
@@ -124,6 +172,9 @@ abstract class RollFixture {
     InventoryOutboundService outbound;
     InventoryMaterialMapper materials;
     InventoryItemMapper inventoryItems;
+    InventoryInboundServiceImpl inboundTarget;
+    com.jjx.quality.mapper.QualityLotMapper qualityLots;
+    com.jjx.quality.service.QualityLotService qualityService;
     MockedStatic<SecurityUtils> security;
     AtomicInteger numbers = new AtomicInteger();
 
@@ -136,7 +187,7 @@ abstract class RollFixture {
         jdbc = new JdbcTemplate(ds); manager = new DataSourceTransactionManager(ds);
         var config = new MybatisConfiguration(); config.setMapUnderscoreToCamelCase(true);
         for (var m : List.of(InventoryStockItemMapper.class,InventoryTransactionMapper.class,InventoryInboundOrderMapper.class,
-                InventoryInboundItemMapper.class,InventoryOutboundOrderMapper.class,InventoryOutboundItemMapper.class,InventoryStockMapper.class,InventoryAlertLogMapper.class)) config.addMapper(m);
+                InventoryInboundItemMapper.class,InventoryOutboundOrderMapper.class,InventoryOutboundItemMapper.class,InventoryStockMapper.class,InventoryAlertLogMapper.class,InventoryIqcDispositionOrderMapper.class,InventoryIqcQuarantineMapper.class)) config.addMapper(m);
         var factory = new MybatisSqlSessionFactoryBean(); factory.setConfiguration(config); factory.setDataSource(ds);
         var session = new SqlSessionTemplate(factory.getObject());
         for (var e : List.of(InventoryStockItem.class,InventoryTransaction.class,InventoryInboundOrder.class,
@@ -161,7 +212,16 @@ abstract class RollFixture {
         when(seq.generateBusinessNumberByType(anyString(),anyString(),anyString(),anyInt())).thenAnswer(c -> c.getArgument(1)+"-"+numbers.incrementAndGet());
         mutation=proxy(new InventoryStockMutationServiceImpl(stocks,summaries,txs),InventoryStockMutationService.class);
         rolls=proxy(new InventoryRollServiceImpl(stocks,txs,ins,inItems,outs,outItems,inventoryItems,materials,locations,warehouses,mutation,seq),InventoryRollService.class);
-        var in=construct(InventoryInboundServiceImpl.class);
+        var in=construct(InventoryInboundServiceImpl.class); inboundTarget=in;
+        qualityLots=mock(com.jjx.quality.mapper.QualityLotMapper.class);
+        qualityService=mock(com.jjx.quality.service.QualityLotService.class);
+        var qualityProvider=mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(qualityProvider.getIfAvailable()).thenReturn(qualityService);
+        ReflectionTestUtils.setField(in,"qualityLotMapper",qualityLots);
+        ReflectionTestUtils.setField(in,"qualityLotServiceProvider",qualityProvider);
+        var quarantines=mock(InventoryIqcQuarantineMapper.class);
+        when(quarantines.selectCount(any())).thenReturn(1L); // 审核阶段已经建立隔离，不在确认阶段重复建。
+        ReflectionTestUtils.setField(in,"iqcQuarantineMapper",quarantines);
         Map.of("inboundOrderMapper",ins,"inboundItemMapper",inItems,"stockItemMapper",stocks,"stockMutationService",mutation,
                 "transactionMapper",txs,"stockMapper",summaries,"inventoryMaterialMapper",materials,"inventoryItemMapper",inventoryItems,
                 "rollService",rolls,"redisSequenceService",seq).forEach((k,v)->ReflectionTestUtils.setField(in,k,v));
@@ -198,6 +258,25 @@ abstract class RollFixture {
         long id=outbound.create(Map.of("outboundType","other","sourceType","other","warehouseId",warehouse,"items",list));
         assertTrue(outbound.confirm(id,1L,"test")); return id;
     }
+    InventoryInboundItem purchaseReceipt(String received, String accepted) {
+        var order=new InventoryInboundOrder(); order.setInboundNo("IN-PO-ACTUAL"); order.setInboundType("PURCHASE");
+        order.setSourceType("PURCHASE"); order.setSourceId(777L); order.setSourceNo("PO-777"); order.setWarehouseId(1L);
+        order.setOrderStatus(InventoryOrderStatusEnum.APPROVED.getValue()); order.setTotalQuantity(bd(received)); ins.insert(order);
+        var item=new InventoryInboundItem(); item.setInboundId(order.getInboundId()); item.setInventoryItemId(31L);
+        item.setMaterialId(11L); item.setMaterialCode("AUX-TEST"); item.setMaterialName("卷材");
+        // 自动采购收货当前未填unit，物料档案与统一库存身份提供权威单位。
+        item.setQuantity(bd(received)); item.setAcceptedQuantity(bd(accepted)); item.setPostedQuantity(BigDecimal.ZERO);
+        item.setUnitPrice(bd("2")); item.setBatchNo("ORIGINAL-IQC"); item.setIqcBatchId(77L); item.setLotId(900L); inItems.insert(item);
+        var quality=new com.jjx.quality.domain.entity.QualityLot(); quality.setLotId(900L); quality.setReviewStatus("APPROVED");
+        quality.setPassQuantity(bd(accepted)); quality.setFailQuantity(bd(received).subtract(bd(accepted))); quality.setStoredQuantity(BigDecimal.ZERO);
+        when(qualityLots.selectById(900L)).thenReturn(quality); when(qualityService.getLot(900L)).thenReturn(quality);
+        return item;
+    }
+    RollReceiptPlanSaveDTO plan(String... rollNos) {
+        var plan=new RollReceiptPlanSaveDTO(); var entries=new ArrayList<RollReceiptPlanSaveDTO.RollEntry>();
+        for(String no:rollNos) { var row=new RollReceiptPlanSaveDTO.RollEntry(); row.setRollNo(no); row.setWidthMm(bd("195")); row.setLengthM(bd("50")); row.setArea(bd("999")); entries.add(row); }
+        plan.setRolls(entries); return plan;
+    }
     RollReturnSaveDTO returnInput(InventoryOutboundItem issued,String length,Long warehouse,Long location) {
         var r=new RollReturnSaveDTO(); r.setSourceOutboundItemId(issued.getItemId()); r.setRollNo(issued.getRollNo());
         r.setReturnedLengthM(bd(length)); r.setWarehouseId(warehouse); r.setLocationId(location); r.setReason("余卷退仓"); return r;
@@ -214,7 +293,7 @@ abstract class RollFixture {
     static <T> T construct(Class<T> type) throws Exception { var c=type.getConstructors()[0]; return type.cast(c.newInstance(Arrays.stream(c.getParameterTypes()).map(t->mock(t)).toArray())); }
     void createTable(Class<?> entity) {
         var info=TableInfoHelper.getTableInfo(entity); var cols=new ArrayList<String>(); cols.add(info.getKeyColumn()+" BIGINT AUTO_INCREMENT PRIMARY KEY");
-        for(var f:info.getFieldList()) { var t=f.getPropertyType(); String sql=t==String.class?"VARCHAR(2048)":t==BigDecimal.class?"DECIMAL(18,4)":t==Long.class?"BIGINT":t==Integer.class||t==Boolean.class?"INT":"TIMESTAMP"; cols.add(f.getColumn()+" "+sql); }
+        for(var f:info.getFieldList()) { var t=f.getPropertyType(); String sql=f.getColumn().equals("roll_plan_json")?"CLOB":t==String.class?"VARCHAR(2048)":t==BigDecimal.class?"DECIMAL(18,4)":t==Long.class?"BIGINT":t==Integer.class||t==Boolean.class?"INT":"TIMESTAMP"; cols.add(f.getColumn()+" "+sql); }
         jdbc.execute("CREATE TABLE "+info.getTableName()+" ("+String.join(",",cols)+")");
     }
 }

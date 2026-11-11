@@ -31,6 +31,12 @@ export interface SampleReturnPreviewRow {
 
 // 入库管理API
 export const inboundApi = {
+  saveRollPlan(itemId: string, rolls: import('@/types/inventory/inbound').RollReceiptEntry[]) {
+    // 面积不作为输入；服务端从原始尺寸重算，并核对原明细允收量。
+    return request.post<R<boolean>>(`/inventory/inbound/roll-plan/${itemId}`, {
+      rolls: rolls.map(({ rollNo, widthMm, lengthM }) => ({ rollNo, widthMm, lengthM })),
+    })
+  },
   sampleReturnPreview(sampleOrderId: string | number) {
     return request.get<R<SampleReturnPreviewRow[]>>(
       `/inventory/inbound/sample-return-preview/${sampleOrderId}`

@@ -417,6 +417,29 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public boolean saveRollReceiptPlan(Long itemId, com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO plan) {
+        Long inboundId = inboundItemMapper.selectInboundIdByItemId(itemId);
+        if (inboundId == null) throw new BusinessException("采购入库明细不存在");
+        InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
+        InventoryInboundItem item = inboundItemMapper.selectByIdForUpdate(itemId);
+        if (order == null || !isPurchaseInbound(order)
+                || !InventoryOrderStatusEnum.APPROVED.getValue().equals(order.getOrderStatus()))
+            throw new BusinessException("请在原采购收货单IQC全部审核通过、确认入库前录卷");
+        if (item == null || Objects.requireNonNullElse(item.getPostedQuantity(), BigDecimal.ZERO).signum() != 0)
+            throw new BusinessException("该明细已过账，卷计划不可修改");
+        validateAllIqcApproved(inboundId);
+        String json = rollService.normalizeReceiptPlan(item, plan == null ? null : plan.getRolls(),
+                Objects.requireNonNullElse(item.getAcceptedQuantity(), BigDecimal.ZERO));
+        // 只写计划，不改原收货量/单价/来源/质量判定/已过账量。
+        int changed = inboundItemMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers
+                .<InventoryInboundItem>lambdaUpdate().eq(InventoryInboundItem::getItemId, itemId)
+                .set(InventoryInboundItem::getRollPlanJson, json));
+        if (changed != 1) throw new BusinessException("卷计划保存失败");
+        return true;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean confirm(Long inboundId, Long operatorId, String operatorName) {
         // DEV-651 方案A：行锁查询，锁住单据行直到事务提交，并发下第二个请求阻塞后状态校验失败，杜绝重复入库
         InventoryInboundOrder order = inboundOrderMapper.selectByIdForUpdate(inboundId);
@@ -2144,7 +2167,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
      * 原 approve 中的加库存逻辑抽取，供 confirm 直接使用
      */
     private void addStock(InventoryInboundOrder order, Long operatorId, String operatorName, String remark) {
-        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundId(order.getInboundId());
+        List<InventoryInboundItem> items = inboundItemMapper.selectByInboundIdForUpdate(order.getInboundId());
         for (InventoryInboundItem item : items) {
             if (item.getInventoryItemId() == null) {
                 InventoryMaterial material = inventoryMaterialMapper.selectById(item.getMaterialId());
@@ -2162,18 +2185,24 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             BigDecimal quantityToPost = targetQuantity == null ? BigDecimal.ZERO : targetQuantity.subtract(postedQuantity);
             if (quantityToPost.compareTo(BigDecimal.ZERO) <= 0) continue;
 
-            if (item.getRollNo() != null) {
-                InventoryStockItem roll = rollService.initialStock(order, item, quantityToPost);
-                InventoryTransaction tx = new InventoryTransaction();
-                tx.setTransactionType(com.jjx.inventory.enums.TransactionTypeEnum.INBOUND.getCode());
-                tx.setSourceType(order.getSourceType()); tx.setSourceId(order.getInboundId());
-                tx.setSourceNo(order.getInboundNo()); tx.setSourceItemId(item.getItemId());
-                tx.setLotId(item.getLotId()); tx.setUnitCost(item.getUnitPrice());
-                tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
-                tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
-                tx.setRemark(remark != null ? remark : "逐卷入库");
-                InventoryStockItem saved = stockMutationService.applyDelta(roll, quantityToPost, tx);
-                item.setStockItemId(saved.getItemId()); item.setPostedQuantity(postedQuantity.add(quantityToPost));
+            if (item.getRollNo() != null || item.getRollPlanJson() != null) {
+                List<InventoryStockItem> rolls = rollService.receiptStocks(order, item, quantityToPost);
+                Long singleStockId = null;
+                for (InventoryStockItem roll : rolls) {
+                    BigDecimal area = rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM());
+                    InventoryTransaction tx = new InventoryTransaction();
+                    tx.setTransactionType(com.jjx.inventory.enums.TransactionTypeEnum.INBOUND.getCode());
+                    tx.setSourceType(order.getSourceType()); tx.setSourceId(order.getInboundId());
+                    tx.setSourceNo(order.getInboundNo()); tx.setSourceItemId(item.getItemId());
+                    tx.setLotId(item.getLotId()); tx.setUnitCost(item.getUnitPrice());
+                    tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
+                    tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
+                    tx.setRemark(remark != null ? remark : "逐卷入库");
+                    InventoryStockItem saved = stockMutationService.applyDelta(roll, area, tx);
+                    singleStockId = saved.getItemId();
+                }
+                if (rolls.size() == 1) item.setStockItemId(singleStockId);
+                item.setPostedQuantity(postedQuantity.add(quantityToPost));
                 inboundItemMapper.updateById(item);
                 continue;
             }
@@ -4028,6 +4057,7 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         vo.setStockItemId(item.getStockItemId()); vo.setRollNo(item.getRollNo());
         vo.setReversalOfItemId(item.getReversalOfItemId()); vo.setRollWidthMm(item.getRollWidthMm());
         vo.setRollLengthM(item.getRollLengthM()); vo.setSourceOutboundItemId(item.getSourceOutboundItemId());
+        vo.setRollPlan(rollService == null ? java.util.List.of() : rollService.readReceiptPlan(item));
         vo.setInboundItemId(item.getItemId());
         vo.setInboundId(item.getInboundId());
         vo.setMaterialId(item.getMaterialId());

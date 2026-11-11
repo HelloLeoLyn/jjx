@@ -5,6 +5,9 @@ import com.jjx.common.exception.BusinessException;
 import com.jjx.framework.common.RedisSequenceService;
 import com.jjx.inventory.domain.*;
 import com.jjx.inventory.dto.save.RollReturnSaveDTO;
+import com.jjx.inventory.dto.save.RollReceiptPlanSaveDTO.RollEntry;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jjx.inventory.enums.*;
 import com.jjx.inventory.mapper.*;
 import com.jjx.inventory.service.InventoryRollService;
@@ -23,6 +26,7 @@ import java.util.*;
 @RequiredArgsConstructor
 @Transactional(rollbackFor = Exception.class)
 public class InventoryRollServiceImpl implements InventoryRollService {
+    private static final ObjectMapper PLAN_JSON = new ObjectMapper();
     public static final String RETURN_SOURCE = "roll_return";
     public static final String REVERSAL_SOURCE = "roll_reversal";
     private final InventoryStockItemMapper stockMapper;
@@ -92,6 +96,61 @@ public class InventoryRollServiceImpl implements InventoryRollService {
     }
 
     @Override
+    public String normalizeReceiptPlan(InventoryInboundItem item, List<RollEntry> entries, BigDecimal target) {
+        validateIdentity(item.getInventoryItemId(), item.getMaterialId(), item.getMaterialCode(), item.getUnit());
+        positive(target, "本次允许入库面积");
+        if (item.getRollNo() != null) throw new BusinessException("原明细已指定单卷，不能再挂多卷计划");
+        if (entries == null || entries.isEmpty() || entries.size() > 500) throw new BusinessException("请录入1至500卷");
+        var seen = new HashSet<String>();
+        BigDecimal total = BigDecimal.ZERO;
+        List<Map<String, Object>> facts = new ArrayList<>();
+        for (RollEntry entry : entries) {
+            String rollNo = entry.getRollNo() == null ? "" : entry.getRollNo().trim();
+            if (rollNo.isBlank() || rollNo.length() > 64 || !seen.add(rollNo.toLowerCase(Locale.ROOT)))
+                throw new BusinessException("卷号不能为空、超过64字或重复");
+            BigDecimal measured = area(entry.getWidthMm(), entry.getLengthM());
+            validateWidth(item.getMaterialId(), entry.getWidthMm());
+            facts.add(Map.of("rollNo", rollNo, "widthMm", entry.getWidthMm(), "lengthM", entry.getLengthM()));
+            total = total.add(measured);
+        }
+        if (total.compareTo(target) != 0) throw new BusinessException("各卷合计 " + total.toPlainString()
+                + "㎡必须等于本次允许入库 " + target.toPlainString() + "㎡，不修改原收货量");
+        for (String rollNo : facts.stream().map(f -> f.get("rollNo").toString()).sorted(String.CASE_INSENSITIVE_ORDER).toList())
+            if (!stockMapper.selectRollForUpdate(rollNo).isEmpty()) throw new BusinessException("卷号 " + rollNo + " 已存在");
+        try { return PLAN_JSON.writeValueAsString(facts); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("卷计划保存格式错误"); }
+    }
+
+    @Override
+    public List<RollEntry> readReceiptPlan(InventoryInboundItem item) {
+        if (item.getRollPlanJson() == null || item.getRollPlanJson().isBlank()) return List.of();
+        try {
+            List<RollEntry> entries = PLAN_JSON.readValue(item.getRollPlanJson(), new TypeReference<List<RollEntry>>() {});
+            for (RollEntry entry : entries) entry.setArea(area(entry.getWidthMm(), entry.getLengthM()));
+            return entries;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("原入库明细卷计划损坏，请核实"); }
+    }
+
+    @Override
+    public List<InventoryStockItem> receiptStocks(InventoryInboundOrder order, InventoryInboundItem item, BigDecimal delta) {
+        if (item.getRollPlanJson() == null || item.getRollPlanJson().isBlank()) return List.of(initialStock(order, item, delta));
+        if (zero(item.getPostedQuantity()).signum() != 0) throw new BusinessException("已过账的卷计划不可再次入库");
+        List<RollEntry> entries = readReceiptPlan(item);
+        // 重新验证当前允许量，避免保存计划后IQC允收发生变化；锁序按卷号固定。
+        normalizeReceiptPlan(item, entries, delta);
+        entries.sort(Comparator.comparing(RollEntry::getRollNo, String.CASE_INSENSITIVE_ORDER));
+        List<InventoryStockItem> stocks = new ArrayList<>();
+        for (RollEntry entry : entries) {
+            InventoryInboundItem physical = new InventoryInboundItem();
+            org.springframework.beans.BeanUtils.copyProperties(item, physical);
+            physical.setRollNo(entry.getRollNo()); physical.setRollWidthMm(entry.getWidthMm());
+            physical.setRollLengthM(entry.getLengthM());
+            stocks.add(initialStock(order, physical, entry.getArea()));
+        }
+        return stocks;
+    }
+
+    @Override
     public void normalizeOutbound(InventoryOutboundOrder order, InventoryOutboundItem item, Map<?, ?> input) {
         if (input.get("stockItemId") == null && input.get("rollNo") == null) return;
         if (input.get("stockItemId") == null) throw new BusinessException("请从库存明细选择具体卷材");
@@ -104,6 +163,8 @@ public class InventoryRollServiceImpl implements InventoryRollService {
 
     @Override
     public InventoryStockItem issueStock(InventoryOutboundOrder order, InventoryOutboundItem item) {
+        if ("work_order".equalsIgnoreCase(order.getSourceType()) && item.getSourceBomItemId() == null)
+            throw new BusinessException("工单整卷领料必须关联受控BOM明细，不能用普通出库单绕过需求/超领校验；包装覆盖由生产领料流程接入");
         InventoryStockItem selected = stockMapper.selectById(item.getStockItemId());
         if (selected == null || selected.getRollNo() == null) throw new BusinessException("所选卷材不存在");
         List<InventoryStockItem> rows = stockMapper.selectRollForUpdate(selected.getRollNo());

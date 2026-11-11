@@ -32,6 +32,13 @@ class RollInventoryCompatibilityTest extends RollFixture {
         assertThrows(BusinessException.class,() -> mutation.applyDelta(stocks.selectById(stock),bd("-1"),tx));
         eq("9.75",balance()); assertEquals(1,txs.selectCount(null));
     }
+    @Test void genericCreateCannotBypassControlledProductionPickForRolls() {
+        long id=receive(1).get(0);
+        assertThrows(BusinessException.class,() -> outbound.create(Map.of("outboundType","production","sourceType","work_order",
+                "sourceId",777L,"warehouseId",1L,"items",List.of(Map.of("stockItemId",id,"inventoryItemId",31L,
+                        "materialId",11L,"materialCode","AUX-TEST","materialName","卷材","unit","㎡","quantity",bd("9.75"))))));
+        assertEquals(0,outs.selectCount(null)); eq("9.75",balance()); assertEquals(1,txs.selectCount(null));
+    }
     @Test void initialRollValidatesMasterIdentityUnitsAndWholeRelease() {
         var item=new InventoryInboundItem(); item.setInventoryItemId(31L); item.setMaterialId(11L); item.setMaterialCode("AUX-TEST");
         item.setUnit("㎡"); item.setBatchNo("B1");
