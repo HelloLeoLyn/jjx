@@ -359,6 +359,22 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/production/requirement-plan',
+    name: 'ProductionRequirementPlan',
+    component: () => import('@/layout/index.vue'),
+    meta: {
+      title: '需求计划',
+    },
+    children: [
+      {
+        path: '',
+        name: 'ProductionRequirementPlanIndex',
+        component: () => import('@/views/production/requirement-plan/index.vue'),
+        meta: { title: '需求计划' },
+      },
+    ],
+  },
+  {
     path: '/production/quality-template',
     name: 'ProductionQualityTemplate',
     component: () => import('@/layout/index.vue'),
