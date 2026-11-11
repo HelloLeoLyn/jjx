@@ -57,10 +57,22 @@ class ManufacturingRequirementNettingTest {
         when(mapper.selectMaterial(anyLong())).thenAnswer(inv -> materials.get(inv.getArgument(0)));
         when(mapper.selectMaterialStock(anyLong())).thenAnswer(inv ->
                 stocks.getOrDefault(inv.getArgument(0), stock("0", "0")));
-        when(mapper.selectPurchaseSupply(anyLong(), any(LocalDate.class), anyInt(), anyInt(), anyInt(), anyInt()))
-                .thenAnswer(inv -> purchaseSupply.getOrDefault(inv.getArgument(0), BigDecimal.ZERO));
-        when(mapper.selectMaterialProductionSupply(anyLong(), any(LocalDate.class), anyInt(), anyInt(), anyInt()))
-                .thenAnswer(inv -> productionSupply.getOrDefault(inv.getArgument(0), BigDecimal.ZERO));
+        when(mapper.selectPurchaseRows(anyLong(), any(LocalDate.class), anyInt(), anyInt(), anyInt(), anyInt(),
+                anyInt()))
+                .thenAnswer(inv -> {
+                    Long materialId = inv.getArgument(0);
+                    BigDecimal qty = purchaseSupply.get(materialId);
+                    return qty == null ? List.<ManufacturingSupplySnapshotMapper.PurchaseSupplyRow>of()
+                            : List.of(approvedPurchaseRow(materialId, qty));
+                });
+        when(mapper.selectMaterialProductionRows(anyLong(), any(LocalDate.class), anyInt(), anyInt(), anyInt(),
+                anyInt()))
+                .thenAnswer(inv -> {
+                    Long materialId = inv.getArgument(0);
+                    BigDecimal qty = productionSupply.get(materialId);
+                    return qty == null ? List.<ManufacturingSupplySnapshotMapper.MaterialProductionSupplyRow>of()
+                            : List.of(approvedProductionRow(materialId, qty));
+                });
 
         boms.put(10L, bom(10L, 1L, "PRODUCT", 1L, 3, "B10"));
     }
@@ -316,6 +328,44 @@ class ManufacturingRequirementNettingTest {
         ManufacturingSupplySnapshotMapper.StockRow row = new ManufacturingSupplySnapshotMapper.StockRow();
         row.setTotalQuantity(new BigDecimal(total));
         row.setTotalReserved(new BigDecimal(reserved));
+        return row;
+    }
+
+    /** 合成“已批准、待收货、单位同库存单位”的采购行：只用于验证净额算法，不冒充采购业务校验。 */
+    private ManufacturingSupplySnapshotMapper.PurchaseSupplyRow approvedPurchaseRow(Long materialId,
+                                                                                   BigDecimal quantity) {
+        ManufacturingSupplySnapshotMapper.PurchaseSupplyRow row =
+                new ManufacturingSupplySnapshotMapper.PurchaseSupplyRow();
+        row.setOrderId(materialId);
+        row.setOrderNo("PO" + materialId);
+        row.setItemId(materialId);
+        row.setQuantity(quantity);
+        row.setReceivedQuantity(BigDecimal.ZERO);
+        ManufacturingSupplySnapshotMapper.MaterialRow material = materials.get(materialId);
+        row.setUnit(material == null ? "PCS" : material.getUnit());
+        row.setApprovalStatus(3);
+        row.setReceiptStatus(0);
+        row.setExpectedDeliveryDate(DEMAND_DATE.minusDays(1));
+        return row;
+    }
+
+    /** 合成“已批准工单 + 已批准且无日期约束的 MATERIAL 产出 BOM”行，planned=quantity、finished=0。 */
+    private ManufacturingSupplySnapshotMapper.MaterialProductionSupplyRow approvedProductionRow(Long materialId,
+                                                                                               BigDecimal quantity) {
+        ManufacturingSupplySnapshotMapper.MaterialProductionSupplyRow row =
+                new ManufacturingSupplySnapshotMapper.MaterialProductionSupplyRow();
+        row.setOrderId(materialId);
+        row.setOrderNo("MO" + materialId);
+        row.setOrderStatus(4);
+        row.setApprovalStatus(3);
+        row.setProductUnit(materials.get(materialId) == null ? "PCS" : materials.get(materialId).getUnit());
+        row.setPlannedQuantity(quantity);
+        row.setCompletedQuantity(BigDecimal.ZERO);
+        row.setFinishedQuantity(BigDecimal.ZERO);
+        row.setPlanEndDate(DEMAND_DATE);
+        row.setBomId(20L);
+        row.setBomCode("B20");
+        row.setBomApproveStatus(3);
         return row;
     }
 }

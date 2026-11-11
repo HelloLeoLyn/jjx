@@ -41,10 +41,12 @@ class ManufacturingRequirementPrecisionTest {
         when(mapper.selectProduct(1L)).thenReturn(product);
         when(mapper.selectBom(10L)).thenReturn(root);
         when(mapper.selectBomLines(10L)).thenReturn(rootLines);
-        when(mapper.selectPurchaseSupply(anyLong(), any(LocalDate.class), anyInt(), anyInt(), anyInt(), anyInt()))
-                .thenReturn(BigDecimal.ZERO);
-        when(mapper.selectMaterialProductionSupply(anyLong(), any(LocalDate.class), anyInt(), anyInt(), anyInt()))
-                .thenReturn(BigDecimal.ZERO);
+        when(mapper.selectPurchaseRows(anyLong(), any(LocalDate.class), anyInt(), anyInt(), anyInt(), anyInt(),
+                anyInt()))
+                .thenReturn(List.of());
+        when(mapper.selectMaterialProductionRows(anyLong(), any(LocalDate.class), anyInt(), anyInt(), anyInt(),
+                anyInt()))
+                .thenReturn(List.of());
         when(mapper.selectMaterialStock(anyLong())).thenReturn(stock("0", "0"));
     }
 

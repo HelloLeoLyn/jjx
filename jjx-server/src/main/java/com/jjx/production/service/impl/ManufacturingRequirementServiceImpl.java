@@ -47,6 +47,8 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
             "个", "件", "片", "张", "只", "套", "支", "条", "瓶", "卷");
     private static final Set<String> CONTINUOUS_UNITS = Set.of(
             "M", "M2", "KG", "G", "L", "ML");
+    /** 卷类计量：档案宽/长是定尺，不是逐卷实际余长；逐卷换算与预留属 013。 */
+    private static final Set<String> COIL_UNITS = Set.of("卷", "ROLL", "COIL", "ROLLS");
 
     private final ManufacturingSupplySnapshotMapper mapper;
     private final ManufacturingSupplySnapshotProvider supplyProvider;
@@ -63,6 +65,7 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
             throw new BusinessException("需求数量必须大于0");
         }
         LocalDate demandDate = request.getDemandDate() == null ? LocalDate.now() : request.getDemandDate();
+        validateWarehouse(request.getWarehouseId());
 
         ManufacturingSupplySnapshotMapper.ProductRow product = mapper.selectProduct(request.getProductId());
         if (product == null) {
@@ -83,6 +86,7 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
         summary.setGeneratedAt(LocalDateTime.now());
         summary.setNote("只读试算：不扣库存、不预留、不写流水、不建工单；confirm 持久确认尚未实现。");
         summary.getLimitations().addAll(baseLimitations());
+        summary.setPlannedPurchaseSupply(BigDecimal.ZERO);
 
         String productPath = "产品[" + product.getProductCode() + "]";
         ManufacturingDemandSnapshot root = resolveRootBom(request, product, demandDate, summary);
@@ -191,11 +195,42 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
         for (Long materialId : lineOrder) {
             summary.getLines().add(lines.get(materialId));
         }
+        BigDecimal plannedPurchaseTotal = BigDecimal.ZERO;
+        for (RequirementLineVO line : summary.getLines()) {
+            if (line.getPlannedPurchaseSupply() != null) {
+                plannedPurchaseTotal = plannedPurchaseTotal.add(line.getPlannedPurchaseSupply());
+            }
+        }
+        summary.setPlannedPurchaseSupply(plannedPurchaseTotal);
+        if (plannedPurchaseTotal.signum() > 0) {
+            summary.getWarnings().add("本次试算含草稿/待审批采购数量合计[" + plannedPurchaseTotal.stripTrailingZeros()
+                    .toPlainString() + "]，未批准，只展示、不抵扣缺口；缺口按已批准供应计算");
+        }
         summary.setNodes(nodes);
         return summary;
     }
 
     // ==================== BOM 解析与静态图 ====================
+
+    /**
+     * 仓库条件必须可核对：仓库不存在或已停用直接报错，不静默退回全仓/空仓试算。
+     * 状态码与 InventoryWarehouseServiceImpl.getAllEnabled 同口径（StatusEnum.NORMAL 的字符串形式）。
+     */
+    private void validateWarehouse(Long warehouseId) {
+        if (warehouseId == null) {
+            return;
+        }
+        ManufacturingSupplySnapshotMapper.WarehouseRow warehouse = mapper.selectWarehouse(warehouseId);
+        if (warehouse == null) {
+            throw new BusinessException("仓库[" + warehouseId + "]不存在，无法按该仓库试算");
+        }
+        String status = warehouse.getStatus() == null ? "" : warehouse.getStatus().trim();
+        if (!String.valueOf(StatusEnum.NORMAL.getCode()).equals(status)) {
+            throw new BusinessException("仓库[" + (isBlank(warehouse.getWarehouseCode())
+                    ? String.valueOf(warehouseId) : warehouse.getWarehouseCode())
+                    + "]已停用，不能作为试算仓库");
+        }
+    }
 
     private ManufacturingDemandSnapshot resolveRootBom(RequirementPreviewRequest request,
                                                        ManufacturingSupplySnapshotMapper.ProductRow product,
@@ -381,6 +416,12 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
             return new UnitConversion(ExactQuantity.fromDecimal(line.getUnitFactor()),
                     line.getUnitFactorBasis(), line.getUnitFactorSource());
         }
+        // 卷类：档案宽/长是定尺，不是每卷实际余长；没有已保存的 unit_factor+依据时不得自动换算。
+        if (isCoilUnit(lineUnit) || isCoilUnit(stockUnit)) {
+            throw new BusinessException(path + " 单位[" + line.getUnit() + "→" + material.getUnit()
+                    + "]为卷类计量，档案长宽是定尺而非逐卷实际余长，禁止自动换算；"
+                    + "请保存 unit_factor 及依据，逐卷实际长度/余量由 013 负责（UNIT_CONVERSION_MISSING）");
+        }
         // 静态尺寸换算只允许“计件 → 面积”，且档案宽、长必须同时存在；不猜测规格文本。
         if (isPieceUnit(lineUnit) && "M2".equals(stockUnit)
                 && material.getWidthMm() != null && material.getWidthMm().signum() > 0
@@ -394,8 +435,8 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
                     "inventory_material.width_mm/length_mm");
         }
         if ("M2".equals(stockUnit) && material.getWidthMm() != null && material.getLengthMm() == null) {
-            throw new BusinessException(path + " 卷材只有宽度没有批次实际长度；逐卷余量属013，"
-                    + "缺少批次长度时阻断换算，不能假设统一长度");
+            throw new BusinessException(path + " 档案只有宽度没有长度，无法按定尺换算面积；"
+                    + "批次/逐卷实际长度属 013，缺少长度时阻断换算，不能假设统一长度");
         }
         throw new BusinessException(path + " 单位[" + line.getUnit() + "→" + material.getUnit()
                 + "]缺少已保存换算系数/可核实依据（UNIT_CONVERSION_MISSING）");
@@ -464,8 +505,22 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
         state.materialName = supply.getMaterialName();
 
         ExactQuantity remainingStock = supply.getAvailableForDemand();
-        ExactQuantity remainingProduction = supply.getProductionSupply();
-        ExactQuantity remainingPurchase = supply.getPurchaseSupply();
+        // 采购/生产供给没有可核对的收货目的仓（purchase_order/production_order 均无仓库列）。
+        // 指定仓库时二者只展示、不参与抵扣，禁止把无法归属的供给跨仓静默抵扣。
+        boolean nonStockSupplyDeductible = warehouseId == null;
+        ExactQuantity remainingProduction = nonStockSupplyDeductible
+                ? supply.getProductionSupply() : ExactQuantity.ZERO;
+        ExactQuantity remainingPurchase = nonStockSupplyDeductible
+                ? supply.getPurchaseSupply() : ExactQuantity.ZERO;
+        if (!nonStockSupplyDeductible) {
+            boolean hasSupply = supply.getProductionSupply().isPositive()
+                    || supply.getPurchaseSupply().isPositive()
+                    || supply.getPlannedPurchaseSupply().isPositive();
+            if (hasSupply) {
+                summary.getWarnings().add("物料[" + supply.getMaterialCode() + "] 采购/生产供给无法归属仓库["
+                        + warehouseId + "]（订单无收货目的仓），已不计入本次抵扣，仅在采购/生产供给字段展示");
+            }
+        }
         for (Contribution contribution : contributions) {
             if (!sameUnit(contribution.stockUnit, supply.getUnit())) {
                 throw new BusinessException("物料[" + supply.getMaterialCode() + "]来源单位["
@@ -488,7 +543,9 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
                     .subtract(contribution.purchaseAllocated);
             contribution.gap = gap.isNegative() ? ExactQuantity.ZERO : gap;
         }
-        return buildLine(materialId, state, contributions, supply);
+        RequirementLineVO line = buildLine(materialId, state, contributions, supply);
+        line.setWarehouseId(warehouseId);
+        return line;
     }
 
     private RequirementLineVO buildLine(Long materialId, MaterialState state, List<Contribution> contributions,
@@ -509,8 +566,14 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
         line.setSafeStockDeducted(supply.isSafeStockDeducted());
         line.setProductionSupply(bd(supply.getProductionSupply()));
         line.setPurchaseSupply(bd(supply.getPurchaseSupply()));
-        line.setMaterialProductionAdapterApplied(Boolean.TRUE);
+        line.setPlannedPurchaseSupply(bd(supply.getPlannedPurchaseSupply()));
+        line.setMaterialProductionAdapterApplied(supply.isMaterialProductionAdapterApplied());
         line.getWarnings().addAll(supply.getWarnings());
+        line.getLimitations().add("采购/生产供给未分配，可能被其他需求竞争；本行只做只读抵扣演示。");
+        if (supply.getPlannedPurchaseSupply().isPositive()) {
+            line.getLimitations().add("plannedPurchaseSupply=" + supply.getPlannedPurchaseSupply().approximateText()
+                    + " 为草稿/待审批采购数量，未批准，不计入可用也不抵扣缺口。");
+        }
 
         ExactQuantity theoretical = sum(contributions, c -> c.theoreticalBom);
         ExactQuantity appliedStock = sum(contributions, c -> c.appliedStock);
@@ -704,6 +767,10 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
         return PIECE_UNITS.contains(normalizedUnit);
     }
 
+    private boolean isCoilUnit(String normalizedUnit) {
+        return normalizedUnit != null && COIL_UNITS.contains(normalizedUnit);
+    }
+
     private boolean isMake(ManufacturingDemandSnapshot.Line line) {
         return "make".equalsIgnoreCase(trimToNull(line.getSourceType()));
     }
@@ -753,12 +820,21 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
     private List<String> baseLimitations() {
         List<String> limitations = new ArrayList<>();
         limitations.add("只读试算：不扣库存、不预留、不写流水、不建工单；重复调用不产生写入。");
+        limitations.add("采购/生产供给均未分配：只是“尚未被占用的候选供给”，可能被其他需求竞争；"
+                + "本次缺口不代表已锁定可用量。");
+        limitations.add("purchaseSupply 只含已批准采购单的未收数量（部分收货按行扣减）；"
+                + "plannedPurchaseSupply 为草稿/待审批采购，未批准，只展示不抵扣；已驳回/已取消不计。");
         limitations.add("current production_order 无 MATERIAL output 列；物料生产供给按工单绑定BOM的 "
                 + "output_type=MATERIAL/output_id 兼容读取，未绑定产出身份的工单不计，不把 product_id 当物料身份。");
-        limitations.add("生产供给只计入未绑定 sales_order_id/parent_order_id 的工单；已承担其他需求的工单不重复抵扣。");
+        limitations.add("生产供给只计入已批准、绑定BOM已批准且在有效期内的工单，只取未绑定 sales_order_id/parent_order_id 的；"
+                + "产出按 planned_quantity − finished_quantity 计，已入库的合格品不重复计入。");
+        limitations.add("工单状态 8已完成/9已取消/10已关闭/11已超期 不计入在制产出：超期工单实际进度与返工/重排不可核实，"
+                + "按在制计入会高估供给。");
+        limitations.add("指定仓库时，采购/生产供给无可核对的收货目的仓，只展示、不参与抵扣；现货仍按仓库过滤。");
         limitations.add("顶层产品需求不抵扣既有产品工单产出：当前无需求分配关联，直接抵扣会把其他订单产出误算给本次。");
         limitations.add("持久确认/并发分配（请求头幂等、唯一键、事务锁、失效供给重算）未获新表批准，本接口不提供 confirm 成功响应。");
-        limitations.add("卷材逐卷实际长度与余量属 013；缺少批次长度时阻断换算，未用统一长度代替。");
+        limitations.add("卷材逐卷实际长度与余量属 013；卷类禁止用档案长宽自动换算，必须有已保存 unit_factor 及依据，"
+                + "否则报 UNIT_CONVERSION_MISSING 并指向 013。");
         limitations.add("安全库存按既有 InventoryAlertServiceImpl 材料级口径扣除；仓库维度未分摊安全库存。");
         limitations.add("生产批量与实领粒度未在本卡配置；min_issue_qty 只作为最低投料字段，未当作生产批量。");
         return limitations;

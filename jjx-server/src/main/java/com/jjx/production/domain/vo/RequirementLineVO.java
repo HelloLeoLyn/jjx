@@ -44,15 +44,20 @@ public class RequirementLineVO {
     private BigDecimal safeStock;
     private BigDecimal availableForDemand;
     private Boolean safeStockDeducted;
+    /** 已批准工单的未入库产出（planned − finished），未分配，可能被其他需求竞争。 */
     private BigDecimal productionSupply;
+    /** 只含已批准采购单的未收数量；已驳回/已取消不计，仓库维度不抵扣。 */
     private BigDecimal purchaseSupply;
+    /** 草稿/待审批采购数量：未批准，只展示、不抵扣缺口。 */
+    private BigDecimal plannedPurchaseSupply;
+    /** 仅当该物料确实经 BOM 产出身份（output_type=MATERIAL）兼容读适配取数时为 true。 */
     private Boolean materialProductionAdapterApplied;
 
     private BigDecimal allocatedStock;
     private BigDecimal allocatedProduction;
     private BigDecimal allocatedPurchase;
 
-    /** 缺口 = max(0, 毛需求 − 库存 − 生产供给 − 采购供给)，绝不返回负数。 */
+    /** 缺口 = max(0, 毛需求 − 库存 − 生产供给 − 采购供给)；plannedPurchaseSupply 不参与扣减。 */
     private String gapQtyExact;
     private BigDecimal gapQtyApprox;
     private BigDecimal gapQtyDisplay;

@@ -30,6 +30,9 @@ public class RequirementSummaryVO {
     private Long warehouseId;
     private LocalDateTime generatedAt;
 
+    /** 全表草稿/待审批采购数量合计：未批准，只展示、不抵扣缺口。 */
+    private BigDecimal plannedPurchaseSupply;
+
     private List<RequirementNodeVO> nodes = new ArrayList<>();
     private List<RequirementLineVO> lines = new ArrayList<>();
     private List<String> warnings = new ArrayList<>();
