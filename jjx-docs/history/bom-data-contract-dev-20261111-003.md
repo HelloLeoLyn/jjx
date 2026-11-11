@@ -5,6 +5,21 @@
 状态：A 阶段交付，只读核查与契约设计；没有实施 B 至 G，没有写业务源码、没有执行迁移、没有新增表、没有改库、没有启动或重启服务。
 本卡写入白名单：jjx-docs/history/bom-data-contract-dev-20261111-003.md、jjx-docs/history/INDEX.md、.tmp/bom-dispatch/（本任务证据，gitignored）；其余业务源码、迁移、库和运行态只读。
 
+修订：2026-11-11 v2（退回修复，任务仍是 dev-20261111-003）。本版按 Codex 预审六点逐条修正：路线边界改为复用现有 engineering_routing / product_work_spec_version，不由 BOM 行生成工序；主方案新表重新做必要性评估并给出 JSON 映射的并发/版本/保存取消语义；库存身份异常补齐可复核原始输出；精确比例改为有理数精确约简；数据分配改为请求级幂等 + 多行唯一键；迁移编号取消预占，G 补后端快照归属，状态标注复用枚举，并删除文档中的数据库口令。原 A 版结论保留可核对处，被本版修正的旧表述以“v2 修正”覆盖，不另建卡、不派后继。
+
+本版证据文件（均在 .tmp/bom-dispatch/，gitignored）：evidence-ddl-20261111.txt（14 张相关表 SHOW CREATE TABLE 原文）、evidence-inventory-identity-20261111.txt（身份比对原始 SQL 与输出）、evidence-schema-20261111.txt（迁移账本与目录现状）、code-refs-20261111.txt（代码行号摘录）。
+
+Codex 六点与本版对应：
+
+| 退修点 | 本版处理位置 | 结论 |
+|---|---|---|
+| 1 路线边界 | “MATERIAL 路线与作业规范接入”、缺陷 12/13、G1/G2、U06 | 工序只由 engineering_routing_item 生成；BOM 行 process_id 仅展示；BOM 主表不加路线编辑器 |
+| 2 新表必要性 | “产品主方案：存储方案与必要性评估”、提案一/二 | A/B/C 三方案均给出并发、版本隔离、保存/取消；C 是条件必要提案，不把未确认假设当既定要求 |
+| 3 库存身份证据 | 缺陷 7、风险 1、evidence-inventory-identity-20261111.txt | 原始 SQL 与输出已存；比对表/键/行数明确；区分 BOM 记录、无库存流水、仍有历史单据引用 |
+| 4 精确比例 | “比例与精度（有理数精确约简）”、单位取整策略、净需求算法 | 有理数 num/den 精确约简；终点/确认批量才取整；给多层抵消反例；理论/批量/实领分列；安全库存复用现有口径 |
+| 5 分配幂等 | “供需分配：请求级幂等 + 多来源分配行” | 请求头 UNIQUE(request_key) + 分配行 UNIQUE(request_id, allocation_line_no)；空 key 兼容明确 |
+| 6 迁移/G/枚举/口令 | “迁移兼容与回退”、G1/G2、状态枚举真源、现场证据命令 | 不预占 356/357/358；M1/M2/M3 按依赖；G 分后端快照+前端；状态复用枚举；文档/证据无口令 |
+
 ## 交付边界与结论先行
 
 本文件交付四类内容：一是实际 DDL 与现有入口的现场核查；二是优先复用表的数据模型与字段约束、迁移兼容和回退设计；三是方案保存、采用、父保存边界与接口契约；四是 B 至 G 的精确文件白名单、共享作者、入口保存矩阵和 001 的 37 场景归属。
@@ -14,29 +29,29 @@
 1）现有 BOM 主表不能直接承载“MATERIAL 产出”。engineering_bom.product_id 为 NOT NULL，生产订单 production_order.product_id 也为 NOT NULL，库存成品入库固定走 PRODUCT 身份；必须增加显式产出身份，不能继续用 product_id 冒充所有半成品。
 2）现有 BOM 明细的 parent_material_id 只是同一 BOM 内的分组/父子行，不能复用为“由哪个子 BOM 制造”的关系。跨 BOM 关系必须新增显式引用 sub_bom_id，并做图环路校验。
 3）现有精度链路会把 1/6 先存成 0.1667，再乘 300 得 50.01，整批向上取整成 51；正确结果应为 300×1÷6=50。新契约要求保存模数、基数原始值，除法只在需求计算末次执行。
-4）现有库存物品身份与物料主数据存在实际错位：7 个 BOM 引用物料全部在 inventory_item 中按 source_id 命中“别的物料”，而库存与流水当前均为 0 行。零库存使历史未被污染，但 F 阶段直接按 material_id 调 ensure(MATERIAL, material_id) 会拿错身份，必须先完成身份核对/映射，不能把旧 inventory_item 当新库使用。
-5）多方案必须按“输出对象 + 方案 BOM”建立，产品主方案单独按 product_id × material_id 保存；不能把半成品档案上的某个全局 is_current 当成所有产品的主方案。
-6）新表只提出一项：product_material_scheme（产品主方案）。该表尚未批准、未创建；替代方案和否决理由见“新表提案与替代评估”。其余需求分配优先扩展现有 order_material_reserve，不另建第二套库存/预留表。
-7）B 至 G 的文件白名单、共享作者和 37 场景归属已给出；共享文件一律先 B 后 D、先 C 后 G、先 D 后 E、先 D 后 F，禁止并行抢写。
+4）现有库存物品身份与物料主数据存在实际错位：7 个 BOM 引用物料按 inventory_item(item_type='MATERIAL', source_id) 都能命中一行，但 7/7 行的 item_code/item_name 与 inventory_material.material_code/material_name 不一致；按 item_code 直接匹配 291 个物料为 0 行命中，1562 个 inventory_item 中有 1271 个按 source_id 找不到物料。当前 inventory_stock、inventory_stock_item、inventory_transaction、inventory_inbound_item、inventory_outbound_item 均为 0 行，但这只证明“没有库存流水”，不能证明所有历史单据完全未污染：inventory_alert_log 有 20 行引用 material_id 109—113，production_order 有 2 行绑定含 material_id 349 的 BOM，sales_sample_bom 有 5 行引用 109—113。F 阶段直接按 material_id 调 ensure(MATERIAL, material_id) 会拿错身份，必须先完成身份核对/映射，不能把旧 inventory_item 当新库使用。原始 SQL 与输出见 evidence-inventory-identity-20261111.txt。
+5）多方案必须按“输出对象 + 方案 BOM”建立；产品主方案是否必须跨 BOM 版本独立保存，001 没有明确确认，因此不能把“跨版本独立生命周期”当成既定业务要求来排除 BOM 内存储或产品级 JSON 映射。v2 保留 product_material_scheme 作为推荐提案，同时给出 product 级 JSON 映射和 BOM 行上下文两种可实现替代，并分别说明并发、版本隔离、保存/取消语义；最终按用户对“跨版本持久 + 独立审计”的选择定存储，不强行降级。
+6）新表提案保留两项：product_material_scheme（产品主方案）与 requirement_confirm_request（请求级幂等头，若采用“请求头 + 多分配行”策略）。两表均未批准、未创建；替代方案和理由见“新表提案与替代评估”。需求分配优先扩展现有 order_material_reserve；若分配不绑定销售订单，则用 production_requirement_allocation 承载生产分配，但不复制库存余额/流水，不形成第二套库存真源。
+7）B 至 G 的文件白名单、共享作者和 37 场景归属已给出；共享文件一律先 B 后 C/D，先 C 后 G，先 D 后 E；F 的 production_order 输出身份与 D 的 MATERIAL 净需求存在运行时依赖，迁移与派工按依赖排序，不按固定编号或卡序硬排。
 
 ## 现场核查环境与基线
 
 执行前已把 git 状态存档到 .tmp/bom-dispatch/git-status-baseline-20261111.txt，基线为：HEAD 5a329faf42da8c86d2dfc9909e0dee307a40d4b3，分支 dev，工作区干净。
 
-数据库只读核查使用本机 jjx_ro，库 jjx_erp_db@127.0.0.1:3306；MySQL 版本 8.4.10-0ubuntu0.26.04.1；sql_mode 含 ONLY_FULL_GROUP_BY、STRICT_TRANS_TABLES、NO_ZERO_DATE 等严格模式。迁移账本 ops.schema.applied 最大号 355，jjx-docs/sql/migrations 目录最大号 355，待执行 0、已记账待归档 0；下一次迁移编号在实际执行时取“账本最大号与目录最大号较大者 + 1”，当前为 356。
+数据库只读核查使用本机已配置的只读账号 jjx_ro（库 jjx_erp_db@127.0.0.1:3306），连接通过仓库外、权限 0600 的本地 defaults 文件完成，文档和证据不保存口令。MySQL 版本 8.4.10-0ubuntu0.26.04.1；sql_mode 含 ONLY_FULL_GROUP_BY、STRICT_TRANS_TABLES、NO_ZERO_DATE 等严格模式。2026-11-11 10:32 CST 观察：迁移账本 sys_config['ops.schema.applied'] 最大号 355，migrations/applied 归档最大号 355，待办目录待执行 0、已记账待归档 0；这是观察值，不是预留号。迁移编号在实际编写时重新核对“账本最大号与（待办+归档）目录最大号的较大者 + 1”，并按依赖顺序执行；本文件不再使用 356/357/358 之类的固定编号。
 
 本文件中的“现有”均指上述 HEAD 与本次只读查询结果；“建议/提案/契约”不是已实现能力，也不是已批准的新表。
 
 ### 现场数据规模
 
 1）engineering_bom：4 行。bom_id=1、2 的 product_id=1；bom_id=3 的 product_id=3（测试中间件产品身份）；bom_id=4 的 product_id=2（测试成品）。bom_id=1 为已批准且 is_current=1；bom_id=2 为草稿且 is_current=0，其明细仍为草稿行；bom_id=3、4 为已批准但 is_current=0。
-2）engineering_bom_item：12 行。item_id=1、5、9、10 的 module_qty/base_qty/quantity 分别为 6/1/0.1667、3/1/0.3333、6/1/0.1667、3/1/0.3333；item_id=13 的 source_type=make、material_id=349，但没有 material_code，也没有任何字段指向 bom_id=3。
-3）inventory_material：291 行；inventory_item：1562 行；inventory_stock、inventory_stock_item、inventory_transaction 均为 0 行；inventory_inbound_item、inventory_outbound_item 均为 0 行；production_order 2 行；purchase_order_item 0 行。
-4）当前没有真实库存和库存流水，因此本次发现的物料身份错位尚未形成历史流水污染；但这也意味着不能把“零库存”当成“身份没问题”。
+2）engineering_bom_item：12 行。item_id=1、4、9 的 module_qty/base_qty/quantity 为 6/1/0.1667；item_id=5、10 为 3/1/0.3333。item_id=13 属于 bom_id=4（TOP），source_type=make、material_id=349，但 material_code 为空，且没有任何 sub_bom 引用；bom_id=3（SEMI）没有 item 13，也不存在 output 为 material 349 的 BOM。v2 修正 A 版“item_id=13 没有字段指向 bom_id=3”的含糊表述。
+3）inventory_material：291 行；inventory_item：1562 行（全部 item_type=MATERIAL）；inventory_stock、inventory_stock_item、inventory_transaction 均为 0 行；inventory_inbound_order/item、inventory_outbound_order/item 均为 0 行；production_order 2 行；purchase_order_item 0 行；inventory_alert_log 20 行；sales_sample_bom 5 行。
+4）当前没有真实库存和库存流水；按 source_id 比对，7 个 BOM 引用物料 7/7 命中但 code/name 全不一致；1562 个 item 中 1271 个按 source_id 找不到物料，按 item_code 对 291 个物料 0 命中。零库存只能证明“没有库存流水”，不能证明历史单据完全未污染：20 行 alert_log、2 张 production_order、5 行 sales_sample_bom 仍引用这些 material_id。原始 SQL 与表格输出见 evidence-inventory-identity-20261111.txt。
 
 ### 实际 DDL 摘要
 
-以下仅摘录与本契约相关的字段，不替代 SHOW CREATE TABLE 原文；完整原文可在 .tmp/bom-dispatch/ 的核查记录中复核。
+以下仅摘录与本契约相关的字段，不替代 SHOW CREATE TABLE 原文；14 张相关表的完整 SHOW CREATE TABLE 原文已保存到 .tmp/bom-dispatch/evidence-ddl-20261111.txt（不含口令），可逐表复核。
 
 engineering_bom（主表）：
 
@@ -71,7 +86,7 @@ engineering_bom_item（明细）：
 | unit | varchar(20) default PCS | 自由文本，不与 material.unit 做一致性校验 |
 | source_type | varchar(20) default 'buy' | 字符串 buy/make；现有领料对非 buy 行直接 continue |
 | substitute_json | json NULL | 替代料数组；替代比例/损耗在领料预览中处理 |
-| process_id/process_name | bigint/varchar NULL | 标准工序引用；可作 MATERIAL 工序来源的候选，但当前只用于项目展示 |
+| process_id/process_name | bigint/varchar NULL | 标准工序引用；仅项目展示/参考，不是 MATERIAL 工单工序来源；工序只由 engineering_routing_item 生成 |
 | review_status | tinyint default 1 | 1 草稿/2 待审核/3 通过/4 驳回/5 待移除 |
 | approved_fingerprint | ascii SHA-256 | 行级审核指纹 |
 | width_mm/length_mm | decimal(10,2) NULL | 行级规格快照，不是单位换算依据 |
@@ -116,6 +131,35 @@ production_order（生产订单）：
 | work_spec_version_id | bigint NULL | 作业规范发布版本；产品域绑定，MATERIAL 无对应键 |
 | trace_id | varchar(64) | 上下游链路；工单→领料→入库继承 |
 
+engineering_routing / engineering_routing_item（工艺路线，001 已定“路线管顺序”）：
+
+| 表/字段 | 类型/约束 | 现状与契约影响 |
+|---|---|---|
+| engineering_routing.routing_id | bigint PK | 路线身份；production_order.routing_id 引用 |
+| engineering_routing.product_id | bigint NOT NULL | 现状只能表达产品路线；MATERIAL 路线无法绑定 |
+| engineering_routing.routing_code/routing_version | varchar NOT NULL，UNIQUE(routing_code,routing_version) | 版本身份；路线编码+版本唯一 |
+| engineering_routing.is_current | tinyint default 1 | 当前版本；无数据库级“每输出唯一当前”约束 |
+| engineering_routing.approve_status | tinyint default 1 | 复用 ProductEnums.RouteStatus / ApproveStatusEnum：1草稿/2待审批/3已批准/4已驳回；生产取数只认 3 |
+| engineering_routing.parent_routing_id | bigint NULL | 父版本链；复制新版本沿用 |
+| engineering_routing_item.routing_id | bigint NOT NULL，FK | 路线明细归属 |
+| engineering_routing_item.process_id | bigint NULL，FK engineering_standard_process | 标准工序；**这是工序唯一来源** |
+| engineering_routing_item.process_name/major_category/process_order/workflow_seq | varchar/int | 自定义工序、组内顺序；生产工序按 (workflow_seq, process_order) 排序 |
+| engineering_routing_item.parent_id/group_id/group_order | bigint/int | 父行=工序、子行=组合作业；生成 execution 时合并为 jobs 快照 |
+
+product_work_spec_version / product_work_spec_item / work_spec_usage（作业规范，001 已定“作业规范管展示”）：
+
+| 表/字段 | 类型/约束 | 现状与契约影响 |
+|---|---|---|
+| product_work_spec_version.id | bigint PK | 发布版本身份；production_order.work_spec_version_id 引用 |
+| product_work_spec_version.product_id | bigint NOT NULL，UNIQUE(product_id,version_no) | 现状只能按产品发布；MATERIAL 无法拥有发布版本 |
+| product_work_spec_version.version_no | varchar(20) NOT NULL | 产品内版本号 |
+| product_work_spec_version.status | varchar(20) default PUBLISHED | PUBLISHED/RETIRED；历史读取按持久化 ID，不按“最新”推断 |
+| product_work_spec_item.spec_version_id | bigint NOT NULL | 发布条目归属 |
+| product_work_spec_item.resource_type/source_id/source_version_id | varchar/bigint | SPEC_JSON/BOM/ROUTING/DRAWING；BOM/路线目前存引用+版本号，不复制整棵快照 |
+| product_work_spec_item.snapshot_json/content_hash | mediumtext/char(64) | 规范正文完整快照；BOM/路线引用与哈希；发布后不可变 |
+| work_spec_usage.work_order_id/spec_version_id | bigint NOT NULL | 工单实际使用版本；换版区间记录，历史按 ID 读取 |
+| work_spec_usage.qty_from/qty_to/start_time/end_time | decimal/datetime | 生效区间；换版追溯 |
+
 production_task / production_work_report / production_operation_execution：
 
 | 表 | 关键字段 | 契约影响 |
@@ -141,13 +185,16 @@ production_task / production_work_report / production_operation_execution：
 2）模数/基数下限仍是 ≥1。EngineeringBomServiceImpl.checkBom 1443/1446 行明确写“模数不能为空且须 ≥1”“基数不能为空且须 ≥1”，与用户“模数、基数均允许大于 0 的正小数”冲突；当前前端和数据库也按 4 位存储，尚未支持小于 1 的合法值。
 3）损耗率类型不一致。DB 为 decimal(5,2)，Java 实体和 DTO 为 Integer（EngineeringBomItem.lossRate、EngineeringBomItemDTO.lossRate），计算用 double：loss/100.0。新契约必须改 BigDecimal，并只在本层计一次。
 4）单位没有一致性校验。engineering_bom_item.unit 是自由文本；BOM 1 的 item_id=1 用 PCS，而 material_id=109 档案单位是 M；BOM 2 的 item_id=11 用 M。现有保存/审核不校验 BOM 单位与 material.unit，也没有可靠的面积/卷长换算依据；不能把 1 PCS 当 1 M 或 1 ㎡。
-5）make 行没有下层引用且被领料直接跳过。InventoryOutboundServiceImpl 667、967、994、1239、1253、1403 行均有 if (!"buy".equals(sourceType)) continue；item_id=13 为 make、material_id=349，但无 sub_bom 关联，bom_id=3 也没有任何行指向它。新契约必须把“make 但无显式下层引用”作为可定位错误，不能静默当采购或静默漏算。
+5）make 行没有下层引用且被领料直接跳过。InventoryOutboundServiceImpl 667、967、994、1239、1253、1403 行均有 if (!"buy".equals(sourceType)) continue；item_id=13 属于 bom_id=4（TOP），为 make、material_id=349，但无 sub_bom 关联；bom_id=3（SEMI）没有该行，也不存在 output 为 material 349 的 BOM。新契约必须把“make 但无显式下层引用”作为可定位错误，不能静默当采购或静默漏算。
 6）产出身份只支持 PRODUCT。engineering_bom.product_id NOT NULL；ProductionOrderCreateDTO.productId @NotNull；ProductionOrderServiceImpl.validateOrderData 872 行只校验 productId；InventoryInboundServiceImpl.createFromProduction 3398 行固定 ensure(PRODUCT, prodOrder.getProductId())，3692 行同样固定 PRODUCT。MATERIAL 产出的工单和入库没有闭环字段。
-7）物料身份错位是实际存在的。对 7 个 BOM 引用 material_id 逐一和 inventory_item(MATERIAL, source_id) 比对，7 个全部 MISMATCH；1562 个 inventory_item 中 1271 个没有对应 inventory_material 行；按 item_code 也无法与 inventory_material.material_code 匹配（291 个物料 0 个命中，1562 个物品 0 个命中）。示例：material 109=RM000105 PC-800，但 inventory_item 109=MTR202608130110 3.0mm透明PC(贯昌）。当前 stock/transaction 均为 0 行，所以错误尚未落成历史流水；但 F 阶段若直接 ensure(MATERIAL, material_id)，会返回错误的库存物品。
+7）物料身份错位是实际存在的，且本轮已保存原始 SQL 输出。比对链：engineering_bom_item.material_id（12 行、7 个 distinct）→ inventory_material.material_id → inventory_item(item_type='MATERIAL', source_id)；比较键为 material_code/material_name 与 item_code/item_name。结果：7/7 全部 MISMATCH；示例 material 109=RM000105 PC-800（单位 M），inventory_item 109=MTR202608130110 3.0mm透明PC(贯昌）（单位 PCS）。覆盖：inventory_item 1562 行，按 source_id 有 291 行能命中物料、1271 行找不到物料；按 item_code 对 291 个物料 0 行命中。原始查询、计数和逐行结果见 .tmp/bom-dispatch/evidence-inventory-identity-20261111.txt。当前 stock/stock_item/transaction/inbound/outbound 均为 0 行，只能说明没有库存流水；inventory_alert_log（20 行）、production_order（2 行，BOM 含 349）、sales_sample_bom（5 行）仍引用这些 material_id，不能据此认定所有历史单据完全未污染。F 阶段若直接 ensure(MATERIAL, material_id)，会返回错误的库存物品。
 8）领料“已领量”统计键不一致。InventoryOutboundServiceImpl 999、1405 行用 pickedMap.getOrDefault(bomItem.getItemId())，而 sumPickedByMaterial 1463/1474 行按 material_id 聚合。除非 item_id 恰好等于 material_id，否则已领量被当作 0，剩余需求会重复计算。该缺陷应在 D 阶段一并修正，并以真实数据回归。
 9）BOM 类型存在双口径。DB bom_type 存 'manufacturing' 字符串，Java ProductEnums.BomType 是 1/2 枚举，现有代码未统一；新增产出类型不得复用 bom_type，应单独定义 output_type。
 10）生效窗口未参与生产取数。engineering_bom.effective_date/expiry_date 已存在，但 ProductionBomResolver 只校验 bom_id、product_id 和 approve_status=3，不校验生效/失效日期；新契约要明确“何时校验”和“历史工单不重算”。
 11）上层领料只取 buy 行，make 行即使已有半成品库存也不会被领用。InventoryOutboundServiceImpl 667/967/994/1239/1253/1403 行均对非 buy 行 continue；这与 001 的 P01“成品工单领原有140片与新产出合格片”冲突。新契约必须允许 make 行按可用库存/已有生产供给领用，但不得在领料时重复生成下级工单。
+12）路线与作业规范都只有产品身份。engineering_routing.product_id、product_work_spec_version.product_id 均 NOT NULL；production_order.routing_id/work_spec_version_id 只能指向产品路线/产品规范。半成品 MATERIAL 工单没有可绑定的路线/规范，F 若继续用产品身份就是拿别的产品路线冒充，不能作为契约。必要工程扩展是给两者增加 output_type/output_id（MATERIAL 时 output_id=material_id），不是从 BOM 行 process_id 生成工序，也不是在 BOM 主表加路线编辑器。
+13）BOM 行 process_id/process_order 只是项目展示属性，不是制造工序来源。现有生产工序只由 ProductionOrderServiceImpl.generateOperationExecutions(routingId,...) 读取 engineering_routing_item 生成；BOM 的 process_id 未被该方法使用。把 BOM 行当工序来源会与 001“路线管顺序、作业规范管展示”冲突，v2 删除该路径。
+14）已批准 BOM/路线不可编辑，历史可依赖版本不变性。EngineeringBomServiceImpl.updateBomWithDetail 在 approve_status 非草稿/驳回时抛“BOM已审批，不允许修改”；EngineeringRoutingServiceImpl 125 行对不可编辑状态拒绝更新。因此已批准版本是稳定历史依据；新增/改版走 copyAsNewVersion，不原地改。作业规范发布版本 PUBLISHED 亦不重写，work_spec_usage 记录工单实际版本。v2 的 G 后端快照读取这些持久化事实，不再只做前端拼装。
 
 ### 现有入口与调用链
 
@@ -193,18 +240,31 @@ production_task / production_work_report / production_operation_execution：
 契约采用“双身份显式化”，不是继续让 product_id 冒充所有产出：
 
 1）BOM 产出身份用 output_type + output_id 表达。output_type 取 PRODUCT 或 MATERIAL；PRODUCT 时 output_id=product_id；MATERIAL 时 output_id=material_id。product_id 保留给 PRODUCT 产出，MATERIAL 产出允许为空。
-2）生产订单同样增加 output_type + output_id（MATERIAL 时写 output_material_id 或统一 output_id，二者择一；本契约建议统一 output_id，另保留 product_id 兼容列）。PRODUCT 工单行为不变；MATERIAL 工单不再要求 product_id 非空。
+2）生产订单同样增加 output_type + output_id（统一用 output_id，不新增 output_material_id；另保留 product_id 兼容列）。PRODUCT 工单行为不变；MATERIAL 工单不再要求 product_id 非空。
 3）MATERIAL 产出必须有 inventory_material 档案，status=1；PRODUCT 产出必须有 product 档案。两种身份不能互相顶替。
 4）库存身份仍由 inventory_item 唯一表承载：PRODUCT 产出 ensure(PRODUCT, product_id)，MATERIAL 产出 ensure(MATERIAL, material_id)。但 F 开工前必须完成“inventory_item MATERIAL 身份与 inventory_material 的对齐/映射”，否则 ensure 会命中错误行；该对齐是数据订正，必须单独授权和备份，A 不执行。
-5）半成品的“产出物料”就是 MATERIAL；不强制新建 product 记录。若后续要求半成品拥有独立工艺路线或作业规范版本，需另行批准路线/作业规范的物料身份扩展，不能在本阶段用 product 记录绕过。
+5）半成品的“产出物料”就是 MATERIAL；不强制新建 product 记录。001 已定“路线管顺序、作业规范管展示”，所以半成品必须能有自己的路线和作业规范版本：给 engineering_routing、product_work_spec_version 增加与 BOM 同形的 output_type/output_id（MATERIAL 时 output_id=material_id，product_id 可空），复用现有路线明细、版本、批准/发布、工单绑定与发布快照机制。这是已定业务下的必要工程扩展，不需要重新确认“半成品是否要有路线/作业规范”；也不在 BOM 主表加路线编辑器，更不从 BOM 行 process_id/行顺序生成工序。
 
-替代方案（不推荐，仅记录）：给每个半成品建一个 product 记录，用 product_id 作为执行身份，再用 inventory_material.product_id 做桥接，库存入库仍落 MATERIAL 身份。该方案能复用现有路线/作业规范，但会污染产品档案、需要 product_role 标记、且 product_id 与 material_id 双写容易再次错位。除非用户明确要求半成品必须走产品路线/作业规范，否则不采用。
+替代方案（不推荐，仅记录）：给每个半成品建一个 product 记录，用 product_id 作为执行身份，再用 inventory_material.product_id 做桥接，库存入库仍落 MATERIAL 身份。该方案能复用现有路线/作业规范，但会污染产品档案、需要 product_role 标记、且 product_id 与 material_id 双写容易再次错位。v2 不采用；改为一等 MATERIAL 身份扩展。
+
+### MATERIAL 路线与作业规范接入（已定业务的工程扩展）
+
+1）engineering_routing 增加 output_type varchar(20) NOT NULL DEFAULT 'PRODUCT'、output_id bigint NULL。PRODUCT 行 output_id=product_id；MATERIAL 行 product_id=NULL、output_id=material_id。迁移先加列、回填 PRODUCT/product_id，再允许 MATERIAL 写入；不改 routing_item 的工序语义。
+2）engineering_routing 的当前版本与生命周期：沿用 is_current + approve_status（ProductEnums.RouteStatus）。同一 output_type+output_id 只允许一个 is_current=1、approve_status=3 的当前路线；数据库用生成列 route_scope（is_current=1 时 output_type:output_id，否则 NULL）+ 唯一索引兜底，服务层再校验并返回可定位冲突。路线批准后不可原地改，改版走既有 copyAsNewVersion。
+3）product_work_spec_version 增加 output_type/output_id；MATERIAL 时 product_id=NULL、output_id=material_id。发布/退役沿用 status=PUBLISHED/RETIRED；发布条目仍写 product_work_spec_item，BOM/ROUTING 引用改为按 output 身份解析。作业规范发布后不可变，历史按 spec_version_id 读取。
+4）工单绑定：
+   A) 新建/计划转工单时，按工单 output_type+output_id 解析路线和作业规范；显式 routingId/workSpecVersionId 优先，否则取该输出当前已批准路线/当前已发布规范。
+   B) MATERIAL 工单必须绑定 MATERIAL 路线和 MATERIAL 作业规范；缺任一返回 MATERIAL_ROUTING_NOT_FOUND / MATERIAL_WORK_SPEC_NOT_PUBLISHED，阻断创建，不用产品路线/产品规范顶替。
+   C) production_order 继续持久化 routing_id/routing_code、work_spec_version_id，并新增 routing_version 快照列（若现有路由编码已带版本，则记录 routing_version 字段值）；生成工序时只读 engineering_routing_item，不读 BOM 行。
+5）工序生成：沿用 ProductionOrderServiceImpl.generateOperationExecutions(routingId,...) 的现有逻辑（按 workflow_seq、process_order 排序；父行生成 execution，子行合并 jobs）。BOM 只决定用料，不决定工序；BOM 行 process_id 仅作展示/参考，禁止作为工序来源。
+6）作业规范展示：沿用 product_work_spec_item 的 SPEC_JSON/BOM/ROUTING/DRAWING 条目；MATERIAL 规范的展示入口与产品规范一致，只读发布版本；G1 后端按工单持久化 ID 组装快照。
+7）生命周期与历史：路线/规范版本批准或发布后不可改；工单创建时快照 routing_id、routing_version、work_spec_version_id，历史工单不因当前版本切换重算；换版走 work_spec_usage 的工单区间，不覆盖历史绑定。
 
 ### BOM、方案与版本
 
 1）engineering_bom 仍是方案主表。同一输出对象可有多个方案，每个方案一行主表 + 多行明细；方案身份是 bom_id，方案编码是 bom_code，方案版本是 bom_version/version。
 2）engineering_bom.product_id 只在 output_type=PRODUCT 时必填；MATERIAL 方案必须 output_type=MATERIAL、output_id=material_id、product_id=NULL。
-3）同一 output_type+output_id 的“输出默认方案”仍可用 is_current 表达，但产品上下文的主方案不能只看它；产品主方案由 product_material_scheme 表按 product_id × material_id 保存，is_primary=1 唯一。
+3）同一 output_type+output_id 的“输出默认方案”仍可用 is_current 表达，但产品上下文的主方案不能只看它。若用户批准新表，产品主方案由 product_material_scheme 按 product_id × material_id 保存，is_primary=1 唯一；若不批准新表，则用 product 级 JSON 映射或 BOM 行上下文实现，语义与代价见“新表提案与替代评估”，不得把任一方案说成“技术上不可行”。
 4）bom_code + bom_version 继续唯一；版本复制沿用 copyAsNewVersion 的既有规则：新版本 is_current=false、行重新草稿、清审核痕迹、parent 行号两遍映射。
 5）bom_type 继续表示 engineering/manufacturing，不承载产出类型；新增 output_type 单独定义枚举，避免与现有 BomType(1/2) 和 DB 字符串混用。
 6）approved 状态仍是 approve_status=3；草稿可保存、可被产品 BOM 引用，但不得被生产取数。父 BOM 提交/批准时，所有非空 sub_bom_id 的引用方案必须 approve_status=3，否则拒绝父批准；产品 BOM 保存阶段允许引用草稿方案，但要在响应中返回警告。
@@ -225,11 +285,46 @@ production_task / production_work_report / production_operation_execution：
 4）单位换算快照：若 BOM 单位与 material.unit 不一致，新增 unit_factor、unit_factor_basis、unit_factor_source 三个字段，保存明确的换算依据；没有依据时保存/批准/需求计算均阻断。卷料实际长度属于批次/013 范围，不能只在 BOM 上写一个静态系数。
 5）替代料沿用 substitute_json，但替代比例、损耗、取料步长只影响领料，不改变 BOM 原始需求；替代料不得生成第二套净需求。
 
-### 产品主方案（新表提案）
+### 产品主方案：存储方案与必要性评估
 
-逻辑对象：product_material_scheme。用途：记录某产品在产品上下文中，对某投入物料选择了哪个制造方案、哪个是本产品主方案。产品 A 选方案甲不影响产品 B 选方案乙。
+语义：产品 A 对投入物料 349 选方案甲，产品 B 选方案乙；A 的选择不影响 B。001 的 G04 只要求“按产品隔离”，没有确认主方案必须跨 BOM 版本独立保存、必须逐条审计、必须被其他模块独立引用。因此不能把“跨版本独立生命周期”当成既定业务要求，也不能用“JSON 无并发控制/无法按物料查”这种不成立的论点排除 BOM 内存储。
 
-建议 DDL（提案，未执行、未批准）：
+三种可实现方案（均未实施）：
+
+A）product 级 JSON 映射（不新建表）
+
+1）在 product 增加 material_scheme_json JSON、scheme_revision INT；文档形如 {"349":{"bomId":124,"isPrimary":true},"351":{...}}。亦可存数组并由服务层转 map。
+2）并发：保存父 BOM 时在同一事务 SELECT ... FOR UPDATE 锁 product 行；写入用乐观锁 UPDATE product SET material_scheme_json=?, scheme_revision=scheme_revision+1 WHERE product_id=? AND scheme_revision=?；影响行数 0 → 409 CONCURRENT_MODIFICATION，提示重新加载。行锁与乐观锁都在现有 MySQL/服务事务内可实现。
+3）版本隔离：映射以 product_id+material_id 为键，天然跨 BOM 版本；BOM 版本复制不会自动改映射；需要换方案时显式更新。若产品复制或方案作废，服务层校验 bom_id 存在且 output 匹配，不自动跟随“最新版本”。
+4）保存/取消：采用 token 仍不落库；只有父 BOM 显式保存才在同一事务写 JSON；父 BOM 取消/关闭不写，已保存值不变；方案独立保存不影响父 BOM。
+5）查询：按物料查用 JSON_EXTRACT/JSON_TABLE；高频物料可加生成列+索引，或由服务层缓存；数据量是产品×物料选择，不是全库库存，无需把 JSON 说成“不能查”。代价是无数据库级 (product_id,material_id) 唯一/外键，只能服务层校验；审计只有 product 行 update_by/update_time，逐物料变更历史需另存 JSON 历史数组或审计日志。
+6）适用：如果用户只要求“按产品隔离、跨版本保持”，JSON 映射是更小改动，不需要新表提案。
+
+B）BOM 行上下文（不新建表）
+
+1）在 engineering_bom_item 增加 is_primary TINYINT；主方案=某产品当前 BOM 版本中该 material 行的 sub_bom_id + is_primary。
+2）并发：保存父 BOM 时按 bom_id 行锁/乐观 revision 校验；同一 BOM 内唯一主方案可由服务层校验，数据库可用生成列 (bom_id,material_id,is_primary=1) 部分唯一（MySQL 生成列+唯一索引）兜底。
+3）版本隔离：选择随 BOM 版本走；复制新版本会复制/重选，跨版本不自动保持；产品有多个 BOM 版本时，“当前主方案”必须绑定某一版本，不能跨版本唯一。若业务接受“版本内选择”，这是最简单的实现。
+4）保存/取消：父 BOM 保存即持久化；取消不写；方案独立保存仍需独立 BOM。
+5）适用：如果主方案只需在某个 BOM 版本内生效，不要求跨版本稳定，BOM 行上下文足够，且不需要新表。
+
+C）product_material_scheme 新表（推荐提案，但非唯一可行）
+
+1）独立关系对象，UNIQUE(product_id,material_id,bom_id) + 生成列唯一主方案；逐行 revision、create/update 审计；可被需求/工单直接引用。
+2）并发：唯一键+行锁；主方案切换在同一事务内先清旧主再写新主，唯一索引兜底；冲突返回可定位错误。
+3）版本隔离：product_id+material_id 为键，跨 BOM 版本稳定；bom_id 指向具体方案版本，不自动跟随最新。
+4）保存/取消：父 BOM 保存同事务写选择；采用 token 不落库；取消不写；方案作废时若仍被引用则拒绝或要求先解除。
+5）代价：新表需用户批准、迁移、model-baseline approvedNewTables、清理归属、权限/审计登记；若用户不确认“跨版本独立 + 逐条审计”，它不是必须项。
+
+对照表：
+
+| 方案 | 并发控制 | 版本隔离 | 保存/取消 | 查询/约束 | 结论 |
+|---|---|---|---|---|---|
+| A product JSON | 行锁 + scheme_revision 乐观锁 | 产品级跨版本稳定 | 父保存同事务写；取消不写 | JSON_EXTRACT/JSON_TABLE；无 DB 唯一/外键，服务校验 | 可行，改动最小；无逐物料审计 |
+| B BOM 行上下文 | bom 行锁/版本校验 + 生成列唯一 | 版本内，不跨版本 | 父保存写；取消不写 | 可按 bom_id+material_id 查；跨版本唯一困难 | 可行，适合版本内选择 |
+| C 新表 | 唯一键 + 行锁 + revision | 产品级跨版本稳定 | 父保存同事务写；取消不写 | 唯一/索引/审计完整 | 推荐提案；需批准，不是唯一解 |
+
+建议 DDL（仅方案 C，提案，未执行、未批准；若用户选 A/B 则不建表）：
 
 ```sql
 CREATE TABLE product_material_scheme (
@@ -253,52 +348,68 @@ CREATE TABLE product_material_scheme (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品×投入物料制造方案选择';
 ```
 
-约束与行为：
+结论：C 是推荐提案，不是“JSON 不可行”推导出的唯一解。若用户只确认“按产品隔离”，A 可落地且无需新表；若用户确认“跨版本独立 + 逐条审计 + 被其他对象引用”，C 的独立生命周期才有必要性。B 只适合版本内选择。A/B/C 都不改变“产品 A 不串产品 B”的既定语义。
 
-1）同一 product_id+material_id+bom_id 只允许一行；同一 product_id+material_id 只允许一个 is_primary=1（primary_marker 为 NULL 的行不受唯一键限制，可保存多个候选）。
-2）保存父产品 BOM 时在同一事务内写选择；bom_id 必须存在且 output_type=MATERIAL、output_id=material_id；允许草稿方案作为候选，但 is_primary=1 的方案必须已批准，否则父 BOM 保存返回警告、提交/批准阻断。
-3）删除/作废方案时，若仍被选择引用，拒绝或要求先解除；不得级联删除产品选择。
-4）查询必须带 product_id 上下文；禁止只按 material_id 取“全局主方案”。
+### 供需分配：请求级幂等 + 多来源分配行
 
-替代评估：
+需求计算的“结果”不落库，确认后的“分配”落库。优先复用 order_material_reserve，避免第二套库存/预留表；但 v1 的 UNIQUE(request_key) 有一个实现错误：一次 confirm 产生多条分配行时，每行都带同一个 request_key，第二行就会被唯一索引挡住。v2 改为“请求头唯一 + 分配行按请求内行号唯一”。
 
-| 方案 | 结论 | 原因 |
-|---|---|---|
-| 存在 engineering_bom_item.sub_bom_id + is_primary | 否决为主方案存储 | 主方案会随产品 BOM 版本复制/删除漂移；同一产品多个 BOM 版本无法保证唯一；数据库无法跨行约束唯一主方案 |
-| 存在 product JSON / sys_config | 否决 | 无外键、无唯一约束、无并发控制、无法按物料查询，违反 CONVENTIONS §14/§15 |
-| 半成品档案全局 is_current | 否决 | 直接违反“主方案针对本产品”，产品 A 的选择会被产品 B 覆盖 |
-| 新建 product_material_scheme | 推荐 | 独立关系对象、会被需求/工单引用、需要唯一约束和变更留痕；满足 §15.2 的第 1/2/3/5/6 条 |
+方案（推荐，需新表批准）：requirement_confirm_request + order_material_reserve 扩列。
 
-该表尚未得到用户拍板，不得在 B 阶段直接建表；B 只能把它作为迁移提案的一部分，等待批准、登记 scripts/model-baseline.json 的 approvedNewTables、同步清理归属后再执行。
+1）请求头表 requirement_confirm_request（提案，未创建）：
 
-### 供需分配：优先扩展现有 order_material_reserve
+```sql
+CREATE TABLE requirement_confirm_request (
+  request_id BIGINT NOT NULL AUTO_INCREMENT,
+  request_key VARCHAR(64) NOT NULL COMMENT '幂等键，调用方生成',
+  request_hash CHAR(64) NOT NULL COMMENT '规范化请求体 SHA-256，防同键不同体',
+  request_status TINYINT NOT NULL DEFAULT 0 COMMENT '0处理中/1成功/2失败',
+  preview_version VARCHAR(40) DEFAULT NULL,
+  result_json MEDIUMTEXT DEFAULT NULL COMMENT '成功结果快照，重复请求原样返回',
+  create_by VARCHAR(50) NOT NULL DEFAULT '',
+  create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (request_id),
+  UNIQUE KEY uk_rcr_request_key (request_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
 
-需求计算的“结果”不落库，确认后的“分配”落库。优先复用 order_material_reserve，避免第二套库存/预留表。建议新增字段（提案）：
-
-| 字段 | 类型 | 用途 |
-|---|---|---|
-| source_bom_item_id | bigint NULL | 需求来源 BOM 行，支持跨层追溯 |
-| source_path | varchar(500) NULL | 压缩路径（bomId/itemId/bomId/itemId），只作审计展示 |
-| supply_type | varchar(20) NULL | STOCK/PURCHASE/PRODUCTION，空=旧预留 |
-| supply_id | bigint NULL | 库存批次/采购明细/生产工单 ID |
-| required_date | date NULL | 需求日期；用于时间轴分配 |
-| allocated_quantity | decimal(12,4) NULL | 本供给已分配数量 |
-| request_key | varchar(64) NULL | 确认幂等键；唯一索引 |
-| demand_order_id | bigint NULL | 上层需求工单/销售订单；与 order_id 区分 |
-
-约束：UNIQUE(request_key)、KEY(order_id, material_id, supply_type, supply_id)、KEY(source_bom_item_id)。旧行这些字段全 NULL，行为不变；新逻辑只处理 supply_type 非空行。若用户不接受扩列，再评估独立分配表；但独立表会与现有预留/占用产生第二真源，默认不推荐。
+2）order_material_reserve 扩列：request_id BIGINT NULL、request_key VARCHAR(64) NULL、allocation_line_no INT NULL、source_bom_item_id BIGINT NULL、source_path VARCHAR(500) NULL、supply_type VARCHAR(20) NULL（STOCK/PURCHASE/PRODUCTION，空=旧预留）、supply_id BIGINT NULL、required_date DATE NULL、allocated_quantity DECIMAL(12,4) NULL、demand_order_id BIGINT NULL。
+3）唯一键与索引：
+   A) UNIQUE(request_id, allocation_line_no)：同一请求内行号唯一，允许多条分配行；不同请求可复用 line_no。
+   B) UNIQUE(request_key) 只放在请求头表，不放在分配行表；分配行的 request_key 只建普通索引。
+   C) KEY(order_id, material_id, supply_type, supply_id)、KEY(source_bom_item_id)。
+   D) request_id/request_key/allocation_line_no 允许 NULL：旧行保持 NULL，MySQL 唯一索引对多个 NULL 不冲突；旧预占/占用行为不变。
+4）事务与并发：
+   A) confirm 开始先 INSERT requirement_confirm_request(request_key, request_hash, request_status=0)。唯一键保证同一 request_key 只有一个事务能插入成功。
+   B) 插入冲突时读取已有行：status=1 → 直接返回 result_json，duplicate=true，不新增工单/分配；status=0 → 返回 409/Retry-After 或短事务等待后重读；status=2 且 request_hash 相同 → 允许重试，hash 不同 → 409 IDEMPOTENCY_KEY_REUSED。
+   C) 插入成功后在同一事务创建分配行和补做工单，逐行 allocation_line_no 由请求 items 的稳定 clientLineId/顺序生成；同一请求内不得重复。全部成功后更新请求头 status=1、result_json=最终响应，提交。
+   D) 任一步失败回滚整个事务（请求头插入也回滚），调用方可用同一 request_key 重试；若需要保留失败痕迹，用独立短事务写 status=2，不写半套分配/工单。
+5）响应：返回 requestId/requestKey、duplicate、workOrders[]、allocations[]；重复请求返回首次成功结果，不重复占用库存、不重复开单。
+6）空 key 历史兼容：旧行 request_id/request_key/allocation_line_no 全 NULL，不参与新幂等逻辑；不做全表回填。新接口拒绝空字符串/空 key，要求非空且长度≤64；若历史脏数据是空字符串，迁移时只把空字符串改为 NULL（需单独数据订正授权），不建 UNIQUE(request_key)。
+7）不采用“把 UNIQUE(request_key) 放在分配行上”的做法：它只能防单行重复，不能防请求级重复，且会阻止一次确认的多来源分配。若用户不批准请求头新表，退路是 (request_key, allocation_line_no) 唯一 + 应用层 GET_LOCK('req:'+key) 串行化；该退路依赖连接池/会话锁，健壮性弱于请求头表，不作为默认。
+8）表边界：现有 order_material_reserve 的 order_id/order_no 语义是“销售订单预占”，不是通用生产需求分配。若 confirm 的分配行不绑定销售订单，不能塞一个假销售订单号。两种可实现：
+   A) 若所有需求确认都可关联销售订单/上层订单，扩展现有表，新增 demand_order_id 区分生产需求来源，order_id 仍写销售订单；适用于“以销定产”。
+   B) 若存在无销售订单的半成品补做，建议新建 production_requirement_allocation（request_id、allocation_line_no、material_id、supply_type、supply_id、allocated_quantity、required_date、source_bom_item_id、demand_order_id），order_material_reserve 继续只管销售预占；这不是第二套库存真源，而是两类不同事实，避免把生产分配伪装成销售预占。若坚持单表，则必须把 order_id/order_no 改为可空并加 owner_type，迁移影响现有查询，需单独评估。
+9）无论 A/B，请求级幂等都按第 4 条执行；分配行的唯一键都是 (request_id, allocation_line_no)，不是 UNIQUE(request_key)。
 
 ### 迁移兼容与回退
 
-迁移编号在实际执行时取账本最大号与目录最大号较大者 +1；当前为 356，但不得在 A 阶段预占或生成 SQL。
+迁移编号不预占：实际编写时重新读取账本 sys_config['ops.schema.applied'] 与（待办+归档）目录最大号，取较大者 +1；文件名写 `NN_<desc>.sql`，其中 NN 由执行者当次填写。2026-11-11 10:32 CST 观察到的 355 只是现场值，不是 356/357/358 的预留；本文件不生成 SQL、不写死编号。
 
-建议拆成三段，分别由 B、D、F 执行，避免一个任务同时改三类事实：
+按依赖拆成三组，分别由 B、D、F 执行；编号按依赖顺序分配，不按卡序硬排：
 
-| 段 | 归属 | 内容 | 兼容/回退 |
+| 逻辑组 | 归属 | 内容 | 依赖与兼容/回退 |
 |---|---|---|---|
-| 356（B） | 制造BOM后端能力 | engineering_bom 增加 output_type/output_id/current_scope；product_id 改为 NULL；engineering_bom_item 增加 sub_bom_id、unit_factor、unit_factor_basis、unit_factor_source；若新表获批，建 product_material_scheme | 先加列并回填 output_type='PRODUCT'、output_id=product_id；确认无 MATERIAL 行后再改 product_id NULL；回退时先禁用/删除 MATERIAL 方案行，恢复 product_id NOT NULL，再删列/表。旧 4 行 BOM 与 12 行明细语义不变 |
-| 357（F） | 半成品生产库存闭环 | production_order 增加 output_type/output_id；product_id 改为 NULL；必要时给 inventory_inbound_item.material_id 建索引 | 先加列并回填 PRODUCT/product_id；确认无 MATERIAL 工单后改 NULL；回退时删除/归档 MATERIAL 工单，恢复 NOT NULL，再删列。历史 PRODUCT 工单不变 |
-| 358（D） | 精确耗用与净需求 | order_material_reserve 增加供需分配字段与唯一键 | 加列可空、默认 NULL；回退先删除/归档新分配行，再删列/索引；旧预占行不受影响 |
+| M1 制造主数据身份 | B | engineering_bom 增加 output_type/output_id/current_scope，product_id 改为 NULL；engineering_bom_item 增加 sub_bom_id、unit_factor、unit_factor_basis、unit_factor_source；engineering_routing 增加 output_type/output_id/route_scope，product_id 改为 NULL；product_work_spec_version 增加 output_type/output_id，product_id 改为 NULL；若方案 C 获批，建 product_material_scheme | 先加列并回填 PRODUCT/product_id；确认无 MATERIAL 行后再改 NOT NULL→NULL；回退时先禁用/删除 MATERIAL 方案/路线/规范行，恢复 product_id NOT NULL，再删列/表。旧 4 行 BOM、12 行明细、路线与规范语义不变 |
+| M2 需求分配与幂等 | D | order_material_reserve 增加 request_id/request_key/allocation_line_no/source_bom_item_id/source_path/supply_type/supply_id/required_date/allocated_quantity/demand_order_id；若请求头表获批，建 requirement_confirm_request；唯一键 UNIQUE(request_id, allocation_line_no) | 加列全部可空、默认 NULL；不引用 production_order/BOM 新列，可独立执行；回退先删除/归档新分配行与请求头，再删列/索引；旧预占行不受影响 |
+| M3 生产输出身份 | F | production_order 增加 output_type/output_id/routing_version；product_id 改为 NULL；必要时给 inventory_inbound_item.material_id 建索引 | 先加列并回填 PRODUCT/product_id；确认无 MATERIAL 工单后改 NULL；回退时删除/归档 MATERIAL 工单，恢复 NOT NULL，再删列。历史 PRODUCT 工单不变 |
+
+依赖说明：
+1）M1 必须早于 M2、M3；M2 与 M3 之间没有数据库列依赖，可以按派工顺序单独执行，不要因为“D 在 F 前”就把 D 的迁移编号硬放到 F 之后。
+2）D 的 PRODUCT 路径在 M2 后即可验收；D 的 MATERIAL 供给/补做分支需要 F 的 M3 与 F 服务接口，运行时若缺失返回 MAKE_WORK_ORDER_UNAVAILABLE 并整体回滚，不写半套数据。若要求 D 的 MATERIAL 分支一次验收通过，则先完成 F 的 M3/接口，再验收 D 的 MATERIAL 场景；这是运行时依赖，不是让 D 的迁移依赖 F 的后置迁移。
+3）G 后端快照只读现有表，不新增迁移；若 G 需要订单快照列，必须回到 F 的 M3 统一加，不单独起第三套快照表。
+4）实际执行仍按 CONVENTIONS：用户批准 + 手工全库备份 + scripts/db-migrate.sh 记账；编号冲突、同号多文件、内容变更一律中止。
 
 兼容规则：
 
@@ -313,12 +424,14 @@ CREATE TABLE product_material_scheme (
 
 ### 版本适用
 
-1）生产工单创建时快照 bom_id/bom_code；ProductionBomResolver 优先按 order.bom_id 取，其次兼容历史空值按 product 当前已批准版本取。历史工单永远按快照，不因产品切换当前版本而重算。
+1）生产工单创建时快照 bom_id/bom_code、routing_id/routing_code/routing_version、work_spec_version_id；ProductionBomResolver 优先按 order.bom_id 取，其次兼容历史空值按 output 当前已批准版本取。历史工单永远按快照，不因产品/物料切换当前版本而重算。
 2）新需求预览的解析顺序：请求显式 bomId > product.current_bom_id > 该产品最新已批准且 is_current=1 的 BOM；若都找不到，错误 BOM_NOT_FOUND，不静默用任意版本。
 3）选中 BOM 必须 approve_status=3，且所有有效行 review_status=3；effective_date/expiry_date 非空时，demandDate 必须落在窗口内，否则 BOM_NOT_EFFECTIVE。历史空日期视为无界，保持旧 BOM 可用。
 4）产品 BOM 行引用 sub_bom_id 时，子方案按固定 bom_id 使用，不按“最新版本”自动替换；子方案未批准/过期/输出不匹配时，预览和工单创建都阻断，并返回路径。
 5）本产品主方案只影响“新加行/试算默认选择”，不自动改写已保存行的 sub_bom_id；已保存行必须显式保存其选择。
-6）版本切换不回写历史工单、历史领料、历史批次；V03 要求的历史依据由 order.bom_id、领料 source_bom_item_id、批次 source_* 保留。
+6）版本切换不回写历史工单、历史领料、历史批次；V03 要求的历史依据由 order.bom_id、order.routing_id/routing_version、order.work_spec_version_id、领料 source_bom_item_id、批次 source_* 保留。
+7）历史可重建的前提是“已批准版本不可原地改”：现有 EngineeringBomServiceImpl.updateBomWithDetail 对非草稿/驳回状态抛错，EngineeringRoutingServiceImpl 对不可编辑路线拒绝更新，作业规范发布版本 PUBLISHED 不重写；B 只需保持该不变量并让复制新版本承担改版。若发现任一模块可原地改已批准版本，B/F 必须先修复该入口，不能让 G 前端“补快照”。
+8）G 后端快照读取顺序：order 持久化 ID → 对应 BOM/路线/规范版本 → production_operation_execution（工单创建时生成的工序快照）→ product_work_spec_item（SPEC_JSON/引用+哈希）。任一层缺失返回 SNAPSHOT_PARTIAL 与缺失原因，不用当前最新版本顶替。
 7）生产中发现 BOM 错误时，不强制“原单变更”或“取消重开”中的某一种；按现有系统能闭环的路径处理，但必须补齐未加工部分、已领补退、已加工返工/报废、供应释放和修改前后依据。不得用覆写历史流水伪装闭环。
 
 ### 防环
@@ -337,7 +450,7 @@ CREATE TABLE product_material_scheme (
 | 新建制造BOM→保存制造BOM | 新 engineering_bom + 明细；返回 bomId、bomVersion、approve_status=1 | 不自动发布、不改产品 BOM、不生成库存/工单、不设 is_current | 单事务；校验 output、module/base>0、单位/换算、sub_bom 存在且无环 |
 | 编辑制造BOM→保存制造BOM | 该 bom_id 的主表/明细；行内容变更时按既有规则回到草稿/待审核 | 不改父产品 BOM 的草稿；不改其他产品选择；不自动批准 | 行锁/版本冲突检查；已批准行的修改按现有行审核规则处理 |
 | 制造BOM→采用此方案 | 不落库；返回 selectionToken（bomId、output、materialId、版本） | 不写 product_material_scheme、不写父 BOM、不设主方案 | 只允许已保存方案；未保存方案不能生成有效 token |
-| 产品BOM→保存 | 父 BOM 主表/明细、items[].sub_bom_id、schemeChoices（含 isPrimary）同一事务 | 不自动批准子方案；不删除独立已保存方案；不改其他产品选择 | 父 BOM 行锁；校验 scheme 输出一致；草稿引用允许但返回警告 |
+| 产品BOM→保存 | 父 BOM 主表/明细、items[].sub_bom_id、schemeChoices（含 isPrimary）同一事务；C：写 product_material_scheme；A：写 product.material_scheme_json；B：写 BOM 行 is_primary | 不自动批准子方案；不删除独立已保存方案；不改其他产品选择 | 父 BOM 行锁/版本校验；A 用 scheme_revision 乐观锁；校验 scheme 输出一致；草稿引用允许但返回警告 |
 | 产品BOM→提交/批准 | 父 BOM 状态；校验所有 sub_bom 已批准/生效、所有行审核通过 | 不自动批准子方案；不自动改子方案版本 | 子方案未批准→阻断，错误码 SUB_BOM_NOT_APPROVED |
 | 父BOM取消/关闭 | 父 BOM 未保存草稿丢弃；已保存父 BOM 保持原状 | 不删除独立制造方案；不回滚已保存方案；不删除已持久化选择 | 只影响当前草稿/会话 |
 | 只读/权限不足 | 无写入 | 不产生方案、选择、需求、工单、库存 | 前后端一致校验 engineering:bom:view 等权限 |
@@ -353,20 +466,33 @@ CREATE TABLE product_material_scheme (
 | BOM管理页→制造BOM独立窗口 | 新增方案 | 制造BOM主表+明细（MATERIAL 或 PRODUCT 产出） | 不改父BOM；不设 is_current；不生成库存/工单 | B、C |
 | BOM管理页→制造BOM独立窗口 | 编辑方案 | 该方案主表+明细 | 不改父BOM；不自动发布；子引用重新防环 | B、C |
 | 制造BOM窗口→采用此方案 | 选择 | 仅前端父BOM草稿；返回 token | 不落库、不设主方案、不提前改别的产品 | C |
-| 产品BOM整单保存 | 新增/编辑 | 父BOM+items.sub_bom_id+schemeChoices | 采用结果随父保存持久化；父取消不删除独立方案 | B、C |
+| 产品BOM整单保存 | 新增/编辑 | 父BOM+items.sub_bom_id+schemeChoices+存储选择（A/B/C） | 采用结果随父保存持久化；父取消不删除独立方案 | B、C |
+| 工程路线/作业规范页（现有入口） | 新增/编辑 | engineering_routing/engineering_routing_item、product_work_spec_version/product_work_spec_item，按 output_type/output_id 绑定 PRODUCT 或 MATERIAL | 路线管工序顺序、规范管展示；不在 BOM 主表加路线编辑器；批准/发布后不可原地改 | B、G1 |
 | 产品列表→配置BOM | 选择 | product.current_bom_id/current_bom_version | 只选已批准BOM；不编辑明细；不改变方案主数据 | 现有能力，不改 |
-| 作业规范→打开BOM | 编辑 | 仍走BomFormDialog整单保存 | 不新增第二条保存链；不反向改物料档案规格 | C、G |
+| 作业规范→打开BOM | 编辑 | 仍走BomFormDialog整单保存 | 不新增第二条保存链；不反向改物料档案规格 | C、G2 |
 | BOM详情/审核/打印 | 只读 | 无 | 不产生需求/工单/库存；审核只改行状态与流水 | 现有能力，B回归 |
 | 生产订单新增/编辑 | 新增/编辑 | 工单主表（PRODUCT 或 MATERIAL 产出、bom 快照） | 不保存BOM方案；不改父BOM；不自动领料 | F |
 | 计划转工单 | 新增 | 子工单+工序执行 | 继承计划 bom_id/routing；不重选BOM；MATERIAL 例外见F | F |
 | 领料预览 | 只读 | 无 | 不扣库存、不建单、不写流水 | D |
 | 生成领料单/确认发料 | 新增/确认 | 出库单/明细+流水+余额 | buy 行按现有；make 行仅在已有可用半成品库存/已完工产出时按库存领用，缺口不领料、不重复开下级工单；applyDelta 唯一入口 | D、F |
 | 完工入库 | 新增/确认 | 入库单/明细+批次+流水+余额 | PRODUCT 用 PRODUCT 身份；MATERIAL 用 MATERIAL 身份；按实际合格数，不按理论数 | F |
-| 作业规范/打印 | 只读 | 无 | 不写BOM/路线/档案；只读展示 | G |
+| 作业规范/打印 | 只读 | 无 | 不写BOM/路线/档案；只读展示，历史取 G1 快照 | G1、G2 |
 
 ## 接口契约
 
 所有接口沿用现有 Result 包裹（code/data/message），权限沿用 engineering:bom:*、production:order:*、inventory:outbound:*、inventory:alert:* 等；新增接口不新建权限点，除非另行批准独立管理页。
+
+状态枚举真源（JSON 示例只复用这些值，不新造“已批准态”）：
+
+| 字段 | 复用枚举/取值 | 说明 |
+|---|---|---|
+| approveStatus（BOM） | ProductEnums.BomStatus：1草稿/2待审核/3已批准/4已驳回 | 生产取数只认 3；示例新建为 1，不显示未执行审批的 3 |
+| approveStatus（路线） | ProductEnums.RouteStatus / ApproveStatusEnum：1草稿/2待审批/3已批准/4已驳回 | 同一套状态语义 |
+| reviewStatus（BOM 行） | ProductEnums.BomItemReviewStatus：1草稿/2待审核/3审核通过/4驳回/5待移除 | 行级审核 |
+| orderStatus | ProductionOrderStatusEnum：0草稿/1待审核/2已审核/3已驳回/4已计划/5待开始/6进行中/8已完成/9已取消/10已关闭/11已超期 | 示例 confirm 默认 0，不凭空 4 |
+| executionStatus | ExecutionStatusEnum：0待执行/1准备中/2执行中/3暂停/4完成/5跳过/6取消/7超期/8异常/9待确认 | 工单工序初始 0 |
+| work spec status | product_work_spec_version.status：PUBLISHED/RETIRED | 只按持久化 ID 读取，不按“最新”推断 |
+| outputType | 新增 manufacturing 枚举：PRODUCT/MATERIAL | 不复用 bom_type 的 engineering/manufacturing 字符串，也不复用 BomType(1/2) |
 
 ### 接口清单
 
@@ -379,9 +505,10 @@ CREATE TABLE product_material_scheme (
 | PUT | /engineering/bom/{bomId} | 父产品BOM整单保存（含 items.subBomId 与 schemeChoices） | engineering:bom:edit |
 | GET | /engineering/bom/{bomId}/scheme-choices | 查看父BOM已保存选择 | engineering:bom:view |
 | POST | /production/requirement/preview | 多层净需求只读试算 | production:order:view 或 inventory:alert:view |
-| POST | /production/requirement/confirm | 确认缺口，创建分配/补做工单 | production:order:add |
+| POST | /production/requirement/confirm | 确认缺口，按 idempotencyKey 创建请求头、分配行和 DRAFT 补做工单 | production:order:add |
 | GET | /production/requirement/{requestId} | 查询试算/确认结果，幂等回查 | production:order:view |
-| POST | /production/order/manufacturing | 直接创建 MATERIAL 补做工单（可被 confirm 内部调用） | production:order:add |
+| POST | /production/order/manufacturing | 直接创建 MATERIAL DRAFT 补做工单（可被 confirm 内部调用） | production:order:add |
+| GET | /production/order/{orderId}/manufacturing-snapshot?depth=32 | G 后端：按工单持久化 ID 组装多层 BOM/路线/规范/物料快照，只读 | production:order:view |
 
 ### 请求响应 JSON 示例
 
@@ -605,6 +732,7 @@ POST /production/requirement/confirm
   "idempotencyKey": "confirm-20261111-0001",
   "items": [
     {
+      "clientLineId": "gap-349",
       "materialId": 349,
       "gapQty": "160",
       "action": "MAKE",
@@ -636,18 +764,22 @@ POST /production/requirement/confirm
         "productName": "[TST] 中间件",
         "productUnit": "PCS",
         "bomId": 124,
+        "routingId": 88,
+        "routingVersion": "V1.0",
+        "workSpecVersionId": 12,
         "plannedQuantity": 160,
-        "orderStatus": 4
+        "orderStatus": 0
       }
     ],
     "allocations": [
-      { "materialId": 349, "supplyType": "STOCK", "supplyId": 9001, "allocatedQty": "140.0000", "requiredDate": "2026-11-20" }
+      { "allocationLineNo": 1, "materialId": 349, "supplyType": "STOCK", "supplyId": 9001, "allocatedQty": "140.0000", "requiredDate": "2026-11-20" },
+      { "allocationLineNo": 2, "materialId": 349, "supplyType": "PURCHASE", "supplyId": 7001, "allocatedQty": "20.0000", "requiredDate": "2026-11-20" }
     ]
   }
 }
 ```
 
-重复 idempotencyKey 时返回同一结果，duplicate=true，不新增工单、不重复占用。
+重复 idempotencyKey 时返回同一 result_json，duplicate=true，不新增工单、不重复占用。orderStatus=0 是 ProductionOrderStatusEnum.DRAFT，不是“已批准”；后续审批/下达由现有接口完成。allocations 允许同一请求多行，行号 allocationLineNo 在请求内唯一。
 
 ### 错误码
 
@@ -668,20 +800,37 @@ POST /production/requirement/confirm
 | UNIT_POLICY_MISSING | 单位不在取整策略表 | 阻断，不猜精度 |
 | INVENTORY_IDENTITY_CONFLICT | material_id 对应的 inventory_item 身份冲突 | 阻断出入库，要求先核对 |
 | SUPPLY_CHANGED | 确认时供给被其他事务占用 | 重新试算，不部分提交 |
-| DUPLICATE_REQUEST | 同 idempotencyKey 已在处理 | 返回已有结果或 409 |
+| DUPLICATE_REQUEST | 同 idempotencyKey 正在处理 | 返回已有结果或 409，不重复开单 |
+| IDEMPOTENCY_KEY_REUSED | 同 idempotencyKey 对应不同 request_hash | 409，拒绝覆盖首次结果 |
+| CONCURRENT_MODIFICATION | scheme_revision/行版本不匹配 | 409，提示重新加载后重试 |
+| MATERIAL_ROUTING_NOT_FOUND | MATERIAL 工单找不到已批准当前路线 | 阻断创建，要求工程维护路线 |
+| MATERIAL_ROUTING_EMPTY | MATERIAL 路线存在但没有工序行 | 阻断，不凭空造工序 |
+| MATERIAL_WORK_SPEC_NOT_PUBLISHED | MATERIAL 没有已发布作业规范版本 | 阻断下达，不用产品规范顶替 |
+| MAKE_WORK_ORDER_UNAVAILABLE | F 未就绪时 D 尝试创建 MATERIAL 补做工单 | 整体回滚，不写半套分配 |
+| SNAPSHOT_PARTIAL | G 后端缺少某一层持久化依据 | 返回缺失原因，不用最新版本顶替 |
 
 ## 精确比例、单位与净需求契约
 
-### 比例与精度
+### 比例与精度（有理数精确约简）
 
 1）所有数量/比例使用 BigDecimal，禁止 double/float。模数、基数保存为 decimal(12,4)，必须 >0；允许 0.5、2.5 等正小数，拒绝 0、负数、空值、NaN/Infinity、非数字。
-2）损耗率改为 decimal(5,2) 对应 BigDecimal，范围 0..100（含 0，不含 100 以上）；只在本行所属层计一次：
-   gross = Q × baseQty ÷ moduleQty × (1 + lossRate ÷ 100)
-3）除法不提前落库。保存时 quantity 可写展示快照（4 位），但需求计算必须重新用 base/module 原始值；禁止把 0.1667 当权威比例。
-4）中间计算用 MathContext.DECIMAL128 或 scale 12；最终按单位策略一次取整。比较用 compareTo，不用 equals。
-5）示例：Q=300、base=1、module=6、loss=0 → 300×1÷6=50.0000；不是 300×0.1667=50.01→51。Q=160、base=1、module=6 → 26.6667（连续单位）或按件取整前先聚合。
-6）损耗只在所属层计一次：上层展开得到下层需求后，下层再按自己的 loss 计；不得在父层和子层对同一用量重复加损耗。
-7）最低投料 min_issue_qty 与生产批量不是净需求：净需求是事实缺口；补做建议量按生产批量向上取整；领料量按 min_issue_qty 下限与单位取整。三者分列返回，不能合并成一个数。
+2）每个比例按有理数保存和计算，不把除法提前落成有限小数：
+   A) 将 decimal(12,4) 的 baseQty、moduleQty 各乘 10^4 转 BigInteger（精确，无舍入）。
+   B) 行比例 = baseNum / moduleNum，用 gcd 约简；例如 1.0000/6.0000 → 10000/60000 → 1/6；0.5000/2.5000 → 5000/25000 → 1/5。
+   C) 损耗率 decimal(5,2) 按百分比转有理数：lossRate=0.50 → 50/10000 = 1/200，损耗因子 = 201/200；lossRate=0 → 1/1。
+   D) 逐层计算 gross = Q × (baseNum/moduleNum) × (lossFactorNum/lossFactorDen)，每步用 gcd 约简，保留 num/den；不在中间层转 decimal，也不在中间层 CEILING。
+3）理论耗用、生产批量、实领粒度分别返回，不能混成一个数：
+   A) theoreticalQty：精确有理数 num/den；另给 12 位小数近似值仅用于显示，标注 approximate=true，不能当权威值。
+   B) aggregateQty：同一 material_id + 单位 + 需求日期桶的全部来源精确求和后，才按单位策略转换/取整一次。计件单位若业务要求整件，只在聚合终点 CEILING，并同时返回 exactQty；连续单位按 4 位 HALF_UP，同时返回 exactQty。
+   C) productionBatchQty：确认补做时才按生产批量向上取整（例如 batch_size=50，gap=160 → 200）；单独返回，不覆盖 theoreticalQty。
+   D) issueQty：实际领料时按 min_issue_qty 下限、包装/领料步长取整；单独返回，不覆盖 theoreticalQty/productionBatchQty。
+4）反例（为什么不能逐层 CEILING 或 scale12 后 CEILING）：
+   A) 顶层 Q=1 件，下层比例 1/6，再下层比例 6/1；精确终点 = 1×(1/6)×6 = 1 件。若在 1/6 处 CEILING 成 1，再乘 6 得 6 件，整值变多 5 件。
+   B) Q=1，比例 1/3，再下层 3/1；scale12 得 0.333333333333，CEILING 成 1，再乘 3 得 3 件；精确值应为 1 件。DECIMAL128 只是精度更高，不能消除“提前取整”的语义错误。
+   C) 顶层 300、比例 1/6 得 50 精确；若先存 0.1667 再乘 300 得 50.01，再 CEILING 成 51；原始比例 300×1÷6=50。这是现有缺陷 D01 的根因。
+5）损耗只在所属层计一次：上层展开得到下层需求后，下层再按自己的 loss 计；不得在父层和子层对同一用量重复加损耗。损耗因子也是有理数，不提前四舍五入。
+6）最低投料 min_issue_qty 与生产批量不是净需求：净需求是事实缺口；补做建议量按生产批量向上取整；领料量按 min_issue_qty 下限与单位取整。三者分列返回，不能合并成一个数。
+7）比较用 compareTo/有理数交叉相乘，不用 equals；任何“先转 double 再比”的实现都视为缺陷。
 
 ### 单位与换算
 
@@ -696,45 +845,46 @@ POST /production/requirement/confirm
 
 ### 单位取整策略
 
-| 单位类别 | 示例 | 取整规则 |
-|---|---|---|
-| 计件 | PCS、个、件、片、张、只、套、PIN | 聚合后向上取整到整数（CEILING）；不得逐行取整后相加 |
-| 连续长度 | M、m、米 | 4 位小数，HALF_UP；不向上取整 |
-| 面积 | M2、㎡、平方米 | 4 位小数，HALF_UP；不向上取整 |
-| 重量 | KG、kg、G、g | 4 位小数，HALF_UP |
-| 体积 | L、ML | 4 位小数，HALF_UP |
-| 未登记 | 其他 | UNIT_POLICY_MISSING，阻断并登记策略后再算 |
+| 单位类别 | 示例 | 理论精确值 | 聚合终点展示/执行取整 |
+|---|---|---|---|
+| 计件 | PCS、个、件、片、张、只、套、PIN | 有理数 num/den，原样返回 | 仅同一物料+单位+日期桶聚合后 CEILING 到整数；同时返回 exactQty，禁止逐行逐层 CEILING |
+| 连续长度 | M、m、米 | 有理数 num/den | 4 位 HALF_UP；同时返回 exactQty；不向上取整 |
+| 面积 | M2、㎡、平方米 | 有理数 num/den | 4 位 HALF_UP；同时返回 exactQty；不向上取整 |
+| 重量 | KG、kg、G、g | 有理数 num/den | 4 位 HALF_UP；同时返回 exactQty |
+| 体积 | L、ML | 有理数 num/den | 4 位 HALF_UP；同时返回 exactQty |
+| 未登记 | 其他 | 有理数 num/den | UNIT_POLICY_MISSING，阻断并登记策略后再算 |
 
-取整只发生在“同一物料 + 同一单位 + 同一需求日期桶”的聚合之后；明细行保留未取整值用于追溯。计件单位若必须整批领用，额外返回 batch_rounded_qty，不能覆盖 exact_qty。
+取整只发生在“同一物料 + 同一单位 + 同一需求日期桶”的聚合之后，且只影响 aggregateQty；theoreticalQty 永远保留精确有理数。明细行保留未取整值用于追溯。计件单位若必须整批领用，额外返回 productionBatchQty 或 issueQty，不能覆盖 exactQty。禁止在理论耗用层把 PCS/张全部 CEILING。
 
 ### 净需求算法
 
 1）读取本次采用的 BOM：显式 bomId 优先；校验 approve_status、行审核、生效窗口、权限、物料/单位/换算；构建显式 sub_bom 图并 DFS 防环。
-2）按拓扑依赖处理：先汇齐同一输出物料的上游贡献，再对兼容的“material_id+单位+需求日期桶”汇总；不同单位/不同版本/不同仓库不盲目合并；保留每条来源路径。
-3）计算总需求 gross；读取可用库存、其他需求占用、按需求日期可用的采购在途、已有生产供给。
-4）可用库存口径：available = max(0, inventory_stock.total_quantity - inventory_stock.total_reserved - material.safe_stock)。安全库存为 0 时不影响；不使用 inventory_stock.available_quantity 后再重复扣减。
+2）按拓扑依赖处理：先汇齐同一输出物料的上游贡献，再对兼容的“material_id+单位+需求日期桶”用有理数精确汇总；不同单位/不同版本/不同仓库不盲目合并；保留每条来源路径。中间层不取整，聚合终点才按单位策略转换。
+3）计算总需求 gross（精确有理数 + 12 位近似展示值）；读取可用库存、其他需求占用、按需求日期可用的采购在途、已有生产供给。
+4）可用库存口径复用现有实现，不新增刚性规则：InventoryAlertServiceImpl 352—356、638—641、1088 行当前口径是 available = inventory_stock.available_quantity − material.safe_stock；而 inventory_stock.available_quantity 是生成列 total_quantity − total_reserved（evidence-ddl-20261111.txt 已保存 DDL）。因此新契约返回 stockOnHand=total_quantity、reserved=total_reserved、safeStock=material.safe_stock、availableForDemand=max(0, available_quantity−safeStock) 四个分量，并标注 safeStockDeducted=true；不重复扣减两次，也不把“必须扣安全库存”写成新的业务规则。若用户要求毛可用量，直接取 available_quantity 分量；是否扣安全库存由现有口径/配置决定。
 5）其他需求占用：物理预留以 inventory_stock_item.reserved_quantity / inventory_stock.total_reserved 为准；order_material_reserve 只作计划占用，若已进入 total_reserved 则不重复扣。现有 InventoryAlertServiceImpl 已注明旧账停扣 order_material_reserve，新逻辑要统一口径并记录。
 6）采购在途：purchase_order_item.quantity - received_quantity，条件 purchase_order.receipt_status=0、approval_status IN (1,3,4)、expected_delivery_date ≤ demandDate；日期为空不覆盖有日期需求。
 7）生产供给：production_order.remaining_quantity，条件 order_type=WORK_ORDER、order_status IN (4,5,6)、输出身份一致、plan_end_date ≤ demandDate、排除当前需求自身/已取消；已有生产供给的原料需求按原工单追踪，不重复生成。
 8）分配顺序：库存 → 已有生产供给 → 采购在途 → 新补做；同一供给只能分配一次；跨分支共享库存时先聚合再分配，不能两个分支都认为无缺口。
 9）gap = max(0, gross - 已分配库存 - 已分配生产 - 已分配采购)；gap 不小于 0。
-10）若 gap>0 且该物料是 MAKE：必须存在已批准且生效的 sub_bom_id，否则 MAKE_WITHOUT_SCHEME；按生产批量得到 recommended_production_qty，再以该数量展开下层；原有库存/已有供给覆盖的部分不展开。
+10）若 gap>0 且该物料是 MAKE：必须存在已批准且生效的 sub_bom_id，否则 MAKE_WITHOUT_SCHEME；先返回 theoreticalGap 精确值，再按生产批量得到 productionBatchQty（单独字段），确认补做后以 productionBatchQty 作为下层展开的显式输入；原有库存/已有供给覆盖的部分不展开。不得把 productionBatchQty 写回 theoreticalGap。
 11）若 gap=0：不展开下层；但仍返回来源路径与已分配明细。
 12）试算只读：不扣库存、不建工单、不写流水；确认后才创建分配与补做工单，并在事务内重新校验供给，失败回滚，不出现半套单据。
-13）幂等：confirm 必须带 idempotencyKey；数据库唯一键 + 行锁；重复请求返回同一结果，不重复占用/开单。
+13）幂等：confirm 必须带 idempotencyKey（请求头 request_key）；请求头唯一键 + 行锁 + 分配行 UNIQUE(request_id, allocation_line_no)；重复请求返回同一 result_json，不重复占用/开单。一次 confirm 允许多条分配行，不把 request_key 唯一键放在分配行上。
 14）同一半成品出现在不同深度：按“material_id+单位+日期桶”汇齐兼容需求后统一净额与展开；不能因深度不同重复分配库存或漏算后到需求。
 15）库存变化后重新试算；前端不得拉全库库存自算采购需求，也不得保留第二套权威算法。
 
 ### 生产工单 MATERIAL 身份闭环路径
 
 1）需求确认识别 material_id=349 的缺口 160，选择已批准方案 bom_id=124。
-2）创建 production_order：order_type=WORK_ORDER；parent_order_id=上层工单；output_type=MATERIAL；output_id=349；product_id=NULL（迁移后允许）；product_code/product_name/product_unit 从 inventory_material 冗余写入，仅作展示；bom_id=124；routing_id=NULL；trace_id 继承上层；planned_quantity=160；order_status=4（已计划）。
-3）F 生成工序：从方案 BOM 的有效行按 process_id/process_order 去重排序生成 production_operation_execution；若方案没有任何 process 行，阻断 MATERIAL_SCHEME_WITHOUT_PROCESS，要求先补工艺项目；不得凭空造工序。
+2）创建 production_order：order_type=WORK_ORDER；parent_order_id=上层工单；output_type=MATERIAL；output_id=349；product_id=NULL（迁移后允许）；product_code/product_name/product_unit 从 inventory_material 冗余写入，仅作展示；bom_id=124；routing_id=MATERIAL 349 的已批准当前路线（不是 NULL，也不从 BOM 行推断）；routing_code/routing_version 按路线快照写入；work_spec_version_id=MATERIAL 349 的已发布规范版本；trace_id 继承上层；planned_quantity=160；order_status 使用 ProductionOrderStatusEnum：confirm 默认创建 DRAFT(0)，不自动批准/不凭空显示 PLANNED(4)；后续审批/下达走现有状态机。
+3）F 生成工序：沿用现有 generateOperationExecutions(routingId,...)，只读 engineering_routing_item，按 workflow_seq、process_order 排序；父行生成 production_operation_execution，子行合并 jobs 快照。BOM 行 process_id/行顺序不参与工序生成；没有 MATERIAL 路线或路线无工序时阻断 MATERIAL_ROUTING_NOT_FOUND / MATERIAL_ROUTING_EMPTY，要求工程先维护路线，不得从 BOM 行造工序。
 4）开工/领料：buy 行按现有规则生成领料；make 行有可用半成品库存/已完工产出时必须可被上层领用（material_id 身份、FIFO 批次），库存不足部分只保留缺口，由需求计划生成/复用下级补做工单，领料动作本身不得重复创建下级工单。make 行没有 sub_bom_id 时阻断，不静默跳过。
 5）完工：工序完成 + FQC 合格后 completeOrder；createFromProduction 对 MATERIAL 产出执行 ensure(MATERIAL, material_id=349)，inbound_item.material_id=349、inventory_item_id=MATERIAL 身份、batch_no=BATCH-{orderNo}；applyDelta 写批次/汇总/流水，source_type=PRODUCTION、source_id=orderId。
 6）上层领用：上层 BOM 行 material_id=349，FIFO 按 material_id 找到该批次；出库明细 material_id=349、batch_no 一致；成品入库仍走 PRODUCT 身份。原料批次→半成品工单→半成品批次→上层领料→成品批次链路保留。
 7）异常：合格入库不足 160 时，上层只能领实际可用量，剩余缺口继续显示；不得虚增；红冲/退料按现有反向单据，不更新原流水。
-8）前置阻断：inventory_item MATERIAL 身份未对齐时，F 不得开工入库；先由用户批准的数据订正建立 material_id → inventory_item_id 的可核对映射。当前零库存，不可用旧 inventory_item 直接当新库。
+8）前置阻断：inventory_item MATERIAL 身份未对齐时，F 不得开工入库；先由用户批准的数据订正建立 material_id → inventory_item_id 的可核对映射。当前零库存，不可用旧 inventory_item 直接当新库。零库存也不能证明 alert_log/历史单据未被错误身份引用，订正前先出映射清单与影响清单，不自动清理。
+9）作业规范：MATERIAL 工单必须绑定 MATERIAL 作业规范发布版本；发布内容按 product_work_spec_item 的 SPEC_JSON/BOM/ROUTING/DRAWING 展示，BOM/路线引用按 output 身份解析；缺失时 MATERIAL_WORK_SPEC_NOT_PUBLISHED，不用产品规范顶替。
 
 ## B 至 G 精确白名单
 
@@ -753,10 +903,13 @@ POST /production/requirement/confirm
 | jjx-server/src/main/java/com/jjx/inventory/service/impl/InventoryInboundServiceImpl.java | F | D 不改；E 不改 |
 | jjx-web/src/api/product/bom.ts、jjx-web/src/types/product/bom.ts | C（Hermes） | E/F 各自新建 API 文件，不改这两个文件 |
 | jjx-web/src/views/product/bom/components/BomFormDialog.vue、BomItemEditor.vue | C | G 只读/打印，不改保存链 |
-| jjx-web/src/views/product/bom/components/BomDetailTable.vue | C 先，G 后 | C 完成方案展示并通过验收后，G 才能加打印/作业规范展示 |
+| jjx-web/src/views/product/bom/components/BomDetailTable.vue | C 先，G2 后 | C 完成方案展示并通过验收后，G2 才能加打印/作业规范展示 |
 | jjx-web/src/views/production/order/index.vue、OrderFormDialog.vue | F | E 只改 material-calculation 子目录，不改订单主表单 |
-| jjx-web/src/views/purchase/plan/index.vue、jjx-web/src/api/purchase/order.ts | E | F/G 不改 |
-| jjx-web/src/views/engineering/product-spec/components/ProductWorkSpecPanel.vue | G | C 只通过现有 BomFormDialog 打开，不改该文件 |
+| jjx-web/src/views/purchase/plan/index.vue、jjx-web/src/api/purchase/order.ts | E | F/G2 不改 |
+| jjx-web/src/views/engineering/product-spec/components/ProductWorkSpecPanel.vue | G2 | C 只通过现有 BomFormDialog 打开，不改该文件 |
+| jjx-server/src/main/java/com/jjx/product/service/impl/EngineeringRoutingServiceImpl.java | B | F/G1 只读；B 不改 BOM 主表路线编辑器 |
+| jjx-server/src/main/java/com/jjx/product/service/ProductWorkSpecVersionService.java、WorkSpecBindingService.java | B | F/G1 只读；B 统一按 output 身份绑定 |
+| jjx-server/src/main/java/com/jjx/production/service/ManufacturingHistorySnapshotService.java（新增） | G1（OpenClaw） | 只读快照；G2 只消费 API，不自行拼装历史 |
 
 ### B 制造BOM后端能力（OpenClaw）
 
@@ -779,6 +932,25 @@ POST /production/requirement/confirm
 13）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/engineering/controller/BomController.java
 14）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/enums/ProductEnums.java
 15）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/product/service/impl/BomGroupPersistenceTest.java（回归，不扩大断言）
+16）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/domain/entity/EngineeringRouting.java
+17）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/domain/entity/EngineeringRoutingItem.java
+18）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/domain/dto/EngineeringRoutingDTO.java
+19）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/domain/dto/EngineeringRoutingItemDTO.java
+20）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/domain/vo/EngineeringRoutingVO.java
+21）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/service/impl/EngineeringRoutingServiceImpl.java
+22）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/service/EngineeringRoutingValidator.java
+23）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/controller/EngineeringRoutingController.java
+24）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/mapper/EngineeringRoutingMapper.java
+25）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/mapper/EngineeringRoutingItemMapper.java
+26）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/domain/entity/ProductWorkSpecVersion.java
+27）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/domain/entity/ProductWorkSpecItem.java
+28）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/service/ProductWorkSpecVersionService.java
+29）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/service/ProductWorkSpecService.java
+30）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/service/WorkSpecBindingService.java
+31）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/controller/ProductWorkSpecVersionController.java
+32）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/controller/ProductWorkSpecController.java
+33）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/mapper/ProductWorkSpecVersionMapper.java
+34）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/mapper/ProductWorkSpecItemMapper.java
 
 新增文件：
 
@@ -793,16 +965,19 @@ POST /production/requirement/confirm
 9）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/product/service/impl/ManufacturingBomSchemeTest.java
 10）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/product/service/impl/ManufacturingBomCycleTest.java
 11）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/product/service/impl/BomDecimalRatioTest.java
+12）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/product/service/impl/ManufacturingRouteBindingTest.java
+13）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/product/service/impl/WorkSpecMaterialVersionTest.java
+14）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/product/enums/ManufacturingOutputType.java（PRODUCT/MATERIAL，新增枚举；不复用 BomType）
 
 条件文件（仅用户批准新表/结构变更后）：
 
-1）/home/administrator/jjx/jjx-docs/sql/migrations/356_bom_manufacturing_scheme.sql（编号执行时按账本重取）
-2）/home/administrator/jjx/scripts/model-baseline.json（approvedNewTables 增项）
-3）/home/administrator/jjx/jjx-docs/sql/00_clean_test_data.sql（新表清理归属）
+1）/home/administrator/jjx/jjx-docs/sql/migrations/NN_bom_manufacturing_scheme.sql（NN 执行时按账本重取，写 M1，不预占 356）
+2）/home/administrator/jjx/scripts/model-baseline.json（approvedNewTables 增项，仅方案 C 获批时）
+3）/home/administrator/jjx/jjx-docs/sql/00_clean_test_data.sql（新表清理归属，仅方案 C 获批时）
 
 权限：沿用 engineering:bom:view/add/edit/approve/reject/delete；不新增权限点。
 
-验证：mvn -o -pl jjx-server -am test 定向（2G/180 秒限制按卡面），至少覆盖方案保存回读、多方案隔离、sub_bom 输出匹配、环/自指/悬空、正小数/0/负数、单位不一致；不跑库存写入路径时不需要 check:stock:strict，若 B 触及库存只读查询则加跑。
+验证：mvn -o -pl jjx-server -am test 定向（2G/180 秒限制按卡面），至少覆盖方案保存回读、多方案隔离、sub_bom 输出匹配、环/自指/悬空、正小数/0/负数、单位不一致、MATERIAL 路线/作业规范 output 身份与发布绑定；不跑库存写入路径时不需要 check:stock:strict，若 B 触及库存只读查询则加跑。
 
 ### C 制造BOM独立窗口（Hermes）
 
@@ -857,11 +1032,13 @@ POST /production/requirement/confirm
 10）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/production/service/impl/ManufacturingRequirementPrecisionTest.java
 11）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/production/service/impl/ManufacturingRequirementSupplyTest.java
 
-条件文件（仅 358 迁移批准后）：
+条件文件（仅 M2 迁移批准后）：
 
-1）/home/administrator/jjx/jjx-docs/sql/migrations/358_requirement_allocation.sql
+1）/home/administrator/jjx/jjx-docs/sql/migrations/NN_requirement_allocation.sql（NN 执行时按账本重取，写 M2；不预占 358）
 2）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/inventory/domain/OrderMaterialReserve.java（加字段）
 3）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/inventory/mapper/OrderMaterialReserveMapper.java（唯一键/查询）
+4）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/production/domain/entity/RequirementConfirmRequest.java（仅请求头表获批）
+5）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/production/mapper/RequirementConfirmRequestMapper.java（仅请求头表获批）
 
 验证：mvn 定向 2G/180 秒；至少覆盖 D01—D05、N01—N06、C02、C04 的计算与反例；库存写入路径若改动，跑 npm run validate + check:stock:strict 五项全 0；否则明确写“未跑库存门禁，因为未改写入路径”。
 
@@ -921,15 +1098,43 @@ POST /production/requirement/confirm
 6）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/inventory/ProductionMaterialInboundIdentityTest.java
 7）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/production/service/impl/SemiFinishedBatchTraceTest.java
 
-条件文件（仅 357 迁移批准后）：
+条件文件（仅 M3 迁移批准后）：
 
-1）/home/administrator/jjx/jjx-docs/sql/migrations/357_production_output_identity.sql
+1）/home/administrator/jjx/jjx-docs/sql/migrations/NN_production_output_identity.sql（NN 执行时按账本重取，写 M3；不预占 357）
 
-前置：F 开工前必须证明 inventory_item MATERIAL 身份已通过用户批准的数据订正建立可核对映射；否则只做代码/测试准备，不执行入库验证，报告阻塞。
+前置：F 开工前必须证明 inventory_item MATERIAL 身份已通过用户批准的数据订正建立可核对映射，且 MATERIAL 路线/作业规范已能按 output 身份绑定；否则只做代码/测试准备，不执行入库验证，报告阻塞。不得用产品路线/产品规范顶替 MATERIAL。
 
 验证：mvn 定向 2G/180 秒；P01—P04、I01—I04、V02/V03 的真实事务测试；若改库存写入路径，npm run validate + check:stock:strict 五项全 0；未跑真实过账必须写“未验证”。
 
-### G 作业规范与生产资料展示（Hermes）
+### G 作业规范与生产资料展示（拆为 G1 后端快照 + G2 前端展示）
+
+G 不能只有前端。多层 BOM 版本、路线版本、作业规范版本、物料属性的历史依据必须由后端按工单持久化 ID 组装，前端只展示；否则 BOM/路线/规范/物料任一档案变化都会让历史页漂移。
+
+#### G1 后端历史快照（OpenClaw）
+
+新增文件：
+
+1）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/production/service/ManufacturingHistorySnapshotService.java
+2）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/production/service/impl/ManufacturingHistorySnapshotServiceImpl.java
+3）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/production/controller/ManufacturingHistorySnapshotController.java
+4）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/production/domain/vo/ManufacturingSnapshotVO.java
+5）/home/administrator/jjx/jjx-server/src/main/java/com/jjx/production/domain/vo/ManufacturingSnapshotNodeVO.java
+6）/home/administrator/jjx/jjx-server/src/test/java/com/jjx/production/service/impl/ManufacturingHistorySnapshotTest.java
+
+读取来源（只读，不新增表/迁移）：
+
+1）production_order：order_id、output_type/output_id、bom_id/bom_code、routing_id/routing_code/routing_version、work_spec_version_id、planned/completed/remaining_quantity、trace_id。
+2）engineering_bom + engineering_bom_item：按 order.bom_id 及 item.sub_bom_id 递归；只读已批准版本；输出 BOM 版本、行号、parent_material_id、sub_bom_id、material_id/material_code/name/unit、module/base/loss、process_id（仅展示）。
+3）engineering_routing + engineering_routing_item：按 order.routing_id 读取路线头与工序行；工序顺序按 workflow_seq、process_order；这是历史路线依据。
+4）production_operation_execution：按 order_id 读取工单创建时生成的工序执行行，作为“工单实际工序快照”；与路线行不一致时返回 SNAPSHOT_PARTIAL 并标出来源，不改历史。
+5）product_work_spec_version + product_work_spec_item + work_spec_usage：按 order.work_spec_version_id、work_spec_usage 区间读取规范正文快照、BOM/ROUTING/DRAWING 引用及 content_hash；不按“最新版本”回退。
+6）inventory_material：只读当前物料档案用于展示；历史单位/规格优先取 BOM 行冗余快照，缺失才用当前档案并标记 snapshotSource=current_master。
+
+接口：GET /production/order/{orderId}/manufacturing-snapshot?depth=32，权限 production:order:view；返回 root（order 输出）、nodes[]（每层 BOM/路线/规范/物料）、sourcePath、snapshotSource、contentHash、warnings/blockers。depth 上限 32，超限返回 BOM_DEPTH_EXCEEDED；任一层缺失返回 SNAPSHOT_PARTIAL，不用当前最新版本顶替。
+
+验证：mvn 定向 2G/180 秒；覆盖多层 BOM、MATERIAL 工单、路线/规范版本切换后历史不变、缺失层 SNAPSHOT_PARTIAL、无写操作。G1 不启动服务、不改数据。
+
+#### G2 前端展示（Hermes）
 
 现有文件：
 
@@ -943,16 +1148,19 @@ POST /production/requirement/confirm
 8）/home/administrator/jjx/jjx-web/src/api/product/workSpec.ts
 9）/home/administrator/jjx/jjx-web/src/api/production/workSpecUsage.ts
 10）/home/administrator/jjx/jjx-web/src/components/print/__tests__/bomPrintLayout.spec.ts
-11）/home/administrator/jjx/jjx-web/src/views/product/bom/components/BomDetailTable.vue（共享：C 先完成方案展示，G 再加制造层/打印展示）
+11）/home/administrator/jjx/jjx-web/src/views/product/bom/components/BomDetailTable.vue（共享：C 先完成方案展示，G2 再加制造层/打印展示）
 
 新增文件：
 
 1）/home/administrator/jjx/jjx-web/src/views/engineering/product-spec/components/ManufacturingProcessSheet.vue
 2）/home/administrator/jjx/jjx-web/src/views/engineering/product-spec/components/__tests__/manufacturingProcessSheet.spec.ts
+3）/home/administrator/jjx/jjx-web/src/api/production/manufacturingSnapshot.ts
 
 权限：engineering:product:spec:view / production:order:view；沿用既有。
 
-验证：Vitest 单 worker/1G/120 秒；vue-tsc 3072M/300 秒；覆盖 PRODUCT 现有作业规范不回归、MATERIAL 展示 BOM+工序、打印不写数据；不启动服务。
+验证：Vitest 单 worker/1G/120 秒；vue-tsc 3072M/300 秒；覆盖 PRODUCT 现有作业规范不回归、MATERIAL 展示 BOM+路线工序+规范版本、打印不写数据、G1 缺失字段显示 SNAPSHOT_PARTIAL；不启动服务。
+
+归属：G1 由 OpenClaw 先完成并通过验收，G2 由 Hermes 消费 G1 接口；G2 不得自行拼装“最新 BOM/路线”或在前端补历史。
 
 ### H 全流程集成验收（Codex-verifier）
 
@@ -985,10 +1193,10 @@ A 负责把 37 场景映射到 B—G 并给出验收边界；下表“主导”�
 | U03 | 采用后保存父BOM再打开 | C | B、H | 引用/版本/主方案一致 |
 | U04 | 切换方案/下层返回/取消父BOM | C | B、H | 草稿不丢；父取消不删独立方案 |
 | U05 | 只读/权限不足 | C | B、H | 前后端一致阻止；无副作用 |
-| U06 | 主表/物料规格/工艺路线边界 | C | B、G、H | 不加供给列/路线编辑器；不改档案规格 |
+| U06 | 主表/物料规格/工艺路线边界 | C | B、G1/G2、H | BOM 主表不加供给列/路线编辑器；工序只由 engineering_routing 维护，BOM 行 process_id 仅展示；不改档案规格 |
 | V01 | BOM V2生效后新需求 | B | D、H | 按生效规则与产品方案；可解释各层依据 |
 | V02 | 生产中发现BOM错误 | F | D、H | 补退料/未做/已加工/供应释放闭环；不强制路径 |
-| V03 | 历史工单/领料/批次追溯 | F | G、H | 按当时依据还原；不被当前BOM重算 |
+| V03 | 历史工单/领料/批次追溯 | F | G1/G2、H | 按当时依据还原；不被当前BOM重算 |
 | P01 | 补做160并供上层 | F | D、H | 工单→领料→合格入库→上层领用 |
 | P02 | 仅合格150或分批 | F | H | 不虚增160；可领实际可用；缺口可见 |
 | P03 | 再下层制造与原料批次追踪 | F | D、H | 原料批次→各层工单/产出→成品 |
@@ -996,35 +1204,35 @@ A 负责把 37 场景映射到 B—G 并给出验收边界；下表“主导”�
 | I01 | 195mm×50m整卷发9.75㎡只用12.8m | F | D、H | 实领/理论/实耗/余料分开 |
 | I02 | 余卷退仓或留车间 | F | H | 去向/数量可追溯；库存不重复可用 |
 | I03 | 红冲纠错/重算余额 | F | H | 原流水保留；反向记录；余额可重算 |
-| I04 | 库存页面/报表/批次模型 | F | G、H | 收/发/结存三栏；批次不新增累计列 |
+| I04 | 库存页面/报表/批次模型 | F | G1/G2、H | 收/发/结存三栏；批次不新增累计列 |
 | C01 | 旧BOM无子BOM | B | D、H | 大料直接耗用/分组/审核/保存不回归 |
 | C02 | 片/M/㎡或尺寸不全 | D | F、H | 有依据才换算；1PCS≠1M/㎡；无依据阻断 |
-| C03 | 半成品新建/复制BOM/复制工单 | B | F、H | 身份/方案不串产品；复制按目标规则 |
+| C03 | 半成品新建/复制BOM/复制工单 | B | F、H | 身份/方案不串产品；MATERIAL 路线/规范按 output 身份绑定；复制按目标规则 |
 | C04 | 物料单位订正与历史 | B | F、H | 历史保留原单位/依据；不静默重解释 |
 
 覆盖核对：5+5+6+6+3+4+4+4=37，无遗漏；A 对全部场景给出归属，H 对全部场景做只读验收。
 
 ## 新表提案与替代评估
 
-### 提案一：product_material_scheme
+### 提案一：product_material_scheme（方案 C，按条件必要）
 
-状态：提案，待用户拍板；A 未创建、未写迁移、未登记基线。建议归属 B；若 B 不动建表，则 003 的交付只能算“契约完成”，B 不能宣称主方案已落库。
+状态：提案，待用户拍板；A 未创建、未写迁移、未登记基线。建议归属 B；若用户选 A/B，本提案不执行。
 
-为什么不能复用：
+必要性条件（不是既定业务）：只有用户确认“主方案必须跨 BOM 版本独立保存 + 逐条审计 + 被需求/工单独立引用”时，独立表才有明确必要性。001 的 G04 只要求按产品隔离；若只需要这一点，product 级 JSON 映射（方案 A）即可，不能把 JSON 说成无并发/不可查。
 
-1）product.current_bom_id 只能表达产品级默认 BOM，不能按投入物料区分方案。
-2）engineering_bom.is_current 是输出对象的当前版本，同一半成品被多个产品使用时无法表达“产品A甲、产品B乙”。
-3）engineering_bom_item.sub_bom_id 是某一产品 BOM 版本上的实际引用，不是产品级主方案；版本复制/删除会让主方案漂移。
-4）order_material_reserve 是数量占用，不是方案选择。
-5）sys_config/JSON 无法提供 product_id+material_id 唯一约束、外键式校验和并发控制。
+准入对照（CONVENTIONS §15.2）：独立关系对象（1）、会被需求/工单引用（2）、需要唯一约束（3）、需要变更留痕（5）在“跨版本 + 审计”条件下成立；若只做产品级映射，§15.2 不构成建表理由。
 
-准入对照（CONVENTIONS §15.2）：独立关系对象（1）、会被需求/工单引用（2）、需要唯一约束（3）、需要变更留痕（5）、能证明无法复用（6），满足 5 条。
+回退：删除表前先删除/归档所有引用；用户手工备份；不自动回滚。若用户不批准，B 的替代实现是方案 A（product JSON）或方案 B（BOM 行上下文）；U03/U04/G04 的语义分别对应“跨版本保持”或“版本内选择”，由用户选择，不强行降级。
 
-回退：删除表前先删除/归档所有引用；用户手工备份；不自动回滚。若用户不批准，B 的替代实现是只在 engineering_bom_item 上保存 sub_bom_id，不提供产品级主方案；U03/U04/G04 只能降级为“当前 BOM 版本内选择”，需用户明确接受该降级。
+### 提案二：requirement_confirm_request（请求级幂等头）
 
-### 提案二（不新建表）：扩展 order_material_reserve
+状态：提案，待用户批准；用于解决“一次 confirm 多条分配行”的请求级幂等。没有它时，分配行 UNIQUE(request_key) 会阻止第二行；只有 (request_key, allocation_line_no) 唯一 + GET_LOCK 的退路，健壮性较弱。
 
-状态：提案，待与 358 迁移一起批准。相比新建分配表，优先扩列，原因是现有预占/占用/释放/超时任务已围绕该表，另建表会产生第二真源。字段与约束见“供需分配”节。若用户要求独立审计表，再另行评估；A 不建议。
+回退：不建表时，confirm 用 (request_key, allocation_line_no) 唯一 + 应用层锁；但必须明确“请求级重复”只能靠锁/重查，不能靠分配行唯一键。
+
+### 提案三（不新建表）：扩展 order_material_reserve
+
+状态：提案，随 M2 迁移批准。相比新建分配表，优先扩列，原因是现有预占/占用/释放/超时任务已围绕该表，另建表会产生第二真源。字段与约束见“供需分配”节。若用户要求独立审计表，再另行评估；A 不建议。
 
 ### 不提案的部分
 
@@ -1032,50 +1240,58 @@ A 负责把 37 场景映射到 B—G 并给出验收边界；下表“主导”�
 2）不新建“需求结果表”保存试算；试算只读，确认后的分配落 order_material_reserve，工单落 production_order。
 3）不新建“库存余额表”；库存仍以 inventory_stock/inventory_stock_item 派生，流水 append-only。
 4）不新建“单位换算表”；本阶段用 BOM 行换算快照 + 物料尺寸；卷料批次长度依赖 013，不提前占表。
+5）不新建“路线表/作业规范表”；复用 engineering_routing、engineering_routing_item、product_work_spec_version、product_work_spec_item，只加 output 身份列。
+6）不新建“历史快照表”；G1 读取已批准版本 + 工单持久化 ID 组装；若发现版本可原地改，先修 B 的不变量，不另起快照表。
 
 ## 待批准、风险与未验证项
 
 ### 需要用户拍板
 
-1）是否批准 product_material_scheme 新表（提案一）。不批准则主方案只能降级为 BOM 版本内选择。
-2）是否批准 356/357/358 三段迁移及 product_id 可空、production_order 产出身份扩展。结构变更前必须由用户手工备份。
-3）是否接受 MATERIAL 产出的工序来源为方案 BOM 的 process 行；若要求半成品拥有独立工艺路线/作业规范版本，需要另批路线/作业规范的物料身份扩展。
-4）是否接受 inventory_item MATERIAL 身份的数据订正（建立 material_id → inventory_item_id 可核对映射）；不订正则 F 不能真实入库。
+1）主方案存储选 A / B / C：A=product 级 JSON 映射（不新建表，行锁+scheme_revision 乐观锁，产品级跨版本）；B=BOM 行上下文（不新建表，版本内选择）；C=product_material_scheme 新表（跨版本独立 + 逐条审计）。001 只确认“按产品隔离”，没有确认“跨版本独立生命周期”，所以不要把 C 当成唯一可行解；若只要求按产品隔离，A 可落地。
+2）是否批准 M1/M2/M3 三组结构变更：BOM/路线/作业规范 output 身份、product_id 可空、production_order 产出身份与 routing_version、order_material_reserve 分配字段。迁移编号实际编写时按账本重取，不预占 356/357/358；结构变更前用户手工备份。
+3）MATERIAL 路线/作业规范是 001“路线管顺序、作业规范管展示”的必要工程扩展，不需要重新确认业务；但新增列/迁移仍按结构变更审批。若用户不同意加 output 身份列，则 MATERIAL 工单无法绑定路线/规范，F 只能停在代码准备，不能拿产品路线顶替。
+4）是否接受 inventory_item MATERIAL 身份的数据订正（建立 material_id → inventory_item_id 可核对映射）；不订正则 F 不能真实入库。订正前先出映射清单、影响清单和备份方案，不自动清理。
+5）是否批准 requirement_confirm_request 请求头表（提案二）；不批准则只能用 (request_key, allocation_line_no) 唯一 + 应用层锁，请求级幂等较弱。
 
 ### 风险
 
-1）最大风险是物料身份错位：7/7 BOM 物料在 inventory_item 中按 source_id 命中错误物料；当前零库存掩盖了问题。F 若直接 ensure(MATERIAL, material_id) 会把半成品入到错误物品上。必须先在只读环境产出映射清单，用户批准后另任务订正。
-2）产品主方案若不做表，跨 BOM 版本/跨产品隔离无法保证；U03/U04/G04 会降级。
-3）MATERIAL 产出的工序/作业规范若沿用产品域，会需要更大范围的身份扩展；本契约选择 BOM process 行作为最小闭环，可能与用户对“路线记录加工顺序”的期望有差距。
-4）迁移顺序错误（先改 NOT NULL 再回填、或先部署不兼容代码）会造成写入失败；必须按“加列→回填→双写→改约束”的顺序。
+1）最大风险是物料身份错位：7/7 BOM 物料按 source_id 命中行但 code/name 全不一致；1562 个 item 中 1271 个按 source_id 找不到物料、按 item_code 对 291 个物料 0 命中；当前零库存只说明没有库存流水，20 行 alert_log、2 张 production_order、5 行 sales_sample_bom 仍引用这些 material_id。F 若直接 ensure(MATERIAL, material_id) 会把半成品入到错误物品上。必须先在只读环境产出映射清单，用户批准后另任务订正。
+2）路线边界风险：若从 BOM 行 process_id/行顺序生成工序，会绕过 engineering_routing 的版本/批准/顺序，违反 001；v2 已删除该路径，B/C 不得在 BOM 主表加路线编辑器。
+3）主方案存储选型风险：选 A 无逐物料审计、无 DB 唯一/外键；选 B 跨版本漂移；选 C 需要新表审批/基线/清理。三者都要显式选择，不能把未确认的“跨版本独立”当既定要求。
+4）迁移顺序错误（先改 NOT NULL 再回填、或先部署不兼容代码）会造成写入失败；必须按“加列→回填→双写→改约束”的顺序，且 M1 早于 M2/M3。
 5）前端 material-calculation 现有分配算法若保留，会与后端净需求形成第二权威；E 必须移除/降级。
 6）013 卷材逐卷余量未完成，I01/I02 的卷料实际长度只能阻断或使用批次静态数据；不得声称所有余卷场景已通过。
+7）历史快照依赖“已批准版本不可原地改”。现有 BOM/路线更新已拒绝已批准状态，但若后续新增入口绕过该检查，G1 会读到变化后的版本；B/F 必须守住该不变量，G1 缺层时返回 SNAPSHOT_PARTIAL 而不是猜。
 
 ### 未验证项（不得当成已完成）
 
-1）没有执行任何迁移；356/357/358 只是建议编号与内容，实际执行时按账本重取。
-2）没有创建 product_material_scheme；没有登记 model-baseline/清理归属。
+1）没有执行任何迁移；M1/M2/M3 只是逻辑组，NN 在实际编写时按账本重取；356/357/358 不是预留号。
+2）没有创建 product_material_scheme、requirement_confirm_request；没有登记 model-baseline/清理归属。
 3）没有运行后端 mvn、前端 Vitest、vue-tsc；因为本任务只写文档，没有业务代码改动。
 4）没有运行真实库存过账、真实工单/领料/入库、真实需求计算；所有 JSON 是契约示例，不是运行结果。
 5）没有启动/停止/重启任何服务；没有调用真实 HTTP 接口。
-6）现场核查使用只读 jjx_ro；本次连接成功，未出现 001 所记的认证失败；但不代表业务库写入路径已验证。
+6）现场核查使用只读 jjx_ro，通过本地 0600 defaults 文件连接，文档/证据不含口令；本次只读连接成功，但不代表业务库写入路径已验证。
 7）没有修改 AGENTS.md、CONVENTIONS、multi-agent-protocol；没有改任务 002/004—010/013 的状态。
-8）inventory_item 身份错位的根因未继续追溯（历史导入/旧 MES 映射），只确认结果；根因排查需另任务。
+8）inventory_item 身份错位的根因未继续追溯（历史导入/旧 MES 映射），只确认结果；历史单据是否全部未污染未核实，根因排查需另任务。
+9）G1 后端快照、G2 前端展示均未实现；本卡只给归属与接口契约。
+10）没有做数据库口令轮换/清理历史文件；只保证本文件与本次证据不写口令，历史 .tmp 文件是否含口令需另行核查。
 
 ## 现场证据与复核命令
 
-本任务证据目录：/home/administrator/jjx/.tmp/bom-dispatch/。已保存 git 基线、代码行号摘录；后续可追加 SQL 输出。
+本任务证据目录：/home/administrator/jjx/.tmp/bom-dispatch/。已保存 git 基线、代码行号摘录、14 张表 DDL 原文、身份比对原始 SQL 与输出、迁移账本现状。文档和证据文件不含数据库口令；复核使用本机已配置的 0600 defaults 文件（路径不写进仓库），命令示例只引用环境变量。
 
-关键复核命令（只读）：
+关键复核命令（只读，无口令）：
 
 ```bash
 cd /home/administrator/jjx
 git rev-parse HEAD
 git status --short
-MYSQL_PWD=jjx_ro_2026 mysql -h127.0.0.1 -u jjx_ro -N -B jjx_erp_db -e "SELECT config_value FROM sys_config WHERE config_key='ops.schema.version'"
-MYSQL_PWD=jjx_ro_2026 mysql -h127.0.0.1 -u jjx_ro -t jjx_erp_db -e "SELECT item_id,module_qty,base_qty,quantity,actual_issue_qty FROM engineering_bom_item WHERE item_id=1"
-MYSQL_PWD=jjx_ro_2026 mysql -h127.0.0.1 -u jjx_ro -t jjx_erp_db -e "SELECT bi.material_id,m.material_code,i.item_code,i.item_name FROM (SELECT DISTINCT material_id FROM engineering_bom_item WHERE material_id IS NOT NULL) bi LEFT JOIN inventory_material m ON m.material_id=bi.material_id LEFT JOIN inventory_item i ON i.item_type='MATERIAL' AND i.source_id=bi.material_id"
+mysql --defaults-extra-file="$JJX_DB_CNF" -h127.0.0.1 -u jjx_ro -N -B jjx_erp_db -e "SELECT config_key,config_value FROM sys_config WHERE config_key IN ('ops.schema.version','ops.schema.applied')"
+mysql --defaults-extra-file="$JJX_DB_CNF" -h127.0.0.1 -u jjx_ro -t jjx_erp_db -e "SELECT item_id,bom_id,material_id,module_qty,base_qty,quantity,actual_issue_qty FROM engineering_bom_item ORDER BY item_id"
+mysql --defaults-extra-file="$JJX_DB_CNF" -h127.0.0.1 -u jjx_ro -t jjx_erp_db -e "SELECT bi.material_id,m.material_code,m.material_name,i.item_code,i.item_name,CASE WHEN i.inventory_item_id IS NULL THEN 'NO_INVENTORY_ITEM' WHEN i.item_code=m.material_code AND i.item_name=m.material_name THEN 'MATCH' ELSE 'MISMATCH' END AS compare_result FROM (SELECT DISTINCT material_id FROM engineering_bom_item WHERE material_id IS NOT NULL) bi LEFT JOIN inventory_material m ON m.material_id=bi.material_id LEFT JOIN inventory_item i ON i.item_type='MATERIAL' AND i.source_id=bi.material_id ORDER BY bi.material_id"
 ```
+
+复核入口：evidence-inventory-identity-20261111.txt（身份）、evidence-ddl-20261111.txt（DDL）、evidence-schema-20261111.txt（账本）、code-refs-20261111.txt（代码行号）。
 
 代码复核定位：
 
@@ -1090,6 +1306,6 @@ MYSQL_PWD=jjx_ro_2026 mysql -h127.0.0.1 -u jjx_ro -t jjx_erp_db -e "SELECT bi.ma
 
 ## 接续说明
 
-本卡完成后只把 dev-20261111-003 置为待审核（status=2），提交本卡两份文档（本文件与 INDEX 登记），推送 origin dev；不自行验收、不派 B 至 G、不改其他任务状态、不启动任何 agent/服务。Codex 独立验收通过后，才按 002 的波次派 B；B 通过后再 C/D；C/D 通过后 E/F；E 完成且 C/D 通过后再 G；H 最后只读验收。
+本卡完成后只把 dev-20261111-003 置为待审核（status=2），提交本卡两份文档（本文件与 INDEX 登记），推送 origin dev；不自行验收、不派 B 至 G、不改其他任务状态、不启动任何 agent/服务。Codex 独立验收通过后，才按 002 的波次派 B；B 与 C 可并行（C 依赖 B 的接口契约），F 的 M3/接口应在 D 的 MATERIAL 分支验收前完成，D 的 PRODUCT 分支可与 F 并行、MATERIAL 分支在 F 后验收；E 依赖 D；G1 在 B/F 后，G2 在 C/D 与 G1 后；H 最后只读验收。
 
-若用户先批准新表/迁移，B 开工前仍需：确认 356 编号、手工备份、批准记录写进 model-baseline、清理归属登记、检查同文件在制。任何一项缺失就停相关部分，不把“文档契约”当成“已经实施”。
+若用户先批准新表/迁移，B 开工前仍需：按当次账本重取迁移编号、手工备份、批准记录写进 model-baseline、清理归属登记、检查同文件在制。任何一项缺失就停相关部分，不把“文档契约”当成“已经实施”。
