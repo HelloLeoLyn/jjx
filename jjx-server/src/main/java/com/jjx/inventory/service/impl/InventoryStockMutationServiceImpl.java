@@ -107,7 +107,9 @@ public class InventoryStockMutationServiceImpl implements InventoryStockMutation
         if (tx.getStockItemId() != null && !tx.getStockItemId().equals(stock.getItemId())) {
             throw new BusinessException("流水库存行与实际变动行不一致");
         }
-        if (stock.getRollNo() != null) tx.setStockItemId(stock.getItemId());
+        // dev-20261111-012：流水必须记录实际变动的库存行，不限卷料。
+        // 013 引入 stock_item_id 时只在卷料路径回填，普通入库/出库流水该列为空（008 验收实测）。
+        if (stock.getItemId() != null) tx.setStockItemId(stock.getItemId());
         tx.setRollNo(stock.getRollNo());
         if (tx.getInventoryItemId() == null) tx.setInventoryItemId(stock.getInventoryItemId());
         if (tx.getMaterialId() == null) tx.setMaterialId(stock.getMaterialId());
