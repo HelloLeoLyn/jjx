@@ -41,6 +41,13 @@
         </template>
       </el-table-column>
 
+      <el-table-column label="产出身份" width="120">
+        <template #default="{ row }">
+          <el-tag v-if="row.outputType === 'MATERIAL'" type="warning" size="small">半成品/材料</el-tag>
+          <el-tag v-else type="info" size="small">产品</el-tag>
+        </template>
+      </el-table-column>
+
       <el-table-column label="作业规范版本" width="165">
         <template #default="{ row }"><WorkSpecVersionLink :version-id="row.workSpecVersionId" empty-text="未指定" /></template>
       </el-table-column>

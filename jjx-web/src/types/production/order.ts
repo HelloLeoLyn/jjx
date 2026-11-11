@@ -73,6 +73,10 @@ export interface ProductionOrderBase {
   productSpec: string
   productUnit: string
 
+  /** 产出身份（dev-20261111-008）：PRODUCT=产品产出；MATERIAL=材料/半成品产出。 */
+  outputType?: 'PRODUCT' | 'MATERIAL' | string | null
+  outputId?: string | number | null
+
   // 数量信息
   plannedQuantity: number // 计划数量
   completedQuantity: number // 已完成数量

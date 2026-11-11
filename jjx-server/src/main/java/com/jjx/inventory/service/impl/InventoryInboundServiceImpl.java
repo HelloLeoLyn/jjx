@@ -2900,40 +2900,14 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         // 所以成品不参与「按 material_id」的库存/流水关联与安全库存预警（设计口径，非漏写）。
         InventoryInboundItem inboundItem = new InventoryInboundItem();
         inboundItem.setInboundId(order.getInboundId());
-        // dev-20261111-008：产出身份 MATERIAL 时，完工入库必须进材料库存身份（半成品）；
-        // 缺产出对象直接阻断，不静默降级成 PRODUCT，避免半成品被记成产品库存。
-        boolean materialOutput = "MATERIAL".equalsIgnoreCase(prodOrder.getOutputType());
-        String materialCode;
-        String materialName;
-        String itemUnit;
-        Long inventoryItemSourceId;
-        InventoryItemTypeEnum itemType;
-        if (materialOutput) {
-            Long outputMaterialId = prodOrder.getOutputId();
-            if (outputMaterialId == null) {
-                throw new BusinessException("半成品工单[" + prodOrder.getOrderNo() + "]缺少产出对象，无法完工入库");
-            }
-            com.jjx.inventory.domain.InventoryMaterial outputMaterial = inventoryMaterialMapper.selectById(outputMaterialId);
-            if (outputMaterial == null) {
-                throw new BusinessException("半成品工单[" + prodOrder.getOrderNo()
-                        + "]的产出材料[" + outputMaterialId + "]不存在，无法完工入库");
-            }
-            materialCode = outputMaterial.getMaterialCode();
-            materialName = outputMaterial.getMaterialName();
-            itemUnit = outputMaterial.getUnit() == null || outputMaterial.getUnit().isBlank()
-                    ? "PCS" : outputMaterial.getUnit();
-            inventoryItemSourceId = outputMaterialId;
-            itemType = InventoryItemTypeEnum.MATERIAL;
-        } else {
-            materialCode = prodOrder.getProductCode();
-            materialName = prodOrder.getProductName();
-            itemUnit = "PCS";
-            inventoryItemSourceId = prodOrder.getProductId();
-            itemType = InventoryItemTypeEnum.PRODUCT;
-        }
+        // dev-20261111-008：产出身份统一由 FinishOutputIdentity 解析（PRODUCT/MATERIAL）；
+        // 半成品走材料库存身份，缺产出对象直接阻断，不静默降级成产品库存。
+        FinishOutputIdentity.Resolved output = FinishOutputIdentity.resolve(prodOrder, inventoryMaterialMapper);
+        String materialCode = output.code();
+        String materialName = output.name();
         inboundItem.setInventoryItemId(inventoryItemService.ensure(
-                itemType, inventoryItemSourceId, materialCode,
-                materialName, null, itemUnit).getInventoryItemId());
+                output.itemType(), output.sourceId(), materialCode,
+                materialName, null, output.unit()).getInventoryItemId());
         inboundItem.setMaterialCode(materialCode);
         inboundItem.setMaterialName(materialName);
         inboundItem.setLotId(lotId);
