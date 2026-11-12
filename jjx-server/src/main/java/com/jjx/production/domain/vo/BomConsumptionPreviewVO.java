@@ -69,5 +69,11 @@ public class BomConsumptionPreviewVO {
 
         /** 是否可调用 004 跳距 GET 接口做辅助（仅能力标记，不代表物料形态分类）。 */
         private boolean pitchSupported;
+
+        /** 实际采用的来源方式（dev-20261112-008）；null 表示走历史比例口径。 */
+        private String consumptionMode;
+
+        /** 卷材裁切/连续耗材的面积（㎡）展示文本；不适用时为 null。 */
+        private String areaM2;
     }
 }

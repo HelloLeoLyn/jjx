@@ -56,5 +56,17 @@ public class BomConsumptionPreviewRequest {
 
         /** 显式参考卷长（米，>0 时优先于档案名义长度）；空表示按档案 lengthMm 兜底。 */
         private BigDecimal referenceRollLengthM;
+
+        /** 材料来源方式（dev-20261112-008）：roll_cut/sheet_nest/direct/continuous；null 走历史比例口径。 */
+        private String consumptionMode;
+
+        /** 卷材跳距（mm），仅 roll_cut 使用。 */
+        private BigDecimal pitchMm;
+
+        /** 每跳产出片数（宽度方向排数），仅 roll_cut 使用；空按 1。 */
+        private Integer pcsPerPitch;
+
+        /** 单位面积单耗（g/㎡ 或 ml/㎡），仅 continuous 使用。 */
+        private BigDecimal unitConsumption;
     }
 }

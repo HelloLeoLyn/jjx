@@ -45,244 +45,365 @@
       </div>
     </div>
 
-    <BomEntryTools :rows="items" :readonly="readonly" :output-unit="outputUnit" :output-length-mm="outputLengthMm" @change="emitChange" v-slot="{ resultFor, showConversions, openPitch, canPitch, loading }">
-    <!-- 明细表格 -->
-    <el-table
-      ref="tableRef"
-      v-loading="tableLoading"
-      :data="items"
-      border
-      style="width: 100%"
-      row-key="itemId"
-      highlight-current-row
-      :current-row-key="currentRowKey"
-      :height="tableHeight"
-      @selection-change="handleSelectionChange"
-      @row-click="handleRowClick"
-      :span-method="comboSpan"
-      :row-class-name="rowClassName"
-      class="bom-item-table"
+    <BomEntryTools
+      :rows="items"
+      :readonly="readonly"
+      :output-unit="outputUnit"
+      :output-length-mm="outputLengthMm"
+      @change="emitChange"
+      v-slot="{ resultFor, showConversions, openPitch, canPitch, loading }"
     >
-      <!-- 序号列 - 拖拽手柄 -->
-      <el-table-column label="序号" width="50" align="center" fixed="left">
-        <template #default="scope">
-          <div class="drag-cell">
-            <el-icon class="drag-handle"><Rank /></el-icon>
-            <el-icon v-if="scope.row.materialId" size="small" color="#15bf15">
-              <Check />
-            </el-icon>
-            <el-icon v-else size="small" color="#e56706">
-              <WarningFilled />
-            </el-icon>
-            <span v-if="comboNoOf(scope.$index)" class="row-index">{{
-              comboNoOf(scope.$index)
-            }}</span>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="项目" prop="processName" width="80">
-        <template #default="scope">
-          <StandardProcessSelector
-            :mode="PROJECT_PICKER_MODE"
-            :model-value="scope.row.processId ?? scope.row.processName"
-            :process-name="scope.row.processName"
-            :disabled="readonly"
-            size="small"
-            @change="(val: number | string | undefined) => handleProjectChange(scope.row, val)"
-          />
-        </template>
-      </el-table-column>
-      <!-- 物料名称：常规模式选物料；快速模式直接录材料原文（dev-20261020-029 A） -->
-      <el-table-column label="物料名称" prop="materialName" min-width="140">
-        <template #default="scope">
-          <div class="material-name-cell" >
-            <el-input
-              v-if="quickMode && !scope.row.materialId"
-              v-model="scope.row.materialName"
+      <!-- 明细表格 -->
+      <el-table
+        ref="tableRef"
+        v-loading="tableLoading"
+        :data="items"
+        border
+        style="width: 100%"
+        row-key="itemId"
+        highlight-current-row
+        :current-row-key="currentRowKey"
+        :height="tableHeight"
+        @selection-change="handleSelectionChange"
+        @row-click="handleRowClick"
+        :span-method="comboSpan"
+        :row-class-name="rowClassName"
+        class="bom-item-table"
+      >
+        <!-- 序号列 - 拖拽手柄 -->
+        <el-table-column label="序号" width="50" align="center" fixed="left">
+          <template #default="scope">
+            <div class="drag-cell">
+              <el-icon class="drag-handle"><Rank /></el-icon>
+              <el-icon v-if="scope.row.materialId" size="small" color="#15bf15">
+                <Check />
+              </el-icon>
+              <el-icon v-else size="small" color="#e56706">
+                <WarningFilled />
+              </el-icon>
+              <span v-if="comboNoOf(scope.$index)" class="row-index">{{
+                comboNoOf(scope.$index)
+              }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="项目" prop="processName" width="80">
+          <template #default="scope">
+            <StandardProcessSelector
+              :mode="PROJECT_PICKER_MODE"
+              :model-value="scope.row.processId ?? scope.row.processName"
+              :process-name="scope.row.processName"
               :disabled="readonly"
-              placeholder="输入材料名称（必填）"
               size="small"
-              maxlength="200"
+              @change="(val: number | string | undefined) => handleProjectChange(scope.row, val)"
             />
-            <span v-else-if="readonly || quickMode">{{ scope.row.materialName }}</span>
-            <BomMaterialSelector
-              v-else
-              :material-id="scope.row.materialId"
-              :material-name="scope.row.materialName"
-              confirm-selection
-              @draft-change="(draft) => handleMaterialDraft(scope.row, draft)"
-              @select="(material) => handleMaterialSelect(material, scope.row)"
-              @clear="handleMaterialClear(scope.row)"
-              @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
-            />
-            <!-- <el-tag
+          </template>
+        </el-table-column>
+        <!-- 物料名称：常规模式选物料；快速模式直接录材料原文（dev-20261020-029 A） -->
+        <el-table-column label="物料名称" prop="materialName" min-width="140">
+          <template #default="scope">
+            <div class="material-name-cell">
+              <el-input
+                v-if="quickMode && !scope.row.materialId"
+                v-model="scope.row.materialName"
+                :disabled="readonly"
+                placeholder="输入材料名称（必填）"
+                size="small"
+                maxlength="200"
+              />
+              <span v-else-if="readonly || quickMode">{{ scope.row.materialName }}</span>
+              <BomMaterialSelector
+                v-else
+                :material-id="scope.row.materialId"
+                :material-name="scope.row.materialName"
+                confirm-selection
+                @draft-change="(draft) => handleMaterialDraft(scope.row, draft)"
+                @select="(material) => handleMaterialSelect(material, scope.row)"
+                @clear="handleMaterialClear(scope.row)"
+                @create="(keyword) => handleCreateMaterial(scope.row, keyword)"
+              />
+              <!-- <el-tag
               v-if="quickMode && !scope.row.materialId"
               size="small"
               type="warning"
               effect="plain"
               >未建档</el-tag
             > -->
-            <small class="material-code">{{ scope.row.materialCode }}</small>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="规格" prop="specification" width="120">
-        <template #default="scope">
-          <span v-if="Number(scope.row.materialId) > 0">{{ autoSpecOf(scope.row) }}</span>
-          <el-input
-            v-else-if="quickMode"
-            v-model="scope.row.specification"
-            :disabled="readonly"
-            placeholder="选填"
-            size="small"
-            maxlength="500"
-          />
-          <span v-else>{{ scope.row.specification }}</span>
-        </template>
-      </el-table-column>
-      <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数）；允许 >0 正小数，最多4位 -->
-      <el-table-column label="模数" prop="moduleQty" align="center" width="85">
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.moduleQty"
-            :min="0"
-            :precision="4"
-            :controls="false"
-            :disabled="readonly"
-            size="small"
-            @change="handleModuleQtyChange(scope.row)"
-          />
-        </template>
-      </el-table-column>
-      <!-- 基数 -->
-      <el-table-column label="基数" prop="baseQty" align="center" width="105">
-        <template #header>
-          <span>基数</span>
-          <el-tooltip content="产品单位用量/每个项目标准用量" placement="top">
-            <el-icon class="info-icon"><InfoFilled /></el-icon>
-          </el-tooltip>
-        </template>
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.baseQty"
-            :controls="false"
-            :min="0"
-            :precision="4"
-            :disabled="readonly"
-            size="small"
-            @change="handleBaseQtyChange(scope.row)"
-          />
-        </template>
-      </el-table-column>
-      <!-- 已选物料单位只读；未建档快速草稿仍可提供计量单位。旧单位不静默改写。 -->
-      <el-table-column label="单位" prop="unit" width="80">
-        <template #default="scope">
-          <span v-if="Number(scope.row.materialId) > 0">{{ scope.row.unit || '—' }}</span>
-          <el-select v-else v-model="scope.row.unit" :disabled="readonly" size="small" filterable allow-create>
-            <el-option v-for="item in unitOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </template>
-      </el-table-column>
-
-      <!-- 损耗率 -->
-      <el-table-column label="损耗率(%)" prop="lossRate" align="center" width="100">
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.lossRate"
-            :min="0"
-            :max="100"
-            :precision="2"
-            :step="0.01"
-            :disabled="readonly"
-            size="small"
-            controls-position="right"
-            @change="handleLossRateChange(scope.row)"
-          >
-            <template #append>%</template>
-          </el-input-number>
-        </template>
-      </el-table-column>
-      <el-table-column label="每件用量" width="100" align="right">
-        <template #default="scope"><el-tooltip :content="resultFor(scope.row)?.message || '每件净用量，不含损耗'"><span>{{ resultFor(scope.row)?.valid ? resultFor(scope.row)?.unitConsumption : loading ? '试算中' : '—' }}</span></el-tooltip></template>
-      </el-table-column>
-      <el-table-column label="总需求" width="110" align="right">
-        <template #default="scope"><el-tooltip :content="resultFor(scope.row)?.message || '按试算产出数量，包含损耗与最低投料'"><strong>{{ resultFor(scope.row)?.valid ? resultFor(scope.row)?.totalConsumption : loading ? '试算中' : '—' }}</strong></el-tooltip></template>
-      </el-table-column>
-      <el-table-column v-if="showConversions" label="折算米" width="105" align="right">
-        <template #default="scope">{{ resultFor(scope.row)?.metres ?? '—' }}</template>
-      </el-table-column>
-      <el-table-column v-if="showConversions" label="预计卷数（参考）" width="130" align="right">
-        <template #default="scope"><el-tooltip :content="`按${resultFor(scope.row)?.referenceRollLengthM ?? '未填写'}m参考；不代表实际领卷`"><span>{{ resultFor(scope.row)?.referenceRollCount ?? '—' }}</span></el-tooltip></template>
-      </el-table-column>
-
-      <!-- 行审核状态（dev-20261020-029） -->
-      <el-table-column label="行状态" width="80" align="center">
-        <template #default="scope">
-          <div class="row-status-cell">
-            <el-tooltip :content="scope.row.rejectReason || '无'" placement="top">
-              <el-tag
-                :type="BomItemReviewStatusEnum.getTagProps(rowReviewStatus(scope.row)).type"
-                size="small"
-              >
-                {{ BomItemReviewStatusEnum.getLabel(rowReviewStatus(scope.row)) }}
-              </el-tag>
+              <!-- <small class="material-code">{{ scope.row.materialCode }}</small> -->
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="规格" prop="specification" width="120">
+          <template #default="scope">
+            <span v-if="Number(scope.row.materialId) > 0">{{ autoSpecOf(scope.row) }}</span>
+            <el-input
+              v-else-if="quickMode"
+              v-model="scope.row.specification"
+              :disabled="readonly"
+              placeholder="选填"
+              size="small"
+              maxlength="500"
+            />
+            <span v-else>{{ scope.row.specification }}</span>
+          </template>
+        </el-table-column>
+        <!-- 材料来源方式（dev-20261112-008）：决定显示哪些字段、用哪种算法 -->
+        <el-table-column label="来源方式" width="118">
+          <template #default="scope">
+            <el-select
+              v-model="scope.row.consumptionMode"
+              :disabled="readonly"
+              size="small"
+              @change="handleConsumptionModeChange(scope.row)"
+            >
+              <el-option
+                v-for="item in consumptionModeOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </template>
+        </el-table-column>
+        <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数）；允许 >0 正小数，最多4位 -->
+        <el-table-column label="模数" prop="moduleQty" align="center" width="65">
+          <template #default="scope">
+            <el-input-number
+              v-if="showModuleFields(scope.row.consumptionMode)"
+              v-model="scope.row.moduleQty"
+              :min="0"
+              :precision="0"
+              :controls="false"
+              :disabled="readonly"
+              size="small"
+              @change="handleModuleQtyChange(scope.row)"
+            />
+            <span v-else class="muted-hint">—</span>
+          </template>
+        </el-table-column>
+        <!-- 基数 -->
+        <el-table-column label="基数" prop="baseQty" align="center" width="105">
+          <template #header>
+            <span>基数</span>
+            <el-tooltip content="产品单位用量/每个项目标准用量" placement="top">
+              <el-icon class="info-icon"><InfoFilled /></el-icon>
             </el-tooltip>
-          </div>
-        </template>
-      </el-table-column>
+          </template>
+          <template #default="scope">
+            <el-input-number
+              v-if="showModuleFields(scope.row.consumptionMode)"
+              v-model="scope.row.baseQty"
+              :controls="false"
+              :min="0"
+              :precision="4"
+              :disabled="readonly"
+              size="small"
+              @change="handleBaseQtyChange(scope.row)"
+            />
+            <span v-else class="muted-hint">—</span>
+          </template>
+        </el-table-column>
+        <!-- 卷材裁切：跳距 + 每跳片数（dev-20261112-008） -->
+        <el-table-column label="跳距(mm)" width="100" align="center">
+          <template #default="scope">
+            <el-input-number
+              v-if="showPitchFields(scope.row.consumptionMode)"
+              v-model="scope.row.pitchMm"
+              :min="0"
+              :precision="2"
+              :controls="false"
+              :disabled="readonly"
+              size="small"
+              @change="emitChange()"
+            />
+            <span v-else class="muted-hint">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="每跳片数" width="95" align="center">
+          <template #default="scope">
+            <el-input-number
+              v-if="showPitchFields(scope.row.consumptionMode)"
+              v-model="scope.row.pcsPerPitch"
+              :min="1"
+              :precision="0"
+              :controls="false"
+              :disabled="readonly"
+              size="small"
+              @change="emitChange()"
+            />
+            <span v-else class="muted-hint">—</span>
+          </template>
+        </el-table-column>
+        <!-- 连续耗材：单位面积单耗 -->
+        <el-table-column label="单耗(g/㎡)" width="110" align="center">
+          <template #default="scope">
+            <el-input-number
+              v-if="showUnitConsumptionField(scope.row.consumptionMode)"
+              v-model="scope.row.unitConsumption"
+              :min="0"
+              :precision="4"
+              :controls="false"
+              :disabled="readonly"
+              size="small"
+              @change="emitChange()"
+            />
+            <span v-else class="muted-hint">—</span>
+          </template>
+        </el-table-column>
+        <!-- 已选物料单位只读；未建档快速草稿仍可提供计量单位。旧单位不静默改写。 -->
+        <el-table-column label="单位" prop="unit" width="80">
+          <template #default="scope">
+            <span v-if="Number(scope.row.materialId) > 0">{{ scope.row.unit || '—' }}</span>
+            <el-select
+              v-else
+              v-model="scope.row.unit"
+              :disabled="readonly"
+              size="small"
+              filterable
+              allow-create
+            >
+              <el-option
+                v-for="item in unitOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </template>
+        </el-table-column>
 
-      <!-- 操作列 -->
-      <el-table-column label="操作" min-width="120" align="left" fixed="right">
-        <template #default="scope">
-          <el-button
-            link
-            type="primary"
-            size="small"
-            :disabled="readonly"
-            @click="handleCopyItem(scope.row)"
-            >复制</el-button
+        <!-- 损耗率 -->
+        <el-table-column label="损耗率(%)" prop="lossRate" align="center" width="100">
+          <template #default="scope">
+            <el-input-number
+              v-model="scope.row.lossRate"
+              :min="0"
+              :max="100"
+              :precision="2"
+              :step="0.01"
+              :disabled="readonly"
+              size="small"
+              controls-position="right"
+              @change="handleLossRateChange(scope.row)"
+            >
+              <template #append>%</template>
+            </el-input-number>
+          </template>
+        </el-table-column>
+        <el-table-column label="每件用量" width="100" align="right">
+          <template #default="scope"
+            ><el-tooltip :content="resultFor(scope.row)?.message || '每件净用量，不含损耗'"
+              ><span>{{
+                resultFor(scope.row)?.valid
+                  ? resultFor(scope.row)?.unitConsumption
+                  : loading
+                    ? '试算中'
+                    : '—'
+              }}</span></el-tooltip
+            ></template
           >
+        </el-table-column>
+        <el-table-column label="总需求" width="110" align="right">
+          <template #default="scope"
+            ><el-tooltip
+              :content="resultFor(scope.row)?.message || '按试算产出数量，包含损耗与最低投料'"
+              ><strong>{{
+                resultFor(scope.row)?.valid
+                  ? resultFor(scope.row)?.totalConsumption
+                  : loading
+                    ? '试算中'
+                    : '—'
+              }}</strong></el-tooltip
+            ></template
+          >
+        </el-table-column>
+        <el-table-column v-if="showConversions" label="折算米" width="105" align="right">
+          <template #default="scope">{{ resultFor(scope.row)?.metres ?? '—' }}</template>
+        </el-table-column>
+        <el-table-column v-if="showConversions" label="预计卷数（参考）" width="130" align="right">
+          <template #default="scope"
+            ><el-tooltip
+              :content="`按${resultFor(scope.row)?.referenceRollLengthM ?? '未填写'}m参考；不代表实际领卷`"
+              ><span>{{ resultFor(scope.row)?.referenceRollCount ?? '—' }}</span></el-tooltip
+            ></template
+          >
+        </el-table-column>
 
-          <el-button
-            v-if="isPendingRemove(scope.row)"
-            link
-            type="warning"
-            size="small"
-            :disabled="readonly"
-            @click="handleUndoRemove(scope.row)"
-            >撤销移除</el-button
-          >
-          <el-button
-            v-if="!isPendingRemove(scope.row)"
-            link
-            size="small"
-            type="danger"
-            :disabled="readonly"
-            @click="handleDeleteItem(scope.row)"
-            >删除</el-button
-          >
-          <el-button v-if="canPitch(scope.row)" link type="primary" size="small" @click="openPitch(scope.row)">跳距辅助定额</el-button>
-          <el-button
-            v-if="showManufacturing(scope.row)"
-            link
-            type="primary"
-            size="small"
-            :disabled="readonly"
-            @click="handleManufacturing(scope.row)"
-            >制造BOM</el-button
-          >
-          <el-button
-            v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
-            link
-            type="primary"
-            size="small"
-            :disabled="readonly"
-            @click="handleCreateMaterial(scope.row, scope.row.materialName || '')"
-            >建档</el-button
-          >
-        </template>
-      </el-table-column>
-    </el-table>
+        <!-- 行审核状态（dev-20261020-029） -->
+        <el-table-column label="行状态" width="80" align="center">
+          <template #default="scope">
+            <div class="row-status-cell">
+              <el-tooltip :content="scope.row.rejectReason || '无'" placement="top">
+                <el-tag
+                  :type="BomItemReviewStatusEnum.getTagProps(rowReviewStatus(scope.row)).type"
+                  size="small"
+                >
+                  {{ BomItemReviewStatusEnum.getLabel(rowReviewStatus(scope.row)) }}
+                </el-tag>
+              </el-tooltip>
+            </div>
+          </template>
+        </el-table-column>
+
+        <!-- 操作列 -->
+        <el-table-column label="操作" min-width="180" align="left" fixed="right">
+          <template #default="scope">
+            <el-button
+              link
+              type="primary"
+              size="small"
+              :disabled="readonly"
+              @click="handleCopyItem(scope.row)"
+              >复制</el-button
+            >
+
+            <el-button
+              v-if="isPendingRemove(scope.row)"
+              link
+              type="warning"
+              size="small"
+              :disabled="readonly"
+              @click="handleUndoRemove(scope.row)"
+              >撤销移除</el-button
+            >
+            <el-button
+              v-if="!isPendingRemove(scope.row)"
+              link
+              size="small"
+              type="danger"
+              :disabled="readonly"
+              @click="handleDeleteItem(scope.row)"
+              >删除</el-button
+            >
+            <el-button
+              v-if="canPitch(scope.row)"
+              link
+              type="primary"
+              size="small"
+              @click="openPitch(scope.row)"
+              >跳距辅助定额</el-button
+            >
+            <el-button
+              v-if="showManufacturing(scope.row)"
+              link
+              type="primary"
+              size="small"
+              :disabled="readonly"
+              @click="handleManufacturing(scope.row)"
+              >制造BOM</el-button
+            >
+            <el-button
+              v-if="!scope.row.materialId && !isPendingRemove(scope.row)"
+              link
+              type="primary"
+              size="small"
+              :disabled="readonly"
+              @click="handleCreateMaterial(scope.row, scope.row.materialName || '')"
+              >建档</el-button
+            >
+          </template>
+        </el-table-column>
+      </el-table>
     </BomEntryTools>
     <MaterialFormDialog
       v-model="materialFormVisible"
@@ -311,6 +432,13 @@ import { BomItemReviewStatusEnum } from '@/enums/product'
 import BomEntryTools from '@/components/bom/BomEntryTools.vue'
 import { bomGroupRows } from '@/utils/bomGroups'
 import { autoSpecOf } from './bomSpecMode'
+import {
+  CONSUMPTION_MODE_OPTIONS,
+  inferConsumptionMode,
+  showModuleFields,
+  showPitchFields,
+  showUnitConsumptionField,
+} from '@/components/bom/consumptionMode'
 import { generateBomSpecification, specificationSource } from './bomSpecification'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
@@ -472,7 +600,8 @@ function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
   const flat = (list || []).map((it) => {
     const copy: EngineeringBomItem = { ...it }
     delete copy.children
-    if (Number(it.materialId) > 0 && it.materialSpecificationSource) copy.materialSpecification = autoSpecOf(it)
+    if (Number(it.materialId) > 0 && it.materialSpecificationSource)
+      copy.materialSpecification = autoSpecOf(it)
     if (copy.reviewStatus == null) copy.reviewStatus = BomItemReviewStatusEnum.DRAFT.value
     // 待移除行回填时必须继续带 removeRequested，否则保存会被当成“撤销移除”
     copy.removeRequested =
@@ -492,7 +621,8 @@ function toFlatItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
 function toSubmitItems(list: EngineeringBomItem[]): EngineeringBomItem[] {
   return (list || []).map((it, idx) => {
     const copy: EngineeringBomItem = { ...it }
-    if (Number(it.materialId) > 0 && it.materialSpecificationSource) copy.materialSpecification = autoSpecOf(it)
+    if (Number(it.materialId) > 0 && it.materialSpecificationSource)
+      copy.materialSpecification = autoSpecOf(it)
     delete copy.children
     // 组合：同一「项目」连续多行视为一组，组内除首行外都挂到首行（落库 parent_material_id）
     const leader = comboLeaderOf(it)
@@ -605,16 +735,37 @@ onUnmounted(() => {
 /**
  * 物料选择处理
  */
+const consumptionModeOptions = CONSUMPTION_MODE_OPTIONS
+
+const handleConsumptionModeChange = (row: EngineeringBomItem) => {
+  if (props.readonly) return
+  // 切到非片材时保留原值但不参与计算；切到片材时清掉跳距列以免误读
+  if (row.consumptionMode === 'sheet_nest') row.pitchMm = null
+  emitChange()
+}
+
 const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomItem) => {
   if (!material || props.readonly) return
   delete materialDrafts.value[String(row.itemId)]
   const identityChanged = Number(row.materialId) !== Number(material.materialId)
-  if (identityChanged || String(row.unit).toUpperCase() !== String(material.unit || 'PCS').toUpperCase()) {
-    row.baseQty = undefined; row.moduleQty = undefined; row.quantity = 0
-    row.appliedQty = undefined; row.actualIssueQty = undefined
+  if (
+    identityChanged ||
+    String(row.unit).toUpperCase() !== String(material.unit || 'PCS').toUpperCase()
+  ) {
+    row.baseQty = undefined
+    row.moduleQty = undefined
+    row.quantity = 0
+    row.appliedQty = undefined
+    row.actualIssueQty = undefined
     row.minIssueQty = 0
-    if (identityChanged) { row.subBomId = null; row.sourceType = undefined; row.split = '' }
-    row.unitFactor = null; row.unitFactorBasis = ''; row.unitFactorSource = ''
+    if (identityChanged) {
+      row.subBomId = null
+      row.sourceType = undefined
+      row.split = ''
+    }
+    row.unitFactor = null
+    row.unitFactorBasis = ''
+    row.unitFactorSource = ''
   }
   row.archiveUnit = material.unit
 
@@ -626,6 +777,10 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   row.materialSpecification = autoSpec
   row.specification = autoSpec
   row.unit = material.unit || 'PCS'
+  // dev-20261112-008：只有物料明确指向卷材/连续耗材时才自动切换；
+  // 片材/直接保持空值，空值按历史片材口径校验，避免存量行模数/基数校验被跳过。
+  const inferred = inferConsumptionMode(material as any, row.split)
+  row.consumptionMode = inferred === 'roll_cut' || inferred === 'continuous' ? inferred : undefined
   row.materialType = material.rootType || undefined
   row.create = false
   recalcAppliedIssue(row)
@@ -642,8 +797,14 @@ function loadAutoSpec(row: EngineeringBomItem): Promise<void> {
     try {
       const response = await materialMasterApi.detail(materialId)
       if (!response.data) throw new Error('物料详情为空')
-      const current = items.value.find(item => String(item.itemId) === key)
-      if (disposed || !current || current.materialId !== materialId || specVersions.get(key) !== version) return
+      const current = items.value.find((item) => String(item.itemId) === key)
+      if (
+        disposed ||
+        !current ||
+        current.materialId !== materialId ||
+        specVersions.get(key) !== version
+      )
+        return
       const source = specificationSource(response.data)
       current.materialSpecificationSource = source
       current.materialSpecification = generateBomSpecification(source)
@@ -756,6 +917,10 @@ const handleAddItem = () => {
     actualIssueQty: 0,
     moduleQty: 1,
     baseQty: 1,
+    consumptionMode: undefined,
+    pitchMm: null,
+    pcsPerPitch: 1,
+    unitConsumption: null,
     isCommon: true, // dev-1792056991945：新增行默认「整单通用」，选工序会自动取消
     remark: '',
     sortOrder: items.value.length + 1,
@@ -858,9 +1023,12 @@ const reorderItems = () => {
 // ==================== 拖拽排序（2026-10-10 dev-20261010-017：平铺表恢复 Sortable） ====================
 
 let sortableInstance: Sortable | null = null
-watch(() => props.readonly, (readonly) => {
-  sortableInstance?.option('disabled', readonly)
-})
+watch(
+  () => props.readonly,
+  (readonly) => {
+    sortableInstance?.option('disabled', readonly)
+  }
+)
 
 /** 初始化拖拽排序（拖手柄 .drag-handle；拖动后重排 items 并回写 sortOrder） */
 const initSortable = () => {
@@ -1198,12 +1366,23 @@ defineExpose({
         return
       }
       // 模数/基数允许 >0 正小数（最多4位）；仅在填写了值时校验，历史空值行不因本规则被拦
-      if (item.moduleQty != null && !(Number(item.moduleQty) > 0)) {
-        failures.push({ item, message: `物料 "${item.materialName}" 模数必须大于0` })
+      // dev-20261112-008：字段按来源方式校验，不要求所有材料都填模数/基数。
+      if (showModuleFields(item.consumptionMode)) {
+        if (item.moduleQty != null && !(Number(item.moduleQty) > 0)) {
+          failures.push({ item, message: `物料 "${item.materialName}" 模数必须大于0` })
+          return
+        }
+        if (item.baseQty != null && !(Number(item.baseQty) > 0)) {
+          failures.push({ item, message: `物料 "${item.materialName}" 基数必须大于0` })
+          return
+        }
+      }
+      if (showPitchFields(item.consumptionMode) && !(Number(item.pitchMm) > 0)) {
+        failures.push({ item, message: `物料 "${item.materialName}" 卷材裁切请填写跳距(mm)` })
         return
       }
-      if (item.baseQty != null && !(Number(item.baseQty) > 0)) {
-        failures.push({ item, message: `物料 "${item.materialName}" 基数必须大于0` })
+      if (showUnitConsumptionField(item.consumptionMode) && !(Number(item.unitConsumption) > 0)) {
+        failures.push({ item, message: `物料 "${item.materialName}" 连续耗材请填写单位面积单耗` })
         return
       }
       if (Number(item.materialId) > 0 && (item.specification ?? '') !== autoSpecOf(item)) {
@@ -1220,11 +1399,16 @@ defineExpose({
       }
       // 历史行可仅有用量；改损耗/高级项仍交后端按 legacy quantity 处理。
       // 换物料或换单位已清 quantity，不能借旧用量跳过重新定额。
-      if (item.quantityStale && (item.moduleQty == null || item.baseQty == null) && !(Number(item.quantity) > 0)) {
+      if (
+        showModuleFields(item.consumptionMode) &&
+        item.quantityStale &&
+        (item.moduleQty == null || item.baseQty == null) &&
+        !(Number(item.quantity) > 0)
+      ) {
         failures.push({ item, message: `物料 "${item.materialName}" 请填写模数和基数` })
         return
       }
-      if (!(Number(item.moduleQty) > 0 && Number(item.baseQty) > 0) && item.quantity <= 0) {
+      if (showModuleFields(item.consumptionMode) && !(Number(item.moduleQty) > 0 && Number(item.baseQty) > 0) && item.quantity <= 0) {
         failures.push({ item, message: `物料 "${item.materialName}" 数量必须大于0` })
       }
     })
@@ -1256,8 +1440,15 @@ defineExpose({
   box-shadow: inset 3px 0 0 #f56c6c;
 }
 
-.bom-item-table :deep(.el-input-number) { width: 100%; }
-.material-code {display:block;color:var(--el-text-color-secondary);font-size:11px;margin-top:4px}
+.bom-item-table :deep(.el-input-number) {
+  width: 100%;
+}
+.material-code {
+  display: block;
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+  margin-top: 4px;
+}
 .bom-item-editor {
   width: 100%;
   background: #fff;
@@ -1449,5 +1640,4 @@ defineExpose({
   color: var(--el-color-danger);
   cursor: help;
 }
-
 </style>

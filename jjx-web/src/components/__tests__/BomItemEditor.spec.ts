@@ -195,6 +195,22 @@ describe('父BOM行模数/基数允许正小数（dev-20261111-005）', () => {
     expect(exposed.validateItems()).toBe(false)
     expect(notice).toHaveBeenCalledWith(expect.stringContaining('基数必须大于0'))
   })
+
+  it('来源方式为空按历史片材口径，仍校验模数/基数（dev-20261112-008 回归）', async () => {
+    vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
+    const { state, row, exposed } = editor()
+    state.handleMaterialSelect(replacement, row)
+    await flushPromises()
+    // 片材/直接不自动写 consumptionMode，空值即历史口径
+    expect((row as any).consumptionMode).toBeUndefined()
+    expect(await exposed.prepareSpecifications()).toBe(true)
+
+    row.moduleQty = 0
+    expect(exposed.validateItems()).toBe(false)
+    row.moduleQty = 6
+    row.baseQty = 0
+    expect(exposed.validateItems()).toBe(false)
+  })
 })
 
 describe('编辑权只读时禁用物料选择与拖拽', () => {

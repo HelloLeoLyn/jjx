@@ -214,11 +214,6 @@ public class BomConsumptionPreviewService {
 
         // 辅助能力与原始比例是否已填无关，新选材料可先用跳距生成定额。
         out.setPitchSupported(pitchSupported(unit, widthMm, outputUnit));
-        String ratioError = ratioError(row.getBaseQty(), row.getModuleQty());
-        if (ratioError != null) {
-            out.setMessage(ratioError);
-            return out;
-        }
         BigDecimal lossRate = row.getLossRate() == null ? BigDecimal.ZERO : row.getLossRate();
         String lossError = lossError(lossRate);
         if (lossError != null) {
@@ -240,6 +235,28 @@ public class BomConsumptionPreviewService {
         }
         BigDecimal baseQty = row.getBaseQty();
         BigDecimal moduleQty = row.getModuleQty();
+        String mode;
+        try {
+            mode = normalizeConsumptionMode(row.getConsumptionMode());
+        } catch (BusinessException e) {
+            out.setMessage(e.getMessage());
+            return out;
+        }
+        out.setConsumptionMode(mode);
+        if (mode != null) {
+            try {
+                applyByMode(out, row, mode, outputQuantity, unit, widthMm, lengthMm, lossRate, minIssueQty);
+            } catch (BusinessException | ArithmeticException e) {
+                out.setMessage("试算失败：" + e.getMessage());
+                out.setValid(false);
+            }
+            return out;
+        }
+        String ratioError = ratioError(baseQty, moduleQty);
+        if (ratioError != null) {
+            out.setMessage(ratioError);
+            return out;
+        }
         try {
             // 每件净耗：与领料同一条 theoretical 链路，1 件产出对应的精确比例。
             ExactQuantity unitQuantity = BomConsumptionCalculator.theoretical(BigDecimal.ONE, baseQty, moduleQty, null);
@@ -266,6 +283,110 @@ public class BomConsumptionPreviewService {
             out.setValid(false);
         }
         return out;
+    }
+
+    /** 来源方式：空=历史比例口径；非法值直接拒绝（不猜默认）。 */
+    private static String normalizeConsumptionMode(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String mode = value.trim().toLowerCase();
+        return switch (mode) {
+            case "roll_cut", "sheet_nest", "direct", "continuous" -> mode;
+            default -> throw new BusinessException("来源方式只能是 roll_cut/sheet_nest/direct/continuous（收到 "
+                    + value.trim() + "）");
+        };
+    }
+
+    /**
+     * 按来源方式四分支计算（dev-20261112-008），四分支共用同一入口，禁止一套公式硬套。
+     * 结果只用于展示：不写库存、不预留、不生成流水。
+     */
+    private void applyByMode(BomConsumptionPreviewVO.Row out, BomConsumptionPreviewRequest.Row row, String mode,
+            BigDecimal outputQuantity, String unit, BigDecimal widthMm, BigDecimal lengthMm,
+            BigDecimal lossRate, BigDecimal minIssueQty) {
+        BigDecimal lossFactor = BigDecimal.ONE.add(lossRate.movePointLeft(2));
+        BigDecimal total;
+        BigDecimal unitQty;
+        ExactQuantity metresExact = null;
+        switch (mode) {
+            case "roll_cut" -> {
+                BigDecimal pitch = row.getPitchMm();
+                int pcsPerPitch = row.getPcsPerPitch() == null ? 1 : row.getPcsPerPitch();
+                if (pitch == null || pitch.signum() <= 0) {
+                    throw new BusinessException("卷材裁切请填写跳距(mm)且大于 0");
+                }
+                if (pcsPerPitch < 1) {
+                    throw new BusinessException("每跳产出片数必须大于等于 1");
+                }
+                if (widthMm == null || widthMm.signum() <= 0) {
+                    throw new BusinessException("卷材缺少档案卷宽，不能按跳距试算");
+                }
+                if (!UNIT_M.equals(unit) && !UNIT_M2.equals(unit)) {
+                    throw new BusinessException("卷材裁切行的计算单位须为 M 或 M2");
+                }
+                BigDecimal jumps = outputQuantity.divide(BigDecimal.valueOf(pcsPerPitch), 0, RoundingMode.CEILING);
+                BigDecimal metres = jumps.multiply(pitch).movePointLeft(3);
+                BigDecimal area = metres.multiply(widthMm.movePointLeft(3));
+                BigDecimal base = UNIT_M.equals(unit) ? metres : area;
+                total = base.multiply(lossFactor);
+                if (total.compareTo(minIssueQty) < 0) {
+                    total = minIssueQty;
+                }
+                total = total.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP);
+                unitQty = total.divide(outputQuantity, DISPLAY_SCALE, RoundingMode.HALF_UP);
+                metresExact = ExactQuantity.fromDecimal(metres);
+                out.setMetres(metres.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
+                out.setAreaM2(area.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
+            }
+            case "sheet_nest" -> {
+                String ratioError = ratioError(row.getBaseQty(), row.getModuleQty());
+                if (ratioError != null) {
+                    throw new BusinessException(ratioError);
+                }
+                BigDecimal sheets = outputQuantity.multiply(row.getBaseQty())
+                        .divide(row.getModuleQty(), 0, RoundingMode.CEILING);
+                total = sheets.multiply(lossFactor);
+                if (total.compareTo(minIssueQty) < 0) {
+                    total = minIssueQty;
+                }
+                total = total.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP);
+                unitQty = total.divide(outputQuantity, DISPLAY_SCALE, RoundingMode.HALF_UP);
+            }
+            case "direct" -> {
+                total = outputQuantity.multiply(lossFactor);
+                if (total.compareTo(minIssueQty) < 0) {
+                    total = minIssueQty;
+                }
+                total = total.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP);
+                unitQty = total.divide(outputQuantity, DISPLAY_SCALE, RoundingMode.HALF_UP);
+            }
+            case "continuous" -> {
+                BigDecimal perSquareMetre = row.getUnitConsumption();
+                if (perSquareMetre == null || perSquareMetre.signum() <= 0) {
+                    throw new BusinessException("连续耗材请填写单位面积单耗且大于 0");
+                }
+                if (widthMm == null || widthMm.signum() <= 0 || lengthMm == null || lengthMm.signum() <= 0) {
+                    throw new BusinessException("连续耗材缺少档案宽/长，无法计算面积");
+                }
+                BigDecimal areaPerPiece = widthMm.multiply(lengthMm).movePointLeft(6);
+                BigDecimal area = areaPerPiece.multiply(outputQuantity);
+                total = area.multiply(perSquareMetre).multiply(lossFactor).setScale(DISPLAY_SCALE, RoundingMode.HALF_UP);
+                if (total.compareTo(minIssueQty) < 0) {
+                    total = minIssueQty.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP);
+                }
+                unitQty = areaPerPiece.multiply(perSquareMetre).setScale(DISPLAY_SCALE, RoundingMode.HALF_UP);
+                out.setAreaM2(area.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
+            }
+            default -> throw new BusinessException("未知来源方式：" + mode);
+        }
+        out.setUnitConsumption(unitQty.toPlainString());
+        out.setTotalConsumption(total.toPlainString());
+        out.setExactConsumption(total.stripTrailingZeros().toPlainString());
+        BigDecimal rollLength = referenceRollLength(row.getReferenceRollLengthM(), unit, lengthMm);
+        out.setReferenceRollLengthM(rollLength);
+        out.setReferenceRollCount(referenceRollCount(metresExact, rollLength));
+        out.setValid(true);
     }
 
     /** baseQty / moduleQty 必须同时存在、>0、decimal(12,4) 可表达；缺比例不回退历史用量。 */

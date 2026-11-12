@@ -323,7 +323,8 @@ class BomConsumptionPreviewServiceTest {
         assertTrue(root.get("readOnly").asBoolean());
         assertEquals(java.util.Set.of("key", "valid", "message", "unit", "unitConsumption", "totalConsumption",
                 "exactConsumption", "metres", "referenceRollCount", "referenceRollLengthM", "archiveUnit",
-                "widthMm", "lengthMm", "pitchSupported"), fieldNames(root.get("rows").get(0)));
+                "widthMm", "lengthMm", "pitchSupported", "consumptionMode", "areaM2"),
+                fieldNames(root.get("rows").get(0)));
     }
 
     private static Set<String> fieldNames(JsonNode node) {
@@ -377,6 +378,63 @@ class BomConsumptionPreviewServiceTest {
             var roll = service.preview(request("1", "PCS", row("r", null, "M", "1", "1", "0", "0", extreme))).getRows().get(0);
             assertFalse(roll.isValid());
         }
+    }
+
+
+    @Test
+    @DisplayName("roll_cut：跳距 80mm、每跳 1 片、300 片 → 24m / 4.68㎡，不依赖模数基数")
+    void rollCutUsesPitchInsteadOfRatio() {
+        when(materialMapper.selectBatchIds(any())).thenReturn(List.of(
+                material(1L, "M2").widthMm("195").build()));
+        BomConsumptionPreviewRequest.Row row = row("r1", 1L, "M2", null, null, null, null, null);
+        row.setConsumptionMode("roll_cut");
+        row.setPitchMm(decimal("80"));
+        row.setPcsPerPitch(1);
+        BomConsumptionPreviewVO.Row out = service.preview(request("300", "PCS", row)).getRows().get(0);
+        assertTrue(out.isValid(), out.getMessage());
+        assertEquals("roll_cut", out.getConsumptionMode());
+        assertDecimal("4.68", new BigDecimal(out.getTotalConsumption()));
+        assertDecimal("24", new BigDecimal(out.getMetres()));
+        assertDecimal("4.68", new BigDecimal(out.getAreaM2()));
+    }
+
+    @Test
+    @DisplayName("sheet_nest：模数 6 / 基数 1、300 件 → 50 张大料；给了跳距也不参与")
+    void sheetNestUsesRatioAndIgnoresPitch() {
+        when(materialMapper.selectBatchIds(any())).thenReturn(List.of(
+                material(2L, "PCS").widthMm("450").lengthMm("225").build()));
+        BomConsumptionPreviewRequest.Row row = row("r1", 2L, "PCS", "1", "6", null, null, null);
+        row.setConsumptionMode("sheet_nest");
+        row.setPitchMm(decimal("80"));
+        BomConsumptionPreviewVO.Row out = service.preview(request("300", "PCS", row)).getRows().get(0);
+        assertTrue(out.isValid(), out.getMessage());
+        assertDecimal("50", new BigDecimal(out.getTotalConsumption()));
+        assertNull(out.getMetres(), "片材不产出卷长");
+    }
+
+    @Test
+    @DisplayName("direct：一件一份，300 件 → 300")
+    void directIsOnePerPiece() {
+        BomConsumptionPreviewRequest.Row row = row("r1", null, "PCS", null, null, null, null, null);
+        row.setConsumptionMode("direct");
+        BomConsumptionPreviewVO.Row out = service.preview(request("300", "PCS", row)).getRows().get(0);
+        assertTrue(out.isValid(), out.getMessage());
+        assertDecimal("300", new BigDecimal(out.getTotalConsumption()));
+        assertDecimal("1", new BigDecimal(out.getUnitConsumption()));
+    }
+
+    @Test
+    @DisplayName("continuous：200×100mm、2 g/㎡、300 件 → 面积 6㎡、总耗 12")
+    void continuousUsesAreaTimesUnitConsumption() {
+        when(materialMapper.selectBatchIds(any())).thenReturn(List.of(
+                material(3L, "G").widthMm("200").lengthMm("100").build()));
+        BomConsumptionPreviewRequest.Row row = row("r1", 3L, "G", null, null, null, null, null);
+        row.setConsumptionMode("continuous");
+        row.setUnitConsumption(decimal("2"));
+        BomConsumptionPreviewVO.Row out = service.preview(request("300", "PCS", row)).getRows().get(0);
+        assertTrue(out.isValid(), out.getMessage());
+        assertDecimal("6", new BigDecimal(out.getAreaM2()));
+        assertDecimal("12", new BigDecimal(out.getTotalConsumption()));
     }
 
 }

@@ -158,6 +158,14 @@ export interface EngineeringBomItem {
   subBomId?: number | null
   /** 来源类型：buy 外购 / make 自制；subBomId 非空时必须是 make */
   sourceType?: string | null
+  /** 材料来源方式（dev-20261112-008）：roll_cut/sheet_nest/direct/continuous；与 sourceType 正交 */
+  consumptionMode?: string | null
+  /** 卷材跳距 mm，仅 roll_cut 使用 */
+  pitchMm?: number | null
+  /** 每跳产出片数（宽度方向排数），仅 roll_cut 使用 */
+  pcsPerPitch?: number | null
+  /** 单位面积单耗（g/㎡ 或 ml/㎡），仅 continuous 使用 */
+  unitConsumption?: number | null
   /** BOM 单位 → 物料档案单位的换算系数与依据（跨单位时后端必填） */
   unitFactor?: number | null
   unitFactorBasis?: string | null

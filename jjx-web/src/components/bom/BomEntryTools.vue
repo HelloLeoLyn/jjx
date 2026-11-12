@@ -99,6 +99,10 @@ const requestRows = () => props.rows.map(row => ({
   unit: row.unit || '', baseQty: row.baseQty ?? null, moduleQty: row.moduleQty ?? null,
   lossRate: row.lossRate ?? 0, minIssueQty: row.minIssueQty ?? 0,
   referenceRollLengthM: referenceLengths.value[referenceKeyOf(row)] ?? null,
+  consumptionMode: row.consumptionMode ?? null,
+  pitchMm: row.pitchMm ?? null,
+  pcsPerPitch: row.pcsPerPitch ?? 1,
+  unitConsumption: row.unitConsumption ?? null,
 }))
 const signature = computed(() => JSON.stringify({ retry: retryCounter.value, outputQuantity: outputQuantity.value, outputUnit: props.outputUnit, rows: requestRows() }))
 watch(signature, () => {
