@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
@@ -13,6 +15,7 @@ import java.time.LocalDate;
  * 采购订单明细数据传输对象
  */
 @Data
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class PurchaseOrderItemDTO {
 
     /**
@@ -45,6 +48,12 @@ public class PurchaseOrderItemDTO {
     @NotBlank(message = "物料名称不能为空")
     @Size(max = 200, message = "物料名称长度不能超过200个字符")
     private String materialName;
+
+    /**
+     * 供应商品名（前端明细只读列回传；落库快照仍由后端按物料档案写入，dev-20261112-003）
+     */
+    @Size(max = 200, message = "供应商品名长度不能超过200个字符")
+    private String supplierMaterialName;
 
     /**
      * 物料规格
