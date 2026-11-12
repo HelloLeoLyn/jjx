@@ -107,20 +107,20 @@ public class BomConsumptionPreviewService {
 
     /** 产出数量：>0、≤99999999、stripTrailingZeros 后最多 4 位小数。 */
     private static BigDecimal requireOutputQuantity(BigDecimal value) {
-        String field = "产出数量 outputQuantity";
+        String field = "产出数量";
         if (value == null) {
             throw new BusinessException(field + " 不能为空");
         }
         if (value.signum() <= 0) {
-            throw new BusinessException(field + " 必须大于 0（收到 " + value.toPlainString() + "）");
+            throw new BusinessException(field + " 必须大于 0（收到 " + value.toEngineeringString() + "）");
         }
         if (maxScale(value) > OUTPUT_MAX_SCALE) {
             throw new BusinessException(field + " 最多支持 " + OUTPUT_MAX_SCALE
-                    + " 位小数，拒绝超精度（收到 " + value.toPlainString() + "）");
+                    + " 位小数，拒绝超精度（收到 " + value.toEngineeringString() + "）");
         }
         if (value.compareTo(MAX_OUTPUT_QUANTITY) > 0) {
             throw new BusinessException(field + " 超出可计算范围：最大 " + MAX_OUTPUT_QUANTITY.toPlainString()
-                    + "（收到 " + value.toPlainString() + "）");
+                    + "（收到 " + value.toEngineeringString() + "）");
         }
         return value;
     }
@@ -212,6 +212,8 @@ public class BomConsumptionPreviewService {
             return out;
         }
 
+        // 辅助能力与原始比例是否已填无关，新选材料可先用跳距生成定额。
+        out.setPitchSupported(pitchSupported(unit, widthMm, outputUnit));
         String ratioError = ratioError(row.getBaseQty(), row.getModuleQty());
         if (ratioError != null) {
             out.setMessage(ratioError);
@@ -230,6 +232,12 @@ public class BomConsumptionPreviewService {
             return out;
         }
 
+        BigDecimal requestedLength = row.getReferenceRollLengthM();
+        if (requestedLength != null && (requestedLength.signum() <= 0 || maxScale(requestedLength) > 4
+                || integerDigits(requestedLength) > 8)) {
+            out.setMessage("参考卷长须为正数，最多4位小数、8位整数");
+            return out;
+        }
         BigDecimal baseQty = row.getBaseQty();
         BigDecimal moduleQty = row.getModuleQty();
         try {
@@ -246,8 +254,8 @@ public class BomConsumptionPreviewService {
             out.setExactConsumption(applied.exactText());
 
             // 参考米数：以最终取整总量换算，不用未取整中间值；其它连续单位不猜系数。
-            BigDecimal metres = metres(total, unit, widthMm);
-            out.setMetres(metres == null ? null : metres.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
+            ExactQuantity metres = metres(total, unit, widthMm);
+            out.setMetres(metres == null ? null : metres.toBigDecimal(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
             BigDecimal rollLength = referenceRollLength(row.getReferenceRollLengthM(), unit, lengthMm);
             out.setReferenceRollLengthM(rollLength);
             out.setReferenceRollCount(referenceRollCount(metres, rollLength));
@@ -263,25 +271,25 @@ public class BomConsumptionPreviewService {
     /** baseQty / moduleQty 必须同时存在、>0、decimal(12,4) 可表达；缺比例不回退历史用量。 */
     private static String ratioError(BigDecimal baseQty, BigDecimal moduleQty) {
         if (baseQty == null || moduleQty == null) {
-            return "baseQty/moduleQty 必须同时填写（本接口不收历史用量，缺原始比例不能推定耗用）";
+            return "请填写模数和基数，不能在缺少原始比例时推定耗用";
         }
-        String baseError = bomQuantityError(baseQty, "baseQty");
+        String baseError = bomQuantityError(baseQty, "基数");
         if (baseError != null) {
             return baseError;
         }
-        return bomQuantityError(moduleQty, "moduleQty");
+        return bomQuantityError(moduleQty, "模数");
     }
 
     /** 单个 BOM 比例字段：>0、最多 4 位小数、整数位不超 decimal(12,4)。 */
     private static String bomQuantityError(BigDecimal value, String field) {
         if (value.signum() <= 0) {
-            return field + " 必须大于 0（收到 " + value.toPlainString() + "）";
+            return field + " 必须大于 0（收到 " + value.toEngineeringString() + "）";
         }
         if (maxScale(value) > BOM_QUANTITY_SCALE) {
-            return field + " 最多支持 " + BOM_QUANTITY_SCALE + " 位小数（收到 " + value.toPlainString() + "）";
+            return field + " 最多支持 " + BOM_QUANTITY_SCALE + " 位小数（收到 " + value.toEngineeringString() + "）";
         }
         if (integerDigits(value) > BOM_QUANTITY_INTEGER_DIGITS) {
-            return field + " 整数位超出 decimal(12,4) 范围（收到 " + value.toPlainString() + "）";
+            return field + " 整数位最多8位（收到 " + value.toEngineeringString() + "）";
         }
         return null;
     }
@@ -289,10 +297,10 @@ public class BomConsumptionPreviewService {
     /** 损耗率：0..100，最多 2 位小数。 */
     private static String lossError(BigDecimal lossRate) {
         if (lossRate.signum() < 0 || lossRate.compareTo(HUNDRED) > 0) {
-            return "损耗率 lossRate 须在 0 到 100 之间（收到 " + lossRate.toPlainString() + "）";
+            return "损耗率 须在 0 到 100 之间（收到 " + lossRate.toEngineeringString() + "）";
         }
         if (maxScale(lossRate) > LOSS_MAX_SCALE) {
-            return "损耗率 lossRate 最多支持 " + LOSS_MAX_SCALE + " 位小数（收到 " + lossRate.toPlainString() + "）";
+            return "损耗率 最多支持 " + LOSS_MAX_SCALE + " 位小数（收到 " + lossRate.toEngineeringString() + "）";
         }
         return null;
     }
@@ -300,22 +308,22 @@ public class BomConsumptionPreviewService {
     /** 最低投料：≥0、最多 4 位小数、整数位不超 decimal(12,4)。 */
     private static String minIssueError(BigDecimal minIssueQty) {
         if (minIssueQty.signum() < 0) {
-            return "最低投料 minIssueQty 不能为负（收到 " + minIssueQty.toPlainString() + "）";
+            return "最低投料 不能为负（收到 " + minIssueQty.toEngineeringString() + "）";
         }
         if (maxScale(minIssueQty) > BOM_QUANTITY_SCALE) {
-            return "最低投料 minIssueQty 最多支持 " + BOM_QUANTITY_SCALE + " 位小数（收到 "
-                    + minIssueQty.toPlainString() + "）";
+            return "最低投料 最多支持 " + BOM_QUANTITY_SCALE + " 位小数（收到 "
+                    + minIssueQty.toEngineeringString() + "）";
         }
         if (integerDigits(minIssueQty) > BOM_QUANTITY_INTEGER_DIGITS) {
-            return "最低投料 minIssueQty 整数位超出 decimal(12,4) 范围（收到 " + minIssueQty.toPlainString() + "）";
+            return "最低投料 整数位最多8位（收到 " + minIssueQty.toEngineeringString() + "）";
         }
         return null;
     }
 
     /** 参考米数：M 即取整总量；M2 需档案宽>0，否则不猜系数返回 null。 */
-    private static BigDecimal metres(BigDecimal total, String unit, BigDecimal widthMm) {
+    private static ExactQuantity metres(BigDecimal total, String unit, BigDecimal widthMm) {
         if (UNIT_M.equals(unit)) {
-            return total;
+            return ExactQuantity.fromDecimal(total);
         }
         if (UNIT_M2.equals(unit)) {
             if (widthMm == null || widthMm.signum() <= 0) {
@@ -323,8 +331,7 @@ public class BomConsumptionPreviewService {
             }
             BigDecimal widthMetres = widthMm.movePointLeft(3);
             return ExactQuantity.fromDecimal(total)
-                    .divide(ExactQuantity.fromDecimal(widthMetres))
-                    .toBigDecimal(DISPLAY_SCALE, RoundingMode.HALF_UP);
+                    .divide(ExactQuantity.fromDecimal(widthMetres));
         }
         return null;
     }
@@ -341,11 +348,11 @@ public class BomConsumptionPreviewService {
     }
 
     /** 参考卷数 = ceil(米数 / 参考卷长)，整数字符串；任一项缺失返回 null。 */
-    private static String referenceRollCount(BigDecimal metres, BigDecimal rollLength) {
+    private static String referenceRollCount(ExactQuantity metres, BigDecimal rollLength) {
         if (metres == null || rollLength == null || rollLength.signum() <= 0) {
             return null;
         }
-        BigInteger count = ExactQuantity.fromDecimal(metres)
+        BigInteger count = metres
                 .divide(ExactQuantity.fromDecimal(rollLength))
                 .ceilToInteger();
         return count.toString();
@@ -381,8 +388,8 @@ public class BomConsumptionPreviewService {
     }
 
     /** 整数位数：按 stripTrailingZeros 后的 precision−scale 计算，不展开 1E+100 这类指数形式。 */
-    private static int integerDigits(BigDecimal value) {
+    private static long integerDigits(BigDecimal value) {
         BigDecimal stripped = value.stripTrailingZeros();
-        return stripped.precision() - stripped.scale();
+        return (long) stripped.precision() - stripped.scale();
     }
 }

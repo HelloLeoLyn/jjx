@@ -156,6 +156,7 @@
     <BomItemEditor
       v-model="formData.items"
       :bom-id="formData.bomId"
+      :output-unit="bomOutputUnit"
       :readonly="editSession.readOnly.value"
       @change="handleItemsChange"
       @manufacturing="handleManufacturing"
@@ -225,7 +226,7 @@ import { useBomEditSession, isContentConflict } from '../composables/useBomEditS
 import type { ProductItem, ProductVo } from '@/types/product'
 import * as XLSX from 'xlsx'
 import { parseSpecModule } from './bomSpecImport'
-import { calculateBomQuantity } from '@/utils/bomQuantity'
+
 
 interface Props {
   modelValue: boolean
@@ -319,8 +320,11 @@ const rules = reactive<FormRules>({
   effectiveDate: [{ required: true, message: '请选择生效日期', trigger: 'change' }],
 })
 
+const bomOutputUnit = ref('')
+
 // 处理产品选择变化
 const handleProductChange = (productId: number | null, product: any) => {
+  bomOutputUnit.value = product?.unit || ''
   const oldCode = formData.productCode
   const oldName = formData.productName
   // 空白或仍沿用自动名称时，随产品更新；手工名称与编辑回填不被覆盖。
@@ -804,7 +808,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
       specification: spec,
       split,
       unit: cellOf(row, 'unit') || 'PCS',
-      quantity: calculateBomQuantity(baseQty, moduleQty) ?? 0,
+      quantity: 0, // 后端按原始模数/基数计算，不在前端重算派生用量。
       actualIssueQty: actualRaw ? num(actualRaw) : undefined,
       lossRate: num(cellOf(row, 'loss')) * 100,
       baseQty,
@@ -833,6 +837,7 @@ const parseRows = (rows: any[][]): EngineeringBomItem[] => {
 
 // 表单重置
 const resetForm = () => {
+  bomOutputUnit.value = ''
   if (bomFormRef.value) {
     bomFormRef.value.resetFields()
   }
@@ -864,6 +869,7 @@ const resetForm = () => {
 // 加载BOM数据；关闭/重新打开使旧的加载请求失效。
 let bomLoadGeneration = 0
 const loadBomData = async (bomId: number) => {
+  bomOutputUnit.value = ''
   const generation = ++bomLoadGeneration
   const isCurrent = () => props.modelValue && generation === bomLoadGeneration
   try {
@@ -884,6 +890,14 @@ const loadBomData = async (bomId: number) => {
     formData.items = itemResponse.data || []
     // 明细回填到编辑器后再建基线，避免“刚打开就提示未保存”。
     await nextTick()
+    if (!isCurrent()) return
+    if (formData.productId && typeof getProductInfo === 'function') {
+      try {
+        const product = await getProductInfo(Number(formData.productId))
+        if (!isCurrent()) return
+        bomOutputUnit.value = product?.data?.unit || ''
+      } catch (error) { console.warn('读取BOM产出单位失败:', error) }
+    }
     if (!isCurrent()) return
     setBaseline()
     // 已保存 BOM 打开即申请编辑权；失败/占用服务不可用时只读，但内容仍可查看与复制

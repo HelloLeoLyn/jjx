@@ -45,6 +45,7 @@
       </div>
     </div>
 
+    <BomEntryTools :rows="items" :readonly="readonly" :output-unit="outputUnit" :output-length-mm="outputLengthMm" @change="emitChange" v-slot="{ resultFor, showConversions, openPitch, canPitch, loading }">
     <!-- 明细表格 -->
     <el-table
       ref="tableRef"
@@ -96,14 +97,14 @@
         <template #default="scope">
           <div class="material-name-cell" >
             <el-input
-              v-if="quickMode"
+              v-if="quickMode && !scope.row.materialId"
               v-model="scope.row.materialName"
               :disabled="readonly"
               placeholder="输入材料名称（必填）"
               size="small"
               maxlength="200"
             />
-            <span v-else-if="readonly">{{ scope.row.materialName }}</span>
+            <span v-else-if="readonly || quickMode">{{ scope.row.materialName }}</span>
             <BomMaterialSelector
               v-else
               :material-id="scope.row.materialId"
@@ -121,6 +122,7 @@
               effect="plain"
               >未建档</el-tag
             > -->
+            <small class="material-code">{{ scope.row.materialCode }}</small>
           </div>
         </template>
       </el-table-column>
@@ -139,7 +141,7 @@
         </template>
       </el-table-column>
       <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数）；允许 >0 正小数，最多4位 -->
-      <el-table-column label="模数" prop="moduleQty" align="center" width="60">
+      <el-table-column label="模数" prop="moduleQty" align="center" width="85">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.moduleQty"
@@ -152,25 +154,8 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="跳距" prop="split" width="90">
-        <template #default="scope">
-          <el-input-number
-            :model-value="splitNumber(scope.row.split)"
-            :min="0"
-            size="small"
-            :controls="false"
-            :precision="0"
-            :disabled="readonly"
-            @update:model-value="(value) => handleSplitChange(scope.row, value)"
-          >
-            <template #suffix>
-              <span>mm</span>
-            </template>
-          </el-input-number>
-        </template>
-      </el-table-column>
       <!-- 基数 -->
-      <el-table-column label="基数" prop="baseQty" align="center" width="60">
+      <el-table-column label="基数" prop="baseQty" align="center" width="105">
         <template #header>
           <span>基数</span>
           <el-tooltip content="产品单位用量/每个项目标准用量" placement="top">
@@ -189,30 +174,18 @@
           />
         </template>
       </el-table-column>
-      <!-- 单位 -->
+      <!-- 已选物料单位只读；未建档快速草稿仍可提供计量单位。旧单位不静默改写。 -->
       <el-table-column label="单位" prop="unit" width="80">
         <template #default="scope">
-          <el-select
-            v-model="scope.row.unit"
-            :disabled="readonly"
-            placeholder="请选择"
-            size="small"
-            filterable
-            allow-create
-            style="width: 100%"
-          >
-            <el-option
-              v-for="item in unitOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
+          <span v-if="Number(scope.row.materialId) > 0">{{ scope.row.unit || '—' }}</span>
+          <el-select v-else v-model="scope.row.unit" :disabled="readonly" size="small" filterable allow-create>
+            <el-option v-for="item in unitOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </template>
       </el-table-column>
 
       <!-- 损耗率 -->
-      <el-table-column label="损耗率(%)" prop="lossRate" align="center">
+      <el-table-column label="损耗率(%)" prop="lossRate" align="center" width="100">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.lossRate"
@@ -229,23 +202,17 @@
           </el-input-number>
         </template>
       </el-table-column>
-      <!-- 最低投料量 -->
-      <el-table-column label="最低投料量" prop="minIssueQty" align="center" width="60">
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.minIssueQty"
-            :min="0"
-            :precision="0"
-            :disabled="readonly"
-            size="small"
-            :controls="false"
-            @change="recalcAppliedIssue(scope.row)"
-          />
-        </template>
+      <el-table-column label="每件用量" width="100" align="right">
+        <template #default="scope"><el-tooltip :content="resultFor(scope.row)?.message || '每件净用量，不含损耗'"><span>{{ resultFor(scope.row)?.valid ? resultFor(scope.row)?.unitConsumption : loading ? '试算中' : '—' }}</span></el-tooltip></template>
       </el-table-column>
-      <!-- 应用料（含损耗，只读） -->
-      <el-table-column label="应用料" prop="appliedQty" align="center" width="70">
-        <template #default="scope">{{ formatQty(scope.row.appliedQty) }}</template>
+      <el-table-column label="总需求" width="110" align="right">
+        <template #default="scope"><el-tooltip :content="resultFor(scope.row)?.message || '按试算产出数量，包含损耗与最低投料'"><strong>{{ resultFor(scope.row)?.valid ? resultFor(scope.row)?.totalConsumption : loading ? '试算中' : '—' }}</strong></el-tooltip></template>
+      </el-table-column>
+      <el-table-column v-if="showConversions" label="折算米" width="105" align="right">
+        <template #default="scope">{{ resultFor(scope.row)?.metres ?? '—' }}</template>
+      </el-table-column>
+      <el-table-column v-if="showConversions" label="预计卷数（参考）" width="130" align="right">
+        <template #default="scope"><el-tooltip :content="`按${resultFor(scope.row)?.referenceRollLengthM ?? '未填写'}m参考；不代表实际领卷`"><span>{{ resultFor(scope.row)?.referenceRollCount ?? '—' }}</span></el-tooltip></template>
       </el-table-column>
 
       <!-- 行审核状态（dev-20261020-029） -->
@@ -294,6 +261,7 @@
             @click="handleDeleteItem(scope.row)"
             >删除</el-button
           >
+          <el-button v-if="canPitch(scope.row)" link type="primary" size="small" @click="openPitch(scope.row)">跳距辅助定额</el-button>
           <el-button
             v-if="showManufacturing(scope.row)"
             link
@@ -315,6 +283,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </BomEntryTools>
     <MaterialFormDialog
       v-model="materialFormVisible"
       :preset-data="materialPreset"
@@ -339,7 +308,7 @@ import {
 import { debounce } from 'lodash-es'
 import type { EngineeringBomItem, BomMaterialMatchItem } from '@/types/product/bom'
 import { BomItemReviewStatusEnum } from '@/enums/product'
-import { calculateBomQuantity } from '@/utils/bomQuantity'
+import BomEntryTools from '@/components/bom/BomEntryTools.vue'
 import { bomGroupRows } from '@/utils/bomGroups'
 import { autoSpecOf } from './bomSpecMode'
 import { generateBomSpecification, specificationSource } from './bomSpecification'
@@ -358,6 +327,8 @@ interface Props {
   modelValue: EngineeringBomItem[]
   bomId?: number
   readonly?: boolean
+  outputUnit?: string
+  outputLengthMm?: number | null
   maxItems?: number
   /** 是否显示「制造BOM」入口（权限/只读由父级判定；默认显示） */
   canManufacturing?: boolean
@@ -375,6 +346,8 @@ const props = withDefaults(defineProps<Props>(), {
   modelValue: () => [],
   bomId: undefined,
   readonly: false,
+  outputUnit: '',
+  outputLengthMm: null,
   maxItems: 500,
   canManufacturing: true,
 })
@@ -633,8 +606,17 @@ onUnmounted(() => {
  * 物料选择处理
  */
 const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomItem) => {
-  if (!material) return
+  if (!material || props.readonly) return
   delete materialDrafts.value[String(row.itemId)]
+  const identityChanged = Number(row.materialId) !== Number(material.materialId)
+  if (identityChanged || String(row.unit).toUpperCase() !== String(material.unit || 'PCS').toUpperCase()) {
+    row.baseQty = undefined; row.moduleQty = undefined; row.quantity = 0
+    row.appliedQty = undefined; row.actualIssueQty = undefined
+    row.minIssueQty = 0
+    if (identityChanged) { row.subBomId = null; row.sourceType = undefined; row.split = '' }
+    row.unitFactor = null; row.unitFactorBasis = ''; row.unitFactorSource = ''
+  }
+  row.archiveUnit = material.unit
 
   row.materialId = material.materialId || 0
   row.materialCode = material.materialCode
@@ -665,6 +647,7 @@ function loadAutoSpec(row: EngineeringBomItem): Promise<void> {
       const source = specificationSource(response.data)
       current.materialSpecificationSource = source
       current.materialSpecification = generateBomSpecification(source)
+      current.archiveUnit = response.data.material?.unit || current.archiveUnit
       delete specErrors.value[key]
     } catch (error) {
       if (specVersions.get(key) === version) {
@@ -719,20 +702,10 @@ const handleLossRateChange = (row: EngineeringBomItem) => {
   recalcAppliedIssue(row)
 }
 
-/**
- * 计算应用料/实际投料（前端预览，与后端一致）
- * 有效基数、模数下：用量 = 基数 ÷ 模数；应用料 = 用量 × (1 + 损耗率/100)
- * 实际投料 = 单位应用料（含损耗、不取整）；整批取整与最低投料量下限由领料/缺料/预留侧按工单数量计算
- */
+/** 原始比例/损耗编辑只使旧快照失效；显示由只读接口返回，保存仍交后端重算。 */
 const recalcAppliedIssue = (row: EngineeringBomItem) => {
-  // 初始化/导入/参数变更走同一口径，不能沿用Excel实发数量或旧quantity。
-  const quantity = calculateBomQuantity(row.baseQty, row.moduleQty)
-  if (quantity !== undefined) row.quantity = quantity
-  const qty = Number(row.quantity) || 0
-  const loss = Number(row.lossRate) || 0
-  const applied = qty * (1 + loss / 100)
-  row.appliedQty = Number(applied.toFixed(4))
-  row.actualIssueQty = row.appliedQty
+  // 不在前端计算或回填派生数量；显示走只读接口，保存走原始模数/基数。
+  row.quantityStale = true
 }
 
 /** 数量格式化（只读列展示） */
@@ -751,8 +724,7 @@ watch(
       items.value = toFlatItems(newVal)
       materialDrafts.value = {}
       walkTree(items.value, matchProjectByName)
-      // 初始化也先按当前基数/模数重算用量，再计算应用料。
-      walkTree(items.value, recalcAppliedIssue)
+      // 初始化保留已保存快照；本次显示由只读试算接口返回。
     }
   },
   { immediate: true, deep: true }
@@ -1054,19 +1026,6 @@ const syncReasonText = (row: EngineeringBomItem): string => {
 const materialFormVisible = ref(false)
 const materialPreset = ref({ materialName: '', specification: '', unit: 'PCS' })
 
-/** 跳距：界面只输整数、单位固定 mm；存储保留“数字+mm”字符串供打印/快照使用。 */
-function splitNumber(value?: string | null): number | undefined {
-  if (value == null || value === '') return undefined
-  const n = Number.parseFloat(String(value))
-  return Number.isFinite(n) ? Math.trunc(n) : undefined
-}
-function handleSplitChange(row: EngineeringBomItem, value?: number | null) {
-  if (value == null || !Number.isFinite(Number(value)) || Number(value) <= 0) {
-    row.split = ''
-    return
-  }
-  row.split = `${Math.trunc(Number(value))}mm`
-}
 let creatingRow: EngineeringBomItem | null = null
 
 const handleMaterialClear = (row: EngineeringBomItem) => {
@@ -1259,7 +1218,11 @@ defineExpose({
         })
         return
       }
-      if (item.quantity <= 0) {
+      if (item.quantityStale && (item.moduleQty == null || item.baseQty == null)) {
+        failures.push({ item, message: `物料 "${item.materialName}" 请填写模数和基数` })
+        return
+      }
+      if (!(Number(item.moduleQty) > 0 && Number(item.baseQty) > 0) && item.quantity <= 0) {
         failures.push({ item, message: `物料 "${item.materialName}" 数量必须大于0` })
       }
     })
@@ -1291,6 +1254,8 @@ defineExpose({
   box-shadow: inset 3px 0 0 #f56c6c;
 }
 
+.bom-item-table :deep(.el-input-number) { width: 100%; }
+.material-code {display:block;color:var(--el-text-color-secondary);font-size:11px;margin-top:4px}
 .bom-item-editor {
   width: 100%;
   background: #fff;
@@ -1463,7 +1428,8 @@ defineExpose({
 }
 .material-name-cell {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 4px;
 }
 .material-name-cell > :first-child {

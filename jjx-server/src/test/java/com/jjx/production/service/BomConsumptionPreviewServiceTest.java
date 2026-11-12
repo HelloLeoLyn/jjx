@@ -149,7 +149,7 @@ class BomConsumptionPreviewServiceTest {
 
         BomConsumptionPreviewVO.Row badMin = vo.getRows().get(1);
         assertFalse(badMin.isValid());
-        assertTrue(badMin.getMessage().contains("minIssueQty"), badMin.getMessage());
+        assertTrue(badMin.getMessage().contains("最低投料"), badMin.getMessage());
         assertNull(badMin.getTotalConsumption(), "无效行不得把异常当 0");
         assertNull(badMin.getExactConsumption());
     }
@@ -267,13 +267,13 @@ class BomConsumptionPreviewServiceTest {
     void rejectsOverPrecisionAtTheRightLevel() {
         BusinessException quantity = assertThrows(BusinessException.class, () -> service.preview(
                 request("300.12345", "PCS", row("r1", null, "PCS", "1", "6", null, null, null))));
-        assertTrue(quantity.getMessage().contains("outputQuantity"), quantity.getMessage());
+        assertTrue(quantity.getMessage().contains("产出数量"), quantity.getMessage());
 
         BomConsumptionPreviewVO vo = service.preview(request("300", "PCS",
                 row("bad-loss", null, "PCS", "1", "6", "5.125", null, null),
                 row("ok", null, "PCS", "1", "6", "5", null, null)));
         assertFalse(vo.getRows().get(0).isValid());
-        assertTrue(vo.getRows().get(0).getMessage().contains("lossRate"), vo.getRows().get(0).getMessage());
+        assertTrue(vo.getRows().get(0).getMessage().contains("损耗率"), vo.getRows().get(0).getMessage());
         assertTrue(vo.getRows().get(1).isValid(), vo.getRows().get(1).getMessage());
     }
 
@@ -346,4 +346,37 @@ class BomConsumptionPreviewServiceTest {
         assertDecimal("12.5", out.getReferenceRollLengthM());
         assertEquals("6", out.getReferenceRollCount());
     }
+    @Test
+    void missingRatioStillAllowsPitchHelperAndKeepsMaterialMetadata() {
+        when(materialMapper.selectBatchIds(any())).thenReturn(List.of(material(110, "M2").widthMm("195").lengthMm("50000").build()));
+        var result = service.preview(request("100", "PCS", row("draft", 110L, "M2", null, null, "0", "0", null))).getRows().get(0);
+        assertFalse(result.isValid());
+        assertTrue(result.isPitchSupported());
+        assertDecimal("195", result.getWidthMm());
+        assertNull(result.getTotalConsumption());
+    }
+
+    @Test
+    void rollReferenceDoesNotRoundMetresBeforeCeiling() {
+        when(materialMapper.selectBatchIds(any())).thenReturn(List.of(material(110, "M2").widthMm("195").build()));
+        var result = service.preview(request("1", "PCS", row("draft", 110L, "M2", "0.1951", "1", "0", "0", "1.0005"))).getRows().get(0);
+        assertTrue(result.isValid(), result.getMessage());
+        assertEquals("1.0005", result.getMetres());
+        assertEquals("2", result.getReferenceRollCount());
+    }
+
+    @Test
+    void extremeExponentsAreRejectedWithoutExpandingTheDecimal() {
+        BusinessException global = assertThrows(BusinessException.class,
+            () -> service.preview(request("1E+999999999", "PCS")));
+        assertTrue(global.getMessage().length() < 200);
+        for (String extreme : List.of("1E+999999999", "1E-999999999")) {
+            var ratio = service.preview(request("1", "PCS", row("r", null, "PCS", extreme, "1", "0", "0", null))).getRows().get(0);
+            assertFalse(ratio.isValid());
+            assertTrue(ratio.getMessage().length() < 200);
+            var roll = service.preview(request("1", "PCS", row("r", null, "M", "1", "1", "0", "0", extreme))).getRows().get(0);
+            assertFalse(roll.isValid());
+        }
+    }
+
 }

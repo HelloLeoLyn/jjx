@@ -23,6 +23,12 @@ function editor(row: any = original, props: Record<string, unknown> = {}, slotPr
     props: { modelValue: [{ ...row }], ...props },
     global: { stubs: {
       Check: true, InfoFilled: true,
+      BomEntryTools: defineComponent({
+        setup(_, { slots }) { return () => h('div', slots.default?.({
+          resultFor: () => undefined, showConversions: false, showAdvanced: false,
+          openPitch: () => {}, canPitch: () => false, loading: false,
+        })) },
+      }),
       ElTable: { template: '<div class="el-table__body-wrapper"><table><tbody /></table><slot /></div>' },
       ElTableColumn: defineComponent({
         props: ['prop'],
@@ -76,6 +82,7 @@ describe('BOM规格只读，换料走物料名称列', () => {
     await flushPromises()
     expect(wrapper.get('.spec-cell').text()).toBe(replacement.specification)
     expect(await exposed.prepareSpecifications()).toBe(true)
+    Object.assign(row, { baseQty: 1, moduleQty: 1 })
     expect(exposed.validateItems()).toBe(true)
     expect(exposed.getItems()[0]).toMatchObject(replacement)
     expect(materialApi.search).not.toHaveBeenCalled()
@@ -175,7 +182,8 @@ describe('父BOM行模数/基数允许正小数（dev-20261111-005）', () => {
     row.moduleQty = 2.5
     row.baseQty = 0.5
     state.recalcAppliedIssue(row)
-    expect(row.quantity).toBe(0.2)
+    expect(row.quantity).toBe(0) // 派生量不在前端重写；保存按原始比例，显示由接口返回
+    expect(row.quantityStale).toBe(true)
     expect(exposed.validateItems()).toBe(true)
 
     row.moduleQty = 0
@@ -214,5 +222,18 @@ describe('编辑权只读时禁用物料选择与拖拽', () => {
     editor(original, { readonly: true })
     await flushPromises()
     expect(create.mock.calls.at(-1)?.[1]?.disabled).toBe(true)
+  })
+})
+
+describe('精简录入保留计量语义', () => {
+  it('同料号改为档案单位时也须重新确认比例，不把PCS比例直接当米数', async () => {
+    const { state, row } = editor({ ...original, unit: 'PCS', baseQty: 1, moduleQty: 6 })
+    state.handleMaterialSelect({ ...replacement, materialId: original.materialId, unit: 'M' }, row)
+    expect(row.unit).toBe('M')
+    expect(row.baseQty).toBeUndefined()
+    expect(row.moduleQty).toBeUndefined()
+    expect(row.quantity).toBe(0)
+    expect(row.quantityStale).toBe(true)
+    await flushPromises()
   })
 })

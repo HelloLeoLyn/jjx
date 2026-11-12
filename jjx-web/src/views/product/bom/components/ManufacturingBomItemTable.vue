@@ -14,6 +14,7 @@
       </div>
     </div>
 
+    <BomEntryTools :rows="rows" :readonly="readonly" :output-unit="outputUnit" :output-length-mm="outputLengthMm" @change="emit('update:modelValue', [...rows])" v-slot="{ resultFor, showConversions, showAdvanced, openPitch, canPitch, loading }">
     <el-table :data="rows" border size="small" row-key="itemId" class="manufacturing-item-grid">
       <el-table-column label="序号" width="50" align="center">
         <template #default="scope">{{ scope.$index + 1 }}</template>
@@ -21,6 +22,7 @@
 
       <el-table-column label="投入物料" min-width="190">
         <template #default="scope">
+          <div class="material-cell">
           <BomMaterialSelector
             v-if="!readonly"
             :material-id="scope.row.materialId"
@@ -30,11 +32,12 @@
             @clear="handleClear(scope.row)"
             @create="(keyword: string) => handleCreate(scope.row, keyword)"
           />
-          <span v-else>{{ scope.row.materialCode }} {{ scope.row.materialName }}</span>
+          <span v-else>{{ scope.row.materialName }}</span>
+          <small class="muted">{{ scope.row.materialCode }}</small>
+          </div>
         </template>
       </el-table-column>
 
-      <el-table-column label="物料编码" prop="materialCode" width="120" />
 
       <!-- 档案规格只读：从物料档案带入，不在这里反向改物料档案 -->
       <el-table-column label="档案规格" width="140" show-overflow-tooltip>
@@ -43,32 +46,8 @@
         </template>
       </el-table-column>
 
-      <!-- 档案单位与 BOM 投入单位分开显示：档案单位只读，投入单位可改 -->
-      <el-table-column label="档案单位" width="90" align="center">
-        <template #default="scope">
-          <span class="archive-spec">{{ archiveUnitOf(scope.row) || '—' }}</span>
-        </template>
-      </el-table-column>
-
-      <el-table-column label="投入单位" width="110">
-        <template #default="scope">
-          <el-select
-            :model-value="scope.row.unit"
-            placeholder="请选择"
-            size="small"
-            filterable
-            :disabled="readonly"
-            style="width: 100%"
-            @update:model-value="(value: string) => handleUnitChange(scope.row, value)"
-          >
-            <el-option
-              v-for="item in unitOptionsFor(scope.row)"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
-          </el-select>
-        </template>
+      <el-table-column label="单位" width="85" align="center">
+        <template #default="scope">{{ scope.row.unit || '—' }}</template>
       </el-table-column>
 
       <el-table-column label="模数" width="85" align="center">
@@ -86,7 +65,7 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="基数" width="85" align="center">
+      <el-table-column label="基数" width="105" align="center">
         <template #default="scope">
           <el-input-number
             v-model="scope.row.baseQty"
@@ -97,21 +76,6 @@
             size="small"
             :disabled="readonly"
             @change="markQuantityStale(scope.row)"
-          />
-        </template>
-      </el-table-column>
-
-      <!-- 裁切参数：跳距沿用主表既有字段 split（数字+mm），旧值原样保留 -->
-      <el-table-column label="跳距(mm)" prop="split" width="95">
-        <template #default="scope">
-          <el-input-number
-            :model-value="splitNumber(scope.row.split)"
-            :min="0"
-            :precision="0"
-            :controls="false"
-            size="small"
-            :disabled="readonly"
-            @update:model-value="(value?: number | null) => handleSplitChange(scope.row, value)"
           />
         </template>
       </el-table-column>
@@ -132,56 +96,17 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="最低投料" width="90" align="center">
-        <template #default="scope">
-          <el-input-number
-            v-model="scope.row.minIssueQty"
-            :min="0"
-            :precision="4"
-            size="small"
-            :controls="false"
-            :disabled="readonly"
-          />
-        </template>
+      <el-table-column label="每件用量" width="100" align="right">
+        <template #default="scope"><el-tooltip :content="resultFor(scope.row)?.message || '每件净用量，不含损耗'"><span>{{ resultFor(scope.row)?.valid ? resultFor(scope.row)?.unitConsumption : loading ? '试算中' : '—' }}</span></el-tooltip></template>
       </el-table-column>
-
-      <!-- 跨单位换算依据：只有 BOM 投入单位与档案单位不同才需要；前端不自动算面积/卷长 -->
-      <el-table-column label="单位换算" width="210">
-        <template #default="scope">
-          <div v-if="needsUnitFactor(scope.row)" class="unit-factor-cell">
-            <el-input-number
-              v-model="scope.row.unitFactor"
-              :min="0"
-              :precision="8"
-              :step="1"
-              :controls="false"
-              size="small"
-              :disabled="readonly"
-              placeholder="换算系数"
-              class="factor-input"
-            />
-            <el-input
-              v-model="scope.row.unitFactorBasis"
-              size="small"
-              maxlength="200"
-              :disabled="readonly"
-              placeholder="换算依据（尺寸/批次实测/供应商资料）"
-            />
-            <el-input
-              v-model="scope.row.unitFactorSource"
-              size="small"
-              maxlength="100"
-              :disabled="readonly"
-              placeholder="依据来源（选填）"
-            />
-          </div>
-          <span v-else class="same-unit">同单位，无需换算系数</span>
-        </template>
+      <el-table-column label="总需求" width="110" align="right">
+        <template #default="scope"><el-tooltip :content="resultFor(scope.row)?.message || '含损耗与最低投料'"><strong>{{ resultFor(scope.row)?.valid ? resultFor(scope.row)?.totalConsumption : loading ? '试算中' : '—' }}</strong></el-tooltip></template>
       </el-table-column>
-
-      <!-- 只展示后端保存/回读的参考用量；比例改动未保存时不给旧值冒充当前值 -->
-      <el-table-column label="参考用量(已保存)" width="110" align="right">
-        <template #default="scope">{{ referenceQuantity(scope.row) }}</template>
+      <el-table-column v-if="showConversions" label="折算米" width="110" align="right">
+        <template #default="scope">{{ resultFor(scope.row)?.metres ?? '—' }}</template>
+      </el-table-column>
+      <el-table-column v-if="showConversions" label="预计卷数（参考）" width="130" align="right">
+        <template #default="scope"><el-tooltip :content="`按${resultFor(scope.row)?.referenceRollLengthM ?? '未填写'}m参考；不代表实际领卷`"><span>{{ resultFor(scope.row)?.referenceRollCount ?? '—' }}</span></el-tooltip></template>
       </el-table-column>
 
       <!-- 下层方案：已选方案显示编码+版本并查看；已建档物料即使未选方案也能进入该物料的候选并新建 -->
@@ -205,7 +130,7 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="备注" min-width="110">
+      <el-table-column v-if="showAdvanced" label="备注" min-width="110">
         <template #default="scope">
           <el-input
             v-model="scope.row.remark"
@@ -219,6 +144,7 @@
 
       <el-table-column v-if="!readonly" label="操作" width="110" align="center" fixed="right">
         <template #default="scope">
+          <el-button v-if="canPitch(scope.row)" link type="primary" size="small" @click="openPitch(scope.row)">跳距辅助定额</el-button>
           <el-button link type="primary" size="small" @click="handleCopy(scope.row)">复制</el-button>
           <el-button link type="danger" size="small" @click="handleDelete(scope.$index)"
             >删除</el-button
@@ -226,6 +152,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </BomEntryTools>
 
     <MaterialFormDialog
       v-model="materialFormVisible"
@@ -244,6 +171,7 @@
  * 用量一律以保存后后端回读为准：这里不计算、不回写 row.quantity，只标“待保存”。
  */
 import { computed, ref } from 'vue'
+import BomEntryTools from '@/components/bom/BomEntryTools.vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import type { EngineeringBomItem } from '@/types/product/bom'
@@ -256,12 +184,16 @@ import MaterialFormDialog from '@/components/inventory/MaterialFormDialog.vue'
 interface Props {
   modelValue: EngineeringBomItem[]
   readonly?: boolean
+  outputUnit?: string
+  outputLengthMm?: number | null
   schemeLabels?: Record<number, ManufacturingSchemeLabel>
 }
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: () => [],
   readonly: false,
+  outputUnit: '',
+  outputLengthMm: null,
   schemeLabels: () => ({}),
 })
 
@@ -324,20 +256,6 @@ const referenceQuantity = (row: EngineeringBomItem): string => {
   if (row.quantityStale) return '待保存后更新'
   const value = Number(row.quantity)
   return Number.isFinite(value) ? String(value) : '—'
-}
-
-const splitNumber = (value?: string | null): number | undefined => {
-  if (value == null || value === '') return undefined
-  const n = Number.parseFloat(String(value))
-  return Number.isFinite(n) ? Math.trunc(n) : undefined
-}
-
-const handleSplitChange = (row: EngineeringBomItem, value?: number | null) => {
-  if (value == null || !Number.isFinite(Number(value)) || Number(value) <= 0) {
-    row.split = ''
-    return
-  }
-  row.split = `${Math.trunc(Number(value))}mm`
 }
 
 /** 比例/损耗改动只标“参考用量已过期待保存”，不在前端重算，也不写 row.quantity。 */
@@ -403,8 +321,9 @@ const handleDelete = (index: number) => {
 }
 
 const handleSelect = (row: EngineeringBomItem, material: InventoryMaterial) => {
-  if (!material) return
-  const unitChanged = Number(row.materialId) !== Number(material.materialId || 0)
+  if (!material || props.readonly) return
+  const identityChanged = Number(row.materialId) !== Number(material.materialId || 0)
+  const unitChanged = Number(row.materialId) !== Number(material.materialId || 0) || String(row.unit).toUpperCase() !== String(material.unit || row.unit || 'PCS').toUpperCase()
   row.materialId = material.materialId || 0
   row.materialCode = material.materialCode || ''
   row.materialName = material.materialName || ''
@@ -415,6 +334,9 @@ const handleSelect = (row: EngineeringBomItem, material: InventoryMaterial) => {
   row.unit = material.unit || row.unit || 'PCS'
   row.materialType = material.rootType || undefined
   if (unitChanged) {
+    row.baseQty = undefined; row.moduleQty = undefined; row.quantity = 0; row.quantityStale = true
+    row.minIssueQty = 0
+    if (identityChanged) { row.subBomId = null; row.sourceType = undefined; row.split = '' }
     row.unitFactor = null
     row.unitFactorBasis = ''
     row.unitFactorSource = ''
@@ -528,6 +450,9 @@ defineExpose({
 </script>
 
 <style scoped>
+.manufacturing-item-grid :deep(.el-input-number) { width: 100%; }
+.material-cell { display:flex;flex-direction:column;gap:4px; }
+.muted {font-size:11px;color:var(--el-text-color-secondary)}
 .manufacturing-item-table {
   width: 100%;
 }

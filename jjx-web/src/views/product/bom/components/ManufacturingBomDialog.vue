@@ -193,6 +193,8 @@
       v-model="current.draft.items"
       :readonly="!editable"
       :scheme-labels="schemeLabels"
+      :output-unit="current.archive?.unit || current.material.unit || ''"
+      :output-length-mm="current.archive?.lengthMm ?? current.material.lengthMm"
       @open-sub="drillDown"
     />
 
@@ -255,6 +257,8 @@ export interface ManufacturingMaterialContext {
   materialName?: string
   specification?: string
   unit?: string
+  widthMm?: number | null
+  lengthMm?: number | null
 }
 
 interface ManufacturingDraft {
@@ -669,6 +673,8 @@ const loadArchive = async (frame: Frame): Promise<void> => {
             materialName: data.materialName || '',
             specification: data.specification || '',
             unit: data.unit || '',
+            widthMm: data.widthMm ?? null,
+            lengthMm: data.lengthMm ?? null,
           }
         }
         ;(frame.draft.items || []).forEach((item) => {
