@@ -49,7 +49,7 @@ class BomCommonMaterialAndSplitTest {
         dto.setSplit(" 50mm ");
         dto.setBaseQty(BigDecimal.ONE);
         dto.setModuleQty(new BigDecimal("5"));
-        dto.setLossRate(0);
+        dto.setLossRate(BigDecimal.ZERO);
         var item = convert(dto);
         assertEquals("50mm", item.getSplit());
         assertEquals(0, new BigDecimal("0.2").compareTo(item.getQuantity()));

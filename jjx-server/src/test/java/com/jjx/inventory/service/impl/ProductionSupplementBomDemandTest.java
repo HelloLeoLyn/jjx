@@ -32,7 +32,7 @@ class ProductionSupplementBomDemandTest {
         item.setSourceType(sourceType);
         item.setUnit("PCS");
         item.setActualIssueQty(new BigDecimal(actualIssueQty));
-        item.setLossRate(0);
+        item.setLossRate(BigDecimal.ZERO);
         return item;
     }
 }

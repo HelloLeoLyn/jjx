@@ -183,6 +183,16 @@ class BomDecimalRatioTest {
     }
 
     @Test
+    void fractionalLossSurvivesSaveAndReadBackWithoutIntegerTruncation() {
+        var row = row("6", "1", "M"); row.setLossRate(new BigDecimal("0.50"));
+        var saved = service.getBomDetail(create(row)).getItems().get(0);
+        assertEquals(0, new BigDecimal("0.50").compareTo(saved.getLossRate()));
+        assertEquals(0, new BigDecimal("0.1675").compareTo(saved.getAppliedQty()));
+        var invalid = row("6", "1", "M"); invalid.setLossRate(new BigDecimal("0.555"));
+        assertThrows(BusinessException.class, () -> create(invalid));
+    }
+
+    @Test
     void requiresUnitFactorAndBasisOnlyWhenUnitDiffers() {
         var missing = assertThrows(BusinessException.class, () -> create(row("1", "1", "PCS")));
         assertTrue(missing.getMessage().contains("UNIT_FACTOR_MISSING"), missing.getMessage());

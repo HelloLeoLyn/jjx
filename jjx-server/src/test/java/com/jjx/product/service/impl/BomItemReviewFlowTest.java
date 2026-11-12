@@ -74,7 +74,7 @@ class BomItemReviewFlowTest {
         item.setBaseQty(BigDecimal.ONE);
         item.setModuleQty(BigDecimal.ONE);
         item.setQuantity(BigDecimal.ONE);
-        item.setLossRate(0);
+        item.setLossRate(BigDecimal.ZERO);
         item.setReviewStatus(status.getValue());
         if (status == ProductEnums.BomItemReviewStatus.APPROVED) {
             item.setApprovedFingerprint(EngineeringBomServiceImpl.fingerprint(item));
@@ -92,7 +92,7 @@ class BomItemReviewFlowTest {
         dto.setUnit("PCS");
         dto.setBaseQty(BigDecimal.ONE);
         dto.setModuleQty(BigDecimal.ONE);
-        dto.setLossRate(0);
+        dto.setLossRate(BigDecimal.ZERO);
         return dto;
     }
 

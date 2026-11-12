@@ -485,7 +485,7 @@ describe('参考用量与损耗率：只展示后端回读值，不在前端重�
     expect(payload.items[0].baseQty).toBe(3)
   })
 
-  it('损耗率按当前后端合同只收整数：0.5 与 120 被拒绝，整数通过', async () => {
+  it('损耗率保留两位小数：0.5通过，超范围和超精度被拒绝', async () => {
     const wrapper = await dialog()
     const state = wrapper.vm as any
     const table = wrapper.findComponent(ManufacturingBomItemTable)
@@ -494,9 +494,11 @@ describe('参考用量与损耗率：只展示后端回读值，不在前端重�
     expect((table.vm as any).validate()).toBe('')
 
     state.current.draft.items[0].lossRate = 0.5
-    expect((table.vm as any).validate()).toBe('第1行损耗率须为 0~100 的整数')
+    expect((table.vm as any).validate()).toBe('')
     state.current.draft.items[0].lossRate = 120
-    expect((table.vm as any).validate()).toBe('第1行损耗率须为 0~100 的整数')
+    expect((table.vm as any).validate()).toBe('第1行损耗率须在0~100之间，最多2位小数')
+    state.current.draft.items[0].lossRate = 0.555
+    expect((table.vm as any).validate()).toBe('第1行损耗率须在0~100之间，最多2位小数')
     state.current.draft.items[0].lossRate = 50
     expect((table.vm as any).validate()).toBe('')
     expect(state.buildPayload().items[0].lossRate).toBe(50)
@@ -611,3 +613,14 @@ describe('权限矩阵：查看 / 新增 / 编辑 / 采用分开', () => {
 function permissionsKeep() {
   permission.perms = new Set(['engineering:bom:add', 'engineering:bom:edit'])
 }
+
+
+describe('制造定额小数损耗', () => {
+  it('保存0.5%损耗时保留小数，不截断成0', async () => {
+    const wrapper = await dialog()
+    const state = wrapper.vm as any
+    state.current.draft.items = [item({ itemId: -1, lossRate: 0.5 })]
+    expect(await state.saveScheme()).toBe(true)
+    expect(mocks.saveManufacturingBom.mock.calls[0][0].items[0].lossRate).toBe(0.5)
+  })
+})

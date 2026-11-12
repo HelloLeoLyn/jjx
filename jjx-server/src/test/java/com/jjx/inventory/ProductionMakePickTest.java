@@ -141,6 +141,7 @@ class ProductionMakePickTest {
         when(productBomItemMapper.selectList(any())).thenReturn(List.of(bomItem, linked, buy));
         when(stockItemMapper.selectFIFOAvailable(349L)).thenReturn(List.of(batch("10")));
         when(stockItemMapper.selectFIFOAvailable(350L)).thenReturn(List.of(batch("10")));
+        when(stockItemMapper.selectFIFOAvailable(400L)).thenReturn(List.of());
         var preview = service.previewPick(20L);
         assertEquals(List.of(349L, 400L, 350L), preview.stream().map(row -> row.get("materialId")).toList());
         verify(productionBomResolver).requireMaterialScheme(99L, 400L);

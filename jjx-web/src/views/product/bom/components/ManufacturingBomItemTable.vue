@@ -122,8 +122,8 @@
             v-model="scope.row.lossRate"
             :min="0"
             :max="100"
-            :precision="0"
-            :step="1"
+            :precision="2"
+            :step="0.01"
             size="small"
             :controls="false"
             :disabled="readonly"
@@ -491,10 +491,10 @@ const validate = (input?: EngineeringBomItem[]): string => {
     if (!/^\d+(\.\d{1,4})?$/.test(String(Number(row.baseQty)))) {
       return `${prefix}基数最多 4 位小数`
     }
-    // 损耗率按当前后端合同是整数百分比（小数精度改造见 dev-20261111-006，不在本窗口放宽）
+    // 与后端decimal(5,2)一致，仅校验输入形状，不在前端计算耗用。
     const loss = Number(row.lossRate ?? 0)
-    if (!Number.isInteger(loss) || loss < 0 || loss > 100) {
-      return `${prefix}损耗率须为 0~100 的整数`
+    if (!Number.isFinite(loss) || loss < 0 || loss > 100 || decimalPlaces(loss) > 2) {
+      return `${prefix}损耗率须在0~100之间，最多2位小数`
     }
     // 跨单位必须填写换算系数与依据；档案单位未知时由后端校验
     if (needsUnitFactor(row)) {

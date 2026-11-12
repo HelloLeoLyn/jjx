@@ -78,7 +78,8 @@ public class EngineeringBomItemDTO {
     private BigDecimal actualIssueQty;
 
     /** 损耗率(%) */
-    private Integer lossRate;
+    @jakarta.validation.constraints.Digits(integer = 3, fraction = 2, message = "损耗率最多2位小数")
+    private BigDecimal lossRate;
 
     /** 模数：每份材料可产出产品数量 */
     private BigDecimal moduleQty;

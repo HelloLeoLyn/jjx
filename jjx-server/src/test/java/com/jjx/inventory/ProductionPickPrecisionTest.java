@@ -73,7 +73,7 @@ class ProductionPickPrecisionTest {
                 .getMessage().contains("UNIT_CONVERSION_MISSING"));
     }
     @Test void lossOnlyOnceAndMinimumIssueInBomUnits() {
-        item.setLossRate(10); equal("55", service.previewPick(20L).get(0).get("demand"));
+        item.setLossRate(new BigDecimal("10")); equal("55", service.previewPick(20L).get(0).get("demand"));
         item.setMinIssueQty(new BigDecimal("60"));
         equal("60", service.previewPick(20L).get(0).get("demand"));
     }
@@ -81,4 +81,32 @@ class ProductionPickPrecisionTest {
         item.setUnit("PCS"); material.setUnit("PCS"); item.setModuleQty(new BigDecimal("7"));
         equal("43", service.previewPick(20L).get(0).get("demand"));
     }
+    @Test void fractionalLossIsNotTruncatedOrAppliedTwice() {
+        item.setLossRate(new BigDecimal("0.50"));
+        equal("50.25", service.previewPick(20L).get(0).get("demand"));
+    }
+    @Test void repeatedMaterialRoundsOnceAndSharesAvailableStock() {
+        item.setUnit("PCS"); material.setUnit("PCS");
+        item.setModuleQty(new BigDecimal("600"));
+        var second = new EngineeringBomItem();
+        org.springframework.beans.BeanUtils.copyProperties(item, second); second.setItemId(12L);
+        when(productBomItemMapper.selectList(any())).thenReturn(List.of(item, second));
+        var batch = new com.jjx.inventory.domain.InventoryStockItem(); batch.setQuantity(BigDecimal.ONE); batch.setReservedQuantity(BigDecimal.ZERO);
+        when(stockItemMapper.selectFIFOAvailable(109L)).thenReturn(List.of(batch));
+        var rows = service.previewPick(20L);
+        equal("1", rows.stream().map(row -> (BigDecimal) row.get("demand")).reduce(BigDecimal.ZERO, BigDecimal::add));
+        equal("1", rows.stream().map(row -> (BigDecimal) row.get("qtyPick")).reduce(BigDecimal.ZERO, BigDecimal::add));
+        equal("1", service.previewPick(20L, new BigDecimal("300")).get(0).get("demand"));
+    }
+    @Test void sameMaterialMultipleRowsCannotEachUseTheSameStock() {
+        var second = new EngineeringBomItem();
+        org.springframework.beans.BeanUtils.copyProperties(item, second); second.setItemId(12L);
+        when(productBomItemMapper.selectList(any())).thenReturn(List.of(item, second));
+        var batch = new com.jjx.inventory.domain.InventoryStockItem(); batch.setQuantity(new BigDecimal("60")); batch.setReservedQuantity(BigDecimal.ZERO);
+        when(stockItemMapper.selectFIFOAvailable(109L)).thenReturn(List.of(batch));
+        var rows = service.previewPick(20L);
+        equal("100", rows.stream().map(row -> (BigDecimal) row.get("demand")).reduce(BigDecimal.ZERO, BigDecimal::add));
+        equal("60", rows.stream().map(row -> (BigDecimal) row.get("qtyPick")).reduce(BigDecimal.ZERO, BigDecimal::add));
+    }
+
 }

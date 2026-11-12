@@ -88,7 +88,7 @@ public class EngineeringBomItemVO {
     /**
      * 损耗率(%)
      */
-    private Integer lossRate;  // 改为 Integer，0-100
+    private BigDecimal lossRate;  // 百分数，支持小数损耗，0-100
 
     /**
      * 模数：每份材料可产出产品数量（如4表示一材料做4个产品）

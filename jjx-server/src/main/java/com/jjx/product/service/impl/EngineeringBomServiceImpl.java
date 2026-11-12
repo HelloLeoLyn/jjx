@@ -687,7 +687,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         String canonical = String.join("\u0001",
                 num(item.getMaterialId()), text(item.getMaterialCode()), text(item.getMaterialName()),
                 text(item.getSpecification()), text(item.getUnit()), dec(item.getQuantity()),
-                dec(item.getLossRate() == null ? null : BigDecimal.valueOf(item.getLossRate())),
+                dec(item.getLossRate() == null ? null : item.getLossRate()),
                 dec(item.getModuleQty()), dec(item.getBaseQty()), dec(item.getMinIssueQty()),
                 dec(item.getWidthMm()), dec(item.getLengthMm()), text(item.getSplit()),
                 num(item.getProcessId()), text(item.getProcessName()), text(item.getSourceType()),
@@ -1400,7 +1400,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         var theoretical = com.jjx.production.domain.model.BomConsumptionCalculator.theoretical(
                 BigDecimal.ONE, item.getBaseQty(), item.getModuleQty(), item.getQuantity());
         var applied = com.jjx.production.domain.model.BomConsumptionCalculator.lossApplied(theoretical,
-                BigDecimal.valueOf(item.getLossRate() == null ? 0 : item.getLossRate()));
+                (item.getLossRate() == null ? BigDecimal.ZERO : item.getLossRate()));
         item.setAppliedQty(applied.toBigDecimal(4, java.math.RoundingMode.HALF_UP));
         item.setActualIssueQty(item.getAppliedQty());
     }
@@ -1524,7 +1524,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 issues.add(issue(iid, code, name, "unit", "单位不能为空"));
             }
             // 损耗率
-            if (it.getLossRate() != null && (it.getLossRate() < 0 || it.getLossRate() > 100)) {
+            if (it.getLossRate() != null && (it.getLossRate().signum() < 0 || it.getLossRate().compareTo(BigDecimal.valueOf(100)) > 0)) {
                 issues.add(issue(iid, code, name, "lossRate", "损耗率须在 0~100 之间"));
             }
             // 来源类型
@@ -1710,7 +1710,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 || !Objects.equals(text(stored.getUnitFactorSource()), text(incoming.getUnitFactorSource()))
                 || !sameDecimal(stored.getModuleQty(), incoming.getModuleQty())
                 || !sameDecimal(stored.getBaseQty(), incoming.getBaseQty())
-                || !Objects.equals(stored.getLossRate(), incoming.getLossRate());
+                || !sameDecimal(stored.getLossRate(), incoming.getLossRate());
     }
 
     private static boolean sameDecimal(BigDecimal a, BigDecimal b) {

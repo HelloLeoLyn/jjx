@@ -1,5 +1,6 @@
 package com.jjx.inventory.service.impl;
 
+import com.jjx.common.exception.BusinessException;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -1639,29 +1640,17 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
         return alertLogMapper.selectPage(page, wrapper);
     }
 
-    private BigDecimal getActualIssueQty(EngineeringBomItem item) {
-        if (item.getActualIssueQty() != null) {
-            return item.getActualIssueQty();
-        }
-        log.warn("BOM 明细 {} 缺实际投料，按应用料兜底，请重新保存 BOM", item.getItemId());
-        BigDecimal quantity = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
-        BigDecimal lossRate = BigDecimal.valueOf(item.getLossRate() != null ? item.getLossRate() : 0);
-        return quantity.multiply(BigDecimal.ONE.add(lossRate.divide(BigDecimal.valueOf(100))));
-    }
-
-    /**
-     * 整批需求 = MAX( 向上取整( 单位投料 × 数量 ), 最低投料量 )
-     * 单位投料 = actual_issue_qty（BOM 保存时写入的含损耗单位应用料，不取整）
-     * 取整只在整批做一次；最低投料量作为下限（min_issue_qty>0 时生效，与物料类型无关）
-     */
     private BigDecimal batchDemand(EngineeringBomItem item, BigDecimal quantity) {
-        BigDecimal qty = quantity != null ? quantity : BigDecimal.ZERO;
-        BigDecimal demand = getActualIssueQty(item).multiply(qty).setScale(0, java.math.RoundingMode.UP);
-        BigDecimal minIssue = item.getMinIssueQty();
-        if (minIssue != null && minIssue.compareTo(BigDecimal.ZERO) > 0 && demand.compareTo(minIssue) < 0) {
-            demand = minIssue;
-        }
-        return demand;
+        var material = materialMapper.selectById(item.getMaterialId());
+        if (material == null || material.getUnit() == null)
+            throw new BusinessException("BOM材料[" + item.getMaterialCode() + "]库存档案/单位缺失");
+        var exact = com.jjx.production.domain.model.BomConsumptionCalculator.appliedDemand(quantity,
+                item.getBaseQty(), item.getModuleQty(), item.getQuantity(), item.getActualIssueQty(),
+                item.getLossRate(), item.getMinIssueQty());
+        var conversion = com.jjx.production.domain.model.BomConsumptionCalculator.conversion(
+                item.getUnit(), material.getUnit(), item.getUnitFactor(), item.getUnitFactorBasis(),
+                item.getUnitFactorSource(), material.getWidthMm(), material.getLengthMm(), "BOM材料[" + item.getMaterialCode() + "]");
+        return com.jjx.production.domain.model.BomConsumptionCalculator.roundStock(exact.multiply(conversion.factor()), material.getUnit());
     }
 
     private List<AlertVO> convertToVOList(List<InventoryAlertLog> alerts) {

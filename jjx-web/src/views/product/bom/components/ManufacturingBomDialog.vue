@@ -872,7 +872,7 @@ const toPayloadItem = (item: EngineeringBomItem): ManufacturingBomSaveItem => {
     archiveUnit: undefined,
     quantityStale: undefined,
     quantity: normalized.quantityStale ? undefined : normalized.quantity,
-    lossRate: Number.isFinite(loss) ? Math.trunc(loss) : 0,
+    lossRate: Number.isFinite(loss) ? loss : 0,
     unitFactor: normalized.unitFactor == null ? null : Number(normalized.unitFactor),
     unitFactorBasis: normalized.unitFactorBasis || null,
     unitFactorSource: normalized.unitFactorSource || null,

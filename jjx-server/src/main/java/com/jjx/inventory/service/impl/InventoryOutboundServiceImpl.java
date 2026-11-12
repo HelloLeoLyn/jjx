@@ -691,11 +691,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                             List<com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems = productBomItemMapper.selectList(
                                     new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
                                             .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, bom.getBomId()));
-                            java.util.Map<Long, BigDecimal> pickedMap = sumPickedByMaterial(order.getSourceId());
+                            var demandsByItem = stockDemandsByItem(bomItems, prodOrder.getPlannedQuantity());
+                            java.util.Map<Long, BigDecimal> pickedMap = sumPickedCoverageByBomItem(order.getSourceId(), bomItems);
                             for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
                                 if (!isStockPickable(bomItem)) continue;
-                                BigDecimal demand = stockDemand(bomItem, prodOrder.getPlannedQuantity());
-                                BigDecimal picked = pickedMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
+                                BigDecimal demand = demandsByItem.getOrDefault(bomItem, BigDecimal.ZERO);
+                                BigDecimal picked = pickedMap.getOrDefault(bomItem.getItemId(), BigDecimal.ZERO);
                                 if (demand.subtract(picked).compareTo(BigDecimal.ZERO) > 0) {
                                     hasGap = true;
                                     break;
@@ -992,6 +993,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             throw new BusinessException("BOM[" + bom.getBomCode() + "]无明细，无法领料");
         }
         requireStockPickableItems(bomItems);
+        var demandsByItem = stockDemandsByItem(bomItems, prodOrder.getPlannedQuantity());
         // 4. 可用量预计算
         java.util.Map<Long, BigDecimal> availableMap = new java.util.HashMap<>();
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
@@ -1025,7 +1027,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             if (!isStockPickable(bomItem)) continue;
             BigDecimal demand = supplementPreview
                     ? supplementDemandMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO)
-                    : stockDemand(bomItem, prodOrder.getPlannedQuantity());
+                    : demandsByItem.getOrDefault(bomItem, BigDecimal.ZERO);
             BigDecimal picked = supplementPreview ? BigDecimal.ZERO
                     : pickedMap.getOrDefault(bomItem.getItemId(), BigDecimal.ZERO);
             BigDecimal remaining = demand.subtract(picked);
@@ -1037,6 +1039,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             BigDecimal available = availableMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
             BigDecimal qtyPick = qtyNeeded.min(available);
             boolean insufficient = qtyPick.compareTo(qtyNeeded) < 0;
+            availableMap.put(bomItem.getMaterialId(), available.subtract(qtyPick));
             // 主料行
             java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
             row.put("materialId", bomItem.getMaterialId());
@@ -1073,7 +1076,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                         if (subId == null) continue;
                         Long subMaterialId = Long.valueOf(subId.toString());
                         BigDecimal ratio = sub.get("ratio") != null ? new BigDecimal(sub.get("ratio").toString()) : BigDecimal.ONE;
-                        BigDecimal subNeed = shortage.multiply(ratio).setScale(0, java.math.RoundingMode.UP);
+                        var substitute = materialMapper.selectById(subMaterialId);
+                        if (substitute == null || substitute.getUnit() == null) throw new BusinessException("替代料库存档案/单位缺失");
+                        if (ratio.signum() <= 0) throw new BusinessException("替代料换算比例必须大于0");
+                        BigDecimal subNeed = com.jjx.production.domain.model.BomConsumptionCalculator.roundStock(
+                                com.jjx.production.domain.model.ExactQuantity.fromDecimal(shortage).multiply(
+                                        com.jjx.production.domain.model.ExactQuantity.fromDecimal(ratio)), substitute.getUnit());
                         BigDecimal subAvail = BigDecimal.ZERO;
                         try {
                             List<InventoryStockItem> subFifo = stockItemMapper.selectFIFOAvailable(subMaterialId);
@@ -1237,6 +1245,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
 
         requireStockPickableItems(bomItems);
+        var demandsByItem = stockDemandsByItem(bomItems, prodOrder.getPlannedQuantity());
 
         // 4. 创建出库单
         // dev-20261008-018：出库单号标准化
@@ -1286,7 +1295,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!isStockPickable(bomItem)) continue;
 
-            BigDecimal qtyNeeded = stockDemand(bomItem, prodOrder.getPlannedQuantity());
+            BigDecimal qtyNeeded = demandsByItem.getOrDefault(bomItem, BigDecimal.ZERO);
 
             // 034/048定稿：首选料可用不足时，按 substitute_json 优先级尝试替代料（模数换算：替代需求量=原需求量×ratio）
             BigDecimal available = availableMap.getOrDefault(bomItem.getMaterialId(), BigDecimal.ZERO);
@@ -1325,7 +1334,12 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                                 Long subMaterialId = Long.valueOf(subId.toString());
                                 BigDecimal ratio = sub.get("ratio") != null
                                         ? new BigDecimal(sub.get("ratio").toString()) : BigDecimal.ONE;
-                                BigDecimal subNeed = shortage.multiply(ratio).setScale(0, java.math.RoundingMode.UP);
+                                var substitute = materialMapper.selectById(subMaterialId);
+                        if (substitute == null || substitute.getUnit() == null) throw new BusinessException("替代料库存档案/单位缺失");
+                        if (ratio.signum() <= 0) throw new BusinessException("替代料换算比例必须大于0");
+                        BigDecimal subNeed = com.jjx.production.domain.model.BomConsumptionCalculator.roundStock(
+                                com.jjx.production.domain.model.ExactQuantity.fromDecimal(shortage).multiply(
+                                        com.jjx.production.domain.model.ExactQuantity.fromDecimal(ratio)), substitute.getUnit());
                                 BigDecimal subAvail = BigDecimal.ZERO;
                                 try {
                                     List<InventoryStockItem> subFifo = stockItemMapper.selectFIFOAvailable(subMaterialId);
@@ -1380,6 +1394,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
                         pickCode, qtyNeeded, available, qtyPick);
             }
 
+            availableMap.put(bomItem.getMaterialId(), available.subtract(qtyPick));
             InventoryOutboundItem outItem = new InventoryOutboundItem();
             outItem.setOutboundId(order.getOutboundId());
             outItem.setMaterialId(pickMaterialId);
@@ -1437,10 +1452,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         List<com.jjx.engineering.domain.entity.EngineeringBomItem> bomItems = productBomItemMapper.selectList(
                 new LambdaQueryWrapper<com.jjx.engineering.domain.entity.EngineeringBomItem>()
                         .eq(com.jjx.engineering.domain.entity.EngineeringBomItem::getBomId, bom.getBomId()));
+        var demandsByItem = stockDemandsByItem(bomItems, prodOrder.getPlannedQuantity());
         java.util.Map<Long, BigDecimal> pickedMap = sumPickedCoverageByBomItem(workOrderId, bomItems);
         for (com.jjx.engineering.domain.entity.EngineeringBomItem bomItem : bomItems) {
             if (!isStockPickable(bomItem)) continue;
-            BigDecimal demand = stockDemand(bomItem, prodOrder.getPlannedQuantity());
+            BigDecimal demand = demandsByItem.getOrDefault(bomItem, BigDecimal.ZERO);
             BigDecimal picked = pickedMap.getOrDefault(bomItem.getItemId(), BigDecimal.ZERO);
             BigDecimal remaining = demand.subtract(picked);
             if (remaining.compareTo(BigDecimal.ZERO) < 0) remaining = BigDecimal.ZERO;
@@ -1487,31 +1503,42 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     /** 原始比例优先；只有缺少比例的历史行才读取旧单位用量快照。 */
     private static com.jjx.production.domain.model.ExactQuantity exactBatchDemand(
             com.jjx.engineering.domain.entity.EngineeringBomItem item, BigDecimal output) {
-        output = output == null ? BigDecimal.ZERO : output;
-        com.jjx.production.domain.model.ExactQuantity applied;
-        if ((item.getBaseQty() == null || item.getModuleQty() == null)
-                && item.getQuantity() == null && item.getActualIssueQty() != null) {
-            applied = com.jjx.production.domain.model.ExactQuantity.fromDecimal(item.getActualIssueQty())
-                    .multiply(com.jjx.production.domain.model.ExactQuantity.fromDecimal(output));
-        } else {
-            var theoretical = com.jjx.production.domain.model.BomConsumptionCalculator.theoretical(
-                    output, item.getBaseQty(), item.getModuleQty(), item.getQuantity());
-            applied = com.jjx.production.domain.model.BomConsumptionCalculator.lossApplied(theoretical,
-                    BigDecimal.valueOf(item.getLossRate() == null ? 0 : item.getLossRate()));
-        }
-        var floor = com.jjx.production.domain.model.ExactQuantity.fromDecimal(
-                item.getMinIssueQty() == null ? BigDecimal.ZERO : item.getMinIssueQty());
-        return applied.compareTo(floor) >= 0 ? applied : floor;
+        return com.jjx.production.domain.model.BomConsumptionCalculator.appliedDemand(output,
+                item.getBaseQty(), item.getModuleQty(), item.getQuantity(), item.getActualIssueQty(),
+                item.getLossRate(), item.getMinIssueQty());
     }
 
-    private BigDecimal stockDemand(com.jjx.engineering.domain.entity.EngineeringBomItem item, BigDecimal output) {
-        validateStockPickScheme(item);
-        var material = materialMapper.selectById(item.getMaterialId());
-        if (material == null || material.getUnit() == null || material.getUnit().isBlank())
-            throw new BusinessException("BOM材料[" + item.getMaterialCode() + "]库存档案/单位缺失，不能推定领料数量");
-        var factor = stockUnitFactor(item, material);
-        return com.jjx.production.domain.model.BomConsumptionCalculator.roundStock(
-                exactBatchDemand(item, output).multiply(factor), material.getUnit());
+    /** 同料先汇总精确耗用，仅终点按库存单位取整；分行分配保留BOM行追踪。 */
+    private Map<com.jjx.engineering.domain.entity.EngineeringBomItem, BigDecimal> stockDemandsByItem(
+            List<com.jjx.engineering.domain.entity.EngineeringBomItem> items, BigDecimal output) {
+        var exact = new java.util.IdentityHashMap<com.jjx.engineering.domain.entity.EngineeringBomItem,
+                com.jjx.production.domain.model.ExactQuantity>();
+        Map<Long, List<com.jjx.engineering.domain.entity.EngineeringBomItem>> groups = new java.util.LinkedHashMap<>();
+        Map<Long, com.jjx.inventory.domain.InventoryMaterial> materials = new HashMap<>();
+        for (var item : items) {
+            if (!isStockPickable(item)) continue;
+            validateStockPickScheme(item);
+            var material = materials.computeIfAbsent(item.getMaterialId(), materialMapper::selectById);
+            if (material == null || material.getUnit() == null || material.getUnit().isBlank())
+                throw new BusinessException("BOM材料[" + item.getMaterialCode() + "]库存档案/单位缺失");
+            exact.put(item, exactBatchDemand(item, output).multiply(stockUnitFactor(item, material)));
+            groups.computeIfAbsent(item.getMaterialId(), id -> new ArrayList<>()).add(item);
+        }
+        Map<com.jjx.engineering.domain.entity.EngineeringBomItem, BigDecimal> result = new java.util.IdentityHashMap<>();
+        groups.forEach((id, group) -> {
+            group.sort(java.util.Comparator.comparing(com.jjx.engineering.domain.entity.EngineeringBomItem::getItemId,
+                    java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+            var total = com.jjx.production.domain.model.ExactQuantity.ZERO;
+            for (var item : group) total = total.add(exact.get(item));
+            BigDecimal left = com.jjx.production.domain.model.BomConsumptionCalculator.roundStock(total, materials.get(id).getUnit());
+            for (int i = 0; i < group.size(); i++) {
+                var item = group.get(i);
+                BigDecimal allocated = i == group.size() - 1 ? left
+                        : com.jjx.production.domain.model.BomConsumptionCalculator.roundStock(exact.get(item), materials.get(id).getUnit()).min(left);
+                result.put(item, allocated); left = left.subtract(allocated);
+            }
+        });
+        return result;
     }
 
     private void validateStockPickScheme(com.jjx.engineering.domain.entity.EngineeringBomItem item) {
@@ -1528,22 +1555,11 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
 
     private Map<Long, BigDecimal> aggregateSupplementStockDemand(
             List<com.jjx.engineering.domain.entity.EngineeringBomItem> items, BigDecimal output) {
-        Map<Long, com.jjx.production.domain.model.ExactQuantity> exact = new java.util.LinkedHashMap<>();
-        Map<Long, String> units = new HashMap<>();
-        for (var item : items) {
-            if (!isStockPickable(item)) continue;
-            validateStockPickScheme(item);
-            var material = materialMapper.selectById(item.getMaterialId());
-            if (material == null || material.getUnit() == null) throw new BusinessException("补产材料库存档案/单位缺失");
-            units.put(item.getMaterialId(), material.getUnit());
-            exact.merge(item.getMaterialId(), exactBatchDemand(item, output).multiply(stockUnitFactor(item, material)),
-                    com.jjx.production.domain.model.ExactQuantity::add);
-        }
         Map<Long, BigDecimal> result = new java.util.LinkedHashMap<>();
-        exact.forEach((id, qty) -> result.put(id,
-                com.jjx.production.domain.model.BomConsumptionCalculator.roundStock(qty, units.get(id))));
+        stockDemandsByItem(items, output).forEach((item, demand) -> result.merge(item.getMaterialId(), demand, BigDecimal::add));
         return result;
     }
+
 
     private static BigDecimal batchDemand(com.jjx.engineering.domain.entity.EngineeringBomItem item, BigDecimal output) {
         return com.jjx.production.domain.model.BomConsumptionCalculator.roundStock(exactBatchDemand(item, output), item.getUnit());
@@ -1993,6 +2009,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
             }
         }
         Map<Long, BigDecimal> requestedByMaterial = new HashMap<>();
+        var demandsByItem = stockDemandsByItem(bomItems, prodOrder.getPlannedQuantity());
         Map<Long, BigDecimal> coverageByBom = new HashMap<>();
         for (Map<String, Object> item : items) {
             Long bomItemId = Long.valueOf(String.valueOf(item.get("bomItemId")));
@@ -2022,7 +2039,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         }
         for (Map.Entry<Long, BigDecimal> e : coverageByBom.entrySet()) {
             com.jjx.engineering.domain.entity.EngineeringBomItem bi = bomById.get(e.getKey());
-            BigDecimal need = stockDemand(bi, prodOrder.getPlannedQuantity());
+            BigDecimal need = demandsByItem.getOrDefault(bi, BigDecimal.ZERO);
             BigDecimal remaining = need.subtract(pickedCoverage.getOrDefault(e.getKey(), BigDecimal.ZERO)).max(BigDecimal.ZERO);
             if (e.getValue().compareTo(remaining) > 0) throw new BusinessException("BOM材料[" + bi.getMaterialCode() + "]抵扣量超过剩余需求 " + remaining);
         }

@@ -145,7 +145,7 @@ public class EngineeringBomItem {
     /**
      * 损耗率(%)
      */
-    private Integer lossRate;  // 改为 Integer，0-100
+    private BigDecimal lossRate;  // 百分数，支持小数损耗，0-100
 
     /**
      * 模数：每份材料可产出产品数量（如4表示一材料做4个产品）
@@ -279,9 +279,10 @@ public class EngineeringBomItem {
      * 计算实际用量
      */
     public BigDecimal calculateActualQuantity() {
-        if (quantity == null) return BigDecimal.ZERO;
-        if (lossRate == null || lossRate == 0) return quantity;
-        return quantity.multiply(BigDecimal.valueOf(1 + lossRate / 100.0));
+        if (quantity == null && (baseQty == null || moduleQty == null)) return BigDecimal.ZERO;
+        return com.jjx.production.domain.model.BomConsumptionCalculator.lossApplied(
+                com.jjx.production.domain.model.BomConsumptionCalculator.theoretical(
+                        BigDecimal.ONE, baseQty, moduleQty, quantity), lossRate).approximate();
     }
 
     /**

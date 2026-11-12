@@ -31,7 +31,22 @@ public final class BomConsumptionCalculator {
         BigDecimal loss = lossPercent == null ? BigDecimal.ZERO : lossPercent;
         if (loss.signum() < 0 || loss.compareTo(new BigDecimal("100")) > 0)
             throw new BusinessException("损耗率须在0到100之间");
+        if (loss.stripTrailingZeros().scale() > 2)
+            throw new BusinessException("损耗率最多2位小数，不能静默舍入");
         return theoretical.multiply(ExactQuantity.ONE.add(ExactQuantity.fromDecimal(loss).divide(ExactQuantity.of(100))));
+    }
+
+    public static ExactQuantity appliedDemand(BigDecimal output, BigDecimal base, BigDecimal module,
+            BigDecimal legacyUnit, BigDecimal legacyApplied, BigDecimal loss, BigDecimal minimum) {
+        output = output == null ? BigDecimal.ZERO : output;
+        ExactQuantity applied;
+        if ((base == null || module == null) && legacyUnit == null && legacyApplied != null) {
+            applied = ExactQuantity.fromDecimal(legacyApplied).multiply(ExactQuantity.fromDecimal(output));
+        } else {
+            applied = lossApplied(theoretical(output, base, module, legacyUnit), loss);
+        }
+        ExactQuantity floor = ExactQuantity.fromDecimal(minimum == null ? BigDecimal.ZERO : minimum);
+        return applied.compareTo(floor) >= 0 ? applied : floor;
     }
 
     public record Conversion(ExactQuantity factor, String basis, String source) { }
