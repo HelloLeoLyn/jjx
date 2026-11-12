@@ -1457,17 +1457,17 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         return result;
     }
 
-    /** 直接领库存：外购料，或未关联下层 BOM 的自制件；物料身份必须有效。 */
+    /** 本层领物料库存；下层BOM决定缺口补做方案，不排除已有半成品。 */
     private static boolean isStockPickable(com.jjx.engineering.domain.entity.EngineeringBomItem item) {
         return item != null && item.getMaterialId() != null
                 && ("buy".equals(item.getSourceType())
-                || ("make".equals(item.getSourceType()) && item.getSubBomId() == null));
+                || "make".equals(item.getSourceType()));
     }
 
     private static void requireStockPickableItems(
             List<com.jjx.engineering.domain.entity.EngineeringBomItem> items) {
         if (items.stream().noneMatch(InventoryOutboundServiceImpl::isStockPickable)) {
-            throw new BusinessException("BOM 无可直接领料的物料：关联下层 BOM 的自制件不参与本层自动领料，请先按下层 BOM 展开/生产；其他行请检查物料身份及来源类型");
+            throw new BusinessException("BOM 无可直接领料的物料，请检查本层物料身份及来源类型");
         }
     }
 
@@ -1505,12 +1505,18 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
     }
 
     private BigDecimal stockDemand(com.jjx.engineering.domain.entity.EngineeringBomItem item, BigDecimal output) {
+        validateStockPickScheme(item);
         var material = materialMapper.selectById(item.getMaterialId());
         if (material == null || material.getUnit() == null || material.getUnit().isBlank())
             throw new BusinessException("BOM材料[" + item.getMaterialCode() + "]库存档案/单位缺失，不能推定领料数量");
         var factor = stockUnitFactor(item, material);
         return com.jjx.production.domain.model.BomConsumptionCalculator.roundStock(
                 exactBatchDemand(item, output).multiply(factor), material.getUnit());
+    }
+
+    private void validateStockPickScheme(com.jjx.engineering.domain.entity.EngineeringBomItem item) {
+        if ("make".equals(item.getSourceType()) && item.getSubBomId() != null)
+            productionBomResolver.requireMaterialScheme(item.getSubBomId(), item.getMaterialId());
     }
 
     private com.jjx.production.domain.model.ExactQuantity stockUnitFactor(
@@ -1526,6 +1532,7 @@ public class InventoryOutboundServiceImpl extends ServiceImpl<InventoryOutboundO
         Map<Long, String> units = new HashMap<>();
         for (var item : items) {
             if (!isStockPickable(item)) continue;
+            validateStockPickScheme(item);
             var material = materialMapper.selectById(item.getMaterialId());
             if (material == null || material.getUnit() == null) throw new BusinessException("补产材料库存档案/单位缺失");
             units.put(item.getMaterialId(), material.getUnit());

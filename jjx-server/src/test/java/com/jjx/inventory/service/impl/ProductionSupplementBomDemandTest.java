@@ -15,13 +15,14 @@ class ProductionSupplementBomDemandTest {
     void supplementDemandUsesReplacementQuantityAndCombinesDuplicateMaterials() {
         EngineeringBomItem first = bomItem(1601L, "buy", "1.00");
         EngineeringBomItem duplicate = bomItem(1601L, "buy", "1.00");
-        EngineeringBomItem nonPurchased = bomItem(1700L, "make", "2.00");
-        nonPurchased.setSubBomId(99L);
+        EngineeringBomItem manufactured = bomItem(1700L, "make", "2.00");
+        manufactured.setSubBomId(99L);
 
         Map<Long, BigDecimal> demand = InventoryOutboundServiceImpl.aggregateSupplementDemand(
-                List.of(first, duplicate, nonPurchased), new BigDecimal("8"));
+                List.of(first, duplicate, manufactured), new BigDecimal("8"));
 
-        assertEquals(1, demand.size());
+        assertEquals(2, demand.size());
+        assertEquals(new BigDecimal("16"), demand.get(1700L));
         assertEquals(new BigDecimal("16"), demand.get(1601L));
     }
 

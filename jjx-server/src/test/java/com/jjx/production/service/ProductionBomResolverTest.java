@@ -81,6 +81,29 @@ class ProductionBomResolverTest {
         assertNull(order.getBomId());
     }
 
+    @Test void materialWorkOrderUsesExplicitMaterialIdentityNotProductId() {
+        order.setOutputType("MATERIAL"); order.setOutputId(349L);
+        var bom = approvedBom(); bom.setProductId(null); bom.setOutputType("MATERIAL"); bom.setOutputId(349L);
+        when(mapper.selectById(5L)).thenReturn(bom);
+        assertSame(bom, resolver.resolve(order));
+        assertDoesNotThrow(() -> resolver.requireMaterialScheme(5L, 349L));
+        assertThrows(BusinessException.class, () -> resolver.requireMaterialScheme(5L, 350L));
+    }
+
+    @Test void materialOrderWithoutExplicitBomCannotFallBackToProductBom() {
+        order.setOutputType("MATERIAL"); order.setOutputId(349L); order.setBomId(null);
+        assertThrows(BusinessException.class, () -> resolver.resolve(order));
+        verifyNoInteractions(mapper);
+    }
+
+    @Test void missingOrUnapprovedMaterialSchemeIsRejected() {
+        assertThrows(BusinessException.class, () -> resolver.requireMaterialScheme(99L, 349L));
+        var bom = approvedBom(); bom.setOutputType("MATERIAL"); bom.setOutputId(349L);
+        bom.setApproveStatus(ProductEnums.BomStatus.DRAFT.getValue());
+        when(mapper.selectById(5L)).thenReturn(bom);
+        assertThrows(BusinessException.class, () -> resolver.requireMaterialScheme(5L, 349L));
+    }
+
     private EngineeringBom approvedBom() {
         EngineeringBom bom = new EngineeringBom(); bom.setBomId(5L); bom.setProductId(2L);
         bom.setApproveStatus(ProductEnums.BomStatus.APPROVED.getValue());

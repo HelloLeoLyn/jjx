@@ -97,13 +97,24 @@ class ProductionMakePickTest {
         assertEquals(BigDecimal.ONE, service.getPickRemaining(20L).get(0).get("remaining"));
     }
 
-    @Test void linkedMakeIsExcludedBeforeAnyOrderOrStockWrite() {
+    @Test void linkedMakePicksExistingStockAndRetainsOnlyUncoveredGap() {
         bomItem.setSubBomId(99L);
-        var previewError = assertThrows(BusinessException.class, () -> service.previewPick(20L));
-        var createError = assertThrows(BusinessException.class, () -> service.createFromProduction(20L, null));
-        assertTrue(previewError.getMessage().contains("下层 BOM"));
-        assertFalse(createError.getMessage().contains("库存不足"));
-        verifyNoInteractions(stockItemMapper, redisSequenceService);
+        production.setPlannedQuantity(new BigDecimal("12"));
+        when(stockItemMapper.selectFIFOAvailable(349L)).thenReturn(List.of(batch("10")));
+        var row = service.previewPick(20L).get(0);
+        assertEquals(0, new BigDecimal("12").compareTo((BigDecimal) row.get("demand")));
+        assertEquals(0, new BigDecimal("10").compareTo((BigDecimal) row.get("qtyPick")));
+        assertEquals(1, service.previewPick(20L, new BigDecimal("2")).size());
+        verify(productionBomResolver, atLeastOnce()).requireMaterialScheme(99L, 349L);
+        verify(stockItemMapper, never()).selectFIFOAvailable(999L);
+    }
+
+    @Test void invalidLinkedSchemeIsRejectedBeforeAnyDocumentWrite() {
+        bomItem.setSubBomId(99L);
+        doThrow(new BusinessException("制造BOM产出身份不一致"))
+                .when(productionBomResolver).requireMaterialScheme(99L, 349L);
+        assertTrue(assertThrows(BusinessException.class, () -> service.previewPick(20L))
+                .getMessage().contains("产出身份"));
         verify(outboundOrderMapper, never()).insert(any(InventoryOutboundOrder.class));
     }
 
@@ -113,9 +124,12 @@ class ProductionMakePickTest {
         verifyNoInteractions(stockItemMapper);
     }
 
-    @Test void mixedBomStillPicksBuyAndLeafMakeButNeverLinkedMake() {
+    @Test void mixedBomPicksEachCurrentLevelMaterialWithoutExpandingLowerRawMaterials() {
         var linked = new EngineeringBomItem();
+        linked.setItemId(15L);
         linked.setMaterialId(400L);
+        linked.setUnit("PCS");
+        linked.setActualIssueQty(BigDecimal.ONE);
         linked.setSourceType("make");
         linked.setSubBomId(99L);
         var buy = new EngineeringBomItem();
@@ -128,8 +142,8 @@ class ProductionMakePickTest {
         when(stockItemMapper.selectFIFOAvailable(349L)).thenReturn(List.of(batch("10")));
         when(stockItemMapper.selectFIFOAvailable(350L)).thenReturn(List.of(batch("10")));
         var preview = service.previewPick(20L);
-        assertEquals(List.of(349L, 350L), preview.stream().map(row -> row.get("materialId")).toList());
-        verify(stockItemMapper, never()).selectFIFOAvailable(400L);
+        assertEquals(List.of(349L, 400L, 350L), preview.stream().map(row -> row.get("materialId")).toList());
+        verify(productionBomResolver).requireMaterialScheme(99L, 400L);
     }
 
     @Test void zeroStockRemainsAShortage() {
@@ -141,9 +155,10 @@ class ProductionMakePickTest {
         verify(outboundItemMapper, never()).insert(any(InventoryOutboundItem.class));
     }
 
-    @ParameterizedTest @ValueSource(strings = {"make", "buy"})
+    @ParameterizedTest @ValueSource(strings = {"make", "buy", "linked-make"})
     void generateReserveAndConfirmTenToNineWithOutboundLedger(String source) {
-        bomItem.setSourceType(source);
+        bomItem.setSourceType("linked-make".equals(source) ? "make" : source);
+        if ("linked-make".equals(source)) bomItem.setSubBomId(99L);
         stubCreation();
         var batch = batch("10");
         List<InventoryOutboundItem> items = new ArrayList<>();
