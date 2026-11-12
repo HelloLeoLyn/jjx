@@ -394,6 +394,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // DTO转Entity
         EngineeringBom bom = bomConverter.toEntity(dto);
 
+        // 普通保存仅修改内容；审核和生效只能通过专用流程变更，不能信任客户端回传值。
+        bom.setApproveStatus(existingBom.getApproveStatus());
+        bom.setIsCurrent(existingBom.getIsCurrent());
+
         // 更新BOM主表
         boolean bomUpdated = productBomMapper.updateById(bom) > 0;
         if (!bomUpdated) {
@@ -404,14 +408,6 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
         // 按 itemId 合并明细：更新/新增/标记待移除，禁止整表 delete+insert（dev-20261020-029 C）
         mergeBomItems(dto);
-
-        // 未批准 BOM 不允许设为当前；已当前且被驳回时保留原当前标记，避免误清空生效版本
-        if (!Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
-            bom.setIsCurrent(existingBom.getIsCurrent());
-        }
-        if (bom.getIsCurrent() != null && bom.getIsCurrent()) {
-            setOtherBomNotCurrent(dto.getOutputType(), dto.getOutputId(), bom.getBomId());
-        }
 
         com.jjx.product.domain.vo.EngineeringBomEditVO vo = new com.jjx.product.domain.vo.EngineeringBomEditVO();
         vo.setSuccess(true);

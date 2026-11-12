@@ -48,10 +48,10 @@ public class EngineeringBomDTO {
     /** 产品名称（冗余） */
     private String productName;
 
-    /** 审核状态 */
+    /** 兼容历史回传；普通新增/编辑不采信，审核状态由专用流程维护。 */
     private Integer approveStatus;
 
-    /** 是否当前版本 */
+    /** 兼容历史回传；普通新增/编辑不采信，生效标记由专用流程维护。 */
     private Boolean isCurrent;
 
     /** 生效日期 */
