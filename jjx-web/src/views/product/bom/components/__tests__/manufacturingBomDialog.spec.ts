@@ -691,10 +691,71 @@ describe('制造BOM：编辑占用与服务端内容版本', () => {
     await state.selectSchemeByBomId(124)
     await flushPromises()
     expect(state.editSession.readOnly.value).toBe(true)
+    // 只读不是只禁保存按钮：明细表与表头字段都必须禁用（修复卡 F6b）
+    expect(state.editable).toBe(false)
+    expect(wrapper.findComponent(ManufacturingBomItemTable).props('readonly')).toBe(true)
 
     state.current.draft.remark = '只读草稿'
     expect(await state.saveScheme()).toBe(false)
     expect(mocks.updateManufacturingBom).not.toHaveBeenCalled()
     expect(state.current.draft.remark).toBe('只读草稿')
+  })
+
+  it('新建方案首次保存后立即申请该 bomId 的编辑占用，第二次保存带 token 与内容指纹', async () => {
+    mocks.saveManufacturingBom.mockImplementation(async (payload: any) => ({
+      data: {
+        bomId: 130,
+        bomCode: payload.bomCode,
+        bomName: payload.bomName,
+        bomVersion: payload.bomVersion || 'V1.0',
+        outputType: 'MATERIAL',
+        outputId: payload.outputId,
+        approveStatus: 1,
+        contentRevision: 'rev-130',
+      },
+    }))
+    const wrapper = await dialog()
+    const state = wrapper.vm as any
+    state.current.draft.items = [item({ itemId: -1, materialId: 109 })]
+    expect(await state.saveScheme()).toBe(true)
+    await flushPromises()
+
+    // 首次保存后必须为新 bomId 申请租约，否则第二次保存缺 token 会被后端 409
+    expect(state.current.draft.bomId).toBe(130)
+    expect(mocks.acquireBomEditSession).toHaveBeenCalledWith(130, expect.any(String))
+    expect(state.editSession.token.value).toBe('lease-130')
+    expect(state.editSession.readOnly.value).toBe(false)
+
+    state.current.draft.remark = '第二次保存'
+    expect(await state.saveScheme()).toBe(true)
+    const [bomIdArg, payload] = mocks.updateManufacturingBom.mock.calls[0]
+    expect(bomIdArg).toBe(130)
+    expect(payload.editToken).toBe('lease-130')
+    expect(payload.expectedContentRevision).toBe('rev-130')
+    // 保存成功不释放租约
+    expect(mocks.releaseBomEditSession).not.toHaveBeenCalled()
+  })
+
+  it('新建方案保存后拿不到编辑占用：转只读并保留草稿', async () => {
+    mocks.acquireBomEditSession.mockResolvedValue({
+      data: {
+        leaseAvailable: true,
+        acquired: false,
+        occupied: true,
+        ownerDisplayName: '李四',
+        message: '该BOM正由 李四 编辑，本窗口为只读',
+      },
+    })
+    const wrapper = await dialog()
+    const state = wrapper.vm as any
+    state.current.draft.items = [item({ itemId: -1, materialId: 109 })]
+    expect(await state.saveScheme()).toBe(true) // 保存本身成功
+    await flushPromises()
+
+    expect(state.editSession.readOnly.value).toBe(true)
+    expect(state.editable).toBe(false)
+    expect(state.current.draft.bomId).toBe(130)
+    expect(state.current.draft.items).toHaveLength(1) // 草稿保留
+    expect(mocks.warning).toHaveBeenCalled()
   })
 })

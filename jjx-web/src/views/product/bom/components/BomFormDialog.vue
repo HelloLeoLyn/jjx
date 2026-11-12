@@ -36,7 +36,14 @@
         </div>
       </template>
     </el-alert>
-    <el-form ref="bomFormRef" :model="formData" :rules="rules" label-width="120px">
+    <!-- 只读（其他窗口占用/编辑权失效）时整表单禁用，不只是禁保存按钮（dev-20261111-018 修复卡 F6b） -->
+    <el-form
+      ref="bomFormRef"
+      :model="formData"
+      :rules="rules"
+      :disabled="editSession.readOnly.value"
+      label-width="120px"
+    >
       <el-row :gutter="20">
         <el-col :span="12">
           <el-form-item label="产品" prop="productId">
@@ -149,6 +156,7 @@
     <BomItemEditor
       v-model="formData.items"
       :bom-id="formData.bomId"
+      :readonly="editSession.readOnly.value"
       @change="handleItemsChange"
       @manufacturing="handleManufacturing"
       ref="bomItemEditorRef"

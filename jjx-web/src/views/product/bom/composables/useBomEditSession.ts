@@ -71,7 +71,8 @@ export function useBomEditSession(source: () => number | null | undefined) {
   const ownerName = ref('')
   const expiresAt = ref<number | null>(null)
   let timer: ReturnType<typeof setInterval> | null = null
-  let boundBomId: number | null = null
+  /** 当前已申请/持有的 bomId（暴露给调用方判断“保存后已绑定，无需再释放重取”）。 */
+  const boundBomId = ref<number | null>(null)
 
   /** 只读：无法编辑或已失去编辑权。新建未保存（idle）不受限。 */
   const readOnly = computed(() =>
@@ -105,13 +106,15 @@ export function useBomEditSession(source: () => number | null | undefined) {
     const id = Number(bomId ?? source() ?? 0)
     if (!id) {
       // 新建 BOM 还没有 bomId：不占用，首次保存后再获取
-      boundBomId = null
+      boundBomId.value = null
       token.value = null
       state.value = 'idle'
       message.value = ''
       return true
     }
-    boundBomId = id
+    // 已为本 bomId 持有编辑权：幂等返回，避免保存后的补充 acquire 把刚拿到的 token 换掉
+    if (boundBomId.value === id && state.value === 'granted' && token.value) return true
+    boundBomId.value = id
     state.value = 'acquiring'
     try {
       const response = await productBomApi.acquireBomEditSession(id, clientId)
@@ -147,7 +150,7 @@ export function useBomEditSession(source: () => number | null | undefined) {
   }
 
   async function renew(): Promise<boolean> {
-    const id = Number(boundBomId || source() || 0)
+    const id = Number(boundBomId.value || source() || 0)
     if (!id || !token.value || state.value !== 'granted') return false
     try {
       const response = await productBomApi.renewBomEditSession(id, clientId, token.value)
@@ -165,7 +168,7 @@ export function useBomEditSession(source: () => number | null | undefined) {
 
   /** 显式重新申请（用户主动点击，不做后台接管）。 */
   async function reacquire(): Promise<boolean> {
-    const ok = await acquire(boundBomId ?? source())
+    const ok = await acquire(boundBomId.value ?? source())
     if (ok) ElMessage.success('已重新取得编辑权，请核对内容后再保存')
     return ok
   }
@@ -173,10 +176,10 @@ export function useBomEditSession(source: () => number | null | undefined) {
   /** 关闭/取消时 compare-token 释放。保存成功后不调用。 */
   async function release(): Promise<void> {
     stopHeartbeat()
-    const id = Number(boundBomId || source() || 0)
+    const id = Number(boundBomId.value || source() || 0)
     const current = token.value
     token.value = null
-    boundBomId = null
+    boundBomId.value = null
     state.value = 'idle'
     message.value = ''
     if (!id || !current) return
@@ -194,7 +197,7 @@ export function useBomEditSession(source: () => number | null | undefined) {
       ElMessage.warning(message.value || '当前为只读状态，不能保存')
       return false
     }
-    if (boundBomId && !token.value) {
+    if (boundBomId.value && !token.value) {
       markReadOnly('lost', '缺少编辑占用凭证，请重新申请编辑权后再保存')
       ElMessage.warning(message.value)
       return false
@@ -235,6 +238,7 @@ export function useBomEditSession(source: () => number | null | undefined) {
 
   return {
     clientId,
+    boundBomId,
     state,
     token,
     message,

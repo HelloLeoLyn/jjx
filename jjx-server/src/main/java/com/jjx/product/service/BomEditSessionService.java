@@ -25,12 +25,15 @@ public interface BomEditSessionService {
     boolean release(Long bomId, String token);
 
     /**
-     * 保存前的编辑 token 校验：无 token、已过期、被替换、Redis 不可用一律抛 BusinessException（fail-closed）。
+     * 保存前的编辑 token 校验：无 token、已过期、被替换、属于其他账号、Redis 不可用
+     * 一律抛 BusinessException（fail-closed）。
      */
     void verifySaveToken(Long bomId, String token);
 
     /**
-     * 管理员强制解锁：当前库中没有专用权限码授权，接口只准备不开放，一律拒绝。
+     * 管理员强制解锁：原子解除当前 bomId 的编辑占用，并写 sys_oper_log 持久审计
+     * （bomId / 操作人 / 操作时间 / 原占用者）。无占用不算错误；审计写入失败则拒绝解锁。
+     * 权限码校验由控制器 {@code @SaCheckPermission(engineering:bom:edit:force-unlock)} 把关。
      */
-    void forceUnlock(Long bomId);
+    BomEditSessionVO forceUnlock(Long bomId);
 }

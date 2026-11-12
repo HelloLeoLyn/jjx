@@ -186,6 +186,14 @@ public class ManufacturingBomServiceImpl implements ManufacturingBomService {
         return payload;
     }
 
+    /**
+     * 制造 BOM 详情（父表 + 明细 + 内容指纹）。
+     *
+     * <p>快照一致性（dev-20261111-018 修复卡 F5）：本方法只从 {@link #save}/{@link #update} 两个
+     * {@code @Transactional} 入口调用，父表读、{@link IEngineeringBomService#getBomItems} 明细读与指纹计算
+     * 因此处在同一事务、同一 RR 快照内；私有方法的 {@code @Transactional} 不会被代理拦截，加注解只是装饰，
+     * 故不添加。正式页面读取走 {@code EngineeringBomServiceImpl.getBomDetail}（已标 {@code readOnly=true}）。
+     */
     private ManufacturingBomVO detail(Long bomId) {
         EngineeringBom bom = bomMapper.selectById(bomId);
         if (bom == null) {

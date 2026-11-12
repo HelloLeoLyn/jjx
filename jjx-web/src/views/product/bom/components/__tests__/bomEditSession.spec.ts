@@ -245,6 +245,40 @@ describe('编辑占用状态机', () => {
     expect(api2.readOnly.value).toBe(true)
   })
 
+  it('保存成功不释放租约；同一 bomId 重复 acquire 幂等，不换 token', async () => {
+    mocks.acquireBomEditSession.mockResolvedValue(granted())
+    const api = mountIn(100)
+    expect(await api.acquire(100)).toBe(true)
+    const token = api.token.value
+
+    // 保存成功：只刷新指纹，不 release（关闭/取消才释放）
+    api.applyRevision('rev-2')
+    expect(mocks.releaseBomEditSession).not.toHaveBeenCalled()
+    expect(api.token.value).toBe(token)
+    expect(api.boundBomId.value).toBe(100)
+
+    // 保存后补充 acquire（制造方案首保存路径）不应重复申请、也不应替换 token
+    expect(await api.acquire(100)).toBe(true)
+    expect(mocks.acquireBomEditSession).toHaveBeenCalledTimes(1)
+    expect(api.token.value).toBe(token)
+  })
+
+  it('切换 bomId 后 boundBomId 跟随，释放后清空', async () => {
+    mocks.acquireBomEditSession.mockResolvedValueOnce(granted('token-1', 100))
+    mocks.acquireBomEditSession.mockResolvedValueOnce(granted('token-2', 200))
+    const api = mountIn(100)
+    await api.acquire(100)
+    expect(api.boundBomId.value).toBe(100)
+
+    expect(await api.acquire(200)).toBe(true)
+    expect(api.boundBomId.value).toBe(200)
+    expect(api.token.value).toBe('token-2-200')
+
+    await api.release()
+    expect(api.boundBomId.value).toBeNull()
+    expect(mocks.releaseBomEditSession).toHaveBeenCalledWith(200, 'token-2-200')
+  })
+
   it('每标签页 clientId 来自 sessionStorage，不是 userId/token', async () => {
     mocks.acquireBomEditSession.mockResolvedValue(granted())
     const api = mountIn(100)

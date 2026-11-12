@@ -9,6 +9,7 @@
         >
           <el-switch
             :model-value="quickMode"
+            :disabled="readonly"
             @change="setQuickMode"
             active-text="快速模式"
             inactive-text="常规模式"
@@ -16,8 +17,16 @@
             style="--el-switch-on-color: #e6a23c"
           />
         </el-tooltip>
-        <el-button type="primary" :icon="Plus" @click="handleAddItem"> 添加物料 </el-button>
-        <el-button type="info" :icon="Refresh" :loading="refreshLoading" @click="handleRefresh">
+        <el-button type="primary" :icon="Plus" :disabled="readonly" @click="handleAddItem">
+          添加物料
+        </el-button>
+        <el-button
+          type="info"
+          :icon="Refresh"
+          :loading="refreshLoading"
+          :disabled="readonly"
+          @click="handleRefresh"
+        >
           刷新
         </el-button>
         <el-button
@@ -76,6 +85,7 @@
             :mode="PROJECT_PICKER_MODE"
             :model-value="scope.row.processId ?? scope.row.processName"
             :process-name="scope.row.processName"
+            :disabled="readonly"
             size="small"
             @change="(val: number | string | undefined) => handleProjectChange(scope.row, val)"
           />
@@ -84,10 +94,11 @@
       <!-- 物料名称：常规模式选物料；快速模式直接录材料原文（dev-20261020-029 A） -->
       <el-table-column label="物料名称" prop="materialName" min-width="140">
         <template #default="scope">
-          <div class="material-name-cell">
+          <div class="material-name-cell" :class="{ 'is-readonly': readonly }">
             <el-input
               v-if="quickMode"
               v-model="scope.row.materialName"
+              :disabled="readonly"
               placeholder="输入材料名称（必填）"
               size="small"
               maxlength="200"
@@ -118,6 +129,7 @@
           <el-input
             v-else-if="quickMode"
             v-model="scope.row.specification"
+            :disabled="readonly"
             placeholder="选填"
             size="small"
             maxlength="500"
@@ -133,6 +145,7 @@
             :min="0"
             :precision="4"
             :controls="false"
+            :disabled="readonly"
             size="small"
             @change="handleModuleQtyChange(scope.row)"
           />
@@ -146,6 +159,7 @@
             size="small"
             :controls="false"
             :precision="0"
+            :disabled="readonly"
             @update:model-value="(value) => handleSplitChange(scope.row, value)"
           >
             <template #suffix>
@@ -168,6 +182,7 @@
             :controls="false"
             :min="0"
             :precision="4"
+            :disabled="readonly"
             size="small"
             @change="handleBaseQtyChange(scope.row)"
           />
@@ -178,6 +193,7 @@
         <template #default="scope">
           <el-select
             v-model="scope.row.unit"
+            :disabled="readonly"
             placeholder="请选择"
             size="small"
             filterable
@@ -203,6 +219,7 @@
             :max="100"
             :precision="2"
             :step="0.01"
+            :disabled="readonly"
             size="small"
             controls-position="right"
             @change="handleLossRateChange(scope.row)"
@@ -218,6 +235,7 @@
             v-model="scope.row.minIssueQty"
             :min="0"
             :precision="0"
+            :disabled="readonly"
             size="small"
             :controls="false"
             @change="recalcAppliedIssue(scope.row)"
@@ -248,7 +266,12 @@
       <!-- 操作列 -->
       <el-table-column label="操作" min-width="120" align="left" fixed="right">
         <template #default="scope">
-          <el-button link type="primary" size="small" @click="handleCopyItem(scope.row)"
+          <el-button
+            link
+            type="primary"
+            size="small"
+            :disabled="readonly"
+            @click="handleCopyItem(scope.row)"
             >复制</el-button
           >
 
@@ -257,6 +280,7 @@
             link
             type="warning"
             size="small"
+            :disabled="readonly"
             @click="handleUndoRemove(scope.row)"
             >撤销移除</el-button
           >
@@ -265,6 +289,7 @@
             link
             size="small"
             type="danger"
+            :disabled="readonly"
             @click="handleDeleteItem(scope.row)"
             >删除</el-button
           >
@@ -273,6 +298,7 @@
             link
             type="primary"
             size="small"
+            :disabled="readonly"
             @click="handleManufacturing(scope.row)"
             >制造BOM</el-button
           >
@@ -281,6 +307,7 @@
             link
             type="primary"
             size="small"
+            :disabled="readonly"
             @click="handleCreateMaterial(scope.row, scope.row.materialName || '')"
             >建档</el-button
           >
@@ -1436,6 +1463,11 @@ defineExpose({
 .material-name-cell > :first-child {
   flex: 1;
   min-width: 0;
+}
+/* 只读（其他窗口/编辑权失效）：物料选择器没有 disabled prop，用容器阻止打开，避免绕过只读改内容 */
+.material-name-cell.is-readonly {
+  pointer-events: none;
+  opacity: 0.85;
 }
 
 .row-status-cell {

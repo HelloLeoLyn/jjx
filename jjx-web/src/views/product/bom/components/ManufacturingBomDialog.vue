@@ -201,10 +201,10 @@
         <span class="footer-tip">{{ footerTip }}</span>
         <el-button @click="handleCancel">关 闭</el-button>
         <el-button
-          v-if="editable"
+          v-if="canCreate || canEditStored"
           type="primary"
           :loading="saving"
-          :disabled="editSession.readOnly.value"
+          :disabled="!editable"
           @click="saveScheme"
           >保存制造BOM</el-button
         >
@@ -448,6 +448,8 @@ watch(
   () => current.value?.draft.bomId ?? null,
   async (bomId, previous) => {
     if (bomId === previous) return
+    // 保存流程已为同一 bomId 取得租约时不再“释放再取”，避免刚拿到的 token 被换掉
+    if (bomId && bomId === editSession.boundBomId.value) return
     await editSession.release()
     if (bomId) await editSession.acquire(bomId)
   }
@@ -469,7 +471,9 @@ const canEditStored = computed(() => !props.readonly && hasPermi('engineering:bo
 const canSetPrimary = computed(() => canEditStored.value)
 /** 新建/已存方案分开判断：add-only 只能新建，edit-only 只能改已存方案。 */
 const editable = computed(
-  () => (Number(current.value.draft.bomId) ? canEditStored.value : canCreate.value)
+  () =>
+    !editSession.readOnly.value &&
+    (Number(current.value.draft.bomId) ? canEditStored.value : canCreate.value)
 )
 const canAdoptVisible = computed(() => canCreate.value || canEditStored.value)
 
@@ -958,6 +962,7 @@ const saveScheme = async (): Promise<boolean> => {
   // 只读（占用失败/编辑权失效）不得保存
   if (!editSession.ensureEditable()) return false
   const frame = current.value
+  const isNewScheme = !Number(frame.draft.bomId)
   const message = validateDraft()
   if (message) {
     ElMessage.warning(message)
@@ -980,6 +985,16 @@ const saveScheme = async (): Promise<boolean> => {
     // 保存成功：更新内容指纹并保持编辑权（不释放租约，也不后台接管）
     frame.draft.contentRevision = detail.contentRevision ?? frame.draft.contentRevision ?? null
     editSession.applyRevision(detail.contentRevision)
+    // 新建方案首次保存后必须立刻申请该 bomId 的租约；否则第二次保存会缺 token 被后端 409。
+    // 申请失败（被其他窗口占用/占用服务不可用）→ 只读并保留草稿，不静默放行。
+    if (isNewScheme) {
+      const granted = await editSession.acquire(Number(detail.bomId))
+      if (!granted) {
+        ElMessage.warning(
+          '方案已保存，但未取得该方案的编辑占用：当前为只读，草稿已保留；请重新申请编辑权后再继续编辑'
+        )
+      }
+    }
     if (Array.isArray(detail.items)) {
       // 保存后回读：参考用量以本次返回的值为准（后端重算）
       const archiveUnits = new Map(
@@ -992,7 +1007,11 @@ const saveScheme = async (): Promise<boolean> => {
       })
     }
     frame.baseline = serializeDraft(frame.draft)
-    ElMessage.success('制造BOM方案已保存')
+    if (editSession.readOnly.value) {
+      ElMessage.success('制造BOM方案已保存（当前只读）')
+    } else {
+      ElMessage.success('制造BOM方案已保存')
+    }
     try {
       await refreshOptions(frame)
     } catch (error) {

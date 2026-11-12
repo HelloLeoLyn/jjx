@@ -28,7 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>独立控制器，避免改动 BomController 既有的保存/审批入口契约。
  * 权限：获取/续租/释放 = engineering:bom:add 或 engineering:bom:edit（OR）；
- * 管理员强制解锁 = 专用 engineering:bom:edit:force-unlock，当前未配置角色，未授权即 403。
+ * 管理员强制解锁 = 专用 engineering:bom:edit:force-unlock（超管 Sa-Token 通配“*”天然覆盖，
+ * 其他角色需要后续正常权限配置授权），普通 engineering:bom:edit 不得冒充。
  */
 @RestController
 @RequestMapping("/engineering/bom/{bomId}/edit-session")
@@ -47,7 +48,7 @@ public class BomEditSessionController {
     }
 
     /**
-     * 获取编辑权（takeover=true 时走管理员强制解锁分支）。
+     * 获取编辑权（takeover=true 时走管理员强制解锁：先原子解除当前占用，再为本标签页重新取得）。
      * 普通入口不允许接管：同账号第二窗口同样只读。
      */
     @Operation(summary = "获取BOM编辑权")
@@ -58,7 +59,9 @@ public class BomEditSessionController {
         if (request != null && Boolean.TRUE.equals(request.getTakeover())) {
             // 绝不用 engineering:bom:edit 冒充管理员解锁：必须是专用权限码。
             StpUtil.checkPermission(BomEditSessionServiceImpl.FORCE_UNLOCK_PERMISSION);
-            return Result.success(forceUnlock(bomId));
+            bomEditSessionService.forceUnlock(bomId);
+            // 解除后重新申请：新 token 返回给本次调用方，原占用者的 token 不会复活。
+            return Result.success(bomEditSessionService.acquire(bomId, request.getClientId()));
         }
         return Result.success(bomEditSessionService.acquire(bomId, request == null ? null : request.getClientId()));
     }
@@ -82,18 +85,14 @@ public class BomEditSessionController {
     }
 
     /**
-     * 管理员强制解锁：只准备接口，专用权限码未配置角色前一律拒绝（不写库、不配菜单）。
+     * 管理员强制解锁：专用权限码通过后真实解除占用并写 sys_oper_log 审计。
+     * 无占用时返回“当前无占用”，不是 403；审计写入失败则整个操作失败（不静默无痕）。
      */
-    @Operation(summary = "管理员强制解锁BOM编辑占用（待权限配置）")
+    @Operation(summary = "管理员强制解锁BOM编辑占用")
     @PostMapping("/unlock")
-    @SaCheckPermission("engineering:bom:edit:force-unlock")
+    @SaCheckPermission(BomEditSessionServiceImpl.FORCE_UNLOCK_PERMISSION)
     public Result<BomEditSessionVO> unlock(@PathVariable Long bomId) {
-        return Result.success(forceUnlock(bomId));
-    }
-
-    private BomEditSessionVO forceUnlock(Long bomId) {
-        bomEditSessionService.forceUnlock(bomId);
-        return null; // forceUnlock 恒抛异常；保留返回类型便于后续启用
+        return Result.success(bomEditSessionService.forceUnlock(bomId));
     }
 
     @ExceptionHandler(cn.dev33.satoken.exception.NotPermissionException.class)

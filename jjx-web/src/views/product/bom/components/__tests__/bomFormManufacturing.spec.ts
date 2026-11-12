@@ -56,7 +56,7 @@ vi.mock('@/components/BomItemEditor.vue', () => ({
   // 与真实编辑器同等对外契约（getItems/validateItems/updateItem），只隔离表格渲染
   default: defineComponent({
     name: 'BomItemEditorStub',
-    props: ['modelValue', 'bomId'],
+    props: ['modelValue', 'bomId', 'readonly'],
     setup(props, { expose }) {
       const rows = () => ((props.modelValue as any[]) || [])
       expose({
@@ -70,7 +70,8 @@ vi.mock('@/components/BomItemEditor.vue', () => ({
           return true
         },
       })
-      return () => h('div', { class: 'editor-stub' })
+      return () =>
+        h('div', { class: 'editor-stub', 'data-readonly': String(Boolean(props.readonly)) })
     },
   }),
 }))
@@ -101,9 +102,15 @@ const Slot = defineComponent({ template: '<div><slot /><slot name="footer" /></d
 const Passthrough = defineComponent({ template: '<div><slot /></div>' })
 // el-form 只需要对外契约；真实校验规则不是本用例的验证对象
 const FormStub = defineComponent({
-  setup(_, { slots, expose }) {
+  props: ['model', 'modelValue', 'rules', 'disabled', 'labelWidth'],
+  setup(props, { slots, expose }) {
     expose({ validate: async () => {}, resetFields: () => {}, clearValidate: () => {} })
-    return () => h('div', slots.default?.())
+    return () =>
+      h(
+        'div',
+        { class: 'form-stub', 'data-disabled': String(Boolean(props.disabled)) },
+        slots.default?.(),
+      )
   },
 })
 // el-upload 只需要 clearFiles 契约（本用例不测导入流程）
@@ -449,14 +456,24 @@ describe('父产品BOM：编辑占用与服务端内容版本', () => {
         message: '该BOM正由 李四 编辑，本窗口为只读',
       },
     })
-    const { state } = await editingForm()
+    const { wrapper, state } = await editingForm()
     expect(state.editSession.readOnly.value).toBe(true)
     expect(state.editSession.message.value).toContain('只读')
+
+    // 只读不是只禁保存按钮：表单与明细编辑入口也必须禁用（修复卡 F6b）
+    expect(wrapper.find('.form-stub').attributes('data-disabled')).toBe('true')
+    expect(wrapper.find('.editor-stub').attributes('data-readonly')).toBe('true')
 
     state.formData.remark = '只读窗口的草稿'
     expect(await state.doSave()).toBe(false)
     expect(mocks.editEngineeringBom).not.toHaveBeenCalled()
     expect(state.formData.remark).toBe('只读窗口的草稿')
+  })
+
+  it('取得编辑权时表单与明细编辑器可用', async () => {
+    const { wrapper } = await editingForm()
+    expect(wrapper.find('.form-stub').attributes('data-disabled')).toBe('false')
+    expect(wrapper.find('.editor-stub').attributes('data-readonly')).toBe('false')
   })
 
   it('占用服务不可用（Redis 故障）时只读，不出现“提示失效但照样保存”', async () => {

@@ -390,9 +390,18 @@ const handleBatchApprove = async (itemIds: number[]) => {
     })
     if (!res.data) throw new Error('批量审核未返回结果')
     batchFailures.value = res.data.failed
-    ElMessage[res.data.failed.length ? 'warning' : 'success'](
-      `批量通过 ${res.data.successIds.length} 行，失败 ${res.data.failed.length} 行`
+    // 批量接口返回 200 + failed 列表：内容过期不会抛异常（dev-20261111-018 修复卡 F6c）。
+    // 必须回读最新内容指纹，否则用户会拿旧指纹反复失败。
+    const staleFailed = (res.data.failed || []).some((failure) =>
+      String(failure?.reason || '').includes('BOM_CONTENT_STALE')
     )
+    if (staleFailed) {
+      await reloadAfterConflict('部分行因 BOM 内容已被保存修改未通过；已重新加载最新内容，请重新批量审核')
+    } else {
+      ElMessage[res.data.failed.length ? 'warning' : 'success'](
+        `批量通过 ${res.data.successIds.length} 行，失败 ${res.data.failed.length} 行`
+      )
+    }
   } catch (error: any) {
     if (isContentConflict(error)) {
       await reloadAfterConflict('BOM 内容已被保存修改，已重新加载最新内容，请重新批量审核')
