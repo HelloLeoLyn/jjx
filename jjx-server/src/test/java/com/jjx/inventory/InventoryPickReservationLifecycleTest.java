@@ -18,6 +18,7 @@ import com.jjx.inventory.service.InventoryStockMutationService;
 import com.jjx.inventory.service.impl.InventoryOutboundServiceImpl;
 import com.jjx.inventory.service.impl.InventoryStockMutationServiceImpl;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -52,6 +53,14 @@ class InventoryPickReservationLifecycleTest {
     private InventoryOutboundOrder order;
     private InventoryStockItem batch;
 
+    @BeforeEach
+    void initMetadata() {
+        var assistant = new org.apache.ibatis.builder.MapperBuilderAssistant(
+                new com.baomidou.mybatisplus.core.MybatisConfiguration(), "");
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(assistant, InventoryOutboundItem.class);
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(assistant, InventoryOutboundOrder.class);
+    }
+
     @ParameterizedTest
     @CsvSource({
             "sample, PENDING, 5", "sample, APPROVED, 5",
@@ -61,6 +70,23 @@ class InventoryPickReservationLifecycleTest {
     void confirmReleasesBeforeFifoAndDeductsOnlyOnce(String source, InventoryOrderStatusEnum status,
                                                    BigDecimal originalQuantity) {
         prepare(source, status, originalQuantity, PICK_QUANTITY);
+        if ("sample".equals(source)) {
+            when(outboundItemMapper.update(isNull(), any())).thenAnswer(invocation -> {
+                var update = (com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<?>) invocation.getArgument(1);
+                assertUpdateValue(update, "quantity", PICK_QUANTITY);
+                assertUpdateValue(update, "unit_price", new BigDecimal("3.50"));
+                assertUpdateValue(update, "amount", new BigDecimal("17.50"));
+                assertUpdateValue(update, "batch_no", "PICK-BATCH");
+                assertTrue(update.getSqlSegment().contains("item_id"));
+                assertTrue(update.getParamNameValuePairs().containsValue(81L));
+                return 1;
+            });
+            when(outboundOrderMapper.update(isNull(), any())).thenAnswer(invocation -> {
+                var update = (com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<?>) invocation.getArgument(1);
+                assertUpdateValue(update, "total_amount", new BigDecimal("17.50"));
+                return 1;
+            });
+        }
         stubRelease();
         when(stockItemMapper.selectFIFOAvailableByInventoryItemId(31L)).thenAnswer(invocation ->
                 available().signum() > 0 ? List.of(batch) : List.of());
@@ -92,6 +118,14 @@ class InventoryPickReservationLifecycleTest {
         assertEquals(originalQuantity, tx.getValue().getBeforeQuantity());
         assertEquals(batch.getQuantity(), tx.getValue().getAfterQuantity());
         assertEquals(source, tx.getValue().getSourceType());
+        if ("sample".equals(source)) {
+            verify(outboundItemMapper).update(isNull(), any());
+            verify(outboundOrderMapper).update(isNull(), any());
+            assertEquals(new BigDecimal("17.50"), order.getTotalAmount());
+        } else {
+            verify(outboundItemMapper, never()).update(isNull(), any());
+            verify(outboundOrderMapper, never()).update(isNull(), any());
+        }
     }
 
     @ParameterizedTest
@@ -163,6 +197,7 @@ class InventoryPickReservationLifecycleTest {
         order.setOutboundType(("sample".equals(source) ? OutboundTypeEnum.SAMPLE : OutboundTypeEnum.PRODUCTION).getCode());
         order.setOrderStatus(status.getValue());
         InventoryOutboundItem item = new InventoryOutboundItem();
+        item.setItemId(81L);
         item.setMaterialId(11L);
         item.setMaterialCode("MAT-11");
         item.setInventoryItemId(31L);
@@ -172,6 +207,7 @@ class InventoryPickReservationLifecycleTest {
         batch.setMaterialId(11L);
         batch.setInventoryItemId(31L);
         batch.setBatchNo("PICK-BATCH");
+        batch.setUnitCost(new BigDecimal("3.50"));
         batch.setQuantity(quantity);
         batch.setReservedQuantity(reserved);
         when(outboundOrderMapper.selectByIdForUpdate(1L)).thenReturn(order);
@@ -199,5 +235,15 @@ class InventoryPickReservationLifecycleTest {
 
     private BigDecimal available() {
         return batch.getQuantity().subtract(batch.getReservedQuantity());
+    }
+
+    private void assertUpdateValue(com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<?> update,
+                                   String column, Object expected) {
+        String assignment = java.util.Arrays.stream(update.getSqlSet().split(","))
+                .filter(part -> part.startsWith(column + "=")).findFirst().orElseThrow();
+        var parameter = java.util.regex.Pattern.compile("ew\\.paramNameValuePairs\\.([A-Za-z0-9]+)")
+                .matcher(assignment);
+        assertTrue(parameter.find(), assignment);
+        assertEquals(expected, update.getParamNameValuePairs().get(parameter.group(1)), column);
     }
 }
