@@ -117,7 +117,7 @@ describe('编辑占用状态机', () => {
 
     await api.release()
     expect(mocks.releaseBomEditSession).toHaveBeenCalledWith(100, 'token-1-100')
-    expect(api.readOnly.value).toBe(false)
+    expect(api.readOnly.value).toBe(true)
     expect(api.state.value).toBe('idle')
   })
 
@@ -279,15 +279,99 @@ describe('编辑占用状态机', () => {
     expect(mocks.releaseBomEditSession).toHaveBeenCalledWith(200, 'token-2-200')
   })
 
-  it('每标签页 clientId 来自 sessionStorage，不是 userId/token', async () => {
+  it('复制 sessionStorage 的窗口与同页面不同编辑实例也不共享身份', async () => {
+    window.sessionStorage.setItem('jjx:bom:edit:client-id', 'copied-window-id')
+    const first = mountIn(100)
+    const second = mountIn(100)
+    expect(first.clientId).not.toBe(second.clientId)
+    expect(first.clientId).not.toBe('copied-window-id')
+    mocks.acquireBomEditSession.mockResolvedValue(granted())
+    await first.acquire()
+    expect(mocks.acquireBomEditSession).toHaveBeenCalledWith(100, first.clientId)
+  })
+
+  it('已有 BOM 等待申请期间禁止编辑保存', async () => {
+    let resolve!: (value: ReturnType<typeof granted>) => void
+    mocks.acquireBomEditSession.mockReturnValue(new Promise(done => { resolve = done }))
+    const api = mountIn(100)
+    expect(api.canSave.value).toBe(false)
+    const acquiring = api.acquire()
+    expect(api.state.value).toBe('acquiring')
+    expect(api.ensureEditable()).toBe(false)
+    resolve(granted())
+    expect(await acquiring).toBe(true)
+    expect(api.ensureEditable()).toBe(true)
+  })
+
+  it('关闭后迟到的申请按原BOM释放，不恢复编辑权或心跳', async () => {
+    let resolve!: (value: ReturnType<typeof granted>) => void
+    mocks.acquireBomEditSession.mockReturnValue(new Promise(done => { resolve = done }))
+    const api = mountIn(100)
+    const pending = api.acquire()
+    await api.release()
+    resolve(granted())
+    expect(await pending).toBe(false)
+    expect(api.token.value).toBeNull()
+    expect(api.boundBomId.value).toBeNull()
+    expect(api.state.value).toBe('idle')
+    expect(mocks.releaseBomEditSession).toHaveBeenCalledWith(100, 'token-1-100')
+  })
+
+  it('切换BOM后旧申请成功不得把旧token绑定到新BOM', async () => {
+    let resolve!: (value: ReturnType<typeof granted>) => void
+    mocks.acquireBomEditSession.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    mocks.acquireBomEditSession.mockResolvedValueOnce(granted('new', 200))
+    const api = mountIn(100)
+    const old = api.acquire(100)
+    expect(await api.acquire(200)).toBe(true)
+    resolve(granted('old', 100))
+    expect(await old).toBe(false)
+    expect(api.boundBomId.value).toBe(200)
+    expect(api.token.value).toBe('new-200')
+    expect(mocks.releaseBomEditSession).toHaveBeenCalledWith(100, 'old-100')
+    expect(mocks.releaseBomEditSession).not.toHaveBeenCalledWith(200, 'old-100')
+  })
+
+  it('旧申请失败与旧心跳失败都不覆盖切换后的新编辑权', async () => {
+    let reject!: (error: Error) => void
+    mocks.acquireBomEditSession.mockReturnValueOnce(new Promise((_done, fail) => { reject = fail }))
+    mocks.acquireBomEditSession.mockResolvedValueOnce(granted('new', 200))
+    const api = mountIn(100)
+    const old = api.acquire(100)
+    await api.acquire(200)
+    reject(new Error('old acquire failed'))
+    expect(await old).toBe(false)
+    expect(api.state.value).toBe('granted')
+    mocks.renewBomEditSession.mockReturnValueOnce(new Promise((_done, fail) => { reject = fail }))
+    const heartbeat = api.renew()
+    await api.release()
+    mocks.acquireBomEditSession.mockResolvedValueOnce(granted('newest', 300))
+    await api.acquire(300)
+    reject(new Error('old heartbeat failed'))
+    expect(await heartbeat).toBe(false)
+    expect(api.token.value).toBe('newest-300')
+    expect(api.state.value).toBe('granted')
+  })
+
+  it('续租响应不含有效凭证时失去编辑权', async () => {
     mocks.acquireBomEditSession.mockResolvedValue(granted())
     const api = mountIn(100)
-    await api.acquire(100)
-    const clientId = mocks.acquireBomEditSession.mock.calls[0][1]
-    expect(typeof clientId).toBe('string')
-    expect(clientId.length).toBeGreaterThan(8)
-    expect(clientId).not.toContain('token')
-    expect(window.sessionStorage.getItem('jjx:bom:edit:client-id')).toBe(clientId)
-    await flushPromises()
+    await api.acquire()
+    mocks.renewBomEditSession.mockResolvedValue({ data: { leaseAvailable: false } })
+    expect(await api.renew()).toBe(false)
+    expect(api.canSave.value).toBe(false)
+  })
+
+  it('组件卸载后迟到申请被释放，不能重新启动会话', async () => {
+    let resolve!: (value: ReturnType<typeof granted>) => void
+    mocks.acquireBomEditSession.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    const api = mountIn(100)
+    const pending = api.acquire()
+    wrappers[0].unmount()
+    resolve(granted())
+    expect(await pending).toBe(false)
+    expect(api.token.value).toBeNull()
+    expect(mocks.releaseBomEditSession).toHaveBeenCalledWith(100, 'token-1-100')
+    expect(await api.acquire()).toBe(false)
   })
 })

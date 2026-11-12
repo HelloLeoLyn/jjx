@@ -333,6 +333,7 @@ describe('逐层采用：只回填直接上层，父草稿变脏，顶层才交�
 
     // 4）返回上层：父层变脏，保存后才持久化父行引用
     await state.handlePathNavigate(0)
+    await flushPromises() // 返回已存上层后等待编辑占用申请完成
     expect(state.activeIndex).toBe(0)
     expect(state.currentDirty).toBe(true)
     expect(await state.saveScheme()).toBe(true)
@@ -359,10 +360,12 @@ describe('逐层采用：只回填直接上层，父草稿变脏，顶层才交�
 
     mocks.confirm.mockRejectedValue('close')
     await state.handlePathNavigate(0)
+    await flushPromises() // 返回已存上层后等待编辑占用申请完成
     expect(state.activeIndex).toBe(1)
 
     mocks.confirm.mockRejectedValue('cancel')
     await state.handlePathNavigate(0)
+    await flushPromises() // 返回已存上层后等待编辑占用申请完成
     expect(state.activeIndex).toBe(0)
     expect(state.current.draft.remark).toBe('上层未保存')
     // 关闭时的未保存提示同样按“当前层”处理，不串到兄弟层
@@ -389,6 +392,7 @@ describe('主方案：顶层显式调整；深层先挂起，链可达才随产�
     // 采用后父草稿变脏但尚未保存：仍不提交
     expect(await state.adoptScheme()).toBe(true)
     await state.handlePathNavigate(0)
+    await flushPromises() // 返回已存上层后等待编辑占用申请完成
     expect(state.currentDirty).toBe(true)
     expect(wrapper.emitted('primary-change')).toBeUndefined()
 

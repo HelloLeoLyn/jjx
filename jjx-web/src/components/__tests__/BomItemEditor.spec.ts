@@ -6,7 +6,8 @@ vi.mock('@/api/inventory/materialMaster', () => ({ materialMasterApi: { detail: 
 vi.mock('@/components/inventory/MaterialFormDialog.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/components/Selector/StandardProcessSelector.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/composables/useEnabledProcesses', () => ({ useEnabledProcesses: () => ({ processes: [] }) }))
-vi.mock('sortablejs', () => ({ default: { create: () => ({ destroy() {} }) } }))
+vi.mock('sortablejs', () => ({ default: { create: vi.fn(() => ({ destroy: vi.fn(), option: vi.fn() })) } }))
+import Sortable from 'sortablejs'
 import { ElMessage } from 'element-plus'
 import { materialApi } from '@/api/inventory/material'
 import { materialMasterApi } from '@/api/inventory/materialMaster'
@@ -16,7 +17,7 @@ const replacement = { materialId: 9, materialCode: 'NEW', materialName: '新材�
 const detail = (specification = original.specification) => ({ data: { material: { specification, categoryId: 7 }, attributes: { coating: '单面加硬' } } })
 const wrappers: any[] = []
 // Render the real specification slot with the reactive row, without mounting the full table.
-function editor(row: any = original, props: Record<string, unknown> = {}) {
+function editor(row: any = original, props: Record<string, unknown> = {}, slotProp = 'specification') {
   const renderedState = shallowRef<any>()
   const wrapper = shallowMount(BomItemEditor, {
     props: { modelValue: [{ ...row }], ...props },
@@ -26,7 +27,7 @@ function editor(row: any = original, props: Record<string, unknown> = {}) {
       ElTableColumn: defineComponent({
         props: ['prop'],
         setup(props, { slots }) {
-          return () => props.prop === 'specification' && renderedState.value
+          return () => props.prop === slotProp && renderedState.value
             ? h('div', { class: 'spec-cell' }, slots.default?.({ row: renderedState.value.items[0] })) : null
         },
       }),
@@ -185,5 +186,33 @@ describe('父BOM行模数/基数允许正小数（dev-20261111-005）', () => {
     row.baseQty = 0
     expect(exposed.validateItems()).toBe(false)
     expect(notice).toHaveBeenCalledWith(expect.stringContaining('基数必须大于0'))
+  })
+})
+
+describe('编辑权只读时禁用物料选择与拖拽', () => {
+  it('编辑权失效后卸载物料选择器，键盘和原弹层不能再改料', async () => {
+    const { wrapper, state } = editor(original, {}, 'materialName')
+    state.setQuickMode(false)
+    await flushPromises()
+    expect(wrapper.find('bom-material-selector-stub').exists()).toBe(true)
+    await wrapper.setProps({ readonly: true })
+    expect(wrapper.find('bom-material-selector-stub').exists()).toBe(false)
+    expect(wrapper.get('.spec-cell').text()).toContain(original.materialName)
+  })
+
+  it('只读初始化禁拖拽，编辑权失效后关闭已有拖拽实例且不改顺序', async () => {
+    const rows = [{ ...original }, { ...original, itemId: 2 }]
+    const { wrapper, exposed } = editor(original, { modelValue: rows })
+    await flushPromises()
+    const create = vi.mocked(Sortable.create)
+    const options = create.mock.calls.at(-1)?.[1] as any
+    const instance = create.mock.results.at(-1)?.value as any
+    await wrapper.setProps({ readonly: true })
+    expect(instance.option).toHaveBeenCalledWith('disabled', true)
+    options.onEnd({ oldIndex: 0, newIndex: 1 })
+    expect(exposed.getItems().map((row: any) => row.itemId)).toEqual([1, 2])
+    editor(original, { readonly: true })
+    await flushPromises()
+    expect(create.mock.calls.at(-1)?.[1]?.disabled).toBe(true)
   })
 })

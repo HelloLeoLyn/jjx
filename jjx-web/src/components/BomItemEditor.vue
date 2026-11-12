@@ -94,7 +94,7 @@
       <!-- 物料名称：常规模式选物料；快速模式直接录材料原文（dev-20261020-029 A） -->
       <el-table-column label="物料名称" prop="materialName" min-width="140">
         <template #default="scope">
-          <div class="material-name-cell" :class="{ 'is-readonly': readonly }">
+          <div class="material-name-cell" >
             <el-input
               v-if="quickMode"
               v-model="scope.row.materialName"
@@ -103,6 +103,7 @@
               size="small"
               maxlength="200"
             />
+            <span v-else-if="readonly">{{ scope.row.materialName }}</span>
             <BomMaterialSelector
               v-else
               :material-id="scope.row.materialId"
@@ -885,6 +886,9 @@ const reorderItems = () => {
 // ==================== 拖拽排序（2026-10-10 dev-20261010-017：平铺表恢复 Sortable） ====================
 
 let sortableInstance: Sortable | null = null
+watch(() => props.readonly, (readonly) => {
+  sortableInstance?.option('disabled', readonly)
+})
 
 /** 初始化拖拽排序（拖手柄 .drag-handle；拖动后重排 items 并回写 sortOrder） */
 const initSortable = () => {
@@ -898,6 +902,7 @@ const initSortable = () => {
   }
   destroySortable()
   sortableInstance = Sortable.create(el, {
+    disabled: props.readonly,
     handle: '.drag-handle',
     animation: 150,
     easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
@@ -908,6 +913,7 @@ const initSortable = () => {
     },
     onEnd: (evt: Sortable.SortableEvent) => {
       tableRef.value?.$el?.classList.remove('is-dragging')
+      if (props.readonly) return
       const { oldIndex, newIndex } = evt
       if (oldIndex === undefined || newIndex === undefined || oldIndex === newIndex) return
       const newItems = [...items.value]
@@ -1463,11 +1469,6 @@ defineExpose({
 .material-name-cell > :first-child {
   flex: 1;
   min-width: 0;
-}
-/* 只读（其他窗口/编辑权失效）：物料选择器没有 disabled prop，用容器阻止打开，避免绕过只读改内容 */
-.material-name-cell.is-readonly {
-  pointer-events: none;
-  opacity: 0.85;
 }
 
 .row-status-cell {

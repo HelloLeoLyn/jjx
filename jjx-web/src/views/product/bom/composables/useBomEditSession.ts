@@ -12,27 +12,16 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
 
-const CLIENT_ID_KEY = 'jjx:bom:edit:client-id'
 /** 心跳间隔：租约 TTL 90 秒，30 秒续租。 */
 export const BOM_LEASE_HEARTBEAT_MS = 30_000
 
 export type BomLeaseState = 'idle' | 'acquiring' | 'granted' | 'readonly' | 'lost' | 'unavailable'
 
-/** 每个浏览器标签页一个稳定 UUID（不是 userId，也不是 token）。 */
+/** 每个编辑实例独立 UUID；复制窗口会复制 sessionStorage，不能用它共享编辑身份。 */
 export function bomClientId(): string {
-  try {
-    const existing = window.sessionStorage.getItem(CLIENT_ID_KEY)
-    if (existing) return existing
-    const created =
-      typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`
-    window.sessionStorage.setItem(CLIENT_ID_KEY, created)
-    return created
-  } catch {
-    // sessionStorage 不可用（隐私模式）：退化为内存级标识，仍能区分本窗口
-    return `mem-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  }
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `editor-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 type BizError = Error & { bizCode?: number; data?: unknown }
@@ -71,12 +60,16 @@ export function useBomEditSession(source: () => number | null | undefined) {
   const ownerName = ref('')
   const expiresAt = ref<number | null>(null)
   let timer: ReturnType<typeof setInterval> | null = null
+  let generation = 0
+  let disposed = false
   /** 当前已申请/持有的 bomId（暴露给调用方判断“保存后已绑定，无需再释放重取”）。 */
   const boundBomId = ref<number | null>(null)
 
-  /** 只读：无法编辑或已失去编辑权。新建未保存（idle）不受限。 */
+  /** 已存 BOM 取得凭证前一律只读，包括请求等待期间；未保存的新建草稿可编辑。 */
   const readOnly = computed(() =>
-    state.value === 'readonly' || state.value === 'lost' || state.value === 'unavailable',
+    state.value === 'acquiring' || state.value === 'readonly' || state.value === 'lost' ||
+    state.value === 'unavailable' ||
+    (state.value === 'idle' && Boolean(boundBomId.value || source())),
   )
   const canSave = computed(() => !readOnly.value)
 
@@ -89,6 +82,7 @@ export function useBomEditSession(source: () => number | null | undefined) {
 
   function startHeartbeat() {
     stopHeartbeat()
+    if (disposed || state.value !== 'granted') return
     timer = setInterval(() => {
       void renew()
     }, BOM_LEASE_HEARTBEAT_MS)
@@ -101,66 +95,91 @@ export function useBomEditSession(source: () => number | null | undefined) {
     stopHeartbeat()
   }
 
-  /** 获取编辑权。返回是否可编辑（true 才允许保存）。 */
+  /** 只释放指定请求的凭证；不改变当前窗口可能已切到另一 BOM 的状态。 */
+  async function releaseToken(id: number, heldToken: string | null): Promise<void> {
+    if (!id || !heldToken) return
+    try {
+      await productBomApi.releaseBomEditSession(id, heldToken)
+    } catch (error) {
+      console.warn('释放BOM编辑权失败:', error)
+    }
+  }
+
+  /** 获取编辑权。关闭、切换、重新申请后的迟到响应不得恢复旧会话。 */
   async function acquire(bomId?: number | null): Promise<boolean> {
+    if (disposed) return false
     const id = Number(bomId ?? source() ?? 0)
+    if (id && boundBomId.value === id && state.value === 'granted' && token.value) return true
+    const previousId = boundBomId.value
+    const previousToken = token.value
+    const requestGeneration = ++generation
+    stopHeartbeat()
+    token.value = null
+    boundBomId.value = id || null
+    expiresAt.value = null
+    ownerName.value = ''
+    message.value = ''
+    if (previousId && previousId !== id) void releaseToken(previousId, previousToken)
     if (!id) {
-      // 新建 BOM 还没有 bomId：不占用，首次保存后再获取
-      boundBomId.value = null
-      token.value = null
       state.value = 'idle'
-      message.value = ''
       return true
     }
-    // 已为本 bomId 持有编辑权：幂等返回，避免保存后的补充 acquire 把刚拿到的 token 换掉
-    if (boundBomId.value === id && state.value === 'granted' && token.value) return true
-    boundBomId.value = id
     state.value = 'acquiring'
     try {
       const response = await productBomApi.acquireBomEditSession(id, clientId)
       const lease = response?.data
+      if (disposed || requestGeneration !== generation || boundBomId.value !== id) {
+        // 同目标的新请求可能正持有同一个 token；仅在窗口关闭/切到别的 BOM 时释放旧结果。
+        if (lease?.acquired && lease.token && (disposed || boundBomId.value !== id)) {
+          await releaseToken(id, lease.token)
+        }
+        return false
+      }
       if (!lease?.leaseAvailable) {
         markReadOnly('unavailable', lease?.message || '占用服务暂不可用，请稍后重试')
         return false
       }
       if (!lease.acquired || !lease.token) {
-        markReadOnly(
-          'readonly',
+        markReadOnly('readonly',
           lease.message || `该BOM正由 ${lease.ownerDisplayName || '其他会话'} 编辑，本窗口为只读`,
-          lease.ownerDisplayName,
-        )
+          lease.ownerDisplayName)
         return false
       }
       token.value = lease.token
       ownerName.value = lease.ownerDisplayName || ''
       expiresAt.value = lease.expiresAt ?? null
       state.value = 'granted'
-      message.value = ''
       startHeartbeat()
       return true
     } catch (error) {
+      if (disposed || requestGeneration !== generation || boundBomId.value !== id) return false
       const code = bizCodeOf(error)
-      const text =
-        code === 503
-          ? '占用服务暂不可用，请稍后重试'
-          : String((error as Error)?.message || '获取编辑权失败，请稍后重试')
+      const text = code === 503 ? '占用服务暂不可用，请稍后重试'
+        : String((error as Error)?.message || '获取编辑权失败，请稍后重试')
       markReadOnly(code === 503 ? 'unavailable' : 'readonly', text)
       return false
     }
   }
 
   async function renew(): Promise<boolean> {
-    const id = Number(boundBomId.value || source() || 0)
-    if (!id || !token.value || state.value !== 'granted') return false
+    const id = Number(boundBomId.value || 0)
+    const heldToken = token.value
+    const requestGeneration = generation
+    if (disposed || !id || !heldToken || state.value !== 'granted') return false
+    const stillCurrent = () => !disposed && requestGeneration === generation &&
+      boundBomId.value === id && token.value === heldToken && state.value === 'granted'
     try {
-      const response = await productBomApi.renewBomEditSession(id, clientId, token.value)
+      const response = await productBomApi.renewBomEditSession(id, clientId, heldToken)
+      if (!stillCurrent()) return false
       const lease = response?.data
-      if (lease?.token) token.value = lease.token
-      expiresAt.value = lease?.expiresAt ?? null
+      if (!lease?.leaseAvailable || !lease.acquired || lease.token !== heldToken) {
+        throw new Error('编辑占用续租未返回有效凭证')
+      }
+      expiresAt.value = lease.expiresAt ?? null
       return true
     } catch {
-      // 心跳失败：立即只读，保留草稿，不后台接管、不静默续期
-      markReadOnly('lost', '编辑权已失效（可能已在其他窗口重新申请）；当前草稿已保留，请重新申请编辑权后再保存')
+      if (!stillCurrent()) return false
+      markReadOnly('lost', '编辑权已失效；当前草稿已保留，请重新申请编辑权后再保存')
       ElMessage.warning('编辑权已失效，草稿仍保留在当前窗口；请重新申请编辑权后再保存')
       return false
     }
@@ -173,22 +192,19 @@ export function useBomEditSession(source: () => number | null | undefined) {
     return ok
   }
 
-  /** 关闭/取消时 compare-token 释放。保存成功后不调用。 */
+  /** 关闭/取消立即使所有在途请求失效，再按原 id/token 释放。 */
   async function release(): Promise<void> {
+    ++generation
     stopHeartbeat()
-    const id = Number(boundBomId.value || source() || 0)
+    const id = Number(boundBomId.value || 0)
     const current = token.value
     token.value = null
     boundBomId.value = null
     state.value = 'idle'
     message.value = ''
-    if (!id || !current) return
-    try {
-      await productBomApi.releaseBomEditSession(id, current)
-    } catch (error) {
-      // 释放失败不影响关闭；租约到期自动释放，不做后台接管
-      console.warn('释放BOM编辑权失败:', error)
-    }
+    ownerName.value = ''
+    expiresAt.value = null
+    await releaseToken(id, current)
   }
 
   /** 保存前门禁：只读时拒绝保存。 */
@@ -197,7 +213,8 @@ export function useBomEditSession(source: () => number | null | undefined) {
       ElMessage.warning(message.value || '当前为只读状态，不能保存')
       return false
     }
-    if (boundBomId.value && !token.value) {
+    if ((boundBomId.value || source()) && (!token.value || state.value !== 'granted' ||
+        (source() && Number(source()) !== boundBomId.value))) {
       markReadOnly('lost', '缺少编辑占用凭证，请重新申请编辑权后再保存')
       ElMessage.warning(message.value)
       return false
@@ -233,7 +250,8 @@ export function useBomEditSession(source: () => number | null | undefined) {
   }
 
   onBeforeUnmount(() => {
-    stopHeartbeat()
+    disposed = true
+    void release()
   })
 
   return {

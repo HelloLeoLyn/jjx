@@ -861,10 +861,14 @@ const resetForm = () => {
   setBaseline()
 }
 
-// 加载BOM数据
+// 加载BOM数据；关闭/重新打开使旧的加载请求失效。
+let bomLoadGeneration = 0
 const loadBomData = async (bomId: number) => {
+  const generation = ++bomLoadGeneration
+  const isCurrent = () => props.modelValue && generation === bomLoadGeneration
   try {
     const response = await productBomApi.getEngineeringBomInfo(bomId)
+    if (!isCurrent()) return
     Object.assign(formData, response.data)
     // 服务端内容指纹（dev-20261111-018）：保存时原样回传，客户端不计算版本号
     formData.expectedContentRevision = response?.data?.contentRevision ?? null
@@ -876,13 +880,16 @@ const loadBomData = async (bomId: number) => {
     primaryChoices.value = {}
     // 加载BOM明细
     const itemResponse = await productBomApi.listEngineeringBomItem(bomId)
+    if (!isCurrent()) return
     formData.items = itemResponse.data || []
     // 明细回填到编辑器后再建基线，避免“刚打开就提示未保存”。
     await nextTick()
+    if (!isCurrent()) return
     setBaseline()
     // 已保存 BOM 打开即申请编辑权；失败/占用服务不可用时只读，但内容仍可查看与复制
     await editSession.acquire(bomId)
   } catch (error) {
+    if (!isCurrent()) return
     console.error('加载BOM数据失败:', error)
     ElMessage.error('加载BOM数据失败')
   }
@@ -1100,7 +1107,10 @@ const handleBeforeUnload = (e: BeforeUnloadEvent) => {
   }
 }
 onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', handleBeforeUnload))
+onBeforeUnmount(() => {
+  ++bomLoadGeneration
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
 
 // 供父级路由离开保护使用
 defineExpose({
@@ -1116,6 +1126,7 @@ watch(
   () => props.modelValue,
   async (newVal) => {
     if (!newVal) {
+      ++bomLoadGeneration
       // 关闭/取消：compare-token 释放编辑权（保存成功不在此释放）
       await editSession.release()
       return

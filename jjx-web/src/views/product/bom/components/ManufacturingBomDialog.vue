@@ -451,7 +451,9 @@ watch(
     // 保存流程已为同一 bomId 取得租约时不再“释放再取”，避免刚拿到的 token 被换掉
     if (bomId && bomId === editSession.boundBomId.value) return
     await editSession.release()
-    if (bomId) await editSession.acquire(bomId)
+    if (props.modelValue && bomId && bomId === current.value?.draft.bomId) {
+      await editSession.acquire(bomId)
+    }
   }
 )
 

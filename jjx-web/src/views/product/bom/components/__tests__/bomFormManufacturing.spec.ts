@@ -508,3 +508,19 @@ describe('父产品BOM：编辑占用与服务端内容版本', () => {
     expect(state.formData.items.length).toBeGreaterThan(0)
   })
 })
+
+describe('关闭期间迟到的BOM加载', () => {
+  it('关闭后详情才返回，不重新占用旧BOM也不恢复旧内容', async () => {
+    const wrapper = await form({ bomId: 9 })
+    const state = wrapper.vm as any
+    let resolve!: (value: any) => void
+    mocks.getEngineeringBomInfo.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    const loading = state.loadBomData(9)
+    await wrapper.setProps({ modelValue: false })
+    resolve({ data: { bomId: 9, remark: '迟到内容' } })
+    await loading
+    await flushPromises()
+    expect(mocks.acquireBomEditSession).not.toHaveBeenCalled()
+    expect(state.formData.remark).not.toBe('迟到内容')
+  })
+})

@@ -146,3 +146,26 @@ describe('BOM审核 批量通过后的批准按钮', () => {
     expect(approveButton(wrapper)?.attributes('disabled')).toBeUndefined()
   })
 })
+
+describe('批量审核200部分失败中的内容版本冲突', () => {
+  it('回读最新版本后才能再次提交，不能用旧版本循环失败', async () => {
+    const item = { itemId: 11, reviewStatus: BomItemReviewStatusEnum.PENDING.value }
+    api.getEngineeringBomInfo.mockResolvedValue({ data: { ...bomDetail([item]).data, contentRevision: 'old' } })
+    api.checkBomForApprove.mockResolvedValue({ data: [] })
+    const wrapper = mountDialog()
+    await flushPromises()
+    api.reviewBomItemsBatch.mockResolvedValueOnce({ data: {
+      successIds: [], failed: [{ itemId: 11, reason: 'BOM_CONTENT_STALE：内容已经修改' }],
+    } })
+    api.getEngineeringBomInfo.mockResolvedValue({ data: { ...bomDetail([item]).data, contentRevision: 'latest' } })
+    wrapper.findComponent(BomItemReviewTableStub).vm.$emit('batch-approve', [11])
+    await flushPromises()
+    expect(api.getEngineeringBomInfo.mock.calls.length).toBeGreaterThan(1)
+    api.reviewBomItemsBatch.mockResolvedValueOnce({ data: { successIds: [11], failed: [] } })
+    wrapper.findComponent(BomItemReviewTableStub).vm.$emit('batch-approve', [11])
+    await flushPromises()
+    expect(api.reviewBomItemsBatch).toHaveBeenNthCalledWith(1, expect.objectContaining({ expectedContentRevision: 'old' }))
+    expect(api.reviewBomItemsBatch).toHaveBeenNthCalledWith(2, expect.objectContaining({ expectedContentRevision: 'latest' }))
+    wrapper.unmount()
+  })
+})

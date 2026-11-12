@@ -8,16 +8,16 @@ import lombok.Data;
 @Data
 public class BomEditSessionRequest {
 
-    /** 浏览器标签页 UUID（sessionStorage 生成）；不是 userId，也不是 token。 */
+    /** 编辑实例 UUID（内存生成，各窗口/弹窗独立）；不是 userId，也不是 token。 */
     private String clientId;
 
     /** 续租/释放时持有的编辑 token。 */
     private String token;
 
     /**
-     * 管理员强制接管开关。当前实现一律拒绝：
+     * 管理员强制接管开关：
      * 仅持有专用权限码 engineering:bom:edit:force-unlock 的账号才能进入，
-     * 且未配置角色前仍然拒绝，不使用 engineering:bom:edit 冒充管理员解锁。
+     * 超管通配权限覆盖该专用码；解锁持久留痕后重新申请，不使用普通 edit 冒充。
      */
     private Boolean takeover;
 }
