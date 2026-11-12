@@ -90,6 +90,9 @@ public interface ISampleOrderService {
      */
     SalesOrder confirmSample(Long orderId, String clientName);
 
+    /** 客户确认样品（可带确认方式；空则按既定默认值记录，dev-20261106-009）。 */
+    SalesOrder confirmSample(Long orderId, String clientName, String confirmMethod);
+
     /**
      * 客户退回样品（多轮迭代）
      */

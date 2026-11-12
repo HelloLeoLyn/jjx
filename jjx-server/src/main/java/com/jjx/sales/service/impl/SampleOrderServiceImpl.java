@@ -121,6 +121,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
     private static final String SOURCE_QUOTATION = "QUOTATION";
     private static final String SOURCE_SALES_ORDER = "SALES_ORDER";
     private static final String SOURCE_SAMPLE_ORDER = "SAMPLE_ORDER";
+    /** 确认方式缺省值（dev-20261106-009）：渠道字段未单列前先记录为“客户确认”。 */
+    private static final String DEFAULT_SAMPLE_CONFIRM_METHOD = "客户确认";
 
     private static final List<Integer> ACTIVE_ORDER_SAMPLE_STATUSES = List.of(
             SampleOrderStatusEnum.CREATED.getValue(), SampleOrderStatusEnum.REQUEST.getValue(),
@@ -329,6 +331,55 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             throw new BusinessException(String.format("样品单状态已变更(当前:%s)，无法%s，请刷新后重试", statusName, actionDesc));
         }
         log.info("样品单[{}] 状态 {} → {}", orderId, from.getLabel(), to.getLabel());
+    }
+
+    /**
+     * 接单时保证当前轮次存在轮次快照（dev-20261106-009）。
+     * 同轮重复接单不重复插入；插入失败抛异常，随接单事务一起回滚，不留孤立轮次行。
+     */
+    private void ensureRoundSnapshot(Long orderId, int roundNo) {
+        List<com.jjx.sales.domain.entity.SalesSampleRound> rounds = sampleRoundMapper.selectByOrderId(orderId);
+        if (rounds != null) {
+            for (com.jjx.sales.domain.entity.SalesSampleRound row : rounds) {
+                if (row != null && Integer.valueOf(roundNo).equals(row.getRoundNo())) {
+                    return;
+                }
+            }
+        }
+        com.jjx.sales.domain.entity.SalesSampleRound round = new com.jjx.sales.domain.entity.SalesSampleRound();
+        round.setOrderId(orderId);
+        round.setRoundNo(roundNo);
+        round.setResult("pending");
+        if (sampleRoundMapper.insert(round) != 1) {
+            throw new BusinessException("接单时创建轮次快照失败");
+        }
+    }
+
+    /**
+     * 客户确认时落确认方式（dev-20261106-009）。
+     * 口径：请求值 > 扩展行已有值 > 既定默认值；只写本次确认，历史空值不做批量订正。
+     */
+    private void persistConfirmMethod(Long orderId, String clientName, String requestedMethod) {
+        SalesSampleOrder profile = sampleOrderMapper.selectByOrderId(orderId);
+        boolean existing = profile != null && profile.getSampleOrderId() != null;
+        if (profile == null) {
+            profile = new SalesSampleOrder();
+            profile.setOrderId(orderId);
+        }
+        String resolved = requestedMethod != null && !requestedMethod.isBlank()
+                ? requestedMethod.trim()
+                : (profile.getConfirmMethod() != null && !profile.getConfirmMethod().isBlank()
+                        ? profile.getConfirmMethod().trim() : DEFAULT_SAMPLE_CONFIRM_METHOD);
+        profile.setConfirmMethod(resolved);
+        profile.setConfirmTime(LocalDateTime.now());
+        if (clientName != null && !clientName.isBlank()) {
+            profile.setConfirmBy(clientName.trim());
+        }
+        if (existing) {
+            sampleOrderMapper.updateById(profile);
+        } else {
+            sampleOrderMapper.insert(profile);
+        }
     }
 
     // ============ 核心业务流程 ============
@@ -1365,6 +1416,18 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
             params = {"bizNo=#result.orderNo"})
     @Transactional(rollbackFor = Exception.class)
     public SalesOrder confirmSample(Long orderId, String clientName) {
+        return confirmSample(orderId, clientName, null);
+    }
+
+    /**
+     * 客户确认样品（dev-20261106-009）：确认方式必须有值。
+     *
+     * <p>取值口径：请求带来的 confirmMethod 优先；否则沿用该样品单扩展行已有值；
+     * 两者都空时写入既定默认值 {@link #DEFAULT_SAMPLE_CONFIRM_METHOD}（当前渠道字段尚未单列，
+     * 先记录为“客户确认”，后续接入渠道枚举再细化）。历史遗留空值不做批量订正。</p>
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public SalesOrder confirmSample(Long orderId, String clientName, String confirmMethod) {
         // 先锁主单再读取扩展状态，重复确认不覆盖确认时间/确认人，也不重复关联。
         SalesOrder locked = orderMapper.selectByIdForUpdate(orderId);
         if (locked == null || !SalesOrderTypeEnum.SAMPLE.getCode().equals(locked.getOrderType()))
@@ -1398,6 +1461,8 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         } catch (Exception e) {
             log.warn("更新轮次快照确认结果失败: {}", e.getMessage());
         }
+
+        persistConfirmMethod(orderId, clientName, confirmMethod);
 
         log.info("样品单[{}] 客户[{}]已确认样品OK", orderId, clientName);
         return autoReturnToSource(orderMapper.selectById(orderId));
@@ -1642,6 +1707,10 @@ public class SampleOrderServiceImpl implements ISampleOrderService {
         if (affected == 0) {
             throw new BusinessException("该样品单已被其他人员接单或状态已变更，请刷新后查看");
         }
+
+        // dev-20261106-009：当前轮次若无轮次快照则补建一条；同轮重复接单不重复插入。
+        int currentRound = current.getSampleRound() == null ? 1 : current.getSampleRound();
+        ensureRoundSnapshot(orderId, currentRound);
 
         log.info("样品单[{}] 工程接单: {}（状态 {} → 打样中）", current.getOrderNo(), acceptorName, status);
         SalesOrder accepted = orderMapper.selectById(orderId);
