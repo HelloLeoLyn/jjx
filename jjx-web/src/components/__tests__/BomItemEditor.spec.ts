@@ -226,8 +226,39 @@ describe('编辑权只读时禁用物料选择与拖拽', () => {
 })
 
 describe('精简录入保留计量语义', () => {
+  it.each(['损耗率', '最低投料', '同物料同单位重新选择'])('历史仅用量行修改%s仍可保存原用量', async (change) => {
+    const { state, row, exposed } = editor()
+    await flushPromises()
+    if (change === '损耗率') {
+      row.lossRate = 2
+      state.handleLossRateChange(row)
+    } else if (change === '最低投料') {
+      // 高级设置在原行回填最低投料并标记快照过期。
+      row.minIssueQty = 2
+      row.quantityStale = true
+    } else {
+      state.handleMaterialSelect({ ...original }, row)
+      await flushPromises()
+    }
+    expect(row.moduleQty).toBeUndefined()
+    expect(row.baseQty).toBeUndefined()
+    expect(row.quantityStale).toBe(true)
+    expect(exposed.validateItems()).toBe(true)
+    expect(exposed.getItems()[0]).toMatchObject({ quantity: 1, lossRate: row.lossRate })
+    expect(exposed.getItems()[0].minIssueQty).toBe(row.minIssueQty)
+  })
+
+  it('新草稿没有比例和有效旧用量时仍阻止保存', async () => {
+    vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
+    const { row, exposed } = editor({ ...original, quantity: 0, quantityStale: true })
+    await flushPromises()
+    expect(exposed.validateItems()).toBe(false)
+    expect(row.quantity).toBe(0)
+  })
+
   it('同料号改为档案单位时也须重新确认比例，不把PCS比例直接当米数', async () => {
-    const { state, row } = editor({ ...original, unit: 'PCS', baseQty: 1, moduleQty: 6 })
+    vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
+    const { state, row, exposed } = editor({ ...original, unit: 'PCS', baseQty: 1, moduleQty: 6 })
     state.handleMaterialSelect({ ...replacement, materialId: original.materialId, unit: 'M' }, row)
     expect(row.unit).toBe('M')
     expect(row.baseQty).toBeUndefined()
@@ -235,5 +266,6 @@ describe('精简录入保留计量语义', () => {
     expect(row.quantity).toBe(0)
     expect(row.quantityStale).toBe(true)
     await flushPromises()
+    expect(exposed.validateItems()).toBe(false)
   })
 })

@@ -1218,7 +1218,9 @@ defineExpose({
         })
         return
       }
-      if (item.quantityStale && (item.moduleQty == null || item.baseQty == null)) {
+      // 历史行可仅有用量；改损耗/高级项仍交后端按 legacy quantity 处理。
+      // 换物料或换单位已清 quantity，不能借旧用量跳过重新定额。
+      if (item.quantityStale && (item.moduleQty == null || item.baseQty == null) && !(Number(item.quantity) > 0)) {
         failures.push({ item, message: `物料 "${item.materialName}" 请填写模数和基数` })
         return
       }
