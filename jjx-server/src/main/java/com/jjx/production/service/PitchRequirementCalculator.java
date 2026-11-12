@@ -20,6 +20,9 @@ import java.util.List;
  *
  * <p>边界：净长不参与计算（净长 80mm 但跳距 100mm 按 100mm 计）；只算节距耗用，
  * 不叠加损耗、不算整卷实发/最低投料、不写任何表；纯函数，重复调用结果一致。</p>
+ *
+ * <p>精度（第二批）：跳距为 >0 且最多 2 位小数的正跳距（80.5mm 这类正常送料距离合法），
+ * 每跳产出 pcsPerJump 与产出数量 outputPcs 仍是正整数 PCS。</p>
  */
 public final class PitchRequirementCalculator {
 
@@ -41,14 +44,24 @@ public final class PitchRequirementCalculator {
     /** engineering_bom_item.width_mm 为 decimal(10,2)。 */
     private static final int WIDTH_MAX_SCALE = 2;
 
+    /**
+     * 跳距最多 2 位小数：80.5mm 这类正常送料距离必须可用（dev-20261112-004 第二批）。
+     * 每跳产出 pcsPerJump、产出数量 outputPcs 不受此放宽影响，仍是正整数。
+     */
+    private static final int PITCH_MAX_SCALE = 2;
+
     /** engineering_bom_item.base_qty / module_qty 为 decimal(12,4)。 */
     private static final int BOM_QUANTITY_SCALE = 4;
     private static final int BOM_QUANTITY_INTEGER_DIGITS = 8;
 
-    /** 精确值搜索允许的最大小数位（跳距整数 + 卷宽 2 位 → 精确值最多 5 位）。 */
+    /**
+     * 精确值搜索允许的最大小数位：M = 跳距(最多 2 位)/1000 → 最多 5 位；
+     * M2 = 卷宽(2 位) × 跳距(最多 2 位) / 1000² → 最多 8 位（如 195mm × 80.55mm = 0.01570725）。
+     */
     private static final int EXACT_SEARCH_MAX_SCALE = 8;
 
     private static final BigDecimal THOUSAND = BigDecimal.valueOf(1000);
+    private static final BigDecimal INT_MAX = BigDecimal.valueOf(Integer.MAX_VALUE);
 
     private PitchRequirementCalculator() {
     }
@@ -61,7 +74,9 @@ public final class PitchRequirementCalculator {
             throw new BusinessException("跳距定额预览入参不能为空");
         }
         BigDecimal widthMm = requirePositiveDecimal(request.getWidthMm(), "卷宽 widthMm", WIDTH_MAX_SCALE);
-        BigDecimal pitchMm = requirePositiveInteger(request.getPitchMm(), "跳距 pitchMm");
+        // 跳距：>0 且最多 2 位小数（80.5 / 80.50 合法、80.555 超精度拒绝）；整数位护栏沿用原工程上限。
+        BigDecimal pitchMm = requirePositiveDecimal(request.getPitchMm(), "跳距 pitchMm", PITCH_MAX_SCALE);
+        // 每跳产出 PCS：仍必须是正整数，不随跳距放宽。
         BigDecimal pcsPerJump = requirePositiveInteger(request.getPcsPerJump(), "每跳产出 pcsPerJump");
         String inputUnit = requireInputUnit(request.getInputUnit());
 
@@ -71,7 +86,8 @@ public final class PitchRequirementCalculator {
             outputPcs = DEFAULT_OUTPUT_PCS;
             outputPcsDefaulted = true;
         } else {
-            outputPcs = requirePositiveInteger(request.getOutputPcs(), "产出数量 outputPcs").intValueExact();
+            // 溢出/指数形式（如 1E+100）在校验阶段就转成 BusinessException，绝不漏 ArithmeticException。
+            outputPcs = requirePositiveOutputPcs(request.getOutputPcs());
             outputPcsDefaulted = false;
         }
 
@@ -83,7 +99,8 @@ public final class PitchRequirementCalculator {
 
         BigDecimal baseExactDecimal = exactAtScale(baseExact, EXACT_SEARCH_MAX_SCALE);
         boolean baseExactlyRepresentable = baseExactDecimal != null;
-        // 理论不可达（跳距整数 + 卷宽 2 位小数必然是有限小数）；兜底保留近似值，不静默归零。
+        // 跳距与卷宽都最多 2 位小数，除以 1000（或 1000²）必然是有限小数（M ≤5 位、M2 ≤8 位）；
+        // 兜底保留近似值，不静默归零。
         BigDecimal baseForTheoretical = baseExactlyRepresentable ? baseExactDecimal : baseExact.approximate(12);
 
         BigDecimal baseNormalized = baseExactlyRepresentable ? normalize(baseExactDecimal) : null;
@@ -127,6 +144,7 @@ public final class PitchRequirementCalculator {
         notes.add(DISPLAY_NOTE);
         notes.add("耗用只按「卷宽 × 跳距 × 跳数」计；净长不参与，净长小于跳距时按跳距计");
         notes.add("moduleQty 建议 = 每跳产出 PCS；baseQty 建议 = 每跳投入量，回填需用户确认后走 BOM 保存入口");
+        notes.add("跳距允许最多 2 位小数（如 80.5mm，80.50 等同）；pcsPerJump / outputPcs 仍是正整数 PCS");
         if (!baseStorable) {
             notes.add("baseQty 精确值为 " + baseExact.exactText()
                     + "，无法在 decimal(12,4) 内精确表达，不可直接落库；本预览不写库，需人工确认比例表达");
@@ -158,7 +176,7 @@ public final class PitchRequirementCalculator {
         return value.stripTrailingZeros().scale() < 0 ? value.setScale(0) : value.stripTrailingZeros();
     }
 
-    /** >0 的正整数（跳距 mm、每跳产出 PCS、产出数量 PCS）。 */
+    /** >0 的正整数（每跳产出 pcsPerJump）。 */
     private static BigDecimal requirePositiveInteger(BigDecimal value, String field) {
         if (value == null) {
             throw new BusinessException(field + " 不能为空");
@@ -169,11 +187,40 @@ public final class PitchRequirementCalculator {
         if (Math.max(0, value.stripTrailingZeros().scale()) > 0) {
             throw new BusinessException(field + " 只支持整数，拒绝超精度（收到 " + value.toPlainString() + "）");
         }
-        BigDecimal normalized = normalize(value);
-        if (integerDigits(normalized) > BOM_QUANTITY_INTEGER_DIGITS) {
+        // 先用精度直接算整数位（不 setScale(0) 展开指数形式），避免 1E+100 这类入参在拒绝前先建巨大数值。
+        if (integerDigits(value) > BOM_QUANTITY_INTEGER_DIGITS) {
             throw new BusinessException(field + " 整数位超出 decimal(12,4) 上限（收到 " + value.toPlainString() + "）");
         }
-        return normalized;
+        return normalize(value);
+    }
+
+    /**
+     * 产出数量 PCS：正整数，且在进入 intValueExact / 乘法前就把超大值转成 BusinessException。
+     *
+     * <p>挡住 100000000（9 位整数）与 1E+100 这类指数形式：既不漏 ArithmeticException，
+     * 也不让异常发生在 {@link BomConsumptionCalculator#theoretical} 之后。</p>
+     */
+    private static int requirePositiveOutputPcs(BigDecimal value) {
+        String field = "产出数量 outputPcs";
+        if (value == null) {
+            throw new BusinessException(field + " 不能为空");
+        }
+        if (value.signum() <= 0) {
+            throw new BusinessException(field + " 必须大于 0（收到 " + value.toPlainString() + "）");
+        }
+        if (Math.max(0, value.stripTrailingZeros().scale()) > 0) {
+            throw new BusinessException(field + " 只支持整数，拒绝超精度（收到 " + value.toPlainString() + "）");
+        }
+        if (integerDigits(value) > BOM_QUANTITY_INTEGER_DIGITS) {
+            throw new BusinessException(field + " 超出可计算范围：整数位不得超过 "
+                    + BOM_QUANTITY_INTEGER_DIGITS + " 位（收到 " + value.toPlainString() + "）");
+        }
+        BigDecimal normalized = normalize(value);
+        if (normalized.compareTo(INT_MAX) > 0) {
+            throw new BusinessException(field + " 超出可计算范围：最大 " + Integer.MAX_VALUE
+                    + "（收到 " + normalized.toPlainString() + "）");
+        }
+        return normalized.intValueExact();
     }
 
     /** 只接受 M / M2（米、㎡ 等由既有 normalizeUnit 归一）。 */
@@ -206,8 +253,9 @@ public final class PitchRequirementCalculator {
         return stripped.scale() < 0 ? stripped.setScale(0) : stripped;
     }
 
+    /** 整数位数：按 stripTrailingZeros 后的 precision−scale 直接计算，不展开 1E+100 这类指数形式。 */
     private static int integerDigits(BigDecimal value) {
-        BigDecimal normalized = normalize(value);
-        return normalized.precision() - normalized.scale();
+        BigDecimal stripped = value.stripTrailingZeros();
+        return stripped.precision() - stripped.scale();
     }
 }

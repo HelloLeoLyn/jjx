@@ -12,6 +12,7 @@ import java.math.RoundingMode;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -152,17 +153,57 @@ class PitchRequirementCalculatorTest {
     }
 
     @Test
-    @DisplayName("卷宽 3 位小数、跳距 1.5 超精度一律拒绝，不静默截断")
-    void rejectsOverPrecisionInputs() {
+    @DisplayName("跳距 80.5/80.50/1.5 合法（最多 2 位小数），80.555 超精度拒绝；卷宽 3 位小数、pcsPerJump 1.5 仍拒绝")
+    void pitchAllowsTwoDecimalsButNoMore() {
+        assertDecimal("8.05", PitchRequirementCalculator.preview(
+                request("195", "80.5", "1", "M", null)).getDisplayConsumption());
+        assertDecimal("8.05", PitchRequirementCalculator.preview(
+                request("195", "80.50", "1", "M", null)).getDisplayConsumption());
+        // 1.5mm 跳距（1 位小数）现在合法：100PCS → 0.15M，base = 0.0015
+        PitchRequirementPreviewVO shortPitch = PitchRequirementCalculator.preview(
+                request("195", "1.5", "1", "M", null));
+        assertDecimal("0.15", shortPitch.getDisplayConsumption());
+        assertDecimal("0.0015", shortPitch.getBaseQtySuggested());
+
+        // 80.555 三位小数超精度，必须拒绝而不是静默截断
+        BusinessException overPrecision = assertThrows(BusinessException.class,
+                () -> PitchRequirementCalculator.preview(request("195", "80.555", "1", "M2", null)));
+        assertTrue(overPrecision.getMessage().contains("跳距"), "异常消息必须指明跳距字段：" + overPrecision.getMessage());
         assertThrows(BusinessException.class, () -> PitchRequirementCalculator.preview(
                 request("195.123", "80", "1", "M2", null)));
         assertThrows(BusinessException.class, () -> PitchRequirementCalculator.preview(
-                request("195", "1.5", "1", "M", null)));
-        assertThrows(BusinessException.class, () -> PitchRequirementCalculator.preview(
                 request("195", "80", "1.5", "M", null)));
-        // 卷宽尾部零不算超精度（195.00 = 195）
+        // 卷宽/跳距尾部零不算超精度（195.00 = 195、80.50 = 80.5）
         assertDecimal("1.56", PitchRequirementCalculator.preview(
                 request("195.00", "80", "1", "M2", null)).getDisplayConsumption());
+    }
+
+    @Test
+    @DisplayName("195mm宽/80.5mm跳/1PCS每跳：M 得 8.05M、base 0.0805 可落库；M2 精确 1.56975、展示 1.5698、base 不可直接落库")
+    void fractionalPitchIsAcceptedAndKeepsExactBase() {
+        PitchRequirementPreviewVO meter = PitchRequirementCalculator.preview(
+                request("195", "80.5", "1", "M", null));
+        assertDecimal("80.5", meter.getPitchMm());
+        assertDecimal("8.05", meter.getDisplayConsumption());
+        assertEquals("161/20", meter.getExactConsumptionText());
+        assertDecimal("0.0805", meter.getBaseQtySuggested());
+        assertTrue(meter.isBaseQtyStorableInBom(), "0.0805 在 decimal(12,4) 内可精确表达");
+        assertNull(meter.getBaseQtyStorageNote());
+
+        PitchRequirementPreviewVO square = PitchRequirementCalculator.preview(
+                request("195", "80.5", "1", "M2", null));
+        // displayConsumption 仍是 4 位 HALF_UP 展示值：1.56975 → 1.5698；精确值看 exactConsumptionText
+        assertDecimal("1.5698", square.getDisplayConsumption());
+        assertEquals("6279/4000", square.getExactConsumptionText());
+        assertNull(square.getBaseQtySuggested());
+        assertFalse(square.isBaseQtyStorableInBom());
+        assertEquals("6279/400000", square.getBaseQtyExactText());
+        assertNotNull(square.getBaseQtyStorageNote());
+        assertTrue(square.getBaseQtyStorageNote().contains("不可直接落库"));
+        assertTrue(square.getNotes().stream().anyMatch(note -> note.contains("不可直接落库")),
+                "不可落库必须同时出现在 notes 里");
+        assertTrue(square.getNotes().stream().anyMatch(note -> note.contains("净长")),
+                "净长不参与计算的说明必须保留");
     }
 
     @Test
@@ -215,5 +256,48 @@ class PitchRequirementCalculatorTest {
         // 100 PCS × 0.08M = 8M，未乘 (1+损耗)
         assertDecimal("8", vo.getDisplayConsumption());
         assertEquals("8/1", vo.getExactConsumptionText());
+    }
+
+    @Test
+    @DisplayName("显式 outputPcs=200 真实生效：M2 得 3.1395、M 得 16.1（默认 100 的 2 倍），且不标记默认")
+    void explicitNonDefaultOutputPcsTakesEffect() {
+        PitchRequirementPreviewVO byDefault = PitchRequirementCalculator.preview(
+                request("195", "80.5", "1", "M2", null));
+        PitchRequirementPreviewVO explicit = PitchRequirementCalculator.preview(
+                request("195", "80.5", "1", "M2", "200"));
+
+        assertEquals(100, byDefault.getOutputPcs());
+        assertTrue(byDefault.isOutputPcsDefaulted());
+        assertEquals(200, explicit.getOutputPcs());
+        assertFalse(explicit.isOutputPcsDefaulted(), "显式传 200 不得回显为默认值");
+        assertDecimal("3.1395", explicit.getDisplayConsumption());
+        assertEquals("6279/2000", explicit.getExactConsumptionText());
+        assertEquals("6279/4000", byDefault.getExactConsumptionText());
+        assertNotEquals(byDefault.getDisplayConsumption(), explicit.getDisplayConsumption(),
+                "显式 200 的结果不得等于默认 100 的结果");
+
+        PitchRequirementPreviewVO meterDefault = PitchRequirementCalculator.preview(
+                request("195", "80.5", "1", "M", null));
+        PitchRequirementPreviewVO meterDouble = PitchRequirementCalculator.preview(
+                request("195", "80.5", "1", "M", "200"));
+        assertDecimal("8.05", meterDefault.getDisplayConsumption());
+        assertDecimal("16.1", meterDouble.getDisplayConsumption());
+        assertDecimal(meterDefault.getDisplayConsumption().multiply(BigDecimal.valueOf(2)).toPlainString(),
+                meterDouble.getDisplayConsumption());
+    }
+
+    @Test
+    @DisplayName("超大 outputPcs（100000000 / 1E+100）在 intValueExact 与乘法前转 BusinessException，不漏其他异常")
+    void rejectsHugeOutputPcsBeforeArithmetic() {
+        BusinessException plain = assertThrows(BusinessException.class,
+                () -> PitchRequirementCalculator.preview(request("195", "80", "1", "M", "100000000")));
+        assertTrue(plain.getMessage().contains("超出") || plain.getMessage().contains("范围"),
+                "超大 outputPcs 必须是可读中文异常：" + plain.getMessage());
+
+        // 1E+100 这类 BigDecimal 指数形式同样要被业务异常挡住（不能漏 ArithmeticException）
+        BusinessException exponent = assertThrows(BusinessException.class,
+                () -> PitchRequirementCalculator.preview(request("195", "80", "1", "M", "1E+100")));
+        assertTrue(exponent.getMessage().contains("超出") || exponent.getMessage().contains("范围"),
+                "指数形式 outputPcs 必须是可读中文异常：" + exponent.getMessage());
     }
 }

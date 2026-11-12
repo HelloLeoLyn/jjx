@@ -17,7 +17,7 @@ public class PitchRequirementPreviewVO {
     /** 卷宽回显 mm。 */
     private BigDecimal widthMm;
 
-    /** 跳距回显 mm。 */
+    /** 跳距回显 mm（>0，最多 2 位小数，如 80.5）。 */
     private BigDecimal pitchMm;
 
     /** 每跳产出回显 PCS。 */
