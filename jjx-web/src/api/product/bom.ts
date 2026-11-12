@@ -17,6 +17,7 @@ import type {
   ManufacturingBomDetail,
   ManufacturingBomSavePayload,
   ManufacturingSchemeChoice,
+  BomEditSession,
 } from '@/types/product/bom'
 import type { PageResult, R } from '@/types'
 // ==================== BomAPI ====================
@@ -124,17 +125,17 @@ export const productBomApi = {
   },
 
   /**
-   * 审批BOM
+   * 审批BOM（expectedContentRevision：详情加载时的服务端内容指纹，内容被保存改动后返回 409）
    */
-  approveEngineeringBom(bomId: number, remark?: string) {
-    return request.put(`/engineering/bom/approve/${bomId}`, { bomId, remark })
+  approveEngineeringBom(bomId: number, remark?: string, expectedContentRevision?: string | null) {
+    return request.put(`/engineering/bom/approve/${bomId}`, { bomId, remark, expectedContentRevision })
   },
 
   /**
-   * 驳回BOM
+   * 驳回BOM（同样要求服务端内容指纹，避免驳回旧内容）
    */
-  rejectEngineeringBom(bomId: number, remark: string) {
-    return request.put(`/engineering/bom/reject/${bomId}`, { bomId, remark })
+  rejectEngineeringBom(bomId: number, remark: string, expectedContentRevision?: string | null) {
+    return request.put(`/engineering/bom/reject/${bomId}`, { bomId, remark, expectedContentRevision })
   },
 
   /**
@@ -198,5 +199,31 @@ export const productBomApi = {
   /** 查看父产品 BOM 已保存的方案选择（非产品 BOM 返回空列表）。 */
   getBomSchemeChoices(bomId: number) {
     return request.get<R<ManufacturingSchemeChoice[]>>(`/engineering/bom/${bomId}/scheme-choices`)
+  },
+
+  // ==================== 编辑占用会话（dev-20261111-018） ====================
+
+  /** 查询当前占用；leaseAvailable=false 或 occupied 时本窗口只能只读。 */
+  describeBomEditSession(bomId: number, clientId: string) {
+    return request.get<R<BomEditSession>>(`/engineering/bom/${bomId}/edit-session`, {
+      params: { clientId },
+    })
+  },
+
+  /** 获取编辑权（SET NX）；已被占用时返回占用者信息，不返回他人 token。 */
+  acquireBomEditSession(bomId: number, clientId: string) {
+    return request.post<R<BomEditSession>>(`/engineering/bom/${bomId}/edit-session`, { clientId })
+  },
+
+  /** 心跳续租（compare token）；token 失效返回 409，前端立即只读并保留草稿。 */
+  renewBomEditSession(bomId: number, clientId: string, token: string) {
+    return request.put<R<BomEditSession>>(`/engineering/bom/${bomId}/edit-session`, { clientId, token })
+  },
+
+  /** 关闭/取消时 compare-token 释放；保存成功不自动释放。 */
+  releaseBomEditSession(bomId: number, token: string) {
+    return request.delete<R<boolean>>(`/engineering/bom/${bomId}/edit-session`, {
+      data: { token },
+    })
   },
 }

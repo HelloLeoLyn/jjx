@@ -25,4 +25,6 @@ public class ManufacturingBomVO {
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
     private List<EngineeringBomItem> items;
+    /** 服务端内容指纹（dev-20261111-018）；保存时回传为 expectedContentRevision。 */
+    private String contentRevision;
 }

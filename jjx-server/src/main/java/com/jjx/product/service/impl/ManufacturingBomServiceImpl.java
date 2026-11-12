@@ -180,6 +180,9 @@ public class ManufacturingBomServiceImpl implements ManufacturingBomService {
         payload.setExpiryDate(dto.getExpiryDate());
         payload.setRemark(dto.getRemark());
         payload.setItems(dto.getItems());
+        // 内容版本与编辑占用 token 原样透传：制造 BOM 与普通 BOM 走同一保存入口，校验规则只有一份（dev-20261111-018）。
+        payload.setExpectedContentRevision(dto.getExpectedContentRevision());
+        payload.setEditToken(dto.getEditToken());
         return payload;
     }
 
@@ -203,7 +206,10 @@ public class ManufacturingBomServiceImpl implements ManufacturingBomService {
         vo.setRemark(bom.getRemark());
         vo.setCreateTime(bom.getCreateTime());
         vo.setUpdateTime(bom.getUpdateTime());
-        vo.setItems(bomService.getBomItems(bomId));
+        List<EngineeringBomItem> items = bomService.getBomItems(bomId);
+        vo.setItems(items);
+        // 与父表同一回读口径计算内容指纹（dev-20261111-018）；制造 BOM 的 token 流程与权限不变。
+        vo.setContentRevision(EngineeringBomServiceImpl.computeContentRevision(bom, items));
         return vo;
     }
 

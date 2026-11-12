@@ -86,4 +86,10 @@ public class EngineeringBomVO {
 
     /** 已保存的产品主方案选择。 */
     private List<com.jjx.product.domain.dto.ManufacturingSchemeChoiceDTO> schemeChoices;
+
+    /**
+     * 服务端内容指纹（SHA-256，dev-20261111-018）：由父表 + 全部明细按稳定编码计算。
+     * 保存/审批时回传为 expectedContentRevision；与 schemeRevision 语义不同、互不替代。
+     */
+    private String contentRevision;
 }

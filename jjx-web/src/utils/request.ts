@@ -96,7 +96,12 @@ service.interceptors.response.use(
         redirectToLogin()
       }
 
-      return Promise.reject(new Error(res.msg || 'Error'))
+      // dev-20261111-018：错误对象保留业务码与 data，调用方用 bizCode 判断冲突，不解析提示文案。
+      // 只附加属性，不改原有弹错策略与返回结构。
+      const bizError = new Error(res.msg || 'Error') as Error & { bizCode?: number; data?: unknown }
+      bizError.bizCode = res.code
+      bizError.data = res.data
+      return Promise.reject(bizError)
     } else {
       if (Number(response.headers['x-attachment-duplicate-count']) > 0) {
         ElMessage.info('内容已存在（可引用）')

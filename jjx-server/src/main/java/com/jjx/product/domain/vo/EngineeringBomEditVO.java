@@ -17,4 +17,6 @@ public class EngineeringBomEditVO {
     private Integer schemeRevision;
     /** 草稿引用未批准下层方案等非阻断提示。 */
     private List<String> warnings;
+    /** 保存成功后服务端重算的内容指纹（dev-20261111-018）；前端用它替换本地版本继续编辑。 */
+    private String contentRevision;
 }

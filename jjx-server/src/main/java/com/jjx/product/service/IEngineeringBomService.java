@@ -143,7 +143,15 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
             @jakarta.validation.constraints.NotEmpty List<@jakarta.validation.constraints.NotNull Long> itemIds,
             @jakarta.validation.constraints.NotNull
             @jakarta.validation.constraints.Pattern(regexp = "APPROVE") String action,
-            String remark) {}
+            String remark,
+            /** 批量审核前由详情带回的服务端内容指纹；中途内容被保存改动的行判失败（dev-20261111-018）。 */
+            String expectedContentRevision) {
+
+        /** 兼容历史 4 参调用；不带内容版本时服务端按非编辑会话分支处理。 */
+        public BatchItemReviewRequest(Long bomId, List<Long> itemIds, String action, String remark) {
+            this(bomId, itemIds, action, remark, null);
+        }
+    }
 
     record ItemReviewFailure(Long itemId, String reason) {}
     record BatchItemReviewResult(List<Long> successIds, List<ItemReviewFailure> failed) {}

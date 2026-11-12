@@ -77,4 +77,15 @@ public class EngineeringBomDTO {
 
     /** 前端加载时的 scheme_revision；传入则做乐观锁校验。 */
     private Integer schemeRevision;
+
+    /**
+     * 服务端内容指纹（dev-20261111-018）：加载详情时由服务端返回，保存时原样回传。
+     * 客户端不得自行计算或改写；与服务端重算值不一致时保存返回 409，避免旧快照覆盖他人保存。
+     */
+    private String expectedContentRevision;
+
+    /**
+     * 编辑占用 token（Redis 租约，dev-20261111-018）。保存时校验，缺失/过期/被替换一律拒绝（fail-closed）。
+     */
+    private String editToken;
 }

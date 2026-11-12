@@ -776,4 +776,32 @@ class ManufacturingBomSchemeTest {
                 "SELECT COUNT(*) FROM engineering_bom_item WHERE bom_id=?", Long.class, root),
                 "拒绝后根行必须随事务回滚保留");
     }
+
+    /** dev-20261111-018：制造 BOM detail 返回内容指纹，保存时把 expectedContentRevision 原样透传到同一保存入口。 */
+    @Test
+    void manufacturingDetailReturnsContentRevisionAndKeepsItStableAcrossUpdate() {
+        long bomId = service.createBomReturnId(scheme("REV-SCHEME", "V1.0", 349));
+        String created = service.getBomDetail(bomId).getContentRevision();
+        assertNotNull(created, "详情必须返回服务端内容指纹");
+        assertEquals(64, created.length());
+
+        long itemId = db.queryForObject(
+                "SELECT item_id FROM engineering_bom_item WHERE bom_id=? ORDER BY item_id", Long.class, bomId);
+        var row = buyRow(110);
+        row.setItemId(itemId);
+        var dto = new com.jjx.product.domain.dto.ManufacturingBomSaveDTO();
+        dto.setBomCode("REV-SCHEME");
+        dto.setBomName("REV-SCHEME-UPD");
+        dto.setOutputType("MATERIAL");
+        dto.setOutputId(349L);
+        dto.setItems(List.of(row));
+        dto.setExpectedContentRevision(created);
+        dto.setEditToken("token-1");
+
+        var updated = manufacturingTx.update(bomId, dto);
+        assertNotNull(updated.getContentRevision(), "制造 BOM 保存回读必须带新内容指纹");
+        assertEquals(service.getBomDetail(bomId).getContentRevision(), updated.getContentRevision(),
+                "保存返回的指纹必须等于重新加载的指纹，前端下一次保存才不会误判过期");
+        assertNotEquals(created, updated.getContentRevision(), "名称变更后内容指纹应随之变化");
+    }
 }

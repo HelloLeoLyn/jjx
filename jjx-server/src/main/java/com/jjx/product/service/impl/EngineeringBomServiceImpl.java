@@ -75,6 +75,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     private final com.jjx.system.service.OperLogChangeRecorder changeRecorder;
     /** 2026-10-07 dev-20261007-006：提交审核体检用（项目=标准工序 引用完整性）。 */
     private final com.jjx.product.mapper.ProductStandardProcessMapper standardProcessMapper;
+
+    /**
+     * 编辑占用会话（dev-20261111-018）。Spring 上下文必注入（字段注入默认 required，缺失即启动失败），
+     * 因此生产 HTTP 保存一律走严格校验；只有直接构造本类的隔离测试不装配，走兼容分支。
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.jjx.product.service.BomEditSessionService bomEditSessionService;
+
     public EngineeringBomServiceImpl(EngineeringBomMapper productBomMapper,
                                  EngineeringBomItemMapper productBomItemMapper,
                                  ProductMapper productMapper, EngineeringBomConverter bomConverter,
@@ -109,6 +117,136 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 "bom", bom.getBomId(), bom.getBomCode());
         payload.put("bomCode", bom.getBomCode());
         com.jjx.event.EventPublishSupport.fireAfterCommit(eventPublisher, eventCode, payload);
+    }
+
+    // ==================== 内容指纹与编辑会话校验（dev-20261111-018）====================
+
+    /** 编辑会话校验是否启用：装配了占用服务即启用；Spring 必注入，缺失即启动失败。 */
+    private boolean editContractActive() {
+        return bomEditSessionService != null;
+    }
+
+    /**
+     * 服务端内容指纹（SHA-256 十六进制）。
+     *
+     * <p>规范：父表 + 全部明细按 itemId 升序；每字段「长度前缀 + UTF-8」，null 与空串区分；
+     * 排除审计字段（createTime/updateTime/createBy/updateBy/approvedBy/approvedTime/removeConfirmed*）。
+     * 客户端不得计算或提供权威版本号。
+     */
+    public static String computeContentRevision(EngineeringBom bom, List<EngineeringBomItem> items) {
+        StringBuilder sb = new StringBuilder(4096);
+        sb.append("BOM|");
+        if (bom != null) {
+            putHashed(sb, bom.getBomId());
+            putHashed(sb, bom.getBomCode());
+            putHashed(sb, bom.getBomName());
+            putHashed(sb, bom.getBomVersion());
+            putHashed(sb, bom.getVersion());
+            putHashed(sb, bom.getBomType());
+            putHashed(sb, bom.getOutputType());
+            putHashed(sb, bom.getOutputId());
+            putHashed(sb, bom.getProductId());
+            putHashed(sb, bom.getEffectiveDate() == null ? null : bom.getEffectiveDate().getTime());
+            putHashed(sb, bom.getExpiryDate() == null ? null : bom.getExpiryDate().getTime());
+            putHashed(sb, bom.getRemark());
+            putHashed(sb, bom.getApproveStatus());
+        }
+        sb.append("ITEMS|");
+        if (items != null) {
+            List<EngineeringBomItem> ordered = new java.util.ArrayList<>(items);
+            ordered.sort(java.util.Comparator.comparing(EngineeringBomItem::getItemId,
+                    java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())));
+            for (EngineeringBomItem it : ordered) {
+                if (it == null) continue;
+                sb.append("ROW|");
+                putHashed(sb, it.getItemId());
+                putHashed(sb, it.getParentMaterialId());
+                putHashed(sb, it.getMaterialId());
+                putHashed(sb, it.getSubBomId());
+                putHashed(sb, it.getMaterialCode());
+                putHashed(sb, it.getMaterialName());
+                putHashed(sb, it.getSpecification());
+                putHashed(sb, it.getSplit());
+                putHashed(sb, it.getProcessId());
+                putHashed(sb, it.getProcessName());
+                putHashed(sb, it.getUnit());
+                putHashed(sb, it.getQuantity());
+                putHashed(sb, it.getLossRate());
+                putHashed(sb, it.getModuleQty());
+                putHashed(sb, it.getBaseQty());
+                putHashed(sb, it.getMinIssueQty());
+                putHashed(sb, it.getWidthMm());
+                putHashed(sb, it.getLengthMm());
+                putHashed(sb, it.getUnitFactor());
+                putHashed(sb, it.getUnitFactorBasis());
+                putHashed(sb, it.getUnitFactorSource());
+                putHashed(sb, it.getItemOrder());
+                putHashed(sb, it.getReviewStatus());
+                putHashed(sb, it.getRemoveConfirmed());
+                putHashed(sb, it.getApprovedFingerprint());
+            }
+        }
+        return sha256Hex(sb.toString());
+    }
+
+    /** 长度前缀编码，区分 null（-1）与空串（0）。 */
+    private static void putHashed(StringBuilder sb, Object value) {
+        if (value == null) {
+            sb.append("-1|");
+            return;
+        }
+        String text = value instanceof BigDecimal dec
+                ? dec.stripTrailingZeros().toPlainString()
+                : String.valueOf(value);
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        sb.append(bytes.length).append('|').append(text).append('|');
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception ex) {
+            throw new BusinessException("BOM内容指纹计算失败: " + ex.getMessage());
+        }
+    }
+
+    /** 已锁父行后读取明细当前值（FOR UPDATE），供内容指纹与行合并共用。 */
+    private List<EngineeringBomItem> lockedItems(Long bomId) {
+        return bomId == null ? List.of() : productBomItemMapper.selectByBomIdForUpdate(bomId);
+    }
+
+    /** 父行锁（先锁父行、再锁明细）；替身 Mapper 未实现行锁时退回普通读。 */
+    private EngineeringBom lockBomForWrite(Long bomId) {
+        EngineeringBom bom = bomId == null ? null : productBomMapper.selectForUpdate(bomId);
+        if (bom == null && bomId != null) {
+            bom = productBomMapper.selectById(bomId);
+        }
+        return bom;
+    }
+
+    /**
+     * 内容版本校验：只允许「与库中重算值一致」的保存/审批继续，缺失或不一致一律 409。
+     * 校验发生在父行锁之后、任何写之前，事务不写任何行。
+     */
+    private void assertContentRevision(EngineeringBom bom, List<EngineeringBomItem> lockedItems,
+                                       String expected, String message) {
+        if (!editContractActive()) {
+            return;
+        }
+        String current = computeContentRevision(bom, lockedItems);
+        if (expected == null || expected.isBlank()) {
+            throw new BusinessException(409,
+                    "BOM_CONTENT_REVISION_REQUIRED：请求缺少BOM内容版本，请重新加载后再提交");
+        }
+        if (!current.equals(expected.trim())) {
+            throw new BusinessException(409, message);
+        }
     }
 
     @Override
@@ -186,6 +324,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     }
 
     @Override
+    @Transactional(readOnly = true)
     public EngineeringBomVO getBomDetail(Long bomId) {
         EngineeringBom bom = productBomMapper.selectById(bomId);
         if (bom == null) {
@@ -197,6 +336,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         // 获取BOM明细
         List<EngineeringBomItem> items = getBomItems(bomId);
         vo.setItems(items);
+        // 父表与明细同一只读快照，内容指纹才与返回的明细一致（dev-20261111-018）。
+        vo.setContentRevision(computeContentRevision(bom, items));
 
         // 获取产品信息
         if (bom.getProductId() != null) {
@@ -355,13 +496,16 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
 
         // 检查BOM是否存在；父保存锁行，避免并发覆盖明细。
-        EngineeringBom existingBom = productBomMapper.selectForUpdate(dto.getBomId());
-        if (existingBom == null) {
-            // 兼容只读/替身 Mapper 未实现行锁查询的测试环境；真实库两个查询等价。
-            existingBom = productBomMapper.selectById(dto.getBomId());
-        }
+        // 替身 Mapper 未实现行锁时退回普通读；真实库两个查询等价。
+        EngineeringBom existingBom = lockBomForWrite(dto.getBomId());
         if (existingBom == null) {
             throw new BusinessException("BOM不存在");
+        }
+
+        // 编辑会话校验第一步（dev-20261111-018）：先校验编辑 token（Redis 异常即拒绝，不 fail-open）。
+        // 位置在既有图锁 + 父行锁之后、任何写之前；内容指纹比较在读取锁定明细后立即执行。
+        if (editContractActive()) {
+            bomEditSessionService.verifySaveToken(dto.getBomId(), dto.getEditToken());
         }
 
         // 产出身份不可原地改变；历史空值按 PRODUCT 兼容。
@@ -375,8 +519,15 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
 
         // 既有未改行保留原保存行为；仅新增/变更行执行新制造规则。
         Map<Long, EngineeringBomItem> storedRows = new HashMap<>();
-        for (EngineeringBomItem row : productBomItemMapper.selectList(
-                new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, dto.getBomId()))) {
+        // 已锁父行后明细用当前读，避免 MySQL RR 早快照把「他人刚保存」的行当成本次基线。
+        List<EngineeringBomItem> storedList = editContractActive()
+                ? productBomItemMapper.selectByBomIdForUpdate(dto.getBomId())
+                : productBomItemMapper.selectList(
+                        new LambdaQueryWrapper<EngineeringBomItem>().eq(EngineeringBomItem::getBomId, dto.getBomId()));
+        // 编辑会话校验第二步：与服务端重算的内容指纹比较；不一致 409，事务不写任何行。
+        assertContentRevision(existingBom, storedList, dto.getExpectedContentRevision(),
+                "BOM_CONTENT_STALE：BOM 已被其他人保存，请重新加载后再提交");
+        for (EngineeringBomItem row : storedList) {
             if (row.getItemId() != null) storedRows.put(row.getItemId(), row);
         }
         validateItemRules(dto.getBomId(), dto.getOutputType(), dto.getItems(), storedRows, false);
@@ -427,6 +578,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         vo.setSchemeRevision(schemeRevision);
         List<String> warnings = collectSubBomWarnings(dto.getBomId(), dto.getSchemeChoices());
         vo.setWarnings(warnings.isEmpty() ? null : warnings);
+        // 保存成功后返回新内容指纹（以库中最新父行 + 明细重算，不用 DTO 转换结果，避免漏字段导致下一次误判过期）。
+        EngineeringBom latest = productBomMapper.selectById(dto.getBomId());
+        vo.setContentRevision(computeContentRevision(latest != null ? latest : bom,
+                lockedItems(dto.getBomId())));
         return vo;
     }
 
@@ -1165,7 +1320,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean submitApprove(Long bomId) {
-        EngineeringBom bom = productBomMapper.selectById(bomId);
+        // 统一锁顺序（dev-20261111-018）：先父行锁，再读/写明细。
+        EngineeringBom bom = lockBomForWrite(bomId);
         if (bom == null) throw new BusinessException("BOM不存在");
         Integer current = bom.getApproveStatus();
         // 草稿(1)与已驳回(4)均可提交审批（驳回后修改重新提交）
@@ -1196,7 +1352,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             throw new BusinessException(sb.toString());
         }
         // 行级状态：草稿/驳回 → 待审核；已通过行与待移除行保持（dev-20261020-029 B）
-        for (EngineeringBomItem it : getBomItems(bomId)) {
+        List<EngineeringBomItem> submitItems = editContractActive() ? lockedItems(bomId) : getBomItems(bomId);
+        for (EngineeringBomItem it : submitItems) {
             ProductEnums.BomItemReviewStatus status =
                     ProductEnums.BomItemReviewStatus.fromValue(it.getReviewStatus());
             if (status == ProductEnums.BomItemReviewStatus.DRAFT
@@ -1222,13 +1379,17 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean approve(UpdateBomStatusDTO dto) {
-        EngineeringBom productBom = productBomMapper.selectById(dto.getBomId());
+        // 统一锁顺序：先父行锁，再校验内容版本，最后改明细/状态。
+        EngineeringBom productBom = lockBomForWrite(dto.getBomId());
         if (productBom == null) {
             throw new BusinessException("BOM不存在");
         }
         if (!Objects.equals(productBom.getApproveStatus(), ProductEnums.BomStatus.REVIEWING.getValue())) {
             throw new BusinessException("只有审核中的BOM才能批准");
         }
+        List<EngineeringBomItem> lockedRows = editContractActive() ? lockedItems(dto.getBomId()) : getBomItems(dto.getBomId());
+        assertContentRevision(productBom, lockedRows, dto.getExpectedContentRevision(),
+                "BOM_CONTENT_STALE：审批期间BOM内容已被保存修改，请重新加载后再审核");
         // 批准条件（dev-20261020-029 E）：无草稿/待审核/驳回；待移除行已确认；所有行已关联有效物料
         List<com.jjx.product.domain.vo.BomCheckIssueVO> issues = checkBomForApprove(dto.getBomId());
         if (!issues.isEmpty()) {
@@ -1236,7 +1397,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         }
         String operator = currentOperator();
         LocalDateTime now = LocalDateTime.now();
-        for (EngineeringBomItem it : getBomItems(dto.getBomId())) {
+        for (EngineeringBomItem it : lockedRows) {
             ProductEnums.BomItemReviewStatus status =
                     ProductEnums.BomItemReviewStatus.fromValue(it.getReviewStatus());
             if (status == ProductEnums.BomItemReviewStatus.PENDING_REMOVE) {
@@ -1297,13 +1458,17 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean reject(UpdateBomStatusDTO dto) {
-        EngineeringBom productBom = productBomMapper.selectById(dto.getBomId());
+        // 统一锁顺序：先父行锁，再校验内容版本，最后改明细/状态。
+        EngineeringBom productBom = lockBomForWrite(dto.getBomId());
         if (productBom == null) {
             throw new BusinessException("BOM不存在");
         }
         if (!Objects.equals(productBom.getApproveStatus(), ProductEnums.BomStatus.REVIEWING.getValue())) {
             throw new BusinessException("只有审核中的BOM才能驳回");
         }
+        List<EngineeringBomItem> lockedRows = editContractActive() ? lockedItems(dto.getBomId()) : getBomItems(dto.getBomId());
+        assertContentRevision(productBom, lockedRows, dto.getExpectedContentRevision(),
+                "BOM_CONTENT_STALE：驳回期间BOM内容已被保存修改，请重新加载后再审核");
         dto.setCurrent(ProductEnums.BomStatus.REVIEWING.getValue());
         dto.setTarget(ProductEnums.BomStatus.REJECT.getValue());
         boolean updated = updateStatus(dto);
@@ -1311,7 +1476,7 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
             reviewFlowService.record("engineering_bom", dto.getBomId(), "REJECT", "审核驳回",
                     dto.getCurrent(), dto.getTarget(), dto.getRemark(), null);
             // 待审核行 → 审核驳回并保留原因；已通过行保持（dev-20261020-029 B）
-            for (EngineeringBomItem it : getBomItems(dto.getBomId())) {
+            for (EngineeringBomItem it : lockedRows) {
                 if (ProductEnums.BomItemReviewStatus.fromValue(it.getReviewStatus())
                         == ProductEnums.BomItemReviewStatus.PENDING) {
                     it.setReviewStatus(ProductEnums.BomItemReviewStatus.REJECTED.getValue());
@@ -2371,16 +2536,28 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         if (dto == null || dto.getItemId() == null) {
             throw new BusinessException("明细ID不能为空");
         }
-        EngineeringBomItem item = productBomItemMapper.selectById(dto.getItemId());
-        if (item == null) {
+        // 未锁读只用于定位所属 BOM；加锁按「先父行、再明细」顺序，随后重读当前行。
+        EngineeringBomItem probe = productBomItemMapper.selectById(dto.getItemId());
+        if (probe == null) {
             throw new BusinessException("BOM明细不存在");
         }
-        EngineeringBom bom = productBomMapper.selectById(item.getBomId());
+        EngineeringBom bom = lockBomForWrite(probe.getBomId());
         if (bom == null) {
             throw new BusinessException("BOM不存在");
         }
         if (!Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.REVIEWING.getValue())) {
             throw new BusinessException("只有审核中的BOM才能做行级审核");
+        }
+        EngineeringBomItem item = probe;
+        if (editContractActive()) {
+            List<EngineeringBomItem> lockedRows = lockedItems(probe.getBomId());
+            assertContentRevision(bom, lockedRows, dto.getExpectedContentRevision(),
+                    "BOM_CONTENT_STALE：审核期间BOM内容已被保存修改，请重新加载后再审核");
+            // 锁后重读：只改审核相关字段，数量/物料/单位等不被锁前旧实体整行覆盖。
+            item = lockedRows.stream()
+                    .filter(row -> row != null && dto.getItemId().equals(row.getItemId()))
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessException("BOM明细不存在"));
         }
         ProductEnums.BomItemReviewStatus from =
                 ProductEnums.BomItemReviewStatus.fromValue(item.getReviewStatus());
@@ -2491,10 +2668,16 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         var failed = new java.util.ArrayList<ItemReviewFailure>();
         var transaction = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
         transaction.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        // 内容版本基线（dev-20261111-018）：保留「每行 REQUIRES_NEW」原语义，不改成整批原子事务；
+        // 基线随成功行滚动，中途被并发保存改动的行判失败，后续行同样失败，不用旧快照覆盖。
+        var rolling = new java.util.concurrent.atomic.AtomicReference<String>(request.expectedContentRevision());
         for (Long itemId : new java.util.LinkedHashSet<>(request.itemIds())) {
             try {
                 transaction.executeWithoutResult(status -> {
                     if (itemId == null) throw new BusinessException("明细ID不能为空");
+                    // 先父行锁、再明细行锁，与保存/审批同一锁顺序。
+                    EngineeringBom bom = lockBomForWrite(request.bomId());
+                    if (bom == null) throw new BusinessException("BOM不存在");
                     // 锁定后校验，避免并发批量重复写审核日志。
                     EngineeringBomItem item = productBomItemMapper.selectOne(
                             new LambdaQueryWrapper<EngineeringBomItem>()
@@ -2512,12 +2695,27 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     if (!Objects.equals(item.getReviewStatus(), ProductEnums.BomItemReviewStatus.PENDING.getValue())) {
                         throw new BusinessException("只有待审核行才能批量通过");
                     }
+                    String expected = rolling.get();
+                    if (editContractActive()) {
+                        List<EngineeringBomItem> lockedRows = lockedItems(request.bomId());
+                        assertContentRevision(bom, lockedRows, expected,
+                                "BOM_CONTENT_STALE：该行审核期间BOM内容已被保存修改，请重新加载审核");
+                        // 锁后重读当前行：只改审核字段，数量/物料/单位不被旧快照覆盖。
+                        item = lockedRows.stream()
+                                .filter(row -> row != null && itemId.equals(row.getItemId()))
+                                .findFirst()
+                                .orElseThrow(() -> new BusinessException("BOM明细不存在"));
+                    }
                     BomItemReviewDTO dto = new BomItemReviewDTO();
                     dto.setItemId(itemId);
                     dto.setAction("APPROVE");
                     dto.setRemark(request.remark());
+                    dto.setExpectedContentRevision(expected);
                     // 当前行的显式事务覆盖单行逻辑及日志写入，异常由模板回滚。
                     reviewItem(dto);
+                    if (editContractActive()) {
+                        rolling.set(computeContentRevision(bom, lockedItems(request.bomId())));
+                    }
                 });
                 successIds.add(itemId);
             } catch (Exception e) {

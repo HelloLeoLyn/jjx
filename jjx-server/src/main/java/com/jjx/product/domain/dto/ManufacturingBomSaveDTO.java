@@ -47,4 +47,10 @@ public class ManufacturingBomSaveDTO {
     @Size(max = 500, message = "制造BOM投入行不能超过500行")
     @Valid
     private List<EngineeringBomItemDTO> items;
+
+    /** 服务端内容指纹（dev-20261111-018）；由详情返回、保存时原样回传，客户端不计算。 */
+    private String expectedContentRevision;
+
+    /** 编辑占用 token（Redis 租约），保存时校验；缺失/过期/被替换一律拒绝。 */
+    private String editToken;
 }

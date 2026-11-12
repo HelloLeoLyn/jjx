@@ -9,6 +9,10 @@ const mocks = vi.hoisted(() => ({
   saveManufacturingBom: vi.fn(),
   updateManufacturingBom: vi.fn(),
   adoptManufacturingBom: vi.fn(),
+  acquireBomEditSession: vi.fn(),
+  renewBomEditSession: vi.fn(),
+  releaseBomEditSession: vi.fn(),
+  describeBomEditSession: vi.fn(),
   materialInfo: vi.fn(),
   confirm: vi.fn(),
   warning: vi.fn(),
@@ -24,6 +28,10 @@ vi.mock('@/api/product/bom', () => ({
     saveManufacturingBom: mocks.saveManufacturingBom,
     updateManufacturingBom: mocks.updateManufacturingBom,
     adoptManufacturingBom: mocks.adoptManufacturingBom,
+    acquireBomEditSession: mocks.acquireBomEditSession,
+    renewBomEditSession: mocks.renewBomEditSession,
+    releaseBomEditSession: mocks.releaseBomEditSession,
+    describeBomEditSession: mocks.describeBomEditSession,
   },
 }))
 vi.mock('@/api/inventory/material', () => ({
@@ -157,8 +165,25 @@ beforeEach(() => {
       effectiveDate: '2026-11-11 00:00:00',
       expiryDate: null,
       remark: '',
+      contentRevision: `rev-${bomId}`,
     },
   }))
+  // 编辑占用（dev-20261111-018）：默认本窗口取得编辑权
+  mocks.acquireBomEditSession.mockImplementation(async (bomId: number) => ({
+    data: {
+      leaseAvailable: true,
+      acquired: true,
+      occupied: false,
+      ownerDisplayName: '张三',
+      expiresAt: Date.now() + 90_000,
+      token: `lease-${bomId}`,
+    },
+  }))
+  mocks.renewBomEditSession.mockImplementation(async (bomId: number) => ({
+    data: { leaseAvailable: true, acquired: true, token: `lease-${bomId}` },
+  }))
+  mocks.releaseBomEditSession.mockResolvedValue({ data: true })
+  mocks.describeBomEditSession.mockResolvedValue({ data: { leaseAvailable: true, acquired: false, occupied: false } })
   mocks.listEngineeringBomItem.mockResolvedValue({ data: [] })
   // 新建方案：分配递增 bomId，用于验证逐层创建/回读
   mocks.saveManufacturingBom.mockImplementation(async (payload: any) => {
@@ -184,6 +209,7 @@ beforeEach(() => {
       outputType: 'MATERIAL',
       outputId: payload.outputId,
       approveStatus: 1,
+      contentRevision: `rev-${bomId}-next`,
     },
   }))
   mocks.adoptManufacturingBom.mockImplementation(async (bomId: number) => ({
@@ -622,5 +648,53 @@ describe('制造定额小数损耗', () => {
     state.current.draft.items = [item({ itemId: -1, lossRate: 0.5 })]
     expect(await state.saveScheme()).toBe(true)
     expect(mocks.saveManufacturingBom.mock.calls[0][0].items[0].lossRate).toBe(0.5)
+  })
+})
+
+// ==================== 编辑占用 + 服务端内容版本（dev-20261111-018） ====================
+
+describe('制造BOM：编辑占用与服务端内容版本', () => {
+  it('编辑已保存方案时请求带 expectedContentRevision 与 editToken，保存后不释放租约', async () => {
+    mocks.manufacturingOptions.mockResolvedValue({ data: [scheme()] })
+    mocks.listEngineeringBomItem.mockResolvedValue({ data: [item()] })
+    const wrapper = await dialog({ subBomId: 124 })
+    const state = wrapper.vm as any
+    await state.selectSchemeByBomId(124)
+    await flushPromises()
+    expect(state.editSession.state.value).toBe('granted')
+    expect(state.editSession.readOnly.value).toBe(false)
+
+    state.current.draft.remark = '带版本保存'
+    expect(await state.saveScheme()).toBe(true)
+    const [, payload] = mocks.updateManufacturingBom.mock.calls[0]
+    expect(payload.expectedContentRevision).toBe('rev-124')
+    expect(payload.editToken).toBe('lease-124')
+    // 保存成功：用后端返回的新指纹继续编辑，且不释放租约
+    expect(state.current.draft.contentRevision).toBe('rev-124-next')
+    expect(mocks.releaseBomEditSession).not.toHaveBeenCalled()
+  })
+
+  it('已保存方案被其他窗口占用时只读并禁止保存，草稿保留', async () => {
+    mocks.manufacturingOptions.mockResolvedValue({ data: [scheme()] })
+    mocks.listEngineeringBomItem.mockResolvedValue({ data: [item()] })
+    mocks.acquireBomEditSession.mockResolvedValue({
+      data: {
+        leaseAvailable: true,
+        acquired: false,
+        occupied: true,
+        ownerDisplayName: '李四',
+        message: '该BOM正由 李四 编辑，本窗口为只读',
+      },
+    })
+    const wrapper = await dialog({ subBomId: 124 })
+    const state = wrapper.vm as any
+    await state.selectSchemeByBomId(124)
+    await flushPromises()
+    expect(state.editSession.readOnly.value).toBe(true)
+
+    state.current.draft.remark = '只读草稿'
+    expect(await state.saveScheme()).toBe(false)
+    expect(mocks.updateManufacturingBom).not.toHaveBeenCalled()
+    expect(state.current.draft.remark).toBe('只读草稿')
   })
 })

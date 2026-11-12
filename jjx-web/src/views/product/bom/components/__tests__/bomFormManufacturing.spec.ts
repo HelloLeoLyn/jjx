@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   addEngineeringBom: vi.fn(),
   editEngineeringBom: vi.fn(),
   getProductInfo: vi.fn(),
+  acquireBomEditSession: vi.fn(),
+  renewBomEditSession: vi.fn(),
+  releaseBomEditSession: vi.fn(),
+  describeBomEditSession: vi.fn(),
   confirm: vi.fn(),
   warning: vi.fn(),
   success: vi.fn(),
@@ -20,6 +24,10 @@ vi.mock('@/api/product/bom', () => ({
     listEngineeringBomItem: mocks.listEngineeringBomItem,
     addEngineeringBom: mocks.addEngineeringBom,
     editEngineeringBom: mocks.editEngineeringBom,
+    acquireBomEditSession: mocks.acquireBomEditSession,
+    renewBomEditSession: mocks.renewBomEditSession,
+    releaseBomEditSession: mocks.releaseBomEditSession,
+    describeBomEditSession: mocks.describeBomEditSession,
   },
 }))
 // 新建 BOM 首次设主方案：用现有 GET /product/{id} 的 ProductVo.schemeRevision（不新增接口）
@@ -163,12 +171,31 @@ beforeEach(() => {
       approveStatus: 1,
       schemeRevision: 7,
       schemeChoices: [],
+      contentRevision: 'rev-1',
     },
   })
   mocks.listEngineeringBomItem.mockResolvedValue({ data: [baseRow()] })
   mocks.addEngineeringBom.mockResolvedValue({ data: 9 })
-  mocks.editEngineeringBom.mockResolvedValue({ data: { success: true, schemeRevision: 8 } })
+  mocks.editEngineeringBom.mockResolvedValue({
+    data: { success: true, schemeRevision: 8, contentRevision: 'rev-2' },
+  })
   mocks.getProductInfo.mockResolvedValue({ data: { productId: 42, schemeRevision: 7 } })
+  // 编辑占用：默认本窗口取得编辑权（占用失败/失效用例单独覆盖）
+  mocks.acquireBomEditSession.mockResolvedValue({
+    data: {
+      leaseAvailable: true,
+      acquired: true,
+      occupied: false,
+      ownerDisplayName: '张三',
+      ownerIsSameUser: true,
+      ownerIsSameClient: true,
+      expiresAt: Date.now() + 90_000,
+      token: 'lease-token',
+    },
+  })
+  mocks.renewBomEditSession.mockResolvedValue({ data: { leaseAvailable: true, acquired: true, token: 'lease-token' } })
+  mocks.releaseBomEditSession.mockResolvedValue({ data: true })
+  mocks.describeBomEditSession.mockResolvedValue({ data: { leaseAvailable: true, acquired: false, occupied: false } })
 })
 
 afterEach(() => {
@@ -390,5 +417,77 @@ describe('新建产品BOM：首次设主方案用真实 revision，不默认 0',
     expect(mocks.error).toHaveBeenCalledWith(
       '产品主方案已被其他会话修改，当前编辑内容已保留；请核对后重试'
     )
+  })
+})
+
+// ==================== 编辑占用 + 服务端内容版本（dev-20261111-018） ====================
+
+describe('父产品BOM：编辑占用与服务端内容版本', () => {
+  it('保存请求带 expectedContentRevision 与 editToken，保存成功后不释放租约', async () => {
+    const { state } = await editingForm()
+    state.formData.remark = '正常保存'
+    expect(await state.doSave()).toBe(true)
+
+    expect(mocks.editEngineeringBom).toHaveBeenCalledTimes(1)
+    const payload = mocks.editEngineeringBom.mock.calls[0][0]
+    expect(payload.expectedContentRevision).toBe('rev-1')
+    expect(payload.editToken).toBe('lease-token')
+    // 保存成功：用后端返回的新指纹继续编辑，且不释放（保持到关闭/取消）
+    expect(state.formData.expectedContentRevision).toBe('rev-2')
+    expect(mocks.releaseBomEditSession).not.toHaveBeenCalled()
+  })
+
+  it('其他窗口占用时只读并禁止保存，草稿仍可查看', async () => {
+    mocks.acquireBomEditSession.mockResolvedValue({
+      data: {
+        leaseAvailable: true,
+        acquired: false,
+        occupied: true,
+        ownerDisplayName: '李四',
+        ownerIsSameUser: false,
+        ownerIsSameClient: false,
+        message: '该BOM正由 李四 编辑，本窗口为只读',
+      },
+    })
+    const { state } = await editingForm()
+    expect(state.editSession.readOnly.value).toBe(true)
+    expect(state.editSession.message.value).toContain('只读')
+
+    state.formData.remark = '只读窗口的草稿'
+    expect(await state.doSave()).toBe(false)
+    expect(mocks.editEngineeringBom).not.toHaveBeenCalled()
+    expect(state.formData.remark).toBe('只读窗口的草稿')
+  })
+
+  it('占用服务不可用（Redis 故障）时只读，不出现“提示失效但照样保存”', async () => {
+    mocks.acquireBomEditSession.mockRejectedValue(
+      Object.assign(new Error('EDIT_LEASE_UNAVAILABLE：占用服务暂不可用，请稍后重试'), { bizCode: 503 })
+    )
+    const { state } = await editingForm()
+    expect(state.editSession.readOnly.value).toBe(true)
+    expect(await state.doSave()).toBe(false)
+    expect(mocks.editEngineeringBom).not.toHaveBeenCalled()
+  })
+
+  it('保存返回 409 内容冲突：草稿保留、进入只读，不静默覆盖他人保存', async () => {
+    const { state } = await editingForm()
+    mocks.editEngineeringBom.mockRejectedValueOnce(
+      Object.assign(new Error('BOM_CONTENT_STALE：BOM 已被其他人保存，请重新加载后再提交'), { bizCode: 409 })
+    )
+    state.formData.remark = '甲草稿'
+    expect(await state.doSave()).toBe(false)
+    expect(state.formData.remark).toBe('甲草稿')
+    expect(state.editSession.readOnly.value).toBe(true)
+    expect(mocks.error).toHaveBeenCalledWith(
+      'BOM 已被其他人保存，当前修改未提交；草稿已保留，请重新加载最新内容或重新申请编辑权'
+    )
+  })
+
+  it('关闭窗口时 compare-token 释放编辑权', async () => {
+    const { wrapper, state } = await editingForm()
+    await wrapper.setProps({ modelValue: false })
+    await flushPromises()
+    expect(mocks.releaseBomEditSession).toHaveBeenCalledWith(9, 'lease-token')
+    expect(state.formData.items.length).toBeGreaterThan(0)
   })
 })

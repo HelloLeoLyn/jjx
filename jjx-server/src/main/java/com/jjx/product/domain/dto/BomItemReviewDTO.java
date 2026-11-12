@@ -23,4 +23,10 @@ public class BomItemReviewDTO {
 
     /** 关联物料ID（LINK_MATERIAL 必填） */
     private Long materialId;
+
+    /**
+     * 行审核时由详情带回的服务端内容指纹（dev-20261111-018）。
+     * 加载后被保存改动的行判失败返回 409，不用锁前旧实体覆盖新内容。
+     */
+    private String expectedContentRevision;
 }

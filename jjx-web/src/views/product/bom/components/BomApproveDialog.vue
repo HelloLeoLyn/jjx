@@ -109,6 +109,7 @@ import BomBasicInfo from './BomBasicInfo.vue'
 import BomItemReviewTable from './BomItemReviewTable.vue'
 import BomMaterialBatchDialog from './BomMaterialBatchDialog.vue'
 import { attachCreatedMaterial, buildBatchRows, type BatchRow } from './bomMaterialBatch'
+import { isContentConflict } from '../composables/useBomEditSession'
 
 type RowAction = 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE'
 
@@ -161,6 +162,9 @@ const createEmptyDetail = (): EngineeringBom => ({
 
 const detail = reactive<EngineeringBom>(createEmptyDetail())
 const bomDetailList = ref<EngineeringBomItem[]>([])
+// 服务端内容指纹（dev-20261111-018）：加载时保存，批准/驳回/行审核/批量审核原样回传；
+// 审核期间内容被保存改动时后端返回 409，必须重新加载，不得忽略后继续提交。
+const contentRevision = ref<string | null>(null)
 // 批量关联（dev-20261024-020）：匹配只作推荐，人工确认后才写库
 const batchDialogVisible = ref(false)
 const batchRows = ref<BatchRow[]>([])
@@ -268,6 +272,7 @@ const loadBomDetail = async () => {
     const response = await productBomApi.getEngineeringBomInfo(props.bomId)
     Object.assign(detail, response.data)
     bomDetailList.value = response.data.items || []
+    contentRevision.value = response?.data?.contentRevision ?? null
   } catch (error) {
     console.error('加载BOM详情失败:', error)
     ElMessage.error('加载BOM详情失败')
@@ -298,7 +303,29 @@ const refreshAfterAction = async () => {
   const res = await productBomApi.getEngineeringBomInfo(props.bomId)
   Object.assign(detail, res.data)
   bomDetailList.value = res.data.items || []
+  contentRevision.value = res?.data?.contentRevision ?? null
   await refreshApproveCheck()
+}
+
+/** 409 内容冲突：回读最新内容后再让用户操作，禁止拿旧指纹继续提交。 */
+const reloadAfterConflict = async (message: string) => {
+  ElMessage.error(message)
+  try {
+    await loadBomDetail()
+  } catch (error) {
+    console.error('冲突后重新加载BOM详情失败:', error)
+  }
+}
+
+/** 只回读最新内容指纹：行审核后局部更新视图，不整单重绘，也不忽略版本变化。 */
+const refreshRevision = async () => {
+  if (!props.bomId) return
+  try {
+    const res = await productBomApi.getEngineeringBomInfo(props.bomId)
+    contentRevision.value = res?.data?.contentRevision ?? null
+  } catch (error) {
+    console.warn('回读BOM内容指纹失败:', error)
+  }
 }
 
 /**
@@ -322,6 +349,7 @@ const dropBlockingIssuesFor = (itemIds: number[]) => {
 const resetData = () => {
   Object.assign(detail, createEmptyDetail())
   bomDetailList.value = []
+  contentRevision.value = null
   blockingIssues.value = []
   busyItemId.value = undefined
   batchFailures.value = []
@@ -357,6 +385,8 @@ const handleBatchApprove = async (itemIds: number[]) => {
       bomId: props.bomId,
       itemIds,
       action: 'APPROVE',
+      // 有服务端指纹才带上（缺失时后端 fail-closed 拒绝，不会放行旧内容）
+      ...(contentRevision.value ? { expectedContentRevision: contentRevision.value } : {}),
     })
     if (!res.data) throw new Error('批量审核未返回结果')
     batchFailures.value = res.data.failed
@@ -364,7 +394,11 @@ const handleBatchApprove = async (itemIds: number[]) => {
       `批量通过 ${res.data.successIds.length} 行，失败 ${res.data.failed.length} 行`
     )
   } catch (error: any) {
-    ElMessage.error(error?.message || '批量审核失败，请重新加载BOM审核弹窗')
+    if (isContentConflict(error)) {
+      await reloadAfterConflict('BOM 内容已被保存修改，已重新加载最新内容，请重新批量审核')
+    } else {
+      ElMessage.error(error?.message || '批量审核失败，请重新加载BOM审核弹窗')
+    }
   } finally {
     // 批量结果落定后回读整单详情与体检：批准按钮的启用条件以服务端口径为准，
     // 不再靠本地补丁推算（否则 approveCheckReady 停在被置 false 的旧状态，必须关窗重开，dev-20261031-004）
@@ -409,7 +443,12 @@ const handleRowReview = async (row: EngineeringBomItem, action: RowAction) => {
 
   busyItemId.value = row.itemId
   try {
-    await productBomApi.reviewBomItem({ itemId: row.itemId, action, remark })
+    await productBomApi.reviewBomItem({
+      itemId: row.itemId,
+      action,
+      remark,
+      ...(contentRevision.value ? { expectedContentRevision: contentRevision.value } : {}),
+    })
     ElMessage.success(
       action === 'APPROVE'
         ? '该行已审核通过'
@@ -417,6 +456,8 @@ const handleRowReview = async (row: EngineeringBomItem, action: RowAction) => {
           ? '该行已驳回，BOM已退回工程修改'
           : '已确认移除'
     )
+    // 行审核改变内容指纹：回读最新指纹，供下一次审核使用（不整单重绘，保留审核员视图）
+    await refreshRevision()
     const rowId = row.itemId
     applyRowPatchLocally([rowId], (target) => {
       if (action === 'APPROVE') target.reviewStatus = BomItemReviewStatusEnum.APPROVED.value
@@ -435,6 +476,10 @@ const handleRowReview = async (row: EngineeringBomItem, action: RowAction) => {
     }
   } catch (error: any) {
     console.error('行级审核失败:', error)
+    if (isContentConflict(error)) {
+      await reloadAfterConflict('BOM 内容已被保存修改，已重新加载最新内容，请重新审核该行')
+      return
+    }
     ElMessage.error(error?.message || '行级审核失败')
   } finally {
     busyItemId.value = undefined
@@ -450,8 +495,10 @@ const handleLinkMaterial = async (row: EngineeringBomItem, material: InventoryMa
       itemId: row.itemId,
       action: 'LINK_MATERIAL',
       materialId: material.materialId,
+      ...(contentRevision.value ? { expectedContentRevision: contentRevision.value } : {}),
     })
     ElMessage.success('已关联物料，请继续审核该行')
+    await refreshRevision()
     applyRowPatchLocally([row.itemId], (target) => {
       target.materialId = material.materialId
       target.materialCode = material.materialCode ?? ''
@@ -461,6 +508,10 @@ const handleLinkMaterial = async (row: EngineeringBomItem, material: InventoryMa
     dropBlockingIssuesFor([row.itemId])
   } catch (error: any) {
     console.error('关联物料失败:', error)
+    if (isContentConflict(error)) {
+      await reloadAfterConflict('BOM 内容已被保存修改，已重新加载最新内容，请重新关联该行')
+      return
+    }
     ElMessage.error(error?.message || '关联物料失败')
   } finally {
     busyItemId.value = undefined
@@ -472,7 +523,11 @@ const handleUnlinkMaterial = async (row: EngineeringBomItem) => {
   if (!row.itemId) return
   busyItemId.value = row.itemId
   try {
-    await productBomApi.reviewBomItem({ itemId: row.itemId, action: 'UNLINK_MATERIAL' })
+    await productBomApi.reviewBomItem({
+      itemId: row.itemId,
+      action: 'UNLINK_MATERIAL',
+      ...(contentRevision.value ? { expectedContentRevision: contentRevision.value } : {}),
+    })
     ElMessage.success('已解除物料关联，该行需重新关联后才能通过')
     await loadBomDetail()
   } catch (error: any) {
@@ -554,9 +609,17 @@ const handleSubmit = async () => {
     }
 
     if (approveForm.value.result === ApprovalResultEnum.APPROVE) {
-      await productBomApi.approveEngineeringBom(props.bomId, approveForm.value.remark)
+      await productBomApi.approveEngineeringBom(
+        props.bomId,
+        approveForm.value.remark,
+        contentRevision.value,
+      )
     } else {
-      await productBomApi.rejectEngineeringBom(props.bomId, approveForm.value.remark)
+      await productBomApi.rejectEngineeringBom(
+        props.bomId,
+        approveForm.value.remark,
+        contentRevision.value,
+      )
     }
 
     ElMessage.success(
@@ -575,6 +638,10 @@ const handleSubmit = async () => {
     visible.value = false
   } catch (error: any) {
     console.error('提交审核失败:', error)
+    if (isContentConflict(error)) {
+      await reloadAfterConflict('BOM 内容已被保存修改，审批未生效；已重新加载最新内容，请重新审核')
+      return
+    }
     ElMessage.error(error?.message || '提交审核失败')
   } finally {
     submitting.value = false

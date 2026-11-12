@@ -17,6 +17,25 @@
         </el-button>
       </div>
     </template>
+    <!-- 编辑占用提示（dev-20261111-018）：占用失败/心跳失效时只读，草稿保留，不后台接管 -->
+    <el-alert
+      v-if="editSession.readOnly.value"
+      class="lease-alert"
+      type="warning"
+      :closable="false"
+      show-icon
+      :title="editSession.message.value"
+    >
+      <template #default>
+        <div class="lease-actions">
+          <span v-if="editSession.ownerName.value">当前占用：{{ editSession.ownerName.value }}</span>
+          <el-button size="small" @click="handleReacquire">重新申请编辑权</el-button>
+          <el-button size="small" type="primary" plain @click="handleReloadLatest">
+            重新加载最新内容
+          </el-button>
+        </div>
+      </template>
+    </el-alert>
     <el-form ref="bomFormRef" :model="formData" :rules="rules" label-width="120px">
       <el-row :gutter="20">
         <el-col :span="12">
@@ -141,7 +160,13 @@
           >打印预览</el-button
         >
         <el-button @click="handleCancel">关 闭</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitForm">保存</el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          :disabled="editSession.readOnly.value"
+          @click="submitForm"
+          >保存</el-button
+        >
       </div>
     </template>
 
@@ -188,6 +213,7 @@ import type {
   EngineeringBomItem,
   ManufacturingSchemeChoice,
 } from '@/types/product/bom'
+import { useBomEditSession, isContentConflict } from '../composables/useBomEditSession'
 import type { ProductItem, ProductVo } from '@/types/product'
 import * as XLSX from 'xlsx'
 import { parseSpecModule } from './bomSpecImport'
@@ -263,6 +289,9 @@ const formData = reactive<EngineeringBomFormData>({
   remark: '',
   items: [],
 })
+
+// 编辑占用（dev-20261111-018）：同一 bomId 只允许一个编辑会话；占用失败即只读
+const editSession = useBomEditSession(() => formData.bomId)
 
 // 表单验证规则
 const rules = reactive<FormRules>({
@@ -829,6 +858,8 @@ const loadBomData = async (bomId: number) => {
   try {
     const response = await productBomApi.getEngineeringBomInfo(bomId)
     Object.assign(formData, response.data)
+    // 服务端内容指纹（dev-20261111-018）：保存时原样回传，客户端不计算版本号
+    formData.expectedContentRevision = response?.data?.contentRevision ?? null
     // 主方案上下文：revision 用于乐观锁，choices 只作只读回显
     schemeRevision.value = parseSchemeRevision(response?.data?.schemeRevision)
     savedSchemeChoices.value = Array.isArray(response?.data?.schemeChoices)
@@ -841,15 +872,31 @@ const loadBomData = async (bomId: number) => {
     // 明细回填到编辑器后再建基线，避免“刚打开就提示未保存”。
     await nextTick()
     setBaseline()
+    // 已保存 BOM 打开即申请编辑权；失败/占用服务不可用时只读，但内容仍可查看与复制
+    await editSession.acquire(bomId)
   } catch (error) {
     console.error('加载BOM数据失败:', error)
     ElMessage.error('加载BOM数据失败')
   }
 }
 
+/** 用户显式重新申请编辑权（不做后台接管）。 */
+const handleReacquire = async () => {
+  await editSession.reacquire()
+}
+
+/** 用户显式重新加载服务端最新内容（会替换当前草稿，因此只在用户点击时执行）。 */
+const handleReloadLatest = async () => {
+  if (!formData.bomId) return
+  await loadBomData(Number(formData.bomId))
+  if (!editSession.readOnly.value) ElMessage.success('已加载最新内容，可继续编辑')
+}
+
 /** 保存（供「确定」与「保存并离开」共用）；成功返回 true，失败/校验不过返回 false 且不清数据。 */
 const doSave = async (): Promise<boolean> => {
   if (!bomFormRef.value || submitting.value) return false
+  // 只读（占用失败/编辑权失效/占用服务不可用）一律不允许保存
+  if (!editSession.ensureEditable()) return false
   submitting.value = true
   try {
     try {
@@ -877,6 +924,15 @@ const doSave = async (): Promise<boolean> => {
     const payload: any = { ...formData, items: formData.items }
     const schemeChoices = schemeChoicesPayload()
     const isEditingBom = formData.bomId !== undefined && formData.bomId !== null
+    if (isEditingBom) {
+      // 编辑：带服务端内容指纹 + 编辑占用 token；两者都由服务端给出，客户端不计算
+      payload.expectedContentRevision = formData.expectedContentRevision ?? null
+      payload.editToken = editSession.token.value
+    } else {
+      // 新建：还没有内容基线，也没有租约
+      delete payload.expectedContentRevision
+      delete payload.editToken
+    }
     if (schemeChoices.length) {
       // 编辑已保存 BOM 用 getBomDetail 的 schemeRevision；新建 BOM 用 GET /product/{id} 的真实版本。
       // 两条路径都拿不到真实版本时必须阻止保存主方案，不能默认 0 或指望后端兜底。
@@ -910,11 +966,25 @@ const doSave = async (): Promise<boolean> => {
         if (revision != null) schemeRevision.value = revision
         savedSchemeChoices.value = mergeSavedChoices(savedSchemeChoices.value, schemeChoices)
       }
+      // 保存成功：只更新内容指纹，不释放租约（保持到关闭/取消），也不改其他窗口状态
+      const nextRevision = response?.data?.contentRevision
+      if (nextRevision) formData.expectedContentRevision = nextRevision
+      editSession.applyRevision(nextRevision)
       ElMessage.success('修改成功')
     } else {
       const response = await productBomApi.addEngineeringBom(payload)
       const bomId = Number(response?.data)
-      if (Number.isSafeInteger(bomId) && bomId > 0) formData.bomId = bomId
+      if (Number.isSafeInteger(bomId) && bomId > 0) {
+        formData.bomId = bomId
+        // 新建成功后取得该 bomId 的编辑权，并回读服务端内容指纹供后续保存使用
+        await editSession.acquire(bomId)
+        try {
+          const created = await productBomApi.getEngineeringBomInfo(bomId)
+          formData.expectedContentRevision = created?.data?.contentRevision ?? null
+        } catch (revisionError) {
+          console.warn('回读新建BOM内容指纹失败:', revisionError)
+        }
+      }
       if (schemeChoices.length) {
         savedSchemeChoices.value = mergeSavedChoices(savedSchemeChoices.value, schemeChoices)
         // 新建保存后重新读一次真实版本，供同一会话后续保存主方案使用
@@ -928,6 +998,17 @@ const doSave = async (): Promise<boolean> => {
     return true
   } catch (error: any) {
     console.error('保存BOM失败:', error)
+    // 内容版本冲突（409 BOM_CONTENT_STALE）：保留草稿、立即只读，不忽略后继续提交
+    if (isContentConflict(error)) {
+      editSession.handleRequestError(error)
+      ElMessage.error('BOM 已被其他人保存，当前修改未提交；草稿已保留，请重新加载最新内容或重新申请编辑权')
+      return false
+    }
+    const leaseOutcome = editSession.handleRequestError(error)
+    if (leaseOutcome === 'leaseLost' || leaseOutcome === 'unavailable') {
+      ElMessage.error(editSession.message.value)
+      return false
+    }
     // HTTP 层用独立变量名，避免与企业状态魔法值规则混淆
     const httpCode = Number(error?.response?.status ?? error?.status ?? error?.code)
     const message = String(error?.response?.data?.msg || error?.message || '')
@@ -1026,7 +1107,11 @@ defineExpose({
 watch(
   () => props.modelValue,
   async (newVal) => {
-    if (!newVal) return
+    if (!newVal) {
+      // 关闭/取消：compare-token 释放编辑权（保存成功不在此释放）
+      await editSession.release()
+      return
+    }
     suppressGuard.value = false
     if (props.bomId) {
       await loadBomData(props.bomId)
@@ -1062,6 +1147,19 @@ watch(
   padding: 10px 0;
   background: var(--el-bg-color, #fff);
   text-align: right;
+}
+
+/* 编辑占用提示（dev-20261111-018）：只读时提示重申请/重载，不改变原有布局 */
+.lease-alert {
+  margin-bottom: 10px;
+}
+
+.lease-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
 }
 
 .excel-import-area {

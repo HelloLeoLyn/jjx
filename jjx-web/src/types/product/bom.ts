@@ -50,6 +50,8 @@ export interface ManufacturingBomDetail {
   createTime?: string
   updateTime?: string
   items: EngineeringBomItem[]
+  /** 服务端内容指纹（dev-20261111-018）；保存时回传为 expectedContentRevision。 */
+  contentRevision?: string | null
 }
 
 /**
@@ -72,6 +74,10 @@ export interface ManufacturingBomSavePayload {
   expiryDate?: string | null
   remark?: string
   items: ManufacturingBomSaveItem[]
+  /** 加载详情时的服务端内容指纹；后端重算不一致返回 409。 */
+  expectedContentRevision?: string | null
+  /** 编辑占用 token；由 useBomEditSession 持有，不得转交其他窗口。 */
+  editToken?: string | null
 }
 
 /** 产品×投入物料的主方案选择（随父产品BOM保存持久化）。 */
@@ -120,6 +126,10 @@ export interface EngineeringBomFormData {
   schemeChoices?: ManufacturingSchemeChoice[]
   /** 加载详情时的 product.scheme_revision，提交主方案时必带（后端乐观锁）。 */
   schemeRevision?: number | null
+  /** 加载详情时的服务端内容指纹（与 schemeRevision 职责不同，互不替代）。 */
+  expectedContentRevision?: string | null
+  /** 编辑占用 token（Redis 租约）；保存时后端校验，缺失/过期一律拒绝。 */
+  editToken?: string | null
 }
 
 /** BOM 明细行审核状态（dev-20261020-029，对应 Java ProductEnums.BomItemReviewStatus） */
@@ -207,6 +217,8 @@ export interface BomItemReviewRequest {
   action: 'APPROVE' | 'REJECT' | 'CONFIRM_REMOVE' | 'LINK_MATERIAL' | 'UNLINK_MATERIAL'
   remark?: string
   materialId?: number
+  /** 详情加载时的服务端内容指纹；内容被保存改动时后端返回 409。 */
+  expectedContentRevision?: string | null
 }
 
 export interface BomCheckIssue {
@@ -320,6 +332,8 @@ export interface EngineeringBomVO {
   schemeRevision?: number | null
   /** 已保存的产品主方案选择。 */
   schemeChoices?: ManufacturingSchemeChoice[]
+  /** 服务端内容指纹（dev-20261111-018）；保存/审批时回传为 expectedContentRevision。 */
+  contentRevision?: string | null
 }
 
 export interface BomItemBatchReviewRequest {
@@ -327,6 +341,8 @@ export interface BomItemBatchReviewRequest {
   itemIds: number[]
   action: 'APPROVE'
   remark?: string
+  /** 批量审核前详情加载时的服务端内容指纹；中途被改动的行判失败。 */
+  expectedContentRevision?: string | null
 }
 
 export interface BomItemBatchReviewResult {
@@ -340,3 +356,24 @@ export enum BomSaveLogResult {
 }
 
 export type BomOriginalValues = Record<string, { materialName?: string | null; specification?: string | null }>
+
+/** BOM 编辑占用会话（GET/POST/PUT/DELETE /engineering/bom/{bomId}/edit-session）。 */
+export interface BomEditSession {
+  /** 占用服务是否可用；false 时必须只读，禁止保存。 */
+  leaseAvailable: boolean
+  /** 本次是否取得（或本标签页已持有）编辑权。 */
+  acquired: boolean
+  /** 是否已被占用（他人或同账号另一窗口）。 */
+  occupied: boolean
+  /** 占用者显示名；他人占用时不返回 token。 */
+  ownerDisplayName?: string | null
+  ownerIsSameUser?: boolean
+  ownerIsSameClient?: boolean
+  /** 租约到期时间（epoch 毫秒）。 */
+  expiresAt?: number | null
+  ttlSeconds?: number | null
+  /** 编辑 token：仅本标签页持有时有值。 */
+  token?: string | null
+  /** 只读原因，可直接提示用户。 */
+  message?: string | null
+}

@@ -26,6 +26,23 @@
       title="尚未选择产品：可以先保存制造方案；“设为主方案”需要先选择产品。"
     />
 
+    <!-- 编辑占用（dev-20261111-018）：本层方案被其他窗口占用或编辑权失效时只读，草稿保留 -->
+    <el-alert
+      v-if="editSession.readOnly.value"
+      class="lease-alert"
+      type="warning"
+      :closable="false"
+      show-icon
+      :title="editSession.message.value"
+    >
+      <template #default>
+        <div class="lease-actions">
+          <span v-if="editSession.ownerName.value">当前占用：{{ editSession.ownerName.value }}</span>
+          <el-button size="small" @click="handleReacquire">重新申请编辑权</el-button>
+        </div>
+      </template>
+    </el-alert>
+
     <el-descriptions class="output-panel" :column="4" border size="small">
       <el-descriptions-item label="产出物料编码">{{ outputInfo.materialCode || '—' }}</el-descriptions-item>
       <el-descriptions-item label="产出物料名称">{{ outputInfo.materialName || '—' }}</el-descriptions-item>
@@ -183,7 +200,12 @@
       <div class="dialog-footer">
         <span class="footer-tip">{{ footerTip }}</span>
         <el-button @click="handleCancel">关 闭</el-button>
-        <el-button v-if="editable" type="primary" :loading="saving" @click="saveScheme"
+        <el-button
+          v-if="editable"
+          type="primary"
+          :loading="saving"
+          :disabled="editSession.readOnly.value"
+          @click="saveScheme"
           >保存制造BOM</el-button
         >
         <el-button v-if="canAdoptVisible" type="success" :disabled="!canAdopt" @click="adoptScheme"
@@ -216,6 +238,7 @@ import type {
   ManufacturingScheme,
   ManufacturingSchemeLabel,
   ManufacturingBomSaveItem,
+  ManufacturingBomSavePayload,
 } from '@/types/product/bom'
 import { BomStatusEnum, ManufacturingOutputTypeEnum } from '@/enums/product'
 import { hasPermi } from '@/directives'
@@ -223,6 +246,7 @@ import { productBomApi } from '@/api/product/bom'
 import { materialApi } from '@/api/inventory/material'
 import ManufacturingBomPath from './ManufacturingBomPath.vue'
 import ManufacturingBomItemTable from './ManufacturingBomItemTable.vue'
+import { useBomEditSession, isContentConflict } from '../composables/useBomEditSession'
 
 /** 产出物料身份（来自父 BOM 行的物料，不从分组/规格猜）。 */
 export interface ManufacturingMaterialContext {
@@ -242,6 +266,8 @@ interface ManufacturingDraft {
   expiryDate: string
   remark: string
   items: EngineeringBomItem[]
+  /** 服务端内容指纹（dev-20261111-018）；保存时回传，客户端不计算。 */
+  contentRevision: string | null
 }
 
 /** 父层投入行的稳定身份：itemId 优先，materialId 兜底（禁止回填到兄弟材料）。 */
@@ -324,6 +350,7 @@ const emptyDraft = (): ManufacturingDraft => ({
   expiryDate: '',
   remark: '',
   items: [],
+  contentRevision: null,
 })
 
 const dateText = (value: unknown): string => {
@@ -413,6 +440,18 @@ const stack = ref<Frame[]>([fallbackFrame])
  */
 const activeIndex = ref(0)
 const current = computed<Frame>(() => stack.value[activeIndex.value] ?? fallbackFrame)
+
+// 编辑占用（dev-20261111-018）：只占当前打开的这一层 bomId；父/子方案各有 bomId 时分别占用
+const editSession = useBomEditSession(() => current.value?.draft.bomId ?? null)
+// 切换当前层（钻取/返回/换方案/新建）时释放上一层、申请当前层，避免长期占着不再编辑的方案
+watch(
+  () => current.value?.draft.bomId ?? null,
+  async (bomId, previous) => {
+    if (bomId === previous) return
+    await editSession.release()
+    if (bomId) await editSession.acquire(bomId)
+  }
+)
 
 const frameDirty = (frame: Frame): boolean => serializeDraft(frame.draft) !== frame.baseline
 const anyDirty = (): boolean => stack.value.some((frame) => frameDirty(frame))
@@ -581,6 +620,7 @@ const loadScheme = async (frame: Frame, bomId: number): Promise<boolean> => {
     expiryDate: dateText(data?.expiryDate),
     remark: data?.remark || '',
     items: (items?.data || []).map(normalizeItem),
+    contentRevision: data?.contentRevision ?? null,
   }
   frame.baseline = serializeDraft(frame.draft)
   return true
@@ -881,7 +921,7 @@ const toPayloadItem = (item: EngineeringBomItem): ManufacturingBomSaveItem => {
 
 const buildPayload = () => {
   const frame = current.value
-  return {
+  const payload: ManufacturingBomSavePayload = {
     bomId: frame.draft.bomId ?? undefined,
     bomCode: String(frame.draft.bomCode || '').trim(),
     bomName: String(frame.draft.bomName || '').trim(),
@@ -893,6 +933,12 @@ const buildPayload = () => {
     remark: frame.draft.remark || '',
     items: (frame.draft.items || []).map(toPayloadItem),
   }
+  if (frame.draft.bomId) {
+    // 编辑已保存方案：带服务端内容指纹 + 本层编辑占用 token（与父 BOM 同一套后端校验）
+    payload.expectedContentRevision = frame.draft.contentRevision ?? null
+    payload.editToken = editSession.token.value
+  }
+  return payload
 }
 
 /** 前端只做必填/正数/精度/换算依据提示；耗用、单位、环与批准资格一律以后端校验为准。 */
@@ -909,6 +955,8 @@ const validateDraft = (): string => {
 
 const saveScheme = async (): Promise<boolean> => {
   if (!editable.value || saving.value) return false
+  // 只读（占用失败/编辑权失效）不得保存
+  if (!editSession.ensureEditable()) return false
   const frame = current.value
   const message = validateDraft()
   if (message) {
@@ -929,6 +977,9 @@ const saveScheme = async (): Promise<boolean> => {
     frame.draft.bomId = Number(detail.bomId)
     frame.selectedBomId = Number(detail.bomId)
     frame.approveStatus = detail.approveStatus ?? null
+    // 保存成功：更新内容指纹并保持编辑权（不释放租约，也不后台接管）
+    frame.draft.contentRevision = detail.contentRevision ?? frame.draft.contentRevision ?? null
+    editSession.applyRevision(detail.contentRevision)
     if (Array.isArray(detail.items)) {
       // 保存后回读：参考用量以本次返回的值为准（后端重算）
       const archiveUnits = new Map(
@@ -951,11 +1002,26 @@ const saveScheme = async (): Promise<boolean> => {
     return true
   } catch (error) {
     console.error('保存制造BOM方案失败:', error)
+    if (isContentConflict(error)) {
+      editSession.handleRequestError(error)
+      ElMessage.error('制造方案已被其他人保存，当前修改未提交；草稿已保留，请重新申请编辑权或重新加载后再试')
+      return false
+    }
+    const leaseOutcome = editSession.handleRequestError(error)
+    if (leaseOutcome === 'leaseLost' || leaseOutcome === 'unavailable') {
+      ElMessage.error(editSession.message.value)
+      return false
+    }
     ElMessage.error('保存制造BOM方案失败')
     return false
   } finally {
     saving.value = false
   }
+}
+
+/** 用户显式重新申请本层编辑权（不后台接管）。 */
+const handleReacquire = async () => {
+  await editSession.reacquire()
 }
 
 /**
@@ -1050,7 +1116,11 @@ const markPrimary = (scheme?: ManufacturingScheme): void => {
 watch(
   () => props.modelValue,
   async (value) => {
-    if (!value) return
+    if (!value) {
+      // 关闭：compare-token 释放本层编辑权（保存成功不在此释放）
+      await editSession.release()
+      return
+    }
     resetStack()
     await loadFrame(current.value)
   },
@@ -1059,6 +1129,7 @@ watch(
 
 defineExpose({
   stack,
+  editSession,
   activeIndex,
   current,
   pathNodes,
@@ -1115,10 +1186,19 @@ defineExpose({
 }
 
 .context-alert,
+.lease-alert,
 .output-panel,
 .scheme-area,
 .draft-form {
   margin-top: 10px;
+}
+
+.lease-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
 }
 
 .scheme-toolbar {
