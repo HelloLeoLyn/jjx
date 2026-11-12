@@ -31,7 +31,7 @@ function setup(items) {
     '@/api/product/workSpec': { ...api, productWorkSpecApi: { get: forbidden, getVersion: async () => ({ data: { version: { id: 3 }, items } }) } },
     '@/api/product/bom': { productBomApi: { getEngineeringBomInfo: forbidden } },
     '@/api/product/routing': { productRouteApi: { getProductRouteInfo: forbidden } },
-    '@/components/product/productFilePreview': {}, '@/utils/bomQuantity': {},
+    '@/components/product/productFilePreviewUtils': {}, '@/utils/bomQuantity': {},
   })
 }
 function snapshot() {

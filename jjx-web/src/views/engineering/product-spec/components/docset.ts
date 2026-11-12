@@ -21,7 +21,7 @@ import {
 } from '@/api/product/workSpec'
 import { productBomApi } from '@/api/product/bom'
 import { productRouteApi } from '@/api/product/routing'
-import type { FileImage } from '@/components/product/productFilePreview'
+import type { FileImage } from '@/components/product/productFilePreviewUtils'
 import { composeMaterialSpec, isZeroSpec, plainText } from '@/utils/materialSpec'
 import { bomGroupRows } from '@/utils/bomGroups'
 import {
@@ -34,7 +34,7 @@ import {
   snapshotWarnings,
   type DocFile,
 } from './versionDocset'
-export { renderFile, type FileImage } from '@/components/product/productFilePreview'
+export { renderFile, type FileImage } from '@/components/product/productFilePreviewUtils'
 export type { DocFile } from './versionDocset'
 export { snapshotFileToDocFile } from './versionDocset'
 

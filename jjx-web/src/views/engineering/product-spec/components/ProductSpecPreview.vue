@@ -250,7 +250,7 @@ import { ElMessage } from 'element-plus'
 import { productWorkSpecApi, normalizeWorkSpec, acknowledgeProjectMaterials } from '@/api/product/workSpec'
 import PrintToolbar from '@/components/print/PrintToolbar.vue'
 import ProductFilePreview from '@/components/product/ProductFilePreview.vue'
-import { downloadFile } from '@/components/product/productFilePreview'
+import { downloadFile } from '@/components/product/productFilePreviewUtils'
 import ProductSpecSheets from './ProductSpecSheets.vue'
 import {
   documentSections,

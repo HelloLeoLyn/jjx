@@ -46,7 +46,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
-import { fileKind } from '@/components/product/productFilePreview'
+import { fileKind } from '@/components/product/productFilePreviewUtils'
 import { normalizeWorkSpec } from '@/api/product/workSpec'
 import { useWorkSpecAttachmentSession } from './useWorkSpecAttachmentSession'
 import type { PendingEntry } from '@/composables/useAttachmentRefs'

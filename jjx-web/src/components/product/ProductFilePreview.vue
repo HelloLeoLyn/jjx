@@ -19,7 +19,7 @@
 import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { ProductDrawingFile } from '@/api/system/attachment'
-import { downloadFile, fileKind, renderFile, type FileImage } from './productFilePreview'
+import { downloadFile, fileKind, renderFile, type FileImage } from './productFilePreviewUtils'
 const props = defineProps<{ modelValue: boolean; file?: ProductDrawingFile }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const images = shallowRef<FileImage[]>([])
