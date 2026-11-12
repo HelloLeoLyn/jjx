@@ -227,6 +227,68 @@ afterEach(() => {
   mounted.splice(0).forEach((wrapper) => wrapper.unmount())
 })
 
+describe('制造BOM跳距保存与未保存提醒（dev-20261112-010）', () => {
+  it.each([undefined, null, ''])('读取与保存跳距行时空比例 %s 不转为0', async (empty) => {
+    const stored = { ...item(), moduleQty: empty, baseQty: empty, pitchMm: 80, pcsPerPitch: 1 }
+    mocks.manufacturingOptions.mockResolvedValue({ data: [scheme()] })
+    mocks.listEngineeringBomItem.mockResolvedValue({ data: [stored] })
+    mocks.updateManufacturingBom.mockResolvedValue({
+      data: { ...scheme(), items: [stored], contentRevision: 'rev-next' },
+    })
+    const wrapper = await dialog({ subBomId: 124 })
+    const state = wrapper.vm as any
+    const row = state.current.draft.items[0]
+    expect(row.moduleQty).toBeUndefined()
+    expect(row.baseQty).toBeUndefined()
+    expect(state.currentDirty).toBe(false)
+    expect(state.validateDraft()).toBe('')
+    expect(await state.saveScheme()).toBe(true)
+    const payload = mocks.updateManufacturingBom.mock.calls[0][1]
+    expect(payload.items[0]).toMatchObject({ pitchMm: 80, pcsPerPitch: 1 })
+    expect(payload.items[0].moduleQty).toBeUndefined()
+    expect(payload.items[0].baseQty).toBeUndefined()
+    expect(state.current.draft.items[0].moduleQty).toBeUndefined()
+    expect(state.current.draft.items[0].baseQty).toBeUndefined()
+    expect(state.currentDirty).toBe(false)
+  })
+
+  it('新建制造方案两组皆空也可保存，不注入0值比例', async () => {
+    const wrapper = await dialog()
+    const state = wrapper.vm as any
+    state.current.draft.items = [item({ moduleQty: undefined, baseQty: undefined })]
+    await flushPromises()
+    expect(state.validateDraft()).toBe('')
+    expect(await state.saveScheme()).toBe(true)
+    const saved = mocks.saveManufacturingBom.mock.calls[0][0].items[0]
+    expect(saved.moduleQty).toBeUndefined()
+    expect(saved.baseQty).toBeUndefined()
+  })
+
+  it.each([
+    ['pitchMm', 100],
+    ['pcsPerPitch', 2],
+  ] as const)('只改 %s 也提示未保存，并可保存后再采用', async (field, value) => {
+    mocks.manufacturingOptions.mockResolvedValue({ data: [scheme()] })
+    mocks.listEngineeringBomItem.mockResolvedValue({
+      data: [item({ moduleQty: undefined, baseQty: undefined, pitchMm: 80, pcsPerPitch: 1 })],
+    })
+    const wrapper = await dialog({ subBomId: 124 })
+    const state = wrapper.vm as any
+    expect(state.currentDirty).toBe(false)
+    expect(state.canAdopt).toBe(true)
+    state.current.draft.items[0][field] = value
+    expect(state.currentDirty).toBe(true)
+    expect(state.canAdopt).toBe(false)
+    mocks.confirm.mockRejectedValueOnce('close')
+    expect(await state.resolveLeave()).toBe(false)
+    expect(mocks.confirm).toHaveBeenCalledWith('当前制造方案有未保存的修改。', '未保存提醒', expect.any(Object))
+    expect(await state.saveScheme()).toBe(true)
+    expect(mocks.updateManufacturingBom.mock.calls[0][1].items[0][field]).toBe(value)
+    expect(state.currentDirty).toBe(false)
+    expect(state.canAdopt).toBe(true)
+  })
+})
+
 describe('新建下层：已建档投入物料即使没有 subBomId 也能进入候选并新建', () => {
   it('按该投入物料重新拉候选，可直接新建并保存，产出身份仍是该物料', async () => {
     const wrapper = await dialog()
@@ -447,12 +509,9 @@ describe('跨单位换算依据：同单位免填，跨单位必填并回显', (
     expect((table.vm as any).referenceQuantity(row)).toBe('0.1667')
   })
 
-  it('跨单位缺系数/缺依据按定位行拦截；有依据完整回显并提交；改单位后旧系数不误用', async () => {
+  it('历史单位不一致要求人工确认，不能用换算系数绕过；重新选料后带入档案单位', async () => {
     archives.set(109, {
-      materialCode: 'RM000105',
-      materialName: 'PC-800 茶色',
-      specification: '195mm*80mm',
-      unit: 'M',
+      materialCode: 'RM000105', materialName: 'PC-800 茶色', specification: '195mm*80mm', unit: 'M',
     })
     mocks.manufacturingOptions.mockResolvedValue({ data: [scheme()] })
     mocks.listEngineeringBomItem.mockResolvedValue({ data: [item({ materialId: 109, unit: 'KG' })] })
@@ -461,38 +520,17 @@ describe('跨单位换算依据：同单位免填，跨单位必填并回显', (
     const table = wrapper.findComponent(ManufacturingBomItemTable)
     const row = state.current.draft.items[0]
     expect(row.archiveUnit).toBe('M')
-    expect((table.vm as any).needsUnitFactor(row)).toBe(true)
-    expect((table.vm as any).validate()).toBe('第1行投入单位与档案单位不同，请填写换算系数')
-
-    row.unitFactor = 12.5
-    expect((table.vm as any).validate()).toBe('第1行跨单位换算缺少依据，请填写换算依据')
-
-    row.unitFactorBasis = '每卷实测 12.5 米'
-    row.unitFactorSource = '供应商卷标'
+    const warning = '第1行BOM单位 KG 与档案单位 M 不一致，请人工确认并重新选料'
+    expect((table.vm as any).validate()).toBe(warning)
+    row.unitFactor = 12.5; row.unitFactorBasis = '历史换算依据'
+    expect((table.vm as any).validate()).toBe(warning)
+    expect(row.unit).toBe('KG')
+    ;(table.vm as any).$.setupState.handleSelect(row, { materialId: 109, ...archives.get(109) })
+    expect(row.unit).toBe('M')
+    expect(row.baseQty).toBeUndefined()
+    expect(row.moduleQty).toBeUndefined()
+    expect(row.quantity).toBe(0)
     expect((table.vm as any).validate()).toBe('')
-    expect(state.buildPayload().items[0]).toMatchObject({
-      unit: 'KG',
-      unitFactor: 12.5,
-      unitFactorBasis: '每卷实测 12.5 米',
-      unitFactorSource: '供应商卷标',
-    })
-
-    // 系数最多 8 位小数
-    row.unitFactor = 1.123456789
-    expect((table.vm as any).validate()).toBe('第1行换算系数最多 8 位小数')
-
-    // 改投入单位后旧系数不沿用
-    row.unitFactor = 12.5
-    row.unitFactorBasis = '旧依据'
-    row.unitFactorSource = '旧来源'
-    ;(table.vm as any).handleUnitChange(row, 'PCS')
-    expect(row).toMatchObject({
-      unit: 'PCS',
-      unitFactor: null,
-      unitFactorBasis: '',
-      unitFactorSource: '',
-    })
-    expect((table.vm as any).validate()).toBe('第1行投入单位与档案单位不同，请填写换算系数')
   })
 })
 

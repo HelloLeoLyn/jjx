@@ -6,7 +6,7 @@
           添加投入材料
         </el-button>
         <span class="header-hint">
-          规则：产出「模数」数量的本层物料，投入「基数」数量的该行材料；模数、基数均须大于 0，最多 4 位小数
+          跳距组与模数/基数二选一；用量与总需求按原始参数只读试算
         </span>
       </div>
       <div class="header-right">
@@ -14,8 +14,8 @@
       </div>
     </div>
 
-    <BomEntryTools :rows="rows" :readonly="readonly" :output-unit="outputUnit" :output-length-mm="outputLengthMm" @change="emit('update:modelValue', [...rows])" v-slot="{ resultFor, showConversions, showAdvanced, openPitch, canPitch, loading }">
-    <el-table :data="rows" border size="small" row-key="itemId" class="manufacturing-item-grid">
+    <BomEntryTools :rows="rows" :readonly="readonly" :output-unit="outputUnit" :output-length-mm="outputLengthMm" @change="emit('update:modelValue', [...rows])" v-slot="{ resultFor, showConversions, showAdvanced, loading }">
+    <el-table :data="rows" border size="small" row-key="itemId" :row-class-name="({ row }: { row: EngineeringBomItem }) => unitMismatch(row) ? 'bom-row-error' : ''" class="manufacturing-item-grid">
       <el-table-column label="序号" width="50" align="center">
         <template #default="scope">{{ scope.$index + 1 }}</template>
       </el-table-column>
@@ -53,6 +53,7 @@
       <el-table-column label="模数" width="85" align="center">
         <template #default="scope">
           <el-input-number
+            v-if="!hasPitchValues(scope.row)"
             v-model="scope.row.moduleQty"
             :min="0"
             :precision="4"
@@ -62,12 +63,14 @@
             :disabled="readonly"
             @change="markQuantityStale(scope.row)"
           />
+          <span v-else class="muted">—</span>
         </template>
       </el-table-column>
 
       <el-table-column label="基数" width="105" align="center">
         <template #default="scope">
           <el-input-number
+            v-if="!hasPitchValues(scope.row)"
             v-model="scope.row.baseQty"
             :min="0"
             :precision="4"
@@ -77,6 +80,25 @@
             :disabled="readonly"
             @change="markQuantityStale(scope.row)"
           />
+          <span v-else class="muted">—</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column label="跳距(mm)" width="100" align="center">
+        <template #default="scope">
+          <el-input-number v-if="!hasRatioValues(scope.row)" v-model="scope.row.pitchMm"
+            :min="0" :precision="2" :controls="false" :disabled="readonly" size="small"
+             @change="markQuantityStale(scope.row)" />
+          <span v-else class="muted">—</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column label="每跳片数" width="100" align="center">
+        <template #default="scope">
+          <el-input-number v-if="!hasRatioValues(scope.row)" v-model="scope.row.pcsPerPitch"
+            :min="1" :precision="0" :controls="false" :disabled="readonly" size="small"
+            placeholder="1" @change="markQuantityStale(scope.row)" />
+          <span v-else class="muted">—</span>
         </template>
       </el-table-column>
 
@@ -100,7 +122,7 @@
         <template #default="scope"><el-tooltip :content="resultFor(scope.row)?.message || '每件净用量，不含损耗'"><span>{{ resultFor(scope.row)?.valid ? resultFor(scope.row)?.unitConsumption : loading ? '试算中' : '—' }}</span></el-tooltip></template>
       </el-table-column>
       <el-table-column label="总需求" width="110" align="right">
-        <template #default="scope"><el-tooltip :content="resultFor(scope.row)?.message || '含损耗与最低投料'"><strong>{{ resultFor(scope.row)?.valid ? resultFor(scope.row)?.totalConsumption : loading ? '试算中' : '—' }}</strong></el-tooltip></template>
+        <template #default="scope"><el-tooltip :content="resultFor(scope.row)?.message || '按产出数量计入损耗'"><strong>{{ resultFor(scope.row)?.valid ? resultFor(scope.row)?.totalConsumption : loading ? '试算中' : '—' }}</strong></el-tooltip></template>
       </el-table-column>
       <el-table-column v-if="showConversions" label="折算米" width="110" align="right">
         <template #default="scope">{{ resultFor(scope.row)?.metres ?? '—' }}</template>
@@ -144,7 +166,6 @@
 
       <el-table-column v-if="!readonly" label="操作" width="110" align="center" fixed="right">
         <template #default="scope">
-          <el-button v-if="canPitch(scope.row)" link type="primary" size="small" @click="openPitch(scope.row)">跳距辅助定额</el-button>
           <el-button link type="primary" size="small" @click="handleCopy(scope.row)">复制</el-button>
           <el-button link type="danger" size="small" @click="handleDelete(scope.$index)"
             >删除</el-button
@@ -172,6 +193,7 @@
  */
 import { computed, ref } from 'vue'
 import BomEntryTools from '@/components/bom/BomEntryTools.vue'
+import { hasPitchValues, hasRatioValues, unitMismatch, consumptionInputError } from '@/components/bom/consumptionMode'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import type { EngineeringBomItem } from '@/types/product/bom'
@@ -282,8 +304,10 @@ const createRow = (): EngineeringBomItem => ({
   specification: '',
   unit: 'PCS',
   quantity: 0,
-  moduleQty: 1,
-  baseQty: 1,
+  moduleQty: undefined,
+  baseQty: undefined,
+  pitchMm: null,
+  pcsPerPitch: 1,
   lossRate: 0,
   minIssueQty: 0,
   appliedQty: 0,
@@ -334,7 +358,7 @@ const handleSelect = (row: EngineeringBomItem, material: InventoryMaterial) => {
   row.unit = material.unit || row.unit || 'PCS'
   row.materialType = material.rootType || undefined
   if (unitChanged) {
-    row.baseQty = undefined; row.moduleQty = undefined; row.quantity = 0; row.quantityStale = true
+    row.pitchMm = null; row.pcsPerPitch = 1; row.baseQty = undefined; row.moduleQty = undefined; row.quantity = 0; row.quantityStale = true
     row.minIssueQty = 0
     if (identityChanged) { row.subBomId = null; row.sourceType = undefined; row.split = '' }
     row.unitFactor = null
@@ -405,14 +429,8 @@ const validate = (input?: EngineeringBomItem[]): string => {
     if (!row.materialId || Number(row.materialId) <= 0) return `${prefix}请选择投入物料`
     if (!String(row.materialName || '').trim()) return `${prefix}物料名称不能为空`
     if (!String(row.unit || '').trim()) return `${prefix}请选择投入单位`
-    if (!isPositive(row.moduleQty)) return `${prefix}模数必须大于 0`
-    if (!isPositive(row.baseQty)) return `${prefix}基数必须大于 0`
-    if (!/^\d+(\.\d{1,4})?$/.test(String(Number(row.moduleQty)))) {
-      return `${prefix}模数最多 4 位小数`
-    }
-    if (!/^\d+(\.\d{1,4})?$/.test(String(Number(row.baseQty)))) {
-      return `${prefix}基数最多 4 位小数`
-    }
+    const inputError = consumptionInputError(row)
+    if (inputError) return `${prefix}${inputError}`
     // 与后端decimal(5,2)一致，仅校验输入形状，不在前端计算耗用。
     const loss = Number(row.lossRate ?? 0)
     if (!Number.isFinite(loss) || loss < 0 || loss > 100 || decimalPlaces(loss) > 2) {
@@ -450,6 +468,7 @@ defineExpose({
 </script>
 
 <style scoped>
+.manufacturing-item-grid :deep(tr.bom-row-error > td) { background:var(--el-color-danger-light-9);color:var(--el-color-danger); }
 .manufacturing-item-grid :deep(.el-input-number) { width: 100%; }
 .material-cell { display:flex;flex-direction:column;gap:4px; }
 .muted {font-size:11px;color:var(--el-text-color-secondary)}

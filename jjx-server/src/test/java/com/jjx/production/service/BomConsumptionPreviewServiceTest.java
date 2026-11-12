@@ -136,16 +136,16 @@ class BomConsumptionPreviewServiceTest {
     }
 
     @Test
-    @DisplayName("最低投料高于需求时取最低投料；最低投料超 4 位小数的行 invalid 且不影响其他行")
-    void minimumIssueFloorsDemandAndOverPrecisionIsRowLevel() {
+    @DisplayName("总需求只按原始比例与损耗，不使用最低投料；非法参数隔离行")
+    void totalUsesRatioAndLossOnlyAndInvalidRowsAreIsolated() {
         BomConsumptionPreviewVO vo = service.preview(request("300", "PCS",
                 row("floor", null, "PCS", "1", "6", null, "80", null),
                 row("bad-min", null, "PCS", "1", "6", null, "1.23456", null)));
 
         BomConsumptionPreviewVO.Row floored = vo.getRows().get(0);
         assertTrue(floored.isValid(), floored.getMessage());
-        assertEquals("80", floored.getTotalConsumption());
-        assertEquals("80/1", floored.getExactConsumption());
+        assertEquals("50", floored.getTotalConsumption());
+        assertEquals("50/1", floored.getExactConsumption());
 
         BomConsumptionPreviewVO.Row badMin = vo.getRows().get(1);
         assertFalse(badMin.isValid());
@@ -399,17 +399,17 @@ class BomConsumptionPreviewServiceTest {
     }
 
     @Test
-    @DisplayName("sheet_nest：模数 6 / 基数 1、300 件 → 50 张大料；给了跳距也不参与")
-    void sheetNestUsesRatioAndIgnoresPitch() {
+    @DisplayName("两组同时有值：即使旧来源方式指定片材，也必须拒绝")
+    void conflictingRawGroupsAreRejectedEvenForLegacyMode() {
         when(materialMapper.selectBatchIds(any())).thenReturn(List.of(
                 material(2L, "PCS").widthMm("450").lengthMm("225").build()));
         BomConsumptionPreviewRequest.Row row = row("r1", 2L, "PCS", "1", "6", null, null, null);
         row.setConsumptionMode("sheet_nest");
         row.setPitchMm(decimal("80"));
         BomConsumptionPreviewVO.Row out = service.preview(request("300", "PCS", row)).getRows().get(0);
-        assertTrue(out.isValid(), out.getMessage());
-        assertDecimal("50", new BigDecimal(out.getTotalConsumption()));
-        assertNull(out.getMetres(), "片材不产出卷长");
+        assertFalse(out.isValid());
+        assertTrue(out.getMessage().contains("二选一"));
+        assertNull(out.getTotalConsumption());
     }
 
     @Test
@@ -435,6 +435,65 @@ class BomConsumptionPreviewServiceTest {
         assertTrue(out.isValid(), out.getMessage());
         assertDecimal("6", new BigDecimal(out.getAreaM2()));
         assertDecimal("12", new BigDecimal(out.getTotalConsumption()));
+    }
+
+    @Test
+    void rawPitchUsesExactFractionAndLossNeverEntersUnitQuantity() {
+        when(materialMapper.selectBatchIds(any())).thenReturn(List.of(
+                material(1L, "M2").widthMm("195").build()));
+        var input = row("pitch", 1L, "M2", null, null, "5", "80", null);
+        input.setPitchMm(decimal("80"));
+        input.setPcsPerPitch(3);
+        var out = service.preview(request("300", "PCS", input)).getRows().get(0);
+        assertTrue(out.isValid(), out.getMessage());
+        assertEquals("0.0052", out.getUnitConsumption());
+        assertDecimal("1.638", new BigDecimal(out.getTotalConsumption()));
+        assertEquals("819/500", out.getExactConsumption());
+        input.setUnit("M");
+        out = service.preview(request("301", "PCS", input)).getRows().get(0);
+        assertTrue(out.isValid(), out.getMessage());
+        assertEquals("0.0267", out.getUnitConsumption());
+        assertDecimal("8.428", new BigDecimal(out.getTotalConsumption()));
+        // 不先按整跳取整，也不以0.0267反乘；M单位不要求卷宽。
+        input.setMaterialId(null);
+        input.setPcsPerPitch(null);
+        out = service.preview(request("300", "PCS", input)).getRows().get(0);
+        assertTrue(out.isValid(), out.getMessage());
+        assertEquals("0.0800", out.getUnitConsumption());
+        assertDecimal("25.2", new BigDecimal(out.getTotalConsumption()));
+    }
+
+    @Test
+    void rawParametersIgnoreLegacySourceAndEmptyGroupDoesNotInventConsumption() {
+        var input = row("ratio", null, "PCS", "1", "6", null, null, null);
+        input.setConsumptionMode("direct");
+        input.setPcsPerPitch(1);
+        var out = service.preview(request("300", "PCS", input)).getRows().get(0);
+        assertTrue(out.isValid(), out.getMessage());
+        assertEquals("0.1667", out.getUnitConsumption());
+        assertEquals("50", out.getTotalConsumption());
+        input.setConsumptionMode(null);
+        input.setBaseQty(null); input.setModuleQty(null);
+        out = service.preview(request("300", "PCS", input)).getRows().get(0);
+        assertFalse(out.isValid());
+        assertNull(out.getUnitConsumption());
+        assertNull(out.getTotalConsumption());
+    }
+
+    @Test
+    void rejectsInvalidRawPitchAndIsolatesConflictFromGoodRows() {
+        var bad = row("bad", null, "M", "1", "6", null, null, null);
+        bad.setPitchMm(decimal("80"));
+        var good = row("good", null, "PCS", "1", "6", null, null, null);
+        var results = service.preview(request("300", "PCS", bad, good)).getRows();
+        assertTrue(results.get(0).getMessage().contains("二选一"));
+        assertTrue(results.get(1).isValid());
+        bad.setBaseQty(null); bad.setModuleQty(null); bad.setPcsPerPitch(0);
+        assertFalse(service.preview(request("300", "PCS", bad)).getRows().get(0).isValid());
+        bad.setPcsPerPitch(1); bad.setPitchMm(decimal("80.123"));
+        assertTrue(service.preview(request("300", "PCS", bad)).getRows().get(0).getMessage().contains("2位小数"));
+        bad.setPitchMm(decimal("80")); bad.setUnit("M2");
+        assertTrue(service.preview(request("300", "PCS", bad)).getRows().get(0).getMessage().contains("卷宽"));
     }
 
 }

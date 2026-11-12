@@ -79,6 +79,7 @@ class ManufacturingBomSchemeTest {
     JdbcTemplate db;
     ProductMapper productMapper;
     EngineeringBomMapper rawBomMapper;
+    InventoryMaterialMapper materials;
 
     @BeforeEach
     void setup() {
@@ -99,7 +100,7 @@ class ManufacturingBomSchemeTest {
         createTable(com.jjx.system.domain.entity.SysOperLog.class);
 
         productMapper = session.getMapper(ProductMapper.class);
-        var materials = mock(InventoryMaterialMapper.class);
+        materials = mock(InventoryMaterialMapper.class);
         when(materials.selectById(anyLong())).thenAnswer(invocation -> {
             long id = invocation.getArgument(0);
             var material = new InventoryMaterial();
@@ -243,6 +244,65 @@ class ManufacturingBomSchemeTest {
 
     private Integer revision(Product product) {
         return productMapper.selectById(product.getProductId()).getSchemeRevision();
+    }
+
+    @Test
+    void rawPitchPersistsReadsUpdatesAndCanSwitchBackToRatio() {
+        when(materials.selectById(110L)).thenAnswer(invocation -> {
+            var material = new InventoryMaterial();
+            material.setMaterialId(110L); material.setUnit("M2");
+            material.setWidthMm(new BigDecimal("195")); material.setStatus(1);
+            return material;
+        });
+        var dto = scheme("PITCH", "V1.0", 349);
+        var input = dto.getItems().get(0);
+        input.setUnit("M2"); input.setBaseQty(null); input.setModuleQty(null);
+        input.setPitchMm(new BigDecimal("80")); input.setPcsPerPitch(3);
+        input.setLossRate(new BigDecimal("5")); input.setSplit("历史78mm");
+        long id = service.createBomReturnId(dto);
+        var saved = service.getBomDetail(id).getItems().get(0);
+        assertEquals(0, new BigDecimal("80").compareTo(saved.getPitchMm()));
+        assertEquals(3, saved.getPcsPerPitch());
+        assertEquals(0, new BigDecimal("0.0052").compareTo(saved.getQuantity()));
+        assertEquals(0, new BigDecimal("0.0055").compareTo(saved.getAppliedQty()));
+        assertEquals("历史78mm", saved.getSplit());
+        assertNull(saved.getBaseQty()); assertNull(saved.getModuleQty());
+        var persisted = db.queryForMap("SELECT pitch_mm,pcs_per_pitch FROM engineering_bom_item WHERE item_id=?", saved.getItemId());
+        assertEquals(0, new BigDecimal("80").compareTo((BigDecimal) persisted.get("PITCH_MM")));
+        assertEquals(3L, ((Number) persisted.get("PCS_PER_PITCH")).longValue());
+        dto.setBomId(id); input.setItemId(saved.getItemId());
+        input.setPitchMm(new BigDecimal("90")); input.setPcsPerPitch(2);
+        assertTrue(service.updateBom(dto));
+        saved = service.getBomDetail(id).getItems().get(0);
+        assertEquals(0, new BigDecimal("90").compareTo(saved.getPitchMm()));
+        assertEquals(2, saved.getPcsPerPitch());
+        input.setPitchMm(null); input.setPcsPerPitch(1);
+        input.setBaseQty(BigDecimal.ONE); input.setModuleQty(new BigDecimal("6"));
+        assertTrue(service.updateBom(dto));
+        saved = service.getBomDetail(id).getItems().get(0);
+        assertNull(saved.getPitchMm());
+        assertEquals(0, new BigDecimal("0.1667").compareTo(saved.getQuantity()));
+        assertEquals("历史78mm", saved.getSplit(), "split不得被解析成新跳距");
+        input.setBaseQty(null); input.setModuleQty(null); input.setPitchMm(new BigDecimal("80"));
+        assertTrue(service.updateBom(dto));
+        saved = service.getBomDetail(id).getItems().get(0);
+        assertNull(saved.getBaseQty()); assertNull(saved.getModuleQty());
+        assertEquals(0, new BigDecimal("80").compareTo(saved.getPitchMm()));
+    }
+
+    @Test
+    void emptyRawGroupsSaveAsDraftButConflictingGroupsAreRejectedWithoutWrites() {
+        var dto = scheme("EMPTY", "V1.0", 349);
+        var input = dto.getItems().get(0);
+        input.setBaseQty(null); input.setModuleQty(null); input.setPcsPerPitch(1);
+        long id = service.createBomReturnId(dto);
+        assertEquals(0, service.getBomDetail(id).getItems().get(0).getQuantity().signum());
+        dto.setBomId(id); input.setItemId(service.getBomDetail(id).getItems().get(0).getItemId());
+        input.setBaseQty(BigDecimal.ONE); input.setModuleQty(new BigDecimal("6"));
+        input.setPitchMm(new BigDecimal("80"));
+        assertTrue(assertThrows(BusinessException.class, () -> service.updateBom(dto)).getMessage().contains("二选一"));
+        assertNull(service.getBomDetail(id).getItems().get(0).getPitchMm());
+        assertEquals(1, db.queryForObject("SELECT COUNT(*) FROM engineering_bom_item WHERE bom_id=?", Integer.class, id));
     }
 
     @Test

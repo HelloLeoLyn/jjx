@@ -167,6 +167,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 putHashed(sb, it.getMaterialName());
                 putHashed(sb, it.getSpecification());
                 putHashed(sb, it.getSplit());
+                putHashed(sb, it.getPitchMm());
+                putHashed(sb, it.getPcsPerPitch());
                 putHashed(sb, it.getProcessId());
                 putHashed(sb, it.getProcessName());
                 putHashed(sb, it.getUnit());
@@ -793,6 +795,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         dst.setMaterialName(src.getMaterialName());
         dst.setSpecification(src.getSpecification());
         dst.setSplit(src.getSplit());
+        dst.setPitchMm(src.getPitchMm());
+        dst.setPcsPerPitch(src.getPcsPerPitch());
         dst.setProcessId(src.getProcessId());
         dst.setProcessName(src.getProcessName());
         dst.setIsCommon(src.getIsCommon());
@@ -819,6 +823,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         String approved = stored.getApprovedFingerprint();
         if (!Objects.equals(stored.getParentMaterialId(), incoming.getParentMaterialId())) return true;
         // 制造关系与换算依据变化必须逐行重新审核；不改变历史指纹算法。
+        if (!sameDecimal(stored.getPitchMm(), incoming.getPitchMm())) return true;
+        if (!Objects.equals(stored.getPcsPerPitch(), incoming.getPcsPerPitch())) return true;
         if (!Objects.equals(stored.getSubBomId(), incoming.getSubBomId())) return true;
         if (!sameDecimal(stored.getUnitFactor(), incoming.getUnitFactor())) return true;
         if (!Objects.equals(text(stored.getUnitFactorBasis()), text(incoming.getUnitFactorBasis()))) return true;
@@ -1512,6 +1518,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         item.setMaterialName(dto.getMaterialName());
         item.setSpecification(dto.getSpecification());
         item.setSplit(dto.getSplit() == null ? null : dto.getSplit().trim());
+        item.setPitchMm(dto.getPitchMm());
+        item.setPcsPerPitch(dto.getPcsPerPitch() == null ? 1 : dto.getPcsPerPitch());
         item.setProcessId(dto.getProcessId());
         item.setProcessName(dto.getProcessName());
         item.setIsCommon(dto.getProcessId() == null
@@ -1560,10 +1568,21 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      *  始终按公式重新计算
      */
     private void calculateAppliedIssue(EngineeringBomItem item) {
-        // 均为展示快照；应用料从原始比例计算，不能从已舍入quantity再算。
-        item.setQuantity(calculatedUnitQuantity(item.getBaseQty(), item.getModuleQty(), item.getQuantity()));
-        var theoretical = com.jjx.production.domain.model.BomConsumptionCalculator.theoretical(
-                BigDecimal.ONE, item.getBaseQty(), item.getModuleQty(), item.getQuantity());
+        // 后端统一从原始参数计算；quantity/appliedQty 只是4位快照，不反向参与试算。
+        boolean pitchGroup = item.getPitchMm() != null || (item.getPcsPerPitch() != null && item.getPcsPerPitch() != 1);
+        com.jjx.production.domain.model.ExactQuantity theoretical;
+        if (pitchGroup || item.getBaseQty() != null || item.getModuleQty() != null) {
+            var material = pitchGroup && item.getMaterialId() != null
+                    ? inventoryMaterialMapper.selectById(item.getMaterialId()) : null;
+            theoretical = com.jjx.production.service.BomConsumptionPreviewService.rawUnitQuantity(
+                    item.getBaseQty(), item.getModuleQty(), item.getPitchMm(), item.getPcsPerPitch(),
+                    item.getUnit(), material == null ? null : material.getWidthMm());
+            item.setQuantity(theoretical.toBigDecimal(4, java.math.RoundingMode.HALF_UP));
+        } else {
+            // 两组均空允许存草稿；历史仅用量行保留原值。
+            item.setQuantity(item.getQuantity() == null ? BigDecimal.ZERO : item.getQuantity());
+            theoretical = com.jjx.production.domain.model.ExactQuantity.fromDecimal(item.getQuantity());
+        }
         var applied = com.jjx.production.domain.model.BomConsumptionCalculator.lossApplied(theoretical,
                 (item.getLossRate() == null ? BigDecimal.ZERO : item.getLossRate()));
         item.setAppliedQty(applied.toBigDecimal(4, java.math.RoundingMode.HALF_UP));
@@ -1841,10 +1860,6 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     || !stored.containsKey(row.getItemId())
                     || manufacturingContentChanged(stored.get(row.getItemId()), incomingRow);
             if (!changed) continue;
-            String moduleError = validatePositiveDecimal(row.getModuleQty(), "MODULE_QTY_INVALID", 12, 4);
-            if (moduleError != null) throw new BusinessException(moduleError);
-            String baseError = validatePositiveDecimal(row.getBaseQty(), "BASE_QTY_INVALID", 12, 4);
-            if (baseError != null) throw new BusinessException(baseError);
             String sourceType = row.getSourceType() == null || row.getSourceType().isBlank()
                     ? "buy" : row.getSourceType().trim();
             if (!SOURCE_TYPES.contains(sourceType)) {
@@ -1873,6 +1888,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 || !sameDecimal(stored.getUnitFactor(), incoming.getUnitFactor())
                 || !Objects.equals(text(stored.getUnitFactorBasis()), text(incoming.getUnitFactorBasis()))
                 || !Objects.equals(text(stored.getUnitFactorSource()), text(incoming.getUnitFactorSource()))
+                || !sameDecimal(stored.getPitchMm(), incoming.getPitchMm())
+                || !Objects.equals(stored.getPcsPerPitch(), incoming.getPcsPerPitch())
                 || !sameDecimal(stored.getModuleQty(), incoming.getModuleQty())
                 || !sameDecimal(stored.getBaseQty(), incoming.getBaseQty())
                 || !sameDecimal(stored.getLossRate(), incoming.getLossRate());

@@ -264,24 +264,43 @@ describe('精简录入保留计量语义', () => {
     expect(exposed.getItems()[0].minIssueQty).toBe(row.minIssueQty)
   })
 
-  it('新草稿没有比例和有效旧用量时仍阻止保存', async () => {
+  it('两组都空允许保存草稿', async () => {
     vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
     const { row, exposed } = editor({ ...original, quantity: 0, quantityStale: true })
     await flushPromises()
-    expect(exposed.validateItems()).toBe(false)
+    expect(exposed.validateItems()).toBe(true)
     expect(row.quantity).toBe(0)
   })
 
-  it('同料号改为档案单位时也须重新确认比例，不把PCS比例直接当米数', async () => {
+  it('同料号改为档案单位清空旧比例，两组空可存草稿，不把PCS比例直接当米数', async () => {
     vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
     const { state, row, exposed } = editor({ ...original, unit: 'PCS', baseQty: 1, moduleQty: 6 })
-    state.handleMaterialSelect({ ...replacement, materialId: original.materialId, unit: 'M' }, row)
+    state.handleMaterialSelect({ ...original, unit: 'M' }, row)
     expect(row.unit).toBe('M')
     expect(row.baseQty).toBeUndefined()
     expect(row.moduleQty).toBeUndefined()
     expect(row.quantity).toBe(0)
     expect(row.quantityStale).toBe(true)
     await flushPromises()
+    expect(await exposed.prepareSpecifications()).toBe(true)
+    expect(exposed.validateItems()).toBe(true)
+  })
+})
+
+describe('BOM编辑原始参数与档案单位护栏', () => {
+  it('跳距组保存、两组空保存；冲突与单位不一致拦截并标红', async () => {
+    vi.spyOn(ElMessage, 'warning').mockImplementation(() => ({} as any))
+    const { row, state, exposed } = editor({ ...original, pitchMm: 80, pcsPerPitch: 1 })
+    await flushPromises()
+    expect(exposed.validateItems()).toBe(true)
+    expect(exposed.getItems()[0].pitchMm).toBe(80)
+    row.baseQty = 1; row.moduleQty = 6
     expect(exposed.validateItems()).toBe(false)
+    row.baseQty = undefined; row.moduleQty = undefined; row.pitchMm = null
+    expect(exposed.validateItems()).toBe(true)
+    row.archiveUnit = 'PCS'
+    expect(state.rowClassName({ row })).toBe('bom-row-error')
+    expect(exposed.validateItems()).toBe(false)
+    expect(row.unit).toBe('M')
   })
 })

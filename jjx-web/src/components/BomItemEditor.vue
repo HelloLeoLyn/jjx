@@ -51,7 +51,7 @@
       :output-unit="outputUnit"
       :output-length-mm="outputLengthMm"
       @change="emitChange"
-      v-slot="{ resultFor, showConversions, openPitch, canPitch, loading }"
+      v-slot="{ resultFor, showConversions, loading }"
     >
       <!-- 明细表格 -->
       <el-table
@@ -147,32 +147,14 @@
             <span v-else>{{ scope.row.specification }}</span>
           </template>
         </el-table-column>
-        <!-- 材料来源方式（dev-20261112-008）：决定显示哪些字段、用哪种算法 -->
-        <el-table-column label="来源方式" width="118">
-          <template #default="scope">
-            <el-select
-              v-model="scope.row.consumptionMode"
-              :disabled="readonly"
-              size="small"
-              @change="handleConsumptionModeChange(scope.row)"
-            >
-              <el-option
-                v-for="item in consumptionModeOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-              />
-            </el-select>
-          </template>
-        </el-table-column>
         <!-- 模数（恢复原义：每份材料可产出产品数量；用量 = 基数 ÷ 模数）；允许 >0 正小数，最多4位 -->
         <el-table-column label="模数" prop="moduleQty" align="center" width="65">
           <template #default="scope">
             <el-input-number
-              v-if="showModuleFields(scope.row.consumptionMode)"
+              v-if="!hasPitchValues(scope.row)"
               v-model="scope.row.moduleQty"
               :min="0"
-              :precision="0"
+              :precision="4"
               :controls="false"
               :disabled="readonly"
               size="small"
@@ -191,7 +173,7 @@
           </template>
           <template #default="scope">
             <el-input-number
-              v-if="showModuleFields(scope.row.consumptionMode)"
+              v-if="!hasPitchValues(scope.row)"
               v-model="scope.row.baseQty"
               :controls="false"
               :min="0"
@@ -207,7 +189,7 @@
         <el-table-column label="跳距(mm)" width="100" align="center">
           <template #default="scope">
             <el-input-number
-              v-if="showPitchFields(scope.row.consumptionMode)"
+              v-if="!hasRatioValues(scope.row)"
               v-model="scope.row.pitchMm"
               :min="0"
               :precision="2"
@@ -222,26 +204,11 @@
         <el-table-column label="每跳片数" width="95" align="center">
           <template #default="scope">
             <el-input-number
-              v-if="showPitchFields(scope.row.consumptionMode)"
+              v-if="!hasRatioValues(scope.row)"
               v-model="scope.row.pcsPerPitch"
+              placeholder="1"
               :min="1"
               :precision="0"
-              :controls="false"
-              :disabled="readonly"
-              size="small"
-              @change="emitChange()"
-            />
-            <span v-else class="muted-hint">—</span>
-          </template>
-        </el-table-column>
-        <!-- 连续耗材：单位面积单耗 -->
-        <el-table-column label="单耗(g/㎡)" width="110" align="center">
-          <template #default="scope">
-            <el-input-number
-              v-if="showUnitConsumptionField(scope.row.consumptionMode)"
-              v-model="scope.row.unitConsumption"
-              :min="0"
-              :precision="4"
               :controls="false"
               :disabled="readonly"
               size="small"
@@ -306,7 +273,7 @@
         <el-table-column label="总需求" width="110" align="right">
           <template #default="scope"
             ><el-tooltip
-              :content="resultFor(scope.row)?.message || '按试算产出数量，包含损耗与最低投料'"
+              :content="resultFor(scope.row)?.message || '按试算产出数量与原始参数计入损耗'"
               ><strong>{{
                 resultFor(scope.row)?.valid
                   ? resultFor(scope.row)?.totalConsumption
@@ -376,14 +343,6 @@
               >删除</el-button
             >
             <el-button
-              v-if="canPitch(scope.row)"
-              link
-              type="primary"
-              size="small"
-              @click="openPitch(scope.row)"
-              >跳距辅助定额</el-button
-            >
-            <el-button
               v-if="showManufacturing(scope.row)"
               link
               type="primary"
@@ -432,13 +391,7 @@ import { BomItemReviewStatusEnum } from '@/enums/product'
 import BomEntryTools from '@/components/bom/BomEntryTools.vue'
 import { bomGroupRows } from '@/utils/bomGroups'
 import { autoSpecOf } from './bomSpecMode'
-import {
-  CONSUMPTION_MODE_OPTIONS,
-  inferConsumptionMode,
-  showModuleFields,
-  showPitchFields,
-  showUnitConsumptionField,
-} from '@/components/bom/consumptionMode'
+import { hasPitchValues, hasRatioValues, unitMismatch, consumptionInputError } from '@/components/bom/consumptionMode'
 import { generateBomSpecification, specificationSource } from './bomSpecification'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import BomMaterialSelector from '@/components/Selector/BomMaterialSelector.vue'
@@ -735,15 +688,6 @@ onUnmounted(() => {
 /**
  * 物料选择处理
  */
-const consumptionModeOptions = CONSUMPTION_MODE_OPTIONS
-
-const handleConsumptionModeChange = (row: EngineeringBomItem) => {
-  if (props.readonly) return
-  // 切到非片材时保留原值但不参与计算；切到片材时清掉跳距列以免误读
-  if (row.consumptionMode === 'sheet_nest') row.pitchMm = null
-  emitChange()
-}
-
 const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomItem) => {
   if (!material || props.readonly) return
   delete materialDrafts.value[String(row.itemId)]
@@ -754,6 +698,8 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   ) {
     row.baseQty = undefined
     row.moduleQty = undefined
+    row.pitchMm = null
+    row.pcsPerPitch = 1
     row.quantity = 0
     row.appliedQty = undefined
     row.actualIssueQty = undefined
@@ -777,10 +723,6 @@ const handleMaterialSelect = (material: InventoryMaterial, row: EngineeringBomIt
   row.materialSpecification = autoSpec
   row.specification = autoSpec
   row.unit = material.unit || 'PCS'
-  // dev-20261112-008：只有物料明确指向卷材/连续耗材时才自动切换；
-  // 片材/直接保持空值，空值按历史片材口径校验，避免存量行模数/基数校验被跳过。
-  const inferred = inferConsumptionMode(material as any, row.split)
-  row.consumptionMode = inferred === 'roll_cut' || inferred === 'continuous' ? inferred : undefined
   row.materialType = material.rootType || undefined
   row.create = false
   recalcAppliedIssue(row)
@@ -915,12 +857,10 @@ const handleAddItem = () => {
     lossRate: 0,
     appliedQty: 0,
     actualIssueQty: 0,
-    moduleQty: 1,
-    baseQty: 1,
-    consumptionMode: undefined,
+    moduleQty: undefined,
+    baseQty: undefined,
     pitchMm: null,
     pcsPerPitch: 1,
-    unitConsumption: null,
     isCommon: true, // dev-1792056991945：新增行默认「整单通用」，选工序会自动取消
     remark: '',
     sortOrder: items.value.length + 1,
@@ -1158,6 +1098,7 @@ const rowClassName = ({ row }: { row: EngineeringBomItem }) => {
   if (errorRowKey.value != null && String(row.itemId) === String(errorRowKey.value)) {
     return 'bom-row-error'
   }
+  if (unitMismatch(row)) return 'bom-row-error'
   if (isPendingRemove(row)) return 'bom-row-pending-remove'
   const flag = syncFlags.value[String(row.itemId)]
   if (flag === 'AMBIGUOUS') return 'bom-row-ambiguous'
@@ -1365,24 +1306,9 @@ defineExpose({
         failures.push({ item, message: '材料名称不能为空' })
         return
       }
-      // 模数/基数允许 >0 正小数（最多4位）；仅在填写了值时校验，历史空值行不因本规则被拦
-      // dev-20261112-008：字段按来源方式校验，不要求所有材料都填模数/基数。
-      if (showModuleFields(item.consumptionMode)) {
-        if (item.moduleQty != null && !(Number(item.moduleQty) > 0)) {
-          failures.push({ item, message: `物料 "${item.materialName}" 模数必须大于0` })
-          return
-        }
-        if (item.baseQty != null && !(Number(item.baseQty) > 0)) {
-          failures.push({ item, message: `物料 "${item.materialName}" 基数必须大于0` })
-          return
-        }
-      }
-      if (showPitchFields(item.consumptionMode) && !(Number(item.pitchMm) > 0)) {
-        failures.push({ item, message: `物料 "${item.materialName}" 卷材裁切请填写跳距(mm)` })
-        return
-      }
-      if (showUnitConsumptionField(item.consumptionMode) && !(Number(item.unitConsumption) > 0)) {
-        failures.push({ item, message: `物料 "${item.materialName}" 连续耗材请填写单位面积单耗` })
+      const inputError = consumptionInputError(item)
+      if (inputError) {
+        failures.push({ item, message: `物料 "${item.materialName}" ${inputError}` })
         return
       }
       if (Number(item.materialId) > 0 && (item.specification ?? '') !== autoSpecOf(item)) {
@@ -1396,20 +1322,6 @@ defineExpose({
           message: `请为材料 "${item.materialName}" 选择物料，或切换快速模式`,
         })
         return
-      }
-      // 历史行可仅有用量；改损耗/高级项仍交后端按 legacy quantity 处理。
-      // 换物料或换单位已清 quantity，不能借旧用量跳过重新定额。
-      if (
-        showModuleFields(item.consumptionMode) &&
-        item.quantityStale &&
-        (item.moduleQty == null || item.baseQty == null) &&
-        !(Number(item.quantity) > 0)
-      ) {
-        failures.push({ item, message: `物料 "${item.materialName}" 请填写模数和基数` })
-        return
-      }
-      if (showModuleFields(item.consumptionMode) && !(Number(item.moduleQty) > 0 && Number(item.baseQty) > 0) && item.quantity <= 0) {
-        failures.push({ item, message: `物料 "${item.materialName}" 数量必须大于0` })
       }
     })
 

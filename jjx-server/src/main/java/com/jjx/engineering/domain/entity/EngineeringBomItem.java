@@ -101,6 +101,15 @@ public class EngineeringBomItem {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String split;
 
+    /** 原始跳距(mm)，与模数/基数互斥；split 只保留历史文本。 */
+    @TableField(value = "pitch_mm", updateStrategy = FieldStrategy.ALWAYS)
+    private BigDecimal pitchMm;
+
+    /** 宽度方向每跳片数，默认1；默认值本身不表示已填写跳距组。 */
+    @TableField("pcs_per_pitch")
+    private Integer pcsPerPitch;
+
+
     /**
      * 项目（标准工序）引用 engineering_standard_process.process_id
      */
@@ -150,11 +159,13 @@ public class EngineeringBomItem {
     /**
      * 模数：每份材料可产出产品数量（如4表示一材料做4个产品）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal moduleQty;
 
     /**
      * 基数：生产一个产品所需材料份数（如1表示每产品用1份）
      */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private BigDecimal baseQty;
 
     /**

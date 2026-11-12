@@ -28,7 +28,7 @@ import java.util.Set;
  * <p>只读：只查物料档案（宽/长/基本单位），不写 BOM、不写库存、不产生流水；
  * 重复调用结果一致。耗用一律交给 {@link BomConsumptionCalculator#theoretical} /
  * {@link BomConsumptionCalculator#appliedDemand} / {@link BomConsumptionCalculator#roundStock}
- * 这条既有权威链路，本类不另写第二套换算，也不复制取整策略。</p>
+ * 既有精确数值与最终取整链路；原始跳距/比例换算由 rawUnitQuantity 统一提供给试算与保存快照。</p>
  *
  * <p>失败边界：产出数量 Q、行数、key 属整请求问题，抛 {@link BusinessException} 由全局异常处理；
  * 比例/损耗/最低投料/单位/物料存在性属行级问题，只把该行置 valid=false 并给原因，
@@ -243,6 +243,18 @@ public class BomConsumptionPreviewService {
             return out;
         }
         out.setConsumptionMode(mode);
+        boolean rawParameters = row.getPitchMm() != null || (row.getPcsPerPitch() != null && row.getPcsPerPitch() != 1)
+                || baseQty != null || moduleQty != null;
+        if (rawParameters) {
+            try {
+                ExactQuantity unitQuantity = rawUnitQuantity(baseQty, moduleQty, row.getPitchMm(),
+                        row.getPcsPerPitch(), unit, widthMm);
+                applyRaw(out, row, unitQuantity, outputQuantity, unit, widthMm, lengthMm, lossRate);
+            } catch (BusinessException | ArithmeticException e) {
+                out.setMessage(e.getMessage());
+            }
+            return out;
+        }
         if (mode != null) {
             try {
                 applyByMode(out, row, mode, outputQuantity, unit, widthMm, lengthMm, lossRate, minIssueQty);
@@ -252,37 +264,52 @@ public class BomConsumptionPreviewService {
             }
             return out;
         }
-        String ratioError = ratioError(baseQty, moduleQty);
-        if (ratioError != null) {
-            out.setMessage(ratioError);
-            return out;
-        }
-        try {
-            // 每件净耗：与领料同一条 theoretical 链路，1 件产出对应的精确比例。
-            ExactQuantity unitQuantity = BomConsumptionCalculator.theoretical(BigDecimal.ONE, baseQty, moduleQty, null);
-            // 总需求：叠加损耗与最低投料后的精确值；禁止用已舍入的净耗反乘。
-            ExactQuantity applied = BomConsumptionCalculator.appliedDemand(
-                    outputQuantity, baseQty, moduleQty, null, null, lossRate, minIssueQty);
-            BigDecimal total = BomConsumptionCalculator.roundStock(applied, unit);
-
-            out.setUnitConsumption(unitQuantity.toBigDecimal(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
-            out.setTotalConsumption(total.toPlainString());
-            // 精确值原样输出（整数也保留 "/1"），与 004 的 exactConsumptionText 口径一致。
-            out.setExactConsumption(applied.exactText());
-
-            // 参考米数：以最终取整总量换算，不用未取整中间值；其它连续单位不猜系数。
-            ExactQuantity metres = metres(total, unit, widthMm);
-            out.setMetres(metres == null ? null : metres.toBigDecimal(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
-            BigDecimal rollLength = referenceRollLength(row.getReferenceRollLengthM(), unit, lengthMm);
-            out.setReferenceRollLengthM(rollLength);
-            out.setReferenceRollCount(referenceRollCount(metres, rollLength));
-            out.setPitchSupported(pitchSupported(unit, widthMm, outputUnit));
-            out.setValid(true);
-        } catch (BusinessException | ArithmeticException e) {
-            out.setMessage("试算失败：" + e.getMessage());
-            out.setValid(false);
-        }
+        out.setMessage("请填写跳距组或模数和基数；两组均空不推定耗用");
         return out;
+    }
+
+    /** 原始参数的唯一换算入口；保存快照与只读试算共用，不从4位展示值反算。 */
+    public static ExactQuantity rawUnitQuantity(BigDecimal baseQty, BigDecimal moduleQty, BigDecimal pitchMm,
+            Integer pcsPerPitch, String rawUnit, BigDecimal widthMm) {
+        boolean pitchGroup = pitchMm != null || (pcsPerPitch != null && pcsPerPitch != 1);
+        boolean ratioGroup = baseQty != null || moduleQty != null;
+        if (pitchGroup && ratioGroup) {
+            throw new BusinessException("跳距组与模数/基数不能同时填写，请二选一");
+        }
+        if (!pitchGroup) {
+            String error = ratioError(baseQty, moduleQty);
+            if (error != null) throw new BusinessException(error);
+            return BomConsumptionCalculator.theoretical(BigDecimal.ONE, baseQty, moduleQty, null);
+        }
+        if (pitchMm == null || pitchMm.signum() <= 0 || maxScale(pitchMm) > 2 || integerDigits(pitchMm) > 8) {
+            throw new BusinessException("跳距(mm)须大于0，最多2位小数、8位整数");
+        }
+        int pcs = pcsPerPitch == null ? 1 : pcsPerPitch;
+        if (pcs < 1) throw new BusinessException("每跳片数必须大于等于1");
+        String unit = BomConsumptionCalculator.normalizeUnit(rawUnit);
+        ExactQuantity metres = ExactQuantity.fromDecimal(pitchMm).divide(ExactQuantity.of(pcs * 1000L));
+        if (UNIT_M.equals(unit)) return metres;
+        if (!UNIT_M2.equals(unit)) throw new BusinessException("跳距行的单位须为 M 或 M2");
+        if (widthMm == null || widthMm.signum() <= 0) throw new BusinessException("物料档案缺少卷宽，不能按跳距试算");
+        return metres.multiply(ExactQuantity.fromDecimal(widthMm.movePointLeft(3)));
+    }
+
+    private void applyRaw(BomConsumptionPreviewVO.Row out, BomConsumptionPreviewRequest.Row row,
+            ExactQuantity unitQuantity, BigDecimal outputQuantity, String unit, BigDecimal widthMm,
+            BigDecimal lengthMm, BigDecimal lossRate) {
+        ExactQuantity totalExact = BomConsumptionCalculator.lossApplied(
+                unitQuantity.multiply(ExactQuantity.fromDecimal(outputQuantity)), lossRate);
+        BigDecimal total = BomConsumptionCalculator.roundStock(totalExact, unit);
+        out.setUnitConsumption(unitQuantity.toBigDecimal(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
+        out.setTotalConsumption(total.toPlainString());
+        out.setExactConsumption(totalExact.exactText());
+        ExactQuantity metres = metres(total, unit, widthMm);
+        out.setMetres(metres == null ? null : metres.toBigDecimal(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
+        if (UNIT_M2.equals(unit)) out.setAreaM2(total.toPlainString());
+        BigDecimal rollLength = referenceRollLength(row.getReferenceRollLengthM(), unit, lengthMm);
+        out.setReferenceRollLengthM(rollLength);
+        out.setReferenceRollCount(referenceRollCount(metres, rollLength));
+        out.setValid(true);
     }
 
     /** 来源方式：空=历史比例口径；非法值直接拒绝（不猜默认）。 */
@@ -310,48 +337,10 @@ public class BomConsumptionPreviewService {
         BigDecimal unitQty;
         ExactQuantity metresExact = null;
         switch (mode) {
-            case "roll_cut" -> {
-                BigDecimal pitch = row.getPitchMm();
-                int pcsPerPitch = row.getPcsPerPitch() == null ? 1 : row.getPcsPerPitch();
-                if (pitch == null || pitch.signum() <= 0) {
-                    throw new BusinessException("卷材裁切请填写跳距(mm)且大于 0");
-                }
-                if (pcsPerPitch < 1) {
-                    throw new BusinessException("每跳产出片数必须大于等于 1");
-                }
-                if (widthMm == null || widthMm.signum() <= 0) {
-                    throw new BusinessException("卷材缺少档案卷宽，不能按跳距试算");
-                }
-                if (!UNIT_M.equals(unit) && !UNIT_M2.equals(unit)) {
-                    throw new BusinessException("卷材裁切行的计算单位须为 M 或 M2");
-                }
-                BigDecimal jumps = outputQuantity.divide(BigDecimal.valueOf(pcsPerPitch), 0, RoundingMode.CEILING);
-                BigDecimal metres = jumps.multiply(pitch).movePointLeft(3);
-                BigDecimal area = metres.multiply(widthMm.movePointLeft(3));
-                BigDecimal base = UNIT_M.equals(unit) ? metres : area;
-                total = base.multiply(lossFactor);
-                if (total.compareTo(minIssueQty) < 0) {
-                    total = minIssueQty;
-                }
-                total = total.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP);
-                unitQty = total.divide(outputQuantity, DISPLAY_SCALE, RoundingMode.HALF_UP);
-                metresExact = ExactQuantity.fromDecimal(metres);
-                out.setMetres(metres.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
-                out.setAreaM2(area.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP).toPlainString());
-            }
-            case "sheet_nest" -> {
-                String ratioError = ratioError(row.getBaseQty(), row.getModuleQty());
-                if (ratioError != null) {
-                    throw new BusinessException(ratioError);
-                }
-                BigDecimal sheets = outputQuantity.multiply(row.getBaseQty())
-                        .divide(row.getModuleQty(), 0, RoundingMode.CEILING);
-                total = sheets.multiply(lossFactor);
-                if (total.compareTo(minIssueQty) < 0) {
-                    total = minIssueQty;
-                }
-                total = total.setScale(DISPLAY_SCALE, RoundingMode.HALF_UP);
-                unitQty = total.divide(outputQuantity, DISPLAY_SCALE, RoundingMode.HALF_UP);
+            case "roll_cut", "sheet_nest" -> {
+                applyRaw(out, row, rawUnitQuantity(row.getBaseQty(), row.getModuleQty(), row.getPitchMm(),
+                        row.getPcsPerPitch(), unit, widthMm), outputQuantity, unit, widthMm, lengthMm, lossRate);
+                return;
             }
             case "direct" -> {
                 total = outputQuantity.multiply(lossFactor);

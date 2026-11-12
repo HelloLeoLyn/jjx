@@ -1,38 +1,42 @@
 import { describe, expect, it } from 'vitest'
-import {
-  inferConsumptionMode,
-  showModuleFields,
-  showPitchFields,
-  showUnitConsumptionField,
-} from '../consumptionMode'
-
-describe('材料来源方式（dev-20261112-008）', () => {
-  it('已有跳距优先判为卷材裁切', () => {
-    expect(inferConsumptionMode({ unit: 'PCS', widthMm: 450, lengthMm: 225 }, '80mm')).toBe('roll_cut')
+import type { EngineeringBomItem } from '@/types/product/bom'
+import { hasPitchValues, hasRatioValues, consumptionInputError, unitMismatch } from '../consumptionMode'
+const row = (patch: Partial<EngineeringBomItem> = {}) => ({ materialId: 1, unit: 'M2', pcsPerPitch: 1, ...patch } as EngineeringBomItem)
+describe('BOM原始参数互斥', () => {
+  it('默认每跳1片不占用跳距组；两组空允许保存，split不作来源', () => {
+    const input = row({ split: '80mm' })
+    expect(hasPitchValues(input)).toBe(false)
+    expect(hasRatioValues(input)).toBe(false)
+    expect(consumptionInputError(input)).toBe('')
   })
-
-  it('M/M2 且有卷宽判为卷材裁切', () => {
-    expect(inferConsumptionMode({ unit: 'M2', widthMm: 195, lengthMm: null })).toBe('roll_cut')
-    expect(inferConsumptionMode({ unit: 'm', widthMm: 195 })).toBe('roll_cut')
+  it('跳距组与模数组即时互斥，最后一个值清空后解锁', () => {
+    const input = row({ pitchMm: 80 })
+    expect(hasPitchValues(input)).toBe(true)
+    input.pitchMm = null
+    expect(hasPitchValues(input)).toBe(false)
+    input.baseQty = 1
+    expect(hasRatioValues(input)).toBe(true)
+    input.baseQty = undefined
+    expect(hasRatioValues(input)).toBe(false)
+    input.pcsPerPitch = 2
+    expect(hasPitchValues(input)).toBe(true)
   })
-
-  it('宽长齐全判为片材冲型', () => {
-    expect(inferConsumptionMode({ unit: 'PCS', widthMm: 450, lengthMm: 225 })).toBe('sheet_nest')
+  it('同时填两组保存被拦，不抹除原始值', () => {
+    const input = row({ pitchMm: 80, moduleQty: 6, baseQty: 1 })
+    expect(consumptionInputError(input)).toContain('二选一')
+    expect(input).toMatchObject({ pitchMm: 80, moduleQty: 6, baseQty: 1 })
   })
-
-  it('无尺寸判为直接领用', () => {
-    expect(inferConsumptionMode({ unit: 'PCS' })).toBe('direct')
-    expect(inferConsumptionMode(null)).toBe('direct')
+  it('仅模数/基数历史行不受旧来源方式或split影响', () => {
+    const input = row({ moduleQty: 6, baseQty: 1, split: '80mm', consumptionMode: 'roll_cut' })
+    expect(hasPitchValues(input)).toBe(false)
+    expect(consumptionInputError(input)).toBe('')
   })
-
-  it('显隐口径：卷材只看跳距、片材只看模数基数、连续只看单耗', () => {
-    expect(showPitchFields('roll_cut')).toBe(true)
-    expect(showModuleFields('roll_cut')).toBe(false)
-    expect(showModuleFields('sheet_nest')).toBe(true)
-    expect(showPitchFields('sheet_nest')).toBe(false)
-    expect(showUnitConsumptionField('continuous')).toBe(true)
-    expect(showPitchFields('direct')).toBe(false)
-    expect(showModuleFields('direct')).toBe(false)
-    expect(showModuleFields(undefined)).toBe(true)
+  it('单位异名可等价，不一致需人工确认；数值精度与范围受检', () => {
+    expect(unitMismatch(row({ unit: '㎡', archiveUnit: 'M2' }))).toBe(false)
+    expect(consumptionInputError(row({ unit: 'PCS', archiveUnit: 'M2' }))).toContain('人工确认')
+    expect(consumptionInputError(row({ pitchMm: 0 }))).toContain('必须大于0')
+    expect(consumptionInputError(row({ pitchMm: 80, pcsPerPitch: 0 }))).toContain('正整数')
+    expect(consumptionInputError(row({ moduleQty: 6 }))).toContain('同时填写')
+    expect(consumptionInputError(row({ baseQty: 1, moduleQty: 6.12345 }))).toContain('4位小数')
   })
 })

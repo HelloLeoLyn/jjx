@@ -363,6 +363,10 @@ const dateText = (value: unknown): string => {
   return parsed.isValid() ? parsed.format('YYYY-MM-DD') : ''
 }
 
+/** 空参数保持未填写；显式的0仍留给输入校验，不能和空值混为一谈。 */
+const optionalNumber = (value: unknown): number | undefined =>
+  value == null || value === '' ? undefined : Number(value)
+
 const normalizeItem = (item: Partial<EngineeringBomItem>): EngineeringBomItem => ({
   ...item,
   materialId: Number(item.materialId) || 0,
@@ -371,8 +375,8 @@ const normalizeItem = (item: Partial<EngineeringBomItem>): EngineeringBomItem =>
   specification: item.specification ?? '',
   unit: item.unit ?? '',
   quantity: Number(item.quantity ?? 0) || 0,
-  moduleQty: Number(item.moduleQty ?? 0) || 0,
-  baseQty: Number(item.baseQty ?? 0) || 0,
+  moduleQty: optionalNumber(item.moduleQty),
+  baseQty: optionalNumber(item.baseQty),
   lossRate: Number(item.lossRate ?? 0) || 0,
   sortOrder: Number(item.sortOrder ?? item.itemOrder ?? 0) || 0,
   split: item.split ?? '',
@@ -402,8 +406,10 @@ const serializeDraft = (draft: ManufacturingDraft): string =>
       materialName: item.materialName || '',
       specification: item.specification || '',
       unit: item.unit || '',
-      moduleQty: Number(item.moduleQty) || 0,
-      baseQty: Number(item.baseQty) || 0,
+      moduleQty: optionalNumber(item.moduleQty) ?? null,
+      baseQty: optionalNumber(item.baseQty) ?? null,
+      pitchMm: optionalNumber(item.pitchMm) ?? null,
+      pcsPerPitch: optionalNumber(item.pcsPerPitch) ?? 1,
       split: item.split || '',
       lossRate: Number(item.lossRate) || 0,
       minIssueQty: Number(item.minIssueQty) || 0,

@@ -60,6 +60,13 @@ public class EngineeringBomItemVO {
     /** 跳距（含单位，如50mm） */
     private String split;
 
+    /** 原始跳距(mm)，与模数/基数互斥；split 只保留历史文本。 */
+    private BigDecimal pitchMm;
+
+    /** 宽度方向每跳片数，默认1；默认值本身不表示已填写跳距组。 */
+    private Integer pcsPerPitch;
+
+
     /**
      * 单位
      */

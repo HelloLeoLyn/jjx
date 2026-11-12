@@ -56,6 +56,13 @@ public class EngineeringBomItemDTO {
     @jakarta.validation.constraints.Size(max = 50, message = "跳距不能超过50个字符")
     private String split;
 
+    /** 原始跳距(mm)，与模数/基数互斥；split 只保留历史文本。 */
+    private BigDecimal pitchMm;
+
+    /** 宽度方向每跳片数，默认1；默认值本身不表示已填写跳距组。 */
+    private Integer pcsPerPitch;
+
+
     /** 项目（标准工序）引用 engineering_standard_process.process_id */
     private Long processId;
 
