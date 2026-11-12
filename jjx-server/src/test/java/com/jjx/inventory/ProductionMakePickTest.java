@@ -42,6 +42,7 @@ class ProductionMakePickTest {
     @Mock InventoryOutboundItemMapper outboundItemMapper;
     @Mock InventoryStockItemMapper stockItemMapper;
     @Mock InventoryStockMapper stockMapper;
+    @Mock InventoryMaterialMapper materialMapper;
     @Mock InventoryTransactionMapper transactionMapper;
     @Mock InventoryWarehouseMapper outboundWarehouseMapper;
     @Mock ProductionOrderMapper productionOrderMapper;
@@ -75,6 +76,10 @@ class ProductionMakePickTest {
         bomItem.setMaterialId(349L);
         bomItem.setMaterialCode("SFG000345");
         bomItem.setSourceType("make");
+        bomItem.setUnit("PCS");
+        lenient().when(materialMapper.selectById(anyLong())).thenAnswer(inv -> {
+            var material = new InventoryMaterial(); material.setMaterialId(inv.getArgument(0)); material.setUnit("PCS"); return material;
+        });
         bomItem.setActualIssueQty(BigDecimal.ONE);
         when(productBomItemMapper.selectList(any())).thenReturn(List.of(bomItem));
     }
@@ -117,6 +122,7 @@ class ProductionMakePickTest {
         buy.setItemId(14L);
         buy.setMaterialId(350L);
         buy.setSourceType("buy");
+        buy.setUnit("PCS");
         buy.setActualIssueQty(BigDecimal.ONE);
         when(productBomItemMapper.selectList(any())).thenReturn(List.of(bomItem, linked, buy));
         when(stockItemMapper.selectFIFOAvailable(349L)).thenReturn(List.of(batch("10")));

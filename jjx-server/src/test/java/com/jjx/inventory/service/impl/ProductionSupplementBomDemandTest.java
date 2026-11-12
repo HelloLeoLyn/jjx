@@ -29,6 +29,7 @@ class ProductionSupplementBomDemandTest {
         EngineeringBomItem item = new EngineeringBomItem();
         item.setMaterialId(materialId);
         item.setSourceType(sourceType);
+        item.setUnit("PCS");
         item.setActualIssueQty(new BigDecimal(actualIssueQty));
         item.setLossRate(0);
         return item;

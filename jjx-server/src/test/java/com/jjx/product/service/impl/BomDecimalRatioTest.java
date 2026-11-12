@@ -44,6 +44,7 @@ import static org.mockito.Mockito.when;
 class BomDecimalRatioTest {
 
     IEngineeringBomService service;
+    EngineeringBomItemMapper savedItemMapper;
 
     @BeforeEach
     void setup() {
@@ -57,6 +58,7 @@ class BomDecimalRatioTest {
         configuration.addMapper(SysOperLogMapper.class);
         var session = new SqlSessionTemplate(new MybatisSqlSessionFactoryBuilder().build(configuration));
         var db = new JdbcTemplate(source);
+        savedItemMapper = session.getMapper(EngineeringBomItemMapper.class);
         createTable(db, EngineeringBom.class);
         createTable(db, EngineeringBomItem.class);
         createTable(db, com.jjx.system.domain.entity.SysOperLog.class);
@@ -153,11 +155,31 @@ class BomDecimalRatioTest {
         long bomId = create(row("6", "1", "M"));
         var saved = service.getBomDetail(bomId).getItems().get(0);
         assertEquals(0, saved.getQuantity().compareTo(new BigDecimal("0.1667")));
-        // 权威是原始比例；300×1÷6=50，不允许用已舍入快照 0.1667×300=50.01。
-        BigDecimal exact = BigDecimal.valueOf(300).multiply(saved.getBaseQty())
-                .divide(saved.getModuleQty(), 0, RoundingMode.HALF_UP);
-        assertEquals(0, exact.compareTo(new BigDecimal("50")));
-        assertNotEquals(0, saved.getQuantity().multiply(BigDecimal.valueOf(300)).compareTo(new BigDecimal("50")));
+        // 从真实保存的行回读，交给真实领料入口，不能只测数学公式。
+        var savedEntity = savedItemMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<EngineeringBomItem>()
+                .eq(EngineeringBomItem::getBomId, bomId)).get(0);
+        var pick = mock(com.jjx.inventory.service.impl.InventoryOutboundServiceImpl.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        var orders = mock(com.jjx.production.mapper.ProductionOrderMapper.class);
+        var resolver = mock(com.jjx.production.service.ProductionBomResolver.class);
+        var items = mock(EngineeringBomItemMapper.class);
+        var stocks = mock(com.jjx.inventory.mapper.InventoryStockItemMapper.class);
+        var materials = mock(InventoryMaterialMapper.class);
+        var order = new com.jjx.production.domain.entity.ProductionOrder();
+        order.setOrderId(42L); order.setOrderType("WORK_ORDER"); order.setPlannedQuantity(new BigDecimal("300"));
+        var material = new InventoryMaterial(); material.setMaterialId(110L); material.setUnit("M");
+        when(orders.selectById(42L)).thenReturn(order);
+        var bom = new EngineeringBom(); bom.setBomId(bomId);
+        when(resolver.resolve(order)).thenReturn(bom);
+        when(items.selectList(org.mockito.ArgumentMatchers.any())).thenReturn(List.of(savedEntity));
+        when(materials.selectById(110L)).thenReturn(material);
+        org.springframework.test.util.ReflectionTestUtils.setField(pick, "productionOrderMapper", orders);
+        org.springframework.test.util.ReflectionTestUtils.setField(pick, "productionBomResolver", resolver);
+        org.springframework.test.util.ReflectionTestUtils.setField(pick, "productBomItemMapper", items);
+        org.springframework.test.util.ReflectionTestUtils.setField(pick, "stockItemMapper", stocks);
+        org.springframework.test.util.ReflectionTestUtils.setField(pick, "materialMapper", materials);
+        org.springframework.test.util.ReflectionTestUtils.setField(pick, "outboundOrderMapper", mock(com.jjx.inventory.mapper.InventoryOutboundOrderMapper.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(pick, "outboundItemMapper", mock(com.jjx.inventory.mapper.InventoryOutboundItemMapper.class));
+        assertEquals(0, new BigDecimal("50").compareTo((BigDecimal) pick.previewPick(42L).get(0).get("demand")));
     }
 
     @Test

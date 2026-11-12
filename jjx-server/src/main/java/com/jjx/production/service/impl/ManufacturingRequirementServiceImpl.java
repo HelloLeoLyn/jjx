@@ -400,46 +400,10 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
     private UnitConversion resolveConversion(ManufacturingDemandSnapshot.Line line,
                                              ManufacturingSupplySnapshotMapper.MaterialRow material,
                                              String path) {
-        String lineUnit = normalizeUnit(line.getUnit());
-        String stockUnit = normalizeUnit(material.getUnit());
-        if (lineUnit.equals(stockUnit)) {
-            return new UnitConversion(ExactQuantity.ONE, "同单位", "同一单位");
-        }
-        if (line.getUnitFactor() != null) {
-            if (line.getUnitFactor().signum() <= 0) {
-                throw new BusinessException(path + " 换算系数必须大于0");
-            }
-            if (isBlank(line.getUnitFactorBasis())) {
-                throw new BusinessException(path + " 单位[" + line.getUnit() + "→" + material.getUnit()
-                        + "]有换算系数但缺少可核实依据，已阻断");
-            }
-            return new UnitConversion(ExactQuantity.fromDecimal(line.getUnitFactor()),
-                    line.getUnitFactorBasis(), line.getUnitFactorSource());
-        }
-        // 卷类：档案宽/长是定尺，不是每卷实际余长；没有已保存的 unit_factor+依据时不得自动换算。
-        if (isCoilUnit(lineUnit) || isCoilUnit(stockUnit)) {
-            throw new BusinessException(path + " 单位[" + line.getUnit() + "→" + material.getUnit()
-                    + "]为卷类计量，档案长宽是定尺而非逐卷实际余长，禁止自动换算；"
-                    + "请保存 unit_factor 及依据，逐卷实际长度/余量由 013 负责（UNIT_CONVERSION_MISSING）");
-        }
-        // 静态尺寸换算只允许“计件 → 面积”，且档案宽、长必须同时存在；不猜测规格文本。
-        if (isPieceUnit(lineUnit) && "M2".equals(stockUnit)
-                && material.getWidthMm() != null && material.getWidthMm().signum() > 0
-                && material.getLengthMm() != null && material.getLengthMm().signum() > 0) {
-            ExactQuantity factor = ExactQuantity.fromDecimal(material.getWidthMm())
-                    .multiply(ExactQuantity.fromDecimal(material.getLengthMm()))
-                    .divide(ExactQuantity.of(1_000_000L));
-            return new UnitConversion(factor,
-                    "档案尺寸" + material.getWidthMm().stripTrailingZeros().toPlainString() + "×"
-                            + material.getLengthMm().stripTrailingZeros().toPlainString() + "mm",
-                    "inventory_material.width_mm/length_mm");
-        }
-        if ("M2".equals(stockUnit) && material.getWidthMm() != null && material.getLengthMm() == null) {
-            throw new BusinessException(path + " 档案只有宽度没有长度，无法按定尺换算面积；"
-                    + "批次/逐卷实际长度属 013，缺少长度时阻断换算，不能假设统一长度");
-        }
-        throw new BusinessException(path + " 单位[" + line.getUnit() + "→" + material.getUnit()
-                + "]缺少已保存换算系数/可核实依据（UNIT_CONVERSION_MISSING）");
+        var conversion = com.jjx.production.domain.model.BomConsumptionCalculator.conversion(
+                line.getUnit(), material.getUnit(), line.getUnitFactor(), line.getUnitFactorBasis(),
+                line.getUnitFactorSource(), material.getWidthMm(), material.getLengthMm(), path);
+        return new UnitConversion(conversion.factor(), conversion.basis(), conversion.source());
     }
 
     // ==================== 展开与净额 ====================
@@ -449,10 +413,11 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
                            Graph graph, LocalDate demandDate) {
         List<ManufacturingDemandSnapshot.Line> lines = graph.lines.getOrDefault(bom.getBomId(), List.of());
         for (ManufacturingDemandSnapshot.Line line : lines) {
-            ExactQuantity theoretical = parentQty
-                    .multiply(ExactQuantity.fromDecimal(line.getBaseQty()))
-                    .divide(ExactQuantity.fromDecimal(line.getModuleQty()));
-            ExactQuantity lossApplied = theoretical.multiply(lossFactor(line.getLossRate()));
+            ExactQuantity theoretical = parentQty.multiply(
+                    com.jjx.production.domain.model.BomConsumptionCalculator.theoretical(
+                            BigDecimal.ONE, line.getBaseQty(), line.getModuleQty(), null));
+            ExactQuantity lossApplied = com.jjx.production.domain.model.BomConsumptionCalculator.lossApplied(
+                    theoretical, line.getLossRate());
             UnitConversion conversion = graph.conversions.get(line.getItemId());
             ManufacturingSupplySnapshotMapper.MaterialRow material = graph.materials.get(line.getMaterialId());
 
@@ -715,14 +680,6 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
         node.setExpandReason(reason);
         node.setSourcePaths(new ArrayList<>(sourcePaths));
         return node;
-    }
-
-    private ExactQuantity lossFactor(BigDecimal lossRatePercent) {
-        if (lossRatePercent == null || lossRatePercent.signum() == 0) {
-            return ExactQuantity.ONE;
-        }
-        ExactQuantity percent = ExactQuantity.fromDecimal(lossRatePercent);
-        return ExactQuantity.ONE.add(percent.divide(ExactQuantity.of(100L)));
     }
 
     private ExactQuantity take(ExactQuantity demand, ExactQuantity available) {

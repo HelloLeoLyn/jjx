@@ -1375,9 +1375,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         if (base != null && base.signum() > 0 && module != null && module.signum() > 0) {
             // 原始比例是权威；这里仅生成展示快照。比例过小导致 4 位快照归零时明确阻断，
             // 不把 0 当成合法用量（dev-20261111-004）。
-            java.math.BigDecimal exact = base.divide(module, 8, java.math.RoundingMode.HALF_UP);
-            java.math.BigDecimal display = exact.setScale(4, java.math.RoundingMode.HALF_UP);
-            if (display.signum() == 0 && exact.signum() > 0) {
+            var exact = com.jjx.production.domain.model.BomConsumptionCalculator.theoretical(
+                    BigDecimal.ONE, base, module, legacyQuantity);
+            java.math.BigDecimal display = exact.toBigDecimal(4, java.math.RoundingMode.HALF_UP);
+            if (display.signum() == 0 && exact.isPositive()) {
                 throw new BusinessException("MODULE_QTY_INVALID：基数/模数比例过小，4 位展示用量会归零；请调整精度");
             }
             return display;
@@ -1394,16 +1395,13 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
      *  始终按公式重新计算
      */
     private void calculateAppliedIssue(EngineeringBomItem item) {
-        // 与前端一致：有效基数、模数下先计算单位用量，不采用导入/旧客户端的实发数量。
-        java.math.BigDecimal qty = calculatedUnitQuantity(item.getBaseQty(), item.getModuleQty(), item.getQuantity());
-        item.setQuantity(qty);
-        // 应用料
-        Integer loss = item.getLossRate() != null ? item.getLossRate() : 0;
-        java.math.BigDecimal lossFactor = java.math.BigDecimal.ONE.add(
-                java.math.BigDecimal.valueOf(loss).divide(java.math.BigDecimal.valueOf(100), 6, java.math.RoundingMode.HALF_UP));
-        item.setAppliedQty(qty.multiply(lossFactor)
-                .setScale(4, java.math.RoundingMode.HALF_UP));
-        // 实际投料保存单位应用料（含损耗、不取整）
+        // 均为展示快照；应用料从原始比例计算，不能从已舍入quantity再算。
+        item.setQuantity(calculatedUnitQuantity(item.getBaseQty(), item.getModuleQty(), item.getQuantity()));
+        var theoretical = com.jjx.production.domain.model.BomConsumptionCalculator.theoretical(
+                BigDecimal.ONE, item.getBaseQty(), item.getModuleQty(), item.getQuantity());
+        var applied = com.jjx.production.domain.model.BomConsumptionCalculator.lossApplied(theoretical,
+                BigDecimal.valueOf(item.getLossRate() == null ? 0 : item.getLossRate()));
+        item.setAppliedQty(applied.toBigDecimal(4, java.math.RoundingMode.HALF_UP));
         item.setActualIssueQty(item.getAppliedQty());
     }
 
