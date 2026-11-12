@@ -25,3 +25,4 @@
 2026-11-05 16:12 清理测试数据 由 Hermes Agent 执行 | 库 jjx_erp_db | 脚本 00_clean_test_data.sql | TRUNCATE 93 张(442 行) + DELETE 11 条 | 备份 jjx_erp_db_backup_20261105-1610.sql md5=30769efa18e5bb867096e52ac3d00de2 | include_products=1 domains=all
 2026-11-07 10:30 清理测试数据 由 Hermes Agent 执行 | 库 jjx_erp_db | 脚本 00_clean_test_data.sql | TRUNCATE 93 张(626 行) + DELETE 13 条 | 备份 jjx_erp_db_backup_20261107-1028.sql md5=e143f3f4042222d0e64380fe130c8704 | include_products=1 domains=all
 2026-11-10 12:22 清理测试数据 由 Hermes Agent 执行 | 库 jjx_erp_db | 脚本 00_clean_test_data.sql | TRUNCATE 93 张(264 行) + DELETE 2 条 | 备份 jjx_erp_db_backup_20261110-1221.sql md5=bc13c8dc7d5cd36963f58b5aef374c74 | include_products=1 domains=all
+2026-11-12 19:07 清理测试数据 由 Hermes Agent 执行 | 库 jjx_erp_db | 脚本 00_clean_test_data.sql | TRUNCATE 93 张(438 行) + DELETE 21 条 | 备份 jjx_erp_db_backup_20261112-1905.sql md5=f749fe7a83ac7ddb3274ddf94124b87e | include_products=1 domains=all
