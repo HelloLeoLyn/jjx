@@ -37,6 +37,26 @@ public class PurchaseOrderController extends BaseController {
     private final IPurchaseOrderService purchaseOrderService;
     private final com.jjx.purchase.service.impl.PurchaseOrderServiceImpl pricingService;
     private final com.jjx.purchase.mapper.PurchaseOrderItemMapper purchaseOrderItemMapper;
+    private final com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
+
+    /** dev-20261113-010：批量取计划行参考价（上次采购价 + 物料标准价）。只读。 */
+    @GetMapping("/reference-price")
+    @SaCheckPermission("purchase:order:view")
+    public Result<java.util.Map<Long, java.util.Map<String, Object>>> referencePrices(
+            @RequestParam java.util.List<Long> materialIds) {
+        java.util.Map<Long, java.util.Map<String, Object>> result = new java.util.LinkedHashMap<>();
+        if (materialIds != null) {
+            for (Long materialId : materialIds) {
+                if (materialId == null) continue;
+                java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+                row.put("lastPrice", purchaseOrderItemMapper.selectLastApprovedPrice(materialId));
+                com.jjx.inventory.domain.InventoryMaterial material = inventoryMaterialMapper.selectById(materialId);
+                row.put("standardPrice", material == null ? null : material.getStandardPrice());
+                result.put(materialId, row);
+            }
+        }
+        return Result.success(result);
+    }
 
     /** dev-20261113-010：批量取计划行参考价（最近一次已批准采购单价；无则 null）。只读。 */
     @GetMapping("/last-price")
