@@ -359,20 +359,6 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
   },
   {
-    path: '/product/bom-change',
-    name: 'ProductBomChange',
-    component: () => import('@/layout/index.vue'),
-    meta: { title: 'BOM变更单' },
-    children: [
-      {
-        path: '',
-        name: 'ProductBomChangeIndex',
-        component: () => import('@/views/product/bom-change/index.vue'),
-        meta: { title: 'BOM变更单' },
-      },
-    ],
-  },
-  {
     path: '/production/requirement-plan',
     name: 'ProductionRequirementPlan',
     component: () => import('@/layout/index.vue'),
