@@ -1065,7 +1065,21 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             if (item.getRollWidthMm() == null) item.setRollWidthMm(material.getWidthMm());
             if (item.getPieceWidthMm() == null) item.setPieceWidthMm(material.getWidthMm());
             if (item.getPieceLengthMm() == null) item.setPieceLengthMm(material.getLengthMm());
+            var units = java.util.Arrays.asList(item.getUnit(), item.getPurchaseUnit(), item.getPriceUnit());
+            if (units.contains(com.jjx.common.util.UnitCodes.ROLL)
+                    || (units.contains(com.jjx.common.util.UnitCodes.M) && units.contains(com.jjx.common.util.UnitCodes.SQM)))
+                matchMaterialDimension(item.getRollWidthMm(), material.getWidthMm(), "宽度");
+            if (units.contains(com.jjx.common.util.UnitCodes.SQM)
+                    && (units.contains(com.jjx.common.util.UnitCodes.PCS) || units.contains(com.jjx.common.util.UnitCodes.SHEET))) {
+                matchMaterialDimension(item.getPieceWidthMm(), material.getWidthMm(), "每片宽度");
+                matchMaterialDimension(item.getPieceLengthMm(), material.getLengthMm(), "每片长度");
+            }
         }
+    }
+
+    private static void matchMaterialDimension(BigDecimal supplied, BigDecimal archive, String label) {
+        if (supplied != null && archive != null && archive.signum() > 0 && supplied.compareTo(archive) != 0)
+            throw new BusinessException("本单" + label + "与物料规格不一致，请重新选择对应规格物料");
     }
 
     /** 单位别名统一走 UnitCodes（dev-20261113-003）；本类不再自写别名表。 */

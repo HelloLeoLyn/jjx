@@ -526,6 +526,8 @@ async function loadDefaults(row: OrderItem, apply: boolean): Promise<void> {
     row.defaultError = false
     row.defaultConfigured = data.configured
     row.allowedUnits = data.allowedUnits
+    row.archiveWidthMm = data.pieceWidthMm
+    row.archiveLengthMm = data.pieceLengthMm
     if (apply) {
       Object.assign(row, { unit: data.unit, purchaseUnit: data.purchaseUnit, priceUnit: data.priceUnit,
         rollWidthMm: data.rollWidthMm, rollLengthM: data.rollLengthM,
@@ -553,7 +555,7 @@ const handleMaterialChange = (materialId: number | undefined, index: number) => 
   const retained = { itemId: row.itemId, taxRate: row.taxRate ?? 13 }
   Object.assign(row, createRow(), retained, { materialId: undefined, purchaseUnit: '', priceUnit: '',
     rollCount: undefined, rollLengthM: undefined, rollWidthMm: undefined,
-    pieceWidthMm: undefined, pieceLengthMm: undefined, equivalentUnitPrice: null,
+    pieceWidthMm: undefined, pieceLengthMm: undefined, archiveWidthMm: undefined, archiveLengthMm: undefined, equivalentUnitPrice: null,
     priceQuantity: null, defaultLoading: false, defaultError: false, defaultConfigured: false, allowedUnits: undefined, pricingError: '' })
   if (duplicate) { ElMessage.warning(`物料 "${material.materialName}" (${material.materialCode}) 已在明细中，请勿重复添加`); return }
   if (!material) return

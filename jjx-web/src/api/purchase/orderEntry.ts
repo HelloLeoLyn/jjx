@@ -34,6 +34,8 @@ export interface PurchaseEntryItem {
   pricingLoading?: boolean
   defaultLoading?: boolean
   defaultError?: boolean
+  archiveWidthMm?: number | null
+  archiveLengthMm?: number | null
   defaultConfigured?: boolean
   allowedUnits?: string[]
   quantity: number

@@ -65,6 +65,17 @@ class PurchaseOrderDualUnitTest {
         assertEquals(bd("10.0000"), PurchaseOrderServiceImpl.baseUnitCost(e));
         assertEquals(bd("51.28"), i.getEquivalentUnitPrice());
     }
+    @Test void changingKnownMaterialDimensionsRequiresAnotherMaterial() throws Exception {
+        var c=PurchaseOrderServiceImpl.class.getConstructors()[0];
+        var service=(PurchaseOrderServiceImpl)c.newInstance(java.util.Arrays.stream(c.getParameterTypes()).map(org.mockito.Mockito::mock).toArray());
+        var mapper=mock(InventoryMaterialMapper.class);var material=new InventoryMaterial();material.setUnit("㎡");material.setWidthMm(bd("195"));material.setLengthMm(bd("50000"));
+        when(mapper.selectById(7L)).thenReturn(material);ReflectionTestUtils.setField(service,"materialMapper",mapper);
+        var dto=new PurchaseOrderDTO();var roll=line("ROLL","㎡","0","20");roll.setRollWidthMm(bd("200"));dto.setItems(List.of(roll));
+        assertTrue(assertThrows(BusinessException.class,()->service.previewPricing(dto)).getMessage().contains("物料规格不一致"));
+        material.setUnit("PCS");material.setWidthMm(bd("450"));material.setLengthMm(bd("225"));
+        var piece=line("PCS","㎡","100","20");piece.setPurchaseQuantity(bd("100"));piece.setPieceWidthMm(bd("460"));piece.setPieceLengthMm(bd("225"));dto.setItems(List.of(piece));
+        assertThrows(BusinessException.class,()->service.previewPricing(dto));
+    }
     @Test void previewAndSaveUseMaterialDefaultsAndNeverCallStockOrInbound() throws Exception {
         var c = PurchaseOrderServiceImpl.class.getConstructors()[0];
         Object[] deps = java.util.Arrays.stream(c.getParameterTypes()).map(org.mockito.Mockito::mock).toArray();

@@ -8,17 +8,17 @@
               <label>每卷长度(m)</label>
               <el-input-number v-model="row.rollLengthM" :disabled="disabled || row.defaultLoading" :min="0.0001" :precision="4" :controls="false" @change="emit('pricing', $index)" />
               <label>卷宽(mm)</label>
-              <el-input-number v-model="row.rollWidthMm" :disabled="disabled || row.defaultLoading" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
+              <el-input-number v-model="row.rollWidthMm" :disabled="disabled || row.defaultLoading || Number(row.archiveWidthMm) > 0" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
             </template>
             <template v-else-if="usesPieceArea(row)">
               <label>每片宽度(mm)</label>
-              <el-input-number v-model="row.pieceWidthMm" :disabled="disabled || row.defaultLoading" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
+              <el-input-number v-model="row.pieceWidthMm" :disabled="disabled || row.defaultLoading || Number(row.archiveWidthMm) > 0" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
               <label>每片长度(mm)</label>
-              <el-input-number v-model="row.pieceLengthMm" :disabled="disabled || row.defaultLoading" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
+              <el-input-number v-model="row.pieceLengthMm" :disabled="disabled || row.defaultLoading || Number(row.archiveLengthMm) > 0" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
             </template>
             <template v-else-if="row.purchaseUnit !== row.priceUnit && [row.purchaseUnit, row.priceUnit].includes('M')">
               <label>宽度(mm)</label>
-              <el-input-number v-model="row.rollWidthMm" :disabled="disabled || row.defaultLoading" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
+              <el-input-number v-model="row.rollWidthMm" :disabled="disabled || row.defaultLoading || Number(row.archiveWidthMm) > 0" :min="0.01" :precision="2" :controls="false" @change="emit('pricing', $index)" />
             </template>
             <label>税率(%)</label>
             <el-input-number v-model="row.taxRate" :disabled="disabled || row.defaultLoading" :min="0" :max="100" :precision="2" :controls="false" @change="emit('pricing', $index)" />
@@ -32,7 +32,7 @@
           </div>
           <el-input v-model="row.purchaseRemark" :disabled="disabled || row.defaultLoading" type="textarea" :rows="2" maxlength="2000" show-word-limit placeholder="采购/加工/交货要求，例如分切规格、切片数量、余料交回；不参与金额合计" />
           <p v-if="row.inspectionRemark" class="muted">原检验备注：{{ row.inspectionRemark }}</p>
-          <p class="muted">本单尺寸用于采购换算并随订单保留；收货按实收核算，采购说明不自动生成加工或库存记录。</p>
+          <p class="muted">档案已确定尺寸只读，换规格请重新选料；每卷预估长度及本单确认的换算依据随订单保留；收货按实收核算，采购说明不自动生成加工或库存记录。</p>
         </div>
       </template>
     </el-table-column>
