@@ -87,6 +87,17 @@ public interface PurchaseOrderItemMapper extends BaseMapper<PurchaseOrderItem> {
      * @param materialId 物料ID
      * @return 订单明细列表
      */
+    /**
+     * dev-20261113-010：按物料取最近一次已批准采购订单明细单价（只读，无则 null）。
+     * 口径：订单 approve_status=3（已批准），明细单价 > 0，按明细创建时间倒序取第一行。
+     */
+    @Select("SELECT i.unit_price FROM purchase_order_item i "
+            + "JOIN purchase_order o ON o.order_id = i.order_id "
+            + "WHERE i.material_id = #{materialId} AND o.approval_status = 3 "
+            + "AND i.unit_price IS NOT NULL AND i.unit_price > 0 "
+            + "ORDER BY i.create_time DESC, i.item_id DESC LIMIT 1")
+    java.math.BigDecimal selectLastApprovedPrice(@Param("materialId") Long materialId);
+
     @Select("SELECT * FROM purchase_order_item WHERE material_id = #{materialId} ORDER BY create_time DESC")
     List<PurchaseOrderItem> selectItemsByMaterialId(@Param("materialId") Long materialId);
 

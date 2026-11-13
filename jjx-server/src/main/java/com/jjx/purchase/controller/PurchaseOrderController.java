@@ -36,6 +36,21 @@ public class PurchaseOrderController extends BaseController {
 
     private final IPurchaseOrderService purchaseOrderService;
     private final com.jjx.purchase.service.impl.PurchaseOrderServiceImpl pricingService;
+    private final com.jjx.purchase.mapper.PurchaseOrderItemMapper purchaseOrderItemMapper;
+
+    /** dev-20261113-010：批量取计划行参考价（最近一次已批准采购单价；无则 null）。只读。 */
+    @GetMapping("/last-price")
+    @SaCheckPermission("purchase:order:view")
+    public Result<java.util.Map<Long, java.math.BigDecimal>> lastPrices(@RequestParam java.util.List<Long> materialIds) {
+        java.util.Map<Long, java.math.BigDecimal> result = new java.util.LinkedHashMap<>();
+        if (materialIds != null) {
+            for (Long materialId : materialIds) {
+                if (materialId == null) continue;
+                result.put(materialId, purchaseOrderItemMapper.selectLastApprovedPrice(materialId));
+            }
+        }
+        return Result.success(result);
+    }
 
     @PostMapping("/pricing-preview")
     @SaCheckPermission(value = {"purchase:order:add", "purchase:order:edit"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
