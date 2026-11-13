@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -313,13 +314,8 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             List<EngineeringBomItem> items = bomItemMapper.selectList(
                     new LambdaQueryWrapper<EngineeringBomItem>()
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
-            for (EngineeringBomItem item : items) {
-                if (item.getMaterialId() == null) continue;
-                BigDecimal need = batchDemand(item, materialGap);
-                demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
-                codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
-                nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
-            }
+            // dev-20261113-009：本单齐套统一走 explodeShortage（自制件展开到组件）。
+            explodeShortage(items, materialGap, demandMap, codeMap, nameMap);
         }
 
         java.util.Map<Long, java.math.BigDecimal> inTransitMap = new java.util.HashMap<>();
@@ -601,13 +597,12 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                 List<EngineeringBomItem> items = bomItemMapper.selectList(
                         new LambdaQueryWrapper<EngineeringBomItem>()
                                 .eq(EngineeringBomItem::getBomId, bom.getBomId()));
-                for (EngineeringBomItem item : items) {
-                    if (item.getMaterialId() == null) continue;
-                    BigDecimal need = batchDemand(item, needProduce);
-                    demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
-                    codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
-                    nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
-                    orderSetMap.computeIfAbsent(item.getMaterialId(), k -> new java.util.HashSet<>()).add(order.getOrderId());
+                // dev-20261113-009：全局缺料同样复用 explodeShortage。
+                java.util.Map<Long, BigDecimal> localDemand = new java.util.HashMap<>();
+                explodeShortage(items, needProduce, localDemand, codeMap, nameMap);
+                for (java.util.Map.Entry<Long, BigDecimal> entryDemand : localDemand.entrySet()) {
+                    demandMap.merge(entryDemand.getKey(), entryDemand.getValue(), BigDecimal::add);
+                    orderSetMap.computeIfAbsent(entryDemand.getKey(), k -> new java.util.HashSet<>()).add(order.getOrderId());
                 }
             }
         }
@@ -1331,6 +1326,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             String supplierName = null;
             String supplierMaterialName = null;
             try {
+                // dev-20261113-009：自制件不进采购建议（已按制造 BOM 展开到组件）。
+                if (isSelfMadeMaterial(stock.getMaterialId())) {
+                    log.info("采购建议跳过自制件: materialId={}（自制，需生产）", stock.getMaterialId());
+                    continue;
+                }
                 com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(stock.getMaterialId());
                 if (mat != null && mat.getMaxStock() != null) {
                     maxStock = mat.getMaxStock();
@@ -1637,6 +1637,97 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
 
         Page<InventoryAlertLog> page = new Page<>(pageNum, pageSize);
         return alertLogMapper.selectPage(page, wrapper);
+    }
+
+    /** 判定 subBom 是否为当前有效且已批准的制造 BOM（dev-20261113-009，复用 019 资格口径）。 */
+    private boolean isEffectiveSubBom(Long bomId) {
+        if (bomId == null) return false;
+        EngineeringBom bom = bomMapper.selectById(bomId);
+        if (bom == null || !Integer.valueOf(3).equals(bom.getApproveStatus())) return false;
+        LocalDate today = LocalDate.now();
+        java.time.LocalDate effective = bom.getEffectiveDate() == null ? null
+                : new java.sql.Date(bom.getEffectiveDate().getTime()).toLocalDate();
+        java.time.LocalDate expiry = bom.getExpiryDate() == null ? null
+                : new java.sql.Date(bom.getExpiryDate().getTime()).toLocalDate();
+        return com.jjx.product.service.BomVersionRules.isEligibleLocal(3, effective, expiry, today, 3);
+    }
+
+    /** 物料是否存在当前有效且已批准的制造 BOM（自制件）。 */
+    private boolean isSelfMadeMaterial(Long materialId) {
+        if (materialId == null) return false;
+        List<EngineeringBom> boms = bomMapper.selectList(new LambdaQueryWrapper<EngineeringBom>()
+                .eq(EngineeringBom::getOutputType, "MATERIAL")
+                .eq(EngineeringBom::getOutputId, materialId)
+                .eq(EngineeringBom::getApproveStatus, 3));
+        for (EngineeringBom bom : boms) {
+            if (isEffectiveSubBom(bom.getBomId())) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 展开结果按物料单位取整：连续计量（M/㎡）保留 4 位小数，件/张等按整单一次向上取整。
+     * 单位缺失按件口径向上取整（不猜）。
+     */
+    private BigDecimal roundDemandByUnit(Long materialId, BigDecimal exact) {
+        String unit = null;
+        try {
+            com.jjx.inventory.domain.InventoryMaterial material = materialMapper.selectById(materialId);
+            unit = material == null ? null : material.getUnit();
+        } catch (Exception e) {
+            log.warn("展开取整查物料单位失败: materialId={}, err={}", materialId, e.getMessage());
+        }
+        String normalized = com.jjx.common.util.UnitCodes.normalize(unit);
+        if (com.jjx.common.util.UnitCodes.M.equals(normalized)
+                || com.jjx.common.util.UnitCodes.SQM.equals(normalized)) {
+            return exact.setScale(4, java.math.RoundingMode.UP);
+        }
+        return exact.setScale(0, java.math.RoundingMode.UP);
+    }
+
+    private void fillMaterialIdentity(Long materialId, Map<Long, String> codeMap, Map<Long, String> nameMap) {
+        if (materialId == null) return;
+        try {
+            com.jjx.inventory.domain.InventoryMaterial material = materialMapper.selectById(materialId);
+            if (material != null) {
+                codeMap.putIfAbsent(materialId, material.getMaterialCode());
+                nameMap.putIfAbsent(materialId, material.getMaterialName());
+            }
+        } catch (Exception e) {
+            log.warn("缺料展开补物料标识失败: materialId={}, err={}", materialId, e.getMessage());
+        }
+    }
+
+    /**
+     * 缺料展开唯一实现（dev-20261113-009）：自制件（make + 有效已批准制造 BOM）递归展开，
+     * 其余行保持 batchDemand 原口径（含损耗、逐行取整与最低投料）；展开结果精确累加后取整一次。
+     */
+    private void explodeShortage(List<EngineeringBomItem> items, BigDecimal quantity,
+                                 Map<Long, BigDecimal> demandMap, Map<Long, String> codeMap,
+                                 Map<Long, String> nameMap) {
+        if (items == null) return;
+        for (EngineeringBomItem item : items) {
+            if (item == null || item.getMaterialId() == null) continue;
+            if ("make".equalsIgnoreCase(item.getSourceType())
+                    && item.getSubBomId() != null && isEffectiveSubBom(item.getSubBomId())) {
+                java.util.Map<Long, BigDecimal> exact = new java.util.HashMap<>();
+                ShortageExplosion.explode(java.util.List.of(item), quantity, 0,
+                        ShortageExplosion.newVisited(),
+                        subId -> bomItemMapper.selectList(new LambdaQueryWrapper<EngineeringBomItem>()
+                                .eq(EngineeringBomItem::getBomId, subId)),
+                        this::isEffectiveSubBom, exact);
+                for (java.util.Map.Entry<Long, BigDecimal> entry : exact.entrySet()) {
+                    demandMap.merge(entry.getKey(), roundDemandByUnit(entry.getKey(), entry.getValue()),
+                            BigDecimal::add);
+                    fillMaterialIdentity(entry.getKey(), codeMap, nameMap);
+                }
+                continue;
+            }
+            BigDecimal need = batchDemand(item, quantity);
+            demandMap.merge(item.getMaterialId(), need, BigDecimal::add);
+            codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
+            nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
+        }
     }
 
     private BigDecimal getActualIssueQty(EngineeringBomItem item) {
