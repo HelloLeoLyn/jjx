@@ -181,9 +181,8 @@
               @click="handleApprove(row)"
               >审核</el-button
             >
-            <!-- dev-20261112-009：生效统一走 BOM 变更单，先隐藏「设为现行」；后端接口保留。 -->
+            <!-- dev-20261113-008：变更单入口已下线（dev-20261113-007），恢复「设为现行」为唯一生效入口。 -->
             <el-button
-              v-if="false"
               v-hasPermi="['engineering:bom:edit']"
               link
               size="small"
