@@ -193,6 +193,17 @@ public class BomChangeRequestService {
         return require(changeId);
     }
 
+    /** 列表分页（前端变更单列表用）。 */
+    public com.baomidou.mybatisplus.extension.plugins.pagination.Page<BomChangeRequest> page(
+            int pageNum, int pageSize, String status) {
+        var page = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<BomChangeRequest>(pageNum, pageSize);
+        var wrapper = new LambdaQueryWrapper<BomChangeRequest>()
+                .eq(status != null && !status.isBlank(), BomChangeRequest::getStatus, status)
+                .orderByDesc(BomChangeRequest::getChangeId);
+        changeMapper.selectPage(page, wrapper);
+        return page;
+    }
+
     public List<BomChangeRequestItem> itemsOf(Long changeId) {
         return itemMapper.selectList(new LambdaQueryWrapper<BomChangeRequestItem>()
                 .eq(BomChangeRequestItem::getChangeId, changeId).orderByAsc(BomChangeRequestItem::getItemId));

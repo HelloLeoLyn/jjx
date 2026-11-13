@@ -58,6 +58,16 @@ public class BomChangeRequestController {
         return Result.success(service.cancel(changeId));
     }
 
+    @Operation(summary = "变更单分页")
+    @GetMapping("/page")
+    @SaCheckPermission("product:bom:view")
+    public Result<com.baomidou.mybatisplus.extension.plugins.pagination.Page<BomChangeRequest>> page(
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String status) {
+        return Result.success(service.page(pageNum, pageSize, status));
+    }
+
     @Operation(summary = "变更单详情")
     @GetMapping("/{changeId}")
     @SaCheckPermission("product:bom:view")

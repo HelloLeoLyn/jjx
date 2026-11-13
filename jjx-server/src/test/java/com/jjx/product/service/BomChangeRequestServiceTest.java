@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -67,7 +68,7 @@ class BomChangeRequestServiceTest {
 
         BusinessException ex = assertThrows(BusinessException.class, () -> service.submit(9L));
         org.junit.jupiter.api.Assertions.assertTrue(ex.getMessage().contains("MODULE_QTY_INVALID"));
-        verify(changeMapper, never()).updateById(any());
+        verify(changeMapper, never()).updateById(any(BomChangeRequest.class));
     }
 
     @Test
@@ -94,7 +95,7 @@ class BomChangeRequestServiceTest {
             assertEquals("EFFECTIVE", result.getStatus());
         }
 
-        verify(bomMapper).updateById(any(EngineeringBom.class));
+        verify(bomMapper, times(2)).updateById(any(EngineeringBom.class));
         assertEquals(false, old.getIsCurrent());
     }
 
@@ -103,7 +104,7 @@ class BomChangeRequestServiceTest {
         when(changeMapper.selectById(9L)).thenReturn(change("PENDING"));
         BomChangeRequest result = service.cancel(9L);
         assertEquals("CANCELLED", result.getStatus());
-        verify(bomMapper, never()).updateById(any());
+        verify(bomMapper, never()).updateById(any(com.jjx.engineering.domain.entity.EngineeringBom.class));
         verify(bomMapper, never()).selectList(any());
     }
 

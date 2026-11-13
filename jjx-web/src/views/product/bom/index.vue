@@ -57,6 +57,8 @@
             @click="handleAdd"
             >新增 BOM</el-button
           >
+          <el-button icon="Tickets" @click="goBomChange">变更单</el-button
+          >
           <template v-if="ids.length">
             <span class="selection-count">已选 {{ ids.length }} 项</span>
             <el-button
@@ -236,7 +238,11 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted, watch, computed, nextTick } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
+
+const router = useRouter()
+/** dev-20261112-009：BOM 生效统一走变更单。 */
+const goBomChange = () => router.push('/product/bom-change')
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { TableInstance } from 'element-plus'
 import { productBomApi } from '@/api/product/bom'
