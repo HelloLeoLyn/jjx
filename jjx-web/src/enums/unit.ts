@@ -153,6 +153,13 @@ export const UnitEnum = {
     categoryName: '其他单位',
     englishName: 'roll',
   },
+  BOT: {
+    code: 'BOT',
+    name: '瓶',
+    category: 'other',
+    categoryName: '其他单位',
+    englishName: 'bottle',
+  },
   SHEET: {
     code: 'SHEET',
     name: '张',

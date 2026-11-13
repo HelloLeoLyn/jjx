@@ -46,6 +46,7 @@ public enum UnitEnum {
     
     // ==================== 其他单位 ====================
     ROLL("ROLL", "卷", "other", 1d, "roll"),
+    BOT("BOT", "瓶", "other", 1d, "bottle"),
     SHEET("SHEET", "张", "other", 1d, "sheet"),
     PIN("PIN", "针", "other", 1d, "pin"),
     PAIR("PAIR", "双", "other", 1d, "pair");
