@@ -173,7 +173,12 @@
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="供应商品名" prop="supplierMaterialName" width="170" show-overflow-tooltip />
+        <el-table-column
+          label="供应商品名"
+          prop="supplierMaterialName"
+          width="170"
+          show-overflow-tooltip
+        />
         <el-table-column label="规格型号" prop="materialSpec" width="120">
           <template #default="scope">
             <el-input v-model="scope.row.materialSpec" placeholder="自动填充" readonly />
@@ -184,10 +189,79 @@
             <el-input v-model="scope.row.unit" placeholder="自动填充" readonly />
           </template>
         </el-table-column>
-        <el-table-column label="数量" prop="quantity" width="100">
+        <el-table-column label="采购单位" width="100">
+          <template #default="scope">
+            <el-select v-model="scope.row.purchaseUnit" @change="calculateRowTotal(scope.$index)">
+              <el-option
+                v-for="unit in unitOptions(scope.row)"
+                :key="unit"
+                :label="unit"
+                :value="unit"
+              />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="价格单位" width="100">
+          <template #default="scope">
+            <el-select v-model="scope.row.priceUnit" @change="calculateRowTotal(scope.$index)">
+              <el-option
+                v-for="unit in unitOptions(scope.row)"
+                :key="unit"
+                :label="unit"
+                :value="unit"
+              />
+            </el-select>
+          </template>
+        </el-table-column>
+        <el-table-column label="卷数" width="100">
+          <template #default="scope">
+            <el-input-number
+              v-model="scope.row.rollCount"
+              :min="1"
+              :precision="0"
+              :controls="false"
+              :disabled="scope.row.purchaseUnit !== '卷'"
+              style="width: 100%"
+              @change="calculateRowTotal(scope.$index)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="每卷长度(m)" width="130">
+          <template #default="scope">
+            <el-input-number
+              v-model="scope.row.rollLengthM"
+              :min="0"
+              :precision="4"
+              :controls="false"
+              style="width: 100%"
+              @change="calculateRowTotal(scope.$index)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="卷宽(mm)" width="120">
+          <template #default="scope">
+            <el-input-number
+              v-model="scope.row.rollWidthMm"
+              :min="0"
+              :precision="2"
+              :controls="false"
+              style="width: 100%"
+              @change="calculateRowTotal(scope.$index)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column label="折合单价(元/㎡)" width="145">
+          <template #default="scope">{{
+            scope.row.equivalentUnitPrice == null
+              ? '—'
+              : Number(scope.row.equivalentUnitPrice).toFixed(2)
+          }}</template>
+        </el-table-column>
+        <el-table-column label="基本单位数量" prop="quantity" width="100">
           <template #default="scope">
             <el-input
               v-model="scope.row.quantity"
+              :readonly="scope.row.purchaseUnit === '卷'"
               type="number"
               style="width: 100%"
               @change="calculateRowTotal(scope.$index)"
@@ -240,6 +314,17 @@
         </el-table-column>
       </el-table>
 
+      <p class="pricing-hint">
+        按卷采购：基本单位数量由卷数×预估尺寸折算，只读；按卷报价：不足整卷向上取整计价。收货按实测核算成本，采购单保留预估值。
+      </p>
+      <p
+        v-for="(item, index) in form.items"
+        v-show="item.pricingError"
+        :key="index"
+        class="pricing-error"
+      >
+        {{ item.materialCode }}：{{ item.pricingError }}
+      </p>
       <el-row>
         <el-col :span="12">
           <el-button type="primary" plain icon="Plus" @click="addItem">添加行</el-button>
@@ -287,7 +372,13 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { PurchaseOrderTypeEnum, CurrencyEnum, DeliveryMethodEnum } from '@/enums/purchase'
 import { normalizePurchaseOrderType } from '@/enums/purchase/order'
 import { materialApi } from '@/api/inventory/material'
-import { addOrder, updateOrder, generateOrderNo, getOrder } from '@/api/purchase/order'
+import {
+  addOrder,
+  updateOrder,
+  generateOrderNo,
+  getOrder,
+  previewOrderPricing,
+} from '@/api/purchase/order'
 import type { InventoryMaterial } from '@/types/inventory/material'
 import SupplierSelector from '@/components/Selector/SupplierSelector.vue'
 import { Search } from '@element-plus/icons-vue'
@@ -301,6 +392,13 @@ interface OrderItem {
   supplierMaterialName?: string
   materialSpec?: string
   unit: string
+  purchaseUnit?: string
+  priceUnit?: string
+  rollCount?: number
+  rollLengthM?: number
+  rollWidthMm?: number
+  equivalentUnitPrice?: number | null
+  pricingError?: string
   quantity: number
   unitPrice: number
   taxRate: number
@@ -446,6 +544,12 @@ const initForm = async () => {
               supplierMaterialName: item.supplierMaterialName,
               materialSpec: item.materialSpec || '',
               unit: item.unit,
+              purchaseUnit: item.purchaseUnit || item.unit,
+              priceUnit: item.priceUnit || item.unit,
+              rollCount: item.rollCount,
+              rollLengthM: item.rollLengthM,
+              rollWidthMm: item.rollWidthMm,
+              equivalentUnitPrice: item.equivalentUnitPrice,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
               taxRate: item.taxRate ?? 13,
@@ -547,6 +651,7 @@ const handleSupplierChange = (supplier: any) => {
   if (materialSupplierId && materialSupplierId !== nextSupplierId) {
     const hasSelectedMaterial = form.items.some((item) => item.materialId)
     form.items.forEach((item) => {
+      pricingVersions.set(item, (pricingVersions.get(item) || 0) + 1)
       Object.assign(item, {
         materialId: undefined,
         materialCode: '',
@@ -554,6 +659,14 @@ const handleSupplierChange = (supplier: any) => {
         supplierMaterialName: '',
         materialSpec: '',
         unit: '',
+        purchaseUnit: '',
+        priceUnit: '',
+        rollCount: undefined,
+        rollLengthM: undefined,
+        rollWidthMm: undefined,
+        equivalentUnitPrice: null,
+        amount: 0,
+        pricingError: '',
       })
     })
     if (hasSelectedMaterial) {
@@ -572,6 +685,7 @@ const handleSupplierChange = (supplier: any) => {
 // 物料选择变化
 const handleMaterialChange = (materialId: number | undefined, index: number) => {
   if (!materialId) {
+    pricingVersions.set(form.items[index], (pricingVersions.get(form.items[index]) || 0) + 1)
     Object.assign(form.items[index], {
       materialId: undefined,
       materialCode: '',
@@ -579,6 +693,14 @@ const handleMaterialChange = (materialId: number | undefined, index: number) => 
       supplierMaterialName: '',
       materialSpec: '',
       unit: '',
+      purchaseUnit: '',
+      priceUnit: '',
+      rollCount: undefined,
+      rollLengthM: undefined,
+      rollWidthMm: undefined,
+      equivalentUnitPrice: null,
+      amount: 0,
+      pricingError: '',
     })
     return
   }
@@ -589,6 +711,7 @@ const handleMaterialChange = (materialId: number | undefined, index: number) => 
   // 检查是否已在其他行中选择了该物料（排除当前行）
   const duplicate = form.items.some((item, i) => i !== index && item.materialCode === materialCode)
   if (duplicate) {
+    pricingVersions.set(form.items[index], (pricingVersions.get(form.items[index]) || 0) + 1)
     ElMessage.warning(`物料 "${material.materialName}" (${materialCode}) 已在明细中，请勿重复添加`)
     // 清空当前行的物料选择
     form.items[index].materialCode = ''
@@ -596,6 +719,16 @@ const handleMaterialChange = (materialId: number | undefined, index: number) => 
     form.items[index].supplierMaterialName = ''
     form.items[index].materialSpec = ''
     form.items[index].unit = ''
+    Object.assign(form.items[index], {
+      purchaseUnit: '',
+      priceUnit: '',
+      rollCount: undefined,
+      rollLengthM: undefined,
+      rollWidthMm: undefined,
+      equivalentUnitPrice: null,
+      amount: 0,
+      pricingError: '',
+    })
     form.items[index].materialId = undefined
     return
   }
@@ -606,14 +739,49 @@ const handleMaterialChange = (materialId: number | undefined, index: number) => 
   form.items[index].supplierMaterialName = material.supplierMaterialName || ''
   form.items[index].materialSpec = material.specification || ''
   form.items[index].unit = material.unit || ''
+  Object.assign(form.items[index], {
+    purchaseUnit: material.unit || '',
+    priceUnit: material.unit || '',
+    rollCount: undefined,
+    rollLengthM: undefined,
+    rollWidthMm: material.widthMm ?? undefined,
+    equivalentUnitPrice: null,
+    amount: 0,
+    pricingError: '',
+  })
+  void calculateRowTotal(index)
 }
 
-// 计算行金额
-const calculateRowTotal = (index: number) => {
+const unitOptions = (item: OrderItem) => [...new Set([item.unit, '卷', '㎡', 'm'].filter(Boolean))]
+const pricingVersions = new WeakMap<OrderItem, number>()
+// 换算只由服务端实现；版本号防止慢响应覆盖较新的编辑。
+const calculateRowTotal = async (index: number): Promise<boolean> => {
   const item = form.items[index]
-  const quantity = item.quantity || 0
-  const unitPrice = item.unitPrice || 0
-  item.amount = quantity * unitPrice
+  const version = (pricingVersions.get(item) || 0) + 1
+  pricingVersions.set(item, version)
+  item.equivalentUnitPrice = null
+  item.amount = 0
+  item.pricingError = ''
+  if (!item.materialId || !item.unit) return true
+  try {
+    const response = await previewOrderPricing({ items: [{ ...item }] })
+    if (pricingVersions.get(item) !== version) return false
+    const priced = response.data.items[0]
+    Object.assign(item, {
+      quantity: Number(priced.quantity),
+      amount: Number(priced.amount),
+      purchaseUnit: priced.purchaseUnit,
+      priceUnit: priced.priceUnit,
+      rollCount: priced.rollCount,
+      rollWidthMm: priced.rollWidthMm,
+      equivalentUnitPrice: priced.equivalentUnitPrice,
+    })
+    return true
+  } catch (error: any) {
+    if (pricingVersions.get(item) === version)
+      item.pricingError = error?.message || '请补齐单位、卷数、卷长和卷宽后重试'
+    return false
+  }
 }
 
 // 添加行
@@ -646,6 +814,12 @@ const handleSubmit = async () => {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
+  // 保存前等待最新服务端计算，错误时阻止提交。
+  const priced = await Promise.all(form.items.map((_, index) => calculateRowTotal(index)))
+  if (priced.some((ok) => !ok)) {
+    ElMessage.warning('采购金额计算未通过，请检查明细提示')
+    return
+  }
   // 验证明细
   const hasInvalidItem = form.items.some(
     (item) => !item.materialCode || !item.quantity || item.quantity <= 0
@@ -697,6 +871,11 @@ const handleSubmit = async () => {
         supplierMaterialName: item.supplierMaterialName,
         materialSpec: item.materialSpec,
         unit: item.unit,
+        purchaseUnit: item.purchaseUnit,
+        priceUnit: item.priceUnit,
+        rollCount: item.rollCount,
+        rollLengthM: item.rollLengthM,
+        rollWidthMm: item.rollWidthMm,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         taxRate: item.taxRate,

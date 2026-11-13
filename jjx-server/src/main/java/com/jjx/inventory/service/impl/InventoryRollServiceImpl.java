@@ -113,12 +113,38 @@ public class InventoryRollServiceImpl implements InventoryRollService {
             facts.add(Map.of("rollNo", rollNo, "widthMm", entry.getWidthMm(), "lengthM", entry.getLengthM()));
             total = total.add(measured);
         }
-        if (total.compareTo(target) != 0) throw new BusinessException("各卷合计 " + total.toPlainString()
-                + "㎡必须等于本次允许入库 " + target.toPlainString() + "㎡，不修改原收货量");
+        areaToleranceRemark(total, target);
         for (String rollNo : facts.stream().map(f -> f.get("rollNo").toString()).sorted(String.CASE_INSENSITIVE_ORDER).toList())
             if (!stockMapper.selectRollForUpdate(rollNo).isEmpty()) throw new BusinessException("卷号 " + rollNo + " 已存在");
         try { return PLAN_JSON.writeValueAsString(facts); }
         catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new BusinessException("卷计划保存格式错误"); }
+    }
+
+    /** 边界含±5%，比较未舍入的面积差；差异率仅显示时舍入。 */
+    public static String areaToleranceRemark(BigDecimal measured, BigDecimal allowed) {
+        if (measured == null || measured.signum() <= 0 || allowed == null || allowed.signum() <= 0)
+            throw new BusinessException("实测面积和允许面积必须大于0");
+        BigDecimal difference = measured.subtract(allowed);
+        String trace = "实测面积=" + measured.stripTrailingZeros().toPlainString() + "㎡/允许面积="
+                + allowed.stripTrailingZeros().toPlainString() + "㎡/差异率="
+                + difference.multiply(BigDecimal.valueOf(100)).divide(allowed, 4, RoundingMode.HALF_UP).toPlainString() + "%";
+        if (difference.abs().compareTo(allowed.multiply(new BigDecimal("0.05"))) > 0)
+            throw new BusinessException(trace + "，超出±5%容差，请改单或走审批后再入库");
+        return trace;
+    }
+
+    public static BigDecimal receiptAmount(InventoryInboundItem item, BigDecimal allowed) {
+        if (item.getAmount() != null && item.getQuantity() != null && item.getQuantity().signum() > 0)
+            return item.getAmount().multiply(allowed).divide(item.getQuantity(), 2, RoundingMode.HALF_UP);
+        return item.getUnitPrice() == null ? null : item.getUnitPrice().multiply(allowed).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** 仅重算本次允收份额的实测成本，不改采购金额、原收货量或IQC允收量。 */
+    public static BigDecimal measuredUnitCost(InventoryInboundItem item, BigDecimal allowed, BigDecimal measured) {
+        BigDecimal amount = item.getAmount();
+        if (amount != null && item.getQuantity() != null && item.getQuantity().signum() > 0)
+            return amount.multiply(allowed).divide(item.getQuantity().multiply(measured), 4, RoundingMode.HALF_UP);
+        return item.getUnitPrice() == null ? null : item.getUnitPrice().multiply(allowed).divide(measured, 4, RoundingMode.HALF_UP);
     }
 
     @Override
@@ -133,11 +159,23 @@ public class InventoryRollServiceImpl implements InventoryRollService {
 
     @Override
     public List<InventoryStockItem> receiptStocks(InventoryInboundOrder order, InventoryInboundItem item, BigDecimal delta) {
-        if (item.getRollPlanJson() == null || item.getRollPlanJson().isBlank()) return List.of(initialStock(order, item, delta));
+        if (item.getRollPlanJson() == null || item.getRollPlanJson().isBlank()) {
+            BigDecimal measured = area(item.getRollWidthMm(), item.getRollLengthM());
+            if ("PURCHASE".equalsIgnoreCase(order.getSourceType()) || "PURCHASE_ORDER".equalsIgnoreCase(order.getSourceType())) {
+                areaToleranceRemark(measured, delta);
+                InventoryInboundItem physical = new InventoryInboundItem();
+                org.springframework.beans.BeanUtils.copyProperties(item, physical);
+                physical.setUnitPrice(measuredUnitCost(item, delta, measured));
+                return List.of(initialStock(order, physical, measured));
+            }
+            return List.of(initialStock(order, item, delta));
+        }
         if (zero(item.getPostedQuantity()).signum() != 0) throw new BusinessException("已过账的卷计划不可再次入库");
         List<RollEntry> entries = readReceiptPlan(item);
         // 重新验证当前允许量，避免保存计划后IQC允收发生变化；锁序按卷号固定。
         normalizeReceiptPlan(item, entries, delta);
+        BigDecimal measuredTotal = entries.stream().map(RollEntry::getArea).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal measuredCost = measuredUnitCost(item, delta, measuredTotal);
         entries.sort(Comparator.comparing(RollEntry::getRollNo, String.CASE_INSENSITIVE_ORDER));
         List<InventoryStockItem> stocks = new ArrayList<>();
         for (RollEntry entry : entries) {
@@ -145,6 +183,7 @@ public class InventoryRollServiceImpl implements InventoryRollService {
             org.springframework.beans.BeanUtils.copyProperties(item, physical);
             physical.setRollNo(entry.getRollNo()); physical.setRollWidthMm(entry.getWidthMm());
             physical.setRollLengthM(entry.getLengthM());
+            physical.setUnitPrice(measuredCost);
             stocks.add(initialStock(order, physical, entry.getArea()));
         }
         return stocks;

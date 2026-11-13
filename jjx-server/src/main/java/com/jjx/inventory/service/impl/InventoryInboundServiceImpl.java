@@ -430,7 +430,13 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         validateAllIqcApproved(inboundId);
         String json = rollService.normalizeReceiptPlan(item, plan == null ? null : plan.getRolls(),
                 Objects.requireNonNullElse(item.getAcceptedQuantity(), BigDecimal.ZERO));
-        // 只写计划，不改原收货量/单价/来源/质量判定/已过账量。
+        BigDecimal measured = plan.getRolls().stream()
+                .map(entry -> rollService.area(entry.getWidthMm(), entry.getLengthM()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        String trace = InventoryRollServiceImpl.areaToleranceRemark(measured, item.getAcceptedQuantity());
+        recordAreaTrace(order, itemId, trace);
+        inboundOrderMapper.updateById(order);
+        // 只写计划与差异备注，不改原收货量/单价/来源/质量判定/已过账量。
         int changed = inboundItemMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers
                 .<InventoryInboundItem>lambdaUpdate().eq(InventoryInboundItem::getItemId, itemId)
                 .set(InventoryInboundItem::getRollPlanJson, json));
@@ -2078,6 +2084,12 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
         }
     }
 
+    private void recordAreaTrace(InventoryInboundOrder order, Long itemId, String trace) {
+        String addition = (itemId == null ? "卷材入库汇总" : "明细" + itemId) + "：" + trace;
+        if (order.getRemark() == null || !order.getRemark().contains(addition))
+            order.setRemark(appendRemark(addition, Objects.requireNonNullElse(order.getRemark(), "")));
+    }
+
     private boolean isPurchaseInbound(InventoryInboundOrder order) {
         return order.getSourceId() != null
                 && ("PURCHASE".equalsIgnoreCase(order.getSourceType())
@@ -2168,6 +2180,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
      */
     private void addStock(InventoryInboundOrder order, Long operatorId, String operatorName, String remark) {
         List<InventoryInboundItem> items = inboundItemMapper.selectByInboundIdForUpdate(order.getInboundId());
+        BigDecimal measuredAreaTotal = BigDecimal.ZERO;
+        BigDecimal allowedAreaTotal = BigDecimal.ZERO;
         for (InventoryInboundItem item : items) {
             if (item.getInventoryItemId() == null) {
                 InventoryMaterial material = inventoryMaterialMapper.selectById(item.getMaterialId());
@@ -2187,6 +2201,18 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
 
             if (item.getRollNo() != null || item.getRollPlanJson() != null) {
                 List<InventoryStockItem> rolls = rollService.receiptStocks(order, item, quantityToPost);
+                BigDecimal measuredTotal = rolls.stream()
+                        .map(roll -> rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM()))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                String trace = isPurchaseInbound(order)
+                        ? InventoryRollServiceImpl.areaToleranceRemark(measuredTotal, quantityToPost) : null;
+                if (trace != null) {
+                    measuredAreaTotal = measuredAreaTotal.add(measuredTotal);
+                    allowedAreaTotal = allowedAreaTotal.add(quantityToPost);
+                }
+                BigDecimal receiptAmount = InventoryRollServiceImpl.receiptAmount(item, quantityToPost);
+                BigDecimal remainingAmount = receiptAmount;
+                int remainingRolls = rolls.size();
                 Long singleStockId = null;
                 for (InventoryStockItem roll : rolls) {
                     BigDecimal area = rollService.area(roll.getRollWidthMm(), roll.getOriginalRollLengthM());
@@ -2194,10 +2220,19 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
                     tx.setTransactionType(com.jjx.inventory.enums.TransactionTypeEnum.INBOUND.getCode());
                     tx.setSourceType(order.getSourceType()); tx.setSourceId(order.getInboundId());
                     tx.setSourceNo(order.getInboundNo()); tx.setSourceItemId(item.getItemId());
-                    tx.setLotId(item.getLotId()); tx.setUnitCost(item.getUnitPrice());
+                    tx.setLotId(item.getLotId()); tx.setUnitCost(roll.getUnitCost());
+                    if (receiptAmount != null) {
+                        // 按实测面积分摊本次金额，最后一卷吸收分币尾差，合计不漂移。
+                        BigDecimal rollAmount = remainingRolls == 1 ? remainingAmount
+                                : receiptAmount.multiply(area).divide(measuredTotal, 2, java.math.RoundingMode.HALF_UP);
+                        tx.setAmount(rollAmount);
+                        remainingAmount = remainingAmount.subtract(rollAmount);
+                    }
+                    remainingRolls--;
                     tx.setOperatorId(operatorId != null ? operatorId : SecurityUtils.getUserId());
                     tx.setOperatorName(operatorName != null ? operatorName : SecurityUtils.getDisplayName());
-                    tx.setRemark(remark != null ? remark : "逐卷入库");
+                    tx.setRemark(trace == null ? (remark != null ? remark : "逐卷入库")
+                            : appendRemark(remark != null ? remark : "逐卷入库", trace));
                     InventoryStockItem saved = stockMutationService.applyDelta(roll, area, tx);
                     singleStockId = saved.getItemId();
                 }
@@ -2277,6 +2312,10 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             stockMutationService.applyDelta(existing, quantityToPost, tx);
             item.setPostedQuantity(postedQuantity.add(quantityToPost));
             inboundItemMapper.updateById(item);
+        }
+        if (allowedAreaTotal.signum() > 0) {
+            recordAreaTrace(order, null, InventoryRollServiceImpl.areaToleranceRemark(measuredAreaTotal, allowedAreaTotal));
+            inboundOrderMapper.updateById(order);
         }
     }
 
@@ -2449,7 +2488,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundItem.setMaterialName(item.getMaterialName());
             inboundItem.setQuantity(receiveQty);
             inboundItem.setInspectionResult(InspectionResultEnum.PENDING.name());
-            inboundItem.setUnitPrice(item.getUnitPrice());
+            inboundItem.setUnit(item.getUnit());
+            inboundItem.setUnitPrice(com.jjx.purchase.service.impl.PurchaseOrderServiceImpl.baseUnitCost(item));
             // dev-20260928-008：行金额与 :2109 同口径（金额×本次入库数÷采购数量，中间不提前舍入，最终 2 位）。
             BigDecimal itemAmt = (item.getAmount() == null || item.getQuantity() == null
                     || item.getQuantity().compareTo(BigDecimal.ZERO) == 0)
@@ -2591,7 +2631,8 @@ public class InventoryInboundServiceImpl extends ServiceImpl<InventoryInboundOrd
             inboundItem.setMaterialName(item.getMaterialName());
             inboundItem.setQuantity(toIn);
             inboundItem.setInspectionResult(InspectionResultEnum.PENDING.name());
-            inboundItem.setUnitPrice(item.getUnitPrice());
+            inboundItem.setUnit(item.getUnit());
+            inboundItem.setUnitPrice(com.jjx.purchase.service.impl.PurchaseOrderServiceImpl.baseUnitCost(item));
             // 金额=行金额×本次收货数÷采购数量，中间不提前舍入，最终 2 位。
             BigDecimal itemAmt = (item.getAmount() == null || item.getQuantity() == null || item.getQuantity().compareTo(BigDecimal.ZERO) == 0)
                     ? null

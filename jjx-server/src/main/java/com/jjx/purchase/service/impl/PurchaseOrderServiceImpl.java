@@ -41,6 +41,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.io.FileOutputStream;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -345,6 +346,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
                         old.getUnitPrice(), hit.getUnitPrice());
                 // 2026-09-04：补 单位/询价信息（dev-1404 同类排查；taxRate 明细不落库无需比）
                 changeRecorder.diff(changes, "明细[" + desc + "]单位", old.getUnit(), hit.getUnit());
+                changeRecorder.diff(changes, "明细[" + desc + "]采购单位", old.getPurchaseUnit(), hit.getPurchaseUnit());
+                changeRecorder.diff(changes, "明细[" + desc + "]价格单位", old.getPriceUnit(), hit.getPriceUnit());
+                changeRecorder.diff(changes, "明细[" + desc + "]卷数", old.getRollCount(), hit.getRollCount());
+                changeRecorder.diffDecimal(changes, "明细[" + desc + "]每卷长度(m)", old.getRollLengthM(), hit.getRollLengthM());
+                changeRecorder.diffDecimal(changes, "明细[" + desc + "]卷宽(mm)", old.getRollWidthMm(), hit.getRollWidthMm());
                 changeRecorder.diff(changes, "明细[" + desc + "]询价信息",
                         old.getInquiryInfo(), hit.getInquiryInfo());
             }
@@ -606,7 +612,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             existing.setBatchNo(batchNo);
             existing.setQuantity(BigDecimal.ZERO);
             existing.setReservedQuantity(java.math.BigDecimal.ZERO);
-            existing.setUnitCost(item.getUnitPrice());
+            existing.setUnitCost(baseUnitCost(item));
             existing.setStatus(1);
         }
         if (existing.getInventoryItemId() == null) {
@@ -620,7 +626,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         tx.setSourceType("PURCHASE");
         tx.setSourceId(order.getOrderId());
         tx.setSourceNo(order.getOrderNo());
-        tx.setUnitCost(item.getUnitPrice());
+        tx.setUnitCost(baseUnitCost(item));
         tx.setOperatorId(com.jjx.system.utils.SecurityUtils.getUserId());
         tx.setOperatorName(com.jjx.system.utils.SecurityUtils.getUsername());
         tx.setRemark("采购到货入库: " + order.getOrderNo());
@@ -908,6 +914,11 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
             newItem.setMaterialName(sourceItem.getMaterialName());
             newItem.setMaterialSpec(sourceItem.getMaterialSpec());
             newItem.setUnit(sourceItem.getUnit());
+            newItem.setPurchaseUnit(sourceItem.getPurchaseUnit());
+            newItem.setPriceUnit(sourceItem.getPriceUnit());
+            newItem.setRollCount(sourceItem.getRollCount());
+            newItem.setRollLengthM(sourceItem.getRollLengthM());
+            newItem.setRollWidthMm(sourceItem.getRollWidthMm());
             newItem.setQuantity(sourceItem.getQuantity());
             newItem.setUnitPrice(sourceItem.getUnitPrice());
             newItem.setAmount(sourceItem.getAmount());
@@ -954,6 +965,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         // Converter 对该字段有 ignore 配置，在本方法显式承接快照。
         for (int i = 0; i < items.size(); i++) {
             itemVOs.get(i).setSupplierMaterialName(items.get(i).getSupplierMaterialName());
+            PurchaseOrderItemDTO pricing = new PurchaseOrderItemDTO();
+            org.springframework.beans.BeanUtils.copyProperties(items.get(i), pricing);
+            itemVOs.get(i).setEquivalentUnitPrice(equivalentPrice(pricing));
         }
         Set<Long> materialIds = itemVOs.stream()
                 .filter(item -> item.getSupplierMaterialName() == null || item.getSupplierMaterialName().isBlank())
@@ -1006,19 +1020,126 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         orderMapper.update(updateWrapper);
     }
 
+    /** 无写入的预览与订单保存共用唯一金额规则，前端不复制换算算法。 */
+    public PurchaseOrderDTO previewPricing(PurchaseOrderDTO dto) {
+        if (dto.getItems() == null || dto.getItems().isEmpty() || dto.getItems().size() > 500)
+            throw new BusinessException("请提供1至500条采购明细");
+        calculateOrderAmount(dto);
+        return dto;
+    }
+
+    private void normalizePurchaseUnits(PurchaseOrderItemDTO item) {
+        var material = item.getMaterialId() == null ? null : materialMapper.selectById(item.getMaterialId());
+        String base = material == null ? item.getUnit() : StringUtils.defaultIfBlank(material.getUnit(), item.getUnit());
+        if (StringUtils.isBlank(base)) return;
+        item.setUnit(normalizeUnit(base));
+        item.setPurchaseUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPurchaseUnit(), base)));
+        item.setPriceUnit(normalizeUnit(StringUtils.defaultIfBlank(item.getPriceUnit(), base)));
+        if (item.getRollWidthMm() == null && material != null) item.setRollWidthMm(material.getWidthMm());
+    }
+
+    public static String normalizeUnit(String unit) {
+        if (unit == null) return null;
+        String value = unit.trim();
+        if (Set.of("㎡", "m²", "m2", "M2", "平方米", "平方").contains(value)) return "㎡";
+        if (Set.of("m", "M", "米").contains(value)) return "m";
+        return value;
+    }
+
+    private static BigDecimal requirePositive(BigDecimal value, String name) {
+        if (value == null || value.signum() <= 0) throw new BusinessException("请补齐大于0的" + name);
+        return value;
+    }
+
+    private static void validateDimension(BigDecimal value, int scale, int integerDigits, String name) {
+        if (value != null && (value.signum() <= 0 || value.stripTrailingZeros().scale() > scale
+                || value.precision() - value.scale() > integerDigits))
+            throw new BusinessException(name + "必须为正数，最多" + scale + "位小数、" + integerDigits + "位整数");
+    }
+
+    private static BigDecimal rollArea(PurchaseOrderItemDTO item) {
+        return requirePositive(item.getRollLengthM(), "每卷长度(m)")
+                .multiply(requirePositive(item.getRollWidthMm(), "卷宽(mm)"))
+                .divide(BigDecimal.valueOf(1000));
+    }
+
+    /** quantity 保留基本单位，按卷采购由卷数和预估尺寸生成；避免改变下游库存/收货数量口径。 */
+    public static void calculateItemPricing(PurchaseOrderItemDTO item) {
+        String base = normalizeUnit(item.getUnit());
+        if (StringUtils.isBlank(base)) throw new BusinessException("物料基本单位不能为空");
+        String purchase = normalizeUnit(StringUtils.defaultIfBlank(item.getPurchaseUnit(), base));
+        String price = normalizeUnit(StringUtils.defaultIfBlank(item.getPriceUnit(), base));
+        item.setPurchaseUnit(purchase); item.setPriceUnit(price);
+        validateDimension(item.getRollLengthM(), 4, 8, "每卷长度(m)");
+        validateDimension(item.getRollWidthMm(), 2, 10, "卷宽(mm)");
+        BigDecimal quantity = Objects.requireNonNullElse(item.getQuantity(), BigDecimal.ZERO);
+        BigDecimal priceQty;
+        if ("卷".equals(purchase)) {
+            if (item.getRollCount() == null || item.getRollCount() <= 0) throw new BusinessException("请补齐正整数卷数");
+            BigDecimal area = rollArea(item);
+            BigDecimal count = BigDecimal.valueOf(item.getRollCount());
+            if ("㎡".equals(base)) quantity = count.multiply(area);
+            else if ("m".equals(base)) quantity = count.multiply(item.getRollLengthM());
+            else throw new BusinessException("按卷采购仅支持㎡或m物料基本单位");
+            item.setQuantity(quantity.setScale(4, RoundingMode.HALF_UP));
+            if ("卷".equals(price)) priceQty = count;
+            else if ("㎡".equals(price)) priceQty = count.multiply(area);
+            else if ("m".equals(price)) priceQty = count.multiply(item.getRollLengthM());
+            else throw new BusinessException("不支持的价格单位，请选择卷、㎡或m");
+        } else {
+            if (!Objects.equals(purchase, base)) throw new BusinessException("采购单位请选择物料基本单位或卷");
+            if (Objects.equals(purchase, price)) priceQty = quantity;
+            else if ("卷".equals(price)) {
+                BigDecimal area = rollArea(item);
+                BigDecimal perRoll = "㎡".equals(base) ? area : "m".equals(base) ? item.getRollLengthM() : null;
+                if (perRoll == null) throw new BusinessException("无法将采购单位换算为卷");
+                try { item.setRollCount(quantity.divide(perRoll, 0, RoundingMode.CEILING).intValueExact()); }
+                catch (ArithmeticException e) { throw new BusinessException("折算卷数超出范围"); }
+                priceQty = BigDecimal.valueOf(item.getRollCount());
+            } else if (Set.of("㎡", "m").contains(base) && Set.of("㎡", "m").contains(price)) {
+                rollArea(item); // 不同单位不允许缺失卷维度后按1换算。
+                BigDecimal widthM = item.getRollWidthMm().divide(BigDecimal.valueOf(1000));
+                priceQty = "㎡".equals(price) ? quantity.multiply(widthM) : quantity.divide(widthM, 12, RoundingMode.HALF_UP);
+            } else throw new BusinessException("采购单位与价格单位无法换算，请核对单位及卷长/卷宽");
+        }
+        if (quantity.signum() < 0) throw new BusinessException("采购数量不能为负数");
+        BigDecimal unitPrice = Objects.requireNonNullElse(item.getUnitPrice(), BigDecimal.ZERO);
+        if (unitPrice.signum() < 0) throw new BusinessException("采购单价不能为负数");
+        item.setUnitPrice(unitPrice.setScale(4, RoundingMode.HALF_UP));
+        item.setAmount(priceQty.multiply(item.getUnitPrice()).setScale(2, RoundingMode.HALF_UP));
+        item.setEquivalentUnitPrice(equivalentPrice(item));
+    }
+
+    private static BigDecimal equivalentPrice(PurchaseOrderItemDTO item) {
+        BigDecimal area = null;
+        if ("㎡".equals(normalizeUnit(item.getUnit()))) area = item.getQuantity();
+        else if ("m".equals(normalizeUnit(item.getUnit())) && item.getQuantity() != null && item.getRollWidthMm() != null)
+            area = item.getQuantity().multiply(item.getRollWidthMm()).divide(BigDecimal.valueOf(1000));
+        if (area == null || area.signum() <= 0 || item.getAmount() == null) return null;
+        return item.getAmount().divide(area, 2, RoundingMode.HALF_UP);
+    }
+
+    /** 金额/基本单位数量，供收货成本使用；禁止把元/卷直接写为元/㎡或元/m。 */
+    public static BigDecimal baseUnitCost(PurchaseOrderItem item) {
+        if (item.getAmount() != null && item.getQuantity() != null && item.getQuantity().signum() > 0)
+            return item.getAmount().divide(item.getQuantity(), 4, RoundingMode.HALF_UP);
+        if (item.getPriceUnit() != null && !Objects.equals(normalizeUnit(item.getPriceUnit()), normalizeUnit(item.getUnit())))
+            throw new BusinessException("采购金额或基本单位数量缺失，不能折算收货成本");
+        return item.getUnitPrice() == null ? null : item.getUnitPrice().setScale(4, RoundingMode.HALF_UP);
+    }
+
     /**
      * 计算订单金额
      */
-    private static void calculateOrderAmount(PurchaseOrderDTO orderDTO) {
+    private void calculateOrderAmount(PurchaseOrderDTO orderDTO) {
         BigDecimal orderAmount = BigDecimal.ZERO;
         BigDecimal orderTax = BigDecimal.ZERO;
 
         for (PurchaseOrderItemDTO itemDTO : orderDTO.getItems()) {
             // 计算明细项金额
-            BigDecimal quantity = itemDTO.getQuantity() != null ? itemDTO.getQuantity() : BigDecimal.ZERO;
-            BigDecimal unitPrice = itemDTO.getUnitPrice() != null ? itemDTO.getUnitPrice() : BigDecimal.ZERO;
-            BigDecimal amount = quantity.multiply(unitPrice);
-            itemDTO.setAmount(amount);
+            normalizePurchaseUnits(itemDTO);
+            calculateItemPricing(itemDTO);
+            BigDecimal amount = itemDTO.getAmount();
 
             // 计算明细项税额
             BigDecimal taxRate = itemDTO.getTaxRate() != null ? itemDTO.getTaxRate() : BigDecimal.ZERO;
@@ -1066,6 +1187,7 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         }
         for (int i = 0; i < itemDTOs.size(); i++) {
             PurchaseOrderItemDTO itemDTO = itemDTOs.get(i);
+            normalizePurchaseUnits(itemDTO);
             PurchaseOrderItem item = purchaseConverter.toEntity(itemDTO);
             item.setOrderId(orderId);
             item.setItemOrder(i + 1);

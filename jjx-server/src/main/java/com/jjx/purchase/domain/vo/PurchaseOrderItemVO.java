@@ -51,6 +51,16 @@ public class PurchaseOrderItemVO {
      */
     private String unit;
 
+    /** 采购/价格单位独立；unit、quantity 始终为物料基本单位与数量。 */
+    private String purchaseUnit;
+    private String priceUnit;
+    private Integer rollCount;
+    private BigDecimal rollLengthM;
+    private BigDecimal rollWidthMm;
+    /** 只读派生折合单价（元/㎡），无面积时为空。 */
+    private BigDecimal equivalentUnitPrice;
+
+
     /**
      * 订单数量
      */

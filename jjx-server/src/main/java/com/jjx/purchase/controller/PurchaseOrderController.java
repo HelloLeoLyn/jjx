@@ -35,6 +35,14 @@ import java.util.Map;
 public class PurchaseOrderController extends BaseController {
 
     private final IPurchaseOrderService purchaseOrderService;
+    private final com.jjx.purchase.service.impl.PurchaseOrderServiceImpl pricingService;
+
+    @PostMapping("/pricing-preview")
+    @SaCheckPermission(value = {"purchase:order:add", "purchase:order:edit"}, mode = cn.dev33.satoken.annotation.SaMode.OR)
+    public Result<PurchaseOrderDTO> previewPricing(@RequestBody PurchaseOrderDTO dto) {
+        return Result.success(pricingService.previewPricing(dto));
+    }
+
 
     /**
      * 获取采购订单总数
