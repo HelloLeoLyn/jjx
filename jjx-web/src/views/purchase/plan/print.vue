@@ -9,32 +9,25 @@
       <h1>采购计划建议表</h1>
       <div class="meta">
         <span>日期：{{ today }}</span
-        ><span>统计范围：当前安全库存及订单缺料预警</span>
+        ><span>{{
+          snapshotMode ? '统计范围：当前采购计划快照' : '统计范围：当前安全库存及订单缺料预警'
+        }}</span>
       </div>
+      <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" />
       <table>
         <thead>
           <tr>
-            <th>物料编码</th>
-            <th>名称</th>
-            <th>规格</th>
-            <th>建议数量</th>
-            <th>供应商</th>
-            <th>在途</th>
-            <th>缺口</th>
+            <th v-for="column in columns" :key="column">{{ column }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(x, i) in rows" :key="i">
-            <td>{{ x.materialCode }}</td>
-            <td>{{ x.materialName }}</td>
-            <td>{{ x.specification || x.materialSpec || '-' }}</td>
-            <td class="right">{{ x.suggestQuantity || 0 }}</td>
-            <td>{{ x.supplierName || '-' }}</td>
-            <td class="right">{{ x.inTransit || x.inTransitQuantity || 0 }}</td>
-            <td class="right">{{ x.shortageQuantity || x.suggestQuantity || 0 }}</td>
+          <tr v-for="(row, i) in rows" :key="i">
+            <td v-for="column in columns" :key="column">
+              {{ row[column] === '' || row[column] == null ? '—' : row[column] }}
+            </td>
           </tr>
           <tr v-if="!rows.length">
-            <td colspan="7" class="center">当前无采购建议</td>
+            <td :colspan="columns.length" class="center">暂无计划数据</td>
           </tr>
         </tbody>
       </table>
@@ -46,16 +39,35 @@
 </template>
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import A4Canvas from '@/components/A4Canvas/index.vue'
 import PrintCompanyHeader from '@/components/PrintCompanyHeader.vue'
 import { getPlanSuggestions, logPlanPrint } from '@/api/purchase/order'
+const route = useRoute()
+const snapshotMode = !!route.query.snapshot
+const loadError = ref('')
+const columns = [
+  '物料编码',
+  '物料名称',
+  '规格',
+  '原始需求',
+  '基本单位',
+  '计划采购量',
+  '采购单位',
+  '折合基本数量',
+  '需求日期',
+  '采购说明',
+]
 const router = useRouter(),
   rows = ref<any[]>([]),
   today = new Date().toLocaleDateString('zh-CN')
 async function print() {
   try {
+    if (loadError.value || !rows.value.length) {
+      ElMessage.warning('没有可打印的计划数据')
+      return
+    }
     await logPlanPrint()
     window.print()
   } catch {
@@ -63,8 +75,33 @@ async function print() {
   }
 }
 onMounted(async () => {
-  const r: any = await getPlanSuggestions()
-  rows.value = r.data || []
+  try {
+    if (snapshotMode) {
+      const key = String(route.query.snapshot)
+      if (!key.startsWith('purchase-plan-print-')) throw new Error('无效的计划打印快照')
+      const text = sessionStorage.getItem(key)
+      if (!text) throw new Error('计划打印快照已失效，请回到采购计划重新打印')
+      const data = JSON.parse(text)
+      if (!Array.isArray(data)) throw new Error('计划打印快照格式错误')
+      rows.value = data
+      sessionStorage.removeItem(key)
+    } else {
+      const r: any = await getPlanSuggestions()
+      rows.value = (r.data || []).map((x: any) => ({
+        物料编码: x.materialCode,
+        物料名称: x.materialName,
+        规格: x.specification || x.materialSpec,
+        原始需求: x.suggestQuantity,
+        基本单位: x.unit,
+        计划采购量: x.suggestQuantity,
+        采购单位: x.unit,
+        折合基本数量: x.suggestQuantity,
+        采购说明: x.reason,
+      }))
+    }
+  } catch (e: any) {
+    loadError.value = e?.message || '计划读取失败，请重试'
+  }
 })
 </script>
 <style scoped>

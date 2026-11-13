@@ -5,6 +5,7 @@
     width="min(1480px, calc(100vw - 24px))"
     append-to-body
     :close-on-click-modal="false"
+    :close-on-press-escape="!submitting" :show-close="!submitting"
     @close="handleClose"
     @update:model-value="(val: boolean) => emit('update:visible', val)"
   >
@@ -26,6 +27,7 @@
               placeholder="请选择供应商"
               :active-only="true"
               :selected-name="form.supplierName"
+              :disabled="!!props.planSeed"
               :show-code="true"
               @change="handleSupplierChange"
             />
@@ -132,9 +134,9 @@
 
       <el-divider content-position="left">订单明细</el-divider>
 
-      <PurchaseItemTable
+      <PurchaseItemTable v-if="!formLoading"
         :items="form.items" :materials="supplierMaterials" :supplier-id="form.supplierId"
-        :material-loading="materialLoading" :units="unitOptions" :currency="form.currency" :disabled="submitting || formLoading || loadFailed"
+        :material-locked="!!props.planSeed" :material-loading="materialLoading" :units="unitOptions" :currency="form.currency" :disabled="submitting || formLoading || loadFailed"
         @material-change="handleMaterialChange" @search="searchSupplierMaterials"
         @dropdown="handleMaterialDropdownVisible" @pricing="touchPricing" @quantity-change="handlePurchaseQuantityChange"
         @unit-change="handlePurchaseUnitChange" @retry-default="retryDefaults" @save-default="handleSaveDefault" @remove="removeItem" @view="handleView"
@@ -143,7 +145,7 @@
       <p class="pricing-hint">金额按计价数量×单价计算；左侧展开可查看尺寸、税率及采购说明。库存基本数量由后端换算，收货按实收核算。</p>
       <el-row>
         <el-col :span="12">
-          <el-button type="primary" plain icon="Plus" @click="addItem">添加行</el-button>
+          <el-button v-if="!props.planSeed" type="primary" plain icon="Plus" @click="addItem">添加行</el-button>
         </el-col>
         <el-col :span="12" style="text-align: right">
           <span style="font-size: 16px; font-weight: bold; margin-right: 16px">
@@ -175,7 +177,7 @@
     <MaterialDetailDialog v-model="detailVisible" :material-id="detailMaterialId" />
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose">取 消</el-button>
+        <el-button :disabled="submitting" @click="handleClose">取 消</el-button>
         <el-button type="primary" @click="handleSubmit" :loading="submitting" :disabled="loadFailed || formLoading">确 定</el-button>
       </div>
     </template>
@@ -204,6 +206,8 @@ import PurchaseItemTable from './PurchaseItemTable.vue'
 import { getPurchaseMaterialDefault, getPurchaseUnitOptions, savePurchaseMaterialDefault } from '@/api/purchase/orderEntry'
 import type { PurchaseEntryItem as OrderItem, PurchaseUnitOption } from '@/api/purchase/orderEntry'
 
+import type { PlanOrderSeed, SavedPurchaseOrder } from '@/api/purchase/planEntry'
+
 // 订单表单
 interface OrderForm {
   orderId?: number
@@ -226,11 +230,12 @@ interface OrderForm {
 const props = defineProps<{
   visible: boolean
   orderId?: number
+  planSeed?: PlanOrderSeed
 }>()
 
 const emit = defineEmits<{
   (e: 'update:visible', val: boolean): void
-  (e: 'success'): void
+  (e: 'success', saved?: SavedPurchaseOrder): void
 }>()
 
 const formRef = ref<FormInstance>()
@@ -407,6 +412,21 @@ async function initForm() {
       form.orderDate = today.toISOString().split('T')[0]
       const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
       form.expectedDeliveryDate = nextWeek.toISOString().split('T')[0]
+      if (props.planSeed) {
+        const seed = props.planSeed
+        form.supplierId = String(seed.supplierId); form.supplierName = seed.supplierName
+        materialSupplierId = form.supplierId
+        form.expectedDeliveryDate = seed.expectedDeliveryDate || form.expectedDeliveryDate
+        form.urgentFlag = seed.urgentFlag
+        form.items = seed.items.map(item => ({ ...createRow(), ...JSON.parse(JSON.stringify(item)), itemId: undefined }))
+        await loadSupplierMaterials(form.supplierId, '', form.items)
+        await Promise.all(form.items.map(async row => {
+          // 计划明确选择的采购量/单位/尺寸保留，仅从供应商约定带出报价单位。
+          await loadDefaults(row, false)
+          if (epoch !== formEpoch || closed || row.defaultError) return
+          await calculateRowTotal(form.items.indexOf(row))
+        }))
+      }
     }
   } catch (error) {
     console.error('初始化表单失败:', error)
@@ -496,7 +516,7 @@ const handleMaterialDropdownVisible = (visible: boolean) => {
 
 // 供应商、物料变化使在途请求作废；用户自己的详情弹窗保留。
 const handleSupplierChange = (supplier: any) => {
-  if (submitting.value) return
+  if (submitting.value || props.planSeed) return
   const next = supplier?.supplierId ? String(supplier.supplierId) : undefined
   if (materialSupplierId && materialSupplierId !== next) {
     ++formEpoch; ++searchVersion; ++totalsGeneration
@@ -526,10 +546,12 @@ async function loadDefaults(row: OrderItem, apply: boolean): Promise<void> {
     row.defaultError = false
     row.defaultConfigured = data.configured
     row.allowedUnits = data.allowedUnits
+    if (props.planSeed && !apply) row.priceUnit = data.priceUnit
     row.archiveWidthMm = data.pieceWidthMm
     row.archiveLengthMm = data.pieceLengthMm
     if (apply) {
-      Object.assign(row, { unit: data.unit, purchaseUnit: data.purchaseUnit, priceUnit: data.priceUnit,
+      if (props.planSeed) row.priceUnit = data.priceUnit
+      else Object.assign(row, { unit: data.unit, purchaseUnit: data.purchaseUnit, priceUnit: data.priceUnit,
         rollWidthMm: data.rollWidthMm, rollLengthM: data.rollLengthM,
         pieceWidthMm: data.pieceWidthMm, pieceLengthMm: data.pieceLengthMm })
       await calculateRowTotal(form.items.indexOf(row))
@@ -546,7 +568,7 @@ async function loadDefaults(row: OrderItem, apply: boolean): Promise<void> {
 
 const handleMaterialChange = (materialId: number | undefined, index: number) => {
   const row = form.items[index]
-  if (!row || submitting.value) return
+  if (!row || submitting.value || props.planSeed) return
   serverTotals.value = null; ++totalsGeneration
   pricingVersions.set(row, (pricingVersions.get(row) || 0) + 1)
   defaultVersions.set(row, (defaultVersions.get(row) || 0) + 1)
@@ -639,9 +661,9 @@ const handleSaveDefault = async (index: number) => {
 }
 
 // 添加行
-const addItem = () => { if (!submitting.value) form.items.push(createRow()) }
+const addItem = () => { if (!submitting.value && !props.planSeed) form.items.push(createRow()) }
 const removeItem = (index: number) => {
-  if (submitting.value || form.items.length <= 1) return
+  if (submitting.value || props.planSeed || form.items.length <= 1) return
   const row = form.items[index]
   pricingVersions.set(row, (pricingVersions.get(row) || 0) + 1)
   defaultVersions.set(row, (defaultVersions.get(row) || 0) + 1)
@@ -655,6 +677,10 @@ const handleSubmit = async () => {
   submitting.value = true
   const epoch = formEpoch
   try {
+    if (props.planSeed && !form.orderNo) {
+      await getOrderNo()
+      if (!form.orderNo) { ElMessage.warning('未取得订单号，请重试后保存，计划仍保留'); return }
+    }
     const valid = await formRef.value.validate().catch(() => false)
     if (!valid) return
     if (form.items.some(item => item.taxRate == null)) {
@@ -687,7 +713,7 @@ const handleSubmit = async () => {
     else await addOrder(submitData as any)
     if (epoch !== formEpoch || closed || disposed) return
     ElMessage.success(props.orderId ? '修改采购订单成功' : '新增采购订单成功')
-    emit('success'); handleClose()
+    emit('success', { orderNo: form.orderNo, items: form.items.map(row => ({ ...row })) }); submitting.value = false; handleClose()
   } catch (error) {
     console.error('采购订单提交失败:', error)
     if (epoch === formEpoch && !closed) ElMessage.error('提交失败，草稿已保留')
@@ -696,6 +722,7 @@ const handleSubmit = async () => {
 
 // 关闭
 const handleClose = () => {
+  if (submitting.value) return
   closed = true; ++formEpoch; ++searchVersion; ++totalsGeneration
   if (materialSearchTimer) clearTimeout(materialSearchTimer)
   formRef.value?.resetFields?.()

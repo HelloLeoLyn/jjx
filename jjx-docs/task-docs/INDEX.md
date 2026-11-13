@@ -73,3 +73,5 @@
 | dev-20261013-031 | dev-20261013-031-completion.md | completion | 作业规范发行信息：发行单位/发行日期录入入口 |
 
 | dev-20261014-041 | dev-20261014-041-completion.md | completion | 工序图标永久共享资产、原子登记、权限与清理保护 |
+
+| dev-20261113-005 | dev-20261113-005-completion.md | completion | 采购计划数量单位换算、原始需求隔离与订单核对接入 |

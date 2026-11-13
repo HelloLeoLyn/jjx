@@ -106,6 +106,26 @@ describe('精简采购主表与后端换算',()=>{
     expect(vm.form.remark).toBe('订单备注');expect(vm.totalTax).toBe(4044.3)
   })
 })
+describe('采购计划预填正式订单',()=>{
+  it('保留计划数量单位和尺寸，只带供应商报价单位；初始化不下单',async()=>{
+    const seed={supplierId:16,supplierName:'供应商',expectedDeliveryDate:'2026-12-01',urgentFlag:true,
+      items:[{...row(),purchaseUnit:'㎡',purchaseQuantity:366,rollLengthM:98,purchaseRemark:'原始需求 300㎡',unitPrice:0}]}
+    // 约定采购单位为卷，计划明确填㎡时不能将366变为366卷。
+    api.previewOrderPricing.mockImplementation(async body=>({data:{orderAmount:0,orderTax:0,orderTotalAmount:0,items:body.items.map((i:any)=>({...i,quantity:366,priceQuantity:366,amount:0}))}}))
+    const w=shallowMount(OrderFormDialog,{props:{visible:true,planSeed:seed}});wrappers.push(w);await flushPromises();const vm=w.vm as any
+    expect(vm.form.items[0]).toMatchObject({purchaseUnit:'㎡',purchaseQuantity:366,priceUnit:'㎡',rollLengthM:98,purchaseRemark:'原始需求 300㎡'})
+    expect(vm.form.expectedDeliveryDate).toBe('2026-12-01');expect(vm.form.urgentFlag).toBe(true);expect(api.addOrder).not.toHaveBeenCalled()
+    expect(seed.items[0].unitPrice).toBe(0)
+    vm.addItem();vm.removeItem(0);vm.handleMaterialChange(110,0);vm.handleSupplierChange({supplierId:17,supplierName:'另一个供应商'})
+    expect(vm.form.items).toHaveLength(1);expect(vm.form.items[0].materialId).toBe(354);expect(vm.form.supplierId).toBe('16')
+  })
+  it('保存成功发出实际数量与订单号；保存失败保留核对窗口，不发成功事件',async()=>{
+    const {w,vm}=form();vm.form.items=[row()];vm.form.orderNo='PO-PLAN';vm.formRef={validate:vi.fn().mockResolvedValue(true)}
+    api.addOrder.mockRejectedValueOnce(new Error('保存失败'));await vm.handleSubmit()
+    expect(w.emitted('success')).toBeUndefined();expect(vm.form.items[0].purchaseQuantity).toBe(3)
+    await vm.handleSubmit();expect(w.emitted('success')?.[0]?.[0]).toMatchObject({orderNo:'PO-PLAN',items:[expect.objectContaining({materialId:354,quantity:366})]})
+  })
+})
 describe('实际表格和打印',()=>{
   it('两个单位下拉独立常显，计价数量没有输入框',async()=>{
     const w=mount(PurchaseItemTable,{props:{items:[row()],materials:[material],supplierId:'16',materialLoading:false,units},global:{plugins:[ElementPlus],directives:{hasPermi:{mounted(){}}}}});wrappers.push(w)

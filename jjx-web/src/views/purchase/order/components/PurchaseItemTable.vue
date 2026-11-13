@@ -39,7 +39,7 @@
     <el-table-column label="序号" type="index" width="48" align="center" />
     <el-table-column label="品名 / 物料" min-width="220">
       <template #default="{ row, $index }">
-        <el-select v-model="row.materialId" filterable remote clearable :disabled="disabled || !supplierId" :loading="materialLoading" :remote-method="keyword => emit('search', keyword)" :placeholder="supplierId ? '搜索名称 / 编码 / 规格' : '请先选择供应商'" @visible-change="value => emit('dropdown', value)" @change="id => emit('materialChange', id, $index)">
+        <el-select v-model="row.materialId" filterable remote clearable :disabled="disabled || materialLocked || !supplierId" :loading="materialLoading" :remote-method="keyword => emit('search', keyword)" :placeholder="supplierId ? '搜索名称 / 编码 / 规格' : '请先选择供应商'" @visible-change="value => emit('dropdown', value)" @change="id => emit('materialChange', id, $index)">
           <el-option v-for="material in materials" :key="material.materialId" :label="material.supplierMaterialName || material.materialName" :value="material.materialId">
             <div class="material-option"><span>{{ material.supplierMaterialName || material.materialName }}</span><small>{{ material.materialCode }} · {{ material.specification }}</small></div>
           </el-option>
@@ -70,7 +70,7 @@
       <template #default="{ row }">{{ row.pricingLoading || row.pricingError ? '—' : Number(row.amount || 0).toFixed(2) }}</template>
     </el-table-column>
     <el-table-column label="操作" width="65" fixed="right">
-      <template #default="{ $index }"><el-button link type="danger" :disabled="disabled || items.length <= 1" @click="emit('remove', $index)">移除</el-button></template>
+      <template #default="{ $index }"><el-button link type="danger" :disabled="disabled || materialLocked || items.length <= 1" @click="emit('remove', $index)">移除</el-button></template>
     </el-table-column>
   </el-table>
 </template>
@@ -78,7 +78,7 @@
 import type { PurchaseEntryItem, PurchaseUnitOption } from '@/api/purchase/orderEntry'
 import { entryNumber, entryPrice, entrySpecification } from '@/api/purchase/orderEntry'
 import type { InventoryMaterial } from '@/types/inventory/material'
-const props = defineProps<{ items: PurchaseEntryItem[]; materials: InventoryMaterial[]; supplierId?: string; materialLoading: boolean; units: PurchaseUnitOption[]; currency?: string; disabled?: boolean }>()
+const props = defineProps<{ items: PurchaseEntryItem[]; materials: InventoryMaterial[]; supplierId?: string; materialLoading: boolean; units: PurchaseUnitOption[]; currency?: string; disabled?: boolean; materialLocked?: boolean }>()
 const emit = defineEmits<{
   (e: 'materialChange', id: number | undefined, index: number): void
   (e: 'search', keyword: string): void
