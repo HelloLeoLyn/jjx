@@ -17,7 +17,9 @@ class RollInventoryCompatibilityTest extends RollFixture {
         item.setBatchNo("LEGACY-BATCH"); item.setQuantity(bd("3")); item.setUnitPrice(bd("2")); inItems.insert(item);
         assertTrue(inbound.confirm(order.getInboundId(),1L,"test"));
         var stock=stocks.selectList(null).get(0); assertNull(stock.getRollNo()); eq("3",stock.getQuantity());
-        var tx=txs.selectList(null).get(0); assertNull(tx.getRollNo()); assertNull(tx.getStockItemId());
+        var tx=txs.selectList(null).get(0); assertNull(tx.getRollNo());
+        // dev-20261111-012(dd799353) 起流水统一回填 stock_item_id；非卷材入库同样要指向库存批次。
+        assertNotNull(tx.getStockItemId()); assertEquals(stock.getItemId(), tx.getStockItemId());
         var adjustment=new InventoryTransaction(); adjustment.setTransactionType(TransactionTypeEnum.ADJUST.getCode());
         mutation.applyDelta(stock,bd("-1"),adjustment); eq("2",balance());
     }
