@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 缺料多层展开（dev-20261113-009）：递归、防环、只取整一次。 */
 class ShortageExplosionTest {
@@ -52,6 +53,13 @@ class ShortageExplosionTest {
         ShortageExplosion.explode(List.of(item(100L, "make", 1L, "1")), BigDecimal.ONE, 0,
                 ShortageExplosion.newVisited(), subs::get, id -> true, out);
         assertEquals(false, out.isEmpty());
+    }
+
+    @Test
+    void selfMadeSignalIsVisibleInText() {
+        String text = InventoryAlertServiceImpl.selfMadeSuggestionText();
+        assertTrue(text.contains("自制"));
+        assertTrue(text.contains("需生产"));
     }
 
     @Test

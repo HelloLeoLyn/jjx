@@ -1326,12 +1326,21 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             String supplierName = null;
             String supplierMaterialName = null;
             try {
-                // dev-20261113-009：自制件不进采购建议（已按制造 BOM 展开到组件）。
-                if (isSelfMadeMaterial(stock.getMaterialId())) {
-                    log.info("采购建议跳过自制件: materialId={}（自制，需生产）", stock.getMaterialId());
+                // dev-20261113-009：自制件不进采购数量，但保留可见信号「自制·需生产」。
+                boolean selfMade = isSelfMadeMaterial(stock.getMaterialId());
+                com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(stock.getMaterialId());
+                if (selfMade) {
+                    java.util.Map<String, Object> productionRow = new java.util.LinkedHashMap<>();
+                    productionRow.put("materialId", stock.getMaterialId());
+                    productionRow.put("materialCode", mat == null ? null : mat.getMaterialCode());
+                    productionRow.put("materialName", mat == null ? null : mat.getMaterialName());
+                    productionRow.put("suggestionType", "PRODUCTION");
+                    productionRow.put("suggestedQty", BigDecimal.ZERO);
+                    productionRow.put("suggestion", selfMadeSuggestionText());
+                    suggestions.add(productionRow);
+                    log.info("采购建议标注自制件: materialId={}（{}）", stock.getMaterialId(), selfMadeSuggestionText());
                     continue;
                 }
-                com.jjx.inventory.domain.InventoryMaterial mat = materialMapper.selectById(stock.getMaterialId());
                 if (mat != null && mat.getMaxStock() != null) {
                     maxStock = mat.getMaxStock();
                 }
@@ -1728,6 +1737,11 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
             codeMap.putIfAbsent(item.getMaterialId(), item.getMaterialCode());
             nameMap.putIfAbsent(item.getMaterialId(), item.getMaterialName());
         }
+    }
+
+    /** 自制件可见信号（dev-20261113-009）：不新增预警类型，只在既有文案标注。 */
+    public static String selfMadeSuggestionText() {
+        return "自制·需生产（不生成采购单）";
     }
 
     private BigDecimal getActualIssueQty(EngineeringBomItem item) {
