@@ -77,44 +77,12 @@
         </div>
 
         <!-- 明细表格 -->
-        <table class="doc-items">
-          <thead>
-            <tr>
-              <th style="width: 5%">序号</th>
-              <th style="width: 12%">物料编码</th>
-              <th>物料名称</th>
-              <th>供应商品名</th>
-              <th style="width: 10%">规格</th>
-              <th style="width: 6%">单位</th>
-              <th style="width: 10%">数量</th>
-              <th style="width: 12%">单价</th>
-              <th style="width: 13%">金额</th>
-              <th style="width: 9%">备注</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, idx) in itemsList" :key="idx">
-              <td class="col-center">{{ idx + 1 }}</td>
-              <td>{{ item.materialCode }}</td>
-              <td>{{ item.materialName }}</td>
-              <td>{{ item.supplierMaterialName || '-' }}</td>
-              <td>{{ item.materialSpec || '-' }}</td>
-              <td class="col-center">{{ item.unit || '-' }}</td>
-              <td class="col-right">{{ fmtNum(item.quantity) }}</td>
-              <td class="col-right">{{ fmtMoney(item.unitPrice) }}</td>
-              <td class="col-right">{{ fmtMoney(item.amount) }}</td>
-              <td></td>
-            </tr>
-            <tr v-if="!itemsList.length">
-              <td colspan="10" class="col-center">无明细</td>
-            </tr>
-          </tbody>
-        </table>
+        <PurchaseItemsPrintTable :items="itemsList" :currency="info.currency" />
 
         <!-- 合计 -->
         <div class="doc-total-row">
           <span>物料种类：{{ itemsList.length }} 项</span>
-          <span>订单总金额：{{ fmtMoney(info.orderTotalAmount) }}</span>
+          <span>未税金额：{{ fmtMoney(info.orderAmount) }}　税额：{{ fmtMoney(info.orderTax) }}　价税合计：{{ fmtMoney(info.orderTotalAmount) }}</span>
         </div>
 
         <!-- 备注 -->
@@ -182,44 +150,9 @@
           <div><span class="qr024-label">交易方式：</span>{{ paymentTermsLabel }}</div>
         </div>
 
-        <table class="qr024-items">
-          <thead>
-            <tr>
-              <th style="width: 7%">项次</th>
-              <th style="width: 20%">品名</th>
-              <th style="width: 19%">供应商品名</th>
-              <th style="width: 19%">规格</th>
-              <th style="width: 8%">单位</th>
-              <th style="width: 10%">数量</th>
-              <th style="width: 11%">单价</th>
-              <th style="width: 13%">金额</th>
-              <th style="width: 12%">备注</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, idx) in itemsList" :key="idx">
-              <td class="col-center">{{ idx + 1 }}</td>
-              <td>{{ item.materialName || '' }}</td>
-              <td>{{ item.supplierMaterialName || '' }}</td>
-              <td>{{ item.materialSpec || '' }}</td>
-              <td class="col-center">{{ item.unit || '' }}</td>
-              <td class="col-right">{{ fmtNum(item.quantity) }}</td>
-              <td class="col-right">{{ fmtMoney(item.unitPrice) }}</td>
-              <td class="col-right">{{ fmtMoney(item.amount) }}</td>
-              <td></td>
-            </tr>
-            <tr v-if="!itemsList.length">
-              <td></td>
-              <td colspan="7" class="col-center">以下空白</td>
-              <td></td>
-            </tr>
-            <tr class="qr024-total-row">
-              <td colspan="7"></td>
-              <th>合计:</th>
-              <td class="col-right">{{ fmtMoney(info.orderTotalAmount) }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <PurchaseItemsPrintTable :items="itemsList" :currency="info.currency" />
+        <div class="doc-total-row"><span>未税金额：{{ fmtMoney(info.orderAmount) }}　税额：{{ fmtMoney(info.orderTax) }}</span><span>价税合计：{{ fmtMoney(info.orderTotalAmount) }}</span></div>
+        <div v-if="info.remark" class="doc-remark">备注：{{ info.remark }}</div>
 
         <div class="qr024-terms">
           <div><span style="font: 16px sans-serif">交易条款：</span></div>
@@ -256,6 +189,7 @@ import { dictApi } from '@/api/system/dict'
 import type { PurchaseSupplier } from '@/types/purchase'
 import type { SysDictItem } from '@/types/system/dict'
 import PrintQrCode from '@/components/print/PrintQrCode.vue'
+import PurchaseItemsPrintTable from './components/PurchaseItemsPrintTable.vue'
 
 const route = useRoute()
 const router = useRouter()

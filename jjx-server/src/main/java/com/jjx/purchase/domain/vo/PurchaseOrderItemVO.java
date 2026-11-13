@@ -54,6 +54,19 @@ public class PurchaseOrderItemVO {
     /** 采购/价格单位独立；unit、quantity 始终为物料基本单位与数量。 */
     private String purchaseUnit;
     private String priceUnit;
+    /** 本次采购数量；quantity 始终为库存基本单位数量。旧单为空时按原单位解释。 */
+    private BigDecimal purchaseQuantity;
+    /** 本单固定片材尺寸快照，单位mm，不随物料档案后续修改变化。 */
+    private BigDecimal pieceWidthMm;
+    private BigDecimal pieceLengthMm;
+    /** 采购/加工/交货要求，独立于检验备注。 */
+    private String purchaseRemark;
+    private BigDecimal taxRate;
+    private BigDecimal taxAmount;
+    /** 只读计价数量，由同一后端换算规则生成，不接受客户端作为计价权威。 */
+    private BigDecimal priceQuantity;
+    private String pricingMessage;
+
     private Integer rollCount;
     private BigDecimal rollLengthM;
     private BigDecimal rollWidthMm;

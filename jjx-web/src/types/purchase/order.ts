@@ -32,6 +32,19 @@ export interface PurchaseOrderVO {
 
 // 采购订单明细
 export interface PurchaseOrderItem {
+  purchaseUnit?: string
+  priceUnit?: string
+  rollCount?: number
+  rollLengthM?: number
+  rollWidthMm?: number
+  equivalentUnitPrice?: number | null
+  purchaseQuantity?: number | null
+  priceQuantity?: number | null
+  pieceWidthMm?: number | null
+  pieceLengthMm?: number | null
+  purchaseRemark?: string
+  pricingMessage?: string
+
   itemId?: string
   orderId?: string
   materialId?: string

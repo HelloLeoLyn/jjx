@@ -14,7 +14,7 @@ const mount = () => shallowMount(OrderFormDialog, { props: { visible: false } })
 describe('采购双单位与服务端金额预览', () => {
   it('默认采用物料单位、卷宽；把服务端金额和空折合价作为只读值', async () => {
     api.previewOrderPricing.mockResolvedValue({
-      data: {
+      data: { orderAmount: 0, orderTax: 0, orderTotalAmount: 0,
         items: [
           {
             purchaseUnit: '㎡',
@@ -43,10 +43,10 @@ describe('采购双单位与服务端金额预览', () => {
   })
   it('按卷采购提交全部卷维度，金额沿用后端结果', async () => {
     api.previewOrderPricing.mockResolvedValue({
-      data: {
+      data: { orderAmount: 487.5, orderTax: 0, orderTotalAmount: 487.5,
         items: [
           {
-            purchaseUnit: '卷',
+            purchaseUnit: 'ROLL',
             priceUnit: '㎡',
             rollCount: 5,
             quantity: 48.75,
@@ -65,13 +65,15 @@ describe('采购双单位与服务端金额预览', () => {
         materialId: 7,
         materialCode: 'M7',
         unit: '㎡',
-        purchaseUnit: '卷',
+        purchaseUnit: 'ROLL',
         priceUnit: '㎡',
+        purchaseQuantity: 5,
         rollCount: 5,
         rollLengthM: 50,
         rollWidthMm: 195,
         quantity: 0,
         unitPrice: 10,
+        taxRate: 0,
       },
     ]
     await vm.handleSubmit()
@@ -79,7 +81,7 @@ describe('采购双单位与服务端金额预览', () => {
       expect.objectContaining({
         items: [
           expect.objectContaining({
-            purchaseUnit: '卷',
+            purchaseUnit: 'ROLL',
             priceUnit: '㎡',
             rollCount: 5,
             rollLengthM: 50,
@@ -103,9 +105,11 @@ describe('采购双单位与服务端金额预览', () => {
         materialId: 7,
         materialCode: 'M7',
         unit: '㎡',
-        purchaseUnit: '卷',
+        purchaseUnit: 'ROLL',
+        purchaseQuantity: 5,
         quantity: 5,
         unitPrice: 500,
+        taxRate: 0,
         amount: 2500,
       },
     ]
@@ -127,7 +131,7 @@ describe('采购双单位与服务端金额预览', () => {
         })
       )
       .mockResolvedValueOnce({
-        data: { items: [{ quantity: 2, amount: 20, equivalentUnitPrice: 10 }] },
+        data: { orderAmount: 20, orderTax: 0, orderTotalAmount: 20, items: [{ quantity: 2, amount: 20, equivalentUnitPrice: 10 }] },
       })
     const w = mount()
     const vm = w.vm as any

@@ -70,6 +70,13 @@ export interface PurchaseOrder {
 
 // 采购订单明细类型
 export interface PurchaseOrderItem {
+  purchaseQuantity?: number | null
+  priceQuantity?: number | null
+  pieceWidthMm?: number | null
+  pieceLengthMm?: number | null
+  purchaseRemark?: string
+  pricingMessage?: string
+
   purchaseUnit?: string
   priceUnit?: string
   rollCount?: number

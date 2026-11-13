@@ -83,26 +83,7 @@
 
         <el-divider content-position="left">订单明细</el-divider>
 
-        <el-table :data="orderDetail.items" border style="width: 100%">
-          <el-table-column label="序号" type="index" width="60" align="center" />
-          <el-table-column label="物料编码" prop="materialCode" width="140" />
-          <el-table-column label="物料名称" prop="materialName" width="140" />
-          <el-table-column label="供应商品名" prop="supplierMaterialName" width="140" />
-          <el-table-column label="规格型号" prop="materialSpec" width="120" />
-          <el-table-column label="单位" prop="unit" width="60" />
-          <el-table-column label="数量" prop="quantity" width="80" align="right" />
-          <el-table-column label="单价" prop="unitPrice" width="100" align="right">
-            <template #default="scope">
-              {{ scope.row.unitPrice?.toFixed(2) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="金额" prop="amount" width="100" align="right">
-            <template #default="scope">
-              <span style="font-weight: bold">{{ scope.row.amount?.toFixed(2) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="备注" prop="remark" min-width="120" />
-        </el-table>
+        <PurchaseItemsPrintTable :items="orderDetail.items || []" :currency="orderDetail.currency" />
 
         <el-row style="margin-top: 16px; text-align: right">
           <el-col :span="24">
@@ -227,6 +208,7 @@ import AttachmentCenter from '@/components/attachment/AttachmentCenter.vue'
 import { getPaymentsByOrder } from '@/api/purchase/payment'
 import InboundDetail from '@/views/inventory/inbound/components/InboundDetail.vue'
 import { formatNumber } from '@/utils/format'
+import PurchaseItemsPrintTable from './PurchaseItemsPrintTable.vue'
 import type { PurchaseOrderVO } from '@/types/purchase/order'
 import type { InboundVO } from '@/types/inventory/inbound'
 
