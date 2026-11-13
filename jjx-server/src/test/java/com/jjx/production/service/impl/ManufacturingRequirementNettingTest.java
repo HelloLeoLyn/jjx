@@ -41,7 +41,9 @@ class ManufacturingRequirementNettingTest {
     void setUp() {
         mapper = mock(ManufacturingSupplySnapshotMapper.class);
         service = new ManufacturingRequirementServiceImpl(mapper,
-                new ManufacturingSupplySnapshotProviderImpl(mapper));
+                new ManufacturingSupplySnapshotProviderImpl(mapper),
+                new com.jjx.product.service.BomVersionRules(
+                        org.mockito.Mockito.mock(com.jjx.product.mapper.EngineeringBomMapper.class)));
 
         ManufacturingSupplySnapshotMapper.ProductRow product = new ManufacturingSupplySnapshotMapper.ProductRow();
         product.setProductId(1L);

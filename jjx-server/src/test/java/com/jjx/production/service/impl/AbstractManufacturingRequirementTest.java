@@ -45,7 +45,9 @@ abstract class AbstractManufacturingRequirementTest {
         seedBase();
         mapper = session.getMapper(ManufacturingSupplySnapshotMapper.class);
         service = new ManufacturingRequirementServiceImpl(mapper,
-                new ManufacturingSupplySnapshotProviderImpl(mapper));
+                new ManufacturingSupplySnapshotProviderImpl(mapper),
+                new com.jjx.product.service.BomVersionRules(
+                        org.mockito.Mockito.mock(com.jjx.product.mapper.EngineeringBomMapper.class)));
     }
 
     // ==================== 请求与断言工具 ====================

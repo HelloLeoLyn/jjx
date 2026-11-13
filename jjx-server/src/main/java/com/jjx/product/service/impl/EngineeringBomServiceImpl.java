@@ -1730,14 +1730,17 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                     issues.add(issue(iid, code, name, "subBomId", subError));
                 }
             }
-            // 模数 / 基数（dev-20261111-004：>0 正小数，最多 4 位，拒绝超精度静默归零）
-            String moduleError = validatePositiveDecimal(it.getModuleQty(), "MODULE_QTY_INVALID", 12, 4);
-            if (moduleError != null) {
-                issues.add(issue(iid, code, name, "moduleQty", moduleError));
-            }
-            String baseError = validatePositiveDecimal(it.getBaseQty(), "BASE_QTY_INVALID", 12, 4);
-            if (baseError != null) {
-                issues.add(issue(iid, code, name, "baseQty", baseError));
+            // 模数 / 基数（dev-20261111-004：>0 正小数，最多 4 位）
+            // dev-20261111-019：跳距行免模数/基数（前端已允许留空，后端不再拦），其余行保持原校验。
+            if (!com.jjx.product.service.BomVersionRules.pitchRowExemptFromRatio(it.getPitchMm(), it.getPcsPerPitch())) {
+                String moduleError = validatePositiveDecimal(it.getModuleQty(), "MODULE_QTY_INVALID", 12, 4);
+                if (moduleError != null) {
+                    issues.add(issue(iid, code, name, "moduleQty", moduleError));
+                }
+                String baseError = validatePositiveDecimal(it.getBaseQty(), "BASE_QTY_INVALID", 12, 4);
+                if (baseError != null) {
+                    issues.add(issue(iid, code, name, "baseQty", baseError));
+                }
             }
             // 单位依据：跨单位必须有换算系数与依据
             String unitError = validateUnitBasis(it);

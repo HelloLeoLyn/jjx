@@ -35,7 +35,9 @@ class ManufacturingRequirementPrecisionTest {
     void setUp() {
         mapper = mock(ManufacturingSupplySnapshotMapper.class);
         service = new ManufacturingRequirementServiceImpl(mapper,
-                new ManufacturingSupplySnapshotProviderImpl(mapper));
+                new ManufacturingSupplySnapshotProviderImpl(mapper),
+                new com.jjx.product.service.BomVersionRules(
+                        org.mockito.Mockito.mock(com.jjx.product.mapper.EngineeringBomMapper.class)));
         product = product(1L, "P1", "测试产品", "PCS", 10L);
         root = bom(10L, 1L, "PRODUCT", 1L, 3, LocalDate.of(2026, 1, 1), "B10");
         when(mapper.selectProduct(1L)).thenReturn(product);

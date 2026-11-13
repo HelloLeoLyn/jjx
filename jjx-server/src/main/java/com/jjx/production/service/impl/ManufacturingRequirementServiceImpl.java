@@ -52,6 +52,8 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
 
     private final ManufacturingSupplySnapshotMapper mapper;
     private final ManufacturingSupplySnapshotProvider supplyProvider;
+    /** BOM 版本资格唯一实现（dev-20261111-019）。 */
+    private final com.jjx.product.service.BomVersionRules bomVersionRules;
 
     @Override
     public RequirementSummaryVO preview(RequirementPreviewRequest request) {
@@ -237,25 +239,37 @@ public class ManufacturingRequirementServiceImpl implements ManufacturingRequire
                                                        LocalDate demandDate,
                                                        RequirementSummaryVO summary) {
         String path = "产品[" + product.getProductCode() + "]";
-        ManufacturingDemandSnapshot root;
+        ManufacturingDemandSnapshot root = null;
+        Integer approved = ProductEnums.BomStatus.APPROVED.getValue();
         if (request.getBomId() != null) {
             root = mapper.selectBom(request.getBomId());
             if (root == null) {
                 throw new BusinessException(path + " 指定的BOM[" + request.getBomId() + "]不存在");
+            }
+            if (!com.jjx.product.service.BomVersionRules.isEligibleLocal(root.getApproveStatus(),
+                    root.getEffectiveDate(), root.getExpiryDate(), demandDate, approved)) {
+                throw new BusinessException(path + " 指定的BOM[" + bomLabel(root) + "]未处于已批准状态或不在 "
+                        + demandDate + " 的有效期内");
             }
         } else if (product.getCurrentBomId() != null) {
             root = mapper.selectBom(product.getCurrentBomId());
             if (root == null) {
                 throw new BusinessException(path + " 当前BOM[" + product.getCurrentBomId() + "]不存在");
             }
-        } else {
-            root = mapper.selectDefaultProductBom(product.getProductId(),
-                    ProductEnums.BomStatus.APPROVED.getValue());
-            if (root == null) {
-                throw new BusinessException(path + " 无适用已批准BOM，不能试算");
+            if (!com.jjx.product.service.BomVersionRules.isEligibleLocal(root.getApproveStatus(),
+                    root.getEffectiveDate(), root.getExpiryDate(), demandDate, approved)) {
+                throw new BusinessException(path + " 当前BOM[" + bomLabel(root) + "]未处于已批准状态或不在 "
+                        + demandDate + " 的有效期内");
             }
-            summary.getWarnings().add(path + " 未绑定当前BOM，按最新已批准 PRODUCT BOM["
-                    + bomLabel(root) + "] 试算");
+        }
+        if (root == null) {
+            // dev-20261111-019：版本资格唯一由 BomVersionRules 判定（不再用“最新已批准”兜底）。
+            Long resolvedBomId = bomVersionRules.resolveEffectiveVersion(product.getProductId(), null, demandDate).getBomId();
+            root = mapper.selectBom(resolvedBomId);
+            if (root == null) {
+                throw new BusinessException(path + " 有效BOM[" + resolvedBomId + "]不存在");
+            }
+            summary.getWarnings().add(path + " 按 " + demandDate + " 唯一有效版本[" + bomLabel(root) + "] 试算");
         }
         if (!Objects.equals(product.getProductId(), root.getProductId())) {
             throw new BusinessException(path + " 绑定BOM[" + bomLabel(root) + "]的产品归属不匹配");
