@@ -533,7 +533,7 @@ public class MaterialMasterService {
         material.setMaterialMeta(meta);
         material.setMaterialForm(form);
         material.setMaterialGrade(text(metaLabel + formLabel, "材料显示名", 30, false));
-        material.setUnit(unit);
+        material.setUnit(com.jjx.common.util.UnitCodes.requireDictUnit(unit, "物料单位"));
         material.setModel(text(dto.getModel(), "型号", 100, false));
         material.setBrand(text(dto.getBrand(), "品牌", 50, false));
         material.setColor(text(dto.getColor(), "颜色", 20, false));

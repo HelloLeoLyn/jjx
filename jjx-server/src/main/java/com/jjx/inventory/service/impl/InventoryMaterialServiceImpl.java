@@ -523,7 +523,8 @@ public class InventoryMaterialServiceImpl extends ServiceImpl<InventoryMaterialM
                 material.setSpecBasis(dimensions.thicknessMm() == null ? "SIZE" : "THICKNESS");
                 material.setSearchKeywords(StringUtils.trimToNull(dto.getSearchKeywords()));
                 validateMasterData(material, null);
-                material.setUnit(dto.getUnit());
+                // dev-20261113-003：单位必须以字典 unit 为真源，写入前归一并校验。
+                material.setUnit(com.jjx.common.util.UnitCodes.requireDictUnit(dto.getUnit(), "物料单位"));
                 material.setSupplierId(purchaseSupplierVO != null ? purchaseSupplierVO.getSupplierId() : null);
                 material.setSupplierName(supplierName);
                 material.setRemark(dto.getRemark());

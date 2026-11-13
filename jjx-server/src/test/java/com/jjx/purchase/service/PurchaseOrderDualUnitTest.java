@@ -36,6 +36,12 @@ class PurchaseOrderDualUnitTest {
         var entity = new PurchaseOrderItem(); org.springframework.beans.BeanUtils.copyProperties(b, entity);
         assertEquals(bd("51.2821"), PurchaseOrderServiceImpl.baseUnitCost(entity));
     }
+    @Test void rollAreaPriceTwentyYieldsNineSevenFive() {
+        var i = line("卷", "㎡", "0", "20"); PurchaseOrderServiceImpl.calculateItemPricing(i);
+        assertEquals(bd("975.00"), i.getAmount());
+        assertEquals(bd("48.7500"), i.getQuantity());
+    }
+
     @Test void fractionalRollRoundsUpAndAmountsRoundToCents() {
         var i = line("㎡", "卷", "49", "500"); PurchaseOrderServiceImpl.calculateItemPricing(i);
         assertEquals(6, i.getRollCount()); assertEquals(bd("3000.00"), i.getAmount());

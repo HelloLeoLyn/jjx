@@ -1038,12 +1038,9 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
         if (item.getRollWidthMm() == null && material != null) item.setRollWidthMm(material.getWidthMm());
     }
 
+    /** 单位别名统一走 UnitCodes（dev-20261113-003）；本类不再自写别名表。 */
     public static String normalizeUnit(String unit) {
-        if (unit == null) return null;
-        String value = unit.trim();
-        if (Set.of("㎡", "m²", "m2", "M2", "平方米", "平方").contains(value)) return "㎡";
-        if (Set.of("m", "M", "米").contains(value)) return "m";
-        return value;
+        return com.jjx.common.util.UnitCodes.normalize(unit);
     }
 
     private static BigDecimal requirePositive(BigDecimal value, String name) {
@@ -1067,36 +1064,43 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     public static void calculateItemPricing(PurchaseOrderItemDTO item) {
         String base = normalizeUnit(item.getUnit());
         if (StringUtils.isBlank(base)) throw new BusinessException("物料基本单位不能为空");
-        String purchase = normalizeUnit(StringUtils.defaultIfBlank(item.getPurchaseUnit(), base));
-        String price = normalizeUnit(StringUtils.defaultIfBlank(item.getPriceUnit(), base));
+        // dev-20261113-003：采购/价格单位也必须属于字典单位（卷→ROLL、米→M）。
+        base = com.jjx.common.util.UnitCodes.requireDictUnit(base, "物料基本单位");
+        String purchase = com.jjx.common.util.UnitCodes.requireDictUnit(
+                StringUtils.defaultIfBlank(item.getPurchaseUnit(), base), "采购单位");
+        String price = com.jjx.common.util.UnitCodes.requireDictUnit(
+                StringUtils.defaultIfBlank(item.getPriceUnit(), base), "价格单位");
+        item.setUnit(base);
         item.setPurchaseUnit(purchase); item.setPriceUnit(price);
         validateDimension(item.getRollLengthM(), 4, 8, "每卷长度(m)");
         validateDimension(item.getRollWidthMm(), 2, 10, "卷宽(mm)");
         BigDecimal quantity = Objects.requireNonNullElse(item.getQuantity(), BigDecimal.ZERO);
         BigDecimal priceQty;
-        if ("卷".equals(purchase)) {
+        if (com.jjx.common.util.UnitCodes.ROLL.equals(purchase)) {
             if (item.getRollCount() == null || item.getRollCount() <= 0) throw new BusinessException("请补齐正整数卷数");
             BigDecimal area = rollArea(item);
             BigDecimal count = BigDecimal.valueOf(item.getRollCount());
             if ("㎡".equals(base)) quantity = count.multiply(area);
-            else if ("m".equals(base)) quantity = count.multiply(item.getRollLengthM());
+            else if (com.jjx.common.util.UnitCodes.M.equals(base)) quantity = count.multiply(item.getRollLengthM());
             else throw new BusinessException("按卷采购仅支持㎡或m物料基本单位");
             item.setQuantity(quantity.setScale(4, RoundingMode.HALF_UP));
-            if ("卷".equals(price)) priceQty = count;
+            if (com.jjx.common.util.UnitCodes.ROLL.equals(price)) priceQty = count;
             else if ("㎡".equals(price)) priceQty = count.multiply(area);
-            else if ("m".equals(price)) priceQty = count.multiply(item.getRollLengthM());
+            else if (com.jjx.common.util.UnitCodes.M.equals(price)) priceQty = count.multiply(item.getRollLengthM());
             else throw new BusinessException("不支持的价格单位，请选择卷、㎡或m");
         } else {
             if (!Objects.equals(purchase, base)) throw new BusinessException("采购单位请选择物料基本单位或卷");
             if (Objects.equals(purchase, price)) priceQty = quantity;
-            else if ("卷".equals(price)) {
+            else if (com.jjx.common.util.UnitCodes.ROLL.equals(price)) {
                 BigDecimal area = rollArea(item);
-                BigDecimal perRoll = "㎡".equals(base) ? area : "m".equals(base) ? item.getRollLengthM() : null;
+                BigDecimal perRoll = "㎡".equals(base) ? area
+                        : com.jjx.common.util.UnitCodes.M.equals(base) ? item.getRollLengthM() : null;
                 if (perRoll == null) throw new BusinessException("无法将采购单位换算为卷");
                 try { item.setRollCount(quantity.divide(perRoll, 0, RoundingMode.CEILING).intValueExact()); }
                 catch (ArithmeticException e) { throw new BusinessException("折算卷数超出范围"); }
                 priceQty = BigDecimal.valueOf(item.getRollCount());
-            } else if (Set.of("㎡", "m").contains(base) && Set.of("㎡", "m").contains(price)) {
+            } else if (Set.of("㎡", com.jjx.common.util.UnitCodes.M).contains(base)
+                    && Set.of("㎡", com.jjx.common.util.UnitCodes.M).contains(price)) {
                 rollArea(item); // 不同单位不允许缺失卷维度后按1换算。
                 BigDecimal widthM = item.getRollWidthMm().divide(BigDecimal.valueOf(1000));
                 priceQty = "㎡".equals(price) ? quantity.multiply(widthM) : quantity.divide(widthM, 12, RoundingMode.HALF_UP);
@@ -1113,7 +1117,8 @@ public class PurchaseOrderServiceImpl extends ServiceImpl<PurchaseOrderMapper, P
     private static BigDecimal equivalentPrice(PurchaseOrderItemDTO item) {
         BigDecimal area = null;
         if ("㎡".equals(normalizeUnit(item.getUnit()))) area = item.getQuantity();
-        else if ("m".equals(normalizeUnit(item.getUnit())) && item.getQuantity() != null && item.getRollWidthMm() != null)
+        else if (com.jjx.common.util.UnitCodes.M.equals(normalizeUnit(item.getUnit()))
+                && item.getQuantity() != null && item.getRollWidthMm() != null)
             area = item.getQuantity().multiply(item.getRollWidthMm()).divide(BigDecimal.valueOf(1000));
         if (area == null || area.signum() <= 0 || item.getAmount() == null) return null;
         return item.getAmount().divide(area, 2, RoundingMode.HALF_UP);

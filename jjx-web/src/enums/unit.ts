@@ -12,6 +12,13 @@ export const UnitEnum = {
     categoryName: '数量单位',
     englishName: 'piece',
   },
+  PIN: {
+    code: 'PIN',
+    name: '针',
+    category: 'other',
+    categoryName: '其他单位',
+    englishName: 'pin',
+  },
   SET: {
     code: 'SET',
     name: '套',
@@ -19,21 +26,6 @@ export const UnitEnum = {
     categoryName: '数量单位',
     englishName: 'set',
   },
-  BOX: {
-    code: 'BOX',
-    name: '盒',
-    category: 'quantity',
-    categoryName: '数量单位',
-    englishName: 'box',
-  },
-  CTN: {
-    code: 'CTN',
-    name: '箱',
-    category: 'quantity',
-    categoryName: '数量单位',
-    englishName: 'carton',
-  },
-
   // ==================== 长度单位 ====================
   MM: {
     code: 'MM',
@@ -81,7 +73,7 @@ export const UnitEnum = {
     englishName: 'square_centimeter',
   },
   SQM: {
-    code: 'SQM',
+    code: '㎡',
     name: '平方米',
     category: 'area',
     categoryName: '面积单位',

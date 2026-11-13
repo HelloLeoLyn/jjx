@@ -16,8 +16,6 @@ public enum UnitEnum {
     // ==================== 数量单位 ====================
     PCS("PCS", "个", "quantity", 1d, "piece"),
     SET("SET", "套", "quantity", 1d, "set"),
-    BOX("BOX", "盒", "quantity", 1d, "box"),
-    CARTON("CTN", "箱", "quantity", 1d, "carton"),
     
     // ==================== 长度单位 ====================
     MM("MM", "毫米", "length", 0.001, "millimeter"),
@@ -27,7 +25,7 @@ public enum UnitEnum {
     FT("FT", "英尺", "length", 0.3048, "foot"),
     
     // ==================== 面积单位 ====================
-    SQM("SQM", "平方米", "area", 1d, "square_meter"),
+    SQM("㎡", "平方米", "area", 1d, "square_meter"),
     SQCM("SQCM", "平方厘米", "area", 0.0001, "square_centimeter"),
     SQMM("SQMM", "平方毫米", "area", 0.000001, "square_millimeter"),
     
@@ -49,6 +47,7 @@ public enum UnitEnum {
     // ==================== 其他单位 ====================
     ROLL("ROLL", "卷", "other", 1d, "roll"),
     SHEET("SHEET", "张", "other", 1d, "sheet"),
+    PIN("PIN", "针", "other", 1d, "pin"),
     PAIR("PAIR", "双", "other", 1d, "pair");
 
     private final String code;
