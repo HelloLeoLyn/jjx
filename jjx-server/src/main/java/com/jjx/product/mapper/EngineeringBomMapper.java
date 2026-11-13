@@ -13,6 +13,43 @@ import java.util.List;
  */
 @Mapper
 public interface EngineeringBomMapper extends BaseMapper<EngineeringBom> {
+    @org.apache.ibatis.annotations.Select({
+        "<script>",
+        "<bind name='draft' value='@com.jjx.product.enums.ProductEnums$BomStatus@DRAFT.getValue()'/>",
+        "<bind name='rejected' value='@com.jjx.product.enums.ProductEnums$BomStatus@REJECT.getValue()'/>",
+        "<bind name='pending' value='@com.jjx.product.enums.ProductEnums$BomStatus@REVIEWING.getValue()'/>",
+        "SELECT COALESCE(b.output_type,'PRODUCT') output_type, COALESCE(b.output_id,b.product_id) output_id,",
+        "MAX(b.product_id) product_id, MAX(CASE WHEN COALESCE(b.output_type,'PRODUCT')='MATERIAL' THEN m.material_code ELSE p.product_code END) product_code,",
+        "MAX(CASE WHEN COALESCE(b.output_type,'PRODUCT')='MATERIAL' THEN m.material_name ELSE p.product_name END) product_name,",
+        "COALESCE(MAX(m.specification), MAX(CAST(p.spec_json AS CHAR))) specification,",
+        "COUNT(*) version_count, MAX(CASE WHEN b.approve_status IN (#{draft},#{rejected}) THEN 1 ELSE 0 END) has_draft,",
+        "MAX(CASE WHEN b.approve_status=#{pending} THEN 1 ELSE 0 END) has_pending, MAX(COALESCE(b.update_time,b.create_time)) update_time",
+        "FROM engineering_bom b LEFT JOIN product p ON COALESCE(b.output_type,'PRODUCT')='PRODUCT' AND p.product_id=COALESCE(b.output_id,b.product_id)",
+        "LEFT JOIN inventory_material m ON b.output_type='MATERIAL' AND m.material_id=b.output_id",
+        "WHERE COALESCE(b.output_id,b.product_id) IS NOT NULL",
+        "<if test='query.productId != null'>AND b.product_id=#{query.productId}</if>",
+        "<if test='query.productCode != null and query.productCode != &quot;&quot;'>AND (CASE WHEN b.output_type='MATERIAL' THEN m.material_code ELSE p.product_code END) LIKE CONCAT('%',#{query.productCode},'%')</if>",
+        "<if test='query.productName != null and query.productName != &quot;&quot;'>AND (CASE WHEN b.output_type='MATERIAL' THEN m.material_name ELSE p.product_name END) LIKE CONCAT('%',#{query.productName},'%')</if>",
+        "GROUP BY COALESCE(b.output_type,'PRODUCT'), COALESCE(b.output_id,b.product_id)",
+        "HAVING MAX(CASE WHEN 1=1",
+        "<if test='query.bomCode != null and query.bomCode != &quot;&quot;'>AND b.bom_code LIKE CONCAT('%',#{query.bomCode},'%')</if>",
+        "<if test='query.bomName != null and query.bomName != &quot;&quot;'>AND b.bom_name LIKE CONCAT('%',#{query.bomName},'%')</if>",
+        "<if test='query.bomType != null and query.bomType != &quot;&quot;'>AND b.bom_type=#{query.bomType}</if>",
+        "<if test='query.approveStatus != null and query.approveStatus != &quot;&quot;'>AND b.approve_status=#{query.approveStatus}</if>",
+        "THEN 1 ELSE 0 END)=1",
+        "ORDER BY output_type,output_id",
+        "</script>"
+    })
+    com.baomidou.mybatisplus.core.metadata.IPage<com.jjx.product.service.IEngineeringBomService.ProductVersionRow> selectProductPage(
+            com.baomidou.mybatisplus.extension.plugins.pagination.Page<com.jjx.product.service.IEngineeringBomService.ProductVersionRow> page,
+            @Param("query") com.jjx.product.service.IEngineeringBomService.BomListQuery query);
+
+
+
+    @Select("SELECT b.* FROM engineering_bom b WHERE COALESCE(output_type,'PRODUCT')=#{outputType} "
+            + "AND COALESCE(output_id,product_id)=#{outputId} ORDER BY bom_id DESC")
+    List<com.jjx.product.service.IEngineeringBomService.BomVersionRow> selectObjectVersions(
+            @Param("outputType") String outputType, @Param("outputId") Long outputId);
 
     /** 父 BOM 保存行锁，避免并发覆盖正在编辑的明细。 */
     @Select("SELECT * FROM engineering_bom WHERE bom_id = #{bomId} FOR UPDATE")

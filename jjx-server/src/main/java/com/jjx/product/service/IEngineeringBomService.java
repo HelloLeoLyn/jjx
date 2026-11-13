@@ -16,6 +16,55 @@ import java.util.List;
  */
 public interface IEngineeringBomService extends IService<EngineeringBom> {
 
+
+    /** 产品/物料对象聚合行；仅为查询投影，不持久化派生值。 */
+    @lombok.Data
+    class ProductVersionRow {
+        private String outputType;
+        private Long outputId;
+        private Long productId;
+        private String productCode;
+        private String productName;
+        private String specification;
+        private Long currentId;
+        private String currentVersion;
+        private java.util.Date currentEffectiveDate;
+        private Long latestId;
+        private String latestVersion;
+        private long versionCount;
+        private boolean hasDraft;
+        private boolean hasPending;
+        private java.time.LocalDateTime updateTime;
+    }
+
+    /** 按数值分段比较版本，避免 V9.9 的字典序大于 V10.0。 */
+    static int compareVersions(String left, String right) {
+        String a = left == null ? "" : left.trim().replaceFirst("^[vV]", "");
+        String b = right == null ? "" : right.trim().replaceFirst("^[vV]", "");
+        if (a.matches("\\d+(\\.\\d+)*") && b.matches("\\d+(\\.\\d+)*")) {
+            String[] x = a.split("\\.");
+            String[] y = b.split("\\.");
+            for (int i = 0; i < Math.max(x.length, y.length); i++) {
+                int result = new java.math.BigInteger(i < x.length ? x[i] : "0")
+                        .compareTo(new java.math.BigInteger(i < y.length ? y[i] : "0"));
+                if (result != 0) return result;
+            }
+            return 0;
+        }
+        return a.compareToIgnoreCase(b);
+    }
+
+    @lombok.Data
+    @lombok.EqualsAndHashCode(callSuper = true)
+    class BomVersionRow extends EngineeringBomVO {
+        private String approveBy;
+        private java.time.LocalDateTime approveTime;
+    }
+
+    List<BomVersionRow> getObjectVersions(String outputType, Long outputId);
+
+    PageResult<ProductVersionRow> getProductPage(BomListQuery query);
+
     /**
      * 获取产品BOM列表
      */

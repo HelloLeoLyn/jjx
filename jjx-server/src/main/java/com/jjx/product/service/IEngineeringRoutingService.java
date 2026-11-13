@@ -13,6 +13,10 @@ import java.util.Map;
 
 public interface IEngineeringRoutingService extends IService<EngineeringRouting> {
 
+    PageResult<com.jjx.product.service.IEngineeringBomService.ProductVersionRow> getProductPage(EngineeringRoutingQueryDTO query);
+
+    List<EngineeringRoutingVO> getObjectVersions(String outputType, Long outputId);
+
     List<String> suggestRemarks(RoutingRemarkQueryDTO query);
 
     /**

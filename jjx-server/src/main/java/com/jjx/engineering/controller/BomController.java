@@ -90,6 +90,17 @@ public class BomController extends BaseController {
     /**
      * 获取BOM列表
      */
+    @GetMapping("/object-versions")
+    public Result<List<com.jjx.product.service.IEngineeringBomService.BomVersionRow>> objectVersions(@RequestParam(defaultValue = "PRODUCT") String outputType,
+                                               @RequestParam Long outputId) {
+        return Result.success(productBomService.getObjectVersions(outputType, outputId));
+    }
+
+    @GetMapping("/product-page")
+    public Result<PageResult<com.jjx.product.service.IEngineeringBomService.ProductVersionRow>> productPage(IEngineeringBomService.BomListQuery query) {
+        return Result.success(productBomService.getProductPage(query));
+    }
+
     @GetMapping("/page")
     public Result<PageResult<IEngineeringBomService.BomListRow>> listPage(IEngineeringBomService.BomListQuery query) {
         return Result.success(productBomService.getBomListPage(query));

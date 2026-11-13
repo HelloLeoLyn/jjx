@@ -1,486 +1,279 @@
 <template>
-  <div class="product-route-container">
-    <!-- 搜索区域 -->
-    <RouteSearch @search="handleSearch" @reset="handleReset" />
-
-    <!-- 操作按钮区域 -->
-    <el-card class="operation-card" shadow="never">
-      <div class="operation-bar">
-        <el-button
-          v-hasPermi="['engineering:routing:add']"
-          type="primary"
-          icon="Plus"
-          @click="handleAdd"
-          >新增工艺路线</el-button
-        >
-        <el-button
-          type="warning"
-          plain
-          icon="CopyDocument"
-          :disabled="single"
-          @click="handleCopySelected"
-          >复制版本</el-button
-        >
-      </div>
-    </el-card>
-
-    <!-- 表格区域 -->
-    <el-card class="table-card" shadow="never">
-      <el-table
-        :data="tableData"
-        v-loading="loading"
-        border
-        stripe
-        style="width: 100%"
-        @selection-change="handleSelectionChange"
+  <div class="app-container">
+    <el-card shadow="never">
+      <RouteSearch @search="handleSearch" @reset="reset" />
+      <el-button v-hasPermi="['engineering:routing:add']" type="primary" @click="add"
+        >新增工艺路线</el-button
       >
-        <el-table-column type="selection" width="50" align="center" />
-        <el-table-column type="index" label="序号" width="60" align="center" />
-        <el-table-column prop="routingCode" label="路线编码" width="140">
-          <template #default="scope">
-            <el-button link type="primary" @click="handleDetail(scope.row)">{{
-              scope.row.routingCode
-            }}</el-button>
+      <el-table v-loading="loading" :data="rows" :row-key="rowKey" style="margin-top: 16px">
+        <el-table-column prop="productCode" label="产品/对象编码" min-width="160" />
+        <el-table-column prop="productName" label="产品/对象名称" min-width="160" />
+        <el-table-column label="规格" min-width="140" show-overflow-tooltip
+          ><template #default="{ row }">{{
+            formatSpecification(row.specification)
+          }}</template></el-table-column
+        >
+        <el-table-column label="当前版本（生效日）" min-width="190"
+          ><template #default="{ row }"
+            >{{ row.currentVersion || '—' }}（{{
+              row.currentEffectiveDate ? parseTime(row.currentEffectiveDate, '{y}-{m}-{d}') : '—'
+            }}）</template
+          ></el-table-column
+        >
+        <el-table-column prop="latestVersion" label="最新版本" width="110" />
+        <el-table-column label="版本数" width="90"
+          ><template #default="{ row }"
+            ><el-button link type="primary" @click="openVersions(row)">{{
+              row.versionCount
+            }}</el-button></template
+          ></el-table-column
+        >
+        <el-table-column label="状态摘要" min-width="150"
+          ><template #default="{ row }"
+            ><el-tag v-if="row.hasDraft" type="info">有草稿</el-tag>
+            <el-tag v-if="row.hasPending" type="warning">有待审</el-tag
+            ><span v-if="!row.hasDraft && !row.hasPending">—</span></template
+          ></el-table-column
+        >
+        <el-table-column label="最近修改时间" width="170"
+          ><template #default="{ row }">{{
+            parseTime(row.updateTime) || '—'
+          }}</template></el-table-column
+        >
+        <el-table-column label="操作" width="280"
+          ><template #default="{ row }">
+            <el-button link type="primary" @click="openTrace(row)">流水</el-button>
+            <el-button
+              v-hasPermi="['engineering:routing:edit']"
+              link
+              type="primary"
+              @click="openVersions(row)"
+              >设置当前版本</el-button
+            >
+            <el-button link type="primary" @click="openVersions(row)">版本维护</el-button>
           </template></el-table-column
         >
-        <el-table-column
-          prop="routingName"
-          label="路线名称"
-          min-width="160"
-          show-overflow-tooltip
-        />
-        <el-table-column prop="productCode" label="产品编码" width="120"> </el-table-column>
-        <el-table-column prop="productName" label="产品名称" width="150" show-overflow-tooltip />
-        <el-table-column prop="routingVersion" label="版本" width="80" align="center" />
-        <el-table-column prop="processCount" label="工序数" width="70" align="center" />
-        <el-table-column prop="totalLaborHours" label="总人工工时" width="100" align="right" />
-        <el-table-column prop="totalMachineHours" label="总机器工时" width="100" align="right" />
-        <el-table-column prop="isCurrent" label="当前版本" width="80" align="center">
-          <template #default="scope">
-            <el-tag :type="scope.row.isCurrent === 1 ? 'success' : 'info'" size="small">
-              {{ scope.row.isCurrentName }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="approveStatus" label="审核状态" width="90" align="center">
-          <template #default="scope">
-            <el-tag :type="RouteStatusEnum.getTagProps(scope.row.approveStatus).type" size="small">
-              {{ RouteStatusEnum.getLabel(scope.row.approveStatus) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createBy" label="创建人" width="100" />
-        <el-table-column prop="createTime" label="创建时间" width="170" />
-        <TableActionColumn
-          :actions="routeActions"
-          min-width="290"
-          display="text"
-          @action="handleRouteAction"
-        />
       </el-table>
-
-      <div class="pagination-container">
-        <el-pagination
-          v-model:current-page="queryParams.pageNum"
-          v-model:page-size="queryParams.pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-        />
-      </div>
+      <pagination
+        v-show="total > 0"
+        :total="total"
+        v-model:page="query.pageNum"
+        v-model:limit="query.pageSize"
+        @pagination="loadData"
+      />
     </el-card>
-
-    <!-- 详情对话框 -->
-    <RouteDetailDialog v-model="detailDialogVisible" :routing-id="currentRoutingId" />
-
+    <el-dialog
+      v-model="versionsVisible"
+      :title="`${selected?.productName || ''} · 版本维护`"
+      width="850px"
+    >
+      <el-table v-loading="versionsLoading" :data="versions">
+        <el-table-column prop="routingVersion" label="版本号" />
+        <el-table-column label="状态"
+          ><template #default="{ row }">{{
+            RouteStatusEnum.getLabel(row.approveStatus)
+          }}</template></el-table-column
+        >
+        <el-table-column prop="createBy" label="创建人" /><el-table-column
+          prop="createTime"
+          label="创建时间"
+          min-width="160"
+        />
+        <el-table-column label="操作" min-width="200"
+          ><template #default="{ row }">
+            <el-button link @click="view(row)">查看</el-button>
+            <el-button
+              v-if="RouteStatusEnum.canDo(row.approveStatus, ProductActions.EDIT)"
+              v-hasPermi="['engineering:routing:edit']"
+              link
+              type="primary"
+              @click="edit(row)"
+              >编辑</el-button
+            >
+            <el-button
+              v-if="row.approveStatus === RouteStatusEnum.APPROVED.value"
+              v-hasPermi="['engineering:routing:edit']"
+              link
+              type="primary"
+              @click="setCurrent(row)"
+              >设为当前</el-button
+            >
+          </template></el-table-column
+        >
+      </el-table>
+    </el-dialog>
     <RouteFormDialog
       ref="formDialogRef"
-      v-model="formDialogVisible"
-      :routing-id="formRoutingId"
-      @success="loadData"
+      v-model="formVisible"
+      :routing-id="formId"
+      @success="refresh"
     />
-
-    <!-- 版本对比对话框（DEV-768） -->
-    <RouteVersionCompareDialog
-      v-model="versionCompareVisible"
-      :product-id="compareProductId"
-      :product-name="compareProductName"
-    />
-
-    <!-- 复制版本对话框 -->
-    <RouteCopyDialog
-      v-model="copyDialogVisible"
-      :current-version="currentVersion"
-      @confirm="handleCopyConfirm"
-    />
-
-    <!-- 审批对话框 -->
-    <RouteApproveDialog
-      v-model="approveDialogVisible"
-      :routing-id="currentRoutingId"
-      @approve="handleApprovePass"
-      @reject="handleApproveReject"
-    />
-
-    <!-- 流水抽屉（bizType=routing，按 bizId 聚合该路线全部操作） -->
-    <TraceTimeline
-      v-model="traceVisible"
-      :biz-type="'routing'"
-      :biz-id="String(traceRoutingId || '')"
-    />
+    <RouteDetailDialog v-model="detailVisible" :routing-id="detailId" />
+    <TraceTimeline v-model="traceVisible" biz-type="routing" :biz-id="String(traceId || '')" />
   </div>
 </template>
-
 <script setup lang="ts">
-defineOptions({
-  name: 'ProductRoute',
-})
-
 import { ref, reactive, onMounted } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-
-import { productRouteApi } from '@/api/product/routing'
-
-import type { ProductRouteQueryParams, EngineeringRoutingVO } from '@/types/product/routing'
-
-import RouteSearch from './components/RouteSearch.vue'
-import RouteDetailDialog from './components/RouteDetailDialog.vue'
-import RouteCopyDialog from './components/RouteCopyDialog.vue'
-import RouteApproveDialog from './components/RouteApproveDialog.vue'
-import RouteVersionCompareDialog from './components/RouteVersionCompareDialog.vue'
-import RouteFormDialog from './components/RouteFormDialog.vue'
-import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import request from '@/utils/request'
+import { parseTime } from '@/utils/format'
 import { RouteStatusEnum, ProductActions } from '@/enums/product'
-import type { TableAction } from '@/components/common-ui/TableActionColumn/types'
-
-const routeActions: TableAction<EngineeringRoutingVO>[] = [
-  { key: 'trace', label: '流水', permission: 'engineering:routing:view' },
-
-  {
-    key: 'submit',
-    label: '提交审批',
-    type: 'warning',
-    permission: 'engineering:routing:edit',
-    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.SUBMIT),
-  },
-  {
-    key: 'approve',
-    label: '审批',
-    type: 'warning',
-    permission: ['engineering:routing:approve', 'engineering:routing:reject'],
-    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.APPROVE),
-  },
-  {
-    key: 'setCurrent',
-    label: '设为默认',
-    type: 'success',
-    permission: 'engineering:routing:edit',
-    visible: ({ row }) =>
-      row.approveStatus === RouteStatusEnum.APPROVED.value && row.isCurrent !== 1,
-  },
-  {
-    key: 'edit',
-    label: '编辑',
-    permission: 'engineering:routing:edit',
-    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.EDIT),
-  },
-  {
-    key: 'compare',
-    label: '版本对比',
-    type: 'warning',
-    permission: 'engineering:routing:view',
-  },
-  {
-    key: 'delete',
-    label: '删除',
-    type: 'danger',
-    permission: 'engineering:routing:delete',
-    visible: ({ row }) => RouteStatusEnum.canDo(row.approveStatus, ProductActions.DELETE),
-  },
-]
-// ==================== 查询参数 ====================
-const queryParams = reactive<ProductRouteQueryParams>({
+import { productRouteApi } from '@/api/product/routing'
+import TraceTimeline from '@/components/TraceTimeline/index.vue'
+import RouteSearch from './components/RouteSearch.vue'
+import RouteFormDialog from './components/RouteFormDialog.vue'
+import RouteDetailDialog from './components/RouteDetailDialog.vue'
+import type { ProductQueryParams } from '@/types/product'
+import type { EngineeringRoutingVO } from '@/types/product/routing'
+type Version = EngineeringRoutingVO
+interface ProductRow {
+  outputType: string
+  outputId: number
+  productCode?: string
+  productName?: string
+  specification?: string
+  currentId?: number
+  currentVersion?: string
+  currentEffectiveDate?: string
+  latestId: number
+  latestVersion: string
+  versionCount: number
+  hasDraft: boolean
+  hasPending: boolean
+  updateTime?: string
+}
+const query = reactive({
   pageNum: 1,
   pageSize: 10,
-  routingCode: undefined,
-  routingName: undefined,
-  productId: undefined,
-  productCode: undefined,
-  approveStatus: undefined,
-  isCurrent: undefined,
-  orderByColumn: 'createTime',
-  isAsc: 'desc',
+  productCode: '',
+  routingCode: '',
+  routingName: '',
+  productId: undefined as number | undefined,
+  isCurrent: undefined as number | undefined,
+  approveStatus: undefined as number | undefined,
 })
-
-// ==================== 表格数据 ====================
-const tableData = ref<EngineeringRoutingVO[]>([])
+const rows = ref<ProductRow[]>([])
 const total = ref(0)
 const loading = ref(false)
-const single = ref(true)
-const selectedRoute = ref<EngineeringRoutingVO | null>(null)
-const handleSelectionChange = (selection: EngineeringRoutingVO[]) => {
-  selectedRoute.value = selection.length === 1 ? selection[0] : null
-  single.value = selection.length !== 1
+let listRequest = 0
+const rowKey = (row: ProductRow) => `${row.outputType}:${row.outputId}`
+const formatSpecification = (value?: string) => {
+  if (!value) return '—'
+  try {
+    const parsed = JSON.parse(value)
+    if (Array.isArray(parsed))
+      return (
+        parsed
+          .map((x) => `${x.name}: ${x.value}${x.unit === '-' ? '' : x.unit || ''}`)
+          .join(' / ') || '—'
+      )
+    if (parsed && typeof parsed === 'object') {
+      const dimensions = [parsed.length, parsed.width, parsed.height].filter((x) => Number(x) > 0)
+      return dimensions.length ? `${dimensions.join(' × ')} ${parsed.unit || 'mm'}` : '—'
+    }
+    return String(parsed)
+  } catch {
+    return value
+  }
 }
-const handleCopySelected = () => {
-  if (!selectedRoute.value) return
-  handleCopy(selectedRoute.value)
-}
-
-const handleRouteAction = (key: string, row: EngineeringRoutingVO) => {
-  if (key === 'edit') handleEdit(row)
-  if (key === 'compare') handleVersionCompare(row)
-  if (key === 'submit') void handleSubmitApprove(row)
-  if (key === 'approve') handleApprove(row)
-  if (key === 'setCurrent') handleSetCurrentRoute(row)
-  if (key === 'delete') handleDelete(row)
-  if (key === 'trace') handleOpenTrace(row)
-}
-
-// ==================== 产品选项 ====================
-interface ProductOption {
-  productId: number
-  productCode: string
-  productName: string
-}
-
-// ==================== 对话框状态 ====================
-const detailDialogVisible = ref(false)
-const formDialogVisible = ref(false)
-const formRoutingId = ref<number | undefined>(undefined)
-const formDialogRef = ref<InstanceType<typeof RouteFormDialog>>()
-const copyDialogVisible = ref(false)
-const approveDialogVisible = ref(false)
-
-const currentRoutingId = ref<number | undefined>(undefined)
-const currentVersion = ref('')
-
-// ==================== 数据加载 ====================
 const loadData = async () => {
+  const requestId = ++listRequest
   loading.value = true
   try {
-    const response = await productRouteApi.listProductRoute(queryParams)
-    const result = response.data
-    if (result) {
-      tableData.value = result.records || []
-      total.value = result.total || 0
-    }
-  } catch (error) {
-    console.error('加载工艺路线列表失败:', error)
-    ElMessage.error('加载工艺路线列表失败')
+    const response = await request.get('/engineering/routings/product-page', { params: query })
+    if (requestId !== listRequest) return
+    rows.value = response.data?.records || []
+    total.value = response.data?.total || 0
   } finally {
-    loading.value = false
+    if (requestId === listRequest) loading.value = false
   }
 }
-
-// ==================== 搜索 ====================
-const handleSearch = (params: ProductRouteQueryParams) => {
-  Object.assign(queryParams, params)
-  loadData()
+const handleSearch = (params: ProductQueryParams) => {
+  Object.assign(query, params)
+  query.pageNum = 1
+  void loadData()
 }
-
-const handleReset = () => {
-  Object.assign(queryParams, {
+const search = () => {
+  query.pageNum = 1
+  void loadData()
+}
+const reset = () => {
+  Object.assign(query, {
     pageNum: 1,
     pageSize: 10,
-    routingCode: undefined,
-    routingName: undefined,
-    productId: undefined,
-    productCode: undefined,
+    productCode: '',
+    routingCode: '',
+    routingName: '',
+    productId: undefined as number | undefined,
+    isCurrent: undefined as number | undefined,
     approveStatus: undefined,
-    isCurrent: undefined,
-    orderByColumn: 'createTime',
-    isAsc: 'desc',
   })
-  loadData()
+  void loadData()
 }
-
-// ==================== 分页 ====================
-const handleSizeChange = (val: number) => {
-  queryParams.pageSize = val
-  loadData()
-}
-
-const handleCurrentChange = (val: number) => {
-  queryParams.pageNum = val
-  loadData()
-}
-
-// ==================== 新增 ====================
-const handleAdd = () => {
-  formRoutingId.value = undefined
-  formDialogVisible.value = true
-}
-
-// ==================== 编辑 ====================
-const handleEdit = (row: EngineeringRoutingVO) => {
-  formRoutingId.value = row.routingId
-  formDialogVisible.value = true
-}
-
-// ==================== 删除 ====================
-const handleDelete = (row: EngineeringRoutingVO) => {
-  ElMessageBox.confirm(
-    `确定要删除工艺路线 "${row.routingName}" (${row.routingVersion}) 吗？`,
-    '提示',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  )
-    .then(async () => {
-      try {
-        await productRouteApi.removeProductRoute(row.routingId)
-        ElMessage.success('删除成功')
-        loadData()
-      } catch (error) {
-        console.error('删除工艺路线失败:', error)
-      }
+const selected = ref<ProductRow>()
+const versions = ref<Version[]>([])
+const versionsVisible = ref(false)
+const versionsLoading = ref(false)
+let versionRequest = 0
+const loadVersions = async () => {
+  if (!selected.value) return
+  const requestId = ++versionRequest
+  versionsLoading.value = true
+  try {
+    const response = await request.get('/engineering/routings/object-versions', {
+      params: { outputType: selected.value.outputType, outputId: selected.value.outputId },
     })
-    .catch(() => {
-      // 取消删除
-    })
+    if (requestId === versionRequest) versions.value = response.data || []
+  } finally {
+    if (requestId === versionRequest) versionsLoading.value = false
+  }
 }
-
-// ==================== 详情 ====================
-const handleDetail = (row: EngineeringRoutingVO) => {
-  currentRoutingId.value = row.routingId
-  detailDialogVisible.value = true
+const openVersions = (row: ProductRow) => {
+  selected.value = row
+  versions.value = []
+  versionsVisible.value = true
+  void loadVersions()
 }
+const refresh = async () => {
+  await loadData()
+  if (versionsVisible.value) await loadVersions()
+}
+const formVisible = ref(false)
+const formId = ref<number>()
+const formDialogRef = ref<InstanceType<typeof RouteFormDialog>>()
+const detailVisible = ref(false)
+const detailId = ref<number>()
 
-// ==================== 流水抽屉 ====================
+const add = () => {
+  formId.value = undefined
+  formVisible.value = true
+}
+const edit = (row: Version) => {
+  formId.value = row.routingId
+  formVisible.value = true
+}
+const view = (row: Version) => {
+  detailId.value = row.routingId
+  detailVisible.value = true
+}
+const setCurrent = async (row: Version) => {
+  await ElMessageBox.confirm(`将 ${row.routingVersion} 设为当前版本？`, '设置当前版本', {
+    type: 'warning',
+  })
+  await productRouteApi.setCurrentProductRoute(row.routingId)
+  ElMessage.success('已设置当前版本')
+  await refresh()
+}
 const traceVisible = ref(false)
-const traceRoutingId = ref<number | undefined>(undefined)
-const handleOpenTrace = (row: EngineeringRoutingVO) => {
-  traceRoutingId.value = row.routingId
+const traceId = ref<number>()
+const openTrace = (row: ProductRow) => {
+  traceId.value = row.currentId || row.latestId
   traceVisible.value = true
 }
-
-// 版本对比（DEV-768）
-const versionCompareVisible = ref(false)
-const compareProductId = ref<number | null>(null)
-const compareProductName = ref('')
-function handleVersionCompare(row: EngineeringRoutingVO) {
-  compareProductId.value = row.productId ?? null
-  compareProductName.value = row.productName || ''
-  versionCompareVisible.value = true
-}
-
-// ==================== 复制版本 ====================
-const handleCopy = (row: EngineeringRoutingVO) => {
-  currentRoutingId.value = row.routingId
-  currentVersion.value = row.routingVersion
-  copyDialogVisible.value = true
-}
-
-const handleCopyConfirm = async (newVersion: string) => {
-  try {
-    await productRouteApi.copyProductRoute(currentRoutingId.value!, newVersion)
-    ElMessage.success('复制成功')
-    copyDialogVisible.value = false
-    loadData()
-  } catch (error) {
-    console.error('复制工艺路线失败:', error)
-  }
-}
-
-// ==================== 提交审批 ====================
-const handleSubmitApprove = async (row: EngineeringRoutingVO) => {
-  try {
-    await productRouteApi.submitProductRoute(row.routingId)
-    ElMessage.success('已提交审批')
-    loadData()
-  } catch (error) {
-    console.error('提交审批失败:', error)
-  }
-}
-
-// ==================== 审批 ====================
-const handleApprove = (row: EngineeringRoutingVO) => {
-  currentRoutingId.value = row.routingId
-  approveDialogVisible.value = true
-}
-
-// 设为当前版本（2026-08-18：审批通过后需手动设为当前生效，生成计划/领料依赖）
-const handleSetCurrentRoute = (row: EngineeringRoutingVO) => {
-  ElMessageBox.confirm(
-    `将工艺路线【${row.routingCode}】设为当前版本？（同产品其它路线将取消当前标记）`,
-    '设为默认',
-    {
-      type: 'warning',
-    }
-  )
-    .then(async () => {
-      await productRouteApi.setCurrentProductRoute(row.routingId)
-      ElMessage.success('已设为当前版本')
-      loadData()
-    })
-    .catch(() => {})
-}
-
-const handleApprovePass = async (remark?: string) => {
-  try {
-    await productRouteApi.approveProductRoute(currentRoutingId.value!, remark)
-    ElMessage.success('审批通过')
-    approveDialogVisible.value = false
-    loadData()
-  } catch (error) {
-    console.error('审批失败:', error)
-  }
-}
-
-const handleApproveReject = async (remark: string) => {
-  try {
-    await productRouteApi.rejectProductRoute(currentRoutingId.value!, remark)
-    ElMessage.success('已驳回')
-    approveDialogVisible.value = false
-    loadData()
-  } catch (error) {
-    console.error('驳回失败:', error)
-  }
-}
-
-// ==================== 初始化 ====================
-onMounted(() => {
-  loadData()
-})
-
-// ==================== 路由离开保护（dev-20261010-009） ====================
-// 弹窗打开且有未保存修改时，路由离开前走同一套「保存并离开 / 放弃修改 / 继续编辑」
+onMounted(loadData)
 onBeforeRouteLeave(async () => {
-  if (!formDialogVisible.value) return true
-  const dialog = formDialogRef.value
-  if (!dialog?.formIsDirty()) return true
-  return await dialog.resolveLeave()
+  if (!formVisible.value || !formDialogRef.value?.formIsDirty?.()) return true
+  return await formDialogRef.value.resolveLeave()
 })
 </script>
-
-<style scoped>
-.product-route-container {
-  padding: 20px;
-}
-
-.operation-card {
-  margin-bottom: 20px;
-}
-
-.table-card {
-  margin-bottom: 20px;
-}
-
-.operation-bar {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-}
-
-.pagination-container {
-  margin-top: 20px;
-  display: flex;
-  justify-content: flex-end;
-}
-</style>

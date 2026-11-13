@@ -39,6 +39,17 @@ public class EngineeringRoutingController {
     // ==================== 基础 CRUD ====================
 
     @Operation(summary = "分页查询工艺路线")
+    @GetMapping("/object-versions")
+    public Result<List<EngineeringRoutingVO>> objectVersions(@RequestParam(defaultValue = "PRODUCT") String outputType,
+                                               @RequestParam Long outputId) {
+        return Result.success(routingService.getObjectVersions(outputType, outputId));
+    }
+
+    @GetMapping("/product-page")
+    public Result<PageResult<com.jjx.product.service.IEngineeringBomService.ProductVersionRow>> productPage(EngineeringRoutingQueryDTO query) {
+        return Result.success(routingService.getProductPage(query));
+    }
+
     @GetMapping("/page")
     public Result<PageResult<EngineeringRoutingVO>> pageQuery(EngineeringRoutingQueryDTO dto) {
         return Result.success(routingService.pageQuery(dto));

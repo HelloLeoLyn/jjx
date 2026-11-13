@@ -252,6 +252,45 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     }
 
     @Override
+    public List<BomVersionRow> getObjectVersions(String outputType, Long outputId) {
+        if (outputId == null) throw new BusinessException("产出对象不能为空");
+        return productBomMapper.selectObjectVersions(ManufacturingOutputType.normalize(outputType).name(), outputId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResult<ProductVersionRow> getProductPage(BomListQuery query) {
+        var page = productBomMapper.selectProductPage(new Page<>(query.getPageNum(), query.getPageSize()), query);
+        var rules = new com.jjx.product.service.BomVersionRules(productBomMapper);
+        for (var row : page.getRecords()) {
+            var versions = productBomMapper.selectList(new LambdaQueryWrapper<EngineeringBom>()
+                    .apply("COALESCE(output_type,'PRODUCT')={0}", row.getOutputType())
+                    .apply("COALESCE(output_id,product_id)={0}", row.getOutputId()));
+            versions.stream().max((a,b) -> {
+                int result = IEngineeringBomService.compareVersions(a.getBomVersion(), b.getBomVersion());
+                return result != 0 ? result : a.getBomId().compareTo(b.getBomId());
+            }).ifPresent(latest -> { row.setLatestId(latest.getBomId()); row.setLatestVersion(latest.getBomVersion()); });
+            EngineeringBom current = null;
+            if ("PRODUCT".equals(row.getOutputType())) {
+                // 无资格版本是正常空摘要；其余数据库异常继续向上传播。
+                try { current = rules.resolveEffectiveVersion(row.getOutputId(), null, java.time.LocalDate.now()); }
+                catch (BusinessException ex) { if (!ex.getMessage().contains("没有已批准且有效")) throw ex; }
+            } else {
+                // 物料没有产品主方案解析入口；只展示已指定、且通过同一资格规则的当前版本。
+                current = versions.stream().filter(b -> Boolean.TRUE.equals(b.getIsCurrent()))
+                        .filter(b -> com.jjx.product.service.BomVersionRules.isEligible(b.getApproveStatus(), b.getEffectiveDate(),
+                                b.getExpiryDate(), java.time.LocalDate.now(), ProductEnums.BomStatus.APPROVED.getValue()))
+                        .findFirst().orElse(null);
+            }
+            if (current != null) {
+                row.setCurrentId(current.getBomId()); row.setCurrentVersion(current.getBomVersion());
+                row.setCurrentEffectiveDate(current.getEffectiveDate());
+            }
+        }
+        return PageResult.of(page, page.getRecords());
+    }
+
+    @Override
     public List<EngineeringBomVO> getBomList(EngineeringBomQuery query) {
         LambdaQueryWrapper<EngineeringBom> wrapper = buildQueryWrapper(query);
         List<EngineeringBom> productBoms = productBomMapper.selectList(wrapper);

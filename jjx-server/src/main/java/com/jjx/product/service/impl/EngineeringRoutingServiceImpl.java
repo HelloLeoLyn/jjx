@@ -58,6 +58,13 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     private com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
 
     @Override
+    public List<EngineeringRoutingVO> getObjectVersions(String outputType, Long outputId) {
+        if (outputId == null) throw new BusinessException("产出对象不能为空");
+        return routingConverter.toVOList(routingMapper.selectAllVersionsByOutput(
+                com.jjx.product.enums.ManufacturingOutputType.normalize(outputType).name(), outputId));
+    }
+
+    @Override
     public List<String> suggestRemarks(RoutingRemarkQueryDTO query) {
         // ID 集合忽略顺序及重复项，单作业与组合使用同一匹配规则。
         String processKey = Optional.ofNullable(query.getProcessIds()).orElseGet(List::of)
@@ -734,6 +741,25 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         routing.setTotalMachineHours(totalMachine);
         routing.setProcessCount(parents.size());
         updateById(routing);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResult<com.jjx.product.service.IEngineeringBomService.ProductVersionRow> getProductPage(EngineeringRoutingQueryDTO query) {
+        var page = routingMapper.selectProductPage(new Page<>(query.getPageNum(), query.getPageSize()), query);
+        for (var row : page.getRecords()) {
+            var versions = routingMapper.selectAllVersionsByOutput(row.getOutputType(), row.getOutputId());
+            versions.stream().max((a,b) -> {
+                int result = com.jjx.product.service.IEngineeringBomService.compareVersions(a.getRoutingVersion(), b.getRoutingVersion());
+                return result != 0 ? result : a.getRoutingId().compareTo(b.getRoutingId());
+            }).ifPresent(latest -> { row.setLatestId(latest.getRoutingId()); row.setLatestVersion(latest.getRoutingVersion()); });
+            versions.stream().filter(r -> Integer.valueOf(1).equals(r.getIsCurrent()))
+                    .filter(r -> ApproveStatusEnum.APPROVED.getValue().equals(r.getApproveStatus()))
+                    .findFirst().ifPresent(current -> {
+                        row.setCurrentId(current.getRoutingId()); row.setCurrentVersion(current.getRoutingVersion());
+                    });
+        }
+        return PageResult.of(page, page.getRecords());
     }
 
     @Override
