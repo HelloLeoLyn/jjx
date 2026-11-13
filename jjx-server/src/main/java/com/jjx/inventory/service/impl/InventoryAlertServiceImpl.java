@@ -928,10 +928,9 @@ public class InventoryAlertServiceImpl extends ServiceImpl<InventoryAlertLogMapp
                     if (bom == null) continue;
                     List<EngineeringBomItem> items = bomItemMapper.selectList(new LambdaQueryWrapper<EngineeringBomItem>()
                             .eq(EngineeringBomItem::getBomId, bom.getBomId()));
-                    for (EngineeringBomItem it : items) {
-                        if (it.getMaterialId() == null) continue;
-                        needByMat.merge(it.getMaterialId(), batchDemand(it, gap), BigDecimal::add);
-                    }
+                    // dev-20261113-009：分摊口径也必须走同一展开实现，
+                    // 否则展开出的组件没有分配记录、actualGap=0 而被判为 covered（不发预警）。
+                    explodeShortage(items, gap, needByMat, new java.util.HashMap<>(), new java.util.HashMap<>());
                 }
             }
             Map<Long, BigDecimal[]> needShort = new java.util.HashMap<>();
