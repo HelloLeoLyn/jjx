@@ -95,10 +95,10 @@ public interface PurchaseOrderItemMapper extends BaseMapper<PurchaseOrderItem> {
             + "JOIN purchase_order o ON o.order_id = i.order_id "
             + "WHERE i.material_id = #{materialId} AND o.approval_status = 3 "
             + "AND i.unit_price IS NOT NULL AND i.unit_price > 0 "
-            + "ORDER BY i.create_time DESC, i.item_id DESC LIMIT 1")
+            + "ORDER BY o.order_date DESC, o.order_id DESC, i.item_id DESC LIMIT 1")
     java.math.BigDecimal selectLastApprovedPrice(@Param("materialId") Long materialId);
 
-    @Select("SELECT * FROM purchase_order_item WHERE material_id = #{materialId} ORDER BY create_time DESC")
+    @Select("SELECT * FROM purchase_order_item WHERE material_id = #{materialId} ORDER BY item_id DESC")
     List<PurchaseOrderItem> selectItemsByMaterialId(@Param("materialId") Long materialId);
 
     /**
