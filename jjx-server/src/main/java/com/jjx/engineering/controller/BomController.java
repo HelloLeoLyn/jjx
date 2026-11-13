@@ -90,6 +90,18 @@ public class BomController extends BaseController {
     /**
      * 获取BOM列表
      */
+    @GetMapping("/{bomId}/next-version")
+    public Result<String> nextCopyVersion(@PathVariable Long bomId) {
+        return Result.success(productBomService.suggestCopyVersion(bomId));
+    }
+
+    @PutMapping("/{bomId}/void")
+    @SaCheckPermission("engineering:bom:edit")
+    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId", action = "作废版本")
+    public Result<Void> voidVersion(@PathVariable Long bomId) {
+        productBomService.voidVersion(bomId); return Result.success();
+    }
+
     @GetMapping("/object-versions")
     public Result<List<com.jjx.product.service.IEngineeringBomService.BomVersionRow>> objectVersions(@RequestParam(defaultValue = "PRODUCT") String outputType,
                                                @RequestParam Long outputId) {
@@ -113,13 +125,13 @@ public class BomController extends BaseController {
 
     /**
      * 复制为新版本（DEV-619，对应 TC-124）
-     * 版本号递增（newVersion 必传）、明细复制、isCurrent=false
+     * 版本号递增（newVersion 可省略，服务端计算默认值）、明细复制、isCurrent=false
      */
     @Operation(summary = "复制为新版本")
     @SaCheckPermission("engineering:bom:add")
     @PostMapping("/{bomId}/copy")
     public Result<EngineeringBomVO> copyAsNewVersion(@PathVariable Long bomId,
-                                                     @RequestParam String newVersion) {
+                                                     @RequestParam(required = false) String newVersion) {
         return Result.success(productBomService.copyAsNewVersion(bomId, newVersion));
     }
 
@@ -356,11 +368,9 @@ public class BomController extends BaseController {
      * 设置默认BOM
      */
     @PutMapping("/setDefault/{bomId}")
-    @Log(module = "产品BOM管理", businessType = BusinessType.UPDATE, bizType = "'bom'", bizId = "#bomId",
-         bizStatus = "#result.data.label", action = LogActions.BOM_SET_DEFAULT)
     @SaCheckPermission("engineering:bom:edit")
-    public Result<ProductEnums.BomStatus> setDefault(@PathVariable Long bomId) {
-        ProductEnums.BomStatus currentStatus = productBomService.setDefaultBom(bomId);
+    public Result<ProductEnums.BomStatus> setDefault(@PathVariable Long bomId, @RequestParam(required = false) Long expectedCurrentId) {
+        ProductEnums.BomStatus currentStatus = productBomService.setDefaultBom(bomId, expectedCurrentId);
         return currentStatus != null ? Result.success(currentStatus) : Result.error();
     }
 

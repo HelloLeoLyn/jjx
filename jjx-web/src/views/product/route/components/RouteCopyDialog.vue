@@ -6,12 +6,13 @@
     :close-on-click-modal="false"
     @close="handleClose"
   >
+    <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
       <el-form-item label="原版本">
         <el-input :model-value="currentVersion" disabled />
       </el-form-item>
       <el-form-item label="新版本" prop="newVersion">
-        <el-input v-model="form.newVersion" placeholder="请输入新版本号，如 V2.0" maxlength="20" />
+        <el-input v-model="form.newVersion" placeholder="已自动生成，可修改" maxlength="20" />
       </el-form-item>
     </el-form>
 
@@ -25,12 +26,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const props = defineProps<{
   modelValue: boolean
   currentVersion: string
+  suggestedVersion: string
+  loading?: boolean
+  error?: string
 }>()
 
 const emit = defineEmits<{
@@ -44,7 +48,6 @@ const visible = computed({
 })
 
 const formRef = ref<FormInstance>()
-const loading = ref(false)
 
 const form = reactive({
   newVersion: '',
@@ -57,12 +60,19 @@ const rules = reactive<FormRules<typeof form>>({
   ],
 })
 
+watch(
+  () => [props.modelValue, props.suggestedVersion] as const,
+  ([open]) => {
+    if (open) form.newVersion = props.suggestedVersion
+  },
+  { immediate: true }
+)
+
 const handleSubmit = async () => {
-  if (!formRef.value) return
+  if (!formRef.value || props.loading) return
 
   try {
     await formRef.value.validate()
-    loading.value = true
     emit('confirm', form.newVersion)
   } catch (error) {
     console.error('表单验证失败:', error)
@@ -73,7 +83,7 @@ const handleClose = () => {
   if (formRef.value) {
     formRef.value.resetFields()
   }
-  form.newVersion = ''
+  form.newVersion = props.suggestedVersion
 }
 </script>
 

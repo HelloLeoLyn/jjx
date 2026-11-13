@@ -39,8 +39,20 @@ public class EngineeringRoutingController {
     // ==================== 基础 CRUD ====================
 
     @Operation(summary = "分页查询工艺路线")
+    @GetMapping("/{routingId}/next-version")
+    public Result<String> nextCopyVersion(@PathVariable Long routingId) {
+        return Result.success(routingService.suggestCopyVersion(routingId));
+    }
+
+    @PutMapping("/{routingId}/void")
+    @SaCheckPermission("engineering:routing:edit")
+    @Log(module = "工艺路线管理", businessType = BusinessType.UPDATE, bizType = "'routing'", bizId = "#routingId", action = "作废版本")
+    public Result<Void> voidVersion(@PathVariable Long routingId) {
+        routingService.voidVersion(routingId); return Result.success();
+    }
+
     @GetMapping("/object-versions")
-    public Result<List<EngineeringRoutingVO>> objectVersions(@RequestParam(defaultValue = "PRODUCT") String outputType,
+    public Result<List<IEngineeringRoutingService.RoutingVersionRow>> objectVersions(@RequestParam(defaultValue = "PRODUCT") String outputType,
                                                @RequestParam Long outputId) {
         return Result.success(routingService.getObjectVersions(outputType, outputId));
     }
@@ -105,7 +117,7 @@ public class EngineeringRoutingController {
     public Result<Void> delete(
             @Parameter(description = "路线ID", required = true)
             @PathVariable @NotNull Long routingId) {
-        routingService.removeById(routingId);
+        routingService.deleteVersion(routingId);
         return Result.success();
     }
 
@@ -119,21 +131,19 @@ public class EngineeringRoutingController {
     public Result<EngineeringRoutingVO> copyAsNewVersion(
             @Parameter(description = "路线ID", required = true)
             @PathVariable @NotNull Long routingId,
-            @Parameter(description = "新版本号", required = true)
-            @RequestParam String newVersion) {
+            @Parameter(description = "新版本号（省略时自动递增）", required = false)
+            @RequestParam(required = false) String newVersion) {
         EngineeringRoutingVO vo = routingService.copyAsNewVersion(routingId, newVersion);
         return Result.success(vo);
     }
 
     @Operation(summary = "设置当前版本")
     @PutMapping("/{routingId}/set-current")
-    @Log(module = "工艺路线管理", businessType = BusinessType.UPDATE, bizType = "'routing'",
-         bizId = "#routingId", action = LogActions.ROUTING_SET_CURRENT)
     @SaCheckPermission("engineering:routing:edit")
     public Result<Void> setCurrentVersion(
             @Parameter(description = "路线ID", required = true)
-            @PathVariable @NotNull Long routingId) {
-        routingService.setCurrentVersion(routingId);
+            @PathVariable @NotNull Long routingId, @RequestParam(required = false) Long expectedCurrentId) {
+        routingService.setCurrentVersion(routingId, expectedCurrentId);
         return Result.success();
     }
 

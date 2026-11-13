@@ -57,11 +57,31 @@ public interface IEngineeringBomService extends IService<EngineeringBom> {
     @lombok.Data
     @lombok.EqualsAndHashCode(callSuper = true)
     class BomVersionRow extends EngineeringBomVO {
+        private boolean canSetCurrent;
         private String approveBy;
         private java.time.LocalDateTime approveTime;
     }
 
     List<BomVersionRow> getObjectVersions(String outputType, Long outputId);
+
+    /** 复制版本末位递增；保留小数位宽并按十进制进位。 */
+    static String nextCopyVersion(List<String> versions) {
+        String max = versions.stream().filter(java.util.Objects::nonNull)
+                .map(String::trim).filter(v -> v.matches("(?i)V\\d+\\.\\d+"))
+                .max(IEngineeringBomService::compareVersions).orElse(null);
+        if (max == null) return "V1.0";
+        String[] parts = max.substring(1).split("\\.");
+        int scale = parts[1].length();
+        java.math.BigInteger base = java.math.BigInteger.TEN.pow(scale);
+        java.math.BigInteger next = new java.math.BigInteger(parts[0]).multiply(base)
+                .add(new java.math.BigInteger(parts[1])).add(java.math.BigInteger.ONE);
+        String minor = next.remainder(base).toString();
+        return "V" + next.divide(base) + "." + "0".repeat(Math.max(0, scale - minor.length())) + minor;
+    }
+
+    String suggestCopyVersion(Long bomId);
+    com.jjx.product.enums.ProductEnums.BomStatus setDefaultBom(Long bomId, Long expectedCurrentId);
+    void voidVersion(Long bomId);
 
     PageResult<ProductVersionRow> getProductPage(BomListQuery query);
 

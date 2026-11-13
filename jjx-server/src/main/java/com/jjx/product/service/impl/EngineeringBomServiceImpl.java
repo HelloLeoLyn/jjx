@@ -254,7 +254,11 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     public List<BomVersionRow> getObjectVersions(String outputType, Long outputId) {
         if (outputId == null) throw new BusinessException("产出对象不能为空");
-        return productBomMapper.selectObjectVersions(ManufacturingOutputType.normalize(outputType).name(), outputId);
+        var rows = productBomMapper.selectObjectVersions(ManufacturingOutputType.normalize(outputType).name(), outputId);
+        rows.forEach(row -> row.setCanSetCurrent(com.jjx.product.service.BomVersionRules.isEligible(
+                row.getApproveStatus(), row.getEffectiveDate(), row.getExpiryDate(), java.time.LocalDate.now(),
+                ProductEnums.BomStatus.APPROVED.getValue())));
+        return rows;
     }
 
     @Override
@@ -1127,18 +1131,14 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Transactional(rollbackFor = Exception.class)
     public ProductEnums.BomStatus removeBomWithItems(Long bomId) {
         // 检查BOM是否存在
-        EngineeringBom bom = productBomMapper.selectById(bomId);
+        EngineeringBom bom = productBomMapper.selectForUpdate(bomId);
         if (bom == null) {
             return null;
         }
 
-        // 状态校验（2026-08-08 修复：原 "approved".equals(Integer) 永远不生效，已批准BOM可删）
         Integer st = bom.getApproveStatus();
-        if (st != null && st == 3) {
-            throw new BusinessException("BOM已批准，不允许删除（如需废弃请走版本化/作废）");
-        }
-        if (st != null && st == 2) {
-            throw new BusinessException("BOM审核中，不允许删除");
+        if (!Objects.equals(st, ProductEnums.BomStatus.DRAFT.getValue())) {
+            throw new BusinessException("只有草稿版本可以删除");
         }
 
         // 被引用检查（2026-08-08：产品 current_bom_id / 生产工单 bom_id）
@@ -1166,40 +1166,81 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ProductEnums.BomStatus setDefaultBom(Long bomId) {
-        EngineeringBom bom = productBomMapper.selectById(bomId);
-        if (bom == null) {
-            return null;
+        return setDefaultBom(bomId, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ProductEnums.BomStatus setDefaultBom(Long bomId, Long expectedCurrentId) {
+        EngineeringBom snapshot = productBomMapper.selectById(bomId);
+        if (snapshot == null) throw new BusinessException("BOM不存在");
+        String type = ManufacturingOutputType.normalize(snapshot.getOutputType()).name();
+        Long outputId = snapshot.getOutputId() != null ? snapshot.getOutputId() : snapshot.getProductId();
+        if (outputId == null) throw new BusinessException("BOM产出对象不能为空");
+        Long observed = expectedCurrentId;
+        if (observed == null) {
+            observed = productBomMapper.selectObjectVersions(type, outputId).stream()
+                    .filter(v -> Boolean.TRUE.equals(v.getIsCurrent())).map(BomVersionRow::getBomId).findFirst().orElse(0L);
         }
-
-        // 未批准的 BOM 不得成为当前/生效版本（dev-20261020-029 F）
-        if (!Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
-            throw new BusinessException("只有已批准的BOM才能设为当前生效版本");
+        var locked = productBomMapper.lockObjectVersions(type, outputId);
+        EngineeringBom bom = locked.stream().filter(b -> bomId.equals(b.getBomId())).findFirst()
+                .orElseThrow(() -> new BusinessException("BOM版本已变化，请刷新"));
+        EngineeringBom before = locked.stream().filter(b -> Boolean.TRUE.equals(b.getIsCurrent())).findFirst().orElse(null);
+        Long actual = before == null ? 0L : before.getBomId();
+        if (!Objects.equals(observed, actual) || Boolean.TRUE.equals(bom.getIsCurrent())) {
+            throw new BusinessException(409, "当前版本已被设置或切换，请刷新版本列表后重试");
         }
-        List<com.jjx.product.domain.vo.BomCheckIssueVO> issues = checkBomForApprove(bomId);
-        if (!issues.isEmpty()) {
-            throw new BusinessException(formatIssues("BOM 明细未全部审核通过，不能设为当前生效版本", issues));
+        if (!com.jjx.product.service.BomVersionRules.isEligible(bom.getApproveStatus(), bom.getEffectiveDate(),
+                bom.getExpiryDate(), java.time.LocalDate.now(), ProductEnums.BomStatus.APPROVED.getValue())) {
+            throw new BusinessException("只有已批准且日期有效的BOM才能设为当前版本");
         }
-
-        // 设置当前BOM为默认
-        bom.setIsCurrent(true);
-        productBomMapper.updateById(bom);
-
-        // 将其他BOM设置为非默认
-        setOtherBomNotCurrent(bom.getOutputType(), bom.getOutputId(), bomId);
-
-        // DEV-771：同步产品 current_bom_id 指针（发布校验用）
-        if (ManufacturingOutputType.normalize(bom.getOutputType()) == ManufacturingOutputType.PRODUCT
-                && bom.getProductId() != null) {
-            com.jjx.product.domain.entity.Product product = productMapper.selectById(bom.getProductId());
+        var issues = checkBomForApprove(bomId);
+        if (!issues.isEmpty()) throw new BusinessException(formatIssues("BOM 明细未全部审核通过，不能设为当前版本", issues));
+        productBomMapper.clearObjectCurrent(type, outputId);
+        if (productBomMapper.promoteCurrent(bomId, ProductEnums.BomStatus.APPROVED.getValue()) != 1) {
+            throw new BusinessException(409, "BOM状态已变化，设置当前版本失败，请刷新");
+        }
+        if ("PRODUCT".equals(type)) {
+            Product product = productMapper.selectById(outputId);
             if (product != null) {
-                product.setCurrentBomId(bomId);
-                product.setCurrentBomVersion(bom.getVersion() != null ? bom.getVersion() : bom.getBomVersion());
+                product.setCurrentBomId(bomId); product.setCurrentBomVersion(bom.getBomVersion());
                 productMapper.updateById(product);
             }
         }
+        changeRecorder.recordUpdate("产品BOM管理", "bom.set-current", "bom", String.valueOf(bomId), null,
+                ProductEnums.BomStatus.APPROVED.getLabel(), com.jjx.common.constant.LogActions.BOM_SET_DEFAULT,
+                List.of("当前版本:" + (before == null ? "无" : before.getBomVersion() + "(#" + before.getBomId() + ")")
+                        + "→" + bom.getBomVersion() + "(#" + bomId + ")"));
+        return ProductEnums.BomStatus.APPROVED;
+    }
 
-        // 本操作只改 is_current，不改 approve_status，直接返回该 BOM 当前状态
-        return ProductEnums.BomStatus.fromValue(bom.getApproveStatus());
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void voidVersion(Long bomId) {
+        EngineeringBom snapshot = productBomMapper.selectById(bomId);
+        if (snapshot == null) throw new BusinessException("BOM不存在");
+        String type = ManufacturingOutputType.normalize(snapshot.getOutputType()).name();
+        Long outputId = snapshot.getOutputId() != null ? snapshot.getOutputId() : snapshot.getProductId();
+        var bom = productBomMapper.lockObjectVersions(type, outputId).stream()
+                .filter(b -> bomId.equals(b.getBomId())).findFirst().orElseThrow(() -> new BusinessException("BOM不存在"));
+        if (!Boolean.TRUE.equals(bom.getIsCurrent()) || !Objects.equals(bom.getApproveStatus(), ProductEnums.BomStatus.APPROVED.getValue())) {
+            throw new BusinessException("只有已生效的BOM版本可以作废");
+        }
+        productBomMapper.update(new LambdaUpdateWrapper<EngineeringBom>().eq(EngineeringBom::getBomId,bomId)
+                .eq(EngineeringBom::getApproveStatus,ProductEnums.BomStatus.APPROVED.getValue())
+                .set(EngineeringBom::getIsCurrent,false).set(EngineeringBom::getApproveStatus,ProductEnums.BomStatus.OBSOLETE.getValue()));
+        if ("PRODUCT".equals(type)) productMapper.update(new LambdaUpdateWrapper<Product>()
+                .eq(Product::getProductId,outputId).eq(Product::getCurrentBomId,bomId)
+                .set(Product::getCurrentBomId,null).set(Product::getCurrentBomVersion,null));
+    }
+
+    @Override
+    public String suggestCopyVersion(Long bomId) {
+        var bom = productBomMapper.selectById(bomId);
+        if (bom == null) throw new BusinessException("BOM不存在");
+        Long outputId = bom.getOutputId() != null ? bom.getOutputId() : bom.getProductId();
+        return IEngineeringBomService.nextCopyVersion(getObjectVersions(bom.getOutputType(),outputId).stream()
+                .map(BomVersionRow::getBomVersion).toList());
     }
 
     @Override
@@ -1279,15 +1320,17 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         if (oldBom == null) {
             throw new BusinessException("BOM不存在");
         }
-        if (StringUtils.isBlank(newVersion)) {
-            throw new BusinessException("新版本号不能为空");
-        }
-        // 同编码下版本号唯一性校验
-        Long dupCount = productBomMapper.selectCount(new LambdaQueryWrapper<EngineeringBom>()
-                .eq(EngineeringBom::getBomCode, oldBom.getBomCode())
-                .eq(EngineeringBom::getBomVersion, newVersion));
-        if (dupCount != null && dupCount > 0) {
-            throw new BusinessException("版本号已存在：" + newVersion);
+        String outputType = ManufacturingOutputType.normalize(oldBom.getOutputType()).name();
+        Long outputId = oldBom.getOutputId() != null ? oldBom.getOutputId() : oldBom.getProductId();
+        var versions = productBomMapper.lockObjectVersions(outputType, outputId);
+        oldBom = versions.stream().filter(b -> bomId.equals(b.getBomId())).findFirst()
+                .orElseThrow(() -> new BusinessException("原BOM已变化，请刷新后复制"));
+        if (StringUtils.isBlank(newVersion)) newVersion = IEngineeringBomService.nextCopyVersion(
+                versions.stream().map(EngineeringBom::getBomVersion).toList());
+        newVersion = newVersion.trim();
+        if (newVersion.length() > 20) throw new BusinessException("版本号不能超过20个字符");
+        for (var version : versions) {
+            if (newVersion.equalsIgnoreCase(version.getBomVersion())) throw new BusinessException("同产品版本号已存在：" + newVersion);
         }
 
         // 复制主记录
@@ -1298,6 +1341,8 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
         newBom.setVersion(newVersion); // 2026-08-10 DEV-769：双字段同步，统一语义
         newBom.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         newBom.setIsCurrent(false);
+        newBom.setParentBomId(bomId);
+        newBom.setCreateBy(null); newBom.setCreateTime(null); newBom.setUpdateBy(null); newBom.setUpdateTime(null);
         productBomMapper.insert(newBom);
 
         // 两遍复制：先获得新行号，再映射归属；禁止把旧版本行号带入新版本。
@@ -1497,6 +1542,10 @@ public class EngineeringBomServiceImpl extends ServiceImpl<EngineeringBomMapper,
                 .set(StringUtils.isNotBlank(dto.getRemark()),EngineeringBom::getApproveRemark,dto.getRemark())
                 .eq(EngineeringBom::getBomId,dto.getBomId())
                 .eq(EngineeringBom::getApproveStatus,dto.getCurrent());
+        if (Objects.equals(dto.getTarget(), ProductEnums.BomStatus.APPROVED.getValue())
+                || Objects.equals(dto.getTarget(), ProductEnums.BomStatus.REJECT.getValue())) {
+            updateWrapper.setSql("approve_by={0}, approve_time={1}", currentOperator(), LocalDateTime.now());
+        }
         return baseMapper.update(updateWrapper)>0;
     }
 

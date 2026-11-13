@@ -58,10 +58,14 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     private com.jjx.inventory.mapper.InventoryMaterialMapper inventoryMaterialMapper;
 
     @Override
-    public List<EngineeringRoutingVO> getObjectVersions(String outputType, Long outputId) {
+    public List<RoutingVersionRow> getObjectVersions(String outputType, Long outputId) {
         if (outputId == null) throw new BusinessException("产出对象不能为空");
-        return routingConverter.toVOList(routingMapper.selectAllVersionsByOutput(
-                com.jjx.product.enums.ManufacturingOutputType.normalize(outputType).name(), outputId));
+        return routingMapper.selectAllVersionsByOutput(com.jjx.product.enums.ManufacturingOutputType.normalize(outputType).name(), outputId)
+                .stream().map(r -> {
+                    RoutingVersionRow row = new RoutingVersionRow(); BeanUtil.copyProperties(r,row);
+                    row.setCanSetCurrent(ApproveStatusEnum.APPROVED.getValue().equals(r.getApproveStatus()));
+                    return row;
+                }).toList();
     }
 
     @Override
@@ -486,8 +490,18 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
 
-        // 检查新版本是否存在
-        checkCodeUnique(oldRouting.getRoutingCode(), newVersion);
+        String type = com.jjx.product.enums.ManufacturingOutputType.normalize(oldRouting.getOutputType()).name();
+        Long outputId = oldRouting.getOutputId() != null ? oldRouting.getOutputId() : oldRouting.getProductId();
+        var versions = routingMapper.lockObjectVersions(type,outputId);
+        oldRouting = versions.stream().filter(r -> routingId.equals(r.getRoutingId())).findFirst()
+                .orElseThrow(() -> new BusinessException("原工艺路线已变化，请刷新后复制"));
+        if (!StringUtils.hasText(newVersion)) newVersion = com.jjx.product.service.IEngineeringBomService.nextCopyVersion(
+                versions.stream().map(EngineeringRouting::getRoutingVersion).toList());
+        newVersion = newVersion.trim();
+        if (newVersion.length() > 20) throw new BusinessException("版本号不能超过20个字符");
+        for (var version : versions) {
+            if (newVersion.equalsIgnoreCase(version.getRoutingVersion())) throw new BusinessException("同产品版本号已存在：" + newVersion);
+        }
 
         // 复制路线
         EngineeringRouting newRouting = new EngineeringRouting();
@@ -497,6 +511,8 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
         newRouting.setVersion(newVersion); // 2026-08-10 DEV-769：双字段同步，统一语义
         newRouting.setApproveStatus(ApproveStatusEnum.DRAFT.getValue());
         newRouting.setIsCurrent(0);
+        newRouting.setParentRoutingId(routingId);
+        newRouting.setCreateBy(null); newRouting.setCreateTime(null); newRouting.setUpdateBy(null); newRouting.setUpdateTime(null);
         save(newRouting);
 
         // 复制明细（保留组合信息与前置工序）
@@ -543,41 +559,92 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void setCurrentVersion(Long routingId) {
-        EngineeringRouting routing = getById(routingId);
-        if (routing == null) {
-            throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
+    public void setCurrentVersion(Long routingId) { setCurrentVersion(routingId, null); }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void setCurrentVersion(Long routingId, Long expectedCurrentId) {
+        EngineeringRouting snapshot = getById(routingId);
+        if (snapshot == null) throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
+        String type = com.jjx.product.enums.ManufacturingOutputType.normalize(snapshot.getOutputType()).name();
+        Long outputId = snapshot.getOutputId() != null ? snapshot.getOutputId() : snapshot.getProductId();
+        if (outputId == null) throw new BusinessException("路线产出对象不能为空");
+        Long observed = expectedCurrentId;
+        if (observed == null) observed = routingMapper.selectAllVersionsByOutput(type, outputId).stream()
+                .filter(r -> Integer.valueOf(1).equals(r.getIsCurrent())).map(EngineeringRouting::getRoutingId).findFirst().orElse(0L);
+        var locked = routingMapper.lockObjectVersions(type, outputId);
+        var routing = locked.stream().filter(r -> routingId.equals(r.getRoutingId())).findFirst()
+                .orElseThrow(() -> new BusinessException("工艺路线版本已变化，请刷新"));
+        var before = locked.stream().filter(r -> Integer.valueOf(1).equals(r.getIsCurrent())).findFirst().orElse(null);
+        Long actual = before == null ? 0L : before.getRoutingId();
+        if (!Objects.equals(observed,actual) || Integer.valueOf(1).equals(routing.getIsCurrent())) {
+            throw new BusinessException(409,"当前版本已被设置或切换，请刷新版本列表后重试");
         }
-
-        // 设置同一产出对象的路线为非当前（MATERIAL 无 product_id）
-        String outputType = com.jjx.product.enums.ManufacturingOutputType.normalize(routing.getOutputType()).name();
-        Long outputId = routing.getOutputId() != null ? routing.getOutputId() : routing.getProductId();
-        routingMapper.setAllNotCurrentByOutput(outputType, outputId);
-
-        // 设置当前路线
-        routing.setIsCurrent(1);
-        updateById(routing);
-
-        // dev-20261008-023：同步产品表指针与版本。原 set-current 只改路由 is_current，
-        // 不同步 product.current_route_id / current_routing_version → 产品关联当前路线取不到；
-        // 此处与"编辑保存自动升版"(:312-318)统一口径。
-        if (com.jjx.product.enums.ManufacturingOutputType.PRODUCT.name().equals(outputType)) {
-            com.jjx.product.domain.entity.Product product = productMapper.selectById(outputId);
+        if (!ApproveStatusEnum.APPROVED.getValue().equals(routing.getApproveStatus())) {
+            throw new BusinessException("只有已批准的工艺路线才能设为当前版本");
+        }
+        routingMapper.clearObjectCurrent(type,outputId);
+        if (routingMapper.promoteCurrent(routingId,ApproveStatusEnum.APPROVED.getValue()) != 1) {
+            throw new BusinessException(409,"工艺路线状态已变化，设置当前版本失败，请刷新");
+        }
+        if ("PRODUCT".equals(type)) {
+            var product = productMapper.selectById(outputId);
             if (product != null) {
-                product.setCurrentRouteId(routing.getRoutingId());
-                product.setCurrentRoutingVersion(routing.getRoutingVersion());
+                product.setCurrentRouteId(routingId); product.setCurrentRoutingVersion(routing.getRoutingVersion());
                 productMapper.updateById(product);
             }
         }
+        changeRecorder.recordUpdate("工艺路线管理","routing.set-current","routing",String.valueOf(routingId),null,
+                ApproveStatusEnum.APPROVED.getLabel(),com.jjx.common.constant.LogActions.ROUTING_SET_CURRENT,
+                List.of("当前版本:" + (before == null ? "无" : before.getRoutingVersion() + "(#" + before.getRoutingId() + ")")
+                        + "→" + routing.getRoutingVersion() + "(#" + routingId + ")"));
+        publishRoutingEvent("product.routing.version_changed",routing);
+    }
 
-        log.info("设置当前版本成功: {} v{}", routing.getRoutingCode(), routing.getRoutingVersion());
-        publishRoutingEvent("product.routing.version_changed", routing);
+    @Override
+    public String suggestCopyVersion(Long routingId) {
+        var route = getById(routingId);
+        if (route == null) throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
+        Long outputId = route.getOutputId() != null ? route.getOutputId() : route.getProductId();
+        return com.jjx.product.service.IEngineeringBomService.nextCopyVersion(
+                routingMapper.selectAllVersionsByOutput(com.jjx.product.enums.ManufacturingOutputType.normalize(route.getOutputType()).name(),outputId)
+                        .stream().map(EngineeringRouting::getRoutingVersion).toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void voidVersion(Long routingId) {
+        var snapshot = getById(routingId);
+        if (snapshot == null) throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
+        String type = com.jjx.product.enums.ManufacturingOutputType.normalize(snapshot.getOutputType()).name();
+        Long outputId = snapshot.getOutputId() != null ? snapshot.getOutputId() : snapshot.getProductId();
+        var route = routingMapper.lockObjectVersions(type,outputId).stream().filter(r -> routingId.equals(r.getRoutingId()))
+                .findFirst().orElseThrow(() -> new BusinessException("工艺路线不存在"));
+        if (!Integer.valueOf(1).equals(route.getIsCurrent()) || !ApproveStatusEnum.APPROVED.getValue().equals(route.getApproveStatus())) {
+            throw new BusinessException("只有已生效的工艺路线版本可以作废");
+        }
+        route.setIsCurrent(0); route.setApproveStatus(ApproveStatusEnum.CANCELLED.getValue()); updateById(route);
+        if ("PRODUCT".equals(type)) productMapper.update(new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<com.jjx.product.domain.entity.Product>()
+                .eq(com.jjx.product.domain.entity.Product::getProductId,outputId)
+                .eq(com.jjx.product.domain.entity.Product::getCurrentRouteId,routingId)
+                .set(com.jjx.product.domain.entity.Product::getCurrentRouteId,null)
+                .set(com.jjx.product.domain.entity.Product::getCurrentRoutingVersion,null));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteVersion(Long routingId) {
+        var route = routingMapper.selectForUpdate(routingId);
+        if (route == null) throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
+        if (!ApproveStatusEnum.DRAFT.getValue().equals(route.getApproveStatus())) throw new BusinessException("只有草稿版本可以删除");
+        routingDetailMapper.delete(new LambdaQueryWrapper<EngineeringRoutingItem>().eq(EngineeringRoutingItem::getRoutingId,routingId));
+        removeById(routingId);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void submitApprove(Long routingId) {
-        EngineeringRouting routing = getById(routingId);
+        EngineeringRouting routing = routingMapper.selectForUpdate(routingId);
         if (routing == null) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
@@ -597,7 +664,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void approve(Long routingId, String remark) {
-        EngineeringRouting routing = getById(routingId);
+        EngineeringRouting routing = routingMapper.selectForUpdate(routingId);
         if (routing == null) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
@@ -616,7 +683,7 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void reject(Long routingId, String remark) {
-        EngineeringRouting routing = getById(routingId);
+        EngineeringRouting routing = routingMapper.selectForUpdate(routingId);
         if (routing == null) {
             throw new BusinessException(BusinessExceptionEnum.ROUTING_NOT_FOUND);
         }
@@ -746,7 +813,9 @@ public class EngineeringRoutingServiceImpl extends ServiceImpl<EngineeringRoutin
     @Override
     @Transactional(readOnly = true)
     public PageResult<com.jjx.product.service.IEngineeringBomService.ProductVersionRow> getProductPage(EngineeringRoutingQueryDTO query) {
-        var page = routingMapper.selectProductPage(new Page<>(query.getPageNum(), query.getPageSize()), query);
+        var paging = new com.jjx.common.core.page.PageQuery();
+        paging.setPageNum(query.getPageNum()); paging.setPageSize(query.getPageSize());
+        var page = routingMapper.selectProductPage(new Page<>(paging.getPageNum(), paging.getPageSize()), query);
         for (var row : page.getRecords()) {
             var versions = routingMapper.selectAllVersionsByOutput(row.getOutputType(), row.getOutputId());
             versions.stream().max((a,b) -> {

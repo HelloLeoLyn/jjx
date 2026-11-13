@@ -132,6 +132,8 @@ class ManufacturingRouteBindingTest {
     void currentVersionIsScopedByOutputNotProduct() {
         var first = service.createRouting(dto("RT-M349-A", "MATERIAL", 349L));
         var second = service.createRouting(dto("RT-M349-B", "MATERIAL", 349L));
+        service.submitApprove(first.getRoutingId()); service.approve(first.getRoutingId(), null);
+        service.submitApprove(second.getRoutingId()); service.approve(second.getRoutingId(), null);
         service.setCurrentVersion(first.getRoutingId());
         service.setCurrentVersion(second.getRoutingId());
         var current = routingMapper.selectCurrentByOutput("MATERIAL", 349L);

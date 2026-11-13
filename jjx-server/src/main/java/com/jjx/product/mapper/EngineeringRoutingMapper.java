@@ -11,6 +11,19 @@ import java.util.List;
 
 @Mapper
 public interface EngineeringRoutingMapper extends BaseMapper<EngineeringRouting> {
+    @org.apache.ibatis.annotations.Select("SELECT * FROM engineering_routing WHERE COALESCE(output_type,'PRODUCT')=#{outputType} "
+            + "AND COALESCE(output_id,product_id)=#{outputId} ORDER BY routing_id FOR UPDATE")
+    List<EngineeringRouting> lockObjectVersions(@Param("outputType") String outputType, @Param("outputId") Long outputId);
+
+    @org.apache.ibatis.annotations.Update("UPDATE engineering_routing SET is_current=0 WHERE COALESCE(output_type,'PRODUCT')=#{outputType} "
+            + "AND COALESCE(output_id,product_id)=#{outputId} AND is_current=1")
+    int clearObjectCurrent(@Param("outputType") String outputType, @Param("outputId") Long outputId);
+
+    @org.apache.ibatis.annotations.Update("UPDATE engineering_routing SET is_current=1 WHERE routing_id=#{id} "
+            + "AND approve_status=#{approved} AND COALESCE(is_current,0)=0")
+    int promoteCurrent(@Param("id") Long id, @Param("approved") Integer approved);
+
+
     @org.apache.ibatis.annotations.Select({
         "<script>",
         "<bind name='draft' value='@com.jjx.common.enums.ApproveStatusEnum@DRAFT.getValue()'/>",
@@ -43,6 +56,9 @@ public interface EngineeringRoutingMapper extends BaseMapper<EngineeringRouting>
 
 
     
+    @Select("SELECT * FROM engineering_routing WHERE routing_id=#{routingId} FOR UPDATE")
+    EngineeringRouting selectForUpdate(@Param("routingId") Long routingId);
+
     /**
      * 根据产品ID查询当前版本的工艺路线
      */

@@ -15,7 +15,18 @@ public interface IEngineeringRoutingService extends IService<EngineeringRouting>
 
     PageResult<com.jjx.product.service.IEngineeringBomService.ProductVersionRow> getProductPage(EngineeringRoutingQueryDTO query);
 
-    List<EngineeringRoutingVO> getObjectVersions(String outputType, Long outputId);
+    @lombok.Data
+    @lombok.EqualsAndHashCode(callSuper = true)
+    class RoutingVersionRow extends EngineeringRoutingVO {
+        private boolean canSetCurrent;
+    }
+
+    String suggestCopyVersion(Long routingId);
+    void setCurrentVersion(Long routingId, Long expectedCurrentId);
+    void voidVersion(Long routingId);
+    void deleteVersion(Long routingId);
+
+    List<RoutingVersionRow> getObjectVersions(String outputType, Long outputId);
 
     List<String> suggestRemarks(RoutingRemarkQueryDTO query);
 

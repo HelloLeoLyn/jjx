@@ -13,6 +13,19 @@ import java.util.List;
  */
 @Mapper
 public interface EngineeringBomMapper extends BaseMapper<EngineeringBom> {
+    @org.apache.ibatis.annotations.Select("SELECT * FROM engineering_bom WHERE COALESCE(output_type,'PRODUCT')=#{outputType} "
+            + "AND COALESCE(output_id,product_id)=#{outputId} ORDER BY bom_id FOR UPDATE")
+    List<EngineeringBom> lockObjectVersions(@Param("outputType") String outputType, @Param("outputId") Long outputId);
+
+    @org.apache.ibatis.annotations.Update("UPDATE engineering_bom SET is_current=0 WHERE COALESCE(output_type,'PRODUCT')=#{outputType} "
+            + "AND COALESCE(output_id,product_id)=#{outputId} AND is_current=1")
+    int clearObjectCurrent(@Param("outputType") String outputType, @Param("outputId") Long outputId);
+
+    @org.apache.ibatis.annotations.Update("UPDATE engineering_bom SET is_current=1 WHERE bom_id=#{id} "
+            + "AND approve_status=#{approved} AND COALESCE(is_current,0)=0")
+    int promoteCurrent(@Param("id") Long id, @Param("approved") Integer approved);
+
+
     @org.apache.ibatis.annotations.Select({
         "<script>",
         "<bind name='draft' value='@com.jjx.product.enums.ProductEnums$BomStatus@DRAFT.getValue()'/>",

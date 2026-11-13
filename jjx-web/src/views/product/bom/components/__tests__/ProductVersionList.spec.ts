@@ -18,8 +18,9 @@ function setup(domain: 'bom' | 'route') {
   }).outputText
   const calls: Array<{ url: string; params: any }> = []
   const request = {
-    get: async (url: string, config: any) => {
+    get: async (url: string, config: any = { params: {} }) => {
       calls.push({ url, params: { ...config.params } })
+      if (url.endsWith('next-version')) return { data: 'V1.1' }
       return url.endsWith('product-page')
         ? {
             data: {
@@ -42,15 +43,24 @@ function setup(domain: 'bom' | 'route') {
             ],
           }
     },
+    put: async (url: string, _data: unknown, config: any) => {
+      calls.push({ url, params: { ...config?.params } })
+      return { data: null }
+    },
   }
+  const api = { copyEngineeringBom: async () => {}, copyProductRoute: async () => {} }
   const mod = { exports: {} as any }
   const requireMock = (name: string): any => {
     if (name === 'vue') return { ...vue, onMounted() {} }
     if (name === 'vue-router') return { onBeforeRouteLeave() {} }
-    if (name === 'element-plus') return { ElMessage: {}, ElMessageBox: {} }
+    if (name === 'element-plus')
+      return {
+        ElMessage: { success() {}, error() {} },
+        ElMessageBox: { confirm: async () => {}, alert: async () => {} },
+      }
     if (name === '@/utils/request') return { default: request }
     if (name === '@/enums/product') return { BomStatusEnum, RouteStatusEnum, ProductActions }
-    if (name.startsWith('@/api/')) return { productBomApi: {}, productRouteApi: {} }
+    if (name.startsWith('@/api/')) return { productBomApi: api, productRouteApi: api }
     if (name.endsWith('.vue') || name === '@/utils/format') return {}
     throw new Error(`Unexpected import ${name}`)
   }
@@ -60,7 +70,7 @@ function setup(domain: 'bom' | 'route') {
     mod
   )
   const state = mod.exports.default.setup({}, { expose() {} })
-  return { state, calls, request, template: descriptor.template!.content }
+  return { state, calls, request, api, template: descriptor.template!.content }
 }
 
 for (const domain of ['bom', 'route'] as const)
@@ -79,6 +89,38 @@ for (const domain of ['bom', 'route'] as const)
       expect(calls.at(-1)?.params).toEqual({ outputType: 'PRODUCT', outputId: 2 })
       expect(template).not.toMatch(/tree-props|:lazy|type="selection"/)
       expect(template).toContain('当前版本（生效日）')
+    })
+    it('复制请求默认版本号；设为当前携带已观察到的当前版本，失败保留复制输入', async () => {
+      const { state: s, calls, api } = setup(domain)
+      const id = domain === 'bom' ? 'bomId' : 'routingId'
+      const version = domain === 'bom' ? 'bomVersion' : 'routingVersion'
+      s.selected.value = { outputType: 'PRODUCT', outputId: 1 }
+      s.versions.value = [
+        { [id]: 8, [version]: 'V1.0', isCurrent: false },
+        { [id]: 7, [version]: 'V0.9', isCurrent: true },
+      ]
+      const row = {
+        id: 8,
+        version: 'V1.0',
+        approveStatus: BomStatusEnum.APPROVED.value,
+        isCurrent: false,
+        canSetCurrent: true,
+      }
+      await s.handleVersionAction('copy', row)
+      expect(calls.at(-1)?.url).toMatch(/8\/next-version$/)
+      expect(s.suggestedVersion.value).toBe('V1.1')
+      expect(s.copyVisible.value).toBe(true)
+      api.copyEngineeringBom = api.copyProductRoute = async () => {
+        throw new Error('同产品版本号已存在：V1.1')
+      }
+      await s.copyConfirm('V1.1')
+      expect(s.copyVisible.value).toBe(true)
+      expect(s.copyBusy.value).toBe(false)
+      expect(s.copyError.value).toContain('版本号已存在')
+      await s.handleVersionAction('setCurrent', row)
+      expect(calls.find((x) => /setDefault|set-current/.test(x.url))?.params).toEqual({
+        expectedCurrentId: 7,
+      })
     })
     it('新搜索恢复第一页，旧请求不会覆盖新页', async () => {
       const { state: s, request } = setup(domain)
